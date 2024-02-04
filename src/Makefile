@@ -5,12 +5,12 @@ ENV := no-debug
 STATIC_FLAGS := -static # enable static
 STATIC_FLAGS := # disable static
 
-VALGRIND_TOOL=helgrind
-VALGRIND_TOOL=memcheck --leak-check=full --show-leak-kinds=all
-VALGRIND_TOOL=memcheck --track-origins=yes --leak-check=full --show-leak-kinds=all --track-fds=yes -s
-VALGRIND_TOOL=memcheck --track-origins=yes --leak-check=full --track-fds=yes -s
+VALGRIND_COMAND=--tool=helgrind
+VALGRIND_COMAND=--tool=memcheck --leak-check=full --show-leak-kinds=all
+VALGRIND_COMAND=--tool=memcheck --track-origins=yes --leak-check=full --show-leak-kinds=all --track-fds=yes -s
+VALGRIND_COMAND=--tool=memcheck --track-origins=yes --leak-check=full --track-fds=yes -s
 
-PROJECT_PATH := ./lib
+PROJECT_PATH := ./
 OUTPUT_PATH := ./build
 TARGET := cuwacunu
 SOURCES := main.cpp
@@ -48,7 +48,7 @@ ifeq ($(ENV),gdb-debug)
 	gdb $(OUTPUT_PATH)/$(TARGET)
 else
 ifeq ($(ENV),valgrind-debug)
-	valgrind --tool=$(VALGRIND_TOOL) $(OUTPUT_PATH)/$(TARGET)
+	valgrind $(VALGRIND_COMAND) $(OUTPUT_PATH)/$(TARGET)
 else
 	$(OUTPUT_PATH)/$(TARGET)
 endif
