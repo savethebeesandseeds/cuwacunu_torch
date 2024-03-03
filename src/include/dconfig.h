@@ -1,0 +1,7 @@
+#pragma once
+#include "dtypes.h"
+#define ABSOLUTE_BASE_SYMB CONST
+#define INITIAL_CAPITAL 1000.0 /* in ABSOLUTE_BASE_SYMB */
+#define BROKER_COMMISSION_RATE 0.001 /* 0.001 for 0.1% */
+#define MAX_EPISODE_STEPS 100
+#define BANKRUPTCY_CAPITAL INITIAL_CAPITAL / 2.0

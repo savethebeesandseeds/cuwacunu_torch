@@ -10,10 +10,17 @@ struct ActorModel : torch::nn::Module {
         mean = register_module("mean", torch::nn::Linear(64, action_dim));
         log_std = register_module("log_std", torch::nn::Linear(64, action_dim));
 
+
+        ...For the events, use an LSTM or BiLSTM to process the sequence.
+        ...For the wallet (a non-sequential value), a fully connected layer.
+            -> join in the middle
+        ... remmebmber the output boundaries
         this->to(cuwacunu::kDevice);
     }
-
-    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor x) {
+    void reset_memory() {
+        ...
+    }
+    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor& x) {
         x = torch::relu(fc->forward(x));
         auto mean_out = mean->forward(x);
         auto std_out = torch::softplus(log_std->forward(x));

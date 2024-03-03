@@ -49,6 +49,8 @@ public:
 
         for (int episode = 0; episode < episodes; ++episode) {
             state = environment_->reset();
+            _critic->reset_memory();
+            _actor->reset_memory();
             
             do {
                 expBatch = {};
@@ -67,20 +69,27 @@ public:
                     expBatch.actions = exp.action.unsqueeze(0);
                     expBatch.rewards = torch::tensor({exp.reward});
                     expBatch.next_states = exp.next_state.unsqueeze(0);
-                    expBatch.dones = torch::tensor({static_cast<double>(exp.done)});    
+                    expBatch.dones = torch::tensor({static_cast<float>(exp.done)});    
                 }
                 // train on experience
-                updateModels(expBatch);
+
+                ... WARNING, careful, sampleBatch needs custom sampling to preserve sequence correlation needed for the memory states of the BiLSTM
+                
 
                 state = exp.next_state;
             } while (!exp.done);
+            ---train when the episode is done
+            updateModels(expBatch);
         }
     }
 
 private:
     // Method to update actor and critic models based on the experience
     void updateModels(cuwacunu::experienceBatch_t& expBatch) {
-        ... what if actions where categorical and or continious and so then different updates depending more on checking that .sum(-1, true)
+        #FIXME ... the output specifies categotical and continious actions
+        #FIXME ... what if actions where categorical and or continious and so then different updates depending more on checking that .sum(-1, true)
+
+
         // Assuming 'expBatch.states', 'expBatch.actions', 'expBatch.rewards', 'expBatch.next_states', and 'expBatch.dones' are all batched tensors
         auto current_values = critic_->forward(expBatch.states);
         auto next_values = critic_->forward(expBatch.next_states) * (1 - expBatch.dones); // Apply mask for dones to zero-out values of terminal states

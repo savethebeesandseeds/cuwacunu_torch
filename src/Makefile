@@ -33,15 +33,15 @@ GXX_FLAGS := -std=$(GXX_VERSION) $(REMOVE_WARNINGS) -Wall -g $(STATIC_FLAGS) $(I
 endif
 endif
 
-m_clean:
+main:
+	$(MAKE) -j$(shell nproc) m_main
+clean:
 	rm -f $(OUTPUT_PATH)/*.o
-
 m_cuwacunu:
 	$(GXX) $(GXX_FLAGS) $(PROJECT_PATH)/$(SOURCES) $(LD_FLAGS) -o $(OUTPUT_PATH)/$(TARGET)
 	chmod +x $(OUTPUT_PATH)/$(TARGET)
-
-main:
-	make m_clean
+m_main:
+	make clean
 	echo "Building [$(TARGET)]..."
 	make -j$(nproc) m_cuwacunu
 ifeq ($(ENV),gdb-debug)

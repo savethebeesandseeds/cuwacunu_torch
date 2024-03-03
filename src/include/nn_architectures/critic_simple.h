@@ -10,8 +10,10 @@ struct CriticModel : torch::nn::Module {
 
         this->to(cuwacunu::kDevice);
     }
-
-    torch::Tensor forward(torch::Tensor x) {
+    void reset_memory() {
+        ...
+    }
+    torch::Tensor forward(torch::Tensor& x) {
         x = torch::relu(fc->forward(x));
         x = out->forward(x);
         return x;

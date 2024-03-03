@@ -19,6 +19,13 @@ public:
     }
 
     cuwacunu::experienceBatch_t sampleBatch() {
+        
+        ... experience replay makes little sense in on-policy learning, revisate to avoid this class
+        ... make the batch be the entire episode
+        ... sample a batch for on-policy learning!
+
+
+
         std::vector<torch::Tensor> states, actions, rewards, next_states;
         std::vector<uint8_t> dones; // Use uint8_t for boolean representation in tensor
 
