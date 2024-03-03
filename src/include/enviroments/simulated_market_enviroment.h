@@ -6,9 +6,9 @@
 namespace cuwacunu {
 class Environment {
 public:
-  std::vector<mechanic_order_t> mech_buff;
-  instrument_v_t<position_space_t> portafolio;
-  instrument_v_t<position_space_t> past_portafolio;
+  std::vector<mechanic_order_t> mech_buff;            /* mechanical orders vector */
+  instrument_v_t<position_space_t> portafolio;        /* vector of all instruments */
+  instrument_v_t<position_space_t> past_portafolio;   /* past state of all instruments */
   float total_cap;
   Environment()           { reset(); }
   virtual ~Environment()  { reset(); }
@@ -84,15 +84,17 @@ public:
     return (total_capital < BANKRUPTCY_CAPITAL) || Broker::get_step_count() > MAX_EPISODE_STEPS;
   }
   cuwacunu::experience_t step(torch::Tensor& action_features) {
+    
     experience_t exp = {};
-    exp.state_features = current_state_features();
-    exp.action_features = action_features;
-    mechinze_order(exp.action_features);
-    exchange_mechanic_orders();
-    Broker::step(); /* request the broker for the next price update */
-    exp.next_state_features = current_state_features();
-    exp.reward = get_step_reward();
-    exp.done = is_done();
+    /* forward the input state */     exp.state_features = current_state_features();
+    /* forward the input action */    exp.action_features = action_features;
+    /* interpret the action */        mechinze_order(exp.action_features);
+    /* step the enviroment --- execute the action */                exchange_mechanic_orders();
+    /* step the enviroment --- request the broker price update */   Broker::step();
+    /* forward the step state */      exp.next_state_features = current_state_features();
+    /* forward the step reward */     exp.reward = get_step_reward();
+    /* query the episode end */       exp.done = is_done();
+
     return exp;
   }
 };
