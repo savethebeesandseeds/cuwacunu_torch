@@ -10,6 +10,8 @@ public:
   instrument_v_t<position_space_t> portafolio;        /* vector of all instruments */
   instrument_v_t<position_space_t> past_portafolio;   /* past state of all instruments */
   float total_cap;
+  size_t state_size = 5 * COUNT_INSTSRUMENTS;         /* state space dimenstionality */
+  size_t action_dim = 2 * COUNT_INSTSRUMENTS + 4;     /* action space dimentionality */
   Environment()           { reset(); }
   virtual ~Environment()  { reset(); }
   torch::Tensor reset()   {
@@ -35,12 +37,12 @@ public:
     }
     return total_cap;
   }
-  void mechinze_order(torch::Tensor& action_features) {
+  void mechinze_order(action_logits_t& action_features) {
     /* there is construction in the struct that goes from action_features to action_space_t */
-    action_space_t action(action_features);
+    action_space_t act(action_features);
     /* append to the enviroment order buffer */
     mech_buff.push_back(
-      mechanic_order_t(action, action.target_amount(portafolio))
+      mechanic_order_t(act, act.target_amount(portafolio))
     );
   }
   void exchange_mechanic_orders() {
@@ -55,17 +57,18 @@ public:
       }
     }
   }
-  instrument_v_t<float> get_step_reward() { // #FIXME determine if the rewards are too small or are causing problem due to scale
+  reward_space_t get_step_reward() { // #FIXME determine if the rewards are too small or are causing problem due to scale
     instrument_v_t<float> reward_per_instrument = {};
     FOR_ALL_INSTRUMENTS(inst) {
       reward_per_instrument[inst] = (portafolio[inst].capital() - past_portafolio[inst].capital());
     }
     estimate_total_capital(); // #FIXME include total_cap as a overall multipler in the rewards
     past_portafolio = portafolio;
-    return reward_per_instrument;
+    
+    return reward_space_t(reward_per_instrument);
   }
-  instrument_v_t<torch::Tensor> current_state_features() {
-    instrument_v_t<torch::Tensor> ret;
+  state_space_t current_state_features() {
+    instrument_v_t<state_features_t> instrument_state_feat
     /* Assuming you have a predefined number of instruments */
     FOR_ALL_INSTRUMENTS(inst) {
       /* Collect state for each instrument */
@@ -78,20 +81,20 @@ public:
       }, cuwacunu::kType).to(cuwacunu::kDevice));
     }
     /* Convert the vector of tensors into a single tensor */
-    return ret;
+    return state_space_t(instrument_state_feat);
   }
   bool is_done() {
     return (total_capital < BANKRUPTCY_CAPITAL) || Broker::get_step_count() > MAX_EPISODE_STEPS;
   }
-  cuwacunu::experience_t step(torch::Tensor& action_features) {
+  cuwacunu::experience_t step(action_logits_t& action_features) {
     
     experience_t exp = {};
-    /* forward the input state */     exp.state_features = current_state_features();
-    /* forward the input action */    exp.action_features = action_features;
-    /* interpret the action */        mechinze_order(exp.action_features);
+    /* forward the input state */     exp.state_feat = current_state_features();
+    /* forward the input action */    exp.action_feat = action_features;
+    /* interpret the action */        mechinze_order(exp.action_feat);
     /* step the enviroment --- execute the action */                exchange_mechanic_orders();
     /* step the enviroment --- request the broker price update */   Broker::step();
-    /* forward the step state */      exp.next_state_features = current_state_features();
+    /* forward the step state */      exp.next_state_feat = current_state_features();
     /* forward the step reward */     exp.reward = get_step_reward();
     /* query the episode end */       exp.done = is_done();
 
