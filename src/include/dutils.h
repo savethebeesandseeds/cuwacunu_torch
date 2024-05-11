@@ -33,10 +33,12 @@
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define FOR_ALL_INSTRUMENTS(inst) for (cuwacunu::instrument_t inst = 0; inst < COUNT_INSTSRUMENTS; inst = static_cast<cuwacunu::instrument_t>(inst + 1))
+#define FOR_ALL_INSTRUMENTS(inst) for (cuwacunu::instrument_t inst = (cuwacunu::instrument_t) 0; inst < COUNT_INSTRUMENTS; inst = static_cast<cuwacunu::instrument_t>(inst + 1))
+
 #define FOR_ALL(arr, elem) for(auto& elem : arr)
 
-pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
+extern pthread_mutex_t log_mutex;
+
 /* This log functionality checks if there is a pendding log for the error trasported by the errno.h lib, 
  * WARNING! This functionaly sets the errno=0 if the errno is futher required, this might be not a desired behaviour.
  */
