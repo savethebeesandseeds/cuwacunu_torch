@@ -62,6 +62,7 @@ cuwacunu::episode_experience_t ActorCriticSchema::playEpisode() {
   return episodeBuff;
 }
 /* Method to update actor and critic models based on the episodic experience */
+RUNTIME_WARNING("(actor_critic.cpp)[ActorCriticSchema::updateModels] #FIXME implement TD(λ) eligibility traces, instead of n-step TD.\n");
 void ActorCriticSchema::updateModels(episode_experience_t& episodeBuff) {
   /*
     * (1.) Critic Update:
@@ -77,7 +78,6 @@ void ActorCriticSchema::updateModels(episode_experience_t& episodeBuff) {
     * - Applying gradient descent based on the calculated loss to update the critic's parameters. 
     *
     * ------
-    * #FIXME implement TD(λ) eligibility traces, instead of n-step TD.
     */
   /* Ensure the model is in training mode */
   critic->ptr()->train();
@@ -180,15 +180,15 @@ void ActorCriticSchema::updateModels(episode_experience_t& episodeBuff) {
 
   /* compute the Generalized Advantage Estimation (GAE) */
   torch::Tensor advantages = torch::zeros({(long int) episodeBuff.size()}, cuwacunu::kType).to(cuwacunu::kDevice);
-  torch::Tensor gae = torch::zeros({1}, cuwacunu::kType).to(cuwacunu::kDevice);
+  float gae = 0;
   
   for (int t = episodeBuff.size() - 1; t >= 0; --t) {
     auto& exp = episodeBuff[t];
-    auto current_value = critic->ptr()->forward(exp.state.unpack().unsqueeze(0)).item().toFloat();
-    auto next_value = critic->ptr()->forward(exp.next_state.unpack().unsqueeze(0));
-    float delta = exp.reward.evaluate_reward() + TD_GAMMA * next_value.item().toFloat() * (1 - exp.done) - current_value;
+    float current_value = critic->ptr()->forward(exp.state.unpack().unsqueeze(0)).item().toFloat();
+    float next_value = critic->ptr()->forward(exp.next_state.unpack().unsqueeze(0)).item().toFloat();
+    float delta = exp.reward.evaluate_reward() + TD_GAMMA * next_value * (1 - exp.done) - current_value;
     gae = delta + TD_GAMMA * TD_LAMBDA * gae * (1 - exp.done);
-    advantages[t] = gae + current_value; /* You may need to adjust this based on how you calculate or store values */
+    advantages[t] = gae + current_value;
   }
 
   /* lambda function, utility to compute the PPO update target */
@@ -215,8 +215,8 @@ void ActorCriticSchema::updateModels(episode_experience_t& episodeBuff) {
     /* Categorical: base_symb */
     {
       actor_loss += computePPOLoss(
-        /* oldLogProb   */ oldLogits.base_symb_dist().log_prob(torch::tensor({exp.action.base_symb}, cuwacunu::kType).to(cuwacunu::kDevice)),
-        /* newLogProb   */ newLogits.base_symb_dist().log_prob(torch::tensor({exp.action.base_symb}, cuwacunu::kType).to(cuwacunu::kDevice)),
+        /* oldLogProb   */ oldLogits.base_symb_dist().log_prob(torch::tensor({exp.action.base_symb}, torch::kInt64).to(cuwacunu::kDevice)),
+        /* newLogProb   */ newLogits.base_symb_dist().log_prob(torch::tensor({exp.action.base_symb}, torch::kInt64).to(cuwacunu::kDevice)),
         /* advantage    */ advantage);
       /* Entropy bonus (base_symb) */
       actor_loss += (-ENTROPY_ALPHA * newLogits.base_symb_dist().entropy().mean()) / 6.0;
@@ -224,8 +224,8 @@ void ActorCriticSchema::updateModels(episode_experience_t& episodeBuff) {
     /* Categorical: target_symb */
     {
       actor_loss += computePPOLoss(
-        /* oldLogProb   */ oldLogits.target_symb_dist().log_prob(torch::tensor({exp.action.target_symb}, cuwacunu::kType).to(cuwacunu::kDevice)),
-        /* newLogProb   */ newLogits.target_symb_dist().log_prob(torch::tensor({exp.action.target_symb}, cuwacunu::kType).to(cuwacunu::kDevice)),
+        /* oldLogProb   */ oldLogits.target_symb_dist().log_prob(torch::tensor({exp.action.target_symb}, torch::kInt64).to(cuwacunu::kDevice)),
+        /* newLogProb   */ newLogits.target_symb_dist().log_prob(torch::tensor({exp.action.target_symb}, torch::kInt64).to(cuwacunu::kDevice)),
         /* advantage    */ advantage);
       /* Entropy bonus (target_symb) */
       actor_loss += (-ENTROPY_ALPHA * newLogits.target_symb_dist().entropy().mean()) / 6.0;

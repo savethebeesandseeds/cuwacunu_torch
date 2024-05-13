@@ -3,11 +3,14 @@
 #include "actor_critic.h"
 
 int main() {
+    log_info("Starting...\n");
+
     auto market_env = cuwacunu::Environment();
-    log_info("market_env.state_size: %ld\n",market_env.state_size);
     auto rl_schema = cuwacunu::ActorCriticSchema(market_env);
 
-    log_info("waka\n");
+    rl_schema.learn(1);
+
+    log_info("Finishing...\n");
 
     return 0;
 }

@@ -48,9 +48,9 @@ void Environment::exchange_mechanic_orders() {
   }
 }
 reward_space_t Environment::get_step_reward() { // #FIXME determine if the rewards are too small or are causing problem due to scale
-  instrument_v_t<float> instruments_reward = {};
+  instrument_v_t<float> instruments_reward;
   FOR_ALL_INSTRUMENTS(inst) {
-    instruments_reward[inst] = (portafolio[inst].capital() - past_portafolio[inst].capital());
+    instruments_reward.push_back(portafolio[inst].capital() - past_portafolio[inst].capital());
   }
   estimate_total_capital(); // #FIXME include total_cap as a overall multipler in the rewards
   past_portafolio = portafolio;

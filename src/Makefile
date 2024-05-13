@@ -1,7 +1,7 @@
 # General settings
 GXX := g++
 GXX_VERSION := c++17
-GXX_FLAGS := -std=$(GXX_VERSION) -Wno-unused-function -Wall -g -MMD -MP
+GXX_FLAGS := -std=$(GXX_VERSION) -Wno-unused-function -Wall -g -MMD -MP -O0
 
 # Path settings
 PROJECT_PATH := .
@@ -74,7 +74,7 @@ $(OUTPUT_PATH)/critic.o: $(OUTPUT_PATH)/dutils.o $(OUTPUT_PATH)/torch_utils.o $(
 	$(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) $(SRC_PATH)/critic.cpp -c -o $(OUTPUT_PATH)/critic.o
 # -----------------------------------------------------
 # Compile the Actor-Critic Schema
-$(OUTPUT_PATH)/actor_critic.o: $(OUTPUT_PATH)/dutils.o $(OUTPUT_PATH)/torch_utils.o $(OUTPUT_PATH)/distributions.o $(OUTPUT_PATH)/lambda_lr_scheduler.o $(OUTPUT_PATH)/actor.o $(OUTPUT_PATH)/critic.o $(SRC_PATH)/actor_critic.cpp
+$(OUTPUT_PATH)/actor_critic.o: $(OUTPUT_PATH)/dutils.o $(OUTPUT_PATH)/lambda_lr_scheduler.o $(OUTPUT_PATH)/actor.o $(OUTPUT_PATH)/critic.o $(SRC_PATH)/actor_critic.cpp
 	@echo "$(COLOR_GREEN) Building $(OUTPUT_PATH)/actor_critic.o $(COLOR_RESET)"
 	$(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) $(SRC_PATH)/actor_critic.cpp -c -o $(OUTPUT_PATH)/actor_critic.o
 # -----------------------------------------------------

@@ -23,7 +23,7 @@ torch::Tensor Categorical::sample(const torch::IntArrayRef& sample_shape) const 
 torch::Tensor Categorical::log_prob(const torch::Tensor& value) const {
   /* Calculate log probabilities */
   auto log_probs = logits - logits.logsumexp(-1, true).unsqueeze(-1);
-  auto value_broadcasted = value.unsqueeze(-1).to(kDevice, kType);
+  auto value_broadcasted = value.unsqueeze(-1).to(kDevice, torch::kInt64);
   auto log_pmf = torch::gather(log_probs, -1, value_broadcasted);
   return log_pmf.squeeze(-1);
 }

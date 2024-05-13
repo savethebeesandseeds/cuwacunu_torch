@@ -7,7 +7,8 @@
 #include <torch/torch.h>
 #include "torch_compat/distributions.h"
 
-// ...#FIXME be aware of the random number generator seed
+#include "dutils.h"
+
 namespace cuwacunu {
 extern torch::Device kDevice;
 extern torch::Dtype kType;
@@ -28,7 +29,6 @@ static const instrument_v_t<torch::Tensor> CURRENCY_TOKENIZER = {
   torch::tensor({0, 1}, torch::dtype(torch::kInt32).device(cuwacunu::kDevice))  // SINE
 };
 /* statistics_t */
-/* #FIXME statistics for actual charts involve dt */
 struct statistics_t {
   unsigned long ctx = 0;  /* Number of data points */
   float c_max = std::numeric_limits<float>::lowest();   /* Max value */

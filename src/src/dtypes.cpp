@@ -3,6 +3,9 @@
 #include "dutils.h"
 #include "simulated_broker.h"
 
+RUNTIME_WARNING("(dtypes.cpp)[] #FIXME be aware to seed the random number generator seed.\n");
+RUNTIME_WARNING("(dtypes.cpp)[] #FIXME statistics for actual charts involve dt.\n");
+
 namespace cuwacunu {
 torch::Device kDevice = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 torch::Dtype kType = torch::kFloat32;
@@ -117,11 +120,11 @@ torch::Tensor state_space_t::unpack() const {
   return torch::cat(instruments_state_feat, 0);
 }
 /* reward_space_t */
+RUNTIME_WARNING("(dtypes.cpp)[reward_space_t::reward_space_t] #FIXME Reward == 1.0.\n");
 reward_space_t::reward_space_t(instrument_v_t<reward_feature_t> instrument_reward) 
   : instrument_reward(instrument_reward) {}
 float reward_space_t::evaluate_reward() const {
   /* retrive the actual reward from reward_space_t */
-  log_warn("Fixme: Reward == 1.0 \n");
   return 1.0;
 }
 /* order_space_t */

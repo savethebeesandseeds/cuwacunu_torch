@@ -5,9 +5,9 @@
 
 namespace cuwacunu {
 struct CriticModelImpl : torch::nn::Module {
-    torch::nn::Linear fc;
-    torch::nn::LeakyReLU fc_embedding;
-    torch::nn::Linear out;
+    torch::nn::Linear fc{nullptr};
+    torch::nn::LeakyReLU fc_activation{nullptr};
+    torch::nn::Linear out{nullptr};
     CriticModelImpl(int64_t state_size);
     torch::Tensor forward(const torch::Tensor& x);
     void reset_memory();

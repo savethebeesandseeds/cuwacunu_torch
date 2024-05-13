@@ -97,3 +97,8 @@ extern pthread_mutex_t log_mutex;
   fflush(LOG_WARN_FILE);\
   pthread_mutex_unlock(&log_mutex);\
 }
+/* runtime logger */
+struct RuntimeWarning { RuntimeWarning(const char *msg) { log_warn(msg); }};
+#define CONCAT_INTERNAL(x, y) x##y
+#define CONCAT(x, y) CONCAT_INTERNAL(x, y)
+#define RUNTIME_WARNING(msg) static RuntimeWarning CONCAT(rw_, __COUNTER__) (msg)
