@@ -3,7 +3,10 @@
 #include "torch_compat/torch_utils.h"
 #include <torch/torch.h>
 
+...make it inherit from abstract
 namespace cuwacunu {
+namespace learning_schemas {
+namespace networks {
 struct ActorModelImpl : public torch::nn::Module {
 private:
   /* base layer */
@@ -27,4 +30,6 @@ public:
   void reset_memory();
 };
 TORCH_MODULE(ActorModel);
+} /* namespace networks */
+} /* namespace learning_schemas */
 } /* namespace cuwacunu */

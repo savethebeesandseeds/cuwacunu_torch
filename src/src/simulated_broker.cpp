@@ -2,6 +2,8 @@
 #include "dutils.h"
 #include "simulated_broker.h"
 
+RUNTIME_WARNING("(simulated_broker.cpp)[] broker singleton design makes a bottle-neck in parallel training.");
+
 namespace cuwacunu {
 float Broker::ctime;
 std::vector<currency_space_t> Broker::currencies;
@@ -38,13 +40,13 @@ currency_space_t Broker::retrieve_currency(instrument_t inst) {   /* in ABSOLUTE
 }
 /* get_current_price */ float Broker::get_current_price(instrument_t target_symb, instrument_t base_symb) { return Broker::exchange_rate(base_symb, target_symb); }
 /* get_step_count */    float Broker::get_step_count() { return ctime; }
-/* perform a step */    void Broker::step() {
+/* perform a step */    
+void Broker::step() {
   ++ctime;
   FOR_ALL_INSTRUMENTS(inst) {
-    float dv = delta_price_lambdas[(int)inst]();
-    Broker::currencies[(size_t)inst].price += dv;   /* udpate the price */
-    Broker::currencies[(size_t)inst].stats.update(
-      Broker::currencies[(size_t)inst].price.item<float>());  /* update the stats */
+    Broker::currencies[(size_t)inst].delta_step(
+      delta_price_lambdas[(int)inst]()  /* differential increment to the price */
+    );
   }
 }
 /* make a transation, exchange an order */
@@ -64,9 +66,6 @@ void Broker::exchange(position_space_t& base_position, position_space_t& target_
 }
 /* initialize */
 Broker::_init Broker::_initializer;
-
-/* WARNING: a singleton desing for the broker might bottle-neck parallel training */
-
 } // namespace cuwacunu
 
 

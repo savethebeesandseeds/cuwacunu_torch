@@ -61,14 +61,15 @@ state_space_t Environment::current_state_features() {
   instrument_v_t<state_features_t> instruments_state_feat;
   /* Assuming you have a predefined number of instruments */
   FOR_ALL_INSTRUMENTS(inst) {
-    /* Collect state for each instrument */
-    instruments_state_feat.push_back(torch::tensor({
+    auto aux = torch::tensor({
       Broker::get_current_price(inst), 
       Broker::get_current_mean(inst), 
       Broker::get_current_std(inst), 
       Broker::get_current_max(inst), 
       Broker::get_current_min(inst)
-    }, cuwacunu::kType).to(cuwacunu::kDevice));
+    }, cuwacunu::kType).to(cuwacunu::kDevice);
+    /* Collect state for each instrument */
+    instruments_state_feat.push_back(aux);
   }
   /* Convert the vector of tensors into a single tensor */
   return state_space_t(instruments_state_feat);
@@ -76,7 +77,7 @@ state_space_t Environment::current_state_features() {
 bool Environment::is_done() {
   return (Environment::estimate_total_capital() < BANKRUPTCY_CAPITAL) || Broker::get_step_count() > MAX_EPISODE_STEPS;
 }
-experience_t Environment::step(action_space_t& action) {
+experience_space_t Environment::step(action_space_t& action) {
   /* forward the input state      */  state_space_t state(current_state_features());
   {/* step events */
     /* interpret the action                                     */  mechinze_order(action);
@@ -88,7 +89,7 @@ experience_t Environment::step(action_space_t& action) {
   /* query the episode end        */  bool done(is_done());
   /* init the learning space      */  learn_space_t learn;
   
-  return experience_t(state, action, next_state, reward, done, learn);
+  return experience_space_t(state, action, next_state, reward, done, learn);
 }
 
-} /* namcespace cuwacunu */
+} /* namespace cuwacunu */

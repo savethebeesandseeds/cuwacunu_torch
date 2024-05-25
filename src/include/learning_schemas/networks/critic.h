@@ -3,7 +3,10 @@
 #include "torch_compat/torch_utils.h"
 #include <torch/torch.h>
 
+...make it inherit from abstract
 namespace cuwacunu {
+namespace learning_schemas {
+namespace networks {
 struct CriticModelImpl : torch::nn::Module {
     torch::nn::Linear fc{nullptr};
     torch::nn::LeakyReLU fc_activation{nullptr};
@@ -13,4 +16,6 @@ struct CriticModelImpl : torch::nn::Module {
     void reset_memory();
 };
 TORCH_MODULE(CriticModel);
+} /* namespace networks */
+} /* namespace learning_schemas */
 } /* namespace cuwacunu */

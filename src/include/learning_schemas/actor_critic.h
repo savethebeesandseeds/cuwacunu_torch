@@ -14,7 +14,9 @@
 #define PPO_EPSILON 0.3 // Proximal Policy Optimization clipping Epsilon
 #define ENTROPY_ALPHA 0.01 // Scale of the Entropy Bonus; Increse to promote exploration
 
+... make it inherit from abstract
 namespace cuwacunu {
+namespace learning_schemas {
 class ActorCriticSchema {
 private:
   std::unique_ptr<cuwacunu::ActorModel> actor;
@@ -29,8 +31,9 @@ public:
   void learn(int episodes);
 
 private:
-  cuwacunu::episode_experience_t playEpisode();
+  cuwacunu::episode_experience_space_t playEpisode();
   /* Method to update actor and critic models based on the episodic experience */
-  void updateModels(episode_experience_t& episodeBuff);
+  void updateModels(episode_experience_space_t& episodeBuff);
 };
+} /* namespace learning_schemas */
 } /* namespace cuwacunu */

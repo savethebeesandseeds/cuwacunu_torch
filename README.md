@@ -32,7 +32,7 @@ For now on, the commands will be inside the docker linux container:
 
 ### Install some initial requirements
 ```bash
-apt-get update && apt-get install -y --no-install-recommends build-essential gnupg2 curl ca-certificates
+apt-get update && apt-get install -y --no-install-recommends build-essential gnupg2 curl ca-certificates valgrind
 rm -rf /var/lib/apt/lists/*
 ```
 
@@ -82,4 +82,9 @@ make main
 # Utils
 ```bash
 nvidia-smi
+```
+
+# Genearte valgrind supression files
+```bash
+valgrind --gen-suppressions=all --leak-check=full --track-origins=yes ./your_program
 ```

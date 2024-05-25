@@ -1,9 +1,9 @@
-#include "torch_compat/lambda_lr_scheduler.h"
+#include "torch_compat/optim/schedulers/lambda_lr_scheduler.h"
 
-namespace torch {
+namespace torch_compat {
 namespace optim {
-
-LambdaLR::LambdaLR(Optimizer& optimizer, std::function<double(unsigned)> lr_lambda)
+namespace schedulers {
+LambdaLR::LambdaLR(torch::optim::Optimizer& optimizer, std::function<double(unsigned)> lr_lambda)
     : LRScheduler(optimizer), lr_lambda_(lr_lambda) {}
 
 std::vector<double> LambdaLR::get_lrs() {
@@ -15,6 +15,6 @@ std::vector<double> LambdaLR::get_lrs() {
     }
     return new_lrs;  // Return the list of new learning rates, one for each parameter group
 }
-
+} /* namespace schedulers */
 } /* namespace optim */
-} /* namespace torch */
+} /* namespace torch_compat */

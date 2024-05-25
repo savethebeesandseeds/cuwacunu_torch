@@ -29,7 +29,7 @@ ActorCriticSchema::ActorCriticSchema(cuwacunu::Environment& environment)
 }
 
 void ActorCriticSchema::learn(int episodes) {
-  episode_experience_t episodeBuff;
+  episode_experience_space_t episodeBuff;
 
   for (int episode = 0; episode < episodes; ++episode) {
     episodeBuff = playEpisode();
@@ -38,8 +38,8 @@ void ActorCriticSchema::learn(int episodes) {
   }
 }
 
-cuwacunu::episode_experience_t ActorCriticSchema::playEpisode() {
-  cuwacunu::episode_experience_t episodeBuff;
+cuwacunu::episode_experience_space_t ActorCriticSchema::playEpisode() {
+  cuwacunu::episode_experience_space_t episodeBuff;
   bool done;
   /* Switch to eval mode for consistent action selection behavior */
   actor->ptr()->eval();
@@ -53,7 +53,7 @@ cuwacunu::episode_experience_t ActorCriticSchema::playEpisode() {
 
   do {
     cuwacunu::action_space_t action = actor->ptr()->selectAction(state, true); /* selectAction with exploration enabled */
-    cuwacunu::experience_t exp = environment_.step(action);
+    cuwacunu::experience_space_t exp = environment_.step(action);
     episodeBuff.push_back(exp);
     state = exp.next_state;
     done = exp.done;
@@ -63,7 +63,7 @@ cuwacunu::episode_experience_t ActorCriticSchema::playEpisode() {
 }
 /* Method to update actor and critic models based on the episodic experience */
 RUNTIME_WARNING("(actor_critic.cpp)[ActorCriticSchema::updateModels] #FIXME implement TD(λ) eligibility traces, instead of n-step TD.\n");
-void ActorCriticSchema::updateModels(episode_experience_t& episodeBuff) {
+void ActorCriticSchema::updateModels(episode_experience_space_t& episodeBuff) {
   /*
     * (1.) Critic Update:
     *

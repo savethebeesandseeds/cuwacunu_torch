@@ -5,35 +5,12 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdexcept>  // Include this at the top if not already included
 
-#define LOG_FILE stdout
-#define LOG_ERR_FILE stderr
-#define LOG_WARN_FILE stdout
-
-#define ANSI_COLOR_ERROR "\x1b[41m" 
-#define ANSI_COLOR_SUCCESS "\x1b[42m" 
-#define ANSI_COLOR_WARNING "\x1b[43m" 
-#define ANSI_COLOR_RESET "\x1b[0m" 
-#define ANSI_COLOR_Black "\x1b[30m" 
-#define ANSI_COLOR_Red "\x1b[31m"     
-#define ANSI_COLOR_Green "\x1b[32m"   
-#define ANSI_COLOR_Yellow "\x1b[33m" 
-#define ANSI_COLOR_Blue "\x1b[34m"  
-#define ANSI_COLOR_Magenta "\x1b[35m" 
-#define ANSI_COLOR_Cyan "\x1b[36m"    
-#define ANSI_COLOR_White "\x1b[37m" 
-#define ANSI_COLOR_Bright_Black_Grey "\x1b[90m" 
-#define ANSI_COLOR_Bright_Red "\x1b[91m" 
-#define ANSI_COLOR_Bright_Green "\x1b[92m" 
-#define ANSI_COLOR_Bright_Yellow "\x1b[93m"     
-#define ANSI_COLOR_Bright_Blue "\x1b[94m" 
-#define ANSI_COLOR_Bright_Magenta "\x1b[95m" 
-#define ANSI_COLOR_Bright_Cyan "\x1b[96m"       
-#define ANSI_COLOR_Bright_White "\x1b[97m"
+#include "cuwacunu_config/config.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define FOR_ALL_INSTRUMENTS(inst) for (cuwacunu::instrument_t inst = (cuwacunu::instrument_t) 0; inst < COUNT_INSTRUMENTS; inst = static_cast<cuwacunu::instrument_t>(inst + 1))
 
 #define FOR_ALL(arr, elem) for(auto& elem : arr)
 
@@ -87,6 +64,18 @@ extern pthread_mutex_t log_mutex;
   pthread_mutex_unlock(&log_mutex);\
 }
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
+#define log_fatal(...) {\
+  wrap_log_sys_err();\
+  pthread_mutex_lock(&log_mutex);\
+  fprintf(LOG_ERR_FILE,"[%s0x%lX%s]: %sFATAL%s: ",\
+    ANSI_COLOR_Cyan,pthread_self(),ANSI_COLOR_RESET,\
+    ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
+  fprintf(LOG_ERR_FILE,__VA_ARGS__);\
+  fflush(LOG_ERR_FILE);\
+  pthread_mutex_unlock(&log_mutex);\
+  THROW_RUNTIME_ERROR();\
+}
+/* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_warn(...) {\
   wrap_log_sys_err();\
   pthread_mutex_lock(&log_mutex);\
@@ -97,8 +86,16 @@ extern pthread_mutex_t log_mutex;
   fflush(LOG_WARN_FILE);\
   pthread_mutex_unlock(&log_mutex);\
 }
-/* runtime logger */
-struct RuntimeWarning { RuntimeWarning(const char *msg) { log_warn(msg); }};
+/* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
+/* utilities */
+#define STRINGIFY(x) #x
 #define CONCAT_INTERNAL(x, y) x##y
 #define CONCAT(x, y) CONCAT_INTERNAL(x, y)
+/* compile-time warnings and errors */
+#define COMPILE_TIME_WARNING(msg) _Pragma(STRINGIFY(GCC warning #msg))
+#define THROW_COMPILE_TIME_ERROR(msg) _Pragma(STRINGIFY(GCC error #msg))
+/* run-time warnings and errors */
+struct RuntimeWarning { RuntimeWarning(const char *msg) { log_warn(msg); }};
 #define RUNTIME_WARNING(msg) static RuntimeWarning CONCAT(rw_, __COUNTER__) (msg)
+#define THROW_RUNTIME_ERROR() { throw std::runtime_error("Runtime error occurred"); }
+/* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
