@@ -1,7 +1,7 @@
 #include <stdexcept>
 #include <torch/torch.h>
-#include "dutils.h"
-#include "architecture.h"
+#include "piaabo/dutils.h"
+#include "piaabo/architecture.h"
 #include "torch_compat/torch_utils.h"
 /* As per indicated here: https://discuss.pytorch.org/t/torch-distributions-categorical/45747/6
  * 	There is no implementation of the distributions module in Libtorch.

@@ -32,7 +32,7 @@ For now on, the commands will be inside the docker linux container:
 
 ### Install some initial requirements
 ```bash
-apt-get update && apt-get install -y --no-install-recommends build-essential gnupg2 curl ca-certificates valgrind
+apt-get update && apt-get install -y --no-install-recommends build-essential gnupg2 curl ca-certificates valgrind libssl-dev
 rm -rf /var/lib/apt/lists/*
 ```
 
