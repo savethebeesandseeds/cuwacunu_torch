@@ -1,6 +1,7 @@
 #include "torch_utils.h"
 
-RUNTIME_WARNING("(config.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
+RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
+RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME change floats to double. \n");
 
 namespace torch_compat {
   torch::Device kDevice = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;

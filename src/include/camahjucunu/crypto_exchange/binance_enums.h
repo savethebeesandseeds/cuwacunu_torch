@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <type_traits>
+#include <optional>
 #include "piaabo/dutils.h"
 #include "piaabo/architecture.h"
 
@@ -12,6 +13,12 @@ template <typename T>
   struct EnumTraits;
 
 template <typename T>
+struct is_optional_enum : std::false_type {};
+
+template <typename E>
+struct is_optional_enum<std::optional<E>> : std::is_enum<E> {};
+
+template <typename T>
 std::string enum_to_string(T enumValue) {
   return EnumTraits<T>::toString(enumValue);
 }
@@ -20,7 +27,6 @@ template <typename T>
 T string_to_enum(const std::string& str) {
     return EnumTraits<T>::fromString(str);
 }
-
 /* interval_type_e */
 enum class interval_type_e {
   /* seconds */   interval_1s, 

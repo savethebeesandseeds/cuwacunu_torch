@@ -2,6 +2,8 @@
 #include "simulated_broker.h"
 #include "piaabo/dutils.h"
 
+RUNTIME_WARNING("(abstract_enviroment.cpp)[] #FIXME change floats to double. \n");
+
 namespace cuwacunu {
 
 Environment::Environment()  { reset(); }

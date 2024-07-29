@@ -9,4 +9,6 @@ int main() {
   log_info("%s\n", (*environment_config)["ACTIVE_SYMBOLS"].c_str());
 
   log_info("Test success.\n");
+  
+  return 0;
 }

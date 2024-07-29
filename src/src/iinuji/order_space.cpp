@@ -1,6 +1,8 @@
 #include "piaabo/dutils.h"
 #include "iinuji/order_space.h"
 
+RUNTIME_WARNING("(order_space.cpp)[] #FIXME change floats to double. \n");
+
 namespace cuwacunu {
 /* order_space_t */
 order_space_t::order_space_t(instrument_e base_symb, instrument_e target_symb, float target_price, float target_amount, bool liquidated)

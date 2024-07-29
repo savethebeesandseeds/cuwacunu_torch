@@ -29,6 +29,12 @@ test_security: $(HERE_PATH)/test_security.cpp
 test_encryption: $(HERE_PATH)/test_encryption.cpp
 	@$(ENCRYPT_LINK_CMD) && $(HERE_PATH)/test_encryption
 # -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: test_binance
+test_binance: $(HERE_PATH)/test_binance.cpp
+	$(ENCRYPT_LINK_CMD) && $(HERE_PATH)/test_binance
+# -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all

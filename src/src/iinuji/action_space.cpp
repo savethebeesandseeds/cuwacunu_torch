@@ -2,6 +2,7 @@
 
 RUNTIME_WARNING("(action_space.cpp)[action_logits_t] #FIXME the whole action_space_t could use a better topological base. \n");
 RUNTIME_WARNING("(action_space.cpp)[action_space_t] #FIXME the way target_amount and target_price are set could be reviewd. \n");
+RUNTIME_WARNING("(action_space.cpp)[] #FIXME change floats to double. \n");
 
 namespace cuwacunu {
 namespace iinuji {

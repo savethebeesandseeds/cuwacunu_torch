@@ -2,6 +2,7 @@
 RUNTIME_WARNING("(instrument_space.cpp)[] #FIXME instrument_space_t could use many more indicators.\n");
 RUNTIME_WARNING("(instrument_space.cpp)[] #FIXME instrument_space_t evaluate if instrument_space_t should be in tensors.\n");
 RUNTIME_WARNING("(instrument_space.cpp)[] #FIXME instrument_space_t might be absorb or mix with quote_space_t.\n");
+RUNTIME_WARNING("(instrument_space.cpp)[] #FIXME change floats to double. \n");
 
 ... not working
 namespace cuwacunu {

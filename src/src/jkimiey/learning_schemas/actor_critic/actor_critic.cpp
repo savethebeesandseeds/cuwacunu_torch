@@ -1,6 +1,8 @@
 /* settle up for multiple continious actions */
 #include "actor_critic.h"
 
+RUNTIME_WARNING("(actor_critic.cpp)[] #FIXME change floats to double. \n");
+
 namespace cuwacunu {
 ActorCriticSchema::ActorCriticSchema(cuwacunu::Environment& environment)
   : environment_(environment) {

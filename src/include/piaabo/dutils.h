@@ -45,6 +45,23 @@
 
 extern pthread_mutex_t log_mutex;
 
+namespace cuwacunu {
+namespace piaabo {
+/* utilt types */
+template<typename T1, typename T2>
+struct dPair {
+  T1 first;
+  T2 second;
+};
+/* util methods */
+void sanitize_string(char* input, size_t max_len); /* Function to sanitize input against console injection */
+std::string trim_string(const std::string& str);
+std::vector<std::string> split_string(const std::string& str, char delimiter);
+std::string to_hex_string(const unsigned char* data, size_t size);
+void string_replace(std::string &str, const std::string& from, const std::string& to);
+} /* namespace piaabo */
+} /* namespace cuwacunu */
+
 /* This log functionality checks if there is a pendding log for the error trasported by the errno.h lib, 
  * WARNING! This functionaly sets the errno=0 if the errno is futher required, this might be not a desired behaviour.
  */
@@ -115,6 +132,71 @@ extern pthread_mutex_t log_mutex;
   fflush(LOG_WARN_FILE);\
   pthread_mutex_unlock(&log_mutex);\
 }
+
+/* Secure logging macro */
+#define log_secure_info(...) {\
+  wrap_log_sys_err();\
+  pthread_mutex_lock(&log_mutex);\
+  char temp[1024];\
+  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: ", \
+    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET);\
+  char formatted_message[1024];\
+  snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
+  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
+  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fflush(LOG_ERR_FILE);\
+  pthread_mutex_unlock(&log_mutex);\
+}
+/* Secure logging macro */
+#define log_secure_warning(...) {\
+  wrap_log_sys_err();\
+  pthread_mutex_lock(&log_mutex);\
+  char temp[1024];\
+  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: %sWARNING%s: ", \
+    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET, \
+    ANSI_COLOR_WARNING, ANSI_COLOR_RESET);\
+  char formatted_message[1024];\
+  snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
+  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
+  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fflush(LOG_ERR_FILE);\
+  pthread_mutex_unlock(&log_mutex);\
+}
+/* Secure logging macro */
+#define log_secure_error(...) {\
+  wrap_log_sys_err();\
+  pthread_mutex_lock(&log_mutex);\
+  char temp[1024];\
+  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: %sERROR%s: ", \
+    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET, \
+    ANSI_COLOR_ERROR, ANSI_COLOR_RESET);\
+  char formatted_message[1024];\
+  snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
+  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
+  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fflush(LOG_ERR_FILE);\
+  pthread_mutex_unlock(&log_mutex);\
+}
+/* Secure logging macro */
+#define log_secure_fatal(...) {\
+  wrap_log_sys_err();\
+  pthread_mutex_lock(&log_mutex);\
+  char temp[1024];\
+  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: %sERROR%s: ", \
+    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET, \
+    ANSI_COLOR_ERROR, ANSI_COLOR_RESET);\
+  char formatted_message[1024];\
+  snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
+  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
+  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fflush(LOG_ERR_FILE);\
+  pthread_mutex_unlock(&log_mutex);\
+  THROW_RUNTIME_ERROR();\
+}
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
 /* utilities */
 #define STRINGIFY(x) #x
@@ -128,10 +210,3 @@ struct RuntimeWarning { RuntimeWarning(const char *msg) { log_warn(msg); }};
 #define RUNTIME_WARNING(msg) static RuntimeWarning CONCAT(rw_, __COUNTER__) (msg)
 #define THROW_RUNTIME_ERROR() { throw std::runtime_error("Runtime error occurred"); }
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
-namespace cuwacunu {
-namespace piaabo {
-std::string trim_string(const std::string& str);
-std::vector<std::string> split_string(const std::string& str, char delimiter);
-std::string to_hex_string(const unsigned char* data, size_t size);
-} /* namespace cuwacunu */
-} /* namespace piaabo */

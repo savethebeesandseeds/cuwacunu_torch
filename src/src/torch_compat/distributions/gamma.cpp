@@ -1,5 +1,7 @@
 #include "torch_compat/distributions/gamma.h"
 
+RUNTIME_WARNING("(gamma.cpp)[] #FIXME change floats to double. \n");
+
 namespace torch_compat {
 namespace distributions {
 /* Constructor */

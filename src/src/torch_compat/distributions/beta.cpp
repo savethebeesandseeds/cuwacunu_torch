@@ -1,6 +1,8 @@
 #include "torch_compat/distributions/beta.h"
 
 RUNTIME_WARNING("(beta.cpp)[] #FIXME: Beta distribution needs testing.\n");
+RUNTIME_WARNING("(beta.cpp)[] #FIXME change floats to double. \n");
+
 namespace torch_compat {
 namespace distributions {
 /* --- BETA --- */

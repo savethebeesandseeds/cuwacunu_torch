@@ -5,6 +5,7 @@ RUNTIME_WARNING("(statistics_space.cpp)[] #FIXME statistics_space_t for actual c
 RUNTIME_WARNING("(statistics_space.cpp)[] is better to use Non-parametric spearman rank correlation coheficient.\n");
 RUNTIME_WARNING("(statistics_space.h)[] add RSI to statistics_space_t.\n");
 RUNTIME_WARNING("(statistics_space.h)[] add MACD to statistics_space_t.\n");
+RUNTIME_WARNING("(statistics_space.cpp)[] #FIXME change floats to double. \n");
 
 namespace cuwacunu {
 /* statistics_space_t */
