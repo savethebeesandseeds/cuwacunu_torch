@@ -2,7 +2,7 @@
 #include "camahjucunu/crypto_exchange/binance_serialization.h"
 #include "camahjucunu/crypto_exchange/binance_deserialization.h"
 
-RUNTIME_WARNING("(binance_types.cpp)[] it is convinient (due to std::variant and std::optional) for this file to have c++20, everything on the libtorch uses c++17\n");
+RUNTIME_WARNING("(binance_types.cpp)[] it is convinient (due to std::variant and std::optional) for this file to have c++20, libtorch uses c++17\n");
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -42,7 +42,9 @@ price_qty_t::price_qty_t(const std::string &json) { deserialize(*this, json); };
 trade_t::trade_t(const std::string &json) { deserialize(*this, json); };
 kline_t::kline_t(const std::string &json) { deserialize(*this, json); };
 tick_full_t::tick_full_t(const std::string &json) { deserialize(*this, json); };
-
+tick_mini_t::tick_mini_t(const std::string &json) { deserialize(*this, json); };
+price_t::price_t(const std::string &json) { deserialize(*this, json); };
+bookPrice_t::bookPrice_t(const std::string &json) { deserialize(*this, json); };
 
 /* primary return structs */
 ping_ret_t::ping_ret_t(const std::string &json) { deserialize(*this, json); };
@@ -53,6 +55,11 @@ historicalTrades_ret_t::historicalTrades_ret_t(const std::string &json) { deseri
 klines_ret_t::klines_ret_t(const std::string &json) { deserialize(*this, json); };
 avgPrice_ret_t::avgPrice_ret_t(const std::string &json) { deserialize(*this, json); };
 ticker_24hr_ret_t::ticker_24hr_ret_t(const std::string &json) { deserialize(*this, json); };
+ticker_price_ret_t::ticker_price_ret_t(const std::string &json) { deserialize(*this, json); };
+ticker_bookTicker_ret_t::ticker_bookTicker_ret_t(const std::string &json) { deserialize(*this, json); };
+ticker_wind_ret_t::ticker_wind_ret_t(const std::string &json) { deserialize(*this, json); };
+account_information_ret_t::account_information_ret_t(const std::string &json) { deserialize(*this, json); };
+
 } /* namespace binance */
 } /* namespace cuwacunu */
 } /* namespace camahjucunu */

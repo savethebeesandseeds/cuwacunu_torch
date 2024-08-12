@@ -76,8 +76,8 @@ struct tick_full_t           { tick_full_t(const std::string& json); std::string
 struct tick_mini_t           { tick_mini_t(const std::string& json); std::string symbol; double lastPrice; double openPrice; double highPrice; double lowPrice; double volume; double quoteVolume; long openTime; long closeTime; long firstId; long lastId; int count; };
 struct trade_t               { trade_t(const std::string& json); long id; double price; double qty; double quoteQty; long time; bool isBuyerMaker; bool isBestMatch; };
 struct kline_t               { kline_t(const std::string& json); long open_time; double open_price; double high_price; double low_price; double close_price; double volume; long close_time; double quote_asset_volume; int number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume; };
-struct price_t               { std::string symbol; double price; };
-struct bookPrice_t           { std::string symbol; double bidPrice; double bigQty; double askPrice; double askQty; };
+struct price_t               { price_t(const std::string& json); std::string symbol; double price; };
+struct bookPrice_t           { bookPrice_t(const std::string& json); std::string symbol; double bidPrice; double bidQty; double askPrice; double askQty; };
 struct order_ack_resp_t      { std::string symbol; int orderId; int orderListId; std::string clientOrderId; long transactTime; };
 struct order_result_resp_t   { std::string symbol; int orderId; int orderListId; std::string clientOrderId; long transactTime; double origQty; double executedQty; double cummulativeQuoteQty; order_status_e status; time_in_force_e timeInForce; order_type_e type; order_side_e side; long workingTime; stp_modes_e selfTradePreventionMode; };
 struct order_fill_t          { double price; double qty; double commission; std::string commissionAsset; int tradeId; };
@@ -115,11 +115,11 @@ struct trades_ret_t                 { trades_ret_t(const std::string& json); std
 struct historicalTrades_ret_t       { historicalTrades_ret_t(const std::string& json); std::vector<trade_t> trades; };
 struct klines_ret_t                 { klines_ret_t(const std::string& json); std::vector<kline_t> klines; };
 struct avgPrice_ret_t               { avgPrice_ret_t(const std::string& json); int mins; double price; long close_time; };
-struct ticker_24hr_ret_t            { ticker_24hr_ret_t(const std::string& json); std::variant<std::monostate, tick_full_t, tick_mini_t> tick; };
-struct ticker_tradingDay_ret_t      { std::variant<tick_full_t, tick_mini_t> tick; };
-struct ticker_price_ret_t           { price_t price; };
-struct ticker_bookTicker_ret_t      { bookPrice_t bookPrice; };
-struct ticker_wind_ret_t            { std::variant<tick_full_t, tick_mini_t> tick; };
+struct ticker_24hr_ret_t            { ticker_24hr_ret_t(const std::string& json); std::variant<std::monostate, tick_full_t, tick_mini_t> tick; bool is_full;};
+struct ticker_tradingDay_ret_t      { ticker_tradingDay_ret_t(const std::string& json); std::variant<std::monostate, tick_full_t, tick_mini_t> tick; bool is_full; };
+struct ticker_price_ret_t           { ticker_price_ret_t(const std::string& json); std::vector<price_t> prices; };
+struct ticker_bookTicker_ret_t      { ticker_bookTicker_ret_t(const std::string& json); std::vector<bookPrice_t> bookPrices; };
+struct ticker_wind_ret_t            { ticker_wind_ret_t(const std::string& json); std::variant<std::monostate, tick_full_t, tick_mini_t> tick; bool is_full; };
 using ticker_ret_t                  = std::variant<ticker_24hr_ret_t, ticker_tradingDay_ret_t, ticker_price_ret_t, ticker_bookTicker_ret_t, ticker_wind_ret_t>;
 using order_limit_ret_t             = std::variant<order_ack_resp_t, order_result_resp_t, order_full_resp_t>;
 using order_market_ret_t            = std::variant<order_ack_resp_t, order_result_resp_t, order_full_resp_t>;
@@ -130,7 +130,7 @@ using order_take_profit_limit_ret_t = std::variant<order_ack_resp_t, order_resul
 using order_limit_maker_ret_t       = std::variant<order_ack_resp_t, order_result_resp_t, order_full_resp_t>;
 using order_sor_ret_t               = std::variant<order_sor_full_resp_t>;
 using order_ret_t                   = std::variant<order_limit_ret_t, order_market_ret_t, order_stop_loss_ret_t, order_stop_loss_limit_ret_t, order_take_profit_ret_t, order_take_profit_limit_ret_t, order_limit_maker_ret_t, order_sor_ret_t>;
-struct account_information_ret_t    { account_data_t account_data; };
+struct account_information_ret_t    { account_information_ret_t(const std::string &json); account_data_t account_data; };
 struct account_trade_list_ret_t     { std::vector<historicTrade_t> trades; };
 struct query_commision_rates_ret_t  { std::string symbol; comission_t standardCommissionForOrder; comission_t taxCommissionForOrder; comission_discount_t discount; };
 
@@ -151,5 +151,9 @@ ENFORCE_ARCHITECTURE_DESIGN(      account_trade_list_ret_t);
 ENFORCE_ARCHITECTURE_DESIGN(   query_commision_rates_ret_t);
 
 } /* namespace binance */
-} /* namespace cuwacunu */
 } /* namespace camahjucunu */
+} /* namespace cuwacunu */
+
+/* Define macros for accessing these types within a std::variant */
+#define GET_TICK_FULL(obj) (std::get<cuwacunu::camahjucunu::binance::tick_full_t>(obj.tick))
+#define GET_TICK_MINI(obj) (std::get<cuwacunu::camahjucunu::binance::tick_mini_t>(obj.tick))

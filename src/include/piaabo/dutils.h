@@ -210,3 +210,4 @@ struct RuntimeWarning { RuntimeWarning(const char *msg) { log_warn(msg); }};
 #define RUNTIME_WARNING(msg) static RuntimeWarning CONCAT(rw_, __COUNTER__) (msg)
 #define THROW_RUNTIME_ERROR() { throw std::runtime_error("Runtime error occurred"); }
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
+#define ASSERT(condition, message) do {if (!(condition)) {log_secure_fatal(message);} } while (false)

@@ -4,6 +4,9 @@
 #include "camahjucunu/crypto_exchange/binance_types.h"
 #include "camahjucunu/crypto_exchange/binance_enums.h"
 
+#include "camahjucunu/crypto_exchange/real/real_binance_mech.h"
+#include "camahjucunu/crypto_exchange/simualted/simualted_binance_mech.h"
+
 RUNTIME_WARNING("(binance_mech.h)[] remmember the server endpoint is asynchonous.\n");
 RUNTIME_WARNING("(binance_mech.h)[] implement a count on the api usage limit.\n");
 namespace cuwacunu {

@@ -59,7 +59,6 @@ static std::vector<std::string> active_symbols() {
 void config_space_t::finit() {}
 
 void config_space_t::init() {
-  std::cout << std::fixed << std::setprecision(8) << num << std::endl;
   std::atexit(config_space_t::finit);
   config_space_t::config_folder = std::string(CONFIG_FOLDER);
   config_space_t::learning_config_path = config_space_t::config_folder + LEARNING_CONFIG_PATH;
