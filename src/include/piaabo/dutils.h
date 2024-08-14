@@ -17,10 +17,10 @@
 #define LOG_ERR_FILE stderr
 #define LOG_WARN_FILE stdout
 
+#define ANSI_COLOR_RESET "\x1b[0m" 
 #define ANSI_COLOR_ERROR "\x1b[41m" 
 #define ANSI_COLOR_SUCCESS "\x1b[42m" 
 #define ANSI_COLOR_WARNING "\x1b[43m" 
-#define ANSI_COLOR_RESET "\x1b[0m" 
 #define ANSI_COLOR_Black "\x1b[30m" 
 #define ANSI_COLOR_Red "\x1b[31m"     
 #define ANSI_COLOR_Green "\x1b[32m"   

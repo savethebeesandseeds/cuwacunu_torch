@@ -78,17 +78,16 @@ struct trade_t               { trade_t(const std::string& json); long id; double
 struct kline_t               { kline_t(const std::string& json); long open_time; double open_price; double high_price; double low_price; double close_price; double volume; long close_time; double quote_asset_volume; int number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume; };
 struct price_t               { price_t(const std::string& json); std::string symbol; double price; };
 struct bookPrice_t           { bookPrice_t(const std::string& json); std::string symbol; double bidPrice; double bidQty; double askPrice; double askQty; };
-struct order_ack_resp_t      { std::string symbol; int orderId; int orderListId; std::string clientOrderId; long transactTime; };
-struct order_result_resp_t   { std::string symbol; int orderId; int orderListId; std::string clientOrderId; long transactTime; double origQty; double executedQty; double cummulativeQuoteQty; order_status_e status; time_in_force_e timeInForce; order_type_e type; order_side_e side; long workingTime; stp_modes_e selfTradePreventionMode; };
-struct order_fill_t          { double price; double qty; double commission; std::string commissionAsset; int tradeId; };
-struct order_full_resp_t     { order_result_resp_t result; std::vector<order_fill_t> fills; };
-struct order_sor_fill_t      { std::string matchType; double price; double qty; double commission; std::string commissionAsset; int tradeId; int allocId; };
-struct order_sor_full_resp_t { std::string symbol; int orderId; int orderListId; std::string clientOrderId; long transactTime; double price; double origQty; double executedQty; double cummulativeQuoteQty; order_status_e status; time_in_force_e timeInForce; order_type_e type; order_side_e side; long workingTime; std::vector<order_sor_fill_t> fills; allocation_type_e workingFloor; stp_modes_e selfTradePreventionMode; bool usedSor; };
-struct comission_t           { double maker; double taker; double buyer; double seller; };
-struct comission_discount_t  { bool enabledForAccount; bool enabledForSymbol; std::string discountAsset; double discount; };
-struct balance_t             { std::string asset; double free; double locked; };
-struct account_data_t        { int makerCommission; int takerCommission; int buyerCommission; int sellerCommission; comission_t commissionRates; bool canTrade; bool canWithdraw; bool canDeposit; bool brokered; bool requireSelfTradePrevention; bool preventSor; long updateTime; account_and_symbols_permissions_e accountType; std::vector<balance_t> balances; account_and_symbols_permissions_e permissions; long uid; };
-struct historicTrade_t       { std::string symbol; int id; int orderId; int orderListId; double price; double qty; double quoteQty; double commission; double commissionAsset; long time; bool isBuyer; bool isMaker; bool isBestMatch; };
+struct commissionRates_t     { commissionRates_t(); commissionRates_t(const std::string& json); double maker; double taker; double buyer; double seller; };
+struct comission_discount_t  { comission_discount_t(); comission_discount_t(const std::string& json); bool enabledForAccount; bool enabledForSymbol; std::string discountAsset; double discount; };
+struct balance_t             { balance_t(const std::string& json); std::string asset; double free; double locked; };
+struct historicTrade_t       { historicTrade_t(const std::string& json); std::string symbol; int id; int orderId; int orderListId; double price; double qty; double quoteQty; double commission; std::string commissionAsset; long time; bool isBuyer; bool isMaker; bool isBestMatch; };
+struct order_ack_resp_t      { order_ack_resp_t(const std::string& json); std::string symbol; int orderId; int orderListId; std::string clientOrderId; long transactTime; };
+struct order_result_resp_t   { order_result_resp_t(); order_result_resp_t(const std::string& json);  std::string symbol; int orderId; int orderListId; std::string clientOrderId; long transactTime; double origQty; double executedQty; double cummulativeQuoteQty; order_status_e status; time_in_force_e timeInForce; order_type_e type; order_side_e side; long workingTime; stp_modes_e selfTradePreventionMode; };
+struct order_fill_t          { order_fill_t(); order_fill_t(const std::string& json); double price; double qty; double commission; std::string commissionAsset; int tradeId; };
+struct order_full_resp_t     { order_full_resp_t(const std::string& json); order_result_resp_t result; std::vector<order_fill_t> fills; };
+struct order_sor_fill_t      { order_sor_fill_t(); order_sor_fill_t(const std::string& json); std::string matchType; double price; double qty; double commission; std::string commissionAsset; int tradeId; int allocId; };
+struct order_sor_full_resp_t { order_sor_full_resp_t(const std::string& json); order_result_resp_t result; double price; allocation_type_e workingFloor; bool usedSor; std::vector<order_sor_fill_t> fills; };
 
 ENFORCE_ARCHITECTURE_DESIGN(          price_qty_t);
 ENFORCE_ARCHITECTURE_DESIGN(          tick_full_t);
@@ -101,10 +100,9 @@ ENFORCE_ARCHITECTURE_DESIGN(     order_ack_resp_t);
 ENFORCE_ARCHITECTURE_DESIGN(  order_result_resp_t);
 ENFORCE_ARCHITECTURE_DESIGN(         order_fill_t);
 ENFORCE_ARCHITECTURE_DESIGN(    order_full_resp_t);
-ENFORCE_ARCHITECTURE_DESIGN(          comission_t);
+ENFORCE_ARCHITECTURE_DESIGN(    commissionRates_t);
 ENFORCE_ARCHITECTURE_DESIGN( comission_discount_t);
 ENFORCE_ARCHITECTURE_DESIGN(            balance_t);
-ENFORCE_ARCHITECTURE_DESIGN(       account_data_t);
 ENFORCE_ARCHITECTURE_DESIGN(      historicTrade_t);
 
 /* primary return structs */
@@ -130,9 +128,9 @@ using order_take_profit_limit_ret_t = std::variant<order_ack_resp_t, order_resul
 using order_limit_maker_ret_t       = std::variant<order_ack_resp_t, order_result_resp_t, order_full_resp_t>;
 using order_sor_ret_t               = std::variant<order_sor_full_resp_t>;
 using order_ret_t                   = std::variant<order_limit_ret_t, order_market_ret_t, order_stop_loss_ret_t, order_stop_loss_limit_ret_t, order_take_profit_ret_t, order_take_profit_limit_ret_t, order_limit_maker_ret_t, order_sor_ret_t>;
-struct account_information_ret_t    { account_information_ret_t(const std::string &json); account_data_t account_data; };
-struct account_trade_list_ret_t     { std::vector<historicTrade_t> trades; };
-struct query_commision_rates_ret_t  { std::string symbol; comission_t standardCommissionForOrder; comission_t taxCommissionForOrder; comission_discount_t discount; };
+struct account_information_ret_t    { account_information_ret_t(const std::string &json); int makerCommission; int takerCommission; int buyerCommission; int sellerCommission; commissionRates_t commissionRates; bool canTrade; bool canWithdraw; bool canDeposit; bool brokered; bool requireSelfTradePrevention; bool preventSor; long updateTime; account_and_symbols_permissions_e accountType; std::vector<balance_t> balances; std::vector<account_and_symbols_permissions_e> permissions; long uid; };
+struct account_trade_list_ret_t     { account_trade_list_ret_t(const std::string &json); std::vector<historicTrade_t> trades; };
+struct query_commision_rates_ret_t  { query_commision_rates_ret_t(const std::string &json); std::string symbol; commissionRates_t standardCommission; commissionRates_t taxCommission; comission_discount_t discount; };
 
 ENFORCE_ARCHITECTURE_DESIGN(                    ping_ret_t);
 ENFORCE_ARCHITECTURE_DESIGN(                    time_ret_t);

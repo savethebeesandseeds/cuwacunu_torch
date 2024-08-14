@@ -38,27 +38,44 @@ std::string   query_commision_rates_args_t::jsonify() { return jsonify_as_object
 /*         expected return structures          */
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /* secondary return structs */
-price_qty_t::price_qty_t(const std::string &json) { deserialize(*this, json); };
-trade_t::trade_t(const std::string &json) { deserialize(*this, json); };
-kline_t::kline_t(const std::string &json) { deserialize(*this, json); };
-tick_full_t::tick_full_t(const std::string &json) { deserialize(*this, json); };
-tick_mini_t::tick_mini_t(const std::string &json) { deserialize(*this, json); };
-price_t::price_t(const std::string &json) { deserialize(*this, json); };
-bookPrice_t::bookPrice_t(const std::string &json) { deserialize(*this, json); };
+price_qty_t::price_qty_t                     (const std::string &json) { deserialize(*this, json); };
+trade_t::trade_t                             (const std::string &json) { deserialize(*this, json); };
+kline_t::kline_t                             (const std::string &json) { deserialize(*this, json); };
+tick_full_t::tick_full_t                     (const std::string &json) { deserialize(*this, json); };
+tick_mini_t::tick_mini_t                     (const std::string &json) { deserialize(*this, json); };
+price_t::price_t                             (const std::string &json) { deserialize(*this, json); };
+bookPrice_t::bookPrice_t                     (const std::string &json) { deserialize(*this, json); };
+commissionRates_t::commissionRates_t         () : maker(0.0), taker(0.0), buyer(0.0), seller(0.0) {};
+commissionRates_t::commissionRates_t         (const std::string &json) { deserialize(*this, json); };
+balance_t::balance_t                         (const std::string &json) { deserialize(*this, json); };
+historicTrade_t::historicTrade_t             (const std::string &json) { deserialize(*this, json); };
+comission_discount_t::comission_discount_t   () : enabledForAccount(false), enabledForSymbol(false), discountAsset(""), discount(0.0) {};
+comission_discount_t::comission_discount_t   (const std::string &json) { deserialize(*this, json); };
+order_ack_resp_t::order_ack_resp_t           (const std::string &json) { deserialize(*this, json); };
+order_result_resp_t::order_result_resp_t     (const std::string &json) { deserialize(*this, json); };
+order_result_resp_t::order_result_resp_t     () : symbol(""), orderId(0), orderListId(0), clientOrderId(""), transactTime(0), origQty(0.0), executedQty(0.0), cummulativeQuoteQty(0.0), status(order_status_e::REJECTED), timeInForce(time_in_force_e::FOK), type(order_type_e::MARKET), side(order_side_e::BUY), workingTime(0), selfTradePreventionMode(stp_modes_e::NONE) {};
+order_fill_t::order_fill_t                   (const std::string &json) { deserialize(*this, json); };
+order_fill_t::order_fill_t                   () : price(0.0), qty(0.0), commission(0.0), commissionAsset(0), tradeId(0) {};
+order_full_resp_t::order_full_resp_t         (const std::string &json) { deserialize(*this, json); };
+order_sor_fill_t::order_sor_fill_t           (const std::string &json) { deserialize(*this, json); };
+order_sor_fill_t::order_sor_fill_t           () : matchType(""), price(0.0), qty(0.0), commission(0.0), commissionAsset(""), tradeId(0), allocId(0) {};
+order_sor_full_resp_t::order_sor_full_resp_t (const std::string &json) { deserialize(*this, json); };
 
 /* primary return structs */
-ping_ret_t::ping_ret_t(const std::string &json) { deserialize(*this, json); };
-time_ret_t::time_ret_t(const std::string &json) { deserialize(*this, json); };
-depth_ret_t::depth_ret_t(const std::string &json) { deserialize(*this, json); };
-trades_ret_t::trades_ret_t(const std::string &json) { deserialize(*this, json); };
-historicalTrades_ret_t::historicalTrades_ret_t(const std::string &json) { deserialize(*this, json); };
-klines_ret_t::klines_ret_t(const std::string &json) { deserialize(*this, json); };
-avgPrice_ret_t::avgPrice_ret_t(const std::string &json) { deserialize(*this, json); };
-ticker_24hr_ret_t::ticker_24hr_ret_t(const std::string &json) { deserialize(*this, json); };
-ticker_price_ret_t::ticker_price_ret_t(const std::string &json) { deserialize(*this, json); };
-ticker_bookTicker_ret_t::ticker_bookTicker_ret_t(const std::string &json) { deserialize(*this, json); };
-ticker_wind_ret_t::ticker_wind_ret_t(const std::string &json) { deserialize(*this, json); };
-account_information_ret_t::account_information_ret_t(const std::string &json) { deserialize(*this, json); };
+ping_ret_t::ping_ret_t                                   (const std::string &json) { deserialize(*this, json); };
+time_ret_t::time_ret_t                                   (const std::string &json) { deserialize(*this, json); };
+depth_ret_t::depth_ret_t                                 (const std::string &json) { deserialize(*this, json); };
+trades_ret_t::trades_ret_t                               (const std::string &json) { deserialize(*this, json); };
+historicalTrades_ret_t::historicalTrades_ret_t           (const std::string &json) { deserialize(*this, json); };
+klines_ret_t::klines_ret_t                               (const std::string &json) { deserialize(*this, json); };
+avgPrice_ret_t::avgPrice_ret_t                           (const std::string &json) { deserialize(*this, json); };
+ticker_24hr_ret_t::ticker_24hr_ret_t                     (const std::string &json) { deserialize(*this, json); };
+ticker_price_ret_t::ticker_price_ret_t                   (const std::string &json) { deserialize(*this, json); };
+ticker_bookTicker_ret_t::ticker_bookTicker_ret_t         (const std::string &json) { deserialize(*this, json); };
+ticker_wind_ret_t::ticker_wind_ret_t                     (const std::string &json) { deserialize(*this, json); };
+account_information_ret_t::account_information_ret_t     (const std::string &json) : commissionRates() { deserialize(*this, json); };
+account_trade_list_ret_t::account_trade_list_ret_t       (const std::string &json) { deserialize(*this, json); };
+query_commision_rates_ret_t::query_commision_rates_ret_t (const std::string &json) : standardCommission(), taxCommission(), discount() { deserialize(*this, json); };
 
 } /* namespace binance */
 } /* namespace cuwacunu */
