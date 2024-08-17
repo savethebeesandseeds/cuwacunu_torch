@@ -1,4 +1,4 @@
-#include "camahjucunu/crypto_exchange/binance_enums.h"
+#include "camahjucunu/crypto_exchange/binance/binance_enums.h"
 
 RUNTIME_WARNING("(binance_enums.cpp)[] nothing implemented.\n");
 

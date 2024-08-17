@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include <pthread.h>
+#include <mutex>
 #define CONFIG_FOLDER "../config"
 #define LEARNING_CONFIG_PATH "/learning.config"
 #define ENVIROMENT_CONFIG_PATH "/environment.config"
@@ -15,7 +15,7 @@
 namespace cuwacunu {
 namespace piaabo {
 using parsed_config_t = std::map<std::string, std::string>;
-extern pthread_mutex_t config_mutex;
+extern std::mutex config_mutex;
 
 struct config_space_t {
 public:

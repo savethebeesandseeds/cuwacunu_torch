@@ -2,31 +2,10 @@
 #include "piaabo/config_space.h"
 #include "piaabo/security.h"
 #include "piaabo/encryption.h"
-#include "camahjucunu/crypto_exchange/binance_enums.h"
-#include "camahjucunu/crypto_exchange/binance_types.h"
+#include "camahjucunu/crypto_exchange/binance/binance_enums.h"
+#include "camahjucunu/crypto_exchange/binance/binance_types.h"
 
-int main() {
-  /* test serialization */
-  {
-    log_dbg("Testing [cuwacunu::camahjucunu::binance::%sdepth_args_t%s] serialization \n", ANSI_COLOR_Yellow, ANSI_COLOR_RESET);
-    cuwacunu::camahjucunu::binance::depth_args_t  variable("value");
-    variable.limit = 10;
-    log_info("%s\n", variable.jsonify().c_str());
-  }
-
-  {
-    log_dbg("Testing [cuwacunu::camahjucunu::binance::%sticker_24hr_args_t%s] serialization \n", ANSI_COLOR_Yellow, ANSI_COLOR_RESET);
-    cuwacunu::camahjucunu::binance::ticker_24hr_args_t  variable("value1");
-    variable.type = cuwacunu::camahjucunu::binance::ticker_type_e::FULL;
-    log_info("%s\n", variable.jsonify().c_str());
-  }
-  
-  {
-    cuwacunu::camahjucunu::binance::ticker_24hr_args_t  variable(std::vector<std::string>{"vaelu1", "value2"});
-    variable.type = cuwacunu::camahjucunu::binance::ticker_type_e::FULL;
-    log_info("%s\n", variable.jsonify().c_str());
-  }
-  
+int main() {  
   /* test deserialization */
   {
     log_dbg("Testing [cuwacunu::camahjucunu::binance::%sping_ret_t%s] deserialization \n", ANSI_COLOR_Yellow, ANSI_COLOR_RESET);
@@ -376,11 +355,11 @@ int main() {
 
     cuwacunu::camahjucunu::binance::order_ack_resp_t parsed(json);
 
-    log_dbg("\t.symbol: %s\n", parsed.symbol.c_str());
-    log_dbg("\t.orderId: %d\n", parsed.orderId);
-    log_dbg("\t.orderListId: %d\n", parsed.orderListId);
-    log_dbg("\t.clientOrderId: %s\n", parsed.clientOrderId.c_str());
-    log_dbg("\t.transactTime: %ld\n", parsed.transactTime);
+    log_info("\t.symbol: %s\n", parsed.symbol.c_str());
+    log_info("\t.orderId: %d\n", parsed.orderId);
+    log_info("\t.orderListId: %d\n", parsed.orderListId);
+    log_info("\t.clientOrderId: %s\n", parsed.clientOrderId.c_str());
+    log_info("\t.transactTime: %ld\n", parsed.transactTime);
   }
 
   {

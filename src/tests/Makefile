@@ -31,14 +31,20 @@ test_encryption: $(HERE_PATH)/test_encryption.cpp
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: test_binance
-test_binance: $(HERE_PATH)/test_binance.cpp
-	$(ENCRYPT_LINK_CMD) && $(HERE_PATH)/test_binance
+.PHONY: test_binance_serialization
+test_binance_serialization: $(HERE_PATH)/test_binance_serialization.cpp
+	$(ENCRYPT_LINK_CMD) && $(HERE_PATH)/test_binance_serialization
+# -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: test_binance_deserialization
+test_binance_deserialization: $(HERE_PATH)/test_binance_deserialization.cpp
+	$(ENCRYPT_LINK_CMD) && $(HERE_PATH)/test_binance_deserialization
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all
-all: test_config
+all: test_config test_security test_encryption test_binance_serialization test_binance_deserialization
 	@$(LOG_SUCCESS)
 .PHONY: clean_tests
 clean_tests:

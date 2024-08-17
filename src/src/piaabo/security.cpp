@@ -99,7 +99,7 @@ std::string get_file_extended_attribute(const char* filename, const char* name) 
 
 /* secure data struct */
 SecureStronghold_t::SecureStronghold_t() 
-  : stronghold_mutex(PTHREAD_MUTEX_INITIALIZER), 
+  : stronghold_mutex(), 
     secret_size(MAX_PASSWORD_SIZE), 
     secret(secure_allocate<char>(secret_size)),
     api_key(secure_allocate<char>(secret_size)) {
@@ -123,7 +123,7 @@ SecureStronghold_t::~SecureStronghold_t() {
 /* Safely set secret value from user prompt */
 void SecureStronghold_t::authenticate() {
   secure_non_dumpable_code();
-  pthread_mutex_lock(&stronghold_mutex);
+  stronghold_mutex.lock();
   /* local variables */
   struct termios oldt, newt;
   auto startTime = std::chrono::steady_clock::now();
@@ -147,12 +147,12 @@ void SecureStronghold_t::authenticate() {
   if (std::cin.fail()) {
     std::cin.clear(); /* Clears the error flag */
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); /* Ignores the rest of the line */
-    pthread_mutex_unlock(&stronghold_mutex);
+    stronghold_mutex.unlock();
     /* return on fatal */
     log_fatal("%s\n", FATAL_AUTH);
     
     /* reucurrent call */
-    pthread_mutex_unlock(&stronghold_mutex);
+    stronghold_mutex.unlock();
     authenticate();
     return;
   }
@@ -176,7 +176,7 @@ void SecureStronghold_t::authenticate() {
     log_warn("%s\n", WRONG_AUTH);
     
     /* reucurrent call */
-    pthread_mutex_unlock(&stronghold_mutex);
+    stronghold_mutex.unlock();
     authenticate();
     return;
   }
@@ -232,7 +232,7 @@ void SecureStronghold_t::authenticate() {
       api_key_filesize  = 0;
       aes_salt_filesize = 0;
 
-      pthread_mutex_unlock(&stronghold_mutex);
+      stronghold_mutex.unlock();
       relax_non_dumpable_code();
       log_fatal("Non-complient Exchange API Key file: %s, please follow instructions on ../config/README.md\n", api_key_filename);
     }
@@ -282,16 +282,16 @@ void SecureStronghold_t::authenticate() {
   api_key_filesize  = 0;
   aes_salt_filesize = 0;
 
-  pthread_mutex_unlock(&stronghold_mutex);
+  stronghold_mutex.unlock();
   relax_non_dumpable_code();
 }
 
 /* Safely sign key data from key file */
 std::string SecureStronghold_t::Ed25519_signMessage(const std::string& message) {
   secure_non_dumpable_code();
-  pthread_mutex_lock(&stronghold_mutex);
+  stronghold_mutex.lock();
   std::string signature = encryption::Ed25519_signMessage(message, pkey);
-  pthread_mutex_unlock(&stronghold_mutex);
+  stronghold_mutex.unlock();
   relax_non_dumpable_code();
 
   return signature;

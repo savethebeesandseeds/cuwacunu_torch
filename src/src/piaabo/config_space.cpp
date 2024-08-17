@@ -4,7 +4,7 @@ RUNTIME_WARNING("(config_space.h)[] remove comments in the config files.\n");
 
 namespace cuwacunu {
 namespace piaabo {
-pthread_mutex_t config_mutex = PTHREAD_MUTEX_INITIALIZER;
+std::mutex config_mutex;
 std::string config_space_t::config_folder;
 std::string config_space_t::learning_config_path;
 std::string config_space_t::environment_config_path;
@@ -12,12 +12,11 @@ parsed_config_t config_space_t::learning_config;
 parsed_config_t config_space_t::environment_config;
 
 parsed_config_t config_space_t::read_config(std::string conf_path) {
-  pthread_mutex_lock(&config_mutex);
+  std::lock_guard<std::mutex> config_lock(config_mutex);
   log_dbg("Reading config file [%s]\n", conf_path.c_str());
 
   std::ifstream configFile(conf_path);
   if (!configFile) {
-    pthread_mutex_unlock(&config_mutex);
     log_fatal("Unable to open config file [%s] \n", conf_path.c_str());
   }
 
@@ -34,11 +33,9 @@ parsed_config_t config_space_t::read_config(std::string conf_path) {
   configFile.close();
 
   if(dconfig.empty()) {
-    pthread_mutex_unlock(&config_mutex);
     log_warn("Configuration file [%s] is empty. \n", conf_path.c_str());
   }
 
-  pthread_mutex_unlock(&config_mutex);
   return dconfig;
 }
 

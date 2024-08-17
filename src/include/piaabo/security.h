@@ -1,6 +1,6 @@
 #pragma once
 #include <iostream>
-#include <pthread.h>
+#include <mutex>
 #include <fstream>
 #include <cstring>
 #include <termios.h>
@@ -44,7 +44,7 @@ void secure_delete(T* data, size_t data_size);
 
 class SecureStronghold_t {
 private:
-  pthread_mutex_t stronghold_mutex;
+  std::mutex stronghold_mutex;
   size_t secret_size;
   char* secret;   /* secret is the global password */
   char* api_key;  /* api_key is the exchange key */

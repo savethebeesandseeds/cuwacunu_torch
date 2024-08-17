@@ -1,7 +1,8 @@
 #pragma once
 #include <stdexcept>
 #include <stdio.h>
-#include <pthread.h>
+#include <thread>
+#include <mutex>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -43,7 +44,7 @@
 
 #define FOR_ALL(arr, elem) for(auto& elem : arr)
 
-extern pthread_mutex_t log_mutex;
+extern std::mutex log_mutex;
 
 namespace cuwacunu {
 namespace piaabo {
@@ -59,102 +60,97 @@ std::string trim_string(const std::string& str);
 std::vector<std::string> split_string(const std::string& str, char delimiter);
 std::string to_hex_string(const unsigned char* data, size_t size);
 void string_replace(std::string &str, const std::string& from, const std::string& to);
+const char* cthread_id();
 } /* namespace piaabo */
 } /* namespace cuwacunu */
+
 
 /* This log functionality checks if there is a pendding log for the error trasported by the errno.h lib, 
  * WARNING! This functionaly sets the errno=0 if the errno is futher required, this might be not a desired behaviour.
  */
 #define wrap_log_sys_err() {\
   if(errno != 0) {\
-    pthread_mutex_lock(&log_mutex);\
-    fprintf(LOG_ERR_FILE,"[%s0x%lX%s]: %sSYS ERRNO%s: ",\
-      ANSI_COLOR_Cyan,pthread_self(),ANSI_COLOR_RESET,\
+    std::lock_guard<std::mutex> log_lock(log_mutex);\
+    fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sSYS ERRNO%s: ",\
+      ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
       ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
     fprintf(LOG_ERR_FILE,"[%d] %s\n", errno, strerror(errno));\
     fflush(LOG_ERR_FILE);\
-    pthread_mutex_unlock(&log_mutex);\
     errno = 0;\
   }\
 }
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_info(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
-  fprintf(LOG_FILE,"[%s0x%lX%s]: ",\
-    ANSI_COLOR_Cyan,pthread_self(),ANSI_COLOR_RESET);\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  fprintf(LOG_FILE,"[%s0x%s%s]: ",\
+    ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET);\
   fprintf(LOG_FILE,__VA_ARGS__);\
   fflush(LOG_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
 }
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_dbg(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
-  fprintf(LOG_ERR_FILE,"[%s0x%lX%s]: %sDEBUG%s: ",\
-    ANSI_COLOR_Cyan,pthread_self(),ANSI_COLOR_RESET,\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sDEBUG%s: ",\
+    ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_Bright_Blue,ANSI_COLOR_RESET);\
   fprintf(LOG_ERR_FILE,__VA_ARGS__);\
   fflush(LOG_ERR_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
 }
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_err(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
-  fprintf(LOG_ERR_FILE,"[%s0x%lX%s]: %sERROR%s: ",\
-    ANSI_COLOR_Cyan,pthread_self(),ANSI_COLOR_RESET,\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sERROR%s: ",\
+    ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
   fprintf(LOG_ERR_FILE,__VA_ARGS__);\
   fflush(LOG_ERR_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
 }
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_fatal(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
-  fprintf(LOG_ERR_FILE,"[%s0x%lX%s]: %sFATAL%s: ",\
-    ANSI_COLOR_Cyan,pthread_self(),ANSI_COLOR_RESET,\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sFATAL%s: ",\
+    ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
   fprintf(LOG_ERR_FILE,__VA_ARGS__);\
   fflush(LOG_ERR_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
   THROW_RUNTIME_ERROR();\
 }
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_warn(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
-  fprintf(LOG_WARN_FILE,"[%s0x%lX%s]: %sWARNING%s: ",\
-    ANSI_COLOR_Cyan,pthread_self(),ANSI_COLOR_RESET,\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  fprintf(LOG_WARN_FILE,"[%s0x%s%s]: %sWARNING%s: ",\
+    ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_WARNING,ANSI_COLOR_RESET);\
   fprintf(LOG_WARN_FILE,__VA_ARGS__);\
   fflush(LOG_WARN_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
 }
 
 /* Secure logging macro */
 #define log_secure_info(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
   char temp[1024];\
-  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: ", \
-    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET);\
+  snprintf(temp, sizeof(temp), "[%s0x%s%s]: ", \
+    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
   strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
   fprintf(LOG_ERR_FILE, "%s", temp);\
   fflush(LOG_ERR_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
 }
 /* Secure logging macro */
 #define log_secure_warning(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
   char temp[1024];\
-  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: %sWARNING%s: ", \
-    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET, \
+  snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sWARNING%s: ", \
+    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
     ANSI_COLOR_WARNING, ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
@@ -162,15 +158,14 @@ void string_replace(std::string &str, const std::string& from, const std::string
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
   fprintf(LOG_ERR_FILE, "%s", temp);\
   fflush(LOG_ERR_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
 }
 /* Secure logging macro */
 #define log_secure_error(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
   char temp[1024];\
-  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: %sERROR%s: ", \
-    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET, \
+  snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sERROR%s: ", \
+    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
     ANSI_COLOR_ERROR, ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
@@ -178,15 +173,14 @@ void string_replace(std::string &str, const std::string& from, const std::string
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
   fprintf(LOG_ERR_FILE, "%s", temp);\
   fflush(LOG_ERR_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
 }
 /* Secure logging macro */
 #define log_secure_fatal(...) {\
   wrap_log_sys_err();\
-  pthread_mutex_lock(&log_mutex);\
+  std::lock_guard<std::mutex> log_lock(log_mutex);\
   char temp[1024];\
-  snprintf(temp, sizeof(temp), "[%s0x%lX%s]: %sERROR%s: ", \
-    ANSI_COLOR_Cyan, pthread_self(), ANSI_COLOR_RESET, \
+  snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sERROR%s: ", \
+    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
     ANSI_COLOR_ERROR, ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
@@ -194,7 +188,6 @@ void string_replace(std::string &str, const std::string& from, const std::string
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
   fprintf(LOG_ERR_FILE, "%s", temp);\
   fflush(LOG_ERR_FILE);\
-  pthread_mutex_unlock(&log_mutex);\
   THROW_RUNTIME_ERROR();\
 }
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */

@@ -1,9 +1,12 @@
-# Install the requirements
+# Cuwacnu 
+## The libtorch implementation
+
+## Install the requirements
 ### Install docker
 go to (https://docker.com)
 
 ### Download libtorch
-Go to (https://pytorch.org/) you'll find the Download setting, select the latest stable, linux, Libtorch, C++, CUDA 12.1 (these instructions consider you have a GPU) 
+Go to (https://pytorch.org/) you'll find the Download setting, select the latest stable, linux, Libtorch, OpenSSL, Libcurl C++, CUDA 12.1 (these instructions consider you have a GPU) 
 
 For the most resent c++ standar:    (https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu121.zip)
 for old c++ standar:            (https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.1.2%2Bcu121.zip)

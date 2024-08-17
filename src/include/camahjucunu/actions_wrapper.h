@@ -1,6 +1,7 @@
 #pragma once
 #include "piaabo/dutils.h"
 RUNTIME_WARNING("(actions_wrapper.h)[] tsodao aprove \n");
+RUNTIME_WARNING("(actions_wrapper.h)[] the placement of an order does not have to specify the price or timesampt, the price is ovieted from the current timesamp \n");
 
 namespace cuwacunu {
 namespace camahjucunu {

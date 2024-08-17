@@ -5,9 +5,10 @@
 #include <optional>
 #include <type_traits>
 #include "piaabo/dutils.h"
-#include "camahjucunu/crypto_exchange/binance_enums.h"
+#include "camahjucunu/crypto_exchange/binance/binance_enums.h"
 
 #define DOUBLE_SERIALIZATION_PRECISION 10
+#define QUOTE_DOUBLES /* decimal numbers are required by Binance to be serialized as strings */
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -62,6 +63,15 @@ serialize(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   std::ostringstream oss;
   oss.precision(DOUBLE_SERIALIZATION_PRECISION);
   oss << std::fixed;
+#ifdef QUOTE_DOUBLES
+  if constexpr (is_std_optional_v<T>) {
+    if (arg.second.has_value()) {
+      oss << "\"" << arg.first << "\":" << "\"" << arg.second.value() << "\"" << ",";
+    }
+  } else {
+    oss << "\"" << arg.first << "\":" << "\"" << arg.second << "\"" << ",";
+  }
+#elif /* disable quoting doubles in serialization */
   if constexpr (is_std_optional_v<T>) {
     if (arg.second.has_value()) {
       oss << "\"" << arg.first << "\":" << arg.second.value() << ",";
@@ -69,6 +79,7 @@ serialize(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   } else {
     oss << "\"" << arg.first << "\":" << arg.second << ",";
   }
+#endif
   return oss.str();
 }
 

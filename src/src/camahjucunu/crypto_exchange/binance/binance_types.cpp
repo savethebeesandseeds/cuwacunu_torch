@@ -1,6 +1,6 @@
-#include "camahjucunu/crypto_exchange/binance_types.h"
-#include "camahjucunu/crypto_exchange/binance_serialization.h"
-#include "camahjucunu/crypto_exchange/binance_deserialization.h"
+#include "camahjucunu/crypto_exchange/binance/binance_types.h"
+#include "camahjucunu/crypto_exchange/binance/binance_serialization.h"
+#include "camahjucunu/crypto_exchange/binance/binance_deserialization.h"
 
 RUNTIME_WARNING("(binance_types.cpp)[] it is convinient (due to std::variant and std::optional) for this file to have c++20, libtorch uses c++17\n");
 

@@ -4,7 +4,7 @@ RUNTIME_WARNING("(dutils.cpp)[] #FIXME Valgrind debug with libtorch suppresed wa
 RUNTIME_WARNING("(dutils.cpp)[] #FIXME revisate that all dependencies .d files are correct stated on the makefiles for each file, for instance dutils.cpp is missing as a dependency everywhere.\n");
 RUNTIME_WARNING("(dutils.cpp)[] be aware of the floating point presition when printing doubles.\n");
 
-pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
+std::mutex log_mutex;
 
 namespace cuwacunu {
 namespace piaabo {
@@ -62,6 +62,12 @@ void string_replace(std::string &str, const std::string& from, const std::string
     start_pos += to.length(); // Move past the replaced part
   }
 }
-
+const char* cthread_id() {
+  static std::string threadID;
+  std::ostringstream oss;
+  oss << std::this_thread::get_id();
+  threadID = oss.str();
+  return threadID.c_str();
+}
 } /* namespace piaabo */
 } /* namespace cuwacunu */

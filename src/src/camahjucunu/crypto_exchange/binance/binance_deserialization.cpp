@@ -1,4 +1,4 @@
-#include "camahjucunu/crypto_exchange/binance_deserialization.h"
+#include "camahjucunu/crypto_exchange/binance/binance_deserialization.h"
 
 RUNTIME_WARNING("[binance_deserialization.cpp]() regex needs to be optimized, it is finiding all matches instead of stoping at the first occurance.\n");
 RUNTIME_WARNING("[binance_deserialization.cpp]() missing validations on the json objects for each desearialization\n");
