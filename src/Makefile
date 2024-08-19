@@ -40,7 +40,7 @@ tests:
 .PHONY: clean
 clean:
 	@echo "$(COLOR_RED) Cleaning cuwacunu build $(COLOR_RESET)"
-	shred -u $(OUTPUT_PATH)/*.d $(OUTPUT_PATH)/*.o $(OUTPUT_PATH)/cuwacunu
+	shred -u $(OUTPUT_PATH)/*.d $(OUTPUT_PATH)/*.o
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------

@@ -59,166 +59,262 @@ openWebSocket(websocket_url)
 
 
 
+... reading the queue should be update state machine kinda
 
 
 
 
-
-
-#include <curl/curl.h>
-#include <curl/curl.h>
-#include <iostream>
-#include <string>
 
 #include "piaabo/dutils.h"
+#include "camahjucunu/https/curl_toolkit/curil_utils.h"
 
 
-RUNTIME_WARNING("(curl_websocket_api.h)[] fix no internet causes fatal error on initialization.\n");
+RUNTIME_WARNING("(curl_websocket_api.h)[] fatal error on unknown session_id (fatal might be a good thing here there shodun't be a reason to allow undefined instructions).\n");
+RUNTIME_WARNING("(curl_websocket_api.h)[ws_callback_data_t] not necesarly local_timestamp matches the timestamps in the body of the responces. \n");
+RUNTIME_WARNING("(curl_websocket_api.h)[] writing to dbg might be slow if dbg is checking config every time.\n");
 
-
-... implement in singleton with std::vector<CURL *>
-
-
-
-bool GLOBAL_CURL_INIT = false;
-
-void curl_global_init() {
-    if(GLOBAL_CURL_INIT) {
-        log_warn("Repeated curl_global_init().\n");
-        return;
-    }
-    // Initialize global curl environment
-    CURLcode res = curl_global_init(CURL_GLOBAL_ALL);
-    if (res != CURLE_OK) {
-        log_fatal("Failed to initialize curl: %s\n", curl_easy_strerror(res));
-        return;
-    }
-
-    GLOBAL_CURL_INIT = true;
-}
-
-
-// Function to initialize and open a WebSocket connection
-CURL* initialize_curl_ws_session(const std::string& url) {
-    if(GLOBAL_CURL_INIT == false) {
-        log_warn("initialize_curl_ws_session without initializing, forcing initialization and continuing as expected.\n");
-        curl_global_init();
-    }
-    // Create a CURL handle for the connection
-    CURL* curl_session = curl_easy_init();
-    if (!curl_session) {
-        std::cerr << "Failed to create CURL handle." << std::endl;
-        return nullptr;
-    }
-
-    return curl_session;  // Return the handle to be used for sending/receiving messages
-}
-
-CURL* curl_session initialize_ws_connection(const std::string& url) {
-    // Initialize curl_session
-    CURL* curl_session = initialize_curl_ws_curl(const std::string& url);
-    if(curl_session == nullptr) { return nullptr; }
-    // Set the URL for the WebSocket
-    curl_easy_setopt(curl_session, CURLOPT_URL, url.c_str());
-    // Attempt to upgrade the connection to WebSocket
-    CURLcode res = curl_easy_perform(curl_session);
-    if (res != CURLE_OK) {
-        std::cerr << "Failed to establish WebSocket connection: " << curl_easy_strerror(res) << std::endl;
-        curl_easy_cleanup(curl_session);
-        return nullptr;
-    }
-
-    std::cout << "WebSocket connection established." << std::endl;
-}
-
-
-// Function to send a close frame to the WebSocket server
-void finalize_curl_ws_session(CURL* curl_session) {
-    // WebSocket close frame bytes (this is a standard close frame)
-    const char close_frame[2] = {0x88, 0x00}; // 0x88 is the close opcode, 0x00 means no payload
-
-    // Send the close frame
-    size_t bytes_sent = 0;
-    CURLcode res = curl_easy_send(curl_session, close_frame, sizeof(close_frame), &bytes_sent);
-    if (res != CURLE_OK) {
-        std::cerr << "Failed to send close frame: " << curl_easy_strerror(res) << std::endl;
-    } else {
-        std::cout << "Close frame sent." << std::endl;
-    }
-}
-
-
-// Function to clean up the WebSocket connection
-void cleanup_ws_connection(CURL* curl_session) {
-    if (curl_session == nullptr) {
-        log_warn("attempt to cleanup a null curl session. Excaping cleaup proceedure.\n");
-        return;
-    }
-    // Send finalization message
-    finalize_curl_ws_session(CURL* curl_session)
-    // Close the CURL handle
-    curl_easy_cleanup(curl_session);
-    std::cout << "WebSocket connection cleaned up." << std::endl;
-}
-
-void curl_global_cleanup() {
-    // Clean up CURL for this thread
-    curl_global_cleanup();
-}
-
-
-
-
-
-
-
-
-
-
-
-
-bool GLOBAL_CURL_INIT = false;
-
-void curl_global_init() {
-    
-}
-
-
-#include <vector>
+#include <chrono>
 #include <mutex>
+#include <unordered_map>
+
 
 
 namespace cuwacunu {
 namespace camahjucunu {
 namespace curl {
 
+    using ws_session_id_t = int;
+    using ws_WriteCallback_fn = size_t (*)(char*, size_t, size_t, void*);
+
+    struct ws_callback_data_t {
+        std::string data;
+        std::chrono::system_clock::time_point local_timestamp;
+    };
+    ENFORCE_ARCHITECTURE(ws_callback_data_t);
+
 struct WebsocketAPI {
+private:
+/* 
+    Singleton (static) variables
+        - map to a curl sessions, one per connection
+        - map to a mutex, one per connection
+        - map to a session id, one per connection
+        - map to a queue of received data, one per connection
+        - global (in the context of WebsocketAPI) mutex
+        - sessions_counter; to create unique ids for every session
+*/
+    static std::unordered_map<ws_session_id_t, CURL*> curl_ws_sessions;
+    static std::unordered_map<ws_session_id_t, ws_session_id_t> id_sessions;    /* this unusual queue is to preserve in memory a reference to the ws_session_id when passed to the curl contructor */
+    static std::unordered_map<ws_session_id_t, std::queue<ws_callback_data_t>> session_input_frames_queue;
+    static std::unordered_map<ws_session_id_t, std::mutex> curl_ws_mutex;
+    static std::mutex global_ws_mutex;
+    static int sessions_counter;
+
+/*
+    Enforce Signleton requirements
+*/
+    WebsocketAPI() = default;
+    ~WebsocketAPI() = default;
+
+    WebsocketAPI(const WebsocketAPI&) = delete;
+    WebsocketAPI& operator=(const WebsocketAPI&) = delete;
+    WebsocketAPI(WebsocketAPI&&) = delete;
+    WebsocketAPI& operator=(WebsocketAPI&&) = delete;
 public:
-    static std::vector<CURL*> unthreaded_curl;
-    static std::mutex global_lock;
-    static bool global_initialized = false;
+/*
+    Access point Contructor
+*/
+    static struct _init {public:_init(){WebsocketAPI::init();}}_initializer;
+    static void init() {
+        LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+        /* make sure curl is globaly initialized */
+        global_init();
+    }
+private:
+/* 
+    Session utils (private)
+        - get session
+        - get session mutex
+        - remove session form the heap
+*/
+    static CURL* get_session(ws_session_id_t session_id) {
+        /* validate */
+        if (session_id == NULL_CURL_SESSION || curl_ws_sessions.find(session_id) == curl_ws_sessions.end()) {
+            log_fatal("%s with id: %d\n", "Failed to identify curl websocket session", session_id);
+            return nullptr;
+        }
+        /* retrive session */
+        return curl_ws_sessions.at(session_id);
+    }
+    static std::mutex get_session_mutex(ws_session_id_t session_id) {
+        /* valdiate */
+        if (session_id == NULL_CURL_SESSION || curl_ws_mutex.find(session_id) == curl_ws_mutex.end()) {
+            log_fatal("%s with id: %d\n", "Failed to identify websocket session mutex", session_id);
+            return nullptr;
+        }
+        /* retrive session mutex */
+        return curl_ws_mutex.at(session_id);
+    }
+    static std::queue<ws_callback_data_t> get_session_queue(ws_session_id_t session_id) {
+        /* valdiate */
+        if (session_id == NULL_CURL_SESSION || session_input_frames_queue.find(session_id) == session_input_frames_queue.end()) {
+            log_fatal("%s with id: %d\n", "Failed to identify websocket session mutex", session_id);
+            return nullptr;
+        }
+        /* retrive session mutex */
+        return session_input_frames_queue.at(session_id);
+    }
+    static void remove_session(ws_session_id_t session_id) {
+        /* free memory */
+        {
+            LOCK_GUARD(WebsocketAPI::get_session_mutex(session_id));
+            WebsocketAPI::curl_ws_sessions.erase(session_id);
+            WebsocketAPI::id_sessions.errase(session_id);
+            WebsocketAPI::session_input_frames_queue.errase(session_id);
+        }
+        WebsocketAPI::curl_ws_mutex.erase(session_id);
+    }
+/* 
+    Session utils (private)
+        - initialize session
+        - disconect session
+*/
+private:
+    static ws_session_id_t initialize_curl_ws_session() {
+        /* initialize the session */
+        CURL* new_curl_session = create_curl_session();
+
+        /* create the session variables */
+        std::mutex new_session_mutex;
+        ws_session_id_t new_session_id = WebsocketAPI::sessions_counter;
+        std::queue<ws_callback_data_t> new_session_input_frames_queue;
+        WebsocketAPI::sessions_counter ++;
+
+        /* add the session variables to the session queues */
+        curl_ws_sessions.emplace(new_session_id, new_curl_session);
+        id_sessions.emplace(new_session_id, id_sessions);;
+        session_input_frames_queue.emplace(new_session_id, new_session_input_frames_queue);
+        curl_ws_mutex.emplace(new_session_id, new_session_mutex);
+        
+        return new_session_id;
+    }
+    static void disconnect_ws_session(ws_session_id_t session_id) {
+        /* Guard the session mutex */
+        LOCK_GUARD(WebsocketAPI::get_session_mutex(session_id));
+        
+        /* Retrieve the session */
+        CURL* curl_session = WebsocketAPI::get_session(session_id);
+
+        /* Send WebSocket protocol disconnect message */
+        unsigned char close_frame[] = CLOSE_FRAME;
+        CURLcode res = send_ws_frame(curl_session, close_frame, sizeof(close_frame), CURLWS_TXT);
+    }
 public:
-  static struct _init {public:_init(){WebsocketAPI::init();}}_initializer;
-	static void init()
-	{
-        std::lock_guard<std::mutex> lock(mtx);
-        if(WebsocketAPI::global_initialized) {
-            log_warn("Repeated curl_global_init(). Skipping and continuing as expected.\n");
-            return;
+/* 
+    Conextion method (public)
+        - finalize connection
+*/
+    void finalize_ws_connection(ws_session_id_t session_id) {
+
+        /* terminate session */
+        {
+            /* lock */
+            LOCK_GUARD(WebsocketAPI::get_session_mutex(session_id));
+            
+            /* disconect */
+            WebsocketAPI::disconnect_ws_session(session_id);
+
+            /* cleanup (free) memory */
+            curl_easy_cleanup(curl_session);
+        } /* unlock */
+        
+        /* finalize session */
+        WebsocketAPI::remove_session(session_id);
+
+        log_info("%s with session_id[%d].\n", "Finalized WebSocket connection", session_id);
+    }
+/* 
+    Conextion method (public)
+        - initialize connection
+*/
+public:
+    static ws_session_id_t initialize_ws_connection(const std::string& url) {
+        /* create curl session */
+        ws_session_id_t session_id = WebsocketAPI::initialize_curl_ws_session();
+        if(session_id == NULL_CURL_SESSION) { return NULL_CURL_SESSION; }
+
+        /* get curl session from the session_id */
+        CURL* curl_session = WebsocketAPI::get_session(session_id);
+        /* skiping curl_session validation */
+        
+        /* configure curl session for websockets */
+        curl_easy_setopt(curl_session, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl_session, CURLOPT_WRITEFUNCTION, websocket_write_callback);
+        curl_easy_setopt(curl_session, CURLOPT_WRITEDATA, &(id_sessions.at(current_id_session)));
+        // curl_easy_setopt(curl_session, CURLOPT_SSL_VERIFYPEER, 1L);
+        // curl_easy_setopt(curl_session, CURLOPT_SSL_VERIFYHOST, 2L);
+        // curl_easy_setopt(curl_session, CURLOPT_CONNECTTIMEOUT, 10L);
+        // curl_easy_setopt(curl_session, CURLOPT_TIMEOUT, 20L);
+        // curl_easy_setopt(curl_session, CURLOPT_FOLLOWLOCATION, 1L);
+        // curl_easy_setopt(curl_session, CURLOPT_MAXREDIRS, 5L);
+        // curl_easy_setopt(curl_session, CURLOPT_VERBOSE, 1L);
+        // char errbuf[CURL_ERROR_SIZE];
+        // curl_easy_setopt(curl_session, CURLOPT_ERRORBUFFER, errbuf);
+
+        // struct curl_slist* headers = NULL;
+        // headers = curl_slist_append(headers, "Custom-Header: Value");
+        // curl_easy_setopt(curl_session, CURLOPT_HTTPHEADER, headers);
+
+        /* execute connection request */
+        CURLcode res_code = curl_easy_perform(curl_session);
+
+        /* validate */
+        if (res_code != CURLE_OK) {
+            finalize_ws_connection(session_id);
+            log_fatal("%s on session_id[%d] with error: %s\n", "Failed to establish WebSocket connection", session_id, curl_easy_strerror(res_code)); // #FIXME no internet fatal
+            return NULL_CURL_SESSION;
         }
-        CURLcode res = curl_global_init(CURL_GLOBAL_ALL);
-        if (res != CURLE_OK) {
-            log_fatal("Failed to initialize curl: %s\n", curl_easy_strerror(res)); // #FIXME no internet fatal
-            return;
+
+        log_info("%s\n", "WebSocket connection established.");
+        return session_id;
+    }
+private:
+/* 
+    write_callback method, 
+        - on receiving a message it will add the data to the session queue. 
+        - there is a separate thread that process those queues, the writeback is left simple without the logic of intrepreting the data.
+*/
+    size_t websocket_write_callback(char* ptr, size_t size, size_t nmemb, void* userdata) {
+        /* interpret the session_id */
+        ws_session_id_t session_id = *userdata;
+    
+        /* lock the current session mutex */
+        LOCK_GUARD(WebsocketAPI::get_session_mutex(session_id));
+
+        /* push the received input frame to the session_id FIFO queue */
+        ws_callback_data_t frame_to_queue;
+        {
+            frame_to_queue.data = std::string(ptr, size * nmemb);
+            frame_to_queue.local_timestamp = std::chrono::system_clock::now();
         }
-        WebsocketAPI::global_initialized = true;
+        WebsocketAPI::get_session_queue(session_id).push(frame_to_queue);
+
+        log_dbg("%s in session_id[%d] : %s\n", "Websocket callback received message: ", session_id, frame_to_queue.data.c_str());
+
+        /* return the number of processed bytes, in this case we return the total count */
+        return size * nmemb;
     }
 }
 
-WebsocketAPI::_init WebsocketAPI::_initializer;
-std::mutex WebsocketAPI::global_lock;
+ENFORCE_SINGLETON_DESIGN(WebsocketAPI);
+int WebsocketAPI::sessions_counter = 0;
+std::mutex WebsocketAPI::global_ws_mutex;
+std::unordered_map<ws_session_id_t, CURL*> WebsocketAPI::curl_ws_sessions;
+std::unordered_map<ws_session_id_t, std::mutex> WebsocketAPI::curl_ws_mutex;
 
+WebsocketAPI::_init WebsocketAPI::_initializer;
 } /* namespace curl */
 } /* namespace camahjucunu */
 } /* namespace cuwacunu */
 
+_

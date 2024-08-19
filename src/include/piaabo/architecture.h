@@ -44,3 +44,25 @@ inline constexpr bool type_has_virtual_destructor = std::has_virtual_destructor<
     ENFORCE_MOVE_CONSTRUCTOR(T) \
     ENFORCE_COPY_ASSIGNMENT(T) \
     ENFORCE_MOVE_ASSIGNMENT(T)
+
+
+#define ENFORCE_NO_COPY_CONSTRUCTOR(T) \
+    static_assert(!type_has_copy_constructor<T>, "[cuwacunu::enforce_singleton_architecture] Singleton Class or Struct can't have a copy constructor.");
+
+#define ENFORCE_NO_MOVE_CONSTRUCTOR(T) \
+    static_assert(!type_has_move_constructor<T>, "[cuwacunu::enforce_singleton_architecture] Singleton Class or Struct can't have a move constructor declaration.");
+
+#define ENFORCE_NO_COPY_ASSIGNMENT(T) \
+    static_assert(!type_has_copy_assignment<T>, "[cuwacunu::enforce_singleton_architecture] Singleton Class or Struct can't have a copy assignment operator.");
+
+#define ENFORCE_NO_MOVE_ASSIGNMENT(T) \
+    static_assert(!type_has_move_assignment<T>, "[cuwacunu::enforce_singleton_architecture] Singleton Class or Struct can't have a move assignment operator.");
+
+#define ENFORCE_SINGLETON_DESIGN(T) \
+    ENFORCE_IS_OBJECT(T) \
+    ENFORCE_NO_COPY_CONSTRUCTOR(T) \
+    ENFORCE_NO_MOVE_CONSTRUCTOR(T) \
+    ENFORCE_NO_COPY_ASSIGNMENT(T) \
+    ENFORCE_NO_MOVE_ASSIGNMENT(T)
+
+

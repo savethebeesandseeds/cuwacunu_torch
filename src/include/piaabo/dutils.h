@@ -64,13 +64,14 @@ const char* cthread_id();
 } /* namespace piaabo */
 } /* namespace cuwacunu */
 
+#define LOCK_GUARD(v_mutex) std::lock_guard<std::mutex> lock(v_mutex)
 
 /* This log functionality checks if there is a pendding log for the error trasported by the errno.h lib, 
  * WARNING! This functionaly sets the errno=0 if the errno is futher required, this might be not a desired behaviour.
  */
 #define wrap_log_sys_err() {\
   if(errno != 0) {\
-    std::lock_guard<std::mutex> log_lock(log_mutex);\
+    LOCK_GUARD(log_mutex);\
     fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sSYS ERRNO%s: ",\
       ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
       ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
@@ -82,7 +83,7 @@ const char* cthread_id();
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_info(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   fprintf(LOG_FILE,"[%s0x%s%s]: ",\
     ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET);\
   fprintf(LOG_FILE,__VA_ARGS__);\
@@ -91,7 +92,7 @@ const char* cthread_id();
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_dbg(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sDEBUG%s: ",\
     ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_Bright_Blue,ANSI_COLOR_RESET);\
@@ -101,7 +102,7 @@ const char* cthread_id();
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_err(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sERROR%s: ",\
     ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
@@ -111,7 +112,7 @@ const char* cthread_id();
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_fatal(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sFATAL%s: ",\
     ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
@@ -122,7 +123,7 @@ const char* cthread_id();
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
 #define log_warn(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   fprintf(LOG_WARN_FILE,"[%s0x%s%s]: %sWARNING%s: ",\
     ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
     ANSI_COLOR_WARNING,ANSI_COLOR_RESET);\
@@ -133,7 +134,7 @@ const char* cthread_id();
 /* Secure logging macro */
 #define log_secure_info(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   char temp[1024];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET);\
@@ -147,7 +148,7 @@ const char* cthread_id();
 /* Secure logging macro */
 #define log_secure_warning(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   char temp[1024];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sWARNING%s: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
@@ -162,7 +163,7 @@ const char* cthread_id();
 /* Secure logging macro */
 #define log_secure_error(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   char temp[1024];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sERROR%s: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
@@ -177,7 +178,7 @@ const char* cthread_id();
 /* Secure logging macro */
 #define log_secure_fatal(...) {\
   wrap_log_sys_err();\
-  std::lock_guard<std::mutex> log_lock(log_mutex);\
+  LOCK_GUARD(log_mutex);\
   char temp[1024];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sERROR%s: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \

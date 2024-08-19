@@ -12,7 +12,7 @@ parsed_config_t config_space_t::learning_config;
 parsed_config_t config_space_t::environment_config;
 
 parsed_config_t config_space_t::read_config(std::string conf_path) {
-  std::lock_guard<std::mutex> config_lock(config_mutex);
+  LOCK_GUARD(config_mutex);
   log_dbg("Reading config file [%s]\n", conf_path.c_str());
 
   std::ifstream configFile(conf_path);
