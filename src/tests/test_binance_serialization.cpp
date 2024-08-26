@@ -2,8 +2,8 @@
 #include "piaabo/config_space.h"
 #include "piaabo/security.h"
 #include "piaabo/encryption.h"
-#include "camahjucunu/crypto_exchange/binance/binance_enums.h"
-#include "camahjucunu/crypto_exchange/binance/binance_types.h"
+#include "camahjucunu/exchange/binance/binance_enums.h"
+#include "camahjucunu/exchange/binance/binance_types.h"
 
 int main() {
   /* test serialization */

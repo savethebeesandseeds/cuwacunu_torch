@@ -6,7 +6,7 @@
 #include <type_traits>
 #include "piaabo/dutils.h"
 #include "piaabo/architecture.h"
-#include "camahjucunu/crypto_exchange/binance/binance_enums.h"
+#include "camahjucunu/exchange/binance/binance_enums.h"
 
 #define pairWrap(variable) cuwacunu::piaabo::dPair<const std::string, decltype(variable)>{#variable, variable}
 
@@ -72,7 +72,7 @@ ENFORCE_ARCHITECTURE_DESIGN(   query_commision_rates_args_t);
 
 /* secondary return structs */
 struct price_qty_t           { price_qty_t(const std::string& json); double price; double qty; };
-struct tick_full_t           { tick_full_t(const std::string& json); std::string symbol; double priceChange; double priceChangePercent; double weightedAvgPrice; double prevClosePrice; double lastPrice; double lastQty; double bidPrice; double bidQty; double askPrice; double askQty; double openPrice; double highPrice; double lowPrice; double volume; double quoteVolume; long openTime; long closeTime; long firstId; long lastId; int count; };
+struct tick_full_t           { tick_full_t(const std::string& json); std::string symbol; double pricexchange; double pricexchangePercent; double weightedAvgPrice; double prevClosePrice; double lastPrice; double lastQty; double bidPrice; double bidQty; double askPrice; double askQty; double openPrice; double highPrice; double lowPrice; double volume; double quoteVolume; long openTime; long closeTime; long firstId; long lastId; int count; };
 struct tick_mini_t           { tick_mini_t(const std::string& json); std::string symbol; double lastPrice; double openPrice; double highPrice; double lowPrice; double volume; double quoteVolume; long openTime; long closeTime; long firstId; long lastId; int count; };
 struct trade_t               { trade_t(const std::string& json); long id; double price; double qty; double quoteQty; long time; bool isBuyerMaker; bool isBestMatch; };
 struct kline_t               { kline_t(const std::string& json); long open_time; double open_price; double high_price; double low_price; double close_price; double volume; long close_time; double quote_asset_volume; int number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume; };

@@ -35,9 +35,17 @@ For now on, the commands will be inside the docker linux container:
 
 ### Install some initial requirements
 ```bash
-apt-get update && apt-get install -y --no-install-recommends build-essential gnupg2 curl ca-certificates valgrind libssl-dev
+apt-get update && apt-get install -y --no-install-recommends build-essential gnupg2 curl ca-certificates valgrind libssl-dev \
 rm -rf /var/lib/apt/lists/*
 ```
+
+### Install curl dev
+Try this
+```bash
+apt install -y --no-install-recommends curl libcurl4-openssl-dev
+(optional) apt -t bullseye-backports install -y --no-install-recommends curl libcurl4-openssl-dev
+```
+We require curl 7.86.0 or later since we use curl for websocket, and so, be sure to do "curl --version" before trying to compile and if so, maybe you need to enable and try installing these with repository backports
 
 ### Add the NVIDIA package repositories
 ```bash

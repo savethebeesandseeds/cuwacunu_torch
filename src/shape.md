@@ -51,11 +51,11 @@
     |-- [camahjucunu] (connect, communicate)
     |   |-- README.md
     |   |-- abstract_exchange.h
-    |   `-- [crypto_exchange]
+    |   `-- [exchange]
     |       |-- README.md
     |       |-- [real]
     |       `-- [simulated]
-    |           `-- simulated_crypto_exchange.h
+    |           `-- simulated_exchange.h
     `-- [iinuji] (world, environment)
         |-- README.md
         |-- currency_space.h

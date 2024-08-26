@@ -1,9 +1,9 @@
-
+#include "camahjucunu/https/curl_toolkit/curl_utils.h"
 namespace cuwacunu {
 namespace camahjucunu {
 namespace curl {
 
-bool global_curl_initialized = false
+bool global_curl_initialized = false;
 std::mutex global_curl_mutex;
 
 void global_cleanup() {
@@ -61,21 +61,22 @@ CURL* create_curl_session() {
 }
 
 CURLcode send_ws_frame(CURL* curl_session, const unsigned char* frame, size_t frame_size, int frame_type) {
-  log_dgb("sending %ld bytes size frame\n", frame_size,);
+  log_dbg("sending %ld bytes size frame\n", frame_size);
 
   /* 0 is just to initialize, this is for an output refference pointer */
   size_t how_many_bytes_where_sent = 0x0;
-      
-  CURLcode res = curl_ws_send(curl_session, frame, frame_size, &how_many_bytes_where_sent, frame_type);
+
+  /* send */
+  CURLcode res = curl_ws_send(curl_session, frame, frame_size, &how_many_bytes_where_sent, 0, frame_type);
 
   /* valdiate the bytes where all sent */
-  if(how_many_bytes_where_sent == frame_size) {
-    log_error("send_ws_frame didn't sended the entire message. \n\t sent:\t%ld\n\t expected:\t%ld\n", how_many_bytes_where_sent, frame_size);
+  if(how_many_bytes_where_sent != frame_size) {
+    log_err("send_ws_frame didn't sended the entire message. \n\t sent:\t%ld\n\t expected:\t%ld\n", how_many_bytes_where_sent, frame_size);
   }
   
   /* this is just to log the response, further interpretation of the response code is expected */
   if (res != CURLE_OK) {
-    log_error("Failed to send close frame for session_id[%d] with error: %s\n", session_id, curl_easy_strerror(res));
+    log_err("Failed to send frame for session, with error: %s\n", curl_easy_strerror(res));
   }
 
   return res;

@@ -5,7 +5,7 @@
 #include <optional>
 #include <type_traits>
 #include "piaabo/dutils.h"
-#include "camahjucunu/crypto_exchange/binance/binance_enums.h"
+#include "camahjucunu/exchange/binance/binance_enums.h"
 
 #define DOUBLE_SERIALIZATION_PRECISION 10
 #define QUOTE_DOUBLES /* decimal numbers are required by Binance to be serialized as strings */

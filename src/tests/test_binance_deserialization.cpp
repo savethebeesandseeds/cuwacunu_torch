@@ -2,8 +2,8 @@
 #include "piaabo/config_space.h"
 #include "piaabo/security.h"
 #include "piaabo/encryption.h"
-#include "camahjucunu/crypto_exchange/binance/binance_enums.h"
-#include "camahjucunu/crypto_exchange/binance/binance_types.h"
+#include "camahjucunu/exchange/binance/binance_enums.h"
+#include "camahjucunu/exchange/binance/binance_types.h"
 
 int main() {  
   /* test deserialization */
@@ -143,7 +143,7 @@ int main() {
 
   {
     log_dbg("Testing [cuwacunu::camahjucunu::binance::%sticker_24hr_ret_t%s] (full) deserialization \n", ANSI_COLOR_Yellow, ANSI_COLOR_RESET);
-    std::string json = "{\"symbol\":\"BTCUSDT\",\"priceChange\":\"-83.13000000\",\"priceChangePercent\": \"-0.317\",\"weightedAvgPrice\":\"26234.58803036\",\"openPrice\":\"26304.80000000\",\"highPrice\":\"26397.46000000\",\"lowPrice\":\"26088.34000000\",\"lastPrice\":\"26221.67000000\",\"volume\":\"18495.35066000\",\"quoteVolume\":\"485217905.04210480\",\"openTime\":1695686400000,\"closeTime\":1695772799999,\"firstId\":3220151555,\"lastId\":3220849281,\"count\":697727}";
+    std::string json = "{\"symbol\":\"BTCUSDT\",\"pricexchange\":\"-83.13000000\",\"pricexchangePercent\": \"-0.317\",\"weightedAvgPrice\":\"26234.58803036\",\"openPrice\":\"26304.80000000\",\"highPrice\":\"26397.46000000\",\"lowPrice\":\"26088.34000000\",\"lastPrice\":\"26221.67000000\",\"volume\":\"18495.35066000\",\"quoteVolume\":\"485217905.04210480\",\"openTime\":1695686400000,\"closeTime\":1695772799999,\"firstId\":3220151555,\"lastId\":3220849281,\"count\":697727}";
     log_info("json: %s\n", json.c_str());
     
     cuwacunu::camahjucunu::binance::ticker_24hr_ret_t parsed(json);
@@ -151,8 +151,8 @@ int main() {
     ASSERT(parsed.is_full, "ticker_24hr_ret_t is expected of type <tick_mini_t>");
     
     log_info("\t.symbol: %s\n", GET_TICK_FULL(parsed).symbol.c_str());
-    log_info("\t.priceChange: %.10f\n", GET_TICK_FULL(parsed).priceChange);
-    log_info("\t.priceChangePercent: %.10f\n", GET_TICK_FULL(parsed).priceChangePercent);
+    log_info("\t.pricexchange: %.10f\n", GET_TICK_FULL(parsed).pricexchange);
+    log_info("\t.pricexchangePercent: %.10f\n", GET_TICK_FULL(parsed).pricexchangePercent);
     log_info("\t.weightedAvgPrice: %.10f\n", GET_TICK_FULL(parsed).weightedAvgPrice);
     log_info("\t.openPrice: %.10f\n", GET_TICK_FULL(parsed).openPrice);
     log_info("\t.highPrice: %.10f\n", GET_TICK_FULL(parsed).highPrice);
@@ -223,7 +223,7 @@ int main() {
 
   {
     log_dbg("Testing [cuwacunu::camahjucunu::binance::%sticker_wind_ret_t%s] (full) deserialization \n", ANSI_COLOR_Yellow, ANSI_COLOR_RESET);
-    std::string json = "\"symbol\":\"BNBBTC\",\"priceChange\":\"-8.00000000\",\"priceChangePercent\":\"-88.889\",\"weightedAvgPrice\":\"2.60427807\",\"openPrice\":\"9.00000000\",\"highPrice\":\"9.00000000\",\"lowPrice\":\"1.00000000\",\"lastPrice\":\"1.00000000\",\"volume\":\"187.00000000\",\"quoteVolume\":\"487.00000000\",\"openTime\":1641859200000,\"closeTime\":1642031999999,\"firstId\":0,\"lastId\":60,\"count\":61";
+    std::string json = "\"symbol\":\"BNBBTC\",\"pricexchange\":\"-8.00000000\",\"pricexchangePercent\":\"-88.889\",\"weightedAvgPrice\":\"2.60427807\",\"openPrice\":\"9.00000000\",\"highPrice\":\"9.00000000\",\"lowPrice\":\"1.00000000\",\"lastPrice\":\"1.00000000\",\"volume\":\"187.00000000\",\"quoteVolume\":\"487.00000000\",\"openTime\":1641859200000,\"closeTime\":1642031999999,\"firstId\":0,\"lastId\":60,\"count\":61";
     log_info("json: %s\n", json.c_str());
     
     cuwacunu::camahjucunu::binance::ticker_wind_ret_t parsed(json);
@@ -231,8 +231,8 @@ int main() {
     ASSERT(parsed.is_full, "ticker_wind_ret_t is expected of type <tick_mini_t>");
     
     log_info("\t.symbol: %s\n", GET_TICK_FULL(parsed).symbol.c_str());
-    log_info("\t.priceChange: %.10f\n", GET_TICK_FULL(parsed).priceChange);
-    log_info("\t.priceChangePercent: %.10f\n", GET_TICK_FULL(parsed).priceChangePercent);
+    log_info("\t.pricexchange: %.10f\n", GET_TICK_FULL(parsed).pricexchange);
+    log_info("\t.pricexchangePercent: %.10f\n", GET_TICK_FULL(parsed).pricexchangePercent);
     log_info("\t.weightedAvgPrice: %.10f\n", GET_TICK_FULL(parsed).weightedAvgPrice);
     log_info("\t.openPrice: %.10f\n", GET_TICK_FULL(parsed).openPrice);
     log_info("\t.highPrice: %.10f\n", GET_TICK_FULL(parsed).highPrice);

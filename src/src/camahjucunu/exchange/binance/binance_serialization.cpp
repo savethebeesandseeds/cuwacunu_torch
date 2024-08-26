@@ -1,4 +1,4 @@
-#include "camahjucunu/crypto_exchange/binance/binance_serialization.h"
+#include "camahjucunu/exchange/binance/binance_serialization.h"
 
 
 RUNTIME_WARNING("(binance_serialization.cpp)[] parsing args and resp to and from json is somehow slow. Leaving this until further upgrade.\n");

@@ -1,8 +1,8 @@
 #include "dconfig.h"
 #include "piaabo/dutils.h"
-#include "simulated_crypto_echange.h"
+#include "simulated_crypto_exchange.h"
 
-RUNTIME_WARNING("(simulated_crypto_echange.cpp)[] echange singleton design makes a bottle-neck in parallel training.");
+RUNTIME_WARNING("(simulated_crypto_exchange.cpp)[] exchange singleton design makes a bottle-neck in parallel training.");
 
 namespace cuwacunu {
 float Broker::ctime;

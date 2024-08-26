@@ -1,10 +1,11 @@
-#include "camahjucunu/crypto_exchange/binance/binance_deserialization.h"
+#include "camahjucunu/exchange/binance/binance_deserialization.h"
 
 RUNTIME_WARNING("[binance_deserialization.cpp]() regex needs to be optimized, it is finiding all matches instead of stoping at the first occurance.\n");
 RUNTIME_WARNING("[binance_deserialization.cpp]() missing validations on the json objects for each desearialization\n");
 RUNTIME_WARNING("[binance_deserialization.cpp]() repeated json cleaning is unecesary\n");
 RUNTIME_WARNING("[binance_deserialization.cpp]() deserializations catch to fatal error, this needs revisitation\n");
 RUNTIME_WARNING("[binance_deserialization.cpp]() some desearialization are missing the list functionality and some are missing the single item functionallity, this needs revisitation\n");
+RUNTIME_WARNING("[binance_deserialization.cpp]() deserializations could be done using state machines and can be faster, better implemented than with regex\n");
 
 
 #define JSON_STRING_PATTERN(key) ("\"") + std::string(key) + ("\"\\s*:\\s*\"(.*?)\"")
@@ -362,8 +363,8 @@ void deserialize(tick_full_t& obj, const std::string& json) {
   /*
     {
       "symbol":             "BTCUSDT",
-      "priceChange":        "-83.13000000",         // Absolute price change
-      "priceChangePercent": "-0.317",               // Relative price change in percent
+      "pricexchange":        "-83.13000000",         // Absolute price change
+      "pricexchangePercent": "-0.317",               // Relative price change in percent
       "weightedAvgPrice":   "26234.58803036",       // quoteVolume / volume
       "openPrice":          "26304.80000000",
       "highPrice":          "26397.46000000",
@@ -380,8 +381,8 @@ void deserialize(tick_full_t& obj, const std::string& json) {
   */
   
   obj.symbol              = retriveKeyValue<std::string>(json, "symbol", "tick_full_t");
-  obj.priceChange         = retriveKeyValue<double>(json, "priceChange", "tick_full_t");
-  obj.priceChangePercent  = retriveKeyValue<double>(json, "priceChangePercent", "tick_full_t");
+  obj.pricexchange         = retriveKeyValue<double>(json, "pricexchange", "tick_full_t");
+  obj.pricexchangePercent  = retriveKeyValue<double>(json, "pricexchangePercent", "tick_full_t");
   obj.weightedAvgPrice    = retriveKeyValue<double>(json, "weightedAvgPrice", "tick_full_t");
   obj.openPrice           = retriveKeyValue<double>(json, "openPrice", "tick_full_t");
   obj.highPrice           = retriveKeyValue<double>(json, "highPrice", "tick_full_t");
