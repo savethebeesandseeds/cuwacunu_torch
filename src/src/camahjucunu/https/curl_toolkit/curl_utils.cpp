@@ -6,7 +6,7 @@ namespace curl {
 bool global_curl_initialized = false;
 std::mutex global_curl_mutex;
 
-void global_cleanup() {
+void dcurl_global_cleanup() {
   /* globa lock */
   LOCK_GUARD(global_curl_mutex);
 
@@ -23,7 +23,7 @@ void global_cleanup() {
   global_curl_initialized = false;
 }
 
-void global_init() {
+void dcurl_global_init() {
   /* global lock */
   LOCK_GUARD(global_curl_mutex);
 
@@ -44,7 +44,6 @@ void global_init() {
 
   /* mark the initialized flag */
   global_curl_initialized = true;
-  std::atexit(global_cleanup);
 }
 
 CURL* create_curl_session() {
@@ -80,6 +79,11 @@ CURLcode send_ws_frame(CURL* curl_session, const unsigned char* frame, size_t fr
   }
 
   return res;
+}
+
+uint16_t ws_htons(uint16_t hostshort) {
+  uint16_t networkshort = ((hostshort & 0xff00) >> 8) | ((hostshort & 0x00ff) << 8);
+  return networkshort;
 }
 
 } /* namespace curl */

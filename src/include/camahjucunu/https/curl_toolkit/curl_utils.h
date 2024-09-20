@@ -22,12 +22,14 @@ namespace curl {
 extern std::mutex global_curl_mutex;
 extern bool global_curl_initialized;
 
-void global_cleanup();
-void global_init();
+void dcurl_global_cleanup();
+void dcurl_global_init();
 
 CURL* create_curl_session();
 
 CURLcode send_ws_frame(CURL* curl_session, const unsigned char* frame, size_t frame_size, int frame_type);
+
+uint16_t ws_htons(uint16_t hostshort);
 
 } /* namespace curl */
 } /* namespace camahjucunu */

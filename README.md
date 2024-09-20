@@ -37,15 +37,38 @@ For now on, the commands will be inside the docker linux container:
 ```bash
 apt-get update && apt-get install -y --no-install-recommends build-essential gnupg2 curl ca-certificates valgrind libssl-dev \
 rm -rf /var/lib/apt/lists/*
+
+apt install locales --no-install-recommends
+# (default to) en_US.UTF-8
 ```
 
 ### Install curl dev
 Try this
 ```bash
 apt install -y --no-install-recommends curl libcurl4-openssl-dev
-(optional) apt -t bullseye-backports install -y --no-install-recommends curl libcurl4-openssl-dev
+# (alternative) install from source, see instruction bellow
 ```
-We require curl 7.86.0 or later since we use curl for websocket, and so, be sure to do "curl --version" before trying to compile and if so, maybe you need to enable and try installing these with repository backports
+We require curl 7.86.0 or later since we use curl for websocket.
+
+Websocket in CURL is experiemtal and for this we require to install it from source and explicitly define websocket support. 
+Try installing from soruce:
+```bash
+# (change the number to the latest)
+cd /external
+curl -LO https://curl.se/download/curl-8.9.1.tar.gz 
+apt remove curl libcurl4 libcurl3-gnutls
+tar -xzf curl-8.9.1.tar.gz 
+cd curl-8.9.1
+./configure --with-openssl --enable-websockets
+make
+make install
+ldconfig
+source ~/.bashrc
+# (Faced the problem of having multiple curl versions installed, so be aware of this while trying to reproduce.)
+```
+
+Be sure to do "curl --version" and verify that websocket (WS, WSS) is listed under "protocols". 
+
 
 ### Add the NVIDIA package repositories
 ```bash

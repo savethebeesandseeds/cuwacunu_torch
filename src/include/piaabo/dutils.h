@@ -66,6 +66,8 @@ const char* cthread_id();
 
 #define LOCK_GUARD(v_mutex) std::lock_guard<std::mutex> lock(v_mutex)
 
+#define FLUSH_SYS_ERR() { errno = 0; }
+
 /* This log functionality checks if there is a pendding log for the error trasported by the errno.h lib, 
  * WARNING! This functionaly sets the errno=0 if the errno is futher required, this might be not a desired behaviour.
  */
