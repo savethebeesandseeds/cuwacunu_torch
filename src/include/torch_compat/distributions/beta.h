@@ -1,6 +1,6 @@
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
-#include "piaabo/architecture.h"
+#include "piaabo/darchitecture.h"
 #include "torch_compat/torch_utils.h"
 #include "torch_compat/distributions/gamma.h"
 /* As per indicated here: https://discuss.pytorch.org/t/torch-distributions-categorical/45747/6

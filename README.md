@@ -1,4 +1,8 @@
 # Cuwacnu 
+NOTE: I should remmember to write a description on what the project is instead of the enviroment replication steps. 
+
+(The solution is Valgrind memcheck complete)
+
 ## The libtorch implementation
 
 ## Install the requirements

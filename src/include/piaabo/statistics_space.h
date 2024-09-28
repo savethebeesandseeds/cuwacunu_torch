@@ -1,7 +1,7 @@
 #pragma once
 #include <cmath>
 #include "piaabo/dutils.h"
-#include "piaabo/architecture.h"
+#include "piaabo/darchitecture.h"
 
 namespace cuwacunu {
 /* statistics_space_t */

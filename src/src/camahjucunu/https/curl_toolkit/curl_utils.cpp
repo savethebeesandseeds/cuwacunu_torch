@@ -60,7 +60,7 @@ CURL* create_curl_session() {
 }
 
 CURLcode send_ws_frame(CURL* curl_session, const unsigned char* frame, size_t frame_size, int frame_type) {
-  log_dbg("sending %ld bytes size frame\n", frame_size);
+  log_dbg("sending %ld bytes size frame: %.*s\n", frame_size, (int)frame_size, reinterpret_cast<const char*>(frame));
 
   /* 0 is just to initialize, this is for an output refference pointer */
   size_t how_many_bytes_where_sent = 0x0;

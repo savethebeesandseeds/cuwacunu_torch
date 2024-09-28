@@ -1,5 +1,5 @@
 
-# Generating the missing ../config/ Files
+# Generating the missing ./config/ Files
 .pem, .enc and .key files are removed on the distributed version, one needs to obtain these to have the project working.
 
 ### (Ed25519) PEM
@@ -14,11 +14,12 @@ apt install openssl --no.install-recommends
 openssl version
 ```
 ```
-openssl genpkey -algorithm Ed25519 -out ed25519key.pem -aes-256-cbc
-openssl pkey -in ed25519key.pem -out ed25519pub.pem -pubout
+cd ./config
+openssl genpkey -algorithm Ed25519 -out test_ed25519key.pem -aes-256-cbc
+openssl pkey -in test_ed25519key.pem -out test_ed25519pub.pem -pubout
 ```
 
-These two pem files are to be placed in ../config/ folder.
+These two pem files are to be placed in ./config/ folder.
 The selected password for this files will be the global program password. 
 
 ### Obtain exchange Api Key
@@ -29,10 +30,9 @@ Follow this steps:
 
 ### Configure exchange Api Key
 Follow this steps:
-1. Create or clear content in file ../config/aes_salt.enc
-2. Create or clear content in file ../config/exchange.key
-3. Put plaintext api key (from exchange) into ../config/exchange.key
+1. Create and/or whipe clean the contents of file ./config/aes_salt.enc
+2. Put plaintext api key (from exchange) into file ./config/exchange.key
 
 
-### ../config/Enviroment.config file
-If you decide to change the location of any of these files, make sure to change ../config/enviroment.config file
+### ./config/Enviroment.config file
+If you decide to change the location of any of these files, make sure to change ./config/enviroment.config file

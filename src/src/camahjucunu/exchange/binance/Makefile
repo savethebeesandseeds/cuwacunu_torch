@@ -11,20 +11,12 @@ COMPILE_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCL
 # # -----------------------------------------------------------------
 # # - - - Cross files Uitilies  - - - - - - - - - - - - - - - - - - -
 # # -----------------------------------------------------------------
-BINANCE_EXCHANGE := $(OUTPUT_PATH)/binance_enums.o $(OUTPUT_PATH)/binance_types.o $(OUTPUT_PATH)/binance_serialization.o $(OUTPUT_PATH)/binance_deserialization.o
+BINANCE_EXCHANGE := 
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-$(OUTPUT_PATH)/binance_enums.o: $(HERE_PATH)/binance_enums.cpp $(OUTPUT_PATH)/dutils.o
-	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/binance_serialization.o: $(HERE_PATH)/binance_serialization.cpp $(OUTPUT_PATH)/dutils.o
-	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/binance_deserialization.o: $(HERE_PATH)/binance_deserialization.cpp $(OUTPUT_PATH)/dutils.o
-	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/binance_types.o: $(HERE_PATH)/binance_types.cpp $(OUTPUT_PATH)/dutils.o $(OUTPUT_PATH)/binance_enums.o $(OUTPUT_PATH)/binance_serialization.o $(OUTPUT_PATH)/binance_deserialization.o
-	@$(COMPILE_CMD)
-.PHONY: binance_exchange
-binance_exchange: $(BINANCE_EXCHANGE)
+.PHONY: BINANCE_EXCHANGE
+BINANCE_EXCHANGE: $(BINANCE_EXCHANGE)
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -

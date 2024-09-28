@@ -1,7 +1,7 @@
 #pragma once
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
-#include "piaabo/architecture.h"
+#include "piaabo/darchitecture.h"
 #include "torch_compat/torch_utils.h"
 
 namespace torch_compat {

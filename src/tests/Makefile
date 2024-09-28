@@ -8,62 +8,35 @@ include $(ROOT_PATH)/Makefile.config
 # -----------------------------------------------------------------
 HERE_PATH := $(ROOT_PATH)/tests
 TEST_BUILD := $(HERE_PATH)/build
-# USUAL_LINK_CMD = $(LOG_START) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(OBJECT_TO_LINK) $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
-EXTENDED_LINK_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(OBJECT_TO_LINK) $(LIBCURl_LD_LAGS) $(SSL_LD_FLAGS) $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
-
 # -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - Especific Targets - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_config test_config
-$(TEST_BUILD)/test_config: $(HERE_PATH)/test_config.cpp
-	@$(EXTENDED_LINK_CMD) 
-	$(RUN_MODE) $(TEST_BUILD)/test_config
-test_config: $(TEST_BUILD)/test_config
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_security test_security
-$(TEST_BUILD)/test_security: $(HERE_PATH)/test_security.cpp
-	@$(EXTENDED_LINK_CMD) 
-	$(RUN_MODE) $(TEST_BUILD)/test_security
-test_security: $(TEST_BUILD)/test_security
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_encryption test_encryption
-$(TEST_BUILD)/test_encryption: $(HERE_PATH)/test_encryption.cpp
-	@$(EXTENDED_LINK_CMD) 
-	$(RUN_MODE) $(TEST_BUILD)/test_encryption
-test_encryption: $(TEST_BUILD)/test_encryption
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_binance_serialization test_binance_serialization
-$(TEST_BUILD)/test_binance_serialization: $(HERE_PATH)/test_binance_serialization.cpp
-	@$(EXTENDED_LINK_CMD) 
-	$(RUN_MODE) $(TEST_BUILD)/test_binance_serialization
-test_binance_serialization: $(TEST_BUILD)/test_binance_serialization
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_binance_deserialization test_binance_deserialization
-$(TEST_BUILD)/test_binance_deserialization: $(HERE_PATH)/test_binance_deserialization.cpp
-	@$(EXTENDED_LINK_CMD) 
-	$(RUN_MODE) $(TEST_BUILD)/test_binance_deserialization
-test_binance_deserialization: $(TEST_BUILD)/test_binance_deserialization
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_websocket test_websocket
-$(TEST_BUILD)/test_websocket: $(HERE_PATH)/test_websocket.cpp
-	@$(EXTENDED_LINK_CMD) 
-	$(RUN_MODE) $(TEST_BUILD)/test_websocket
-test_websocket: $(TEST_BUILD)/test_websocket
+test_darchitecture: 
+	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_darchitecture
+test_dconfig: 
+	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dconfig
+test_dsecurity: 
+	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dsecurity
+test_dencryption: 
+	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dencryption
+test_json_parsing:
+	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_json_parsing
+test_exchange_serialization: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_serialization
+test_exchange_deserialization: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_deserialization
+test_websocket: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_websocket
+test_binance_testnet: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_testnet
+test_binance_mech: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(TEST_BUILD)/test_config $(TEST_BUILD)/test_security $(TEST_BUILD)/test_encryption $(TEST_BUILD)/test_binance_serialization $(TEST_BUILD)/test_binance_deserialization $(TEST_BUILD)/test_websocket
+all: 
+	$(MAKE) -C $(HERE_PATH)/bench all
 	@$(LOG_SUCCESS)
 .PHONY: clean_tests
 clean_tests:

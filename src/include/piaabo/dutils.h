@@ -13,6 +13,8 @@
 #include <string>
 #include <iostream>
 #include <iomanip>
+#include <random>
+#include <chrono>
 
 #define LOG_FILE stdout
 #define LOG_ERR_FILE stderr
@@ -20,6 +22,7 @@
 
 #define ANSI_COLOR_RESET "\x1b[0m" 
 #define ANSI_COLOR_ERROR "\x1b[41m" 
+#define ANSI_COLOR_FATAL "\x1b[41m" 
 #define ANSI_COLOR_SUCCESS "\x1b[42m" 
 #define ANSI_COLOR_WARNING "\x1b[43m" 
 #define ANSI_COLOR_Black "\x1b[30m" 
@@ -55,18 +58,135 @@ struct dPair {
   T2 second;
 };
 /* util methods */
+
+/**
+ * @brief Escapes specific characters in a string to sanitize it.
+ *
+ * This function processes the input C-string `input` and escapes potentially
+ * dangerous characters (`\`, `"`, `$`, `` ` ``) by prefixing them with a backslash.
+ * The sanitized string is written back to `input`, ensuring it does not exceed `max_len`.
+ *
+ * @param input Pointer to the null-terminated string to be sanitized.
+ * @param max_len The maximum allowed length for the sanitized string, including the null terminator.
+ *
+ * @note
+ * - The function uses a fixed-size buffer of 1024 characters for intermediate storage.
+ * - Ensure that `max_len` does not exceed the size of `sanitized_output` to prevent buffer overflow.
+ */
 void sanitize_string(char* input, size_t max_len); /* Function to sanitize input against console injection */
+
+/**
+ * @brief Removes leading and trailing whitespace from a string.
+ *
+ * This function takes an input string and returns a new string with all
+ * leading and trailing whitespace characters removed. It handles spaces,
+ * tabs, newlines, and other standard whitespace characters.
+ *
+ * @param str The input string to be trimmed.
+ * @return A new `std::string` with leading and trailing whitespace removed.
+ *
+ * @example
+ * ```cpp
+ * std::string original = "   Hello, World!   ";
+ * std::string trimmed = trim_string(original);
+ * // trimmed is "Hello, World!"
+ * ```
+ */
 std::string trim_string(const std::string& str);
+
+/**
+ * @brief Splits a string into tokens based on a specified delimiter.
+ *
+ * This function takes an input string and a delimiter character, then
+ * separates the string into multiple substrings wherever the delimiter
+ * appears. The resulting tokens are stored in a vector of strings.
+ *
+ * @param str The input string to be split.
+ * @param delimiter The character used to determine where to split the string.
+ * @return A vector containing the split substrings.
+ *
+ * @example
+ * ```cpp
+ * std::string data = "apple,banana,cherry";
+ * std::vector<std::string> fruits = split_string(data, ',');
+ * // fruits contains {"apple", "banana", "cherry"}
+ * ```
+ */
 std::vector<std::string> split_string(const std::string& str, char delimiter);
+
+/**
+ * @brief Converts a byte array to its hexadecimal string representation.
+ *
+ * This function takes a pointer to an array of unsigned characters (`data`) and its size,
+ * then converts each byte to a two-character hexadecimal string and concatenates them.
+ *
+ * @param data Pointer to the byte array to be converted.
+ * @param size The number of bytes in the array.
+ * @return A `std::string` containing the hexadecimal representation of the input data.
+ *
+ * @example
+ * ```cpp
+ * unsigned char bytes[] = { 0xDE, 0xAD, 0xBE, 0xEF };
+ * std::string hexStr = to_hex_string(bytes, 4);
+ * // hexStr will be "deadbeef"
+ * ```
+ */
 std::string to_hex_string(const unsigned char* data, size_t size);
+
+/**
+ * @brief Replaces all occurrences of a substring with another string within a given string.
+ *
+ * @param str The target string where replacements will be made.
+ * @param from The substring to search for and replace.
+ * @param to The string to replace each occurrence of `from` with.
+ *
+ * @note If `from` is empty, the function exits early to prevent an infinite loop.
+ */
 void string_replace(std::string &str, const std::string& from, const std::string& to);
+void string_replace(std::string &str, const char from, const char to);
+
+/**
+ * @brief Retrieves the current thread's ID as a C-style string.
+ *
+ * This function obtains the ID of the calling thread, converts it to a string,
+ * and returns a pointer to the internal C-string representation.
+ * 
+ * @return A `const char*` pointing to the thread ID string.
+ * 
+ * @note The returned pointer is valid until the function is called again.
+ */
 const char* cthread_id();
+
+/**
+ * @brief Generates a randomized string based on a given format.
+ *
+ * This function takes a format string where each occurrence of the character 'x'
+ * is replaced with a randomly selected character from the predefined set
+ * "ABCDEFGHIJKLMNOPQRST0123456789". All other characters in the format string
+ * remain unchanged.
+ *
+ * @param format_str The template string containing 'x' placeholders to be replaced.
+ *                   Example: "ID-xx-2024" might become "ID-A5-2024".
+ *                   Example: "xxx-xxx.xxx" might become "AB0-1A2.7DE".
+ *
+ * @return A new string with 'x' characters replaced by random characters from the set.
+ */
+std::string generate_random_string(const std::string& format_str);
+
 } /* namespace piaabo */
 } /* namespace cuwacunu */
 
 #define LOCK_GUARD(v_mutex) std::lock_guard<std::mutex> lock(v_mutex)
 
 #define FLUSH_SYS_ERR() { errno = 0; }
+
+#define FORMAT_STRING(fmt, ...) \
+  ([&]() -> std::string { \
+    int size = std::snprintf(nullptr, 0, fmt, __VA_ARGS__); \
+    std::unique_ptr<char[]> buf(new char[size + 1]); \
+    std::snprintf(buf.get(), size + 1, fmt, __VA_ARGS__); \
+    return std::string(buf.get(), buf.get() + size); \
+  }())
 
 /* This log functionality checks if there is a pendding log for the error trasported by the errno.h lib, 
  * WARNING! This functionaly sets the errno=0 if the errno is futher required, this might be not a desired behaviour.
@@ -117,7 +237,7 @@ const char* cthread_id();
   LOCK_GUARD(log_mutex);\
   fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sFATAL%s: ",\
     ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
-    ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
+    ANSI_COLOR_FATAL,ANSI_COLOR_RESET);\
   fprintf(LOG_ERR_FILE,__VA_ARGS__);\
   fflush(LOG_ERR_FILE);\
   THROW_RUNTIME_ERROR();\
@@ -134,6 +254,23 @@ const char* cthread_id();
 }
 
 /* Secure logging macro */
+#define log_secure_dbg(...) {\
+  wrap_log_sys_err();\
+  LOCK_GUARD(log_mutex);\
+  char temp[1024];\
+  snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sDEBUG%s: ", \
+    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
+    ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET);\
+  char formatted_message[1024];\
+  snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
+  size_t temp_len = strlen(temp);\
+  snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
+  cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
+  fflush(LOG_ERR_FILE);\
+}
+
+/* Secure logging macro */
 #define log_secure_info(...) {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
@@ -142,11 +279,13 @@ const char* cthread_id();
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
-  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  size_t temp_len = strlen(temp);\
+  snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
 }
+
 /* Secure logging macro */
 #define log_secure_warning(...) {\
   wrap_log_sys_err();\
@@ -157,11 +296,13 @@ const char* cthread_id();
     ANSI_COLOR_WARNING, ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
-  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  size_t temp_len = strlen(temp);\
+  snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
 }
+
 /* Secure logging macro */
 #define log_secure_error(...) {\
   wrap_log_sys_err();\
@@ -172,27 +313,132 @@ const char* cthread_id();
     ANSI_COLOR_ERROR, ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
-  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  size_t temp_len = strlen(temp);\
+  snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
 }
+
 /* Secure logging macro */
 #define log_secure_fatal(...) {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
   char temp[1024];\
-  snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sERROR%s: ", \
+  snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sFATAL%s: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
-    ANSI_COLOR_ERROR, ANSI_COLOR_RESET);\
+    ANSI_COLOR_FATAL, ANSI_COLOR_RESET);\
   char formatted_message[1024];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
-  strncat(temp, formatted_message, sizeof(temp) - strlen(temp) - 1);\
+  size_t temp_len = strlen(temp);\
+  snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s", temp);\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
   THROW_RUNTIME_ERROR();\
 }
+
+/* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
+/* Macro to capture the current high-resolution time point */
+#define TICK(STAMP_ID) \
+  auto STAMP_ID = std::chrono::high_resolution_clock::now()
+
+/* Macro to calculate the elapsed time in seconds since the given time point */
+#define TOCK(STAMP_ID) \
+  (std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - (STAMP_ID)).count())
+
+/* Macro to calculate the elapsed time in milliseconds since the given time point */
+#define TOCK_ms(STAMP_ID) \
+  (std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - (STAMP_ID)).count())
+
+/* Macro to calculate the elapsed time in nanoseconds since the given time point */
+#define TOCK_ns(STAMP_ID) \
+  (std::chrono::duration<double, std::nano>(std::chrono::high_resolution_clock::now() - (STAMP_ID)).count())
+
+#define GET_READABLE_TIME(ms) \
+  ([&]() -> std::string { \
+    long long total_s = static_cast<long long>(ms); \
+    int hours = total_s / 3600; \
+    total_s %= 3600; \
+    int minutes = total_s / 60; \
+    total_s %= 60; \
+    int seconds = total_s / 1; \
+    total_s %= 1; \
+    std::ostringstream oss; \
+    if (hours > 0) \
+      oss << hours << "h."; \
+    if (minutes > 0 || hours > 0) \
+      oss << minutes << "m."; \
+    oss << seconds << "s."; \
+    return oss.str(); \
+  })()
+
+#define GET_READABLE_TIME_ms(ms) \
+  ([&]() -> std::string { \
+    long long total_ms = static_cast<long long>(ms); \
+    int hours = total_ms / 3'600'000; \
+    total_ms %= 3'600'000; \
+    int minutes = total_ms / 60'000; \
+    total_ms %= 60'000; \
+    int seconds = total_ms / 1'000; \
+    total_ms %= 1'000; \
+    std::ostringstream oss; \
+    if (hours > 0) \
+      oss << hours << "h."; \
+    if (minutes > 0 || hours > 0) \
+      oss << minutes << "m."; \
+    if (seconds > 0 || minutes > 0 || hours > 0) \
+      oss << seconds << "s."; \
+    oss << total_ms << "ms."; \
+    return oss.str(); \
+  })()
+
+#define GET_READABLE_TIME_ns(ns) \
+  ([&]() -> std::string { \
+    long long total_ns = static_cast<long long>(ns); \
+    int hours = total_ns / 3'600'000'000'000; \
+    total_ns %= 3'600'000'000'000; \
+    int minutes = total_ns / 60'000'000'000; \
+    total_ns %= 60'000'000'000; \
+    int seconds = total_ns / 1'000'000'000; \
+    total_ns %= 1'000'000'000; \
+    int milliseconds = total_ns / 1'000'000; \
+    total_ns %= 1'000'000; \
+    int microseconds = total_ns / 1'000; \
+    total_ns %= 1'000; \
+    std::ostringstream oss; \
+    if (hours > 0) \
+      oss << hours << "h."; \
+    if (minutes > 0 || hours > 0) \
+      oss << minutes << "m."; \
+    if (seconds > 0 || minutes > 0 || hours > 0) \
+      oss << seconds << "s."; \
+    if (milliseconds > 0 || seconds > 0 || minutes > 0 || hours > 0) \
+      oss << milliseconds << "ms."; \
+    if (microseconds > 0 || milliseconds > 0 || seconds > 0 || minutes > 0 || hours > 0) \
+      oss << microseconds << "µs."; \
+    oss << total_ns << "ns."; \
+    return oss.str(); \
+  })()
+
+#define PRINT_TOCK(STAMP_ID) \
+  log_info("%s \t Execution time %s [%s%s%s] : %s \n", \
+    ANSI_COLOR_Green, ANSI_COLOR_RESET, \
+    ANSI_COLOR_Yellow, #STAMP_ID, ANSI_COLOR_RESET, \
+    GET_READABLE_TIME(TOCK(STAMP_ID)).c_str());
+  
+#define PRINT_TOCK_ms(STAMP_ID) \
+  log_info("%s \t Execution time %s [%s%s%s] : %s \n", \
+    ANSI_COLOR_Green, ANSI_COLOR_RESET, \
+    ANSI_COLOR_Yellow, #STAMP_ID, ANSI_COLOR_RESET, \
+    GET_READABLE_TIME_ms(TOCK_ms(STAMP_ID)).c_str());
+  
+#define PRINT_TOCK_ns(STAMP_ID) \
+  log_info("%s \t Execution time %s [%s%s%s] : %s \n", \
+    ANSI_COLOR_Green, ANSI_COLOR_RESET, \
+    ANSI_COLOR_Yellow, #STAMP_ID, ANSI_COLOR_RESET, \
+    GET_READABLE_TIME_ns(TOCK_ns(STAMP_ID)).c_str());
+
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
 /* utilities */
 #define STRINGIFY(x) #x

@@ -1,8 +1,7 @@
 #pragma once
 #include <vector>
 #include "piaabo/dutils.h"
-#include "piaabo/architecture.h"
-#include "camahjucunu/architecture.h"
+#include "piaabo/darchitecture.h"
 
 RUNTIME_WARNING("(instrument_space.h)[] include all the desired here indicators.\n");
 RUNTIME_WARNING("(instrument_space.h)[] one shot encoding for instrument_space_t is not stable across configuration changes, be aware not to include it.\n");
