@@ -1,5 +1,5 @@
 #pragma once
-#include "camahjucunu/exchange/virtual/virtual_mech_server.h"
+#include "camahjucunu/exchange/abstract/abstract_mech_server.h"
 #include "camahjucunu/exchange/binance/binance_utils.h"
 
 namespace cuwacunu {

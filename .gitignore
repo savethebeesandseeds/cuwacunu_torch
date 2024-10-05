@@ -1,5 +1,6 @@
 /external/*
 /src/build/*
+/src/tests/build/*
 /src/config/*.pem
 /src/config/*.key
 /src/config/*.enc

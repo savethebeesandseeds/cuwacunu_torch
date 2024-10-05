@@ -7,7 +7,7 @@
  ../../../include/piaabo/dencryption.h \
  ../../../include/camahjucunu/exchange/exchange_types_enums.h \
  ../../../include/camahjucunu/exchange/binance/binance_mech_trade.h \
- ../../../include/camahjucunu/exchange/virtual/virtual_mech_trade.h \
+ ../../../include/camahjucunu/exchange/abstract/abstract_mech_trade.h \
  ../../../include/camahjucunu/exchange/binance/binance_utils.h \
  ../../../include/camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h \
  ../../../include/piaabo/json_parsing.h \
@@ -20,7 +20,7 @@
 ../../../include/piaabo/dencryption.h:
 ../../../include/camahjucunu/exchange/exchange_types_enums.h:
 ../../../include/camahjucunu/exchange/binance/binance_mech_trade.h:
-../../../include/camahjucunu/exchange/virtual/virtual_mech_trade.h:
+../../../include/camahjucunu/exchange/abstract/abstract_mech_trade.h:
 ../../../include/camahjucunu/exchange/binance/binance_utils.h:
 ../../../include/camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h:
 ../../../include/piaabo/json_parsing.h:

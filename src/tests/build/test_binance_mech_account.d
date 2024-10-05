@@ -8,7 +8,7 @@
  ../../../include/piaabo/darchitecture.h \
  ../../../include/camahjucunu/exchange/exchange_types_enums.h \
  ../../../include/camahjucunu/exchange/binance/binance_mech_account.h \
- ../../../include/camahjucunu/exchange/virtual/virtual_mech_account.h \
+ ../../../include/camahjucunu/exchange/abstract/abstract_mech_account.h \
  ../../../include/camahjucunu/exchange/exchange_types_account.h \
  ../../../include/camahjucunu/exchange/exchange_types_trade.h \
  ../../../include/camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h \
@@ -23,7 +23,7 @@
 ../../../include/piaabo/darchitecture.h:
 ../../../include/camahjucunu/exchange/exchange_types_enums.h:
 ../../../include/camahjucunu/exchange/binance/binance_mech_account.h:
-../../../include/camahjucunu/exchange/virtual/virtual_mech_account.h:
+../../../include/camahjucunu/exchange/abstract/abstract_mech_account.h:
 ../../../include/camahjucunu/exchange/exchange_types_account.h:
 ../../../include/camahjucunu/exchange/exchange_types_trade.h:
 ../../../include/camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h:
