@@ -120,7 +120,6 @@ void runTests() {
       JsonValue root = parser.parse();
       assert(false);  // Should not reach here
     } catch (const std::runtime_error& e) {
-      std::cout << e.what() << std::endl;
       assert(std::string(e.what()).find("Invalid value") != std::string::npos ||
         std::string(e.what()).find("Runtime error occurred") != std::string::npos);
     }

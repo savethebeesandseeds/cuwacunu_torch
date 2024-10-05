@@ -10,19 +10,24 @@ The following steps serve to generate the required keys.
 
 ```
 apt update
-apt install openssl --no.install-recommends
+apt install openssl --no-install-recommends
 openssl version
 ```
 ```
 cd ./config
-openssl genpkey -algorithm Ed25519 -out test_ed25519key.pem -aes-256-cbc
-openssl pkey -in test_ed25519key.pem -out test_ed25519pub.pem -pubout
+openssl genpkey -algorithm Ed25519 -out ed25519key.pem -aes-256-cbc
+openssl pkey -in ed25519key.pem -out ed25519pub.pem -pubout
 ```
 
 These two pem files are to be placed in ./config/ folder.
 The selected password for this files will be the global program password. 
 
+Check the ./config/.config file for theses paths correctly configured
+
 ### Obtain exchange Api Key
+You can retrive the API_KEY from the main page at Binance, 
+or log in into the testnet: https://testnet.binance.vision/
+
 Follow this steps:
 1. Login to your exchange account and select Ed25519 method
 2. Upload the ed25519pub.pem contents 
@@ -30,9 +35,10 @@ Follow this steps:
 
 ### Configure exchange Api Key
 Follow this steps:
-1. Create and/or whipe clean the contents of file ./config/aes_salt.enc
-2. Put plaintext api key (from exchange) into file ./config/exchange.key
+1. Create a new empty file named ./config/aes_salt.enc
+2. Put plaintext api_key (retrived from exchange) into file ./config/exchange.key
 
-
-### ./config/Enviroment.config file
-If you decide to change the location of any of these files, make sure to change ./config/enviroment.config file
+### Websocket API_KEY
+There is another api_key that is retrived when calling binance's "session.logon" method, 
+for the Websocket Protocol. This is separated, but the above mentioned api_key is still 
+needed to retrive the websocket api_key. 

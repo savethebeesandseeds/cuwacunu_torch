@@ -18,8 +18,6 @@
 #pragma GCC push_options
 #pragma GCC optimize ("O0")
 
-typedef std::string (*signature_fn_t)(const std::string&);
-
 namespace cuwacunu {
 namespace piaabo {
 namespace dsecurity {
@@ -46,15 +44,17 @@ void secure_delete(T* data, size_t data_size);
 
 class SecureStronghold_t {
 private:
+  bool is_authenticated;
   std::mutex stronghold_mutex;
   size_t secret_size;
   char* secret;   /* secret is the global password */
-  char* api_key;  /* api_key is the exchange key */ ... one key for testnet one key for actual
+  char* api_key;  /* api_key is the exchange key */
   EVP_PKEY* pkey;
 public:
   SecureStronghold_t();
   ~SecureStronghold_t();
   void authenticate();  /* prompt user for the secret */
+  std::string which_api_key();
   std::string Ed25519_signMessage(const std::string& message); /* sign a message with Ed25519 */
 private:
   // std::string rc4(const std::string& value); /* value to be encrypted with RC4 using secret as key */

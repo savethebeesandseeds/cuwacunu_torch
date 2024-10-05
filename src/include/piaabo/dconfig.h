@@ -6,32 +6,47 @@
 #include <string>
 #include <sstream>
 #include <mutex>
-#define DEFAULT_CONFIG_FOLDER "../config"
-#define LEARNING_CONFIG_PATH "/learning.config"
-#define ENVIROMENT_CONFIG_PATH "/environment.config"
+#define DEFAULT_CONFIG_FOLDER "../config/"
+#define DEAFAULT_CONFIG_FILE ".config"
 
 #include "piaabo/dutils.h"
+
+RUNTIME_WARNING("(dconfig.h)[] program does not read the configuration file automatically, this is to prevent unexpected defaulted config\n");
 
 namespace cuwacunu {
 namespace piaabo {
 namespace dconfig {
-using parsed_config_t = std::map<std::string, std::string>;
+
+enum class exchange_type_e {
+  REAL, TEST, NONE
+};
+
+using parsed_config_section_t = std::map<std::string, std::string>;
+using parsed_config_t = std::map<std::string, parsed_config_section_t>;
 extern std::mutex config_mutex;
 
 struct config_space_t {
 public:
   static class _init {public:_init(){config_space_t::init();}}_initializer;
   /* struct variables */
+  static exchange_type_e exchange_type;
   static std::string config_folder;
-  static std::string learning_config_path;
-  static std::string environment_config_path;
-  static parsed_config_t learning_config;
-  static parsed_config_t environment_config;
+  static std::string config_file_path;
+  static parsed_config_t config;
+
 
   /* utilities */
-  static parsed_config_t read_config(std::string conf_path);
-  static void update_config(const char *config_folder = DEFAULT_CONFIG_FOLDER);
-  static std::vector<std::string> active_symbols();
+  static parsed_config_t read_config(const std::string& conf_path);
+  static void update_config();
+  static void change_config_file(const char *config_folder = DEFAULT_CONFIG_FOLDER, const char *config_file = DEAFAULT_CONFIG_FILE);
+  static bool validate_config();
+
+  /* access methods */
+  static std::string websocket_url();
+  static std::string api_key();
+  static std::string aes_salt();
+  static std::string Ed25519_pkey();
+
 private:
   static void finit();
   static void init();
@@ -39,6 +54,3 @@ private:
 } /* namespace dconfig */
 } /* namespace piaabo */
 } /* namespace cuwacunu */
-extern cuwacunu::piaabo::dconfig::parsed_config_t* environment_config;
-extern cuwacunu::piaabo::dconfig::parsed_config_t* learning_config;
-extern void (*update_config)(const char *config_folder);

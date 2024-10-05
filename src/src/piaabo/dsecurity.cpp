@@ -4,6 +4,7 @@
 #define WRONG_AUTH "Wrong password."
 #define CORRECT_AUTH "Authentication success."
 #define FATAL_AUTH "Password was too long and has been truncated, fatal termination."
+#define FATAL_NO_AUTH_SIGNATURE "Trying to sign a message without prior authentication, fatal termination."
 #define MAX_PASSWORD_SIZE 1024
 #define FILESALT "SEED"
 
@@ -13,12 +14,12 @@ RUNTIME_WARNING("(dsecurity.h)[] add second factor authentication \n");
 namespace cuwacunu {
 namespace piaabo {
 namespace dsecurity {
-/* secure all current and future memory */ void secure_all_code()                       { if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) { log_fatal("Total Memory locking failed. \n"); } else { log_dbg("Locking all program memory. \n"); } }
-/* Reset all current and future memory */  void relax_all_code()                        { if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) { log_fatal("Failed to unlock all Memory. \n"); } else { log_warn("Unlocking all program memory. \n"); } }
-/* Set process as non-dumpable */          void secure_non_dumpable_code()              { if (prctl(PR_SET_DUMPABLE, 0) != 0) { log_fatal("Failed to set process as non-dumpable. \n"); } }
-/* Reset process dumpable status */        void relax_non_dumpable_code()               { if (prctl(PR_SET_DUMPABLE, 1) != 0) { log_fatal("Failed to reset process dumpable status. \n"); } }
-/* Lock the memory to prevent swapping */  void secure_mlock(const void *data, size_t size)   { if (mlock(data, size)   != 0) { log_fatal("Memory locking failed. \n"); } }
-/* Unlock the memory */                    void secure_munlock(const void *data, size_t size) { if (munlock(data, size) != 0) { log_fatal("Memory unlocking failed. \n"); } }
+/* secure all current and future memory */ void secure_all_code()                       { if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) { log_secure_fatal("Total Memory locking failed. \n"); } else { log_secure_dbg("Locking all program memory. \n"); } }
+/* Reset all current and future memory */  void relax_all_code()                        { if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) { log_secure_fatal("Failed to unlock all Memory. \n"); } else { log_secure_warn("Unlocking all program memory. \n"); } }
+/* Set process as non-dumpable */          void secure_non_dumpable_code()              { if (prctl(PR_SET_DUMPABLE, 0) != 0) { log_secure_fatal("Failed to set process as non-dumpable. \n"); } }
+/* Reset process dumpable status */        void relax_non_dumpable_code()               { if (prctl(PR_SET_DUMPABLE, 1) != 0) { log_secure_fatal("Failed to reset process dumpable status. \n"); } }
+/* Lock the memory to prevent swapping */  void secure_mlock(const void *data, size_t size)   { if (mlock(data, size)   != 0) { log_secure_fatal("Memory locking failed. \n"); } }
+/* Unlock the memory */                    void secure_munlock(const void *data, size_t size) { if (munlock(data, size) != 0) { log_secure_fatal("Memory unlocking failed. \n"); } }
 
 /* Secure set memory to zero */
 void secure_zero_memory(void *ptr, size_t size) {
@@ -31,7 +32,7 @@ template <typename T>
 T* secure_allocate(size_t data_size) {
   T* data = new T[data_size];
   if (!data) {
-    log_fatal("(secure_allocate) Memory allocation failed.\n");
+    log_secure_fatal("(secure_allocate) Memory allocation failed.\n");
     return nullptr;
   }
   secure_zero_memory(data, data_size * sizeof(T));
@@ -51,18 +52,18 @@ void secure_delete(T* data, size_t data_size) {
 
 /* Write to file securing memory */
 void secure_write_to_file(const char* filename, const unsigned char* data, size_t size) {
-  std::ofstream file(filename, std::ios::out | std::ios::binary);
-  if (!file) { log_fatal("(secure_write_to_file) Cannot open file to write: %s\n", filename); }
+  std::ofstream file(filename, std::ios::out | std::ios::binary | std::ios::trunc);
+  if (!file) { log_secure_fatal("(secure_write_to_file) Cannot open file to write: %s\n", filename); }
 
   file.write(reinterpret_cast<const char*>(data), size);
-  if (!file) { log_fatal("(secure_write_to_file) Cannot write to file: %s\n", filename); }
+  if (!file) { log_secure_fatal("(secure_write_to_file) Cannot write to file: %s\n", filename); }
   file.close();
 }
 
 /* Read from file securing memory */
 unsigned char* secure_read_from_file(const char* filename, size_t& size) {
   std::ifstream file(filename, std::ios::in | std::ios::binary);
-  if (!file) { log_fatal("(secure_read_from_file) Cannot open file to read: %s\n", filename); }
+  if (!file) { log_secure_fatal("(secure_read_from_file) Cannot open file to read: %s\n", filename); }
 
   file.seekg(0, std::ios::end);
   size = file.tellg();
@@ -70,36 +71,18 @@ unsigned char* secure_read_from_file(const char* filename, size_t& size) {
 
   unsigned char* fileContents = secure_allocate<unsigned char>(size);
 
-  if (!fileContents) { log_fatal("(secure_read_from_file) Memory allocation failed.\n"); }
+  if (!fileContents) { log_secure_fatal("(secure_read_from_file) Memory allocation failed.\n"); }
 
   file.read(reinterpret_cast<char*>(fileContents), size);
-  if (!file) { log_fatal("(secure_read_from_file) Cannot read from file: %s\n", filename); }
+  if (!file) { log_secure_fatal("(secure_read_from_file) Cannot read from file: %s\n", filename); }
   file.close();
   return fileContents;
 }
 
-/* Does not work on windows hosting a linux docker 
-// Set extended file attributes for a file 
-void set_file_extended_attribute(const char* filename, const char* name, const char* value) {
-  if (setxattr(filename, name, value, strlen(value) + 1, 0) != 0) {
-    log_fatal("(set_file_extended_attribute) Error setting attribute[%s], on file %s \n", name, filename);
-  }
-}
-
-// Get extended file attributes for a file
-std::string get_file_extended_attribute(const char* filename, const char* name) {
-  char buffer[1024];
-  if (getxattr(filename, name, buffer, sizeof(buffer)) != 0) {
-    log_warn("(get_file_extended_attribute) not found attribute[%s], on file %s \n", name, filename);
-    return "";
-  }
-  return buffer;
-}
-*/
-
 /* secure data struct */
 SecureStronghold_t::SecureStronghold_t() 
-  : stronghold_mutex(), 
+  : is_authenticated(false),
+    stronghold_mutex(), 
     secret_size(MAX_PASSWORD_SIZE), 
     secret(secure_allocate<char>(secret_size)),
     api_key(secure_allocate<char>(secret_size)) {
@@ -123,6 +106,7 @@ SecureStronghold_t::~SecureStronghold_t() {
 /* Safely set secret value from user prompt */
 void SecureStronghold_t::authenticate() {
   secure_non_dumpable_code();
+  is_authenticated = false;
   stronghold_mutex.lock();
   /* local variables */
   struct termios oldt, newt;
@@ -149,7 +133,7 @@ void SecureStronghold_t::authenticate() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); /* Ignores the rest of the line */
     stronghold_mutex.unlock();
     /* return on fatal */
-    log_fatal("%s\n", FATAL_AUTH);
+    log_secure_fatal("%s\n", FATAL_AUTH);
     
     /* reucurrent call */
     stronghold_mutex.unlock();
@@ -165,7 +149,7 @@ void SecureStronghold_t::authenticate() {
   /*            validate against ssl private file                   */
   /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- -- */
   /* read private key file */
-  pkey = dencryption::loadPrivateKey((*environment_config)["Ed25519_pkey"].c_str(), static_cast<const char*>(secret));
+  pkey = dencryption::loadPrivateKey(cuwacunu::piaabo::dconfig::config_space_t::Ed25519_pkey().c_str(), static_cast<const char*>(secret));
 
   if (!pkey) {
     auto minDuration = std::chrono::seconds(3);
@@ -173,7 +157,7 @@ void SecureStronghold_t::authenticate() {
     if (elapsed < minDuration) {
       std::this_thread::sleep_for(minDuration - elapsed);
     }
-    log_warn("%s\n", WRONG_AUTH);
+    log_secure_warn("%s\n", WRONG_AUTH);
     
     /* reucurrent call */
     stronghold_mutex.unlock();
@@ -186,13 +170,12 @@ void SecureStronghold_t::authenticate() {
   std::this_thread::sleep_for(std::chrono::milliseconds(11 + RAND_bytes(reinterpret_cast<unsigned char*>(&random_sleep), sizeof(random_sleep)) && (random_sleep % 311)));
 
   /* notify correct auth */
-  log_info("%s\n", CORRECT_AUTH);
-  
+  log_secure_info("%s\n", CORRECT_AUTH);
   /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- -- */
   /*               Read and decode api key file                     */
   /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- -- */
-  const char* api_key_filename = (*environment_config)["EXCHANGE_api_filename"].c_str();
-  const char* aes_salt_filename = (*environment_config)["AES_salt"].c_str();
+  std::string api_key_filename = cuwacunu::piaabo::dconfig::config_space_t::api_key();
+  std::string aes_salt_filename = cuwacunu::piaabo::dconfig::config_space_t::aes_salt();
   
   unsigned char* key       = secure_allocate<unsigned char>(AES_KEY_LEN);
   unsigned char* salt      = secure_allocate<unsigned char>(AES_SALT_LEN);
@@ -202,8 +185,8 @@ void SecureStronghold_t::authenticate() {
   size_t api_key_filesize = 0, aes_salt_filesize = 0;
 
   /* read api key contents */
-  unsigned char* api_key_filecontents = secure_read_from_file(api_key_filename, api_key_filesize);
-  unsigned char* aes_salt_filecontents = secure_read_from_file(aes_salt_filename, aes_salt_filesize);
+  unsigned char* api_key_filecontents = secure_read_from_file(api_key_filename.c_str(), api_key_filesize);
+  unsigned char* aes_salt_filecontents = secure_read_from_file(aes_salt_filename.c_str(), aes_salt_filesize);
 
   /* encription variables */
   unsigned char* decrypted;
@@ -234,7 +217,7 @@ void SecureStronghold_t::authenticate() {
 
       stronghold_mutex.unlock();
       relax_non_dumpable_code();
-      log_fatal("Non-complient Exchange API Key file: %s, please follow instructions on ../config/README.md\n", api_key_filename);
+      log_secure_fatal("Non-complient Exchange API Key file: %s, please follow instructions on ../config/README.md\n", api_key_filename.c_str());
     }
     /* assign the salt */
     memcpy(salt, aes_salt_filecontents, AES_SALT_LEN);
@@ -247,6 +230,7 @@ void SecureStronghold_t::authenticate() {
 
   /* save the value of the api_key */
   memcpy(api_key, reinterpret_cast<char*>(decrypted), decrypted_len);
+  api_key[decrypted_len] = '\0';
 
   /* Encrypt the file back with a new salt (this makes the file change everytime is read) */
   RAND_bytes(salt, AES_SALT_LEN);
@@ -257,10 +241,10 @@ void SecureStronghold_t::authenticate() {
   encrypted = dencryption::aes_encrypt(decrypted, decrypted_len, key, iv, encrypted_len);
 
   /* save the key back to the file */
-  secure_write_to_file(api_key_filename, encrypted, encrypted_len);
+  secure_write_to_file(api_key_filename.c_str(), encrypted, encrypted_len);
 
   /* save the salt to a file */
-  secure_write_to_file(aes_salt_filename, salt, AES_SALT_LEN);
+  secure_write_to_file(aes_salt_filename.c_str(), salt, AES_SALT_LEN);
 
   /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- -- */
   /*                      Finalize                                  */
@@ -282,19 +266,28 @@ void SecureStronghold_t::authenticate() {
   api_key_filesize  = 0;
   aes_salt_filesize = 0;
 
+  is_authenticated = true;
   stronghold_mutex.unlock();
   relax_non_dumpable_code();
+}
+
+/* retrive the api_key */
+std::string SecureStronghold_t::which_api_key() {
+  return std::string(api_key);
 }
 
 /* Safely sign key data from key file */
 std::string SecureStronghold_t::Ed25519_signMessage(const std::string& message) {
   secure_non_dumpable_code();
+  if(!is_authenticated) {
+    log_secure_fatal("%s\n", FATAL_NO_AUTH_SIGNATURE);
+  }
   stronghold_mutex.lock();
-  std::string signature = dencryption::Ed25519_signMessage(message, pkey);
+  std::string signature = cuwacunu::piaabo::dencryption::Ed25519_signMessage(message, pkey);
   stronghold_mutex.unlock();
   relax_non_dumpable_code();
 
-  return signature;
+  return cuwacunu::piaabo::dencryption::base64Encode(signature);
 }
 /* initialize */
 SecureStronghold_t SecureVault = SecureStronghold_t();

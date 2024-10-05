@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <random>
 #include <chrono>
+#include <cstdarg>
 
 #define LOG_FILE stdout
 #define LOG_ERR_FILE stderr
@@ -95,6 +96,22 @@ void sanitize_string(char* input, size_t max_len); /* Function to sanitize input
 std::string trim_string(const std::string& str);
 
 /**
+ * @brief Joins a vector of strings together by a delimiter
+ *
+ * @param vec The input vector of strings to be joined.
+ * @param delimiter The delimiter string to put in between.
+ * @return A new `std::string` with all the elements in vec joined by delimier.
+ *
+ * @example
+ * ```cpp
+ * std::string vec = {"Hello","World!"};
+ * std::string delimiter = ", ";
+ * // returns "Hello, World!"
+ */
+std::string join_strings(const std::vector<std::string>& vec, const std::string& delimiter = ", ");
+std::string join_strings_ch(const std::vector<std::string>& vec, const char delimiter = ',');
+
+/**
  * @brief Splits a string into tokens based on a specified delimiter.
  *
  * This function takes an input string and a delimiter character, then
@@ -132,6 +149,7 @@ std::vector<std::string> split_string(const std::string& str, char delimiter);
  * ```
  */
 std::string to_hex_string(const unsigned char* data, size_t size);
+std::string to_hex_string(const std::string data);
 
 /**
  * @brief Replaces all occurrences of a substring with another string within a given string.
@@ -173,6 +191,30 @@ const char* cthread_id();
  */
 std::string generate_random_string(const std::string& format_str);
 
+/**
+ * @brief Formats a string using a printf-style format string and returns it as a std::string.
+ *
+ * This function takes a format string and a variable number of arguments, formats them
+ * similarly to how `sprintf` works, and returns the result as a `std::string`. It safely
+ * handles dynamic memory allocation to accommodate the formatted string of any length.
+ *
+ * @param format The printf-style format string.
+ * @param ...    Variable arguments corresponding to the format specifiers in the format string.
+ *
+ * @return A `std::string` containing the formatted text.
+ *
+ * @throws std::runtime_error If an error occurs during formatting.
+ *
+ * @example
+ * ```cpp
+ * int value = 42;
+ * double pi = 3.14159;
+ * std::string formatted = string_format("Integer: %d, Double: %.2f", value, pi);
+ * // formatted == "Integer: 42, Double: 3.14"
+ * ```
+ */
+std::string string_format(const char* format, ...);
+
 } /* namespace piaabo */
 } /* namespace cuwacunu */
 
@@ -203,16 +245,16 @@ std::string generate_random_string(const std::string& format_str);
   }\
 }
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
-#define log_info(...) {\
+#define log_info(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
   fprintf(LOG_FILE,"[%s0x%s%s]: ",\
     ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET);\
   fprintf(LOG_FILE,__VA_ARGS__);\
   fflush(LOG_FILE);\
-}
+} while(false)
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
-#define log_dbg(...) {\
+#define log_dbg(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
   fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sDEBUG%s: ",\
@@ -220,9 +262,9 @@ std::string generate_random_string(const std::string& format_str);
     ANSI_COLOR_Bright_Blue,ANSI_COLOR_RESET);\
   fprintf(LOG_ERR_FILE,__VA_ARGS__);\
   fflush(LOG_ERR_FILE);\
-}
+} while(false)
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
-#define log_err(...) {\
+#define log_err(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
   fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sERROR%s: ",\
@@ -230,20 +272,35 @@ std::string generate_random_string(const std::string& format_str);
     ANSI_COLOR_ERROR,ANSI_COLOR_RESET);\
   fprintf(LOG_ERR_FILE,__VA_ARGS__);\
   fflush(LOG_ERR_FILE);\
-}
+} while(false)
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
-#define log_fatal(...) {\
+#define log_fatal(...) do {\
   wrap_log_sys_err();\
-  LOCK_GUARD(log_mutex);\
-  fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sFATAL%s: ",\
-    ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
-    ANSI_COLOR_FATAL,ANSI_COLOR_RESET);\
-  fprintf(LOG_ERR_FILE,__VA_ARGS__);\
-  fflush(LOG_ERR_FILE);\
+  { \
+    LOCK_GUARD(log_mutex);\
+    fprintf(LOG_ERR_FILE,"[%s0x%s%s]: %sFATAL%s: ",\
+      ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
+      ANSI_COLOR_FATAL,ANSI_COLOR_RESET);\
+    fprintf(LOG_ERR_FILE,__VA_ARGS__);\
+    fflush(LOG_ERR_FILE);\
+  } \
   THROW_RUNTIME_ERROR();\
-}
+} while(false)
 /* This log functionality marks the thread id, so that log messages are linked to the request thread */
-#define log_warn(...) {\
+#define log_terminate_gracefully(...) do {\
+  wrap_log_sys_err();\
+  { \
+    LOCK_GUARD(log_mutex);\
+    fprintf(LOG_WARN_FILE,"[%s0x%s%s]: %sTERMINATION%s: ",\
+      ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
+      ANSI_COLOR_WARNING,ANSI_COLOR_RESET);\
+    fprintf(LOG_WARN_FILE,__VA_ARGS__);\
+    fflush(LOG_WARN_FILE);\
+  } \
+  THROW_RUNTIME_FINALIZATION();\
+} while(false)
+/* This log functionality marks the thread id, so that log messages are linked to the request thread */
+#define log_warn(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
   fprintf(LOG_WARN_FILE,"[%s0x%s%s]: %sWARNING%s: ",\
@@ -251,92 +308,94 @@ std::string generate_random_string(const std::string& format_str);
     ANSI_COLOR_WARNING,ANSI_COLOR_RESET);\
   fprintf(LOG_WARN_FILE,__VA_ARGS__);\
   fflush(LOG_WARN_FILE);\
-}
+} while(false)
 
 /* Secure logging macro */
-#define log_secure_dbg(...) {\
+#define log_secure_dbg(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
-  char temp[1024];\
+  char temp[2048];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sDEBUG%s: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
     ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET);\
-  char formatted_message[1024];\
+  char formatted_message[2048];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
   size_t temp_len = strlen(temp);\
   snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(2048 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
-}
+} while(false)
 
 /* Secure logging macro */
-#define log_secure_info(...) {\
+#define log_secure_info(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
-  char temp[1024];\
+  char temp[2048];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET);\
-  char formatted_message[1024];\
+  char formatted_message[2048];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
   size_t temp_len = strlen(temp);\
   snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(2048 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
-}
+} while(false)
 
 /* Secure logging macro */
-#define log_secure_warning(...) {\
+#define log_secure_warn(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
-  char temp[1024];\
+  char temp[2048];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sWARNING%s: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
     ANSI_COLOR_WARNING, ANSI_COLOR_RESET);\
-  char formatted_message[1024];\
+  char formatted_message[2048];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
   size_t temp_len = strlen(temp);\
   snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(2048 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
-}
+} while(false)
 
 /* Secure logging macro */
-#define log_secure_error(...) {\
+#define log_secure_error(...) do {\
   wrap_log_sys_err();\
   LOCK_GUARD(log_mutex);\
-  char temp[1024];\
+  char temp[2048];\
   snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sERROR%s: ", \
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
     ANSI_COLOR_ERROR, ANSI_COLOR_RESET);\
-  char formatted_message[1024];\
+  char formatted_message[2048];\
   snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
   size_t temp_len = strlen(temp);\
   snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
   cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
+  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(2048 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
   fflush(LOG_ERR_FILE);\
-}
+} while(false)
 
 /* Secure logging macro */
-#define log_secure_fatal(...) {\
+#define log_secure_fatal(...) do {\
   wrap_log_sys_err();\
-  LOCK_GUARD(log_mutex);\
-  char temp[1024];\
-  snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sFATAL%s: ", \
-    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
-    ANSI_COLOR_FATAL, ANSI_COLOR_RESET);\
-  char formatted_message[1024];\
-  snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
-  size_t temp_len = strlen(temp);\
-  snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
-  cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
-  fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(1024 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
-  fflush(LOG_ERR_FILE);\
+  { \
+    LOCK_GUARD(log_mutex);\
+    char temp[2048];\
+    snprintf(temp, sizeof(temp), "[%s0x%s%s]: %sFATAL%s: ", \
+      ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
+      ANSI_COLOR_FATAL, ANSI_COLOR_RESET);\
+    char formatted_message[2048];\
+    snprintf(formatted_message, sizeof(formatted_message), __VA_ARGS__);\
+    size_t temp_len = strlen(temp);\
+    snprintf(temp + temp_len, sizeof(temp) - temp_len, "%s", formatted_message);\
+    cuwacunu::piaabo::sanitize_string(temp, sizeof(temp));\
+    fprintf(LOG_ERR_FILE, "%s%s%s", temp, strlen(temp)>=(2048 - 1) ? "...[message truncated]" : "", temp[strlen(temp)-1] != '\n' ? "\n" : "");\
+    fflush(LOG_ERR_FILE);\
+  } \
   THROW_RUNTIME_ERROR();\
-}
+} while(false)
 
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
 /* Macro to capture the current high-resolution time point */
@@ -451,5 +510,6 @@ std::string generate_random_string(const std::string& format_str);
 struct RuntimeWarning { RuntimeWarning(const char *msg) { log_warn(msg); }};
 #define RUNTIME_WARNING(msg) static RuntimeWarning CONCAT(rw_, __COUNTER__) (msg)
 #define THROW_RUNTIME_ERROR() { throw std::runtime_error("Runtime error occurred"); }
+#define THROW_RUNTIME_FINALIZATION() { std::exit(0); }
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
 #define ASSERT(condition, message) do {if (!(condition)) {log_secure_fatal(message);} } while (false)

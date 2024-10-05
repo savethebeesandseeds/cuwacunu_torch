@@ -26,6 +26,8 @@ EVP_PKEY* loadPrivateKey(const char* filename, const char* password);
 void freePrivateKey(EVP_PKEY* pkey);
 /* Function to sign a message using an Ed25519 private key */
 std::string Ed25519_signMessage(const std::string& message, EVP_PKEY* pkey);
+/* function to encode in base64 */
+std::string base64Encode(const std::string& data);
 } /* namespace dencryption */
 } /* namespace piaabo */
 } /* namespace cuwacunu */

@@ -26,6 +26,7 @@ int main() {
   unsigned char* decrypted = cuwacunu::piaabo::dencryption::aes_decrypt(encrypted, encrypted_len, key, iv, decrypted_len);
 
   std::string result(reinterpret_cast<char*>(decrypted), decrypted_len);
+  std::cout << "Original  text: " << std::string(data) << std::endl;
   std::cout << "Decrypted text: " << result << std::endl;
 
   /* Clean up */

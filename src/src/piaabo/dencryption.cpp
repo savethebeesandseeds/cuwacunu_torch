@@ -17,29 +17,60 @@ void derive_key_iv(const char* passphrase, unsigned char* key, unsigned char* iv
 
 /* AES encryption function */
 unsigned char* aes_encrypt(const unsigned char* plaintext, size_t plaintext_len, const unsigned char* key, const unsigned char* iv, size_t& ciphertext_len) {
-  AES_KEY enc_key;
-  AES_set_encrypt_key(key, 256, &enc_key);
+    AES_KEY enc_key;
+    AES_set_encrypt_key(key, 256, &enc_key);
 
-  size_t len = ((plaintext_len + AES_BLOCK_SIZE) / AES_BLOCK_SIZE) * AES_BLOCK_SIZE;
-  unsigned char* ciphertext = dsecurity::secure_allocate<unsigned char>(len);
+    /* Calculate padded length */
+    size_t block_size = AES_BLOCK_SIZE;
+    size_t padding_len = block_size - (plaintext_len % block_size);
+    size_t len = plaintext_len + padding_len;
 
-  AES_cbc_encrypt(plaintext, ciphertext, plaintext_len, &enc_key, const_cast<unsigned char*>(iv), AES_ENCRYPT);
-  ciphertext_len = len;
-  return ciphertext;
+    /* Allocate memory for padded plaintext */
+    unsigned char* padded_plaintext = dsecurity::secure_allocate<unsigned char>(len);
+
+    /* Copy plaintext to padded_plaintext */
+    memcpy(padded_plaintext, plaintext, plaintext_len);
+
+    /* Add PKCS#7 padding */
+    memset(padded_plaintext + plaintext_len, padding_len, padding_len);
+
+    /* Allocate memory for ciphertext */
+    unsigned char* ciphertext = dsecurity::secure_allocate<unsigned char>(len);
+
+    /* Encrypt the padded plaintext */
+    AES_cbc_encrypt(padded_plaintext, ciphertext, len, &enc_key, const_cast<unsigned char*>(iv), AES_ENCRYPT);
+
+    /* Set ciphertext length */
+    ciphertext_len = len;
+
+    /* Clean up */
+    dsecurity::secure_delete<unsigned char>(padded_plaintext, len);
+
+    return ciphertext;
 }
+
 
 /* AES decryption function */
 unsigned char* aes_decrypt(const unsigned char* ciphertext, size_t ciphertext_len, const unsigned char* key, const unsigned char* iv, size_t& plaintext_len) {
-  AES_KEY dec_key;
-  AES_set_decrypt_key(key, 256, &dec_key);
+    AES_KEY dec_key;
+    AES_set_decrypt_key(key, 256, &dec_key);
 
-  unsigned char* plaintext = dsecurity::secure_allocate<unsigned char>(ciphertext_len);
-  AES_cbc_encrypt(ciphertext, plaintext, ciphertext_len, &dec_key, const_cast<unsigned char*>(iv), AES_DECRYPT);
+    /* Allocate memory for plaintext */
+    unsigned char* plaintext = dsecurity::secure_allocate<unsigned char>(ciphertext_len);
 
-  /* Remove padding */
-  size_t pad = plaintext[ciphertext_len - 1];
-  plaintext_len = (pad < 1 || pad > AES_BLOCK_SIZE) ? ciphertext_len : ciphertext_len - pad;
-  return plaintext;
+    /* Decrypt the ciphertext */
+    AES_cbc_encrypt(ciphertext, plaintext, ciphertext_len, &dec_key, const_cast<unsigned char*>(iv), AES_DECRYPT);
+
+    /* Remove PKCS#7 padding */
+    size_t pad = plaintext[ciphertext_len - 1];
+    if (pad < 1 || pad > AES_BLOCK_SIZE) {
+        /* Invalid padding */
+        plaintext_len = ciphertext_len;
+    } else {
+        plaintext_len = ciphertext_len - pad;
+    }
+
+    return plaintext;
 }
 
 /* use openssl to read private key file */
@@ -97,6 +128,27 @@ std::string Ed25519_signMessage(const std::string& message, EVP_PKEY* pkey) {
   EVP_MD_CTX_free(mdctx);
 
   return signature;
+}
+
+/* function to encode in base64 */
+std::string base64Encode(const std::string& data) {
+  BIO* bio, *b64;
+  BUF_MEM* bufferPtr;
+
+  b64 = BIO_new(BIO_f_base64());
+  // Do not use newlines to flush buffer
+  BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL); 
+  bio = BIO_new(BIO_s_mem());
+  bio = BIO_push(b64, bio);
+
+  BIO_write(bio, data.c_str(), data.length());
+  BIO_flush(bio);
+  BIO_get_mem_ptr(bio, &bufferPtr);
+
+  std::string encodedData(bufferPtr->data, bufferPtr->length);
+  BIO_free_all(bio);
+
+  return encodedData;
 }
 
 } /* namespace dencryption */

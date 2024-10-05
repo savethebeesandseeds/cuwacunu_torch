@@ -2,17 +2,18 @@
 #include "piaabo/dconfig.h"
 
 int main() {
-  const char* config_folder = "/src/config";
-  update_config(config_folder);
+  const char* config_folder = "/src/config/";
+  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
+  cuwacunu::piaabo::dconfig::config_space_t::update_config();
 
   /* */
-  log_info("%s\n", (*environment_config)["ACTIVE_SYMBOLS"].c_str());
+  log_info("Reading any configuration field: %s\n", cuwacunu::piaabo::dconfig::config_space_t::websocket_url().c_str());
   std::cout << "Press Enter to stop execution...";
   std::cin.get();
   
   /* */
-  update_config(config_folder);
-  log_info("%s\n", (*environment_config)["ACTIVE_SYMBOLS"].c_str());
+  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  log_info("Reading any configuration field: %s\n", cuwacunu::piaabo::dconfig::config_space_t::websocket_url().c_str());
 
   log_info("Test success.\n");
   

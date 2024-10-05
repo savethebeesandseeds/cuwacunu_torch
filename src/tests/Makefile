@@ -21,16 +21,22 @@ test_dencryption:
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dencryption
 test_json_parsing:
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_json_parsing
-test_exchange_serialization: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_serialization
-test_exchange_deserialization: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_deserialization
+test_exchange_types_serialization: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_types_serialization
+test_exchange_types_deserialization: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_types_deserialization
 test_websocket: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_websocket
 test_binance_testnet: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_testnet
-test_binance_mech: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech
+test_binance_mech_server: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_server
+test_binance_mech_data: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_data
+test_binance_mech_account: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_account
+test_binance_mech_trade: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_trade
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

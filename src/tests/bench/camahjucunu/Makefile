@@ -13,19 +13,19 @@ EXTENDED_LINK_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUA
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_exchange_serialization test_exchange_serialization
-$(TEST_BUILD)/test_exchange_serialization: $(HERE_PATH)/test_exchange_serialization.cpp
+.PHONY: $(TEST_BUILD)/test_exchange_types_serialization test_exchange_types_serialization
+$(TEST_BUILD)/test_exchange_types_serialization: $(HERE_PATH)/test_exchange_types_serialization.cpp
 	@$(EXTENDED_LINK_CMD) 
-	$(RUN_MODE) $(TEST_BUILD)/test_exchange_serialization
-test_exchange_serialization: $(TEST_BUILD)/test_exchange_serialization
+	$(RUN_MODE) $(TEST_BUILD)/test_exchange_types_serialization
+test_exchange_types_serialization: $(TEST_BUILD)/test_exchange_types_serialization
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_exchange_deserialization test_exchange_deserialization
-$(TEST_BUILD)/test_exchange_deserialization: $(HERE_PATH)/test_exchange_deserialization.cpp
-	@$(EXTENDED_LINK_CMD) > make.log
-	$(RUN_MODE) $(TEST_BUILD)/test_exchange_deserialization
-test_exchange_deserialization: $(TEST_BUILD)/test_exchange_deserialization
+.PHONY: $(TEST_BUILD)/test_exchange_types_deserialization test_exchange_types_deserialization
+$(TEST_BUILD)/test_exchange_types_deserialization: $(HERE_PATH)/test_exchange_types_deserialization.cpp
+	@$(EXTENDED_LINK_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_exchange_types_deserialization
+test_exchange_types_deserialization: $(TEST_BUILD)/test_exchange_types_deserialization
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: $(TEST_BUILD)/test_binance_testnet test_binance_testnet
@@ -44,16 +44,40 @@ test_websocket: $(TEST_BUILD)/test_websocket
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_binance_mech test_binance_mech
-$(TEST_BUILD)/test_binance_mech: $(HERE_PATH)/test_binance_mech.cpp
+.PHONY: $(TEST_BUILD)/test_binance_mech_server test_binance_mech_server
+$(TEST_BUILD)/test_binance_mech_server: $(HERE_PATH)/test_binance_mech_server.cpp
 	@$(EXTENDED_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_binance_mech
-test_binance_mech: $(TEST_BUILD)/test_binance_mech
+	$(RUN_MODE) $(TEST_BUILD)/test_binance_mech_server
+test_binance_mech_server: $(TEST_BUILD)/test_binance_mech_server
+# -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_binance_mech_data test_binance_mech_data
+$(TEST_BUILD)/test_binance_mech_data: $(HERE_PATH)/test_binance_mech_data.cpp
+	@$(EXTENDED_LINK_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_binance_mech_data
+test_binance_mech_data: $(TEST_BUILD)/test_binance_mech_data
+# -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_binance_mech_account test_binance_mech_account
+$(TEST_BUILD)/test_binance_mech_account: $(HERE_PATH)/test_binance_mech_account.cpp
+	@$(EXTENDED_LINK_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_binance_mech_account
+test_binance_mech_account: $(TEST_BUILD)/test_binance_mech_account
+# -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_binance_mech_trade test_binance_mech_trade
+$(TEST_BUILD)/test_binance_mech_trade: $(HERE_PATH)/test_binance_mech_trade.cpp
+	@$(EXTENDED_LINK_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_binance_mech_trade
+test_binance_mech_trade: $(TEST_BUILD)/test_binance_mech_trade
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(TEST_BUILD)/test_exchange_serialization $(TEST_BUILD)/test_exchange_deserialization $(TEST_BUILD)/test_websocket $(TEST_BUILD)/test_binance_mech
+all: $(TEST_BUILD)/test_exchange_types_serialization $(TEST_BUILD)/test_exchange_types_deserialization $(TEST_BUILD)/test_websocket $(TEST_BUILD)/test_binance_mech_server $(TEST_BUILD)/test_binance_mech_data $(TEST_BUILD)/test_binance_mech_account $(TEST_BUILD)/test_binance_mech_trade 
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

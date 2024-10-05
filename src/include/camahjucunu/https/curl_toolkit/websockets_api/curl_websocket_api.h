@@ -21,7 +21,7 @@ RUNTIME_WARNING("(curl_websocket_api.h)[] TX_deque for orders, might delay the s
 RUNTIME_WARNING("(curl_websocket_api.h)[] many curl options are uncommented, this needs to be reviewed.\n");
 RUNTIME_WARNING("(curl_websocket_api.h)[ws_write] add encoding support for ws_write_text.\n");
 RUNTIME_WARNING("(curl_websocket_api.h)[] log the times and redirection count (curl_easy_getinfo()).\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] separate the header from the source.\n");
+RUNTIME_WARNING("(curl_websocket_api.h)[] split header into implementation file .cpp (maybe not).\n");
 RUNTIME_WARNING("(curl_websocket_api.h)[] fix the possible infinite waits.\n");
 RUNTIME_WARNING("(curl_websocket_api.h)[] CURLOPT_BUFFERSIZE has a maximun, breaking large data responses in chunks on websocket_RX_callback, a server might mix these responses, making it impossible to retrive the complete message (binance seems to respect this alright).\n");
 RUNTIME_WARNING("(curl_websocket_api.h)[] websocket_RX_callback expects data to be a valid json format (complete or separated in multiple chunks).\n");
@@ -35,6 +35,8 @@ RUNTIME_WARNING("(curl_websocket_api.h)[] websocket_RX_callback expects data to 
 #define WS_INTERNAL_SERVER_ERROR_TERMINATION  (uint16_t) 0x3F3  /* Internal server error; the server is terminating the connection due to a problem it encountered. */
 
 #define FRAME_ID_FORMAT "xxxx-xxxx-xxxx"
+#define CLOSE_FRAME_ID_FORMAT "close-xxxx-xxxx"
+
 #define WS_MAX_WAIT std::chrono::seconds(5)
 
 namespace cuwacunu {
@@ -110,21 +112,23 @@ public:
   static void init() {
     log_info("Initializing WebsocketAPI \n");
 
-    LOCK_GUARD(WebsocketAPI::global_ws_mutex);
-
-    /* make sure curl is globaly initialized */
-    dcurl_global_init();
-
     /* trigger a cleanup process at the end */
     std::atexit(WebsocketAPI::finit);
+
+    {
+      LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+      /* make sure curl is globaly initialized */
+      dcurl_global_init();
+    }
   }
   static void finit() {
     log_info("[success] Finalizing WebsocketAPI \n");
     
-    LOCK_GUARD(WebsocketAPI::global_ws_mutex);
-
-    /* do a curl global cleanup */
-    dcurl_global_cleanup();
+    {
+      LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+      /* do a curl global cleanup */
+      dcurl_global_cleanup();
+    }
   }
 private:
 /* 
@@ -464,7 +468,7 @@ public:
       memcpy(frame_to_deque.frame_data.data(), &close_code, sizeof(close_code));
       frame_to_deque.frame_size = frame_to_deque.frame_data.size();
       frame_to_deque.frame_type = CURLWS_CLOSE;
-      frame_to_deque.frame_id = frame_id != "" ? frame_id : cuwacunu::piaabo::generate_random_string(FRAME_ID_FORMAT);
+      frame_to_deque.frame_id = frame_id != "" ? frame_id : cuwacunu::piaabo::generate_random_string(CLOSE_FRAME_ID_FORMAT);
       frame_to_deque.local_timestamp = std::chrono::system_clock::now();
     }
     /* push to deque */

@@ -10,7 +10,7 @@ namespace cuwacunu {
 namespace piaabo {
 
 void sanitize_string(char* input, size_t max_len) {
-  char sanitized_output[1024];
+  char sanitized_output[2048];
   size_t i = 0;
   size_t j = 0;
   while (input[i] && j < max_len - 1) {
@@ -34,6 +34,31 @@ std::string trim_string(const std::string& str) {
   return str.substr(start, end - start);
 }
 
+// Helper function to join strings with a delimiter
+std::string join_strings(const std::vector<std::string>& vec, const std::string& delimiter) {
+  if (vec.empty()) return "";
+      
+  std::ostringstream oss;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    if (i != 0)
+      oss << delimiter;
+    oss << vec[i];
+  }
+  return oss.str();
+}
+
+std::string join_strings_ch(const std::vector<std::string>& vec, const char delimiter) {
+  if (vec.empty()) return "";
+      
+  std::ostringstream oss;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    if (i != 0)
+      oss << delimiter;
+    oss << vec[i];
+  }
+  return oss.str();
+}
+
 std::vector<std::string> split_string(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;
   std::string token;
@@ -54,6 +79,15 @@ std::string to_hex_string(const unsigned char* data, size_t size) {
     ss << std::setw(2) << static_cast<int>(data[i]);
   }
   return ss.str();
+}
+
+std::string to_hex_string(const std::string data) {
+  std::ostringstream oss;
+  oss << std::hex << std::setfill('0');
+  for (unsigned char c : data) {
+    oss << std::setw(2) << static_cast<int>(c);
+  }
+  return oss.str();
 }
 
 void string_replace(std::string &str, const std::string& from, const std::string& to) {
@@ -103,5 +137,33 @@ std::string generate_random_string(const std::string& format_str) {
 
   return result;
 }
+
+std::string string_format(const char* format, ...) {
+  /* Initialize a variable argument list */
+  va_list args;
+  va_start(args, format);
+
+  /* Copy the argument list to determine the required buffer size */
+  va_list args_copy;
+  va_copy(args_copy, args);
+  int length = std::vsnprintf(nullptr, 0, format, args_copy);
+  va_end(args_copy);
+
+  if (length < 0) {
+    va_end(args);
+    throw std::runtime_error("Error during string formatting.");
+  }
+
+  /* Allocate a buffer of the required size */
+  std::unique_ptr<char[]> buffer(new char[length + 1]);
+
+  /* Write the formatted string into the buffer */
+  std::vsnprintf(buffer.get(), length + 1, format, args);
+  va_end(args);
+
+  /* Construct and return the std::string */
+  return std::string(buffer.get(), length);
+}
+
 } /* namespace piaabo */
 } /* namespace cuwacunu */
