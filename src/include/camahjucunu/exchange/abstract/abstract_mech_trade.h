@@ -13,7 +13,7 @@ namespace mech {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         virtual exchange structure          */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-struct virtual_mech_trade_t {
+struct abstract_mech_trade_t {
   virtual std::optional<order_ret_t>                order                ( order_type_e type, order_args_t args, bool testOrder = false, bool await = true )  const = 0;
   virtual std::optional<orderStatus_ret_t>          orderStatus          ( orderStatus_args_t args, bool await = true )                                       const = 0;
   virtual std::optional<orderMarket_ret_t>          orderMarket          ( orderMarket_args_t args, bool testOrder = false, bool await = true )               const = 0;
@@ -24,7 +24,7 @@ struct virtual_mech_trade_t {
   // virtual std::optional<orderTakeProfitLimit_ret_t> orderTakeProfitLimit ( orderTakeProfitLimit_args_t args, bool testOrder = false, bool await = true )      const = 0;
   // virtual std::optional<orderLimitMaker_ret_t>      orderLimitMaker      ( orderLimitMaker_args_t args, bool testOrder = false, bool await = true )           const = 0;
   // virtual std::optional<orderSor_ret_t>             orderSor             ( orderSor_args_t args, bool testOrder = false, bool await = true )                  const = 0;  
-  virtual ~virtual_mech_trade_t                     () {}                /* destructor */
+  virtual ~abstract_mech_trade_t                     () {}                /* destructor */
 };
 
 } /* namespace mech */

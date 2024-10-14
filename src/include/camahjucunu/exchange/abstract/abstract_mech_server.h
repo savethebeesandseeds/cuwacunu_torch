@@ -17,10 +17,10 @@ namespace mech {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         virtual exchange structure          */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-struct virtual_mech_server_t {
+struct abstract_mech_server_t {
   virtual std::optional<ping_ret_t> ping ( ping_args_t args, bool await = true )  const = 0;
   virtual std::optional<time_ret_t> time ( time_args_t args, bool await = true )  const = 0;
-  virtual ~virtual_mech_server_t    () {} /* destructor */
+  virtual ~abstract_mech_server_t    () {} /* destructor */
 };
 
 } /* namespace mech */

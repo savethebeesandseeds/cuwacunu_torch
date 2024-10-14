@@ -7,7 +7,7 @@ namespace camahjucunu {
 namespace exchange {
 namespace mech {
 namespace binance {
-struct binance_mech_server_t: public virtual_mech_server_t {
+struct binance_mech_server_t: public abstract_mech_server_t {
 /* variables */
 public:
   bool owns_session;

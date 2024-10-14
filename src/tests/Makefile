@@ -11,6 +11,10 @@ TEST_BUILD := $(HERE_PATH)/build
 # -----------------------------------------------------------------
 # - - - Especific Targets - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
+
+# -----------------------------------------------------------------
+# - - - Piaabo -- - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
 test_darchitecture: 
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_darchitecture
 test_dconfig: 
@@ -21,6 +25,9 @@ test_dencryption:
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dencryption
 test_json_parsing:
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_json_parsing
+# -----------------------------------------------------------------
+# - - - Camahjucnu -- - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
 test_exchange_types_serialization: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_types_serialization
 test_exchange_types_deserialization: 
@@ -37,6 +44,13 @@ test_binance_mech_account:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_account
 test_binance_mech_trade: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_trade
+test_binance_dataloader: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_dataloader
+# -----------------------------------------------------------------
+# - - - Wikimyei -- - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+test_entropy_methods:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei test_entropy_methods
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

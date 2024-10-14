@@ -14,12 +14,12 @@ namespace mech {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         virtual exchange structure          */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-struct virtual_mech_account_t {
+struct abstract_mech_account_t {
   virtual std::optional<account_information_ret_t>      account_information      (      account_information_args_t args, bool await = true )  const = 0;
   virtual std::optional<account_order_history_ret_t>    account_order_history    (    account_order_history_args_t args, bool await = true )  const = 0;
   virtual std::optional<account_trade_list_ret_t>       account_trade_list       (       account_trade_list_args_t args, bool await = true )  const = 0;
   virtual std::optional<account_commission_rates_ret_t> account_commission_rates ( account_commission_rates_args_t args, bool await = true )  const = 0;
-  virtual ~virtual_mech_account_t                       () {}                    /* destructor */
+  virtual ~abstract_mech_account_t                       () {}                    /* destructor */
 };
 
 } /* namespace mech */

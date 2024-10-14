@@ -13,7 +13,7 @@ namespace mech {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         virtual exchange structure          */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-struct virtual_mech_data_t {
+struct abstract_mech_data_t {
   virtual std::optional<depth_ret_t>            depth             (            depth_args_t args, bool await = true )  const = 0;
   virtual std::optional<tradesRecent_ret_t>     tradesRecent      (     tradesRecent_args_t args, bool await = true )  const = 0;
   virtual std::optional<tradesHistorical_ret_t> tradesHistorical  ( tradesHistorical_args_t args, bool await = true )  const = 0;
@@ -23,7 +23,7 @@ struct virtual_mech_data_t {
   virtual std::optional<tickerTradingDay_ret_t> ticker_tradingDay ( tickerTradingDay_args_t args, bool await = true )  const = 0;
   virtual std::optional<tickerPrice_ret_t>      tickerPrice       (      tickerPrice_args_t args, bool await = true )  const = 0;
   virtual std::optional<tickerBook_ret_t>       tickerBook        (       tickerBook_args_t args, bool await = true )  const = 0;
-  virtual ~virtual_mech_data_t                  () {}             /* destructor */
+  virtual ~abstract_mech_data_t                  () {}             /* destructor */
 };
 
 } /* namespace mech */

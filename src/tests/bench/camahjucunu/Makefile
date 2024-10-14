@@ -74,10 +74,26 @@ $(TEST_BUILD)/test_binance_mech_trade: $(HERE_PATH)/test_binance_mech_trade.cpp
 	$(RUN_MODE) $(TEST_BUILD)/test_binance_mech_trade
 test_binance_mech_trade: $(TEST_BUILD)/test_binance_mech_trade
 # -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_binance_dataloader test_binance_dataloader
+$(TEST_BUILD)/test_binance_dataloader: $(HERE_PATH)/test_binance_dataloader.cpp
+	@$(EXTENDED_LINK_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_binance_dataloader
+test_binance_dataloader: $(TEST_BUILD)/test_binance_dataloader
+# -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(TEST_BUILD)/test_exchange_types_serialization $(TEST_BUILD)/test_exchange_types_deserialization $(TEST_BUILD)/test_websocket $(TEST_BUILD)/test_binance_mech_server $(TEST_BUILD)/test_binance_mech_data $(TEST_BUILD)/test_binance_mech_account $(TEST_BUILD)/test_binance_mech_trade 
+all: \
+	$(TEST_BUILD)/test_exchange_types_serialization \
+	$(TEST_BUILD)/test_exchange_types_deserialization \
+	$(TEST_BUILD)/test_websocket \
+	$(TEST_BUILD)/test_binance_mech_server \
+	$(TEST_BUILD)/test_binance_mech_data \
+	$(TEST_BUILD)/test_binance_mech_account \
+	$(TEST_BUILD)/test_binance_mech_trade \
+	$(TEST_BUILD)/test_binance_dataloader 
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

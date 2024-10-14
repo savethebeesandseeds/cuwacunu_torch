@@ -2,12 +2,14 @@
 #include "camahjucunu/exchange/abstract/abstract_mech_data.h"
 #include "camahjucunu/exchange/binance/binance_utils.h"
 
+RUNTIME_WARNING("(binance_mech_data.h)[] be aware, volumetric data provided by binance is only volumen inside binance, we should want to incorporate the total volume instead.\n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace exchange {
 namespace mech {
 namespace binance {
-struct binance_mech_data_t: public virtual_mech_data_t {
+struct binance_mech_data_t: public abstract_mech_data_t {
 /* variables */
 public:
   bool owns_session;

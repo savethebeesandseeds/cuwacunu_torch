@@ -16,6 +16,7 @@
 #include <random>
 #include <chrono>
 #include <cstdarg>
+#include <ctime>
 
 #define LOG_FILE stdout
 #define LOG_ERR_FILE stderr
@@ -214,6 +215,38 @@ std::string generate_random_string(const std::string& format_str);
  * ```
  */
 std::string string_format(const char* format, ...);
+
+/**
+ * @brief Converts a human-readable time string to a Unix timestamp (time_t).
+ * 
+ * This function parses a time string according to the specified format 
+ * and returns the corresponding Unix timestamp. It uses std::get_time 
+ * to extract the time information and std::mktime to generate the time_t value.
+ * 
+ * @param timeString The input time string (e.g., "2024-10-12 14:30:00").
+ * @param format The format of the input string following strftime-style format 
+ *               (default is "%Y-%m-%d %H:%M:%S").
+ * 
+ * @return A Unix timestamp (time_t) representing the input time string.
+ * 
+ * @throws std::runtime_error if the time string cannot be parsed.
+ */
+long stringToUnix(const std::string& timeString, const std::string& format = "%Y-%m-%d %H:%M:%S");
+
+/**
+ * @brief Converts a Unix timestamp (time_t) to a human-readable time string.
+ * 
+ * This function converts a given Unix timestamp into a readable string 
+ * following the provided format. It uses std::localtime to generate a 
+ * tm structure and std::strftime to format the time as a string.
+ * 
+ * @param unixTime The input Unix timestamp to be converted.
+ * @param format The desired output format using strftime-style format 
+ *               (default is "%Y-%m-%d %H:%M:%S").
+ * 
+ * @return A string representing the formatted time.
+ */
+std::string unixToString(long unixTime, const std::string& format = "%Y-%m-%d %H:%M:%S");
 
 } /* namespace piaabo */
 } /* namespace cuwacunu */

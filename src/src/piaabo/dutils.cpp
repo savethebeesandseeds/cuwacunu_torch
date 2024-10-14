@@ -165,5 +165,26 @@ std::string string_format(const char* format, ...) {
   return std::string(buffer.get(), length);
 }
 
+/* Convert readable string to Unix timestamp */
+long stringToUnix(const std::string& timeString, const std::string& format) {
+  std::tm tm = {};
+  std::istringstream ss(timeString);
+  ss >> std::get_time(&tm, format.c_str());  /* Parse the time string */
+
+  if (ss.fail()) {
+    throw std::runtime_error("Failed to parse time string.");
+  }
+
+  return std::mktime(&tm);  /* Convert to long (Unix timestamp) */
+}
+
+/* Convert Unix timestamp to readable string */
+std::string unixToString(long unixTime, const std::string& format) {
+  std::tm* tm = std::localtime(&unixTime);  /* Convert to tm structure */
+  char buffer[100];
+  std::strftime(buffer, sizeof(buffer), format.c_str(), tm);  /* Format as string */
+  return std::string(buffer);
+}
+
 } /* namespace piaabo */
 } /* namespace cuwacunu */
