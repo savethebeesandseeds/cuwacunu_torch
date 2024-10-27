@@ -1,0 +1,19 @@
+<instruction>          ::= <symbol_spec> <parameter_list> ;
+
+<symbol_spec>          ::= "(" <identifier> ")" ;
+
+<parameter_list>       ::= "(" <parameters> ")" ;
+
+<parameters>           ::= <parameter> | <parameter> "," <parameters> ;
+
+<parameter>            ::= <identifier> "=" <identifier> ;
+
+<identifier>           ::= <alphanumeric_string> ;
+
+<alphanumeric_string>  ::= <letter_or_digit> | <letter_or_digit> <alphanumeric_string> ;
+
+<letter_or_digit>      ::= <letter> | <digit> ;
+
+<letter>               ::= "A" | "B" | "C" ;
+
+<digit>                ::= "0" | "1" | "2" ;

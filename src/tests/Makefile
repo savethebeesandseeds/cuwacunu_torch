@@ -44,6 +44,18 @@ test_binance_mech_account:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_account
 test_binance_mech_trade: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_trade
+test_bnf_grammar_lexer: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_grammar_lexer
+test_bnf_grammar_parser: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_grammar_parser
+test_bnf_instruction_lexer: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_instruction_lexer
+test_bnf_instruction_parser: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_instruction_parser
+test_bnf_ast: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_ast
+test_bnf_observation_pipeline: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_observation_pipeline
 test_binance_dataloader: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_dataloader
 # -----------------------------------------------------------------
