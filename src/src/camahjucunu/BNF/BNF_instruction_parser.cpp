@@ -14,7 +14,6 @@ namespace BNF {
 /* - - - - - - - - - - - - */
 
 ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_input) {
-  log_warn("waka: parse_Instruction \n");
   
   /* initialize */
   const std::string lhs_instruction = "<instruction>";
@@ -41,12 +40,10 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
 /* --- --- --- --- --- parse types --- --- --- --- --- ---  */
 
 ASTNodePtr InstructionParser::parse_ProductionRule(const ProductionRule& rule) {
-  log_warn("waka: parse_ProductionRule : %s\n", rule.str().c_str());
   size_t initial_pos = iLexer.getPosition();
 
   /* try to match all alternatives */
   for (const ProductionAlternative& alternative : rule.rhs) {
-    log_warn("waka: parse_ProductionRule : \t\t next alternative: %s \n",  alternative.str().c_str());
     /* reset the lexer to validate alternative match */
     iLexer.setPosition(initial_pos);
     ASTNodePtr node = parse_ProductionAlternative(alternative);
@@ -63,13 +60,13 @@ ASTNodePtr InstructionParser::parse_ProductionRule(const ProductionRule& rule) {
 }
 
 ASTNodePtr InstructionParser::parse_ProductionAlternative(const ProductionAlternative& alt) {
-  log_warn("waka: parse_ProductionAlternative : %s\n", alt.str().c_str());
   std::vector<ProductionUnit> units;
   std::vector<ASTNodePtr> children;
 
   /* emplace the units */
   switch (alt.type) {
     case ProductionAlternative::Type::Single:
+      // return parse_ProductionUnit(std::get<ProductionUnit>(alt.content));
       units.push_back(std::get<ProductionUnit>(alt.content));
       break;
     case ProductionAlternative::Type::Sequence:
@@ -88,7 +85,6 @@ ASTNodePtr InstructionParser::parse_ProductionAlternative(const ProductionAltern
 
   /* parse the individual units */
   for (const ProductionUnit& unit : units) {
-    log_warn("waka: parse_ProductionAlternative \t\t next unit: %s \n", unit.str().c_str());
     size_t initial_pos = iLexer.getPosition();
 
     /* parse unit */
@@ -106,13 +102,11 @@ ASTNodePtr InstructionParser::parse_ProductionAlternative(const ProductionAltern
   }
 
 
-  log_info("waka dao [1] alt: %s\n", alt.str().c_str());
   return std::make_unique<IntermediaryNode>(alt, std::move(children));
 }
 
 ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionUnit& unit) {
 
-  log_warn("waka: parse_ProductionUnit : %s\n", unit.str().c_str());
   switch (unit.type) {
     
     case ProductionUnit::Type::Terminal:
@@ -122,7 +116,6 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionUnit& unit) {
       return parse_ProductionRule(grammar.getRule(unit.lexeme));
     
     case ProductionUnit::Type::Optional: {
-      log_info("waka OPTIONAL ------------------------------------------ \n");
       std::string inner_lexeme = unit.lexeme.substr(1, unit.lexeme.size() - 2); /* remove the outter brachets [] */
       ASTNodePtr child = parse_ProductionUnit(
         ProductionUnit(
@@ -131,16 +124,15 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionUnit& unit) {
       );
       /* validate */
       if (child == nullptr) {
-          log_info("waka OPTIONAL --------- child != nullptr \n");
         /* since this is an optional unit on the abscense case we retirn a node with no children */
-        log_info("waka dao [2]\n");
         return std::make_unique<IntermediaryNode>(unit);
       }
 
-      std::vector<ASTNodePtr> children;
-      children.push_back(std::move(child));
-      log_info("waka dao [3] unit: %s\n", unit.str().c_str());
-      return std::make_unique<IntermediaryNode>(unit, std::move(children));
+      return child;
+
+      // std::vector<ASTNodePtr> children;
+      // children.push_back(std::move(child));
+      // return std::make_unique<IntermediaryNode>(unit, std::move(children));
     }
 
     case ProductionUnit::Type::Repetition: {
@@ -161,7 +153,6 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionUnit& unit) {
         } while (true);
 
         /* return the node, note children might be empty for the zero case */
-        log_info("waka dao [4]\n");
         return std::make_unique<IntermediaryNode>(unit, std::move(children));
     }
     case ProductionUnit::Type::Punctuation:
@@ -177,7 +168,6 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionUnit& unit) {
 ASTNodePtr InstructionParser::parse_TerminalNode(const ProductionUnit& unit) {
   
   size_t initial_pos = iLexer.getPosition();
-  log_warn("waka: parse_TerminalNode: %s, initial_pos: %ld \n", unit.str().c_str(), initial_pos);
   std::string lexeme = unit.lexeme;
 
   /* remove quotes */
@@ -188,9 +178,7 @@ ASTNodePtr InstructionParser::parse_TerminalNode(const ProductionUnit& unit) {
 
   /* parse terminal */
   for (char ch : lexeme) {
-    log_warn("waka \n");
     if (iLexer.isAtEnd() || iLexer.peek() != ch) {
-      log_warn("waka: parse_TerminalNode: %s, initial_pos: %ld loop on letter: %c != %c : \t FAILURE \n", unit.str().c_str(), initial_pos, iLexer.peek(), ch);
       /* Match failed */
       iLexer.setPosition(initial_pos);
       return nullptr;
@@ -198,7 +186,6 @@ ASTNodePtr InstructionParser::parse_TerminalNode(const ProductionUnit& unit) {
     iLexer.advance();
   }
   
-  log_warn("waka: parse_TerminalNode: %s \t\t\t\t\t\t SUCCESS \n", unit.str().c_str());
 
   return std::make_unique<TerminalNode>(unit);
 }

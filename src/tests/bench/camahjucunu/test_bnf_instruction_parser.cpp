@@ -64,6 +64,7 @@ bool runTestCase(const TestCase& testCase, int testNumber) {
         // Compare the actual AST with the expected AST using compareAST
         if (cuwacunu::camahjucunu::BNF::compareAST(actualAST.get(), testCase.expectedAST.get())) {
             std::cout << "[PASS].\n";
+            // std::cout << "  Result AST:\n" << getASTString(actualAST.get());
             return true;
         }
         else {
@@ -98,6 +99,7 @@ bool runTestCase(const TestCase& testCase, int testNumber) {
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_EmptyOption();
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_NonEmptyOption();
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_Repetitions();
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_Recursions();
 
 int main() {
     // Define test cases
@@ -154,7 +156,22 @@ int main() {
         }
     );
 
-    // Add more test cases as needed
+    // Valid Test Case 4
+    testCases.emplace_back(
+        TestCase{
+            "Simple Recurssion Parsing",  // name
+            "<instruction>          ::= <parameter_list> ;\n"
+            "<parameter_list>       ::= \"(\" <alphanumeric_string> \")\" ;\n"
+            "<alphanumeric_string>  ::= <letter_or_digit> \",\" <alphanumeric_string> | <letter_or_digit>  ;\n"
+            "<letter_or_digit>      ::= <letter> | <digit> ;\n"
+            "<letter>               ::= \"A\" | \"B\" | \"C\" ;\n"
+            "<digit>                ::= \"0\" | \"1\" | \"2\" ;\n",        // Grammar
+            "(0,A,1)",                                   // input
+            buildExpectedAST_Recursions(), // expectedAST
+            true,                                                          // expectSuccess
+            ""                                                             // expectedError
+        }
+    );
 
     // Run test cases
     int passed = 0;
@@ -185,7 +202,11 @@ std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildIdentifierNode(const s
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildParameterNode(const std::string& lhs, const std::string& rhs);
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildParametersNode(const std::vector<std::pair<std::string, std::string>>& params, size_t index = 0);
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildFileIdsNode(const std::vector<std::string>& ids, size_t index = 0);
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildAlphanumericStringNode(const std::string& input, size_t& index);
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildLetterOrDigitNode(char c);
 
+
+/* main auxiliary functions */
 
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_EmptyOption() {
     using namespace cuwacunu::camahjucunu::BNF;
@@ -261,8 +282,6 @@ std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_EmptyOptio
 
     return rootNode;
 }
-
-
 
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_NonEmptyOption() {
     using namespace cuwacunu::camahjucunu::BNF;
@@ -485,6 +504,67 @@ std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_Repetition
     return rootNode;
 }
 
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_Recursions() {
+    using namespace cuwacunu::camahjucunu::BNF;
+
+    // --- RootNode: <instruction> ---
+
+    // Build Terminal "("
+    auto terminalOpenParen = std::make_unique<TerminalNode>(
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\"")
+    );
+
+    // Input tokens without parentheses and commas
+    std::string input = "0,A,1";
+    size_t index = 0;
+
+    // Build <alphanumeric_string> node recursively
+    auto alphanumericStringNode = buildAlphanumericStringNode(input, index);
+
+    // Build Terminal ")"
+    auto terminalCloseParen = std::make_unique<TerminalNode>(
+        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
+    );
+
+    // Build <parameter_list> node
+    std::vector<ASTNodePtr> parameterListChildren;
+    parameterListChildren.push_back(std::move(terminalOpenParen));
+    parameterListChildren.push_back(std::move(alphanumericStringNode));
+    parameterListChildren.push_back(std::move(terminalCloseParen));
+
+    std::vector<ProductionUnit> parameterListUnits = {
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\""),
+        ProductionUnit(ProductionUnit::Type::NonTerminal, "<alphanumeric_string>"),
+        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
+    };
+
+    auto parameterListNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative(parameterListUnits),
+        std::move(parameterListChildren)
+    );
+
+    // Build the <instruction> node
+    std::vector<ASTNodePtr> instructionChildren;
+    instructionChildren.push_back(std::move(parameterListNode));
+
+    ProductionUnit instructionUnit = ProductionUnit(ProductionUnit::Type::NonTerminal, "<parameter_list>");
+
+    auto instructionNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative(instructionUnit),
+        std::move(instructionChildren)
+    );
+
+    // Build the root node
+    std::vector<ASTNodePtr> rootChildren;
+    rootChildren.push_back(std::move(instructionNode));
+
+    auto rootNode = std::make_unique<RootNode>(
+        "<instruction>",
+        std::move(rootChildren)
+    );
+
+    return rootNode;
+}
 
 // Definitions of helper functions (remove default arguments in definitions)
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildAlphanumericStringNode(const std::string& str) {
@@ -679,5 +759,147 @@ std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildFileIdsNode(const std:
         );
 
         return fileIdsNode;
+    }
+}
+
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildAlphanumericStringNode(const std::string& input, size_t& index) {
+    using namespace cuwacunu::camahjucunu::BNF;
+
+    if (index >= input.length()) {
+        // Handle error or end of input
+        return nullptr;
+    }
+
+    // Skip any commas at the current index
+    while (index < input.length() && input[index] == ',') {
+        index++;
+    }
+
+    if (index >= input.length()) {
+        // No more tokens
+        return nullptr;
+    }
+
+    // Build <letter_or_digit> node
+    char currentChar = input[index];
+    index++;
+
+    auto letterOrDigitNode = buildLetterOrDigitNode(currentChar);
+
+    if (index < input.length()) {
+        if (input[index] == ',') {
+            // Option 1: <letter_or_digit> "," <alphanumeric_string>
+            // Consume ","
+            auto commaTerminalNode = std::make_unique<TerminalNode>(
+                ProductionUnit(ProductionUnit::Type::Terminal, "\",\"")
+            );
+            index++; // Move past the comma
+
+            // Recursively build <alphanumeric_string>
+            auto recursiveAlphanumNode = buildAlphanumericStringNode(input, index);
+
+            // Build current <alphanumeric_string> node
+            std::vector<ASTNodePtr> alphanumChildren;
+            alphanumChildren.push_back(std::move(letterOrDigitNode));
+            alphanumChildren.push_back(std::move(commaTerminalNode));
+            alphanumChildren.push_back(std::move(recursiveAlphanumNode));
+
+            auto alphanumNode = std::make_unique<IntermediaryNode>(
+                ProductionAlternative({
+                    ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter_or_digit>"),
+                    ProductionUnit(ProductionUnit::Type::Terminal, "\",\""),
+                    ProductionUnit(ProductionUnit::Type::NonTerminal, "<alphanumeric_string>")
+                }),
+                std::move(alphanumChildren)
+            );
+
+            return alphanumNode;
+        } else {
+            // Option 3: <letter_or_digit>
+            // Build current <alphanumeric_string> node
+            std::vector<ASTNodePtr> alphanumChildren;
+            alphanumChildren.push_back(std::move(letterOrDigitNode));
+
+            auto alphanumNode = std::make_unique<IntermediaryNode>(
+                ProductionAlternative({
+                    ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter_or_digit>")
+                }),
+                std::move(alphanumChildren)
+            );
+
+            return alphanumNode;
+        }
+    } else {
+        // End of input, Option 3: <letter_or_digit>
+        std::vector<ASTNodePtr> alphanumChildren;
+        alphanumChildren.push_back(std::move(letterOrDigitNode));
+
+        auto alphanumNode = std::make_unique<IntermediaryNode>(
+            ProductionAlternative({
+                ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter_or_digit>")
+            }),
+            std::move(alphanumChildren)
+        );
+
+        return alphanumNode;
+    }
+}
+
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildLetterOrDigitNode(char c) {
+    using namespace cuwacunu::camahjucunu::BNF;
+
+    std::string token(1, c);
+
+    if (c == 'A' || c == 'B' || c == 'C') {
+        // Build <letter> node
+        auto letterTerminalNode = std::make_unique<TerminalNode>(
+            ProductionUnit(ProductionUnit::Type::Terminal, "\"" + token + "\"")
+        );
+
+        std::vector<ASTNodePtr> letterNodeChildren;
+        letterNodeChildren.push_back(std::move(letterTerminalNode));
+
+        auto letterNode = std::make_unique<IntermediaryNode>(
+            ProductionAlternative({ProductionUnit(ProductionUnit::Type::Terminal, "\"" + token + "\"")}),
+            std::move(letterNodeChildren)
+        );
+
+        // Build <letter_or_digit> node
+        std::vector<ASTNodePtr> letterOrDigitChildren;
+        letterOrDigitChildren.push_back(std::move(letterNode));
+
+        auto letterOrDigitNode = std::make_unique<IntermediaryNode>(
+            ProductionAlternative({ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter>")}),
+            std::move(letterOrDigitChildren)
+        );
+
+        return letterOrDigitNode;
+    } else if (c == '0' || c == '1' || c == '2') {
+        // Build <digit> node
+        auto digitTerminalNode = std::make_unique<TerminalNode>(
+            ProductionUnit(ProductionUnit::Type::Terminal, "\"" + token + "\"")
+        );
+
+        std::vector<ASTNodePtr> digitNodeChildren;
+        digitNodeChildren.push_back(std::move(digitTerminalNode));
+
+        auto digitNode = std::make_unique<IntermediaryNode>(
+            ProductionAlternative({ProductionUnit(ProductionUnit::Type::Terminal, "\"" + token + "\"")}),
+            std::move(digitNodeChildren)
+        );
+
+        // Build <letter_or_digit> node
+        std::vector<ASTNodePtr> letterOrDigitChildren;
+        letterOrDigitChildren.push_back(std::move(digitNode));
+
+        auto letterOrDigitNode = std::make_unique<IntermediaryNode>(
+            ProductionAlternative({ProductionUnit(ProductionUnit::Type::NonTerminal, "<digit>")}),
+            std::move(letterOrDigitChildren)
+        );
+
+        return letterOrDigitNode;
+    } else {
+        // Handle error or other cases
+        return nullptr;
     }
 }
