@@ -24,21 +24,14 @@ public:
   void accept(ASTVisitor& visitor) const override;
 };
 
-class OptionalNode : public ASTNode {
-public:
-  ProductionUnit unit;
-  ASTNodePtr child; // May be nullptr if optional content not present
-  OptionalNode(const ProductionUnit& unit, ASTNodePtr child)
-    : unit(unit), child(std::move(child)) {}
-  void accept(ASTVisitor& visitor) const override;
-};
-
 class IntermediaryNode : public ASTNode {
 public:
   ProductionAlternative alt;
   std::vector<ASTNodePtr> children;
   IntermediaryNode(const ProductionAlternative& alt, std::vector<ASTNodePtr> children)
     : alt(alt), children(std::move(children)) {}
+  IntermediaryNode(const ProductionAlternative& alt) /* empty children constructor */
+    : alt(alt), children() {}
   void accept(ASTVisitor& visitor) const override;
 };
 

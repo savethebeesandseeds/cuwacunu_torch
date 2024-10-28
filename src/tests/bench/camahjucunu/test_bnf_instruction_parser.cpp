@@ -95,8 +95,9 @@ bool runTestCase(const TestCase& testCase, int testNumber) {
     }
 }
 
-std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_MultipleParams_FileIDs();
-std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_SingleParameter();
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_EmptyOption();
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_NonEmptyOption();
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_Repetitions();
 
 int main() {
     // Define test cases
@@ -105,42 +106,53 @@ int main() {
     // Valid Test Case 1
     testCases.emplace_back(
         TestCase{
-            "Simple parsing",  // name
+            "Simple Option Parsing",  // name
             "<instruction>          ::= <parameter_list> ;\n"
             "<parameter_list>       ::= \"(\" <alphanumeric_string> \")\" ;\n"
-            "<alphanumeric_string>  ::= <letter_or_digit> | <letter_or_digit> <alphanumeric_string> ;\n"
+            "<alphanumeric_string>  ::= [<letter_or_digit>] ;\n"
             "<letter_or_digit>      ::= <letter> | <digit> ;\n"
             "<letter>               ::= \"A\" | \"B\" | \"C\" ;\n"
             "<digit>                ::= \"0\" | \"1\" | \"2\" ;\n",        // Grammar
-            "(A1B2)",                                   // input
-            buildExpectedAST_SingleParameter(), // expectedAST
+            "()",                                   // input
+            buildExpectedAST_EmptyOption(), // expectedAST
             true,                                                          // expectSuccess
             ""                                                             // expectedError
         }
     );
 
-    // // Valid Test Case 2
-    // testCases.emplace_back(
-    //     TestCase{
-    //         "Valid Input with Multiple Parameters and File IDs",  // name
-    //         "<instruction>          ::= <symbol_spec> [<parameter_list>] [<file_id_list>] ;\n"
-    //         "<symbol_spec>         ::= \"<\" <identifier> \">\" ;\n"
-    //         "<parameter_list>      ::= \"(\" <parameters> \")\" ;\n"
-    //         "<parameters>          ::= <parameter> | <parameter> \",\" <parameters> ;\n"
-    //         "<parameter>           ::= <identifier> \"=\" <identifier> ;\n"
-    //         "<file_id_list>        ::= \"[\" <file_ids> \"]\" ;\n"
-    //         "<file_ids>            ::= <identifier> | <identifier> \",\" <file_ids> ;\n"
-    //         "<identifier>          ::= <alphanumeric_string> ;\n"
-    //         "<alphanumeric_string> ::= <letter_or_digit> | <letter_or_digit> <alphanumeric_string> ;\n"
-    //         "<letter_or_digit>     ::= <letter> | <digit> ;\n"
-    //         "<letter>              ::= \"A\" | \"B\" | \"C\" ;\n"
-    //         "<digit>               ::= \"0\" | \"1\" | \"2\" ;",       // bnfGrammar
-    //         "<ABC>(A=10,B=20)[0,1,2]",                                   // input
-    //         buildExpectedAST_MultipleParams_FileIDs(), // expectedAST
-    //         true,                                                          // expectSuccess
-    //         ""                                                             // expectedError
-    //     }
-    // );
+    // Valid Test Case 2
+    testCases.emplace_back(
+        TestCase{
+            "Simple Option Parsing",  // name
+            "<instruction>          ::= <parameter_list> ;\n"
+            "<parameter_list>       ::= \"(\" <alphanumeric_string> \")\" ;\n"
+            "<alphanumeric_string>  ::= [<letter_or_digit>] ;\n"
+            "<letter_or_digit>      ::= <letter> | <digit> ;\n"
+            "<letter>               ::= \"A\" | \"B\" | \"C\" ;\n"
+            "<digit>                ::= \"0\" | \"1\" | \"2\" ;\n",        // Grammar
+            "(A)",                                   // input
+            buildExpectedAST_NonEmptyOption(), // expectedAST
+            true,                                                          // expectSuccess
+            ""                                                             // expectedError
+        }
+    );
+
+    // Valid Test Case 3
+    testCases.emplace_back(
+        TestCase{
+            "Simple Repetition Parsing",  // name
+            "<instruction>          ::= <parameter_list> ;\n"
+            "<parameter_list>       ::= \"(\" <alphanumeric_string> \")\" ;\n"
+            "<alphanumeric_string>  ::= {<letter_or_digit>} ;\n"
+            "<letter_or_digit>      ::= <letter> | <digit> ;\n"
+            "<letter>               ::= \"A\" | \"B\" | \"C\" ;\n"
+            "<digit>                ::= \"0\" | \"1\" | \"2\" ;\n",        // Grammar
+            "(A1B2)",                                   // input
+            buildExpectedAST_Repetitions(), // expectedAST
+            true,                                                          // expectSuccess
+            ""                                                             // expectedError
+        }
+    );
 
     // Add more test cases as needed
 
@@ -174,8 +186,180 @@ std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildParameterNode(const st
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildParametersNode(const std::vector<std::pair<std::string, std::string>>& params, size_t index = 0);
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildFileIdsNode(const std::vector<std::string>& ids, size_t index = 0);
 
-std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_SingleParameter() {
+
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_EmptyOption() {
     using namespace cuwacunu::camahjucunu::BNF;
+
+    // --- RootNode: <instruction> ---
+
+    // Build Terminal "("
+    auto terminalOpenParen = std::make_unique<TerminalNode>(
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\"")
+    );
+
+    // --- <alphanumeric_string> ---
+    // Since the optional content is empty, we represent it accordingly.
+
+    // Build the repetition node (empty)
+    std::vector<ASTNodePtr> repetitionChildren; // Empty vector since there's nothing to repeat
+    auto repetitionNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative({ProductionUnit(ProductionUnit::Type::Optional, "[<letter_or_digit>]")}),
+        std::move(repetitionChildren)
+    );
+
+    // Build <alphanumeric_string> node
+    std::vector<ASTNodePtr> alphanumStringChildren;
+    alphanumStringChildren.push_back(std::move(repetitionNode));
+    auto alphanumStringNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative({ProductionUnit(ProductionUnit::Type::Optional, "[<letter_or_digit>]")}),
+        std::move(alphanumStringChildren)
+    );
+
+    // --- </alphanumeric_string> ---
+
+    // Build Terminal ")"
+    auto terminalCloseParen = std::make_unique<TerminalNode>(
+        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
+    );
+
+    // Build <parameter_list> node
+    std::vector<ASTNodePtr> parameterListChildren;
+    parameterListChildren.push_back(std::move(terminalOpenParen));
+    parameterListChildren.push_back(std::move(alphanumStringNode));
+    parameterListChildren.push_back(std::move(terminalCloseParen));
+
+    std::vector<ProductionUnit> parameterListUnits = {
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\""),
+        ProductionUnit(ProductionUnit::Type::NonTerminal, "<alphanumeric_string>"),
+        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
+    };
+
+    auto parameterListNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative(parameterListUnits),
+        std::move(parameterListChildren)
+    );
+
+    // Build the <instruction> node
+    std::vector<ASTNodePtr> instructionChildren;
+    instructionChildren.push_back(std::move(parameterListNode));
+
+    ProductionUnit instructionUnit = ProductionUnit(ProductionUnit::Type::NonTerminal, "<parameter_list>");
+
+    auto instructionNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative(instructionUnit),
+        std::move(instructionChildren)
+    );
+
+    // Build the root node
+    std::vector<ASTNodePtr> rootChildren;
+    rootChildren.push_back(std::move(instructionNode));
+
+    auto rootNode = std::make_unique<RootNode>(
+        "<instruction>",
+        std::move(rootChildren)
+    );
+
+    return rootNode;
+}
+
+
+
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_NonEmptyOption() {
+    using namespace cuwacunu::camahjucunu::BNF;
+
+    // --- RootNode: <instruction> ---
+
+    // Build Terminal "("
+    auto terminalOpenParen = std::make_unique<TerminalNode>(
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\"")
+    );
+
+    // --- <alphanumeric_string> ---
+    // Input is "A"
+
+    // Build Terminal "A"
+    auto terminalA = std::make_unique<TerminalNode>(
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"A\"")
+    );
+
+    // Build <letter> node
+    std::vector<ASTNodePtr> letterChildren;
+    letterChildren.push_back(std::move(terminalA));
+
+    auto letterNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative({ProductionUnit(ProductionUnit::Type::Terminal, "\"A\"")}),
+        std::move(letterChildren)
+    );
+
+    // Build <letter_or_digit> node
+    std::vector<ASTNodePtr> letterOrDigitChildren;
+    letterOrDigitChildren.push_back(std::move(letterNode));
+
+    auto letterOrDigitNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative({ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter>")}),
+        std::move(letterOrDigitChildren)
+    );
+
+    // Build <alphanumeric_string> node
+    std::vector<ASTNodePtr> alphanumStringChildren;
+    alphanumStringChildren.push_back(std::move(letterOrDigitNode));
+
+    auto alphanumStringNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative({ProductionUnit(ProductionUnit::Type::Optional, "[<letter_or_digit>]")}),
+        std::move(alphanumStringChildren)
+    );
+
+    // --- </alphanumeric_string> ---
+
+    // Build Terminal ")"
+    auto terminalCloseParen = std::make_unique<TerminalNode>(
+        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
+    );
+
+    // Build <parameter_list> node
+    std::vector<ASTNodePtr> parameterListChildren;
+    parameterListChildren.push_back(std::move(terminalOpenParen));
+    parameterListChildren.push_back(std::move(alphanumStringNode));
+    parameterListChildren.push_back(std::move(terminalCloseParen));
+
+    std::vector<ProductionUnit> parameterListUnits = {
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\""),
+        ProductionUnit(ProductionUnit::Type::NonTerminal, "<alphanumeric_string>"),
+        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
+    };
+
+    auto parameterListNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative(parameterListUnits),
+        std::move(parameterListChildren)
+    );
+
+    // Build the <instruction> node
+    std::vector<ASTNodePtr> instructionChildren;
+    instructionChildren.push_back(std::move(parameterListNode));
+
+    ProductionUnit instructionUnit = ProductionUnit(ProductionUnit::Type::NonTerminal, "<parameter_list>");
+
+    auto instructionNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative(instructionUnit),
+        std::move(instructionChildren)
+    );
+
+    // Build the root node
+    std::vector<ASTNodePtr> rootChildren;
+    rootChildren.push_back(std::move(instructionNode));
+
+    auto rootNode = std::make_unique<RootNode>(
+        "<instruction>",
+        std::move(rootChildren)
+    );
+
+    return rootNode;
+}
+
+std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_Repetitions() {
+    using namespace cuwacunu::camahjucunu::BNF;
+
+    // --- RootNode: <instruction> ---
 
     // --- <instruction> ---
     std::vector<ASTNodePtr> instructionChildren;
@@ -187,44 +371,72 @@ std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_SinglePara
     );
 
     // --- <alphanumeric_string> ---
-    std::vector<ASTNodePtr> alphanumStringChildren;
+    std::string alphanumStr = "A1B2";
 
-    // Example: Building "A1B2"
-    // <letter_or_digit> ::= <letter> | <digit>
+    // Build the repetition node for {<letter_or_digit>}
+    std::vector<ASTNodePtr> repetitionChildren;
 
-    // 'A'
-    auto letterA = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"A\"")
+    for (char c : alphanumStr) {
+        if (isalpha(c)) {
+            // Build <letter> node
+            auto letterTerminalNode = std::make_unique<TerminalNode>(
+                ProductionUnit(ProductionUnit::Type::Terminal, "\"" + std::string(1, c) + "\"")
+            );
+            std::vector<ASTNodePtr> letterNodeChildren;
+            letterNodeChildren.push_back(std::move(letterTerminalNode));
+            auto letterNode = std::make_unique<IntermediaryNode>(
+                ProductionAlternative({ProductionUnit(ProductionUnit::Type::Terminal, "\"" + std::string(1, c) + "\"")}),
+                std::move(letterNodeChildren)
+            );
+
+            // Build <letter_or_digit> node
+            std::vector<ASTNodePtr> letterOrDigitChildren;
+            letterOrDigitChildren.push_back(std::move(letterNode));
+            auto letterOrDigitNode = std::make_unique<IntermediaryNode>(
+                ProductionAlternative({ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter>")}),
+                std::move(letterOrDigitChildren)
+            );
+
+            repetitionChildren.push_back(std::move(letterOrDigitNode));
+        }
+        else if (isdigit(c)) {
+            // Build <digit> node
+            auto digitTerminalNode = std::make_unique<TerminalNode>(
+                ProductionUnit(ProductionUnit::Type::Terminal, "\"" + std::string(1, c) + "\"")
+            );
+            std::vector<ASTNodePtr> digitNodeChildren;
+            digitNodeChildren.push_back(std::move(digitTerminalNode));
+            auto digitNode = std::make_unique<IntermediaryNode>(
+                ProductionAlternative({ProductionUnit(ProductionUnit::Type::Terminal, "\"" + std::string(1, c) + "\"")}),
+                std::move(digitNodeChildren)
+            );
+
+            // Build <letter_or_digit> node
+            std::vector<ASTNodePtr> letterOrDigitChildren;
+            letterOrDigitChildren.push_back(std::move(digitNode));
+            auto letterOrDigitNode = std::make_unique<IntermediaryNode>(
+                ProductionAlternative({ProductionUnit(ProductionUnit::Type::NonTerminal, "<digit>")}),
+                std::move(letterOrDigitChildren)
+            );
+
+            repetitionChildren.push_back(std::move(letterOrDigitNode));
+        }
+        else {
+            // Handle error or other cases
+        }
+    }
+
+    // Build the repetition node
+    auto repetitionNode = std::make_unique<IntermediaryNode>(
+        ProductionAlternative({ProductionUnit(ProductionUnit::Type::Repetition, "{<letter_or_digit>}")}),
+        std::move(repetitionChildren)
     );
-    alphanumStringChildren.push_back(std::move(letterA));
-
-    // '1'
-    auto digit1 = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"1\"")
-    );
-    alphanumStringChildren.push_back(std::move(digit1));
-
-    // 'B'
-    auto letterB = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"B\"")
-    );
-    alphanumStringChildren.push_back(std::move(letterB));
-
-    // '2'
-    auto digit2 = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"2\"")
-    );
-    alphanumStringChildren.push_back(std::move(digit2));
 
     // Build <alphanumeric_string> node
-    std::vector<ProductionUnit> alphanumStringUnits = {
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter_or_digit>"),
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter_or_digit>"),
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter_or_digit>"),
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<letter_or_digit>")
-    };
+    std::vector<ASTNodePtr> alphanumStringChildren;
+    alphanumStringChildren.push_back(std::move(repetitionNode));
     auto alphanumStringNode = std::make_unique<IntermediaryNode>(
-        ProductionAlternative(alphanumStringUnits),
+        ProductionAlternative({ProductionUnit(ProductionUnit::Type::Repetition, "{<letter_or_digit>}")}),
         std::move(alphanumStringChildren)
     );
 
@@ -254,149 +466,27 @@ std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_SinglePara
     // Add <parameter_list> to <instruction> children
     instructionChildren.push_back(std::move(parameterListNode));
 
-    // Build the root <instruction> node
-    std::vector<ProductionUnit> instructionUnits = {
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<parameter_list>")
-    };
+    // Build the <instruction> node
+    ProductionUnit instructionUnit = ProductionUnit(ProductionUnit::Type::NonTerminal, "<parameter_list>");
+    
     auto instructionNode = std::make_unique<IntermediaryNode>(
-        ProductionAlternative(instructionUnits),
+        ProductionAlternative(instructionUnit),
         std::move(instructionChildren)
     );
 
-    return instructionNode;
+    // Build the root node
+    std::vector<ASTNodePtr> rootChildren;
+    rootChildren.push_back(std::move(instructionNode));
+    auto rootNode = std::make_unique<RootNode>(
+        "<instruction>",
+        std::move(rootChildren)
+    );
+
+    return rootNode;
 }
 
-
-std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildExpectedAST_MultipleParams_FileIDs() {
-    using namespace cuwacunu::camahjucunu::BNF;
-
-    // --- <instruction> ---
-    std::vector<ASTNodePtr> instructionChildren;
-
-    // --- <symbol_spec> ---
-    std::vector<ASTNodePtr> symbolSpecChildren;
-
-    // Terminal "<"
-    auto terminalLessThan = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"<\"")
-    );
-    symbolSpecChildren.push_back(std::move(terminalLessThan));
-
-    // <identifier> for "ACB"
-    auto identifierNode = buildIdentifierNode("ACB");
-    symbolSpecChildren.push_back(std::move(identifierNode));
-
-    // Terminal ">"
-    auto terminalGreaterThan = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\">\"")
-    );
-    symbolSpecChildren.push_back(std::move(terminalGreaterThan));
-
-    // Build <symbol_spec> node
-    std::vector<ProductionUnit> symbolSpecUnits = {
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"<\""),
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<identifier>"),
-        ProductionUnit(ProductionUnit::Type::Terminal, "\">\"")
-    };
-    auto symbolSpecNode = std::make_unique<IntermediaryNode>(
-        ProductionAlternative(symbolSpecUnits),
-        std::move(symbolSpecChildren)
-    );
-    instructionChildren.push_back(std::move(symbolSpecNode));
-
-    // --- [<parameter_list>] ---
-    // Terminal "("
-    auto terminalOpenParen = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\"")
-    );
-
-    // Build <parameters> node recursively
-    std::vector<std::pair<std::string, std::string>> params = { {"A", "10"}, {"B", "20"} };
-    auto parametersNode = buildParametersNode(params);
-
-    // Terminal ")"
-    auto terminalCloseParen = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
-    );
-
-    // Build <parameter_list> node
-    std::vector<ASTNodePtr> parameterListChildren;
-    parameterListChildren.push_back(std::move(terminalOpenParen));
-    parameterListChildren.push_back(std::move(parametersNode));
-    parameterListChildren.push_back(std::move(terminalCloseParen));
-
-    std::vector<ProductionUnit> parameterListUnits = {
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"(\""),
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<parameters>"),
-        ProductionUnit(ProductionUnit::Type::Terminal, "\")\"")
-    };
-    auto parameterListNode = std::make_unique<IntermediaryNode>(
-        ProductionAlternative(parameterListUnits),
-        std::move(parameterListChildren)
-    );
-
-    // Wrap in OptionalNode
-    auto optionalParameterListNode = std::make_unique<OptionalNode>(
-        ProductionUnit(ProductionUnit::Type::Optional, "[ <parameter_list> ]"),
-        std::move(parameterListNode)
-    );
-    instructionChildren.push_back(std::move(optionalParameterListNode));
-
-    // --- [<file_id_list>] ---
-    // Terminal "["
-    auto terminalOpenBracket = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"[\"")
-    );
-
-    // Build <file_ids> node recursively
-    std::vector<std::string> fileIds = { "0", "1", "2" };
-    auto fileIdsNode = buildFileIdsNode(fileIds);
-
-    // Terminal "]"
-    auto terminalCloseBracket = std::make_unique<TerminalNode>(
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"]\"")
-    );
-
-    // Build <file_id_list> node
-    std::vector<ASTNodePtr> fileIdListChildren;
-    fileIdListChildren.push_back(std::move(terminalOpenBracket));
-    fileIdListChildren.push_back(std::move(fileIdsNode));
-    fileIdListChildren.push_back(std::move(terminalCloseBracket));
-
-    std::vector<ProductionUnit> fileIdListUnits = {
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"[\""),
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<file_ids>"),
-        ProductionUnit(ProductionUnit::Type::Terminal, "\"]\"")
-    };
-    auto fileIdListNode = std::make_unique<IntermediaryNode>(
-        ProductionAlternative(fileIdListUnits),
-        std::move(fileIdListChildren)
-    );
-
-    // Wrap in OptionalNode
-    auto optionalFileIdListNode = std::make_unique<OptionalNode>(
-        ProductionUnit(ProductionUnit::Type::Optional, "[ <file_id_list> ]"),
-        std::move(fileIdListNode)
-    );
-    instructionChildren.push_back(std::move(optionalFileIdListNode));
-
-    // Build the root <instruction> node
-    std::vector<ProductionUnit> instructionUnits = {
-        ProductionUnit(ProductionUnit::Type::NonTerminal, "<symbol_spec>"),
-        // Since parameter_list and file_id_list are optional, we may or may not include them in the units
-        ProductionUnit(ProductionUnit::Type::Optional, "[ <parameter_list> ]"),
-        ProductionUnit(ProductionUnit::Type::Optional, "[ <file_id_list> ]")
-    };
-    auto instructionNode = std::make_unique<IntermediaryNode>(
-        ProductionAlternative(instructionUnits),
-        std::move(instructionChildren)
-    );
-
-    return instructionNode;
-}
 
 // Definitions of helper functions (remove default arguments in definitions)
-
 std::unique_ptr<cuwacunu::camahjucunu::BNF::ASTNode> buildAlphanumericStringNode(const std::string& str) {
     using namespace cuwacunu::camahjucunu::BNF;
 

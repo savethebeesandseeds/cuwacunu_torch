@@ -19,6 +19,7 @@ std::ostream& operator<<(std::ostream& stream, const ProductionUnit::Type& type)
     case ProductionUnit::Type::Terminal: stream << "Terminal"; break;
     case ProductionUnit::Type::NonTerminal: stream << "NonTerminal"; break;
     case ProductionUnit::Type::Optional: stream << "Optional"; break;
+    case ProductionUnit::Type::Repetition: stream << "Repetition"; break;
     case ProductionUnit::Type::EndOfFile: stream << "EndOfFile"; break;
     case ProductionUnit::Type::Unknown: stream << "Unknown"; break;
     default: stream << "Invalid ProductionUnit::Type"; break; /* Handle unexpected cases */
@@ -108,6 +109,8 @@ ProductionUnit GrammarLexer::getNextUnit() {
     return parseNonTerminal();
   } else if (nextChar == '[') {
     return parseOptional();
+  } else if (nextChar == '{') {
+    return parseRepetition();
   } else if (nextChar == '"' || std::isalpha(nextChar) || std::isdigit(nextChar)) {
     return parseTerminal();
   } else if (std::ispunct(nextChar)) {
@@ -184,6 +187,45 @@ ProductionUnit GrammarLexer::parseOptional() {
   advance(); /* Advance ']' */
 
   return ProductionUnit(ProductionUnit::Type::Optional,  "[" + lexeme + "]", line, column);
+}
+
+
+/**
+ * @brief Parses a Repetition unit.
+ * @return The parsed ProductionUnit representing a Repetition.
+ */
+ProductionUnit GrammarLexer::parseRepetition() {
+  std::string lexeme;
+  if(peek() != '{') {
+    throw std::runtime_error("Grammar Syntax Error: Repetitions should be enclosed in {}, found unexpected Repetition at line " +
+          std::to_string(line) + ", column " + std::to_string(column));
+  }
+  
+  advance(); /* Advance '{' */
+
+  if(peek() != '<') {
+    throw std::runtime_error("Grammar Syntax Error: Repetitions should enclose Non-Terminals {<example>}, found unexpected Repetition enclosing terminal at line " +
+          std::to_string(line) + ", column " + std::to_string(column));
+  }
+
+  while (!isAtEnd() && peek() != '}') {
+    char ch = advance();
+    lexeme += ch;
+  }
+
+  if (isAtEnd()) {
+    throw std::runtime_error("Grammar Syntax Error: Unterminated Repetition at line " +
+          std::to_string(line) + ", column " + std::to_string(column));
+  }
+
+  if(input[pos] == '>') {
+    throw std::runtime_error("Grammar Syntax Error: Repetitions should enclose Non-Terminals {<example>}, found Non-Terminal without closing bracket, unexpected syntax at line " +
+        std::to_string(line) + ", column " + std::to_string(column));
+  }
+
+  advance(); /* Advance '}' */
+
+  return ProductionUnit(ProductionUnit::Type::Repetition,  "{" + lexeme + "}", line, column);
 }
 
 /**

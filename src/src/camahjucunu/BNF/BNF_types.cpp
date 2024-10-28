@@ -20,6 +20,10 @@ std::string ProductionUnit::str() const {
       stream << ANSI_COLOR_Cyan << "Optional:" << ANSI_COLOR_RESET << " ";
       stream << lexeme << " ";
       break;
+    case ProductionUnit::Type::Repetition:
+      stream << ANSI_COLOR_Cyan << "Repetition:" << ANSI_COLOR_RESET << " ";
+      stream << lexeme << " ";
+      break;
     case ProductionUnit::Type::Punctuation:
       stream << ANSI_COLOR_Cyan << "Punctuation:" << ANSI_COLOR_RESET << " ";
       stream << lexeme << " ";

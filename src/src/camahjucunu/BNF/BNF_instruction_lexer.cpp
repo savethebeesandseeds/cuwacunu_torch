@@ -14,7 +14,7 @@ char InstructionLexer::peek() {
 }
 
 char InstructionLexer::advance() {
-  log_warn("waka : \t InstructionLexer::advance: %c -> %c \n", input[pos], input[pos + 1]);
+  log_warn("waka : \t %s InstructionLexer::advance %s: %c -> %c \n", ANSI_COLOR_Red, ANSI_COLOR_RESET, input[pos], input[pos + 1]);
   if (isAtEnd()) {
     return '\0';
   }
@@ -42,7 +42,7 @@ size_t InstructionLexer::getPosition() const {
 }
 
 void InstructionLexer::setPosition(size_t position) {
-  log_warn("waka : \t InstructionLexer::setPosition [position=%ld]: %c -> %c \n", position, input[pos], input[position]);
+  log_warn("waka : \t %s InstructionLexer::setPosition %s [position=%ld]: %c -> %c \n", ANSI_COLOR_Blue, ANSI_COLOR_RESET, position, input[pos], input[position]);
   pos = position;
 }
 

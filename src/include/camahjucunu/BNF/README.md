@@ -19,11 +19,13 @@ Please note that this project is an internal tool and may lack some modern featu
 - **Production Rules**: Defined using `::=`, e.g., `<expr> ::= <term> "+" <expr> ;`.
 - **Alternatives**: Separated by `|`, e.g., `<digit> ::= "0" | "1" | "2" ;`.
 - **Optional Elements**: Enclosed in `[ ]`, e.g., `[ <parameter_list> ]`.
-- **Repetitions**: Two elements, e.g. `<list> ::= <item> "," <items> ;`
-- **Repetitions**: One or more elements, e.g. `<list> ::= <item> | <item> "," <list> ;`
-- **Repetitions**: Zero, one or more elements, e.g. `<list> ::= [<item>] | <item> | <item> "," <list> ;`
+- **Repetitions**: Two elements, e.g. `<list> ::= {<items>} ;`
+- **Repetitions**: Recurrence, e.g. `<list> ::= <item> "," | <list>  ;`
 - **End of Production**: Denoted by `;`.
 
+Note: The order in defining the alternatives is important. 
+this: `<list> ::= <item> "," | <list>  ;`
+is different than: `<list> ::= <list> | <item> "," ;`
 
 ## Usage
 

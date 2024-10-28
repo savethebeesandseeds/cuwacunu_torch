@@ -2,6 +2,7 @@
 #include "camahjucunu/BNF/BNF_grammar_parser.h"
 
 RUNTIME_WARNING("(BNF_grammar_parser.cpp)[] guard printing the errors with secure methods \n");
+RUNTIME_WARNING("(BNF_grammar_parser.cpp)[] could use better grammar verification \n");
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -49,7 +50,8 @@ bool check_is_informationUnit(const ProductionUnit& unit) {
   if(
     unit.type != ProductionUnit::Type::Terminal || 
     unit.type != ProductionUnit::Type::NonTerminal || 
-    unit.type != ProductionUnit::Type::Optional
+    unit.type != ProductionUnit::Type::Optional ||
+    unit.type != ProductionUnit::Type::Repetition
   ) {
     return true;
   }
@@ -94,7 +96,7 @@ void validate_is_ProductionOperator(ProductionUnit unit) {
 void validate_is_InformationUnit(ProductionUnit unit) {
   if ( ! check_is_informationUnit(unit)) {
     throw std::runtime_error(
-      "Grammar Syntax Error: Expected \"Terminal\", '<NonTerminal>' or [Optional] unit after ProductionOperator ::= '" + unit.lexeme + 
+      "Grammar Syntax Error: Expected \"Terminal\", '<NonTerminal>', {<Repetition>} or [<Optional>] unit after ProductionOperator ::= '" + unit.lexeme + 
       "' at line " + std::to_string(unit.line) +
       ", column " + std::to_string(unit.column)
     );
@@ -131,9 +133,7 @@ const ProductionGrammar& GrammarParser::getGrammar() const {
 }
 
 void GrammarParser::advanceUnit() {
-  // auto pastUnit = currentUnit;
   currentUnit = lexer.getNextUnit();
-  // log_info("[waka(a)] advanceUnit() .lexeme: %s -> %s\n", pastUnit.lexeme.c_str(), currentUnit.lexeme.c_str());
 }
 
 void GrammarParser::parseGrammar() {
@@ -273,7 +273,9 @@ ProductionAlternative GrammarParser::parseProductionAlternative(std::string lhs_
         /* determine flags*/
         dflags |= lhs_lexeme == unit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
         dflags |= lhs_lexeme == ("[" + unit.lexeme + "]") ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
+        dflags |= lhs_lexeme == ("{" + unit.lexeme + "}") ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
         dflags |= unit.type == ProductionUnit::Type::Optional ? ProductionAlternative::Flags::Optional : ProductionAlternative::Flags::None;
+        dflags |= unit.type == ProductionUnit::Type::Repetition ? ProductionAlternative::Flags::Repetition : ProductionAlternative::Flags::None;
       }
     }
     
@@ -315,7 +317,9 @@ ProductionAlternative GrammarParser::parseProductionAlternative(std::string lhs_
   /* determine flags*/
   dflags |= lhs_lexeme == dunit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
   dflags |= "[" + lhs_lexeme  + "]" == dunit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
+  dflags |= "{" + lhs_lexeme  + "}" == dunit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
   dflags |= dunit.type == ProductionUnit::Type::Optional ? ProductionAlternative::Flags::Optional : ProductionAlternative::Flags::None;
+  dflags |= dunit.type == ProductionUnit::Type::Repetition ? ProductionAlternative::Flags::Repetition : ProductionAlternative::Flags::None;
 
   /* ProductionAlternative::Type::Single with ProductionAlternative::Flags::Recursion generates infinite recursion */
   if((dflags & ProductionAlternative::Flags::Recursion) == ProductionAlternative::Flags::Recursion) {

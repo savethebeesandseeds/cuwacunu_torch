@@ -29,6 +29,7 @@ struct ProductionUnit {
     Terminal,             // Represents a terminal string enclosed in quotes or literals e.g. [  "A"    "ABC"    'ABC'    A     ABC    1  123   "123"   ]
     NonTerminal,          // Represents a non-terminal symbol enclosed in angle brackets e.g. <example>
     Optional,             // Indicates a optional NonTerminal e.g. <example> ::= [<item>];
+    Repetition,           // Indicates a zero or more elements NonTerminal repetition e.g. <example> ::= {<item>} ;
     Punctuation,          // Represents a punctuation in BNF e.g. [  ';'     '|'    '::='  ]
     EndOfFile,            // Indicates the end of the input stream 
     Unknown               // Represents an unrecognized or invalid unit
@@ -72,6 +73,7 @@ struct ProductionAlternative {
     None      = 1 << 0, // b0000
     Recursion = 1 << 1, // b0001  // Contains Recursion units to self e.g. <example> ::= "A" | "B" <example> ; ----> BBBBBA
     Optional  = 1 << 2, // b0010  // Contains Optional units e.g. <example> ::= [<item>] ;
+    Repetition= 1 << 3, // b0010  // Contains Repetition units e.g. <example> ::= [<item>] ;
   } flags = Flags::None;
 
   std::variant<ProductionUnit, std::vector<ProductionUnit>> content;

@@ -19,7 +19,6 @@ namespace BNF {
 struct RootNode;
 struct IntermediaryNode;
 struct TerminalNode;
-struct OptionalNode;
 
 class ASTVisitor {
 public:
@@ -27,7 +26,6 @@ public:
   virtual void visit(const RootNode* node) = 0;
   virtual void visit(const IntermediaryNode* node) = 0;
   virtual void visit(const TerminalNode* node) = 0;
-  virtual void visit(const OptionalNode* node) = 0;
   // Remove or add other node types as needed
 };
 

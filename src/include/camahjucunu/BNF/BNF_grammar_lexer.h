@@ -102,6 +102,12 @@ private:
   ProductionUnit parseOptional();
 
   /**
+   * @brief Parses a repetition Unit.
+   * @return The parsed ProductionUnit representing a repetition.
+   */
+  ProductionUnit parseRepetition();
+
+  /**
    * @brief Parses a symbol Unit.
    * @return The parsed ProductionUnit representing a symbol.
    */

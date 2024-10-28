@@ -258,6 +258,64 @@ ExpectedGrammar get_expected_arithmetic_grammar() {
     return grammar;
 }
 
+ExpectedGrammar get_optional_expression_grammar() {
+    ExpectedGrammar grammar;
+
+    grammar["<instruction>"] = ExpectedProductionRule{
+        "<instruction>",
+        {
+            {"[<number>]"}
+        }
+    };
+
+    grammar["<number>"] = ExpectedProductionRule{
+        "<number>",
+        {
+            {"<digit>"},
+            {"<digit>", "<number>"}
+        }
+    };
+
+    grammar["<digit>"] = ExpectedProductionRule{
+        "<digit>",
+        {
+            {"\"0\""}, {"\"1\""}, {"\"2\""}, {"\"3\""}, {"\"4\""},
+            {"\"5\""}, {"\"6\""}, {"\"7\""}, {"\"8\""}, {"\"9\""}
+        }
+    };
+
+    return grammar;
+}
+
+ExpectedGrammar get_repetition_expression_grammar() {
+    ExpectedGrammar grammar;
+
+    grammar["<instruction>"] = ExpectedProductionRule{
+        "<instruction>",
+        {
+            {"{<number>}"}
+        }
+    };
+
+    grammar["<number>"] = ExpectedProductionRule{
+        "<number>",
+        {
+            {"<digit>"},
+            {"<digit>", "<number>"}
+        }
+    };
+
+    grammar["<digit>"] = ExpectedProductionRule{
+        "<digit>",
+        {
+            {"\"0\""}, {"\"1\""}, {"\"2\""}, {"\"3\""}, {"\"4\""},
+            {"\"5\""}, {"\"6\""}, {"\"7\""}, {"\"8\""}, {"\"9\""}
+        }
+    };
+
+    return grammar;
+}
+
 // Function to get expected grammar for Simple Language with Optional and Repetition
 ExpectedGrammar get_expected_simple_lang_grammar() {
     ExpectedGrammar grammar;
@@ -415,6 +473,24 @@ int main() {
             "<digit>       ::= \"0\" | \"1\" | \"2\" | \"3\" | \"4\" | \"5\" | \"6\" | \"7\" | \"8\" | \"9\" ;\n",
             true,
             get_expected_simple_lang_grammar()
+        },
+        TestCase{
+            "Optional Expression",
+            // BNF Content
+            "<instruction> ::= [<number>] ;\n"
+            "<number>     ::= <digit> | <digit> <number> ;\n"
+            "<digit>      ::= \"0\" | \"1\" | \"2\" | \"3\" | \"4\" | \"5\" | \"6\" | \"7\" | \"8\" | \"9\" ;\n",
+            true,
+            get_optional_expression_grammar()
+        },
+        TestCase{
+            "Repetition Expression",
+            // BNF Content
+            "<instruction> ::= {<number>} ;\n"
+            "<number>     ::= <digit> | <digit> <number> ;\n"
+            "<digit>      ::= \"0\" | \"1\" | \"2\" | \"3\" | \"4\" | \"5\" | \"6\" | \"7\" | \"8\" | \"9\" ;\n",
+            true,
+            get_repetition_expression_grammar()
         },
         TestCase{
             "Missing Semicolon",

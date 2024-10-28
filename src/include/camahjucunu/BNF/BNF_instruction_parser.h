@@ -26,6 +26,7 @@ private:
   ASTNodePtr parse_ProductionRule(const ProductionRule& rule);
   ASTNodePtr parse_ProductionAlternative(const ProductionAlternative& alt);
   ASTNodePtr parse_ProductionUnit(const ProductionUnit& unit);
+  
   ASTNodePtr parse_TerminalNode(const ProductionUnit& unit);
 };
 

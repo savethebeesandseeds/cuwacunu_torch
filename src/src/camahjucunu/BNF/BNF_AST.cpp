@@ -28,12 +28,6 @@ void printAST(const ASTNode* node, int indent, std::ostream& os, const std::stri
       printAST(intermediary->children[i].get(), indent + 1, os, prefix + (isLast ? "    " : "│   "), i == childCount - 1);
     }
   }
-  else if (auto optional = dynamic_cast<const OptionalNode*>(node)) {
-    os << "OptionalNode: " << optional->unit.str() << "\n";
-    if (optional->child) {
-      printAST(optional->child.get(), indent + 1, os, prefix + (isLast ? "    " : "│   "), true);
-    }
-  }
   else if (auto terminal = dynamic_cast<const TerminalNode*>(node)) {
     os << "TerminalNode: " << terminal->unit.lexeme << "\n";
   }
@@ -70,14 +64,6 @@ bool compareAST(const ASTNode* actual, const ASTNode* expected) {
     return true;
   }
 
-  // Compare OptionalNode
-  if (auto actualOptional = dynamic_cast<const OptionalNode*>(actual)) {
-    auto expectedOptional = dynamic_cast<const OptionalNode*>(expected);
-    if (!expectedOptional) return false;
-    if (actualOptional->unit.str() != expectedOptional->unit.str()) return false;
-    return compareAST(actualOptional->child.get(), expectedOptional->child.get());
-  }
-
   // Compare TerminalNode
   if (auto actualTerminal = dynamic_cast<const TerminalNode*>(actual)) {
     auto expectedTerminal = dynamic_cast<const TerminalNode*>(expected);
@@ -97,13 +83,6 @@ void TerminalNode::accept(ASTVisitor& visitor) const {
 void IntermediaryNode::accept(ASTVisitor& visitor) const {
   visitor.visit(this);
   for (const auto& child : children) {
-    child->accept(visitor);
-  }
-}
-
-void OptionalNode::accept(ASTVisitor& visitor) const {
-  visitor.visit(this);
-  if (child) {
     child->accept(visitor);
   }
 }
