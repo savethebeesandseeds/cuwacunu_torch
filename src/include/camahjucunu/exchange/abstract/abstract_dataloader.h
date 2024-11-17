@@ -1,3 +1,4 @@
+/* abstract_dataloader.h */
 #pragma once
 #include "piaabo/dutils.h"
 #include "piaabo/darchitecture.h"
@@ -15,7 +16,12 @@ namespace exchange {
 struct abstract_dataloader {
   virtual std::optional<depth_ret_t>            depth             ( depth_args_t args, bool await = true )  const = 0;
   virtual ~abstract_dataloader                  () {}             /* destructor */
+  
+  SequentialSampler
+  RandomSampler
+  
 };
+
 
 } /* namespace exchange */
 } /* namespace camahjucunu */

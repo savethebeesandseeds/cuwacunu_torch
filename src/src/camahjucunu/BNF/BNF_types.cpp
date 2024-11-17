@@ -5,60 +5,60 @@ namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {
 
-std::string ProductionUnit::str() const {
+std::string ProductionUnit::str(bool verbose) const {
   std::ostringstream stream;
   switch (type) {
     case ProductionUnit::Type::Terminal:
-      stream << ANSI_COLOR_Cyan << "Terminal:" << ANSI_COLOR_RESET << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "Terminal:" << ANSI_COLOR_RESET << " "; }
       stream << lexeme << " ";
       break;
     case ProductionUnit::Type::NonTerminal:
-      stream << ANSI_COLOR_Cyan << "NonTerminal:" << ANSI_COLOR_RESET << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "NonTerminal:" << ANSI_COLOR_RESET << " "; }
       stream << lexeme << " ";
       break;
     case ProductionUnit::Type::Optional:
-      stream << ANSI_COLOR_Cyan << "Optional:" << ANSI_COLOR_RESET << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "Optional:" << ANSI_COLOR_RESET << " "; }
       stream << lexeme << " ";
       break;
     case ProductionUnit::Type::Repetition:
-      stream << ANSI_COLOR_Cyan << "Repetition:" << ANSI_COLOR_RESET << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "Repetition:" << ANSI_COLOR_RESET << " "; }
       stream << lexeme << " ";
       break;
     case ProductionUnit::Type::Punctuation:
-      stream << ANSI_COLOR_Cyan << "Punctuation:" << ANSI_COLOR_RESET << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "Punctuation:" << ANSI_COLOR_RESET << " "; }
       stream << lexeme << " ";
       break;
     case ProductionUnit::Type::EndOfFile:
-      stream << ANSI_COLOR_Cyan << "EndOfFile:" << ANSI_COLOR_RESET << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "EndOfFile:" << ANSI_COLOR_RESET << " "; }
       stream << lexeme << " ";
       break;
-    case ProductionUnit::Type::Unknown:
-      stream << ANSI_COLOR_Cyan << "Unknown:" << ANSI_COLOR_RESET << " ";
-      stream << lexeme << " ";
+    case ProductionUnit::Type::Undetermined:
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "Undetermined:" << ANSI_COLOR_RESET << " "; }
+      stream << "null" << " ";
       break;
     default:
-      log_secure_fatal("Unknown ProductionUnit: [%d] with lexeme: %s\n", static_cast<int>(type), lexeme.c_str());
+      log_secure_fatal("Undetermined ProductionUnit: [%d] with lexeme: %s\n", static_cast<int>(type), lexeme.c_str());
       break;
   }
   return stream.str();
 }
 
-std::string ProductionAlternative::str() const {
+std::string ProductionAlternative::str(bool verbose) const {
   std::ostringstream stream;
   switch (type) {
     case ProductionAlternative::Type::Single:
-      stream << ANSI_COLOR_Cyan << "Single:" << ANSI_COLOR_RESET << " ";
-      stream << std::get<ProductionUnit>(content).str() << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "Single:" << ANSI_COLOR_RESET << " "; }
+      stream << std::get<ProductionUnit>(content).str(verbose) << " ";
       break;
     case ProductionAlternative::Type::Sequence:
-      stream << ANSI_COLOR_Cyan << "Sequence:" << ANSI_COLOR_RESET << " ";
+      if(verbose) { stream << ANSI_COLOR_Dim_Cyan << "Sequence:" << ANSI_COLOR_RESET << " "; }
       for (size_t i = 0; i < std::get<std::vector<ProductionUnit>>(content).size(); ++i) {
-        stream << std::get<std::vector<ProductionUnit>>(content)[i].str();
+        stream << std::get<std::vector<ProductionUnit>>(content)[i].str(verbose);
         stream << " ";
       }
       break;
     case ProductionAlternative::Type::Unknown:
-      stream << ANSI_COLOR_Cyan << "Unknown!" << ANSI_COLOR_RESET << " ";
+      stream << ANSI_COLOR_Dim_Cyan << "Unknown!" << ANSI_COLOR_RESET << " ";
       break;
     default:
       log_secure_fatal("Unknown ProductionAlternative: [%d]\n", static_cast<int>(type));
@@ -67,11 +67,11 @@ std::string ProductionAlternative::str() const {
   return stream.str();
 }
 
-std::string ProductionRule::str() const {
+std::string ProductionRule::str(bool verbose) const {
   std::ostringstream stream;
   stream << lhs << " ::= ";
   for (size_t i = 0; i < rhs.size(); ++i) {
-    stream << rhs[i].str();
+    stream << rhs[i].str(verbose);
     if(i < rhs.size() - 1) {
       stream << " | ";
     }

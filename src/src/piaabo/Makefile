@@ -12,7 +12,7 @@ COMPILE_ENCRYPT_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(US
 # # -----------------------------------------------------------------
 # # - - - Cross files Uitilies  - - - - - - - - - - - - - - - - - - -
 # # -----------------------------------------------------------------
-PIAABO := $(OUTPUT_PATH)/dutils.o $(OUTPUT_PATH)/darchitecture.o $(OUTPUT_PATH)/dconfig.o $(OUTPUT_PATH)/json_parsing.o $(OUTPUT_PATH)/statistics_space.o $(OUTPUT_PATH)/evaluation.o $(OUTPUT_PATH)/dsecurity.o
+PIAABO := $(OUTPUT_PATH)/dutils.o $(OUTPUT_PATH)/darchitecture.o $(OUTPUT_PATH)/dconfig.o $(OUTPUT_PATH)/json_parsing.o $(OUTPUT_PATH)/dlarge_files.o $(OUTPUT_PATH)/statistics_space.o $(OUTPUT_PATH)/evaluation.o $(OUTPUT_PATH)/dsecurity.o
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
@@ -24,6 +24,8 @@ $(OUTPUT_PATH)/dconfig.o: $(HERE_PATH)/dconfig.cpp $(OUTPUT_PATH)/dutils.o
 	@$(COMPILE_CMD)
 $(OUTPUT_PATH)/json_parsing.o: $(HERE_PATH)/json_parsing.cpp $(OUTPUT_PATH)/dutils.o
 	@$(COMPILE_CMD)
+$(OUTPUT_PATH)/dlarge_files.o: $(HERE_PATH)/dlarge_files.cpp $(OUTPUT_PATH)/dutils.o
+	@$(COMPILE_ENCRYPT_CMD)
 $(OUTPUT_PATH)/statistics_space.o: $(HERE_PATH)/statistics_space.cpp $(OUTPUT_PATH)/dutils.o
 	@$(COMPILE_CMD)
 $(OUTPUT_PATH)/evaluation.o: $(HERE_PATH)/evaluation.cpp $(OUTPUT_PATH)/dutils.o

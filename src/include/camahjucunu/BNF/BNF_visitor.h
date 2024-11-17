@@ -1,5 +1,6 @@
 // BNF_visitor.h
 #pragma once
+#include <vector>
 #include "BNF_AST.h"
 
 /* 
@@ -15,18 +16,25 @@ namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {
 
-// Forward declarations of AST node types
+class ProductionUnits;
+
+struct ASTNode;
 struct RootNode;
 struct IntermediaryNode;
 struct TerminalNode;
 
+struct VisitorContext {
+  void* user_data;
+  std::vector<const ASTNode*> stack;
+  VisitorContext(void* user_data) : user_data(user_data) {};
+};
+
 class ASTVisitor {
 public:
   virtual ~ASTVisitor() = default;
-  virtual void visit(const RootNode* node) = 0;
-  virtual void visit(const IntermediaryNode* node) = 0;
-  virtual void visit(const TerminalNode* node) = 0;
-  // Remove or add other node types as needed
+  virtual void visit(const RootNode* node, VisitorContext& context) = 0;
+  virtual void visit(const IntermediaryNode* node, VisitorContext& context) = 0;
+  virtual void visit(const TerminalNode* node, VisitorContext& context) = 0;
 };
 
 

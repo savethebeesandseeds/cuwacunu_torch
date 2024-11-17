@@ -1,128 +1,134 @@
-// observation_pipeline.cpp
+/* observation_pipeline.cpp */
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
 namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {
 
-// Constructor: Register executable functions
-observationPipeline::observationPipeline() {
-    // Example: Registering a function for "BTCUSDT"
-    functions["BTCUSDT"] = [](const ParameterList& params, const FileIDList& fileIDs) {
-        std::cout << "Executing BTCUSDT with parameters:\n";
-        for (const auto& [key, value] : params) {
-            std::cout << "  " << key << " = " << value << "\n";
-        }
-        std::cout << "File IDs:\n";
-        for (const auto& id : fileIDs) {
-            std::cout << "  " << id << "\n";
-        }
-        // Implement actual functionality here, e.g., executing a trade
-    };
-
-    // Register more functions as needed
-    // functions["ETHUSD"] = [](const ParameterList& params, const FileIDList& fileIDs) { ... };
+observationPipeline::observationPipeline() :
+  bnfLexer(OBSERVATION_PIPELINE_BNF_GRAMMAR), 
+  bnfParser(bnfLexer), 
+  grammar(parseBnfGrammar()), 
+  iParser(iLexer, grammar) {
+#ifdef OBSERVARION_PIPELINE_DEBUG
+  std::cout << OBSERVATION_PIPELINE_BNF_GRAMMAR << "\n";
+#endif
 }
 
-// Helper function to get the current context from the stack
-std::string observationPipeline::getCurrentContext() const {
-    if (contextStack.empty()) {
-        return "";
-    }
-    std::cout << "Stack contents:\n";
-    int level = 0;
-    
-    std::stack<std::string> aux = contextStack;
-    while (!aux.empty()) {
-        std::cout << "│ " << std::string(level * 4, ' ') << "└── " << aux.top() << "\n";
-        aux.pop();
-        ++level;
-    }
+observation_pipeline_instruction_t observationPipeline::decode(std::string instruction) {
+  /* guard the thread to avoid multiple decoding in parallel */
+  LOCK_GUARD(current_mutex);
 
-    return contextStack.top();
+  /* Parse the instruction text */
+  ASTNodePtr actualAST = iParser.parse_Instruction(instruction);
+
+#ifdef OBSERVARION_PIPELINE_DEBUG
+  std::cout << "Parsed AST:\n";
+  printAST(actualAST.get(), true, 2, std::cout);
+#endif
+  
+  /* Parsed data */
+  observation_pipeline_instruction_t current;
+  VisitorContext context(static_cast<void*>(&current));
+
+  /* decode and transverse the Abstract Syntax Tree */
+  actualAST.get()->accept(*this, context);
+
+  return current;
 }
 
-// Visit NonTerminalNode
-void observationPipeline::visit(const NonTerminalNode* node) {
-    std::cout << "Visiting NonTerminalNode: " << node->name << "\n";
-    // Push the current node's name onto the context stack
-    contextStack.push(node->name);
-
-    // Handle NonTerminal
-    std::cout << "Handling <" << node->name << "> node.\n";
-    for (const auto& child : node->children) {
-        child->accept(*this);
-    }
-
-    // Pop the current node's name from the context stack after traversal
-    contextStack.pop();
+ProductionGrammar observationPipeline::parseBnfGrammar() {
+  bnfParser.parseGrammar();
+  return bnfParser.getGrammar();
 }
 
-// Visit IdentifierNode
-void observationPipeline::visit(const IdentifierNode* node) {
-    std::string currentContext = getCurrentContext();
-    std::cout << "Visiting IdentifierNode: " << node->value << " in context: " << currentContext << "\n";
-
-    if (currentContext == "<symbol_spec>") {
-        symbol = node->value;
-        std::cout << "Symbol set to: " << symbol << "\n";
-    }
-    else if (currentContext == "<file_ids>") {
-        fileIDs.push_back(node->value);
-        std::cout << "Added File ID: " << node->value << "\n";
-    } else {
-        log_secure_fatal("[observationPipeline] Identifier '%s' found in unexpected context '%s'\n", 
-            node->value.c_str(), currentContext.c_str());
-    }
+void observationPipeline::visit(const RootNode* node, VisitorContext& context) {
+#ifdef OBSERVARION_PIPELINE_DEBUG
+  /* debug */
+  std::ostringstream oss;
+  for(auto item: context.stack) {
+    oss << item->str(false) << ", ";
+  }
+  log_dbg("RootNode context: [%s]  ---> %s\n", oss.str().c_str(), node->lhs_instruction.c_str());
+#endif
 }
 
-// Handler for <instruction>
-void observationPipeline::handleInstruction(const NonTerminalNode* node) {
-    std::cout << "Handling <instruction> node.\n";
-    for (const auto& child : node->children) {
-        child->accept(*this);
-    }
-    executeFunction();
+void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& context) {
+#ifdef OBSERVARION_PIPELINE_DEBUG
+  /* debug */
+  std::ostringstream oss;
+  for(auto item: context.stack) {
+    oss << item->str(false) << ", ";
+  }
+  log_dbg("IntermediaryNode context: [%s]  ---> %s\n", oss.str().c_str(), node->alt.str(true).c_str());
+#endif
+  /* symbol */
+  if( context.stack.size() == 2 
+    && context.stack[0]->hash() == "<instruction>" 
+    && context.stack[1]->hash() == "<symbol>") {
+    /* clear the contents of symbol */
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->symbol.clear();
+  }
+
+  /* items */
+  if( context.stack.size() == 3 
+    && context.stack[0]->hash() == "<instruction>" 
+    && context.stack[1]->hash() == "<sequence_item>"
+    && context.stack[2]->hash() == "<input_form>") {
+    /* append a new input_form_t element */
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->items.emplace_back();
+  }
+
 }
 
-// Handler for <parameter>
-void observationPipeline::handleParameter(const NonTerminalNode* node) {
-    std::cout << "Handling <parameter> node.\n";
-    std::string key, value;
-    for (const auto& child : node->children) {
-        if (auto idNode = dynamic_cast<const IdentifierNode*>(child.get())) {
-            if (key.empty()) {
-                key = idNode->value;
-                std::cout << "Parameter key extracted: " << key << "\n";
-            }
-            else {
-                value = idNode->value;
-                std::cout << "Parameter value extracted: " << value << "\n";
-            }
-        }
-    }
-    if (!key.empty() && !value.empty()) {
-        parameters[key] = value;
-        std::cout << "Parameter added: " << key << " = " << value << "\n";
-    }
+void observationPipeline::visit(const TerminalNode* node, VisitorContext& context) {
+#ifdef OBSERVARION_PIPELINE_DEBUG
+  /* debug */
+  std::ostringstream oss;
+  for(auto item: context.stack) {
+    oss << item->str(false) << ", ";
+  }
+  log_dbg("TerminalNode context: [%s]  ---> %s\n", oss.str().c_str(), node->unit.str(true).c_str());
+#endif
+  /* symbol */
+  if( context.stack.size() == 3 
+    && context.stack[0]->hash() == "<instruction>" 
+    && context.stack[1]->hash() == "<symbol>" 
+    && context.stack[2]->hash() == "<letter>") {
+    /* append a letter to the symbol */
+    std::string aux = node->unit.lexeme;
+    cuwacunu::piaabo::string_remove(aux, '\"');
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->symbol += aux;
+  }
+
+  /* items */
+  if( context.stack.size() == 4 
+    && context.stack[0]->hash() == "<instruction>" 
+    && context.stack[1]->hash() == "<sequence_item>"
+    && context.stack[2]->hash() == "<input_form>") {
+      /* set up the values for the last element of the items vector */
+      input_form_t& element = static_cast<observation_pipeline_instruction_t*>(context.user_data)->items.back();
+      
+      /* get the lexeme without quotes */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+
+      /* interval*/
+      if(context.stack[3]->hash() == "<interval>") {
+
+        element.interval = 
+          cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(
+            aux
+          );
+      }
+
+      /* count */
+      if(context.stack[3]->hash() == "<count>") {
+        element.count = std::stoul(aux);
+      }
+  }
 }
 
-// Helper function to execute the mapped function
-void observationPipeline::executeFunction() {
-    std::cout << "Executing function for symbol: " << symbol << "\n";
-    if (symbol.empty()) {
-        std::cerr << "Error: No symbol found in instruction.\n";
-        return;
-    }
-
-    auto it = functions.find(symbol);
-    if (it != functions.end()) {
-        it->second(parameters, fileIDs);
-    } else {
-        std::cerr << "Error: No function registered for symbol: " << symbol << "\n";
-    }
-}
-
-} // namespace BNF
-} // namespace camahjucunu
-} // namespace cuwacunu
+} /* namespace BNF */
+} /* namespace camahjucunu */
+} /* namespace cuwacunu */

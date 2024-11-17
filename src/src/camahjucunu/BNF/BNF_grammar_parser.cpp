@@ -288,7 +288,7 @@ ProductionAlternative GrammarParser::parseProductionAlternative(std::string lhs_
     }
 
     /* return Alternative as a Sequence (specified as dunits is a std::vector) */
-    return ProductionAlternative(dunits, dflags);
+    return ProductionAlternative(lhs_lexeme, dunits, dflags);
   }
 
   /* 
@@ -329,7 +329,7 @@ ProductionAlternative GrammarParser::parseProductionAlternative(std::string lhs_
     );
   }
 
-  return ProductionAlternative(dunit, dflags);
+  return ProductionAlternative(lhs_lexeme, dunit, dflags);
 }
 
 /* --- --- --- --- --- --- --- --- --- --- --- --- */

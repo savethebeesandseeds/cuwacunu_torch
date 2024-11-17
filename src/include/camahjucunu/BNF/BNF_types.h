@@ -32,8 +32,8 @@ struct ProductionUnit {
     Repetition,           // Indicates a zero or more elements NonTerminal repetition e.g. <example> ::= {<item>} ;
     Punctuation,          // Represents a punctuation in BNF e.g. [  ';'     '|'    '::='  ]
     EndOfFile,            // Indicates the end of the input stream 
-    Unknown               // Represents an unrecognized or invalid unit
-  } type = Type::Unknown; // Default initialization
+    Undetermined          // Represents an empty or invalid unit
+  } type = Type::Undetermined; // Default initialization
 
   std::string lexeme = "";  // The textual representation of the unit.
   int line = 1;             // The line number where the unit appears.
@@ -46,17 +46,19 @@ struct ProductionUnit {
    * @param line    The line number where the unit appears.
    * @param column  The column number where the unit starts.
    */
-  ProductionUnit(Type type = Type::Unknown, const std::string& lexeme = "", int line = 1, int column = 1)
+  ProductionUnit(Type type = Type::Undetermined, const std::string& lexeme = "", int line = 1, int column = 1)
     : type(type), lexeme(lexeme), line(line), column(column) {}
   
   /* convert to std::string */
-  std::string str() const;
+  std::string str(bool versbose = false) const;
 };
 
 /**
  * @brief Represents a production rule alternative in BNF.
  */
 struct ProductionAlternative {
+  std::string lhs = "";
+
   /**
    * @brief Enumerates the types of BNF units.
    */
@@ -78,14 +80,14 @@ struct ProductionAlternative {
 
   std::variant<ProductionUnit, std::vector<ProductionUnit>> content;
 
-  ProductionAlternative(const ProductionUnit& dunit, Flags dflags = Flags::None)
-    : type(Type::Single), flags(dflags), content(dunit) {}
+  ProductionAlternative(std::string dlhs, const ProductionUnit& dunit, Flags dflags = Flags::None)
+    : lhs(dlhs), type(Type::Single), flags(dflags), content(dunit) {}
 
-  ProductionAlternative(const std::vector<ProductionUnit>& dunits, Flags dflags = Flags::None)
-    : type(Type::Sequence), flags(dflags), content(dunits) {}
+  ProductionAlternative(std::string dlhs, const std::vector<ProductionUnit>& dunits, Flags dflags = Flags::None)
+    : lhs(dlhs), type(Type::Sequence), flags(dflags), content(dunits) {}
   
   /* convert to std::string */
-  std::string str() const;
+  std::string str(bool versbose = false) const;
 };
 
 /* ProductionAlternative Flags Bitwise */
@@ -103,7 +105,7 @@ struct ProductionRule {
   std::string lhs;                          /* Left-hand side of the production. */
   std::vector<ProductionAlternative> rhs;   /* Right-hand side alternatives. */
 
-  std::string str() const;
+  std::string str(bool versbose = false) const;
 };
 
 

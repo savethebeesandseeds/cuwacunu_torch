@@ -1,5 +1,6 @@
 /* BNF_grammar_parser.h */
 #pragma once
+#include <stack>
 #include "camahjucunu/BNF/BNF_AST.h"
 #include "camahjucunu/BNF/BNF_types.h"
 #include "camahjucunu/BNF/BNF_grammar_lexer.h"
@@ -14,9 +15,11 @@ class InstructionParser {
 private:
   InstructionLexer iLexer;
   ProductionGrammar grammar;
+  std::stack<std::string> parsing_error_stack;
+  std::stack<std::string> parsing_success_stack;
 public:
   InstructionParser(InstructionLexer& iLexer, ProductionGrammar& grammar)
-    : iLexer(iLexer), grammar(grammar) {
+    : iLexer(iLexer), grammar(grammar), parsing_error_stack(), parsing_success_stack() {
       iLexer.reset();
   }
 
@@ -25,9 +28,9 @@ public:
 private:
   ASTNodePtr parse_ProductionRule(const ProductionRule& rule);
   ASTNodePtr parse_ProductionAlternative(const ProductionAlternative& alt);
-  ASTNodePtr parse_ProductionUnit(const ProductionUnit& unit);
+  ASTNodePtr parse_ProductionUnit(const ProductionAlternative& alt, const ProductionUnit& unit);
   
-  ASTNodePtr parse_TerminalNode(const ProductionUnit& unit);
+  ASTNodePtr parse_TerminalNode(const std::string& lhs, const ProductionUnit& unit);
 };
 
 } /* namespace BNF */

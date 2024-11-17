@@ -108,14 +108,6 @@ test_bnf_instruction_parser: $(TEST_BUILD)/test_bnf_instruction_parser
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_bnf_ast test_bnf_ast
-$(TEST_BUILD)/test_bnf_ast: $(HERE_PATH)/test_bnf_ast.cpp
-	@$(EXTENDED_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_bnf_ast
-test_bnf_ast: $(TEST_BUILD)/test_bnf_ast
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
 .PHONY: $(TEST_BUILD)/test_bnf_observation_pipeline test_bnf_observation_pipeline
 $(TEST_BUILD)/test_bnf_observation_pipeline: $(HERE_PATH)/test_bnf_observation_pipeline.cpp
 	@$(EXTENDED_LINK_CMD)

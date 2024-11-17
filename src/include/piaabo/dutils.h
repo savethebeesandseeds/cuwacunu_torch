@@ -35,6 +35,7 @@
 #define ANSI_COLOR_Magenta "\x1b[35m" 
 #define ANSI_COLOR_Cyan "\x1b[36m"    
 #define ANSI_COLOR_White "\x1b[37m" 
+
 #define ANSI_COLOR_Bright_Black_Grey "\x1b[90m"
 #define ANSI_COLOR_Bright_Red "\x1b[91m" 
 #define ANSI_COLOR_Bright_Green "\x1b[92m" 
@@ -43,6 +44,15 @@
 #define ANSI_COLOR_Bright_Magenta "\x1b[95m" 
 #define ANSI_COLOR_Bright_Cyan "\x1b[96m"       
 #define ANSI_COLOR_Bright_White "\x1b[97m"
+
+#define ANSI_COLOR_Dim_Black_Grey "\x1b[2;90m"
+#define ANSI_COLOR_Dim_Red "\x1b[2;91m"
+#define ANSI_COLOR_Dim_Green "\x1b[2;92m"
+#define ANSI_COLOR_Dim_Yellow "\x1b[2;93m"
+#define ANSI_COLOR_Dim_Blue "\x1b[2;94m"
+#define ANSI_COLOR_Dim_Magenta "\x1b[2;95m"
+#define ANSI_COLOR_Dim_Cyan "\x1b[2;96m"
+#define ANSI_COLOR_Dim_White "\x1b[2;97m"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -163,6 +173,18 @@ std::string to_hex_string(const std::string data);
  */
 void string_replace(std::string &str, const std::string& from, const std::string& to);
 void string_replace(std::string &str, const char from, const char to);
+
+/**
+ * @brief Removes all occurrences of a substring with another string within a given string.
+ *
+ * @param str The target string where replacements will be made.
+ * @param target The substring to search for and remove.
+ *
+ * @note If `from` is empty, the function exits early to prevent an infinite loop.
+ */
+
+void string_remove(std::string &str, const std::string& target);
+void string_remove(std::string &str, const char target);
 
 /**
  * @brief Retrieves the current thread's ID as a C-style string.

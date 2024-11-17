@@ -52,8 +52,6 @@ test_bnf_instruction_lexer:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_instruction_lexer
 test_bnf_instruction_parser: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_instruction_parser
-test_bnf_ast: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_ast
 test_bnf_observation_pipeline: 
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_observation_pipeline
 test_binance_dataloader: 

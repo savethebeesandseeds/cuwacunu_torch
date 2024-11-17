@@ -102,12 +102,28 @@ void string_replace(std::string &str, const std::string& from, const std::string
 }
 
 void string_replace(std::string &str, const char from, const char to) {
-    for (size_t i = 0; i < str.size(); ++i) {
-        if (str[i] == from) {
-            str[i] = to;
-        }
+  for (size_t i = 0; i < str.size(); ++i) {
+    if (str[i] == from) {
+      str[i] = to;
     }
+  }
 }
+
+void string_remove(std::string &str, const std::string& target) {
+  return string_replace(str, target, "");
+}
+
+void string_remove(std::string &str, const char target) {
+  size_t pos = 0; // Position to place the next non-target character
+  for (size_t i = 0; i < str.size(); ++i) {
+    if (str[i] != target) {
+      str[pos++] = str[i]; // Move non-target character to the 'pos' index
+    }
+    // If str[i] == target, do nothing (effectively removing it)
+  }
+  str.resize(pos); // Resize string to new length after removals
+}
+
 
 const char* cthread_id() {
   static std::string threadID;

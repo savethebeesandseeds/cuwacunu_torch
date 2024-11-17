@@ -35,10 +35,13 @@ ENFORCE_ARCHITECTURE_DESIGN(       tickerBook_args_t);
 struct price_qty_t           { double price; double qty; };
 struct tick_full_t           { std::string symbol; double priceChange; double priceChangePercent; double weightedAvgPrice; double prevClosePrice; double lastPrice; double lastQty; double bidPrice; double bidQty; double askPrice; double askQty; double openPrice; double highPrice; double lowPrice; double volume; double quoteVolume; long openTime; long closeTime; long firstId; int lastId; int count; };
 struct tick_mini_t           { std::string symbol; double lastPrice; double openPrice; double highPrice; double lowPrice; double volume; double quoteVolume; long openTime; long closeTime; long firstId; int lastId; int count; };
-struct trade_t               { long id; double price; double qty; double quoteQty; long time; bool isBuyerMaker; bool isBestMatch; };
-struct kline_t               { long open_time; double open_price; double high_price; double low_price; double close_price; double volume; long close_time; double quote_asset_volume; int number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume; };
+#pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
+struct trade_t               { static trade_t from_binary(const char* data); static trade_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); std::vector<double> tensor_features(); long id; double price; double qty; double quoteQty; long time; bool isBuyerMaker; bool isBestMatch; };
+struct kline_t               { static kline_t from_binary(const char* data); static kline_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); std::vector<double> tensor_features(); long open_time; double open_price; double high_price; double low_price; double close_price; double volume; long close_time; double quote_asset_volume; int number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume; };
+#pragma pack(pop)
 struct price_t               { std::string symbol; double price; };
 struct bookPrice_t           { std::string symbol; double bidPrice; double bidQty; double askPrice; double askQty; };
+
 ENFORCE_ARCHITECTURE_DESIGN(           price_qty_t);
 ENFORCE_ARCHITECTURE_DESIGN(           tick_full_t);
 ENFORCE_ARCHITECTURE_DESIGN(           tick_mini_t);

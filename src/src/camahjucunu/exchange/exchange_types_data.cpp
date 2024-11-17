@@ -18,6 +18,7 @@ std::string           tickerBook_args_t::jsonify() { return jsonify_as_object( p
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         expected return structures          */
+/*              deserializations               */
 /* --- --- --- --- --- --- --- --- --- --- --- */
 depth_ret_t::depth_ret_t                       (const std::string &json) { deserialize(*this, json); };
 tradesRecent_ret_t::tradesRecent_ret_t         (const std::string &json) { deserialize(*this, json); };
@@ -28,6 +29,152 @@ tickerTradingDay_ret_t::tickerTradingDay_ret_t (const std::string &json) { deser
 ticker_ret_t::ticker_ret_t                     (const std::string &json) { deserialize(*this, json); };
 tickerPrice_ret_t::tickerPrice_ret_t           (const std::string &json) { deserialize(*this, json); };
 tickerBook_ret_t::tickerBook_ret_t             (const std::string &json) { deserialize(*this, json); };
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*                 from_csv                    */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+
+trade_t trade_t::from_csv(const std::string& line, char delimiter, size_t line_number) {
+  const size_t expected_fields = 7;
+  std::vector<std::string> tokens;
+  std::stringstream ss(line);
+  std::string token;
+  while (std::getline(ss, token, delimiter)) {
+    tokens.push_back(token);
+  }
+
+  if (tokens.size() != expected_fields) {
+    throw std::runtime_error("[from_csv](trade_t) Incorrect number of fields in line " + std::to_string(line_number)
+      + ": expected " + std::to_string(expected_fields) + ", got "
+      + std::to_string(tokens.size()) + ". Line content: " + line);
+  }
+
+  trade_t trade;
+  size_t idx = 0;
+
+  try {
+    trade.id = std::stol(tokens[idx++]);
+    trade.price = std::stod(tokens[idx++]);
+    trade.qty = std::stod(tokens[idx++]);
+    trade.quoteQty = std::stod(tokens[idx++]);
+    trade.time = std::stol(tokens[idx++]);
+    
+    // isBuyerMaker
+    {
+      std::string& bool_str = tokens[idx++];
+      if (bool_str == "true" || bool_str == "1") {
+        trade.isBuyerMaker = true;
+      } else if (bool_str == "false" || bool_str == "0") {
+        trade.isBuyerMaker = false;
+      } else {
+        throw std::runtime_error("[from_csv](trade_t) Invalid boolean value for isBuyerMaker: " + bool_str);
+      }
+    }
+
+    // isBestMatch
+    {
+      std::string& bool_str = tokens[idx++];
+      if (bool_str == "true" || bool_str == "1") {
+        trade.isBestMatch = true;
+      } else if (bool_str == "false" || bool_str == "0") {
+        trade.isBestMatch = false;
+      } else {
+        throw std::runtime_error("[from_csv](trade_t) Invalid boolean value for isBestMatch: " + bool_str);
+      }
+    }
+  } catch (const std::exception& e) {
+    throw std::runtime_error("[from_csv](trade_t) Error parsing tokens in line " + std::to_string(line_number) + ": " + e.what());
+  }
+
+  return trade;
+}
+
+
+kline_t kline_t::from_csv(const std::string& line, char delimiter, size_t line_number) {
+  const size_t expected_fields = 11;
+  std::vector<std::string> tokens;
+  std::stringstream ss(line);
+  std::string token;
+  while (std::getline(ss, token, delimiter)) {
+    tokens.push_back(token);
+  }
+
+  if (tokens.size() != expected_fields) {
+    throw std::runtime_error("[from_csv](kline_t) Incorrect number of fields in line " + std::to_string(line_number)
+      + ": expected " + std::to_string(expected_fields) + ", got "
+      + std::to_string(tokens.size()) + ". Line content: " + line);
+  }
+
+  kline_t kline;
+  size_t idx = 0;
+
+  try {
+    kline.open_time = std::stol(tokens[idx++]);
+    kline.open_price = std::stod(tokens[idx++]);
+    kline.high_price = std::stod(tokens[idx++]);
+    kline.low_price = std::stod(tokens[idx++]);
+    kline.close_price = std::stod(tokens[idx++]);
+    kline.volume = std::stod(tokens[idx++]);
+    kline.close_time = std::stol(tokens[idx++]);
+    kline.quote_asset_volume = std::stod(tokens[idx++]);
+    kline.number_of_trades = std::stoi(tokens[idx++]);
+    kline.taker_buy_base_volume = std::stod(tokens[idx++]);
+    kline.taker_buy_quote_volume = std::stod(tokens[idx++]);
+  } catch (const std::exception& e) {
+    throw std::runtime_error("[from_csv](kline_t) Error parsing tokens in line " + std::to_string(line_number) + ": " + e.what());
+  }
+
+  return kline;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*               from_binary                   */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+kline_t kline_t::from_binary(const char* data) {
+  kline_t obj;
+  std::memcpy(&obj, data, sizeof(kline_t));
+  return obj;
+}
+
+trade_t trade_t::from_binary(const char* data) {
+  trade_t obj;
+  std::memcpy(&obj, data, sizeof(trade_t));
+  return obj;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*             tensor_features                 */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+std::vector<double> kline_t::tensor_features() {
+  return {
+    static_cast<double>(open_time),
+    open_price,
+    high_price,
+    low_price,
+    close_price,
+    volume,
+    static_cast<double>(close_time),
+    quote_asset_volume,
+    static_cast<double>(number_of_trades),
+    taker_buy_base_volume,
+    taker_buy_quote_volume
+  };
+}
+
+std::vector<double> trade_t::tensor_features() {
+  return {
+    static_cast<double>(trade.id),
+    trade.price,
+    trade.qty,
+    trade.quoteQty,
+    static_cast<double>(trade.time),
+    static_cast<double>(trade.isBuyerMaker),  // Convert bool to double (1.0 for true, 0.0 for false)
+    static_cast<double>(trade.isBestMatch)    // Convert bool to double
+  };
+}
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         deserialize specializations         */

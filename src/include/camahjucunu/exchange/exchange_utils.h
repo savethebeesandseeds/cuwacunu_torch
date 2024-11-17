@@ -3,6 +3,7 @@
 #include <variant>
 #include <optional>
 #include <sstream>
+#include <fstream>
 #include <type_traits>
 #include "piaabo/dutils.h"
 #include "piaabo/dsecurity.h"

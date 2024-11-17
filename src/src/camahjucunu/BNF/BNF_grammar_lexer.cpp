@@ -21,7 +21,7 @@ std::ostream& operator<<(std::ostream& stream, const ProductionUnit::Type& type)
     case ProductionUnit::Type::Optional: stream << "Optional"; break;
     case ProductionUnit::Type::Repetition: stream << "Repetition"; break;
     case ProductionUnit::Type::EndOfFile: stream << "EndOfFile"; break;
-    case ProductionUnit::Type::Unknown: stream << "Unknown"; break;
+    case ProductionUnit::Type::Undetermined: stream << "Undetermined"; break;
     default: stream << "Invalid ProductionUnit::Type"; break; /* Handle unexpected cases */
   }
   return stream;
@@ -238,7 +238,7 @@ ProductionUnit GrammarLexer::parseTerminal() {
   /* literal terminal without quotes */
   if (peek() != '\"' && peek() != '\'') {
     /* advance the alphanumeric block */
-    while (!isAtEnd() && (std::isalnum(peek()) || std::isdigit(peek()) || peek() == '_' || peek() == '.')) {
+    while (!isAtEnd() && (std::isalnum(peek()) || std::isdigit(peek()) || peek() == '_' || peek() == '.' || peek() == ' ')) {
       lexeme += advance();
     }
     
