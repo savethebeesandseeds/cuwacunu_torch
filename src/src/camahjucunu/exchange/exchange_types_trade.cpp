@@ -68,11 +68,9 @@ order_ack_ret_t::order_ack_ret_t                           (const std::string &j
 order_result_ret_t::order_result_ret_t                     (const std::string &json) { deserialize(*this, json); };
 order_result_ret_t::order_result_ret_t                     () : symbol(""), orderId(0), orderListId(0), clientOrderId(""), transactTime(0), origQty(0.0), executedQty(0.0), cummulativeQuoteQty(0.0), status(orderStatus_e::REJECTED), timeInForce(time_in_force_e::FOK), type(order_type_e::MARKET), side(order_side_e::BUY), workingTime(0), selfTradePreventionMode(stp_modes_e::NONE) {};
 order_full_ret_t::order_full_ret_t                         (const std::string &json) { deserialize(*this, json); };
-
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         deserialize specializations         */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-
 void deserialize(orderStatus_ret_t& deserialized, const std::string& json) {
   /*
     {

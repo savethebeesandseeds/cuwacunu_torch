@@ -80,13 +80,13 @@ bool compareAST(const ASTNode* actual, const ASTNode* expected) {
 }
 
 void push_context(VisitorContext& context, const ASTNode* node) {
-  if (context.stack.empty() || context.stack.back()->hash() != node->hash()) {
+  if (context.stack.empty() || context.stack.back()->hash != node->hash) {
     context.stack.push_back(node);
   }
 }
 
 void pop_context(VisitorContext& context, const ASTNode* node) {
-  if (!context.stack.empty() && context.stack.back()->hash() == node->hash()) {
+  if (!context.stack.empty() && context.stack.back()->hash == node->hash) {
     context.stack.pop_back();
   }
 }
@@ -109,17 +109,6 @@ std::string RootNode::str(bool versbose) const {
   }
   return ANSI_COLOR_Dim_Black_Grey + this->name + ANSI_COLOR_RESET;
 };
-
-std::string TerminalNode::hash() const { /* these are unique but are no hashes, hope i'd be forgiven */
-  return this->name;
-};
-std::string IntermediaryNode::hash() const { /* these are unique but are no hashes, hope i'd be forgiven */
-  return this->name;
-};
-std::string RootNode::hash() const { /* these are unique but are no hashes, hope i'd be forgiven */
-  return this->name;
-};
-
 
 void TerminalNode::accept(ASTVisitor& visitor, VisitorContext& context) const {
   /* push context */

@@ -92,7 +92,7 @@ trade_t trade_t::from_csv(const std::string& line, char delimiter, size_t line_n
 
 
 kline_t kline_t::from_csv(const std::string& line, char delimiter, size_t line_number) {
-  const size_t expected_fields = 11;
+  const size_t expected_fields = 11 + 1; /* there is unused aditional field in the data, view binance documentation for more info */
   std::vector<std::string> tokens;
   std::stringstream ss(line);
   std::string token;
@@ -148,7 +148,7 @@ trade_t trade_t::from_binary(const char* data) {
 /*         expected return structures          */
 /*             tensor_features                 */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-std::vector<double> kline_t::tensor_features() {
+std::vector<double> kline_t::tensor_features() const {
   return {
     static_cast<double>(open_time),
     open_price,
@@ -164,15 +164,15 @@ std::vector<double> kline_t::tensor_features() {
   };
 }
 
-std::vector<double> trade_t::tensor_features() {
+std::vector<double> trade_t::tensor_features() const {
   return {
-    static_cast<double>(trade.id),
-    trade.price,
-    trade.qty,
-    trade.quoteQty,
-    static_cast<double>(trade.time),
-    static_cast<double>(trade.isBuyerMaker),  // Convert bool to double (1.0 for true, 0.0 for false)
-    static_cast<double>(trade.isBestMatch)    // Convert bool to double
+    static_cast<double>(id),
+    price,
+    qty,
+    quoteQty,
+    static_cast<double>(time),
+    static_cast<double>(isBuyerMaker),  // Convert bool to double (1.0 for true, 0.0 for false)
+    static_cast<double>(isBestMatch)    // Convert bool to double
   };
 }
 

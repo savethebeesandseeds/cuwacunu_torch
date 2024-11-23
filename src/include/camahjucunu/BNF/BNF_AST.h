@@ -12,10 +12,10 @@ namespace BNF {
 /* Base AST Node */
 struct ASTNode {
   std::string name;
+  size_t hash;
   virtual ~ASTNode() = default;
   virtual void accept(ASTVisitor& visitor, VisitorContext& context) const = 0;
   virtual std::string str(bool versbose = false) const = 0;
-  virtual std::string hash() const = 0;
 };
 
 using ASTNodePtr = std::unique_ptr<ASTNode>;
@@ -27,10 +27,10 @@ public:
   RootNode(const std::string& lhs_instruction, std::vector<ASTNodePtr> children)
     : lhs_instruction(lhs_instruction), children(std::move(children)) {
       name = lhs_instruction;
+      hash = cuwacunu::piaabo::fnv1aHash(name);
     }
   void accept(ASTVisitor& visitor, VisitorContext& context) const override;
   std::string str(bool versbose = false) const override;
-  std::string hash() const override;
 };
 
 class IntermediaryNode : public ASTNode {
@@ -40,12 +40,12 @@ public:
   IntermediaryNode(const ProductionAlternative& alt, std::vector<ASTNodePtr> children)
     : alt(alt), children(std::move(children)) {
       name = alt.lhs;
+      hash = cuwacunu::piaabo::fnv1aHash(name);
   }
   IntermediaryNode(const ProductionAlternative& alt) /* empty children constructor */
     : alt(alt), children() {}
   void accept(ASTVisitor& visitor, VisitorContext& context) const override;
   std::string str(bool versbose = false) const override;
-  std::string hash() const override;
 };
 
 struct TerminalNode : public ASTNode {
@@ -60,15 +60,16 @@ struct TerminalNode : public ASTNode {
       );
     }
     name = lhs;
+    hash = cuwacunu::piaabo::fnv1aHash(name);
   }
   /* null terminal constructor */
   TerminalNode(const std::string& lhs) : unit(ProductionUnit(ProductionUnit::Type::Undetermined, "", 1, 1)) {
     name = lhs;
+    hash = cuwacunu::piaabo::fnv1aHash(name);
   }
   
   void accept(ASTVisitor& visitor, VisitorContext& context) const override;
   std::string str(bool versbose = false) const override;
-  std::string hash() const override;
 };
 
 // Function to print AST using Visitor

@@ -347,7 +347,11 @@ std::string jsonify_as_array(Args... args) {
   obj.member = root_obj[json_key].stringValue;
 
 #define ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(obj, root_obj, json_key, member) \
-  obj.member = std::stod(root_obj[json_key].stringValue.c_str());
+  do { \
+    try { \
+      obj.member = std::stod(root_obj[json_key].stringValue.c_str()); \
+    } catch (...) { } \
+  } while (false)
 
 #define ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(obj, root_obj, json_key, member, cast_type) \
   obj.member = static_cast<cast_type>(root_obj[json_key].numberValue);
@@ -356,7 +360,11 @@ std::string jsonify_as_array(Args... args) {
   obj.member = root_obj[json_key].boolValue;
 
 #define ASSIGN_ENUM_FIELD_FROM_JSON_STRING(obj, root_obj, json_key, member, T) \
-  obj.member = string_to_enum<T>(root_obj[json_key].stringValue);
+  do { \
+    try { \
+      obj.member = string_to_enum<T>(root_obj[json_key].stringValue); \
+    } catch (...) {} \
+  } while (false)
 
 /* ------------------- Values From Object ------------------- */
 
@@ -381,7 +389,11 @@ std::string jsonify_as_array(Args... args) {
   obj.member = static_cast<cast_type>((*root_arr.arrayValue)[index].numberValue);
 
 #define ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(obj, root_arr, index, member) \
-  obj.member = std::stod((*root_arr.arrayValue)[index].stringValue.c_str());
+  do { \
+    try { \
+      obj.member = std::stod((*root_arr.arrayValue)[index].stringValue.c_str()); \
+    } catch (...) {} \
+  } while (false)
 
 #define ALLOCATE_VECT(obj, size) \
   obj.reserve(size); \

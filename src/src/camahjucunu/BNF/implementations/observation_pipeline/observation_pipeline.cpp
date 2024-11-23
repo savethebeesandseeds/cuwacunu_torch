@@ -21,7 +21,7 @@ observation_pipeline_instruction_t observationPipeline::decode(std::string instr
 
   /* Parse the instruction text */
   ASTNodePtr actualAST = iParser.parse_Instruction(instruction);
-
+  
 #ifdef OBSERVARION_PIPELINE_DEBUG
   std::cout << "Parsed AST:\n";
   printAST(actualAST.get(), true, 2, std::cout);
@@ -64,17 +64,17 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
 #endif
   /* symbol */
   if( context.stack.size() == 2 
-    && context.stack[0]->hash() == "<instruction>" 
-    && context.stack[1]->hash() == "<symbol>") {
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_symbol) {
     /* clear the contents of symbol */
     static_cast<observation_pipeline_instruction_t*>(context.user_data)->symbol.clear();
   }
 
   /* items */
   if( context.stack.size() == 3 
-    && context.stack[0]->hash() == "<instruction>" 
-    && context.stack[1]->hash() == "<sequence_item>"
-    && context.stack[2]->hash() == "<input_form>") {
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_sequence_item
+    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
     /* append a new input_form_t element */
     static_cast<observation_pipeline_instruction_t*>(context.user_data)->items.emplace_back();
   }
@@ -92,9 +92,9 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
 #endif
   /* symbol */
   if( context.stack.size() == 3 
-    && context.stack[0]->hash() == "<instruction>" 
-    && context.stack[1]->hash() == "<symbol>" 
-    && context.stack[2]->hash() == "<letter>") {
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_symbol 
+    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_letter) {
     /* append a letter to the symbol */
     std::string aux = node->unit.lexeme;
     cuwacunu::piaabo::string_remove(aux, '\"');
@@ -103,9 +103,9 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
 
   /* items */
   if( context.stack.size() == 4 
-    && context.stack[0]->hash() == "<instruction>" 
-    && context.stack[1]->hash() == "<sequence_item>"
-    && context.stack[2]->hash() == "<input_form>") {
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_sequence_item
+    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
       /* set up the values for the last element of the items vector */
       input_form_t& element = static_cast<observation_pipeline_instruction_t*>(context.user_data)->items.back();
       
@@ -114,7 +114,7 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
       cuwacunu::piaabo::string_remove(aux, '\"');
 
       /* interval*/
-      if(context.stack[3]->hash() == "<interval>") {
+      if(context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_interval) {
 
         element.interval = 
           cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(
@@ -123,7 +123,7 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
       }
 
       /* count */
-      if(context.stack[3]->hash() == "<count>") {
+      if(context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_count) {
         element.count = std::stoul(aux);
       }
   }

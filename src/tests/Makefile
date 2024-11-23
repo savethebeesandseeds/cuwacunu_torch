@@ -28,34 +28,34 @@ test_json_parsing:
 # -----------------------------------------------------------------
 # - - - Camahjucnu -- - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-test_exchange_types_serialization: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_types_serialization
-test_exchange_types_deserialization: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_exchange_types_deserialization
 test_websocket: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_websocket
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/https test_websocket
+test_exchange_types_serialization: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/exchange test_exchange_types_serialization
+test_exchange_types_deserialization: 
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/exchange test_exchange_types_deserialization
 test_binance_testnet: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_testnet
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/exchange test_binance_testnet
 test_binance_mech_server: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_server
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/exchange test_binance_mech_server
 test_binance_mech_data: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_data
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/exchange test_binance_mech_data
 test_binance_mech_account: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_account
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/exchange test_binance_mech_account
 test_binance_mech_trade: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_mech_trade
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/exchange test_binance_mech_trade
 test_bnf_grammar_lexer: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_grammar_lexer
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_grammar_lexer
 test_bnf_grammar_parser: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_grammar_parser
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_grammar_parser
 test_bnf_instruction_lexer: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_instruction_lexer
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_instruction_lexer
 test_bnf_instruction_parser: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_instruction_parser
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_instruction_parser
 test_bnf_observation_pipeline: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_bnf_observation_pipeline
-test_binance_dataloader: 
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu test_binance_dataloader
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_observation_pipeline
+test_dataloader:
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/data test_dataloader
 # -----------------------------------------------------------------
 # - - - Wikimyei -- - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

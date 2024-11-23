@@ -17,6 +17,8 @@
 #include <chrono>
 #include <cstdarg>
 #include <ctime>
+#include <string_view>
+#include <cstdint>
 
 #define LOG_FILE stdout
 #define LOG_ERR_FILE stderr
@@ -270,8 +272,37 @@ long stringToUnix(const std::string& timeString, const std::string& format = "%Y
  */
 std::string unixToString(long unixTime, const std::string& format = "%Y-%m-%d %H:%M:%S");
 
+/**
+ * @brief Computes the FNV-1a hash for a given string.
+ * 
+ * This function implements the 64-bit FNV-1a hashing algorithm, which is a fast, 
+ * non-cryptographic hash function with good distribution properties. It is commonly 
+ * used for hash tables and simple checksum tasks.
+ * 
+ * @param str The input string as a std::string_view.
+ * @return uint64_t The computed 64-bit hash value.
+ * 
+ * @note This function is constexpr, meaning the hash can be computed at compile-time 
+ *       for constant input strings.
+ * 
+ * @example
+ * constexpr uint64_t hashValue = fnv1aHash("Hello, World!");
+ */
+constexpr uint64_t FNV_prime = 1099511628211u;
+constexpr uint64_t FNV_offset_basis = 14695981039346656037u;
+constexpr uint64_t fnv1aHash(std::string_view str) {
+  uint64_t hash = FNV_offset_basis;
+  for (char c : str) {
+    hash ^= static_cast<uint64_t>(c);  /* XOR the byte */
+    hash *= FNV_prime;  /* Multiply by the FNV prime */
+  }
+  return hash;
+}
+
 } /* namespace piaabo */
 } /* namespace cuwacunu */
+
+#define DEFINE_HASH(name_hash, value) constexpr uint64_t name_hash = cuwacunu::piaabo::fnv1aHash(value);
 
 #define LOCK_GUARD(v_mutex) std::lock_guard<std::mutex> lock(v_mutex)
 

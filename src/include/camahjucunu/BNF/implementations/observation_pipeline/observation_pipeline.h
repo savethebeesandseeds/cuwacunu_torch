@@ -27,6 +27,14 @@ RUNTIME_WARNING("[observation_pipeline.h]() mutex on observation pipeline might 
 
 #undef OBSERVARION_PIPELINE_DEBUG /* define to see verbose parsing output */
 
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_instruction,    "<instruction>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_symbol,         "<symbol>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_sequence_item,  "<sequence_item>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_input_form,     "<input_form>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_letter,         "<letter>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_interval,       "<interval>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_count,          "<count>");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {

@@ -2,6 +2,7 @@
 #include "camahjucunu/BNF/BNF_instruction_parser.h"
 
 
+RUNTIME_WARNING("(BNF_instruction_parser.cpp)[] overall the methods in this file can be faster\n");
 RUNTIME_WARNING("(BNF_instruction_parser.cpp)[parse_ProductionAlternative] ProductionAlternative::Flags are not used\n");
 
 namespace cuwacunu {
@@ -29,6 +30,7 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
 
   /* validate */
   if (root_node == nullptr || !iLexer.isAtEnd()) {
+    /* print the report in case of failure */
     std::ostringstream err_oss, scss_oss;
     while (!parsing_error_stack.empty()) { err_oss << parsing_error_stack.top() << "\n"; parsing_error_stack.pop(); }
     while (!parsing_success_stack.empty()) { scss_oss << parsing_success_stack.top() << "\n"; parsing_success_stack.pop(); }
@@ -43,6 +45,7 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
   /* return on success */
   std::vector<ASTNodePtr> nodes;
   nodes.push_back(std::move(root_node));
+
   return std::make_unique<RootNode>(lhs_instruction, std::move(nodes));
 }
 
@@ -123,7 +126,7 @@ ASTNodePtr InstructionParser::parse_ProductionAlternative(const ProductionAltern
 
     /* parse unit */
     ASTNodePtr parsedChild = parse_ProductionUnit(alt, unit);
-
+    
     /* validate */
     if (parsedChild == nullptr) {
       /* one of the units did not match, alternative failure */
@@ -181,7 +184,7 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionAlternative& 
     }
 
     case ProductionUnit::Type::Repetition: {
-        std::string inner_lexeme = unit.lexeme.substr(1, unit.lexeme.size() - 2); // remove the outer brackets {}
+        std::string inner_lexeme = unit.lexeme.substr(1, unit.lexeme.size() - 2); /* remove the outer brackets {} */
         std::vector<ASTNodePtr> children;
         ASTNodePtr child;
 
@@ -209,7 +212,6 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionAlternative& 
 }
 
 ASTNodePtr InstructionParser::parse_TerminalNode(const std::string& lhs, const ProductionUnit& unit) {
-  
   size_t initial_pos = iLexer.getPosition();
   std::string lexeme = unit.lexeme;
 
