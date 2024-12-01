@@ -5,10 +5,6 @@
 #include "camahjucunu/exchange/exchange_types_server.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
 
-RUNTIME_WARNING("(exchange_mech_server.h)[] implement a count on the api usage limit.\n");
-RUNTIME_WARNING("(exchange_mech_server.h)[] remmember the server endpoint is asynchonous.\n");
-RUNTIME_WARNING("(exchange_mech_server.h)[] slipt mech into implementation files .cpp.\n");
-
 namespace cuwacunu {
 namespace camahjucunu {
 namespace exchange {

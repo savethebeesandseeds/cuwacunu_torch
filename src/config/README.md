@@ -14,15 +14,15 @@ apt install openssl --no-install-recommends
 openssl version
 ```
 ```
-cd ./config
+cd ./src/config
 openssl genpkey -algorithm Ed25519 -out ed25519key.pem -aes-256-cbc
 openssl pkey -in ed25519key.pem -out ed25519pub.pem -pubout
 ```
 
-These two pem files are to be placed in ./config/ folder.
+These two pem files are to be placed in ./src/config/ folder.
 The selected password for this files will be the global program password. 
 
-Check the ./config/.config file for theses paths correctly configured
+Check the ./src/config/.config file for theses paths correctly configured
 
 ### Obtain exchange Api Key
 You can retrive the API_KEY from the main page at Binance, 

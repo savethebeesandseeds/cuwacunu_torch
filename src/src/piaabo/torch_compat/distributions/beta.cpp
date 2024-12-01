@@ -1,8 +1,10 @@
-#include "torch_compat/distributions/beta.h"
+#include "piaabo/torch_compat/distributions/beta.h"
 
 RUNTIME_WARNING("(beta.cpp)[] #FIXME: Beta distribution needs testing.\n");
 RUNTIME_WARNING("(beta.cpp)[] #FIXME change floats to double. \n");
 
+namespace cuwacunu {
+namespace piaabo {
 namespace torch_compat {
 namespace distributions {
 /* --- BETA --- */
@@ -12,8 +14,8 @@ Beta::Beta(torch::Device device, torch::Dtype type, torch::Tensor concentration0
     concentration1(concentration1.to(device).to(type)), 
     kDevice(device),
     kType(type) {
-      cuwacunu::validate_tensor(concentration1, "Beta Distribution constructor [concentration1]");
-      cuwacunu::validate_tensor(concentration0, "Beta Distribution constructor [concentration0]");
+      validate_tensor(concentration1, "Beta Distribution constructor [concentration1]");
+      validate_tensor(concentration0, "Beta Distribution constructor [concentration0]");
 }
 
 /* Mean */
@@ -83,3 +85,5 @@ torch::Tensor Beta::get_concentration0() const {
 }
 } /* namespace distributions */
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

@@ -1,7 +1,9 @@
-#include "torch_compat/distributions/gamma.h"
+#include "piaabo/torch_compat/distributions/gamma.h"
 
 RUNTIME_WARNING("(gamma.cpp)[] #FIXME change floats to double. \n");
 
+namespace cuwacunu {
+namespace piaabo {
 namespace torch_compat {
 namespace distributions {
 /* Constructor */
@@ -9,8 +11,8 @@ Gamma::Gamma(torch::Device device, torch::Dtype type, torch::Tensor concentratio
   : concentration(concentration), rate(rate), kDevice(device), kType(type), validate_args(validate_args) {
   if (validate_args) {
     /* Validation logic */
-    cuwacunu::validate_tensor(concentration, "Gamma Distribution constructor [concentration]");
-    cuwacunu::validate_tensor(rate, "Gamma Distribution constructor [rate]");
+    validate_tensor(concentration, "Gamma Distribution constructor [concentration]");
+    validate_tensor(rate, "Gamma Distribution constructor [rate]");
     /* Ensure concentration and rate are positive */
     TORCH_CHECK(concentration.min().item<double>() > 0, "Concentration elements must be positive.");
     TORCH_CHECK(rate.min().item<double>() > 0, "Rate elements must be positive.");
@@ -119,3 +121,5 @@ torch::Tensor Gamma::_standard_gamma(const torch::Tensor& concentration, const t
 }
 } /* namespace distributions */
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

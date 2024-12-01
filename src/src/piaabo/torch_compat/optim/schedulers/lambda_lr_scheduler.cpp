@@ -1,5 +1,7 @@
-#include "torch_compat/optim/schedulers/lambda_lr_scheduler.h"
+#include "piaabo/torch_compat/optim/schedulers/lambda_lr_scheduler.h"
 
+namespace cuwacunu {
+namespace piaabo {
 namespace torch_compat {
 namespace optim {
 namespace schedulers {
@@ -18,3 +20,5 @@ std::vector<double> LambdaLR::get_lrs() {
 } /* namespace schedulers */
 } /* namespace optim */
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

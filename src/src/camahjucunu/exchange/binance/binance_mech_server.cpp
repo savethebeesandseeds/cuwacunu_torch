@@ -1,6 +1,10 @@
 /* binance_mech_server.cpp */
 #include "camahjucunu/exchange/binance/binance_mech_server.h"
 
+RUNTIME_WARNING("(binance_mech_server.cpp)[] implement a count on the api usage limit.\n");
+RUNTIME_WARNING("(binance_mech_server.cpp)[] remmember the server endpoint is asynchonous.\n");
+RUNTIME_WARNING("(binance_mech_server.cpp)[] slipt mech into implementation files .cpp.\n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace exchange {

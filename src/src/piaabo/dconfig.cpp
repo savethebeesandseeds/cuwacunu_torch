@@ -1,5 +1,7 @@
 #include "piaabo/dconfig.h"
 
+RUNTIME_WARNING("(dconfig.h)[] program does not read the configuration file automatically, this is to prevent unexpected defaulted config\n");
+
 #define TEST_CONFIG_SECTION(prove, section_name, section_value_key) \
   do { \
     /* Check if the section exists */ \

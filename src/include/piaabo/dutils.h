@@ -306,7 +306,7 @@ constexpr uint64_t fnv1aHash(std::string_view str) {
 
 #define LOCK_GUARD(v_mutex) std::lock_guard<std::mutex> lock(v_mutex)
 
-#define FLUSH_SYS_ERR() { errno = 0; }
+#define CLEAR_SYS_ERR() { errno = 0; }
 
 #define FORMAT_STRING(fmt, ...) \
   ([&]() -> std::string { \

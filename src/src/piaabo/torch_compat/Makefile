@@ -1,12 +1,12 @@
 # -----------------------------------------------------------------
 # Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-ROOT_PATH := ../..
+ROOT_PATH := ../../..
 include $(ROOT_PATH)/Makefile.config
 # -----------------------------------------------------------------
 # Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-HERE_PATH := $(SRC_PATH)/torch_compat
+HERE_PATH := $(SRC_PATH)/piaabo/torch_compat
 COMPILE_CMD = $(LOG_START) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) -c $< -o $@ && $(LOG_END)
 # -----------------------------------------------------------------
 # - - - Libtorch Utilities  - - - - - - - - - - - - - - - - - - - - 

@@ -4,6 +4,8 @@
 #include <functional> /* required for lambdas */
 #include "piaabo/dutils.h"
 
+namespace cuwacunu {
+namespace piaabo {
 namespace torch_compat {
 namespace optim {
 namespace schedulers {
@@ -17,3 +19,5 @@ class LambdaLR : public torch::optim::LRScheduler {
 } /* namespace schedulers */
 } /* namespace optim */
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

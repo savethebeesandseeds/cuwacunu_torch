@@ -1,0 +1,396 @@
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libcuda.so.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libcuda.so.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libcuda.so.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libcuda.so.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libcuda.so.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/usr/lib/wsl/drivers/nvlt.inf_amd64_e5e4efeea3898ff4/libcuda.so.1.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/usr/lib/wsl/drivers/nvlt.inf_amd64_e5e4efeea3898ff4/libcuda.so.1.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/usr/lib/wsl/drivers/nvlt.inf_amd64_e5e4efeea3898ff4/libcuda.so.1.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/usr/lib/wsl/drivers/nvlt.inf_amd64_e5e4efeea3898ff4/libcuda.so.1.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/usr/lib/wsl/drivers/nvlt.inf_amd64_e5e4efeea3898ff4/libcuda.so.1.1
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libdxcore.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libdxcore.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libdxcore.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libdxcore.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/libdxcore.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/usr/libexec/valgrind/memcheck-amd64-linux
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/usr/libexec/valgrind/memcheck-amd64-linux
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/usr/libexec/valgrind/memcheck-amd64-linux
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/usr/libexec/valgrind/memcheck-amd64-linux
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/usr/libexec/valgrind/memcheck-amd64-linux
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libtorch_cuda.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libtorch_cuda.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libtorch_cuda.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libtorch_cuda.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libtorch_cuda.so
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublas-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublas-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublas-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublas-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublas-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublasLt-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublasLt-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublasLt-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublasLt-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libcublasLt-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libnvrtc-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libnvrtc-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libnvrtc-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libnvrtc-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   obj:/cuwacunu/external/libtorch/lib/libnvrtc-*.so.12
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   fun:*infer_schema*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:*infer_schema*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   fun:*infer_schema*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:*infer_schema*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   fun:*infer_schema*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Leak
+   ...
+   fun:*onnx_torch*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:*onnx_torch*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr8
+   ...
+   fun:*onnx_torch*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:*onnx_torch*
+   ...
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   openat(filename)
+   ...
+   fun:*onnx_torch*
+   ...
+}

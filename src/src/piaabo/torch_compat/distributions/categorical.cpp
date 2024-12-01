@@ -1,14 +1,16 @@
-#include "torch_compat/distributions/categorical.h"
+#include "piaabo/torch_compat/distributions/categorical.h"
 
 RUNTIME_WARNING("(categorical.cpp)[] #FIXME: Categorical distribution needs testing.\n");
 
+namespace cuwacunu {
+namespace piaabo {
 namespace torch_compat {
 namespace distributions {
 /* --- Categorical --- */
 /* Constructor */
 Categorical::Categorical(torch::Device device, torch::Dtype type, torch::Tensor logits) 
   : kDevice(device), kType(type) {
-    cuwacunu::validate_tensor(logits, "Categorical Distribution constructor");
+    validate_tensor(logits, "Categorical Distribution constructor");
     /* Move logits to the specified device and type */
     this->logits = logits.to(device, type);
     /* Normalize logits to ensure numerical stability */
@@ -36,7 +38,7 @@ torch::Tensor Categorical::sample(const torch::IntArrayRef& sample_shape) const 
 
 /* Masked Sample */
 torch::Tensor Categorical::mask_sample(const torch::Tensor& mask, const torch::IntArrayRef& sample_shape) const {
-  cuwacunu::assert_tensor_shape(mask, logits.size(0), "Categorical::mask_sample");
+  assert_tensor_shape(mask, logits.size(0), "Categorical::mask_sample");
   /* Apply mask to logits to zero out specified elements */
   auto masked_logits = logits + (mask.to(kDevice, kType) - 1) * 1e10;  /* Large negative number to zero out */
   /* Convert masked logits to probabilities */
@@ -76,3 +78,5 @@ torch::Tensor Categorical::entropy() const {
 }
 } /* namespace distributions */
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

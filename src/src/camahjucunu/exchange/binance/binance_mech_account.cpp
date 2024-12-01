@@ -1,6 +1,8 @@
 /* binance_mech_account.cpp */
 #include "camahjucunu/exchange/binance/binance_mech_account.h"
 
+RUNTIME_WARNING("(binance_mech_account.cpp)[] create login and logout methods to avoid signing every request\n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace exchange {

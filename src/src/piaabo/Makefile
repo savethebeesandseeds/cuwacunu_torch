@@ -34,14 +34,12 @@ $(OUTPUT_PATH)/dencryption.o: $(HERE_PATH)/dencryption.cpp $(OUTPUT_PATH)/dutils
 	@$(COMPILE_ENCRYPT_CMD)
 $(OUTPUT_PATH)/dsecurity.o: $(HERE_PATH)/dsecurity.cpp $(OUTPUT_PATH)/dutils.o $(OUTPUT_PATH)/dencryption.o $(OUTPUT_PATH)/dconfig.o
 	@$(COMPILE_ENCRYPT_CMD)
-.PHONY: piaabo
-piaabo: $(PIAABO)
-	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all
 all: $(PIAABO)
+	$(MAKE) -C $(HERE_PATH)/torch_compat all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 

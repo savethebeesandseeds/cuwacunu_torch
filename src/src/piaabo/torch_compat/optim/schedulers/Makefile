@@ -1,12 +1,12 @@
 # -----------------------------------------------------------------
 # Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-ROOT_PATH := ../../../..
+ROOT_PATH := ../../../../..
 include $(ROOT_PATH)/Makefile.config
 # -----------------------------------------------------------------
 # Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-HERE_PATH := $(SRC_PATH)/torch_compat/optim/schedulers
+HERE_PATH := $(SRC_PATH)/piaabo/torch_compat/optim/schedulers
 COMPILE_CMD = $(LOG_START) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) -c $< -o $@ && $(LOG_END)
 # -----------------------------------------------------------------
 # - - - Pytorch's learning schedules implemented in Libtorch - - - 

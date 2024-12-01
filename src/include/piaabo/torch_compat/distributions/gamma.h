@@ -2,8 +2,10 @@
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
 #include "piaabo/darchitecture.h"
-#include "torch_compat/torch_utils.h"
+#include "piaabo/torch_compat/torch_utils.h"
 
+namespace cuwacunu {
+namespace piaabo {
 namespace torch_compat {
 namespace distributions {
 class Gamma {
@@ -48,3 +50,5 @@ public:
 ENFORCE_ARCHITECTURE_DESIGN(Gamma);
 } /* namespace distributions */
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

@@ -420,15 +420,15 @@ void deserialize(klines_ret_t& deserialized, const std::string &json) {
   /* result fields */
   for (auto& resultEntry : result_arr) {
     kline_t tmp;
-    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 0, open_time, long);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 0, open_time, int64_t);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 1, open_price);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 2, high_price);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 3, low_price);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 4, close_price);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 5, volume);
-    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 6, close_time, long);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 6, close_time, int64_t);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 7, quote_asset_volume);
-    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 8, number_of_trades, int);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 8, number_of_trades, int32_t);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 9, taker_buy_base_volume);
     ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 10, taker_buy_quote_volume);
     deserialized.klines.push_back(std::move(tmp));

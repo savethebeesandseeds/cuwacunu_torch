@@ -1,4 +1,7 @@
+/* exchange_types_trade.cpp */
 #include "camahjucunu/exchange/exchange_types_trade.h"
+
+RUNTIME_WARNING("(exchange_types_trade.cpp)[] implement other types of orders.\n");
 
 namespace cuwacunu {
 namespace camahjucunu {

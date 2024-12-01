@@ -5,7 +5,7 @@
 int main() {
   std::string message = "test";
   /* update config */
-  const char* config_folder = "/src/config/";
+  const char* config_folder = "/cuwacunu/src/config/";
   cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
   cuwacunu::piaabo::dconfig::config_space_t::update_config();
 

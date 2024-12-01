@@ -1,6 +1,19 @@
 /* curl_websocket_api.cpp */
 #include "camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h"
 
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] fatal error on unknown session_id (fatal might be a good thing here there shodun't be a reason to allow undefined instructions).\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[ws_incomming_data_t] not necesarly local_timestamp matches the timestamps in the body of the responces. \n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[ws_incomming_data_t] this implementation (on deques) relies on the ability of the server to retrive an \"id\" key on the data, to track which incommind frame correspond to which output frame. This can be changed for other types of WS interactions, for now, this implementation is tailored to interacti with binance or alike servers. \n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] writing to dbg might be slow if dbg is checking config every time.\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] TX_deque for orders, might delay the sending of instructions, so include time_window in the instruction.\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] many curl options are uncommented, this needs to be reviewed.\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[ws_write] add encoding support for ws_write_text.\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] log the times and redirection count (curl_easy_getinfo()).\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] split header into implementation file .cpp (maybe not).\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] fix the possible infinite waits.\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] CURLOPT_BUFFERSIZE has a maximun, breaking large data responses in chunks on websocket_RX_callback, a server might mix these responses, making it impossible to retrive the complete message (binance seems to respect this alright).\n");
+RUNTIME_WARNING("(curl_websocket_api.cpp)[] websocket_RX_callback expects data to be a valid json format (complete or separated in multiple chunks).\n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace curl {
@@ -581,7 +594,7 @@ void WebsocketAPI::curl_loop(const ws_session_id_t session_id) {
   } while (WebsocketAPI::curl_ws_session_still_running.at(session_id) > 0);
 
   /* Curl ran out of jobs */
-  FLUSH_SYS_ERR(); /* Curl triggers some errors that are not critical */
+  CLEAR_SYS_ERR(); /* Curl triggers some errors that are not critical */
   log_info("[success] curl-thread session_id[ %d ] finished operating.\n", session_id);
 
   WebsocketAPI::curl_ws_session_still_running.at(session_id) = 0;

@@ -1,6 +1,8 @@
 /* observation_pipeline.cpp */
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
+RUNTIME_WARNING("(observation_pipeline.cpp)[] mutex on observation pipeline might not be needed \n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {

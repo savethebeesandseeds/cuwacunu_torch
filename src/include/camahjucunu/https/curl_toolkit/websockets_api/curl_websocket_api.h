@@ -3,30 +3,17 @@
 
 /* CURL implementing RFC 6455, we just use CURL */
 
-#include "piaabo/dutils.h"
-#include "piaabo/json_parsing.h"
-#include "piaabo/darchitecture.h"
-#include "camahjucunu/https/curl_toolkit/curl_utils.h"
 #include <thread>
 #include <chrono>
 #include <mutex>
 #include <deque>
+#include <optional>
 #include <unordered_map>
 #include <condition_variable>
-
-RUNTIME_WARNING("(curl_websocket_api.h)[] fatal error on unknown session_id (fatal might be a good thing here there shodun't be a reason to allow undefined instructions).\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[ws_incomming_data_t] not necesarly local_timestamp matches the timestamps in the body of the responces. \n");
-RUNTIME_WARNING("(curl_websocket_api.h)[ws_incomming_data_t] this implementation (on deques) relies on the ability of the server to retrive an \"id\" key on the data, to track which incommind frame correspond to which output frame. This can be changed for other types of WS interactions, for now, this implementation is tailored to interacti with binance or alike servers. \n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] writing to dbg might be slow if dbg is checking config every time.\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] TX_deque for orders, might delay the sending of instructions, so include time_window in the instruction.\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] many curl options are uncommented, this needs to be reviewed.\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[ws_write] add encoding support for ws_write_text.\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] log the times and redirection count (curl_easy_getinfo()).\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] split header into implementation file .cpp (maybe not).\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] fix the possible infinite waits.\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] CURLOPT_BUFFERSIZE has a maximun, breaking large data responses in chunks on websocket_RX_callback, a server might mix these responses, making it impossible to retrive the complete message (binance seems to respect this alright).\n");
-RUNTIME_WARNING("(curl_websocket_api.h)[] websocket_RX_callback expects data to be a valid json format (complete or separated in multiple chunks).\n");
-
+#include "piaabo/dutils.h"
+#include "piaabo/json_parsing.h"
+#include "piaabo/darchitecture.h"
+#include "camahjucunu/https/curl_toolkit/curl_utils.h"
 
 #define WS_NORMAL_TERMINATION                 (uint16_t) 0x3E8  /* Normal closure; the connection successfully completed whatever purpose for which it was created. */
 #define WS_GOING_AWAY_TERMINATION             (uint16_t) 0x3E9  /* Going away; the server is going down, or the browser is navigating away from the page that opened the connection. */

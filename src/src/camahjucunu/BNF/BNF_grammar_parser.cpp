@@ -4,6 +4,7 @@
 RUNTIME_WARNING("(BNF_grammar_parser.cpp)[] guard printing the errors with secure methods \n");
 RUNTIME_WARNING("(BNF_grammar_parser.cpp)[] could use better grammar verification \n");
 
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {

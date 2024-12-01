@@ -1,7 +1,6 @@
+/* exchange_types_trade.h */
 #pragma once
 #include "camahjucunu/exchange/exchange_utils.h"
-
-RUNTIME_WARNING("(exchange_types_trade.h)[] implement other types of orders.\n");
 
 namespace cuwacunu {
 namespace camahjucunu {

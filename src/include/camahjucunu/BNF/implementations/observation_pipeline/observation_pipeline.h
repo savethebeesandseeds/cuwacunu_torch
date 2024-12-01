@@ -9,8 +9,6 @@
 #include "camahjucunu/BNF/BNF_instruction_parser.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
 
-RUNTIME_WARNING("[observation_pipeline.h]() mutex on observation pipeline might not be needed \n");
-
 /* 
   Observation Pipeline Grammar:
     Instruction Examples: 

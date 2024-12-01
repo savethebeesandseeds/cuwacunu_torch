@@ -1,10 +1,14 @@
-#include "piaabo/dutils.h"
 #include <torch/torch.h>
+#include "piaabo/dutils.h"
 
 namespace cuwacunu {
+namespace piaabo {
+namespace torch_compat {
+  
 /* Set default device based on availability of CUDA */
   extern torch::Device kDevice;
   extern torch::Dtype kType;
+torch::Device select_torch_device();
 /**
  * Validates parameters of a given torch::nn::Module.
  * Ensures that the module has parameters, they are defined, not NaN, and not empty.
@@ -41,3 +45,5 @@ void assert_tensor_shape(const torch::Tensor& tensor, int64_t expected_size, con
 void print_tensor_info(const torch::Tensor& tensor);
 
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

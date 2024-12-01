@@ -3,8 +3,6 @@
 #include "camahjucunu/BNF/BNF_types.h"
 #include "camahjucunu/BNF/BNF_grammar_lexer.h"
 
-RUNTIME_WARNING("(BNF_grammar_parser.h)[] GrammarParser::verityGrammar not implemented\n");
-
 namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {

@@ -1,6 +1,8 @@
 // BNF_AST.cpp
 #include "camahjucunu/BNF/BNF_AST.h"
 
+RUNTIME_WARNING("(BNF_AST.cpp)[] node hashes are not actually hashes \n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {

@@ -19,6 +19,7 @@ COMPILE_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCL
 # # - - - Cross files Uitilies  - - - - - - - - - - - - - - - - - - -
 # # -----------------------------------------------------------------
 BINANCE_MECH := \
+	$(OUTPUT_PATH)/binance_utils.o \
 	$(OUTPUT_PATH)/binance_mech_server.o \
 	$(OUTPUT_PATH)/binance_mech_data.o \
 	$(OUTPUT_PATH)/binance_mech_trade.o \
@@ -26,13 +27,15 @@ BINANCE_MECH := \
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-$(OUTPUT_PATH)/binance_mech_server.o: $(HERE_PATH)/binance_mech_server.cpp $(USUAL_DEPS)
+$(OUTPUT_PATH)/binance_utils.o: $(HERE_PATH)/binance_utils.cpp $(USUAL_DEPS)
 	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/binance_mech_data.o: $(HERE_PATH)/binance_mech_data.cpp $(USUAL_DEPS)
+$(OUTPUT_PATH)/binance_mech_server.o: $(HERE_PATH)/binance_mech_server.cpp $(USUAL_DEPS) $(OUTPUT_PATH)/binance_utils.o
 	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/binance_mech_trade.o: $(HERE_PATH)/binance_mech_trade.cpp $(USUAL_DEPS)
+$(OUTPUT_PATH)/binance_mech_data.o: $(HERE_PATH)/binance_mech_data.cpp $(USUAL_DEPS) $(OUTPUT_PATH)/binance_utils.o
 	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/binance_mech_account.o: $(HERE_PATH)/binance_mech_account.cpp $(USUAL_DEPS)
+$(OUTPUT_PATH)/binance_mech_trade.o: $(HERE_PATH)/binance_mech_trade.cpp $(USUAL_DEPS) $(OUTPUT_PATH)/binance_utils.o
+	@$(COMPILE_CMD)
+$(OUTPUT_PATH)/binance_mech_account.o: $(HERE_PATH)/binance_mech_account.cpp $(USUAL_DEPS) $(OUTPUT_PATH)/binance_utils.o
 	@$(COMPILE_CMD)
 .PHONY: binance_mech_account
 binance_mech_account: $(BINANCE_MECH)

@@ -1,15 +1,16 @@
 #pragma once
 #include <cstring>
-#include <openssl/aes.h>
-#include <openssl/rand.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 #include <openssl/pem.h>
 #include "piaabo/dutils.h"
 #include "piaabo/dsecurity.h"
 
 #define AES_KEY_IV_ITERATIONS 10000 /* AES-256 key IV iterations */
-#define AES_KEY_LEN 256 /* AES-256 key length */
-#define AES_SALT_LEN 64 /* AES-256 salt length */
+#define AES_KEY_LEN 32             /* AES-256 key length in bytes */
+#define AES_IV_LEN 16              /* AES block size in bytes */
+#define AES_SALT_LEN 64            /* AES-256 salt length */
+#define AES_BLOCK_SIZE 16  /* AES block size in bytes */
 
 namespace cuwacunu {
 namespace piaabo {

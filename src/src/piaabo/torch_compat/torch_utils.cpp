@@ -1,12 +1,21 @@
-#include "torch_utils.h"
+#include "piaabo/torch_compat/torch_utils.h"
 
 RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
 RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME change floats to double. \n");
 
+namespace cuwacunu {
+namespace piaabo {
 namespace torch_compat {
-  torch::Device kDevice = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+  
+  torch::Device kDevice = select_torch_device();
   torch::Dtype kType = torch::kFloat32;
 
+  torch::Device select_torch_device() {
+    torch::Device aDev = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+    CLEAR_SYS_ERR(); /* CUDA lefts a residual error message */
+
+    return aDev;
+  }
   void validate_module_parameters(const torch::nn::Module& model) {
     TORCH_CHECK(model.parameters().size() > 0, "There are zero Parameters in the model.");
     for (const auto& named_param : model.named_parameters()) {
@@ -67,3 +76,5 @@ namespace torch_compat {
   }
 
 } /* namespace torch_compat */
+} /* namespace piaabo */
+} /* namespace cuwacunu */

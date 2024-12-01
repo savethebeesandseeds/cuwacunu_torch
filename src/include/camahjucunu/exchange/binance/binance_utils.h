@@ -1,18 +1,9 @@
+/* binance_utils.h */
 #pragma once
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
 #include "piaabo/darchitecture.h"
 #include "camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h"
-
-RUNTIME_WARNING("(binance_utils.h)[] slipt binance mech into implmentation files .cpp \n");
-RUNTIME_WARNING("(binance_utils.h)[] handle websocket api key revocation\n");
-RUNTIME_WARNING("(binance_utils.h)[] handle websocket 24 h reconection\n");
-RUNTIME_WARNING("(binance_utils.h)[] implmenet rest codes verification 200, 4XX, 400, 403, 409, 418, 429, 5XX\n");
-RUNTIME_WARNING("(binance_utils.h)[] implement ratelimit cooldown\n");
-RUNTIME_WARNING("(binance_utils.h)[] implement ratelimit verfication\n");
-RUNTIME_WARNING("(binance_utils.h)[] implement two key managment system, one for account data and other for trading\n");
-RUNTIME_WARNING("(binance_utils.h)[] if noted that bot is trying to do high frequency, it's important to manage recWindow\n");
-RUNTIME_WARNING("(binance_utils.h)[] dont let it take you by surprice, TESTNET commissions rates are zero\n");
 
 /* # Methods (check if all of these are implemented)
     ping

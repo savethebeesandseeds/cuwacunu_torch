@@ -1,9 +1,8 @@
 /* dlarge_files.h */
 #pragma once
 #include <fstream>
+#include <sys/stat.h>
 #include "piaabo/dutils.h"
-
-RUNTIME_WARNING("(dlarge_files.h)[] binary_to_vector has a note on imporving performance \n");
 
 /*  
   Note: The binary representation is dependent on the system's endianness.
@@ -51,12 +50,13 @@ void csv_to_binary(const std::string& csv_filename, const std::string& bin_filen
     return;
   }
 
-  std::ofstream bin_file(bin_filename, std::ios::binary);
+  std::ofstream bin_file(bin_filename, std::ios::binary | std::ios::out | std::ios::trunc);
   if (!bin_file.is_open()) {
     csv_file.close();
     log_fatal("[csv_to_binary] Error: Could not open the binary file %s for writing\n", bin_filename.c_str());
     return;
   }
+  chmod(bin_filename.c_str(), S_IRUSR | S_IWUSR);
 
   std::vector<T> buffer;
   buffer.reserve(buffer_size);

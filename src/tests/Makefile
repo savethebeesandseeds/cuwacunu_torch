@@ -56,6 +56,8 @@ test_bnf_observation_pipeline:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_observation_pipeline
 test_dataloader:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/data test_dataloader
+test_memory_mapped_dataset:
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/data test_memory_mapped_dataset
 # -----------------------------------------------------------------
 # - - - Wikimyei -- - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

@@ -1,6 +1,8 @@
 /* binance_mech_data.cpp */
 #include "camahjucunu/exchange/binance/binance_mech_data.h"
 
+RUNTIME_WARNING("(binance_mech_data.cpp)[] be aware, volumetric data provided by binance is only volumen inside binance, we should want to incorporate the total volume instead.\n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace exchange {

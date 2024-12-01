@@ -1,3 +1,4 @@
+/* curl_utils.h */
 #pragma once
 #include <curl/curl.h>
 #include <curl/curl.h>
@@ -6,9 +7,6 @@
 #include <vector>
 #include <mutex>
 #include "piaabo/dutils.h"
-
-RUNTIME_WARNING("(curl_utils.h)[] fix no internet causes fatal error on session creation.\n");
-RUNTIME_WARNING("(curl_utils.h)[] writing to dbg might be slow if dbg is checking config every time.\n");
 
 #define CURL_REPEATED_INIT_WARN "Repeated WebsocketAPI::init(). Skipping and continuing as expected."
 #define CURL_INITIALIZATION_FAILURE "Failed to initialize curl"

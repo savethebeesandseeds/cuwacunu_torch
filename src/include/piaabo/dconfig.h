@@ -5,13 +5,12 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <algorithm>
 #include <mutex>
 #define DEFAULT_CONFIG_FOLDER "../config/"
 #define DEAFAULT_CONFIG_FILE ".config"
 
 #include "piaabo/dutils.h"
-
-RUNTIME_WARNING("(dconfig.h)[] program does not read the configuration file automatically, this is to prevent unexpected defaulted config\n");
 
 namespace cuwacunu {
 namespace piaabo {

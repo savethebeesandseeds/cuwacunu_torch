@@ -9,7 +9,7 @@ int main() {
   unsigned char* iv_backup = cuwacunu::piaabo::dsecurity::secure_allocate<unsigned char>(AES_BLOCK_SIZE);
 
   const char* passphrase = "securepassword";
-  memcpy(salt, "saltsalt", AES_SALT_LEN); // RAND_bytes(salt, AES_SALT_LEN);
+  memcpy(salt, "saltsaltsaltsaltsaltsaltsaltsaltsaltsaltsaltsaltsaltsaltsaltsalt", AES_SALT_LEN); // RAND_bytes(salt, AES_SALT_LEN);
 
   cuwacunu::piaabo::dencryption::derive_key_iv(passphrase, key, iv_backup, salt);
 

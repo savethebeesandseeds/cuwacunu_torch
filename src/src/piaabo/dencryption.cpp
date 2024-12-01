@@ -5,72 +5,106 @@ namespace piaabo {
 namespace dencryption {
 /* Function to derive AES key and IV using a passphrase */
 void derive_key_iv(const char* passphrase, unsigned char* key, unsigned char* iv, const unsigned char* salt) {
-  const size_t iterations = AES_KEY_IV_ITERATIONS;
-  const size_t key_len = AES_KEY_LEN;
+  const int iterations = AES_KEY_IV_ITERATIONS;
 
-  if (!PKCS5_PBKDF2_HMAC(passphrase, -1, salt, AES_SALT_LEN, iterations, EVP_sha256(), key_len, key)) {
-    log_fatal("Error deriving for AES key. \n");
+  unsigned char temp_key_iv[AES_KEY_LEN + AES_IV_LEN]; // Temporary buffer
+
+  if (!PKCS5_PBKDF2_HMAC(passphrase, -1, salt, AES_SALT_LEN, iterations, EVP_sha256(), AES_KEY_LEN + AES_IV_LEN, temp_key_iv)) {
+    log_fatal("Error deriving AES key and IV.\n");
   }
 
-  memcpy(iv, key + 16, AES_BLOCK_SIZE);  /* Use part of the key for the IV */
+  memcpy(key, temp_key_iv, AES_KEY_LEN);                   // Copy key portion
+  memcpy(iv, temp_key_iv + AES_KEY_LEN, AES_IV_LEN);       // Copy IV portion
 }
 
-/* AES encryption function */
+
+/* AES encryption function using EVP */
 unsigned char* aes_encrypt(const unsigned char* plaintext, size_t plaintext_len, const unsigned char* key, const unsigned char* iv, size_t& ciphertext_len) {
-    AES_KEY enc_key;
-    AES_set_encrypt_key(key, 256, &enc_key);
+  EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+  if (!ctx) {
+    log_fatal("Failed to create EVP_CIPHER_CTX.\n");
+    return nullptr;
+  }
 
-    /* Calculate padded length */
-    size_t block_size = AES_BLOCK_SIZE;
-    size_t padding_len = block_size - (plaintext_len % block_size);
-    size_t len = plaintext_len + padding_len;
+  int len;
+  int ciphertext_len_int = 0;
 
-    /* Allocate memory for padded plaintext */
-    unsigned char* padded_plaintext = dsecurity::secure_allocate<unsigned char>(len);
+  /* Allocate memory for ciphertext (plaintext length + block size) */
+  unsigned char* ciphertext = dsecurity::secure_allocate<unsigned char>(plaintext_len + AES_BLOCK_SIZE);
 
-    /* Copy plaintext to padded_plaintext */
-    memcpy(padded_plaintext, plaintext, plaintext_len);
+  if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
+    log_fatal("EVP_EncryptInit_ex failed.\n");
+    EVP_CIPHER_CTX_free(ctx);
+    dsecurity::secure_delete<unsigned char>(ciphertext, plaintext_len + AES_BLOCK_SIZE);
+    return nullptr;
+  }
 
-    /* Add PKCS#7 padding */
-    memset(padded_plaintext + plaintext_len, padding_len, padding_len);
+  if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)) {
+    log_fatal("EVP_EncryptUpdate failed.\n");
+    EVP_CIPHER_CTX_free(ctx);
+    dsecurity::secure_delete<unsigned char>(ciphertext, plaintext_len + AES_BLOCK_SIZE);
+    return nullptr;
+  }
+  ciphertext_len_int = len;
 
-    /* Allocate memory for ciphertext */
-    unsigned char* ciphertext = dsecurity::secure_allocate<unsigned char>(len);
+  if (1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)) {
+    log_fatal("EVP_EncryptFinal_ex failed.\n");
+    EVP_CIPHER_CTX_free(ctx);
+    dsecurity::secure_delete<unsigned char>(ciphertext, plaintext_len + AES_BLOCK_SIZE);
+    return nullptr;
+  }
+  ciphertext_len_int += len;
 
-    /* Encrypt the padded plaintext */
-    AES_cbc_encrypt(padded_plaintext, ciphertext, len, &enc_key, const_cast<unsigned char*>(iv), AES_ENCRYPT);
+  ciphertext_len = static_cast<size_t>(ciphertext_len_int);
 
-    /* Set ciphertext length */
-    ciphertext_len = len;
+  EVP_CIPHER_CTX_free(ctx);
 
-    /* Clean up */
-    dsecurity::secure_delete<unsigned char>(padded_plaintext, len);
-
-    return ciphertext;
+  return ciphertext;
 }
 
 
-/* AES decryption function */
+/* AES decryption function using EVP */
 unsigned char* aes_decrypt(const unsigned char* ciphertext, size_t ciphertext_len, const unsigned char* key, const unsigned char* iv, size_t& plaintext_len) {
-    AES_KEY dec_key;
-    AES_set_decrypt_key(key, 256, &dec_key);
+  EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+  if (!ctx) {
+    log_fatal("Failed to create EVP_CIPHER_CTX.\n");
+    return nullptr;
+  }
 
-    /* Allocate memory for plaintext */
-    unsigned char* plaintext = dsecurity::secure_allocate<unsigned char>(ciphertext_len);
+  int len;
+  int plaintext_len_int = 0;
 
-    /* Decrypt the ciphertext */
-    AES_cbc_encrypt(ciphertext, plaintext, ciphertext_len, &dec_key, const_cast<unsigned char*>(iv), AES_DECRYPT);
+  // Allocate memory for plaintext (ciphertext length)
+  unsigned char* plaintext = dsecurity::secure_allocate<unsigned char>(ciphertext_len);
 
-    /* Remove PKCS#7 padding */
-    size_t pad = plaintext[ciphertext_len - 1];
-    if (pad < 1 || pad > AES_BLOCK_SIZE) {
-        /* Invalid padding */
-        plaintext_len = ciphertext_len;
-    } else {
-        plaintext_len = ciphertext_len - pad;
-    }
+  if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
+    log_fatal("EVP_DecryptInit_ex failed.\n");
+    EVP_CIPHER_CTX_free(ctx);
+    dsecurity::secure_delete<unsigned char>(plaintext, ciphertext_len);
+    return nullptr;
+  }
 
-    return plaintext;
+  if (1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len)) {
+    log_fatal("EVP_DecryptUpdate failed.\n");
+    EVP_CIPHER_CTX_free(ctx);
+    dsecurity::secure_delete<unsigned char>(plaintext, ciphertext_len);
+    return nullptr;
+  }
+  plaintext_len_int = len;
+
+  if (1 != EVP_DecryptFinal_ex(ctx, plaintext + len, &len)) {
+    log_fatal("EVP_DecryptFinal_ex failed. Possible incorrect key or corrupted data.\n");
+    EVP_CIPHER_CTX_free(ctx);
+    dsecurity::secure_delete<unsigned char>(plaintext, ciphertext_len);
+    return nullptr;
+  }
+  plaintext_len_int += len;
+
+  plaintext_len = static_cast<size_t>(plaintext_len_int);
+
+  EVP_CIPHER_CTX_free(ctx);
+
+  return plaintext;
 }
 
 /* use openssl to read private key file */
