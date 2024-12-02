@@ -249,10 +249,15 @@ public:
 
     /* navigate the entire file to validate the data is sequential and increasing in the key space */
     typename T::key_type_t prev = read_memory_value<T>(mapped_data_->data_ptr_, 0, key_value_offset_);
-    for(std::size_t idx = 1; idx < num_records_; idx++) {
+    typename T::key_type_t curr = read_memory_value<T>(mapped_data_->data_ptr_, 1, key_value_offset_);
+    typename T::key_type_t regular_delta = curr - prev;
+    for(std::size_t idx = 2; idx < num_records_; idx++) {
       typename T::key_type_t curr = read_memory_value<T>(mapped_data_->data_ptr_, idx, key_value_offset_);
       if(curr < prev) {
         throw std::runtime_error("[MemoryMappedDataset] Error: Binary Dataset is not sequential and increasing (not sorted). File: " + bin_filename_ + " on index: " + std::to_string(idx));
+      }
+      if((curr - prev) != regular_delta) {
+        log_warn("[MemoryMappedDataset] record on file [%s] found with irregular delta of step: %f\n", bin_filename_.c_str(), static_cast<double>(curr - prev) / static_cast<double>(regular_delta));
       }
       prev = curr;
     }
@@ -306,9 +311,14 @@ public:
   torch::Tensor get_sequence_ending_at_key_value(typename T::key_type_t target_key_value, std::size_t N) {
     std::size_t index = find_closest_index(target_key_value);
 
+    if(index <= N){
+      throw std::out_of_range("[MemoryMappedDataset] Target [" + std::to_string(target_key_value) + "] is to early for size N=" + std::to_string(N) + ", on file: " + bin_filename_);
+    }
+
     auto records = read_memory_structs<T>(mapped_data_->data_ptr_, index, N);
+
     for(T& rec: records) {
-      std::cout << "\t" << rec.open_time << std::endl;
+      std::cout << "waka \t" << rec.open_time << std::endl;
     }
     return torch::tensor(records[0].tensor_features(), torch::kDouble);
   }

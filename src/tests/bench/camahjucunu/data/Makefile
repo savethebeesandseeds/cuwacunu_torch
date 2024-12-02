@@ -12,6 +12,14 @@ COMPILE_WITH_TORCH_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_memory_mapped_datafile test_memory_mapped_datafile
+$(TEST_BUILD)/test_memory_mapped_datafile: $(HERE_PATH)/test_memory_mapped_datafile.cpp
+	@$(COMPILE_WITH_TORCH_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_memory_mapped_datafile
+test_memory_mapped_datafile: $(TEST_BUILD)/test_memory_mapped_datafile
+# -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
 .PHONY: $(TEST_BUILD)/test_memory_mapped_dataset test_memory_mapped_dataset
 $(TEST_BUILD)/test_memory_mapped_dataset: $(HERE_PATH)/test_memory_mapped_dataset.cpp
 	@$(COMPILE_WITH_TORCH_CMD)
@@ -30,6 +38,7 @@ test_dataloader: $(TEST_BUILD)/test_dataloader
 # -----------------------------------------------------------------
 .PHONY: all
 all: \
+	$(TEST_BUILD)/test_memory_mapped_datafile \
 	$(TEST_BUILD)/test_memory_mapped_dataset \
 	$(TEST_BUILD)/test_dataloader 
 	@$(LOG_SUCCESS)

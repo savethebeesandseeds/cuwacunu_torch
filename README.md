@@ -1,6 +1,7 @@
 # Cuwacnu 
 This is a Artificial Intelligence Agent, dedicated to managing investment portfolios. 
 
+This code was build by heart, out of the nights where the spirit calls in and the hands do, that was is needed.
 
 ## The libtorch implementation
 

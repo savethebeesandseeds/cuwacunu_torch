@@ -13,11 +13,14 @@ COMPILE_WITH_TORCH_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $
 # # - - - Cross files Uitilies  - - - - - - - - - - - - - - - - - - -
 # # -----------------------------------------------------------------
 DATALOADER_DATASETS := \
+	$(OUTPUT_PATH)/memory_mapped_datafile.o \
 	$(OUTPUT_PATH)/memory_mapped_dataset.o
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
 $(OUTPUT_PATH)/memory_mapped_dataset.o: $(HERE_PATH)/memory_mapped_dataset.cpp $(USUAL_DEPS)
+	@$(COMPILE_WITH_TORCH_CMD)
+$(OUTPUT_PATH)/memory_mapped_datafile.o: $(HERE_PATH)/memory_mapped_datafile.cpp $(USUAL_DEPS)
 	@$(COMPILE_WITH_TORCH_CMD)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 

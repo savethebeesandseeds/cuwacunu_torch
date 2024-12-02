@@ -40,29 +40,37 @@ struct tick_full_t       { std::string symbol; double priceChange; double priceC
 
 struct tick_mini_t       { std::string symbol; double lastPrice; double openPrice; double highPrice; double lowPrice; double volume; 
                           double quoteVolume; long openTime; long closeTime; long firstId; int lastId; int count; };
+
+
 #pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
 struct trade_t         {
   /* Methods */
   using key_type_t = int64_t;
   static constexpr std::size_t key_offset() { return offsetof(trade_t, time); }
-  static trade_t from_binary(const char* data); 
+  key_type_t key_value();
+  static trade_t null_instance();
+  static trade_t from_binary(const std::byte* data);
   static trade_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
   std::vector<double> tensor_features() const;
   /* Values */
   int64_t id; double price; double qty; double quoteQty; int64_t time; bool isBuyerMaker; bool isBestMatch;
 };
 #pragma pack(pop)
+
+
 #pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
 struct kline_t         {
   /* Methods */
   using key_type_t = int64_t;
   static constexpr std::size_t key_offset() { return offsetof(kline_t, close_time); }
-  static kline_t from_binary(const char* data); 
+  key_type_t key_value();
+  static kline_t from_binary(const std::byte* data);
+  static kline_t null_instance();
   static kline_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
   std::vector<double> tensor_features() const; 
   /* Values */
   int64_t open_time; double open_price; double high_price; double low_price; double close_price; double volume; int64_t close_time; 
-  double quote_asset_volume; int32_t number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume; 
+  double quote_asset_volume; int32_t number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume;
 };
 #pragma pack(pop)
 

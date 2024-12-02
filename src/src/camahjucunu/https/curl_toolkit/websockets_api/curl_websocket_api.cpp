@@ -247,7 +247,7 @@ void WebsocketAPI::ws_finalize(const ws_session_id_t session_id) {
   /* Finalize session */
   WebsocketAPI::remove_session(session_id);
 
-  log_info("[success] Finalized WebSocket connection with session_id[ %d ] frame_id[ %s ].\n", 
+  log_info("Finalized WebSocket connection with session_id[ %d ] frame_id[ %s ].\n", 
     session_id, close_frame_id.c_str());
 }
 

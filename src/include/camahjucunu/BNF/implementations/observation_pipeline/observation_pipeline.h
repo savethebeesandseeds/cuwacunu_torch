@@ -12,11 +12,11 @@
 /* 
   Observation Pipeline Grammar:
     Instruction Examples: 
-      <BTCUSDT>{1s=60, 1m=60, 1h=24}
-      <BTCUSDT>{1s=15, 1h=5, 1d=10, 1M=2}
-      <BTCUSDT>{1s=60, 1m=5, 5m=3, 15m=2, 30m=2, 1h=24}
+      <BTCUSDT>{1s=60, 1m=60, 1h=24}(path/to/file.csv)
+      <BTCUSDT>{1s=15, 1h=5, 1d=10, 1M=2}(path/to/file.csv)
+      <BTCUSDT>{1s=60, 1m=5, 5m=3, 15m=2, 30m=2, 1h=24}(path/to/file.csv)
     With this the Pipieline would know to request the Broker or Query de Data 
-    For pattern instructed. E.g. <BTCUSDT>{1s=60, 1m=60, 1h=24} :
+    For pattern instructed. E.g. <BTCUSDT>{1s=60, 1m=60, 1h=24}(path/to/file.csv) :
       Literal "BTCUSDT" would be parsed to be the symbol
       60 candles of 1 seconds interval  []
       60 candles of 1 minute interval   []
@@ -32,6 +32,9 @@ DEFINE_HASH(OBSERVATION_PIPELINE_HASH_input_form,     "<input_form>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_letter,         "<letter>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_interval,       "<interval>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_count,          "<count>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_csv_file,       "<csv_file>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_character,      "<character>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_special,        "<special>");
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -46,6 +49,7 @@ struct input_form_t {
 struct observation_pipeline_instruction_t {
   std::string instruction;
   std::string symbol;
+  std::string csv_file;
   std::vector<input_form_t> items;
 };
 
@@ -60,14 +64,17 @@ private:
 
 public:
   std::string OBSERVATION_PIPELINE_BNF_GRAMMAR = R"(
-<instruction>    ::= "<" <symbol> ">" "{" {<sequence_item>} "}" ;
+<instruction>    ::= "<" <symbol> ">" "{" {<sequence_item>} "}" "[" <csv_file> "]" ;
 <symbol>         ::= {<letter>} ;
+<csv_file>       ::= {<character>};
+<character>      ::= <special> | <letter>
 <sequence_item>  ::= <input_form> <delimiter> | <input_form> ;
 <input_form>     ::= <interval> "=" <count> ;
 <delimiter>      ::= ", " | "," ;
 <interval>       ::= "1s" | "1m" | "3m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "6h" | "8h" | "12h" | "1d" | "3d" | "1w" | "1M" ;
 <count>          ::= "100" | "60" | "30" | "24" | "15" | "10" | "5" | "2" | "1" ;
-<letter>         ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+<letter>         ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z";
+<special>        ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "." | "-" | "_" | "\" | "/";
 )";
 
   GrammarLexer bnfLexer;

@@ -1,4 +1,4 @@
-/data/*
+/data/raw/*
 /external/*
 /src/build/*
 /src/tests/build/*

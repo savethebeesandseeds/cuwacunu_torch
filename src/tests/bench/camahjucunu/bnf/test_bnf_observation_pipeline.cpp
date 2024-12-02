@@ -4,7 +4,7 @@
 
 int main() {
     try {
-        std::string instruction = "<BTCUSDT>{1s=60, 1m=60, 1h=24}";
+        std::string instruction = "<BTCUSDT>{1s=60, 1m=60, 1h=24}[path/to/file.csv]";
         
         TICK(observationPipeline_loadGrammar);
         auto obsPipe = cuwacunu::camahjucunu::BNF::observationPipeline();

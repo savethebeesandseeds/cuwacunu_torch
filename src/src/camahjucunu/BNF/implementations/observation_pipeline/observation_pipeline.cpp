@@ -72,6 +72,14 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
     static_cast<observation_pipeline_instruction_t*>(context.user_data)->symbol.clear();
   }
 
+  /* csv_file */
+  if( context.stack.size() == 2 
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_csv_file) {
+    /* clear the contents of csv_file */
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->csv_file.clear();
+  }
+
   /* items */
   if( context.stack.size() == 3 
     && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
@@ -101,6 +109,18 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
     std::string aux = node->unit.lexeme;
     cuwacunu::piaabo::string_remove(aux, '\"');
     static_cast<observation_pipeline_instruction_t*>(context.user_data)->symbol += aux;
+  }
+
+  /* csv_file */
+  if( context.stack.size() == 3 
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_csv_file 
+    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_character 
+    && (context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_letter || context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_special)) {
+    /* append a letter to the csv_file path */
+    std::string aux = node->unit.lexeme;
+    cuwacunu::piaabo::string_remove(aux, '\"');
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->csv_file += aux;
   }
 
   /* items */

@@ -154,7 +154,7 @@ std::vector<T> binary_to_vector(const std::string& bin_filename, size_t buffer_s
         improves the perfomance at the cost of readability of code 
     */
     for (size_t i = 0; i < records_to_read; ++i) {
-      const char* data_ptr = buffer.data() + i * sizeof(T);
+      const std::byte* data_ptr = buffer.data() + i * sizeof(T);
       records.emplace_back(T::from_binary(data_ptr));
     }
     /* .... */

@@ -8,6 +8,7 @@ RUNTIME_WARNING("(memory_mapped_dataset.cpp)[] size_t may overflow for very larg
 RUNTIME_WARNING("(memory_mapped_dataset.cpp)[] Missing Support for Multiple Memory Mappings. \n");
 RUNTIME_WARNING("(memory_mapped_dataset.cpp)[] Potential Security Risks with Memory Mapping. \n");
 RUNTIME_WARNING("(memory_mapped_dataset.cpp)[] Interpolation search method might overflow T::key_type_t on the multiplcation result. \n");
+RUNTIME_WARNING("(memory_mapped_dataset.cpp)[] Interpolation search requires sequential and fix increment data at key_value to be efficient, if changes are done to it should also consider changing (memory_mapped_datafile)[prepare_binary_file_from_csv]. \n");
 
 namespace cuwacunu {
 namespace camahjucunu {

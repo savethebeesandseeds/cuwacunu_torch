@@ -130,15 +130,27 @@ kline_t kline_t::from_csv(const std::string& line, char delimiter, size_t line_n
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         expected return structures          */
+/*                key_value                    */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+kline_t::key_type_t kline_t::key_value() {
+  return close_time;
+}
+
+trade_t::key_type_t trade_t::key_value() {
+  return time;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
 /*               from_binary                   */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-kline_t kline_t::from_binary(const char* data) {
+kline_t kline_t::from_binary(const std::byte* data) {
   kline_t obj;
   std::memcpy(&obj, data, sizeof(kline_t));
   return obj;
 }
 
-trade_t trade_t::from_binary(const char* data) {
+trade_t trade_t::from_binary(const std::byte* data) {
   trade_t obj;
   std::memcpy(&obj, data, sizeof(trade_t));
   return obj;
@@ -174,6 +186,42 @@ std::vector<double> trade_t::tensor_features() const {
     static_cast<double>(isBuyerMaker),  // Convert bool to double (1.0 for true, 0.0 for false)
     static_cast<double>(isBestMatch)    // Convert bool to double
   };
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*               null_instance                 */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+kline_t kline_t::null_instance() {
+  kline_t dnew;
+
+  dnew.open_time = INT64_MIN;
+  dnew.open_price = 0.0;
+  dnew.high_price = 0.0;
+  dnew.low_price = 0.0;
+  dnew.close_price = 0.0;
+  dnew.volume = 0.0;
+  dnew.close_time = INT64_MIN;
+  dnew.quote_asset_volume = 0.0;
+  dnew.number_of_trades = -1;
+  dnew.taker_buy_base_volume = 0.0;
+  dnew.taker_buy_quote_volume = 0.0;
+
+  return dnew;
+}
+
+trade_t trade_t::null_instance() {
+  trade_t dnew;
+
+  dnew.id = -1;
+  dnew.price = 0.0;
+  dnew.qty = 0.0;
+  dnew.quoteQty = 0.0;
+  dnew.time = INT64_MIN;
+  dnew.isBuyerMaker = false;
+  dnew.isBestMatch = false;
+
+  return dnew;
 }
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
