@@ -10,6 +10,7 @@ int main() {
   cuwacunu::piaabo::dconfig::config_space_t::update_config();
 
   /* authenticate user */
+  log_warn("\n\t password is: test\n\n");
   cuwacunu::piaabo::dsecurity::SecureVault.authenticate();
 
   /* print */

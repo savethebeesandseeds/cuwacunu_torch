@@ -1,30 +1,46 @@
 // test_bnf_observation_pipieline.cpp
 #include <iostream>
+#include "piaabo/dconfig.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
 int main() {
-    try {
-        std::string instruction = "<BTCUSDT>{1s=60, 1m=60, 1h=24}[path/to/file.csv]";
-        
-        TICK(observationPipeline_loadGrammar);
-        auto obsPipe = cuwacunu::camahjucunu::BNF::observationPipeline();
-        PRINT_TOCK_ns(observationPipeline_loadGrammar);
+    
+    const char* config_folder = "/cuwacunu/src/config/";
+    cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
+    cuwacunu::piaabo::dconfig::config_space_t::update_config();
 
-        TICK(decode_Instruction);
-        cuwacunu::camahjucunu::BNF::observation_pipeline_instruction_t decoded_data = obsPipe.decode(instruction);
-        PRINT_TOCK_ns(decode_Instruction);
+    std::string instruction = cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction();
 
-        log_info("At the end, decoded_data.symbol: %s \n", decoded_data.symbol.c_str());
-        
-        log_info("At the end, decoded_data.items[size=%ld] \n", decoded_data.items.size());
-        for(size_t count = 0; count < decoded_data.items.size() ; count++) {
-            log_info("\t\t  decoded_data.items[%ld] : %s \n", count, cuwacunu::camahjucunu::exchange::enum_to_string<cuwacunu::camahjucunu::exchange::interval_type_e>(decoded_data.items[count].interval).c_str());
-            log_info("\t\t  decoded_data.items[%ld] : %ld \n", count, decoded_data.items[count].count);
-        }
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Parsing error: " << e.what() << std::endl;
-        return 1;
+    TICK(observationPipeline_loadGrammar);
+    auto obsPipe = cuwacunu::camahjucunu::BNF::observationPipeline();
+    PRINT_TOCK_ns(observationPipeline_loadGrammar);
+
+    TICK(decode_Instruction);
+    cuwacunu::camahjucunu::BNF::observation_pipeline_instruction_t decoded_data = obsPipe.decode(instruction);
+    PRINT_TOCK_ns(decode_Instruction);
+
+    log_info("At the end, decoded_data.instrument_forms[size=%ld] \n", decoded_data.instrument_forms.size());
+    log_info("\t\t  --- --- --- --- --- \n");
+    for(size_t count = 0; count < decoded_data.instrument_forms.size() ; count++) {
+        log_info("\t\t  decoded_data.instrument_forms[%ld].instrument  : %s \n", count, decoded_data.instrument_forms[count].instrument.c_str());
+        log_info("\t\t  decoded_data.instrument_forms[%ld].interval    : %s \n", count, cuwacunu::camahjucunu::exchange::enum_to_string<cuwacunu::camahjucunu::exchange::interval_type_e>(decoded_data.instrument_forms[count].interval).c_str());
+        log_info("\t\t  decoded_data.instrument_forms[%ld].record_type : %s \n", count, decoded_data.instrument_forms[count].record_type.c_str());
+        log_info("\t\t  decoded_data.instrument_forms[%ld].norm_window : %s \n", count, decoded_data.instrument_forms[count].norm_window.c_str());
+        log_info("\t\t  decoded_data.instrument_forms[%ld].source      : %s \n", count, decoded_data.instrument_forms[count].source.c_str());
+        log_info("\t\t  --- --- --- --- --- \n");
+    }
+
+
+    log_info("\t\t  --- --- --- --- --- ... --- --- --- --- --- \n");
+
+    log_info("At the end, decoded_data.input_forms[size=%ld] \n", decoded_data.input_forms.size());
+    log_info("\t\t  --- --- --- --- --- \n");
+    for(size_t count = 0; count < decoded_data.input_forms.size() ; count++) {
+        log_info("\t\t  decoded_data.input_forms[%ld].interval    : %s \n", count, cuwacunu::camahjucunu::exchange::enum_to_string<cuwacunu::camahjucunu::exchange::interval_type_e>(decoded_data.input_forms[count].interval).c_str());
+        log_info("\t\t  decoded_data.input_forms[%ld].active      : %s \n", count, decoded_data.input_forms[count].active.c_str());
+        log_info("\t\t  decoded_data.input_forms[%ld].record_type : %s \n", count, decoded_data.input_forms[count].record_type.c_str());
+        log_info("\t\t  decoded_data.input_forms[%ld].seq_length  : %s \n", count, decoded_data.input_forms[count].seq_length.c_str());
+        log_info("\t\t  --- --- --- --- --- \n");
     }
 
     return 0;

@@ -1,5 +1,5 @@
 #include "piaabo/dutils.h"
-#include "piaabo/json_parsing.h"
+#include "piaabo/djson_parsing.h"
 
 using namespace cuwacunu;
 using namespace piaabo;
@@ -183,7 +183,7 @@ void runTests() {
   }
 
   // All tests passed
-  log_info("All tests for json_parsing.h passed successfully.\n");
+  log_info("All tests for djson_parsing.h passed successfully.\n");
 }
 
 int main() {

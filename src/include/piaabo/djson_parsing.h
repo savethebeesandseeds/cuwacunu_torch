@@ -100,6 +100,8 @@
  * without relying on external libraries. It demonstrates the use of modern C++ techniques,
  * such as smart pointers and recursive descent parsing, to build a robust and efficient JSON parser.
  */
+
+/* djson_parsing.h */
 #pragma once
 
 #include <iostream>

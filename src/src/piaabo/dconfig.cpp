@@ -82,17 +82,22 @@ std::string config_space_t::Ed25519_pkey() {
   return config_space_t::config[config_space_t::exchange_type == exchange_type_e::REAL ? "REAL_EXCHANGE" : "TEST_EXCHANGE"]["Ed25519_pkey"];
 }
 
+std::string config_space_t::observation_pipeline_bnf() {
+  return cuwacunu::piaabo::dfiles::readFileToString(config_space_t::config["BNF"]["observation_pipeline_bnf_filename"]);
+}
+
+std::string config_space_t::observation_pipeline_instruction() {
+  return cuwacunu::piaabo::dfiles::readFileToString(config_space_t::config["BNF"]["observation_pipeline_instruction_filename"]);
+}
+
+
 /* instruction methods */
 parsed_config_t config_space_t::read_config(const std::string& conf_path) {
   LOCK_GUARD(config_mutex);
-  log_dbg("Reading config file (%s)\n", 
-    conf_path.c_str());
+  
+  log_dbg("Reading config file (%s)\n", conf_path.c_str());
 
-  std::ifstream configFile(conf_path);
-  if (!configFile) {
-    log_fatal("Unable to open config file (%s). Ensure the file exists and is accessible.\n", 
-      conf_path.c_str());
-  }
+  std::ifstream configFile = cuwacunu::piaabo::dfiles::readFileToStream(conf_path);
 
   std::string line;
   parsed_config_t new_config;
@@ -178,6 +183,10 @@ bool config_space_t::validate_config() {
     TEST_CONFIG_SECTION(&is_valid, "TEST_EXCHANGE", "Ed25519_pkey");
     TEST_CONFIG_SECTION(&is_valid, "TEST_EXCHANGE", "EXCHANGE_api_filename");
     TEST_CONFIG_SECTION(&is_valid, "TEST_EXCHANGE", "websocket_url");
+  }
+  { /* BNF */
+    TEST_CONFIG_SECTION(&is_valid, "BNF", "observation_pipeline_bnf_filename");
+    TEST_CONFIG_SECTION(&is_valid, "BNF", "observation_pipeline_instruction_filename");
   }
   /* faltal termination on non-valid */
   if(!is_valid) {

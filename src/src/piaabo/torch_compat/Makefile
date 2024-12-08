@@ -11,8 +11,8 @@ COMPILE_CMD = $(LOG_START) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(TORCH
 # -----------------------------------------------------------------
 # - - - Libtorch Utilities  - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-TORCH_UTILS := $(OUTPUT_PATH)/torch_utils.o 
-$(TORCH_UTILS): $(HERE_PATH)/torch_utils.cpp $(OUTPUT_PATH)/dutils.o
+TORCH_UTILS := $(OUTPUT_PATH)/libtorch/torch_utils.o 
+$(TORCH_UTILS): $(HERE_PATH)/torch_utils.cpp $(OUTPUT_PATH)/common/dutils.o
 	@$(COMPILE_CMD)
 .PHONY: torch_utils
 torch_utils: $(TORCH_UTILS)

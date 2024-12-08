@@ -11,11 +11,11 @@ COMPILE_CMD = $(LOG_START) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(TORCH
 # -----------------------------------------------------------------
 # - - - Pytorch's learning schedules implemented in Libtorch - - - 
 # -----------------------------------------------------------------
-SCHEDULERS := $(OUTPUT_PATH)/lambda_lr_scheduler.o
+SCHEDULERS := $(OUTPUT_PATH)/libtorch/lambda_lr_scheduler.o
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-$(OUTPUT_PATH)/lambda_lr_scheduler.o: $(HERE_PATH)/lambda_lr_scheduler.cpp $(USUALS_DEPS)
+$(OUTPUT_PATH)/libtorch/lambda_lr_scheduler.o: $(HERE_PATH)/lambda_lr_scheduler.cpp $(USUALS_DEPS)
 	@$(COMPILE_CMD)
 .PHONY: schedulers
 schedulers: $(SCHEDULERS)

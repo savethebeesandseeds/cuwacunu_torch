@@ -30,10 +30,13 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
 
   /* validate */
   if (root_node == nullptr || !iLexer.isAtEnd()) {
+    size_t count = 0;
+    size_t max_success_stack = 750;
     /* print the report in case of failure */
     std::ostringstream err_oss, scss_oss;
     while (!parsing_error_stack.empty()) { err_oss << parsing_error_stack.top() << "\n"; parsing_error_stack.pop(); }
-    while (!parsing_success_stack.empty()) { scss_oss << parsing_success_stack.top() << "\n"; parsing_success_stack.pop(); }
+    if(parsing_success_stack.size() > max_success_stack) { scss_oss << "\t\t ...truncated to size " << max_success_stack << "...\n";}
+    while (!parsing_success_stack.empty() && ++count < max_success_stack) { scss_oss << parsing_success_stack.top() << "\n"; parsing_success_stack.pop(); }
     throw std::runtime_error(
       "Parsing failed: could not parse instruction: " + 
       std::string(ANSI_COLOR_Bright_Yellow) + instruction_input + std::string(ANSI_COLOR_RESET) + 
@@ -57,10 +60,11 @@ ASTNodePtr InstructionParser::parse_ProductionRule(const ProductionRule& rule) {
 
   /* try to match all alternatives */
   for (const ProductionAlternative& alternative : rule.rhs) {
+
     /* reset the lexer to validate alternative match */
     iLexer.setPosition(initial_pos);
     ASTNodePtr node = parse_ProductionAlternative(alternative);
-
+    
     /* validate HINT : we could see all alternatives and determine what to choose later */
     if (node != nullptr) {
       /* Append to success: store the node and the new lexer position */
@@ -80,9 +84,14 @@ ASTNodePtr InstructionParser::parse_ProductionRule(const ProductionRule& rule) {
     auto best_match_iter = std::max_element( matches.begin(), matches.end(),
       [&](const std::pair<ASTNodePtr, size_t>& a, const std::pair<ASTNodePtr, size_t>& b) -> bool { return a.second < b.second; }
     );
-
+    
     /* Advance the to the position after the best match */
     iLexer.setPosition(best_match_iter->second);
+
+    /* push the success to the stack */
+    parsing_success_stack.push(
+      cuwacunu::piaabo::string_format("        :        : --- --- >> parsed %sparse_ProductionRule%s : %s", ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, best_match_iter->first->str(true).c_str())
+    );
 
     /* Return the AST node corresponding to the best match */
     return std::move(best_match_iter->first);
@@ -90,10 +99,11 @@ ASTNodePtr InstructionParser::parse_ProductionRule(const ProductionRule& rule) {
 
   /* push the problem to the stack */
   parsing_error_stack.push(
-    cuwacunu::piaabo::string_format("        : --- --- : >> Unable to parse %sRule%s: %s", ANSI_COLOR_Cyan, ANSI_COLOR_RESET, rule.str(false).c_str())
+    cuwacunu::piaabo::string_format("        : --- --- : >> %sUnable%s to parse %sRule%s: %s", ANSI_COLOR_Bright_Red, ANSI_COLOR_RESET, ANSI_COLOR_Cyan, ANSI_COLOR_RESET, rule.str(false).c_str())
   );
   /* none of the alternatives matched */
   iLexer.setPosition(initial_pos);
+
   return nullptr;
 }
 
@@ -116,6 +126,7 @@ ASTNodePtr InstructionParser::parse_ProductionAlternative(const ProductionAltern
       );
   }
 
+  /* validate */
   if(units.empty()) {
     return nullptr;
   }
@@ -198,6 +209,11 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionAlternative& 
           children.push_back(std::move(child));
         } while (true);
 
+        /* validate */
+        if(children.empty()){
+          return nullptr;
+        }
+
         /* return the node, note children might be empty for the zero case */
         return std::make_unique<IntermediaryNode>(alt, std::move(children));
     }
@@ -211,6 +227,56 @@ ASTNodePtr InstructionParser::parse_ProductionUnit(const ProductionAlternative& 
   }
 }
 
+
+std::string unescape(const std::string& str) {
+  std::string result;
+  for (size_t i = 0; i < str.size(); ++i) {
+    if (str[i] == '\\' && i + 1 < str.size()) {
+      switch (str[i + 1]) {
+        case 'n': result += '\n'; ++i; break;
+        case 'r': result += '\r'; ++i; break;
+        case 't': result += '\t'; ++i; break;
+        case '\\': result += '\\'; ++i; break;
+        case '"': result += '"'; ++i; break;
+        case '\'': result += '\''; ++i; break;
+        default:
+          // If unknown escape sequence, include both characters as-is
+          result += '\\';
+          result += str[i + 1];
+          ++i;
+          break;
+      }
+    } else {
+      result += str[i];
+    }
+  }
+  return result;
+}
+
+std::string scape(const char ch) {
+  std::string result;
+  switch (ch) {
+    case '\n': result += "\\n"; break;
+    case '\r': result += "\\r"; break;
+    case '\t': result += "\\t"; break;
+    case '"':  result += "\\\""; break;
+    // case '\\': result += "\\\\"; break;
+    case '\'': result += "\\\'"; break;
+    default:
+      result += ch;
+      break;
+  }
+  return result;
+}
+std::string scape(const std::string& str) {
+  std::string result;
+  for (char ch : str) {
+    result += scape(ch);
+  }
+  return result;
+}
+
+
 ASTNodePtr InstructionParser::parse_TerminalNode(const std::string& lhs, const ProductionUnit& unit) {
   size_t initial_pos = iLexer.getPosition();
   std::string lexeme = unit.lexeme;
@@ -221,12 +287,15 @@ ASTNodePtr InstructionParser::parse_TerminalNode(const std::string& lhs, const P
     lexeme = lexeme.substr(1, lexeme.size() - 2);
   }
 
+  /* handle escape sequences */
+  lexeme = unescape(lexeme);
+
   /* parse terminal */
   for (char ch : lexeme) {
     if (iLexer.isAtEnd() || iLexer.peek() != ch) {
       /* push the error to the stack */
       parsing_error_stack.push(
-        cuwacunu::piaabo::string_format("        :        : --- --- >> Unable to parse %sTerminal Node%s : %s, lexer currently at : \'%c\'", ANSI_COLOR_Bright_Red, ANSI_COLOR_RESET, lexeme.c_str(), iLexer.peek())
+        cuwacunu::piaabo::string_format("        :        : --- --- >> Unable to parse %sTerminal Node%s : %s :  trying to match terminal: \"%s\" for character \'%s\' having lexer at character: \'%s\'", ANSI_COLOR_Bright_Red, ANSI_COLOR_RESET, unit.str(true).c_str(), lexeme.c_str(), scape(ch).c_str(), scape(iLexer.peek()).c_str())
       );
       /* Match failed */
       iLexer.setPosition(initial_pos);
@@ -239,9 +308,9 @@ ASTNodePtr InstructionParser::parse_TerminalNode(const std::string& lhs, const P
   while (!parsing_error_stack.empty()) { parsing_error_stack.pop(); };
 
   /* push the success to the stack */
-  parsing_success_stack.push(
-    cuwacunu::piaabo::string_format("        :        : --- --- >> parsed %sTerminal Node%s : %s", ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, lexeme.c_str())
-  );
+  // parsing_success_stack.push(
+  //   cuwacunu::piaabo::string_format("        :        : --- --- >> parsed %sTerminal Node%s : %s : lexer is currently at: \'%s\'", ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, unit.str(true).c_str(), scape(iLexer.peek()).c_str())
+  // );
 
   return std::make_unique<TerminalNode>(lhs, unit);
 }

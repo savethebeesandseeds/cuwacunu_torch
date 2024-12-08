@@ -7,10 +7,11 @@
 #include <sstream>
 #include <algorithm>
 #include <mutex>
-#define DEFAULT_CONFIG_FOLDER "../config/"
+#define DEFAULT_CONFIG_FOLDER "/cuwacunu/src/config/"
 #define DEAFAULT_CONFIG_FILE ".config"
 
 #include "piaabo/dutils.h"
+#include "piaabo/dfiles.h"
 
 namespace cuwacunu {
 namespace piaabo {
@@ -45,6 +46,9 @@ public:
   static std::string api_key();
   static std::string aes_salt();
   static std::string Ed25519_pkey();
+
+  static std::string observation_pipeline_bnf();
+  static std::string observation_pipeline_instruction();
 
 private:
   static void finit();

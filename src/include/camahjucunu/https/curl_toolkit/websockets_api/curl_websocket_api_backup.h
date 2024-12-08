@@ -3,7 +3,7 @@
 /* CURL implementing RFC 6455, we just use CURL */
 
 #include "piaabo/dutils.h"
-#include "piaabo/json_parsing.h"
+#include "piaabo/djson_parsing.h"
 #include "piaabo/darchitecture.h"
 #include "camahjucunu/https/curl_toolkit/curl_utils.h"
 #include <thread>
@@ -122,7 +122,7 @@ public:
     }
   }
   static void finit() {
-    log_info("[success] Finalizing WebsocketAPI \n");
+    log_info("Finalizing WebsocketAPI \n");
     
     {
       LOCK_GUARD(WebsocketAPI::global_ws_mutex);

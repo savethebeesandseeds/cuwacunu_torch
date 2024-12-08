@@ -11,16 +11,16 @@ COMPILE_CMD = $(LOG_START) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(TORCH
 # -----------------------------------------------------------------
 # - - - Pytorch's Probability Distributions implemented in Libtorch
 # -----------------------------------------------------------------
-USUALS_DEPS := $(OUTPUT_PATH)/torch_utils.o $(OUTPUT_PATH)/dutils.o
-DISTRIBUTIONS := $(OUTPUT_PATH)/gamma.o $(OUTPUT_PATH)/beta.o $(OUTPUT_PATH)/categorical.o
+USUALS_DEPS := $(OUTPUT_PATH)/libtorch/torch_utils.o $(OUTPUT_PATH)/common/dutils.o
+DISTRIBUTIONS := $(OUTPUT_PATH)/libtorch/gamma.o $(OUTPUT_PATH)/libtorch/beta.o $(OUTPUT_PATH)/libtorch/categorical.o
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-$(OUTPUT_PATH)/gamma.o: $(HERE_PATH)/gamma.cpp $(USUALS_DEPS)
+$(OUTPUT_PATH)/libtorch/gamma.o: $(HERE_PATH)/gamma.cpp $(USUALS_DEPS)
 	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/beta.o: $(HERE_PATH)/beta.cpp $(OUTPUT_PATH)/gamma.o $(USUALS_DEPS)
+$(OUTPUT_PATH)/libtorch/beta.o: $(HERE_PATH)/beta.cpp $(OUTPUT_PATH)/libtorch/gamma.o $(USUALS_DEPS)
 	@$(COMPILE_CMD)
-$(OUTPUT_PATH)/categorical.o: $(HERE_PATH)/categorical.cpp $(USUALS_DEPS)
+$(OUTPUT_PATH)/libtorch/categorical.o: $(HERE_PATH)/categorical.cpp $(USUALS_DEPS)
 	@$(COMPILE_CMD)
 .PHONY: distributions
 distributions: $(DISTRIBUTIONS)

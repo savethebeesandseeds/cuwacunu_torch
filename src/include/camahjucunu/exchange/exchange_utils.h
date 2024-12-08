@@ -1,4 +1,5 @@
 #pragma once
+#include <tuple>
 #include <vector>
 #include <variant>
 #include <optional>
@@ -7,7 +8,7 @@
 #include <type_traits>
 #include "piaabo/dutils.h"
 #include "piaabo/dsecurity.h"
-#include "piaabo/json_parsing.h"
+#include "piaabo/djson_parsing.h"
 #include "piaabo/darchitecture.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
 

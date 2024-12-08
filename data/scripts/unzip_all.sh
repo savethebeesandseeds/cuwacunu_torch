@@ -6,7 +6,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Root folder (modify this if needed)
-ROOT_FOLDER="../data"
+ROOT_FOLDER="/cuwacunu/data/raw/"
 
 # Function to recursively traverse directories and process files
 process_files() {

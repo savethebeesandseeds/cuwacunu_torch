@@ -39,7 +39,7 @@ class binance_dataloader : Dataloader {
 // #include <torch/data/samplers/sequential.h>
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
-#include "piaabo/dlarge_files.h"
+#include "piaabo/dfiles.h"
 #include "camahjucunu/exchange/exchange_utils.h"
 #include "camahjucunu/exchange/exchange_types_data.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
@@ -48,21 +48,20 @@ class binance_dataloader : Dataloader {
 // #include "camahjucunu/exchange/binance/binance_mech_data.h"
 
 int main() {
-    const std::string csv_filename("/data/BTCUSDT/1h/BTCUSDT-1h-all-years.csv");
-    const std::string bin_filename("/data/BTCUSDT/1h/BTCUSDT-1h-all-years.bin");
+    const std::string csv_filename("/cuwacunu/data/raw/BTCUSDT/1h/BTCUSDT-1h-all-years.csv");
+    const std::string bin_filename("/cuwacunu/data/raw/BTCUSDT/1h/BTCUSDT-1h-all-years.bin");
     size_t buffer_size = 1024;
     char delimiter = ',';
 
     /* binarize the csv file */
-    TICK(csv_to_binary_);
-    cuwacunu::piaabo::dlarge_files::csv_to_binary<
+    TICK(csvFile_to_binary_);
+    cuwacunu::piaabo::dfiles::csvFile_to_binary<
         cuwacunu::camahjucunu::exchange::kline_t>(csv_filename, bin_filename, buffer_size, delimiter);
-    PRINT_TOCK_ns(csv_to_binary_);
+    PRINT_TOCK_ns(csvFile_to_binary_);
 
     /* create the dataset for kline_t */
     TICK(MapMemory_);
-    auto dataset = cuwacunu::camahjucunu::data::MemoryMappedDataset<
-        cuwacunu::camahjucunu::exchange::kline_t>(bin_filename);
+    auto dataset = cuwacunu::camahjucunu::data::ConcatDataset(bin_filename);
     PRINT_TOCK_ns(MapMemory_);
 
     /* Define a custom collate function */
@@ -84,7 +83,7 @@ int main() {
     /* Create the DataLoader */
     auto data_loader = 
         torch::data::StatelessDataLoader<
-            cuwacunu::camahjucunu::data::MemoryMappedDataset<cuwacunu::camahjucunu::exchange::kline_t>,
+            cuwacunu::camahjucunu::data::ConcatDataset,
             torch::data::samplers::SequentialSampler>(
         std::move(dataset),
         std::move(sampler),
@@ -109,10 +108,10 @@ int main() {
     // size_t buffer_size = 1024;
     // char delimiter = ',';
 
-    // TICK(csv_to_binary_);
-    // cuwacunu::piaabo::dlarge_files::csv_to_binary<
+    // TICK(csvFile_to_binary_);
+    // cuwacunu::piaabo::dfiles::csvFile_to_binary<
     //     cuwacunu::camahjucunu::exchange::kline_t>(csv_filename, bin_filename, buffer_size, delimiter);
-    // PRINT_TOCK_ns(csv_to_binary_);
+    // PRINT_TOCK_ns(csvFile_to_binary_);
 
     // TICK(MapMemory_);
     // auto dataset = cuwacunu::camahjucunu::data::MemoryMappedDataset<

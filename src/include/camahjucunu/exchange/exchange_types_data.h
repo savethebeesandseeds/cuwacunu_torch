@@ -1,4 +1,5 @@
 #pragma once
+#include "piaabo/math_compat/statistics_space.h"
 #include "camahjucunu/exchange/exchange_utils.h"
 
 namespace cuwacunu {
@@ -44,14 +45,17 @@ struct tick_mini_t       { std::string symbol; double lastPrice; double openPric
 
 #pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
 struct trade_t         {
-  /* Methods */
   using key_type_t = int64_t;
+  /* Methods */
   static constexpr std::size_t key_offset() { return offsetof(trade_t, time); }
   key_type_t key_value();
-  static trade_t null_instance();
-  static trade_t from_binary(const std::byte* data);
+  static trade_t null_instance(key_type_t key_value = INT64_MIN);
+  static trade_t from_binary(const char* data);
   static trade_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
+  static statistics_pack_t<trade_t> initialize_statistics_pack(unsigned int window_size = 100);
   std::vector<double> tensor_features() const;
+  void to_csv(std::ostream& os, char delimiter = ',') const;
+  bool is_valid() const;
   /* Values */
   int64_t id; double price; double qty; double quoteQty; int64_t time; bool isBuyerMaker; bool isBestMatch;
 };
@@ -60,14 +64,17 @@ struct trade_t         {
 
 #pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
 struct kline_t         {
-  /* Methods */
   using key_type_t = int64_t;
+  /* Methods */
   static constexpr std::size_t key_offset() { return offsetof(kline_t, close_time); }
   key_type_t key_value();
-  static kline_t from_binary(const std::byte* data);
-  static kline_t null_instance();
+  static kline_t from_binary(const char* data);
+  static kline_t null_instance(key_type_t key_value = INT64_MIN);
   static kline_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
+  static statistics_pack_t<kline_t> initialize_statistics_pack(unsigned int window_size = 100);
   std::vector<double> tensor_features() const; 
+  void to_csv(std::ostream& os, char delimiter = ',') const;
+  bool is_valid() const;
   /* Values */
   int64_t open_time; double open_price; double high_price; double low_price; double close_price; double volume; int64_t close_time; 
   double quote_asset_volume; int32_t number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume;

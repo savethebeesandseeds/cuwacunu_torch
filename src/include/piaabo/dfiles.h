@@ -1,4 +1,4 @@
-/* dlarge_files.h */
+/* dfiles.h */
 #pragma once
 #include <fstream>
 #include <sys/stat.h>
@@ -13,10 +13,13 @@
 */
 namespace cuwacunu {
 namespace piaabo {
-namespace dlarge_files {
+namespace dfiles {
+
+std::string readFileToString(const std::string& filePath);
+std::ifstream readFileToStream(const std::string& filePath);
 
   /*
-   * Template Function: csv_to_binary
+   * Template Function: csvFile_to_binary
    * -------------------------------
    * Converts a CSV file to a binary file by parsing each line of the CSV
    * and serializing it into binary format.
@@ -37,23 +40,23 @@ namespace dlarge_files {
    * - delimiter:  (Optional) Delimiter character used in the CSV file (default: ',').
    */
 template <typename T>
-void csv_to_binary(const std::string& csv_filename, const std::string& bin_filename, size_t buffer_size = 1024, char delimiter = ',') {
+void csvFile_to_binary(const std::string& csv_filename, const std::string& bin_filename, size_t buffer_size = 1024, char delimiter = ',') {
   
   if (buffer_size < 1) {
-    log_fatal("[csv_to_binary] Error: buffer_size cannot be zero or negative\n");
+    log_fatal("[csvFile_to_binary] Error: buffer_size cannot be zero or negative\n");
     return;
   }
 
-  std::ifstream csv_file(csv_filename);
+  std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
   if (!csv_file.is_open()) {
-    log_fatal("[csv_to_binary] Error: Could not open the CSV file %s for reading\n", csv_filename.c_str());
+    log_fatal("[csvFile_to_binary] Error: Could not open the CSV file %s for reading\n", csv_filename.c_str());
     return;
   }
 
   std::ofstream bin_file(bin_filename, std::ios::binary | std::ios::out | std::ios::trunc);
   if (!bin_file.is_open()) {
     csv_file.close();
-    log_fatal("[csv_to_binary] Error: Could not open the binary file %s for writing\n", bin_filename.c_str());
+    log_fatal("[csvFile_to_binary] Error: Could not open the binary file %s for writing\n", bin_filename.c_str());
     return;
   }
   chmod(bin_filename.c_str(), S_IRUSR | S_IWUSR);
@@ -82,7 +85,7 @@ void csv_to_binary(const std::string& csv_filename, const std::string& bin_filen
         buffer.clear();
       }
     } catch (const std::exception& e) {
-      std::cerr << "[csv_to_binary] Error processing line " << line_number << ": " << line
+      std::cerr << "[csvFile_to_binary] Error processing line " << line_number << ": " << line
             << "\nException: " << e.what() << std::endl;
       // Skip this line and continue
       continue;
@@ -101,7 +104,7 @@ void csv_to_binary(const std::string& csv_filename, const std::string& bin_filen
 }
 
   /*
-   * Template Function: binary_to_vector
+   * Template Function: binaryFile_to_vector
    * -----------------------------------
    * Reads a binary file and reconstructs a vector of structs of type T.
    *
@@ -116,10 +119,10 @@ void csv_to_binary(const std::string& csv_filename, const std::string& bin_filen
    * - A std::vector<T> containing the records read from the binary file.
    */
 template <typename T>
-std::vector<T> binary_to_vector(const std::string& bin_filename, size_t buffer_size = 1024) {
+std::vector<T> binaryFile_to_vector(const std::string& bin_filename, size_t buffer_size = 1024) {
   std::ifstream bin_file(bin_filename, std::ios::binary);
   if (!bin_file.is_open()) {
-    throw std::runtime_error("[binary_to_vector] Error: Could not open the binary file " + bin_filename + " for reading.");
+    throw std::runtime_error("[binaryFile_to_vector] Error: Could not open the binary file " + bin_filename + " for reading.");
   }
 
   // Get the file size
@@ -130,7 +133,7 @@ std::vector<T> binary_to_vector(const std::string& bin_filename, size_t buffer_s
   // Calculate the total number of records
   size_t total_records = file_size / sizeof(T);
   if (file_size % sizeof(T) != 0) {
-    throw std::runtime_error("[binary_to_vector] Error: Binary file size is not a multiple of struct size.");
+    throw std::runtime_error("[binaryFile_to_vector] Error: Binary file size is not a multiple of struct size.");
   }
 
   std::vector<T> records;
@@ -143,7 +146,7 @@ std::vector<T> binary_to_vector(const std::string& bin_filename, size_t buffer_s
 
     bin_file.read(buffer.data(), buffer.size());
     if (!bin_file) {
-      throw std::runtime_error("[binary_to_vector] Error: Failed to read from binary file " + bin_filename);
+      throw std::runtime_error("[binaryFile_to_vector] Error: Failed to read from binary file " + bin_filename);
     }
 
     
@@ -154,7 +157,7 @@ std::vector<T> binary_to_vector(const std::string& bin_filename, size_t buffer_s
         improves the perfomance at the cost of readability of code 
     */
     for (size_t i = 0; i < records_to_read; ++i) {
-      const std::byte* data_ptr = buffer.data() + i * sizeof(T);
+      const char* data_ptr = buffer.data() + i * sizeof(T);
       records.emplace_back(T::from_binary(data_ptr));
     }
     /* .... */
@@ -166,6 +169,6 @@ std::vector<T> binary_to_vector(const std::string& bin_filename, size_t buffer_s
 }
 
 
-} /* namespace dlarge_files */
+} /* namespace dfiles */
 } /* namespace piaabo */
 } /* namespace cuwacunu */

@@ -3,7 +3,7 @@
 #include "piaabo/torch_compat/torch_utils.h"
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
-#include "piaabo/dlarge_files.h"
+#include "piaabo/dfiles.h"
 #include "camahjucunu/exchange/exchange_utils.h"
 #include "camahjucunu/exchange/exchange_types_data.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
@@ -16,16 +16,16 @@ int main() {
     try {
         std::cout << std::fixed << std::setprecision(0);
 
-        const std::string csv_filename("/cuwacunu/data/BTCUSDT/1h/BTCUSDT-1h-all-years.csv");
-        const std::string bin_filename("/cuwacunu/data/BTCUSDT/1h/BTCUSDT-1h-all-years.bin");
+        const std::string csv_filename("/cuwacunu/data/raw/BTCUSDT/1h/BTCUSDT-1h-all-years.csv");
+        const std::string bin_filename("/cuwacunu/data/raw/BTCUSDT/1h/BTCUSDT-1h-all-years.bin");
         size_t buffer_size = 1024;
         char delimiter = ',';
 
         /* binarize the csv file */
-        TICK(csv_to_binary_);
-        cuwacunu::piaabo::dlarge_files::csv_to_binary<
+        TICK(csvFile_to_binary_);
+        cuwacunu::piaabo::dfiles::csvFile_to_binary<
             cuwacunu::camahjucunu::exchange::kline_t>(csv_filename, bin_filename, buffer_size, delimiter);
-        PRINT_TOCK_ns(csv_to_binary_);
+        PRINT_TOCK_ns(csvFile_to_binary_);
 
         /* create the dataset for kline_t */
         TICK(MapMemory_);
@@ -35,36 +35,48 @@ int main() {
 
         // Get the tensor at a specific index
         TICK(GET_1);
-        torch::Tensor tensor = dataset.get(100);
+        auto [_, __] = dataset.get(100);
         PRINT_TOCK_ns(GET_1);
 
         // Get the tensor closest to a specific key value (e.g., close_time)
         std::vector<int64_t> targets = {
-            1577740399999,  /* outside from below */
-            1577840399999,
-            1577969999999,
-            1578315599999,
             1578567599999,
             1693407599999,
             1693407599990,  /* non existent value */
             1722470399999,
             1722470399990,  /* non existent value */
             1725148799999,
-            1693407599999,  /* go back again */
-            1577840399999,  /* go back again */
             1725548799999   /* outside from avobe */
         };
+        /* --- --- --- --- --- --- --- --- --- --- --- */
+        /*            test get_by_key_value            */
+        /* --- --- --- --- --- --- --- --- --- --- --- */
+        log_info("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n");
+        log_info("--             get_by_key_value              -- \n");
+        log_info("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n");
         for(int64_t target_close_time: targets) {
-            TICK(GET_BY_KEY_1);
-            torch::Tensor tensor_by_date = dataset.get_by_key_value(static_cast<int64_t>(target_close_time));
-            PRINT_TOCK_ns(GET_BY_KEY_1);
-            std::cout << "tensor_by_date.close_time: " << target_close_time << "=?" << tensor_by_date[6].item<double>() << std::endl;
+            TICK(GET_BY_KEY_);
+            auto [features_by_date, mask] = dataset.get_by_key_value(target_close_time);
+            PRINT_TOCK_ns(GET_BY_KEY_);
+            std::cout << "\t\t\t features_by_date.shape(): "; for (const auto& dim : features_by_date.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            std::cout << "\t\t\t mask.shape(): "; for (const auto& dim : mask.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            // std::cout << "\t features_by_date.close_time: " << target_close_time << "=?" << features_by_date.index({0,6}).item<double>() << std::endl;
         }
 
-        log_info("-- -- -- -- -- -- -- -- \n");
-        dataset.get_sequence_ending_at_key_value(1693407599999, 5);
-
-        // std::cout << "tensor_by_date: " << tensor_by_date << std::endl;
+        log_info("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n");
+        log_info("--     get_sequence_ending_at_key_value      -- \n");
+        log_info("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n");
+        /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
+        /*            test get_sequence_ending_at_key_value            */
+        /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
+        for(int64_t target_close_time: targets) {
+            TICK(GET_SEQUENCE_BY_KEY_1);
+            auto [sequence_by_date, mask] = dataset.get_sequence_ending_at_key_value(target_close_time, 5);
+            PRINT_TOCK_ns(GET_SEQUENCE_BY_KEY_1);
+            std::cout << "\t\t\t sequence_by_date.shape(): "; for (const auto& dim : sequence_by_date.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            std::cout << "\t\t\t mask.shape(): "; for (const auto& dim : mask.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            // std::cout << "\t sequence_by_date.close_time: " << target_close_time << "=?" << sequence_by_date.index({0,6}).item<double>() << std::endl;
+        }
 
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;

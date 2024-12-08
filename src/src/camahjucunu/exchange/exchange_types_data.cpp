@@ -144,13 +144,13 @@ trade_t::key_type_t trade_t::key_value() {
 /*         expected return structures          */
 /*               from_binary                   */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-kline_t kline_t::from_binary(const std::byte* data) {
+kline_t kline_t::from_binary(const char* data) {
   kline_t obj;
   std::memcpy(&obj, data, sizeof(kline_t));
   return obj;
 }
 
-trade_t trade_t::from_binary(const std::byte* data) {
+trade_t trade_t::from_binary(const char* data) {
   trade_t obj;
   std::memcpy(&obj, data, sizeof(trade_t));
   return obj;
@@ -162,13 +162,13 @@ trade_t trade_t::from_binary(const std::byte* data) {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 std::vector<double> kline_t::tensor_features() const {
   return {
-    static_cast<double>(open_time),
+    // static_cast<double>(open_time),
     open_price,
     high_price,
     low_price,
     close_price,
     volume,
-    static_cast<double>(close_time),
+    // static_cast<double>(close_time),
     quote_asset_volume,
     static_cast<double>(number_of_trades),
     taker_buy_base_volume,
@@ -182,7 +182,7 @@ std::vector<double> trade_t::tensor_features() const {
     price,
     qty,
     quoteQty,
-    static_cast<double>(time),
+    // static_cast<double>(time),
     static_cast<double>(isBuyerMaker),  // Convert bool to double (1.0 for true, 0.0 for false)
     static_cast<double>(isBestMatch)    // Convert bool to double
   };
@@ -192,7 +192,7 @@ std::vector<double> trade_t::tensor_features() const {
 /*         expected return structures          */
 /*               null_instance                 */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-kline_t kline_t::null_instance() {
+kline_t kline_t::null_instance(key_type_t key_value) {
   kline_t dnew;
 
   dnew.open_time = INT64_MIN;
@@ -201,7 +201,7 @@ kline_t kline_t::null_instance() {
   dnew.low_price = 0.0;
   dnew.close_price = 0.0;
   dnew.volume = 0.0;
-  dnew.close_time = INT64_MIN;
+  dnew.close_time = key_value;
   dnew.quote_asset_volume = 0.0;
   dnew.number_of_trades = -1;
   dnew.taker_buy_base_volume = 0.0;
@@ -210,19 +210,125 @@ kline_t kline_t::null_instance() {
   return dnew;
 }
 
-trade_t trade_t::null_instance() {
+trade_t trade_t::null_instance(key_type_t key_value) {
   trade_t dnew;
 
   dnew.id = -1;
   dnew.price = 0.0;
   dnew.qty = 0.0;
   dnew.quoteQty = 0.0;
-  dnew.time = INT64_MIN;
+  dnew.time = key_value;
   dnew.isBuyerMaker = false;
   dnew.isBestMatch = false;
 
   return dnew;
 }
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*                 is_valid                    */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+bool kline_t::is_valid() const {
+  return open_price != 0.0;
+}
+
+bool trade_t::is_valid() const {
+  return price != 0.0;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*                  to_csv                     */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+void kline_t::to_csv(std::ostream& os, char delimiter) const {
+  os << std::fixed << std::setprecision(8) 
+     << open_time << delimiter
+     << open_price << delimiter
+     << high_price << delimiter
+     << low_price << delimiter
+     << close_price << delimiter
+     << volume << delimiter
+     << close_time << delimiter
+     << quote_asset_volume << delimiter
+     << number_of_trades << delimiter
+     << taker_buy_base_volume << delimiter
+     << taker_buy_quote_volume << delimiter
+     << 0;
+}
+
+void trade_t::to_csv(std::ostream& os, char delimiter) const {
+  os << std::fixed << std::setprecision(8)
+     << id << delimiter
+     << price << delimiter
+     << qty << delimiter
+     << quoteQty << delimiter
+     << time << delimiter
+     << std::boolalpha << isBuyerMaker << delimiter
+     << isBestMatch;
+}
+
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*         initialize_statistics_pack          */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+statistics_pack_t<kline_t> kline_t::initialize_statistics_pack(unsigned int window_size) {
+  using accessor_t = FieldAccessor<kline_t>;
+  std::vector<accessor_t> accessors = {
+    // { [](const kline_t& k)     { return static_cast<double>(k.open_time); },
+      // [](kline_t& k, double v) { k.open_time = static_cast<int64_t>(v); } },
+    { [](const kline_t& k)     { return k.open_price; },
+      [](kline_t& k, double v) { k.open_price = v; } },
+    { [](const kline_t& k)     { return k.high_price; },
+      [](kline_t& k, double v) { k.high_price = v; } },
+    { [](const kline_t& k)     { return k.low_price; },
+      [](kline_t& k, double v) { k.low_price = v; } },
+    { [](const kline_t& k)     { return k.close_price; },
+      [](kline_t& k, double v) { k.close_price = v; } },
+    { [](const kline_t& k)     { return k.volume; },
+      [](kline_t& k, double v) { k.volume = v; } },
+    // { [](const kline_t& k)     { return static_cast<double>(k.close_time); },
+      // [](kline_t& k, double v) { k.close_time = static_cast<int64_t>(v); } },
+    { [](const kline_t& k)     { return k.quote_asset_volume; },
+      [](kline_t& k, double v) { k.quote_asset_volume = v; } },
+    { [](const kline_t& k)     { return static_cast<double>(k.number_of_trades); },
+      [](kline_t& k, double v) { k.number_of_trades = static_cast<int32_t>(v); } },
+    { [](const kline_t& k)     { return k.taker_buy_base_volume; },
+      [](kline_t& k, double v) { k.taker_buy_base_volume = v; } },
+    { [](const kline_t& k)     { return k.taker_buy_quote_volume; },
+      [](kline_t& k, double v) { k.taker_buy_quote_volume = v; } }
+  };
+
+  auto stats_pack = statistics_pack_t<kline_t>(window_size, accessors);
+
+  return stats_pack;
+}
+
+
+statistics_pack_t<trade_t> trade_t::initialize_statistics_pack(unsigned int window_size) {
+  using accessor_t = FieldAccessor<trade_t>;
+  std::vector<accessor_t> accessors = {
+    { [](const trade_t& t)     { return static_cast<double>(t.id); },
+      [](trade_t& t, double v) { t.id = static_cast<int64_t>(v); } },
+    { [](const trade_t& t)     { return t.price; },
+      [](trade_t& t, double v) { t.price = v; } },
+    { [](const trade_t& t)     { return t.qty; },
+      [](trade_t& t, double v) { t.qty = v; } },
+    { [](const trade_t& t)     { return t.quoteQty; },
+      [](trade_t& t, double v) { t.quoteQty = v; } },
+    // { [](const trade_t& t)     { return static_cast<double>(t.time); },
+      // [](trade_t& t, double v) { t.time = static_cast<int64_t>(v); } },
+    { [](const trade_t& t)     { return static_cast<double>(t.isBuyerMaker); },
+      [](trade_t& t, double v) { t.isBuyerMaker = static_cast<bool>(v); } },
+    { [](const trade_t& t)     { return static_cast<double>(t.isBestMatch); },
+      [](trade_t& t, double v) { t.isBestMatch = static_cast<bool>(v); } }
+  };
+
+  auto stats_pack = statistics_pack_t<trade_t>(window_size, accessors);
+
+  return stats_pack;
+}
+
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         deserialize specializations         */

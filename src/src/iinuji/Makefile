@@ -12,7 +12,7 @@ COMPILE_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCL
 # -----------------------------------------------------------------
 # - - - Pytorch's Probability Distributions implemented in Libtorch
 # -----------------------------------------------------------------
-USUALS_DEPS := $(OUTPUT_PATH)/torch_utils.o $(OUTPUT_PATH)/dutils.o
+USUALS_DEPS := $(OUTPUT_PATH)/libtorch/torch_utils.o $(OUTPUT_PATH)/common/dutils.o
 IINUJI := $(OUTPUT_PATH)/instrument_space.o \
 	$(OUTPUT_PATH)/action_space.o 
 # 	$(OUTPUT_PATH)/currency_space.o 

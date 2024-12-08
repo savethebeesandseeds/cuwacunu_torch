@@ -18,9 +18,11 @@ observationPipeline::observationPipeline() :
 }
 
 observation_pipeline_instruction_t observationPipeline::decode(std::string instruction) {
+#ifdef OBSERVARION_PIPELINE_DEBUG
+  std::cout << "Request to decode observationPipeline" << "\n";
+#endif
   /* guard the thread to avoid multiple decoding in parallel */
   LOCK_GUARD(current_mutex);
-
   /* Parse the instruction text */
   ASTNodePtr actualAST = iParser.parse_Instruction(instruction);
   
@@ -64,31 +66,46 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
   }
   log_dbg("IntermediaryNode context: [%s]  ---> %s\n", oss.str().c_str(), node->alt.str(true).c_str());
 #endif
-  /* symbol */
+
+  /* ----------------------- ----------------------- ----------------------- */
+  /* -----------------------      Clear Vectors      ----------------------- */
+  /* ----------------------- ----------------------- ----------------------- */
+  /* clear instrument_forms */
   if( context.stack.size() == 2 
     && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
-    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_symbol) {
-    /* clear the contents of symbol */
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->symbol.clear();
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table) {
+    /* clear the contents of instrument_forms */
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->instrument_forms.clear();
   }
 
-  /* csv_file */
+  /* clear input_forms */
   if( context.stack.size() == 2 
     && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
-    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_csv_file) {
-    /* clear the contents of csv_file */
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->csv_file.clear();
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table) {
+    /* clear the contents of input_forms */
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->input_forms.clear();
   }
 
-  /* items */
-  if( context.stack.size() == 3 
+  /* ----------------------- ----------------------- ----------------------- */
+  /* -----------------------    Append New Element   ----------------------- */
+  /* ----------------------- ----------------------- ----------------------- */
+  /* append instrument_forms */
+  if(  context.stack.size() == 3 
     && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
-    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_sequence_item
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table
+    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_instrument_form) {
+    /* append a new element */
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->instrument_forms.emplace_back();
+  }
+
+  /* append input_forms */
+  if(  context.stack.size() == 3 
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table
     && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
-    /* append a new input_form_t element */
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->items.emplace_back();
+    /* append a new element */
+    static_cast<observation_pipeline_instruction_t*>(context.user_data)->input_forms.emplace_back();
   }
-
 }
 
 void observationPipeline::visit(const TerminalNode* node, VisitorContext& context) {
@@ -100,54 +117,114 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
   }
   log_dbg("TerminalNode context: [%s]  ---> %s\n", oss.str().c_str(), node->unit.str(true).c_str());
 #endif
-  /* symbol */
-  if( context.stack.size() == 3 
-    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
-    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_symbol 
-    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_letter) {
-    /* append a letter to the symbol */
-    std::string aux = node->unit.lexeme;
-    cuwacunu::piaabo::string_remove(aux, '\"');
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->symbol += aux;
-  }
 
-  /* csv_file */
-  if( context.stack.size() == 3 
+  /* ----------------------- ----------------------- ----------------------- */
+  /* -----------------------  Assign Vector Fields   ----------------------- */
+  /* ----------------------- ----------------------- ----------------------- */
+  /* assign instrument_forms fields */
+  if(  context.stack.size() > 3 
     && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
-    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_csv_file 
-    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_character 
-    && (context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_letter || context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_special)) {
-    /* append a letter to the csv_file path */
-    std::string aux = node->unit.lexeme;
-    cuwacunu::piaabo::string_remove(aux, '\"');
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->csv_file += aux;
-  }
-
-  /* items */
-  if( context.stack.size() == 4 
-    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
-    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_sequence_item
-    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
-      /* set up the values for the last element of the items vector */
-      input_form_t& element = static_cast<observation_pipeline_instruction_t*>(context.user_data)->items.back();
-      
-      /* get the lexeme without quotes */
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table
+    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_instrument_form) {
+    /* retrive the last element */
+    instrument_form_t& element = static_cast<observation_pipeline_instruction_t*>(context.user_data)->instrument_forms.back();
+    
+    /* instrument */
+    if(  context.stack.size() == 5 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_instrument
+      && context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_letter) {
+      /* assign "instrument" of the last element in the vector */
       std::string aux = node->unit.lexeme;
       cuwacunu::piaabo::string_remove(aux, '\"');
+      element.instrument += aux;
+    }
 
-      /* interval*/
-      if(context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_interval) {
+    /* interval */
+    if(  context.stack.size() == 4 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_interval) {
+      /* assign "interval" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.interval = cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(aux);
+    }
 
-        element.interval = 
-          cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(
-            aux
-          );
-      }
+    /* record_type */
+    if(  context.stack.size() == 4 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_record_type) {
+      /* assign "record_type" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.record_type += aux;
+    }
 
-      /* count */
-      if(context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_count) {
-        element.count = std::stoul(aux);
-      }
+    /* norm_window */
+    if(  context.stack.size() == 5 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_norm_window
+      && context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_number) {
+      /* assign "norm_window" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.norm_window += aux;
+    }
+
+    /* source */
+    if(  context.stack.size() == 6 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_source
+      && context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_file_path
+      && context.stack[5]->hash == OBSERVATION_PIPELINE_HASH_literal) {
+      /* assign "source" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.source += aux;
+    }
+  }
+
+  /* assign input_forms fields */
+  if(  context.stack.size() > 3 
+    && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
+    && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table
+    && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
+    /* retrive the last element */
+    input_form_t& element = static_cast<observation_pipeline_instruction_t*>(context.user_data)->input_forms.back();
+    
+    /* interval */
+    if(  context.stack.size() == 4 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_interval) {
+      /* assign "interval" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.interval = cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(aux);
+    }
+
+    /* active */
+    if(  context.stack.size() == 5 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_active
+      && context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_boolean) {
+      /* assign "active" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.active += aux;
+    }
+
+    /* record_type */
+    if(  context.stack.size() == 4 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_record_type) {
+      /* assign "record_type" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.record_type += aux;
+    }
+
+
+    /* seq_length */
+    if(  context.stack.size() == 5 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_seq_length
+      && context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_number) {
+      /* assign "seq_length" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.seq_length += aux;
+    }
   }
 }
 

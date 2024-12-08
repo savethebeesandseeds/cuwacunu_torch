@@ -23,8 +23,8 @@ test_dsecurity:
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dsecurity
 test_dencryption: 
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dencryption
-test_json_parsing:
-	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_json_parsing
+test_djson_parsing:
+	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_djson_parsing
 # -----------------------------------------------------------------
 # - - - Camahjucnu -- - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
@@ -60,6 +60,8 @@ test_memory_mapped_datafile:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/data test_memory_mapped_datafile
 test_memory_mapped_dataset:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/data test_memory_mapped_dataset
+test_memory_mapped_concat_dataset:
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/data test_memory_mapped_concat_dataset
 # -----------------------------------------------------------------
 # - - - Wikimyei -- - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

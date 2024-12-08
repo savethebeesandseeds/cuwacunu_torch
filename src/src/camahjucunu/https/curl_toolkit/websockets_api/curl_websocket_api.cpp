@@ -54,7 +54,7 @@ void WebsocketAPI::init() {
   }
 }
 void WebsocketAPI::finit() {
-  log_info("[success] Finalizing WebsocketAPI \n");
+  log_info("Finalizing WebsocketAPI \n");
   
   {
     LOCK_GUARD(WebsocketAPI::global_ws_mutex);

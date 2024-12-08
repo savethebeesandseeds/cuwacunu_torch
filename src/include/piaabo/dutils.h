@@ -29,6 +29,7 @@
 #define ANSI_COLOR_FATAL "\x1b[41m" 
 #define ANSI_COLOR_SUCCESS "\x1b[42m" 
 #define ANSI_COLOR_WARNING "\x1b[43m" 
+#define ANSI_COLOR_WARNING2 "\x1b[48;2;255;165;0m" 
 #define ANSI_COLOR_Black "\x1b[30m" 
 #define ANSI_COLOR_Red "\x1b[31m"     
 #define ANSI_COLOR_Green "\x1b[32m"   
@@ -396,6 +397,16 @@ constexpr uint64_t fnv1aHash(std::string_view str) {
   fflush(LOG_WARN_FILE);\
 } while(false)
 
+#define log_runtime_warning(...) do {\
+  wrap_log_sys_err();\
+  LOCK_GUARD(log_mutex);\
+  fprintf(LOG_WARN_FILE,"[%s0x%s%s]: %sDEV_WARNING%s: ",\
+    ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET,\
+    ANSI_COLOR_WARNING2,ANSI_COLOR_RESET);\
+  fprintf(LOG_WARN_FILE,__VA_ARGS__);\
+  fflush(LOG_WARN_FILE);\
+} while(false)
+
 /* Secure logging macro */
 #define log_secure_dbg(...) do {\
   wrap_log_sys_err();\
@@ -593,7 +604,7 @@ constexpr uint64_t fnv1aHash(std::string_view str) {
 #define COMPILE_TIME_WARNING(msg) _Pragma(STRINGIFY(GCC warning #msg))
 #define THROW_COMPILE_TIME_ERROR(msg) _Pragma(STRINGIFY(GCC error #msg))
 /* run-time warnings and errors */
-struct RuntimeWarning { RuntimeWarning(const char *msg) { log_warn(msg); }};
+struct RuntimeWarning { RuntimeWarning(const char *msg) { log_runtime_warning(msg); }};
 #define RUNTIME_WARNING(msg) static RuntimeWarning CONCAT(rw_, __COUNTER__) (msg)
 #define THROW_RUNTIME_ERROR() { throw std::runtime_error("Runtime error occurred"); }
 #define THROW_RUNTIME_FINALIZATION() { std::exit(0); }

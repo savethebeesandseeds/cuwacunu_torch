@@ -8,7 +8,7 @@ int main() {
 
   /* */
   log_info("Reading any configuration field: %s\n", cuwacunu::piaabo::dconfig::config_space_t::websocket_url().c_str());
-  std::cout << "Press Enter to stop execution...";
+  std::cout << "Press Enter to resume execution...";
   std::cin.get();
   
   /* */

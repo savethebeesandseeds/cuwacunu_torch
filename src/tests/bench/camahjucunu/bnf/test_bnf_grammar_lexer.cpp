@@ -32,6 +32,9 @@ bool runTest(const std::string& testName, const std::string& input, const std::v
     }
 
     if (actualUnits.size() != expectedUnits.size()) {
+        for(auto unit: actualUnits) {
+            std::cout << "\t" << unit.str() << std::endl; 
+        }
         std::cerr << "\t[FAIL] " << "Test '" << testName << "' failed: Expected " << expectedUnits.size()
                   << " units, got " << actualUnits.size() << " units." << std::endl;
         return false;
@@ -251,16 +254,16 @@ bool testPunctuationParsing() {
 
 bool testTerminalParsing() {
     std::string input =
-        "\"identifier\" \"string with spaces\" \"12345\" ABC A_B.C 12345 123.45";
+        "\"identifier\" \"string with spaces\" \"12345\" \"ABC\" \"A_B.C\" \"12345\" \"123.45\"";
 
     std::vector<ProductionUnit> expectedUnits = {
         ProductionUnit(ProductionUnit::Type::Terminal, "\"identifier\""),
         ProductionUnit(ProductionUnit::Type::Terminal, "\"string with spaces\""),
         ProductionUnit(ProductionUnit::Type::Terminal, "\"12345\""),
-        ProductionUnit(ProductionUnit::Type::Terminal, "ABC"),
-        ProductionUnit(ProductionUnit::Type::Terminal, "A_B.C"),
-        ProductionUnit(ProductionUnit::Type::Terminal, "12345"),
-        ProductionUnit(ProductionUnit::Type::Terminal, "123.45"),
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"ABC\""),
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"A_B.C\""),
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"12345\""),
+        ProductionUnit(ProductionUnit::Type::Terminal, "\"123.45\""),
         ProductionUnit(ProductionUnit::Type::EndOfFile, "")
     };
 
