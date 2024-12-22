@@ -13,7 +13,7 @@ COMMON_TORCH_COMPILE_CMD = \
 	$(GXX) $(GXX_FLAGS) \
 	$(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(USUAL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS) \
 	$(OUTPUT_PATH)/common/*.o $(OUTPUT_PATH)/libcurl/*.o $(OUTPUT_PATH)/libtorch/*.o $(OUTPUT_PATH)/openssl/*.o \
-	$(SSL_LD_FLAGS) $(LIBCURl_LD_LAGS) $(TORCH_LD_FLAGS) $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
+	$(SSL_LD_FLAGS) $(LIBCURL_LD_LAGS) $(TORCH_LD_FLAGS) $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
@@ -41,11 +41,11 @@ test_memory_mapped_concat_dataset: $(TEST_BUILD)/test_memory_mapped_concat_datas
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_dataloader test_dataloader
-$(TEST_BUILD)/test_dataloader: $(HERE_PATH)/test_dataloader.cpp
+.PHONY: $(TEST_BUILD)/test_memory_mapped_concat_dataloader test_memory_mapped_concat_dataloader
+$(TEST_BUILD)/test_memory_mapped_concat_dataloader: $(HERE_PATH)/test_memory_mapped_concat_dataloader.cpp
 	@$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_dataloader
-test_dataloader: $(TEST_BUILD)/test_dataloader
+	$(RUN_MODE) $(TEST_BUILD)/test_memory_mapped_concat_dataloader
+test_memory_mapped_concat_dataloader: $(TEST_BUILD)/test_memory_mapped_concat_dataloader
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
@@ -53,7 +53,7 @@ test_dataloader: $(TEST_BUILD)/test_dataloader
 all: \
 	$(TEST_BUILD)/test_memory_mapped_datafile \
 	$(TEST_BUILD)/test_memory_mapped_dataset \
-	$(TEST_BUILD)/test_dataloader 
+	$(TEST_BUILD)/test_memory_mapped_concat_dataloader 
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

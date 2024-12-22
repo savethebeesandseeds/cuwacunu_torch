@@ -31,7 +31,7 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
   /* validate */
   if (root_node == nullptr || !iLexer.isAtEnd()) {
     size_t count = 0;
-    size_t max_success_stack = 750;
+    size_t max_success_stack = 50;
     /* print the report in case of failure */
     std::ostringstream err_oss, scss_oss;
     while (!parsing_error_stack.empty()) { err_oss << parsing_error_stack.top() << "\n"; parsing_error_stack.pop(); }
@@ -39,7 +39,9 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
     while (!parsing_success_stack.empty() && ++count < max_success_stack) { scss_oss << parsing_success_stack.top() << "\n"; parsing_success_stack.pop(); }
     throw std::runtime_error(
       "Parsing failed: could not parse instruction: " + 
-      std::string(ANSI_COLOR_Bright_Yellow) + instruction_input + std::string(ANSI_COLOR_RESET) + 
+      std::string(ANSI_COLOR_Dim_Green)  + instruction_input.substr(0, failure_position) + std::string(ANSI_COLOR_RESET) + 
+      std::string(ANSI_COLOR_Bright_Red) + instruction_input.substr(failure_position, 1) + std::string(ANSI_COLOR_RESET) + 
+      std::string(ANSI_COLOR_Dim_Yellow) + instruction_input.substr(failure_position +1) + std::string(ANSI_COLOR_RESET) + 
       " \n\t Production Failures Stack: \n" + err_oss.str() + 
       " \n\t Production Success Stack: \n" + scss_oss.str() + "\n"
     );
@@ -297,6 +299,8 @@ ASTNodePtr InstructionParser::parse_TerminalNode(const std::string& lhs, const P
       parsing_error_stack.push(
         cuwacunu::piaabo::string_format("        :        : --- --- >> Unable to parse %sTerminal Node%s : %s :  trying to match terminal: \"%s\" for character \'%s\' having lexer at character: \'%s\'", ANSI_COLOR_Bright_Red, ANSI_COLOR_RESET, unit.str(true).c_str(), lexeme.c_str(), scape(ch).c_str(), scape(iLexer.peek()).c_str())
       );
+      /* save the failure position */
+      failure_position = iLexer.getPosition();
       /* Match failed */
       iLexer.setPosition(initial_pos);
       return nullptr;

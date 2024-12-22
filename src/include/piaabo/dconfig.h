@@ -6,6 +6,7 @@
 #include <string>
 #include <sstream>
 #include <algorithm>
+#include <filesystem>
 #include <mutex>
 #define DEFAULT_CONFIG_FOLDER "/cuwacunu/src/config/"
 #define DEAFAULT_CONFIG_FILE ".config"
@@ -49,6 +50,9 @@ public:
 
   static std::string observation_pipeline_bnf();
   static std::string observation_pipeline_instruction();
+
+  static std::string training_pipeline_bnf();
+  static std::string training_pipeline_instruction();
 
 private:
   static void finit();

@@ -6,7 +6,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <fstream>
-#include <mutex>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,10 +23,43 @@
 #include "camahjucunu/exchange/exchange_types_enums.h"
 
 #include "camahjucunu/data/memory_mapped_datafile.h"
+#include "camahjucunu/BNF/implementations/training_pipeline/training_pipeline.h"
+#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
 namespace cuwacunu {
 namespace camahjucunu {
 namespace data {
+
+/* A struct to represent a single sample from your dataset. */
+struct observation_sample_t {
+  torch::Tensor features;
+  torch::Tensor mask;
+
+  /* A custom collate function that stacks features and masks from a batch of Samples */
+  static inline observation_sample_t collate_fn(const std::vector<observation_sample_t>& batch) {
+    /* Collect all features and masks */
+    std::vector<torch::Tensor> feature_list;
+    std::vector<torch::Tensor> mask_list;
+
+    feature_list.reserve(batch.size());
+    mask_list.reserve(batch.size());
+
+    for (const auto& item : batch) {
+      feature_list.push_back(item.features);
+      mask_list.push_back(item.mask);
+    }
+
+    /* Ensure all tensors in feature_list and mask_list have the same shape along non-batch dimensions */
+    TORCH_CHECK(!feature_list.empty(), "(observation_sample_t)[collate_fn] Features Batch is empty!");
+    TORCH_CHECK(!mask_list.empty(), "(observation_sample_t)[collate_fn] Mask Batch is empty!");
+
+    /* Stack along a new dimension to form a batch */
+    auto features = torch::stack(feature_list, 0);
+    auto masks = torch::stack(mask_list, 0);
+
+    return observation_sample_t{features, masks};
+  }
+};
 
 /**
  * @brief Reads a specific value from a memory-mapped structure.
@@ -113,7 +145,7 @@ typename std::common_type<T, T>::type absolute_difference(T a, T b) {
  *           returning a `std::vector<double>` representation.
  */
 template <typename T>
-class MemoryMappedDataset : public torch::data::datasets::Dataset<MemoryMappedDataset<T>, std::pair<torch::Tensor, torch::Tensor>> {
+class MemoryMappedDataset : public torch::data::datasets::Dataset<MemoryMappedDataset<T>, observation_sample_t> {
 private:
   /**
    * @brief Holds the memory mapping details for the dataset.
@@ -174,14 +206,16 @@ private:
 
 private:
   std::string bin_filename_;                    /* Path to the binary file */
-  std::unique_ptr<MappedData> mapped_data_;     /* Shared pointer to memory-mapped data */
+  std::unique_ptr<MappedData> mapped_data_;     /* Unique pointer to memory-mapped data */
   std::size_t num_records_;                     /* Number of records in the dataset */
 
 public:
   /* Variables for key-value boundaries. */
-  std::size_t key_value_offset_;                /* Offset of the key in each record */
+  std::size_t key_value_offset_;                /* Offset on memory bits of the key in each record */
   typename T::key_type_t leftmost_key_value_;   /* Smallest key value in the dataset */
   typename T::key_type_t rightmost_key_value_;  /* Largest key value in the dataset */
+  typename T::key_type_t key_value_span_;       /* rightmost_ - leftmost */
+  typename T::key_type_t key_value_step_;       /* regular increment on the key_value at each record */
 
 public:
   /**
@@ -208,6 +242,7 @@ public:
     /* Read the boundary key values for validation. */
     leftmost_key_value_ = read_memory_value<T>(mapped_data_->data_ptr_, 0, key_value_offset_);
     rightmost_key_value_ = read_memory_value<T>(mapped_data_->data_ptr_, num_records_ - 1, key_value_offset_);
+    key_value_span_ = rightmost_key_value_ - leftmost_key_value_;
 
     /* Validate that the dataset is sorted. */
     if (leftmost_key_value_ >= rightmost_key_value_) {
@@ -222,11 +257,11 @@ public:
     /* navigate the entire file to validate the data is sequential and increasing in the key space */
     typename T::key_type_t prev = read_memory_value<T>(mapped_data_->data_ptr_, 0, key_value_offset_);
     typename T::key_type_t curr = read_memory_value<T>(mapped_data_->data_ptr_, 1, key_value_offset_);
-    typename T::key_type_t regular_delta = curr - prev;
+    key_value_step_ = curr - prev;
     
     /* validate regular delta */
-    if(regular_delta <= 0) {
-      log_fatal("[MemoryMappedDataset] Error: negative or zero regular_delta. File: %s. \n", bin_filename_.c_str());
+    if(key_value_step_ <= 0) {
+      log_fatal("[MemoryMappedDataset] Error: negative or zero key_value_step_. File: %s. \n", bin_filename_.c_str());
     }
 
     /* validate all the records in the binary file */
@@ -235,8 +270,8 @@ public:
       if(curr < prev) {
         log_fatal("[MemoryMappedDataset] Error: Binary Dataset is not sequential and increasing (not sorted). File: %s, on index: %ld\n", bin_filename_.c_str(), idx);
       }
-      if((curr - prev) != regular_delta) {
-        log_warn("[MemoryMappedDataset] record on file [%s] found with irregular delta of step at index [%ld]: %f != %f\n", bin_filename_.c_str(), idx, static_cast<double>(curr - prev), static_cast<double>(regular_delta));
+      if(std::abs((curr - prev) - key_value_step_) > 1e-9) {
+        log_warn("[MemoryMappedDataset] record on file [%s] found with irregular delta of step at index [%ld]: (curr - prev): %f != key_value_step_: %f\n", bin_filename_.c_str(), idx, static_cast<double>(curr - prev), static_cast<double>(key_value_step_));
       }
       prev = curr;
     }
@@ -249,7 +284,7 @@ public:
    * @return A tensor representing the record's features.
    * @throws std::out_of_range if the index is invalid.
    */
-  std::pair<torch::Tensor, torch::Tensor> get(std::size_t index) override {
+  observation_sample_t get(std::size_t index) override {
     if (index >= num_records_) {
       log_fatal("[MemoryMappedDataset] Index [%ld] out of range [0, %ld] on file %s\n", index, num_records_, bin_filename_.c_str());
     }
@@ -266,6 +301,27 @@ public:
   torch::optional<std::size_t> size() const override {
     return num_records_;
   }
+  
+  /**
+   * @brief A set of common Samplers, to be used by the dataloader
+   */
+  torch::data::samplers::SequentialSampler SequentialSampler() const {
+    return torch::data::samplers::SequentialSampler(num_records_);
+  }
+  torch::data::DataLoaderOptions SequentialSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+    return torch::data::DataLoaderOptions()
+            .batch_size(batch_size)
+            .workers(workers);
+  }
+
+  torch::data::samplers::RandomSampler RandomSampler() const {
+    return torch::data::samplers::RandomSampler(num_records_);
+  }
+  torch::data::DataLoaderOptions RandomSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+    return torch::data::DataLoaderOptions()
+            .batch_size(batch_size)
+            .workers(workers);
+  }
 
   /**
    * @brief Retrieves a record as a tensor by its key value.
@@ -273,7 +329,7 @@ public:
    * @param target_key_value The key value to search for.
    * @return A tensor representing the record's features.
    */
-  std::pair<torch::Tensor, torch::Tensor> get_by_key_value(typename T::key_type_t target_key_value) {
+  observation_sample_t get_by_key_value(typename T::key_type_t target_key_value) {
     std::size_t index = find_closest_index(target_key_value);
     return get(index);
   }
@@ -286,7 +342,7 @@ public:
    * @param N Number of records to retrieve.
    * @return A pair of tensors representing the record's features and the corresponding mask.
    */
-  std::pair<torch::Tensor, torch::Tensor> get_sequence_ending_at_key_value(typename T::key_type_t target_key_value, std::size_t N) {
+  observation_sample_t get_sequence_ending_at_key_value(typename T::key_type_t target_key_value, std::size_t N) {
     std::size_t index = find_closest_index(target_key_value);
 
     if (index < N) {
@@ -319,7 +375,8 @@ public:
 
 private:
   /**
-   * @brief Finds the closest index for a given key value using interpolation search.
+   * @brief Finds the closest index for a given key value using interpolation search,
+   *        ensuring the returned index corresponds to a key value <= target_key_value.
    * 
    * @param target_key_value The target key value to search for.
    * @return The closest index to the target key value.
@@ -365,10 +422,14 @@ private:
 
       /* Read the key value at the mid index and calculate the difference. */
       typename T::key_type_t mid_key_value = read_memory_value<T>(mapped_data_->data_ptr_, mid, key_value_offset_);
-      typename T::key_type_t diff = absolute_difference(mid_key_value, target_key_value);
-      if (diff < best_diff) {
-        best_diff = diff;
-        best_index = mid;
+
+      /* This ensures we never "look into the future." */
+      if (mid_key_value <= target_key_value) {
+        typename T::key_type_t diff = absolute_difference(mid_key_value, target_key_value);
+        if (diff < best_diff) {
+          best_diff = diff;
+          best_index = mid;
+        }
       }
 
       /* Narrow the search range based on the comparison. */
@@ -408,28 +469,65 @@ private:
  *
  */
 template <typename T>
-class MemoryMappedConcatDataset : public torch::data::datasets::Dataset<MemoryMappedConcatDataset<T>, std::pair<torch::Tensor, torch::Tensor>> {
+class MemoryMappedConcatDataset : public torch::data::datasets::Dataset<MemoryMappedConcatDataset<T>, observation_sample_t> {
 private:
-  std::vector<std::unique_ptr<MemoryMappedDataset<T>>> datasets_;
+  std::vector<std::shared_ptr<MemoryMappedDataset<T>>> datasets_;
   std::vector<std::string> file_names_;
   std::vector<std::size_t> Ns_;
-  std::mutex concat_dataset_mutex;
 
 public:
-  std::size_t max_N;
-  typename T::key_type_t leftmost_key_value_;
-  typename T::key_type_t rightmost_key_value_;
-
+  std::size_t max_N_;                                 /* size of the longest sequence */
+  std::size_t num_records_;                           /* amount of minimaly devisible records */
+  typename T::key_type_t leftmost_key_value_;         /* in key_value, the lower bound */
+  typename T::key_type_t rightmost_key_value_;        /* in key_value, the higher bound */
+  typename T::key_type_t key_value_span_;             /* in key_value, rightmost - leftmost */
+  typename T::key_type_t key_value_step_;             /* the minimal regular increment overall datasets */
+  
 public:
-  MemoryMappedConcatDataset() {}
+  MemoryMappedConcatDataset() {
+    max_N_                = std::numeric_limits<std::size_t>::min();
+    num_records_          = std::numeric_limits<std::size_t>::min();
+    leftmost_key_value_   = std::numeric_limits<typename T::key_type_t>::min();
+    rightmost_key_value_  = std::numeric_limits<typename T::key_type_t>::max();
+    key_value_span_       = std::numeric_limits<typename T::key_type_t>::max();
+    key_value_step_       = std::numeric_limits<typename T::key_type_t>::max();
+  }
 
-  std::pair<torch::Tensor, torch::Tensor> get(std::size_t index) override {
-    log_fatal("[MemoryMappedConcatDataset] .get() operation is not permited on MemoryMappedConcatDataset, use .get_by_key_value() instead, where datasets are expected to be in sync. \n");
-    return {torch::empty({0}, torch::kDouble), torch::empty({0}, torch::kBool)};
+  observation_sample_t get(std::size_t index) override {
+    if(index > num_records_) {
+      log_fatal("[MemoryMappedConcatDataset] get() request, index: %ld, exceed the size: %ld \n", index, num_records_);
+    }
+    /* index to key_value */
+    typename T::key_type_t factor           = key_value_span_ / static_cast<typename T::key_type_t>(num_records_);
+    typename T::key_type_t target_key_value = leftmost_key_value_ + static_cast<typename T::key_type_t>(index) * factor;
+
+    /* get sequence */
+    return get_sequence_ending_at_key_value(target_key_value);
   }
 
   torch::optional<std::size_t> size() const override {
-    return c10::nullopt;
+    return num_records_;
+  }
+
+  /**
+   * @brief A set of common Samplers, to be used by the dataloader
+   */
+  torch::data::samplers::SequentialSampler SequentialSampler() const {
+    return torch::data::samplers::SequentialSampler(num_records_);
+  }
+  torch::data::DataLoaderOptions SequentialSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+    return torch::data::DataLoaderOptions()
+            .batch_size(batch_size)
+            .workers(workers);
+  }
+
+  torch::data::samplers::RandomSampler RandomSampler() const {
+    return torch::data::samplers::RandomSampler(num_records_);
+  }
+  torch::data::DataLoaderOptions RandomSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+    return torch::data::DataLoaderOptions()
+            .batch_size(batch_size)
+            .workers(workers);
   }
 
   /**
@@ -438,8 +536,7 @@ public:
    * @param target_key_value The key value to search for.
    * @return A tensor representing the record's features.
    */
-  std::pair<torch::Tensor, torch::Tensor> get_by_key_value(typename T::key_type_t target_key_value) {
-    {LOCK_GUARD(concat_dataset_mutex);} /* just asure the mutex is not active */
+  observation_sample_t get_by_key_value(typename T::key_type_t target_key_value) {
 
     size_t num_sources = datasets_.size();
 
@@ -450,9 +547,9 @@ public:
     std::for_each(std::execution::par, datasets_.begin(), datasets_.end(),
       [target_key_value, this, &features_list, &mask_list](auto& dataset) {
         size_t index = &dataset - &datasets_[0];
-        auto [features, mask] = dataset->get_by_key_value(target_key_value);
-        features_list[index] = features;
-        mask_list[index] = mask;
+        observation_sample_t sample = dataset->get_by_key_value(target_key_value);
+        features_list[index] = sample.features;
+        mask_list[index] = sample.mask;
       });
 
     return {torch::stack(features_list, 0), torch::stack(mask_list, 0)};
@@ -460,49 +557,48 @@ public:
 
   /**
    * @brief Retrieves sequences ending at a given key value from multiple datasets.
-   *        The sequences are padded to the maximum sequence length (max_N), and a mask tensor is returned.
+   *        The sequences are padded to the maximum sequence length (max_N_), and a mask tensor is returned.
    *
    * @param target_key_value The key value to search for.
    * @return A pair of tensors: the dense tensor and the mask tensor.
    */
-  std::pair<torch::Tensor, torch::Tensor> get_sequence_ending_at_key_value(typename T::key_type_t target_key_value) {
-    {LOCK_GUARD(concat_dataset_mutex);} /* Ensure the mutex is not active */
+  observation_sample_t get_sequence_ending_at_key_value(typename T::key_type_t target_key_value) {
 
     size_t num_sources = datasets_.size();
 
-    std::vector<torch::Tensor> tensor_list(num_sources);
+    std::vector<torch::Tensor> features_list(num_sources);
     std::vector<torch::Tensor> mask_list(num_sources);
 
     /* Use a parallel algorithm */
     std::for_each(std::execution::par, datasets_.begin(), datasets_.end(),
-      [target_key_value, this, &tensor_list, &mask_list](auto& dataset) {
+      [target_key_value, this, &features_list, &mask_list](auto& dataset) {
         size_t index = &dataset - &datasets_[0];
         int64_t N = static_cast<int64_t>(Ns_[index]);
 
         /* Retrieve the sequence and the mask from the dataset */
-        auto [sequence, sequence_mask] = dataset->get_sequence_ending_at_key_value(target_key_value, N); /* Shapes: (N, feature_size), (N) */
+        observation_sample_t sample = dataset->get_sequence_ending_at_key_value(target_key_value, N); /* Shapes: (N, feature_size), (N) */
 
-        /* Pad the sequence and the mask to max_N length */
-        if (N < static_cast<int64_t>(max_N)) {
-          int64_t pad_length = static_cast<int64_t>(max_N - N);
+        /* Pad the sequence and the mask to max_N_ length */
+        if (N < static_cast<int64_t>(max_N_)) {
+          int64_t pad_length = static_cast<int64_t>(max_N_ - N);
 
           /* Pad the sequence tensor at the beginning to preserve temporal meaning, the last value is the last timestep */
-          torch::Tensor pad_sequence = torch::zeros({pad_length, sequence.size(1)}, sequence.options());
-          tensor_list[index] = torch::cat({pad_sequence, sequence}, 0); /* Shape: (max_N, feature_size) */
+          torch::Tensor pad_sequence = torch::zeros({pad_length, sample.features.size(1)}, sample.features.options());
+          features_list[index] = torch::cat({pad_sequence, sample.features}, 0); /* Shape: (max_N_, feature_size) */
 
           /* Pad the mask tensor at the beginning to preserve temporal meaning, the last value is the last timestep */
-          torch::Tensor pad_mask = torch::zeros({pad_length}, sequence_mask.options());
-          mask_list[index] = torch::cat({pad_mask, sequence_mask}, 0); /* Shape: (max_N) */
+          torch::Tensor pad_mask = torch::zeros({pad_length}, sample.mask.options());
+          mask_list[index] = torch::cat({pad_mask, sample.mask}, 0); /* Shape: (max_N_) */
         } else {
           /* No padding needed */
-          tensor_list[index] = sequence;
-          mask_list[index] = sequence_mask;
+          features_list[index] = sample.features;
+          mask_list[index] = sample.mask;
         }
       });
 
     /* Stack tensors to get the final dense tensor and mask tensor */
-    torch::Tensor dense_tensor = torch::stack(tensor_list, 0); /* Shape: (num_sources, max_N, feature_size) */
-    torch::Tensor mask_tensor = torch::stack(mask_list, 0); /* Shape: (num_sources, max_N) */
+    torch::Tensor dense_tensor = torch::stack(features_list, 0); /* Shape: (num_sources, max_N_, feature_size) */
+    torch::Tensor mask_tensor = torch::stack(mask_list, 0); /* Shape: (num_sources, max_N_) */
 
     return {dense_tensor, mask_tensor};
   }
@@ -516,7 +612,7 @@ public:
    * or random access. It ensures the added dataset meets size and uniqueness constraints.
    *
    * @param csv_filename The path to the CSV file to be added as a dataset.
-   * @param N The number of elements expected to be loaded from the dataset.
+   * @param N Size of the sequence, needed whenever the added dataset be loaded. 
    * @param normalization_window rolling window of statistics to normalize the data, (set to zero to avoid normalization).
    * @param force_binarization Whether to force binary conversion of the CSV file.
    * @param buffer_size Buffer size used during the binary conversion process (default: 1024).
@@ -524,11 +620,11 @@ public:
    *
    */
   void add_dataset(const std::string csv_filename, std::size_t N, std::size_t normalization_window = 0, bool force_binarization = false, size_t buffer_size = 1024, char delimiter = ',') {
-    LOCK_GUARD(concat_dataset_mutex);
 
   /* --- --- --- prepare the file --- --- --- */
     /* binarize the csv file */
-    std::string bin_filename = prepare_binary_file_from_csv<T>(csv_filename, force_binarization, buffer_size, delimiter);
+    std::string bin_filename = sanitize_csv_into_binary_file<T>(csv_filename, force_binarization, buffer_size, delimiter);
+
     
   /* --- --- --- adding the dataset --- --- --- */
     /* append the file_name */
@@ -536,20 +632,12 @@ public:
 
     /* append the dataset */
     datasets_.push_back(
-      std::make_unique<MemoryMappedDataset<T>>(file_names_.back())
+      std::make_shared<MemoryMappedDataset<T>>(file_names_.back())
     );
 
     /* append count */
     Ns_.push_back(N);
     auto& new_dataset_ = datasets_.back();
-
-    /* Compute max_N, the maximum sequence length across all datasets */
-    max_N = *std::max_element(Ns_.begin(), Ns_.end());
-    std::cout << max_N << std::endl;
-    
-    /* update the leftmost and rightmost */
-    leftmost_key_value_  = MAX(leftmost_key_value_,  new_dataset_->leftmost_key_value_ );
-    rightmost_key_value_ = MIN(rightmost_key_value_, new_dataset_->rightmost_key_value_);
 
   /* --- --- --- validate --- --- --- */
     /* validate the size it's enoguh to load the sequence */
@@ -566,27 +654,71 @@ public:
     if(std::unordered_set<std::string>(file_names_.begin(), file_names_.end()).size() != file_names_.size()) {
       log_fatal("[MemoryMappedConcatDataset] Duplicated csv file found, on add_dataset: %s \n", csv_filename.c_str());
     }
+    
+  /* --- --- --- utility variables --- --- --- */
+    max_N_                = *std::max_element(Ns_.begin(), Ns_.end());
+    num_records_          = MAX(num_records_, static_cast<std::size_t>(new_dataset_->key_value_span_ / new_dataset_->key_value_step_));
+    leftmost_key_value_   = MAX(leftmost_key_value_,  (new_dataset_->leftmost_key_value_ + static_cast<typename T::key_type_t>(N) * new_dataset_->key_value_step_));
+    rightmost_key_value_  = MIN(rightmost_key_value_, new_dataset_->rightmost_key_value_);
+    key_value_span_       = rightmost_key_value_ - leftmost_key_value_;
+    key_value_step_       = MIN(key_value_step_, new_dataset_->key_value_step_);
   
   /* --- --- --- Normalize --- --- --- */
-    if(normalization_window != 0) {
-      normalize_binary_file<T>(bin_filename, normalization_window);
-    }
-
-    /* validate file */
-    log_info("waka STR ----------------------------------------- \n");
-    std::vector<T> valdiation_vector = cuwacunu::piaabo::dfiles::binaryFile_to_vector<T>(bin_filename, buffer_size);
-    std::size_t count = 0;
-    for(T& validation_item: valdiation_vector) {
-      if(count > (new_dataset_->size().value() - static_cast<long unsigned int>(10)) ) {
-        validation_item.to_csv(std::cout, delimiter);
-        std::cout << std::endl;
+  /* check if operation is needed*/
+    auto csv_last_write_time = std::filesystem::last_write_time(csv_filename);
+    auto bin_last_write_time = std::filesystem::last_write_time(bin_filename);
+    if(normalization_window > 0) {
+      if(force_binarization || bin_last_write_time < csv_last_write_time) {
+        normalize_binary_file<T>(bin_filename, normalization_window);
+      } else {
+        log_info("[normalize_binary_file]\t\t %sOperation skiped:%s binary file: %s is up to date. \n", 
+          ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, bin_filename.c_str());
       }
-      count++;
     }
-    log_info("waka END ----------------------------------------- \n");
   }
 };
 
+
+
+/**
+  * @brief Construct a new MemoryMappedDataSet from an observation_instruction_t.
+  *
+  * @tparam T The underlying data type used by the dataset. 
+  * @param instrument the dataset is tied to an instrument.
+  * @param obs_inst The observation pipeline instruction.
+  * @param force_binarization Whether or not to renormalize and binarize the memory mapped data files.
+  *
+  */
+template<typename T>
+MemoryMappedConcatDataset<T> create_memory_mapped_concat_dataset(
+  std::string& instrument, 
+  cuwacunu::camahjucunu::BNF::observation_instruction_t obs_inst, 
+  bool force_binarization = false) {
+    /* variables */
+    char delimiter = ',';
+    size_t buffer_size = 1024;
+
+    /* create the dataset for T */
+    auto concat_dataset = MemoryMappedConcatDataset<T>();
+
+    /* add the datasets to the concatdataset as per in the instruction */
+    for(auto& in_form: obs_inst.input_forms) {
+      if(in_form.active == "true") {
+        for(auto& instr_form: obs_inst.filter_instrument_forms(instrument, in_form.record_type, in_form.interval)) {
+          concat_dataset.add_dataset(
+            /* dataset loads sequences of size N */ instr_form.source, 
+            /* dataset sequence lenght */           std::stoul(in_form.seq_length), 
+            /* normalization window of size N */    std::stoul(instr_form.norm_window), 
+            /* force_binarization */                force_binarization, 
+            /* buffer_size */                       buffer_size, 
+            /* delimiter */                         delimiter
+          );
+        }
+      }
+    }
+
+    return concat_dataset;
+}
 } /* namespace data */
 } /* namespace camahjucunu */
 } /* namespace cuwacunu */

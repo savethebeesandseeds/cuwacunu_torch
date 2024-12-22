@@ -134,21 +134,26 @@ const char* cthread_id() {
 }
 
 std::string generate_random_string(const std::string& format_str) {
+  /* Define the set of characters used to replace 'x' in the format string. */
   const std::string chars =
     "ABCDEFGHIJKLMNOPQRST"
     "0123456789";
 
   /* Initialize random number generator */
   std::random_device rd;
-  std::mt19937 gen(rd()); // Mersenne Twister engine
-  std::uniform_int_distribution<> dis(0, chars.size() - 1);
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, static_cast<int>(chars.size()) - 1);
 
   std::string result;
   result.reserve(format_str.size());
 
   for (char c : format_str) {
-    if (c == 'x') {result += chars[dis(gen)];} 
-    else { result += c; }
+    if (c == 'x' || c == 'X') {
+      result += chars[dis(gen)];
+    } 
+    else { 
+      result += c;
+    }
   }
 
   return result;
@@ -182,7 +187,7 @@ std::string string_format(const char* format, ...) {
 }
 
 /* Convert readable string to Unix timestamp */
-long stringToUnix(const std::string& timeString, const std::string& format) {
+long stringToUnixTime(const std::string& timeString, const std::string& format) {
   std::tm tm = {};
   std::istringstream ss(timeString);
   ss >> std::get_time(&tm, format.c_str());  /* Parse the time string */
@@ -195,7 +200,7 @@ long stringToUnix(const std::string& timeString, const std::string& format) {
 }
 
 /* Convert Unix timestamp to readable string */
-std::string unixToString(long unixTime, const std::string& format) {
+std::string unixTimeToString(long unixTime, const std::string& format) {
   std::tm* tm = std::localtime(&unixTime);  /* Convert to tm structure */
   char buffer[100];
   std::strftime(buffer, sizeof(buffer), format.c_str(), tm);  /* Format as string */

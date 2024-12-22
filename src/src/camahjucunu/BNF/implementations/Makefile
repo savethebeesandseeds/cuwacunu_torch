@@ -13,6 +13,7 @@ HERE_PATH := $(SRC_PATH)/camahjucunu/BNF/implementations
 .PHONY: all
 all: 
 	$(MAKE) -C $(HERE_PATH)/observation_pipeline all
+	$(MAKE) -C $(HERE_PATH)/training_pipeline all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 

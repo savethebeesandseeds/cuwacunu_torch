@@ -17,6 +17,7 @@ all:
 	$(MAKE) -C $(HERE_PATH)/exchange all
 	$(MAKE) -C $(HERE_PATH)/bnf all
 	$(MAKE) -C $(HERE_PATH)/data all
+	$(MAKE) -C $(HERE_PATH)/GUI all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

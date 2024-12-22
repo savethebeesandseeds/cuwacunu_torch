@@ -7,6 +7,21 @@ namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {
 
+std::vector<instrument_form_t> observation_instruction_t::filter_instrument_forms(
+  const std::string& target_instrument,
+  const std::string& target_record_type, 
+  cuwacunu::camahjucunu::exchange::interval_type_e target_interval) const
+{
+  std::vector<instrument_form_t> result;
+  for (const auto& form : instrument_forms) {
+    if (form.instrument == target_instrument && form.record_type == target_record_type && form.interval == target_interval) {
+      result.push_back(form);
+    }
+  }
+  return result;
+}
+
+
 observationPipeline::observationPipeline() :
   bnfLexer(OBSERVATION_PIPELINE_BNF_GRAMMAR), 
   bnfParser(bnfLexer), 
@@ -17,7 +32,7 @@ observationPipeline::observationPipeline() :
 #endif
 }
 
-observation_pipeline_instruction_t observationPipeline::decode(std::string instruction) {
+observation_instruction_t observationPipeline::decode(std::string instruction) {
 #ifdef OBSERVARION_PIPELINE_DEBUG
   std::cout << "Request to decode observationPipeline" << "\n";
 #endif
@@ -32,7 +47,7 @@ observation_pipeline_instruction_t observationPipeline::decode(std::string instr
 #endif
   
   /* Parsed data */
-  observation_pipeline_instruction_t current;
+  observation_instruction_t current;
   VisitorContext context(static_cast<void*>(&current));
 
   /* decode and transverse the Abstract Syntax Tree */
@@ -75,7 +90,7 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
     && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
     && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table) {
     /* clear the contents of instrument_forms */
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->instrument_forms.clear();
+    static_cast<observation_instruction_t*>(context.user_data)->instrument_forms.clear();
   }
 
   /* clear input_forms */
@@ -83,7 +98,7 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
     && context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction 
     && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table) {
     /* clear the contents of input_forms */
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->input_forms.clear();
+    static_cast<observation_instruction_t*>(context.user_data)->input_forms.clear();
   }
 
   /* ----------------------- ----------------------- ----------------------- */
@@ -95,7 +110,7 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
     && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table
     && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_instrument_form) {
     /* append a new element */
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->instrument_forms.emplace_back();
+    static_cast<observation_instruction_t*>(context.user_data)->instrument_forms.emplace_back();
   }
 
   /* append input_forms */
@@ -104,7 +119,7 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
     && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table
     && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
     /* append a new element */
-    static_cast<observation_pipeline_instruction_t*>(context.user_data)->input_forms.emplace_back();
+    static_cast<observation_instruction_t*>(context.user_data)->input_forms.emplace_back();
   }
 }
 
@@ -127,7 +142,7 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
     && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table
     && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_instrument_form) {
     /* retrive the last element */
-    instrument_form_t& element = static_cast<observation_pipeline_instruction_t*>(context.user_data)->instrument_forms.back();
+    instrument_form_t& element = static_cast<observation_instruction_t*>(context.user_data)->instrument_forms.back();
     
     /* instrument */
     if(  context.stack.size() == 5 
@@ -168,7 +183,7 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
     }
 
     /* source */
-    if(  context.stack.size() == 6 
+    if(  context.stack.size() == 7 
       && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_source
       && context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_file_path
       && context.stack[5]->hash == OBSERVATION_PIPELINE_HASH_literal) {
@@ -185,7 +200,7 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
     && context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table
     && context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
     /* retrive the last element */
-    input_form_t& element = static_cast<observation_pipeline_instruction_t*>(context.user_data)->input_forms.back();
+    input_form_t& element = static_cast<observation_instruction_t*>(context.user_data)->input_forms.back();
     
     /* interval */
     if(  context.stack.size() == 4 

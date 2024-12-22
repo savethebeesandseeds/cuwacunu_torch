@@ -29,6 +29,7 @@ T string_to_enum(const std::string& str) {
 }
 /* interval_type_e */
 enum class interval_type_e {
+  /* utilities */ utility_constant, utility_sine, utility_triangular, 
   /* seconds */   interval_1s, 
   /* minutes */   interval_1m, interval_3m, interval_5m, interval_15m, interval_30m,
   /* hours */     interval_1h, interval_2h, interval_4h, interval_6h, interval_8h, interval_12h,
@@ -40,6 +41,9 @@ template <>
 struct EnumTraits<interval_type_e> {
   static std::string toString(interval_type_e value) {
     switch (value) {
+      case interval_type_e::utility_constant:   return "constant";
+      case interval_type_e::utility_sine:       return "sine";
+      case interval_type_e::utility_triangular: return "triangular";
       case interval_type_e::interval_1s:   return "1s";
       case interval_type_e::interval_1m:   return "1m";
       case interval_type_e::interval_3m:   return "3m";
@@ -60,6 +64,9 @@ struct EnumTraits<interval_type_e> {
     }
   }
   static interval_type_e fromString(const std::string& str) {
+    if (str == "constant")    return interval_type_e::utility_constant;
+    if (str == "sine")        return interval_type_e::utility_sine;
+    if (str == "triangular")  return interval_type_e::utility_triangular;
     if (str == "1s")     return interval_type_e::interval_1s;
     if (str == "1m")     return interval_type_e::interval_1m;
     if (str == "3m")     return interval_type_e::interval_3m;

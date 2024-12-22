@@ -22,10 +22,10 @@ int main() {
         char delimiter = ',';
 
         /* binarize the csv file */
-        TICK(csvFile_to_binary_);
-        cuwacunu::piaabo::dfiles::csvFile_to_binary<
-            cuwacunu::camahjucunu::exchange::kline_t>(csv_filename, bin_filename, buffer_size, delimiter);
-        PRINT_TOCK_ns(csvFile_to_binary_);
+        // TICK(csvFile_to_binary_);
+        // cuwacunu::piaabo::dfiles::csvFile_to_binary<
+        //     cuwacunu::camahjucunu::exchange::kline_t>(csv_filename, bin_filename, buffer_size, delimiter);
+        // PRINT_TOCK_ns(csvFile_to_binary_);
 
         /* create the dataset for kline_t */
         TICK(MapMemory_);
@@ -35,7 +35,7 @@ int main() {
 
         // Get the tensor at a specific index
         TICK(GET_1);
-        auto [_, __] = dataset.get(100);
+        auto __ = dataset.get(100);
         PRINT_TOCK_ns(GET_1);
 
         // Get the tensor closest to a specific key value (e.g., close_time)
@@ -56,11 +56,11 @@ int main() {
         log_info("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n");
         for(int64_t target_close_time: targets) {
             TICK(GET_BY_KEY_);
-            auto [features_by_date, mask] = dataset.get_by_key_value(target_close_time);
+            cuwacunu::camahjucunu::data::observation_sample_t sample = dataset.get_by_key_value(target_close_time);
             PRINT_TOCK_ns(GET_BY_KEY_);
-            std::cout << "\t\t\t features_by_date.shape(): "; for (const auto& dim : features_by_date.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
-            std::cout << "\t\t\t mask.shape(): "; for (const auto& dim : mask.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
-            // std::cout << "\t features_by_date.close_time: " << target_close_time << "=?" << features_by_date.index({0,6}).item<double>() << std::endl;
+            std::cout << "\t\t\t sample.features.shape(): "; for (const auto& dim : sample.features.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            std::cout << "\t\t\t sample.mask.shape(): "; for (const auto& dim : sample.mask.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            // std::cout << "\t sample.features.close_time: " << target_close_time << "=?" << sample.features.index({0,6}).item<double>() << std::endl;
         }
 
         log_info("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n");
@@ -71,11 +71,11 @@ int main() {
         /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
         for(int64_t target_close_time: targets) {
             TICK(GET_SEQUENCE_BY_KEY_1);
-            auto [sequence_by_date, mask] = dataset.get_sequence_ending_at_key_value(target_close_time, 5);
+            cuwacunu::camahjucunu::data::observation_sample_t sample = dataset.get_sequence_ending_at_key_value(target_close_time, 5);
             PRINT_TOCK_ns(GET_SEQUENCE_BY_KEY_1);
-            std::cout << "\t\t\t sequence_by_date.shape(): "; for (const auto& dim : sequence_by_date.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
-            std::cout << "\t\t\t mask.shape(): "; for (const auto& dim : mask.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
-            // std::cout << "\t sequence_by_date.close_time: " << target_close_time << "=?" << sequence_by_date.index({0,6}).item<double>() << std::endl;
+            std::cout << "\t\t\t sample.features.shape(): "; for (const auto& dim : sample.features.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            std::cout << "\t\t\t sample.mask.shape(): "; for (const auto& dim : sample.mask.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
+            // std::cout << "\t sample.features.close_time: " << target_close_time << "=?" << sample.features.index({0,6}).item<double>() << std::endl;
         }
 
     } catch (const std::exception& e) {

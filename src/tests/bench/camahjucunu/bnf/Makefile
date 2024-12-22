@@ -50,6 +50,14 @@ $(TEST_BUILD)/test_bnf_observation_pipeline: $(HERE_PATH)/test_bnf_observation_p
 	$(RUN_MODE) $(TEST_BUILD)/test_bnf_observation_pipeline
 test_bnf_observation_pipeline: $(TEST_BUILD)/test_bnf_observation_pipeline
 # -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_bnf_training_pipeline test_bnf_training_pipeline
+$(TEST_BUILD)/test_bnf_training_pipeline: $(HERE_PATH)/test_bnf_training_pipeline.cpp
+	@$(BNF_LINK_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_bnf_training_pipeline
+test_bnf_training_pipeline: $(TEST_BUILD)/test_bnf_training_pipeline
+# -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all

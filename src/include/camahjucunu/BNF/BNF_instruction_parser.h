@@ -17,6 +17,7 @@ private:
   ProductionGrammar grammar;
   std::stack<std::string> parsing_error_stack;
   std::stack<std::string> parsing_success_stack;
+  size_t failure_position;
 public:
   InstructionParser(InstructionLexer& iLexer, ProductionGrammar& grammar)
     : iLexer(iLexer), grammar(grammar), parsing_error_stack(), parsing_success_stack() {

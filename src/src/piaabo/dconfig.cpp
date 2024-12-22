@@ -90,6 +90,13 @@ std::string config_space_t::observation_pipeline_instruction() {
   return cuwacunu::piaabo::dfiles::readFileToString(config_space_t::config["BNF"]["observation_pipeline_instruction_filename"]);
 }
 
+std::string config_space_t::training_pipeline_bnf() {
+  return cuwacunu::piaabo::dfiles::readFileToString(config_space_t::config["BNF"]["training_pipeline_bnf_filename"]);
+}
+
+std::string config_space_t::training_pipeline_instruction() {
+  return cuwacunu::piaabo::dfiles::readFileToString(config_space_t::config["BNF"]["training_pipeline_instruction_filename"]);
+}
 
 /* instruction methods */
 parsed_config_t config_space_t::read_config(const std::string& conf_path) {
@@ -135,6 +142,10 @@ parsed_config_t config_space_t::read_config(const std::string& conf_path) {
 }
 
 void config_space_t::update_config() {
+  if(!std::filesystem::exists(config_space_t::config_file_path)) {
+    log_warn("(config_space_t)[update_config] config file %s does not exist...\n", config_space_t::config_file_path.c_str());
+    return;
+  }
   /* update config */
   config_space_t::config = read_config(config_space_t::config_file_path.c_str());
   
@@ -206,15 +217,18 @@ bool config_space_t::validate_config() {
   return is_valid;
 }
 
-void config_space_t::finit() {}
+void config_space_t::finit() {
+  log_info("Finalizing config_space_t \n");
+}
 
 void config_space_t::init() {
+  log_info("Initializing config_space_t \n");
   /* set exchange type */
   config_space_t::exchange_type = exchange_type_e::NONE;
-  // /* set up default paths */
-  // config_space_t::change_config_file(); /* default */
-  // /* update config */
-  // config_space_t::update_config();
+  /* set up default paths */
+  config_space_t::change_config_file(); /* default */
+  /* update config */
+  config_space_t::update_config();
   /* set cleanup procedures */
   std::atexit(config_space_t::finit);
 }

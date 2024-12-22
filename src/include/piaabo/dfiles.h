@@ -168,6 +168,7 @@ std::vector<T> binaryFile_to_vector(const std::string& bin_filename, size_t buff
   return records;
 }
 
+size_t countLinesInFile(const std::string& file_path);
 
 } /* namespace dfiles */
 } /* namespace piaabo */

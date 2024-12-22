@@ -50,6 +50,7 @@ apt install -y --no-install-recommends ca-certificates
 apt install -y --no-install-recommends build-essential
 apt install -y --no-install-recommends build-essential --fix-missing
 apt install -y --no-install-recommends libssl-dev
+apt install -y --no-install-recommends libncurses5-dev libncursesw5-dev
 apt install -y --no-install-recommends gnupg2
 apt install -y --no-install-recommends valgrind
 apt install -y --no-install-recommends gdb

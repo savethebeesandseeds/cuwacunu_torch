@@ -79,9 +79,13 @@ struct input_form_t {
   std::string seq_length;
 };
 
-struct observation_pipeline_instruction_t {
+struct observation_instruction_t {
   std::vector<instrument_form_t> instrument_forms;
   std::vector<input_form_t> input_forms;
+  std::vector<instrument_form_t> filter_instrument_forms(
+    const std::string& target_instrument,
+    const std::string& target_record_type,
+    cuwacunu::camahjucunu::exchange::interval_type_e target_interval) const;
 };
 
 /* 
@@ -107,7 +111,7 @@ public:
   observationPipeline();
 
   /* Decode: Interprest an instruction string */
-  observation_pipeline_instruction_t decode(std::string instruction);
+  observation_instruction_t decode(std::string instruction);
 
   /* parse Grammar (dummy) */
   ProductionGrammar parseBnfGrammar();

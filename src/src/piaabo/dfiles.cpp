@@ -23,7 +23,14 @@ std::ifstream readFileToStream(const std::string& filePath) {
 	return resultFile;
 }
 
-
+size_t countLinesInFile(const std::string& file_path) {
+  std::ifstream file = readFileToStream(file_path);
+  size_t line_count = 0;
+  std::string line;
+  while (std::getline(file, line)) { ++line_count; }
+  file.close();
+  return line_count;
+}
 
 } /* namespace dfiles */
 } /* namespace piaabo */

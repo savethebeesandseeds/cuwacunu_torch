@@ -25,6 +25,7 @@
 #define LOG_WARN_FILE stdout
 
 #define ANSI_COLOR_RESET "\x1b[0m" 
+#define ANSI_CLEAR_LINE "\r\033[2K"
 #define ANSI_COLOR_ERROR "\x1b[41m" 
 #define ANSI_COLOR_FATAL "\x1b[41m" 
 #define ANSI_COLOR_SUCCESS "\x1b[42m" 
@@ -256,7 +257,7 @@ std::string string_format(const char* format, ...);
  * 
  * @throws std::runtime_error if the time string cannot be parsed.
  */
-long stringToUnix(const std::string& timeString, const std::string& format = "%Y-%m-%d %H:%M:%S");
+long stringToUnixTime(const std::string& timeString, const std::string& format = "%Y-%m-%d %H:%M:%S");
 
 /**
  * @brief Converts a Unix timestamp (time_t) to a human-readable time string.
@@ -265,13 +266,13 @@ long stringToUnix(const std::string& timeString, const std::string& format = "%Y
  * following the provided format. It uses std::localtime to generate a 
  * tm structure and std::strftime to format the time as a string.
  * 
- * @param unixTime The input Unix timestamp to be converted.
+ * @param unixTime The input Unix timestamp to be converted in seconds.
  * @param format The desired output format using strftime-style format 
  *               (default is "%Y-%m-%d %H:%M:%S").
  * 
  * @return A string representing the formatted time.
  */
-std::string unixToString(long unixTime, const std::string& format = "%Y-%m-%d %H:%M:%S");
+std::string unixTimeToString(long unixTime, const std::string& format = "%Y-%m-%d %H:%M:%S");
 
 /**
  * @brief Computes the FNV-1a hash for a given string.
@@ -596,6 +597,97 @@ constexpr uint64_t fnv1aHash(std::string_view str) {
     GET_READABLE_TIME_ns(TOCK_ns(STAMP_ID)).c_str());
 
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
+namespace cuwacunu {
+namespace piaabo {
+  /**
+ * Utilities for printing a loading bar
+ */
+struct loading_bar_t {
+  std::string label;
+  std::string color;
+  std::string character;
+  int width;
+  double currentProgress;
+  double lastPercentage;
+  std::chrono::time_point<std::chrono::high_resolution_clock> tick;
+};
+inline void printLoadingBar(const loading_bar_t &bar) {
+  std::stringstream ss;
+  int filled = (bar.width * static_cast<int>(bar.currentProgress)) / 100;
+  ss << bar.label << " [" << bar.color;
+  for (int i = 0; i < filled; ++i) {
+    ss << bar.character;
+  }
+  for (int i = filled; i < bar.width; ++i) {
+    ss << " ";
+  }
+  ss << ANSI_COLOR_RESET << "] " << std::fixed << std::setprecision(2) << bar.currentProgress << "%";
+  /* log the loading bar instant */
+  {
+    LOCK_GUARD(log_mutex);\
+    fprintf(LOG_FILE,"%s[%s0x%s%s]: %s ",
+      ANSI_CLEAR_LINE,ANSI_COLOR_Cyan,cuwacunu::piaabo::cthread_id(),ANSI_COLOR_RESET, ss.str().c_str());
+    fflush(LOG_FILE);
+  }
+}
+inline void startLoadingBar(loading_bar_t &bar, const std::string &label, int width) {
+  bar.label = label;
+  bar.width = width;
+  bar.character = "█";
+  bar.currentProgress = 0;
+  bar.lastPercentage = -1;
+  if (bar.color.empty()) {
+    bar.color = ANSI_COLOR_Dim_Green;
+  }
+  bar.tick = std::chrono::high_resolution_clock::now();
+  printLoadingBar(bar);
+}
+inline void updateLoadingBar(loading_bar_t &bar, double percentage) {
+  if (percentage < 0) percentage = 0;
+  if (percentage > 100) percentage = 100;
+  if (percentage > bar.lastPercentage) {
+    bar.currentProgress = percentage;
+    bar.lastPercentage = percentage;
+    printLoadingBar(bar);
+  }
+}
+inline void finishLoadingBar(loading_bar_t &bar) {
+  updateLoadingBar(bar, 100);
+  fprintf(LOG_FILE, "\t %sExecution time %s [%s%s%s] : %s \n",
+    bar.color.c_str(), ANSI_COLOR_RESET,
+    ANSI_COLOR_Yellow, bar.label.c_str(), ANSI_COLOR_RESET,
+    GET_READABLE_TIME_ms(TOCK_ms(bar.tick)).c_str());
+}
+inline void resetLoadingBar(loading_bar_t &bar) {
+  bar.currentProgress = 0;
+  printLoadingBar(bar);
+}
+inline void setLoadingBarColor(loading_bar_t &bar, const std::string &colorCode) {
+  bar.color = colorCode;
+  printLoadingBar(bar);
+}
+inline void setLoadingBarCharacter(loading_bar_t &bar, std::string character) {
+  bar.character = character;
+  printLoadingBar(bar);
+}
+} /* namespace piaabo */
+} /* namespace cuwacunu */
+
+/* loading bar macros */
+#define START_LOADING_BAR(var_ref, width, label) \
+  cuwacunu::piaabo::loading_bar_t var_ref; \
+  cuwacunu::piaabo::startLoadingBar(var_ref, label, width);
+#define UPDATE_LOADING_BAR(var_ref, percentage) \
+  cuwacunu::piaabo::updateLoadingBar(var_ref, percentage);
+#define FINISH_LOADING_BAR(var_ref) \
+  cuwacunu::piaabo::finishLoadingBar(var_ref);
+#define RESET_LOADING_BAR(var_ref) \
+  cuwacunu::piaabo::resetLoadingBar(var_ref);
+#define SET_LOADING_BAR_COLOR(var_ref, colorCode) \
+  cuwacunu::piaabo::setLoadingBarColor(var_ref, colorCode);
+#define SET_LOADING_CHARACTER(var_ref, character) \
+  cuwacunu::piaabo::setLoadingBarCharacter(var_ref, character);
+/* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
 /* utilities */
 #define STRINGIFY(x) #x
 #define CONCAT_INTERNAL(x, y) x##y
@@ -610,3 +702,82 @@ struct RuntimeWarning { RuntimeWarning(const char *msg) { log_runtime_warning(ms
 #define THROW_RUNTIME_FINALIZATION() { std::exit(0); }
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
 #define ASSERT(condition, message) do {if (!(condition)) {log_secure_fatal(message);} } while (false)
+
+/* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
+namespace cuwacunu {
+namespace piaabo {
+
+/**
+ * @brief Converts a string to a specified type.
+ * 
+ * @tparam T The target type to convert to.
+ * @param value The string value to be converted.
+ * @return The converted value of type `T`.
+ * @throws std::invalid_argument if the conversion fails or if the input is invalid.
+ */
+template <typename T>
+T string_cast(const std::string& value);
+template <typename T>
+T string_cast(const std::string& value) {
+  static_assert(!std::is_same<T, T>::value, "Specialization not implemented for string_cast");
+}
+
+template <>
+inline std::string string_cast<std::string>(const std::string& value) {
+  return value;
+}
+
+template <>
+inline double string_cast<double>(const std::string& value) {
+  try {
+    return std::stod(value);
+  } catch (const std::exception& e) {
+    log_fatal("(dutils)[string_cast] Error converting '%s' to double.", value.c_str());
+  }
+}
+
+template <>
+inline int string_cast<int>(const std::string& value) {
+  try {
+    return std::stoi(value);
+  } catch (const std::exception& e) {
+    log_fatal("(dutils)[string_cast] Error converting '%s' to int.", value.c_str());
+  }
+}
+
+template <>
+inline size_t string_cast<size_t>(const std::string& value) {
+  try {
+    return std::stoul(value);
+  } catch (const std::exception& e) {
+    log_fatal("(dutils)[string_cast] Error converting '%s' to size_t.", value.c_str());
+  }
+}
+
+template <>
+inline bool string_cast<bool>(const std::string& value) {
+  if (value == "true") return true;
+  if (value == "false") return false;
+  log_fatal("(dutils)[string_cast] Invalid boolean value: '%s'", value.c_str());
+}
+
+template <>
+inline std::vector<double> string_cast<std::vector<double>>(const std::string& value) {
+  std::vector<double> result;
+  std::istringstream stream(value);
+  std::string token;
+  while (std::getline(stream, token, ',')) { result.push_back(string_cast<double>(token)); }
+  return result;
+}
+
+template <>
+inline std::vector<int> string_cast<std::vector<int>>(const std::string& value) {
+  std::vector<int> result;
+  std::istringstream stream(value);
+  std::string token;
+  while (std::getline(stream, token, ',')) { result.push_back(string_cast<int>(token)); }
+  return result;
+}
+
+} /* namespace piaabo */
+} /* namespace cuwacunu */

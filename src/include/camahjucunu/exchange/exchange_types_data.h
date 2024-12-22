@@ -81,6 +81,24 @@ struct kline_t         {
 };
 #pragma pack(pop)
 
+#pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
+struct basic_t         {
+  using key_type_t = double;
+  /* Methods */
+  static constexpr std::size_t key_offset() { return offsetof(basic_t, time); }
+  key_type_t key_value();
+  static basic_t from_binary(const char* data);
+  static basic_t null_instance(key_type_t key_value = std::numeric_limits<double>::min());
+  static basic_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
+  static statistics_pack_t<basic_t> initialize_statistics_pack(unsigned int window_size = 100);
+  std::vector<double> tensor_features() const; 
+  void to_csv(std::ostream& os, char delimiter = ',') const;
+  bool is_valid() const;
+  /* Values */
+  double time; double value;
+};
+#pragma pack(pop)
+
 struct price_t         { std::string symbol; double price; };
 
 struct bookPrice_t     { std::string symbol; double bidPrice; double bidQty; double askPrice; double askQty; };

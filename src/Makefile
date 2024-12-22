@@ -24,6 +24,14 @@ iinuji:
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
+.PHONY: all
+all:
+	$(MAKE) -j8 piaabo
+	$(MAKE) -j8 camahjucunu
+	@$(LOG_SUCCESS)
+# -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# -----------------------------------------------------------------
 .PHONY: tests
 tests:
 	$(MAKE) -C $(TESTS_PATH)/ all
@@ -33,11 +41,16 @@ tests:
 .PHONY: clean_common
 clean_common:
 	@shred -u $(OUTPUT_PATH)/common/*.d $(OUTPUT_PATH)/common/*.o 		2>/dev/null || true
-
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 .PHONY: clean_bnf
 clean_bnf:
 	@shred -u $(OUTPUT_PATH)/common/BNF_*.d $(OUTPUT_PATH)/common/BNF_*.o 		2>/dev/null || true
-	@shred -u $(OUTPUT_PATH)/common/observation_pipeline.d $(OUTPUT_PATH)/common/observation_pipeline.o 		2>/dev/null || true
+	@shred -u $(OUTPUT_PATH)/common/*_pipeline.d $(OUTPUT_PATH)/common/*_pipeline.o 		2>/dev/null || true
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+.PHONY: clean_data
+clean_data:
+	@shred -u $(OUTPUT_PATH)/libtorch/memory_mapped_*.d $(OUTPUT_PATH)/libtorch/memory_mapped_*.o 		2>/dev/null || true
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 # Clean the build
 .PHONY: clean

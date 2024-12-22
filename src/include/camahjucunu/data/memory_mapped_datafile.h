@@ -14,16 +14,22 @@ namespace camahjucunu {
 namespace data {
 
 template<typename T>
-std::string prepare_binary_file_from_csv(const std::string& csv_filename, bool force_binarization = false, size_t buffer_size = 1024, char delimiter = ',') {
+std::string sanitize_csv_into_binary_file(const std::string& csv_filename, bool force_binarization = false, size_t buffer_size = 1024, char delimiter = ',') {
+  log_info("[sanitize_csv_into_binary_file]\t %sPreparing binary:%s file from csv data file: %s\n", 
+    ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, csv_filename.c_str());
+  
   /* validate parameters */
   if (buffer_size < 1) {
-    log_fatal("[prepare_binary_file_from_csv] Error: buffer_size cannot be zero or negative, requested for file%s\n:", csv_filename.c_str());
+    log_fatal("[sanitize_csv_into_binary_file] Error: buffer_size cannot be zero or negative, requested for file%s\n:", csv_filename.c_str());
   }
+  
+  /* Get the file size (needed just to displya the loading bar) */
+  size_t total_records = cuwacunu::piaabo::dfiles::countLinesInFile(csv_filename);
 
   /* open the csv file */
   std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
   if (!csv_file.is_open()) {
-    log_fatal("[prepare_binary_file_from_csv] Error: Could not open the CSV file for reading: %s\n", csv_filename.c_str());
+    log_fatal("[sanitize_csv_into_binary_file] Error: Could not open the CSV file for reading: %s\n", csv_filename.c_str());
   }
 
   /* get the output name */
@@ -36,7 +42,8 @@ std::string prepare_binary_file_from_csv(const std::string& csv_filename, bool f
     auto bin_last_write_time = std::filesystem::last_write_time(bin_filename);
 
     if (bin_last_write_time > csv_last_write_time) {
-      log_info("[prepare_binary_file_from_csv] operation skiped, binary file: %s is up to date. \n", bin_filename.c_str());
+      log_info("[sanitize_csv_into_binary_file]\t %sOperation skiped:%s binary file: %s is up to date. \n", 
+        ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, bin_filename.c_str());
       return bin_filename;
     }
   }
@@ -45,7 +52,7 @@ std::string prepare_binary_file_from_csv(const std::string& csv_filename, bool f
   std::ofstream bin_file(bin_filename, std::ios::binary | std::ios::out | std::ios::trunc);
   if (!bin_file.is_open()) {
     csv_file.close();
-    log_fatal("[prepare_binary_file_from_csv] Error: Could not open the binary file: %s\n", csv_filename.c_str());
+    log_fatal("[sanitize_csv_into_binary_file] Error: Could not open the binary file: %s\n", csv_filename.c_str());
   }
   chmod(bin_filename.c_str(), S_IRUSR | S_IWUSR);
 
@@ -66,44 +73,77 @@ std::string prepare_binary_file_from_csv(const std::string& csv_filename, bool f
 
   /* retrive first line and first line object */
   if(!std::getline(csv_file, line_p0)) {
-    log_fatal("[prepare_binary_file_from_csv] Error: file: %s is too short\n", csv_filename.c_str());
+    log_fatal("[sanitize_csv_into_binary_file] Error: file: %s is too short\n", csv_filename.c_str());
   }
   T obj_p0 = T::from_csv(line_p0, delimiter, line_number);
 
-  while (std::getline(csv_file, line_p1)) {
-    /* this cycle operates on just p0; p1 is just for reference */
+  /* loading bar */
+  START_LOADING_BAR(csv_file_preparation_progress_bar_, 60, "Preparing Binary data file");
+  std::size_t counter = 0;
+
+  while (std::getline(csv_file, line_p1)) { /* the cycles operates on p0; p1 is just for reference */
+    /* update loading graph */
+    ++counter;
+    double current_percentage = static_cast<double>((static_cast<double>(counter) / total_records) * 100);
+    current_percentage = std::round(current_percentage * 100.0) / 100.0; /* round to two decimal places */
+    UPDATE_LOADING_BAR(csv_file_preparation_progress_bar_, current_percentage);
     
     /* retrive object */
     T obj_p1 = T::from_csv(line_p1, delimiter, ++line_number);
+
+    /* skip invalid records */
+    if(obj_p1.is_valid() == false) {
+      continue;
+    }
 
     /* validate sequentiality on the key_value */
     current_delta = obj_p1.key_value() - obj_p0.key_value();
     
     /* validate increment */
     if(current_delta == 0.0) {
-      log_warn("\t[prepare_binary_file_from_csv] zero increment at line number %ld on file: %s\n", line_number, csv_filename.c_str());
+      log_warn("%s\t %s•%s [sanitize_csv_into_binary_file]%s %szero increment%s, \n\tat line:\t %s%ld%s, \n\t in file:\t %s%s%s\n", 
+        ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Black_Grey, ANSI_COLOR_RESET, 
+        ANSI_COLOR_Red, ANSI_COLOR_RESET, 
+        ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET);
       continue; /* skip the binarization of the item as there has been no increment */
     }
 
     if(current_delta < 0) {
-      log_fatal("[prepare_binary_file_from_csv] Error: key_value increments are expected to be positive, at line %ld, in file: %s, \n\t line: %s\n", line_number, csv_filename.c_str(), line_p0.c_str());
+      log_fatal("[sanitize_csv_into_binary_file] Error: key_value increments are expected to be positive, \n\t at line:\t %s%ld%s, \n\t in file:\t %s%s%s, \n\t line:\t %s%s%s\n", 
+        ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Red, line_p0.c_str(), ANSI_COLOR_RESET);
     }
 
     /* assing the regular delta, only once */
     if(regular_delta == 0) { regular_delta = current_delta;  } /* just for the first iteration */
 
     /* not divisible increments are unexpected */
-    if(current_delta % regular_delta != 0) {
-      log_err("\t[prepare_binary_file_from_csv] Error: there is an irregular increment (regular_delta=%ld, current_delta=%ld), lin on key_value at line number %ld, in file: %s, \n\t line: %s\n", regular_delta, current_delta, line_number, csv_filename.c_str(), line_p0.c_str());
+    // if(current_delta % regular_delta != 0) {
+    if (std::abs(std::fmod(current_delta, regular_delta)) > 1e-5 && 
+      std::abs(std::fmod(current_delta, regular_delta) - regular_delta) > 1e-5) {
+      log_err("%s\t %s•%s [sanitize_csv_into_binary_file]%s Error: there is an irregular increment [regular_delta != current_delta](%s%.15f%s != %s%.15f%s), on key_value, \n\t at line:\t %s%ld%s, \n\t in file:\t %s%s%s, \n\t line:\t %s%s%s\n", 
+        ANSI_CLEAR_LINE, ANSI_COLOR_Red, ANSI_COLOR_Dim_Black_Grey, ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Green, static_cast<double>(regular_delta), ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Red, static_cast<double>(current_delta), ANSI_COLOR_RESET, 
+        ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Red, line_p0.c_str(), ANSI_COLOR_RESET);
       continue;
     }
 
     /* calculate how many steps there are in between p0 and p1 */
-    delta_steps = static_cast<int64_t>(current_delta / regular_delta);
+    delta_steps = static_cast<int64_t>(std::round(current_delta / regular_delta));
 
     /* warn about misisng elements */
     if(delta_steps != 1) {
-      log_warn("\t[prepare_binary_file_from_csv] extra large step increment (d=%ld) on key_value at line number %ld, in file: %s\n", delta_steps, line_number, csv_filename.c_str());
+      log_warn("%s\t %s•%s [sanitize_csv_into_binary_file]%s %sextra large step increment%s (d=%s%ld%s) on key_value, \n\t at line:\t %s%ld%s, \n\t in file:\t %s%s%s\n", 
+      ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Black_Grey, ANSI_COLOR_RESET, 
+      ANSI_COLOR_Yellow, ANSI_COLOR_RESET, 
+      ANSI_COLOR_Yellow, delta_steps, ANSI_COLOR_RESET, 
+      ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
+      ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET);
     }
 
     /* record into the binary file n=delta_steps null records to fill the missing steps */
@@ -121,7 +161,10 @@ std::string prepare_binary_file_from_csv(const std::string& csv_filename, bool f
           buffer.clear();
         }
       } catch (const std::exception& e) {
-        log_fatal("[prepare_binary_file_from_csv] Error processing line: %ld: %s. Exception: %s\n", line_number, line_p0.c_str(), e.what());
+        log_fatal("[sanitize_csv_into_binary_file] Error processing line: %s%ld%s: %s%s%s. Exception: %s\n", 
+          ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
+          ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+          e.what());
       }
     }
 
@@ -142,9 +185,14 @@ std::string prepare_binary_file_from_csv(const std::string& csv_filename, bool f
   }
 
   /* finalize */
+  FINISH_LOADING_BAR(csv_file_preparation_progress_bar_);
+
   csv_file.close();
   bin_file.close();
-  log_info("(prepare_binary_file_from_csv) Conversion completed successfully. %s -> %s\n", csv_filename.c_str(), bin_filename.c_str());
+  log_info("(sanitize_csv_into_binary_file) %sConversion and sanitation completed successfully%s. %s%s%s -> %s%s%s\n", 
+    ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, 
+    ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+    ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
 
   return bin_filename;
 }
@@ -167,10 +215,14 @@ std::string prepare_binary_file_from_csv(const std::string& csv_filename, bool f
    */
 template <typename T>
 void normalize_binary_file(const std::string& bin_filename, std::size_t window_size = std::numeric_limits<std::size_t>::max()) {
+  log_info("[normalize_binary_file] Normalizing binary file from csv data file: %s%s%s\n", 
+    ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+
   /* Open the file in read-write mode (both input and output), binary mode */
   std::fstream bin_file(bin_filename, std::ios::in | std::ios::out | std::ios::binary);
   if (!bin_file.is_open()) {
-    log_fatal("[modify_binary_file_inplace] Error: Could not open the binary file: %s for reading and writing.\n", bin_filename.c_str());
+    log_fatal("[normalize_binary_file] Error: Could not open the binary file: %s%s%s for reading and writing. \n", 
+      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
   }
 
   /* Get the file size */
@@ -181,7 +233,8 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
   /* Calculate the total number of records */
   size_t total_records = file_size / sizeof(T);
   if (file_size % sizeof(T) != 0) {
-    log_fatal("[modify_binary_file_inplace] Error: Binary file size is not a multiple of struct size.\n");
+    log_fatal("[normalize_binary_file] Error: Binary file size is not a multiple of struct size: %s%s%s\n", 
+      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
   }
 
   /* assign the window_size */
@@ -202,7 +255,8 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
     T record;
     bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
     if (!bin_file) {
-      log_fatal("[initialize_statistics_space] Error: Failed to read from binary file: %s\n", bin_filename.c_str());
+      log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
+        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
     }
     /* update the statistics pack for the initial size */
     stats_pack.update(record);
@@ -212,36 +266,56 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
   bin_file.clear();
   bin_file.seekg(0, std::ios::beg);
 
+  /* loading bar */
+  START_LOADING_BAR(normalization_progress_bar_, 60, "Normalize binary file");
+
   /* iterate over all the records to replace */
   for (size_t i = 0; i < total_records; ++i) {
     /* Read the record */
     T record;
     bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
     if (!bin_file) {
-      log_fatal("[modify_binary_file_inplace] Error: Failed to read from binary file: %s\n", bin_filename.c_str());
+      log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
+        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
     }
 
-    /* Update the statistics space with the record */
-    stats_pack.update(record);
+    if(record.is_valid()) {
+      /* Update the statistics space with the record */
+      stats_pack.update(record);
+      
+      /* Normalize the record */
+      T normalized_record = stats_pack.normalize(record);
+      
+      /* Move the put pointer back to the beginning of the record */
+      bin_file.seekp(-static_cast<std::streamoff>(sizeof(T)), std::ios::cur);
 
-    /* Normalize the record */
-    T normalized_record = stats_pack.normalize(record);
+      /* Write the modified record back */
+      bin_file.write(reinterpret_cast<const char*>(&normalized_record), sizeof(T));
+      if (!bin_file) {
+        log_fatal("[normalize_binary_file] Error: Failed to write to binary file: %s%s%s\n", 
+          ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+      }
 
-    /* Move the put pointer back to the beginning of the record */
-    bin_file.seekp(-static_cast<std::streamoff>(sizeof(T)), std::ios::cur);
+      /* Move the get pointer to the next record */
+      bin_file.seekg(bin_file.tellp(), std::ios::beg);
 
-    /* Write the modified record back */
-    bin_file.write(reinterpret_cast<const char*>(&normalized_record), sizeof(T));
-    if (!bin_file) {
-      log_fatal("[modify_binary_file_inplace] Error: Failed to write to binary file: %s\n", bin_filename.c_str());
+      /* flush the changes */
+      bin_file.flush();
+
     }
-
-    /* Move the get pointer to the next record */
-    bin_file.seekg(bin_file.tellp(), std::ios::beg);
+    
+    /* update loading graph */
+    double current_percentage = static_cast<double>((static_cast<double>(i + 1) / total_records) * 100);
+    current_percentage = std::round(current_percentage * 100.0) / 100.0; /* round to two decimal places */
+    UPDATE_LOADING_BAR(normalization_progress_bar_, current_percentage);
   }
 
+  /* finalize */
+  FINISH_LOADING_BAR(normalization_progress_bar_);
+
   bin_file.close();
-  log_info("(normalize_binary_file) Normalization completed successfully. File: %s\n", bin_filename.c_str());
+  log_info("(normalize_binary_file) %sNormalization completed successfully%s. File: %s%s%s\n", 
+    ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
 }
 
 } /* namespace data */

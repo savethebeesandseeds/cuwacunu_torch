@@ -14,13 +14,16 @@ COMPILE_WITH_TORCH_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $
 # # -----------------------------------------------------------------
 DATALOADER_DATASETS := \
 	$(OUTPUT_PATH)/libtorch/memory_mapped_datafile.o \
-	$(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o
+	$(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o \
+	$(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
+$(OUTPUT_PATH)/libtorch/memory_mapped_datafile.o: $(HERE_PATH)/memory_mapped_datafile.cpp $(USUAL_DEPS)
+	@$(COMPILE_WITH_TORCH_CMD)
 $(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o: $(HERE_PATH)/memory_mapped_dataset.cpp $(USUAL_DEPS)
 	@$(COMPILE_WITH_TORCH_CMD)
-$(OUTPUT_PATH)/libtorch/memory_mapped_datafile.o: $(HERE_PATH)/memory_mapped_datafile.cpp $(USUAL_DEPS)
+$(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o: $(HERE_PATH)/memory_mapped_dataloader.cpp $(USUAL_DEPS)
 	@$(COMPILE_WITH_TORCH_CMD)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 

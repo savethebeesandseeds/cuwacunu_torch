@@ -10,6 +10,7 @@ HERE_PATH := $(ROOT_PATH)/tests/bench/piaabo
 TEST_BUILD := $(ROOT_PATH)/tests/build
 COMMON_COMPILE_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(OUTPUT_PATH)/common/*.o $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
 COMMON_SSL_COMPILE_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(OUTPUT_PATH)/common/*.o $(OUTPUT_PATH)/openssl/*.o $(SSL_LD_FLAGS) $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
+COMMON_SSL_CURL_COMPILE_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(OUTPUT_PATH)/common/*.o $(OUTPUT_PATH)/openssl/*.o $(OUTPUT_PATH)/libcurl/*.o $(LIBCURL_LD_LAGS) $(SSL_LD_FLAGS) $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
@@ -50,6 +51,14 @@ $(TEST_BUILD)/test_djson_parsing: $(HERE_PATH)/test_djson_parsing.cpp
 	@$(COMMON_COMPILE_CMD)
 	$(RUN_MODE) $(TEST_BUILD)/test_djson_parsing
 test_djson_parsing: $(TEST_BUILD)/test_djson_parsing
+# -----------------------------------------------------------------
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_dfiles_binary_to_vector test_dfiles_binary_to_vector
+$(TEST_BUILD)/test_dfiles_binary_to_vector: $(HERE_PATH)/test_dfiles_binary_to_vector.cpp
+	@$(COMMON_SSL_CURL_COMPILE_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_dfiles_binary_to_vector
+test_dfiles_binary_to_vector: $(TEST_BUILD)/test_dfiles_binary_to_vector
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
