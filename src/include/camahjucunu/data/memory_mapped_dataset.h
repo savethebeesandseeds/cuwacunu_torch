@@ -59,6 +59,12 @@ struct observation_sample_t {
 
     return observation_sample_t{features, masks};
   }
+
+  /* reset (clear) method */
+  void reset() {
+    features.reset();
+    mask.reset();
+  }
 };
 
 /**
@@ -564,6 +570,7 @@ public:
    */
   observation_sample_t get_sequence_ending_at_key_value(typename T::key_type_t target_key_value) {
 
+
     size_t num_sources = datasets_.size();
 
     std::vector<torch::Tensor> features_list(num_sources);
@@ -623,8 +630,7 @@ public:
 
   /* --- --- --- prepare the file --- --- --- */
     /* binarize the csv file */
-    std::string bin_filename = sanitize_csv_into_binary_file<T>(csv_filename, force_binarization, buffer_size, delimiter);
-
+    std::string bin_filename = sanitize_csv_into_binary_file<T>(csv_filename, normalization_window, force_binarization, buffer_size, delimiter);
     
   /* --- --- --- adding the dataset --- --- --- */
     /* append the file_name */
@@ -662,19 +668,6 @@ public:
     rightmost_key_value_  = MIN(rightmost_key_value_, new_dataset_->rightmost_key_value_);
     key_value_span_       = rightmost_key_value_ - leftmost_key_value_;
     key_value_step_       = MIN(key_value_step_, new_dataset_->key_value_step_);
-  
-  /* --- --- --- Normalize --- --- --- */
-  /* check if operation is needed*/
-    auto csv_last_write_time = std::filesystem::last_write_time(csv_filename);
-    auto bin_last_write_time = std::filesystem::last_write_time(bin_filename);
-    if(normalization_window > 0) {
-      if(force_binarization || bin_last_write_time < csv_last_write_time) {
-        normalize_binary_file<T>(bin_filename, normalization_window);
-      } else {
-        log_info("[normalize_binary_file]\t\t %sOperation skiped:%s binary file: %s is up to date. \n", 
-          ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, bin_filename.c_str());
-      }
-    }
   }
 };
 

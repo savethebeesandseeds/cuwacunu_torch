@@ -88,8 +88,22 @@ test_entropy_methods:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei test_entropy_methods
 test_soft_dtw:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts-tcc test_soft_dtw
-test_temporal_contrastive_coding:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts-tcc test_temporal_contrastive_coding
+test_time_contrastive_coding:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts-tcc test_time_contrastive_coding
+test_ts2vec_datautils:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_datautils
+test_ts2vec_losses:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_losses
+test_ts2vec_dilated_conv:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_dilated_conv
+test_ts2vec_encoder:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_encoder
+test_ts2vec_clonable:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_clonable
+test_ts2vec_state_dict:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_state_dict
+test_ts2vec:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

@@ -21,9 +21,9 @@ DATALOADER_DATASETS := \
 # -----------------------------------------------------------------
 $(OUTPUT_PATH)/libtorch/memory_mapped_datafile.o: $(HERE_PATH)/memory_mapped_datafile.cpp $(USUAL_DEPS)
 	@$(COMPILE_WITH_TORCH_CMD)
-$(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o: $(HERE_PATH)/memory_mapped_dataset.cpp $(USUAL_DEPS)
+$(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o: $(HERE_PATH)/memory_mapped_dataset.cpp $(USUAL_DEPS) $(OUTPUT_PATH)/libtorch/memory_mapped_datafile.o
 	@$(COMPILE_WITH_TORCH_CMD)
-$(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o: $(HERE_PATH)/memory_mapped_dataloader.cpp $(USUAL_DEPS)
+$(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o: $(HERE_PATH)/memory_mapped_dataloader.cpp $(USUAL_DEPS) $(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o
 	@$(COMPILE_WITH_TORCH_CMD)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 

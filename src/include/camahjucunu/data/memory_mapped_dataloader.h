@@ -43,13 +43,18 @@ private:
   /* Define the DataLoader type with the chosen Sampler and sample type K */
   using DataLoaderType = torch::data::StatelessDataLoader<Q, S>;
   DataLoaderType data_loader_;
-
+  
   /* Static assertions to validate template parameters */
   static_assert(std::is_base_of<torch::data::datasets::Dataset<Q, K>, Q>::value, "(memory_mapped_dataloader)[] Q must derive from torch::data::Dataset");
   static_assert(std::is_base_of<torch::data::samplers::Sampler<>, S>::value, "(memory_mapped_dataloader)[] S must derive from torch::data::samplers::Sampler");
 
-    
 public:
+
+  // int64_t B; /* batch size */ // not available, sampler is not garantee to have a constant batch size
+  int64_t C_;    /* num of channels */
+  int64_t T_;    /* time span */
+  int64_t D_;    /* dimensionality of sample */
+
   /**
    * @brief Construct a new MemoryMappedDataLoader object.
    *
@@ -62,10 +67,17 @@ public:
    * - The dataset Q should implement size() to return the number of samples.
    */
   MemoryMappedDataLoader(
-    const Q& memory_mapped_dataset, 
+    Q& memory_mapped_dataset, 
     const S& sampler,
     const torch::data::DataLoaderOptions& options
-  ) : data_loader_(memory_mapped_dataset, sampler, options) {}
+  ) : data_loader_(memory_mapped_dataset, sampler, options) {
+    K prove_sample(memory_mapped_dataset.get(0));
+    C_ = prove_sample.features.size(0);
+    T_ = prove_sample.features.size(1);
+    D_ = prove_sample.features.size(2);
+    
+    prove_sample.reset();
+  }
 
   auto begin()  { return data_loader_.begin(); }
   auto end()    { return data_loader_.end(); }
@@ -94,7 +106,7 @@ create_memory_mapped_dataloader(
     auto sampler_options  = dataset.SequentialSampler_options(batch_size, workers);
     /* dataloader */
     return cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, T, S>(
-      /* dataset      */  std::move(dataset), 
+      /* dataset      */  dataset, 
       /* sampler      */  sampler,
       /* options      */  sampler_options
     );
@@ -110,7 +122,7 @@ create_memory_mapped_dataloader(
     auto sampler_options  = dataset.RandomSampler_options(batch_size, workers);
     /* dataloader */
     return cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, T, S>(
-      /* dataset      */  std::move(dataset), 
+      /* dataset      */  dataset, 
       /* sampler      */  sampler,
       /* options      */  sampler_options
     );

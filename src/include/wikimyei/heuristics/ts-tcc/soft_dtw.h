@@ -1,129 +1,312 @@
+/* soft_dtw.h */
 #pragma once
+// Based on: https://github.com/Sleepwalking/pytorch-softdtw/blob/master/soft_dtw.py
 #include <torch/torch.h>
-#include <vector>
+#include <cmath>
 #include <limits>
-#include <stdexcept>
-#include <iostream>
+#include <vector>
 
 namespace cuwacunu {
 namespace wikimyei {
 namespace ts_tcc {
 
-/* A helper function to compute the log-sum-exp of three values in a numerically stable way. */
-inline torch::Tensor logsumexp3(const torch::Tensor& a, const torch::Tensor& b, const torch::Tensor& c) {
-  auto max_val = torch::max(torch::max(a, b), c);
-  return max_val + ((a - max_val).exp() + (b - max_val).exp() + (c - max_val).exp()).log();
-}
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 1) compute_softdtw
+//    - D: [B, N, M]
+//    - gamma: scalar
+//    Returns R: [B, N+2, M+2]
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+inline torch::Tensor compute_softdtw(const torch::Tensor& D_in, double gamma)
+{
+    TORCH_CHECK(D_in.dim() == 3, "D must have shape [B, N, M].");
+    // For safety, move to CPU and ensure contiguous:
+    auto D = D_in.cpu().contiguous().to(torch::kDouble);
+    
+    int64_t B = D.size(0);
+    int64_t N = D.size(1);
+    int64_t M = D.size(2);
 
-/* Forward pass of soft-DTW. */
-/* dist: (B, T, T) distance matrix */
-/* gamma: softness parameter */
-/* Returns D: (B, T+1, T+1) DP table with D[:, T, T] = soft-DTW cost. */
-inline torch::Tensor softdtw_forward(const torch::Tensor& dist, double gamma) {
-  TORCH_CHECK(dist.dim() == 3, "(soft_dtw.h)[softdtw_forward] dist should be (B, T, T)");
-  int64_t B = dist.size(0);
-  int64_t T = dist.size(1);
-  TORCH_CHECK(dist.size(2) == T, "(soft_dtw.h)[softdtw_forward] dist must be square along last two dims");
+    // We'll create R of shape [B, N+2, M+2], fill with +∞
+    auto inf = std::numeric_limits<double>::infinity();
+    auto options = D.options(); // already double + CPU
+    torch::Tensor R = torch::full({B, N+2, M+2}, inf, options);
 
-  /* Initialize DP table D with infinity, except D[:,0,0] = 0 */
-  auto D = torch::full({B, T+1, T+1}, std::numeric_limits<float>::infinity(), dist.options());
-  D.index_put_({torch::indexing::Slice(), 0, 0}, 0.0);
-
-  auto gamma_t = torch::tensor(gamma, dist.options());
-
-  /* Compute the DP table */
-  for (int64_t i = 1; i <= T; i++) {
-    for (int64_t j = 1; j <= T; j++) {
-      auto d1 = D.index({torch::indexing::Slice(), i-1, j});
-      auto d2 = D.index({torch::indexing::Slice(), i, j-1});
-      auto d3 = D.index({torch::indexing::Slice(), i-1, j-1});
-
-      /* We take the log-sum-exp of the negative values scaled by gamma for soft minimum */
-      auto candidates = logsumexp3(-d1 / gamma_t, -d2 / gamma_t, -d3 / gamma_t);
-      auto softmin_val = -gamma_t * candidates;
-
-      auto cost_ij = dist.index({torch::indexing::Slice(), i-1, j-1});
-      auto val = cost_ij + softmin_val;
-      D.index_put_({torch::indexing::Slice(), i, j}, val);
+    // R[:, 0, 0] = 0
+    {
+      auto R_cpu = R.contiguous();
+      auto R_a   = R_cpu.accessor<double, 3>();
+      for (int64_t b = 0; b < B; b++) {
+          R_a[b][0][0] = 0.0;
+      }
+      R = R_cpu; // copy back, though R was already CPU + contiguous
     }
-  }
 
-  return D;
+    // Accessors for the main loop:
+    auto R_a = R.accessor<double, 3>();
+    auto D_a = D.accessor<double, 3>();
+
+    // Triple-nested loop
+    for (int64_t b = 0; b < B; b++) {
+        for (int64_t j = 1; j <= M; j++) {
+            for (int64_t i = 1; i <= N; i++) {
+                double r0 = -R_a[b][i-1][j-1] / gamma;
+                double r1 = -R_a[b][i-1][j  ] / gamma;
+                double r2 = -R_a[b][i  ][j-1] / gamma;
+
+                double rmax = std::max(std::max(r0, r1), r2);
+                double rsum = std::exp(r0 - rmax)
+                            + std::exp(r1 - rmax)
+                            + std::exp(r2 - rmax);
+
+                double softmin = -gamma * (std::log(rsum) + rmax);
+
+                // R[b, i, j] = D[b, i-1, j-1] + softmin
+                double cost_ij = D_a[b][i-1][j-1];
+                R_a[b][i][j] = cost_ij + softmin;
+            }
+        }
+    }
+
+    return R;
 }
 
-/* Compute alignment probabilities using gradients:
-   We do this by calling backward on the soft-DTW cost D[:, T, T]. */
-inline torch::Tensor softdtw_alignment(torch::Tensor dist, torch::Tensor D, double gamma) {
-  int64_t T = dist.size(1);
-  TORCH_CHECK(dist.dim() == 3, "[soft_dtw.h](softdtw_alignment) dist must be (B, T, T)");
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 2) compute_softdtw_backward
+//    - D_: [B, N, M]
+//    - R:  [B, N+2, M+2]
+//    - gamma: scalar
+//    Returns E_sub: [B, N, M]  (the gradient w.r.t. D)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+inline torch::Tensor compute_softdtw_backward(const torch::Tensor& D_in, 
+                                              torch::Tensor R_in,
+                                              double gamma)
+{
+    TORCH_CHECK(D_in.dim() == 3, "D_ must have shape [B, N, M].");
+    TORCH_CHECK(R_in.dim()  == 3, "R must have shape [B, N+2, M+2].");
 
-  /* The soft-DTW cost is at D[:, T, T] */
-  auto cost = D.index({torch::indexing::Slice(), T, T}); // shape: (B)
-  auto cost_sum = cost.sum(); // Make it a scalar for backward
+    // Move everything to CPU + contiguous
+    auto D_ = D_in.cpu().contiguous().to(torch::kDouble);
+    auto R  = R_in.cpu().contiguous().to(torch::kDouble);
 
-  {
-    // Enable gradient mode and call backward
-    torch::AutoGradMode enable_grad(true);
-    cost_sum.backward(); // dist.grad() now holds partial derivatives akin to alignment
-  }
+    int64_t B = D_.size(0);
+    int64_t N = D_.size(1);
+    int64_t M = D_.size(2);
 
-  auto alignment = dist.grad();
-  TORCH_CHECK(alignment.defined(), "[soft_dtw.h](softdtw_alignment) dist.grad() is undefined. Make sure dist is a leaf with requires_grad set.");
+    // We'll create D_big [B, N+2, M+2], fill with zeros, put D_ inside
+    auto options = D_.options();
+    torch::Tensor D_big = torch::zeros({B, N+2, M+2}, options);
 
-  /* Normalize alignment along the last dimension to get probability-like values.
-     Add a small epsilon for numerical stability. */
-  auto denom = alignment.sum({2}, true) + 1e-9;
-  alignment = alignment / denom;
+    // Place D_ in the [1..N, 1..M] block
+    D_big.index_put_(
+      {torch::indexing::Slice(), 
+       torch::indexing::Slice(1, N+1), 
+       torch::indexing::Slice(1, M+1)},
+      D_
+    );
 
-  /* Clear dist.grad to avoid side effects if computed multiple times */
-  dist.grad().zero_();
+    // E is also [B, N+2, M+2]
+    torch::Tensor E = torch::zeros({B, N+2, M+2}, options);
 
-  return alignment;
+    // E[:, -1, -1] = 1
+    {
+      auto E_a = E.accessor<double, 3>();
+      for (int64_t b = 0; b < B; b++) {
+          E_a[b][N+1][M+1] = 1.0;
+      }
+    }
+
+    // Set R[:, :, -1] = -inf, R[:, -1, :] = -inf, then R[:, -1, -1] = R[:, -2, -2]
+    double inf = -std::numeric_limits<double>::infinity();
+    {
+      auto R_a = R.accessor<double, 3>();
+      for (int64_t b = 0; b < B; b++) {
+          for (int64_t i = 0; i < (N+2); i++) {
+              R_a[b][i][M+1] = inf;
+          }
+          for (int64_t j = 0; j < (M+2); j++) {
+              R_a[b][N+1][j] = inf;
+          }
+          // set R[b, -1, -1] = R[b, -2, -2]
+          double val = R_a[b][N][M];
+          R_a[b][N+1][M+1] = val;
+      }
+    }
+
+    // Accessors for the backward pass
+    auto R_a = R.accessor<double, 3>();
+    auto E_a = E.accessor<double, 3>();
+    auto D_a = D_big.accessor<double, 3>();
+
+    // triple nested loop (backward)
+    for (int64_t b = 0; b < B; b++) {
+        for (int64_t j = M; j >= 1; j--) {
+            for (int64_t i = N; i >= 1; i--) {
+                double a0 = ( R_a[b][i+1][j  ] 
+                            - R_a[b][i  ][j  ] 
+                            - D_a[b][i+1][j  ]) / gamma;
+                double b0 = ( R_a[b][i  ][j+1] 
+                            - R_a[b][i  ][j  ] 
+                            - D_a[b][i  ][j+1]) / gamma;
+                double c0 = ( R_a[b][i+1][j+1] 
+                            - R_a[b][i  ][j  ] 
+                            - D_a[b][i+1][j+1]) / gamma;
+
+                double A  = std::exp(a0);
+                double Bv = std::exp(b0);
+                double C  = std::exp(c0);
+
+                double valE = E_a[b][i+1][j  ] * A
+                            + E_a[b][i  ][j+1] * Bv
+                            + E_a[b][i+1][j+1] * C;
+
+                E_a[b][i][j] = valE;
+            }
+        }
+    }
+
+    // Return E[:, 1..N, 1..M]
+    torch::Tensor E_sub = E.index({
+        torch::indexing::Slice(),
+        torch::indexing::Slice(1, N+1),
+        torch::indexing::Slice(1, M+1)
+    });
+
+    return E_sub;
 }
 
-/* Full soft-DTW function that returns the alignment matrix:
-   tensor_a: (B, C, T, D) or (B, T, E)
-   tensor_b: same shape as tensor_a
-   gamma: positive softness parameter
-*/
-inline torch::Tensor compute_alignment_matrix_softdtw(const torch::Tensor& tensor_a,
-                                                      const torch::Tensor& tensor_b,
-                                                      double gamma = 0.1) {
-  TORCH_CHECK(gamma > 0, "[soft_dtw.h](compute_alignment_matrix_softdtw) Gamma must be positive");
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 3) Custom autograd function, like _SoftDTW(Function) in Python
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+struct SoftDTWFunction : public torch::autograd::Function<SoftDTWFunction>
+{
+    static torch::Tensor forward(
+        torch::autograd::AutogradContext *ctx,
+        const torch::Tensor &D,
+        double gamma)
+    {
+        // 1) Compute R
+        auto R = compute_softdtw(D, gamma);
 
-  /* Flatten inputs if needed */
-  torch::Tensor flat_a, flat_b;
-  if (tensor_a.dim() == 4) {
-    // (B, C, T, D) -> (B, T, C*D)
-    int64_t B = tensor_a.size(0);
-    int64_t T = tensor_a.size(2);
-    int64_t C = tensor_a.size(1);
-    int64_t D = tensor_a.size(3);
-    flat_a = tensor_a.permute({0, 2, 1, 3}).reshape({B, T, C * D});
-    flat_b = tensor_b.permute({0, 2, 1, 3}).reshape({B, T, C * D});
-  } else if (tensor_a.dim() == 3) {
-    // Already (B, T, E)
-    flat_a = tensor_a;
-    flat_b = tensor_b;
-  } else {
-    throw std::invalid_argument("[soft_dtw.h](compute_alignment_matrix_softdtw) Unsupported shape for tensor_a");
-  }
+        // 2) Save for backward
+        ctx->save_for_backward({D, R});
+        ctx->saved_data["gamma"] = gamma;
 
-  /* Compute the pairwise squared distances */
-  auto diff = flat_a.unsqueeze(2) - flat_b.unsqueeze(1); // (B, T, T, E)
-  auto dist = diff.pow(2).sum(-1);                       // (B, T, T)
+        // 3) Return R[:, -2, -2] => final cost
+        // shape of R is [B, N+2, M+2], so R[:, -2, -2] is R[:, N, M]
+        auto cost = R.index({torch::indexing::Slice(), -2, -2}); 
+        return cost;  // shape [B]
+    }
 
-  /* Enable gradient tracking on dist */
-  dist.set_requires_grad(true);
+    static torch::autograd::tensor_list backward(
+        torch::autograd::AutogradContext *ctx,
+        torch::autograd::tensor_list grad_outputs)
+    {
+        auto grad_output = grad_outputs[0]; // shape [B]
 
-  /* Forward pass of soft-DTW */
-  auto D = softdtw_forward(dist, gamma);
+        // Retrieve saved tensors
+        auto saved = ctx->get_saved_variables();
+        auto D     = saved[0];
+        auto R     = saved[1];
+        double gamma = ctx->saved_data["gamma"].toDouble();
 
-  /* Compute alignment probabilities via backward on soft-DTW cost */
-  auto alignment = softdtw_alignment(dist, D, gamma);
+        // 1) We need partial derivative w.r.t. D
+        auto E = compute_softdtw_backward(D, R, gamma);  // [B, N, M]
 
-  return alignment.detach();
+        // 2) Multiply by grad_output broadcasted
+        auto expanded = grad_output.view({-1, 1, 1}); // [B,1,1]
+        auto grad_D   = expanded * E;                 // [B, N, M]
+
+        // Return gradient w.r.t. (D, gamma)
+        // gamma has no gradient here => torch::Tensor()
+        return {grad_D, torch::Tensor()};
+    }
+};
+
+// Helper to call SoftDTWFunction in forward passes:
+inline torch::Tensor soft_dtw_autograd(const torch::Tensor &D, double gamma)
+{
+    // Extra checks if desired:
+    TORCH_CHECK(D.dim() == 3, "D must be [B, N, M]");
+    // Could also ensure D is CPU here, if you want
+    // TORCH_CHECK(!D.is_cuda(), "soft_dtw_autograd expects a CPU tensor for D");
+
+    return SoftDTWFunction::apply(D, gamma);
 }
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 4) A C++ Module "SoftDTW" similar to the Python class
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+struct SoftDTWImpl : torch::nn::Module
+{
+    double gamma;
+    bool   normalize;
+    
+    SoftDTWImpl(double gamma_ = 1.0, bool normalize_ = false)
+        : gamma(gamma_), normalize(normalize_)
+    {
+        // empty
+    }
+
+    // x: [B, N, D], y: [B, M, D] -> dist: [B, N, M]
+    torch::Tensor calc_distance_matrix(const torch::Tensor &x, const torch::Tensor &y)
+    {
+        // Move to CPU + contiguous if needed
+        auto x_ = x.cpu().contiguous();
+        auto y_ = y.cpu().contiguous();
+
+        auto B = x_.size(0);
+        auto N = x_.size(1);
+        auto M = y_.size(1);
+        auto D = x_.size(2);
+
+        // Expand x => [B, N, M, D], y => [B, N, M, D]
+        auto x_expand = x_.unsqueeze(2).expand({B, N, M, D});
+        auto y_expand = y_.unsqueeze(1).expand({B, N, M, D});
+
+        // Sum of squared differences along D
+        auto dist = (x_expand - y_expand).pow(2).sum(/*dim=*/3); 
+        return dist; // [B, N, M]
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor> forward(const torch::Tensor &x, const torch::Tensor &y)
+    {
+        // Possibly unsqueeze if shape < 3
+        auto x_ = x;
+        auto y_ = y;
+        bool squeezed = false;
+        if (x_.dim() < 3) {
+            x_ = x_.unsqueeze(0); // => [1, N, D]
+            y_ = y_.unsqueeze(0); // => [1, M, D]
+            squeezed = true;
+        }
+
+        auto D_xy  = calc_distance_matrix(x_, y_);
+        auto out_xy = soft_dtw_autograd(D_xy, gamma);
+
+        if (normalize) {
+            // do the extra x-x, y-y
+            auto D_xx   = calc_distance_matrix(x_, x_);
+            auto out_xx = soft_dtw_autograd(D_xx, gamma);
+
+            auto D_yy   = calc_distance_matrix(y_, y_);
+            auto out_yy = soft_dtw_autograd(D_yy, gamma);
+
+            // replicate: out_xy - 1/2*(out_xx + out_yy)
+            auto result = out_xy - 0.5 * (out_xx + out_yy);
+
+            return std::make_tuple(
+                squeezed ? result.squeeze(0) : result,
+                squeezed ? D_xy.squeeze(0)   : D_xy
+            );
+        } else {
+            return std::make_tuple(
+                squeezed ? out_xy.squeeze(0) : out_xy,
+                squeezed ? D_xy.squeeze(0)   : D_xy
+            );
+        }
+    }
+};
+TORCH_MODULE(SoftDTW);
 
 } // namespace ts_tcc
 } // namespace wikimyei

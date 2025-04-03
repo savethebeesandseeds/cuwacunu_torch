@@ -13,8 +13,128 @@ namespace cuwacunu {
 namespace camahjucunu {
 namespace data {
 
+  /*
+   * Template Function: normalize_binary_file
+   * -----------------------------------
+   * Reads a binary file and reconstructs it into a binary file of the same size but normalized. 
+   *
+   * Requirements:
+   * - The template type T must be a POD type with no padding.
+   *
+   * Parameters:
+   * - bin_filename: Path to the input binary file.
+   * - buffer_size:  (Optional) Rolling window size (default to size of file).
+   *
+   * Returns:
+   * - void
+   */
+template <typename T>
+void normalize_binary_file(const std::string& bin_filename, std::size_t window_size = std::numeric_limits<std::size_t>::max()) {
+  log_info("[normalize_binary_file] Normalizing binary file from csv data file: %s%s%s\n", 
+    ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+
+  /* Open the file in read-write mode (both input and output), binary mode */
+  std::fstream bin_file(bin_filename, std::ios::in | std::ios::out | std::ios::binary);
+  if (!bin_file.is_open()) {
+    log_fatal("[normalize_binary_file] Error: Could not open the binary file: %s%s%s for reading and writing. \n", 
+      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+  }
+
+  /* Get the file size */
+  bin_file.seekg(0, std::ios::end);
+  std::streamsize file_size = bin_file.tellg();
+  bin_file.seekg(0, std::ios::beg);
+
+  /* Calculate the total number of records */
+  size_t total_records = file_size / sizeof(T);
+  if (file_size % sizeof(T) != 0) {
+    log_fatal("[normalize_binary_file] Error: Binary file size is not a multiple of struct size: %s%s%s\n", 
+      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+  }
+
+  /* assign the window_size */
+  if(window_size == std::numeric_limits<std::size_t>::max() || window_size > total_records) {
+    window_size = total_records;
+  }
+
+  /* Clear any error flags and reset the pointer to the beginning */
+  bin_file.clear();
+  bin_file.seekg(0, std::ios::beg);
+
+  /* initialize statistics pack  */
+  auto stats_pack = T::initialize_statistics_pack(window_size);
+
+  /* here, mean and std for all the fields in T is zero, we iterate before transforming the data */
+  while(!stats_pack.ready()) { /* iterate window_size times */
+    /* Read the record */
+    T record;
+    bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
+    if (!bin_file) {
+      log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
+        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+    }
+    /* update the statistics pack for the initial size */
+    stats_pack.update(record);
+  }
+
+  /* reset the file to the start again */
+  bin_file.clear();
+  bin_file.seekg(0, std::ios::beg);
+
+  /* loading bar */
+  START_LOADING_BAR(normalization_progress_bar_, 60, "Normalize binary file");
+
+  /* iterate over all the records to replace */
+  for (size_t i = 0; i < total_records; ++i) {
+    /* Read the record */
+    T record;
+    bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
+    if (!bin_file) {
+      log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
+        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+    }
+
+    if(record.is_valid()) {
+      /* Update the statistics space with the record */
+      stats_pack.update(record);
+      
+      /* Normalize the record */
+      T normalized_record = stats_pack.normalize(record);
+      
+      /* Move the put pointer back to the beginning of the record */
+      bin_file.seekp(-static_cast<std::streamoff>(sizeof(T)), std::ios::cur);
+
+      /* Write the modified record back */
+      bin_file.write(reinterpret_cast<const char*>(&normalized_record), sizeof(T));
+      if (!bin_file) {
+        log_fatal("[normalize_binary_file] Error: Failed to write to binary file: %s%s%s\n", 
+          ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+      }
+
+      /* Move the get pointer to the next record */
+      bin_file.seekg(bin_file.tellp(), std::ios::beg);
+
+      /* flush the changes */
+      bin_file.flush();
+
+    }
+    
+    /* update loading graph */
+    double current_percentage = static_cast<double>((static_cast<double>(i + 1) / total_records) * 100);
+    current_percentage = std::round(current_percentage * 100.0) / 100.0; /* round to two decimal places */
+    UPDATE_LOADING_BAR(normalization_progress_bar_, current_percentage);
+  }
+
+  /* finalize */
+  FINISH_LOADING_BAR(normalization_progress_bar_);
+
+  bin_file.close();
+  log_info("(normalize_binary_file) %sNormalization completed successfully%s. File: %s%s%s\n", 
+    ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+}
+
 template<typename T>
-std::string sanitize_csv_into_binary_file(const std::string& csv_filename, bool force_binarization = false, size_t buffer_size = 1024, char delimiter = ',') {
+std::string sanitize_csv_into_binary_file(const std::string& csv_filename, std::size_t normalization_window = 0, bool force_binarization = false, size_t buffer_size = 1024, char delimiter = ',') {
   log_info("[sanitize_csv_into_binary_file]\t %sPreparing binary:%s file from csv data file: %s\n", 
     ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, csv_filename.c_str());
   
@@ -184,138 +304,28 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename, bool 
     buffer.clear();
   }
 
-  /* finalize */
+  /* finalize handling the file */
   FINISH_LOADING_BAR(csv_file_preparation_progress_bar_);
 
   csv_file.close();
   bin_file.close();
+
+  /* --- --- --- Normalize --- --- --- */
+  if(normalization_window > 0) {
+    normalize_binary_file<T>(bin_filename, normalization_window);
+  } else {
+    log_info("(sanitize_csv_into_binary_file) No normalization configured. %s%s%s -> %s%s%s\n", 
+      ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+  }
+  
+  /* finish sanitation */
   log_info("(sanitize_csv_into_binary_file) %sConversion and sanitation completed successfully%s. %s%s%s -> %s%s%s\n", 
     ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, 
     ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
     ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
 
   return bin_filename;
-}
-
-
-  /*
-   * Template Function: normalize_binary_file
-   * -----------------------------------
-   * Reads a binary file and reconstructs it into a binary file of the same size but normalized. 
-   *
-   * Requirements:
-   * - The template type T must be a POD type with no padding.
-   *
-   * Parameters:
-   * - bin_filename: Path to the input binary file.
-   * - buffer_size:  (Optional) Rolling window size (default to size of file).
-   *
-   * Returns:
-   * - void
-   */
-template <typename T>
-void normalize_binary_file(const std::string& bin_filename, std::size_t window_size = std::numeric_limits<std::size_t>::max()) {
-  log_info("[normalize_binary_file] Normalizing binary file from csv data file: %s%s%s\n", 
-    ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
-
-  /* Open the file in read-write mode (both input and output), binary mode */
-  std::fstream bin_file(bin_filename, std::ios::in | std::ios::out | std::ios::binary);
-  if (!bin_file.is_open()) {
-    log_fatal("[normalize_binary_file] Error: Could not open the binary file: %s%s%s for reading and writing. \n", 
-      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
-  }
-
-  /* Get the file size */
-  bin_file.seekg(0, std::ios::end);
-  std::streamsize file_size = bin_file.tellg();
-  bin_file.seekg(0, std::ios::beg);
-
-  /* Calculate the total number of records */
-  size_t total_records = file_size / sizeof(T);
-  if (file_size % sizeof(T) != 0) {
-    log_fatal("[normalize_binary_file] Error: Binary file size is not a multiple of struct size: %s%s%s\n", 
-      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
-  }
-
-  /* assign the window_size */
-  if(window_size == std::numeric_limits<std::size_t>::max() || window_size > total_records) {
-    window_size = total_records;
-  }
-
-  /* Clear any error flags and reset the pointer to the beginning */
-  bin_file.clear();
-  bin_file.seekg(0, std::ios::beg);
-
-  /* initialize statistics pack  */
-  auto stats_pack = T::initialize_statistics_pack(window_size);
-
-  /* here, mean and std for all the fields in T is zero, we iterate before transforming the data */
-  while(!stats_pack.ready()) { /* iterate window_size times */
-    /* Read the record */
-    T record;
-    bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
-    if (!bin_file) {
-      log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
-        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
-    }
-    /* update the statistics pack for the initial size */
-    stats_pack.update(record);
-  }
-
-  /* reset the file to the start again */
-  bin_file.clear();
-  bin_file.seekg(0, std::ios::beg);
-
-  /* loading bar */
-  START_LOADING_BAR(normalization_progress_bar_, 60, "Normalize binary file");
-
-  /* iterate over all the records to replace */
-  for (size_t i = 0; i < total_records; ++i) {
-    /* Read the record */
-    T record;
-    bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
-    if (!bin_file) {
-      log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
-        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
-    }
-
-    if(record.is_valid()) {
-      /* Update the statistics space with the record */
-      stats_pack.update(record);
-      
-      /* Normalize the record */
-      T normalized_record = stats_pack.normalize(record);
-      
-      /* Move the put pointer back to the beginning of the record */
-      bin_file.seekp(-static_cast<std::streamoff>(sizeof(T)), std::ios::cur);
-
-      /* Write the modified record back */
-      bin_file.write(reinterpret_cast<const char*>(&normalized_record), sizeof(T));
-      if (!bin_file) {
-        log_fatal("[normalize_binary_file] Error: Failed to write to binary file: %s%s%s\n", 
-          ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
-      }
-
-      /* Move the get pointer to the next record */
-      bin_file.seekg(bin_file.tellp(), std::ios::beg);
-
-      /* flush the changes */
-      bin_file.flush();
-
-    }
-    
-    /* update loading graph */
-    double current_percentage = static_cast<double>((static_cast<double>(i + 1) / total_records) * 100);
-    current_percentage = std::round(current_percentage * 100.0) / 100.0; /* round to two decimal places */
-    UPDATE_LOADING_BAR(normalization_progress_bar_, current_percentage);
-  }
-
-  /* finalize */
-  FINISH_LOADING_BAR(normalization_progress_bar_);
-
-  bin_file.close();
-  log_info("(normalize_binary_file) %sNormalization completed successfully%s. File: %s%s%s\n", 
-    ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
 }
 
 } /* namespace data */

@@ -1,3 +1,5 @@
+/* torch_utils.h */
+#pragma once
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
 
@@ -43,6 +45,14 @@ void assert_tensor_shape(const torch::Tensor& tensor, int64_t expected_size, con
  * @param tensor The tensor whose information is to be printed.
  */
 void print_tensor_info(const torch::Tensor& tensor);
+
+/**
+ * Prints flatten nework tensor parameters.
+ *
+ * @param model The model to be inspected
+ * @param N max parameters to be printed
+ */
+void inspect_network_parameters(torch::nn::Module& model, int64_t N = 5);
 
 } /* namespace torch_compat */
 } /* namespace piaabo */
