@@ -107,7 +107,7 @@ public:
      */
     void load(const std::string& filepath);
 
-private:
+public:
     // device, training hyperparams
     torch::Device device;
     double lr;
