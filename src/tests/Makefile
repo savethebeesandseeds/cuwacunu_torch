@@ -104,6 +104,8 @@ test_ts2vec_state_dict:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_state_dict
 test_ts2vec:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec
+test_ts2vec_ECG200:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_ECG200
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

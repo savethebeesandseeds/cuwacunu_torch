@@ -78,13 +78,19 @@ struct UCRDataset {
 torch::Tensor vec2tensor(const std::vector<std::vector<double>>& data) {
     const int64_t rows = data.size();
     const int64_t cols = data[0].size();
-    std::vector<double> flat;
-    flat.reserve(rows * cols);
-    for (const auto& row : data) {
-        flat.insert(flat.end(), row.begin(), row.end());
+    
+    auto tensor = torch::empty({rows, cols}, torch::TensorOptions().dtype(torch::kFloat));
+
+    auto tensor_accessor = tensor.accessor<float, 2>();
+    for (int64_t i = 0; i < rows; ++i) {
+        for (int64_t j = 0; j < cols; ++j) {
+            tensor_accessor[i][j] = static_cast<float>(data[i][j]);
+        }
     }
-    return torch::from_blob(flat.data(), {rows, cols}, torch::TensorOptions().dtype(torch::kFloat64)).clone();
+
+    return tensor;
 }
+
 
 UCRDataset load_UCR(const std::string& dataset_name) {
     std::string base_path = "/cuwacunu/data/tests/UCR/" + dataset_name + "/";

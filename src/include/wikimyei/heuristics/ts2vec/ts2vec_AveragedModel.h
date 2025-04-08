@@ -93,7 +93,7 @@ public:
                  const auto& name = item.key();
                  if(avg_params.contains(name)) {
                      auto& avg_tensor = avg_params[name];
-                     auto src_tensor_converted = item.value().to(avg_tensor.device());
+                     auto src_tensor_converted = item.value().to(avg_tensor.dtype()).to(avg_tensor.device());
                      avg_tensor.mul_(double(count) / double(count + 1))
                                .add_(src_tensor_converted / double(count + 1));
                  } else {

@@ -4,21 +4,20 @@
 namespace cuwacunu {
 namespace wikimyei {
 namespace ts2vec {
-
 // ---------------------------------------------
 // Constructor
 // ---------------------------------------------
 TS2Vec::TS2Vec(
-    int input_dims,
-    int output_dims,
-    int hidden_dims,
-    int depth,
+    int input_dims_,
+    int output_dims_,
+    int hidden_dims_,
+    int depth_,
     torch::Device device_,
     double lr_,
     int batch_size_,
     std::optional<int> max_train_length_,
     int temporal_unit_,
-    std::string encoder_mask_mode,
+    std::string encoder_mask_mode_,
     bool enable_buffer_averaging_
 ) : device(device_),
     lr(lr_),
@@ -28,11 +27,11 @@ TS2Vec::TS2Vec(
     // Initialize the base TSEncoder
     _net(register_module("_net", 
         cuwacunu::wikimyei::ts2vec::TSEncoder(
-            input_dims, 
-            output_dims, 
-            hidden_dims, 
-            depth, 
-            encoder_mask_mode
+            input_dims_, 
+            output_dims_, 
+            hidden_dims_, 
+            depth_, 
+            encoder_mask_mode_
         )
     )),
     // Create the SWA model (averaged copy of _net); "true" means we can do buffer averaging if desired
@@ -72,54 +71,56 @@ std::vector<double> TS2Vec::fit(
             train_data = split_with_nan(train_data, sections, /*dim=*/1);
         }
     }
-
     // 2) Centerize if the first or last timesteps are entirely NaN
     {
         auto temporal_missing = torch::isnan(train_data).all(-1).any(0);
         if (temporal_missing[0].item<bool>() ||
-            temporal_missing[temporal_missing.size(0)-1].item<bool>()) {
+        temporal_missing[temporal_missing.size(0)-1].item<bool>()) {
             train_data = centerize_vary_length_series(train_data);
         }
     }
-
+    
     // 3) Remove all‐NaN samples
     {
         auto sample_nan_mask = torch::isnan(train_data).all(/*dim2=*/2).all(/*dim1=*/1);
         train_data = train_data.index({~sample_nan_mask});
     }
+    
 
     // 4) Build dataset & DataLoader
     //    "TensorDataset" → "Stack transform" → random sampler → DataLoader
     auto dataset = torch::data::datasets::TensorDataset(train_data)
         .map(torch::data::transforms::Stack<torch::data::Example<torch::Tensor, void>>());
-
+    
     auto ds_size = dataset.size().value();
     torch::data::samplers::RandomSampler loader_sampler(ds_size);
     torch::data::DataLoaderOptions loader_options(
         std::min<int64_t>(batch_size, ds_size)
     );
     loader_options.drop_last(true);
-
+    
     auto dataloader = torch::data::make_data_loader(
         std::move(dataset),
         loader_sampler,
         loader_options
     );
 
+    
     // 5) Training loop
     int epoch_count = 0;
     int iter_count = 0;
     bool stop_loop = false;
     std::vector<double> loss_log;
-
+    
     // Set base net & SWA net to training mode
     _net->train();
     _swa_net->encoder().train();
-
+    
     while (!stop_loop) {
         if (n_epochs >= 0 && epoch_count >= n_epochs) {
             break;
         }
+        
 
         double cum_loss = 0.0;
         int epoch_iters = 0;
@@ -192,16 +193,17 @@ std::vector<double> TS2Vec::fit(
             iter_count++;
         } // end for dataloader
 
+        
         if (!stop_loop && epoch_iters > 0) {
             double avg_loss = cum_loss / static_cast<double>(epoch_iters);
             loss_log.push_back(avg_loss);
-
+            
             if (verbose) {
                 std::cout << "[Epoch #" << epoch_count << "] Loss = "
-                          << avg_loss << std::endl;
+                << avg_loss << std::endl;
             }
         }
-
+        
         epoch_count++;
     }
 

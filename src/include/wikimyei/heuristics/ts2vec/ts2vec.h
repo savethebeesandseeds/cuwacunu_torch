@@ -15,7 +15,7 @@
 namespace cuwacunu {
 namespace wikimyei {
 namespace ts2vec {
-
+    
 /*
  * TS2Vec: A C++ implementation of the TS2Vec model, paralleling
  * the Python code snippet. It uses:
@@ -30,15 +30,16 @@ public:
     /**
      * Constructor
      *
-     * @param input_dims: number of input features
-     * @param output_dims: dimension of the learned representation
-     * @param hidden_dims: dimension of hidden layers in TSEncoder
-     * @param depth: number of residual blocks in TSEncoder
+     * @param input_dims_: number of input features
+     * @param output_dims_: dimension of the learned representation
+     * @param hidden_dims_: dimension of hidden layers in TSEncoder
+     * @param depth_: number of residual blocks in TSEncoder
      * @param device_: the device for training/inference (CPU/GPU)
      * @param lr_: learning rate
      * @param batch_size_: batch size
      * @param max_train_length_: optional maximum training length for each sample
      * @param temporal_unit_: smallest time resolution unit used in hierarchical contrast
+     * @param encoder_mask_mode_: type of mask for the encoder: ["binomial", "continuous", "all_true", "all_false", "mask_last"]
      * @param enable_buffer_averaging_: If true, buffers (e.g., BatchNorm running stats) in the averaged model 
                                         (_swa_net) are updated using the same averaging formula as parameters. 
                                         If false (default), buffers are directly copied from the training model 
@@ -46,16 +47,16 @@ public:
                                         BatchNorm update step after training).
     */
     TS2Vec(
-        int input_dims,
-        int output_dims = 320,
-        int hidden_dims = 64,
-        int depth = 10,
+        int input_dims_,
+        int output_dims_ = 320,
+        int hidden_dims_ = 64,
+        int depth_ = 10,
         torch::Device device_ = torch::kCUDA,
         double lr_ = 0.001,
         int batch_size_ = 16,
         std::optional<int> max_train_length_ = std::nullopt,
         int temporal_unit_ = 0,
-        std::string encoder_mask_mode="binomial",
+        std::string encoder_mask_mode_="binomial",
         bool enable_buffer_averaging_ = false
     );
 

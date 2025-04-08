@@ -93,10 +93,11 @@ inline torch::Tensor centerize_vary_length_series(torch::Tensor x) {
     auto suffix_zeros = (~isnan.flip(1)).to(torch::kInt64).argmax(1);
     auto offset = ((prefix_zeros + suffix_zeros) / 2 - prefix_zeros).unsqueeze(1);
 
-    auto indices = torch::arange(x.size(1), x.options()).unsqueeze(0).repeat({x.size(0), 1}) - offset;
-    indices = indices.clamp(0, x.size(1) - 1);
+    auto indices_base = torch::arange(x.size(1), torch::dtype(torch::kLong).device(x.device())).unsqueeze(0).repeat({x.size(0), 1});
+    auto indices = (indices_base - offset).clamp(0, x.size(1) - 1).to(torch::kLong);
 
-    auto rows = torch::arange(x.size(0), x.options()).unsqueeze(1).expand_as(indices);
+    auto rows = torch::arange(x.size(0), torch::dtype(torch::kLong).device(x.device())).unsqueeze(1).expand_as(indices).to(torch::kLong);
+
     return x.index({rows, indices});
 }
 

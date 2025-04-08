@@ -59,6 +59,12 @@ $(TEST_BUILD)/test_ts2vec: $(HERE_PATH)/test_ts2vec.cpp
 	$(RUN_MODE) $(TEST_BUILD)/test_ts2vec
 test_ts2vec: $(TEST_BUILD)/test_ts2vec
 # -----------------------------------------------------------------
+.PHONY: $(TEST_BUILD)/test_ts2vec_ECG200 test_ts2vec_ECG200
+$(TEST_BUILD)/test_ts2vec_ECG200: $(HERE_PATH)/test_ts2vec_ECG200.cpp
+	@$(COMMON_TORCH_COMPILE_CMD)
+	$(RUN_MODE) $(TEST_BUILD)/test_ts2vec_ECG200
+test_ts2vec_ECG200: $(TEST_BUILD)/test_ts2vec_ECG200
+# -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all
