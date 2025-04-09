@@ -25,7 +25,7 @@ int main() {
     // -----------------------------------------------------
     // 2) Load the Data
     // -----------------------------------------------------
-    cuwacunu::wikimyei::ts2vec::UCRDataset dataset = cuwacunu::wikimyei::ts2vec::load_UCR("ECG200");
+    cuwacunu::wikimyei::ts2vec::UCRDataset dataset = cuwacunu::wikimyei::ts2vec::load_UCR("ECG200"); // [B, T, C]
     print_tensor_info(dataset.train_data, "dataset.train_data");//waka
 
     // -----------------------------------------------------
@@ -41,16 +41,17 @@ int main() {
         /* batch_size */32,
         /* max_train_length */3000,
         /* temporal_unit */0,
-        /* encoder_mask_mode */ "binomial",
+        /* default_encoder_mask_mode */ cuwacunu::wikimyei::ts2vec::TSEncoder_MaskMode_e::Binomial,
+        /* pad_mask */ c10::nullopt,
         /* enable_buffer_averaging_ */ false
     );
-    
+
     // -----------------------------------------------------
     // 4) Train
     // -----------------------------------------------------
     std::cout << ">>> Training in C++:\n";
     auto loss_log = model.fit(
-        /* train_data */ dataset.train_data,
+        /* train_data */ dataset.train_data, // [all, T, C]
         /* n_epochs */ 64,
         /* n_iters */ -1,
         /* verbose */true);

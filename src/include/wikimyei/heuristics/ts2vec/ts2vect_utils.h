@@ -16,11 +16,11 @@ namespace cuwacunu {
 namespace wikimyei {
 namespace ts2vec {
 
-// ---------------------------
-// Padding Operations
-// ---------------------------
+/* --------------------------- */
+/* Padding Operations */
+/* --------------------------- */
 
-// Pad tensor with NaNs on left and right
+/* Pad tensor with NaNs on left and right */
 inline torch::Tensor torch_pad_nan(torch::Tensor arr, int64_t left = 0, int64_t right = 0, int64_t dim = 0) {
     if (left > 0) {
         auto pad_shape = arr.sizes().vec();
@@ -37,7 +37,7 @@ inline torch::Tensor torch_pad_nan(torch::Tensor arr, int64_t left = 0, int64_t 
     return arr;
 }
 
-// Pad numpy-like arrays to a specific length with NaNs (using tensors)
+/* Pad numpy-like arrays to a specific length with NaNs (using tensors) */
 inline torch::Tensor pad_nan_to_target(torch::Tensor array, int64_t target_length, int64_t axis = 0, bool both_side = false) {
     int64_t pad_size = target_length - array.size(axis);
     if (pad_size <= 0)
@@ -54,11 +54,11 @@ inline torch::Tensor pad_nan_to_target(torch::Tensor array, int64_t target_lengt
     return torch::constant_pad_nd(array, pad, std::numeric_limits<double>::quiet_NaN());
 }
 
-// ---------------------------
-// Splitting Operations
-// ---------------------------
+/* --------------------------- */
+/* Splitting Operations */
+/* --------------------------- */
 
-// Split tensor into sections and pad each with NaNs to match lengths
+/* Split tensor into sections and pad each with NaNs to match lengths */
 inline torch::Tensor split_with_nan(torch::Tensor x, int sections, int64_t axis = 0) {
     auto arrs = x.tensor_split(sections, axis);
     int64_t target_length = arrs[0].size(axis);
@@ -67,14 +67,14 @@ inline torch::Tensor split_with_nan(torch::Tensor x, int sections, int64_t axis 
         arr = pad_nan_to_target(arr, target_length, axis);
     }
 
-    // Concatenate along batch dimension (assuming batch dimension = 0)
+    /* Concatenate along batch dimension (assuming batch dimension = 0) */
     return torch::cat(arrs, /*dim=*/0);
 }
-// ---------------------------
-// Tensor Selection
-// ---------------------------
+/* --------------------------- */
+/* Tensor Selection */
+/* --------------------------- */
 
-// Select segments per row based on indices
+/* Select segments per row based on indices */
 inline torch::Tensor take_per_row(const torch::Tensor& A, const torch::Tensor& indices, int64_t num_elem) {
     auto range = torch::arange(num_elem, indices.options());
     auto all_indices = indices.unsqueeze(-1) + range;
@@ -82,11 +82,11 @@ inline torch::Tensor take_per_row(const torch::Tensor& A, const torch::Tensor& i
     return A.index({rows, all_indices});
 }
 
-// ---------------------------
-// Centering Series
-// ---------------------------
+/* --------------------------- */
+/* Centering Series */
+/* --------------------------- */
 
-// Center series with varying lengths
+/* Center series with varying lengths */
 inline torch::Tensor centerize_vary_length_series(torch::Tensor x) {
     auto isnan = torch::isnan(x).all(-1);
     auto prefix_zeros = (~isnan).to(torch::kInt64).argmax(1);
@@ -101,11 +101,11 @@ inline torch::Tensor centerize_vary_length_series(torch::Tensor x) {
     return x.index({rows, indices});
 }
 
-// ---------------------------
-// Data Augmentation
-// ---------------------------
+/* --------------------------- */
+/* Data Augmentation */
+/* --------------------------- */
 
-// Dropout elements randomly and replace with NaNs
+/* Dropout elements randomly and replace with NaNs */
 inline torch::Tensor data_dropout(torch::Tensor arr, double p) {
     auto mask = torch::rand(arr.sizes(), arr.options()) < p;
     auto res = arr.clone();
@@ -113,9 +113,9 @@ inline torch::Tensor data_dropout(torch::Tensor arr, double p) {
     return res;
 }
 
-// ---------------------------
-// Utility: Naming with Datetime
-// ---------------------------
+/* --------------------------- */
+/* Utility: Naming with Datetime */
+/* --------------------------- */
 
 inline std::string name_with_datetime(const std::string& prefix = "default") {
     auto now = std::chrono::system_clock::now();
@@ -125,9 +125,9 @@ inline std::string name_with_datetime(const std::string& prefix = "default") {
     return oss.str();
 }
 
-// ---------------------------
-// Initialize DL Program
-// ---------------------------
+/* --------------------------- */
+/* Initialize DL Program */
+/* --------------------------- */
 
 inline torch::Device init_dl_program(
     const std::string& device_name = "cuda",
@@ -162,6 +162,6 @@ inline torch::Device init_dl_program(
     return device;
 }
 
-} // namespace ts2vec
-} // namespace wikimyei
-} // namespace cuwacunu
+} /* namespace ts2vec */
+} /* namespace wikimyei */
+} /* namespace cuwacunu */

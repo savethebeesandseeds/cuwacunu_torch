@@ -6,7 +6,7 @@
 #include <vector>
 #include "wikimyei/heuristics/ts2vec/encoder.h"
 #include "wikimyei/heuristics/ts2vec/losses.h"
-#include "wikimyei/heuristics/ts2vec/utils.h"
+#include "wikimyei/heuristics/ts2vec/ts2vect_utils.h"
 #include "wikimyei/heuristics/ts2vec/ts2vec_AveragedModel.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -39,7 +39,8 @@ public:
      * @param batch_size_: batch size
      * @param max_train_length_: optional maximum training length for each sample
      * @param temporal_unit_: smallest time resolution unit used in hierarchical contrast
-     * @param encoder_mask_mode_: type of mask for the encoder: ["binomial", "continuous", "all_true", "all_false", "mask_last"]
+     * @param default_encoder_mask_mode_: type of mask for the encoder: ["binomial", "continuous", "all_true", "all_false", "mask_last"]
+     * @param pad_mask_: Optional binary mask of shape [T, C] indicating padded or invalid positions.
      * @param enable_buffer_averaging_: If true, buffers (e.g., BatchNorm running stats) in the averaged model 
                                         (_swa_net) are updated using the same averaging formula as parameters. 
                                         If false (default), buffers are directly copied from the training model 
@@ -54,9 +55,10 @@ public:
         torch::Device device_ = torch::kCUDA,
         double lr_ = 0.001,
         int batch_size_ = 16,
-        std::optional<int> max_train_length_ = std::nullopt,
+        c10::optional<int> max_train_length_ = c10::nullopt,
         int temporal_unit_ = 0,
-        std::string encoder_mask_mode_="binomial",
+        TSEncoder_MaskMode_e default_encoder_mask_mode_ = TSEncoder_MaskMode_e::Binomial,
+        c10::optional<torch::Tensor> pad_mask_ = c10::nullopt, 
         bool enable_buffer_averaging_ = false
     );
 
@@ -77,25 +79,36 @@ public:
     );
 
     /**
-     * encode: run inference with the SWA/EMA model
+     * @brief Encodes a batch of time series data using the SWA-averaged model.
      * 
-     * @param data: a 3D tensor (N, T, C)
-     * @param mask: string specifying mask type (for your TSEncoder usage)
-     * @param encoding_window: optional string for pooling, e.g. "full_series"
-     * @param causal: if true, do not use future context
-     * @param sliding_length: optional sliding window length
-     * @param sliding_padding: context padding on each side
-     * @param batch_size_: optional custom batch size
-     * @return a tensor of encoded features
+     * Runs inference over the input data using the stabilized (SWA/EMA) encoder.
+     * Returns either full per-timestep embeddings or a pooled summary, depending
+     * on the `encoding_window` parameter.
+     * 
+     * @param data             A 3D tensor of shape (N, T, C), where:
+     *                           - N is the number of samples,
+     *                           - T is the number of time steps,
+     *                           - C is the number of input channels/features.
+     * @param mask_mode_overwrite             A string specifying how the input is masked during encoding,
+     *                         e.g., "all_true", "mask_last", etc., as used by the encoder.
+     * @param encoding_window  If set to "full_series", applies global max pooling over time,
+     *                         returning a single embedding vector per sequence (shape: N × 1 × C).
+     *                         If unset or any other value, returns one embedding per timestep (N × T × C).
+     * @param causal           If true, restricts encoding to use only past and present context (currently unused).
+     * @param sliding_length   If set, enables sliding window encoding over the sequence (not yet implemented).
+     * @param sliding_padding  Amount of context (padding) to include on each side when using sliding windows.
+     * @param batch_size_      Optional override for the batch size during encoding.
+     * 
+     * @return torch::Tensor   Encoded tensor of shape (N, T, C) or (N, 1, C), depending on `encoding_window`.
      */
     torch::Tensor encode(
         torch::Tensor data,
-        std::string mask = "all_true",
-        std::optional<std::string> encoding_window = std::nullopt,
+        c10::optional<TSEncoder_MaskMode_e> mask_mode_overwrite = TSEncoder_MaskMode_e::AllTrue,
+        c10::optional<std::string> encoding_window = c10::nullopt,
         bool causal = false,
-        std::optional<int> sliding_length = std::nullopt,
+        c10::optional<int> sliding_length = c10::nullopt,
         int sliding_padding = 0,
-        std::optional<int> batch_size_ = std::nullopt
+        c10::optional<int> batch_size_ = c10::nullopt
     );
 
     /**
@@ -109,32 +122,32 @@ public:
     void load(const std::string& filepath);
 
 public:
-    // device, training hyperparams
+    /* device, training hyperparams */
     torch::Device device;
     double lr;
     int batch_size;
-    std::optional<int> max_train_length;
+    c10::optional<int> max_train_length;
     int temporal_unit;
-    std::string encoder_mask_mode;
 
-    // The base TSEncoder (trainable model)
+    /* The base TSEncoder (trainable model) */
     TSEncoder _net{nullptr};
 
-    // The SWA/EMA version of the TSEncoder
-    // using our custom AveragedTSEncoder
+    /* The SWA/EMA version of the TSEncoder */
+    /* using our custom AveragedTSEncoder */
     AveragedTSEncoder _swa_net{nullptr};
 
-    // AdamW optimizer for the base TSEncoder
+    /* AdamW optimizer for the base TSEncoder */
     torch::optim::AdamW optimizer;
 
-    // (Optional) helper function if you do specialized pooling or mask logic
+    /* (Optional) helper function if you do specialized pooling or mask_mode logic */
     torch::Tensor _eval_with_pooling(
         torch::Tensor x,
-        const std::string& mask,
-        std::optional<std::string> encoding_window
+        c10::optional<TSEncoder_MaskMode_e> mask_mode_overwrite = c10::nullopt,
+        c10::optional<std::string> encoding_window = c10::nullopt,
+        c10::optional<std::pair<int,int>> slicing = c10::nullopt
     );
 };
 
-} // namespace ts2vec
-} // namespace wikimyei
-} // namespace cuwacunu
+} /* namespace ts2vec */
+} /* namespace wikimyei */
+} /* namespace cuwacunu */
