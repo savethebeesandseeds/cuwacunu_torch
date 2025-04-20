@@ -1,4 +1,4 @@
-/* ts2vec_AveragedModel.h */
+/* vicreg_4d_AveragedModel.h */
 #pragma once
 
 #include <torch/torch.h>
@@ -8,24 +8,24 @@
 #include <string>
 #include <stdexcept> /* For runtime_error */
 
-#include "wikimyei/heuristics/ts2vec/ts2vec_encoder.h"
+#include "wikimyei/heuristics/VICReg/vicreg_4d_encoder.h"
 
 namespace cuwacunu {
 namespace wikimyei {
-namespace ts2vec {
+namespace vicreg_4d {
 
 /*
  * A C++ "AveragedModel" that parallels torch.optim.swa_utils.AveragedModel
- *   - an internal copy of TSEncoder (averaged_encoder_)
+ *   - an internal copy of VICReg_4D_Encoder (averaged_encoder_)
  *   - a buffer n_averaged_ to track how many updates we've done
  *   - an optional bool enable_buffer_averaging_ to decide whether we average buffers or just copy them
  */
-class AveragedTSEncoderImpl : public torch::nn::Module {
+class StochasticWeightAverage_EncoderImpl : public torch::nn::Module {
 public:
     /* --- SIMPLIFIED CONSTRUCTOR --- */
     /* No longer needs config args, just the source model to clone */
-    explicit AveragedTSEncoderImpl(
-        const TSEncoder& source_encoder_wrapper, /* Pass the source wrapper */
+    explicit StochasticWeightAverage_EncoderImpl(
+        const VICReg_4D_Encoder& source_encoder_wrapper, /* Pass the source wrapper */
         torch::Device device,
         bool enable_buffer_averaging = false                 /* Default from original code */
     )
@@ -39,12 +39,12 @@ public:
         TORCH_CHECK(cloned_base_ptr, "source_encoder_wrapper->clone() returned null!");
 
         /* 2. Downcast the base pointer to the specific Impl pointer. */
-        std::shared_ptr<TSEncoderImpl> cloned_impl_ptr =
-            std::dynamic_pointer_cast<TSEncoderImpl>(cloned_base_ptr);
-        TORCH_CHECK(cloned_impl_ptr, "dynamic_pointer_cast to TSEncoderImpl failed after clone()!");
+        std::shared_ptr<VICReg_4D_EncoderImpl> cloned_impl_ptr =
+            std::dynamic_pointer_cast<VICReg_4D_EncoderImpl>(cloned_base_ptr);
+        TORCH_CHECK(cloned_impl_ptr, "dynamic_pointer_cast to VICReg_4D_EncoderImpl failed after clone()!");
 
         /* 3. Create the wrapper for the successfully cloned Impl object. */
-        TSEncoder cloned_encoder_wrapper(cloned_impl_ptr);
+        VICReg_4D_Encoder cloned_encoder_wrapper(cloned_impl_ptr);
 
         /* 4. Register the NEW *WRAPPER* as the submodule. */
         /*    This holds our independent, cloned internal encoder. */
@@ -68,7 +68,7 @@ public:
 
     /* --- update_parameters --- */
     /* Accepts the SOURCE module wrapper. Uses standard -> access now. */
-    void update_parameters(const TSEncoder& source_encoder_wrapper) {
+    void update_parameters(const VICReg_4D_Encoder& source_encoder_wrapper) {
          torch::NoGradGuard no_grad;
 
          /* Use standard wrapper->method() access */
@@ -139,18 +139,18 @@ public:
      }
 
     /* --- Forward pass (remains the same) --- */
-    torch::Tensor forward(const torch::Tensor& x,
-        c10::optional<TSEncoder_MaskMode_e> mask_mode_overwrite = c10::nullopt)
+    torch::Tensor forward(const torch::Tensor &x_input,
+        c10::optional<torch::Tensor> x_mask = c10::nullopt)
     {
         /* Calls forward on the internal averaged_encoder_ wrapper -> Impl */
-        return averaged_encoder_->forward(x, mask_mode_overwrite);
+        return averaged_encoder_->forward(x_input, x_mask);
     }
 
     /* --- Accessor for the underlying implementation (remains the same) --- */
-    TSEncoderImpl& encoder() {
+    VICReg_4D_EncoderImpl& encoder() {
         return *averaged_encoder_; /* operator* still gives Impl& */
     }
-    const TSEncoderImpl& encoder() const {
+    const VICReg_4D_EncoderImpl& encoder() const {
          return *averaged_encoder_; /* const version */
     }
 
@@ -160,12 +160,12 @@ private:
     torch::Tensor n_averaged_;
 
     /* Store the TORCH_MODULE wrapper for the *cloned* averaged encoder */
-    TSEncoder averaged_encoder_{nullptr};
+    VICReg_4D_Encoder averaged_encoder_{nullptr};
 };
 
-/* Keep the TORCH_MODULE macro for the AveragedTSEncoder wrapper */
-TORCH_MODULE(AveragedTSEncoder);
+/* Keep the TORCH_MODULE macro for the StochasticWeightAverage_Encoder wrapper */
+TORCH_MODULE(StochasticWeightAverage_Encoder);
 
-} /* namespace ts2vec */
+} /* namespace vicreg_4d */
 } /* namespace wikimyei */
 } /* namespace cuwacunu */

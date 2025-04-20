@@ -1,6 +1,6 @@
 #include <torch/torch.h>
 #include <iostream>
-#include "wikimyei/heuristics/ts2vec/losses.h"
+#include "wikimyei/heuristics/ts2vec/ts2vec_losses.h"
 
 
 void run_test(int B, int T, int C, double alpha = 0.5, int temporal_unit = 0) {

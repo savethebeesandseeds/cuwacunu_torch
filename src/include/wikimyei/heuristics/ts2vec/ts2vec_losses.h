@@ -79,7 +79,7 @@ inline torch::Tensor temporal_contrastive_loss(const torch::Tensor& z1, const to
 
     auto sim = torch::matmul(z, z.transpose(1, 2));       // [B, 2T, 2T]
 
-    // Carefully reproduce Python's slicing behavior:
+    // Carefully reproduce slicing behavior:
     auto logits_lower = sim.tril(-1).slice(2, 0, 2*T - 1);
     auto logits_upper = sim.triu(1).slice(2, 1, 2*T);
     auto logits = logits_lower + logits_upper;

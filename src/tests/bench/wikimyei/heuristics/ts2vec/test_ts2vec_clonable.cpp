@@ -8,7 +8,7 @@
 #include <typeinfo> // For typeid
 
 #include "wikimyei/heuristics/ts2vec/dilated_conv.h"
-#include "wikimyei/heuristics/ts2vec/encoder.h"
+#include "wikimyei/heuristics/ts2vec/ts2vec_encoder.h"
 
 // Define the simplest possible Cloneable module inline
 // --- Inherits from torch::nn::Cloneable ---

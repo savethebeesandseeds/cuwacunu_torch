@@ -161,6 +161,61 @@ UCRDataset load_UCR(const std::string& dataset_name) {
     return UCRDataset(train_tensor, train_labels_tensor, test_tensor, test_labels_tensor);
 }
 
+/**
+ * @brief Clean and preprocess time series data.
+ *
+ * This function takes a 3D tensor of shape [N, T, D] representing time series data 
+ * and performs the following operations:
+ * 
+ * 1. Optionally splits each sequence along the time axis if its length exceeds 
+ *    `max_train_length`, inserting NaNs between splits using `split_with_nan`.
+ * 
+ * 2. If the first or last time step across all samples contains only NaNs 
+ *    (indicating padding), the sequence is centerized using `centerize_vary_length_series`.
+ * 
+ * 3. Any sample (along the batch dimension) that contains only NaNs across all time 
+ *    steps and features is removed.
+ *
+ * @param data A tensor of shape [N, T, D] representing a batch of time series.
+ * @param max_train_length Optional maximum time length per sample. If provided and
+ *                         the current time length is at least twice this value,
+ *                         sequences are split with NaN-padding separators.
+ * @return A cleaned tensor with sequences possibly split, centerized, and
+ *         samples with entirely missing data removed.
+ */
+torch::Tensor clean_data(
+    const torch::Tensor& data,
+    c10::optional<int> max_train_length
+) {
+    /* 0) Make a copy of the data */
+    torch::Tensor cleaned_data = data;
+
+    /* 1) Possibly split if a maximum length is set */
+    if (max_train_length.has_value()) {
+        int64_t sections = cleaned_data.size(1) / max_train_length.value();
+        /* If each sample is longer than max_train_length, we can split it */
+        if (sections >= 2) {
+            /* This utility presumably splits along dim=1, returns concatenated results */
+            cleaned_data = split_with_nan(cleaned_data, sections, /*dim=*/1);
+        }
+    }
+    /* 2) Centerize if the first or last timesteps are entirely NaN */
+    {
+        auto temporal_missing = torch::isnan(cleaned_data).all(-1).any(0);
+        if (temporal_missing[0].item<bool>() ||
+        temporal_missing[temporal_missing.size(0)-1].item<bool>()) {
+            cleaned_data = centerize_vary_length_series(cleaned_data);
+        }
+    }
+    
+    /* 3) Remove all‐NaN samples */
+    {
+        auto sample_nan_mask = torch::isnan(cleaned_data).all(/*dim2=*/2).all(/*dim1=*/1);
+        cleaned_data = cleaned_data.index({~sample_nan_mask});
+    }
+    
+    return cleaned_data;
+}
 } /* namespace ts2vec */
 } /* namespace wikimyei */
 } /* namespace cuwacunu */

@@ -9,7 +9,7 @@
 //     // 1) Set Seed and Device
 //     // -----------------------------------------------------
 //     torch::manual_seed(42);
-//     torch::Device device(torch::kCPU); // Match Python test device
+//     torch::Device device(torch::kCPU);
 //     std::cout << "Using device: " << device << std::endl;
 
 //     // -----------------------------------------------------
@@ -132,11 +132,7 @@ int main() {
         param.data().fill_(0.0);
     }
 
-    // 4) Create the same known input used in Python
-    //    In Python, we had:
-    //       test_input_np = np.array([[[float(i + j) for _ in range(1)] for j in range(10)] for i in range(5)], dtype=np.float32)
-    //    That means for i in [0..4], j in [0..9], entry = (i + j)
-    //    shape => (5,10,1)
+    // 4) Create the same known input 
     std::vector<float> inputData;
     inputData.reserve(5 * 10);
     for (int i=0; i<5; i++){

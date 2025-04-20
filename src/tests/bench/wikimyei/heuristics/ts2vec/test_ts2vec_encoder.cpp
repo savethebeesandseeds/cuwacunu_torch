@@ -6,7 +6,7 @@
 
 // Include your encoder header relative to this test file's location
 // Adjust the path if necessary
-#include "wikimyei/heuristics/ts2vec/encoder.h"
+#include "wikimyei/heuristics/ts2vec/ts2vec_encoder.h"
 
 // Assuming the necessary types are in this namespace
 using namespace cuwacunu::wikimyei::ts2vec;

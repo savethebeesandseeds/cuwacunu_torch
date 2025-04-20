@@ -28,7 +28,7 @@
 //     print_tensor_slice(x);
 
 //     cuwacunu::wikimyei::ts2vec::DilatedConvEncoder encoder(in_channels, channels, kernel_size);
-//     encoder->eval();  // To match Python eval behavior
+//     encoder->eval(); 
 
 //     for (size_t i = 0; i < encoder->net->size(); ++i) {
 //         auto layer = encoder->net->ptr(i)->as<cuwacunu::wikimyei::ts2vec::ConvBlock>();
