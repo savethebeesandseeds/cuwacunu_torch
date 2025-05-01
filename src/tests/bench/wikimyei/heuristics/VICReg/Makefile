@@ -6,7 +6,7 @@ include $(ROOT_PATH)/Makefile.config
 # -----------------------------------------------------------------
 # Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/heuristics/ts2vec
+HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/heuristics/VICReg
 TEST_BUILD := $(ROOT_PATH)/tests/build
 COMMON_TORCH_COMPILE_CMD = \
 	$(LOG_START) && $(LOCAL_CLEAN) && \
@@ -17,11 +17,11 @@ COMMON_TORCH_COMPILE_CMD = \
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_vicreg_4d_BTC test_vicreg_4d_BTC
-$(TEST_BUILD)/test_vicreg_4d_BTC: $(HERE_PATH)/test_vicreg_4d_BTC.cpp
+.PHONY: $(TEST_BUILD)/test_vicreg_4d_observation_pipeline test_vicreg_4d_observation_pipeline
+$(TEST_BUILD)/test_vicreg_4d_observation_pipeline: $(HERE_PATH)/test_vicreg_4d_observation_pipeline.cpp
 	@$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_vicreg_4d_BTC
-test_vicreg_4d_BTC: $(TEST_BUILD)/test_vicreg_4d_BTC
+	$(RUN_MODE) $(TEST_BUILD)/test_vicreg_4d_observation_pipeline
+test_vicreg_4d_observation_pipeline: $(TEST_BUILD)/test_vicreg_4d_observation_pipeline
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

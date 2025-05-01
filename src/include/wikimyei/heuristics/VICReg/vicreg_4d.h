@@ -19,9 +19,6 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-
-#define T_BUFFER 50 /* Time dimension Buffer: usualy empty, in training this buffer space is used for time wrapping */
-
 namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
@@ -87,18 +84,15 @@ public:
         int C_, // n channels
         int T_, // n timesteps
         int D_, // n features
-        double invariance_coeff, // Invariance loss coeficient
-        double variance_coeff,   // Variance loss coeficient
-        double covariance_coeff, // Covriance loss coeficient
         int encoding_dims_ = 320,
         int channel_expansion_dim_ = 64,
         int fused_feature_dim_ = 128,
         int encoder_hidden_dims_ = 64,
         int encoder_depth_ = 10,
         std::string projector_mlp_spec_ = "8192-8192-8192", // layer specification for the projector
-        double sim_coeff_ = 25.0,
-        double std_coeff_ = 25.0,
-        double cov_coeff_ = 1.0,
+        double sim_coeff_ = 25.0,   // Invariance loss coeficient
+        double std_coeff_ = 25.0,   // Variance loss coeficient
+        double cov_coeff_ = 1.0,    // Covriance loss coeficient
         double lr_ = 0.001,
         torch::Device device_ = torch::kCPU,
         bool enable_buffer_averaging_ = false
@@ -115,7 +109,7 @@ public:
         _encoder_net(register_module("_encoder_net", 
             cuwacunu::wikimyei::vicreg_4d::VICReg_4D_Encoder(
                 C,
-                T + T_BUFFER,
+                T,
                 D,
                 encoding_dims_,
                 channel_expansion_dim_ = 64,
@@ -143,7 +137,7 @@ public:
         )),
 
         /* set up the augmentation */
-        aug{T_, T_BUFFER}, 
+        aug{}, 
         
         /* Setup the optimizer for the base model */
         optimizer(_encoder_net->parameters(), torch::optim::AdamWOptions(lr_))
@@ -232,9 +226,11 @@ public:
                 /* propagate */
                 optimizer.zero_grad();
                 
-                auto [d1,m1] = aug.augment1(data, mask, a_t_wrap, p_t_mask, p_d_mask);
-                auto [d2,m2] = aug.augment2(data, mask, a_t_wrap, p_t_mask, p_d_mask);
+                /* augment the data (time_wrap and random drops) */
+                auto [d1,m1] = aug.augment(data, mask, a_t_wrap, p_t_mask, p_d_mask);
+                auto [d2,m2] = aug.augment(data, mask, a_t_wrap, p_t_mask, p_d_mask);
                 
+                /* forward the encoder network */
                 auto z1 = _projector_net(_encoder_net(d1, m1));
                 auto z2 = _projector_net(_encoder_net(d2, m2));
                 
@@ -296,27 +292,10 @@ public:
         TORCH_CHECK(mask.size(2) == T, "(vicreg_4d.h)[VICReg_4D::encode] mask dimension mismatch (T)");
         TORCH_CHECK(mask.size(3) == D, "(vicreg_4d.h)[VICReg_4D::encode] mask dimension mismatch (D)");
 
-        /* --------- Expand T dimension by T_BUFFER --------- */
-        auto expanded_data = torch::full({data.size(0), C, T + T_BUFFER, D},
-                                        std::numeric_limits<float>::quiet_NaN(),
-                                        data.options());
-
-        expanded_data.index_put_(
-            {torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(0, T), torch::indexing::Slice()},
-            data
-        );
-
-        auto expanded_mask = torch::zeros({mask.size(0), C, T + T_BUFFER, D}, mask.options());
-        expanded_mask.index_put_(
-            {torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(0, T), torch::indexing::Slice()},
-            mask
-        );
-        
         /* --------- Forward -------------------------------- */
         return _projector_net(
             _swa_encoder_net->forward(
-                expanded_data, 
-                expanded_mask
+                data, mask
             )
         );
     }

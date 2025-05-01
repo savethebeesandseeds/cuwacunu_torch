@@ -1,3 +1,5 @@
+#pragma once
+
 #include <torch/torch.h>
 #include <vector>
 #include <string>
@@ -34,7 +36,9 @@ namespace vicreg_4d {
 
 class VICReg_4D_ProjectorImpl : public torch::nn::Module {
 public:
-    VICReg_4D_ProjectorImpl(int embedding_dim, const std::string& mlp_spec) {
+    VICReg_4D_ProjectorImpl(int embedding_dim, const std::string& mlp_spec)
+     :  layers(register_module("layers", torch::nn::Sequential()))
+    {
         // Parse the MLP specification string: "8192-8192-8192"
         std::vector<int> layer_dims = parse_mlp_spec(embedding_dim, mlp_spec);
 

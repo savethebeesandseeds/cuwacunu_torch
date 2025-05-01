@@ -1,4 +1,4 @@
-/* test_ts2vec_BTC.cpp */
+/* test_vicreg_4d_observation_pipeline.cpp */
 #include <torch/torch.h>
 #include <fstream>
 #include <iostream>
@@ -16,8 +16,7 @@
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
-#include "wikimyei/heuristics/ts2vec_4d/ts2vec_4d.h"
-#include "wikimyei/heuristics/ts2vec_4d/datautils.h"
+#include "wikimyei/heuristics/VicReg/vicreg_4d.h"
 
 inline void print_tensor_info(const torch::Tensor& tensor, const std::string& name = "tensor") {
     std::cout << name 
@@ -39,7 +38,7 @@ int main() {
     /* set the test variables */
     const char* config_folder = "/cuwacunu/src/config/";
     std::string INSTRUMENT = "UTILITIES";
-    std::string output_file = "/cuwacunu/src/tests/build/ts2vect_BTC_output.csv";
+    std::string output_file = "/cuwacunu/src/tests/build/vicreg_4d_BTC_output.csv";
 
     // std::string INSTRUMENT = "BTCUSDT";
     int NUM_EPOCHS = 20;
@@ -92,9 +91,26 @@ int main() {
 
     // [B,T,C]
     // -----------------------------------------------------
-    // 3) Instantiate TS2Vec in C++
+    // 3) Instantiate VICReg_4d
     // -----------------------------------------------------
-    // cuwacunu::wikimyei::ts2vec::TS2Vec model(
+    cuwacunu::wikimyei::vicreg_4d::VICReg_4D model(
+        data_loader.C_,     /* C_ */ 
+        data_loader.T_,     /* T_ */ 
+        data_loader.D_,     /* D_ */ 
+        320,                /* encoding_dims_*/
+        64,                 /* channel_expansion_dim_*/
+        128,                /* fused_feature_dim_*/
+        64,                 /* encoder_hidden_dims_*/
+        10,                 /* encoder_depth_*/
+        "8192-8192-8192",   /* projector_mlp_spec_ */
+        25.0,               /* sim_coeff_ */
+        25.0,               /* std_coeff_ */
+        1.0,                /* cov_coeff_ */
+        0.001,              /* lr_ */
+        device,             /* device_ */
+        false               /* enable_buffer_averaging_ */
+    );
+    // cuwacunu::wikimyei::ts2vec::VICReg_4d model(
     //     /* input_dims */dataset.train_data.sizes().back(),
     //     /* output_dims */320,
     //     /* hidden_dims */64,
@@ -124,10 +140,10 @@ int main() {
     // }
     // std::cout << "]" << std::endl;
     
-    // // -----------------------------------------------------
-    // // Finalize
-    // // -----------------------------------------------------
-    // std::cout << "\nC++ Run Finished.\n";
+    // -----------------------------------------------------
+    // Finalize
+    // -----------------------------------------------------
+    std::cout << "\nC++ Run Finished.\n";
 
     return 0;
 }

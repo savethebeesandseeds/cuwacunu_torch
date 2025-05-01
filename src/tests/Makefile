@@ -106,8 +106,8 @@ test_ts2vec:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec
 test_ts2vec_ECG200:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_ECG200
-test_vicreg_4d_BTC:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec_4d test_vicreg_4d_BTC
+test_vicreg_4d_observation_pipeline:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/VICReg test_vicreg_4d_observation_pipeline
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

@@ -9,7 +9,7 @@ namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
 
-torch::Tensor off_diagonal(const torch::Tensor& x) {
+inline torch::Tensor off_diagonal(const torch::Tensor& x) {
     const auto n = x.size(0);
     TORCH_CHECK(x.size(0) == x.size(1), "off_diagonal expects a square matrix");
 
@@ -42,7 +42,7 @@ torch::Tensor off_diagonal(const torch::Tensor& x) {
  * @return torch::Tensor   Scalar tensor representing the total VICReg loss.
  */
 
-torch::Tensor vicreg_loss(
+inline torch::Tensor vicreg_loss(
     const torch::Tensor& x_raw,
     const torch::Tensor& y_raw,
     double sim_coeff = 25.0,

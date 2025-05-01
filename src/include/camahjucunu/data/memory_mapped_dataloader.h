@@ -19,6 +19,8 @@
 #include "camahjucunu/BNF/implementations/training_pipeline/training_pipeline.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
+RUNTIME_WARNING("(memory_mapped_dataloader.h)[] We have too many channels, it can be benefitial to use market fade time wrapping strategy, instead of the multi channel one. \n");
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace data {
