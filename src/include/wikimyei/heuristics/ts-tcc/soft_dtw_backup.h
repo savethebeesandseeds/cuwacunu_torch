@@ -99,7 +99,7 @@ inline torch::Tensor compute_softdtw(const torch::Tensor& D, double gamma) {
     // Create R with +∞
     auto R = torch::full({B, N + 2, M + 2},
                          std::numeric_limits<double>::infinity(),
-                         D.options().dtype(torch::kDouble));
+                         D.options().dtype(torch::kFloat32));
 
 
     // R[:, 0, 0] = 0

@@ -1,3 +1,4 @@
+/* vicreg_4d_projector.h */
 #pragma once
 
 #include <torch/torch.h>
@@ -8,77 +9,99 @@
 namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
-    
-/**
- * @class VICReg_4D_ProjectorImpl
- * @brief A dynamic multi-layer perceptron (MLP) used as a projection head in VICReg.
- *
- * This module constructs a sequence of linear layers, batch normalizations, and ReLU activations
- * based on a string specification of layer sizes. It is designed to transform high-dimensional
- * embeddings (e.g., from a ResNet encoder) into a space suitable for self-supervised contrastive loss.
- *
- * Example:
- *   embedding_dim = 2048
- *   mlp_spec = "8192-8192-8192"
- *   → Resulting architecture: 2048 → 8192 → 8192 → 8192
- *
- * Architecture:
- *   - All but the final layer: Linear + BatchNorm1d + ReLU (in-place)
- *   - Final layer: Linear (no bias)
- *
- * Usage:
- *   Projector projector(embedding_dim, mlp_spec);
- *   torch::Tensor out = projector->forward(input_tensor);
- *
- * This structure follows the VICReg design, where the projection head is critical for decorrelating
- * features and ensuring meaningful invariance and variance in representations.
- */
 
 class VICReg_4D_ProjectorImpl : public torch::nn::Module {
 public:
-    VICReg_4D_ProjectorImpl(int embedding_dim, const std::string& mlp_spec)
-     :  layers(register_module("layers", torch::nn::Sequential()))
-    {
-        // Parse the MLP specification string: "8192-8192-8192"
-        std::vector<int> layer_dims = parse_mlp_spec(embedding_dim, mlp_spec);
+  VICReg_4D_ProjectorImpl(
+    int embedding_dim, 
+    const std::string& mlp_spec,
+    torch::Dtype dtype_ = torch::kFloat32,
+    torch::Device device_ = torch::kCPU
+  ) : embedding_dim(embedding_dim), 
+      mlp_spec(mlp_spec), 
+      dtype(dtype_), device(device_)
+  {
+    reset();
+  }
 
-        // Build layers dynamically based on dimensions
-        for (size_t i = 0; i < layer_dims.size() - 2; ++i) {
-            layers->push_back(torch::nn::Linear(layer_dims[i], layer_dims[i + 1]));
-            layers->push_back(torch::nn::BatchNorm1d(layer_dims[i + 1]));
-            layers->push_back(torch::nn::ReLU(true));
-        }
-
-        // Final linear layer (no bias)
-        layers->push_back(torch::nn::Linear(torch::nn::LinearOptions(layer_dims[layer_dims.size() - 2],
-                                                                     layer_dims.back()).bias(false)));
-
-        // Register the sequential module
-        register_module("layers", layers);
+  void reset() {
+    // Unregister old “layers” if it exists
+    try {
+      unregister_module("layers");
+    } catch (const c10::Error&) {
+      // expected on first call
+    }
+  
+    // Build a fresh Sequential already on the right device/dtype
+    auto seq = torch::nn::Sequential();
+    layers = register_module("layers", std::move(seq));
+  
+    auto dims = parse_mlp_spec(embedding_dim, mlp_spec);
+    for (size_t i = 0; i + 1 < dims.size(); ++i) {
+      bool last = (i + 2 == dims.size());
+  
+      if (!last) {
+        // 1) Linear
+        auto lin = torch::nn::Linear(torch::nn::LinearOptions(dims[i], dims[i+1]));
+        lin->to(device, dtype); 
+        layers->push_back(lin);
+  
+        // 2) BatchNorm
+        auto bn = torch::nn::BatchNorm1d(torch::nn::BatchNorm1dOptions(dims[i+1]));
+        bn->to(device, dtype);
+        layers->push_back(bn);
+  
+        // 3) ReLU
+        layers->push_back(torch::nn::ReLU(torch::nn::ReLUOptions().inplace(true)));
+      } else {
+        // Final layer, no bias
+        auto lin = torch::nn::Linear(torch::nn::LinearOptions(dims[i], dims[i+1]).bias(false));
+        lin->to(device, dtype);
+        layers->push_back(lin);
+      }
     }
 
-    torch::Tensor forward(torch::Tensor x) {
-        return layers->forward(x);
-    }
+    /* beeing efatic, move the module to device of type */
+    layers->to(device, dtype);
+    this->to(device, dtype);
+  }
+
+  torch::Tensor forward(torch::Tensor x) {
+    /* x: [B, T, E] */
+    const auto B = x.size(0);
+    const auto T = x.size(1);
+
+    /* 1. Flatten batch and time so features are the last dim. */
+    x = x.reshape({B * T, x.size(-1)});          /* [B·T, E] */
+    
+    /* 2. MLP + BN work as‑is. */
+    x = layers->forward(x);                      /* [B·T, E’] */
+    
+    /* 3. Restore time dimension. */
+    x = x.view({B, T, x.size(-1)});              /* [B, T, E’] */
+
+    return x;
+  }
 
 private:
-    torch::nn::Sequential layers{nullptr};
+  int                 embedding_dim;
+  std::string         mlp_spec;
+  torch::Dtype dtype;
+  torch::Device device;
 
-    // Helper function to parse the mlp_spec string
-    static std::vector<int> parse_mlp_spec(int embedding_dim, const std::string& spec) {
-        std::vector<int> dims;
-        dims.push_back(embedding_dim);
+  torch::nn::Sequential layers{nullptr};
 
-        std::stringstream ss(spec);
-        std::string dim;
-        while (std::getline(ss, dim, '-')) {
-            dims.push_back(std::stoi(dim));
-        }
-        return dims;
-    }
+  static std::vector<int> parse_mlp_spec(int embed, const std::string& spec) {
+    std::vector<int> out{embed};
+    std::stringstream ss(spec);
+    std::string tok;
+    while (std::getline(ss, tok, '-'))
+      out.push_back(std::stoi(tok));
+    return out;
+  }
 };
 
-TORCH_MODULE(VICReg_4D_Projector);  // Defines Projector as a shared_ptr<VICReg_4D_ProjectorImpl>
+TORCH_MODULE(VICReg_4D_Projector);
 
 } /* namespace vicreg_4d */
 } /* namespace wikimyei */

@@ -58,10 +58,19 @@ clean_bnf:
 clean_data:
 	@shred -u $(OUTPUT_PATH)/libtorch/memory_mapped_*.d $(OUTPUT_PATH)/libtorch/memory_mapped_*.o 		2>/dev/null || true
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+.PHONY: clean_wikimyei
+clean_wikimyei:
+	@shred -u $(OUTPUT_PATH)/libtorch/vicreg_4d.d $(OUTPUT_PATH)/libtorch/vicreg_4d.o 		2>/dev/null || true
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 # Clean the build
 .PHONY: clean
 clean:
+	@read -p "Are you sure you want to clean the entire build? (y/N): " ans; \
+	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then \
+		echo "Aborting clean."; \
+		exit 1; \
+	fi
 	@echo "$(COLOR_RED) Cleaning cuwacunu build $(COLOR_RESET)"
 	@shred -u $(OUTPUT_PATH)/libcurl/*.d $(OUTPUT_PATH)/libcurl/*.o 	2>/dev/null || true
 	@shred -u $(OUTPUT_PATH)/libtorch/*.d $(OUTPUT_PATH)/libtorch/*.o 	2>/dev/null || true

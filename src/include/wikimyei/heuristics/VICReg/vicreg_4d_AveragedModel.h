@@ -17,153 +17,132 @@ namespace vicreg_4d {
 /*
  * A C++ "AveragedModel" that parallels torch.optim.swa_utils.AveragedModel
  *   - an internal copy of VICReg_4D_Encoder (averaged_encoder_)
- *   - a buffer n_averaged_ to track how many updates we've done
+ *   - a float32 buffer n_averaged_ to track how many updates we've done
  *   - an optional bool enable_buffer_averaging_ to decide whether we average buffers or just copy them
  */
 class StochasticWeightAverage_EncoderImpl : public torch::nn::Module {
 public:
-    /* --- SIMPLIFIED CONSTRUCTOR --- */
-    /* No longer needs config args, just the source model to clone */
+    /* Clone the given encoder and optionally enable buffer averaging. */
     explicit StochasticWeightAverage_EncoderImpl(
-        const VICReg_4D_Encoder& source_encoder_wrapper, /* Pass the source wrapper */
-        torch::Device device,
-        bool enable_buffer_averaging = false                 /* Default from original code */
-    )
-        : device_(device),
-          enable_buffer_averaging_(enable_buffer_averaging)
-    {
-        /* --- START: Clone Logic --- */
+        const VICReg_4D_Encoder& source_encoder_wrapper,
+        bool enable_buffer_averaging = false,
+        torch::Dtype dtype_ = torch::kFloat32,
+        torch::Device device_ = torch::kCPU
+    ) : enable_buffer_averaging_(enable_buffer_averaging),
+        dtype(dtype_), device(device_),
 
-        /* 1. Call clone() on the source wrapper. */
-        std::shared_ptr<torch::nn::Module> cloned_base_ptr = source_encoder_wrapper->clone();
-        TORCH_CHECK(cloned_base_ptr, "source_encoder_wrapper->clone() returned null!");
-
-        /* 2. Downcast the base pointer to the specific Impl pointer. */
-        std::shared_ptr<VICReg_4D_EncoderImpl> cloned_impl_ptr =
-            std::dynamic_pointer_cast<VICReg_4D_EncoderImpl>(cloned_base_ptr);
-        TORCH_CHECK(cloned_impl_ptr, "dynamic_pointer_cast to VICReg_4D_EncoderImpl failed after clone()!");
-
-        /* 3. Create the wrapper for the successfully cloned Impl object. */
-        VICReg_4D_Encoder cloned_encoder_wrapper(cloned_impl_ptr);
-
-        /* 4. Register the NEW *WRAPPER* as the submodule. */
-        /*    This holds our independent, cloned internal encoder. */
-        averaged_encoder_ = register_module(
+        /* averaged_encoder_: build‑move‑return in a lambda */
+        averaged_encoder_(register_module(
             "averaged_encoder",
-            cloned_encoder_wrapper
-        );
+            ([&] {
+                auto clone = std::dynamic_pointer_cast<VICReg_4D_EncoderImpl>(source_encoder_wrapper->clone());
+                TORCH_CHECK(clone, "[vicreg_4d_AveragedModel.h](StochasticWeightAverage_EncoderImpl) clone() of the source encoder returned null!");
+                clone->to(device_, dtype_); 
+                return VICReg_4D_Encoder{clone};}
+            )()
+        )),
 
-        /* --- END: Clone Logic --- */
-
-
-        /* 5. Move the registered module (wrapper) to the correct device. */
-        averaged_encoder_->to(device_);
-
-        /* 6. Register n_averaged_ buffer. */
-        n_averaged_ = register_buffer(
+        /* buffer born on the right device/dtype */
+        n_averaged_(register_buffer(
             "n_averaged_",
-            torch::zeros({1}, torch::dtype(torch::kLong).device(device_))
-        );
+            torch::zeros({1},
+                torch::TensorOptions().dtype(dtype_).device(device_))))
+    {        
+        /* move to device and type */
+        this->to(device, dtype);
     }
 
-    /* --- update_parameters --- */
-    /* Accepts the SOURCE module wrapper. Uses standard -> access now. */
+    /* Parameter & (optional) buffer averaging */
     void update_parameters(const VICReg_4D_Encoder& source_encoder_wrapper) {
-         torch::NoGradGuard no_grad;
+        torch::NoGradGuard no_grad;
 
-         /* Use standard wrapper->method() access */
-         auto src_params = source_encoder_wrapper->named_parameters();
-         auto avg_params = averaged_encoder_->named_parameters();
+        auto src_params = source_encoder_wrapper->named_parameters();
+        auto avg_params = averaged_encoder_->named_parameters();
+        int64_t count = n_averaged_.item<int64_t>();
 
-         int64_t count = n_averaged_.item<int64_t>();
+        /* --- Parameter logic --- */
+        if (count == 0) {
+            for (auto& item : src_params) {
+                auto name = item.key();
+                if (avg_params.contains(name)) {
+                    avg_params[name].copy_(item.value().to(avg_params[name].device()));
+                }
+            }
+        } else {
+            for (auto& item : src_params) {
+                auto name = item.key();
+                if (avg_params.contains(name)) {
+                    auto& avg_t = avg_params[name];
+                    auto src_t = item.value()
+                                    .to(avg_t.dtype())
+                                    .to(avg_t.device());
+                    auto alpha = torch::full({}, double(count) / (count + 1), avg_t.options());
+                    avg_t.mul_(alpha).add_(src_t / double(count + 1));                                    
+                }
+            }
+        }
 
-         /* Parameter averaging logic */
-         if (count == 0) {
-             for (const auto& item : src_params) {
-                 const auto& name = item.key();
-                 if(avg_params.contains(name)) {
-                     avg_params[name].copy_(item.value().to(avg_params[name].device()));
-                 } else {
-                      std::cerr << "Warning: Parameter '" << name << "' not found in averaged model during initial copy." << std::endl;
-                 }
-             }
-         } else {
-             for (const auto& item : src_params) {
-                 const auto& name = item.key();
-                 if(avg_params.contains(name)) {
-                     auto& avg_tensor = avg_params[name];
-                     auto src_tensor_converted = item.value().to(avg_tensor.dtype()).to(avg_tensor.device());
-                     avg_tensor.mul_(double(count) / double(count + 1))
-                               .add_(src_tensor_converted / double(count + 1));
-                 } else {
-                      std::cerr << "Warning: Parameter '" << name << "' not found in averaged model during update." << std::endl;
-                 }
-             }
-         }
+        /* --- Buffer logic --- */
+        auto src_bufs = source_encoder_wrapper->named_buffers();
+        auto avg_bufs = averaged_encoder_->named_buffers();
 
-         /* --- Buffer Handling --- */
-         /* Use standard wrapper->method() access */
-         auto src_buffers = source_encoder_wrapper->named_buffers();
-         auto avg_buffers = averaged_encoder_->named_buffers();
-
-         /* Buffer averaging/copying logic */
-          if (enable_buffer_averaging_) {
+        if (enable_buffer_averaging_) {
             if (count == 0) {
-                 for (const auto& buf_item : src_buffers) {
-                      const auto& name = buf_item.key();
-                      if (avg_buffers.contains(name) && name != "n_averaged_") {
-                           avg_buffers[name].copy_(buf_item.value().to(avg_buffers[name].device()));
-                      }
-                 }
-             } else {
-                 for (const auto& buf_item : src_buffers) {
-                     const auto& name = buf_item.key();
-                      if (avg_buffers.contains(name) && name != "n_averaged_") {
-                          auto& avg_buf = avg_buffers[name];
-                          auto src_buf_converted = buf_item.value().to(avg_buf.device());
-                           avg_buf.mul_(double(count) / double(count + 1))
-                                  .add_(src_buf_converted / double(count + 1));
-                     }
-                 }
-             }
-         } else { /* Just copy buffers if not averaging them */
-             for (const auto& buf_item : src_buffers) {
-                 const auto& name = buf_item.key();
-                 if (avg_buffers.contains(name) && name != "n_averaged_") {
-                     avg_buffers[name].copy_(buf_item.value().to(avg_buffers[name].device()));
-                 }
-             }
-         }
+                for (auto& buf_item : src_bufs) {
+                    auto name = buf_item.key();
+                    if (name != "n_averaged_" && avg_bufs.contains(name))
+                        avg_bufs[name].copy_(buf_item.value().to(avg_bufs[name].device()));
+                }
+            } else {
+                for (auto& buf_item : src_bufs) {
+                    auto name = buf_item.key();
+                    if (name != "n_averaged_" && avg_bufs.contains(name)) {
+                        auto& avg_b = avg_bufs[name];
+                        auto src_b = buf_item.value().to(avg_b.device());
+                        avg_b.mul_(double(count) / (count + 1))
+                             .add_(src_b / double(count + 1));
+                    }
+                }
+            }
+        } else {
+            /* simple copy */
+            for (auto& buf_item : src_bufs) {
+                auto name = buf_item.key();
+                if (name != "n_averaged_" && avg_bufs.contains(name))
+                    avg_bufs[name].copy_(buf_item.value().to(avg_bufs[name].device()));
+            }
+        }
 
-         n_averaged_ += 1; /* Increment count */
-     }
+        /* increment counter */
+        n_averaged_ += 1;
+    }
 
-    /* --- Forward pass (remains the same) --- */
-    torch::Tensor forward(const torch::Tensor &x_input,
-        c10::optional<torch::Tensor> x_mask = c10::nullopt)
-    {
-        /* Calls forward on the internal averaged_encoder_ wrapper -> Impl */
+    /* Forward simply delegates to the averaged encoder */
+    torch::Tensor forward(
+        const torch::Tensor& x_input,
+        c10::optional<torch::Tensor> x_mask = c10::nullopt
+    ) {
         return averaged_encoder_->forward(x_input, x_mask);
     }
 
-    /* --- Accessor for the underlying implementation (remains the same) --- */
+    /* Access underlying Impl */
     VICReg_4D_EncoderImpl& encoder() {
-        return *averaged_encoder_; /* operator* still gives Impl& */
+        return *averaged_encoder_;
     }
     const VICReg_4D_EncoderImpl& encoder() const {
-         return *averaged_encoder_; /* const version */
+        return *averaged_encoder_;
     }
 
 private:
-    torch::Device device_;
     bool enable_buffer_averaging_;
-    torch::Tensor n_averaged_;
-
-    /* Store the TORCH_MODULE wrapper for the *cloned* averaged encoder */
+    torch::Dtype dtype;
+    torch::Device device;
+    
     VICReg_4D_Encoder averaged_encoder_{nullptr};
+    torch::Tensor n_averaged_;
 };
 
-/* Keep the TORCH_MODULE macro for the StochasticWeightAverage_Encoder wrapper */
+/* Keep the TORCH_MODULE wrapper */
 TORCH_MODULE(StochasticWeightAverage_Encoder);
 
 } /* namespace vicreg_4d */

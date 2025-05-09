@@ -30,7 +30,7 @@ int main() {
 
         // Create a simple sequence: a linear ramp in each feature
         // shape => [1, 5, 3]
-        torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kDouble))
+        torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kFloat32))
                                 .unsqueeze(-1).repeat({1, E})
                                 .unsqueeze(0);
 

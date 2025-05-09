@@ -12,7 +12,6 @@ HERE_PATH := $(SRC_PATH)/wikimyei/heuristics
 # -----------------------------------------------------------------
 .PHONY: all
 all: $(WIKIMYEI)
-	$(MAKE) -C $(HERE_PATH)/ts2vec all
 	$(MAKE) -C $(HERE_PATH)/VICReg all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------

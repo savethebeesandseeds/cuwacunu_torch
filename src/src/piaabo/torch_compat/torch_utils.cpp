@@ -2,7 +2,7 @@
 #include "piaabo/torch_compat/torch_utils.h"
 
 RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
-RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME change floats to double. \n");
+RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME consider the implincations of changing floats to double. \n");
 
 namespace cuwacunu {
 namespace piaabo {
@@ -43,38 +43,80 @@ void assert_tensor_shape(const torch::Tensor& tensor, int64_t expected_size, con
   }
 }
 
-void print_tensor_info(const torch::Tensor& tensor) {
-  log_info("Tensor info: \n");
-  
-  /* Validate tensor */
-  validate_tensor(tensor, "print_tensor_info");
-
-  /* Print tensor sizes */
-  log_info("\tTensor sizes: (");
-  for (const auto& s : tensor.sizes()) {
-    fprintf(LOG_FILE, "%ld, ", s);
-  }
-  fprintf(LOG_FILE, ")\n");
-
-  /* Print tensor data type */
-  log_info("\tData type: %s\n", tensor.dtype().name().data());
-
-  /* Print the device the tensor is on */
-  log_info("\tDevice: %s\n", tensor.device().str().c_str());
-
-  /* Print if the tensor requires gradient */
-  log_info("\tRequires gradient: %s\n", tensor.requires_grad() ? "Yes" : "No");
-
-  /* Optionally print tensor values if it is small enough */
-  if (tensor.numel() <= 10) {  /* Adjust this number based on what you consider 'small' */
-    log_info("\tValues: [");
-    for (int i = 0; i < tensor.numel(); ++i) {
-      /* Assuming tensor can be safely accessed and is a 1D tensor for simplicity */
-      fprintf(LOG_FILE, "%f, ", tensor[i].item<float>());
+/**
+ *  Recursively prints the values of a “small” tensor of arbitrary rank.
+ *  We use data_ptr<float>() + stride arithmetic to avoid needing TensorIndex.
+ */
+void print_tensor_values(const float* data,
+             const std::vector<int64_t>& sizes,
+             const std::vector<int64_t>& strides,
+             std::vector<int64_t>& idx,
+             int dim) {
+  // If we're at the last dimension, emit a flat “[v0, v1, …]”
+  if (dim == (int)sizes.size() - 1) {
+    fprintf(LOG_FILE, "[");
+    for (int64_t i = 0; i < sizes[dim]; ++i) {
+      idx[dim] = i;
+      // compute linear offset = sum(idx[d] * strides[d])
+      int64_t offset = 0;
+      for (size_t d = 0; d < sizes.size(); ++d)
+        offset += idx[d] * strides[d];
+      float v = data[offset];
+      fprintf(LOG_FILE, "%f", v);
+      if (i + 1 < sizes[dim]) fprintf(LOG_FILE, ", ");
     }
-    fprintf(LOG_FILE, "]\n");
+    fprintf(LOG_FILE, "]");
+  }
+  // Otherwise, recurse one level deeper, wrapping each slice in “[ … ]”
+  else {
+    fprintf(LOG_FILE, "[");
+    for (int64_t i = 0; i < sizes[dim]; ++i) {
+      idx[dim] = i;
+      print_tensor_values(data, sizes, strides, idx, dim + 1);
+      if (i + 1 < sizes[dim]) fprintf(LOG_FILE, ", ");
+    }
+    fprintf(LOG_FILE, "]");
   }
 }
+
+void print_tensor_info(const torch::Tensor& tensor, const char *label) {
+  torch::NoGradGuard guard;          // never track this in autograd
+  auto dtmp = tensor.detach().cpu();       // break the graph, move to CPU
+
+  log_info("Tensor info - %s:\n", label);
+  validate_tensor(dtmp, "print_tensor_info");
+
+  // Print basic metadata
+  log_info("\tTensor sizes: (");
+  for (auto s : dtmp.sizes()) fprintf(LOG_FILE, "%ld, ", s);
+  fprintf(LOG_FILE, ")\n");
+  log_info("\tData type: %s\n", dtmp.dtype().name().data());
+  log_info("\tDevice: %s\n", dtmp.device().str().c_str());
+  log_info("\tRequires gradient: %s\n", dtmp.requires_grad() ? "Yes" : "No");
+
+  // only print values if small _and_ float
+  if (dtmp.numel() <= 25 && dtmp.scalar_type() == torch::kFloat32) {
+    log_info("\tValues: ");
+
+    // 1) Copy out to CPU and ensure contiguous layout
+    auto tmp = dtmp;
+    if (!tmp.device().is_cpu())
+      tmp = tmp.cpu();
+    tmp = tmp.contiguous();
+
+    // 2) Extract sizes/strides & data pointer
+    std::vector<int64_t> sizes(tmp.sizes().begin(), tmp.sizes().end()),
+                         strides(tmp.strides().begin(), tmp.strides().end());
+    const float* data = tmp.data_ptr<float>();
+
+    // 3) Prepare an index vector and recurse
+    std::vector<int64_t> idx(tmp.dim(), 0);
+    print_tensor_values(data, sizes, strides, idx, 0);
+
+    fprintf(LOG_FILE, "\n");
+  }
+}
+
 
 void inspect_network_parameters(torch::nn::Module& model, int64_t N) {
   std::cout << "Parameters snapshot:\n";

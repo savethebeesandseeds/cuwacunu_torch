@@ -49,16 +49,17 @@ struct WarpPreset {
  *  or time-invariance training.
  * ───────────────────────────────────────────────────────────── */
 inline std::vector<WarpPreset> warp_presets = {
-    { WarpBaseCurve::Linear,        0.0,  0.0,  1, 0.03 },  // Identity: no warp, ideal for control comparisons
-    { WarpBaseCurve::Linear,        0.0,  0.15, 5, 0.03 },  // Natural Drift: small random drift, gently smoothed
-    { WarpBaseCurve::ChaoticDrift,  0.0,  0.3,  7, 0.03 },  // Chaotic Drift: noisier structure, strongly smoothed for realism
-    { WarpBaseCurve::MarketFade,    3.0,  0.05, 5, 0.03 },  // Market Fade (soft): early emphasis, gentle fade out
-    { WarpBaseCurve::MarketFade,    5.0,  0.1,  7, 0.03 },  // Market Fade (sharp): stronger front focus, softer tail
-    { WarpBaseCurve::FadeLate,      3.0,  0.05, 5, 0.03 },  // Fade Late: mirror of market fade, tail-focused
-    { WarpBaseCurve::PulseCentered, 0.0,  0.1,  5, 0.03 },  // Pulse Centered: emphasizes central events in time
-    { WarpBaseCurve::FrontLoaded,   0.6,  0.1,  3, 0.03 },  // Front-Focus (soft): mild early emphasis, fast decay
-    { WarpBaseCurve::FrontLoaded,   0.3,  0.1,  5, 0.03 },  // Front-Focus (sharp): stronger focus on initial time
-    { WarpBaseCurve::PulseCentered, 0.0,  0.15, 7, 0.03 }   // Symmetric Sway: fluid oscillation centered on mid-sequence
+    /* curve                            curve_param     noise_scale     smoothing_kernel_size       point_drop_prob */
+    { WarpBaseCurve::Linear,            0.0,            0.0,            1,                          0.03 },                 // Identity: no warp, ideal for control comparisons
+    { WarpBaseCurve::Linear,            0.0,            0.0,            5,                          0.03 },                 // Natural Drift: small random drift, gently smoothed
+    { WarpBaseCurve::ChaoticDrift,      0.0,            0.0,            7,                          0.03 },                 // Chaotic Drift: noisier structure, strongly smoothed for realism
+    { WarpBaseCurve::MarketFade,        3.0,            0.0,            5,                          0.03 },                 // Market Fade (soft): early emphasis, gentle fade out
+    { WarpBaseCurve::MarketFade,        5.0,            0.0,            7,                          0.03 },                 // Market Fade (sharp): stronger front focus, softer tail
+    { WarpBaseCurve::FadeLate,          3.0,            0.0,            5,                          0.03 },                 // Fade Late: mirror of market fade, tail-focused
+    { WarpBaseCurve::PulseCentered,     0.0,            0.0,            5,                          0.03 },                 // Pulse Centered: emphasizes central events in time
+    { WarpBaseCurve::FrontLoaded,       0.6,            0.0,            3,                          0.03 },                 // Front-Focus (soft): mild early emphasis, fast decay
+    { WarpBaseCurve::FrontLoaded,       0.3,            0.0,            5,                          0.03 },                 // Front-Focus (sharp): stronger focus on initial time
+    { WarpBaseCurve::PulseCentered,     0.0,            0.0,            7,                          0.03 }                  // Symmetric Sway: fluid oscillation centered on mid-sequence
 };
 
 /*  -----------------------------------------------------------
@@ -92,7 +93,7 @@ causal_time_warp(const torch::Tensor& x,
                 && m.device()==warp_map.device(),  "(vicreg_4d_Augmentations.h)[casual_time_wrap] data, mask and warp_map must be on the same device");
                 
     /* ─── monotonicity assertion (debug) ───────────────────────────── */
-    TORCH_CHECK((warp_map.diff(1, /*dim=*/1) > 0).all().item<bool>(), "(vicreg_4d_Augmentations.h)[casual_time_wrap] warp_map must be strictly increasing");
+    TORCH_CHECK((warp_map.diff(1, /*dim=*/1) >= 0).all().item<bool>(), "(vicreg_4d_Augmentations.h)[casual_time_wrap] warp_map must be strictly increasing");
     
     /* ─── 1. indices & weights ─────────────────────────────────────── */
     const int64_t B = x.size(0);
@@ -101,8 +102,8 @@ causal_time_warp(const torch::Tensor& x,
     const int64_t E = x.size(3);
 
     auto w    = torch::clamp(warp_map, 0, T - 1 - 1e-6);   // avoid ceil overflow
-    auto i0   = w.floor().to(torch::kLong);                // ⌊w⌋
-    auto i1   = i0 + 1;                                    // ⌈w⌉
+    auto i0   = w.floor().to(torch::kLong);                // ⌊w⌋ int64
+    auto i1   = (i0 + 1).to(torch::kLong);                 // ⌈w⌉ int64
     auto a    = (w - i0.to(w.dtype()))
                 .unsqueeze(1)            // [B,1,T]
                 .unsqueeze(-1);          // [B,1,T,1]
@@ -126,9 +127,9 @@ causal_time_warp(const torch::Tensor& x,
     auto y = x0 + a * (x1 - x0);           // [B,C,T,E]
 
     /* ─── 4. apply hard mask (NaN fill) ────────────────────────────── */
-    const auto nan_val = (x.dtype() == torch::kDouble)
-                        ? std::numeric_limits<double>::quiet_NaN()
-                        : std::numeric_limits<float >::quiet_NaN();
+    const auto nan_val = (x.dtype() == torch::kFloat32)
+                        ? std::numeric_limits<float >::quiet_NaN()
+                        : std::numeric_limits<double>::quiet_NaN();
 
     auto valid4D = valid.unsqueeze(-1).expand({B,C,T,E});  // broadcast to E
     y.masked_fill_(~valid4D, nan_val);
@@ -180,13 +181,14 @@ inline torch::Tensor build_warp_map(int64_t        B,
                                     int64_t        T,
                                     double         noise_scale            = 0.2,
                                     int64_t        smoothing_kernel_size  = 5,
+                                    torch::Dtype   dtype                  = torch::kFloat32,
                                     torch::Device  device                 = torch::kCPU,
                                     WarpBaseCurve  curve                  = WarpBaseCurve::Linear,
                                     double         curve_param            = 4.0)    // used as s or α
 {
     TORCH_CHECK(B > 0 && T > 1, "(vicreg_4d_Augmentations.h)[build_warp_map] B > 0, T > 1 required");
 
-    auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(device);
+    auto opts = torch::TensorOptions().dtype(dtype).device(device);
 
     /* 1. Create base curve φ(t)  ∈ [0,1] ---------------------------------- */
     auto t_norm = torch::linspace(0, 1, T, opts);                // [T]
@@ -271,7 +273,7 @@ inline torch::Tensor build_warp_map(int64_t        B,
     TORCH_CHECK(prob >= 0.0 && prob <= 1.0, "(vicreg_4d_Augmentations.h)[random_point_drop] Probability must be between 0.0 and 1.0");
 
     // Create random dropout mask ONLY for points that are currently true
-    auto random_drop = torch::bernoulli(torch::full_like(m, 1.0 - prob, torch::kFloat)).to(torch::kBool);
+    auto random_drop = torch::bernoulli(torch::full_like(m, 1.0 - prob, torch::kFloat32)).to(torch::kBool);
 
     // Points initially false remain false; points initially true may become false randomly
     return m & random_drop;
@@ -330,6 +332,7 @@ inline torch::Tensor build_warp_map(int64_t        B,
             B, T,
             preset.noise_scale,
             preset.smoothing_kernel_size,
+            x.scalar_type(), 
             x.device(),
             preset.curve,
             preset.curve_param

@@ -79,7 +79,7 @@ torch::Tensor vec2tensor(const std::vector<std::vector<double>>& data) {
     const int64_t rows = data.size();
     const int64_t cols = data[0].size();
     
-    auto tensor = torch::empty({rows, cols}, torch::TensorOptions().dtype(torch::kFloat));
+    auto tensor = torch::empty({rows, cols}, torch::TensorOptions().dtype(torch::kFloat32));
 
     auto tensor_accessor = tensor.accessor<float, 2>();
     for (int64_t i = 0; i < rows; ++i) {

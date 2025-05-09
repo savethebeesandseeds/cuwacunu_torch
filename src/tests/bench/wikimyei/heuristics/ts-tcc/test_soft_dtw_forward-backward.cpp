@@ -26,7 +26,7 @@ int main() {
 
         // Create a simple sequence: a linear ramp in each feature
         // shape => [1, 5, 3]
-        torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kDouble))
+        torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kFloat32))
                                 .unsqueeze(-1).repeat({1, E})
                                 .unsqueeze(0);
 
@@ -53,7 +53,7 @@ int main() {
     //     int64_t T = 5;
     //     int64_t E = 3;
 
-    //     torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kDouble))
+    //     torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kFloat32))
     //                             .unsqueeze(-1).repeat({1, E})
     //                             .unsqueeze(0); // [1, 5, 3]
 
@@ -104,7 +104,7 @@ int main() {
     //     int64_t T = 5;
     //     int64_t E = 3;
 
-    //     torch::Tensor base = torch::linspace(0, 1, T, torch::dtype(torch::kDouble))
+    //     torch::Tensor base = torch::linspace(0, 1, T, torch::dtype(torch::kFloat32))
     //                             .unsqueeze(-1).repeat({1, E});
     //     // [B=2, T=5, E=3]
     //     torch::Tensor seq_a = base.unsqueeze(0).repeat({B, 1, 1});
@@ -129,7 +129,7 @@ int main() {
     //     int64_t T = 5;
     //     int64_t E = 3;
 
-    //     torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kDouble))
+    //     torch::Tensor seq_a = torch::linspace(0, 1, T, torch::dtype(torch::kFloat32))
     //                             .unsqueeze(-1).repeat({1, E})
     //                             .unsqueeze(0);
     //     torch::Tensor seq_b = seq_a.clone();
@@ -200,8 +200,8 @@ int main() {
     // {
     //     std::cout << "=== Test 8: Gradient Backprop ===\n";
     //     // We'll use random sequences of shape [1,5,3].
-    //     auto seq_a = torch::rand({1, 5, 3}, torch::dtype(torch::kDouble));
-    //     auto seq_b = torch::rand({1, 5, 3}, torch::dtype(torch::kDouble));
+    //     auto seq_a = torch::rand({1, 5, 3}, torch::dtype(torch::kFloat32));
+    //     auto seq_b = torch::rand({1, 5, 3}, torch::dtype(torch::kFloat32));
 
     //     // Mark them as requiring grad
     //     seq_a.requires_grad_(true);

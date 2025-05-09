@@ -21,9 +21,8 @@ namespace vicreg_4d {
     int fused_feature_dim;
     int hidden_dims;
     int depth;
-
+    torch::Dtype dtype;
     torch::Device device;
-    torch::Tensor pad_mask; // [1,C,T,D] or NaN
 
     /* ---- Sub‑modules ---------------------------------------------- */
     torch::nn::Conv2d  conv_depthwise{nullptr};
@@ -53,7 +52,6 @@ namespace vicreg_4d {
      * @param fused_feature_dim_     Hidden dimension after channel fusion
      * @param hidden_dims_           Number of hidden units per layer in the dilated conv
      * @param depth_                 Number of layers in the dilated conv stack
-     * @param device_                CUDA or CPU device
      * @param default_mask_mode_     Strategy used for dynamic time masking (e.g. Binomial, AllTrue, etc.)
      */
     VICReg_4D_EncoderImpl(
@@ -63,9 +61,16 @@ namespace vicreg_4d {
         int fused_feature_dim_ = 128,
         int hidden_dims_ = 64,
         int depth_ = 10,
+        torch::Dtype dtype_ = torch::kFloat32,
         torch::Device device_ = torch::kCPU
-    ) : C(C_), T(T_), D(D_), encoding_dim(encoding_dim_), channel_expansion_dim(channel_expansion_dim_),
-      fused_feature_dim(fused_feature_dim_), hidden_dims(hidden_dims_), depth(depth_), device(device_)
+    ) : C(C_), T(T_), D(D_), 
+        encoding_dim(encoding_dim_), 
+        channel_expansion_dim(channel_expansion_dim_),
+        fused_feature_dim(fused_feature_dim_), 
+        hidden_dims(hidden_dims_), 
+        depth(depth_), 
+        dtype(dtype_), 
+        device(device_)
     {
         reset();
     }
@@ -82,8 +87,9 @@ namespace vicreg_4d {
 
         /* 3) Identity embedding per channel */
         feature_embed = register_module("feature_embed", torch::nn::Embedding(C, channel_expansion_dim));
-        id_encoding = feature_embed->weight.view({1, C, 1, channel_expansion_dim});
-
+        feature_embed->to(device, dtype);
+        id_encoding = register_buffer("id_encoding", feature_embed->weight.view({1, C, 1, channel_expansion_dim}).to(device, dtype));
+        
         /* 4) Temporal transformer operates on flattened (C*E) channels */
         int flat_channels = C * channel_expansion_dim;
         temporal_transform = register_module("temporal_transform", TemporalTransformer1D(flat_channels, T));
@@ -106,6 +112,9 @@ namespace vicreg_4d {
         
         /* 8) dropout */
         repr_dropout = register_module("repr_dropout", torch::nn::Dropout(0.1));
+
+        /* 9) move to device and type */
+        this->to(device, dtype);
     }
 
     /* ----------------------------------------------------------------
@@ -118,26 +127,29 @@ namespace vicreg_4d {
      torch::Tensor forward(const torch::Tensor &x_input,
         c10::optional<torch::Tensor> x_mask = c10::nullopt)
     {
-        auto x = x_input.to(device);
-    
+        auto x = x_input;
+
+        auto B = x_input.size(0);
+        
         /* ---- Structural mask ------------------------------------------------ */
         if (x_mask.has_value()) {
-            x = x * x_mask.value();
+            x = x * x_mask.value().unsqueeze(-1); // unsquese the mask to make it [B, C, T, 1]
         }
-    
+        
         /* ---- Local convs : [B,C,T,D] -> [B,C,T,E] --------------------------- */
         x = torch::relu(conv_depthwise(x));
         x = conv_proj(x)                 // [B,C*E,T,1]
                 .squeeze(-1)             // [B,C*E,T]
-                .view({x.size(0), C, channel_expansion_dim, T})
+                .view({B, C, channel_expansion_dim, T})
                 .permute({0,1,3,2});     // [B,C,T,E]
         x = x + id_encoding;             // inject identity
     
         /* ---- Temporal transformer (flatten (C,E)) --------------------------- */
-        auto B = x.size(0);
         auto resh = x.permute({0,1,3,2}) // [B,C,E,T]
                      .reshape({B, C*channel_expansion_dim, T}); // [B,flatC,T]
+                     
         resh = temporal_transform->forward(resh);              // warped
+
         x = resh.reshape({B, C, channel_expansion_dim, T})
                  .permute({0,1,3,2});    // [B,C,T,E]
     
@@ -154,9 +166,10 @@ namespace vicreg_4d {
         x = x.permute({0,1,3,2})   // [B,F,hidden,T]
               .flatten(1,2);       // merge F and hidden as channels
         x = repr_dropout(feature_extractor->forward(x)); // [B,encoding,T]
-    
+
         /* ---- Output --------------------------------------------------------- */
         x = x.transpose(1,2);      // [B,T,encoding_dim]
+
         return x;
     }
 };

@@ -3,6 +3,8 @@
 
 #include <torch/torch.h>
 
+#include "piaabo/torch_compat/torch_utils.h"
+
 namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
@@ -42,24 +44,30 @@ namespace vicreg_4d {
     torch::Tensor forward(const torch::Tensor &x) {
         const auto B = x.size(0);
         const auto T_len = x.size(2);
-
+    
         // 1) Offset prediction (shared over channels)
         auto offsets = torch::tanh(conv2(torch::relu(conv1(x)))); // [B, C, T]
-        // Average across channels → [B,1,T]
-        offsets = offsets.mean(1, /*keepdim=*/true);
-
-        // 2) Build grid   shape [B, 1, 1, T]
+        offsets = offsets.mean(1, /*keepdim=*/true);               // [B, 1, T]
+    
+        // 2) Build grid   shape [B, 1, T]
         auto lin = torch::linspace(-1.0, 1.0, T_len, x.options());
-        lin = lin.repeat({B,1}).unsqueeze(1).unsqueeze(1); // [B,1,1,T]
-        auto grid = lin + offsets.unsqueeze(2);            // [B,1,1,T]
-
-        // Convert 1‑D grid to 2‑D expected by grid_sampler:  last dim is x‑coord, y‑coord is 0
-        auto grid2d = torch::stack({grid, torch::zeros_like(grid)}, /*dim=*/4); // [B,1,1,T,2]
-
-        // 3) Need x as 4‑D : [B, C, 1, T]
-        auto x4d = x.unsqueeze(2); // [B, channels, 1, T]
-        auto warped = torch::grid_sampler(x4d, grid2d, /*mode=*/0, /*padding_mode=*/0, /*align_corners=*/true);
-        warped = warped.squeeze(2); // back to [B, channels, T]
+        lin = lin.repeat({B,1}).unsqueeze(1);   // [B, 1, T]  <-- only one unsqueeze
+        auto grid = lin + offsets;             // [B, 1, T]  <-- offsets already [B,1,T]
+    
+        // Convert to 2-D expected by grid_sampler: last dim is (x, y)
+        auto zeros = torch::zeros_like(grid);      
+        auto grid2d = torch::stack({grid, zeros}, /*dim=*/3); // [B, 1, T, 2]
+    
+        // 3) Reshape x for sampling: [B, C, 1, T]
+        auto x4d = x.unsqueeze(2);
+    
+        // 4) Sample
+        auto warped = torch::grid_sampler(
+            x4d, grid2d, /*mode=*/0, /*padding_mode=*/0, /*align_corners=*/true
+        );
+    
+        // 5) Remove the extra spatial dim
+        warped = warped.squeeze(2); // [B, C, T]
         return warped;
     }
 };

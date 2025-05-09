@@ -2,6 +2,19 @@
 #pragma once
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
+#include <vector>
+
+#define DBG_T(dev_msg, t)                                 \
+  do {                                                    \
+    std::cout << "[DBG] " << (dev_msg)                    \
+          << " shape=" << (t).sizes()                     \
+          << " dev=" << (t).device()                      \
+          << " rg="  << (t).requires_grad() << '\n';      \
+    } while(false)
+
+#define ENSURE_SAME_DEVICE(tensor, ref_tensor)            \
+  TORCH_CHECK((tensor).device() == (ref_tensor).device(), \
+          "Device mismatch: ", (tensor).device(), " vs ", (ref_tensor).device())
 
 namespace cuwacunu {
 namespace piaabo {
@@ -44,7 +57,7 @@ void assert_tensor_shape(const torch::Tensor& tensor, int64_t expected_size, con
  *
  * @param tensor The tensor whose information is to be printed.
  */
-void print_tensor_info(const torch::Tensor& tensor);
+void print_tensor_info(const torch::Tensor& tensor, const char *label="");
 
 /**
  * Prints flatten nework tensor parameters.

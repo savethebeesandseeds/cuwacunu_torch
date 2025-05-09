@@ -47,7 +47,7 @@ inline torch::Tensor compute_softdtw_matrix_vectorized(
     // +∞ for boundaries; double precision to reduce numerical issues
     auto inf = std::numeric_limits<double>::infinity();
     auto R = torch::full({B, N + 2, M + 2}, inf,
-                         D.options().dtype(torch::kDouble));
+                         D.options().dtype(torch::kFloat32));
     // R[:,0,0] = 0
     R.index_put_({"...", 0, 0}, 0.0);
 
@@ -97,7 +97,7 @@ inline torch::Tensor compute_softdtw_matrix_vectorized(
         auto d_ij = D.index({torch::indexing::Slice(),
                              i_range - 1,
                              j_range - 1})
-                    .to(torch::kDouble);
+                    .to(torch::kFloat32);
         auto R_update = d_ij + soft_min;  // [B, diag_len]
 
         // Write back: R[i,j] = R_update
@@ -135,7 +135,7 @@ inline torch::Tensor extract_soft_alignment_vectorized(
     auto M = R.size(2) - 2;  // R has dimension M+2 in 3rd axis
 
     // Work in double precision for convenience
-    R = R.to(torch::kDouble);
+    R = R.to(torch::kFloat32);
 
     // Initialize E and set base case
     auto E = torch::zeros_like(R);

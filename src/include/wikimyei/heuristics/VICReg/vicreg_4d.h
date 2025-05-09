@@ -42,7 +42,9 @@ public:
     double sim_coeff;
     double std_coeff;
     double cov_coeff;
+    torch::Dtype dtype;
     torch::Device device;
+
 
     /* The base VICReg_4D_Encoder (trainable model) */
     VICReg_4D_Encoder _encoder_net{nullptr};
@@ -53,7 +55,7 @@ public:
     /* The Projector from representation to optimizacion lattice */
     VICReg_4D_Projector _projector_net{nullptr};
 
-    /* The augmentation module, for sample viriances in selfsupervised training */
+    /* The aug module, for sample viriances in selfsupervised training */
     VICReg_4D_Augmentation aug;
 
     /* AdamW optimizer for the networks */
@@ -94,6 +96,7 @@ public:
         double std_coeff_ = 25.0,   // Variance loss coeficient
         double cov_coeff_ = 1.0,    // Covriance loss coeficient
         double lr_ = 0.001,
+        torch::Dtype dtype_ = torch::kFloat32,
         torch::Device device_ = torch::kCPU,
         bool enable_buffer_averaging_ = false
     ) : 
@@ -104,6 +107,7 @@ public:
         sim_coeff(sim_coeff_),
         std_coeff(std_coeff_),
         cov_coeff(cov_coeff_),
+        dtype(dtype_),
         device(device_),
         /* Initialize the base VICReg_4D_Encoder */
         _encoder_net(register_module("_encoder_net", 
@@ -112,19 +116,21 @@ public:
                 T,
                 D,
                 encoding_dims_,
-                channel_expansion_dim_ = 64,
-                fused_feature_dim_ = 128,
+                channel_expansion_dim_,
+                fused_feature_dim_,
                 encoder_hidden_dims_,
                 encoder_depth_,
-                device
+                dtype_,
+                device_
             )
         )),
         /* Create the SWA model (averaged copy of _encoder_net); "true" means we can do buffer averaging if desired */
         _swa_encoder_net(register_module("_swa_encoder_net",
             cuwacunu::wikimyei::vicreg_4d::StochasticWeightAverage_Encoder(
                 _encoder_net,
-                device,
-                enable_buffer_averaging_
+                enable_buffer_averaging_,
+                dtype_,
+                device_
             )
         )),
         
@@ -132,21 +138,24 @@ public:
         _projector_net(register_module("_projector_net",
             cuwacunu::wikimyei::vicreg_4d::VICReg_4D_Projector(
                 encoding_dims_,
-                projector_mlp_spec_
+                projector_mlp_spec_,
+                dtype_,
+                device_
             )
         )),
 
-        /* set up the augmentation */
-        aug{}, 
+        /* set up the aug */
+        aug{},
         
-        /* Setup the optimizer for the base model */
-        optimizer(_encoder_net->parameters(), torch::optim::AdamWOptions(lr_))
-    {
-        /* Move the models to the device */
-        _encoder_net->to(device);
-        _swa_encoder_net->to(device);
-        _projector_net->to(device);
-    }
+        /* ---------- set up the optimizer ------------- */
+        optimizer(
+            std::vector<torch::optim::OptimizerParamGroup>{
+                torch::optim::OptimizerParamGroup(_encoder_net->parameters()),
+                torch::optim::OptimizerParamGroup(_projector_net->parameters())
+            },
+            torch::optim::AdamWOptions(lr_)              // defaults
+        )
+    {}
 
     /**
      * @brief Trains the VICReg_4D model using hierarchical contrastive learning.
@@ -176,9 +185,6 @@ public:
         int n_epochs = -1,
         int n_iters = -1,
         int swa_start_iter = 1000, 
-        float a_t_wrap = 0.05f, /* augmentation parameters, potency of the wrap */
-        float p_t_mask = 0.05f, /* augmentation parameters, probability of dropping an entire timestep */
-        float p_d_mask = 0.05f, /* augmentation parameters, probability of dropping an entire feature dim (D‑axis) */
         bool verbose = false
     ) {
         /* Training loop */
@@ -205,12 +211,18 @@ public:
                     stop_loop = true;
                     break;
                 }
-    
+
+                /* propagate */
+                optimizer.zero_grad();
                 
                 /* Prepare input batch */
                 auto collacted_sample = K::collate_fn(sample_batch);
                 auto data = collacted_sample.features.to(device);
                 auto mask = collacted_sample.mask.to(device);
+
+                /* sanity checks */
+                TORCH_CHECK(!data.requires_grad() && !data.grad_fn(), "(vicreg_4d.h)[VICReg_4D::fit] data still has grad history");
+                TORCH_CHECK(!mask.requires_grad() && !mask.grad_fn(), "(vicreg_4d.h)[VICReg_4D::fit] mask still has grad history");
                 
                 /* validate data and mask are of the correct dimensions */
                 TORCH_CHECK(data.dim()   == 4, "(vicreg_4d.h)[VICReg_4D::fit] data from the dataloader must be [B,C,T,D]");
@@ -218,27 +230,26 @@ public:
                 TORCH_CHECK(data.size(2) == T, "(vicreg_4d.h)[VICReg_4D::fit] data does not matched the expected number of dimensions in the T rank !");
                 TORCH_CHECK(data.size(3) == D, "(vicreg_4d.h)[VICReg_4D::fit] data does not matched the expected number of dimensions in the D rank !");
                 
-                TORCH_CHECK(mask.dim()   == 4, "(vicreg_4d.h)[VICReg_4D::fit] mask from the dataloader must be [B,C,T,D]");
+                TORCH_CHECK(mask.dim()   == 3, "(vicreg_4d.h)[VICReg_4D::fit] mask from the dataloader must be [B,C,T]");
                 TORCH_CHECK(mask.size(1) == C, "(vicreg_4d.h)[VICReg_4D::fit] Mask does not matched the expected number of dimensions in the C rank !");
                 TORCH_CHECK(mask.size(2) == T, "(vicreg_4d.h)[VICReg_4D::fit] Mask does not matched the expected number of dimensions in the T rank !");
-                TORCH_CHECK(mask.size(3) == D, "(vicreg_4d.h)[VICReg_4D::fit] Mask does not matched the expected number of dimensions in the D rank !");
-                
-                /* propagate */
-                optimizer.zero_grad();
                 
                 /* augment the data (time_wrap and random drops) */
-                auto [d1,m1] = aug.augment(data, mask, a_t_wrap, p_t_mask, p_d_mask);
-                auto [d2,m2] = aug.augment(data, mask, a_t_wrap, p_t_mask, p_d_mask);
-                
+                auto [d1,m1] = aug.augment(data, mask);
+                auto [d2,m2] = aug.augment(data, mask);    // [d2,m2] != [d1,m1]
+
                 /* forward the encoder network */
-                auto z1 = _projector_net(_encoder_net(d1, m1));
-                auto z2 = _projector_net(_encoder_net(d2, m2));
-                
+                auto k1 = _encoder_net(d1, m1);
+                auto k2 = _encoder_net(d2, m2);
+
+                auto z1 = _projector_net(k1);
+                auto z2 = _projector_net(k2);
+
                 auto loss = vicreg_loss(
                     z1, z2, 
                     sim_coeff, std_coeff, cov_coeff
                 );
-                
+
                 /* back propagate */
                 loss.backward();
                 optimizer.step();
@@ -260,6 +271,7 @@ public:
                 if (verbose) {
                     std::cout << "[Epoch #" << epoch_count << "] Loss = "
                     << avg_loss << std::endl;
+
                 }
             }
             

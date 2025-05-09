@@ -148,7 +148,7 @@ typename std::common_type<T, T>::type absolute_difference(T a, T b) {
  *
  * @tparam T The struct type of the records stored in the binary file. 
  *           The struct must provide a `tensor_features()` method 
- *           returning a `std::vector<double>` representation.
+ *           returning a `std::vector<float>` representation.
  */
 template <typename T>
 class MemoryMappedDataset : public torch::data::datasets::Dataset<MemoryMappedDataset<T>, observation_sample_t> {
@@ -296,7 +296,7 @@ public:
     }
     
     T data_ = read_memory_struct<T>(mapped_data_->data_ptr_, index);
-    return {torch::tensor(data_.tensor_features(), torch::kDouble), torch::tensor(data_.is_valid(), torch::kBool)};
+    return {torch::tensor(data_.tensor_features(), torch::kFloat32), torch::tensor(data_.is_valid(), torch::kBool)};
   }
 
   /**
@@ -361,11 +361,11 @@ public:
     std::size_t feature_dim = records[0].tensor_features().size();
 
     /* Preallocate the tensors with the desired shapes */
-    torch::Tensor features_tensor = torch::empty({static_cast<long>(N), static_cast<long>(feature_dim)}, torch::kDouble);
+    torch::Tensor features_tensor = torch::empty({static_cast<long>(N), static_cast<long>(feature_dim)}, torch::kFloat32);
     torch::Tensor mask_tensor = torch::empty({static_cast<long>(N)}, torch::kBool);
 
     /* Get pointers to the tensors' underlying data */
-    double* tensor_data = features_tensor.data_ptr<double>();
+    float* tensor_data = features_tensor.data_ptr<float>();
     bool* mask_data = mask_tensor.data_ptr<bool>();
 
     /* Copy the feature data and mask values directly into the tensors' memory */

@@ -20,7 +20,7 @@ inline torch::Tensor compute_softdtw(const torch::Tensor& D_in, double gamma)
 {
     TORCH_CHECK(D_in.dim() == 3, "D must have shape [B, N, M].");
     // For safety, move to CPU and ensure contiguous:
-    auto D = D_in.cpu().contiguous().to(torch::kDouble);
+    auto D = D_in.cpu().contiguous().to(torch::kFloat32);
     
     int64_t B = D.size(0);
     int64_t N = D.size(1);
@@ -85,8 +85,8 @@ inline torch::Tensor compute_softdtw_backward(const torch::Tensor& D_in,
     TORCH_CHECK(R_in.dim()  == 3, "R must have shape [B, N+2, M+2].");
 
     // Move everything to CPU + contiguous
-    auto D_ = D_in.cpu().contiguous().to(torch::kDouble);
-    auto R  = R_in.cpu().contiguous().to(torch::kDouble);
+    auto D_ = D_in.cpu().contiguous().to(torch::kFloat32);
+    auto R  = R_in.cpu().contiguous().to(torch::kFloat32);
 
     int64_t B = D_.size(0);
     int64_t N = D_.size(1);

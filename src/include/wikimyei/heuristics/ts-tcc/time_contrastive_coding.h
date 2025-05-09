@@ -49,8 +49,8 @@ public:
           .num_layers(num_layers));
       linear = torch::nn::Linear(hidden_dim, embedding_dim);
       
-      gru->to(torch::kDouble);
-      linear->to(torch::kDouble);
+      gru->to(torch::kFloat32);
+      linear->to(torch::kFloat32);
 
       register_module("gru", gru);
       register_module("linear", linear);
@@ -73,13 +73,13 @@ public:
     int64_t input_dim = C * D;
     initialize_if_needed(input_dim);
 
-    auto features_double = features.to(torch::kDouble).to(device_);
-    auto mask_double     = mask.to(torch::kDouble).to(device_); // (B, C, T)
+    auto features_double = features.to(torch::kFloat32).to(device_);
+    auto mask_double     = mask.to(torch::kFloat32).to(device_); // (B, C, T)
 
     // Sum over channels & "depth" if you want to produce a time-step mask
     auto mask_4d = mask_double.unsqueeze(-1);     // (B, C, T, 1)
     auto mask_t  = mask_4d.sum({1, 3});          // (B, T)
-    mask_t       = (mask_t > 0).to(torch::kDouble); // (B, T)
+    mask_t       = (mask_t > 0).to(torch::kFloat32); // (B, T)
     auto mask_t_expanded = mask_t.unsqueeze(-1); // (B, T, 1)
 
     // Reshape (B, C, T, D) -> (B, T, C*D)

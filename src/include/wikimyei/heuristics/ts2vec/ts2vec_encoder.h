@@ -79,7 +79,7 @@ struct TSEncoderImpl : public torch::nn::Cloneable<TSEncoderImpl> {
         hidden_dims(hidden_dims_), 
         depth(depth_),
         default_mask_mode(default_mask_mode_),
-        pad_mask(pad_mask_.has_value() ? pad_mask_.value().to(torch::kFloat).unsqueeze(0) : torch::tensor(NAN, torch::kFloat))
+        pad_mask(pad_mask_.has_value() ? pad_mask_.value().to(torch::kFloat32).unsqueeze(0) : torch::tensor(NAN, torch::kFloat32))
     {
         /* According to Cloneable pattern, initialization should happen in reset() */
         reset();
