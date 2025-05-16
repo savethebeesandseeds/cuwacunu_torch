@@ -64,6 +64,7 @@ test_dfiles_binary_to_vector: $(TEST_BUILD)/test_dfiles_binary_to_vector
 # -----------------------------------------------------------------
 .PHONY: all
 all: $(TEST_BUILD)/test_dconfig $(TEST_BUILD)/test_dsecurity $(TEST_BUILD)/test_dencryption $(TEST_BUILD)/test_darchitecture $(TEST_BUILD)/test_djson_parsing
+	$(MAKE) -C $(HERE_PATH)/torch_compat all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

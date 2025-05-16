@@ -39,6 +39,14 @@
     - Active: Indicates whether this configuration is enabled for training (true/false).
     - Record Type: The type of data record (e.g., kline for candlestick data).
     - Seq Length: The number of sequential data points in the input sequence.
+    /--------------------------------------------------------\
+    |  interval     |  active  |  record_type |  seq_length  |
+    |--------------------------------------------------------|
+    |  sine         |   true   |    basic     |     10       |
+    |  triangular   |   false  |    basic     |     10       |
+    |  constant     |   false  |    basic     |     10       |
+    \--------------------------------------------------------/
+*/
 /------------------------------------------------------\
 |  interval   |  active  |  record_type |  seq_length  |
 |------------------------------------------------------|
@@ -57,11 +65,3 @@
 |    3m       |   false   |    kline     |     100     |
 |    1m       |   false   |    kline     |     100     |
 \------------------------------------------------------/
-*/
-/--------------------------------------------------------\
-|  interval     |  active  |  record_type |  seq_length  |
-|--------------------------------------------------------|
-|  sine         |   true   |    basic     |     10       |
-|  triangular   |   false  |    basic     |     10       |
-|  constant     |   false  |    basic     |     10       |
-\--------------------------------------------------------/

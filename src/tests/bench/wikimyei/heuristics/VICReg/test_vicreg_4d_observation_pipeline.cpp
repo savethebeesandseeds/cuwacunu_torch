@@ -19,11 +19,19 @@
 
 #include "wikimyei/heuristics/VicReg/vicreg_4d.h"
 
+#include <cuda_profiler_api.h> // waka
+#include <nvToolsExt.h> // waka
+
 int main() {
-    torch::autograd::AnomalyMode::set_enabled(true);
+    // torch::autograd::AnomalyMode::set_enabled(true);
+    torch::autograd::AnomalyMode::set_enabled(false);
+    torch::globalContext().setBenchmarkCuDNN(true);
+    torch::globalContext().setDeterministicCuDNN(false);
+    WARM_UP_CUDA();
+
     /* types definition */
-    // using T = cuwacunu::camahjucunu::exchange::kline_t;
-    using Td = cuwacunu::camahjucunu::exchange::basic_t;
+    using Td = cuwacunu::camahjucunu::exchange::kline_t;
+    // using Td = cuwacunu::camahjucunu::exchange::basic_t;
     using Q = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Td>;
     using K = cuwacunu::camahjucunu::data::observation_sample_t;
     using SeqSampler = torch::data::samplers::SequentialSampler;
@@ -31,24 +39,21 @@ int main() {
 
     /* set the test variables */
     const char* config_folder = "/cuwacunu/src/config/";
-    std::string INSTRUMENT = "UTILITIES";
-    std::string output_file = "/cuwacunu/src/tests/build/vicreg_4d_BTC_output.csv";
+    // std::string INSTRUMENT = "UTILITIES";
 
-    // std::string INSTRUMENT = "BTCUSDT";
+    std::string INSTRUMENT = "BTCUSDT";
     int NUM_EPOCHS = 20;
-    int NUM_ITERS  = 1;
-    std::size_t BATCH_SIZE = 1;
-    std::size_t dataloader_workers = 0;
+    int NUM_ITERS  = -1;
+    std::size_t BATCH_SIZE = 64;
+    std::size_t dataloader_workers = 8;
     
-    // auto device = torch::kCPU;
     // -----------------------------------------------------
     // 0) Set Seed and Device
     // -----------------------------------------------------
     torch::manual_seed(42);
     auto dtype = torch::kFloat32;
-    auto device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-    // auto device = torch::kCPU;
-    torch::cuda::synchronize();
+    // auto device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+    auto device = torch::kCPU;
     std::cout << "Using device: " << device << std::endl;
 
     /* read the config */
@@ -115,6 +120,7 @@ int main() {
     // 4) Train (Fit)
     // -----------------------------------------------------
     std::cout << "Training the VICReg encoder...\n";
+    cudaProfilerStart();    // waka
     TICK(Train_Model);
     std::vector<double> training_losses = model.fit<Q, K, Td>(
         training_data_loader, 
@@ -124,7 +130,7 @@ int main() {
         true        /* verbose */
     );
     PRINT_TOCK_ms(Train_Model);
-
+    cudaProfilerStop(); // waka    
 
     // // -----------------------------------------------------
     // // 5) Encode (Forward)
@@ -145,8 +151,6 @@ int main() {
     
     return 0;
 }
-    
-
     // std::cout << "Final C++ losses: [ ";
     // for (const auto &lossVal : loss_log) { // Use const auto&
     //     std::cout << lossVal << ",  ";

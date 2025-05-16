@@ -27,6 +27,8 @@ test_djson_parsing:
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_djson_parsing
 test_dfiles_binary_to_vector:
 	$(MAKE) -C $(HERE_PATH)/bench/piaabo test_dfiles_binary_to_vector
+test_gpu_vs_cpu:
+	$(MAKE) -C $(HERE_PATH)/bench/piaabo/torch_compat test_gpu_vs_cpu
 # -----------------------------------------------------------------
 # - - - Camahjucnu -- - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
@@ -108,6 +110,8 @@ test_ts2vec_ECG200:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_ECG200
 test_vicreg_4d_observation_pipeline:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/VICReg test_vicreg_4d_observation_pipeline
+test_vicreg_4d_projector_gpu_vs_cpu:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/VICReg test_vicreg_4d_projector_gpu_vs_cpu
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

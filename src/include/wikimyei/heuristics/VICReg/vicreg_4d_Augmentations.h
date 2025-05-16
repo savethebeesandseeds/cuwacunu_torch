@@ -76,12 +76,16 @@ inline std::vector<WarpPreset> warp_presets = {
   *                                warp_map[b,t] ∈ [0,T‑1] is the (fractional)
   *                                source index inside x’s original time axis.
   *                                Each row MUST be strictly increasing.
+  *  @param dtype       - torch type
+  *  @param device      - device, cpu or cuda
   *  @return           [B,C,T,E]  – time‑warped tensor
   */
 inline std::pair<torch::Tensor, torch::Tensor>
 causal_time_warp(const torch::Tensor& x,
                 const torch::Tensor& m,
-                const torch::Tensor& warp_map)
+                const torch::Tensor& warp_map, 
+                torch::Dtype   dtype                  = torch::kFloat32,
+                torch::Device  device                 = torch::kCPU)
 {
     /* ─── basic checks ─────────────────────────────────────────────── */
     TORCH_CHECK(x.dim()==4,                     "(vicreg_4d_Augmentations.h)[casual_time_wrap] data must be [B,C,T,E]");
@@ -127,12 +131,10 @@ causal_time_warp(const torch::Tensor& x,
     auto y = x0 + a * (x1 - x0);           // [B,C,T,E]
 
     /* ─── 4. apply hard mask (NaN fill) ────────────────────────────── */
-    const auto nan_val = (x.dtype() == torch::kFloat32)
-                        ? std::numeric_limits<float >::quiet_NaN()
-                        : std::numeric_limits<double>::quiet_NaN();
+    const auto zero_val = (x.dtype() == torch::kFloat32) ? 0.0f : 0.0;
 
     auto valid4D = valid.unsqueeze(-1).expand({B,C,T,E});  // broadcast to E
-    y.masked_fill_(~valid4D, nan_val);
+    y.masked_fill_(~valid4D, zero_val);
 
     return { y, valid };                                   // [B,C,T,E] , [B,C,T]
 }
@@ -339,7 +341,9 @@ inline torch::Tensor build_warp_map(int64_t        B,
         );
         
         // Apply interpolation (e.g., causal_time_warp) to x and m using warp_map
-        auto [data_timewrap, mask_timewrap] = causal_time_warp(x, m, warp_map);
+        auto [data_timewrap, mask_timewrap] = causal_time_warp(
+            x, m, warp_map, x.scalar_type(), x.device()
+        );
         
         // Apply random masking
         auto mask_drop = random_point_drop(mask_timewrap, preset.point_drop_prob);

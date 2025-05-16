@@ -16,6 +16,47 @@
   TORCH_CHECK((tensor).device() == (ref_tensor).device(), \
           "Device mismatch: ", (tensor).device(), " vs ", (ref_tensor).device())
 
+#define CHECK_TENSOR(TENSOR, NAME)                                   \
+  do {                                                               \
+    /* start the message */                                          \
+    std::cerr                                                        \
+      << "[" << ANSI_COLOR_Bright_Blue << "DEBUG"                    \
+      << ANSI_COLOR_RESET << "] "                                    \
+      << ANSI_COLOR_Bright_Yellow                                    \
+      << std::setw(20) << std::left << (NAME)                        \
+      << ANSI_COLOR_RESET                                            \
+      << " : ";                                                      \
+    /* detach from graph and bring to CPU for inspection */          \
+    auto _tmp = (TENSOR).detach().to(at::kCPU).to(at::kFloat);       \
+    /* NaN / Inf checks */                                           \
+    if (_tmp.isnan().any().template item<bool>())                    \
+      std::cerr << ANSI_COLOR_Bright_Red                             \
+      << "contains NaN values\t" << ANSI_COLOR_RESET;                \
+    if (_tmp.isinf().any().template item<bool>())                    \
+      std::cerr << ANSI_COLOR_Bright_Red                             \
+      << "contains Inf values\t" << ANSI_COLOR_RESET;                \
+    /* Basic statistics */                                           \
+    auto _min  = _tmp.min().template item<double>();                 \
+    auto _max  = _tmp.max().template item<double>();                 \
+    auto _mean = _tmp.mean().template item<double>();                \
+    std::cerr                                                        \
+              << "MIN: "    << _min                                  \
+              << ", MAX: "  << _max                                  \
+              << ", MEAN: " << _mean                                 \
+              << "\n";                                               \
+  } while (0)
+
+#define WARM_UP_CUDA()                                     \
+  do {                                                     \
+    if (torch::cuda::is_available()) {                     \
+      TICK(warming_up_cuda_device_);                       \
+      torch::randn({1},                                    \
+        torch::TensorOptions().device(torch::kCUDA));      \
+      torch::cuda::synchronize();                          \
+      PRINT_TOCK_ms(warming_up_cuda_device_);              \
+    }                                                      \
+  } while (0)
+
 namespace cuwacunu {
 namespace piaabo {
 namespace torch_compat {

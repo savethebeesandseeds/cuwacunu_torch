@@ -14,6 +14,7 @@ HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/heuristics
 all: \
 	$(MAKE) -C $(HERE_PATH)/ts-tcc all
 	$(MAKE) -C $(HERE_PATH)/ts2vec all
+	$(MAKE) -C $(HERE_PATH)/VICReg all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

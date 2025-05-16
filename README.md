@@ -55,7 +55,6 @@ apt install -y --no-install-recommends gnupg2
 apt install -y --no-install-recommends valgrind
 apt install -y --no-install-recommends gdb
 apt install -y --no-install-recommends locales
-
 rm -rf /var/lib/apt/lists/*
 
 # (default to) en_US.UTF-8
