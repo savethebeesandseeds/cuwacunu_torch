@@ -40,7 +40,7 @@
 #define ANSI_COLOR_Cyan "\x1b[36m"    
 #define ANSI_COLOR_White "\x1b[37m" 
 
-#define ANSI_COLOR_Bright_Black_Grey "\x1b[90m"
+#define ANSI_COLOR_Bright_Grey "\x1b[90m"
 #define ANSI_COLOR_Bright_Red "\x1b[91m" 
 #define ANSI_COLOR_Bright_Green "\x1b[92m" 
 #define ANSI_COLOR_Bright_Yellow "\x1b[93m"     
@@ -49,7 +49,7 @@
 #define ANSI_COLOR_Bright_Cyan "\x1b[96m"       
 #define ANSI_COLOR_Bright_White "\x1b[97m"
 
-#define ANSI_COLOR_Dim_Black_Grey "\x1b[2;90m"
+#define ANSI_COLOR_Dim_Gray "\x1b[2;90m"
 #define ANSI_COLOR_Dim_Red "\x1b[2;91m"
 #define ANSI_COLOR_Dim_Green "\x1b[2;92m"
 #define ANSI_COLOR_Dim_Yellow "\x1b[2;93m"

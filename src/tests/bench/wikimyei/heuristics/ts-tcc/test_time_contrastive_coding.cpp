@@ -138,13 +138,6 @@ int main() {
       emb_a.retain_grad();
       emb_b.retain_grad();
 
-      // std::cout << "waka :->: emb_a mean=" << emb_a.mean().item<double>() << std::endl;
-      // std::cout << "waka :->: emb_a max=" << emb_a.max().item<double>() << std::endl;
-      // std::cout << "waka :->: emb_a min=" << emb_a.min().item<double>() << std::endl;
-      // std::cout << "waka :->: emb_b mean=" << emb_b.mean().item<double>() << std::endl;
-      // std::cout << "waka :->: emb_b max=" << emb_b.max().item<double>() << std::endl;
-      // std::cout << "waka :->: emb_b min=" << emb_b.min().item<double>() << std::endl;
-
       // std::cout << "--- --- --- --- " << std::endl;
       // std::cout << "mask_a sum=" << mask_a.sum().item<double>() << std::endl;
       // std::cout << "mask_b sum=" << mask_b.sum().item<double>() << std::endl;
@@ -204,11 +197,9 @@ int main() {
       if (!alignment_matrix.grad().defined()) { log_err("Gradient for alignment_matrix not defined \n");}
       if (!loss.grad().defined()) { log_err("Loss gradient is not defined.\n"); }
 
-      // std::cout << "Waka :->: Loss: " << loss.item<double>() << std::endl;
 
       total_loss += loss.item<double>();
 
-      // std::cin.get(); // waka 
     }
     PRINT_TOCK_ns(one_epoch_);
     

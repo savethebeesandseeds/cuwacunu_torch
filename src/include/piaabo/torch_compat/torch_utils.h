@@ -2,6 +2,7 @@
 #pragma once
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
+#include "piaabo/dconfig.h"
 #include <vector>
 
 #define DBG_T(dev_msg, t)                                 \
@@ -46,15 +47,16 @@
               << "\n";                                               \
   } while (0)
 
-#define WARM_UP_CUDA()                                     \
-  do {                                                     \
-    if (torch::cuda::is_available()) {                     \
-      TICK(warming_up_cuda_device_);                       \
-      torch::randn({1},                                    \
-        torch::TensorOptions().device(torch::kCUDA));      \
-      torch::cuda::synchronize();                          \
-      PRINT_TOCK_ms(warming_up_cuda_device_);              \
-    }                                                      \
+#define WARM_UP_CUDA()                                      \
+  do {                                                      \
+    if (torch::cuda::is_available()) {                      \
+      TICK(warming_up_cuda_device_);                        \
+      torch::randn({1},                                     \
+        torch::TensorOptions().device(torch::kCUDA));       \
+      torch::cuda::synchronize();                           \
+      errno = 0;  /* there was a bug on libtorch */         \
+      PRINT_TOCK_ms(warming_up_cuda_device_);               \
+    }                                                       \
   } while (0)
 
 namespace cuwacunu {
@@ -65,6 +67,7 @@ namespace torch_compat {
   extern torch::Device kDevice;
   extern torch::Dtype kType;
 torch::Device select_torch_device();
+
 /**
  * Validates parameters of a given torch::nn::Module.
  * Ensures that the module has parameters, they are defined, not NaN, and not empty.
@@ -111,3 +114,24 @@ void inspect_network_parameters(torch::nn::Module& model, int64_t N = 5);
 } /* namespace torch_compat */
 } /* namespace piaabo */
 } /* namespace cuwacunu */
+
+
+namespace cuwacunu {
+namespace piaabo {
+namespace dconfig {
+
+/* ------------------------------------------------------------------ */
+/*  Configuration helpers – centralised access to .config            */
+/* ------------------------------------------------------------------ */
+
+/** Return the torch::Dtype configured for SECTION (e.g. "TRAINING").
+ *  Falls back to [GENERAL] and finally to torch::kFloat32.           */
+torch::Dtype  config_dtype (const std::string& section = "GENERAL");
+
+/** Return the torch::Device configured for SECTION (e.g. "TRAINING").
+ *  Falls back to [GENERAL] and finally to the first available device.*/
+torch::Device config_device(const std::string& section = "GENERAL");
+
+} // namespace dconfig
+} // namespace piaabo
+} // namespace cuwacunu

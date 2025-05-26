@@ -17,6 +17,7 @@ torch::Device select_torch_device() {
 
   return aDev;
 }
+
 void validate_module_parameters(const torch::nn::Module& model) {
   TORCH_CHECK(model.parameters().size() > 0, "There are zero Parameters in the model.");
   for (const auto& named_param : model.named_parameters()) {
@@ -136,3 +137,52 @@ void inspect_network_parameters(torch::nn::Module& model, int64_t N) {
 } /* namespace torch_compat */
 } /* namespace piaabo */
 } /* namespace cuwacunu */
+
+
+namespace cuwacunu {
+namespace piaabo {
+namespace dconfig {
+
+/* ───────────── helpers: string → torch::Dtype / Device ───────────── */
+
+static torch::Dtype parse_dtype(const std::string& s)
+{
+  std::string v; v.reserve(s.size());
+  std::transform(s.begin(), s.end(), std::back_inserter(v), [](unsigned char c){ return std::tolower(c); });
+
+  if (v=="bool")  return torch::kBool;
+  if (v=="int8")  return torch::kInt8;
+  if (v=="int16") return torch::kInt16;
+  if (v=="int32") return torch::kInt32;
+  if (v=="int64") return torch::kInt64;
+  if (v=="float16" || v=="half")   return torch::kFloat16;
+  if (v=="float32" || v=="float")  return torch::kFloat32;
+  if (v=="float64" || v=="double") return torch::kFloat64;
+
+  throw std::runtime_error("Unknown configured dtype '"+s+"'");
+}
+
+static torch::Device parse_device(const std::string& s)
+{
+  try { return torch::Device(s); }
+  catch (const c10::Error&) {
+    throw std::runtime_error("Invalid configured device '"+s+"'");
+  }
+}
+
+/* ───────────── public config accessors ───────────── */
+torch::Dtype config_dtype(const std::string& section) {
+  try { return parse_dtype(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>(section,  "dtype"));
+  } catch (...) { try { return parse_dtype(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL","dtype"));
+  } catch (...) { return torch::kFloat32;}}
+}
+
+torch::Device config_device(const std::string& section) {
+  try { return parse_device(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>(section,"device"));
+  } catch (...) { try { return parse_device(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL","device"));
+  } catch (...) { return cuwacunu::piaabo::torch_compat::select_torch_device();}}
+}
+
+} // namespace dconfig
+} // namespace piaabo
+} // namespace cuwacunu

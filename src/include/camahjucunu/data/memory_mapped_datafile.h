@@ -31,13 +31,13 @@ namespace data {
 template <typename T>
 void normalize_binary_file(const std::string& bin_filename, std::size_t window_size = std::numeric_limits<std::size_t>::max()) {
   log_info("[normalize_binary_file] Normalizing binary file from csv data file: %s%s%s\n", 
-    ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+    ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
 
   /* Open the file in read-write mode (both input and output), binary mode */
   std::fstream bin_file(bin_filename, std::ios::in | std::ios::out | std::ios::binary);
   if (!bin_file.is_open()) {
     log_fatal("[normalize_binary_file] Error: Could not open the binary file: %s%s%s for reading and writing. \n", 
-      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+      ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
   }
 
   /* Get the file size */
@@ -49,7 +49,7 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
   size_t total_records = file_size / sizeof(T);
   if (file_size % sizeof(T) != 0) {
     log_fatal("[normalize_binary_file] Error: Binary file size is not a multiple of struct size: %s%s%s\n", 
-      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+      ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
   }
 
   /* assign the window_size */
@@ -71,7 +71,7 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
     bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
     if (!bin_file) {
       log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
-        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+        ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
     }
     /* update the statistics pack for the initial size */
     stats_pack.update(record);
@@ -91,7 +91,7 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
     bin_file.read(reinterpret_cast<char*>(&record), sizeof(T));
     if (!bin_file) {
       log_fatal("[normalize_binary_file] Error: Failed to read from binary file: %s%s%s\n", 
-        ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+        ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
     }
 
     if(record.is_valid()) {
@@ -108,7 +108,7 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
       bin_file.write(reinterpret_cast<const char*>(&normalized_record), sizeof(T));
       if (!bin_file) {
         log_fatal("[normalize_binary_file] Error: Failed to write to binary file: %s%s%s\n", 
-          ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+          ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
       }
 
       /* Move the get pointer to the next record */
@@ -130,7 +130,7 @@ void normalize_binary_file(const std::string& bin_filename, std::size_t window_s
 
   bin_file.close();
   log_info("(normalize_binary_file) %sNormalization completed successfully%s. File: %s%s%s\n", 
-    ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+    ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
 }
 
 template<typename T>
@@ -222,17 +222,17 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename, std::
     /* validate increment */
     if(current_delta == 0.0) {
       log_warn("%s\t %s•%s [sanitize_csv_into_binary_file]%s %szero increment%s, \n\tat line:\t %s%ld%s, \n\t in file:\t %s%s%s\n", 
-        ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Black_Grey, ANSI_COLOR_RESET, 
+        ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET, 
         ANSI_COLOR_Red, ANSI_COLOR_RESET, 
         ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
-        ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET);
+        ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
       continue; /* skip the binarization of the item as there has been no increment */
     }
 
     if(current_delta < 0) {
       log_fatal("[sanitize_csv_into_binary_file] Error: key_value increments are expected to be positive, \n\t at line:\t %s%ld%s, \n\t in file:\t %s%s%s, \n\t line:\t %s%s%s\n", 
         ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
-        ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET, 
         ANSI_COLOR_Dim_Red, line_p0.c_str(), ANSI_COLOR_RESET);
     }
 
@@ -244,11 +244,11 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename, std::
     if (std::abs(std::fmod(current_delta, regular_delta)) > 1e-5 && 
       std::abs(std::fmod(current_delta, regular_delta) - regular_delta) > 1e-5) {
       log_err("%s\t %s•%s [sanitize_csv_into_binary_file]%s Error: there is an irregular increment [regular_delta != current_delta](%s%.15f%s != %s%.15f%s), on key_value, \n\t at line:\t %s%ld%s, \n\t in file:\t %s%s%s, \n\t line:\t %s%s%s\n", 
-        ANSI_CLEAR_LINE, ANSI_COLOR_Red, ANSI_COLOR_Dim_Black_Grey, ANSI_COLOR_RESET, 
+        ANSI_CLEAR_LINE, ANSI_COLOR_Red, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET, 
         ANSI_COLOR_Dim_Green, static_cast<double>(regular_delta), ANSI_COLOR_RESET, 
         ANSI_COLOR_Dim_Red, static_cast<double>(current_delta), ANSI_COLOR_RESET, 
         ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
-        ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+        ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET, 
         ANSI_COLOR_Dim_Red, line_p0.c_str(), ANSI_COLOR_RESET);
       continue;
     }
@@ -259,11 +259,11 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename, std::
     /* warn about misisng elements */
     if(delta_steps != 1) {
       log_warn("%s\t %s•%s [sanitize_csv_into_binary_file]%s %sextra large step increment%s (d=%s%ld%s) on key_value, \n\t at line:\t %s%ld%s, \n\t in file:\t %s%s%s\n", 
-      ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Black_Grey, ANSI_COLOR_RESET, 
+      ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET, 
       ANSI_COLOR_Yellow, ANSI_COLOR_RESET, 
       ANSI_COLOR_Yellow, delta_steps, ANSI_COLOR_RESET, 
       ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
-      ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET);
+      ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
     }
 
     /* record into the binary file n=delta_steps null records to fill the missing steps */
@@ -283,7 +283,7 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename, std::
       } catch (const std::exception& e) {
         log_fatal("[sanitize_csv_into_binary_file] Error processing line: %s%ld%s: %s%s%s. Exception: %s\n", 
           ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET, 
-          ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
+          ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET, 
           e.what());
       }
     }
@@ -315,15 +315,15 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename, std::
     normalize_binary_file<T>(bin_filename, normalization_window);
   } else {
     log_info("(sanitize_csv_into_binary_file) No normalization configured. %s%s%s -> %s%s%s\n", 
-      ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
-      ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+      ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET, 
+      ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
   }
   
   /* finish sanitation */
   log_info("(sanitize_csv_into_binary_file) %sConversion and sanitation completed successfully%s. %s%s%s -> %s%s%s\n", 
     ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, 
-    ANSI_COLOR_Dim_Black_Grey, csv_filename.c_str(), ANSI_COLOR_RESET, 
-    ANSI_COLOR_Dim_Black_Grey, bin_filename.c_str(), ANSI_COLOR_RESET);
+    ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET, 
+    ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
 
   return bin_filename;
 }

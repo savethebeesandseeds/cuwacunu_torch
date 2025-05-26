@@ -95,21 +95,21 @@ void pop_context(VisitorContext& context, const ASTNode* node) {
 
 std::string TerminalNode::str(bool versbose) const {
   if(versbose) {
-    return ANSI_COLOR_Dim_Yellow + std::string("TerminalNode.") + ANSI_COLOR_Dim_Black_Grey + this->name + std::string(ANSI_COLOR_RESET) + "." + this->unit.str(versbose);
+    return ANSI_COLOR_Dim_Yellow + std::string("TerminalNode.") + ANSI_COLOR_Dim_Gray + this->name + std::string(ANSI_COLOR_RESET) + "." + this->unit.str(versbose);
   }
-  return ANSI_COLOR_Dim_Black_Grey + this->name + ANSI_COLOR_RESET;
+  return ANSI_COLOR_Dim_Gray + this->name + ANSI_COLOR_RESET;
 };
 std::string IntermediaryNode::str(bool versbose) const {
   if(versbose) {
-    return ANSI_COLOR_Dim_Yellow + std::string("IntermediaryNode.") + ANSI_COLOR_Dim_Black_Grey + this->name + std::string(ANSI_COLOR_RESET) + std::string(ANSI_COLOR_Bright_Green) + ".(" + ANSI_COLOR_RESET + this->alt.str(versbose) + std::string(ANSI_COLOR_Bright_Green) + ")" + ANSI_COLOR_RESET;
+    return ANSI_COLOR_Dim_Yellow + std::string("IntermediaryNode.") + ANSI_COLOR_Dim_Gray + this->name + std::string(ANSI_COLOR_RESET) + std::string(ANSI_COLOR_Bright_Green) + ".(" + ANSI_COLOR_RESET + this->alt.str(versbose) + std::string(ANSI_COLOR_Bright_Green) + ")" + ANSI_COLOR_RESET;
   }
-  return ANSI_COLOR_Dim_Black_Grey + this->name + ANSI_COLOR_RESET;
+  return ANSI_COLOR_Dim_Gray + this->name + ANSI_COLOR_RESET;
 };
 std::string RootNode::str(bool versbose) const {
   if(versbose) {
-    return ANSI_COLOR_Dim_Yellow + std::string("RootNode.") + ANSI_COLOR_Dim_Black_Grey + this->name + std::string(ANSI_COLOR_RESET);
+    return ANSI_COLOR_Dim_Yellow + std::string("RootNode.") + ANSI_COLOR_Dim_Gray + this->name + std::string(ANSI_COLOR_RESET);
   }
-  return ANSI_COLOR_Dim_Black_Grey + this->name + ANSI_COLOR_RESET;
+  return ANSI_COLOR_Dim_Gray + this->name + ANSI_COLOR_RESET;
 };
 
 void TerminalNode::accept(ASTVisitor& visitor, VisitorContext& context) const {

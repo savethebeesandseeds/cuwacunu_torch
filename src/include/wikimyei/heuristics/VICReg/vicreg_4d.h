@@ -1,10 +1,11 @@
 /* vicreg_4d.h */
-
 #pragma once
 
 #include <torch/torch.h>
+#include <torch/nn/utils/clip_grad.h>
 #include <optional>
 #include <vector>
+
 #include "wikimyei/heuristics/VICReg/vicreg_4d_encoder.h"
 #include "wikimyei/heuristics/VICReg/vicreg_4d_losses.h"
 #include "wikimyei/heuristics/VICReg/vicreg_4d_Projector.h"
@@ -16,8 +17,10 @@
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
-RUNTIME_WARNING("(vicreg_4d.h)[] remember doing torch::jit::Module scripted = torch::jit::freeze(torch::jit::script::Module(my_encoder));\n");
-RUNTIME_WARNING("(vicreg_4d.h)[] try along torch::kFloat16\n");
+#include "piaabo/torch_compat/optim/optimizers.h"
+#include "piaabo/torch_compat/optim/schedulers/lambda_lr_scheduler.h"
+
+RUNTIME_WARNING("(vicreg_4d.h)[] for imporving performance remember doing torch::jit::Module scripted = torch::jit::freeze(torch::jit::script::Module(my_encoder));\n");
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -38,16 +41,28 @@ namespace vicreg_4d {
 class VICReg_4D : public torch::nn::Module {
 public:
     /* Class Variables */
-    int C; // n channels
-    int T; // n timesteps
-    int D; // n features
-    double lr;
+    int C;
+    int T;
+    int D;
+    int encoding_dims;
+    int channel_expansion_dim;
+    int fused_feature_dim;
+    int encoder_hidden_dims;
+    int encoder_depth;
+    std::string projector_mlp_spec;
     double sim_coeff;
     double std_coeff;
     double cov_coeff;
+    double optimizer_base_lr;
+    double optimizer_weight_decay;
+    int optimizer_lr_cycle;
+    int optimizer_lr_warmup_epochs;
+    double optimizer_lr_min;
+    bool optimizer_clamp_weights;
+    int optimizer_threshold_reset;
     torch::Dtype dtype;
     torch::Device device;
-
+    bool enable_buffer_averaging;
 
     /* The base VICReg_4D_Encoder (trainable model) */
     VICReg_4D_Encoder _encoder_net{nullptr};
@@ -61,30 +76,38 @@ public:
     /* The aug module, for sample viriances in selfsupervised training */
     VICReg_4D_Augmentation aug;
 
-    /* AdamW optimizer for the networks */
+    /* optimizer for the base networks */
     torch::optim::AdamW optimizer;
 
+    /* learning rate scheduler */
+    cuwacunu::piaabo::torch_compat::optim::schedulers::LambdaLR lr_sched;
+
     /**
-     * Constructor
+     * @brief Constructor for VICReg_4D model
      *
-     * @param C_: number of channels in the input
-     * @param T_: number of timesteps in the input
-     * @param D_: number of features or dimensionality of the input
-     * @param encoding_dims_: dimension of the learned representation
-     * @param encoder_hidden_dims_: dimension of hidden layers in VICReg_4D_Encoder
-     * @param encoder_depth_: number of residual blocks in VICReg_4D_Encoder
-     * @param device_: the device for training/inference (CPU/GPU)
-     * @param lr_: learning rate
-     * @param sim_coeff: Weight for the invariance (MSE) loss component.
-     * @param std_coeff: Weight for the variance regularization component.
-     * @param cov_coeff: Weight for the covariance regularization component.
-     * @param batch_size_: batch size
-     * @param enable_buffer_averaging_: If true, buffers (e.g., BatchNorm running stats) in the averaged model 
-                                        (_swa_encoder_net) are updated using the same averaging formula as parameters. 
-                                        If false (default), buffers are directly copied from the training model 
-                                        (_encoder_net) at each update step (standard SWA usually requires a separate 
-                                        BatchNorm update step after training).
-    */
+     * @param C_ Number of input channels.
+     * @param T_ Number of timesteps in the input.
+     * @param D_ Number of input features (dimensionality).
+     * @param encoding_dims_ Dimension of the learned representation.
+     * @param channel_expansion_dim_ Intermediate expansion size for the encoder (channel-wise).
+     * @param fused_feature_dim_ Dimension of the fused feature vector after spatial-temporal encoding.
+     * @param encoder_hidden_dims_ Hidden layer size in the VICReg_4D_Encoder.
+     * @param encoder_depth_ Number of residual blocks in the VICReg_4D_Encoder.
+     * @param projector_mlp_spec_ Specification string for projector MLP architecture (e.g., "8192-8192-8192").
+     * @param sim_coeff_ Weight for the invariance loss (MSE between views).
+     * @param std_coeff_ Weight for the variance regularization term.
+     * @param cov_coeff_ Weight for the covariance regularization term.
+     * @param optimizer_base_lr_ Base learning rate for the optimizer.
+     * @param optimizer_weight_decay_ Weight decay for the optimizer.
+     * @param optimizer_lr_cycle_ Total number of epochs in one learning rate cycle.
+     * @param optimizer_lr_warmup_epochs_ Number of warm-up epochs at the start of training.
+     * @param optimizer_lr_min_ Minimum learning rate as a fraction of base_lr.
+     * @param optimizer_clamp_weights Whether to clamp model weights during training.
+     * @param optimizer_threshold_reset Step where to reset AdamW pow exponent. -1 for non reset
+     * @param dtype_ Desired floating point precision (e.g., torch::kFloat32).
+     * @param device_ Device for model training/inference (e.g., CPU or CUDA).
+     * @param enable_buffer_averaging_ If true, SWA model buffers are averaged; if false, copied directly.
+     */
     VICReg_4D(
         int C_, // n channels
         int T_, // n timesteps
@@ -98,7 +121,13 @@ public:
         double sim_coeff_ = 25.0,   // Invariance loss coeficient
         double std_coeff_ = 25.0,   // Variance loss coeficient
         double cov_coeff_ = 1.0,    // Covriance loss coeficient
-        double lr_ = 0.001,
+        double optimizer_base_lr_ = 0.1,
+        double optimizer_weight_decay_ = 0.001,
+        int optimizer_lr_cycle_ = 50,         // total_epochs (cycle length)
+        int optimizer_lr_warmup_epochs_ = 0,  // warm-up epochs
+        double optimizer_lr_min_ = 0.001,     // min_lr / base_lr, e.g. 0.001/0.10 = 0.01
+        bool optimizer_clamp_weights_ = false, // clamp the weights of the models
+        int optimizer_threshold_reset_ = -1, 
         torch::Dtype dtype_ = torch::kFloat32,
         torch::Device device_ = torch::kCPU,
         bool enable_buffer_averaging_ = false
@@ -106,12 +135,26 @@ public:
         C(C_),
         T(T_),
         D(D_),
-        lr(lr_),
+        encoding_dims(encoding_dims_),
+        channel_expansion_dim(channel_expansion_dim_),
+        fused_feature_dim(fused_feature_dim_),
+        encoder_hidden_dims(encoder_hidden_dims_),
+        encoder_depth(encoder_depth_),
+        projector_mlp_spec(projector_mlp_spec_),
         sim_coeff(sim_coeff_),
         std_coeff(std_coeff_),
         cov_coeff(cov_coeff_),
+        optimizer_base_lr(optimizer_base_lr_),
+        optimizer_weight_decay(optimizer_weight_decay_),
+        optimizer_lr_cycle(optimizer_lr_cycle_),
+        optimizer_lr_warmup_epochs(optimizer_lr_warmup_epochs_),
+        optimizer_lr_min(optimizer_lr_min_),
+        optimizer_clamp_weights(optimizer_clamp_weights_),
+        optimizer_threshold_reset(optimizer_threshold_reset_),
         dtype(dtype_),
         device(device_),
+        enable_buffer_averaging(enable_buffer_averaging_),
+        
         /* Initialize the base VICReg_4D_Encoder */
         _encoder_net(register_module("_encoder_net", 
             cuwacunu::wikimyei::vicreg_4d::VICReg_4D_Encoder(
@@ -150,15 +193,24 @@ public:
         /* set up the aug */
         aug{},
         
-        /* ---------- set up the optimizer ------------- */
-        optimizer(
-            std::vector<torch::optim::OptimizerParamGroup>{
-                torch::optim::OptimizerParamGroup(_encoder_net->parameters()),
-                torch::optim::OptimizerParamGroup(_projector_net->parameters())
-            },
-            torch::optim::AdamWOptions(lr_)              // defaults
-        )
+        /* set up the optimizer */
+        optimizer({
+            _encoder_net->parameters(), 
+            _projector_net->parameters()
+        }, torch::optim::AdamWOptions(optimizer_base_lr).weight_decay(optimizer_weight_decay)),
+        
+        /* set up the lr scheduler */
+        lr_sched(
+            optimizer,
+            cuwacunu::piaabo::torch_compat::optim::schedulers::
+                warmup_cosine_lambda(
+                    static_cast<unsigned>(optimizer_lr_warmup_epochs),  // warm-up epochs
+                    optimizer_base_lr,                                  // base_lr 
+                    optimizer_lr_min,                                   // min_lr / base_lr, e.g. 0.001/0.10 = 0.01
+                    static_cast<unsigned>(optimizer_lr_cycle)           // total_epochs (cycle length)
+                ))
     {
+        display_model();
         warm_up();
     }
 
@@ -182,11 +234,11 @@ public:
      * @param n_iters      Maximum number of training iterations (set to -1 to ignore).
      * @param verbose      Whether to print the average loss at each epoch.
      * 
-     * @return std::vector<double>  A log of average training losses, one per epoch.
+     * @return std::vector<std::pair<int, double>>  A log of average training losses, one per epoch.
      */
     template<typename Q, typename K, typename Td>
-    std::vector<double> fit(
-        cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Td, torch::data::samplers::RandomSampler>& dataloader,
+    std::vector<std::pair<int, double>> fit(
+        cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Td, torch::data::samplers::SequentialSampler>& dataloader,
         int n_epochs = -1,
         int n_iters = -1,
         int swa_start_iter = 1000, 
@@ -196,12 +248,17 @@ public:
         int epoch_count = 0;
         int iter_count = 0;
         bool stop_loop = false;
-        std::vector<double> loss_log;
+        std::vector<std::pair<int, double>> loss_log;
         
         /* Set base net & SWA net to training mode */
         _encoder_net->train();
         _projector_net->train();
         _swa_encoder_net->encoder().train();
+
+        /* used to clamp the parameters */
+        std::vector<torch::Tensor> all_p;
+        for (auto& p : _encoder_net->parameters())   all_p.push_back(p);
+        for (auto& p : _projector_net->parameters()) all_p.push_back(p);
         
         while (!stop_loop) {
             if (n_epochs >= 0 && epoch_count >= n_epochs) {
@@ -222,7 +279,6 @@ public:
                 optimizer.zero_grad();
                 
                 /* Prepare input batch */
-                
                 auto collacted_sample = K::collate_fn(sample_batch);
                 auto data = collacted_sample.features.to(device);
                 auto mask = collacted_sample.mask.to(device);
@@ -259,30 +315,49 @@ public:
 
                 /* back propagate */
                 loss.backward();
+                
+                /* clamp the parameters */
+                if(optimizer_clamp_weights) {
+                    torch::nn::utils::clip_grad_norm_(all_p, 1.0);   // L2-norm ≤ 1
+                }
 
+                /* step the optimizer */
                 optimizer.step();
     
                 /* Update SWA parameters */
                 _swa_encoder_net->update_parameters(_encoder_net);
-    
+
                 /* Accumulate loss */
                 cum_loss += loss.template item<double>();
                 epoch_iters++;
                 iter_count++;
 
             } /* end for dataloader */
+
+            epoch_count++;
+            std::cout << epoch_iters << std::endl; // waka
             
             if (!stop_loop && epoch_iters > 0) {
-                double avg_loss = cum_loss / static_cast<double>(epoch_iters);
-                loss_log.push_back(avg_loss);
-                
-                if (verbose) {
-                    std::cout << "[Epoch #" << epoch_count << "] Loss = "
-                        << avg_loss << std::endl;
+                /* fix AdamW exponent overflow */
+                cuwacunu::piaabo::torch_compat::optim::clamp_adam_step(optimizer, static_cast<int64_t>(optimizer_threshold_reset));
+
+                /* debug */
+                if(epoch_count == 1 || epoch_count%50 == 0 || epoch_count == n_epochs) {
+                    double avg_loss = cum_loss / static_cast<double>(epoch_iters);
+                    loss_log.push_back({epoch_count, avg_loss});
+                    if (verbose) {
+                        log_info("%s Representation Learning %s [ %sEpoch # %s%5d%s ] \t%slr = %s%.6f%s, \t%sloss = %s%.5f%s \n", 
+                            ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, 
+                            ANSI_COLOR_Dim_Gray, ANSI_COLOR_Dim_Blue, epoch_count, ANSI_COLOR_RESET,
+                            ANSI_COLOR_Dim_Gray, ANSI_COLOR_Dim_Magenta, optimizer.param_groups()[0].options().get_lr(), ANSI_COLOR_RESET,
+                            ANSI_COLOR_Dim_Gray, ANSI_COLOR_Dim_Red, avg_loss, ANSI_COLOR_RESET
+                        );
+                    }
                 }
             }
-            
-            epoch_count++;
+
+            /* call the scheduler ONCE per epoch */
+            lr_sched.step();
         }
     
         return loss_log;
@@ -390,6 +465,79 @@ public:
      * load: loads the SWA model's state_dict
      */
     void load(const std::string& filepath);
+
+    /**
+     * print the configuration values
+     */
+    void display_model() const {
+        // 1) prep any runtime‐only strings
+        const char* dtype_str =
+        (
+            dtype == torch::kInt8    ? "kInt8"   :
+            dtype == torch::kInt16   ? "kInt16"  :
+            dtype == torch::kInt32   ? "kInt32"  :
+            dtype == torch::kInt64   ? "kInt64"  :
+            dtype == torch::kFloat32 ? "Float32" :
+            dtype == torch::kFloat16 ? "Float16" :
+            dtype == torch::kFloat64 ? "Float64" : "Unknown"
+        );
+        std::string dev = device.str();  // e.g. "cuda:0" or "cpu"
+        const char* device_str = dev.c_str();
+        const char* swa_str = enable_buffer_averaging ? "true" : "false";
+        const char* optimizer_clamp_weights_str = optimizer_clamp_weights ? "true" : "false";
+        const char* mlp_spec_str = projector_mlp_spec.c_str();
+
+        // 2) one giant format string
+        const char* fmt =
+        "\n%s \t[Representation Learning] VICReg_4D:  %s\n"
+        "\t\t%s%-25s%s %s%-8d%s\n"        // C
+        "\t\t%s%-25s%s %s%-8d%s\n"        // T
+        "\t\t%s%-25s%s %s%-8d%s\n"        // D
+        "\t\t%s%-25s%s %s%-8d%s\n"        // encoding_dims
+        "\t\t%s%-25s%s %s%-8d%s\n"        // channel_expansion_dim
+        "\t\t%s%-25s%s %s%-8d%s\n"        // fused_feature_dim
+        "\t\t%s%-25s%s %s%-8d%s\n"        // encoder_hidden_dims
+        "\t\t%s%-25s%s %s%-8d%s\n"        // encoder_depth
+        "\t\t%s%-25s%s %s%-8s%s\n"        // projector_mlp_spec
+        "\t\t%s%-25s%s    %s%-8.4f%s\n"   // sim_coeff
+        "\t\t%s%-25s%s    %s%-8.4f%s\n"   // std_coeff
+        "\t\t%s%-25s%s    %s%-8.4f%s\n"   // cov_coeff
+        "\t\t%s%-25s%s %s%-8.6f%s\n"      // optimizer_base_lr
+        "\t\t%s%-25s%s %s%-8.6f%s\n"      // optimizer_weight_decay
+        "\t\t%s%-25s%s %s%-8d%s\n"        // optimizer_lr_cycle
+        "\t\t%s%-25s%s %s%-8d%s\n"        // optimizer_lr_warmup_epochs
+        "\t\t%s%-25s%s %s%-8.6f%s\n"      // optimizer_lr_min
+        "\t\t%s%-25s%s %s%-8s%s\n"        // optimizer_clamp_weights
+        "\t\t%s%-25s%s %s%-8d%s\n"        // optimizer_threshold_reset
+        "\t\t%s%-25s%s %s%-8s%s\n";       // SWA buffer avg
+
+        // 3) single fprintf
+        log_info(fmt,
+        /* header */                    ANSI_COLOR_Dim_Green,      ANSI_COLOR_RESET,
+        /* C */                         ANSI_COLOR_Bright_Grey,    "Channels  (C):",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  C,                          ANSI_COLOR_RESET,
+        /* T */                         ANSI_COLOR_Bright_Grey,    "Timesteps (T):",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  T,                          ANSI_COLOR_RESET,
+        /* D */                         ANSI_COLOR_Bright_Grey,    "Features  (D):",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  D,                          ANSI_COLOR_RESET,
+        /* encoding_dims */             ANSI_COLOR_Bright_Grey,    "Encoding dims:",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoding_dims,              ANSI_COLOR_RESET,
+        /* channel_expansion_dim */     ANSI_COLOR_Bright_Grey,    "Channel expansion:",        ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  channel_expansion_dim,      ANSI_COLOR_RESET,
+        /* fused_feature_dim */         ANSI_COLOR_Bright_Grey,    "Fused feature dim:",        ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  fused_feature_dim,          ANSI_COLOR_RESET,
+        /* encoder_hidden_dims */       ANSI_COLOR_Bright_Grey,    "Encoder hidden dims:",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoder_hidden_dims,        ANSI_COLOR_RESET,
+        /* encoder_depth */             ANSI_COLOR_Bright_Grey,    "Encoder depth:",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoder_depth,              ANSI_COLOR_RESET,
+        /* projector_mlp_spec */        ANSI_COLOR_Bright_Grey,    "Proj MLP spec:",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  mlp_spec_str,               ANSI_COLOR_RESET,
+        /* sim_coeff */                 ANSI_COLOR_Bright_Grey,    "Sim coeff (λ₁):",           ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  sim_coeff,                  ANSI_COLOR_RESET,
+        /* std_coeff */                 ANSI_COLOR_Bright_Grey,    "Std coeff (λ₂):",           ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  std_coeff,                  ANSI_COLOR_RESET,
+        /* cov_coeff */                 ANSI_COLOR_Bright_Grey,    "Cov coeff (λ₃):",           ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  cov_coeff,                  ANSI_COLOR_RESET,
+        /* optimizer_base_lr */         ANSI_COLOR_Bright_Grey,    "Learning rate (base):",     ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_base_lr,          ANSI_COLOR_RESET,
+        /* optimizer_weight_decay */    ANSI_COLOR_Bright_Grey,    "Learning weight decay:",    ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_weight_decay,     ANSI_COLOR_RESET,
+        /* optimizer_lr_cycle */        ANSI_COLOR_Bright_Grey,    "Learning rate cycle:",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_lr_cycle,         ANSI_COLOR_RESET,
+        /* optimizer_lr_warmup_epochs */ANSI_COLOR_Bright_Grey,    "Learning warmup epochs:",   ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_lr_warmup_epochs, ANSI_COLOR_RESET,
+        /* optimizer_lr_min */          ANSI_COLOR_Bright_Grey,    "Learning rate (min):",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_lr_min,           ANSI_COLOR_RESET,
+        /* optimizer_clamp_weights */   ANSI_COLOR_Bright_Grey,    "Learning clamp weights:",   ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_clamp_weights_str,ANSI_COLOR_RESET,
+        /* optimizer_threshold_reset */ ANSI_COLOR_Bright_Grey,    "Learning threshold reset:", ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue,  optimizer_threshold_reset,   ANSI_COLOR_RESET,
+        /* dtype */                     ANSI_COLOR_Bright_Grey,    "Data type:",                ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  dtype_str,                  ANSI_COLOR_RESET,
+        /* device */                    ANSI_COLOR_Bright_Grey,    "Device:",                   ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  device_str,                 ANSI_COLOR_RESET,
+        /* swa buffer */                ANSI_COLOR_Bright_Grey,    "SWA buffer avg:",           ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  swa_str,                    ANSI_COLOR_RESET
+        );
+    }
 };
 
 } /* namespace vicreg_4d */
