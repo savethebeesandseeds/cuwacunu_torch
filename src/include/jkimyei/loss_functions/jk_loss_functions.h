@@ -1,3 +1,4 @@
+/* jk_loss_functions.h */
 #pragma once
 
 #include <torch/torch.h> 

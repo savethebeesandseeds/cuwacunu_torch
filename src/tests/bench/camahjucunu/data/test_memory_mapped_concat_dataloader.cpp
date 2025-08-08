@@ -21,15 +21,15 @@ int main() {
     cuwacunu::piaabo::dconfig::config_space_t::update_config();
 
     /* set the test variables */
-    // std::string INSTRUMENT = "BTCUSDT";
-    std::string INSTRUMENT = "UTILITIES";
+    // std::string INSTRUMENT = "UTILITIES";
+    std::string INSTRUMENT = "BTCUSDT";
     std::string instruction = cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction();
     std::size_t batch_size = 64;
     std::size_t workers = 4;
 
     /* types definition */
-    using T = cuwacunu::camahjucunu::exchange::basic_t;
-    // using T = cuwacunu::camahjucunu::exchange::kline_t;
+    // using T = cuwacunu::camahjucunu::exchange::basic_t;
+    using T = cuwacunu::camahjucunu::exchange::kline_t;
     using Q = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<T>;
     using K = cuwacunu::camahjucunu::data::observation_sample_t;
     
@@ -61,11 +61,17 @@ int main() {
             auto collacted_sample = K::collate_fn(sample_batch);
             std::cout << "\t\t\t collacted_sample.features.shape(): "; for (const auto& dim : collacted_sample.features.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
             std::cout << "\t\t\t collacted_sample.mask.shape(): "; for (const auto& dim : collacted_sample.mask.sizes()) { std::cout << dim << " "; } std::cout << std::endl;
-
+            // /* ---- first element in the batch ---- */
+            // auto first_feat = collacted_sample.features.select(0, 0); // same as collacted_sample.features[0]
+            // auto first_mask = collacted_sample.mask.select(0, 0);     // same as collacted_sample.mask[0]
+    
+            // std::cout << "\t\t\t first feature tensor:\n" << first_feat << '\n';
+            // std::cout << "\t\t\t first mask tensor:\n"    << first_mask << '\n';
         }
         std::cout << "--- --- ---: " << count << std::endl;
     }
-
+    
+    /* ------------------- */
 
     {
         using S = torch::data::samplers::RandomSampler;

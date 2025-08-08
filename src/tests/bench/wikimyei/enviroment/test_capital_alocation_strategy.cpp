@@ -1,0 +1,39 @@
+/* test_vicreg_4d_observation_pipeline.cpp */
+#include <torch/torch.h>
+#include <torch/autograd.h>
+#include <fstream>
+#include <iostream>
+#include <filesystem>
+#include "piaabo/torch_compat/torch_utils.h"
+#include "piaabo/dutils.h"
+#include "piaabo/dconfig.h"
+#include "piaabo/dfiles.h"
+#include "camahjucunu/exchange/exchange_utils.h"
+#include "camahjucunu/exchange/exchange_types_data.h"
+#include "camahjucunu/exchange/exchange_types_enums.h"
+
+#include "camahjucunu/data/memory_mapped_dataset.h"
+#include "camahjucunu/data/memory_mapped_datafile.h"
+#include "camahjucunu/data/memory_mapped_dataloader.h"
+#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d.h"
+
+int main() {
+    using Td = cuwacunu::camahjucunu::exchange::kline_t;
+    auto train_loader = cuwacunu::camahjucunu::data::observation_pipeline_sequential_mm_dataloader<Td>("BTCUSDT");
+    auto shuffle_loader = cuwacunu::camahjucunu::data::observation_pipeline_random_mm_dataloader<Td>("BTCUSDT");
+    
+    VICReg_4D(
+        int C_, // n channels
+        int T_, // n timesteps
+        int D_  // n features
+    )
+    
+    while (!obs_space.is_done()) {
+        auto obs = obs_space.get_observation();
+        auto rep = obs_space.get_representation();
+        /* ... feed VicReg, RL-agent, etc. ... */
+        obs_space.step();
+    }
+}

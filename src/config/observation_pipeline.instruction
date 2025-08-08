@@ -7,7 +7,7 @@
     - Instrument: The financial instrument or trading pair being analyzed (e.g., BTCUSDT).
     - Interval: The time interval of the data (e.g., 1m for 1 minute, 1d for 1 day).
     - Record Type: The type of data record (e.g., kline for candlestick data).
-    - Norm Window: The size of the normalization window used for preprocessing.
+    - Norm Window: The size of the normalization window used for preprocessing (set to zero to avoid normalization).
     - Source Path: The file path to the raw data CSV file for this instrument and interval.
 */
 /-------------------------------------------------------------------------------------------------------------------------\
@@ -52,7 +52,7 @@
 |------------------------------------------------------|
 |    1w       |   true    |    kline     |     4       |
 |    3d       |   true    |    kline     |     10      |
-|    1d       |   true    |    kline     |     30      |
+|    1d       |   false   |    kline     |     30      |
 |    12h      |   false   |    kline     |     60      |
 |    8h       |   false   |    kline     |     90      |
 |    6h       |   false   |    kline     |     100     |

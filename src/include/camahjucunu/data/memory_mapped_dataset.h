@@ -17,6 +17,7 @@
 #include <c10/util/Optional.h> // for c10::nullopt;
 #include "piaabo/dutils.h"
 #include "piaabo/dfiles.h"
+#include "piaabo/dconfig.h"
 #include "piaabo/torch_compat/torch_utils.h"
 #include "camahjucunu/exchange/exchange_utils.h"
 #include "camahjucunu/exchange/exchange_types_data.h"
@@ -500,7 +501,7 @@ public:
   }
 
   observation_sample_t get(std::size_t index) override {
-    if(index > num_records_) {
+    if(index >= num_records_) {
       log_fatal("[MemoryMappedConcatDataset] get() request, index: %ld, exceed the size: %ld \n", index, num_records_);
     }
     /* index to key_value */
@@ -682,8 +683,8 @@ public:
   * @param force_binarization Whether or not to renormalize and binarize the memory mapped data files.
   *
   */
-template<typename T>
-MemoryMappedConcatDataset<T> create_memory_mapped_concat_dataset(
+template<typename Td>
+MemoryMappedConcatDataset<Td> create_memory_mapped_concat_dataset(
   std::string& instrument, 
   cuwacunu::camahjucunu::BNF::observation_instruction_t obs_inst, 
   bool force_binarization = false) {
@@ -692,7 +693,7 @@ MemoryMappedConcatDataset<T> create_memory_mapped_concat_dataset(
     size_t buffer_size = 1024;
 
     /* create the dataset for T */
-    auto concat_dataset = MemoryMappedConcatDataset<T>();
+    auto concat_dataset = MemoryMappedConcatDataset<Td>();
 
     /* add the datasets to the concatdataset as per in the instruction */
     for(auto& in_form: obs_inst.input_forms) {
@@ -712,6 +713,7 @@ MemoryMappedConcatDataset<T> create_memory_mapped_concat_dataset(
 
     return concat_dataset;
 }
+
 } /* namespace data */
 } /* namespace camahjucunu */
 } /* namespace cuwacunu */

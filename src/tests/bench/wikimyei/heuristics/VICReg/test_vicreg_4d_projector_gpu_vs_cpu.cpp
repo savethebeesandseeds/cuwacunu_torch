@@ -4,7 +4,7 @@
 
 #include "piaabo/dutils.h"
 #include "piaabo/torch_compat/torch_utils.h"
-#include "wikimyei/heuristics/VicReg/vicreg_4d_projector.h"
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_projector.h"
 
 int main() {
     const int embedding_dim = 64;

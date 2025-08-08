@@ -11,6 +11,6 @@ private: /* to inforce architecture design, only friend classes have access */
   torch::Tensor expected_value;
   torch::Tensor critic_losses;
   torch::Tensor actor_categorical_losse;
-  torch::Tensor actor_continuous_losse;
+  torch::Tensor actor_continious_losse;
 };
 } /* namespace cuwacunu */

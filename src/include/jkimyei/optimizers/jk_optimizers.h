@@ -1,3 +1,6 @@
+/* jk_optimizers.h */
+#pragma once
+
 #include <torch/torch.h>
 #include <functional>
 #include "piaabo/dutils.h"

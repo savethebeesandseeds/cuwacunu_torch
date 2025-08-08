@@ -43,7 +43,7 @@
 */
 [ lr_schedulers_table ]
 /--------------------------------------------------------------------------------------------------------------------------------------------------------\
-|  row_id             | scheduler_type    | step_size | gamma | mode        | factor | patience | threshold | threshold_mode | cooldown | min_lr |  eps  | 
+|  row_id             | scheduler_type    | step_size | gamma | mode        | factor | patience | threshold | threshold_mode | cooldown | min_lr |  eps  |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | StepLR              | StepLR            | 10        | 0.1   | -           |   -    |   -      | -         | -              | -        | -      | -     |
 | MultiStepLR         | MultiStepLR       | 10,20     | 0.1   | -           |   -    |   -      | -         | -              | -        | -      | -     |

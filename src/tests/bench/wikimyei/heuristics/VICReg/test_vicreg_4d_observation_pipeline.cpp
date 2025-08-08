@@ -17,7 +17,7 @@
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
-#include "wikimyei/heuristics/VicReg/vicreg_4d.h"
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d.h"
 
 int main() {
     // torch::autograd::AnomalyMode::set_enabled(true);
@@ -53,9 +53,9 @@ int main() {
         INSTRUMENT,                                                                                             /* instrument */
         cuwacunu::camahjucunu::BNF::observationPipeline()
             .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),             /* obs_inst */ 
-        cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("VICReg", "dataloader_force_binarization"),    /* force_binarization */
-        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "dataloader_batch_size"),            /* batch_size */
-        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "dataloader_workers")                /* workers */
+        cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
+        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
+        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
     );
     PRINT_TOCK_ms(create_dataloader_);
 
@@ -104,22 +104,14 @@ int main() {
     );
     PRINT_TOCK_ms(Train_Model);
 
-    // // -----------------------------------------------------
-    // // 5) Encode (Forward)
-    // // -----------------------------------------------------
-    // std::cout << "Beging the training...\n";
-    // TICK(Train_Model);
-    // auto loss_log = model.fit<train_Dl>(
-    //     /* dataloader */ train_dataloader, 
-    //     /* n_epochs */ 64,
-    //     /* n_iters */ -1,
-    //     /* verbose */true);
-        
-    // PRINT_TOCK_ms(Train_Model);
+    // -----------------------------------------------------
+    // 5) Save (Model)
+    // -----------------------------------------------------
+    model.save(cuwacunu::piaabo::dconfig::config_space_t::get("VICReg", "model_path"));
     // -----------------------------------------------------
     // Finalize
     // -----------------------------------------------------
-    std::cout << "\nC++ Run Finished.\n";
+    std::cout << "\n Observation Pipeline test Finished.\n";
     
     return 0;
 }

@@ -1,12 +1,12 @@
 # -----------------------------------------------------------------
 # Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-ROOT_PATH := ../../../../..
+ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
 # -----------------------------------------------------------------
 # Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/heuristics/VICReg
+HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/enviroment
 TEST_BUILD := $(ROOT_PATH)/tests/build
 COMMON_TORCH_COMPILE_CMD = \
     $(LOG_START) && $(LOCAL_CLEAN) && \
@@ -27,25 +27,14 @@ COMMON_TORCH_COMPILE_CMD = \
       $(USUAL_LD_FLAGS) \
       -o $@ && $(LOG_END)
 # -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - Local Targets - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_vicreg_4d_observation_pipeline test_vicreg_4d_observation_pipeline
-$(TEST_BUILD)/test_vicreg_4d_observation_pipeline: $(HERE_PATH)/test_vicreg_4d_observation_pipeline.cpp
+.PHONY: $(TEST_BUILD)/test_capital_alocation_strategy test_capital_alocation_strategy
+$(TEST_BUILD)/test_capital_alocation_strategy: $(HERE_PATH)/test_capital_alocation_strategy.cpp
 	@$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_vicreg_4d_observation_pipeline
-test_vicreg_4d_observation_pipeline: $(TEST_BUILD)/test_vicreg_4d_observation_pipeline
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_vicreg_4d_projector_gpu_vs_cpu test_vicreg_4d_projector_gpu_vs_cpu
-$(TEST_BUILD)/test_vicreg_4d_projector_gpu_vs_cpu: $(HERE_PATH)/test_vicreg_4d_projector_gpu_vs_cpu.cpp
-	@$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_vicreg_4d_projector_gpu_vs_cpu
-test_vicreg_4d_projector_gpu_vs_cpu: $(TEST_BUILD)/test_vicreg_4d_projector_gpu_vs_cpu
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_vicreg_4d_save_and_load test_vicreg_4d_save_and_load
-$(TEST_BUILD)/test_vicreg_4d_save_and_load: $(HERE_PATH)/test_vicreg_4d_save_and_load.cpp
-	@$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_vicreg_4d_save_and_load
-test_vicreg_4d_save_and_load: $(TEST_BUILD)/test_vicreg_4d_save_and_load
+	$(RUN_MODE) $(TEST_BUILD)/test_capital_alocation_strategy
+test_capital_alocation_strategy: $(TEST_BUILD)/test_capital_alocation_strategy
+
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

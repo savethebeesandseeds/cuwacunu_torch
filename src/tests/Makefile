@@ -89,29 +89,35 @@ test_iinuji_render:
 test_entropy_methods:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei test_entropy_methods
 test_soft_dtw:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts-tcc test_soft_dtw
+# ---- Heuristics
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts-tcc test_soft_dtw
 test_time_contrastive_coding:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts-tcc test_time_contrastive_coding
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts-tcc test_time_contrastive_coding
 test_ts2vec_datautils:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_datautils
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec_datautils
 test_ts2vec_losses:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_losses
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec_losses
 test_ts2vec_dilated_conv:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_dilated_conv
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec_dilated_conv
 test_ts2vec_encoder:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_encoder
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec_encoder
 test_ts2vec_clonable:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_clonable
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec_clonable
 test_ts2vec_state_dict:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_state_dict
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec_state_dict
 test_ts2vec:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec
 test_ts2vec_ECG200:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/ts2vec test_ts2vec_ECG200
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec test_ts2vec_ECG200
 test_vicreg_4d_observation_pipeline:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/VICReg test_vicreg_4d_observation_pipeline
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg test_vicreg_4d_observation_pipeline
 test_vicreg_4d_projector_gpu_vs_cpu:
-	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/VICReg test_vicreg_4d_projector_gpu_vs_cpu
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg test_vicreg_4d_projector_gpu_vs_cpu
+test_vicreg_4d_save_and_load:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg test_vicreg_4d_save_and_load
+# ---- Enviroment
+test_capital_alocation_strategy:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/enviroment test_capital_alocation_strategy
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

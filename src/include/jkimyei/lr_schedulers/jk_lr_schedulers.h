@@ -1,4 +1,6 @@
 /* jk_lr_schedulers.h */
+#pragma once
+
 #include <torch/torch.h> 
 #include <functional>
 #include "piaabo/dutils.h"

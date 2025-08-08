@@ -130,6 +130,59 @@ create_memory_mapped_dataloader(
     );
 }
 
+
+// ----------------------------------------------------------------------------
+// Observation-pipeline DataLoaders (sequential / random)
+//
+//   auto dl = observation_pipeline_sequential_mm_dataloader<Td>("BTCUSDT");
+//   auto dl = observation_pipeline_random_mm_dataloader   <Td>("BTCUSDT");
+//
+// ----------------------------------------------------------------------------
+template<typename Td, typename Sampler>
+inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
+{
+    using Dataset = MemoryMappedConcatDataset<Td>;
+
+    // ---- fetch config only once ------------------------------------------
+    const bool force_bin   = cuwacunu::piaabo::dconfig::config_space_t::get<bool>("DATA_LOADER","dataloader_force_binarization");
+    const int  batch_size  = cuwacunu::piaabo::dconfig::config_space_t::get<int>("DATA_LOADER","dataloader_batch_size");
+    const int  workers     = cuwacunu::piaabo::dconfig::config_space_t::get<int>("DATA_LOADER","dataloader_workers");
+
+    // ---- make a writable copy for   create_memory_mapped_dataloader ------
+    std::string inst{instrument};
+
+    return create_memory_mapped_dataloader<Dataset, observation_sample_t, Td, Sampler>(
+        inst,
+        cuwacunu::camahjucunu::BNF::observationPipeline()
+            .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),
+        force_bin,
+        batch_size,
+        workers
+    );
+}
+
+/**
+ * ---------------------------------- sequential ----------------------------
+ * @tparam Td The underlying data type used by the dataset.
+ */
+template<typename Td>
+inline auto observation_pipeline_sequential_mm_dataloader(std::string_view instrument)
+{
+    using Sampler = torch::data::samplers::SequentialSampler;
+    return make_obs_pipeline_mm_dataloader<Td, Sampler>(instrument);
+}
+
+/**
+ * ---------------------------------- random --------------------------------
+ * @tparam Td The underlying data type used by the dataset.
+ */
+template<typename Td>
+inline auto observation_pipeline_random_mm_dataloader(std::string_view instrument)
+{
+    using Sampler = torch::data::samplers::RandomSampler;
+    return make_obs_pipeline_mm_dataloader<Td, Sampler>(instrument);
+}
+
 } /* namespace data */
 } /* namespace camahjucunu */
 } /* namespace cuwacunu */
