@@ -230,7 +230,6 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
       element.record_type += aux;
     }
 
-
     /* seq_length */
     if(  context.stack.size() == 5 
       && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_seq_length
@@ -239,6 +238,16 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
       std::string aux = node->unit.lexeme;
       cuwacunu::piaabo::string_remove(aux, '\"');
       element.seq_length += aux;
+    }
+
+    /* future_seq_length */
+    if(  context.stack.size() == 5 
+      && context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_future_seq_length
+      && context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_number) {
+      /* assign "future_seq_length" of the last element in the vector */
+      std::string aux = node->unit.lexeme;
+      cuwacunu::piaabo::string_remove(aux, '\"');
+      element.future_seq_length += aux;
     }
   }
 }

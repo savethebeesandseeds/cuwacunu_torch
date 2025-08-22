@@ -17,7 +17,7 @@
       <BTCUSDT:kline>{1s=60, 1m=60, 1h=24}(path/to/file.csv)
       <BTCUSDT:kline>{1s=15, 1h=5, 1d=10, 1M=2}(path/to/file.csv)
       <BTCUSDT:kline>{1s=60, 1m=5, 5m=3, 15m=2, 30m=2, 1h=24}(path/to/file.csv)
-    With this the Pipieline would know to request the Broker or Query de Data 
+    With this the Pipeline would know to request the Broker or Query de Data 
     For pattern instructed. E.g. <BTCUSDT:kline>{1s=60, 1m=60, 1h=24}(path/to/file.csv) :
       Literal "BTCUSDT" would be parsed to be the symbol
       60 candles of 1 seconds interval  []
@@ -46,6 +46,7 @@ DEFINE_HASH(OBSERVATION_PIPELINE_HASH_break_block,            "<break_block>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_file_path,              "<file_path>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_active,                 "<active>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_seq_length,             "<seq_length>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_future_seq_length,      "<future_seq_length>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_character,              "<character>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_literal,                "<literal>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_whitespace,             "<whitespace>");
@@ -77,6 +78,7 @@ struct input_form_t {
   std::string active;
   std::string record_type;
   std::string seq_length;
+  std::string future_seq_length;
 };
 
 struct observation_instruction_t {

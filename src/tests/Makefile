@@ -61,8 +61,8 @@ test_bnf_instruction_parser:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_instruction_parser
 test_bnf_observation_pipeline:
 	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_observation_pipeline
-test_bnf_training_pipeline:
-	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_training_pipeline
+test_bnf_training_components:
+	$(MAKE) -C $(HERE_PATH)/bench/camahjucunu/bnf test_bnf_training_components
 # -----------------------------------------------------------------
 # - - - Data - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
@@ -86,10 +86,15 @@ test_iinuji_render:
 # -----------------------------------------------------------------
 # - - - Wikimyei -- - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
+test_jk_setup:
+	$(MAKE) -C $(HERE_PATH)/bench/jkimyei/training_components test_jk_setup
+# -----------------------------------------------------------------
+# - - - Wikimyei -- - - - - - - - - - - - - - - - - - - - - - - - -
+# -----------------------------------------------------------------
 test_entropy_methods:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei test_entropy_methods
-test_soft_dtw:
 # ---- Heuristics
+test_soft_dtw:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts-tcc test_soft_dtw
 test_time_contrastive_coding:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts-tcc test_time_contrastive_coding
@@ -115,6 +120,8 @@ test_vicreg_4d_projector_gpu_vs_cpu:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg test_vicreg_4d_projector_gpu_vs_cpu
 test_vicreg_4d_save_and_load:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg test_vicreg_4d_save_and_load
+test_mixture_density_network:
+	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/heuristics/semantic_learning/mdn test_mixture_density_network
 # ---- Enviroment
 test_capital_alocation_strategy:
 	$(MAKE) -C $(HERE_PATH)/bench/wikimyei/enviroment test_capital_alocation_strategy

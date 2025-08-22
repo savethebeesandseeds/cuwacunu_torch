@@ -1,20 +1,21 @@
 # -----------------------------------------------------------------
 # Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-ROOT_PATH := ../../../..
+ROOT_PATH := ../../../../..
 include $(ROOT_PATH)/Makefile.config
 # -----------------------------------------------------------------
 # Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
 # -----------------------------------------------------------------
-HERE_PATH := $(SRC_PATH)/camahjucunu/BNF/implementations
+HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/heuristics/representation_learning
 # -----------------------------------------------------------------
 # - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------
 .PHONY: all
-all: 
-	$(MAKE) -C $(HERE_PATH)/observation_pipeline all
-	$(MAKE) -C $(HERE_PATH)/training_components all
+all: \
+	$(MAKE) -C $(HERE_PATH)/ts-tcc all
+	$(MAKE) -C $(HERE_PATH)/ts2vec all
+	$(MAKE) -C $(HERE_PATH)/VICReg all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # -----------------------------------------------------------------

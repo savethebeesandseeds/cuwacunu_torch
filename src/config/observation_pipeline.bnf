@@ -3,8 +3,8 @@
 <input_table>            ::= <table_top_line> <input_header_line> <table_divider_line> {<input_form>} <table_bottom_line> ;
 <instrument_header_line> ::= "|" <whitespace> "instrument" <whitespace> "|" <whitespace> "interval" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "norm_window" <whitespace> "|" <whitespace> "source" <whitespace> "|" <break_block> ;
 <instrument_form>        ::= "|" <whitespace> <instrument> <whitespace> "|" <whitespace> <interval> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <norm_window> <whitespace> "|" <whitespace> <source> "|" <break_block> ;
-<input_header_line>      ::= "|" <whitespace> "interval" <whitespace> "|" <whitespace> "active" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "seq_length" <whitespace> "|" <break_block> ;
-<input_form>             ::= "|" <whitespace> <interval> <whitespace> "|" <whitespace> <active> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <seq_length> <whitespace> "|" <break_block> ;
+<input_header_line>      ::= "|" <whitespace> "interval" <whitespace> "|" <whitespace> "active" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "seq_length" <whitespace> "|" <whitespace> "future_seq_length" <whitespace> "|" <break_block> ;
+<input_form>             ::= "|" <whitespace> <interval> <whitespace> "|" <whitespace> <active> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <seq_length> <whitespace> "|" <whitespace> <future_seq_length> <whitespace> "|" <break_block> ;
 <table_top_line>         ::= "/" {<frame_char>} "\" <break_block> ;
 <table_divider_line>     ::= "|" {<frame_char>} "|" <break_block> ;
 <table_bottom_line>      ::= "\" {<frame_char>} "/" [<break_block>] ;
@@ -15,6 +15,7 @@
 <file_path>              ::= {<literal>} ;
 <active>                 ::= <boolean> ;
 <seq_length>             ::= {<number>} ;
+<future_seq_length>      ::= {<number>} ;
 <character>              ::= <whitespace> | <letter> | <newline> | <number> | <special> | <super_special> ;
 <literal>                ::= <whitespace> | <letter> | <number> | <special> ;
 <whitespace>             ::= {<empty>} ;

@@ -62,8 +62,8 @@ struct config_space_t {
 
   static std::string observation_pipeline_bnf();
   static std::string observation_pipeline_instruction();
-  static std::string training_pipeline_bnf();
-  static std::string training_pipeline_instruction();
+  static std::string training_components_bnf();
+  static std::string training_components_instruction();
 
 private:
   /*—raw readers—*/

@@ -228,13 +228,13 @@ std::string config_space_t::observation_pipeline_instruction() {
   return piaabo::dfiles::readFileToString(
     config["BNF"]["observation_pipeline_instruction_filename"]);
 }
-std::string config_space_t::training_pipeline_bnf() {
+std::string config_space_t::training_components_bnf() {
   return piaabo::dfiles::readFileToString(
-    config["BNF"]["training_pipeline_bnf_filename"]);
+    config["BNF"]["training_components_bnf_filename"]);
 }
-std::string config_space_t::training_pipeline_instruction() {
+std::string config_space_t::training_components_instruction() {
   return piaabo::dfiles::readFileToString(
-    config["BNF"]["training_pipeline_instruction_filename"]);
+    config["BNF"]["training_components_instruction_filename"]);
 }
 
 /*──────────────────────────── life-cycle hooks ───────────────────────────*/

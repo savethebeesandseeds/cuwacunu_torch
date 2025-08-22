@@ -12,9 +12,7 @@ HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/heuristics
 # -----------------------------------------------------------------
 .PHONY: all
 all: \
-	$(MAKE) -C $(HERE_PATH)/ts-tcc all
-	$(MAKE) -C $(HERE_PATH)/ts2vec all
-	$(MAKE) -C $(HERE_PATH)/VICReg all
+	$(MAKE) -C $(HERE_PATH)/representation_learning all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

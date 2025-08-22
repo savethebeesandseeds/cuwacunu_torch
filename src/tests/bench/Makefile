@@ -16,6 +16,7 @@ all:
 	$(MAKE) -C $(HERE_PATH)/piaabo all
 	$(MAKE) -C $(HERE_PATH)/camahjucunu all
 	$(MAKE) -C $(HERE_PATH)/data all
+	$(MAKE) -C $(HERE_PATH)/jkimyei all
 	$(MAKE) -C $(HERE_PATH)/wikimyei all
 	@$(LOG_SUCCESS)
 # -----------------------------------------------------------------

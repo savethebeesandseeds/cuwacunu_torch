@@ -1,4 +1,4 @@
-// test_bnf_observation_pipieline.cpp
+// test_bnf_observation_pipeline.cpp
 #include <iostream>
 #include "piaabo/dconfig.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
@@ -40,6 +40,7 @@ int main() {
         log_info("\t\t  decoded_data.input_forms[%ld].active      : %s \n", count, decoded_data.input_forms[count].active.c_str());
         log_info("\t\t  decoded_data.input_forms[%ld].record_type : %s \n", count, decoded_data.input_forms[count].record_type.c_str());
         log_info("\t\t  decoded_data.input_forms[%ld].seq_length  : %s \n", count, decoded_data.input_forms[count].seq_length.c_str());
+        log_info("\t\t  decoded_data.input_forms[%ld].future_seq_length  : %s \n", count, decoded_data.input_forms[count].future_seq_length.c_str());
         log_info("\t\t  --- --- --- --- --- \n");
     }
 

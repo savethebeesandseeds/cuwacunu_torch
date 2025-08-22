@@ -3,7 +3,7 @@
 
 #include <torch/torch.h>
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_dilated_conv.h"
-#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_TemporalTransformerModel.h"
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_temporalTransformerModel.h"
 
 namespace cuwacunu {
 namespace wikimyei {

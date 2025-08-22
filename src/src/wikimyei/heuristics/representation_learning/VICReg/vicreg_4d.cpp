@@ -50,7 +50,7 @@ void VICReg_4D::save(const std::string& path)
     /* 4d. Optimizer (AdamW) */
     {
         torch::serialize::OutputArchive a;
-        optimizer.save(a);
+        optimizer->save(a);
         root.write("adamw", a);
     }
 
@@ -95,7 +95,7 @@ void VICReg_4D::load(const std::string& path)
     {
         torch::serialize::InputArchive a;
         root.read("adamw", a);
-        optimizer.load(a);
+        optimizer->load(a);
     }
 
     /* ---- 3. Push everything to the target device ---- */
