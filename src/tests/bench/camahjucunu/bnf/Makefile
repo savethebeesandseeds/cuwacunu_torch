@@ -1,76 +1,53 @@
-# -----------------------------------------------------------------
-# Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
 ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
-# -----------------------------------------------------------------
-# Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
-HERE_PATH := $(ROOT_PATH)/tests/bench/camahjucunu/bnf
-TEST_BUILD := $(ROOT_PATH)/tests/build
-BNF_LINK_CMD = $(LOG_START) && $(LOCAL_CLEAN) && $(GXX) $(GXX_FLAGS) $(USUAL_INCLUDE_PATHS) $(OUTPUT_PATH)/common/*.o $(USUAL_LD_FLAGS) $< -o $@ && $(LOG_END)
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_bnf_grammar_lexer test_bnf_grammar_lexer
-$(TEST_BUILD)/test_bnf_grammar_lexer: $(HERE_PATH)/test_bnf_grammar_lexer.cpp
-	@$(BNF_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_bnf_grammar_lexer
-test_bnf_grammar_lexer: $(TEST_BUILD)/test_bnf_grammar_lexer
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_bnf_grammar_parser test_bnf_grammar_parser
-$(TEST_BUILD)/test_bnf_grammar_parser: $(HERE_PATH)/test_bnf_grammar_parser.cpp
-	@$(BNF_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_bnf_grammar_parser
-test_bnf_grammar_parser: $(TEST_BUILD)/test_bnf_grammar_parser
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_bnf_instruction_lexer test_bnf_instruction_lexer
-$(TEST_BUILD)/test_bnf_instruction_lexer: $(HERE_PATH)/test_bnf_instruction_lexer.cpp
-	@$(BNF_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_bnf_instruction_lexer
-test_bnf_instruction_lexer: $(TEST_BUILD)/test_bnf_instruction_lexer
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_bnf_instruction_parser test_bnf_instruction_parser
-$(TEST_BUILD)/test_bnf_instruction_parser: $(HERE_PATH)/test_bnf_instruction_parser.cpp
-	@$(BNF_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_bnf_instruction_parser
-test_bnf_instruction_parser: $(TEST_BUILD)/test_bnf_instruction_parser
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_bnf_observation_pipeline test_bnf_observation_pipeline
-$(TEST_BUILD)/test_bnf_observation_pipeline: $(HERE_PATH)/test_bnf_observation_pipeline.cpp
-	@$(BNF_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_bnf_observation_pipeline
-test_bnf_observation_pipeline: $(TEST_BUILD)/test_bnf_observation_pipeline
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_bnf_training_components test_bnf_training_components
-$(TEST_BUILD)/test_bnf_training_components: $(HERE_PATH)/test_bnf_training_components.cpp
-	@$(BNF_LINK_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_bnf_training_components
-test_bnf_training_components: $(TEST_BUILD)/test_bnf_training_components
-# -----------------------------------------------------------------
-# - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Local Paths
+# -----------------------------------------------------------------------------
+HERE_PATH  := $(TESTS_PATH)/bench/camahjucunu/bnf
+REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
+
+# -----------------------------------------------------------------------------
+# Build + run aliases
+# -----------------------------------------------------------------------------
+$(eval $(call TEST_ONEFILE,test_bnf_grammar_lexer,        test_bnf_grammar_lexer.cpp))
+$(eval $(call TEST_ONEFILE,test_bnf_grammar_parser,       test_bnf_grammar_parser.cpp))
+$(eval $(call TEST_ONEFILE,test_bnf_instruction_lexer,    test_bnf_instruction_lexer.cpp))
+$(eval $(call TEST_ONEFILE,test_bnf_instruction_parser,   test_bnf_instruction_parser.cpp))
+$(eval $(call TEST_ONEFILE,test_bnf_observation_pipeline, test_bnf_observation_pipeline.cpp))
+$(eval $(call TEST_ONEFILE,test_bnf_training_components,  test_bnf_training_components.cpp))
+
+# -----------------------------------------------------------------------------
+# Aggregate build
+# -----------------------------------------------------------------------------
 .PHONY: all
 all: \
-	$(TEST_BUILD)/test_exchange_types_serialization \
-	$(TEST_BUILD)/test_exchange_types_deserialization \
-	$(TEST_BUILD)/test_websocket \
-	$(TEST_BUILD)/test_binance_mech_server \
-	$(TEST_BUILD)/test_binance_mech_data \
-	$(TEST_BUILD)/test_binance_mech_account \
-	$(TEST_BUILD)/test_binance_mech_trade \
-	$(TEST_BUILD)/test_binance_dataloader 
+	$(OUTPUT_PATH)/test_bnf_grammar_lexer \
+	$(OUTPUT_PATH)/test_bnf_grammar_parser \
+	$(OUTPUT_PATH)/test_bnf_instruction_lexer \
+	$(OUTPUT_PATH)/test_bnf_instruction_parser \
+	$(OUTPUT_PATH)/test_bnf_observation_pipeline \
+	$(OUTPUT_PATH)/test_bnf_training_components
 	@$(LOG_SUCCESS)
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Aggregate run
+# -----------------------------------------------------------------------------
+.PHONY: run
+run: \
+     run-test_bnf_grammar_lexer \
+     run-test_bnf_grammar_parser \
+     run-test_bnf_instruction_lexer \
+     run-test_bnf_instruction_parser \
+     run-test_bnf_observation_pipeline \
+     run-test_bnf_training_components
+
+# -----------------------------------------------------------------------------
+# Clean
+# -----------------------------------------------------------------------------
+.PHONY: clean
+clean:
+	@rm -f $(OUTPUT_PATH)/test_bnf_*

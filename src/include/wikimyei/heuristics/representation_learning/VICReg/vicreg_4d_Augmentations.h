@@ -1,67 +1,35 @@
-/* vicreg_4d_Augmentations.h */
+/* vicreg_4d_augmentations.h */
 #pragma once
-#include <torch/torch.h>
-#include <limits>   // std::numeric_limits
 
-RUNTIME_WARNING("(vicreg_4d_Augmentations.h)[] the agumentations are set in code, make the augmentations configurable.\n");
+#include <torch/torch.h>
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_augmentations_types.h"
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_augmentations_utils.h"
+
 namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
-
-/* ─────────────────────────────────────────────────────────────
- *  Base‑curve selector
- *  
- *  These define the underlying time-warping shape φ(t), which is
- *  sampled at T points and stretched to [0, T−1] before noise/sort.
- *  
- *  All curves are strictly increasing and preserve causality.
- * ───────────────────────────────────────────────────────────── */
-enum class WarpBaseCurve {
-    Linear,         // φ(t) = t                             → no warp, baseline
-    MarketFade,     // φ(t) = sigmoid(s*(t−0.5))            → early time stretched, tail compressed
-    PulseCentered,  // φ(t) = 0.5 − 0.5 * cos(2πt)           → central slow-motion, fast ends
-    FrontLoaded,    // φ(t) = pow(t, α), α < 1              → early sharp emphasis
-    FadeLate,       // φ(t) = 1 − sigmoid(s*(t−0.5))        → fast start, tail expanded
-    ChaoticDrift    // φ(t) = t + noise (smoothed, sorted) → random but smooth variation
-};
-
-/* ─────────────────────────────────────────────────────────────
- *  WarpPreset structure
- *  
- *  Used to configure a reusable, meaningful time-warp style.
- *  These presets can be randomly sampled during training.
- *
- *  - `curve`                  : the base time perception mode
- *  - `curve_param`            : parameter for the curve (α or steepness s)
- *  - `noise_scale`            : std-dev of Gaussian noise added to curve
- *  - `smoothing_kernel_size` : size of 1D smoothing filter applied to noise
- * ───────────────────────────────────────────────────────────── */
-struct WarpPreset {
-    WarpBaseCurve curve;
-    double curve_param;
-    double noise_scale;
-    int64_t smoothing_kernel_size;
-    double point_drop_prob;
-};
 
 /* ─────────────────────────────────────────────────────────────
  *  Recommended warp map presets (subtle but meaningful)
  *  These can be used to sample randomized warp_maps for data augmentation
  *  or time-invariance training.
  * ───────────────────────────────────────────────────────────── */
-inline std::vector<WarpPreset> warp_presets = {
-    /* curve                            curve_param     noise_scale     smoothing_kernel_size       point_drop_prob */
-    { WarpBaseCurve::Linear,            0.0,            0.0,            1,                          0.03 },                 // Identity: no warp, ideal for control comparisons
-    { WarpBaseCurve::Linear,            0.0,            0.0,            5,                          0.03 },                 // Natural Drift: small random drift, gently smoothed
-    { WarpBaseCurve::ChaoticDrift,      0.0,            0.0,            7,                          0.03 },                 // Chaotic Drift: noisier structure, strongly smoothed for realism
-    { WarpBaseCurve::MarketFade,        3.0,            0.0,            5,                          0.03 },                 // Market Fade (soft): early emphasis, gentle fade out
-    { WarpBaseCurve::MarketFade,        5.0,            0.0,            7,                          0.03 },                 // Market Fade (sharp): stronger front focus, softer tail
-    { WarpBaseCurve::FadeLate,          3.0,            0.0,            5,                          0.03 },                 // Fade Late: mirror of market fade, tail-focused
-    { WarpBaseCurve::PulseCentered,     0.0,            0.0,            5,                          0.03 },                 // Pulse Centered: emphasizes central events in time
-    { WarpBaseCurve::FrontLoaded,       0.6,            0.0,            3,                          0.03 },                 // Front-Focus (soft): mild early emphasis, fast decay
-    { WarpBaseCurve::FrontLoaded,       0.3,            0.0,            5,                          0.03 },                 // Front-Focus (sharp): stronger focus on initial time
-    { WarpBaseCurve::PulseCentered,     0.0,            0.0,            7,                          0.03 }                  // Symmetric Sway: fluid oscillation centered on mid-sequence
-};
+inline const std::vector<WarpPreset>& kDefaultWarpPresets() {
+    static const std::vector<WarpPreset> kDefaults = {
+        /* curve                            curve_param     noise_scale     smoothing_kernel_size       point_drop_prob */
+        { WarpBaseCurve::Linear,            0.0,            0.0,            1,                          0.03 },                 // Identity: no warp, ideal for control comparisons
+        { WarpBaseCurve::Linear,            0.0,            0.0,            5,                          0.03 },                 // Natural Drift: small random drift, gently smoothed
+        { WarpBaseCurve::ChaoticDrift,      0.0,            0.0,            7,                          0.03 },                 // Chaotic Drift: noisier structure, strongly smoothed for realism
+        { WarpBaseCurve::MarketFade,        3.0,            0.0,            5,                          0.03 },                 // Market Fade (soft): early emphasis, gentle fade out
+        { WarpBaseCurve::MarketFade,        5.0,            0.0,            7,                          0.03 },                 // Market Fade (sharp): stronger front focus, softer tail
+        { WarpBaseCurve::FadeLate,          3.0,            0.0,            5,                          0.03 },                 // Fade Late: mirror of market fade, tail-focused
+        { WarpBaseCurve::PulseCentered,     0.0,            0.0,            5,                          0.03 },                 // Pulse Centered: emphasizes central events in time
+        { WarpBaseCurve::FrontLoaded,       0.6,            0.0,            3,                          0.03 },                 // Front-Focus (soft): mild early emphasis, fast decay
+        { WarpBaseCurve::FrontLoaded,       0.3,            0.0,            5,                          0.03 },                 // Front-Focus (sharp): stronger focus on initial time
+        { WarpBaseCurve::PulseCentered,     0.0,            0.0,            7,                          0.03 }                  // Symmetric Sway: fluid oscillation centered on mid-sequence
+    };
+    return kDefaults;
+}
 
 /*  -----------------------------------------------------------
  *  causal_time_warp.h
@@ -72,7 +40,7 @@ inline std::vector<WarpPreset> warp_presets = {
  
  /**
   *  @param  x         [B,C,T,E]  – batch of time‑series tensors
-  *  @param  m         [B,C,T]  – matching Boolean mask (true = valid)
+  *  @param  m         [B,C,T]    – matching Boolean mask (true = valid)
   *  @param  warp_map  [B,T]      – for every sample b and output step t,
   *                                warp_map[b,t] ∈ [0,T‑1] is the (fractional)
   *                                source index inside x’s original time axis.
@@ -308,6 +276,17 @@ inline torch::Tensor build_warp_map(int64_t        B,
  * ======================================================================== */
  struct VICReg_4D_Augmentation {
 
+    std::vector<WarpPreset> warp_presets;
+
+    /* --- constructor: default to built-in table --- */
+    VICReg_4D_Augmentation()
+    : warp_presets(kDefaultWarpPresets()) {}
+
+    /* --- constructor: build from configuration table --- */
+    explicit VICReg_4D_Augmentation(
+        const cuwacunu::camahjucunu::BNF::training_instruction_t::table_t& table)
+    : warp_presets(cuwacunu::wikimyei::vicreg_4d::make_warp_presets_from_table(table)) {}
+
     /* -----------------------------------------------------------------------
      * operator()
      *
@@ -356,7 +335,7 @@ inline torch::Tensor build_warp_map(int64_t        B,
      * augment()
      *
      * Performs randomized augmentation by sampling a warp style from the
-     * global `warp_presets` table and applying it to the input.
+     * `warp_presets` table and applying it to the input.
      *
      * @param x   Input data tensor [B, C, T, D]
      * @param m   Input mask tensor [B, C, T]
@@ -368,9 +347,13 @@ inline torch::Tensor build_warp_map(int64_t        B,
         return (*this)(x, m, preset);
     }
     inline std::pair<torch::Tensor, torch::Tensor>
-    augment(torch::Tensor x, torch::Tensor m) const {
-        auto preset = warp_presets[rand() % warp_presets.size()];
+    augment(torch::Tensor x, torch::Tensor m, std::vector<WarpPreset> conf_presets) const {
+        auto preset = conf_presets[rand() % conf_presets.size()];
         return augment(x, m, preset);
+    }
+    inline std::pair<torch::Tensor, torch::Tensor>
+    augment(torch::Tensor x, torch::Tensor m) const {
+        return augment(x, m, warp_presets);
     }
 };
 

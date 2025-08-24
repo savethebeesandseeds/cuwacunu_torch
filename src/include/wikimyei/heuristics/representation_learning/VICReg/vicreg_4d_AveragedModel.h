@@ -1,4 +1,4 @@
-/* vicreg_4d_AveragedModel.h */
+/* vicreg_4d_averagedModel.h */
 #pragma once
 
 #include <torch/torch.h>

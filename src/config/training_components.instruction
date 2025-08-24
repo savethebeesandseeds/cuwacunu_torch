@@ -51,3 +51,39 @@
 | ExponentialLR_1      | ExponentialLR     | gamma=0.9                                                                                             |
 | ReduceLROnPlateau_1  | ReduceLROnPlateau | mode=min,factor=0.1,patience=10,threshold=1e-4,threshold_mode=rel,cooldown=0,min_lr=1e-6,eps=1e-8     |
 \--------------------------------------------------------------------------------------------------------------------------------------------------/
+/*
+   VICReg Self-Supervised Learning - Temporal Augmentations
+
+   Each augmentation curve defines how input sequences are warped in time,
+   creating diverse training views while preserving semantic content.
+
+   Parameters:
+     - curve: shape of the temporal warp (see list below)
+     - curve_param: strength/shape modifier (e.g., fade steepness, front-load rate)
+     - noise_scale: amount of random jitter/noise applied along the curve
+     - smoothing_kernel_size: moving-average smoothing window; higher = gentler warp
+     - point_drop_prob: probability of randomly dropping individual points (simulates missing data)
+
+   Curves:
+     - Linear         - identity (no warp), used as baseline/control.
+     - MarketFade     - front-heavy, fades over time; curve_param controls fade sharpness.
+     - FadeLate       - inverse of MarketFade, tail-heavy emphasis.
+     - PulseCentered  - symmetric bulge around the center; highlights mid-sequence events.
+     - FrontLoaded    - early spike with decay; curve_param adjusts sharpness of onset.
+     - ChaoticDrift   - irregular wandering warp; combined with smoothing to mimic natural drift.
+*/
+[ vicreg_augmentations ]
+/-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\
+| row_id  |    curve              |  curve_param   |  noise_scale   |  smoothing_kernel_size  |  point_drop_prob  |  comment                                                        |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|   -     |    Linear,            |    0.0         |    0.0         |   1                     |     0.03          | Identity:_no_warp,_ideal_for_control_comparisons                |
+|   -     |    Linear,            |    0.0         |    0.0         |   5                     |     0.03          | Natural_Drift:_small_random_drift,_gently_smoothed              |
+|   -     |    ChaoticDrift,      |    0.0         |    0.0         |   7                     |     0.03          | Chaotic_Drift:_noisier_structure,_strongly_smoothed_for_realism |
+|   -     |    MarketFade,        |    3.0         |    0.0         |   5                     |     0.03          | Market_Fade_soft:_early_emphasis,_gentle_fade_out               |
+|   -     |    MarketFade,        |    5.0         |    0.0         |   7                     |     0.03          | Market_Fade_sharp:_stronger_front_focus,_softer_tail            |
+|   -     |    FadeLate,          |    3.0         |    0.0         |   5                     |     0.03          | Fade_Late:_mirror_of_market_fade,_tail-focused                  |
+|   -     |    PulseCentered,     |    0.0         |    0.0         |   5                     |     0.03          | Pulse_Centered:_emphasizes_central_events_in_time               |
+|   -     |    FrontLoaded,       |    0.6         |    0.0         |   3                     |     0.03          | Front-Focus_soft:_mild_early_emphasis,_fast_decay               |
+|   -     |    FrontLoaded,       |    0.3         |    0.0         |   5                     |     0.03          | Front-Focus_sharp:_stronger_focus_on_initial_time               |
+|   -     |    PulseCentered,     |    0.0         |    0.0         |   7                     |     0.03          | Symmetric_Sway:_fluid_oscillation_centered_on_mid-sequence      |
+\-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------/

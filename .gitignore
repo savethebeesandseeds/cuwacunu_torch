@@ -1,4 +1,5 @@
 /data/raw/*
+/data/tests/*
 /external/*
 /src/build/*
 /src/tests/build/*

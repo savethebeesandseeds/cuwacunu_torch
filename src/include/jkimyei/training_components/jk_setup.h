@@ -10,6 +10,7 @@ namespace jkimyei {
 
 struct jk_setup_t {
   std::string name;
+  cuwacunu::camahjucunu::BNF::training_instruction_t inst;
   std::unique_ptr<ILoss> loss;
   std::unique_ptr<IOptimizerBuilder> opt_builder;
   std::unique_ptr<ISchedulerBuilder> sched_builder;
@@ -26,6 +27,7 @@ inline jk_setup_t build_training_setup_component(
 
   jk_setup_t c;
   c.name = component_name;
+  c.inst = std::move(inst);
   c.loss          = make_loss(inst, loss_id);
   c.opt_builder   = make_optimizer_builder(inst, opt_id);
   c.sched_builder = make_scheduler_builder(inst, sch_id);

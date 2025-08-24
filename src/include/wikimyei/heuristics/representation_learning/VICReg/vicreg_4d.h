@@ -12,13 +12,16 @@
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_projector.h"
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_averagedModel.h"
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_augmentations.h"
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_augmentations_utils.h"
 
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/BNF/implementations/training_components/training_components.h"
 #include "piaabo/torch_compat/optim/optimizers.h"
 #include "jkimyei/training_components/jk_setup.h"
+
 
 RUNTIME_WARNING("(vicreg_4d.h)[] for imporving performance remember doing torch::jit::Module scripted = torch::jit::freeze(torch::jit::script::Module(my_encoder));\n");
 
@@ -55,6 +58,7 @@ public:
 
   torch::Dtype dtype;
   torch::Device device;
+  int optimizer_threshold_reset;
   bool enable_buffer_averaging;
 
   /* The base VICReg_4D_Encoder (trainable model) */
@@ -90,6 +94,7 @@ public:
    * @param projector_mlp_spec_ Specification string for projector MLP architecture (e.g., "8192-8192-8192").
    * @param dtype_ Desired floating point precision (e.g., torch::kFloat32).
    * @param device_ Device for model training/inference (e.g., CPU or CUDA).
+   * @param optimizer_threshold_reset_ Step where to reset AdamW pow exponent. -1 for non reset
    * @param enable_buffer_averaging_ If true, SWA model buffers are averaged; if false, copied directly.
    */
   VICReg_4D(
@@ -105,6 +110,7 @@ public:
     std::string projector_mlp_spec_ = "8192-8192-8192", // layer specification for the projector
     torch::Dtype dtype_ = torch::kFloat32,
     torch::Device device_ = torch::kCPU,
+    int optimizer_threshold_reset_ = -1,
     bool enable_buffer_averaging_ = false
   ) : 
     C(C_),
@@ -119,6 +125,7 @@ public:
     projector_mlp_spec(projector_mlp_spec_),
     dtype(dtype_),
     device(device_),
+    optimizer_threshold_reset(optimizer_threshold_reset_),
     enable_buffer_averaging(enable_buffer_averaging_),
     
     /* Initialize the base VICReg_4D_Encoder */
@@ -157,7 +164,7 @@ public:
     )),
 
     /* set up the aug */
-    aug{},
+    aug(jk_setup.inst.retrive_table("vicreg_augmentations")),
     
     /* set up the optimizer */
     optimizer(jk_setup.opt_builder->build([this]{
@@ -186,22 +193,23 @@ public:
     int T_, // n timesteps
     int D_  // n features
   ) : VICReg_4D(
-      C_,                                                                                            /* C */ 
-      T_,                                                                                            /* T */ 
-      D_,                                                                                            /* D */ 
+      C_,                                                                                             /* C */ 
+      T_,                                                                                             /* T */ 
+      D_,                                                                                             /* D */ 
       cuwacunu::jkimyei::build_training_setup_component(
         cuwacunu::camahjucunu::BNF::trainingPipeline().decode(
           cuwacunu::piaabo::dconfig::config_space_t::training_components_instruction()
-      ), "VICReg_representation"),                                                                   /* jk_setup */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "encoding_dims"),           /* encoding_dims */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "channel_expansion_dim"),   /* channel_expansion_dim */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "fused_feature_dim"),       /* fused_feature_dim */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "encoder_hidden_dims"),     /* encoder_hidden_dims */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "encoder_depth"),           /* encoder_depth */
-      cuwacunu::piaabo::dconfig::config_space_t::get          ("VICReg", "projector_mlp_spec"),      /* projector_mlp_spec */
-      cuwacunu::piaabo::dconfig::config_dtype                 ("VICReg"),                            /* dtype */
-      cuwacunu::piaabo::dconfig::config_device                ("VICReg"),                            /* device */
-      cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("VICReg", "enable_buffer_averaging")  /* enable_buffer_averaging */
+      ), "VICReg_representation"),                                                                    /* jk_setup */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "encoding_dims"),            /* encoding_dims */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "channel_expansion_dim"),    /* channel_expansion_dim */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "fused_feature_dim"),        /* fused_feature_dim */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "encoder_hidden_dims"),      /* encoder_hidden_dims */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "encoder_depth"),            /* encoder_depth */
+      cuwacunu::piaabo::dconfig::config_space_t::get          ("VICReg", "projector_mlp_spec"),       /* projector_mlp_spec */
+      cuwacunu::piaabo::dconfig::config_dtype                 ("VICReg"),                             /* dtype */
+      cuwacunu::piaabo::dconfig::config_device                ("VICReg"),                             /* device */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg", "optimizer_threshold_reset"),/* optimizer_threshold_reset */
+      cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("VICReg", "enable_buffer_averaging")   /* enable_buffer_averaging */
     )
   {
     log_info("Initialized VICReg encoder from Configuration file...\n");
@@ -327,7 +335,7 @@ public:
       
       if (!stop_loop && epoch_iters > 0) {
         /* fix AdamW exponent overflow */
-        cuwacunu::piaabo::torch_compat::optim::clamp_adam_step(*optimizer, static_cast<int64_t>(2500));
+        cuwacunu::piaabo::torch_compat::optim::clamp_adam_step(*optimizer, static_cast<int64_t>(optimizer_threshold_reset));
 
         /* debug */
         if(epoch_count == 1 || epoch_count%50 == 0 || epoch_count == n_epochs) {
@@ -485,22 +493,24 @@ public:
       "\t\t%s%-25s%s %s%-8s%s\n"    // projector_mlp_spec (string)
       "\t\t%s%-25s%s %s%-8s%s\n"    // dtype (string)
       "\t\t%s%-25s%s %s%-8s%s\n"    // device (string!)  <-- changed
+      "\t\t%s%-25s%s %s%-8d%s\n"    // optimizer_threshold_reset
       "\t\t%s%-25s%s %s%-8s%s\n";   // SWA buffer avg (string)
 
     log_info(fmt,
       ANSI_COLOR_Dim_Green,   ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Channels  (C):",       ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  C,                     ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Timesteps (T):",       ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  T,                     ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Features  (D):",       ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  D,                     ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Encoding dims:",       ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoding_dims,         ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Channel expansion:",   ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  channel_expansion_dim, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Fused feature dim:",   ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  fused_feature_dim,     ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Encoder hidden dims:", ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoder_hidden_dims,   ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Encoder depth:",       ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoder_depth,         ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Proj MLP spec:",       ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  mlp_spec_str,          ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Data type:",           ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  dtype_str,             ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Device:",              ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  device_str,            ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "SWA buffer avg:",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  swa_str,               ANSI_COLOR_RESET
+      ANSI_COLOR_Bright_Grey, "Channels  (C):",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  C,                          ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Timesteps (T):",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  T,                          ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Features  (D):",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  D,                          ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Encoding dims:",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoding_dims,              ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Channel expansion:",         ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  channel_expansion_dim,      ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Fused feature dim:",         ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  fused_feature_dim,          ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Encoder hidden dims:",       ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoder_hidden_dims,        ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Encoder depth:",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  encoder_depth,              ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Proj MLP spec:",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  mlp_spec_str,               ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Data type:",                 ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  dtype_str,                  ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Device:",                    ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  device_str,                 ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "Optimizer threshold reset:", ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_threshold_reset,  ANSI_COLOR_RESET,
+      ANSI_COLOR_Bright_Grey, "SWA buffer avg:",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  swa_str,                    ANSI_COLOR_RESET
     );
   }
 };

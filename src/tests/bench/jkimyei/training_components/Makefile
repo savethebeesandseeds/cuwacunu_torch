@@ -1,45 +1,48 @@
-# -----------------------------------------------------------------
-# Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
 ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
-# -----------------------------------------------------------------
-# Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
-HERE_PATH := $(ROOT_PATH)/tests/bench/jkimyei/training_components
-TEST_BUILD := $(ROOT_PATH)/tests/build
-COMMON_TORCH_COMPILE_CMD = \
-    $(LOG_START) && $(LOCAL_CLEAN) && \
-    $(GXX) $(GXX_FLAGS) \
-      $(TORCH_INCLUDE_PATHS) \
-      $(SSL_INCLUDE_PATHS) \
-      $(USUAL_INCLUDE_PATHS) \
-      $(LIBCURL_INCLUDE_PATHS) \
-      $(OUTPUT_PATH)/common/*.o \
-      $(OUTPUT_PATH)/libcurl/*.o \
-      $(OUTPUT_PATH)/libtorch/*.o \
-      $(OUTPUT_PATH)/openssl/*.o \
-      $< \
-      $(SSL_LD_FLAGS) \
-      $(LIBCURL_LD_LAGS) \
-      $(TORCH_LD_FLAGS) \
-      -lnvToolsExt -lcudart \
-      $(USUAL_LD_FLAGS) \
-      -o $@ && $(LOG_END)
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_jk_setup test_jk_setup
-$(TEST_BUILD)/test_jk_setup: $(HERE_PATH)/test_jk_setup.cpp
-	@$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_jk_setup
-test_jk_setup: $(TEST_BUILD)/test_jk_setup
-# -----------------------------------------------------------------
-# - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Local Paths
+# -----------------------------------------------------------------------------
+HERE_PATH  := $(TESTS_PATH)/bench/jkimyei/training_components
+REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
+
+# -----------------------------------------------------------------------------
+# Build + run aliases
+# -----------------------------------------------------------------------------
+$(eval $(call TEST_ONEFILE,test_training_components_jk_setup, test_training_components_jk_setup.cpp))
+
+# ---- Attach heavy deps (Torch/SSL/cURL) to this test ------------------------
+# Headers for compile:
+$(TEST_OUT)/test_training_components_jk_setup: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+
+# Link order: torch (consumer) before ssl/curl/common
+TEST_DEFAULT_LDLIBS :=
+$(TEST_OUT)/test_training_components_jk_setup: LDLIBS_EXTRA += \
+    $(libtorch_a) $(libcommon_a) \
+    $(LDLIBS_torch) -lnvToolsExt -lcudart
+
+# -----------------------------------------------------------------------------
+# Aggregate build
+# -----------------------------------------------------------------------------
 .PHONY: all
-all: $(TEST_BUILD)/test_jk_setup
+all: \
+	$(OUTPUT_PATH)/test_training_components_jk_setup
 	@$(LOG_SUCCESS)
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Aggregate run
+# -----------------------------------------------------------------------------
+.PHONY: run
+run: \
+     run-test_training_components_jk_setup
+
+# -----------------------------------------------------------------------------
+# Clean
+# -----------------------------------------------------------------------------
+.PHONY: clean
+clean:
+	@rm -f $(OUTPUT_PATH)/test_training_components_jk_setup

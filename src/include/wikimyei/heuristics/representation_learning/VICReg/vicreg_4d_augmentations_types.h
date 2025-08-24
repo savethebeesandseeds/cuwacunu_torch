@@ -1,0 +1,47 @@
+#pragma once
+#include <cstdint>
+#include <vector>
+
+namespace cuwacunu {
+namespace wikimyei {
+namespace vicreg_4d {
+
+/* ─────────────────────────────────────────────────────────────
+ *  Base‑curve selector
+ *  
+ *  These define the underlying time-warping shape φ(t), which is
+ *  sampled at T points and stretched to [0, T−1] before noise/sort.
+ *  
+ *  All curves are strictly increasing and preserve causality.
+ * ───────────────────────────────────────────────────────────── */
+enum class WarpBaseCurve {
+  Linear,         // φ(t) = t                             → no warp, baseline
+  MarketFade,     // φ(t) = sigmoid(s*(t−0.5))            → early time stretched, tail compressed
+  PulseCentered,  // φ(t) = 0.5 − 0.5 * cos(2πt)           → central slow-motion, fast ends
+  FrontLoaded,    // φ(t) = pow(t, α), α < 1              → early sharp emphasis
+  FadeLate,       // φ(t) = 1 − sigmoid(s*(t−0.5))        → fast start, tail expanded
+  ChaoticDrift    // φ(t) = t + noise (smoothed, sorted) → random but smooth variation
+};
+
+/* ─────────────────────────────────────────────────────────────
+ *  WarpPreset structure
+ *  
+ *  Used to configure a reusable, meaningful time-warp style.
+ *  These presets can be randomly sampled during training.
+ *
+ *  - `curve`                  : the base time perception mode
+ *  - `curve_param`            : parameter for the curve (α or steepness s)
+ *  - `noise_scale`            : std-dev of Gaussian noise added to curve
+ *  - `smoothing_kernel_size` : size of 1D smoothing filter applied to noise
+ * ───────────────────────────────────────────────────────────── */
+struct WarpPreset {
+    WarpBaseCurve curve;
+    double curve_param;
+    double noise_scale;
+    int64_t smoothing_kernel_size;
+    double point_drop_prob;
+};
+
+} /* namespace vicreg_4d */
+} /* namespace wikimyei */
+} /* namespace cuwacunu */

@@ -1,45 +1,49 @@
-# -----------------------------------------------------------------
-# Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
 ROOT_PATH := ../../../../../..
 include $(ROOT_PATH)/Makefile.config
-# -----------------------------------------------------------------
-# Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
-HERE_PATH := $(ROOT_PATH)/tests/bench/wikimyei/heuristics/semantic_learning/mdn
-TEST_BUILD := $(ROOT_PATH)/tests/build
-COMMON_TORCH_COMPILE_CMD = \
-    $(LOG_START) && $(LOCAL_CLEAN) && \
-    $(GXX) $(GXX_FLAGS) \
-      $(TORCH_INCLUDE_PATHS) \
-      $(SSL_INCLUDE_PATHS) \
-      $(USUAL_INCLUDE_PATHS) \
-      $(LIBCURL_INCLUDE_PATHS) \
-      $(OUTPUT_PATH)/common/*.o \
-      $(OUTPUT_PATH)/libcurl/*.o \
-      $(OUTPUT_PATH)/libtorch/*.o \
-      $(OUTPUT_PATH)/openssl/*.o \
-      $< \
-      $(SSL_LD_FLAGS) \
-      $(LIBCURL_LD_LAGS) \
-      $(TORCH_LD_FLAGS) \
-      -lnvToolsExt -lcudart \
-      $(USUAL_LD_FLAGS) \
-      -o $@ && $(LOG_END)
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_mixture_density_network test_mixture_density_network
-$(TEST_BUILD)/test_mixture_density_network: $(HERE_PATH)/test_mixture_density_network.cpp
-	@$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_mixture_density_network
-test_mixture_density_network: $(TEST_BUILD)/test_mixture_density_network
-# -----------------------------------------------------------------
-# - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Local Paths
+# -----------------------------------------------------------------------------
+HERE_PATH  := $(TESTS_PATH)/bench/wikimyei/heuristics/semantic_learning/mdn
+REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
+
+# -----------------------------------------------------------------------------
+# Build + run aliases
+# -----------------------------------------------------------------------------
+$(eval $(call TEST_ONEFILE,test_mixture_density_network, test_mixture_density_network.cpp))
+
+# ---- Attach Torch/SSL/cURL deps to the test ---------------------------------
+# Headers for compile:
+$(TEST_OUT)/test_mixture_density_network: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+
+# Link order: torch/curl first, then common (provider)
+TEST_DEFAULT_LDLIBS :=
+$(TEST_OUT)/test_mixture_density_network: LDLIBS_EXTRA += \
+    $(libtorch_a) $(libcommon_a) \
+    $(LDLIBS_torch) -lnvToolsExt -lcudart
+
+# -----------------------------------------------------------------------------
+# Aggregate build
+# -----------------------------------------------------------------------------
 .PHONY: all
-all: $(TEST_BUILD)/test_mixture_density_network
+all: \
+	$(TEST_OUT)/test_mixture_density_network
 	@$(LOG_SUCCESS)
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Aggregate run
+# -----------------------------------------------------------------------------
+.PHONY: run
+run: \
+     run-test_mixture_density_network
+
+# -----------------------------------------------------------------------------
+# Clean
+# -----------------------------------------------------------------------------
+.PHONY: clean
+clean:
+	@rm -f \
+	  $(TEST_OUT)/test_mixture_density_network

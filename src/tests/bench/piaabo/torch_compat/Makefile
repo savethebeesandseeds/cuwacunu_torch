@@ -1,38 +1,48 @@
-# -----------------------------------------------------------------
-# Dependencies - - - - - - - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
 ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
-# -----------------------------------------------------------------
-# Local Makefile Variables - - - - - - - - - - - - - - - - - - - - 
-# -----------------------------------------------------------------
-HERE_PATH := $(ROOT_PATH)/tests/bench/piaabo/torch_compat
-TEST_BUILD := $(ROOT_PATH)/tests/build
-COMMON_TORCH_COMPILE_CMD = \
-    $(LOG_START) && $(LOCAL_CLEAN) && \
-    $(GXX) $(GXX_FLAGS) \
-    $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(USUAL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS) \
-    $(OUTPUT_PATH)/common/*.o \
-    $(OUTPUT_PATH)/libcurl/*.o \
-    $(OUTPUT_PATH)/libtorch/*.o \
-    $(OUTPUT_PATH)/openssl/*.o \
-    $< \
-    $(SSL_LD_FLAGS) \
-    $(LIBCURL_LD_LAGS) \
-    $(TORCH_LD_FLAGS) \
-    $(USUAL_LD_FLAGS) \
-    -o $@ && $(LOG_END)
-# -----------------------------------------------------------------
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
-.PHONY: $(TEST_BUILD)/test_gpu_vs_cpu test_gpu_vs_cpu
-$(TEST_BUILD)/test_gpu_vs_cpu: $(HERE_PATH)/test_gpu_vs_cpu.cpp
-	$(COMMON_TORCH_COMPILE_CMD)
-	$(RUN_MODE) $(TEST_BUILD)/test_gpu_vs_cpu
-test_gpu_vs_cpu: $(TEST_BUILD)/test_gpu_vs_cpu
-# -----------------------------------------------------------------
-# - - - General Target -- - - - - - - - - - - - - - - - - - - - - -
-# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Local Paths
+# -----------------------------------------------------------------------------
+HERE_PATH  := $(TESTS_PATH)/bench/piaabo/torch_compat
+REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
+
+# -----------------------------------------------------------------------------
+# Build + run aliases
+# -----------------------------------------------------------------------------
+$(eval $(call TEST_ONEFILE,test_gpu_vs_cpu, test_gpu_vs_cpu.cpp))
+
+# ---- Attach Torch/SSL/cURL deps (headers + archives + system libs) ----------
+# Headers for compile:
+$(TEST_OUT)/test_gpu_vs_cpu: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+
+# Link order: consumer libs first; disable default so we control ordering
+TEST_DEFAULT_LDLIBS :=
+$(TEST_OUT)/test_gpu_vs_cpu: LDLIBS_EXTRA += \
+    $(libtorch_a) $(libcommon_a) \
+    $(LDLIBS_torch)
+
+# -----------------------------------------------------------------------------
+# Aggregate build
+# -----------------------------------------------------------------------------
 .PHONY: all
-all: $(TEST_BUILD)/test_gpu_vs_cpu
+all: \
+	$(OUTPUT_PATH)/test_gpu_vs_cpu
 	@$(LOG_SUCCESS)
+
+# -----------------------------------------------------------------------------
+# Aggregate run
+# -----------------------------------------------------------------------------
+.PHONY: run
+run: \
+     run-test_gpu_vs_cpu
+
+# -----------------------------------------------------------------------------
+# Clean
+# -----------------------------------------------------------------------------
+.PHONY: clean
+clean:
+	@rm -f $(OUTPUT_PATH)/test_gpu_vs_cpu
