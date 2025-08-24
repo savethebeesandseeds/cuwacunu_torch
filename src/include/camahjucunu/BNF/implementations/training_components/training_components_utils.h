@@ -3,6 +3,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -15,6 +18,35 @@
 
 namespace cuwacunu {
 namespace camahjucunu {
+
+/* ---------- Context helpers for rich error messages ---------- */
+
+inline std::string row_context(const std::unordered_map<std::string,std::string>& row) {
+  std::ostringstream oss;
+  auto rid = row.find(ROW_ID_COLUMN_HEADER);
+  if (rid != row.end()) oss << "[row_id=" << rid->second << "]";
+  std::vector<std::string> types;
+  types.reserve(row.size());
+  for (const auto& kv : row) {
+    const auto& k = kv.first;
+    if (k.size() >= 5 && k.rfind("_type") == k.size()-5) {
+      types.emplace_back(k + "=" + kv.second);
+    }
+  }
+  if (!types.empty()) {
+    oss << " {";
+    for (size_t i=0;i<types.size();++i) { if (i) oss << ", "; oss << types[i]; }
+    oss << "}";
+  }
+  if (oss.tellp() > 0) oss << " ";
+  return oss.str();
+}
+
+#define RAISE_FATAL_ROW(ROW, FMT, ...) \
+  do { \
+    const std::string __ctx = ::cuwacunu::camahjucunu::row_context(ROW); \
+    RAISE_FATAL("%s" FMT, __ctx.c_str(), ##__VA_ARGS__); \
+  } while (0)
 
 /* --------------------------- String helpers --------------------------- */
 
@@ -36,9 +68,11 @@ inline const std::string&
 require_column(const std::unordered_map<std::string,std::string>& row,
                const std::string& key) {
   auto it = row.find(key);
-  if (it == row.end()) throw std::runtime_error("Missing required column: " + key);
+  if (it == row.end())
+    RAISE_FATAL_ROW(row, "Missing required column: \"%s\"", key.c_str());
   const auto& v = it->second;
-  if (v.empty() || v == "-") throw std::runtime_error("Empty/invalid value for column: " + key);
+  if (v.empty() || v == "-")
+    RAISE_FATAL_ROW(row, "Empty/invalid value for column \"%s\" (got: \"%s\")", key.c_str(), v.c_str());
   return it->second;
 }
 
@@ -75,13 +109,13 @@ parse_options_kvlist(const std::string& s) {
     if (item.empty()) continue;
     auto pos = item.find('=');
     if (pos == std::string::npos)
-      throw std::runtime_error("Invalid option entry (missing '='): " + item);
+      RAISE_FATAL("Invalid option entry (missing '='): \"%s\"", item.c_str());
 
     auto key = trim_copy(item.substr(0, pos));
     auto val = trim_copy(item.substr(pos + 1));
 
     if (key.empty())
-      throw std::runtime_error("Invalid option key (empty) in: " + item);
+      RAISE_FATAL("Invalid option key (empty) in entry: \"%s\"", item.c_str());
 
     // strip matching quotes around the whole value
     if (val.size() >= 2 &&
@@ -103,9 +137,9 @@ inline std::string require_option(
   auto kv = parse_options_kvlist(opt_str);
   auto it = kv.find(key);
   if (it == kv.end())
-    throw std::runtime_error("Missing required option: " + key);
+    RAISE_FATAL_ROW(row, "Missing required option: \"%s\". Options seen: \"%s\"", key.c_str(), opt_str.c_str());
   if (it->second.empty() || it->second == "-")
-    throw std::runtime_error("Empty/invalid value for option: " + key);
+    RAISE_FATAL_ROW(row, "Empty/invalid value for option \"%s\" (got: \"%s\")", key.c_str(), it->second.c_str());
   return it->second;
 }
 
@@ -122,31 +156,16 @@ inline std::string require_any_option(
       return it->second;
   }
 
-  // Build a helpful error
-  std::ostringstream oss;
-  oss << "Missing required option (any of): ";
+  std::ostringstream want;
   bool first = true;
-  for (auto* a : aliases) { if (!first) oss << ", "; first = false; oss << a; }
+  for (auto* a : aliases) { if (!first) want << ", "; first = false; want << a; }
 
-  // Context (row_id and any *_type columns)
-  auto rid = row.find(ROW_ID_COLUMN_HEADER);
-  if (rid != row.end()) oss << " [row_id=" << rid->second << "]";
-
-  std::vector<std::string> types;
-  for (const auto& p : row) if (ends_with(p.first, "_type"))
-    types.push_back(p.first + "=" + p.second);
-  if (!types.empty()) {
-    oss << " {";
-    for (size_t i=0;i<types.size();++i){ if(i) oss<<", "; oss<<types[i]; }
-    oss << "}";
-  }
-  throw std::runtime_error(oss.str());
+  RAISE_FATAL_ROW(row, "Missing required option (any of: %s). Options seen: \"%s\"",
+                  want.str().c_str(), opt_str.c_str());
 }
 
 /* Validate that the set of options matches exactly the expected schema.
  * `expected` entries may be plain keys ("gamma") or alias groups ("epsilon|eps").
- * - Throws if any required group is missing.
- * - Throws if there are extra keys not listed in any group.
  */
 inline void validate_options_exact(
     const std::unordered_map<std::string,std::string>& row,
@@ -182,38 +201,14 @@ inline void validate_options_exact(
   }
 
   std::vector<std::string> extras;
-  for (const auto& p : kv) {
-    if (!allowed.count(p.first)) extras.push_back(p.first);
-  }
+  for (const auto& p : kv) if (!allowed.count(p.first)) extras.push_back(p.first);
 
   if (!missing_groups.empty() || !extras.empty()) {
-    std::ostringstream oss;
-    oss << "Options mismatch";
-
-    auto rid = row.find(ROW_ID_COLUMN_HEADER);
-    if (rid != row.end()) oss << " [row_id=" << rid->second << "]";
-
-    std::vector<std::string> types;
-    for (const auto& pr : row) if (ends_with(pr.first, "_type"))
-      types.push_back(pr.first + "=" + pr.second);
-    if (!types.empty()) {
-      oss << " {";
-      for (size_t i=0;i<types.size();++i){ if(i) oss<<", "; oss<<types[i]; }
-      oss << "}";
-    }
-    oss << ". ";
-
-    if (!missing_groups.empty()) {
-      oss << "Missing: [";
-      for (size_t i=0;i<missing_groups.size();++i){ if(i) oss<<", "; oss<<missing_groups[i]; }
-      oss << "]. ";
-    }
-    if (!extras.empty()) {
-      oss << "Unexpected: [";
-      for (size_t i=0;i<extras.size();++i){ if(i) oss<<", "; oss<<extras[i]; }
-      oss << "].";
-    }
-    throw std::runtime_error(oss.str());
+    std::ostringstream miss, extra;
+    for (size_t i=0;i<missing_groups.size();++i){ if(i) miss<<", "; miss<<missing_groups[i]; }
+    for (size_t i=0;i<extras.size();++i){ if(i) extra<<", "; extra<<extras[i]; }
+    RAISE_FATAL_ROW(row, "Options mismatch. Missing: [%s]. Unexpected: [%s]. Options seen: \"%s\"",
+                    miss.str().c_str(), extra.str().c_str(), opt_str.c_str());
   }
 }
 
@@ -227,12 +222,7 @@ inline void validate_options_exact(
   validate_options_exact(row, exp);
 }
 
-
-/* Require that a row's column names match `expected` EXACTLY.
- * - If `enforce_nonempty` is true (default), also validates each expected
- *   column with require_column(row, col) to reject empty/"-".
- * - Error includes row_id and any *_type columns present.
- */
+/* Require that a row's column names match `expected` EXACTLY. */
 inline void require_columns_exact(
     const std::unordered_map<std::string,std::string>& row,
     const std::vector<std::string>& expected,
@@ -240,43 +230,16 @@ inline void require_columns_exact(
 {
   std::unordered_set<std::string> exp(expected.begin(), expected.end());
 
-  // Compute missing / extras
   std::vector<std::string> missing, extras;
-  for (const auto& k : expected) {
-    if (!row.count(k)) missing.push_back(k);
-  }
-  for (const auto& kv : row) {
-    if (!exp.count(kv.first)) extras.push_back(kv.first);
-  }
+  for (const auto& k : expected) if (!row.count(k)) missing.push_back(k);
+  for (const auto& kv : row) if (!exp.count(kv.first)) extras.push_back(kv.first);
 
   if (!missing.empty() || !extras.empty()) {
-    std::ostringstream oss;
-    oss << "Column set mismatch";
-
-    auto rid = row.find(ROW_ID_COLUMN_HEADER);
-    if (rid != row.end()) oss << " [row_id=" << rid->second << "]";
-
-    std::vector<std::string> types;
-    for (const auto& pr : row) if (ends_with(pr.first, "_type"))
-      types.push_back(pr.first + "=" + pr.second);
-    if (!types.empty()) {
-      oss << " {";
-      for (size_t i=0;i<types.size();++i){ if(i) oss<<", "; oss<<types[i]; }
-      oss << "}";
-    }
-    oss << ". ";
-
-    if (!missing.empty()) {
-      oss << "Missing columns: [";
-      for (size_t i=0;i<missing.size();++i){ if(i) oss<<", "; oss<<missing[i]; }
-      oss << "]. ";
-    }
-    if (!extras.empty()) {
-      oss << "Unexpected columns: [";
-      for (size_t i=0;i<extras.size();++i){ if(i) oss<<", "; oss<<extras[i]; }
-      oss << "].";
-    }
-    throw std::runtime_error(oss.str());
+    std::ostringstream miss, extra;
+    for (size_t i=0;i<missing.size();++i){ if(i) miss<<", "; miss<<missing[i]; }
+    for (size_t i=0;i<extras.size();++i){ if(i) extra<<", "; extra<<extras[i]; }
+    RAISE_FATAL_ROW(row, "Column set mismatch. Missing: [%s]. Unexpected: [%s].",
+                    miss.str().c_str(), extra.str().c_str());
   }
 
   if (enforce_nonempty) {
@@ -298,21 +261,27 @@ inline void require_columns_exact(
 /* ----------------------------- Casting -------------------------------- */
 
 inline double to_double(const std::string& s) {
+  errno = 0;
   char* end=nullptr; const char* c=s.c_str();
   double v = std::strtod(c, &end);
-  if (end==c || *end!='\0') throw std::runtime_error("Invalid double: " + s);
+  if (end==c || *end!='\0' || errno==ERANGE)
+    RAISE_FATAL("Invalid double: \"%s\"", s.c_str());
+  if (!std::isfinite(v))
+    RAISE_FATAL("Invalid double (non-finite): \"%s\"", s.c_str());
   return v;
 }
 inline long to_long(const std::string& s) {
+  errno = 0;
   char* end=nullptr; const char* c=s.c_str();
   long v = std::strtol(c, &end, 10);
-  if (end==c || *end!='\0') throw std::runtime_error("Invalid long: " + s);
+  if (end==c || *end!='\0' || errno==ERANGE)
+    RAISE_FATAL("Invalid long: \"%s\"", s.c_str());
   return v;
 }
 inline bool to_bool(const std::string& s) {
   if (s=="true"||s=="True"||s=="TRUE"||s=="1")  return true;
   if (s=="false"||s=="False"||s=="FALSE"||s=="0") return false;
-  throw std::runtime_error("Invalid bool: " + s);
+  RAISE_FATAL("Invalid bool: \"%s\" (expected true/false/1/0)", s.c_str());
 }
 inline std::vector<long> to_long_list_csv(const std::string& s) {
   std::vector<long> out;
@@ -322,7 +291,8 @@ inline std::vector<long> to_long_list_csv(const std::string& s) {
     tok = trim_copy(tok);
     if (!tok.empty()) out.push_back(to_long(tok));
   }
-  if (out.empty()) throw std::runtime_error("Invalid long list CSV: " + s);
+  if (out.empty())
+    RAISE_FATAL("Invalid long list CSV: \"%s\"", s.c_str());
   return out;
 }
 

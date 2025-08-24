@@ -9,6 +9,7 @@ std::mutex log_mutex;
 namespace cuwacunu {
 namespace piaabo {
 
+
 void sanitize_string(char* input, size_t max_len) {
   char sanitized_output[2048];
   size_t i = 0;

@@ -29,7 +29,7 @@
 namespace cuwacunu {
 namespace jkimyei {
 
-// --- VICReg helpers ---
+// ----- VICReg helpers -----
 inline at::Tensor off_diagonal(const at::Tensor& m) {
   const auto S = m.size(0);
   TORCH_CHECK(S == m.size(1), "[VICReg] off_diagonal expects a square matrix");

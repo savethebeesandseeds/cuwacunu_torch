@@ -301,6 +301,14 @@ constexpr uint64_t fnv1aHash(std::string_view str) {
   return hash;
 }
 
+// compile-time basename extractor for both '/' and '\'
+inline constexpr const char* path_basename(const char* path) noexcept {
+  const char* base = path;
+  for (const char* p = path; *p; ++p)
+    if (*p == '/' || *p == '\\') base = p + 1;
+  return base;
+}
+
 } /* namespace piaabo */
 } /* namespace cuwacunu */
 
@@ -494,6 +502,15 @@ constexpr uint64_t fnv1aHash(std::string_view str) {
   } \
   THROW_RUNTIME_ERROR();\
 } while(false)
+
+
+#define FILEBASE() (cuwacunu::piaabo::path_basename(__FILE__))
+
+#define RAISE_FATAL(FMT, ...) do {                  \
+  log_secure_fatal(                                 \
+    "(%s)[%s:%d] Error: " FMT,                      \
+    FILEBASE(), __func__, __LINE__, ##__VA_ARGS__); \
+} while (0)
 
 /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- */
 /* Macro to capture the current high-resolution time point */
