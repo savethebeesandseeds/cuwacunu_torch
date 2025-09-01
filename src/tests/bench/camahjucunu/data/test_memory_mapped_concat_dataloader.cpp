@@ -8,6 +8,7 @@
 #include "camahjucunu/exchange/exchange_types_data.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
 
+#include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"

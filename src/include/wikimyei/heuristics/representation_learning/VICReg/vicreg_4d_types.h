@@ -1,4 +1,6 @@
 #pragma once
+#include <torch/torch.h>
+#pragma once
 #include <cstdint>
 #include <vector>
 
@@ -42,6 +44,6 @@ struct WarpPreset {
     double point_drop_prob;
 };
 
-} /* namespace vicreg_4d */
-} /* namespace wikimyei */
-} /* namespace cuwacunu */
+} // namespace vicreg_4d
+} // namespace wikimyei
+} // namespace cuwacunu

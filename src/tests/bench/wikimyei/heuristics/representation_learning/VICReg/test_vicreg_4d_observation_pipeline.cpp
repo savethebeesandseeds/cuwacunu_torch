@@ -12,6 +12,7 @@
 #include "camahjucunu/exchange/exchange_types_data.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
 
+#include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
@@ -67,7 +68,8 @@ int main() {
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D model(
         training_data_loader.C_,        /* C */ 
         training_data_loader.T_,        /* T */ 
-        training_data_loader.D_         /* D */ 
+        training_data_loader.D_,        /* D */ 
+        "VICReg_representation"         /* Component name */
     );
     PRINT_TOCK_ms(Initialize_Model);
     

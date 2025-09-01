@@ -5,7 +5,7 @@
 #include <string>
 
 #include "camahjucunu/data/memory_mapped_dataloader.h"
-#include "camahjucunu/data/observation_sample.h"          // observation_sample_t
+#include "camahjucunu/data/observation_sample.h"
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d.h"
 
 RUNTIME_WARNING("(observation_space.h)[]  constrained to VICReg_4D as the Embedding type.\n");

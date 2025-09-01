@@ -31,6 +31,7 @@
 #include "camahjucunu/exchange/exchange_types_data.h"
 #include "camahjucunu/exchange/exchange_types_enums.h"
 
+#include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/BNF/implementations/training_components/training_components.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
@@ -38,58 +39,6 @@
 namespace cuwacunu {
 namespace camahjucunu {
 namespace data {
-
-/* A struct to represent a single sample from your dataset. */
-struct observation_sample_t {
-  // past (ends at t)
-  torch::Tensor features;        // [N_past, D] or [B, N_past, D]
-  torch::Tensor mask;            // [N_past]    or [B, N_past]
-  // future (starts at t+1)
-  torch::Tensor future_features; // [N_future, D] or [B, N_future, D]
-  torch::Tensor future_mask;     // [N_future]    or [B, N_future]
-
-  /* A custom collate function that stacks features and masks from a batch of Samples */
-  static inline observation_sample_t collate_fn(const std::vector<observation_sample_t>& batch) {
-    TORCH_CHECK(!batch.empty(), "(observation_sample_t)[collate_fn] Batch is empty!");
-
-    const auto n = batch.size();
-    std::vector<torch::Tensor> feats;      feats.reserve(n);
-    std::vector<torch::Tensor> masks;      masks.reserve(n);
-    std::vector<torch::Tensor> fut_feats;  fut_feats.reserve(n);
-    std::vector<torch::Tensor> fut_masks;  fut_masks.reserve(n);
-
-    const auto fsz  = batch[0].features.sizes();
-    const auto msz  = batch[0].mask.sizes();
-    const auto ffsz = batch[0].future_features.sizes();
-    const auto fmsz = batch[0].future_mask.sizes();
-
-    for (const auto& s : batch) {
-      TORCH_CHECK(s.features.sizes()        == fsz,  "(observation_sample_t)[collate_fn] features shape mismatch");
-      TORCH_CHECK(s.mask.sizes()            == msz,  "(observation_sample_t)[collate_fn] mask shape mismatch");
-      TORCH_CHECK(s.future_features.sizes() == ffsz, "(observation_sample_t)[collate_fn] future_features shape mismatch");
-      TORCH_CHECK(s.future_mask.sizes()     == fmsz, "(observation_sample_t)[collate_fn] future_mask shape mismatch");
-      feats.emplace_back(s.features);
-      masks.emplace_back(s.mask);
-      fut_feats.emplace_back(s.future_features);
-      fut_masks.emplace_back(s.future_mask);
-    }
-
-    return observation_sample_t{
-      torch::stack(feats, 0),
-      torch::stack(masks, 0),
-      torch::stack(fut_feats, 0),
-      torch::stack(fut_masks, 0)
-    };
-  }
-
-  /* reset (clear) method */
-  void reset() {
-    features.reset();
-    mask.reset();
-    future_features.reset();
-    future_mask.reset();
-  }
-};
 
 /**
  * @brief Reads a specific value from a memory-mapped structure.

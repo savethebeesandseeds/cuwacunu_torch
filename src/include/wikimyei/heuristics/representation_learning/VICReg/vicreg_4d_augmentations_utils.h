@@ -1,6 +1,6 @@
 /* vicreg_4d_augmentations_utils.h */
 #pragma once
-#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_augmentations_types.h"
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_types.h"
 #include "camahjucunu/BNF/implementations/training_components/training_components.h"
 #include "camahjucunu/BNF/implementations/training_components/training_components_utils.h"
 

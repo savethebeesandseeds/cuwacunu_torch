@@ -113,7 +113,7 @@ public:
             double cum_loss = 0.0;
             int epoch_iters = 0;
     
-            for (auto& batch : *dataloader) {
+            for (auto& batch : dataloader.inner()) {
                 /* If iteration limit is reached */
                 if (n_iters >= 0 && iter_count >= n_iters) {
                     stop_loop = true;
@@ -244,7 +244,7 @@ public:
             torch::NoGradGuard no_grad;
 
             // Loop over DataLoader
-            for (auto& batch : *dataloader)
+            for (auto& batch : dataloader.inner())
             {
                 // batch.data has shape (B, T, C)
                 auto x = batch.data.to(device);

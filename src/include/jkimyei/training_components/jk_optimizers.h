@@ -122,16 +122,16 @@ struct AdagradBuilder final : IOptimizerBuilder {
 /* -------------------------- Row -> Builder ----------------------------- */
 
 /* Map a config-row (BNF) to a concrete optimizer builder.
- * - Enforces exact columns: {row_id, optimizer_type, options}
+ * - Enforces exact columns: {row_id, type, options}
  * - Enforces exact options set per optimizer (no extras, no missing)
  * - Accepts alias "epsilon|eps" where LibTorch expects eps
  */
 inline std::unique_ptr<IOptimizerBuilder>
 make_optimizer_builder_from_row(const std::unordered_map<std::string,std::string>& row) {
   // Require exact columns for this table
-  cuwacunu::camahjucunu::require_columns_exact(row, { ROW_ID_COLUMN_HEADER, "optimizer_type", "options" });
+  cuwacunu::camahjucunu::require_columns_exact(row, { ROW_ID_COLUMN_HEADER, "type", "options" });
 
-  const std::string type = cuwacunu::camahjucunu::require_column(row, "optimizer_type");
+  const std::string type = cuwacunu::camahjucunu::require_column(row, "type");
 
   // All optimizers require an initial LR
   const double lr = cuwacunu::camahjucunu::to_double(cuwacunu::camahjucunu::require_option(row, "initial_learning_rate"));
@@ -221,7 +221,7 @@ make_optimizer_builder_from_row(const std::unordered_map<std::string,std::string
     );
   }
 
-  throw std::runtime_error("Unknown optimizer_type: " + type);
+  throw std::runtime_error("Unknown optimizer type: " + type);
 }
 
 /* Convenience: pull row from the instruction and delegate. */

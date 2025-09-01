@@ -16,6 +16,7 @@
 #include "camahjucunu/exchange/exchange_types_enums.h"
 
 #include "camahjucunu/data/memory_mapped_dataset.h"
+#include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/BNF/implementations/training_components/training_components.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
@@ -85,8 +86,8 @@ public:
   auto end()    { return data_loader_.end(); }
   void reset()  { data_loader_.reset(); }
 
-  DataLoaderType& operator*()   { return data_loader_; }
-  DataLoaderType* operator->()  { return &data_loader_; }
+  DataLoaderType& inner() { return data_loader_; }
+  const DataLoaderType& inner() const { return data_loader_; }
 };
 
 

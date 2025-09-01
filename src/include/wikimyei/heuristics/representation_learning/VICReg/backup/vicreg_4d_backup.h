@@ -224,9 +224,9 @@ public:
      * @param D_ Number of input features (dimensionality).
      */
     VICReg_4D(
-        int C_, // n channels
-        int T_, // n timesteps
-        int D_  // n features
+        int64_t& C_, // n channels
+        int64_t& T_, // n timesteps
+        int64_t& D_  // n features
     ) : VICReg_4D(
             C_,                                                                                                 /* C */ 
             T_,                                                                                                 /* T */ 
@@ -310,7 +310,7 @@ public:
             double cum_loss = 0.0;
             int epoch_iters = 0;
             
-            for (auto& sample_batch : *dataloader) {
+            for (auto& sample_batch : dataloader.inner()) {
                 /* If iteration limit is reached */
                 if (n_iters >= 0 && iter_count >= n_iters) {
                     stop_loop = true;
@@ -482,7 +482,7 @@ public:
             torch::NoGradGuard no_grad;
 
             // Loop over DataLoader
-            for (auto& sample_batch : *dataloader) {
+            for (auto& sample_batch : dataloader.inner()) {
                 // Collate batch and send to device
                 auto collated_sample = K::collate_fn(sample_batch);
                 auto data = collated_sample.features.to(device); // [B, C, T, D]
@@ -551,6 +551,7 @@ public:
         "\t\t%s%-25s%s %s%-8s%s\n"        // optimizer_clamp_weights
         "\t\t%s%-25s%s %s%-8d%s\n"        // optimizer_threshold_reset
         "\t\t%s%-25s%s %s%-8s%s\n";       // SWA buffer avg
+
 
         // 3) single fprintf
         log_info(fmt,

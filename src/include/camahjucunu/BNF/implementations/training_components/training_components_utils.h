@@ -130,6 +130,19 @@ parse_options_kvlist(const std::string& s) {
 }
 
 /* Require a specific option by key; returns the raw string value. */
+inline bool has_option(
+    const std::unordered_map<std::string,std::string>& row,
+    const std::string& key) {
+  const auto& opt_str = require_column(row, "options");
+  auto kv = parse_options_kvlist(opt_str);
+  auto it = kv.find(key);
+  if (it == kv.end())
+    return false;
+  if (it->second.empty() || it->second == "-")
+    return false;
+  return true;
+}
+
 inline std::string require_option(
     const std::unordered_map<std::string,std::string>& row,
     const std::string& key) {
