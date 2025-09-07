@@ -244,12 +244,14 @@ public:
 
         // (optional diagnostics — after we know N_eff > 1)
         if (verbose && (iter_count % 50 == 0)) {
-          auto mu  = z1v.mean(0).abs().mean().template item<double>();
-          auto std = z1v.std(0, /*unbiased=*/false).mean().template item<double>();
-          auto x_c = z1v - z1v.mean(0);
-          auto cov = (x_c.t().mm(x_c)) / (z1v.size(0) - 1);
-          auto off = off_diagonal(cov).abs().mean().template item<double>();
-          log_info("[proj] mean|mu|=%.4f mean std=%.4f mean|off-cov|=%.4f\n", mu, std, off);
+          auto z = z1v;
+          auto zc = z - z.mean(0);
+          auto stdz = torch::sqrt(zc.var(0, /*unbiased=*/false) + 1e-4);
+          auto zw = zc / (stdz + 1e-4);
+          auto corr = (zw.t().mm(zw)) / (zw.size(0) - 1);       // [E,E] correlation-like
+          const double mean_abs_off_corr =
+            off_diagonal(corr).abs().mean().template item<double>();
+          log_info("[proj] mean|off-corr|=%.4f\n", mean_abs_off_corr);
         }
 
         // ── VICReg loss terms

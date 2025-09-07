@@ -46,7 +46,7 @@
 | row_id               | type               | options                                                                   |
 |-----------------------------------------------------------------------------------------------------------------------|
 | NLLLoss_1            | NLLLoss            | eps=1e-6,sigma_min=1e-4,sigma_max=0.0,reduction=mean                      |
-| VICReg_1             | VICReg             | sim_coeff=25.0,std_coeff=25.0,cov_coeff=1.0                               |
+| VICReg_1             | VICReg             | sim_coeff=25.0,std_coeff=25.0,cov_coeff=1.0,huber_delta=0.03              |
 | CrossEntropy_1       | CrossEntropy       | label_smoothing=0.1                                                       |
 | BinaryCrossEntropy_1 | BinaryCrossEntropy | pos_weight=1.0                                                            |
 | MeanSquaredError_1   | MeanSquaredError   | -                                                                         |

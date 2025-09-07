@@ -68,7 +68,7 @@ inline void validate_loss(const cuwacunu::camahjucunu::training_instruction_t& i
     cuwacunu::camahjucunu::validate_options_exact(row, { "margin" });
 
   } else if (type == "VICReg") {
-    cuwacunu::camahjucunu::validate_options_exact(row, { "sim_coeff", "std_coeff", "cov_coeff" });
+    cuwacunu::camahjucunu::validate_options_exact(row, { "sim_coeff", "std_coeff", "cov_coeff", "huber_delta" });
 
   } else {
     throw std::runtime_error("Unknown loss_function type: " + type);
