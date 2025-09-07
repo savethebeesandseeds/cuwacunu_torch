@@ -1,3 +1,4 @@
+/* vicreg_4d.h */
 #pragma once
 
 #include <torch/torch.h>
@@ -25,7 +26,8 @@
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 #include "camahjucunu/BNF/implementations/training_components/training_components.h"
-#include "jkimyei/training_components/jk_setup.h"
+#include "jkimyei/training_setup/jk_setup.h"
+
 RUNTIME_WARNING("(vicreg_4d.h)[] for improving performance remember doing torch::jit::Module scripted = torch::jit::freeze(torch::jit::script::Module(my_encoder));\n");
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -77,11 +79,11 @@ namespace vicreg_4d {
  */
 class VICReg_4D : public torch::nn::Module {
 public:
+  std::string component_name;
   // ── Model shape (input contract) and training setup ──────────────────────────
   int C;                                  // Number of input channels.
   int T;                                  // Number of timesteps.
   int D;                                  // Number of per-timestep features.
-  cuwacunu::jkimyei::jk_setup_t jk_setup; // Optimizer/scheduler/loss configuration and builders.
 
   // ── Encoder & projector hyperparameters (topology) ───────────────────────────
   int encoding_dims;          // Latent representation width produced by the encoder.
@@ -111,14 +113,14 @@ public:
 
   // --- constructors (decl only; bodies in .cpp) ---
   VICReg_4D(
+    const std::string& component_name_,
     int C_, int T_, int D_,
-    cuwacunu::jkimyei::jk_setup_t jk_setup_,
-    int encoding_dims_ = 320,
-    int channel_expansion_dim_ = 64,
-    int fused_feature_dim_ = 128,
-    int encoder_hidden_dims_ = 64,
-    int encoder_depth_ = 10,
-    std::string projector_mlp_spec_ = "8192-8192-8192",
+    int encoding_dims_, 
+    int channel_expansion_dim_, 
+    int fused_feature_dim_, 
+    int encoder_hidden_dims_, 
+    int encoder_depth_, 
+    std::string projector_mlp_spec_, 
     torch::Dtype dtype_ = torch::kFloat32,
     torch::Device device_ = torch::kCPU,
     int optimizer_threshold_reset_ = -1,
@@ -127,8 +129,8 @@ public:
 
   // config-driven delegating constructor
   VICReg_4D(
-    int C_, int T_, int D_,
-    const std::string& component_name = "VICReg_representation"
+    const std::string& component_name, 
+    int C_, int T_, int D_
   );
 
   // strict checkpoint constructor
@@ -136,9 +138,9 @@ public:
             torch::Device override_device = torch::kCPU);
 
   // --- training (template stays in header) ---
-  template<typename Q, typename K, typename Td>
+  template<typename Q, typename KBatch, typename Td>
   std::vector<std::pair<int, double>> fit(
-    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Td, torch::data::samplers::SequentialSampler>& dataloader,
+    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, KBatch, Td, torch::data::samplers::SequentialSampler>& dataloader,
     int n_epochs = -1,
     int n_iters = -1,
     int swa_start_iter = 1000,
@@ -168,30 +170,115 @@ public:
 
         optimizer->zero_grad();
 
-        auto collated_sample = K::collate_fn_past(sample_batch);
+        auto collated_sample = KBatch::collate_fn_past(sample_batch);
         auto data = collated_sample.features.to(device);
         auto mask = collated_sample.mask.to(device);
 
-        TORCH_CHECK(!data.requires_grad() && !data.grad_fn(), "(vicreg_4d.h)[VICReg_4D::fit] data still has grad history");
-        TORCH_CHECK(!mask.requires_grad() && !mask.grad_fn(), "(vicreg_4d.h)[VICReg_4D::fit] mask still has grad history");
+        TORCH_CHECK(!data.requires_grad() && !data.grad_fn(),
+            "[VICReg_4D::fit] data must not require grad");
 
-        TORCH_CHECK(data.dim() == 4, "(vicreg_4d.h)[VICReg_4D::fit] data must be [B,C,T,D]");
-        TORCH_CHECK(data.size(1) == C && data.size(2) == T && data.size(3) == D, "(vicreg_4d.h)[VICReg_4D::fit] data shape mismatch");
-        TORCH_CHECK(mask.dim() == 3, "(vicreg_4d.h)[VICReg_4D::fit] mask must be [B,C,T]");
-        TORCH_CHECK(mask.size(1) == C && mask.size(2) == T, "(vicreg_4d.h)[VICReg_4D::fit] mask shape mismatch");
+        TORCH_CHECK(!mask.requires_grad() && !mask.grad_fn(),
+            "[VICReg_4D::fit] mask must not require grad");
 
+        TORCH_CHECK(data.dim() == 4,
+            "[VICReg_4D::fit] data.dim()=" + std::to_string(data.dim()) +
+            " (expected 4: [B,C,T,D])");
+
+        TORCH_CHECK(data.size(1) == C && data.size(2) == T && data.size(3) == D,
+            "[VICReg_4D::fit] data shape mismatch: "
+            "got [C=" + std::to_string(data.size(1)) +
+            ",T=" + std::to_string(data.size(2)) +
+            ",D=" + std::to_string(data.size(3)) +
+            "], expected [C=" + std::to_string(C) +
+            ",T=" + std::to_string(T) +
+            ",D=" + std::to_string(D) + "]");
+
+        TORCH_CHECK(mask.dim() == 3,
+            "[VICReg_4D::fit] mask.dim()=" + std::to_string(mask.dim()) +
+            " (expected 3: [B,C,T])");
+
+        TORCH_CHECK(mask.size(1) == C && mask.size(2) == T,
+            "[VICReg_4D::fit] mask shape mismatch: "
+            "got [C=" + std::to_string(mask.size(1)) +
+            ",T=" + std::to_string(mask.size(2)) +
+            "], expected [C=" + std::to_string(C) +
+            ",T=" + std::to_string(T) + "]");
+
+        // ── Augment two views
         auto [d1,m1] = aug.augment(data, mask);
         auto [d2,m2] = aug.augment(data, mask);
 
-        auto k1 = _encoder_net(d1, m1);
-        auto k2 = _encoder_net(d2, m2);
-        auto z1 = _projector_net(k1);
-        auto z2 = _projector_net(k2);
+        // Check difference on the shared-valid region (robust under masking)
+        if (verbose && (iter_count % 100 == 0)) {
+          auto shared_bt   = (m1 & m2).all(/*dim=*/1);                    // [B,T]
+          auto shared_mask = shared_bt.unsqueeze(1).unsqueeze(-1)         // [B,1,T,1]
+                                      .expand_as(d1);                     // [B,C,T,D]
+          const double diff = (d1.masked_select(shared_mask)
+                             - d2.masked_select(shared_mask))
+                                .abs().mean().template item<double>();
+          TORCH_CHECK(diff > 1e-6, "[VICReg] augment produced identical views on shared valid region; check config.");
+        }
 
-        auto loss = (*loss_obj)(z1, z2);
+        // ── Encode
+        auto k1 = _encoder_net(d1, m1);   // encoder output
+        auto k2 = _encoder_net(d2, m2);
+        
+        // ── Project
+        // ── Select only positions valid in BOTH views (strict: all channels must be valid)
+        auto valid_bt = (m1 & m2).all(/*dim=*/1);                // [B, T]
+
+        // gather only the rows that are valid in both views
+        auto expand_E = [&](int64_t E){ return valid_bt.unsqueeze(-1).expand({k1.size(0), k1.size(1), E}); };
+        auto k1v = k1.masked_select(expand_E(k1.size(-1))).view({-1, k1.size(-1)}); // [N_eff, E]
+        auto k2v = k2.masked_select(expand_E(k2.size(-1))).view({-1, k2.size(-1)});
+
+        const int64_t N_eff = k1v.size(0);
+        if (N_eff <= 1) {
+          // still too small to estimate covariance — skip this mini-step
+          continue;
+        }
+
+        // Project only valid rows → BN sees a consistent distribution
+        auto z1v = _projector_net->forward_flat(k1v);            // [N_eff, Dz]
+        auto z2v = _projector_net->forward_flat(k2v);            // [N_eff, Dz]
+
+        // (optional diagnostics — after we know N_eff > 1)
+        if (verbose && (iter_count % 50 == 0)) {
+          auto mu  = z1v.mean(0).abs().mean().template item<double>();
+          auto std = z1v.std(0, /*unbiased=*/false).mean().template item<double>();
+          auto x_c = z1v - z1v.mean(0);
+          auto cov = (x_c.t().mm(x_c)) / (z1v.size(0) - 1);
+          auto off = off_diagonal(cov).abs().mean().template item<double>();
+          log_info("[proj] mean|mu|=%.4f mean std=%.4f mean|off-cov|=%.4f\n", mu, std, off);
+        }
+
+        // ── VICReg loss terms
+        auto terms = loss_obj->forward_terms(z1v, z2v);
+
+        // Short early boost for covariance term (ramps from 3.0 → 1.0 over 3k iters)
+        constexpr int cov_ramp_iters = 3000;
+        double cov_boost = (iter_count < cov_ramp_iters)
+                         ? (3.0 - 2.0 * (static_cast<double>(iter_count) / cov_ramp_iters))
+                         : 1.0;
+
+        // Compose the exact loss that is backpropped
+        auto loss = loss_obj->sim_coeff_ * terms.inv
+                  + loss_obj->std_coeff_ * terms.var
+                  + (loss_obj->cov_coeff_ * cov_boost) * terms.cov;
+
+        if (verbose && (iter_count % 50 == 0)) {
+          const double loss_scalar = loss.template item<double>();
+          log_info("[loss] optim=%.6f inv=%.6f var=%.6f cov=%.6f (cov_boost=%.2f)\n",
+                   loss_scalar,
+                   terms.inv.template item<double>(),
+                   terms.var.template item<double>(),
+                   terms.cov.template item<double>(),
+                   cov_boost);
+        }
 
         loss.backward();
 
+        // Grad clip schedule: relaxed early, tighten later
         {
           std::vector<torch::Tensor> clip_vec;
           clip_vec.reserve(all_p.size());
@@ -200,7 +287,8 @@ public:
             if (g.defined()) clip_vec.push_back(p);
           }
           if (!clip_vec.empty()) {
-            torch::nn::utils::clip_grad_norm_(clip_vec, 1.0);
+            double clip_max = (iter_count < 1500) ? 5.0 : 1.0;
+            torch::nn::utils::clip_grad_norm_(clip_vec, clip_max);
           }
         }
 
@@ -269,13 +357,13 @@ public:
 
   // Convenience wrappers enabled only for observation_sample_t
   template<
-    typename K,
+    typename KBatch,
     std::enable_if_t<
-      std::is_same_v<K, cuwacunu::camahjucunu::data::observation_sample_t>, int
+      std::is_same_v<KBatch, cuwacunu::camahjucunu::data::observation_sample_t>, int
     > = 0
   >
-  K encode(
-    K batch,                       // by value: attach encoding and return
+  KBatch encode(
+    KBatch batch,                       // by value: attach encoding and return
     bool use_swa = true,
     bool detach_to_cpu = false)
   {
@@ -289,13 +377,13 @@ public:
   }
 
   template<
-    typename K,
+    typename KBatch,
     std::enable_if_t<
-      std::is_same_v<K, cuwacunu::camahjucunu::data::observation_sample_t>, int
+      std::is_same_v<KBatch, cuwacunu::camahjucunu::data::observation_sample_t>, int
     > = 0
   >
   torch::Tensor encode_projected(
-    const K& batch,
+    const KBatch& batch,
     bool use_swa = true,
     bool detach_to_cpu = false)
   {
@@ -307,14 +395,13 @@ public:
     );
   }
 
-  template<typename Q, typename K, typename Td, typename Sampler = torch::data::samplers::SequentialSampler>
+  template<typename Q, typename KBatch, typename Td, typename Sampler = torch::data::samplers::SequentialSampler>
   auto make_representation_dataloader(
-    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Td, Sampler>& raw_loader,
-    bool use_swa = true
+    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, KBatch, Td, Sampler>& raw_loader,
+    bool use_swa = true, bool debug = false
   ) {
-    return RepresentationDataLoaderView<VICReg_4D, Q, K, Td, Sampler>(raw_loader, *this, use_swa);
+    return RepresentationDataLoaderView<VICReg_4D, Q, KBatch, Td, Sampler>(raw_loader, *this, use_swa, debug);
   }
-
 
   void save(const std::string& filepath);
   void load(const std::string& filepath);

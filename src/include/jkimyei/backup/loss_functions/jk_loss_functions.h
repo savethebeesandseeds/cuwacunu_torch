@@ -18,7 +18,7 @@ namespace jkimyei {
 struct jk_loss_functions {
 public:
   static cuwacunu::camahjucunu::BNF::trainingPipeline training_components;
-  static cuwacunu::camahjucunu::BNF::training_instruction_t training_instruction;
+  static cuwacunu::camahjucunu::training_instruction_t training_instruction;
 
 private:
   jk_loss_functions();
@@ -135,7 +135,7 @@ public:
 
 /* initialize static members */
 cuwacunu::camahjucunu::BNF::trainingPipeline jk_loss_functions::training_components;
-cuwacunu::camahjucunu::BNF::training_instruction_t jk_loss_functions::training_instruction;
+cuwacunu::camahjucunu::training_instruction_t jk_loss_functions::training_instruction;
 
 /* initialize static class */
 jk_loss_functions::_init jk_loss_functions::_initializer;

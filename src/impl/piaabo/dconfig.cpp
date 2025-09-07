@@ -65,12 +65,77 @@ T config_space_t::from_string(const std::string& s)
   }
 }
 
+// -----------------------------------------------------------------------------
+// Split a CSV-like list into items, respecting quotes and ignoring commas inside
+// quotes. Supports 'single' and "double" quotes. Whitespace around items is trimmed.
+// Empty items are skipped.
+// -----------------------------------------------------------------------------
+static std::vector<std::string> split_string_items(const std::string& s)
+{
+  std::vector<std::string> out;
+  std::string cur;
+  bool in_single = false, in_double = false;
+
+  auto push_trimmed = [&](std::string& token){
+    // trim
+    size_t b = 0, e = token.size();
+    while (b < e && std::isspace(static_cast<unsigned char>(token[b]))) ++b;
+    while (e > b && std::isspace(static_cast<unsigned char>(token[e-1]))) --e;
+    if (e > b) out.emplace_back(token.substr(b, e - b));
+    token.clear();
+  };
+
+  for (size_t i = 0; i < s.size(); ++i) {
+    char c = s[i];
+    if (c == '\'' && !in_double) { in_single = !in_single; cur.push_back(c); continue; }
+    if (c == '"'  && !in_single) { in_double = !in_double; cur.push_back(c); continue; }
+
+    if (c == ',' && !in_single && !in_double) {
+      push_trimmed(cur);
+    } else {
+      cur.push_back(c);
+    }
+  }
+  push_trimmed(cur);
+
+  // If an item is fully quoted, strip the outer quotes.
+  for (auto& item : out) {
+    if (item.size() >= 2) {
+      char a = item.front(), b = item.back();
+      if ((a == '\'' && b == '\'') || (a == '"' && b == '"')) {
+        item = item.substr(1, item.size() - 2);
+      }
+    }
+  }
+  return out;
+}
+
+
 /*────────────── public accessor — throws unless fallback provided ────────*/
 template<class T>
 T config_space_t::get(const std::string& section, const std::string& key, std::optional<T> fallback)
 {
   try { return from_string<T>( raw(section, key) ); }
   catch (const bad_config_access&) {
+    if (fallback) return *fallback;
+    throw;
+  }
+}
+
+/*────────── public array accessor — throws unless fallback provided ───────*/
+template<class T>
+std::vector<T> config_space_t::get_arr(const std::string& section, const std::string& key, std::optional<std::vector<T>> fallback)
+{
+  try {
+    const std::string s = raw(section, key);   // uses lock + throws if missing
+    std::vector<std::string> items = split_string_items(s);
+    std::vector<T> result;
+    result.reserve(items.size());
+    for (const auto& it : items) {
+      result.emplace_back(from_string<T>(it));
+    }
+    return result;
+  } catch (const bad_config_access&) {
     if (fallback) return *fallback;
     throw;
   }
@@ -251,6 +316,11 @@ template int          config_space_t::get<int>        (const std::string&, const
 template double       config_space_t::get<double>     (const std::string&, const std::string&, std::optional<double>);
 template bool         config_space_t::get<bool>       (const std::string&, const std::string&, std::optional<bool>);
 template std::string  config_space_t::get<std::string>(const std::string&, const std::string&, std::optional<std::string>);
+
+template std::vector<int>         config_space_t::get_arr<int>(const std::string&, const std::string&, std::optional<std::vector<int>>);
+template std::vector<double>      config_space_t::get_arr<double>(const std::string&, const std::string&, std::optional<std::vector<double>>);
+template std::vector<bool>        config_space_t::get_arr<bool>(const std::string&, const std::string&, std::optional<std::vector<bool>>);
+template std::vector<std::string> config_space_t::get_arr<std::string>(const std::string&, const std::string&, std::optional<std::vector<std::string>>);
 
 } // namespace dconfig
 } // namespace piaabo

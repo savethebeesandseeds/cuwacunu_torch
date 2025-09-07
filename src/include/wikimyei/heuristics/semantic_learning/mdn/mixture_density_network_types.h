@@ -1,4 +1,3 @@
-/* mixture_density_network_types.h */
 #pragma once
 #include <torch/torch.h>
 
@@ -6,23 +5,28 @@ namespace cuwacunu {
 namespace wikimyei {
 namespace mdn {
 
-// ---------- Output container ----------
+// ---------- Output container (generalized) ----------
+// log_pi : [B, C, Hf, K]
+// mu     : [B, C, Hf, K, Dy]
+// sigma  : [B, C, Hf, K, Dy]
 struct MdnOut {
-  torch::Tensor log_pi; // [B, K]
-  torch::Tensor mu;     // [B, K, Dy]
-  torch::Tensor sigma;  // [B, K, Dy] (positive)
+  torch::Tensor log_pi;
+  torch::Tensor mu;
+  torch::Tensor sigma;
 };
 
+// Head options (per-channel head, so C is handled outside)
 struct MdnHeadOptions {
-  int64_t feature_dim; // from backbone
-  int64_t Dy;          // target dimension
-  int64_t K;           // number of mixture components
+  int64_t feature_dim; // H, backbone output width
+  int64_t Dy;          // target dims per (channel,horizon)
+  int64_t K;           // mixture comps
+  int64_t Hf{1};       // horizons per channel
 };
 
 struct BackboneOptions {
-  int64_t input_dim;   // e.g., De (representation dim)
-  int64_t feature_dim; // e.g., 256/384/512
-  int64_t depth;       // number of residual blocks (e.g., 2 or 3)
+  int64_t input_dim;   // De
+  int64_t feature_dim; // H
+  int64_t depth;       // residual blocks
 };
 
 struct residualOptions {

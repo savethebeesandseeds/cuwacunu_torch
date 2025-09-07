@@ -16,7 +16,7 @@ int main() {
     PRINT_TOCK_ns(trainingPipeline_loadGrammar);
 
     TICK(decode_Instruction);
-    cuwacunu::camahjucunu::BNF::training_instruction_t decoded_data = trainPipe.decode(instruction);
+    cuwacunu::camahjucunu::training_instruction_t decoded_data = trainPipe.decode(instruction);
     PRINT_TOCK_ns(decode_Instruction);
 
     log_info("At the end, decoded_data.raw[size=%ld] \n", decoded_data.raw.size());

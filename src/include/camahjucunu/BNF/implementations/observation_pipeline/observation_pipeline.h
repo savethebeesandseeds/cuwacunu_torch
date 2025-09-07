@@ -47,6 +47,7 @@ DEFINE_HASH(OBSERVATION_PIPELINE_HASH_file_path,              "<file_path>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_active,                 "<active>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_seq_length,             "<seq_length>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_future_seq_length,      "<future_seq_length>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_channel_weight,         "<channel_weight>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_character,              "<character>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_literal,                "<literal>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_whitespace,             "<whitespace>");
@@ -63,7 +64,6 @@ DEFINE_HASH(OBSERVATION_PIPELINE_HASH_frame_char,             "<frame_char>");
 
 namespace cuwacunu {
 namespace camahjucunu {
-namespace BNF {
 
 struct instrument_form_t {
   std::string instrument;
@@ -79,6 +79,7 @@ struct input_form_t {
   std::string record_type;
   std::string seq_length;
   std::string future_seq_length;
+  std::string channel_weight;
 };
 
 struct observation_instruction_t {
@@ -88,6 +89,24 @@ struct observation_instruction_t {
     const std::string& target_instrument,
     const std::string& target_record_type,
     cuwacunu::camahjucunu::exchange::interval_type_e target_interval) const;
+  std::vector<float> retrieve_channel_weights();
+  int64_t count_channels();
+  int64_t max_sequence_length();
+  int64_t max_future_sequence_length();
+};
+
+struct observation_pipeline_t {
+  static observation_instruction_t inst;
+  static void update();
+
+private:
+  static void init();
+  static void finit();
+  struct _init {
+    _init()  { observation_pipeline_t::init(); }
+    ~_init() { observation_pipeline_t::finit(); }
+  };
+  static _init _initializer;
 };
 
 /* 
@@ -95,6 +114,7 @@ struct observation_instruction_t {
  * extract execution data (symbol, parameters, file IDs) and executes 
  * corresponding functions based on the parsed instructions.
  */
+namespace BNF {
 class observationPipeline : public ASTVisitor {
 private:
   std::mutex current_mutex;
@@ -123,7 +143,7 @@ public:
   void visit(const IntermediaryNode* node, VisitorContext& context) override;
   void visit(const TerminalNode* node, VisitorContext& context) override;
 };
-
 } /* namespace BNF */
+
 } /* namespace camahjucunu */
 } /* namespace cuwacunu */

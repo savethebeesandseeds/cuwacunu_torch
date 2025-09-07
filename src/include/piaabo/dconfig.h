@@ -53,6 +53,10 @@ struct config_space_t {
   /*—generic accessor—*/
   template<class T = std::string>
   static T get(const std::string& section, const std::string& key, std::optional<T> fallback = std::nullopt);
+  
+  /*—array accessor—*/
+  template<class T = std::string>
+  static std::vector<T> get_arr(const std::string& section, const std::string& key, std::optional<std::vector<T>> fallback = std::nullopt);
 
   /*—helpers for special resources—*/
   static std::string websocket_url();

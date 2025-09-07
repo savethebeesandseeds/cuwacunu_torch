@@ -16,7 +16,7 @@ namespace jkimyei {
 struct jk_lr_schedulers {
 public:
   static cuwacunu::camahjucunu::BNF::trainingPipeline training_components;
-  static cuwacunu::camahjucunu::BNF::training_instruction_t training_instruction;
+  static cuwacunu::camahjucunu::training_instruction_t training_instruction;
 
 private:
   jk_lr_schedulers();
@@ -116,7 +116,7 @@ public:
 
 /* initialize static members */
 cuwacunu::camahjucunu::BNF::trainingPipeline jk_lr_schedulers::training_components;
-cuwacunu::camahjucunu::BNF::training_instruction_t jk_lr_schedulers::training_instruction;
+cuwacunu::camahjucunu::training_instruction_t jk_lr_schedulers::training_instruction;
 
 /* initialize static class */
 jk_lr_schedulers::_init jk_lr_schedulers::_initializer;

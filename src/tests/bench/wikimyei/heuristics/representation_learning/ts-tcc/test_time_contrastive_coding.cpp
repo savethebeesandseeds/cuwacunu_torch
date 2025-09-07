@@ -88,7 +88,7 @@ int main() {
   TICK(read_instruction_);
   std::string instruction = cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction();
   auto obsPipe = cuwacunu::camahjucunu::BNF::observationPipeline();
-  cuwacunu::camahjucunu::BNF::observation_instruction_t obsInst = obsPipe.decode(instruction);
+  cuwacunu::camahjucunu::observation_instruction_t obsInst = obsPipe.decode(instruction);
   PRINT_TOCK_ns(read_instruction_);
 
   /* create the dataloader */

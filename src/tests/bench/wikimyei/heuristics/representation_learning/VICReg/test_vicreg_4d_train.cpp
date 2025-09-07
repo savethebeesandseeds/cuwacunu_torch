@@ -1,4 +1,4 @@
-/* test_vicreg_4d_observation_pipeline.cpp */
+/* test_vicreg_4d_train.cpp */
 #include <torch/torch.h>
 #include <torch/autograd.h>
 #include <fstream>
@@ -51,9 +51,8 @@ int main() {
 
     TICK(create_dataloader_);
     auto training_data_loader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, K, Td, SeqSampler>(
-        INSTRUMENT,                                                                                             /* instrument */
-        cuwacunu::camahjucunu::BNF::observationPipeline()
-            .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),             /* obs_inst */ 
+        INSTRUMENT,                                                                                                  /* instrument */
+        cuwacunu::camahjucunu::observation_pipeline_t::inst,                                                         /* obs_inst */ 
         cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
         cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
         cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
@@ -66,10 +65,10 @@ int main() {
     std::cout << "Initializing the VICReg encoder...\n";
     TICK(Initialize_Model);
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D model(
+        "VICReg_representation",        /* component name */
         training_data_loader.C_,        /* C */ 
         training_data_loader.T_,        /* T */ 
-        training_data_loader.D_,        /* D */ 
-        "VICReg_representation"         /* Component name */
+        training_data_loader.D_         /* D */ 
     );
     PRINT_TOCK_ms(Initialize_Model);
     
@@ -98,9 +97,3 @@ int main() {
     
     return 0;
 }
-    // std::cout << "Final C++ losses: [ ";
-    // for (const auto &lossVal : loss_log) { // Use const auto&
-    //     std::cout << lossVal << ",  ";
-    // }
-    // std::cout << "]" << std::endl;
-    

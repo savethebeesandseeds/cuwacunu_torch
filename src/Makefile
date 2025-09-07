@@ -17,6 +17,10 @@ piaabo:
 camahjucunu:
 	$(MAKE) -C $(IMPL_PATH)/camahjucunu all
 
+.PHONY: jkimyei
+jkimyei:
+	$(MAKE) -C $(IMPL_PATH)/jkimyei all
+
 .PHONY: wikimyei
 wikimyei:
 	$(MAKE) -C $(IMPL_PATH)/wikimyei all
@@ -30,7 +34,7 @@ iinuji:
 #   - Run with: make -j all   (control parallelism at CLI)
 # -----------------------------------------------------------------
 .PHONY: all
-all: piaabo camahjucunu wikimyei
+all: piaabo camahjucunu jkimyei wikimyei
 	@$(LOG_SUCCESS)
 
 # -----------------------------------------------------------------

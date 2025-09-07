@@ -37,7 +37,7 @@ int main() {
     
     /* create the observation pipeline */
     auto obsPipe = cuwacunu::camahjucunu::BNF::observationPipeline();
-    cuwacunu::camahjucunu::BNF::observation_instruction_t decoded_data = obsPipe.decode(instruction);
+    cuwacunu::camahjucunu::observation_instruction_t decoded_data = obsPipe.decode(instruction);
 
     {
         using S = torch::data::samplers::SequentialSampler;

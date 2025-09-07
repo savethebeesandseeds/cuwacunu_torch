@@ -16,7 +16,7 @@ int main() {
     PRINT_TOCK_ns(observationPipeline_loadGrammar);
 
     TICK(decode_Instruction);
-    cuwacunu::camahjucunu::BNF::observation_instruction_t decoded_data = obsPipe.decode(instruction);
+    cuwacunu::camahjucunu::observation_instruction_t decoded_data = obsPipe.decode(instruction);
     PRINT_TOCK_ns(decode_Instruction);
 
     log_info("At the end, decoded_data.instrument_forms[size=%ld] \n", decoded_data.instrument_forms.size());

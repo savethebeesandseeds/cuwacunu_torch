@@ -19,6 +19,10 @@ camahjucunu:
 wikimyei:
 	$(MAKE) -C $(HERE_PATH)/wikimyei all
 
+.PHONY: jkimyei
+jkimyei:
+	$(MAKE) -C $(HERE_PATH)/jkimyei all
+
 .PHONY: iinuji
 iinuji:
 	$(MAKE) -C $(HERE_PATH)/iinuji all

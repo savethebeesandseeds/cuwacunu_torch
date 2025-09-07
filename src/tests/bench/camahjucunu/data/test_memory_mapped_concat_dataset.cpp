@@ -28,7 +28,7 @@ int main() {
     
     /* create the observation pipeline */
     auto obsPipe = cuwacunu::camahjucunu::BNF::observationPipeline();
-    cuwacunu::camahjucunu::BNF::observation_instruction_t decoded_data = obsPipe.decode(instruction);
+    cuwacunu::camahjucunu::observation_instruction_t decoded_data = obsPipe.decode(instruction);
 
     /* create the dataset */
     using T = cuwacunu::camahjucunu::exchange::basic_t;

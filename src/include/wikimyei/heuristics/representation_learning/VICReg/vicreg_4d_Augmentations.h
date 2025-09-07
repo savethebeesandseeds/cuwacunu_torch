@@ -10,25 +10,25 @@ namespace wikimyei {
 namespace vicreg_4d {
 
 /* ─────────────────────────────────────────────────────────────
- *  Recommended warp map presets (subtle but meaningful)
+ *  Default warp map presets
  *  These can be used to sample randomized warp_maps for data augmentation
  *  or time-invariance training.
  * ───────────────────────────────────────────────────────────── */
 inline const std::vector<WarpPreset>& kDefaultWarpPresets() {
-    static const std::vector<WarpPreset> kDefaults = {
-        /* curve                            curve_param     noise_scale     smoothing_kernel_size       point_drop_prob */
-        { WarpBaseCurve::Linear,            0.0,            0.0,            1,                          0.03 },                 // Identity: no warp, ideal for control comparisons
-        { WarpBaseCurve::Linear,            0.0,            0.0,            5,                          0.03 },                 // Natural Drift: small random drift, gently smoothed
-        { WarpBaseCurve::ChaoticDrift,      0.0,            0.0,            7,                          0.03 },                 // Chaotic Drift: noisier structure, strongly smoothed for realism
-        { WarpBaseCurve::MarketFade,        3.0,            0.0,            5,                          0.03 },                 // Market Fade (soft): early emphasis, gentle fade out
-        { WarpBaseCurve::MarketFade,        5.0,            0.0,            7,                          0.03 },                 // Market Fade (sharp): stronger front focus, softer tail
-        { WarpBaseCurve::FadeLate,          3.0,            0.0,            5,                          0.03 },                 // Fade Late: mirror of market fade, tail-focused
-        { WarpBaseCurve::PulseCentered,     0.0,            0.0,            5,                          0.03 },                 // Pulse Centered: emphasizes central events in time
-        { WarpBaseCurve::FrontLoaded,       0.6,            0.0,            3,                          0.03 },                 // Front-Focus (soft): mild early emphasis, fast decay
-        { WarpBaseCurve::FrontLoaded,       0.3,            0.0,            5,                          0.03 },                 // Front-Focus (sharp): stronger focus on initial time
-        { WarpBaseCurve::PulseCentered,     0.0,            0.0,            7,                          0.03 }                  // Symmetric Sway: fluid oscillation centered on mid-sequence
-    };
-    return kDefaults;
+  static const std::vector<WarpPreset> kDefaults = {
+    // curve,         param, noise, smooth, drop,  jitter,  band,  ch_drop
+    { WarpBaseCurve::Linear,        0.0,  0.02,   3,     0.06,  0.015, 0.00, 0.00 },
+    { WarpBaseCurve::Linear,        0.0,  0.06,   5,     0.06,  0.015, 0.00, 0.00 },
+    { WarpBaseCurve::ChaoticDrift,  0.0,  0.10,   7,     0.08,  0.020, 0.03, 0.05 },
+    { WarpBaseCurve::MarketFade,    3.0,  0.02,   5,     0.08,  0.015, 0.00, 0.03 },
+    { WarpBaseCurve::MarketFade,    5.0,  0.03,   7,     0.08,  0.015, 0.05, 0.03 },
+    { WarpBaseCurve::FadeLate,      3.0,  0.02,   5,     0.08,  0.015, 0.00, 0.03 },
+    { WarpBaseCurve::PulseCentered, 0.0,  0.02,   5,     0.06,  0.015, 0.03, 0.00 },
+    { WarpBaseCurve::FrontLoaded,   0.6,  0.03,   3,     0.08,  0.020, 0.00, 0.05 },
+    { WarpBaseCurve::FrontLoaded,   0.3,  0.03,   5,     0.08,  0.020, 0.00, 0.05 },
+    { WarpBaseCurve::PulseCentered, 0.0,  0.04,   7,     0.08,  0.020, 0.05, 0.03 }
+  };
+  return kDefaults;
 }
 
 /*  -----------------------------------------------------------
@@ -66,7 +66,7 @@ causal_time_warp(const torch::Tensor& x,
                 && m.device()==warp_map.device(),  "(vicreg_4d_Augmentations.h)[casual_time_wrap] data, mask and warp_map must be on the same device");
                 
     /* ─── monotonicity assertion (debug) ───────────────────────────── */
-    TORCH_CHECK((warp_map.diff(1, /*dim=*/1) >= 0).all().item<bool>(), "(vicreg_4d_Augmentations.h)[casual_time_wrap] warp_map must be strictly increasing");
+    TORCH_CHECK((warp_map.diff(1, /*dim=*/1) > 0).all().item<bool>(),"(vicreg_4d_Augmentations.h)[causal_time_warp] warp_map must be strictly increasing");
     
     /* ─── 1. indices & weights ─────────────────────────────────────── */
     const int64_t B = x.size(0);
@@ -212,20 +212,22 @@ inline torch::Tensor build_warp_map(int64_t        B,
                      .squeeze(1);                                             // [B,T]
     }
 
-    /* 5. Fix endpoints ----------------------------------------------------- */
-    warp.index_put_({torch::indexing::Slice(), 0},      0.0f);
-    warp.index_put_({torch::indexing::Slice(), T - 1}, static_cast<float>(T - 1));
+    /* 5) Ensure strictly positive steps then integrate (monotonicity without sorting) */
+    constexpr float kMinStep = 1e-3f;
+    auto diffs     = torch::diff(warp, /*n=*/1, /*dim=*/1);           // [B,T-1]
+    auto pos_diffs = torch::relu(diffs) + kMinStep;                   // enforce >0
+    auto first     = warp.index({torch::indexing::Slice(), 0}).unsqueeze(1); // [B,1]
+    auto warp_mono = torch::cat({ first, first + pos_diffs.cumsum(/*dim=*/1) }, /*dim=*/1); // [B,T]
 
-    /* 6. Enforce strict monotonicity via sort ----------------------------- */
-    auto sorted = std::get<0>(warp.sort(/*dim=*/1));                          // [B,T]
-
-    /* 7. Rescale (guards against noise pulling extremes inward) ----------- */
-    auto min_vals = sorted.index({torch::indexing::Slice(), 0}).unsqueeze(1);
-    auto max_vals = sorted.index({torch::indexing::Slice(), T - 1}).unsqueeze(1);
+    /* 6) Rescale to [0, T-1] and lock the endpoints */
     constexpr float eps = 1e-6f;
-    auto warp_map = (sorted - min_vals) / (max_vals - min_vals + eps) * (T - 1);
+    auto min_vals = warp_mono.index({torch::indexing::Slice(), 0}).unsqueeze(1);
+    auto max_vals = warp_mono.index({torch::indexing::Slice(), T - 1}).unsqueeze(1);
+    auto warp_map = (warp_mono - min_vals) / (max_vals - min_vals + eps) * (T - 1);
 
-    return warp_map.contiguous();                                             // [B,T]
+    warp_map.index_put_({torch::indexing::Slice(), 0},      0.0f);
+    warp_map.index_put_({torch::indexing::Slice(), T - 1}, static_cast<float>(T - 1));
+    return warp_map.contiguous();                                          // [B,T]
 }
 
 /**
@@ -274,89 +276,105 @@ inline torch::Tensor build_warp_map(int64_t        B,
  *    - `augment()`      : randomly samples one preset from `warp_presets` for stochastic augmentation.
  *
  * ======================================================================== */
- struct VICReg_4D_Augmentation {
+struct VICReg_4D_Augmentation {
+  std::vector<WarpPreset> warp_presets;
 
-    std::vector<WarpPreset> warp_presets;
+  VICReg_4D_Augmentation()
+  : warp_presets(kDefaultWarpPresets()) {}
 
-    /* --- constructor: default to built-in table --- */
-    VICReg_4D_Augmentation()
-    : warp_presets(kDefaultWarpPresets()) {}
+  explicit VICReg_4D_Augmentation(
+      const cuwacunu::camahjucunu::training_instruction_t::table_t& table)
+  : warp_presets(cuwacunu::wikimyei::vicreg_4d::make_warp_presets_from_table(table)) {}
 
-    /* --- constructor: build from configuration table --- */
-    explicit VICReg_4D_Augmentation(
-        const cuwacunu::camahjucunu::BNF::training_instruction_t::table_t& table)
-    : warp_presets(cuwacunu::wikimyei::vicreg_4d::make_warp_presets_from_table(table)) {}
+  std::pair<torch::Tensor, torch::Tensor>
+  operator()(const torch::Tensor& x,
+             const torch::Tensor& m,
+             const WarpPreset& preset) const
+  {
+    // Basic dims
+    const int64_t B = x.size(0);
+    const int64_t C = x.size(1);
+    const int64_t T = x.size(2);
+    const int64_t E = x.size(3);
 
-    /* -----------------------------------------------------------------------
-     * operator()
-     *
-     * Applies a warp and masking transformation to the input tensors using a
-     * specified `WarpPreset`. This allows explicit control over the temporal
-     * augmentation curve used (e.g., MarketFade, PulseCentered, etc).
-     *
-     * @param x       Input data tensor [B, C, T, D]
-     * @param m       Input mask tensor [B, C, T]
-     * @param preset  WarpPreset defining base curve, noise, and smoothing
-     *
-     * @return        Pair of (warped data, warped mask)
-     * ----------------------------------------------------------------------- */
-    std::pair<torch::Tensor, torch::Tensor>
-    operator()(const torch::Tensor& x, 
-               const torch::Tensor& m,
-               const WarpPreset& preset) const {
+    // 1) Build monotone warp map (you already implemented the cumsum monotone fix)
+    auto warp_map = build_warp_map(
+      B, T,
+      preset.noise_scale,
+      preset.smoothing_kernel_size,
+      x.scalar_type(),
+      x.device(),
+      preset.curve,
+      preset.curve_param
+    );
 
-        // Extract dimensions
-        const int64_t B = x.size(0);  // Batch
-        const int64_t T = x.size(2);  // Time
+    // 2) Time-warp (hard-mask semantics inside)
+    auto [data_timewrap, mask_timewrap] = causal_time_warp(
+      x, m, warp_map, x.scalar_type(), x.device()
+    );
 
-        // Generate a per-sample warp map with the selected preset
-        auto warp_map = build_warp_map(
-            B, T,
-            preset.noise_scale,
-            preset.smoothing_kernel_size,
-            x.scalar_type(), 
-            x.device(),
-            preset.curve,
-            preset.curve_param
-        );
-        
-        // Apply interpolation (e.g., causal_time_warp) to x and m using warp_map
-        auto [data_timewrap, mask_timewrap] = causal_time_warp(
-            x, m, warp_map, x.scalar_type(), x.device()
-        );
-        
-        // Apply random masking
-        auto mask_drop = random_point_drop(mask_timewrap, preset.point_drop_prob);
-
-        return {data_timewrap, mask_drop};
+    // 3) Value jitter on valid points only
+    if (preset.value_jitter_std > 0.0) {
+      auto noise = torch::empty_like(data_timewrap).normal_(0.0, preset.value_jitter_std);
+      auto valid4D_f = mask_timewrap.to(noise.dtype()).unsqueeze(-1).expand({B,C,T,E});
+      data_timewrap.add_(noise.mul_(valid4D_f));
     }
 
-    /* ---------------------------------------------------------------------
-     * augment()
-     *
-     * Performs randomized augmentation by sampling a warp style from the
-     * `warp_presets` table and applying it to the input.
-     *
-     * @param x   Input data tensor [B, C, T, D]
-     * @param m   Input mask tensor [B, C, T]
-     *
-     * @return    Pair of (augmented data, augmented mask)
-     * --------------------------------------------------------------------- */
-    inline std::pair<torch::Tensor, torch::Tensor>
-    augment(torch::Tensor x, torch::Tensor m, const WarpPreset& preset) const {
-        return (*this)(x, m, preset);
+    // 4) Optional temporal band mask (SpecAugment-style)
+    if (preset.time_mask_band_frac > 0.0) {
+      const int64_t band = std::max<int64_t>(1, static_cast<int64_t>(std::llround(T * preset.time_mask_band_frac)));
+      if (band < T) {
+        auto starts = torch::randint(/*high=*/T - band + 1, {B},
+                        mask_timewrap.options().dtype(torch::kLong).device(torch::kCPU));
+        for (int64_t b = 0; b < B; ++b) {
+          const int64_t s = starts[b].item<int64_t>();
+          mask_timewrap.index_put_({b, torch::indexing::Slice(), torch::indexing::Slice(s, s + band)}, false);
+          data_timewrap.index_put_({b, torch::indexing::Slice(), torch::indexing::Slice(s, s + band), torch::indexing::Slice()}, 0.0);
+        }
+      } else {
+        // If band == T, masking all time would leave no valid samples; we avoid that by requiring band < T in the parser.
+        TORCH_CHECK(false, "[VICReg_4D_Augmentation] time_mask_band_frac leads to band==T; adjust config.");
+      }
     }
-    inline std::pair<torch::Tensor, torch::Tensor>
-    augment(torch::Tensor x, torch::Tensor m, std::vector<WarpPreset> conf_presets) const {
-        auto preset = conf_presets[rand() % conf_presets.size()];
-        return augment(x, m, preset);
+
+    // 5) Optional channel dropout (per-sample)
+    if (preset.channel_dropout_prob > 0.0) {
+      // keep ∈ {0,1}; broadcast across T,E for data; across T for mask
+      auto keep = torch::bernoulli(
+                    torch::full({B, C, 1, 1},
+                                1.0 - preset.channel_dropout_prob,
+                                data_timewrap.options().dtype(torch::kFloat)))
+                      .to(torch::kBool);               // [B, C, 1, 1]
+
+      // Zero out dropped channels in data
+      data_timewrap = data_timewrap.masked_fill(~keep, 0.0);  // [B, C, T, E] & [B, C, 1, 1]
+
+      // Propagate channel drop into the time mask (broadcast across T)
+      auto keep_bc1 = keep.squeeze(-1);                       // [B, C, 1]
+      mask_timewrap = mask_timewrap & keep_bc1;               // [B, C, T] & [B, C, 1] → [B, C, T]
     }
-    inline std::pair<torch::Tensor, torch::Tensor>
-    augment(torch::Tensor x, torch::Tensor m) const {
-        return augment(x, m, warp_presets);
-    }
+
+    // 6) Random point drop (existing op)
+    auto mask_drop = random_point_drop(mask_timewrap, preset.point_drop_prob);
+
+    return { data_timewrap, mask_drop };
+  }
+
+  // Sample a preset using the torch RNG so torch::manual_seed controls it.
+  inline std::pair<torch::Tensor, torch::Tensor>
+  augment(torch::Tensor x, torch::Tensor m, const std::vector<WarpPreset>& conf_presets) const {
+    TORCH_CHECK(!conf_presets.empty(), "[VICReg_4D_Augmentation] no presets configured");
+    auto idx_t = torch::randint(static_cast<long>(conf_presets.size()), {1},
+                    torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU));
+    size_t idx = static_cast<size_t>(idx_t.item<int64_t>());
+    return (*this)(x, m, conf_presets[idx]);
+  }
+
+  inline std::pair<torch::Tensor, torch::Tensor>
+  augment(torch::Tensor x, torch::Tensor m) const {
+    return augment(x, m, warp_presets);
+  }
 };
-
 
 } /* namespace vicreg_4d */
 } /* namespace wikimyei */

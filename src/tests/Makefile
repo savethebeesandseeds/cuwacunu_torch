@@ -34,17 +34,21 @@ $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjuc
 HTTPS := websocket
 $(foreach t,$(HTTPS),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/https)))
 
-# --------------------------- jkimyei/training_components ---------------------
-JKIMYEI := training_components_jk_setup
-$(foreach t,$(JKIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/jkimyei/training_components)))
+# --------------------------- jkimyei/training_setup ---------------------
+JKIMYEI := jk_setup
+$(foreach t,$(JKIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/jkimyei/training_setup)))
 
 # ---------------- wikimyei / VICReg ------------------------------------------
-VICREG := vicreg_4d_observation_pipeline vicreg_4d_projector_gpu_vs_cpu vicreg_4d_save_and_load
+VICREG := vicreg_4d_train vicreg_4d_projector_gpu_vs_cpu vicreg_4d_save_and_load
 $(foreach t,$(VICREG),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg)))
 
 # ---------------- wikimyei / MDN ------------------------------------------
-MDN := mixture_density_network mixture_density_network_train
+MDN := mixture_density_network
 $(foreach t,$(MDN),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/heuristics/semantic_learning/mdn)))
+
+# ---------------- wikimyei / Expected Value ------------------------------------------
+MDN := expected_value
+$(foreach t,$(MDN),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/heuristics/semantic_learning/expected_value)))
 
 # ------------------------------ meta -----------------------------------------
 .PHONY: all

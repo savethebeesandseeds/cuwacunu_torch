@@ -15,7 +15,7 @@ namespace jkimyei {
  * - Enforces exact columns: {row_id, type, options}
  * - Enforces exact options per loss (no extras, no missing)
  */
-inline void validate_loss(const cuwacunu::camahjucunu::BNF::training_instruction_t& inst,
+inline void validate_loss(const cuwacunu::camahjucunu::training_instruction_t& inst,
                           const std::string& row_id) {
   const auto& row = inst.retrive_row("loss_functions_table", row_id);
 
@@ -287,7 +287,7 @@ inline void validate_loss(const cuwacunu::camahjucunu::BNF::training_instruction
 //   throw std::runtime_error("Unknown loss_function type: " + type);
 // }
 
-// inline std::unique_ptr<ILoss> make_loss(const cuwacunu::camahjucunu::BNF::training_instruction_t& inst, const std::string& row_id) {
+// inline std::unique_ptr<ILoss> make_loss(const cuwacunu::camahjucunu::training_instruction_t& inst, const std::string& row_id) {
 //   const auto& row = inst.retrive_row("loss_functions_table", row_id);
 //   return make_loss_from_row(row);
 // }

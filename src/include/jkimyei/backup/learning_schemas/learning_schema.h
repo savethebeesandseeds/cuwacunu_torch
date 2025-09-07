@@ -24,8 +24,8 @@ namespace jkimyei {
 template <typename Q, typename K>
 class LearningSchema {
 protected:
-  using training_instruction_t    = cuwacunu::camahjucunu::BNF::training_instruction_t;
-  using observation_instruction_t = cuwacunu::camahjucunu::BNF::observation_instruction_t;
+  using training_instruction_t    = cuwacunu::camahjucunu::training_instruction_t;
+  using observation_instruction_t = cuwacunu::camahjucunu::observation_instruction_t;
   std::shared_ptr<torch::nn::Module> model_            = nullptr;
   std::shared_ptr<training_instruction_t> train_inst_  = nullptr;
   std::shared_ptr<observation_instruction_t> obs_inst_ = nullptr;

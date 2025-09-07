@@ -1,4 +1,4 @@
-/* test_vicreg_4d_observation_pipeline.cpp */
+/* test_vicreg_4d_train.cpp */
 #include <torch/torch.h>
 #include <torch/autograd.h>
 #include <fstream>

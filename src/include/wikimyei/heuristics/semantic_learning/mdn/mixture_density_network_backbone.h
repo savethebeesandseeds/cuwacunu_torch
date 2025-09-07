@@ -1,4 +1,3 @@
-/* mixture_density_network_backbone.h */
 #pragma once
 #include <torch/torch.h>
 #include <vector>
@@ -14,14 +13,14 @@ namespace mdn {
 // Residual MLP Block
 // =============================
 struct ResMLPBlockImpl : torch::nn::Module {
-  torch::nn::Linear   fc1{nullptr}, fc2{nullptr};
+  torch::nn::Linear    fc1{nullptr}, fc2{nullptr};
   torch::nn::LayerNorm ln1{nullptr}, ln2{nullptr};
 
   explicit ResMLPBlockImpl(const residualOptions& opt)
-      : fc1(register_module("fc1", torch::nn::Linear(opt.in_dim,    opt.hidden))),
-        fc2(register_module("fc2", torch::nn::Linear(opt.hidden,    opt.in_dim))),
-        ln1(register_module("ln1", torch::nn::LayerNorm(torch::nn::LayerNormOptions(std::vector<int64_t>{opt.in_dim})))),
-        ln2(register_module("ln2", torch::nn::LayerNorm(torch::nn::LayerNormOptions(std::vector<int64_t>{opt.in_dim})))) {}
+  : fc1(register_module("fc1", torch::nn::Linear(opt.in_dim,    opt.hidden))),
+    fc2(register_module("fc2", torch::nn::Linear(opt.hidden,    opt.in_dim))),
+    ln1(register_module("ln1", torch::nn::LayerNorm(torch::nn::LayerNormOptions(std::vector<int64_t>{opt.in_dim})))),
+    ln2(register_module("ln2", torch::nn::LayerNorm(torch::nn::LayerNormOptions(std::vector<int64_t>{opt.in_dim})))) {}
 
   torch::Tensor forward(const torch::Tensor& x) {
     auto h = ln1->forward(x);

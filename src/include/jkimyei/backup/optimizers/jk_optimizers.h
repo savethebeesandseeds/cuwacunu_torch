@@ -16,7 +16,7 @@ namespace jkimyei {
 struct jk_optimizers {
 public:
   static cuwacunu::camahjucunu::BNF::trainingPipeline training_components;
-  static cuwacunu::camahjucunu::BNF::training_instruction_t training_instruction;
+  static cuwacunu::camahjucunu::training_instruction_t training_instruction;
 private:
   jk_optimizers();
   ~jk_optimizers();
@@ -103,7 +103,7 @@ public:
 
 /* initialize static members */
 cuwacunu::camahjucunu::BNF::trainingPipeline jk_optimizers::training_components;
-cuwacunu::camahjucunu::BNF::training_instruction_t jk_optimizers::training_instruction;
+cuwacunu::camahjucunu::training_instruction_t jk_optimizers::training_instruction;
 
 /* initialize static class */
 jk_optimizers::_init jk_optimizers::_initializer;

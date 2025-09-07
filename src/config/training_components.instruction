@@ -6,7 +6,7 @@
 |  row_id                | optimizer        |  loss_function         |  lr_scheduler                  |
 |-----------------------------------------------------------------------------------------------------|
 |  basic_test            |  Adam_1          |  MeanSquaredError_1    |  StepLR_1                      |
-|  VICReg_representation |  AdamW_1         |  VICReg_1              |  OneCycleLR_1                  |
+|  VICReg_representation |  AdamW_1         |  VICReg_1              |  ConstantLR_1                  |
 |  MDN_value_estimation  |  Adam_1          |  NLLLoss_1             |  StepLR_1                      |
 \-----------------------------------------------------------------------------------------------------/
 /*
@@ -66,6 +66,9 @@
      - noise_scale: amount of random jitter/noise applied along the curve
      - smoothing_kernel_size: moving-average smoothing window; higher = gentler warp
      - point_drop_prob: probability of randomly dropping individual points (simulates missing data)
+     - value_jitter_std       : Gaussian noise std applied to valid values after warping
+     - time_mask_band_frac    : single contiguous time band to mask per sample (fraction of T), f in [0,1]
+     - channel_dropout_prob   : per-sample, per-channel dropout prob in [0,1]
 
    Curves:
      - Linear         - identity (no warp), used as baseline/control.
@@ -76,17 +79,17 @@
      - ChaoticDrift   - irregular wandering warp; combined with smoothing to mimic natural drift.
 */
 [ vicreg_augmentations ]
-/-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\
-| row_id  |    curve              |  curve_param   |  noise_scale   |  smoothing_kernel_size  |  point_drop_prob  |  comment                                                        |
-|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|   N/A   |    Linear             |    0.0         |    0.0         |   1                     |     0.03          | Identity:_no_warp,_ideal_for_control_comparisons                |
-|   N/A   |    Linear             |    0.0         |    0.0         |   5                     |     0.03          | Natural_Drift:_small_random_drift,_gently_smoothed              |
-|   N/A   |    ChaoticDrift       |    0.0         |    0.0         |   7                     |     0.03          | Chaotic_Drift:_noisier_structure,_strongly_smoothed_for_realism |
-|   N/A   |    MarketFade         |    3.0         |    0.0         |   5                     |     0.03          | Market_Fade_soft:_early_emphasis,_gentle_fade_out               |
-|   N/A   |    MarketFade         |    5.0         |    0.0         |   7                     |     0.03          | Market_Fade_sharp:_stronger_front_focus,_softer_tail            |
-|   N/A   |    FadeLate           |    3.0         |    0.0         |   5                     |     0.03          | Fade_Late:_mirror_of_market_fade,_tail-focused                  |
-|   N/A   |    PulseCentered      |    0.0         |    0.0         |   5                     |     0.03          | Pulse_Centered:_emphasizes_central_events_in_time               |
-|   N/A   |    FrontLoaded        |    0.6         |    0.0         |   3                     |     0.03          | Front-Focus_soft:_mild_early_emphasis,_fast_decay               |
-|   N/A   |    FrontLoaded        |    0.3         |    0.0         |   5                     |     0.03          | Front-Focus_sharp:_stronger_focus_on_initial_time               |
-|   N/A   |    PulseCentered      |    0.0         |    0.0         |   7                     |     0.03          | Symmetric_Sway:_fluid_oscillation_centered_on_mid-sequence      |
-\-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------/
+/----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\
+| row_id |     curve       | curve_param | noise_scale | smoothing_kernel_size | point_drop_prob | value_jitter_std | time_mask_band_frac | channel_dropout_prob | comment                                                                     |
+|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|  N/A   | Linear          |    0.0      |    0.02     |          3            |      0.06       |      0.015       |        0.00         |        0.00          | Identity_plus_light_warp_jitter_plus_light_point_drop                       |
+|  N/A   | Linear          |    0.0      |    0.06     |          5            |      0.06       |      0.015       |        0.00         |        0.00          | Slightly_stronger_drift                                                     |
+|  N/A   | ChaoticDrift    |    0.0      |    0.10     |          7            |      0.08       |      0.020       |        0.03         |        0.05          | Noisier_structure_smooth_adds_band_mask_plus_channel_dropout                |
+|  N/A   | MarketFade      |    3.0      |    0.02     |          5            |      0.08       |      0.015       |        0.00         |        0.03          | Early_emphasis_with_mild_noise_small_channel_dropout                        |
+|  N/A   | MarketFade      |    5.0      |    0.03     |          7            |      0.08       |      0.015       |        0.05         |        0.03          | Sharper_fade_adds_short_time_band_mask                                      |
+|  N/A   | FadeLate        |    3.0      |    0.02     |          5            |      0.08       |      0.015       |        0.00         |        0.03          | Tail_focused_counterpart_of_MarketFade                                      |
+|  N/A   | PulseCentered   |    0.0      |    0.02     |          5            |      0.06       |      0.015       |        0.03         |        0.00          | Center_pulse_with_light_band_mask                                           |
+|  N/A   | FrontLoaded     |    0.6      |    0.03     |          3            |      0.08       |      0.020       |        0.00         |        0.05          | Early_spike_stronger_jitter_plus_channel_dropout                            |
+|  N/A   | FrontLoaded     |    0.3      |    0.03     |          5            |      0.08       |      0.020       |        0.00         |        0.05          | Sharper_early_focus_variant                                                 |
+|  N/A   | PulseCentered   |    0.0      |    0.04     |          7            |      0.08       |      0.020       |        0.05         |        0.03          | Smooth_symmetric_sway_adds_band_mask_plus_small_channel_dropout             |
+\----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------/

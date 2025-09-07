@@ -5,7 +5,7 @@
 #include <torch/torch.h>
 
 #include "piaabo/dconfig.h"
-#include "jkimyei/training_components/jk_setup.h"
+#include "jkimyei/training_setup/jk_setup.h"
 #include "camahjucunu/BNF/implementations/training_components/training_components.h"
 
 static inline double current_lr(const torch::optim::Optimizer& opt) {

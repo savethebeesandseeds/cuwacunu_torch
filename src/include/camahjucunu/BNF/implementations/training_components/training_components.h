@@ -50,7 +50,6 @@ DEFINE_HASH(TRAINING_COMPONETS_HASH_empty,              "<empty>");
 
 namespace cuwacunu {
 namespace camahjucunu {
-namespace BNF {
 
 struct training_instruction_t {
   /* instruction file */
@@ -109,7 +108,12 @@ public:
     );
   }
 };
+} /* namespace camahjucunu */
+} /* namespace cuwacunu */
 
+namespace cuwacunu {
+namespace camahjucunu {
+namespace BNF {
 /* 
  * trainingPipeline is a concrete visitor that traverses the AST to 
  * extract execution data (symbol, parameters, file IDs) and executes 

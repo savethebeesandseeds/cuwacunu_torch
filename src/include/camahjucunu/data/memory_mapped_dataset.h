@@ -565,7 +565,7 @@ public:
 template<typename Td>
 MemoryMappedConcatDataset<Td> create_memory_mapped_concat_dataset(
   std::string& instrument,
-  cuwacunu::camahjucunu::BNF::observation_instruction_t obs_inst,
+  cuwacunu::camahjucunu::observation_instruction_t obs_inst,
   bool force_binarization = false) {
 
   char delimiter = ',';

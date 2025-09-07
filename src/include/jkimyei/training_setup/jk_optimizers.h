@@ -226,7 +226,7 @@ make_optimizer_builder_from_row(const std::unordered_map<std::string,std::string
 
 /* Convenience: pull row from the instruction and delegate. */
 inline std::unique_ptr<IOptimizerBuilder>
-make_optimizer_builder(const cuwacunu::camahjucunu::BNF::training_instruction_t& inst,
+make_optimizer_builder(const cuwacunu::camahjucunu::training_instruction_t& inst,
                        const std::string& row_id) {
   const auto& row = inst.retrive_row("optimizers_table", row_id);
   return make_optimizer_builder_from_row(row);

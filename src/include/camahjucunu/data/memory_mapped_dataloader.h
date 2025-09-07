@@ -102,7 +102,7 @@ public:
 template<typename Q, typename K, typename T, typename S>
 typename std::enable_if<std::is_same<S, torch::data::samplers::SequentialSampler>::value, MemoryMappedDataLoader<Q, K, T, S>>::type
 create_memory_mapped_dataloader(
-  std::string& instrument, cuwacunu::camahjucunu::BNF::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
+  std::string& instrument, cuwacunu::camahjucunu::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
     /* variables */
     auto dataset          = create_memory_mapped_concat_dataset<T>(instrument, obs_inst, force_binarization);
     auto sampler          = dataset.SequentialSampler();
@@ -118,7 +118,7 @@ create_memory_mapped_dataloader(
 template<typename Q, typename K, typename T, typename S>
 typename std::enable_if<std::is_same<S, torch::data::samplers::RandomSampler>::value, MemoryMappedDataLoader<Q, K, T, S>>::type
 create_memory_mapped_dataloader(
-  std::string& instrument, cuwacunu::camahjucunu::BNF::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
+  std::string& instrument, cuwacunu::camahjucunu::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
     /* variables */
     auto dataset          = create_memory_mapped_concat_dataset<T>(instrument, obs_inst, force_binarization);
     auto sampler          = dataset.RandomSampler();

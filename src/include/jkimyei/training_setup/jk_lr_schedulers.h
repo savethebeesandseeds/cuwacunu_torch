@@ -431,7 +431,7 @@ struct WarmupLRBuilder final : ISchedulerBuilder {
 /* ---------------------- Row -> Builder mapping ------------------------ */
 
 inline std::unique_ptr<ISchedulerBuilder>
-make_scheduler_builder_from_row(const cuwacunu::camahjucunu::BNF::training_instruction_t::row_t& row) {
+make_scheduler_builder_from_row(const cuwacunu::camahjucunu::training_instruction_t::row_t& row) {
 
   cuwacunu::camahjucunu::require_columns_exact(row, { ROW_ID_COLUMN_HEADER, "type", "options" });
   const std::string type = cuwacunu::camahjucunu::require_column(row, "type");
@@ -521,7 +521,7 @@ make_scheduler_builder_from_row(const cuwacunu::camahjucunu::BNF::training_instr
 
 /* Convenience: fetch row from instruction and return a builder. */
 inline std::unique_ptr<ISchedulerBuilder>
-make_scheduler_builder(const cuwacunu::camahjucunu::BNF::training_instruction_t& inst,
+make_scheduler_builder(const cuwacunu::camahjucunu::training_instruction_t& inst,
                        const std::string& row_id) {
   const auto& row = inst.retrive_row("lr_schedulers_table", row_id);
   return make_scheduler_builder_from_row(row);
