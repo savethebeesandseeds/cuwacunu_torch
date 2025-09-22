@@ -30,7 +30,7 @@ inline void validate_loss(const cuwacunu::camahjucunu::training_instruction_t& i
     if (it == row.end()) return;                  // column exists per require_columns_exact, but be safe
     std::string s = it->second;
 
-    // Trim simple whitespace (no dependency on your utils)
+    // Trim simple whitespace (no dependency on utils)
     auto l = s.find_first_not_of(" \t\r\n");
     auto r = s.find_last_not_of(" \t\r\n");
     if (l == std::string::npos) s.clear();
@@ -49,7 +49,7 @@ inline void validate_loss(const cuwacunu::camahjucunu::training_instruction_t& i
   if (type == "NLLLoss") { // MDN-NLL (no configurable options)
     cuwacunu::camahjucunu::validate_options_exact(row, { "eps", "sigma_min", "sigma_max", "reduction" });
     
-  } else if (type == "MeanSquaredError" || type == "MSE") { // alias allowed if you like
+  } else if (type == "MeanSquaredError" || type == "MSE") { // alias allowed
     ensure_no_options();
 
   } else if (type == "L1Loss") {

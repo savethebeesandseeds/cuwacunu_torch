@@ -10,7 +10,7 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # Aggregate Target
 #   - This directory doesn’t build objects itself.
 #   - It recurses into submodules:
-#       • training_setup
+#       - training_setup
 # -----------------------------------------------------------------
 .PHONY: all
 all:

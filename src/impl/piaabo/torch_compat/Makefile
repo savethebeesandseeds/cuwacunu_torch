@@ -17,8 +17,8 @@ $(eval $(call BUILD_OBJ_INC, libtorch, torch_utils, torch_utils, $(TORCH_INCLUDE
 # -----------------------------------------------------------------
 # Aggregate Target
 #   - Build local object, then recurse into submodules:
-#       • distributions
-#       • optim/schedulers
+#       - distributions
+#       - optim/schedulers
 # -----------------------------------------------------------------
 .PHONY: all
 all: torch_utils

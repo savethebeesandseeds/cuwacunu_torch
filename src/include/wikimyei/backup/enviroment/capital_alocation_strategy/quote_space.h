@@ -11,7 +11,7 @@ namespace wikimyei {
 namespace capital_alocation_strategy {
 
   /* quote_space_t 
-      price = (how many units of BASE you pay)  per   1 unit of TARGET
+      price = (how many units of BASE to be payed)  per   1 unit of TARGET
               └── ask/bid price measured in BASE ─┘         └──────┘
   */
 struct quote_space_t {

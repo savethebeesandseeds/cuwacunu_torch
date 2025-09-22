@@ -7,7 +7,7 @@
 |-----------------------------------------------------------------------------------------------------|
 |  basic_test            |  Adam_1          |  MeanSquaredError_1    |  StepLR_1                      |
 |  VICReg_representation |  AdamW_1         |  VICReg_1              |  ConstantLR_1                  |
-|  MDN_value_estimation  |  Adam_1          |  NLLLoss_1             |  StepLR_1                      |
+|  MDN_value_estimation  |  AdamW_1         |  NLLLoss_1             |  ConstantLR_1                  |
 \-----------------------------------------------------------------------------------------------------/
 /*
    Optimizer Parameters
@@ -34,7 +34,7 @@
 | OneCycleLR_1         | OneCycleLR         | max_lr=0.005,total_steps=27200                                                                       |
 | ExponentialLR_1      | ExponentialLR      | gamma=0.98                                                                                           |
 | ReduceLROnPlateau_1  | ReduceLROnPlateau  | mode=min,factor=0.5,patience=75,threshold=1e-4,threshold_mode=rel,cooldown=0,min_lr=1e-6,eps=1e-8    |
-| ConstantLR_1         | ConstantLR         | lr=0                                                                                                 |
+| ConstantLR_1         | ConstantLR         | lr=0.001                                                                                             |
 | CosineAnnealingLR_1  | CosineAnnealingLR  | T_max=850,eta_min=0.0                                                                                |
 | WarmupLR_1           | WarmupLR           | warmup_steps=100,start_factor=0.1,end_factor=1.0                                                     |
 \--------------------------------------------------------------------------------------------------------------------------------------------------/

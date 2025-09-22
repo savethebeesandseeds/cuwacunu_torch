@@ -227,7 +227,6 @@ inline torch::Tensor soft_dtw_autograd(const torch::Tensor &D, double gamma)
 {
     // Extra checks if desired:
     TORCH_CHECK(D.dim() == 3, "D must be [B, N, M]");
-    // Could also ensure D is CPU here, if you want
     // TORCH_CHECK(!D.is_cuda(), "soft_dtw_autograd expects a CPU tensor for D");
 
     return SoftDTWFunction::apply(D, gamma);

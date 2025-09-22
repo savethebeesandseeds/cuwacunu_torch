@@ -49,33 +49,33 @@ namespace vicreg_4d {
  *    - D: per-timestep feature dimension
  *
  *  Major components:
- *   • _encoder_net
+ *   - _encoder_net
  *       Feature extractor that maps [B, C, T, D] → latent representations.
- *   • _swa_encoder_net
+ *   - _swa_encoder_net
  *       Averaged copy of the encoder (SWA/EMA). Used for evaluation and export.
  *       If @ref enable_buffer_averaging is true, running buffers (e.g., BN stats)
  *       are averaged; otherwise they are copied.
- *   • _projector_net
+ *   - _projector_net
  *       MLP head used only during training to compute the VICReg loss in the
  *       projector space. Not required for downstream inference.
- *   • aug
+ *   - aug
  *       Stochastic augmentations (e.g., time warps and random drops) used to form
  *       two correlated views per input for the VICReg objective.
  *
  *  Training wiring:
- *   • @ref optimizer updates encoder + projector parameters.
- *   • @ref lr_sched is an abstract LR scheduler that may tick per-batch or per-epoch.
- *   • @ref loss_obj computes the VICReg loss (invariance/variance/covariance terms).
+ *   - @ref optimizer updates encoder + projector parameters.
+ *   - @ref lr_sched is an abstract LR scheduler that may tick per-batch or per-epoch.
+ *   - @ref loss_obj computes the VICReg loss (invariance/variance/covariance terms).
  *
  *  Device/precision policy:
- *   • @ref device and @ref dtype indicate the intended compute placement and precision.
+ *   - @ref device and @ref dtype indicate the intended compute placement and precision.
  *     Submodules are constructed to honor these. Public encode() methods accept tensors
  *     on any device and move them as needed.
  *
  *  Checkpointing:
- *   • save() writes submodule weights and minimal metadata needed to reconstruct
+ *   - save() writes submodule weights and minimal metadata needed to reconstruct
  *     the module and its training setup.
- *   • load() hydrates submodule weights and, if available, optimizer state.
+ *   - load() hydrates submodule weights and, if available, optimizer state.
  */
 class VICReg_4D : public torch::nn::Module {
 public:
@@ -325,9 +325,10 @@ public:
         }
 
         if (verbose && (epoch_count == 1 || epoch_count % 50 == 0 || epoch_count == n_epochs)) {
-          log_info("%s Representation Learning %s [ %sEpoch # %s%5d%s ] \t%slr = %s%.6f%s, \t%sloss = %s%.5f%s \n",
+          log_info("%s Representation Learning %s [ %sEpoch # %s%5d%s ] epoch_iters: %d \t%slr = %s%.6f%s, \t%sloss = %s%.5f%s \n",
             ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
             ANSI_COLOR_Dim_Gray, ANSI_COLOR_Dim_Blue, epoch_count, ANSI_COLOR_RESET,
+            epoch_iters,
             ANSI_COLOR_Dim_Gray, ANSI_COLOR_Dim_Magenta, optimizer->param_groups()[0].options().get_lr(), ANSI_COLOR_RESET,
             ANSI_COLOR_Dim_Gray, ANSI_COLOR_Dim_Red, metric, ANSI_COLOR_RESET
           );

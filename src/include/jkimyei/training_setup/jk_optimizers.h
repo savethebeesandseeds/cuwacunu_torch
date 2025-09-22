@@ -16,7 +16,6 @@
  *      "beta1", "beta2", "amsgrad", "momentum", "nesterov",
  *      "alpha", "rho", "decay" (Adagrad lr_decay), "centered",
  *      "lambd", "t0" (ASGD)
- *  - You can add more keys in your table without changing this header.
  */
 
 #pragma once

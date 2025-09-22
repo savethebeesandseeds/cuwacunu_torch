@@ -42,7 +42,7 @@ std::vector<float> observation_instruction_t::retrieve_channel_weights() {
       try {
         channel_weights.push_back(static_cast<float>(std::stod(in_form.channel_weight))); // singular field name
       } catch (...) {
-        // Malformed number → push 0.0f (or skip; choose your policy)
+        // Malformed number → push 0.0f (or skip; choose policy)
         channel_weights.push_back(0.0f);
       }
     }

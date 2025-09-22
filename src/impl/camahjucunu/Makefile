@@ -10,10 +10,10 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # Aggregate Target
 #   - This directory doesn’t build objects itself.
 #   - It recurses into submodules:
-#       • https
-#       • BNF
-#       • exchange
-#       • data
+#       - https
+#       - BNF
+#       - exchange
+#       - data
 # -----------------------------------------------------------------
 .PHONY: all
 all:

@@ -120,7 +120,7 @@ struct FieldAccessor {
  *
  * Usage:
  * - Initialize a statistics_pack_t instance by providing the window size and a vector of FieldAccessor<T> for the fields
- *   you wish to track.
+ *   wished to track.
  * - Call update() with each new data_point to update the statistics.
  * - Use normalize() to obtain a normalized version of a data_point once the statistics are ready.
  *

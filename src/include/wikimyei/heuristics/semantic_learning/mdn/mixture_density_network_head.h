@@ -1,3 +1,4 @@
+/* mixture_density_network_head.h */
 #pragma once
 #include <torch/torch.h>
 #include <vector>
@@ -25,6 +26,18 @@ struct MdnHeadImpl : torch::nn::Module {
     lin_pi = register_module("lin_pi", torch::nn::Linear(opt.feature_dim, Hf * K));
     lin_mu = register_module("lin_mu", torch::nn::Linear(opt.feature_dim, Hf * K * Dy));
     lin_s  = register_module("lin_s",  torch::nn::Linear(opt.feature_dim, Hf * K * Dy));
+    // --- sensible init: sigma ~ 0.1, mu ~ 0, pi ~ uniform via zero logits
+    {
+      torch::NoGradGuard ng;
+      if (lin_mu->bias.defined()) lin_mu->bias.zero_();
+      if (lin_pi->bias.defined()) lin_pi->bias.zero_();
+      if (lin_s->bias.defined()) {
+        const double init_sigma = 0.1;         // tunable
+        const double b = cuwacunu::wikimyei::mdn::softplus_inv(init_sigma);
+        lin_s->bias.fill_(b);
+      }
+    }
+
   }
 
   // Input: h [B,H]; Output (per-channel head): log_pi [B,1,Hf,K], mu/sigma [B,1,Hf,K,Dy]

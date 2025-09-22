@@ -312,13 +312,17 @@ void config_space_t::init() {
 config_space_t::_init config_space_t::_initializer;
 
 /*──────────────── explicit template instantiations ───────────────────────*/
+template int64_t      config_space_t::get<int64_t>    (const std::string&, const std::string&, std::optional<int64_t>);
 template int          config_space_t::get<int>        (const std::string&, const std::string&, std::optional<int>);
 template double       config_space_t::get<double>     (const std::string&, const std::string&, std::optional<double>);
+template float        config_space_t::get<float>      (const std::string&, const std::string&, std::optional<float>);
 template bool         config_space_t::get<bool>       (const std::string&, const std::string&, std::optional<bool>);
 template std::string  config_space_t::get<std::string>(const std::string&, const std::string&, std::optional<std::string>);
 
+template std::vector<int64_t>     config_space_t::get_arr<int64_t>(const std::string&, const std::string&, std::optional<std::vector<int64_t>>);
 template std::vector<int>         config_space_t::get_arr<int>(const std::string&, const std::string&, std::optional<std::vector<int>>);
 template std::vector<double>      config_space_t::get_arr<double>(const std::string&, const std::string&, std::optional<std::vector<double>>);
+template std::vector<float>       config_space_t::get_arr<float>(const std::string&, const std::string&, std::optional<std::vector<float>>);
 template std::vector<bool>        config_space_t::get_arr<bool>(const std::string&, const std::string&, std::optional<std::vector<bool>>);
 template std::vector<std::string> config_space_t::get_arr<std::string>(const std::string&, const std::string&, std::optional<std::vector<std::string>>);
 

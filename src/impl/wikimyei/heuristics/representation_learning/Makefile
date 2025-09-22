@@ -10,8 +10,8 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # Aggregate Target
 #   - This directory doesn’t build objects itself.
 #   - It recurses into submodules:
-#       • VICReg
-#       • (add more here, e.g., ts2vec)
+#       - VICReg
+#       - (add more here, e.g., ts2vec)
 # -----------------------------------------------------------------
 .PHONY: all
 all:

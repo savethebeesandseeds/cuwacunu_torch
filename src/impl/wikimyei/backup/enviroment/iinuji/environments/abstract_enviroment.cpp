@@ -61,7 +61,7 @@ reward_space_t Environment::get_step_reward() { // #FIXME determine if the rewar
 }
 state_space_t Environment::current_state_features() {
   instrument_v_t<state_features_t> instruments_state_feat;
-  /* Assuming you have a predefined number of instruments */
+  /* Assuming a predefined number of instruments */
   FOR_ALL_INSTRUMENTS(inst) {
     auto aux = torch::tensor({
       Broker::get_current_price(inst), 

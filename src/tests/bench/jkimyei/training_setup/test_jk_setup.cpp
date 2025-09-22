@@ -47,7 +47,7 @@ int main() {
     const int64_t N = 128;
     auto X = torch::randn({N, 4});
     auto y = X.sum(1, /*keepdim=*/true);            // regression target
-    // If you ever need logits: auto y_idx = (X.sum(1) > 0).to(torch::kLong); // classes
+    // If need logits: auto y_idx = (X.sum(1) > 0).to(torch::kLong); // classes
 
     // Build optimizer and LR scheduler
     auto opt_uptr = setup.opt_builder->build(net->parameters());

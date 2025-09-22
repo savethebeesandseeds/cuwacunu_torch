@@ -62,7 +62,7 @@ namespace ts_tcc {
     - Soft-DTW forward/backward (autograd) from the newer code
     - Soft alignment extraction from the older code
     - Additional numeric stability (clamping exponentials)
-    - A high-level "compute_alignment_matrix_softdtw" if you want a single call.
+    - A high-level "compute_alignment_matrix_softdtw" for a single call.
 
   Shapes & Notation:
     - D: [B, N, M]  (pairwise distances)

@@ -1,13 +1,13 @@
 # -----------------------------------------------------------------------------
 # Dependencies
 # -----------------------------------------------------------------------------
-ROOT_PATH := ../../../../..
+ROOT_PATH := ../../..
 include $(ROOT_PATH)/Makefile.config
 
 # -----------------------------------------------------------------------------
 # Local Paths
 # -----------------------------------------------------------------------------
-HERE_PATH  := $(TESTS_PATH)/bench/camahjucunu/GUI/ncurses
+HERE_PATH  := $(TESTS_PATH)/bench/iinuji/
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
 # -----------------------------------------------------------------------------
@@ -15,19 +15,22 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 # -----------------------------------------------------------------------------
 $(eval $(call TEST_ONEFILE,test_iinuji_plots,  test_iinuji_plots.cpp))
 $(eval $(call TEST_ONEFILE,test_iinuji_logs,   test_iinuji_logs.cpp))
-$(eval $(call TEST_ONEFILE,test_iinuji_render, test_iinuji_render.cpp))
+$(eval $(call TEST_ONEFILE,test_iinuji_suit, 	 test_iinuji_suit.cpp))
+$(eval $(call TEST_ONEFILE,test_iinuji_mouse,  test_iinuji_mouse.cpp))
 
 # ---- Attach ncurses deps (headers + link flags) -----------------------------
 # Headers for compile:
 $(TEST_OUT)/test_iinuji_plots:  INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
 $(TEST_OUT)/test_iinuji_logs:   INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
-$(TEST_OUT)/test_iinuji_render: INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
+$(TEST_OUT)/test_iinuji_suit:   INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
+$(TEST_OUT)/test_iinuji_mouse:  INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
 
 # Link flags/libs:
-# (TEST_DEFAULT_LDLIBS already adds $(libcommon_a) if you keep the default)
+# (TEST_DEFAULT_LDLIBS already adds $(libcommon_a) to keep the default)
 $(TEST_OUT)/test_iinuji_plots:  LDLIBS_EXTRA   += $(NCURSES_LD_LAGS)
 $(TEST_OUT)/test_iinuji_logs:   LDLIBS_EXTRA   += $(NCURSES_LD_LAGS)
-$(TEST_OUT)/test_iinuji_render: LDLIBS_EXTRA   += $(NCURSES_LD_LAGS)
+$(TEST_OUT)/test_iinuji_suit:   LDLIBS_EXTRA   += $(NCURSES_LD_LAGS)
+$(TEST_OUT)/test_iinuji_mouse:  LDLIBS_EXTRA   += $(NCURSES_LD_LAGS)
 
 # -----------------------------------------------------------------------------
 # Aggregate build
@@ -35,8 +38,9 @@ $(TEST_OUT)/test_iinuji_render: LDLIBS_EXTRA   += $(NCURSES_LD_LAGS)
 .PHONY: all
 all: \
 	$(OUTPUT_PATH)/test_iinuji_plots \
-	$(OUTPUT_PATH)/test_iinuji_logs  \
-	$(OUTPUT_PATH)/test_iinuji_render
+	$(OUTPUT_PATH)/test_iinuji_logs \
+	$(OUTPUT_PATH)/test_iinuji_suit \
+	$(OUTPUT_PATH)/test_iinuji_mouse
 	@$(LOG_SUCCESS)
 
 # -----------------------------------------------------------------------------
@@ -45,8 +49,9 @@ all: \
 .PHONY: run
 run: \
      run-test_iinuji_plots \
-     run-test_iinuji_logs  \
-     run-test_iinuji_render
+     run-test_iinuji_logs \
+     run-test_iinuji_suit \
+     run-test_iinuji_mouse
 
 # -----------------------------------------------------------------------------
 # Clean

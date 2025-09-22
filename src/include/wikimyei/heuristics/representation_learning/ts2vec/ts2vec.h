@@ -463,7 +463,7 @@ public:
     /* AdamW optimizer for the base TSEncoder */
     torch::optim::AdamW optimizer;
 
-    /* (Optional) helper function if you do specialized pooling or mask_mode logic */
+    /* (Optional) helper function for specialized pooling or mask_mode logic */
     torch::Tensor _eval_with_pooling(
         torch::Tensor x,
         c10::optional<TSEncoder_MaskMode_e> mask_mode_overwrite = c10::nullopt,

@@ -200,16 +200,16 @@ basic_t basic_t::from_binary(const char* data) {
 std::vector<double> kline_t::tensor_features() const {
   return {
     // static_cast<double>(open_time),
-    open_price,
-    high_price,
-    low_price,
-    close_price,
-    volume,
-    // static_cast<double>(close_time),
-    quote_asset_volume,
-    static_cast<double>(number_of_trades),
-    taker_buy_base_volume,
-    taker_buy_quote_volume
+    open_price,                             // Index [0]
+    high_price,                             // Index [1]
+    low_price,                              // Index [2]
+    close_price,                            // Index [3]
+    volume,                                 // Index [4]
+    // static_cast<double>(close_time),     // Index [_]
+    quote_asset_volume,                     // Index [5]
+    static_cast<double>(number_of_trades),  // Index [6]
+    taker_buy_base_volume,                  // Index [7]
+    taker_buy_quote_volume                  // Index [8]
   };
 }
 

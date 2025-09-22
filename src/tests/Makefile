@@ -26,9 +26,9 @@ DATA := memory_mapped_datafile memory_mapped_dataset \
         memory_mapped_concat_dataset memory_mapped_concat_dataloader
 $(foreach t,$(DATA),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/data)))
 
-# -------------------------- camahjucnu/GUI/ncurses ---------------------------
-IINUJI := iinuji_plots iinuji_logs iinuji_render
-$(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/GUI/ncurses)))
+# -------------------------- iinuji/ncurses ---------------------------
+IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse
+$(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # --------------------------- camahjucnu/https --------------------------------
 HTTPS := websocket

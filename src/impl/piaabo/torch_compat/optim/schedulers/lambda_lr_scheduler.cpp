@@ -31,8 +31,8 @@ std::vector<double> LambdaLR::get_lrs() {
 
 /* ------------------------------------------------------------------
    warmup_cosine_lambda
-   • Epoch 0 … warmup_epochs‑1     : lr = base_lr
-   • After warm‑up: cosine(base_lr → min_lr) over cycle_epochs.
+   - Epoch 0 … warmup_epochs‑1     : lr = base_lr
+   - After warm‑up: cosine(base_lr → min_lr) over cycle_epochs.
      When the cycle ends it restarts (cosine annealing *with* restarts).
 
    returns factor f(t) so that lr(t) = base_lr * f(t)                */

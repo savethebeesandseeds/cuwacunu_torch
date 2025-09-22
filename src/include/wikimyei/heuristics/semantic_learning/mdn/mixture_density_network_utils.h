@@ -1,3 +1,4 @@
+/* mixture_density_network_utils.h */
 #pragma once
 #include <torch/torch.h>
 #include <algorithm>
@@ -19,18 +20,25 @@ namespace mdn {
 // =============================
 // Generic LR getter
 // =============================
-static inline double get_lr_generic(const torch::optim::Optimizer& opt) {
-  const auto& pg = opt.param_groups().front();
-  if (typeid(pg.options()) == typeid(torch::optim::AdamOptions))
-    return static_cast<const torch::optim::AdamOptions&>(pg.options()).lr();
-  if (typeid(pg.options()) == typeid(torch::optim::AdamWOptions))
-    return static_cast<const torch::optim::AdamWOptions&>(pg.options()).lr();
-  if (typeid(pg.options()) == typeid(torch::optim::SGDOptions))
-    return static_cast<const torch::optim::SGDOptions&>(pg.options()).lr();
-  if (typeid(pg.options()) == typeid(torch::optim::RMSpropOptions))
-    return static_cast<const torch::optim::RMSpropOptions&>(pg.options()).lr();
-  return std::numeric_limits<double>::quiet_NaN();
+static inline std::vector<double> get_lrs(const torch::optim::Optimizer& opt) {
+  std::vector<double> lrs;
+  lrs.reserve(opt.param_groups().size());
+  for (const auto& pg : opt.param_groups()) {
+    const auto& base = pg.options();
+    if (auto* o = dynamic_cast<const torch::optim::AdamOptions*>(&base))       lrs.push_back(o->lr());
+    else if (auto* o = dynamic_cast<const torch::optim::AdamWOptions*>(&base)) lrs.push_back(o->lr());
+    else if (auto* o = dynamic_cast<const torch::optim::SGDOptions*>(&base))   lrs.push_back(o->lr());
+    else if (auto* o = dynamic_cast<const torch::optim::RMSpropOptions*>(&base)) lrs.push_back(o->lr());
+    else lrs.push_back(std::numeric_limits<double>::quiet_NaN());
+  }
+  return lrs;
 }
+
+static inline double get_lr_generic(const torch::optim::Optimizer& opt) {
+  auto v = get_lrs(opt);
+  return v.empty() ? std::numeric_limits<double>::quiet_NaN() : v.front();
+}
+
 
 // =============================
 // Utility helpers
@@ -42,11 +50,43 @@ inline torch::Tensor safe_softplus(const torch::Tensor& x, double eps = 1e-6) {
   return y + eps_t;
 }
 
-inline torch::Tensor logsumexp(const torch::Tensor& x, int64_t dim, bool keepdim=false) {
-  auto max_x = std::get<0>(x.max(dim, /*keepdim=*/true));
-  auto out = max_x + (x - max_x).exp().sum(dim, /*keepdim=*/true).log();
-  return keepdim ? out : out.squeeze(dim);
+inline double softplus_inv(double y) {
+  // inverse of softplus: x = log(exp(y) - 1)
+  // guard against y→0 for numerical stability
+  const double y_safe = std::max(y, 1e-12);
+  return std::log(std::exp(y_safe) - 1.0);
 }
+
+inline torch::Tensor mdn_log_prob(const MdnOut& out, const torch::Tensor& y, double eps = 1e-6) {
+  TORCH_CHECK(y.dim() == 4, "[mdn_log_prob] y must be [B,C,Hf,Dy]");
+  const auto B  = y.size(0), C = y.size(1), Hf = y.size(2), Dy = y.size(3);
+  TORCH_CHECK(out.mu.size(0)==B && out.mu.size(1)==C && out.mu.size(2)==Hf && out.mu.size(4)==Dy,
+              "[mdn_log_prob] shape mismatch");
+  const double LOG2PI = std::log(2.0 * M_PI);
+  auto y_b   = y.unsqueeze(3).expand({B,C,Hf,out.log_pi.size(3),Dy});  // [B,C,Hf,K,Dy]
+  auto eps_t = out.sigma.new_full({}, eps);
+  auto sigma = (out.sigma + eps_t);
+  auto diff  = (y_b - out.mu) / sigma;
+  auto perd  = -0.5 * diff.pow(2) - sigma.log() - 0.5 * LOG2PI;        // [B,C,Hf,K,Dy]
+  auto comp  = perd.sum(-1);                                           // [B,C,Hf,K]
+  return torch::logsumexp(out.log_pi + comp, 3);                       // [B,C,Hf]
+}
+
+inline torch::Tensor mdn_mode(const MdnOut& out) {
+  auto argmax = std::get<1>(out.log_pi.max(/*dim=*/3, /*keepdim=*/true)); // [B,C,Hf,1]
+  auto idx = argmax.unsqueeze(-1).expand_as(out.mu);                       // [B,C,Hf,1,Dy]
+  return out.mu.gather(/*dim=*/3, idx).squeeze(3);                         // [B,C,Hf,Dy]
+}
+
+inline torch::Tensor mdn_topk_expectation(const MdnOut& out, int64_t topk) {
+  topk = std::min<int64_t>(topk, out.log_pi.size(3));
+  auto top = std::get<0>(out.log_pi.topk(topk, /*dim=*/3, /*largest=*/true, /*sorted=*/true));  // [B,C,Hf,topk]
+  auto idx = std::get<1>(out.log_pi.topk(topk, /*dim=*/3, /*largest=*/true, /*sorted=*/true));  // [B,C,Hf,topk]
+  auto pi_top = torch::softmax(top, /*dim=*/3).unsqueeze(-1);                                    // [B,C,Hf,topk,1]
+  auto mu_top = out.mu.gather(/*dim=*/3, idx.unsqueeze(-1).expand({idx.size(0), idx.size(1), idx.size(2), topk, out.mu.size(4)}));
+  return (pi_top * mu_top).sum(/*dim=*/3);                                                       // [B,C,Hf,Dy]
+}
+
 
 // ---------- Expectation for generalized shapes ----------
 // out: log_pi [B,C,Hf,K], mu [B,C,Hf,K,Dy]
@@ -60,7 +100,6 @@ inline torch::Tensor mdn_expectation(const MdnOut& out) {
 // Sample a component per (B,C,Hf), then y ~ N(mu, sigma^2)
 // returns [B,C,Hf,Dy]
 inline torch::Tensor mdn_sample_one_step(const MdnOut& out) {
-  auto device = out.log_pi.device();
   auto B  = out.log_pi.size(0);
   auto C  = out.log_pi.size(1);
   auto Hf = out.log_pi.size(2);
@@ -77,7 +116,7 @@ inline torch::Tensor mdn_sample_one_step(const MdnOut& out) {
   auto mu_sel = mu_.gather(/*dim=*/1, idx).squeeze(1); // [B*C*Hf,Dy]
   auto sg_sel = sg_.gather(/*dim=*/1, idx).squeeze(1); // [B*C*Hf,Dy]
 
-  auto eps = torch::randn(mu_sel.sizes(), mu_sel.options().device(device));
+  auto eps = torch::randn_like(mu_sel);
   auto y = mu_sel + sg_sel * eps;                      // [B*C*Hf,Dy]
   return y.view({B, C, Hf, Dy});
 }

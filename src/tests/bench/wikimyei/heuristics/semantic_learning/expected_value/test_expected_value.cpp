@@ -1,4 +1,4 @@
-/* test_mixture_density_network.cpp */
+/* test_expected_value.cpp */
 #include <iostream>
 #include <torch/torch.h>
 
@@ -37,14 +37,6 @@ int main() {
   torch::manual_seed(48);
 
   // -----------------------------------------------------
-  // Decode observation instruction
-  // -----------------------------------------------------
-  TICK(decode_observation_pipeline_);
-  cuwacunu::camahjucunu::observation_instruction_t obs_inst = cuwacunu::camahjucunu::BNF::observationPipeline()
-        .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction());
-  PRINT_TOCK_ms(decode_observation_pipeline_);
-
-  // -----------------------------------------------------
   // Create the Dataloader
   // -----------------------------------------------------
   torch::manual_seed(cuwacunu::piaabo::dconfig::config_space_t::get<int>("GENERAL", "torch_seed"));
@@ -60,7 +52,7 @@ int main() {
   TICK(create_dataloader_);
   auto raw_dataloader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, KBatch, Td, SeqSampler>(
       INSTRUMENT,                                                                                             /* instrument */
-      obs_inst,             /* obs_inst */ 
+      cuwacunu::camahjucunu::observation_pipeline_t::inst,             /* obs_inst */ 
       cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
       cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
       cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
@@ -82,70 +74,51 @@ int main() {
   TICK(extend_dataloader_with_enbedings_);
   auto representation_dataloader =
     representation_model.make_representation_dataloader<Q, KBatch, Td, SeqSampler>
-      (raw_dataloader, /*use_swa=*/true, /* debug */ true);
+      (raw_dataloader, /*use_swa=*/true, /* debug */ false);
   PRINT_TOCK_ms(extend_dataloader_with_enbedings_);
-  
-  // -----------------------------------------------------
-  // Decode the training instruction
-  // -----------------------------------------------------
-  TICK(decode_training_instruction_);
-  cuwacunu::jkimyei::jk_setup_t jk_setup = cuwacunu::jkimyei::build_training_setup_component(
-      cuwacunu::camahjucunu::BNF::trainingPipeline().decode(
-        cuwacunu::piaabo::dconfig::config_space_t::training_components_instruction()
-      ), "MDN_value_estimation"    /* target_setup (<training_components>.instruction) */);
-  PRINT_TOCK_ms(decode_training_instruction_);
   
   // -----------------------------------------------------
   // Instantiate MDN (from configuration)
   // -----------------------------------------------------
   TICK(create_expected_value_model_);
-  cuwacunu::wikimyei::ExpectedValue value_estimation_network(
-      jk_setup,
-      obs_inst
-  );
+  cuwacunu::wikimyei::ExpectedValue value_estimation_network("MDN_value_estimation");
   PRINT_TOCK_ms(create_expected_value_model_);
 
   // -----------------------------------------------------
   // Training
   // -----------------------------------------------------
-  std::vector<std::pair<int, double>> log_loss = value_estimation_network.fit
-    <decltype(representation_dataloader), KBatch>(
-      representation_dataloader, 
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>  ("VALUE_ESTIMATION", "n_epochs"), 
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>  ("VALUE_ESTIMATION", "n_iters"), 
-      cuwacunu::piaabo::dconfig::config_space_t::get<bool> ("VALUE_ESTIMATION", "verbose_train")
+  value_estimation_network.set_telemetry_every(
+    /* n_epochs */  cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VALUE_ESTIMATION",  "telemetry_every")
   );
+  TICK(fit_value_estimation_);
+  value_estimation_network.fit(representation_dataloader, 
+    /* n_epochs */  cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VALUE_ESTIMATION",  "n_epochs"),
+    /* n_iters */   cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VALUE_ESTIMATION",  "n_iters"),
+    /* verbose */   cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("VALUE_ESTIMATION",  "verbose_train")
+  );
+  PRINT_TOCK_ms(fit_value_estimation_);
+  // -----------------------------------------------------
+  // Save
+  // -----------------------------------------------------
+  TICK(save_value_estimation_network_);
+  value_estimation_network.save_checkpoint(cuwacunu::piaabo::dconfig::config_space_t::get("VALUE_ESTIMATION", "model_path"));
+  PRINT_TOCK_ms(save_value_estimation_network_);
 
   // -----------------------------------------------------
-  // Evaluate
+  // Load
   // -----------------------------------------------------
-  value_estimation_network.semantic_model->eval();
+  TICK(load_value_estimation_network_);
+  cuwacunu::wikimyei::ExpectedValue loaded_value_estimation_network("MDN_value_estimation");
+  loaded_value_estimation_network.load_checkpoint(cuwacunu::piaabo::dconfig::config_space_t::get("VALUE_ESTIMATION", "model_path"));
+  PRINT_TOCK_ms(load_value_estimation_network_);
 
-  // Infer model device & dtype from the first parameter
-  const auto& params = value_estimation_network.semantic_model->parameters();
-  TORCH_CHECK(!params.empty(), "Model has no parameters.");
-  const auto model_device = params.front().device();
-  const auto model_dtype  = params.front().dtype();
-
-  auto opts = torch::TensorOptions().dtype(model_dtype).device(model_device);
-
-  auto x = torch::randn({64, value_estimation_network.semantic_model->De}, opts);
-  auto y = torch::randn({64, value_estimation_network.semantic_model->Dy}, opts);
-
-  auto out = value_estimation_network.semantic_model->forward(x);
-
-  TORCH_CHECK(out.log_pi.sizes() == torch::IntArrayRef({64, out.mu.size(1)}), "log_pi shape mismatch");
-  TORCH_CHECK(out.mu.dim() == 3 && out.sigma.dim() == 3, "mu/sigma must be [B,K,Dy]");
-
-  // Bring scalars to host safely (no need to .to(torch::kCPU); .item<T>() syncs)
-  auto nll = cuwacunu::wikimyei::mdn::mdn_nll(out, y);
-  std::cout << "NLL: " << nll.item<double>() << "\n";
-
-  auto mean_pred = cuwacunu::wikimyei::mdn::mdn_expectation(out);
-  std::cout << "E[y|x] mean(abs): " << mean_pred.abs().mean().item<double>() << "\n";
-
-  auto y_smpl = cuwacunu::wikimyei::mdn::mdn_sample_one_step(out);
-  std::cout << "Sample mean(abs): " << y_smpl.abs().mean().item<double>() << "\n";
+  // -----------------------------------------------------
+  // Dashboards: fetch latest vectors (CPU tensors)
+  // -----------------------------------------------------
+  TICK(estimation_network_dashboards_);
+  auto ch = value_estimation_network.get_last_per_channel_nll();  // [C] on CPU
+  auto hz = value_estimation_network.get_last_per_horizon_nll();  // [Hf] on CPU
+  PRINT_TOCK_ms(estimation_network_dashboards_);
 
   return 0;
 }

@@ -1,4 +1,8 @@
-/* mixture_density_network.h */
+/* mixture_density_network.h
+ *
+ * Mixture Density Network with a shared backbone and per-channel, per-horizon heads.
+ * This header declares the MdnModelImpl module (no training loop here).
+ */
 #pragma once
 #include <torch/torch.h>
 #include <algorithm>
@@ -9,6 +13,7 @@
 #include <vector>
 
 #include "piaabo/dutils.h"
+#include "wikimyei/heuristics/semantic_learning/mdn/mixture_density_network_loss.h"
 #include "wikimyei/heuristics/semantic_learning/mdn/mixture_density_network_types.h"
 #include "wikimyei/heuristics/semantic_learning/mdn/mixture_density_network_utils.h"
 #include "wikimyei/heuristics/semantic_learning/mdn/mixture_density_network_head.h"
@@ -53,12 +58,12 @@ namespace mdn {
  * ```
  *
  * ## Gotchas / tips
- * - **Dy must match your target selection**: If you predict `{1,3}` from `future_features[..., D]`,
+ * - **Dy must match your target selection**: If predict `{1,3}` from `future_features[..., D]`,
  *   then construct the model with `Dy=2` and make sure the loss selects those same two dims.
  * - **C and Hf are architectural**: the head is built to output for *all* channels and horizons.
- *   Pass the values you intend to train/evaluate with.
+ *   Pass the values intended to train/evaluate with.
  * - **Temporal reduction**: when passing `[B,T',De]` encodings, this class uses a **mean** over `T'`.
- *   If you need a different reduction (e.g., last, attention), change `temporal_pool`.
+ *   If needed a different reduction (e.g., last, attention), change `temporal_pool`.
  */
 struct MdnModelImpl : torch::nn::Module {
   // --- Architecture hyperparameters (immutable after construction)
@@ -101,106 +106,38 @@ struct MdnModelImpl : torch::nn::Module {
       int64_t H_,
       int64_t depth_,
       torch::Dtype dtype_ = torch::kFloat32,
-      torch::Device device_ = torch::kCPU)
-  : De(De_),
-    Dy(Dy_),
-    C_axes(C_),
-    Hf_axes(Hf_),
-    K(K_),
-    H(H_),
-    depth(depth_),
-    dtype(dtype_),
-    device(device_)
-  {
-    TORCH_CHECK(C_axes > 0,  "[MdnModelImpl] C (channels) must be >= 1");
-    TORCH_CHECK(Hf_axes > 0, "[MdnModelImpl] Hf (horizons) must be >= 1");
-    TORCH_CHECK(De  > 0 && Dy > 0 && K > 0 && H > 0 && depth >= 0,
-                "[MdnModelImpl] invalid dims: De,Dy,K,H must be >0; depth >=0");
-
-    // Build trunk and heads
-    BackboneOptions bopt{De, H, depth};
-    backbone = register_module("backbone", Backbone(bopt));
-    ch_heads = register_module("ch_heads", ChannelHeads(C_axes, Hf_axes, Dy, K, H));
-
-    // Place module on requested device/dtype before any forward pass
-    this->to(device, dtype, /*non_blocking=*/false);
-
-    display_model();
-    warm_up();
-  }
+      torch::Device device_ = torch::kCPU,
+      bool display_model_ = true);
 
   /**
    * ## Temporal pooling for encodings
    * Accepts either `[B,De]` or `[B,T',De]`. For the latter, we apply a mean over `T'`.
    * Change here if you need another reduction strategy.
    */
-  static torch::Tensor temporal_pool(const torch::Tensor& enc) {
-    if (enc.dim() == 2) return enc;         // [B,De]
-    if (enc.dim() == 3) return enc.mean(1); // [B,T',De] → pooled [B,De]
-    TORCH_CHECK(false, "[MdnModelImpl::temporal_pool] encoding must be [B,De] or [B,T',De]");
-  }
+  static torch::Tensor temporal_pool(const torch::Tensor& enc);
 
   /**
    * Forward from a single-step embedding `[B,De]` (kept for back-compat).
    * Prefer `forward_from_encoding()` if you may pass `[B,T',De]`.
    */
-  MdnOut forward(const torch::Tensor& x) {
-    auto h = backbone->forward(x);        // [B,H]
-    return ch_heads->forward(h);          // -> {log_pi,mu,sigma}
-  }
+  MdnOut forward(const torch::Tensor& x);
 
   /**
    * Forward from encoding `[B,De]` or `[B,T',De]` (mean-pooled over T' if present).
    */
-  MdnOut forward_from_encoding(const torch::Tensor& encoding) {
-    auto x = temporal_pool(encoding);     // [B,De]
-    auto h = backbone->forward(x);        // [B,H]
-    return ch_heads->forward(h);          // -> {log_pi,mu,sigma}
-  }
+  MdnOut forward_from_encoding(const torch::Tensor& encoding);
 
   /**
    * Lightweight warmup to initialize CUDA kernels / allocator paths.
    * No-op on CPU. Safe to remove if you don’t care about first-iteration latency.
    */
-  void warm_up() {
-    if (device.is_cuda()) {
-      constexpr int B = 2;
-      auto x = torch::zeros({B, De}, torch::TensorOptions().dtype(dtype).device(device));
-      (void)forward(x);
-      torch::cuda::synchronize();
-    }
-  }
+  void warm_up();
 
-  /// Placeholder for any future inference utilities (sampling, etc.)
-  std::vector<torch::Tensor> inference(const torch::Tensor& /*enc*/, const InferenceConfig& /*cfg*/) {
-    return {};
-  }
+  /// Placeholder for any future inference utilities (sampling, etc.).
+  std::vector<torch::Tensor> inference(const torch::Tensor& /*enc*/, const InferenceConfig& /*cfg*/);
 
   /// Pretty-print the current architecture and placement.
-  void display_model() const {
-    std::string dev = device.str();
-    const char* fmt =
-      "\n%s \t[MDN-per-channel] %s\n"
-      "\t\t%s%-25s%s %s%-8lld%s\n"  // De
-      "\t\t%s%-25s%s %s%-8lld%s\n"  // Dy
-      "\t\t%s%-25s%s %s%-8lld%s\n"  // K
-      "\t\t%s%-25s%s %s%-8lld%s\n"  // feature_dim
-      "\t\t%s%-25s%s %s%-8lld%s\n"  // depth
-      "\t\t%s%-25s%s %s%-8lld%s\n"  // channels C
-      "\t\t%s%-25s%s %s%-8lld%s\n"  // horizons Hf
-      "\t\t%s%-25s%s %s%-8s%s\n";   // device
-    log_info(fmt,
-      ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Input dims (De):", ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, De, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Target dims (Dy):", ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, Dy, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Mixture comps (K):", ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, K, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Feature dim:",      ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, H, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Depth:",            ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, depth, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Channels (C):",     ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, C_axes, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Horizons (Hf):",    ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, Hf_axes, ANSI_COLOR_RESET,
-      ANSI_COLOR_Bright_Grey, "Device:",           ANSI_COLOR_RESET, ANSI_COLOR_Bright_Blue, dev.c_str(), ANSI_COLOR_RESET
-    );
-  }
+  void display_model() const;
 };
 
 TORCH_MODULE(MdnModel);

@@ -21,6 +21,7 @@
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
 RUNTIME_WARNING("(memory_mapped_dataloader.h)[] We have too many channels, it can be benefitial to use market fade time wrapping strategy, instead of the multi channel one. \n");
+RUNTIME_WARNING("(memory_mapped_dataloader.h)[] [Important] dataloading is advancing to the next step based on the highest channel, it should have a switch to select the lowerst channel as well. \n");
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -35,7 +36,7 @@ namespace data {
  * @tparam S The type of Sampler used
  * 
  * This class:
- *  - Constructs the dataset Q internally (you must adjust the constructor call).
+ *  - Constructs the dataset Q internally (must adjust the constructor call).
  *  - Accepts a custom collate function as a constructor argument.
  *  - Allows specifying batch size, number of workers, and optionally, a different sampler type.
  *  - Provides begin() and end() to iterate over batches and a reset() method to re-start iteration.
@@ -66,7 +67,7 @@ public:
    * @param options DataLoaderOptions to configure the DataLoader.
    *
    * Note:
-   * - Ensure that Q has a constructor that matches the arguments you provide here.
+   * - Ensure that Q has a constructor that matches the arguments provided here.
    * - The dataset Q should implement size() to return the number of samples.
    */
   MemoryMappedDataLoader(

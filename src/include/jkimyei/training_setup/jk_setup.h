@@ -80,7 +80,7 @@ private:
   static _init _initializer;
 };
 
-// ---- Convenience free function so you can call `jk_setup_t("...")` ----
+// ---- Convenience free function to call `jk_setup_t("...")` ----
 inline jk_component_t& jk_setup(const std::string& component_name) {
   return jk_setup_t::registry(component_name);
 }

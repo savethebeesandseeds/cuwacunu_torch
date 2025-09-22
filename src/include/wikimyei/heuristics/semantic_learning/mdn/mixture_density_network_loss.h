@@ -1,3 +1,4 @@
+/* mixture_density_network_loss.h */
 #pragma once
 #include <torch/torch.h>
 #include <cctype>
@@ -14,8 +15,8 @@ namespace cuwacunu {
 namespace wikimyei {
 namespace mdn {
 
-// ---------- Loss (configurable via jk_setup.loss_conf) ----------
-// options (table row id == jk_setup.loss_conf.id):
+// ---------- Loss (configurable via jk_component.loss_conf) ----------
+// options (table row id == jk_component.loss_conf.id):
 //   eps=<float>           (default 1e-6)
 //   sigma_min=<float>     (default 1e-3)
 //   sigma_max=<float>     (default 0.0 → disabled)
@@ -26,11 +27,11 @@ struct MdnNLLLoss {
   double sigma_max_{0.0};
   bool   reduce_mean_{true};
 
-  explicit MdnNLLLoss(const cuwacunu::jkimyei::jk_setup_t& jk_setup) {
-    ASSERT(jk_setup.loss_conf.type == "NLLLoss",
-      ("Review <training_components>.instruction: MDN requires loss type 'NLLLoss', got '" + jk_setup.loss_conf.type + "'.").c_str());
+  explicit MdnNLLLoss(const cuwacunu::jkimyei::jk_component_t& jk_component) {
+    ASSERT(jk_component.loss_conf.type == "NLLLoss",
+      ("Review <training_components>.instruction: MDN requires loss type 'NLLLoss', got '" + jk_component.loss_conf.type + "'.").c_str());
     try {
-      const auto& row = jk_setup.inst.retrive_row("loss_functions_table", jk_setup.loss_conf.id);
+      const auto& row = jk_component.inst.retrive_row("loss_functions_table", jk_component.loss_conf.id);
       if (cuwacunu::camahjucunu::has_option(row, "eps"))
         eps_ = cuwacunu::camahjucunu::to_double(cuwacunu::camahjucunu::require_option(row, "eps"));
       if (cuwacunu::camahjucunu::has_option(row, "sigma_min"))
@@ -49,9 +50,9 @@ struct MdnNLLLoss {
   // out: log_pi [B,C,Hf,K], mu/sigma [B,C,Hf,K,Dy]
   // y  : [B,C,Hf,Dy]
   // mask         (optional): [B,C,Hf] — 1 valid, 0 invalid
-  // weights_ch   (optional): [C]     /* loss weights acrros the channel rank */
-  // weights_tau  (optional): [Hf]    /* loss weights acrros the temporal rank */
-  // weights_dim  (optional): [Dy]    /* loss weights acrros the channel rank */
+  // weights_ch   (optional): [C]     /* loss weights across the channel rank */
+  // weights_tau  (optional): [Hf]    /* loss weights across the temporal rank */
+  // weights_dim  (optional): [Dy]    /* loss weights across the feature rank */
   torch::Tensor compute(const MdnOut& out,
                         const torch::Tensor& y,
                         const torch::Tensor& mask = torch::Tensor(),
@@ -81,9 +82,11 @@ struct MdnNLLLoss {
     auto y_b  = y.unsqueeze(3).expand({B,C,Hf,K,Dy});
 
     // clamp sigma
-    auto sigma = out.sigma.clamp_min(sigma_min_);
+    auto eps_t = out.sigma.new_full({}, eps_);
+    auto sigma = out.sigma + eps_t;                       // additive ε floor
+    if (sigma_min_ > 0.0) sigma = sigma.clamp_min(sigma_min_);  // optional hard floor
     if (sigma_max_ > 0.0) sigma = sigma.clamp_max(sigma_max_);
-    auto eps_t = sigma.new_full({}, eps_);
+
     static const double LOG2PI = std::log(2.0 * M_PI);
 
     // per-dimension log-prob (do not sum over Dy yet)
@@ -100,30 +103,29 @@ struct MdnNLLLoss {
 
     // sum over Dy → component log-prob
     auto comp_logp = perdim.sum(-1);                                 // [B,C,Hf,K]
-    auto log_mix   = logsumexp(out.log_pi + comp_logp, 3, false);    // [B,C,Hf]
+    auto log_mix = torch::logsumexp(out.log_pi + comp_logp, 3);      // [B,C,Hf]
     auto nll       = -log_mix;                                       // [B,C,Hf]
 
-    // (NEW) optional per-channel and per-horizon weights
+    // --- unified weighting/masking/mean ---
+    auto w = torch::ones_like(nll);                                  // [B,C,Hf]
     if (weights_ch.defined()) {
       TORCH_CHECK(weights_ch.dim()==1 && weights_ch.size(0)==C, "[MdnNLLLoss] weights_ch must be [C]");
-      nll = nll * weights_ch.to(nll.dtype()).view({1,C,1});
+      w = w * weights_ch.to(nll.dtype()).view({1, C, 1});
     }
     if (weights_tau.defined()) {
       TORCH_CHECK(weights_tau.dim()==1 && weights_tau.size(0)==Hf, "[MdnNLLLoss] weights_tau must be [Hf]");
-      nll = nll * weights_tau.to(nll.dtype()).view({1,1,Hf});
+      w = w * weights_tau.to(nll.dtype()).view({1, 1, Hf});
     }
-
-    // mask + reduction
     if (mask.defined()) {
-      TORCH_CHECK(mask.sizes() == torch::IntArrayRef({B,C,Hf}),
-                  "[MdnNLLLoss] mask must be [B,C,Hf]");
-      auto valid = mask.to(nll.dtype());
-      auto loss_sum = (nll * valid).sum();
-      auto denom    = valid.sum().clamp_min(1.0);
-      return reduce_mean_ ? (loss_sum / denom) : loss_sum;
+      TORCH_CHECK(mask.sizes() == torch::IntArrayRef({B, C, Hf}), "[MdnNLLLoss] mask must be [B,C,Hf]");
+      w = w * mask.to(nll.dtype());
     }
 
-    return reduce_mean_ ? nll.mean() : nll.sum();
+    auto loss_sum = (nll * w).sum();
+    if (!reduce_mean_) return loss_sum;
+
+    auto denom = w.sum().clamp_min(1.0);
+    return loss_sum / denom;
   }
 
   // Legacy operator (no mask/weights) — still available

@@ -37,89 +37,21 @@ int main() {
   torch::manual_seed(48);
 
   // -----------------------------------------------------
-  // Create the Dataloader
+  // Test the module
   // -----------------------------------------------------
-  torch::manual_seed(cuwacunu::piaabo::dconfig::config_space_t::get<int>("GENERAL", "torch_seed"));
+  cuwacunu::wikimyei::mdn::MdnModel m(/*De=*/32, /*Dy=*/2, /*C=*/3, /*Hf=*/4, /*K=*/5, /*H=*/64, /*depth=*/2);
+  auto enc = torch::randn({8, 32});
+  auto out = m->forward_from_encoding(enc);
+  TORCH_CHECK(out.log_pi.sizes() == torch::IntArrayRef({8,3,4,5}));
+  TORCH_CHECK(out.mu.sizes()     == torch::IntArrayRef({8,3,4,5,2}));
+  TORCH_CHECK(out.sigma.sizes()  == torch::IntArrayRef({8,3,4,5,2}));
 
-  /* types definition */
-  std::string INSTRUMENT = "BTCUSDT";                     // "UTILITIES"
-  using Td = cuwacunu::camahjucunu::exchange::kline_t;    // cuwacunu::camahjucunu::exchange::basic_t;
-  using Q = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Td>;
-  using K = cuwacunu::camahjucunu::data::observation_sample_t;
-  // using RandSamper = torch::data::samplers::RandomSampler;
-  using SeqSampler = torch::data::samplers::SequentialSampler;
+  auto y = cuwacunu::wikimyei::mdn::mdn_expectation(out);           // [8,3,4,2]
+  auto yhat = cuwacunu::wikimyei::mdn::mdn_mode(out);               // [8,3,4,2]
+  auto s = cuwacunu::wikimyei::mdn::mdn_sample_one_step(out);       // [8,3,4,2]
 
-  TICK(create_dataloader_);
-  auto raw_dataloader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, K, Td, SeqSampler>(
-      INSTRUMENT,                                                                                             /* instrument */
-      cuwacunu::camahjucunu::BNF::observationPipeline()
-          .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),             /* obs_inst */ 
-      cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
-  );
-  PRINT_TOCK_ms(create_dataloader_);
-
-  // -----------------------------------------------------
-  // Instantiate VICReg_4d (from loading point)
-  // -----------------------------------------------------
-  TICK(load_representation_model_);
-  cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(
-    cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "model_path"),
-    cuwacunu::piaabo::dconfig::config_device("VICReg"));
-  PRINT_TOCK_ms(load_representation_model_);
-
-  // -----------------------------------------------------
-  // Instantiate representation Dataloader
-  // -----------------------------------------------------
-  TICK(extend_dataloader_with_enbedings_);
-  auto representation_dataloader =
-    representation_model.make_representation_dataloader<Q, K, Td, SeqSampler>
-      (raw_dataloader, /*use_swa=*/true);
-  PRINT_TOCK_ms(extend_dataloader_with_enbedings_);
-  
-  // -----------------------------------------------------
-  // Instantiate MDN (from configuration)
-  // -----------------------------------------------------
-  TICK(create_mdn_model_);
-  cuwacunu::wikimyei::mdn::MdnModel semantic_value_model(
-      "VALUE_ESTIMATION",        /* target_conf  (.config) */
-      "MDN_value_estimation",    /* target_setup (<training_components>.instruction) */
-      representation_model.encoding_dims, /* Dx */
-      1                                   /* Dy */
-  );
-  PRINT_TOCK_ms(create_mdn_model_);
-
-  // -----------------------------------------------------
-  // Evaluate
-  // -----------------------------------------------------
-  semantic_value_model->eval();
-
-  // Infer model device & dtype from the first parameter
-  const auto& params = semantic_value_model->parameters();
-  TORCH_CHECK(!params.empty(), "Model has no parameters.");
-  const auto model_device = params.front().device();
-  const auto model_dtype  = params.front().dtype();
-
-  auto opts = torch::TensorOptions().dtype(model_dtype).device(model_device);
-
-  auto x = torch::randn({64, semantic_value_model->De}, opts);
-  auto y = torch::randn({64, semantic_value_model->Dy}, opts);
-
-  auto out = semantic_value_model->forward(x);
-
-  TORCH_CHECK(out.log_pi.sizes() == torch::IntArrayRef({64, out.mu.size(1)}), "log_pi shape mismatch");
-  TORCH_CHECK(out.mu.dim() == 3 && out.sigma.dim() == 3, "mu/sigma must be [B,K,Dy]");
-
-  // Bring scalars to host safely (no need to .to(torch::kCPU); .item<T>() syncs)
-  auto nll = cuwacunu::wikimyei::mdn::mdn_nll(out, y);
-  std::cout << "NLL: " << nll.item<double>() << "\n";
-
-  auto mean_pred = cuwacunu::wikimyei::mdn::mdn_expectation(out);
-  std::cout << "E[y|x] mean(abs): " << mean_pred.abs().mean().item<double>() << "\n";
-
-  auto y_smpl = cuwacunu::wikimyei::mdn::mdn_sample_one_step(out);
-  std::cout << "Sample mean(abs): " << y_smpl.abs().mean().item<double>() << "\n";
+  cuwacunu::wikimyei::mdn::MdnNLLLoss loss(cuwacunu::jkimyei::jk_setup("MDN_value_estimation"));
+  auto L = loss.compute(out, y);           // scalar
 
   return 0;
 }

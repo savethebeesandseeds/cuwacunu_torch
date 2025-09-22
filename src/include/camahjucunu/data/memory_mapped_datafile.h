@@ -233,7 +233,7 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     const long double current_delta = kv1 - kv0;
 
     if (std::fabs(current_delta) <= tol) {
-      log_warn("%s\t %s•%s [sanitize_csv_into_binary_file]%s zero/eps increment,"
+      log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s zero/eps increment,"
                " line %s%zu%s in %s%s%s\n",
                ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
                ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
@@ -269,7 +269,7 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     }
 
     if (irregular) {
-      log_err("%s\t %s•%s [sanitize_csv_into_binary_file]%s Irregular increment:"
+      log_err("%s\t %s-%s [sanitize_csv_into_binary_file]%s Irregular increment:"
               " (regular=%.15Lf, current=%.15Lf) at line %s%zu%s in %s%s%s\n",
               ANSI_CLEAR_LINE, ANSI_COLOR_Red, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
               regular_delta, current_delta,
@@ -286,7 +286,7 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     const auto delta_steps = static_cast<std::int64_t>(std::llround(steps_ld));
 
     if (delta_steps != 1) {
-      log_warn("%s\t %s•%s [sanitize_csv_into_binary_file]%s extra large step (d=%s%lld%s)"
+      log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s extra large step (d=%s%lld%s)"
                " at line %s%zu%s in %s%s%s\n",
                ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
                ANSI_COLOR_Yellow, static_cast<long long>(delta_steps), ANSI_COLOR_RESET,
