@@ -62,7 +62,7 @@ inline torch::Tensor mdn_log_prob(const MdnOut& out, const torch::Tensor& y, dou
   const auto B  = y.size(0), C = y.size(1), Hf = y.size(2), Dy = y.size(3);
   TORCH_CHECK(out.mu.size(0)==B && out.mu.size(1)==C && out.mu.size(2)==Hf && out.mu.size(4)==Dy,
               "[mdn_log_prob] shape mismatch");
-  const double LOG2PI = std::log(2.0 * M_PI);
+  constexpr double LOG2PI = 1.8378770664093453; // log(2π)
   auto y_b   = y.unsqueeze(3).expand({B,C,Hf,out.log_pi.size(3),Dy});  // [B,C,Hf,K,Dy]
   auto eps_t = out.sigma.new_full({}, eps);
   auto sigma = (out.sigma + eps_t);
@@ -87,6 +87,60 @@ inline torch::Tensor mdn_topk_expectation(const MdnOut& out, int64_t topk) {
   return (pi_top * mu_top).sum(/*dim=*/3);                                                       // [B,C,Hf,Dy]
 }
 
+// ---------- NLL map + masked reductions (general-purpose) ----------
+struct MdnNllOptions {
+  double eps{1e-6};
+  double sigma_min{1e-3};  // 0 disables
+  double sigma_max{0.0};   // 0 disables
+};
+
+// Returns per-(B,C,Hf) negative log-likelihood map. If mask is defined, it is applied (0=ignore, 1=valid).
+inline torch::Tensor mdn_nll_map(const MdnOut& out,
+                                 const torch::Tensor& y,         // [B,C,Hf,Dy]
+                                 const torch::Tensor& mask = {}, // [B,C,Hf] or undef
+                                 const MdnNllOptions& opt = {}) {
+  TORCH_CHECK(y.dim()==4, "[mdn_nll_map] y must be [B,C,Hf,Dy]");
+  const auto B  = y.size(0), C = y.size(1), Hf = y.size(2), Dy = y.size(3);
+  TORCH_CHECK(out.mu.size(0)==B && out.mu.size(1)==C && out.mu.size(2)==Hf && out.mu.size(4)==Dy,
+              "[mdn_nll_map] shape mismatch");
+  const auto K = out.log_pi.size(3);
+
+  // Numerically stable σ handling
+  auto eps_t = out.sigma.new_full({}, opt.eps);
+  auto sigma = out.sigma + eps_t;
+  if (opt.sigma_min > 0.0) sigma = sigma.clamp_min(opt.sigma_min);
+  if (opt.sigma_max > 0.0) sigma = sigma.clamp_max(opt.sigma_max);
+
+  // Portable constant (avoid platform M_PI)
+  constexpr double LOG2PI = 1.8378770664093453; // log(2π)
+
+  auto y_b   = y.unsqueeze(3).expand({B, C, Hf, K, Dy});               // [B,C,Hf,K,Dy]
+  auto diff  = (y_b - out.mu) / (sigma + eps_t);
+  auto perd  = -0.5 * diff.pow(2) - (sigma + eps_t).log() - 0.5 * LOG2PI; // [B,C,Hf,K,Dy]
+  auto comp  = perd.sum(-1);                                            // [B,C,Hf,K]
+  auto logp  = torch::logsumexp(out.log_pi + comp, /*dim=*/3);          // [B,C,Hf]
+  auto nll   = -logp;                                                   // [B,C,Hf]
+  if (mask.defined()) nll = nll * mask.to(nll.dtype());
+  return nll;
+}
+
+// Average NLL per channel (mean over B and Hf with mask)
+inline torch::Tensor mdn_masked_mean_per_channel(const torch::Tensor& nll, const torch::Tensor& mask) {
+  TORCH_CHECK(nll.dim()==3, "[mdn_masked_mean_per_channel] nll must be [B,C,Hf]");
+  auto valid = mask.defined() ? mask.to(nll.dtype()) : torch::ones_like(nll);
+  auto sumB  = (nll * valid).sum(/*dim=*/0);             // [C,Hf]
+  auto den   = valid.sum(/*dim=*/0).clamp_min(1.0);      // [C,Hf]
+  return (sumB / den).mean(/*dim=*/1);                   // [C]
+}
+
+// Average NLL per horizon (mean over B and C with mask)
+inline torch::Tensor mdn_masked_mean_per_horizon(const torch::Tensor& nll, const torch::Tensor& mask) {
+  TORCH_CHECK(nll.dim()==3, "[mdn_masked_mean_per_horizon] nll must be [B,C,Hf]");
+  auto valid = mask.defined() ? mask.to(nll.dtype()) : torch::ones_like(nll);
+  auto sumBC = (nll * valid).sum(/*dim=*/std::vector<int64_t>{0,1});
+  auto den   = valid.sum(/*dim=*/std::vector<int64_t>{0,1}).clamp_min(1.0);
+  return sumBC / den;                                     // [Hf]
+}
 
 // ---------- Expectation for generalized shapes ----------
 // out: log_pi [B,C,Hf,K], mu [B,C,Hf,K,Dy]

@@ -128,7 +128,8 @@ int main() try {
   DS ds_regular(f_regular_bin);
 
   // sanity
-  assert(ds_regular.size().value() == rows_regular.size());
+  const size_t expected = rows_regular.size() - (/*Np*/1 + /*Nf*/1) + 1; // = rows-1
+  assert(ds_regular.size().value() == expected);
   assert(ds_regular.key_value_step_ == 1);
 
   // pick a target inside the series

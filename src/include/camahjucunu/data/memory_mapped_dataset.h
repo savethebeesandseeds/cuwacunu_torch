@@ -36,6 +36,28 @@
 #include "camahjucunu/BNF/implementations/training_components/training_components.h"
 #include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
 
+/* ============================================================
+ *  Concatenated dataset grid policy (compile-time)
+ *  - MIN => densest grid (smallest step across datasets)  [default]
+ *  - MAX => coarsest grid (largest step across datasets)
+ *  To override:
+ *    -DCUWACUNU_CONCAT_GRID_STEP_POLICY=CUWACUNU_CONCAT_GRID_STEP_POLICY_MAX
+ * ============================================================ */
+#ifndef CUWACUNU_CONCAT_GRID_STEP_POLICY_MIN
+#define CUWACUNU_CONCAT_GRID_STEP_POLICY_MIN 0
+#endif
+#ifndef CUWACUNU_CONCAT_GRID_STEP_POLICY_MAX
+#define CUWACUNU_CONCAT_GRID_STEP_POLICY_MAX 1
+#endif
+#ifndef CUWACUNU_CONCAT_GRID_STEP_POLICY
+#define CUWACUNU_CONCAT_GRID_STEP_POLICY CUWACUNU_CONCAT_GRID_STEP_POLICY_MIN
+#endif
+
+/* Floating-point alignment tolerance used for snapping to the grid */
+#ifndef CUWACUNU_CONCAT_ALIGN_TOL
+#define CUWACUNU_CONCAT_ALIGN_TOL 1e-9
+#endif
+
 namespace cuwacunu {
 namespace camahjucunu {
 namespace data {
@@ -91,8 +113,76 @@ constexpr auto absolute_difference(T a, T b) {
   }
 }
 
+/* ------------------------------------------------------------
+ * Helpers for grid alignment and step counting (integral/float)
+ * ------------------------------------------------------------ */
+namespace detail {
+
+template <typename K, typename = std::enable_if_t<std::is_integral_v<K>>>
+inline K align_up_to_grid(K x, K step, K base) {
+  // returns smallest y >= x s.t. (y - base) % step == 0
+  if (step <= 0) return x;
+  K diff = x - base;
+  K r = diff % step;
+  if (r < 0) r += step;       // make remainder positive
+  if (r == 0) return x;
+  return static_cast<K>(x + (step - r));
+}
+
+template <typename K, typename = std::enable_if_t<std::is_integral_v<K>>>
+inline K align_down_to_grid(K x, K step, K base) {
+  // returns largest y <= x s.t. (y - base) % step == 0
+  if (step <= 0) return x;
+  K diff = x - base;
+  K r = diff % step;
+  if (r < 0) r += step;       // make remainder positive
+  return static_cast<K>(x - r);
+}
+
+template <typename K, typename = std::enable_if_t<std::is_integral_v<K>>>
+inline std::size_t steps_between_inclusive(K left_aligned, K right_aligned, K step) {
+  // pre: left_aligned and right_aligned are both on the grid, step > 0
+  if (right_aligned < left_aligned) return 0;
+  return static_cast<std::size_t>((right_aligned - left_aligned) / step) + 1;
+}
+
+template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
+inline K align_up_to_grid_fp(K x, K step, K base) {
+  if (step <= K(0)) return x;
+  const K eps = static_cast<K>(CUWACUNU_CONCAT_ALIGN_TOL);
+  K q = (x - base) / step;
+  K k = std::ceil(q - eps);
+  return base + k * step;
+}
+
+template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
+inline K align_down_to_grid_fp(K x, K step, K base) {
+  if (step <= K(0)) return x;
+  const K eps = static_cast<K>(CUWACUNU_CONCAT_ALIGN_TOL);
+  K q = (x - base) / step;
+  K k = std::floor(q + eps);
+  return base + k * step;
+}
+
+template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
+inline std::size_t steps_between_inclusive_fp(K left_aligned, K right_aligned, K step) {
+  if (step <= K(0)) return 0;
+  const K eps = static_cast<K>(CUWACUNU_CONCAT_ALIGN_TOL);
+  if (right_aligned + eps < left_aligned) return 0;
+  K k = std::floor(((right_aligned - left_aligned) / step) + eps);
+  if (k < 0) return 0;
+  return static_cast<std::size_t>(k) + 1;
+}
+
+} // namespace detail
+
 /**
  * @brief A memory-mapped dataset for PyTorch-based data loading.
+ *
+ * Sliding-window semantics:
+ *   - N_past_:   number of past frames returned (last row is time t)
+ *   - N_future_: number of future frames returned (first row is t+1)
+ *   - stride is 1 (anchor moves by one raw record)
  *
  * @tparam T The struct type of the records stored in the binary file.
  */
@@ -144,7 +234,7 @@ private:
 private:
   std::string bin_filename_;                 /* Path to the binary file */
   std::unique_ptr<MappedData> mapped_data_;  /* Unique pointer to memory-mapped data */
-  std::size_t num_records_;                  /* Number of records in the dataset */
+  std::size_t num_records_;                  /* Raw number of records (rows) in the dataset */
 
 public:
   /* Variables for key-value boundaries. */
@@ -154,12 +244,21 @@ public:
   typename T::key_type_t key_value_span_;       /* rightmost - leftmost */
   typename T::key_type_t key_value_step_;       /* regular increment in key_value between consecutive records */
 
+  /* Sliding-window configuration */
+  std::size_t N_past_{1};
+  std::size_t N_future_{1};
+  std::size_t sliding_count_{0};               /* Number of sliding anchors (size()) */
+
 public:
-  explicit MemoryMappedDataset(const std::string& bin_filename)
+  explicit MemoryMappedDataset(const std::string& bin_filename,
+                               std::size_t N_past = 1,
+                               std::size_t N_future = 1)
       : bin_filename_(bin_filename),
         mapped_data_(std::make_unique<MappedData>(bin_filename)),
         num_records_(mapped_data_->file_size_ / sizeof(T)),
-        key_value_offset_(T::key_offset()) {
+        key_value_offset_(T::key_offset()),
+        N_past_(N_past),
+        N_future_(N_future) {
 
     if (mapped_data_->file_size_ % sizeof(T) != 0) {
       log_fatal("[MemoryMappedDataset] Error: Binary file size is not a multiple of struct size. File: %s\n",
@@ -218,7 +317,19 @@ public:
       }
       prev = curr;
     }
+
+    // Compute sliding sample count (stride = 1)
+    if (num_records_ >= (N_past_ + N_future_)) {
+      sliding_count_ = num_records_ - (N_past_ + N_future_) + 1;
+    } else {
+      sliding_count_ = 0;
+    }
   }
+
+  /**
+   * @brief Expose raw row count for external validation.
+   */
+  std::size_t raw_records() const noexcept { return num_records_; }
 
   /**
    * @brief Retrieves both past and future windows around a key value.
@@ -276,54 +387,63 @@ public:
   }
 
   /**
-   * @brief Retrieves a single-position sample at index (past=1, future=1 if available).
+   * @brief Sliding-window get: returns {past[N_past_], future[N_future_]}, stride = 1.
+   * Anchor a = (N_past_-1) + index.
    */
   observation_sample_t get(std::size_t index) override {
-    if (index >= num_records_) {
-      log_fatal("[MemoryMappedDataset] Index [%zu] out of range [0, %zu] on file %s\n",
-                index, num_records_, bin_filename_.c_str());
+    if (index >= sliding_count_) {
+      log_fatal("[MemoryMappedDataset] Index [%zu] out of range [0, %zu) on file %s\n",
+                index, sliding_count_, bin_filename_.c_str());
     }
 
-    T cur = read_memory_struct<T>(mapped_data_->data_ptr_, index);
-    const auto D = cur.tensor_features().size();
+    const std::size_t a          = (N_past_ > 0 ? (N_past_ - 1) : 0) + index; // anchor (time t)
+    const std::size_t past_start = (N_past_ > 0 ? (a - (N_past_ - 1)) : a);
+    const std::size_t fut_start  = a + 1;
 
-    torch::Tensor past_X   = torch::empty({1, static_cast<long>(D)}, torch::kFloat32);
-    torch::Tensor past_msk = torch::empty({1},                       torch::kBool);
+    auto past_records = read_memory_structs<T>(mapped_data_->data_ptr_, past_start, N_past_);
+    auto fut_records  = read_memory_structs<T>(mapped_data_->data_ptr_, fut_start,  N_future_);
+
+    const std::size_t D = past_records[0].tensor_features().size();
+
+    torch::Tensor past_X   = torch::empty({ static_cast<long>(N_past_),   static_cast<long>(D) }, torch::kFloat32);
+    torch::Tensor past_msk = torch::empty({ static_cast<long>(N_past_) },                          torch::kBool);
     {
       float* x = past_X.data_ptr<float>();
-      const auto& v = cur.tensor_features();
-      std::copy(v.begin(), v.end(), x);
-      past_msk[0] = cur.is_valid();
+      bool*  m = past_msk.data_ptr<bool>();
+      for (std::size_t k = 0; k < N_past_; ++k) {
+        const auto& v = past_records[k].tensor_features();
+        std::copy(v.begin(), v.end(), x + k * D);
+        m[k] = past_records[k].is_valid();
+      }
     }
 
-    torch::Tensor fut_X, fut_msk;
-    if (index + 1 < num_records_) {
-      T nxt = read_memory_struct<T>(mapped_data_->data_ptr_, index + 1);
-      fut_X   = torch::empty({1, static_cast<long>(D)}, torch::kFloat32);
-      fut_msk = torch::empty({1},                       torch::kBool);
+    torch::Tensor fut_X   = torch::empty({ static_cast<long>(N_future_), static_cast<long>(D) }, torch::kFloat32);
+    torch::Tensor fut_msk = torch::empty({ static_cast<long>(N_future_) },                       torch::kBool);
+    {
       float* x = fut_X.data_ptr<float>();
-      const auto& v = nxt.tensor_features();
-      std::copy(v.begin(), v.end(), x);
-      fut_msk[0] = nxt.is_valid();
-    } else {
-      fut_X   = torch::zeros({1, static_cast<long>(D)}, torch::kFloat32);
-      fut_msk = torch::full({1}, false,                 torch::kBool);
+      bool*  m = fut_msk.data_ptr<bool>();
+      for (std::size_t k = 0; k < N_future_; ++k) {
+        const auto& v = fut_records[k].tensor_features();
+        std::copy(v.begin(), v.end(), x + k * D);
+        m[k] = fut_records[k].is_valid();
+      }
     }
 
     return observation_sample_t{ past_X, past_msk, fut_X, fut_msk };
   }
 
-  torch::optional<std::size_t> size() const override { return num_records_; }
+  /* size() is the number of sliding anchors */
+  torch::optional<std::size_t> size() const override { return sliding_count_; }
 
   /* Common samplers */
   torch::data::samplers::SequentialSampler SequentialSampler() const {
-    return torch::data::samplers::SequentialSampler(num_records_);
+    return torch::data::samplers::SequentialSampler(sliding_count_);
   }
   torch::data::DataLoaderOptions SequentialSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
     return torch::data::DataLoaderOptions().batch_size(batch_size).workers(workers);
   }
   torch::data::samplers::RandomSampler RandomSampler() const {
-    return torch::data::samplers::RandomSampler(num_records_);
+    return torch::data::samplers::RandomSampler(sliding_count_);
   }
   torch::data::DataLoaderOptions RandomSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
     return torch::data::DataLoaderOptions().batch_size(batch_size).workers(workers);
@@ -387,6 +507,11 @@ public:
  *
  * Each source can specify (N_past, N_future). The dataset pads to (max_N_past, max_N_future).
  * Sampling domain is the intersection of valid target positions across all sources.
+ *
+ * The global sampling grid (step/anchors) is chosen by compile-time policy:
+ *   - MIN: densest grid (smallest step across datasets)
+ *   - MAX: coarsest grid (largest step across datasets)
+ * The final left/right bounds are aligned to the chosen grid to avoid drift.
  */
 template <typename T>
 class MemoryMappedConcatDataset : public torch::data::datasets::Dataset<MemoryMappedConcatDataset<T>, observation_sample_t> {
@@ -396,15 +521,22 @@ private:
   std::vector<std::size_t> N_past_;
   std::vector<std::size_t> N_future_;
 
+  // Cache of per-dataset valid range (in key space) after (N_past, N_future)
+  std::vector<typename T::key_type_t> valid_left_;   // leftmost key where a target index is valid
+  std::vector<typename T::key_type_t> valid_right_;  // rightmost key where a target index is valid
+
+  // Index of dataset that defines the global grid (based on policy)
+  std::size_t grid_ref_idx_{static_cast<std::size_t>(-1)};
+
 public:
   std::size_t max_N_past_{0};
   std::size_t max_N_future_{0};
 
-  std::size_t num_records_{0};                           /* number of valid target positions across intersection */
-  typename T::key_type_t leftmost_key_value_{};          /* intersection lower bound */
-  typename T::key_type_t rightmost_key_value_{};         /* intersection upper bound */
+  std::size_t num_records_{0};                           /* number of valid target positions across intersection (on the chosen grid) */
+  typename T::key_type_t leftmost_key_value_{};          /* intersection lower bound aligned to grid */
+  typename T::key_type_t rightmost_key_value_{};         /* intersection upper bound aligned to grid */
   typename T::key_type_t key_value_span_{};              /* rightmost - leftmost */
-  typename T::key_type_t key_value_step_{};              /* step (chosen across datasets) */
+  typename T::key_type_t key_value_step_{};              /* global step used by the concatenated dataset (per policy) */
 
 public:
   MemoryMappedConcatDataset() = default;
@@ -490,16 +622,18 @@ public:
 
     /* --- add dataset --- */
     file_names_.push_back(bin_filename);
+    // Note: concat uses key-addressed reads; we keep per-dataset N_past/N_future only for sliding get().
+    // Here we construct with defaults (1,1); this is fine because we never call d->get() from concat.
     datasets_.push_back(std::make_shared<MemoryMappedDataset<T>>(file_names_.back()));
     N_past_.push_back(N_past);
     N_future_.push_back(N_future);
 
+    /* --- validations: sizes and duplicates --- */
     auto& d = datasets_.back();
-
-    /* --- validations --- */
-    if (d->size().value() < (N_past + N_future)) {
-      log_fatal("[MemoryMappedConcatDataset](add_dataset) Dataset %s too small: size:%zu < N_past+N_future:%zu\n",
-                csv_filename.c_str(), d->size().value(), (N_past + N_future));
+    // Validate against RAW record count (not sliding size)
+    if (d->raw_records() < (N_past + N_future)) {
+      log_fatal("[MemoryMappedConcatDataset](add_dataset) Dataset %s too small: rows:%zu < N_past+N_future:%zu\n",
+                csv_filename.c_str(), d->raw_records(), (N_past + N_future));
     }
 
     if (!(
@@ -515,41 +649,123 @@ public:
                 csv_filename.c_str());
     }
 
-    /* --- update global parameters --- */
+    /* --- extend valid range caches to keep them aligned with datasets_ --- */
+    valid_left_.resize(datasets_.size());
+    valid_right_.resize(datasets_.size());
+
+    /* --- recompute global state after adding this dataset --- */
+    recompute_global_state_();
+  }
+
+private:
+  void recompute_global_state_() {
+    using key_t = typename T::key_type_t;
+
+    const std::size_t K = datasets_.size();
+    if (K == 0) {
+      max_N_past_ = max_N_future_ = num_records_ = 0;
+      return;
+    }
+
+    /* 1) maxima of (N_past, N_future) for padding */
     max_N_past_   = *std::max_element(N_past_.begin(),   N_past_.end());
     max_N_future_ = *std::max_element(N_future_.begin(), N_future_.end());
 
-    // Step choice across datasets: conservative pick = minimum step (densest grid)
-    if (datasets_.size() == 1) {
-      key_value_step_ = d->key_value_step_;
+    /* 2) compute per-dataset valid ranges in key space
+          valid_left  = leftmost + (N_past-1) * step
+          valid_right = rightmost -  N_future   * step     */
+    key_t inter_left{};
+    key_t inter_right{};
+    for (std::size_t i = 0; i < K; ++i) {
+      auto& d = datasets_[i];
+      const auto np = N_past_[i];
+      const auto nf = N_future_[i];
+
+      const key_t vleft  = d->leftmost_key_value_  + static_cast<key_t>( (np > 0 ? (np - 1) : 0) ) * d->key_value_step_;
+      const key_t vright = d->rightmost_key_value_ - static_cast<key_t>( nf ) * d->key_value_step_;
+
+      if (!(vleft < vright)) {
+        log_fatal("[MemoryMappedConcatDataset] Empty per-dataset valid range after (N_past,N_future) for dataset %zu\n", i);
+      }
+
+      valid_left_[i]  = vleft;
+      valid_right_[i] = vright;
+
+      if (i == 0) {
+        inter_left  = vleft;
+        inter_right = vright;
+      } else {
+        inter_left  = std::max(inter_left,  vleft);
+        inter_right = std::min(inter_right, vright);
+      }
+    }
+
+    if (!(inter_left < inter_right)) {
+      log_fatal("[MemoryMappedConcatDataset] Empty intersection across datasets after applying (N_past,N_future)\n");
+    }
+
+    /* 3) choose grid step and reference dataset per policy */
+#if (CUWACUNU_CONCAT_GRID_STEP_POLICY == CUWACUNU_CONCAT_GRID_STEP_POLICY_MIN)
+    {
+      std::size_t sel_idx = 0;
+      key_t sel_step = datasets_[0]->key_value_step_;
+      for (std::size_t i = 1; i < K; ++i) {
+        const key_t st = datasets_[i]->key_value_step_;
+        if (st < sel_step) { sel_step = st; sel_idx = i; }
+      }
+      key_value_step_ = sel_step;
+      grid_ref_idx_   = sel_idx;
+    }
+#elif (CUWACUNU_CONCAT_GRID_STEP_POLICY == CUWACUNU_CONCAT_GRID_STEP_POLICY_MAX)
+    {
+      std::size_t sel_idx = 0;
+      key_t sel_step = datasets_[0]->key_value_step_;
+      for (std::size_t i = 1; i < K; ++i) {
+        const key_t st = datasets_[i]->key_value_step_;
+        if (st > sel_step) { sel_step = st; sel_idx = i; }
+      }
+      key_value_step_ = sel_step;
+      grid_ref_idx_   = sel_idx;
+    }
+#else
+# error "Unknown CUWACUNU_CONCAT_GRID_STEP_POLICY"
+#endif
+
+    /* 4) align the intersection [inter_left, inter_right] to the chosen grid.
+          Use the reference dataset's valid_left as the base for congruence. */
+    const key_t base = valid_left_[grid_ref_idx_];
+
+    if constexpr (std::is_integral_v<key_t>) {
+      leftmost_key_value_  = detail::align_up_to_grid<key_t>(inter_left,  key_value_step_, base);
+      if (!(leftmost_key_value_ <= inter_right)) {
+        log_fatal("[MemoryMappedConcatDataset] Aligned left bound exceeds intersection right bound.");
+      }
+      rightmost_key_value_ = detail::align_down_to_grid<key_t>(inter_right, key_value_step_, base);
+
+      if (!(leftmost_key_value_ <= rightmost_key_value_)) {
+        log_fatal("[MemoryMappedConcatDataset] Empty grid after alignment (integral keys).");
+      }
+
+      num_records_ = detail::steps_between_inclusive<key_t>(leftmost_key_value_, rightmost_key_value_, key_value_step_);
+      key_value_span_ = rightmost_key_value_ - leftmost_key_value_;
     } else {
-      key_value_step_ = std::min(key_value_step_, d->key_value_step_);
+      leftmost_key_value_  = detail::align_up_to_grid_fp<key_t>(inter_left,  key_value_step_, base);
+      if (!(leftmost_key_value_ <= inter_right)) {
+        log_fatal("[MemoryMappedConcatDataset] Aligned left bound exceeds intersection right bound (float).");
+      }
+      rightmost_key_value_ = detail::align_down_to_grid_fp<key_t>(inter_right, key_value_step_, base);
+
+      if (!(leftmost_key_value_ <= rightmost_key_value_)) {
+        log_fatal("[MemoryMappedConcatDataset] Empty grid after alignment (floating keys).");
+      }
+
+      num_records_ = detail::steps_between_inclusive_fp<key_t>(leftmost_key_value_, rightmost_key_value_, key_value_step_);
+      key_value_span_ = rightmost_key_value_ - leftmost_key_value_;
     }
 
-    // Per-dataset valid key range for target index i:
-    //   i >= (N_past-1)   and   i + N_future < size
-    // In key space:
-    const auto valid_left  = d->leftmost_key_value_  + static_cast<typename T::key_type_t>(N_past  - 1) * d->key_value_step_;
-    const auto valid_right = d->rightmost_key_value_ - static_cast<typename T::key_type_t>(N_future    ) * d->key_value_step_;
-
-    if (datasets_.size() == 1) {
-      leftmost_key_value_  = valid_left;
-      rightmost_key_value_ = valid_right;
-    } else {
-      leftmost_key_value_  = std::max(leftmost_key_value_,  valid_left);
-      rightmost_key_value_ = std::min(rightmost_key_value_, valid_right);
+    if (num_records_ == 0) {
+      log_fatal("[MemoryMappedConcatDataset] No records after alignment to global grid.");
     }
-
-    if (!(leftmost_key_value_ < rightmost_key_value_)) {
-      log_fatal("[MemoryMappedConcatDataset](add_dataset) Empty intersection after adding %s\n",
-                csv_filename.c_str());
-    }
-
-    key_value_span_ = rightmost_key_value_ - leftmost_key_value_;
-
-    // Number of valid target positions across the intersection.
-    // Inclusive count if exactly divisible; using +1 to include both ends on a regular grid.
-    num_records_ = static_cast<std::size_t>(key_value_span_ / key_value_step_) + 1;
   }
 };
 

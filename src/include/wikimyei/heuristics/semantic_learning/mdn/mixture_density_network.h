@@ -128,6 +128,11 @@ struct MdnModelImpl : torch::nn::Module {
   MdnOut forward_from_encoding(const torch::Tensor& encoding);
 
   /**
+   * Convenience: E[y|x] directly from encoding (handles temporal pooling)
+   */
+  torch::Tensor expectation_from_encoding(const torch::Tensor& encoding);
+
+  /**
    * Lightweight warmup to initialize CUDA kernels / allocator paths.
    * No-op on CPU. Safe to remove if you don’t care about first-iteration latency.
    */

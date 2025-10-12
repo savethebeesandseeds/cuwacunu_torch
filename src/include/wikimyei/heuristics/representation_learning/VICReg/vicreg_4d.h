@@ -242,17 +242,17 @@ public:
         auto z1v = _projector_net->forward_flat(k1v);            // [N_eff, Dz]
         auto z2v = _projector_net->forward_flat(k2v);            // [N_eff, Dz]
 
-        // (optional diagnostics — after we know N_eff > 1)
-        if (verbose && (iter_count % 50 == 0)) {
-          auto z = z1v;
-          auto zc = z - z.mean(0);
-          auto stdz = torch::sqrt(zc.var(0, /*unbiased=*/false) + 1e-4);
-          auto zw = zc / (stdz + 1e-4);
-          auto corr = (zw.t().mm(zw)) / (zw.size(0) - 1);       // [E,E] correlation-like
-          const double mean_abs_off_corr =
-            off_diagonal(corr).abs().mean().template item<double>();
-          log_info("[proj] mean|off-corr|=%.4f\n", mean_abs_off_corr);
-        }
+        // // (optional diagnostics — after we know N_eff > 1)
+        // if (verbose && (iter_count % 50 == 0)) {
+        //   auto z = z1v;
+        //   auto zc = z - z.mean(0);
+        //   auto stdz = torch::sqrt(zc.var(0, /*unbiased=*/false) + 1e-4);
+        //   auto zw = zc / (stdz + 1e-4);
+        //   auto corr = (zw.t().mm(zw)) / (zw.size(0) - 1);       // [E,E] correlation-like
+        //   const double mean_abs_off_corr =
+        //     off_diagonal(corr).abs().mean().template item<double>();
+        //   log_info("[proj] mean|off-corr|=%.4f\n", mean_abs_off_corr);
+        // }
 
         // ── VICReg loss terms
         auto terms = loss_obj->forward_terms(z1v, z2v);
@@ -268,7 +268,7 @@ public:
                   + loss_obj->std_coeff_ * terms.var
                   + (loss_obj->cov_coeff_ * cov_boost) * terms.cov;
 
-        if (verbose && (iter_count % 50 == 0)) {
+        if (verbose && (iter_count % 500 == 0)) {
           const double loss_scalar = loss.template item<double>();
           log_info("[loss] optim=%.6f inv=%.6f var=%.6f cov=%.6f (cov_boost=%.2f)\n",
                    loss_scalar,

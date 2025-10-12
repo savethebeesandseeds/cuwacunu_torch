@@ -14,7 +14,6 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 $(eval $(call BUILD_OBJ,      common,  dutils,         dutils))
 $(eval $(call BUILD_OBJ,      common,  darchitecture,  darchitecture))
 $(eval $(call BUILD_OBJ,      common,  djson_parsing,  djson_parsing))
-$(eval $(call BUILD_OBJ,      common,  evaluation,     evaluation))
 $(eval $(call BUILD_OBJ,      common,  dfiles,         dfiles))
 $(eval $(call BUILD_OBJ,      common,  dconfig,        dconfig))
 $(eval $(call BUILD_OBJ_INC,  openssl, dencryption,    dencryption, $(SSL_INCLUDE_PATHS)))
@@ -24,7 +23,6 @@ PIAABO := \
   $(OUTPUT_PATH)/common/dutils.o \
   $(OUTPUT_PATH)/common/darchitecture.o \
   $(OUTPUT_PATH)/common/djson_parsing.o \
-  $(OUTPUT_PATH)/common/evaluation.o \
   $(OUTPUT_PATH)/common/dfiles.o \
   $(OUTPUT_PATH)/common/dconfig.o \
   $(OUTPUT_PATH)/openssl/dencryption.o \

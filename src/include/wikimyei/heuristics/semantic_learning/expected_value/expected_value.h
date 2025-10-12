@@ -130,7 +130,7 @@ public:
     return cuwacunu::wikimyei::mdn::mdn_expectation(out);
   }
   inline torch::Tensor predict_expected_value_from_encoding(const torch::Tensor& encoding) {
-    return expected_value_from_out(forward_from_encoding(encoding));
+    return semantic_model->expectation_from_encoding(encoding);
   }
 
   // ---------- knobs ----------
@@ -156,13 +156,6 @@ public:
   // ---------- helpers: targets & weights ----------
   static torch::Tensor select_targets(const torch::Tensor& future_features,
                                       const std::vector<int64_t>& target_dims);
-  static torch::Tensor masked_mean_loss_per_channel(const torch::Tensor& nll,
-                                                    const torch::Tensor& mask);
-  /// Averages across (B,C) to obtain per-horizon loss, safely handling empty masks.
-  /// Returns [Hf].
-  static torch::Tensor masked_mean_loss_per_horizon(
-                                                    const torch::Tensor& nll,
-                                                    const torch::Tensor& mask);
 
   torch::Tensor build_horizon_weights(int64_t Hf, torch::Device dev, torch::Dtype dt) const;
   torch::Tensor build_channel_weights(int64_t C, torch::Device dev, torch::Dtype dt);
@@ -170,11 +163,6 @@ public:
 
   torch::Tensor channel_weights_from_ema(int64_t C);
   void update_channel_ema(const torch::Tensor& ch_mean_loss);
-
-  // ---------- telemetry helper: compute per-(B,C,Hf) NLL map ----------
-  torch::Tensor compute_nll_map(const cuwacunu::wikimyei::mdn::MdnOut& out,
-                                const torch::Tensor& y,      // [B,C,Hf,Dy]
-                                const torch::Tensor& mask);  // [B,C,Hf]
 
   // ---------- training ----------
   template <typename Loader>
@@ -268,10 +256,7 @@ ExpectedValue::fit(Loader& dataloader, int n_epochs, int n_iters, bool verbose)
       auto fut   = sample_batch.future_features.to(semantic_model->device, semantic_model->dtype, true, false); // [B,C,Hf,D]
       auto fmask = sample_batch.future_mask.to(semantic_model->device, torch::kFloat32, true, false);           // [B,C,Hf]
 
-      if (enc.dim() == 3) {           // [B, T', De] -> mean pool over time
-        enc = enc.mean(/*dim=*/1);    // -> [B, De]
-      }
-      TORCH_CHECK(enc.dim() == 2,             "[ExpectedValue::fit] encoding must be [B,De]; got ", enc.sizes());
+      // MDN handles [B,De] or [B,T',De] internally (mean pool). Keep here only shape checks relevant to fut/fmask.
       TORCH_CHECK(fut.dim() == 4,             "[ExpectedValue::fit] future_features must be [B,C,Hf,D]");
       TORCH_CHECK(fmask.dim() == 3,           "[ExpectedValue::fit] future_mask must be [B,C,Hf]");
       TORCH_CHECK(fut.size(0) == enc.size(0), "[ExpectedValue::fit] batch size mismatch encoding vs future_features.");
@@ -293,14 +278,16 @@ ExpectedValue::fit(Loader& dataloader, int n_epochs, int n_iters, bool verbose)
       const int next_iter = iter_count + 1;
       const bool log_now = (telemetry_every_ > 0) && (next_iter % telemetry_every_ == 0);
       if (use_channel_ema_weights_ || log_now) {
-        auto nll_map = compute_nll_map(out, y, fmask);             // [B,C,Hf]
-
+        torch::NoGradGuard telemetry_ng;  // keep telemetry math out of the graph
+        cuwacunu::wikimyei::mdn::MdnNllOptions o{loss_obj->eps_, loss_obj->sigma_min_, loss_obj->sigma_max_};
+        auto nll_map = cuwacunu::wikimyei::mdn::mdn_nll_map(out, y, fmask, o);  // [B,C,Hf]
+ 
         // Per-channel means (update EMA; also saved for telemetry)
-        auto ch_mean = masked_mean_loss_per_channel(nll_map, fmask);  // [C]
+        auto ch_mean = cuwacunu::wikimyei::mdn::mdn_masked_mean_per_channel(nll_map, fmask);  // [C]
         if (use_channel_ema_weights_) update_channel_ema(ch_mean);
 
         // Per-horizon means
-        auto hz_mean = masked_mean_loss_per_horizon(nll_map, fmask);  // [Hf]
+        auto hz_mean = cuwacunu::wikimyei::mdn::mdn_masked_mean_per_horizon(nll_map, fmask);  // [Hf]
 
         last_per_channel_nll_ = ch_mean.detach();
         last_per_horizon_nll_ = hz_mean.detach();
@@ -404,8 +391,7 @@ double ExpectedValue::evaluate_nll(Loader& dataloader, bool verbose)
                 "[ExpectedValue::evaluate_nll] future_features/future_mask undefined");
 
     auto enc   = sample_batch.encoding.to(semantic_model->device, semantic_model->dtype, true, false);
-    if (enc.dim() == 3) enc = enc.mean(/*dim=*/1);      // [B,T',De] → [B,De]
-    TORCH_CHECK(enc.dim() == 2, "[ExpectedValue::evaluate_nll] encoding must be [B,De]; got ", enc.sizes());
+    // Forward accepts [B,De] or [B,T',De]; no pre-pooling here.
 
     auto fut   = sample_batch.future_features.to(semantic_model->device, semantic_model->dtype, true, false); // [B,C,Hf,D]
     auto fmask = sample_batch.future_mask.to(semantic_model->device, torch::kFloat32, true, false);           // [B,C,Hf]

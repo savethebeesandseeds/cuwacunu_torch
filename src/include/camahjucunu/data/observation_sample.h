@@ -19,7 +19,7 @@ struct observation_sample_t {
   // future (starts at t+1) — same channeling as past, different time length Tf
   torch::Tensor future_features; // [B,C,Tf,D] or [C,Tf,D] if unbatched
   torch::Tensor future_mask;     // [B,C,Tf]   or [C,Tf]
-  // optional encoder output
+  // encoder output
   torch::Tensor encoding;        // [B,De] or [B,T',De] (or undefined)
 
 private:

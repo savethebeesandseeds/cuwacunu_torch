@@ -153,25 +153,6 @@ ExpectedValue::select_targets(const torch::Tensor& future_features,
 }
 
 torch::Tensor
-ExpectedValue::masked_mean_loss_per_channel(const torch::Tensor& nll, const torch::Tensor& mask)
-{
-  auto valid = mask.to(nll.dtype());
-  auto sumB = (nll * valid).sum(/*dim=*/0);           // [C,Hf]
-  auto den  = valid.sum(/*dim=*/0).clamp_min(1.0);    // [C,Hf]
-  auto ch_mean_over_h = (sumB / den).mean(/*dim=*/1); // [C]
-  return ch_mean_over_h;
-}
-
-torch::Tensor
-ExpectedValue::masked_mean_loss_per_horizon(const torch::Tensor& nll, const torch::Tensor& mask)
-{
-  auto valid = mask.to(nll.dtype());
-  auto sumBC = (nll * valid).sum(/*dim=*/std::vector<int64_t>{0,1}, /*keepdim=*/false); // [Hf]
-  auto den   = valid.sum(/*dim=*/std::vector<int64_t>{0,1}, /*keepdim=*/false).clamp_min(1.0); // [Hf]
-  return sumBC / den; // [Hf]
-}
-
-torch::Tensor
 ExpectedValue::build_horizon_weights(int64_t Hf, torch::Device dev, torch::Dtype dt) const
 {
   if (Hf <= 0) return torch::Tensor();
@@ -283,36 +264,6 @@ void ExpectedValue::maybe_reset_optimizer_state_by_norm(double grad_norm) {
       continue;
     }
   }
-}
-
-
-// ---------- telemetry helper: per-(B,C,Hf) NLL map ----------
-torch::Tensor
-ExpectedValue::compute_nll_map(const cuwacunu::wikimyei::mdn::MdnOut& out,
-                               const torch::Tensor& y,
-                               const torch::Tensor& mask)
-{
-  const auto& log_pi = out.log_pi; // [B,C,Hf,K]
-  const auto& mu     = out.mu;     // [B,C,Hf,K,Dy]
-  auto sigma         = out.sigma;  // [B,C,Hf,K,Dy]
-  sigma = sigma.clamp_min(loss_obj->sigma_min_);
-  if (loss_obj->sigma_max_ > 0.0) sigma = sigma.clamp_max(loss_obj->sigma_max_);
-  auto eps_t = sigma.new_full({}, loss_obj->eps_);
-
-  // Portable LOG2PI (no M_PI)
-  static const double LOG2PI = std::log(2.0 * 3.14159265358979323846);
-
-  auto y_b    = y.unsqueeze(3).expand({y.size(0), y.size(1), y.size(2), log_pi.size(3), y.size(3)});
-  auto diff   = (y_b - mu) / (sigma + eps_t);
-  auto perdim = -0.5 * diff.pow(2) - (sigma + eps_t).log() - 0.5 * LOG2PI; // [B,C,Hf,K,Dy]
-  auto comp_logp = perdim.sum(-1);                                         // [B,C,Hf,K]
-  auto log_mix   = torch::logsumexp(log_pi + comp_logp, /*dim=*/3);        // [B,C,Hf]
-  auto nll_map   = -log_mix;                                               // [B,C,Hf]
-  if (mask.defined()) {
-    auto valid = mask.to(nll_map.dtype());
-    nll_map = nll_map * valid;
-  }
-  return nll_map;
 }
 
 // ==========================

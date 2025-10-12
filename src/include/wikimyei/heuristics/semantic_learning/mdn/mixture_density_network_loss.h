@@ -87,7 +87,7 @@ struct MdnNLLLoss {
     if (sigma_min_ > 0.0) sigma = sigma.clamp_min(sigma_min_);  // optional hard floor
     if (sigma_max_ > 0.0) sigma = sigma.clamp_max(sigma_max_);
 
-    static const double LOG2PI = std::log(2.0 * M_PI);
+    static constexpr double LOG2PI = 1.8378770664093453; // log(2π)
 
     // per-dimension log-prob (do not sum over Dy yet)
     auto diff   = (y_b - out.mu) / (sigma + eps_t);

@@ -64,6 +64,10 @@ MdnOut MdnModelImpl::forward_from_encoding(const torch::Tensor& encoding) {
   return ch_heads->forward(h);          // -> {log_pi,mu,sigma}
 }
 
+torch::Tensor MdnModelImpl::expectation_from_encoding(const torch::Tensor& encoding) {
+  return mdn_expectation(forward_from_encoding(encoding));
+}
+
 // --- warm-up ---
 void MdnModelImpl::warm_up() {
   if (device.is_cuda()) {
