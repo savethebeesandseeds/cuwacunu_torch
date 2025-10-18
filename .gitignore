@@ -6,3 +6,4 @@
 /src/config/*.pem
 /src/config/*.key
 /src/config/*.enc
+parse_temp.txt

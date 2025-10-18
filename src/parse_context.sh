@@ -5,7 +5,7 @@
 #   ./parse_context.sh [options] /path/to/project1 [/path/to/project2 ...]
 #
 # Options:
-#   -o, --out FILE           Output file (default: temp.txt)
+#   -o, --out FILE           Output file (default: parse_temp.txt)
 #       --no-fences          Do not wrap content in ``` fences
 #       --list-only          Only list files (no contents)
 #       --git                Use `git ls-files` (tracked files only)
@@ -36,7 +36,7 @@ Usage:
   ./parse_context.sh [options] /path/to/project1 [/path/to/project2 ...]
 
 Options:
-  -o, --out FILE           Output file (default: temp.txt)
+  -o, --out FILE           Output file (default: parse_temp.txt)
       --no-fences          Do not wrap content in ``` fences
       --list-only          Only list files (no contents)
       --git                Use `git ls-files` (tracked files only)
@@ -53,7 +53,7 @@ USAGE
 }
 
 # ---------- defaults ----------
-outfile="temp.txt"
+outfile="parse_temp.txt"
 use_git=false
 git_plus_untracked=false
 no_fences=false
