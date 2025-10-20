@@ -1,5 +1,5 @@
 #include "piaabo/dfiles.h"
-#include "camahjucunu/exchange/exchange_types_data.h"
+#include "camahjucunu/types/types_data.h"
 
 int main() {
     using T = cuwacunu::camahjucunu::exchange::basic_t;

@@ -1,7 +1,7 @@
-/* exchange_types_account.h */
+/* types_account.h */
 #pragma once
-#include "camahjucunu/exchange/exchange_utils.h"
-#include "camahjucunu/exchange/exchange_types_trade.h"
+#include "camahjucunu/types/types_utils.h"
+#include "camahjucunu/types/types_trade.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

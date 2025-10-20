@@ -11,7 +11,8 @@
 #include "piaabo/dsecurity.h"
 #include "piaabo/djson_parsing.h"
 #include "piaabo/darchitecture.h"
-#include "camahjucunu/exchange/exchange_types_enums.h"
+#include "camahjucunu/types/types_core.h"
+#include "camahjucunu/types/types_enums.h"
 
 #define DOUBLE_SERIALIZATION_PRECISION 8
 #define QUOTE_DOUBLES /* decimal numbers are required by exchange to be serialized as strings */
@@ -35,7 +36,7 @@ ENFORCE_ARCHITECTURE_DESIGN(loaded_data_response_t);
 /*         serialization utils                 */
 /* --- --- --- --- --- --- --- --- --- --- --- */
 
-int64_t getUnixTimestampMillis();
+[[nodiscard]] int64_t getUnixTimestampMillis();
 
 template<typename T>
 struct is_std_optional : std::false_type {};
@@ -46,9 +47,18 @@ struct is_std_optional<std::optional<T>> : std::true_type {};
 template<typename T>
 inline constexpr bool is_std_optional_v = is_std_optional<T>::value;
 
+/* Helper: detect optional integral (excluding bool) */
+template<typename T>
+struct is_optional_integral : std::false_type {};
+
+template<typename U>
+struct is_optional_integral<std::optional<U>>
+  : std::bool_constant<std::is_integral_v<U> && !std::is_same_v<U, bool>> {};
+
 /* --- --- --- --- --- --- --- --- --- --- --- */
-/*        strcut to string functions           */
+/*        struct to string functions           */
 /* --- --- --- --- --- --- --- --- --- --- --- */
+
 /* Specialization for bool and std::optional<bool> */
 template<typename T>
 typename std::enable_if<std::is_same<T, bool>::value || std::is_same<T, std::optional<bool>>::value, std::string>::type
@@ -64,9 +74,12 @@ serialize(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   return oss.str();
 }
 
-/* Specialization for int and std::optional<int> */
+/* Specialization for *integral* (excluding bool), incl. optional */
 template<typename T>
-typename std::enable_if<(std::is_same<T, int>::value || std::is_same<T, std::optional<int>>::value) || (std::is_same<T, long>::value || std::is_same<T, std::optional<long>>::value), std::string>::type
+typename std::enable_if<
+  (std::is_integral<T>::value && !std::is_same<T, bool>::value) || is_optional_integral<T>::value,
+  std::string
+>::type
 serialize(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   std::ostringstream oss;
   oss << std::fixed;
@@ -145,15 +158,15 @@ serialize(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   std::ostringstream oss;
   oss << "\"" << arg.first << "\":";
 
-  std::visit([&oss](const auto& value) {  // Correctly name and reference the value
-    using ValueType = std::decay_t<decltype(value)>;  // Determine the type of the visited value
+  std::visit([&oss](const auto& value) {
+    using ValueType = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<ValueType, std::string>) {
-      oss << "\"" << value << "\"";  // Correctly format the string
+      oss << "\"" << value << "\"";
     } else if constexpr (std::is_same_v<ValueType, std::vector<std::string>>) {
       oss << "[";
       for (size_t i = 0; i < value.size(); ++i) {
-        oss << "\"" << value[i] << "\"";  // Serialize each string in the vector
-        if (i < value.size() - 1) oss << ", ";  // Add commas between elements
+        oss << "\"" << value[i] << "\"";
+        if (i < value.size() - 1) oss << ", ";
       }
       oss << "]";
     }
@@ -165,8 +178,9 @@ serialize(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
 
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
-/*        strcut fields signature functions    */
+/*        struct fields signature functions    */
 /* --- --- --- --- --- --- --- --- --- --- --- */
+
 /* Specialization for bool and std::optional<bool> */
 template<typename T>
 typename std::enable_if<std::is_same<T, bool>::value || std::is_same<T, std::optional<bool>>::value, std::string>::type
@@ -182,9 +196,12 @@ field_signature(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   return oss.str();
 }
 
-/* Specialization for int and std::optional<int> */
+/* Specialization for *integral* (excluding bool), incl. optional */
 template<typename T>
-typename std::enable_if<(std::is_same<T, int>::value || std::is_same<T, std::optional<int>>::value) || (std::is_same<T, long>::value || std::is_same<T, std::optional<long>>::value), std::string>::type
+typename std::enable_if<
+  (std::is_integral<T>::value && !std::is_same<T, bool>::value) || is_optional_integral<T>::value,
+  std::string
+>::type
 field_signature(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   std::ostringstream oss;
   oss << std::fixed;
@@ -213,7 +230,7 @@ field_signature(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   } else {
     oss << "&" << arg.first << "=" << arg.second;
   }
-#else 
+#else
   /* disable quoting doubles in serialization */
   if constexpr (is_std_optional_v<T>) {
     if (arg.second.has_value()) {
@@ -263,15 +280,15 @@ field_signature(const cuwacunu::piaabo::dPair<const std::string, T>& arg) {
   std::ostringstream oss;
   oss << "&" << arg.first << "=";
 
-  std::visit([&oss](const auto& value) {  // Correctly name and reference the value
-    using ValueType = std::decay_t<decltype(value)>;  // Determine the type of the visited value
+  std::visit([&oss](const auto& value) {
+    using ValueType = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<ValueType, std::string>) {
-      oss << value;  // Correctly format the string
+      oss << value;
     } else if constexpr (std::is_same_v<ValueType, std::vector<std::string>>) {
       oss << "[";
       for (size_t i = 0; i < value.size(); ++i) {
-        oss << value[i];  // Serialize each string in the vector
-        if (i < value.size() - 1) oss << ",";  // Add commas between elements
+        oss << value[i];
+        if (i < value.size() - 1) oss << ",";
       }
       oss << "]";
     }
@@ -291,24 +308,66 @@ void finalize_signature(std::string& signature);
 /* Clean json for finalization */
 void finalize_json(std::string& json);
 
+/* ---------------------------------------------------------------------- */
+/*            CENTRALIZED JSON / QUERY BUILDERS (header-only)             */
+/* ---------------------------------------------------------------------- */
+class JsonObjectBuilder {
+  std::ostringstream oss_;
+public:
+  JsonObjectBuilder() = default;
+  template <typename P>
+  JsonObjectBuilder& add(const P& p) { oss_ << serialize(p); return *this; }
+  template <typename... Ps>
+  JsonObjectBuilder& add_many(const Ps&... ps) { (oss_ << ... << serialize(ps)); return *this; }
+  [[nodiscard]] std::string str() const {
+    std::string s = "{" + oss_.str() + "}";
+    std::string copy = s;
+    finalize_json(copy);
+    return copy;
+  }
+};
+
+class JsonArrayBuilder {
+  std::ostringstream oss_;
+public:
+  JsonArrayBuilder() = default;
+  template <typename P>
+  JsonArrayBuilder& add(const P& p) { oss_ << serialize(p); return *this; }
+  template <typename... Ps>
+  JsonArrayBuilder& add_many(const Ps&... ps) { (oss_ << ... << serialize(ps)); return *this; }
+  [[nodiscard]] std::string str() const {
+    std::string s = "[" + oss_.str() + "]";
+    std::string copy = s;
+    finalize_json(copy);
+    return copy;
+  }
+};
+
+class QueryStringBuilder {
+  std::ostringstream oss_;
+public:
+  QueryStringBuilder() = default;
+  template <typename P>
+  QueryStringBuilder& add(const P& p) { oss_ << field_signature(p); return *this; }
+  template <typename... Ps>
+  QueryStringBuilder& add_many(const Ps&... ps) { (oss_ << ... << field_signature(ps)); return *this; }
+  [[nodiscard]] std::string str() const {
+    std::string out = oss_.str();
+    finalize_signature(out);
+    return out;
+  }
+};
+
 /*Variadic template to handle multiple arguments */
 template<typename... Args>
 std::string jsonify_as_object(Args... args) {
-  std::ostringstream oss;
-  (oss << ... << serialize(args)); /* Fold expression over the comma operator */
-  std::string ret_val = "{" + oss.str() + "}";
-  finalize_json(ret_val);
-  return ret_val;
+  return JsonObjectBuilder{}.add_many(args...).str();
 }
 
 /*Variadic template to handle multiple arguments */
 template<typename... Args>
 std::string jsonify_as_array(Args... args) {
-  std::ostringstream oss;
-  (oss << ... << serialize(args)); /* Fold expression over the comma operator */
-  std::string ret_val = "[" + oss.str() + "]";
-  finalize_json(ret_val);
-  return ret_val;
+  return JsonArrayBuilder{}.add_many(args...).str();
 }
 
 } /* namespace exchange */
@@ -316,7 +375,11 @@ std::string jsonify_as_array(Args... args) {
 } /* namespace cuwacunu */
 
 #define pairWrap(variable) cuwacunu::piaabo::dPair<const std::string, decltype(variable)>{#variable, variable}
-#define pairWrap_variant(variable) cuwacunu::piaabo::dPair<const std::string, decltype(variable)>{std::holds_alternative<std::vector<std::string>>(variable) ? #variable"s" : "symbol" , variable}
+/* Robust: compute key name without relying on UDL "s" */
+#define pairWrap_variant(variable) cuwacunu::piaabo::dPair<const std::string, decltype(variable)>{ \
+  std::holds_alternative<std::vector<std::string>>(variable) ? (std::string(#variable) + "s") : std::string("symbol"), \
+  variable \
+}
 
 /* Define macros for accessing these types within a std::variant */
 #define GET_OBJECT(obj, obj_type) (std::get<obj_type>(obj))
@@ -400,4 +463,3 @@ std::string jsonify_as_array(Args... args) {
 #define ALLOCATE_VECT(obj, size) \
   obj.reserve(size); \
   obj.clear();
-

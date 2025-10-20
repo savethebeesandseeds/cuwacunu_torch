@@ -1,46 +1,33 @@
-# -----------------------------------------------------------------------------
-# Dependencies
-# -----------------------------------------------------------------------------
+# =============================================================================
+# tests/bench/camahjucunu/https/Makefile — websocket tests
+# =============================================================================
+# 0) Root & Config
 ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
 
-# -----------------------------------------------------------------------------
-# Local Paths
-# -----------------------------------------------------------------------------
+# 1) Local Paths
 HERE_PATH  := $(TESTS_PATH)/bench/camahjucunu/https
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
-# -----------------------------------------------------------------------------
-# Build + run aliases
-# -----------------------------------------------------------------------------
-$(eval $(call TEST_ONEFILE,test_websocket, test_websocket.cpp))
+# 2) Defaults (libs/flags)
+TEST_DEFAULT_LDLIBS :=
 
-# ---- Attach SSL/cURL deps (headers + archives + system libs) ----------------
-# Headers for compile:
+# 3) Tests (build + run aliases)
+$(eval $(call TEST_ONEFILE, test_websocket, test_websocket.cpp, $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)))
+
+# 4) Target-specific includes/link flags
 $(TEST_OUT)/test_websocket: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
-# Link order: consumer (curl) before provider (common) to satisfy static deps
-TEST_DEFAULT_LDLIBS :=
-$(TEST_OUT)/test_websocket: LDLIBS_EXTRA += $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)
-
-# -----------------------------------------------------------------------------
-# Aggregate build
-# -----------------------------------------------------------------------------
+# 5) Aggregate: all
 .PHONY: all
-all: \
-	$(OUTPUT_PATH)/test_websocket
+all: $(TEST_OUT)/test_websocket
 	@$(LOG_SUCCESS)
 
-# -----------------------------------------------------------------------------
-# Aggregate run
-# -----------------------------------------------------------------------------
+# 6) Aggregate: run
 .PHONY: run
-run: \
-     run-test_websocket
+run: run-test_websocket
 
-# -----------------------------------------------------------------------------
-# Clean
-# -----------------------------------------------------------------------------
+# 7) Clean
 .PHONY: clean
 clean:
-	@rm -f $(OUTPUT_PATH)/test_websocket
+	@rm -f $(TEST_OUT)/test_websocket

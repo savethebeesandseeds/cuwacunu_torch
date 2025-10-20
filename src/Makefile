@@ -34,7 +34,7 @@ iinuji:
 #   - Run with: make -j all   (control parallelism at CLI)
 # -----------------------------------------------------------------
 .PHONY: all
-all: piaabo camahjucunu jkimyei wikimyei
+all: piaabo camahjucunu jkimyei wikimyei lib-bundles
 	@$(LOG_SUCCESS)
 
 # -----------------------------------------------------------------
@@ -105,4 +105,7 @@ clean:
 	  2>/dev/null || true
 	@shred -u \
 	  $(OUTPUT_PATH)/*.d          $(OUTPUT_PATH)/*.o          $(OUTPUT_PATH)/*.a \
+	  2>/dev/null || true
+	@shred -u \
+	  $(OUTPUT_PATH)/.deps/*.d    $(OUTPUT_PATH)/.objs/*.o \
 	  2>/dev/null || true

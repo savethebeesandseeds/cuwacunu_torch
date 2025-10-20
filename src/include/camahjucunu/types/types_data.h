@@ -1,7 +1,10 @@
-/* exchange_types_data.h */
+/* types_data.h */
 #pragma once
+#include <type_traits>
+#include <limits>
+#include <cstdint>
 #include "piaabo/math_compat/statistics_space.h"
-#include "camahjucunu/exchange/exchange_utils.h"
+#include "camahjucunu/types/types_utils.h"
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -10,15 +13,15 @@ namespace exchange {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*      arguments structures       */
 /* --- --- --- --- --- --- --- --- --- --- --- */
-struct depth_args_t       { std::string jsonify(); std::string symbol; std::optional<int> limit = std::nullopt; };
-struct tradesRecent_args_t      { std::string jsonify(); std::string symbol; std::optional<int> limit = std::nullopt; };
-struct tradesHistorical_args_t    { std::string jsonify(); std::string symbol; std::optional<int> limit = std::nullopt; std::optional<long> fromId = std::nullopt; };
-struct klines_args_t          { std::string jsonify(); std::string symbol; interval_type_e interval; std::optional<long> startTime = std::nullopt; std::optional<long> endTime = std::nullopt; std::optional<std::string> timeZone = std::nullopt; std::optional<int> limit = std::nullopt; };
-struct avgPrice_args_t        { std::string jsonify(); std::string symbol; };
-struct ticker_args_t          { std::string jsonify(); std::variant<std::string, std::vector<std::string>> symbol; std::optional<ticker_interval_e> windowSize = std::nullopt; std::optional<ticker_type_e> type = std::nullopt; };
-struct tickerTradingDay_args_t    { std::string jsonify(); std::variant<std::string, std::vector<std::string>> symbol; std::optional<ticker_type_e> type = std::nullopt; std::optional<std::string> timeZone = std::nullopt; };
-struct tickerPrice_args_t    { std::string jsonify(); std::variant<std::string, std::vector<std::string>> symbol; };
-struct tickerBook_args_t        { std::string jsonify(); std::variant<std::string, std::vector<std::string>> symbol; };
+struct depth_args_t             { [[nodiscard]] std::string jsonify() const; std::string symbol; std::optional<int>  limit    = std::nullopt; };
+struct tradesRecent_args_t      { [[nodiscard]] std::string jsonify() const; std::string symbol; std::optional<int>  limit    = std::nullopt; };
+struct tradesHistorical_args_t  { [[nodiscard]] std::string jsonify() const; std::string symbol; std::optional<int>  limit    = std::nullopt; std::optional<i64>  fromId    = std::nullopt; };
+struct klines_args_t            { [[nodiscard]] std::string jsonify() const; std::string symbol; interval_type_e interval; std::optional<ms_t> startTime = std::nullopt; std::optional<ms_t> endTime = std::nullopt; std::optional<std::string> timeZone = std::nullopt; std::optional<int> limit = std::nullopt; };
+struct avgPrice_args_t          { [[nodiscard]] std::string jsonify() const; std::string symbol; };
+struct ticker_args_t            { [[nodiscard]] std::string jsonify() const; std::variant<std::string, std::vector<std::string>> symbol; std::optional<ticker_interval_e> windowSize = std::nullopt; std::optional<ticker_type_e> type = std::nullopt; };
+struct tickerTradingDay_args_t  { [[nodiscard]] std::string jsonify() const; std::variant<std::string, std::vector<std::string>> symbol; std::optional<ticker_type_e> type = std::nullopt; std::optional<std::string> timeZone = std::nullopt; };
+struct tickerPrice_args_t       { [[nodiscard]] std::string jsonify() const; std::variant<std::string, std::vector<std::string>> symbol; };
+struct tickerBook_args_t        { [[nodiscard]] std::string jsonify() const; std::variant<std::string, std::vector<std::string>> symbol; };
 ENFORCE_ARCHITECTURE_DESIGN(          depth_args_t);
 ENFORCE_ARCHITECTURE_DESIGN(   tradesRecent_args_t);
 ENFORCE_ARCHITECTURE_DESIGN( tradesHistorical_args_t);
@@ -34,65 +37,96 @@ ENFORCE_ARCHITECTURE_DESIGN(     tickerBook_args_t);
 /* --- --- --- --- --- --- --- --- --- --- --- */
 
 /* secondary return structs */
-struct price_qty_t       { double price; double qty; };
+struct price_qty_t { double price; double qty; };
 
-struct tick_full_t       { std::string symbol; double priceChange; double priceChangePercent; double weightedAvgPrice; double prevClosePrice; 
-                           double lastPrice; double lastQty; double bidPrice; double bidQty; double askPrice; double askQty; double openPrice; 
-                           double highPrice; double lowPrice; double volume; double quoteVolume; long openTime; long closeTime; long firstId; int lastId; int count; };
+struct tick_full_t {
+  std::string symbol;
+  double priceChange;
+  double priceChangePercent;
+  double weightedAvgPrice;
+  double prevClosePrice;
+  double lastPrice;
+  double lastQty;
+  double bidPrice;
+  double bidQty;
+  double askPrice;
+  double askQty;
+  double openPrice;
+  double highPrice;
+  double lowPrice;
+  double volume;
+  double quoteVolume;
+  ms_t   openTime;
+  ms_t   closeTime;
+  i64    firstId;
+  i64    lastId;
+  int32_t count;
+};
 
-struct tick_mini_t       { std::string symbol; double lastPrice; double openPrice; double highPrice; double lowPrice; double volume; 
-                          double quoteVolume; long openTime; long closeTime; long firstId; int lastId; int count; };
+struct tick_mini_t {
+  std::string symbol;
+  double lastPrice;
+  double openPrice;
+  double highPrice;
+  double lowPrice;
+  double volume;
+  double quoteVolume;
+  ms_t   openTime;
+  ms_t   closeTime;
+  i64    firstId;
+  i64    lastId;
+  int32_t count;
+};
 
-
-#pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
-struct trade_t         {
-  using key_type_t = int64_t;
+/* Ensure binary conversion compatibility and memory efficiency */
+#pragma pack(push, 1)
+struct GNU_PACKED trade_t {
+  using key_type_t = ms_t;
   /* Methods */
   static constexpr std::size_t key_offset() { return offsetof(trade_t, time); }
   key_type_t key_value();
   static trade_t null_instance(key_type_t key_value = INT64_MIN);
   static trade_t from_binary(const char* data);
-  static trade_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
+  static trade_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0);
   static statistics_pack_t<trade_t> initialize_statistics_pack(unsigned int window_size = 100);
   std::vector<double> tensor_features() const;
   void to_csv(std::ostream& os, char delimiter = ',') const;
   bool is_valid() const;
   /* Values */
-  int64_t id; double price; double qty; double quoteQty; int64_t time; bool isBuyerMaker; bool isBestMatch;
+  i64 id; double price; double qty; double quoteQty; ms_t time; bool isBuyerMaker; bool isBestMatch;
 };
 #pragma pack(pop)
 
-
-#pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
-struct kline_t         {
-  using key_type_t = int64_t;
+#pragma pack(push, 1)
+struct GNU_PACKED kline_t {
+  using key_type_t = ms_t;
   /* Methods */
   static constexpr std::size_t key_offset() { return offsetof(kline_t, close_time); }
   key_type_t key_value();
   static kline_t from_binary(const char* data);
   static kline_t null_instance(key_type_t key_value = INT64_MIN);
-  static kline_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
+  static kline_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0);
   static statistics_pack_t<kline_t> initialize_statistics_pack(unsigned int window_size = 100);
-  std::vector<double> tensor_features() const; 
+  std::vector<double> tensor_features() const;
   void to_csv(std::ostream& os, char delimiter = ',') const;
   bool is_valid() const;
   /* Values */
-  int64_t open_time; double open_price; double high_price; double low_price; double close_price; double volume; int64_t close_time; 
+  ms_t open_time; double open_price; double high_price; double low_price; double close_price; double volume; ms_t close_time;
   double quote_asset_volume; int32_t number_of_trades; double taker_buy_base_volume; double taker_buy_quote_volume;
 };
 #pragma pack(pop)
 
-#pragma pack(push, 1) /* ensure binary conversion compatibility and memory efficiency */
-struct basic_t         {
+#pragma pack(push, 1)
+struct GNU_PACKED basic_t {
   using key_type_t = double;
   /* Methods */
   static constexpr std::size_t key_offset() { return offsetof(basic_t, time); }
   key_type_t key_value();
   static basic_t from_binary(const char* data);
   static basic_t null_instance(key_type_t key_value = std::numeric_limits<double>::min());
-  static basic_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0); 
+  static basic_t from_csv(const std::string& line, char delimiter = ',', size_t line_number = 0);
   static statistics_pack_t<basic_t> initialize_statistics_pack(unsigned int window_size = 100);
-  std::vector<double> tensor_features() const; 
+  std::vector<double> tensor_features() const;
   void to_csv(std::ostream& os, char delimiter = ',') const;
   bool is_valid() const;
   /* Values */
@@ -100,9 +134,13 @@ struct basic_t         {
 };
 #pragma pack(pop)
 
-struct price_t         { std::string symbol; double price; };
+/* Compile-time guarantees for binary copy usage */
+static_assert(std::is_trivially_copyable_v<trade_t>, "trade_t must be trivially copyable");
+static_assert(std::is_trivially_copyable_v<kline_t>, "kline_t must be trivially copyable");
+static_assert(std::is_trivially_copyable_v<basic_t>, "basic_t must be trivially copyable");
 
-struct bookPrice_t     { std::string symbol; double bidPrice; double bidQty; double askPrice; double askQty; };
+struct price_t     { std::string symbol; double price; };
+struct bookPrice_t { std::string symbol; double bidPrice; double bidQty; double askPrice; double askQty; };
 
 ENFORCE_ARCHITECTURE_DESIGN(  price_qty_t);
 ENFORCE_ARCHITECTURE_DESIGN(  tick_full_t);
@@ -113,11 +151,11 @@ ENFORCE_ARCHITECTURE_DESIGN(      price_t);
 ENFORCE_ARCHITECTURE_DESIGN(  bookPrice_t);
 
 /* primary return structs */
-struct depth_ret_t            { frame_response_t frame_rsp; depth_ret_t             (const std::string& json); long lastUpdateId; std::vector<price_qty_t> bids; std::vector<price_qty_t> asks; };
+struct depth_ret_t            { frame_response_t frame_rsp; depth_ret_t             (const std::string& json); i64 lastUpdateId; std::vector<price_qty_t> bids; std::vector<price_qty_t> asks; };
 struct tradesRecent_ret_t     { frame_response_t frame_rsp; tradesRecent_ret_t      (const std::string& json); std::vector<trade_t> trades; };
 struct tradesHistorical_ret_t { frame_response_t frame_rsp; tradesHistorical_ret_t  (const std::string& json); std::vector<trade_t> trades; };
 struct klines_ret_t           { frame_response_t frame_rsp; klines_ret_t            (const std::string& json); std::vector<kline_t> klines; };
-struct avgPrice_ret_t         { frame_response_t frame_rsp; avgPrice_ret_t          (const std::string& json); int mins; double price; long close_time; };
+struct avgPrice_ret_t         { frame_response_t frame_rsp; avgPrice_ret_t          (const std::string& json); int mins; double price; ms_t close_time; };
 struct ticker_ret_t           { frame_response_t frame_rsp; ticker_ret_t            (const std::string& json); std::variant<std::monostate, tick_full_t, tick_mini_t, std::vector<tick_full_t>, std::vector<tick_mini_t>> ticks; bool is_full; };
 struct tickerTradingDay_ret_t { frame_response_t frame_rsp; tickerTradingDay_ret_t  (const std::string& json); std::variant<std::monostate, tick_full_t, tick_mini_t, std::vector<tick_full_t>, std::vector<tick_mini_t>> ticks; bool is_full; };
 struct tickerPrice_ret_t      { frame_response_t frame_rsp; tickerPrice_ret_t       (const std::string& json); std::variant<std::monostate, price_t, std::vector<price_t>> prices; };

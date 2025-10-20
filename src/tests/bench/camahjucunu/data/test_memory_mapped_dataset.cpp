@@ -12,9 +12,9 @@
 
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/observation_sample.h"
-#include "camahjucunu/exchange/exchange_utils.h"
-#include "camahjucunu/exchange/exchange_types_data.h"
-#include "camahjucunu/exchange/exchange_types_enums.h"
+#include "camahjucunu/types/types_utils.h"
+#include "camahjucunu/types/types_data.h"
+#include "camahjucunu/types/types_enums.h"
 
 using cuwacunu::camahjucunu::data::MemoryMappedDataset;
 using cuwacunu::camahjucunu::data::MemoryMappedConcatDataset;

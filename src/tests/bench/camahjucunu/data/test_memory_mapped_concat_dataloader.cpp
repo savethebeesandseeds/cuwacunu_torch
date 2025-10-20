@@ -4,9 +4,9 @@
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
 #include "piaabo/dfiles.h"
-#include "camahjucunu/exchange/exchange_utils.h"
-#include "camahjucunu/exchange/exchange_types_data.h"
-#include "camahjucunu/exchange/exchange_types_enums.h"
+#include "camahjucunu/types/types_utils.h"
+#include "camahjucunu/types/types_data.h"
+#include "camahjucunu/types/types_enums.h"
 
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_dataset.h"

@@ -9,7 +9,7 @@
 #include "camahjucunu/BNF/BNF_grammar_parser.h"
 #include "camahjucunu/BNF/BNF_instruction_lexer.h"
 #include "camahjucunu/BNF/BNF_instruction_parser.h"
-#include "camahjucunu/exchange/exchange_types_enums.h"
+#include "camahjucunu/types/types_enums.h"
 
 /* 
   Observation Pipeline Grammar:

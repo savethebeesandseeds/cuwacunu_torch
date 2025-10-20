@@ -1,4 +1,4 @@
-#include "camahjucunu/exchange/exchange_types_account.h"
+#include "camahjucunu/types/types_account.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

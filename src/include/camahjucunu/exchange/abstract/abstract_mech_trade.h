@@ -1,9 +1,9 @@
 #pragma once
 #include "piaabo/dutils.h"
 #include "piaabo/darchitecture.h"
-#include "camahjucunu/exchange/exchange_utils.h"
-#include "camahjucunu/exchange/exchange_types_trade.h"
-#include "camahjucunu/exchange/exchange_types_enums.h"
+#include "camahjucunu/types/types_utils.h"
+#include "camahjucunu/types/types_trade.h"
+#include "camahjucunu/types/types_enums.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

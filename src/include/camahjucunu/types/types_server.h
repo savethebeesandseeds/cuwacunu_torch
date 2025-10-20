@@ -1,6 +1,6 @@
-/* exchange_types_server.h */
+/* types_server.h */
 #pragma once
-#include "camahjucunu/exchange/exchange_utils.h"
+#include "camahjucunu/types/types_utils.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

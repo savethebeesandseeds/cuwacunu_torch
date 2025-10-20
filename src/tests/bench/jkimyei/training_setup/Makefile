@@ -1,48 +1,34 @@
-# -----------------------------------------------------------------------------
-# Dependencies
-# -----------------------------------------------------------------------------
+# =============================================================================
+# tests/bench/jkimyei/training_setup/Makefile — Torch setup smoke test(s)
+# =============================================================================
+# 0) Root & Config
 ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
 
-# -----------------------------------------------------------------------------
-# Local Paths
-# -----------------------------------------------------------------------------
+# 1) Local Paths
 HERE_PATH  := $(TESTS_PATH)/bench/jkimyei/training_setup
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
-# -----------------------------------------------------------------------------
-# Build + run aliases
-# -----------------------------------------------------------------------------
-$(eval $(call TEST_ONEFILE,test_jk_setup, test_jk_setup.cpp))
-
-# ---- Attach heavy deps (Torch/SSL/cURL) to this test ------------------------
-# Headers for compile:
-$(TEST_OUT)/test_jk_setup: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
-
-# Link order: torch (consumer) before ssl/curl/common
+# 2) Defaults (libs/flags)
 TEST_DEFAULT_LDLIBS :=
-$(TEST_OUT)/test_jk_setup: LDLIBS_EXTRA += \
-    $(libtorch_a) $(libcommon_a) \
-    $(LDLIBS_torch) -lnvToolsExt -lcudart
 
-# -----------------------------------------------------------------------------
-# Aggregate build
-# -----------------------------------------------------------------------------
+# 3) Tests (build + run aliases)
+$(eval $(call TEST_ONEFILE, test_jk_setup, test_jk_setup.cpp))
+
+# 4) Target-specific includes/link flags
+$(TEST_OUT)/test_jk_setup: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_jk_setup: LDLIBS_EXTRA  += $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
+
+# 5) Aggregate: all
 .PHONY: all
-all: \
-	$(OUTPUT_PATH)/test_jk_setup
+all: $(TEST_OUT)/test_jk_setup
 	@$(LOG_SUCCESS)
 
-# -----------------------------------------------------------------------------
-# Aggregate run
-# -----------------------------------------------------------------------------
+# 6) Aggregate: run
 .PHONY: run
-run: \
-     run-test_jk_setup
+run: run-test_jk_setup
 
-# -----------------------------------------------------------------------------
-# Clean
-# -----------------------------------------------------------------------------
+# 7) Clean
 .PHONY: clean
 clean:
-	@rm -f $(OUTPUT_PATH)/test_jk_setup
+	@rm -f $(TEST_OUT)/test_jk_setup

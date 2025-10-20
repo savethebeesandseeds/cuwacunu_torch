@@ -1,61 +1,45 @@
-# -----------------------------------------------------------------------------
-# Dependencies
-# -----------------------------------------------------------------------------
+# =============================================================================
+# tests/bench/camahjucunu/data/Makefile — memory-mapped datasets/dataloaders
+# =============================================================================
+# 0) Root & Config
 ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
 
-# -----------------------------------------------------------------------------
-# Local Paths
-# -----------------------------------------------------------------------------
+# 1) Local Paths
 HERE_PATH  := $(TESTS_PATH)/bench/camahjucunu/data
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
-# -----------------------------------------------------------------------------
-# Build + run aliases
-# -----------------------------------------------------------------------------
-$(eval $(call TEST_ONEFILE,test_memory_mapped_datafile,         test_memory_mapped_datafile.cpp))
-$(eval $(call TEST_ONEFILE,test_memory_mapped_dataset,          test_memory_mapped_dataset.cpp))
-$(eval $(call TEST_ONEFILE,test_memory_mapped_concat_dataset,   test_memory_mapped_concat_dataset.cpp))
-$(eval $(call TEST_ONEFILE,test_memory_mapped_concat_dataloader,test_memory_mapped_concat_dataloader.cpp))
+# 2) Defaults (libs/flags)
+TEST_DEFAULT_LDLIBS :=
 
-# ---- Attach heavy deps (Torch/SSL/cURL) to each test ------------------------
-# Headers for compile:
-$(TEST_OUT)/test_memory_mapped_datafile:          INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
-$(TEST_OUT)/test_memory_mapped_dataset:           INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
-$(TEST_OUT)/test_memory_mapped_concat_dataset:    INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
-$(TEST_OUT)/test_memory_mapped_concat_dataloader: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+# 3) Tests (build + run aliases)
+COMMON_LINK = $(libtorch_a) $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
+$(eval $(call TEST_ONEFILE, test_memory_mapped_datafile,          test_memory_mapped_datafile.cpp,          $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_memory_mapped_dataset,           test_memory_mapped_dataset.cpp,           $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_memory_mapped_concat_dataset,    test_memory_mapped_concat_dataset.cpp,    $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_memory_mapped_concat_dataloader, test_memory_mapped_concat_dataloader.cpp, $(COMMON_LINK)))
 
-# Archives + system libs for link:
-# (TEST_DEFAULT_LDLIBS already adds $(libcommon_a) automatically)
-$(TEST_OUT)/test_memory_mapped_datafile:          LDLIBS_EXTRA   += $(libtorch_a) $(libssl_a) $(libcurl_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
-$(TEST_OUT)/test_memory_mapped_dataset:           LDLIBS_EXTRA   += $(libtorch_a) $(libssl_a) $(libcurl_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
-$(TEST_OUT)/test_memory_mapped_concat_dataset:    LDLIBS_EXTRA   += $(libtorch_a) $(libssl_a) $(libcurl_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
-$(TEST_OUT)/test_memory_mapped_concat_dataloader: LDLIBS_EXTRA   += $(libtorch_a) $(libssl_a) $(libcurl_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
+# 4) Target-specific includes/link flags
+$(TEST_OUT)/test_memory_mapped_%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
-# -----------------------------------------------------------------------------
-# Aggregate build
-# -----------------------------------------------------------------------------
+# 5) Aggregate: all
 .PHONY: all
 all: \
-	$(OUTPUT_PATH)/test_memory_mapped_datafile \
-	$(OUTPUT_PATH)/test_memory_mapped_dataset \
-	$(OUTPUT_PATH)/test_memory_mapped_concat_dataset \
-	$(OUTPUT_PATH)/test_memory_mapped_concat_dataloader
+	$(TEST_OUT)/test_memory_mapped_datafile \
+	$(TEST_OUT)/test_memory_mapped_dataset \
+	$(TEST_OUT)/test_memory_mapped_concat_dataset \
+	$(TEST_OUT)/test_memory_mapped_concat_dataloader
 	@$(LOG_SUCCESS)
 
-# -----------------------------------------------------------------------------
-# Aggregate run
-# -----------------------------------------------------------------------------
+# 6) Aggregate: run
 .PHONY: run
 run: \
-     run-test_memory_mapped_datafile \
-     run-test_memory_mapped_dataset \
-     run-test_memory_mapped_concat_dataset \
-     run-test_memory_mapped_concat_dataloader
+	run-test_memory_mapped_datafile \
+	run-test_memory_mapped_dataset \
+	run-test_memory_mapped_concat_dataset \
+	run-test_memory_mapped_concat_dataloader
 
-# -----------------------------------------------------------------------------
-# Clean
-# -----------------------------------------------------------------------------
+# 7) Clean
 .PHONY: clean
 clean:
-	@rm -f $(OUTPUT_PATH)/test_memory_mapped_*
+	@rm -f $(TEST_OUT)/test_memory_mapped_*

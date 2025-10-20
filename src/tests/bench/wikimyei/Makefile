@@ -1,50 +1,35 @@
-# -----------------------------------------------------------------------------
-# Dependencies
-# -----------------------------------------------------------------------------
+# =============================================================================
+# tests/bench/wikimyei/Makefile — wikimyei entrypoint + entropy test
+# =============================================================================
+# 0) Root & Config
 ROOT_PATH := ../../..
 include $(ROOT_PATH)/Makefile.config
 
-# -----------------------------------------------------------------------------
-# Local Paths
-# -----------------------------------------------------------------------------
+# 1) Local Paths
 HERE_PATH  := $(TESTS_PATH)/bench/wikimyei
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
-# -----------------------------------------------------------------------------
-# Build + run aliases
-# -----------------------------------------------------------------------------
-$(eval $(call TEST_ONEFILE,test_entropy_methods, test_entropy_methods.cpp))
+# 2) Defaults (libs/flags)
+TEST_DEFAULT_LDLIBS :=
 
-# ---- Extra headers / libs ----------------------------------------------------
-# Headers for compile:
+# 3) Tests (build + run aliases)
+$(eval $(call TEST_ONEFILE, test_entropy_methods, test_entropy_methods.cpp, $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)))
+
+# 4) Target-specific includes/link flags
 $(TEST_OUT)/test_entropy_methods: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 
-# Link order: deps first, then common/provider
-TEST_DEFAULT_LDLIBS :=
-$(TEST_OUT)/test_entropy_methods: LDLIBS_EXTRA += \
-    $(libcommon_a) \
-    $(LIBCURL_LD_LAGS) $(SSL_LD_FLAGS)
-
-# -----------------------------------------------------------------------------
-# Aggregate build
-# -----------------------------------------------------------------------------
+# 5) Aggregate: all
 .PHONY: all
 all: \
 	$(TEST_OUT)/test_entropy_methods
-	$(MAKE) -C $(HERE_PATH)/heuristics all
+	+$(MAKE) -C $(HERE_PATH)/heuristics all
 	@$(LOG_SUCCESS)
 
-# -----------------------------------------------------------------------------
-# Aggregate run
-# -----------------------------------------------------------------------------
+# 6) Aggregate: run
 .PHONY: run
-run: \
-     run-test_entropy_methods
+run: run-test_entropy_methods
 
-# -----------------------------------------------------------------------------
-# Clean
-# -----------------------------------------------------------------------------
+# 7) Clean
 .PHONY: clean
 clean:
-	@rm -f \
-	  $(TEST_OUT)/test_entropy_methods
+	@rm -f $(TEST_OUT)/test_entropy_methods

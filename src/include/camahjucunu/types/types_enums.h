@@ -1,6 +1,7 @@
-/* exchange_types_enums.h */
+/* types_enums.h */
 #pragma once
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <optional>
 #include "piaabo/dutils.h"
@@ -20,13 +21,22 @@ template <typename E>
 struct is_optional_enum<std::optional<E>> : std::is_enum<E> {};
 
 template <typename T>
-std::string enum_to_string(T enumValue) {
+[[nodiscard]] inline std::string enum_to_string(T enumValue) {
+  static_assert(std::is_enum_v<T>, "enum_to_string<T> requires T to be an enum type");
   return EnumTraits<T>::toString(enumValue);
 }
 
 template <typename T>
-T string_to_enum(const std::string& str) {
-    return EnumTraits<T>::fromString(str);
+[[nodiscard]] inline T string_to_enum(const std::string& str) {
+  static_assert(std::is_enum_v<T>, "string_to_enum<T> requires T to be an enum type");
+  return EnumTraits<T>::fromString(str);
+}
+
+// Convenience overload for callers with std::string_view; preserves your EnumTraits policy.
+template <typename T>
+[[nodiscard]] inline T string_to_enum(std::string_view sv) {
+  static_assert(std::is_enum_v<T>, "string_to_enum<T> requires T to be an enum type");
+  return EnumTraits<T>::fromString(std::string(sv));
 }
 /* interval_type_e */
 enum class interval_type_e {

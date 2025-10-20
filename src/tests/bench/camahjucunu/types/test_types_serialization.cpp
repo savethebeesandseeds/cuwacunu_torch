@@ -2,12 +2,12 @@
 #include "piaabo/dconfig.h"
 #include "piaabo/dsecurity.h"
 #include "piaabo/dencryption.h"
-#include "camahjucunu/exchange/exchange_utils.h"
-#include "camahjucunu/exchange/exchange_types_enums.h"
-#include "camahjucunu/exchange/exchange_types_server.h"
-#include "camahjucunu/exchange/exchange_types_data.h"
-#include "camahjucunu/exchange/exchange_types_account.h"
-#include "camahjucunu/exchange/exchange_types_trade.h"
+#include "camahjucunu/types/types_utils.h"
+#include "camahjucunu/types/types_enums.h"
+#include "camahjucunu/types/types_server.h"
+#include "camahjucunu/types/types_data.h"
+#include "camahjucunu/types/types_account.h"
+#include "camahjucunu/types/types_trade.h"
 
 int main() {
   /* test serialization */

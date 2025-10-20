@@ -1,4 +1,4 @@
-#include "camahjucunu/exchange/exchange_types_server.h"
+#include "camahjucunu/types/types_server.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

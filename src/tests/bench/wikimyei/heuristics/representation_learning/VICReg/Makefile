@@ -1,43 +1,28 @@
-# -----------------------------------------------------------------------------
-# Dependencies
-# -----------------------------------------------------------------------------
-ROOT_PATH := ../../../../../..
+# =============================================================================
+# tests/bench/wikimyei/heuristics/representation_learning/VICReg/Makefile
+# — VICReg tests
+# =============================================================================
+# 0) Root & Config
+ROOT_PATH := ../../../../../../..
 include $(ROOT_PATH)/Makefile.config
 
-# -----------------------------------------------------------------------------
-# Local Paths
-# -----------------------------------------------------------------------------
+# 1) Local Paths
 HERE_PATH  := $(TESTS_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
-# -----------------------------------------------------------------------------
-# Build + run aliases
-# -----------------------------------------------------------------------------
-$(eval $(call TEST_ONEFILE,test_vicreg_4d_train, test_vicreg_4d_train.cpp))
-$(eval $(call TEST_ONEFILE,test_vicreg_4d_projector_gpu_vs_cpu, test_vicreg_4d_projector_gpu_vs_cpu.cpp))
-$(eval $(call TEST_ONEFILE,test_vicreg_4d_save_and_load,        test_vicreg_4d_save_and_load.cpp))
-
-# ---- Attach Torch/SSL/cURL deps to each test --------------------------------
-# ---- Headers (ok to keep as-is) ---------------------------------------------
-$(TEST_OUT)/test_vicreg_4d_train: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
-$(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
-$(TEST_OUT)/test_vicreg_4d_save_and_load:        INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
-
-# ---- Link order: project archives first, then system libs -------------------
+# 2) Defaults (libs/flags)
 TEST_DEFAULT_LDLIBS :=
 
-COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) \
-              $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
+# 3) Tests (build + run aliases)
+COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
+$(eval $(call TEST_ONEFILE, test_vicreg_4d_train,                test_vicreg_4d_train.cpp,                $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_vicreg_4d_projector_gpu_vs_cpu, test_vicreg_4d_projector_gpu_vs_cpu.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_vicreg_4d_save_and_load,        test_vicreg_4d_save_and_load.cpp,        $(COMMON_LINK)))
 
-$(TEST_OUT)/test_vicreg_4d_train: LDLIBS_EXTRA += $(COMMON_LINK)
-$(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu: LDLIBS_EXTRA += $(COMMON_LINK)
-$(TEST_OUT)/test_vicreg_4d_save_and_load:        LDLIBS_EXTRA += $(COMMON_LINK)
+# 4) Target-specific includes/link flags
+$(TEST_OUT)/test_vicreg_%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
-# (Note: -lnvToolsExt and -lcudart are already in $(LDLIBS_torch); no need to repeat.)
-
-# ----------------------------------------------------------------------------- 
-# Aggregate build / clean should use TEST_OUT (not OUTPUT_PATH)
-# -----------------------------------------------------------------------------
+# 5) Aggregate: all
 .PHONY: all
 all: \
 	$(TEST_OUT)/test_vicreg_4d_train \
@@ -45,6 +30,14 @@ all: \
 	$(TEST_OUT)/test_vicreg_4d_save_and_load
 	@$(LOG_SUCCESS)
 
+# 6) Aggregate: run
+.PHONY: run
+run: \
+	run-test_vicreg_4d_train \
+	run-test_vicreg_4d_projector_gpu_vs_cpu \
+	run-test_vicreg_4d_save_and_load
+
+# 7) Clean
 .PHONY: clean
 clean:
 	@rm -f \
