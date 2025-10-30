@@ -21,10 +21,12 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 # 5) Aggregate: all
 .PHONY: all
 all:
-	+$(MAKE) -C $(HERE_PATH)/piaabo all
-	+$(MAKE) -C $(HERE_PATH)/camahjucunu all
-	+$(MAKE) -C $(HERE_PATH)/jkimyei all
-	+$(MAKE) -C $(HERE_PATH)/wikimyei all
+	+{ \
+		$(MAKE) -C $(HERE_PATH)/piaabo all \
+		$(MAKE) -C $(HERE_PATH)/camahjucunu all \
+		$(MAKE) -C $(HERE_PATH)/jkimyei all \
+		$(MAKE) -C $(HERE_PATH)/wikimyei all \
+	}
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run

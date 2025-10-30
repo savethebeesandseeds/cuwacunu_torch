@@ -10,7 +10,7 @@ HERE_PATH  := $(TESTS_PATH)/bench/camahjucunu/bnf
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
 # 2) Defaults (libs/flags)
-TEST_DEFAULT_LDLIBS :=
+# (use defaults from Makefile.config)
 
 # 3) Tests (build + run aliases)
 $(eval $(call TEST_ONEFILE, test_bnf_grammar_lexer,        test_bnf_grammar_lexer.cpp))

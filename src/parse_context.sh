@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# parse_context.sh — export one or more project folders into a single bundle for ChatGPT
+# parse_context.sh — export one or more project folders into a single bundle
 #
 # Usage:
 #   ./parse_context.sh [options] /path/to/project1 [/path/to/project2 ...]
@@ -22,6 +22,10 @@
 # - Groups output per root; prioritizes README/manifests.
 # - Skips non-text files; language-aware code fences.
 # - Excludes the output file if it falls under any root.
+# 
+# Examples:
+# - Basic usage: ./parse_context.sh /path/to/project /path/to/project2
+# - Only Makefiles: ./parse_context.sh -i '**/Makefile' /path/to/project
 
 set -Euo pipefail
 IFS=$'\n\t'
@@ -30,7 +34,7 @@ VERSION="2.4"
 
 usage() {
   cat <<'USAGE'
-parse_context.sh — export one or more project folders into a single bundle for ChatGPT
+parse_context.sh — export one or more project folders into a single bundle
 
 Usage:
   ./parse_context.sh [options] /path/to/project1 [/path/to/project2 ...]
@@ -230,7 +234,7 @@ prioritize_first=(
 
 # ---------- header ----------
 : > "$outfile"
-append_line "# Multi-project export for ChatGPT"
+append_line "# Multi-project export"
 append_line "# Roots:"
 for r in "${valid_roots[@]}"; do append_line "#   - $r"; done
 append_line "# Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

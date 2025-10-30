@@ -22,4 +22,6 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 .PHONY: all
 all:
 	+$(MAKE) -C $(HERE_PATH)/representation_learning all
+	+$(MAKE) -C $(HERE_PATH)/semantic_learning all
 	@$(LOG_SUCCESS)
+

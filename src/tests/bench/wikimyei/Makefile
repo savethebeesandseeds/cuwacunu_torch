@@ -13,10 +13,11 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 TEST_DEFAULT_LDLIBS :=
 
 # 3) Tests (build + run aliases)
-$(eval $(call TEST_ONEFILE, test_entropy_methods, test_entropy_methods.cpp, $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)))
+COMMON_LINK = $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)
+$(eval $(call TEST_ONEFILE, test_entropy_methods, test_entropy_methods.cpp, $(COMMON_LINK)))
 
 # 4) Target-specific includes/link flags
-$(TEST_OUT)/test_entropy_methods: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_entropy_methods: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
 # 5) Aggregate: all
 .PHONY: all
@@ -33,3 +34,4 @@ run: run-test_entropy_methods
 .PHONY: clean
 clean:
 	@rm -f $(TEST_OUT)/test_entropy_methods
+

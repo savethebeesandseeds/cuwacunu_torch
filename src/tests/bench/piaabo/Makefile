@@ -21,7 +21,9 @@ $(eval $(call TEST_ONEFILE, test_djson_parsing,           test_djson_parsing.cpp
 $(eval $(call TEST_ONEFILE, test_dfiles_binary_to_vector, test_dfiles_binary_to_vector.cpp, $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)))
 
 # 4) Target-specific includes/link flags
-# (none)
+$(TEST_OUT)/test_dsecurity:               INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_dencryption:             INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_dfiles_binary_to_vector: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
 # 5) Aggregate: all
 .PHONY: all
@@ -54,3 +56,4 @@ clean:
 	       $(TEST_OUT)/test_dencryption \
 	       $(TEST_OUT)/test_djson_parsing \
 	       $(TEST_OUT)/test_dfiles_binary_to_vector
+
