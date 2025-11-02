@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <type_traits>
 #include <cerrno>
+#include <algorithm>
+#include <cctype>   // std::isdigit
 
 #ifdef __unix__
   #include <sys/stat.h>
@@ -43,7 +45,61 @@ inline bool should_tick_progress(std::size_t i) {
   return (i & 0x3FFu) == 0u;
 }
 
+// ----------------------------------------------------------------------------
+// Filenaming helpers for normalized binaries
+//   - Raw:   <stem>.bin
+//   - Norm:  <stem>.normW<window>.bin    (with window >= 1)
+// ----------------------------------------------------------------------------
+inline std::string raw_bin_for_csv(const std::string& csv_filename) {
+  std::filesystem::path p(csv_filename);
+  p.replace_extension(".bin");
+  return p.string();
+}
+
+inline std::string norm_bin_for_csv(const std::string& csv_filename, std::size_t window) {
+  // Precondition: window >= 1 (callers must enforce)
+  std::filesystem::path p(csv_filename);
+  const auto parent = p.parent_path();
+  const auto stem   = p.stem().string();
+  std::string fname = stem + ".normW" + std::to_string(window) + ".bin";
+  std::filesystem::path out = parent / fname;
+  return out.string();
+}
+
+// Detector: file name must be .../something.normW<digits>.bin with digits >= 1
+inline bool is_bin_filename_normalized_strict(const std::string& bin_filename, std::size_t* window_out = nullptr) {
+  // IMPORTANT: do not touch *window_out unless the name is recognized as normalized.
+  std::filesystem::path p(bin_filename);
+  if (p.extension() != ".bin") return false;
+
+  const std::string fname = p.filename().string();
+  const auto pos_norm = fname.rfind(".normW");
+  if (pos_norm == std::string::npos) return false;  // not a normalized name
+
+  // parse digits after 'W' up to ".bin"
+  const auto wpos = pos_norm + 5; // position of 'W' in ".normW"
+  const auto end  = fname.rfind(".bin");
+  if (end == std::string::npos || wpos + 1 >= end) return false;
+
+  const std::string wstr = fname.substr(wpos + 1, end - (wpos + 1));
+  const bool digits = !wstr.empty() &&
+                      std::all_of(wstr.begin(), wstr.end(), [](unsigned char c){ return std::isdigit(c); });
+  if (!digits) return false;
+
+  std::size_t win = 0;
+  try { win = static_cast<std::size_t>(std::stoull(wstr)); } catch (...) { return false; }
+  if (win < 1) return false;
+
+  if (window_out) *window_out = win;
+  return true;
+}
+
 } // namespace detail
+
+// Public shim so other headers/tests can use it without reaching into detail::
+inline bool is_bin_filename_normalized(const std::string& bin_filename, std::size_t* window_out = nullptr) {
+  return detail::is_bin_filename_normalized_strict(bin_filename, window_out);
+}
 
 /*
  * normalize_binary_file<T>
@@ -170,7 +226,11 @@ void normalize_binary_file(const std::string& bin_filename,
  * sanitize_csv_into_binary_file<T>
  * --------------------------------
  * Validates monotone key, fills gaps with null instances at regular increments,
- * writes .bin, optionally normalizes with rolling window.
+ * writes raw .bin, and optionally produces a separate normalized .normW<window>.bin.
+ *
+ * Policy:
+ *  - normalization_window == 0  -> NO normalized file. Return RAW .bin.
+ *  - normalization_window >= 1  -> Produce <stem>.normW<window>.bin (copy raw, normalize in place). Return that path.
  *
  * Requirements on T:
  *  - static T from_csv(const std::string&, char, std::size_t line_no);
@@ -199,215 +259,238 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
   const std::size_t total_records_hint =
       cuwacunu::piaabo::dfiles::countLinesInFile(csv_filename);
 
-  std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
-  if (!csv_file.is_open()) {
-    log_fatal("[sanitize_csv_into_binary_file] Could not open CSV: %s\n", csv_filename.c_str());
-  }
+  // Resolve output names
+  const std::string raw_bin  = detail::raw_bin_for_csv(csv_filename);
+  const bool want_norm       = (normalization_window >= 1);
+  const std::string norm_bin = want_norm ? detail::norm_bin_for_csv(csv_filename, normalization_window)
+                                         : std::string{};
 
-  // Output path: robust extension replacement
-  std::filesystem::path bin_path(csv_filename);
-  bin_path.replace_extension(".bin");
-  const std::string bin_filename = bin_path.string();
+  // If not forced, decide if target output is already up-to-date.
+  auto newer_than = [](const std::string& a, const std::string& b) -> bool {
+    std::error_code ec1, ec2;
+    if (!std::filesystem::exists(a, ec1) || !std::filesystem::exists(b, ec2)) return false;
+    return std::filesystem::last_write_time(a, ec1) > std::filesystem::last_write_time(b, ec2);
+  };
 
-  // Skip if up-to-date and not forced
-  if (!force_binarization && std::filesystem::exists(bin_path)) {
-    const auto csv_time = std::filesystem::last_write_time(csv_filename);
-    const auto bin_time = std::filesystem::last_write_time(bin_path);
-    if (bin_time > csv_time) {
-      log_info("[sanitize_csv_into_binary_file]\t %sSkipped:%s up-to-date: %s\n",
-               ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, bin_filename.c_str());
-      return bin_filename;
+  // We will *always* ensure the raw .bin is up-to-date w.r.t. the CSV,
+  // because normalized files are derived from it.
+  bool need_write_raw = force_binarization || !newer_than(raw_bin, csv_filename);
+
+  if (need_write_raw) {
+    std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
+    if (!csv_file.is_open()) {
+      log_fatal("[sanitize_csv_into_binary_file] Could not open CSV: %s\n", csv_filename.c_str());
     }
-  }
 
-  std::ofstream bin_file(bin_filename, std::ios::binary | std::ios::out | std::ios::trunc);
-  if (!bin_file.is_open()) {
-    csv_file.close();
-    log_fatal("[sanitize_csv_into_binary_file] Could not open BIN for write: %s\n",
-              bin_filename.c_str());
-  }
-
+    std::ofstream bin_file(raw_bin, std::ios::binary | std::ios::out | std::ios::trunc);
+    if (!bin_file.is_open()) {
+      csv_file.close();
+      log_fatal("[sanitize_csv_into_binary_file] Could not open BIN for write: %s\n",
+                raw_bin.c_str());
+    }
 #ifdef __unix__
-  chmod(bin_filename.c_str(), S_IRUSR | S_IWUSR);
+    chmod(raw_bin.c_str(), S_IRUSR | S_IWUSR);
 #endif
 
-  std::vector<T> buffer;
-  buffer.reserve(buffer_size);
+    std::vector<T> buffer;
+    buffer.reserve(buffer_size);
 
-  auto flush_buffer = [&]() {
-    if (!buffer.empty()) {
+    auto flush_buffer = [&]() {
+      if (buffer.empty()) return;
       bin_file.write(reinterpret_cast<const char*>(buffer.data()),
                      static_cast<std::streamsize>(buffer.size() * sizeof(T)));
       if (!bin_file) {
         log_fatal("[sanitize_csv_into_binary_file] Buffered write failed.\n");
       }
       buffer.clear();
+    };
+
+    std::string line_p0, line_p1;
+
+    std::size_t line_number = 0;
+    if (!std::getline(csv_file, line_p0)) {
+      log_fatal("[sanitize_csv_into_binary_file] File too short: %s\n", csv_filename.c_str());
     }
-  };
+    line_number = 1;
+    T obj_p0 = T::from_csv(line_p0, delimiter, line_number);
 
-  std::string line_p0, line_p1;
+    START_LOADING_BAR(csv_file_preparation_progress_bar_, 60, "Preparing Binary data file");
 
-  std::size_t line_number = 0;
-  if (!std::getline(csv_file, line_p0)) {
-    log_fatal("[sanitize_csv_into_binary_file] File too short: %s\n", csv_filename.c_str());
-  }
-  line_number = 1;
-  T obj_p0 = T::from_csv(line_p0, delimiter, line_number);
+    bool        have_regular_delta = false;
+    long double regular_delta      = 0.0L;
+    constexpr long double tol      = 1e-8L; // tolerance for floating increments
 
-  START_LOADING_BAR(csv_file_preparation_progress_bar_, 60, "Preparing Binary data file");
+    std::size_t processed_lines = 1; // first line read
 
-  bool        have_regular_delta = false;
-  long double regular_delta      = 0.0L;
-  constexpr long double tol      = 1e-8L; // tolerance for floating increments
+    while (std::getline(csv_file, line_p1)) {
+      ++processed_lines;
+      ++line_number;
 
-  std::size_t processed_lines = 1; // first line read
+      if (detail::should_tick_progress(processed_lines) || csv_file.peek() == EOF) {
+        double pct = (static_cast<double>(processed_lines) /
+                      static_cast<double>(std::max<std::size_t>(1, total_records_hint))) * 100.0;
+        pct = std::round(pct * 100.0) / 100.0;
+        UPDATE_LOADING_BAR(csv_file_preparation_progress_bar_, pct);
+      }
 
-  while (std::getline(csv_file, line_p1)) {
-    ++processed_lines;
-    ++line_number;
+      T obj_p1 = T::from_csv(line_p1, delimiter, line_number);
+      if (!obj_p1.is_valid()) {
+        // Skip invalid *next*; keep obj_p0 as previous anchor.
+        continue;
+      }
 
-    if (detail::should_tick_progress(processed_lines) || csv_file.peek() == EOF) {
-      double pct = (static_cast<double>(processed_lines) /
-                    static_cast<double>(std::max<std::size_t>(1, total_records_hint))) * 100.0;
-      pct = std::round(pct * 100.0) / 100.0;
-      UPDATE_LOADING_BAR(csv_file_preparation_progress_bar_, pct);
-    }
+      const long double kv0 = static_cast<long double>(obj_p0.key_value());
+      const long double kv1 = static_cast<long double>(obj_p1.key_value());
+      const long double current_delta = kv1 - kv0;
 
-    T obj_p1 = T::from_csv(line_p1, delimiter, line_number);
-    if (!obj_p1.is_valid()) {
-      // Skip invalid *next*; keep obj_p0 as previous anchor.
-      // Rationale: invalid lines may not contain a trustworthy key to place on the lattice.
-      continue;
-    }
+      if (std::fabs(current_delta) <= tol) {
+        log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s zero/eps increment,"
+                 " line %s%zu%s in %s%s%s\n",
+                 ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
+                 ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
+                 ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
+        // Collapse duplicate key: keep the latest
+        obj_p0 = obj_p1;
+        line_p0 = line_p1;
+        continue;
+      }
 
-    const long double kv0 = static_cast<long double>(obj_p0.key_value());
-    const long double kv1 = static_cast<long double>(obj_p1.key_value());
-    const long double current_delta = kv1 - kv0;
+      if (current_delta < 0.0L) {
+        log_fatal("[sanitize_csv_into_binary_file] key_value must be non-decreasing."
+                  " At line %s%zu%s in %s%s%s\n",
+                  ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
+                  ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
+      }
 
-    if (std::fabs(current_delta) <= tol) {
-      log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s zero/eps increment,"
-               " line %s%zu%s in %s%s%s\n",
-               ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
-               ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
-               ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
-      // Collapse duplicate key: keep the latest
-      obj_p0 = obj_p1;
-      line_p0 = line_p1;
-      continue;
-    }
+      if (!have_regular_delta) {
+        regular_delta = current_delta;
+        have_regular_delta = true;
+      }
 
-    if (current_delta < 0.0L) {
-      log_fatal("[sanitize_csv_into_binary_file] key_value must be non-decreasing."
-                " At line %s%zu%s in %s%s%s\n",
+      // Irregular increment check (allow multiples within tolerance)
+      bool irregular = false;
+      if (std::fabs(regular_delta) <= tol) {
+        irregular = true; // degenerate
+      } else {
+        long double m = std::fmod(std::fabs(current_delta), std::fabs(regular_delta));
+        if (m > tol && std::fabs(m - std::fabs(regular_delta)) > tol) {
+          irregular = true;
+        }
+      }
+
+      if (irregular) {
+        // Best-effort gap fill with rounded step count; warn if residual is large.
+        const long double steps_ld = current_delta / regular_delta;
+        const auto delta_steps = static_cast<std::int64_t>(std::llround(steps_ld));
+        const long double residual = std::fabs(steps_ld - static_cast<long double>(delta_steps));
+        log_err("%s\t %s-%s [sanitize_csv_into_binary_file]%s Irregular increment:"
+                " (regular=%.15Lf, current=%.15Lf, steps≈%.9Lf, rounded=%lld, residual=%.3g)"
+                " at line %s%zu%s in %s%s%s — filling by rounded steps.\n",
+                ANSI_CLEAR_LINE, ANSI_COLOR_Red, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
+                regular_delta, current_delta, steps_ld,
+                static_cast<long long>(delta_steps), static_cast<double>(residual),
                 ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
                 ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
-    }
 
-    if (!have_regular_delta) {
-      regular_delta = current_delta;
-      have_regular_delta = true;
-    }
-
-    // Irregular increment check (allow multiples within tolerance)
-    bool irregular = false;
-    if (std::fabs(regular_delta) <= tol) {
-      irregular = true; // degenerate
-    } else {
-      long double m = std::fmod(std::fabs(current_delta), std::fabs(regular_delta));
-      if (m > tol && std::fabs(m - std::fabs(regular_delta)) > tol) {
-        irregular = true;
+        // Emit p0 and rounded-count nulls as usual:
+        for (std::int64_t i = 0; i < delta_steps; ++i) {
+          const bool first = (i == 0);
+          T obj_px = first ? obj_p0
+                           : T::null_instance(
+                               detail::cast_key_longdouble<typename T::key_type_t>(
+                                 kv0 + static_cast<long double>(i) * regular_delta));
+          buffer.push_back(obj_px);
+          if (buffer.size() == buffer_size) flush_buffer();
+        }
+        // Advance anchor
+        obj_p0 = obj_p1;
+        line_p0 = line_p1;
+        continue;
       }
-    }
 
-    if (irregular) {
-      // Best-effort gap fill with rounded step count; warn if residual is large.
+      // Number of steps from p0 up to (but not including) p1
       const long double steps_ld = current_delta / regular_delta;
       const auto delta_steps = static_cast<std::int64_t>(std::llround(steps_ld));
-      const long double residual = std::fabs(steps_ld - static_cast<long double>(delta_steps));
-      log_err("%s\t %s-%s [sanitize_csv_into_binary_file]%s Irregular increment:"
-              " (regular=%.15Lf, current=%.15Lf, steps≈%.9Lf, rounded=%lld, residual=%.3g)"
-              " at line %s%zu%s in %s%s%s — filling by rounded steps.\n",
-              ANSI_CLEAR_LINE, ANSI_COLOR_Red, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
-              regular_delta, current_delta, steps_ld,
-              static_cast<long long>(delta_steps), static_cast<double>(residual),
-              ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
-              ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
+      if (delta_steps != 1) {
+        log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s extra large step (d=%s%lld%s)"
+                 " at line %s%zu%s in %s%s%s\n",
+                 ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
+                 ANSI_COLOR_Yellow, static_cast<long long>(delta_steps), ANSI_COLOR_RESET,
+                 ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
+                 ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
+      }
 
-      // Emit p0 and rounded-count nulls as usual:
+      // Emit p0 and intermediate nulls (not p1; p1 becomes next anchor and is emitted later)
       for (std::int64_t i = 0; i < delta_steps; ++i) {
         const bool first = (i == 0);
         T obj_px = first ? obj_p0
                          : T::null_instance(
                              detail::cast_key_longdouble<typename T::key_type_t>(
                                kv0 + static_cast<long double>(i) * regular_delta));
-        buffer.push_back(obj_px);
-        if (buffer.size() == buffer_size) flush_buffer();
+        try {
+          buffer.push_back(obj_px);
+          if (buffer.size() == buffer_size) flush_buffer();
+        } catch (const std::exception& e) {
+          log_fatal("[sanitize_csv_into_binary_file] Exception at line %s%zu%s in %s%s%s: %s\n",
+                    ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
+                    ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET, e.what());
+        }
       }
+
       // Advance anchor
       obj_p0 = obj_p1;
       line_p0 = line_p1;
-      continue;
     }
 
-    // Number of steps from p0 up to (but not including) p1
-    const long double steps_ld = current_delta / regular_delta;
-    const auto delta_steps = static_cast<std::int64_t>(std::llround(steps_ld));
-    if (delta_steps != 1) {
-      log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s extra large step (d=%s%lld%s)"
-               " at line %s%zu%s in %s%s%s\n",
-               ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
-               ANSI_COLOR_Yellow, static_cast<long long>(delta_steps), ANSI_COLOR_RESET,
-               ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
-               ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
-    }
+    // Push the final record (last anchor)
+    buffer.push_back(obj_p0);
+    flush_buffer();
 
-    // Emit p0 and intermediate nulls (not p1; p1 becomes next anchor and is emitted later)
-    for (std::int64_t i = 0; i < delta_steps; ++i) {
-      const bool first = (i == 0);
-      T obj_px = first ? obj_p0
-                       : T::null_instance(
-                             detail::cast_key_longdouble<typename T::key_type_t>(
-                               kv0 + static_cast<long double>(i) * regular_delta
-                             ));
-      try {
-        buffer.push_back(obj_px);
-        if (buffer.size() == buffer_size) flush_buffer();
-      } catch (const std::exception& e) {
-        log_fatal("[sanitize_csv_into_binary_file] Exception at line %s%zu%s in %s%s%s: %s\n",
-                  ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
-                  ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET, e.what());
-      }
-    }
+    FINISH_LOADING_BAR(csv_file_preparation_progress_bar_);
+    csv_file.close();
+    bin_file.close();
 
-    // Advance anchor
-    obj_p0 = obj_p1;
-    line_p0 = line_p1;
-  }
-
-  // Push the final record (last anchor)
-  buffer.push_back(obj_p0);
-  flush_buffer();
-
-  FINISH_LOADING_BAR(csv_file_preparation_progress_bar_);
-
-  csv_file.close();
-  bin_file.close();
-
-  // Optional normalization
-  if (normalization_window > 0) {
-    normalize_binary_file<T>(bin_filename, normalization_window);
+    log_info("(sanitize_csv_into_binary_file) Raw lattice ready: %s%s%s\n",
+             ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
   } else {
-    log_info("(sanitize_csv_into_binary_file) No normalization configured. %s%s%s -> %s%s%s\n",
-             ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET,
-             ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
+    log_info("(sanitize_csv_into_binary_file) %sRaw up-to-date%s: %s\n",
+             ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, raw_bin.c_str());
   }
 
-  log_info("(sanitize_csv_into_binary_file) %sDone%s: %s%s%s -> %s%s%s\n",
-           ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET,
-           ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET,
-           ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
+  // Normalized output?
+  if (!want_norm) {
+    log_info("(sanitize_csv_into_binary_file) No normalization configured (W=0). %s%s%s -> %s%s%s\n",
+             ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET,
+             ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
+    return raw_bin;
+  }
 
-  return bin_filename;
+  // Produce or refresh normalized file from raw
+  const bool need_norm = force_binarization
+                      || !std::filesystem::exists(norm_bin)
+                      || (std::filesystem::last_write_time(norm_bin) <= std::filesystem::last_write_time(raw_bin));
+
+  if (need_norm) {
+    // Copy raw -> norm and normalize in place
+    std::error_code ec;
+    std::filesystem::copy_file(raw_bin, norm_bin, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+      log_fatal("[sanitize_csv_into_binary_file] Failed to copy raw->norm: %s -> %s (%d)\n",
+                raw_bin.c_str(), norm_bin.c_str(), (int)ec.value());
+    }
+#ifdef __unix__
+    chmod(norm_bin.c_str(), S_IRUSR | S_IWUSR);
+#endif
+    normalize_binary_file<T>(norm_bin, normalization_window);
+    log_info("(sanitize_csv_into_binary_file) %sNormalized%s: %s%s%s (W=%zu)\n",
+             ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET,
+             ANSI_COLOR_Dim_Gray, norm_bin.c_str(), ANSI_COLOR_RESET, normalization_window);
+  } else {
+    log_info("(sanitize_csv_into_binary_file) %sNormalized up-to-date%s: %s\n",
+             ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, norm_bin.c_str());
+  }
+
+  return norm_bin;
 }
 
 } // namespace data

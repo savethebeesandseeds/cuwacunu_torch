@@ -249,6 +249,22 @@ public:
   std::size_t N_future_{1};
   std::size_t sliding_count_{0};               /* Number of sliding anchors (size()) */
 
+private:
+  // Build a 1D tensor of keys from a mutable vector (T::key_value() is non-const).
+  static inline torch::Tensor keys_from_records_1d(std::vector<T>& recs) {
+    using KeyT = typename T::key_type_t;
+    const long n = static_cast<long>(recs.size());
+    if constexpr (std::is_integral_v<KeyT>) {
+      std::vector<long long> v(recs.size());
+      for (size_t i = 0; i < recs.size(); ++i) v[i] = static_cast<long long>(recs[i].key_value());
+      return torch::from_blob(v.data(), { n }, torch::TensorOptions().dtype(torch::kInt64)).clone();
+    } else {
+      std::vector<double> v(recs.size());
+      for (size_t i = 0; i < recs.size(); ++i) v[i] = static_cast<double>(recs[i].key_value());
+      return torch::from_blob(v.data(), { n }, torch::TensorOptions().dtype(torch::kFloat64)).clone();
+    }
+  }
+
 public:
   explicit MemoryMappedDataset(const std::string& bin_filename,
                                std::size_t N_past = 1,
@@ -334,6 +350,7 @@ public:
   /**
    * @brief Retrieves both past and future windows around a key value.
    * Current time = last of past window; future starts at t+1.
+   * (C) fills past_keys/future_keys.
    */
   observation_sample_t get_sequences_around_key_value(
       typename T::key_type_t target_key_value,
@@ -367,6 +384,7 @@ public:
         m[k] = past_records[k].is_valid();
       }
     }
+    torch::Tensor past_keys = keys_from_records_1d(past_records);
 
     const std::size_t fut_start = i + 1;
     auto fut_records = read_memory_structs<T>(mapped_data_->data_ptr_, fut_start, N_future);
@@ -382,12 +400,18 @@ public:
         m[k] = fut_records[k].is_valid();
       }
     }
+    torch::Tensor fut_keys = keys_from_records_1d(fut_records);
 
-    return observation_sample_t{ past_X, past_msk, fut_X, fut_msk };
+    observation_sample_t s{ past_X, past_msk, fut_X, fut_msk, torch::Tensor() };
+    s.past_keys   = past_keys;
+    s.future_keys = fut_keys;
+    s.normalized  = false; // raw by default
+    return s;
   }
 
   /**
    * @brief Sliding-window get: returns {past[N_past_], future[N_future_]}, stride = 1.
+   * (C) fills past_keys/future_keys.
    * Anchor a = (N_past_-1) + index.
    */
   observation_sample_t get(std::size_t index) override {
@@ -416,6 +440,7 @@ public:
         m[k] = past_records[k].is_valid();
       }
     }
+    torch::Tensor past_keys = keys_from_records_1d(past_records);
 
     torch::Tensor fut_X   = torch::empty({ static_cast<long>(N_future_), static_cast<long>(D) }, torch::kFloat32);
     torch::Tensor fut_msk = torch::empty({ static_cast<long>(N_future_) },                       torch::kBool);
@@ -428,8 +453,13 @@ public:
         m[k] = fut_records[k].is_valid();
       }
     }
+    torch::Tensor fut_keys = keys_from_records_1d(fut_records);
 
-    return observation_sample_t{ past_X, past_msk, fut_X, fut_msk };
+    observation_sample_t s{ past_X, past_msk, fut_X, fut_msk, torch::Tensor() };
+    s.past_keys   = past_keys;
+    s.future_keys = fut_keys;
+    s.normalized  = false;
+    return s;
   }
 
   /* size() is the number of sliding anchors */
@@ -499,6 +529,50 @@ public:
       }
     }
     return best_index;
+  }
+
+  /**
+   * ====================== (A) time-range slicing ==========================
+   * Return sliding samples whose anchor key is within [key_left, key_right].
+   * No clamping/padding beyond the natural grid. Vector<observation_sample_t>.
+   */
+  std::vector<observation_sample_t>
+  range_samples_by_keys(typename T::key_type_t key_left,
+                        typename T::key_type_t key_right)
+  {
+    using key_t = typename T::key_type_t;
+    std::vector<observation_sample_t> out;
+    if (num_records_ == 0 || sliding_count_ == 0) return out;
+    if (key_right < key_left) std::swap(key_left, key_right);
+
+    // compute raw anchor bounds [a_min, a_max] such that key[a] in [left, right]
+    // first raw index >= left
+    std::size_t idx_left = find_closest_index(key_left);
+    key_t key_at_left = read_memory_value<T>(mapped_data_->data_ptr_, idx_left, key_value_offset_);
+    if (key_at_left < key_left && idx_left + 1 < num_records_) ++idx_left;
+
+    // last raw index <= right
+    std::size_t idx_right = find_closest_index(key_right);
+    key_t key_at_right = read_memory_value<T>(mapped_data_->data_ptr_, idx_right, key_value_offset_);
+    if (key_at_right > key_right && idx_right > 0) --idx_right;
+
+    // translate to valid anchor range respecting past/future windows
+    const std::size_t a_min_natural = (N_past_ > 0 ? (N_past_ - 1) : 0);
+    const std::size_t a_max_natural = num_records_ - 1 - N_future_;
+    if (idx_left > a_max_natural || idx_right < a_min_natural || idx_left > idx_right) {
+      return out; // empty
+    }
+    std::size_t a_min = std::max(idx_left, a_min_natural);
+    std::size_t a_max = std::min(idx_right, a_max_natural);
+    if (a_min > a_max) return out;
+
+    // iterate natural anchors and re-use get()
+    out.reserve(a_max - a_min + 1);
+    for (std::size_t a = a_min; a <= a_max; ++a) {
+      const std::size_t sliding_idx = a - (N_past_ > 0 ? (N_past_ - 1) : 0);
+      out.emplace_back( get(sliding_idx) );
+    }
+    return out;
   }
 };
 
@@ -571,10 +645,16 @@ public:
    * @brief Retrieve stacked + padded windows by key across sources.
    * - Past is left-padded to max_N_past_.
    * - Future is right-padded to max_N_future_.
+   * (C) stacks past_keys/future_keys across channels.
    */
   observation_sample_t get_by_key_value(typename T::key_type_t target_key_value) {
     const size_t K = datasets_.size();
     std::vector<torch::Tensor> feats(K), masks(K), fut_feats(K), fut_masks(K);
+    std::vector<torch::Tensor> keys_past(K), keys_future(K);
+
+    // key tensor dtype to use for padding
+    auto key_opts = torch::TensorOptions().dtype(
+        std::is_integral_v<typename T::key_type_t> ? torch::kInt64 : torch::kFloat64);
 
     for (size_t i = 0; i < K; ++i) {
       auto& d  = datasets_[i];
@@ -588,22 +668,78 @@ public:
         const int64_t pad = static_cast<int64_t>(max_N_past_ - np);
         feats[i] = torch::cat({ torch::zeros({pad, s.features.size(1)}, s.features.options()), s.features }, 0);
         masks[i] = torch::cat({ torch::zeros({pad}, s.mask.options()), s.mask }, 0);
-      } else { feats[i] = s.features; masks[i] = s.mask; }
+        keys_past[i] = torch::cat({ torch::zeros({pad}, key_opts), s.past_keys }, 0);
+      } else { feats[i] = s.features; masks[i] = s.mask; keys_past[i] = s.past_keys; }
 
       // pad future at the end (so first row is t+1)
       if (nf < max_N_future_) {
         const int64_t pad = static_cast<int64_t>(max_N_future_ - nf);
         fut_feats[i] = torch::cat({ s.future_features, torch::zeros({pad, s.future_features.size(1)}, s.future_features.options()) }, 0);
         fut_masks[i] = torch::cat({ s.future_mask,     torch::zeros({pad}, s.future_mask.options()) }, 0);
-      } else { fut_feats[i] = s.future_features; fut_masks[i] = s.future_mask; }
+        keys_future[i] = torch::cat({ s.future_keys, torch::zeros({pad}, key_opts) }, 0);
+      } else { fut_feats[i] = s.future_features; fut_masks[i] = s.future_mask; keys_future[i] = s.future_keys; }
     }
 
-    return observation_sample_t{
+    observation_sample_t out{
       torch::stack(feats, 0),      // [K, max_N_past,   D]
       torch::stack(masks, 0),      // [K, max_N_past]
       torch::stack(fut_feats, 0),  // [K, max_N_future, D]
-      torch::stack(fut_masks, 0)   // [K, max_N_future]
+      torch::stack(fut_masks, 0),  // [K, max_N_future]
+      torch::Tensor()              // encoding
     };
+    // (C) keys
+    out.past_keys   = torch::stack(keys_past, 0);   // [K,max_N_past]
+    out.future_keys = torch::stack(keys_future, 0); // [K,max_N_future]
+    out.normalized  = false; // raw by default
+    return out;
+  }
+
+  /**
+   * ====================== (A) time-range slicing ==========================
+   * Return sliding samples whose anchor key is within [key_left, key_right].
+   * Uses the concatenated dataset grid (already regular).
+   */
+  std::vector<observation_sample_t>
+  range_samples_by_keys(typename T::key_type_t key_left,
+                        typename T::key_type_t key_right)
+  {
+    using key_t = typename T::key_type_t;
+    std::vector<observation_sample_t> out;
+    if (num_records_ == 0) return out;
+    if (key_right < key_left) std::swap(key_left, key_right);
+
+    // clamp to intersection domain first
+    if (key_right < leftmost_key_value_ || key_left > rightmost_key_value_) return out;
+
+    key_t left  = key_left  < leftmost_key_value_  ? leftmost_key_value_  : key_left;
+    key_t right = key_right > rightmost_key_value_ ? rightmost_key_value_ : key_right;
+
+    // align to global grid without introducing “nearest” semantics.
+    const key_t base = valid_left_[grid_ref_idx_];
+
+    if constexpr (std::is_integral_v<key_t>) {
+      key_t left_aligned  = detail::align_up_to_grid<key_t>(left,  key_value_step_, base);
+      if (!(left_aligned <= right)) return out;
+      key_t right_aligned = detail::align_down_to_grid<key_t>(right, key_value_step_, base);
+      if (!(left_aligned <= right_aligned)) return out;
+
+      std::size_t count = detail::steps_between_inclusive<key_t>(left_aligned, right_aligned, key_value_step_);
+      out.reserve(count);
+      std::size_t j0 = static_cast<std::size_t>((left_aligned - leftmost_key_value_) / key_value_step_);
+      for (std::size_t j = 0; j < count; ++j) out.emplace_back( get(j0 + j) );
+    } else {
+      key_t left_aligned  = detail::align_up_to_grid_fp<key_t>(left,  key_value_step_, base);
+      if (!(left_aligned <= right)) return out;
+      key_t right_aligned = detail::align_down_to_grid_fp<key_t>(right, key_value_step_, base);
+      if (!(left_aligned <= right_aligned)) return out;
+
+      std::size_t count = detail::steps_between_inclusive_fp<key_t>(left_aligned, right_aligned, key_value_step_);
+      out.reserve(count);
+      double j0d = static_cast<double>((left_aligned - leftmost_key_value_) / key_value_step_);
+      std::size_t j0 = static_cast<std::size_t>(std::llround(j0d));
+      for (std::size_t j = 0; j < count; ++j) out.emplace_back( get(j0 + j) );
+    }
+    return out;
   }
 
   /**
@@ -622,15 +758,12 @@ public:
 
     /* --- add dataset --- */
     file_names_.push_back(bin_filename);
-    // Note: concat uses key-addressed reads; we keep per-dataset N_past/N_future only for sliding get().
-    // Here we construct with defaults (1,1); this is fine because we never call d->get() from concat.
     datasets_.push_back(std::make_shared<MemoryMappedDataset<T>>(file_names_.back()));
     N_past_.push_back(N_past);
     N_future_.push_back(N_future);
 
     /* --- validations: sizes and duplicates --- */
     auto& d = datasets_.back();
-    // Validate against RAW record count (not sliding size)
     if (d->raw_records() < (N_past + N_future)) {
       log_fatal("[MemoryMappedConcatDataset](add_dataset) Dataset %s too small: rows:%zu < N_past+N_future:%zu\n",
                 csv_filename.c_str(), d->raw_records(), (N_past + N_future));
@@ -772,11 +905,6 @@ private:
 /**
   * @brief Construct a new MemoryMappedConcatDataset from an observation_instruction_t.
   *        Supports both past and future sequence lengths.
-  *
-  * @tparam Td The underlying data type used by the dataset.
-  * @param instrument the dataset is tied to an instrument.
-  * @param obs_inst The observation pipeline instruction.
-  * @param force_binarization Whether to renormalize and binarize the memory mapped data files.
   */
 template<typename Td>
 MemoryMappedConcatDataset<Td> create_memory_mapped_concat_dataset(

@@ -14,13 +14,32 @@ namespace data {
 
 struct observation_sample_t {
   // past (ends at t)
-  torch::Tensor features;        // [B,C,T,D] or [C,T,D] if unbatched
-  torch::Tensor mask;            // [B,C,T]   or [C,T]
+  torch::Tensor features;        // [B,C,T,D] or [C,T,D] or [T,D] if unbatched/single
+  torch::Tensor mask;            // [B,C,T]   or [C,T]   or [T]
+
   // future (starts at t+1) — same channeling as past, different time length Tf
-  torch::Tensor future_features; // [B,C,Tf,D] or [C,Tf,D] if unbatched
-  torch::Tensor future_mask;     // [B,C,Tf]   or [C,Tf]
+  torch::Tensor future_features; // [B,C,Tf,D] or [C,Tf,D] or [Tf,D]
+  torch::Tensor future_mask;     // [B,C,Tf]   or [C,Tf]   or [Tf]
+
   // encoder output
   torch::Tensor encoding;        // [B,De] or [B,T',De] (or undefined)
+
+  // ---------- normalization toggle ----------
+  // Whether 'features' / 'future_features' are currently in normalized space.
+  bool normalized = false;
+
+  // Per-feature stats used for (de)normalization. Keep broadcastable shapes.
+  // Typical usage: shape [D]. Will broadcast over [*,*,T,D].
+  torch::Tensor feature_mean;    // same dtype/device as features
+  torch::Tensor feature_std;     // same dtype/device as features
+
+  // ---------- time keys ----------
+  // Keys/timestamps aligned with past/future sequences.
+  // Single dataset: [T] / [Tf]
+  // Concat (C channels): [C,T] / [C,Tf]
+  // Batched variants broadcast a leading [B] if collated externally.
+  torch::Tensor past_keys;
+  torch::Tensor future_keys;
 
 private:
   /* ---- helpers ----------------------------------------------------------- */
@@ -33,11 +52,11 @@ private:
 
   // Future is considered "batched" iff past is batched AND future has a leading B
   // that matches the past's B. Otherwise (including unbatched past), treat future
-  // as UNBATCHED ([C,Tf,D]/[C,Tf]).
+  // as UNBATCHED ([C,Tf,D]/[C,Tf] or [Tf,D]/[Tf]).
   static inline bool is_batched_future(const observation_sample_t& s) {
     const bool past_batched = is_batched_past(s);
     if (!past_batched) {
-      return false; // unbatched futures are [C,Tf,D]/[C,Tf]
+      return false; // unbatched futures are [C,Tf,D]/[C,Tf] or [Tf,D]/[Tf]
     }
 
     int64_t B = 0;
@@ -79,7 +98,64 @@ private:
     }
   }
 
+  static inline torch::Tensor ensure_like(const torch::Tensor& src, const torch::Tensor& ref) {
+    if (!src.defined()) return src;
+    auto t = src;
+    if (t.dtype() != ref.dtype()) t = t.to(ref.dtype());
+    if (t.device() != ref.device()) t = t.to(ref.device());
+    return t;
+  }
+
 public:
+  /* =====================  (B) normalization helpers  ===================== */
+
+  // Return true if future observations have *any* valid values (mask==true).
+  // Useful in realtime, where future may be unknown (empty or fully masked).
+  bool has_future_values() const {
+    if (future_mask.defined()) {
+      // any() is cheap on small tensors used for viz/inspection
+      return future_mask.numel() > 0 && future_mask.any().item<bool>();
+    }
+    // Fallback if mask is not present but future_features exist
+    return future_features.defined() && future_features.numel() > 0;
+  }
+
+  // In-place normalization using stored stats.
+  observation_sample_t& normalize_inplace(double eps = 1e-12) {
+    if (normalized) return *this;
+    if (!feature_mean.defined() || !feature_std.defined()) return *this;
+
+    auto use_on = [&](torch::Tensor& x) {
+      if (!x.defined()) return;
+      auto mu  = ensure_like(feature_mean, x);
+      auto sig = ensure_like(feature_std,  x).clamp_min(eps);
+      x = (x - mu) / sig;
+    };
+    use_on(features);
+    use_on(future_features);
+    normalized = true;
+    return *this;
+  }
+
+  // In-place de-normalization using stored stats.
+  observation_sample_t& denormalize_inplace() {
+    if (!normalized) return *this;
+    if (!feature_mean.defined() || !feature_std.defined()) return *this;
+
+    auto use_on = [&](torch::Tensor& x) {
+      if (!x.defined()) return;
+      auto mu  = ensure_like(feature_mean, x);
+      auto sig = ensure_like(feature_std,  x);
+      x = x * sig + mu;
+    };
+    use_on(features);
+    use_on(future_features);
+    normalized = false;
+    return *this;
+  }
+
+  /* =====================  existing collate utilities  ==================== */
+
   /* -------- collate: past fields only -------- */
   static inline observation_sample_t collate_fn_past(const std::vector<observation_sample_t>& batch) {
     TORCH_CHECK(!batch.empty(), "[collate_fn_past] empty batch");
@@ -102,7 +178,10 @@ public:
     return observation_sample_t{
       smart_stack_or_cat(feats, already_batched),
       smart_stack_or_cat(masks, already_batched),
-      torch::Tensor(), torch::Tensor(), torch::Tensor()
+      torch::Tensor(), torch::Tensor(), torch::Tensor(),
+      /* normalized */ false,
+      /* mean/std  */ torch::Tensor(), torch::Tensor(),
+      /* keys      */ torch::Tensor(), torch::Tensor()
     };
   }
 
@@ -129,7 +208,10 @@ public:
       torch::Tensor(), torch::Tensor(),
       smart_stack_or_cat(fut_feats, already_batched),
       smart_stack_or_cat(fut_masks, already_batched),
-      torch::Tensor()
+      torch::Tensor(),
+      /* normalized */ false,
+      /* mean/std  */ torch::Tensor(), torch::Tensor(),
+      /* keys      */ torch::Tensor(), torch::Tensor()
     };
   }
 
@@ -162,59 +244,6 @@ public:
     TORCH_CHECK(all_same(batched_past,   batch, &is_batched_past),     "[collate_fn] mix in past fields");
     TORCH_CHECK(all_same(batched_future, batch, &is_batched_future),   "[collate_fn] mix in future fields");
     TORCH_CHECK(all_same(batched_enc,    batch, &is_batched_encoding), "[collate_fn] mix in encoding fields");
-
-    // Strong invariants to avoid silent B*C collapses and enforce channel-parity.
-    if (!batched_past) {
-      // Unbatched past => unbatched futures must be [C,Tf,D]/[C,Tf] (NO leading B).
-      if (batch.front().future_features.defined()) {
-        TORCH_CHECK(batch.front().future_features.dim() == 3,
-                    "[collate_fn] Unbatched past but future_features dim!=3; expected [C,Tf,D], got ",
-                    batch.front().future_features.sizes());
-      }
-      if (batch.front().future_mask.defined()) {
-        TORCH_CHECK(batch.front().future_mask.dim() == 2,
-            "[collate_fn] Unbatched past but future_mask dim!=2; expected [C,Tf], got ",
-            batch.front().future_mask.sizes());
-      }
-    } else {
-      // Batched past with B => batched futures (if batched) must start with B.
-      int64_t B = 0, C = 0;
-      if (batch.front().features.defined() && batch.front().features.dim() >= 4) {
-        B = batch.front().features.size(0);
-        C = batch.front().features.size(1);
-      } else if (batch.front().mask.defined() && batch.front().mask.dim() >= 3) {
-        B = batch.front().mask.size(0);
-        C = batch.front().mask.size(1);
-      }
-      if (batch.front().future_features.defined()) {
-        if (batched_future) {
-          TORCH_CHECK(batch.front().future_features.dim() >= 4 &&
-                      batch.front().future_features.size(0) == B &&
-                      batch.front().future_features.size(1) == C,
-                      "[collate_fn] Batched future_features must be [B,C,Tf,D]; got ",
-                      batch.front().future_features.sizes(), " while B=", B, " C=", C);
-        } else {
-          TORCH_CHECK(batch.front().future_features.dim() == 3 &&
-                      batch.front().future_features.size(0) == C,
-                      "[collate_fn] Unbatched future_features with batched past must be [C,Tf,D]; got ",
-                      batch.front().future_features.sizes(), " with C=", C);
-        }
-      }
-      if (batch.front().future_mask.defined()) {
-        if (batched_future) {
-          TORCH_CHECK(batch.front().future_mask.dim() >= 3 &&
-                      batch.front().future_mask.size(0) == B &&
-                      batch.front().future_mask.size(1) == C,
-                      "[collate_fn] Batched future_mask must be [B,C,Tf]; got ",
-                      batch.front().future_mask.sizes(), " while B=", B, " C=", C);
-        } else {
-          TORCH_CHECK(batch.front().future_mask.dim() == 2 &&
-                      batch.front().future_mask.size(0) == C,
-                      "[collate_fn] Unbatched future_mask with batched past must be [C,Tf]; got ",
-                      batch.front().future_mask.sizes(), " with C=", C);
-        }
-      }
-    }
 
     const auto fsz  = batch.front().features.sizes();
     const auto msz  = batch.front().mask.sizes();
@@ -250,7 +279,10 @@ public:
       smart_stack_or_cat(masks,     batched_past),
       smart_stack_or_cat(fut_feats, batched_future),
       smart_stack_or_cat(fut_masks, batched_future),
-      torch::Tensor{} // set below if present
+      torch::Tensor(),  // encoding set below if present
+      /* normalized */ false,
+      /* mean/std  */ torch::Tensor(), torch::Tensor(),
+      /* keys      */ torch::Tensor(), torch::Tensor()
     };
     if (!encs.empty()) out.encoding = smart_stack_or_cat(encs, batched_enc);
     return out;
@@ -289,7 +321,10 @@ public:
         masks.empty()     ? torch::Tensor() : maybe_clone(masks[i]),
         fut_feats.empty() ? torch::Tensor() : maybe_clone(fut_feats[i]),
         fut_masks.empty() ? torch::Tensor() : maybe_clone(fut_masks[i]),
-        encs.empty()      ? torch::Tensor() : maybe_clone(encs[i])
+        encs.empty()      ? torch::Tensor() : maybe_clone(encs[i]),
+        /* normalized */ false,
+        /* mean/std  */ torch::Tensor(), torch::Tensor(),
+        /* keys      */ torch::Tensor(), torch::Tensor()
       };
       out.emplace_back(std::move(s));
     }
@@ -303,6 +338,11 @@ public:
     future_features.reset();
     future_mask.reset();
     encoding.reset();
+    feature_mean.reset();
+    feature_std.reset();
+    past_keys.reset();
+    future_keys.reset();
+    normalized = false;
   }
 
   void print() const {
@@ -326,6 +366,12 @@ public:
     show("future_features", future_features, ANSI_COLOR_Green);
     show("future_mask",     future_mask,     ANSI_COLOR_Magenta);
     show("encoding",        encoding,        ANSI_COLOR_White);
+    show("past_keys",       past_keys,       ANSI_COLOR_Cyan);
+    show("future_keys",     future_keys,     ANSI_COLOR_Green);
+    show("feat_mean",       feature_mean,    ANSI_COLOR_Dim_Gray);
+    show("feat_std",        feature_std,     ANSI_COLOR_Dim_Gray);
+    printf("  normalized       : %s%s%s\n", normalized ? ANSI_COLOR_Bright_Green : ANSI_COLOR_Red,
+           normalized ? "true" : "false", ANSI_COLOR_RESET);
     printf("\n");
   }
 };

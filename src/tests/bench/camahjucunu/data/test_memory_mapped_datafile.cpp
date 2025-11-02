@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <cmath>
 #include <algorithm>
+#include <cassert>
 
 #include "piaabo/dutils.h"
 #include "piaabo/dfiles.h"
@@ -20,6 +21,7 @@
 
 namespace fs = std::filesystem;
 using cuwacunu::camahjucunu::data::sanitize_csv_into_binary_file;
+using cuwacunu::camahjucunu::data::is_bin_filename_normalized;
 
 // ---------- Small helpers ----------------------------------------------------
 template <typename T>
@@ -47,8 +49,7 @@ static std::vector<T> read_bin_all(const std::string& bin_path) {
   return out;
 }
 
-// Build the expected sanitized (pre-normalized) sequence directly from CSV,
-// matching the writer’s logic (duplicates skipped, gaps filled with nulls).
+// Build expected sanitized (pre-normalized) sequence (duplicates skipped, gaps filled with nulls).
 template <typename T>
 static std::vector<T> sanitize_in_memory(const std::string& csv_path, char delimiter=',') {
   std::ifstream csv = cuwacunu::piaabo::dfiles::readFileToStream(csv_path);
@@ -161,8 +162,15 @@ static void run_case(const std::string& label,
   std::string bin_no_norm = sanitize_csv_into_binary_file<T>(csv_path, /*norm_window=*/0,
                                                              /*force_binarization=*/true,
                                                              /*buffer_size=*/4, /*delimiter=*/',');
+  // Name detector: RAW should be not-normalized; window_out must remain untouched.
+  std::size_t Wdet = 123456;
+  bool is_norm = is_bin_filename_normalized(bin_no_norm, &Wdet);
+  if (is_norm) log_fatal("[test][%s] raw file unexpectedly marked as normalized: %s\n", label.c_str(), bin_no_norm.c_str());
+  if (Wdet != 123456) log_fatal("[test][%s] window_out modified for raw file\n", label.c_str());
+
   auto recs_no_norm = read_bin_all<T>(bin_no_norm);
   auto sanitized_in_mem = sanitize_in_memory<T>(csv_path, ',');
+
   if (sanitized_in_mem.size() != recs_no_norm.size())
     log_fatal("[test][%s] sanitize size mismatch: mem=%zu bin=%zu\n",
               label.c_str(), sanitized_in_mem.size(), recs_no_norm.size());
@@ -171,22 +179,27 @@ static void run_case(const std::string& label,
       log_fatal("[test][%s] sanitize byte mismatch @%zu\n", label.c_str(), i);
   log_info("[test][%s] ✔ Sanitize byte-identical (no-norm)\n", label.c_str());
 
-  // 2) Sanitize WITH normalization (causal_keep_len, in-place)
+  // 2) Sanitize WITH normalization (causal_keep_len, in-place on copy)
   const std::size_t W = norm_window;
   std::string bin_norm = sanitize_csv_into_binary_file<T>(csv_path, /*norm_window=*/W,
                                                           /*force_binarization=*/true);
+  std::size_t Wgot = 0;
+  bool is_norm2 = is_bin_filename_normalized(bin_norm, &Wgot);
+  if (!is_norm2) log_fatal("[test][%s] normalized file not detected by name: %s\n", label.c_str(), bin_norm.c_str());
+  if (Wgot != W)
+    log_fatal("[test][%s] window parsed from name != requested window (got %zu, want %zu) file=%s\n",
+              label.c_str(), Wgot, W, bin_norm.c_str());
+
   auto recs_norm = read_bin_all<T>(bin_norm);
 
   if (recs_norm.size() != recs_no_norm.size())
     log_fatal("[test][%s] normalized BIN changed record count (keep_len policy expected same size)\n",
               label.c_str());
 
-  // 3) Simulate expected normalization and compare byte-for-byte
   auto expected_norm = simulate_causal_keep_len_normalization<T>(sanitized_in_mem, W);
   if (expected_norm.size() != recs_norm.size())
     log_fatal("[test][%s] simulate size mismatch\n", label.c_str());
 
-  // Track counts: valid_seen to confirm burn-in & invalid passthrough behavior
   std::size_t valid_seen = 0, normalized = 0, invalid_passthrough = 0;
   for (size_t i=0;i<recs_norm.size();++i) {
     const T& s = sanitized_in_mem[i];
@@ -200,7 +213,6 @@ static void run_case(const std::string& label,
       if (valid_seen >= W) ++normalized;
       ++valid_seen;
     } else {
-      // invalid: must be identical (passthrough) in both sequences
       if (!bytes_equal(s, y))
         log_fatal("[test][%s] invalid record modified @%zu\n", label.c_str(), i);
       ++invalid_passthrough;
@@ -210,7 +222,7 @@ static void run_case(const std::string& label,
   log_info("[test][%s] ✔ Causal keep_len matches. W=%zu, burn_in_valid=%zu, normalized=%zu, invalid_passthrough=%zu\n",
            label.c_str(), W, std::min(valid_seen, W), normalized, invalid_passthrough);
 
-  // 4) Idempotency: rerun without force should skip and yield identical bytes
+  // 3) Idempotency: rerun without force should skip and yield identical bytes
   std::string bin_norm2 = sanitize_csv_into_binary_file<T>(csv_path, W, /*force*/false);
   auto recs_norm2 = read_bin_all<T>(bin_norm2);
   if (recs_norm2.size() != recs_norm.size())
@@ -219,15 +231,39 @@ static void run_case(const std::string& label,
     if (!bytes_equal(recs_norm2[i], recs_norm[i]))
       log_fatal("[test][%s] Up-to-date skip changed bytes @%zu\n", label.c_str(), i);
 
+  std::size_t Wgot2 = 0;
+  bool is_norm3 = is_bin_filename_normalized(bin_norm2, &Wgot2);
+  if (!is_norm3) log_fatal("[test][%s] up-to-date normalized name not detected\n", label.c_str());
+  if (Wgot2 != W) log_fatal("[test][%s] window parse mismatch on re-run (got %zu, want %zu)\n", label.c_str(), Wgot2, W);
+
   log_info("[test][%s] ✔ All checks passed.\n", label.c_str());
 }
 
 int main() {
   try {
+    // --- Name detector smoke tests (no file I/O needed) ---
+    {
+      std::size_t w = 777;
+      bool n = is_bin_filename_normalized("/tmp/foo.bin", &w);
+      assert(!n && w == 777);
+
+      w = 777;
+      n = is_bin_filename_normalized("/tmp/foo.norm.bin", &w);   // legacy/invalid
+      assert(!n && w == 777);
+
+      w = 777;
+      n = is_bin_filename_normalized("/tmp/foo.normW0.bin", &w); // window 0 -> not normalized
+      assert(!n && w == 777);
+
+      w = 777;
+      n = is_bin_filename_normalized("/tmp/foo.normW64.bin", &w);
+      assert(n && w == 64);
+    }
+
     fs::path tmp = fs::path("/cuwacunu/data/tests");
     fs::create_directories(tmp);
 
-    const std::size_t W = 3; // normalization window
+    const std::size_t W = 3; // normalization window >= 1 => normalized
 
     // --- kline_t ---
     auto kline_csv = write_kline_csv(tmp);

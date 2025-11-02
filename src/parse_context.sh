@@ -204,7 +204,7 @@ ignore_list=(
   "*/venv/*" "*/__pycache__/*" "*/.idea/*" "*/.vscode/*" "*/.DS_Store"
   "*.lock" "*.log" "*.png" "*.jpg" "*.jpeg" "*.gif" "*.ico" "*.svg" "*.pdf"
   "*.zip" "*.tar" "*.gz" "*.bz2" "*.xz" "*.7z" "*.rar" "*.wasm" "*.exe" "*.dll"
-  "*.bin" "*.so" "*.dylib" "*.class" "*.o" "*.a" "*.pyc"
+  "*.bin" "*.so" "*.dylib" "*.class" "*.o" "*.a" "*.pyc" "*.csv"
   ".env" "*/.env" ".env.*" "*/.env.*" "*.pem" "*.key" "*id_rsa*" "*id_ed25519*" "*.p12" "*.pfx"
   "*.keystore" "*.jks" "*secrets*" "*credentials*" "*private*"
 )
