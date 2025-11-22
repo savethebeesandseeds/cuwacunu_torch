@@ -19,14 +19,14 @@
 #include "camahjucunu/data/memory_mapped_datafile.h"
 
 using cuwacunu::camahjucunu::data::MemoryMappedConcatDataset;
-using Kline = cuwacunu::camahjucunu::exchange::kline_t;
+using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t;
 
 /* size recomputation consistent with concat’s implementation */
-template <typename K>
-static inline std::size_t expected_count(K left, K right, K step, K tol = static_cast<K>(1e-9)) {
-  if constexpr (std::is_floating_point_v<K>) {
-    if (step <= K(0) || right + tol < left) return 0;
-    K k = std::floor(((right - left) / step) + tol);
+template <typename T>
+static inline std::size_t expected_count(T left, T right, T step, T tol = static_cast<T>(1e-9)) {
+  if constexpr (std::is_floating_point_v<T>) {
+    if (step <= T(0) || right + tol < left) return 0;
+    T k = std::floor(((right - left) / step) + tol);
     if (k < 0) return 0;
     return static_cast<std::size_t>(k) + 1;
   } else {
@@ -36,8 +36,8 @@ static inline std::size_t expected_count(K left, K right, K step, K tol = static
 }
 
 // ---------- helpers ----------
-static Kline make_kline(int64_t close_time, double base = 100.0, int i = 0) {
-  Kline r{};
+static Datatype_t make_kline(int64_t close_time, double base = 100.0, int i = 0) {
+  Datatype_t r{};
   r.open_time              = close_time - 1;
   r.open_price             = base + i;
   r.high_price             = r.open_price + 1.0;
@@ -52,13 +52,13 @@ static Kline make_kline(int64_t close_time, double base = 100.0, int i = 0) {
   return r;
 }
 
-static std::vector<Kline> make_regular_rows(int64_t start_key, int64_t step, int n) {
-  std::vector<Kline> v; v.reserve(n);
+static std::vector<Datatype_t> make_regular_rows(int64_t start_key, int64_t step, int n) {
+  std::vector<Datatype_t> v; v.reserve(n);
   for (int i = 0; i < n; ++i) v.push_back(make_kline(start_key + i * step, 100.0, i));
   return v;
 }
 
-static std::string write_csv_kline(const std::vector<Kline>& rows, const std::string& path, char delimiter = ',') {
+static std::string write_csv_kline(const std::vector<Datatype_t>& rows, const std::string& path, char delimiter = ',') {
   std::ofstream ofs(path);
   if (!ofs) throw std::runtime_error("Failed to open tmp csv for write: " + path);
   for (const auto& r : rows) {
@@ -73,7 +73,7 @@ static std::string write_csv_kline(const std::vector<Kline>& rows, const std::st
 }
 
 // For row-wise equality checks
-static torch::Tensor features_f32(const Kline& r) {
+static torch::Tensor features_f32(const Datatype_t& r) {
   const auto vd = r.tensor_features();
   std::vector<float> vf(vd.begin(), vd.end());
   return torch::from_blob(vf.data(), {(long)vf.size()}, torch::kFloat32).clone();
@@ -93,7 +93,7 @@ int main() {
     write_csv_kline(rows, fB);
 
     // 2) Concat dataset: add two sources with different (Np, Nf) to exercise padding
-    using CDS = MemoryMappedConcatDataset<Kline>;
+    using CDS = MemoryMappedConcatDataset<Datatype_t>;
     CDS cds;
     cds.add_dataset(/*csv*/ fA, /*Np*/ 5, /*Nf*/ 3, /*norm_window*/ 0, /*force_bin*/ true);
     cds.add_dataset(/*csv*/ fB, /*Np*/ 3, /*Nf*/ 5, /*norm_window*/ 0, /*force_bin*/ true);
@@ -104,7 +104,7 @@ int main() {
     assert(cds.max_N_past_   == 5);
     assert(cds.max_N_future_ == 5);
 
-    using key_t = typename Kline::key_type_t;
+    using key_t = typename Datatype_t::key_type_t;
     const key_t left  = cds.leftmost_key_value_;
     const key_t right = cds.rightmost_key_value_;
     const key_t gstep = cds.key_value_step_;

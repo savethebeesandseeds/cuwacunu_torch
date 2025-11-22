@@ -1,0 +1,75 @@
+<instruction> ::= {<screen>} ;
+
+<screen> ::= "SCREEN" <ws1> <fcode> <lb> {<screen_line>} <ws0> "ENDSCREEN" ;
+
+<screen_line> ::= <ws0> <screen_stmt> <lb> ;
+
+<screen_stmt> ::= <arg_stmt> | <panel_stmt> | <route_stmt> ;
+
+<arg_stmt> ::= "arg" <ws1> <arg_name> <ws1> <arg_opt> <ws1> <path> [<presented_by>] [<triggers_block>] ;
+
+<arg_name> ::= <ident> ;
+<arg_opt>  ::= "path" | "is" ;
+
+<presented_by>        ::= "presented_by" <ws1> <ident> [<present_kv_section>] ;
+<present_kv_section>  ::= <ws1> <present_kv_pairs> ;
+<present_kv_pairs>    ::= <present_kv_pair> {<present_kv_pair_more>} ;
+<present_kv_pair_more>::= <ws1> <present_kv_pair> ;
+<present_kv_pair>     ::= <ident> <ws1> <kv_word> ;
+<kv_word>             ::= <ident> | <number> | <dq_string> ;
+
+<triggers_block> ::= "TRIGGERS" <lb> {<trigger_line>} <ws0> "ENDTRIGGERS" ;
+
+<trigger_line>    ::= <ws0> <trigger_kv_pair> <lb> ;
+<trigger_kv_pair> ::= <ident> <ws1> <kv_word> ;
+
+<panel_stmt> ::= "PANEL" <ws1> <panel_id> <ws1> <panel_type> <ws1> "at" <ws1> <int> <ws1> <int> <ws1> <int> <ws1> <int> [<opt_z>] [<opt_scale>] [<opt_bind>] <lb> {<panel_draw_line>} <ws0> "ENDPANEL" ;
+
+<opt_z>     ::= <ws1> <z_clause> ;
+<opt_scale> ::= <ws1> <scale_clause> ;
+<opt_bind>  ::= <ws1> <bind_clause> ;
+
+<panel_id>   ::= <ident> ;
+<panel_type> ::= "plot" | "tile" | "text" | "matrix" | "mdn" | "embed" | "custom" ;
+<z_clause>   ::= "z" <ws1> <int> ;
+<scale_clause>::= "scale" <ws1> <float> ;
+<bind_clause> ::= "bind" <ws1> <ident> ;
+
+<panel_draw_line> ::= <ws0> <draw_stmt> <lb> ;
+
+<draw_stmt>       ::= "draw" <ws1> <ident> [<draw_kv_section>] ;
+<draw_kv_section> ::= <ws1> <draw_kv_pairs> ;
+<draw_kv_pairs>   ::= <draw_kv_pair> {<draw_kv_pair_more>} ;
+<draw_kv_pair_more>::= <ws1> <draw_kv_pair> ;
+<draw_kv_pair>    ::= <ident> <ws1> <kv_word> ;
+
+<route_stmt> ::= "on" <ws1> <keyseq> <ws1> "do" <ws1> <action> ;
+<keyseq>     ::= "F" <number> | "G" <number> | <ident> ;
+<action>     ::= "goto" <ws1> "F" <number> | "toggle" <ws1> <overlay> | "refresh" | <ident> ;
+<overlay>    ::= "logs" | "crypto" | "bnf" ;
+
+<fcode> ::= "F" "+" <number> ;
+
+<int>   ::= <number> ;
+<float> ::= <number> "." <number> | <number> ;
+<number>::= <digit> [<number>] ;
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+
+<upper> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+<lower> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<alpha> ::= <upper> | <lower> ;
+
+<ident>   ::= <alpha> {<id_tail>} ;
+<id_tail> ::= <alpha> | <digit> | "_" | "." | "/" | ":" | "-" ;
+
+<path>       ::= "Arg1" [<path_tail>] ;
+<path_tail>  ::= <dot_ident> {<dot_ident>} ;
+<dot_ident>  ::= "." <ident> ;
+
+<dq_string> ::= """ {<dq_char>} """ ;
+<dq_char>   ::= <alpha> | <digit> | " " | "_" | "-" | "." | ":" | "," | "#" | "+" | "/" ;
+
+<hsp>  ::= " " | "\t" ;
+<ws0>  ::= {<hsp>} ;
+<ws1>  ::= <hsp> [<ws1>] ;
+<lb>   ::= "\r\n" | "\n" ;

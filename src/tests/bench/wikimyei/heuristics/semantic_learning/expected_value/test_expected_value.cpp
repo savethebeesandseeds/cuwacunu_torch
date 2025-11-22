@@ -37,29 +37,6 @@ int main() {
   torch::manual_seed(48);
 
   // -----------------------------------------------------
-  // Create the Dataloader
-  // -----------------------------------------------------
-  torch::manual_seed(cuwacunu::piaabo::dconfig::config_space_t::get<int>("GENERAL", "torch_seed"));
-
-  /* types definition */
-  std::string INSTRUMENT = "BTCUSDT";                     // "UTILITIES"
-  using Td = cuwacunu::camahjucunu::exchange::kline_t;    // cuwacunu::camahjucunu::exchange::basic_t;
-  using Q = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Td>;
-  using KBatch = cuwacunu::camahjucunu::data::observation_sample_t;
-  // using RandSamper = torch::data::samplers::RandomSampler;
-  using SeqSampler = torch::data::samplers::SequentialSampler;
-
-  TICK(create_dataloader_);
-  auto raw_dataloader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, KBatch, Td, SeqSampler>(
-      INSTRUMENT,                                                                                             /* instrument */
-      cuwacunu::camahjucunu::observation_pipeline_t::inst,             /* obs_inst */ 
-      cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
-  );
-  PRINT_TOCK_ms(create_dataloader_);
-
-  // -----------------------------------------------------
   // Instantiate VICReg_4d (from loading point)
   // -----------------------------------------------------
   TICK(load_representation_model_);
@@ -69,11 +46,33 @@ int main() {
   PRINT_TOCK_ms(load_representation_model_);
 
   // -----------------------------------------------------
+  // Create the Dataloader
+  // -----------------------------------------------------
+  torch::manual_seed(cuwacunu::piaabo::dconfig::config_space_t::get<int>("GENERAL", "torch_seed"));
+
+  /* types definition */
+  std::string INSTRUMENT = "BTCUSDT";                     // "UTILITIES"
+  using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t;    // cuwacunu::camahjucunu::exchange::basic_t;
+  using Dataset_t = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
+  using Datasample_t = cuwacunu::camahjucunu::data::observation_sample_t;
+  using Sampler_t = torch::data::samplers::SequentialSampler; // using Sampler_t = torch::data::samplers::RandomSampler;
+
+  TICK(create_dataloader_);
+  auto raw_dataloader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>(
+      INSTRUMENT,                                                                                             /* instrument */
+      cuwacunu::camahjucunu::observation_pipeline_t::inst,             /* obs_inst */ 
+      cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
+      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
+  );
+  PRINT_TOCK_ms(create_dataloader_);
+
+  // -----------------------------------------------------
   // Instantiate representation Dataloader
   // -----------------------------------------------------
   TICK(extend_dataloader_with_enbedings_);
   auto representation_dataloader =
-    representation_model.make_representation_dataloader<Q, KBatch, Td, SeqSampler>
+    representation_model.make_representation_dataloader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>
       (raw_dataloader, /*use_swa=*/true, /* debug */ false);
   PRINT_TOCK_ms(extend_dataloader_with_enbedings_);
   

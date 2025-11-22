@@ -57,10 +57,10 @@ int main() {
   torch::autograd::AnomalyMode::set_enabled(true);
 
   /* types definition */
-  // using T = cuwacunu::camahjucunu::exchange::kline_t;
-  using T = cuwacunu::camahjucunu::exchange::basic_t;
-  using Q = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<T>;
-  using K = cuwacunu::camahjucunu::data::observation_sample_t;
+  // using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t;
+  using Datatype_t = cuwacunu::camahjucunu::exchange::basic_t;
+  using Dataset_t = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
+  using Datasample_t = cuwacunu::camahjucunu::data::observation_sample_t;
   using SeqSampler = torch::data::samplers::SequentialSampler;
   using RandSamper = torch::data::samplers::RandomSampler;
 
@@ -93,7 +93,7 @@ int main() {
 
   /* create the dataloader */
   TICK(create_dataloader_);
-  auto data_loader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, K, T, RandSamper>(INSTRUMENT, obsInst, /* force_binarization */ false, /* batch_size */ BATCH_SIZE, /* workers */ dataloader_workers);
+  auto data_loader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, Datasample_t, Datatype_t, RandSamper>(INSTRUMENT, obsInst, /* force_binarization */ false, /* batch_size */ BATCH_SIZE, /* workers */ dataloader_workers);
   PRINT_TOCK_ns(create_dataloader_);
 
   /* model definition */
@@ -122,7 +122,7 @@ int main() {
 
     TICK(one_epoch_);
     for (auto& sample_batch : data_loader) {
-      auto collacted_sample = K::collate_fn(sample_batch);
+      auto collacted_sample = Datasample_t::collate_fn(sample_batch);
       auto sequence_a = collacted_sample.features.to(device);
       auto mask_a     = collacted_sample.mask.to(device);
 
@@ -215,9 +215,9 @@ int main() {
   clear_file.close();
 
   /* now we save the values of the data */
-  auto data_loader_seq = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, K, T, SeqSampler>(INSTRUMENT, obsInst, /* force_binarization */ false, /* batch_size */ BATCH_SIZE, /* workers */ 1);
+  auto data_loader_seq = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, Datasample_t, Datatype_t, SeqSampler>(INSTRUMENT, obsInst, /* force_binarization */ false, /* batch_size */ BATCH_SIZE, /* workers */ 1);
   for (auto& sample_batch : data_loader_seq) {
-    auto collacted_sample = K::collate_fn(sample_batch);
+    auto collacted_sample = Datasample_t::collate_fn(sample_batch);
     auto sequence_a = collacted_sample.features.to(device);
     auto mask_a     = collacted_sample.mask.to(device);
 

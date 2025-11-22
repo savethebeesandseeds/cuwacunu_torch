@@ -46,18 +46,16 @@ bool check_includes_type(const std::vector<ProductionUnit>& units, cuwacunu::cam
 }
 
 
-bool check_is_informationUnit(const ProductionUnit& unit) {
-  /* determine if the unit contains information */
-  if(
-    unit.type != ProductionUnit::Type::Terminal || 
-    unit.type != ProductionUnit::Type::NonTerminal || 
-    unit.type != ProductionUnit::Type::Optional ||
-    unit.type != ProductionUnit::Type::Repetition
-  ) {
-    return true;
+static inline bool check_is_informationUnit(const ProductionUnit& unit) {
+  switch (unit.type) {
+    case ProductionUnit::Type::Terminal:
+    case ProductionUnit::Type::NonTerminal:
+    case ProductionUnit::Type::Optional:
+    case ProductionUnit::Type::Repetition:
+      return true;
+    default:
+      return false;
   }
-  /* not information unit */
-  return false;
 }
 
 /* - - - - - - - - - - - - */
@@ -266,15 +264,23 @@ ProductionAlternative GrammarParser::parseProductionAlternative(std::string lhs_
     ProductionAlternative::Flags dflags = ProductionAlternative::Flags::None;
 
     /* parse units */
-    for(auto unit : rhs_units) {
+    for (auto unit : rhs_units) {
       if(check_is_informationUnit(unit)) {
         /* push back unit */
         dunits.push_back(unit);
         
-        /* determine flags*/
-        dflags |= lhs_lexeme == unit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
-        dflags |= lhs_lexeme == ("[" + unit.lexeme + "]") ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
-        dflags |= lhs_lexeme == ("{" + unit.lexeme + "}") ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
+        /* determine flags */
+        auto is_rec = [&]()->bool {
+          if (unit.type == ProductionUnit::Type::NonTerminal) return unit.lexeme == lhs_lexeme;
+          if (unit.type == ProductionUnit::Type::Optional || unit.type == ProductionUnit::Type::Repetition) {
+            if (unit.lexeme.size() >= 3 && (unit.lexeme.front()=='[' || unit.lexeme.front()=='{')) {
+              const std::string inner = unit.lexeme.substr(1, unit.lexeme.size()-2);
+              return inner == lhs_lexeme;
+            }
+          }
+          return false;
+        }();
+        if (is_rec) dflags |= ProductionAlternative::Flags::Recursion;
         dflags |= unit.type == ProductionUnit::Type::Optional ? ProductionAlternative::Flags::Optional : ProductionAlternative::Flags::None;
         dflags |= unit.type == ProductionUnit::Type::Repetition ? ProductionAlternative::Flags::Repetition : ProductionAlternative::Flags::None;
       }
@@ -317,8 +323,12 @@ ProductionAlternative GrammarParser::parseProductionAlternative(std::string lhs_
 
   /* determine flags*/
   dflags |= lhs_lexeme == dunit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
-  dflags |= "[" + lhs_lexeme  + "]" == dunit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
-  dflags |= "{" + lhs_lexeme  + "}" == dunit.lexeme ? ProductionAlternative::Flags::Recursion : ProductionAlternative::Flags::None;
+  if (dunit.type == ProductionUnit::Type::Optional || dunit.type == ProductionUnit::Type::Repetition) {
+    if (dunit.lexeme.size() >= 3 && (dunit.lexeme.front()=='[' || dunit.lexeme.front()=='{')) {
+      const std::string inner = dunit.lexeme.substr(1, dunit.lexeme.size()-2);
+      if (inner == lhs_lexeme) dflags |= ProductionAlternative::Flags::Recursion;
+    }
+  }
   dflags |= dunit.type == ProductionUnit::Type::Optional ? ProductionAlternative::Flags::Optional : ProductionAlternative::Flags::None;
   dflags |= dunit.type == ProductionUnit::Type::Repetition ? ProductionAlternative::Flags::Repetition : ProductionAlternative::Flags::None;
 

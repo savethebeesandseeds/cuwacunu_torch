@@ -14,14 +14,14 @@ namespace jkimyei {
 /**
  * @brief Abstract class for a learning schema
  *
- * @tparam Q The dataset type, representing the structure of data batches.
- * @tparam K The sample type returned by the dataset or dataloader.
+ * @tparam Dataset_t The dataset type, representing the structure of data batches.
+ * @tparam Datasample_t The sample type returned by the dataset or dataloader.
  *
- * The template parameters Q and K define the interaction between the dataloader and the training step.
- * Q specifies the dataset structure, which is compatible with torch::data::Dataset, while K defines the structure
+ * The template parameters Dataset_t and Datasample_t define the interaction between the dataloader and the training step.
+ * Dataset_t specifies the dataset structure, which is compatible with torch::data::Dataset, while Datasample_t defines the structure
  * of individual samples processed during training and loss computation.
  */
-template <typename Q, typename K>
+template <typename Dataset_t, typename Datasample_t>
 class LearningSchema {
 protected:
   using training_instruction_t    = cuwacunu::camahjucunu::training_instruction_t;
@@ -40,7 +40,7 @@ public:
   virtual void initialize(std::shared_ptr<torch::nn::Module> model, training_instruction_t training_instruction, observation_instruction_t) {
     this->model_          = model;
     this->train_inst_     = training_instruction;
-    torch::data::DataLoader<Q, K>& data_loader = ...;
+    torch::data::DataLoader<Dataset_t, Datasample_t>& data_loader = ...;
     this->loss_function_  = select_loss_function();
     this->optimizer_      = initialize_optimizer();
   }
@@ -55,7 +55,7 @@ public:
   virtual std::unique_ptr<torch::optim::LRScheduler> select_lr_scheduler() = 0;
 
   /* Execute a single training step */
-  virtual void train_step(const K& example) = 0;
+  virtual void train_step(const Datasample_t& example) = 0;
 
   /* Train the model on the learning schema */
   virtual void train_loop() = 0;

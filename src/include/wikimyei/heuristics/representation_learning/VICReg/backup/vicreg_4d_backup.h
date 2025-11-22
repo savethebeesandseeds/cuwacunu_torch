@@ -269,7 +269,7 @@ public:
      *
      * @tparam Q The dataset type. This dataset should be compatible with torch::data::Dataset and return samples of type K from its `get(...)` method.
      * @tparam K The sample type returned by the dataset (e.g., a struct containing features and mask tensors).
-     * @tparam Td The underlying data type used by the dataset, if required.
+     * @tparam Datatype_t The underlying data type used by the dataset, if required.
      * 
      * @param dataloader   A dataloader yielding 4D tensors of shape (B, C, T, D). 
      * @param n_epochs     Number of training epochs to run (set to -1 to ignore).
@@ -278,9 +278,9 @@ public:
      * 
      * @return std::vector<std::pair<int, double>>  A log of average training losses, one per epoch.
      */
-    template<typename Q, typename K, typename Td>
+    template<typename Q, typename K, typename Datatype_t>
     std::vector<std::pair<int, double>> fit(
-        cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Td, torch::data::samplers::SequentialSampler>& dataloader,
+        cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Datatype_t, torch::data::samplers::SequentialSampler>& dataloader,
         int n_epochs = -1,
         int n_iters = -1,
         int swa_start_iter = 1000, 
@@ -465,15 +465,15 @@ public:
      * 
      * @tparam Q The dataset type. This dataset should be compatible with torch::data::Dataset and return samples of type K from its `get(...)` method.
      * @tparam K The sample type returned by the dataset (e.g., a struct containing features and mask tensors).
-     * @tparam Td The underlying data type used by the dataset, if required.
+     * @tparam Datatype_t The underlying data type used by the dataset, if required.
      *
      * @param dataloader   A dataloader yielding 4D tensors of shape (B, C, T, D). 
      * 
      * @return torch::Tensor   Concatenated tensor of encoded outputs.
      */
-    template<typename Q, typename K, typename Td>
+    template<typename Q, typename K, typename Datatype_t>
     torch::Tensor encode(
-        cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Td, torch::data::samplers::SequentialSampler>& dataloader
+        cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, Datatype_t, torch::data::samplers::SequentialSampler>& dataloader
     ) {
         // Prepare a vector to collect outputs from each batch
         std::vector<torch::Tensor> outputs;

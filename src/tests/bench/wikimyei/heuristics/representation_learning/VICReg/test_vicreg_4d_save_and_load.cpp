@@ -68,14 +68,14 @@ int main()
   /* -------------------------------------------------- */
   /*  2) Build dataloader (as in training)              */
   /* -------------------------------------------------- */
-  using Td = cuwacunu::camahjucunu::exchange::kline_t;
-  using Q  = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Td>;
-  using K  = cuwacunu::camahjucunu::data::observation_sample_t;
-  using SeqSampler = torch::data::samplers::SequentialSampler;
+  using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t;
+  using Dataset_t  = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
+  using Datasample_t  = cuwacunu::camahjucunu::data::observation_sample_t;
+  using Sampler_t = torch::data::samplers::SequentialSampler;
 
   std::string INSTRUMENT = "BTCUSDT";
 
-  auto dl = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, K, Td, SeqSampler>(
+  auto dl = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>(
       INSTRUMENT,
       cuwacunu::camahjucunu::BNF::observationPipeline()
           .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),
@@ -100,7 +100,7 @@ int main()
   auto it = dl.begin();
   ASSERT_TRUE(it != dl.end(), "empty dataloader");
   auto sample_batch = *it;
-  auto sample       = K::collate_fn(sample_batch);
+  auto sample       = Datasample_t::collate_fn(sample_batch);
 
   // --- determine target device/dtype from model params (safe) ---
   torch::Device target_dev = torch::kCPU;

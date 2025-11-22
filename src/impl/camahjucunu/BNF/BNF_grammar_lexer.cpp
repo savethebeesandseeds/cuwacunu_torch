@@ -162,31 +162,22 @@ ProductionUnit GrammarLexer::parseOptional() {
           std::to_string(line) + ", column " + std::to_string(column));
   }
   
-  advance(); /* Advance '[' */
+  const int start_line=line, start_col=column;
 
-  if(peek() != '<') {
-    throw std::runtime_error("Grammar Syntax Error: Optionals should enclose Non-Terminals [<example>], found unexpected optional enclosing terminal at line " +
-          std::to_string(line) + ", column " + std::to_string(column));
-  }
+  advance(); // '['
 
-  while (!isAtEnd() && peek() != ']') {
-    char ch = advance();
-    lexeme += ch;
-  }
+  if (peek()!='<') throw std::runtime_error("... Optionals should enclose Non-Terminals [<example>] ...");
 
-  if (isAtEnd()) {
-    throw std::runtime_error("Grammar Syntax Error: Unterminated optional at line " +
-          std::to_string(line) + ", column " + std::to_string(column));
-  }
-
-  if(input[pos] == '>') {
-    throw std::runtime_error("Grammar Syntax Error: Optionals should enclose Non-Terminals [<example>], found Non-Terminal without closing bracket, unexpected syntax at line " +
-        std::to_string(line) + ", column " + std::to_string(column));
-  }
-
-  advance(); /* Advance ']' */
-
-  return ProductionUnit(ProductionUnit::Type::Optional,  "[" + lexeme + "]", line, column);
+  // read the nonterminal <...>
+  do { lexeme += advance(); if (isAtEnd()) throw std::runtime_error("... Unterminated optional ..."); } while (peek()!='>');
+  
+  lexeme += advance(); // '>'
+  
+  if (peek()!=']') throw std::runtime_error("... Missing closing ']' for optional ...");
+  
+  advance(); // ']'
+  
+  return ProductionUnit(ProductionUnit::Type::Optional, "[" + lexeme + "]", start_line, start_col);
 }
 
 
@@ -201,31 +192,21 @@ ProductionUnit GrammarLexer::parseRepetition() {
           std::to_string(line) + ", column " + std::to_string(column));
   }
   
-  advance(); /* Advance '{' */
+  const int start_line=line, start_col=column;
 
-  if(peek() != '<') {
-    throw std::runtime_error("Grammar Syntax Error: Repetitions should enclose Non-Terminals {<example>}, found unexpected Repetition enclosing terminal at line " +
-          std::to_string(line) + ", column " + std::to_string(column));
-  }
+  advance(); // '{'
 
-  while (!isAtEnd() && peek() != '}') {
-    char ch = advance();
-    lexeme += ch;
-  }
+  if (peek()!='<') throw std::runtime_error(std::string("... Repetitions should enclose Non-Terminals {<example>} ... ") + std::string("(line:") + std::to_string(line) + std::string(", column") + std::to_string(column) + ").");
 
-  if (isAtEnd()) {
-    throw std::runtime_error("Grammar Syntax Error: Unterminated Repetition at line " +
-          std::to_string(line) + ", column " + std::to_string(column));
-  }
+  do { lexeme += advance(); if (isAtEnd()) throw std::runtime_error("... Unterminated repetition ..."); } while (peek()!='>');
 
-  if(input[pos] == '>') {
-    throw std::runtime_error("Grammar Syntax Error: Repetitions should enclose Non-Terminals {<example>}, found Non-Terminal without closing bracket, unexpected syntax at line " +
-        std::to_string(line) + ", column " + std::to_string(column));
-  }
+  lexeme += advance(); // '>'
 
-  advance(); /* Advance '}' */
+  if (peek()!='}') throw std::runtime_error("... Missing closing '}' for repetition ...");
 
-  return ProductionUnit(ProductionUnit::Type::Repetition,  "{" + lexeme + "}", line, column);
+  advance(); // '}'
+  
+  return ProductionUnit(ProductionUnit::Type::Repetition, "{" + lexeme + "}", start_line, start_col);
 }
 
 /**
@@ -238,7 +219,7 @@ ProductionUnit GrammarLexer::parseTerminal() {
   /* literal terminal without quotes */
   if (peek() != '\"' && peek() != '\'') {
     /* advance the alphanumeric block */
-    while (!isAtEnd() && (std::isalnum(peek()) || std::isdigit(peek()) || peek() == '_' || peek() == '.' || peek() == ' ')) {
+    while (!isAtEnd() && (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_' || peek() == '.')) {
       lexeme += advance();
     }
     

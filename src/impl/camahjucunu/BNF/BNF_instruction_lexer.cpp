@@ -53,6 +53,12 @@ void InstructionLexer::setInput(std::string dinput) {
   reset();
 }
 
+void InstructionLexer::skipWhitespace() {
+  while (!isAtEnd() && std::isspace(static_cast<unsigned char>(peek()))) {
+    advance();
+  }
+}
+
 } /* namespace BNF */
 } /* namespace camahjucunu */
 } /* namespace cuwacunu */

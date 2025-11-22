@@ -2,7 +2,7 @@
   test_ev_gui.cpp
   TUI to visualize (1) input [1,C,T,D], (2) embedding [1,De], (3) MDN E[y] ± 1σ.
 
-  - Pulls a real observation from MemoryMappedConcatDataset<Td> at a RANDOM index.
+  - Pulls a real observation from MemoryMappedConcatDataset<Datatype_t> at a RANDOM index.
   - Highlights masked timestamps as RED scatter markers (on top of the line plot).
   - Embedding panel renders a colored tile matrix (diverging palette).
   - Value panel shows per-channel E[y] ± 1σ over horizons (naïve MDN from actual future).
@@ -144,8 +144,8 @@ struct IDataProvider {
 };
 
 struct DatasetProvider final : public IDataProvider {
-  using Td = cuwacunu::camahjucunu::exchange::kline_t; // same as your test
-  cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Td> concat;
+  using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t; // same as your test
+  cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t> concat;
   std::mt19937 rng{1234567};
 
   int c_{0}, t_{0}, d_{0}, de_{64}, hf_{0}, k_{1}, dy_{0}, tf_{0};
@@ -170,7 +170,7 @@ struct DatasetProvider final : public IDataProvider {
       cuwacunu::piaabo::dconfig::config_space_t::get<bool>("DATA_LOADER","dataloader_force_binarization");
 
     std::string inst = instrument;
-    concat = cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Td>(inst, obs_inst, force_bin);
+    concat = cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(inst, obs_inst, force_bin);
 
     // infer shapes from first item
     auto s0 = concat.get(0);

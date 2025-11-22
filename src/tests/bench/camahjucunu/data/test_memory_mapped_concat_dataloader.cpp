@@ -15,13 +15,13 @@
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 
-using T  = cuwacunu::camahjucunu::exchange::kline_t;
-using Q  = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<T>;
-using K  = cuwacunu::camahjucunu::data::observation_sample_t;
+using Datatype_t  = cuwacunu::camahjucunu::exchange::kline_t;
+using Dataset_t  = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
+using Datasample_t  = cuwacunu::camahjucunu::data::observation_sample_t;
 
 // ----- helpers to build a tiny, regular grid for kline_t --------------------
-static T make_kline(int64_t close_time, double base = 100.0, int i = 0) {
-  T r{};
+static Datatype_t make_kline(int64_t close_time, double base = 100.0, int i = 0) {
+  Datatype_t r{};
   r.open_time              = close_time - 1;
   r.open_price             = base + i;
   r.high_price             = r.open_price + 1.0;
@@ -36,13 +36,13 @@ static T make_kline(int64_t close_time, double base = 100.0, int i = 0) {
   return r;
 }
 
-static std::vector<T> make_regular_rows(int64_t start_key, int64_t step, int n) {
-  std::vector<T> v; v.reserve(n);
+static std::vector<Datatype_t> make_regular_rows(int64_t start_key, int64_t step, int n) {
+  std::vector<Datatype_t> v; v.reserve(n);
   for (int i = 0; i < n; ++i) v.push_back(make_kline(start_key + i * step, 100.0, i));
   return v;
 }
 
-static std::string write_csv_kline(const std::vector<T>& rows, const std::string& path, char delimiter = ',') {
+static std::string write_csv_kline(const std::vector<Datatype_t>& rows, const std::string& path, char delimiter = ',') {
   std::ofstream ofs(path);
   if (!ofs) throw std::runtime_error("Failed to open tmp csv for write: " + path);
   for (const auto& r : rows) {
@@ -69,7 +69,7 @@ int main() try {
   write_csv_kline(rows, fB);
 
   // --- 2) Build the concat dataset with different (Np, Nf) to exercise padding
-  Q cds;
+  Dataset_t cds;
   cds.add_dataset(/*csv*/ fA, /*Np*/ 5, /*Nf*/ 3, /*norm_window*/ 0, /*force_bin*/ true);
   cds.add_dataset(/*csv*/ fB, /*Np*/ 3, /*Nf*/ 5, /*norm_window*/ 0, /*force_bin*/ true);
 
@@ -89,7 +89,7 @@ int main() try {
   // Sequential
   {
     using S = torch::data::samplers::SequentialSampler;
-    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, T, S> dl(
+    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, S> dl(
       cds, cds.SequentialSampler(), cds.SequentialSampler_options(batch_size, workers));
 
     // Introspection from the dataloader must match dataset
@@ -130,7 +130,7 @@ int main() try {
       }
 
       // Collate and check batch shapes
-      auto coll = K::collate_fn(sample_batch);
+      auto coll = Datasample_t::collate_fn(sample_batch);
       const int64_t B = coll.features.size(0);
       const int64_t D = coll.features.size(3);  // infer D from collated tensor
       assert(B > 0 && B <= (int64_t)batch_size);
@@ -151,7 +151,7 @@ int main() try {
   // Random
   {
     using S = torch::data::samplers::RandomSampler;
-    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, T, S> dl(
+    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, S> dl(
       cds, cds.RandomSampler(), cds.RandomSampler_options(batch_size, workers));
 
     std::vector<char> visited(N, 0);
@@ -173,7 +173,7 @@ int main() try {
         assert(s.future_features.size(1) == Tf);
       }
 
-      auto coll = K::collate_fn(sample_batch);
+      auto coll = Datasample_t::collate_fn(sample_batch);
       const int64_t B = coll.features.size(0);
       const int64_t D = coll.features.size(3);
       assert(B > 0 && B <= (int64_t)batch_size);

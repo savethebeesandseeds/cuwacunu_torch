@@ -65,38 +65,38 @@ namespace data {
 /**
  * @brief Reads a specific value from a memory-mapped structure.
  *
- * @tparam T The struct type, which defines `key_type_t`.
+ * @tparam Datatype_t The struct type, which defines `key_type_t`.
  */
-template <typename T>
-typename T::key_type_t read_memory_value(const void* data_ptr, std::size_t index, std::size_t offset) {
-  typename T::key_type_t value{};
+template <typename Datatype_t>
+typename Datatype_t::key_type_t read_memory_value(const void* data_ptr, std::size_t index, std::size_t offset) {
+  typename Datatype_t::key_type_t value{};
   const std::byte* base   = static_cast<const std::byte*>(data_ptr);
-  const std::byte* target = base + index * sizeof(T) + offset;
-  std::memcpy(&value, target, sizeof(typename T::key_type_t));
+  const std::byte* target = base + index * sizeof(Datatype_t) + offset;
+  std::memcpy(&value, target, sizeof(typename Datatype_t::key_type_t));
   return value;
 }
 
 /**
  * @brief Reads a full record from the memory-mapped data.
  */
-template <typename T>
-T read_memory_struct(const void* data_ptr, std::size_t index) {
-  T record{};
+template <typename Datatype_t>
+Datatype_t read_memory_struct(const void* data_ptr, std::size_t index) {
+  Datatype_t record{};
   const std::byte* base   = static_cast<const std::byte*>(data_ptr);
-  const std::byte* target = base + index * sizeof(T);
-  std::memcpy(&record, target, sizeof(T));
+  const std::byte* target = base + index * sizeof(Datatype_t);
+  std::memcpy(&record, target, sizeof(Datatype_t));
   return record;
 }
 
 /**
  * @brief Reads multiple records from the memory-mapped data.
  */
-template <typename T>
-std::vector<T> read_memory_structs(const void* data_ptr, std::size_t index, std::size_t count) {
-  std::vector<T> records(count); // Allocate memory for `count` records.
+template <typename Datatype_t>
+std::vector<Datatype_t> read_memory_structs(const void* data_ptr, std::size_t index, std::size_t count) {
+  std::vector<Datatype_t> records(count); // Allocate memory for `count` records.
   const std::byte* base   = static_cast<const std::byte*>(data_ptr);
-  const std::byte* target = base + index * sizeof(T);
-  std::memcpy(records.data(), target, count * sizeof(T));
+  const std::byte* target = base + index * sizeof(Datatype_t);
+  std::memcpy(records.data(), target, count * sizeof(Datatype_t));
   return records;
 }
 
@@ -184,10 +184,10 @@ inline std::size_t steps_between_inclusive_fp(K left_aligned, K right_aligned, K
  *   - N_future_: number of future frames returned (first row is t+1)
  *   - stride is 1 (anchor moves by one raw record)
  *
- * @tparam T The struct type of the records stored in the binary file.
+ * @tparam Datatype_t The struct type of the records stored in the binary file.
  */
-template <typename T>
-class MemoryMappedDataset : public torch::data::datasets::Dataset<MemoryMappedDataset<T>, observation_sample_t> {
+template <typename Datatype_t>
+class MemoryMappedDataset : public torch::data::datasets::Dataset<MemoryMappedDataset<Datatype_t>, observation_sample_t> {
 private:
   struct MappedData {
     int fd_;                 /* File descriptor for the binary file */
@@ -239,10 +239,10 @@ private:
 public:
   /* Variables for key-value boundaries. */
   std::size_t key_value_offset_;                /* Offset (in bytes) of the key in each record */
-  typename T::key_type_t leftmost_key_value_;   /* Smallest key value in the dataset */
-  typename T::key_type_t rightmost_key_value_;  /* Largest key value in the dataset */
-  typename T::key_type_t key_value_span_;       /* rightmost - leftmost */
-  typename T::key_type_t key_value_step_;       /* regular increment in key_value between consecutive records */
+  typename Datatype_t::key_type_t leftmost_key_value_;   /* Smallest key value in the dataset */
+  typename Datatype_t::key_type_t rightmost_key_value_;  /* Largest key value in the dataset */
+  typename Datatype_t::key_type_t key_value_span_;       /* rightmost - leftmost */
+  typename Datatype_t::key_type_t key_value_step_;       /* regular increment in key_value between consecutive records */
 
   /* Sliding-window configuration */
   std::size_t N_past_{1};
@@ -250,9 +250,9 @@ public:
   std::size_t sliding_count_{0};               /* Number of sliding anchors (size()) */
 
 private:
-  // Build a 1D tensor of keys from a mutable vector (T::key_value() is non-const).
-  static inline torch::Tensor keys_from_records_1d(std::vector<T>& recs) {
-    using KeyT = typename T::key_type_t;
+  // Build a 1D tensor of keys from a mutable vector (Datatype_t::key_value() is non-const).
+  static inline torch::Tensor keys_from_records_1d(std::vector<Datatype_t>& recs) {
+    using KeyT = typename Datatype_t::key_type_t;
     const long n = static_cast<long>(recs.size());
     if constexpr (std::is_integral_v<KeyT>) {
       std::vector<long long> v(recs.size());
@@ -271,12 +271,12 @@ public:
                                std::size_t N_future = 1)
       : bin_filename_(bin_filename),
         mapped_data_(std::make_unique<MappedData>(bin_filename)),
-        num_records_(mapped_data_->file_size_ / sizeof(T)),
-        key_value_offset_(T::key_offset()),
+        num_records_(mapped_data_->file_size_ / sizeof(Datatype_t)),
+        key_value_offset_(Datatype_t::key_offset()),
         N_past_(N_past),
         N_future_(N_future) {
 
-    if (mapped_data_->file_size_ % sizeof(T) != 0) {
+    if (mapped_data_->file_size_ % sizeof(Datatype_t) != 0) {
       log_fatal("[MemoryMappedDataset] Error: Binary file size is not a multiple of struct size. File: %s\n",
                 bin_filename_.c_str());
     }
@@ -284,8 +284,8 @@ public:
       log_fatal("[MemoryMappedDataset] Error: Binary Dataset is empty. File: %s\n", bin_filename_.c_str());
     }
 
-    leftmost_key_value_  = read_memory_value<T>(mapped_data_->data_ptr_, 0,               key_value_offset_);
-    rightmost_key_value_ = read_memory_value<T>(mapped_data_->data_ptr_, num_records_-1,  key_value_offset_);
+    leftmost_key_value_  = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 0,               key_value_offset_);
+    rightmost_key_value_ = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, num_records_-1,  key_value_offset_);
     key_value_span_      = rightmost_key_value_ - leftmost_key_value_;
 
     if (!(leftmost_key_value_ < rightmost_key_value_)) {
@@ -293,16 +293,16 @@ public:
                 bin_filename_.c_str());
     }
 
-    static_assert(std::is_same_v<decltype(std::declval<T>().tensor_features()), std::vector<double>>,
+    static_assert(std::is_same_v<decltype(std::declval<Datatype_t>().tensor_features()), std::vector<double>>,
                   "[MemoryMappedDataset] Error: Template argument must provide tensor_features() returning std::vector<double>");
-    static_assert(std::is_standard_layout<T>::value,
+    static_assert(std::is_standard_layout<Datatype_t>::value,
                   "[MemoryMappedDataset] Error: Template argument must be a standard layout type");
-    static_assert(std::is_trivially_copyable<T>::value,
+    static_assert(std::is_trivially_copyable<Datatype_t>::value,
                   "[MemoryMappedDataset] Error: Template argument must be trivially copyable");
 
     // Infer regular step (warn on irregularities)
-    typename T::key_type_t prev = read_memory_value<T>(mapped_data_->data_ptr_, 0, key_value_offset_);
-    typename T::key_type_t curr = read_memory_value<T>(mapped_data_->data_ptr_, 1, key_value_offset_);
+    typename Datatype_t::key_type_t prev = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 0, key_value_offset_);
+    typename Datatype_t::key_type_t curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 1, key_value_offset_);
     key_value_step_ = curr - prev;
 
     if (key_value_step_ <= 0) {
@@ -311,12 +311,12 @@ public:
     }
 
     for (std::size_t idx = 1; idx < num_records_; ++idx) {
-      curr = read_memory_value<T>(mapped_data_->data_ptr_, idx, key_value_offset_);
+      curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx, key_value_offset_);
       if (curr < prev) {
         log_fatal("[MemoryMappedDataset] Error: Binary Dataset is not sequential and increasing (not sorted). File: %s, on index: %zu\n",
                   bin_filename_.c_str(), idx);
       }
-      if constexpr (std::is_floating_point_v<typename T::key_type_t>) {
+      if constexpr (std::is_floating_point_v<typename Datatype_t::key_type_t>) {
         if (std::abs((curr - prev) - key_value_step_) > 1e-9) {
           log_warn("[MemoryMappedDataset] record on file [%s] irregular key delta at index [%zu]: (curr - prev): %f != step: %f\n",
                    bin_filename_.c_str(), idx,
@@ -353,7 +353,7 @@ public:
    * (C) fills past_keys/future_keys.
    */
   observation_sample_t get_sequences_around_key_value(
-      typename T::key_type_t target_key_value,
+      typename Datatype_t::key_type_t target_key_value,
       std::size_t N_past,
       std::size_t N_future)
   {
@@ -370,7 +370,7 @@ public:
     }
 
     const std::size_t past_start = i - (N_past - 1);
-    auto past_records = read_memory_structs<T>(mapped_data_->data_ptr_, past_start, N_past);
+    auto past_records = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, past_start, N_past);
     const std::size_t D = past_records[0].tensor_features().size();
 
     torch::Tensor past_X   = torch::empty({ static_cast<long>(N_past),   static_cast<long>(D) }, torch::kFloat32);
@@ -387,7 +387,7 @@ public:
     torch::Tensor past_keys = keys_from_records_1d(past_records);
 
     const std::size_t fut_start = i + 1;
-    auto fut_records = read_memory_structs<T>(mapped_data_->data_ptr_, fut_start, N_future);
+    auto fut_records = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, fut_start, N_future);
 
     torch::Tensor fut_X   = torch::empty({ static_cast<long>(N_future), static_cast<long>(D) }, torch::kFloat32);
     torch::Tensor fut_msk = torch::empty({ static_cast<long>(N_future) },                       torch::kBool);
@@ -424,8 +424,8 @@ public:
     const std::size_t past_start = (N_past_ > 0 ? (a - (N_past_ - 1)) : a);
     const std::size_t fut_start  = a + 1;
 
-    auto past_records = read_memory_structs<T>(mapped_data_->data_ptr_, past_start, N_past_);
-    auto fut_records  = read_memory_structs<T>(mapped_data_->data_ptr_, fut_start,  N_future_);
+    auto past_records = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, past_start, N_past_);
+    auto fut_records  = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, fut_start,  N_future_);
 
     const std::size_t D = past_records[0].tensor_features().size();
 
@@ -483,7 +483,7 @@ public:
    * @brief Finds the closest index for a given key value using a safe interpolation strategy.
    * Returns the last index whose key <= target_key_value.
    */
-  std::size_t find_closest_index(typename T::key_type_t target_key_value) {
+  std::size_t find_closest_index(typename Datatype_t::key_type_t target_key_value) {
     if (num_records_ == 0) {
       log_fatal("[MemoryMappedDataset] Error: Dataset is empty: %s\n", bin_filename_.c_str());
     }
@@ -493,7 +493,7 @@ public:
     std::size_t left = 0;
     std::size_t right = num_records_ - 1;
     std::size_t best_index = 0;
-    using key_t  = typename T::key_type_t;
+    using key_t  = typename Datatype_t::key_type_t;
     using diff_t = decltype(absolute_difference(std::declval<key_t>(), std::declval<key_t>()));
     diff_t best_diff = std::numeric_limits<diff_t>::max();
     auto left_key_value  = leftmost_key_value_;
@@ -511,7 +511,7 @@ public:
       std::size_t mid = left + static_cast<std::size_t>(r * (right - left));
       if (mid >= num_records_) mid = num_records_ - 1;
 
-      auto mid_key_value = read_memory_value<T>(mapped_data_->data_ptr_, mid, key_value_offset_);
+      auto mid_key_value = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, mid, key_value_offset_);
 
       if (mid_key_value <= target_key_value) {
         const auto diff = absolute_difference(mid_key_value, target_key_value);
@@ -521,11 +521,11 @@ public:
         }
         if (mid == right) break;
         left = mid + 1;
-        left_key_value = read_memory_value<T>(mapped_data_->data_ptr_, left, key_value_offset_);
+        left_key_value = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, left, key_value_offset_);
       } else {
         if (mid == 0) break;
         right = mid - 1;
-        right_key_value = read_memory_value<T>(mapped_data_->data_ptr_, right, key_value_offset_);
+        right_key_value = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, right, key_value_offset_);
       }
     }
     return best_index;
@@ -537,10 +537,10 @@ public:
    * No clamping/padding beyond the natural grid. Vector<observation_sample_t>.
    */
   std::vector<observation_sample_t>
-  range_samples_by_keys(typename T::key_type_t key_left,
-                        typename T::key_type_t key_right)
+  range_samples_by_keys(typename Datatype_t::key_type_t key_left,
+                        typename Datatype_t::key_type_t key_right)
   {
-    using key_t = typename T::key_type_t;
+    using key_t = typename Datatype_t::key_type_t;
     std::vector<observation_sample_t> out;
     if (num_records_ == 0 || sliding_count_ == 0) return out;
     if (key_right < key_left) std::swap(key_left, key_right);
@@ -548,12 +548,12 @@ public:
     // compute raw anchor bounds [a_min, a_max] such that key[a] in [left, right]
     // first raw index >= left
     std::size_t idx_left = find_closest_index(key_left);
-    key_t key_at_left = read_memory_value<T>(mapped_data_->data_ptr_, idx_left, key_value_offset_);
+    key_t key_at_left = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx_left, key_value_offset_);
     if (key_at_left < key_left && idx_left + 1 < num_records_) ++idx_left;
 
     // last raw index <= right
     std::size_t idx_right = find_closest_index(key_right);
-    key_t key_at_right = read_memory_value<T>(mapped_data_->data_ptr_, idx_right, key_value_offset_);
+    key_t key_at_right = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx_right, key_value_offset_);
     if (key_at_right > key_right && idx_right > 0) --idx_right;
 
     // translate to valid anchor range respecting past/future windows
@@ -587,17 +587,17 @@ public:
  *   - MAX: coarsest grid (largest step across datasets)
  * The final left/right bounds are aligned to the chosen grid to avoid drift.
  */
-template <typename T>
-class MemoryMappedConcatDataset : public torch::data::datasets::Dataset<MemoryMappedConcatDataset<T>, observation_sample_t> {
+template <typename Datatype_t>
+class MemoryMappedConcatDataset : public torch::data::datasets::Dataset<MemoryMappedConcatDataset<Datatype_t>, observation_sample_t> {
 private:
-  std::vector<std::shared_ptr<MemoryMappedDataset<T>>> datasets_;
+  std::vector<std::shared_ptr<MemoryMappedDataset<Datatype_t>>> datasets_;
   std::vector<std::string> file_names_;
   std::vector<std::size_t> N_past_;
   std::vector<std::size_t> N_future_;
 
   // Cache of per-dataset valid range (in key space) after (N_past, N_future)
-  std::vector<typename T::key_type_t> valid_left_;   // leftmost key where a target index is valid
-  std::vector<typename T::key_type_t> valid_right_;  // rightmost key where a target index is valid
+  std::vector<typename Datatype_t::key_type_t> valid_left_;   // leftmost key where a target index is valid
+  std::vector<typename Datatype_t::key_type_t> valid_right_;  // rightmost key where a target index is valid
 
   // Index of dataset that defines the global grid (based on policy)
   std::size_t grid_ref_idx_{static_cast<std::size_t>(-1)};
@@ -607,10 +607,10 @@ public:
   std::size_t max_N_future_{0};
 
   std::size_t num_records_{0};                           /* number of valid target positions across intersection (on the chosen grid) */
-  typename T::key_type_t leftmost_key_value_{};          /* intersection lower bound aligned to grid */
-  typename T::key_type_t rightmost_key_value_{};         /* intersection upper bound aligned to grid */
-  typename T::key_type_t key_value_span_{};              /* rightmost - leftmost */
-  typename T::key_type_t key_value_step_{};              /* global step used by the concatenated dataset (per policy) */
+  typename Datatype_t::key_type_t leftmost_key_value_{};          /* intersection lower bound aligned to grid */
+  typename Datatype_t::key_type_t rightmost_key_value_{};         /* intersection upper bound aligned to grid */
+  typename Datatype_t::key_type_t key_value_span_{};              /* rightmost - leftmost */
+  typename Datatype_t::key_type_t key_value_step_{};              /* global step used by the concatenated dataset (per policy) */
 
 public:
   MemoryMappedConcatDataset() = default;
@@ -621,7 +621,7 @@ public:
                 index, num_records_);
     }
     const auto target_key_value =
-      leftmost_key_value_ + static_cast<typename T::key_type_t>(index) * key_value_step_;
+      leftmost_key_value_ + static_cast<typename Datatype_t::key_type_t>(index) * key_value_step_;
     return get_by_key_value(target_key_value);
   }
 
@@ -647,14 +647,14 @@ public:
    * - Future is right-padded to max_N_future_.
    * (C) stacks past_keys/future_keys across channels.
    */
-  observation_sample_t get_by_key_value(typename T::key_type_t target_key_value) {
+  observation_sample_t get_by_key_value(typename Datatype_t::key_type_t target_key_value) {
     const size_t K = datasets_.size();
     std::vector<torch::Tensor> feats(K), masks(K), fut_feats(K), fut_masks(K);
     std::vector<torch::Tensor> keys_past(K), keys_future(K);
 
     // key tensor dtype to use for padding
     auto key_opts = torch::TensorOptions().dtype(
-        std::is_integral_v<typename T::key_type_t> ? torch::kInt64 : torch::kFloat64);
+        std::is_integral_v<typename Datatype_t::key_type_t> ? torch::kInt64 : torch::kFloat64);
 
     for (size_t i = 0; i < K; ++i) {
       auto& d  = datasets_[i];
@@ -700,10 +700,10 @@ public:
    * Uses the concatenated dataset grid (already regular).
    */
   std::vector<observation_sample_t>
-  range_samples_by_keys(typename T::key_type_t key_left,
-                        typename T::key_type_t key_right)
+  range_samples_by_keys(typename Datatype_t::key_type_t key_left,
+                        typename Datatype_t::key_type_t key_right)
   {
-    using key_t = typename T::key_type_t;
+    using key_t = typename Datatype_t::key_type_t;
     std::vector<observation_sample_t> out;
     if (num_records_ == 0) return out;
     if (key_right < key_left) std::swap(key_left, key_right);
@@ -753,12 +753,12 @@ public:
                    char delimiter = ',') {
 
     /* --- prepare the file: CSV → binary --- */
-    std::string bin_filename = sanitize_csv_into_binary_file<T>(
+    std::string bin_filename = sanitize_csv_into_binary_file<Datatype_t>(
       csv_filename, normalization_window, force_binarization, buffer_size, delimiter);
 
     /* --- add dataset --- */
     file_names_.push_back(bin_filename);
-    datasets_.push_back(std::make_shared<MemoryMappedDataset<T>>(file_names_.back()));
+    datasets_.push_back(std::make_shared<MemoryMappedDataset<Datatype_t>>(file_names_.back()));
     N_past_.push_back(N_past);
     N_future_.push_back(N_future);
 
@@ -792,7 +792,7 @@ public:
 
 private:
   void recompute_global_state_() {
-    using key_t = typename T::key_type_t;
+    using key_t = typename Datatype_t::key_type_t;
 
     const std::size_t K = datasets_.size();
     if (K == 0) {
@@ -906,8 +906,8 @@ private:
   * @brief Construct a new MemoryMappedConcatDataset from an observation_instruction_t.
   *        Supports both past and future sequence lengths.
   */
-template<typename Td>
-MemoryMappedConcatDataset<Td> create_memory_mapped_concat_dataset(
+template<typename Datatype_t>
+MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
   std::string& instrument,
   cuwacunu::camahjucunu::observation_instruction_t obs_inst,
   bool force_binarization = false) {
@@ -915,7 +915,7 @@ MemoryMappedConcatDataset<Td> create_memory_mapped_concat_dataset(
   char delimiter = ',';
   size_t buffer_size = 1024;
 
-  MemoryMappedConcatDataset<Td> concat;
+  MemoryMappedConcatDataset<Datatype_t> concat;
 
   for (auto& in_form : obs_inst.input_forms) {
     if (in_form.active == "true") {

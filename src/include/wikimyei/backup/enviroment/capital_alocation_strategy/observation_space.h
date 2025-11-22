@@ -15,23 +15,23 @@ namespace wikimyei {
 namespace capital_alocation_strategy {
 
 /**
- * @tparam Td underlying element type in your MM-dataset (e.g. kline_t)
+ * @tparam Datatype_t underlying element type in your MM-dataset (e.g. kline_t)
  */
-template<typename Td>
+template<typename Datatype_t>
 class observation_space_t
 {
     /* concrete types pulled together in one place ------------------- */
-    using SamplerT    = torch::data::samplers::SequentialSampler;
-    using DatasetT    = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Td>;
-    using SampleT     = cuwacunu::camahjucunu::data::observation_sample_t;
+    using Sampler_t    = torch::data::samplers::SequentialSampler;
+    using Dataset_t    = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
+    using Datasample_t     = cuwacunu::camahjucunu::data::observation_sample_t;
 
-    using DataLoaderT = cuwacunu::camahjucunu::data::MemoryMappedDataLoader<DatasetT, SampleT, Td, SamplerT>;
-    using EmbeddingT  = cuwacunu::wikimyei::vicreg_4d::VICReg_4D;
+    using Dataloader_t = cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>;
+    using EmbeddingModel_t  = cuwacunu::wikimyei::vicreg_4d::VICReg_4D;
 
 public:
     /* -------- 1) direct-ownership ctor ----------------------------- */
-    observation_space_t(std::unique_ptr<DataLoaderT> dl,
-                        std::unique_ptr<EmbeddingT> model)
+    observation_space_t(std::unique_ptr<Dataloader_t> dl,
+                        std::unique_ptr<EmbeddingModel_t> model)
       : dl_(std::move(dl)), model_(std::move(model))
     {
         TORCH_CHECK(dl_,    "[observation_space_t] dataloader == nullptr");
@@ -45,12 +45,12 @@ public:
         /* sequential MM-dataloader created from global config -------- */
         auto loader =
             cuwacunu::camahjucunu::data
-                ::observation_pipeline_sequential_mm_dataloader<Td>(instrument);
+                ::observation_pipeline_sequential_mm_dataloader<Datatype_t>(instrument);
 
-        dl_ = std::make_unique<DataLoaderT>(std::move(loader));
+        dl_ = std::make_unique<Dataloader_t>(std::move(loader));
 
         /* VICReg_4D via its (C,T,D) delegating ctor ----------------- */
-        model_ = std::make_unique<EmbeddingT>(dl_->C_, dl_->T_, dl_->D_);
+        model_ = std::make_unique<EmbeddingModel_t>(dl_->C_, dl_->T_, dl_->D_);
 
         initialise();
     }
@@ -64,7 +64,7 @@ public:
         if (!maybe_batch.has_value()) { done_ = true; return false; }
 
         /* collate, move to device, encode --------------------------- */
-        curr_sample_ = SampleT::collate_fn(*maybe_batch);
+        curr_sample_ = Datasample_t::collate_fn(*maybe_batch);
         data_        = curr_sample_.features.to(device_);
         mask_        = curr_sample_.mask.to(device_);
 
@@ -79,7 +79,7 @@ public:
     [[nodiscard]] bool is_done() const { return done_; }
 
     /* getters ------------------------------------------------------- */
-    [[nodiscard]] const SampleT& observation()    const { return curr_sample_; }
+    [[nodiscard]] const Datasample_t& observation()    const { return curr_sample_; }
     [[nodiscard]] torch::Tensor  data()           const { return data_; }
     [[nodiscard]] torch::Tensor  mask()           const { return mask_; }
     [[nodiscard]] torch::Tensor  representation() const { return encoded_; }
@@ -93,11 +93,11 @@ private:
     }
 
     /* members ------------------------------------------------------- */
-    std::unique_ptr<DataLoaderT> dl_;
-    std::unique_ptr<EmbeddingT>  model_;
+    std::unique_ptr<Dataloader_t> dl_;
+    std::unique_ptr<EmbeddingModel_t>  model_;
     torch::Device                device_;
 
-    SampleT       curr_sample_{};
+    Datasample_t       curr_sample_{};
     torch::Tensor data_, mask_, encoded_;
     bool          done_{false};
 };

@@ -19,7 +19,7 @@ HERE_PATH := $(TESTS_PATH)
 
 # ------------------------------ BNF ------------------------------------------
 BNF := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bnf_instruction_parser \
-       bnf_observation_pipeline bnf_training_components
+       bnf_observation_pipeline bnf_iinuji_renderings bnf_training_components
 $(foreach t,$(BNF),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/bnf)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -39,11 +39,11 @@ DATA := memory_mapped_datafile memory_mapped_dataset memory_mapped_concat_datase
 $(foreach t,$(DATA),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/data)))
 
 # ------------------------------ iinuji ---------------------------------------
-IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse
+IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_bnf
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ iinuji + torch--------------------------------
-IINUJI := iinuji_toroid iinuji_data_viz
+IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji/torch_include)))
 
 # --------------------------- camahjucunu/https -------------------------------

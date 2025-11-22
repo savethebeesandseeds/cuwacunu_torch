@@ -17,6 +17,7 @@
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_augmentations.h"
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_augmentations_utils.h"
 
+#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_dataset.h"
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d_dataloader.h"
 
 #include "piaabo/torch_compat/optim/optimizers.h"
@@ -28,6 +29,7 @@
 #include "camahjucunu/BNF/implementations/training_components/training_components.h"
 #include "jkimyei/training_setup/jk_setup.h"
 
+RUNTIME_WARNING("(vicreg_4d.h)[] TRAIN VICReg to the recostruction objective; or at least flag it or cohefficient it; [IMPORTANT].\n");
 RUNTIME_WARNING("(vicreg_4d.h)[] for improving performance remember doing torch::jit::Module scripted = torch::jit::freeze(torch::jit::script::Module(my_encoder));\n");
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -138,9 +140,9 @@ public:
             torch::Device override_device = torch::kCPU);
 
   // --- training (template stays in header) ---
-  template<typename Q, typename KBatch, typename Td>
+  template<typename Dataset_t, typename Datasample_t, typename Datatype_t>
   std::vector<std::pair<int, double>> fit(
-    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, KBatch, Td, torch::data::samplers::SequentialSampler>& dataloader,
+    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, torch::data::samplers::SequentialSampler>& dataloader,
     int n_epochs = -1,
     int n_iters = -1,
     int swa_start_iter = 1000,
@@ -170,7 +172,7 @@ public:
 
         optimizer->zero_grad();
 
-        auto collated_sample = KBatch::collate_fn_past(sample_batch);
+        auto collated_sample = Datasample_t::collate_fn_past(sample_batch);
         auto data = collated_sample.features.to(device);
         auto mask = collated_sample.mask.to(device);
 
@@ -360,13 +362,13 @@ public:
 
   // Convenience wrappers enabled only for observation_sample_t
   template<
-    typename KBatch,
+    typename Datasample_t,
     std::enable_if_t<
-      std::is_same_v<KBatch, cuwacunu::camahjucunu::data::observation_sample_t>, int
+      std::is_same_v<Datasample_t, cuwacunu::camahjucunu::data::observation_sample_t>, int
     > = 0
   >
-  KBatch encode(
-    KBatch batch,                       // by value: attach encoding and return
+  Datasample_t encode(
+    Datasample_t batch,                       // by value: attach encoding and return
     bool use_swa = true,
     bool detach_to_cpu = false)
   {
@@ -380,13 +382,13 @@ public:
   }
 
   template<
-    typename KBatch,
+    typename Datasample_t,
     std::enable_if_t<
-      std::is_same_v<KBatch, cuwacunu::camahjucunu::data::observation_sample_t>, int
+      std::is_same_v<Datasample_t, cuwacunu::camahjucunu::data::observation_sample_t>, int
     > = 0
   >
   torch::Tensor encode_projected(
-    const KBatch& batch,
+    const Datasample_t& batch,
     bool use_swa = true,
     bool detach_to_cpu = false)
   {
@@ -398,12 +400,20 @@ public:
     );
   }
 
-  template<typename Q, typename KBatch, typename Td, typename Sampler = torch::data::samplers::SequentialSampler>
+  template<typename Dataset_t, typename Datasample_t, typename Datatype_t, typename Sampler = torch::data::samplers::SequentialSampler>
   auto make_representation_dataloader(
-    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, KBatch, Td, Sampler>& raw_loader,
+    cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler>& raw_loader,
     bool use_swa = true, bool debug = false
   ) {
-    return RepresentationDataLoaderView<VICReg_4D, Q, KBatch, Td, Sampler>(raw_loader, *this, use_swa, debug);
+    return RepresentationDataloaderView<VICReg_4D, Dataset_t, Datasample_t, Datatype_t, Sampler>(raw_loader, *this, use_swa, debug);
+  }
+
+  template<typename Dataset_t, typename Datasample_t, typename Datatype_t>
+  auto make_representation_dataset(
+    Dataset_t& raw_dataset,
+    torch::Device device, bool use_swa = true, bool detach_to_cpu = true
+  ) {
+    return RepresentationDatasetView<VICReg_4D, Dataset_t, Datasample_t, Datatype_t>(raw_dataset, *this, device, use_swa, detach_to_cpu);
   }
 
   void save(const std::string& filepath);

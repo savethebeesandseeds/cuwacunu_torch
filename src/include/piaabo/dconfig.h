@@ -68,6 +68,8 @@ struct config_space_t {
   static std::string observation_pipeline_instruction();
   static std::string training_components_bnf();
   static std::string training_components_instruction();
+  static std::string iinuji_renderings_bnf();
+  static std::string iinuji_renderings_instruction();
 
 private:
   /*—raw readers—*/

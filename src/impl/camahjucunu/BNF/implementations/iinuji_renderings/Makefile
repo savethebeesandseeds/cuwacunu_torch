@@ -1,17 +1,21 @@
 # -----------------------------------------------------------------
 # Dependencies & Local Variables
 # -----------------------------------------------------------------
-ROOT_PATH := ../../../..
+ROOT_PATH := ../../../../..
 include $(ROOT_PATH)/Makefile.config
-HERE_PATH := $(IMPL_PATH)/camahjucunu/BNF/implementations
+HERE_PATH := $(IMPL_PATH)/camahjucunu/BNF/implementations/iinuji_renderings
 REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))
 MODULE_NAME := $(notdir $(HERE_PATH))
+
+# -----------------------------------------------------------------
+# Build Rules
+# -----------------------------------------------------------------
+$(eval $(call BUILD_OBJ, common, iinuji_renderings, bnf_iinuji_renderings))
+
 # -----------------------------------------------------------------
 # Aggregate Target
 # -----------------------------------------------------------------
 .PHONY: all
-all:
-	$(MAKE) -C $(HERE_PATH)/observation_pipeline all
-	$(MAKE) -C $(HERE_PATH)/training_components all
-	$(MAKE) -C $(HERE_PATH)/iinuji_renderings all
+all: bnf_iinuji_renderings
 	@$(LOG_SUCCESS)
+

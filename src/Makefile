@@ -29,12 +29,21 @@ wikimyei:
 iinuji:
 	$(MAKE) -C $(IMPL_PATH)/iinuji all
 
+
 # -----------------------------------------------------------------
 # Aggregate builds
 #   - Run with: make -j all   (control parallelism at CLI)
 # -----------------------------------------------------------------
+
+# Group the modules behind a single prerequisite
+.PHONY: modules
+modules: piaabo camahjucunu jkimyei wikimyei
+
+# Ensure packing runs *after* modules
+lib-bundles: modules
+
 .PHONY: all
-all: piaabo camahjucunu jkimyei wikimyei lib-bundles
+all: modules lib-bundles
 	@$(LOG_SUCCESS)
 
 # -----------------------------------------------------------------
@@ -61,9 +70,15 @@ clean_bnf:
 	  $(OUTPUT_PATH)/common/BNF_*.d \
 	  $(OUTPUT_PATH)/common/BNF_*.o \
 	  $(OUTPUT_PATH)/common/BNF_*.a \
-	  $(OUTPUT_PATH)/common/*_pipeline.d \
-	  $(OUTPUT_PATH)/common/*_pipeline.o \
-	  $(OUTPUT_PATH)/common/*_pipeline.a \
+	  $(OUTPUT_PATH)/common/observation_pipeline.d \
+		$(OUTPUT_PATH)/common/iinuji_renderings.d \
+		$(OUTPUT_PATH)/common/training_components.d \
+	  $(OUTPUT_PATH)/common/observation_pipeline.o \
+		$(OUTPUT_PATH)/common/iinuji_renderings.o \
+		$(OUTPUT_PATH)/common/training_components.o \
+	  $(OUTPUT_PATH)/common/observation_pipeline.a \
+		$(OUTPUT_PATH)/common/iinuji_renderings.a \
+		$(OUTPUT_PATH)/common/training_components.a \
 	  2>/dev/null || true
 
 .PHONY: clean_data
@@ -109,3 +124,6 @@ clean:
 	@shred -u \
 	  $(OUTPUT_PATH)/.deps/*.d    $(OUTPUT_PATH)/.objs/*.o \
 	  2>/dev/null || true
+	@rm -rf \
+		$(OUTPUT_PATH)/.deps \
+		2>/dev/null || true

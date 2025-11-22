@@ -301,6 +301,14 @@ std::string config_space_t::training_components_instruction() {
   return piaabo::dfiles::readFileToString(
     config["BNF"]["training_components_instruction_filename"]);
 }
+std::string config_space_t::iinuji_renderings_bnf() {
+  return piaabo::dfiles::readFileToString(
+    config["BNF"]["iinuji_renderings_bnf_filename"]);
+}
+std::string config_space_t::iinuji_renderings_instruction() {
+  return piaabo::dfiles::readFileToString(
+    config["BNF"]["iinuji_renderings_instruction_filename"]);
+}
 
 /*──────────────────────────── life-cycle hooks ───────────────────────────*/
 void config_space_t::finit()  { log_info("[dconfig] finalising\n"); }

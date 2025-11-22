@@ -1,7 +1,6 @@
 /* BNF_instruction_parser.cpp */
 #include "camahjucunu/BNF/BNF_instruction_parser.h"
 
-
 RUNTIME_WARNING("(BNF_instruction_parser.cpp)[] overall the methods in this file can be faster\n");
 RUNTIME_WARNING("(BNF_instruction_parser.cpp)[parse_ProductionAlternative] ProductionAlternative::Flags are not used\n");
 
@@ -20,6 +19,7 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
   
   iLexer.setInput(instruction_input);
   iLexer.reset();
+  failure_position = 0; /* safe init */
 
   /* reset the stacks */
   while (!parsing_error_stack.empty())  { parsing_error_stack.pop();   };
@@ -147,10 +147,6 @@ ASTNodePtr InstructionParser::parse_ProductionAlternative(const ProductionAltern
       return nullptr;
     }
 
-    // /* append terminal parsedChild */
-    // children.push_back(std::move(parsedChild));
-    
-    
     /* Determine how to push the children */
     if (unit.type == ProductionUnit::Type::Repetition) {
       for (auto& child : dynamic_cast<IntermediaryNode*>(parsedChild.get())->children) {
@@ -310,11 +306,6 @@ ASTNodePtr InstructionParser::parse_TerminalNode(const std::string& lhs, const P
   
   /* reset the error stack (to avoid it growing to large) */
   while (!parsing_error_stack.empty()) { parsing_error_stack.pop(); };
-
-  /* push the success to the stack */
-  // parsing_success_stack.push(
-  //   cuwacunu::piaabo::string_format("        :        : --- --- >> parsed %sTerminal Node%s : %s : lexer is currently at: \'%s\'", ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, unit.str(true).c_str(), scape(iLexer.peek()).c_str())
-  // );
 
   return std::make_unique<TerminalNode>(lhs, unit);
 }

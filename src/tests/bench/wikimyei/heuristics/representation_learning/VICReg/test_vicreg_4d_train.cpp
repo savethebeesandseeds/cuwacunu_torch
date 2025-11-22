@@ -43,14 +43,14 @@ int main() {
 
     /* types definition */
     std::string INSTRUMENT = "BTCUSDT";                     // "UTILITIES"
-    using Td = cuwacunu::camahjucunu::exchange::kline_t;    // cuwacunu::camahjucunu::exchange::basic_t;
-    using Q = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Td>;
-    using K = cuwacunu::camahjucunu::data::observation_sample_t;
+    using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t;    // cuwacunu::camahjucunu::exchange::basic_t;
+    using Dataset_t = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
+    using DataSample_t = cuwacunu::camahjucunu::data::observation_sample_t;
     // using RandSamper = torch::data::samplers::RandomSampler;
     using SeqSampler = torch::data::samplers::SequentialSampler;
 
     TICK(create_dataloader_);
-    auto training_data_loader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Q, K, Td, SeqSampler>(
+    auto training_data_loader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, DataSample_t, Datatype_t, SeqSampler>(
         INSTRUMENT,                                                                                                  /* instrument */
         cuwacunu::camahjucunu::observation_pipeline_t::inst,                                                         /* obs_inst */ 
         cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
@@ -77,7 +77,7 @@ int main() {
     // -----------------------------------------------------
     std::cout << "Training the VICReg encoder...\n";
     TICK(Train_Model);
-    auto training_losses = model.fit<Q, K, Td>(
+    auto training_losses = model.fit<Dataset_t, DataSample_t, Datatype_t>(
         training_data_loader, 
         cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg",  "n_epochs"),          /* n_epochs */
         cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg",  "n_iters"),           /* n_iters */

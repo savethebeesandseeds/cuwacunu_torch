@@ -23,6 +23,7 @@ public:
   void setPosition(size_t position);
   void setInput(std::string dinput);
   std::string getInput() const;
+  void skipWhitespace();
 };
 
 } /* namespace BNF */

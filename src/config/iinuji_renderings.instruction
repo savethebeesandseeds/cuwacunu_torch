@@ -1,0 +1,11 @@
+screen F 7
+  arg Arg2 path Arg1.dataloader presented_by table columns "a,b,c"
+    triggers on_enter "load" on_click select endtriggers
+  panel p1 plot at 0 0 6 4 z 1 scale 1 bind Arg2
+    draw curve d y
+    draw mdn_band y y_std
+  endpanel
+  panel t1 text at 0 4 6 2
+    draw text content "Hello world"
+  endpanel
+endscreen

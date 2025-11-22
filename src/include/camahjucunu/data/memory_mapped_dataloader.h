@@ -30,27 +30,27 @@ namespace data {
 /**
  * @brief A class that creates and manages a DataLoader for memory-mapped datasets.
  *
- * @tparam Q The dataset type. This dataset should be compatible with torch::data::Dataset and return samples of type K from its `get(...)` method.
- * @tparam K The sample type returned by the dataset (e.g., a struct containing features and mask tensors).
- * @tparam T The underlying data type used by the dataset, if required.
- * @tparam S The type of Sampler used
+ * @tparam Dataset_t The dataset type. This dataset should be compatible with torch::data::Dataset and return samples of type Datasample_t from its `get(...)` method.
+ * @tparam Datasample_t The sample type returned by the dataset (e.g., a struct containing features and mask tensors).
+ * @tparam Datatype_t The underlying data type used by the dataset, if required.
+ * @tparam Sampler_t The type of Sampler used
  * 
  * This class:
- *  - Constructs the dataset Q internally (must adjust the constructor call).
+ *  - Constructs the dataset Dataset_t internally (must adjust the constructor call).
  *  - Accepts a custom collate function as a constructor argument.
  *  - Allows specifying batch size, number of workers, and optionally, a different sampler type.
  *  - Provides begin() and end() to iterate over batches and a reset() method to re-start iteration.
  */
-template<typename Q, typename K, typename T, typename S = torch::data::samplers::SequentialSampler>
+template<typename Dataset_t, typename Datasample_t, typename Datatype_t, typename Sampler_t = torch::data::samplers::SequentialSampler>
 class MemoryMappedDataLoader {
 private:
-  /* Define the DataLoader type with the chosen Sampler and sample type K */
-  using DataLoaderType = torch::data::StatelessDataLoader<Q, S>;
+  /* Define the DataLoader type with the chosen Sampler and sample type Datasample_t */
+  using DataLoaderType = torch::data::StatelessDataLoader<Dataset_t, Sampler_t>;
   DataLoaderType data_loader_;
   
   /* Static assertions to validate template parameters */
-  static_assert(std::is_base_of<torch::data::datasets::Dataset<Q, K>, Q>::value, "(memory_mapped_dataloader)[] Q must derive from torch::data::Dataset");
-  static_assert(std::is_base_of<torch::data::samplers::Sampler<>, S>::value, "(memory_mapped_dataloader)[] S must derive from torch::data::samplers::Sampler");
+  static_assert(std::is_base_of<torch::data::datasets::Dataset<Dataset_t, Datasample_t>, Dataset_t>::value, "(memory_mapped_dataloader)[] Dataset_t must derive from torch::data::Dataset");
+  static_assert(std::is_base_of<torch::data::samplers::Sampler<>, Sampler_t>::value, "(memory_mapped_dataloader)[] Sampler_t must derive from torch::data::samplers::Sampler");
 
 public:
 
@@ -67,15 +67,15 @@ public:
    * @param options DataLoaderOptions to configure the DataLoader.
    *
    * Note:
-   * - Ensure that Q has a constructor that matches the arguments provided here.
-   * - The dataset Q should implement size() to return the number of samples.
+   * - Ensure that Dataset_t has a constructor that matches the arguments provided here.
+   * - The dataset Dataset_t should implement size() to return the number of samples.
    */
   MemoryMappedDataLoader(
-    Q& memory_mapped_dataset, 
-    const S& sampler,
+    Dataset_t& memory_mapped_dataset, 
+    const Sampler_t& sampler,
     const torch::data::DataLoaderOptions& options
   ) : data_loader_(memory_mapped_dataset, sampler, options) {
-    K prove_sample(memory_mapped_dataset.get(0));
+    Datasample_t prove_sample(memory_mapped_dataset.get(0));
     C_ = prove_sample.features.size(0);
     T_ = prove_sample.features.size(1);
     D_ = prove_sample.features.size(2);
@@ -95,37 +95,37 @@ public:
 /**
  * @brief Method to create a dataloader from an observation_instruction_t.
  *
- * @tparam Q The dataset type. This dataset should be compatible with torch::data::Dataset and return samples of type K from its `get(...)` method.
- * @tparam K The sample type returned by the dataset (e.g., a struct containing features and mask tensors).
- * @tparam T The underlying data type used by the dataset, if required.
- * @tparam S The type of Sampler used.
+ * @tparam Dataset_t The dataset type. This dataset should be compatible with torch::data::Dataset and return samples of type Datasample_t from its `get(...)` method.
+ * @tparam Datasample_t The sample type returned by the dataset (e.g., a struct containing features and mask tensors).
+ * @tparam Datatype_t The underlying data type used by the dataset, if required.
+ * @tparam Sampler_t The type of Sampler used.
  */
-template<typename Q, typename K, typename T, typename S>
-typename std::enable_if<std::is_same<S, torch::data::samplers::SequentialSampler>::value, MemoryMappedDataLoader<Q, K, T, S>>::type
+template<typename Dataset_t, typename Datasample_t, typename Datatype_t, typename Sampler_t>
+typename std::enable_if<std::is_same<Sampler_t, torch::data::samplers::SequentialSampler>::value, MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>>::type
 create_memory_mapped_dataloader(
   std::string& instrument, cuwacunu::camahjucunu::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
     /* variables */
-    auto dataset          = create_memory_mapped_concat_dataset<T>(instrument, obs_inst, force_binarization);
+    auto dataset          = create_memory_mapped_concat_dataset<Datatype_t>(instrument, obs_inst, force_binarization);
     auto sampler          = dataset.SequentialSampler();
     auto sampler_options  = dataset.SequentialSampler_options(batch_size, workers);
     /* dataloader */
-    return cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, T, S>(
+    return cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>(
       /* dataset      */  dataset, 
       /* sampler      */  sampler,
       /* options      */  sampler_options
     );
 }
 
-template<typename Q, typename K, typename T, typename S>
-typename std::enable_if<std::is_same<S, torch::data::samplers::RandomSampler>::value, MemoryMappedDataLoader<Q, K, T, S>>::type
+template<typename Dataset_t, typename Datasample_t, typename Datatype_t, typename Sampler_t>
+typename std::enable_if<std::is_same<Sampler_t, torch::data::samplers::RandomSampler>::value, MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>>::type
 create_memory_mapped_dataloader(
   std::string& instrument, cuwacunu::camahjucunu::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
     /* variables */
-    auto dataset          = create_memory_mapped_concat_dataset<T>(instrument, obs_inst, force_binarization);
+    auto dataset          = create_memory_mapped_concat_dataset<Datatype_t>(instrument, obs_inst, force_binarization);
     auto sampler          = dataset.RandomSampler();
     auto sampler_options  = dataset.RandomSampler_options(batch_size, workers);
     /* dataloader */
-    return cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Q, K, T, S>(
+    return cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>(
       /* dataset      */  dataset, 
       /* sampler      */  sampler,
       /* options      */  sampler_options
@@ -136,14 +136,14 @@ create_memory_mapped_dataloader(
 // ----------------------------------------------------------------------------
 // Observation-pipeline DataLoaders (sequential / random)
 //
-//   auto dl = observation_pipeline_sequential_mm_dataloader<Td>("BTCUSDT");
-//   auto dl = observation_pipeline_random_mm_dataloader   <Td>("BTCUSDT");
+//   auto dl = observation_pipeline_sequential_mm_dataloader<Datatype_t>("BTCUSDT");
+//   auto dl = observation_pipeline_random_mm_dataloader   <Datatype_t>("BTCUSDT");
 //
 // ----------------------------------------------------------------------------
-template<typename Td, typename Sampler>
+template<typename Datatype_t, typename Sampler>
 inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
 {
-    using Dataset = MemoryMappedConcatDataset<Td>;
+    using Dataset = MemoryMappedConcatDataset<Datatype_t>;
 
     // ---- fetch config only once ------------------------------------------
     const bool force_bin   = cuwacunu::piaabo::dconfig::config_space_t::get<bool>("DATA_LOADER","dataloader_force_binarization");
@@ -153,7 +153,7 @@ inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
     // ---- make a writable copy for   create_memory_mapped_dataloader ------
     std::string inst{instrument};
 
-    return create_memory_mapped_dataloader<Dataset, observation_sample_t, Td, Sampler>(
+    return create_memory_mapped_dataloader<Dataset, observation_sample_t, Datatype_t, Sampler>(
         inst,
         cuwacunu::camahjucunu::BNF::observationPipeline()
             .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),
@@ -165,24 +165,24 @@ inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
 
 /**
  * ---------------------------------- sequential ----------------------------
- * @tparam Td The underlying data type used by the dataset.
+ * @tparam Datatype_t The underlying data type used by the dataset.
  */
-template<typename Td>
+template<typename Datatype_t>
 inline auto observation_pipeline_sequential_mm_dataloader(std::string_view instrument)
 {
     using Sampler = torch::data::samplers::SequentialSampler;
-    return make_obs_pipeline_mm_dataloader<Td, Sampler>(instrument);
+    return make_obs_pipeline_mm_dataloader<Datatype_t, Sampler>(instrument);
 }
 
 /**
  * ---------------------------------- random --------------------------------
- * @tparam Td The underlying data type used by the dataset.
+ * @tparam Datatype_t The underlying data type used by the dataset.
  */
-template<typename Td>
+template<typename Datatype_t>
 inline auto observation_pipeline_random_mm_dataloader(std::string_view instrument)
 {
     using Sampler = torch::data::samplers::RandomSampler;
-    return make_obs_pipeline_mm_dataloader<Td, Sampler>(instrument);
+    return make_obs_pipeline_mm_dataloader<Datatype_t, Sampler>(instrument);
 }
 
 } /* namespace data */

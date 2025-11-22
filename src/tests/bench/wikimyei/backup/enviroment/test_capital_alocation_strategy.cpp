@@ -20,9 +20,9 @@
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d.h"
 
 int main() {
-    using Td = cuwacunu::camahjucunu::exchange::kline_t;
-    auto train_loader = cuwacunu::camahjucunu::data::observation_pipeline_sequential_mm_dataloader<Td>("BTCUSDT");
-    auto shuffle_loader = cuwacunu::camahjucunu::data::observation_pipeline_random_mm_dataloader<Td>("BTCUSDT");
+    using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t;
+    auto train_loader = cuwacunu::camahjucunu::data::observation_pipeline_sequential_mm_dataloader<Datatype_t>("BTCUSDT");
+    auto shuffle_loader = cuwacunu::camahjucunu::data::observation_pipeline_random_mm_dataloader<Datatype_t>("BTCUSDT");
     
     VICReg_4D(
         int C_, // n channels

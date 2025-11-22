@@ -73,10 +73,10 @@ struct ProductionAlternative {
    * @brief Enumerates flags for production alternatives.
    */
   enum class Flags {
-    None      = 1 << 0, // b0000
-    Recursion = 1 << 1, // b0001  // Contains Recursion units to self e.g. <example> ::= "A" | "B" <example> ; ----> BBBBBA
-    Optional  = 1 << 2, // b0010  // Contains Optional units e.g. <example> ::= [<item>] ;
-    Repetition= 1 << 3, // b0010  // Contains Repetition units e.g. <example> ::= [<item>] ;
+    None       = 0,       // b0000
+    Recursion  = 1 << 0,  // b0001  // Contains Recursion units to self e.g. <example> ::= "A" | "B" <example> ; ----> BBBBBA
+    Optional   = 1 << 1,  // b0010  // Contains Optional units e.g. <example> ::= [<item>] ;
+    Repetition = 1 << 2,  // b0100  // Contains Repetition units e.g. <example> ::= [<item>] ;
   } flags = Flags::None;
 
   std::variant<ProductionUnit, std::vector<ProductionUnit>> content;
