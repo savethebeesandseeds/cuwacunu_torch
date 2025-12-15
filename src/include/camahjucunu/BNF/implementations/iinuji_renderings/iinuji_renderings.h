@@ -1,178 +1,172 @@
-/* iinuji_renderings.h */
 #pragma once
+
 #include <string>
 #include <vector>
-#include <map>
-#include <sstream>
-#include <mutex>
-#include "piaabo/dutils.h"
-#include "piaabo/dconfig.h"
-#include "camahjucunu/BNF/BNF_types.h"
-#include "camahjucunu/BNF/BNF_AST.h"
-#include "camahjucunu/BNF/BNF_visitor.h"
-#include "camahjucunu/BNF/BNF_grammar_lexer.h"
-#include "camahjucunu/BNF/BNF_grammar_parser.h"
-#include "camahjucunu/BNF/BNF_instruction_lexer.h"
-#include "camahjucunu/BNF/BNF_instruction_parser.h"
+#include <iosfwd>
 
-/* ────────────────────────────────────────────────────────────────────────────
-   Instruction (decoded) types
-   ──────────────────────────────────────────────────────────────────────────── */
+#include "camahjucunu/BNF/BNF_AST.h"
+#include "camahjucunu/BNF/BNF_visitor.h"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext
+
+// Compile-time debug switch:
+//   define IINUJI_RENDERINGS_DEBUG to 1 (e.g. via compiler flags)
+//   to enable logging to std::cerr.
+#ifndef IINUJI_RENDERINGS_DEBUG
+#define IINUJI_RENDERINGS_DEBUG 1
+#endif
 
 namespace cuwacunu {
 namespace camahjucunu {
 
+// ------------------------------------------------------------------
+// Simple 2D point with "unset" flag
+// ------------------------------------------------------------------
+
+struct iinuji_point_t {
+  bool set = false;
+  int  x   = 0;
+  int  y   = 0;
+};
+
+// ------------------------------------------------------------------
+// Event form binding: local_name : .path_name
+//   __form x:.data,y:.value
+// ------------------------------------------------------------------
+
+struct iinuji_event_binding_t {
+  std::string local_name;  // e.g. "x"
+  std::string path_name;   // e.g. ".data"
+};
+
+// ------------------------------------------------------------------
+// FIGURE
+// ------------------------------------------------------------------
+
+struct iinuji_figure_t {
+  std::string kind_raw;    // "_label", "_horizontal_plot", "_input_box"
+
+  iinuji_point_t coords;   // __coords
+  iinuji_point_t shape;    // __shape
+  bool           border      = false;
+  double         tickness    = 1.0;   // __tickness
+
+  bool           has_value   = false;
+  std::string    value;              // __value
+
+  bool           title_on    = false;
+  std::string    title;             // __title
+
+  bool           legend_on   = false;
+  std::string    legend;            // __legend
+
+  std::string    type_raw;          // __type
+
+  std::string    line_color;        // __line_color
+  std::string    text_color;        // __text_color
+  std::string    back_color;        // __back_color
+
+  std::vector<std::string> triggers;   // __triggers event names
+
+  std::string str(unsigned indent = 0) const;
+};
+
+// ------------------------------------------------------------------
+// PANEL
+// ------------------------------------------------------------------
+
+struct iinuji_panel_t {
+  std::string    kind_raw;   // "_rectangle"
+
+  iinuji_point_t coords;     // __coords
+  iinuji_point_t shape;      // __shape
+  int            z_index  = 0;   // __z_index
+
+  bool           title_on = false;
+  std::string    title;          // __title
+
+  bool           border   = false;   // __border
+
+  std::string    line_color;        // __line_color
+  std::string    text_color;        // __text_color
+  std::string    back_color;        // __back_color
+  double         tickness = 1.0;    // __tickness
+
+  std::vector<iinuji_figure_t> figures;
+
+  std::string str(unsigned indent = 0) const;
+};
+
+// ------------------------------------------------------------------
+// EVENT
+// ------------------------------------------------------------------
+
+struct iinuji_event_t {
+  std::string kind_raw;  // "_update" or "_action"
+  std::string name;      // __name
+  std::vector<iinuji_event_binding_t> bindings;  // __form
+
+  std::string str(unsigned indent = 0) const;
+};
+
+// ------------------------------------------------------------------
+// SCREEN
+// ------------------------------------------------------------------
+
+struct iinuji_screen_t {
+  std::string kind_raw;   // "_screen"
+  std::string name;       // __name
+
+  std::string key_raw;    // "F+1"
+  int         fcode = 0;  // numeric part (1 for F+1)
+
+  std::string line_color; // __line_color
+  std::string text_color; // __text_color
+  std::string back_color; // __back_color
+  double      tickness = 1.0;  // __tickness
+  bool        border   = false;
+
+  std::vector<iinuji_panel_t> panels;
+  std::vector<iinuji_event_t> events;
+
+  // routes are not in the grammar yet; keep a placeholder
+  std::vector<std::string> routes;
+
+  std::string str(unsigned indent = 0) const;
+};
+
+// ------------------------------------------------------------------
+// Whole instruction
+// ------------------------------------------------------------------
+
 struct iinuji_renderings_instruction_t {
-  struct presenter_t {
-    std::string name;
-    std::map<std::string,std::string> kv;           // arbitrary k→v
-  };
+  std::vector<iinuji_screen_t> screens;
 
-  struct arg_t {
-    std::string name;                                // Arg2
-    std::string path_from_Arg1;                      // e.g. Arg1.dataloader
-    presenter_t presenter;                           // optional
-    std::vector<std::pair<std::string,std::string>> triggers; // optional
-  };
-
-  struct shape_t {
-    enum class kind_e { Curve, MaskScatter, Embedding, MdnBand, Text };
-    kind_e kind{kind_e::Curve};
-    std::map<std::string,std::string> kv;           // d,y,grid,symmetric,content,…
-  };
-
-  struct panel_t {
-    std::string id;
-    std::string type;                                // plot|embed|text|mdn|matrix|custom
-    int x{0}, y{0}, w{1}, h{1};
-    int z{0};
-    float scale{1.0f};
-    std::string bind_arg;                            // ArgN
-    std::vector<shape_t> shapes;                     // draw …
-  };
-
-  struct screen_t {
-    int fcode{0};                                    // F+<n>
-    std::string title;                               // optional: via text shape or later extension
-    std::vector<arg_t>   args;
-    std::vector<panel_t> panels;
-    std::string raw_text;                            // full instruction chunk for G+7
-  };
-
-  std::vector<screen_t> screens;
-
-  // ephemeral parse state (used only during decode)
-  struct _ps_t {
-    screen_t*  scr{nullptr};
-    arg_t*     arg{nullptr};
-    panel_t*   pan{nullptr};
-    shape_t*   shp{nullptr};
-  } _ps;
-
-  std::string str() const {
-    std::ostringstream oss;
-    auto quote_if_needed = [](const std::string& v) -> std::string {
-      auto simple = [](char c){ return std::isalnum((unsigned char)c) || c=='_'||c=='-'||c=='.'||c==':'||c==','||c=='#'||c=='/'; };
-      bool needs = v.empty() || std::any_of(v.begin(), v.end(), [&](char c){ return !simple(c) && c!=' '; }) || v.find(' ')!=std::string::npos;
-      if (!needs) return v;
-      std::string out = "\"";
-      for (char c: v) out += (c=='"') ? "\\\"" : std::string(1,c);
-      out += "\"";
-      return out;
-    };
-    for (const auto& sc : screens) {
-      oss << "screen F " << sc.fcode << "\n";
-      for (const auto& a : sc.args) {
-        oss << "  arg " << a.name << " path Arg1";
-        if (!a.path_from_Arg1.empty()) oss << "." << a.path_from_Arg1;
-        if (!a.presenter.name.empty()) {
-          oss << " presented_by " << a.presenter.name;
-          std::vector<std::pair<std::string,std::string>> pv(a.presenter.kv.begin(), a.presenter.kv.end());
-          std::sort(pv.begin(), pv.end());
-          for (auto& kv : pv) oss << " " << kv.first << " " << quote_if_needed(kv.second);
-        }
-        if (!a.triggers.empty()) {
-          oss << " triggers";
-          std::vector<std::pair<std::string,std::string>> tv(a.triggers.begin(), a.triggers.end());
-          std::sort(tv.begin(), tv.end());
-          for (auto& kv : tv) oss << " " << kv.first << " " << quote_if_needed(kv.second);
-          oss << " endtriggers";
-        }
-        oss << "\n";
-      }
-      for (const auto& p : sc.panels) {
-        oss << "  panel " << p.id << " " << p.type
-            << " at " << p.x << " " << p.y << " " << p.w << " " << p.h;
-        if (p.z) oss << " z " << p.z;
-        if (p.scale != 1.f) oss << " scale " << p.scale;
-        if (!p.bind_arg.empty()) oss << " bind " << p.bind_arg;
-        oss << "\n";
-        for (const auto& s : p.shapes) {
-          std::string op;
-          if (auto it = s.kv.find("op"); it != s.kv.end()) op = it->second;
-          else {
-            switch (s.kind) {
-              case shape_t::kind_e::Curve:       op = "curve"; break;
-              case shape_t::kind_e::MaskScatter: op = "mask_scatter"; break;
-              case shape_t::kind_e::Embedding:   op = "embedding"; break;
-              case shape_t::kind_e::MdnBand:     op = "mdn_band"; break;
-              case shape_t::kind_e::Text:        op = "text"; break;
-            }
-          }
-          oss << "    draw " << op;
-          std::vector<std::pair<std::string,std::string>> kvs;
-          kvs.reserve(s.kv.size());
-          for (const auto& kv : s.kv) if (kv.first != "op") kvs.push_back(kv);
-          std::sort(kvs.begin(), kvs.end());
-          for (const auto& kv : kvs) oss << " " << kv.first << " " << quote_if_needed(kv.second);
-          oss << "\n";
-        }
-        oss << "  endpanel\n";
-      }
-      oss << "endscreen\n";
-    }
-    return oss.str();
-  }
+  std::string str() const;
 };
 
-/* ────────────────────────────────────────────────────────────────────────────
-   Decoder / Visitor
-   ──────────────────────────────────────────────────────────────────────────── */
+// ------------------------------------------------------------------
+// Decoder: walks the BNF AST and fills iinuji_renderings_instruction_t
+// ------------------------------------------------------------------
 
-namespace BNF {
+namespace BNF { struct ASTNode; }
 
-class iinujiRenderings final : public ASTVisitor {
+class iinuji_renderings_decoder_t : public BNF::ASTVisitor {
 public:
-  // Grammar is read from configuration (like the other implementations)
-  //   config key: iinuji_renderings_bnf()
-  std::string IINUJI_RENDERINGS_BNF_GRAMMAR =
-      cuwacunu::piaabo::dconfig::config_space_t::iinuji_renderings_bnf();
+  // 'debug' parameter kept for compatibility; logging is controlled
+  // solely by IINUJI_RENDERINGS_DEBUG.
+  explicit iinuji_renderings_decoder_t(bool debug = false);
 
-  iinujiRenderings();
+  // Decode from an already-parsed AST root (<instruction> node).
+  iinuji_renderings_instruction_t decode(const BNF::ASTNode* root);
 
-  cuwacunu::camahjucunu::iinuji_renderings_instruction_t decode(std::string instruction);
+  // ASTVisitor interface
+  void visit(const BNF::RootNode* node,        BNF::VisitorContext& context) override;
+  void visit(const BNF::IntermediaryNode* node,BNF::VisitorContext& context) override;
+  void visit(const BNF::TerminalNode* node,    BNF::VisitorContext& context) override;
 
-  ProductionGrammar parseBnfGrammar();
-
-  /* ASTVisitor */
-  void visit(const RootNode* node,         VisitorContext& context) override;
-  void visit(const IntermediaryNode* node, VisitorContext& context) override;
-  void visit(const TerminalNode* node,     VisitorContext& context) override;
-
-private:
-  std::mutex       current_mutex;
-  GrammarLexer     bnfLexer;
-  GrammarParser    bnfParser;
-  ProductionGrammar grammar;
-  InstructionLexer  iLexer;
-  InstructionParser iParser;
-
-  static inline bool under(const VisitorContext& ctx, const char* rule) {
-    for (auto* n : ctx.stack) if (n && n->name == rule) return true;
-    return false;
-  }
+  struct State;
 };
 
-} // namespace BNF
+std::ostream& operator<<(std::ostream& os, const iinuji_renderings_instruction_t& inst);
+
 } // namespace camahjucunu
 } // namespace cuwacunu

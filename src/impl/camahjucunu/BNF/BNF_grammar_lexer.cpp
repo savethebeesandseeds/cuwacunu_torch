@@ -87,8 +87,35 @@ char GrammarLexer::advance() {
  * @brief Skips whitespace characters.
  */
 void GrammarLexer::skipWhitespace() {
-  while (!isAtEnd() && std::isspace(peek())) {
-    advance();
+  while (!isAtEnd()) {
+    // 1) Skip whitespace (spaces, tabs, newlines, etc.)
+    while (!isAtEnd() && std::isspace(static_cast<unsigned char>(peek()))) {
+      advance();
+    }
+
+    // 2) If we are at the start of a line and see ';', skip the whole line as a comment.
+    //
+    //    - We use `column == 1` to detect that this ';' is the first character on the line.
+    //    - This ensures we don't accidentally treat the terminating ';' in a production
+    //      as a comment, because those will be after other tokens (column > 1).
+    if (!isAtEnd() && peek() == ';' && column == 1) {
+      // Consume characters until end-of-line or EOF
+      while (!isAtEnd() && peek() != '\n') {
+        advance();
+      }
+      // If there's a newline, consume it too so that the next token starts
+      // correctly on the following line.
+      if (!isAtEnd() && peek() == '\n') {
+        advance();
+      }
+
+      // After skipping a comment line, loop again to skip any additional
+      // whitespace or comment lines.
+      continue;
+    }
+
+    // If we get here, we are not looking at a comment line; break out.
+    break;
   }
 }
 
@@ -215,40 +242,61 @@ ProductionUnit GrammarLexer::parseRepetition() {
  */
 ProductionUnit GrammarLexer::parseTerminal() {
   std::string lexeme;
-  
-  /* literal terminal without quotes */
+
+  // 1) Literal terminal without quotes: [A-Za-z0-9_.]+
   if (peek() != '\"' && peek() != '\'') {
-    /* advance the alphanumeric block */
-    while (!isAtEnd() && (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_' || peek() == '.')) {
+    while (!isAtEnd() &&
+           (std::isalnum(static_cast<unsigned char>(peek())) ||
+            peek() == '_' || peek() == '.')) {
       lexeme += advance();
     }
-    
-
     return ProductionUnit(ProductionUnit::Type::Terminal, lexeme, line, column);
   }
 
-  advance(); /* Consume the opening quote */
+  // 2) Quoted literal: "..." or '...'
+  const char quote = advance(); // opening quote character (' or ")
+  const int start_line = line;
+  const int start_col  = column;
 
-  /* literal enclosed by quotes */
-  do {
-    /* validate */
-    if (isAtEnd()) {
-      throw std::runtime_error("Grammar Syntax Error: Unterminated terminal (ends with a backslash) at line " +
-            std::to_string(line) + ", column " + std::to_string(column));
+  while (!isAtEnd()) {
+    char ch = peek();
+
+    // Closing quote must match the opening quote
+    if (ch == quote) {
+      advance(); // consume closing quote
+
+      std::string total_lexeme;
+      total_lexeme += quote;
+      total_lexeme += lexeme;
+      total_lexeme += quote;
+
+      return ProductionUnit(ProductionUnit::Type::Terminal,
+                            total_lexeme,
+                            start_line,
+                            start_col);
     }
-    
-    if (peek() == '\"' || peek() == '\'') {
-      std::string total_lexeme = peek() == '\"' ? "\"" + lexeme + "\"" : "\'" + lexeme + "\'";
-      advance(); /* Consume the closing quote */
-      return ProductionUnit(ProductionUnit::Type::Terminal, total_lexeme, line, column);
+
+    // Escape sequence: keep backslash + next char verbatim.
+    // They will be interpreted later by InstructionParser::unescape().
+    if (ch == '\\') {
+      lexeme += advance();             // '\'
+      if (!isAtEnd()) {
+        lexeme += advance();           // escaped char, e.g. '"', '\', 'n', ...
+      }
+      continue;
     }
+
+    // Normal character
     lexeme += advance();
-  } while (!isAtEnd());
+  }
 
-  /* Unterminated terminal  */
-  throw std::runtime_error("Grammar Syntax Error: Unterminated terminal \"" + lexeme + "\" at line " +
-        std::to_string(line) + ", column " + std::to_string(column));
+  // If we get here, the terminal never closed.
+  throw std::runtime_error(
+    "Grammar Syntax Error: Unterminated terminal starting at line " +
+    std::to_string(start_line) + ", column " + std::to_string(start_col)
+  );
 }
+
 
 /**
  * @brief Parses a punctuation unit.

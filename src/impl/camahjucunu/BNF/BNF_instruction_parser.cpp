@@ -31,7 +31,7 @@ ASTNodePtr InstructionParser::parse_Instruction(const std::string& instruction_i
   /* validate */
   if (root_node == nullptr || !iLexer.isAtEnd()) {
     size_t count = 0;
-    size_t max_success_stack = 50;
+    size_t max_success_stack = 75;
     /* print the report in case of failure */
     std::ostringstream err_oss, scss_oss;
     while (!parsing_error_stack.empty()) { err_oss << parsing_error_stack.top() << "\n"; parsing_error_stack.pop(); }

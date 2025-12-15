@@ -1,11 +1,14 @@
 // BNF_AST.h
 #pragma once
 #include "camahjucunu/BNF/BNF_types.h"
-#include "camahjucunu/BNF/BNF_visitor.h"
 
 namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {
+
+// Forward declarations to avoid circular dependency with BNF_visitor.h
+struct VisitorContext;
+class ASTVisitor;
 
 /* Base AST Node */
 struct ASTNode {
@@ -71,7 +74,9 @@ struct TerminalNode : public ASTNode {
 };
 
 // Function to print AST using Visitor
-void printAST(const ASTNode* node, bool verbose = false, int indent = 0, std::ostream& os = std::cout, const std::string& prefix = "", bool isLast = true);
+void printAST(const ASTNode* node, bool verbose = false, int indent = 0,
+              std::ostream& os = std::cout,
+              const std::string& prefix = "", bool isLast = true);
 
 // Functions to modify context
 void push_context(VisitorContext& context, const ASTNode* node);

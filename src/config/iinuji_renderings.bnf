@@ -1,75 +1,303 @@
+; ============================================================
+; iinuji visualization DSL – BNF specification (v0.2)
+; Strict on:
+;   - UPPERCASE block keywords: SCREEN, PANEL, FIGURE, EVENT,
+;     ENDSCREEN, ENDPANEL, ENDFIGURE, ENDEVENT
+;   - Single underscore tags (kinds): _screen, _rectangle,
+;     _label, _horizontal_plot, _input_box, _update, _action
+;   - Double underscore properties: __name, __key_, __coords, ...
+; Whitespace:
+;   - <hsp>  : " " or "\t"
+;   - <ws0>  : 0 or more <hsp>
+;   - <ws1>  : 1 or more <hsp>
+;   - <lb>   : line break "\r\n" or "\n"
+; Comments:
+;   - Use ';' at the beginning of a line.
+; ============================================================
+
+
+; ---------- Top level ------------------------------------------------
+; A program is zero or more SCREEN blocks.
+
 <instruction> ::= {<screen>} ;
 
-<screen> ::= "SCREEN" <ws1> <fcode> <lb> {<screen_line>} <ws0> "ENDSCREEN" ;
 
-<screen_line> ::= <ws0> <screen_stmt> <lb> ;
+; ---------- Screens --------------------------------------------------
+; A screen is defined by:  SCREEN _screen ... ENDSCREEN
 
-<screen_stmt> ::= <arg_stmt> | <panel_stmt> | <route_stmt> ;
+<screen> ::=
+    "SCREEN" <ws1> <screen_type> <ws0> <lb> {<screen_stmt_line>} <ws0> "ENDSCREEN" ;
+; Each line/entry inside a screen is one of:
+;   - a screen property
+;   - a panel
+;   - an event block
+;   - a route (key binding)
 
-<arg_stmt> ::= "arg" <ws1> <arg_name> <ws1> <arg_opt> <ws1> <path> [<presented_by>] [<triggers_block>] ;
+<screen_type> ::= "_screen" ;
+<screen_stmt_line> ::= <ws0> <screen_stmt> <ws0> <lb> ;
 
-<arg_name> ::= <ident> ;
-<arg_opt>  ::= "path" | "is" ;
+<screen_stmt> ::=
+      <screen_prop>
+    | <panel_stmt>
+    | <event_block>
+    ;
 
-<presented_by>        ::= "presented_by" <ws1> <ident> [<present_kv_section>] ;
-<present_kv_section>  ::= <ws1> <present_kv_pairs> ;
-<present_kv_pairs>    ::= <present_kv_pair> {<present_kv_pair_more>} ;
-<present_kv_pair_more>::= <ws1> <present_kv_pair> ;
-<present_kv_pair>     ::= <ident> <ws1> <kv_word> ;
-<kv_word>             ::= <ident> | <number> | <dq_string> ;
 
-<triggers_block> ::= "TRIGGERS" <lb> {<trigger_line>} <ws0> "ENDTRIGGERS" ;
+; ---------- Screen properties (double-underscore) --------------------
+; Screen-level defaults: name, key binding, global colors, default thickness.
 
-<trigger_line>    ::= <ws0> <trigger_kv_pair> <lb> ;
-<trigger_kv_pair> ::= <ident> <ws1> <kv_word> ;
+<screen_prop> ::=
+      <opt_name>
+    | <opt_key>
+    | <opt_line_color>
+    | <opt_text_color>
+    | <opt_back_color>
+    | <opt_tickness>
+    ;
 
-<panel_stmt> ::= "PANEL" <ws1> <panel_id> <ws1> <panel_type> <ws1> "at" <ws1> <int> <ws1> <int> <ws1> <int> <ws1> <int> [<opt_z>] [<opt_scale>] [<opt_bind>] <lb> {<panel_draw_line>} <ws0> "ENDPANEL" ;
+; ---------- Panels ---------------------------------------------------
+; Panels define rectangular regions inside a screen.
+; Currently only one kind: PANEL _rectangle ... ENDPANEL
 
-<opt_z>     ::= <ws1> <z_clause> ;
-<opt_scale> ::= <ws1> <scale_clause> ;
-<opt_bind>  ::= <ws1> <bind_clause> ;
+<panel_stmt> ::=
+    "PANEL" <ws1> <panel_type> <ws0> <lb> {<panel_stmt_line>} <ws0> "ENDPANEL" ;
 
-<panel_id>   ::= <ident> ;
-<panel_type> ::= "plot" | "tile" | "text" | "matrix" | "mdn" | "embed" | "custom" ;
-<z_clause>   ::= "z" <ws1> <int> ;
-<scale_clause>::= "scale" <ws1> <float> ;
-<bind_clause> ::= "bind" <ws1> <ident> ;
+<panel_type> ::= "_rectangle" ;
+<panel_stmt_line> ::= <ws0> <panel_stmt_item> <ws0> <lb> ;
 
-<panel_draw_line> ::= <ws0> <draw_stmt> <lb> ;
+<panel_stmt_item> ::=
+      <panel_prop>
+    | <figure_stmt>
+    ;
 
-<draw_stmt>       ::= "draw" <ws1> <ident> [<draw_kv_section>] ;
-<draw_kv_section> ::= <ws1> <draw_kv_pairs> ;
-<draw_kv_pairs>   ::= <draw_kv_pair> {<draw_kv_pair_more>} ;
-<draw_kv_pair_more>::= <ws1> <draw_kv_pair> ;
-<draw_kv_pair>    ::= <ident> <ws1> <kv_word> ;
 
-<route_stmt> ::= "on" <ws1> <keyseq> <ws1> "do" <ws1> <action> ;
-<keyseq>     ::= "F" <number> | "G" <number> | <ident> ;
-<action>     ::= "goto" <ws1> "F" <number> | "toggle" <ws1> <overlay> | "refresh" | <ident> ;
-<overlay>    ::= "logs" | "crypto" | "bnf" ;
+; ---------- Panel properties -----------------------------------------
+; Panel layout and appearance: coords, shape, z-index, title, border, colors.
 
-<fcode> ::= "F" "+" <number> ;
+<panel_prop> ::=
+      <opt_coords> 
+    | <opt_shape> 
+    | <opt_z_index> 
+    | <opt_title> 
+    | <opt_border> 
+    | <opt_line_color> 
+    | <opt_text_color> 
+    | <opt_back_color> 
+    | <opt_tickness> 
+    ;
 
-<int>   ::= <number> ;
-<float> ::= <number> "." <number> | <number> ;
-<number>::= <digit> [<number>] ;
+; ---------- Figures --------------------------------------------------
+; Figures are widgets inside panels:
+;   - labels
+;   - plots
+;   - input boxes, etc.
+; They are created with: FIGURE <figure_kind> ... ENDFIGURE
+
+<figure_stmt> ::=
+    "FIGURE" <ws1> <figure_kind> <ws0> <lb> 
+      {<figure_prop_line>} <ws0> 
+    "ENDFIGURE" ;
+
+; Figure kinds (single-underscore) define behavior.
+; More kinds can be added later.
+
+<figure_kind> ::=
+      "_label"
+    | "_horizontal_plot"
+    | "_input_box"
+    ;
+
+<figure_prop_line> ::= <ws0> <figure_prop> <ws0> <lb> ;
+
+
+; ---------- Figure properties ----------------------------------------
+; Properties for layout, content, style and event triggers.
+
+<figure_prop> ::=
+      <opt_coords> 
+    | <opt_shape> 
+    | <opt_value> 
+    | <opt_title> 
+    | <opt_legend> 
+    | <opt_type> 
+    | <opt_border> 
+    | <opt_tickness> 
+    | <opt_line_color> 
+    | <opt_text_color> 
+    | <opt_back_color> 
+    | <opt_triggers> 
+    ;
+
+; ---------- Trigger lists --------------------------------------------
+; __triggers lists event names defined by EVENT blocks.
+; Examples:
+;   __triggers label_init
+;   __triggers data_init, data_update
+
+<trigger_list> ::= <event_name> [<aux_1>] ;
+
+<aux_1>  ::= {<aux_1p>} ;
+<aux_1p> ::= <ws0> "," <ws0> <event_name> ;
+
+<event_name> ::= <name_ident> ;
+
+
+; ---------- Events ---------------------------------------------------
+; EVENT blocks define how event payloads map into named forms.
+; Kinds (single-underscore) describe intent:
+;   _update : data updates (plots, labels)
+;   _action : actions/commands (input box submissions, etc.)
+
+<event_block> ::=
+    "EVENT" <ws1> <event_kind> <ws0> <lb>
+        {<event_prop_line>}
+    <ws0> "ENDEVENT" ;
+
+<event_kind> ::=
+      "_update"
+    | "_action"
+    ;
+
+<event_prop_line> ::= <ws0> <event_prop> <ws0> <lb> ;
+
+; Each event:
+;   __name <event_name>    ; symbolic name used in __triggers
+;   __form <form_spec>     ; mapping local names → payload paths
+
+<event_prop> ::=
+      <opt_name>
+    | <opt_form>
+    ;
+
+; ---------- Event form specification ---------------------------------
+; __form describes how an event payload (void*) is read.
+; It is a comma-separated list of bindings:
+;   local_name : local_name:.field_name
+; Local names are simple identifiers:
+;   str, x, y, etc.
+; Path starts with "." followed by one or more components:
+;   .content
+;   .data
+;   .user_input
+;   .data.series
+; Total examples are
+;    __form x:.data
+;    __form any:.any
+;    __form y:.value,x:.target,z:.delta
+
+<opt_form> ::= "__form" <ws1> <form_spec> ;
+
+<form_spec> ::= <form_binding> [<aux_2>] ;
+
+<aux_2>  ::= {<aux_2p>} ;
+<aux_2p> ::= <ws0> "," <form_binding> ;
+
+<form_binding> ::= <ws0> <name_ident> ":." <name_ident> <ws0> ;
+
+; ---------- Shared structures ----------------------------------------
+; Function key binding: F+1, F+2, ...
+
+<fcode> ::= "F" "+" <int> ;
+
+; Point coordinates such as 0,0 or 1500,750.
+
+<point> ::= <int> <ws0> "," <ws0> <int> ;
+
+; ---------- Shared fields --------------------------------------------
+
+<opt_name>       ::= "__name"       <ws1> <name_ident>             ;
+<opt_key>        ::= "__key"        <ws1> <fcode>                  ;
+<opt_line_color> ::= "__line_color" <ws1> <color_hex>              ;
+<opt_text_color> ::= "__text_color" <ws1> <color_hex>              ;
+<opt_back_color> ::= "__back_color" <ws1> <color_hex>              ;
+<opt_tickness>   ::= "__tickness"   <ws1> <number>                 ;
+<opt_coords>     ::= "__coords"     <ws1> <point>                  ;
+<opt_shape>      ::= "__shape"      <ws1> <point>                  ;
+<opt_z_index>    ::= "__z_index"    <ws1> <int>                    ;
+<opt_title>      ::= "__title"      <ws1> <bool> <ws1> <dq_string> ;
+<opt_border>     ::= "__border"     <ws1> <bool>                   ;
+<opt_value>      ::= "__value"      <ws1> <dq_string>              ;
+<opt_legend>     ::= "__legend"     <ws1> <bool> <ws1> <dq_string> ;
+<opt_type>       ::= "__type"       <ws1> <name_ident>             ;
+<opt_triggers>   ::= "__triggers"   <ws1> <trigger_list>           ;
+
+; ---------- Basic lexical elements -----------------------------------
+; Booleans.
+
+<bool> ::= "true" | "false" ;
+
+; Integer: one or more digits.
+
+<int> ::= {<digit>} ;
+
+; Number: integer or float (e.g. 0, 42, 3.14, 100.0).
+
+<number> ::= <int> [<aux_3>] ;
+
+<aux_3> ::= "." <int> ;
+
+; Color: #RRGGBB (hex).
+
+<color_hex> ::= "#" <hexdigit> <hexdigit> <hexdigit>
+                    <hexdigit> <hexdigit> <hexdigit> ;
+
+<hexdigit> ::= <digit>
+             | "a" | "b" | "c" | "d" | "e" | "f"
+             | "A" | "B" | "C" | "D" | "E" | "F"
+             ;
+
+; Digits 0–9.
+
 <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 
-<upper> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" ;
-<lower> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+; Letters.
+
+<upper> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
+          | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
+          | "U" | "V" | "W" | "X" | "Y" | "Z"
+          ;
+
+<lower> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j"
+          | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t"
+          | "u" | "v" | "w" | "x" | "y" | "z"
+          ;
+
 <alpha> ::= <upper> | <lower> ;
 
-<ident>   ::= <alpha> {<id_tail>} ;
-<id_tail> ::= <alpha> | <digit> | "_" | "." | "/" | ":" | "-" ;
+; General identifiers for names, event names, types, etc.
+; Examples: main_data, label_init, normal, line, data_update
 
-<path>       ::= "Arg1" [<path_tail>] ;
-<path_tail>  ::= <dot_ident> {<dot_ident>} ;
-<dot_ident>  ::= "." <ident> ;
+<name_ident> ::= <alpha> [<aux_4>] ;
 
-<dq_string> ::= """ {<dq_char>} """ ;
-<dq_char>   ::= <alpha> | <digit> | " " | "_" | "-" | "." | ":" | "," | "#" | "+" | "/" ;
+; Characters allowed after the first letter in a name_ident.
+<aux_4>   ::= {<id_tail>} ;
+<id_tail> ::= <alpha> | <digit> | "_" | "-" ;
 
-<hsp>  ::= " " | "\t" ;
-<ws0>  ::= {<hsp>} ;
-<ws1>  ::= <hsp> [<ws1>] ;
-<lb>   ::= "\r\n" | "\n" ;
+
+; ---------- Strings --------------------------------------------------
+; Double-quoted string, no escaping inside.
+; Example: "initial value", "figure title", "main"
+
+<dq_string> ::= "\"" {<dq_char>} "\"" ;
+
+; Characters allowed inside double-quoted strings.
+
+<dq_char> ::= <alpha> | <digit> | "_" | "-" | "." | ":" | "," | "#" | "+" | "/" | " " ;
+
+
+; ---------- Whitespace tokens ---------------------------------------
+; Horizontal space: space or tab.
+
+<hsp> ::= " " | "\t" ;
+
+; Optional whitespace: 0 or more <hsp>.
+
+<ws0> ::= [<ws1>] ;
+
+; Required whitespace: 1 or more <hsp>.
+
+<ws1> ::= {<hsp>} ;
+
+; Line break: Windows or Unix style.
+
+<lb> ::= "\r\n" | "\n" ;

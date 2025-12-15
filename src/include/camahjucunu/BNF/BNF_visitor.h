@@ -1,7 +1,6 @@
 // BNF_visitor.h
 #pragma once
 #include <vector>
-#include "BNF_AST.h"
 
 /* 
  * ASTVisitor is an abstract base class that defines the Visitor interface 

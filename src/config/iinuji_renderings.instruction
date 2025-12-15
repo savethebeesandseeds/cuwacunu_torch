@@ -1,11 +1,67 @@
-screen F 7
-  arg Arg2 path Arg1.dataloader presented_by table columns "a,b,c"
-    triggers on_enter "load" on_click select endtriggers
-  panel p1 plot at 0 0 6 4 z 1 scale 1 bind Arg2
-    draw curve d y
-    draw mdn_band y y_std
-  endpanel
-  panel t1 text at 0 4 6 2
-    draw text content "Hello world"
-  endpanel
-endscreen
+SCREEN _screen
+  __tickness 2
+  __name main_data
+  __text_color #000000
+  __line_color #00ff00
+  __back_color #ffffff
+  __key F+1
+  PANEL _rectangle
+    __coords 0,0
+    __z_index 0
+    __shape 1500,750
+    __title true "main"
+    __border true
+    __line_color #ffaaaa
+    FIGURE _label
+      __coords 0,0
+      __shape 250,100
+      __value "initial value"
+      __type normal
+      __border false
+      __line_color #1200ff
+      __text_color #ffffff
+      __back_color #000000
+      __triggers label_init
+    ENDFIGURE
+    FIGURE _horizontal_plot
+      __coords 0,100
+      __shape 250,200
+      __title true "figure title"
+      __legend true "text"
+      __type line
+      __border true
+      __tickness 2
+      __line_color #00ffaa
+      __text_color #0000aa
+      __back_color #ffffaa
+      __triggers data_init, data_update
+    ENDFIGURE
+    FIGURE _input_box
+      __coords 0,300
+      __shape 100,100
+      __value "initial place holder"
+      __type normal
+      __border true
+      __line_color #1200ff
+      __text_color #ffffff
+      __back_color #000000
+      __triggers event_launch
+    ENDFIGURE
+  ENDPANEL
+  EVENT _update
+    __name label_init
+    __form str:.content
+  ENDEVENT
+  EVENT _update
+    __name data_init
+    __form x:.data
+  ENDEVENT
+  EVENT _update
+    __name data_update
+    __form x:.data
+  ENDEVENT
+  EVENT _action
+    __name event_launch
+    __form str:.user_input
+  ENDEVENT
+ENDSCREEN

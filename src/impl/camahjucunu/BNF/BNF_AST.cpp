@@ -1,5 +1,6 @@
 // BNF_AST.cpp
 #include "camahjucunu/BNF/BNF_AST.h"
+#include "camahjucunu/BNF/BNF_visitor.h"
 
 RUNTIME_WARNING("(BNF_AST.cpp)[] node hashes are not actually hashes \n");
 
@@ -81,14 +82,16 @@ bool compareAST(const ASTNode* actual, const ASTNode* expected) {
   return false;
 }
 
+// Functions to modify context
 void push_context(VisitorContext& context, const ASTNode* node) {
-  if (context.stack.empty() || context.stack.back()->hash != node->hash) {
-    context.stack.push_back(node);
-  }
+  // We no longer inspect node->hash or the existing stack entries.
+  // Just record the node pointer for debugging / tracing if desired.
+  context.stack.push_back(node);
 }
 
-void pop_context(VisitorContext& context, const ASTNode* node) {
-  if (!context.stack.empty() && context.stack.back()->hash == node->hash) {
+void pop_context(VisitorContext& context, const ASTNode* /*node*/) {
+  // Pop the last node if any. We don't check hashes anymore.
+  if (!context.stack.empty()) {
     context.stack.pop_back();
   }
 }
