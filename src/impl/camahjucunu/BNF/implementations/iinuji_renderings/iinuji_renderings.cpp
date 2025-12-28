@@ -59,6 +59,8 @@ DEFINE_HASH(IIN_RENDER_HASH_opt_legend,     "<opt_legend>");
 DEFINE_HASH(IIN_RENDER_HASH_opt_type,       "<opt_type>");
 DEFINE_HASH(IIN_RENDER_HASH_opt_triggers,   "<opt_triggers>");
 DEFINE_HASH(IIN_RENDER_HASH_opt_form,       "<opt_form>");
+DEFINE_HASH(IIN_RENDER_HASH_opt_label,      "<opt_label>");
+DEFINE_HASH(IIN_RENDER_HASH_opt_color,      "<opt_color>");
 
 // IMPORTANT: your BNF uses <opt__capacity> (double underscore in the nonterminal name)
 DEFINE_HASH(IIN_RENDER_HASH_opt_capacity,   "<opt__capacity>");
@@ -99,6 +101,8 @@ struct iinuji_renderings_decoder_t::State {
     Legend,
     Type,
     Triggers,
+    Label,
+    Color,
     Form
   } prop = Prop::None;
 
@@ -415,10 +419,17 @@ inline void begin_prop(iinuji_renderings_decoder_t::State& st,
       break;
 
     case iinuji_renderings_decoder_t::State::Prop::Tickness:
-    case iinuji_renderings_decoder_t::State::Prop::Capacity: // NEW
+    case iinuji_renderings_decoder_t::State::Prop::Capacity:
       st.num_value   = 0.0;
       st.num_frac    = 0.1;
       st.num_has_dot = false;
+      break;
+    
+    case iinuji_renderings_decoder_t::State::Prop::Label:
+      st.ident_buffer.clear();
+      break;
+    case iinuji_renderings_decoder_t::State::Prop::Color:
+      reset_color_capture(st);
       break;
 
     case iinuji_renderings_decoder_t::State::Prop::Coords:
@@ -606,23 +617,26 @@ void iinuji_renderings_decoder_t::visit(const IntermediaryNode* node,
       arm_kind(*st, State::KindTarget::Event);
       break;
 
-    case IIN_RENDER_HASH_opt_name:       begin_prop(*st, State::Prop::Name); break;
-    case IIN_RENDER_HASH_opt_key:        begin_prop(*st, State::Prop::Key); break;
+    case IIN_RENDER_HASH_opt_name:       begin_prop(*st, State::Prop::Name);      break;
+    case IIN_RENDER_HASH_opt_key:        begin_prop(*st, State::Prop::Key);       break;
     case IIN_RENDER_HASH_opt_line_color: begin_prop(*st, State::Prop::LineColor); break;
     case IIN_RENDER_HASH_opt_text_color: begin_prop(*st, State::Prop::TextColor); break;
     case IIN_RENDER_HASH_opt_back_color: begin_prop(*st, State::Prop::BackColor); break;
-    case IIN_RENDER_HASH_opt_tickness:   begin_prop(*st, State::Prop::Tickness); break;
-    case IIN_RENDER_HASH_opt_coords:     begin_prop(*st, State::Prop::Coords); break;
-    case IIN_RENDER_HASH_opt_shape:      begin_prop(*st, State::Prop::Shape); break;
-    case IIN_RENDER_HASH_opt_capacity:   begin_prop(*st, State::Prop::Capacity); break; // NEW
-    case IIN_RENDER_HASH_opt_z_index:    begin_prop(*st, State::Prop::ZIndex); break;
-    case IIN_RENDER_HASH_opt_title:      begin_prop(*st, State::Prop::Title); break;
-    case IIN_RENDER_HASH_opt_border:     begin_prop(*st, State::Prop::Border); break;
-    case IIN_RENDER_HASH_opt_value:      begin_prop(*st, State::Prop::Value); break;
-    case IIN_RENDER_HASH_opt_legend:     begin_prop(*st, State::Prop::Legend); break;
-    case IIN_RENDER_HASH_opt_type:       begin_prop(*st, State::Prop::Type); break;
-    case IIN_RENDER_HASH_opt_triggers:   begin_prop(*st, State::Prop::Triggers); break;
-    case IIN_RENDER_HASH_opt_form:       begin_prop(*st, State::Prop::Form); break;
+    case IIN_RENDER_HASH_opt_tickness:   begin_prop(*st, State::Prop::Tickness);  break;
+    case IIN_RENDER_HASH_opt_coords:     begin_prop(*st, State::Prop::Coords);    break;
+    case IIN_RENDER_HASH_opt_shape:      begin_prop(*st, State::Prop::Shape);     break;
+    case IIN_RENDER_HASH_opt_capacity:   begin_prop(*st, State::Prop::Capacity);  break;
+    case IIN_RENDER_HASH_opt_z_index:    begin_prop(*st, State::Prop::ZIndex);    break;
+    case IIN_RENDER_HASH_opt_title:      begin_prop(*st, State::Prop::Title);     break;
+    case IIN_RENDER_HASH_opt_border:     begin_prop(*st, State::Prop::Border);    break;
+    case IIN_RENDER_HASH_opt_value:      begin_prop(*st, State::Prop::Value);     break;
+    case IIN_RENDER_HASH_opt_legend:     begin_prop(*st, State::Prop::Legend);    break;
+    case IIN_RENDER_HASH_opt_type:       begin_prop(*st, State::Prop::Type);      break;
+    case IIN_RENDER_HASH_opt_triggers:   begin_prop(*st, State::Prop::Triggers);  break;
+    case IIN_RENDER_HASH_opt_form:       begin_prop(*st, State::Prop::Form);      break;
+    case IIN_RENDER_HASH_opt_label:      begin_prop(*st, State::Prop::Label);     break;
+    case IIN_RENDER_HASH_opt_color:      begin_prop(*st, State::Prop::Color);     break;
+
 
     default:
       break;
@@ -653,6 +667,28 @@ void iinuji_renderings_decoder_t::visit(const IntermediaryNode* node,
       st->in_event = false;
       clear_kind(*st);
       break;
+    
+    case IIN_RENDER_HASH_opt_label: {
+      if (st->in_event && !st->ident_buffer.empty()) {
+        auto& ev = current_event(*st);
+        ev.has_label = true;
+        ev.label = st->ident_buffer;
+      }
+      st->ident_buffer.clear();
+      end_prop(*st);
+      break;
+    }
+
+    case IIN_RENDER_HASH_opt_color: {
+      if (st->in_event && !st->string_buffer.empty()) {
+        auto& ev = current_event(*st);
+        ev.has_color = true;
+        ev.color = st->string_buffer;
+      }
+      reset_color_capture(*st);
+      end_prop(*st);
+      break;
+    }
 
     case IIN_RENDER_HASH_opt_name: {
       if (!st->ident_buffer.empty()) {
@@ -891,6 +927,21 @@ void iinuji_renderings_decoder_t::visit(const TerminalNode* node,
           st->int_value = st->int_value * 10 + (c - '0');
         }
       }
+      break;
+    }
+
+    case State::Prop::Label: {
+      std::string val = lex;
+      constexpr const char* tag = "__label";
+      auto pos = val.find(tag);
+      if (pos != std::string::npos) val.erase(0, pos + std::strlen(tag));
+      for (char c : val) if (is_ident_char(c)) st->ident_buffer.push_back(c);
+      break;
+    }
+
+    case State::Prop::Color: {
+      // We only need to detect "#RRGGBB" anywhere in the token stream.
+      consume_color_hex(*st, lex);
       break;
     }
 

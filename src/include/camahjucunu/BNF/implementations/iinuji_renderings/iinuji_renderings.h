@@ -34,8 +34,8 @@ struct iinuji_point_t {
 // ------------------------------------------------------------------
 
 struct iinuji_event_binding_t {
-  std::string local_name = "<empty>";  // e.g. "x"
-  std::string path_name = "<empty>";   // e.g. ".data"
+  std::string local_name = "<empty>";  // e.g. "str"
+  std::string path_name  = "<empty>";  // e.g. ".str0" or ".sys.stdout"
 };
 
 // ------------------------------------------------------------------
@@ -43,7 +43,7 @@ struct iinuji_event_binding_t {
 // ------------------------------------------------------------------
 
 struct iinuji_figure_t {
-  std::string kind_raw = "<empty>";    // "_label", "_horizontal_plot", "_input_box"
+  std::string kind_raw = "<empty>";    // "_label", "_horizontal_plot", "_input_box", "_buffer"
 
   iinuji_point_t coords;   // __coords
   iinuji_point_t shape;    // __shape
@@ -105,8 +105,18 @@ struct iinuji_panel_t {
 
 struct iinuji_event_t {
   std::string kind_raw = "<empty>";  // "_update" or "_action"
-  std::string name = "<empty>";      // __name
+  std::string name     = "<empty>";  // __name
+
   std::vector<iinuji_event_binding_t> bindings;  // __form
+
+  // Optional metadata (currently used by FIGURE _buffer):
+  // - __label: short tag (e.g. INFO, ERROR) to annotate buffer lines
+  // - __color: per-event line color override for buffer lines
+  bool        has_label = false;
+  std::string label     = "<empty>"; // __label
+
+  bool        has_color = false;
+  std::string color     = "<empty>"; // __color
 
   std::string str(unsigned indent = 0) const;
 };
@@ -117,16 +127,16 @@ struct iinuji_event_t {
 
 struct iinuji_screen_t {
   std::string kind_raw = "<empty>";   // "_screen"
-  std::string name = "<empty>";       // __name
+  std::string name     = "<empty>";   // __name
 
   std::string key_raw = "<empty>";    // "F+1"
-  int         fcode = 0;  // numeric part (1 for F+1)
+  int         fcode   = 0;            // numeric part (1 for F+1)
 
   std::string line_color = "<empty>"; // __line_color
   std::string text_color = "<empty>"; // __text_color
   std::string back_color = "<empty>"; // __back_color
-  double      tickness = 1.0;  // __tickness
-  bool        border   = false;
+  double      tickness   = 1.0;       // __tickness
+  bool        border     = false;
 
   std::vector<iinuji_panel_t> panels;
   std::vector<iinuji_event_t> events;
@@ -143,7 +153,6 @@ struct iinuji_screen_t {
 
 struct iinuji_renderings_instruction_t {
   std::vector<iinuji_screen_t> screens;
-
   std::string str() const;
 };
 
@@ -163,9 +172,9 @@ public:
   iinuji_renderings_instruction_t decode(const BNF::ASTNode* root);
 
   // ASTVisitor interface
-  void visit(const BNF::RootNode* node,        BNF::VisitorContext& context) override;
-  void visit(const BNF::IntermediaryNode* node,BNF::VisitorContext& context) override;
-  void visit(const BNF::TerminalNode* node,    BNF::VisitorContext& context) override;
+  void visit(const BNF::RootNode* node,         BNF::VisitorContext& context) override;
+  void visit(const BNF::IntermediaryNode* node, BNF::VisitorContext& context) override;
+  void visit(const BNF::TerminalNode* node,     BNF::VisitorContext& context) override;
 
   struct State;
 };

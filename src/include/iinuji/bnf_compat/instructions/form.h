@@ -101,7 +101,15 @@ struct resolved_event_t {
   std::string kind_raw;  // "_update" or "_action"
   std::string name;
   std::vector<resolved_binding_t> bindings;
+
+  // Optional metadata (currently used by _buffer)
+  bool has_label = false;
+  std::string label;
+
+  bool has_color = false;
+  std::string color;
 };
+
 
 using resolved_event_map_t = std::unordered_map<std::string, resolved_event_t>;
 

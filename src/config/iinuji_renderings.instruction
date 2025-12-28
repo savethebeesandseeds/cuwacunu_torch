@@ -108,11 +108,15 @@ SCREEN _screen
   EVENT _update
     __name stdout
     __form str:.sys.stdout
+    __label INFO
+    __color #000000
   ENDEVENT
 
   EVENT _update
     __name stderr
     __form str:.sys.stderr
+    __label ERROR
+    __color #ff0000
   ENDEVENT
 
 ENDSCREEN

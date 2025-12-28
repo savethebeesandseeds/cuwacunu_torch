@@ -178,6 +178,25 @@ inline resolved_event_map_t compile_events(const cuwacunu::camahjucunu::iinuji_s
     re.kind_raw = E.kind_raw;
     re.name = E.name;
 
+    // Optional EVENT metadata used by FIGURE _buffer
+    if (E.has_label && !is_unset_token(E.label)) {
+      if (!is_ident(E.label)) {
+        d.err(where + ": invalid __label '" + E.label + "'");
+      } else {
+        re.has_label = true;
+        re.label = E.label;
+      }
+    }
+
+    if (E.has_color && !is_unset_token(E.color)) {
+      if (!is_valid_color_token(E.color)) {
+        d.err(where + ": invalid __color '" + E.color + "'");
+      } else {
+        re.has_color = true;
+        re.color = E.color;
+      }
+    }
+
     for (size_t bi=0; bi<E.bindings.size(); ++bi) {
       const auto& B = E.bindings[bi];
       const std::string bwhere = where + ".binding[" + std::to_string(bi) + "]";

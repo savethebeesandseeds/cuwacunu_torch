@@ -80,8 +80,28 @@ struct textBox_data_t : public iinuji_data_t {
 /* -------------------- Buffer box -------------------- */
 enum class buffer_dir_t { UpDown, DownUp };
 
+/* A single rendered line in a buffer box.
+   - text  : the main payload line
+   - label : optional event label (e.g. "INFO", "ERROR")
+   - color : optional per-line override for text color
+             if empty => use the widget/style default (iinuji_object_t::style.label_color)
+
+   This is meant to support EVENT metadata like:
+     EVENT _update
+       __name stdout
+       __label INFO
+       __color #ffffff
+       __form  str:.sys.stdout
+     ENDEVENT
+*/
+struct buffer_line_t {
+  std::string text;
+  std::string label; // optional
+  std::string color; // optional; if empty => use widget default text color
+};
+
 struct bufferBox_data_t : public iinuji_data_t {
-  std::deque<std::string> lines;
+  std::deque<buffer_line_t> lines;
 
   std::size_t capacity{1000};     // max number of lines
   buffer_dir_t dir{buffer_dir_t::UpDown};
@@ -97,13 +117,29 @@ struct bufferBox_data_t : public iinuji_data_t {
   bufferBox_data_t(std::size_t cap=1000, buffer_dir_t d=buffer_dir_t::UpDown)
   : capacity(std::max<std::size_t>(1, cap)), dir(d) {}
 
+  // Backwards-compatible API (old callers): pushes a plain text line with no metadata.
   void push_line(std::string s) {
+    push_line(std::move(s), /*label*/"", /*color*/"");
+  }
+
+  // New API: push a line with optional label and color override.
+  // NOTE: color is a string token (e.g. "#ff0000"). The renderer decides how to map it.
+  void push_line(std::string s, std::string label, std::string color) {
     // normalize line endings lightly
     if (!s.empty() && s.back() == '\r') s.pop_back();
 
-    lines.push_back(std::move(s));
+    buffer_line_t L;
+    L.text  = std::move(s);
+    L.label = std::move(label);
+    L.color = std::move(color);
+
+    lines.push_back(std::move(L));
+
     while (lines.size() > capacity) {
       lines.pop_front();
+      // NOTE: We deliberately do not try to "preserve view" here.
+      // The current behavior of scroll/follow_tail is kept identical
+      // to the previous std::string-only implementation.
     }
 
     if (scroll == 0) follow_tail = true;

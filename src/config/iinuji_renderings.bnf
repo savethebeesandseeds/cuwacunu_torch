@@ -202,10 +202,16 @@
 
 <event_prop> ::= <opt_name>
                | <opt_form>
+               | <opt_label>
+               | <opt_color>
                ;
 
 
+
 ; ---------- Event form specification ---------------------------------
+; EVENT optional metadata:
+;   __label : a short tag such as INFO/ERROR (currently only used by FIGURE _buffer)
+;   __color : overrides buffer default __text_color for lines coming from this event
 
 <opt_form> ::= "__form" <ws1> <form_spec> ;
 
@@ -242,6 +248,8 @@
 <opt_legend>     ::= "__legend"     <ws1> <bool> <ws1> <dq_string> ;
 <opt_type>       ::= "__type"       <ws1> <name_ident>             ;
 <opt_triggers>   ::= "__triggers"   <ws1> <trigger_list>           ;
+<opt_label>      ::= "__label"      <ws1> <name_ident>             ;
+<opt_color>      ::= "__color"      <ws1> <color_hex>              ;
 
 
 ; ---------- Basic lexical elements -----------------------------------

@@ -120,7 +120,11 @@ inline instructions_diag_t dispatch_event(instructions_build_result_t& built,
       std::string s;
       if (binding_get_str(*b, data, payload, s, d, "dispatch_event(" + event_name + "," + fig_id + ")")) {
         auto bb = std::dynamic_pointer_cast<bufferBox_data_t>(obj->data);
-        if (bb) bb->push_line(std::move(s));
+        if (bb) {
+          std::string lbl = (E.has_label ? E.label : std::string());
+          std::string col = (E.has_color ? E.color : std::string());
+          bb->push_line(std::move(s), std::move(lbl), std::move(col));
+        }
       }
     }
     else if (kind == "_horizontal_plot") {
