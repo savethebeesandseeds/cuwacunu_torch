@@ -1,3 +1,4 @@
+/* iinuji_renderings.h */
 #pragma once
 
 #include <string>
@@ -11,7 +12,7 @@
 //   define IINUJI_RENDERINGS_DEBUG to 1 (e.g. via compiler flags)
 //   to enable logging to std::cerr.
 #ifndef IINUJI_RENDERINGS_DEBUG
-#define IINUJI_RENDERINGS_DEBUG 1
+#define IINUJI_RENDERINGS_DEBUG 0
 #endif
 
 namespace cuwacunu {
@@ -33,8 +34,8 @@ struct iinuji_point_t {
 // ------------------------------------------------------------------
 
 struct iinuji_event_binding_t {
-  std::string local_name;  // e.g. "x"
-  std::string path_name;   // e.g. ".data"
+  std::string local_name = "<empty>";  // e.g. "x"
+  std::string path_name = "<empty>";   // e.g. ".data"
 };
 
 // ------------------------------------------------------------------
@@ -42,7 +43,7 @@ struct iinuji_event_binding_t {
 // ------------------------------------------------------------------
 
 struct iinuji_figure_t {
-  std::string kind_raw;    // "_label", "_horizontal_plot", "_input_box"
+  std::string kind_raw = "<empty>";    // "_label", "_horizontal_plot", "_input_box"
 
   iinuji_point_t coords;   // __coords
   iinuji_point_t shape;    // __shape
@@ -50,19 +51,22 @@ struct iinuji_figure_t {
   double         tickness    = 1.0;   // __tickness
 
   bool           has_value   = false;
-  std::string    value;              // __value
+  std::string    value = "<empty>";              // __value
 
   bool           title_on    = false;
-  std::string    title;             // __title
+  std::string    title = "<empty>";             // __title
+
+  bool has_capacity          = false;
+  int  capacity              = 0;               // __capacity (lines), required for _buffer
 
   bool           legend_on   = false;
-  std::string    legend;            // __legend
+  std::string    legend = "<empty>";            // __legend
 
-  std::string    type_raw;          // __type
+  std::string    type_raw = "<empty>";          // __type
 
-  std::string    line_color;        // __line_color
-  std::string    text_color;        // __text_color
-  std::string    back_color;        // __back_color
+  std::string    line_color = "<empty>";        // __line_color
+  std::string    text_color = "<empty>";        // __text_color
+  std::string    back_color = "<empty>";        // __back_color
 
   std::vector<std::string> triggers;   // __triggers event names
 
@@ -74,20 +78,20 @@ struct iinuji_figure_t {
 // ------------------------------------------------------------------
 
 struct iinuji_panel_t {
-  std::string    kind_raw;   // "_rectangle"
+  std::string    kind_raw = "<empty>";   // "_rectangle"
 
   iinuji_point_t coords;     // __coords
   iinuji_point_t shape;      // __shape
   int            z_index  = 0;   // __z_index
 
   bool           title_on = false;
-  std::string    title;          // __title
+  std::string    title = "<empty>";          // __title
 
   bool           border   = false;   // __border
 
-  std::string    line_color;        // __line_color
-  std::string    text_color;        // __text_color
-  std::string    back_color;        // __back_color
+  std::string    line_color = "<empty>";        // __line_color
+  std::string    text_color = "<empty>";        // __text_color
+  std::string    back_color = "<empty>";        // __back_color
   double         tickness = 1.0;    // __tickness
 
   std::vector<iinuji_figure_t> figures;
@@ -100,8 +104,8 @@ struct iinuji_panel_t {
 // ------------------------------------------------------------------
 
 struct iinuji_event_t {
-  std::string kind_raw;  // "_update" or "_action"
-  std::string name;      // __name
+  std::string kind_raw = "<empty>";  // "_update" or "_action"
+  std::string name = "<empty>";      // __name
   std::vector<iinuji_event_binding_t> bindings;  // __form
 
   std::string str(unsigned indent = 0) const;
@@ -112,15 +116,15 @@ struct iinuji_event_t {
 // ------------------------------------------------------------------
 
 struct iinuji_screen_t {
-  std::string kind_raw;   // "_screen"
-  std::string name;       // __name
+  std::string kind_raw = "<empty>";   // "_screen"
+  std::string name = "<empty>";       // __name
 
-  std::string key_raw;    // "F+1"
+  std::string key_raw = "<empty>";    // "F+1"
   int         fcode = 0;  // numeric part (1 for F+1)
 
-  std::string line_color; // __line_color
-  std::string text_color; // __text_color
-  std::string back_color; // __back_color
+  std::string line_color = "<empty>"; // __line_color
+  std::string text_color = "<empty>"; // __text_color
+  std::string back_color = "<empty>"; // __back_color
   double      tickness = 1.0;  // __tickness
   bool        border   = false;
 

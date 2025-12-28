@@ -13,12 +13,12 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 # (use defaults from Makefile.config)
 
 # 3) Tests (build + run aliases)
-$(eval $(call TEST_ONEFILE, test_iinuji_plots,    test_iinuji_plots.cpp))
-$(eval $(call TEST_ONEFILE, test_iinuji_logs,     test_iinuji_logs.cpp))
-$(eval $(call TEST_ONEFILE, test_iinuji_suit,     test_iinuji_suit.cpp))
-$(eval $(call TEST_ONEFILE, test_iinuji_mouse,    test_iinuji_mouse.cpp))
-$(eval $(call TEST_ONEFILE, test_iinuji_toroid,   test_iinuji_toroid.cpp))
-$(eval $(call TEST_ONEFILE, test_iinuji_bnf,    	test_iinuji_bnf.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_plots,    		test_iinuji_plots.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_logs,     		test_iinuji_logs.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_suit,     		test_iinuji_suit.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_mouse,    		test_iinuji_mouse.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_toroid,   		test_iinuji_toroid.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_instructions, test_iinuji_instructions.cpp))
 
 # 4) Target-specific includes/link flags
 $(TEST_OUT)/test_iinuji_%: INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
@@ -33,7 +33,7 @@ all: \
 	$(TEST_OUT)/test_iinuji_suit \
 	$(TEST_OUT)/test_iinuji_mouse \
 	$(TEST_OUT)/test_iinuji_toroid \
-	$(TEST_OUT)/test_iinuji_bnf
+	$(TEST_OUT)/test_iinuji_instructions
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
@@ -44,7 +44,7 @@ run: \
 	run-test_iinuji_suit \
 	run-test_iinuji_mouse \
 	run-test_iinuji_toroid \
-	run-test_iinuji_bnf
+	run-test_iinuji_instructions
 
 # 7) Clean
 .PHONY: clean

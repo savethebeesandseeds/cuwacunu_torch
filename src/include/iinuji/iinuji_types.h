@@ -7,6 +7,7 @@
 #include <functional>
 #include <limits>
 #include <algorithm>
+#include <deque>
 
 namespace cuwacunu {
 namespace iinuji {
@@ -74,6 +75,57 @@ struct textBox_data_t : public iinuji_data_t {
   text_align_t align{text_align_t::Left};
   textBox_data_t(std::string s, bool w=true, text_align_t a=text_align_t::Left)
   : content(std::move(s)), wrap(w), align(a) {}
+};
+
+/* -------------------- Buffer box -------------------- */
+enum class buffer_dir_t { UpDown, DownUp };
+
+struct bufferBox_data_t : public iinuji_data_t {
+  std::deque<std::string> lines;
+
+  std::size_t capacity{1000};     // max number of lines
+  buffer_dir_t dir{buffer_dir_t::UpDown};
+
+  // scroll == 0 means "tail" / newest visible.
+  // scroll > 0 means user scrolled away to older content.
+  int scroll{0};
+
+  // If user is at tail (scroll==0), follow new lines.
+  // If user scrolls up, stop following until scroll returns to 0.
+  bool follow_tail{true};
+
+  bufferBox_data_t(std::size_t cap=1000, buffer_dir_t d=buffer_dir_t::UpDown)
+  : capacity(std::max<std::size_t>(1, cap)), dir(d) {}
+
+  void push_line(std::string s) {
+    // normalize line endings lightly
+    if (!s.empty() && s.back() == '\r') s.pop_back();
+
+    lines.push_back(std::move(s));
+    while (lines.size() > capacity) {
+      lines.pop_front();
+    }
+
+    if (scroll == 0) follow_tail = true;
+    // if follow_tail, keep at tail (scroll=0)
+    if (follow_tail) scroll = 0;
+  }
+
+  void clear() {
+    lines.clear();
+    scroll = 0;
+    follow_tail = true;
+  }
+
+  // scroll_by(+k) => move toward older content
+  // scroll_by(-k) => move toward newer content (tail)
+  void scroll_by(int delta) {
+    scroll = std::max(0, scroll + delta);
+    if (scroll > 0) follow_tail = false;
+    if (scroll == 0) follow_tail = true;
+  }
+
+  void jump_tail() { scroll = 0; follow_tail = true; }
 };
 
 /* Plot config (decoupled from plotter header) */
@@ -224,6 +276,18 @@ inline std::shared_ptr<iinuji_object_t> create_object(
   o->layout = layout;
   o->style = style;
   o->id = id;
+  return o;
+}
+
+inline std::shared_ptr<iinuji_object_t> create_buffer_box(
+  const std::string& id,
+  std::size_t capacity,
+  buffer_dir_t dir,
+  const iinuji_layout_t& layout = {},
+  const iinuji_style_t&  style  = {}
+) {
+  auto o = create_object(id, true, layout, style);
+  o->data = std::make_shared<bufferBox_data_t>(capacity, dir);
   return o;
 }
 

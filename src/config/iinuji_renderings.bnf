@@ -1,207 +1,228 @@
 ; ============================================================
-; iinuji visualization DSL – BNF specification (v0.2)
-; Strict on:
-;   - UPPERCASE block keywords: SCREEN, PANEL, FIGURE, EVENT,
-;     ENDSCREEN, ENDPANEL, ENDFIGURE, ENDEVENT
-;   - Single underscore tags (kinds): _screen, _rectangle,
-;     _label, _horizontal_plot, _input_box, _update, _action
-;   - Double underscore properties: __name, __key_, __coords, ...
-; Whitespace:
-;   - <hsp>  : " " or "\t"
-;   - <ws0>  : 0 or more <hsp>
-;   - <ws1>  : 1 or more <hsp>
-;   - <lb>   : line break "\r\n" or "\n"
+; iinuji visualization DSL – BASIC BNF specification (v0.3-basic)
+;
+; Goals of this version:
+;   - Keep grammar simple for our in-house BNF engine.
+;   - Avoid complex EBNF groups like: [ {<x>} ] or nested constructs.
+;   - Avoid "long alternatives" inside a single rule; factor them out.
+;
 ; Comments:
-;   - Use ';' at the beginning of a line.
+;   - ONLY full-line comments are allowed.
+;   - A comment line starts with optional whitespace, then ';', then any text.
+;   - Inline/end-of-line comments are NOT part of the grammar by design.
+;
+; Empty lines:
+;   - Allowed anywhere a "*_line" occurs.
 ; ============================================================
 
 
 ; ---------- Top level ------------------------------------------------
-; A program is zero or more SCREEN blocks.
+; The file can contain:
+;   - one or more SCREEN blocks
+;   - blank lines
+;   - comment lines
+;
+; If you want to allow a file with no SCREEN, wrap <instruction_items> in an opt.
+; (Runtime validation can enforce "at least one SCREEN".)
 
-<instruction> ::= {<screen>} ;
+<instruction> ::= <instruction_items_opt> ;
+
+<instruction_items_opt> ::= [<instruction_items>] ;
+<instruction_items> ::= {<instruction_item>} ;
+
+<instruction_item> ::= <screen>
+                     | <blank_line>
+                     | <comment_line>
+                     ;
+
+
+; ---------- Common line types ----------------------------------------
+
+<blank_line> ::= <ws0> <lb> ;
+
+<comment_line> ::= <ws0> ";" <comment_text_opt> <lb> ;
+<comment_text_opt> ::= [<comment_text>] ;
+<comment_text> ::= {<comment_char>} ;
+
+; Keep comment chars permissive (no newline).
+; If this proves too strict, just broaden it later.
+<comment_char> ::= <alpha>
+                 | <digit>
+                 | <hsp>
+                 | "_" | "-" | "." | ":" | "," | "#" | "+" | "/" | "(" | ")"
+                 | "[" | "]" | "{" | "}" | "<" | ">" | "=" | "*" | "!" | "?"
+                 ;
 
 
 ; ---------- Screens --------------------------------------------------
-; A screen is defined by:  SCREEN _screen ... ENDSCREEN
 
-<screen> ::=
-    "SCREEN" <ws1> <screen_type> <ws0> <lb> {<screen_stmt_line>} <ws0> "ENDSCREEN" ;
-; Each line/entry inside a screen is one of:
-;   - a screen property
-;   - a panel
-;   - an event block
-;   - a route (key binding)
+<screen> ::= "SCREEN" <ws1> <screen_type> <ws0> <lb>
+             <screen_lines_opt>
+             <ws0> "ENDSCREEN" ;
 
 <screen_type> ::= "_screen" ;
-<screen_stmt_line> ::= <ws0> <screen_stmt> <ws0> <lb> ;
 
-<screen_stmt> ::=
-      <screen_prop>
-    | <panel_stmt>
-    | <event_block>
-    ;
+<screen_lines_opt> ::= [<screen_lines>] ;
+<screen_lines> ::= {<screen_line>} ;
+
+<screen_line> ::= <screen_stmt_line>
+                | <blank_line>
+                | <comment_line>
+                ;
+
+; factor the "long alternative" into its own rule
+<screen_stmt_line> ::= <screen_stmt_line_long> ;
+<screen_stmt_line_long> ::= <ws0> <screen_stmt> <ws0> <lb> ;
+
+<screen_stmt> ::= <screen_prop>
+                | <panel_stmt>
+                | <event_block>
+                ;
 
 
-; ---------- Screen properties (double-underscore) --------------------
-; Screen-level defaults: name, key binding, global colors, default thickness.
+; ---------- Screen properties ----------------------------------------
 
-<screen_prop> ::=
-      <opt_name>
-    | <opt_key>
-    | <opt_line_color>
-    | <opt_text_color>
-    | <opt_back_color>
-    | <opt_tickness>
-    ;
+<screen_prop> ::= <opt_name>
+                | <opt_key>
+                | <opt_line_color>
+                | <opt_text_color>
+                | <opt_back_color>
+                | <opt_tickness>
+                ;
+
 
 ; ---------- Panels ---------------------------------------------------
-; Panels define rectangular regions inside a screen.
-; Currently only one kind: PANEL _rectangle ... ENDPANEL
 
-<panel_stmt> ::=
-    "PANEL" <ws1> <panel_type> <ws0> <lb> {<panel_stmt_line>} <ws0> "ENDPANEL" ;
+<panel_stmt> ::= "PANEL" <ws1> <panel_type> <ws0> <lb>
+                 <panel_lines_opt>
+                 <ws0> "ENDPANEL" ;
 
 <panel_type> ::= "_rectangle" ;
-<panel_stmt_line> ::= <ws0> <panel_stmt_item> <ws0> <lb> ;
 
-<panel_stmt_item> ::=
-      <panel_prop>
-    | <figure_stmt>
-    ;
+<panel_lines_opt> ::= [<panel_lines>] ;
+<panel_lines> ::= {<panel_line>} ;
+
+<panel_line> ::= <panel_stmt_line>
+               | <blank_line>
+               | <comment_line>
+               ;
+
+; factor the long alternative
+<panel_stmt_line> ::= <panel_stmt_line_long> ;
+<panel_stmt_line_long> ::= <ws0> <panel_stmt_item> <ws0> <lb> ;
+
+<panel_stmt_item> ::= <panel_prop>
+                    | <figure_stmt>
+                    ;
 
 
 ; ---------- Panel properties -----------------------------------------
-; Panel layout and appearance: coords, shape, z-index, title, border, colors.
 
-<panel_prop> ::=
-      <opt_coords> 
-    | <opt_shape> 
-    | <opt_z_index> 
-    | <opt_title> 
-    | <opt_border> 
-    | <opt_line_color> 
-    | <opt_text_color> 
-    | <opt_back_color> 
-    | <opt_tickness> 
-    ;
+<panel_prop> ::= <opt_coords>
+               | <opt_shape>
+               | <opt_z_index>
+               | <opt_title>
+               | <opt_border>
+               | <opt_line_color>
+               | <opt_text_color>
+               | <opt_back_color>
+               | <opt_tickness>
+               ;
+
 
 ; ---------- Figures --------------------------------------------------
-; Figures are widgets inside panels:
-;   - labels
-;   - plots
-;   - input boxes, etc.
-; They are created with: FIGURE <figure_kind> ... ENDFIGURE
 
-<figure_stmt> ::=
-    "FIGURE" <ws1> <figure_kind> <ws0> <lb> 
-      {<figure_prop_line>} <ws0> 
-    "ENDFIGURE" ;
+<figure_stmt> ::= "FIGURE" <ws1> <figure_kind> <ws0> <lb>
+                  <figure_lines_opt>
+                  <ws0> "ENDFIGURE" ;
 
-; Figure kinds (single-underscore) define behavior.
-; More kinds can be added later.
+<figure_kind> ::= "_label"
+                | "_horizontal_plot"
+                | "_input_box"
+                | "_buffer"
+                ;
 
-<figure_kind> ::=
-      "_label"
-    | "_horizontal_plot"
-    | "_input_box"
-    ;
+<figure_lines_opt> ::= [<figure_lines>] ;
+<figure_lines> ::= {<figure_line>} ;
 
-<figure_prop_line> ::= <ws0> <figure_prop> <ws0> <lb> ;
+<figure_line> ::= <figure_prop_line>
+                | <blank_line>
+                | <comment_line>
+                ;
 
+; factor the long alternative
+<figure_prop_line> ::= <figure_prop_line_long> ;
+<figure_prop_line_long> ::= <ws0> <figure_prop> <ws0> <lb> ;
 
-; ---------- Figure properties ----------------------------------------
-; Properties for layout, content, style and event triggers.
+<figure_prop> ::= <opt_coords>
+                | <opt_shape>
+                | <opt_value>
+                | <opt__capacity>
+                | <opt_title>
+                | <opt_legend>
+                | <opt_type>
+                | <opt_border>
+                | <opt_tickness>
+                | <opt_line_color>
+                | <opt_text_color>
+                | <opt_back_color>
+                | <opt_triggers>
+                ;
 
-<figure_prop> ::=
-      <opt_coords> 
-    | <opt_shape> 
-    | <opt_value> 
-    | <opt_title> 
-    | <opt_legend> 
-    | <opt_type> 
-    | <opt_border> 
-    | <opt_tickness> 
-    | <opt_line_color> 
-    | <opt_text_color> 
-    | <opt_back_color> 
-    | <opt_triggers> 
-    ;
 
 ; ---------- Trigger lists --------------------------------------------
-; __triggers lists event names defined by EVENT blocks.
-; Examples:
-;   __triggers label_init
-;   __triggers data_init, data_update
 
-<trigger_list> ::= <event_name> [<aux_1>] ;
-
-<aux_1>  ::= {<aux_1p>} ;
-<aux_1p> ::= <ws0> "," <ws0> <event_name> ;
+<trigger_list> ::= <event_name> <trigger_list_tail_opt> ;
+<trigger_list_tail_opt> ::= [<trigger_list_tail>] ;
+<trigger_list_tail> ::= {<trigger_list_tail_item>} ;
+<trigger_list_tail_item> ::= <ws0> "," <ws0> <event_name> ;
 
 <event_name> ::= <name_ident> ;
 
 
 ; ---------- Events ---------------------------------------------------
-; EVENT blocks define how event payloads map into named forms.
-; Kinds (single-underscore) describe intent:
-;   _update : data updates (plots, labels)
-;   _action : actions/commands (input box submissions, etc.)
 
-<event_block> ::=
-    "EVENT" <ws1> <event_kind> <ws0> <lb>
-        {<event_prop_line>}
-    <ws0> "ENDEVENT" ;
+<event_block> ::= "EVENT" <ws1> <event_kind> <ws0> <lb>
+                  <event_lines_opt>
+                  <ws0> "ENDEVENT" ;
 
-<event_kind> ::=
-      "_update"
-    | "_action"
-    ;
+<event_kind> ::= "_update" | "_action" ;
 
-<event_prop_line> ::= <ws0> <event_prop> <ws0> <lb> ;
+<event_lines_opt> ::= [<event_lines>] ;
+<event_lines> ::= {<event_line>} ;
 
-; Each event:
-;   __name <event_name>    ; symbolic name used in __triggers
-;   __form <form_spec>     ; mapping local names → payload paths
+<event_line> ::= <event_prop_line>
+               | <blank_line>
+               | <comment_line>
+               ;
 
-<event_prop> ::=
-      <opt_name>
-    | <opt_form>
-    ;
+; factor the long alternative
+<event_prop_line> ::= <event_prop_line_long> ;
+<event_prop_line_long> ::= <ws0> <event_prop> <ws0> <lb> ;
+
+<event_prop> ::= <opt_name>
+               | <opt_form>
+               ;
+
 
 ; ---------- Event form specification ---------------------------------
-; __form describes how an event payload (void*) is read.
-; It is a comma-separated list of bindings:
-;   local_name : local_name:.field_name
-; Local names are simple identifiers:
-;   str, x, y, etc.
-; Path starts with "." followed by one or more components:
-;   .content
-;   .data
-;   .user_input
-;   .data.series
-; Total examples are
-;    __form x:.data
-;    __form any:.any
-;    __form y:.value,x:.target,z:.delta
 
 <opt_form> ::= "__form" <ws1> <form_spec> ;
 
-<form_spec> ::= <form_binding> [<aux_2>] ;
-
-<aux_2>  ::= {<aux_2p>} ;
-<aux_2p> ::= <ws0> "," <form_binding> ;
+<form_spec> ::= <form_binding> <form_spec_tail_opt> ;
+<form_spec_tail_opt> ::= [<form_spec_tail>] ;
+<form_spec_tail> ::= {<form_spec_tail_item>} ;
+<form_spec_tail_item> ::= <ws0> "," <form_binding> ;
 
 <form_binding> ::= <ws0> <name_ident> ":." <name_ident> <ws0> ;
 
+
 ; ---------- Shared structures ----------------------------------------
-; Function key binding: F+1, F+2, ...
 
 <fcode> ::= "F" "+" <int> ;
 
-; Point coordinates such as 0,0 or 1500,750.
-
 <point> ::= <int> <ws0> "," <ws0> <int> ;
+
 
 ; ---------- Shared fields --------------------------------------------
 
@@ -213,6 +234,7 @@
 <opt_tickness>   ::= "__tickness"   <ws1> <number>                 ;
 <opt_coords>     ::= "__coords"     <ws1> <point>                  ;
 <opt_shape>      ::= "__shape"      <ws1> <point>                  ;
+<opt__capacity>  ::= "__capacity"   <ws1> <number>                 ;
 <opt_z_index>    ::= "__z_index"    <ws1> <int>                    ;
 <opt_title>      ::= "__title"      <ws1> <bool> <ws1> <dq_string> ;
 <opt_border>     ::= "__border"     <ws1> <bool>                   ;
@@ -221,83 +243,58 @@
 <opt_type>       ::= "__type"       <ws1> <name_ident>             ;
 <opt_triggers>   ::= "__triggers"   <ws1> <trigger_list>           ;
 
+
 ; ---------- Basic lexical elements -----------------------------------
-; Booleans.
 
 <bool> ::= "true" | "false" ;
 
-; Integer: one or more digits.
-
+; Keep this form: it's what your current engine + existing DSL already uses.
 <int> ::= {<digit>} ;
 
-; Number: integer or float (e.g. 0, 42, 3.14, 100.0).
-
-<number> ::= <int> [<aux_3>] ;
-
-<aux_3> ::= "." <int> ;
-
-; Color: #RRGGBB (hex).
+<number> ::= <int> <number_frac_opt> ;
+<number_frac_opt> ::= [<number_frac>] ;
+<number_frac> ::= "." <int> ;
 
 <color_hex> ::= "#" <hexdigit> <hexdigit> <hexdigit>
                     <hexdigit> <hexdigit> <hexdigit> ;
 
 <hexdigit> ::= <digit>
              | "a" | "b" | "c" | "d" | "e" | "f"
-             | "A" | "B" | "C" | "D" | "E" | "F"
-             ;
-
-; Digits 0–9.
+             | "A" | "B" | "C" | "D" | "E" | "F" ;
 
 <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 
-; Letters.
-
 <upper> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
           | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
-          | "U" | "V" | "W" | "X" | "Y" | "Z"
-          ;
+          | "U" | "V" | "W" | "X" | "Y" | "Z" ;
 
 <lower> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j"
           | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t"
-          | "u" | "v" | "w" | "x" | "y" | "z"
-          ;
+          | "u" | "v" | "w" | "x" | "y" | "z" ;
 
 <alpha> ::= <upper> | <lower> ;
 
-; General identifiers for names, event names, types, etc.
-; Examples: main_data, label_init, normal, line, data_update
-
-<name_ident> ::= <alpha> [<aux_4>] ;
-
-; Characters allowed after the first letter in a name_ident.
-<aux_4>   ::= {<id_tail>} ;
-<id_tail> ::= <alpha> | <digit> | "_" | "-" ;
+<name_ident> ::= <alpha> <name_tail_opt> ;
+<name_tail_opt> ::= [<name_tail>] ;
+<name_tail> ::= {<id_tail>} ;
+<id_tail> ::= <alpha> | <digit> | "_" | "-" | "." ;
 
 
 ; ---------- Strings --------------------------------------------------
-; Double-quoted string, no escaping inside.
-; Example: "initial value", "figure title", "main"
 
-<dq_string> ::= "\"" {<dq_char>} "\"" ;
+<dq_string> ::= "\"" <dq_payload_opt> "\"" ;
+<dq_payload_opt> ::= [<dq_payload>] ;
+<dq_payload> ::= {<dq_char>} ;
 
-; Characters allowed inside double-quoted strings.
-
-<dq_char> ::= <alpha> | <digit> | "_" | "-" | "." | ":" | "," | "#" | "+" | "/" | " " ;
+<dq_char> ::= <alpha> | <digit> | "_" | "-" | "." | ":" | "," | "#" | "+"
+            | "/" | "(" | ")" | " " ;
 
 
 ; ---------- Whitespace tokens ---------------------------------------
-; Horizontal space: space or tab.
 
 <hsp> ::= " " | "\t" ;
 
-; Optional whitespace: 0 or more <hsp>.
-
-<ws0> ::= [<ws1>] ;
-
-; Required whitespace: 1 or more <hsp>.
-
 <ws1> ::= {<hsp>} ;
-
-; Line break: Windows or Unix style.
+<ws0> ::= [<ws1>] ;
 
 <lb> ::= "\r\n" | "\n" ;

@@ -39,7 +39,7 @@ DATA := memory_mapped_datafile memory_mapped_dataset memory_mapped_concat_datase
 $(foreach t,$(DATA),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/data)))
 
 # ------------------------------ iinuji ---------------------------------------
-IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_bnf
+IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_instructions
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ iinuji + torch--------------------------------

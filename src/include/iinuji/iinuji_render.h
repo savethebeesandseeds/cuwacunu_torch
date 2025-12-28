@@ -219,6 +219,67 @@ inline void render_text(const iinuji_object_t& obj) {
   }
 }
 
+inline void render_buffer(const iinuji_object_t& obj) {
+  Rect r = content_rect(obj);
+  auto* R = get_renderer();
+  if (!R) return;
+
+  short pair = (short)get_color_pair(obj.style.label_color, obj.style.background_color);
+  R->fillRect(r.y, r.x, r.h, r.w, pair);
+
+  auto bb = std::dynamic_pointer_cast<bufferBox_data_t>(obj.data);
+  if (!bb) return;
+
+  const int H = std::max(0, r.h);
+  const int W = std::max(0, r.w);
+  if (H <= 0 || W <= 0) return;
+
+  const int n = (int)bb->lines.size();
+  const int max_scroll = std::max(0, n - H);
+
+  // clamp scroll safely here (render knows visible H)
+  if (bb->scroll > max_scroll) bb->scroll = max_scroll;
+  if (bb->scroll < 0) bb->scroll = 0;
+  if (bb->scroll == 0) bb->follow_tail = true;
+
+  if (n == 0) return;
+
+  if (bb->dir == buffer_dir_t::UpDown) {
+    // start index into chronological lines (oldest..newest)
+    const int start = std::max(0, n - H - bb->scroll);
+    for (int row = 0; row < H; ++row) {
+      int idx = start + row;
+      if (idx < 0 || idx >= n) break;
+      const std::string& line = bb->lines[(size_t)idx];
+
+      // clip
+      std::string s = ((int)line.size() > W) ? line.substr(0, (size_t)W) : line;
+      R->putText(r.y + row, r.x, s, W, pair, obj.style.bold, obj.style.inverse);
+    }
+
+    // scroll hints
+    if (start > 0 && W > 0) R->putGlyph(r.y, r.x + (W-1), L'↑', pair);
+    if (start + H < n && W > 0) R->putGlyph(r.y + (H-1), r.x + (W-1), L'↓', pair);
+  } else { // DownUp
+    // top shows newest, move downward to older
+    const int top = (n - 1) - bb->scroll;
+    for (int row = 0; row < H; ++row) {
+      int idx = top - row;
+      if (idx < 0 || idx >= n) break;
+      const std::string& line = bb->lines[(size_t)idx];
+
+      std::string s = ((int)line.size() > W) ? line.substr(0, (size_t)W) : line;
+      R->putText(r.y + row, r.x, s, W, pair, obj.style.bold, obj.style.inverse);
+    }
+
+    // scroll hints (meaning flips visually)
+    // if scroll>0 => there exist newer lines above
+    if (bb->scroll > 0 && W > 0) R->putGlyph(r.y, r.x + (W-1), L'↑', pair);
+    // if bottom visible is not oldest => there exist older lines below
+    if ((top - (H-1)) > 0 && W > 0) R->putGlyph(r.y + (H-1), r.x + (W-1), L'↓', pair);
+  }
+}
+
 /* Map plot_mode_t -> PlotMode */
 inline PlotMode to_plot_mode(plot_mode_t m) {
   using PM = PlotMode;
@@ -306,9 +367,10 @@ inline void render_tree(const std::shared_ptr<iinuji_object_t>& node) {
 
   render_border(*node);
 
-  if (std::dynamic_pointer_cast<plotBox_data_t>(node->data))      render_plot(*node);
-  else if (std::dynamic_pointer_cast<textBox_data_t>(node->data)) render_text(*node);
-  else                                                            render_panel(*node);
+  if (std::dynamic_pointer_cast<plotBox_data_t>(node->data))           render_plot(*node);
+  else if (std::dynamic_pointer_cast<bufferBox_data_t>(node->data))    render_buffer(*node);
+  else if (std::dynamic_pointer_cast<textBox_data_t>(node->data))      render_text(*node);
+  else                                                                 render_panel(*node);
 
   for (auto& ch : node->children) render_tree(ch);
 }
