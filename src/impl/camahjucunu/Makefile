@@ -20,6 +20,7 @@ all:
 	$(MAKE) -C $(HERE_PATH)/https all
 	$(MAKE) -C $(HERE_PATH)/BNF all
 	$(MAKE) -C $(HERE_PATH)/types all
+	$(MAKE) -C $(HERE_PATH)/db all
 	$(MAKE) -C $(HERE_PATH)/exchange all
 	$(MAKE) -C $(HERE_PATH)/data all
 	@$(LOG_SUCCESS)
