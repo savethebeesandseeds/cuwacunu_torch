@@ -14,6 +14,10 @@ namespace iinuji {
 
 inline std::map<std::string, int> color_map;
 
+inline bool is_unset_color_token(const std::string& s) {
+  return s.empty() || s == "<empty>";
+}
+
 inline std::string to_lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
   return s;
@@ -86,11 +90,18 @@ inline int alloc_true_color(const std::string& key, int r, int g, int b){
 }
 
 inline int get_color(const std::string& color_name, int def_r=1000, int def_g=1000, int def_b=1000) {
+  if (!has_colors()) return COLOR_WHITE;
+
+  // IMPORTANT: "<empty>" means "use terminal default color"
+  if (is_unset_color_token(color_name)) return -1;
+
   int r=0,g=0,b=0;
   if (parse_hex_rgb(color_name, r,g,b)) return alloc_true_color(color_name, r,g,b);
+
   auto lname = to_lower(color_name);
   auto it = color_map.find(lname);
   if (it != color_map.end()) return it->second;
+
   if (can_change_color()) {
     struct C { const char* n; int r,g,b; } table[] = {
       {"black",0,0,0},{"white",1000,1000,1000},{"gray",600,600,600},
@@ -109,21 +120,33 @@ inline int get_color_pair(const std::string& fg, const std::string& bg) {
   static std::map<std::pair<int,int>, int> cache;
   static int next_pair_id = 1;
 
+  if (!has_colors()) return 0;
+
   int fg_id = get_color(fg);
   int bg_id = get_color(bg, 0,0,0);
+
+  if (fg_id == -1 && bg_id == -1) return 0;
 
   auto key = std::make_pair(fg_id, bg_id);
   if (auto it = cache.find(key); it != cache.end()) return it->second;
 
-  // Safety: never exceed COLOR_PAIRS-1
-  if (next_pair_id >= COLOR_PAIRS) next_pair_id = COLOR_PAIRS - 1;
+  // If we run out of pairs, degrade safely to default instead of overwriting the last pair.
+  if (next_pair_id >= COLOR_PAIRS) return 0;
 
   int pid = next_pair_id++;
-  init_pair(pid, (short)fg_id, (short)bg_id);
+
+  // init_pair can fail (notably if -1 used without use_default_colors support).
+  if (init_pair(pid, (short)fg_id, (short)bg_id) == ERR) {
+    // Fallback: force concrete defaults instead of leaving the pair undefined.
+    int fg2 = (fg_id == -1) ? COLOR_WHITE : fg_id;
+    int bg2 = (bg_id == -1) ? COLOR_BLACK : bg_id;
+    (void)init_pair(pid, (short)fg2, (short)bg2);
+    key = std::make_pair(fg2, bg2);
+  }
+
   cache[key] = pid;
   return pid;
 }
-
 
 inline void set_global_background(const std::string& background_color) {
   if (!has_colors()) return;

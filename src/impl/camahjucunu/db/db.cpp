@@ -2,9 +2,23 @@
 #ifndef idydb_c
 #define idydb_c
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/file.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <ctype.h>
+
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
@@ -115,6 +129,10 @@ typedef unsigned long long idydb_sizing_max;
 #define IDYDB_ENC_KEY_LEN    32
 #define IDYDB_ENC_DEFAULT_PBKDF2_ITER 200000u
 
+/* Reasonable PBKDF2 bounds (DoS mitigation + sanity). Tune as you like. */
+#define IDYDB_ENC_MIN_PBKDF2_ITER 10000u
+#define IDYDB_ENC_MAX_PBKDF2_ITER 5000000u
+
 static inline void idydb_u32_le_write(unsigned char* p, uint32_t v) {
 	p[0] = (unsigned char)(v & 0xFFu);
 	p[1] = (unsigned char)((v >> 8) & 0xFFu);
@@ -136,12 +154,18 @@ static inline uint64_t idydb_u64_le_read(const unsigned char* p) {
 	return v;
 }
 
+static inline int idydb_crypto_iter_ok(uint32_t iter) {
+	return iter >= IDYDB_ENC_MIN_PBKDF2_ITER && iter <= IDYDB_ENC_MAX_PBKDF2_ITER;
+}
+
 static int idydb_crypto_derive_key_pbkdf2(const char* passphrase,
                                          const unsigned char salt[IDYDB_ENC_SALT_LEN],
                                          uint32_t iter,
                                          unsigned char out_key[IDYDB_ENC_KEY_LEN])
 {
 	if (!passphrase || !out_key || iter == 0) return 0;
+	if (!idydb_crypto_iter_ok(iter)) return 0;
+
 	int ok = PKCS5_PBKDF2_HMAC(passphrase,
 	                          (int)strlen(passphrase),
 	                          salt,
@@ -153,6 +177,65 @@ static int idydb_crypto_derive_key_pbkdf2(const char* passphrase,
 	return ok == 1;
 }
 
+/* ---------------- Secure plaintext working storage ----------------
+ * Goal: do NOT write plaintext to a filesystem-backed temp file.
+ *
+ * Linux: memfd_create (anonymous RAM-backed FD).
+ * Fallback: shm_open + shm_unlink (usually tmpfs-backed; anonymous after unlink).
+ */
+#ifdef __linux__
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+static int idydb_memfd_create_compat(const char* name, unsigned int flags)
+{
+#ifdef SYS_memfd_create
+	return (int)syscall(SYS_memfd_create, name, flags);
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+}
+#endif
+
+static FILE* idydb_secure_plain_stream(const char** out_kind)
+{
+	if (out_kind) *out_kind = "unknown";
+
+#ifdef __linux__
+	{
+		int fd = idydb_memfd_create_compat("idydb_plain", MFD_CLOEXEC);
+		if (fd >= 0) {
+			(void)fchmod(fd, 0600);
+			FILE* f = fdopen(fd, "w+b");
+			if (!f) { close(fd); return NULL; }
+			if (out_kind) *out_kind = "memfd";
+			return f;
+		}
+	}
+#endif
+
+	{
+		unsigned char rnd[16];
+		if (RAND_bytes(rnd, sizeof(rnd)) != 1) return NULL;
+
+		char name[64];
+		snprintf(name, sizeof(name),
+		         "/idydb_%02x%02x%02x%02x%02x%02x%02x%02x",
+		         rnd[0], rnd[1], rnd[2], rnd[3], rnd[4], rnd[5], rnd[6], rnd[7]);
+
+		int fd = shm_open(name, O_CREAT | O_EXCL | O_RDWR, 0600);
+		if (fd < 0) return NULL;
+
+		(void)shm_unlink(name);
+
+		FILE* f = fdopen(fd, "w+b");
+		if (!f) { close(fd); return NULL; }
+		if (out_kind) *out_kind = "shm";
+		return f;
+	}
+}
+
 static int idydb_crypto_decrypt_locked_file_to_stream(FILE* in,
                                                       const char* passphrase,
                                                       FILE* out_plain,
@@ -162,8 +245,15 @@ static int idydb_crypto_decrypt_locked_file_to_stream(FILE* in,
 {
 	if (!in || !passphrase || !out_plain || !out_salt || !out_iter || !out_key) return 0;
 
-	unsigned char hdr[IDYDB_ENC_HDR_LEN];
+	/* Get total size for sanity checks. */
+	fseek(in, 0L, SEEK_END);
+	long total_sz = ftell(in);
+	if (total_sz < 0) return 0;
 	fseek(in, 0L, SEEK_SET);
+
+	if (total_sz < (long)IDYDB_ENC_HDR_LEN) return 0;
+
+	unsigned char hdr[IDYDB_ENC_HDR_LEN];
 	size_t r = fread(hdr, 1, IDYDB_ENC_HDR_LEN, in);
 	if (r != IDYDB_ENC_HDR_LEN) return 0;
 
@@ -172,6 +262,8 @@ static int idydb_crypto_decrypt_locked_file_to_stream(FILE* in,
 	if (ver != IDYDB_ENC_VERSION) return 0;
 
 	uint32_t iter = idydb_u32_le_read(hdr + 12);
+	if (!idydb_crypto_iter_ok(iter)) return 0;
+
 	memcpy(out_salt, hdr + 16, IDYDB_ENC_SALT_LEN);
 
 	unsigned char iv[IDYDB_ENC_IV_LEN];
@@ -181,6 +273,10 @@ static int idydb_crypto_decrypt_locked_file_to_stream(FILE* in,
 
 	unsigned char tag[IDYDB_ENC_TAG_LEN];
 	memcpy(tag, hdr + 52, IDYDB_ENC_TAG_LEN);
+
+	/* Since GCM ciphertext length equals plaintext length, ensure file length matches. */
+	uint64_t cipher_len = (uint64_t)(total_sz - (long)IDYDB_ENC_HDR_LEN);
+	if (cipher_len != plaintext_len) return 0;
 
 	if (!idydb_crypto_derive_key_pbkdf2(passphrase, out_salt, iter, out_key)) return 0;
 	*out_iter = iter;
@@ -238,6 +334,7 @@ static int idydb_crypto_encrypt_stream_to_locked_file(FILE* plain,
                                                       const unsigned char key[IDYDB_ENC_KEY_LEN])
 {
 	if (!plain || !out || !salt || !key || iter == 0) return 0;
+	if (!idydb_crypto_iter_ok(iter)) return 0;
 
 	fflush(plain);
 	long cur = ftell(plain);
@@ -261,11 +358,10 @@ static int idydb_crypto_encrypt_stream_to_locked_file(FILE* plain,
 	idydb_u64_le_write(hdr + 44, plaintext_len);
 	/* tag placeholder at hdr+52..+67 remains zero */
 
-	// truncate & write placeholder header
+	/* truncate & write placeholder header */
 	fflush(out);
-  if (ftruncate(fileno(out), 0) != 0) {
-    return 0;
-  }
+	if (ftruncate(fileno(out), 0) != 0) return 0;
+
 	fseek(out, 0L, SEEK_SET);
 	if (fwrite(hdr, 1, IDYDB_ENC_HDR_LEN, out) != IDYDB_ENC_HDR_LEN) return 0;
 
@@ -309,7 +405,7 @@ static int idydb_crypto_encrypt_stream_to_locked_file(FILE* plain,
 
 	if (!ok) return 0;
 
-	// write tag into header
+	/* write tag into header */
 	fseek(out, 52, SEEK_SET);
 	if (fwrite(tag, 1, IDYDB_ENC_TAG_LEN, out) != IDYDB_ENC_TAG_LEN) return 0;
 
@@ -361,74 +457,196 @@ typedef struct idydb
 	unsigned char enc_key[IDYDB_ENC_KEY_LEN];
 	bool enc_key_set;
 
+	/* debug: where plaintext lives when encrypted mode is enabled */
+	const char* plain_storage_kind; /* "memfd" / "shm" / NULL */
+
 } idydb;
 
 /* ---------------- Verbose debug (compile-time) ---------------- */
 
 #ifdef CUWACUNU_CAMAHJUCUNU_DB_VERBOSE_DEBUG
-static const char* sha256_str(idydb **handler)
+
+static const char* idydb_ro_str(unsigned char ro)
 {
-  static char hex[65];
-  static const char* kNull = "null";
-  if (!handler || !*handler || !(*handler)->file_descriptor) return kNull;
-
-  FILE* f = (*handler)->file_descriptor;
-
-  // If we're in read/write mode, make a best effort to flush buffered writes before hashing.
-  // (Avoid fflush on readonly streams.)
-  if ((*handler)->read_only == IDYDB_READ_AND_WRITE) {
-    (void)fflush(f);
-  }
-
-  long saved = ftell(f);
-  if (saved < 0) saved = 0;
-  (void)fseek(f, 0L, SEEK_SET);
-  clearerr(f);
-
-  unsigned char digest[32];
-  unsigned int  out_len = 0;
-
-  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-  if (!ctx) return "evp_ctx_new_failed";
-  if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
-    EVP_MD_CTX_free(ctx);
-    return "evp_digest_init_failed";
-  }
-
-  unsigned char buf[8192];
-  size_t n = 0;
-  while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-    if (EVP_DigestUpdate(ctx, buf, n) != 1) {
-      EVP_MD_CTX_free(ctx);
-      (void)fseek(f, saved, SEEK_SET);
-      return "evp_digest_update_failed";
-    }
-  }
-  if (EVP_DigestFinal_ex(ctx, digest, &out_len) != 1 || out_len != sizeof(digest)) {
-    EVP_MD_CTX_free(ctx);
-    (void)fseek(f, saved, SEEK_SET);
-    return "evp_digest_final_failed";
-  }
-  EVP_MD_CTX_free(ctx);
-
-  // restore original position
-  clearerr(f);
-  (void)fseek(f, saved, SEEK_SET);
-
-  static const char* hexd = "0123456789abcdef";
-  for (size_t i = 0; i < sizeof(digest); ++i) {
-    hex[2*i + 0] = hexd[(digest[i] >> 4) & 0xF];
-    hex[2*i + 1] = hexd[(digest[i] >> 0) & 0xF];
-  }
-  hex[64] = '\0';
-  return hex;
+	switch (ro)
+	{
+		case IDYDB_READ_AND_WRITE:   return "rw";
+		case IDYDB_READONLY:         return "ro";
+		case IDYDB_READONLY_MMAPPED: return "ro(mmap)";
+		default:                     return "unknown";
+	}
 }
 
-#define DB_DEBUG(db, msg_literal) \
-	do { fprintf(stdout, "[DEBUG] (sha256:%s) %s\n", sha256_str((db)), (msg_literal)); fflush(stdout); } while(0)
+static void db_debugf(idydb **handler, const char* fmt, ...)
+{
+	(void)handler; /* currently unused, but kept in signature for future context */
+	fprintf(stdout, "[DB] ");
+
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	va_end(ap);
+
+	fputc('\n', stdout);
+	fflush(stdout);
+}
+
+#define DB_DEBUGF(db, fmt, ...) do { db_debugf((db), (fmt), ##__VA_ARGS__); } while(0)
+#define DB_DEBUG(db, msg_literal) do { DB_DEBUGF((db), "%s", (msg_literal)); } while(0)
+
+/* --- formatting helpers --- */
+
+static void idydb_dbg_sha256_8bytes_hex16(const void* data, size_t len, char out_hex16[17])
+{
+	/* out = 8 bytes of sha256 => 16 hex chars + '\0' */
+	static const char* hexd = "0123456789abcdef";
+	unsigned char digest[32];
+	unsigned int out_len = 0;
+	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	if (!ctx) { strncpy(out_hex16, "noctx", 17); out_hex16[16] = '\0'; return; }
+
+	int ok = (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) == 1)
+	      && (EVP_DigestUpdate(ctx, data, len) == 1)
+	      && (EVP_DigestFinal_ex(ctx, digest, &out_len) == 1)
+	      && (out_len == 32);
+
+	EVP_MD_CTX_free(ctx);
+
+	if (!ok) { strncpy(out_hex16, "shaerr", 17); out_hex16[16] = '\0'; return; }
+
+	for (int i = 0; i < 8; ++i) {
+		out_hex16[2*i + 0] = hexd[(digest[i] >> 4) & 0xF];
+		out_hex16[2*i + 1] = hexd[(digest[i] >> 0) & 0xF];
+	}
+	out_hex16[16] = '\0';
+}
+
+static void idydb_dbg_escape_preview(const char* in, char* out, size_t out_cap, size_t max_in_chars)
+{
+	static const char* hexd = "0123456789abcdef";
+	if (!out || out_cap == 0) return;
+	out[0] = '\0';
+	if (!in) { snprintf(out, out_cap, "<null>"); return; }
+
+	size_t o = 0;
+	for (size_t i = 0; in[i] != '\0' && i < max_in_chars; ++i)
+	{
+		unsigned char ch = (unsigned char)in[i];
+		if (o + 2 >= out_cap) break;
+
+		switch (ch)
+		{
+			case '\\': if (o + 2 < out_cap) { out[o++]='\\'; out[o++]='\\'; } break;
+			case '"':  if (o + 2 < out_cap) { out[o++]='\\'; out[o++]='"';  } break;
+			case '\n': if (o + 2 < out_cap) { out[o++]='\\'; out[o++]='n';  } break;
+			case '\r': if (o + 2 < out_cap) { out[o++]='\\'; out[o++]='r';  } break;
+			case '\t': if (o + 2 < out_cap) { out[o++]='\\'; out[o++]='t';  } break;
+			default:
+				if (isprint(ch)) {
+					out[o++] = (char)ch;
+				} else {
+					/* \xHH */
+					if (o + 4 >= out_cap) break;
+					out[o++]='\\'; out[o++]='x';
+					out[o++]=hexd[(ch >> 4) & 0xF];
+					out[o++]=hexd[(ch >> 0) & 0xF];
+				}
+				break;
+		}
+		if (o >= out_cap) break;
+	}
+	out[(o < out_cap) ? o : (out_cap - 1)] = '\0';
+}
+
+static void idydb_dbg_format_value_from_handler(const idydb* h, char* out, size_t cap)
+{
+	if (!out || cap == 0) return;
+	if (!h) { snprintf(out, cap, "<nohandler>"); return; }
+
+	switch (h->value_type)
+	{
+		case IDYDB_NULL:
+			snprintf(out, cap, "NULL");
+			return;
+
+		case IDYDB_INTEGER:
+			snprintf(out, cap, "INT(%d)", h->value.int_value);
+			return;
+
+		case IDYDB_FLOAT:
+			snprintf(out, cap, "FLOAT(%.9g)", (double)h->value.float_value);
+			return;
+
+		case IDYDB_BOOL:
+			snprintf(out, cap, "BOOL(%s)", (h->value.bool_value ? "true" : "false"));
+			return;
+
+		case IDYDB_CHAR:
+		{
+			const char* s = h->value.char_value;
+			size_t len = (s ? strlen(s) : 0);
+			char prev[96];
+			idydb_dbg_escape_preview(s, prev, sizeof(prev), 48);
+			const char* ell = (len > 48 ? "…" : "");
+			snprintf(out, cap, "CHAR(len=%zu,\"%s%s\")", len, prev, ell);
+			return;
+		}
+
+		case IDYDB_VECTOR:
+		{
+			unsigned short d = h->vector_dims;
+			if (!h->vector_value || d == 0) {
+				snprintf(out, cap, "VEC(d=%u,<null>)", (unsigned)d);
+				return;
+			}
+			char sha16[17];
+			idydb_dbg_sha256_8bytes_hex16(h->vector_value, (size_t)d * sizeof(float), sha16);
+			snprintf(out, cap, "VEC(d=%u,sha=%s)", (unsigned)d, sha16);
+			return;
+		}
+
+		default:
+			snprintf(out, cap, "TYPE(%u)", (unsigned)h->value_type);
+			return;
+	}
+}
+
+/* Reads the current stored value of a cell and formats it to out. */
+static unsigned char idydb_dbg_peek_cell_repr(idydb **handler,
+                                             idydb_column_row_sizing c,
+                                             idydb_column_row_sizing r,
+                                             char* out,
+                                             size_t cap)
+{
+	if (!out || cap == 0) return 0xFF;
+	out[0] = '\0';
+
+	int rc = idydb_read_at(handler, c, r);
+	if (rc == IDYDB_DONE) {
+		unsigned char t = (*handler)->value_type;
+		idydb_dbg_format_value_from_handler(*handler, out, cap);
+		idydb_clear_values(handler);
+		return t;
+	}
+
+	if (rc == IDYDB_NULL) {
+		snprintf(out, cap, "NULL");
+		idydb_clear_values(handler);
+		return IDYDB_NULL;
+	}
+
+	snprintf(out, cap, "ERR(rc=%d,%s)", rc, idydb_get_err_message(handler));
+	idydb_clear_values(handler);
+	return 0xFF;
+}
+
 #else
+
+#define DB_DEBUGF(db, fmt, ...) do { (void)(db); } while(0)
 #define DB_DEBUG(db, msg_literal) do { (void)(db); (void)(msg_literal); } while(0)
+
 #endif
+
 
 /* ---------------- Error state ---------------- */
 
@@ -468,9 +686,10 @@ static void idydb_error_state(idydb **handler, unsigned char error_id)
 		"Unable to allocate memory for the creation of the database handler\0",
 		"An unknown error occurred\0",
 		"Encryption requested but no passphrase supplied\0",
-		"Database decryption failed (wrong passphrase or corrupted file)\0",
+		"Database decryption failed (wrong passphrase, tampered file, or unsupported parameters)\0",
 		"Database encryption writeback failed\0",
-		"Failed to create secure temporary plaintext storage\0"
+		"Failed to create secure in-memory plaintext working storage\0",
+		"Encrypted READONLY open cannot migrate plaintext db; open writable once to migrate\0"
 	};
 
 	const unsigned char max_id = (unsigned char)(sizeof(errors) / sizeof(errors[0]) - 1);
@@ -549,6 +768,7 @@ static int idydb_new(idydb **handler)
 	(*handler)->enc_iter = 0;
 	memset((*handler)->enc_key, 0, sizeof((*handler)->enc_key));
 	(*handler)->enc_key_set = false;
+	(*handler)->plain_storage_kind = NULL;
 
 	if (IDYDB_MAX_BUFFER_SIZE < 50)
 	{
@@ -808,7 +1028,7 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 			(*handler)->encryption_enabled = false;
 			(*handler)->dirty = false;
 			idydb_clear_values(handler);
-			DB_DEBUG(handler, "idydb_open_with_options: opened plaintext db");
+			DB_DEBUGF(handler, "opened PLAINTEXT db file=\"%s\" flags=0x%x", filename, flags);
 		}
 		return rc;
 	}
@@ -817,6 +1037,7 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 	if (!options->passphrase)
 	{
 		idydb_error_state(handler, 27);
+		DB_DEBUGF(handler, "encrypted open refused: passphrase is NULL (file=\"%s\")", filename);
 		return IDYDB_ERROR;
 	}
 
@@ -852,12 +1073,18 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 	if ((*handler)->backing_filename) strcpy((*handler)->backing_filename, filename);
 	(*handler)->dirty = false;
 
-	FILE* plain = tmpfile();
+	const char* kind = NULL;
+	FILE* plain = idydb_secure_plain_stream(&kind);
 	if (!plain)
 	{
 		idydb_error_state(handler, 30);
+		DB_DEBUGF(handler, "failed to create secure in-memory plaintext working storage (backing=\"%s\")", filename);
 		return IDYDB_ERROR;
 	}
+	(*handler)->plain_storage_kind = kind;
+
+	DB_DEBUGF(handler, "opened ENCRYPTED-AT-REST db backing=\"%s\" ro=%s exists=%s working_plain=%s",
+	          filename, (ro ? "yes" : "no"), (file_exists ? "yes" : "no"), (kind ? kind : "unknown"));
 
 	/* detect encrypted header */
 	fseek(backing, 0L, SEEK_END);
@@ -873,25 +1100,41 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 		if (rr == IDYDB_ENC_MAGIC_LEN && memcmp(magic, IDYDB_ENC_MAGIC, IDYDB_ENC_MAGIC_LEN) == 0) is_enc = true;
 	}
 
+	/* IMPORTANT: encrypted-at-rest should not silently accept a plaintext backing in READONLY mode */
+	if (!is_enc && ro && bsz > 0)
+	{
+		idydb_error_state(handler, 31);
+		DB_DEBUGF(handler, "refusing encrypted READONLY open on PLAINTEXT backing; open writable once to migrate");
+		fclose(plain);
+		return IDYDB_ERROR;
+	}
+
 	if (is_enc)
 	{
 		uint32_t iter = 0;
+		DB_DEBUGF(handler, "encrypted container detected; decrypting...");
 		if (!idydb_crypto_decrypt_locked_file_to_stream(backing, options->passphrase, plain,
 		                                                (*handler)->enc_salt, &iter, (*handler)->enc_key))
 		{
 			idydb_error_state(handler, 28);
+			DB_DEBUGF(handler, "decrypt FAILED (wrong passphrase, tampered file, or unsupported params)");
 			fclose(plain);
 			return IDYDB_ERROR;
 		}
 		(*handler)->enc_iter = iter;
 		(*handler)->enc_key_set = true;
-		DB_DEBUG(handler, "idydb_open_with_options: decrypted backing file into tmpfile");
+
+		fseek(plain, 0L, SEEK_END);
+		long psz = ftell(plain);
+		fseek(plain, 0L, SEEK_SET);
+		DB_DEBUGF(handler, "decrypt OK -> plaintext bytes=%ld pbkdf2_iter=%u", psz, iter);
 	}
 	else
 	{
 		/* plaintext backing (migration) */
 		if (bsz > 0)
 		{
+			DB_DEBUGF(handler, "PLAINTEXT backing detected; copying into working plaintext stream (migration)");
 			unsigned char buf[16 * 1024];
 			while (1) {
 				size_t n = fread(buf, 1, sizeof(buf), backing);
@@ -905,6 +1148,12 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 
 		/* generate new key/salt for migration or new encrypted creation */
 		uint32_t iter = (options->pbkdf2_iter == 0 ? IDYDB_ENC_DEFAULT_PBKDF2_ITER : (uint32_t)options->pbkdf2_iter);
+		if (!idydb_crypto_iter_ok(iter)) {
+			idydb_error_state(handler, 26);
+			fclose(plain);
+			return IDYDB_ERROR;
+		}
+
 		(*handler)->enc_iter = iter;
 
 		if (RAND_bytes((*handler)->enc_salt, IDYDB_ENC_SALT_LEN) != 1)
@@ -924,10 +1173,10 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 		/* If readonly, do not writeback. If writeable, mark dirty to force encryption on close. */
 		if (!ro) (*handler)->dirty = true;
 
-		DB_DEBUG(handler, "idydb_open_with_options: plaintext backing detected (migration mode if writable)");
+		DB_DEBUGF(handler, "migration/new-encrypted setup: pbkdf2_iter=%u dirty=%s", (*handler)->enc_iter, ((*handler)->dirty ? "yes" : "no"));
 	}
 
-	/* Setup db handler to operate on plaintext tmpfile */
+	/* Setup db handler to operate on plaintext stream */
 	int setup_rc = idydb_connection_setup_stream(handler, plain, flags);
 	if (setup_rc != IDYDB_SUCCESS)
 	{
@@ -936,7 +1185,7 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 	}
 
 	idydb_clear_values(handler);
-	DB_DEBUG(handler, "idydb_open_with_options: opened encrypted-at-rest db (working plaintext tmpfile)");
+	DB_DEBUGF(handler, "ready: db opened against secure working plaintext stream kind=%s", (kind ? kind : "unknown"));
 	return IDYDB_SUCCESS;
 }
 
@@ -971,7 +1220,10 @@ int idydb_close(idydb **handler)
 	    (*handler)->read_only == IDYDB_READ_AND_WRITE &&
 	    (*handler)->dirty)
 	{
-		DB_DEBUG(handler, "idydb_close: encrypting writeback to backing file");
+		DB_DEBUGF(handler, "close: encrypting writeback -> backing=\"%s\" pbkdf2_iter=%u",
+		          ((*handler)->backing_filename ? (*handler)->backing_filename : "(unknown)"),
+		          (*handler)->enc_iter);
+
 		if (!idydb_crypto_encrypt_stream_to_locked_file((*handler)->file_descriptor,
 		                                                (*handler)->backing_descriptor,
 		                                                (*handler)->enc_salt,
@@ -979,12 +1231,20 @@ int idydb_close(idydb **handler)
 		                                                (*handler)->enc_key))
 		{
 			idydb_error_state(handler, 29);
+			DB_DEBUGF(handler, "close: writeback FAILED (backing not updated safely)");
 			idydb_destroy(handler);
 			free(*handler);
 			*handler = NULL;
 			return IDYDB_ERROR;
 		}
-		DB_DEBUG(handler, "idydb_close: encrypted writeback complete");
+		DB_DEBUGF(handler, "close: writeback OK");
+	}
+	else
+	{
+		DB_DEBUGF(handler, "close: no writeback (enc=%s dirty=%s mode=%s)",
+		          ((*handler)->encryption_enabled ? "yes" : "no"),
+		          ((*handler)->dirty ? "yes" : "no"),
+		          idydb_ro_str((*handler)->read_only));
 	}
 
 	idydb_destroy(handler);
@@ -1536,6 +1796,93 @@ static unsigned char idydb_insert_at(idydb **handler, idydb_column_row_sizing co
 		idydb_clear_values(handler);
 		return IDYDB_RANGE;
 	}
+
+	/* Keep original coords for debug */
+	idydb_column_row_sizing dbg_col = column_position;
+	idydb_column_row_sizing dbg_row = row_position;
+
+#ifdef CUWACUNU_CAMAHJUCUNU_DB_VERBOSE_DEBUG
+	/* Capture before/after in a way that doesn't break the staged write. */
+	idydb_sizing_max dbg_size_before = (*handler)->size;
+
+	char dbg_before[256]; dbg_before[0] = '\0';
+	char dbg_after[256];  dbg_after[0]  = '\0';
+	bool dbg_have = true;
+
+	/* Preserve staged payload so we can peek old cell value safely. */
+	unsigned char dbg_stage_type = (*handler)->value_type;
+
+	int   dbg_i = 0;
+	float dbg_f = 0.0f;
+	bool  dbg_b = false;
+
+	char* dbg_sdup = NULL;
+
+	float* dbg_vec_ptr = NULL;
+	unsigned short dbg_vec_dims = 0;
+
+	if (dbg_stage_type == IDYDB_INTEGER) dbg_i = (*handler)->value.int_value;
+	else if (dbg_stage_type == IDYDB_FLOAT) dbg_f = (*handler)->value.float_value;
+	else if (dbg_stage_type == IDYDB_BOOL) dbg_b = (*handler)->value.bool_value;
+	else if (dbg_stage_type == IDYDB_CHAR)
+	{
+		size_t n = strlen((*handler)->value.char_value);
+		dbg_sdup = (char*)malloc(n + 1);
+		if (dbg_sdup) memcpy(dbg_sdup, (*handler)->value.char_value, n + 1);
+		else dbg_have = false; /* can't safely peek without losing staged string */
+	}
+	else if (dbg_stage_type == IDYDB_VECTOR)
+	{
+		dbg_vec_ptr  = (*handler)->vector_value;
+		dbg_vec_dims = (*handler)->vector_dims;
+
+		/* Prevent idydb_clear_values() (inside idydb_read_at) from freeing the staged vector */
+		(*handler)->vector_value = NULL;
+		(*handler)->vector_dims  = 0;
+	}
+
+	if (dbg_have)
+	{
+		(void)idydb_dbg_peek_cell_repr(handler, dbg_col, dbg_row, dbg_before, sizeof(dbg_before));
+
+		/* Restore staged payload (idydb_read_at clobbered handler state) */
+		idydb_clear_values(handler);
+		(*handler)->value_type = dbg_stage_type;
+		(*handler)->value_retrieved = false;
+
+		if (dbg_stage_type == IDYDB_INTEGER) (*handler)->value.int_value = dbg_i;
+		else if (dbg_stage_type == IDYDB_FLOAT) (*handler)->value.float_value = dbg_f;
+		else if (dbg_stage_type == IDYDB_BOOL) (*handler)->value.bool_value = dbg_b;
+		else if (dbg_stage_type == IDYDB_CHAR && dbg_sdup)
+		{
+			strncpy((*handler)->value.char_value, dbg_sdup, sizeof((*handler)->value.char_value));
+			(*handler)->value.char_value[sizeof((*handler)->value.char_value) - 1] = '\0';
+			free(dbg_sdup);
+			dbg_sdup = NULL;
+		}
+		else if (dbg_stage_type == IDYDB_VECTOR)
+		{
+			(*handler)->vector_value = dbg_vec_ptr;
+			(*handler)->vector_dims  = dbg_vec_dims;
+		}
+
+		idydb_dbg_format_value_from_handler(*handler, dbg_after, sizeof(dbg_after));
+	}
+	else
+	{
+		/* can't peek safely; still log "after" */
+		idydb_dbg_format_value_from_handler(*handler, dbg_after, sizeof(dbg_after));
+		snprintf(dbg_before, sizeof(dbg_before), "<peek skipped: OOM>");
+
+		if (dbg_sdup) free(dbg_sdup);
+
+		if (dbg_stage_type == IDYDB_VECTOR) {
+			(*handler)->vector_value = dbg_vec_ptr;
+			(*handler)->vector_dims  = dbg_vec_dims;
+		}
+	}
+#endif
+
 	row_position -= 1;
 
 	unsigned short input_size = 0;
@@ -1917,7 +2264,7 @@ static unsigned char idydb_insert_at(idydb **handler, idydb_column_row_sizing co
 			{
 				if (offset[0] == offset[1])
 				{
-					deletion_point[1] -= (((deletion_point[1] - offset[0])));
+					deletion_point[1] -= (((deletion_point[1] - offset[0])) );
 					deletion_point[1] += IDYDB_PARTITION_SIZE;
 				}
 				else
@@ -2172,10 +2519,34 @@ static unsigned char idydb_insert_at(idydb **handler, idydb_column_row_sizing co
 		}
 	}
 
+	/* capture staged type before clear_values resets it */
+#ifdef CUWACUNU_CAMAHJUCUNU_DB_VERBOSE_DEBUG
+	idydb_sizing_max dbg_size_after = (*handler)->size;
+	long long dbg_delta = (long long)dbg_size_after - (long long)dbg_size_before;
+
+	const char* dbg_op = "UPDATE";
+	if (strcmp(dbg_before, dbg_after) == 0) dbg_op = "NOOP";
+	else if (strncmp(dbg_before, "NULL", 4) == 0 && strncmp(dbg_after, "NULL", 4) != 0) dbg_op = "INSERT";
+	else if (strncmp(dbg_before, "NULL", 4) != 0 && strncmp(dbg_after, "NULL", 4) == 0) dbg_op = "DELETE";
+#endif
+
 	idydb_clear_values(handler);
 
 	(*handler)->dirty = true;
-	DB_DEBUG(handler, "idydb_insert_at: database mutated");
+
+#ifdef CUWACUNU_CAMAHJUCUNU_DB_VERBOSE_DEBUG
+	DB_DEBUGF(handler,
+	          "cell(%llu,%llu) %s: %s -> %s (Δ%+lldB, size=%llu)",
+	          (unsigned long long)dbg_col,
+	          (unsigned long long)dbg_row,
+	          dbg_op,
+	          dbg_before,
+	          dbg_after,
+	          dbg_delta,
+	          (unsigned long long)dbg_size_after);
+#else
+	DB_DEBUG(handler, "database mutated");
+#endif
 
 	return IDYDB_DONE;
 }

@@ -9,49 +9,49 @@ SCREEN _screen
   __name main_data
   __text_color #000000
   __line_color #00ff00
-  __back_color #000000
+  __back_color #ffffff
   __key F+1
 
   ; Main panel container
   PANEL _rectangle
     __coords 0,0
     __z_index 0
-    __shape 650,750
+    __shape 100,100
     __title true "main"
     __border true
     __line_color #ffaaaa
 
-    ; Label wired to str0
-    FIGURE _label
-      __coords 0,0
-      __shape 250,60
-      __value "label defaulta (spec)"
-      __type normal
-      __border true
-      __line_color #1200ff
-      __text_color #ffffff
-      __back_color #000000
-      __triggers label_init, label_update
-    ENDFIGURE
-
     ; Log buffer wired to system stdout/stderr
     FIGURE _buffer
-      __coords 270,0
-      __shape 350,400
+      __coords 60,0
+      __shape 40,80
       __capacity 1000
       __title true "LOGS"
       __type updown
       __border true
       __line_color #1200ff
       __text_color #ffffff
-      __back_color #000000
+      __back_color #ffffff
       __triggers stdout,stderr
+    ENDFIGURE
+
+    ; Label wired to str0
+    FIGURE _label
+      __coords 0,0
+      __shape 50,10
+      __value "label defaulta (spec)"
+      __type normal
+      __border true
+      __line_color #1200ff
+      __text_color #ffffff
+      __back_color #ffffff
+      __triggers label_init, label_update
     ENDFIGURE
 
     ; Plot wired to vec0
     FIGURE _horizontal_plot
-      __coords 0,70
-      __shape 250,260
+      __coords 0,10
+      __shape 50,50
       __title true "plot"
       __legend true "vec:.vec0"
       __type line
@@ -59,21 +59,97 @@ SCREEN _screen
       __tickness 2
       __line_color #00ffaa
       __text_color #ffffff
-      __back_color #00aa00
+      __back_color #ffffff
       __triggers data_init, data_update
     ENDFIGURE
 
     ; Input box writes to str1 via _action event
     FIGURE _input_box
-      __coords 0,340
-      __shape 250,60
+      __coords 0,85
+      __shape 100,15
       __value "input default (spec)"
       __type normal
       __border true
       __line_color #1200ff
       __text_color #ffffff
-      __back_color #000000
+      __back_color #ffffff
       __triggers event_launch
+    ENDFIGURE
+
+  ENDPANEL
+
+  ; Events
+  EVENT _update
+    __name label_init
+    __form str:.str0
+  ENDEVENT
+
+  EVENT _update
+    __name label_update
+    __form str:.str0
+  ENDEVENT
+
+  EVENT _update
+    __name data_init
+    __form vec:.vec0
+  ENDEVENT
+
+  EVENT _update
+    __name data_update
+    __form vec:.vec0
+  ENDEVENT
+
+  EVENT _action
+    __name event_launch
+    __form str:.str1
+  ENDEVENT
+
+  ; System streams
+  EVENT _update
+    __name stdout
+    __form str:.sys.stdout
+    __label INFO
+    __color #000000
+  ENDEVENT
+
+  EVENT _update
+    __name stderr
+    __form str:.sys.stderr
+    __label ERROR
+    __color #ff0000
+  ENDEVENT
+
+ENDSCREEN
+
+SCREEN _screen
+  __tickness 2
+  __name main_data
+  __text_color #000000
+  __line_color #00ff00
+  __back_color #ffffff
+  __key F+2
+
+  ; Main panel container
+  PANEL _rectangle
+    __coords 0,0
+    __z_index 0
+    __shape 100,100
+    __title true "main"
+    __border true
+    __line_color #ffaaaa
+
+    ; Log buffer wired to system stdout/stderr
+    FIGURE _buffer
+      __coords 10,10
+      __shape 80.0,80.0
+      __capacity 1000
+      __title true "LOGS"
+      __type updown
+      __border true
+      __line_color #1200ff
+      __text_color #ffffff
+      __back_color #ffffff
+      __triggers stdout,stderr
     ENDFIGURE
 
   ENDPANEL

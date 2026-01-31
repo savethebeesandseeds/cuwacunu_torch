@@ -128,6 +128,12 @@ struct bufferBox_data_t : public iinuji_data_t {
     // normalize line endings lightly
     if (!s.empty() && s.back() == '\r') s.pop_back();
 
+    // If the user is NOT at the tail (scroll>0), we want to *freeze* the view.
+    // Since scroll is "distance from tail", every appended line increases that distance by 1.
+    // This prevents the visible window from shifting while reading old logs.
+    const bool was_at_tail = (scroll == 0);
+
+
     buffer_line_t L;
     L.text  = std::move(s);
     L.label = std::move(label);
@@ -137,14 +143,23 @@ struct bufferBox_data_t : public iinuji_data_t {
 
     while (lines.size() > capacity) {
       lines.pop_front();
-      // NOTE: We deliberately do not try to "preserve view" here.
-      // The current behavior of scroll/follow_tail is kept identical
-      // to the previous std::string-only implementation.
     }
 
-    if (scroll == 0) follow_tail = true;
-    // if follow_tail, keep at tail (scroll=0)
-    if (follow_tail) scroll = 0;
+    if (!was_at_tail) {
+      // user is reading history → keep the same content visible
+      follow_tail = false;
+      scroll += 1;
+    } else {
+      // user is at tail → follow newest
+      follow_tail = true;
+      scroll = 0;
+    }
+
+    // Safety clamp: scroll should never exceed number of available lines
+    // (render will clamp further based on viewport height).
+    if (scroll < 0) scroll = 0;
+    int n = (int)lines.size();
+    if (scroll > n) scroll = n;
   }
 
   void clear() {

@@ -227,7 +227,7 @@
 
 <fcode> ::= "F" "+" <int> ;
 
-<point> ::= <int> <ws0> "," <ws0> <int> ;
+<point> ::= <number> <ws0> "," <ws0> <number> ;
 
 
 ; ---------- Shared fields --------------------------------------------

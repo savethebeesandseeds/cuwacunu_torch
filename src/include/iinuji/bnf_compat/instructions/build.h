@@ -59,30 +59,19 @@ build_figure_object(const cuwacunu::camahjucunu::iinuji_screen_t& sc,
                     const resolved_event_map_t& evmap,
                     const IInstructionsData& data,
                     const instructions_build_opts_t& bopt,
-                    const instructions_validate_opts_t& vopt,
-                    bool use_normalized_layout)
+                    const instructions_validate_opts_t& vopt)
 {
   const std::string fg = pick_color(F.text_color, P.text_color, sc.text_color, "white");
-  const std::string bg = pick_color(F.back_color, P.back_color, sc.back_color, "black");
+  const std::string bg = pick_color(F.back_color, P.back_color, sc.back_color, "<empty>");
   const std::string ln = pick_color(F.line_color, P.line_color, sc.line_color, "gray");
 
   // Layout
   iinuji_layout_t lay{};
-  if (use_normalized_layout && P.shape.set && P.shape.x > 0 && P.shape.y > 0 && F.coords.set && F.shape.set) {
-    lay.mode = layout_mode_t::Normalized;
-    lay.normalized = true;
-    lay.x = (double)F.coords.x / (double)P.shape.x;
-    lay.y = (double)F.coords.y / (double)P.shape.y;
-    lay.width  = (double)F.shape.x / (double)P.shape.x;
-    lay.height = (double)F.shape.y / (double)P.shape.y;
-  } else {
-    lay.mode = layout_mode_t::Absolute;
-    lay.normalized = false;
-    lay.x = F.coords.set ? F.coords.x : 0;
-    lay.y = F.coords.set ? F.coords.y : 0;
-    lay.width  = F.shape.set ? std::max(0, F.shape.x) : 1;
-    lay.height = F.shape.set ? std::max(0, F.shape.y) : 1;
-  }
+  constexpr double U = 100.0;
+  lay.x      = std::clamp(F.coords.x / U, 0.0, 1.0);
+  lay.y      = std::clamp(F.coords.y / U, 0.0, 1.0);
+  lay.width  = std::clamp(F.shape.x / U, 0.0, 1.0);
+  lay.height = std::clamp(F.shape.y / U, 0.0, 1.0);
 
   // Style
   iinuji_style_t sty{};
@@ -215,13 +204,7 @@ build_ui_for_screen(const cuwacunu::camahjucunu::iinuji_renderings_instruction_t
   out.diag.merge(validate_data_access(out.events_by_name, data));
   if (!out.diag.ok()) return out;
 
-  int design_w=0, design_h=0;
-  instruction_extents(sc, design_w, design_h);
-
-  const bool normalize =
-    bopt.force_normalize ||
-    (bopt.auto_normalize && (design_w > term_cols || design_h > term_rows));
-
+  // Root is the terminal-sized container in CELLS (absolute)
   auto root = create_object(sanitize_id(sc.name));
   root->layout.mode = layout_mode_t::Absolute;
   root->layout.normalized = false;
@@ -232,7 +215,7 @@ build_ui_for_screen(const cuwacunu::camahjucunu::iinuji_renderings_instruction_t
   root->style.border = sc.border;
   root->style.title  = (!is_unset_token(sc.name) ? sc.name : std::string("screen"));
   root->style.label_color = pick_color("<empty>", "<empty>", sc.text_color, "white");
-  root->style.background_color = pick_color("<empty>", "<empty>", sc.back_color, "black");
+  root->style.background_color = pick_color("<empty>", "<empty>", sc.back_color, "<empty>");
   root->style.border_color = pick_color("<empty>", "<empty>", sc.line_color, "gray");
 
   std::vector<std::pair<int,const cuwacunu::camahjucunu::iinuji_panel_t*>> panels;
@@ -246,27 +229,21 @@ build_ui_for_screen(const cuwacunu::camahjucunu::iinuji_renderings_instruction_t
     const std::string panel_id = mk_panel_id(sc.name, (int)pi);
 
     iinuji_layout_t lay{};
-    if (normalize && P.coords.set && P.shape.set && design_w > 0 && design_h > 0) {
-      lay.mode = layout_mode_t::Normalized;
-      lay.normalized = true;
-      lay.x = (double)P.coords.x / (double)design_w;
-      lay.y = (double)P.coords.y / (double)design_h;
-      lay.width  = (double)P.shape.x / (double)design_w;
-      lay.height = (double)P.shape.y / (double)design_h;
-    } else {
-      lay.mode = layout_mode_t::Absolute;
-      lay.normalized = false;
-      lay.x = P.coords.set ? P.coords.x : 0;
-      lay.y = P.coords.set ? P.coords.y : 0;
-      lay.width  = P.shape.set ? std::max(0, P.shape.x) : 1;
-      lay.height = P.shape.set ? std::max(0, P.shape.y) : 1;
-    }
+    constexpr double U = 100.0;
+
+    // panel percent-of-screen [0..100] -> normalized [0..1]
+    lay.mode = layout_mode_t::Normalized;
+    lay.normalized = true;
+    lay.x      = std::clamp(P.coords.x / U, 0.0, 1.0);
+    lay.y      = std::clamp(P.coords.y / U, 0.0, 1.0);
+    lay.width  = std::clamp(P.shape.x / U, 0.0, 1.0);
+    lay.height = std::clamp(P.shape.y / U, 0.0, 1.0);
 
     iinuji_style_t sty{};
     sty.border = P.border;
     sty.title = (P.title_on && !is_unset_token(P.title)) ? P.title : "";
     sty.label_color = pick_color("<empty>", P.text_color, sc.text_color, "white");
-    sty.background_color = pick_color("<empty>", P.back_color, sc.back_color, "black");
+    sty.background_color = pick_color("<empty>", P.back_color, sc.back_color, "<empty>");
     sty.border_color = pick_color("<empty>", P.line_color, sc.line_color, "gray");
 
     auto pobj = create_object(panel_id, true, lay, sty);
@@ -283,7 +260,11 @@ build_ui_for_screen(const cuwacunu::camahjucunu::iinuji_renderings_instruction_t
         if (!is_unset_token(trig)) out.figures_for_event[trig].push_back(fig_id);
       }
 
-      auto fobj = build_figure_object(sc, P, F, fig_id, out.events_by_name, data, bopt, vopt, normalize);
+      // IMPORTANT: always normalized now (percent units)
+      auto fobj = build_figure_object(sc, P, F, fig_id,
+                                      out.events_by_name, data,
+                                      bopt, vopt);
+
       if (fobj) {
         out.figure_object_by_id[fig_id] = fobj;
         pobj->add_child(fobj);

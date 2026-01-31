@@ -15,14 +15,17 @@ TEST_DEFAULT_LDLIBS :=
 # 3) Tests (build + run aliases)
 COMMON_LINK = $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)
 $(eval $(call TEST_ONEFILE, test_db,          test_db.cpp,          $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_db_rag,          test_db_rag.cpp,          $(COMMON_LINK)))
 
 # 4) Target-specific includes/link flags
 $(TEST_OUT)/test_db%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+$(TEST_OUT)/test_db_rag%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
 # 5) Aggregate: all
 .PHONY: all
 all: \
-	$(TEST_OUT)/test_db
+	$(TEST_OUT)/test_db \
+	$(TEST_OUT)/test_db_rag
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run

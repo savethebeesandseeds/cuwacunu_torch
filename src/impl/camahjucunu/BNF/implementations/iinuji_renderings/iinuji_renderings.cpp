@@ -120,10 +120,11 @@ struct iinuji_renderings_decoder_t::State {
 
   // coords / shape parsing
   struct {
-    int  x = 0;
-    int  y = 0;
+    std::string xbuf;
+    std::string ybuf;
     bool parsing_y = false;
   } point;
+
 
   // __key
   std::string key_buffer;
@@ -357,11 +358,12 @@ inline void consume_color_hex(iinuji_renderings_decoder_t::State& st,
 }
 
 inline void consume_point(iinuji_renderings_decoder_t::State& st,
-                          const std::string& lex) {
+                          const std::string& lex)
+{
   for (char c : lex) {
-    if (is_digit_char(c)) {
-      if (!st.point.parsing_y) st.point.x = st.point.x * 10 + (c - '0');
-      else st.point.y = st.point.y * 10 + (c - '0');
+    if (is_digit_char(c) || c == '.') {
+      if (!st.point.parsing_y) st.point.xbuf.push_back(c);
+      else st.point.ybuf.push_back(c);
     } else if (c == ',') {
       st.point.parsing_y = true;
     }
@@ -434,7 +436,9 @@ inline void begin_prop(iinuji_renderings_decoder_t::State& st,
 
     case iinuji_renderings_decoder_t::State::Prop::Coords:
     case iinuji_renderings_decoder_t::State::Prop::Shape:
-      st.point = {0, 0, false};
+      st.point.xbuf.clear();
+      st.point.ybuf.clear();
+      st.point.parsing_y = false;
       break;
 
     case iinuji_renderings_decoder_t::State::Prop::ZIndex:
@@ -727,7 +731,12 @@ void iinuji_renderings_decoder_t::visit(const IntermediaryNode* node,
     }
 
     case IIN_RENDER_HASH_opt_coords: {
-      iinuji_point_t pt{true, st->point.x, st->point.y};
+      auto parse_d = [](const std::string& s) -> double {
+        if (s.empty()) return 0.0;
+        try { return std::stod(s); } catch (...) { return 0.0; }
+      };
+
+      iinuji_point_t pt{true, parse_d(st->point.xbuf), parse_d(st->point.ybuf)};
       if (st->in_figure) current_figure(*st).coords = pt;
       else if (st->in_panel) current_panel(*st).coords = pt;
       end_prop(*st);
@@ -735,7 +744,12 @@ void iinuji_renderings_decoder_t::visit(const IntermediaryNode* node,
     }
 
     case IIN_RENDER_HASH_opt_shape: {
-      iinuji_point_t pt{true, st->point.x, st->point.y};
+      auto parse_d = [](const std::string& s) -> double {
+        if (s.empty()) return 0.0;
+        try { return std::stod(s); } catch (...) { return 0.0; }
+      };
+
+      iinuji_point_t pt{true, parse_d(st->point.xbuf), parse_d(st->point.ybuf)};
       if (st->in_figure) current_figure(*st).shape = pt;
       else if (st->in_panel) current_panel(*st).shape = pt;
       end_prop(*st);

@@ -2,28 +2,16 @@
 
 #include <cstdio>
 #include <cmath>
+#include <exception>
 #include <iostream>
 #include <memory>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "piaabo/dconfig.h"
-#include "piaabo/dutils.h"
-
-#include "camahjucunu/BNF/BNF_types.h"
-#include "camahjucunu/BNF/BNF_AST.h"
-#include "camahjucunu/BNF/BNF_grammar_lexer.h"
-#include "camahjucunu/BNF/BNF_grammar_parser.h"
-#include "camahjucunu/BNF/BNF_instruction_lexer.h"
-#include "camahjucunu/BNF/BNF_instruction_parser.h"
-
-#include "camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h"
 
 #include "iinuji/bnf_compat/iinuji_instructions.h"
-#include "iinuji/ncurses/iinuji_app_ncurses.h"
-
-namespace BNF = cuwacunu::camahjucunu::BNF;
 
 // -------------------- robust diagnostics printing --------------------
 static void dump_diag_stderr(const cuwacunu::iinuji::instructions_diag_t& diag,
@@ -45,9 +33,7 @@ static int fatal_exit(cuwacunu::iinuji::NcursesApp* app,
                       const cuwacunu::iinuji::instructions_diag_t& diag,
                       int code = 1)
 {
-  // IMPORTANT: stop curses first so terminal output is not overwritten.
-  if (app) app->shutdown();
-
+  if (app) app->shutdown(); // stop curses first
   std::fprintf(stderr, "\n[FATAL] stage=%s\n", stage);
   dump_diag_stderr(diag, stage);
   return code;
@@ -62,38 +48,6 @@ static int fatal_exception(cuwacunu::iinuji::NcursesApp* app,
   std::fprintf(stderr, "\n[EXCEPTION] stage=%s : %s\n", stage, what ? what : "(null)");
   std::fflush(stderr);
   return code;
-}
-
-// -------------------- instruction decode --------------------
-static cuwacunu::camahjucunu::iinuji_renderings_instruction_t read_instruction()
-{
-  std::string LANGUAGE = cuwacunu::piaabo::dconfig::config_space_t::iinuji_renderings_bnf();
-  std::string INPUT    = cuwacunu::piaabo::dconfig::config_space_t::iinuji_renderings_instruction();
-
-  BNF::GrammarLexer glex(LANGUAGE);
-  BNF::GrammarParser gparser(glex);
-  gparser.parseGrammar();
-  BNF::ProductionGrammar grammar = gparser.getGrammar();
-
-  BNF::InstructionLexer ilex(INPUT);
-  BNF::InstructionParser iparser(ilex, grammar);
-  BNF::ASTNodePtr root = iparser.parse_Instruction(INPUT);
-
-  cuwacunu::camahjucunu::iinuji_renderings_decoder_t decoder;
-  return decoder.decode(root.get());
-}
-
-// -------------------- rendering helper --------------------
-static void render_built(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& root)
-{
-  auto* R = cuwacunu::iinuji::get_renderer();
-  if (!R || !root) return;
-
-  int rows = 0, cols = 0;
-  R->size(rows, cols);
-
-  cuwacunu::iinuji::layout_tree(root, cuwacunu::iinuji::Rect{0, 0, cols, rows});
-  cuwacunu::iinuji::render_tree(root);
 }
 
 // Emit help into the captured stdout stream (so it appears in the _buffer)
@@ -122,21 +76,9 @@ int main()
     cuwacunu::piaabo::dconfig::config_space_t::update_config();
 
     // 2) decode instruction (no curses yet)
-    auto inst = read_instruction();
+    auto inst = cuwacunu::iinuji::load_instruction_from_config();
 
-    // Debug print (pre-curses) so you can confirm capacity decoding immediately.
-    if (!inst.screens.empty() && !inst.screens[0].panels.empty() &&
-        inst.screens[0].panels[0].figures.size() > 1)
-    {
-      auto& F = inst.screens[0].panels[0].figures[1];
-      std::cerr << "FIG kind_raw=" << F.kind_raw
-            << " has_capacity=" << (F.has_capacity ? "true" : "false")
-            << " capacity=" << F.capacity
-            << " type_raw=" << F.type_raw
-            << "\n";
-    }
-
-    // 3) validate BEFORE curses so errors print cleanly
+    // 3) validate BEFORE curses
     cuwacunu::iinuji::instructions_validate_opts_t vopt{};
     auto vdiag = cuwacunu::iinuji::validate_instruction(inst, vopt);
     if (!vdiag.ok()) {
@@ -162,75 +104,61 @@ int main()
 
     // 5) start curses
     cuwacunu::iinuji::NcursesAppOpts aopt{};
-    aopt.input_timeout_ms = 50; // lets us pump logs even without keypress
+    aopt.input_timeout_ms = 50;
     cuwacunu::iinuji::NcursesApp app(aopt);
     app_ptr = &app;
 
-    // 6) build UI using real terminal size
-    int rows = 0, cols = 0;
-    app.renderer().size(rows, cols);
+    // (optional but often required for F-keys)
+    keypad(stdscr, TRUE);
 
+    // Enable mouse reporting (wheel comes as KEY_MOUSE)
+    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, nullptr);
+    mouseinterval(0); // reduces delay / improves wheel responsiveness
+
+    // 6) Create session (owns build+router+buffer+keymap)
     cuwacunu::iinuji::instructions_build_opts_t bopt{};
-    auto built = cuwacunu::iinuji::build_ui_for_screen(inst, 0, data, cols, rows, bopt, vopt);
+    cuwacunu::iinuji::ncurses_instruction_session_t sess(app, inst, data, bopt, vopt);
 
-    if (!built.diag.ok() || !built.root) {
-      return fatal_exit(app_ptr, "build_ui_for_screen", built.diag, 1);
+    // 7) Build initial screen
+    if (!sess.rebuild(/*screen_index=*/0)) {
+      cuwacunu::iinuji::instructions_diag_t d;
+      if (!sess.built_screens.empty()) d = sess.built_screens[0].diag;
+      else d.err("sess.rebuild(0) failed: no built screens");
+      return fatal_exit(app_ptr, "sess.rebuild(0)", sess.diag(), 1);
     }
 
-    // 7) find the buffer object so scrolling works
-    std::string buf_id;
-    std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> buf_obj;
+    // Seed help into buffer AFTER router is attached
+    // (NOTE: this only works if the screen has sys-stream events wired, otherwise stdout prints to terminal)
+    emit_buffer_help();
+    (void)sess.pump_streams();
 
-    for (const auto& kv : built.figure_kind_by_id) {
-      if (kv.second == "_buffer") {
-        buf_id = kv.first;
-        auto it = built.figure_object_by_id.find(buf_id);
-        if (it != built.figure_object_by_id.end()) buf_obj = it->second;
-        break;
-      }
-    }
-
-    // 8) attach router (captures std::cout/std::cerr)
-    auto router = cuwacunu::iinuji::sys_stream_router_t::attach_for(built, /*passthrough=*/false);
-
-    // Seed buffer immediately AFTER router attaches
-    if (router) {
-      emit_buffer_help();
-
-      // show which buffer object we found
-      if (!buf_id.empty()) std::cout << "[boot] buffer figure id: " << buf_id << "\n";
-      else std::cout << "[boot] WARNING: no _buffer figure found (scrolling disabled)\n";
-
-      std::cout << "[boot] stdout capture is ON\n";
-      std::cerr << "[boot] stderr capture is ON\n";
-
-      // dispatch what we just wrote into the buffer
-      (void)router->pump(built, data);
-    }
-
-    // initial render
-    app.renderer().clear();
-    render_built(built.root);
-    app.renderer().flush();
+    // Initial render
+    sess.render();
 
     // Demo behavior controls
-    bool auto_spam = true;  // start ON so you see growth without pressing keys
+    bool auto_spam = true;
     int  frame     = 0;
     int  seq_out   = 0;
     int  seq_err   = 0;
     int  tick_plot = 0;
 
-    // 9) loop
+    // 8) loop
     while (true) {
       int ch = ::getch();
       if (ch == 'q') break;
 
+      // --- screen switching (and fallback screen for unconfigured Fn keys) ---
+      if (sess.handle_screen_key(ch)) {
+        // If rebuild() failed for a configured key, make it fatal like before.
+        // (Fallback for unconfigured Fn keys will return true and render normally.)
+        if (!sess.active_root()) return fatal_exit(app_ptr, "sess.handle_screen_key", sess.diag(), 1);
+        sess.render();
+        continue;
+      }
+
       bool changed = false;
 
-      // --- Auto spam: generates lines even with no keypress ---
-      // With input_timeout_ms=50, loop ~20 Hz:
-      //  frame%10  -> ~2 stdout lines/sec
-      //  frame%25  -> ~0.8 stderr lines/sec
+      // --- Auto spam ---
       frame++;
       if (auto_spam) {
         if ((frame % 10) == 0) std::cout << "[auto] stdout seq=" << seq_out++ << "\n";
@@ -238,7 +166,6 @@ int main()
       }
 
       // --- Key-driven log generation (WRITE FIRST) ---
-      // IMPORTANT: write to cout/cerr BEFORE pumping so it appears immediately.
       if (ch == 'o') std::cout << "[key] stdout one seq=" << seq_out++ << "\n";
       if (ch == 'e') std::cerr << "[key] stderr one seq=" << seq_err++ << "\n";
 
@@ -249,7 +176,6 @@ int main()
       }
 
       if (ch == 'B') {
-        // exceed capacity=1000 so you can observe truncation/rolling
         for (int i = 0; i < 1200; ++i) {
           std::cout << "[burst1200] i=" << i << " seq=" << seq_out++ << "\n";
         }
@@ -260,8 +186,8 @@ int main()
         std::cout << "[key] auto_spam=" << (auto_spam ? "true" : "false") << "\n";
       }
 
-      // --- Pump captured stdout/stderr into buffer (PUMP AFTER WRITES) ---
-      if (router) changed |= router->pump(built, data);
+      // --- Pump captured stdout/stderr into buffer ---
+      changed |= sess.pump_streams();
 
       // --- Update plot ---
       if (ch == 'u') {
@@ -273,29 +199,23 @@ int main()
           pts.push_back({x, y});
         }
         data.set_vec(0, pts);
-        (void)cuwacunu::iinuji::dispatch_event(built, "data_update", data, nullptr);
+        // Update all screens so inactive plots stay in sync too
+        for (std::size_t si = 0; si < sess.built_screens.size(); ++si) {
+          if (si < sess.built_ok.size() && sess.built_ok[si] && sess.built_screens[si].root) {
+            (void)cuwacunu::iinuji::dispatch_event(sess.built_screens[si], "data_update", data, nullptr);
+          }
+        }
         tick_plot++;
         changed = true;
       }
 
       // --- Buffer scrolling ---
-      if (buf_obj) {
-        auto bb = std::dynamic_pointer_cast<cuwacunu::iinuji::bufferBox_data_t>(buf_obj->data);
-        if (bb) {
-          if (ch == KEY_UP)    { bb->scroll_by(+1);  changed = true; }
-          if (ch == KEY_DOWN)  { bb->scroll_by(-1);  changed = true; }
-          if (ch == KEY_PPAGE) { bb->scroll_by(+10); changed = true; }
-          if (ch == KEY_NPAGE) { bb->scroll_by(-10); changed = true; }
-          if (ch == 'g')       { bb->jump_tail();    changed = true; }
-        }
-      }
+      changed |= sess.handle_buffer_scroll_key(ch);
 
       if (ch == KEY_RESIZE) changed = true;
 
       if (changed) {
-        app.renderer().clear();
-        render_built(built.root);
-        app.renderer().flush();
+        sess.render();
       }
     }
 

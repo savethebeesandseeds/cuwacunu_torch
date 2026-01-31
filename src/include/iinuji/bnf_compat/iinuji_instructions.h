@@ -12,3 +12,5 @@
 #include "iinuji/bnf_compat/instructions/build.h"
 #include "iinuji/bnf_compat/instructions/dispatch.h"
 #include "iinuji/bnf_compat/instructions/sys_streams.h"
+#include "iinuji/bnf_compat/instructions/load.h"
+#include "iinuji/bnf_compat/instructions/runtime_ncurses.h"

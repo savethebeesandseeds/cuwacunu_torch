@@ -15,17 +15,18 @@ struct NcursesRend : public IRend {
 
   void putText(int y, int x, const std::string& s, int max_w = -1,
                short color_pair = 0, bool bold=false, bool inverse=false) override {
-    if (color_pair > 0) attron(COLOR_PAIR(color_pair));
-    if (bold)    attron(A_BOLD);
-    if (inverse) attron(A_REVERSE);
+    // IMPORTANT: always set attrs explicitly so cp==0 does not inherit stale colors
+    attr_t a = A_NORMAL;
+    if (color_pair > 0) a |= COLOR_PAIR(color_pair);
+    if (bold)    a |= A_BOLD;
+    if (inverse) a |= A_REVERSE;
+    attrset(a);
 
     const char* c = s.c_str();
     int n = (max_w >= 0 ? std::min<int>((int)s.size(), max_w) : (int)s.size());
     mvaddnstr(y, x, c, n);
 
-    if (bold)    attroff(A_BOLD);
-    if (inverse) attroff(A_REVERSE);
-    if (color_pair > 0) attroff(COLOR_PAIR(color_pair));
+    attrset(A_NORMAL);
   }
 
   void putGlyph(int y, int x, wchar_t ch, short color_pair = 0) override {
@@ -36,11 +37,14 @@ struct NcursesRend : public IRend {
   }
 
   void fillRect(int y, int x, int h, int w, short color_pair) override {
-    if (color_pair > 0) attron(COLOR_PAIR(color_pair));
-    for (int r = 0; r < h; ++r)
-      for (int c = 0; c < w; ++c)
-        mvaddch(y + r, x + c, ' ' | (color_pair > 0 ? COLOR_PAIR(color_pair) : 0));
-    if (color_pair > 0) attroff(COLOR_PAIR(color_pair));
+    // IMPORTANT: ensure cp==0 fills with A_NORMAL, not the previously active color pair
+    attr_t a = A_NORMAL;
+    if (color_pair > 0) a |= COLOR_PAIR(color_pair);
+    attrset(a);
+    for (int r = 0; r < h; ++r) {
+      mvhline(y + r, x, ' ', w);
+    }
+    attrset(A_NORMAL);
   }
 
   // Optional explicit override (base already aliases to putGlyph)

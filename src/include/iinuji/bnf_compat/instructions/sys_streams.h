@@ -8,6 +8,7 @@
 #include <utility>
 #include <memory>
 #include <functional>
+#include <unordered_set>
 
 #include "iinuji/bnf_compat/instructions/build.h"
 #include "iinuji/bnf_compat/instructions/dispatch.h"
@@ -208,6 +209,57 @@ public:
         passthrough
       );
     }
+    return R;
+  }
+
+  static std::unique_ptr<sys_stream_router_t>
+  attach_for_many(const std::vector<instructions_build_result_t*>& builts,
+                  bool passthrough=false)
+  {
+    auto R = std::make_unique<sys_stream_router_t>();
+
+    std::unordered_set<std::string> seen_out;
+    std::unordered_set<std::string> seen_err;
+
+    auto add_unique = [](std::vector<std::string>& v,
+                         std::unordered_set<std::string>& seen,
+                         const std::string& s)
+    {
+      if (seen.insert(s).second) v.push_back(s);
+    };
+
+    for (auto* B : builts) {
+      if (!B) continue;
+      for (const auto& kv : B->events_by_name) {
+        const auto& E = kv.second;
+        for (const auto& b : E.bindings) {
+          if (b.ref.kind != data_kind_e::System) continue;
+          if (b.bind_kind != bind_kind_e::Str) continue;
+
+          if (b.ref.sys == sys_ref_e::Stdout) add_unique(R->stdout_events_, seen_out, E.name);
+          if (b.ref.sys == sys_ref_e::Stderr) add_unique(R->stderr_events_, seen_err, E.name);
+        }
+      }
+    }
+
+    if (!R->stdout_events_.empty()) {
+      R->out_ = std::make_unique<ostream_redirect_t>(
+        std::cout,
+        [Rptr=R.get()](std::string line){
+          if (!line.empty()) Rptr->queue_->push(sys_stream_e::Stdout, std::move(line));
+        },
+        passthrough
+      );
+    }
+    if (!R->stderr_events_.empty()) {
+      R->err_ = std::make_unique<ostream_redirect_t>(
+        std::cerr,
+        [Rptr=R.get()](std::string line){
+          if (!line.empty()) Rptr->queue_->push(sys_stream_e::Stderr, std::move(line));
+        },
+        passthrough
+      );
+    }
 
     return R;
   }
@@ -228,6 +280,33 @@ public:
         changed = true;
       }
     }
+    return changed;
+  }
+
+  bool pump_all(const std::vector<instructions_build_result_t*>& builts,
+                IInstructionsData& data)
+  {
+    bool changed = false;
+    auto items = queue_->drain();
+
+    for (auto& it : items) {
+      dispatch_payload_t p;
+      p.has_str = true;
+      p.str = std::move(it.line);
+
+      const auto& targets =
+        (it.stream == sys_stream_e::Stdout) ? stdout_events_ : stderr_events_;
+
+      for (const auto& ev : targets) {
+        for (auto* B : builts) {
+          if (!B || !B->root) continue;
+          if (B->events_by_name.find(ev) == B->events_by_name.end()) continue; // skip screens without it
+          (void)dispatch_event(*B, ev, data, &p);
+          changed = true;
+        }
+      }
+    }
+
     return changed;
   }
 

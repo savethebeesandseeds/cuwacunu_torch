@@ -20,6 +20,10 @@ RUNTIME_WARNING("(iinuji/validation.h)[] forbid_mixed_figure_kinds_per_event is 
 namespace cuwacunu {
 namespace iinuji {
 
+inline bool pct_ok(double v) {
+  return std::isfinite(v) && v >= 0.0 && v <= 100.0;
+}
+
 inline void validate_screen_fields(const cuwacunu::camahjucunu::iinuji_screen_t& sc,
                                    size_t si,
                                    instructions_diag_t& d)
@@ -59,6 +63,23 @@ inline void validate_panel_fields(const cuwacunu::camahjucunu::iinuji_panel_t& P
 
   if (!P.coords.set) d.err(where + ": missing __coords");
   if (!P.shape.set)  d.err(where + ": missing __shape");
+  
+  if (P.coords.set && (!pct_ok(P.coords.x) || !pct_ok(P.coords.y)))
+    d.err(where + ": __coords must be within [0,100]");
+
+  if (P.shape.set && (P.shape.x <= 0.0 || P.shape.y <= 0.0))
+    d.err(where + ": __shape must be > 0");
+
+  if (P.shape.set && (!pct_ok(P.shape.x) || !pct_ok(P.shape.y)))
+    d.err(where + ": __shape must be within (0,100]");
+
+  if (P.coords.set && P.shape.set) {
+    if (P.coords.x + P.shape.x > 100.0 + 1e-9)
+      d.err(where + ": __coords.x + __shape.x must be <= 100");
+    if (P.coords.y + P.shape.y > 100.0 + 1e-9)
+      d.err(where + ": __coords.y + __shape.y must be <= 100");
+  }
+
   if (P.shape.set && (P.shape.x <= 0 || P.shape.y <= 0))
     d.err(where + ": __shape must be > 0");
 

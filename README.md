@@ -32,6 +32,7 @@ docker pull debian:latest
 ### Start the container
 ```cmd
 docker run --name any_name --gpus all -it -v $PWD//:/cuwacunu debian:latest
+wt docker exec -it -w /cuwacunu/src any_name /bin/bash
 ```
 
 ## Configure the Container

@@ -51,7 +51,7 @@ HTTPS := websocket
 $(foreach t,$(HTTPS),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/https)))
 
 # --------------------------- camahjucunu/db -------------------------------
-DB := db
+DB := db db_rag
 $(foreach t,$(DB),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/db)))
 
 # --------------------------- jkimyei/training_setup --------------------------

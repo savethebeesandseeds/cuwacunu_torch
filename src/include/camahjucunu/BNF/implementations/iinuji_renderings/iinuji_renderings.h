@@ -23,9 +23,9 @@ namespace camahjucunu {
 // ------------------------------------------------------------------
 
 struct iinuji_point_t {
-  bool set = false;
-  int  x   = 0;
-  int  y   = 0;
+  bool   set = false;
+  double x   = 0;
+  double y   = 0;
 };
 
 // ------------------------------------------------------------------

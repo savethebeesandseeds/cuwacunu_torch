@@ -109,18 +109,5 @@ inline std::string mk_figure_id(const std::string& screen_name, int panel_index,
   return oss.str();
 }
 
-/* Compute design-space extents from panel rectangles */
-template <class ScreenT>
-inline void instruction_extents(const ScreenT& sc, int& out_w, int& out_h) {
-  long mx = 0, my = 0;
-  for (const auto& P : sc.panels) {
-    if (!P.coords.set || !P.shape.set) continue;
-    mx = std::max<long>(mx, (long)P.coords.x + (long)P.shape.x);
-    my = std::max<long>(my, (long)P.coords.y + (long)P.shape.y);
-  }
-  out_w = (int)std::max<long>(mx, 0);
-  out_h = (int)std::max<long>(my, 0);
-}
-
 } // namespace iinuji
 } // namespace cuwacunu

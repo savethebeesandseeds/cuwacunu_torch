@@ -62,10 +62,11 @@ struct PlotOptions {
 
   // Clipping safeguard
   bool hard_clip = true;
-
+  
   // Colors supplied by the backend
   short axes_color_pair = 0;
   short grid_color_pair = 0;
+  short bg_color_pair   = 0;   // used when a cell has no glyph color
 };
 
 struct SeriesStyle {
@@ -470,8 +471,15 @@ static void plot_braille_multi(const std::vector<Series>& series,
   if (auto* R = get_renderer()) {
     for (int r = 0; r < plot_h; ++r) {
       for (int c = 0; c < plot_w; ++c) {
-        wchar_t ch = (wchar_t)(0x2800 + cells[r][c]);
+        unsigned char bits = cells[r][c];
+        if (bits == 0 && colors[r][c] == 0) continue;
+
+        // If there are no dots, draw SPACE so the background fill stays uniform
+        wchar_t ch = (bits == 0) ? L' ' : (wchar_t)(0x2800 + bits);
+
         short cp = colors[r][c];
+        if (cp == 0) cp = opt.bg_color_pair;  // use plot background
+
         R->putBraille(plot_y0 + r, plot_x0 + c, ch, cp);
       }
     }
