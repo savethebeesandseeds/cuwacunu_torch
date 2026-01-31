@@ -59,8 +59,13 @@ protected:
   using int_type    = traits_type::int_type;
 
   int_type overflow(int_type ch) override {
-    if (traits_type::eq_int_type(ch, traits_type::eof()))
-      return traits_type::eof();
+    // Many iostreams use overflow(EOF) as a "flush" signal.
+    // Returning EOF here can make the stream think the write failed.
+    if (traits_type::eq_int_type(ch, traits_type::eof())) {
+      flush_partial();
+      if (passthrough_ && orig_) orig_->pubsync();
+      return traits_type::not_eof(ch);
+    }
 
     char c = traits_type::to_char_type(ch);
     handle_char(c);
@@ -192,19 +197,21 @@ public:
     }
 
     if (!R->stdout_events_.empty()) {
+      auto q = R->queue_;
       R->out_ = std::make_unique<ostream_redirect_t>(
         std::cout,
-        [Rptr=R.get()](std::string line){
-          if (!line.empty()) Rptr->queue_->push(sys_stream_e::Stdout, std::move(line));
+        [q](std::string line){
+          if (!line.empty()) q->push(sys_stream_e::Stdout, std::move(line));
         },
         passthrough
       );
     }
     if (!R->stderr_events_.empty()) {
+      auto q = R->queue_;
       R->err_ = std::make_unique<ostream_redirect_t>(
         std::cerr,
-        [Rptr=R.get()](std::string line){
-          if (!line.empty()) Rptr->queue_->push(sys_stream_e::Stderr, std::move(line));
+        [q](std::string line){
+          if (!line.empty()) q->push(sys_stream_e::Stderr, std::move(line));
         },
         passthrough
       );

@@ -155,22 +155,47 @@ inline void set_global_background(const std::string& background_color) {
 }
 
 // Very simple word wrap (safe at EoS)
+inline std::vector<std::string> split_lines_keep_empty(const std::string& s) {
+  std::vector<std::string> out;
+  // Keep behavior consistent: empty string => one empty line
+  std::size_t i = 0;
+  while (i <= s.size()) {
+    std::size_t j = s.find('\n', i);
+    if (j == std::string::npos) j = s.size();
+    std::string line = s.substr(i, j - i);
+    // tolerate CRLF inputs
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    out.push_back(std::move(line));
+    if (j == s.size()) break;
+    i = j + 1;
+  }
+  return out;
+}
+
 inline std::vector<std::string> wrap_text(const std::string& s, int width) {
   std::vector<std::string> out;
   if (width <= 0) { out.emplace_back(); return out; }
-  size_t i = 0;
-  while (i < s.size()) {
-    size_t end = std::min(i + (size_t)width, s.size());
-    size_t brk = end;
-    if (end < s.size()) {
-      size_t j = s.rfind(' ', end);
-      if (j != std::string::npos && j >= i) brk = j;
+  // Multiline aware: split by '\n' first, wrap each physical line.
+  auto phys = split_lines_keep_empty(s);
+  for (const auto& line : phys) {
+    // Preserve empty lines
+    if (line.empty()) { out.emplace_back(); continue; }
+
+    std::size_t i = 0;
+    while (i < line.size()) {
+      std::size_t end = std::min(i + (std::size_t)width, line.size());
+      std::size_t brk = end;
+      if (end < line.size()) {
+        std::size_t j = line.rfind(' ', end);
+        if (j != std::string::npos && j >= i) brk = j;
+      }
+      if (brk == i) brk = end;
+      out.emplace_back(line.substr(i, brk - i));
+      if (brk < line.size() && line[brk] == ' ') i = brk + 1;
+      else i = brk;
     }
-    if (brk == i) brk = end;
-    out.emplace_back(s.substr(i, brk - i));
-    if (brk < s.size() && s[brk] == ' ') i = brk + 1;
-    else i = brk;
   }
+
   return out;
 }
 

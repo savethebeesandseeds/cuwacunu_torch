@@ -209,7 +209,12 @@ inline void render_text(const iinuji_object_t& obj) {
   auto tb = std::dynamic_pointer_cast<textBox_data_t>(obj.data);
   if (!tb) return;
 
-  auto lines = tb->wrap ? wrap_text(tb->content, std::max(1,r.w)) : std::vector<std::string>{tb->content};
+  // Multiline support:
+  // - if wrap=true  : wrap each newline-separated line
+  // - if wrap=false : still split on '\n' so multiline labels render correctly
+  auto lines = tb->wrap
+    ? wrap_text(tb->content, std::max(1,r.w))
+    : split_lines_keep_empty(tb->content);
   int rows = std::min((int)lines.size(), r.h);
   for (int i=0;i<rows;++i) {
     int colx = r.x;

@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "piaabo/dconfig.h"
-
 #include "iinuji/bnf_compat/iinuji_instructions.h"
 
 // -------------------- robust diagnostics printing --------------------
@@ -108,31 +107,23 @@ int main()
     cuwacunu::iinuji::NcursesApp app(aopt);
     app_ptr = &app;
 
-    // (optional but often required for F-keys)
-    keypad(stdscr, TRUE);
-
     // Enable mouse reporting (wheel comes as KEY_MOUSE)
     mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, nullptr);
-    mouseinterval(0); // reduces delay / improves wheel responsiveness
+    mouseinterval(0);
 
-    // 6) Create session (owns build+router+buffer+keymap)
+    // 6) Create session
     cuwacunu::iinuji::instructions_build_opts_t bopt{};
     cuwacunu::iinuji::ncurses_instruction_session_t sess(app, inst, data, bopt, vopt);
 
-    // 7) Build initial screen
+    // 7) Activate first screen
     if (!sess.rebuild(/*screen_index=*/0)) {
-      cuwacunu::iinuji::instructions_diag_t d;
-      if (!sess.built_screens.empty()) d = sess.built_screens[0].diag;
-      else d.err("sess.rebuild(0) failed: no built screens");
       return fatal_exit(app_ptr, "sess.rebuild(0)", sess.diag(), 1);
     }
 
     // Seed help into buffer AFTER router is attached
-    // (NOTE: this only works if the screen has sys-stream events wired, otherwise stdout prints to terminal)
     emit_buffer_help();
     (void)sess.pump_streams();
 
-    // Initial render
     sess.render();
 
     // Demo behavior controls
@@ -142,30 +133,23 @@ int main()
     int  seq_err   = 0;
     int  tick_plot = 0;
 
-    // 8) loop
     while (true) {
       int ch = ::getch();
       if (ch == 'q') break;
 
-      // --- screen switching (and fallback screen for unconfigured Fn keys) ---
-      if (sess.handle_screen_key(ch)) {
-        // If rebuild() failed for a configured key, make it fatal like before.
-        // (Fallback for unconfigured Fn keys will return true and render normally.)
-        if (!sess.active_root()) return fatal_exit(app_ptr, "sess.handle_screen_key", sess.diag(), 1);
-        sess.render();
-        continue;
-      }
+      // Screen switching + Default fallback
+      auto r = sess.handle_screen_key(ch);
+      if (r == decltype(r)::Error) return fatal_exit(app_ptr, "handle_screen_key", sess.diag(), 1);
+      if (r != decltype(r)::NotHandled) { sess.render(); continue; }
 
       bool changed = false;
 
-      // --- Auto spam ---
       frame++;
       if (auto_spam) {
         if ((frame % 10) == 0) std::cout << "[auto] stdout seq=" << seq_out++ << "\n";
         if ((frame % 25) == 0) std::cerr << "[auto] stderr seq=" << seq_err++ << "\n";
       }
 
-      // --- Key-driven log generation (WRITE FIRST) ---
       if (ch == 'o') std::cout << "[key] stdout one seq=" << seq_out++ << "\n";
       if (ch == 'e') std::cerr << "[key] stderr one seq=" << seq_err++ << "\n";
 
@@ -186,10 +170,8 @@ int main()
         std::cout << "[key] auto_spam=" << (auto_spam ? "true" : "false") << "\n";
       }
 
-      // --- Pump captured stdout/stderr into buffer ---
       changed |= sess.pump_streams();
 
-      // --- Update plot ---
       if (ch == 'u') {
         std::vector<std::pair<double,double>> pts;
         pts.reserve(120);
@@ -199,24 +181,17 @@ int main()
           pts.push_back({x, y});
         }
         data.set_vec(0, pts);
-        // Update all screens so inactive plots stay in sync too
-        for (std::size_t si = 0; si < sess.built_screens.size(); ++si) {
-          if (si < sess.built_ok.size() && sess.built_ok[si] && sess.built_screens[si].root) {
-            (void)cuwacunu::iinuji::dispatch_event(sess.built_screens[si], "data_update", data, nullptr);
-          }
-        }
+
+        (void)sess.dispatch_event_all("data_update", data, nullptr);
+
         tick_plot++;
         changed = true;
       }
 
-      // --- Buffer scrolling ---
       changed |= sess.handle_buffer_scroll_key(ch);
-
       if (ch == KEY_RESIZE) changed = true;
 
-      if (changed) {
-        sess.render();
-      }
+      if (changed) sess.render();
     }
 
     return 0;

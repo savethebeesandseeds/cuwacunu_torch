@@ -37,8 +37,13 @@ inline void validate_screen_fields(const cuwacunu::camahjucunu::iinuji_screen_t&
     d.err(where + ": invalid/missing __name '" + sc.name + "'");
 
   if (!is_unset_token(sc.key_raw)) {
-    if (!(sc.key_raw.size() >= 3 && sc.key_raw.rfind("F+", 0) == 0))
-      d.warn(where + ": __key '" + sc.key_raw + "' not in expected form 'F+N'");
+    std::string k = to_lower(sc.key_raw);
+    const bool ok =
+      (k == "f0" || k == "f+0") ||                 // default screen marker
+      (k.size() >= 3 && k.rfind("f+", 0) == 0);    // F+N
+
+    if (!ok)
+      d.warn(where + ": __key '" + sc.key_raw + "' not in expected form 'F+N' or 'F0'");
   }
 
   if (sc.tickness <= 0.0 || !std::isfinite(sc.tickness))

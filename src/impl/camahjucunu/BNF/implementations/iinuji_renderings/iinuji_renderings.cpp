@@ -238,13 +238,29 @@ inline void reset_dq_capture(iinuji_renderings_decoder_t::State& st) {
 inline void consume_dq_segments(iinuji_renderings_decoder_t::State& st,
                                const std::string& lex) {
   for (char c : lex) {
+    const bool in_quotes = ((st.dq_quote_count % 2) == 1);
+
     if (st.dq_escaped) {
-      if ((st.dq_quote_count % 2) == 1) st.dq_current.push_back(c);
+      if (in_quotes) {
+        // Interpret common escapes inside dq_string payload.
+        switch (c) {
+          case 'n':  st.dq_current.push_back('\n'); break;
+          case 'r':  st.dq_current.push_back('\r'); break;
+          case 't':  st.dq_current.push_back('\t'); break;
+          case '\\': st.dq_current.push_back('\\'); break;
+          case '"':  st.dq_current.push_back('"');  break;
+          default:
+            // Backward-compatible behavior: drop '\' and keep the char.
+            st.dq_current.push_back(c);
+            break;
+        }
+      }
       st.dq_escaped = false;
       continue;
     }
 
-    if (c == '\\') {
+    // Only treat '\' as an escape marker *inside quotes*.
+    if (c == '\\' && in_quotes) {
       st.dq_escaped = true;
       continue;
     }
@@ -517,7 +533,17 @@ inline std::string normalize_bnf_lexeme(const std::string& lex) {
   if (lex.size() >= 2 && lex.front() == '"' && lex.back() == '"') {
     std::string inner = lex.substr(1, lex.size() - 2);
 
-    // Unescape \" and \\ (BNF-style)
+    // IMPORTANT:
+    // Keep the old behavior for *everything* except the whitespace escapes
+    // we explicitly rely on (<lb>, <hsp>).
+    //
+    // This avoids breaking dq_string capture / quote tracking.
+    if (inner == "\\n")    return "\n";
+    if (inner == "\\r")    return "\r";
+    if (inner == "\\t")    return "\t";
+    if (inner == "\\r\\n") return "\r\n";
+
+    // Old behavior: drop the backslash and keep the escaped char verbatim.
     std::string out;
     out.reserve(inner.size());
     bool esc = false;
@@ -531,6 +557,9 @@ inline std::string normalize_bnf_lexeme(const std::string& lex) {
         out.push_back(c);
       }
     }
+    // If inner ended with a dangling backslash, keep it (matches previous intent better).
+    if (esc) out.push_back('\\');
+
     return out;
   }
   return lex;
