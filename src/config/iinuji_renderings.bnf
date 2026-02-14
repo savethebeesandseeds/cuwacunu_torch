@@ -51,6 +51,7 @@
                  | <hsp>
                  | "_" | "-" | "." | ":" | "," | "#" | "+" | "/" | "(" | ")"
                  | "[" | "]" | "{" | "}" | "<" | ">" | "=" | "*" | "!" | "?"
+                 | "\"" | "'" | "\\"
                  ;
 
 
@@ -84,6 +85,7 @@
 
 <screen_prop> ::= <opt_name>
                 | <opt_key>
+                | <opt_border>
                 | <opt_line_color>
                 | <opt_text_color>
                 | <opt_back_color>
@@ -137,6 +139,7 @@
                   <ws0> "ENDFIGURE" ;
 
 <figure_kind> ::= "_label"
+                | "_text_editor"
                 | "_horizontal_plot"
                 | "_input_box"
                 | "_buffer"
@@ -240,7 +243,7 @@
 <opt_tickness>   ::= "__tickness"   <ws1> <number>                 ;
 <opt_coords>     ::= "__coords"     <ws1> <point>                  ;
 <opt_shape>      ::= "__shape"      <ws1> <point>                  ;
-<opt__capacity>  ::= "__capacity"   <ws1> <number>                 ;
+<opt__capacity>  ::= "__capacity"   <ws1> <int>                    ;
 <opt_z_index>    ::= "__z_index"    <ws1> <int>                    ;
 <opt_title>      ::= "__title"      <ws1> <bool> <ws1> <dq_string> ;
 <opt_border>     ::= "__border"     <ws1> <bool>                   ;
@@ -257,7 +260,9 @@
 <bool> ::= "true" | "false" ;
 
 ; Keep this form: it's what your current engine + existing DSL already uses.
-<int> ::= {<digit>} ;
+<int> ::= <digit> <int_tail_opt> ;
+<int_tail_opt> ::= [<int_tail>] ;
+<int_tail> ::= {<digit>} ;
 
 <number> ::= <int> <number_frac_opt> ;
 <number_frac_opt> ::= [<number_frac>] ;

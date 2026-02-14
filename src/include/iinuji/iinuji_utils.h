@@ -8,14 +8,78 @@
 #include <cctype>
 #include <cmath>
 #include <climits>
+#include <cstdio>
 
 namespace cuwacunu {
 namespace iinuji {
 
 inline std::map<std::string, int> color_map;
 
+inline int get_color(const std::string& color_name, int def_r=1000, int def_g=1000, int def_b=1000);
+
 inline bool is_unset_color_token(const std::string& s) {
   return s.empty() || s == "<empty>";
+}
+
+inline int clamp255(int v) { return std::clamp(v, 0, 255); }
+
+inline bool parse_hex_rgb8(const std::string& s, int& r, int& g, int& b) {
+  if (s.size() != 7 || s[0] != '#') return false;
+  auto byte = [&](int i)->int {
+    return std::stoi(s.substr((size_t)i, 2), nullptr, 16);
+  };
+  try {
+    r = byte(1); g = byte(3); b = byte(5);
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+inline std::string rgb8_to_hex(int r, int g, int b) {
+  char buf[8];
+  std::snprintf(buf, sizeof(buf), "#%02x%02x%02x",
+                clamp255(r), clamp255(g), clamp255(b));
+  return std::string(buf);
+}
+
+inline bool rgb8_from_color_id(int id, int& r, int& g, int& b) {
+  if (!has_colors()) return false;
+  if (id < 0 || id >= COLORS) return false;
+  short rr=0, gg=0, bb=0;
+  if (color_content((short)id, &rr, &gg, &bb) == ERR) return false;
+  r = (int)std::lround(rr * 255.0 / 1000.0);
+  g = (int)std::lround(gg * 255.0 / 1000.0);
+  b = (int)std::lround(bb * 255.0 / 1000.0);
+  return true;
+}
+
+inline bool rgb8_for_token(const std::string& tok, int& r, int& g, int& b) {
+  if (parse_hex_rgb8(tok, r, g, b)) return true;
+  if (is_unset_color_token(tok)) return false;
+  if (!has_colors()) return false;
+  int id = get_color(tok);
+  return rgb8_from_color_id(id, r, g, b);
+}
+
+inline std::string darken_color_token(const std::string& tok, double factor) {
+  int r=0, g=0, b=0;
+  if (!rgb8_for_token(tok, r, g, b)) return tok; // fallback: unchanged
+  r = clamp255((int)std::lround(r * factor));
+  g = clamp255((int)std::lround(g * factor));
+  b = clamp255((int)std::lround(b * factor));
+  return rgb8_to_hex(r, g, b);
+}
+
+// Focus policy helpers:
+inline std::string focus_darken_bg_token(const std::string& bg, double factor=0.8) {
+  // If the widget uses terminal-default bg, pick a deterministic dark bg for the focus frame.
+  if (is_unset_color_token(bg)) return "#000000";
+  return darken_color_token(bg, factor);
+}
+inline std::string focus_darken_fg_token(const std::string& fg, double factor=0.8) {
+  if (is_unset_color_token(fg)) return "#505050";
+  return darken_color_token(fg, factor);
 }
 
 inline std::string to_lower(std::string s) {
@@ -89,7 +153,7 @@ inline int alloc_true_color(const std::string& key, int r, int g, int b){
   return id;
 }
 
-inline int get_color(const std::string& color_name, int def_r=1000, int def_g=1000, int def_b=1000) {
+inline int get_color(const std::string& color_name, int def_r, int def_g, int def_b) {
   if (!has_colors()) return COLOR_WHITE;
 
   // IMPORTANT: "<empty>" means "use terminal default color"

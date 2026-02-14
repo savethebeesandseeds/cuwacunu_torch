@@ -8,6 +8,12 @@ struct instructions_build_opts_t {
   bool force_normalize = false;
   bool plot_legend_overlay = true;
 
+  // Reserve N terminal rows at the bottom for a global menu/status bar.
+  // The DSL 0..100 vertical range maps to the remaining rows.
+  // Default: reserve 1 last row (so 100% height == "all but the last line").
+  int  global_menu_rows = 1;
+  bool show_global_menu_bar = true;
+
   // if invalid, default is: don't build anything
   bool render_placeholders_on_error = false;
 };

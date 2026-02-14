@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #define IDYDB_SUCCESS       0  // Successful operation
 #define IDYDB_ERROR         1  // Unsuccessful operation
@@ -146,6 +147,55 @@ typedef struct {
     float score;                 // higher is better
 } idydb_knn_result;
 
+/* --------------------------- Query Filters + Metadata --------------------------- */
+
+typedef enum {
+    IDYDB_FILTER_OP_EQ         = 1,
+    IDYDB_FILTER_OP_NEQ        = 2,
+    IDYDB_FILTER_OP_GT         = 3,
+    IDYDB_FILTER_OP_GTE        = 4,
+    IDYDB_FILTER_OP_LT         = 5,
+    IDYDB_FILTER_OP_LTE        = 6,
+    IDYDB_FILTER_OP_IS_NULL    = 7,
+    IDYDB_FILTER_OP_IS_NOT_NULL= 8
+} idydb_filter_op;
+
+typedef union {
+    int         i;
+    float       f;
+    bool        b;
+    const char* s;  /* not owned */
+} idydb_filter_value;
+
+typedef struct {
+    idydb_column_row_sizing column;
+    unsigned char           type;  /* IDYDB_INTEGER/FLOAT/CHAR/BOOL/NULL */
+    idydb_filter_op         op;
+    idydb_filter_value      value;
+} idydb_filter_term;
+
+typedef struct {
+    const idydb_filter_term* terms; /* not owned */
+    size_t                   nterms;
+} idydb_filter;
+
+/* Returned metadata values (deep-copies for CHAR/VECTOR). */
+typedef struct {
+    unsigned char type; /* IDYDB_NULL/INTEGER/FLOAT/CHAR/BOOL/VECTOR */
+    union {
+        int   i;
+        float f;
+        bool  b;
+        char* s; /* malloc'd if type==IDYDB_CHAR */
+        struct { float* v; unsigned short dims; } vec; /* malloc'd if type==IDYDB_VECTOR */
+    } as;
+} idydb_value;
+
+/* Convenience free helpers for heap allocations returned by IdyDB APIs. */
+idydb_extern void idydb_free(void* p);
+idydb_extern void idydb_value_free(idydb_value* v);
+idydb_extern void idydb_values_free(idydb_value* values, size_t count);
+
 idydb_extern int idydb_knn_search_vector_column(idydb **handler,
                                                 idydb_column_row_sizing vector_column,
                                                 const float* query,
@@ -154,6 +204,17 @@ idydb_extern int idydb_knn_search_vector_column(idydb **handler,
                                                 idydb_similarity_metric metric,
                                                 idydb_knn_result* out_results);
 
+/* Filtered kNN: only rows passing `filter` are considered. */
+idydb_extern int idydb_knn_search_vector_column_filtered(idydb **handler,
+                                                        idydb_column_row_sizing vector_column,
+                                                        const float* query,
+                                                        unsigned short dims,
+                                                        unsigned short k,
+                                                        idydb_similarity_metric metric,
+                                                        const idydb_filter* filter,
+                                                        idydb_knn_result* out_results);
+
+ 
 idydb_extern idydb_column_row_sizing idydb_column_next_row(idydb **handler, idydb_column_row_sizing column);
 
 idydb_extern int idydb_rag_upsert_text(idydb **handler,
@@ -184,6 +245,36 @@ idydb_extern int idydb_rag_query_topk(idydb **handler,
                                       idydb_knn_result* out_results,
                                       char** out_texts);
 
+idydb_extern int idydb_rag_query_topk_filtered(idydb **handler,
+                                              idydb_column_row_sizing text_column,
+                                              idydb_column_row_sizing vector_column,
+                                              const float* query_embedding,
+                                              unsigned short dims,
+                                              unsigned short k,
+                                              idydb_similarity_metric metric,
+                                              const idydb_filter* filter,
+                                              idydb_knn_result* out_results,
+                                              char** out_texts);
+
+/* TopK with structured metadata:
+ * out_meta is a flat array of size (k * meta_columns_count).
+ * Indexing: out_meta[i*meta_columns_count + j] corresponds to result i, meta column j.
+ * Caller frees CHAR/VECTOR in out_meta via idydb_values_free(out_meta, k*meta_columns_count).
+ */
+idydb_extern int idydb_rag_query_topk_with_metadata(idydb **handler,
+                                                   idydb_column_row_sizing text_column,
+                                                   idydb_column_row_sizing vector_column,
+                                                   const float* query_embedding,
+                                                   unsigned short dims,
+                                                   unsigned short k,
+                                                   idydb_similarity_metric metric,
+                                                   const idydb_filter* filter,
+                                                   const idydb_column_row_sizing* meta_columns,
+                                                   size_t meta_columns_count,
+                                                   idydb_knn_result* out_results,
+                                                   char** out_texts,
+                                                   idydb_value* out_meta);
+
 idydb_extern int idydb_rag_query_context(idydb **handler,
                                          idydb_column_row_sizing text_column,
                                          idydb_column_row_sizing vector_column,
@@ -194,11 +285,20 @@ idydb_extern int idydb_rag_query_context(idydb **handler,
                                          size_t max_chars,
                                          char** out_context);
 
+idydb_extern int idydb_rag_query_context_filtered(idydb **handler,
+                                                 idydb_column_row_sizing text_column,
+                                                 idydb_column_row_sizing vector_column,
+                                                 const float* query_embedding,
+                                                 unsigned short dims,
+                                                 unsigned short k,
+                                                 idydb_similarity_metric metric,
+                                                 const idydb_filter* filter,
+                                                 size_t max_chars,
+                                                 char** out_context);
+
 #undef idydb_extern
 
 #ifdef __cplusplus
-namespace cuwacunu {
-namespace camahjucunu {
 namespace db {
 
 using ::idydb;
@@ -232,6 +332,7 @@ using ::idydb_retrieve_vector;
 using ::idydb_similarity_metric;
 using ::idydb_knn_result;
 using ::idydb_knn_search_vector_column;
+using ::idydb_knn_search_vector_column_filtered;
 using ::idydb_column_next_row;
 
 using ::idydb_rag_upsert_text;
@@ -239,7 +340,19 @@ using ::idydb_embed_fn;
 using ::idydb_set_embedder;
 using ::idydb_rag_upsert_text_auto_embed;
 using ::idydb_rag_query_topk;
+using ::idydb_rag_query_topk_filtered;
+using ::idydb_rag_query_topk_with_metadata;
 using ::idydb_rag_query_context;
+using ::idydb_rag_query_context_filtered;
+
+using ::idydb_filter_op;
+using ::idydb_filter_value;
+using ::idydb_filter_term;
+using ::idydb_filter;
+using ::idydb_value;
+using ::idydb_free;
+using ::idydb_value_free;
+using ::idydb_values_free;
 
 // C++ overload conveniences (header-only)
 static inline int idydb_insert(idydb **handler, idydb_column_row_sizing c, idydb_column_row_sizing r, int v)
@@ -258,8 +371,6 @@ static inline int idydb_insert(idydb **handler, idydb_column_row_sizing c, idydb
 { return ::idydb_insert_bool(handler, c, r, v); }
 
 } // namespace db
-} // namespace camahjucunu
-} // namespace cuwacunu
 #endif
 
 #endif /* idydb_h */

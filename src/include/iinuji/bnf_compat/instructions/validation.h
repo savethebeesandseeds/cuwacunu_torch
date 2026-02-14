@@ -114,7 +114,8 @@ inline void validate_figure_fields(const cuwacunu::camahjucunu::iinuji_figure_t&
     return;
   }
 
-  if (F.kind_raw != "_label" && F.kind_raw != "_horizontal_plot" && F.kind_raw != "_input_box" && F.kind_raw != "_buffer")
+  if (F.kind_raw != "_label" && F.kind_raw != "_horizontal_plot" && F.kind_raw != "_input_box" &&
+      F.kind_raw != "_buffer" && F.kind_raw != "_text_editor")
     d.err(where + ": unsupported FIGURE kind_raw='" + F.kind_raw + "'");
 
   if (!F.coords.set) d.err(where + ": missing __coords");
@@ -132,9 +133,20 @@ inline void validate_figure_fields(const cuwacunu::camahjucunu::iinuji_figure_t&
   if (!is_valid_color_token(F.back_color))
     d.err(where + ": invalid __back_color '" + F.back_color + "'");
 
-  if (F.kind_raw == "_label" || F.kind_raw == "_input_box") {
+  if (F.kind_raw == "_label") {
     if (!F.has_value || is_unset_token(F.value))
-      d.err(where + ": " + F.kind_raw + " requires __value");
+      d.err(where + ": _label requires __value (non-empty)");
+  }
+
+  if (F.kind_raw == "_input_box") {
+    // IMPORTANT: allow empty string (""), but still require the field to exist.
+    if (!F.has_value)
+      d.err(where + ": _input_box requires __value (can be empty string)");
+  }
+
+  if (F.kind_raw == "_text_editor") {
+    if (!F.has_value)
+      d.err(where + ": _text_editor requires __value (can be empty string)");
   }
 
   if (F.kind_raw == "_horizontal_plot") {
@@ -340,7 +352,7 @@ inline void cross_validate_triggers(const cuwacunu::camahjucunu::iinuji_screen_t
         event_to_figkinds[trig].insert(F.kind_raw);
 
         if (vopt.enforce_event_kind_by_figure) {
-          if (E.kind_raw != want_ev_kind) {
+          if (F.kind_raw != "_text_editor" && E.kind_raw != want_ev_kind) {
             d.err("screen[" + std::to_string(si) + "]: EVENT '" + trig +
                   "' kind mismatch for FIGURE '" + F.kind_raw +
                   "' (needs " + want_ev_kind + ", got " + E.kind_raw + ")");
@@ -385,6 +397,7 @@ inline void validate_same_binding_per_figure(const cuwacunu::camahjucunu::iinuji
     for (size_t fi=0; fi<P.figures.size(); ++fi) {
       const auto& F = P.figures[fi];
       if (F.kind_raw == "_buffer") continue; // buffer can be populated from multiple sources
+      if (F.kind_raw == "_text_editor") continue;
       if (is_unset_token(F.kind_raw)) continue;
 
       const bind_kind_e want_bind = required_bind_kind_for_figure(F.kind_raw);

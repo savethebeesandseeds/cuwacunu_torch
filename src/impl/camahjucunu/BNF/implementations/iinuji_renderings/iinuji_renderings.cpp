@@ -1058,8 +1058,10 @@ void iinuji_renderings_decoder_t::visit(const TerminalNode* node,
       for (char c : s) {
         if (c == ':') {
           st->form_phase = State::FormPhase::Path;
-        } else if (c == '.') {
-          // ignore '.'; we add it when storing (and parser is robust to sys.stdout vs sysstdout)
+        } else if (c == '.' &&
+           st->form_phase == State::FormPhase::Path &&
+           st->form_path.empty()) {
+          // Ignore only the leading '.' in ":."
         } else if (c == ',') {
           flush_form_binding_if_complete(*st);
         } else if (is_ident_char(c)) {

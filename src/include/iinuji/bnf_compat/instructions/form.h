@@ -116,12 +116,14 @@ using resolved_event_map_t = std::unordered_map<std::string, resolved_event_t>;
 inline bind_kind_e required_bind_kind_for_figure(const std::string& fig_kind_raw) {
   if (fig_kind_raw == "_horizontal_plot") return bind_kind_e::Vec;
   if (fig_kind_raw == "_buffer")          return bind_kind_e::Str;
+  if (fig_kind_raw == "_text_editor")     return bind_kind_e::Str;
   return bind_kind_e::Str; // label + input_box
 }
 
 inline std::string required_event_kind_for_figure(const std::string& fig_kind_raw) {
   if (fig_kind_raw == "_input_box") return "_action";
   if (fig_kind_raw == "_buffer")    return "_update";
+  if (fig_kind_raw == "_text_editor") return "_update";
   return "_update";
 }
 

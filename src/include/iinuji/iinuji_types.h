@@ -77,6 +77,42 @@ struct textBox_data_t : public iinuji_data_t {
   : content(std::move(s)), wrap(w), align(a) {}
 };
 
+/* -------------------- Text editor box -------------------- */
+struct editorBox_data_t : public iinuji_data_t {
+  std::string path;
+  std::vector<std::string> lines;
+  bool dirty{false};
+  bool read_only{false};
+  bool close_armed{false};   // Ctrl+Q twice to discard if dirty
+
+  // Cursor + viewport (0-based)
+  int cursor_line{0};
+  int cursor_col{0};
+  int preferred_col{-1};     // for vertical motion
+  int top_line{0};
+  int left_col{0};
+
+  // Render caches (best-effort; runtime may use)
+  int last_body_h{0};
+  int last_lineno_w{0};
+  int last_text_w{0};
+
+  int tab_width{2};
+  std::string status;
+
+  explicit editorBox_data_t(std::string p = "") : path(std::move(p)) {
+    lines.emplace_back(); // always at least one line
+  }
+
+  void ensure_nonempty() {
+    if (lines.empty()) lines.emplace_back();
+    cursor_line = std::clamp(cursor_line, 0, (int)lines.size() - 1);
+    cursor_col  = std::clamp(cursor_col,  0, (int)lines[(size_t)cursor_line].size());
+    if (top_line < 0) top_line = 0;
+    if (left_col < 0) left_col = 0;
+  }
+};
+
 /* -------------------- Buffer box -------------------- */
 enum class buffer_dir_t { UpDown, DownUp };
 
@@ -114,6 +150,10 @@ struct bufferBox_data_t : public iinuji_data_t {
   // If user scrolls up, stop following until scroll returns to 0.
   bool follow_tail{true};
 
+  // Best-effort width hint (in columns) from last render. Used to keep
+  // the view stable while wrapped when new lines arrive.
+  int wrap_width_last{0};
+
   bufferBox_data_t(std::size_t cap=1000, buffer_dir_t d=buffer_dir_t::UpDown)
   : capacity(std::max<std::size_t>(1, cap)), dir(d) {}
 
@@ -133,6 +173,15 @@ struct bufferBox_data_t : public iinuji_data_t {
     // This prevents the visible window from shifting while reading old logs.
     const bool was_at_tail = (scroll == 0);
 
+    auto estimate_added_rows = [&](std::size_t text_len, std::size_t prefix_len)->int {
+      const int W = wrap_width_last;
+      if (W <= 0) return 1;
+      int avail = W - (int)prefix_len;
+      if (avail <= 0) avail = 1;
+      if (text_len == 0) return 1;
+      return 1 + (int)((text_len - 1) / (std::size_t)avail);
+    };
+
 
     buffer_line_t L;
     L.text  = std::move(s);
@@ -148,18 +197,17 @@ struct bufferBox_data_t : public iinuji_data_t {
     if (!was_at_tail) {
       // user is reading history → keep the same content visible
       follow_tail = false;
-      scroll += 1;
+      std::size_t prefix_len = 0;
+      if (!L.label.empty()) prefix_len = L.label.size() + 3; // "[" + label + "] "
+      scroll += estimate_added_rows(L.text.size(), prefix_len);
     } else {
       // user is at tail → follow newest
       follow_tail = true;
       scroll = 0;
     }
 
-    // Safety clamp: scroll should never exceed number of available lines
-    // (render will clamp further based on viewport height).
+    // Render clamps based on viewport + wrap width.
     if (scroll < 0) scroll = 0;
-    int n = (int)lines.size();
-    if (scroll > n) scroll = n;
   }
 
   void clear() {
@@ -250,6 +298,9 @@ struct iinuji_object_t : public std::enable_shared_from_this<iinuji_object_t> {
   std::string id;
   bool visible{true};
   int z_index{0};
+  // Focus / tab navigation (runtime)
+  bool focusable{false};  // figures set this true
+  bool focused{false};    // exactly one per screen (by convention)
 
   iinuji_layout_t layout{};
   iinuji_style_t  style{};
