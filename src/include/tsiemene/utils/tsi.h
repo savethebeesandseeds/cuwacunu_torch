@@ -6,8 +6,8 @@
 #include <span>
 #include <string_view>
 
-#include "tsiemene/ports.h"
-#include "tsiemene/waves.h"
+#include "tsiemene/utils/ports.h"
+#include "tsiemene/utils/waves.h"
 
 namespace tsiemene {
 

@@ -75,14 +75,8 @@ int main()
 
   std::string INSTRUMENT = "BTCUSDT";
 
-  auto dl = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>(
-      INSTRUMENT,
-      cuwacunu::camahjucunu::BNF::observationPipeline()
-          .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),
-      cuwacunu::piaabo::dconfig::config_space_t::get<bool>("DATA_LOADER", "dataloader_force_binarization"),
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>("DATA_LOADER", "dataloader_batch_size"),
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>("DATA_LOADER", "dataloader_workers")
-  );
+  auto dl = cuwacunu::camahjucunu::data::make_obs_pipeline_mm_dataloader
+    <Datasample_t, Sampler_t>(std::string_view instrument);
 
   /* -------------------------------------------------- */
   /*  3) Instantiate two identical models               */

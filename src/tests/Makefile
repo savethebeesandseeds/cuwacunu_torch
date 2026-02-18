@@ -46,6 +46,10 @@ $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji))
 IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji/torch_include)))
 
+# ------------------------------ tsiemene--------------------------------
+TSIEMENE := tsi_basic
+$(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
+
 # --------------------------- camahjucunu/https -------------------------------
 HTTPS := websocket
 $(foreach t,$(HTTPS),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/https)))

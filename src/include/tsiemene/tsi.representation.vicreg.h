@@ -7,7 +7,7 @@
 
 #include <torch/torch.h>
 
-#include "tsiemene/tsi.h"
+#include "tsiemene/utils/tsi.h"
 
 // Your existing VICReg implementation:
 #include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d.h"

@@ -50,13 +50,8 @@ int main() {
     using SeqSampler = torch::data::samplers::SequentialSampler;
 
     TICK(create_dataloader_);
-    auto training_data_loader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, DataSample_t, Datatype_t, SeqSampler>(
-        INSTRUMENT,                                                                                                  /* instrument */
-        cuwacunu::camahjucunu::observation_pipeline_t::inst,                                                         /* obs_inst */ 
-        cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
-        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
-        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
-    );
+    auto training_data_loader = cuwacunu::camahjucunu::data::make_obs_pipeline_mm_dataloader
+        <Datasample_t, Sampler_t>(std::string_view instrument);
     PRINT_TOCK_ms(create_dataloader_);
 
     // -----------------------------------------------------

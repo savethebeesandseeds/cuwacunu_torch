@@ -1,0 +1,587 @@
+{
+  "version": 2,
+  "id": "reason_1771380222037_adb4922a",
+  "createdAtMs": 1771380222037,
+  "cfg": {
+    "schemaVersion": 6,
+    "logging": {
+      "level": "debug"
+    },
+    "openai": {
+      "embeddingModel": "text-embedding-3-small",
+      "modelLight": "gpt-5.1-codex-max",
+      "modelHeavy": "gpt-5.1-codex-max",
+      "modelSuperHeavy": "gpt-5.2"
+    },
+    "rag": {
+      "k": 6,
+      "maxChars": 12000,
+      "metric": "cosine"
+    },
+    "indexing": {
+      "chunkChars": 6000,
+      "maxFileBytes": 500000,
+      "excludeGlobs": [],
+      "chunking": {
+        "default": {
+          "method": "chars",
+          "chunkChars": 6000
+        },
+        "byExtension": {}
+      }
+    },
+    "contextDump": {
+      "dirName": "context_dumps",
+      "latestFileName": "indexed_context_dump.txt",
+      "keepBackups": 5,
+      "includeHidden": false,
+      "noFences": false,
+      "listOnly": false,
+      "maxFileBytes": 0,
+      "maxTotalBytes": 0,
+      "openAfterDump": true
+    },
+    "filesView": {
+      "useVscodeExcludes": true,
+      "excludeGlobs": [
+        "**/data/**",
+        "**/external/**",
+        "**/.git/**",
+        "**/.hg/**",
+        "**/.svn/**",
+        "**/.idea/**",
+        "**/.vscode/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/out/**",
+        "**/.next/**",
+        "**/.nuxt/**",
+        "**/.cache/**",
+        "**/.turbo/**",
+        "**/.vercel/**",
+        "**/coverage/**",
+        "**/target/**",
+        "**/.venv/**",
+        "**/venv/**",
+        "**/__pycache__/**",
+        "**/.DS_Store",
+        "**/Thumbs.db"
+      ]
+    },
+    "editPlanner": {
+      "trace": {
+        "enabled": true
+      },
+      "parallel": {
+        "unitChanges": 6,
+        "files": 4
+      },
+      "rag": {
+        "enabled": true,
+        "k": 12,
+        "metric": "cosine"
+      },
+      "segmentation": {
+        "newlineSnap": true,
+        "newlineSnapWindow": 800,
+        "newlinePreferForward": true,
+        "minFragmentChars": 900,
+        "maxFragmentChars": 12000,
+        "contextChars": 900
+      },
+      "targeting": {
+        "useRagHits": true,
+        "maxCandidateFiles": 60,
+        "padBeforeChars": 600,
+        "padAfterChars": 300,
+        "mergeGapChars": 200,
+        "maxWindowsPerUnit": 1
+      },
+      "attempts": {
+        "maxRounds": 3,
+        "validateModel": "light"
+      },
+      "guards": {
+        "discardWhitespaceOnlyChanges": true,
+        "preserveLineEndings": true,
+        "maxPatchCoverageWarn": 0.75,
+        "maxPatchCoverageError": 1
+      },
+      "validation": {
+        "final": "heavy"
+      }
+    }
+  },
+  "steps": [
+    {
+      "name": "phaseA_change_description",
+      "startedAtMs": 1771380222146,
+      "endedAtMs": 1771380232086,
+      "dtMs": 9940,
+      "data": {
+        "status": "done",
+        "mode": "plan",
+        "model": "superHeavy",
+        "input": "...REQUEST BEGINS...\nREQUEST CLARIFICATIONS:\n \"PROMPT\": string, the user given request.\n \"CONTEXT\": comma separated list of files, followed by their contents.\n\nPROMPT:\nadd the whole file path at the top of each file in a comment on the form of /* ... */\n\nCONTEXT:\n\"files_list\": [\"src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\", \"src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\", \"src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\", \"src/include/camahjucunu/BNF/implementations/training_components/training_components.h\"]\n\n__FILES_CONTENTS__\n...REQUEST ENDS...",
+        "instructions": "...INSTRUCTION BEGINS...\nROLE: Precise change specification module.\nGOAL: Convert the REQUEST into a specific, implementation-ready change description for downstream automation.\n\nSCHEMA (HARD): Output ONLY this shape, nothing else (no markdown/code fences; no text outside tags):\n<plan>...</plan>\n<notes>...</notes>\n\nOUTPUT CLARIFICATIONS:\n- Write the full change specification inside <plan> (later stages rely on it).\n- Use <notes> (optional) if empty just <notes></notes>.\n\nGUIDELINES:\n- SCOPE (HARD): Only describe changes within the provided AVAILABLE FILES list.\n- Use a per-file structure. Always name the file (relative path) for each change.\n- Be explicit and concrete. Avoid abstract advice.\n- For each change, include copy/paste-ready NEW text when applicable (exact code to insert/replace).\n- If you reference existing code, quote short identifying snippets (so later steps can anchor).\n- Cover every required change even if repeated across files/locations.\n\nRULES:\n- Specify every change as unified diff hunks per file (---/+++ headers, @@ hunks, with +/- lines).\n...INSTRUCTION ENDS...",
+        "output": {
+          "plan": "--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"",
+          "notes": ""
+        }
+      }
+    },
+    {
+      "name": "phaseB_unit_repair_ok",
+      "startedAtMs": 1771380240165,
+      "endedAtMs": 1771380240165,
+      "dtMs": 0,
+      "data": {
+        "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h",
+        "idx": 2,
+        "model": "light",
+        "baselineInfo": "hash=007708ff37, lines=314, lineEnding=lf, truncated=false",
+        "input": "...REQUEST BEGINS...\nREQUEST CLARIFICATIONS:\n- Correct the DIFF so it applies cleanly to the baseline file.\n- The baseline file is authoritative. Do not guess context.\n\nTARGET FILE: src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\nBASELINE INFO: hash=007708ff37, lines=314, lineEnding=lf, truncated=false\nREPAIR ATTEMPT: 1\n\nINTENDED UNIT RATIONALE (from compiler):\nAlign file header comment with full path.\n\nPHASE A PLAN (for intent, may include other files):\n--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"\n\nCURRENT DIFF ATTEMPT:\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n\nAPPLY ERROR:\n#1 ERROR: Bad hunk header: @@\ncode=bad_hunk_header\n\n#2 ERROR: No @@ hunks found in diff (not a unified diff, or missing hunks).\ncode=no_hunks\n\nBASELINE FILE CONTENT (LINE-NUMBERED; prefix is NOT part of file):\n0001|/* training_components_utils.h */\n0002|#pragma once\n0003|\n0004|#include <algorithm>\n0005|#include <cctype>\n0006|#include <cerrno>\n0007|#include <cmath>\n0008|#include <cstdlib>\n0009|#include <sstream>\n0010|#include <stdexcept>\n0011|#include <string>\n0012|#include <unordered_map>\n0013|#include <unordered_set>\n0014|#include <utility>\n0015|#include <vector>\n0016|\n0017|#define ROW_ID_COLUMN_HEADER \"row_id\"   /* every table should have this column */\n0018|\n0019|namespace cuwacunu {\n0020|namespace camahjucunu {\n0021|\n0022|/* ---------- Context helpers for rich error messages ---------- */\n0023|\n0024|inline std::string row_context(const std::unordered_map<std::string,std::string>& row) {\n0025|  std::ostringstream oss;\n0026|  auto rid = row.find(ROW_ID_COLUMN_HEADER);\n0027|  if (rid != row.end()) oss << \"[row_id=\" << rid->second << \"]\";\n0028|  std::vector<std::string> types;\n0029|  types.reserve(row.size());\n0030|  for (const auto& kv : row) {\n0031|    const auto& k = kv.first;\n0032|    if (k.size() >= 5 && k.rfind(\"_type\") == k.size()-5) {\n0033|      types.emplace_back(k + \"=\" + kv.second);\n0034|    }\n0035|  }\n0036|  if (!types.empty()) {\n0037|    oss << \" {\";\n0038|    for (size_t i=0;i<types.size();++i) { if (i) oss << \", \"; oss << types[i]; }\n0039|    oss << \"}\";\n0040|  }\n0041|  if (oss.tellp() > 0) oss << \" \";\n0042|  return oss.str();\n0043|}\n0044|\n0045|#define RAISE_FATAL_ROW(ROW, FMT, ...) \\\n0046|  do { \\\n0047|    const std::string __ctx = ::cuwacunu::camahjucunu::row_context(ROW); \\\n0048|    RAISE_FATAL(\"%s\" FMT, __ctx.c_str(), ##__VA_ARGS__); \\\n0049|  } while (0)\n0050|\n0051|/* --------------------------- String helpers --------------------------- */\n0052|\n0053|inline std::string trim_copy(std::string s) {\n0054|  auto not_space = [](unsigned char ch){ return !std::isspace(ch); };\n0055|  s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));\n0056|  s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());\n0057|  return s;\n0058|}\n0059|\n0060|inline bool ends_with(const std::string& s, const std::string& suf) {\n0061|  return s.size() >= suf.size() &&\n0062|         std::equal(s.end()-suf.size(), s.end(), suf.begin(), suf.end());\n0063|}\n0064|\n0065|/* ------------------------------ Columns ------------------------------- */\n0066|\n0067|inline const std::string&\n0068|require_column(const std::unordered_map<std::string,std::string>& row,\n0069|               const std::string& key) {\n0070|  auto it = row.find(key);\n0071|  if (it == row.end())\n0072|    RAISE_FATAL_ROW(row, \"Missing required column: \\\"%s\\\"\", key.c_str());\n0073|  const auto& v = it->second;\n0074|  if (v.empty() || v == \"-\")\n0075|    RAISE_FATAL_ROW(row, \"Empty/invalid value for column \\\"%s\\\" (got: \\\"%s\\\")\", key.c_str(), v.c_str());\n0076|  return it->second;\n0077|}\n0078|\n0079|/* ----------------------------- Options --------------------------------\n0080| * Parse options of the form:  key=value, key2=\"val,with,commas\", key3='x'\n0081| * - Handles quotes and commas inside quotes.\n0082| * - Last occurrence of a key wins.\n0083| */\n0084|inline std::unordered_map<std::string,std::string>\n0085|parse_options_kvlist(const std::string& s) {\n0086|  std::unordered_map<std::string,std::string> kv;\n0087|  if (s.empty() || s == \"-\") return kv;\n0088|\n0089|  std::string cur; cur.reserve(s.size());\n0090|  std::vector<std::string> items;\n0091|  char q = 0;  // current quote (' or \"), 0 if not in quotes\n0092|\n0093|  for (size_t i = 0; i < s.size(); ++i) {\n0094|    char c = s[i];\n0095|    if (q == 0 && (c == '\\'' || c == '\"')) {\n0096|      q = c; cur.push_back(c);\n0097|    } else if (q != 0 && c == q) {\n0098|      q = 0; cur.push_back(c);\n0099|    } else if (q == 0 && c == ',') {\n0100|      items.push_back(trim_copy(cur));\n0101|      cur.clear();\n0102|    } else {\n0103|      cur.push_back(c);\n0104|    }\n0105|  }\n0106|  if (!cur.empty()) items.push_back(trim_copy(cur));\n0107|\n0108|  for (auto& item : items) {\n0109|    if (item.empty()) continue;\n0110|    auto pos = item.find('=');\n0111|    if (pos == std::string::npos)\n0112|      RAISE_FATAL(\"Invalid option entry (missing '='): \\\"%s\\\"\", item.c_str());\n0113|\n0114|    auto key = trim_copy(item.substr(0, pos));\n0115|    auto val = trim_copy(item.substr(pos + 1));\n0116|\n0117|    if (key.empty())\n0118|      RAISE_FATAL(\"Invalid option key (empty) in entry: \\\"%s\\\"\", item.c_str());\n0119|\n0120|    // strip matching quotes around the whole value\n0121|    if (val.size() >= 2 &&\n0122|        ((val.front()=='\"'  && val.back()=='\"') ||\n0123|         (val.front()=='\\'' && val.back()=='\\''))) {\n0124|      val = val.substr(1, val.size()-2);\n0125|    }\n0126|\n0127|    kv[key] = std::move(val); // last occurrence wins\n0128|  }\n0129|  return kv;\n0130|}\n0131|\n0132|/* Require a specific option by key; returns the raw string value. */\n0133|inline bool has_option(\n0134|    const std::unordered_map<std::string,std::string>& row,\n0135|    const std::string& key) {\n0136|  const auto& opt_str = require_column(row, \"options\");\n0137|  auto kv = parse_options_kvlist(opt_str);\n0138|  auto it = kv.find(key);\n0139|  if (it == kv.end())\n0140|    return false;\n0141|  if (it->second.empty() || it->second == \"-\")\n0142|    return false;\n0143|  return true;\n0144|}\n0145|\n0146|inline std::string require_option(\n0147|    const std::unordered_map<std::string,std::string>& row,\n0148|    const std::string& key) {\n0149|  const auto& opt_str = require_column(row, \"options\");\n0150|  auto kv = parse_options_kvlist(opt_str);\n0151|  auto it = kv.find(key);\n0152|  if (it == kv.end())\n0153|    RAISE_FATAL_ROW(row, \"Missing required option: \\\"%s\\\". Options seen: \\\"%s\\\"\", key.c_str(), opt_str.c_str());\n0154|  if (it->second.empty() || it->second == \"-\")\n0155|    RAISE_FATAL_ROW(row, \"Empty/invalid value for option \\\"%s\\\" (got: \\\"%s\\\")\", key.c_str(), it->second.c_str());\n0156|  return it->second;\n0157|}\n0158|\n0159|/* Require one of several aliases. Example: require_any_option(row, {\"epsilon\",\"eps\"}) */\n0160|inline std::string require_any_option(\n0161|    const std::unordered_map<std::string,std::string>& row,\n0162|    std::initializer_list<const char*> aliases) {\n0163|  const auto& opt_str = require_column(row, \"options\");\n0164|  auto kv = parse_options_kvlist(opt_str);\n0165|\n0166|  for (auto* a : aliases) {\n0167|    auto it = kv.find(a);\n0168|    if (it != kv.end() && !it->second.empty() && it->second != \"-\")\n0169|      return it->second;\n0170|  }\n0171|\n0172|  std::ostringstream want;\n0173|  bool first = true;\n0174|  for (auto* a : aliases) { if (!first) want << \", \"; first = false; want << a; }\n0175|\n0176|  RAISE_FATAL_ROW(row, \"Missing required option (any of: %s). Options seen: \\\"%s\\\"\",\n0177|                  want.str().c_str(), opt_str.c_str());\n0178|}\n0179|\n0180|/* Validate that the set of options matches exactly the expected schema.\n0181| * `expected` entries may be plain keys (\"gamma\") or alias groups (\"epsilon|eps\").\n0182| */\n0183|inline void validate_options_exact(\n0184|    const std::unordered_map<std::string,std::string>& row,\n0185|    const std::vector<std::string>& expected)\n0186|{\n0187|  const auto& opt_str = require_column(row, \"options\");\n0188|  auto kv = parse_options_kvlist(opt_str);\n0189|\n0190|  auto split_aliases = [](const std::string& s) {\n0191|    std::vector<std::string> out; std::string cur;\n0192|    for (char c : s) {\n0193|      if (c == '|') { auto t = trim_copy(cur); if (!t.empty()) out.push_back(std::move(t)); cur.clear(); }\n0194|      else { cur.push_back(c); }\n0195|    }\n0196|    auto t = trim_copy(cur); if (!t.empty()) out.push_back(std::move(t));\n0197|    return out;\n0198|  };\n0199|\n0200|  std::unordered_set<std::string> allowed;\n0201|  allowed.reserve(expected.size()*2);\n0202|\n0203|  std::vector<std::string> missing_groups;\n0204|  for (const auto& group : expected) {\n0205|    auto aliases = split_aliases(group);\n0206|    for (const auto& a : aliases) allowed.insert(a);\n0207|\n0208|    bool found = false;\n0209|    for (const auto& a : aliases) {\n0210|      auto it = kv.find(a);\n0211|      if (it != kv.end() && !it->second.empty() && it->second != \"-\") { found = true; break; }\n0212|    }\n0213|    if (!found) missing_groups.push_back(group);\n0214|  }\n0215|\n0216|  std::vector<std::string> extras;\n0217|  for (const auto& p : kv) if (!allowed.count(p.first)) extras.push_back(p.first);\n0218|\n0219|  if (!missing_groups.empty() || !extras.empty()) {\n0220|    std::ostringstream miss, extra;\n0221|    for (size_t i=0;i<missing_groups.size();++i){ if(i) miss<<\", \"; miss<<missing_groups[i]; }\n0222|    for (size_t i=0;i<extras.size();++i){ if(i) extra<<\", \"; extra<<extras[i]; }\n0223|    RAISE_FATAL_ROW(row, \"Options mismatch. Missing: [%s]. Unexpected: [%s]. Options seen: \\\"%s\\\"\",\n0224|                    miss.str().c_str(), extra.str().c_str(), opt_str.c_str());\n0225|  }\n0226|}\n0227|\n0228|/* Convenience overload */\n0229|inline void validate_options_exact(\n0230|    const std::unordered_map<std::string,std::string>& row,\n0231|    std::initializer_list<const char*> expected)\n0232|{\n0233|  std::vector<std::string> exp; exp.reserve(expected.size());\n0234|  for (auto* s : expected) exp.emplace_back(s);\n0235|  validate_options_exact(row, exp);\n0236|}\n0237|\n0238|/* Require that a row's column names match `expected` EXACTLY. */\n0239|inline void require_columns_exact(\n0240|    const std::unordered_map<std::string,std::string>& row,\n0241|    const std::vector<std::string>& expected,\n0242|    bool enforce_nonempty = true)\n0243|{\n0244|  std::unordered_set<std::string> exp(expected.begin(), expected.end());\n0245|\n0246|  std::vector<std::string> missing, extras;\n0247|  for (const auto& k : expected) if (!row.count(k)) missing.push_back(k);\n0248|  for (const auto& kv : row) if (!exp.count(kv.first)) extras.push_back(kv.first);\n0249|\n0250|  if (!missing.empty() || !extras.empty()) {\n0251|    std::ostringstream miss, extra;\n0252|    for (size_t i=0;i<missing.size();++i){ if(i) miss<<\", \"; miss<<missing[i]; }\n0253|    for (size_t i=0;i<extras.size();++i){ if(i) extra<<\", \"; extra<<extras[i]; }\n0254|    RAISE_FATAL_ROW(row, \"Column set mismatch. Missing: [%s]. Unexpected: [%s].\",\n0255|                    miss.str().c_str(), extra.str().c_str());\n0256|  }\n0257|\n0258|  if (enforce_nonempty) {\n0259|    for (const auto& k : expected) (void)require_column(row, k);\n0260|  }\n0261|}\n0262|\n0263|/* Convenience overload */\n0264|inline void require_columns_exact(\n0265|    const std::unordered_map<std::string,std::string>& row,\n0266|    std::initializer_list<const char*> expected,\n0267|    bool enforce_nonempty = true)\n0268|{\n0269|  std::vector<std::string> exp; exp.reserve(expected.size());\n0270|  for (auto* s : expected) exp.emplace_back(s);\n0271|  require_columns_exact(row, exp, enforce_nonempty);\n0272|}\n0273|\n0274|/* ----------------------------- Casting -------------------------------- */\n0275|\n0276|inline double to_double(const std::string& s) {\n0277|  errno = 0;\n0278|  char* end=nullptr; const char* c=s.c_str();\n0279|  double v = std::strtod(c, &end);\n0280|  if (end==c || *end!='\\0' || errno==ERANGE)\n0281|    RAISE_FATAL(\"Invalid double: \\\"%s\\\"\", s.c_str());\n0282|  if (!std::isfinite(v))\n0283|    RAISE_FATAL(\"Invalid double (non-finite): \\\"%s\\\"\", s.c_str());\n0284|  return v;\n0285|}\n0286|inline long to_long(const std::string& s) {\n0287|  errno = 0;\n0288|  char* end=nullptr; const char* c=s.c_str();\n0289|  long v = std::strtol(c, &end, 10);\n0290|  if (end==c || *end!='\\0' || errno==ERANGE)\n0291|    RAISE_FATAL(\"Invalid long: \\\"%s\\\"\", s.c_str());\n0292|  return v;\n0293|}\n0294|inline bool to_bool(const std::string& s) {\n0295|  if (s==\"true\"||s==\"True\"||s==\"TRUE\"||s==\"1\")  return true;\n0296|  if (s==\"false\"||s==\"False\"||s==\"FALSE\"||s==\"0\") return false;\n0297|  RAISE_FATAL(\"Invalid bool: \\\"%s\\\" (expected true/false/1/0)\", s.c_str());\n0298|}\n0299|inline std::vector<long> to_long_list_csv(const std::string& s) {\n0300|  std::vector<long> out;\n0301|  std::stringstream ss(s);\n0302|  std::string tok;\n0303|  while (std::getline(ss, tok, ',')) {\n0304|    tok = trim_copy(tok);\n0305|    if (!tok.empty()) out.push_back(to_long(tok));\n0306|  }\n0307|  if (out.empty())\n0308|    RAISE_FATAL(\"Invalid long list CSV: \\\"%s\\\"\", s.c_str());\n0309|  return out;\n0310|}\n0311|\n0312|} /* namespace camahjucunu */\n0313|} /* namespace cuwacunu */\n0314|\n\n...REQUEST ENDS...",
+        "output": {
+          "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h",
+          "rationale": "Added proper unified diff headers and a valid hunk replacing the header comment with the full path to align with the intended change.",
+          "diffChars": 360
+        }
+      }
+    },
+    {
+      "name": "phaseB_unit_repair_ok",
+      "startedAtMs": 1771380243881,
+      "endedAtMs": 1771380243881,
+      "dtMs": 0,
+      "data": {
+        "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components.h",
+        "idx": 3,
+        "model": "light",
+        "baselineInfo": "hash=005d6ec8bf, lines=154, lineEnding=lf, truncated=false",
+        "input": "...REQUEST BEGINS...\nREQUEST CLARIFICATIONS:\n- Correct the DIFF so it applies cleanly to the baseline file.\n- The baseline file is authoritative. Do not guess context.\n\nTARGET FILE: src/include/camahjucunu/BNF/implementations/training_components/training_components.h\nBASELINE INFO: hash=005d6ec8bf, lines=154, lineEnding=lf, truncated=false\nREPAIR ATTEMPT: 2\n\nINTENDED UNIT RATIONALE (from compiler):\nReplace the leading header comment with the full file path to align with intended naming; unified diff header and hunk provided for clean application.\n\nPHASE A PLAN (for intent, may include other files):\n--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"\n\nCURRENT DIFF ATTEMPT:\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n\n\nAPPLY ERROR:\n#1 ERROR: Bad hunk header: @@\ncode=bad_hunk_header\n\n#2 ERROR: No @@ hunks found in diff (not a unified diff, or missing hunks).\ncode=no_hunks\n\nBASELINE FILE CONTENT (LINE-NUMBERED; prefix is NOT part of file):\n0001|/* training_components.h */\n0002|#pragma once\n0003|#include <vector>\n0004|#include <deque>\n0005|#include <sstream>\n0006|#include <iomanip>\n0007|#include <unordered_map>\n0008|\n0009|#include \"piaabo/dutils.h\"\n0010|#include \"piaabo/dfiles.h\"\n0011|#include \"piaabo/dconfig.h\"\n0012|#include \"camahjucunu/BNF/BNF_AST.h\"\n0013|#include \"camahjucunu/BNF/BNF_visitor.h\"\n0014|#include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n0015|#include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n0016|#include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n0017|#include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n0018|#include \"camahjucunu/types/types_enums.h\"\n0019|\n0020|#include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"\n0021|\n0022|DEFINE_HASH(TRAINING_COMPONETS_HASH_instruction,        \"<instruction>\");\n0023|DEFINE_HASH(TRAINING_COMPONETS_HASH_table,              \"<table>\");\n0024|DEFINE_HASH(TRAINING_COMPONETS_HASH_comment,            \"<comment>\");\n0025|DEFINE_HASH(TRAINING_COMPONETS_HASH_table_header,       \"<table_header>\");\n0026|DEFINE_HASH(TRAINING_COMPONETS_HASH_table_top_line,     \"<table_top_line>\");\n0027|DEFINE_HASH(TRAINING_COMPONETS_HASH_header_line,        \"<header_line>\");\n0028|DEFINE_HASH(TRAINING_COMPONETS_HASH_table_divider_line, \"<table_divider_line>\");\n0029|DEFINE_HASH(TRAINING_COMPONETS_HASH_item_line,          \"<item_line>\");\n0030|DEFINE_HASH(TRAINING_COMPONETS_HASH_table_bottom_line,  \"<table_bottom_line>\");\n0031|DEFINE_HASH(TRAINING_COMPONETS_HASH_cell,               \"<cell>\");\n0032|DEFINE_HASH(TRAINING_COMPONETS_HASH_line_start,         \"<line_start>\");\n0033|DEFINE_HASH(TRAINING_COMPONETS_HASH_line_ending,        \"<line_ending>\");\n0034|DEFINE_HASH(TRAINING_COMPONETS_HASH_table_title,        \"<table_title>\");\n0035|DEFINE_HASH(TRAINING_COMPONETS_HASH_field,              \"<field>\");\n0036|DEFINE_HASH(TRAINING_COMPONETS_HASH_break_block,        \"<break_block>\");\n0037|DEFINE_HASH(TRAINING_COMPONETS_HASH_character,          \"<character>\");\n0038|DEFINE_HASH(TRAINING_COMPONETS_HASH_literal,            \"<literal>\");\n0039|DEFINE_HASH(TRAINING_COMPONETS_HASH_whitespace,         \"<whitespace>\");\n0040|DEFINE_HASH(TRAINING_COMPONETS_HASH_div,                \"<div>\");\n0041|DEFINE_HASH(TRAINING_COMPONETS_HASH_frame_char,         \"<frame_char>\");\n0042|DEFINE_HASH(TRAINING_COMPONETS_HASH_special,            \"<special>\");\n0043|DEFINE_HASH(TRAINING_COMPONETS_HASH_super_special,      \"<super_special>\");\n0044|DEFINE_HASH(TRAINING_COMPONETS_HASH_letter,             \"<letter>\");\n0045|DEFINE_HASH(TRAINING_COMPONETS_HASH_number,             \"<number>\");\n0046|DEFINE_HASH(TRAINING_COMPONETS_HASH_newline,            \"<newline>\");\n0047|DEFINE_HASH(TRAINING_COMPONETS_HASH_empty,              \"<empty>\");\n0048|\n0049|#undef TRAINING_COMPONETS_DEBUG          /* define to see verbose parsing output */\n0050|\n0051|namespace cuwacunu {\n0052|namespace camahjucunu {\n0053|\n0054|struct training_instruction_t {\n0055|  /* instruction file */\n0056|  std::string instruction_filepath;\n0057|  /* types */\n0058|  struct raw_element_t {\n0059|    uint64_t label;\n0060|    std::string value;\n0061|    raw_element_t(uint64_t lbl, const std::string& val) : label(lbl), value(val) {}\n0062|    std::string str() { \n0063|      std::string label_str;\n0064|      switch(label) {\n0065|        case TRAINING_COMPONETS_HASH_table_title: label_str = \"<table_title>\"; break;\n0066|        case TRAINING_COMPONETS_HASH_header_line: label_str = \"<header_line>\"; break;\n0067|        case TRAINING_COMPONETS_HASH_item_line: label_str = \"<item_line>\"; break;\n0068|        default: label_str = \"UNKNOWN!\"; break;\n0069|      }\n0070|      return cuwacunu::piaabo::string_format(\"raw_element_t: label=%s, value=%s\", label_str.c_str(), value.c_str());\n0071|    }\n0072|  };\n0073|  using row_t   = std::unordered_map<std::string, std::string>;\n0074|  using table_t = std::vector<row_t>;\n0075|  /* data */\n0076|  std::unordered_map<std::string, table_t> tables;\n0077|  std::deque<raw_element_t> raw;\n0078|  std::string *current_element_value;\n0079|  /* access methods */\n0080|  const table_t     retrive_table (const std::string& table_name) const;\n0081|  const row_t       retrive_row   (const table_t& table, std::size_t row_index) const;\n0082|  const row_t       retrive_row   (const std::string& table_name, std::size_t row_index) const;\n0083|  const row_t       retrive_row   (const table_t& table, const std::string& row_id) const;\n0084|  const row_t       retrive_row   (const std::string& table_name, const std::string& row_id) const;\n0085|  const std::string retrive_field (const row_t& row, const std::string& column_name) const;\n0086|  const std::string retrive_field (const std::string& table_name, std::size_t row_index, const std::string& column_name) const;\n0087|  const std::string retrive_field (const table_t& table, const std::string& row_id, const std::string& column_name) const;\n0088|  const std::string retrive_field (const std::string& table_name, const std::string& row_id, const std::string& column_name) const;\n0089|  /* decode raw - converts the raw deque into the table maps */\n0090|  void decode_raw();\n0091|  /* print method */\n0092|  std::string str() const;\n0093|};\n0094|\n0095|class trainingPipe_ConfAccess {\n0096|  training_instruction_t train_inst_;\n0097|  const std::string table_name_;\n0098|  const std::string row_id_;\n0099|public:\n0100|  trainingPipe_ConfAccess(training_instruction_t train_inst, std::string table_name, std::string row_id) : \n0101|    train_inst_(train_inst), \n0102|    table_name_(std::move(table_name)), \n0103|    row_id_(std::move(row_id)) {}\n0104|  template <typename T>\n0105|  T operator()(const std::string& column_name) const {\n0106|    return cuwacunu::piaabo::string_cast<T>(\n0107|      train_inst_.retrive_field(table_name_, row_id_, column_name)\n0108|    );\n0109|  }\n0110|};\n0111|} /* namespace camahjucunu */\n0112|} /* namespace cuwacunu */\n0113|\n0114|namespace cuwacunu {\n0115|namespace camahjucunu {\n0116|namespace BNF {\n0117|/* \n0118| * trainingPipeline is a concrete visitor that traverses the AST to \n0119| * extract execution data (symbol, parameters, file IDs) and executes \n0120| * corresponding functions based on the parsed instructions.\n0121| */\n0122|class trainingPipeline : public ASTVisitor {\n0123|private:\n0124|  std::mutex current_mutex;\n0125|\n0126|public:\n0127|\n0128|  std::string TRAINING_COMPONETS_BNF_GRAMMAR = cuwacunu::piaabo::dconfig::config_space_t::training_components_bnf();\n0129|\n0130|  GrammarLexer bnfLexer;\n0131|  GrammarParser bnfParser;\n0132|  ProductionGrammar grammar;\n0133|  InstructionLexer iLexer;\n0134|  InstructionParser iParser;  \n0135|  \n0136|  /* Constructor: Registers executable functions */\n0137|  trainingPipeline();\n0138|\n0139|  /* Decode: Interprest an instruction string */\n0140|  training_instruction_t decode(std::string instruction);\n0141|\n0142|  /* parse Grammar (dummy) */\n0143|  ProductionGrammar parseBnfGrammar();\n0144|\n0145|  /* Override visit methods for each AST node type */\n0146|  void visit(const RootNode* node, VisitorContext& context) override;\n0147|  void visit(const IntermediaryNode* node, VisitorContext& context) override;\n0148|  void visit(const TerminalNode* node, VisitorContext& context) override;\n0149|};\n0150|\n0151|} /* namespace BNF */\n0152|} /* namespace camahjucunu */\n0153|} /* namespace cuwacunu */\n0154|\n\n...REQUEST ENDS...",
+        "output": {
+          "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components.h",
+          "rationale": "Updated the leading header comment to the full file path using a proper unified diff hunk, ensuring clean application to the baseline.",
+          "diffChars": 373
+        }
+      }
+    },
+    {
+      "name": "phaseB_unit_repair_ok",
+      "startedAtMs": 1771380244321,
+      "endedAtMs": 1771380244321,
+      "dtMs": 0,
+      "data": {
+        "file": "src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h",
+        "idx": 0,
+        "model": "light",
+        "baselineInfo": "hash=007938a040, lines=186, lineEnding=lf, truncated=false",
+        "input": "...REQUEST BEGINS...\nREQUEST CLARIFICATIONS:\n- Correct the DIFF so it applies cleanly to the baseline file.\n- The baseline file is authoritative. Do not guess context.\n\nTARGET FILE: src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\nBASELINE INFO: hash=007938a040, lines=186, lineEnding=lf, truncated=false\nREPAIR ATTEMPT: 2\n\nINTENDED UNIT RATIONALE (from compiler):\nUpdated the file header comment to include the full path as intended. The unified diff now includes proper headers and a valid hunk, applying cleanly to the baseline.\n\nPHASE A PLAN (for intent, may include other files):\n--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"\n\nCURRENT DIFF ATTEMPT:\n--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n\n\nAPPLY ERROR:\n#1 ERROR: Bad hunk header: @@\ncode=bad_hunk_header\n\n#2 ERROR: No @@ hunks found in diff (not a unified diff, or missing hunks).\ncode=no_hunks\n\nBASELINE FILE CONTENT (LINE-NUMBERED; prefix is NOT part of file):\n0001|/* iinuji_renderings.h */\n0002|#pragma once\n0003|\n0004|#include <string>\n0005|#include <vector>\n0006|#include <iosfwd>\n0007|\n0008|#include \"camahjucunu/BNF/BNF_AST.h\"\n0009|#include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n0010|\n0011|// Compile-time debug switch:\n0012|//   define IINUJI_RENDERINGS_DEBUG to 1 (e.g. via compiler flags)\n0013|//   to enable logging to std::cerr.\n0014|#ifndef IINUJI_RENDERINGS_DEBUG\n0015|#define IINUJI_RENDERINGS_DEBUG 0\n0016|#endif\n0017|\n0018|namespace cuwacunu {\n0019|namespace camahjucunu {\n0020|\n0021|// ------------------------------------------------------------------\n0022|// Simple 2D point with \"unset\" flag\n0023|// ------------------------------------------------------------------\n0024|\n0025|struct iinuji_point_t {\n0026|  bool   set = false;\n0027|  double x   = 0;\n0028|  double y   = 0;\n0029|};\n0030|\n0031|// ------------------------------------------------------------------\n0032|// Event form binding: local_name : .path_name\n0033|//   __form x:.data,y:.value\n0034|// ------------------------------------------------------------------\n0035|\n0036|struct iinuji_event_binding_t {\n0037|  std::string local_name = \"<empty>\";  // e.g. \"str\"\n0038|  std::string path_name  = \"<empty>\";  // e.g. \".str0\" or \".sys.stdout\"\n0039|};\n0040|\n0041|// ------------------------------------------------------------------\n0042|// FIGURE\n0043|// ------------------------------------------------------------------\n0044|\n0045|struct iinuji_figure_t {\n0046|  std::string kind_raw = \"<empty>\";    // \"_label\", \"_horizontal_plot\", \"_input_box\", \"_buffer\"\n0047|\n0048|  iinuji_point_t coords;   // __coords\n0049|  iinuji_point_t shape;    // __shape\n0050|  bool           border      = false;\n0051|  double         tickness    = 1.0;   // __tickness\n0052|\n0053|  bool           has_value   = false;\n0054|  std::string    value = \"<empty>\";              // __value\n0055|\n0056|  bool           title_on    = false;\n0057|  std::string    title = \"<empty>\";             // __title\n0058|\n0059|  bool has_capacity          = false;\n0060|  int  capacity              = 0;               // __capacity (lines), required for _buffer\n0061|\n0062|  bool           legend_on   = false;\n0063|  std::string    legend = \"<empty>\";            // __legend\n0064|\n0065|  std::string    type_raw = \"<empty>\";          // __type\n0066|\n0067|  std::string    line_color = \"<empty>\";        // __line_color\n0068|  std::string    text_color = \"<empty>\";        // __text_color\n0069|  std::string    back_color = \"<empty>\";        // __back_color\n0070|\n0071|  std::vector<std::string> triggers;   // __triggers event names\n0072|\n0073|  std::string str(unsigned indent = 0) const;\n0074|};\n0075|\n0076|// ------------------------------------------------------------------\n0077|// PANEL\n0078|// ------------------------------------------------------------------\n0079|\n0080|struct iinuji_panel_t {\n0081|  std::string    kind_raw = \"<empty>\";   // \"_rectangle\"\n0082|\n0083|  iinuji_point_t coords;     // __coords\n0084|  iinuji_point_t shape;      // __shape\n0085|  int            z_index  = 0;   // __z_index\n0086|\n0087|  bool           title_on = false;\n0088|  std::string    title = \"<empty>\";          // __title\n0089|\n0090|  bool           border   = false;   // __border\n0091|\n0092|  std::string    line_color = \"<empty>\";        // __line_color\n0093|  std::string    text_color = \"<empty>\";        // __text_color\n0094|  std::string    back_color = \"<empty>\";        // __back_color\n0095|  double         tickness = 1.0;    // __tickness\n0096|\n0097|  std::vector<iinuji_figure_t> figures;\n0098|\n0099|  std::string str(unsigned indent = 0) const;\n0100|};\n0101|\n0102|// ------------------------------------------------------------------\n0103|// EVENT\n0104|// ------------------------------------------------------------------\n0105|\n0106|struct iinuji_event_t {\n0107|  std::string kind_raw = \"<empty>\";  // \"_update\" or \"_action\"\n0108|  std::string name     = \"<empty>\";  // __name\n0109|\n0110|  std::vector<iinuji_event_binding_t> bindings;  // __form\n0111|\n0112|  // Optional metadata (currently used by FIGURE _buffer):\n0113|  // - __label: short tag (e.g. INFO, ERROR) to annotate buffer lines\n0114|  // - __color: per-event line color override for buffer lines\n0115|  bool        has_label = false;\n0116|  std::string label     = \"<empty>\"; // __label\n0117|\n0118|  bool        has_color = false;\n0119|  std::string color     = \"<empty>\"; // __color\n0120|\n0121|  std::string str(unsigned indent = 0) const;\n0122|};\n0123|\n0124|// ------------------------------------------------------------------\n0125|// SCREEN\n0126|// ------------------------------------------------------------------\n0127|\n0128|struct iinuji_screen_t {\n0129|  std::string kind_raw = \"<empty>\";   // \"_screen\"\n0130|  std::string name     = \"<empty>\";   // __name\n0131|\n0132|  std::string key_raw = \"<empty>\";    // \"F+1\"\n0133|  int         fcode   = 0;            // numeric part (1 for F+1)\n0134|\n0135|  std::string line_color = \"<empty>\"; // __line_color\n0136|  std::string text_color = \"<empty>\"; // __text_color\n0137|  std::string back_color = \"<empty>\"; // __back_color\n0138|  double      tickness   = 1.0;       // __tickness\n0139|  bool        border     = false;\n0140|\n0141|  std::vector<iinuji_panel_t> panels;\n0142|  std::vector<iinuji_event_t> events;\n0143|\n0144|  // routes are not in the grammar yet; keep a placeholder\n0145|  std::vector<std::string> routes;\n0146|\n0147|  std::string str(unsigned indent = 0) const;\n0148|};\n0149|\n0150|// ------------------------------------------------------------------\n0151|// Whole instruction\n0152|// ------------------------------------------------------------------\n0153|\n0154|struct iinuji_renderings_instruction_t {\n0155|  std::vector<iinuji_screen_t> screens;\n0156|  std::string str() const;\n0157|};\n0158|\n0159|// ------------------------------------------------------------------\n0160|// Decoder: walks the BNF AST and fills iinuji_renderings_instruction_t\n0161|// ------------------------------------------------------------------\n0162|\n0163|namespace BNF { struct ASTNode; }\n0164|\n0165|class iinuji_renderings_decoder_t : public BNF::ASTVisitor {\n0166|public:\n0167|  // 'debug' parameter kept for compatibility; logging is controlled\n0168|  // solely by IINUJI_RENDERINGS_DEBUG.\n0169|  explicit iinuji_renderings_decoder_t(bool debug = false);\n0170|\n0171|  // Decode from an already-parsed AST root (<instruction> node).\n0172|  iinuji_renderings_instruction_t decode(const BNF::ASTNode* root);\n0173|\n0174|  // ASTVisitor interface\n0175|  void visit(const BNF::RootNode* node,         BNF::VisitorContext& context) override;\n0176|  void visit(const BNF::IntermediaryNode* node, BNF::VisitorContext& context) override;\n0177|  void visit(const BNF::TerminalNode* node,     BNF::VisitorContext& context) override;\n0178|\n0179|  struct State;\n0180|};\n0181|\n0182|std::ostream& operator<<(std::ostream& os, const iinuji_renderings_instruction_t& inst);\n0183|\n0184|} // namespace camahjucunu\n0185|} // namespace cuwacunu\n0186|\n\n...REQUEST ENDS...",
+        "output": {
+          "file": "src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h",
+          "rationale": "Added a proper unified diff hunk with context and replaced the header comment with the full path as intended.",
+          "diffChars": 343
+        }
+      }
+    },
+    {
+      "name": "phaseB_unit_repair_ok",
+      "startedAtMs": 1771380245721,
+      "endedAtMs": 1771380245721,
+      "dtMs": 0,
+      "data": {
+        "file": "src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h",
+        "idx": 1,
+        "model": "light",
+        "baselineInfo": "hash=0012dfa86d, lines=150, lineEnding=lf, truncated=false",
+        "input": "...REQUEST BEGINS...\nREQUEST CLARIFICATIONS:\n- Correct the DIFF so it applies cleanly to the baseline file.\n- The baseline file is authoritative. Do not guess context.\n\nTARGET FILE: src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\nBASELINE INFO: hash=0012dfa86d, lines=150, lineEnding=lf, truncated=false\nREPAIR ATTEMPT: 3\n\nINTENDED UNIT RATIONALE (from compiler):\nUpdated the file header comment to include the full path. The unified diff now includes a proper hunk with baseline context so it applies cleanly.\n\nPHASE A PLAN (for intent, may include other files):\n--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"\n\nCURRENT DIFF ATTEMPT:\n--- src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n\n\nAPPLY ERROR:\n#1 ERROR: Bad hunk header: @@\ncode=bad_hunk_header\n\n#2 ERROR: No @@ hunks found in diff (not a unified diff, or missing hunks).\ncode=no_hunks\n\nBASELINE FILE CONTENT (LINE-NUMBERED; prefix is NOT part of file):\n0001|/* observation_pipeline.h */\n0002|#pragma once\n0003|#include \"piaabo/dutils.h\"\n0004|#include \"piaabo/dfiles.h\"\n0005|#include \"piaabo/dconfig.h\"\n0006|#include \"camahjucunu/BNF/BNF_AST.h\"\n0007|#include \"camahjucunu/BNF/BNF_visitor.h\"\n0008|#include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n0009|#include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n0010|#include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n0011|#include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n0012|#include \"camahjucunu/types/types_enums.h\"\n0013|\n0014|/* \n0015|  Observation Pipeline Grammar:\n0016|    Instruction Examples: \n0017|      <BTCUSDT:kline>{1s=60, 1m=60, 1h=24}(path/to/file.csv)\n0018|      <BTCUSDT:kline>{1s=15, 1h=5, 1d=10, 1M=2}(path/to/file.csv)\n0019|      <BTCUSDT:kline>{1s=60, 1m=5, 5m=3, 15m=2, 30m=2, 1h=24}(path/to/file.csv)\n0020|    With this the Pipeline would know to request the Broker or Query de Data \n0021|    For pattern instructed. E.g. <BTCUSDT:kline>{1s=60, 1m=60, 1h=24}(path/to/file.csv) :\n0022|      Literal \"BTCUSDT\" would be parsed to be the symbol\n0023|      60 candles of 1 seconds interval  []\n0024|      60 candles of 1 minute interval   []\n0025|      24 candles of 1 hour interval     []\n0026|*/\n0027|\n0028|#undef OBSERVARION_PIPELINE_DEBUG /* define to see verbose parsing output */\n0029|\n0030|\n0031|\n0032|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_instruction,            \"<instruction>\");\n0033|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_instrument_table,       \"<instrument_table>\");\n0034|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_input_table,            \"<input_table>\");\n0035|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_instrument_header_line, \"<instrument_header_line>\");\n0036|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_instrument_form,        \"<instrument_form>\");\n0037|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_input_header_line,      \"<input_header_line>\");\n0038|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_input_form,             \"<input_form>\");\n0039|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_table_top_line,         \"<table_top_line>\");\n0040|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_table_divider_line,     \"<table_divider_line>\");\n0041|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_table_bottom_line,      \"<table_bottom_line>\");\n0042|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_comment,                \"<comment>\");\n0043|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_norm_window,            \"<norm_window>\");\n0044|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_source,                 \"<source>\");\n0045|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_break_block,            \"<break_block>\");\n0046|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_file_path,              \"<file_path>\");\n0047|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_active,                 \"<active>\");\n0048|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_seq_length,             \"<seq_length>\");\n0049|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_future_seq_length,      \"<future_seq_length>\");\n0050|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_channel_weight,         \"<channel_weight>\");\n0051|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_character,              \"<character>\");\n0052|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_literal,                \"<literal>\");\n0053|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_whitespace,             \"<whitespace>\");\n0054|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_instrument,             \"<instrument>\");\n0055|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_record_type,            \"<record_type>\");\n0056|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_interval,               \"<interval>\");\n0057|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_boolean,                \"<boolean>\");\n0058|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_special,                \"<special>\");\n0059|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_letter,                 \"<letter>\");\n0060|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_number,                 \"<number>\");\n0061|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_newline,                \"<newline>\");\n0062|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_empty,                  \"<empty>\");\n0063|DEFINE_HASH(OBSERVATION_PIPELINE_HASH_frame_char,             \"<frame_char>\");\n0064|\n0065|namespace cuwacunu {\n0066|namespace camahjucunu {\n0067|\n0068|struct instrument_form_t {\n0069|  std::string instrument;\n0070|  cuwacunu::camahjucunu::exchange::interval_type_e interval;\n0071|  std::string record_type;\n0072|  std::string norm_window;\n0073|  std::string source;\n0074|};\n0075|\n0076|struct input_form_t {\n0077|  cuwacunu::camahjucunu::exchange::interval_type_e interval;\n0078|  std::string active;\n0079|  std::string record_type;\n0080|  std::string seq_length;\n0081|  std::string future_seq_length;\n0082|  std::string channel_weight;\n0083|};\n0084|\n0085|struct observation_instruction_t {\n0086|  std::vector<instrument_form_t> instrument_forms;\n0087|  std::vector<input_form_t> input_forms;\n0088|  std::vector<instrument_form_t> filter_instrument_forms(\n0089|    const std::string& target_instrument,\n0090|    const std::string& target_record_type,\n0091|    cuwacunu::camahjucunu::exchange::interval_type_e target_interval) const;\n0092|  std::vector<float> retrieve_channel_weights();\n0093|  int64_t count_channels();\n0094|  int64_t max_sequence_length();\n0095|  int64_t max_future_sequence_length();\n0096|};\n0097|\n0098|struct observation_pipeline_t {\n0099|  static observation_instruction_t inst;\n0100|  static void update();\n0101|\n0102|private:\n0103|  static void init();\n0104|  static void finit();\n0105|  struct _init {\n0106|    _init()  { observation_pipeline_t::init(); }\n0107|    ~_init() { observation_pipeline_t::finit(); }\n0108|  };\n0109|  static _init _initializer;\n0110|};\n0111|\n0112|/* \n0113| * observationPipeline is a concrete visitor that traverses the AST to \n0114| * extract execution data (symbol, parameters, file IDs) and executes \n0115| * corresponding functions based on the parsed instructions.\n0116| */\n0117|namespace BNF {\n0118|class observationPipeline : public ASTVisitor {\n0119|private:\n0120|  std::mutex current_mutex;\n0121|\n0122|public:\n0123|\n0124|  std::string OBSERVATION_PIPELINE_BNF_GRAMMAR = cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_bnf();\n0125|\n0126|  GrammarLexer bnfLexer;\n0127|  GrammarParser bnfParser;\n0128|  ProductionGrammar grammar;\n0129|  InstructionLexer iLexer;\n0130|  InstructionParser iParser;  \n0131|  \n0132|  /* Constructor: Registers executable functions */\n0133|  observationPipeline();\n0134|\n0135|  /* Decode: Interprest an instruction string */\n0136|  observation_instruction_t decode(std::string instruction);\n0137|\n0138|  /* parse Grammar (dummy) */\n0139|  ProductionGrammar parseBnfGrammar();\n0140|\n0141|  /* Override visit methods for each AST node type */\n0142|  void visit(const RootNode* node, VisitorContext& context) override;\n0143|  void visit(const IntermediaryNode* node, VisitorContext& context) override;\n0144|  void visit(const TerminalNode* node, VisitorContext& context) override;\n0145|};\n0146|} /* namespace BNF */\n0147|\n0148|} /* namespace camahjucunu */\n0149|} /* namespace cuwacunu */\n0150|\n\n...REQUEST ENDS...",
+        "output": {
+          "file": "src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h",
+          "rationale": "Added a proper unified diff hunk with baseline context to update the file header comment to the full path.",
+          "diffChars": 395
+        }
+      }
+    },
+    {
+      "name": "phaseB_unit_split",
+      "startedAtMs": 1771380232087,
+      "endedAtMs": 1771380245722,
+      "dtMs": 13635,
+      "data": {
+        "mode": "plan",
+        "model": "heavy",
+        "input": "...REQUEST BEGINS...\nREQUEST CLARIFICATIONS:\n \"PROMPT\": contains the full change description; compile it into exact edit operations.\n \"CONTEXT\": list of files, followed by their contents.\n \"NOTES\": optional notes from Phase A.\n\nPROMPT:\n--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"\n\nCONTEXT:\n\"files_list\": [\"src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\", \"src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\", \"src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\", \"src/include/camahjucunu/BNF/implementations/training_components/training_components.h\"]\n\n__FILES_CONTENTS__\nNOTES:\n\"\"\n...REQUEST ENDS...",
+        "instructions": "...INSTRUCTION BEGINS...\nROLE: Change-to-Edits compiler for an automated code editor.\nGOAL: Convert the PROMPT (change description) into exact, machine-actionable edit operations.\n\nYOU ARE GIVEN:\n- PROMPT: the change description (Phase A output).\n- AVAILABLE FILES list.\n- File contents for those files.\n\nOUTPUT FORMAT (STRICT): return ONLY these tags, in this exact order. No extra text, no markdown fences.\n\n<summary>...</summary>\n<edits>\n  <edit>\n    <file>...</file>\n    <diff>...</diff>\n    <rationale>...</rationale>\n  </edit>\n  <!-- repeat <edit>...</edit> blocks as needed -->\n</edits>\n<notes>...</notes>\n\nOUTPUT CLARIFICATIONS:\n- Output ONLY the tags shown above. Do not add other tags.\n- Inside <edits>, you may output ZERO or more <edit> blocks.\n- Each <edit> MUST include exactly one <file>, one <diff>, one <rationale>.\n- <file> MUST match one of AVAILABLE FILES exactly.\n- <diff> MUST be a unified diff (unidiff) that applies to that single file.\n- <diff> MUST NOT include changes for multiple files. One <edit> == one file.\n- <rationale> should be short and concrete (use empty string if unnecessary).\n- If there are no edits, output: <edits></edits>.\n- If there are no notes, output: <notes></notes>.\n\nHARD RULES:\n1) SCOPE: Only modify files that appear in AVAILABLE FILES.\n2) VERBATIM / CONTEXT SAFETY:\n   - All context lines in the diff MUST be copied EXACTLY from the provided file contents.\n   - Do NOT invent surrounding lines. If you cannot find stable context in the provided text, DO NOT guess.\n3) NO GUESSING:\n   - If you cannot produce an exact diff that matches the provided file contents, skip that edit.\n   - Instead: add a note explaining what is missing and what exact text you expected to find.\n4) DIFF FORMAT (HARD):\n   - Use standard unified diff hunks with @@ headers.\n   - Keep hunks small and local (minimal context that is still safe).\n   - Every removal line must start with '-' and every addition line with '+'. Unchanged context lines start with ' '.\n5) PRECISION:\n   - Prefer small, local diffs over rewriting large blocks.\n6) ORDERING (IMPORTANT):\n   - For multiple edits in the same file, output them in a safe application order (typically bottom-to-top if independent).\n7) COMPLETENESS:\n   - Cover every required change even if repeated in multiple files/locations.\n\nQUALITY BAR:\n- Your output must be directly usable by a program that applies unified diffs to the specified file.\n\n...INSTRUCTION ENDS...",
+        "output": {
+          "summary": "Updated header comment paths for four BNF implementation headers.",
+          "editCount": 4,
+          "edits": [
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h",
+              "diff": "--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@ -1,4 +1,4 @@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n",
+              "rationale": "Added a proper unified diff hunk with context and replaced the header comment with the full path as intended."
+            },
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h",
+              "diff": "--- src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@ -1,4 +1,4 @@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n",
+              "rationale": "Added a proper unified diff hunk with baseline context to update the file header comment to the full path."
+            },
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h",
+              "diff": "--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@ -1,2 +1,2 @@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n",
+              "rationale": "Added proper unified diff headers and a valid hunk replacing the header comment with the full path to align with the intended change."
+            },
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components.h",
+              "diff": "--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@ -1,4 +1,4 @@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n",
+              "rationale": "Updated the leading header comment to the full file path using a proper unified diff hunk, ensuring clean application to the baseline."
+            }
+          ],
+          "notes": ""
+        }
+      }
+    },
+    {
+      "name": "phaseC_finalize_done",
+      "startedAtMs": 1771380245722,
+      "endedAtMs": 1771380245738,
+      "dtMs": 16,
+      "data": {
+        "summary": "finalized files=4, applyFailures=0, syntaxFailures=0, ok=true",
+        "ok": true,
+        "files": [
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "beforeHash": "007938a040",
+            "afterHash": "004453bc81",
+            "editCount": 1,
+            "syntaxErrCount": 0
+          },
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "beforeHash": "0012dfa86d",
+            "afterHash": "00154d9699",
+            "editCount": 1,
+            "syntaxErrCount": 0
+          },
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "beforeHash": "007708ff37",
+            "afterHash": "0061b6b5e1",
+            "editCount": 1,
+            "syntaxErrCount": 0
+          },
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/training_components/training_components.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "beforeHash": "005d6ec8bf",
+            "afterHash": "00781dd849",
+            "editCount": 1,
+            "syntaxErrCount": 0
+          }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "pipeline_start",
+      "atMs": 1771380222146,
+      "data": {
+        "startedAtMs": 1771380222146,
+        "modeKind": "plan",
+        "parallelUnits": 4,
+        "max_attempt": 2,
+        "promptChars": 85,
+        "promptPreview": {
+          "head": "add the whole file path at the top of each file in a comment on the form of /* ... */",
+          "tail": ""
+        },
+        "cfg": {
+          "schemaVersion": 6,
+          "logging": {
+            "level": "debug"
+          },
+          "openai": {
+            "embeddingModel": "text-embedding-3-small",
+            "modelLight": "gpt-5.1-codex-max",
+            "modelHeavy": "gpt-5.1-codex-max",
+            "modelSuperHeavy": "gpt-5.2"
+          },
+          "rag": {
+            "k": 6,
+            "maxChars": 12000,
+            "metric": "cosine"
+          },
+          "indexing": {
+            "chunkChars": 6000,
+            "maxFileBytes": 500000,
+            "excludeGlobs": [],
+            "chunking": {
+              "default": {
+                "method": "chars",
+                "chunkChars": 6000
+              },
+              "byExtension": {}
+            }
+          },
+          "contextDump": {
+            "dirName": "context_dumps",
+            "latestFileName": "indexed_context_dump.txt",
+            "keepBackups": 5,
+            "includeHidden": false,
+            "noFences": false,
+            "listOnly": false,
+            "maxFileBytes": 0,
+            "maxTotalBytes": 0,
+            "openAfterDump": true
+          },
+          "filesView": {
+            "useVscodeExcludes": true,
+            "excludeGlobs": [
+              "**/data/**",
+              "**/external/**",
+              "**/.git/**",
+              "**/.hg/**",
+              "**/.svn/**",
+              "**/.idea/**",
+              "**/.vscode/**",
+              "**/node_modules/**",
+              "**/dist/**",
+              "**/build/**",
+              "**/out/**",
+              "**/.next/**",
+              "**/.nuxt/**",
+              "**/.cache/**",
+              "**/.turbo/**",
+              "**/.vercel/**",
+              "**/coverage/**",
+              "**/target/**",
+              "**/.venv/**",
+              "**/venv/**",
+              "**/__pycache__/**",
+              "**/.DS_Store",
+              "**/Thumbs.db"
+            ]
+          },
+          "editPlanner": {
+            "trace": {
+              "enabled": true
+            },
+            "parallel": {
+              "unitChanges": 6,
+              "files": 4
+            },
+            "rag": {
+              "enabled": true,
+              "k": 12,
+              "metric": "cosine"
+            },
+            "segmentation": {
+              "newlineSnap": true,
+              "newlineSnapWindow": 800,
+              "newlinePreferForward": true,
+              "minFragmentChars": 900,
+              "maxFragmentChars": 12000,
+              "contextChars": 900
+            },
+            "targeting": {
+              "useRagHits": true,
+              "maxCandidateFiles": 60,
+              "padBeforeChars": 600,
+              "padAfterChars": 300,
+              "mergeGapChars": 200,
+              "maxWindowsPerUnit": 1
+            },
+            "attempts": {
+              "maxRounds": 3,
+              "validateModel": "light"
+            },
+            "guards": {
+              "discardWhitespaceOnlyChanges": true,
+              "preserveLineEndings": true,
+              "maxPatchCoverageWarn": 0.75,
+              "maxPatchCoverageError": 1
+            },
+            "validation": {
+              "final": "heavy"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "pipeline_phaseA_start",
+      "atMs": 1771380222146,
+      "data": {
+        "atMs": 1771380222146,
+        "modekind": "plan"
+      }
+    },
+    {
+      "name": "pipeline_phaseA_done",
+      "atMs": 1771380232086,
+      "data": {
+        "ms": 9940,
+        "phaseA": {
+          "plan": "--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"",
+          "notes": ""
+        },
+        "phaseA_planPreview": {
+          "head": "--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n #include <vector>\n #include <iosfwd>\n \n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"  // cuwacunu::camahjucunu::BNF::ASTVisitor, VisitorContext\n--- a/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ b/src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n \n #include <algorithm>\n #include <cctype>\n #include <cerrno>\n #include <cmath>\n #include <cstdlib>\n #include <sstream>\n #include <stdexcept>\n #include <string>\n #include <unordered_map>\n #include <unordered_set>\n #include <utility>\n #include <vector>\n--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n #include <sstream>\n #include <iomanip>\n #include <unordered_map>\n \n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n #include \"piaabo/dconfig.h\"\n #include \"camahjucunu/BNF/BNF_AST.h\"\n #include \"camahjucunu/BNF/BNF_visitor.h\"\n #include \"camahjucunu/BNF/BNF_grammar_lexer.h\"\n #include \"camahjucunu/BNF/BNF_grammar_parser.h\"\n #include \"camahjucunu/BNF/BNF_instruction_lexer.h\"\n #include \"camahjucunu/BNF/BNF_instruction_parser.h\"\n #include \"camahjucunu/types/types_enums.h\"\n \n #include \"camahjucunu/BNF/implementations/training_components/training_components_utils.h\"",
+          "tail": ""
+        },
+        "phaseA_planChars": 2781
+      }
+    },
+    {
+      "name": "mode_validation",
+      "atMs": 1771380232086,
+      "data": {
+        "phase": "phaseA",
+        "ok": true,
+        "issueCount": 0,
+        "issues": []
+      }
+    },
+    {
+      "name": "pipeline_phaseB_start",
+      "atMs": 1771380232086,
+      "data": {
+        "atMs": 1771380232086
+      }
+    },
+    {
+      "name": "pipeline_phaseB_done",
+      "atMs": 1771380245722,
+      "data": {
+        "ms": 13636,
+        "phaseB": {
+          "summary": "Updated header comment paths for four BNF implementation headers.",
+          "edits": [
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h",
+              "diff": "--- a/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n+++ b/src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h\n@@ -1,4 +1,4 @@\n-/* iinuji_renderings.h */\n+/* src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h */\n #pragma once\n \n #include <string>\n",
+              "rationale": "Added a proper unified diff hunk with context and replaced the header comment with the full path as intended."
+            },
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h",
+              "diff": "--- src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n+++ src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h\n@@ -1,4 +1,4 @@\n-/* observation_pipeline.h */\n+/* src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h */\n #pragma once\n #include \"piaabo/dutils.h\"\n #include \"piaabo/dfiles.h\"\n",
+              "rationale": "Added a proper unified diff hunk with baseline context to update the file header comment to the full path."
+            },
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h",
+              "diff": "--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h\n@@ -1,2 +1,2 @@\n-/* training_components_utils.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h */\n #pragma once\n",
+              "rationale": "Added proper unified diff headers and a valid hunk replacing the header comment with the full path to align with the intended change."
+            },
+            {
+              "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components.h",
+              "diff": "--- a/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n+++ b/src/include/camahjucunu/BNF/implementations/training_components/training_components.h\n@@ -1,4 +1,4 @@\n-/* training_components.h */\n+/* src/include/camahjucunu/BNF/implementations/training_components/training_components.h */\n #pragma once\n #include <vector>\n #include <deque>\n",
+              "rationale": "Updated the leading header comment to the full file path using a proper unified diff hunk, ensuring clean application to the baseline."
+            }
+          ],
+          "notes": ""
+        },
+        "editCount": 4,
+        "files": [
+          {
+            "file": "src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h",
+            "count": 1
+          },
+          {
+            "file": "src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h",
+            "count": 1
+          },
+          {
+            "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h",
+            "count": 1
+          },
+          {
+            "file": "src/include/camahjucunu/BNF/implementations/training_components/training_components.h",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "mode_validation",
+      "atMs": 1771380245722,
+      "data": {
+        "phase": "phaseB",
+        "ok": true,
+        "issueCount": 0,
+        "issues": []
+      }
+    },
+    {
+      "name": "pipeline_phaseC_start",
+      "atMs": 1771380245722,
+      "data": {
+        "atMs": 1771380245722,
+        "editCount": 4
+      }
+    },
+    {
+      "name": "pipeline_phaseC_done",
+      "atMs": 1771380245738,
+      "data": {
+        "ms": 16,
+        "ok": true,
+        "summary": "finalized files=4, applyFailures=0, syntaxFailures=0, ok=true",
+        "fileCount": 4,
+        "files": [
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/iinuji_renderings/iinuji_renderings.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "editCount": 1,
+            "beforeHash": "007938a040",
+            "afterHash": "004453bc81"
+          },
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "editCount": 1,
+            "beforeHash": "0012dfa86d",
+            "afterHash": "00154d9699"
+          },
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/training_components/training_components_utils.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "editCount": 1,
+            "beforeHash": "007708ff37",
+            "afterHash": "0061b6b5e1"
+          },
+          {
+            "rel": "src/include/camahjucunu/BNF/implementations/training_components/training_components.h",
+            "applyOk": true,
+            "syntaxOk": true,
+            "editCount": 1,
+            "beforeHash": "005d6ec8bf",
+            "afterHash": "00781dd849"
+          }
+        ]
+      }
+    },
+    {
+      "name": "mode_validation",
+      "atMs": 1771380245738,
+      "data": {
+        "phase": "phaseC",
+        "ok": true,
+        "issueCount": 0,
+        "issues": []
+      }
+    }
+  ]
+}

@@ -26,6 +26,7 @@ all:
 		$(MAKE) -C $(HERE_PATH)/camahjucunu all \
 		$(MAKE) -C $(HERE_PATH)/jkimyei all \
 		$(MAKE) -C $(HERE_PATH)/wikimyei all \
+		$(MAKE) -C $(HERE_PATH)/tsiemene all \
 	}
 	@$(LOG_SUCCESS)
 

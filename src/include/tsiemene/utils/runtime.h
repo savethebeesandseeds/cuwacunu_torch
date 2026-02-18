@@ -4,7 +4,7 @@
 
 #include <deque>
 
-#include "tsiemene/circuits.h"
+#include "tsiemene/utils/circuits.h"
 
 namespace tsiemene {
 

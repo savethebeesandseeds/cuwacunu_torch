@@ -138,7 +138,9 @@ ProductionUnit GrammarLexer::getNextUnit() {
     return parseOptional();
   } else if (nextChar == '{') {
     return parseRepetition();
-  } else if (nextChar == '"' || std::isalpha(nextChar) || std::isdigit(nextChar)) {
+  } else if (nextChar == '"' || nextChar == '\'' ||
+          std::isalpha(static_cast<unsigned char>(nextChar)) ||
+          std::isdigit(static_cast<unsigned char>(nextChar))) {
     return parseTerminal();
   } else if (std::ispunct(nextChar)) {
     return parsePunctuation();

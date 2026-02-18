@@ -30,7 +30,7 @@
 #include <openssl/rand.h>
 #include <openssl/crypto.h>
 
-#include "db.h"
+#include "camahjucunu/db/db.h"
 
 /* IdyDB database operations (internal) */
 static int idydb_new(idydb **handler);

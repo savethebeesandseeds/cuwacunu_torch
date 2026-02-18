@@ -157,6 +157,96 @@ ProductionGrammar observationPipeline::parseBnfGrammar() {
   return bnfParser.getGrammar();
 }
 
+// -------------------------
+// Helpers: decode text from AST nodes (local to this .cpp)
+// -------------------------
+static std::string unescape_like_parser(const std::string& str) {
+  std::string result;
+  result.reserve(str.size());
+  for (size_t i = 0; i < str.size(); ++i) {
+    if (str[i] == '\\' && i + 1 < str.size()) {
+      switch (str[i + 1]) {
+        case 'n': result += '\n'; ++i; break;
+        case 'r': result += '\r'; ++i; break;
+        case 't': result += '\t'; ++i; break;
+        case '\\': result += '\\'; ++i; break;
+        case '"': result += '"'; ++i; break;
+        case '\'': result += '\''; ++i; break;
+        default:
+          result += '\\';
+          result += str[i + 1];
+          ++i;
+          break;
+      }
+    } else {
+      result += str[i];
+    }
+  }
+  return result;
+}
+
+static std::string terminal_text_from_unit(const ProductionUnit& unit) {
+  std::string lex = unit.lexeme;
+
+  // Strip surrounding quotes if present
+  if (lex.size() >= 2) {
+    if ((lex.front() == '"'  && lex.back() == '"') ||
+        (lex.front() == '\'' && lex.back() == '\'')) {
+      lex = lex.substr(1, lex.size() - 2);
+    }
+  }
+
+  // Interpret escapes like \\ and \n
+  return unescape_like_parser(lex);
+}
+
+static std::string trim_spaces_tabs(std::string s) {
+  auto is_ws = [](unsigned char c) { return c == ' ' || c == '\t'; };
+
+  size_t start = 0;
+  while (start < s.size() && is_ws(static_cast<unsigned char>(s[start]))) start++;
+
+  size_t end = s.size();
+  while (end > start && is_ws(static_cast<unsigned char>(s[end - 1]))) end--;
+
+  return s.substr(start, end - start);
+}
+
+static void appendAllTerminals(const ASTNode* node, std::string& out) {
+  if (!node) return;
+
+  if (auto term = dynamic_cast<const TerminalNode*>(node)) {
+    if (term->unit.type == ProductionUnit::Type::Terminal) {
+      out += terminal_text_from_unit(term->unit);
+    }
+    return;
+  }
+
+  if (auto root = dynamic_cast<const RootNode*>(node)) {
+    for (const auto& ch : root->children) appendAllTerminals(ch.get(), out);
+    return;
+  }
+
+  if (auto mid = dynamic_cast<const IntermediaryNode*>(node)) {
+    for (const auto& ch : mid->children) appendAllTerminals(ch.get(), out);
+    return;
+  }
+}
+
+static std::string flattenNodeText(const ASTNode* node) {
+  std::string out;
+  appendAllTerminals(node, out);
+  return out;
+}
+
+static const ASTNode* findDirectChildByHash(const IntermediaryNode* parent, size_t wanted_hash) {
+  if (!parent) return nullptr;
+  for (const auto& ch : parent->children) {
+    if (ch && ch->hash == wanted_hash) return ch.get();
+  }
+  return nullptr;
+}
+
 void observationPipeline::visit(const RootNode* node, VisitorContext& context) {
 #ifdef OBSERVARION_PIPELINE_DEBUG
   std::ostringstream oss;
@@ -176,30 +266,72 @@ void observationPipeline::visit(const IntermediaryNode* node, VisitorContext& co
   log_dbg("IntermediaryNode context: [%s]  ---> %s\n", oss.str().c_str(), node->alt.str(true).c_str());
 #endif
 
-  /* Clear vectors when entering tables */
-  if (context.stack.size() == 2 &&
-      context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction &&
-      context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table) {
-    static_cast<cuwacunu::camahjucunu::observation_instruction_t*>(context.user_data)->instrument_forms.clear();
+  auto* out = static_cast<cuwacunu::camahjucunu::observation_instruction_t*>(context.user_data);
+  if (!out) return;
+
+  // Clear when entering each table
+  if (node->hash == OBSERVATION_PIPELINE_HASH_instrument_table) {
+    out->instrument_forms.clear();
+    return;
   }
-  if (context.stack.size() == 2 &&
-      context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction &&
-      context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table) {
-    static_cast<cuwacunu::camahjucunu::observation_instruction_t*>(context.user_data)->input_forms.clear();
+  if (node->hash == OBSERVATION_PIPELINE_HASH_input_table) {
+    out->input_forms.clear();
+    return;
   }
 
-  /* Append new elements when entering forms */
-  if (context.stack.size() == 3 &&
-      context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction &&
-      context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table &&
-      context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_instrument_form) {
-    static_cast<cuwacunu::camahjucunu::observation_instruction_t*>(context.user_data)->instrument_forms.emplace_back();
+  // Extract a full instrument_form row when we reach it
+  if (node->hash == OBSERVATION_PIPELINE_HASH_instrument_form) {
+    cuwacunu::camahjucunu::instrument_form_t f{}; // value-init interval too
+
+    const ASTNode* n_instrument  = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_instrument);
+    const ASTNode* n_interval    = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_interval);
+    const ASTNode* n_record_type = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_record_type);
+    const ASTNode* n_norm_window = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_norm_window);
+    const ASTNode* n_source      = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_source);
+
+    f.instrument  = trim_spaces_tabs(flattenNodeText(n_instrument));
+    std::string interval_s = trim_spaces_tabs(flattenNodeText(n_interval));
+    f.record_type = trim_spaces_tabs(flattenNodeText(n_record_type));
+    f.norm_window = trim_spaces_tabs(flattenNodeText(n_norm_window));
+    f.source      = trim_spaces_tabs(flattenNodeText(n_source)); // IMPORTANT: trims table padding
+
+    // Convert interval string -> enum (guarded)
+    try {
+      f.interval = cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(interval_s);
+    } catch (...) {
+      // leave default value if conversion fails
+    }
+
+    out->instrument_forms.push_back(std::move(f));
+    return;
   }
-  if (context.stack.size() == 3 &&
-      context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction &&
-      context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table &&
-      context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
-    static_cast<cuwacunu::camahjucunu::observation_instruction_t*>(context.user_data)->input_forms.emplace_back();
+
+  // Extract a full input_form row when we reach it
+  if (node->hash == OBSERVATION_PIPELINE_HASH_input_form) {
+    cuwacunu::camahjucunu::input_form_t f{}; // value-init interval too
+
+    const ASTNode* n_interval          = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_interval);
+    const ASTNode* n_active            = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_active);
+    const ASTNode* n_record_type       = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_record_type);
+    const ASTNode* n_seq_length        = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_seq_length);
+    const ASTNode* n_future_seq_length = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_future_seq_length);
+    const ASTNode* n_channel_weight    = findDirectChildByHash(node, OBSERVATION_PIPELINE_HASH_channel_weight);
+
+    std::string interval_s   = trim_spaces_tabs(flattenNodeText(n_interval));
+    f.active                 = trim_spaces_tabs(flattenNodeText(n_active));
+    f.record_type            = trim_spaces_tabs(flattenNodeText(n_record_type));
+    f.seq_length             = trim_spaces_tabs(flattenNodeText(n_seq_length));
+    f.future_seq_length      = trim_spaces_tabs(flattenNodeText(n_future_seq_length));
+    f.channel_weight         = trim_spaces_tabs(flattenNodeText(n_channel_weight));
+
+    try {
+      f.interval = cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(interval_s);
+    } catch (...) {
+      // leave default value
+    }
+
+    out->input_forms.push_back(std::move(f));
+    return;
   }
 }
 
@@ -212,108 +344,11 @@ void observationPipeline::visit(const TerminalNode* node, VisitorContext& contex
   log_dbg("TerminalNode context: [%s]  ---> %s\n", oss.str().c_str(), node->unit.str(true).c_str());
 #endif
 
-  /* Assign instrument_forms fields */
-  if (context.stack.size() > 3 &&
-      context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction &&
-      context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_instrument_table &&
-      context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_instrument_form) {
-    cuwacunu::camahjucunu::instrument_form_t& element =
-        static_cast<cuwacunu::camahjucunu::observation_instruction_t*>(context.user_data)->instrument_forms.back();
-
-    if (context.stack.size() == 5 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_instrument &&
-        context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_letter) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.instrument += aux;
-    }
-
-    if (context.stack.size() == 4 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_interval) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.interval = cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(aux);
-    }
-
-    if (context.stack.size() == 4 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_record_type) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.record_type += aux;
-    }
-
-    if (context.stack.size() == 5 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_norm_window &&
-        context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_number) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.norm_window += aux;
-    }
-
-    if (context.stack.size() == 7 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_source &&
-        context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_file_path &&
-        context.stack[5]->hash == OBSERVATION_PIPELINE_HASH_literal) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.source += aux;
-    }
-  }
-
-  /* Assign input_forms fields */
-  if (context.stack.size() > 3 &&
-      context.stack[0]->hash == OBSERVATION_PIPELINE_HASH_instruction &&
-      context.stack[1]->hash == OBSERVATION_PIPELINE_HASH_input_table &&
-      context.stack[2]->hash == OBSERVATION_PIPELINE_HASH_input_form) {
-    cuwacunu::camahjucunu::input_form_t& element =
-        static_cast<cuwacunu::camahjucunu::observation_instruction_t*>(context.user_data)->input_forms.back();
-
-    if (context.stack.size() == 4 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_interval) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.interval = cuwacunu::camahjucunu::exchange::string_to_enum<cuwacunu::camahjucunu::exchange::interval_type_e>(aux);
-    }
-
-    if (context.stack.size() == 5 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_active &&
-        context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_boolean) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.active += aux;
-    }
-
-    if (context.stack.size() == 4 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_record_type) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.record_type += aux;
-    }
-
-    if (context.stack.size() == 5 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_seq_length &&
-        context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_number) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.seq_length += aux;
-    }
-
-    if (context.stack.size() == 5 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_future_seq_length &&
-        context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_number) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.future_seq_length += aux;
-    }
-
-    if (context.stack.size() == 5 &&
-        context.stack[3]->hash == OBSERVATION_PIPELINE_HASH_channel_weight &&
-        context.stack[4]->hash == OBSERVATION_PIPELINE_HASH_number) {
-      std::string aux = node->unit.lexeme;
-      cuwacunu::piaabo::string_remove(aux, '\"');
-      element.channel_weight += aux;
-    }
-  }
+  (void)node;
+  (void)context;
+  // NOTE:
+  // We decode rows at the <instrument_form>/<input_form> IntermediaryNode level now.
+  // This avoids relying on context.stack size/index assumptions.
 }
 
 } // namespace BNF

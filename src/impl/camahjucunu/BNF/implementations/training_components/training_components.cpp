@@ -8,7 +8,6 @@ RUNTIME_WARNING("(training_components.cpp)[] mutex on training pipeline might no
 /* ───────────────────── training_instruction_t methods (non-BNF) ───────────────────── */
 namespace cuwacunu {
 namespace camahjucunu {
-
 /* access methods */
 const training_instruction_t::table_t
 training_instruction_t::retrive_table(const std::string& table_name) const {
@@ -198,6 +197,13 @@ namespace cuwacunu {
 namespace camahjucunu {
 namespace BNF {
 
+static inline bool stack_has(const VisitorContext& ctx, uint64_t h) {
+  for (const auto* n : ctx.stack) {
+    if (n && n->hash == h) return true;
+  }
+  return false;
+}
+
 trainingPipeline::trainingPipeline()
   : bnfLexer(TRAINING_COMPONETS_BNF_GRAMMAR)
   , bnfParser(bnfLexer)
@@ -236,8 +242,14 @@ trainingPipeline::decode(std::string instruction)
   /* decode and traverse the Abstract Syntax Tree */
   actualAST.get()->accept(*this, context);
 
+  log_dbg("[trainingPipeline] raw.size()=%zu tables(before decode_raw)=%zu\n", current.raw.size(), current.tables.size());
+
   /* decode the raw data into maps */
   current.decode_raw();
+  log_dbg("[trainingPipeline] tables(after decode_raw)=%zu\n", current.tables.size());
+  for (const auto& kv : current.tables) {
+    log_dbg("  table='%s' rows=%zu\n", kv.first.c_str(), kv.second.size());
+  }
 
   return current;
 }
@@ -272,45 +284,54 @@ void trainingPipeline::visit(const IntermediaryNode* node, VisitorContext& conte
 #endif
 
   auto* current = static_cast<cuwacunu::camahjucunu::training_instruction_t*>(context.user_data);
+  if (!current) return;
 
-  /* Null / ignore blocks */
-  if (   context.stack.back()->hash == TRAINING_COMPONETS_HASH_comment
-      || context.stack.back()->hash == TRAINING_COMPONETS_HASH_break_block
-      || context.stack.back()->hash == TRAINING_COMPONETS_HASH_whitespace
-      || context.stack.back()->hash == TRAINING_COMPONETS_HASH_div) {
+  // ---- 1) Null / ignore blocks (use node->hash, not stack size/index) ----
+  if (node->hash == TRAINING_COMPONETS_HASH_comment ||
+      node->hash == TRAINING_COMPONETS_HASH_break_block ||
+      node->hash == TRAINING_COMPONETS_HASH_whitespace ||
+      node->hash == TRAINING_COMPONETS_HASH_div) {
     current->current_element_value = nullptr;
+    return;
   }
 
-  /* Table title */
-  if ( context.stack.size() == 4
-    && context.stack[0]->hash == TRAINING_COMPONETS_HASH_instruction
-    && context.stack[1]->hash == TRAINING_COMPONETS_HASH_table
-    && context.stack[2]->hash == TRAINING_COMPONETS_HASH_table_header
-    && context.stack[3]->hash == TRAINING_COMPONETS_HASH_table_title) {
+  // ---- 2) Table title ----
+  // Old code required stack.size()==4 with exact positions.
+  // New code: "we're in a <table_title> node, and somewhere above we are in instruction/table/table_header"
+  if (node->hash == TRAINING_COMPONETS_HASH_table_title &&
+      stack_has(context, TRAINING_COMPONETS_HASH_instruction) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_table) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_table_header)) {
+
     current->raw.emplace_back(TRAINING_COMPONETS_HASH_table_title, "");
     current->current_element_value = &current->raw.back().value;
+    return;
   }
 
-  /* Header line */
-  if ( context.stack.size() == 5
-    && context.stack[0]->hash == TRAINING_COMPONETS_HASH_instruction
-    && context.stack[1]->hash == TRAINING_COMPONETS_HASH_table
-    && context.stack[2]->hash == TRAINING_COMPONETS_HASH_header_line
-    && context.stack[3]->hash == TRAINING_COMPONETS_HASH_cell
-    && context.stack[4]->hash == TRAINING_COMPONETS_HASH_field) {
+  // ---- 3) Header fields ----
+  // Old code required stack.size()==5 with exact positions ending in <field>.
+  // New code: "we are visiting a <field> node and somewhere above we are in header_line + cell + table + instruction"
+  if (node->hash == TRAINING_COMPONETS_HASH_field &&
+      stack_has(context, TRAINING_COMPONETS_HASH_instruction) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_table) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_header_line) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_cell)) {
+
     current->raw.emplace_back(TRAINING_COMPONETS_HASH_header_line, "");
     current->current_element_value = &current->raw.back().value;
+    return;
   }
 
-  /* Item line */
-  if ( context.stack.size() == 5
-    && context.stack[0]->hash == TRAINING_COMPONETS_HASH_instruction
-    && context.stack[1]->hash == TRAINING_COMPONETS_HASH_table
-    && context.stack[2]->hash == TRAINING_COMPONETS_HASH_item_line
-    && context.stack[3]->hash == TRAINING_COMPONETS_HASH_cell
-    && context.stack[4]->hash == TRAINING_COMPONETS_HASH_field) {
+  // ---- 4) Item fields ----
+  if (node->hash == TRAINING_COMPONETS_HASH_field &&
+      stack_has(context, TRAINING_COMPONETS_HASH_instruction) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_table) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_item_line) &&
+      stack_has(context, TRAINING_COMPONETS_HASH_cell)) {
+
     current->raw.emplace_back(TRAINING_COMPONETS_HASH_item_line, "");
     current->current_element_value = &current->raw.back().value;
+    return;
   }
 }
 

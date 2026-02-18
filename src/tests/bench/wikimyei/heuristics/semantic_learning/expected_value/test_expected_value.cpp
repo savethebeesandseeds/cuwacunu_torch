@@ -58,13 +58,8 @@ int main() {
   using Sampler_t = torch::data::samplers::SequentialSampler; // using Sampler_t = torch::data::samplers::RandomSampler;
 
   TICK(create_dataloader_);
-  auto raw_dataloader = cuwacunu::camahjucunu::data::create_memory_mapped_dataloader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>(
-      INSTRUMENT,                                                                                             /* instrument */
-      cuwacunu::camahjucunu::observation_pipeline_t::inst,             /* obs_inst */ 
-      cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("DATA_LOADER", "dataloader_force_binarization"),    /* force_binarization */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_batch_size"),            /* batch_size */
-      cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("DATA_LOADER", "dataloader_workers")                /* workers */
-  );
+  auto raw_dataloader = cuwacunu::camahjucunu::data::make_obs_pipeline_mm_dataloader
+    <Datasample_t, Sampler_t>(std::string_view instrument);
   PRINT_TOCK_ms(create_dataloader_);
 
   // -----------------------------------------------------
