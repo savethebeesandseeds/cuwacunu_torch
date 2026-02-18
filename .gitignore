@@ -1,7 +1,7 @@
 /data/raw/*
 /data/tests/*
 /external/*
-/.idyicyanere/
+.idyicyanere/
 /src/build/*
 /src/tests/build/*
 /src/config/*.pem
