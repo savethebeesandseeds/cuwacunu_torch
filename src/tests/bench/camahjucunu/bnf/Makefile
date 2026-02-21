@@ -18,8 +18,8 @@ $(eval $(call TEST_ONEFILE, test_bnf_grammar_parser,       test_bnf_grammar_pars
 $(eval $(call TEST_ONEFILE, test_bnf_instruction_lexer,    test_bnf_instruction_lexer.cpp))
 $(eval $(call TEST_ONEFILE, test_bnf_instruction_parser,   test_bnf_instruction_parser.cpp))
 $(eval $(call TEST_ONEFILE, test_bnf_observation_pipeline, test_bnf_observation_pipeline.cpp))
-$(eval $(call TEST_ONEFILE, test_bnf_iinuji_renderings,  	 test_bnf_iinuji_renderings.cpp))
 $(eval $(call TEST_ONEFILE, test_bnf_training_components,  test_bnf_training_components.cpp))
+$(eval $(call TEST_ONEFILE, test_bnf_tsiemene_board,       test_bnf_tsiemene_board.cpp))
 
 # 4) Target-specific includes/link flags
 # (none)
@@ -32,8 +32,8 @@ all: \
 	$(TEST_OUT)/test_bnf_instruction_lexer \
 	$(TEST_OUT)/test_bnf_instruction_parser \
 	$(TEST_OUT)/test_bnf_observation_pipeline \
-	$(TEST_OUT)/test_bnf_iinuji_renderings \
-	$(TEST_OUT)/test_bnf_training_components
+	$(TEST_OUT)/test_bnf_training_components \
+	$(TEST_OUT)/test_bnf_tsiemene_board
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
@@ -44,8 +44,8 @@ run: \
 	run-test_bnf_instruction_lexer \
 	run-test_bnf_instruction_parser \
 	run-test_bnf_observation_pipeline \
-	run-test_bnf_iinuji_renderings \
-	run-test_bnf_training_components
+	run-test_bnf_training_components \
+	run-test_bnf_tsiemene_board
 
 # 7) Clean
 .PHONY: clean

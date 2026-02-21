@@ -29,6 +29,8 @@ namespace data {
 
 namespace detail {
 
+constexpr std::int64_t kMaxGapFillSteps = 10000000;
+
 // Cast a long double key to T::key_type_t with correct rounding for integrals.
 template <typename KeyT>
 inline KeyT cast_key_longdouble(long double v) {
@@ -43,6 +45,35 @@ inline KeyT cast_key_longdouble(long double v) {
 inline bool should_tick_progress(std::size_t i) {
   // every ~1024 iterations (tunable)
   return (i & 0x3FFu) == 0u;
+}
+
+inline std::int64_t rounded_steps_or_fatal(long double steps_ld,
+                                           std::size_t line_number,
+                                           const std::string& csv_filename,
+                                           const char* context_label) {
+  if (!std::isfinite(steps_ld)) {
+    log_fatal("[sanitize_csv_into_binary_file] Non-finite step ratio in %s at line %zu (%s)\n",
+              csv_filename.c_str(), line_number, context_label);
+  }
+  const long double abs_steps = std::fabs(steps_ld);
+  const long double i64_max_ld = static_cast<long double>(std::numeric_limits<std::int64_t>::max());
+  if (abs_steps > i64_max_ld) {
+    log_fatal("[sanitize_csv_into_binary_file] Step ratio overflow in %s at line %zu (%s): %.15Lf\n",
+              csv_filename.c_str(), line_number, context_label, steps_ld);
+  }
+
+  const auto rounded = static_cast<std::int64_t>(std::llround(steps_ld));
+  if (rounded <= 0) {
+    log_fatal("[sanitize_csv_into_binary_file] Non-positive rounded steps in %s at line %zu (%s): %lld\n",
+              csv_filename.c_str(), line_number, context_label, static_cast<long long>(rounded));
+  }
+  if (rounded > kMaxGapFillSteps) {
+    log_fatal("[sanitize_csv_into_binary_file] Gap fill too large in %s at line %zu (%s): %lld > %lld\n",
+              csv_filename.c_str(), line_number, context_label,
+              static_cast<long long>(rounded),
+              static_cast<long long>(kMaxGapFillSteps));
+  }
+  return rounded;
 }
 
 // ----------------------------------------------------------------------------
@@ -105,7 +136,12 @@ inline bool is_bin_filename_normalized(const std::string& bin_filename, std::siz
  * normalize_binary_file<T>
  * ------------------------
  * In-place normalization of a binary file of records T using a rolling window
- * built from the **previous** window_size valid records.
+ * built from the **previous** up-to-window_size valid records.
+ *
+ * At the beginning of the sequence (burn-in), when fewer than window_size
+ * valid samples are available, normalization still runs against the partial
+ * history. This keeps the file in a single normalized scale from the start
+ * (instead of mixing raw-prefix + normalized-tail).
  *
  * Requirements on T:
  *  - POD / trivially copyable
@@ -120,7 +156,7 @@ void normalize_binary_file(const std::string& bin_filename,
   static_assert(std::is_trivially_copyable<T>::value,
                 "normalize_binary_file<T>: T must be trivially copyable (POD-like).");
 
-  log_info("[normalize_binary_file] policy=causal_keep_len, W=%zu. File: %s%s%s\n",
+  log_info("[normalize_binary_file] policy=causal_partial_window_keep_len, W=%zu. File: %s%s%s\n",
            window_size, ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
 
   // Determine file size via filesystem (robust even if tellg would fail).
@@ -154,10 +190,11 @@ void normalize_binary_file(const std::string& bin_filename,
 
   auto stats_pack = T::initialize_statistics_pack(window_size);
 
-  // We normalize record i using stats from previous valid records (count<=window_size).
-  std::size_t filled_valid = 0;       // count of valid samples seen (caps at window_size)
-  std::size_t normalized_count = 0;   // diagnostics
-  std::size_t invalid_count = 0;      // diagnostics
+  // We normalize record i using stats from previous valid records
+  // (count <= window_size). During burn-in, this is a partial history.
+  std::size_t filled_valid = 0;         // count of valid samples seen (caps at window_size)
+  std::size_t normalized_count = 0;     // diagnostics: valid records normalized
+  std::size_t invalid_count = 0;        // diagnostics: invalid passthrough
 
   io.clear();
   io.seekg(0, std::ios::beg);
@@ -176,11 +213,13 @@ void normalize_binary_file(const std::string& bin_filename,
 
     // Decide output
     T out = rec;
-    // **** Minimal causal change: normalize only when the window is FULL ****
-    if (rec.is_valid() && filled_valid >= window_size) {
+    if (rec.is_valid()) {
+      // Normalize from the first valid sample using whatever past context exists.
+      // With zero/low context, per-field stddev can be zero and normalize() returns 0,
+      // yielding a neutral burn-in instead of leaking raw-scale values.
       out = stats_pack.normalize(rec);
       ++normalized_count;
-    } else if (!rec.is_valid()) {
+    } else {
       ++invalid_count; // passthrough invalids, do not update stats
     }
 
@@ -214,12 +253,12 @@ void normalize_binary_file(const std::string& bin_filename,
   FINISH_LOADING_BAR(normalization_progress_bar_);
   io.close();
 
-  const std::size_t burn_in = std::min(filled_valid, window_size);
+  const std::size_t partial_window_valid = std::min(filled_valid, window_size);
   log_info("(normalize_binary_file) %sNormalization completed%s. File: %s%s%s | "
-           "burn_in_valid=%zu, normalized=%zu, invalid_passthrough=%zu\n",
+           "partial_window_valid=%zu, normalized_valid=%zu, invalid_passthrough=%zu\n",
            ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
            ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET,
-           burn_in, normalized_count, invalid_count);
+           partial_window_valid, normalized_count, invalid_count);
 }
 
 /*
@@ -381,7 +420,8 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
       if (irregular) {
         // Best-effort gap fill with rounded step count; warn if residual is large.
         const long double steps_ld = current_delta / regular_delta;
-        const auto delta_steps = static_cast<std::int64_t>(std::llround(steps_ld));
+        const auto delta_steps = detail::rounded_steps_or_fatal(
+          steps_ld, line_number, csv_filename, "irregular-increment");
         const long double residual = std::fabs(steps_ld - static_cast<long double>(delta_steps));
         log_err("%s\t %s-%s [sanitize_csv_into_binary_file]%s Irregular increment:"
                 " (regular=%.15Lf, current=%.15Lf, steps≈%.9Lf, rounded=%lld, residual=%.3g)"
@@ -410,7 +450,8 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
 
       // Number of steps from p0 up to (but not including) p1
       const long double steps_ld = current_delta / regular_delta;
-      const auto delta_steps = static_cast<std::int64_t>(std::llround(steps_ld));
+      const auto delta_steps = detail::rounded_steps_or_fatal(
+        steps_ld, line_number, csv_filename, "regular-increment");
       if (delta_steps != 1) {
         log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s extra large step (d=%s%lld%s)"
                  " at line %s%zu%s in %s%s%s\n",

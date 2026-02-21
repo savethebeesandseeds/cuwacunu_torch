@@ -1,0 +1,69 @@
+/*
+    Configuration for instrument forms and their relationship to raw data.
+    These configurations define the structure of input data, which will
+    be used to train the unsupervised autoencoder.
+
+    Column Descriptions:
+    - Instrument: The financial instrument or trading pair being analyzed (e.g., BTCUSDT).
+    - Interval: The time interval of the data (e.g., 1m for 1 minute, 1d for 1 day).
+    - Record Type: The type of data record (e.g., kline for candlestick data).
+    - Norm Window: The size of the normalization window used for preprocessing (set to zero to avoid normalization).
+    - Source Path: The file path to the raw data CSV file for this instrument and interval.
+*/
+/-------------------------------------------------------------------------------------------------------------------------\
+|  instrument  |  interval  |  record_type  |  norm_window  |  source                                                     |
+|-------------------------------------------------------------------------------------------------------------------------|
+|   BTCUSDT    |    1w      |     kline     |     0         |  /cuwacunu/data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv     |
+|   BTCUSDT    |    3d      |     kline     |     0         |  /cuwacunu/data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv     |
+|   BTCUSDT    |    1d      |     kline     |     0         |  /cuwacunu/data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |
+|   BTCUSDT    |    12h     |     kline     |     60        |  /cuwacunu/data/raw/BTCUSDT/12h/BTCUSDT-12h-all-years.csv   |
+|   BTCUSDT    |    8h      |     kline     |     90        |  /cuwacunu/data/raw/BTCUSDT/8h/BTCUSDT-8h-all-years.csv     |
+|   BTCUSDT    |    6h      |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/6h/BTCUSDT-6h-all-years.csv     |
+|   BTCUSDT    |    4h      |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/4h/BTCUSDT-4h-all-years.csv     |
+|   BTCUSDT    |    2h      |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/2h/BTCUSDT-2h-all-years.csv     |
+|   BTCUSDT    |    1h      |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/1h/BTCUSDT-1h-all-years.csv     |
+|   BTCUSDT    |    30m     |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/30m/BTCUSDT-30m-all-years.csv   |
+|   BTCUSDT    |    15m     |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/15m/BTCUSDT-15m-all-years.csv   |
+|   BTCUSDT    |    5m      |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/5m/BTCUSDT-5m-all-years.csv     |
+|   BTCUSDT    |    3m      |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/3m/BTCUSDT-3m-all-years.csv     |
+|   BTCUSDT    |    1m      |     kline     |     100       |  /cuwacunu/data/raw/BTCUSDT/1m/BTCUSDT-1m-all-years.csv     |
+|   UTILITIES  |  constant  |     basic     |     100       |  /cuwacunu/data/raw/UTILITIES/constant/constant_value.csv   |
+|   UTILITIES  |    sine    |     basic     |     100       |  /cuwacunu/data/raw/UTILITIES/sine/sine_wave.csv            |
+|   UTILITIES  | triangular |     basic     |     100       |  /cuwacunu/data/raw/UTILITIES/triangular/triangular_wave.csv |
+\-------------------------------------------------------------------------------------------------------------------------/
+/*
+    Configuration for input forms to the unsupervised autoencoder.
+
+    Column Descriptions:
+    - Interval: The time interval of the data (e.g., 1m for 1 minute, 1h for 1 hour).
+    - Active: Indicates whether this configuration is enabled for training (true/false).
+    - Record Type: The type of data record (e.g., kline for candlestick data).
+    - Seq Length: (integer) The number of sequential data points in the input sequence.
+    - Future Seq Length: (integer) The number of future data points, usefull for training.
+    - Channel Weight: (float) How strongly is training affected by the channel. 
+    /----------------------------------------------------------------------------\
+    |  interval     |  active  |  record_type |  seq_length  | future_seq_length |
+    |----------------------------------------------------------------------------|
+    |  sine         |   true   |    basic     |     10       |         1         |
+    |  triangular   |   false  |    basic     |     10       |         1         |
+    |  constant     |   false  |    basic     |     10       |         1         |
+    \----------------------------------------------------------------------------/
+*/
+/-------------------------------------------------------------------------------------------\
+|  interval   |  active   |  record_type |  seq_length | future_seq_length | channel_weight |
+|-------------------------------------------------------------------------------------------|
+|    1w       |   true    |    kline     |     4       |         0         |      1.0       |
+|    3d       |   true    |    kline     |     10      |         0         |      1.0       |
+|    1d       |   true    |    kline     |     30      |         0         |      1.0       |
+|    12h      |   false   |    kline     |     60      |         1         |      1.0       |
+|    8h       |   false   |    kline     |     90      |         1         |      1.0       |
+|    6h       |   false   |    kline     |     100     |         1         |      1.0       |
+|    4h       |   false   |    kline     |     100     |         1         |      1.0       |
+|    2h       |   false   |    kline     |     100     |         1         |      1.0       |
+|    1h       |   false   |    kline     |     100     |         1         |      1.0       |
+|    30m      |   false   |    kline     |     100     |         1         |      1.0       |
+|    15m      |   false   |    kline     |     100     |         1         |      1.0       |
+|    5m       |   false   |    kline     |     100     |         1         |      1.0       |
+|    3m       |   false   |    kline     |     100     |         1         |      1.0       |
+|    1m       |   false   |    kline     |     100     |         1         |      1.0       |
+\-------------------------------------------------------------------------------------------/

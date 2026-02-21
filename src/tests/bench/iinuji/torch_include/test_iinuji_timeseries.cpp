@@ -57,7 +57,7 @@
 #include "iinuji/ncurses/iinuji_rend_ncurses.h"
 
 // VICReg embedding model (required)
-#include "wikimyei/heuristics/representation_learning/VICReg/vicreg_4d.h"
+#include "wikimyei/representation/VICReg/vicreg_4d.h"
 
 using torch::indexing::Slice;
 

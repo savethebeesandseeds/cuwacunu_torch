@@ -122,14 +122,14 @@ observationPipeline::observationPipeline()
   , iParser(iLexer, grammar)
 {
 #ifdef OBSERVARION_PIPELINE_DEBUG
-  std::cout << OBSERVATION_PIPELINE_BNF_GRAMMAR << "\n";
+  log_info("%s\n", OBSERVATION_PIPELINE_BNF_GRAMMAR);
 #endif
 }
 
 cuwacunu::camahjucunu::observation_instruction_t
 observationPipeline::decode(std::string instruction) {
 #ifdef OBSERVARION_PIPELINE_DEBUG
-  std::cout << "Request to decode observationPipeline\n";
+  log_info("Request to decode observationPipeline\n");
 #endif
   /* guard the thread to avoid multiple decoding in parallel */
   LOCK_GUARD(current_mutex);
@@ -138,8 +138,9 @@ observationPipeline::decode(std::string instruction) {
   ASTNodePtr actualAST = iParser.parse_Instruction(instruction);
 
 #ifdef OBSERVARION_PIPELINE_DEBUG
-  std::cout << "Parsed AST:\n";
-  printAST(actualAST.get(), true, 2, std::cout);
+  std::ostringstream oss;
+  printAST(actualAST.get(), true, 2, oss);
+  log_info("Parsed AST:\n%s\n", oss.str().c_str());
 #endif
 
   /* Parsed data */

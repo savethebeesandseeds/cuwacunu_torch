@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "piaabo/dlogs.h"  // diagnostics only; rendering still goes through iinuji renderer hooks.
+
 namespace cuwacunu {
 namespace iinuji {
 
@@ -192,7 +194,7 @@ static void plot_braille_multi(const std::vector<Series>& series,
                                int width_cells, int height_cells,
                                const PlotOptions& opt = {}) {
   if (width_cells <= 0 || height_cells <= 0) {
-    std::fprintf(stderr, "(iinuji_plot)[plot_braille] width/height must be > 0\n");
+    log_err("(iinuji_plot)[plot_braille] width/height must be > 0\n");
     return;
   }
   if (series.empty()) return;

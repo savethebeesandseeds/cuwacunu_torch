@@ -85,8 +85,10 @@ void csvFile_to_binary(const std::string& csv_filename, const std::string& bin_f
         buffer.clear();
       }
     } catch (const std::exception& e) {
-      std::cerr << "[csvFile_to_binary] Error processing line " << line_number << ": " << line
-            << "\nException: " << e.what() << std::endl;
+      log_warn("[csvFile_to_binary] Error processing line %zu: %s | Exception: %s\n",
+               line_number,
+               line.c_str(),
+               e.what());
       // Skip this line and continue
       continue;
     }

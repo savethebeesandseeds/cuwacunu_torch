@@ -28,6 +28,13 @@
 #include <stdexcept>
 #include <utility>
 #include <iostream>
+#include <deque>
+#include <vector>
+#include <cstdint>
+#include <ctime>
+#include <algorithm>
+#include <cstddef>
+#include <atomic>
 
 #ifndef DLOGS_USE_IOSTREAMS
 #define DLOGS_USE_IOSTREAMS 0
@@ -182,6 +189,186 @@ extern std::mutex log_mutex;
 namespace cuwacunu {
 namespace piaabo {
 
+inline const char* cthread_id();
+
+struct dlog_entry_t {
+  std::uint64_t seq{0};
+  std::string timestamp{};
+  std::string level{};
+  std::string thread{};
+  std::string message{};
+};
+
+inline std::mutex& dlog_buffer_mutex() {
+  static std::mutex m;
+  return m;
+}
+
+inline std::deque<dlog_entry_t>& dlog_buffer_storage() {
+  static std::deque<dlog_entry_t> q;
+  return q;
+}
+
+inline std::size_t& dlog_buffer_capacity_storage() {
+  static std::size_t cap = 4096;
+  return cap;
+}
+
+inline std::uint64_t& dlog_sequence_storage() {
+  static std::uint64_t seq = 0;
+  return seq;
+}
+
+inline std::string dlog_now_timestamp() {
+  using clock = std::chrono::system_clock;
+  const auto now = clock::now();
+  const auto tt = clock::to_time_t(now);
+  std::tm tmv{};
+#if defined(_WIN32)
+  localtime_s(&tmv, &tt);
+#else
+  localtime_r(&tt, &tmv);
+#endif
+  char datebuf[32];
+  std::strftime(datebuf, sizeof(datebuf), "%Y-%m-%d %H:%M:%S", &tmv);
+
+  const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()) % 1000;
+  char out[48];
+  std::snprintf(out, sizeof(out), "%s.%03lld", datebuf, (long long)ms.count());
+  return std::string(out);
+}
+
+inline std::string strip_ansi_escapes(const std::string& in) {
+  std::string out;
+  out.reserve(in.size());
+  for (std::size_t i = 0; i < in.size(); ++i) {
+    const unsigned char c = static_cast<unsigned char>(in[i]);
+    if (c == 0x1B) {
+      // Skip CSI escape sequences (ESC [ ... final-byte).
+      if (i + 1 < in.size() && in[i + 1] == '[') {
+        i += 2;
+        while (i < in.size()) {
+          const unsigned char cc = static_cast<unsigned char>(in[i]);
+          if (cc >= 0x40 && cc <= 0x7E) break;
+          ++i;
+        }
+      }
+      continue;
+    }
+    out.push_back(static_cast<char>(c));
+  }
+  return out;
+}
+
+inline void dlog_set_buffer_capacity(std::size_t cap) {
+  LOCK_GUARD(dlog_buffer_mutex());
+  auto& storage = dlog_buffer_storage();
+  auto& current = dlog_buffer_capacity_storage();
+  current = std::max<std::size_t>(1, cap);
+  while (storage.size() > current) storage.pop_front();
+}
+
+inline std::size_t dlog_buffer_capacity() {
+  LOCK_GUARD(dlog_buffer_mutex());
+  return dlog_buffer_capacity_storage();
+}
+
+inline std::size_t dlog_buffer_size() {
+  LOCK_GUARD(dlog_buffer_mutex());
+  return dlog_buffer_storage().size();
+}
+
+inline void dlog_clear_buffer() {
+  LOCK_GUARD(dlog_buffer_mutex());
+  dlog_buffer_storage().clear();
+}
+
+inline std::atomic_bool& dlog_terminal_output_enabled_storage() {
+  static std::atomic_bool enabled{true};
+  return enabled;
+}
+
+inline void dlog_set_terminal_output_enabled(bool enabled) {
+  dlog_terminal_output_enabled_storage().store(enabled, std::memory_order_relaxed);
+}
+
+inline bool dlog_terminal_output_enabled() {
+  return dlog_terminal_output_enabled_storage().load(std::memory_order_relaxed);
+}
+
+inline void dlog_push(const std::string& level, std::string message) {
+  const std::string clean = strip_ansi_escapes(message);
+  const std::string thread = cthread_id();
+
+  LOCK_GUARD(dlog_buffer_mutex());
+  auto& storage = dlog_buffer_storage();
+  auto& seq = dlog_sequence_storage();
+  const std::size_t cap = dlog_buffer_capacity_storage();
+
+  std::size_t start = 0;
+  bool pushed = false;
+  while (start <= clean.size()) {
+    const std::size_t end = clean.find('\n', start);
+    std::string line = (end == std::string::npos)
+                           ? clean.substr(start)
+                           : clean.substr(start, end - start);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (!line.empty()) {
+      dlog_entry_t entry{};
+      entry.seq = ++seq;
+      entry.timestamp = dlog_now_timestamp();
+      entry.level = level.empty() ? "INFO" : level;
+      entry.thread = thread;
+      entry.message = std::move(line);
+      storage.push_back(std::move(entry));
+      pushed = true;
+      while (storage.size() > cap) storage.pop_front();
+    }
+
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+
+  if (!pushed) {
+    dlog_entry_t entry{};
+    entry.seq = ++seq;
+    entry.timestamp = dlog_now_timestamp();
+    entry.level = level.empty() ? "INFO" : level;
+    entry.thread = thread;
+    entry.message = "<empty>";
+    storage.push_back(std::move(entry));
+    while (storage.size() > cap) storage.pop_front();
+  }
+}
+
+inline std::string dlog_format_entry(const dlog_entry_t& e) {
+  std::ostringstream oss;
+  oss << "[" << e.timestamp << "] "
+      << "[" << e.level << "] "
+      << "[0x" << e.thread << "] "
+      << e.message;
+  return oss.str();
+}
+
+inline std::vector<dlog_entry_t> dlog_snapshot(std::size_t max_entries = 0) {
+  LOCK_GUARD(dlog_buffer_mutex());
+  const auto& storage = dlog_buffer_storage();
+  if (max_entries == 0 || max_entries >= storage.size()) {
+    return std::vector<dlog_entry_t>(storage.begin(), storage.end());
+  }
+  return std::vector<dlog_entry_t>(storage.end() - static_cast<std::ptrdiff_t>(max_entries),
+                                   storage.end());
+}
+
+inline std::vector<std::string> dlog_snapshot_lines(std::size_t max_entries = 0) {
+  const auto snap = dlog_snapshot(max_entries);
+  std::vector<std::string> lines;
+  lines.reserve(snap.size());
+  for (const auto& e : snap) lines.push_back(dlog_format_entry(e));
+  return lines;
+}
+
 /**
  * @brief Escapes a small set of shell/console-sensitive characters in-place.
  *
@@ -245,11 +432,17 @@ inline constexpr const char* path_basename(const char* path) noexcept {
 
 namespace detail {
 
+inline void capture_formatted_log_v(const char* level,
+                                    const char* fmt,
+                                    std::va_list args);
+inline void capture_formatted_log(const char* level, const char* fmt, ...);
+
 inline void vsecure_log(FILE* out,
                         const char* level_label,
                         const char* level_color,
                         const char* fmt,
                         std::va_list args) {
+  if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) return;
   char temp[2048];
 
   int written = 0;
@@ -302,9 +495,13 @@ inline void secure_log(FILE* out,
                        const char* level_label,
                        const char* level_color,
                        const char* fmt, ...) {
-  LOCK_GUARD(log_mutex);
   std::va_list args;
   va_start(args, fmt);
+  std::va_list args_copy;
+  va_copy(args_copy, args);
+  capture_formatted_log_v(level_label, fmt, args_copy);
+  va_end(args_copy);
+  LOCK_GUARD(log_mutex);
   vsecure_log(out, level_label, level_color, fmt, args);
   va_end(args);
 }
@@ -334,6 +531,22 @@ inline std::string vformat(const char* fmt, std::va_list args) {
   return buf;
 }
 
+inline void capture_formatted_log_v(const char* level,
+                                    const char* fmt,
+                                    std::va_list args) {
+  if (!fmt) return;
+  std::string msg = vformat(fmt, args);
+  if (msg.empty()) return;
+  cuwacunu::piaabo::dlog_push(level ? level : "INFO", std::move(msg));
+}
+
+inline void capture_formatted_log(const char* level, const char* fmt, ...) {
+  std::va_list args;
+  va_start(args, fmt);
+  capture_formatted_log_v(level, fmt, args);
+  va_end(args);
+}
+
 inline void vstream_printf(std::ostream& out, const char* fmt, std::va_list args) {
   out << vformat(fmt, args);
 }
@@ -350,6 +563,7 @@ inline void vsecure_log_stream(std::ostream& out,
                                const char* level_color,
                                const char* fmt,
                                std::va_list args) {
+  if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) return;
   char temp[2048];
 
   int written = 0;
@@ -400,9 +614,13 @@ inline void secure_log_stream(std::ostream& out,
                               const char* level_label,
                               const char* level_color,
                               const char* fmt, ...) {
-  LOCK_GUARD(log_mutex);
   std::va_list args;
   va_start(args, fmt);
+  std::va_list args_copy;
+  va_copy(args_copy, args);
+  capture_formatted_log_v(level_label, fmt, args_copy);
+  va_end(args_copy);
+  LOCK_GUARD(log_mutex);
   vsecure_log_stream(out, level_label, level_color, fmt, args);
   va_end(args);
 }
@@ -414,23 +632,37 @@ inline void secure_log_stream(std::ostream& out,
  */
 inline void log_sys_errno_stream() {
   if (errno == 0) return;
+  const int err = errno;
+  cuwacunu::piaabo::dlog_push("SYS_ERRNO",
+                              "[" + std::to_string(err) + "] " + std::strerror(err));
+  if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) {
+    errno = 0;
+    return;
+  }
   LOCK_GUARD(log_mutex);
   std::cerr << "["
             << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET
             << "]: "
             << ANSI_COLOR_ERROR << "SYS ERRNO" << ANSI_COLOR_RESET
-            << ": [" << errno << "] " << std::strerror(errno) << "\n";
+            << ": [" << err << "] " << std::strerror(err) << "\n";
   std::cerr.flush();
   errno = 0;
 }
 
 inline void log_sys_errno_stdio() {
   if (errno == 0) return;
+  const int err = errno;
+  cuwacunu::piaabo::dlog_push("SYS_ERRNO",
+                              "[" + std::to_string(err) + "] " + std::strerror(err));
+  if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) {
+    errno = 0;
+    return;
+  }
   LOCK_GUARD(log_mutex);
   std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sSYS ERRNO%s: [%d] %s\n",
                ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET,
                ANSI_COLOR_ERROR, ANSI_COLOR_RESET,
-               errno, std::strerror(errno));
+               err, std::strerror(err));
   std::fflush(LOG_ERR_FILE);
   errno = 0;
 }
@@ -449,19 +681,25 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_info(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: "; \
-  cuwacunu::piaabo::detail::stream_printf(std::cout, __VA_ARGS__); \
-  std::cout.flush(); \
+  cuwacunu::piaabo::detail::capture_formatted_log("INFO", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: "; \
+    cuwacunu::piaabo::detail::stream_printf(std::cout, __VA_ARGS__); \
+    std::cout.flush(); \
+  } \
 } while(false)
 #else
 #define log_info(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::fprintf(LOG_FILE, "[%s0x%s%s]: ", \
-    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET); \
-  std::fprintf(LOG_FILE, __VA_ARGS__); \
-  std::fflush(LOG_FILE); \
+  cuwacunu::piaabo::detail::capture_formatted_log("INFO", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::fprintf(LOG_FILE, "[%s0x%s%s]: ", \
+      ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET); \
+    std::fprintf(LOG_FILE, __VA_ARGS__); \
+    std::fflush(LOG_FILE); \
+  } \
 } while(false)
 #endif
 #endif
@@ -470,21 +708,27 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_dbg(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::cerr << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
-            << ANSI_COLOR_Bright_Blue << "DEBUG" << ANSI_COLOR_RESET << ": "; \
-  cuwacunu::piaabo::detail::stream_printf(std::cerr, __VA_ARGS__); \
-  std::cerr.flush(); \
+  cuwacunu::piaabo::detail::capture_formatted_log("DEBUG", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::cerr << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
+              << ANSI_COLOR_Bright_Blue << "DEBUG" << ANSI_COLOR_RESET << ": "; \
+    cuwacunu::piaabo::detail::stream_printf(std::cerr, __VA_ARGS__); \
+    std::cerr.flush(); \
+  } \
 } while(false)
 #else
 #define log_dbg(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sDEBUG%s: ", \
-    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
-    ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET); \
-  std::fprintf(LOG_ERR_FILE, __VA_ARGS__); \
-  std::fflush(LOG_ERR_FILE); \
+  cuwacunu::piaabo::detail::capture_formatted_log("DEBUG", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sDEBUG%s: ", \
+      ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
+      ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET); \
+    std::fprintf(LOG_ERR_FILE, __VA_ARGS__); \
+    std::fflush(LOG_ERR_FILE); \
+  } \
 } while(false)
 #endif
 #endif
@@ -493,26 +737,32 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_err(...) do {                                           \
   wrap_log_sys_err();                                               \
-  LOCK_GUARD(log_mutex);                                            \
-  std::ostringstream _log_oss;                                      \
-  _log_oss << "[" << ANSI_COLOR_Cyan << "0x"                         \
-           << cuwacunu::piaabo::cthread_id()                         \
-           << ANSI_COLOR_RESET << "]: "                              \
-           << ANSI_COLOR_ERROR << "ERROR"                            \
-           << ANSI_COLOR_RESET << ": ";                              \
-  cuwacunu::piaabo::detail::stream_printf(_log_oss, __VA_ARGS__);    \
-  std::cerr << _log_oss.str();                                       \
-  std::cerr.flush();                                                \
+  cuwacunu::piaabo::detail::capture_formatted_log("ERROR", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) {            \
+    LOCK_GUARD(log_mutex);                                           \
+    std::ostringstream _log_oss;                                     \
+    _log_oss << "[" << ANSI_COLOR_Cyan << "0x"                        \
+             << cuwacunu::piaabo::cthread_id()                        \
+             << ANSI_COLOR_RESET << "]: "                             \
+             << ANSI_COLOR_ERROR << "ERROR"                           \
+             << ANSI_COLOR_RESET << ": ";                             \
+    cuwacunu::piaabo::detail::stream_printf(_log_oss, __VA_ARGS__);   \
+    std::cerr << _log_oss.str();                                      \
+    std::cerr.flush();                                                \
+  }                                                                   \
 } while(false)
 #else
 #define log_err(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sERROR%s: ", \
-    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
-    ANSI_COLOR_ERROR, ANSI_COLOR_RESET); \
-  std::fprintf(LOG_ERR_FILE, __VA_ARGS__); \
-  std::fflush(LOG_ERR_FILE); \
+  cuwacunu::piaabo::detail::capture_formatted_log("ERROR", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sERROR%s: ", \
+      ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
+      ANSI_COLOR_ERROR, ANSI_COLOR_RESET); \
+    std::fprintf(LOG_ERR_FILE, __VA_ARGS__); \
+    std::fflush(LOG_ERR_FILE); \
+  } \
 } while(false)
 #endif
 #endif
@@ -521,21 +771,27 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_warn(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
-            << ANSI_COLOR_WARNING << "WARNING" << ANSI_COLOR_RESET << ": "; \
-  cuwacunu::piaabo::detail::stream_printf(std::cout, __VA_ARGS__); \
-  std::cout.flush(); \
+  cuwacunu::piaabo::detail::capture_formatted_log("WARNING", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
+              << ANSI_COLOR_WARNING << "WARNING" << ANSI_COLOR_RESET << ": "; \
+    cuwacunu::piaabo::detail::stream_printf(std::cout, __VA_ARGS__); \
+    std::cout.flush(); \
+  } \
 } while(false)
 #else
 #define log_warn(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sWARNING%s: ", \
-    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
-    ANSI_COLOR_WARNING, ANSI_COLOR_RESET); \
-  std::fprintf(LOG_WARN_FILE, __VA_ARGS__); \
-  std::fflush(LOG_WARN_FILE); \
+  cuwacunu::piaabo::detail::capture_formatted_log("WARNING", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sWARNING%s: ", \
+      ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
+      ANSI_COLOR_WARNING, ANSI_COLOR_RESET); \
+    std::fprintf(LOG_WARN_FILE, __VA_ARGS__); \
+    std::fflush(LOG_WARN_FILE); \
+  } \
 } while(false)
 #endif
 #endif
@@ -544,7 +800,8 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_fatal(...) do { \
   wrap_log_sys_err(); \
-  { \
+  cuwacunu::piaabo::detail::capture_formatted_log("FATAL", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cerr << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
               << ANSI_COLOR_FATAL << "FATAL" << ANSI_COLOR_RESET << ": "; \
@@ -556,7 +813,8 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_fatal(...) do { \
   wrap_log_sys_err(); \
-  { \
+  cuwacunu::piaabo::detail::capture_formatted_log("FATAL", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sFATAL%s: ", \
       ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
@@ -573,7 +831,8 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_terminate_gracefully(...) do { \
   wrap_log_sys_err(); \
-  { \
+  cuwacunu::piaabo::detail::capture_formatted_log("TERMINATION", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
               << ANSI_COLOR_WARNING << "TERMINATION" << ANSI_COLOR_RESET << ": "; \
@@ -585,7 +844,8 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_terminate_gracefully(...) do { \
   wrap_log_sys_err(); \
-  { \
+  cuwacunu::piaabo::detail::capture_formatted_log("TERMINATION", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sTERMINATION%s: ", \
       ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
@@ -602,21 +862,27 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_runtime_warning(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
-            << ANSI_COLOR_WARNING2 << "DEV_WARNING" << ANSI_COLOR_RESET << ": "; \
-  cuwacunu::piaabo::detail::stream_printf(std::cout, __VA_ARGS__); \
-  std::cout.flush(); \
+  cuwacunu::piaabo::detail::capture_formatted_log("DEV_WARNING", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
+              << ANSI_COLOR_WARNING2 << "DEV_WARNING" << ANSI_COLOR_RESET << ": "; \
+    cuwacunu::piaabo::detail::stream_printf(std::cout, __VA_ARGS__); \
+    std::cout.flush(); \
+  } \
 } while(false)
 #else
 #define log_runtime_warning(...) do { \
   wrap_log_sys_err(); \
-  LOCK_GUARD(log_mutex); \
-  std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sDEV_WARNING%s: ", \
-    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
-    ANSI_COLOR_WARNING2, ANSI_COLOR_RESET); \
-  std::fprintf(LOG_WARN_FILE, __VA_ARGS__); \
-  std::fflush(LOG_WARN_FILE); \
+  cuwacunu::piaabo::detail::capture_formatted_log("DEV_WARNING", __VA_ARGS__); \
+  if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
+    LOCK_GUARD(log_mutex); \
+    std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sDEV_WARNING%s: ", \
+      ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
+      ANSI_COLOR_WARNING2, ANSI_COLOR_RESET); \
+    std::fprintf(LOG_WARN_FILE, __VA_ARGS__); \
+    std::fflush(LOG_WARN_FILE); \
+  } \
 } while(false)
 #endif
 #endif
@@ -822,6 +1088,7 @@ struct loading_bar_t {
 };
 
 inline void printLoadingBar(const loading_bar_t &bar) {
+  if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) return;
   std::stringstream ss;
   int filled = (bar.width * static_cast<int>(bar.currentProgress)) / 100;
 
@@ -868,6 +1135,7 @@ inline void updateLoadingBar(loading_bar_t &bar, double percentage) {
 inline void finishLoadingBar(loading_bar_t &bar) {
   updateLoadingBar(bar, 100);
 
+  if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) return;
   LOCK_GUARD(log_mutex);
 #if DLOGS_USE_IOSTREAMS
   std::cout << "\t " << bar.color

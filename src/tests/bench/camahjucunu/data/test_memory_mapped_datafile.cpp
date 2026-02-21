@@ -94,10 +94,11 @@ static std::vector<T> sanitize_in_memory(const std::string& csv_path, char delim
   return out;
 }
 
-// Simulate the header's causal_keep_len normalization exactly, producing the expected sequence.
+// Simulate the header's causal_partial_window_keep_len normalization exactly,
+// producing the expected sequence.
 template <typename T>
-static std::vector<T> simulate_causal_keep_len_normalization(const std::vector<T>& sanitized_seq,
-                                                             std::size_t window_size) {
+static std::vector<T> simulate_causal_partial_window_normalization(const std::vector<T>& sanitized_seq,
+                                                                   std::size_t window_size) {
   auto pack = T::initialize_statistics_pack((unsigned)window_size);
   std::vector<T> out; out.reserve(sanitized_seq.size());
 
@@ -106,7 +107,7 @@ static std::vector<T> simulate_causal_keep_len_normalization(const std::vector<T
     const T& x = sanitized_seq[i];
     T y = x;
 
-    if (x.is_valid() && filled_valid >= window_size) {
+    if (x.is_valid()) {
       y = pack.normalize(x);
     }
     out.push_back(y);
@@ -179,7 +180,7 @@ static void run_case(const std::string& label,
       log_fatal("[test][%s] sanitize byte mismatch @%zu\n", label.c_str(), i);
   log_info("[test][%s] ✔ Sanitize byte-identical (no-norm)\n", label.c_str());
 
-  // 2) Sanitize WITH normalization (causal_keep_len, in-place on copy)
+  // 2) Sanitize WITH normalization (causal_partial_window_keep_len, in-place on copy)
   const std::size_t W = norm_window;
   std::string bin_norm = sanitize_csv_into_binary_file<T>(csv_path, /*norm_window=*/W,
                                                           /*force_binarization=*/true);
@@ -196,11 +197,11 @@ static void run_case(const std::string& label,
     log_fatal("[test][%s] normalized BIN changed record count (keep_len policy expected same size)\n",
               label.c_str());
 
-  auto expected_norm = simulate_causal_keep_len_normalization<T>(sanitized_in_mem, W);
+  auto expected_norm = simulate_causal_partial_window_normalization<T>(sanitized_in_mem, W);
   if (expected_norm.size() != recs_norm.size())
     log_fatal("[test][%s] simulate size mismatch\n", label.c_str());
 
-  std::size_t valid_seen = 0, normalized = 0, invalid_passthrough = 0;
+  std::size_t valid_seen = 0, normalized_valid = 0, invalid_passthrough = 0;
   for (size_t i=0;i<recs_norm.size();++i) {
     const T& s = sanitized_in_mem[i];
     const T& y = recs_norm[i];
@@ -210,8 +211,8 @@ static void run_case(const std::string& label,
       log_fatal("[test][%s] norm byte mismatch @%zu\n", label.c_str(), i);
 
     if (s.is_valid()) {
-      if (valid_seen >= W) ++normalized;
       ++valid_seen;
+      ++normalized_valid;
     } else {
       if (!bytes_equal(s, y))
         log_fatal("[test][%s] invalid record modified @%zu\n", label.c_str(), i);
@@ -219,8 +220,8 @@ static void run_case(const std::string& label,
     }
   }
 
-  log_info("[test][%s] ✔ Causal keep_len matches. W=%zu, burn_in_valid=%zu, normalized=%zu, invalid_passthrough=%zu\n",
-           label.c_str(), W, std::min(valid_seen, W), normalized, invalid_passthrough);
+  log_info("[test][%s] ✔ Causal partial-window keep_len matches. W=%zu, partial_window_valid=%zu, normalized_valid=%zu, invalid_passthrough=%zu\n",
+           label.c_str(), W, std::min(valid_seen, W), normalized_valid, invalid_passthrough);
 
   // 3) Idempotency: rerun without force should skip and yield identical bytes
   std::string bin_norm2 = sanitize_csv_into_binary_file<T>(csv_path, W, /*force*/false);

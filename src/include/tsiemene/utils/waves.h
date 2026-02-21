@@ -1,4 +1,4 @@
-// ./include/tsiemene/waves.h
+// ./include/tsiemene/utils/waves.h
 // SPDX-License-Identifier: MIT
 #pragma once
 
@@ -7,7 +7,7 @@
 
 #include <torch/torch.h>
 
-#include "tsiemene/utils/ports.h"
+#include "tsiemene/utils/directives.h"
 
 namespace tsiemene {
 

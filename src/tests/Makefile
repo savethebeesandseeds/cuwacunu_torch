@@ -19,7 +19,7 @@ HERE_PATH := $(TESTS_PATH)
 
 # ------------------------------ BNF ------------------------------------------
 BNF := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bnf_instruction_parser \
-       bnf_observation_pipeline bnf_iinuji_renderings bnf_training_components
+       bnf_observation_pipeline bnf_training_components bnf_tsiemene_board
 $(foreach t,$(BNF),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/bnf)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -39,15 +39,15 @@ DATA := memory_mapped_datafile memory_mapped_dataset memory_mapped_concat_datase
 $(foreach t,$(DATA),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/data)))
 
 # ------------------------------ iinuji ---------------------------------------
-IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_instructions
+IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_tsi
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ iinuji + torch--------------------------------
-IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries
+IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji/torch_include)))
 
 # ------------------------------ tsiemene--------------------------------
-TSIEMENE := tsi_basic
+TSIEMENE := tsi_basic tsi_instruction
 $(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
 
 # --------------------------- camahjucunu/https -------------------------------
@@ -64,19 +64,19 @@ $(foreach t,$(JKIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/jkimyei
 
 # ------------------------------ wikimyei/VICReg ------------------------------
 VICREG := vicreg_4d_train vicreg_4d_projector_gpu_vs_cpu vicreg_4d_save_and_load
-$(foreach t,$(VICREG),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/VICReg)))
+$(foreach t,$(VICREG),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/representation/VICReg)))
 
 # ------------------------------ wikimyei/ts2vec ------------------------------
 TS2VEC := ts2vec_datautils ts2vec_losses ts2vec_dilated_conv ts2vec_encoder ts2vec_state_dict ts2vec_clonable ts2vec ts2vec_ECG200
-$(foreach t,$(TS2VEC),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/heuristics/representation_learning/ts2vec)))
+$(foreach t,$(TS2VEC),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/representation/ts2vec)))
 
 # ------------------------------ wikimyei/MDN ---------------------------------
 MDN := mixture_density_network
-$(foreach t,$(MDN),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/heuristics/semantic_learning/mdn)))
+$(foreach t,$(MDN),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/inference/mdn)))
 
 # ------------------------------ wikimyei/ExpectedValue -----------------------
 EXPVAL := expected_value
-$(foreach t,$(EXPVAL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/heuristics/semantic_learning/expected_value)))
+$(foreach t,$(EXPVAL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/inference/expected_value)))
 
 # 5) Aggregate: all
 .PHONY: all

@@ -13,5 +13,5 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 all:
 	$(MAKE) -C $(HERE_PATH)/observation_pipeline all
 	$(MAKE) -C $(HERE_PATH)/training_components all
-	$(MAKE) -C $(HERE_PATH)/iinuji_renderings all
+	$(MAKE) -C $(HERE_PATH)/tsiemene_board all
 	@$(LOG_SUCCESS)

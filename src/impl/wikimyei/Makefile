@@ -14,5 +14,6 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 .PHONY: all
 all:
-	$(MAKE) -C $(HERE_PATH)/heuristics all
+	$(MAKE) -C $(HERE_PATH)/representation all
+	$(MAKE) -C $(HERE_PATH)/inference all
 	@$(LOG_SUCCESS)

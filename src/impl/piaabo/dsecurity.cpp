@@ -143,7 +143,7 @@ void SecureStronghold_t::authenticate() {
   
   /* Input has been retrived - Restore old terminal settings */
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-  fprintf(LOG_FILE, "\n");
+  log_info("\n");
 
   /* --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- -- */
   /*            validate against ssl private file                   */

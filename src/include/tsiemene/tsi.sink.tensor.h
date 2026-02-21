@@ -13,7 +13,8 @@ namespace tsiemene {
 
 class TsiSinkTensor final : public TsiSink {
  public:
-  static constexpr PortId IN = 1;
+  static constexpr DirectiveId IN_PAYLOAD = directive_id::Payload;
+  static constexpr DirectiveId OUT_META   = directive_id::Meta;
 
   struct Item {
     Wave wave{};
@@ -31,17 +32,18 @@ class TsiSinkTensor final : public TsiSink {
   [[nodiscard]] std::string_view instance_name() const noexcept override { return instance_name_; }
   [[nodiscard]] TsiId id() const noexcept override { return id_; }
 
-  [[nodiscard]] std::span<const Port> ports() const noexcept override {
-    static constexpr Port kPorts[] = {
-      port(IN, PortDir::In, Schema::Tensor(), /*tag=*/{}, "sink input tensor"),
+  [[nodiscard]] std::span<const DirectiveSpec> directives() const noexcept override {
+    static constexpr DirectiveSpec kDirectives[] = {
+      directive(IN_PAYLOAD, DirectiveDir::In, KindSpec::Tensor(), "sink input tensor"),
+      directive(OUT_META, DirectiveDir::Out, KindSpec::String(), "runtime trace/meta stream"),
     };
-    return std::span<const Port>(kPorts, 1);
+    return std::span<const DirectiveSpec>(kDirectives, 2);
   }
 
   void reset(TsiContext&) override { items_.clear(); }
 
   void step(const Wave& wave, Ingress in, TsiContext&, Emitter&) override {
-    if (in.port != IN) return;
+    if (in.directive != IN_PAYLOAD) return;
     if (in.signal.kind != PayloadKind::Tensor) return;
     if (!in.signal.tensor.defined()) return;
 

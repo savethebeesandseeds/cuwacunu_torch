@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------
 # impl/Makefile — recurses into submodules
 # -----------------------------------------------------------------
-ROOT_PATH := ..
+ROOT_PATH := ../
 include $(ROOT_PATH)/Makefile.config
 HERE_PATH := $(IMPL_PATH)
 REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))

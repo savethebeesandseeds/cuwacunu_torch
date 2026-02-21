@@ -321,6 +321,10 @@ inline void render_text(const iinuji_object_t& obj) {
     return; // do not fall through to multiline wrap rendering
   }
 
+  const int H = std::max(0, r.h);
+  const int W = std::max(0, r.w);
+  if (H <= 0 || W <= 0) return;
+
   // Multiline support:
   // - if wrap=true  : wrap each newline-separated line
   // - if wrap=false : still split on '\n' so multiline labels render correctly
@@ -355,16 +359,128 @@ inline void render_text(const iinuji_object_t& obj) {
     return;
   }
 
-  // non-ANSI original path
-  auto lines = tb->wrap
-    ? wrap_text(tb->content, std::max(1,r.w))
+  // non-ANSI path with scrollable viewport + scrollbars
+  int reserve_v = 0;
+  int reserve_h = 0;
+  int text_w = W;
+  int text_h = H;
+  int max_line_len = 0;
+  std::vector<std::string> lines;
+
+  // Resolve scrollbar reservations (vertical + horizontal) with a few stable iterations.
+  for (int it = 0; it < 3; ++it) {
+    text_w = std::max(0, W - reserve_v);
+    text_h = std::max(0, H - reserve_h);
+    if (text_w <= 0 || text_h <= 0) return;
+
+    lines = tb->wrap
+      ? wrap_text(tb->content, std::max(1, text_w))
+      : split_lines_keep_empty(tb->content);
+
+    max_line_len = 0;
+    for (const auto& ln : lines) max_line_len = std::max(max_line_len, (int)ln.size());
+
+    const bool need_h = (!tb->wrap && max_line_len > text_w);
+    const int reserve_h_new = need_h ? 1 : 0;
+    const int text_h_if = std::max(0, H - reserve_h_new);
+    const bool need_v = ((int)lines.size() > text_h_if);
+    const int reserve_v_new = need_v ? 1 : 0;
+
+    if (reserve_h_new == reserve_h && reserve_v_new == reserve_v) break;
+    reserve_h = reserve_h_new;
+    reserve_v = reserve_v_new;
+  }
+
+  text_w = std::max(0, W - reserve_v);
+  text_h = std::max(0, H - reserve_h);
+  if (text_w <= 0 || text_h <= 0) return;
+
+  lines = tb->wrap
+    ? wrap_text(tb->content, std::max(1, text_w))
     : split_lines_keep_empty(tb->content);
-  int rows = std::min((int)lines.size(), r.h);
-  for (int i=0;i<rows;++i) {
+
+  max_line_len = 0;
+  for (const auto& ln : lines) max_line_len = std::max(max_line_len, (int)ln.size());
+
+  const int max_scroll_y = std::max(0, (int)lines.size() - text_h);
+  const int max_scroll_x = tb->wrap ? 0 : std::max(0, max_line_len - text_w);
+  tb->scroll_y = std::clamp(tb->scroll_y, 0, max_scroll_y);
+  tb->scroll_x = std::clamp(tb->scroll_x, 0, max_scroll_x);
+
+  for (int row = 0; row < text_h; ++row) {
+    const int li = tb->scroll_y + row;
+    if (li < 0 || li >= (int)lines.size()) break;
+
+    std::string line = lines[(std::size_t)li];
+    bool selected_line = false;
+    if (!line.empty() && line.front() == '\x1f') {
+      selected_line = true;
+      line.erase(line.begin());
+    }
+    if (!tb->wrap && tb->scroll_x > 0) {
+      if (tb->scroll_x >= (int)line.size()) line.clear();
+      else line = line.substr((std::size_t)tb->scroll_x, (std::size_t)text_w);
+    }
+
     int colx = r.x;
-    if (tb->align == text_align_t::Center) colx = r.x + std::max(0, (r.w - (int)lines[i].size())/2);
-    else if (tb->align == text_align_t::Right) colx = r.x + std::max(0, r.w - (int)lines[i].size());
-    R->putText(r.y + i, colx, lines[i], r.w, pair, obj.style.bold, obj.style.inverse);
+    // Alignment is only meaningful when not horizontally scrolled and no side bar.
+    if (tb->scroll_x == 0 && reserve_v == 0) {
+      if (tb->align == text_align_t::Center) colx = r.x + std::max(0, (text_w - (int)line.size()) / 2);
+      else if (tb->align == text_align_t::Right) colx = r.x + std::max(0, text_w - (int)line.size());
+    }
+
+    short line_pair = pair;
+    bool line_bold = obj.style.bold;
+    if (selected_line) {
+      line_pair = (short)get_color_pair("#FFD26E", obj.style.background_color);
+      line_bold = true;
+    }
+    R->putText(r.y + row, colx, line, text_w, line_pair, line_bold, obj.style.inverse);
+  }
+
+  short bar_pair = (short)get_color_pair(obj.style.border_color, obj.style.background_color);
+  if (bar_pair == 0) bar_pair = pair;
+
+  // Vertical scrollbar
+  if (reserve_v > 0 && text_h > 0) {
+    const int bar_x = r.x + text_w;
+    for (int i = 0; i < text_h; ++i) {
+      R->putGlyph(r.y + i, bar_x, L'│', bar_pair);
+    }
+
+    const int total_rows = std::max(1, (int)lines.size());
+    int thumb_h = (int)std::lround((double)text_h * (double)text_h / (double)total_rows);
+    thumb_h = std::clamp(thumb_h, 1, text_h);
+    const int thumb_span = std::max(0, text_h - thumb_h);
+    const int thumb_y =
+        (max_scroll_y > 0) ? (int)std::lround((double)tb->scroll_y * (double)thumb_span / (double)max_scroll_y) : 0;
+
+    for (int i = 0; i < thumb_h; ++i) {
+      R->putGlyph(r.y + thumb_y + i, bar_x, L'█', bar_pair);
+    }
+  }
+
+  // Horizontal scrollbar
+  if (reserve_h > 0 && text_w > 0) {
+    const int bar_y = r.y + text_h;
+    for (int i = 0; i < text_w; ++i) {
+      R->putGlyph(bar_y, r.x + i, L'─', bar_pair);
+    }
+
+    const int total_cols = std::max(1, max_line_len);
+    int thumb_w = (int)std::lround((double)text_w * (double)text_w / (double)total_cols);
+    thumb_w = std::clamp(thumb_w, 1, text_w);
+    const int thumb_span = std::max(0, text_w - thumb_w);
+    const int thumb_x =
+        (max_scroll_x > 0) ? (int)std::lround((double)tb->scroll_x * (double)thumb_span / (double)max_scroll_x) : 0;
+
+    for (int i = 0; i < thumb_w; ++i) {
+      R->putGlyph(bar_y, r.x + thumb_x + i, L'█', bar_pair);
+    }
+
+    if (reserve_v > 0) {
+      R->putGlyph(bar_y, r.x + text_w, L'┘', bar_pair);
+    }
   }
 }
 

@@ -211,7 +211,7 @@ trainingPipeline::trainingPipeline()
   , iParser(iLexer, grammar)
 {
 #ifdef TRAINING_COMPONETS_DEBUG
-  std::cout << TRAINING_COMPONETS_BNF_GRAMMAR << "\n";
+  log_info("%s\n", TRAINING_COMPONETS_BNF_GRAMMAR);
 #endif
 }
 
@@ -219,7 +219,7 @@ cuwacunu::camahjucunu::training_instruction_t
 trainingPipeline::decode(std::string instruction)
 {
 #ifdef TRAINING_COMPONETS_DEBUG
-  std::cout << "Request to decode trainingPipeline" << "\n";
+  log_info("Request to decode trainingPipeline\n");
 #endif
   /* guard the thread to avoid multiple decoding in parallel */
   LOCK_GUARD(current_mutex);
@@ -228,8 +228,9 @@ trainingPipeline::decode(std::string instruction)
   ASTNodePtr actualAST = iParser.parse_Instruction(instruction);
 
 #ifdef TRAINING_COMPONETS_DEBUG
-  std::cout << "Parsed AST:\n";
-  printAST(actualAST.get(), true, 2, std::cout);
+  std::ostringstream oss;
+  printAST(actualAST.get(), true, 2, oss);
+  log_info("Parsed AST:\n%s\n", oss.str().c_str());
 #endif
 
   /* Parsed data */

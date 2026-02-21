@@ -54,15 +54,16 @@ double statistics_space_n_t::normalize(double x) const {
   return std_dev > 0 ? (x - mean()) / std_dev : 0.0;
 }
 double statistics_space_n_t::variance()     const {
-  unsigned int n = window.size();
-  if (n > 1) {
-    double mu = mean();
-    /* Numerically stable variance calculation */
-    double var = (sum_sq - 2 * mu * sum + n * mu * mu) / (n - 1);
-    return var;
-  } else {
-    return 0.0f;
+  const unsigned int n = static_cast<unsigned int>(window.size());
+  if (n <= 1) return 0.0;
+
+  const double mu = mean();
+  double ss = 0.0;
+  for (const double x : window) {
+    const double d = x - mu;
+    ss += d * d;
   }
+  return ss / static_cast<double>(n - 1);
 }
 void statistics_space_n_t::update(double x) {
   ctx++;

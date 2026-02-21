@@ -1,4 +1,4 @@
-// test_tsi_vicreg_chain.cpp
+// test_tsi_basic.cpp
 
 #include <cstdio>
 #include <cstdlib>
@@ -17,11 +17,36 @@
 #include "camahjucunu/types/types_data.h"
 
 // TSI runtime + nodes
-#include "tsiemene/utils/runtime.h"
-#include "tsiemene/utils/circuits.h"
-#include "tsiemene/tsi.dataloader.instrument.h"
-#include "tsiemene/tsi.representation.vicreg.h"
-#include "tsiemene/tsi.sink.tensor.h"
+#include "tsiemene/utils/board.h"
+#include "tsiemene/tsi.wikimyei.source.dataloader.h"
+#include "tsiemene/tsi.wikimyei.representation.vicreg.h"
+#include "tsiemene/tsi.sink.null.h"
+#include "tsiemene/tsi.sink.log.sys.h"
+#include "tsiemene/tsi.wikimyei.wave.generator.h"
+
+/*
+  circuit_1 = {
+    w_wave    = tsi.wikimyei.wave.generator
+    w_source  = tsi.wikimyei.source.dataloader
+    w_rep     = tsi.wikimyei.representation.vicreg
+    w_null    = tsi.sink.null
+    w_log     = tsi.sink.log.sys
+
+    w_wave@payload:str        -> w_source@payload:str
+    w_source@payload:tensor   -> w_rep@payload:tensor
+    w_rep@payload:tensor      -> w_null@payload:tensor
+
+    w_wave@meta:str           -> w_log@meta:str
+    w_source@meta:str         -> w_log@meta:str
+    w_rep@meta:str            -> w_log@meta:str
+    w_null@meta:str           -> w_log@meta:str
+
+    w_rep@loss:tensor         -> w_log@loss:tensor
+    w_rep.jkimyei { loss = w_rep@loss, wave = w_wave }
+  }
+
+  circuit_1( BTCUSDT[01.01.2009,31.12.2009] );
+*/
 
 int main() try {
   // ---- Torch runtime knobs ------------------------------------------------
@@ -78,16 +103,25 @@ int main() try {
   using Sampler = torch::data::samplers::SequentialSampler;
   // using Sampler = torch::data::samplers::RandomSampler;
 
+  tsiemene::Board board{};
+  auto& c = board.circuits.emplace_back();
+  c.name = "circuit_1 approximation";
+  c.invoke_name = "circuit_1";
+  const std::string instruction = "BTCUSDT[01.01.2009,31.12.2009]";
+  c.invoke_payload = instruction;
+
+  using DataloaderT = tsiemene::TsiDataloaderInstrument<Datatype, Sampler>;
+
   // constructor discovers C/T/D from the dataset.
-  tsiemene::TsiDataloaderInstrument<Datatype, Sampler> dl(/*id=*/1, INSTRUMENT, device);
+  auto& dl = c.emplace_node<DataloaderT>(/*id=*/1, INSTRUMENT, device);
 
   std::printf("[dl] discovered dims: C=%lld T=%lld D=%lld\n",
               (long long)dl.C(), (long long)dl.T(), (long long)dl.D());
 
   // VICReg expects C,T,D (B comes from the batch)
-  tsiemene::TsiVicreg4D vicreg(
+  auto& vicreg = c.emplace_node<tsiemene::TsiVicreg4D>(
       /*id=*/2,
-      /*instance_name=*/"tsi.representation.vicreg4d",
+      /*instance_name=*/"tsi.wikimyei.representation.vicreg",
       /*C=*/(int)dl.C(),
       /*T=*/(int)dl.T(),
       /*D=*/(int)dl.D(),
@@ -95,99 +129,78 @@ int main() try {
       /*use_swa=*/true,
       /*detach_to_cpu=*/true);
 
-  // Sinks: one for inspecting packed batches, another for representations
-  tsiemene::TsiSinkTensor sink_packed(/*id=*/3, "sink.packed_batch", /*capacity=*/8);
-  tsiemene::TsiSinkTensor sink_repr  (/*id=*/4, "sink.repr",        /*capacity=*/64);
+  auto& sink_null = c.emplace_node<tsiemene::TsiSinkNull>(/*id=*/5, "tsi.sink.null");
+  auto& sink_log = c.emplace_node<tsiemene::TsiSinkLogSys>(/*id=*/6, "tsi.sink.log.sys");
+  auto& wavegen = c.emplace_node<tsiemene::TsiWaveGenerator>(/*id=*/7, "tsi.wikimyei.wave.generator");
 
-  // ---- Circuit A: dataloader -> sink (inspect packed batch shape) ---------
-  {
-    const tsiemene::Hop hops_dbg[] = {
-      tsiemene::hop(
-        tsiemene::ep(dl,        decltype(dl)::OUT_BATCH),
-        tsiemene::ep(sink_packed, tsiemene::TsiSinkTensor::IN),
-        tsiemene::query(""))
-    };
-    const tsiemene::Circuit c_dbg = tsiemene::circuit(hops_dbg, "debug: dl -> sink(packed)");
+  vicreg.set_train(true); // emit @loss for sink.log.sys
 
-    tsiemene::CircuitIssue issue{};
-    if (!tsiemene::validate(c_dbg, &issue)) {
-      std::cerr << "[debug circuit] invalid: " << issue.what
-                << " at hop " << issue.hop_index << "\n";
-      return 1;
-    }
+  // Single circuit approximation with branching at w_rep:
+  // - payload path: w_rep@payload -> w_null
+  // - loss path:    w_rep@loss    -> w_log
+  c.hops = {
+    tsiemene::hop(
+      tsiemene::ep(wavegen, tsiemene::TsiWaveGenerator::OUT_PAYLOAD),
+      tsiemene::ep(dl,      DataloaderT::IN_PAYLOAD),
+      tsiemene::query("")),
 
-    std::printf("[debug circuit] running batches=1 (expect packed [B,C,T,D+1])...\n");
+    tsiemene::hop(
+      tsiemene::ep(dl,     DataloaderT::OUT_PAYLOAD),
+      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::IN_PAYLOAD),
+      tsiemene::query("")),
 
-    tsiemene::Wave w{.id = 100, .i = 0};
-    tsiemene::Ingress start{
-      .port   = decltype(dl)::IN_CMD,
-      .signal = tsiemene::string_signal("batches=1")
-    };
+    tsiemene::hop(
+      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::OUT_PAYLOAD),
+      tsiemene::ep(sink_null, tsiemene::TsiSinkNull::IN_PAYLOAD),
+      tsiemene::query("")),
 
-    const std::uint64_t steps = tsiemene::run_wave(c_dbg, w, std::move(start), ctx);
-    std::printf("[debug circuit] events processed = %llu\n", (unsigned long long)steps);
-    std::printf("[debug circuit] sink_packed stored = %zu\n", sink_packed.size());
+    tsiemene::hop(
+      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::OUT_LOSS),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_LOSS),
+      tsiemene::query("")),
 
-    if (sink_packed.size() > 0) {
-      const auto& item = sink_packed.at(0);
-      const auto& t = item.tensor;
+    tsiemene::hop(
+      tsiemene::ep(wavegen, tsiemene::TsiWaveGenerator::OUT_META),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::query("")),
 
-      std::cout << "[debug circuit] first packed tensor sizes = " << t.sizes() << "\n";
-      std::cout << "[debug circuit] first packed wave         = id=" << item.wave.id
-                << " i=" << item.wave.i << "\n";
+    tsiemene::hop(
+      tsiemene::ep(dl, DataloaderT::OUT_META),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::query("")),
 
-      if (t.defined() && t.dim() == 4) {
-        const auto B = t.size(0);
-        const auto C = t.size(1);
-        const auto T = t.size(2);
-        const auto DD1 = t.size(3);
-        std::printf("[debug circuit] parsed: B=%lld C=%lld T=%lld (D+1)=%lld\n",
-                    (long long)B, (long long)C, (long long)T, (long long)DD1);
-      }
-    }
+    tsiemene::hop(
+      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::OUT_META),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::query("")),
+
+    tsiemene::hop(
+      tsiemene::ep(sink_null, tsiemene::TsiSinkNull::OUT_META),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::query("")),
+  };
+
+  c.wave0 = tsiemene::Wave{.id = 200, .i = 0};
+  c.ingress0 = tsiemene::Ingress{
+    .directive = tsiemene::pick_start_directive(c.view()),
+    .signal = tsiemene::string_signal(instruction)
+  };
+
+  tsiemene::BoardIssue issue{};
+  if (!tsiemene::validate_board(board, &issue)) {
+    std::cerr << "[readme/circuit_1] invalid board at circuit[" << issue.circuit_index
+              << "]: " << issue.circuit_issue.what
+              << " at hop " << issue.circuit_issue.hop_index << "\n";
+    return 1;
   }
 
-  // ---- Circuit B: dataloader -> vicreg -> sink(repr) ----------------------
-  {
-    const tsiemene::Hop hops[] = {
-      tsiemene::hop(
-        tsiemene::ep(dl,     decltype(dl)::OUT_BATCH),
-        tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::IN_BATCH),
-        tsiemene::query("")),
+  std::printf("[readme/circuit_1] running instruction=\"%s\"...\n", instruction.c_str());
 
-      tsiemene::hop(
-        tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::OUT_REPR),
-        tsiemene::ep(sink_repr, tsiemene::TsiSinkTensor::IN),
-        tsiemene::query("")),
-    };
-    const tsiemene::Circuit c = tsiemene::circuit(hops, "dl -> vicreg -> sink(repr)");
-
-    tsiemene::CircuitIssue issue{};
-    if (!tsiemene::validate(c, &issue)) {
-      std::cerr << "[vicreg circuit] invalid: " << issue.what
-                << " at hop " << issue.hop_index << "\n";
-      return 1;
-    }
-
-    std::printf("[vicreg circuit] running batches=3...\n");
-
-    tsiemene::Wave w{.id = 200, .i = 0};
-    tsiemene::Ingress start{
-      .port   = decltype(dl)::IN_CMD,
-      .signal = tsiemene::string_signal("batches=3")
-    };
-
-    const std::uint64_t steps = tsiemene::run_wave(c, w, std::move(start), ctx);
-
-    std::printf("[vicreg circuit] events processed = %llu\n", (unsigned long long)steps);
-    std::printf("[vicreg circuit] sink_repr stored = %zu\n", sink_repr.size());
-
-    if (sink_repr.size() > 0) {
-      const auto& item = sink_repr.at(0);
-      std::cout << "[vicreg circuit] first repr tensor sizes = " << item.tensor.sizes() << "\n";
-      std::cout << "[vicreg circuit] first repr wave         = id=" << item.wave.id
-                << " i=" << item.wave.i << "\n";
-    }
+  const std::uint64_t steps = tsiemene::run_circuit(c, ctx);
+  std::printf("[readme/circuit_1] events processed = %llu\n", (unsigned long long)steps);
+  if (steps == 0) {
+    std::cerr << "[readme/circuit_1] expected events > 0\n";
+    return 1;
   }
 
   std::printf("[main] done.\n");

@@ -1,44 +1,49 @@
+# Config Folder Layout
 
-# Generating the missing ./config/ Files
-.pem, .enc and .key files are removed on the distributed version, one needs to obtain these to have the project working.
+This folder is now organized by role:
 
-### (Ed25519) PEM
-Ed25519 is used to generate the digital signature of the interaction with the exchange. 
-    This is for Authentication, integrity, Non-repudiation, trust and is a requirement.
+- `./.config`: main runtime config file.
+- `./bnf/`: grammar files (`*.bnf`).
+- `./instructions/`: instruction samples (`*.instruction`).
+- `./secrets/real/`: real exchange secret material.
+- `./secrets/test/`: test exchange secret material.
 
-The following steps serve to generate the required keys. 
+## Current file map
 
-```
+- `bnf/observation_pipeline.bnf`
+- `bnf/training_components.bnf`
+- `bnf/tsiemene_board.bnf`
+- `bnf/test_bnf.bnf` (legacy/scratch)
+- `instructions/observation_pipeline.instruction`
+- `instructions/training_components.instruction`
+- `instructions/tsiemene_board.instruction`
+- `secrets/real/aes_salt.enc`
+- `secrets/real/ed25519key.pem` (expected, may be absent locally)
+- `secrets/real/exchange.key` (expected, may be absent locally)
+- `secrets/test/aes_salt.enc`
+- `secrets/test/ed25519key.pem`
+- `secrets/test/ed25519pub.pem`
+- `secrets/test/exchange.key`
+
+## Generate Ed25519 keys
+
+```bash
 apt update
 apt install openssl --no-install-recommends
 openssl version
 ```
-```
-cd ./src/config
+
+```bash
+cd /cuwacunu/src/config/secrets/real
 openssl genpkey -algorithm Ed25519 -out ed25519key.pem -aes-256-cbc
 openssl pkey -in ed25519key.pem -out ed25519pub.pem -pubout
 ```
 
-These two pem files are to be placed in ./src/config/ folder.
-The selected password for this files will be the global program password. 
+Use `ed25519pub.pem` when registering API access at the exchange.
 
-Check the ./src/config/.config file for theses paths correctly configured
+## Configure API key and salt
 
-### Obtain exchange Api Key
-You can retrive the API_KEY from the main page at Binance, 
-or log in into the testnet: https://testnet.binance.vision/
+1. Ensure `secrets/real/aes_salt.enc` exists.
+2. Put plaintext API key into `secrets/real/exchange.key`.
+3. Confirm paths in `./.config` under `[REAL_EXCHANGE]` and `[TEST_EXCHANGE]`.
 
-Follow this steps:
-1. Login to your exchange account and select Ed25519 method
-2. Upload the ed25519pub.pem contents 
-3. Retrive the Exchange Api Key
-
-### Configure exchange Api Key
-Follow this steps:
-1. Create a new empty file named ./config/aes_salt.enc
-2. Put plaintext api_key (retrived from exchange) into file ./config/exchange.key
-
-### Websocket API_KEY
-There is another api_key that is retrived when calling binance's "session.logon" method, 
-for the Websocket Protocol. This is separated, but the above mentioned api_key is still 
-needed to retrive the websocket api_key. 

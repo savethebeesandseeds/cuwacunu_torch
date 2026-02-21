@@ -73,8 +73,16 @@ struct textBox_data_t : public iinuji_data_t {
   std::string content;
   bool wrap{true};
   text_align_t align{text_align_t::Left};
+  // Viewport scroll offsets used by the renderer for non-input text boxes.
+  int scroll_y{0};
+  int scroll_x{0};
   textBox_data_t(std::string s, bool w=true, text_align_t a=text_align_t::Left)
   : content(std::move(s)), wrap(w), align(a) {}
+
+  void scroll_by(int dy, int dx = 0) {
+    scroll_y = std::max(0, scroll_y + dy);
+    scroll_x = std::max(0, scroll_x + dx);
+  }
 };
 
 /* -------------------- Text editor box -------------------- */

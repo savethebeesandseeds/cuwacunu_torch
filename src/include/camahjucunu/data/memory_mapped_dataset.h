@@ -93,6 +93,7 @@ Datatype_t read_memory_struct(const void* data_ptr, std::size_t index) {
  */
 template <typename Datatype_t>
 std::vector<Datatype_t> read_memory_structs(const void* data_ptr, std::size_t index, std::size_t count) {
+  if (count == 0) return {};
   std::vector<Datatype_t> records(count); // Allocate memory for `count` records.
   const std::byte* base   = static_cast<const std::byte*>(data_ptr);
   const std::byte* target = base + index * sizeof(Datatype_t);
@@ -172,6 +173,19 @@ inline std::size_t steps_between_inclusive_fp(K left_aligned, K right_aligned, K
   K k = std::floor(((right_aligned - left_aligned) / step) + eps);
   if (k < 0) return 0;
   return static_cast<std::size_t>(k) + 1;
+}
+
+template<typename T>
+inline constexpr const char* record_type_name_for_datatype() {
+  if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::kline_t>) {
+    return "kline";
+  } else if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::trade_t>) {
+    return "trade";
+  } else if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::basic_t>) {
+    return "basic";
+  } else {
+    return "";
+  }
 }
 
 } // namespace detail
@@ -255,6 +269,11 @@ private:
     using KeyT = typename Datatype_t::key_type_t;
     const long n = static_cast<long>(recs.size());
     if constexpr (std::is_integral_v<KeyT>) {
+      if (n == 0) return torch::empty({0}, torch::TensorOptions().dtype(torch::kInt64));
+    } else {
+      if (n == 0) return torch::empty({0}, torch::TensorOptions().dtype(torch::kFloat64));
+    }
+    if constexpr (std::is_integral_v<KeyT>) {
       std::vector<long long> v(recs.size());
       for (size_t i = 0; i < recs.size(); ++i) v[i] = static_cast<long long>(recs[i].key_value());
       return torch::from_blob(v.data(), { n }, torch::TensorOptions().dtype(torch::kInt64)).clone();
@@ -283,12 +302,15 @@ public:
     if (num_records_ == 0) {
       log_fatal("[MemoryMappedDataset] Error: Binary Dataset is empty. File: %s\n", bin_filename_.c_str());
     }
+    if (N_past_ == 0) {
+      log_fatal("[MemoryMappedDataset] Error: N_past must be >= 1. File: %s\n", bin_filename_.c_str());
+    }
 
     leftmost_key_value_  = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 0,               key_value_offset_);
     rightmost_key_value_ = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, num_records_-1,  key_value_offset_);
     key_value_span_      = rightmost_key_value_ - leftmost_key_value_;
 
-    if (!(leftmost_key_value_ < rightmost_key_value_)) {
+    if (num_records_ > 1 && !(leftmost_key_value_ < rightmost_key_value_)) {
       log_fatal("[MemoryMappedDataset] Error: Binary Dataset is not sorted correctly. File: %s\n",
                 bin_filename_.c_str());
     }
@@ -300,38 +322,46 @@ public:
     static_assert(std::is_trivially_copyable<Datatype_t>::value,
                   "[MemoryMappedDataset] Error: Template argument must be trivially copyable");
 
-    // Infer regular step (warn on irregularities)
-    typename Datatype_t::key_type_t prev = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 0, key_value_offset_);
-    typename Datatype_t::key_type_t curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 1, key_value_offset_);
-    key_value_step_ = curr - prev;
-
-    if (key_value_step_ <= 0) {
-      log_fatal("[MemoryMappedDataset] Error: negative or zero key_value_step_. File: %s.\n",
-                bin_filename_.c_str());
-    }
-
-    for (std::size_t idx = 1; idx < num_records_; ++idx) {
-      curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx, key_value_offset_);
-      if (curr < prev) {
-        log_fatal("[MemoryMappedDataset] Error: Binary Dataset is not sequential and increasing (not sorted). File: %s, on index: %zu\n",
-                  bin_filename_.c_str(), idx);
-      }
-      if constexpr (std::is_floating_point_v<typename Datatype_t::key_type_t>) {
-        if (std::abs((curr - prev) - key_value_step_) > 1e-9) {
-          log_warn("[MemoryMappedDataset] record on file [%s] irregular key delta at index [%zu]: (curr - prev): %f != step: %f\n",
-                   bin_filename_.c_str(), idx,
-                   static_cast<double>(curr - prev),
-                   static_cast<double>(key_value_step_));
-        }
+    if (num_records_ == 1) {
+      if constexpr (std::is_integral_v<typename Datatype_t::key_type_t>) {
+        key_value_step_ = static_cast<typename Datatype_t::key_type_t>(1);
       } else {
-        if (((curr - prev) != key_value_step_)) {
-          log_warn("[MemoryMappedDataset] record on file [%s] irregular key delta at index [%zu]: (curr - prev): %lld != step: %lld\n",
-                   bin_filename_.c_str(), idx,
-                   static_cast<long long>(curr - prev),
-                   static_cast<long long>(key_value_step_));
-        }
+        key_value_step_ = static_cast<typename Datatype_t::key_type_t>(1.0);
       }
-      prev = curr;
+    } else {
+      // Infer regular step (warn on irregularities)
+      typename Datatype_t::key_type_t prev = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 0, key_value_offset_);
+      typename Datatype_t::key_type_t curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 1, key_value_offset_);
+      key_value_step_ = curr - prev;
+
+      if (key_value_step_ <= 0) {
+        log_fatal("[MemoryMappedDataset] Error: negative or zero key_value_step_. File: %s.\n",
+                  bin_filename_.c_str());
+      }
+
+      for (std::size_t idx = 1; idx < num_records_; ++idx) {
+        curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx, key_value_offset_);
+        if (curr < prev) {
+          log_fatal("[MemoryMappedDataset] Error: Binary Dataset is not sequential and increasing (not sorted). File: %s, on index: %zu\n",
+                    bin_filename_.c_str(), idx);
+        }
+        if constexpr (std::is_floating_point_v<typename Datatype_t::key_type_t>) {
+          if (std::abs((curr - prev) - key_value_step_) > 1e-9) {
+            log_warn("[MemoryMappedDataset] record on file [%s] irregular key delta at index [%zu]: (curr - prev): %f != step: %f\n",
+                     bin_filename_.c_str(), idx,
+                     static_cast<double>(curr - prev),
+                     static_cast<double>(key_value_step_));
+          }
+        } else {
+          if (((curr - prev) != key_value_step_)) {
+            log_warn("[MemoryMappedDataset] record on file [%s] irregular key delta at index [%zu]: (curr - prev): %lld != step: %lld\n",
+                     bin_filename_.c_str(), idx,
+                     static_cast<long long>(curr - prev),
+                     static_cast<long long>(key_value_step_));
+          }
+        }
+        prev = curr;
+      }
     }
 
     // Compute sliding sample count (stride = 1)
@@ -357,6 +387,9 @@ public:
       std::size_t N_past,
       std::size_t N_future)
   {
+    if (N_past == 0) {
+      throw std::invalid_argument("[MemoryMappedDataset] N_past must be >= 1 in get_sequences_around_key_value");
+    }
     std::size_t i = find_closest_index(target_key_value);
 
     // Bounds: need [i-(N_past-1) ... i] and [i+1 ... i+N_future]
@@ -371,6 +404,9 @@ public:
 
     const std::size_t past_start = i - (N_past - 1);
     auto past_records = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, past_start, N_past);
+    if (past_records.empty()) {
+      throw std::runtime_error("[MemoryMappedDataset] Empty past window in get_sequences_around_key_value");
+    }
     const std::size_t D = past_records[0].tensor_features().size();
 
     torch::Tensor past_X   = torch::empty({ static_cast<long>(N_past),   static_cast<long>(D) }, torch::kFloat32);
@@ -651,6 +687,7 @@ public:
     const size_t K = datasets_.size();
     std::vector<torch::Tensor> feats(K), masks(K), fut_feats(K), fut_masks(K);
     std::vector<torch::Tensor> keys_past(K), keys_future(K);
+    int64_t expected_D = -1;
 
     // key tensor dtype to use for padding
     auto key_opts = torch::TensorOptions().dtype(
@@ -662,6 +699,23 @@ public:
       const auto nf = N_future_[i];
 
       auto s = d->get_sequences_around_key_value(target_key_value, np, nf);
+      const int64_t past_D = (s.features.defined() && s.features.dim() >= 2) ? s.features.size(1) : -1;
+      const int64_t fut_D  = (s.future_features.defined() && s.future_features.dim() >= 2) ? s.future_features.size(1) : -1;
+      if (expected_D < 0) {
+        expected_D = (past_D >= 0) ? past_D : fut_D;
+      }
+      if (past_D >= 0 && past_D != expected_D) {
+        log_fatal("[MemoryMappedConcatDataset] Feature dimension mismatch across datasets: expected D=%lld got D=%lld on channel %zu\n",
+                  static_cast<long long>(expected_D),
+                  static_cast<long long>(past_D),
+                  i);
+      }
+      if (fut_D >= 0 && fut_D != expected_D) {
+        log_fatal("[MemoryMappedConcatDataset] Future feature dimension mismatch across datasets: expected D=%lld got D=%lld on channel %zu\n",
+                  static_cast<long long>(expected_D),
+                  static_cast<long long>(fut_D),
+                  i);
+      }
 
       // pad past at the front (so last row is time t)
       if (np < max_N_past_) {
@@ -751,6 +805,10 @@ public:
                    bool force_binarization = false,
                    size_t buffer_size = 1024,
                    char delimiter = ',') {
+    if (N_past == 0) {
+      log_fatal("[MemoryMappedConcatDataset](add_dataset) N_past must be >= 1 for %s\n",
+                csv_filename.c_str());
+    }
 
     /* --- prepare the file: CSV → binary --- */
     std::string bin_filename = sanitize_csv_into_binary_file<Datatype_t>(
@@ -817,7 +875,7 @@ private:
       const key_t vleft  = d->leftmost_key_value_  + static_cast<key_t>( (np > 0 ? (np - 1) : 0) ) * d->key_value_step_;
       const key_t vright = d->rightmost_key_value_ - static_cast<key_t>( nf ) * d->key_value_step_;
 
-      if (!(vleft < vright)) {
+      if (vright < vleft) {
         log_fatal("[MemoryMappedConcatDataset] Empty per-dataset valid range after (N_past,N_future) for dataset %zu\n", i);
       }
 
@@ -833,7 +891,7 @@ private:
       }
     }
 
-    if (!(inter_left < inter_right)) {
+    if (inter_right < inter_left) {
       log_fatal("[MemoryMappedConcatDataset] Empty intersection across datasets after applying (N_past,N_future)\n");
     }
 
@@ -916,13 +974,28 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
   size_t buffer_size = 1024;
 
   MemoryMappedConcatDataset<Datatype_t> concat;
+  const std::string expected_record_type = detail::record_type_name_for_datatype<Datatype_t>();
+  if (expected_record_type.empty()) {
+    log_fatal("[create_memory_mapped_concat_dataset] Unsupported Datatype_t for observation pipeline record_type matching.\n");
+  }
+  std::size_t matched_sources = 0;
 
   for (auto& in_form : obs_inst.input_forms) {
     if (in_form.active == "true") {
+      if (in_form.record_type != expected_record_type) {
+        log_warn("[create_memory_mapped_concat_dataset] Skipping active input_form with record_type=%s for Datatype_t=%s\n",
+                 in_form.record_type.c_str(), expected_record_type.c_str());
+        continue;
+      }
       for (auto& instr_form : obs_inst.filter_instrument_forms(instrument, in_form.record_type, in_form.interval)) {
 
         const std::size_t N_past   = std::stoul(in_form.seq_length);
         const std::size_t N_future = std::stoul(in_form.future_seq_length);
+        if (N_past == 0) {
+          log_fatal("[create_memory_mapped_concat_dataset] Invalid seq_length=0 for interval=%s, record_type=%s\n",
+                    cuwacunu::camahjucunu::exchange::enum_to_string(in_form.interval).c_str(),
+                    in_form.record_type.c_str());
+        }
 
         concat.add_dataset(
           /* csv file */                 instr_form.source,
@@ -933,8 +1006,14 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
           /* buffer_size */              buffer_size,
           /* delimiter */                delimiter
         );
+        ++matched_sources;
       }
     }
+  }
+
+  if (matched_sources == 0) {
+    log_fatal("[create_memory_mapped_concat_dataset] No datasets matched instrument=%s and Datatype_t record_type=%s\n",
+              instrument.c_str(), expected_record_type.c_str());
   }
 
   return concat;

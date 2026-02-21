@@ -18,22 +18,31 @@ $(eval $(call TEST_ONEFILE, test_iinuji_logs,     		test_iinuji_logs.cpp))
 $(eval $(call TEST_ONEFILE, test_iinuji_suit,     		test_iinuji_suit.cpp))
 $(eval $(call TEST_ONEFILE, test_iinuji_mouse,    		test_iinuji_mouse.cpp))
 $(eval $(call TEST_ONEFILE, test_iinuji_toroid,   		test_iinuji_toroid.cpp))
-$(eval $(call TEST_ONEFILE, test_iinuji_instructions, test_iinuji_instructions.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_tsi,          test_iinuji_tsi.cpp))
 
 # 4) Target-specific includes/link flags
 $(TEST_OUT)/test_iinuji_%: INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
 $(TEST_OUT)/test_iinuji_%: LDLIBS_EXTRA   += $(LDLIBS_ncurses)
 
+# torch-backed cmd screen lives in torch_include
+.PHONY: run-test_iinuji_cmd
+run-test_iinuji_cmd:
+	@$(MAKE) -C $(HERE_PATH)/torch_include run-test_iinuji_cmd
+
+.PHONY: torch-all
+torch-all:
+	@$(MAKE) -C $(HERE_PATH)/torch_include all
+
 # 5) Aggregate: all
 .PHONY: all
 all: \
-	$(MAKE) -C $(HERE_PATH)/torch_include all \
+	torch-all \
 	$(TEST_OUT)/test_iinuji_plots \
 	$(TEST_OUT)/test_iinuji_logs \
 	$(TEST_OUT)/test_iinuji_suit \
 	$(TEST_OUT)/test_iinuji_mouse \
 	$(TEST_OUT)/test_iinuji_toroid \
-	$(TEST_OUT)/test_iinuji_instructions
+	$(TEST_OUT)/test_iinuji_tsi
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
@@ -44,10 +53,10 @@ run: \
 	run-test_iinuji_suit \
 	run-test_iinuji_mouse \
 	run-test_iinuji_toroid \
-	run-test_iinuji_instructions
+	run-test_iinuji_cmd \
+	run-test_iinuji_tsi
 
 # 7) Clean
 .PHONY: clean
 clean:
 	@rm -f $(TEST_OUT)/test_iinuji_*
-

@@ -1,5 +1,5 @@
 /*
-  test_ev_gui.cpp
+  test_iinuji_data_viz.cpp
   TUI to visualize (1) input [1,C,T,D], (2) embedding [1,De], (3) MDN E[y] ± 1σ.
 
   - Pulls a real observation from MemoryMappedConcatDataset<Datatype_t> at a RANDOM index.
@@ -7,12 +7,6 @@
   - Embedding panel renders a colored tile matrix (diverging palette).
   - Value panel shows per-channel E[y] ± 1σ over horizons (naïve MDN from actual future).
   - No changes to iinuji sources.
-
-  Build (example):
-    g++ -std=c++20 -O2 test_ev_gui.cpp \
-        -I/cuwacunu/src/include \
-        -ltorch -ltorch_cpu -lc10 \
-        -lncursesw -o test_ev_gui
 */
 
 #include <locale.h>

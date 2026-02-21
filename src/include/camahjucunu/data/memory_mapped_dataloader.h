@@ -75,6 +75,14 @@ public:
     const Sampler_t& sampler,
     const torch::data::DataLoaderOptions& options
   ) : data_loader_(memory_mapped_dataset, sampler, options) {
+    const auto dataset_size = memory_mapped_dataset.size();
+    if (!dataset_size.has_value() || dataset_size.value() == 0) {
+      C_ = 0;
+      T_ = 0;
+      D_ = 0;
+      log_warn("[MemoryMappedDataLoader] Dataset is empty; shape probe skipped.\n");
+      return;
+    }
     Datasample_t prove_sample(memory_mapped_dataset.get(0));
     C_ = prove_sample.features.size(0);
     T_ = prove_sample.features.size(1);

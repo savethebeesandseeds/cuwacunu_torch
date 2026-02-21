@@ -301,13 +301,13 @@ std::string config_space_t::training_components_instruction() {
   return piaabo::dfiles::readFileToString(
     config["BNF"]["training_components_instruction_filename"]);
 }
-std::string config_space_t::iinuji_renderings_bnf() {
+std::string config_space_t::tsiemene_board_bnf() {
   return piaabo::dfiles::readFileToString(
-    config["BNF"]["iinuji_renderings_bnf_filename"]);
+    config["BNF"]["tsiemene_board_bnf_filename"]);
 }
-std::string config_space_t::iinuji_renderings_instruction() {
+std::string config_space_t::tsiemene_board_instruction() {
   return piaabo::dfiles::readFileToString(
-    config["BNF"]["iinuji_renderings_instruction_filename"]);
+    config["BNF"]["tsiemene_board_instruction_filename"]);
 }
 
 /*──────────────────────────── life-cycle hooks ───────────────────────────*/

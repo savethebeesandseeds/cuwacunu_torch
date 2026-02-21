@@ -1,4 +1,4 @@
-// ./include/tsiemene/tsi.h
+// ./include/tsiemene/utils/tsi.h
 // SPDX-License-Identifier: MIT
 #pragma once
 
@@ -6,7 +6,7 @@
 #include <span>
 #include <string_view>
 
-#include "tsiemene/utils/ports.h"
+#include "tsiemene/utils/directives.h"
 #include "tsiemene/utils/waves.h"
 
 namespace tsiemene {
@@ -18,9 +18,9 @@ struct TsiContext {
   void* user = nullptr;
 };
 
-// One ingress token delivered to one input port.
+// One ingress token delivered to one input directive.
 struct Ingress {
-  PortId port{};
+  DirectiveId directive{};
   Signal signal{};
 };
 
@@ -31,14 +31,14 @@ struct Ingress {
 class Emitter {
  public:
   virtual ~Emitter() = default;
-  virtual void emit(const Wave& wave, PortId out_port, Signal out) = 0;
+  virtual void emit(const Wave& wave, DirectiveId out_directive, Signal out) = 0;
 
   // Convenience sugar.
-  void emit_tensor(const Wave& w, PortId out_port, torch::Tensor t) {
-    emit(w, out_port, tensor_signal(std::move(t)));
+  void emit_tensor(const Wave& w, DirectiveId out_directive, torch::Tensor t) {
+    emit(w, out_directive, tensor_signal(std::move(t)));
   }
-  void emit_string(const Wave& w, PortId out_port, std::string s) {
-    emit(w, out_port, string_signal(std::move(s)));
+  void emit_string(const Wave& w, DirectiveId out_directive, std::string s) {
+    emit(w, out_directive, string_signal(std::move(s)));
   }
 };
 
@@ -50,11 +50,11 @@ enum class Determinism : std::uint8_t {
 };
 
 // A TSI is a step-driven process.
-// The runtime delivers an ingress token (wave + port + signal),
+// The runtime delivers an ingress token (wave + directive + signal),
 // and the TSI emits zero or more output tokens.
 //
 // NOTE on parallelism:
-// - If the board schedules step() concurrently (across ports or instances),
+// - If the board schedules step() concurrently (across directives or instances),
 //   the TSI must be thread-safe (or the board must serialize calls).
 class Tsi {
  public:
@@ -64,7 +64,7 @@ class Tsi {
   [[nodiscard]] virtual std::string_view instance_name() const noexcept = 0;
   [[nodiscard]] virtual TsiId id() const noexcept = 0;
 
-  [[nodiscard]] virtual std::span<const Port> ports() const noexcept = 0;
+  [[nodiscard]] virtual std::span<const DirectiveSpec> directives() const noexcept = 0;
 
   [[nodiscard]] virtual bool is_sink() const noexcept { return false; }
   [[nodiscard]] virtual Determinism determinism() const noexcept { return Determinism::Deterministic; }

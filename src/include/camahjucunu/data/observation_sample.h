@@ -79,6 +79,32 @@ private:
     return s.encoding.defined() && s.encoding.dim() >= 2; // [B,De] or [B,T',De]
   }
 
+  // Keys should mirror the non-feature dims of their aligned tensor:
+  // features [..,D] -> keys [..], mask [..] -> keys [..].
+  static inline int64_t expected_key_dim_from_past(const observation_sample_t& s) {
+    if (s.features.defined()) {
+      TORCH_CHECK(s.features.dim() >= 2, "[observation_sample_t] invalid past features dim");
+      return s.features.dim() - 1;
+    }
+    if (s.mask.defined()) {
+      TORCH_CHECK(s.mask.dim() >= 1, "[observation_sample_t] invalid past mask dim");
+      return s.mask.dim();
+    }
+    return -1;
+  }
+
+  static inline int64_t expected_key_dim_from_future(const observation_sample_t& s) {
+    if (s.future_features.defined()) {
+      TORCH_CHECK(s.future_features.dim() >= 2, "[observation_sample_t] invalid future_features dim");
+      return s.future_features.dim() - 1;
+    }
+    if (s.future_mask.defined()) {
+      TORCH_CHECK(s.future_mask.dim() >= 1, "[observation_sample_t] invalid future_mask dim");
+      return s.future_mask.dim();
+    }
+    return -1;
+  }
+
   static inline bool all_same(bool v0, const std::vector<observation_sample_t>& batch,
                               bool (*pred)(const observation_sample_t&)) {
     for (size_t i = 1; i < batch.size(); ++i) {
@@ -252,17 +278,40 @@ public:
 
     const bool have_enc = batch.front().encoding.defined();
     const auto esz = have_enc ? batch.front().encoding.sizes() : torch::IntArrayRef{};
+    const bool have_past_keys   = batch.front().past_keys.defined();
+    const bool have_future_keys = batch.front().future_keys.defined();
+    const bool past_keys_batched = have_past_keys ? batched_past : false;
+    const bool future_keys_batched = have_future_keys ? batched_future : false;
+    const int64_t past_key_dim = have_past_keys ? expected_key_dim_from_past(batch.front()) : -1;
+    const int64_t future_key_dim = have_future_keys ? expected_key_dim_from_future(batch.front()) : -1;
+    const auto pksz = have_past_keys ? batch.front().past_keys.sizes() : torch::IntArrayRef{};
+    const auto fksz = have_future_keys ? batch.front().future_keys.sizes() : torch::IntArrayRef{};
+
+    const bool have_mean = batch.front().feature_mean.defined();
+    const bool have_std  = batch.front().feature_std.defined();
+    const bool mean_batched = have_mean ? (batch.front().feature_mean.dim() >= 2) : false;
+    const bool std_batched  = have_std  ? (batch.front().feature_std.dim()  >= 2) : false;
+    const auto mean_sz = have_mean ? batch.front().feature_mean.sizes() : torch::IntArrayRef{};
+    const auto std_sz  = have_std  ? batch.front().feature_std.sizes()  : torch::IntArrayRef{};
+    const bool normalized0 = batch.front().normalized;
+    bool normalized_consistent = true;
 
     std::vector<torch::Tensor> feats, masks, fut_feats, fut_masks, encs;
+    std::vector<torch::Tensor> keys_past, keys_future, means, stds;
     feats.reserve(batch.size()); masks.reserve(batch.size());
     fut_feats.reserve(batch.size()); fut_masks.reserve(batch.size());
     if (have_enc) encs.reserve(batch.size());
+    if (have_past_keys) keys_past.reserve(batch.size());
+    if (have_future_keys) keys_future.reserve(batch.size());
+    if (have_mean) means.reserve(batch.size());
+    if (have_std) stds.reserve(batch.size());
 
     for (const auto& s : batch) {
       TORCH_CHECK(s.features.sizes()        == fsz,  "[collate_fn] features mismatch");
       TORCH_CHECK(s.mask.sizes()            == msz,  "[collate_fn] mask mismatch");
       TORCH_CHECK(s.future_features.sizes() == ffsz, "[collate_fn] future_features mismatch");
       TORCH_CHECK(s.future_mask.sizes()     == fmsz, "[collate_fn] future_mask mismatch");
+      normalized_consistent = normalized_consistent && (s.normalized == normalized0);
       feats.emplace_back(s.features);
       masks.emplace_back(s.mask);
       fut_feats.emplace_back(s.future_features);
@@ -271,6 +320,32 @@ public:
         TORCH_CHECK(s.encoding.defined(), "[collate_fn] encoding undefined while first was defined");
         TORCH_CHECK(s.encoding.sizes() == esz, "[collate_fn] encoding mismatch");
         encs.emplace_back(s.encoding);
+      }
+
+      TORCH_CHECK(s.past_keys.defined() == have_past_keys, "[collate_fn] past_keys defined mismatch");
+      TORCH_CHECK(s.future_keys.defined() == have_future_keys, "[collate_fn] future_keys defined mismatch");
+      if (have_past_keys) {
+        TORCH_CHECK(s.past_keys.dim() == past_key_dim, "[collate_fn] past_keys dim mismatch");
+        TORCH_CHECK(s.past_keys.sizes() == pksz, "[collate_fn] past_keys shape mismatch");
+        keys_past.emplace_back(s.past_keys);
+      }
+      if (have_future_keys) {
+        TORCH_CHECK(s.future_keys.dim() == future_key_dim, "[collate_fn] future_keys dim mismatch");
+        TORCH_CHECK(s.future_keys.sizes() == fksz, "[collate_fn] future_keys shape mismatch");
+        keys_future.emplace_back(s.future_keys);
+      }
+
+      TORCH_CHECK(s.feature_mean.defined() == have_mean, "[collate_fn] feature_mean defined mismatch");
+      TORCH_CHECK(s.feature_std.defined()  == have_std,  "[collate_fn] feature_std defined mismatch");
+      if (have_mean) {
+        TORCH_CHECK((s.feature_mean.dim() >= 2) == mean_batched, "[collate_fn] feature_mean batched mismatch");
+        TORCH_CHECK(s.feature_mean.sizes() == mean_sz, "[collate_fn] feature_mean shape mismatch");
+        means.emplace_back(s.feature_mean);
+      }
+      if (have_std) {
+        TORCH_CHECK((s.feature_std.dim() >= 2) == std_batched, "[collate_fn] feature_std batched mismatch");
+        TORCH_CHECK(s.feature_std.sizes() == std_sz, "[collate_fn] feature_std shape mismatch");
+        stds.emplace_back(s.feature_std);
       }
     }
 
@@ -285,6 +360,11 @@ public:
       /* keys      */ torch::Tensor(), torch::Tensor()
     };
     if (!encs.empty()) out.encoding = smart_stack_or_cat(encs, batched_enc);
+    if (!keys_past.empty()) out.past_keys = smart_stack_or_cat(keys_past, past_keys_batched);
+    if (!keys_future.empty()) out.future_keys = smart_stack_or_cat(keys_future, future_keys_batched);
+    if (!means.empty()) out.feature_mean = smart_stack_or_cat(means, mean_batched);
+    if (!stds.empty()) out.feature_std = smart_stack_or_cat(stds, std_batched);
+    out.normalized = normalized_consistent ? normalized0 : false;
     return out;
   }
 
@@ -302,12 +382,23 @@ public:
       if (!t.defined()) return {};
       return torch::unbind(t, /*dim=*/0);
     };
+    auto maybe_split_or_broadcast = [&](const torch::Tensor& t) -> std::vector<torch::Tensor> {
+      if (!t.defined()) return {};
+      if (t.dim() >= 1 && t.size(0) == B) return torch::unbind(t, /*dim=*/0);
+      std::vector<torch::Tensor> out(static_cast<size_t>(B));
+      for (int64_t i = 0; i < B; ++i) out[static_cast<size_t>(i)] = t;
+      return out;
+    };
 
     auto feats     = maybe_split(batched.features);
     auto masks     = maybe_split(batched.mask);
     auto fut_feats = maybe_split(batched.future_features);
     auto fut_masks = maybe_split(batched.future_mask);
     auto encs      = maybe_split(batched.encoding);
+    auto pkeys     = maybe_split_or_broadcast(batched.past_keys);
+    auto fkeys     = maybe_split_or_broadcast(batched.future_keys);
+    auto means     = maybe_split_or_broadcast(batched.feature_mean);
+    auto stds      = maybe_split_or_broadcast(batched.feature_std);
 
     auto maybe_clone = [&](const torch::Tensor& t) -> torch::Tensor {
       return clone_tensors ? t.clone() : t;
@@ -322,9 +413,11 @@ public:
         fut_feats.empty() ? torch::Tensor() : maybe_clone(fut_feats[i]),
         fut_masks.empty() ? torch::Tensor() : maybe_clone(fut_masks[i]),
         encs.empty()      ? torch::Tensor() : maybe_clone(encs[i]),
-        /* normalized */ false,
-        /* mean/std  */ torch::Tensor(), torch::Tensor(),
-        /* keys      */ torch::Tensor(), torch::Tensor()
+        /* normalized */ batched.normalized,
+        /* mean/std  */ means.empty() ? torch::Tensor() : maybe_clone(means[i]),
+                         stds.empty() ? torch::Tensor() : maybe_clone(stds[i]),
+        /* keys      */ pkeys.empty() ? torch::Tensor() : maybe_clone(pkeys[i]),
+                         fkeys.empty() ? torch::Tensor() : maybe_clone(fkeys[i])
       };
       out.emplace_back(std::move(s));
     }

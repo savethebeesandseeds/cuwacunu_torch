@@ -14,10 +14,12 @@ TEST_DEFAULT_LDLIBS :=
 
 # 3) Tests (build + run aliases)
 COMMON_LINK = $(libtorch_a) $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
+EDGE_LINK   = $(libtorch_a) $(libssl_a) $(libcommon_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
 $(eval $(call TEST_ONEFILE, test_memory_mapped_datafile,          test_memory_mapped_datafile.cpp,          $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_memory_mapped_dataset,           test_memory_mapped_dataset.cpp,           $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_memory_mapped_concat_dataset,    test_memory_mapped_concat_dataset.cpp,    $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_memory_mapped_concat_dataloader, test_memory_mapped_concat_dataloader.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_memory_mapped_edge_cases,        test_memory_mapped_edge_cases.cpp,        $(EDGE_LINK)))
 
 # 4) Target-specific includes/link flags
 $(TEST_OUT)/test_memory_mapped_%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
@@ -28,7 +30,8 @@ all: \
 	$(TEST_OUT)/test_memory_mapped_datafile \
 	$(TEST_OUT)/test_memory_mapped_dataset \
 	$(TEST_OUT)/test_memory_mapped_concat_dataset \
-	$(TEST_OUT)/test_memory_mapped_concat_dataloader
+	$(TEST_OUT)/test_memory_mapped_concat_dataloader \
+	$(TEST_OUT)/test_memory_mapped_edge_cases
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
@@ -37,7 +40,8 @@ run: \
 	run-test_memory_mapped_datafile \
 	run-test_memory_mapped_dataset \
 	run-test_memory_mapped_concat_dataset \
-	run-test_memory_mapped_concat_dataloader
+	run-test_memory_mapped_concat_dataloader \
+	run-test_memory_mapped_edge_cases
 
 # 7) Clean
 .PHONY: clean

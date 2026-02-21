@@ -25,8 +25,8 @@
 # - Excludes the output file if it falls under any directory root.
 #
 # Examples:
-#   ./parse_context.sh ./include/iinuji/ ./tests/bench/iinuji/test_iinuji_instructions.cpp
-#   ./parse_context.sh --git ./include/iinuji/ ./tests/bench/iinuji/test_iinuji_instructions.cpp
+#   ./parse_context.sh ./include/iinuji/ ./tests/bench/iinuji/test_iinuji_cmd.cpp
+#   ./parse_context.sh --git ./include/iinuji/ ./tests/bench/iinuji/test_iinuji_cmd.cpp
 
 set -Euo pipefail
 IFS=$'\n\t'
