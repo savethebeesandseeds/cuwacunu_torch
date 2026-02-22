@@ -101,7 +101,7 @@ Current circuit_1 wiring:
 
 ## Dataloader command behavior (current)
 - Range mode: `SYMBOL[dd.mm.yyyy,dd.mm.yyyy]`
-- Batch mode: `batches=N` (or legacy bare-number command in non-range mode)
+- Batch mode: `batches=N` (or compatibility bare-number command in non-range mode)
 - Important: range mode does **not** infer `batches` from date digits; only explicit `batches=` limits range emission.
 
 ## Board DSL status (current)

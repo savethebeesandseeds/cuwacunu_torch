@@ -214,7 +214,7 @@ private:
   }
 
   // ---------- optimizer guard ----------
-  /// Legacy signature (kept for ABI). Avoids compiler "unused parameter" warnings by not naming it.
+  /// Compatibility signature (kept for ABI). Avoids compiler "unused parameter" warnings by not naming it.
   void maybe_reset_optimizer_state(double /*clip_threshold*/);
   /// Preferred overload: pass a precomputed global grad-norm to avoid a second device→host sync.
   void maybe_reset_optimizer_state_by_norm(double global_grad_norm);

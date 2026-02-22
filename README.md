@@ -169,3 +169,12 @@ make main
 ```bash
 nvidia-smi
 ```
+
+## License and Attribution
+
+This project's original code is open source under the MIT license (`LICENSE`).
+
+We do not impose new restrictions on project contributions: contributions are accepted under the same MIT terms (`CONTRIBUTING.md`).
+
+Third-party components remain under their original licenses and notices.
+See `THIRD_PARTY_NOTICES.md` for details and redistribution guidance.

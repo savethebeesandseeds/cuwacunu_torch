@@ -231,6 +231,7 @@ inline ConfigState load_config_view_from_config() {
       {"training_components.instruction", "training_components.instruction", "training_components_instruction_filename"},
       {"tsiemene_board.bnf", "tsiemene_board.bnf", "tsiemene_board_bnf_filename"},
       {"tsiemene_board.instruction", "tsiemene_board.instruction", "tsiemene_board_instruction_filename"},
+      {"canonical_path.bnf", "canonical_path.bnf", "canonical_path_bnf_filename"},
   };
 
   for (const auto& s : specs) {
@@ -330,7 +331,7 @@ inline const std::vector<TsiNodeDoc>& tsi_node_docs() {
           "tsi.sink.log.sys",
           "observability sink for payload/loss/meta events",
           "Deterministic",
-          "Routes logs through piaabo/dlogs.h so they appear in terminal and F3 logs.",
+          "Routes logs through piaabo/dlogs.h so they appear in terminal and F8 logs.",
           {
               {tsiemene::DirectiveDir::In, "@payload", ":str", "log string payload"},
               {tsiemene::DirectiveDir::In, "@loss", ":tensor", "log loss tensor"},
@@ -363,6 +364,7 @@ inline std::string mark_selected_line(std::string line) {
 
 template <class T>
 inline std::shared_ptr<T> as(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& obj) {
+  if (!obj) return nullptr;
   return std::dynamic_pointer_cast<T>(obj->data);
 }
 

@@ -309,6 +309,10 @@ std::string config_space_t::tsiemene_board_instruction() {
   return piaabo::dfiles::readFileToString(
     config["BNF"]["tsiemene_board_instruction_filename"]);
 }
+std::string config_space_t::canonical_path_bnf() {
+  return piaabo::dfiles::readFileToString(
+    config["BNF"]["canonical_path_bnf_filename"]);
+}
 
 /*──────────────────────────── life-cycle hooks ───────────────────────────*/
 void config_space_t::finit()  { log_info("[dconfig] finalising\n"); }

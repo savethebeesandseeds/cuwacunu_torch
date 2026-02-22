@@ -18,9 +18,9 @@ Shared view helpers:
 - `src/include/iinuji/iinuji_cmd/views/ui.h`
 
 Per-screen modules (standard):
-- `src/include/iinuji/iinuji_cmd/views/home/{state.h,commands.h,view.h,app.h}`
+- `src/include/iinuji/iinuji_cmd/views/home/{state.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/board/{state.h,commands.h,view.h,app.h}`
-- `src/include/iinuji/iinuji_cmd/views/logs/{state.h,commands.h,view.h,app.h}`
+- `src/include/iinuji/iinuji_cmd/views/logs/{state.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/tsiemene/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/data/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/config/{state.h,commands.h,view.h,app.h}`
@@ -41,21 +41,26 @@ Per-screen modules (standard):
 
 ## Command model
 
-`commands.h` is now the dispatcher.
+`commands.h` is now canonical-first dispatcher.
 
-Screen-specific command behavior lives in:
+Canonical path registry + dispatch lives in:
+- `src/include/iinuji/iinuji_cmd/commands/iinuji.paths.def`
+- `src/include/iinuji/iinuji_cmd/commands/iinuji.paths.h`
+- `src/include/iinuji/iinuji_cmd/commands/iinuji.path.handlers.h`
+- `src/include/iinuji/iinuji_cmd/commands/iinuji.command.aliases.h`
+
+Selection/utility helpers live in:
 - `views/board/commands.h`
-- `views/logs/commands.h`
 - `views/tsiemene/commands.h`
 - `views/data/commands.h`
 - `views/config/commands.h`
-- `views/home/commands.h`
 
-Global commands kept in dispatcher:
-- `help`, `quit`
-- `screen ...`
-- `reload [board|data|config]`
-- `show` dispatching by active/explicit screen
+User command model:
+- canonical path form: `iinuji.*()`
+- direct aliases are intentionally defined in `iinuji.paths.def` and resolved in `iinuji.command.aliases.h`
+- preferred path forms are static and suffix-based where practical:
+  - `...index.n1()`
+  - `...id.<token>()`
 
 ## App model
 
@@ -88,7 +93,7 @@ Primary interaction stays command-first (`cmd> ...`).
 Shortcuts:
 - `F1` home
 - `F2` board
-- `F3` logs
+- `F8` logs
 - `F4` tsiemene
 - `F5` data
 - `F9` config

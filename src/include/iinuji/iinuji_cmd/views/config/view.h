@@ -40,15 +40,20 @@ inline std::string make_config_right(const CmdState& st) {
     }
   }
   oss << "\nCommands\n";
-  oss << "  reload config\n";
-  oss << "  tab next\n";
-  oss << "  tab prev\n";
-  oss << "  tab N\n";
-  oss << "  tab <id>\n";
-  oss << "  tabs\n";
+  oss << "  iinuji.config.reload()\n";
+  oss << "  iinuji.config.tabs()\n";
+  oss << "  iinuji.config.tab.next()\n";
+  oss << "  iinuji.config.tab.prev()\n";
+  oss << "  iinuji.config.tab.index.n1()\n";
+  oss << "  iinuji.config.tab.id.<token>()\n";
+  oss << "  iinuji.config.show()\n";
+  oss << "  iinuji.config.tab.show()\n";
+  oss << "\nCanonical\n";
+  oss << "  aliases: tabs, config, f9\n";
+  oss << "  primitive translation: disabled\n";
   oss << "\nKeys\n";
   oss << "  F9 : open config screen\n";
-  oss << "  Left/Right : previous/next tab\n";
+  oss << "  Up/Down : previous/next tab\n";
   oss << "  wheel : vertical scroll both panels\n";
   oss << "  Shift/Ctrl/Alt+wheel : horizontal scroll both panels\n";
   return oss.str();

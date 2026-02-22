@@ -20,6 +20,7 @@ $(eval $(call TEST_ONEFILE, test_bnf_instruction_parser,   test_bnf_instruction_
 $(eval $(call TEST_ONEFILE, test_bnf_observation_pipeline, test_bnf_observation_pipeline.cpp))
 $(eval $(call TEST_ONEFILE, test_bnf_training_components,  test_bnf_training_components.cpp))
 $(eval $(call TEST_ONEFILE, test_bnf_tsiemene_board,       test_bnf_tsiemene_board.cpp))
+$(eval $(call TEST_ONEFILE, test_bnf_canonical_path,             test_bnf_canonical_path.cpp))
 
 # 4) Target-specific includes/link flags
 # (none)
@@ -33,7 +34,8 @@ all: \
 	$(TEST_OUT)/test_bnf_instruction_parser \
 	$(TEST_OUT)/test_bnf_observation_pipeline \
 	$(TEST_OUT)/test_bnf_training_components \
-	$(TEST_OUT)/test_bnf_tsiemene_board
+	$(TEST_OUT)/test_bnf_tsiemene_board \
+	$(TEST_OUT)/test_bnf_canonical_path
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
@@ -45,7 +47,8 @@ run: \
 	run-test_bnf_instruction_parser \
 	run-test_bnf_observation_pipeline \
 	run-test_bnf_training_components \
-	run-test_bnf_tsiemene_board
+	run-test_bnf_tsiemene_board \
+	run-test_bnf_canonical_path
 
 # 7) Clean
 .PHONY: clean

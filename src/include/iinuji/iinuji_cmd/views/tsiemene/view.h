@@ -111,12 +111,15 @@ inline std::string make_tsi_right(const CmdState& st) {
   oss << "  @meta    :str\n";
 
   oss << "\nCommands\n";
-  oss << "  tsi\n";
-  oss << "  tsi tab next\n";
-  oss << "  tsi tab prev\n";
-  oss << "  tsi tab N\n";
-  oss << "  tsi tab <id>\n";
-  oss << "  tsi tabs\n";
+  oss << "  iinuji.screen.tsi()\n";
+  oss << "  iinuji.tsi.tabs()\n";
+  oss << "  iinuji.tsi.tab.next()\n";
+  oss << "  iinuji.tsi.tab.prev()\n";
+  oss << "  iinuji.tsi.tab.index.n1()\n";
+  oss << "  iinuji.tsi.tab.id.<token>()\n";
+  oss << "  iinuji.show.tsi()\n";
+  oss << "  aliases: tsi, f4\n";
+  oss << "  primitive translation: disabled\n";
 
   oss << "\nKeys\n";
   oss << "  F4 : open tsiemene screen\n";

@@ -46,7 +46,7 @@ TORCH_MODULE(BN1dFP32);
 
 class VICReg_4D_ProjectorImpl : public torch::nn::Module {
 public:
-  /** Legacy ctor (kept for source compatibility). Behavior matches your current code. */
+  /** Compatibility ctor (kept for source compatibility). Behavior matches your current code. */
   VICReg_4D_ProjectorImpl(
     int embedding_dim,
     const std::string& mlp_spec,
@@ -55,14 +55,14 @@ public:
   ) : embedding_dim(embedding_dim),
       mlp_spec(mlp_spec),
       dtype(dtype_), device(device_),
-      explicit_opts(false) // legacy mode
+      explicit_opts(false) // compatibility mode
   {
-    // Default legacy behavior: BN + ReLU, biases in hidden, last bias off
-    opts_legacy.norm_kind       = NormKind::BatchNorm1d;
-    opts_legacy.act_kind        = ActKind::ReLU;
-    opts_legacy.use_hidden_bias = true;      // match your original
-    opts_legacy.use_last_bias   = false;     // match your original
-    opts_legacy.bn_in_fp32      = (dtype != torch::kFloat32);
+    // Default compatibility behavior: BN + ReLU, biases in hidden, last bias off
+    opts_compat.norm_kind       = NormKind::BatchNorm1d;
+    opts_compat.act_kind        = ActKind::ReLU;
+    opts_compat.use_hidden_bias = true;      // match your original
+    opts_compat.use_last_bias   = false;     // match your original
+    opts_compat.bn_in_fp32      = (dtype != torch::kFloat32);
     reset();
   }
 
@@ -87,7 +87,7 @@ public:
     layers = register_module("layers", torch::nn::Sequential());
 
     // Choose options source
-    const ProjectorOptions& O = explicit_opts ? opts_explicit : opts_legacy;
+    const ProjectorOptions& O = explicit_opts ? opts_explicit : opts_compat;
 
     // Parse dims (input embed → hidden… → output)
     auto dims = parse_mlp_spec(embedding_dim, mlp_spec);
@@ -177,7 +177,7 @@ private:
 
   bool                explicit_opts;
   ProjectorOptions    opts_explicit; // used when explicit_opts == true
-  ProjectorOptions    opts_legacy;   // populated in legacy ctor
+  ProjectorOptions    opts_compat;   // populated in compatibility ctor
 
   torch::nn::Sequential layers{nullptr};
 

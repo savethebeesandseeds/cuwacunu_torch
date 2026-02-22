@@ -70,6 +70,7 @@ struct config_space_t {
   static std::string training_components_instruction();
   static std::string tsiemene_board_bnf();
   static std::string tsiemene_board_instruction();
+  static std::string canonical_path_bnf();
 
 private:
   /*—raw readers—*/

@@ -214,8 +214,8 @@ class TsiDataloaderInstrument final : public Tsi {
     return std::uint64_t{0};
   }
 
-  static std::uint64_t parse_batches_fallback_(std::string_view s) noexcept {
-    // Legacy convenience: bare first digit run (only for non-range commands).
+  static std::uint64_t parse_batches_compat_(std::string_view s) noexcept {
+    // Compatibility convenience: bare first digit run (only for non-range commands).
     std::size_t pos = 0;
     while (pos < s.size() && (s[pos] < '0' || s[pos] > '9')) ++pos;
     if (pos == s.size()) return 0;
@@ -263,7 +263,7 @@ class TsiDataloaderInstrument final : public Tsi {
       cmd.batches = parse_batches_explicit_(s).value_or(0);
     } else {
       const auto explicit_batches = parse_batches_explicit_(s);
-      cmd.batches = explicit_batches.value_or(parse_batches_fallback_(s));
+      cmd.batches = explicit_batches.value_or(parse_batches_compat_(s));
     }
     return cmd;
   }

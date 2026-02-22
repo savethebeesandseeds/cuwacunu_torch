@@ -249,7 +249,7 @@ int main() {
       assert(!n && w == 777);
 
       w = 777;
-      n = is_bin_filename_normalized("/tmp/foo.norm.bin", &w);   // legacy/invalid
+      n = is_bin_filename_normalized("/tmp/foo.norm.bin", &w);   // old-style/invalid
       assert(!n && w == 777);
 
       w = 777;

@@ -19,7 +19,7 @@ HERE_PATH := $(TESTS_PATH)
 
 # ------------------------------ BNF ------------------------------------------
 BNF := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bnf_instruction_parser \
-       bnf_observation_pipeline bnf_training_components bnf_tsiemene_board
+       bnf_observation_pipeline bnf_training_components bnf_tsiemene_board bnf_canonical_path
 $(foreach t,$(BNF),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/bnf)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -43,7 +43,7 @@ IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_tsi
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ iinuji + torch--------------------------------
-IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd
+IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd iinuji_cmd_home iinuji_cmd_canonical_paths iinuji_cmd_terminal
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji/torch_include)))
 
 # ------------------------------ tsiemene--------------------------------

@@ -137,7 +137,7 @@ private:
         }
       }
 
-      // Fallback: legacy init binds to stdout (NOT safe if you redirect stdout)
+      // Fallback: classic init binds to stdout (NOT safe if you redirect stdout)
       if (!initialized) {
         if (!opt.fallback_initscr) {
           throw std::runtime_error("NcursesApp: newterm(/dev/tty) failed and fallback_initscr=false");

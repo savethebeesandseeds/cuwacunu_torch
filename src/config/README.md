@@ -13,7 +13,8 @@ This folder is now organized by role:
 - `bnf/observation_pipeline.bnf`
 - `bnf/training_components.bnf`
 - `bnf/tsiemene_board.bnf`
-- `bnf/test_bnf.bnf` (legacy/scratch)
+- `bnf/canonical_path.bnf`
+- `bnf/test_bnf.bnf` (scratch/experimental)
 - `instructions/observation_pipeline.instruction`
 - `instructions/training_components.instruction`
 - `instructions/tsiemene_board.instruction`
@@ -46,4 +47,3 @@ Use `ed25519pub.pem` when registering API access at the exchange.
 1. Ensure `secrets/real/aes_salt.enc` exists.
 2. Put plaintext API key into `secrets/real/exchange.key`.
 3. Confirm paths in `./.config` under `[REAL_EXCHANGE]` and `[TEST_EXCHANGE]`.
-

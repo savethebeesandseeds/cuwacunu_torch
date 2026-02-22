@@ -29,6 +29,18 @@ $(TEST_OUT)/test_iinuji_%: LDLIBS_EXTRA   += $(LDLIBS_ncurses)
 run-test_iinuji_cmd:
 	@$(MAKE) -C $(HERE_PATH)/torch_include run-test_iinuji_cmd
 
+.PHONY: run-test_iinuji_cmd_home
+run-test_iinuji_cmd_home:
+	@$(MAKE) -C $(HERE_PATH)/torch_include run-test_iinuji_cmd_home
+
+.PHONY: run-test_iinuji_cmd_canonical_paths
+run-test_iinuji_cmd_canonical_paths:
+	@$(MAKE) -C $(HERE_PATH)/torch_include run-test_iinuji_cmd_canonical_paths
+
+.PHONY: run-test_iinuji_cmd_terminal
+run-test_iinuji_cmd_terminal:
+	@$(MAKE) -C $(HERE_PATH)/torch_include run-test_iinuji_cmd_terminal
+
 .PHONY: torch-all
 torch-all:
 	@$(MAKE) -C $(HERE_PATH)/torch_include all
@@ -54,6 +66,9 @@ run: \
 	run-test_iinuji_mouse \
 	run-test_iinuji_toroid \
 	run-test_iinuji_cmd \
+	run-test_iinuji_cmd_home \
+	run-test_iinuji_cmd_canonical_paths \
+	run-test_iinuji_cmd_terminal \
 	run-test_iinuji_tsi
 
 # 7) Clean

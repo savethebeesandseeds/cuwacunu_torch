@@ -58,6 +58,42 @@ inline Rect merge_rects(const Rect& a, const Rect& b) {
   return Rect{x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0)};
 }
 
+inline std::optional<Rect> data_plot_overlay_area(
+    const CmdState& state,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right) {
+  if (state.screen != ScreenMode::Data || !state.data.plot_view) return std::nullopt;
+
+  Rect area{};
+  bool have_area = false;
+  for (const auto& box : {left, right}) {
+    const Rect r = content_rect(*box);
+    if (r.w <= 0 || r.h <= 0) continue;
+    if (!have_area) {
+      area = r;
+      have_area = true;
+    } else {
+      area = merge_rects(area, r);
+    }
+  }
+  if (!have_area || area.w < 20 || area.h < 10) return std::nullopt;
+  return area;
+}
+
+inline bool data_plot_overlay_close_hit(
+    const CmdState& state,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right,
+    int mouse_x,
+    int mouse_y) {
+  const auto area = data_plot_overlay_area(state, left, right);
+  if (!area.has_value()) return false;
+  const int close_x0 = area->x + std::max(0, area->w - 4);
+  const int close_x1 = close_x0 + 2;  // "[x]"
+  const int close_y = area->y;
+  return mouse_y == close_y && mouse_x >= close_x0 && mouse_x <= close_x1;
+}
+
 inline torch::Tensor to_cpu_float_contig(const torch::Tensor& t) {
   if (!t.defined()) return torch::Tensor();
   return t.to(torch::kCPU).contiguous().to(torch::kFloat32);
@@ -274,25 +310,13 @@ inline void render_data_plot_overlay(
     const CmdState& state,
     const DataAppRuntime& rt,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
-    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right,
-    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& logs) {
-  if (state.screen != ScreenMode::Data || !state.data.plot_view) return;
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right) {
+  const auto area_opt = data_plot_overlay_area(state, left, right);
+  if (!area_opt.has_value()) return;
   auto* R = get_renderer();
   if (!R) return;
 
-  Rect area{};
-  bool have_area = false;
-  for (const auto& box : {left, right, logs}) {
-    const Rect r = content_rect(*box);
-    if (r.w <= 0 || r.h <= 0) continue;
-    if (!have_area) {
-      area = r;
-      have_area = true;
-    } else {
-      area = merge_rects(area, r);
-    }
-  }
-  if (!have_area || area.w < 20 || area.h < 10) return;
+  const Rect area = *area_opt;
 
   const short bg_pair = static_cast<short>(get_color_pair("#D8E3ED", "#0F1218"));
   const short title_pair = static_cast<short>(get_color_pair("#F2F8FF", "#0F1218"));
@@ -303,6 +327,11 @@ inline void render_data_plot_overlay(
   const short mask_pair = static_cast<short>(get_color_pair("#FF4D4D", "#0F1218"));
 
   R->fillRect(area.y, area.x, area.h, area.w, bg_pair);
+  {
+    constexpr const char* kClose = "[x]";
+    const int close_x = area.x + std::max(0, area.w - 4);
+    R->putText(area.y, close_x, kClose, 3, selected_pair, true, false);
+  }
 
   const int inner_x = area.x + 1;
   const int inner_y = area.y + 1;
@@ -537,24 +566,28 @@ inline void render_data_plot_overlay(
   R->putText(
       footer_y,
       inner_x,
-      "keys: Up/Down select focus | Left/Right change focused state | Esc close plot | printable keys -> cmd>",
+      "keys: Up/Down select focus | Left/Right change focused state | Esc or [x] close plot | printable keys -> cmd>",
       inner_w,
       text_pair);
   R->putText(
       footer_y + 1,
       inner_x,
-      "cmds: plot [on|off|toggle] | data plot [on|off|toggle|seq|future|weight|norm|bytes] | data x idx|key|toggle",
+      "cmds: iinuji.data.plot.on()/off()/toggle() | .plot.mode.seq()/future()/weight()/norm()/bytes() | .axis.idx()/key()/toggle()",
       inner_w,
       text_pair);
   R->putText(footer_y + 2, inner_x, trim_to_width(selected_line_text, inner_w), inner_w, selected_pair);
 }
 
-template <class AppendLog>
-inline bool handle_data_key(CmdState& state, DataAppRuntime& rt, int ch, AppendLog&& append_log) {
+template <class AppendLog, class ClosePlot>
+inline bool handle_data_key(CmdState& state,
+                            DataAppRuntime& rt,
+                            int ch,
+                            AppendLog&& append_log,
+                            ClosePlot&& close_plot) {
   if (state.screen != ScreenMode::Data || !state.cmdline.empty()) return false;
 
   if (ch == 27 && state.data.plot_view) {
-    state.data.plot_view = false;
+    close_plot();
     append_log("data.plotview=off (esc)", "nav", "#d0d0d0");
     return true;
   }

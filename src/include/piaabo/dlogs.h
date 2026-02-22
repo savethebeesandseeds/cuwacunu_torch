@@ -345,8 +345,8 @@ inline void dlog_push(const std::string& level, std::string message) {
 inline std::string dlog_format_entry(const dlog_entry_t& e) {
   std::ostringstream oss;
   oss << "[" << e.timestamp << "] "
-      << "[" << e.level << "] "
       << "[0x" << e.thread << "] "
+      << "[" << e.level << "] "
       << e.message;
   return oss.str();
 }

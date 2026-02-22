@@ -1,9 +1,9 @@
 #pragma once
 
-#include <sstream>
 #include <string>
 
 #include "iinuji/iinuji_cmd/views/common.h"
+#include "iinuji/iinuji_cmd/commands/iinuji.path.tokens.h"
 
 namespace cuwacunu {
 namespace iinuji {
@@ -38,76 +38,14 @@ inline bool select_tab_by_token(CmdState& st, const std::string& token) {
   const std::string needle = to_lower_copy(token);
   for (std::size_t i = 0; i < st.config.tabs.size(); ++i) {
     const auto& t = st.config.tabs[i];
-    if (to_lower_copy(t.id) == needle || to_lower_copy(t.title) == needle) {
+    if (to_lower_copy(t.id) == needle ||
+        to_lower_copy(t.title) == needle ||
+        canonical_path_tokens::token_matches(t.id, token) ||
+        canonical_path_tokens::token_matches(t.title, token)) {
       st.config.selected_tab = i;
       return true;
     }
   }
-  return false;
-}
-
-template <class PushInfo, class PushWarn, class PushErr, class AppendLog>
-inline bool handle_config_command(CmdState& st,
-                                  const std::string& command,
-                                  std::istringstream& iss,
-                                  PushInfo&& push_info,
-                                  PushWarn&& push_warn,
-                                  PushErr&& push_err,
-                                  AppendLog&& append_log) {
-  if (command == "config" || command == "f9") {
-    st.screen = ScreenMode::Config;
-    push_info("screen=config");
-    return true;
-  }
-
-  if (command == "tab") {
-    std::string arg;
-    iss >> arg;
-    arg = to_lower_copy(arg);
-    if (arg.empty()) {
-      push_err("usage: tab next|prev|N|<id>");
-      return true;
-    }
-    if (!config_has_tabs(st)) {
-      push_warn("no config tabs");
-      return true;
-    }
-    if (arg == "next") {
-      select_next_tab(st);
-      st.screen = ScreenMode::Config;
-      push_info("selected tab=" + std::to_string(st.config.selected_tab + 1));
-      return true;
-    }
-    if (arg == "prev") {
-      select_prev_tab(st);
-      st.screen = ScreenMode::Config;
-      push_info("selected tab=" + std::to_string(st.config.selected_tab + 1));
-      return true;
-    }
-    if (!select_tab_by_token(st, arg)) {
-      push_err("tab not found");
-      return true;
-    }
-    st.screen = ScreenMode::Config;
-    push_info("selected tab=" + std::to_string(st.config.selected_tab + 1));
-    return true;
-  }
-
-  if (command == "tabs") {
-    if (!config_has_tabs(st)) {
-      push_warn("no config tabs");
-      return true;
-    }
-    for (std::size_t i = 0; i < st.config.tabs.size(); ++i) {
-      const auto& tab = st.config.tabs[i];
-      append_log(
-          "[" + std::to_string(i + 1) + "] " + tab.id + (tab.ok ? "" : " (err)"),
-          "tabs",
-          "#d0d0d0");
-    }
-    return true;
-  }
-
   return false;
 }
 

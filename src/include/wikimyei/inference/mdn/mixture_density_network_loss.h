@@ -128,7 +128,7 @@ struct MdnNLLLoss {
     return loss_sum / denom;
   }
 
-  // Legacy operator (no mask/weights) — still available
+  // Compatibility operator (no mask/weights) — still available
   torch::Tensor operator()(const MdnOut& out, const torch::Tensor& y) const {
     return compute(out, y);
   }

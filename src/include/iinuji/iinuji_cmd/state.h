@@ -28,6 +28,9 @@ struct CmdState {
   ScreenMode screen{ScreenMode::Home};
   bool running{true};
   std::string cmdline{};
+  bool help_view{false};
+  int help_scroll_y{0};
+  int help_scroll_x{0};
 
   HomeState home{};
   BoardState board{};

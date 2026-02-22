@@ -283,6 +283,23 @@ inline void render_text(const iinuji_object_t& obj) {
   auto tb = std::dynamic_pointer_cast<textBox_data_t>(obj.data);
   if (!tb) return;
 
+  auto is_inline_color_marker = [](unsigned char c) {
+    return c == 0x11 || c == 0x12 || c == 0x13 || c == 0x14;
+  };
+  auto is_line_prefix_marker = [](unsigned char c) {
+    return c == 0x19 || c == 0x1a || c == 0x1b || c == 0x1c || c == 0x1d || c == 0x1e || c == 0x1f;
+  };
+  auto visible_line_length = [&](const std::string& s) {
+    int n = 0;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+      const unsigned char c = static_cast<unsigned char>(s[i]);
+      if (i == 0 && is_line_prefix_marker(c)) continue;
+      if (is_inline_color_marker(c)) continue;
+      ++n;
+    }
+    return n;
+  };
+
   // Focused input caret rendering:
   // We treat any focused+focusable textBox as an input line (since labels are not focusable).
   if (obj.focused && obj.focusable) {
@@ -373,12 +390,12 @@ inline void render_text(const iinuji_object_t& obj) {
     text_h = std::max(0, H - reserve_h);
     if (text_w <= 0 || text_h <= 0) return;
 
-    lines = tb->wrap
+      lines = tb->wrap
       ? wrap_text(tb->content, std::max(1, text_w))
       : split_lines_keep_empty(tb->content);
 
     max_line_len = 0;
-    for (const auto& ln : lines) max_line_len = std::max(max_line_len, (int)ln.size());
+    for (const auto& ln : lines) max_line_len = std::max(max_line_len, visible_line_length(ln));
 
     const bool need_h = (!tb->wrap && max_line_len > text_w);
     const int reserve_h_new = need_h ? 1 : 0;
@@ -400,7 +417,7 @@ inline void render_text(const iinuji_object_t& obj) {
     : split_lines_keep_empty(tb->content);
 
   max_line_len = 0;
-  for (const auto& ln : lines) max_line_len = std::max(max_line_len, (int)ln.size());
+  for (const auto& ln : lines) max_line_len = std::max(max_line_len, visible_line_length(ln));
 
   const int max_scroll_y = std::max(0, (int)lines.size() - text_h);
   const int max_scroll_x = tb->wrap ? 0 : std::max(0, max_line_len - text_w);
@@ -412,30 +429,179 @@ inline void render_text(const iinuji_object_t& obj) {
     if (li < 0 || li >= (int)lines.size()) break;
 
     std::string line = lines[(std::size_t)li];
-    bool selected_line = false;
-    if (!line.empty() && line.front() == '\x1f') {
-      selected_line = true;
-      line.erase(line.begin());
-    }
-    if (!tb->wrap && tb->scroll_x > 0) {
-      if (tb->scroll_x >= (int)line.size()) line.clear();
-      else line = line.substr((std::size_t)tb->scroll_x, (std::size_t)text_w);
+    enum class line_emphasis_t { None, Accent, Fatal, Error, Warning, Info, Debug };
+    enum class inline_token_t { Normal, Date, Thread };
+    line_emphasis_t emphasis = line_emphasis_t::None;
+    inline_token_t inline_token = inline_token_t::Normal;
+    if (!line.empty()) {
+      const unsigned char marker = static_cast<unsigned char>(line.front());
+      if (is_line_prefix_marker(marker)) {
+        if (marker == 0x1f) emphasis = line_emphasis_t::Accent;
+        else if (marker == 0x19) emphasis = line_emphasis_t::Fatal;
+        else if (marker == 0x1e) emphasis = line_emphasis_t::Error;
+        else if (marker == 0x1d) emphasis = line_emphasis_t::Warning;
+        else if (marker == 0x1a) emphasis = line_emphasis_t::Info;
+        else if (marker == 0x1c) emphasis = line_emphasis_t::Debug;
+        line.erase(line.begin());
+      }
     }
 
+    auto pair_for_emphasis = [&](line_emphasis_t e) -> short {
+      switch (e) {
+        case line_emphasis_t::Accent:
+          return (short)get_color_pair("#C89C3A", obj.style.background_color);
+        case line_emphasis_t::Fatal:
+          return (short)get_color_pair("#ff0000", obj.style.background_color);
+        case line_emphasis_t::Error:
+          return (short)get_color_pair("#c61c41", obj.style.background_color);
+        case line_emphasis_t::Warning:
+          return (short)get_color_pair("#C8922C", obj.style.background_color);
+        case line_emphasis_t::Info:
+          return (short)get_color_pair("#96989a", obj.style.background_color);
+        case line_emphasis_t::Debug:
+          return (short)get_color_pair("#3F86C7", obj.style.background_color);
+        case line_emphasis_t::None:
+          return pair;
+      }
+      return pair;
+    };
+    auto pair_for_date = [&](line_emphasis_t e) -> short {
+      switch (e) {
+        case line_emphasis_t::Accent:
+          return (short)get_color_pair("#5b5b5b", obj.style.background_color);
+        case line_emphasis_t::Fatal:
+          return (short)get_color_pair("#5b5b5b", obj.style.background_color);
+        case line_emphasis_t::Error:
+          return (short)get_color_pair("#5b5b5b", obj.style.background_color);
+        case line_emphasis_t::Warning:
+          return (short)get_color_pair("#5b5b5b", obj.style.background_color);
+        case line_emphasis_t::Info:
+          return (short)get_color_pair("#5b5b5b", obj.style.background_color);
+        case line_emphasis_t::Debug:
+          return (short)get_color_pair("#5b5b5b", obj.style.background_color);
+        case line_emphasis_t::None:
+          return (short)get_color_pair("#5b5b5b", obj.style.background_color);
+      }
+      return pair;
+    };
+    auto pair_for_thread = [&](line_emphasis_t e) -> short {
+      switch (e) {
+        case line_emphasis_t::Accent:
+          return (short)get_color_pair("#548BC0", obj.style.background_color);
+        case line_emphasis_t::Fatal:
+          return (short)get_color_pair("#548BC0", obj.style.background_color);
+        case line_emphasis_t::Error:
+          return (short)get_color_pair("#548BC0", obj.style.background_color);
+        case line_emphasis_t::Warning:
+          return (short)get_color_pair("#548BC0", obj.style.background_color);
+        case line_emphasis_t::Info:
+          return (short)get_color_pair("#548BC0", obj.style.background_color);
+        case line_emphasis_t::Debug:
+          return (short)get_color_pair("#548BC0", obj.style.background_color);
+        case line_emphasis_t::None:
+          return (short)get_color_pair("#548BC0", obj.style.background_color);
+      }
+      return pair;
+    };
+
+    struct text_run_t {
+      std::string text{};
+      short pair{0};
+      bool bold{false};
+    };
+    std::vector<text_run_t> runs;
+    runs.reserve(8);
+
+    auto line_pair = pair_for_emphasis(emphasis);
+    if (line_pair == 0) line_pair = pair;
+    const bool line_bold =
+        (emphasis == line_emphasis_t::Accent ||
+         emphasis == line_emphasis_t::Fatal ||
+         emphasis == line_emphasis_t::Error ||
+         emphasis == line_emphasis_t::Warning);
+
+    auto current_pair = [&]() -> short {
+      if (inline_token == inline_token_t::Date) {
+        short p = pair_for_date(emphasis);
+        return p == 0 ? line_pair : p;
+      }
+      if (inline_token == inline_token_t::Thread) {
+        short p = pair_for_thread(emphasis);
+        return p == 0 ? line_pair : p;
+      }
+      return line_pair;
+    };
+
+    auto append_char = [&](char c) {
+      const short p = current_pair();
+      if (!runs.empty() && runs.back().pair == p && runs.back().bold == line_bold) {
+        runs.back().text.push_back(c);
+      } else {
+        text_run_t run{};
+        run.text.push_back(c);
+        run.pair = p;
+        run.bold = line_bold;
+        runs.push_back(std::move(run));
+      }
+    };
+
+    for (std::size_t j = 0; j < line.size(); ++j) {
+      const unsigned char c = static_cast<unsigned char>(line[j]);
+      if (c == 0x11) {
+        inline_token = inline_token_t::Date;
+        continue;
+      }
+      if (c == 0x12 && inline_token == inline_token_t::Date) {
+        inline_token = inline_token_t::Normal;
+        continue;
+      }
+      if (c == 0x13) {
+        inline_token = inline_token_t::Thread;
+        continue;
+      }
+      if (c == 0x14 && inline_token == inline_token_t::Thread) {
+        inline_token = inline_token_t::Normal;
+        continue;
+      }
+      if (is_inline_color_marker(c)) continue;
+      append_char(static_cast<char>(c));
+    }
+
+    int visible_len = 0;
+    for (const auto& run : runs) visible_len += (int)run.text.size();
     int colx = r.x;
-    // Alignment is only meaningful when not horizontally scrolled and no side bar.
     if (tb->scroll_x == 0 && reserve_v == 0) {
-      if (tb->align == text_align_t::Center) colx = r.x + std::max(0, (text_w - (int)line.size()) / 2);
-      else if (tb->align == text_align_t::Right) colx = r.x + std::max(0, text_w - (int)line.size());
+      if (tb->align == text_align_t::Center) colx = r.x + std::max(0, (text_w - visible_len) / 2);
+      else if (tb->align == text_align_t::Right) colx = r.x + std::max(0, text_w - visible_len);
     }
 
-    short line_pair = pair;
-    bool line_bold = obj.style.bold;
-    if (selected_line) {
-      line_pair = (short)get_color_pair("#FFD26E", obj.style.background_color);
-      line_bold = true;
+    int skip = (!tb->wrap) ? tb->scroll_x : 0;
+    int draw_x = colx;
+    int rem = text_w;
+    for (const auto& run : runs) {
+      if (rem <= 0) break;
+      const int run_len = (int)run.text.size();
+      if (run_len <= 0) continue;
+      if (skip >= run_len) {
+        skip -= run_len;
+        continue;
+      }
+      const int start = skip;
+      const int avail = run_len - start;
+      const int take = std::min(rem, avail);
+      if (take <= 0) break;
+      R->putText(
+          r.y + row,
+          draw_x,
+          run.text.substr((std::size_t)start, (std::size_t)take),
+          take,
+          run.pair,
+          run.bold,
+          obj.style.inverse);
+      draw_x += take;
+      rem -= take;
+      skip = 0;
     }
-    R->putText(r.y + row, colx, line, text_w, line_pair, line_bold, obj.style.inverse);
   }
 
   short bar_pair = (short)get_color_pair(obj.style.border_color, obj.style.background_color);
