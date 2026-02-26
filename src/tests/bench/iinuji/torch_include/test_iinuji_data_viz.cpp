@@ -31,14 +31,14 @@
 
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_dataset.h"
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 
 /* ---- iinuji UI ---- */
-#include "iinuji/iinuji_rend.h"
+#include "iinuji/render/renderer.h"
 #include "iinuji/iinuji_types.h"
 #include "iinuji/iinuji_utils.h"
 #include "iinuji/iinuji_render.h"
-#include "iinuji/iinuji_plot.h"
+#include "iinuji/primitives/plot.h"
 #include "iinuji/ncurses/iinuji_rend_ncurses.h"
 
 using namespace cuwacunu::iinuji;
@@ -156,9 +156,7 @@ struct DatasetProvider final : public IDataProvider {
     cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
     cuwacunu::piaabo::dconfig::config_space_t::update_config();
 
-    auto obs_inst =
-      cuwacunu::camahjucunu::BNF::observationPipeline()
-        .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction());
+    auto obs_inst = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
 
     bool force_bin =
       cuwacunu::piaabo::dconfig::config_space_t::get<bool>("DATA_LOADER","dataloader_force_binarization");

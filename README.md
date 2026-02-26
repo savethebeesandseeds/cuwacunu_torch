@@ -174,7 +174,7 @@ nvidia-smi
 
 This project's original code is open source under the MIT license (`LICENSE`).
 
-We do not impose new restrictions on project contributions: contributions are accepted under the same MIT terms (`CONTRIBUTING.md`).
+For feature requests and ideas, open a GitHub Discussion in this repository.
 
 Third-party components remain under their original licenses and notices.
 See `THIRD_PARTY_NOTICES.md` for details and redistribution guidance.

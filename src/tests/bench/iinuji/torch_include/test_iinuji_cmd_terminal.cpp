@@ -1,11 +1,12 @@
 // test_iinuji_cmd_terminal.cpp
 #include <iostream>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "piaabo/dconfig.h"
-#include "camahjucunu/BNF/implementations/canonical_path/canonical_path.h"
+#include "camahjucunu/dsl/canonical_path/canonical_path.h"
 #include "iinuji/iinuji_cmd/commands.h"
 
 namespace {
@@ -18,6 +19,29 @@ bool require(bool cond, const std::string& msg) {
     return false;
   }
   return true;
+}
+
+std::set<std::string> source_dataloader_init_snapshot() {
+  std::set<std::string> out;
+  for (const auto& item : tsiemene::list_source_dataloader_init_entries()) {
+    out.insert(item.init_id);
+  }
+  return out;
+}
+
+bool cleanup_new_source_dataloader_inits(const std::set<std::string>& baseline) {
+  bool ok = true;
+  for (const auto& item : tsiemene::list_source_dataloader_init_entries()) {
+    if (baseline.count(item.init_id)) continue;
+    std::uintmax_t removed_count = 0;
+    std::string error;
+    if (!tsiemene::delete_source_dataloader_init(item.init_id, &removed_count, &error)) {
+      std::cerr << "[cleanup] failed to remove source dataloader init " << item.init_id << ": " << error
+                << "\n";
+      ok = false;
+    }
+  }
+  return ok;
 }
 
 void print_decoded(const cuwacunu::camahjucunu::canonical_path_t& d) {
@@ -36,19 +60,26 @@ void print_decoded(const cuwacunu::camahjucunu::canonical_path_t& d) {
 }  // namespace
 
 int main() {
+  std::set<std::string> source_dataloader_init_before;
   try {
     const char* config_folder = "/cuwacunu/src/config/";
     cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
     cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    source_dataloader_init_before = source_dataloader_init_snapshot();
 
     const std::vector<std::string> valid_samples = {
         "iinuji.refresh()",
         "iinuji.view.data.plot(mode=seq)",
+        "board.wave",
+        "tsi.source.dataloader@payload:tensor",
+        "tsi.source.dataloader@init:str",
         "tsi.wikimyei.representation.vicreg.default@payload:tensor",
-        "tsi.wikimyei.representation.vicreg.default.jkimyei@loss:tensor",
+        "tsi.wikimyei.representation.vicreg.default@jkimyei:tensor",
+        "tsi.wikimyei.representation.vicreg_0x3@weights:tensor",
     };
 
     std::set<std::string> identity_hashes;
+    std::set<std::string> canonical_identities;
     bool ok = true;
     for (const auto& sample : valid_samples) {
       auto decoded = cuwacunu::camahjucunu::decode_canonical_path(sample);
@@ -59,6 +90,7 @@ int main() {
       ok = ok && require(cuwacunu::camahjucunu::validate_canonical_path(decoded), "sample should validate: " + sample);
       ok = ok && require(!decoded.identity_hash_name.empty(), "identity hash should not be empty: " + sample);
       identity_hashes.insert(decoded.identity_hash_name);
+      canonical_identities.insert(decoded.canonical_identity);
     }
 
     // Deterministic hash check on same canonical expression.
@@ -69,11 +101,11 @@ int main() {
                          "identity hash must be deterministic");
     }
 
-    // Distinct identities should produce distinct hashes for these samples.
-    ok = ok && require(identity_hashes.size() == valid_samples.size(),
-                       "expected distinct identity hashes for sample set");
+    // Distinct canonical identities should produce distinct identity hashes.
+    ok = ok && require(identity_hashes.size() == canonical_identities.size(),
+                       "expected one identity hash per canonical identity");
 
-    // Invalid directive/kind and invalid jkimyei target should fail.
+    // Invalid directive/kind should fail.
     {
       auto invalid_dir = cuwacunu::camahjucunu::decode_canonical_path(
           "tsi.wikimyei.representation.vicreg.default@unknown:tensor");
@@ -85,9 +117,39 @@ int main() {
       ok = ok && require(!invalid_kind.ok, "invalid kind must fail");
     }
     {
-      auto invalid_jk = cuwacunu::camahjucunu::decode_canonical_path(
-          "tsi.wikimyei.source.dataloader.default.jkimyei@payload:tensor");
-      ok = ok && require(!invalid_jk.ok, "invalid jkimyei target must fail");
+      auto source_jk = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.wikimyei.source.dataloader.default@jkimyei:tensor");
+      ok = ok && require(!source_jk.ok, "legacy source dataloader wikimyei path should fail");
+    }
+    {
+      auto facet_jk = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.wikimyei.representation.vicreg.default.jkimyei@loss:tensor");
+      ok = ok && require(!facet_jk.ok, "legacy .jkimyei facet syntax should fail");
+    }
+    {
+      auto source_init = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.source.dataloader.init()");
+      ok = ok && require(source_init.ok, "source dataloader init path should parse");
+    }
+    {
+      auto source_no_jk = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.source.dataloader.jkimyei@payload:tensor");
+      ok = ok && require(!source_no_jk.ok, "source dataloader should not accept .jkimyei facet syntax");
+    }
+    {
+      auto bad_vicreg_meta = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.wikimyei.representation.vicreg.default@meta:tensor");
+      ok = ok && require(!bad_vicreg_meta.ok, "vicreg should reject @meta:tensor");
+    }
+    {
+      auto bad_log_info = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.sink.log.sys@info:str");
+      ok = ok && require(!bad_log_info.ok, "sink.log.sys should reject @info:str");
+    }
+    {
+      auto bad_init_kind = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.source.dataloader@init:tensor");
+      ok = ok && require(!bad_init_kind.ok, "source dataloader should reject @init:tensor");
     }
     // Migration adapter stubs (primitive -> DSL) smoke.
     {
@@ -128,6 +190,10 @@ int main() {
       cuwacunu::iinuji::iinuji_cmd::run_command(st, "iinuji.data.plot.off()", nullptr);
       ok = ok && require(!st.data.plot_view, "plot off command should work without log box");
 
+      cuwacunu::iinuji::iinuji_cmd::run_command(st, "dataloader.init", nullptr);
+      ok = ok && require(st.screen == cuwacunu::iinuji::iinuji_cmd::ScreenMode::Tsiemene,
+                         "dataloader.init alias should switch to tsi screen");
+
       cuwacunu::iinuji::iinuji_cmd::run_command(st, "quit", nullptr);
       ok = ok && require(!st.running, "quit alias should work without log box");
       st.running = true;
@@ -140,12 +206,16 @@ int main() {
       ok = ok && require(!st.running, "exit alias should work without log box");
     }
 
+    ok = ok && require(cleanup_new_source_dataloader_inits(source_dataloader_init_before),
+                       "cleanup: created tsi.source.dataloader init artifacts should be removed");
+
     std::cout << "[round2] " << cuwacunu::camahjucunu::hashimyei_round_note() << "\n";
 
     if (!ok) return 1;
     std::cout << "[ok] iinuji cmd terminal dsl smoke passed\n";
     return 0;
   } catch (const std::exception& e) {
+    cleanup_new_source_dataloader_inits(source_dataloader_init_before);
     std::cerr << "[test_iinuji_cmd_terminal] exception: " << e.what() << "\n";
     return 1;
   }

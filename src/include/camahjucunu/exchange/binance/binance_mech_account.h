@@ -12,10 +12,10 @@ struct binance_mech_account_t: public abstract_mech_account_t {
 /* variables */
 public:
   bool owns_session;
-  cuwacunu::camahjucunu::curl::ws_session_id_t session_id;
+  cuwacunu::piaabo::curl::ws_session_id_t session_id;
 public:
   /* constructor */
-  binance_mech_account_t(cuwacunu::camahjucunu::curl::ws_session_id_t _session_id = NULL_CURL_SESSION);
+  binance_mech_account_t(cuwacunu::piaabo::curl::ws_session_id_t _session_id = NULL_CURL_SESSION);
   ~binance_mech_account_t();
   
   /* methods */

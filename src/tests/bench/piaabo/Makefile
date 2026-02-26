@@ -15,6 +15,7 @@ TEST_DEFAULT_LDLIBS :=
 # 3) Tests (build + run aliases)
 $(eval $(call TEST_ONEFILE, test_darchitecture,           test_darchitecture.cpp,           $(libcommon_a)))
 $(eval $(call TEST_ONEFILE, test_dconfig,                 test_dconfig.cpp,                 $(libcommon_a)))
+$(eval $(call TEST_ONEFILE, test_dconfig_contract_lock,   test_dconfig_contract_lock.cpp,   $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_dsecurity,               test_dsecurity.cpp,               $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_dencryption,             test_dencryption.cpp,             $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_djson_parsing,           test_djson_parsing.cpp,           $(libcommon_a)))
@@ -22,6 +23,7 @@ $(eval $(call TEST_ONEFILE, test_dfiles_binary_to_vector, test_dfiles_binary_to_
 
 # 4) Target-specific includes/link flags
 $(TEST_OUT)/test_dsecurity:               INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_dconfig_contract_lock:   INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_dencryption:             INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_dfiles_binary_to_vector: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
@@ -30,6 +32,7 @@ $(TEST_OUT)/test_dfiles_binary_to_vector: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 all: \
 	$(TEST_OUT)/test_darchitecture \
 	$(TEST_OUT)/test_dconfig \
+	$(TEST_OUT)/test_dconfig_contract_lock \
 	$(TEST_OUT)/test_dsecurity \
 	$(TEST_OUT)/test_dencryption \
 	$(TEST_OUT)/test_djson_parsing \
@@ -42,6 +45,7 @@ all: \
 run: \
 	run-test_darchitecture \
 	run-test_dconfig \
+	run-test_dconfig_contract_lock \
 	run-test_dsecurity \
 	run-test_dencryption \
 	run-test_djson_parsing \
@@ -52,8 +56,8 @@ run: \
 clean:
 	@rm -f $(TEST_OUT)/test_darchitecture \
 	       $(TEST_OUT)/test_dconfig \
+	       $(TEST_OUT)/test_dconfig_contract_lock \
 	       $(TEST_OUT)/test_dsecurity \
 	       $(TEST_OUT)/test_dencryption \
 	       $(TEST_OUT)/test_djson_parsing \
 	       $(TEST_OUT)/test_dfiles_binary_to_vector
-

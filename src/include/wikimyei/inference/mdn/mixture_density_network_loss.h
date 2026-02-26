@@ -9,7 +9,7 @@
 #include "wikimyei/inference/mdn/mixture_density_network_utils.h"
 
 #include "jkimyei/training_setup/jk_setup.h"
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 
 namespace cuwacunu {
 namespace wikimyei {
@@ -29,7 +29,7 @@ struct MdnNLLLoss {
 
   explicit MdnNLLLoss(const cuwacunu::jkimyei::jk_component_t& jk_component) {
     ASSERT(jk_component.loss_conf.type == "NLLLoss",
-      ("Review <training_components>.instruction: MDN requires loss type 'NLLLoss', got '" + jk_component.loss_conf.type + "'.").c_str());
+      ("Review <jkimyei_specs>.dsl: MDN requires loss type 'NLLLoss', got '" + jk_component.loss_conf.type + "'.").c_str());
     try {
       const auto& row = jk_component.inst.retrive_row("loss_functions_table", jk_component.loss_conf.id);
       if (cuwacunu::camahjucunu::has_option(row, "eps"))

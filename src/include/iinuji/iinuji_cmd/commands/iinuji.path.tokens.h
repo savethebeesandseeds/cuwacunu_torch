@@ -28,10 +28,6 @@ namespace canonical_path_tokens {
     else out.push_back('_');
   }
   if (out.empty()) out = "empty";
-  if (!std::isalpha(static_cast<unsigned char>(out.front())) && out.front() != '_') {
-    out.insert(out.begin(), 'v');
-    out.insert(out.begin() + 1, '_');
-  }
   return out;
 }
 

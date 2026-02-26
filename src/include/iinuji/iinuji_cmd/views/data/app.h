@@ -17,10 +17,11 @@
 #include <torch/torch.h>
 #include <ncursesw/ncurses.h>
 
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/types/types_data.h"
+#include "iinuji/iinuji_cmd/commands/iinuji.paths.h"
 #include "iinuji/iinuji_render.h"
 #include "iinuji/iinuji_utils.h"
 #include "piaabo/dconfig.h"
@@ -135,6 +136,22 @@ inline torch::Tensor as_ct_double(const torch::Tensor& t) {
   return x.to(torch::kCPU).contiguous().to(torch::kFloat64);
 }
 
+inline std::string data_plot_overlay_commands_hint() {
+  std::ostringstream oss;
+  oss << "cmds: " << canonical_paths::kDataPlotOn
+      << " | " << canonical_paths::kDataPlotOff
+      << " | " << canonical_paths::kDataPlotToggle
+      << " | " << canonical_paths::kDataPlotModeSeq
+      << " | " << canonical_paths::kDataPlotModeFuture
+      << " | " << canonical_paths::kDataPlotModeWeight
+      << " | " << canonical_paths::kDataPlotModeNorm
+      << " | " << canonical_paths::kDataPlotModeBytes
+      << " | " << canonical_paths::kDataAxisIdx
+      << " | " << canonical_paths::kDataAxisKey
+      << " | " << canonical_paths::kDataAxisToggle;
+  return oss.str();
+}
+
 inline void sync_data_tensor_state(CmdState& state, const DataAppRuntime& rt) {
   state.data.plot_tensor_ready = (rt.ready && rt.sample_ready);
   state.data.plot_tensor_error = rt.error;
@@ -222,11 +239,10 @@ inline void init_data_runtime(CmdState& state, DataAppRuntime& rt, bool force) {
   rt = DataAppRuntime{};
   rt.signature = sig;
   try {
-    auto parser = cuwacunu::camahjucunu::BNF::observationPipeline();
-    auto obs = parser.decode(state.data.raw_instruction);
+    auto obs = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
     std::string instrument = state.data.focus_instrument;
-    if (instrument.empty() && !obs.instrument_forms.empty()) {
-      instrument = obs.instrument_forms.front().instrument;
+    if (instrument.empty() && !obs.source_forms.empty()) {
+      instrument = obs.source_forms.front().instrument;
     }
     if (instrument.empty()) {
       rt.ready = false;
@@ -235,7 +251,7 @@ inline void init_data_runtime(CmdState& state, DataAppRuntime& rt, bool force) {
       return;
     }
     const bool force_binarization = cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
-        "DATA_LOADER", "dataloader_force_binarization", std::optional<bool>(false));
+        "DATA_LOADER", "dataloader_force_binarization");
     rt.dataset = cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(
         instrument, obs, force_binarization);
     auto sz = rt.dataset.size();
@@ -572,7 +588,7 @@ inline void render_data_plot_overlay(
   R->putText(
       footer_y + 1,
       inner_x,
-      "cmds: iinuji.data.plot.on()/off()/toggle() | .plot.mode.seq()/future()/weight()/norm()/bytes() | .axis.idx()/key()/toggle()",
+      trim_to_width(data_plot_overlay_commands_hint(), inner_w),
       inner_w,
       text_pair);
   R->putText(footer_y + 2, inner_x, trim_to_width(selected_line_text, inner_w), inner_w, selected_pair);

@@ -17,32 +17,26 @@
 #include "camahjucunu/types/types_data.h"
 
 // TSI runtime + nodes
-#include "tsiemene/utils/board.h"
-#include "tsiemene/tsi.wikimyei.source.dataloader.h"
+#include "tsiemene/board.h"
+#include "tsiemene/tsi.source.dataloader.h"
 #include "tsiemene/tsi.wikimyei.representation.vicreg.h"
 #include "tsiemene/tsi.sink.null.h"
 #include "tsiemene/tsi.sink.log.sys.h"
-#include "tsiemene/tsi.wikimyei.wave.generator.h"
 
 /*
   circuit_1 = {
-    w_wave    = tsi.wikimyei.wave.generator
-    w_source  = tsi.wikimyei.source.dataloader
+    w_source  = tsi.source.dataloader
     w_rep     = tsi.wikimyei.representation.vicreg
     w_null    = tsi.sink.null
     w_log     = tsi.sink.log.sys
 
-    w_wave@payload:str        -> w_source@payload:str
-    w_source@payload:tensor   -> w_rep@payload:tensor
-    w_rep@payload:tensor      -> w_null@payload:tensor
+    w_source@payload:tensor   -> w_rep@step
+    w_rep@payload:tensor      -> w_null@step
 
-    w_wave@meta:str           -> w_log@meta:str
-    w_source@meta:str         -> w_log@meta:str
-    w_rep@meta:str            -> w_log@meta:str
-    w_null@meta:str           -> w_log@meta:str
-
-    w_rep@loss:tensor         -> w_log@loss:tensor
-    w_rep.jkimyei { loss = w_rep@loss, wave = w_wave }
+    w_source@meta:str         -> w_log@warn
+    w_rep@meta:str            -> w_log@debug
+    w_null@meta:str           -> w_log@debug
+    w_rep@loss:tensor         -> w_log@info
   }
 
   circuit_1( BTCUSDT[01.01.2009,31.12.2009] );
@@ -104,13 +98,13 @@ int main() try {
   // using Sampler = torch::data::samplers::RandomSampler;
 
   tsiemene::Board board{};
-  auto& c = board.circuits.emplace_back();
+  auto& c = board.contracts.emplace_back();
   c.name = "circuit_1 approximation";
   c.invoke_name = "circuit_1";
   const std::string instruction = "BTCUSDT[01.01.2009,31.12.2009]";
   c.invoke_payload = instruction;
 
-  using DataloaderT = tsiemene::TsiDataloaderInstrument<Datatype, Sampler>;
+  using DataloaderT = tsiemene::TsiSourceDataloader<Datatype, Sampler>;
 
   // constructor discovers C/T/D from the dataset.
   auto& dl = c.emplace_node<DataloaderT>(/*id=*/1, INSTRUMENT, device);
@@ -119,7 +113,7 @@ int main() try {
               (long long)dl.C(), (long long)dl.T(), (long long)dl.D());
 
   // VICReg expects C,T,D (B comes from the batch)
-  auto& vicreg = c.emplace_node<tsiemene::TsiVicreg4D>(
+  auto& vicreg = c.emplace_node<tsiemene::TsiWikimyeiRepresentationVicreg>(
       /*id=*/2,
       /*instance_name=*/"tsi.wikimyei.representation.vicreg",
       /*C=*/(int)dl.C(),
@@ -131,52 +125,42 @@ int main() try {
 
   auto& sink_null = c.emplace_node<tsiemene::TsiSinkNull>(/*id=*/5, "tsi.sink.null");
   auto& sink_log = c.emplace_node<tsiemene::TsiSinkLogSys>(/*id=*/6, "tsi.sink.log.sys");
-  auto& wavegen = c.emplace_node<tsiemene::TsiWaveGenerator>(/*id=*/7, "tsi.wikimyei.wave.generator");
 
   vicreg.set_train(true); // emit @loss for sink.log.sys
 
-  // Single circuit approximation with branching at w_rep:
-  // - payload path: w_rep@payload -> w_null
-  // - loss path:    w_rep@loss    -> w_log
+  // Single circuit approximation with branching at w_rep.
+  // Source is the circuit root and consumes the board invoke payload.
+  // - payload path: w_rep@payload -> w_null@step
+  // - loss path:    w_rep@loss    -> w_log@info
   c.hops = {
     tsiemene::hop(
-      tsiemene::ep(wavegen, tsiemene::TsiWaveGenerator::OUT_PAYLOAD),
-      tsiemene::ep(dl,      DataloaderT::IN_PAYLOAD),
-      tsiemene::query("")),
-
-    tsiemene::hop(
       tsiemene::ep(dl,     DataloaderT::OUT_PAYLOAD),
-      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::IN_PAYLOAD),
+      tsiemene::ep(vicreg, tsiemene::TsiWikimyeiRepresentationVicreg::IN_STEP),
       tsiemene::query("")),
 
     tsiemene::hop(
-      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::OUT_PAYLOAD),
-      tsiemene::ep(sink_null, tsiemene::TsiSinkNull::IN_PAYLOAD),
+      tsiemene::ep(vicreg, tsiemene::TsiWikimyeiRepresentationVicreg::OUT_PAYLOAD),
+      tsiemene::ep(sink_null, tsiemene::TsiSinkNull::IN_STEP),
       tsiemene::query("")),
 
     tsiemene::hop(
-      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::OUT_LOSS),
-      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_LOSS),
-      tsiemene::query("")),
-
-    tsiemene::hop(
-      tsiemene::ep(wavegen, tsiemene::TsiWaveGenerator::OUT_META),
-      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::ep(vicreg, tsiemene::TsiWikimyeiRepresentationVicreg::OUT_LOSS),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_INFO),
       tsiemene::query("")),
 
     tsiemene::hop(
       tsiemene::ep(dl, DataloaderT::OUT_META),
-      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_WARN),
       tsiemene::query("")),
 
     tsiemene::hop(
-      tsiemene::ep(vicreg, tsiemene::TsiVicreg4D::OUT_META),
-      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::ep(vicreg, tsiemene::TsiWikimyeiRepresentationVicreg::OUT_META),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_DEBUG),
       tsiemene::query("")),
 
     tsiemene::hop(
       tsiemene::ep(sink_null, tsiemene::TsiSinkNull::OUT_META),
-      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_META),
+      tsiemene::ep(sink_log, tsiemene::TsiSinkLogSys::IN_DEBUG),
       tsiemene::query("")),
   };
 
@@ -188,7 +172,7 @@ int main() try {
 
   tsiemene::BoardIssue issue{};
   if (!tsiemene::validate_board(board, &issue)) {
-    std::cerr << "[readme/circuit_1] invalid board at circuit[" << issue.circuit_index
+    std::cerr << "[readme/circuit_1] invalid board at contract[" << issue.contract_index
               << "]: " << issue.circuit_issue.what
               << " at hop " << issue.circuit_issue.hop_index << "\n";
     return 1;
@@ -196,7 +180,7 @@ int main() try {
 
   std::printf("[readme/circuit_1] running instruction=\"%s\"...\n", instruction.c_str());
 
-  const std::uint64_t steps = tsiemene::run_circuit(c, ctx);
+  const std::uint64_t steps = tsiemene::run_contract(c, ctx);
   std::printf("[readme/circuit_1] events processed = %llu\n", (unsigned long long)steps);
   if (steps == 0) {
     std::cerr << "[readme/circuit_1] expected events > 0\n";

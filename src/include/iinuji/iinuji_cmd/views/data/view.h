@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 #include "camahjucunu/types/types_enums.h"
 
 #include "iinuji/iinuji_cmd/views/common.h"
@@ -271,7 +271,7 @@ inline std::string data_focus_instrument(const BoardState* board_view,
         cuwacunu::camahjucunu::circuit_invoke_symbol(board_view->board.circuits.front());
     if (!from_board.empty()) return from_board;
   }
-  if (!obs.instrument_forms.empty()) return obs.instrument_forms.front().instrument;
+  if (!obs.source_forms.empty()) return obs.source_forms.front().instrument;
   return {};
 }
 
@@ -292,13 +292,12 @@ inline std::string format_bytes_approx(std::uintmax_t bytes) {
 inline DataState load_data_view_from_config(const BoardState* board_view = nullptr) {
   DataState out{};
   out.batch_size = static_cast<std::size_t>(cuwacunu::piaabo::dconfig::config_space_t::get<int>(
-      "DATA_LOADER", "dataloader_batch_size", std::optional<int>(64)));
-  out.raw_instruction = cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction();
+      "DATA_LOADER", "dataloader_batch_size"));
+  out.raw_instruction = cuwacunu::camahjucunu::observation_instruction_source_dump_from_config();
 
   cuwacunu::camahjucunu::observation_instruction_t obs{};
   try {
-    auto parser = cuwacunu::camahjucunu::BNF::observationPipeline();
-    obs = parser.decode(out.raw_instruction);
+    obs = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
   } catch (const std::exception& e) {
     out.ok = false;
     out.error = std::string("decode failed: ") + e.what();
@@ -312,7 +311,7 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
   out.focus_instrument = data_focus_instrument(board_view, obs);
 
   std::set<std::size_t> dims_set;
-  for (const auto& in_form : obs.input_forms) {
+  for (const auto& in_form : obs.channel_forms) {
     if (to_lower_copy(in_form.active) != "true") continue;
 
     std::size_t seq_length = 0;
@@ -322,7 +321,7 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
     const double channel_weight = parse_double_value(in_form.channel_weight, 0.0);
 
     bool matched_focus = false;
-    for (const auto& instr_form : obs.instrument_forms) {
+    for (const auto& instr_form : obs.source_forms) {
       if (instr_form.record_type != in_form.record_type) continue;
       if (instr_form.interval != in_form.interval) continue;
       if (!out.focus_instrument.empty() && instr_form.instrument != out.focus_instrument) continue;
@@ -334,7 +333,7 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
       v.seq_length = seq_length;
       v.future_seq_length = future_seq_length;
       v.channel_weight = channel_weight;
-      parse_size_t_value(instr_form.norm_window, &v.norm_window);
+      parse_size_t_value(in_form.norm_window, &v.norm_window);
       v.feature_dims = feature_dims_for_record_type(v.record_type);
       v.from_focus_instrument = true;
 
@@ -361,7 +360,7 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
     if (matched_focus || out.focus_instrument.empty()) continue;
 
     // Fallback only when no board-focused source was found for this active channel.
-    for (const auto& instr_form : obs.instrument_forms) {
+    for (const auto& instr_form : obs.source_forms) {
       if (instr_form.record_type != in_form.record_type) continue;
       if (instr_form.interval != in_form.interval) continue;
 
@@ -372,7 +371,7 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
       v.seq_length = seq_length;
       v.future_seq_length = future_seq_length;
       v.channel_weight = channel_weight;
-      parse_size_t_value(instr_form.norm_window, &v.norm_window);
+      parse_size_t_value(in_form.norm_window, &v.norm_window);
       v.feature_dims = feature_dims_for_record_type(v.record_type);
       v.from_focus_instrument = false;
 

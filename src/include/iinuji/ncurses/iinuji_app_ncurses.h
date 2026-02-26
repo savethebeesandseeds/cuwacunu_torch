@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <ncursesw/ncurses.h>
 
-#include "iinuji/iinuji_rend.h"
+#include "iinuji/render/renderer.h"
 #include "iinuji/ncurses/iinuji_rend_ncurses.h"
 
 namespace cuwacunu {

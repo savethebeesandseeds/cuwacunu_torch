@@ -47,6 +47,29 @@ all: modules lib-bundles
 	@$(LOG_SUCCESS)
 
 # -----------------------------------------------------------------
+# Shortcut aliases (delegate only; no build logic changes)
+# -----------------------------------------------------------------
+.PHONY: build b mods m bundles pack test t
+build b: all
+mods m: modules
+bundles pack: lib-bundles
+test t: tests
+
+.PHONY: pia cam jk wk ii
+pia: piaabo
+cam: camahjucunu
+jk: jkimyei
+wk: wikimyei
+ii: iinuji
+
+.PHONY: c clean_all ccommon cdsl cdata cwiki
+c clean_all: clean
+ccommon: clean_common
+cdsl: clean_dsl
+cdata: clean_data
+cwiki: clean_wikimyei
+
+# -----------------------------------------------------------------
 # Tests
 # -----------------------------------------------------------------
 .PHONY: tests
@@ -64,18 +87,45 @@ clean_common:
 	  $(OUTPUT_PATH)/common/*.a \
 	  2>/dev/null || true
 
-.PHONY: clean_bnf
-clean_bnf:
+.PHONY: clean_dsl
+clean_dsl:
 	@shred -u \
-	  $(OUTPUT_PATH)/common/BNF_*.d \
-	  $(OUTPUT_PATH)/common/BNF_*.o \
-	  $(OUTPUT_PATH)/common/BNF_*.a \
+	  $(OUTPUT_PATH)/common/parser_types.d \
+	  $(OUTPUT_PATH)/common/parser_types.o \
+	  $(OUTPUT_PATH)/common/parser_types.a \
+	  $(OUTPUT_PATH)/common/ast.d \
+	  $(OUTPUT_PATH)/common/ast.o \
+	  $(OUTPUT_PATH)/common/ast.a \
+	  $(OUTPUT_PATH)/common/grammar_lexer.d \
+	  $(OUTPUT_PATH)/common/grammar_lexer.o \
+	  $(OUTPUT_PATH)/common/grammar_lexer.a \
+	  $(OUTPUT_PATH)/common/grammar_parser.d \
+	  $(OUTPUT_PATH)/common/grammar_parser.o \
+	  $(OUTPUT_PATH)/common/grammar_parser.a \
+	  $(OUTPUT_PATH)/common/instruction_lexer.d \
+	  $(OUTPUT_PATH)/common/instruction_lexer.o \
+	  $(OUTPUT_PATH)/common/instruction_lexer.a \
+	  $(OUTPUT_PATH)/common/instruction_parser.d \
+	  $(OUTPUT_PATH)/common/instruction_parser.o \
+	  $(OUTPUT_PATH)/common/instruction_parser.a \
+	  $(OUTPUT_PATH)/common/canonical_path.d \
+	  $(OUTPUT_PATH)/common/canonical_path.o \
+	  $(OUTPUT_PATH)/common/canonical_path.a \
+	  $(OUTPUT_PATH)/common/jkimyei_specs.d \
+	  $(OUTPUT_PATH)/common/jkimyei_specs.o \
+	  $(OUTPUT_PATH)/common/jkimyei_specs.a \
 	  $(OUTPUT_PATH)/common/observation_pipeline.d \
-		$(OUTPUT_PATH)/common/training_components.d \
 	  $(OUTPUT_PATH)/common/observation_pipeline.o \
-		$(OUTPUT_PATH)/common/training_components.o \
 	  $(OUTPUT_PATH)/common/observation_pipeline.a \
-		$(OUTPUT_PATH)/common/training_components.a \
+	  $(OUTPUT_PATH)/common/sources/observation_sources_pipeline.d \
+	  $(OUTPUT_PATH)/common/sources/observation_sources_pipeline.o \
+	  $(OUTPUT_PATH)/common/sources/observation_sources_pipeline.a \
+	  $(OUTPUT_PATH)/common/channels/observation_channels_pipeline.d \
+	  $(OUTPUT_PATH)/common/channels/observation_channels_pipeline.o \
+	  $(OUTPUT_PATH)/common/channels/observation_channels_pipeline.a \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit.d \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit.o \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit.a \
 	  2>/dev/null || true
 
 .PHONY: clean_data

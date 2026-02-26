@@ -12,7 +12,7 @@
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 
 #include "wikimyei/representation/VICReg/vicreg_4d.h"
 #include "wikimyei/inference/expected_value/expected_value.h"
@@ -41,7 +41,7 @@ int main() {
   // -----------------------------------------------------
   TICK(load_representation_model_);
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(
-    cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "model_path"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "model_path"),
     cuwacunu::piaabo::dconfig::config_device("VICReg"));
   PRINT_TOCK_ms(load_representation_model_);
 
@@ -82,20 +82,20 @@ int main() {
   // Training
   // -----------------------------------------------------
   value_estimation_network.set_telemetry_every(
-    /* n_epochs */  cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VALUE_ESTIMATION",  "telemetry_every")
+    /* n_epochs */  cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION",  "telemetry_every")
   );
   TICK(fit_value_estimation_);
   value_estimation_network.fit(representation_dataloader, 
-    /* n_epochs */  cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VALUE_ESTIMATION",  "n_epochs"),
-    /* n_iters */   cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VALUE_ESTIMATION",  "n_iters"),
-    /* verbose */   cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("VALUE_ESTIMATION",  "verbose_train")
+    /* n_epochs */  cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION",  "n_epochs"),
+    /* n_iters */   cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION",  "n_iters"),
+    /* verbose */   cuwacunu::piaabo::dconfig::contract_space_t::get<bool>("VALUE_ESTIMATION",  "verbose_train")
   );
   PRINT_TOCK_ms(fit_value_estimation_);
   // -----------------------------------------------------
   // Save
   // -----------------------------------------------------
   TICK(save_value_estimation_network_);
-  value_estimation_network.save_checkpoint(cuwacunu::piaabo::dconfig::config_space_t::get("VALUE_ESTIMATION", "model_path"));
+  value_estimation_network.save_checkpoint(cuwacunu::piaabo::dconfig::contract_space_t::get("VALUE_ESTIMATION", "model_path"));
   PRINT_TOCK_ms(save_value_estimation_network_);
 
   // -----------------------------------------------------
@@ -103,7 +103,7 @@ int main() {
   // -----------------------------------------------------
   TICK(load_value_estimation_network_);
   cuwacunu::wikimyei::ExpectedValue loaded_value_estimation_network("MDN_value_estimation");
-  loaded_value_estimation_network.load_checkpoint(cuwacunu::piaabo::dconfig::config_space_t::get("VALUE_ESTIMATION", "model_path"));
+  loaded_value_estimation_network.load_checkpoint(cuwacunu::piaabo::dconfig::contract_space_t::get("VALUE_ESTIMATION", "model_path"));
   PRINT_TOCK_ms(load_value_estimation_network_);
 
   // -----------------------------------------------------

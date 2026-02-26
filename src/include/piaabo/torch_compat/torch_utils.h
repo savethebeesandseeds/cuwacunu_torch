@@ -121,7 +121,7 @@ namespace piaabo {
 namespace dconfig {
 
 /* ------------------------------------------------------------------ */
-/*  Configuration helpers – centralised access to .config            */
+/*  Configuration helpers – section-aware access to contract/global config */
 /* ------------------------------------------------------------------ */
 
 /** Return the torch::Dtype configured for SECTION (e.g. "TRAINING").

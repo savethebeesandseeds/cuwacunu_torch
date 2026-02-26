@@ -12,7 +12,7 @@
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 
 #include "wikimyei/inference/mdn/mixture_density_network.h"
 #include "wikimyei/representation/VICReg/vicreg_4d.h"

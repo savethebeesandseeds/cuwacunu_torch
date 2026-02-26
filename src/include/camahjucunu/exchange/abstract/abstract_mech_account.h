@@ -4,7 +4,7 @@
 #include "camahjucunu/types/types_utils.h"
 #include "camahjucunu/types/types_account.h"
 #include "camahjucunu/types/types_enums.h"
-#include "camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h"
+#include "piaabo/https_compat/curl_toolkit/websockets_api/curl_websocket_api.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

@@ -1,6 +1,9 @@
 /* torch_utils.cpp */
 #include "piaabo/torch_compat/torch_utils.h"
 
+#include <algorithm>
+#include <cctype>
+
 RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
 RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME consider the implincations of changing floats to double. \n");
 
@@ -145,26 +148,68 @@ namespace dconfig {
 
 /* ───────────── helpers: string → torch::Dtype / Device ───────────── */
 
+static std::string trim_lower_ascii(std::string s) {
+  std::size_t b = 0;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  std::size_t e = s.size();
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  s = s.substr(b, e - b);
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return s;
+}
+
+static std::string strip_torch_type_prefixes(std::string v) {
+  if (v.rfind("torch::", 0) == 0) v = v.substr(7);
+  if (v.rfind("at::", 0) == 0) v = v.substr(4);
+  if (v.rfind("k", 0) == 0 && v.size() > 1 &&
+      std::isalpha(static_cast<unsigned char>(v[1]))) {
+    v = v.substr(1);
+  }
+  return v;
+}
+
 static torch::Dtype parse_dtype(const std::string& s)
 {
-  std::string v; v.reserve(s.size());
-  std::transform(s.begin(), s.end(), std::back_inserter(v), [](unsigned char c){ return std::tolower(c); });
+  std::string v = strip_torch_type_prefixes(trim_lower_ascii(s));
 
   if (v=="bool")  return torch::kBool;
   if (v=="int8")  return torch::kInt8;
   if (v=="int16") return torch::kInt16;
   if (v=="int32") return torch::kInt32;
   if (v=="int64") return torch::kInt64;
-  if (v=="float16" || v=="half")   return torch::kFloat16;
-  if (v=="float32" || v=="float")  return torch::kFloat32;
-  if (v=="float64" || v=="double") return torch::kFloat64;
+  if (v=="float16" || v=="half" || v=="f16")   return torch::kFloat16;
+  if (v=="float32" || v=="float" || v=="f32")  return torch::kFloat32;
+  if (v=="float64" || v=="double" || v=="f64") return torch::kFloat64;
 
   throw std::runtime_error("Unknown configured dtype '"+s+"'");
 }
 
 static torch::Device parse_device(const std::string& s)
 {
-  try { return torch::Device(s); }
+  std::string v = trim_lower_ascii(s);
+  if (v == "gpu") v = "cuda";
+
+  if (v.rfind("gpu:", 0) == 0) {
+    v = "cuda:" + v.substr(4);
+  }
+
+  v = strip_torch_type_prefixes(v);
+  if (v == "cpu") return torch::Device(torch::kCPU);
+  if (v == "cuda") {
+    if (!torch::cuda::is_available()) {
+      throw std::runtime_error("Configured device '" + s +
+                               "' requires CUDA but CUDA is unavailable");
+    }
+    return torch::Device(torch::kCUDA);
+  }
+  if (v.rfind("cuda:", 0) == 0 && !torch::cuda::is_available()) {
+    throw std::runtime_error("Configured device '" + s +
+                             "' requires CUDA but CUDA is unavailable");
+  }
+
+  try { return torch::Device(v); }
   catch (const c10::Error&) {
     throw std::runtime_error("Invalid configured device '"+s+"'");
   }
@@ -172,15 +217,21 @@ static torch::Device parse_device(const std::string& s)
 
 /* ───────────── public config accessors ───────────── */
 torch::Dtype config_dtype(const std::string& section) {
-  try { return parse_dtype(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>(section,  "dtype"));
-  } catch (...) { try { return parse_dtype(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL","dtype"));
-  } catch (...) { return torch::kFloat32;}}
+  if (section == "GENERAL") {
+    return parse_dtype(
+        cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL", "dtype"));
+  }
+  return parse_dtype(
+      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(section, "dtype"));
 }
 
 torch::Device config_device(const std::string& section) {
-  try { return parse_device(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>(section,"device"));
-  } catch (...) { try { return parse_device(cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL","device"));
-  } catch (...) { return cuwacunu::piaabo::torch_compat::select_torch_device();}}
+  if (section == "GENERAL") {
+    return parse_device(
+        cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL", "device"));
+  }
+  return parse_device(
+      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(section, "device"));
 }
 
 } // namespace dconfig

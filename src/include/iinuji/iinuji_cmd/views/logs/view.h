@@ -61,71 +61,87 @@ inline bool logs_accept_entry(const LogsState& settings,
   return logs_level_rank(e.level) >= logs_filter_min_rank(settings.level_filter);
 }
 
-inline char logs_line_marker(const LogsState& settings,
-                             const cuwacunu::piaabo::dlog_entry_t& e) {
-  if (!settings.show_color) return '\0';
+inline cuwacunu::iinuji::text_line_emphasis_t logs_line_emphasis(
+    const LogsState& settings,
+    const cuwacunu::piaabo::dlog_entry_t& e) {
+  if (!settings.show_color) return cuwacunu::iinuji::text_line_emphasis_t::None;
   const int rank = logs_level_rank(e.level);
-  if (rank >= 50) return '\x19';
-  if (rank >= 40) return '\x1e';
-  if (rank >= 30) return '\x1d';
-  if (rank >= 20) return '\x1a';
-  return '\x1c';
+  if (rank >= 50) return cuwacunu::iinuji::text_line_emphasis_t::Fatal;
+  if (rank >= 40) return cuwacunu::iinuji::text_line_emphasis_t::Error;
+  if (rank >= 30) return cuwacunu::iinuji::text_line_emphasis_t::Warning;
+  if (rank >= 20) return cuwacunu::iinuji::text_line_emphasis_t::Info;
+  return cuwacunu::iinuji::text_line_emphasis_t::Debug;
 }
 
 inline std::string format_logs_entry(const LogsState& settings,
                                      const cuwacunu::piaabo::dlog_entry_t& e) {
   std::ostringstream oss;
-  const bool color = settings.show_color;
-
   if (settings.show_date) {
-    if (color) oss << '\x11';
     oss << "[" << e.timestamp << "]";
-    if (color) oss << '\x12';
     oss << " ";
   }
   oss << "[" << e.level << "] ";
   if (settings.show_thread) {
-    if (color) oss << '\x13';
     oss << "[0x" << e.thread << "]";
-    if (color) oss << '\x14';
     oss << " ";
   }
   oss << e.message;
-  std::string line = oss.str();
-  const char marker = logs_line_marker(settings, e);
-  if (marker != '\0') {
-    line.insert(line.begin(), marker);
-  }
-  return line;
+  return oss.str();
 }
 
-inline std::string make_logs_left(const LogsState& settings,
-                                  const std::vector<cuwacunu::piaabo::dlog_entry_t>& snap) {
-  std::ostringstream oss;
+inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_logs_left_styled_lines(
+    const LogsState& settings,
+    const std::vector<cuwacunu::piaabo::dlog_entry_t>& snap) {
+  std::vector<cuwacunu::iinuji::styled_text_line_t> out;
   std::size_t shown = 0;
   for (const auto& e : snap) {
     if (logs_accept_entry(settings, e)) ++shown;
   }
 
-  oss << "# dlogs buffer\n";
-  oss << "# entries=" << snap.size()
-      << " shown=" << shown
-      << " capacity=" << cuwacunu::piaabo::dlog_buffer_capacity() << "\n";
-  oss << "# level=" << logs_filter_label(settings.level_filter)
-      << " date=" << (settings.show_date ? "on" : "off")
-      << " thread=" << (settings.show_thread ? "on" : "off")
-      << " color=" << (settings.show_color ? "on" : "off")
-      << " follow=" << (settings.auto_follow ? "on" : "off") << "\n";
-  oss << "# newest entries at bottom\n\n";
+  auto push = [&](std::string text, cuwacunu::iinuji::text_line_emphasis_t emphasis = cuwacunu::iinuji::text_line_emphasis_t::None) {
+    out.push_back(cuwacunu::iinuji::styled_text_line_t{
+        .text = std::move(text),
+        .emphasis = emphasis,
+    });
+  };
+
+  push("# dlogs buffer");
+  push(
+      "# entries=" + std::to_string(snap.size()) +
+      " shown=" + std::to_string(shown) +
+      " capacity=" + std::to_string(cuwacunu::piaabo::dlog_buffer_capacity()));
+  push(
+      "# level=" + logs_filter_label(settings.level_filter) +
+      " date=" + (settings.show_date ? std::string("on") : std::string("off")) +
+      " thread=" + (settings.show_thread ? std::string("on") : std::string("off")) +
+      " color=" + (settings.show_color ? std::string("on") : std::string("off")) +
+      " follow=" + (settings.auto_follow ? std::string("on") : std::string("off")));
+  push("# newest entries at bottom");
+  push("");
   if (shown == 0) {
-    oss << "(no logs)\n";
-    return oss.str();
+    push("(no logs)");
+    return out;
   }
   for (const auto& e : snap) {
     if (!logs_accept_entry(settings, e)) continue;
-    oss << format_logs_entry(settings, e) << "\n";
+    push(format_logs_entry(settings, e), logs_line_emphasis(settings, e));
+  }
+  return out;
+}
+
+inline std::string styled_lines_to_text(
+    const std::vector<cuwacunu::iinuji::styled_text_line_t>& lines) {
+  std::ostringstream oss;
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    if (i > 0) oss << '\n';
+    oss << lines[i].text;
   }
   return oss.str();
+}
+
+inline std::string make_logs_left(const LogsState& settings,
+                                  const std::vector<cuwacunu::piaabo::dlog_entry_t>& snap) {
+  return styled_lines_to_text(make_logs_left_styled_lines(settings, snap));
 }
 
 inline std::string make_logs_right(const LogsState& settings,
@@ -187,9 +203,15 @@ inline std::string make_logs_right(const LogsState& settings,
     }
   }
   oss << "\nCommands\n";
-  oss << "  iinuji.screen.logs()\n";
-  oss << "  iinuji.show.logs()\n";
-  oss << "  iinuji.logs.clear()\n";
+  static const auto kLogsCallCommands = [] {
+    auto out = canonical_paths::call_texts_by_prefix({"iinuji.logs."});
+    const auto screen = canonical_paths::call_texts_by_prefix({"iinuji.screen.logs("});
+    const auto show = canonical_paths::call_texts_by_prefix({"iinuji.show.logs("});
+    out.insert(out.end(), screen.begin(), screen.end());
+    out.insert(out.end(), show.begin(), show.end());
+    return out;
+  }();
+  for (const auto cmd : kLogsCallCommands) oss << "  " << cmd << "\n";
   oss << "  aliases: logs, f8, logs clear\n";
   oss << "  primitive translation: disabled\n";
   oss << "\nKeys\n";

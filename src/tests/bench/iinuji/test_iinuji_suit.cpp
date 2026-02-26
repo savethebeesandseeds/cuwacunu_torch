@@ -9,7 +9,7 @@
 #include "iinuji/iinuji_types.h"
 #include "iinuji/iinuji_utils.h"
 #include "iinuji/iinuji_render.h"
-#include "iinuji/iinuji_plot.h"
+#include "iinuji/primitives/plot.h"
 #include "iinuji/ncurses/iinuji_rend_ncurses.h"
 
 /* ---------- Data builders ---------- */

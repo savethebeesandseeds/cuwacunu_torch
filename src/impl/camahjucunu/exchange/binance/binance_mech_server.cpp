@@ -13,7 +13,7 @@ namespace binance {
 
 /* constructor */
 binance_mech_server_t::binance_mech_server_t(
-  cuwacunu::camahjucunu::curl::ws_session_id_t _session_id) 
+  cuwacunu::piaabo::curl::ws_session_id_t _session_id) 
     : owns_session(false), session_id(_session_id) {
   NOTIFY_INIT("cuwacunu::camahjucunu::mech::binance::binance_mech_server_t");
   ASSERT_SESSION(session_id, owns_session);
@@ -21,7 +21,7 @@ binance_mech_server_t::binance_mech_server_t(
 
 binance_mech_server_t::~binance_mech_server_t() {
   log_info("Finalizing cuwacunu::camahjucunu::mech::binance::binance_mech_server_t \n");
-  if(owns_session) { cuwacunu::camahjucunu::curl::WebsocketAPI::ws_finalize(session_id); }
+  if(owns_session) { cuwacunu::piaabo::curl::WebsocketAPI::ws_finalize(session_id); }
 }
 
 /* methods */

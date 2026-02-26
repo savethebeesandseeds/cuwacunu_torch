@@ -48,10 +48,10 @@
 #include "camahjucunu/data/memory_mapped_dataset.h"
 
 // Observation pipeline decode helper
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 
 // GUI (iinuji)
-#include "iinuji/iinuji_rend.h"
+#include "iinuji/render/renderer.h"
 #include "iinuji/iinuji_render.h"
 #include "iinuji/iinuji_utils.h"
 #include "iinuji/ncurses/iinuji_rend_ncurses.h"
@@ -393,9 +393,7 @@ int main(int argc, char** argv)
   std::string INSTRUMENT = (argc > 1 ? std::string(argv[1]) : std::string("BTCUSDT"));
 
   // Observation instruction from config
-  auto obs_inst =
-    cuwacunu::camahjucunu::BNF::observationPipeline()
-      .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction());
+  auto obs_inst = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
 
   const bool force_bin =
     cuwacunu::piaabo::dconfig::config_space_t::get<bool>("DATA_LOADER","dataloader_force_binarization");
@@ -406,7 +404,7 @@ int main(int argc, char** argv)
       inst_copy, obs_inst, force_bin);
 
   // VICReg model (device from config)
-  auto model_path = cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "model_path");
+  auto model_path = cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "model_path");
   auto model_dev  = cuwacunu::piaabo::dconfig::config_device("VICReg");
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(model_path, model_dev);
 

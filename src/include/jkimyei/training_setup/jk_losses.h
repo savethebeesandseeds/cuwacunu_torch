@@ -7,15 +7,15 @@
 #include <cassert>
 #include <cmath>
 
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 
 namespace cuwacunu {
 namespace jkimyei {
-/* Map a config-row (BNF) to a concrete loss.
+/* Map a config-row (DSL spec) to a concrete loss.
  * - Enforces exact columns: {row_id, type, options}
  * - Enforces exact options per loss (no extras, no missing)
  */
-inline void validate_loss(const cuwacunu::camahjucunu::training_instruction_t& inst,
+inline void validate_loss(const cuwacunu::camahjucunu::jkimyei_specs_t& inst,
                           const std::string& row_id) {
   const auto& row = inst.retrive_row("loss_functions_table", row_id);
 
@@ -214,7 +214,7 @@ inline void validate_loss(const cuwacunu::camahjucunu::training_instruction_t& i
 // };
 // /* -------------------------- Row -> Builder ----------------------------- */
 
-// /* Map a config-row (BNF) to a concrete loss.
+// /* Map a config-row (DSL spec) to a concrete loss.
 //  * - Enforces exact columns: {row_id, type, options}
 //  * - Enforces exact options per loss (no extras, no missing)
 //  */
@@ -287,7 +287,7 @@ inline void validate_loss(const cuwacunu::camahjucunu::training_instruction_t& i
 //   throw std::runtime_error("Unknown loss_function type: " + type);
 // }
 
-// inline std::unique_ptr<ILoss> make_loss(const cuwacunu::camahjucunu::training_instruction_t& inst, const std::string& row_id) {
+// inline std::unique_ptr<ILoss> make_loss(const cuwacunu::camahjucunu::jkimyei_specs_t& inst, const std::string& row_id) {
 //   const auto& row = inst.retrive_row("loss_functions_table", row_id);
 //   return make_loss_from_row(row);
 // }

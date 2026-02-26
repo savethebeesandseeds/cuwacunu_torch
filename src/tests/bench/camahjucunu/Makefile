@@ -21,13 +21,12 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 # 5) Aggregate: all
 .PHONY: all
 all:
-	+{ \
-		$(MAKE) -C $(HERE_PATH)/https all \
-		$(MAKE) -C $(HERE_PATH)/types all \
-		$(MAKE) -C $(HERE_PATH)/exchange all \
-		$(MAKE) -C $(HERE_PATH)/bnf all \
-		$(MAKE) -C $(HERE_PATH)/data all
-	}
+	+$(MAKE) -C $(HERE_PATH)/https all
+	+$(MAKE) -C $(HERE_PATH)/types all
+	+$(MAKE) -C $(HERE_PATH)/exchange all
+	+$(MAKE) -C $(HERE_PATH)/dsl_parser all
+	+$(MAKE) -C $(HERE_PATH)/dsl all
+	+$(MAKE) -C $(HERE_PATH)/data all
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run

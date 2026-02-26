@@ -17,8 +17,8 @@
 
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/observation_sample.h"
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 
 RUNTIME_WARNING("(memory_mapped_dataloader.h)[] We have too many channels, it can be benefitial to use market fade time wrapping strategy, instead of the multi channel one. \n");
 RUNTIME_WARNING("(memory_mapped_dataloader.h)[] [Important] dataloading is advancing to the next step based on the highest channel, it should have a switch to select the lowerst channel as well. \n");
@@ -147,6 +147,9 @@ create_memory_mapped_dataloader(
 //   auto dl = observation_pipeline_sequential_mm_dataloader<Datatype_t>("BTCUSDT");
 //   auto dl = observation_pipeline_random_mm_dataloader   <Datatype_t>("BTCUSDT");
 //
+// TODO(legacy-removal): rename observation_pipeline_* helper APIs to
+// observation_* once external call sites migrate.
+//
 // ----------------------------------------------------------------------------
 template<typename Datatype_t, typename Sampler>
 inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
@@ -163,8 +166,7 @@ inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
 
     return create_memory_mapped_dataloader<Dataset, observation_sample_t, Datatype_t, Sampler>(
         inst,
-        cuwacunu::camahjucunu::BNF::observationPipeline()
-            .decode(cuwacunu::piaabo::dconfig::config_space_t::observation_pipeline_instruction()),
+        cuwacunu::camahjucunu::decode_observation_instruction_from_config(),
         force_bin,
         batch_size,
         workers

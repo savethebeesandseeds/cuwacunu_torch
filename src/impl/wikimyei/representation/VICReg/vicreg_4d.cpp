@@ -6,12 +6,14 @@
 
 #include "wikimyei/representation/VICReg/vicreg_4d.h"
 #include "piaabo/dconfig.h"
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "jkimyei/training_setup/jk_setup.h"
 
 namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
+
+using cuwacunu::piaabo::dconfig::contract_space_t;
 
 // -------------------- local helpers (strict ckpt meta & config parsers) --------------------
 namespace {
@@ -146,13 +148,11 @@ VICReg_4D::VICReg_4D(
   loss_obj(nullptr)
 {
   // ---- Read projector options from dconfig (strings) and cast strictly ----
-  using cuwacunu::piaabo::dconfig::config_space_t;
-
-  auto norm_s   = config_space_t::get<std::string>("VICReg", "projector_norm");
-  auto act_s    = config_space_t::get<std::string>("VICReg", "projector_activation");
-  auto hbias_s  = config_space_t::get<std::string>("VICReg", "projector_hidden_bias");
-  auto lbias_s  = config_space_t::get<std::string>("VICReg", "projector_last_bias");
-  auto bnfp32_s = config_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
+  auto norm_s   = contract_space_t::get<std::string>("VICReg", "projector_norm");
+  auto act_s    = contract_space_t::get<std::string>("VICReg", "projector_activation");
+  auto hbias_s  = contract_space_t::get<std::string>("VICReg", "projector_hidden_bias");
+  auto lbias_s  = contract_space_t::get<std::string>("VICReg", "projector_last_bias");
+  auto bnfp32_s = contract_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
 
   ProjectorOptions popts{
     /* norm_kind       */ parse_norm_kind_strict(norm_s),
@@ -195,23 +195,23 @@ VICReg_4D::VICReg_4D(
 : VICReg_4D(
     component_name_,
     C_, T_, D_,
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VICReg", "encoding_dims"),
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VICReg", "channel_expansion_dim"),
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VICReg", "fused_feature_dim"),
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VICReg", "encoder_hidden_dims"),
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VICReg", "encoder_depth"),
-    cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "projector_mlp_spec"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoding_dims"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "channel_expansion_dim"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "fused_feature_dim"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoder_hidden_dims"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoder_depth"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_mlp_spec"),
     cuwacunu::piaabo::dconfig::config_dtype ("VICReg"),
     cuwacunu::piaabo::dconfig::config_device("VICReg"),
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VICReg", "optimizer_threshold_reset"),
-    cuwacunu::piaabo::dconfig::config_space_t::get<bool>("VICReg", "enable_buffer_averaging")
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "optimizer_threshold_reset"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<bool>("VICReg", "enable_buffer_averaging")
 ) {
   // Force presence of projector option keys early (fail fast)
-  (void) cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "projector_norm");
-  (void) cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "projector_activation");
-  (void) cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "projector_hidden_bias");
-  (void) cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "projector_last_bias");
-  (void) cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
+  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_norm");
+  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_activation");
+  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_hidden_bias");
+  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_last_bias");
+  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
 
   log_info("Initialized VICReg encoder from Configuration file...\n");
 }
@@ -440,11 +440,11 @@ void VICReg_4D::display_model() const {
 
   // Read projector options as strings for display
   using cuwacunu::piaabo::dconfig::config_space_t;
-  std::string norm_s   = config_space_t::get<std::string>("VICReg", "projector_norm");
-  std::string act_s    = config_space_t::get<std::string>("VICReg", "projector_activation");
-  std::string hbias_s  = config_space_t::get<std::string>("VICReg", "projector_hidden_bias");
-  std::string lbias_s  = config_space_t::get<std::string>("VICReg", "projector_last_bias");
-  std::string bnfp32_s = config_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
+  std::string norm_s   = contract_space_t::get<std::string>("VICReg", "projector_norm");
+  std::string act_s    = contract_space_t::get<std::string>("VICReg", "projector_activation");
+  std::string hbias_s  = contract_space_t::get<std::string>("VICReg", "projector_hidden_bias");
+  std::string lbias_s  = contract_space_t::get<std::string>("VICReg", "projector_last_bias");
+  std::string bnfp32_s = contract_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
 
   const char* fmt =
     "\n%s \t[Representation Learning] VICReg_4D:  %s\n"

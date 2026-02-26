@@ -2,8 +2,8 @@
 #pragma once
 #include <stdexcept>
 #include "wikimyei/representation/VICReg/vicreg_4d_types.h"
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
-#include "camahjucunu/BNF/implementations/training_components/training_components_utils.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs_utils.h"
 
 namespace cuwacunu {
 namespace wikimyei {
@@ -38,7 +38,7 @@ inline WarpBaseCurve parse_curve(const std::string& s) {
  */
 inline std::vector<WarpPreset>
 make_warp_presets_from_table(
-  const cuwacunu::camahjucunu::training_instruction_t::table_t& table)
+  const cuwacunu::camahjucunu::jkimyei_specs_t::table_t& table)
 {
   using namespace cuwacunu::camahjucunu;
 

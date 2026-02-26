@@ -31,10 +31,12 @@ PIAABO := \
 # -----------------------------------------------------------------
 # Aggregate Target
 #   - Build local piaabo objects
-#   - Then recurse into math_compat and torch_compat submodules
+#   - Then recurse into https_compat, bnf_compat, math_compat and torch_compat
 # -----------------------------------------------------------------
 .PHONY: all
 all: $(PIAABO)
+	$(MAKE) -C $(HERE_PATH)/https_compat all
+	$(MAKE) -C $(HERE_PATH)/bnf_compat all
 	$(MAKE) -C $(HERE_PATH)/math_compat all
 	$(MAKE) -C $(HERE_PATH)/torch_compat all
 	@$(LOG_SUCCESS)

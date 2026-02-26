@@ -3,7 +3,7 @@
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
 #include "piaabo/darchitecture.h"
-#include "camahjucunu/https/curl_toolkit/websockets_api/curl_websocket_api.h"
+#include "piaabo/https_compat/curl_toolkit/websockets_api/curl_websocket_api.h"
 
 /* # Methods (check if all of these are implemented)
     ping
@@ -63,7 +63,7 @@
     std::string frame_id = cuwacunu::piaabo::generate_random_string(frame_id_format); \
     cuwacunu::piaabo::string_replace(frame_id, '.', '_'); \
     /* format and send the frame message */ \
-    cuwacunu::camahjucunu::curl::WebsocketAPI::ws_write_text( \
+    cuwacunu::piaabo::curl::WebsocketAPI::ws_write_text( \
       session_id, FORMAT_FRAME(frame_id, method, args), frame_id \
     ); \
     /* no awaiting for response case */ \
@@ -71,8 +71,8 @@
       return std::nullopt; \
     } \
     /* await and retrive server response */ \
-    std::optional<cuwacunu::camahjucunu::curl::ws_incomming_data_t> response =  \
-      cuwacunu::camahjucunu::curl::WebsocketAPI::ws_await_and_retrive_server_response(session_id, frame_id); \
+    std::optional<cuwacunu::piaabo::curl::ws_incomming_data_t> response =  \
+      cuwacunu::piaabo::curl::WebsocketAPI::ws_await_and_retrive_server_response(session_id, frame_id); \
     /* handle failure case */ \
     if(!response.has_value()) { \
       log_fatal("Websocket server failed to respond to [ %s ] method, for session_id[ %d ] in frame_id[ %s ]\n",  \
@@ -88,7 +88,7 @@
     /* */ \
     args.add_signature(); \
     /* format and send the frame message */ \
-    cuwacunu::camahjucunu::curl::WebsocketAPI::ws_write_text( \
+    cuwacunu::piaabo::curl::WebsocketAPI::ws_write_text( \
       session_id, FORMAT_FRAME(frame_id, method, args), frame_id \
     ); \
     /* no awaiting for response case */ \
@@ -96,8 +96,8 @@
       return std::nullopt; \
     } \
     /* await and retrive server response */ \
-    std::optional<cuwacunu::camahjucunu::curl::ws_incomming_data_t> response =  \
-      cuwacunu::camahjucunu::curl::WebsocketAPI::ws_await_and_retrive_server_response(session_id, frame_id); \
+    std::optional<cuwacunu::piaabo::curl::ws_incomming_data_t> response =  \
+      cuwacunu::piaabo::curl::WebsocketAPI::ws_await_and_retrive_server_response(session_id, frame_id); \
     /* handle failure case */ \
     if(!response.has_value()) { \
       log_fatal("Websocket server failed to respond to [ %s ] method, for session_id[ %d ] in frame_id[ %s ]\n",  \
@@ -136,7 +136,7 @@
   /* if no websocket session_id is passed, then generate one */ \
   if((owns_session = (session_id == NULL_CURL_SESSION))) { \
     /* start the websocket session */ \
-    session_id = cuwacunu::camahjucunu::curl::WebsocketAPI::ws_init( \
+    session_id = cuwacunu::piaabo::curl::WebsocketAPI::ws_init( \
       /* websocket_url */ \
       cuwacunu::piaabo::dconfig::config_space_t::websocket_url() \
     ); \

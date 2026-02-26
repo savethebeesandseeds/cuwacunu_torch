@@ -3,7 +3,7 @@
 #include <ncursesw/ncurses.h>
 #include <cwchar>
 #include <string>
-#include "iinuji/iinuji_rend.h"
+#include "iinuji/render/renderer.h"
 
 namespace cuwacunu {
 namespace iinuji {

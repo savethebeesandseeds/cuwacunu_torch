@@ -13,8 +13,8 @@
 #include <ncursesw/ncurses.h>
 
 #include "piaabo/dconfig.h"
-#include "camahjucunu/BNF/implementations/tsiemene_board/tsiemene_board.h"
-#include "camahjucunu/BNF/implementations/tsiemene_board/tsiemene_board_runtime.h"
+#include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
+#include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
 
 #include "iinuji/iinuji_types.h"
 #include "iinuji/iinuji_utils.h"
@@ -23,7 +23,7 @@
 
 namespace {
 
-using cuwacunu::camahjucunu::tsiemene_board_instruction_t;
+using cuwacunu::camahjucunu::tsiemene_circuit_instruction_t;
 using cuwacunu::camahjucunu::tsiemene_circuit_decl_t;
 using cuwacunu::camahjucunu::tsiemene_resolved_hop_t;
 
@@ -31,7 +31,7 @@ struct BoardViewData {
   bool ok{false};
   std::string error{};
   std::string raw_instruction{};
-  tsiemene_board_instruction_t board{};
+  tsiemene_circuit_instruction_t board{};
   std::vector<std::vector<tsiemene_resolved_hop_t>> resolved_hops{};
 };
 
@@ -266,13 +266,13 @@ static std::string make_circuit_info(const tsiemene_circuit_decl_t& c,
 
 static BoardViewData load_board_from_config() {
   BoardViewData out{};
-  out.raw_instruction = cuwacunu::piaabo::dconfig::config_space_t::tsiemene_board_instruction();
+  out.raw_instruction = cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_dsl();
 
-  auto parser = cuwacunu::camahjucunu::BNF::tsiemeneBoard();
+  auto parser = cuwacunu::camahjucunu::dsl::tsiemeneCircuits();
   out.board = parser.decode(out.raw_instruction);
 
   std::string error;
-  if (!cuwacunu::camahjucunu::validate_board_instruction(out.board, &error)) {
+  if (!cuwacunu::camahjucunu::validate_circuit_instruction(out.board, &error)) {
     out.ok = false;
     out.error = error;
     return out;
@@ -413,7 +413,7 @@ int main() try {
       set_text_content(canvas_box, coss.str());
       set_text_content(
           info_box,
-          "Fix src/config/instructions/tsiemene_board.instruction and press 'r' to reload.\n");
+          "Fix src/config/instructions/tsiemene_circuit.dsl and press 'r' to reload.\n");
       set_text_content(status, make_status(board_view, selected));
       return;
     }

@@ -1,10 +1,16 @@
 # Contributing
 
-Contributions are welcome. If you contribute you there by agree not to inject malice. 
+Contributions are welcome. If you contribute, you thereby agree not to inject malice.
+
+## How to contribute
+
+At this time, contributions are handled through feature requests only.
+Open a GitHub Discussion describing the request or proposal.
+Direct code contributions, pull requests, and code merges are not being accepted right now.
 
 ## License of contributions
 
-By submitting a contribution (code, docs, assets, or other content), you confirm you have the right to submit it and you license it under the repository MIT license in `LICENSE`.
+By submitting a feature request or other content (ideas, docs, assets, snippets, or text), you confirm you have the right to submit it and you license it under the repository MIT license in `LICENSE`.
 
 In short: inbound = outbound. We do not add extra restrictions beyond MIT for project contributions.
 

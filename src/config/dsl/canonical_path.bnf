@@ -1,0 +1,21 @@
+<instruction>            ::= <path_expr> ;
+
+<path_expr>              ::= <base_path> [<call_suffix>] [<endpoint_suffix>] ;
+<base_path>              ::= <atom> {"." <atom>} ;
+<call_suffix>            ::= "(" [<arg_list>] ")" ;
+<arg_list>               ::= <arg> {"," <arg>} ;
+<arg>                    ::= <atom> [ "=" <arg_value> ] ;
+<arg_value>              ::= {<arg_char>} ;
+<endpoint_suffix>        ::= "@" <directive_ref> ":" <kind_ref> ;
+
+<directive_ref>          ::= "step" | "payload" | "loss" | "meta" | "info" | "warn" | "debug" | "error" | "init" | "jkimyei" | "weights" | "@step" | "@payload" | "@loss" | "@meta" | "@info" | "@warn" | "@debug" | "@error" | "@init" | "@jkimyei" | "@weights" ;
+<kind_ref>               ::= "str" | "tensor" | ":str" | ":tensor" ;
+
+<atom>                   ::= <atom_start> {<atom_char>} ;
+<atom_start>             ::= <letter> | <number> | "_" ;
+<atom_char>              ::= <letter> | <number> | "_" ;
+
+<arg_char>               ::= <letter> | <number> | "_" | "." | "-" | "/" | ":" | "@" ;
+
+<letter>                 ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<number>                 ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;

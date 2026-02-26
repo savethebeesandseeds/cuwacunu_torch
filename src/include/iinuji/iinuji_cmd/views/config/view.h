@@ -40,14 +40,10 @@ inline std::string make_config_right(const CmdState& st) {
     }
   }
   oss << "\nCommands\n";
-  oss << "  iinuji.config.reload()\n";
-  oss << "  iinuji.config.tabs()\n";
-  oss << "  iinuji.config.tab.next()\n";
-  oss << "  iinuji.config.tab.prev()\n";
-  oss << "  iinuji.config.tab.index.n1()\n";
-  oss << "  iinuji.config.tab.id.<token>()\n";
-  oss << "  iinuji.config.show()\n";
-  oss << "  iinuji.config.tab.show()\n";
+  static const auto kConfigCallCommands = canonical_paths::call_texts_by_prefix({"iinuji.config."});
+  static const auto kConfigPatternCommands = canonical_paths::pattern_texts_by_prefix({"iinuji.config."});
+  for (const auto cmd : kConfigCallCommands) oss << "  " << cmd << "\n";
+  for (const auto cmd : kConfigPatternCommands) oss << "  " << cmd << "\n";
   oss << "\nCanonical\n";
   oss << "  aliases: tabs, config, f9\n";
   oss << "  primitive translation: disabled\n";

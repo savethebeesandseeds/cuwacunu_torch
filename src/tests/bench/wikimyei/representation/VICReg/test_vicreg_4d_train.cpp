@@ -16,7 +16,7 @@
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 
 #include "wikimyei/representation/VICReg/vicreg_4d.h"
 
@@ -74,17 +74,17 @@ int main() {
     TICK(Train_Model);
     auto training_losses = model.fit<Dataset_t, DataSample_t, Datatype_t>(
         training_data_loader, 
-        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg",  "n_epochs"),          /* n_epochs */
-        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg",  "n_iters"),           /* n_iters */
-        cuwacunu::piaabo::dconfig::config_space_t::get<int>     ("VICReg",  "swa_start_iter"),    /* swa_start_iter */
-        cuwacunu::piaabo::dconfig::config_space_t::get<bool>    ("VICReg",  "verbose_train")      /* verbose */
+        cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg",  "n_epochs"),          /* n_epochs */
+        cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg",  "n_iters"),           /* n_iters */
+        cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg",  "swa_start_iter"),    /* swa_start_iter */
+        cuwacunu::piaabo::dconfig::contract_space_t::get<bool>("VICReg",  "verbose_train")      /* verbose */
     );
     PRINT_TOCK_ms(Train_Model);
 
     // -----------------------------------------------------
     // 5) Save (Model)
     // -----------------------------------------------------
-    model.save(cuwacunu::piaabo::dconfig::config_space_t::get("VICReg", "model_path"));
+    model.save(cuwacunu::piaabo::dconfig::contract_space_t::get("VICReg", "model_path"));
     // -----------------------------------------------------
     // Finalize
     // -----------------------------------------------------

@@ -33,8 +33,8 @@
 
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
-#include "camahjucunu/BNF/implementations/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
 
 /* ============================================================
  *  Concatenated dataset grid policy (compile-time)
@@ -980,17 +980,23 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
   }
   std::size_t matched_sources = 0;
 
-  for (auto& in_form : obs_inst.input_forms) {
+  for (auto& in_form : obs_inst.channel_forms) {
     if (in_form.active == "true") {
       if (in_form.record_type != expected_record_type) {
         log_warn("[create_memory_mapped_concat_dataset] Skipping active input_form with record_type=%s for Datatype_t=%s\n",
                  in_form.record_type.c_str(), expected_record_type.c_str());
         continue;
       }
-      for (auto& instr_form : obs_inst.filter_instrument_forms(instrument, in_form.record_type, in_form.interval)) {
+      for (auto& instr_form : obs_inst.filter_source_forms(instrument, in_form.record_type, in_form.interval)) {
 
         const std::size_t N_past   = std::stoul(in_form.seq_length);
         const std::size_t N_future = std::stoul(in_form.future_seq_length);
+        std::size_t normalization_window = 0;
+        try {
+          normalization_window = in_form.norm_window.empty() ? 0 : std::stoul(in_form.norm_window);
+        } catch (...) {
+          normalization_window = 0;
+        }
         if (N_past == 0) {
           log_fatal("[create_memory_mapped_concat_dataset] Invalid seq_length=0 for interval=%s, record_type=%s\n",
                     cuwacunu::camahjucunu::exchange::enum_to_string(in_form.interval).c_str(),
@@ -1001,7 +1007,7 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
           /* csv file */                 instr_form.source,
           /* N_past */                   N_past,
           /* N_future */                 N_future,
-          /* normalization_window */     std::stoul(instr_form.norm_window),
+          /* normalization_window */     normalization_window,
           /* force_binarization */       force_binarization,
           /* buffer_size */              buffer_size,
           /* delimiter */                delimiter

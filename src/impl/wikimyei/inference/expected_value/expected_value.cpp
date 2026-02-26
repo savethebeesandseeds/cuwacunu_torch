@@ -92,20 +92,20 @@ ExpectedValue::ExpectedValue(const std::string& component_name_)
 : component_name(component_name_) {
   // Static weights and target dims from config/pipeline
   static_channel_weights_     = cuwacunu::camahjucunu::observation_pipeline_t::inst.retrieve_channel_weights();
-  static_feature_weights_     = cuwacunu::piaabo::dconfig::config_space_t::get_arr<float>("VALUE_ESTIMATION", "target_weights");
-  grad_clip                   = cuwacunu::piaabo::dconfig::config_space_t::get<double>("VALUE_ESTIMATION", "grad_clip");
-  optimizer_threshold_reset   = cuwacunu::piaabo::dconfig::config_space_t::get<int>("VALUE_ESTIMATION", "optimizer_threshold_reset");
-  target_dims_                = cuwacunu::piaabo::dconfig::config_space_t::get_arr<int64_t>("VALUE_ESTIMATION", "target_dims");
+  static_feature_weights_     = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<float>("VALUE_ESTIMATION", "target_weights");
+  grad_clip                   = cuwacunu::piaabo::dconfig::contract_space_t::get<double>("VALUE_ESTIMATION", "grad_clip");
+  optimizer_threshold_reset   = cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "optimizer_threshold_reset");
+  target_dims_                = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<int64_t>("VALUE_ESTIMATION", "target_dims");
 
   // Model
   semantic_model = cuwacunu::wikimyei::mdn::MdnModel(
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VICReg", "encoding_dims"),               // De
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoding_dims"),               // De
     static_cast<int64_t>(target_dims_.size()),                                                    // Dy
     cuwacunu::camahjucunu::observation_pipeline_t::inst.count_channels(),                         // C
     cuwacunu::camahjucunu::observation_pipeline_t::inst.max_future_sequence_length(),             // Hf
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VALUE_ESTIMATION", "mixture_comps"),     // K
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VALUE_ESTIMATION", "features_hidden"),   // H
-    cuwacunu::piaabo::dconfig::config_space_t::get<int>("VALUE_ESTIMATION", "residual_depth"),    // depth
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "mixture_comps"),     // K
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "features_hidden"),   // H
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "residual_depth"),    // depth
     cuwacunu::piaabo::dconfig::config_dtype  ("VALUE_ESTIMATION"),
     cuwacunu::piaabo::dconfig::config_device ("VALUE_ESTIMATION"),
     /* display_model */ false

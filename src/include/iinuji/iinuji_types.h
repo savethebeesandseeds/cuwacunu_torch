@@ -69,8 +69,25 @@ struct iinuji_style_t {
 struct iinuji_data_t { virtual ~iinuji_data_t() = default; };
 
 enum class text_align_t { Left, Center, Right };
+enum class text_line_emphasis_t {
+  None = 0,
+  Accent,
+  Success,
+  Fatal,
+  Error,
+  Warning,
+  Info,
+  Debug,
+};
+
+struct styled_text_line_t {
+  std::string text{};
+  text_line_emphasis_t emphasis{text_line_emphasis_t::None};
+};
+
 struct textBox_data_t : public iinuji_data_t {
   std::string content;
+  std::vector<styled_text_line_t> styled_lines{};
   bool wrap{true};
   text_align_t align{text_align_t::Left};
   // Viewport scroll offsets used by the renderer for non-input text boxes.
@@ -83,10 +100,21 @@ struct textBox_data_t : public iinuji_data_t {
     scroll_y = std::max(0, scroll_y + dy);
     scroll_x = std::max(0, scroll_x + dx);
   }
+
+  void clear_styled_lines() {
+    styled_lines.clear();
+  }
 };
 
 /* -------------------- Text editor box -------------------- */
 struct editorBox_data_t : public iinuji_data_t {
+  using line_colorizer_t = std::function<void(const editorBox_data_t& editor,
+                                              int line_index,
+                                              const std::string& line,
+                                              std::vector<short>& out_colors,
+                                              short base_pair,
+                                              const std::string& background_color)>;
+
   std::string path;
   std::vector<std::string> lines;
   bool dirty{false};
@@ -107,6 +135,7 @@ struct editorBox_data_t : public iinuji_data_t {
 
   int tab_width{2};
   std::string status;
+  line_colorizer_t line_colorizer{};
 
   explicit editorBox_data_t(std::string p = "") : path(std::move(p)) {
     lines.emplace_back(); // always at least one line

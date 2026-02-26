@@ -23,17 +23,31 @@ inline bool is_unset_color_token(const std::string& s) {
 
 inline int clamp255(int v) { return std::clamp(v, 0, 255); }
 
+inline int hex_digit_to_int(char ch) {
+  if (ch >= '0' && ch <= '9') return ch - '0';
+  if (ch >= 'a' && ch <= 'f') return 10 + (ch - 'a');
+  if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
+  return -1;
+}
+
+inline bool parse_hex_byte_chars(char hi, char lo, int& out) {
+  const int h = hex_digit_to_int(hi);
+  const int l = hex_digit_to_int(lo);
+  if (h < 0 || l < 0) return false;
+  out = (h << 4) | l;
+  return true;
+}
+
 inline bool parse_hex_rgb8(const std::string& s, int& r, int& g, int& b) {
   if (s.size() != 7 || s[0] != '#') return false;
-  auto byte = [&](int i)->int {
-    return std::stoi(s.substr((size_t)i, 2), nullptr, 16);
-  };
-  try {
-    r = byte(1); g = byte(3); b = byte(5);
-    return true;
-  } catch (...) {
-    return false;
-  }
+  int rr = 0, gg = 0, bb = 0;
+  if (!parse_hex_byte_chars(s[1], s[2], rr)) return false;
+  if (!parse_hex_byte_chars(s[3], s[4], gg)) return false;
+  if (!parse_hex_byte_chars(s[5], s[6], bb)) return false;
+  r = rr;
+  g = gg;
+  b = bb;
+  return true;
 }
 
 inline std::string rgb8_to_hex(int r, int g, int b) {
@@ -88,11 +102,12 @@ inline std::string to_lower(std::string s) {
 }
 
 inline bool parse_hex_rgb(const std::string& name, int& r, int& g, int& b) {
-  if (name.size()==7 && name[0]=='#') {
-    auto hex = [&](int i){ return int(std::round(std::stoi(name.substr(i,2), nullptr, 16) * 1000.0 / 255.0)); };
-    r=hex(1); g=hex(3); b=hex(5); return true;
-  }
-  return false;
+  int rr = 0, gg = 0, bb = 0;
+  if (!parse_hex_rgb8(name, rr, gg, bb)) return false;
+  r = static_cast<int>(std::round(rr * 1000.0 / 255.0));
+  g = static_cast<int>(std::round(gg * 1000.0 / 255.0));
+  b = static_cast<int>(std::round(bb * 1000.0 / 255.0));
+  return true;
 }
 
 inline int ansi_color_id_for_name(const std::string& name) {

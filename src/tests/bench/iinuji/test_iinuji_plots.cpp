@@ -8,7 +8,7 @@
 #include <string>
 #include <limits>
 #include <cstring>
-#include "iinuji/iinuji_plot.h"
+#include "iinuji/primitives/plot.h"
 #include "iinuji/ncurses/iinuji_rend_ncurses.h"
 
 using cuwacunu::iinuji::PlotOptions;

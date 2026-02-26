@@ -55,6 +55,7 @@ int main() {
     bool ok = true;
     ok = ok && require(status.find("[F1 HOME]") != std::string::npos, "status should highlight F1 HOME");
     ok = ok && require(status.find("[F2 BOARD]") == std::string::npos, "status should not highlight F2 on home");
+    ok = ok && require(status.find("F3 TRAIN") != std::string::npos, "status should list F3 training");
     ok = ok && require(left.find("CUWACUNU command terminal") != std::string::npos,
                        "home left should include terminal heading");
     ok = ok && require(right.find("commands") != std::string::npos,
@@ -63,7 +64,7 @@ int main() {
     std::cout << "status: " << status << "\n";
     std::cout << "home.left.first: " << first_line(left) << "\n";
     std::cout << "home.right.first: " << first_line(right) << "\n";
-    std::cout << "[round-home] NOTE(hashimyei): revisit hash function design space (word-combo/fun encodings).\n";
+    std::cout << "[round-home] NOTE(hashimyei): hex identity catalog active (0x0..0xf).\n";
 
     if (!ok) return 1;
     std::cout << "[ok] iinuji cmd home F1 smoke passed\n";

@@ -2,7 +2,7 @@
 # tests/bench/wikimyei/inference/mdn/Makefile — MDN tests
 # =============================================================================
 # 0) Root & Config
-ROOT_PATH := ../../../../../..
+ROOT_PATH := ../../../../..
 include $(ROOT_PATH)/Makefile.config
 
 # 1) Local Paths

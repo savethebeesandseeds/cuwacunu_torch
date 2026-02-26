@@ -17,10 +17,13 @@ HERE_PATH := $(TESTS_PATH)
 #         run-test_<name>  ||  $(TEST_OUT)/test_<name>  ||  test_<name>
 #   Defined in Makefile.config: FORWARD_ONE
 
-# ------------------------------ BNF ------------------------------------------
-BNF := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bnf_instruction_parser \
-       bnf_observation_pipeline bnf_training_components bnf_tsiemene_board bnf_canonical_path
-$(foreach t,$(BNF),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/bnf)))
+# --------------------------- DSL Parser Core ---------------------------------
+DSL_PARSER_CORE := dsl_parser_grammar_lexer dsl_parser_grammar_parser dsl_parser_instruction_lexer dsl_parser_instruction_parser
+$(foreach t,$(DSL_PARSER_CORE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/dsl_parser)))
+
+# ------------------------------ DSL Decoders ---------------------------------
+DSL := dsl_observation_pipeline dsl_jkimyei_specs dsl_tsiemene_circuit dsl_canonical_path
+$(foreach t,$(DSL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/dsl)))
 
 # --------------------------- camahjucunu/types -------------------------------
 TYPES := types_serialization types_deserialization
@@ -31,7 +34,7 @@ EXCHANGE := binance_testnet binance_mech_server binance_mech_data binance_mech_a
 $(foreach t,$(EXCHANGE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu/exchange)))
 
 # ------------------------------- piaabo --------------------------------------
-PIAABO := darchitecture dconfig dsecurity dencryption djson_parsing dfiles_binary_to_vector
+PIAABO := darchitecture dconfig dconfig_contract_lock dsecurity dencryption djson_parsing dfiles_binary_to_vector
 $(foreach t,$(PIAABO),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/piaabo)))
 
 # --------------------------- camahjucunu/data --------------------------------
@@ -47,7 +50,7 @@ IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd iinuji_cmd_
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji/torch_include)))
 
 # ------------------------------ tsiemene--------------------------------
-TSIEMENE := tsi_basic tsi_instruction
+TSIEMENE := tsi_basic tsi_instruction tsi_board
 $(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
 
 # --------------------------- camahjucunu/https -------------------------------
@@ -77,6 +80,29 @@ $(foreach t,$(MDN),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/in
 # ------------------------------ wikimyei/ExpectedValue -----------------------
 EXPVAL := expected_value
 $(foreach t,$(EXPVAL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei/inference/expected_value)))
+
+# 4) Shortcut groups (delegate only; no test logic changes)
+.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene https db jkimyei vicreg ts2vec mdn expval
+parser: $(addprefix test_,$(DSL_PARSER_CORE))
+dsl: $(addprefix test_,$(DSL))
+types: $(addprefix test_,$(TYPES))
+exchange: $(addprefix test_,$(EXCHANGE))
+piaabo: $(addprefix test_,$(PIAABO))
+data: $(addprefix test_,$(DATA))
+iinuji: test_iinuji_plots test_iinuji_logs test_iinuji_suit test_iinuji_mouse test_iinuji_tsi
+iinuji_torch: test_iinuji_toroid test_iinuji_data_viz test_iinuji_timeseries test_iinuji_cmd test_iinuji_cmd_home test_iinuji_cmd_canonical_paths test_iinuji_cmd_terminal
+tsiemene: $(addprefix test_,$(TSIEMENE))
+https: $(addprefix test_,$(HTTPS))
+db: $(addprefix test_,$(DB))
+jkimyei: $(addprefix test_,$(JKIMYEI))
+vicreg: $(addprefix test_,$(VICREG))
+ts2vec: $(addprefix test_,$(TS2VEC))
+mdn: $(addprefix test_,$(MDN))
+expval: $(addprefix test_,$(EXPVAL))
+
+.PHONY: test ta clean c
+test ta: all
+clean c: clean_tests
 
 # 5) Aggregate: all
 .PHONY: all

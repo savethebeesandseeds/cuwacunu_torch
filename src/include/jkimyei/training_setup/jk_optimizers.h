@@ -1,6 +1,6 @@
 /* jk_optimizers.h
  *
- * Builder pattern for LibTorch optimizers driven by a BNF-config row.
+ * Builder pattern for LibTorch optimizers driven by a DSL spec row.
  *
  * Design goals
  *  - Decouple optimizer construction from model code.
@@ -27,7 +27,7 @@
 #include <stdexcept>
 #include <utility>    // std::make_pair
 
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 
 namespace cuwacunu {
 namespace jkimyei {
@@ -120,7 +120,7 @@ struct AdagradBuilder final : IOptimizerBuilder {
 
 /* -------------------------- Row -> Builder ----------------------------- */
 
-/* Map a config-row (BNF) to a concrete optimizer builder.
+/* Map a config-row (DSL spec) to a concrete optimizer builder.
  * - Enforces exact columns: {row_id, type, options}
  * - Enforces exact options set per optimizer (no extras, no missing)
  * - Accepts alias "epsilon|eps" where LibTorch expects eps
@@ -225,7 +225,7 @@ make_optimizer_builder_from_row(const std::unordered_map<std::string,std::string
 
 /* Convenience: pull row from the instruction and delegate. */
 inline std::unique_ptr<IOptimizerBuilder>
-make_optimizer_builder(const cuwacunu::camahjucunu::training_instruction_t& inst,
+make_optimizer_builder(const cuwacunu::camahjucunu::jkimyei_specs_t& inst,
                        const std::string& row_id) {
   const auto& row = inst.retrive_row("optimizers_table", row_id);
   return make_optimizer_builder_from_row(row);

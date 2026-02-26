@@ -5,14 +5,14 @@
 #include <string>
 #include <string_view>
 
-#include "tsiemene/utils/tsi.h"
+#include "tsiemene/tsi.sink.h"
 
 namespace tsiemene {
 
 class TsiSinkNull final : public TsiSink {
  public:
-  static constexpr DirectiveId IN_PAYLOAD = directive_id::Payload;
-  static constexpr DirectiveId OUT_META   = directive_id::Meta;
+  static constexpr DirectiveId IN_STEP = directive_id::Step;
+  static constexpr DirectiveId OUT_META = directive_id::Meta;
 
   explicit TsiSinkNull(TsiId id,
                        std::string instance_name = "tsi.sink.null")
@@ -25,14 +25,14 @@ class TsiSinkNull final : public TsiSink {
 
   [[nodiscard]] std::span<const DirectiveSpec> directives() const noexcept override {
     static constexpr DirectiveSpec kDirectives[] = {
-      directive(IN_PAYLOAD, DirectiveDir::In, KindSpec::Tensor(), "drop tensor payload"),
+      directive(IN_STEP, DirectiveDir::In, KindSpec::Tensor(), "drop tensor step payload"),
       directive(OUT_META, DirectiveDir::Out, KindSpec::String(), "runtime trace/meta stream"),
     };
     return std::span<const DirectiveSpec>(kDirectives, 2);
   }
 
   void step(const Wave&, Ingress in, TsiContext&, Emitter&) override {
-    if (in.directive != IN_PAYLOAD) return;
+    if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::Tensor) return;
     // Intentionally no-op: consume and discard.
   }

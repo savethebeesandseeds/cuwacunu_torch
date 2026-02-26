@@ -14,6 +14,10 @@ struct myStruct {
 
   // Explicitly default the move constructor
   myStruct(myStruct&&) noexcept = default;
+
+  // Explicitly default assignments required by ENFORCE_ARCHITECTURE_DESIGN
+  myStruct& operator=(const myStruct&) = default;
+  myStruct& operator=(myStruct&&) noexcept = default;
 };
 
 ENFORCE_ARCHITECTURE_DESIGN(myStruct);

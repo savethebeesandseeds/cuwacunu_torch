@@ -13,7 +13,7 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 TEST_DEFAULT_LDLIBS :=
 
 # 3) Tests (build + run aliases)
-COMMON_LINK = $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)
+COMMON_LINK = $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)
 $(eval $(call TEST_ONEFILE, test_types_serialization,   test_types_serialization.cpp,   $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_types_deserialization, test_types_deserialization.cpp, $(COMMON_LINK)))
 

@@ -283,7 +283,7 @@ struct VICReg_4D_Augmentation {
   : warp_presets(kDefaultWarpPresets()) {}
 
   explicit VICReg_4D_Augmentation(
-      const cuwacunu::camahjucunu::training_instruction_t::table_t& table)
+      const cuwacunu::camahjucunu::jkimyei_specs_t::table_t& table)
   : warp_presets(cuwacunu::wikimyei::vicreg_4d::make_warp_presets_from_table(table)) {}
 
   std::pair<torch::Tensor, torch::Tensor>

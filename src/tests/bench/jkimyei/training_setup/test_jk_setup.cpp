@@ -6,7 +6,7 @@
 
 #include "piaabo/dconfig.h"
 #include "jkimyei/training_setup/jk_setup.h"
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 
 static inline double current_lr(const torch::optim::Optimizer& opt) {
   const auto& groups = opt.param_groups();
@@ -22,23 +22,24 @@ TORCH_MODULE(TinyReg);
 
 int main() {
   try {
-    // Load training instruction from your config
+    // Load jkimyei specs DSL from config
     const char* config_folder = "/cuwacunu/src/config/";
     cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
     cuwacunu::piaabo::dconfig::config_space_t::update_config();
-    std::string instruction = cuwacunu::piaabo::dconfig::config_space_t::training_components_instruction();
+    std::string instruction = cuwacunu::piaabo::dconfig::contract_space_t::jkimyei_specs_dsl();
 
-    TICK(trainingPipeline_loadGrammar);
-    auto trainPipe = cuwacunu::camahjucunu::BNF::trainingPipeline();
-    PRINT_TOCK_ns(trainingPipeline_loadGrammar);
+    TICK(jkimyeiSpecsPipeline_loadGrammar);
+    auto trainPipe = cuwacunu::camahjucunu::dsl::jkimyeiSpecsPipeline();
+    PRINT_TOCK_ns(jkimyeiSpecsPipeline_loadGrammar);
 
     TICK(decode_Instruction);
     auto inst = trainPipe.decode(instruction);
     PRINT_TOCK_ns(decode_Instruction);
+    (void)inst;
 
-    // Build setup: loss + optimizer + scheduler
+    // Build setup: optimizer + scheduler
     TICK(build_component);
-    auto setup = cuwacunu::jkimyei::build_training_setup_component(inst, "basic_test");
+    auto& setup = cuwacunu::jkimyei::jk_setup("basic_test");
     PRINT_TOCK_ns(build_component);
 
     // Tiny model + synthetic regression data
@@ -60,8 +61,7 @@ int main() {
     const int epochs = 10;
     for (int e = 1; e <= epochs; ++e) {
       auto pred = net->forward(X);                                  // [N,1]
-      cuwacunu::jkimyei::OutView out = cuwacunu::jkimyei::OutView::from_pred(pred);
-      auto loss = (*setup.loss)(out, y);                             // uses your configured loss
+      auto loss = torch::mse_loss(pred, y, at::Reduction::Mean);    // minimal regression loss
 
       opt.zero_grad();
       loss.backward();

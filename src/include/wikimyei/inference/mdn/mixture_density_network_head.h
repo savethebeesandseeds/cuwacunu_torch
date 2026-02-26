@@ -3,7 +3,7 @@
 #include <torch/torch.h>
 #include <vector>
 
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "wikimyei/inference/mdn/mixture_density_network_types.h"
 #include "wikimyei/inference/mdn/mixture_density_network_utils.h"
 

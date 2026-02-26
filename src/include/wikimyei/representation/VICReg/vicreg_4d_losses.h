@@ -3,7 +3,7 @@
 #include <torch/torch.h>
 #include <sstream>
 #include <iomanip>
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "jkimyei/training_setup/jk_setup.h"
 
 namespace cuwacunu {
@@ -78,7 +78,7 @@ struct VicRegLoss {
         )
   {
     ASSERT(jk_component.loss_conf.type=="VICReg",
-      "Review <training_components>.instruction file, VICREG_4D requires loss to be of type VICREG.\n");
+      "Review <jkimyei_specs>.dsl file, VICREG_4D requires loss to be of type VICREG.\n");
   }
 
   /** returns only the total loss */

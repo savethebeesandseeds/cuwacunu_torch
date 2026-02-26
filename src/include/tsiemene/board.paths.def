@@ -1,0 +1,46 @@
+#ifndef BOARD_PATH_DIRECTIVE
+#error "BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) must be defined before including board.paths.def"
+#endif
+
+#ifndef BOARD_PATH_METHOD
+#define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
+#endif
+
+#ifndef BOARD_PATH_ACTION
+#define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
+#endif
+
+#ifndef BOARD_PATH_DSL_SEGMENT
+#define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
+#endif
+
+// Board/control directives shared by board runtime coordination and tsi endpoints.
+BOARD_PATH_DIRECTIVE(Init, "@init", "Initialization control lane")
+BOARD_PATH_DIRECTIVE(Jkimyei, "@jkimyei", "Training control lane")
+BOARD_PATH_DIRECTIVE(Weights, "@weights", "Weights/artifact lane")
+
+// Canonical board-control method tokens.
+BOARD_PATH_METHOD(Init, "init", "Initialization method")
+BOARD_PATH_METHOD(Jkimyei, "jkimyei", "Training method")
+
+// Canonical board actions.
+BOARD_PATH_ACTION(ContractInit, "board.contract@init",
+                  "Initialize runtime board contracts from default board contract config")
+
+// Canonical board contract DSL segment keys.
+BOARD_PATH_DSL_SEGMENT(ContractCircuit,
+                       "board.contract.circuit@DSL:str",
+                       "Contract-local canonical circuit DSL")
+BOARD_PATH_DSL_SEGMENT(ContractObservationSources,
+                       "board.contract.observation_sources@DSL:str",
+                       "Observation sources DSL segment")
+BOARD_PATH_DSL_SEGMENT(ContractObservationChannels,
+                       "board.contract.observation_channels@DSL:str",
+                       "Observation channels DSL segment")
+BOARD_PATH_DSL_SEGMENT(ContractJkimyeiSpecs,
+                       "board.contract.jkimyei_specs@DSL:str",
+                       "Jkimyei specs DSL segment")
+
+#undef BOARD_PATH_DSL_SEGMENT
+#undef BOARD_PATH_ACTION
+#undef BOARD_PATH_METHOD

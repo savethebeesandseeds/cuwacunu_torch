@@ -6,9 +6,15 @@
 #define IINUJI_CANONICAL_ALIAS(ID, ...)
 #endif
 
+#ifndef IINUJI_CANONICAL_PATTERN
+#define IINUJI_CANONICAL_PATTERN(ID, TEXT, SUMMARY, MATCH_STYLE)
+#endif
+
 // Canonical command table:
 // - SUMMARY is kept in this file so help/manifest generation can be derived from one source.
 // - Direct short aliases can be declared with IINUJI_CANONICAL_ALIAS.
+// - Pattern MATCH_STYLE drives dynamic call matching in dispatch:
+//   ExactSegments | OptionalTailAtom | RequireArgsOrTailAtom
 
 // System / shell lifecycle.
 IINUJI_CANONICAL_CALL(HelpOpen, "iinuji.help()", "Open help overlay in widescreen mode")
@@ -27,6 +33,7 @@ IINUJI_CANONICAL_CALL(AppExit, "iinuji.exit()", "Exit iinuji command terminal")
 // Screen selection.
 IINUJI_CANONICAL_CALL(ScreenHome, "iinuji.screen.home()", "Switch to F1 home screen")
 IINUJI_CANONICAL_CALL(ScreenBoard, "iinuji.screen.board()", "Switch to F2 board screen")
+IINUJI_CANONICAL_CALL(ScreenTraining, "iinuji.screen.training()", "Switch to F3 training screen")
 IINUJI_CANONICAL_CALL(ScreenLogs, "iinuji.screen.logs()", "Switch to F8 logs screen")
 IINUJI_CANONICAL_CALL(ScreenTsi, "iinuji.screen.tsi()", "Switch to F4 tsiemene screen")
 IINUJI_CANONICAL_CALL(ScreenData, "iinuji.screen.data()", "Switch to F5 data screen")
@@ -34,6 +41,7 @@ IINUJI_CANONICAL_CALL(ScreenConfig, "iinuji.screen.config()", "Switch to F9 conf
 
 // View aliases.
 IINUJI_CANONICAL_CALL(ViewData, "iinuji.view.data()", "Show data view")
+IINUJI_CANONICAL_CALL(ViewTraining, "iinuji.view.training()", "Show training view")
 IINUJI_CANONICAL_CALL(ViewTsi, "iinuji.view.tsi()", "Show tsiemene view")
 
 // Reload/update state.
@@ -75,6 +83,15 @@ IINUJI_CANONICAL_CALL(DataFocusDim, "iinuji.data.focus.dim()", "Set data focus t
 IINUJI_CANONICAL_CALL(DataFocusPlot, "iinuji.data.focus.plot()", "Set data focus to plot mode")
 IINUJI_CANONICAL_CALL(DataFocusXAxis, "iinuji.data.focus.xaxis()", "Set data focus to x-axis mode")
 IINUJI_CANONICAL_CALL(DataFocusMask, "iinuji.data.focus.mask()", "Set data focus to mask toggle")
+IINUJI_CANONICAL_PATTERN(DataPlotPattern, "iinuji.view.data.plot()", "Open F5 plot overlay (generic argument-capable form)", ExactSegments)
+IINUJI_CANONICAL_PATTERN(DataPlotArgsModePattern, "iinuji.view.data.plot(mode=seq)", "Set F5 plot mode via argument form", ExactSegments)
+IINUJI_CANONICAL_PATTERN(DataPlotArgsViewPattern, "iinuji.view.data.plot(view=toggle)", "Control F5 plot overlay via argument form", ExactSegments)
+IINUJI_CANONICAL_PATTERN(DataXPattern, "iinuji.data.x(axis=toggle)", "Set/toggle F5 x-axis via argument form", ExactSegments)
+IINUJI_CANONICAL_PATTERN(DataMaskPattern, "iinuji.data.mask(view=toggle)", "Set/toggle F5 mask overlay via argument form", ExactSegments)
+IINUJI_CANONICAL_PATTERN(DataChIndexPattern, "iinuji.data.ch.index.n1()", "Select data channel by 1-based index", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(DataSampleIndexPattern, "iinuji.data.sample.index.n1()", "Select data sample by 1-based index", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(DataDimIndexPattern, "iinuji.data.dim.index.n1()", "Select feature dimension by 1-based index", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(DataDimIdPattern, "iinuji.data.dim.id.d1()", "Select feature dimension by id token", OptionalTailAtom)
 
 // Show commands.
 IINUJI_CANONICAL_CALL(ShowCurrent, "iinuji.show()", "Show summary for active screen")
@@ -82,6 +99,7 @@ IINUJI_CANONICAL_CALL(ShowHome, "iinuji.show.home()", "Show summary for home scr
 IINUJI_CANONICAL_CALL(ShowBoard, "iinuji.show.board()", "Show summary for board screen")
 IINUJI_CANONICAL_CALL(ShowLogs, "iinuji.show.logs()", "Show summary for logs screen")
 IINUJI_CANONICAL_CALL(ShowData, "iinuji.show.data()", "Show summary for data screen")
+IINUJI_CANONICAL_CALL(ShowTraining, "iinuji.show.training()", "Show summary for training screen")
 IINUJI_CANONICAL_CALL(ShowTsi, "iinuji.show.tsi()", "Show summary for tsiemene screen")
 IINUJI_CANONICAL_CALL(ShowConfig, "iinuji.show.config()", "Show summary for config screen")
 
@@ -110,16 +128,39 @@ IINUJI_CANONICAL_CALL(LogsSettingsMouseCaptureToggle, "iinuji.logs.settings.mous
 IINUJI_CANONICAL_CALL(BoardList, "iinuji.board.list()", "List board circuits")
 IINUJI_CANONICAL_CALL(BoardSelectNext, "iinuji.board.select.next()", "Select next board circuit")
 IINUJI_CANONICAL_CALL(BoardSelectPrev, "iinuji.board.select.prev()", "Select previous board circuit")
+IINUJI_CANONICAL_PATTERN(BoardSelectIndexPattern, "iinuji.board.select.index.n1()", "Select board circuit by 1-based index", OptionalTailAtom)
+
+// Training tab/hash commands.
+IINUJI_CANONICAL_CALL(TrainingTabs, "iinuji.training.tabs()", "List training wikimyei tabs")
+IINUJI_CANONICAL_CALL(TrainingTabNext, "iinuji.training.tab.next()", "Select next training wikimyei tab")
+IINUJI_CANONICAL_CALL(TrainingTabPrev, "iinuji.training.tab.prev()", "Select previous training wikimyei tab")
+IINUJI_CANONICAL_PATTERN(TrainingTabIndexPattern, "iinuji.training.tab.index.n1()", "Select training wikimyei tab by 1-based index", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(TrainingTabIdPattern, "iinuji.training.tab.id.default()", "Select training wikimyei tab by id token", OptionalTailAtom)
+IINUJI_CANONICAL_CALL(TrainingHashNext, "iinuji.training.hash.next()", "Select next training hashimyei")
+IINUJI_CANONICAL_CALL(TrainingHashPrev, "iinuji.training.hash.prev()", "Select previous training hashimyei")
+IINUJI_CANONICAL_PATTERN(TrainingHashIndexPattern, "iinuji.training.hash.index.n1()", "Select training hashimyei by 1-based index", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(TrainingHashIdPattern, "iinuji.training.hash.id.0x1()", "Select training hashimyei by id token", OptionalTailAtom)
 
 // Tsiemene tab commands.
 IINUJI_CANONICAL_CALL(TsiTabs, "iinuji.tsi.tabs()", "List tsiemene tabs")
 IINUJI_CANONICAL_CALL(TsiTabNext, "iinuji.tsi.tab.next()", "Select next tsiemene tab")
 IINUJI_CANONICAL_CALL(TsiTabPrev, "iinuji.tsi.tab.prev()", "Select previous tsiemene tab")
+IINUJI_CANONICAL_PATTERN(TsiTabIndexPattern, "iinuji.tsi.tab.index.n1()", "Select tsiemene tab by 1-based index", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(TsiTabIdPattern, "iinuji.tsi.tab.id.source_dataloader()", "Select tsiemene tab by id token", OptionalTailAtom)
+IINUJI_CANONICAL_CALL(TsiDataloaderInit, "iinuji.tsi.dataloader.init()", "Persist a tsi.source.dataloader.init() artifact")
+IINUJI_CANONICAL_CALL(TsiDataloaderCreate, "iinuji.tsi.dataloader.create()", "Create tsi.source.dataloader.<hashimyei> from central config")
+IINUJI_CANONICAL_CALL(TsiDataloaderEdit, "iinuji.tsi.dataloader.edit()", "Edit selected tsi.source.dataloader.<hashimyei> from central config")
+IINUJI_CANONICAL_PATTERN(TsiDataloaderEditIdPattern, "iinuji.tsi.dataloader.edit.0x1()", "Edit tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
+IINUJI_CANONICAL_CALL(TsiDataloaderDelete, "iinuji.tsi.dataloader.delete()", "Delete selected tsi.source.dataloader.<hashimyei>")
+IINUJI_CANONICAL_PATTERN(TsiDataloaderDeleteIdPattern, "iinuji.tsi.dataloader.delete.0x1()", "Delete tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
+IINUJI_CANONICAL_CALL(TsiVicregInit, "iinuji.tsi.vicreg.init()", "Invoke tsi.wikimyei.representation.vicreg.init() action")
 
 // Config tab commands.
 IINUJI_CANONICAL_CALL(ConfigTabs, "iinuji.config.tabs()", "List config tabs")
 IINUJI_CANONICAL_CALL(ConfigTabNext, "iinuji.config.tab.next()", "Select next config tab")
 IINUJI_CANONICAL_CALL(ConfigTabPrev, "iinuji.config.tab.prev()", "Select previous config tab")
+IINUJI_CANONICAL_PATTERN(ConfigTabIndexPattern, "iinuji.config.tab.index.n1()", "Select config tab by 1-based index", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(ConfigTabIdPattern, "iinuji.config.tab.id.default()", "Select config tab by id token", OptionalTailAtom)
 IINUJI_CANONICAL_CALL(ConfigReload, "iinuji.config.reload()", "Reload config and dependent state")
 IINUJI_CANONICAL_CALL(ConfigShow, "iinuji.config.show()", "Show selected config tab summary")
 IINUJI_CANONICAL_CALL(ConfigTabShow, "iinuji.config.tab.show()", "Show selected config tab summary")
@@ -131,9 +172,16 @@ IINUJI_CANONICAL_ALIAS(AppQuit, "quit", "q")
 IINUJI_CANONICAL_ALIAS(AppExit, "exit", "x")
 IINUJI_CANONICAL_ALIAS(ScreenHome, "home", "f1")
 IINUJI_CANONICAL_ALIAS(ScreenBoard, "board", "f2")
+IINUJI_CANONICAL_ALIAS(ScreenTraining, "training", "f3")
 IINUJI_CANONICAL_ALIAS(ScreenLogs, "logs", "f8")
 IINUJI_CANONICAL_ALIAS(ScreenTsi, "tsi", "f4")
+IINUJI_CANONICAL_ALIAS(TsiDataloaderInit, "dataloader.init", "tsi.dataloader.init")
+IINUJI_CANONICAL_ALIAS(TsiDataloaderCreate, "dataloader.create", "tsi.dataloader.create")
+IINUJI_CANONICAL_ALIAS(TsiDataloaderEdit, "dataloader.edit", "tsi.dataloader.edit")
+IINUJI_CANONICAL_ALIAS(TsiDataloaderDelete, "dataloader.delete", "tsi.dataloader.delete")
+IINUJI_CANONICAL_ALIAS(TsiVicregInit, "vicreg.init", "tsi.vicreg.init")
 IINUJI_CANONICAL_ALIAS(ScreenData, "data", "f5")
+IINUJI_CANONICAL_ALIAS(DataPlotOn, "plot")
 IINUJI_CANONICAL_ALIAS(ScreenConfig, "config", "f9")
 IINUJI_CANONICAL_ALIAS(ShowCurrent, "show")
 IINUJI_CANONICAL_ALIAS(ConfigTabs, "tabs")
@@ -144,3 +192,4 @@ IINUJI_CANONICAL_ALIAS(ReloadBoard, "reload")
 IINUJI_CANONICAL_ALIAS(LogsClear, "logs clear")
 
 #undef IINUJI_CANONICAL_ALIAS
+#undef IINUJI_CANONICAL_PATTERN

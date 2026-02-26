@@ -1,6 +1,8 @@
 #include <iostream>
 #include <algorithm>
 #include <limits>
+#include <set>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -18,13 +20,65 @@ bool require(bool cond, const std::string& msg) {
   return true;
 }
 
+std::set<std::string> source_dataloader_init_snapshot() {
+  std::set<std::string> out;
+  for (const auto& item : tsiemene::list_source_dataloader_init_entries()) {
+    out.insert(item.init_id);
+  }
+  return out;
+}
+
+std::set<std::string> wikimyei_vicreg_init_snapshot() {
+  std::set<std::string> out;
+  for (const auto& item : tsiemene::list_wikimyei_representation_vicreg_init_entries()) {
+    out.insert(item.hashimyei);
+  }
+  return out;
+}
+
+bool cleanup_new_source_dataloader_inits(const std::set<std::string>& baseline) {
+  bool ok = true;
+  for (const auto& item : tsiemene::list_source_dataloader_init_entries()) {
+    if (baseline.count(item.init_id)) continue;
+    std::uintmax_t removed_count = 0;
+    std::string error;
+    if (!tsiemene::delete_source_dataloader_init(item.init_id, &removed_count, &error)) {
+      std::cerr << "[cleanup] failed to remove source dataloader init " << item.init_id << ": " << error
+                << "\n";
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool cleanup_new_wikimyei_vicreg_inits(const std::set<std::string>& baseline) {
+  bool ok = true;
+  for (const auto& item : tsiemene::list_wikimyei_representation_vicreg_init_entries()) {
+    if (baseline.count(item.hashimyei)) continue;
+    std::uintmax_t removed_count = 0;
+    std::string error;
+    if (!tsiemene::delete_wikimyei_representation_vicreg_init(item.hashimyei, &removed_count, &error)) {
+      std::cerr << "[cleanup] failed to remove wikimyei vicreg init " << item.hashimyei << ": " << error
+                << "\n";
+      ok = false;
+    }
+  }
+  return ok;
+}
+
 }  // namespace
 
 int main() {
+  std::set<std::string> source_dataloader_ids_before;
+  std::set<std::string> vicreg_ids_before;
+
   try {
     const char* config_folder = "/cuwacunu/src/config/";
     cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
     cuwacunu::piaabo::dconfig::config_space_t::update_config();
+
+    source_dataloader_ids_before = source_dataloader_init_snapshot();
+    vicreg_ids_before = wikimyei_vicreg_init_snapshot();
 
     using namespace cuwacunu::iinuji::iinuji_cmd;
 
@@ -67,6 +121,10 @@ int main() {
                        "screen.home canonical path should be handled");
     ok = ok && require(st.screen == ScreenMode::Home,
                        "screen.home canonical path should switch to home screen");
+    ok = ok && require(handlers.dispatch_text("iinuji.screen.training()", push_info, push_warn, push_err),
+                       "screen.training canonical path should be handled");
+    ok = ok && require(st.screen == ScreenMode::Training,
+                       "screen.training canonical path should switch to training screen");
 
     ok = ok && require(handlers.dispatch_text("iinuji.help()", push_info, push_warn, push_err),
                        "help canonical path should be handled");
@@ -373,6 +431,69 @@ int main() {
     ok = ok && require(st.data.nav_focus == DataNavFocus::Mask,
                        "data.focus.mask should set mask focus");
 
+    const std::size_t appends_before_training_tabs = appends.size();
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.training.tabs()", push_info, push_warn, push_err, append_log),
+        "training.tabs canonical path should be handled");
+    if (training_wikimyei_count() > 0) {
+      ok = ok && require(st.screen == ScreenMode::Training,
+                         "training.tabs canonical path should switch to training screen");
+      ok = ok && require(appends.size() > appends_before_training_tabs,
+                         "training.tabs canonical path should append tab lines");
+    }
+
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.training.tab.next()", push_info, push_warn, push_err),
+        "training.tab.next canonical path should be handled");
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.training.tab.prev()", push_info, push_warn, push_err),
+        "training.tab.prev canonical path should be handled");
+    ok = ok && require(
+        handlers.dispatch_text(canonical_paths::build_training_tab_index(1), push_info, push_warn, push_err),
+        "training.tab.index canonical path should be handled");
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.training.hash.next()", push_info, push_warn, push_err),
+        "training.hash.next canonical path should be handled");
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.training.hash.prev()", push_info, push_warn, push_err),
+        "training.hash.prev canonical path should be handled");
+    ok = ok && require(
+        handlers.dispatch_text(canonical_paths::build_training_hash_index(1), push_info, push_warn, push_err),
+        "training.hash.index canonical path should be handled");
+
+    const auto& training_docs = training_wikimyei_docs();
+    if (!training_docs.empty()) {
+      ok = ok && require(
+          handlers.dispatch_text(canonical_paths::build_training_tab_id(training_docs.front().id),
+                                 push_info,
+                                 push_warn,
+                                 push_err),
+          "training.tab.id canonical path should be handled");
+      ok = ok && require(st.training.selected_tab == 0,
+                         "training.tab.id.<token>() should select first tab");
+    }
+    const auto training_hashes = training_hashes_for_selected_tab(st);
+    if (!training_hashes.empty()) {
+      ok = ok && require(
+          handlers.dispatch_text(canonical_paths::build_training_hash_id(training_hashes.front()),
+                                 push_info,
+                                 push_warn,
+                                 push_err),
+          "training.hash.id canonical path should be handled");
+      ok = ok && require(st.training.selected_hash == 0,
+                         "training.hash.id.<token>() should select first hash");
+    } else {
+      const std::size_t warns_before_training_hash_id = warns.size();
+      ok = ok && require(
+          handlers.dispatch_text(canonical_paths::build_training_hash_id("0x3"),
+                                 push_info,
+                                 push_warn,
+                                 push_err),
+          "training.hash.id canonical path should be handled when no artifacts exist");
+      ok = ok && require(warns.size() > warns_before_training_hash_id,
+                         "training.hash.id should warn when no created artifacts exist");
+    }
+
     const std::size_t appends_before_tsi_tabs = appends.size();
     ok = ok && require(
         handlers.dispatch_text("iinuji.tsi.tabs()", push_info, push_warn, push_err, append_log),
@@ -390,6 +511,22 @@ int main() {
     ok = ok && require(
         handlers.dispatch_text("iinuji.tsi.tab.prev()", push_info, push_warn, push_err),
         "tsi.tab.prev canonical path should be handled");
+    const std::size_t appends_before_tsi_dataloader_init = appends.size();
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.tsi.dataloader.init()", push_info, push_warn, push_err, append_log),
+        "tsi.dataloader.init canonical path should be handled");
+    ok = ok && require(st.screen == ScreenMode::Tsiemene,
+                       "tsi.dataloader.init canonical path should switch to tsi screen");
+    ok = ok && require(appends.size() > appends_before_tsi_dataloader_init,
+                       "tsi.dataloader.init canonical path should append action log");
+    const std::size_t appends_before_tsi_vicreg_init = appends.size();
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.tsi.vicreg.init()", push_info, push_warn, push_err, append_log),
+        "tsi.vicreg.init canonical path should be handled");
+    ok = ok && require(st.screen == ScreenMode::Tsiemene,
+                       "tsi.vicreg.init canonical path should switch to tsi screen");
+    ok = ok && require(appends.size() > appends_before_tsi_vicreg_init,
+                       "tsi.vicreg.init canonical path should append action log");
     ok = ok && require(
         handlers.dispatch_text(canonical_paths::build_tsi_tab_index(1), push_info, push_warn, push_err),
         "tsi.tab.index canonical path should be handled");
@@ -630,13 +767,20 @@ int main() {
     ok = ok && require(!handlers.dispatch_text("help", push_info, push_warn, push_err),
                        "non-tsi command should not be consumed by canonical dispatcher");
 
+    ok = ok && require(cleanup_new_source_dataloader_inits(source_dataloader_ids_before),
+                       "cleanup: created tsi.source.dataloader init artifacts should be removed");
+    ok = ok && require(cleanup_new_wikimyei_vicreg_inits(vicreg_ids_before),
+                       "cleanup: created wikimyei vicreg artifacts should be removed");
+
     std::cout << "infos=" << infos.size() << " warns=" << warns.size() << " errs=" << errs.size() << "\n";
-    std::cout << "[round-canon] NOTE(hashimyei): revisit hash function design space (word-combo/fun encodings).\n";
+    std::cout << "[round-canon] NOTE(hashimyei): hex identity catalog active (0x0..0xf).\n";
 
     if (!ok) return 1;
     std::cout << "[ok] iinuji canonical path handlers smoke passed\n";
     return 0;
   } catch (const std::exception& e) {
+    cleanup_new_source_dataloader_inits(source_dataloader_ids_before);
+    cleanup_new_wikimyei_vicreg_inits(vicreg_ids_before);
     std::cerr << "[test_iinuji_cmd_canonical_paths] exception: " << e.what() << "\n";
     return 1;
   }

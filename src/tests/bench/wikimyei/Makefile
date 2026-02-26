@@ -20,7 +20,7 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
 # 5) Aggregate: all
 .PHONY: all
-all: \
+all:
 	+$(MAKE) -C $(HERE_PATH)/representation all
 	+$(MAKE) -C $(HERE_PATH)/inference all
 	@$(LOG_SUCCESS)
@@ -32,4 +32,3 @@ all: \
 .PHONY: clean
 clean:
 	@rm -f $(TEST_OUT)/test_entropy_methods
-

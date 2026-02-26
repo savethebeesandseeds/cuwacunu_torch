@@ -1,0 +1,127 @@
+#ifndef TSI_PATH_DIRECTIVE
+#error "TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) must be defined before including tsi.paths.def"
+#endif
+
+#ifndef TSI_PATH_METHOD
+#define TSI_PATH_METHOD(ID, TOKEN, SUMMARY)
+#endif
+
+#ifndef TSI_PATH_COMPONENT
+#define TSI_PATH_COMPONENT(TYPE_ID, CANONICAL, DOMAIN, INSTANCE_POLICY, SUMMARY)
+#endif
+
+#ifndef TSI_PATH_LANE
+#define TSI_PATH_LANE(TYPE_ID, DIR, DIRECTIVE_ID, KIND, SUMMARY)
+#endif
+
+#ifndef TSI_PATH_ENDPOINT
+#define TSI_PATH_ENDPOINT(TYPE_ID, DIRECTIVE_ID, KIND, SUMMARY)
+#endif
+
+// Canonical TSI dataflow directives used by:
+// - board hop DSL directive parsing
+// - canonical path endpoint normalization
+// - tsi directive ids
+TSI_PATH_DIRECTIVE(Step, "@step", "Primary ingress step lane")
+TSI_PATH_DIRECTIVE(Payload, "@payload", "Primary payload lane")
+TSI_PATH_DIRECTIVE(Future, "@future", "Future payload lane")
+TSI_PATH_DIRECTIVE(Loss, "@loss", "Training loss lane")
+TSI_PATH_DIRECTIVE(Meta, "@meta", "Runtime trace/meta lane")
+TSI_PATH_DIRECTIVE(Info, "@info", "Info lane (log sinks)")
+TSI_PATH_DIRECTIVE(Warn, "@warn", "Warn lane (log sinks)")
+TSI_PATH_DIRECTIVE(Debug, "@debug", "Debug lane (log sinks)")
+TSI_PATH_DIRECTIVE(Error, "@error", "Error lane (log sinks)")
+// Board/control directives and methods live in `tsiemene/board.paths.def`.
+
+// TSI component manifest.
+// INSTANCE_POLICY:
+// - `UniquePerCircuit`: only one instance of this tsi type in a circuit.
+// - `ManyInstances`: any number of instances.
+// - `HashimyeiInstances`: many instances keyed by <hashimyei>.
+TSI_PATH_COMPONENT(SourceDataloader, "tsi.source.dataloader", Source, ManyInstances,
+                   "Source dataloader component")
+TSI_PATH_COMPONENT(WikimyeiRepresentationVicreg, "tsi.wikimyei.representation.vicreg", Wikimyei,
+                   HashimyeiInstances, "VICReg representation wikimyei")
+TSI_PATH_COMPONENT(SinkNull, "tsi.sink.null", Sink, ManyInstances,
+                   "Null sink terminal")
+TSI_PATH_COMPONENT(SinkLogSys, "tsi.sink.log.sys", Sink, UniquePerCircuit,
+                   "System log sink")
+
+// Per-component directive lanes (direction + cast kind).
+TSI_PATH_LANE(SourceDataloader, In, Step, String,
+              "source command ingress")
+TSI_PATH_LANE(SourceDataloader, Out, Payload, Tensor,
+              "source batch payload")
+TSI_PATH_LANE(SourceDataloader, Out, Future, Tensor,
+              "source future batch payload")
+TSI_PATH_LANE(SourceDataloader, Out, Meta, String,
+              "runtime trace/meta stream")
+
+TSI_PATH_LANE(WikimyeiRepresentationVicreg, In, Step, Tensor,
+              "representation step tensor ingress")
+TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Payload, Tensor,
+              "representation encoding")
+TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Loss, Tensor,
+              "training loss")
+TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Meta, String,
+              "runtime trace/meta stream")
+
+TSI_PATH_LANE(SinkNull, In, Step, Tensor,
+              "sink consume step tensor")
+TSI_PATH_LANE(SinkNull, Out, Meta, String,
+              "runtime trace/meta stream")
+
+TSI_PATH_LANE(SinkLogSys, In, Info, Tensor,
+              "log info tensor payloads")
+TSI_PATH_LANE(SinkLogSys, In, Warn, String,
+              "log warning messages")
+TSI_PATH_LANE(SinkLogSys, In, Debug, String,
+              "log debug/meta messages")
+TSI_PATH_LANE(SinkLogSys, In, Error, String,
+              "log error messages")
+
+// Canonical endpoint compatibility manifest.
+// This list is used for endpoint-level path validation (known tsi types),
+// including control endpoints that are not board hop lanes.
+TSI_PATH_ENDPOINT(SourceDataloader, Step, String,
+                  "source command ingress")
+TSI_PATH_ENDPOINT(SourceDataloader, Payload, Tensor,
+                  "source batch payload")
+TSI_PATH_ENDPOINT(SourceDataloader, Future, Tensor,
+                  "source future batch payload")
+TSI_PATH_ENDPOINT(SourceDataloader, Meta, String,
+                  "runtime trace/meta stream")
+TSI_PATH_ENDPOINT(SourceDataloader, Init, String,
+                  "source initialization control endpoint")
+
+TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Step, Tensor,
+                  "representation step tensor ingress")
+TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Payload, Tensor,
+                  "representation encoding")
+TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Loss, Tensor,
+                  "training loss")
+TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Meta, String,
+                  "runtime trace/meta stream")
+TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Jkimyei, Tensor,
+                  "training control endpoint")
+TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Weights, Tensor,
+                  "weights/artifact endpoint")
+
+TSI_PATH_ENDPOINT(SinkNull, Step, Tensor,
+                  "sink consume step tensor")
+TSI_PATH_ENDPOINT(SinkNull, Meta, String,
+                  "runtime trace/meta stream")
+
+TSI_PATH_ENDPOINT(SinkLogSys, Info, Tensor,
+                  "log info tensor payloads")
+TSI_PATH_ENDPOINT(SinkLogSys, Warn, String,
+                  "log warning messages")
+TSI_PATH_ENDPOINT(SinkLogSys, Debug, String,
+                  "log debug/meta messages")
+TSI_PATH_ENDPOINT(SinkLogSys, Error, String,
+                  "log error messages")
+
+#undef TSI_PATH_LANE
+#undef TSI_PATH_ENDPOINT
+#undef TSI_PATH_COMPONENT
+#undef TSI_PATH_METHOD

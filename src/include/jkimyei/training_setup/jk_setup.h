@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "camahjucunu/BNF/implementations/training_components/training_components.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "jkimyei/training_setup/jk_losses.h"
 #include "jkimyei/training_setup/jk_optimizers.h"
 #include "jkimyei/training_setup/jk_lr_schedulers.h"
@@ -21,8 +21,8 @@ struct jk_conf_t {
 };
 
 inline jk_conf_t ret_conf(
-    const cuwacunu::camahjucunu::training_instruction_t& inst,
-    const cuwacunu::camahjucunu::training_instruction_t::row_t row,
+    const cuwacunu::camahjucunu::jkimyei_specs_t& inst,
+    const cuwacunu::camahjucunu::jkimyei_specs_t::row_t row,
     const std::string& component)
 {
   jk_conf_t ret;
@@ -38,17 +38,20 @@ struct jk_component_t {
   jk_conf_t opt_conf;
   jk_conf_t loss_conf;
   jk_conf_t sch_conf;
-  cuwacunu::camahjucunu::training_instruction_t inst;
+  cuwacunu::camahjucunu::jkimyei_specs_t inst;
   std::unique_ptr<IOptimizerBuilder>  opt_builder;
   std::unique_ptr<ISchedulerBuilder>  sched_builder;
 
-  void build_from(const cuwacunu::camahjucunu::training_instruction_t& instruction,
-                  const std::string& component_name) {
-    const auto& row = instruction.retrive_row("components_table", component_name);
-    cuwacunu::camahjucunu::require_columns_exact(
-        row, { ROW_ID_COLUMN_HEADER, "optimizer", "loss_function", "lr_scheduler" });
+  void build_from(const cuwacunu::camahjucunu::jkimyei_specs_t& instruction,
+                  const std::string& component_lookup_name,
+                  const std::string& runtime_component_name = {}) {
+    const auto& row = instruction.retrive_row("components_table", component_lookup_name);
+    (void)cuwacunu::camahjucunu::require_column(row, ROW_ID_COLUMN_HEADER);
+    (void)cuwacunu::camahjucunu::require_column(row, "optimizer");
+    (void)cuwacunu::camahjucunu::require_column(row, "loss_function");
+    (void)cuwacunu::camahjucunu::require_column(row, "lr_scheduler");
 
-    name       = component_name;
+    name       = runtime_component_name.empty() ? component_lookup_name : runtime_component_name;
     inst       = instruction; // copy
     opt_conf   = ret_conf(inst, row, "optimizer");
     loss_conf  = ret_conf(inst, row, "loss_function");
@@ -66,9 +69,21 @@ struct jk_setup_t {
 
   // Get (or lazily build from CONFIG) a component by name.
   jk_component_t& operator()(const std::string& component_name);
+  // Bind a runtime component to explicit training DSL text (contract-scoped source of truth).
+  void set_component_instruction_override(std::string runtime_component_name,
+                                          std::string component_lookup_name,
+                                          std::string instruction_text);
+  void clear_component_instruction_override(const std::string& runtime_component_name);
+  void clear_component_instruction_overrides();
 
 private:
+  struct component_instruction_override_t {
+    std::string component_lookup_name{};
+    std::string instruction_text{};
+  };
+
   std::unordered_map<std::string, jk_component_t> components;
+  std::unordered_map<std::string, component_instruction_override_t> component_instruction_overrides;
   std::mutex mtx;
 
   static void init();
