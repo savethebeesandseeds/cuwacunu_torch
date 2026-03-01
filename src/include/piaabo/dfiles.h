@@ -1,7 +1,16 @@
 /* dfiles.h */
 #pragma once
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <fstream>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <vector>
+#if defined(__unix__) || defined(__APPLE__)
 #include <sys/stat.h>
+#endif
 #include "piaabo/dutils.h"
 
 /*  
@@ -41,17 +50,15 @@ std::ifstream readFileToStream(const std::string& filePath);
    */
 template <typename T>
 void csvFile_to_binary(const std::string& csv_filename, const std::string& bin_filename, size_t buffer_size = 1024, char delimiter = ',') {
+  static_assert(std::is_trivially_copyable<T>::value,
+                "[csvFile_to_binary] T must be trivially copyable for raw binary writes");
   
-  if (buffer_size < 1) {
-    log_fatal("[csvFile_to_binary] Error: buffer_size cannot be zero or negative\n");
+  if (buffer_size == 0) {
+    log_fatal("[csvFile_to_binary] Error: buffer_size cannot be zero\n");
     return;
   }
 
   std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
-  if (!csv_file.is_open()) {
-    log_fatal("[csvFile_to_binary] Error: Could not open the CSV file %s for reading\n", csv_filename.c_str());
-    return;
-  }
 
   std::ofstream bin_file(bin_filename, std::ios::binary | std::ios::out | std::ios::trunc);
   if (!bin_file.is_open()) {
@@ -59,7 +66,14 @@ void csvFile_to_binary(const std::string& csv_filename, const std::string& bin_f
     log_fatal("[csvFile_to_binary] Error: Could not open the binary file %s for writing\n", bin_filename.c_str());
     return;
   }
-  chmod(bin_filename.c_str(), S_IRUSR | S_IWUSR);
+#if defined(__unix__) || defined(__APPLE__)
+  if (chmod(bin_filename.c_str(), S_IRUSR | S_IWUSR) != 0) {
+    log_warn("[csvFile_to_binary] Warning: chmod failed on %s (%d: %s)\n",
+             bin_filename.c_str(),
+             errno,
+             std::strerror(errno));
+  }
+#endif
 
   std::vector<T> buffer;
   buffer.reserve(buffer_size);
@@ -81,7 +95,14 @@ void csvFile_to_binary(const std::string& csv_filename, const std::string& bin_f
 
       // Write buffer to binary file when full
       if (buffer.size() == buffer_size) {
-        bin_file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(T));
+        bin_file.write(reinterpret_cast<const char*>(buffer.data()), static_cast<std::streamsize>(buffer.size() * sizeof(T)));
+        if (!bin_file) {
+          csv_file.close();
+          bin_file.close();
+          log_fatal("[csvFile_to_binary] Error: Failed writing buffered records to %s\n",
+                    bin_filename.c_str());
+          return;
+        }
         buffer.clear();
       }
     } catch (const std::exception& e) {
@@ -96,8 +117,23 @@ void csvFile_to_binary(const std::string& csv_filename, const std::string& bin_f
 
   // Write any remaining data in the buffer
   if (!buffer.empty()) {
-    bin_file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(T));
+    bin_file.write(reinterpret_cast<const char*>(buffer.data()), static_cast<std::streamsize>(buffer.size() * sizeof(T)));
+    if (!bin_file) {
+      csv_file.close();
+      bin_file.close();
+      log_fatal("[csvFile_to_binary] Error: Failed writing tail records to %s\n",
+                bin_filename.c_str());
+      return;
+    }
     buffer.clear();
+  }
+
+  bin_file.flush();
+  if (!bin_file) {
+    csv_file.close();
+    bin_file.close();
+    log_fatal("[csvFile_to_binary] Error: Failed flushing output file %s\n", bin_filename.c_str());
+    return;
   }
 
   csv_file.close();
@@ -122,6 +158,10 @@ void csvFile_to_binary(const std::string& csv_filename, const std::string& bin_f
    */
 template <typename T>
 std::vector<T> binaryFile_to_vector(const std::string& bin_filename, size_t buffer_size = 1024) {
+  if (buffer_size == 0) {
+    throw std::runtime_error("[binaryFile_to_vector] Error: buffer_size must be greater than zero.");
+  }
+
   std::ifstream bin_file(bin_filename, std::ios::binary);
   if (!bin_file.is_open()) {
     throw std::runtime_error("[binaryFile_to_vector] Error: Could not open the binary file " + bin_filename + " for reading.");
@@ -129,14 +169,23 @@ std::vector<T> binaryFile_to_vector(const std::string& bin_filename, size_t buff
 
   // Get the file size
   bin_file.seekg(0, std::ios::end);
+  if (!bin_file) {
+    throw std::runtime_error("[binaryFile_to_vector] Error: Failed to seek to end of file " + bin_filename);
+  }
   std::streamsize file_size = bin_file.tellg();
+  if (file_size < 0) {
+    throw std::runtime_error("[binaryFile_to_vector] Error: Failed to determine file size for " + bin_filename);
+  }
   bin_file.seekg(0, std::ios::beg);
+  if (!bin_file) {
+    throw std::runtime_error("[binaryFile_to_vector] Error: Failed to seek to beginning of file " + bin_filename);
+  }
 
   // Calculate the total number of records
-  size_t total_records = file_size / sizeof(T);
   if (file_size % sizeof(T) != 0) {
     throw std::runtime_error("[binaryFile_to_vector] Error: Binary file size is not a multiple of struct size.");
   }
+  size_t total_records = static_cast<size_t>(file_size / static_cast<std::streamsize>(sizeof(T)));
 
   std::vector<T> records;
   records.reserve(total_records);
@@ -146,8 +195,9 @@ std::vector<T> binaryFile_to_vector(const std::string& bin_filename, size_t buff
     size_t records_to_read = std::min(buffer_size, total_records - records_read);
     std::vector<char> buffer(records_to_read * sizeof(T));
 
-    bin_file.read(buffer.data(), buffer.size());
-    if (!bin_file) {
+    const std::streamsize bytes_to_read = static_cast<std::streamsize>(buffer.size());
+    bin_file.read(buffer.data(), bytes_to_read);
+    if (bin_file.gcount() != bytes_to_read) {
       throw std::runtime_error("[binaryFile_to_vector] Error: Failed to read from binary file " + bin_filename);
     }
 

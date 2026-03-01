@@ -62,6 +62,8 @@ class canonicalPath {
 }  // namespace dsl
 
 canonical_path_t decode_canonical_path(const std::string& text);
+canonical_path_t decode_canonical_path(const std::string& text,
+                                       const std::string& contract_hash);
 bool validate_canonical_path(const canonical_path_t& path, std::string* error = nullptr);
 std::string canonicalize_canonical_path(const canonical_path_t& path);
 

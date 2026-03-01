@@ -16,7 +16,7 @@ namespace tsiemene {
 using TsiId = std::uint64_t;
 
 // Opaque runtime context (board/session can hang whatever it wants here).
-struct TsiContext {
+struct BoardContext {
   void* user = nullptr;
 };
 
@@ -120,8 +120,13 @@ class Tsi {
     return Ingress{};
   }
 
-  virtual void step(const Wave& wave, Ingress in, TsiContext& ctx, Emitter& out) = 0;
-  virtual void reset(TsiContext& /*ctx*/) {}
+  virtual void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) = 0;
+  // Optional epoch boundary hook invoked by board-level execution.
+  // Use this for end-of-epoch bookkeeping that must happen even when
+  // no further ingress events are emitted (for example committing
+  // gradient accumulation tails).
+  virtual void on_epoch_end(BoardContext& /*ctx*/) {}
+  virtual void reset(BoardContext& /*ctx*/) {}
 };
 
 } // namespace tsiemene

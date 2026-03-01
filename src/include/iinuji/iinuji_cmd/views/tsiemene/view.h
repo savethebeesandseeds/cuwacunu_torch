@@ -21,11 +21,11 @@ inline std::vector<std::size_t> collect_tsi_occurrences(
   std::vector<std::size_t> counts;
   if (!st.board.ok) return counts;
 
-  counts.resize(st.board.board.circuits.size(), 0);
-  if (aliases_by_circuit) aliases_by_circuit->assign(st.board.board.circuits.size(), {});
+  counts.resize(st.board.board.contracts.size(), 0);
+  if (aliases_by_circuit) aliases_by_circuit->assign(st.board.board.contracts.size(), {});
 
-  for (std::size_t ci = 0; ci < st.board.board.circuits.size(); ++ci) {
-    const auto& c = st.board.board.circuits[ci];
+  for (std::size_t ci = 0; ci < st.board.board.contracts.size(); ++ci) {
+    const auto& c = st.board.board.contracts[ci];
     for (const auto& inst : c.instances) {
       if (std::string_view(inst.tsi_type) == type_name) {
         ++counts[ci];
@@ -82,10 +82,18 @@ inline std::size_t selected_source_dataloader_index(const CmdState& st, std::siz
 }
 
 inline void append_tsi_dataloader_form(const CmdState& st, std::ostringstream& oss) {
+  const std::string& contract_hash = st.board.contract_hash;
+  if (contract_hash.empty()) {
+    oss << "\nFamily form: tsi.source.dataloader\n";
+    oss << "  contract: unavailable\n";
+    return;
+  }
   std::string sources_path = cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+      contract_hash,
       "DSL",
       "observation_sources_dsl_filename");
   std::string channels_path = cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+      contract_hash,
       "DSL",
       "observation_channels_dsl_filename");
 
@@ -226,7 +234,7 @@ inline std::string make_tsi_left(const CmdState& st) {
   for (std::size_t ci = 0; ci < counts.size(); ++ci) {
     if (counts[ci] == 0) continue;
     any = true;
-    const auto& c = st.board.board.circuits[ci];
+    const auto& c = st.board.board.contracts[ci];
     oss << "  - circuit[" << (ci + 1) << "] " << c.name
         << " count=" << counts[ci];
     if (!aliases[ci].empty()) oss << " aliases={" << join_csv(aliases[ci]) << "}";

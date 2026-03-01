@@ -107,6 +107,8 @@
 #include <iostream>
 #include <string>
 #include <cctype>
+#include <cerrno>
+#include <cstdlib>
 #include <stdexcept>
 #include <sstream>
 #include <memory>
@@ -148,9 +150,15 @@ struct JsonValue {
 
   JsonValue(const ObjectType& obj) : type(JsonValueType::OBJECT), objectValue(std::make_shared<ObjectType>(obj)) {}
 
+  JsonValue(ObjectType&& obj) : type(JsonValueType::OBJECT), objectValue(std::make_shared<ObjectType>(std::move(obj))) {}
+
   JsonValue(const ArrayType& arr) : type(JsonValueType::ARRAY), arrayValue(std::make_shared<ArrayType>(arr)) {}
 
+  JsonValue(ArrayType&& arr) : type(JsonValueType::ARRAY), arrayValue(std::make_shared<ArrayType>(std::move(arr))) {}
+
   JsonValue(const std::string& str) : type(JsonValueType::STRING), stringValue(str) {}
+
+  JsonValue(std::string&& str) : type(JsonValueType::STRING), stringValue(std::move(str)) {}
 
   JsonValue(double num) : type(JsonValueType::NUMBER), numberValue(num) {}
 
@@ -161,15 +169,20 @@ struct JsonValue {
 
 class JsonParser {
 public:
-  JsonParser(const std::string& input)
-    : json(input), idx(0), length(input.length()) {}
+  explicit JsonParser(const std::string& input)
+    : json(input), idx(0), length(json.length()) {}
+
+  explicit JsonParser(std::string&& input)
+    : json(std::move(input)), idx(0), length(json.length()) {}
 
   JsonValue parse() {
     skipWhitespace();
     JsonValue value = parseValue();
     skipWhitespace();
     if (idx != length) {
-      log_secure_fatal("Extra characters after parsing JSON");
+      std::stringstream ss;
+      ss << "Extra characters after parsing JSON at position " << idx;
+      log_secure_fatal("%s", ss.str().c_str());
     }
     return value;
   }
@@ -179,13 +192,51 @@ private:
   size_t idx;
   size_t length;
 
+  static bool isHexDigit(char ch) {
+    return (ch >= '0' && ch <= '9') ||
+           (ch >= 'a' && ch <= 'f') ||
+           (ch >= 'A' && ch <= 'F');
+  }
+
+  static uint8_t hexValue(char ch) {
+    if (ch >= '0' && ch <= '9') return static_cast<uint8_t>(ch - '0');
+    if (ch >= 'a' && ch <= 'f') return static_cast<uint8_t>(10 + (ch - 'a'));
+    return static_cast<uint8_t>(10 + (ch - 'A'));
+  }
+
+  static void appendUtf8CodePoint(uint32_t codePoint, std::string& out) {
+    if (codePoint <= 0x7F) {
+      out += static_cast<char>(codePoint);
+    } else if (codePoint <= 0x7FF) {
+      out += static_cast<char>(0xC0 | ((codePoint >> 6) & 0x1F));
+      out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    } else if (codePoint <= 0xFFFF) {
+      out += static_cast<char>(0xE0 | ((codePoint >> 12) & 0x0F));
+      out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+      out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    } else if (codePoint <= 0x10FFFF) {
+      out += static_cast<char>(0xF0 | ((codePoint >> 18) & 0x07));
+      out += static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F));
+      out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+      out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    } else {
+      log_secure_fatal("Invalid Unicode code point");
+    }
+  }
+
+  bool startsWithLiteral(const char* literal) const {
+    const size_t literal_len = std::strlen(literal);
+    if (idx + literal_len > length) return false;
+    return std::memcmp(json.data() + idx, literal, literal_len) == 0;
+  }
+
   void skipWhitespace() {
-    while (idx < length && std::isspace(json[idx])) {
+    while (idx < length && std::isspace(static_cast<unsigned char>(json[idx]))) {
       idx++;
     }
   }
 
-  char peek() {
+  char peek() const {
     if (idx < length) {
       return json[idx];
     }
@@ -203,7 +254,7 @@ private:
     if (advance() != ch) {
       std::stringstream ss;
       ss << "Expected '" << ch << "' at position " << idx - 1;
-      log_secure_fatal(ss.str().c_str());
+      log_secure_fatal("%s", ss.str().c_str());
     }
   }
 
@@ -216,17 +267,18 @@ private:
       return parseArray();
     } else if (ch == '"') {
       return JsonValue(parseString());
-    } else if (ch == '-' || std::isdigit(ch)) {
+    } else if (ch == '-' || std::isdigit(static_cast<unsigned char>(ch))) {
       return JsonValue(parseNumber());
-    } else if (std::strncmp(&json[idx], "true", 4) == 0 ||
-           std::strncmp(&json[idx], "false", 5) == 0 ||
-           std::strncmp(&json[idx], "null", 4) == 0) {
+    } else if (startsWithLiteral("true") ||
+               startsWithLiteral("false") ||
+               startsWithLiteral("null")) {
       return parseLiteral();
     } else {
       std::stringstream ss;
       ss << "Invalid value at position " << idx;
-      log_secure_fatal(ss.str().c_str());
+      log_secure_fatal("%s", ss.str().c_str());
     }
+    return JsonValue(JsonValueType::NULL_TYPE);
   }
 
   JsonValue parseObject() {
@@ -235,21 +287,21 @@ private:
     ObjectType object;
     if (peek() == '}') {
       advance();  // Skip '}'
-      return JsonValue(object);
+      return JsonValue(std::move(object));
     }
     while (true) {
       skipWhitespace();
       if (peek() != '"') {
         std::stringstream ss;
         ss << "Expected '\"' at position " << idx;
-        log_secure_fatal(ss.str().c_str());
+        log_secure_fatal("%s", ss.str().c_str());
       }
       std::string key = parseString();
       skipWhitespace();
       expect(':');
       skipWhitespace();
       JsonValue value = parseValue();
-      object[key] = value;
+      object.insert_or_assign(std::move(key), std::move(value));
       skipWhitespace();
       char ch = peek();
       if (ch == ',') {
@@ -261,10 +313,10 @@ private:
       } else {
         std::stringstream ss;
         ss << "Expected ',' or '}' at position " << idx;
-        log_secure_fatal(ss.str().c_str());
+        log_secure_fatal("%s", ss.str().c_str());
       }
     }
-    return JsonValue(object);
+    return JsonValue(std::move(object));
   }
 
   JsonValue parseArray() {
@@ -273,12 +325,12 @@ private:
     ArrayType array;
     if (peek() == ']') {
       advance();  // Skip ']'
-      return JsonValue(array);
+      return JsonValue(std::move(array));
     }
     while (true) {
       skipWhitespace();
       JsonValue value = parseValue();
-      array.push_back(value);
+      array.push_back(std::move(value));
       skipWhitespace();
       char ch = peek();
       if (ch == ',') {
@@ -290,15 +342,16 @@ private:
       } else {
         std::stringstream ss;
         ss << "Expected ',' or ']' at position " << idx;
-        log_secure_fatal(ss.str().c_str());
+        log_secure_fatal("%s", ss.str().c_str());
       }
     }
-    return JsonValue(array);
+    return JsonValue(std::move(array));
   }
 
   std::string parseString() {
     expect('"');
     std::string result;
+    result.reserve(16);
     while (idx < length) {
       char ch = advance();
       if (ch == '\\') {
@@ -321,37 +374,59 @@ private:
           default:
             std::stringstream ss;
             ss << "Invalid escape character '\\" << nextChar << "' at position " << idx - 1;
-            log_secure_fatal(ss.str().c_str());
+            log_secure_fatal("%s", ss.str().c_str());
         }
       } else if (ch == '"') {
-        break;
+        return result;
       } else {
+        if (static_cast<unsigned char>(ch) < 0x20) {
+          std::stringstream ss;
+          ss << "Invalid control character in string at position " << idx - 1;
+          log_secure_fatal("%s", ss.str().c_str());
+        }
         result += ch;
       }
     }
-    return result;
+    log_secure_fatal("Unterminated JSON string");
+    return {};
   }
 
   std::string parseUnicodeEscape() {
-    if (idx + 4 > length) {
-      log_secure_fatal("Invalid Unicode escape sequence");
+    auto parseHex4CodeUnit = [this]() -> uint16_t {
+      if (idx + 4 > length) {
+        log_secure_fatal("Invalid Unicode escape sequence");
+      }
+      uint16_t code_unit = 0;
+      for (int i = 0; i < 4; ++i) {
+        char ch = json[idx++];
+        if (!isHexDigit(ch)) {
+          log_secure_fatal("Invalid Unicode escape sequence");
+        }
+        code_unit = static_cast<uint16_t>((code_unit << 4) | hexValue(ch));
+      }
+      return code_unit;
+    };
+
+    const uint16_t first = parseHex4CodeUnit();
+    uint32_t codePoint = first;
+
+    if (first >= 0xD800 && first <= 0xDBFF) {
+      if (idx + 2 > length || json[idx] != '\\' || json[idx + 1] != 'u') {
+        log_secure_fatal("Missing low surrogate pair in Unicode escape");
+      }
+      idx += 2;
+      const uint16_t second = parseHex4CodeUnit();
+      if (second < 0xDC00 || second > 0xDFFF) {
+        log_secure_fatal("Invalid low surrogate in Unicode escape");
+      }
+      codePoint = 0x10000u + (((static_cast<uint32_t>(first) - 0xD800u) << 10)
+                              | (static_cast<uint32_t>(second) - 0xDC00u));
+    } else if (first >= 0xDC00 && first <= 0xDFFF) {
+      log_secure_fatal("Unexpected low surrogate in Unicode escape");
     }
-    std::string hexStr = json.substr(idx, 4);
-    idx += 4;
-    char16_t codePoint = static_cast<char16_t>(std::stoi(hexStr, nullptr, 16));
-    // For simplicity, we'll handle code points in the Basic Multilingual Plane
-    // Extend this if surrogate pairs need to be handled
+
     std::string utf8Char;
-    if (codePoint <= 0x7F) {
-      utf8Char += static_cast<char>(codePoint);
-    } else if (codePoint <= 0x7FF) {
-      utf8Char += static_cast<char>(0xC0 | ((codePoint >> 6) & 0x1F));
-      utf8Char += static_cast<char>(0x80 | (codePoint & 0x3F));
-    } else {
-      utf8Char += static_cast<char>(0xE0 | ((codePoint >> 12) & 0x0F));
-      utf8Char += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
-      utf8Char += static_cast<char>(0x80 | (codePoint & 0x3F));
-    }
+    appendUtf8CodePoint(codePoint, utf8Char);
     return utf8Char;
   }
 
@@ -362,23 +437,28 @@ private:
     }
     if (peek() == '0') {
       advance();
-    } else if (std::isdigit(peek())) {
-      while (std::isdigit(peek())) {
+      if (std::isdigit(static_cast<unsigned char>(peek()))) {
+        std::stringstream ss;
+        ss << "Invalid number with leading zeros at position " << idx;
+        log_secure_fatal("%s", ss.str().c_str());
+      }
+    } else if (std::isdigit(static_cast<unsigned char>(peek()))) {
+      while (std::isdigit(static_cast<unsigned char>(peek()))) {
         advance();
       }
     } else {
       std::stringstream ss;
       ss << "Invalid number at position " << idx;
-      log_secure_fatal(ss.str().c_str());
+      log_secure_fatal("%s", ss.str().c_str());
     }
     if (peek() == '.') {
       advance();
-      if (!std::isdigit(peek())) {
+      if (!std::isdigit(static_cast<unsigned char>(peek()))) {
         std::stringstream ss;
         ss << "Invalid fractional part in number at position " << idx;
-        log_secure_fatal(ss.str().c_str());
+        log_secure_fatal("%s", ss.str().c_str());
       }
-      while (std::isdigit(peek())) {
+      while (std::isdigit(static_cast<unsigned char>(peek()))) {
         advance();
       }
     }
@@ -387,40 +467,45 @@ private:
       if (peek() == '+' || peek() == '-') {
         advance();
       }
-      if (!std::isdigit(peek())) {
+      if (!std::isdigit(static_cast<unsigned char>(peek()))) {
         std::stringstream ss;
         ss << "Invalid exponent in number at position " << idx;
-        log_secure_fatal(ss.str().c_str());
+        log_secure_fatal("%s", ss.str().c_str());
       }
-      while (std::isdigit(peek())) {
+      while (std::isdigit(static_cast<unsigned char>(peek()))) {
         advance();
       }
     }
-    std::string numStr = json.substr(startIdx, idx - startIdx);
-    try {
-      return std::stod(numStr);
-    } catch (...) {
+
+    const char* begin_ptr = json.c_str() + startIdx;
+    char* end_ptr = nullptr;
+    errno = 0;
+    const double parsed = std::strtod(begin_ptr, &end_ptr);
+    if (end_ptr != json.c_str() + idx || errno == ERANGE) {
+      std::string numStr = json.substr(startIdx, idx - startIdx);
       std::stringstream ss;
       ss << "Invalid number format: " << numStr;
-      log_secure_fatal(ss.str().c_str());
+      log_secure_fatal("%s", ss.str().c_str());
     }
+    return parsed;
   }
 
   JsonValue parseLiteral() {
-    if (std::strncmp(&json[idx], "true", 4) == 0) {
+    if (startsWithLiteral("true")) {
       idx += 4;
       return JsonValue(true);
-    } else if (std::strncmp(&json[idx], "false", 5) == 0) {
+    } else if (startsWithLiteral("false")) {
       idx += 5;
       return JsonValue(false);
-    } else if (std::strncmp(&json[idx], "null", 4) == 0) {
+    } else if (startsWithLiteral("null")) {
       idx += 4;
       return JsonValue(JsonValueType::NULL_TYPE);
     } else {
       std::stringstream ss;
       ss << "Invalid literal at position " << idx;
-      log_secure_fatal(ss.str().c_str());
+      log_secure_fatal("%s", ss.str().c_str());
     }
+    return JsonValue(JsonValueType::NULL_TYPE);
   }
 };
 
@@ -449,11 +534,8 @@ void printJsonValue(const JsonValue& value, int indent = 0);
  * string value. If the key is not found or the value is not a string, the function returns a default
  * value provided by the caller.
  *
- * **Note:** This function performs a simple and lightweight extraction by searching for the key pattern
- * and parsing the subsequent string value. It does not perform comprehensive JSON parsing and may not
- * handle all edge cases, such as nested objects, arrays, or complex escape sequences within strings.
- * Use this function for straightforward JSON structures where performance is critical and full parsing
- * is unnecessary.
+ * **Note:** This function scans only the top-level object fields. It handles whitespace and escaped
+ * string content, but intentionally does not search recursively inside nested objects/arrays.
  *
  * @param json_str The JSON-formatted string to search within.
  * @param key The key whose associated string value needs to be extracted.
@@ -463,18 +545,17 @@ void printJsonValue(const JsonValue& value, int indent = 0);
  *         Returns `nullcase` if the key is not found or if the value is not a string.
  *
  */
-std::string extract_json_string_value(const std::string& json_str, const std::string& key, const std::string nullcase = "NULL");
+std::string extract_json_string_value(const std::string& json_str, const std::string& key, const std::string& nullcase = "NULL");
 
 /**
  * @brief Performs a lightweight structural validation of a JSON string.
  *
- * This function checks whether the provided JSON string has balanced and properly
- * nested curly braces `{}`, square brackets `[]`, and correctly paired quotation marks `"` 
- * while handling escaped characters. It ignores numeric characters to enhance performance.
+ * This function validates whether the provided buffer contains exactly one complete
+ * top-level JSON object or array (with optional surrounding whitespace), while
+ * handling escaped characters inside strings.
  * 
- * **Note:** This validation is not comprehensive and does not verify JSON syntax
- * details such as key-value pair formatting, comma placement, or data types.
- * It is intended for quick preliminary checks where full JSON parsing is unnecessary.
+ * **Note:** This is intentionally lightweight and should be treated as a framing gate,
+ * not a full JSON validator.
  *
  * @param json_str The JSON string to validate.
  * @return `true` if the JSON string is structurally valid based on bracket and quote balancing.

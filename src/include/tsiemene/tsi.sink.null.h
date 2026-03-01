@@ -31,7 +31,7 @@ class TsiSinkNull final : public TsiSink {
     return std::span<const DirectiveSpec>(kDirectives, 2);
   }
 
-  void step(const Wave&, Ingress in, TsiContext&, Emitter&) override {
+  void step(const Wave&, Ingress in, BoardContext&, Emitter&) override {
     if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::Tensor) return;
     // Intentionally no-op: consume and discard.

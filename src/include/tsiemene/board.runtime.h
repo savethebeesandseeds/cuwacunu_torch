@@ -240,7 +240,7 @@ class CircuitEmitter final : public Emitter {
   bool in_meta_emit_{false};
 };
 
-inline std::uint64_t run_wave_compiled(const CompiledCircuit& cc, Wave w0, Ingress start, TsiContext& ctx) {
+inline std::uint64_t run_wave_compiled(const CompiledCircuit& cc, Wave w0, Ingress start, BoardContext& ctx) {
   (void)ctx;
   if (!cc.start_tsi) return 0;
   std::deque<Event> q;
@@ -283,7 +283,7 @@ inline std::uint64_t run_wave_compiled(const CompiledCircuit& cc, Wave w0, Ingre
   return steps;
 }
 
-inline std::uint64_t run_wave(const Circuit& c, Wave w0, Ingress start, TsiContext& ctx) {
+inline std::uint64_t run_wave(const Circuit& c, Wave w0, Ingress start, BoardContext& ctx) {
   CompiledCircuit cc{};
   if (!compile_circuit(c, &cc, nullptr)) return 0;
   return run_wave_compiled(cc, w0, std::move(start), ctx);

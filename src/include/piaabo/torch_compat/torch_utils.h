@@ -126,11 +126,15 @@ namespace dconfig {
 
 /** Return the torch::Dtype configured for SECTION (e.g. "TRAINING").
  *  Falls back to [GENERAL] and finally to torch::kFloat32.           */
-torch::Dtype  config_dtype (const std::string& section = "GENERAL");
+torch::Dtype config_dtype(
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const std::string& section = "GENERAL");
 
 /** Return the torch::Device configured for SECTION (e.g. "TRAINING").
  *  Falls back to [GENERAL] and finally to the first available device.*/
-torch::Device config_device(const std::string& section = "GENERAL");
+torch::Device config_device(
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const std::string& section = "GENERAL");
 
 } // namespace dconfig
 } // namespace piaabo

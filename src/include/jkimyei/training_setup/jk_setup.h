@@ -1,5 +1,6 @@
 /* jk_setup.h */
 #pragma once
+#include <exception>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -22,19 +23,22 @@ struct jk_conf_t {
 
 inline jk_conf_t ret_conf(
     const cuwacunu::camahjucunu::jkimyei_specs_t& inst,
-    const cuwacunu::camahjucunu::jkimyei_specs_t::row_t row,
+    const cuwacunu::camahjucunu::jkimyei_specs_t::row_t& row,
     const std::string& component)
 {
   jk_conf_t ret;
-  ret.id   = cuwacunu::camahjucunu::require_column(row, component);
-  ret.type = cuwacunu::camahjucunu::require_column(
-               inst.retrive_row(component + "s_table", ret.id), "type");
+  ret.id = cuwacunu::camahjucunu::require_column(row, component);
+  const auto component_row = inst.retrive_row(component + "s_table", ret.id);
+  ret.type = cuwacunu::camahjucunu::require_column(component_row, "type");
   return ret;
 }
 
 /* ------------------------------ per-component ------------------------------ */
 struct jk_component_t {
   std::string name;
+  std::string resolved_component_id;
+  std::string resolved_profile_id;
+  std::string resolved_profile_row_id;
   jk_conf_t opt_conf;
   jk_conf_t loss_conf;
   jk_conf_t sch_conf;
@@ -45,11 +49,33 @@ struct jk_component_t {
   void build_from(const cuwacunu::camahjucunu::jkimyei_specs_t& instruction,
                   const std::string& component_lookup_name,
                   const std::string& runtime_component_name = {}) {
-    const auto& row = instruction.retrive_row("components_table", component_lookup_name);
-    (void)cuwacunu::camahjucunu::require_column(row, ROW_ID_COLUMN_HEADER);
+    cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
+    bool from_component_profile_row = false;
+    try {
+      row = instruction.retrive_row("components_table", component_lookup_name);
+    } catch (const std::exception&) {
+      row = instruction.retrive_row("component_profiles_table", component_lookup_name);
+      from_component_profile_row = true;
+    }
+    const std::string row_id =
+        cuwacunu::camahjucunu::require_column(row, ROW_ID_COLUMN_HEADER);
     (void)cuwacunu::camahjucunu::require_column(row, "optimizer");
     (void)cuwacunu::camahjucunu::require_column(row, "loss_function");
     (void)cuwacunu::camahjucunu::require_column(row, "lr_scheduler");
+
+    if (from_component_profile_row) {
+      resolved_profile_row_id = row_id;
+      resolved_component_id =
+          cuwacunu::camahjucunu::require_column(row, "component_id");
+      resolved_profile_id =
+          cuwacunu::camahjucunu::require_column(row, "profile_id");
+    } else {
+      resolved_component_id = row_id;
+      resolved_profile_id =
+          cuwacunu::camahjucunu::require_column(row, "active_profile");
+      resolved_profile_row_id =
+          resolved_component_id + "@" + resolved_profile_id;
+    }
 
     name       = runtime_component_name.empty() ? component_lookup_name : runtime_component_name;
     inst       = instruction; // copy
@@ -68,13 +94,21 @@ struct jk_setup_t {
   static jk_setup_t registry;
 
   // Get (or lazily build from CONFIG) a component by name.
-  jk_component_t& operator()(const std::string& component_name);
+  jk_component_t& operator()(
+      const std::string& component_name,
+      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash);
   // Bind a runtime component to explicit training DSL text (contract-scoped source of truth).
-  void set_component_instruction_override(std::string runtime_component_name,
+  void set_component_instruction_override(
+                                          const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+                                          std::string runtime_component_name,
                                           std::string component_lookup_name,
                                           std::string instruction_text);
-  void clear_component_instruction_override(const std::string& runtime_component_name);
-  void clear_component_instruction_overrides();
+  void clear_component_instruction_override(
+      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+      const std::string& runtime_component_name);
+  void clear_component_instruction_overrides(
+      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash);
+  void clear_all_component_instruction_overrides();
 
 private:
   struct component_instruction_override_t {
@@ -85,6 +119,9 @@ private:
   std::unordered_map<std::string, jk_component_t> components;
   std::unordered_map<std::string, component_instruction_override_t> component_instruction_overrides;
   std::mutex mtx;
+  static std::string make_component_key(
+      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+      const std::string& runtime_component_name);
 
   static void init();
   static void finit();
@@ -95,9 +132,11 @@ private:
   static _init _initializer;
 };
 
-// ---- Convenience free function to call `jk_setup_t("...")` ----
-inline jk_component_t& jk_setup(const std::string& component_name) {
-  return jk_setup_t::registry(component_name);
+// ---- Convenience free function to call `jk_setup_t("...", contract_hash)` ----
+inline jk_component_t& jk_setup(
+    const std::string& component_name,
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+  return jk_setup_t::registry(component_name, contract_hash);
 }
 
 } // namespace jkimyei

@@ -90,8 +90,8 @@ struct MdnNLLLoss {
     static constexpr double LOG2PI = 1.8378770664093453; // log(2π)
 
     // per-dimension log-prob (do not sum over Dy yet)
-    auto diff   = (y_b - out.mu) / (sigma + eps_t);
-    auto perdim = -0.5 * diff.pow(2) - (sigma + eps_t).log() - 0.5 * LOG2PI; // [B,C,Hf,K,Dy]
+    auto diff   = (y_b - out.mu) / sigma;
+    auto perdim = -0.5 * diff.pow(2) - sigma.log() - 0.5 * LOG2PI; // [B,C,Hf,K,Dy]
 
     // (NEW) optional feature weights w_d
     if (weights_dim.defined()) {

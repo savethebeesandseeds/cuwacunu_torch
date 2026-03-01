@@ -17,7 +17,6 @@
 // Board/control directives shared by board runtime coordination and tsi endpoints.
 BOARD_PATH_DIRECTIVE(Init, "@init", "Initialization control lane")
 BOARD_PATH_DIRECTIVE(Jkimyei, "@jkimyei", "Training control lane")
-BOARD_PATH_DIRECTIVE(Weights, "@weights", "Weights/artifact lane")
 
 // Canonical board-control method tokens.
 BOARD_PATH_METHOD(Init, "init", "Initialization method")
@@ -40,6 +39,9 @@ BOARD_PATH_DSL_SEGMENT(ContractObservationChannels,
 BOARD_PATH_DSL_SEGMENT(ContractJkimyeiSpecs,
                        "board.contract.jkimyei_specs@DSL:str",
                        "Jkimyei specs DSL segment")
+BOARD_PATH_DSL_SEGMENT(ContractWave,
+                       "board.contract.wave@DSL:str",
+                       "Wave/invoke DSL segment")
 
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION

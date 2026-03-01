@@ -1,177 +1,65 @@
-# Cuwacnu 
-This is a Artificial Intelligence Agent, dedicated to managing investment portfolios. 
+# Cuwacnu
+This is an Artificial Intelligence Agent dedicated to managing investment portfolios.
 
-This code was build by heart, out of the nights where the spirit calls in and the hands do, that was is needed.
+## Reproducible Setup (Docker + `setup.sh`)
+The canonical environment setup is now scripted in [`setup.sh`](./setup.sh).  
+The script is designed for reproducibility and expects third-party artifacts in `external/`.
 
-## The libtorch implementation
+### 1. Host prerequisites
+Install Docker: https://docker.com
 
-## Install the requirements
-### Install docker
-go to (https://docker.com)
+### 2. Stage third-party artifacts in `external/`
+Some dependencies require manual download because of vendor terms:
 
-### Download libtorch
-Go to (https://pytorch.org/) you'll find the Download setting, select the latest stable, linux, Libtorch, OpenSSL, Libcurl C++, CUDA 12.1 (these instructions consider you have a GPU) 
+1. Download `libtorch` from https://pytorch.org/ and extract into:
+   `external/libtorch`
+2. Download the cuDNN Debian package (Debian 11, CUDA 12.x family) from NVIDIA:
+   https://developer.nvidia.com/rdp/cudnn-download
+3. Place the `.deb` file in:
+   `external/cudnn/`
 
-For the most resent c++ standard:    (https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu121.zip)
-for old c++ standard:            (https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.1.2%2Bcu121.zip)
-what ever you select please extract libtorch into <external/libtorch> folder 
+Default expected cuDNN filename:
+`cudnn-local-repo-debian11-8.9.7.29_1.0-1_amd64.deb`
 
-### Download CUDNN
-go to (https://developer.nvidia.com/rdp/cudnn-download) set up an account with nvidia 
-download cudnn for debian 11 (https://developer.nvidia.com/downloads/compute/cudnn/secure/8.9.7/local_installers/12.x/cudnn-local-repo-debian11-8.9.7.29_1.0-1_amd64.deb/)
-
-put the file <cudnn-local-repo-debian11-8.9.7.29_1.0-1_amd64.deb> in <external/cudnn>
-
-## Set up the Docker 
-
-### Pull the debian (latest) base
-```cmd
+### 3. Start a Debian container
+```bash
 docker pull debian:latest
+docker run --name cuwacunu-dev --gpus all -it -v "$PWD":/cuwacunu debian:latest /bin/bash
 ```
 
-### Start the container
-```cmd
-docker run --name any_name --gpus all -it -v $PWD//:/cuwacunu debian:latest
-wt docker exec -it -w /cuwacunu/src any_name /bin/bash
-```
-
-## Configure the Container
-For now on, the commands will be inside the docker linux container: 
-
+### 4. Run setup inside the container
 ```bash
-mkdir /cuwacunu/external
-mkdir /cuwacunu/data
+cd /cuwacunu
+./setup.sh
 ```
 
-### Install some initial requirements
+For detailed command output:
 ```bash
-apt update
-apt upgrade -y
-apt install -y --no-install-recommends ca-certificates
-apt install -y --no-install-recommends build-essential
-apt install -y --no-install-recommends build-essential --fix-missing
-apt install -y --no-install-recommends libssl-dev
-apt install -y --no-install-recommends libncurses5-dev libncursesw5-dev
-apt install -y --no-install-recommends gnupg2
-apt install -y --no-install-recommends valgrind
-apt install -y --no-install-recommends gdb
-apt install -y --no-install-recommends locales
-rm -rf /var/lib/apt/lists/*
-
-# (default to) en_US.UTF-8
+./setup.sh --verbose
 ```
 
-## Install CURL dev
-Try this
+### 5. Useful flags
 ```bash
-# Install form apt repositories
-apt install -y --no-install-recommends curl
-apt install -y --no-install-recommends libcurl4-openssl-dev
+./setup.sh --skip-build
+./setup.sh --skip-cuda
+./setup.sh --skip-cudnn
+./setup.sh --with-curl-source
+./setup.sh --dry-run
 ```
-We require curl 7.86.0 or later since we use curl for websocket.
 
+Default build target is `modules`. Override it with:
 ```bash
-which curl
-curl --version
+MAKE_TARGETS="piaabo camahjucunu" ./setup.sh --verbose
 ```
-Verify that websocket (ws wss) is listed under protocols.
 
-If this not the case, you shuld need to install libcurl from source: Websocket in CURL is experiemtal and for this we might require to install it from source and explicitly define websocket support. 
-
-Try installing from soruce:
+### 6. Post-setup checks
 ```bash
-# (alternative) install from source, see instruction bellow
-# (change the number to the latest)
-cd /cuwacunu/external
-curl -LO https://curl.se/download/curl-8.9.1.tar.gz 
-tar -xzf curl-8.9.1.tar.gz 
-
-apt remove -y curl
-apt remove -y libcurl4-openssl-dev
-apt remove -y libcurl4
-apt remove -y libcurl3-gnutls
-
-cd /cuwacunu/external/curl-8.9.1
-./configure --with-openssl --enable-websockets
-make
-make install
-
-echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-ldconfig
-```
-
-Validate
-```bash
-which curl
-curl --version
-```
-Be sure to check the websocket (ws wss) are listed under protocols. 
-
-
-## Add the NVIDIA package repositories
-```bash
-curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian11/x86_64/3bf863cc.pub | gpg --dearmor -o /usr/share/keyrings/nvidia-cuda-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/nvidia-cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/debian11/x86_64/ /" > /etc/apt/sources.list.d/cuda.list
-# (update) again
-apt update
-```
-
-### Install CUDA 12.1
-```bash
-apt install -y --no-install-recommends cuda-toolkit-12-1
-apt install -y --no-install-recommends cuda-toolkit-12-1 --fix-missing
-
-rm -rf /var/lib/apt/lists/*
-echo 'export CUDA_VERSION=12.1' >> ~/.bashrc
-echo 'export PATH=/usr/local/cuda-$CUDA_VERSION/bin:$PATH' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH=/usr/local/cuda-$CUDA_VERSION/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
-. ~/.bashrc
-```
-
-Valdiate the CUDA installation 
-```bash
 nvcc --version
-```
-
-### Install cuDNN 8 runtime
-```bash
-cd /cuwacunu/external/cudnn/
-dpkg -i cudnn-local-repo-debian11-8.9.7.29_1.0-1_amd64.deb
-cp /var/cudnn-local-repo-debian11-8.9.7.29/cudnn-local-9EAC560A-keyring.gpg /usr/share/keyrings/
-
-apt update
-apt install -y --no-install-recommends libcudnn8
-apt install -y --no-install-recommends libcudnn8 --fix-missing
-apt install -y --no-install-recommends libcudnn8-dev
-apt install -y --no-install-recommends libcudnn8-dev --fix-missing
-
-rm -rf /var/lib/apt/lists/*
-echo 'export CUDNN_VERSION=8' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' >> ~/.bashrc
-. ~/.bashrc
-```
-### Valdiate the cuDNN installation 
-```bash
-dpkg -l | grep cudnn
-```
-
-## Compile the source code
-```bash
-cd /cuwacunu/src
-make piaabo
-make camahjucunu
-make ...
-make main
-```
-
-## Utils
-```bash
 nvidia-smi
 ```
 
 ## License and Attribution
-
 This project's original code is open source under the MIT license (`LICENSE`).
 
 For feature requests and ideas, open a GitHub Discussion in this repository.

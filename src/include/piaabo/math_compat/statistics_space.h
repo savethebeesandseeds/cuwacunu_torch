@@ -7,7 +7,6 @@
 #include <limits>
 #include <functional>
 #include "piaabo/dutils.h"
-#include "piaabo/darchitecture.h"
 
 namespace cuwacunu {
 /* inifinite window statistics_space */
@@ -31,7 +30,6 @@ struct statistics_space_t {
   /* Copy Constructor */
   statistics_space_t(const statistics_space_t& src);
 };
-ENFORCE_ARCHITECTURE_DESIGN(statistics_space_t);
 
 /* rolling window statistics_space */
 struct statistics_space_n_t {
@@ -56,7 +54,6 @@ struct statistics_space_n_t {
   double min()               const;
   unsigned long count()      const;
 };
-ENFORCE_ARCHITECTURE_DESIGN(statistics_space_n_t);
 
 /*
  * Struct: FieldAccessor<T>

@@ -1,6 +1,5 @@
 #pragma once
 #include "piaabo/dutils.h"
-#include "piaabo/darchitecture.h"
 #include "camahjucunu/types/types_utils.h"
 #include "camahjucunu/types/types_trade.h"
 #include "camahjucunu/types/types_enums.h"

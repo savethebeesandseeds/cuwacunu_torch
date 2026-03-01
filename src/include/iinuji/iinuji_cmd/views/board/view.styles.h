@@ -146,7 +146,7 @@ inline circuit_draw_style_t edge_style_from_directive(tsiemene::DirectiveId d) {
   if (d == tsiemene::directive_id::Error) return circuit_draw_style_t::EdgeError;
   if (d == tsiemene::directive_id::Info || d == tsiemene::directive_id::Debug ||
       d == tsiemene::directive_id::Step || d == tsiemene::directive_id::Init ||
-      d == tsiemene::directive_id::Jkimyei || d == tsiemene::directive_id::Weights) {
+      d == tsiemene::directive_id::Jkimyei) {
     return circuit_draw_style_t::EdgeControl;
   }
   return circuit_draw_style_t::EdgeOther;
@@ -177,7 +177,7 @@ inline std::string make_edge_legend_text(const std::vector<tsiemene_resolved_hop
     ordered.push_back(d);
   };
 
-  static constexpr std::array<tsiemene::DirectiveId, 12> kPref = {
+  static constexpr std::array<tsiemene::DirectiveId, 11> kPref = {
       tsiemene::directive_id::Payload,
       tsiemene::directive_id::Future,
       tsiemene::directive_id::Meta,
@@ -189,7 +189,6 @@ inline std::string make_edge_legend_text(const std::vector<tsiemene_resolved_hop
       tsiemene::directive_id::Step,
       tsiemene::directive_id::Init,
       tsiemene::directive_id::Jkimyei,
-      tsiemene::directive_id::Weights,
   };
   for (const auto pref : kPref) {
     for (const auto& h : hops) {

@@ -139,7 +139,7 @@ IINUJI_CANONICAL_PATTERN(TrainingTabIdPattern, "iinuji.training.tab.id.default()
 IINUJI_CANONICAL_CALL(TrainingHashNext, "iinuji.training.hash.next()", "Select next training hashimyei")
 IINUJI_CANONICAL_CALL(TrainingHashPrev, "iinuji.training.hash.prev()", "Select previous training hashimyei")
 IINUJI_CANONICAL_PATTERN(TrainingHashIndexPattern, "iinuji.training.hash.index.n1()", "Select training hashimyei by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(TrainingHashIdPattern, "iinuji.training.hash.id.0x1()", "Select training hashimyei by id token", OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(TrainingHashIdPattern, "iinuji.training.hash.id.0x0001()", "Select training hashimyei by id token", OptionalTailAtom)
 
 // Tsiemene tab commands.
 IINUJI_CANONICAL_CALL(TsiTabs, "iinuji.tsi.tabs()", "List tsiemene tabs")
@@ -150,9 +150,9 @@ IINUJI_CANONICAL_PATTERN(TsiTabIdPattern, "iinuji.tsi.tab.id.source_dataloader()
 IINUJI_CANONICAL_CALL(TsiDataloaderInit, "iinuji.tsi.dataloader.init()", "Persist a tsi.source.dataloader.init() artifact")
 IINUJI_CANONICAL_CALL(TsiDataloaderCreate, "iinuji.tsi.dataloader.create()", "Create tsi.source.dataloader.<hashimyei> from central config")
 IINUJI_CANONICAL_CALL(TsiDataloaderEdit, "iinuji.tsi.dataloader.edit()", "Edit selected tsi.source.dataloader.<hashimyei> from central config")
-IINUJI_CANONICAL_PATTERN(TsiDataloaderEditIdPattern, "iinuji.tsi.dataloader.edit.0x1()", "Edit tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
+IINUJI_CANONICAL_PATTERN(TsiDataloaderEditIdPattern, "iinuji.tsi.dataloader.edit.0x0001()", "Edit tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
 IINUJI_CANONICAL_CALL(TsiDataloaderDelete, "iinuji.tsi.dataloader.delete()", "Delete selected tsi.source.dataloader.<hashimyei>")
-IINUJI_CANONICAL_PATTERN(TsiDataloaderDeleteIdPattern, "iinuji.tsi.dataloader.delete.0x1()", "Delete tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
+IINUJI_CANONICAL_PATTERN(TsiDataloaderDeleteIdPattern, "iinuji.tsi.dataloader.delete.0x0001()", "Delete tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
 IINUJI_CANONICAL_CALL(TsiVicregInit, "iinuji.tsi.vicreg.init()", "Invoke tsi.wikimyei.representation.vicreg.init() action")
 
 // Config tab commands.

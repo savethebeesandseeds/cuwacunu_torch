@@ -85,6 +85,11 @@ clean_common:
 	  $(OUTPUT_PATH)/common/*.d \
 	  $(OUTPUT_PATH)/common/*.o \
 	  $(OUTPUT_PATH)/common/*.a \
+	  $(OUTPUT_PATH)/common/dconfig/*.d \
+	  $(OUTPUT_PATH)/common/dconfig/*.o \
+	  $(OUTPUT_PATH)/common/dconfig/*.a \
+	  $(OUTPUT_PATH)/.deps/common/dconfig.d \
+	  $(OUTPUT_PATH)/.deps/common/dconfig/*.d \
 	  2>/dev/null || true
 
 .PHONY: clean_dsl
@@ -114,18 +119,33 @@ clean_dsl:
 	  $(OUTPUT_PATH)/common/jkimyei_specs.d \
 	  $(OUTPUT_PATH)/common/jkimyei_specs.o \
 	  $(OUTPUT_PATH)/common/jkimyei_specs.a \
-	  $(OUTPUT_PATH)/common/observation_pipeline.d \
-	  $(OUTPUT_PATH)/common/observation_pipeline.o \
-	  $(OUTPUT_PATH)/common/observation_pipeline.a \
-	  $(OUTPUT_PATH)/common/sources/observation_sources_pipeline.d \
-	  $(OUTPUT_PATH)/common/sources/observation_sources_pipeline.o \
-	  $(OUTPUT_PATH)/common/sources/observation_sources_pipeline.a \
-	  $(OUTPUT_PATH)/common/channels/observation_channels_pipeline.d \
-	  $(OUTPUT_PATH)/common/channels/observation_channels_pipeline.o \
-	  $(OUTPUT_PATH)/common/channels/observation_channels_pipeline.a \
-	  $(OUTPUT_PATH)/common/tsiemene_circuit.d \
-	  $(OUTPUT_PATH)/common/tsiemene_circuit.o \
-	  $(OUTPUT_PATH)/common/tsiemene_circuit.a \
+	  $(OUTPUT_PATH)/common/observation_spec.d \
+	  $(OUTPUT_PATH)/common/observation_spec.o \
+	  $(OUTPUT_PATH)/common/observation_spec.a \
+	  $(OUTPUT_PATH)/common/observation_sources_decoder.d \
+	  $(OUTPUT_PATH)/common/observation_sources_decoder.o \
+	  $(OUTPUT_PATH)/common/observation_sources_decoder.a \
+	  $(OUTPUT_PATH)/common/observation_channels_decoder.d \
+	  $(OUTPUT_PATH)/common/observation_channels_decoder.o \
+	  $(OUTPUT_PATH)/common/observation_channels_decoder.a \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_invoke.d \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_invoke.o \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_invoke.a \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_resolve.d \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_resolve.o \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_resolve.a \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_validate.d \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_validate.o \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_runtime_validate.a \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_text.d \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_text.o \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_text.a \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_ast.d \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_ast.o \
+	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_ast.a \
+	  $(OUTPUT_PATH)/common/tsiemene_wave.d \
+	  $(OUTPUT_PATH)/common/tsiemene_wave.o \
+	  $(OUTPUT_PATH)/common/tsiemene_wave.a \
 	  2>/dev/null || true
 
 .PHONY: clean_data
@@ -164,12 +184,13 @@ clean:
 	  2>/dev/null || true
 	@shred -u \
 	  $(OUTPUT_PATH)/common/*.d   $(OUTPUT_PATH)/common/*.o   $(OUTPUT_PATH)/common/*.a \
+	  $(OUTPUT_PATH)/common/dconfig/*.d $(OUTPUT_PATH)/common/dconfig/*.o $(OUTPUT_PATH)/common/dconfig/*.a \
 	  2>/dev/null || true
 	@shred -u \
 	  $(OUTPUT_PATH)/*.d          $(OUTPUT_PATH)/*.o          $(OUTPUT_PATH)/*.a \
 	  2>/dev/null || true
 	@shred -u \
-	  $(OUTPUT_PATH)/.deps/*.d    $(OUTPUT_PATH)/.objs/*.o \
+	  $(OUTPUT_PATH)/.deps/*.d    $(OUTPUT_PATH)/.deps/common/dconfig.d $(OUTPUT_PATH)/.deps/common/dconfig/*.d $(OUTPUT_PATH)/.objs/*.o \
 	  2>/dev/null || true
 	@rm -rf \
 		$(OUTPUT_PATH)/.deps \

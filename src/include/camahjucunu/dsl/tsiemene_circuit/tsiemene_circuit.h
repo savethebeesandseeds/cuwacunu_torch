@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "piaabo/dconfig.h"
 #include "camahjucunu/dsl/parser_types.h"
 
 #undef TSIEMENE_CIRCUIT_DEBUG /* define to see verbose parsing output */
@@ -65,7 +64,7 @@ class tsiemeneCircuits : public ASTVisitor {
   std::mutex current_mutex;
 
  public:
-  std::string TSIEMENE_CIRCUIT_GRAMMAR_TEXT = cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_grammar();
+  std::string TSIEMENE_CIRCUIT_GRAMMAR_TEXT{};
 
   GrammarLexer grammarLexer;
   GrammarParser grammarParser;
@@ -73,7 +72,7 @@ class tsiemeneCircuits : public ASTVisitor {
   InstructionLexer iLexer;
   InstructionParser iParser;
 
-  tsiemeneCircuits();
+  explicit tsiemeneCircuits(std::string grammar_text);
   tsiemene_circuit_instruction_t decode(std::string instruction);
   ProductionGrammar parseGrammarDefinition();
 

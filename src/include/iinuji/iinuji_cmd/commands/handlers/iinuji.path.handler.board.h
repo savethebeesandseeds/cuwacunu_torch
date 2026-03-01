@@ -14,12 +14,12 @@ bool dispatch_board_call(CallHandlerId call_id,
         push_err("board invalid: " + state.board.error);
         return true;
       }
-      if (state.board.board.circuits.empty()) {
+      if (state.board.board.contracts.empty()) {
         push_warn("no contracts");
         return true;
       }
-      for (std::size_t i = 0; i < state.board.board.circuits.size(); ++i) {
-        const auto& c = state.board.board.circuits[i];
+      for (std::size_t i = 0; i < state.board.board.contracts.size(); ++i) {
+        const auto& c = state.board.board.contracts[i];
         append_log("[" + std::to_string(i + 1) + "] " + c.name, "list", "#d0d0d0");
       }
       return true;
@@ -58,7 +58,7 @@ bool dispatch_board_select_index(const cuwacunu::camahjucunu::canonical_path_t& 
     push_warn("no contracts");
     return true;
   }
-  if (idx1 > state.board.board.circuits.size()) {
+  if (idx1 > state.board.board.contracts.size()) {
     push_err("contract out of range");
     return true;
   }

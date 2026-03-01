@@ -37,33 +37,33 @@ class TsiSinkLogSys final : public TsiSink {
     return std::span<const DirectiveSpec>(kDirectives, 4);
   }
 
-  void step(const Wave& wave, Ingress in, TsiContext&, Emitter&) override {
+  void step(const Wave& wave, Ingress in, BoardContext&, Emitter&) override {
     if (in.directive == IN_DEBUG && in.signal.kind == PayloadKind::String) {
       log_info("[tsi.log.sys.debug] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-               (unsigned long long)wave.id,
-               (unsigned long long)wave.episode,
-               (unsigned long long)wave.batch,
-               (unsigned long long)wave.i,
+               (unsigned long long)wave.cursor.id,
+               (unsigned long long)wave.cursor.episode,
+               (unsigned long long)wave.cursor.batch,
+               (unsigned long long)wave.cursor.i,
                in.signal.text.c_str());
       return;
     }
 
     if (in.directive == IN_WARN && in.signal.kind == PayloadKind::String) {
       log_warn("[tsi.log.sys.warn] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-               (unsigned long long)wave.id,
-               (unsigned long long)wave.episode,
-               (unsigned long long)wave.batch,
-               (unsigned long long)wave.i,
+               (unsigned long long)wave.cursor.id,
+               (unsigned long long)wave.cursor.episode,
+               (unsigned long long)wave.cursor.batch,
+               (unsigned long long)wave.cursor.i,
                in.signal.text.c_str());
       return;
     }
 
     if (in.directive == IN_ERROR && in.signal.kind == PayloadKind::String) {
       log_err("[tsi.log.sys.error] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-              (unsigned long long)wave.id,
-              (unsigned long long)wave.episode,
-              (unsigned long long)wave.batch,
-              (unsigned long long)wave.i,
+              (unsigned long long)wave.cursor.id,
+              (unsigned long long)wave.cursor.episode,
+              (unsigned long long)wave.cursor.batch,
+              (unsigned long long)wave.cursor.i,
               in.signal.text.c_str());
       return;
     }
@@ -74,17 +74,17 @@ class TsiSinkLogSys final : public TsiSink {
         auto info_cpu = t.detach().to(torch::kCPU).reshape({-1});
         const float v = info_cpu[0].item<float>();
         log_info("[tsi.log.sys.info] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) tensor0=%f\n",
-                 (unsigned long long)wave.id,
-                 (unsigned long long)wave.episode,
-                 (unsigned long long)wave.batch,
-                 (unsigned long long)wave.i,
+                 (unsigned long long)wave.cursor.id,
+                 (unsigned long long)wave.cursor.episode,
+                 (unsigned long long)wave.cursor.batch,
+                 (unsigned long long)wave.cursor.i,
                  (double)v);
       } else {
         log_warn("[tsi.log.sys.info] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) tensor=<undefined>\n",
-                 (unsigned long long)wave.id,
-                 (unsigned long long)wave.episode,
-                 (unsigned long long)wave.batch,
-                 (unsigned long long)wave.i);
+                 (unsigned long long)wave.cursor.id,
+                 (unsigned long long)wave.cursor.episode,
+                 (unsigned long long)wave.cursor.batch,
+                 (unsigned long long)wave.cursor.i);
       }
       return;
     }

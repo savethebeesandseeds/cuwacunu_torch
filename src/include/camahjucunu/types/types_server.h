@@ -11,8 +11,6 @@ namespace exchange {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 struct ping_args_t            { std::string jsonify(); };
 struct time_args_t            { std::string jsonify(); };
-ENFORCE_ARCHITECTURE_DESIGN(             ping_args_t);
-ENFORCE_ARCHITECTURE_DESIGN(             time_args_t);
 
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
@@ -20,8 +18,6 @@ ENFORCE_ARCHITECTURE_DESIGN(             time_args_t);
 /* --- --- --- --- --- --- --- --- --- --- --- */
 struct ping_ret_t             { frame_response_t frame_rsp; ping_ret_t              (const std::string& json); };
 struct time_ret_t             { frame_response_t frame_rsp; time_ret_t              (const std::string& json); long serverTime; };
-ENFORCE_ARCHITECTURE_DESIGN(             ping_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN(             time_ret_t);
 
 
 /* --- --- --- --- --- --- --- --- --- --- --- */

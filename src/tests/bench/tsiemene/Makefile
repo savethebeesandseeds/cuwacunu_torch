@@ -14,44 +14,32 @@ TEST_DEFAULT_LDLIBS :=
 
 # 3) Tests (build + run aliases)
 COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
-$(eval $(call TEST_ONEFILE, test_tsi_basic,                test_tsi_basic.cpp,                $(COMMON_LINK)))
-$(eval $(call TEST_ONEFILE, test_tsi_instruction,          test_tsi_instruction.cpp,          $(COMMON_LINK)))
-$(eval $(call TEST_ONEFILE, test_tsi_board,                test_tsi_board.cpp,                $(COMMON_LINK)))
-$(eval $(call TEST_ONEFILE, test_tsi_routing,              test_tsi_routing.cpp,              $(COMMON_LINK)))
-$(eval $(call TEST_ONEFILE, test_tsi_board_contract_init,  test_tsi_board_contract_init.cpp,  $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_tsi_contract_wave,        test_tsi_contract_wave.cpp,        $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_board_contract_init,      test_board_contract_init.cpp,      $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_tsi_board_paths,          test_tsi_board_paths.cpp,          $(COMMON_LINK)))
 
 # 4) Target-specific includes/link flags
-$(TEST_OUT)/test_tsi_%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+$(TEST_OUT)/test_tsi_% $(TEST_OUT)/test_board_contract_init: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
 # 5) Aggregate: all
 .PHONY: all
 all: \
-		$(TEST_OUT)/test_tsi_basic \
-		$(TEST_OUT)/test_tsi_instruction \
-		$(TEST_OUT)/test_tsi_board \
-		$(TEST_OUT)/test_tsi_routing \
-		$(TEST_OUT)/test_tsi_board_contract_init \
+		$(TEST_OUT)/test_tsi_contract_wave \
+		$(TEST_OUT)/test_board_contract_init \
 		$(TEST_OUT)/test_tsi_board_paths
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
 .PHONY: run
 run: \
-		run-test_tsi_basic \
-		run-test_tsi_instruction \
-		run-test_tsi_board \
-		run-test_tsi_routing \
-		run-test_tsi_board_contract_init \
+		run-test_tsi_contract_wave \
+		run-test_board_contract_init \
 		run-test_tsi_board_paths
 
 # 7) Clean
 .PHONY: clean
 clean:
 	@rm -f \
-	  $(TEST_OUT)/test_tsi_basic \
-	  $(TEST_OUT)/test_tsi_instruction \
-	  $(TEST_OUT)/test_tsi_board \
-	  $(TEST_OUT)/test_tsi_routing \
-	  $(TEST_OUT)/test_tsi_board_contract_init \
+	  $(TEST_OUT)/test_tsi_contract_wave \
+	  $(TEST_OUT)/test_board_contract_init \
 	  $(TEST_OUT)/test_tsi_board_paths

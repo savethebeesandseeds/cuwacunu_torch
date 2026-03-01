@@ -9,9 +9,9 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 # Build Rules
 # -----------------------------------------------------------------
-$(eval $(call BUILD_OBJ, common, observation_pipeline, dsl_obs_pipe_core))
-$(eval $(call BUILD_OBJ, common, sources/observation_sources_pipeline, dsl_obs_pipe_sources))
-$(eval $(call BUILD_OBJ, common, channels/observation_channels_pipeline, dsl_obs_pipe_channels))
+$(eval $(call BUILD_OBJ, common, observation_spec, dsl_obs_pipe_core))
+$(eval $(call BUILD_OBJ, common, observation_sources_decoder, dsl_obs_pipe_sources))
+$(eval $(call BUILD_OBJ, common, observation_channels_decoder, dsl_obs_pipe_channels))
 
 # -----------------------------------------------------------------
 # Aggregate Target

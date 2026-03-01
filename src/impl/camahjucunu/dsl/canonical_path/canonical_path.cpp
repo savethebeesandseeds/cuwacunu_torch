@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -366,7 +367,12 @@ struct parsed_core_t {
     }
     if (segs->size() == 4) {
       if (!unpack_fused_wikimyei_model_hash(segs)) {
-        segs->push_back("default");
+        if (error) {
+          *error =
+              "tsi.wikimyei path requires explicit hashimyei suffix "
+              "(expected tsi.wikimyei.<family>.<model>.<hashimyei>)";
+        }
+        return false;
       }
     } else if (segs->size() != 5) {
       if (error) *error = "tsi.wikimyei path accepts family.model.hashimyei";
@@ -375,10 +381,19 @@ struct parsed_core_t {
 
     *hashimyei = (*segs)[4];
     if (*hashimyei == "default") {
-      const std::string base_key =
-          (*segs)[0] + "." + (*segs)[1] + "." + (*segs)[2] + "." + (*segs)[3] + ".self";
-      *hashimyei = assign_hash_name(base_key);
-      (*segs)[4] = *hashimyei;
+      if (error) {
+        *error =
+            "legacy hashimyei alias 'default' is removed; "
+            "use explicit hex hashimyei id (for example 0x0000)";
+      }
+      return false;
+    }
+    if (!cuwacunu::hashimyei::is_hex_hash_name(*hashimyei)) {
+      if (error) {
+        *error =
+            "invalid hashimyei id; expected explicit hex form 0x<hex>";
+      }
+      return false;
     }
   }
   return true;
@@ -467,11 +482,7 @@ struct parsed_core_t {
 namespace dsl {
 
 canonicalPath::canonicalPath() {
-  try {
-    CANONICAL_PATH_GRAMMAR_TEXT = cuwacunu::piaabo::dconfig::contract_space_t::canonical_path_grammar();
-  } catch (...) {
-    CANONICAL_PATH_GRAMMAR_TEXT.clear();
-  }
+  CANONICAL_PATH_GRAMMAR_TEXT.clear();
 }
 
 canonicalPath::canonicalPath(std::string grammar_text)
@@ -484,6 +495,15 @@ canonical_path_t canonicalPath::decode(std::string instruction) const {
 }  // namespace dsl
 
 canonical_path_t decode_canonical_path(const std::string& text) {
+  return dsl::canonicalPath().decode(text);
+}
+
+canonical_path_t decode_canonical_path(const std::string& text,
+                                       const std::string& contract_hash) {
+  if (contract_hash.empty()) {
+    log_fatal("[canonical_path] missing contract hash for decode_canonical_path\n");
+  }
+  (void)cuwacunu::piaabo::dconfig::contract_space_t::snapshot(contract_hash);
   return dsl::canonicalPath().decode(text);
 }
 
@@ -561,7 +581,7 @@ canonical_path_t decode_primitive_command_text(const std::string& text) {
 }
 
 std::string hashimyei_round_note() {
-  return "NOTE(hashimyei): hex identity catalog active (0x0..0xf).";
+  return "NOTE(hashimyei): hex identity catalog active (0x0000..0x000f).";
 }
 
 }  // namespace camahjucunu

@@ -104,8 +104,6 @@ TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Meta, String,
                   "runtime trace/meta stream")
 TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Jkimyei, Tensor,
                   "training control endpoint")
-TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Weights, Tensor,
-                  "weights/artifact endpoint")
 
 TSI_PATH_ENDPOINT(SinkNull, Step, Tensor,
                   "sink consume step tensor")

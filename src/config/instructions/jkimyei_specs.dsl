@@ -1,95 +1,214 @@
 /*
-   Architecture Components
-*/
-[ components_table ]
-/-----------------------------------------------------------------------------------------------------\
-|  row_id                | optimizer        |  loss_function         |  lr_scheduler                  |
-|-----------------------------------------------------------------------------------------------------|
-|  basic_test            |  Adam_1          |  MeanSquaredError_1    |  StepLR_1                      |
-|  VICReg_representation |  AdamW_1         |  VICReg_1              |  ConstantLR_1                  |
-|  MDN_value_estimation  |  AdamW_1         |  NLLLoss_1             |  ConstantLR_1                  |
-\-----------------------------------------------------------------------------------------------------/
-/*
-   Optimizer Parameters
-*/
-[ optimizers_table ]
-/--------------------------------------------------------------------------------------------------------------------------------------\
-| row_id    | type           | options                                                                                                 |
-|--------------------------------------------------------------------------------------------------------------------------------------|
-| Adam_1    | Adam           | initial_learning_rate=0.001,weight_decay=0.0001,epsilon=1e-8,beta1=0.9,beta2=0.999,amsgrad=false        |
-| AdamW_1   | AdamW          | initial_learning_rate=0.001,weight_decay=0.01,epsilon=1e-8,beta1=0.9,beta2=0.999,amsgrad=false          |
-| SGD_1     | SGD            | initial_learning_rate=0.001,momentum=0.9,weight_decay=0.0001,nesterov=true                              |
-| RMSprop_1 | RMSprop        | initial_learning_rate=0.001,alpha=0.9,epsilon=1e-8,weight_decay=0.0001,centered=false                   |
-| Adagrad_1 | Adagrad        | initial_learning_rate=0.001,decay=0.0,epsilon=1e-8,weight_decay=0.0                                     |
-\--------------------------------------------------------------------------------------------------------------------------------------/
-/*
-   Learning Rate Scheduler Parameters
-*/
-[ lr_schedulers_table ]
-/--------------------------------------------------------------------------------------------------------------------------------------------------\
-| row_id               | type               | options                                                                                              |
-|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| StepLR_1             | StepLR             | step_size=30,gamma=0.1                                                                               |
-| MultiStepLR_1        | MultiStepLR        | milestones=200,400,gamma=0.1                                                                         |
-| OneCycleLR_1         | OneCycleLR         | max_lr=0.005,total_steps=27200                                                                       |
-| ExponentialLR_1      | ExponentialLR      | gamma=0.98                                                                                           |
-| ReduceLROnPlateau_1  | ReduceLROnPlateau  | mode=min,factor=0.5,patience=75,threshold=1e-4,threshold_mode=rel,cooldown=0,min_lr=1e-6,eps=1e-8    |
-| ConstantLR_1         | ConstantLR         | lr=0.001                                                                                             |
-| CosineAnnealingLR_1  | CosineAnnealingLR  | T_max=850,eta_min=0.0                                                                                |
-| WarmupLR_1           | WarmupLR           | warmup_steps=100,start_factor=0.1,end_factor=1.0                                                     |
-\--------------------------------------------------------------------------------------------------------------------------------------------------/
-/*
-    Loss Function Parameters
-*/
-[ loss_functions_table ]
-/-----------------------------------------------------------------------------------------------------------------------\
-| row_id               | type               | options                                                                   |
-|-----------------------------------------------------------------------------------------------------------------------|
-| NLLLoss_1            | NLLLoss            | eps=1e-6,sigma_min=1e-4,sigma_max=0.0,reduction=mean                      |
-| VICReg_1             | VICReg             | sim_coeff=25.0,std_coeff=25.0,cov_coeff=1.0,huber_delta=0.03              |
-| CrossEntropy_1       | CrossEntropy       | label_smoothing=0.1                                                       |
-| BinaryCrossEntropy_1 | BinaryCrossEntropy | pos_weight=1.0                                                            |
-| MeanSquaredError_1   | MeanSquaredError   | -                                                                         |
-| Hinge_1              | Hinge              | margin=1.0                                                                |
-| SmoothL1_1           | SmoothL1           | beta=1.0                                                                  |
-| L1Loss_1             | L1Loss             | -                                                                         |
-\-----------------------------------------------------------------------------------------------------------------------/
-/*
-   VICReg Self-Supervised Learning - Temporal Augmentations
+  jkimyei_specs.dsl (v2)
+  Block-and-colon syntax for high readability and straightforward BNF.
 
-   Each augmentation curve defines how input sequences are warped in time,
-   creating diverse training views while preserving semantic content.
+  Scope:
+    - central training policy registry for wikimyei components
+    - explicit values only (no silent defaults)
+    - component-type split sections
 
-   Parameters:
-     - curve: shape of the temporal warp (see list below)
-     - curve_param: strength/shape modifier (e.g., fade steepness, front-load rate)
-     - noise_scale: amount of random jitter/noise applied along the curve
-     - smoothing_kernel_size: moving-average smoothing window; higher = gentler warp
-     - point_drop_prob: probability of randomly dropping individual points (simulates missing data)
-     - value_jitter_std       : Gaussian noise std applied to valid values after warping
-     - time_mask_band_frac    : single contiguous time band to mask per sample (fraction of T), f in [0,1]
-     - channel_dropout_prob   : per-sample, per-channel dropout prob in [0,1]
-
-   Curves:
-     - Linear         - identity (no warp), used as baseline/control.
-     - MarketFade     - front-heavy, fades over time; curve_param controls fade sharpness.
-     - FadeLate       - inverse of MarketFade, tail-heavy emphasis.
-     - PulseCentered  - symmetric bulge around the center; highlights mid-sequence events.
-     - FrontLoaded    - early spike with decay; curve_param adjusts sharpness of onset.
-     - ChaoticDrift   - irregular wandering warp; combined with smoothing to mimic natural drift.
+  Out of scope (wave-owned runtime budget):
+    - n_epochs
+    - n_iters
+    - batches
 */
-[ vicreg_augmentations ]
-/----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\
-| row_id |     curve       | curve_param | noise_scale | smoothing_kernel_size | point_drop_prob | value_jitter_std | time_mask_band_frac | channel_dropout_prob | comment                                                                     |
-|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|  N/A   | Linear          |    0.0      |    0.02     |          3            |      0.06       |      0.015       |        0.00         |        0.00          | Identity_plus_light_warp_jitter_plus_light_point_drop                       |
-|  N/A   | Linear          |    0.0      |    0.06     |          5            |      0.06       |      0.015       |        0.00         |        0.00          | Slightly_stronger_drift                                                     |
-|  N/A   | ChaoticDrift    |    0.0      |    0.10     |          7            |      0.08       |      0.020       |        0.03         |        0.05          | Noisier_structure_smooth_adds_band_mask_plus_channel_dropout                |
-|  N/A   | MarketFade      |    3.0      |    0.02     |          5            |      0.08       |      0.015       |        0.00         |        0.03          | Early_emphasis_with_mild_noise_small_channel_dropout                        |
-|  N/A   | MarketFade      |    5.0      |    0.03     |          7            |      0.08       |      0.015       |        0.05         |        0.03          | Sharper_fade_adds_short_time_band_mask                                      |
-|  N/A   | FadeLate        |    3.0      |    0.02     |          5            |      0.08       |      0.015       |        0.00         |        0.03          | Tail_focused_counterpart_of_MarketFade                                      |
-|  N/A   | PulseCentered   |    0.0      |    0.02     |          5            |      0.06       |      0.015       |        0.03         |        0.00          | Center_pulse_with_light_band_mask                                           |
-|  N/A   | FrontLoaded     |    0.6      |    0.03     |          3            |      0.08       |      0.020       |        0.00         |        0.05          | Early_spike_stronger_jitter_plus_channel_dropout                            |
-|  N/A   | FrontLoaded     |    0.3      |    0.03     |          5            |      0.08       |      0.020       |        0.00         |        0.05          | Sharper_early_focus_variant                                                 |
-|  N/A   | PulseCentered   |    0.0      |    0.04     |          7            |      0.08       |      0.020       |        0.05         |        0.03          | Smooth_symmetric_sway_adds_band_mask_plus_small_channel_dropout             |
-\----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------/
+
+JKSPEC 2.0
+
+SELECTORS {
+  COMPONENT_ID_KEY: "jkimyei_component_id"
+  PROFILE_ID_KEY: "jkimyei_profile_id"
+}
+
+/* ========================================================================== */
+/* VICReg component family                                                    */
+/* ========================================================================== */
+COMPONENT "tsi.wikimyei.representation.vicreg" "VICReg_representation" {
+
+  PROFILE "stable_pretrain" {
+    OPTIMIZER "AdamW" {
+      initial_learning_rate: 0.001
+      weight_decay: 0.01
+      epsilon: 1e-8
+      beta1: 0.9
+      beta2: 0.999
+      amsgrad: false
+    }
+
+    LR_SCHEDULER "ConstantLR" {
+      lr: 0.001
+    }
+
+    LOSS "VICReg" {
+      sim_coeff: 25.0
+      std_coeff: 25.0
+      cov_coeff: 1.0
+      huber_delta: 0.03
+    }
+
+    COMPONENT_PARAMS {
+      vicreg_train: true
+      vicreg_use_swa: true
+      vicreg_detach_to_cpu: true
+      augmentation_set: "vicreg_aug_default"
+      swa_start_iter: 1000
+      optimizer_threshold_reset: 500
+    }
+
+    REPRODUCIBILITY {
+      deterministic: true
+      seed: 1337
+      workers: 0
+      sampler: "sequential"
+      shuffle: false
+    }
+
+    NUMERICS {
+      dtype: "kFloat32"
+      device: "gpu"
+      amp: false
+      grad_scaler: false
+      detect_anomaly: false
+      eps: 1e-8
+    }
+
+    GRADIENT {
+      accumulate_steps: 1
+      clip_norm: 1.0
+      clip_value: 0.0
+      skip_on_nan: true
+      zero_grad_set_to_none: true
+    }
+
+    CHECKPOINT {
+      save_model: true
+      save_optimizer: true
+      save_scheduler: true
+      save_rng: true
+      strict_load: true
+      keep_last: 3
+      keep_best: 1
+    }
+
+    METRICS {
+      objective: "min:loss.total"
+      early_stop: "none"
+      log_terms: ["loss.total", "loss.inv", "loss.var", "loss.cov", "lr"]
+    }
+
+    DATA_REF {
+      dataset_id: "default_market_dataset"
+      split: "train"
+      target_mapping: "none"
+      sampler_policy: "sequential_epoch"
+    }
+  }
+
+  PROFILE "eval_payload_only" {
+    OPTIMIZER "AdamW" {
+      initial_learning_rate: 0.001
+      weight_decay: 0.01
+      epsilon: 1e-8
+      beta1: 0.9
+      beta2: 0.999
+      amsgrad: false
+    }
+
+    LR_SCHEDULER "ConstantLR" {
+      lr: 0.001
+    }
+
+    LOSS "VICReg" {
+      sim_coeff: 25.0
+      std_coeff: 25.0
+      cov_coeff: 1.0
+      huber_delta: 0.03
+    }
+
+    COMPONENT_PARAMS {
+      vicreg_train: false
+      vicreg_use_swa: true
+      vicreg_detach_to_cpu: true
+      augmentation_set: "vicreg_aug_default"
+      swa_start_iter: 1000
+      optimizer_threshold_reset: 500
+    }
+
+    REPRODUCIBILITY {
+      deterministic: true
+      seed: 1337
+      workers: 0
+      sampler: "sequential"
+      shuffle: false
+    }
+
+    NUMERICS {
+      dtype: "kFloat32"
+      device: "gpu"
+      amp: false
+      grad_scaler: false
+      detect_anomaly: false
+      eps: 1e-8
+    }
+
+    GRADIENT {
+      accumulate_steps: 1
+      clip_norm: 1.0
+      clip_value: 0.0
+      skip_on_nan: true
+      zero_grad_set_to_none: true
+    }
+
+    CHECKPOINT {
+      save_model: true
+      save_optimizer: true
+      save_scheduler: true
+      save_rng: true
+      strict_load: true
+      keep_last: 3
+      keep_best: 1
+    }
+
+    METRICS {
+      objective: "none"
+      early_stop: "none"
+      log_terms: ["payload.norm", "payload.mean"]
+    }
+
+    DATA_REF {
+      dataset_id: "default_market_dataset"
+      split: "train"
+      target_mapping: "none"
+      sampler_policy: "sequential_epoch"
+    }
+  }
+
+  AUGMENTATIONS "vicreg_aug_default" {
+    CURVE "Linear" {
+      curve_param: 0.0
+      noise_scale: 0.02
+      smoothing_kernel_size: 3
+      point_drop_prob: 0.06
+      value_jitter_std: 0.015
+      time_mask_band_frac: 0.00
+      channel_dropout_prob: 0.00
+      comment: "Identity plus light warp jitter and point drop"
+    }
+
+    CURVE "ChaoticDrift" {
+      curve_param: 0.0
+      noise_scale: 0.10
+      smoothing_kernel_size: 7
+      point_drop_prob: 0.08
+      value_jitter_std: 0.020
+      time_mask_band_frac: 0.03
+      channel_dropout_prob: 0.05
+      comment: "Noisier structure with smoothing and channel dropout"
+    }
+  }
+
+  ACTIVE_PROFILE: "stable_pretrain"
+}
+
+/* NOTE: value-estimation/MDN policy is intentionally out of active scope.
+   This contract file currently focuses on VICReg representation flows. */

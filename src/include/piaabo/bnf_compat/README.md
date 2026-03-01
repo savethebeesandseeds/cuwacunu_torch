@@ -1,82 +1,71 @@
-# Waajacu BNF Parser
+# bnf_compat Specification
 
-## Overview
-The **BNF Parser** is a C++ tool designed to parse grammars written in Backus-Naur form notation and interpret instruction statements based on those grammars. It generates Abstract Syntax Trees (ASTs) from valid inputs, offering basic functionality to create simple domain-specific languages (DSLs).
+`bnf_compat` is the internal parser stack for grammar-defined instruction DSLs.
 
-Please note that this project is an internal tool and may lack some modern features available in other BNF parsers. While functional for specific use cases, it is not intended to compete with more comprehensive solutions.
+Namespace: `cuwacunu::piaabo::bnf`
+Public include form: `#include "piaabo/bnf_compat/..."`
 
+## Core Contract
 
-## Features
-- **BNF Grammar Parsing**: Define and parse BNF grammars with ease.
-- **Instruction Parsing**: Interpret instructions based on BNF rules and generate ASTs.
-- **Supported Constructs**: Non-terminals, terminals, optional elements `[ ]`, repetitions `{}`, recurrences and alternatives `|`.
-- **Robust Error Handling**: Clear error messages with line and column information.
-- **Comprehensive Testing**: Includes lexer and parser test suites to ensure reliability.
+The module defines a 2-stage parse pipeline:
 
-## Supported BNF Constructs
-- **Non-Terminals**: Enclosed in `< >`, e.g., `<instruction>`.
-- **Terminals**: Enclosed in `" "`, e.g., `"+"`, `"A"`.
-- **Production Rules**: Defined using `::=`, e.g., `<expr> ::= <term> "+" <expr> ;`.
-- **Alternatives**: Separated by `|`, e.g., `<digit> ::= "0" | "1" | "2" ;`.
-- **Optional Elements**: Enclosed in `[ ]`, e.g., `[ <parameter_list> ]`.
-- **Repetitions**: Two elements, e.g. `<list> ::= {<item>} ;`
-- **Recurrence**: Recurrence, e.g. `<list> ::= <item> "," <list> | <item>  ;`
-- **End of Production**: Denoted by `;`.
+- Grammar stage: text -> `GrammarLexer` -> `GrammarParser` -> `ProductionGrammar`
+- Instruction stage: instruction text + `ProductionGrammar` -> `InstructionParser` -> AST (`ASTNodePtr`)
 
-Note: The order in defining the alternatives is important. 
-this: `<list> ::= <item> "," | <list>  ;`
-is different than: `<list> ::= <list> | <item> "," ;`
+## Grammar Model Contract
 
-Examples:
-```
-<basic_asignment>      ::= <item> ;
-<basic_sequence>       ::= "(" <item> ")" ;
-<basic_optional>       ::= [<item>] ;
-<basic_repetition>     ::= {<item>} ;
-<basic_recurrence>     ::= <item> "," <basic_recurrence> | <item>  ;
-```
-```
-<letter_or_digit>      ::= <letter> | <digit> ;
-<letter>               ::= "A" | "B" | "C" ;
-<digit>                ::= "0" | "1" | "2" ;
-```
+Public model objects:
 
+- `ProductionUnit`
+- `ProductionAlternative`
+- `ProductionRule`
+- `ProductionGrammar`
 
-## Usage
+Accepted unit families in grammar parsing:
 
-### Extensive Example
+- terminal literals
+- non-terminals (`<...>`)
+- optionals (`[<...>]`)
+- repetitions (`{<...>}`)
+- punctuation (`::=`, `|`, `;`)
 
-**BNF Grammar:**
-```
-         Grammar: 
-<instruction>     ::= "(" <string> ")" ;
-<string>          ::= {<letter_or_digit>} ;
-<letter_or_digit> ::= <letter> | <digit> ;
-<letter>          ::= "A" | "B" | "C" ;
-<digit>           ::= "0" | "1" | "2" ;
-```
-Given the following input as the instruction
-```
-         Input: (A1B2)
-```
-Would produce the be reresented as the following Abstract Syntax Tree.
-```
-RootNode: <instruction>
-└── IntermediaryNode: Sequence: Terminal: "("  NonTerminal: <string>  Terminal: ")"  
-        ├── TerminalNode: "("
-        ├── IntermediaryNode: Single: Repetition: {<letter_or_digit>}  
-        │   └── IntermediaryNode: Single: Repetition: {<letter_or_digit>}  
-        │       ├── IntermediaryNode: Single: NonTerminal: <letter>  
-        │       │   └── IntermediaryNode: Single: Terminal: "A"  
-        │       │       └── TerminalNode: "A"
-        │       ├── IntermediaryNode: Single: NonTerminal: <digit>  
-        │       │   └── IntermediaryNode: Single: Terminal: "1"  
-        │       │       └── TerminalNode: "1"
-        │       ├── IntermediaryNode: Single: NonTerminal: <letter>  
-        │       │   └── IntermediaryNode: Single: Terminal: "B"  
-        │       │       └── TerminalNode: "B"
-        │       └── IntermediaryNode: Single: NonTerminal: <digit>  
-        │           └── IntermediaryNode: Single: Terminal: "2"  
-        │               └── TerminalNode: "2"
-        └── TerminalNode: ")"
-```
+Current parser constraints from source behavior:
+
+- first production must start with `<instruction> ::= ...`
+- optional and repetition wrappers are parsed as wrappers around non-terminals
+- comment lines are recognized when `;` appears at column 1
+
+## Instruction Parse Contract
+
+Public entrypoint:
+
+- `InstructionParser::parse_Instruction(const std::string&)`
+
+Matching behavior:
+
+- alternatives are attempted and the parser keeps the match that consumes the longest input
+- terminal matching is exact character-by-character
+- repetition parse currently succeeds only when at least one repetition item is matched
+- parsing failure throws `std::runtime_error` with failure context
+
+AST contract:
+
+- root type: `RootNode`
+- intermediate type: `IntermediaryNode`
+- leaves: `TerminalNode`
+- visitor extension point: `ASTVisitor` + `VisitorContext`
+- node `hash` is derived from `fnv1aHash(name)`
+
+## Validation and Failure Contract
+
+- grammar integrity check is exposed as `verityGrammar(...)`
+- malformed grammar/instruction paths throw exceptions (no silent recovery)
+
+## Legacy Ghosts
+
+- Grammar verification quality is flagged in source as needing improvement.
+- `InstructionParser::parse_ProductionAlternative` currently does not consume `ProductionAlternative::Flags` semantics.
+- Parser performance is explicitly flagged for improvement in instruction parsing hot paths.
+- AST `hash` naming/semantics have a known mismatch warning (`fnv1aHash(name)` used, but internal warning notes hash semantics debt).
+
+This spec defines behavior and interfaces; source remains authoritative for parser internals.

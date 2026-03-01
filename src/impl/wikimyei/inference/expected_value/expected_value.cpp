@@ -9,22 +9,25 @@
 #include <cmath>
 #include <utility>
 #include <cstdio>   // std::remove, std::rename
+#include <cstring>
+#include <filesystem>
 
 // ------------------------------------------------------------
 // RUNTIME WARNINGS (non-blocking / informational) .cpp
 // ------------------------------------------------------------
-RUNTIME_WARNING("[expected_value.cpp] Scheduler save/load is best-effort; if not serializable we replay steps approximately.\n");
 RUNTIME_WARNING("[expected_value.cpp] select_targets uses from_blob()+clone for indices (tiny extra alloc, safe).\n");
 RUNTIME_WARNING("[expected_value.cpp] Channel EMA weights use 1/(ema+eps) with clamp_max to limit volatility.\n");
 RUNTIME_WARNING("[expected_value.cpp] Optimizer state is skipped on CUDA during save; loader tolerates its absence.\n");
 RUNTIME_WARNING("[expected_value.cpp] Checkpoint uses SAFE state-dict (params/buffers only); avoids JIT pickler & undefined buffers.\n");
-RUNTIME_WARNING("[expected_value.cpp] Atomic-ish save: write to .tmp then rename to final path.\n");
+RUNTIME_WARNING("[expected_value.cpp] Checkpoint save writes to .tmp and requires successful rename to final path.\n");
 
 namespace cuwacunu {
 namespace wikimyei {
 
 // -------------------- safe state-dict helpers ----------------
 namespace {
+constexpr int64_t kExpectedValueCheckpointFormatVersion = 2;
+
 // write CPU clone of a tensor under key
 inline void ev_write_tensor(torch::serialize::OutputArchive& ar,
                             const std::string& key, const torch::Tensor& t) {
@@ -35,6 +38,46 @@ inline void ev_write_tensor(torch::serialize::OutputArchive& ar,
 inline bool ev_try_read_tensor(torch::serialize::InputArchive& ar,
                                const std::string& key, torch::Tensor& out) {
   try { ar.read(key, out); return out.defined(); } catch (...) { return false; }
+}
+
+inline void ev_write_string(torch::serialize::OutputArchive& ar,
+                            const std::string& key,
+                            const std::string& value) {
+  auto t = torch::empty({static_cast<int64_t>(value.size())}, torch::kChar);
+  if (t.numel() > 0) {
+    std::memcpy(t.data_ptr<int8_t>(), value.data(), value.size());
+  }
+  ar.write(key, t);
+}
+
+inline bool ev_try_read_string(torch::serialize::InputArchive& ar,
+                               const std::string& key,
+                               std::string& out) {
+  torch::Tensor t;
+  if (!ev_try_read_tensor(ar, key, t)) return false;
+  t = t.to(torch::kCPU);
+  TORCH_CHECK(t.dim() == 1, "[ExpectedValue::ckpt] key '", key, "' must be a 1-D byte tensor.");
+  out.resize(static_cast<size_t>(t.numel()));
+  if (t.numel() > 0) {
+    std::memcpy(out.data(), t.data_ptr<int8_t>(), static_cast<size_t>(t.numel()));
+  }
+  return true;
+}
+
+inline int64_t ev_require_scalar_i64(torch::serialize::InputArchive& ar,
+                                     const std::string& key) {
+  torch::Tensor t;
+  TORCH_CHECK(ev_try_read_tensor(ar, key, t), "[ExpectedValue::ckpt] missing required key '", key, "'.");
+  t = t.to(torch::kCPU);
+  TORCH_CHECK(t.numel() >= 1, "[ExpectedValue::ckpt] key '", key, "' must contain a scalar.");
+  return t.item<int64_t>();
+}
+
+inline std::string ev_require_string(torch::serialize::InputArchive& ar,
+                                     const std::string& key) {
+  std::string value;
+  TORCH_CHECK(ev_try_read_string(ar, key, value), "[ExpectedValue::ckpt] missing required key '", key, "'.");
+  return value;
 }
 
 // Save only defined params/buffers (CPU clones), no JIT/module pickling.
@@ -88,26 +131,32 @@ inline void ev_load_module_state(torch::serialize::InputArchive& ar,
 } // anonymous namespace
 
 // ---------- ctor ----------
-ExpectedValue::ExpectedValue(const std::string& component_name_)
-: component_name(component_name_) {
-  // Static weights and target dims from config/pipeline
-  static_channel_weights_     = cuwacunu::camahjucunu::observation_pipeline_t::inst.retrieve_channel_weights();
-  static_feature_weights_     = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<float>("VALUE_ESTIMATION", "target_weights");
-  grad_clip                   = cuwacunu::piaabo::dconfig::contract_space_t::get<double>("VALUE_ESTIMATION", "grad_clip");
-  optimizer_threshold_reset   = cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "optimizer_threshold_reset");
-  target_dims_                = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<int64_t>("VALUE_ESTIMATION", "target_dims");
+ExpectedValue::ExpectedValue(
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+    const std::string& component_name_)
+: contract_hash(contract_hash_),
+  component_name(component_name_) {
+  // Static weights and target dims from the bound contract snapshot.
+  auto observation_instruction =
+      cuwacunu::camahjucunu::decode_observation_spec_from_contract(
+          contract_hash);
+  static_channel_weights_     = observation_instruction.retrieve_channel_weights();
+  static_feature_weights_     = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<float>(contract_hash, "VALUE_ESTIMATION", "target_weights");
+  grad_clip                   = cuwacunu::piaabo::dconfig::contract_space_t::get<double>(contract_hash, "VALUE_ESTIMATION", "grad_clip");
+  optimizer_threshold_reset   = cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "optimizer_threshold_reset");
+  target_dims_                = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<int64_t>(contract_hash, "VALUE_ESTIMATION", "target_dims");
 
   // Model
   semantic_model = cuwacunu::wikimyei::mdn::MdnModel(
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoding_dims"),               // De
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VICReg", "encoding_dims"),               // De
     static_cast<int64_t>(target_dims_.size()),                                                    // Dy
-    cuwacunu::camahjucunu::observation_pipeline_t::inst.count_channels(),                         // C
-    cuwacunu::camahjucunu::observation_pipeline_t::inst.max_future_sequence_length(),             // Hf
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "mixture_comps"),     // K
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "features_hidden"),   // H
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VALUE_ESTIMATION", "residual_depth"),    // depth
-    cuwacunu::piaabo::dconfig::config_dtype  ("VALUE_ESTIMATION"),
-    cuwacunu::piaabo::dconfig::config_device ("VALUE_ESTIMATION"),
+    observation_instruction.count_channels(),                                                      // C
+    observation_instruction.max_future_sequence_length(),                                          // Hf
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "mixture_comps"),     // K
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "features_hidden"),   // H
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "residual_depth"),    // depth
+    cuwacunu::piaabo::dconfig::config_dtype(contract_hash, "VALUE_ESTIMATION"),
+    cuwacunu::piaabo::dconfig::config_device(contract_hash, "VALUE_ESTIMATION"),
     /* display_model */ false
   );
 
@@ -118,12 +167,12 @@ ExpectedValue::ExpectedValue(const std::string& component_name_)
   }
 
   // Builders
-  TORCH_CHECK(cuwacunu::jkimyei::jk_setup(component_name).opt_builder,   "[ExpectedValue](ctor) opt_builder is null");
-  TORCH_CHECK(cuwacunu::jkimyei::jk_setup(component_name).sched_builder, "[ExpectedValue](ctor) sched_builder is null");
+  TORCH_CHECK(cuwacunu::jkimyei::jk_setup(component_name, contract_hash).opt_builder,   "[ExpectedValue](ctor) opt_builder is null");
+  TORCH_CHECK(cuwacunu::jkimyei::jk_setup(component_name, contract_hash).sched_builder, "[ExpectedValue](ctor) sched_builder is null");
 
-  optimizer = cuwacunu::jkimyei::jk_setup(component_name).opt_builder->build(trainable_params_);
-  lr_sched  = cuwacunu::jkimyei::jk_setup(component_name).sched_builder->build(*optimizer);
-  loss_obj  = std::make_unique<cuwacunu::wikimyei::mdn::MdnNLLLoss>(cuwacunu::jkimyei::jk_setup(component_name));
+  optimizer = cuwacunu::jkimyei::jk_setup(component_name, contract_hash).opt_builder->build(trainable_params_);
+  lr_sched  = cuwacunu::jkimyei::jk_setup(component_name, contract_hash).sched_builder->build(*optimizer);
+  loss_obj  = std::make_unique<cuwacunu::wikimyei::mdn::MdnNLLLoss>(cuwacunu::jkimyei::jk_setup(component_name, contract_hash));
 
   display_model(/* display_semantic */ true);
 }
@@ -235,39 +284,21 @@ ExpectedValue::update_channel_ema(const torch::Tensor& ch_mean_loss)
   channel_ema_.mul_(ema_alpha_).add_(ch_mean_loss.detach() * (1.0 - ema_alpha_));
 }
 
-// ---------- stability helper (norm-aware) ----------
-void ExpectedValue::maybe_reset_optimizer_state_by_norm(double grad_norm) {
-  if (!optimizer) return;
-  if (optimizer_threshold_reset < 0) return;  // disabled
-  if (!(grad_norm > static_cast<double>(optimizer_threshold_reset))) return;
-
-  log_warn("[ExpectedValue::opt] grad_norm=%.3g > %d → resetting optimizer state\n",
-           grad_norm, optimizer_threshold_reset);
-
-  // Clear common momentum stats (Adam/AdamW, RMSprop); SGD becomes a no-op here.
-  auto& st = optimizer->state();  // map<Tensor, unique_ptr<OptimizerParamState>>
-  for (auto& kv : st) {
-    if (!kv.second) continue;
-    if (auto* s = dynamic_cast<torch::optim::AdamParamState*>(kv.second.get())) {
-      if (s->exp_avg().defined())     s->exp_avg().zero_();
-      if (s->exp_avg_sq().defined())  s->exp_avg_sq().zero_();
-#if defined(TORCH_API_INCLUDE_EXTENSION_H) || 1
-      if (s->max_exp_avg_sq().defined()) s->max_exp_avg_sq().zero_();
-#endif
-      s->step(0);
-      continue;
-    }
-    if (auto* s = dynamic_cast<torch::optim::RMSpropParamState*>(kv.second.get())) {
-      if (s->square_avg().defined()) s->square_avg().zero_();
-      if (s->momentum_buffer().defined()) s->momentum_buffer().zero_();
-      if (s->grad_avg().defined()) s->grad_avg().zero_();
-      continue;
-    }
+const char*
+ExpectedValue::scheduler_mode_name(cuwacunu::jkimyei::LRSchedulerAny::Mode mode) {
+  switch (mode) {
+    case cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch:
+      return "PerBatch";
+    case cuwacunu::jkimyei::LRSchedulerAny::Mode::PerEpoch:
+      return "PerEpoch";
+    case cuwacunu::jkimyei::LRSchedulerAny::Mode::PerEpochWithMetric:
+      return "PerEpochWithMetric";
   }
+  return "Unknown";
 }
 
 // ==========================
-// Checkpointing (SAFE)
+// Checkpointing (SAFE, strict v2)
 // ==========================
 bool
 ExpectedValue::save_checkpoint(const std::string& path) const {
@@ -277,6 +308,18 @@ ExpectedValue::save_checkpoint(const std::string& path) const {
 
     // --- model state (safe, tensor-by-tensor) ---
     ev_save_module_state(ar, *semantic_model, "model");
+
+    // --- strict metadata ---
+    ar.write("format_version", torch::tensor({kExpectedValueCheckpointFormatVersion},
+                                             torch::TensorOptions().dtype(torch::kInt64)));
+    ev_write_string(ar, "meta/contract_hash", contract_hash);
+    ev_write_string(ar, "meta/component_name", component_name);
+    ev_write_string(ar, "meta/scheduler_mode",
+                    lr_sched ? scheduler_mode_name(lr_sched->mode) : std::string("None"));
+    ar.write("meta/scheduler_batch_steps", torch::tensor({scheduler_batch_steps_},
+                                                         torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/scheduler_epoch_steps", torch::tensor({scheduler_epoch_steps_},
+                                                         torch::TensorOptions().dtype(torch::kInt64)));
 
     // --- optimizer (skip on CUDA, keep flag) ---
     int64_t wrote_opt = 0;
@@ -294,40 +337,66 @@ ExpectedValue::save_checkpoint(const std::string& path) const {
         log_warn("[ExpectedValue::ckpt] skipping optimizer state save (on CUDA).\n");
       }
     }
-    ar.write("has_optimizer", torch::tensor({wrote_opt}));
+    ar.write("has_optimizer", torch::tensor({wrote_opt},
+                                            torch::TensorOptions().dtype(torch::kInt64)));
 
-    // --- scheduler (best effort) ---
+    // --- scheduler state (optional native serialization) ---
+    int64_t scheduler_serialized = 0;
     if (lr_sched) {
       torch::serialize::OutputArchive sch_ar;
       if (try_save_scheduler(*lr_sched, sch_ar)) {
         ar.write("scheduler", sch_ar);
-        ar.write("scheduler_serialized", torch::tensor({int64_t(1)}));
-      } else {
-        ar.write("scheduler_serialized", torch::tensor({int64_t(0)}));
+        scheduler_serialized = 1;
       }
     }
+    ar.write("scheduler_serialized", torch::tensor({scheduler_serialized},
+                                                   torch::TensorOptions().dtype(torch::kInt64)));
 
     // --- scalars ---
-    ar.write("best_metric",            torch::tensor({best_metric_}));
-    ar.write("best_epoch",             torch::tensor({int64_t(best_epoch_)}));
-    ar.write("total_iters_trained",    torch::tensor({int64_t(total_iters_trained_)}));
-    ar.write("total_epochs_trained",   torch::tensor({int64_t(total_epochs_trained_)}));
-    ar.write("step_scheduler_per_iter",torch::tensor({int64_t(step_scheduler_per_iter_ ? 1 : 0)}));
+    ar.write("best_metric",          torch::tensor({best_metric_}));
+    ar.write("best_epoch",           torch::tensor({int64_t(best_epoch_)},
+                                                   torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("total_iters_trained",  torch::tensor({int64_t(total_iters_trained_)},
+                                                   torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("total_epochs_trained", torch::tensor({int64_t(total_epochs_trained_)},
+                                                   torch::TensorOptions().dtype(torch::kInt64)));
 
     // --- telemetry (write ONLY if defined; no placeholders) ---
     if (channel_ema_.defined())          ar.write("channel_ema",          channel_ema_.detach().to(torch::kCPU));
     if (last_per_channel_nll_.defined()) ar.write("last_per_channel_nll", last_per_channel_nll_.detach().to(torch::kCPU));
     if (last_per_horizon_nll_.defined()) ar.write("last_per_horizon_nll", last_per_horizon_nll_.detach().to(torch::kCPU));
 
-    // --- atomic-ish write ---
+    // --- strict atomic write: write tmp, verify, rename, verify ---
     ar.save_to(tmp);
-    std::remove(path.c_str());
-    std::rename(tmp.c_str(), path.c_str());
+    std::error_code ec;
+    if (!std::filesystem::exists(tmp, ec) || ec) {
+      log_err("[ExpectedValue::ckpt] save failed: temporary checkpoint was not created (%s)\n",
+              tmp.c_str());
+      std::remove(tmp.c_str());
+      return false;
+    }
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+      log_err("[ExpectedValue::ckpt] save failed: rename(%s -> %s) failed: %s\n",
+              tmp.c_str(), path.c_str(), ec.message().c_str());
+      std::remove(tmp.c_str());
+      return false;
+    }
+    if (!std::filesystem::exists(path, ec) || ec) {
+      log_err("[ExpectedValue::ckpt] save failed: final checkpoint path missing after rename (%s)\n",
+              path.c_str());
+      return false;
+    }
 
-    log_info("%s[ExpectedValue::ckpt]%s saved → %s\n", ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, path.c_str());
+    log_info("%s[ExpectedValue::ckpt]%s saved → %s\n",
+             ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, path.c_str());
     return true;
 
   } catch (const c10::Error& e) {
+    std::remove(tmp.c_str());
+    log_err("[ExpectedValue::ckpt] save failed: %s\n", e.what());
+    return false;
+  } catch (const std::exception& e) {
     std::remove(tmp.c_str());
     log_err("[ExpectedValue::ckpt] save failed: %s\n", e.what());
     return false;
@@ -339,10 +408,45 @@ ExpectedValue::save_checkpoint(const std::string& path) const {
 }
 
 bool
-ExpectedValue::load_checkpoint(const std::string& path, bool strict) {
+ExpectedValue::load_checkpoint(const std::string& path) {
   try {
     torch::serialize::InputArchive ar;
     ar.load_from(path.c_str());
+
+    const int64_t format_version = ev_require_scalar_i64(ar, "format_version");
+    TORCH_CHECK(format_version == kExpectedValueCheckpointFormatVersion,
+                "[ExpectedValue::ckpt] unsupported checkpoint format_version=",
+                format_version, " (expected ",
+                kExpectedValueCheckpointFormatVersion, ").");
+
+    const std::string saved_contract_hash  = ev_require_string(ar, "meta/contract_hash");
+    const std::string saved_component_name = ev_require_string(ar, "meta/component_name");
+    const std::string saved_scheduler_mode = ev_require_string(ar, "meta/scheduler_mode");
+    const int64_t saved_scheduler_batch_steps = ev_require_scalar_i64(ar, "meta/scheduler_batch_steps");
+    const int64_t saved_scheduler_epoch_steps = ev_require_scalar_i64(ar, "meta/scheduler_epoch_steps");
+
+    TORCH_CHECK(!saved_contract_hash.empty(),
+                "[ExpectedValue::ckpt] meta/contract_hash must be non-empty.");
+    TORCH_CHECK(!saved_component_name.empty(),
+                "[ExpectedValue::ckpt] meta/component_name must be non-empty.");
+    TORCH_CHECK(!saved_scheduler_mode.empty(),
+                "[ExpectedValue::ckpt] meta/scheduler_mode must be non-empty.");
+    TORCH_CHECK(saved_scheduler_batch_steps >= 0,
+                "[ExpectedValue::ckpt] meta/scheduler_batch_steps must be >= 0.");
+    TORCH_CHECK(saved_scheduler_epoch_steps >= 0,
+                "[ExpectedValue::ckpt] meta/scheduler_epoch_steps must be >= 0.");
+    TORCH_CHECK(saved_contract_hash == contract_hash,
+                "[ExpectedValue::ckpt] contract hash mismatch (ckpt='", saved_contract_hash,
+                "', runtime='", contract_hash, "').");
+    TORCH_CHECK(saved_component_name == component_name,
+                "[ExpectedValue::ckpt] component mismatch (ckpt='", saved_component_name,
+                "', runtime='", component_name, "').");
+
+    const std::string runtime_scheduler_mode =
+        lr_sched ? scheduler_mode_name(lr_sched->mode) : "None";
+    TORCH_CHECK(saved_scheduler_mode == runtime_scheduler_mode,
+                "[ExpectedValue::ckpt] scheduler mode mismatch (ckpt='", saved_scheduler_mode,
+                "', runtime='", runtime_scheduler_mode, "').");
 
     // --- model state (safe, tensor-by-tensor) ---
     ev_load_module_state(ar, *semantic_model, "model");
@@ -351,21 +455,25 @@ ExpectedValue::load_checkpoint(const std::string& path, bool strict) {
     // --- optimizer (optional) ---
     const bool expect_opt = (ar_try_read_scalar_int64(ar, "has_optimizer", 0) != 0);
     if (optimizer && expect_opt) {
+      torch::serialize::InputArchive oa;
+      bool has_optimizer_state = true;
       try {
-        torch::serialize::InputArchive oa;
         ar.read("optimizer", oa);
-        optimizer->load(oa);
-      } catch (const c10::Error& e) {
-        log_warn("[ExpectedValue::ckpt] optimizer state missing/incompatible; continuing. Err=%s\n", e.what());
+      } catch (...) {
+        has_optimizer_state = false;
       }
+      TORCH_CHECK(has_optimizer_state,
+                  "[ExpectedValue::ckpt] optimizer state declared in checkpoint but missing.");
+      optimizer->load(oa);
     }
 
     // --- scalars ---
-    best_metric_            = ar_try_read_scalar_double(ar, "best_metric", best_metric_);
-    best_epoch_             = static_cast<int>(ar_try_read_scalar_int64(ar, "best_epoch", best_epoch_));
-    total_iters_trained_    = ar_try_read_scalar_int64(ar, "total_iters_trained", total_iters_trained_);
-    total_epochs_trained_   = ar_try_read_scalar_int64(ar, "total_epochs_trained", total_epochs_trained_);
-    step_scheduler_per_iter_= (ar_try_read_scalar_int64(ar, "step_scheduler_per_iter", step_scheduler_per_iter_ ? 1 : 0) != 0);
+    best_metric_          = ar_try_read_scalar_double(ar, "best_metric", best_metric_);
+    best_epoch_           = static_cast<int>(ar_try_read_scalar_int64(ar, "best_epoch", best_epoch_));
+    total_iters_trained_  = ar_try_read_scalar_int64(ar, "total_iters_trained", total_iters_trained_);
+    total_epochs_trained_ = ar_try_read_scalar_int64(ar, "total_epochs_trained", total_epochs_trained_);
+    scheduler_batch_steps_ = saved_scheduler_batch_steps;
+    scheduler_epoch_steps_ = saved_scheduler_epoch_steps;
 
     // --- telemetry (optional) ---
     {
@@ -375,38 +483,59 @@ ExpectedValue::load_checkpoint(const std::string& path, bool strict) {
       if (ar_try_read_tensor(ar, "last_per_horizon_nll", t) && t.defined()) last_per_horizon_nll_ = t.to(semantic_model->device);
     }
 
-    // --- scheduler: native load or replay ---
-    bool sched_serialized = (ar_try_read_scalar_int64(ar, "scheduler_serialized", 0) != 0);
+    // --- scheduler strict restore ---
+    const bool sched_serialized = (ar_try_read_scalar_int64(ar, "scheduler_serialized", 0) != 0);
     if (lr_sched) {
+      const auto mode = lr_sched->mode;
+      if (mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch) {
+        TORCH_CHECK(scheduler_epoch_steps_ == 0,
+                    "[ExpectedValue::ckpt] invalid scheduler counters for PerBatch mode.");
+      } else {
+        TORCH_CHECK(scheduler_batch_steps_ == 0,
+                    "[ExpectedValue::ckpt] invalid scheduler counters for non-PerBatch mode.");
+      }
+
       if (sched_serialized) {
         torch::serialize::InputArchive sch_ar;
-        ar.read("scheduler", sch_ar);
-        if (!try_load_scheduler(*lr_sched, sch_ar)) replay_scheduler_progress();
+        bool has_scheduler_archive = true;
+        try {
+          ar.read("scheduler", sch_ar);
+        } catch (...) {
+          has_scheduler_archive = false;
+        }
+        TORCH_CHECK(has_scheduler_archive,
+                    "[ExpectedValue::ckpt] scheduler marked serialized but archive is missing.");
+        TORCH_CHECK(try_load_scheduler(*lr_sched, sch_ar),
+                    "[ExpectedValue::ckpt] scheduler archive present but scheduler does not support load().");
       } else {
-        replay_scheduler_progress();
+        if (mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch) {
+          for (int64_t i = 0; i < scheduler_batch_steps_; ++i) lr_sched->step();
+        } else if (mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerEpoch) {
+          for (int64_t e = 0; e < scheduler_epoch_steps_; ++e) lr_sched->step();
+        } else {
+          TORCH_CHECK(scheduler_epoch_steps_ == 0,
+                      "[ExpectedValue::ckpt] PerEpochWithMetric checkpoints require serialized scheduler state.");
+        }
       }
     }
 
-    log_info("%s[ExpectedValue::ckpt]%s loaded ← %s (best=%.6f:at.%d, iters=%lld epochs=%lld)\n",
+    log_info("%s[ExpectedValue::ckpt]%s loaded ← %s (best=%.6f:at.%d, iters=%lld epochs=%lld, sch[b=%lld,e=%lld])\n",
              ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET, path.c_str(),
              best_metric_, best_epoch_,
              static_cast<long long>(total_iters_trained_),
-             static_cast<long long>(total_epochs_trained_));
+             static_cast<long long>(total_epochs_trained_),
+             static_cast<long long>(scheduler_batch_steps_),
+             static_cast<long long>(scheduler_epoch_steps_));
     return true;
 
   } catch (const c10::Error& e) {
-    if (strict) {
-      log_err("[ExpectedValue::ckpt] load failed: %s\n", e.what());
-      return false;
-    }
-    log_warn("[ExpectedValue::ckpt] load encountered an error but strict=false; continuing. Err=%s\n", e.what());
+    log_err("[ExpectedValue::ckpt] load failed: %s\n", e.what());
+    return false;
+  } catch (const std::exception& e) {
+    log_err("[ExpectedValue::ckpt] load failed: %s\n", e.what());
     return false;
   } catch (...) {
-    if (strict) {
-      log_err("[ExpectedValue::ckpt] load failed (unknown exception)\n");
-      return false;
-    }
-    log_warn("[ExpectedValue::ckpt] load encountered unknown error but strict=false; continuing.\n");
+    log_err("[ExpectedValue::ckpt] load failed (unknown exception)\n");
     return false;
   }
 }
@@ -442,39 +571,10 @@ ExpectedValue::ar_try_read_tensor(torch::serialize::InputArchive& ar, const char
   } catch (...) { return false; }
 }
 
-// ---------- scheduler progress replay ----------
-void
-ExpectedValue::replay_scheduler_progress() {
-  if (!lr_sched) return;
-  if (step_scheduler_per_iter_) {
-    for (int64_t i = 0; i < total_iters_trained_; ++i) lr_sched->step();
-  } else {
-    for (int64_t e = 0; e < total_epochs_trained_; ++e) lr_sched->step();
-  }
-  log_warn("[ExpectedValue::ckpt] scheduler replayed to iters=%lld epochs=%lld (approximate)\n",
-           static_cast<long long>(total_iters_trained_),
-           static_cast<long long>(total_epochs_trained_));
-}
-
-// ---------- stability helper ----------
-void ExpectedValue::maybe_reset_optimizer_state(double /*clip_threshold*/) {
-  if (!optimizer) return;
-  if (optimizer_threshold_reset < 0) return;
-  double sumsq = 0.0;
-  for (auto& p : semantic_model->parameters()) {
-    if (p.grad().defined()) {
-      auto g = p.grad();
-      sumsq += g.pow(2).sum().item<double>();
-    }
-  }
-  maybe_reset_optimizer_state_by_norm(std::sqrt(sumsq));
-
-}
-
 // ---------- pretty print ----------
 void ExpectedValue::display_model(bool display_semantic=false) const {
   // 1) Setup & IDs (never pass raw nullptrs to %s)
-  const auto& setup = cuwacunu::jkimyei::jk_setup(component_name);
+  const auto& setup = cuwacunu::jkimyei::jk_setup(component_name, contract_hash);
   const std::string opt_id  = setup.opt_conf.id.empty()  ? std::string("<unset>") : setup.opt_conf.id;
   const std::string sch_id  = setup.sch_conf.id.empty()  ? std::string("<unset>") : setup.sch_conf.id;
   const std::string loss_id = setup.loss_conf.id.empty() ? std::string("<unset>") : setup.loss_conf.id;

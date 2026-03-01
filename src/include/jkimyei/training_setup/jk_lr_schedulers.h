@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -31,9 +32,33 @@
 #include <torch/optim/optimizer.h>
 
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "jkimyei/api/schema_catalog.h"
 
 namespace cuwacunu {
 namespace jkimyei {
+
+inline void ensure_scheduler_builder_coverage() {
+  static const bool kCoverageChecked = [] {
+    const std::unordered_set<std::string> kImplemented = {
+        "StepLR",
+        "MultiStepLR",
+        "OneCycleLR",
+        "ExponentialLR",
+        "ReduceLROnPlateau",
+        "ConstantLR",
+        "CosineAnnealingLR",
+        "WarmupLR"};
+    for (const auto& type : cuwacunu::jkimyei::api::supported_scheduler_types()) {
+      if (kImplemented.find(type) == kImplemented.end()) {
+        throw std::runtime_error(
+            "scheduler declared in jkimyei_schema.def but not implemented in jk_lr_schedulers: " +
+            type);
+      }
+    }
+    return true;
+  }();
+  (void)kCoverageChecked;
+}
 
 /* ----------------------- Minimal scheduler base ----------------------- */
 struct LRSchedulerAny {
@@ -432,9 +457,11 @@ struct WarmupLRBuilder final : ISchedulerBuilder {
 
 inline std::unique_ptr<ISchedulerBuilder>
 make_scheduler_builder_from_row(const cuwacunu::camahjucunu::jkimyei_specs_t::row_t& row) {
+  ensure_scheduler_builder_coverage();
 
   cuwacunu::camahjucunu::require_columns_exact(row, { ROW_ID_COLUMN_HEADER, "type", "options" });
   const std::string type = cuwacunu::camahjucunu::require_column(row, "type");
+  cuwacunu::jkimyei::api::require_scheduler_type_registered(type);
 
   if (type == "ConstantLR") {
     cuwacunu::camahjucunu::validate_options_exact(row, { "lr" });

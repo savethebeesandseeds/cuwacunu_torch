@@ -2,7 +2,6 @@
 #pragma once
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
-#include "piaabo/darchitecture.h"
 #include "piaabo/https_compat/curl_toolkit/websockets_api/curl_websocket_api.h"
 
 /* # Methods (check if all of these are implemented)

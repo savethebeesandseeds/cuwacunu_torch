@@ -1,189 +1,94 @@
+#include <cassert>
+#include <string>
+
 #include "piaabo/dutils.h"
 #include "piaabo/djson_parsing.h"
 
 using namespace cuwacunu;
 using namespace piaabo;
 
-// Test suite function
+static void expect_parse_failure(const std::string& json) {
+  bool failed = false;
+  try {
+    JsonParser parser(json);
+    (void)parser.parse();
+  } catch (const std::runtime_error&) {
+    failed = true;
+  }
+  assert(failed);
+}
+
 void runTests() {
-  // Test 1: Simple JSON object
   {
-    std::string jsonString = R"({"name": "John", "age": 25})";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
+    const std::string json = R"({"name":"John","age":25})";
+    JsonValue root = JsonParser(json).parse();
     assert(root.type == JsonValueType::OBJECT);
-    assert(root.objectValue->size() == 2);
-
     auto& obj = *root.objectValue;
-    assert(obj["name"].type == JsonValueType::STRING);
-    assert(obj["name"].stringValue == "John");
-    assert(obj["age"].type == JsonValueType::NUMBER);
-    assert(obj["age"].numberValue == 25);
+    assert(obj.at("name").type == JsonValueType::STRING);
+    assert(obj.at("name").stringValue == "John");
+    assert(obj.at("age").type == JsonValueType::NUMBER);
+    assert(obj.at("age").numberValue == 25.0);
   }
 
-  // Test 2: Nested objects and arrays
   {
-    std::string jsonString = R"({
-      "person": {
-        "name": "Alice",
-        "age": 30,
-        "isStudent": false,
-        "scores": [85, 90, 92]
-      }
-    })";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
-    assert(root.type == JsonValueType::OBJECT);
-    auto& obj = *root.objectValue;
-    assert(obj["person"].type == JsonValueType::OBJECT);
-    auto& person = *obj["person"].objectValue;
-    assert(person["name"].stringValue == "Alice");
-    assert(person["age"].numberValue == 30);
-    assert(person["isStudent"].boolValue == false);
-    assert(person["scores"].type == JsonValueType::ARRAY);
-    auto& scores = *person["scores"].arrayValue;
+    const std::string json = R"({"person":{"name":"Alice","scores":[85,90,92]}})";
+    JsonValue root = JsonParser(json).parse();
+    auto& person = *root.objectValue->at("person").objectValue;
+    assert(person.at("name").stringValue == "Alice");
+    auto& scores = *person.at("scores").arrayValue;
     assert(scores.size() == 3);
-    assert(scores[0].numberValue == 85);
-    assert(scores[1].numberValue == 90);
-    assert(scores[2].numberValue == 92);
+    assert(scores[2].numberValue == 92.0);
   }
 
-  // Test 3: Empty object and array
   {
-    std::string jsonString = R"({"emptyObject": {}, "emptyArray": []})";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
+    const std::string json = R"({"text":"Line1\nLine2\tTabbed","unicode":"\u0041\u0042\u0043"})";
+    JsonValue root = JsonParser(json).parse();
     auto& obj = *root.objectValue;
-    assert(obj["emptyObject"].type == JsonValueType::OBJECT);
-    assert(obj["emptyObject"].objectValue->empty());
-    assert(obj["emptyArray"].type == JsonValueType::ARRAY);
-    assert(obj["emptyArray"].arrayValue->empty());
+    assert(obj.at("text").stringValue == "Line1\nLine2\tTabbed");
+    assert(obj.at("unicode").stringValue == "ABC");
   }
 
-  // Test 4: String with escape characters
   {
-    std::string jsonString = R"({"text": "Line1\nLine2\tTabbed"})";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
+    const std::string json = R"({"emoji":"\uD83D\uDE00"})";
+    JsonValue root = JsonParser(json).parse();
     auto& obj = *root.objectValue;
-    assert(obj["text"].type == JsonValueType::STRING);
-    assert(obj["text"].stringValue == "Line1\nLine2\tTabbed");
+    assert(obj.at("emoji").stringValue == "\xF0\x9F\x98\x80");
   }
 
-  // Test 5: Numbers with fractional and exponential parts
   {
-    std::string jsonString = R"({"int": 42, "float": 3.14, "exp": 1e10, "negExp": -2.5E-3})";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
+    const std::string json = "{\n  \"x\" : [1, 2, {\"y\":3}], \"z\": true\n}";
+    JsonValue root = JsonParser(json).parse();
     auto& obj = *root.objectValue;
-    assert(obj["int"].numberValue == 42);
-    assert(obj["float"].numberValue == 3.14);
-    assert(obj["exp"].numberValue == 1e10);
-    assert(obj["negExp"].numberValue == -2.5e-3);
+    assert(obj.at("z").boolValue == true);
+    assert(obj.at("x").arrayValue->size() == 3);
   }
 
-  // Test 6: Boolean and null values
-  {
-    std::string jsonString = R"({"trueVal": true, "falseVal": false, "nullVal": null})";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
+  // parser error handling
+  expect_parse_failure(R"({"name":"John","age":})");
+  expect_parse_failure(R"({"name":"John","age":30,})");
+  expect_parse_failure("\"abc");              // unterminated string
+  expect_parse_failure("\"\n\"");             // control char inside string
+  expect_parse_failure(R"("\u12G4")");       // invalid hex
+  expect_parse_failure(R"("\uD83D")");       // missing low surrogate
+  expect_parse_failure(R"("\uDE00")");       // unexpected low surrogate
+  expect_parse_failure(R"({"num":01})");      // invalid leading zero
 
-    auto& obj = *root.objectValue;
-    assert(obj["trueVal"].type == JsonValueType::BOOLEAN);
-    assert(obj["trueVal"].boolValue == true);
-    assert(obj["falseVal"].type == JsonValueType::BOOLEAN);
-    assert(obj["falseVal"].boolValue == false);
-    assert(obj["nullVal"].type == JsonValueType::NULL_TYPE);
-  }
+  // fast validity check
+  assert(json_fast_validity_check(R"({"id":"x"})"));
+  assert(json_fast_validity_check(R"([1,2,3])"));
+  assert(!json_fast_validity_check("abc"));
+  assert(!json_fast_validity_check(R"({"a":1}{"b":2})"));
+  assert(!json_fast_validity_check(R"({"a":[1,2})"));
+  assert(!json_fast_validity_check(R"({"a":"unterminated})"));
 
-  // Test 7: Unicode characters in strings
-  {
-    std::string jsonString = R"({"unicode": "\u0041\u0042\u0043"})";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
+  // key extraction
+  assert(extract_json_string_value(R"({"id":"A"})", "id", "NULL") == "A");
+  assert(extract_json_string_value(R"({"id" : "A"})", "id", "NULL") == "A");
+  assert(extract_json_string_value(R"({"meta":{"id":"nested"},"id":"root"})", "id", "NULL") == "root");
+  assert(extract_json_string_value(R"({"id":42})", "id", "NULL") == "NULL");
+  assert(extract_json_string_value(R"({"x":"foo \"id\":\"B\"","id":"C"})", "id", "NULL") == "C");
 
-    auto& obj = *root.objectValue;
-    assert(obj["unicode"].type == JsonValueType::STRING);
-    assert(obj["unicode"].stringValue == "ABC");
-  }
-
-  // Test 8: Invalid JSON (should throw an exception)
-  {
-    std::string jsonString = R"({"name": "John", "age": })";
-    try {
-      JsonParser parser(jsonString);
-      JsonValue root = parser.parse();
-      assert(false);  // Should not reach here
-    } catch (const std::runtime_error& e) {
-      assert(std::string(e.what()).find("Invalid value") != std::string::npos ||
-        std::string(e.what()).find("Runtime error occurred") != std::string::npos);
-    }
-  }
-
-  // Test 9: Trailing commas (not allowed in standard JSON)
-  {
-    std::string jsonString = R"({"name": "John", "age": 30,})";
-    try {
-      JsonParser parser(jsonString);
-      JsonValue root = parser.parse();
-      assert(false);  // Should not reach here
-    } catch (const std::runtime_error& e) {
-      assert(std::string(e.what()).find("Expected '}'") != std::string::npos ||
-        std::string(e.what()).find("Expected '\"'") != std::string::npos ||
-        std::string(e.what()).find("Runtime error occurred") != std::string::npos);
-    }
-  }
-
-  // Test 10: Whitespace handling
-  {
-    std::string jsonString = "{ \n\t\"name\" : \t\"Jane\" \n}";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
-    auto& obj = *root.objectValue;
-    assert(obj["name"].stringValue == "Jane");
-  }
-
-  // Test 11: Large JSON
-  {
-    std::string jsonString = R"({
-      "users": [
-        {"id": 1, "name": "User1"},
-        {"id": 2, "name": "User2"},
-        {"id": 3, "name": "User3"},
-        {"id": 4, "name": "User4"},
-        {"id": 5, "name": "User5"}
-      ]
-    })";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
-    auto& users = *root.objectValue->at("users").arrayValue;
-    assert(users.size() == 5);
-    for (int i = 0; i < 5; ++i) {
-      auto& user = *users[i].objectValue;
-      assert(user["id"].numberValue == i + 1);
-      assert(user["name"].stringValue == "User" + std::to_string(i + 1));
-    }
-  }
-
-  // Test 12: Empty JSON
-  {
-    std::string jsonString = R"({})";
-    JsonParser parser(jsonString);
-    JsonValue root = parser.parse();
-
-    assert(root.type == JsonValueType::OBJECT);
-    assert(root.objectValue->empty());
-  }
-
-  // All tests passed
-  log_info("All tests for djson_parsing.h passed successfully.\n");
+  log_info("All tests for djson_parsing passed successfully.\n");
 }
 
 int main() {

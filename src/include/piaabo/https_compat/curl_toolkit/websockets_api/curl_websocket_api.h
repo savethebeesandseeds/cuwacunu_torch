@@ -12,7 +12,6 @@
 #include <condition_variable>
 #include "piaabo/dutils.h"
 #include "piaabo/djson_parsing.h"
-#include "piaabo/darchitecture.h"
 #include "piaabo/https_compat/curl_toolkit/curl_utils.h"
 
 #define WS_NORMAL_TERMINATION                 (uint16_t) 0x3E8  /* Normal closure; the connection successfully completed whatever purpose for which it was created. */
@@ -39,7 +38,6 @@ struct ws_incomming_data_t {
   std::string data;
   std::chrono::system_clock::time_point local_timestamp; /* timestamp at the moment of receiving the last chunk of frame (or ideally total frame) */
 };
-ENFORCE_ARCHITECTURE_DESIGN(ws_incomming_data_t);
 
 struct ws_outgoing_data_t {
   std::string frame_id;
@@ -48,7 +46,6 @@ struct ws_outgoing_data_t {
   std::vector<unsigned char> frame_data;
   std::chrono::system_clock::time_point local_timestamp;
 };
-ENFORCE_ARCHITECTURE_DESIGN(ws_outgoing_data_t);
 
 struct WebsocketAPI {
 private:
@@ -205,7 +202,6 @@ private:
   */
   static size_t websocket_RX_callback(char* ptr, size_t size, size_t nmemb, void* userdata);
 };
-ENFORCE_SINGLETON_DESIGN(WebsocketAPI);
 
 } /* namespace curl */
 } /* namespace piaabo */

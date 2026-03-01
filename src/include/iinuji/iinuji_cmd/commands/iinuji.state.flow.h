@@ -11,8 +11,12 @@ struct IinujiStateFlow {
   CmdState& state;
 
   void reload_board() const {
-    cuwacunu::piaabo::dconfig::contract_runtime_t::assert_intact_or_fail_fast();
-    state.board = load_board_from_config();
+    const auto contract_hash = state.board.contract_hash.empty()
+                                   ? resolve_configured_board_contract_hash()
+                                   : state.board.contract_hash;
+    cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(
+        contract_hash);
+    state.board = load_board_from_contract_hash(contract_hash);
     clamp_board_navigation_state(state);
     clamp_selected_training_tab(state);
     clamp_selected_training_hash(state);
@@ -39,10 +43,14 @@ struct IinujiStateFlow {
 
   void reload_config_and_board() const {
     cuwacunu::piaabo::dconfig::config_space_t::update_config();
-    cuwacunu::piaabo::dconfig::contract_runtime_t::assert_intact_or_fail_fast();
-    state.config = load_config_view_from_config();
+    cuwacunu::piaabo::dconfig::contract_space_t::
+        assert_registry_intact_or_fail_fast();
+    const auto contract_hash = state.board.contract_hash.empty()
+                                   ? resolve_configured_board_contract_hash()
+                                   : state.board.contract_hash;
+    state.config = load_config_view_from_config(contract_hash);
     clamp_selected_tab(state);
-    state.board = load_board_from_config();
+    state.board = load_board_from_contract_hash(contract_hash);
     clamp_board_navigation_state(state);
     clamp_selected_training_tab(state);
     clamp_selected_training_hash(state);

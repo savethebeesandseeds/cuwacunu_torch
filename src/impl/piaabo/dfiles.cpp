@@ -1,5 +1,6 @@
 /* dfiles.cpp */
 #include "piaabo/dfiles.h"
+#include <sstream>
 
 RUNTIME_WARNING("(dfiles.cpp)[] binaryFile_to_vector has a note on imporving performance \n");
 
@@ -13,6 +14,9 @@ std::string readFileToString(const std::string& filePath) {
 
 	std::ostringstream buffer;
 	buffer << resultFile.rdbuf();
+	if (!resultFile.good() && !resultFile.eof()) {
+		log_fatal("[readFileToString] Error: Failed while reading file: %s\n", filePath.c_str());
+	}
 	return buffer.str();
 }
 
@@ -28,6 +32,9 @@ size_t countLinesInFile(const std::string& file_path) {
   size_t line_count = 0;
   std::string line;
   while (std::getline(file, line)) { ++line_count; }
+  if (!file.eof()) {
+    log_fatal("[countLinesInFile] Error: Failed while reading file: %s\n", file_path.c_str());
+  }
   file.close();
   return line_count;
 }

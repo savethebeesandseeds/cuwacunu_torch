@@ -158,7 +158,10 @@ inline void refresh_board_editor_diagnostic(CmdState& st) {
   std::vector<std::vector<cuwacunu::camahjucunu::tsiemene_resolved_hop_t>> resolved{};
   std::string error;
   const std::string text = cuwacunu::iinuji::primitives::editor_text(ed);
-  if (decode_board_instruction_text(text, &parsed, &resolved, &error)) return;
+  if (decode_board_instruction_text(
+          text, st.board.contract_hash, &parsed, &resolved, &error)) {
+    return;
+  }
 
   st.board.diagnostic_active = true;
   const auto [line_from_error, col_from_error] = parse_board_error_line_col(error);

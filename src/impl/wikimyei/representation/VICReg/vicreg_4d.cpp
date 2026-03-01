@@ -1,5 +1,6 @@
 /* vicreg_4d.cpp */
 #include <torch/torch.h>
+#include <algorithm>
 #include <cstring>
 #include <cctype>
 #include <string>
@@ -95,6 +96,7 @@ static inline void write_str(torch::serialize::OutputArchive& root,
 // -------------------- constructors --------------------
 
 VICReg_4D::VICReg_4D(
+  const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
   const std::string& component_name_, 
   int C_, int T_, int D_,
   int encoding_dims_,
@@ -108,7 +110,8 @@ VICReg_4D::VICReg_4D(
   int optimizer_threshold_reset_,
   bool enable_buffer_averaging_
 )
-: component_name(component_name_),
+: contract_hash(contract_hash_),
+  component_name(component_name_),
   C(C_), T(T_), D(D_),
   encoding_dims(encoding_dims_),
   channel_expansion_dim(channel_expansion_dim_),
@@ -141,18 +144,23 @@ VICReg_4D::VICReg_4D(
   ))),
   // Projector constructed with explicit options from config (strict parsing)
   _projector_net(nullptr),
-  aug(cuwacunu::jkimyei::jk_setup(component_name).inst.retrive_table("vicreg_augmentations")),
+  aug(cuwacunu::jkimyei::jk_setup(component_name, contract_hash).inst.retrive_table("vicreg_augmentations")),
   trainable_params_(),
   optimizer(nullptr),
   lr_sched(nullptr),
   loss_obj(nullptr)
 {
   // ---- Read projector options from dconfig (strings) and cast strictly ----
-  auto norm_s   = contract_space_t::get<std::string>("VICReg", "projector_norm");
-  auto act_s    = contract_space_t::get<std::string>("VICReg", "projector_activation");
-  auto hbias_s  = contract_space_t::get<std::string>("VICReg", "projector_hidden_bias");
-  auto lbias_s  = contract_space_t::get<std::string>("VICReg", "projector_last_bias");
-  auto bnfp32_s = contract_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
+  auto norm_s =
+      contract_space_t::get<std::string>(contract_hash, "VICReg", "projector_norm");
+  auto act_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_activation");
+  auto hbias_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_hidden_bias");
+  auto lbias_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_last_bias");
+  auto bnfp32_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_bn_in_fp32");
 
   ProjectorOptions popts{
     /* norm_kind       */ parse_norm_kind_strict(norm_s),
@@ -177,48 +185,67 @@ VICReg_4D::VICReg_4D(
   for (auto& p : _encoder_net->parameters())   trainable_params_.push_back(p);
   for (auto& p : _projector_net->parameters()) trainable_params_.push_back(p);
 
-  TORCH_CHECK(cuwacunu::jkimyei::jk_setup(component_name).opt_builder,  "[VICReg_4D::ctor] opt_builder is null");
-  TORCH_CHECK(cuwacunu::jkimyei::jk_setup(component_name).sched_builder,"[VICReg_4D::ctor] sched_builder is null");
+  auto& jk_component = cuwacunu::jkimyei::jk_setup(component_name, contract_hash);
+  TORCH_CHECK(jk_component.opt_builder, "[VICReg_4D::ctor] opt_builder is null");
+  TORCH_CHECK(jk_component.sched_builder, "[VICReg_4D::ctor] sched_builder is null");
 
-  optimizer = cuwacunu::jkimyei::jk_setup(component_name).opt_builder->build(trainable_params_);
-  lr_sched  = cuwacunu::jkimyei::jk_setup(component_name).sched_builder->build(*optimizer);
-  loss_obj  = std::make_unique<VicRegLoss>(cuwacunu::jkimyei::jk_setup(component_name));
+  optimizer = jk_component.opt_builder->build(trainable_params_);
+  lr_sched  = jk_component.sched_builder->build(*optimizer);
+  loss_obj  = std::make_unique<VicRegLoss>(jk_component);
+  load_jkimyei_training_policy(jk_component);
 
   display_model();
   warm_up();
 }
 
 VICReg_4D::VICReg_4D(
+  const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
   const std::string& component_name_, 
   int C_, int T_, int D_
 )
 : VICReg_4D(
+    contract_hash_,
     component_name_,
     C_, T_, D_,
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoding_dims"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "channel_expansion_dim"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "fused_feature_dim"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoder_hidden_dims"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "encoder_depth"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_mlp_spec"),
-    cuwacunu::piaabo::dconfig::config_dtype ("VICReg"),
-    cuwacunu::piaabo::dconfig::config_device("VICReg"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>("VICReg", "optimizer_threshold_reset"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<bool>("VICReg", "enable_buffer_averaging")
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
+        contract_hash_, "VICReg", "encoding_dims"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
+        contract_hash_, "VICReg", "channel_expansion_dim"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
+        contract_hash_, "VICReg", "fused_feature_dim"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
+        contract_hash_, "VICReg", "encoder_hidden_dims"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
+        contract_hash_, "VICReg", "encoder_depth"),
+    cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+        contract_hash_, "VICReg", "projector_mlp_spec"),
+    cuwacunu::piaabo::dconfig::config_dtype(contract_hash_, "VICReg"),
+    cuwacunu::piaabo::dconfig::config_device(contract_hash_, "VICReg"),
+    -1,
+    cuwacunu::piaabo::dconfig::contract_space_t::get<bool>(
+        contract_hash_, "VICReg", "enable_buffer_averaging")
 ) {
   // Force presence of projector option keys early (fail fast)
-  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_norm");
-  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_activation");
-  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_hidden_bias");
-  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_last_bias");
-  (void) cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
+  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_norm");
+  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_activation");
+  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_hidden_bias");
+  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_last_bias");
+  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_bn_in_fp32");
 
   log_info("Initialized VICReg encoder from Configuration file...\n");
 }
 
-VICReg_4D::VICReg_4D(const std::string& checkpoint_path,
+VICReg_4D::VICReg_4D(
+                     const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+                     const std::string& checkpoint_path,
                      torch::Device override_device)
 : VICReg_4D(
+    contract_hash_,
     read_component_name(checkpoint_path),
     read_i64_strict(checkpoint_path, "meta/C"),
     read_i64_strict(checkpoint_path, "meta/T"),
@@ -235,6 +262,280 @@ VICReg_4D::VICReg_4D(const std::string& checkpoint_path,
     static_cast<bool>(read_i64_strict(checkpoint_path, "meta/enable_buffer_averaging"))
 ) {
   this->load(checkpoint_path);
+}
+
+void VICReg_4D::reset_runtime_training_state() {
+  runtime_iter_count_ = 0;
+  runtime_accum_counter_ = 0;
+  runtime_has_pending_grad_ = false;
+  runtime_pending_loss_sum_ = 0.0;
+  runtime_pending_loss_count_ = 0;
+  runtime_last_committed_loss_mean_ = 0.0;
+  if (optimizer) optimizer->zero_grad(jk_zero_grad_set_to_none);
+}
+
+VICReg_4D::train_step_result_t VICReg_4D::train_one_batch(
+    const torch::Tensor& data,
+    const torch::Tensor& mask,
+    int swa_start_iter,
+    bool verbose) {
+  train_step_result_t result{};
+
+  TORCH_CHECK(optimizer, "[VICReg_4D::train_one_batch] optimizer is null");
+  TORCH_CHECK(loss_obj, "[VICReg_4D::train_one_batch] loss object is null");
+  TORCH_CHECK(data.defined(), "[VICReg_4D::train_one_batch] data is undefined");
+  TORCH_CHECK(mask.defined(), "[VICReg_4D::train_one_batch] mask is undefined");
+  TORCH_CHECK(!data.requires_grad() && !data.grad_fn(),
+      "[VICReg_4D::train_one_batch] data must not require grad");
+  TORCH_CHECK(!mask.requires_grad() && !mask.grad_fn(),
+      "[VICReg_4D::train_one_batch] mask must not require grad");
+  TORCH_CHECK(data.dim() == 4,
+      "[VICReg_4D::train_one_batch] data.dim()=" + std::to_string(data.dim()) +
+      " (expected 4: [B,C,T,D])");
+  TORCH_CHECK(data.size(1) == C && data.size(2) == T && data.size(3) == D,
+      "[VICReg_4D::train_one_batch] data shape mismatch");
+  TORCH_CHECK(mask.dim() == 3,
+      "[VICReg_4D::train_one_batch] mask.dim()=" + std::to_string(mask.dim()) +
+      " (expected 3: [B,C,T])");
+  TORCH_CHECK(mask.size(1) == C && mask.size(2) == T,
+      "[VICReg_4D::train_one_batch] mask shape mismatch");
+
+  if (!runtime_has_pending_grad_) {
+    optimizer->zero_grad(jk_zero_grad_set_to_none);
+  }
+
+  _encoder_net->train();
+  _projector_net->train();
+  _swa_encoder_net->encoder().train();
+
+  auto data_d = data.to(device);
+  auto mask_d = mask.to(device);
+
+  auto [d1, m1] = aug.augment(data_d, mask_d);
+  auto [d2, m2] = aug.augment(data_d, mask_d);
+
+  if (verbose && (runtime_iter_count_ % 100 == 0)) {
+    auto shared_bt = (m1 & m2).all(/*dim=*/1);
+    auto shared_mask =
+        shared_bt.unsqueeze(1).unsqueeze(-1).expand_as(d1);
+    const double diff =
+        (d1.masked_select(shared_mask) - d2.masked_select(shared_mask))
+            .abs()
+            .mean()
+            .template item<double>();
+    TORCH_CHECK(
+        diff > 1e-6,
+        "[VICReg_4D::train_one_batch] augmentation produced identical views on shared valid region");
+  }
+
+  auto k1 = _encoder_net(d1, m1);
+  auto k2 = _encoder_net(d2, m2);
+
+  auto valid_bt = (m1 & m2).all(/*dim=*/1);
+  auto expand_E = [&](int64_t E) {
+    return valid_bt.unsqueeze(-1).expand({k1.size(0), k1.size(1), E});
+  };
+  auto k1v =
+      k1.masked_select(expand_E(k1.size(-1))).view({-1, k1.size(-1)});
+  auto k2v =
+      k2.masked_select(expand_E(k2.size(-1))).view({-1, k2.size(-1)});
+
+  const int64_t N_eff = k1v.size(0);
+  if (N_eff <= 1) {
+    result.skipped = true;
+    return result;
+  }
+
+  auto z1v = _projector_net->forward_flat(k1v);
+  auto z2v = _projector_net->forward_flat(k2v);
+
+  auto terms = loss_obj->forward_terms(z1v, z2v);
+  constexpr int cov_ramp_iters = 3000;
+  const double cov_boost = (runtime_iter_count_ < cov_ramp_iters)
+      ? (3.0 - 2.0 * (static_cast<double>(runtime_iter_count_) /
+                      static_cast<double>(cov_ramp_iters)))
+      : 1.0;
+  auto loss = loss_obj->sim_coeff_ * terms.inv +
+              loss_obj->std_coeff_ * terms.var +
+              (loss_obj->cov_coeff_ * cov_boost) * terms.cov;
+
+  const double loss_scalar = loss.template item<double>();
+  if (!std::isfinite(loss_scalar)) {
+    if (jk_skip_on_nan) {
+      optimizer->zero_grad(jk_zero_grad_set_to_none);
+      runtime_accum_counter_ = 0;
+      runtime_has_pending_grad_ = false;
+      runtime_pending_loss_sum_ = 0.0;
+      runtime_pending_loss_count_ = 0;
+      result.skipped = true;
+      return result;
+    }
+    TORCH_CHECK(
+        false,
+        "[VICReg_4D::train_one_batch] non-finite loss detected and skip_on_nan=false");
+  }
+
+  runtime_pending_loss_sum_ += loss_scalar;
+  ++runtime_pending_loss_count_;
+
+  auto backprop_loss = (jk_accumulate_steps > 1)
+      ? (loss / static_cast<double>(jk_accumulate_steps))
+      : loss;
+  backprop_loss.backward();
+  runtime_has_pending_grad_ = true;
+  ++runtime_accum_counter_;
+
+  result.loss = loss.detach().to(torch::kCPU);
+
+  if (runtime_accum_counter_ < std::max(1, jk_accumulate_steps)) {
+    return result;
+  }
+
+  std::vector<torch::Tensor> all_p;
+  all_p.reserve(_encoder_net->parameters().size() + _projector_net->parameters().size());
+  for (auto& p : _encoder_net->parameters()) all_p.push_back(p);
+  for (auto& p : _projector_net->parameters()) all_p.push_back(p);
+
+  std::vector<torch::Tensor> clip_vec;
+  clip_vec.reserve(all_p.size());
+  for (const auto& p : all_p) {
+    const auto g = p.grad();
+    if (g.defined()) clip_vec.push_back(p);
+  }
+  if (!clip_vec.empty()) {
+    if (jk_clip_value > 0.0) {
+      torch::nn::utils::clip_grad_value_(clip_vec, jk_clip_value);
+    }
+    if (jk_clip_norm > 0.0) {
+      torch::nn::utils::clip_grad_norm_(clip_vec, jk_clip_norm);
+    } else {
+      const double clip_max = (runtime_iter_count_ < 1500) ? 5.0 : 1.0;
+      torch::nn::utils::clip_grad_norm_(clip_vec, clip_max);
+    }
+  }
+
+  bool grad_is_finite = true;
+  for (const auto& p : all_p) {
+    const auto g = p.grad();
+    if (!g.defined()) continue;
+    if (!torch::isfinite(g).all().template item<bool>()) {
+      grad_is_finite = false;
+      break;
+    }
+  }
+  if (!grad_is_finite) {
+    if (jk_skip_on_nan) {
+      optimizer->zero_grad(jk_zero_grad_set_to_none);
+      runtime_accum_counter_ = 0;
+      runtime_has_pending_grad_ = false;
+      runtime_pending_loss_sum_ = 0.0;
+      runtime_pending_loss_count_ = 0;
+      result.skipped = true;
+      return result;
+    }
+    TORCH_CHECK(
+        false,
+        "[VICReg_4D::train_one_batch] non-finite gradients detected and skip_on_nan=false");
+  }
+
+  optimizer->step();
+  if (lr_sched &&
+      lr_sched->mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch) {
+    lr_sched->step();
+  }
+
+  const int effective_swa_start_iter =
+      (swa_start_iter >= 0) ? swa_start_iter : jk_swa_start_iter;
+  if (jk_vicreg_use_swa && runtime_iter_count_ >= effective_swa_start_iter) {
+    _swa_encoder_net->update_parameters(_encoder_net);
+  }
+
+  runtime_last_committed_loss_mean_ =
+      (runtime_pending_loss_count_ > 0)
+          ? (runtime_pending_loss_sum_ /
+             static_cast<double>(runtime_pending_loss_count_))
+          : 0.0;
+  runtime_pending_loss_sum_ = 0.0;
+  runtime_pending_loss_count_ = 0;
+  runtime_accum_counter_ = 0;
+  runtime_has_pending_grad_ = false;
+  ++runtime_iter_count_;
+  result.optimizer_step_applied = true;
+  return result;
+}
+
+bool VICReg_4D::finalize_pending_training_step(int swa_start_iter) {
+  if (!runtime_has_pending_grad_ || runtime_accum_counter_ <= 0) return false;
+
+  std::vector<torch::Tensor> all_p;
+  all_p.reserve(_encoder_net->parameters().size() + _projector_net->parameters().size());
+  for (auto& p : _encoder_net->parameters()) all_p.push_back(p);
+  for (auto& p : _projector_net->parameters()) all_p.push_back(p);
+
+  std::vector<torch::Tensor> clip_vec;
+  clip_vec.reserve(all_p.size());
+  for (const auto& p : all_p) {
+    const auto g = p.grad();
+    if (g.defined()) clip_vec.push_back(p);
+  }
+  if (!clip_vec.empty()) {
+    if (jk_clip_value > 0.0) {
+      torch::nn::utils::clip_grad_value_(clip_vec, jk_clip_value);
+    }
+    if (jk_clip_norm > 0.0) {
+      torch::nn::utils::clip_grad_norm_(clip_vec, jk_clip_norm);
+    } else {
+      const double clip_max = (runtime_iter_count_ < 1500) ? 5.0 : 1.0;
+      torch::nn::utils::clip_grad_norm_(clip_vec, clip_max);
+    }
+  }
+
+  bool grad_is_finite = true;
+  for (const auto& p : all_p) {
+    const auto g = p.grad();
+    if (!g.defined()) continue;
+    if (!torch::isfinite(g).all().template item<bool>()) {
+      grad_is_finite = false;
+      break;
+    }
+  }
+  if (!grad_is_finite) {
+    if (jk_skip_on_nan) {
+      optimizer->zero_grad(jk_zero_grad_set_to_none);
+      runtime_accum_counter_ = 0;
+      runtime_has_pending_grad_ = false;
+      runtime_pending_loss_sum_ = 0.0;
+      runtime_pending_loss_count_ = 0;
+      return false;
+    }
+    TORCH_CHECK(
+        false,
+        "[VICReg_4D::finalize_pending_training_step] non-finite gradients detected and skip_on_nan=false");
+  }
+
+  optimizer->step();
+  if (lr_sched &&
+      lr_sched->mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch) {
+    lr_sched->step();
+  }
+
+  const int effective_swa_start_iter =
+      (swa_start_iter >= 0) ? swa_start_iter : jk_swa_start_iter;
+  if (jk_vicreg_use_swa && runtime_iter_count_ >= effective_swa_start_iter) {
+    _swa_encoder_net->update_parameters(_encoder_net);
+  }
+
+  runtime_last_committed_loss_mean_ =
+      (runtime_pending_loss_count_ > 0)
+          ? (runtime_pending_loss_sum_ /
+             static_cast<double>(runtime_pending_loss_count_))
+          : 0.0;
+  runtime_pending_loss_sum_ = 0.0;
+  runtime_pending_loss_count_ = 0;
+  runtime_accum_counter_ = 0;
+  runtime_has_pending_grad_ = false;
+  ++runtime_iter_count_;
+  return true;
 }
 
 // -------------------- runtime helpers --------------------
@@ -360,7 +661,7 @@ void VICReg_4D::save(const std::string& path)
              dtype == torch::kFloat32 ? "f32" :
              dtype == torch::kFloat64 ? "f64" : "other"));
   write_str(root, "meta/device", "cpu");
-  write_str(root, "meta/jk/component_name", cuwacunu::jkimyei::jk_setup(component_name).name);
+  write_str(root, "meta/jk/component_name", cuwacunu::jkimyei::jk_setup(component_name, contract_hash).name);
 
   root.save_to(path);
 
@@ -382,16 +683,16 @@ void VICReg_4D::load(const std::string& path)
   // (re)build jk_component / optimizer from component_name if needed
   const auto component_name = read_str_strict(path, "meta/jk/component_name");
   if (!component_name.empty()) {
-    if (!optimizer && cuwacunu::jkimyei::jk_setup(component_name).opt_builder) {
+    if (!optimizer && cuwacunu::jkimyei::jk_setup(component_name, contract_hash).opt_builder) {
       std::vector<at::Tensor> params;
       for (auto& p : this->parameters(/*recurse=*/true)) if (p.requires_grad()) params.push_back(p);
-      optimizer = cuwacunu::jkimyei::jk_setup(component_name).opt_builder->build(params);
+      optimizer = cuwacunu::jkimyei::jk_setup(component_name, contract_hash).opt_builder->build(params);
     }
-    if (cuwacunu::jkimyei::jk_setup(component_name).sched_builder && optimizer) {
-      lr_sched = cuwacunu::jkimyei::jk_setup(component_name).sched_builder->build(*optimizer);
+    if (cuwacunu::jkimyei::jk_setup(component_name, contract_hash).sched_builder && optimizer) {
+      lr_sched = cuwacunu::jkimyei::jk_setup(component_name, contract_hash).sched_builder->build(*optimizer);
     }
     if (!loss_obj) {
-      loss_obj = std::make_unique<VicRegLoss>(cuwacunu::jkimyei::jk_setup(component_name));
+      loss_obj = std::make_unique<VicRegLoss>(cuwacunu::jkimyei::jk_setup(component_name, contract_hash));
     }
   }
 
@@ -421,6 +722,69 @@ void VICReg_4D::load(const std::string& path)
   log_info("VICReg model loaded from : %s \n", path.c_str());
 }
 
+void VICReg_4D::load_jkimyei_training_policy(
+    const cuwacunu::jkimyei::jk_component_t& jk_component) {
+  TORCH_CHECK(
+      !jk_component.resolved_component_id.empty(),
+      "[VICReg_4D::load_jkimyei_training_policy] empty resolved_component_id for component '",
+      component_name,
+      "'");
+  TORCH_CHECK(
+      !jk_component.resolved_profile_id.empty(),
+      "[VICReg_4D::load_jkimyei_training_policy] empty resolved_profile_id for component '",
+      component_name,
+      "'");
+  TORCH_CHECK(
+      !jk_component.resolved_profile_row_id.empty(),
+      "[VICReg_4D::load_jkimyei_training_policy] empty resolved_profile_row_id for component '",
+      component_name,
+      "'");
+
+  const auto component_row = jk_component.inst.retrive_row(
+      "component_profiles_table",
+      jk_component.resolved_profile_row_id);
+  const auto gradient_row = jk_component.inst.retrive_row(
+      "component_gradient_table",
+      jk_component.resolved_profile_row_id);
+
+  jk_vicreg_train = cuwacunu::camahjucunu::to_bool(
+      cuwacunu::camahjucunu::require_column(component_row, "vicreg_train"));
+  jk_vicreg_use_swa = cuwacunu::camahjucunu::to_bool(
+      cuwacunu::camahjucunu::require_column(component_row, "vicreg_use_swa"));
+  jk_vicreg_detach_to_cpu = cuwacunu::camahjucunu::to_bool(
+      cuwacunu::camahjucunu::require_column(component_row, "vicreg_detach_to_cpu"));
+  jk_swa_start_iter = static_cast<int>(cuwacunu::camahjucunu::to_long(
+      cuwacunu::camahjucunu::require_column(component_row, "swa_start_iter")));
+  const int jk_optimizer_threshold_reset = static_cast<int>(cuwacunu::camahjucunu::to_long(
+      cuwacunu::camahjucunu::require_column(component_row, "optimizer_threshold_reset")));
+  if (optimizer_threshold_reset < 0) {
+    optimizer_threshold_reset = jk_optimizer_threshold_reset;
+  }
+
+  const long accumulate_steps = cuwacunu::camahjucunu::to_long(
+      cuwacunu::camahjucunu::require_column(gradient_row, "accumulate_steps"));
+  TORCH_CHECK(
+      accumulate_steps >= 1,
+      "[VICReg_4D::load_jkimyei_training_policy] accumulate_steps must be >= 1");
+  jk_accumulate_steps = static_cast<int>(accumulate_steps);
+
+  jk_clip_norm = cuwacunu::camahjucunu::to_double(
+      cuwacunu::camahjucunu::require_column(gradient_row, "clip_norm"));
+  jk_clip_value = cuwacunu::camahjucunu::to_double(
+      cuwacunu::camahjucunu::require_column(gradient_row, "clip_value"));
+  TORCH_CHECK(
+      jk_clip_norm >= 0.0,
+      "[VICReg_4D::load_jkimyei_training_policy] clip_norm must be >= 0");
+  TORCH_CHECK(
+      jk_clip_value >= 0.0,
+      "[VICReg_4D::load_jkimyei_training_policy] clip_value must be >= 0");
+
+  jk_skip_on_nan = cuwacunu::camahjucunu::to_bool(
+      cuwacunu::camahjucunu::require_column(gradient_row, "skip_on_nan"));
+  jk_zero_grad_set_to_none = cuwacunu::camahjucunu::to_bool(
+      cuwacunu::camahjucunu::require_column(gradient_row, "zero_grad_set_to_none"));
+}
+
 // -------------------- display --------------------
 
 void VICReg_4D::display_model() const {
@@ -440,11 +804,16 @@ void VICReg_4D::display_model() const {
 
   // Read projector options as strings for display
   using cuwacunu::piaabo::dconfig::config_space_t;
-  std::string norm_s   = contract_space_t::get<std::string>("VICReg", "projector_norm");
-  std::string act_s    = contract_space_t::get<std::string>("VICReg", "projector_activation");
-  std::string hbias_s  = contract_space_t::get<std::string>("VICReg", "projector_hidden_bias");
-  std::string lbias_s  = contract_space_t::get<std::string>("VICReg", "projector_last_bias");
-  std::string bnfp32_s = contract_space_t::get<std::string>("VICReg", "projector_bn_in_fp32");
+  std::string norm_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_norm");
+  std::string act_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_activation");
+  std::string hbias_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_hidden_bias");
+  std::string lbias_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_last_bias");
+  std::string bnfp32_s = contract_space_t::get<std::string>(
+      contract_hash, "VICReg", "projector_bn_in_fp32");
 
   const char* fmt =
     "\n%s \t[Representation Learning] VICReg_4D:  %s\n"
@@ -480,9 +849,9 @@ void VICReg_4D::display_model() const {
     ANSI_COLOR_Bright_Grey, "Channels  (C):",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  C,                              ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "Timesteps (T):",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  T,                              ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "Features  (D):",             ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  D,                              ANSI_COLOR_RESET,
-    ANSI_COLOR_Bright_Grey, "Optimizer:",                 ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  cuwacunu::jkimyei::jk_setup(component_name).opt_conf.id.c_str(),   ANSI_COLOR_RESET,
-    ANSI_COLOR_Bright_Grey, "LR Scheduler:",              ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  cuwacunu::jkimyei::jk_setup(component_name).sch_conf.id.c_str(),   ANSI_COLOR_RESET,
-    ANSI_COLOR_Bright_Grey, "Loss:",                      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  cuwacunu::jkimyei::jk_setup(component_name).loss_conf.id.c_str(),  ANSI_COLOR_RESET,
+    ANSI_COLOR_Bright_Grey, "Optimizer:",                 ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  cuwacunu::jkimyei::jk_setup(component_name, contract_hash).opt_conf.id.c_str(),   ANSI_COLOR_RESET,
+    ANSI_COLOR_Bright_Grey, "LR Scheduler:",              ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  cuwacunu::jkimyei::jk_setup(component_name, contract_hash).sch_conf.id.c_str(),   ANSI_COLOR_RESET,
+    ANSI_COLOR_Bright_Grey, "Loss:",                      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  cuwacunu::jkimyei::jk_setup(component_name, contract_hash).loss_conf.id.c_str(),  ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "    - Sim coeff (λ₁):",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  loss_obj->sim_coeff_,           ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "    - Std coeff (λ₂):",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  loss_obj->std_coeff_,           ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "    - Cov coeff (λ₃):",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  loss_obj->cov_coeff_,           ANSI_COLOR_RESET,

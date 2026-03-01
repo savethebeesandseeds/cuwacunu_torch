@@ -120,7 +120,7 @@ inline const std::vector<TrainingWikimyeiDoc>& training_wikimyei_docs() {
           "encodes batches into latent space and emits train-time loss",
           ":tensor",
           true,
-          "Trainable wikimyei. Supports canonical @jkimyei and @weights endpoints.",
+          "Trainable wikimyei. Supports canonical @jkimyei endpoint.",
       },
   };
   return docs;

@@ -6,17 +6,43 @@
 #include <torch/nn/functional/loss.h>
 #include <cassert>
 #include <cmath>
+#include <unordered_set>
 
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "jkimyei/api/schema_catalog.h"
 
 namespace cuwacunu {
 namespace jkimyei {
+
+inline void ensure_loss_validation_coverage() {
+  static const bool kCoverageChecked = [] {
+    const std::unordered_set<std::string> kImplemented = {
+        "NLLLoss",
+        "VICReg",
+        "CrossEntropy",
+        "BinaryCrossEntropy",
+        "MeanSquaredError",
+        "Hinge",
+        "SmoothL1",
+        "L1Loss"};
+    for (const auto& type : cuwacunu::jkimyei::api::supported_loss_types()) {
+      if (kImplemented.find(type) == kImplemented.end()) {
+        throw std::runtime_error(
+            "loss declared in jkimyei_schema.def but not validated in jk_losses: " + type);
+      }
+    }
+    return true;
+  }();
+  (void)kCoverageChecked;
+}
 /* Map a config-row (DSL spec) to a concrete loss.
  * - Enforces exact columns: {row_id, type, options}
  * - Enforces exact options per loss (no extras, no missing)
  */
 inline void validate_loss(const cuwacunu::camahjucunu::jkimyei_specs_t& inst,
                           const std::string& row_id) {
+  ensure_loss_validation_coverage();
+
   const auto& row = inst.retrive_row("loss_functions_table", row_id);
 
   // Exact columns; allow empties.
@@ -24,6 +50,8 @@ inline void validate_loss(const cuwacunu::camahjucunu::jkimyei_specs_t& inst,
       row, { ROW_ID_COLUMN_HEADER, "type", "options" }, /*enforce_nonempty=*/false);
 
   const std::string type = cuwacunu::camahjucunu::require_column(row, "type");
+  const std::string canonical_type = (type == "MSE") ? "MeanSquaredError" : type;
+  cuwacunu::jkimyei::api::require_loss_type_registered(canonical_type);
 
   auto ensure_no_options = [&]() {
     auto it = row.find("options");
@@ -46,32 +74,32 @@ inline void validate_loss(const cuwacunu::camahjucunu::jkimyei_specs_t& inst,
     }
   };
 
-  if (type == "NLLLoss") { // MDN-NLL (no configurable options)
+  if (canonical_type == "NLLLoss") { // MDN-NLL
     cuwacunu::camahjucunu::validate_options_exact(row, { "eps", "sigma_min", "sigma_max", "reduction" });
     
-  } else if (type == "MeanSquaredError" || type == "MSE") { // alias allowed
+  } else if (canonical_type == "MeanSquaredError") {
     ensure_no_options();
 
-  } else if (type == "L1Loss") {
+  } else if (canonical_type == "L1Loss") {
     ensure_no_options();
 
-  } else if (type == "CrossEntropy") {
+  } else if (canonical_type == "CrossEntropy") {
     cuwacunu::camahjucunu::validate_options_exact(row, { "label_smoothing" });
 
-  } else if (type == "BinaryCrossEntropy" /*|| type == "BCEWithLogits"*/) {
+  } else if (canonical_type == "BinaryCrossEntropy") {
     cuwacunu::camahjucunu::validate_options_exact(row, { "pos_weight" });
 
-  } else if (type == "SmoothL1") {
+  } else if (canonical_type == "SmoothL1") {
     cuwacunu::camahjucunu::validate_options_exact(row, { "beta" });
 
-  } else if (type == "Hinge") {
+  } else if (canonical_type == "Hinge") {
     cuwacunu::camahjucunu::validate_options_exact(row, { "margin" });
 
-  } else if (type == "VICReg") {
+  } else if (canonical_type == "VICReg") {
     cuwacunu::camahjucunu::validate_options_exact(row, { "sim_coeff", "std_coeff", "cov_coeff", "huber_delta" });
 
   } else {
-    throw std::runtime_error("Unknown loss_function type: " + type);
+    throw std::runtime_error("Unknown loss_function type: " + canonical_type);
   }
 }
 

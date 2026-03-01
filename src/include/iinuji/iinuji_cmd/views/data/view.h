@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/types/types_enums.h"
 
 #include "iinuji/iinuji_cmd/views/common.h"
@@ -265,10 +265,10 @@ inline std::size_t feature_dims_for_record_type(std::string_view record_type) {
 }
 
 inline std::string data_focus_instrument(const BoardState* board_view,
-                                         const cuwacunu::camahjucunu::observation_instruction_t& obs) {
-  if (board_view && board_view->ok && !board_view->board.circuits.empty()) {
+                                         const cuwacunu::camahjucunu::observation_spec_t& obs) {
+  if (board_view && board_view->ok && !board_view->board.contracts.empty()) {
     const std::string from_board =
-        cuwacunu::camahjucunu::circuit_invoke_symbol(board_view->board.circuits.front());
+        cuwacunu::camahjucunu::circuit_invoke_symbol(board_view->board.contracts.front());
     if (!from_board.empty()) return from_board;
   }
   if (!obs.source_forms.empty()) return obs.source_forms.front().instrument;
@@ -291,13 +291,27 @@ inline std::string format_bytes_approx(std::uintmax_t bytes) {
 
 inline DataState load_data_view_from_config(const BoardState* board_view = nullptr) {
   DataState out{};
-  out.batch_size = static_cast<std::size_t>(cuwacunu::piaabo::dconfig::config_space_t::get<int>(
-      "DATA_LOADER", "dataloader_batch_size"));
-  out.raw_instruction = cuwacunu::camahjucunu::observation_instruction_source_dump_from_config();
+  if (!board_view || board_view->contract_hash.empty()) {
+    out.ok = false;
+    out.error = "missing board contract hash for data view";
+    return out;
+  }
+  const std::string contract_hash = board_view->contract_hash;
+  if (board_view->ok && !board_view->board.contracts.empty() &&
+      board_view->board.contracts.front().execution.batch_size > 0) {
+    out.batch_size =
+        static_cast<std::size_t>(board_view->board.contracts.front().execution.batch_size);
+  } else {
+    out.batch_size = 64;
+  }
+  out.raw_instruction =
+      cuwacunu::camahjucunu::observation_spec_source_dump_from_contract(
+          contract_hash);
 
-  cuwacunu::camahjucunu::observation_instruction_t obs{};
+  cuwacunu::camahjucunu::observation_spec_t obs{};
   try {
-    obs = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
+    obs = cuwacunu::camahjucunu::decode_observation_spec_from_contract(
+        contract_hash);
   } catch (const std::exception& e) {
     out.ok = false;
     out.error = std::string("decode failed: ") + e.what();
@@ -400,7 +414,7 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
   if (!dims_set.empty()) out.feature_dims = *dims_set.begin();
   out.ok = true;
   if (out.channels.empty()) {
-    out.error = "no active channels resolved from observation pipeline";
+    out.error = "no active channels resolved from observation spec";
   }
   return out;
 }

@@ -216,22 +216,26 @@ static torch::Device parse_device(const std::string& s)
 }
 
 /* ───────────── public config accessors ───────────── */
-torch::Dtype config_dtype(const std::string& section) {
+torch::Dtype config_dtype(const contract_hash_t& contract_hash,
+                          const std::string& section) {
   if (section == "GENERAL") {
     return parse_dtype(
         cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL", "dtype"));
   }
   return parse_dtype(
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(section, "dtype"));
+      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+          contract_hash, section, "dtype"));
 }
 
-torch::Device config_device(const std::string& section) {
+torch::Device config_device(const contract_hash_t& contract_hash,
+                            const std::string& section) {
   if (section == "GENERAL") {
     return parse_device(
         cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL", "device"));
   }
   return parse_device(
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(section, "device"));
+      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
+          contract_hash, section, "device"));
 }
 
 } // namespace dconfig

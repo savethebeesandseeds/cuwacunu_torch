@@ -10,7 +10,19 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 # Build Rules
 # -----------------------------------------------------------------
-$(eval $(call BUILD_OBJ, common, tsiemene_circuit, dsl_tsiemene_circuit))
+$(eval $(call BUILD_OBJ, common, tsiemene_circuit_runtime_invoke, dsl_tsiemene_circuit_runtime_invoke))
+$(eval $(call BUILD_OBJ, common, tsiemene_circuit_runtime_resolve, dsl_tsiemene_circuit_runtime_resolve))
+$(eval $(call BUILD_OBJ, common, tsiemene_circuit_runtime_validate, dsl_tsiemene_circuit_runtime_validate))
+$(eval $(call BUILD_OBJ, common, tsiemene_circuit_decode_text, dsl_tsiemene_circuit_decode_text))
+$(eval $(call BUILD_OBJ, common, tsiemene_circuit_decode_ast, dsl_tsiemene_circuit_decode_ast))
+
+.PHONY: dsl_tsiemene_circuit
+dsl_tsiemene_circuit: \
+	dsl_tsiemene_circuit_runtime_invoke \
+	dsl_tsiemene_circuit_runtime_resolve \
+	dsl_tsiemene_circuit_runtime_validate \
+	dsl_tsiemene_circuit_decode_text \
+	dsl_tsiemene_circuit_decode_ast
 
 # -----------------------------------------------------------------
 # Aggregate Target

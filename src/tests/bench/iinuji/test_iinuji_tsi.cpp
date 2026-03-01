@@ -30,6 +30,7 @@ using cuwacunu::camahjucunu::tsiemene_resolved_hop_t;
 struct BoardViewData {
   bool ok{false};
   std::string error{};
+  std::string contract_hash{};
   std::string raw_instruction{};
   tsiemene_circuit_instruction_t board{};
   std::vector<std::vector<tsiemene_resolved_hop_t>> resolved_hops{};
@@ -266,9 +267,15 @@ static std::string make_circuit_info(const tsiemene_circuit_decl_t& c,
 
 static BoardViewData load_board_from_config() {
   BoardViewData out{};
-  out.raw_instruction = cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_dsl();
+  out.contract_hash =
+      cuwacunu::piaabo::dconfig::config_space_t::locked_contract_hash();
+  out.raw_instruction =
+      cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_dsl(
+          out.contract_hash);
 
-  auto parser = cuwacunu::camahjucunu::dsl::tsiemeneCircuits();
+  auto parser = cuwacunu::camahjucunu::dsl::tsiemeneCircuits(
+      cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_grammar(
+          out.contract_hash));
   out.board = parser.decode(out.raw_instruction);
 
   std::string error;
@@ -279,11 +286,11 @@ static BoardViewData load_board_from_config() {
   }
 
   out.resolved_hops.clear();
-  out.resolved_hops.reserve(out.board.circuits.size());
-  for (std::size_t i = 0; i < out.board.circuits.size(); ++i) {
+  out.resolved_hops.reserve(out.board.contracts.size());
+  for (std::size_t i = 0; i < out.board.contracts.size(); ++i) {
     std::vector<tsiemene_resolved_hop_t> rh;
     std::string resolve_error;
-    if (!cuwacunu::camahjucunu::resolve_hops(out.board.circuits[i], &rh, &resolve_error)) {
+    if (!cuwacunu::camahjucunu::resolve_hops(out.board.contracts[i], &rh, &resolve_error)) {
       out.ok = false;
       out.error = "circuit[" + std::to_string(i) + "] " + resolve_error;
       return out;
@@ -309,9 +316,9 @@ static std::string make_status(const BoardViewData& b, std::size_t selected_idx)
         << " | press r reload | q quit";
     return oss.str();
   }
-  oss << "board circuits=" << b.board.circuits.size();
-  if (!b.board.circuits.empty()) {
-    oss << " selected=" << (selected_idx + 1) << "/" << b.board.circuits.size();
+  oss << "board circuits=" << b.board.contracts.size();
+  if (!b.board.contracts.empty()) {
+    oss << " selected=" << (selected_idx + 1) << "/" << b.board.contracts.size();
   }
   oss << " | Left/Right p/n switch | r reload | q quit";
   return oss.str();
@@ -400,7 +407,7 @@ int main() try {
   std::size_t selected = 0;
 
   auto refresh_content = [&]() {
-    if (!board_view.ok || board_view.board.circuits.empty()) {
+    if (!board_view.ok || board_view.board.contracts.empty()) {
       selected = 0;
       set_text_content(
           title,
@@ -418,15 +425,15 @@ int main() try {
       return;
     }
 
-    if (selected >= board_view.board.circuits.size()) selected = 0;
-    const auto& c = board_view.board.circuits[selected];
+    if (selected >= board_view.board.contracts.size()) selected = 0;
+    const auto& c = board_view.board.contracts[selected];
     const auto& hops = board_view.resolved_hops[selected];
 
     set_text_content(
         title,
         "tsiemene board visualizer - " + c.name);
     set_text_content(canvas_box, make_circuit_canvas(c, hops));
-    set_text_content(info_box, make_circuit_info(c, hops, selected, board_view.board.circuits.size()));
+    set_text_content(info_box, make_circuit_info(c, hops, selected, board_view.board.contracts.size()));
     set_text_content(status, make_status(board_view, selected));
   };
 
@@ -453,12 +460,12 @@ int main() try {
       continue;
     }
 
-    if (board_view.ok && !board_view.board.circuits.empty()) {
+    if (board_view.ok && !board_view.board.contracts.empty()) {
       if (ch == KEY_RIGHT || ch == 'n') {
-        selected = (selected + 1) % board_view.board.circuits.size();
+        selected = (selected + 1) % board_view.board.contracts.size();
         refresh_content();
       } else if (ch == KEY_LEFT || ch == 'p') {
-        selected = (selected + board_view.board.circuits.size() - 1) % board_view.board.circuits.size();
+        selected = (selected + board_view.board.contracts.size() - 1) % board_view.board.contracts.size();
         refresh_content();
       }
     }

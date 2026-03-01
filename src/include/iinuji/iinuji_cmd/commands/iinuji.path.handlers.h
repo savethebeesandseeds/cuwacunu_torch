@@ -77,7 +77,8 @@ struct IinujiPathHandlers {
       for (std::size_t i = 0; i < specs.size(); ++i) {
         const auto id = static_cast<canonical_paths::PatternId>(i);
         const auto text = canonical_paths::pattern_text(id);
-        auto decoded = cuwacunu::camahjucunu::decode_canonical_path(std::string(text));
+        auto decoded = cuwacunu::camahjucunu::decode_canonical_path(
+            std::string(text));
         if (!decoded.ok) {
           throw std::logic_error(
               "invalid dynamic pattern in iinuji.paths.def: " + std::string(text) +
@@ -392,7 +393,13 @@ struct IinujiPathHandlers {
       normalized += "()";
     }
 
-    auto path = cuwacunu::camahjucunu::decode_canonical_path(normalized);
+    if (state.board.contract_hash.empty()) {
+      push_err("board contract hash is unavailable; reload board first");
+      return true;
+    }
+    const std::string contract_hash = state.board.contract_hash;
+    auto path =
+        cuwacunu::camahjucunu::decode_canonical_path(normalized, contract_hash);
     if (!path.ok) {
       push_err("invalid iinuji path: " + path.error);
       return true;
@@ -428,7 +435,13 @@ struct IinujiPathHandlers {
       return false;
     }
 
-    auto path = cuwacunu::camahjucunu::decode_canonical_path(canonical_raw);
+    if (state.board.contract_hash.empty()) {
+      push_err("board contract hash is unavailable; reload board first");
+      return false;
+    }
+    const std::string contract_hash = state.board.contract_hash;
+    auto path =
+        cuwacunu::camahjucunu::decode_canonical_path(canonical_raw, contract_hash);
     if (!path.ok) {
       push_err("invalid canonical iinuji path: " + path.error);
       return false;

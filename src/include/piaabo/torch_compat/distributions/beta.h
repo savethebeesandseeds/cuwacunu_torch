@@ -1,6 +1,5 @@
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
-#include "piaabo/darchitecture.h"
 #include "piaabo/torch_compat/torch_utils.h"
 #include "piaabo/torch_compat/distributions/gamma.h"
 /* As per indicated here: https://discuss.pytorch.org/t/torch-distributions-categorical/45747/6
@@ -39,7 +38,6 @@ public:
   torch::Tensor get_concentration1() const;
   torch::Tensor get_concentration0() const;
 };
-ENFORCE_ARCHITECTURE_DESIGN(Beta);
 } /* namespace distributions */
 } /* namespace torch_compat */
 } /* namespace piaabo */

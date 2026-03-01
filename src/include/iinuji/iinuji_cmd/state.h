@@ -46,7 +46,7 @@ struct CmdState {
 };
 
 inline bool board_has_circuits(const CmdState& st) {
-  return st.board.ok && !st.board.board.circuits.empty();
+  return st.board.ok && !st.board.board.contracts.empty();
 }
 
 inline void clamp_selected_circuit(CmdState& st) {
@@ -55,8 +55,8 @@ inline void clamp_selected_circuit(CmdState& st) {
     st.board.editing_contract_index = 0;
     return;
   }
-  if (st.board.selected_circuit >= st.board.board.circuits.size()) st.board.selected_circuit = 0;
-  if (st.board.editing_contract_index >= st.board.board.circuits.size()) {
+  if (st.board.selected_circuit >= st.board.board.contracts.size()) st.board.selected_circuit = 0;
+  if (st.board.editing_contract_index >= st.board.board.contracts.size()) {
     st.board.editing_contract_index = st.board.selected_circuit;
   }
 }

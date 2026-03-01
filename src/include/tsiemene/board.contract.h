@@ -37,12 +37,15 @@ inline constexpr const char* kBoardContractObservationChannelsDslKey =
     board_contract_dsl_key::ContractObservationChannels;
 inline constexpr const char* kBoardContractJkimyeiSpecsDslKey =
     board_contract_dsl_key::ContractJkimyeiSpecs;
+inline constexpr const char* kBoardContractWaveDslKey =
+    board_contract_dsl_key::ContractWave;
 
-inline constexpr std::array<std::string_view, 4> kBoardContractRequiredDslKeys = {
+inline constexpr std::array<std::string_view, 5> kBoardContractRequiredDslKeys = {
     kBoardContractCircuitDslKey,
     kBoardContractObservationSourcesDslKey,
     kBoardContractObservationChannelsDslKey,
     kBoardContractJkimyeiSpecsDslKey,
+    kBoardContractWaveDslKey,
 };
 
 // Runtime circuit payload owned by a board contract.
@@ -56,8 +59,8 @@ struct BoardContractCircuit {
   std::vector<Hop> hops{};
 
   // Default execution seed for this circuit.
-  Wave wave0{};
-  Ingress ingress0{};
+  Wave seed_wave{};
+  Ingress seed_ingress{};
 
   // Persistent runtime cache for fast routing.
   CompiledCircuit compiled_runtime{};
@@ -117,6 +120,12 @@ struct BoardContractCircuit {
 struct BoardContract : public BoardContractCircuit {
   using DslSegments = std::map<std::string, std::string>;
 
+  struct Execution {
+    // Wave execution controls selected for this contract.
+    std::uint64_t epochs{1};
+    std::uint64_t batch_size{0};
+  };
+
   struct Spec {
     // Source identity for this contract's data stream (e.g., BTCUSDT).
     std::string instrument{};
@@ -152,9 +161,10 @@ struct BoardContract : public BoardContractCircuit {
       return batch_size_hint > 0 && channels > 0 && timesteps > 0 && features > 0;
     }
   } spec{};
+  Execution execution{};
   DslSegments dsl_segments{};
 
-  [[nodiscard]] static constexpr const std::array<std::string_view, 4>& required_dsl_keys() noexcept {
+  [[nodiscard]] static constexpr const std::array<std::string_view, 5>& required_dsl_keys() noexcept {
     return kBoardContractRequiredDslKeys;
   }
 

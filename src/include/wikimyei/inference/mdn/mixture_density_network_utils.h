@@ -115,8 +115,8 @@ inline torch::Tensor mdn_nll_map(const MdnOut& out,
   constexpr double LOG2PI = 1.8378770664093453; // log(2π)
 
   auto y_b   = y.unsqueeze(3).expand({B, C, Hf, K, Dy});               // [B,C,Hf,K,Dy]
-  auto diff  = (y_b - out.mu) / (sigma + eps_t);
-  auto perd  = -0.5 * diff.pow(2) - (sigma + eps_t).log() - 0.5 * LOG2PI; // [B,C,Hf,K,Dy]
+  auto diff  = (y_b - out.mu) / sigma;
+  auto perd  = -0.5 * diff.pow(2) - sigma.log() - 0.5 * LOG2PI; // [B,C,Hf,K,Dy]
   auto comp  = perd.sum(-1);                                            // [B,C,Hf,K]
   auto logp  = torch::logsumexp(out.log_pi + comp, /*dim=*/3);          // [B,C,Hf]
   auto nll   = -logp;                                                   // [B,C,Hf]

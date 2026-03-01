@@ -38,8 +38,13 @@ bool dispatch_tsi_call(CallHandlerId call_id,
       const std::string invoke_action = legacy_init_call
           ? "tsi.source.dataloader.init()"
           : "tsi.source.dataloader.create()";
+      if (state.board.contract_hash.empty()) {
+        push_err("tsi source.dataloader.create failed: board contract hash is unavailable");
+        return true;
+      }
       try {
-        const auto init = tsiemene::invoke_source_dataloader_init_from_config();
+        const auto init = tsiemene::invoke_source_dataloader_init_from_config(
+            state.board.contract_hash);
         if (!init.ok) {
           push_err("tsi source.dataloader.create failed: " + init.error);
           return true;
@@ -76,8 +81,13 @@ bool dispatch_tsi_call(CallHandlerId call_id,
         push_warn("no tsi.source.dataloader selected");
         return true;
       }
+      if (state.board.contract_hash.empty()) {
+        push_err("tsi source.dataloader.edit failed: board contract hash is unavailable");
+        return true;
+      }
       try {
-        const auto updated = tsiemene::update_source_dataloader_init_from_config(init_id);
+        const auto updated = tsiemene::update_source_dataloader_init_from_config(
+            init_id, state.board.contract_hash);
         if (!updated.ok) {
           push_err("tsi source.dataloader.edit failed: " + updated.error);
           return true;
@@ -218,19 +228,23 @@ bool dispatch_tsi_dataloader_edit(const cuwacunu::camahjucunu::canonical_path_t&
   std::string init_id;
   if (parse_string_arg(path, &init_id)) {
     if (path.segments.size() != 4) {
-      push_err("usage: " + canonical_paths::build_tsi_dataloader_edit("0x0"));
+      push_err("usage: " + canonical_paths::build_tsi_dataloader_edit("0x0000"));
       return true;
     }
   } else if (path.args.empty() && path.segments.size() == 5) {
     init_id = path.segments.back();
   } else if (!(path.args.empty() && path.segments.size() == 4)) {
-    push_err("usage: " + canonical_paths::build_tsi_dataloader_edit("0x0"));
+    push_err("usage: " + canonical_paths::build_tsi_dataloader_edit("0x0000"));
     return true;
   }
 
   if (init_id.empty()) init_id = selected_tsi_source_dataloader_id(state);
   if (init_id.empty()) {
     push_warn("no tsi.source.dataloader selected");
+    return true;
+  }
+  if (state.board.contract_hash.empty()) {
+    push_err("tsi source.dataloader.edit failed: board contract hash is unavailable");
     return true;
   }
   if (!tsiemene::is_valid_source_dataloader_init_id(init_id)) {
@@ -240,7 +254,8 @@ bool dispatch_tsi_dataloader_edit(const cuwacunu::camahjucunu::canonical_path_t&
 
   screen.tsi();
   try {
-    const auto updated = tsiemene::update_source_dataloader_init_from_config(init_id);
+    const auto updated = tsiemene::update_source_dataloader_init_from_config(
+        init_id, state.board.contract_hash);
     if (!updated.ok) {
       push_err("tsi source.dataloader.edit failed: " + updated.error);
       return true;
@@ -261,13 +276,13 @@ bool dispatch_tsi_dataloader_delete(const cuwacunu::camahjucunu::canonical_path_
   std::string init_id;
   if (parse_string_arg(path, &init_id)) {
     if (path.segments.size() != 4) {
-      push_err("usage: " + canonical_paths::build_tsi_dataloader_delete("0x0"));
+      push_err("usage: " + canonical_paths::build_tsi_dataloader_delete("0x0000"));
       return true;
     }
   } else if (path.args.empty() && path.segments.size() == 5) {
     init_id = path.segments.back();
   } else if (!(path.args.empty() && path.segments.size() == 4)) {
-    push_err("usage: " + canonical_paths::build_tsi_dataloader_delete("0x0"));
+    push_err("usage: " + canonical_paths::build_tsi_dataloader_delete("0x0000"));
     return true;
   }
 

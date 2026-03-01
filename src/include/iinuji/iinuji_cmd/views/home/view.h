@@ -26,9 +26,9 @@ struct IinujiHomeView {
     if (!st.board.ok) {
       oss << "  invalid instruction: " << st.board.error << "\n";
     } else {
-      oss << "  circuits=" << st.board.board.circuits.size() << "\n";
-      for (std::size_t i = 0; i < st.board.board.circuits.size(); ++i) {
-        oss << "  [" << (i + 1) << "] " << st.board.board.circuits[i].name << "\n";
+      oss << "  circuits=" << st.board.board.contracts.size() << "\n";
+      for (std::size_t i = 0; i < st.board.board.contracts.size(); ++i) {
+        oss << "  [" << (i + 1) << "] " << st.board.board.contracts[i].name << "\n";
       }
     }
     oss << "\nconfig tabs: " << st.config.tabs.size() << "\n";

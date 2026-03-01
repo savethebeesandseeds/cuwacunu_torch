@@ -5,7 +5,6 @@
 #include <type_traits>
 #include <optional>
 #include "piaabo/dutils.h"
-#include "piaabo/darchitecture.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

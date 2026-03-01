@@ -150,9 +150,10 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
   root->add_child(cmdline);
 
   CmdState state{};
-  state.config = load_config_view_from_config();
+  const auto boot_contract_hash = resolve_configured_board_contract_hash();
+  state.config = load_config_view_from_config(boot_contract_hash);
   clamp_selected_tab(state);
-  state.board = load_board_from_config();
+  state.board = load_board_from_contract_hash(boot_contract_hash);
   clamp_board_navigation_state(state);
   state.data = load_data_view_from_config(&state.board);
   clamp_selected_data_channel(state);
@@ -181,7 +182,7 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
   if (!state.board.ok) {
     log_warn("[iinuji_cmd] board invalid: %s\n", state.board.error.c_str());
   } else {
-    log_info("[iinuji_cmd] board loaded: circuits=%zu\n", state.board.board.circuits.size());
+    log_info("[iinuji_cmd] board loaded: circuits=%zu\n", state.board.board.contracts.size());
   }
   if (!state.data.ok) {
     log_warn("[iinuji_cmd] data view invalid: %s\n", state.data.error.c_str());

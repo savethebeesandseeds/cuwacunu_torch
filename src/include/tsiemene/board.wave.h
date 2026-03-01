@@ -18,26 +18,32 @@ using WaveId = std::uint64_t;
 //
 // Core fields:
 // - id: board/circuit wave stream id
-// - episode: outer episode index
+// - episode: outer episode index (run_contract maps epoch loop into this)
 // - batch: batch index inside the current episode
 // - i: monotonic event index in this wave stream
+struct WaveCursor {
+  WaveId id{};
+  std::uint64_t i{};
+  std::uint64_t episode{};
+  std::uint64_t batch{};
+};
+
+// Wave execution state carried through the whole circuit execution.
 //
 // Optional generic time-span:
 // - when has_time_span=true, [span_begin_ms, span_end_ms] can be consumed
 //   by source nodes that support range dispatch.
 struct Wave {
-  WaveId id{};
-  std::uint64_t i{};
-  std::uint64_t episode{};
-  std::uint64_t batch{};
+  WaveCursor cursor{};
+  std::uint64_t max_batches_per_epoch{};
   std::int64_t span_begin_ms{};
   std::int64_t span_end_ms{};
   bool has_time_span{false};
 };
 
 [[nodiscard]] inline Wave advance_wave_batch(Wave w) noexcept {
-  ++w.i;
-  ++w.batch;
+  ++w.cursor.i;
+  ++w.cursor.batch;
   return w;
 }
 

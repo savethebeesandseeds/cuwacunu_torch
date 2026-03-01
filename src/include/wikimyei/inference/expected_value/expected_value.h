@@ -8,7 +8,7 @@
  *  - Own an MDN (semantic_model) to model p(y|x) and produce expectations.
  *  - Train with MDN NLL + optional per-channel EMA reweighting + horizon/feature weights.
  *  - Provide telemetry (per-channel / per-horizon NLL).
- *  - Robust checkpointing implemented in .cpp via safe state-dict (no JIT pickler).
+ *  - Strict checkpoint format v2 (safe state-dict + required metadata).
  *
  * Loader concept (for the template methods):
  *   sample_batch.encoding         : Tensor [B,De] or [B,T',De]
@@ -48,12 +48,12 @@
 #include "wikimyei/inference/mdn/mixture_density_network_loss.h"
 #include "wikimyei/inference/mdn/mixture_density_network.h"
 
-#include "piaabo/torch_compat/optim/optimizers.h"
+#include "jkimyei/optim/optimizer_utils.h"
 
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
-#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "jkimyei/training_setup/jk_setup.h"
 
@@ -62,6 +62,7 @@ namespace wikimyei {
 
 class ExpectedValue {
 public:
+  cuwacunu::piaabo::dconfig::contract_hash_t contract_hash;
   // -------- training wiring --------
   std::string component_name;
 
@@ -74,9 +75,6 @@ public:
 
   // -------- model (architecture) --------
   cuwacunu::wikimyei::mdn::MdnModel semantic_model{nullptr};  // NOTE: initialize to nullptr
-
-  // -------- scheduler stepping --------
-  bool step_scheduler_per_iter_{true};
 
   // -------- horizon weighting policy --------
   enum class HorizonPolicy { Uniform, NearTerm, VeryNearTerm };
@@ -96,11 +94,14 @@ public:
   std::unique_ptr<cuwacunu::wikimyei::mdn::MdnNLLLoss> loss_obj;
 
   double grad_clip{1.0};
+  // Adam/AdamW step-counter clamp threshold applied post optimizer step (-1 disables).
   int    optimizer_threshold_reset{-1};
 
   // -------- Telemetry / checkpoint bookkeeping --------
   int64_t total_iters_trained_{0};
   int64_t total_epochs_trained_{0};
+  int64_t scheduler_batch_steps_{0};
+  int64_t scheduler_epoch_steps_{0};
   int     telemetry_every_{0};  // 0 = disabled
 
   // Best metric tracking (persisted in checkpoints)
@@ -113,7 +114,8 @@ public:
 
 public:
   // ---------- ctor ----------
-  explicit ExpectedValue(const std::string& component_name_);
+  explicit ExpectedValue(const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+                         const std::string& component_name_);
 
   // ---------- basic API ----------
   /// Note: these always reflect the underlying MdnModel.
@@ -175,9 +177,9 @@ public:
   template <typename Loader>
   double evaluate_nll(Loader& dataloader, bool verbose = false);
 
-  // ---------- checkpointing (safe state-dict, no JIT pickler) ----------
+  // ---------- checkpointing (strict format v2, no backward compatibility) ----------
   bool save_checkpoint(const std::string& path) const;
-  bool load_checkpoint(const std::string& path, bool strict = true);
+  bool load_checkpoint(const std::string& path);
 
 private:
   // ---------- archive helpers ----------
@@ -185,9 +187,6 @@ private:
   static int64_t ar_try_read_scalar_int64 (torch::serialize::InputArchive& ar, const char* key, int64_t def);
   static bool    ar_try_read_tensor       (torch::serialize::InputArchive& ar, const char* key, torch::Tensor& out);
   void display_model(bool display_semantic) const;
-
-  // ---------- scheduler helpers ----------
-  void replay_scheduler_progress();
 
   // Best-effort scheduler (de)serialization detection via SFINAE.
   template <typename T, typename = void>
@@ -213,11 +212,7 @@ private:
     return false;
   }
 
-  // ---------- optimizer guard ----------
-  /// Compatibility signature (kept for ABI). Avoids compiler "unused parameter" warnings by not naming it.
-  void maybe_reset_optimizer_state(double /*clip_threshold*/);
-  /// Preferred overload: pass a precomputed global grad-norm to avoid a second device→host sync.
-  void maybe_reset_optimizer_state_by_norm(double global_grad_norm);
+  static const char* scheduler_mode_name(cuwacunu::jkimyei::LRSchedulerAny::Mode mode);
 };
 
 // ======================================================================
@@ -318,27 +313,19 @@ ExpectedValue::fit(Loader& dataloader, int n_epochs, int n_iters, bool verbose)
       optimizer->zero_grad(true);
       loss.backward();
 
-      double grad_norm_before_clip = 0.0;
       if (do_clip) {
-        // Returns the total norm (pre-clip) and performs clipping in-place.
-        grad_norm_before_clip =
-          torch::nn::utils::clip_grad_norm_(semantic_model->parameters(), grad_clip);
-      } else {
-        // Compute the norm once without altering grads.
-        double sumsq = 0.0;
-        for (auto& p : semantic_model->parameters()) {
-          if (p.grad().defined()) {
-            auto g = p.grad();
-            sumsq += g.pow(2).sum().item<double>();
-          }
-        }
-        grad_norm_before_clip = std::sqrt(sumsq);
+        torch::nn::utils::clip_grad_norm_(semantic_model->parameters(), grad_clip);
       }
-      // Optional safety: reset momentum states if grads explode (uses the precomputed norm).
-      maybe_reset_optimizer_state_by_norm(grad_norm_before_clip);
 
       optimizer->step();
-      if (step_scheduler_per_iter_ && lr_sched) lr_sched->step();
+      if (optimizer_threshold_reset >= 0) {
+        cuwacunu::jkimyei::optim::clamp_adam_step(
+            *optimizer, static_cast<int64_t>(optimizer_threshold_reset));
+      }
+      if (lr_sched && lr_sched->mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch) {
+        lr_sched->step();
+        ++scheduler_batch_steps_;
+      }
 
       const double lval = loss.item().toDouble();
       cum_loss += lval;
@@ -349,12 +336,22 @@ ExpectedValue::fit(Loader& dataloader, int n_epochs, int n_iters, bool verbose)
       loss_log.emplace_back(iter_count, lval);
     } // dataloader
 
-    if (!step_scheduler_per_iter_ && lr_sched) lr_sched->step();
-
     const double epoch_loss = (epoch_iters > 0) ? (cum_loss / epoch_iters) : std::numeric_limits<double>::quiet_NaN();
     if (std::isfinite(epoch_loss) && epoch_loss < best_metric_) {
       best_metric_ = epoch_loss;
       best_epoch_  = epoch_count;
+    }
+
+    if (lr_sched && epoch_iters > 0) {
+      const auto mode = lr_sched->mode;
+      if (mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerEpoch) {
+        lr_sched->step();
+        ++scheduler_epoch_steps_;
+      } else if (mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerEpochWithMetric) {
+        const double metric = std::isfinite(epoch_loss) ? epoch_loss : best_metric_;
+        lr_sched->step(metric);
+        ++scheduler_epoch_steps_;
+      }
     }
 
     const double lr = cuwacunu::wikimyei::mdn::get_lr_generic(*optimizer);

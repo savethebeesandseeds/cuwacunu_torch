@@ -39,8 +39,8 @@ training_artifacts_for_selected_tab(const CmdState& st) {
                                                                                  std::string_view type_name) {
   std::vector<std::size_t> out;
   if (!st.board.ok) return out;
-  for (std::size_t ci = 0; ci < st.board.board.circuits.size(); ++ci) {
-    const auto& c = st.board.board.circuits[ci];
+  for (std::size_t ci = 0; ci < st.board.board.contracts.size(); ++ci) {
+    const auto& c = st.board.board.contracts[ci];
     for (const auto& inst : c.instances) {
       if (std::string_view(inst.tsi_type) == type_name) {
         out.push_back(ci);

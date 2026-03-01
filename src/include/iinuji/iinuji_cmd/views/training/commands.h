@@ -128,7 +128,6 @@ inline bool handle_training_show(CmdState& st, PushWarn&& push_warn, AppendLog&&
   }
   if (d.trainable_jkimyei) {
     append_log("jkimyei=" + base + "@jkimyei:tensor", "show", "#d8d8ff");
-    append_log("weights=" + base + "@weights:tensor", "show", "#d8d8ff");
   }
   return true;
 }

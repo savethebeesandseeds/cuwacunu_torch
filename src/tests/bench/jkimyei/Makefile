@@ -1,31 +1,27 @@
 # =============================================================================
-# tests/bench/jkimyei/Makefile — module aggregator
+# tests/bench/jkimyei/Makefile — jkimyei bench tests
 # =============================================================================
-# 0) Root & Config
 ROOT_PATH := ../../..
 include $(ROOT_PATH)/Makefile.config
 
-# 1) Local Paths
 HERE_PATH  := $(TESTS_PATH)/bench/jkimyei
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
-# 2) Defaults (libs/flags)
-# (none)
+TEST_DEFAULT_LDLIBS :=
 
-# 3) Tests (build + run aliases)
-# (none — aggregator)
+$(eval $(call TEST_ONEFILE, test_jk_setup, test_jk_setup.cpp))
 
-# 4) Target-specific includes/link flags
-# (none)
+$(TEST_OUT)/test_jk_setup: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_jk_setup: LDLIBS_EXTRA  += $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
 
-# 5) Aggregate: all
 .PHONY: all
-all:
-	+$(MAKE) -C $(HERE_PATH)/training_setup all
+all: $(TEST_OUT)/test_jk_setup
 	@$(LOG_SUCCESS)
 
-# 6) Aggregate: run
-# (not used here)
+.PHONY: run
+run: run-test_jk_setup
 
-# 7) Clean
-# (use subdir cleans if needed)
+.PHONY: clean
+clean:
+	@rm -f $(TEST_OUT)/test_jk_setup
+

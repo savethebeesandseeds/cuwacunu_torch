@@ -106,7 +106,7 @@ inline bool select_next_board_circuit(CmdState& st) {
     st.board.selected_circuit = 0;
     return false;
   }
-  st.board.selected_circuit = (st.board.selected_circuit + 1) % st.board.board.circuits.size();
+  st.board.selected_circuit = (st.board.selected_circuit + 1) % st.board.board.contracts.size();
   st.board.editing_contract_index = st.board.selected_circuit;
   return true;
 }
@@ -117,7 +117,7 @@ inline bool select_prev_board_circuit(CmdState& st) {
     return false;
   }
   st.board.selected_circuit =
-      (st.board.selected_circuit + st.board.board.circuits.size() - 1) % st.board.board.circuits.size();
+      (st.board.selected_circuit + st.board.board.contracts.size() - 1) % st.board.board.contracts.size();
   st.board.editing_contract_index = st.board.selected_circuit;
   return true;
 }
@@ -132,7 +132,7 @@ inline bool handle_board_show(CmdState& st,
     else push_warn("no contracts");
     return true;
   }
-  const auto& c = st.board.board.circuits[st.board.selected_circuit];
+  const auto& c = st.board.board.contracts[st.board.selected_circuit];
   append_log("contract=" + c.name, "show", "#d8d8ff");
   append_log("circuit.invoke=" + c.invoke_name + "(\"" + c.invoke_payload + "\")", "show", "#d8d8ff");
   append_log(

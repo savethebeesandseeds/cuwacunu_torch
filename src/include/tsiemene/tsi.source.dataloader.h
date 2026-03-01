@@ -22,7 +22,7 @@
 #include "tsiemene/tsi.source.h"
 
 // ---- Real dataloader hook -------------------------------------------------
-#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/data/observation_sample.h"
 #include "piaabo/dconfig.h"
@@ -32,6 +32,8 @@ namespace tsiemene {
 // NOTE:
 //  - Datatype_t is your record struct type (e.g. exchange::kline_t).
 //  - Sampler_t controls determinism/order (SequentialSampler vs RandomSampler).
+//  - Reproducibility contract: same dataset files + config + seed + sampler +
+//    command sequence yields the same emitted batch/key sequence.
 template <typename Datatype_t,
           typename Sampler_t = torch::data::samplers::RandomSampler>
 class TsiSourceDataloader final : public TsiSource {
@@ -48,40 +50,16 @@ class TsiSourceDataloader final : public TsiSource {
 
   TsiSourceDataloader(TsiId id,
                       std::string instrument,
-                      torch::Device device = torch::kCPU)
-      : id_(id),
-        instrument_(std::move(instrument)),
-        type_name_("tsi.source.dataloader"),
-        instance_name_(type_name_ + "." + instrument_),
-        device_(device),
-        dataset_(make_dataset_(instrument_)),
-        dl_(make_loader_(dataset_)) {
-    // Introspect shape from the real dataset:
-    C_ = dl_.C_;
-    T_ = dl_.T_;
-    D_ = dl_.D_;
-
-    // Batch size from DataLoaderOptions (used only for metadata / expectations).
-    // NOTE: last batch may be smaller.
-    B_hint_ = static_cast<int64_t>(dl_.inner().options().batch_size);
-
-    // Start first epoch iterator.
-    it_  = dl_.begin();
-    end_ = dl_.end();
-    iter_ready_ = true;
-  }
-
-  TsiSourceDataloader(TsiId id,
-                      std::string instrument,
-                      cuwacunu::camahjucunu::observation_instruction_t observation_instruction,
-                      torch::Device device = torch::kCPU)
+                      cuwacunu::camahjucunu::observation_spec_t observation_instruction,
+                      torch::Device device = torch::kCPU,
+                      std::size_t batch_size_override = 0)
       : id_(id),
         instrument_(std::move(instrument)),
         type_name_("tsi.source.dataloader"),
         instance_name_(type_name_ + "." + instrument_),
         device_(device),
         dataset_(make_dataset_(instrument_, std::move(observation_instruction))),
-        dl_(make_loader_(dataset_)) {
+        dl_(make_loader_(dataset_, batch_size_override)) {
     C_ = dl_.C_;
     T_ = dl_.T_;
     D_ = dl_.D_;
@@ -137,7 +115,7 @@ class TsiSourceDataloader final : public TsiSource {
     };
   }
 
-  void step(const Wave& wave, Ingress in, TsiContext&, Emitter& out) override {
+  void step(const Wave& wave, Ingress in, BoardContext&, Emitter& out) override {
     continue_requested_ = false;
     if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::String) return;
@@ -162,10 +140,12 @@ class TsiSourceDataloader final : public TsiSource {
     }
 
     const Wave witem{
-        .id = episode_wave_id_,
-        .i = episode_next_wave_i_,
-        .episode = episode_wave_episode_,
-        .batch = episode_next_batch_,
+        .cursor = WaveCursor{
+            .id = episode_wave_id_,
+            .i = episode_next_wave_i_,
+            .episode = episode_wave_episode_,
+            .batch = episode_next_batch_,
+        },
         .span_begin_ms = episode_wave_span_begin_ms_,
         .span_end_ms = episode_wave_span_end_ms_,
         .has_time_span = episode_wave_has_time_span_,
@@ -189,6 +169,13 @@ class TsiSourceDataloader final : public TsiSource {
       }
       finish_episode_(out, oss.str());
     }
+  }
+
+  void reset(BoardContext&) override {
+    clear_episode_state_();
+    it_ = dl_.begin();
+    end_ = dl_.end();
+    iter_ready_ = true;
   }
 
  private:
@@ -323,30 +310,35 @@ class TsiSourceDataloader final : public TsiSource {
     }
     // In range mode, do not infer batches from date digits.
     cmd.batches = parse_batches_explicit_(s).value_or(0);
+    if (cmd.has_range && cmd.batches == 0 && wave.max_batches_per_epoch > 0) {
+      cmd.batches = wave.max_batches_per_epoch;
+    }
     return cmd;
   }
 
   static Dataset_t make_dataset_(
       std::string_view instrument,
-      cuwacunu::camahjucunu::observation_instruction_t observation_instruction) {
-    const bool force_bin = cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
-        "DATA_LOADER", "dataloader_force_binarization");
+      cuwacunu::camahjucunu::observation_spec_t observation_instruction) {
+    const bool force_rebuild_cache =
+        cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+            "DATA_LOADER", "dataloader_force_rebuild_cache");
 
     return cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(
-        std::string(instrument), std::move(observation_instruction), force_bin);
+        std::string(instrument), std::move(observation_instruction),
+        force_rebuild_cache);
   }
 
-  static Dataset_t make_dataset_(std::string_view instrument) {
-    return make_dataset_(
-        instrument,
-        cuwacunu::camahjucunu::decode_observation_instruction_from_config());
-  }
-
-  static Loader_t make_loader_(Dataset_t& dataset) {
-    const int batch_size = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
-        "DATA_LOADER", "dataloader_batch_size");
-    const int workers = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
+  static Loader_t make_loader_(Dataset_t& dataset, std::size_t batch_size_override) {
+    const int configured_workers = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
         "DATA_LOADER", "dataloader_workers");
+
+    constexpr std::size_t kDefaultBatchSize = 64;
+    std::size_t batch_size = kDefaultBatchSize;
+    if (batch_size_override > 0) {
+      batch_size = batch_size_override;
+    }
+    const std::size_t workers =
+        (configured_workers > 0) ? static_cast<std::size_t>(configured_workers) : 0;
 
     if constexpr (std::is_same_v<Sampler_t, torch::data::samplers::SequentialSampler>) {
       auto sampler = dataset.SequentialSampler();
@@ -357,6 +349,12 @@ class TsiSourceDataloader final : public TsiSource {
       auto opts = dataset.RandomSampler_options(batch_size, workers);
       return Loader_t(dataset, sampler, opts);
     }
+  }
+
+  [[nodiscard]] static std::uint64_t range_warn_batches_threshold_() {
+    const int configured = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
+        "DATA_LOADER", "dataloader_range_warn_batches", std::optional<int>{256});
+    return static_cast<std::uint64_t>(std::max(1, configured));
   }
 
   struct PackedBatch {
@@ -420,8 +418,9 @@ class TsiSourceDataloader final : public TsiSource {
     active_cmd_ = CommandSpec{};
     batch_remaining_ = 0;
     range_batch_limit_ = 0;
+    range_begin_idx_ = 0;
+    range_count_ = 0;
     range_cursor_ = 0;
-    range_samples_.clear();
     episode_emitted_ = 0;
     episode_wave_id_ = 0;
     episode_wave_i0_ = 0;
@@ -439,25 +438,34 @@ class TsiSourceDataloader final : public TsiSource {
     active_cmd_ = parse_command_(cmd_text, wave);
     emit_command_meta_(wave, active_cmd_, out);
 
-    episode_wave_id_ = wave.id;
-    episode_wave_i0_ = wave.i;
-    episode_next_wave_i_ = wave.i;
-    episode_wave_episode_ = wave.episode;
-    episode_batch_i0_ = wave.batch;
-    episode_next_batch_ = wave.batch;
+    episode_wave_id_ = wave.cursor.id;
+    episode_wave_i0_ = wave.cursor.i;
+    episode_next_wave_i_ = wave.cursor.i;
+    episode_wave_episode_ = wave.cursor.episode;
+    episode_batch_i0_ = wave.cursor.batch;
+    episode_next_batch_ = wave.cursor.batch;
     episode_wave_has_time_span_ = wave.has_time_span;
     episode_wave_span_begin_ms_ = wave.span_begin_ms;
     episode_wave_span_end_ms_ = wave.span_end_ms;
 
     if (active_cmd_.has_range) {
-      range_samples_ = dataset_.range_samples_by_keys(active_cmd_.key_left, active_cmd_.key_right);
+      const bool has_range =
+          dataset_.compute_index_range_by_keys(
+              active_cmd_.key_left, active_cmd_.key_right, &range_begin_idx_, &range_count_);
       range_cursor_ = 0;
       range_batch_limit_ = (active_cmd_.batches > 0)
           ? active_cmd_.batches
           : std::numeric_limits<std::uint64_t>::max();
+      const std::size_t batch_size =
+          (B_hint_ > 0) ? static_cast<std::size_t>(B_hint_) : std::size_t(64);
+      const std::uint64_t estimated_batches =
+          (batch_size == 0)
+              ? 0ULL
+              : static_cast<std::uint64_t>((range_count_ + batch_size - 1) / batch_size);
 
       std::ostringstream oss;
-      oss << "dataloader.range-mode setup samples=" << range_samples_.size()
+      oss << "dataloader.range-mode setup samples=" << range_count_
+          << " estimated_batches=" << estimated_batches
           << " batch_size=" << ((B_hint_ > 0) ? B_hint_ : 64);
       if (active_cmd_.range_from_wave) {
         oss << " source=wave.span";
@@ -471,10 +479,21 @@ class TsiSourceDataloader final : public TsiSource {
       }
       emit_meta_(wave, out, oss.str());
 
-      if (range_samples_.empty()) {
+      if (!has_range || range_count_ == 0) {
         emit_meta_(wave, out, "dataloader.range-mode noop reason=no-samples wave_i=<none>");
         clear_episode_state_();
         return false;
+      }
+
+      if (active_cmd_.batches == 0) {
+        const std::uint64_t warn_threshold = range_warn_batches_threshold_();
+        if (estimated_batches > warn_threshold) {
+          std::ostringstream warn;
+          warn << "dataloader.range-mode warning=large-range-unbounded"
+               << " estimated_batches=" << estimated_batches
+               << " threshold=" << warn_threshold;
+          emit_meta_(wave, out, warn.str());
+        }
       }
 
       episode_active_ = true;
@@ -487,7 +506,15 @@ class TsiSourceDataloader final : public TsiSource {
       return false;
     }
 
+    // Batch-mode episodes intentionally continue from the shared loader cursor.
+    // Starting a new episode does not rewind the loader iterator.
     batch_remaining_ = active_cmd_.batches;
+    {
+      std::ostringstream oss;
+      oss << "dataloader.batch-mode setup requested=" << batch_remaining_
+          << " cursor=continue-from-loader";
+      emit_meta_(wave, out, oss.str());
+    }
     episode_active_ = true;
     return true;
   }
@@ -496,15 +523,15 @@ class TsiSourceDataloader final : public TsiSource {
     if (!episode_active_) return PackedBatch{};
 
     if (active_cmd_.has_range) {
-      if (range_cursor_ >= range_samples_.size()) return PackedBatch{};
+      if (range_cursor_ >= range_count_) return PackedBatch{};
       if (episode_emitted_ >= range_batch_limit_) return PackedBatch{};
 
       const std::size_t batch_size = (B_hint_ > 0) ? static_cast<std::size_t>(B_hint_) : std::size_t(64);
-      const std::size_t e = std::min(range_cursor_ + batch_size, range_samples_.size());
+      const std::size_t e = std::min(range_cursor_ + batch_size, range_count_);
       std::vector<Sample_t> chunk;
       chunk.reserve(e - range_cursor_);
       for (std::size_t j = range_cursor_; j < e; ++j) {
-        chunk.push_back(std::move(range_samples_[j]));
+        chunk.emplace_back(dataset_.get(range_begin_idx_ + j));
       }
       range_cursor_ = e;
       return pack_batch_(std::move(chunk));
@@ -521,17 +548,19 @@ class TsiSourceDataloader final : public TsiSource {
     if (!episode_active_) return false;
     if (active_cmd_.has_range) {
       if (episode_emitted_ >= range_batch_limit_) return false;
-      return range_cursor_ < range_samples_.size();
+      return range_cursor_ < range_count_;
     }
     return batch_remaining_ > 0;
   }
 
   void finish_episode_(Emitter& out, std::string msg) {
     const Wave w{
-        .id = episode_wave_id_,
-        .i = (episode_emitted_ > 0) ? (episode_next_wave_i_ - 1) : episode_wave_i0_,
-        .episode = episode_wave_episode_,
-        .batch = (episode_emitted_ > 0) ? (episode_next_batch_ - 1) : episode_batch_i0_,
+        .cursor = WaveCursor{
+            .id = episode_wave_id_,
+            .i = (episode_emitted_ > 0) ? (episode_next_wave_i_ - 1) : episode_wave_i0_,
+            .episode = episode_wave_episode_,
+            .batch = (episode_emitted_ > 0) ? (episode_next_batch_ - 1) : episode_batch_i0_,
+        },
         .span_begin_ms = episode_wave_span_begin_ms_,
         .span_end_ms = episode_wave_span_end_ms_,
         .has_time_span = episode_wave_has_time_span_,
@@ -564,7 +593,8 @@ class TsiSourceDataloader final : public TsiSource {
         oss << " batch_limit=unbounded";
       }
     } else {
-      oss << "dataloader.command mode=batch-count requested=" << cmd.batches;
+      oss << "dataloader.command mode=batch-count requested=" << cmd.batches
+          << " cursor=continue-from-loader";
     }
     emit_meta_(wave, out, oss.str());
   }
@@ -596,8 +626,9 @@ class TsiSourceDataloader final : public TsiSource {
     CommandSpec active_cmd_{};
     std::uint64_t batch_remaining_{0};
     std::uint64_t range_batch_limit_{0};
+    std::size_t range_begin_idx_{0};
+    std::size_t range_count_{0};
     std::size_t range_cursor_{0};
-    std::vector<Sample_t> range_samples_{};
     std::uint64_t episode_emitted_{0};
     WaveId episode_wave_id_{0};
     std::uint64_t episode_wave_i0_{0};
@@ -624,7 +655,7 @@ struct source_dataloader_init_record_t : public TsiSourceInitRecord {
 };
 
 using source_dataloader_init_entry_t = TsiSourceInitEntry;
-inline constexpr std::string_view kContractSourceDataloaderInitId = "0x0";
+inline constexpr std::string_view kContractSourceDataloaderInitId = "0x0000";
 inline constexpr std::string_view kContractSourceDataloaderPath = "<contract-space>";
 
 [[nodiscard]] inline std::filesystem::path source_dataloader_store_root() {
@@ -652,7 +683,7 @@ inline constexpr std::string_view kContractSourceDataloaderPath = "<contract-spa
 }
 
 inline void fill_source_dataloader_observation_stats(
-    const cuwacunu::camahjucunu::observation_instruction_t& obs,
+    const cuwacunu::camahjucunu::observation_spec_t& obs,
     source_dataloader_init_record_t* out) {
   if (!out) return;
   out->instrument_count = obs.source_forms.size();
@@ -669,7 +700,7 @@ inline void fill_source_dataloader_observation_stats(
 }
 
 [[nodiscard]] inline source_dataloader_init_record_t build_source_dataloader_init_record(
-    const cuwacunu::camahjucunu::observation_instruction_t& obs) {
+    const cuwacunu::camahjucunu::observation_spec_t& obs) {
   source_dataloader_init_record_t out{};
   out.ok = true;
   out.init_id = std::string(kContractSourceDataloaderInitId);
@@ -683,12 +714,12 @@ inline void fill_source_dataloader_observation_stats(
 }
 
 [[nodiscard]] inline source_dataloader_init_record_t persist_source_dataloader_init(
-    const cuwacunu::camahjucunu::observation_instruction_t& obs) {
+    const cuwacunu::camahjucunu::observation_spec_t& obs) {
   return build_source_dataloader_init_record(obs);
 }
 
 [[nodiscard]] inline source_dataloader_init_record_t update_source_dataloader_init(
-    const cuwacunu::camahjucunu::observation_instruction_t& obs,
+    const cuwacunu::camahjucunu::observation_spec_t& obs,
     std::string init_id) {
   if (!is_valid_source_dataloader_init_id(init_id)) {
     source_dataloader_init_record_t out{};
@@ -699,8 +730,16 @@ inline void fill_source_dataloader_observation_stats(
 }
 
 [[nodiscard]] inline source_dataloader_init_record_t update_source_dataloader_init_from_config(
-    std::string init_id) {
-  const auto obs = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
+    std::string init_id,
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+  if (contract_hash.empty()) {
+    source_dataloader_init_record_t out{};
+    out.error = "missing contract hash";
+    return out;
+  }
+  const auto obs =
+      cuwacunu::camahjucunu::decode_observation_spec_from_contract(
+          contract_hash);
   return update_source_dataloader_init(obs, std::move(init_id));
 }
 
@@ -718,8 +757,16 @@ inline void fill_source_dataloader_observation_stats(
   return true;
 }
 
-[[nodiscard]] inline source_dataloader_init_record_t invoke_source_dataloader_init_from_config() {
-  const auto obs = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
+[[nodiscard]] inline source_dataloader_init_record_t invoke_source_dataloader_init_from_config(
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+  if (contract_hash.empty()) {
+    source_dataloader_init_record_t out{};
+    out.error = "missing contract hash";
+    return out;
+  }
+  const auto obs =
+      cuwacunu::camahjucunu::decode_observation_spec_from_contract(
+          contract_hash);
   return persist_source_dataloader_init(obs);
 }
 

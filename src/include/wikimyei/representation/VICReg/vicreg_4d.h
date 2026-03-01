@@ -3,6 +3,7 @@
 
 #include <torch/torch.h>
 #include <torch/nn/utils/clip_grad.h>
+#include <cmath>
 #include <optional>
 #include <vector>
 #include <type_traits>
@@ -20,12 +21,12 @@
 #include "wikimyei/representation/VICReg/vicreg_4d_dataset.h"
 #include "wikimyei/representation/VICReg/vicreg_4d_dataloader.h"
 
-#include "piaabo/torch_compat/optim/optimizers.h"
+#include "jkimyei/optim/optimizer_utils.h"
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
-#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "jkimyei/training_setup/jk_setup.h"
 
@@ -81,6 +82,7 @@ namespace vicreg_4d {
  */
 class VICReg_4D : public torch::nn::Module {
 public:
+  cuwacunu::piaabo::dconfig::contract_hash_t contract_hash;
   std::string component_name;
   // ── Model shape (input contract) and training setup ──────────────────────────
   int C;                                  // Number of input channels.
@@ -112,9 +114,25 @@ public:
   std::unique_ptr<torch::optim::Optimizer>           optimizer;         // Optimizer over @ref trainable_params_.
   std::unique_ptr<cuwacunu::jkimyei::LRSchedulerAny> lr_sched;          // Type-erased LR scheduler.
   std::unique_ptr<VicRegLoss>                        loss_obj;          // VICReg loss computation.
+  bool                                                jk_vicreg_train{true};
+  bool                                                jk_vicreg_use_swa{true};
+  bool                                                jk_vicreg_detach_to_cpu{false};
+  int                                                 jk_swa_start_iter{1000};
+  int                                                 jk_accumulate_steps{1};
+  double                                              jk_clip_norm{0.0};
+  double                                              jk_clip_value{0.0};
+  bool                                                jk_skip_on_nan{true};
+  bool                                                jk_zero_grad_set_to_none{true};
+  int                                                 runtime_iter_count_{0};
+  int                                                 runtime_accum_counter_{0};
+  bool                                                runtime_has_pending_grad_{false};
+  double                                              runtime_pending_loss_sum_{0.0};
+  int                                                 runtime_pending_loss_count_{0};
+  double                                              runtime_last_committed_loss_mean_{0.0};
 
   // --- constructors (decl only; bodies in .cpp) ---
   VICReg_4D(
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
     const std::string& component_name_,
     int C_, int T_, int D_,
     int encoding_dims_, 
@@ -131,13 +149,32 @@ public:
 
   // config-driven delegating constructor
   VICReg_4D(
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
     const std::string& component_name, 
     int C_, int T_, int D_
   );
 
   // strict checkpoint constructor
-  VICReg_4D(const std::string& checkpoint_path,
+  VICReg_4D(const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+            const std::string& checkpoint_path,
             torch::Device override_device = torch::kCPU);
+
+  struct train_step_result_t {
+    torch::Tensor loss{};
+    bool optimizer_step_applied{false};
+    bool skipped{false};
+  };
+
+  void reset_runtime_training_state();
+  [[nodiscard]] train_step_result_t train_one_batch(
+      const torch::Tensor& data,
+      const torch::Tensor& mask,
+      int swa_start_iter = -1,
+      bool verbose = false);
+  [[nodiscard]] bool finalize_pending_training_step(int swa_start_iter = -1);
+  [[nodiscard]] int runtime_optimizer_steps() const noexcept {
+    return runtime_iter_count_;
+  }
 
   // --- training (template stays in header) ---
   template<typename Dataset_t, typename Datasample_t, typename Datatype_t>
@@ -145,13 +182,26 @@ public:
     cuwacunu::camahjucunu::data::MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, torch::data::samplers::SequentialSampler>& dataloader,
     int n_epochs = -1,
     int n_iters = -1,
-    int swa_start_iter = 1000,
+    int swa_start_iter = -1,
     bool verbose = false
   ) {
     int epoch_count = 0;
     int iter_count  = 0;
     bool stop_loop  = false;
     std::vector<std::pair<int, double>> loss_log;
+
+    if (!jk_vicreg_train) {
+      log_warn("[VICReg_4D::fit] jkimyei profile disables training for component '%s' (vicreg_train=false).\n",
+               component_name.c_str());
+      return loss_log;
+    }
+
+    const int accumulate_steps = (jk_accumulate_steps > 0) ? jk_accumulate_steps : 1;
+    const int effective_swa_start_iter = (swa_start_iter >= 0) ? swa_start_iter : jk_swa_start_iter;
+    int accum_counter = 0;
+    bool has_pending_grad = false;
+    double pending_loss_sum = 0.0;
+    int pending_loss_count = 0;
 
     _encoder_net->train();
     _projector_net->train();
@@ -160,6 +210,74 @@ public:
     std::vector<torch::Tensor> all_p;
     for (auto& p : _encoder_net->parameters())   all_p.push_back(p);
     for (auto& p : _projector_net->parameters()) all_p.push_back(p);
+
+    auto reset_grad_state = [&]() {
+      optimizer->zero_grad(jk_zero_grad_set_to_none);
+      accum_counter = 0;
+      has_pending_grad = false;
+      pending_loss_sum = 0.0;
+      pending_loss_count = 0;
+    };
+
+    auto grads_have_non_finite_values = [&](const std::vector<torch::Tensor>& params) -> bool {
+      for (const auto& p : params) {
+        const auto g = p.grad();
+        if (!g.defined()) continue;
+        if (!torch::isfinite(g).all().template item<bool>()) return true;
+      }
+      return false;
+    };
+
+    auto apply_gradient_clipping = [&](const std::vector<torch::Tensor>& params) {
+      std::vector<torch::Tensor> clip_vec;
+      clip_vec.reserve(params.size());
+      for (const auto& p : params) {
+        const auto g = p.grad();
+        if (g.defined()) clip_vec.push_back(p);
+      }
+      if (clip_vec.empty()) return;
+
+      if (jk_clip_value > 0.0) {
+        torch::nn::utils::clip_grad_value_(clip_vec, jk_clip_value);
+      }
+
+      if (jk_clip_norm > 0.0) {
+        torch::nn::utils::clip_grad_norm_(clip_vec, jk_clip_norm);
+      } else {
+        const double clip_max = (iter_count < 1500) ? 5.0 : 1.0;
+        torch::nn::utils::clip_grad_norm_(clip_vec, clip_max);
+      }
+    };
+
+    auto commit_pending_step = [&]() -> bool {
+      if (!has_pending_grad || accum_counter <= 0) return false;
+
+      apply_gradient_clipping(all_p);
+
+      const bool grad_is_finite = !grads_have_non_finite_values(all_p);
+      if (!grad_is_finite) {
+        if (jk_skip_on_nan) {
+          reset_grad_state();
+          return false;
+        }
+        TORCH_CHECK(false,
+                    "[VICReg_4D::fit] non-finite gradients detected and skip_on_nan=false");
+      }
+
+      optimizer->step();
+
+      if (lr_sched && lr_sched->mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch) {
+        lr_sched->step();
+      }
+
+      if (jk_vicreg_use_swa && iter_count >= effective_swa_start_iter) {
+        _swa_encoder_net->update_parameters(_encoder_net);
+      }
+
+      accum_counter = 0;
+      has_pending_grad = false;
+      return true;
+    };
 
     while (!stop_loop) {
       if (n_epochs >= 0 && epoch_count >= n_epochs) break;
@@ -170,7 +288,9 @@ public:
       for (auto& sample_batch : dataloader.inner()) {
         if (n_iters >= 0 && iter_count >= n_iters) { stop_loop = true; break; }
 
-        optimizer->zero_grad();
+        if (!has_pending_grad) {
+          optimizer->zero_grad(jk_zero_grad_set_to_none);
+        }
 
         auto collated_sample = Datasample_t::collate_fn_past(sample_batch);
         auto data = collated_sample.features.to(device);
@@ -270,8 +390,17 @@ public:
                   + loss_obj->std_coeff_ * terms.var
                   + (loss_obj->cov_coeff_ * cov_boost) * terms.cov;
 
+        const double loss_scalar = loss.template item<double>();
+        if (!std::isfinite(loss_scalar)) {
+          if (jk_skip_on_nan) {
+            reset_grad_state();
+            continue;
+          }
+          TORCH_CHECK(false,
+                      "[VICReg_4D::fit] non-finite loss detected and skip_on_nan=false");
+        }
+
         if (verbose && (iter_count % 500 == 0)) {
-          const double loss_scalar = loss.template item<double>();
           log_info("[loss] optim=%.6f inv=%.6f var=%.6f cov=%.6f (cov_boost=%.2f)\n",
                    loss_scalar,
                    terms.inv.template item<double>(),
@@ -280,40 +409,50 @@ public:
                    cov_boost);
         }
 
-        loss.backward();
+        pending_loss_sum += loss_scalar;
+        ++pending_loss_count;
 
-        // Grad clip schedule: relaxed early, tighten later
-        {
-          std::vector<torch::Tensor> clip_vec;
-          clip_vec.reserve(all_p.size());
-          for (auto& p : all_p) {
-            auto g = p.grad();
-            if (g.defined()) clip_vec.push_back(p);
-          }
-          if (!clip_vec.empty()) {
-            double clip_max = (iter_count < 1500) ? 5.0 : 1.0;
-            torch::nn::utils::clip_grad_norm_(clip_vec, clip_max);
-          }
+        auto backprop_loss = (accumulate_steps > 1)
+                                 ? (loss / static_cast<double>(accumulate_steps))
+                                 : loss;
+        backprop_loss.backward();
+        has_pending_grad = true;
+        ++accum_counter;
+
+        if (accum_counter < accumulate_steps) {
+          continue;
         }
 
-        optimizer->step();
+        if (!commit_pending_step()) {
+          continue;
+        }
 
-        if (lr_sched && lr_sched->mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerBatch)
-          lr_sched->step();
-
-        if (iter_count >= swa_start_iter)
-          _swa_encoder_net->update_parameters(_encoder_net);
-
-        cum_loss += loss.template item<double>();
+        cum_loss += pending_loss_sum / static_cast<double>(pending_loss_count);
+        pending_loss_sum = 0.0;
+        pending_loss_count = 0;
         ++epoch_iters;
         ++iter_count;
+      }
+
+      if (!stop_loop && has_pending_grad) {
+        if (n_iters < 0 || iter_count < n_iters) {
+          if (commit_pending_step()) {
+            cum_loss += pending_loss_sum / static_cast<double>(pending_loss_count);
+            ++epoch_iters;
+            ++iter_count;
+          }
+        } else {
+          reset_grad_state();
+        }
+        pending_loss_sum = 0.0;
+        pending_loss_count = 0;
       }
 
       ++epoch_count;
 
       if (!stop_loop && epoch_iters > 0) {
         if (optimizer_threshold_reset >= 0) {
-          cuwacunu::piaabo::torch_compat::optim::clamp_adam_step(
+          cuwacunu::jkimyei::optim::clamp_adam_step(
               *optimizer, static_cast<int64_t>(optimizer_threshold_reset));
         }
 
@@ -418,6 +557,7 @@ public:
 
   void save(const std::string& filepath);
   void load(const std::string& filepath);
+  void load_jkimyei_training_policy(const cuwacunu::jkimyei::jk_component_t& jk_component);
   void display_model() const;
 };
 

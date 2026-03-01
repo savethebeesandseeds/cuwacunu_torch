@@ -1,7 +1,6 @@
 #pragma once
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
-#include "piaabo/darchitecture.h"
 #include "piaabo/torch_compat/torch_utils.h"
 
 namespace cuwacunu {
@@ -47,7 +46,6 @@ public:
   /* Static utility to standard gamma sampling function */
   static torch::Tensor _standard_gamma(const torch::Tensor& concentration, const torch::TensorOptions& options);
 };
-ENFORCE_ARCHITECTURE_DESIGN(Gamma);
 } /* namespace distributions */
 } /* namespace torch_compat */
 } /* namespace piaabo */

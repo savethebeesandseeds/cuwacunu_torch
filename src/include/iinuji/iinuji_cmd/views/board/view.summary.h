@@ -98,11 +98,11 @@ inline std::string make_board_left(const CmdState& st) {
     oss << "raw instruction:\n" << st.board.raw_instruction << "\n";
     return oss.str();
   }
-  if (st.board.board.circuits.empty()) {
+  if (st.board.board.contracts.empty()) {
     return "Board has no contracts.";
   }
-  const std::size_t ci = std::min(st.board.selected_circuit, st.board.board.circuits.size() - 1);
-  const auto& c = st.board.board.circuits[ci];
+  const std::size_t ci = std::min(st.board.selected_circuit, st.board.board.contracts.size() - 1);
+  const auto& c = st.board.board.contracts[ci];
   static const std::vector<tsiemene_resolved_hop_t> kEmptyResolvedHops{};
   const auto& hops = (ci < st.board.resolved_hops.size()) ? st.board.resolved_hops[ci] : kEmptyResolvedHops;
 
@@ -113,7 +113,7 @@ inline std::string make_board_left(const CmdState& st) {
       if (st.board.editor_focus) {
         return "contract edit mode";
       }
-      return make_contract_edit_section_picker(st, ci, st.board.board.circuits.size());
+      return make_contract_edit_section_picker(st, ci, st.board.board.contracts.size());
     }
   }
   return make_circuit_canvas(c, hops);
@@ -128,11 +128,11 @@ make_board_left_contract_edit_styled_lines(const CmdState& st) {
         cuwacunu::iinuji::styled_text_line_t{"error: " + st.board.error, Emph::Error},
     };
   }
-  if (st.board.board.circuits.empty()) {
+  if (st.board.board.contracts.empty()) {
     return {cuwacunu::iinuji::styled_text_line_t{"Board has no contracts.", Emph::Warning}};
   }
-  const std::size_t ci = std::min(st.board.selected_circuit, st.board.board.circuits.size() - 1);
-  return make_contract_edit_section_picker_styled_lines(st, ci, st.board.board.circuits.size());
+  const std::size_t ci = std::min(st.board.selected_circuit, st.board.board.contracts.size() - 1);
+  return make_contract_edit_section_picker_styled_lines(st, ci, st.board.board.contracts.size());
 }
 
 inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled_lines(const CmdState& st) {
@@ -152,12 +152,12 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled
     push("Fix src/config/instructions/tsiemene_circuit.dsl then run: reload", Emph::Warning);
     return lines;
   }
-  if (st.board.board.circuits.empty()) {
+  if (st.board.board.contracts.empty()) {
     push("No contracts.", Emph::Warning);
     return lines;
   }
 
-  const std::size_t total = st.board.board.circuits.size();
+  const std::size_t total = st.board.board.contracts.size();
   const std::size_t selected = std::min(st.board.selected_circuit, total - 1);
   const bool focus_context = (st.board.panel_focus == BoardPanelFocus::Context);
   const bool focus_view_options = (st.board.panel_focus == BoardPanelFocus::ViewOptions);
@@ -172,7 +172,7 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled
 
   push("Contracts (" + std::to_string(total) + ")", Emph::Accent);
   for (std::size_t i = 0; i < total; ++i) {
-    const auto& c = st.board.board.circuits[i];
+    const auto& c = st.board.board.contracts[i];
     std::ostringstream row;
     row << (i == selected ? " > " : "   ")
         << "[" << (i + 1) << "] "
@@ -200,7 +200,7 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled
   }
   push("");
 
-  const auto& c = st.board.board.circuits[selected];
+  const auto& c = st.board.board.contracts[selected];
   push("Selected Contract", Emph::Accent);
   push("name: " + c.name, Emph::Info);
   push("invoke: " + c.invoke_name + "(" + c.invoke_payload + ")", Emph::Debug);

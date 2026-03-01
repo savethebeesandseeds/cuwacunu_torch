@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -32,7 +33,7 @@ inline ConfigTabData make_secrets_tab() {
   oss << "# values are masked; file paths and sizes are shown\n\n";
 
   const std::vector<std::string> sections{"TEST_EXCHANGE", "REAL_EXCHANGE"};
-  const std::vector<std::string> keys{"AES_salt", "Ed25519_pkey", "EXCHANGE_api_filename"};
+  const std::vector<std::string> keys{"Ed25519_pkey", "EXCHANGE_api_filename"};
 
   for (const std::string& sec : sections) {
     oss << "[" << sec << "]\n";
@@ -65,11 +66,19 @@ inline ConfigTabData make_secrets_tab() {
   return tab;
 }
 
-inline ConfigState load_config_view_from_config() {
+inline ConfigState load_config_view_from_config(
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
   ConfigState out{};
+  if (contract_hash.empty()) {
+    out.ok = false;
+    out.error = "missing contract hash for config view";
+    return out;
+  }
 
   const std::string global_path = cuwacunu::piaabo::dconfig::config_space_t::config_file_path;
-  const std::string contract_path = cuwacunu::piaabo::dconfig::contract_space_t::config_file_path;
+  const std::string contract_path =
+      cuwacunu::piaabo::dconfig::contract_space_t::snapshot(contract_hash)
+          .config_file_path;
   out.tabs.push_back(make_text_tab("global", "global .config", global_path));
   out.tabs.push_back(make_text_tab("contract", "board contract", contract_path));
 
@@ -87,12 +96,14 @@ inline ConfigState load_config_view_from_config() {
       {"jkimyei_specs.dsl", "jkimyei_specs.dsl", "jkimyei_specs_dsl_filename"},
       {"tsiemene_circuit.bnf", "tsiemene_circuit.bnf", "tsiemene_circuit_grammar_filename"},
       {"tsiemene_circuit.dsl", "tsiemene_circuit.dsl", "tsiemene_circuit_dsl_filename"},
+      {"tsiemene_wave.bnf", "tsiemene_wave.bnf", "tsiemene_wave_grammar_filename"},
+      {"tsiemene_wave.dsl", "tsiemene_wave.dsl", "tsiemene_wave_dsl_filename"},
       {"canonical_path.bnf", "canonical_path.bnf", "canonical_path_grammar_filename"},
   };
 
   for (const auto& s : specs) {
     std::string path;
-    if (!lookup_contract_config_value("DSL", s.key, &path)) {
+    if (!lookup_contract_config_value("DSL", s.key, contract_hash, &path)) {
       ConfigTabData tab{};
       tab.id = s.id;
       tab.title = s.title;
@@ -117,6 +128,10 @@ inline ConfigState load_config_view_from_config() {
   out.ok = !out.tabs.empty();
   if (!out.ok) out.error = "no tabs";
   return out;
+}
+
+inline ConfigState load_config_view_from_config() {
+  return load_config_view_from_config(resolve_configured_board_contract_hash());
 }
 
 }  // namespace iinuji_cmd

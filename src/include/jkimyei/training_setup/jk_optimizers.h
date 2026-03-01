@@ -23,14 +23,32 @@
 #include <torch/torch.h>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <stdexcept>
 #include <utility>    // std::make_pair
 
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "jkimyei/api/schema_catalog.h"
 
 namespace cuwacunu {
 namespace jkimyei {
+
+inline void ensure_optimizer_builder_coverage() {
+  static const bool kCoverageChecked = [] {
+    const std::unordered_set<std::string> kImplemented = {
+        "Adam", "AdamW", "SGD", "RMSprop", "Adagrad"};
+    for (const auto& type : cuwacunu::jkimyei::api::supported_optimizer_types()) {
+      if (kImplemented.find(type) == kImplemented.end()) {
+        throw std::runtime_error(
+            "optimizer declared in jkimyei_schema.def but not implemented in jk_optimizers: " +
+            type);
+      }
+    }
+    return true;
+  }();
+  (void)kCoverageChecked;
+}
 
 /* Interface: turns a parameter list into a concrete torch::optim::Optimizer.
  * NOTE: We accept params by const-ref to avoid copying the vector.
@@ -127,10 +145,13 @@ struct AdagradBuilder final : IOptimizerBuilder {
  */
 inline std::unique_ptr<IOptimizerBuilder>
 make_optimizer_builder_from_row(const std::unordered_map<std::string,std::string>& row) {
+  ensure_optimizer_builder_coverage();
+
   // Require exact columns for this table
   cuwacunu::camahjucunu::require_columns_exact(row, { ROW_ID_COLUMN_HEADER, "type", "options" });
 
   const std::string type = cuwacunu::camahjucunu::require_column(row, "type");
+  cuwacunu::jkimyei::api::require_optimizer_type_registered(type);
 
   // All optimizers require an initial LR
   const double lr = cuwacunu::camahjucunu::to_double(cuwacunu::camahjucunu::require_option(row, "initial_learning_rate"));

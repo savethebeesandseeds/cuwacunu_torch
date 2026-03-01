@@ -131,10 +131,13 @@ inline bool lookup_global_config_value(const std::string& section,
 
 inline bool lookup_contract_config_value(const std::string& section,
                                          const std::string& key,
+                                         const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
                                          std::string* out) {
   if (!out) return false;
-  const auto sec_it = cuwacunu::piaabo::dconfig::contract_space_t::config.find(section);
-  if (sec_it == cuwacunu::piaabo::dconfig::contract_space_t::config.end()) return false;
+  const auto& snapshot =
+      cuwacunu::piaabo::dconfig::contract_space_t::snapshot(contract_hash);
+  const auto sec_it = snapshot.config.find(section);
+  if (sec_it == snapshot.config.end()) return false;
   const auto key_it = sec_it->second.find(key);
   if (key_it == sec_it->second.end()) return false;
   *out = key_it->second;
@@ -143,9 +146,29 @@ inline bool lookup_contract_config_value(const std::string& section,
 
 inline bool lookup_config_value(const std::string& section,
                                 const std::string& key,
+                                const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
                                 std::string* out) {
   return lookup_global_config_value(section, key, out) ||
-         lookup_contract_config_value(section, key, out);
+         lookup_contract_config_value(section, key, contract_hash, out);
+}
+
+inline std::string resolve_configured_board_contract_path() {
+  const std::string configured = cuwacunu::piaabo::dconfig::config_space_t::get<std::string>(
+      "GENERAL", GENERAL_BOARD_CONTRACT_CONFIG_KEY);
+  std::filesystem::path p(configured);
+  if (!p.is_absolute()) {
+    p = std::filesystem::path(cuwacunu::piaabo::dconfig::config_space_t::config_folder) / p;
+  }
+  return p.lexically_normal().string();
+}
+
+inline cuwacunu::piaabo::dconfig::contract_hash_t
+resolve_configured_board_contract_hash() {
+  const auto path = resolve_configured_board_contract_path();
+  const auto hash =
+      cuwacunu::piaabo::dconfig::contract_space_t::register_contract_file(path);
+  cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(hash);
+  return hash;
 }
 
 inline const std::vector<std::string>& training_hashimyei_catalog() {

@@ -1,7 +1,6 @@
 #include <stdexcept>
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
-#include "piaabo/darchitecture.h"
 #include "piaabo/torch_compat/torch_utils.h"
 /* As per indicated here: https://discuss.pytorch.org/t/torch-distributions-categorical/45747/6
  * 	There is no implementation of the distributions module in Libtorch.
@@ -34,7 +33,6 @@ public:
   /* Entropy */
   torch::Tensor entropy() const;
 };
-ENFORCE_ARCHITECTURE_DESIGN(Categorical);
 } /* namespace distributions */
 } /* namespace torch_compat */
 } /* namespace piaabo */

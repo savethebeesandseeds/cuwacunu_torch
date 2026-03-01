@@ -64,7 +64,7 @@ inline bool ends_with(const std::string& s, const std::string& suf) {
 
 /* ------------------------------ Columns ------------------------------- */
 
-inline const std::string&
+inline std::string
 require_column(const std::unordered_map<std::string,std::string>& row,
                const std::string& key) {
   auto it = row.find(key);

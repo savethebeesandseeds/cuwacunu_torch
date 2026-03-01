@@ -17,7 +17,7 @@
 #include <torch/torch.h>
 #include <ncursesw/ncurses.h>
 
-#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/types/types_data.h"
@@ -239,7 +239,19 @@ inline void init_data_runtime(CmdState& state, DataAppRuntime& rt, bool force) {
   rt = DataAppRuntime{};
   rt.signature = sig;
   try {
-    auto obs = cuwacunu::camahjucunu::decode_observation_instruction_from_config();
+    if (state.board.contract_hash.empty()) {
+      rt.ready = false;
+      rt.sample_ready = false;
+      rt.error = "board contract hash is unavailable";
+      rt.sample_count = 0;
+      rt.sample_index = 0;
+      rt.C = rt.T = rt.D = 0;
+      sync_data_tensor_state(state, rt);
+      return;
+    }
+    const std::string contract_hash = state.board.contract_hash;
+    auto obs = cuwacunu::camahjucunu::decode_observation_spec_from_contract(
+        contract_hash);
     std::string instrument = state.data.focus_instrument;
     if (instrument.empty() && !obs.source_forms.empty()) {
       instrument = obs.source_forms.front().instrument;
@@ -250,10 +262,11 @@ inline void init_data_runtime(CmdState& state, DataAppRuntime& rt, bool force) {
       sync_data_tensor_state(state, rt);
       return;
     }
-    const bool force_binarization = cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
-        "DATA_LOADER", "dataloader_force_binarization");
+    const bool force_rebuild_cache =
+        cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+            "DATA_LOADER", "dataloader_force_rebuild_cache");
     rt.dataset = cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(
-        instrument, obs, force_binarization);
+        instrument, obs, force_rebuild_cache);
     auto sz = rt.dataset.size();
     rt.sample_count = sz.has_value() ? *sz : 0;
     rt.ready = (rt.sample_count > 0);
@@ -545,7 +558,7 @@ inline void render_data_plot_overlay(
 
   if (!plotted) {
     if (meta_channel_count == 0) {
-      R->putText(plot_y, plot_x, "no active channels found in observation pipeline", plot_w, warn_pair);
+      R->putText(plot_y, plot_x, "no active channels found in observation spec", plot_w, warn_pair);
     } else if (!data_plot_mode_is_dynamic(state.data.plot_mode)) {
       R->putText(
           plot_y,

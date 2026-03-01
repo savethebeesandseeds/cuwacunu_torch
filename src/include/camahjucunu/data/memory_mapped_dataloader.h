@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <optional>
 
 #include "piaabo/torch_compat/torch_utils.h"
 #include "piaabo/dutils.h"
@@ -18,10 +19,7 @@
 #include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
-#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
-
-RUNTIME_WARNING("(memory_mapped_dataloader.h)[] We have too many channels, it can be benefitial to use market fade time wrapping strategy, instead of the multi channel one. \n");
-RUNTIME_WARNING("(memory_mapped_dataloader.h)[] [Important] dataloading is advancing to the next step based on the highest channel, it should have a switch to select the lowerst channel as well. \n");
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -87,6 +85,7 @@ public:
     C_ = prove_sample.features.size(0);
     T_ = prove_sample.features.size(1);
     D_ = prove_sample.features.size(2);
+    maybe_emit_policy_warnings_(C_);
     
     prove_sample.reset();
   }
@@ -97,11 +96,34 @@ public:
 
   DataLoaderType& inner() { return data_loader_; }
   const DataLoaderType& inner() const { return data_loader_; }
+
+ private:
+  static void maybe_emit_policy_warnings_(int64_t channels) {
+    static bool warned_multi_channel_step_policy = false;
+    static bool warned_high_channel_count = false;
+
+    if (channels > 1 && !warned_multi_channel_step_policy) {
+      warned_multi_channel_step_policy = true;
+      log_warn(
+          "[MemoryMappedDataLoader] Multi-channel stepping follows the highest "
+          "channel progression; this is deterministic but may not match all "
+          "alignment policies.\n");
+    }
+
+    if (channels > 16 && !warned_high_channel_count) {
+      warned_high_channel_count = true;
+      log_warn(
+          "[MemoryMappedDataLoader] High channel count detected (%lld); "
+          "multi-channel loading is supported, but validate that your channel "
+          "composition policy matches experiment goals.\n",
+          static_cast<long long>(channels));
+    }
+  }
 };
 
 
 /**
- * @brief Method to create a dataloader from an observation_instruction_t.
+ * @brief Method to create a dataloader from an observation_spec_t.
  *
  * @tparam Dataset_t The dataset type. This dataset should be compatible with torch::data::Dataset and return samples of type Datasample_t from its `get(...)` method.
  * @tparam Datasample_t The sample type returned by the dataset (e.g., a struct containing features and mask tensors).
@@ -111,9 +133,9 @@ public:
 template<typename Dataset_t, typename Datasample_t, typename Datatype_t, typename Sampler_t>
 typename std::enable_if<std::is_same<Sampler_t, torch::data::samplers::SequentialSampler>::value, MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>>::type
 create_memory_mapped_dataloader(
-  std::string& instrument, cuwacunu::camahjucunu::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
+  std::string& instrument, cuwacunu::camahjucunu::observation_spec_t obs_inst, bool force_rebuild_cache = false, std::size_t batch_size = 64, std::size_t workers = 0) {
     /* variables */
-    auto dataset          = create_memory_mapped_concat_dataset<Datatype_t>(instrument, obs_inst, force_binarization);
+    auto dataset          = create_memory_mapped_concat_dataset<Datatype_t>(instrument, obs_inst, force_rebuild_cache);
     auto sampler          = dataset.SequentialSampler();
     auto sampler_options  = dataset.SequentialSampler_options(batch_size, workers);
     /* dataloader */
@@ -127,9 +149,9 @@ create_memory_mapped_dataloader(
 template<typename Dataset_t, typename Datasample_t, typename Datatype_t, typename Sampler_t>
 typename std::enable_if<std::is_same<Sampler_t, torch::data::samplers::RandomSampler>::value, MemoryMappedDataLoader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>>::type
 create_memory_mapped_dataloader(
-  std::string& instrument, cuwacunu::camahjucunu::observation_instruction_t obs_inst, bool force_binarization = false, std::size_t batch_size = 64, std::size_t workers = 4) {
+  std::string& instrument, cuwacunu::camahjucunu::observation_spec_t obs_inst, bool force_rebuild_cache = false, std::size_t batch_size = 64, std::size_t workers = 0) {
     /* variables */
-    auto dataset          = create_memory_mapped_concat_dataset<Datatype_t>(instrument, obs_inst, force_binarization);
+    auto dataset          = create_memory_mapped_concat_dataset<Datatype_t>(instrument, obs_inst, force_rebuild_cache);
     auto sampler          = dataset.RandomSampler();
     auto sampler_options  = dataset.RandomSampler_options(batch_size, workers);
     /* dataloader */
@@ -142,23 +164,26 @@ create_memory_mapped_dataloader(
 
 
 // ----------------------------------------------------------------------------
-// Observation-pipeline DataLoaders (sequential / random)
+// Observation-spec DataLoaders (sequential / random)
 //
-//   auto dl = observation_pipeline_sequential_mm_dataloader<Datatype_t>("BTCUSDT");
-//   auto dl = observation_pipeline_random_mm_dataloader   <Datatype_t>("BTCUSDT");
-//
-// TODO(legacy-removal): rename observation_pipeline_* helper APIs to
-// observation_* once external call sites migrate.
-//
+//   auto dl = observation_sequential_mm_dataloader<Datatype_t>("BTCUSDT");
+//   auto dl = observation_random_mm_dataloader   <Datatype_t>("BTCUSDT");
 // ----------------------------------------------------------------------------
 template<typename Datatype_t, typename Sampler>
-inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
+inline auto make_obs_mm_dataloader(
+    std::string_view instrument,
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash)
 {
+    if (contract_hash.empty()) {
+      log_fatal("[memory_mapped_dataloader] missing contract hash for observation dataloader\n");
+    }
     using Dataset = MemoryMappedConcatDataset<Datatype_t>;
 
     // ---- fetch config only once ------------------------------------------
-    const bool force_bin   = cuwacunu::piaabo::dconfig::config_space_t::get<bool>("DATA_LOADER","dataloader_force_binarization");
-    const int  batch_size  = cuwacunu::piaabo::dconfig::config_space_t::get<int> ("DATA_LOADER","dataloader_batch_size");
+    const bool force_rebuild_cache =
+        cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+            "DATA_LOADER", "dataloader_force_rebuild_cache");
+    constexpr int batch_size = 64;
     const int  workers     = cuwacunu::piaabo::dconfig::config_space_t::get<int> ("DATA_LOADER","dataloader_workers");
 
     // ---- make a writable copy for   create_memory_mapped_dataloader ------
@@ -166,8 +191,9 @@ inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
 
     return create_memory_mapped_dataloader<Dataset, observation_sample_t, Datatype_t, Sampler>(
         inst,
-        cuwacunu::camahjucunu::decode_observation_instruction_from_config(),
-        force_bin,
+        cuwacunu::camahjucunu::decode_observation_spec_from_contract(
+            contract_hash),
+        force_rebuild_cache,
         batch_size,
         workers
     );
@@ -178,10 +204,13 @@ inline auto make_obs_pipeline_mm_dataloader(std::string_view instrument)
  * @tparam Datatype_t The underlying data type used by the dataset.
  */
 template<typename Datatype_t>
-inline auto observation_pipeline_sequential_mm_dataloader(std::string_view instrument)
+inline auto observation_sequential_mm_dataloader(
+    std::string_view instrument,
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash)
 {
     using Sampler = torch::data::samplers::SequentialSampler;
-    return make_obs_pipeline_mm_dataloader<Datatype_t, Sampler>(instrument);
+    return make_obs_mm_dataloader<Datatype_t, Sampler>(
+        instrument, contract_hash);
 }
 
 /**
@@ -189,10 +218,13 @@ inline auto observation_pipeline_sequential_mm_dataloader(std::string_view instr
  * @tparam Datatype_t The underlying data type used by the dataset.
  */
 template<typename Datatype_t>
-inline auto observation_pipeline_random_mm_dataloader(std::string_view instrument)
+inline auto observation_random_mm_dataloader(
+    std::string_view instrument,
+    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash)
 {
     using Sampler = torch::data::samplers::RandomSampler;
-    return make_obs_pipeline_mm_dataloader<Datatype_t, Sampler>(instrument);
+    return make_obs_mm_dataloader<Datatype_t, Sampler>(
+        instrument, contract_hash);
 }
 
 } /* namespace data */

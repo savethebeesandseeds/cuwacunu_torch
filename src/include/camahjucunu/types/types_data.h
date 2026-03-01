@@ -22,15 +22,6 @@ struct ticker_args_t            { [[nodiscard]] std::string jsonify() const; std
 struct tickerTradingDay_args_t  { [[nodiscard]] std::string jsonify() const; std::variant<std::string, std::vector<std::string>> symbol; std::optional<ticker_type_e> type = std::nullopt; std::optional<std::string> timeZone = std::nullopt; };
 struct tickerPrice_args_t       { [[nodiscard]] std::string jsonify() const; std::variant<std::string, std::vector<std::string>> symbol; };
 struct tickerBook_args_t        { [[nodiscard]] std::string jsonify() const; std::variant<std::string, std::vector<std::string>> symbol; };
-ENFORCE_ARCHITECTURE_DESIGN(          depth_args_t);
-ENFORCE_ARCHITECTURE_DESIGN(   tradesRecent_args_t);
-ENFORCE_ARCHITECTURE_DESIGN( tradesHistorical_args_t);
-ENFORCE_ARCHITECTURE_DESIGN(       klines_args_t);
-ENFORCE_ARCHITECTURE_DESIGN(     avgPrice_args_t);
-ENFORCE_ARCHITECTURE_DESIGN(       ticker_args_t);
-ENFORCE_ARCHITECTURE_DESIGN( tickerTradingDay_args_t);
-ENFORCE_ARCHITECTURE_DESIGN(    tickerPrice_args_t);
-ENFORCE_ARCHITECTURE_DESIGN(     tickerBook_args_t);
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*     expected return structures    */
@@ -142,13 +133,6 @@ static_assert(std::is_trivially_copyable_v<basic_t>, "basic_t must be trivially 
 struct price_t     { std::string symbol; double price; };
 struct bookPrice_t { std::string symbol; double bidPrice; double bidQty; double askPrice; double askQty; };
 
-ENFORCE_ARCHITECTURE_DESIGN(  price_qty_t);
-ENFORCE_ARCHITECTURE_DESIGN(  tick_full_t);
-ENFORCE_ARCHITECTURE_DESIGN(  tick_mini_t);
-ENFORCE_ARCHITECTURE_DESIGN(      trade_t);
-ENFORCE_ARCHITECTURE_DESIGN(      kline_t);
-ENFORCE_ARCHITECTURE_DESIGN(      price_t);
-ENFORCE_ARCHITECTURE_DESIGN(  bookPrice_t);
 
 /* primary return structs */
 struct depth_ret_t            { frame_response_t frame_rsp; depth_ret_t             (const std::string& json); i64 lastUpdateId; std::vector<price_qty_t> bids; std::vector<price_qty_t> asks; };
@@ -160,15 +144,6 @@ struct ticker_ret_t           { frame_response_t frame_rsp; ticker_ret_t        
 struct tickerTradingDay_ret_t { frame_response_t frame_rsp; tickerTradingDay_ret_t  (const std::string& json); std::variant<std::monostate, tick_full_t, tick_mini_t, std::vector<tick_full_t>, std::vector<tick_mini_t>> ticks; bool is_full; };
 struct tickerPrice_ret_t      { frame_response_t frame_rsp; tickerPrice_ret_t       (const std::string& json); std::variant<std::monostate, price_t, std::vector<price_t>> prices; };
 struct tickerBook_ret_t       { frame_response_t frame_rsp; tickerBook_ret_t        (const std::string& json); std::variant<std::monostate, bookPrice_t, std::vector<bookPrice_t>> bookPrices; };
-ENFORCE_ARCHITECTURE_DESIGN(            depth_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN(     tradesRecent_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN( tradesHistorical_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN(           klines_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN(         avgPrice_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN(           ticker_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN( tickerTradingDay_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN(      tickerPrice_ret_t);
-ENFORCE_ARCHITECTURE_DESIGN(       tickerBook_ret_t);
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*     deserialize specializations     */

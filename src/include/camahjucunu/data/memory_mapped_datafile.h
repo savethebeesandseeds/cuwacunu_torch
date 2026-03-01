@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <cerrno>
 #include <algorithm>
+#include <optional>
 #include <cctype>   // std::isdigit
 
 #ifdef __unix__
@@ -19,6 +20,7 @@
 
 #include "piaabo/dutils.h"
 #include "piaabo/dfiles.h"
+#include "piaabo/dconfig.h"
 #include "camahjucunu/types/types_utils.h"
 #include "camahjucunu/types/types_data.h"
 #include "camahjucunu/types/types_enums.h"
@@ -74,6 +76,110 @@ inline std::int64_t rounded_steps_or_fatal(long double steps_ld,
               static_cast<long long>(kMaxGapFillSteps));
   }
   return rounded;
+}
+
+inline long double effective_tolerance(long double a,
+                                       long double b,
+                                       long double abs_tol,
+                                       long double rel_tol) {
+  const long double scale =
+      std::max(1.0L, std::max(std::fabs(a), std::fabs(b)));
+  return abs_tol + rel_tol * scale;
+}
+
+inline bool is_near_with_tolerance(long double a,
+                                   long double b,
+                                   long double abs_tol,
+                                   long double rel_tol) {
+  return std::fabs(a - b) <= effective_tolerance(a, b, abs_tol, rel_tol);
+}
+
+struct csv_step_policy_t {
+  std::size_t bootstrap_deltas{64};
+  long double abs_tol{1e-8L};
+  long double rel_tol{1e-10L};
+};
+
+inline csv_step_policy_t load_csv_step_policy() {
+  csv_step_policy_t out{};
+  const int configured_bootstrap = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
+      "DATA_LOADER", "dataloader_csv_bootstrap_deltas", std::optional<int>{64});
+  const double configured_abs_tol = cuwacunu::piaabo::dconfig::config_space_t::get<double>(
+      "DATA_LOADER", "dataloader_csv_step_abs_tol", std::optional<double>{1e-8});
+  const double configured_rel_tol = cuwacunu::piaabo::dconfig::config_space_t::get<double>(
+      "DATA_LOADER", "dataloader_csv_step_rel_tol", std::optional<double>{1e-10});
+
+  out.bootstrap_deltas = static_cast<std::size_t>(std::max(2, configured_bootstrap));
+  out.abs_tol = static_cast<long double>(
+      (configured_abs_tol > 0.0) ? configured_abs_tol : 1e-8);
+  out.rel_tol = static_cast<long double>(
+      (configured_rel_tol >= 0.0) ? configured_rel_tol : 1e-10);
+  return out;
+}
+
+template <typename T>
+long double infer_regular_delta_from_csv(const std::string& csv_filename,
+                                         char delimiter,
+                                         const csv_step_policy_t& policy) {
+  std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
+  if (!csv_file.is_open()) {
+    log_fatal("[sanitize_csv_into_binary_file] Could not open CSV for step inference: %s\n",
+              csv_filename.c_str());
+  }
+
+  std::vector<long double> positive_deltas;
+  positive_deltas.reserve(policy.bootstrap_deltas);
+
+  bool have_anchor = false;
+  T anchor{};
+  std::size_t line_number = 0;
+  std::string line;
+  while (std::getline(csv_file, line)) {
+    ++line_number;
+    T curr = T::from_csv(line, delimiter, line_number);
+    if (!curr.is_valid()) continue;
+
+    if (!have_anchor) {
+      anchor = curr;
+      have_anchor = true;
+      continue;
+    }
+
+    const long double kv0 = static_cast<long double>(anchor.key_value());
+    const long double kv1 = static_cast<long double>(curr.key_value());
+    const long double delta = kv1 - kv0;
+
+    if (delta < 0.0L) {
+      log_fatal("[sanitize_csv_into_binary_file] key_value must be non-decreasing during step inference."
+                " At line %s%zu%s in %s%s%s\n",
+                ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
+                ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
+    }
+
+    if (!is_near_with_tolerance(delta, 0.0L, policy.abs_tol, policy.rel_tol)) {
+      positive_deltas.push_back(delta);
+      if (positive_deltas.size() >= policy.bootstrap_deltas) break;
+    }
+    anchor = curr;
+  }
+  csv_file.close();
+
+  if (!have_anchor) {
+    log_fatal("[sanitize_csv_into_binary_file] No valid records found while inferring step on: %s\n",
+              csv_filename.c_str());
+  }
+  if (positive_deltas.empty()) {
+    log_fatal("[sanitize_csv_into_binary_file] Could not infer positive key delta from CSV: %s\n",
+              csv_filename.c_str());
+  }
+
+  const long double regular_delta =
+      *std::min_element(positive_deltas.begin(), positive_deltas.end());
+  if (!std::isfinite(regular_delta) || regular_delta <= 0.0L) {
+    log_fatal("[sanitize_csv_into_binary_file] Invalid inferred regular delta for %s: %.15Lf\n",
+              csv_filename.c_str(), regular_delta);
+  }
+  return regular_delta;
 }
 
 // ----------------------------------------------------------------------------
@@ -281,7 +387,7 @@ void normalize_binary_file(const std::string& bin_filename,
 template<typename T>
 std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
                                           std::size_t normalization_window = 0,
-                                          bool        force_binarization    = false,
+                                          bool        force_rebuild_cache   = false,
                                           std::size_t buffer_size           = 1024,
                                           char        delimiter             = ',') {
   static_assert(std::is_trivially_copyable<T>::value,
@@ -313,9 +419,20 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
 
   // We will *always* ensure the raw .bin is up-to-date w.r.t. the CSV,
   // because normalized files are derived from it.
-  bool need_write_raw = force_binarization || !newer_than(raw_bin, csv_filename);
+  bool need_write_raw = force_rebuild_cache || !newer_than(raw_bin, csv_filename);
 
   if (need_write_raw) {
+    const detail::csv_step_policy_t csv_step_policy =
+        detail::load_csv_step_policy();
+    const long double regular_delta = detail::infer_regular_delta_from_csv<T>(
+        csv_filename, delimiter, csv_step_policy);
+    log_info("[sanitize_csv_into_binary_file] inferred regular_delta=%.15Lf "
+             "(bootstrap_deltas=%zu, abs_tol=%.3Le, rel_tol=%.3Le)\n",
+             regular_delta,
+             csv_step_policy.bootstrap_deltas,
+             csv_step_policy.abs_tol,
+             csv_step_policy.rel_tol);
+
     std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
     if (!csv_file.is_open()) {
       log_fatal("[sanitize_csv_into_binary_file] Could not open CSV: %s\n", csv_filename.c_str());
@@ -344,23 +461,14 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
       buffer.clear();
     };
 
-    std::string line_p0, line_p1;
-
-    std::size_t line_number = 0;
-    if (!std::getline(csv_file, line_p0)) {
-      log_fatal("[sanitize_csv_into_binary_file] File too short: %s\n", csv_filename.c_str());
-    }
-    line_number = 1;
-    T obj_p0 = T::from_csv(line_p0, delimiter, line_number);
-
     START_LOADING_BAR(csv_file_preparation_progress_bar_, 60, "Preparing Binary data file");
 
-    bool        have_regular_delta = false;
-    long double regular_delta      = 0.0L;
-    constexpr long double tol      = 1e-8L; // tolerance for floating increments
+    std::size_t processed_lines = 0;
+    std::size_t line_number = 0;
+    bool have_anchor = false;
+    T obj_p0{};
 
-    std::size_t processed_lines = 1; // first line read
-
+    std::string line_p1;
     while (std::getline(csv_file, line_p1)) {
       ++processed_lines;
       ++line_number;
@@ -373,8 +481,11 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
       }
 
       T obj_p1 = T::from_csv(line_p1, delimiter, line_number);
-      if (!obj_p1.is_valid()) {
-        // Skip invalid *next*; keep obj_p0 as previous anchor.
+      if (!obj_p1.is_valid()) continue;
+
+      if (!have_anchor) {
+        obj_p0 = obj_p1;
+        have_anchor = true;
         continue;
       }
 
@@ -382,7 +493,9 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
       const long double kv1 = static_cast<long double>(obj_p1.key_value());
       const long double current_delta = kv1 - kv0;
 
-      if (std::fabs(current_delta) <= tol) {
+      if (detail::is_near_with_tolerance(current_delta, 0.0L,
+                                         csv_step_policy.abs_tol,
+                                         csv_step_policy.rel_tol)) {
         log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s zero/eps increment,"
                  " line %s%zu%s in %s%s%s\n",
                  ANSI_CLEAR_LINE, ANSI_COLOR_Yellow, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
@@ -390,7 +503,6 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
                  ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
         // Collapse duplicate key: keep the latest
         obj_p0 = obj_p1;
-        line_p0 = line_p1;
         continue;
       }
 
@@ -401,57 +513,25 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
                   ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
       }
 
-      if (!have_regular_delta) {
-        regular_delta = current_delta;
-        have_regular_delta = true;
-      }
-
-      // Irregular increment check (allow multiples within tolerance)
-      bool irregular = false;
-      if (std::fabs(regular_delta) <= tol) {
-        irregular = true; // degenerate
-      } else {
-        long double m = std::fmod(std::fabs(current_delta), std::fabs(regular_delta));
-        if (m > tol && std::fabs(m - std::fabs(regular_delta)) > tol) {
-          irregular = true;
-        }
-      }
-
-      if (irregular) {
-        // Best-effort gap fill with rounded step count; warn if residual is large.
-        const long double steps_ld = current_delta / regular_delta;
-        const auto delta_steps = detail::rounded_steps_or_fatal(
-          steps_ld, line_number, csv_filename, "irregular-increment");
-        const long double residual = std::fabs(steps_ld - static_cast<long double>(delta_steps));
-        log_err("%s\t %s-%s [sanitize_csv_into_binary_file]%s Irregular increment:"
-                " (regular=%.15Lf, current=%.15Lf, steps≈%.9Lf, rounded=%lld, residual=%.3g)"
-                " at line %s%zu%s in %s%s%s — filling by rounded steps.\n",
-                ANSI_CLEAR_LINE, ANSI_COLOR_Red, ANSI_COLOR_Dim_Gray, ANSI_COLOR_RESET,
-                regular_delta, current_delta, steps_ld,
-                static_cast<long long>(delta_steps), static_cast<double>(residual),
-                ANSI_COLOR_Blue, line_number, ANSI_COLOR_RESET,
-                ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET);
-
-        // Emit p0 and rounded-count nulls as usual:
-        for (std::int64_t i = 0; i < delta_steps; ++i) {
-          const bool first = (i == 0);
-          T obj_px = first ? obj_p0
-                           : T::null_instance(
-                               detail::cast_key_longdouble<typename T::key_type_t>(
-                                 kv0 + static_cast<long double>(i) * regular_delta));
-          buffer.push_back(obj_px);
-          if (buffer.size() == buffer_size) flush_buffer();
-        }
-        // Advance anchor
-        obj_p0 = obj_p1;
-        line_p0 = line_p1;
-        continue;
-      }
-
       // Number of steps from p0 up to (but not including) p1
       const long double steps_ld = current_delta / regular_delta;
       const auto delta_steps = detail::rounded_steps_or_fatal(
         steps_ld, line_number, csv_filename, "regular-increment");
+      const long double rounded_ld = static_cast<long double>(delta_steps);
+      const long double residual = std::fabs(steps_ld - rounded_ld);
+      const long double allowed_residual = detail::effective_tolerance(
+          steps_ld, rounded_ld,
+          csv_step_policy.abs_tol,
+          csv_step_policy.rel_tol);
+      if (residual > allowed_residual) {
+        log_fatal("[sanitize_csv_into_binary_file] Non-integer step ratio out of tolerance at line %zu in %s"
+                  " (regular=%.15Lf current=%.15Lf ratio=%.15Lf rounded=%lld residual=%.3Le allowed=%.3Le)\n",
+                  line_number, csv_filename.c_str(),
+                  regular_delta, current_delta, steps_ld,
+                  static_cast<long long>(delta_steps),
+                  static_cast<long double>(residual),
+                  static_cast<long double>(allowed_residual));
+      }
       if (delta_steps != 1) {
         log_warn("%s\t %s-%s [sanitize_csv_into_binary_file]%s extra large step (d=%s%lld%s)"
                  " at line %s%zu%s in %s%s%s\n",
@@ -480,7 +560,11 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
 
       // Advance anchor
       obj_p0 = obj_p1;
-      line_p0 = line_p1;
+    }
+
+    if (!have_anchor) {
+      log_fatal("[sanitize_csv_into_binary_file] No valid records found on CSV: %s\n",
+                csv_filename.c_str());
     }
 
     // Push the final record (last anchor)
@@ -507,7 +591,7 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
   }
 
   // Produce or refresh normalized file from raw
-  const bool need_norm = force_binarization
+  const bool need_norm = force_rebuild_cache
                       || !std::filesystem::exists(norm_bin)
                       || (std::filesystem::last_write_time(norm_bin) <= std::filesystem::last_write_time(raw_bin));
 

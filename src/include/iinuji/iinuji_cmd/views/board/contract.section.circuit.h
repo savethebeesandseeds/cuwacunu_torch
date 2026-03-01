@@ -41,8 +41,8 @@ inline std::string board_contract_section_render_circuit_dsl(
 
 inline void board_contract_section_sync_circuit_cache(CmdState& st) {
   st.board.contract_circuit_dsl_sections.clear();
-  st.board.contract_circuit_dsl_sections.reserve(st.board.board.circuits.size());
-  for (const auto& c : st.board.board.circuits) {
+  st.board.contract_circuit_dsl_sections.reserve(st.board.board.contracts.size());
+  for (const auto& c : st.board.board.contracts) {
     st.board.contract_circuit_dsl_sections.push_back(board_contract_section_render_circuit_dsl(c));
   }
 }
@@ -51,8 +51,8 @@ inline std::string board_contract_section_get_circuit_text(const CmdState& st, s
   if (contract_index < st.board.contract_circuit_dsl_sections.size()) {
     return st.board.contract_circuit_dsl_sections[contract_index];
   }
-  if (contract_index < st.board.board.circuits.size()) {
-    return board_contract_section_render_circuit_dsl(st.board.board.circuits[contract_index]);
+  if (contract_index < st.board.board.contracts.size()) {
+    return board_contract_section_render_circuit_dsl(st.board.board.contracts[contract_index]);
   }
   return {};
 }

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -12,17 +13,26 @@
 
 #include "tsiemene/board.contract.h"
 #include "tsiemene/tsi.type.registry.h"
+#include "tsiemene/tsi.wikimyei.h"
 
 namespace tsiemene {
 
 struct Board {
+  std::string board_contract_hash{};
+  std::string board_contract_path{};
   std::vector<BoardContract> contracts{};
-  std::vector<BoardContract>& circuits;
 
-  Board() : contracts{}, circuits(contracts) {}
-  Board(Board&& other) noexcept : contracts(std::move(other.contracts)), circuits(contracts) {}
+  Board() = default;
+  Board(Board&& other) noexcept
+      : board_contract_hash(std::move(other.board_contract_hash)),
+        board_contract_path(std::move(other.board_contract_path)),
+        contracts(std::move(other.contracts)) {}
   Board& operator=(Board&& other) noexcept {
-    if (this != &other) contracts = std::move(other.contracts);
+    if (this != &other) {
+      board_contract_hash = std::move(other.board_contract_hash);
+      board_contract_path = std::move(other.board_contract_path);
+      contracts = std::move(other.contracts);
+    }
     return *this;
   }
 
@@ -182,14 +192,14 @@ struct BoardIssue {
       return fail("contract has no start tsi", 0);
     }
 
-    if (c.ingress0.directive.empty()) return fail("contract ingress0.directive is empty", 0);
+    if (c.seed_ingress.directive.empty()) return fail("contract seed_ingress.directive is empty", 0);
 
     const DirectiveSpec* start_in =
-        find_directive(*cv.hops[0].from.tsi, c.ingress0.directive, DirectiveDir::In);
-    if (!start_in) return fail("contract ingress0 directive not found on root tsi", 0);
+        find_directive(*cv.hops[0].from.tsi, c.seed_ingress.directive, DirectiveDir::In);
+    if (!start_in) return fail("contract seed_ingress directive not found on root tsi", 0);
 
-    if (start_in->kind.kind != c.ingress0.signal.kind) {
-      return fail("contract ingress0 kind mismatch with root tsi input", 0);
+    if (start_in->kind.kind != c.seed_ingress.signal.kind) {
+      return fail("contract seed_ingress kind mismatch with root tsi input", 0);
     }
 
     if (!c.spec.sourced_from_config) continue;
@@ -286,19 +296,106 @@ struct BoardIssue {
   return true;
 }
 
-inline std::uint64_t run_circuit(BoardContract& c, TsiContext& ctx) {
+inline bool load_contract_wikimyei_artifacts(BoardContract& c,
+                                             std::string* error = nullptr);
+inline bool save_contract_wikimyei_artifacts(BoardContract& c,
+                                             std::string* error = nullptr);
+
+inline std::uint64_t run_circuit(BoardContract& c, BoardContext& ctx) {
   if (!c.ensure_compiled(nullptr)) return 0;
-  return run_wave_compiled(c.compiled_runtime, c.wave0, c.ingress0, ctx);
+  std::string artifact_error;
+  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  const std::uint64_t steps =
+      run_wave_compiled(c.compiled_runtime, c.seed_wave, c.seed_ingress, ctx);
+  for (auto& node : c.nodes) {
+    if (node) node->on_epoch_end(ctx);
+  }
+  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  return steps;
 }
 
-inline std::uint64_t run_contract(BoardContract& c, TsiContext& ctx) {
-  return run_circuit(c, ctx);
+inline void reset_contract_nodes(BoardContract& c, BoardContext& ctx) {
+  for (auto& node : c.nodes) {
+    if (node) node->reset(ctx);
+  }
 }
 
-inline std::uint64_t run_board(Board& b, TsiContext& ctx) {
-  std::uint64_t total = 0;
-  for (auto& c : b.contracts) total += run_contract(c, ctx);
-  return total;
+[[nodiscard]] inline Wave wave_for_epoch(const Wave& seed, std::uint64_t epoch_index) {
+  Wave out = seed;
+  if (epoch_index >
+      (std::numeric_limits<std::uint64_t>::max() - seed.cursor.episode)) {
+    out.cursor.episode = std::numeric_limits<std::uint64_t>::max();
+  } else {
+    out.cursor.episode = seed.cursor.episode + epoch_index;
+  }
+  return out;
+}
+
+inline bool load_contract_wikimyei_artifacts(BoardContract& c,
+                                             std::string* error) {
+  if (error) error->clear();
+  if (c.spec.representation_hashimyei.empty()) return true;
+
+  for (auto& node : c.nodes) {
+    auto* wik = dynamic_cast<TsiWikimyei*>(node.get());
+    if (!wik) continue;
+    if (!wik->supports_init_artifacts()) continue;
+    if (!wik->runtime_autoload_artifacts()) continue;
+
+    std::string local_error;
+    if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
+                                          &local_error)) {
+      if (error) {
+        *error = "failed to load wikimyei artifacts for node '" +
+                 std::string(wik->instance_name()) + "': " + local_error;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+inline bool save_contract_wikimyei_artifacts(BoardContract& c,
+                                             std::string* error) {
+  if (error) error->clear();
+  if (c.spec.representation_hashimyei.empty()) return true;
+
+  for (auto& node : c.nodes) {
+    auto* wik = dynamic_cast<TsiWikimyei*>(node.get());
+    if (!wik) continue;
+    if (!wik->supports_init_artifacts()) continue;
+    if (!wik->runtime_autosave_artifacts()) continue;
+
+    std::string local_error;
+    if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
+                                        &local_error)) {
+      if (error) {
+        *error = "failed to save wikimyei artifacts for node '" +
+                 std::string(wik->instance_name()) + "': " + local_error;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+inline std::uint64_t run_contract(BoardContract& c, BoardContext& ctx) {
+  if (!c.ensure_compiled(nullptr)) return 0;
+  std::string artifact_error;
+  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  const std::uint64_t epochs = std::max<std::uint64_t>(1, c.execution.epochs);
+  std::uint64_t total_steps = 0;
+  for (std::uint64_t epoch = 0; epoch < epochs; ++epoch) {
+    reset_contract_nodes(c, ctx);
+    const Wave start_wave = wave_for_epoch(c.seed_wave, epoch);
+    total_steps +=
+        run_wave_compiled(c.compiled_runtime, start_wave, c.seed_ingress, ctx);
+    for (auto& node : c.nodes) {
+      if (node) node->on_epoch_end(ctx);
+    }
+  }
+  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  return total_steps;
 }
 
 } // namespace tsiemene

@@ -36,7 +36,8 @@ inline constexpr std::uint64_t kFnv64Prime = 1099511628211ull;
 
 [[nodiscard]] inline std::string make_hex_hash_name(std::uint64_t ordinal) {
   std::ostringstream oss;
-  oss << "0x" << std::hex << std::nouppercase << ordinal;
+  oss << "0x" << std::hex << std::nouppercase << std::setfill('0')
+      << std::setw(4) << ordinal;
   return oss.str();
 }
 

@@ -10,7 +10,6 @@
 #include "piaabo/dutils.h"
 #include "piaabo/dsecurity.h"
 #include "piaabo/djson_parsing.h"
-#include "piaabo/darchitecture.h"
 #include "camahjucunu/types/types_core.h"
 #include "camahjucunu/types/types_enums.h"
 
@@ -27,10 +26,8 @@ namespace exchange {
 /* --- --- --- --- --- --- --- --- --- --- --- */
 
 struct frame_response_t { uint http_status; std::string frame_id; };
-ENFORCE_ARCHITECTURE_DESIGN(frame_response_t);
 
 struct loaded_data_response_t { std::map<interval_type_e, std::vector<double>> data; };
-ENFORCE_ARCHITECTURE_DESIGN(loaded_data_response_t);
 
 /* --- --- --- --- --- --- --- --- --- --- --- */
 /*         serialization utils                 */

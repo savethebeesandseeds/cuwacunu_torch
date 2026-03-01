@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -38,6 +39,20 @@ struct artifact_identity_t {
   artifact_metadata_t metadata{};
 };
 
+struct artifact_manifest_file_t {
+  std::string path{};
+  std::uintmax_t size{0};
+};
+
+struct artifact_manifest_t {
+  std::string schema{"hashimyei.artifact.manifest.v1"};
+  std::string canonical_type{};
+  std::string family{};
+  std::string model{};
+  std::string artifact_id{};
+  std::vector<artifact_manifest_file_t> files{};
+};
+
 [[nodiscard]] inline std::vector<std::string> split_dot(std::string_view s) {
   std::vector<std::string> out;
   std::size_t pos = 0;
@@ -51,6 +66,136 @@ struct artifact_identity_t {
     pos = dot + 1;
   }
   return out;
+}
+
+[[nodiscard]] inline std::filesystem::path artifact_manifest_path(const std::filesystem::path& artifact_dir) {
+  return artifact_dir / "manifest.txt";
+}
+
+[[nodiscard]] inline bool artifact_manifest_exists(const std::filesystem::path& artifact_dir) {
+  std::error_code ec;
+  const auto p = artifact_manifest_path(artifact_dir);
+  return std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec);
+}
+
+[[nodiscard]] inline bool write_artifact_manifest(const std::filesystem::path& artifact_dir,
+                                                  const artifact_manifest_t& manifest,
+                                                  std::string* error = nullptr) {
+  namespace fs = std::filesystem;
+  if (error) error->clear();
+
+  if (manifest.canonical_type.empty() ||
+      manifest.family.empty() ||
+      manifest.model.empty() ||
+      manifest.artifact_id.empty()) {
+    if (error) *error = "artifact manifest missing canonical_type/family/model/artifact_id";
+    return false;
+  }
+
+  std::error_code ec;
+  fs::create_directories(artifact_dir, ec);
+  if (ec) {
+    if (error) *error = "cannot create artifact directory: " + artifact_dir.string();
+    return false;
+  }
+
+  std::ofstream out(artifact_manifest_path(artifact_dir), std::ios::binary | std::ios::trunc);
+  if (!out) {
+    if (error) *error = "cannot open manifest for write: " + artifact_manifest_path(artifact_dir).string();
+    return false;
+  }
+
+  out << "schema=" << manifest.schema << "\n";
+  out << "canonical_type=" << manifest.canonical_type << "\n";
+  out << "family=" << manifest.family << "\n";
+  out << "model=" << manifest.model << "\n";
+  out << "artifact_id=" << manifest.artifact_id << "\n";
+  for (const auto& file : manifest.files) {
+    out << "file=" << file.path << "|" << file.size << "\n";
+  }
+  if (!out) {
+    if (error) *error = "cannot write manifest contents: " + artifact_manifest_path(artifact_dir).string();
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] inline bool read_artifact_manifest(const std::filesystem::path& artifact_dir,
+                                                 artifact_manifest_t* out,
+                                                 std::string* error = nullptr) {
+  if (!out) return false;
+  if (error) error->clear();
+  *out = artifact_manifest_t{};
+
+  std::ifstream in(artifact_manifest_path(artifact_dir), std::ios::binary);
+  if (!in) {
+    if (error) *error = "manifest file not found: " + artifact_manifest_path(artifact_dir).string();
+    return false;
+  }
+
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.empty()) continue;
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    const std::string key = line.substr(0, eq);
+    const std::string value = line.substr(eq + 1);
+
+    if (key == "schema") {
+      out->schema = value;
+      continue;
+    }
+    if (key == "canonical_type") {
+      out->canonical_type = value;
+      continue;
+    }
+    if (key == "family") {
+      out->family = value;
+      continue;
+    }
+    if (key == "model") {
+      out->model = value;
+      continue;
+    }
+    if (key == "artifact_id") {
+      out->artifact_id = value;
+      continue;
+    }
+    if (key == "file") {
+      const std::size_t bar = value.rfind('|');
+      if (bar == std::string::npos) continue;
+      artifact_manifest_file_t f{};
+      f.path = value.substr(0, bar);
+      try {
+        f.size = static_cast<std::uintmax_t>(std::stoull(value.substr(bar + 1)));
+      } catch (...) {
+        f.size = 0;
+      }
+      out->files.push_back(std::move(f));
+    }
+  }
+
+  if (!in.eof() && in.fail()) {
+    if (error) *error = "cannot parse manifest: " + artifact_manifest_path(artifact_dir).string();
+    return false;
+  }
+
+  if (out->canonical_type.empty() ||
+      out->family.empty() ||
+      out->model.empty() ||
+      out->artifact_id.empty()) {
+    if (error) *error = "manifest missing canonical_type/family/model/artifact_id";
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] inline bool artifact_manifest_has_file(const artifact_manifest_t& manifest,
+                                                     std::string_view path) {
+  for (const auto& file : manifest.files) {
+    if (file.path == path) return true;
+  }
+  return false;
 }
 
 [[nodiscard]] inline bool is_valid_atom(std::string_view s) {
@@ -135,18 +280,13 @@ struct artifact_identity_t {
   return true;
 }
 
-[[nodiscard]] inline bool decrypt_metadata_text(const std::vector<unsigned char>& encrypted,
-                                                const std::vector<unsigned char>& salt,
+[[nodiscard]] inline bool decrypt_metadata_text(const std::vector<unsigned char>& encrypted_blob,
                                                 std::string* out_plaintext,
                                                 std::string* error) {
   if (!out_plaintext) return false;
   out_plaintext->clear();
 
-  if (salt.size() != AES_SALT_LEN) {
-    if (error) *error = "invalid metadata salt size";
-    return false;
-  }
-  if (encrypted.empty()) {
+  if (encrypted_blob.empty()) {
     if (error) *error = "empty encrypted metadata";
     return false;
   }
@@ -157,45 +297,33 @@ struct artifact_identity_t {
     return false;
   }
 
-  auto* key = cuwacunu::piaabo::dsecurity::secure_allocate<unsigned char>(AES_KEY_LEN);
-  auto* iv = cuwacunu::piaabo::dsecurity::secure_allocate<unsigned char>(AES_IV_LEN);
   std::size_t plain_len = 0;
   unsigned char* plaintext = nullptr;
 
-  cuwacunu::piaabo::dencryption::derive_key_iv(
-      secret.c_str(),
-      key,
-      iv,
-      salt.data());
-  plaintext = cuwacunu::piaabo::dencryption::aes_decrypt(
-      encrypted.data(),
-      encrypted.size(),
-      key,
-      iv,
-      plain_len);
+  if (!cuwacunu::piaabo::dencryption::is_aead_blob(encrypted_blob.data(), encrypted_blob.size())) {
+    if (error) *error = "metadata blob format is not AEAD";
+    return false;
+  }
+
+  plaintext = cuwacunu::piaabo::dencryption::aead_decrypt_blob(
+      encrypted_blob.data(), encrypted_blob.size(), secret.c_str(), plain_len);
 
   if (plaintext == nullptr) {
     if (error) *error = "metadata decryption failed";
-    cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(key, AES_KEY_LEN);
-    cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(iv, AES_IV_LEN);
     return false;
   }
 
   out_plaintext->assign(reinterpret_cast<const char*>(plaintext), plain_len);
 
   cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(plaintext, plain_len);
-  cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(key, AES_KEY_LEN);
-  cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(iv, AES_IV_LEN);
   return true;
 }
 
 [[nodiscard]] inline bool encrypt_metadata_text(const std::string& plaintext,
                                                 std::vector<unsigned char>* out_encrypted,
-                                                std::vector<unsigned char>* out_salt,
                                                 std::string* error) {
-  if (!out_encrypted || !out_salt) return false;
+  if (!out_encrypted) return false;
   out_encrypted->clear();
-  out_salt->clear();
 
   const std::string secret = metadata_secret();
   if (secret.empty()) {
@@ -203,42 +331,20 @@ struct artifact_identity_t {
     return false;
   }
 
-  out_salt->resize(AES_SALT_LEN);
-  if (RAND_bytes(out_salt->data(), AES_SALT_LEN) != 1) {
-    if (error) *error = "cannot generate metadata salt";
-    out_salt->clear();
-    return false;
-  }
-
-  auto* key = cuwacunu::piaabo::dsecurity::secure_allocate<unsigned char>(AES_KEY_LEN);
-  auto* iv = cuwacunu::piaabo::dsecurity::secure_allocate<unsigned char>(AES_IV_LEN);
   std::size_t encrypted_len = 0;
   unsigned char* encrypted = nullptr;
 
-  cuwacunu::piaabo::dencryption::derive_key_iv(
-      secret.c_str(),
-      key,
-      iv,
-      out_salt->data());
-  encrypted = cuwacunu::piaabo::dencryption::aes_encrypt(
-      reinterpret_cast<const unsigned char*>(plaintext.data()),
-      plaintext.size(),
-      key,
-      iv,
+  encrypted = cuwacunu::piaabo::dencryption::aead_encrypt_blob(
+      reinterpret_cast<const unsigned char*>(plaintext.data()), plaintext.size(), secret.c_str(),
       encrypted_len);
 
   if (encrypted == nullptr) {
     if (error) *error = "metadata encryption failed";
-    cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(key, AES_KEY_LEN);
-    cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(iv, AES_IV_LEN);
-    out_salt->clear();
     return false;
   }
 
   out_encrypted->assign(encrypted, encrypted + encrypted_len);
   cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(encrypted, encrypted_len);
-  cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(key, AES_KEY_LEN);
-  cuwacunu::piaabo::dsecurity::secure_delete<unsigned char>(iv, AES_IV_LEN);
   return true;
 }
 
@@ -254,17 +360,13 @@ struct artifact_identity_t {
   }
 
   std::vector<unsigned char> encrypted;
-  std::vector<unsigned char> salt;
   std::string crypt_error;
-  if (!encrypt_metadata_text(metadata_text, &encrypted, &salt, &crypt_error)) {
+  if (!encrypt_metadata_text(metadata_text, &encrypted, &crypt_error)) {
     if (error) *error = crypt_error;
     return false;
   }
 
   if (!write_file_binary(artifact_dir / "metadata.enc", encrypted.data(), encrypted.size(), error)) {
-    return false;
-  }
-  if (!write_file_binary(artifact_dir / "metadata.salt", salt.data(), salt.size(), error)) {
     return false;
   }
   return true;
@@ -273,29 +375,23 @@ struct artifact_identity_t {
 [[nodiscard]] inline artifact_metadata_t load_artifact_metadata(const std::filesystem::path& artifact_dir) {
   artifact_metadata_t out{};
   const auto enc_path = artifact_dir / "metadata.enc";
-  const auto salt_path = artifact_dir / "metadata.salt";
 
-  if (!std::filesystem::exists(enc_path) || !std::filesystem::exists(salt_path)) {
+  if (!std::filesystem::exists(enc_path)) {
     return out;
   }
 
   out.present = true;
 
   std::vector<unsigned char> encrypted;
-  std::vector<unsigned char> salt;
   std::string read_error;
   if (!read_file_binary(enc_path, &encrypted, &read_error)) {
-    out.error = read_error;
-    return out;
-  }
-  if (!read_file_binary(salt_path, &salt, &read_error)) {
     out.error = read_error;
     return out;
   }
 
   std::string plain;
   std::string decrypt_error;
-  if (!decrypt_metadata_text(encrypted, salt, &plain, &decrypt_error)) {
+  if (!decrypt_metadata_text(encrypted, &plain, &decrypt_error)) {
     out.error = decrypt_error;
     return out;
   }

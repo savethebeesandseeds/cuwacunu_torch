@@ -42,6 +42,24 @@ class TsiWikimyei : public Tsi {
   [[nodiscard]] virtual std::string_view init_artifact_schema() const noexcept { return {}; }
   [[nodiscard]] virtual std::string_view artifact_family() const noexcept { return {}; }
   [[nodiscard]] virtual std::string_view artifact_model() const noexcept { return {}; }
+  [[nodiscard]] virtual bool runtime_autoload_artifacts() const noexcept {
+    return supports_init_artifacts();
+  }
+  [[nodiscard]] virtual bool runtime_autosave_artifacts() const noexcept { return false; }
+  [[nodiscard]] virtual bool runtime_load_from_hashimyei(
+      std::string_view hashimyei,
+      std::string* error = nullptr) {
+    (void)hashimyei;
+    if (error) error->clear();
+    return false;
+  }
+  [[nodiscard]] virtual bool runtime_save_to_hashimyei(
+      std::string_view hashimyei,
+      std::string* error = nullptr) {
+    (void)hashimyei;
+    if (error) error->clear();
+    return false;
+  }
   [[nodiscard]] bool allows_hop_to(const Tsi& downstream,
                                    DirectiveId out_directive,
                                    DirectiveId in_directive) const noexcept override {

@@ -1,0 +1,272 @@
+/*
+  jkimyei_schema.def
+  X-macro registry for jkimyei DSL surface.
+
+  Consumers may define any of these macros before including this file:
+
+    JK_COMPONENT_TYPE(kind_token, canonical_type, description)
+    JK_COMPONENT_REQUIRED_FAMILY(kind_token, family_token)
+    JK_COMPONENT_FORBIDDEN_FAMILY(kind_token, family_token)
+
+    JK_OPTIMIZER_TYPE(type_token, description)
+    JK_OPTIMIZER_PARAM(type_token, key, value_kind, required, description)
+
+    JK_SCHEDULER_TYPE(type_token, description)
+    JK_SCHEDULER_PARAM(type_token, key, value_kind, required, description)
+
+    JK_LOSS_TYPE(type_token, description)
+    JK_LOSS_PARAM(type_token, key, value_kind, required, description)
+
+    JK_COMPONENT_PARAM(kind_token, key, value_kind, required, description)
+
+    JK_REPRO_PARAM(key, value_kind, required, description)
+    JK_NUMERIC_PARAM(key, value_kind, required, description)
+    JK_GRADIENT_PARAM(key, value_kind, required, description)
+    JK_CHECKPOINT_PARAM(key, value_kind, required, description)
+    JK_METRIC_PARAM(key, value_kind, required, description)
+    JK_DATA_PARAM(key, value_kind, required, description)
+
+    JK_AUGMENTATION_PARAM(key, value_kind, required, description)
+
+    JK_INI_SELECTOR_FIELD(key, description)
+    JK_RUNTIME_OWNED_FIELD(key, description)
+
+  value_kind is one of:
+    Bool, Int, Float, String, IntList, FloatList, StringList
+*/
+
+/* ------------------------- Component Types ------------------------- */
+#ifdef JK_COMPONENT_TYPE
+JK_COMPONENT_TYPE(VICREG, "tsi.wikimyei.representation.vicreg", "Self-supervised representation network")
+JK_COMPONENT_TYPE(MDN,    "tsi.wikimyei.inference.mdn",          "Mixture density value-estimation network")
+#endif
+
+#ifdef JK_COMPONENT_REQUIRED_FAMILY
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Optimizer)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Scheduler)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Loss)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, ComponentParams)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Reproducibility)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Numerics)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Gradient)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Checkpoint)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Metrics)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, DataRef)
+JK_COMPONENT_REQUIRED_FAMILY(VICREG, Augmentations)
+
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Optimizer)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Scheduler)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Loss)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, ComponentParams)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Reproducibility)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Numerics)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Gradient)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Checkpoint)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, Metrics)
+JK_COMPONENT_REQUIRED_FAMILY(MDN, DataRef)
+#endif
+
+#ifdef JK_COMPONENT_FORBIDDEN_FAMILY
+JK_COMPONENT_FORBIDDEN_FAMILY(MDN, Augmentations)
+#endif
+
+/* --------------------------- Optimizers --------------------------- */
+#ifdef JK_OPTIMIZER_TYPE
+JK_OPTIMIZER_TYPE(AdamW,  "AdamW optimizer")
+JK_OPTIMIZER_TYPE(Adam,   "Adam optimizer")
+JK_OPTIMIZER_TYPE(SGD,    "SGD optimizer")
+JK_OPTIMIZER_TYPE(RMSprop,"RMSprop optimizer")
+JK_OPTIMIZER_TYPE(Adagrad,"Adagrad optimizer")
+#endif
+
+#ifdef JK_OPTIMIZER_PARAM
+JK_OPTIMIZER_PARAM(AdamW,   "initial_learning_rate", Float, 1, "Base learning rate")
+JK_OPTIMIZER_PARAM(AdamW,   "weight_decay",          Float, 1, "Decoupled weight decay")
+JK_OPTIMIZER_PARAM(AdamW,   "epsilon",               Float, 1, "Numerical epsilon")
+JK_OPTIMIZER_PARAM(AdamW,   "beta1",                 Float, 1, "Exponential average coefficient")
+JK_OPTIMIZER_PARAM(AdamW,   "beta2",                 Float, 1, "Second moment coefficient")
+JK_OPTIMIZER_PARAM(AdamW,   "amsgrad",               Bool,  1, "Enable AMSGrad")
+
+JK_OPTIMIZER_PARAM(Adam,    "initial_learning_rate", Float, 1, "Base learning rate")
+JK_OPTIMIZER_PARAM(Adam,    "weight_decay",          Float, 1, "Weight decay")
+JK_OPTIMIZER_PARAM(Adam,    "epsilon",               Float, 1, "Numerical epsilon")
+JK_OPTIMIZER_PARAM(Adam,    "beta1",                 Float, 1, "Exponential average coefficient")
+JK_OPTIMIZER_PARAM(Adam,    "beta2",                 Float, 1, "Second moment coefficient")
+JK_OPTIMIZER_PARAM(Adam,    "amsgrad",               Bool,  1, "Enable AMSGrad")
+
+JK_OPTIMIZER_PARAM(SGD,     "initial_learning_rate", Float, 1, "Base learning rate")
+JK_OPTIMIZER_PARAM(SGD,     "momentum",              Float, 1, "Momentum factor")
+JK_OPTIMIZER_PARAM(SGD,     "weight_decay",          Float, 1, "Weight decay")
+JK_OPTIMIZER_PARAM(SGD,     "nesterov",              Bool,  1, "Enable Nesterov momentum")
+
+JK_OPTIMIZER_PARAM(RMSprop, "initial_learning_rate", Float, 1, "Base learning rate")
+JK_OPTIMIZER_PARAM(RMSprop, "alpha",                 Float, 1, "Smoothing constant")
+JK_OPTIMIZER_PARAM(RMSprop, "epsilon",               Float, 1, "Numerical epsilon")
+JK_OPTIMIZER_PARAM(RMSprop, "weight_decay",          Float, 1, "Weight decay")
+JK_OPTIMIZER_PARAM(RMSprop, "centered",              Bool,  1, "Centered RMSProp")
+
+JK_OPTIMIZER_PARAM(Adagrad, "initial_learning_rate", Float, 1, "Base learning rate")
+JK_OPTIMIZER_PARAM(Adagrad, "decay",                 Float, 1, "Learning rate decay")
+JK_OPTIMIZER_PARAM(Adagrad, "epsilon",               Float, 1, "Numerical epsilon")
+JK_OPTIMIZER_PARAM(Adagrad, "weight_decay",          Float, 1, "Weight decay")
+#endif
+
+/* -------------------------- Schedulers ---------------------------- */
+#ifdef JK_SCHEDULER_TYPE
+JK_SCHEDULER_TYPE(StepLR,            "Step decay scheduler")
+JK_SCHEDULER_TYPE(MultiStepLR,       "Piecewise step scheduler")
+JK_SCHEDULER_TYPE(OneCycleLR,        "One-cycle scheduler")
+JK_SCHEDULER_TYPE(ExponentialLR,     "Exponential decay scheduler")
+JK_SCHEDULER_TYPE(ReduceLROnPlateau, "Plateau-triggered scheduler")
+JK_SCHEDULER_TYPE(ConstantLR,        "Constant learning rate scheduler")
+JK_SCHEDULER_TYPE(CosineAnnealingLR, "Cosine annealing scheduler")
+JK_SCHEDULER_TYPE(WarmupLR,          "Linear warmup scheduler")
+#endif
+
+#ifdef JK_SCHEDULER_PARAM
+JK_SCHEDULER_PARAM(StepLR,            "step_size",      Int,      1, "Number of steps before decay")
+JK_SCHEDULER_PARAM(StepLR,            "gamma",          Float,    1, "Multiplicative decay factor")
+
+JK_SCHEDULER_PARAM(MultiStepLR,       "milestones",     IntList,  1, "Milestone step list")
+JK_SCHEDULER_PARAM(MultiStepLR,       "gamma",          Float,    1, "Multiplicative decay factor")
+
+JK_SCHEDULER_PARAM(OneCycleLR,        "max_lr",         Float,    1, "Peak learning rate")
+JK_SCHEDULER_PARAM(OneCycleLR,        "total_steps",    Int,      1, "Total scheduler steps")
+
+JK_SCHEDULER_PARAM(ExponentialLR,     "gamma",          Float,    1, "Exponential decay factor")
+
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "mode",           String,   1, "Plateau mode: min|max")
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "factor",         Float,    1, "LR decay factor")
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "patience",       Int,      1, "Patience in steps")
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "threshold",      Float,    1, "Minimum monitored improvement")
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "threshold_mode", String,   1, "Threshold mode: rel|abs")
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "cooldown",       Int,      1, "Cooldown steps")
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "min_lr",         Float,    1, "Lower learning-rate bound")
+JK_SCHEDULER_PARAM(ReduceLROnPlateau, "eps",            Float,    1, "Numerical epsilon")
+
+JK_SCHEDULER_PARAM(ConstantLR,        "lr",             Float,    1, "Fixed learning rate")
+
+JK_SCHEDULER_PARAM(CosineAnnealingLR, "T_max",          Int,      1, "Maximum scheduler period")
+JK_SCHEDULER_PARAM(CosineAnnealingLR, "eta_min",        Float,    1, "Minimum learning rate")
+
+JK_SCHEDULER_PARAM(WarmupLR,          "warmup_steps",   Int,      1, "Warmup duration")
+JK_SCHEDULER_PARAM(WarmupLR,          "start_factor",   Float,    1, "Warmup starting ratio")
+JK_SCHEDULER_PARAM(WarmupLR,          "end_factor",     Float,    1, "Warmup ending ratio")
+#endif
+
+/* ----------------------------- Losses ----------------------------- */
+#ifdef JK_LOSS_TYPE
+JK_LOSS_TYPE(NLLLoss,            "Negative log-likelihood objective for MDN")
+JK_LOSS_TYPE(VICReg,             "VICReg invariance/variance/covariance objective")
+JK_LOSS_TYPE(CrossEntropy,       "Cross-entropy objective")
+JK_LOSS_TYPE(BinaryCrossEntropy, "Binary cross-entropy objective")
+JK_LOSS_TYPE(MeanSquaredError,   "Mean-squared error objective")
+JK_LOSS_TYPE(Hinge,              "Hinge objective")
+JK_LOSS_TYPE(SmoothL1,           "Smooth-L1 objective")
+JK_LOSS_TYPE(L1Loss,             "L1 objective")
+#endif
+
+#ifdef JK_LOSS_PARAM
+JK_LOSS_PARAM(NLLLoss,            "eps",             Float,  1, "Numerical epsilon")
+JK_LOSS_PARAM(NLLLoss,            "sigma_min",       Float,  1, "Lower sigma clamp")
+JK_LOSS_PARAM(NLLLoss,            "sigma_max",       Float,  1, "Upper sigma clamp (0 disables)")
+JK_LOSS_PARAM(NLLLoss,            "reduction",       String, 1, "Reduction mode")
+
+JK_LOSS_PARAM(VICReg,             "sim_coeff",       Float,  1, "Invariance coefficient")
+JK_LOSS_PARAM(VICReg,             "std_coeff",       Float,  1, "Variance coefficient")
+JK_LOSS_PARAM(VICReg,             "cov_coeff",       Float,  1, "Covariance coefficient")
+JK_LOSS_PARAM(VICReg,             "huber_delta",     Float,  1, "Huber transition for covariance robustification")
+
+JK_LOSS_PARAM(CrossEntropy,       "label_smoothing", Float,  1, "Label-smoothing factor")
+JK_LOSS_PARAM(BinaryCrossEntropy, "pos_weight",      Float,  1, "Positive class weighting")
+JK_LOSS_PARAM(Hinge,              "margin",          Float,  1, "Decision margin")
+JK_LOSS_PARAM(SmoothL1,           "beta",            Float,  1, "Smooth-L1 transition")
+#endif
+
+/* ---------------------- Component-Type Fields --------------------- */
+#ifdef JK_COMPONENT_PARAM
+JK_COMPONENT_PARAM(VICREG, "vicreg_train",            Bool,      1, "Emit train loss branch")
+JK_COMPONENT_PARAM(VICREG, "vicreg_use_swa",          Bool,      1, "Use SWA encoder path")
+JK_COMPONENT_PARAM(VICREG, "vicreg_detach_to_cpu",    Bool,      1, "Detach payload tensors to CPU")
+JK_COMPONENT_PARAM(VICREG, "augmentation_set",         String,    1, "Augmentation set id")
+JK_COMPONENT_PARAM(VICREG, "swa_start_iter",          Int,       1, "Global iteration where SWA begins")
+JK_COMPONENT_PARAM(VICREG, "optimizer_threshold_reset",Int,       1, "Optimizer pow-reset step (-1 disables)")
+
+JK_COMPONENT_PARAM(MDN,    "target_dims",             IntList,   1, "Target feature dimensions")
+JK_COMPONENT_PARAM(MDN,    "target_weights",          FloatList, 1, "Weights for target dims")
+JK_COMPONENT_PARAM(MDN,    "grad_clip",               Float,     1, "Gradient clip threshold")
+JK_COMPONENT_PARAM(MDN,    "optimizer_threshold_reset",Int,      1, "Optimizer pow-reset step (-1 disables)")
+#endif
+
+/* --------------------- Shared Policy Families --------------------- */
+#ifdef JK_REPRO_PARAM
+JK_REPRO_PARAM("deterministic", Bool,   1, "Deterministic execution toggle")
+JK_REPRO_PARAM("seed",          Int,    1, "Global random seed")
+JK_REPRO_PARAM("workers",       Int,    1, "Data-loader worker count")
+JK_REPRO_PARAM("sampler",       String, 1, "Sampler policy: sequential|random")
+JK_REPRO_PARAM("shuffle",       Bool,   1, "Shuffle per epoch")
+#endif
+
+#ifdef JK_NUMERIC_PARAM
+JK_NUMERIC_PARAM("dtype",          String, 1, "Tensor dtype token")
+JK_NUMERIC_PARAM("device",         String, 1, "Execution device token")
+JK_NUMERIC_PARAM("amp",            Bool,   1, "Automatic mixed precision")
+JK_NUMERIC_PARAM("grad_scaler",    Bool,   1, "Gradient scaler usage")
+JK_NUMERIC_PARAM("detect_anomaly", Bool,   1, "Autograd anomaly detection")
+JK_NUMERIC_PARAM("eps",            Float,  1, "Global numerical epsilon")
+#endif
+
+#ifdef JK_GRADIENT_PARAM
+JK_GRADIENT_PARAM("accumulate_steps",        Int,   1, "Gradient accumulation steps")
+JK_GRADIENT_PARAM("clip_norm",               Float, 1, "Gradient norm clip threshold")
+JK_GRADIENT_PARAM("clip_value",              Float, 1, "Gradient value clip threshold (0 disables)")
+JK_GRADIENT_PARAM("skip_on_nan",             Bool,  1, "Skip update when NaN/Inf appears")
+JK_GRADIENT_PARAM("zero_grad_set_to_none",   Bool,  1, "Use set_to_none in zero_grad")
+#endif
+
+#ifdef JK_CHECKPOINT_PARAM
+JK_CHECKPOINT_PARAM("save_model",      Bool, 1, "Persist model parameters")
+JK_CHECKPOINT_PARAM("save_optimizer",  Bool, 1, "Persist optimizer state")
+JK_CHECKPOINT_PARAM("save_scheduler",  Bool, 1, "Persist scheduler state")
+JK_CHECKPOINT_PARAM("save_rng",        Bool, 1, "Persist RNG state")
+JK_CHECKPOINT_PARAM("strict_load",     Bool, 1, "Require strict key matching on load")
+JK_CHECKPOINT_PARAM("keep_last",       Int,  1, "Rolling last-N checkpoints")
+JK_CHECKPOINT_PARAM("keep_best",       Int,  1, "Best-N checkpoints to retain")
+#endif
+
+#ifdef JK_METRIC_PARAM
+JK_METRIC_PARAM("objective",   String,     1, "Primary optimization objective")
+JK_METRIC_PARAM("early_stop",  String,     1, "Early-stop policy string")
+JK_METRIC_PARAM("log_terms",   StringList, 1, "Metric term names to log")
+#endif
+
+#ifdef JK_DATA_PARAM
+JK_DATA_PARAM("dataset_id",      String, 1, "Dataset source identifier")
+JK_DATA_PARAM("split",           String, 1, "Split selector: train|val|test")
+JK_DATA_PARAM("target_mapping",  String, 1, "Target mapping identifier")
+JK_DATA_PARAM("sampler_policy",  String, 1, "Data sampler policy id")
+#endif
+
+#ifdef JK_AUGMENTATION_PARAM
+JK_AUGMENTATION_PARAM("kind",                  String, 1, "Augmentation curve kind")
+JK_AUGMENTATION_PARAM("curve_param",           Float,  1, "Curve shape parameter")
+JK_AUGMENTATION_PARAM("noise_scale",           Float,  1, "Time-warp noise intensity")
+JK_AUGMENTATION_PARAM("smoothing_kernel_size", Int,    1, "Temporal smoothing window")
+JK_AUGMENTATION_PARAM("point_drop_prob",       Float,  1, "Point-drop probability")
+JK_AUGMENTATION_PARAM("value_jitter_std",      Float,  1, "Value jitter standard deviation")
+JK_AUGMENTATION_PARAM("time_mask_band_frac",   Float,  1, "Contiguous time-band mask fraction")
+JK_AUGMENTATION_PARAM("channel_dropout_prob",  Float,  1, "Per-channel dropout probability")
+JK_AUGMENTATION_PARAM("comment",               String, 0, "Human-readable note")
+#endif
+
+/* ----------------- INI selectors and runtime-owned ---------------- */
+#ifdef JK_INI_SELECTOR_FIELD
+JK_INI_SELECTOR_FIELD("jkimyei_component_id", "wikimyei_*.ini selects which component id to bind")
+JK_INI_SELECTOR_FIELD("jkimyei_profile_id",   "wikimyei_*.ini selects profile inside component")
+#endif
+
+#ifdef JK_RUNTIME_OWNED_FIELD
+JK_RUNTIME_OWNED_FIELD("n_epochs", "Wave-owned episode budget; not part of jkimyei policy")
+JK_RUNTIME_OWNED_FIELD("n_iters",  "Wave-owned hard iteration cap; not part of jkimyei policy")
+JK_RUNTIME_OWNED_FIELD("batches",  "Wave-owned command-scoped budget; not part of jkimyei policy")
+#endif

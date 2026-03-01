@@ -49,6 +49,8 @@ struct BoardState {
 
   bool ok{false};
   std::string error{};
+  std::string contract_hash{};
+  std::string contract_path{};
   std::string raw_instruction{};
   std::string instruction_path{};
   // Shared board.contract DSL sections (non-circuit segments loaded from config).

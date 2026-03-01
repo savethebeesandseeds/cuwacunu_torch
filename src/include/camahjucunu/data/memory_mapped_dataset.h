@@ -34,7 +34,7 @@
 #include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
-#include "camahjucunu/dsl/observation_pipeline/observation_pipeline.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 
 /* ============================================================
  *  Concatenated dataset grid policy (compile-time)
@@ -56,6 +56,9 @@
 /* Floating-point alignment tolerance used for snapping to the grid */
 #ifndef CUWACUNU_CONCAT_ALIGN_TOL
 #define CUWACUNU_CONCAT_ALIGN_TOL 1e-9
+#endif
+#ifndef CUWACUNU_CONCAT_ALIGN_REL_TOL
+#define CUWACUNU_CONCAT_ALIGN_REL_TOL 1e-12
 #endif
 
 namespace cuwacunu {
@@ -148,10 +151,28 @@ inline std::size_t steps_between_inclusive(K left_aligned, K right_aligned, K st
 }
 
 template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
+inline K effective_fp_tol(K a, K b) {
+  const K abs_tol = static_cast<K>(CUWACUNU_CONCAT_ALIGN_TOL);
+  const K rel_tol = static_cast<K>(CUWACUNU_CONCAT_ALIGN_REL_TOL);
+  const K scale = std::max(K(1), std::max(std::fabs(a), std::fabs(b)));
+  return abs_tol + rel_tol * scale;
+}
+
+template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
+inline bool fp_less_with_tol(K a, K b) {
+  return (a + effective_fp_tol(a, b)) < b;
+}
+
+template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
+inline bool fp_le_with_tol(K a, K b) {
+  return !fp_less_with_tol<K>(b, a);
+}
+
+template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
 inline K align_up_to_grid_fp(K x, K step, K base) {
   if (step <= K(0)) return x;
-  const K eps = static_cast<K>(CUWACUNU_CONCAT_ALIGN_TOL);
-  K q = (x - base) / step;
+  const K q = (x - base) / step;
+  const K eps = effective_fp_tol<K>(q, K(0));
   K k = std::ceil(q - eps);
   return base + k * step;
 }
@@ -159,8 +180,8 @@ inline K align_up_to_grid_fp(K x, K step, K base) {
 template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
 inline K align_down_to_grid_fp(K x, K step, K base) {
   if (step <= K(0)) return x;
-  const K eps = static_cast<K>(CUWACUNU_CONCAT_ALIGN_TOL);
-  K q = (x - base) / step;
+  const K q = (x - base) / step;
+  const K eps = effective_fp_tol<K>(q, K(0));
   K k = std::floor(q + eps);
   return base + k * step;
 }
@@ -168,9 +189,10 @@ inline K align_down_to_grid_fp(K x, K step, K base) {
 template <typename K, typename = std::enable_if_t<std::is_floating_point_v<K>>>
 inline std::size_t steps_between_inclusive_fp(K left_aligned, K right_aligned, K step) {
   if (step <= K(0)) return 0;
-  const K eps = static_cast<K>(CUWACUNU_CONCAT_ALIGN_TOL);
-  if (right_aligned + eps < left_aligned) return 0;
-  K k = std::floor(((right_aligned - left_aligned) / step) + eps);
+  if (fp_less_with_tol<K>(right_aligned, left_aligned)) return 0;
+  const K span = (right_aligned - left_aligned) / step;
+  const K eps = effective_fp_tol<K>(span, K(0));
+  K k = std::floor(span + eps);
   if (k < 0) return 0;
   return static_cast<std::size_t>(k) + 1;
 }
@@ -346,10 +368,12 @@ public:
                     bin_filename_.c_str(), idx);
         }
         if constexpr (std::is_floating_point_v<typename Datatype_t::key_type_t>) {
-          if (std::abs((curr - prev) - key_value_step_) > 1e-9) {
+          const auto delta = curr - prev;
+          const auto tol = detail::effective_fp_tol<decltype(delta)>(delta, key_value_step_);
+          if (std::abs(delta - key_value_step_) > tol) {
             log_warn("[MemoryMappedDataset] record on file [%s] irregular key delta at index [%zu]: (curr - prev): %f != step: %f\n",
                      bin_filename_.c_str(), idx,
-                     static_cast<double>(curr - prev),
+                     static_cast<double>(delta),
                      static_cast<double>(key_value_step_));
           }
         } else {
@@ -505,13 +529,13 @@ public:
   torch::data::samplers::SequentialSampler SequentialSampler() const {
     return torch::data::samplers::SequentialSampler(sliding_count_);
   }
-  torch::data::DataLoaderOptions SequentialSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+  torch::data::DataLoaderOptions SequentialSampler_options(std::size_t batch_size = 64, std::size_t workers = 0) const {
     return torch::data::DataLoaderOptions().batch_size(batch_size).workers(workers);
   }
   torch::data::samplers::RandomSampler RandomSampler() const {
     return torch::data::samplers::RandomSampler(sliding_count_);
   }
-  torch::data::DataLoaderOptions RandomSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+  torch::data::DataLoaderOptions RandomSampler_options(std::size_t batch_size = 64, std::size_t workers = 0) const {
     return torch::data::DataLoaderOptions().batch_size(batch_size).workers(workers);
   }
 
@@ -667,14 +691,69 @@ public:
   torch::data::samplers::SequentialSampler SequentialSampler() const {
     return torch::data::samplers::SequentialSampler(num_records_);
   }
-  torch::data::DataLoaderOptions SequentialSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+  torch::data::DataLoaderOptions SequentialSampler_options(std::size_t batch_size = 64, std::size_t workers = 0) const {
     return torch::data::DataLoaderOptions().batch_size(batch_size).workers(workers);
   }
   torch::data::samplers::RandomSampler RandomSampler() const {
     return torch::data::samplers::RandomSampler(num_records_);
   }
-  torch::data::DataLoaderOptions RandomSampler_options(std::size_t batch_size = 64, std::size_t workers = 4) const {
+  torch::data::DataLoaderOptions RandomSampler_options(std::size_t batch_size = 64, std::size_t workers = 0) const {
     return torch::data::DataLoaderOptions().batch_size(batch_size).workers(workers);
+  }
+
+  /**
+   * @brief Compute concatenated sliding index range for keys within [key_left, key_right].
+   *        Returns false when the range is empty.
+   */
+  bool compute_index_range_by_keys(typename Datatype_t::key_type_t key_left,
+                                   typename Datatype_t::key_type_t key_right,
+                                   std::size_t* out_begin_idx,
+                                   std::size_t* out_count) const {
+    using key_t = typename Datatype_t::key_type_t;
+    auto set_empty = [&](bool ret = false) {
+      if (out_begin_idx) *out_begin_idx = 0;
+      if (out_count) *out_count = 0;
+      return ret;
+    };
+
+    if (num_records_ == 0) return set_empty(false);
+    if (key_right < key_left) std::swap(key_left, key_right);
+
+    // Clamp to intersection domain first.
+    if (key_right < leftmost_key_value_ || key_left > rightmost_key_value_) {
+      return set_empty(false);
+    }
+
+    key_t left = key_left < leftmost_key_value_ ? leftmost_key_value_ : key_left;
+    key_t right = key_right > rightmost_key_value_ ? rightmost_key_value_ : key_right;
+    const key_t base = valid_left_[grid_ref_idx_];
+
+    std::size_t begin_idx = 0;
+    std::size_t count = 0;
+    if constexpr (std::is_integral_v<key_t>) {
+      const key_t left_aligned = detail::align_up_to_grid<key_t>(left, key_value_step_, base);
+      if (!(left_aligned <= right)) return set_empty(false);
+      const key_t right_aligned = detail::align_down_to_grid<key_t>(right, key_value_step_, base);
+      if (!(left_aligned <= right_aligned)) return set_empty(false);
+      count = detail::steps_between_inclusive<key_t>(left_aligned, right_aligned, key_value_step_);
+      begin_idx = static_cast<std::size_t>((left_aligned - leftmost_key_value_) / key_value_step_);
+    } else {
+      const key_t left_aligned = detail::align_up_to_grid_fp<key_t>(left, key_value_step_, base);
+      if (detail::fp_less_with_tol<key_t>(right, left_aligned)) return set_empty(false);
+      const key_t right_aligned = detail::align_down_to_grid_fp<key_t>(right, key_value_step_, base);
+      if (detail::fp_less_with_tol<key_t>(right_aligned, left_aligned)) return set_empty(false);
+      count = detail::steps_between_inclusive_fp<key_t>(left_aligned, right_aligned, key_value_step_);
+      const double j0d = static_cast<double>((left_aligned - leftmost_key_value_) / key_value_step_);
+      begin_idx = static_cast<std::size_t>(std::llround(j0d));
+    }
+
+    if (begin_idx >= num_records_ || count == 0) return set_empty(false);
+    if (count > num_records_ - begin_idx) count = num_records_ - begin_idx;
+    if (count == 0) return set_empty(false);
+
+    if (out_begin_idx) *out_begin_idx = begin_idx;
+    if (out_count) *out_count = count;
+    return true;
   }
 
   /**
@@ -757,42 +836,12 @@ public:
   range_samples_by_keys(typename Datatype_t::key_type_t key_left,
                         typename Datatype_t::key_type_t key_right)
   {
-    using key_t = typename Datatype_t::key_type_t;
     std::vector<observation_sample_t> out;
-    if (num_records_ == 0) return out;
-    if (key_right < key_left) std::swap(key_left, key_right);
-
-    // clamp to intersection domain first
-    if (key_right < leftmost_key_value_ || key_left > rightmost_key_value_) return out;
-
-    key_t left  = key_left  < leftmost_key_value_  ? leftmost_key_value_  : key_left;
-    key_t right = key_right > rightmost_key_value_ ? rightmost_key_value_ : key_right;
-
-    // align to global grid without introducing “nearest” semantics.
-    const key_t base = valid_left_[grid_ref_idx_];
-
-    if constexpr (std::is_integral_v<key_t>) {
-      key_t left_aligned  = detail::align_up_to_grid<key_t>(left,  key_value_step_, base);
-      if (!(left_aligned <= right)) return out;
-      key_t right_aligned = detail::align_down_to_grid<key_t>(right, key_value_step_, base);
-      if (!(left_aligned <= right_aligned)) return out;
-
-      std::size_t count = detail::steps_between_inclusive<key_t>(left_aligned, right_aligned, key_value_step_);
-      out.reserve(count);
-      std::size_t j0 = static_cast<std::size_t>((left_aligned - leftmost_key_value_) / key_value_step_);
-      for (std::size_t j = 0; j < count; ++j) out.emplace_back( get(j0 + j) );
-    } else {
-      key_t left_aligned  = detail::align_up_to_grid_fp<key_t>(left,  key_value_step_, base);
-      if (!(left_aligned <= right)) return out;
-      key_t right_aligned = detail::align_down_to_grid_fp<key_t>(right, key_value_step_, base);
-      if (!(left_aligned <= right_aligned)) return out;
-
-      std::size_t count = detail::steps_between_inclusive_fp<key_t>(left_aligned, right_aligned, key_value_step_);
-      out.reserve(count);
-      double j0d = static_cast<double>((left_aligned - leftmost_key_value_) / key_value_step_);
-      std::size_t j0 = static_cast<std::size_t>(std::llround(j0d));
-      for (std::size_t j = 0; j < count; ++j) out.emplace_back( get(j0 + j) );
-    }
+    std::size_t begin_idx = 0;
+    std::size_t count = 0;
+    if (!compute_index_range_by_keys(key_left, key_right, &begin_idx, &count)) return out;
+    out.reserve(count);
+    for (std::size_t j = 0; j < count; ++j) out.emplace_back(get(begin_idx + j));
     return out;
   }
 
@@ -802,7 +851,7 @@ public:
   void add_dataset(const std::string csv_filename,
                    std::size_t N_past, std::size_t N_future,
                    std::size_t normalization_window = 0,
-                   bool force_binarization = false,
+                   bool force_rebuild_cache = false,
                    size_t buffer_size = 1024,
                    char delimiter = ',') {
     if (N_past == 0) {
@@ -812,7 +861,7 @@ public:
 
     /* --- prepare the file: CSV → binary --- */
     std::string bin_filename = sanitize_csv_into_binary_file<Datatype_t>(
-      csv_filename, normalization_window, force_binarization, buffer_size, delimiter);
+      csv_filename, normalization_window, force_rebuild_cache, buffer_size, delimiter);
 
     /* --- add dataset --- */
     file_names_.push_back(bin_filename);
@@ -961,14 +1010,14 @@ private:
 };
 
 /**
-  * @brief Construct a new MemoryMappedConcatDataset from an observation_instruction_t.
+  * @brief Construct a new MemoryMappedConcatDataset from an observation_spec_t.
   *        Supports both past and future sequence lengths.
   */
 template<typename Datatype_t>
 MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
-  std::string& instrument,
-  cuwacunu::camahjucunu::observation_instruction_t obs_inst,
-  bool force_binarization = false) {
+  const std::string& instrument,
+  cuwacunu::camahjucunu::observation_spec_t obs_inst,
+  bool force_rebuild_cache = false) {
 
   char delimiter = ',';
   size_t buffer_size = 1024;
@@ -976,7 +1025,7 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
   MemoryMappedConcatDataset<Datatype_t> concat;
   const std::string expected_record_type = detail::record_type_name_for_datatype<Datatype_t>();
   if (expected_record_type.empty()) {
-    log_fatal("[create_memory_mapped_concat_dataset] Unsupported Datatype_t for observation pipeline record_type matching.\n");
+    log_fatal("[create_memory_mapped_concat_dataset] Unsupported Datatype_t for observation spec record_type matching.\n");
   }
   std::size_t matched_sources = 0;
 
@@ -1008,7 +1057,7 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
           /* N_past */                   N_past,
           /* N_future */                 N_future,
           /* normalization_window */     normalization_window,
-          /* force_binarization */       force_binarization,
+          /* force_rebuild_cache */      force_rebuild_cache,
           /* buffer_size */              buffer_size,
           /* delimiter */                delimiter
         );

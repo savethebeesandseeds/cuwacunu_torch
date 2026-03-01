@@ -19,14 +19,11 @@ int main() {
 
   const auto d_init = parse_directive_id("@init");
   const auto d_jk = parse_directive_id("@jkimyei");
-  const auto d_weights = parse_directive_id("@weights");
   const auto d_step = parse_directive_id("@step");
   ok = ok && require(d_init.has_value() && *d_init == directive_id::Init,
                      "expected @init directive from board.paths.def");
   ok = ok && require(d_jk.has_value() && *d_jk == directive_id::Jkimyei,
                      "expected @jkimyei directive from board.paths.def");
-  ok = ok && require(d_weights.has_value() && *d_weights == directive_id::Weights,
-                     "expected @weights directive from board.paths.def");
   ok = ok && require(d_step.has_value() && *d_step == directive_id::Step,
                      "expected @step directive from tsi.paths.def");
 

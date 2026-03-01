@@ -28,7 +28,7 @@ std::optional<tsiemene::PayloadKind> parse_kind_ref(std::string s);
 std::string circuit_invoke_symbol(const tsiemene_circuit_decl_t& circuit);
 
 // Optional wave envelope syntax:
-//   wave@episode:2,batch:0,from:01.01.2009,to:31.12.2009,symbol:BTCUSDT@batches=16
+//   wave@episode:2,batch:0,max_batches:4,from:01.01.2009,to:31.12.2009,symbol:BTCUSDT@BTCUSDT[01.01.2009,31.12.2009]
 // Compact payloads remain valid and are treated as source commands directly.
 struct tsiemene_wave_invoke_t {
   std::string source_command{};
@@ -36,6 +36,8 @@ struct tsiemene_wave_invoke_t {
   std::uint64_t wave_i{0};
   std::uint64_t episode{0};
   std::uint64_t batch{0};
+  std::uint64_t max_batches_per_epoch{0};
+  std::uint64_t total_epochs{1};
   bool has_time_span{false};
   std::int64_t span_begin_ms{0};
   std::int64_t span_end_ms{0};

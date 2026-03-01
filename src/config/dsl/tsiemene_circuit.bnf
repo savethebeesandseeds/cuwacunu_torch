@@ -1,8 +1,7 @@
 <instruction>            ::= {<circuit>} ;
-<circuit>                ::= <circuit_header> {<instance_decl>} {<hop_decl>} <circuit_close> <circuit_invoke> ;
+<circuit>                ::= <circuit_header> {<instance_decl>} {<hop_decl>} <circuit_close> ;
 <circuit_header>         ::= <circuit_name> [<whitespace>] "=" [<whitespace>] "{" <line_end> ;
 <circuit_close>          ::= [<whitespace>] "}" <line_end> ;
-<circuit_invoke>         ::= <invoke_name> [<whitespace>] "(" [<whitespace>] <invoke_payload> [<whitespace>] ")" [<whitespace>] ";" <line_end> ;
 
 <instance_decl>          ::= [<whitespace>] <instance_alias> [<whitespace>] "=" [<whitespace>] <tsi_type> <line_end> ;
 <hop_decl>               ::= [<whitespace>] <endpoint_from> [<whitespace>] "->" [<whitespace>] <endpoint_to> <line_end> ;
@@ -11,19 +10,16 @@
 <endpoint_to>            ::= <instance_ref> "@" <directive_ref> ;
 
 <circuit_name>           ::= <name_char> {<name_char>} ;
-<invoke_name>            ::= <name_char> {<name_char>} ;
 <instance_alias>         ::= <instance_char> {<instance_char>} ;
 <tsi_type>               ::= <tsi_type_char> {<tsi_type_char>} ;
 <instance_ref>           ::= <instance_char> {<instance_char>} ;
 <directive_ref>          ::= <directive_char> {<directive_char>} ;
 <kind_ref>               ::= "str" | "tensor" ;
-<invoke_payload>         ::= <payload_char> {<payload_char>} ;
 
 <name_char>              ::= <letter> | <number> | "_" ;
 <instance_char>          ::= <name_char> ;
 <directive_char>         ::= <name_char> ;
 <tsi_type_char>          ::= <name_char> | "." ;
-<payload_char>           ::= <name_char> | "." | "," | ":" | "_" | "-" | "[" | "]" | "(" | "/" | "\\" | "@" ;
 
 <line_end>               ::= [<whitespace>] <break_block> ;
 <break_block>            ::= {<newline>} ;
