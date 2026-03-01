@@ -1,12 +1,12 @@
-<instruction>            ::= {<wave_profile>} ;
+<instruction>            ::= {<wave>} ;
 
-<wave_profile>           ::= "WAVE_PROFILE" [<whitespace>] <profile_name> [<whitespace>] "{"
+<wave>                   ::= "WAVE" [<whitespace>] <wave_name> [<whitespace>] "{"
                              <line_end>
-                             {<profile_stmt>}
+                             {<wave_stmt>}
                              [<whitespace>] "}" <line_end> ;
 
-<profile_stmt>           ::= [<whitespace>] <profile_stmt_core> ;
-<profile_stmt_core>      ::= <mode_assignment>
+<wave_stmt>              ::= [<whitespace>] <wave_stmt_core> ;
+<wave_stmt_core>         ::= <mode_assignment>
                            | <epochs_assignment>
                            | <batch_size_assignment>
                            | <max_batches_per_epoch_assignment>
@@ -18,30 +18,35 @@
 <batch_size_assignment>  ::= "BATCH_SIZE" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
 <max_batches_per_epoch_assignment> ::= "MAX_BATCHES_PER_EPOCH" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
 
-<wikimyei_block>         ::= "WIKIMYEI" [<whitespace>] <alias_ref> [<whitespace>] "{"
+<wikimyei_block>         ::= "WIKIMYEI" [<whitespace>] <path_ref> [<whitespace>] "{"
                              <line_end>
                              {<wikimyei_assignment>}
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 <wikimyei_assignment>    ::= [<whitespace>] <wikimyei_assignment_core> ;
-<wikimyei_assignment_core> ::= <wikimyei_train_assignment>
+<wikimyei_assignment_core> ::= <wikimyei_path_assignment>
+                             | <wikimyei_train_assignment>
                              | <wikimyei_profile_id_assignment> ;
-<wikimyei_train_assignment>      ::= "TRAIN" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end> ;
+<wikimyei_path_assignment>      ::= "PATH" [<whitespace>] "=" [<whitespace>] <path_value> [<whitespace>] ";" <line_end> ;
+<wikimyei_train_assignment>     ::= "TRAIN" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end> ;
 <wikimyei_profile_id_assignment> ::= "PROFILE_ID" [<whitespace>] "=" [<whitespace>] <id_value> [<whitespace>] ";" <line_end> ;
 
-<source_block>           ::= "SOURCE" [<whitespace>] <alias_ref> [<whitespace>] "{"
+<source_block>           ::= "SOURCE" [<whitespace>] <path_ref> [<whitespace>] "{"
                              <line_end>
                              {<source_assignment>}
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 <source_assignment>      ::= [<whitespace>] <source_assignment_core> ;
-<source_assignment_core> ::= <source_symbol_assignment>
+<source_assignment_core> ::= <source_path_assignment>
+                           | <source_symbol_assignment>
                            | <source_from_assignment>
                            | <source_to_assignment> ;
+<source_path_assignment>   ::= "PATH" [<whitespace>] "=" [<whitespace>] <path_value> [<whitespace>] ";" <line_end> ;
 <source_symbol_assignment> ::= "SYMBOL" [<whitespace>] "=" [<whitespace>] <symbol_value> [<whitespace>] ";" <line_end> ;
 <source_from_assignment>   ::= "FROM" [<whitespace>] "=" [<whitespace>] <date_value> [<whitespace>] ";" <line_end> ;
 <source_to_assignment>     ::= "TO" [<whitespace>] "=" [<whitespace>] <date_value> [<whitespace>] ";" <line_end> ;
 
-<profile_name>           ::= <id_value> ;
-<alias_ref>              ::= <id_value> ;
+<wave_name>              ::= <id_value> ;
+<path_ref>               ::= <path_value> ;
+<path_value>             ::= <id_value> ;
 <id_value>               ::= <id_char> {<id_char>} ;
 <mode_value>             ::= "train" | "run" ;
 <bool_value>             ::= "true" | "false" | "1" | "0" ;
@@ -59,3 +64,4 @@
 <digit>                  ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 <newline>                ::= "\n" | "\r\n" ;
 <empty>                  ::= " " | "\t" ;
+

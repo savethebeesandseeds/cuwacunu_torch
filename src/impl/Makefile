@@ -7,6 +7,10 @@ HERE_PATH := $(IMPL_PATH)
 REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))
 MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
+.PHONY: iitepi
+iitepi:
+	$(MAKE) -C $(HERE_PATH)/iitepi all
+
 .PHONY: piaabo
 piaabo:
 	$(MAKE) -C $(HERE_PATH)/piaabo all
@@ -28,5 +32,5 @@ iinuji:
 	$(MAKE) -C $(HERE_PATH)/iinuji all
 
 .PHONY: all
-all: piaabo camahjucunu wikimyei
+all: iitepi piaabo camahjucunu wikimyei
 	@$(LOG_SUCCESS)

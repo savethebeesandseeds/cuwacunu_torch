@@ -14,7 +14,7 @@ namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
 
-using cuwacunu::piaabo::dconfig::contract_space_t;
+using cuwacunu::iitepi::contract_space_t;
 
 // -------------------- local helpers (strict ckpt meta & config parsers) --------------------
 namespace {
@@ -96,7 +96,7 @@ static inline void write_str(torch::serialize::OutputArchive& root,
 // -------------------- constructors --------------------
 
 VICReg_4D::VICReg_4D(
-  const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+  const cuwacunu::iitepi::contract_hash_t& contract_hash_,
   const std::string& component_name_, 
   int C_, int T_, int D_,
   int encoding_dims_,
@@ -152,15 +152,11 @@ VICReg_4D::VICReg_4D(
 {
   // ---- Read projector options from dconfig (strings) and cast strictly ----
   auto norm_s =
-      contract_space_t::get<std::string>(contract_hash, "VICReg", "projector_norm");
-  auto act_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_activation");
-  auto hbias_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_hidden_bias");
-  auto lbias_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_last_bias");
-  auto bnfp32_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_bn_in_fp32");
+      contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_norm");
+  auto act_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_activation");
+  auto hbias_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_hidden_bias");
+  auto lbias_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_last_bias");
+  auto bnfp32_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_bn_in_fp32");
 
   ProjectorOptions popts{
     /* norm_kind       */ parse_norm_kind_strict(norm_s),
@@ -199,7 +195,7 @@ VICReg_4D::VICReg_4D(
 }
 
 VICReg_4D::VICReg_4D(
-  const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+  const cuwacunu::iitepi::contract_hash_t& contract_hash_,
   const std::string& component_name_, 
   int C_, int T_, int D_
 )
@@ -207,41 +203,29 @@ VICReg_4D::VICReg_4D(
     contract_hash_,
     component_name_,
     C_, T_, D_,
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash_, "VICReg", "encoding_dims"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash_, "VICReg", "channel_expansion_dim"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash_, "VICReg", "fused_feature_dim"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash_, "VICReg", "encoder_hidden_dims"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash_, "VICReg", "encoder_depth"),
-    cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-        contract_hash_, "VICReg", "projector_mlp_spec"),
-    cuwacunu::piaabo::dconfig::config_dtype(contract_hash_, "VICReg"),
-    cuwacunu::piaabo::dconfig::config_device(contract_hash_, "VICReg"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_)->get<int>("VICReg", "encoding_dims"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_)->get<int>("VICReg", "channel_expansion_dim"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_)->get<int>("VICReg", "fused_feature_dim"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_)->get<int>("VICReg", "encoder_hidden_dims"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_)->get<int>("VICReg", "encoder_depth"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_)->get<std::string>("VICReg", "projector_mlp_spec"),
+    cuwacunu::iitepi::config_dtype(contract_hash_, "VICReg"),
+    cuwacunu::iitepi::config_device(contract_hash_, "VICReg"),
     -1,
-    cuwacunu::piaabo::dconfig::contract_space_t::get<bool>(
-        contract_hash_, "VICReg", "enable_buffer_averaging")
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_)->get<bool>("VICReg", "enable_buffer_averaging")
 ) {
   // Force presence of projector option keys early (fail fast)
-  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_norm");
-  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_activation");
-  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_hidden_bias");
-  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_last_bias");
-  (void)cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_bn_in_fp32");
+  (void)cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_norm");
+  (void)cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_activation");
+  (void)cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_hidden_bias");
+  (void)cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_last_bias");
+  (void)cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_bn_in_fp32");
 
   log_info("Initialized VICReg encoder from Configuration file...\n");
 }
 
 VICReg_4D::VICReg_4D(
-                     const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+                     const cuwacunu::iitepi::contract_hash_t& contract_hash_,
                      const std::string& checkpoint_path,
                      torch::Device override_device)
 : VICReg_4D(
@@ -803,17 +787,12 @@ void VICReg_4D::display_model() const {
   const char* swa_str = enable_buffer_averaging ? "true" : "false";
 
   // Read projector options as strings for display
-  using cuwacunu::piaabo::dconfig::config_space_t;
-  std::string norm_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_norm");
-  std::string act_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_activation");
-  std::string hbias_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_hidden_bias");
-  std::string lbias_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_last_bias");
-  std::string bnfp32_s = contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "projector_bn_in_fp32");
+  using cuwacunu::iitepi::config_space_t;
+  std::string norm_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_norm");
+  std::string act_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_activation");
+  std::string hbias_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_hidden_bias");
+  std::string lbias_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_last_bias");
+  std::string bnfp32_s = contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "projector_bn_in_fp32");
 
   const char* fmt =
     "\n%s \t[Representation Learning] VICReg_4D:  %s\n"

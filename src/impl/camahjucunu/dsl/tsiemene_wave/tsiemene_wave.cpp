@@ -179,19 +179,19 @@ class parser_t {
  public:
   explicit parser_t(std::string input) : lex_(std::move(input)) {}
 
-  cuwacunu::camahjucunu::tsiemene_wave_instruction_t parse() {
-    using cuwacunu::camahjucunu::tsiemene_wave_instruction_t;
-    tsiemene_wave_instruction_t out{};
-    std::unordered_set<std::string> profile_names;
+  cuwacunu::camahjucunu::tsiemene_wave_set_t parse() {
+    using cuwacunu::camahjucunu::tsiemene_wave_set_t;
+    tsiemene_wave_set_t out{};
+    std::unordered_set<std::string> wave_names;
     while (!peek_is_end()) {
-      auto profile = parse_wave_profile();
-      if (!profile_names.insert(profile.name).second) {
-        throw std::runtime_error("duplicate WAVE_PROFILE name: " + profile.name);
+      auto wave = parse_wave();
+      if (!wave_names.insert(wave.name).second) {
+        throw std::runtime_error("duplicate WAVE name: " + wave.name);
       }
-      out.profiles.push_back(std::move(profile));
+      out.waves.push_back(std::move(wave));
     }
-    if (out.profiles.empty()) {
-      throw std::runtime_error("wave instruction has no WAVE_PROFILE blocks");
+    if (out.waves.empty()) {
+      throw std::runtime_error("wave set has no WAVE blocks");
     }
     return out;
   }
@@ -299,19 +299,23 @@ class parser_t {
     using cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t;
     tsiemene_wave_wikimyei_decl_t out{};
     expect_identifier("WIKIMYEI");
-    out.alias = expect_identifier_any().text;
+    out.wikimyei_path = expect_identifier_any().text;
     expect_symbol('{');
 
     while (!peek_is_symbol('}')) {
       const token_t key = expect_identifier_any();
-      if (key.text == "TRAIN") {
+      if (key.text == "PATH") {
+        expect_symbol('=');
+        out.wikimyei_path = parse_scalar_value();
+        expect_symbol(';');
+      } else if (key.text == "TRAIN") {
         expect_symbol('=');
         const std::string train_value = parse_scalar_value();
         expect_symbol(';');
         bool parsed = false;
         if (!parse_bool_token(train_value, &parsed)) {
-          throw std::runtime_error("invalid WIKIMYEI TRAIN value for alias '" +
-                                   out.alias + "': " + train_value);
+          throw std::runtime_error("invalid WIKIMYEI TRAIN value for PATH '" +
+                                   out.wikimyei_path + "': " + train_value);
         }
         out.train = parsed;
         out.has_train = true;
@@ -320,7 +324,7 @@ class parser_t {
         out.profile_id = parse_scalar_value();
         expect_symbol(';');
       } else {
-        throw std::runtime_error("unknown WIKIMYEI key for alias '" + out.alias +
+        throw std::runtime_error("unknown WIKIMYEI key for PATH '" + out.wikimyei_path +
                                  "': " + key.text);
       }
     }
@@ -329,11 +333,14 @@ class parser_t {
     expect_symbol(';');
 
     if (!out.has_train) {
-      throw std::runtime_error("WIKIMYEI '" + out.alias +
+      throw std::runtime_error("WIKIMYEI '" + out.wikimyei_path +
                                "' missing required TRAIN assignment");
     }
+    if (out.wikimyei_path.empty()) {
+      throw std::runtime_error("WIKIMYEI missing required PATH assignment");
+    }
     if (out.profile_id.empty()) {
-      throw std::runtime_error("WIKIMYEI '" + out.alias +
+      throw std::runtime_error("WIKIMYEI '" + out.wikimyei_path +
                                "' missing required PROFILE_ID assignment");
     }
     return out;
@@ -343,12 +350,16 @@ class parser_t {
     using cuwacunu::camahjucunu::tsiemene_wave_source_decl_t;
     tsiemene_wave_source_decl_t out{};
     expect_identifier("SOURCE");
-    out.alias = expect_identifier_any().text;
+    out.source_path = expect_identifier_any().text;
     expect_symbol('{');
 
     while (!peek_is_symbol('}')) {
       const token_t key = expect_identifier_any();
-      if (key.text == "SYMBOL") {
+      if (key.text == "PATH") {
+        expect_symbol('=');
+        out.source_path = parse_scalar_value();
+        expect_symbol(';');
+      } else if (key.text == "SYMBOL") {
         expect_symbol('=');
         out.symbol = parse_scalar_value();
         expect_symbol(';');
@@ -361,7 +372,7 @@ class parser_t {
         out.to = parse_scalar_value();
         expect_symbol(';');
       } else {
-        throw std::runtime_error("unknown SOURCE key for alias '" + out.alias +
+        throw std::runtime_error("unknown SOURCE key for PATH '" + out.source_path +
                                  "': " + key.text);
       }
     }
@@ -370,25 +381,28 @@ class parser_t {
     expect_symbol(';');
 
     if (out.symbol.empty()) {
-      throw std::runtime_error("SOURCE '" + out.alias +
+      throw std::runtime_error("SOURCE '" + out.source_path +
                                "' missing required SYMBOL assignment");
     }
+    if (out.source_path.empty()) {
+      throw std::runtime_error("SOURCE missing required PATH assignment");
+    }
     if (out.from.empty() || out.to.empty()) {
-      throw std::runtime_error("SOURCE '" + out.alias +
+      throw std::runtime_error("SOURCE '" + out.source_path +
                                "' requires both FROM and TO");
     }
     return out;
   }
 
-  cuwacunu::camahjucunu::tsiemene_wave_profile_t parse_wave_profile() {
-    using cuwacunu::camahjucunu::tsiemene_wave_profile_t;
-    tsiemene_wave_profile_t out{};
-    expect_identifier("WAVE_PROFILE");
+  cuwacunu::camahjucunu::tsiemene_wave_t parse_wave() {
+    using cuwacunu::camahjucunu::tsiemene_wave_t;
+    tsiemene_wave_t out{};
+    expect_identifier("WAVE");
     out.name = expect_identifier_any().text;
     expect_symbol('{');
 
-    std::unordered_set<std::string> seen_wikimyei_aliases;
-    std::unordered_set<std::string> seen_source_aliases;
+    std::unordered_set<std::string> seen_wikimyei_paths;
+    std::unordered_set<std::string> seen_source_paths;
     bool has_mode = false;
     bool has_epochs = false;
     bool has_batch_size = false;
@@ -404,7 +418,7 @@ class parser_t {
         out.mode = parse_assignment_value("MODE");
         out.mode = lower_ascii_copy(out.mode);
         if (out.mode != "train" && out.mode != "run") {
-          throw std::runtime_error("WAVE_PROFILE '" + out.name +
+          throw std::runtime_error("WAVE '" + out.name +
                                    "' invalid MODE: " + out.mode);
         }
         has_mode = true;
@@ -413,7 +427,7 @@ class parser_t {
       if (head.text == "EPOCHS") {
         const std::string value = parse_assignment_value("EPOCHS");
         if (!parse_u64_token(value, &out.epochs) || out.epochs == 0) {
-          throw std::runtime_error("WAVE_PROFILE '" + out.name +
+          throw std::runtime_error("WAVE '" + out.name +
                                    "' invalid EPOCHS: " + value);
         }
         has_epochs = true;
@@ -422,7 +436,7 @@ class parser_t {
       if (head.text == "BATCH_SIZE") {
         const std::string value = parse_assignment_value("BATCH_SIZE");
         if (!parse_u64_token(value, &out.batch_size) || out.batch_size == 0) {
-          throw std::runtime_error("WAVE_PROFILE '" + out.name +
+          throw std::runtime_error("WAVE '" + out.name +
                                    "' invalid BATCH_SIZE: " + value);
         }
         has_batch_size = true;
@@ -434,53 +448,53 @@ class parser_t {
         if (!parse_u64_token(value, &out.max_batches_per_epoch) ||
             out.max_batches_per_epoch == 0) {
           throw std::runtime_error(
-              "WAVE_PROFILE '" + out.name +
+              "WAVE '" + out.name +
               "' invalid MAX_BATCHES_PER_EPOCH: " + value);
         }
         continue;
       }
       if (head.text == "WIKIMYEI") {
         auto w = parse_wikimyei_block();
-        if (!seen_wikimyei_aliases.insert(w.alias).second) {
-          throw std::runtime_error("WAVE_PROFILE '" + out.name +
-                                   "' duplicate WIKIMYEI alias: " + w.alias);
+        if (!seen_wikimyei_paths.insert(w.wikimyei_path).second) {
+          throw std::runtime_error("WAVE '" + out.name +
+                                   "' duplicate WIKIMYEI PATH: " + w.wikimyei_path);
         }
         out.wikimyeis.push_back(std::move(w));
         continue;
       }
       if (head.text == "SOURCE") {
         auto s = parse_source_block();
-        if (!seen_source_aliases.insert(s.alias).second) {
-          throw std::runtime_error("WAVE_PROFILE '" + out.name +
-                                   "' duplicate SOURCE alias: " + s.alias);
+        if (!seen_source_paths.insert(s.source_path).second) {
+          throw std::runtime_error("WAVE '" + out.name +
+                                   "' duplicate SOURCE PATH: " + s.source_path);
         }
         out.sources.push_back(std::move(s));
         continue;
       }
-      throw std::runtime_error("WAVE_PROFILE '" + out.name +
+      throw std::runtime_error("WAVE '" + out.name +
                                "' unknown statement: " + head.text);
     }
 
     expect_symbol('}');
 
     if (!has_mode) {
-      throw std::runtime_error("WAVE_PROFILE '" + out.name +
+      throw std::runtime_error("WAVE '" + out.name +
                                "' missing MODE assignment");
     }
     if (!has_epochs) {
-      throw std::runtime_error("WAVE_PROFILE '" + out.name +
+      throw std::runtime_error("WAVE '" + out.name +
                                "' missing EPOCHS assignment");
     }
     if (!has_batch_size) {
-      throw std::runtime_error("WAVE_PROFILE '" + out.name +
+      throw std::runtime_error("WAVE '" + out.name +
                                "' missing BATCH_SIZE assignment");
     }
     if (out.wikimyeis.empty()) {
-      throw std::runtime_error("WAVE_PROFILE '" + out.name +
+      throw std::runtime_error("WAVE '" + out.name +
                                "' must declare at least one WIKIMYEI block");
     }
     if (out.sources.empty()) {
-      throw std::runtime_error("WAVE_PROFILE '" + out.name +
+      throw std::runtime_error("WAVE '" + out.name +
                                "' must declare at least one SOURCE block");
     }
 
@@ -488,8 +502,8 @@ class parser_t {
       for (const auto& w : out.wikimyeis) {
         if (w.train) {
           throw std::runtime_error(
-              "WAVE_PROFILE '" + out.name +
-              "' MODE=run forbids WIKIMYEI TRAIN=true (alias '" + w.alias + "')");
+              "WAVE '" + out.name +
+              "' MODE=run forbids WIKIMYEI TRAIN=true (PATH '" + w.wikimyei_path + "')");
         }
       }
     } else {
@@ -502,7 +516,7 @@ class parser_t {
       }
       if (!has_train_true) {
         throw std::runtime_error(
-            "WAVE_PROFILE '" + out.name +
+            "WAVE '" + out.name +
             "' MODE=train requires at least one WIKIMYEI TRAIN=true");
       }
     }
@@ -532,10 +546,11 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
     throw std::runtime_error("tsiemene wave grammar text is empty");
   }
   constexpr std::string_view kRequiredGrammarTokens[] = {
-      "<wave_profile>",
-      "WAVE_PROFILE",
+      "<wave>",
+      "WAVE",
       "WIKIMYEI",
       "SOURCE",
+      "PATH",
       "MODE",
       "EPOCHS",
       "BATCH_SIZE",
@@ -551,11 +566,11 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
 
 } /* namespace */
 
-std::string tsiemene_wave_instruction_t::str() const {
+std::string tsiemene_wave_set_t::str() const {
   std::ostringstream oss;
-  oss << "tsiemene_wave_instruction_t: profiles=" << profiles.size() << "\n";
-  for (std::size_t i = 0; i < profiles.size(); ++i) {
-    const auto& p = profiles[i];
+  oss << "tsiemene_wave_set_t: waves=" << waves.size() << "\n";
+  for (std::size_t i = 0; i < waves.size(); ++i) {
+    const auto& p = waves[i];
     oss << "  [" << i << "] name=" << p.name
         << " mode=" << p.mode
         << " epochs=" << p.epochs
@@ -574,13 +589,13 @@ tsiemeneWavePipeline::tsiemeneWavePipeline(std::string grammar_text)
   validate_wave_grammar_text_or_throw_(grammar_text_);
 }
 
-tsiemene_wave_instruction_t tsiemeneWavePipeline::decode(std::string instruction) {
+tsiemene_wave_set_t tsiemeneWavePipeline::decode(std::string instruction) {
   std::lock_guard<std::mutex> lk(current_mutex_);
   parser_t parser(std::move(instruction));
   return parser.parse();
 }
 
-tsiemene_wave_instruction_t decode_tsiemene_wave_from_dsl(
+tsiemene_wave_set_t decode_tsiemene_wave_from_dsl(
     std::string grammar_text,
     std::string instruction_text) {
   tsiemeneWavePipeline pipeline(std::move(grammar_text));

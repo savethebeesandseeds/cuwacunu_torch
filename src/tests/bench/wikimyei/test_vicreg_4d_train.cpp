@@ -34,27 +34,18 @@ int main() {
 
     /* read the config */
     TICK(read_config_);
-    cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    cuwacunu::iitepi::config_space_t::update_config();
     PRINT_TOCK_ms(read_config_);
 
-    const std::string configured_contract_path = cuwacunu::piaabo::dconfig::config_space_t::get<
-        std::string>("GENERAL", GENERAL_BOARD_CONTRACT_CONFIG_KEY);
-    const std::filesystem::path contract_path(configured_contract_path);
-    const std::string resolved_contract_path = contract_path.is_absolute()
-        ? contract_path.string()
-        : (std::filesystem::path(cuwacunu::piaabo::dconfig::config_space_t::config_folder) /
-           contract_path)
-              .string();
     const auto contract_hash =
-        cuwacunu::piaabo::dconfig::contract_space_t::register_contract_file(
-            resolved_contract_path);
-    cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(
-        contract_hash);
+        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+            cuwacunu::iitepi::config_space_t::locked_board_hash(),
+            cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+    cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(contract_hash);
     {
         std::string configured_device =
-            cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-                contract_hash, "VICReg", "device");
+            cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "device");
         std::transform(configured_device.begin(),
                        configured_device.end(),
                        configured_device.begin(),
@@ -69,7 +60,7 @@ int main() {
     // -----------------------------------------------------
     // Create the Dataloader
     // -----------------------------------------------------
-    torch::manual_seed(cuwacunu::piaabo::dconfig::config_space_t::get<int>("GENERAL", "torch_seed"));
+    torch::manual_seed(cuwacunu::iitepi::config_space_t::get<int>("GENERAL", "torch_seed"));
 
     /* types definition */
     std::string INSTRUMENT = "BTCUSDT";                     // "UTILITIES"
@@ -103,12 +94,9 @@ int main() {
     // -----------------------------------------------------
     std::cout << "Training the VICReg encoder...\n";
     TICK(Train_Model);
-    const int configured_epochs = cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash, "VICReg", "n_epochs");
-    const int configured_iters = cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash, "VICReg", "n_iters");
-    const int configured_swa_start = cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-        contract_hash, "VICReg", "swa_start_iter");
+    const int configured_epochs = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_epochs");
+    const int configured_iters = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_iters");
+    const int configured_swa_start = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "swa_start_iter");
     const int smoke_epochs = 1;
     const int smoke_iters = 1;
     const int smoke_swa_start = std::max(0, std::min(configured_swa_start, smoke_iters));
@@ -128,8 +116,7 @@ int main() {
     // -----------------------------------------------------
     // 5) Save (Model)
     // -----------------------------------------------------
-    model.save(cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-        contract_hash, "VICReg", "model_path"));
+    model.save(cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "model_path"));
     // -----------------------------------------------------
     // Finalize
     // -----------------------------------------------------

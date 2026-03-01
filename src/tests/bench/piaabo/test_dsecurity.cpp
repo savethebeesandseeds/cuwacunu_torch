@@ -6,8 +6,8 @@ int main() {
   std::string message = "test";
   /* update config */
   const char* config_folder = "/cuwacunu/src/config/";
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::update_config();
 
   /* authenticate user */
   log_warn("\n\t password is: test\n\n");
@@ -19,7 +19,7 @@ int main() {
   PRINT_TOCK_ns(sign_message);
 
   log_info("Message: [%s], under key: [%s] has signature: [%s].\n", 
-    message.c_str(), cuwacunu::piaabo::dconfig::config_space_t::api_key().c_str(), signature.c_str());
+    message.c_str(), cuwacunu::iitepi::config_space_t::api_key().c_str(), signature.c_str());
 
   return 0;
 }

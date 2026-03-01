@@ -96,18 +96,18 @@ struct jk_setup_t {
   // Get (or lazily build from CONFIG) a component by name.
   jk_component_t& operator()(
       const std::string& component_name,
-      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash);
+      const cuwacunu::iitepi::contract_hash_t& contract_hash);
   // Bind a runtime component to explicit training DSL text (contract-scoped source of truth).
   void set_component_instruction_override(
-                                          const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+                                          const cuwacunu::iitepi::contract_hash_t& contract_hash,
                                           std::string runtime_component_name,
                                           std::string component_lookup_name,
                                           std::string instruction_text);
   void clear_component_instruction_override(
-      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+      const cuwacunu::iitepi::contract_hash_t& contract_hash,
       const std::string& runtime_component_name);
   void clear_component_instruction_overrides(
-      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash);
+      const cuwacunu::iitepi::contract_hash_t& contract_hash);
   void clear_all_component_instruction_overrides();
 
 private:
@@ -120,7 +120,7 @@ private:
   std::unordered_map<std::string, component_instruction_override_t> component_instruction_overrides;
   std::mutex mtx;
   static std::string make_component_key(
-      const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+      const cuwacunu::iitepi::contract_hash_t& contract_hash,
       const std::string& runtime_component_name);
 
   static void init();
@@ -135,7 +135,7 @@ private:
 // ---- Convenience free function to call `jk_setup_t("...", contract_hash)` ----
 inline jk_component_t& jk_setup(
     const std::string& component_name,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   return jk_setup_t::registry(component_name, contract_hash);
 }
 

@@ -172,7 +172,7 @@ create_memory_mapped_dataloader(
 template<typename Datatype_t, typename Sampler>
 inline auto make_obs_mm_dataloader(
     std::string_view instrument,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash)
+    const cuwacunu::iitepi::contract_hash_t& contract_hash)
 {
     if (contract_hash.empty()) {
       log_fatal("[memory_mapped_dataloader] missing contract hash for observation dataloader\n");
@@ -181,10 +181,10 @@ inline auto make_obs_mm_dataloader(
 
     // ---- fetch config only once ------------------------------------------
     const bool force_rebuild_cache =
-        cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+        cuwacunu::iitepi::config_space_t::get<bool>(
             "DATA_LOADER", "dataloader_force_rebuild_cache");
     constexpr int batch_size = 64;
-    const int  workers     = cuwacunu::piaabo::dconfig::config_space_t::get<int> ("DATA_LOADER","dataloader_workers");
+    const int  workers     = cuwacunu::iitepi::config_space_t::get<int> ("DATA_LOADER","dataloader_workers");
 
     // ---- make a writable copy for   create_memory_mapped_dataloader ------
     std::string inst{instrument};
@@ -206,7 +206,7 @@ inline auto make_obs_mm_dataloader(
 template<typename Datatype_t>
 inline auto observation_sequential_mm_dataloader(
     std::string_view instrument,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash)
+    const cuwacunu::iitepi::contract_hash_t& contract_hash)
 {
     using Sampler = torch::data::samplers::SequentialSampler;
     return make_obs_mm_dataloader<Datatype_t, Sampler>(
@@ -220,7 +220,7 @@ inline auto observation_sequential_mm_dataloader(
 template<typename Datatype_t>
 inline auto observation_random_mm_dataloader(
     std::string_view instrument,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash)
+    const cuwacunu::iitepi::contract_hash_t& contract_hash)
 {
     using Sampler = torch::data::samplers::RandomSampler;
     return make_obs_mm_dataloader<Datatype_t, Sampler>(

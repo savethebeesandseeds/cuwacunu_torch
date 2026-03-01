@@ -42,7 +42,7 @@ template <class DL>
 cuwacunu::wikimyei::vicreg_4d::VICReg_4D
 make_model_from_confg(
     const DL& dl,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash)
+    const cuwacunu::iitepi::contract_hash_t& contract_hash)
 {
   using cuwacunu::wikimyei::vicreg_4d::VICReg_4D;
   return VICReg_4D(
@@ -67,14 +67,15 @@ int main()
   /*  1) Load config                                    */
   /* -------------------------------------------------- */
   const char* CONFIG_ROOT = "/cuwacunu/src/config/";
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(CONFIG_ROOT);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(CONFIG_ROOT);
+  cuwacunu::iitepi::config_space_t::update_config();
   const std::string contract_hash =
-      cuwacunu::piaabo::dconfig::config_space_t::locked_contract_hash();
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_board_hash(),
+          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
   {
     std::string configured_device =
-        cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-            contract_hash, "VICReg", "device");
+        cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "device");
     std::transform(configured_device.begin(),
                    configured_device.end(),
                    configured_device.begin(),
@@ -87,7 +88,7 @@ int main()
   }
 
   // reproducibility
-  torch::manual_seed(cuwacunu::piaabo::dconfig::config_space_t::get<int>("GENERAL", "torch_seed"));
+  torch::manual_seed(cuwacunu::iitepi::config_space_t::get<int>("GENERAL", "torch_seed"));
 
   /* -------------------------------------------------- */
   /*  2) Build dataloader (as in training)              */

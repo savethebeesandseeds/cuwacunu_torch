@@ -387,22 +387,14 @@ int main(int argc, char** argv)
 {
   // Load config
   const char* config_folder = "/cuwacunu/src/config/";
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::update_config();
 
-  const std::string configured_contract_path = cuwacunu::piaabo::dconfig::config_space_t::get<
-      std::string>("GENERAL", GENERAL_BOARD_CONTRACT_CONFIG_KEY);
-  const std::filesystem::path contract_path(configured_contract_path);
-  const std::string resolved_contract_path = contract_path.is_absolute()
-      ? contract_path.string()
-      : (std::filesystem::path(cuwacunu::piaabo::dconfig::config_space_t::config_folder) /
-         contract_path)
-            .string();
   const auto contract_hash =
-      cuwacunu::piaabo::dconfig::contract_space_t::register_contract_file(
-          resolved_contract_path);
-  cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(
-      contract_hash);
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_board_hash(),
+          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(contract_hash);
 
   // Instrument
   std::string INSTRUMENT = (argc > 1 ? std::string(argv[1]) : std::string("BTCUSDT"));
@@ -412,7 +404,7 @@ int main(int argc, char** argv)
       contract_hash);
 
   const bool force_bin =
-    cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+    cuwacunu::iitepi::config_space_t::get<bool>(
         "DATA_LOADER", "dataloader_force_rebuild_cache");
 
   // Dataset_t (for time slicing / channels)
@@ -421,9 +413,10 @@ int main(int argc, char** argv)
       inst_copy, obs_inst, force_bin);
 
   // VICReg model (device from config)
-  auto model_path = cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash, "VICReg", "model_path");
-  auto model_dev  = cuwacunu::piaabo::dconfig::config_device(contract_hash, "VICReg");
+  auto model_path =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<std::string>("VICReg", "model_path");
+  auto model_dev  = cuwacunu::iitepi::config_device(contract_hash, "VICReg");
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(
       contract_hash, model_path, model_dev);
 

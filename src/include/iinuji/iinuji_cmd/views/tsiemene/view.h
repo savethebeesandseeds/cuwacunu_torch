@@ -88,14 +88,12 @@ inline void append_tsi_dataloader_form(const CmdState& st, std::ostringstream& o
     oss << "  contract: unavailable\n";
     return;
   }
-  std::string sources_path = cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash,
-      "DSL",
-      "observation_sources_dsl_filename");
-  std::string channels_path = cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-      contract_hash,
-      "DSL",
-      "observation_channels_dsl_filename");
+  std::string sources_path =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<std::string>("DSL", "observation_sources_dsl_filename");
+  std::string channels_path =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<std::string>("DSL", "observation_channels_dsl_filename");
 
   const std::string next_id = tsiemene::next_source_dataloader_init_id({});
   const auto items = tsi_source_dataloader_instances();

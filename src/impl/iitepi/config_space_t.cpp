@@ -1,6 +1,6 @@
-#include "piaabo/dconfig/config_space_t.h"
+#include "iitepi/config_space_t.h"
 
-#include "piaabo/dconfig/contract_space_t.h"
+#include "iitepi/board_space_t.h"
 
 #include <algorithm>
 #include <cctype>
@@ -10,17 +10,13 @@
 #include <string_view>
 
 namespace cuwacunu {
-namespace piaabo {
-namespace dconfig {
+namespace iitepi {
 
 std::mutex config_mutex;
 exchange_type_e config_space_t::exchange_type;
 std::string config_space_t::config_folder;
 std::string config_space_t::config_file_path;
 parsed_config_t config_space_t::config;
-static bool contract_lock_initialized = false;
-static std::string g_locked_contract_path_canonical;
-static contract_hash_t g_locked_contract_hash;
 
 [[nodiscard]] static std::string strip_comment(std::string_view line,
                                                bool* in_block_comment);
@@ -331,42 +327,25 @@ void config_space_t::update_config() {
   }
   exchange_type = exchange_type_temp;
 
-  const std::string configured_contract_path = resolve_path_from_folder(
+  const std::string configured_board_path = resolve_path_from_folder(
       config_folder,
-      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_CONTRACT_CONFIG_KEY));
-  const std::string configured_contract_canonical =
-      canonicalize_path_best_effort(configured_contract_path);
-  if (!has_non_ws_ascii(configured_contract_canonical)) {
-    log_fatal("[dconfig] invalid configured board contract path: %s\n",
-              configured_contract_path.c_str());
+      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_CONFIG_KEY));
+  const std::string configured_board_canonical =
+      canonicalize_path_best_effort(configured_board_path);
+  if (!has_non_ws_ascii(configured_board_canonical)) {
+    log_fatal("[dconfig] invalid configured board path: %s\n",
+              configured_board_path.c_str());
+  }
+  const std::string configured_binding_id = trim_ascii_ws_copy(
+      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_BINDING_KEY));
+  if (!has_non_ws_ascii(configured_binding_id)) {
+    log_fatal("[dconfig] invalid configured board binding id\n");
   }
 
-  {
-    LOCK_GUARD(config_mutex);
-    if (!contract_lock_initialized) {
-      g_locked_contract_hash =
-          contract_space_t::register_contract_file(configured_contract_canonical);
-      g_locked_contract_path_canonical = configured_contract_canonical;
-      contract_lock_initialized = true;
-      return;
-    }
-
-    if (configured_contract_canonical != g_locked_contract_path_canonical) {
-      log_fatal(
-          "[dconfig] immutable contract lock violation: configured contract changed "
-          "mid-run (configured=%s, locked=%s)\n",
-          configured_contract_canonical.c_str(),
-          g_locked_contract_path_canonical.c_str());
-    }
+  if (board_space_t::is_initialized()) {
+    board_space_t::init(configured_board_canonical, configured_binding_id);
+    board_space_t::assert_locked_runtime_intact_or_fail_fast();
   }
-
-  std::string active_locked_contract_hash;
-  {
-    LOCK_GUARD(config_mutex);
-    active_locked_contract_hash = g_locked_contract_hash;
-  }
-  contract_space_t::assert_intact_or_fail_fast(active_locked_contract_hash);
-  contract_space_t::assert_registry_intact_or_fail_fast();
 }
 
 bool config_space_t::validate_config() {
@@ -504,18 +483,19 @@ bool config_space_t::validate_config() {
     }
   }
 
-  std::string contract_cfg_path;
-  if (require_value("GENERAL", GENERAL_BOARD_CONTRACT_CONFIG_KEY, &contract_cfg_path)) {
+  std::string board_cfg_path;
+  if (require_value("GENERAL", GENERAL_BOARD_CONFIG_KEY, &board_cfg_path)) {
     const std::string resolved =
-        resolve_path_from_folder(config_folder, contract_cfg_path);
+        resolve_path_from_folder(config_folder, board_cfg_path);
     if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
       log_warn(
-          "Configured board contract file does not exist: %s (resolved: %s)\n",
-          contract_cfg_path.c_str(),
+          "Configured board file does not exist: %s (resolved: %s)\n",
+          board_cfg_path.c_str(),
           resolved.c_str());
       ok = false;
     }
   }
+  (void)require_value("GENERAL", GENERAL_BOARD_BINDING_KEY, nullptr);
 
   require_int_with_bounds("GENERAL", "iinuji_logs_buffer_capacity", 1);
   (void)require_value("GENERAL", "hashimyei_store_root", nullptr);
@@ -532,7 +512,7 @@ bool config_space_t::validate_config() {
         dl_it->second.find("dataloader_batch_size") != dl_it->second.end()) {
       log_warn(
           "[dconfig] DATA_LOADER.dataloader_batch_size is removed; "
-          "use WAVE_PROFILE.BATCH_SIZE\n");
+          "use WAVE.BATCH_SIZE\n");
       ok = false;
     }
   }
@@ -605,21 +585,19 @@ std::string config_space_t::Ed25519_pkey() {
                                     : "TEST_EXCHANGE"]["Ed25519_pkey"];
 }
 
-std::string config_space_t::locked_contract_hash() {
-  LOCK_GUARD(config_mutex);
-  if (!contract_lock_initialized || !has_non_ws_ascii(g_locked_contract_hash)) {
-    log_fatal("[dconfig] locked contract hash requested before initialization\n");
-  }
-  return g_locked_contract_hash;
+std::string config_space_t::locked_board_hash() {
+  board_space_t::init();
+  return board_space_t::locked_board_hash();
 }
 
-std::string config_space_t::locked_contract_path_canonical() {
-  LOCK_GUARD(config_mutex);
-  if (!contract_lock_initialized ||
-      !has_non_ws_ascii(g_locked_contract_path_canonical)) {
-    log_fatal("[dconfig] locked contract path requested before initialization\n");
-  }
-  return g_locked_contract_path_canonical;
+std::string config_space_t::locked_board_path_canonical() {
+  board_space_t::init();
+  return board_space_t::locked_board_path_canonical();
+}
+
+std::string config_space_t::locked_board_binding_id() {
+  board_space_t::init();
+  return board_space_t::locked_board_binding_id();
 }
 
 /*──────────────────────────── life-cycle hooks ───────────────────────────*/
@@ -658,6 +636,5 @@ template std::vector<bool> config_space_t::get_arr<bool>(
 template std::vector<std::string> config_space_t::get_arr<std::string>(
     const std::string&, const std::string&, std::optional<std::vector<std::string>>);
 
-}  // namespace dconfig
-}  // namespace piaabo
+}  // namespace iitepi
 }  // namespace cuwacunu

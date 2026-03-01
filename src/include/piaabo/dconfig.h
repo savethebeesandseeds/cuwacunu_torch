@@ -1,4 +1,9 @@
 #pragma once
 
-#include "piaabo/dconfig/config_space_t.h"
-#include "piaabo/dconfig/contract_space_t.h"
+#include "iitepi/iitepi.h"
+
+namespace cuwacunu {
+namespace piaabo {
+namespace dconfig = ::cuwacunu::iitepi;
+}  // namespace piaabo
+}  // namespace cuwacunu

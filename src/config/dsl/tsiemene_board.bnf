@@ -1,0 +1,43 @@
+<instruction>                ::= <board_block> ;
+
+<board_block>                ::= "BOARD" [<whitespace>] "{"
+                                 <line_end>
+                                 {<board_entry>}
+                                 [<whitespace>] "}" [<whitespace>] <line_end> ;
+
+<board_entry>                ::= <contract_import_decl>
+                               | <wave_import_decl>
+                               | <bind_decl> ;
+
+<contract_import_decl>       ::= [<whitespace>] "IMPORT_CONTRACT_FILE"
+                                 [<whitespace>] <path_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<wave_import_decl>           ::= [<whitespace>] "IMPORT_WAVE_FILE"
+                                 [<whitespace>] <path_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<bind_decl>                  ::= [<whitespace>] "BIND" [<whitespace>] <id_value>
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 [<whitespace>] "CONTRACT" [<whitespace>] "="
+                                 [<whitespace>] <id_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "WAVE" [<whitespace>] "="
+                                 [<whitespace>] <id_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
+
+<id_value>                   ::= <id_char> {<id_char>} ;
+<path_value>                 ::= <id_value> | <quoted_text> ;
+<quoted_text>                ::= "\"" {<quoted_char>} "\"" ;
+<quoted_char>                ::= <id_char> | "/" | ":" | "\\" | "." | "-" | "_" | " " ;
+
+<id_char>                    ::= <letter> | <digit> | "_" | "." | "-" ;
+<line_end>                   ::= [<whitespace>] <break_block> ;
+<break_block>                ::= {<newline>} ;
+<whitespace>                 ::= {<empty>} ;
+<letter>                     ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<digit>                      ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+<newline>                    ::= "\n" | "\r\n" ;
+<empty>                      ::= " " | "\t" ;

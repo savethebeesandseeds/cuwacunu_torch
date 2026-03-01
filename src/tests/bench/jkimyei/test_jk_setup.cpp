@@ -27,10 +27,12 @@ void step_scheduler(cuwacunu::jkimyei::LRSchedulerAny& sched) {
 
 int main() {
   const char* config_folder = "/cuwacunu/src/config/";
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::update_config();
   const std::string contract_hash =
-      cuwacunu::piaabo::dconfig::config_space_t::locked_contract_hash();
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_board_hash(),
+          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
 
   const auto& vicreg_setup = cuwacunu::jkimyei::jk_setup("VICReg_representation", contract_hash);
 

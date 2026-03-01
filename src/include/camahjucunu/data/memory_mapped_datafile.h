@@ -102,11 +102,11 @@ struct csv_step_policy_t {
 
 inline csv_step_policy_t load_csv_step_policy() {
   csv_step_policy_t out{};
-  const int configured_bootstrap = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
+  const int configured_bootstrap = cuwacunu::iitepi::config_space_t::get<int>(
       "DATA_LOADER", "dataloader_csv_bootstrap_deltas", std::optional<int>{64});
-  const double configured_abs_tol = cuwacunu::piaabo::dconfig::config_space_t::get<double>(
+  const double configured_abs_tol = cuwacunu::iitepi::config_space_t::get<double>(
       "DATA_LOADER", "dataloader_csv_step_abs_tol", std::optional<double>{1e-8});
-  const double configured_rel_tol = cuwacunu::piaabo::dconfig::config_space_t::get<double>(
+  const double configured_rel_tol = cuwacunu::iitepi::config_space_t::get<double>(
       "DATA_LOADER", "dataloader_csv_step_rel_tol", std::optional<double>{1e-10});
 
   out.bootstrap_deltas = static_cast<std::size_t>(std::max(2, configured_bootstrap));

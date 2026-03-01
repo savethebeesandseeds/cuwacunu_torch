@@ -21,15 +21,15 @@
 
 #define DEFAULT_CONFIG_FOLDER "/cuwacunu/src/config/"
 #define DEFAULT_CONFIG_FILE ".config"
-#define DEFAULT_CONTRACT_CONFIG_FILE "default.board.contract.config"
-#define GENERAL_BOARD_CONTRACT_CONFIG_KEY "board_contract_config_filename"
+#define DEFAULT_BOARD_CONFIG_FILE "default.board.config"
+#define GENERAL_BOARD_CONFIG_KEY "board_config_filename"
+#define GENERAL_BOARD_BINDING_KEY "board_binding_id"
 
 #include "piaabo/dfiles.h"
 #include "piaabo/dutils.h"
 
 namespace cuwacunu {
-namespace piaabo {
-namespace dconfig {
+namespace iitepi {
 
 enum class exchange_type_e { NONE, TEST, REAL };
 using parsed_config_section_t = std::map<std::string, std::string>;
@@ -72,8 +72,9 @@ struct config_space_t {
   static std::string websocket_url();
   static std::string api_key();
   static std::string Ed25519_pkey();
-  static std::string locked_contract_hash();
-  static std::string locked_contract_path_canonical();
+  static std::string locked_board_hash();
+  static std::string locked_board_path_canonical();
+  static std::string locked_board_binding_id();
 
  private:
   /*—raw readers—*/
@@ -93,6 +94,5 @@ struct config_space_t {
 };
 
 /*───────────────────────────────────────────────────────────────────────────*/
-}  // namespace dconfig
-}  // namespace piaabo
+}  // namespace iitepi
 }  // namespace cuwacunu

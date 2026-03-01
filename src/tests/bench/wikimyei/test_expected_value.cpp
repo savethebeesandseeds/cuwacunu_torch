@@ -70,27 +70,21 @@ int main() {
 
   /* read the config */
   TICK(read_config_);
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::update_config();
   PRINT_TOCK_ms(read_config_);
 
-  const std::string configured_contract_path = cuwacunu::piaabo::dconfig::config_space_t::get<
-      std::string>("GENERAL", GENERAL_BOARD_CONTRACT_CONFIG_KEY);
-  const std::filesystem::path contract_path(configured_contract_path);
-  const std::string resolved_contract_path = contract_path.is_absolute()
-      ? contract_path.string()
-      : (std::filesystem::path(cuwacunu::piaabo::dconfig::config_space_t::config_folder) /
-         contract_path)
-            .string();
-  const auto base_contract_hash =
-      cuwacunu::piaabo::dconfig::contract_space_t::register_contract_file(
-          resolved_contract_path);
+  const std::string base_contract_hash =
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_board_hash(),
+          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+  const auto base_contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(base_contract_hash);
+  const std::string resolved_contract_path = base_contract_itself->config_file_path;
   const std::string base_vicreg_ini =
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-          base_contract_hash, "SPECS", "vicreg_config_filename");
+      base_contract_itself->get<std::string>("SPECS", "vicreg_config_filename");
   const std::string base_value_ini =
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-          base_contract_hash, "SPECS", "value_estimation_config_filename");
+      base_contract_itself->get<std::string>("SPECS", "value_estimation_config_filename");
 
   const std::filesystem::path cpu_contract_dir = "/tmp/test_expected_value_contract_cpu";
   std::filesystem::create_directories(cpu_contract_dir);
@@ -112,9 +106,9 @@ int main() {
   write_text_file(cpu_contract, cpu_contract_text);
 
   const auto contract_hash =
-      cuwacunu::piaabo::dconfig::contract_space_t::register_contract_file(
+      cuwacunu::iitepi::contract_space_t::register_contract_file(
           cpu_contract.string());
-  cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(
+  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
       contract_hash);
     
   // Reproducibility
@@ -123,7 +117,7 @@ int main() {
   // -----------------------------------------------------
   // Create the Dataloader
   // -----------------------------------------------------
-  torch::manual_seed(cuwacunu::piaabo::dconfig::config_space_t::get<int>("GENERAL", "torch_seed"));
+  torch::manual_seed(cuwacunu::iitepi::config_space_t::get<int>("GENERAL", "torch_seed"));
 
   /* types definition */
   std::string INSTRUMENT = "BTCUSDT";                     // "UTILITIES"
@@ -170,14 +164,11 @@ int main() {
   // Training
   // -----------------------------------------------------
   const int configured_telemetry_every =
-      cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-          contract_hash, "VALUE_ESTIMATION", "telemetry_every");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "telemetry_every");
   const int configured_epochs =
-      cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-          contract_hash, "VALUE_ESTIMATION", "n_epochs");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "n_epochs");
   const int configured_iters =
-      cuwacunu::piaabo::dconfig::contract_space_t::get<int>(
-          contract_hash, "VALUE_ESTIMATION", "n_iters");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "n_iters");
   const int smoke_telemetry_every = 1;
   const int smoke_epochs = 1;
   const int smoke_iters = 1;
@@ -283,8 +274,7 @@ int main() {
   // -----------------------------------------------------
   TICK(save_value_estimation_network_);
   const std::string ckpt_path =
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-          contract_hash, "VALUE_ESTIMATION", "model_path");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VALUE_ESTIMATION", "model_path");
   TORCH_CHECK(value_estimation_network.save_checkpoint(ckpt_path),
               "[test_expected_value] save_checkpoint should succeed");
   PRINT_TOCK_ms(save_value_estimation_network_);
@@ -327,7 +317,7 @@ int main() {
       mismatch_contract,
       read_text_file(base_contract) + "\n# contract_mismatch_variant\n");
   const std::string mismatch_contract_hash =
-      cuwacunu::piaabo::dconfig::contract_space_t::register_contract_file(
+      cuwacunu::iitepi::contract_space_t::register_contract_file(
           mismatch_contract.string());
   {
     cuwacunu::wikimyei::ExpectedValue mismatch_loader(

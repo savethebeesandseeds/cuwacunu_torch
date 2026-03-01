@@ -320,7 +320,7 @@ class TsiSourceDataloader final : public TsiSource {
       std::string_view instrument,
       cuwacunu::camahjucunu::observation_spec_t observation_instruction) {
     const bool force_rebuild_cache =
-        cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+        cuwacunu::iitepi::config_space_t::get<bool>(
             "DATA_LOADER", "dataloader_force_rebuild_cache");
 
     return cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(
@@ -329,7 +329,7 @@ class TsiSourceDataloader final : public TsiSource {
   }
 
   static Loader_t make_loader_(Dataset_t& dataset, std::size_t batch_size_override) {
-    const int configured_workers = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
+    const int configured_workers = cuwacunu::iitepi::config_space_t::get<int>(
         "DATA_LOADER", "dataloader_workers");
 
     constexpr std::size_t kDefaultBatchSize = 64;
@@ -352,7 +352,7 @@ class TsiSourceDataloader final : public TsiSource {
   }
 
   [[nodiscard]] static std::uint64_t range_warn_batches_threshold_() {
-    const int configured = cuwacunu::piaabo::dconfig::config_space_t::get<int>(
+    const int configured = cuwacunu::iitepi::config_space_t::get<int>(
         "DATA_LOADER", "dataloader_range_warn_batches", std::optional<int>{256});
     return static_cast<std::uint64_t>(std::max(1, configured));
   }
@@ -731,7 +731,7 @@ inline void fill_source_dataloader_observation_stats(
 
 [[nodiscard]] inline source_dataloader_init_record_t update_source_dataloader_init_from_config(
     std::string init_id,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   if (contract_hash.empty()) {
     source_dataloader_init_record_t out{};
     out.error = "missing contract hash";
@@ -758,7 +758,7 @@ inline void fill_source_dataloader_observation_stats(
 }
 
 [[nodiscard]] inline source_dataloader_init_record_t invoke_source_dataloader_init_from_config(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   if (contract_hash.empty()) {
     source_dataloader_init_record_t out{};
     out.error = "missing contract hash";

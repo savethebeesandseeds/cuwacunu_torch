@@ -3,8 +3,8 @@
 #include <set>
 #include <string>
 
-#include "tsiemene/board.contract.h"
-#include "tsiemene/board.contract.init.h"
+#include "iitepi/board/board.contract.h"
+#include "iitepi/board/board.contract.init.h"
 #include "tsiemene/tsi.directive.registry.h"
 
 int main() {

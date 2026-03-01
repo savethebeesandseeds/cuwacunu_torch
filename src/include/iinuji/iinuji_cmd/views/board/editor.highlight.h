@@ -19,7 +19,7 @@ namespace board_contract_dsl_key_highlight {
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY) inline constexpr const char ID[] = KEY;
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD
@@ -42,7 +42,7 @@ inline std::string lower_ascii_copy_board_editor(std::string s) {
 
 inline bool is_board_instruction_path(const std::string& path) {
   const std::string p = lower_ascii_copy_board_editor(path);
-  return p.find("tsiemene_circuit.dsl") != std::string::npos ||
+  return p.find("iitepi_circuit.dsl") != std::string::npos ||
          p.find("board.dsl") != std::string::npos;
 }
 

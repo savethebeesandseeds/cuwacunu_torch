@@ -67,7 +67,7 @@ inline ConfigTabData make_secrets_tab() {
 }
 
 inline ConfigState load_config_view_from_config(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   ConfigState out{};
   if (contract_hash.empty()) {
     out.ok = false;
@@ -75,10 +75,10 @@ inline ConfigState load_config_view_from_config(
     return out;
   }
 
-  const std::string global_path = cuwacunu::piaabo::dconfig::config_space_t::config_file_path;
+  const std::string global_path = cuwacunu::iitepi::config_space_t::config_file_path;
   const std::string contract_path =
-      cuwacunu::piaabo::dconfig::contract_space_t::snapshot(contract_hash)
-          .config_file_path;
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->config_file_path;
   out.tabs.push_back(make_text_tab("global", "global .config", global_path));
   out.tabs.push_back(make_text_tab("contract", "board contract", contract_path));
 
@@ -95,9 +95,9 @@ inline ConfigState load_config_view_from_config(
       {"jkimyei_specs.bnf", "jkimyei_specs.bnf", "jkimyei_specs_grammar_filename"},
       {"jkimyei_specs.dsl", "jkimyei_specs.dsl", "jkimyei_specs_dsl_filename"},
       {"tsiemene_circuit.bnf", "tsiemene_circuit.bnf", "tsiemene_circuit_grammar_filename"},
-      {"tsiemene_circuit.dsl", "tsiemene_circuit.dsl", "tsiemene_circuit_dsl_filename"},
+      {"iitepi_circuit.dsl", "iitepi_circuit.dsl", "tsiemene_circuit_dsl_filename"},
       {"tsiemene_wave.bnf", "tsiemene_wave.bnf", "tsiemene_wave_grammar_filename"},
-      {"tsiemene_wave.dsl", "tsiemene_wave.dsl", "tsiemene_wave_dsl_filename"},
+      {"iitepi_wave.dsl", "iitepi_wave.dsl", "tsiemene_wave_dsl_filename"},
       {"canonical_path.bnf", "canonical_path.bnf", "canonical_path_grammar_filename"},
   };
 

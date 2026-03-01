@@ -9,7 +9,7 @@
 
 #include "tsiemene/tsi.directive.registry.h"
 #include "tsiemene/tsi.domain.h"
-#include "tsiemene/board.wave.h"
+#include "iitepi/board/board.wave.h"
 
 namespace tsiemene {
 

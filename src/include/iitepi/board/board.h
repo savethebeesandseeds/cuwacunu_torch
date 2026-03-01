@@ -1,4 +1,4 @@
-// ./include/tsiemene/board.h
+// ./include/iitepi/board.h
 // SPDX-License-Identifier: MIT
 #pragma once
 
@@ -11,26 +11,35 @@
 #include <unordered_set>
 #include <vector>
 
-#include "tsiemene/board.contract.h"
+#include "iitepi/board/board.contract.h"
 #include "tsiemene/tsi.type.registry.h"
 #include "tsiemene/tsi.wikimyei.h"
 
 namespace tsiemene {
 
 struct Board {
-  std::string board_contract_hash{};
-  std::string board_contract_path{};
+  std::string board_hash{};
+  std::string board_path{};
+  std::string board_binding_id{};
+  std::string contract_hash{};
+  std::string wave_hash{};
   std::vector<BoardContract> contracts{};
 
   Board() = default;
   Board(Board&& other) noexcept
-      : board_contract_hash(std::move(other.board_contract_hash)),
-        board_contract_path(std::move(other.board_contract_path)),
+      : board_hash(std::move(other.board_hash)),
+        board_path(std::move(other.board_path)),
+        board_binding_id(std::move(other.board_binding_id)),
+        contract_hash(std::move(other.contract_hash)),
+        wave_hash(std::move(other.wave_hash)),
         contracts(std::move(other.contracts)) {}
   Board& operator=(Board&& other) noexcept {
     if (this != &other) {
-      board_contract_hash = std::move(other.board_contract_hash);
-      board_contract_path = std::move(other.board_contract_path);
+      board_hash = std::move(other.board_hash);
+      board_path = std::move(other.board_path);
+      board_binding_id = std::move(other.board_binding_id);
+      contract_hash = std::move(other.contract_hash);
+      wave_hash = std::move(other.wave_hash);
       contracts = std::move(other.contracts);
     }
     return *this;

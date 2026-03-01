@@ -14,7 +14,7 @@ struct IinujiStateFlow {
     const auto contract_hash = state.board.contract_hash.empty()
                                    ? resolve_configured_board_contract_hash()
                                    : state.board.contract_hash;
-    cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(
+    cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
         contract_hash);
     state.board = load_board_from_contract_hash(contract_hash);
     clamp_board_navigation_state(state);
@@ -42,8 +42,8 @@ struct IinujiStateFlow {
   }
 
   void reload_config_and_board() const {
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
-    cuwacunu::piaabo::dconfig::contract_space_t::
+    cuwacunu::iitepi::config_space_t::update_config();
+    cuwacunu::iitepi::contract_space_t::
         assert_registry_intact_or_fail_fast();
     const auto contract_hash = state.board.contract_hash.empty()
                                    ? resolve_configured_board_contract_hash()

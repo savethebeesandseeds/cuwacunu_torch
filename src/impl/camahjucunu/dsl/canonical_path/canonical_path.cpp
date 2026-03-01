@@ -503,7 +503,7 @@ canonical_path_t decode_canonical_path(const std::string& text,
   if (contract_hash.empty()) {
     log_fatal("[canonical_path] missing contract hash for decode_canonical_path\n");
   }
-  (void)cuwacunu::piaabo::dconfig::contract_space_t::snapshot(contract_hash);
+  (void)cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
   return dsl::canonicalPath().decode(text);
 }
 

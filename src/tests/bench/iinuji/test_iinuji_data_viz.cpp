@@ -153,16 +153,18 @@ struct DatasetProvider final : public IDataProvider {
                   int De_vis = 64)
   : de_{De_vis} {
     // load config (paths, obs pipeline)
-    cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    cuwacunu::iitepi::config_space_t::update_config();
     const auto contract_hash =
-        cuwacunu::piaabo::dconfig::config_space_t::locked_contract_hash();
+        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+            cuwacunu::iitepi::config_space_t::locked_board_hash(),
+            cuwacunu::iitepi::config_space_t::locked_board_binding_id());
 
     auto obs_inst = cuwacunu::camahjucunu::decode_observation_spec_from_contract(
         contract_hash);
 
     bool force_bin =
-      cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+      cuwacunu::iitepi::config_space_t::get<bool>(
           "DATA_LOADER", "dataloader_force_rebuild_cache");
 
     std::string inst = instrument;

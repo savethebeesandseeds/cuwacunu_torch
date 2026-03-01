@@ -82,7 +82,7 @@ namespace vicreg_4d {
  */
 class VICReg_4D : public torch::nn::Module {
 public:
-  cuwacunu::piaabo::dconfig::contract_hash_t contract_hash;
+  cuwacunu::iitepi::contract_hash_t contract_hash;
   std::string component_name;
   // ── Model shape (input contract) and training setup ──────────────────────────
   int C;                                  // Number of input channels.
@@ -132,7 +132,7 @@ public:
 
   // --- constructors (decl only; bodies in .cpp) ---
   VICReg_4D(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash_,
     const std::string& component_name_,
     int C_, int T_, int D_,
     int encoding_dims_, 
@@ -149,13 +149,13 @@ public:
 
   // config-driven delegating constructor
   VICReg_4D(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash_,
     const std::string& component_name, 
     int C_, int T_, int D_
   );
 
   // strict checkpoint constructor
-  VICReg_4D(const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+  VICReg_4D(const cuwacunu::iitepi::contract_hash_t& contract_hash_,
             const std::string& checkpoint_path,
             torch::Device override_device = torch::kCPU);
 

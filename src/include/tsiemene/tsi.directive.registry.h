@@ -21,7 +21,7 @@ namespace directive_id {
 #undef TSI_PATH_DIRECTIVE
 
 #define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) inline constexpr DirectiveId ID = TOKEN;
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DIRECTIVE
 } // namespace directive_id
 
@@ -35,7 +35,7 @@ namespace method_id {
 
 #define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY) inline constexpr MethodId ID = TOKEN;
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_METHOD
 #undef BOARD_PATH_DIRECTIVE
 } // namespace method_id
@@ -65,7 +65,7 @@ namespace method_id {
 
 #define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) \
   if (token == TOKEN) return directive_id::ID;
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DIRECTIVE
   return std::nullopt;
 }
@@ -84,7 +84,7 @@ namespace method_id {
 #define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY) \
   if (token == TOKEN) return method_id::ID;
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_METHOD
 #undef BOARD_PATH_DIRECTIVE
   return std::nullopt;

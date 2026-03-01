@@ -1,4 +1,4 @@
-// ./include/tsiemene/board.contract.h
+// ./include/iitepi/board.contract.h
 // SPDX-License-Identifier: MIT
 #pragma once
 
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "tsiemene/board.runtime.h"
+#include "iitepi/board/board.runtime.h"
 
 namespace tsiemene {
 
@@ -22,7 +22,7 @@ namespace board_contract_dsl_key {
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY) inline constexpr const char ID[] = KEY;
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD

@@ -1,4 +1,4 @@
-// ./include/tsiemene/board.builder.h
+// ./include/iitepi/board.builder.h
 // SPDX-License-Identifier: MIT
 #pragma once
 
@@ -6,6 +6,7 @@
 #include <cctype>
 #include <exception>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -25,7 +26,8 @@
 
 #include "jkimyei/training_setup/jk_setup.h"
 #include "piaabo/dconfig.h"
-#include "tsiemene/board.h"
+#include "iitepi/board/board.h"
+#include "iitepi/board/board.validation.h"
 #include "tsiemene/tsi.type.registry.h"
 #include "tsiemene/tsi.source.dataloader.h"
 #include "tsiemene/tsi.wikimyei.representation.vicreg.h"
@@ -238,52 +240,84 @@ inline void apply_vicreg_flag_overrides_from_component_row(
   return true;
 }
 
-[[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_profile_t*
-select_wave_profile_by_id(
-    const cuwacunu::camahjucunu::tsiemene_wave_instruction_t& instruction,
-    std::string profile_id,
+[[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_t*
+select_wave_by_id(
+    const cuwacunu::camahjucunu::tsiemene_wave_set_t& instruction,
+    std::string wave_id,
     std::string* error = nullptr) {
-  profile_id = trim_ascii_copy(std::move(profile_id));
-  if (profile_id.empty()) {
-    if (error) *error = "missing required wave profile id";
+  wave_id = trim_ascii_copy(std::move(wave_id));
+  if (wave_id.empty()) {
+    if (error) *error = "missing required wave id";
     return nullptr;
   }
-  const cuwacunu::camahjucunu::tsiemene_wave_profile_t* chosen = nullptr;
-  for (const auto& profile : instruction.profiles) {
-    if (trim_ascii_copy(profile.name) == profile_id) {
+  const cuwacunu::camahjucunu::tsiemene_wave_t* chosen = nullptr;
+  for (const auto& wave : instruction.waves) {
+    if (trim_ascii_copy(wave.name) == wave_id) {
       if (chosen) {
         if (error) {
-          *error = "ambiguous wave profile selection: profile id '" + profile_id +
-                   "' matches multiple WAVE_PROFILE blocks";
+          *error = "ambiguous wave selection: wave id '" + wave_id +
+                   "' matches multiple WAVE blocks";
         }
         return nullptr;
       }
-      chosen = &profile;
+      chosen = &wave;
     }
   }
   if (chosen) return chosen;
   if (error) {
-    *error = "no WAVE_PROFILE matches requested profile id '" + profile_id + "'";
+    *error = "no WAVE matches requested wave id '" + wave_id + "'";
   }
   return nullptr;
 }
 
+[[nodiscard]] inline std::string canonical_runtime_node_path(
+    const std::string& raw_path,
+    const std::string& contract_hash,
+    std::string* error = nullptr) {
+  const auto parsed = cuwacunu::camahjucunu::decode_canonical_path(raw_path, contract_hash);
+  if (!parsed.ok) {
+    if (error) *error = parsed.error;
+    return {};
+  }
+  if (parsed.path_kind != cuwacunu::camahjucunu::canonical_path_kind_e::Node) {
+    if (error) *error = "path must resolve to canonical node";
+    return {};
+  }
+  std::string out = parsed.canonical_identity;
+  if (!parsed.hashimyei.empty()) {
+    const std::string suffix = "." + parsed.hashimyei;
+    if (out.size() < suffix.size() ||
+        out.compare(out.size() - suffix.size(), suffix.size(), suffix) != 0) {
+      out.append(suffix);
+    }
+  }
+  return out;
+}
+
 [[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t*
-find_wave_wikimyei_decl_by_alias(
-    const cuwacunu::camahjucunu::tsiemene_wave_profile_t& profile,
-    std::string_view alias) {
-  for (const auto& w : profile.wikimyeis) {
-    if (trim_ascii_copy(w.alias) == alias) return &w;
+find_wave_wikimyei_decl_by_path(
+    const cuwacunu::camahjucunu::tsiemene_wave_t& wave,
+    std::string_view canonical_path,
+    const std::string& contract_hash) {
+  for (const auto& w : wave.wikimyeis) {
+    if (canonical_runtime_node_path(w.wikimyei_path, contract_hash, nullptr) ==
+        canonical_path) {
+      return &w;
+    }
   }
   return nullptr;
 }
 
 [[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t*
-find_wave_source_decl_by_alias(
-    const cuwacunu::camahjucunu::tsiemene_wave_profile_t& profile,
-    std::string_view alias) {
-  for (const auto& s : profile.sources) {
-    if (trim_ascii_copy(s.alias) == alias) return &s;
+find_wave_source_decl_by_path(
+    const cuwacunu::camahjucunu::tsiemene_wave_t& wave,
+    std::string_view canonical_path,
+    const std::string& contract_hash) {
+  for (const auto& s : wave.sources) {
+    if (canonical_runtime_node_path(s.source_path, contract_hash, nullptr) ==
+        canonical_path) {
+      return &s;
+    }
   }
   return nullptr;
 }
@@ -295,14 +329,14 @@ find_wave_source_decl_by_alias(
 
 [[nodiscard]] inline std::string compose_invoke_payload_from_wave_source(
     const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t& source,
-    const cuwacunu::camahjucunu::tsiemene_wave_profile_t& profile) {
+    const cuwacunu::camahjucunu::tsiemene_wave_t& wave) {
   const std::string source_command = compose_source_range_command(source);
   std::string payload = "wave@symbol:" + source.symbol +
-                        ",epochs:" + std::to_string(profile.epochs) +
+                        ",epochs:" + std::to_string(wave.epochs) +
                         ",episode:0,batch:0,i:0,from:" + source.from +
                         ",to:" + source.to;
-  if (profile.max_batches_per_epoch > 0) {
-    payload += ",max_batches:" + std::to_string(profile.max_batches_per_epoch);
+  if (wave.max_batches_per_epoch > 0) {
+    payload += ",max_batches:" + std::to_string(wave.max_batches_per_epoch);
   }
   payload += "@" + source_command;
   return payload;
@@ -320,7 +354,7 @@ template <typename Datatype_t,
           typename Sampler_t = torch::data::samplers::SequentialSampler>
 std::unique_ptr<Tsi> make_tsi_for_decl(
     TsiId id,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash,
     TsiTypeId type_id,
     const cuwacunu::camahjucunu::tsiemene_instance_decl_t& decl,
     BoardContract::Spec* spec,
@@ -425,11 +459,11 @@ template <typename Datatype_t,
           typename Sampler_t = torch::data::samplers::SequentialSampler>
 bool build_runtime_circuit_from_decl(
     const cuwacunu::camahjucunu::tsiemene_circuit_decl_t& parsed,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash,
     const cuwacunu::camahjucunu::observation_spec_t& observation_instruction,
     const cuwacunu::camahjucunu::jkimyei_specs_t& jkimyei_specs,
     std::string_view jkimyei_specs_dsl_text,
-    const cuwacunu::camahjucunu::tsiemene_wave_profile_t* wave_profile,
+    const cuwacunu::camahjucunu::tsiemene_wave_t* wave,
     torch::Device device,
     BoardContract* out,
     std::string* error = nullptr) {
@@ -463,12 +497,12 @@ bool build_runtime_circuit_from_decl(
   out->execution = BoardContract::Execution{};
   out->spec.sample_type = contract_sample_type_name<Datatype_t>();
   out->spec.sourced_from_config = true;
-  if (wave_profile) {
-    out->execution.epochs = wave_profile->epochs;
-    out->execution.batch_size = wave_profile->batch_size;
+  if (wave) {
+    out->execution.epochs = wave->epochs;
+    out->execution.batch_size = wave->batch_size;
   }
-  if (wave_profile &&
-      wave_profile->batch_size >
+  if (wave &&
+      wave->batch_size >
           static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
     if (error) {
       *error = "wave BATCH_SIZE exceeds runtime supported range";
@@ -484,8 +518,8 @@ bool build_runtime_circuit_from_decl(
   std::vector<cuwacunu::camahjucunu::tsiemene_resolved_hop_t> resolved_hops;
   DataloaderT<Datatype_t, Sampler_t>* first_dataloader = nullptr;
   std::uint64_t next_id = 1;
-  std::unordered_set<std::string> circuit_wikimyei_aliases;
-  std::unordered_set<std::string> circuit_source_aliases;
+  std::unordered_set<std::string> circuit_wikimyei_paths;
+  std::unordered_set<std::string> circuit_source_paths;
   const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t* selected_wave_source =
       nullptr;
 
@@ -529,25 +563,34 @@ bool build_runtime_circuit_from_decl(
         !type_path.hashimyei.empty()) {
       out->spec.representation_hashimyei = type_path.hashimyei;
     }
+    const std::string decl_path = canonical_runtime_node_path(
+        decl.tsi_type, contract_hash, error);
+    if (decl_path.empty()) {
+      if (error && error->empty()) {
+        *error = "invalid canonical runtime path for alias '" + decl.alias + "'";
+      }
+      return false;
+    }
 
     const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t* wave_wikimyei_decl =
         nullptr;
-    if (wave_profile && type_desc->domain == TsiDomain::Wikimyei) {
-      circuit_wikimyei_aliases.insert(decl.alias);
-      wave_wikimyei_decl = find_wave_wikimyei_decl_by_alias(*wave_profile, decl.alias);
+    if (wave && type_desc->domain == TsiDomain::Wikimyei) {
+      circuit_wikimyei_paths.insert(decl_path);
+      wave_wikimyei_decl = find_wave_wikimyei_decl_by_path(*wave, decl_path, contract_hash);
       if (!wave_wikimyei_decl) {
         if (error) {
-          *error = "missing WIKIMYEI wave block for alias '" + decl.alias + "'";
+          *error = "missing WIKIMYEI wave block for path '" + decl_path + "'";
         }
         return false;
       }
     }
-    if (wave_profile && type_desc->domain == TsiDomain::Source) {
-      circuit_source_aliases.insert(decl.alias);
-      const auto* wave_source_decl = find_wave_source_decl_by_alias(*wave_profile, decl.alias);
+    if (wave && type_desc->domain == TsiDomain::Source) {
+      circuit_source_paths.insert(decl_path);
+      const auto* wave_source_decl =
+          find_wave_source_decl_by_path(*wave, decl_path, contract_hash);
       if (!wave_source_decl) {
         if (error) {
-          *error = "missing SOURCE wave block for alias '" + decl.alias + "'";
+          *error = "missing SOURCE wave block for path '" + decl_path + "'";
         }
         return false;
       }
@@ -614,46 +657,50 @@ bool build_runtime_circuit_from_decl(
     out->nodes.push_back(std::move(node));
   }
 
-  if (wave_profile) {
-    for (const auto& w : wave_profile->wikimyeis) {
-      if (circuit_wikimyei_aliases.find(trim_ascii_copy(w.alias)) ==
-          circuit_wikimyei_aliases.end()) {
+  if (wave) {
+    for (const auto& w : wave->wikimyeis) {
+      const std::string wave_path =
+          canonical_runtime_node_path(w.wikimyei_path, contract_hash, nullptr);
+      if (wave_path.empty() ||
+          circuit_wikimyei_paths.find(wave_path) == circuit_wikimyei_paths.end()) {
         if (error) {
-          *error = "wave profile '" + wave_profile->name +
-                   "' contains unknown WIKIMYEI alias not present in circuit: " +
-                   w.alias;
+          *error = "wave '" + wave->name +
+                   "' contains unknown WIKIMYEI PATH not present in circuit: " +
+                   w.wikimyei_path;
         }
         return false;
       }
     }
-    for (const auto& s : wave_profile->sources) {
-      if (circuit_source_aliases.find(trim_ascii_copy(s.alias)) ==
-          circuit_source_aliases.end()) {
+    for (const auto& s : wave->sources) {
+      const std::string wave_path =
+          canonical_runtime_node_path(s.source_path, contract_hash, nullptr);
+      if (wave_path.empty() ||
+          circuit_source_paths.find(wave_path) == circuit_source_paths.end()) {
         if (error) {
-          *error = "wave profile '" + wave_profile->name +
-                   "' contains unknown SOURCE alias not present in circuit: " +
-                   s.alias;
+          *error = "wave '" + wave->name +
+                   "' contains unknown SOURCE PATH not present in circuit: " +
+                   s.source_path;
         }
         return false;
       }
     }
 
-    if (circuit_source_aliases.size() != 1) {
+    if (circuit_source_paths.size() != 1) {
       if (error) {
         *error =
-            "runtime currently supports exactly one SOURCE alias per circuit when wave profiles are enabled";
+            "runtime currently supports exactly one SOURCE path per circuit when wave is enabled";
       }
       return false;
     }
     if (!selected_wave_source) {
       if (error) {
-        *error = "wave profile '" + wave_profile->name +
-                 "' missing SOURCE block for circuit source alias";
+        *error = "wave '" + wave->name +
+                 "' missing SOURCE block for circuit source path";
       }
       return false;
     }
     effective_invoke_payload =
-        compose_invoke_payload_from_wave_source(*selected_wave_source, *wave_profile);
+        compose_invoke_payload_from_wave_source(*selected_wave_source, *wave);
   } else if (is_blank_ascii(effective_invoke_payload)) {
     if (error) *error = "empty circuit invoke payload";
     return false;
@@ -773,24 +820,38 @@ template <typename Datatype_t,
 bool build_runtime_board_from_instruction(
     const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& inst,
     torch::Device device,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
-    const cuwacunu::piaabo::dconfig::contract_snapshot_t& contract_snapshot,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash,
+    const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>&
+        contract_record,
+    const cuwacunu::iitepi::wave_hash_t& wave_hash,
+    const std::shared_ptr<const cuwacunu::iitepi::wave_record_t>&
+        wave_record,
+    std::string wave_id,
     Board* out,
     std::string* error = nullptr) {
   if (!out) return false;
+  if (!contract_record) {
+    if (error) *error = "missing contract record";
+    return false;
+  }
+  if (!wave_record) {
+    if (error) *error = "missing wave record";
+    return false;
+  }
+  (void)wave_hash;
 
-  const auto& dsl_sections = contract_snapshot.contract_instruction_sections;
-
-  {
-    std::string semantic_error;
-    if (!cuwacunu::camahjucunu::validate_circuit_instruction(inst, &semantic_error)) {
-      if (error) *error = semantic_error;
-      return false;
+  const auto contract_report = validate_contract_definition(inst, contract_hash);
+  if (!contract_report.ok) {
+    if (error) {
+      *error = contract_report.indicators.empty()
+                   ? "contract validation failed"
+                   : contract_report.indicators.front().message;
     }
+    return false;
   }
 
-  out->board_contract_hash = contract_hash;
-  out->board_contract_path = contract_snapshot.config_file_path;
+  out->contract_hash = contract_hash;
+  out->wave_hash = wave_hash;
   out->contracts.clear();
   out->contracts.reserve(inst.circuits.size());
 
@@ -800,28 +861,28 @@ bool build_runtime_board_from_instruction(
   std::string wave_dsl;
   if (!load_required_dsl_text(
           kBoardContractObservationSourcesDslKey,
-          dsl_sections.observation_sources_dsl,
+          contract_record->observation.sources.dsl,
           &observation_sources_dsl,
           error)) {
     return false;
   }
   if (!load_required_dsl_text(
           kBoardContractObservationChannelsDslKey,
-          dsl_sections.observation_channels_dsl,
+          contract_record->observation.channels.dsl,
           &observation_channels_dsl,
           error)) {
     return false;
   }
   if (!load_required_dsl_text(
           kBoardContractJkimyeiSpecsDslKey,
-          dsl_sections.jkimyei_specs_dsl,
+          contract_record->jkimyei.dsl,
           &jkimyei_specs_dsl,
           error)) {
     return false;
   }
   if (!load_required_dsl_text(
           kBoardContractWaveDslKey,
-          dsl_sections.tsiemene_wave_dsl,
+          wave_record->wave.dsl,
           &wave_dsl,
           error)) {
     return false;
@@ -829,47 +890,42 @@ bool build_runtime_board_from_instruction(
 
   cuwacunu::camahjucunu::observation_spec_t observation_instruction{};
   cuwacunu::camahjucunu::jkimyei_specs_t jkimyei_specs{};
-  cuwacunu::camahjucunu::tsiemene_wave_instruction_t wave_instruction{};
+  cuwacunu::camahjucunu::tsiemene_wave_set_t wave_set{};
   try {
-    const auto read_snapshot_dsl_asset = [&](const char* key) -> std::string {
-      const auto it = contract_snapshot.dsl_asset_text_by_key.find(key);
-      if (it == contract_snapshot.dsl_asset_text_by_key.end() || is_blank_ascii(it->second)) {
-        throw std::runtime_error(
-            std::string("missing contract snapshot DSL/grammar asset for key: ") + key);
-      }
-      return it->second;
-    };
-
-    const std::string observation_sources_grammar =
-        read_snapshot_dsl_asset("observation_sources_grammar_filename");
-    const std::string observation_channels_grammar =
-        read_snapshot_dsl_asset("observation_channels_grammar_filename");
-    const std::string jkimyei_specs_grammar =
-        read_snapshot_dsl_asset("jkimyei_specs_grammar_filename");
-    const std::string tsiemene_wave_grammar =
-        read_snapshot_dsl_asset("tsiemene_wave_grammar_filename");
-
-    observation_instruction =
-        cuwacunu::camahjucunu::decode_observation_spec_from_split_dsl(
-            observation_sources_grammar,
-            observation_sources_dsl,
-            observation_channels_grammar,
-            observation_channels_dsl);
-    jkimyei_specs = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
-        jkimyei_specs_grammar,
-        jkimyei_specs_dsl);
-    wave_instruction = cuwacunu::camahjucunu::dsl::decode_tsiemene_wave_from_dsl(
-        tsiemene_wave_grammar,
-        wave_dsl);
+    observation_instruction = contract_record->observation.decoded();
+    jkimyei_specs = contract_record->jkimyei.decoded();
+    wave_set = wave_record->wave.decoded();
   } catch (const std::exception& e) {
-    if (error) *error = std::string("failed to decode contract DSL payloads: ") + e.what();
+    if (error) *error = std::string("failed to decode contract/wave DSL payloads: ") + e.what();
     return false;
   }
 
-  const auto* selected_wave_profile =
-      select_wave_profile_by_id(
-          wave_instruction, dsl_sections.wave_profile_id, error);
-  if (!selected_wave_profile) return false;
+  const auto* selected_wave = select_wave_by_id(wave_set, std::move(wave_id), error);
+  if (!selected_wave) return false;
+  const auto wave_report = validate_wave_definition(*selected_wave, contract_hash);
+  if (!wave_report.ok) {
+    if (error) {
+      *error = wave_report.indicators.empty()
+                   ? "wave validation failed"
+                   : wave_report.indicators.front().message;
+    }
+    return false;
+  }
+  const auto compat_report = validate_wave_contract_compatibility(
+      inst,
+      *selected_wave,
+      contract_hash,
+      &jkimyei_specs,
+      contract_hash,
+      selected_wave->name);
+  if (!compat_report.ok) {
+    if (error) {
+      *error = compat_report.indicators.empty()
+                   ? "wave/contract compatibility validation failed"
+                   : compat_report.indicators.front().message;
+    }
+    return false;
+  }
 
   for (std::size_t i = 0; i < inst.circuits.size(); ++i) {
     BoardContract c{};
@@ -880,7 +936,7 @@ bool build_runtime_board_from_instruction(
             observation_instruction,
             jkimyei_specs,
             jkimyei_specs_dsl,
-            selected_wave_profile,
+            selected_wave,
             device,
             &c,
             &local_error)) {
@@ -929,34 +985,31 @@ template <typename Datatype_t,
 bool build_runtime_board_from_instruction(
     const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& inst,
     torch::Device device,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
-    const cuwacunu::piaabo::dconfig::contract_space_t::contract_instruction_sections_t&
-        dsl_sections,
-    Board* out,
-    std::string* error = nullptr) {
-  const auto& snapshot = cuwacunu::piaabo::dconfig::contract_space_t::snapshot(contract_hash);
-  cuwacunu::piaabo::dconfig::contract_snapshot_t snapshot_override = snapshot;
-  snapshot_override.contract_instruction_sections = dsl_sections;
-  return build_runtime_board_from_instruction<Datatype_t, Sampler_t>(
-      inst, device, contract_hash, snapshot_override, out, error);
-}
-
-template <typename Datatype_t,
-          typename Sampler_t = torch::data::samplers::SequentialSampler>
-bool build_runtime_board_from_instruction(
-    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& inst,
-    torch::Device device,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash,
+    const cuwacunu::iitepi::wave_hash_t& wave_hash,
+    std::string wave_id,
     Board* out,
     std::string* error = nullptr) {
   if (!out) return false;
   try {
-    cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(
+    cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
         contract_hash);
-    const auto& snapshot =
-        cuwacunu::piaabo::dconfig::contract_space_t::snapshot(contract_hash);
+    cuwacunu::iitepi::wave_space_t::assert_intact_or_fail_fast(
+        wave_hash);
+    const auto contract_itself =
+        cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+    const auto wave_itself =
+        cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
     return build_runtime_board_from_instruction<Datatype_t, Sampler_t>(
-        inst, device, contract_hash, snapshot, out, error);
+        inst,
+        device,
+        contract_hash,
+        contract_itself,
+        wave_hash,
+        wave_itself,
+        std::move(wave_id),
+        out,
+        error);
   } catch (const std::exception& e) {
     if (error) *error = std::string("failed to load required DSL text from config: ") + e.what();
     return false;

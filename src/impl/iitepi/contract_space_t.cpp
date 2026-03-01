@@ -1,25 +1,31 @@
-#include "piaabo/dconfig/contract_space_t.h"
+#include "iitepi/contract_space_t.h"
+
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
+#include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
+#include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
 
 #include <array>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <initializer_list>
+#include <memory>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace cuwacunu {
-namespace piaabo {
-namespace dconfig {
+namespace iitepi {
 
 std::mutex contract_config_mutex;
 
 namespace {
 
-using snapshot_ptr_t = std::shared_ptr<const contract_snapshot_t>;
+using snapshot_ptr_t = std::shared_ptr<const contract_record_t>;
 
 [[nodiscard]] static std::unordered_map<contract_hash_t, snapshot_ptr_t>&
 snapshots_by_hash() {
@@ -37,6 +43,8 @@ hash_by_contract_path() {
                                                bool* in_block_comment);
 [[nodiscard]] static bool has_non_ws_ascii(const std::string& s);
 [[nodiscard]] static std::string trim_ascii_ws_copy(std::string s);
+[[nodiscard]] static std::string strip_comments_from_text_preserve_lines(
+    std::string_view text);
 [[nodiscard]] static std::string decode_escaped_text(std::string s);
 [[nodiscard]] static parsed_config_t parse_config_file(const std::string& path);
 [[nodiscard]] static std::vector<std::string> split_string_items(
@@ -59,26 +67,24 @@ hash_by_contract_path() {
     const char* section, const char* key);
 [[nodiscard]] static std::string snapshot_contract_dsl_value_or_empty(
     const parsed_config_t& cfg, const char* key);
-[[nodiscard]] static std::string snapshot_dsl_asset_text_or_empty(
-    const contract_snapshot_t& snapshot, const char* key);
 [[nodiscard]] static parsed_config_section_t parse_instruction_file(
     const std::string& path);
 [[nodiscard]] static bool module_section_exists(
-    const contract_snapshot_t& snapshot, std::string_view section) noexcept;
-[[nodiscard]] static std::shared_ptr<contract_snapshot_t>
-build_contract_snapshot_from_contract_path(const std::string& contract_file_path);
+    const contract_record_t& snapshot, std::string_view section) noexcept;
+[[nodiscard]] static std::shared_ptr<contract_record_t>
+build_contract_record_from_contract_path(const std::string& contract_file_path);
 [[nodiscard]] static bool section_supports_instruction_file(
     std::string_view section) noexcept;
 [[nodiscard]] static std::optional<std::string>
-module_config_path_for_section(const contract_snapshot_t& snapshot,
+module_config_path_for_section(const contract_record_t& snapshot,
                                const std::string& section);
 [[nodiscard]] static std::string parse_instruction_lhs_key(std::string lhs);
 [[nodiscard]] static std::optional<std::string>
-contract_instruction_section_value_or_empty(const contract_snapshot_t& snapshot,
+contract_instruction_section_value_or_empty(const contract_record_t& snapshot,
                                             const std::string& section,
                                             const std::string& key);
-[[nodiscard]] static const contract_snapshot_t&
-snapshot_ref_or_fail(const contract_hash_t& hash);
+[[nodiscard]] static snapshot_ptr_t
+snapshot_ptr_or_fail(const contract_hash_t& hash);
 [[nodiscard]] static std::vector<snapshot_ptr_t>
 registry_snapshots_copy_locked();
 static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
@@ -207,6 +213,19 @@ static T parse_scalar_from_string(const std::string& s);
     }
   }
   return s;
+}
+
+[[nodiscard]] static std::string strip_comments_from_text_preserve_lines(
+    std::string_view text) {
+  std::istringstream input{std::string(text)};
+  std::string line;
+  std::string out;
+  bool in_block_comment = false;
+  while (std::getline(input, line)) {
+    out.append(strip_comment(line, &in_block_comment));
+    out.push_back('\n');
+  }
+  return out;
 }
 
 [[nodiscard]] static std::string decode_escaped_text(std::string s) {
@@ -548,24 +567,6 @@ static T parse_scalar_from_string(const std::string& s);
   return resolved;
 }
 
-[[nodiscard]] static std::string required_wave_profile_id_or_fail(
-    const parsed_config_t& cfg) {
-  const auto sec_it = cfg.find("SPECS");
-  if (sec_it == cfg.end()) {
-    log_fatal("[dconfig] missing [SPECS] section for wave profile resolution\n");
-  }
-  const auto key_it = sec_it->second.find("wave_profile_id");
-  if (key_it == sec_it->second.end()) {
-    log_fatal("[dconfig] missing required SPECS.wave_profile_id\n");
-  }
-
-  const std::string profile_id = trim_ascii_ws_copy(key_it->second);
-  if (!has_non_ws_ascii(profile_id)) {
-    log_fatal("[dconfig] invalid empty SPECS.wave_profile_id\n");
-  }
-  return profile_id;
-}
-
 [[nodiscard]] static std::string snapshot_contract_dsl_value_or_empty(
     const parsed_config_t& cfg, const char* key) {
   const auto sec_it = cfg.find("BOARD_CONTRACT_DSL");
@@ -577,14 +578,7 @@ static T parse_scalar_from_string(const std::string& s);
   return decode_escaped_text(raw);
 }
 
-[[nodiscard]] static std::string snapshot_dsl_asset_text_or_empty(
-    const contract_snapshot_t& snapshot, const char* key) {
-  const auto it = snapshot.dsl_asset_text_by_key.find(key);
-  if (it == snapshot.dsl_asset_text_by_key.end()) return {};
-  return it->second;
-}
-
-[[nodiscard]] static bool module_section_exists(const contract_snapshot_t& snapshot,
+[[nodiscard]] static bool module_section_exists(const contract_record_t& snapshot,
                                                 std::string_view section) noexcept {
   return snapshot.module_sections.find(std::string(section)) !=
          snapshot.module_sections.end();
@@ -667,7 +661,7 @@ static T parse_scalar_from_string(const std::string& s) {
 }
 
 [[nodiscard]] static std::optional<std::string>
-module_config_path_for_section(const contract_snapshot_t& snapshot,
+module_config_path_for_section(const contract_record_t& snapshot,
                                const std::string& section) {
   if (!section_supports_instruction_file(section)) return std::nullopt;
   const auto path_it = snapshot.module_section_paths.find(section);
@@ -716,7 +710,7 @@ module_config_path_for_section(const contract_snapshot_t& snapshot,
 }
 
 [[nodiscard]] static std::optional<std::string>
-contract_instruction_section_value_or_empty(const contract_snapshot_t& snapshot,
+contract_instruction_section_value_or_empty(const contract_record_t& snapshot,
                                             const std::string& section,
                                             const std::string& key) {
   const auto sec_it = snapshot.module_sections.find(section);
@@ -815,21 +809,6 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
   (void)resolve_existing_path_if_present("SPECS",
                                          "value_estimation_config_filename",
                                          &value_estimation_config_path);
-  {
-    const auto specs_it = cfg.find("SPECS");
-    if (specs_it != cfg.end()) {
-      const auto mode_it = specs_it->second.find("contract_mode");
-      if (mode_it != specs_it->second.end() &&
-          has_non_ws_ascii(trim_ascii_ws_copy(mode_it->second))) {
-        log_warn(
-            "[dconfig] SPECS.contract_mode is removed; "
-            "use SPECS.wave_profile_id and wave TRAIN flags.\n");
-        ok = false;
-      }
-    }
-  }
-  (void)required_wave_profile_id_or_fail(cfg);
-
   constexpr const char* kRequiredDslPathKeys[] = {
       "observation_sources_grammar_filename",
       "observation_sources_dsl_filename",
@@ -838,9 +817,7 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       "jkimyei_specs_grammar_filename",
       "jkimyei_specs_dsl_filename",
       "tsiemene_circuit_grammar_filename",
-      "tsiemene_wave_grammar_filename",
       "tsiemene_circuit_dsl_filename",
-      "tsiemene_wave_dsl_filename",
       "canonical_path_grammar_filename",
   };
   for (const char* key : kRequiredDslPathKeys) {
@@ -851,23 +828,11 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       "DSL", "tsiemene_circuit_train_dsl_filename", nullptr);
   const bool has_run_circuit = resolve_existing_path_if_present(
       "DSL", "tsiemene_circuit_run_dsl_filename", nullptr);
-  const bool has_train_wave = resolve_existing_path_if_present(
-      "DSL", "tsiemene_wave_train_dsl_filename", nullptr);
-  const bool has_run_wave = resolve_existing_path_if_present(
-      "DSL", "tsiemene_wave_run_dsl_filename", nullptr);
-
   if (has_train_circuit || has_run_circuit) {
     log_warn(
         "[dconfig] split circuit keys "
         "<tsiemene_circuit_train_dsl_filename>/<tsiemene_circuit_run_dsl_filename> "
         "are removed; use [DSL].tsiemene_circuit_dsl_filename\n");
-    ok = false;
-  }
-  if (has_train_wave || has_run_wave) {
-    log_warn(
-        "[dconfig] split wave keys "
-        "<tsiemene_wave_train_dsl_filename>/<tsiemene_wave_run_dsl_filename> "
-        "are removed; use [DSL].tsiemene_wave_dsl_filename\n");
     ok = false;
   }
 
@@ -886,8 +851,6 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       };
       reject_removed_inline("tsiemene_circuit_train_dsl_text");
       reject_removed_inline("tsiemene_circuit_run_dsl_text");
-      reject_removed_inline("tsiemene_wave_train_dsl_text");
-      reject_removed_inline("tsiemene_wave_run_dsl_text");
     }
   }
 
@@ -1110,8 +1073,8 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
   return ok;
 }
 
-[[nodiscard]] static std::shared_ptr<contract_snapshot_t>
-build_contract_snapshot_from_contract_path(const std::string& contract_file_path) {
+[[nodiscard]] static std::shared_ptr<contract_record_t>
+build_contract_record_from_contract_path(const std::string& contract_file_path) {
   const std::string resolved_contract_path =
       canonicalize_path_best_effort(contract_file_path);
   if (!has_non_ws_ascii(resolved_contract_path)) {
@@ -1132,25 +1095,23 @@ build_contract_snapshot_from_contract_path(const std::string& contract_file_path
   parsed_config_t parsed = parse_config_file(resolved_contract_path);
   (void)validate_contract_config_or_terminate(parsed, contract_folder);
 
-  auto snapshot = std::make_shared<contract_snapshot_t>();
-  snapshot->config_folder = contract_folder;
-  snapshot->config_file_path = resolved_contract_path;
-  snapshot->config_file_path_canonical =
+  auto record = std::make_shared<contract_record_t>();
+  record->config_folder = contract_folder;
+  record->config_file_path = resolved_contract_path;
+  record->config_file_path_canonical =
       canonicalize_path_best_effort(resolved_contract_path);
-  snapshot->config = parsed;
-  snapshot->contract_instruction_sections.wave_profile_id =
-      required_wave_profile_id_or_fail(snapshot->config);
+  record->config = parsed;
 
   const std::string vicreg_path = contract_required_resolved_path(
-      snapshot->config, snapshot->config_folder, "SPECS", "vicreg_config_filename");
+      record->config, record->config_folder, "SPECS", "vicreg_config_filename");
   const auto value_estimation_path = contract_optional_resolved_path(
-      snapshot->config, snapshot->config_folder, "SPECS",
+      record->config, record->config_folder, "SPECS",
       "value_estimation_config_filename");
-  snapshot->module_section_paths["VICReg"] = vicreg_path;
-  snapshot->module_sections["VICReg"] = parse_instruction_file(vicreg_path);
+  record->module_section_paths["VICReg"] = vicreg_path;
+  record->module_sections["VICReg"] = parse_instruction_file(vicreg_path);
   if (value_estimation_path.has_value()) {
-    snapshot->module_section_paths["VALUE_ESTIMATION"] = *value_estimation_path;
-    snapshot->module_sections["VALUE_ESTIMATION"] =
+    record->module_section_paths["VALUE_ESTIMATION"] = *value_estimation_path;
+    record->module_sections["VALUE_ESTIMATION"] =
         parse_instruction_file(*value_estimation_path);
   }
 
@@ -1162,108 +1123,99 @@ build_contract_snapshot_from_contract_path(const std::string& contract_file_path
       "jkimyei_specs_grammar_filename",
       "jkimyei_specs_dsl_filename",
       "tsiemene_circuit_grammar_filename",
-      "tsiemene_wave_grammar_filename",
       "tsiemene_circuit_dsl_filename",
-      "tsiemene_wave_dsl_filename",
       "canonical_path_grammar_filename",
   };
 
   std::set<std::string> dependency_paths;
-  dependency_paths.insert(snapshot->config_file_path_canonical);
+  dependency_paths.insert(record->config_file_path_canonical);
   dependency_paths.insert(canonicalize_path_best_effort(vicreg_path));
   if (value_estimation_path.has_value()) {
     dependency_paths.insert(canonicalize_path_best_effort(*value_estimation_path));
   }
 
+  std::unordered_map<std::string, std::string> dsl_asset_text_by_key{};
   for (const char* key : kRequiredDslPathKeys) {
     const std::string path = contract_required_resolved_path(
-        snapshot->config, snapshot->config_folder, "DSL", key);
-    snapshot->dsl_asset_text_by_key[key] = piaabo::dfiles::readFileToString(path);
+        record->config, record->config_folder, "DSL", key);
+    dsl_asset_text_by_key[key] = piaabo::dfiles::readFileToString(path);
     dependency_paths.insert(canonicalize_path_best_effort(path));
   }
 
-  snapshot->contract_instruction_sections.observation_sources_dsl =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
-                                           "observation_sources_dsl_text");
-  snapshot->contract_instruction_sections.observation_channels_dsl =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
-                                           "observation_channels_dsl_text");
-  snapshot->contract_instruction_sections.jkimyei_specs_dsl =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
-                                           "jkimyei_specs_dsl_text");
-  snapshot->contract_instruction_sections.tsiemene_circuit_dsl =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
-                                           "tsiemene_circuit_dsl_text");
-  snapshot->contract_instruction_sections.tsiemene_wave_dsl =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
-                                           "tsiemene_wave_dsl_text");
+  const auto dsl_asset_text_or_fail = [&](const char* key) -> const std::string& {
+    const auto it = dsl_asset_text_by_key.find(key);
+    if (it == dsl_asset_text_by_key.end()) {
+      log_fatal("[dconfig] missing required DSL/grammar asset <%s> while building contract record\n",
+                key);
+    }
+    return it->second;
+  };
+
+  record->observation.sources.grammar =
+      dsl_asset_text_or_fail("observation_sources_grammar_filename");
+  record->observation.sources.dsl =
+      snapshot_contract_dsl_value_or_empty(record->config, "observation_sources_dsl_text");
+  if (!has_non_ws_ascii(record->observation.sources.dsl)) {
+    record->observation.sources.dsl =
+        dsl_asset_text_or_fail("observation_sources_dsl_filename");
+  }
+
+  record->observation.channels.grammar =
+      dsl_asset_text_or_fail("observation_channels_grammar_filename");
+  record->observation.channels.dsl =
+      snapshot_contract_dsl_value_or_empty(record->config, "observation_channels_dsl_text");
+  if (!has_non_ws_ascii(record->observation.channels.dsl)) {
+    record->observation.channels.dsl =
+        dsl_asset_text_or_fail("observation_channels_dsl_filename");
+  }
+
+  record->jkimyei.grammar =
+      dsl_asset_text_or_fail("jkimyei_specs_grammar_filename");
+  record->jkimyei.dsl =
+      snapshot_contract_dsl_value_or_empty(record->config, "jkimyei_specs_dsl_text");
+  if (!has_non_ws_ascii(record->jkimyei.dsl)) {
+    record->jkimyei.dsl = dsl_asset_text_or_fail("jkimyei_specs_dsl_filename");
+  }
+
+  record->circuit.grammar =
+      dsl_asset_text_or_fail("tsiemene_circuit_grammar_filename");
+  record->circuit.dsl =
+      snapshot_contract_dsl_value_or_empty(record->config, "tsiemene_circuit_dsl_text");
+  if (!has_non_ws_ascii(record->circuit.dsl)) {
+    record->circuit.dsl = dsl_asset_text_or_fail("tsiemene_circuit_dsl_filename");
+  }
+
+  record->canonical_path.grammar =
+      dsl_asset_text_or_fail("canonical_path_grammar_filename");
+
   const std::string removed_circuit_train_text =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
+      snapshot_contract_dsl_value_or_empty(record->config,
                                            "tsiemene_circuit_train_dsl_text");
   const std::string removed_circuit_run_text =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
+      snapshot_contract_dsl_value_or_empty(record->config,
                                            "tsiemene_circuit_run_dsl_text");
-  const std::string removed_wave_train_text =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
-                                           "tsiemene_wave_train_dsl_text");
-  const std::string removed_wave_run_text =
-      snapshot_contract_dsl_value_or_empty(snapshot->config,
-                                           "tsiemene_wave_run_dsl_text");
-
   if (has_non_ws_ascii(removed_circuit_train_text) ||
-      has_non_ws_ascii(removed_circuit_run_text) ||
-      has_non_ws_ascii(removed_wave_train_text) ||
-      has_non_ws_ascii(removed_wave_run_text)) {
+      has_non_ws_ascii(removed_circuit_run_text)) {
     log_fatal(
         "[dconfig] mode-split BOARD_CONTRACT_DSL inline keys are removed; "
-        "use tsiemene_circuit_dsl_text and tsiemene_wave_dsl_text\n");
+        "use tsiemene_circuit_dsl_text\n");
   }
 
-  if (!has_non_ws_ascii(
-          snapshot->contract_instruction_sections.observation_sources_dsl)) {
-    snapshot->contract_instruction_sections.observation_sources_dsl =
-        snapshot_dsl_asset_text_or_empty(*snapshot,
-                                         "observation_sources_dsl_filename");
-  }
-  if (!has_non_ws_ascii(
-          snapshot->contract_instruction_sections.observation_channels_dsl)) {
-    snapshot->contract_instruction_sections.observation_channels_dsl =
-        snapshot_dsl_asset_text_or_empty(*snapshot,
-                                         "observation_channels_dsl_filename");
-  }
-  if (!has_non_ws_ascii(snapshot->contract_instruction_sections.jkimyei_specs_dsl)) {
-    snapshot->contract_instruction_sections.jkimyei_specs_dsl =
-        snapshot_dsl_asset_text_or_empty(*snapshot, "jkimyei_specs_dsl_filename");
-  }
-  if (!has_non_ws_ascii(snapshot->contract_instruction_sections.tsiemene_circuit_dsl)) {
-    snapshot->contract_instruction_sections.tsiemene_circuit_dsl =
-        snapshot_dsl_asset_text_or_empty(*snapshot, "tsiemene_circuit_dsl_filename");
-  }
-  if (!has_non_ws_ascii(snapshot->contract_instruction_sections.tsiemene_wave_dsl)) {
-    snapshot->contract_instruction_sections.tsiemene_wave_dsl =
-        snapshot_dsl_asset_text_or_empty(*snapshot, "tsiemene_wave_dsl_filename");
-  }
-
-  if (!has_non_ws_ascii(snapshot->contract_instruction_sections.tsiemene_circuit_dsl)) {
+  if (!has_non_ws_ascii(record->circuit.dsl)) {
     log_fatal(
         "[dconfig] missing effective circuit DSL payload\n");
   }
-  if (!has_non_ws_ascii(snapshot->contract_instruction_sections.tsiemene_wave_dsl)) {
-    log_fatal(
-        "[dconfig] missing effective wave DSL payload\n");
-  }
-
   for (const auto& dep_path : dependency_paths) {
     if (!has_non_ws_ascii(dep_path)) continue;
-    snapshot->dependency_manifest.files.push_back(fingerprint_file(dep_path));
+    record->dependency_manifest.files.push_back(fingerprint_file(dep_path));
   }
-  snapshot->dependency_manifest.aggregate_sha256_hex =
-      compute_manifest_digest_hex(snapshot->dependency_manifest.files);
-  return snapshot;
+  record->dependency_manifest.aggregate_sha256_hex =
+      compute_manifest_digest_hex(record->dependency_manifest.files);
+  return record;
 }
 
-[[nodiscard]] static const contract_snapshot_t&
-snapshot_ref_or_fail(const contract_hash_t& hash) {
+[[nodiscard]] static snapshot_ptr_t
+snapshot_ptr_or_fail(const contract_hash_t& hash) {
   LOCK_GUARD(contract_config_mutex);
   auto& snapshots = snapshots_by_hash();
   const auto it = snapshots.find(hash);
@@ -1272,7 +1224,7 @@ snapshot_ref_or_fail(const contract_hash_t& hash) {
         "[dconfig] contract hash lookup failed: hash=%s is not registered in runtime registry\n",
         hash.c_str());
   }
-  return *(it->second);
+  return it->second;
 }
 
 [[nodiscard]] static std::vector<snapshot_ptr_t>
@@ -1318,7 +1270,7 @@ contract_hash_t contract_space_t::register_contract_file(const std::string& path
   }
 
   const auto built_snapshot =
-      build_contract_snapshot_from_contract_path(canonical_path);
+      build_contract_record_from_contract_path(canonical_path);
   if (!built_snapshot) {
     log_fatal("[dconfig] failed to build contract snapshot from: %s\n",
               canonical_path.c_str());
@@ -1368,79 +1320,18 @@ contract_hash_t contract_space_t::register_contract_file(const std::string& path
   return built_hash;
 }
 
-const contract_snapshot_t& contract_space_t::snapshot(const contract_hash_t& hash) {
-  return snapshot_ref_or_fail(hash);
-}
-
-std::string contract_space_t::raw(const contract_hash_t& hash,
-                                  const std::string& section,
-                                  const std::string& key) {
-  const auto& snap = snapshot_ref_or_fail(hash);
-
-  const auto s = snap.config.find(section);
-  if (s != snap.config.end()) {
-    const auto k = s->second.find(key);
-    if (k != s->second.end()) return k->second;
-  }
-  if (const auto instruction_value =
-          contract_instruction_section_value_or_empty(snap, section, key);
-      instruction_value.has_value()) {
-    return *instruction_value;
-  }
-  if (s == snap.config.end()) {
-    if (module_config_path_for_section(snap, section).has_value() ||
-        module_section_exists(snap, section)) {
-      throw bad_config_access("Missing key <" + key + "> in [" + section + "]");
-    }
-    throw bad_config_access("Missing section [" + section + "]");
-  }
-  throw bad_config_access("Missing key <" + key + "> in [" + section + "]");
-}
-
-template <class T>
-T contract_space_t::from_string(const std::string& s) {
-  return parse_scalar_from_string<T>(s);
-}
-
-template <class T>
-T contract_space_t::get(const contract_hash_t& hash,
-                        const std::string& section,
-                        const std::string& key,
-                        std::optional<T> fallback) {
-  try {
-    return from_string<T>(raw(hash, section, key));
-  } catch (const bad_config_access&) {
-    if (fallback) return *fallback;
-    throw;
-  }
-}
-
-template <class T>
-std::vector<T> contract_space_t::get_arr(
-    const contract_hash_t& hash,
-    const std::string& section,
-    const std::string& key,
-    std::optional<std::vector<T>> fallback) {
-  try {
-    const std::string s = raw(hash, section, key);
-    const std::vector<std::string> items = split_string_items(s);
-    std::vector<T> result;
-    result.reserve(items.size());
-    for (const auto& it : items) result.emplace_back(from_string<T>(it));
-    return result;
-  } catch (const bad_config_access&) {
-    if (fallback) return *fallback;
-    throw;
-  }
+std::shared_ptr<const contract_record_t> contract_space_t::contract_itself(
+    const contract_hash_t& hash) {
+  return snapshot_ptr_or_fail(hash);
 }
 
 void contract_space_t::assert_intact_or_fail_fast(const contract_hash_t& hash) {
-  const auto& snap = snapshot_ref_or_fail(hash);
+  const auto snap = snapshot_ptr_or_fail(hash);
 
   std::vector<contract_file_fingerprint_t> refreshed;
-  refreshed.reserve(snap.dependency_manifest.files.size());
+  refreshed.reserve(snap->dependency_manifest.files.size());
 
-  for (const auto& expected : snap.dependency_manifest.files) {
+  for (const auto& expected : snap->dependency_manifest.files) {
     const std::filesystem::path p(expected.canonical_path);
     if (!std::filesystem::exists(p) || !std::filesystem::is_regular_file(p)) {
       log_fatal(
@@ -1466,7 +1357,7 @@ void contract_space_t::assert_intact_or_fail_fast(const contract_hash_t& hash) {
   }
 
   const std::string digest = compute_manifest_digest_hex(refreshed);
-  if (digest != snap.dependency_manifest.aggregate_sha256_hex) {
+  if (digest != snap->dependency_manifest.aggregate_sha256_hex) {
     log_fatal(
         "[dconfig] immutable contract lock violation: dependency manifest digest "
         "mismatch mid-run\n");
@@ -1485,112 +1376,186 @@ void contract_space_t::assert_registry_intact_or_fail_fast() {
   }
 }
 
-std::string contract_space_t::observation_sources_grammar(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "observation_sources_grammar_filename");
+bool contract_space_t::has_contract(const contract_hash_t& hash) noexcept {
+  LOCK_GUARD(contract_config_mutex);
+  const auto& snapshots = snapshots_by_hash();
+  const auto it = snapshots.find(hash);
+  return it != snapshots.end() && static_cast<bool>(it->second);
 }
 
-std::string contract_space_t::observation_sources_dsl(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "observation_sources_dsl_filename");
+std::vector<contract_hash_t> contract_space_t::registered_hashes() {
+  LOCK_GUARD(contract_config_mutex);
+  const auto& snapshots = snapshots_by_hash();
+  std::vector<contract_hash_t> out{};
+  out.reserve(snapshots.size());
+  for (const auto& [hash, ptr] : snapshots) {
+    if (ptr) out.push_back(hash);
+  }
+  std::sort(out.begin(), out.end());
+  return out;
 }
 
-std::string contract_space_t::observation_channels_grammar(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "observation_channels_grammar_filename");
+std::string contract_record_t::raw(const std::string& section,
+                                   const std::string& key) const {
+  const auto s = config.find(section);
+  if (s != config.end()) {
+    const auto k = s->second.find(key);
+    if (k != s->second.end()) return k->second;
+  }
+  if (const auto instruction_value =
+          contract_instruction_section_value_or_empty(*this, section, key);
+      instruction_value.has_value()) {
+    return *instruction_value;
+  }
+  if (s == config.end()) {
+    if (module_config_path_for_section(*this, section).has_value() ||
+        module_section_exists(*this, section)) {
+      throw bad_config_access("Missing key <" + key + "> in [" + section + "]");
+    }
+    throw bad_config_access("Missing section [" + section + "]");
+  }
+  throw bad_config_access("Missing key <" + key + "> in [" + section + "]");
 }
 
-std::string contract_space_t::observation_channels_dsl(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "observation_channels_dsl_filename");
+template <class T>
+T contract_record_t::from_string(const std::string& s) {
+  return parse_scalar_from_string<T>(s);
 }
 
-std::string contract_space_t::jkimyei_specs_grammar(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "jkimyei_specs_grammar_filename");
+template <class T>
+T contract_record_t::get(const std::string& section,
+                         const std::string& key,
+                         std::optional<T> fallback) const {
+  try {
+    return from_string<T>(raw(section, key));
+  } catch (const bad_config_access&) {
+    if (fallback) return *fallback;
+    throw;
+  }
 }
 
-std::string contract_space_t::jkimyei_specs_dsl(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "jkimyei_specs_dsl_filename");
+template <class T>
+std::vector<T> contract_record_t::get_arr(
+    const std::string& section,
+    const std::string& key,
+    std::optional<std::vector<T>> fallback) const {
+  try {
+    const std::string s = raw(section, key);
+    const std::vector<std::string> items = split_string_items(s);
+    std::vector<T> result;
+    result.reserve(items.size());
+    for (const auto& it : items) result.emplace_back(from_string<T>(it));
+    return result;
+  } catch (const bad_config_access&) {
+    if (fallback) return *fallback;
+    throw;
+  }
 }
 
-std::string contract_space_t::tsiemene_circuit_grammar(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "tsiemene_circuit_grammar_filename");
+const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t&
+contract_record::circuit_blob_t::decoded() const {
+  std::call_once(decode_once_, [&]() {
+    try {
+      auto parser = cuwacunu::camahjucunu::dsl::tsiemeneCircuits(grammar);
+      std::string effective_dsl = strip_comments_from_text_preserve_lines(dsl);
+      const std::size_t first_non_ws =
+          effective_dsl.find_first_not_of(" \t\r\n");
+      if (first_non_ws == std::string::npos) {
+        throw std::runtime_error("circuit DSL is empty after comment stripping");
+      }
+      if (first_non_ws > 0) effective_dsl.erase(0, first_non_ws);
+      auto inst = parser.decode(effective_dsl);
+      std::string semantic_error;
+      if (!cuwacunu::camahjucunu::validate_circuit_instruction(
+              inst, &semantic_error)) {
+        throw std::runtime_error(
+            "circuit semantic validation failed: " + semantic_error);
+      }
+      decoded_cache_ = std::make_shared<cuwacunu::camahjucunu::tsiemene_circuit_instruction_t>(
+          std::move(inst));
+    } catch (const std::exception& e) {
+      throw std::runtime_error(
+          std::string("failed to decode circuit DSL: ") + e.what());
+    }
+  });
+  if (!decoded_cache_) {
+    throw std::runtime_error("failed to decode circuit DSL: empty decoded cache");
+  }
+  return *decoded_cache_;
 }
 
-std::string contract_space_t::tsiemene_circuit_dsl(const contract_hash_t& hash) {
-  const auto& s = snapshot(hash).contract_instruction_sections.tsiemene_circuit_dsl;
-  if (has_non_ws_ascii(s)) return s;
-  log_fatal("[dconfig] missing effective circuit DSL for contract hash=%s\n",
-            hash.c_str());
+const cuwacunu::camahjucunu::observation_spec_t&
+contract_record::observation_blob_t::decoded() const {
+  std::call_once(decode_once_, [&]() {
+    try {
+      auto inst = cuwacunu::camahjucunu::decode_observation_spec_from_split_dsl(
+          sources.grammar, sources.dsl, channels.grammar, channels.dsl);
+      decoded_cache_ =
+          std::make_shared<cuwacunu::camahjucunu::observation_spec_t>(
+              std::move(inst));
+    } catch (const std::exception& e) {
+      throw std::runtime_error(
+          std::string("failed to decode observation DSL: ") + e.what());
+    }
+  });
+  if (!decoded_cache_) {
+    throw std::runtime_error(
+        "failed to decode observation DSL: empty decoded cache");
+  }
+  return *decoded_cache_;
 }
 
-std::string contract_space_t::tsiemene_wave_grammar(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "tsiemene_wave_grammar_filename");
+const cuwacunu::camahjucunu::jkimyei_specs_t&
+contract_record::jkimyei_blob_t::decoded() const {
+  std::call_once(decode_once_, [&]() {
+    try {
+      auto inst = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
+          grammar, dsl);
+      decoded_cache_ =
+          std::make_shared<cuwacunu::camahjucunu::jkimyei_specs_t>(
+              std::move(inst));
+    } catch (const std::exception& e) {
+      throw std::runtime_error(
+          std::string("failed to decode jkimyei DSL: ") + e.what());
+    }
+  });
+  if (!decoded_cache_) {
+    throw std::runtime_error("failed to decode jkimyei DSL: empty decoded cache");
+  }
+  return *decoded_cache_;
 }
 
-std::string contract_space_t::tsiemene_wave_dsl(const contract_hash_t& hash) {
-  const auto& s = snapshot(hash).contract_instruction_sections.tsiemene_wave_dsl;
-  if (has_non_ws_ascii(s)) return s;
-  log_fatal("[dconfig] missing effective wave DSL for contract hash=%s\n",
-            hash.c_str());
-}
+template int64_t contract_record_t::get<int64_t>(
+    const std::string&, const std::string&, std::optional<int64_t>) const;
+template int contract_record_t::get<int>(
+    const std::string&, const std::string&, std::optional<int>) const;
+template double contract_record_t::get<double>(
+    const std::string&, const std::string&, std::optional<double>) const;
+template float contract_record_t::get<float>(
+    const std::string&, const std::string&, std::optional<float>) const;
+template bool contract_record_t::get<bool>(
+    const std::string&, const std::string&, std::optional<bool>) const;
+template std::string contract_record_t::get<std::string>(
+    const std::string&, const std::string&, std::optional<std::string>) const;
 
-std::string contract_space_t::canonical_path_grammar(const contract_hash_t& hash) {
-  return snapshot_dsl_asset_text_or_empty(snapshot(hash),
-                                          "canonical_path_grammar_filename");
-}
+template std::vector<int64_t> contract_record_t::get_arr<int64_t>(
+    const std::string&, const std::string&,
+    std::optional<std::vector<int64_t>>) const;
+template std::vector<int> contract_record_t::get_arr<int>(
+    const std::string&, const std::string&,
+    std::optional<std::vector<int>>) const;
+template std::vector<double> contract_record_t::get_arr<double>(
+    const std::string&, const std::string&,
+    std::optional<std::vector<double>>) const;
+template std::vector<float> contract_record_t::get_arr<float>(
+    const std::string&, const std::string&,
+    std::optional<std::vector<float>>) const;
+template std::vector<bool> contract_record_t::get_arr<bool>(
+    const std::string&, const std::string&,
+    std::optional<std::vector<bool>>) const;
+template std::vector<std::string> contract_record_t::get_arr<std::string>(
+    const std::string&, const std::string&,
+    std::optional<std::vector<std::string>>) const;
 
-contract_space_t::contract_instruction_sections_t
-contract_space_t::contract_instruction_sections(const contract_hash_t& hash) {
-  return snapshot(hash).contract_instruction_sections;
-}
-
-template int64_t contract_space_t::get<int64_t>(const contract_hash_t&,
-                                                const std::string&,
-                                                const std::string&,
-                                                std::optional<int64_t>);
-template int contract_space_t::get<int>(const contract_hash_t&,
-                                        const std::string&,
-                                        const std::string&,
-                                        std::optional<int>);
-template double contract_space_t::get<double>(const contract_hash_t&,
-                                              const std::string&,
-                                              const std::string&,
-                                              std::optional<double>);
-template float contract_space_t::get<float>(const contract_hash_t&,
-                                            const std::string&,
-                                            const std::string&,
-                                            std::optional<float>);
-template bool contract_space_t::get<bool>(const contract_hash_t&,
-                                          const std::string&,
-                                          const std::string&,
-                                          std::optional<bool>);
-template std::string contract_space_t::get<std::string>(
-    const contract_hash_t&, const std::string&, const std::string&, std::optional<std::string>);
-
-template std::vector<int64_t> contract_space_t::get_arr<int64_t>(
-    const contract_hash_t&, const std::string&, const std::string&,
-    std::optional<std::vector<int64_t>>);
-template std::vector<int> contract_space_t::get_arr<int>(
-    const contract_hash_t&, const std::string&, const std::string&,
-    std::optional<std::vector<int>>);
-template std::vector<double> contract_space_t::get_arr<double>(
-    const contract_hash_t&, const std::string&, const std::string&,
-    std::optional<std::vector<double>>);
-template std::vector<float> contract_space_t::get_arr<float>(
-    const contract_hash_t&, const std::string&, const std::string&,
-    std::optional<std::vector<float>>);
-template std::vector<bool> contract_space_t::get_arr<bool>(
-    const contract_hash_t&, const std::string&, const std::string&,
-    std::optional<std::vector<bool>>);
-template std::vector<std::string> contract_space_t::get_arr<std::string>(
-    const contract_hash_t&, const std::string&, const std::string&,
-    std::optional<std::vector<std::string>>);
-
-}  // namespace dconfig
-}  // namespace piaabo
+}  // namespace iitepi
 }  // namespace cuwacunu

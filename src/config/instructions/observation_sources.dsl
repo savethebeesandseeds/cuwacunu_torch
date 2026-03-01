@@ -1,5 +1,21 @@
 /*
-    Instrument data sources for observation.
+  observation_sources.dsl
+  =======================
+  Purpose:
+    Source registry for observation ingestion. This table maps
+    (instrument, interval, record_type) to concrete dataset paths.
+
+  Table schema:
+    instrument   : symbol or logical source family (e.g., BTCUSDT, UTILITIES)
+    interval     : timeframe key (e.g., 1m, 1h, 1d, 1w, constant, sine)
+    record_type  : parser/decoder family (e.g., kline, basic)
+    source       : absolute/relative file path to raw source file
+
+  Semantics:
+    - Rows are canonical source definitions consumed by observation pipeline.
+    - interval + record_type must align with channel declarations.
+    - Missing files or invalid paths are rejected during config/loader setup.
+    - This file declares availability, not model training intent.
 */
 /---------------------------------------------------------------------------------------------------------\
 |  instrument  |  interval  |  record_type  |  source                                                     |

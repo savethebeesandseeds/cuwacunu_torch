@@ -13,6 +13,10 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 piaabo:
 	$(MAKE) -C $(IMPL_PATH)/piaabo all
 
+.PHONY: iitepi
+iitepi:
+	$(MAKE) -C $(IMPL_PATH)/iitepi all
+
 .PHONY: camahjucunu
 camahjucunu:
 	$(MAKE) -C $(IMPL_PATH)/camahjucunu all
@@ -37,7 +41,7 @@ iinuji:
 
 # Group the modules behind a single prerequisite
 .PHONY: modules
-modules: piaabo camahjucunu jkimyei wikimyei
+modules: iitepi piaabo camahjucunu jkimyei wikimyei
 
 # Ensure packing runs *after* modules
 lib-bundles: modules
@@ -55,7 +59,8 @@ mods m: modules
 bundles pack: lib-bundles
 test t: tests
 
-.PHONY: pia cam jk wk ii
+.PHONY: it pia cam jk wk ii
+it: iitepi
 pia: piaabo
 cam: camahjucunu
 jk: jkimyei
@@ -85,6 +90,11 @@ clean_common:
 	  $(OUTPUT_PATH)/common/*.d \
 	  $(OUTPUT_PATH)/common/*.o \
 	  $(OUTPUT_PATH)/common/*.a \
+	  $(OUTPUT_PATH)/common/iitepi/*.d \
+	  $(OUTPUT_PATH)/common/iitepi/*.o \
+	  $(OUTPUT_PATH)/common/iitepi/*.a \
+	  $(OUTPUT_PATH)/.deps/common/iitepi.d \
+	  $(OUTPUT_PATH)/.deps/common/iitepi/*.d \
 	  $(OUTPUT_PATH)/common/dconfig/*.d \
 	  $(OUTPUT_PATH)/common/dconfig/*.o \
 	  $(OUTPUT_PATH)/common/dconfig/*.a \
@@ -184,13 +194,14 @@ clean:
 	  2>/dev/null || true
 	@shred -u \
 	  $(OUTPUT_PATH)/common/*.d   $(OUTPUT_PATH)/common/*.o   $(OUTPUT_PATH)/common/*.a \
+	  $(OUTPUT_PATH)/common/iitepi/*.d $(OUTPUT_PATH)/common/iitepi/*.o $(OUTPUT_PATH)/common/iitepi/*.a \
 	  $(OUTPUT_PATH)/common/dconfig/*.d $(OUTPUT_PATH)/common/dconfig/*.o $(OUTPUT_PATH)/common/dconfig/*.a \
 	  2>/dev/null || true
 	@shred -u \
 	  $(OUTPUT_PATH)/*.d          $(OUTPUT_PATH)/*.o          $(OUTPUT_PATH)/*.a \
 	  2>/dev/null || true
 	@shred -u \
-	  $(OUTPUT_PATH)/.deps/*.d    $(OUTPUT_PATH)/.deps/common/dconfig.d $(OUTPUT_PATH)/.deps/common/dconfig/*.d $(OUTPUT_PATH)/.objs/*.o \
+	  $(OUTPUT_PATH)/.deps/*.d    $(OUTPUT_PATH)/.deps/common/iitepi.d $(OUTPUT_PATH)/.deps/common/iitepi/*.d $(OUTPUT_PATH)/.deps/common/dconfig.d $(OUTPUT_PATH)/.deps/common/dconfig/*.d $(OUTPUT_PATH)/.objs/*.o \
 	  2>/dev/null || true
 	@rm -rf \
 		$(OUTPUT_PATH)/.deps \

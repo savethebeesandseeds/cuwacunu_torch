@@ -268,14 +268,15 @@ static std::string make_circuit_info(const tsiemene_circuit_decl_t& c,
 static BoardViewData load_board_from_config() {
   BoardViewData out{};
   out.contract_hash =
-      cuwacunu::piaabo::dconfig::config_space_t::locked_contract_hash();
-  out.raw_instruction =
-      cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_dsl(
-          out.contract_hash);
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_board_hash(),
+          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(out.contract_hash);
+  out.raw_instruction = contract_itself->circuit.dsl;
 
   auto parser = cuwacunu::camahjucunu::dsl::tsiemeneCircuits(
-      cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_grammar(
-          out.contract_hash));
+      contract_itself->circuit.grammar);
   out.board = parser.decode(out.raw_instruction);
 
   std::string error;
@@ -328,8 +329,8 @@ static std::string make_status(const BoardViewData& b, std::size_t selected_idx)
 
 int main() try {
   const char* config_folder = "/cuwacunu/src/config/";
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::update_config();
 
   cuwacunu::iinuji::NcursesAppOpts app_opts{};
   app_opts.input_timeout_ms = 60;
@@ -420,7 +421,7 @@ int main() try {
       set_text_content(canvas_box, coss.str());
       set_text_content(
           info_box,
-          "Fix src/config/instructions/tsiemene_circuit.dsl and press 'r' to reload.\n");
+          "Fix src/config/instructions/iitepi_circuit.dsl and press 'r' to reload.\n");
       set_text_content(status, make_status(board_view, selected));
       return;
     }
@@ -453,7 +454,7 @@ int main() try {
 
     if (ch == 'q') break;
     if (ch == 'r') {
-      cuwacunu::piaabo::dconfig::config_space_t::update_config();
+      cuwacunu::iitepi::config_space_t::update_config();
       board_view = load_board_from_config();
       selected = 0;
       refresh_content();

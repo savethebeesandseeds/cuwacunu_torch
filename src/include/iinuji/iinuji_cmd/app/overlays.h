@@ -272,7 +272,7 @@ inline void render_help_overlay(
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD
@@ -284,7 +284,7 @@ inline void render_help_overlay(
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY) push_row(std::string("method ") + TOKEN, SUMMARY);
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD
@@ -296,7 +296,7 @@ inline void render_help_overlay(
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY) push_row(std::string("action ") + TOKEN, SUMMARY);
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD
@@ -308,7 +308,7 @@ inline void render_help_overlay(
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY) push_row(std::string("dsl ") + KEY, SUMMARY);
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD

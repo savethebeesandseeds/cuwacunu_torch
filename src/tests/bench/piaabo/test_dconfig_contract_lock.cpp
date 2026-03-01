@@ -75,7 +75,7 @@ void set_ini_key_value(const fs::path& file_path,
 
 bool expect_update_throws() {
   try {
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    cuwacunu::iitepi::config_space_t::update_config();
   } catch (const std::exception&) {
     return true;
   }
@@ -99,80 +99,83 @@ struct FileRestoreGuard {
 
 int main() try {
   const fs::path global_cfg_path = "/cuwacunu/src/config/.config";
-  const fs::path contract_cfg_path =
-      "/cuwacunu/src/config/default.board.contract.config";
-  const fs::path alt_contract_cfg_path =
-      fs::temp_directory_path() / "default.board.contract.alt.config";
+  const fs::path board_cfg_path =
+      "/cuwacunu/src/config/default.board.config";
+  const fs::path alt_board_cfg_path =
+      fs::temp_directory_path() / "default.board.alt.config";
 
-  const auto locked_contract_hash =
-      cuwacunu::piaabo::dconfig::contract_space_t::register_contract_file(
-          contract_cfg_path.string());
-  const auto& snapshot_boot =
-      cuwacunu::piaabo::dconfig::contract_space_t::snapshot(locked_contract_hash);
+  cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/");
+  cuwacunu::iitepi::config_space_t::update_config();
+  cuwacunu::iitepi::board_space_t::init();
+  const auto locked_board_hash =
+      cuwacunu::iitepi::board_space_t::locked_board_hash();
+  const auto board_itself_boot =
+      cuwacunu::iitepi::board_space_t::board_itself(locked_board_hash);
 
   const std::string global_cfg_original = read_text(global_cfg_path);
-  const std::string contract_cfg_original = read_text(contract_cfg_path);
+  const std::string board_cfg_original = read_text(board_cfg_path);
   FileRestoreGuard global_restore{global_cfg_path, global_cfg_original};
-  FileRestoreGuard contract_restore{contract_cfg_path, contract_cfg_original};
+  FileRestoreGuard board_restore{board_cfg_path, board_cfg_original};
 
-  fs::copy_file(contract_cfg_path, alt_contract_cfg_path,
+  fs::copy_file(board_cfg_path, alt_board_cfg_path,
                 fs::copy_options::overwrite_existing);
   write_text(global_cfg_path, global_cfg_original);
-  write_text(contract_cfg_path, contract_cfg_original);
+  write_text(board_cfg_path, board_cfg_original);
 
-  const std::string locked_digest = snapshot_boot.dependency_manifest.aggregate_sha256_hex;
-  const std::string locked_path = snapshot_boot.config_file_path;
+  const std::string locked_digest =
+      board_itself_boot->dependency_manifest.aggregate_sha256_hex;
+  const std::string locked_path = board_itself_boot->config_file_path;
   if (locked_digest.empty() || locked_path.empty()) {
-    std::cerr << "[dconfig_contract_lock] snapshot metadata is incomplete\n";
+    std::cerr << "[dconfig_contract_lock] board metadata is incomplete\n";
     return 1;
   }
   {
-    const auto sections =
-        cuwacunu::piaabo::dconfig::contract_space_t::contract_instruction_sections(
-            locked_contract_hash);
-    const bool resolved_dsl_ok =
-        !sections.wave_profile_id.empty() &&
-        !sections.tsiemene_circuit_dsl.empty() &&
-        !sections.tsiemene_wave_dsl.empty();
+    const bool resolved_dsl_ok = !board_itself_boot->board.dsl.empty();
     if (!resolved_dsl_ok) {
-      std::cerr << "[dconfig_contract_lock] missing canonical wave/circuit payload resolution\n";
+      std::cerr << "[dconfig_contract_lock] missing canonical board payload resolution\n";
       return 1;
     }
   }
 
   // Case 1: global reload without contract change must pass and preserve lock digest.
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
-  const auto& snapshot_after_reload =
-      cuwacunu::piaabo::dconfig::contract_space_t::snapshot(locked_contract_hash);
-  if (snapshot_after_reload.dependency_manifest.aggregate_sha256_hex != locked_digest) {
+  cuwacunu::iitepi::config_space_t::update_config();
+  const auto board_itself_after_reload =
+      cuwacunu::iitepi::board_space_t::board_itself(locked_board_hash);
+  if (board_itself_after_reload->dependency_manifest.aggregate_sha256_hex != locked_digest) {
     std::cerr << "[dconfig_contract_lock] lock digest changed on global-only reload\n";
     return 1;
   }
 
-  // Case 2: mutate configured contract path mid-run -> fail-fast.
-  set_ini_key_value(global_cfg_path, "GENERAL", "board_contract_config_filename",
-                    alt_contract_cfg_path.string());
+  // Case 2: mutate configured board path mid-run -> fail-fast.
+  set_ini_key_value(global_cfg_path, "GENERAL", "board_config_filename",
+                    alt_board_cfg_path.string());
   if (!expect_update_throws()) {
-    std::cerr << "[dconfig_contract_lock] expected fail-fast for contract path mutation\n";
+    std::cerr << "[dconfig_contract_lock] expected fail-fast for board path mutation\n";
     return 1;
   }
   write_text(global_cfg_path, global_cfg_original);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::update_config();
 
-  // Case 3: tamper root contract file content mid-run -> fail-fast.
-  const std::string contract_original = read_text(contract_cfg_path);
-  write_text(contract_cfg_path, contract_original + "\n# tamper-root\n");
+  // Case 3: tamper root board file content mid-run -> fail-fast.
+  const std::string board_original = read_text(board_cfg_path);
+  write_text(board_cfg_path, board_original + "\n# tamper-root\n");
   if (!expect_update_throws()) {
-    std::cerr << "[dconfig_contract_lock] expected fail-fast for root contract tamper\n";
+    std::cerr << "[dconfig_contract_lock] expected fail-fast for root board tamper\n";
     return 1;
   }
-  write_text(contract_cfg_path, contract_original);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  write_text(board_cfg_path, board_original);
+  cuwacunu::iitepi::config_space_t::update_config();
 
-  // Case 4: tamper transitive dependency (observation sources DSL) -> fail-fast.
+  // Case 4: tamper transitive dependency (bound contract observation sources DSL) -> fail-fast.
+  const std::string binding_id =
+      cuwacunu::iitepi::board_space_t::locked_board_binding_id();
+  const std::string locked_contract_hash =
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          locked_board_hash, binding_id);
   const fs::path obs_dsl_path =
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-          locked_contract_hash, "DSL", "observation_sources_dsl_filename");
+      cuwacunu::iitepi::contract_space_t::contract_itself(
+          locked_contract_hash)
+          ->get<std::string>("DSL", "observation_sources_dsl_filename");
   const std::string obs_dsl_original = read_text(obs_dsl_path);
   FileRestoreGuard obs_restore{obs_dsl_path, obs_dsl_original};
   write_text(obs_dsl_path, obs_dsl_original + "\n# tamper-transitive\n");
@@ -182,11 +185,11 @@ int main() try {
     return 1;
   }
   write_text(obs_dsl_path, obs_dsl_original);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::update_config();
 
-  fs::remove(alt_contract_cfg_path);
+  fs::remove(alt_board_cfg_path);
   global_restore.restore = false;
-  contract_restore.restore = false;
+  board_restore.restore = false;
   obs_restore.restore = false;
   std::cout << "[dconfig_contract_lock] pass\n";
   return 0;

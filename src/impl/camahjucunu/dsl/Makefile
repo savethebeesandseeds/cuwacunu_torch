@@ -15,5 +15,6 @@ all:
 	$(MAKE) -C $(HERE_PATH)/jkimyei_specs all
 	$(MAKE) -C $(HERE_PATH)/tsiemene_circuit all
 	$(MAKE) -C $(HERE_PATH)/tsiemene_wave all
+	$(MAKE) -C $(HERE_PATH)/tsiemene_board all
 	$(MAKE) -C $(HERE_PATH)/canonical_path all
 	@$(LOG_SUCCESS)

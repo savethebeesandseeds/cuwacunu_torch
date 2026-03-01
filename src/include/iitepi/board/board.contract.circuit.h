@@ -1,4 +1,4 @@
-// ./include/tsiemene/board.contract.circuit.h
+// ./include/iitepi/board.contract.circuit.h
 // SPDX-License-Identifier: MIT
 #pragma once
 

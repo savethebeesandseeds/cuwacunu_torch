@@ -108,23 +108,23 @@
   cuwacunu::camahjucunu::exchange::object(response.value().data);
 
 #define NOTIFY_INIT(mech_type) \
-  switch(cuwacunu::piaabo::dconfig::config_space_t::exchange_type) { \
-    case cuwacunu::piaabo::dconfig::exchange_type_e::REAL: \
+  switch(cuwacunu::iitepi::config_space_t::exchange_type) { \
+    case cuwacunu::iitepi::exchange_type_e::REAL: \
       log_info("\tStarting Binance [%sREAL%s] %s%s%s.\n", \
         ANSI_COLOR_Green, ANSI_COLOR_RESET, ANSI_COLOR_Blue, mech_type, ANSI_COLOR_RESET); \
       break; \
-    case cuwacunu::piaabo::dconfig::exchange_type_e::TEST: \
+    case cuwacunu::iitepi::exchange_type_e::TEST: \
       log_info("\tStarting Binance [%sTESTNET%s] %s%s%s.\n", \
         ANSI_COLOR_Green, ANSI_COLOR_RESET, ANSI_COLOR_Blue, mech_type, ANSI_COLOR_RESET); \
       break; \
-    case cuwacunu::piaabo::dconfig::exchange_type_e::NONE: \
+    case cuwacunu::iitepi::exchange_type_e::NONE: \
       log_terminate_gracefully("[%s]() %s, terminating program.\n", \
         mech_type, "Request to start in Binance Mech without prior reading configuration"); \
       break; \
   }
 
 #define FORBIT_REAL_MECH(mech_type) \
-  if(cuwacunu::piaabo::dconfig::config_space_t::exchange_type == cuwacunu::piaabo::dconfig::exchange_type_e::REAL) { \
+  if(cuwacunu::iitepi::config_space_t::exchange_type == cuwacunu::iitepi::exchange_type_e::REAL) { \
       log_terminate_gracefully("%s %s %s. %s, terminating program.\n", \
         "[cuwacunu::camahjucunu::exchange::mech::binance::...](): ", \
         "Request to start", mech_type, \
@@ -137,6 +137,6 @@
     /* start the websocket session */ \
     session_id = cuwacunu::piaabo::curl::WebsocketAPI::ws_init( \
       /* websocket_url */ \
-      cuwacunu::piaabo::dconfig::config_space_t::websocket_url() \
+      cuwacunu::iitepi::config_space_t::websocket_url() \
     ); \
   }

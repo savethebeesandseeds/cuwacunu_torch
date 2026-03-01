@@ -22,7 +22,7 @@ BNF_PARSER_CORE := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bn
 $(foreach t,$(BNF_PARSER_CORE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/piaabo)))
 
 # ------------------------------ DSL Decoders ---------------------------------
-DSL := dsl_observation dsl_jkimyei_specs dsl_tsiemene_circuit dsl_tsiemene_wave dsl_canonical_path
+DSL := dsl_observation dsl_jkimyei_specs dsl_tsiemene_circuit dsl_tsiemene_wave dsl_tsiemene_board dsl_canonical_path
 $(foreach t,$(DSL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -50,8 +50,12 @@ IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd iinuji_cmd_
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ tsiemene--------------------------------
-TSIEMENE := tsi_contract_wave board_contract_init
+TSIEMENE := board_contract_init tsi_board_paths
 $(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
+
+# ------------------------------ iitepi----------------------------------
+IITEPI := iitepi_board
+$(foreach t,$(IITEPI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iitepi)))
 
 # --------------------------- camahjucunu/https -------------------------------
 HTTPS := websocket
@@ -82,7 +86,7 @@ EXPVAL := expected_value
 $(foreach t,$(EXPVAL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
 
 # 4) Shortcut groups (delegate only; no test logic changes)
-.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene https db jkimyei vicreg ts2vec mdn expval
+.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi https db jkimyei vicreg ts2vec mdn expval
 parser: $(addprefix test_,$(BNF_PARSER_CORE))
 dsl: $(addprefix test_,$(DSL))
 types: $(addprefix test_,$(TYPES))
@@ -92,6 +96,7 @@ data: $(addprefix test_,$(DATA))
 iinuji: test_iinuji_plots test_iinuji_logs test_iinuji_suit test_iinuji_mouse test_iinuji_tsi
 iinuji_torch: test_iinuji_toroid test_iinuji_data_viz test_iinuji_timeseries test_iinuji_cmd test_iinuji_cmd_home test_iinuji_cmd_canonical_paths test_iinuji_cmd_terminal
 tsiemene: $(addprefix test_,$(TSIEMENE))
+iitepi: $(addprefix test_,$(IITEPI))
 https: $(addprefix test_,$(HTTPS))
 db: $(addprefix test_,$(DB))
 jkimyei: $(addprefix test_,$(JKIMYEI))
@@ -99,13 +104,6 @@ vicreg: $(addprefix test_,$(VICREG))
 ts2vec: $(addprefix test_,$(TS2VEC))
 mdn: $(addprefix test_,$(MDN))
 expval: $(addprefix test_,$(EXPVAL))
-
-# Legacy aliases for old parser target names.
-.PHONY: test_dsl_parser_grammar_lexer test_dsl_parser_grammar_parser test_dsl_parser_instruction_lexer test_dsl_parser_instruction_parser
-test_dsl_parser_grammar_lexer: test_bnf_grammar_lexer
-test_dsl_parser_grammar_parser: test_bnf_grammar_parser
-test_dsl_parser_instruction_lexer: test_bnf_instruction_lexer
-test_dsl_parser_instruction_parser: test_bnf_instruction_parser
 
 .PHONY: test ta clean c
 test ta: all

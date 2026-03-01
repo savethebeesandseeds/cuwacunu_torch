@@ -28,8 +28,8 @@ std::string first_line(const std::string& s) {
 int main() {
   try {
     const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    cuwacunu::iitepi::config_space_t::update_config();
 
     cuwacunu::iinuji::iinuji_cmd::CmdState st{};
     st.config = cuwacunu::iinuji::iinuji_cmd::load_config_view_from_config();

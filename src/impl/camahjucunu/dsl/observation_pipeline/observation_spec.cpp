@@ -139,12 +139,10 @@ namespace {
 
 std::string observation_spec_source_dump_from_contract(
     const std::string& contract_hash) {
-  const auto source_instruction =
-      cuwacunu::piaabo::dconfig::contract_space_t::observation_sources_dsl(
-          contract_hash);
-  const auto channel_instruction =
-      cuwacunu::piaabo::dconfig::contract_space_t::observation_channels_dsl(
-          contract_hash);
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+  const auto& source_instruction = contract_itself->observation.sources.dsl;
+  const auto& channel_instruction = contract_itself->observation.channels.dsl;
 
   if (has_non_ws(source_instruction) && has_non_ws(channel_instruction)) {
     return maybe_concat_instruction("observation.sources", source_instruction) +
@@ -185,15 +183,9 @@ observation_spec_t decode_observation_spec_from_split_dsl(
 
 observation_spec_t decode_observation_spec_from_contract(
     const std::string& contract_hash) {
-  return decode_observation_spec_from_split_dsl(
-      cuwacunu::piaabo::dconfig::contract_space_t::observation_sources_grammar(
-          contract_hash),
-      cuwacunu::piaabo::dconfig::contract_space_t::observation_sources_dsl(
-          contract_hash),
-      cuwacunu::piaabo::dconfig::contract_space_t::observation_channels_grammar(
-          contract_hash),
-      cuwacunu::piaabo::dconfig::contract_space_t::observation_channels_dsl(
-          contract_hash));
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+  return contract_itself->observation.decoded();
 }
 
 } // namespace camahjucunu

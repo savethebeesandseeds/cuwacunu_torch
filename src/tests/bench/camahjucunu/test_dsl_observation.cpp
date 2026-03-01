@@ -6,10 +6,12 @@
 int main() {
     
     const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    cuwacunu::iitepi::config_space_t::update_config();
     const auto contract_hash =
-        cuwacunu::piaabo::dconfig::config_space_t::locked_contract_hash();
+        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+            cuwacunu::iitepi::config_space_t::locked_board_hash(),
+            cuwacunu::iitepi::config_space_t::locked_board_binding_id());
 
     TICK(decode_Instruction);
     cuwacunu::camahjucunu::observation_spec_t decoded_data =

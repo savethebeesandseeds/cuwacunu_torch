@@ -74,8 +74,8 @@ int main() {
 
   try {
     const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    cuwacunu::iitepi::config_space_t::update_config();
 
     source_dataloader_ids_before = source_dataloader_init_snapshot();
     vicreg_ids_before = wikimyei_vicreg_init_snapshot();

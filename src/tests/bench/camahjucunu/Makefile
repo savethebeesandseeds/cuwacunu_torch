@@ -23,6 +23,7 @@ $(eval $(call TEST_ONEFILE, test_dsl_observation, test_dsl_observation.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_jkimyei_specs,        test_dsl_jkimyei_specs.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_circuit,     test_dsl_tsiemene_circuit.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_wave,        test_dsl_tsiemene_wave.cpp))
+$(eval $(call TEST_ONEFILE, test_dsl_tsiemene_board,       test_dsl_tsiemene_board.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_canonical_path,       test_dsl_canonical_path.cpp))
 
 $(eval $(call TEST_ONEFILE, test_memory_mapped_datafile,          test_memory_mapped_datafile.cpp,          $(DATA_LINK)))
@@ -59,6 +60,7 @@ all: \
 	$(TEST_OUT)/test_dsl_jkimyei_specs \
 	$(TEST_OUT)/test_dsl_tsiemene_circuit \
 	$(TEST_OUT)/test_dsl_tsiemene_wave \
+	$(TEST_OUT)/test_dsl_tsiemene_board \
 	$(TEST_OUT)/test_dsl_canonical_path \
 	$(TEST_OUT)/test_memory_mapped_datafile \
 	$(TEST_OUT)/test_memory_mapped_dataset \
@@ -84,6 +86,7 @@ run: \
 	run-test_dsl_jkimyei_specs \
 	run-test_dsl_tsiemene_circuit \
 	run-test_dsl_tsiemene_wave \
+	run-test_dsl_tsiemene_board \
 	run-test_dsl_canonical_path \
 	run-test_memory_mapped_datafile \
 	run-test_memory_mapped_dataset \

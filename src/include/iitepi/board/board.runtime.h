@@ -1,4 +1,4 @@
-// ./include/tsiemene/board.runtime.h
+// ./include/iitepi/board.runtime.h
 // SPDX-License-Identifier: MIT
 #pragma once
 
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "tsiemene/board.contract.circuit.h"
+#include "iitepi/board/board.contract.circuit.h"
 
 namespace tsiemene {
 

@@ -143,8 +143,7 @@ void inspect_network_parameters(torch::nn::Module& model, int64_t N) {
 
 
 namespace cuwacunu {
-namespace piaabo {
-namespace dconfig {
+namespace iitepi {
 
 /* ───────────── helpers: string → torch::Dtype / Device ───────────── */
 
@@ -220,24 +219,23 @@ torch::Dtype config_dtype(const contract_hash_t& contract_hash,
                           const std::string& section) {
   if (section == "GENERAL") {
     return parse_dtype(
-        cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL", "dtype"));
+        cuwacunu::iitepi::config_space_t::get<std::string>("GENERAL", "dtype"));
   }
   return parse_dtype(
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-          contract_hash, section, "dtype"));
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<std::string>(section, "dtype"));
 }
 
 torch::Device config_device(const contract_hash_t& contract_hash,
                             const std::string& section) {
   if (section == "GENERAL") {
     return parse_device(
-        cuwacunu::piaabo::dconfig::config_space_t::get<std::string>("GENERAL", "device"));
+        cuwacunu::iitepi::config_space_t::get<std::string>("GENERAL", "device"));
   }
   return parse_device(
-      cuwacunu::piaabo::dconfig::contract_space_t::get<std::string>(
-          contract_hash, section, "device"));
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<std::string>(section, "device"));
 }
 
-} // namespace dconfig
-} // namespace piaabo
+} // namespace iitepi
 } // namespace cuwacunu

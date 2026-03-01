@@ -86,15 +86,16 @@ For exact constraints, use:
 - bench tests under `src/tests/bench/camahjucunu` and `src/tests/bench/tsiemene`
 
 ## Useful reading order
-1. `src/include/tsiemene/board.h`
-2. `src/include/tsiemene/board.contract.h`
-3. `src/include/tsiemene/board.runtime.h`
-4. `src/include/tsiemene/board.builder.h`
-5. `src/config/instructions/tsiemene_circuit.dsl`
-6. `src/config/instructions/tsiemene_wave.dsl`
+1. `src/include/iitepi/board/board.h`
+2. `src/include/iitepi/board/board.contract.h`
+3. `src/include/iitepi/board/board.runtime.h`
+4. `src/include/iitepi/board/board.builder.h`
+5. `src/config/instructions/iitepi_circuit.dsl`
+6. `src/config/instructions/iitepi_wave.dsl`
 
 ## Reference tests
 - `src/tests/bench/camahjucunu/test_dsl_tsiemene_circuit.cpp`
 - `src/tests/bench/camahjucunu/test_dsl_tsiemene_wave.cpp`
-- `src/tests/bench/tsiemene/test_tsi_contract_wave.cpp`
+- `src/tests/bench/iitepi/test_iitepi_board.cpp`
 - `src/tests/bench/tsiemene/test_board_contract_init.cpp`
+- `src/tests/bench/tsiemene/test_tsi_board_paths.cpp`

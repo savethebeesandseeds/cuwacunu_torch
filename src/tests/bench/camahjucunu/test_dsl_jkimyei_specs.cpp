@@ -705,15 +705,17 @@ int main() {
   const schema_index_t schema = build_schema_index();
 
   const char* config_folder = "/cuwacunu/src/config/";
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::update_config();
   const std::string contract_hash =
-      cuwacunu::piaabo::dconfig::config_space_t::locked_contract_hash();
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_board_hash(),
+          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
 
-  const std::string instruction =
-      cuwacunu::piaabo::dconfig::contract_space_t::jkimyei_specs_dsl(contract_hash);
-  const std::string grammar =
-      cuwacunu::piaabo::dconfig::contract_space_t::jkimyei_specs_grammar(contract_hash);
+  const std::string instruction = contract_itself->jkimyei.dsl;
+  const std::string grammar = contract_itself->jkimyei.grammar;
 
   TICK(decode_contract_jkimyei_specs);
   const auto decoded_contract =

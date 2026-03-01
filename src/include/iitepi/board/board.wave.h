@@ -1,4 +1,4 @@
-// ./include/tsiemene/board.wave.h
+// ./include/iitepi/board.wave.h
 // SPDX-License-Identifier: MIT
 #pragma once
 

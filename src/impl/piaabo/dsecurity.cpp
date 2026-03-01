@@ -365,7 +365,7 @@ void SecureStronghold_t::authenticate() {
       }
 
       EVP_PKEY* loaded_key = dencryption::loadPrivateKey(
-          cuwacunu::piaabo::dconfig::config_space_t::Ed25519_pkey().c_str(),
+          cuwacunu::iitepi::config_space_t::Ed25519_pkey().c_str(),
           static_cast<const char*>(secret));
 
       if (loaded_key == nullptr) {
@@ -392,7 +392,7 @@ void SecureStronghold_t::authenticate() {
 
     log_secure_info("%s\n", CORRECT_AUTH);
 
-    const std::string api_key_filename = cuwacunu::piaabo::dconfig::config_space_t::api_key();
+    const std::string api_key_filename = cuwacunu::iitepi::config_space_t::api_key();
 
     size_t api_key_filesize = 0;
 

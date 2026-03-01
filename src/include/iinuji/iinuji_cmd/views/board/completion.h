@@ -46,7 +46,7 @@ inline const std::vector<std::string>& board_completion_tokens() {
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY) out.emplace_back(TOKEN);
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD
@@ -202,7 +202,7 @@ inline std::vector<std::string> board_candidates_for_context(const CmdState& st,
 #define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
 #define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "tsiemene/board.paths.def"
+#include "iitepi/board/board.paths.def"
 #undef BOARD_PATH_DSL_SEGMENT
 #undef BOARD_PATH_ACTION
 #undef BOARD_PATH_METHOD

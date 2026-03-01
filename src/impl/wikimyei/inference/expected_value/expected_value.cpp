@@ -132,7 +132,7 @@ inline void ev_load_module_state(torch::serialize::InputArchive& ar,
 
 // ---------- ctor ----------
 ExpectedValue::ExpectedValue(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash_,
     const std::string& component_name_)
 : contract_hash(contract_hash_),
   component_name(component_name_) {
@@ -141,22 +141,22 @@ ExpectedValue::ExpectedValue(
       cuwacunu::camahjucunu::decode_observation_spec_from_contract(
           contract_hash);
   static_channel_weights_     = observation_instruction.retrieve_channel_weights();
-  static_feature_weights_     = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<float>(contract_hash, "VALUE_ESTIMATION", "target_weights");
-  grad_clip                   = cuwacunu::piaabo::dconfig::contract_space_t::get<double>(contract_hash, "VALUE_ESTIMATION", "grad_clip");
-  optimizer_threshold_reset   = cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "optimizer_threshold_reset");
-  target_dims_                = cuwacunu::piaabo::dconfig::contract_space_t::get_arr<int64_t>(contract_hash, "VALUE_ESTIMATION", "target_dims");
+  static_feature_weights_     = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get_arr<float>("VALUE_ESTIMATION", "target_weights");
+  grad_clip                   = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<double>("VALUE_ESTIMATION", "grad_clip");
+  optimizer_threshold_reset   = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "optimizer_threshold_reset");
+  target_dims_                = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get_arr<int64_t>("VALUE_ESTIMATION", "target_dims");
 
   // Model
   semantic_model = cuwacunu::wikimyei::mdn::MdnModel(
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VICReg", "encoding_dims"),               // De
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "encoding_dims"),               // De
     static_cast<int64_t>(target_dims_.size()),                                                    // Dy
     observation_instruction.count_channels(),                                                      // C
     observation_instruction.max_future_sequence_length(),                                          // Hf
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "mixture_comps"),     // K
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "features_hidden"),   // H
-    cuwacunu::piaabo::dconfig::contract_space_t::get<int>(contract_hash, "VALUE_ESTIMATION", "residual_depth"),    // depth
-    cuwacunu::piaabo::dconfig::config_dtype(contract_hash, "VALUE_ESTIMATION"),
-    cuwacunu::piaabo::dconfig::config_device(contract_hash, "VALUE_ESTIMATION"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "mixture_comps"),     // K
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "features_hidden"),   // H
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "residual_depth"),    // depth
+    cuwacunu::iitepi::config_dtype(contract_hash, "VALUE_ESTIMATION"),
+    cuwacunu::iitepi::config_device(contract_hash, "VALUE_ESTIMATION"),
     /* display_model */ false
   );
 

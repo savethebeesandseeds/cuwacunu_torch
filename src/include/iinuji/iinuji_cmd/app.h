@@ -44,10 +44,10 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
   DlogTerminalOutputGuard dlog_guard{cuwacunu::piaabo::dlog_terminal_output_enabled()};
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
   log_info("[iinuji_cmd] boot config_folder=%s\n", config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-  cuwacunu::piaabo::dconfig::config_space_t::update_config();
+  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::update_config();
   const int logs_cap_cfg =
-      std::max(1, cuwacunu::piaabo::dconfig::config_space_t::get<int>(
+      std::max(1, cuwacunu::iitepi::config_space_t::get<int>(
                       "GENERAL",
                       "iinuji_logs_buffer_capacity"));
   cuwacunu::piaabo::dlog_set_buffer_capacity(static_cast<std::size_t>(logs_cap_cfg));

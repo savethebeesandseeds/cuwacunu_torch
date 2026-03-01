@@ -17,7 +17,7 @@ Public include form: `#include "piaabo/torch_compat/..."`
 - tensor/module validation helpers
 - compact tensor diagnostics
 - missing distribution surfaces used by project code
-- config-to-torch bridge functions in `cuwacunu::piaabo::dconfig`
+- config-to-torch bridge functions in `cuwacunu::iitepi`
 
 ## Runtime Defaults and Validation
 
@@ -31,7 +31,7 @@ From implementation behavior:
 
 ## Config Bridge Contract
 
-Declared in `torch_utils.h` under namespace `cuwacunu::piaabo::dconfig`:
+Declared in `torch_utils.h` under namespace `cuwacunu::iitepi`:
 
 - `config_dtype(contract_hash, section)`
 - `config_device(contract_hash, section)`

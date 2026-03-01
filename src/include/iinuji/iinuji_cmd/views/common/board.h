@@ -16,14 +16,14 @@ namespace iinuji {
 namespace iinuji_cmd {
 
 inline std::string board_instruction_path_from_config(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   std::string path;
   if (!lookup_contract_config_value(
           "DSL", "tsiemene_circuit_dsl_filename", contract_hash, &path)) {
-    return "src/config/instructions/tsiemene_circuit.dsl";
+    return "src/config/instructions/iitepi_circuit.dsl";
   }
   if (path.empty()) {
-    return "src/config/instructions/tsiemene_circuit.dsl";
+    return "src/config/instructions/iitepi_circuit.dsl";
   }
   return path;
 }
@@ -45,9 +45,10 @@ inline bool decode_board_instruction_text(
   }
 
   try {
+    const auto contract_itself =
+        cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
     auto parser = cuwacunu::camahjucunu::dsl::tsiemeneCircuits(
-        cuwacunu::piaabo::dconfig::contract_space_t::tsiemene_circuit_grammar(
-            contract_hash));
+        contract_itself->circuit.grammar);
     auto board = parser.decode(raw_instruction);
 
     std::string validate_error;
@@ -81,7 +82,7 @@ inline bool decode_board_instruction_text(
 }
 
 inline BoardState load_board_from_contract_hash(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   BoardState out{};
   if (contract_hash.empty()) {
     out.ok = false;
@@ -89,24 +90,17 @@ inline BoardState load_board_from_contract_hash(
     return out;
   }
   out.contract_hash = contract_hash;
-  out.contract_path =
-      cuwacunu::piaabo::dconfig::contract_space_t::snapshot(out.contract_hash)
-          .config_file_path;
-  cuwacunu::piaabo::dconfig::contract_space_t::assert_intact_or_fail_fast(
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(out.contract_hash);
+  out.contract_path = contract_itself->config_file_path;
+  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
       out.contract_hash);
 
   out.instruction_path = board_instruction_path_from_config(out.contract_hash);
-  const auto sections =
-      cuwacunu::piaabo::dconfig::contract_space_t::contract_instruction_sections(
-          out.contract_hash);
-  out.contract_observation_sources_dsl = sections.observation_sources_dsl;
-  out.contract_observation_channels_dsl = sections.observation_channels_dsl;
-  out.contract_jkimyei_specs_dsl = sections.jkimyei_specs_dsl;
-  out.raw_instruction = sections.tsiemene_circuit_dsl;
-  if (out.raw_instruction.empty()) {
-    out.raw_instruction = cuwacunu::piaabo::dconfig::contract_space_t::
-        tsiemene_circuit_dsl(out.contract_hash);
-  }
+  out.contract_observation_sources_dsl = contract_itself->observation.sources.dsl;
+  out.contract_observation_channels_dsl = contract_itself->observation.channels.dsl;
+  out.contract_jkimyei_specs_dsl = contract_itself->jkimyei.dsl;
+  out.raw_instruction = contract_itself->circuit.dsl;
   out.editor = std::make_shared<cuwacunu::iinuji::editorBox_data_t>(out.instruction_path);
   configure_board_editor_highlighting(*out.editor);
   cuwacunu::iinuji::primitives::editor_set_text(*out.editor, out.raw_instruction);

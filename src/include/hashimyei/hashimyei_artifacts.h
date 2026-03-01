@@ -215,13 +215,13 @@ struct artifact_manifest_t {
 [[nodiscard]] inline std::string metadata_secret() {
   const char* env = std::getenv("CUWACUNU_HASHIMYEI_META_SECRET");
   if (env != nullptr && env[0] != '\0') return std::string(env);
-  return cuwacunu::piaabo::dconfig::config_space_t::get<std::string>(
+  return cuwacunu::iitepi::config_space_t::get<std::string>(
       "GENERAL",
       "hashimyei_metadata_secret");
 }
 
 [[nodiscard]] inline std::filesystem::path store_root() {
-  const std::string configured = cuwacunu::piaabo::dconfig::config_space_t::get<std::string>(
+  const std::string configured = cuwacunu::iitepi::config_space_t::get<std::string>(
       "GENERAL",
       "hashimyei_store_root");
   return std::filesystem::path(configured);

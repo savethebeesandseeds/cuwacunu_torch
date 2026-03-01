@@ -1,4 +1,40 @@
 /*
+  jkimyei_specs.dsl
+  =================
+  Purpose:
+    Central policy registry for training/inference behavior of wikimyei
+    components. This file defines profile catalogs; wave selection chooses
+    which PROFILE_ID is active for a given component instance.
+
+  Design:
+    - Component families are split by canonical component id.
+    - Each COMPONENT contains one or more PROFILE blocks.
+    - PROFILE blocks contain explicit knobs (optimizer, scheduler, loss,
+      numerics, gradient policy, reproducibility, checkpoint, metrics, data ref).
+    - No implicit hidden defaults: profile rows should be fully explicit.
+
+  Runtime contract:
+    - Wave.WIKIMYEI.PROFILE_ID resolves into a profile under matching COMPONENT.
+    - Component-level flags in COMPONENT_PARAMS tune backend behavior.
+    - REPRODUCIBILITY and NUMERICS sections define determinism and runtime
+      execution settings.
+
+  Main section types:
+    SELECTORS
+      Keys used by runtime selectors and diagnostics.
+    COMPONENT
+      Logical component family keyed by canonical id and display label.
+    PROFILE
+      One concrete training/inference policy configuration.
+    AUGMENTATIONS
+      Named augmentation catalog referenced by profile params.
+
+  Note:
+    Runtime schedule budget (epochs/steps/range) is not defined here; it is
+    wave-owned.
+*/
+
+/*
   jkimyei_specs.dsl (v2)
   Block-and-colon syntax for high readability and straightforward BNF.
 

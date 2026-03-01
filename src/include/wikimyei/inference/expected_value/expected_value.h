@@ -62,7 +62,7 @@ namespace wikimyei {
 
 class ExpectedValue {
 public:
-  cuwacunu::piaabo::dconfig::contract_hash_t contract_hash;
+  cuwacunu::iitepi::contract_hash_t contract_hash;
   // -------- training wiring --------
   std::string component_name;
 
@@ -114,7 +114,7 @@ public:
 
 public:
   // ---------- ctor ----------
-  explicit ExpectedValue(const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash_,
+  explicit ExpectedValue(const cuwacunu::iitepi::contract_hash_t& contract_hash_,
                          const std::string& component_name_);
 
   // ---------- basic API ----------

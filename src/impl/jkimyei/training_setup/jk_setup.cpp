@@ -20,7 +20,7 @@ void jk_setup_t::finit() {
 }
 
 std::string jk_setup_t::make_component_key(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash,
     const std::string& runtime_component_name) {
   return contract_hash + ":" + runtime_component_name;
 }
@@ -28,7 +28,7 @@ std::string jk_setup_t::make_component_key(
 /* ------------------- lazy accessor ------------------- */
 jk_component_t& jk_setup_t::operator()(
     const std::string& component_name,
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   if (contract_hash.empty()) {
     log_fatal("[jk_setup] missing contract hash for component '%s'\n",
               component_name.c_str());
@@ -54,16 +54,18 @@ jk_component_t& jk_setup_t::operator()(
     }
   }
 
-  // Cache miss: decode instruction from override text or contract config fallback.
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+
+  // Cache miss: decode instruction from override text or contract record payload.
+  cuwacunu::camahjucunu::jkimyei_specs_t inst{};
   if (instr_text.empty()) {
-    instr_text =
-        cuwacunu::piaabo::dconfig::contract_space_t::jkimyei_specs_dsl(
-            contract_hash);
+    inst = contract_itself->jkimyei.decoded();
+  } else {
+    inst = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
+        contract_itself->jkimyei.grammar,
+        std::move(instr_text));
   }
-  auto inst = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
-      cuwacunu::piaabo::dconfig::contract_space_t::jkimyei_specs_grammar(
-          contract_hash),
-      std::move(instr_text));
 
   {
     std::lock_guard<std::mutex> lk(mtx);
@@ -75,7 +77,7 @@ jk_component_t& jk_setup_t::operator()(
 }
 
 void jk_setup_t::set_component_instruction_override(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash,
     std::string runtime_component_name,
     std::string component_lookup_name,
     std::string instruction_text) {
@@ -98,7 +100,7 @@ void jk_setup_t::set_component_instruction_override(
 }
 
 void jk_setup_t::clear_component_instruction_override(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash,
+    const cuwacunu::iitepi::contract_hash_t& contract_hash,
     const std::string& runtime_component_name) {
   if (contract_hash.empty()) {
     log_fatal("[jk_setup] missing contract hash while clearing override '%s'\n",
@@ -112,7 +114,7 @@ void jk_setup_t::clear_component_instruction_override(
 }
 
 void jk_setup_t::clear_component_instruction_overrides(
-    const cuwacunu::piaabo::dconfig::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   if (contract_hash.empty()) {
     log_fatal("[jk_setup] missing contract hash while clearing all overrides for contract\n");
   }

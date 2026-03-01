@@ -31,7 +31,7 @@ TSI_PATH_DIRECTIVE(Info, "@info", "Info lane (log sinks)")
 TSI_PATH_DIRECTIVE(Warn, "@warn", "Warn lane (log sinks)")
 TSI_PATH_DIRECTIVE(Debug, "@debug", "Debug lane (log sinks)")
 TSI_PATH_DIRECTIVE(Error, "@error", "Error lane (log sinks)")
-// Board/control directives and methods live in `tsiemene/board.paths.def`.
+// Board/control directives and methods live in `iitepi/board/board.paths.def`.
 
 // TSI component manifest.
 // INSTANCE_POLICY:

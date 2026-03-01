@@ -263,7 +263,7 @@ inline void init_data_runtime(CmdState& state, DataAppRuntime& rt, bool force) {
       return;
     }
     const bool force_rebuild_cache =
-        cuwacunu::piaabo::dconfig::config_space_t::get<bool>(
+        cuwacunu::iitepi::config_space_t::get<bool>(
             "DATA_LOADER", "dataloader_force_rebuild_cache");
     rt.dataset = cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(
         instrument, obs, force_rebuild_cache);

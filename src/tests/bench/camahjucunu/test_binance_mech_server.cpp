@@ -7,8 +7,8 @@
 int main() {
     /* read the configuration */
     const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::piaabo::dconfig::config_space_t::change_config_file(config_folder);
-    cuwacunu::piaabo::dconfig::config_space_t::update_config();
+    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    cuwacunu::iitepi::config_space_t::update_config();
 
     /* intialize the mech */
     auto exchange_mech = cuwacunu::camahjucunu::exchange::mech::binance::binance_mech_server_t();
