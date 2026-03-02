@@ -1038,7 +1038,7 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       {"model_path", "projector_mlp_spec", "projector_norm",
        "projector_activation", "dtype", "device"},
       /* int_keys */
-      {"n_epochs", "n_iters", "swa_start_iter", "encoding_dims",
+      {"swa_start_iter", "encoding_dims",
        "channel_expansion_dim", "fused_feature_dim", "encoder_hidden_dims",
        "encoder_depth", "optimizer_threshold_reset"},
       /* float_keys */
@@ -1056,7 +1056,7 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       /* string_keys */
       {"model_path", "dtype", "device"},
       /* int_keys */
-      {"n_epochs", "n_iters", "telemetry_every", "mixture_comps",
+      {"telemetry_every", "mixture_comps",
        "features_hidden", "residual_depth", "optimizer_threshold_reset"},
       /* float_keys */
       {"grad_clip"},

@@ -198,14 +198,18 @@ static torch::Device parse_device(const std::string& s)
   if (v == "cpu") return torch::Device(torch::kCPU);
   if (v == "cuda") {
     if (!torch::cuda::is_available()) {
-      throw std::runtime_error("Configured device '" + s +
-                               "' requires CUDA but CUDA is unavailable");
+      log_warn(
+          "[torch_utils] Configured device '%s' requires CUDA but CUDA is unavailable; falling back to CPU.\n",
+          s.c_str());
+      return torch::Device(torch::kCPU);
     }
     return torch::Device(torch::kCUDA);
   }
   if (v.rfind("cuda:", 0) == 0 && !torch::cuda::is_available()) {
-    throw std::runtime_error("Configured device '" + s +
-                             "' requires CUDA but CUDA is unavailable");
+    log_warn(
+        "[torch_utils] Configured device '%s' requires CUDA but CUDA is unavailable; falling back to CPU.\n",
+        s.c_str());
+    return torch::Device(torch::kCPU);
   }
 
   try { return torch::Device(v); }

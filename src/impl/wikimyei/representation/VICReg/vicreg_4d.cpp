@@ -708,6 +708,61 @@ void VICReg_4D::load(const std::string& path)
 
 void VICReg_4D::load_jkimyei_training_policy(
     const cuwacunu::jkimyei::jk_component_t& jk_component) {
+  const auto trim_ascii_copy = [](std::string s) -> std::string {
+    auto is_space = [](char ch) {
+      return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+    };
+    std::size_t begin = 0;
+    while (begin < s.size() && is_space(s[begin])) ++begin;
+    std::size_t end = s.size();
+    while (end > begin && is_space(s[end - 1])) --end;
+    return s.substr(begin, end - begin);
+  };
+  const auto find_row_by_id = [&](const std::string& table_name,
+                                  const std::string& row_id)
+      -> const cuwacunu::camahjucunu::jkimyei_specs_t::row_t* {
+    const auto table_it = jk_component.inst.tables.find(table_name);
+    if (table_it == jk_component.inst.tables.end()) return nullptr;
+    for (const auto& row : table_it->second) {
+      const auto rid_it = row.find(ROW_ID_COLUMN_HEADER);
+      if (rid_it == row.end()) continue;
+      if (trim_ascii_copy(rid_it->second) == trim_ascii_copy(row_id)) return &row;
+    }
+    return nullptr;
+  };
+  const auto find_component_profile_row =
+      [&]() -> const cuwacunu::camahjucunu::jkimyei_specs_t::row_t* {
+    if (const auto* by_id = find_row_by_id("component_profiles_table",
+                                           jk_component.resolved_profile_row_id)) {
+      return by_id;
+    }
+    const auto table_it = jk_component.inst.tables.find("component_profiles_table");
+    if (table_it == jk_component.inst.tables.end()) return nullptr;
+
+    const std::string target_component = trim_ascii_copy(jk_component.resolved_component_id);
+    const std::string target_profile = trim_ascii_copy(jk_component.resolved_profile_id);
+    const cuwacunu::camahjucunu::jkimyei_specs_t::row_t* fallback_profile_match = nullptr;
+    std::size_t fallback_count = 0;
+    for (const auto& row : table_it->second) {
+      const auto profile_it = row.find("profile_id");
+      if (profile_it == row.end()) continue;
+      if (trim_ascii_copy(profile_it->second) != target_profile) continue;
+      ++fallback_count;
+      const auto component_it = row.find("component_id");
+      const auto type_it = row.find("component_type");
+      const std::string component_value =
+          (component_it == row.end()) ? std::string{} : trim_ascii_copy(component_it->second);
+      const std::string type_value =
+          (type_it == row.end()) ? std::string{} : trim_ascii_copy(type_it->second);
+      if (component_value == target_component || type_value == target_component) {
+        return &row;
+      }
+      if (!fallback_profile_match) fallback_profile_match = &row;
+    }
+    if (fallback_count == 1 && fallback_profile_match) return fallback_profile_match;
+    return nullptr;
+  };
+
   TORCH_CHECK(
       !jk_component.resolved_component_id.empty(),
       "[VICReg_4D::load_jkimyei_training_policy] empty resolved_component_id for component '",
@@ -723,13 +778,28 @@ void VICReg_4D::load_jkimyei_training_policy(
       "[VICReg_4D::load_jkimyei_training_policy] empty resolved_profile_row_id for component '",
       component_name,
       "'");
+  const auto* component_row_ptr = find_component_profile_row();
+  TORCH_CHECK(
+      component_row_ptr != nullptr,
+      "[VICReg_4D::load_jkimyei_training_policy] component profile row not found for component='",
+      jk_component.resolved_component_id,
+      "' profile='",
+      jk_component.resolved_profile_id,
+      "' requested_row_id='",
+      jk_component.resolved_profile_row_id,
+      "'");
+  const auto profile_row_id = cuwacunu::camahjucunu::require_column(
+      *component_row_ptr, ROW_ID_COLUMN_HEADER);
+  const auto* gradient_row_ptr =
+      find_row_by_id("component_gradient_table", profile_row_id);
+  TORCH_CHECK(
+      gradient_row_ptr != nullptr,
+      "[VICReg_4D::load_jkimyei_training_policy] gradient row not found for row_id='",
+      profile_row_id,
+      "'");
 
-  const auto component_row = jk_component.inst.retrive_row(
-      "component_profiles_table",
-      jk_component.resolved_profile_row_id);
-  const auto gradient_row = jk_component.inst.retrive_row(
-      "component_gradient_table",
-      jk_component.resolved_profile_row_id);
+  const auto& component_row = *component_row_ptr;
+  const auto& gradient_row = *gradient_row_ptr;
 
   jk_vicreg_train = cuwacunu::camahjucunu::to_bool(
       cuwacunu::camahjucunu::require_column(component_row, "vicreg_train"));

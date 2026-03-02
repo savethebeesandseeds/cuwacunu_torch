@@ -639,8 +639,16 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   out.artifact_directory = out.store_root / out.hashimyei;
 
   std::error_code ec;
-  if (!fs::exists(out.artifact_directory, ec) || !fs::is_directory(out.artifact_directory, ec)) {
-    out.error = "wikimyei artifact not found: " + out.artifact_directory.string();
+  if (!fs::exists(out.artifact_directory, ec)) {
+    fs::create_directories(out.artifact_directory, ec);
+    if (ec) {
+      out.error =
+          "cannot create wikimyei artifact directory: " + out.artifact_directory.string();
+      return out;
+    }
+  } else if (!fs::is_directory(out.artifact_directory, ec)) {
+    out.error = "wikimyei artifact path is not a directory: " +
+                out.artifact_directory.string();
     return out;
   }
 

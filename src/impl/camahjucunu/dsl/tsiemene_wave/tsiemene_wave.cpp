@@ -218,6 +218,20 @@ class parser_t {
     return false;
   }
 
+  static bool parse_sampler_token(const std::string& value, std::string* out) {
+    if (!out) return false;
+    const std::string v = lower_ascii_copy(value);
+    if (v == "sequential" || v == "sequentialsampler") {
+      *out = "sequential";
+      return true;
+    }
+    if (v == "random" || v == "randomsampler") {
+      *out = "random";
+      return true;
+    }
+    return false;
+  }
+
   static bool parse_u64_token(const std::string& value, std::uint64_t* out) {
     if (!out) return false;
     std::uint64_t x = 0;
@@ -404,13 +418,14 @@ class parser_t {
     std::unordered_set<std::string> seen_wikimyei_paths;
     std::unordered_set<std::string> seen_source_paths;
     bool has_mode = false;
+    bool has_sampler = false;
     bool has_epochs = false;
     bool has_batch_size = false;
 
     while (!peek_is_symbol('}')) {
       const token_t head = peek();
       if (head.kind != token_t::kind_e::Identifier) {
-        throw std::runtime_error("expected profile statement at " +
+        throw std::runtime_error("expected wave statement at " +
                                  std::to_string(head.line) + ":" +
                                  std::to_string(head.col));
       }
@@ -422,6 +437,15 @@ class parser_t {
                                    "' invalid MODE: " + out.mode);
         }
         has_mode = true;
+        continue;
+      }
+      if (head.text == "SAMPLER") {
+        const std::string value = parse_assignment_value("SAMPLER");
+        if (!parse_sampler_token(value, &out.sampler)) {
+          throw std::runtime_error("WAVE '" + out.name +
+                                   "' invalid SAMPLER: " + value);
+        }
+        has_sampler = true;
         continue;
       }
       if (head.text == "EPOCHS") {
@@ -480,6 +504,10 @@ class parser_t {
     if (!has_mode) {
       throw std::runtime_error("WAVE '" + out.name +
                                "' missing MODE assignment");
+    }
+    if (!has_sampler) {
+      throw std::runtime_error("WAVE '" + out.name +
+                               "' missing SAMPLER assignment");
     }
     if (!has_epochs) {
       throw std::runtime_error("WAVE '" + out.name +
@@ -552,6 +580,7 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
       "SOURCE",
       "PATH",
       "MODE",
+      "SAMPLER",
       "EPOCHS",
       "BATCH_SIZE",
       "MAX_BATCHES_PER_EPOCH",
@@ -573,6 +602,7 @@ std::string tsiemene_wave_set_t::str() const {
     const auto& p = waves[i];
     oss << "  [" << i << "] name=" << p.name
         << " mode=" << p.mode
+        << " sampler=" << p.sampler
         << " epochs=" << p.epochs
         << " batch_size=" << p.batch_size
         << " max_batches_per_epoch=" << p.max_batches_per_epoch

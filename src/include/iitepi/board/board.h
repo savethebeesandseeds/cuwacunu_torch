@@ -310,16 +310,32 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
 inline bool save_contract_wikimyei_artifacts(BoardContract& c,
                                              std::string* error = nullptr);
 
-inline std::uint64_t run_circuit(BoardContract& c, BoardContext& ctx) {
-  if (!c.ensure_compiled(nullptr)) return 0;
+inline std::uint64_t run_circuit(BoardContract& c,
+                                 BoardContext& ctx,
+                                 std::string* error = nullptr) {
+  if (error) error->clear();
+  CircuitIssue issue{};
+  if (!c.ensure_compiled(&issue)) {
+    if (error) {
+      *error = std::string("compile_circuit failed: ");
+      error->append(issue.what.data(), issue.what.size());
+    }
+    return 0;
+  }
   std::string artifact_error;
-  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) {
+    if (error) *error = artifact_error;
+    return 0;
+  }
   const std::uint64_t steps =
       run_wave_compiled(c.compiled_runtime, c.seed_wave, c.seed_ingress, ctx);
   for (auto& node : c.nodes) {
     if (node) node->on_epoch_end(ctx);
   }
-  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) {
+    if (error) *error = artifact_error;
+    return 0;
+  }
   return steps;
 }
 
@@ -354,6 +370,14 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
     std::string local_error;
     if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
                                           &local_error)) {
+      // Training-enabled wikimyei are allowed to bootstrap from scratch when
+      // the configured artifact id is not present yet. The first successful
+      // run will persist the artifact at epoch end.
+      const bool missing_artifact =
+          local_error.find("not found") != std::string::npos;
+      if (missing_artifact && wik->runtime_autosave_artifacts()) {
+        continue;
+      }
       if (error) {
         *error = "failed to load wikimyei artifacts for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
@@ -388,10 +412,23 @@ inline bool save_contract_wikimyei_artifacts(BoardContract& c,
   return true;
 }
 
-inline std::uint64_t run_contract(BoardContract& c, BoardContext& ctx) {
-  if (!c.ensure_compiled(nullptr)) return 0;
+inline std::uint64_t run_contract(BoardContract& c,
+                                  BoardContext& ctx,
+                                  std::string* error = nullptr) {
+  if (error) error->clear();
+  CircuitIssue issue{};
+  if (!c.ensure_compiled(&issue)) {
+    if (error) {
+      *error = std::string("compile_circuit failed: ");
+      error->append(issue.what.data(), issue.what.size());
+    }
+    return 0;
+  }
   std::string artifact_error;
-  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) {
+    if (error) *error = artifact_error;
+    return 0;
+  }
   const std::uint64_t epochs = std::max<std::uint64_t>(1, c.execution.epochs);
   std::uint64_t total_steps = 0;
   for (std::uint64_t epoch = 0; epoch < epochs; ++epoch) {
@@ -403,7 +440,10 @@ inline std::uint64_t run_contract(BoardContract& c, BoardContext& ctx) {
       if (node) node->on_epoch_end(ctx);
     }
   }
-  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) return 0;
+  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) {
+    if (error) *error = artifact_error;
+    return 0;
+  }
   return total_steps;
 }
 

@@ -27,7 +27,6 @@ observation_spec_t observationSourcesDecoder::decode(std::string instruction) {
   log_info("Request to decode observationSourcesDecoder\n");
 #endif
   LOCK_GUARD(current_mutex);
-
   ASTNodePtr actualAST = iParser.parse_Instruction(instruction);
 
 #ifdef OBSERVARION_PIPELINE_DEBUG

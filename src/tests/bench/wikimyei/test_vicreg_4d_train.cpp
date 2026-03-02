@@ -94,8 +94,8 @@ int main() {
     // -----------------------------------------------------
     std::cout << "Training the VICReg encoder...\n";
     TICK(Train_Model);
-    const int configured_epochs = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_epochs");
-    const int configured_iters = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_iters");
+    const int configured_epochs = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_epochs", -1);
+    const int configured_iters = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_iters", -1);
     const int configured_swa_start = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "swa_start_iter");
     const int smoke_epochs = 1;
     const int smoke_iters = 1;

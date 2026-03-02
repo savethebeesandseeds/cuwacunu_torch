@@ -166,9 +166,9 @@ int main() {
   const int configured_telemetry_every =
       cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "telemetry_every");
   const int configured_epochs =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "n_epochs");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "n_epochs", -1);
   const int configured_iters =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "n_iters");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "n_iters", -1);
   const int smoke_telemetry_every = 1;
   const int smoke_epochs = 1;
   const int smoke_iters = 1;

@@ -212,7 +212,25 @@ struct CompatibilityReport {
     }
   }
 
-  const std::string mode = trim_ascii_copy(wave.mode);
+  auto lower_ascii_copy = [](std::string s) {
+    for (char& ch : s) {
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return s;
+  };
+
+  const std::string mode = lower_ascii_copy(trim_ascii_copy(wave.mode));
+  const std::string sampler = lower_ascii_copy(trim_ascii_copy(wave.sampler));
+  if (sampler != "sequential" && sampler != "random") {
+    report.ok = false;
+    report.indicators.push_back(CompatibilityIndicator{
+        .code = CompatibilityCode::InvalidReference,
+        .severity = CompatibilitySeverity::Error,
+        .contract_path = {},
+        .wave_path = wave.name,
+        .message = "invalid SAMPLER; expected sequential|random",
+    });
+  }
   if (mode == "run" && has_train_true) {
     report.ok = false;
     report.indicators.push_back(CompatibilityIndicator{
@@ -394,6 +412,31 @@ find_component_profile_row(
     }
     wave_paths.insert(*parsed_path);
     wave_source_paths.insert(*parsed_path);
+  }
+
+  if (contract_source_paths.size() != 1) {
+    report.ok = false;
+    ++report.invalid_ref;
+    report.indicators.push_back(CompatibilityIndicator{
+        .code = CompatibilityCode::InvalidReference,
+        .severity = CompatibilitySeverity::Error,
+        .contract_path = {},
+        .wave_path = {},
+        .message =
+            "runtime currently supports exactly one SOURCE path per circuit",
+    });
+  }
+  if (wave_source_paths.size() != 1) {
+    report.ok = false;
+    ++report.invalid_ref;
+    report.indicators.push_back(CompatibilityIndicator{
+        .code = CompatibilityCode::InvalidReference,
+        .severity = CompatibilitySeverity::Error,
+        .contract_path = {},
+        .wave_path = {},
+        .message =
+            "runtime currently supports exactly one SOURCE PATH in selected wave",
+    });
   }
 
   for (const auto& wave_path : wave_wikimyei_paths) {

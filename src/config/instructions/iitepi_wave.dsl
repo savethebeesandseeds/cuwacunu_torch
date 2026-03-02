@@ -12,6 +12,7 @@
 
   Required wave fields:
     MODE = train | run;
+    SAMPLER = sequential | random;
     EPOCHS = <int>;
     BATCH_SIZE = <int>;
 
@@ -47,6 +48,7 @@
 
 WAVE train_vicreg_primary {
   MODE = train;
+  SAMPLER = sequential;
   EPOCHS = 1;
   BATCH_SIZE = 64;
   MAX_BATCHES_PER_EPOCH = 4;
@@ -61,12 +63,13 @@ WAVE train_vicreg_primary {
     PATH = tsi.source.dataloader;
     SYMBOL = BTCUSDT;
     FROM = 01.01.2020;
-    TO = 07.01.2020;
+    TO = 31.03.2020;
   };
 }
 
 WAVE run_vicreg_embedding {
   MODE = run;
+  SAMPLER = sequential;
   EPOCHS = 1;
   BATCH_SIZE = 64;
   MAX_BATCHES_PER_EPOCH = 4;
@@ -81,6 +84,6 @@ WAVE run_vicreg_embedding {
     PATH = tsi.source.dataloader;
     SYMBOL = BTCUSDT;
     FROM = 01.01.2020;
-    TO = 07.01.2020;
+    TO = 31.03.2020;
   };
 }

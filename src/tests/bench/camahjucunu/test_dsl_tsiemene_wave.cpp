@@ -59,6 +59,7 @@ int main() {
     const auto& p = decoded.waves.front();
     assert(!p.name.empty());
     assert(p.mode == "train" || p.mode == "run");
+    assert(p.sampler == "sequential" || p.sampler == "random");
     assert(p.epochs > 0);
     assert(p.batch_size > 0);
     assert(p.max_batches_per_epoch > 0);
@@ -83,6 +84,7 @@ int main() {
     expect_decode_fail(
         "WAVE p {\n"
         "  MODE = run;\n"
+        "  SAMPLER = sequential;\n"
         "  EPOCHS = 1;\n"
         "  BATCH_SIZE = 4;\n"
         "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
@@ -99,6 +101,7 @@ int main() {
     expect_decode_fail(
         "WAVE p {\n"
         "  MODE = train;\n"
+        "  SAMPLER = sequential;\n"
         "  EPOCHS = 1;\n"
         "  BATCH_SIZE = 4;\n"
         "  MAX_BATCHES_PER_EPOCH = 0;\n"
@@ -117,7 +120,25 @@ int main() {
     expect_decode_fail(
         "WAVE p {\n"
         "  MODE = train;\n"
+        "  SAMPLER = sequential;\n"
         "  EPOCHS = 1;\n"
+        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
+        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
+        "    TRAIN = true;\n"
+        "    PROFILE_ID = stable_pretrain;\n"
+        "  };\n"
+        "  SOURCE tsi.source.dataloader {\n"
+        "    PATH = tsi.source.dataloader;\n"
+        "    SYMBOL = BTCUSDT;\n"
+        "    FROM = 01.01.2009;\n"
+        "    TO = 31.12.2009;\n"
+        "  };\n"
+        "}\n");
+    expect_decode_fail(
+        "WAVE p {\n"
+        "  MODE = train;\n"
+        "  EPOCHS = 1;\n"
+        "  BATCH_SIZE = 4;\n"
         "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
         "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
         "    TRAIN = true;\n"

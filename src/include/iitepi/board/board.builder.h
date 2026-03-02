@@ -104,12 +104,22 @@ find_jkimyei_component_profile_row(
     std::string_view profile_id) {
   const auto table_it = specs.tables.find("component_profiles_table");
   if (table_it == specs.tables.end()) return nullptr;
+  const std::string target_component = trim_ascii_copy(std::string(component_id));
+  const std::string target_profile = trim_ascii_copy(std::string(profile_id));
   for (const auto& row : table_it->second) {
     const auto cid_it = row.find("component_id");
+    const auto ctype_it = row.find("component_type");
     const auto pid_it = row.find("profile_id");
-    if (cid_it == row.end() || pid_it == row.end()) continue;
-    if (trim_ascii_copy(cid_it->second) != component_id) continue;
-    if (trim_ascii_copy(pid_it->second) != profile_id) continue;
+    if (pid_it == row.end()) continue;
+    if (trim_ascii_copy(pid_it->second) != target_profile) continue;
+    const std::string row_component_id =
+        (cid_it == row.end()) ? std::string{} : trim_ascii_copy(cid_it->second);
+    const std::string row_component_type =
+        (ctype_it == row.end()) ? std::string{} : trim_ascii_copy(ctype_it->second);
+    if (row_component_id != target_component &&
+        row_component_type != target_component) {
+      continue;
+    }
     return &row;
   }
   return nullptr;
@@ -118,20 +128,38 @@ find_jkimyei_component_profile_row(
 [[nodiscard]] inline std::string resolve_vicreg_component_lookup_name(
     const BoardContract::Spec& spec,
     const cuwacunu::camahjucunu::jkimyei_specs_t& jkimyei_specs) {
-  constexpr std::string_view kBase = "VICReg_representation";
-  if (spec.representation_hashimyei.empty()) return std::string(kBase);
+  constexpr std::string_view kFallbackBase = "VICReg_representation";
+  const std::string canonical_type =
+      std::string(tsi_type_token(TsiTypeId::WikimyeiRepresentationVicreg));
 
-  const std::string dot_name = std::string(kBase) + "." + spec.representation_hashimyei;
+  auto resolve_component_base = [&]() -> std::string {
+    const auto table_it = jkimyei_specs.tables.find("components_table");
+    if (table_it == jkimyei_specs.tables.end()) return std::string(kFallbackBase);
+    for (const auto& row : table_it->second) {
+      const auto ctype_it = row.find("component_type");
+      const auto rid_it = row.find(ROW_ID_COLUMN_HEADER);
+      if (ctype_it == row.end() || rid_it == row.end()) continue;
+      if (trim_ascii_copy(ctype_it->second) != canonical_type) continue;
+      const std::string resolved_id = trim_ascii_copy(rid_it->second);
+      if (!resolved_id.empty()) return resolved_id;
+    }
+    return std::string(kFallbackBase);
+  };
+
+  const std::string base = resolve_component_base();
+  if (spec.representation_hashimyei.empty()) return base;
+
+  const std::string dot_name = base + "." + spec.representation_hashimyei;
   if (find_jkimyei_row_by_id(jkimyei_specs, "components_table", dot_name)) {
     return dot_name;
   }
 
-  const std::string underscore_name = std::string(kBase) + "_" + spec.representation_hashimyei;
+  const std::string underscore_name = base + "_" + spec.representation_hashimyei;
   if (find_jkimyei_row_by_id(jkimyei_specs, "components_table", underscore_name)) {
     return underscore_name;
   }
 
-  return std::string(kBase);
+  return base;
 }
 
 inline void apply_vicreg_flag_overrides_from_component_row(
@@ -402,8 +430,16 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
           }
           return nullptr;
         }
-        lookup_component_name =
-            base_component_lookup_name + "@" + wave_wikimyei_decl->profile_id;
+        const auto row_id_it = selected_profile_row->find(ROW_ID_COLUMN_HEADER);
+        if (row_id_it == selected_profile_row->end() ||
+            trim_ascii_copy(row_id_it->second).empty()) {
+          if (error) {
+            *error = "selected jkimyei component profile row has empty row_id for component '" +
+                     base_component_lookup_name + "'";
+          }
+          return nullptr;
+        }
+        lookup_component_name = trim_ascii_copy(row_id_it->second);
       }
 
       const auto* component_row =

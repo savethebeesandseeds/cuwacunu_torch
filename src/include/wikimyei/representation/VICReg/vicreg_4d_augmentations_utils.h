@@ -1,6 +1,8 @@
 /* vicreg_4d_augmentations_utils.h */
 #pragma once
+#include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 #include "wikimyei/representation/VICReg/vicreg_4d_types.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs_utils.h"
@@ -23,8 +25,8 @@ inline WarpBaseCurve parse_curve(const std::string& s) {
 /**
  * Convert a configuration table into a vector<WarpPreset>.
  *
- * Required columns (exact):
- *   - "curve"                     (string)
+ * Required columns:
+ *   - "curve" OR "kind"           (string)
  *   - "curve_param"               (double)
  *   - "noise_scale"               (double)
  *   - "smoothing_kernel_size"     (long, >=1; recommend odd)
@@ -32,7 +34,10 @@ inline WarpBaseCurve parse_curve(const std::string& s) {
  *   - "value_jitter_std"          (double, >=0)
  *   - "time_mask_band_frac"       (double in [0,1))
  *   - "channel_dropout_prob"      (double in [0,1])
- *   - "comment"                   (string; kept for documentation)
+ *
+ * Optional metadata columns:
+ *   - "augmentation_set"
+ *   - "comment"
  *
  * Any missing/malformed value throws with a precise message.
  */
@@ -46,17 +51,60 @@ make_warp_presets_from_table(
   presets.reserve(table.size());
 
   for (const auto& row : table) {
-    // Enforce schema exactly (no silent defaults)
-    cuwacunu::camahjucunu::require_columns_exact(row, {
-      ROW_ID_COLUMN_HEADER,
-      "curve", "curve_param", "noise_scale", "smoothing_kernel_size",
-      "point_drop_prob",
-      "value_jitter_std", "time_mask_band_frac", "channel_dropout_prob",
-      "comment"
-    });
+    // Enforce required keys while allowing stable metadata fields from jkimyei materialization.
+    const std::unordered_set<std::string> allowed_columns{
+        ROW_ID_COLUMN_HEADER,
+        "curve",
+        "kind",
+        "curve_param",
+        "noise_scale",
+        "smoothing_kernel_size",
+        "point_drop_prob",
+        "value_jitter_std",
+        "time_mask_band_frac",
+        "channel_dropout_prob",
+        "augmentation_set",
+        "comment"};
+    std::vector<std::string> missing_columns{};
+    if (!row.count("curve") && !row.count("kind")) {
+      missing_columns.emplace_back("curve|kind");
+    }
+    for (const char* key : {"curve_param",
+                            "noise_scale",
+                            "smoothing_kernel_size",
+                            "point_drop_prob",
+                            "value_jitter_std",
+                            "time_mask_band_frac",
+                            "channel_dropout_prob"}) {
+      if (!row.count(key)) missing_columns.emplace_back(key);
+    }
+    std::vector<std::string> extra_columns{};
+    for (const auto& kv : row) {
+      if (!allowed_columns.count(kv.first)) extra_columns.push_back(kv.first);
+    }
+    if (!missing_columns.empty() || !extra_columns.empty()) {
+      std::ostringstream miss;
+      std::ostringstream extra;
+      for (std::size_t i = 0; i < missing_columns.size(); ++i) {
+        if (i != 0) miss << ", ";
+        miss << missing_columns[i];
+      }
+      for (std::size_t i = 0; i < extra_columns.size(); ++i) {
+        if (i != 0) extra << ", ";
+        extra << extra_columns[i];
+      }
+      RAISE_FATAL_ROW(row,
+                      "Column set mismatch. Missing: [%s]. Unexpected: [%s].",
+                      miss.str().c_str(),
+                      extra.str().c_str());
+    }
 
     try {
-      const auto curve_str   = require_column(row, "curve");
+      const auto curve_str = [&]() -> std::string {
+        const auto curve_it = row.find("curve");
+        if (curve_it != row.end()) return curve_it->second;
+        return require_column(row, "kind");
+      }();
       const auto curve_param = to_double(require_column(row, "curve_param"));
       const auto noise_scale = to_double(require_column(row, "noise_scale"));
       const auto smoothing   = to_long  (require_column(row, "smoothing_kernel_size"));

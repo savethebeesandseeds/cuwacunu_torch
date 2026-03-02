@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <mutex>
+#include <optional>
 
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "jkimyei/training_setup/jk_losses.h"
@@ -49,12 +50,87 @@ struct jk_component_t {
   void build_from(const cuwacunu::camahjucunu::jkimyei_specs_t& instruction,
                   const std::string& component_lookup_name,
                   const std::string& runtime_component_name = {}) {
+    const auto trim_ascii_copy = [](std::string s) -> std::string {
+      auto is_space = [](char ch) {
+        return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+      };
+      std::size_t begin = 0;
+      while (begin < s.size() && is_space(s[begin])) ++begin;
+      std::size_t end = s.size();
+      while (end > begin && is_space(s[end - 1])) --end;
+      return s.substr(begin, end - begin);
+    };
+    const auto find_row_by_id_in_table =
+        [&](const std::string& table_name,
+            const std::string& row_id)
+            -> std::optional<cuwacunu::camahjucunu::jkimyei_specs_t::row_t> {
+      const auto table_it = instruction.tables.find(table_name);
+      if (table_it == instruction.tables.end()) return std::nullopt;
+      const std::string target = trim_ascii_copy(row_id);
+      for (const auto& candidate : table_it->second) {
+        const auto rid_it = candidate.find(ROW_ID_COLUMN_HEADER);
+        if (rid_it == candidate.end()) continue;
+        if (trim_ascii_copy(rid_it->second) == target) return candidate;
+      }
+      return std::nullopt;
+    };
+    const auto resolve_profile_row =
+        [&](const std::string& lookup_name)
+            -> std::optional<cuwacunu::camahjucunu::jkimyei_specs_t::row_t> {
+      if (auto by_id = find_row_by_id_in_table("component_profiles_table", lookup_name);
+          by_id.has_value()) {
+        return by_id;
+      }
+
+      const std::size_t at_pos = lookup_name.rfind('@');
+      if (at_pos == std::string::npos || at_pos == 0 || at_pos + 1 >= lookup_name.size()) {
+        return std::nullopt;
+      }
+      const std::string component_hint = trim_ascii_copy(lookup_name.substr(0, at_pos));
+      const std::string profile_hint = trim_ascii_copy(lookup_name.substr(at_pos + 1));
+      if (component_hint.empty() || profile_hint.empty()) return std::nullopt;
+
+      const auto table_it = instruction.tables.find("component_profiles_table");
+      if (table_it == instruction.tables.end()) return std::nullopt;
+      const auto& table = table_it->second;
+      const cuwacunu::camahjucunu::jkimyei_specs_t::row_t* fallback_profile_match =
+          nullptr;
+      std::size_t fallback_count = 0;
+      for (const auto& candidate : table) {
+        const auto profile_it = candidate.find("profile_id");
+        if (profile_it == candidate.end()) continue;
+        if (trim_ascii_copy(profile_it->second) != profile_hint) continue;
+        ++fallback_count;
+        const auto component_it = candidate.find("component_id");
+        const auto type_it = candidate.find("component_type");
+        const std::string candidate_component =
+            (component_it == candidate.end()) ? std::string{} : trim_ascii_copy(component_it->second);
+        const std::string candidate_type =
+            (type_it == candidate.end()) ? std::string{} : trim_ascii_copy(type_it->second);
+        if (candidate_component == component_hint || candidate_type == component_hint) {
+          return candidate;
+        }
+        if (!fallback_profile_match) fallback_profile_match = &candidate;
+      }
+      if (fallback_count == 1 && fallback_profile_match) {
+        return *fallback_profile_match;
+      }
+      return std::nullopt;
+    };
+
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
     bool from_component_profile_row = false;
-    try {
-      row = instruction.retrive_row("components_table", component_lookup_name);
-    } catch (const std::exception&) {
-      row = instruction.retrive_row("component_profiles_table", component_lookup_name);
+    if (const auto component_row =
+            find_row_by_id_in_table("components_table", component_lookup_name);
+        component_row.has_value()) {
+      row = *component_row;
+    } else {
+      const auto profile_row = resolve_profile_row(component_lookup_name);
+      if (profile_row.has_value()) {
+        row = *profile_row;
+      } else {
+        row = instruction.retrive_row("component_profiles_table", component_lookup_name);
+      }
       from_component_profile_row = true;
     }
     const std::string row_id =

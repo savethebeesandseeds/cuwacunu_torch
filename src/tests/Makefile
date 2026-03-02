@@ -50,7 +50,7 @@ IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd iinuji_cmd_
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ tsiemene--------------------------------
-TSIEMENE := board_contract_init tsi_board_paths
+TSIEMENE := tsi_board_paths
 $(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
 
 # ------------------------------ iitepi----------------------------------

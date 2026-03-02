@@ -1,4 +1,4 @@
-<instruction>            ::= <comment> <input_table> ;
+<instruction>            ::= [<comment>] <input_table> ;
 <input_table>            ::= <table_top_line> <input_header_line> <table_divider_line> {<input_form>} <table_bottom_line> ;
 <input_header_line>      ::= "|" <whitespace> "interval" <whitespace> "|" <whitespace> "active" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "seq_length" <whitespace> "|" <whitespace> "future_seq_length" <whitespace> "|" <whitespace> "channel_weight" <whitespace> "|" <whitespace> "norm_window" <whitespace> "|" <break_block> ;
 <input_form>             ::= "|" <whitespace> <interval> <whitespace> "|" <whitespace> <active> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <seq_length> <whitespace> "|" <whitespace> <future_seq_length> <whitespace> "|" <whitespace> <channel_weight> <whitespace> "|" <whitespace> <norm_window> <whitespace> "|" <break_block> ;
@@ -18,7 +18,7 @@
 <record_type>            ::= "kline" | "trade" | "basic" ;
 <interval>               ::= "constant" | "sine" | "triangular" | "1s" | "1m" | "3m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "6h" | "8h" | "12h" | "1d" | "3d" | "1w" | "1M" ;
 <boolean>                ::= "true" | "false" ;
-<special>                ::= "." | "," | ":" | ";" | "-" | "_" | "\\" | "/" | "(" | ")" | "[" | "]" ;
+<special>                ::= "." | "," | ":" | ";" | "-" | "_" | "\\" | "/" | "(" | ")" | "[" | "]" | "=" | ">" | "<" | "!" | "?" | "+" ;
 <super_special>          ::= "|" ;
 <letter>                 ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z";
 <number>                 ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "." ;

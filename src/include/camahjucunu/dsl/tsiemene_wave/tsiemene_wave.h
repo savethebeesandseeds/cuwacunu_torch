@@ -26,6 +26,7 @@ struct tsiemene_wave_source_decl_t {
 struct tsiemene_wave_t {
   std::string name{};
   std::string mode{};
+  std::string sampler{};
   std::uint64_t epochs{0};
   std::uint64_t batch_size{0};
   std::uint64_t max_batches_per_epoch{0};
