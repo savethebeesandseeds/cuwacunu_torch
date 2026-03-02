@@ -1,7 +1,0 @@
-schema=hashimyei.artifact.manifest.v1
-canonical_type=tsi.wikimyei.representation.vicreg
-family=representation
-model=vicreg
-artifact_id=0x0000
-file=weights.init.pt|6833722
-file=metadata.enc|359
