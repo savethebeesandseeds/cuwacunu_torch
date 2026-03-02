@@ -464,7 +464,7 @@ template <typename Datatype_t,
 
 template <typename Datatype_t,
           typename Sampler_t = torch::data::samplers::SequentialSampler>
-[[nodiscard]] inline board_binding_run_record_t invoke_board_binding_run_from_snapshot(
+[[nodiscard]] inline board_binding_run_record_t run_binding_snapshot(
     const cuwacunu::iitepi::board_hash_t& board_hash,
     const std::string& board_binding_id,
     const std::shared_ptr<const cuwacunu::iitepi::board_record_t>& board_itself,
@@ -492,7 +492,7 @@ template <typename Datatype_t,
   }
 }
 
-[[nodiscard]] inline board_binding_run_record_t invoke_board_binding_run_from_snapshot(
+[[nodiscard]] inline board_binding_run_record_t run_binding_snapshot(
     const cuwacunu::iitepi::board_hash_t& board_hash,
     const std::string& board_binding_id,
     const std::shared_ptr<const cuwacunu::iitepi::board_record_t>& board_itself,
@@ -521,19 +521,20 @@ template <typename Datatype_t,
 
 template <typename Datatype_t,
           typename Sampler_t = torch::data::samplers::SequentialSampler>
-[[nodiscard]] inline board_binding_run_record_t invoke_board_binding_run_from_locked_runtime(
-    std::optional<std::string> board_binding_id = std::nullopt,
+[[nodiscard]] inline board_binding_run_record_t run_binding(
+    const std::string& board_binding_id,
     torch::Device device = torch::kCPU) {
   board_binding_run_record_t out{};
   try {
+    const std::string binding_id = board_init_trim_ascii_copy(board_binding_id);
+    if (!has_non_ws_text(binding_id)) {
+      out.error = "run_binding requires non-empty board_binding_id";
+      return out;
+    }
     const auto board_hash = cuwacunu::iitepi::board_space_t::locked_board_hash();
-    const std::string binding_id = board_binding_id.has_value()
-                                       ? *board_binding_id
-                                       : cuwacunu::iitepi::board_space_t::
-                                             locked_board_binding_id();
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
-    return invoke_board_binding_run_from_snapshot<Datatype_t, Sampler_t>(
+    return run_binding_snapshot<Datatype_t, Sampler_t>(
         board_hash, binding_id, board_itself, device);
   } catch (const std::exception& e) {
     out.error = std::string(kBoardBindingRunCanonicalAction) + " exception: " +
@@ -546,19 +547,20 @@ template <typename Datatype_t,
   }
 }
 
-[[nodiscard]] inline board_binding_run_record_t invoke_board_binding_run_from_locked_runtime(
-    std::optional<std::string> board_binding_id = std::nullopt,
+[[nodiscard]] inline board_binding_run_record_t run_binding(
+    const std::string& board_binding_id,
     torch::Device device = torch::kCPU) {
   board_binding_run_record_t out{};
   try {
+    const std::string binding_id = board_init_trim_ascii_copy(board_binding_id);
+    if (!has_non_ws_text(binding_id)) {
+      out.error = "run_binding requires non-empty board_binding_id";
+      return out;
+    }
     const auto board_hash = cuwacunu::iitepi::board_space_t::locked_board_hash();
-    const std::string binding_id = board_binding_id.has_value()
-                                       ? *board_binding_id
-                                       : cuwacunu::iitepi::board_space_t::
-                                             locked_board_binding_id();
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
-    return invoke_board_binding_run_from_snapshot(
+    return run_binding_snapshot(
         board_hash, binding_id, board_itself, device);
   } catch (const std::exception& e) {
     out.error = std::string(kBoardBindingRunCanonicalAction) + " exception: " +
@@ -622,3 +624,25 @@ template <typename Datatype_t,
 }
 
 }  // namespace tsiemene
+
+namespace cuwacunu::iitepi {
+
+using board_contract_init_record_t = ::tsiemene::board_contract_init_record_t;
+using board_binding_run_record_t = ::tsiemene::board_binding_run_record_t;
+
+template <typename Datatype_t,
+          typename Sampler_t = torch::data::samplers::SequentialSampler>
+[[nodiscard]] inline board_binding_run_record_t run_binding(
+    const std::string& board_binding_id,
+    torch::Device device = torch::kCPU) {
+  return ::tsiemene::run_binding<Datatype_t, Sampler_t>(
+      board_binding_id, device);
+}
+
+[[nodiscard]] inline board_binding_run_record_t run_binding(
+    const std::string& board_binding_id,
+    torch::Device device = torch::kCPU) {
+  return ::tsiemene::run_binding(board_binding_id, device);
+}
+
+}  // namespace cuwacunu::iitepi

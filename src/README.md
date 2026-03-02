@@ -1,50 +1,35 @@
-This is just a prompt i didn't want to miss, 
+# Source Tree Overview
 
+This `src/` directory contains the core C++ implementation of **Cuwacunu**, an AI-driven trading and portfolio runtime.
 
+At a high level, it combines:
+- market/exchange integration
+- configuration and DSL-driven runtime wiring
+- model training and inference components
+- terminal UI and diagnostics
 
-We need to recap, have a conversation about this project, i feel like we are close but we still have a long way to go. 
+## Main Layout
 
-So far, we have all the data and the broker communication, the representation and the value estimation networks. We lack an RL setup for the enviroment, and a good vizualization framework. 
+- `include/`: public headers and module APIs.
+- `impl/`: module implementations.
+- `tests/`: benchmark-style and functional test targets.
+- `config/`: runtime configs, DSL grammars, and instruction files.
+- `Makefile`, `Makefile.config`: top-level build orchestration for `src/`.
 
-You know what we really lack, a good representation framework. ---A champion quorum to drawing. 
+## Core Modules
 
-I want a representation framework that does not need to be compiled, a DSL grammar for the representation and drawing. ---we already have a parser core, we would need the language specification an example instruction. 
+- `piaabo`: shared utilities (config parsing, encryption, JSON/files, compat helpers).
+- `iitepi`: runtime registry for board/contract/wave configuration and locking.
+- `camahjucunu`: data/exchange connectivity and typed trading/domain models.
+- `jkimyei`: training setup/orchestration (optimizers, schedulers, losses, schema).
+- `wikimyei`: model inference and representation-learning components (e.g. VICReg/MDN).
+- `iinuji`: terminal/UI rendering and command views for interactive inspection.
+- `tsiemene`: DSL and runtime directive infrastructure used across board/contract flows.
 
-And make the GUI rounded to be the parser (see G+7 bellow). The navigation commands are a set of two keys or more. So long as the leftside is pressed, one awaits a number then to navigate, for example F+n is to press F and then press a number, same with G, e.g. the long command F+64 ---But F+p means nothing, that way we avoid someone simply being a fast writer. 
+## Build and Test (from `src/`)
 
-You'd have to search the near conversation history for the iinuji files, those are the ncurses basic wrappers. Everything we drawn by a reference artifact to a drawing specification domain language (See G+7 bellow). 
-
-That DSL implementation could assume everything mostly draws like: 
-&Arg1 .the application state artifact or pointer (in the global context). 
-&Arg2,Arg3,Arg4,.... the drawing artifacts for the current F+n context ---each Arg has .triggers, and a presenter function that yields [starting coordinate, and z level, & scale] for the actual drawing. 
-
-
-All these can be thread safeguarded so the artifacts can run in concurrency, later.  
-
-The DSL mostly specifies Arg2,Arg3,Arg,..., ---Arg1 is global and should not be expose to the DSL setup, just referenced. Arg2 can be, for example, referencing Arg.1.dataloader to yield the drwaing of a curve. 
-
-Arg1, has these: 
-
-Arg1. intention dictionary (a null void for now, we'll work on the tsodao later) 
-Arg1. dataloader
-Arg1. representation network
-Arg1. value estimation network
-
-
-Now, i understand is confusing on my side to have to write the things i think, but stay with me for a while, see, ---earlier mention of F+n functions, meant these. 
-
-As the Bakus Naur form has many instructions and one unified DSL language, these are some of the examples for what would specify things like: 
-> (F+2) intention dictionary screen 
-> (F+3) the dataloader screen
-> (F+4) the representation network screen
-> (F+5) the value estimation network screen
-> (F+6) the reinforment setup screen
-> (F+6) the evaluation screen
-
-G+n screen changes are not exposed with DSL, they are more robust and steady. 
-The used can toggle the G+n combo on any screen to see: 
-> (G+9) current F's section logs screen
-> (G+8) current F's section criptografic guarantees (mockup, well talk about the tsodao later)
-> (G+7) current F's DSL 
-
-Help me get this to an excelent finish, im really eager to then continue and share with you the designs of the tsodao. 
+```bash
+make modules   # build core modules
+make all       # build modules + bundles
+make tests     # run test dispatcher
+```
