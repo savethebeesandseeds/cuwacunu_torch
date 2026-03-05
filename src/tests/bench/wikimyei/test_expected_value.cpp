@@ -45,7 +45,7 @@ static std::string replace_once(std::string text, const std::string& from, const
 static std::string rewrite_device_to_cpu(std::string text) {
   const std::size_t key_pos = text.find("device:str");
   TORCH_CHECK(key_pos != std::string::npos,
-              "[test_expected_value] missing device:str row in ini text.");
+              "[test_expected_value] missing device:str row in key_value dsl text.");
   const std::size_t line_start =
       (text.rfind('\n', key_pos) == std::string::npos)
           ? 0
@@ -81,28 +81,28 @@ int main() {
   const auto base_contract_itself =
       cuwacunu::iitepi::contract_space_t::contract_itself(base_contract_hash);
   const std::string resolved_contract_path = base_contract_itself->config_file_path;
-  const std::string base_vicreg_ini =
+  const std::string base_vicreg_dsl =
       base_contract_itself->get<std::string>("SPECS", "vicreg_config_filename");
-  const std::string base_value_ini =
+  const std::string base_value_dsl =
       base_contract_itself->get<std::string>("SPECS", "value_estimation_config_filename");
 
   const std::filesystem::path cpu_contract_dir = "/tmp/test_expected_value_contract_cpu";
   std::filesystem::create_directories(cpu_contract_dir);
-  const std::filesystem::path cpu_vicreg_ini = cpu_contract_dir / "wikimyei_vicreg.cpu.ini";
-  const std::filesystem::path cpu_value_ini = cpu_contract_dir / "wikimyei_value_estimation.cpu.ini";
+  const std::filesystem::path cpu_vicreg_dsl = cpu_contract_dir / "wikimyei_vicreg.cpu.dsl";
+  const std::filesystem::path cpu_value_dsl = cpu_contract_dir / "wikimyei_value_estimation.cpu.dsl";
   const std::filesystem::path cpu_contract = cpu_contract_dir / "default.board.contract.cpu.config";
 
   write_text_file(
-      cpu_vicreg_ini,
-      rewrite_device_to_cpu(read_text_file(std::filesystem::path(base_vicreg_ini))));
+      cpu_vicreg_dsl,
+      rewrite_device_to_cpu(read_text_file(std::filesystem::path(base_vicreg_dsl))));
   write_text_file(
-      cpu_value_ini,
-      rewrite_device_to_cpu(read_text_file(std::filesystem::path(base_value_ini))));
+      cpu_value_dsl,
+      rewrite_device_to_cpu(read_text_file(std::filesystem::path(base_value_dsl))));
   std::string cpu_contract_text = read_text_file(resolved_contract_path);
   cpu_contract_text =
-      replace_once(cpu_contract_text, base_vicreg_ini, cpu_vicreg_ini.string());
+      replace_once(cpu_contract_text, base_vicreg_dsl, cpu_vicreg_dsl.string());
   cpu_contract_text =
-      replace_once(cpu_contract_text, base_value_ini, cpu_value_ini.string());
+      replace_once(cpu_contract_text, base_value_dsl, cpu_value_dsl.string());
   write_text_file(cpu_contract, cpu_contract_text);
 
   const auto contract_hash =
@@ -192,7 +192,7 @@ int main() {
               "[test_expected_value] PerEpoch scheduler should step once per epoch.");
   PRINT_TOCK_ms(fit_value_estimation_);
 
-  const std::filesystem::path base_jk_specs = "/cuwacunu/src/config/instructions/jkimyei_specs.dsl";
+  const std::filesystem::path base_jk_specs = "/cuwacunu/src/config/instructions/jkimyei.representation.vicreg.dsl";
   const std::string base_specs_text = read_text_file(base_jk_specs);
 
   // Scheduler mode semantics: PerBatch

@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -21,10 +22,12 @@
 #include <torch/torch.h>
 
 #include "tsiemene/tsi.wikimyei.representation.h"
+#include "tsiemene/tsi.cargo.validation.h"
 
 // Artifact metadata helpers:
 #include "hashimyei/hashimyei_artifacts.h"
 #include "hashimyei/hashimyei_driver.h"
+#include "piaabo/torch_compat/network_analytics.h"
 
 // Your existing VICReg implementation:
 #include "wikimyei/representation/VICReg/vicreg_4d.h"
@@ -40,19 +43,6 @@ namespace tsiemene {
 update_wikimyei_representation_vicreg_init(
     std::string hashimyei,
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model = nullptr);
-
-// packed: [B,C,T,D+1] where last slot is mask (0/1)
-inline void unpack_vicreg_packed_batch(const torch::Tensor& packed,
-                                       int D,
-                                       torch::Tensor& data_out,
-                                       torch::Tensor& mask_out) {
-  TORCH_CHECK(packed.defined(), "[tsi.vicreg] packed batch undefined");
-  TORCH_CHECK(packed.dim() == 4, "[tsi.vicreg] packed must be [B,C,T,D+1]");
-  TORCH_CHECK(packed.size(3) == D + 1, "[tsi.vicreg] packed.size(3) must be D+1");
-
-  data_out = packed.narrow(/*dim=*/3, /*start=*/0, /*length=*/D);
-  mask_out = (packed.select(/*dim=*/3, /*index=*/D) > 0.5); // bool [B,C,T]
-}
 
 class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
  public:
@@ -111,8 +101,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
 
   [[nodiscard]] std::span<const DirectiveSpec> directives() const noexcept override {
     static constexpr DirectiveSpec kDirectives[] = {
-      directive(IN_STEP, DirectiveDir::In, KindSpec::Tensor(), "packed [B,C,T,D+1] (last=D is mask)"),
-      directive(OUT_PAYLOAD, DirectiveDir::Out, KindSpec::Tensor(), "representation encoding"),
+      directive(IN_STEP, DirectiveDir::In, KindSpec::Cargo(), "observation cargo (features/mask/future/keys/stats/encoding)"),
+      directive(OUT_PAYLOAD, DirectiveDir::Out, KindSpec::Cargo(), "observation cargo with representation encoding"),
       directive(OUT_LOSS, DirectiveDir::Out, KindSpec::Tensor(), "loss scalar (only when train=true)"),
       directive(OUT_META, DirectiveDir::Out, KindSpec::String(), "runtime trace/meta stream"),
     };
@@ -120,40 +110,66 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   }
 
   void set_train(bool on) noexcept {
+    if (train_ && !on) {
+      try {
+        if (model_.finalize_pending_training_step(model_.training_policy.swa_start_iter)) {
+          epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
+          ++epoch_optimizer_steps_;
+        }
+        apply_epoch_training_policy_();
+      } catch (const std::exception& e) {
+        log_warn("[tsi.vicreg] set_train(false) flush failed: %s\n", e.what());
+      } catch (...) {
+        log_warn("[tsi.vicreg] set_train(false) flush failed with unknown error\n");
+      }
+    }
     train_ = on;
   }
 
   void step(const Wave& wave, Ingress in, BoardContext&, Emitter& out) override {
     if (in.directive != IN_STEP) return;
-    if (in.signal.kind != PayloadKind::Tensor) return;
+    if (in.signal.kind != PayloadKind::Cargo) return;
 
     {
       std::ostringstream oss;
-      oss << "vicreg.in packed=" << tensor_shape_(in.signal.tensor)
+      oss << "vicreg.in kind=" << kind_token(in.signal.kind)
+          << " signal=" << signal_shape_(in.signal)
           << " train=" << (train_ ? "true" : "false")
           << " use_swa=" << (use_swa_ ? "true" : "false")
           << " detach_to_cpu=" << (detach_to_cpu_ ? "true" : "false");
       emit_meta_(wave, out, oss.str());
     }
 
-    torch::Tensor data, mask;
-    unpack_vicreg_packed_batch(in.signal.tensor, model_.D, data, mask);
+    using sample_t = cuwacunu::camahjucunu::data::observation_sample_t;
+    std::string cargo_error;
+    if (!validate_observation_cargo(in.signal.cargo, CargoValidationStage::VicregIn, &cargo_error)) {
+      emit_meta_(wave, out, std::string("cargo.invalid stage=vicreg.in reason=") + cargo_error);
+      return;
+    }
+    const auto& sample = *in.signal.cargo;
+    torch::Tensor data = sample.features;
+    torch::Tensor mask = sample.mask;
+    std::shared_ptr<sample_t> out_sample = std::make_shared<sample_t>(sample);
 
     data = data.to(model_.device);
     mask = mask.to(model_.device);
 
-    // Always emit representation.
-    auto repr = model_.encode(data, mask,
-                              /*use_swa=*/use_swa_,
-                              /*detach_to_cpu=*/detach_to_cpu_);
+    // Always emit representation cargo.
+    auto repr = model_.encode(
+        data, mask, /*use_swa=*/use_swa_, /*detach_to_cpu=*/detach_to_cpu_);
     if (detach_to_cpu_) repr = repr.cpu();
+    out_sample->encoding = repr;
+    if (!validate_observation_cargo(out_sample, CargoValidationStage::VicregOut, &cargo_error)) {
+      emit_meta_(wave, out, std::string("cargo.invalid stage=vicreg.out reason=") + cargo_error);
+      return;
+    }
     const std::string repr_shape = tensor_shape_(repr);
-    out.emit_tensor(wave, OUT_PAYLOAD, std::move(repr));
-    emit_meta_(wave, out, std::string("vicreg.out payload=") + repr_shape);
+    out.emit_cargo(wave, OUT_PAYLOAD, std::move(out_sample));
+    emit_meta_(wave, out, std::string("vicreg.out payload=encoding") + repr_shape);
 
     if (train_) {
       auto step_result = model_.train_one_batch(
-          data, mask, model_.jk_swa_start_iter, /*verbose=*/false);
+          data, mask, model_.training_policy.swa_start_iter, /*verbose=*/false);
       if (step_result.loss.defined()) {
         TORCH_CHECK(
             torch::isfinite(step_result.loss).all().item<bool>(),
@@ -167,6 +183,10 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
                    std::string("vicreg.out loss=") + loss_shape +
                        " optimizer_step=" +
                        (step_result.optimizer_step_applied ? "true" : "false"));
+        if (step_result.optimizer_step_applied) {
+          epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
+          ++epoch_optimizer_steps_;
+        }
       } else {
         emit_meta_(wave, out, "vicreg.out loss=skipped");
       }
@@ -174,22 +194,70 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   }
 
   void on_epoch_end(BoardContext&) override {
-    (void)model_.finalize_pending_training_step(model_.jk_swa_start_iter);
+    if (!train_) return;
+    if (model_.finalize_pending_training_step(model_.training_policy.swa_start_iter)) {
+      epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
+      ++epoch_optimizer_steps_;
+    }
+    apply_epoch_training_policy_();
+    const auto analytics =
+        cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
+            model_);
+    log_info(
+        "[tsi.vicreg][network_analytics] epoch_end finite=%.6f std=%.6f near_zero=%.6f entropy=%.6f layer_cv=%.6f max_abs=%.6f\n",
+        analytics.finite_ratio,
+        analytics.stddev,
+        analytics.near_zero_ratio,
+        analytics.abs_energy_entropy,
+        analytics.layer_rms_cv,
+        analytics.max_abs);
   }
 
   void reset(BoardContext&) override {
     // Keep training counters/state across epochs and only commit any
     // leftover accumulation tail before the next epoch starts.
-    (void)model_.finalize_pending_training_step(model_.jk_swa_start_iter);
+    if (!train_) return;
+    if (model_.finalize_pending_training_step(model_.training_policy.swa_start_iter)) {
+      epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
+      ++epoch_optimizer_steps_;
+    }
+    if (epoch_optimizer_steps_ > 0) {
+      // Safety flush in case an epoch boundary was missed upstream.
+      apply_epoch_training_policy_();
+    }
   }
 
  private:
+  void apply_epoch_training_policy_() {
+    if (epoch_optimizer_steps_ <= 0) return;
+
+    if (model_.optimizer_threshold_reset >= 0 && model_.optimizer) {
+      cuwacunu::jkimyei::optim::clamp_adam_step(
+          *model_.optimizer,
+          static_cast<int64_t>(model_.optimizer_threshold_reset));
+    }
+
+    const double metric =
+        epoch_loss_sum_ / static_cast<double>(epoch_optimizer_steps_);
+    if (model_.lr_sched) {
+      const auto mode = model_.lr_sched->mode;
+      if (mode == cuwacunu::jkimyei::LRSchedulerAny::Mode::PerEpoch) {
+        model_.lr_sched->step();
+      } else if (mode ==
+                 cuwacunu::jkimyei::LRSchedulerAny::Mode::PerEpochWithMetric) {
+        model_.lr_sched->step(metric);
+      }
+    }
+
+    epoch_loss_sum_ = 0.0;
+    epoch_optimizer_steps_ = 0;
+  }
+
   void apply_runtime_policy_from_jkimyei_(bool requested_train,
                                           bool requested_use_swa,
                                           bool requested_detach_to_cpu) {
-    const bool jk_train = model_.jk_vicreg_train;
-    const bool jk_use_swa = model_.jk_vicreg_use_swa;
-    const bool jk_detach_to_cpu = model_.jk_vicreg_detach_to_cpu;
+    const bool jk_use_swa = model_.training_policy.vicreg_use_swa;
+    const bool jk_detach_to_cpu = model_.training_policy.vicreg_detach_to_cpu;
 
     if (requested_use_swa != jk_use_swa ||
         requested_detach_to_cpu != jk_detach_to_cpu) {
@@ -199,13 +267,6 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
           requested_detach_to_cpu ? "detach" : "keep_device",
           jk_use_swa ? "swa" : "base",
           jk_detach_to_cpu ? "detach" : "keep_device",
-          component_name_.c_str());
-    }
-    if (requested_train != jk_train) {
-      log_warn(
-          "[tsi.vicreg] wave TRAIN=%s overrides jkimyei vicreg_train=%s for component '%s'\n",
-          requested_train ? "train" : "eval",
-          jk_train ? "train" : "eval",
           component_name_.c_str());
     }
 
@@ -227,6 +288,22 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     return oss.str();
   }
 
+  static std::string signal_shape_(const Signal& s) {
+    if (s.kind == PayloadKind::Cargo) {
+      if (!s.cargo) return ":cargo null";
+      const auto& c = *s.cargo;
+      std::ostringstream oss;
+      oss << ":cargo features=" << tensor_shape_(c.features)
+          << " mask=" << tensor_shape_(c.mask)
+          << " encoding=" << tensor_shape_(c.encoding);
+      return oss.str();
+    }
+    if (s.kind == PayloadKind::String) {
+      return ":str bytes=" + std::to_string(s.text.size());
+    }
+    return tensor_shape_(s.tensor);
+  }
+
   void emit_meta_(const Wave& wave, Emitter& out, std::string msg) const {
     out.emit_string(wave, OUT_META, std::move(msg));
   }
@@ -239,6 +316,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   bool train_{false};
   bool use_swa_{true};
   bool detach_to_cpu_{true};
+  double epoch_loss_sum_{0.0};
+  int epoch_optimizer_steps_{0};
 
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D model_;
 };
@@ -381,6 +460,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   const fs::path weights_file = action.artifact_directory / "weights.init.pt";
+  fs::path weights_network_analytics_file{};
+  bool wrote_weights_network_analytics_file = false;
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
     auto* model = static_cast<cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(action.object_handle);
@@ -389,6 +470,21 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     } catch (const std::exception& e) {
       if (error) *error = "vicreg save failed: " + std::string(e.what());
       return false;
+    }
+
+    std::string report_error;
+    if (cuwacunu::piaabo::torch_compat::write_network_analytics_sidecar_for_checkpoint(
+            *model,
+            weights_file,
+            &weights_network_analytics_file,
+            {},
+            &report_error)) {
+      wrote_weights_network_analytics_file = true;
+    } else {
+      log_warn(
+          "[tsi.vicreg] network analytics sidecar skipped for '%s': %s\n",
+          weights_file.string().c_str(),
+          report_error.c_str());
     }
   } else {
     std::string io_error;
@@ -412,6 +508,11 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   metadata << "hashimyei=" << action.artifact_id << "\n";
   metadata << "canonical_base=" << canonical_base << "\n";
   metadata << "weights_file=" << weights_file.filename().string() << "\n";
+  if (wrote_weights_network_analytics_file) {
+    metadata << "weights_network_analytics_file="
+             << weights_network_analytics_file.filename().string()
+             << "\n";
+  }
 
   bool metadata_encrypted = false;
   bool metadata_plaintext_fallback = false;
@@ -458,6 +559,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       };
   append_manifest_file_if_present(action.artifact_directory / "metadata.enc");
   append_manifest_file_if_present(action.artifact_directory / "metadata.txt");
+  if (wrote_weights_network_analytics_file) {
+    append_manifest_file_if_present(weights_network_analytics_file);
+  }
 
   std::string manifest_error;
   if (!cuwacunu::hashimyei::write_artifact_manifest(action.artifact_directory, manifest, &manifest_error)) {
@@ -529,7 +633,19 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     try {
       model->load(weights_file.string());
     } catch (const std::exception& e) {
-      if (error) *error = "vicreg load failed: " + std::string(e.what());
+      const std::string load_error = std::string(e.what());
+      const bool cuda_runtime_only_failure =
+          load_error.find("cudaGetDeviceCount") != std::string::npos ||
+          load_error.find("cuda unavailable") != std::string::npos ||
+          load_error.find("operation not supported on this OS") != std::string::npos;
+      if (cuda_runtime_only_failure) {
+        log_warn(
+            "[tsi.vicreg] artifact load skipped (cuda runtime unavailable). "
+            "Using fresh-initialized model for this run.\n");
+        if (error) error->clear();
+        return true;
+      }
+      if (error) *error = "vicreg load failed: " + load_error;
       return false;
     }
   }

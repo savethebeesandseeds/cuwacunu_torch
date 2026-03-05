@@ -26,7 +26,8 @@ inline WarpBaseCurve parse_curve(const std::string& s) {
  * Convert a configuration table into a vector<WarpPreset>.
  *
  * Required columns:
- *   - "curve" OR "kind"           (string)
+ *   - "name"                      (string)
+ *   - "active"                    (bool)
  *   - "curve_param"               (double)
  *   - "noise_scale"               (double)
  *   - "smoothing_kernel_size"     (long, >=1; recommend odd)
@@ -36,7 +37,10 @@ inline WarpBaseCurve parse_curve(const std::string& s) {
  *   - "channel_dropout_prob"      (double in [0,1])
  *
  * Optional metadata columns:
- *   - "augmentation_set"
+ *   - "component_id"
+ *   - "component_type"
+ *   - "profile_id"
+ *   - "profile_row_id"
  *   - "comment"
  *
  * Any missing/malformed value throws with a precise message.
@@ -54,8 +58,12 @@ make_warp_presets_from_table(
     // Enforce required keys while allowing stable metadata fields from jkimyei materialization.
     const std::unordered_set<std::string> allowed_columns{
         ROW_ID_COLUMN_HEADER,
-        "curve",
-        "kind",
+        "component_id",
+        "component_type",
+        "profile_id",
+        "profile_row_id",
+        "name",
+        "active",
         "curve_param",
         "noise_scale",
         "smoothing_kernel_size",
@@ -63,13 +71,11 @@ make_warp_presets_from_table(
         "value_jitter_std",
         "time_mask_band_frac",
         "channel_dropout_prob",
-        "augmentation_set",
         "comment"};
     std::vector<std::string> missing_columns{};
-    if (!row.count("curve") && !row.count("kind")) {
-      missing_columns.emplace_back("curve|kind");
-    }
-    for (const char* key : {"curve_param",
+    for (const char* key : {"name",
+                            "active",
+                            "curve_param",
                             "noise_scale",
                             "smoothing_kernel_size",
                             "point_drop_prob",
@@ -100,11 +106,9 @@ make_warp_presets_from_table(
     }
 
     try {
-      const auto curve_str = [&]() -> std::string {
-        const auto curve_it = row.find("curve");
-        if (curve_it != row.end()) return curve_it->second;
-        return require_column(row, "kind");
-      }();
+      const auto curve_name = require_column(row, "name");
+      const auto active = to_bool(require_column(row, "active"));
+      if (!active) continue;
       const auto curve_param = to_double(require_column(row, "curve_param"));
       const auto noise_scale = to_double(require_column(row, "noise_scale"));
       const auto smoothing   = to_long  (require_column(row, "smoothing_kernel_size"));
@@ -135,7 +139,7 @@ make_warp_presets_from_table(
       //       validate here and ask the user to fix the table.
 
       WarpPreset p{
-        /* curve */               parse_curve(curve_str),
+        /* curve */               parse_curve(curve_name),
         /* curve_param */         curve_param,
         /* noise_scale */         noise_scale,
         /* smoothing_kernel_size*/smoothing,
@@ -150,6 +154,11 @@ make_warp_presets_from_table(
         std::string("(make_warp_presets_from_table) Failed to parse row: ") + e.what()
       );
     }
+  }
+
+  if (presets.empty()) {
+    throw std::runtime_error(
+      "(make_warp_presets_from_table) no active augmentation rows found");
   }
 
   return presets;

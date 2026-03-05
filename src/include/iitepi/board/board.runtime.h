@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "piaabo/dlogs.h"
 #include "iitepi/board/board.contract.circuit.h"
 
 namespace tsiemene {
@@ -21,6 +22,21 @@ struct Event {
   Tsi* tsi{};
   Wave wave{};
   Ingress in{};
+};
+
+enum class RuntimeTraceLevel : std::uint8_t {
+  Off = 0,
+  Step = 1,
+  Verbose = 2,
+};
+
+struct RuntimeFlowControl {
+  // Off: disable runtime trace meta emitted by board runtime.
+  // Step: step/step.done trace only.
+  // Verbose: step trace plus per-route and drop trace.
+  RuntimeTraceLevel trace_level{RuntimeTraceLevel::Verbose};
+  // 0 means unbounded queue growth.
+  std::size_t max_queue_size{0};
 };
 
 struct RouteKey {
@@ -113,7 +129,10 @@ struct CompiledCircuit {
 
 class CircuitEmitter final : public Emitter {
  public:
-  CircuitEmitter(const CompiledCircuit& cc, std::deque<Event>& q) : cc_(cc), q_(q) {}
+  CircuitEmitter(const CompiledCircuit& cc,
+                 std::deque<Event>& q,
+                 RuntimeFlowControl flow)
+      : cc_(cc), q_(q), flow_(flow) {}
 
   // Set by runtime before calling tsi.step()
   void set_source(Tsi* s) noexcept {
@@ -122,6 +141,7 @@ class CircuitEmitter final : public Emitter {
   }
 
   void trace_step(const Event& e) {
+    if (!trace_step_enabled_()) return;
     std::ostringstream oss;
     const DirectiveSpec* in_spec = find_directive(*e.tsi, e.in.directive, DirectiveDir::In);
     oss << "step tsi=" << e.tsi->instance_name()
@@ -132,10 +152,14 @@ class CircuitEmitter final : public Emitter {
   }
 
   void trace_step_done(const Event& e) {
+    if (!trace_step_enabled_()) return;
     std::ostringstream oss;
     oss << "step.done tsi=" << e.tsi->instance_name()
         << " emits=" << emits_this_step_
         << " queue=" << q_.size();
+    if (backpressure_dropped_ > 0) {
+      oss << " dropped_bp=" << backpressure_dropped_;
+    }
     emit_meta_(e.wave, oss.str());
   }
 
@@ -150,27 +174,31 @@ class CircuitEmitter final : public Emitter {
     if (it != cc_.routes.end()) {
       for (const RouteTarget& t : it->second) {
         if (!is_meta) {
-          const DirectiveSpec* out_spec = find_directive(*src_, out_directive, DirectiveDir::Out);
-          const DirectiveSpec* in_spec = find_directive(*t.tsi, t.directive, DirectiveDir::In);
-          std::ostringstream oss;
-          oss << "route from=" << src_->instance_name()
-              << "[" << out_directive << (out_spec ? kind_token(out_spec->kind.kind) : ":unknown") << "]"
-              << " to=" << t.tsi->instance_name()
-              << "[" << t.directive << (in_spec ? kind_token(in_spec->kind.kind) : ":unknown") << "]"
-              << " signal={" << summarize_signal_(out) << "}";
-          emit_meta_(wave, oss.str());
+          if (trace_verbose_enabled_()) {
+            const DirectiveSpec* out_spec = find_directive(*src_, out_directive, DirectiveDir::Out);
+            const DirectiveSpec* in_spec = find_directive(*t.tsi, t.directive, DirectiveDir::In);
+            std::ostringstream oss;
+            oss << "route from=" << src_->instance_name()
+                << "[" << out_directive << (out_spec ? kind_token(out_spec->kind.kind) : ":unknown") << "]"
+                << " to=" << t.tsi->instance_name()
+                << "[" << t.directive << (in_spec ? kind_token(in_spec->kind.kind) : ":unknown") << "]"
+                << " signal={" << summarize_signal_(out) << "}";
+            emit_meta_(wave, oss.str());
+          }
         }
-        q_.push_back(Event{
+        Event ev{
             .tsi = t.tsi,
             .wave = wave,
             .in = Ingress{.directive = t.directive, .signal = out}, // Signal copy (Tensor is cheap)
-        });
+        };
+        const bool queued = enqueue_with_backpressure_(wave, std::move(ev), out_directive, t, out, is_meta);
         routed = true;
-        if (!is_meta) ++emits_this_step_;
+        if (queued && !is_meta) ++emits_this_step_;
+        if (halted_by_backpressure_) break;
       }
     }
 
-    if (!routed && !is_meta) {
+    if (!routed && !is_meta && trace_verbose_enabled_()) {
       const DirectiveSpec* out_spec = find_directive(*src_, out_directive, DirectiveDir::Out);
       std::ostringstream oss;
       oss << "drop from=" << src_->instance_name()
@@ -180,7 +208,60 @@ class CircuitEmitter final : public Emitter {
     }
   }
 
+  [[nodiscard]] bool halted_by_backpressure() const noexcept {
+    return halted_by_backpressure_;
+  }
+  [[nodiscard]] std::size_t dropped_by_backpressure() const noexcept {
+    return backpressure_dropped_;
+  }
+
  private:
+  [[nodiscard]] bool trace_step_enabled_() const noexcept {
+    return static_cast<int>(flow_.trace_level) >=
+           static_cast<int>(RuntimeTraceLevel::Step);
+  }
+  [[nodiscard]] bool trace_verbose_enabled_() const noexcept {
+    return static_cast<int>(flow_.trace_level) >=
+           static_cast<int>(RuntimeTraceLevel::Verbose);
+  }
+
+  bool enqueue_with_backpressure_(const Wave& wave,
+                                  Event ev,
+                                  DirectiveId out_directive,
+                                  const RouteTarget& target,
+                                  const Signal& out,
+                                  bool is_meta) {
+    if (flow_.max_queue_size > 0 && q_.size() >= flow_.max_queue_size) {
+      ++backpressure_dropped_;
+      if (!warned_backpressure_) {
+        warned_backpressure_ = true;
+        log_warn(
+            "[tsiemene.runtime] queue backpressure reached limit=%zu policy=halt\n",
+            flow_.max_queue_size);
+      }
+      if (!is_meta && trace_verbose_enabled_()) {
+        const DirectiveSpec* out_spec =
+            find_directive(*src_, out_directive, DirectiveDir::Out);
+        const DirectiveSpec* in_spec =
+            find_directive(*target.tsi, target.directive, DirectiveDir::In);
+        std::ostringstream oss;
+        oss << "drop from=" << src_->instance_name()
+            << "[" << out_directive
+            << (out_spec ? kind_token(out_spec->kind.kind) : ":unknown") << "]"
+            << " to=" << target.tsi->instance_name()
+            << "[" << target.directive
+            << (in_spec ? kind_token(in_spec->kind.kind) : ":unknown") << "]"
+            << " signal={" << summarize_signal_(out)
+            << "} reason=queue_backpressure limit=" << flow_.max_queue_size;
+        emit_meta_(wave, oss.str());
+      }
+      halted_by_backpressure_ = true;
+      return false;
+    }
+    q_.push_back(std::move(ev));
+    return true;
+  }
+
   static std::string summarize_signal_(const Signal& s) {
     if (s.kind == PayloadKind::String) {
       constexpr std::size_t kPreview = 48;
@@ -194,6 +275,16 @@ class CircuitEmitter final : public Emitter {
         oss << s.text.substr(0, kPreview) << "...";
       }
       oss << "\"";
+      return oss.str();
+    }
+    if (s.kind == PayloadKind::Cargo) {
+      std::ostringstream oss;
+      oss << ":cargo ";
+      if (!s.cargo) {
+        oss << "null";
+      } else {
+        oss << "ptr=" << static_cast<const void*>(s.cargo.get());
+      }
       return oss.str();
     }
     if (!s.tensor.defined()) {
@@ -235,18 +326,26 @@ class CircuitEmitter final : public Emitter {
 
   const CompiledCircuit& cc_;
   std::deque<Event>& q_;
+  RuntimeFlowControl flow_{};
   Tsi* src_{nullptr};
   std::uint64_t emits_this_step_{0};
   bool in_meta_emit_{false};
+  bool halted_by_backpressure_{false};
+  bool warned_backpressure_{false};
+  std::size_t backpressure_dropped_{0};
 };
 
-inline std::uint64_t run_wave_compiled(const CompiledCircuit& cc, Wave w0, Ingress start, BoardContext& ctx) {
+inline std::uint64_t run_wave_compiled(const CompiledCircuit& cc,
+                                       Wave w0,
+                                       Ingress start,
+                                       BoardContext& ctx,
+                                       RuntimeFlowControl flow = {}) {
   (void)ctx;
   if (!cc.start_tsi) return 0;
   std::deque<Event> q;
   q.push_back(Event{.tsi = cc.start_tsi, .wave = w0, .in = std::move(start)});
 
-  CircuitEmitter emitter(cc, q);
+  CircuitEmitter emitter(cc, q, flow);
 
   std::uint64_t steps = 0;
   Wave continuation_wave = w0;
@@ -265,7 +364,9 @@ inline std::uint64_t run_wave_compiled(const CompiledCircuit& cc, Wave w0, Ingre
       emitter.trace_step_done(e);
       ++steps;
       if (e.tsi == cc.start_tsi) continuation_wave = e.wave;
+      if (emitter.halted_by_backpressure()) break;
     }
+    if (emitter.halted_by_backpressure()) break;
 
     if (!cc.start_tsi) break;
     if (!cc.start_tsi->requests_runtime_continuation()) break;
@@ -279,6 +380,12 @@ inline std::uint64_t run_wave_compiled(const CompiledCircuit& cc, Wave w0, Ingre
         .wave = continuation_wave,
         .in = std::move(follow),
     });
+  }
+  if (emitter.halted_by_backpressure()) {
+    log_warn(
+        "[tsiemene.runtime] execution halted due to queue backpressure (limit=%zu, dropped=%zu)\n",
+        flow.max_queue_size,
+        emitter.dropped_by_backpressure());
   }
   return steps;
 }

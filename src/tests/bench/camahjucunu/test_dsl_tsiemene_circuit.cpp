@@ -43,6 +43,10 @@ int main() {
                 << (board_ok ? "true" : "false");
       if (!board_ok) std::cout << " error=\"" << board_error << "\"";
       std::cout << "\n";
+      if (!board_ok) {
+        std::cerr << "[FAIL] expected primary circuit instruction to be semantically valid\n";
+        return 1;
+      }
     }
 
     {
@@ -52,7 +56,7 @@ int main() {
           "  w_rep = tsi.wikimyei.representation.vicreg.0x0000\n"
           "  w_log_1 = tsi.sink.log.sys\n"
           "  w_log_2 = tsi.sink.log.sys\n"
-          "  w_source@payload:tensor -> w_rep@step\n"
+          "  w_source@response:cargo -> w_rep@impulse\n"
           "  w_rep@loss:tensor -> w_log_1@info\n"
           "  w_rep@meta:str -> w_log_2@debug\n"
           "}\n";
@@ -138,6 +142,10 @@ int main() {
                 << (resolved_ok ? "true" : "false");
       if (!resolved_ok) std::cout << " error=\"" << resolve_error << "\"";
       std::cout << " count=" << resolved.size() << "\n";
+      if (!resolved_ok) {
+        std::cerr << "[FAIL] expected hop resolution to pass for decoded circuit\n";
+        return 1;
+      }
       for (std::size_t r = 0; r < resolved.size(); ++r) {
         const auto& h = resolved[r];
         std::cout << "  [resolved " << r << "] out["

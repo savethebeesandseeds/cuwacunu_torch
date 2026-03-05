@@ -1,5 +1,5 @@
 /*
-  iitepi_board.dsl
+  iitepi.board.dsl
   ==================
   Purpose:
     Board-level join layer. A board imports contract files and wave files, then

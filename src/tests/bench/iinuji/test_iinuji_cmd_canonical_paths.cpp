@@ -188,7 +188,7 @@ int main() {
     ok = ok && require(
         handlers.dispatch_text(canonical_paths::build_board_select_index(1), push_info, push_warn, push_err),
         "board.select.index canonical path should be handled");
-    if (!st.board.board.contracts.empty()) {
+    if (!st.board.board.circuits.empty()) {
       ok = ok && require(st.screen == ScreenMode::Board,
                          "board.select.index canonical path should switch to board screen");
       ok = ok && require(st.board.selected_circuit == 0,
@@ -197,7 +197,7 @@ int main() {
     ok = ok && require(
         handlers.dispatch_text("iinuji.board.select.index.n1", push_info, push_warn, push_err),
         "board.select.index shorthand should be handled");
-    if (!st.board.board.contracts.empty()) {
+    if (!st.board.board.circuits.empty()) {
       ok = ok && require(st.board.selected_circuit == 0,
                          "board.select.index.n1 shorthand should select first circuit");
     }
@@ -223,7 +223,7 @@ int main() {
     ok = ok && require(
         handlers.dispatch_text("iinuji.board.list()", push_info, push_warn, push_err, append_log),
         "board.list canonical path should be handled");
-    if (!st.board.board.contracts.empty()) {
+    if (!st.board.board.circuits.empty()) {
       ok = ok && require(appends.size() > appends_before_board_list,
                          "board.list canonical path should append list lines");
     }

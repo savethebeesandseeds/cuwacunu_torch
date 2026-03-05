@@ -28,7 +28,6 @@
 
     JK_AUGMENTATION_PARAM(key, value_kind, required, description)
 
-    JK_INI_SELECTOR_FIELD(key, description)
     JK_RUNTIME_OWNED_FIELD(key, description)
 
   value_kind is one of:
@@ -46,19 +45,13 @@ JK_COMPONENT_REQUIRED_FAMILY(VICREG, Optimizer)
 JK_COMPONENT_REQUIRED_FAMILY(VICREG, Scheduler)
 JK_COMPONENT_REQUIRED_FAMILY(VICREG, Loss)
 JK_COMPONENT_REQUIRED_FAMILY(VICREG, ComponentParams)
-JK_COMPONENT_REQUIRED_FAMILY(VICREG, Reproducibility)
-JK_COMPONENT_REQUIRED_FAMILY(VICREG, Numerics)
 JK_COMPONENT_REQUIRED_FAMILY(VICREG, Gradient)
-JK_COMPONENT_REQUIRED_FAMILY(VICREG, Checkpoint)
-JK_COMPONENT_REQUIRED_FAMILY(VICREG, Metrics)
-JK_COMPONENT_REQUIRED_FAMILY(VICREG, DataRef)
 JK_COMPONENT_REQUIRED_FAMILY(VICREG, Augmentations)
 
 JK_COMPONENT_REQUIRED_FAMILY(MDN, Optimizer)
 JK_COMPONENT_REQUIRED_FAMILY(MDN, Scheduler)
 JK_COMPONENT_REQUIRED_FAMILY(MDN, Loss)
 JK_COMPONENT_REQUIRED_FAMILY(MDN, ComponentParams)
-JK_COMPONENT_REQUIRED_FAMILY(MDN, Reproducibility)
 JK_COMPONENT_REQUIRED_FAMILY(MDN, Numerics)
 JK_COMPONENT_REQUIRED_FAMILY(MDN, Gradient)
 JK_COMPONENT_REQUIRED_FAMILY(MDN, Checkpoint)
@@ -67,6 +60,12 @@ JK_COMPONENT_REQUIRED_FAMILY(MDN, DataRef)
 #endif
 
 #ifdef JK_COMPONENT_FORBIDDEN_FAMILY
+JK_COMPONENT_FORBIDDEN_FAMILY(VICREG, Reproducibility)
+JK_COMPONENT_FORBIDDEN_FAMILY(VICREG, Numerics)
+JK_COMPONENT_FORBIDDEN_FAMILY(VICREG, Checkpoint)
+JK_COMPONENT_FORBIDDEN_FAMILY(VICREG, Metrics)
+JK_COMPONENT_FORBIDDEN_FAMILY(VICREG, DataRef)
+JK_COMPONENT_FORBIDDEN_FAMILY(MDN, Reproducibility)
 JK_COMPONENT_FORBIDDEN_FAMILY(MDN, Augmentations)
 #endif
 
@@ -185,10 +184,8 @@ JK_LOSS_PARAM(SmoothL1,           "beta",            Float,  1, "Smooth-L1 trans
 
 /* ---------------------- Component-Type Fields --------------------- */
 #ifdef JK_COMPONENT_PARAM
-JK_COMPONENT_PARAM(VICREG, "vicreg_train",            Bool,      1, "Emit train loss branch")
 JK_COMPONENT_PARAM(VICREG, "vicreg_use_swa",          Bool,      1, "Use SWA encoder path")
 JK_COMPONENT_PARAM(VICREG, "vicreg_detach_to_cpu",    Bool,      1, "Detach payload tensors to CPU")
-JK_COMPONENT_PARAM(VICREG, "augmentation_set",         String,    1, "Augmentation set id")
 JK_COMPONENT_PARAM(VICREG, "swa_start_iter",          Int,       1, "Global iteration where SWA begins")
 JK_COMPONENT_PARAM(VICREG, "optimizer_threshold_reset",Int,       1, "Optimizer pow-reset step (-1 disables)")
 
@@ -208,8 +205,8 @@ JK_REPRO_PARAM("shuffle",       Bool,   1, "Shuffle per epoch")
 #endif
 
 #ifdef JK_NUMERIC_PARAM
-JK_NUMERIC_PARAM("dtype",          String, 1, "Tensor dtype token")
-JK_NUMERIC_PARAM("device",         String, 1, "Execution device token")
+JK_NUMERIC_PARAM("dtype",          String, 0, "Tensor dtype token")
+JK_NUMERIC_PARAM("device",         String, 0, "Execution device token")
 JK_NUMERIC_PARAM("amp",            Bool,   1, "Automatic mixed precision")
 JK_NUMERIC_PARAM("grad_scaler",    Bool,   1, "Gradient scaler usage")
 JK_NUMERIC_PARAM("detect_anomaly", Bool,   1, "Autograd anomaly detection")
@@ -248,7 +245,8 @@ JK_DATA_PARAM("sampler_policy",  String, 1, "Data sampler policy id")
 #endif
 
 #ifdef JK_AUGMENTATION_PARAM
-JK_AUGMENTATION_PARAM("kind",                  String, 1, "Augmentation curve kind")
+JK_AUGMENTATION_PARAM("name",                  String, 1, "Augmentation curve name")
+JK_AUGMENTATION_PARAM("active",                Bool,   1, "Enable this augmentation row")
 JK_AUGMENTATION_PARAM("curve_param",           Float,  1, "Curve shape parameter")
 JK_AUGMENTATION_PARAM("noise_scale",           Float,  1, "Time-warp noise intensity")
 JK_AUGMENTATION_PARAM("smoothing_kernel_size", Int,    1, "Temporal smoothing window")
@@ -259,12 +257,7 @@ JK_AUGMENTATION_PARAM("channel_dropout_prob",  Float,  1, "Per-channel dropout p
 JK_AUGMENTATION_PARAM("comment",               String, 0, "Human-readable note")
 #endif
 
-/* ----------------- INI selectors and runtime-owned ---------------- */
-#ifdef JK_INI_SELECTOR_FIELD
-JK_INI_SELECTOR_FIELD("jkimyei_component_id", "wikimyei_*.ini selects which component id to bind")
-JK_INI_SELECTOR_FIELD("jkimyei_profile_id",   "wikimyei_*.ini selects profile inside component")
-#endif
-
+/* ---------------------- Runtime-owned fields ---------------------- */
 #ifdef JK_RUNTIME_OWNED_FIELD
 JK_RUNTIME_OWNED_FIELD("n_epochs", "Wave-owned episode budget; not part of jkimyei policy")
 JK_RUNTIME_OWNED_FIELD("n_iters",  "Wave-owned hard iteration cap; not part of jkimyei policy")

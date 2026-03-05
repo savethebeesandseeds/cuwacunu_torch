@@ -40,11 +40,21 @@
 <source_assignment_core> ::= <source_path_assignment>
                            | <source_symbol_assignment>
                            | <source_from_assignment>
-                           | <source_to_assignment> ;
+                           | <source_to_assignment>
+                           | <source_workers_assignment>
+                           | <source_force_rebuild_cache_assignment>
+                           | <source_range_warn_batches_assignment>
+                           | <source_sources_dsl_file_assignment>
+                           | <source_channels_dsl_file_assignment> ;
 <source_path_assignment>   ::= "PATH" [<whitespace>] "=" [<whitespace>] <path_value> [<whitespace>] ";" <line_end> ;
 <source_symbol_assignment> ::= "SYMBOL" [<whitespace>] "=" [<whitespace>] <symbol_value> [<whitespace>] ";" <line_end> ;
 <source_from_assignment>   ::= "FROM" [<whitespace>] "=" [<whitespace>] <date_value> [<whitespace>] ";" <line_end> ;
 <source_to_assignment>     ::= "TO" [<whitespace>] "=" [<whitespace>] <date_value> [<whitespace>] ";" <line_end> ;
+<source_workers_assignment> ::= "WORKERS" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
+<source_force_rebuild_cache_assignment> ::= "FORCE_REBUILD_CACHE" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end> ;
+<source_range_warn_batches_assignment> ::= "RANGE_WARN_BATCHES" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
+<source_sources_dsl_file_assignment> ::= "SOURCES_DSL_FILE" [<whitespace>] "=" [<whitespace>] <file_path_value> [<whitespace>] ";" <line_end> ;
+<source_channels_dsl_file_assignment> ::= "CHANNELS_DSL_FILE" [<whitespace>] "=" [<whitespace>] <file_path_value> [<whitespace>] ";" <line_end> ;
 
 <wave_name>              ::= <id_value> ;
 <path_ref>               ::= <path_value> ;
@@ -56,9 +66,11 @@
 <symbol_value>           ::= <symbol_char> {<symbol_char>} ;
 <date_value>             ::= <digit><digit> "." <digit><digit> "." <digit><digit><digit><digit> ;
 <unsigned_int>           ::= <digit> {<digit>} ;
+<file_path_value>        ::= <file_path_char> {<file_path_char>} ;
 
 <id_char>                ::= <letter> | <digit> | "_" | "." | "-" ;
 <symbol_char>            ::= <letter> | <digit> | "_" | "." | "-" ;
+<file_path_char>         ::= <letter> | <digit> | "_" | "." | "-" | "/" | ":" ;
 
 <line_end>               ::= [<whitespace>] <break_block> ;
 <break_block>            ::= {<newline>} ;

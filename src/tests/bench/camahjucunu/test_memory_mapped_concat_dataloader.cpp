@@ -76,7 +76,7 @@ int main() try {
   // Expected global properties
   assert(cds.size().has_value());
   const std::size_t N = cds.size().value();         // number of anchors in intersection
-  const int64_t     Kchannels = 2;
+  const int64_t     C = 2;
   const int64_t     Tp = (int64_t)cds.max_N_past_;
   const int64_t     Tf = (int64_t)cds.max_N_future_;
   const int64_t     key_left  = (int64_t)cds.leftmost_key_value_;
@@ -125,7 +125,7 @@ int main() try {
       cds, cds.SequentialSampler(), cds.SequentialSampler_options(batch_size, workers));
 
     // Introspection from the dataloader must match dataset
-    assert(dl.C_ == Kchannels);
+    assert(dl.C_ == C);
     assert(dl.T_ == Tp);
     // D_ checked once we see a sample below.
 
@@ -139,10 +139,10 @@ int main() try {
 
       // Check per-sample anchors are strictly increasing across the whole epoch.
       for (auto& s : sample_batch) {
-        // Each sample is unbatched: past_keys shape is [Kchannels, Tp]
+        // Each sample is unbatched: past_keys shape is [C, Tp]
         assert(s.past_keys.defined());
         assert(s.past_keys.dim() == 2);
-        assert(s.past_keys.size(0) == Kchannels);
+        assert(s.past_keys.size(0) == C);
         assert(s.past_keys.size(1) == Tp);
 
         const int64_t anchor_key = s.past_keys.index({0, Tp - 1}).item<int64_t>(); // channel 0, time t
@@ -155,9 +155,9 @@ int main() try {
         visited[j] = 1;
 
         // Sanity on features/masks shapes for each sample
-        assert(s.features.size(0)        == Kchannels);
+        assert(s.features.size(0)        == C);
         assert(s.features.size(1)        == Tp);
-        assert(s.future_features.size(0) == Kchannels);
+        assert(s.future_features.size(0) == C);
         assert(s.future_features.size(1) == Tf);
       }
 
@@ -166,10 +166,10 @@ int main() try {
       const int64_t B = coll.features.size(0);
       const int64_t D = coll.features.size(3);  // infer D from collated tensor
       assert(B > 0 && B <= (int64_t)batch_size);
-      assert(coll.features.sizes()        == torch::IntArrayRef({B, Kchannels, Tp, D}));
-      assert(coll.mask.sizes()            == torch::IntArrayRef({B, Kchannels, Tp}));
-      assert(coll.future_features.sizes() == torch::IntArrayRef({B, Kchannels, Tf, D}));
-      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, Kchannels, Tf}));
+      assert(coll.features.sizes()        == torch::IntArrayRef({B, C, Tp, D}));
+      assert(coll.mask.sizes()            == torch::IntArrayRef({B, C, Tp}));
+      assert(coll.future_features.sizes() == torch::IntArrayRef({B, C, Tf, D}));
+      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, C, Tf}));
 
       // Cross-check dataloader’s D_ discovery
       assert(dl.D_ == D);
@@ -199,9 +199,9 @@ int main() try {
         assert(j < N);
         visited[j] = 1;
 
-        assert(s.features.size(0)        == Kchannels);
+        assert(s.features.size(0)        == C);
         assert(s.features.size(1)        == Tp);
-        assert(s.future_features.size(0) == Kchannels);
+        assert(s.future_features.size(0) == C);
         assert(s.future_features.size(1) == Tf);
       }
 
@@ -209,10 +209,10 @@ int main() try {
       const int64_t B = coll.features.size(0);
       const int64_t D = coll.features.size(3);
       assert(B > 0 && B <= (int64_t)batch_size);
-      assert(coll.features.sizes()        == torch::IntArrayRef({B, Kchannels, Tp, D}));
-      assert(coll.mask.sizes()            == torch::IntArrayRef({B, Kchannels, Tp}));
-      assert(coll.future_features.sizes() == torch::IntArrayRef({B, Kchannels, Tf, D}));
-      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, Kchannels, Tf}));
+      assert(coll.features.sizes()        == torch::IntArrayRef({B, C, Tp, D}));
+      assert(coll.mask.sizes()            == torch::IntArrayRef({B, C, Tp}));
+      assert(coll.future_features.sizes() == torch::IntArrayRef({B, C, Tf, D}));
+      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, C, Tf}));
     }
 
     assert(total_seen == N);

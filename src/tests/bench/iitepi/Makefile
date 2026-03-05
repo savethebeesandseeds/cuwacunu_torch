@@ -11,18 +11,22 @@ TEST_DEFAULT_LDLIBS :=
 
 COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
 $(eval $(call TEST_ONEFILE, test_iitepi_board, test_iitepi_board.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_network_analytics, test_network_analytics.cpp, $(COMMON_LINK)))
 
 $(TEST_OUT)/test_iitepi_%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+$(TEST_OUT)/test_network_analytics: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
 .PHONY: all
 all: \
-		$(TEST_OUT)/test_iitepi_board
+		$(TEST_OUT)/test_iitepi_board \
+		$(TEST_OUT)/test_network_analytics
 	@$(LOG_SUCCESS)
 
 .PHONY: run
-run: run-test_iitepi_board
+run: run-test_iitepi_board run-test_network_analytics
 
 .PHONY: clean
 clean:
 	@rm -f \
-	  $(TEST_OUT)/test_iitepi_board
+	  $(TEST_OUT)/test_iitepi_board \
+	  $(TEST_OUT)/test_network_analytics

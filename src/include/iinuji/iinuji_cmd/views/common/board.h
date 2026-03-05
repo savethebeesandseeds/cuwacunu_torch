@@ -20,10 +20,10 @@ inline std::string board_instruction_path_from_config(
   std::string path;
   if (!lookup_contract_config_value(
           "DSL", "tsiemene_circuit_dsl_filename", contract_hash, &path)) {
-    return "src/config/instructions/iitepi_circuit.dsl";
+    return "src/config/instructions/iitepi.contract.circuit.example.dsl";
   }
   if (path.empty()) {
-    return "src/config/instructions/iitepi_circuit.dsl";
+    return "src/config/instructions/iitepi.contract.circuit.example.dsl";
   }
   return path;
 }
@@ -58,11 +58,11 @@ inline bool decode_board_instruction_text(
     }
 
     std::vector<std::vector<cuwacunu::camahjucunu::tsiemene_resolved_hop_t>> resolved;
-    resolved.reserve(board.contracts.size());
-    for (std::size_t i = 0; i < board.contracts.size(); ++i) {
+    resolved.reserve(board.circuits.size());
+    for (std::size_t i = 0; i < board.circuits.size(); ++i) {
       std::vector<cuwacunu::camahjucunu::tsiemene_resolved_hop_t> rh;
       std::string resolve_error;
-      if (!cuwacunu::camahjucunu::resolve_hops(board.contracts[i], &rh, &resolve_error)) {
+      if (!cuwacunu::camahjucunu::resolve_hops(board.circuits[i], &rh, &resolve_error)) {
         if (error) *error = "circuit[" + std::to_string(i) + "] " + resolve_error;
         return false;
       }
@@ -119,8 +119,8 @@ inline BoardState load_board_from_contract_hash(
   }
 
   out.contract_circuit_dsl_sections.clear();
-  out.contract_circuit_dsl_sections.reserve(out.board.contracts.size());
-  for (const auto& c : out.board.contracts) {
+  out.contract_circuit_dsl_sections.reserve(out.board.circuits.size());
+  for (const auto& c : out.board.circuits) {
     out.contract_circuit_dsl_sections.push_back(board_contract_section_render_circuit_dsl(c));
   }
   out.ok = true;

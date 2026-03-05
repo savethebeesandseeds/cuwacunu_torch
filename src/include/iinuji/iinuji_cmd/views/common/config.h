@@ -85,30 +85,42 @@ inline ConfigState load_config_view_from_config(
   struct TabSpec {
     const char* id;
     const char* title;
+    const char* section;
     const char* key;
   };
   static constexpr TabSpec specs[] = {
-      {"observation_sources.bnf", "observation_sources.bnf", "observation_sources_grammar_filename"},
-      {"observation_sources.dsl", "observation_sources.dsl", "observation_sources_dsl_filename"},
-      {"observation_channels.bnf", "observation_channels.bnf", "observation_channels_grammar_filename"},
-      {"observation_channels.dsl", "observation_channels.dsl", "observation_channels_dsl_filename"},
-      {"jkimyei_specs.bnf", "jkimyei_specs.bnf", "jkimyei_specs_grammar_filename"},
-      {"jkimyei_specs.dsl", "jkimyei_specs.dsl", "jkimyei_specs_dsl_filename"},
-      {"tsiemene_circuit.bnf", "tsiemene_circuit.bnf", "tsiemene_circuit_grammar_filename"},
-      {"iitepi_circuit.dsl", "iitepi_circuit.dsl", "tsiemene_circuit_dsl_filename"},
-      {"tsiemene_wave.bnf", "tsiemene_wave.bnf", "tsiemene_wave_grammar_filename"},
-      {"iitepi_wave.dsl", "iitepi_wave.dsl", "tsiemene_wave_dsl_filename"},
-      {"canonical_path.bnf", "canonical_path.bnf", "canonical_path_grammar_filename"},
+      {"tsi.source.dataloader.sources.bnf", "tsi.source.dataloader.sources.bnf",
+       "BNF", "observation_sources_grammar_filename"},
+      {"tsi.source.dataloader.sources.dsl", "tsi.source.dataloader.sources.dsl",
+       "DSL", "observation_sources_dsl_filename"},
+      {"tsi.source.dataloader.channels.bnf", "tsi.source.dataloader.channels.bnf",
+       "BNF", "observation_channels_grammar_filename"},
+      {"tsi.source.dataloader.channels.dsl", "tsi.source.dataloader.channels.dsl",
+       "DSL", "observation_channels_dsl_filename"},
+      {"jkimyei.bnf", "jkimyei.bnf",
+       "BNF", "jkimyei_specs_grammar_filename"},
+      {"jkimyei.representation.vicreg.dsl", "jkimyei.representation.vicreg.dsl",
+       "DSL", "jkimyei_specs_dsl_filename"},
+      {"iitepi.contract.circuit.bnf", "iitepi.contract.circuit.bnf",
+       "BNF", "tsiemene_circuit_grammar_filename"},
+      {"iitepi.contract.circuit.example.dsl", "iitepi.contract.circuit.example.dsl",
+       "DSL", "tsiemene_circuit_dsl_filename"},
+      {"iitepi.wave.bnf", "iitepi.wave.bnf",
+       "BNF", "iitepi_wave_grammar_filename"},
+      {"iitepi.wave.example.dsl", "iitepi.wave.example.dsl",
+       "DSL", "iitepi_wave_dsl_filename"},
+      {"canonical_path.bnf", "canonical_path.bnf",
+       "BNF", "canonical_path_grammar_filename"},
   };
 
   for (const auto& s : specs) {
     std::string path;
-    if (!lookup_contract_config_value("DSL", s.key, contract_hash, &path)) {
+    if (!lookup_config_value(s.section, s.key, contract_hash, &path)) {
       ConfigTabData tab{};
       tab.id = s.id;
       tab.title = s.title;
       tab.ok = false;
-      tab.error = "missing [DSL]." + std::string(s.key);
+      tab.error = "missing [" + std::string(s.section) + "]." + std::string(s.key);
       out.tabs.push_back(std::move(tab));
       continue;
     }
@@ -117,7 +129,7 @@ inline ConfigState load_config_view_from_config(
       tab.id = s.id;
       tab.title = s.title;
       tab.ok = false;
-      tab.error = "empty [DSL] path";
+      tab.error = "empty [" + std::string(s.section) + "] path";
       out.tabs.push_back(std::move(tab));
       continue;
     }

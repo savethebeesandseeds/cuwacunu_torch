@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <set>
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
@@ -35,6 +37,10 @@ using board_ptr_t = std::shared_ptr<const board_record_t>;
 static bool g_board_runtime_lock_initialized = false;
 static std::string g_locked_board_path_canonical;
 static board_hash_t g_locked_board_hash;
+static std::string g_last_requested_board_binding_id;
+static std::size_t g_registered_board_count = 0;
+static board_hash_t g_last_registered_board_hash;
+static std::string g_last_registered_board_path_canonical;
 
 [[nodiscard]] static std::unordered_map<board_hash_t, board_ptr_t>&
 boards_by_hash() {
@@ -87,6 +93,11 @@ static bool validate_board_config_or_terminate(const parsed_config_t& cfg,
 
 template <class T>
 static T parse_scalar_from_string(const std::string& s);
+
+[[nodiscard]] static const char* non_empty_or(const std::string& s,
+                                              const char* fallback) {
+  return has_non_ws_ascii(s) ? s.c_str() : fallback;
+}
 
 [[nodiscard]] static std::string strip_comment(std::string_view line,
                                                bool* in_block_comment) {
@@ -589,6 +600,33 @@ static T parse_scalar_from_string(const std::string& s) {
   return resolved;
 }
 
+[[nodiscard]] static std::string global_required_resolved_path(
+    const char* section,
+    const char* key) {
+  const auto sec_it = config_space_t::config.find(section);
+  if (sec_it == config_space_t::config.end()) {
+    log_fatal("[dconfig] missing global section [%s]\n", section);
+  }
+  const auto key_it = sec_it->second.find(key);
+  if (key_it == sec_it->second.end()) {
+    log_fatal("[dconfig] missing global key <%s> in section [%s]\n", key, section);
+  }
+  const std::string raw = trim_ascii_ws_copy(key_it->second);
+  if (!has_non_ws_ascii(raw)) {
+    log_fatal("[dconfig] empty global key <%s> in section [%s]\n", key, section);
+  }
+  const std::string resolved =
+      resolve_path_from_folder(config_space_t::config_folder, raw);
+  if (!has_non_ws_ascii(resolved)) {
+    log_fatal("[dconfig] unable to resolve global path <%s> in [%s]\n", key, section);
+  }
+  if (!std::filesystem::exists(resolved)) {
+    log_fatal("[dconfig] global dependency path does not exist: %s\n",
+              resolved.c_str());
+  }
+  return resolved;
+}
+
 [[nodiscard]] static std::string snapshot_board_dsl_value_or_empty(
     const parsed_config_t& cfg,
     const char* key) {
@@ -632,8 +670,37 @@ static bool validate_board_config_or_terminate(const parsed_config_t& cfg,
         }
       };
 
-  require_existing_path("DSL", "tsiemene_board_grammar_filename");
-  require_existing_path("DSL", "tsiemene_board_dsl_filename");
+  const auto require_existing_global_path =
+      [&](const char* section, const char* key) {
+        const auto sec_it = config_space_t::config.find(section);
+        if (sec_it == config_space_t::config.end()) {
+          log_warn("Missing global section [%s]\n", section);
+          ok = false;
+          return;
+        }
+        const auto key_it = sec_it->second.find(key);
+        if (key_it == sec_it->second.end()) {
+          log_warn("Missing global key <%s> in section [%s]\n", key, section);
+          ok = false;
+          return;
+        }
+        const std::string raw = trim_ascii_ws_copy(key_it->second);
+        if (!has_non_ws_ascii(raw)) {
+          log_warn("Empty global key <%s> in section [%s]\n", key, section);
+          ok = false;
+          return;
+        }
+        const std::string resolved =
+            resolve_path_from_folder(config_space_t::config_folder, raw);
+        if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
+          log_warn("Configured global path does not exist for <%s> in [%s]: %s\n",
+                   key, section, resolved.c_str());
+          ok = false;
+        }
+      };
+
+  require_existing_global_path("BNF", "iitepi_board_grammar_filename");
+  require_existing_path("DSL", "iitepi_board_dsl_filename");
 
   if (!ok) {
     log_terminate_gracefully("Invalid board configuration, aborting.\n");
@@ -670,16 +737,13 @@ build_board_record_from_board_path(const std::string& board_file_path) {
       canonicalize_path_best_effort(resolved_board_path);
   record->config = parsed;
 
-  const std::string grammar_path = board_required_resolved_path(
-      record->config,
-      record->config_folder,
-      "DSL",
-      "tsiemene_board_grammar_filename");
+  const std::string grammar_path = global_required_resolved_path(
+      "BNF", "iitepi_board_grammar_filename");
   const std::string dsl_path = board_required_resolved_path(
       record->config,
       record->config_folder,
       "DSL",
-      "tsiemene_board_dsl_filename");
+      "iitepi_board_dsl_filename");
 
   std::set<std::string> dependency_paths;
   dependency_paths.insert(record->config_file_path_canonical);
@@ -688,7 +752,7 @@ build_board_record_from_board_path(const std::string& board_file_path) {
 
   record->board.grammar = piaabo::dfiles::readFileToString(grammar_path);
   record->board.dsl =
-      snapshot_board_dsl_value_or_empty(record->config, "tsiemene_board_dsl_text");
+      snapshot_board_dsl_value_or_empty(record->config, "iitepi_board_dsl_text");
   if (!has_non_ws_ascii(record->board.dsl)) {
     record->board.dsl = piaabo::dfiles::readFileToString(dsl_path);
   }
@@ -809,6 +873,47 @@ static void resolve_and_assert_board_dependencies(
 
 }  // namespace
 
+board_space_t::_init board_space_t::_initializer{};
+
+void board_space_t::lifecycle_init() {
+  log_info(
+      "[board_space_t] initializing static-global board runtime lock "
+      "(single locked board hash/path, selected lazily via board_space_t::init)\n");
+}
+
+void board_space_t::lifecycle_finit() {
+  bool lock_initialized = false;
+  std::string locked_hash;
+  std::string locked_path;
+  std::string last_binding_id;
+  std::size_t registered_count = 0;
+  std::string last_registered_hash;
+  std::string last_registered_path;
+  {
+    LOCK_GUARD(board_config_mutex);
+    lock_initialized = g_board_runtime_lock_initialized;
+    locked_hash = g_locked_board_hash;
+    locked_path = g_locked_board_path_canonical;
+    last_binding_id = g_last_requested_board_binding_id;
+    registered_count = g_registered_board_count;
+    last_registered_hash = g_last_registered_board_hash;
+    last_registered_path = g_last_registered_board_path_canonical;
+  }
+
+  log_info(
+      "[board_space_t] finalizing static-global board runtime lock "
+      "(lock_initialized=%s, locked_hash=%s, locked_path=%s, "
+      "last_binding_id=%s, registered_boards=%zu, last_registered_hash=%s, "
+      "last_registered_path=%s)\n",
+      lock_initialized ? "true" : "false",
+      non_empty_or(locked_hash, "<none>"),
+      non_empty_or(locked_path, "<none>"),
+      non_empty_or(last_binding_id, "<none>"),
+      registered_count,
+      non_empty_or(last_registered_hash, "<none>"),
+      non_empty_or(last_registered_path, "<none>"));
+}
+
 void board_space_t::init() {
   const std::string configured_board_path = resolve_path_from_folder(
       config_space_t::config_folder,
@@ -835,6 +940,7 @@ void board_space_t::init(const std::string& board_file_path,
 
   {
     LOCK_GUARD(board_config_mutex);
+    g_last_requested_board_binding_id = configured_binding_id;
     if (!g_board_runtime_lock_initialized) {
       g_locked_board_hash = board_hash;
       g_locked_board_path_canonical = configured_board_canonical;
@@ -940,6 +1046,9 @@ board_hash_t board_space_t::register_board_file(const std::string& path) {
             canonical_path.c_str());
       }
       existing_hash = existing->second;
+      g_registered_board_count = boards.size();
+      g_last_registered_board_hash = existing->second;
+      g_last_registered_board_path_canonical = canonical_path;
     }
   }
   if (existing_hash.has_value()) {
@@ -988,6 +1097,10 @@ board_hash_t board_space_t::register_board_file(const std::string& path) {
       }
       path_to_hash[canonical_path] = built_hash;
     }
+    g_registered_board_count = boards.size();
+    g_last_registered_board_hash = existing_hash.has_value() ? *existing_hash
+                                                              : built_hash;
+    g_last_registered_board_path_canonical = canonical_path;
   }
 
   if (existing_hash.has_value()) {
@@ -1054,6 +1167,48 @@ std::string board_space_t::wave_hash_for_binding(const board_hash_t& hash,
         bind_wave_id.c_str());
   }
   return *resolved_wave_hash;
+}
+
+void board_space_t::network_analytics(std::ostream* out, bool beautify) {
+  std::ostream& os = (out != nullptr) ? *out : std::cout;
+
+  const auto board_hash = locked_board_hash();
+  const auto binding_id = locked_board_binding_id();
+  const auto board = board_space_t::board_itself(board_hash);
+  if (!board) {
+    os << "[iitepi::board_space_t::network_analytics] error=null board record\n";
+    return;
+  }
+  const auto& instruction = board->board.decoded();
+  os << "[iitepi::board_space_t::network_analytics] board_hash=" << board_hash
+     << " binding_id=" << binding_id
+     << " contracts=" << instruction.contracts.size() << "\n";
+
+  if (instruction.contracts.empty()) {
+    os << "[iitepi::board_space_t::network_analytics] no contracts declared in board\n";
+    return;
+  }
+
+  std::unordered_set<std::string> reported_contract_hashes{};
+  for (const auto& contract_decl : instruction.contracts) {
+    const std::string contract_path =
+        resolve_path_from_folder(board->config_folder, contract_decl.file);
+    const std::string contract_hash =
+        contract_space_t::register_contract_file(contract_path);
+
+    if (!reported_contract_hashes.insert(contract_hash).second) {
+      os << "[iitepi::board_space_t::network_analytics] contract_id="
+         << contract_decl.id
+         << " hash=" << contract_hash
+         << " skipped=duplicate_hash\n";
+      continue;
+    }
+
+    os << "[iitepi::board_space_t::network_analytics] contract_id="
+       << contract_decl.id
+       << " hash=" << contract_hash << "\n";
+    contract_space_t::network_analytics(contract_hash, &os, beautify);
+  }
 }
 
 void board_space_t::assert_intact_or_fail_fast(const board_hash_t& hash) {

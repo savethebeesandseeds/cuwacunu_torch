@@ -66,7 +66,7 @@ class TsiWikimyei : public Tsi {
     (void)out_directive;
     (void)in_directive;
     const TsiDomain d = downstream.domain();
-    return d == TsiDomain::Wikimyei || d == TsiDomain::Sink;
+    return d == TsiDomain::Wikimyei || d == TsiDomain::Sink || d == TsiDomain::Probe;
   }
   [[nodiscard]] bool allows_hop_from(const Tsi& upstream,
                                      DirectiveId out_directive,

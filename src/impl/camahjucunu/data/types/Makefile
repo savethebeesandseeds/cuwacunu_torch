@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------
 # Dependencies & Local Variables
 # -----------------------------------------------------------------
-ROOT_PATH := ../../..
+ROOT_PATH := ../../../..
 include $(ROOT_PATH)/Makefile.config
-HERE_PATH := $(IMPL_PATH)/camahjucunu/types
+HERE_PATH := $(IMPL_PATH)/camahjucunu/data/types
 REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))
 MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------

@@ -6,7 +6,7 @@ template <class AppendLog>
 void dispatch_show_home(AppendLog&& append_log) const {
   append_log("screen=home", "show", "#d8d8ff");
   append_log(
-      "board.contracts=" + std::to_string(state.board.board.contracts.size()) +
+      "board.circuits=" + std::to_string(state.board.board.circuits.size()) +
           " config.tabs=" + std::to_string(state.config.tabs.size()),
       "show",
       "#d8d8ff");

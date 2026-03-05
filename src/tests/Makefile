@@ -22,7 +22,7 @@ BNF_PARSER_CORE := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bn
 $(foreach t,$(BNF_PARSER_CORE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/piaabo)))
 
 # ------------------------------ DSL Decoders ---------------------------------
-DSL := dsl_observation dsl_jkimyei_specs dsl_tsiemene_circuit dsl_tsiemene_wave dsl_tsiemene_board dsl_canonical_path
+DSL := dsl_observation dsl_key_value dsl_jkimyei_specs dsl_tsiemene_circuit dsl_tsiemene_wave dsl_tsiemene_board dsl_canonical_path
 $(foreach t,$(DSL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -54,7 +54,7 @@ TSIEMENE := tsi_board_paths
 $(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
 
 # ------------------------------ iitepi----------------------------------
-IITEPI := iitepi_board
+IITEPI := iitepi_board network_analytics
 $(foreach t,$(IITEPI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iitepi)))
 
 # --------------------------- camahjucunu/https -------------------------------
@@ -73,10 +73,6 @@ $(foreach t,$(JKIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/jkimyei
 VICREG := vicreg_4d_train vicreg_4d_projector_gpu_vs_cpu vicreg_4d_save_and_load
 $(foreach t,$(VICREG),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
 
-# ------------------------------ wikimyei/ts2vec ------------------------------
-TS2VEC := ts2vec_datautils ts2vec_losses ts2vec_dilated_conv ts2vec_encoder ts2vec_state_dict ts2vec_clonable ts2vec ts2vec_ECG200
-$(foreach t,$(TS2VEC),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
-
 # ------------------------------ wikimyei/MDN ---------------------------------
 MDN := mixture_density_network
 $(foreach t,$(MDN),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
@@ -86,7 +82,7 @@ EXPVAL := expected_value
 $(foreach t,$(EXPVAL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
 
 # 4) Shortcut groups (delegate only; no test logic changes)
-.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi https db jkimyei vicreg ts2vec mdn expval
+.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi https db jkimyei vicreg mdn expval
 parser: $(addprefix test_,$(BNF_PARSER_CORE))
 dsl: $(addprefix test_,$(DSL))
 types: $(addprefix test_,$(TYPES))
@@ -101,7 +97,6 @@ https: $(addprefix test_,$(HTTPS))
 db: $(addprefix test_,$(DB))
 jkimyei: $(addprefix test_,$(JKIMYEI))
 vicreg: $(addprefix test_,$(VICREG))
-ts2vec: $(addprefix test_,$(TS2VEC))
 mdn: $(addprefix test_,$(MDN))
 expval: $(addprefix test_,$(EXPVAL))
 

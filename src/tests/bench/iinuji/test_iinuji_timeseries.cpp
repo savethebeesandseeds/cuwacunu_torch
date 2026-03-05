@@ -413,12 +413,7 @@ int main(int argc, char** argv)
       inst_copy, obs_inst, force_bin);
 
   // VICReg model (device from config)
-  auto model_path =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
-          ->get<std::string>("VICReg", "model_path");
   auto model_dev  = cuwacunu::iitepi::config_device(contract_hash, "VICReg");
-  cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(
-      contract_hash, model_path, model_dev);
 
   // Probe shapes/metadata
   AppState S{ .dataset = std::move(dataset) };
@@ -430,7 +425,8 @@ int main(int argc, char** argv)
   S.max_N_future  = (int64_t)S.dataset.max_N_future_;
   S.center_idx    = S.num_records / 2;
 
-  // Datasample_t once to recover K and D
+  // Datasample_t once to recover C, T and D
+  int64_t T_input = 0;
   try {
     kvalue_t mid_key = S.leftmost + static_cast<kvalue_t>(S.center_idx) * S.step;
     Datasample_t s = S.dataset.get_by_key_value(mid_key);
@@ -439,11 +435,23 @@ int main(int argc, char** argv)
       return 2;
     }
     S.K = s.features.size(0);
+    T_input = s.features.size(1);
     S.D = s.features.size(2);
   } catch (const std::exception& e) {
     std::fprintf(stderr, "Failed to probe dataset: %s\n", e.what());
     return 2;
   }
+  if (T_input <= 0) {
+    std::fprintf(stderr, "Unexpected sample time dimension: %lld\n", static_cast<long long>(T_input));
+    return 2;
+  }
+
+  cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(
+      contract_hash,
+      "VICReg_representation",
+      static_cast<int>(S.K),
+      static_cast<int>(T_input),
+      static_cast<int>(S.D));
 
   // Wire model into state
   S.rep = &representation_model;

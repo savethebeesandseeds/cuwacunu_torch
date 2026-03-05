@@ -6,6 +6,7 @@
 #include "iitepi/board/board.contract.h"
 #include "iitepi/board/board.contract.init.h"
 #include "tsiemene/tsi.directive.registry.h"
+#include "tsiemene/tsi.type.registry.h"
 
 int main() {
   using namespace tsiemene;
@@ -19,13 +20,13 @@ int main() {
 
   const auto d_init = parse_directive_id("@init");
   const auto d_jk = parse_directive_id("@jkimyei");
-  const auto d_step = parse_directive_id("@step");
+  const auto d_step = parse_directive_id("@impulse");
   ok = ok && require(d_init.has_value() && *d_init == directive_id::Init,
                      "expected @init directive from board.paths.def");
   ok = ok && require(d_jk.has_value() && *d_jk == directive_id::Jkimyei,
                      "expected @jkimyei directive from board.paths.def");
   ok = ok && require(d_step.has_value() && *d_step == directive_id::Step,
-                     "expected @step directive from tsi.paths.def");
+                     "expected @impulse directive from tsi.paths.def");
 
   const auto m_init = parse_method_id("init");
   const auto m_jk = parse_method_id("jkimyei");
@@ -33,6 +34,17 @@ int main() {
                      "expected init method from board.paths.def");
   ok = ok && require(m_jk.has_value() && *m_jk == method_id::Jkimyei,
                      "expected jkimyei method from board.paths.def");
+
+  const auto probe_transfer =
+      parse_tsi_type_id("tsi.probe.representation.transfer_matrix_evaluation");
+  const auto probe_generic = parse_tsi_type_id("tsi.probe.representation");
+  ok = ok && require(
+                 probe_transfer.has_value() &&
+                     *probe_transfer ==
+                         TsiTypeId::ProbeRepresentationTransferMatrixEvaluation,
+                 "expected transfer-matrix probe canonical tsi type");
+  ok = ok && require(!probe_generic.has_value(),
+                     "generic probe canonical tsi type must be removed");
 
   ok = ok && require(std::string(kBoardContractInitCanonicalAction) == "board.contract@init",
                      "canonical board.contract init action mismatch");

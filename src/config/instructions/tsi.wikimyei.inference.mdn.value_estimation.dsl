@@ -1,5 +1,5 @@
 /*
-  wikimyei_value_estimation.ini
+  tsi.wikimyei.inference.mdn.value_estimation.dsl
   =============================
   Purpose:
     Typed key-value profile for expected-value / mixture-density model settings.

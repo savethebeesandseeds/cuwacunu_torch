@@ -29,6 +29,15 @@ struct wave_space_t {
   static void assert_registry_intact_or_fail_fast();
   [[nodiscard]] static bool has_wave(const wave_hash_t& hash) noexcept;
   [[nodiscard]] static std::vector<wave_hash_t> registered_hashes();
+
+ private:
+  static void lifecycle_init();
+  static void lifecycle_finit();
+  struct _init {
+    _init()  { wave_space_t::lifecycle_init(); }
+    ~_init() { wave_space_t::lifecycle_finit(); }
+  };
+  static _init _initializer;
 };
 
 struct wave_file_fingerprint_t {
@@ -88,4 +97,3 @@ struct wave_record_t {
 
 }  // namespace iitepi
 }  // namespace cuwacunu
-

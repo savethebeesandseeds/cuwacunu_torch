@@ -38,6 +38,9 @@ class Emitter {
   void emit_string(const Wave& w, DirectiveId out_directive, std::string s) {
     emit(w, out_directive, string_signal(std::move(s)));
   }
+  void emit_cargo(const Wave& w, DirectiveId out_directive, ObservationCargoPtr c) {
+    emit(w, out_directive, cargo_signal(std::move(c)));
+  }
 };
 
 enum class Determinism : std::uint8_t {

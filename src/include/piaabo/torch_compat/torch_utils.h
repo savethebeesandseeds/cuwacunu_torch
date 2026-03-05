@@ -3,6 +3,8 @@
 #include <torch/torch.h>
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
+#include <cstdint>
+#include <string>
 #include <vector>
 
 #define DBG_T(dev_msg, t)                                 \

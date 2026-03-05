@@ -398,80 +398,23 @@ bool config_space_t::validate_config() {
     }
   };
 
-  auto require_bool = [&](const char* section, const char* key) {
-    std::string value;
-    if (!require_value(section, key, &value)) return;
-    try {
-      (void)parse_scalar_from_string<bool>(value);
-    } catch (const std::exception& e) {
-      log_warn("Invalid bool value <%s> in section [%s]: %s\n",
-               key, section, e.what());
-      ok = false;
-    }
-  };
+  const auto require_existing_path =
+      [&](const char* section, const char* key, const std::string& base_folder) {
+        std::string raw_path;
+        if (!require_value(section, key, &raw_path)) return;
 
-  auto require_optional_int_with_bounds = [&](const char* section, const char* key,
-                                              int64_t min_allowed) {
-    const auto sec_it = config.find(section);
-    if (sec_it == config.end()) return;
-    const auto key_it = sec_it->second.find(key);
-    if (key_it == sec_it->second.end()) return;
-
-    const std::string value = trim_ascii_ws_copy(key_it->second);
-    if (!has_non_ws_ascii(value)) {
-      log_warn("Empty optional field <%s> in section [%s]\n", key, section);
-      ok = false;
-      return;
-    }
-
-    try {
-      const int64_t parsed = parse_scalar_from_string<int64_t>(value);
-      if (parsed < min_allowed) {
-        log_warn(
-            "Invalid optional value <%s> in section [%s]: expected >= %lld, got %lld\n",
-            key, section, static_cast<long long>(min_allowed),
-            static_cast<long long>(parsed));
-        ok = false;
-      }
-    } catch (const std::exception& e) {
-      log_warn("Invalid optional integer value <%s> in section [%s]: %s\n",
-               key, section, e.what());
-      ok = false;
-    }
-  };
-
-  auto require_optional_double_with_bounds = [&](const char* section, const char* key,
-                                                 long double min_allowed,
-                                                 bool allow_equal_min) {
-    const auto sec_it = config.find(section);
-    if (sec_it == config.end()) return;
-    const auto key_it = sec_it->second.find(key);
-    if (key_it == sec_it->second.end()) return;
-
-    const std::string value = trim_ascii_ws_copy(key_it->second);
-    if (!has_non_ws_ascii(value)) {
-      log_warn("Empty optional field <%s> in section [%s]\n", key, section);
-      ok = false;
-      return;
-    }
-
-    try {
-      const long double parsed = parse_scalar_from_string<long double>(value);
-      const bool valid = allow_equal_min ? (parsed >= min_allowed) : (parsed > min_allowed);
-      if (!valid) {
-        log_warn(
-            "Invalid optional value <%s> in section [%s]: expected %s %.3Le, got %.3Le\n",
-            key, section, allow_equal_min ? ">=" : ">",
-            static_cast<long double>(min_allowed),
-            static_cast<long double>(parsed));
-        ok = false;
-      }
-    } catch (const std::exception& e) {
-      log_warn("Invalid optional floating value <%s> in section [%s]: %s\n",
-               key, section, e.what());
-      ok = false;
-    }
-  };
+        const std::string resolved = resolve_path_from_folder(base_folder, raw_path);
+        if (!has_non_ws_ascii(resolved)) {
+          log_warn("Unable to resolve path for <%s> in section [%s]\n", key, section);
+          ok = false;
+          return;
+        }
+        if (!std::filesystem::exists(resolved)) {
+          log_warn("Configured path does not exist for <%s> in section [%s]: %s\n",
+                   key, section, resolved.c_str());
+          ok = false;
+        }
+      };
 
   std::string exchange_type_value;
   if (require_value("GENERAL", "exchange_type", &exchange_type_value)) {
@@ -501,55 +444,48 @@ bool config_space_t::validate_config() {
   (void)require_value("GENERAL", "hashimyei_store_root", nullptr);
   (void)require_value("GENERAL", "hashimyei_metadata_secret", nullptr);
 
-  require_int_with_bounds("DATA_LOADER", "dataloader_workers", 0);
-  require_optional_int_with_bounds("DATA_LOADER", "dataloader_range_warn_batches", 1);
-  require_optional_int_with_bounds("DATA_LOADER", "dataloader_csv_bootstrap_deltas", 2);
-  require_optional_double_with_bounds("DATA_LOADER", "dataloader_csv_step_abs_tol", 0.0L, false);
-  require_optional_double_with_bounds("DATA_LOADER", "dataloader_csv_step_rel_tol", 0.0L, true);
-  {
-    const auto dl_it = config.find("DATA_LOADER");
-    if (dl_it != config.end() &&
-        dl_it->second.find("dataloader_batch_size") != dl_it->second.end()) {
-      log_warn(
-          "[dconfig] DATA_LOADER.dataloader_batch_size is removed; "
-          "use WAVE.BATCH_SIZE\n");
-      ok = false;
-    }
+  constexpr const char* kBnfKeys[] = {
+      "iitepi_board_grammar_filename",
+      "iitepi_wave_grammar_filename",
+      "vicreg_grammar_filename",
+      "value_estimation_grammar_filename",
+      "transfer_matrix_evaluation_grammar_filename",
+      "observation_sources_grammar_filename",
+      "observation_channels_grammar_filename",
+      "jkimyei_specs_grammar_filename",
+      "tsiemene_circuit_grammar_filename",
+      "canonical_path_grammar_filename",
+  };
+  for (const char* key : kBnfKeys) {
+    require_existing_path("BNF", key, config_folder);
   }
 
   {
-    bool has_force_rebuild_cache = false;
-    bool has_force_binarization_alias = false;
-
     const auto dl_it = config.find("DATA_LOADER");
     if (dl_it != config.end()) {
-      const auto fetch_trimmed_if_present = [&](const char* key,
-                                                std::string* out) -> bool {
+      const auto warn_if_present = [&](const char* key,
+                                       const char* replacement) {
         const auto key_it = dl_it->second.find(key);
-        if (key_it == dl_it->second.end()) return false;
-        if (out) *out = trim_ascii_ws_copy(key_it->second);
-        return true;
+        if (key_it == dl_it->second.end()) return;
+        const std::string value = trim_ascii_ws_copy(key_it->second);
+        if (!has_non_ws_ascii(value)) return;
+        log_warn("[dconfig] DATA_LOADER.%s is legacy/ignored in board runtime; use %s\n",
+                 key, replacement);
       };
-      has_force_rebuild_cache = fetch_trimmed_if_present(
-          "dataloader_force_rebuild_cache", nullptr);
-      has_force_binarization_alias = fetch_trimmed_if_present(
-          "dataloader_force_binarization", nullptr);
-    }
-
-    if (!has_force_rebuild_cache) {
-      log_warn(
-          "Missing field <dataloader_force_rebuild_cache> in section [DATA_LOADER]\n");
-      ok = false;
-    }
-
-    if (has_force_rebuild_cache) {
-      require_bool("DATA_LOADER", "dataloader_force_rebuild_cache");
-    }
-    if (has_force_binarization_alias) {
-      log_warn(
-          "[dconfig] DATA_LOADER.dataloader_force_binarization is removed; "
-          "use DATA_LOADER.dataloader_force_rebuild_cache\n");
-      ok = false;
+      warn_if_present("dataloader_batch_size", "WAVE.BATCH_SIZE");
+      warn_if_present("dataloader_workers", "WAVE.SOURCE.WORKERS");
+      warn_if_present("dataloader_force_rebuild_cache",
+                      "WAVE.SOURCE.FORCE_REBUILD_CACHE");
+      warn_if_present("dataloader_range_warn_batches",
+                      "WAVE.SOURCE.RANGE_WARN_BATCHES");
+      warn_if_present("dataloader_csv_bootstrap_deltas",
+                      "sources.dsl CSV_POLICY.CSV_BOOTSTRAP_DELTAS");
+      warn_if_present("dataloader_csv_step_abs_tol",
+                      "sources.dsl CSV_POLICY.CSV_STEP_ABS_TOL");
+      warn_if_present("dataloader_csv_step_rel_tol",
+                      "sources.dsl CSV_POLICY.CSV_STEP_REL_TOL");
+      warn_if_present("dataloader_force_binarization",
+                      "WAVE.SOURCE.FORCE_REBUILD_CACHE");
     }
   }
 
@@ -568,21 +504,52 @@ bool config_space_t::validate_config() {
 }
 
 std::string config_space_t::websocket_url() {
-  return config_space_t::config[config_space_t::exchange_type == exchange_type_e::REAL
-                                    ? "REAL_EXCHANGE"
-                                    : "TEST_EXCHANGE"]["websocket_url"];
+  LOCK_GUARD(config_mutex);
+  const char* section = (config_space_t::exchange_type == exchange_type_e::REAL)
+                            ? "REAL_EXCHANGE"
+                            : "TEST_EXCHANGE";
+  const auto sec_it = config_space_t::config.find(section);
+  if (sec_it == config_space_t::config.end()) {
+    throw bad_config_access("Missing section [" + std::string(section) + "]");
+  }
+  const auto key_it = sec_it->second.find("websocket_url");
+  if (key_it == sec_it->second.end()) {
+    throw bad_config_access("Missing key <websocket_url> in [" + std::string(section) + "]");
+  }
+  return key_it->second;
 }
 
 std::string config_space_t::api_key() {
-  return config_space_t::config[config_space_t::exchange_type == exchange_type_e::REAL
-                                    ? "REAL_EXCHANGE"
-                                    : "TEST_EXCHANGE"]["EXCHANGE_api_filename"];
+  LOCK_GUARD(config_mutex);
+  const char* section = (config_space_t::exchange_type == exchange_type_e::REAL)
+                            ? "REAL_EXCHANGE"
+                            : "TEST_EXCHANGE";
+  const auto sec_it = config_space_t::config.find(section);
+  if (sec_it == config_space_t::config.end()) {
+    throw bad_config_access("Missing section [" + std::string(section) + "]");
+  }
+  const auto key_it = sec_it->second.find("EXCHANGE_api_filename");
+  if (key_it == sec_it->second.end()) {
+    throw bad_config_access("Missing key <EXCHANGE_api_filename> in [" +
+                            std::string(section) + "]");
+  }
+  return key_it->second;
 }
 
 std::string config_space_t::Ed25519_pkey() {
-  return config_space_t::config[config_space_t::exchange_type == exchange_type_e::REAL
-                                    ? "REAL_EXCHANGE"
-                                    : "TEST_EXCHANGE"]["Ed25519_pkey"];
+  LOCK_GUARD(config_mutex);
+  const char* section = (config_space_t::exchange_type == exchange_type_e::REAL)
+                            ? "REAL_EXCHANGE"
+                            : "TEST_EXCHANGE";
+  const auto sec_it = config_space_t::config.find(section);
+  if (sec_it == config_space_t::config.end()) {
+    throw bad_config_access("Missing section [" + std::string(section) + "]");
+  }
+  const auto key_it = sec_it->second.find("Ed25519_pkey");
+  if (key_it == sec_it->second.end()) {
+    throw bad_config_access("Missing key <Ed25519_pkey> in [" + std::string(section) + "]");
+  }
+  return key_it->second;
 }
 
 std::string config_space_t::locked_board_hash() {

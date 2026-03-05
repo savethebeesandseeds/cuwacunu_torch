@@ -84,7 +84,8 @@ namespace dsl {
 class jkimyeiSpecsPipeline {
  public:
   explicit jkimyeiSpecsPipeline(std::string grammar_text);
-  jkimyei_specs_t decode(std::string instruction);
+  jkimyei_specs_t decode(std::string instruction,
+                         std::string instruction_label = "<inline:jkimyei.dsl>");
 
  private:
   std::mutex current_mutex_;
@@ -93,7 +94,8 @@ class jkimyeiSpecsPipeline {
 
 jkimyei_specs_t decode_jkimyei_specs_from_dsl(
     std::string grammar_text,
-    std::string instruction_text);
+    std::string instruction_text,
+    std::string instruction_label = "<inline:jkimyei.dsl>");
 
 } /* namespace dsl */
 } /* namespace camahjucunu */

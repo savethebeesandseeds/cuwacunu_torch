@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -25,12 +26,14 @@
 #include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
 
 #include "jkimyei/training_setup/jk_setup.h"
+#include "piaabo/dfiles.h"
 #include "piaabo/dconfig.h"
 #include "iitepi/board/board.h"
 #include "iitepi/board/board.validation.h"
 #include "tsiemene/tsi.type.registry.h"
 #include "tsiemene/tsi.source.dataloader.h"
 #include "tsiemene/tsi.wikimyei.representation.vicreg.h"
+#include "tsiemene/tsi.probe.representation.transfer_matrix_evaluation.h"
 #include "tsiemene/tsi.sink.null.h"
 #include "tsiemene/tsi.sink.log.sys.h"
 
@@ -83,6 +86,117 @@ using DataloaderT = TsiSourceDataloader<Datatype_t, Sampler_t>;
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::string resolve_path_from_folder(
+    std::string folder,
+    std::string path) {
+  folder = trim_ascii_copy(std::move(folder));
+  path = trim_ascii_copy(std::move(path));
+  if (path.empty()) return {};
+  const std::filesystem::path p(path);
+  if (p.is_absolute()) return p.string();
+  if (folder.empty()) return p.string();
+  return (std::filesystem::path(folder) / p).string();
+}
+
+[[nodiscard]] inline bool load_wave_dataloader_observation_payloads(
+    const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>& contract_record,
+    const std::shared_ptr<const cuwacunu::iitepi::wave_record_t>& wave_record,
+    const cuwacunu::camahjucunu::tsiemene_wave_t& selected_wave,
+    std::string* out_sources_dsl,
+    std::string* out_channels_dsl,
+    cuwacunu::camahjucunu::observation_spec_t* out_observation,
+    std::string* error = nullptr) {
+  if (!contract_record || !wave_record) {
+    if (error) *error = "missing contract/wave record for observation payload resolution";
+    return false;
+  }
+
+  if (selected_wave.sources.size() != 1) {
+    if (error) {
+      *error = "wave '" + selected_wave.name +
+               "' must provide exactly one SOURCE block for dataloader ownership";
+    }
+    return false;
+  }
+  const auto& source_decl = selected_wave.sources.front();
+
+  const std::string sources_file = trim_ascii_copy(
+      source_decl.sources_dsl_file);
+  const std::string channels_file = trim_ascii_copy(
+      source_decl.channels_dsl_file);
+  if (sources_file.empty() || channels_file.empty()) {
+    if (error) {
+      *error =
+          "wave '" + selected_wave.name +
+          "' SOURCE block requires SOURCES_DSL_FILE and CHANNELS_DSL_FILE";
+    }
+    return false;
+  }
+
+  const std::string sources_path = resolve_path_from_folder(
+      wave_record->config_folder, sources_file);
+  const std::string channels_path = resolve_path_from_folder(
+      wave_record->config_folder, channels_file);
+  if (sources_path.empty() || channels_path.empty()) {
+    if (error) {
+      *error = "failed to resolve dataloader observation DSL paths for wave '" +
+               selected_wave.name + "'";
+    }
+    return false;
+  }
+
+  if (!std::filesystem::exists(sources_path) ||
+      !std::filesystem::is_regular_file(sources_path)) {
+    if (error) {
+      *error = "wave '" + selected_wave.name +
+               "' has invalid SOURCE.SOURCES_DSL_FILE path: " + sources_path;
+    }
+    return false;
+  }
+  if (!std::filesystem::exists(channels_path) ||
+      !std::filesystem::is_regular_file(channels_path)) {
+    if (error) {
+      *error = "wave '" + selected_wave.name +
+               "' has invalid SOURCE.CHANNELS_DSL_FILE path: " + channels_path;
+    }
+    return false;
+  }
+
+  const std::string sources_dsl = cuwacunu::piaabo::dfiles::readFileToString(
+      sources_path);
+  const std::string channels_dsl = cuwacunu::piaabo::dfiles::readFileToString(
+      channels_path);
+  if (is_blank_ascii(sources_dsl) || is_blank_ascii(channels_dsl)) {
+    if (error) {
+      *error = "wave '" + selected_wave.name +
+               "' dataloader observation DSL file is empty";
+    }
+    return false;
+  }
+
+  if (out_sources_dsl) *out_sources_dsl = sources_dsl;
+  if (out_channels_dsl) *out_channels_dsl = channels_dsl;
+
+  if (out_observation) {
+    try {
+      *out_observation =
+          cuwacunu::camahjucunu::decode_observation_spec_from_split_dsl(
+              contract_record->observation.sources.grammar,
+              sources_dsl,
+              contract_record->observation.channels.grammar,
+              channels_dsl);
+    } catch (const std::exception& e) {
+      if (error) {
+        *error = "failed to decode wave-selected observation DSL: " +
+                 std::string(e.what());
+      }
+      return false;
+    }
+  }
+
+  return true;
+}
+
 [[nodiscard]] inline const cuwacunu::camahjucunu::jkimyei_specs_t::row_t*
 find_jkimyei_row_by_id(const cuwacunu::camahjucunu::jkimyei_specs_t& specs,
                        std::string_view table_name,
@@ -128,7 +242,7 @@ find_jkimyei_component_profile_row(
 [[nodiscard]] inline std::string resolve_vicreg_component_lookup_name(
     const BoardContract::Spec& spec,
     const cuwacunu::camahjucunu::jkimyei_specs_t& jkimyei_specs) {
-  constexpr std::string_view kFallbackBase = "VICReg_representation";
+  constexpr std::string_view kFallbackBase = "tsi.wikimyei.representation.vicreg";
   const std::string canonical_type =
       std::string(tsi_type_token(TsiTypeId::WikimyeiRepresentationVicreg));
 
@@ -174,7 +288,6 @@ inline void apply_vicreg_flag_overrides_from_component_row(
     if (parsed.has_value()) *out_value = *parsed;
   };
 
-  assign_if_present("vicreg_train", &spec->vicreg_train);
   assign_if_present("vicreg_use_swa", &spec->vicreg_use_swa);
   assign_if_present("vicreg_detach_to_cpu", &spec->vicreg_detach_to_cpu);
 }
@@ -392,6 +505,9 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
     std::string_view circuit_name,
     torch::Device device,
     std::size_t source_batch_size_override,
+    std::uint64_t dataloader_workers,
+    bool dataloader_force_rebuild_cache,
+    std::uint64_t dataloader_range_warn_batches,
     const DataloaderT<Datatype_t, Sampler_t>* first_dataloader,
     const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t* wave_wikimyei_decl,
     bool* made_dataloader,
@@ -407,7 +523,10 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
           spec->instrument,
           observation_instruction,
           device,
-          source_batch_size_override);
+          source_batch_size_override,
+          dataloader_workers,
+          dataloader_force_rebuild_cache,
+          dataloader_range_warn_batches);
     case TsiTypeId::WikimyeiRepresentationVicreg: {
       if (!first_dataloader) return nullptr;
 
@@ -483,6 +602,9 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
           /*use_swa=*/spec->vicreg_use_swa,
           /*detach_to_cpu=*/spec->vicreg_detach_to_cpu);
     }
+    case TsiTypeId::ProbeRepresentationTransferMatrixEvaluation:
+      return std::make_unique<TsiProbeRepresentationTransferMatrixEvaluation>(
+          id, contract_hash, decl.alias);
     case TsiTypeId::SinkNull:
       return std::make_unique<TsiSinkNull>(id, decl.alias);
     case TsiTypeId::SinkLogSys:
@@ -533,6 +655,29 @@ bool build_runtime_circuit_from_decl(
   out->execution = BoardContract::Execution{};
   out->spec.sample_type = contract_sample_type_name<Datatype_t>();
   out->spec.sourced_from_config = true;
+  {
+    const int trace_level_cfg = cuwacunu::iitepi::config_space_t::get<int>(
+        "TSI_RUNTIME",
+        "runtime_trace_level",
+        std::optional<int>{static_cast<int>(RuntimeTraceLevel::Verbose)});
+    if (trace_level_cfg <= 0) {
+      out->execution.runtime.trace_level = RuntimeTraceLevel::Off;
+    } else if (trace_level_cfg == 1) {
+      out->execution.runtime.trace_level = RuntimeTraceLevel::Step;
+    } else {
+      out->execution.runtime.trace_level = RuntimeTraceLevel::Verbose;
+    }
+
+    const int max_queue_cfg = cuwacunu::iitepi::config_space_t::get<int>(
+        "TSI_RUNTIME", "runtime_max_queue_size", std::optional<int>{0});
+    if (max_queue_cfg < 0) {
+      if (error) {
+        *error = "TSI_RUNTIME.runtime_max_queue_size must be >= 0";
+      }
+      return false;
+    }
+    out->execution.runtime.max_queue_size = static_cast<std::size_t>(max_queue_cfg);
+  }
   if (wave) {
     out->execution.epochs = wave->epochs;
     out->execution.batch_size = wave->batch_size;
@@ -549,6 +694,9 @@ bool build_runtime_circuit_from_decl(
       (out->execution.batch_size > 0)
           ? static_cast<std::size_t>(out->execution.batch_size)
           : 0;
+  std::uint64_t dataloader_workers = 0;
+  bool dataloader_force_rebuild_cache = true;
+  std::uint64_t dataloader_range_warn_batches = 256;
 
   std::unordered_map<std::string, Tsi*> alias_to_tsi;
   std::vector<cuwacunu::camahjucunu::tsiemene_resolved_hop_t> resolved_hops;
@@ -558,6 +706,17 @@ bool build_runtime_circuit_from_decl(
   std::unordered_set<std::string> circuit_source_paths;
   const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t* selected_wave_source =
       nullptr;
+  struct pending_decl_t {
+    const cuwacunu::camahjucunu::tsiemene_instance_decl_t* decl{nullptr};
+    TsiTypeId type_id{TsiTypeId::SourceDataloader};
+    const TsiTypeDescriptor* type_desc{nullptr};
+    std::string canonical_identity{};
+    std::string decl_path{};
+    const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t* wave_wikimyei_decl{
+        nullptr};
+  };
+  std::vector<pending_decl_t> pending_decls;
+  pending_decls.reserve(parsed.instances.size());
 
   for (const auto& decl : parsed.instances) {
     const auto type_path = cuwacunu::camahjucunu::decode_canonical_path(
@@ -636,61 +795,14 @@ bool build_runtime_circuit_from_decl(
         out->spec.instrument = trim_ascii_copy(wave_source_decl->symbol);
       }
     }
-
-    bool made_dataloader = false;
-    std::unique_ptr<Tsi> node = make_tsi_for_decl<Datatype_t, Sampler_t>(
-        next_id++,
-        contract_hash,
-        *type_id,
-        decl,
-        &out->spec,
-        observation_instruction,
-        jkimyei_specs,
-        jkimyei_specs_dsl_text,
-        parsed.name,
-        device,
-        source_batch_size_override,
-        first_dataloader,
-        wave_wikimyei_decl,
-        &made_dataloader,
-        error);
-
-    if (!node) {
-      if (error) {
-        if (!error->empty()) {
-          /* preserve richer error from make_tsi_for_decl */
-        } else if (*type_id == TsiTypeId::WikimyeiRepresentationVicreg &&
-                   !first_dataloader) {
-          *error = "vicreg requires a dataloader declared earlier in the same circuit";
-        } else {
-          *error = "unsupported tsi_type: " + type_path.canonical_identity;
-        }
-      }
-      return false;
-    }
-
-    auto [it, inserted] = alias_to_tsi.emplace(decl.alias, node.get());
-    if (!inserted) {
-      if (error) *error = "duplicated instance alias: " + decl.alias;
-      return false;
-    }
-    (void)it;
-
-    if (made_dataloader && !first_dataloader) {
-      first_dataloader = dynamic_cast<DataloaderT<Datatype_t, Sampler_t>*>(node.get());
-      if (first_dataloader) {
-        out->spec.channels = first_dataloader->C();
-        out->spec.timesteps = first_dataloader->T();
-        out->spec.features = first_dataloader->D();
-        out->spec.batch_size_hint = first_dataloader->batch_size_hint();
-        if (out->execution.batch_size == 0 && out->spec.batch_size_hint > 0) {
-          out->execution.batch_size =
-              static_cast<std::uint64_t>(out->spec.batch_size_hint);
-        }
-      }
-    }
-
-    out->nodes.push_back(std::move(node));
+    pending_decls.push_back(pending_decl_t{
+        .decl = &decl,
+        .type_id = *type_id,
+        .type_desc = type_desc,
+        .canonical_identity = std::string(type_path.canonical_identity),
+        .decl_path = decl_path,
+        .wave_wikimyei_decl = wave_wikimyei_decl,
+    });
   }
 
   if (wave) {
@@ -735,6 +847,15 @@ bool build_runtime_circuit_from_decl(
       }
       return false;
     }
+    dataloader_workers = selected_wave_source->workers;
+    dataloader_force_rebuild_cache = selected_wave_source->force_rebuild_cache;
+    dataloader_range_warn_batches = selected_wave_source->range_warn_batches;
+    if (dataloader_range_warn_batches == 0) {
+      if (error) {
+        *error = "wave SOURCE.RANGE_WARN_BATCHES must be >= 1";
+      }
+      return false;
+    }
     effective_invoke_payload =
         compose_invoke_payload_from_wave_source(*selected_wave_source, *wave);
   } else if (is_blank_ascii(effective_invoke_payload)) {
@@ -764,6 +885,94 @@ bool build_runtime_circuit_from_decl(
           effective_invoke_payload;
     }
     return false;
+  }
+
+  std::unordered_map<std::string, std::unique_ptr<Tsi>> nodes_by_alias;
+  nodes_by_alias.reserve(pending_decls.size());
+  const auto emplace_node_for_decl = [&](const pending_decl_t& pending) -> bool {
+    bool made_dataloader = false;
+    std::unique_ptr<Tsi> node = make_tsi_for_decl<Datatype_t, Sampler_t>(
+        next_id++,
+        contract_hash,
+        pending.type_id,
+        *pending.decl,
+        &out->spec,
+        observation_instruction,
+        jkimyei_specs,
+        jkimyei_specs_dsl_text,
+        parsed.name,
+        device,
+        source_batch_size_override,
+        dataloader_workers,
+        dataloader_force_rebuild_cache,
+        dataloader_range_warn_batches,
+        first_dataloader,
+        pending.wave_wikimyei_decl,
+        &made_dataloader,
+        error);
+
+    if (!node) {
+      if (error) {
+        if (!error->empty()) {
+          /* preserve richer error from make_tsi_for_decl */
+        } else if (pending.type_id == TsiTypeId::WikimyeiRepresentationVicreg &&
+                   !first_dataloader) {
+          *error = "vicreg requires a source dataloader in the same circuit";
+        } else {
+          *error = "unsupported tsi_type: " + pending.canonical_identity;
+        }
+      }
+      return false;
+    }
+
+    auto [ins_it, inserted] =
+        nodes_by_alias.emplace(pending.decl->alias, std::move(node));
+    if (!inserted) {
+      if (error) *error = "duplicated instance alias: " + pending.decl->alias;
+      return false;
+    }
+
+    if (made_dataloader && !first_dataloader) {
+      first_dataloader =
+          dynamic_cast<DataloaderT<Datatype_t, Sampler_t>*>(ins_it->second.get());
+      if (first_dataloader) {
+        out->spec.channels = first_dataloader->C();
+        out->spec.timesteps = first_dataloader->T();
+        out->spec.features = first_dataloader->D();
+        out->spec.batch_size_hint = first_dataloader->batch_size_hint();
+        if (out->execution.batch_size == 0 && out->spec.batch_size_hint > 0) {
+          out->execution.batch_size =
+              static_cast<std::uint64_t>(out->spec.batch_size_hint);
+        }
+      }
+    }
+    return true;
+  };
+
+  // Build source dataloaders first to remove declaration-order coupling for
+  // downstream wikimyei components that depend on discovered C/T/D hints.
+  for (const auto& pending : pending_decls) {
+    if (pending.type_desc->domain != TsiDomain::Source) continue;
+    if (!emplace_node_for_decl(pending)) return false;
+  }
+  for (const auto& pending : pending_decls) {
+    if (pending.type_desc->domain == TsiDomain::Source) continue;
+    if (!emplace_node_for_decl(pending)) return false;
+  }
+
+  alias_to_tsi.clear();
+  alias_to_tsi.reserve(pending_decls.size());
+  for (const auto& decl : parsed.instances) {
+    const auto node_it = nodes_by_alias.find(decl.alias);
+    if (node_it == nodes_by_alias.end() || !node_it->second) {
+      if (error) {
+        *error = "internal runtime builder error: missing node for alias '" +
+                 decl.alias + "'";
+      }
+      return false;
+    }
+    alias_to_tsi.emplace(decl.alias, node_it->second.get());
+    out->nodes.push_back(std::move(node_it->second));
   }
 
   if (first_dataloader) {
@@ -818,18 +1027,13 @@ bool build_runtime_circuit_from_decl(
       }
       return false;
     }
-    if (in_spec->kind.kind != h.to.kind) {
-      if (error) {
-        *error = "hop target kind mismatch against tsi declarations: " +
-                 h.to.instance + "@" + std::string(h.to.directive);
-      }
-      return false;
-    }
+    // Do not enforce a single static input kind per directive here.
+    // Some components (for example sink log) intentionally accept
+    // multiple incoming payload kinds on the same directive.
 
     out->hops.push_back(hop(
         ep(*it_from->second, h.from.directive),
-        ep(*it_to->second, h.to.directive),
-        query("")));
+        ep(*it_to->second, h.to.directive)));
   }
 
   out->seed_wave = normalize_wave_span(Wave{
@@ -896,20 +1100,6 @@ bool build_runtime_board_from_instruction(
   std::string jkimyei_specs_dsl;
   std::string wave_dsl;
   if (!load_required_dsl_text(
-          kBoardContractObservationSourcesDslKey,
-          contract_record->observation.sources.dsl,
-          &observation_sources_dsl,
-          error)) {
-    return false;
-  }
-  if (!load_required_dsl_text(
-          kBoardContractObservationChannelsDslKey,
-          contract_record->observation.channels.dsl,
-          &observation_channels_dsl,
-          error)) {
-    return false;
-  }
-  if (!load_required_dsl_text(
           kBoardContractJkimyeiSpecsDslKey,
           contract_record->jkimyei.dsl,
           &jkimyei_specs_dsl,
@@ -928,7 +1118,6 @@ bool build_runtime_board_from_instruction(
   cuwacunu::camahjucunu::jkimyei_specs_t jkimyei_specs{};
   cuwacunu::camahjucunu::tsiemene_wave_set_t wave_set{};
   try {
-    observation_instruction = contract_record->observation.decoded();
     jkimyei_specs = contract_record->jkimyei.decoded();
     wave_set = wave_record->wave.decoded();
   } catch (const std::exception& e) {
@@ -945,6 +1134,16 @@ bool build_runtime_board_from_instruction(
                    ? "wave validation failed"
                    : wave_report.indicators.front().message;
     }
+    return false;
+  }
+  if (!load_wave_dataloader_observation_payloads(
+          contract_record,
+          wave_record,
+          *selected_wave,
+          &observation_sources_dsl,
+          &observation_channels_dsl,
+          &observation_instruction,
+          error)) {
     return false;
   }
   const auto compat_report = validate_wave_contract_compatibility(

@@ -182,7 +182,7 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
   if (!state.board.ok) {
     log_warn("[iinuji_cmd] board invalid: %s\n", state.board.error.c_str());
   } else {
-    log_info("[iinuji_cmd] board loaded: circuits=%zu\n", state.board.board.contracts.size());
+    log_info("[iinuji_cmd] board loaded: circuits=%zu\n", state.board.board.circuits.size());
   }
   if (!state.data.ok) {
     log_warn("[iinuji_cmd] data view invalid: %s\n", state.data.error.c_str());

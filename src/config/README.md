@@ -4,30 +4,33 @@ This folder is organized by role:
 
 - `./.config`: global runtime settings (exchange, seeds, UI/system knobs).
 - `./default.board.contract.config`: board contract config file.
-- `./dsl/`: grammar files (`*.bnf`).
-- `./instructions/`: DSL and module config files (`*.dsl`, `*.ini`).
+- `./bnf/`: grammar files (`*.bnf`).
+- `./instructions/`: DSL payload files (`*.dsl`).
 - `./secrets/real/`: real exchange secret material.
 - `./secrets/test/`: test exchange secret material.
 
 ## Current file map
 
-- `dsl/observation_sources.bnf`
-- `dsl/observation_channels.bnf`
-- `dsl/jkimyei_specs.bnf`
-- `dsl/tsiemene_circuit.bnf`
-- `dsl/tsiemene_wave.bnf`
-- `dsl/canonical_path.bnf`
-- `dsl/test_dsl.bnf` (scratch/experimental)
+- `bnf/tsi.source.dataloader.sources.bnf`
+- `bnf/tsi.source.dataloader.channels.bnf`
+- `bnf/jkimyei.bnf`
+- `bnf/iitepi.contract.circuit.bnf`
+- `bnf/iitepi.wave.bnf`
+- `bnf/network_design.bnf`
+- `bnf/canonical_path.bnf`
+- `bnf/key_value.bnf`
 - `.config`
 - `default.board.contract.config`
-- `instructions/observation_sources.dsl`
-- `instructions/observation_channels.dsl`
-- `instructions/jkimyei_specs.dsl`
-- `instructions/iitepi_board.dsl`
-- `instructions/iitepi_circuit.dsl`
-- `instructions/iitepi_wave.dsl` (canonical wave payload set)
-- `instructions/wikimyei_vicreg.ini`
-- `instructions/wikimyei_value_estimation.ini`
+- `instructions/tsi.source.dataloader.sources.dsl`
+- `instructions/tsi.source.dataloader.channels.dsl`
+- `instructions/jkimyei.representation.vicreg.dsl`
+- `instructions/iitepi.board.dsl`
+- `instructions/iitepi.contract.circuit.example.dsl`
+- `instructions/iitepi.wave.example.dsl` (canonical wave payload set)
+- `instructions/tsi.wikimyei.representation.vicreg.dsl`
+- `instructions/tsi.wikimyei.representation.vicreg.network_design.dsl`
+- `instructions/tsi.wikimyei.inference.mdn.value_estimation.dsl`
+- `instructions/tsi.probe.representation.transfer_matrix_evaluation.dsl`
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
 - `secrets/real/exchange.key` (expected, may be absent locally)
 - `secrets/test/ed25519key.pem`
@@ -57,28 +60,54 @@ Use `ed25519pub.pem` when registering API access at the exchange.
 
 ## Split Policy
 
-- Global settings live in `./.config`: `[GENERAL]`, `[DATA_LOADER]`, `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`.
+- Global settings live in `./.config`: `[GENERAL]`, `[BNF]`, `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`.
   `GENERAL.board_config_filename` points to the board config file and
   `GENERAL.board_binding_id` selects the active `BIND` entry.
+- `[DATA_LOADER]` may still appear in `./.config` for legacy compatibility,
+  but board-bound runtime treats those keys as ignored/deprecated.
+- All grammar (`*.bnf`) paths are centralized in `[BNF]`:
+  - `iitepi_board_grammar_filename`
+  - `iitepi_wave_grammar_filename`
+  - `network_design_grammar_filename`
+  - `vicreg_grammar_filename`
+  - `value_estimation_grammar_filename`
+  - `transfer_matrix_evaluation_grammar_filename`
+  - `observation_sources_grammar_filename`
+  - `observation_channels_grammar_filename`
+  - `jkimyei_specs_grammar_filename`
+    shared grammar (`bnf/jkimyei.bnf`) for per-component jkimyei DSL files
+  - `tsiemene_circuit_grammar_filename`
+  - `canonical_path_grammar_filename`
 - Board settings live in `./default.board.config`: `[DSL]`.
-  - `tsiemene_board_grammar_filename`
-  - `tsiemene_board_dsl_filename`
-- Board DSL (`./instructions/iitepi_board.dsl`) declares:
+  - `iitepi_board_dsl_filename`
+- Board DSL (`./instructions/iitepi.board.dsl`) declares:
   - `BOARD { ... }` root block
   - `IMPORT_CONTRACT_FILE "<contract_config_file>";`
   - `IMPORT_WAVE_FILE "<wave_config_file>";`
   - `BIND <id> { CONTRACT = <derived_contract_id>; WAVE = <wave_id>; }`
 - Contract settings live in `./default.board.contract.config`: `[SPECS]`, `[DSL]`.
-  `SPECS.vicreg_config_filename` points to the VICReg module INI file.
+  `SPECS.vicreg_config_filename` points to the VICReg module key-value DSL file.
+  `SPECS.vicreg_network_design_filename` is optional and carries neutral node/graph design payload.
   `SPECS.value_estimation_config_filename` is optional while value-estimation
   is not part of the active contract.
+  `SPECS.transfer_matrix_evaluation_config_filename` is optional and enables
+  probe-level transfer-matrix runtime diagnostics policy.
+  `BOARD_CONTRACT_DSL.*_dsl_text` inline payload keys are removed; contract payloads are file-path only.
   `[DSL]` should provide:
+  - primary per-component jkimyei payload: `jkimyei_specs_dsl_filename`
+  - optional extra per-component jkimyei payloads: `jkimyei_specs_extra_dsl_filenames`
   - canonical circuit payload: `tsiemene_circuit_dsl_filename`
-  - canonical path grammar: `canonical_path_grammar_filename`
 - Wave settings live in `./default.wave.config`: `[DSL]`.
-  - `tsiemene_wave_grammar_filename`
-  - `tsiemene_wave_dsl_filename`
+  - `iitepi_wave_dsl_filename`
   - split train/run keys are removed and rejected by validation.
+  - runtime dataloader ownership is wave-local via root `WAVE` keys:
+    `SAMPLER`, `BATCH_SIZE`, `MAX_BATCHES_PER_EPOCH`,
+    with source-owned dataloader fields inside each `SOURCE { ... }` block:
+    `WORKERS`, `FORCE_REBUILD_CACHE`, `RANGE_WARN_BATCHES`,
+    `SOURCES_DSL_FILE`, `CHANNELS_DSL_FILE`.
+  - `SOURCE.SOURCES_DSL_FILE` and `SOURCE.CHANNELS_DSL_FILE` have no contract fallback.
+- `instructions/tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
+  `CSV_POLICY { CSV_BOOTSTRAP_DELTAS, CSV_STEP_ABS_TOL, CSV_STEP_REL_TOL }`.
 
 ## Runtime Contract Lock
 
@@ -103,3 +132,13 @@ Use `ed25519pub.pem` when registering API access at the exchange.
   - `meta/scheduler_mode`
   - `meta/scheduler_batch_steps`
   - `meta/scheduler_epoch_steps`
+
+## VICReg Runtime Notes
+
+- `jkimyei.*.dsl` files use explicit `COMPONENT "<canonical_type>" { ... }` blocks; implicit component identity is removed and `component_id` is derived from canonical type.
+- Loaded `jkimyei.*.dsl` files must have unique `canonical_type` values; duplicates are rejected at contract decode time.
+- `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `jkimyei.representation.vicreg.dsl` (`[COMPONENT_PARAMS]`), not by `tsi.wikimyei.representation.vicreg.dsl`.
+- VICReg train/eval enable is owned by wave `WIKIMYEI ... TRAIN`; `jkimyei.representation.vicreg.dsl` no longer defines a `vicreg_train` key.
+- `network_design` is the naming for graph/node architecture payloads.
+  Decoder layer is framework-agnostic; semantic validation is Wikimyei-owned;
+  LibTorch-facing mapping is performed in `piaabo/torch_compat`.

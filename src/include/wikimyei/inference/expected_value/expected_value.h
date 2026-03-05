@@ -40,6 +40,7 @@
 // Project headers
 #include "piaabo/dutils.h"
 #include "piaabo/dconfig.h"
+#include "piaabo/torch_compat/network_analytics.h"
 
 #include "wikimyei/inference/mdn/mixture_density_network_types.h"
 #include "wikimyei/inference/mdn/mixture_density_network_utils.h"
@@ -358,6 +359,21 @@ ExpectedValue::fit(Loader& dataloader, int n_epochs, int n_iters, bool verbose)
     
     ++epoch_count;
     ++total_epochs_trained_;
+
+    if (epoch_iters > 0) {
+      const auto analytics =
+          cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
+              *semantic_model);
+      log_info(
+          "[ExpectedValue::network_analytics] epoch=%d finite=%.6f std=%.6f near_zero=%.6f entropy=%.6f layer_cv=%.6f max_abs=%.6f\n",
+          epoch_count,
+          analytics.finite_ratio,
+          analytics.stddev,
+          analytics.near_zero_ratio,
+          analytics.abs_energy_entropy,
+          analytics.layer_rms_cv,
+          analytics.max_abs);
+    }
 
     if (verbose && (epoch_count % 50 == 0 || epoch_count == 1 || epoch_count >= n_epochs)) {
       log_info("[ExpectedValue::fit] epoch=%d\titers=%d\tavg_loss=%.6f\tbest=%.6f.at:%d\tlr=%.3g\n",

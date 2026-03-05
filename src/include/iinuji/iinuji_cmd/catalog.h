@@ -109,6 +109,7 @@ struct TrainingWikimyeiDoc {
   std::string role{};
   std::string payload_kind{};
   bool trainable_jkimyei{false};
+  std::string control_call{};
   std::string notes{};
 };
 
@@ -120,7 +121,8 @@ inline const std::vector<TrainingWikimyeiDoc>& training_wikimyei_docs() {
           "encodes batches into latent space and emits train-time loss",
           ":tensor",
           true,
-          "Trainable wikimyei. Supports canonical @jkimyei endpoint.",
+          "iinuji.tsi.vicreg.init()",
+          "Trainable wikimyei. Control-plane actions are invoked via iinuji calls.",
       },
   };
   return docs;

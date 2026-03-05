@@ -28,6 +28,9 @@ std::mutex wave_config_mutex;
 namespace {
 
 using wave_ptr_t = std::shared_ptr<const wave_record_t>;
+static std::size_t g_registered_wave_count = 0;
+static wave_hash_t g_last_registered_wave_hash;
+static std::string g_last_registered_wave_path_canonical;
 
 [[nodiscard]] static std::unordered_map<wave_hash_t, wave_ptr_t>&
 waves_by_hash() {
@@ -80,6 +83,11 @@ static bool validate_wave_config_or_terminate(const parsed_config_t& cfg,
 
 template <class T>
 static T parse_scalar_from_string(const std::string& s);
+
+[[nodiscard]] static const char* non_empty_or(const std::string& s,
+                                              const char* fallback) {
+  return has_non_ws_ascii(s) ? s.c_str() : fallback;
+}
 
 [[nodiscard]] static std::string strip_comment(std::string_view line,
                                                bool* in_block_comment) {
@@ -582,6 +590,33 @@ static T parse_scalar_from_string(const std::string& s) {
   return resolved;
 }
 
+[[nodiscard]] static std::string global_required_resolved_path(
+    const char* section,
+    const char* key) {
+  const auto sec_it = config_space_t::config.find(section);
+  if (sec_it == config_space_t::config.end()) {
+    log_fatal("[dconfig] missing global section [%s]\n", section);
+  }
+  const auto key_it = sec_it->second.find(key);
+  if (key_it == sec_it->second.end()) {
+    log_fatal("[dconfig] missing global key <%s> in section [%s]\n", key, section);
+  }
+  const std::string raw = trim_ascii_ws_copy(key_it->second);
+  if (!has_non_ws_ascii(raw)) {
+    log_fatal("[dconfig] empty global key <%s> in section [%s]\n", key, section);
+  }
+  const std::string resolved =
+      resolve_path_from_folder(config_space_t::config_folder, raw);
+  if (!has_non_ws_ascii(resolved)) {
+    log_fatal("[dconfig] unable to resolve global path <%s> in [%s]\n", key, section);
+  }
+  if (!std::filesystem::exists(resolved)) {
+    log_fatal("[dconfig] global dependency path does not exist: %s\n",
+              resolved.c_str());
+  }
+  return resolved;
+}
+
 [[nodiscard]] static std::string snapshot_wave_dsl_value_or_empty(
     const parsed_config_t& cfg,
     const char* key) {
@@ -625,21 +660,50 @@ static bool validate_wave_config_or_terminate(const parsed_config_t& cfg,
         }
       };
 
-  require_existing_path("DSL", "tsiemene_wave_grammar_filename");
-  require_existing_path("DSL", "tsiemene_wave_dsl_filename");
+  const auto require_existing_global_path =
+      [&](const char* section, const char* key) {
+        const auto sec_it = config_space_t::config.find(section);
+        if (sec_it == config_space_t::config.end()) {
+          log_warn("Missing global section [%s]\n", section);
+          ok = false;
+          return;
+        }
+        const auto key_it = sec_it->second.find(key);
+        if (key_it == sec_it->second.end()) {
+          log_warn("Missing global key <%s> in section [%s]\n", key, section);
+          ok = false;
+          return;
+        }
+        const std::string raw = trim_ascii_ws_copy(key_it->second);
+        if (!has_non_ws_ascii(raw)) {
+          log_warn("Empty global key <%s> in section [%s]\n", key, section);
+          ok = false;
+          return;
+        }
+        const std::string resolved =
+            resolve_path_from_folder(config_space_t::config_folder, raw);
+        if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
+          log_warn("Configured global path does not exist for <%s> in [%s]: %s\n",
+                   key, section, resolved.c_str());
+          ok = false;
+        }
+      };
+
+  require_existing_global_path("BNF", "iitepi_wave_grammar_filename");
+  require_existing_path("DSL", "iitepi_wave_dsl_filename");
 
   const auto dsl_it = cfg.find("DSL");
   if (dsl_it != cfg.end()) {
-    const auto train_it = dsl_it->second.find("tsiemene_wave_train_dsl_filename");
-    const auto run_it = dsl_it->second.find("tsiemene_wave_run_dsl_filename");
+    const auto train_it = dsl_it->second.find("iitepi_wave_train_dsl_filename");
+    const auto run_it = dsl_it->second.find("iitepi_wave_run_dsl_filename");
     if ((train_it != dsl_it->second.end() &&
          has_non_ws_ascii(trim_ascii_ws_copy(train_it->second))) ||
         (run_it != dsl_it->second.end() &&
          has_non_ws_ascii(trim_ascii_ws_copy(run_it->second)))) {
       log_warn(
           "[dconfig] split wave keys "
-          "<tsiemene_wave_train_dsl_filename>/<tsiemene_wave_run_dsl_filename> "
-          "are removed; use [DSL].tsiemene_wave_dsl_filename\n");
+          "<iitepi_wave_train_dsl_filename>/<iitepi_wave_run_dsl_filename> "
+          "are removed; use [DSL].iitepi_wave_dsl_filename\n");
       ok = false;
     }
   }
@@ -679,16 +743,13 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
       canonicalize_path_best_effort(resolved_wave_path);
   record->config = parsed;
 
-  const std::string grammar_path = wave_required_resolved_path(
-      record->config,
-      record->config_folder,
-      "DSL",
-      "tsiemene_wave_grammar_filename");
+  const std::string grammar_path = global_required_resolved_path(
+      "BNF", "iitepi_wave_grammar_filename");
   const std::string dsl_path = wave_required_resolved_path(
       record->config,
       record->config_folder,
       "DSL",
-      "tsiemene_wave_dsl_filename");
+      "iitepi_wave_dsl_filename");
 
   std::set<std::string> dependency_paths;
   dependency_paths.insert(record->config_file_path_canonical);
@@ -697,7 +758,7 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
 
   record->wave.grammar = piaabo::dfiles::readFileToString(grammar_path);
   record->wave.dsl =
-      snapshot_wave_dsl_value_or_empty(record->config, "tsiemene_wave_dsl_text");
+      snapshot_wave_dsl_value_or_empty(record->config, "iitepi_wave_dsl_text");
   if (!has_non_ws_ascii(record->wave.dsl)) {
     record->wave.dsl = piaabo::dfiles::readFileToString(dsl_path);
   }
@@ -707,6 +768,41 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
   }
   if (!has_non_ws_ascii(record->wave.dsl)) {
     log_fatal("[dconfig] missing effective wave DSL payload\n");
+  }
+
+  cuwacunu::camahjucunu::tsiemene_wave_set_t decoded_wave{};
+  try {
+    decoded_wave = cuwacunu::camahjucunu::dsl::decode_tsiemene_wave_from_dsl(
+        record->wave.grammar, record->wave.dsl);
+  } catch (const std::exception& e) {
+    log_fatal("[dconfig] failed to decode wave DSL while building dependency manifest: %s\n",
+              e.what());
+  }
+  for (const auto& wave : decoded_wave.waves) {
+    for (const auto& source : wave.sources) {
+      const std::string resolved_sources_path = resolve_path_from_folder(
+          record->config_folder, source.sources_dsl_file);
+      const std::string resolved_channels_path = resolve_path_from_folder(
+          record->config_folder, source.channels_dsl_file);
+      if (!has_non_ws_ascii(resolved_sources_path) ||
+          !std::filesystem::exists(resolved_sources_path) ||
+          !std::filesystem::is_regular_file(resolved_sources_path)) {
+        log_fatal("[dconfig] invalid WAVE.SOURCE.SOURCES_DSL_FILE for wave '%s' source '%s': %s\n",
+                  wave.name.c_str(),
+                  source.source_path.c_str(),
+                  resolved_sources_path.c_str());
+      }
+      if (!has_non_ws_ascii(resolved_channels_path) ||
+          !std::filesystem::exists(resolved_channels_path) ||
+          !std::filesystem::is_regular_file(resolved_channels_path)) {
+        log_fatal("[dconfig] invalid WAVE.SOURCE.CHANNELS_DSL_FILE for wave '%s' source '%s': %s\n",
+                  wave.name.c_str(),
+                  source.source_path.c_str(),
+                  resolved_channels_path.c_str());
+      }
+      dependency_paths.insert(canonicalize_path_best_effort(resolved_sources_path));
+      dependency_paths.insert(canonicalize_path_best_effort(resolved_channels_path));
+    }
   }
 
   for (const auto& dep_path : dependency_paths) {
@@ -742,6 +838,34 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
 
 }  // namespace
 
+wave_space_t::_init wave_space_t::_initializer{};
+
+void wave_space_t::lifecycle_init() {
+  log_info(
+      "[wave_space_t] initializing static-global wave registry "
+      "(hash-keyed wave sets loaded lazily; no single locked runtime hash)\n");
+}
+
+void wave_space_t::lifecycle_finit() {
+  std::size_t registered_count = 0;
+  std::string last_registered_hash;
+  std::string last_registered_path;
+  {
+    LOCK_GUARD(wave_config_mutex);
+    registered_count = g_registered_wave_count;
+    last_registered_hash = g_last_registered_wave_hash;
+    last_registered_path = g_last_registered_wave_path_canonical;
+  }
+
+  log_info(
+      "[wave_space_t] finalizing static-global wave registry "
+      "(registered_waves=%zu, last_registered_hash=%s, "
+      "last_registered_path=%s)\n",
+      registered_count,
+      non_empty_or(last_registered_hash, "<none>"),
+      non_empty_or(last_registered_path, "<none>"));
+}
+
 wave_hash_t wave_space_t::register_wave_file(const std::string& path) {
   const std::string canonical_path = canonicalize_path_best_effort(path);
   if (!has_non_ws_ascii(canonical_path)) {
@@ -763,6 +887,9 @@ wave_hash_t wave_space_t::register_wave_file(const std::string& path) {
             canonical_path.c_str());
       }
       existing_hash = existing->second;
+      g_registered_wave_count = waves.size();
+      g_last_registered_wave_hash = existing->second;
+      g_last_registered_wave_path_canonical = canonical_path;
     }
   }
   if (existing_hash.has_value()) {
@@ -811,6 +938,10 @@ wave_hash_t wave_space_t::register_wave_file(const std::string& path) {
       }
       path_to_hash[canonical_path] = built_hash;
     }
+    g_registered_wave_count = waves.size();
+    g_last_registered_wave_hash = existing_hash.has_value() ? *existing_hash
+                                                             : built_hash;
+    g_last_registered_wave_path_canonical = canonical_path;
   }
 
   if (existing_hash.has_value()) {

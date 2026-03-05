@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -20,12 +21,17 @@
 #include <torch/torch.h>
 
 #include "tsiemene/tsi.source.h"
+#include "tsiemene/tsi.cargo.validation.h"
 
 // ---- Real dataloader hook -------------------------------------------------
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/data/observation_sample.h"
-#include "piaabo/dconfig.h"
+
+// ------------------------------------------------------------
+// RUNTIME WARNINGS (non-blocking / informational) .h
+// ------------------------------------------------------------
+RUNTIME_WARNING("[tsi.source.dataloader.h] TODO: add regime/OOD-aware sampling policies for representation evaluation (blocked temporal splits, regime holdout, cross-instrument holdout). Current sampler policy is sequential/random index traversal only.\n");
 
 namespace tsiemene {
 
@@ -40,7 +46,6 @@ class TsiSourceDataloader final : public TsiSource {
  public:
   static constexpr DirectiveId IN_STEP     = directive_id::Step;
   static constexpr DirectiveId OUT_PAYLOAD = directive_id::Payload;
-  static constexpr DirectiveId OUT_FUTURE  = directive_id::Future;
   static constexpr DirectiveId OUT_META    = directive_id::Meta;
 
   using Dataset_t    = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
@@ -52,14 +57,21 @@ class TsiSourceDataloader final : public TsiSource {
                       std::string instrument,
                       cuwacunu::camahjucunu::observation_spec_t observation_instruction,
                       torch::Device device = torch::kCPU,
-                      std::size_t batch_size_override = 0)
+                      std::size_t batch_size_override = 0,
+                      std::uint64_t dataloader_workers = 0,
+                      bool force_rebuild_cache = true,
+                      std::uint64_t range_warn_batches = 256)
       : id_(id),
         instrument_(std::move(instrument)),
         type_name_("tsi.source.dataloader"),
         instance_name_(type_name_ + "." + instrument_),
+        dataloader_workers_(dataloader_workers),
+        force_rebuild_cache_(force_rebuild_cache),
+        range_warn_batches_(std::max<std::uint64_t>(1, range_warn_batches)),
         device_(device),
-        dataset_(make_dataset_(instrument_, std::move(observation_instruction))),
-        dl_(make_loader_(dataset_, batch_size_override)) {
+        dataset_(make_dataset_(
+            instrument_, std::move(observation_instruction), force_rebuild_cache)),
+        dl_(make_loader_(dataset_, batch_size_override, dataloader_workers)) {
     C_ = dl_.C_;
     T_ = dl_.T_;
     D_ = dl_.D_;
@@ -83,13 +95,12 @@ class TsiSourceDataloader final : public TsiSource {
     static constexpr DirectiveSpec kDirectives[] = {
       directive(IN_STEP, DirectiveDir::In, KindSpec::String(),
                 "episode command (e.g. \"batches=10\" or \"BTCUSDT[01.01.2009,31.12.2009]\"); empty means continue active episode; wave time-span can define range"),
-      directive(OUT_PAYLOAD, DirectiveDir::Out, KindSpec::Tensor(),
-                "past packed [B,C,T,D+1] (last slot is mask 0/1; B may be <= batch_size on last batch; keys/stats stay in raw sample)"),
-      directive(OUT_FUTURE, DirectiveDir::Out, KindSpec::Tensor(),
-                "future packed [B,C,Tf,D+1] (last slot is mask 0/1); emitted when future data is available; keys/stats stay in raw sample"),
-      directive(OUT_META, DirectiveDir::Out, KindSpec::String(), "runtime trace/meta stream"),
+      directive(OUT_PAYLOAD, DirectiveDir::Out, KindSpec::Cargo(),
+                "observation cargo payload (features/mask/future_features/keys/stats/encoding)"),
+      directive(OUT_META, DirectiveDir::Out, KindSpec::String(),
+                "runtime trace/meta stream with cursor/state diagnostics"),
     };
-    return std::span<const DirectiveSpec>(kDirectives, 4);
+    return std::span<const DirectiveSpec>(kDirectives, 3);
   }
   [[nodiscard]] bool supports_init_artifacts() const noexcept override { return true; }
   [[nodiscard]] std::string_view init_artifact_schema() const noexcept override {
@@ -129,7 +140,7 @@ class TsiSourceDataloader final : public TsiSource {
     }
 
     PackedBatch pb = next_episode_batch_();
-    if (!pb.past.defined()) {
+    if (!pb.sample) {
       std::ostringstream oss;
       oss << "dataloader.episode done emitted=" << episode_emitted_;
       if (!active_cmd_.has_range && batch_remaining_ > 0) {
@@ -150,11 +161,16 @@ class TsiSourceDataloader final : public TsiSource {
         .span_end_ms = episode_wave_span_end_ms_,
         .has_time_span = episode_wave_has_time_span_,
     };
-    out.emit_tensor(witem, OUT_PAYLOAD, std::move(pb.past));
-    if (pb.future.defined()) out.emit_tensor(witem, OUT_FUTURE, std::move(pb.future));
+    emit_batch_state_meta_(witem, out);
+    std::string cargo_error;
+    if (!validate_observation_cargo(pb.sample, CargoValidationStage::SourceOut, &cargo_error)) {
+      emit_meta_(witem, out, std::string("cargo.invalid stage=source.out reason=") + cargo_error);
+    } else {
+      out.emit_cargo(witem, OUT_PAYLOAD, std::move(pb.sample));
+      ++episode_emitted_;
+    }
     ++episode_next_wave_i_;
     ++episode_next_batch_;
-    ++episode_emitted_;
 
     continue_requested_ = episode_has_more_();
     if (!continue_requested_) {
@@ -318,27 +334,22 @@ class TsiSourceDataloader final : public TsiSource {
 
   static Dataset_t make_dataset_(
       std::string_view instrument,
-      cuwacunu::camahjucunu::observation_spec_t observation_instruction) {
-    const bool force_rebuild_cache =
-        cuwacunu::iitepi::config_space_t::get<bool>(
-            "DATA_LOADER", "dataloader_force_rebuild_cache");
-
+      cuwacunu::camahjucunu::observation_spec_t observation_instruction,
+      bool force_rebuild_cache) {
     return cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(
         std::string(instrument), std::move(observation_instruction),
         force_rebuild_cache);
   }
 
-  static Loader_t make_loader_(Dataset_t& dataset, std::size_t batch_size_override) {
-    const int configured_workers = cuwacunu::iitepi::config_space_t::get<int>(
-        "DATA_LOADER", "dataloader_workers");
-
+  static Loader_t make_loader_(Dataset_t& dataset,
+                               std::size_t batch_size_override,
+                               std::uint64_t dataloader_workers) {
     constexpr std::size_t kDefaultBatchSize = 64;
     std::size_t batch_size = kDefaultBatchSize;
     if (batch_size_override > 0) {
       batch_size = batch_size_override;
     }
-    const std::size_t workers =
-        (configured_workers > 0) ? static_cast<std::size_t>(configured_workers) : 0;
+    const std::size_t workers = static_cast<std::size_t>(dataloader_workers);
 
     if constexpr (std::is_same_v<Sampler_t, torch::data::samplers::SequentialSampler>) {
       auto sampler = dataset.SequentialSampler();
@@ -351,42 +362,40 @@ class TsiSourceDataloader final : public TsiSource {
     }
   }
 
-  [[nodiscard]] static std::uint64_t range_warn_batches_threshold_() {
-    const int configured = cuwacunu::iitepi::config_space_t::get<int>(
-        "DATA_LOADER", "dataloader_range_warn_batches", std::optional<int>{256});
-    return static_cast<std::uint64_t>(std::max(1, configured));
+  [[nodiscard]] std::uint64_t range_warn_batches_threshold_() const {
+    return range_warn_batches_;
   }
 
   struct PackedBatch {
-    torch::Tensor past{};
-    torch::Tensor future{};
+    ObservationCargoPtr sample{};
   };
 
-  [[nodiscard]] torch::Tensor pack_feature_mask_(torch::Tensor data, torch::Tensor mask) const {
-    if (!data.defined() || !mask.defined()) return torch::Tensor();
-    if (mask.dtype() != torch::kFloat32) mask = mask.to(torch::kFloat32);
-
-    if (device_ != torch::kCPU) {
-      data = data.to(device_);
-      mask = mask.to(device_);
-    }
-
-    return torch::cat({data, mask.unsqueeze(-1)}, /*dim=*/3);
+  void move_sample_to_device_(Sample_t* sample) const {
+    if (!sample) return;
+    if (device_ == torch::kCPU) return;
+    auto move_tensor = [&](torch::Tensor* t) {
+      if (!t || !t->defined()) return;
+      *t = t->to(device_);
+    };
+    move_tensor(&sample->features);
+    move_tensor(&sample->mask);
+    move_tensor(&sample->future_features);
+    move_tensor(&sample->future_mask);
+    move_tensor(&sample->encoding);
+    move_tensor(&sample->feature_mean);
+    move_tensor(&sample->feature_std);
+    move_tensor(&sample->past_keys);
+    move_tensor(&sample->future_keys);
   }
 
   [[nodiscard]] PackedBatch pack_batch_(std::vector<Sample_t>&& sample_batch) const {
     if (sample_batch.empty()) return PackedBatch{};
 
     Sample_t coll = Sample_t::collate_fn(sample_batch);
-    PackedBatch out{};
-    out.past = pack_feature_mask_(coll.features, coll.mask);
-
-    if (coll.future_features.defined() && coll.future_mask.defined() &&
-        coll.future_features.dim() == 4 && coll.future_mask.dim() == 3) {
-      torch::Tensor future = pack_feature_mask_(coll.future_features, coll.future_mask);
-      if (future.defined() && future.numel() > 0) out.future = std::move(future);
-    }
-    return out;
+    move_sample_to_device_(&coll);
+    return PackedBatch{
+        .sample = std::make_shared<Sample_t>(std::move(coll)),
+    };
   }
 
   [[nodiscard]] PackedBatch next_loader_batch_() {
@@ -539,7 +548,7 @@ class TsiSourceDataloader final : public TsiSource {
 
     if (batch_remaining_ == 0) return PackedBatch{};
     PackedBatch out = next_loader_batch_();
-    if (!out.past.defined()) return PackedBatch{};
+    if (!out.sample) return PackedBatch{};
     --batch_remaining_;
     return out;
   }
@@ -603,11 +612,42 @@ class TsiSourceDataloader final : public TsiSource {
     out.emit_string(wave, OUT_META, std::move(msg));
   }
 
+  void emit_batch_state_meta_(const Wave& wave, Emitter& out) const {
+    std::ostringstream oss;
+    oss << "dataloader.state"
+        << " mode=" << (active_cmd_.has_range ? "range" : "batch")
+        << " sampler="
+        << (std::is_same_v<Sampler_t, torch::data::samplers::SequentialSampler>
+                ? "sequential"
+                : "random")
+        << " wave(id=" << static_cast<unsigned long long>(wave.cursor.id)
+        << ",i=" << static_cast<unsigned long long>(wave.cursor.i)
+        << ",episode=" << static_cast<unsigned long long>(wave.cursor.episode)
+        << ",batch=" << static_cast<unsigned long long>(wave.cursor.batch) << ")"
+        << " emitted=" << static_cast<unsigned long long>(episode_emitted_)
+        << " remaining=" << static_cast<unsigned long long>(batch_remaining_)
+        << " range_cursor=" << static_cast<unsigned long long>(range_cursor_)
+        << "/" << static_cast<unsigned long long>(range_count_)
+        << " range_batch_limit=" << static_cast<unsigned long long>(range_batch_limit_)
+        << " batch_hint=" << static_cast<long long>(B_hint_)
+        << " dims=[C=" << static_cast<long long>(C_)
+        << ",T=" << static_cast<long long>(T_)
+        << ",D=" << static_cast<long long>(D_) << "]"
+        << " dataloader(workers=" << static_cast<unsigned long long>(dataloader_workers_)
+        << ",force_rebuild_cache=" << (force_rebuild_cache_ ? "true" : "false")
+        << ",range_warn_batches=" << static_cast<unsigned long long>(range_warn_batches_) << ")"
+        << " device=" << device_.str();
+    emit_meta_(wave, out, oss.str());
+  }
+
  private:
     TsiId id_{};
     std::string instrument_;
     std::string type_name_;
     std::string instance_name_;
+    std::uint64_t dataloader_workers_{0};
+    bool force_rebuild_cache_{true};
+    std::uint64_t range_warn_batches_{256};
 
     torch::Device device_{torch::kCPU};
 

@@ -66,6 +66,7 @@ The practical idea is:
 ## Current component family in active use
 - `tsi.source.dataloader`
 - `tsi.wikimyei.representation.vicreg`
+- `tsi.probe.representation.transfer_matrix_evaluation`
 - `tsi.sink.null`
 - `tsi.sink.log.sys`
 
@@ -80,8 +81,8 @@ The project is moving toward:
 This README intentionally avoids over-precise constraints, to reduce doc/code drift.
 
 For exact constraints, use:
-- `src/config/dsl/tsiemene_circuit.bnf`
-- `src/config/dsl/tsiemene_wave.bnf`
+- `src/config/bnf/iitepi.contract.circuit.bnf`
+- `src/config/bnf/iitepi.wave.bnf`
 - validator/builder/runtime code under `src/include/tsiemene` and `src/impl`
 - bench tests under `src/tests/bench/camahjucunu` and `src/tests/bench/tsiemene`
 
@@ -90,8 +91,8 @@ For exact constraints, use:
 2. `src/include/iitepi/board/board.contract.h`
 3. `src/include/iitepi/board/board.runtime.h`
 4. `src/include/iitepi/board/board.builder.h`
-5. `src/config/instructions/iitepi_circuit.dsl`
-6. `src/config/instructions/iitepi_wave.dsl`
+5. `src/config/instructions/iitepi.contract.circuit.example.dsl`
+6. `src/config/instructions/iitepi.wave.example.dsl`
 
 ## Reference tests
 - `src/tests/bench/camahjucunu/test_dsl_tsiemene_circuit.cpp`

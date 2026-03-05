@@ -1,5 +1,5 @@
 /*
-  observation_channels.dsl
+  tsi.source.dataloader.channels.dsl
   ========================
   Purpose:
     Channel policy table for observation feature assembly. Each row defines

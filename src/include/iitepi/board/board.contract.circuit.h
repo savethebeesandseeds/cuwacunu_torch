@@ -13,9 +13,6 @@
 
 namespace tsiemene {
 
-struct Query { std::string_view text{}; };
-[[nodiscard]] constexpr Query query(std::string_view t = {}) noexcept { return Query{t}; }
-
 struct Endpoint {
   Tsi* tsi{};
   DirectiveId directive{};
@@ -27,11 +24,10 @@ struct Endpoint {
 struct Hop {
   Endpoint from{}; // Out directive
   Endpoint to{};   // In directive
-  Query q{};       // opaque (not parsed here)
 };
 
-[[nodiscard]] constexpr Hop hop(Endpoint from, Endpoint to, Query q = {}) noexcept {
-  return Hop{.from = from, .to = to, .q = q};
+[[nodiscard]] constexpr Hop hop(Endpoint from, Endpoint to) noexcept {
+  return Hop{.from = from, .to = to};
 }
 
 struct Circuit {

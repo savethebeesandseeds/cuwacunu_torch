@@ -24,6 +24,11 @@ DATALOADER_DATASETS := \
 # -----------------------------------------------------------------
 # Aggregate Target (module-level)
 # -----------------------------------------------------------------
+.PHONY: types
+types:
+	$(MAKE) -C $(HERE_PATH)/types all
+	@$(LOG_SUCCESS)
+
 .PHONY: datasets
 datasets: $(DATALOADER_DATASETS)
 	@$(LOG_SUCCESS)
@@ -32,5 +37,5 @@ datasets: $(DATALOADER_DATASETS)
 # All
 # -----------------------------------------------------------------
 .PHONY: all
-all: datasets
+all: types datasets
 	@$(LOG_SUCCESS)

@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
+#include <vector>
 
 RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
 RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME consider the implincations of changing floats to double. \n");
@@ -195,24 +197,62 @@ static torch::Device parse_device(const std::string& s)
   }
 
   v = strip_torch_type_prefixes(v);
+  const auto log_cpu_fallback_loud = [&](const std::string& requested,
+                                         const std::string& attempted,
+                                         const char* reason) {
+    log_warn(
+        "[torch_utils][CPU_FALLBACK_ACTIVE] requested='%s' attempted='%s' reason='%s'. "
+        "Heavy compute will run on CPU for this component.\n",
+        requested.c_str(),
+        attempted.c_str(),
+        reason);
+  };
+  const auto fallback_cpu_with_warn = [&](const torch::Device& attempted) {
+    log_cpu_fallback_loud(
+        s,
+        attempted.str(),
+        "cuda runtime probe failed");
+    return torch::Device(torch::kCPU);
+  };
+  const auto ensure_device_runtime_usable = [&](const torch::Device& dev) -> torch::Device {
+    if (!dev.is_cuda()) return dev;
+    try {
+      auto probe = torch::zeros(
+          {1},
+          torch::TensorOptions().dtype(torch::kFloat32).device(dev));
+      (void)probe;
+      torch::cuda::synchronize();
+      return dev;
+    } catch (const c10::Error&) {
+      return fallback_cpu_with_warn(dev);
+    } catch (const std::exception&) {
+      return fallback_cpu_with_warn(dev);
+    }
+  };
+
   if (v == "cpu") return torch::Device(torch::kCPU);
   if (v == "cuda") {
     if (!torch::cuda::is_available()) {
-      log_warn(
-          "[torch_utils] Configured device '%s' requires CUDA but CUDA is unavailable; falling back to CPU.\n",
-          s.c_str());
+      log_cpu_fallback_loud(
+          s,
+          "cuda",
+          "cuda unavailable");
       return torch::Device(torch::kCPU);
     }
-    return torch::Device(torch::kCUDA);
+    return ensure_device_runtime_usable(torch::Device(torch::kCUDA));
   }
   if (v.rfind("cuda:", 0) == 0 && !torch::cuda::is_available()) {
-    log_warn(
-        "[torch_utils] Configured device '%s' requires CUDA but CUDA is unavailable; falling back to CPU.\n",
-        s.c_str());
+    log_cpu_fallback_loud(
+        s,
+        v,
+        "cuda unavailable");
     return torch::Device(torch::kCPU);
   }
 
-  try { return torch::Device(v); }
+  try {
+    const torch::Device parsed(v);
+    return ensure_device_runtime_usable(parsed);
+  }
   catch (const c10::Error&) {
     throw std::runtime_error("Invalid configured device '"+s+"'");
   }

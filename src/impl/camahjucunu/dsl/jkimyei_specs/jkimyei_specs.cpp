@@ -43,9 +43,9 @@ class lexer_t {
     return next_impl();
   }
 
- private:
+  private:
   static bool is_symbol_char(char c) {
-    return c == '{' || c == '}' || c == '[' || c == ']' || c == ':' || c == ',';
+    return c == '{' || c == '}' || c == '[' || c == ']' || c == ':' || c == ',' || c == '|';
   }
 
   bool eof() const { return pos_ >= src_.size(); }
@@ -190,6 +190,11 @@ struct named_kv_block_t {
   bool present{false};
 };
 
+struct curve_t {
+  std::string name{};
+  kv_list_t kv{};
+};
+
 struct profile_t {
   std::string name{};
   named_kv_block_t optimizer{};
@@ -197,43 +202,31 @@ struct profile_t {
   named_kv_block_t loss{};
 
   kv_list_t component_params{};
-  kv_list_t reproducibility{};
   kv_list_t numerics{};
   kv_list_t gradient{};
   kv_list_t checkpoint{};
   kv_list_t metrics{};
   kv_list_t data_ref{};
+  std::vector<curve_t> augmentations{};
 
   bool component_params_present{false};
-  bool reproducibility_present{false};
   bool numerics_present{false};
   bool gradient_present{false};
   bool checkpoint_present{false};
   bool metrics_present{false};
   bool data_ref_present{false};
-};
-
-struct curve_t {
-  std::string kind{};
-  kv_list_t kv{};
-};
-
-struct augmentations_t {
-  std::string name{};
-  std::vector<curve_t> curves{};
+  bool augmentations_present{false};
 };
 
 struct component_t {
   std::string canonical_type{};
   std::string id{};
   std::vector<profile_t> profiles{};
-  std::vector<augmentations_t> augmentation_sets{};
   std::string active_profile{};
 };
 
 struct document_t {
   std::string version{};
-  kv_list_t selectors{};
   std::vector<component_t> components{};
 };
 
@@ -247,25 +240,31 @@ class parser_t {
     expect_identifier("JKSPEC");
     doc.version = parse_scalar_value();
 
-    if (peek_is_identifier("SELECTORS")) {
-      consume_identifier("SELECTORS");
-      doc.selectors = parse_kv_block();
-    }
-
-    std::unordered_set<std::string> component_ids;
-    while (!peek_is_end()) {
-      component_t component = parse_component();
-      if (!component_ids.insert(component.id).second) {
-        throw std::runtime_error(cuwacunu::piaabo::string_format(
-            "duplicate COMPONENT id '%s'", component.id.c_str()));
-      }
-      doc.components.push_back(std::move(component));
-    }
-
-    if (doc.components.empty()) {
+    if (peek_is_end()) {
       throw std::runtime_error("JKSPEC requires at least one COMPONENT block");
     }
 
+    std::unordered_set<std::string> component_canonical_types;
+    while (!peek_is_end()) {
+      if (!peek_is_identifier("COMPONENT")) {
+        const token_t bad = peek();
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "unexpected token '%s' at JKSPEC root %zu:%zu; expected COMPONENT",
+            bad.text.c_str(),
+            bad.line,
+            bad.col));
+      }
+      component_t component = parse_component();
+      if (!component_canonical_types.insert(component.canonical_type).second) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "duplicate COMPONENT canonical type '%s'",
+            component.canonical_type.c_str()));
+      }
+      doc.components.push_back(std::move(component));
+    }
+    if (doc.components.empty()) {
+      throw std::runtime_error("JKSPEC requires at least one COMPONENT block");
+    }
     return doc;
   }
 
@@ -273,6 +272,18 @@ class parser_t {
   static std::string lower_ascii_copy(std::string s) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return s;
+  }
+
+  static std::string trim_ascii_copy(std::string s) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    while (!s.empty() && is_space(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
+    while (!s.empty() && is_space(static_cast<unsigned char>(s.back()))) s.pop_back();
+    return s;
+  }
+
+  static std::string normalize_key_token(std::string key) {
+    while (!key.empty() && key.front() == '.') key.erase(key.begin());
+    return key;
   }
 
   static std::string join_csv(const std::vector<std::string>& vals) {
@@ -389,7 +400,13 @@ class parser_t {
     expect_symbol('{');
     while (!try_consume_symbol('}')) {
       const token_t key_tok = expect_identifier_any();
-      const std::string key = key_tok.text;
+      const std::string key = normalize_key_token(key_tok.text);
+      if (key.empty()) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "invalid empty key at %zu:%zu",
+            key_tok.line,
+            key_tok.col));
+      }
       if (!seen_keys.insert(key).second) {
         throw std::runtime_error(cuwacunu::piaabo::string_format(
             "duplicate key '%s' at %zu:%zu",
@@ -404,6 +421,59 @@ class parser_t {
     return kv;
   }
 
+  kv_list_t parse_kv_profile_section(const std::string& profile_name,
+                                     const std::string& section_name) {
+    kv_list_t kv{};
+    std::unordered_set<std::string> seen_keys;
+    while (!peek_is_symbol('[') && !peek_is_symbol('}')) {
+      const token_t key_tok = expect_identifier_any();
+      const std::string key = normalize_key_token(key_tok.text);
+      if (key.empty()) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "invalid empty key in [%s] for PROFILE '%s' at %zu:%zu",
+            section_name.c_str(),
+            profile_name.c_str(),
+            key_tok.line,
+            key_tok.col));
+      }
+      if (!seen_keys.insert(key).second) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "duplicate key '%s' in [%s] for PROFILE '%s' at %zu:%zu",
+            key.c_str(),
+            section_name.c_str(),
+            profile_name.c_str(),
+            key_tok.line,
+            key_tok.col));
+      }
+      expect_symbol(':');
+      kv.entries.emplace_back(key, parse_value());
+    }
+    return kv;
+  }
+
+  std::string extract_required_type(kv_list_t* kv,
+                                    const std::string& section_name,
+                                    const std::string& profile_name) {
+    if (!kv) throw std::runtime_error("extract_required_type called with null kv");
+    for (auto it = kv->entries.begin(); it != kv->entries.end(); ++it) {
+      if (it->first == "type") {
+        const std::string out = it->second;
+        kv->entries.erase(it);
+        if (out.empty()) {
+          throw std::runtime_error(cuwacunu::piaabo::string_format(
+              "[%s] has empty .type in PROFILE '%s'",
+              section_name.c_str(),
+              profile_name.c_str()));
+        }
+        return out;
+      }
+    }
+    throw std::runtime_error(cuwacunu::piaabo::string_format(
+        "missing .type in [%s] for PROFILE '%s'",
+        section_name.c_str(),
+        profile_name.c_str()));
+  }
+
   profile_t parse_profile() {
     consume_identifier("PROFILE");
     profile_t p{};
@@ -411,6 +481,137 @@ class parser_t {
     expect_symbol('{');
 
     while (!try_consume_symbol('}')) {
+      if (peek_is_symbol('[')) {
+        expect_symbol('[');
+        const token_t section_tok = expect_identifier_any();
+        const std::string section_name = section_tok.text;
+        expect_symbol(']');
+
+        if (section_name == "OPTIMIZER") {
+          if (p.optimizer.present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate OPTIMIZER block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.optimizer.kv = parse_kv_profile_section(p.name, section_name);
+          p.optimizer.name = extract_required_type(&p.optimizer.kv, section_name, p.name);
+          p.optimizer.present = true;
+          continue;
+        }
+        if (section_name == "LR_SCHEDULER") {
+          if (p.lr_scheduler.present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate LR_SCHEDULER block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.lr_scheduler.kv = parse_kv_profile_section(p.name, section_name);
+          p.lr_scheduler.name = extract_required_type(&p.lr_scheduler.kv, section_name, p.name);
+          p.lr_scheduler.present = true;
+          continue;
+        }
+        if (section_name == "LOSS") {
+          if (p.loss.present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate LOSS block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.loss.kv = parse_kv_profile_section(p.name, section_name);
+          p.loss.name = extract_required_type(&p.loss.kv, section_name, p.name);
+          p.loss.present = true;
+          continue;
+        }
+        if (section_name == "COMPONENT_PARAMS") {
+          if (p.component_params_present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate COMPONENT_PARAMS block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.component_params = parse_kv_profile_section(p.name, section_name);
+          p.component_params_present = true;
+          continue;
+        }
+        if (section_name == "NUMERICS") {
+          if (p.numerics_present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate NUMERICS block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.numerics = parse_kv_profile_section(p.name, section_name);
+          p.numerics_present = true;
+          continue;
+        }
+        if (section_name == "GRADIENT") {
+          if (p.gradient_present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate GRADIENT block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.gradient = parse_kv_profile_section(p.name, section_name);
+          p.gradient_present = true;
+          continue;
+        }
+        if (section_name == "CHECKPOINT") {
+          if (p.checkpoint_present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate CHECKPOINT block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.checkpoint = parse_kv_profile_section(p.name, section_name);
+          p.checkpoint_present = true;
+          continue;
+        }
+        if (section_name == "METRICS") {
+          if (p.metrics_present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate METRICS block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.metrics = parse_kv_profile_section(p.name, section_name);
+          p.metrics_present = true;
+          continue;
+        }
+        if (section_name == "DATA_REF") {
+          if (p.data_ref_present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate DATA_REF block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          p.data_ref = parse_kv_profile_section(p.name, section_name);
+          p.data_ref_present = true;
+          continue;
+        }
+        if (section_name == "AUGMENTATIONS") {
+          if (p.augmentations_present) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "duplicate AUGMENTATIONS block in PROFILE '%s'",
+                p.name.c_str()));
+          }
+          if (try_consume_symbol('{')) {
+            if (peek_is_identifier("CURVE")) {
+              p.augmentations = parse_augmentations_curve_blocks(p.name);
+            } else {
+              p.augmentations = parse_augmentations_ascii_table(p.name, /*expect_block_end=*/true);
+            }
+          } else {
+            if (peek_is_identifier("CURVE")) {
+              throw std::runtime_error(cuwacunu::piaabo::string_format(
+                  "legacy CURVE augmentation format requires braces in PROFILE '%s'",
+                  p.name.c_str()));
+            }
+            p.augmentations = parse_augmentations_ascii_table(p.name, /*expect_block_end=*/false);
+          }
+          p.augmentations_present = true;
+          continue;
+        }
+
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "unexpected section '[%s]' in PROFILE '%s' at %zu:%zu",
+            section_name.c_str(),
+            p.name.c_str(),
+            section_tok.line,
+            section_tok.col));
+      }
+
       if (peek_is_identifier("OPTIMIZER")) {
         if (p.optimizer.present) {
           throw std::runtime_error(cuwacunu::piaabo::string_format(
@@ -456,17 +657,6 @@ class parser_t {
         consume_identifier("COMPONENT_PARAMS");
         p.component_params = parse_kv_block();
         p.component_params_present = true;
-        continue;
-      }
-      if (peek_is_identifier("REPRODUCIBILITY")) {
-        if (p.reproducibility_present) {
-          throw std::runtime_error(cuwacunu::piaabo::string_format(
-              "duplicate REPRODUCIBILITY block in PROFILE '%s'",
-              p.name.c_str()));
-        }
-        consume_identifier("REPRODUCIBILITY");
-        p.reproducibility = parse_kv_block();
-        p.reproducibility_present = true;
         continue;
       }
       if (peek_is_identifier("NUMERICS")) {
@@ -524,6 +714,16 @@ class parser_t {
         p.data_ref_present = true;
         continue;
       }
+      if (peek_is_identifier("AUGMENTATIONS")) {
+        if (p.augmentations_present) {
+          throw std::runtime_error(cuwacunu::piaabo::string_format(
+              "duplicate AUGMENTATIONS block in PROFILE '%s'",
+              p.name.c_str()));
+        }
+        p.augmentations = parse_augmentations(p.name);
+        p.augmentations_present = true;
+        continue;
+      }
 
       const token_t bad = next();
       throw std::runtime_error(cuwacunu::piaabo::string_format(
@@ -537,28 +737,265 @@ class parser_t {
     return p;
   }
 
-  augmentations_t parse_augmentations() {
-    consume_identifier("AUGMENTATIONS");
-    augmentations_t a{};
-    a.name = expect_string_literal();
-    expect_symbol('{');
-    std::unordered_set<std::string> curve_kinds;
+  static bool is_dash_only_token(const std::string& token) {
+    if (token.empty()) return false;
+    for (char c : token) {
+      if (c != '-') return false;
+    }
+    return true;
+  }
+
+  static bool is_frame_token(const token_t& tok) {
+    if (tok.kind != token_t::kind_e::Identifier || tok.text.empty()) return false;
+    bool has_dash = false;
+    for (char c : tok.text) {
+      if (c == '-') {
+        has_dash = true;
+        continue;
+      }
+      if (c == '/' || c == '\\') continue;
+      return false;
+    }
+    return has_dash;
+  }
+
+  std::vector<std::string> parse_table_row_cells() {
+    std::vector<std::string> cells{};
+    expect_symbol('|');
+    while (true) {
+      const token_t cell_start = peek();
+      if (cell_start.kind == token_t::kind_e::Symbol && cell_start.text == "|") {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "empty AUGMENTATIONS table cell at %zu:%zu",
+            cell_start.line,
+            cell_start.col));
+      }
+      std::vector<std::string> pieces{};
+      while (true) {
+        const token_t tok = peek();
+        if (tok.kind == token_t::kind_e::End) {
+          throw std::runtime_error("unterminated AUGMENTATIONS table row");
+        }
+        if (tok.kind == token_t::kind_e::Symbol && tok.text == "|") break;
+        pieces.push_back(next().text);
+      }
+      std::ostringstream cell_builder;
+      for (std::size_t i = 0; i < pieces.size(); ++i) {
+        if (i > 0) cell_builder << ' ';
+        cell_builder << pieces[i];
+      }
+      std::string cell = trim_ascii_copy(cell_builder.str());
+      if (equals_ascii_ci(cell, "true")) cell = "true";
+      if (equals_ascii_ci(cell, "false")) cell = "false";
+      cells.push_back(std::move(cell));
+      expect_symbol('|');
+
+      const token_t next_tok = peek();
+      if (next_tok.kind == token_t::kind_e::Symbol &&
+          (next_tok.text == "|" || next_tok.text == "}" || next_tok.text == "[")) {
+        break;
+      }
+      if (next_tok.kind == token_t::kind_e::End || is_frame_token(next_tok)) {
+        break;
+      }
+    }
+    return cells;
+  }
+
+  std::vector<curve_t> parse_augmentations_curve_blocks(const std::string& profile_name) {
+    std::unordered_set<std::string> curve_names;
+    std::vector<curve_t> curves{};
 
     while (!try_consume_symbol('}')) {
       consume_identifier("CURVE");
       curve_t curve{};
-      curve.kind = expect_string_literal();
-      if (!curve_kinds.insert(curve.kind).second) {
+      curve.name = expect_string_literal();
+      if (!curve_names.insert(curve.name).second) {
         throw std::runtime_error(cuwacunu::piaabo::string_format(
-            "duplicate CURVE '%s' in AUGMENTATIONS '%s'",
-            curve.kind.c_str(),
-            a.name.c_str()));
+            "duplicate CURVE '%s' in PROFILE '%s' AUGMENTATIONS",
+            curve.name.c_str(),
+            profile_name.c_str()));
       }
       curve.kv = parse_kv_block();
-      a.curves.push_back(std::move(curve));
+      curves.push_back(std::move(curve));
     }
 
-    return a;
+    return curves;
+  }
+
+  std::vector<curve_t> parse_augmentations_ascii_table(const std::string& profile_name,
+                                                       bool expect_block_end) {
+    static const std::vector<std::string> kExpectedHeader = {
+        "name",
+        "active",
+        "curve_param",
+        "noise_scale",
+        "smoothing_kernel_size",
+        "point_drop_prob",
+        "value_jitter_std",
+        "time_mask_band_frac",
+        "channel_dropout_prob",
+        "comment",
+    };
+
+    while (!peek_is_symbol('|')) {
+      if (peek_is_symbol('}')) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "empty AUGMENTATIONS table in PROFILE '%s'",
+            profile_name.c_str()));
+      }
+      const token_t tok = next();
+      if (!is_frame_token(tok)) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "unexpected token '%s' before AUGMENTATIONS table header in PROFILE '%s'",
+            tok.text.c_str(),
+            profile_name.c_str()));
+      }
+    }
+
+    const std::vector<std::string> first_row = parse_table_row_cells();
+
+    auto finish_table = [&]() {
+      while (is_frame_token(peek())) (void)next();
+      if (expect_block_end) {
+        if (!peek_is_symbol('}')) {
+          const token_t bad = peek();
+          throw std::runtime_error(cuwacunu::piaabo::string_format(
+              "unexpected token '%s' after AUGMENTATIONS table rows in PROFILE '%s'",
+              bad.text.c_str(),
+              profile_name.c_str()));
+        }
+        expect_symbol('}');
+      }
+    };
+
+    if (first_row == kExpectedHeader) {
+      std::unordered_set<std::string> curve_names;
+      std::vector<curve_t> curves{};
+      while (peek_is_symbol('|')) {
+        const std::vector<std::string> row = parse_table_row_cells();
+        if (row.size() == 1 && is_dash_only_token(row.front())) continue;
+        if (row.size() != kExpectedHeader.size()) {
+          throw std::runtime_error(cuwacunu::piaabo::string_format(
+              "AUGMENTATIONS table row has %zu cells, expected %zu in PROFILE '%s'",
+              row.size(),
+              kExpectedHeader.size(),
+              profile_name.c_str()));
+        }
+
+        curve_t curve{};
+        curve.name = row[0];
+        if (!curve_names.insert(curve.name).second) {
+          throw std::runtime_error(cuwacunu::piaabo::string_format(
+              "duplicate AUGMENTATIONS row name '%s' in PROFILE '%s'",
+              curve.name.c_str(),
+              profile_name.c_str()));
+        }
+        for (std::size_t i = 0; i < kExpectedHeader.size(); ++i) {
+          curve.kv.entries.emplace_back(kExpectedHeader[i], row[i]);
+        }
+        curves.push_back(std::move(curve));
+      }
+      finish_table();
+      if (curves.empty()) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "AUGMENTATIONS table requires at least one row in PROFILE '%s'",
+            profile_name.c_str()));
+      }
+      return curves;
+    }
+
+    if (first_row.empty() || first_row[0] != "name" || first_row.size() < 2) {
+      std::ostringstream expected;
+      std::ostringstream got;
+      for (std::size_t i = 0; i < kExpectedHeader.size(); ++i) {
+        if (i > 0) expected << ", ";
+        expected << kExpectedHeader[i];
+      }
+      for (std::size_t i = 0; i < first_row.size(); ++i) {
+        if (i > 0) got << ", ";
+        got << first_row[i];
+      }
+      throw std::runtime_error(cuwacunu::piaabo::string_format(
+          "AUGMENTATIONS table header mismatch in PROFILE '%s'. expected row-header=[%s] or transposed first-row starting with 'name', got=[%s]",
+          profile_name.c_str(),
+          expected.str().c_str(),
+          got.str().c_str()));
+    }
+
+    std::vector<curve_t> curves(first_row.size() - 1);
+    std::vector<std::unordered_set<std::string>> seen_curve_keys(first_row.size() - 1);
+    std::unordered_set<std::string> curve_names;
+    for (std::size_t i = 1; i < first_row.size(); ++i) {
+      curves[i - 1].name = first_row[i];
+      if (curves[i - 1].name.empty()) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "empty augmentation name in transposed AUGMENTATIONS table of PROFILE '%s'",
+            profile_name.c_str()));
+      }
+      if (!curve_names.insert(curves[i - 1].name).second) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "duplicate AUGMENTATIONS row name '%s' in PROFILE '%s'",
+            curves[i - 1].name.c_str(),
+            profile_name.c_str()));
+      }
+    }
+
+    while (peek_is_symbol('|')) {
+      const std::vector<std::string> row = parse_table_row_cells();
+      if (row.size() == 1 && is_dash_only_token(row.front())) continue;
+      if (row.size() != first_row.size()) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "transposed AUGMENTATIONS row has %zu cells, expected %zu in PROFILE '%s'",
+            row.size(),
+            first_row.size(),
+            profile_name.c_str()));
+      }
+      const std::string key = normalize_key_token(trim_ascii_copy(row[0]));
+      if (key.empty()) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "empty transposed AUGMENTATIONS field name in PROFILE '%s'",
+            profile_name.c_str()));
+      }
+      if (key == "name") {
+        for (std::size_t i = 1; i < row.size(); ++i) {
+          if (row[i] != curves[i - 1].name) {
+            throw std::runtime_error(cuwacunu::piaabo::string_format(
+                "transposed AUGMENTATIONS name row mismatch for column %zu in PROFILE '%s'",
+                i,
+                profile_name.c_str()));
+          }
+        }
+        continue;
+      }
+      for (std::size_t i = 1; i < row.size(); ++i) {
+        if (!seen_curve_keys[i - 1].insert(key).second) {
+          throw std::runtime_error(cuwacunu::piaabo::string_format(
+              "duplicate transposed AUGMENTATIONS field '%s' for curve '%s' in PROFILE '%s'",
+              key.c_str(),
+              curves[i - 1].name.c_str(),
+              profile_name.c_str()));
+        }
+        curves[i - 1].kv.entries.emplace_back(key, row[i]);
+      }
+    }
+
+    finish_table();
+    if (curves.empty()) {
+      throw std::runtime_error(cuwacunu::piaabo::string_format(
+          "AUGMENTATIONS table requires at least one row in PROFILE '%s'",
+          profile_name.c_str()));
+    }
+    return curves;
+  }
+
+  std::vector<curve_t> parse_augmentations(const std::string& profile_name) {
+    consume_identifier("AUGMENTATIONS");
+    expect_symbol('{');
+    if (peek_is_identifier("CURVE")) {
+      return parse_augmentations_curve_blocks(profile_name);
+    }
+    return parse_augmentations_ascii_table(profile_name, /*expect_block_end=*/true);
   }
 
   component_t parse_component() {
@@ -566,12 +1003,10 @@ class parser_t {
 
     component_t c{};
     c.canonical_type = expect_string_literal();
-    c.id = expect_string_literal();
+    c.id = c.canonical_type;
     expect_symbol('{');
     bool active_profile_set = false;
     std::unordered_set<std::string> profile_names;
-    std::unordered_set<std::string> augmentation_names;
-
     while (!try_consume_symbol('}')) {
       if (peek_is_identifier("PROFILE")) {
         profile_t profile = parse_profile();
@@ -582,17 +1017,6 @@ class parser_t {
               c.id.c_str()));
         }
         c.profiles.push_back(std::move(profile));
-        continue;
-      }
-      if (peek_is_identifier("AUGMENTATIONS")) {
-        augmentations_t set = parse_augmentations();
-        if (!augmentation_names.insert(set.name).second) {
-          throw std::runtime_error(cuwacunu::piaabo::string_format(
-              "duplicate AUGMENTATIONS '%s' in COMPONENT '%s'",
-              set.name.c_str(),
-              c.id.c_str()));
-        }
-        c.augmentation_sets.push_back(std::move(set));
         continue;
       }
       if (peek_is_identifier("ACTIVE_PROFILE")) {
@@ -645,7 +1069,6 @@ struct component_schema_t {
 struct schema_index_t {
   std::unordered_map<std::string, owner_schema_t> owners{};
   std::unordered_map<std::string, component_schema_t> components{};
-  std::unordered_set<std::string> selector_fields{};
 };
 
 std::string lower_ascii_copy(std::string s) {
@@ -810,10 +1233,6 @@ const schema_index_t& schema_index() {
       out.components[canonical].family_rules.push_back(rule);
     }
 
-    for (const auto& field : cuwacunu::jkimyei::specs::kIniSelectorFields) {
-      out.selector_fields.insert(std::string(field.key));
-    }
-
     return out;
   }();
   return index;
@@ -839,22 +1258,22 @@ const std::string* find_kv(const kv_list_t& kv, const std::string& key) {
 }
 
 const profile_t* find_profile(const component_t& c, const std::string& profile_name);
-const augmentations_t* find_augmentations(const component_t& c, const std::string& set_name);
 
 bool family_present_for_profile(const component_t& component,
                                 const profile_t& profile,
                                 const std::string& family) {
+  (void)component;
   if (family == "Optimizer") return profile.optimizer.present;
   if (family == "Scheduler") return profile.lr_scheduler.present;
   if (family == "Loss") return profile.loss.present;
   if (family == "ComponentParams") return profile.component_params_present;
-  if (family == "Reproducibility") return profile.reproducibility_present;
+  if (family == "Reproducibility") return false;
   if (family == "Numerics") return profile.numerics_present;
   if (family == "Gradient") return profile.gradient_present;
   if (family == "Checkpoint") return profile.checkpoint_present;
   if (family == "Metrics") return profile.metrics_present;
   if (family == "DataRef") return profile.data_ref_present;
-  if (family == "Augmentations") return !component.augmentation_sets.empty();
+  if (family == "Augmentations") return profile.augmentations_present;
   throw std::runtime_error(cuwacunu::piaabo::string_format(
       "unsupported schema family token '%s'", family.c_str()));
 }
@@ -911,72 +1330,12 @@ void validate_kv_with_owner_schema(const kv_list_t& kv,
   }
 }
 
-void validate_selectors(const document_t& doc) {
-  if (doc.selectors.entries.empty()) return;
-
-  const std::unordered_set<std::string> expected_selector_map_keys = {
-      "COMPONENT_ID_KEY",
-      "PROFILE_ID_KEY",
-  };
-  std::unordered_set<std::string> seen_map_keys;
-  std::unordered_set<std::string> seen_values;
-  const auto& idx = schema_index();
-
-  for (const auto& [map_key, value] : doc.selectors.entries) {
-    if (expected_selector_map_keys.find(map_key) == expected_selector_map_keys.end()) {
-      throw std::runtime_error(cuwacunu::piaabo::string_format(
-          "SELECTORS contains unknown map key '%s'",
-          map_key.c_str()));
-    }
-    seen_map_keys.insert(map_key);
-
-    if (idx.selector_fields.find(value) == idx.selector_fields.end()) {
-      throw std::runtime_error(cuwacunu::piaabo::string_format(
-          "SELECTORS key '%s' maps to unknown ini selector '%s'",
-          map_key.c_str(),
-          value.c_str()));
-    }
-    if (!seen_values.insert(value).second) {
-      throw std::runtime_error(cuwacunu::piaabo::string_format(
-          "SELECTORS reuses ini selector '%s' across multiple map keys",
-          value.c_str()));
-    }
-  }
-
-  for (const auto& required_map_key : expected_selector_map_keys) {
-    if (seen_map_keys.find(required_map_key) == seen_map_keys.end()) {
-      throw std::runtime_error(cuwacunu::piaabo::string_format(
-          "SELECTORS missing required map key '%s'",
-          required_map_key.c_str()));
-    }
-  }
-}
-
 void validate_component(const component_t& component) {
   const component_schema_t& schema = resolve_component_schema(component);
   if (component.profiles.empty()) {
     throw std::runtime_error(cuwacunu::piaabo::string_format(
         "COMPONENT '%s' has no PROFILE blocks",
         component.id.c_str()));
-  }
-
-  std::unordered_set<std::string> augmentation_set_names;
-  for (const auto& set : component.augmentation_sets) {
-    augmentation_set_names.insert(set.name);
-    for (const auto& curve : set.curves) {
-      kv_list_t curve_kv = curve.kv;
-      if (!find_kv(curve_kv, "kind")) {
-        curve_kv.entries.emplace_back("kind", curve.kind);
-      }
-      validate_kv_with_owner_schema(
-          curve_kv,
-          "augmentation.curve",
-          cuwacunu::piaabo::string_format(
-              "COMPONENT '%s' AUGMENTATIONS '%s' CURVE '%s'",
-              component.id.c_str(),
-              set.name.c_str(),
-              curve.kind.c_str()));
-    }
   }
 
   if (component.active_profile.empty()) {
@@ -1038,17 +1397,6 @@ void validate_component(const component_t& component) {
           profile.component_params,
           "component." + schema.kind_token,
           context + " COMPONENT_PARAMS");
-      const std::string* augmentation_set = find_kv(profile.component_params, "augmentation_set");
-      if (augmentation_set &&
-          augmentation_set_names.find(*augmentation_set) == augmentation_set_names.end()) {
-        throw std::runtime_error(cuwacunu::piaabo::string_format(
-            "%s references undefined augmentation_set '%s'",
-            context.c_str(),
-            augmentation_set->c_str()));
-      }
-    }
-    if (profile.reproducibility_present) {
-      validate_kv_with_owner_schema(profile.reproducibility, "reproducibility", context + " REPRODUCIBILITY");
     }
     if (profile.numerics_present) {
       validate_kv_with_owner_schema(profile.numerics, "numerics", context + " NUMERICS");
@@ -1065,13 +1413,32 @@ void validate_component(const component_t& component) {
     if (profile.data_ref_present) {
       validate_kv_with_owner_schema(profile.data_ref, "data_ref", context + " DATA_REF");
     }
+    if (profile.augmentations_present) {
+      for (const auto& curve : profile.augmentations) {
+        kv_list_t curve_kv = curve.kv;
+        const std::string* explicit_name = find_kv(curve_kv, "name");
+        if (explicit_name && *explicit_name != curve.name) {
+          throw std::runtime_error(cuwacunu::piaabo::string_format(
+              "%s CURVE '%s' defines mismatched name '%s'",
+              context.c_str(),
+              curve.name.c_str(),
+              explicit_name->c_str()));
+        }
+        if (!explicit_name) {
+          curve_kv.entries.emplace_back("name", curve.name);
+        }
+        validate_kv_with_owner_schema(
+            curve_kv,
+            "augmentation.curve",
+            context + " AUGMENTATIONS CURVE '" + curve.name + "'");
+      }
+    }
   }
 
   (void)active_profile;
 }
 
 void validate_document(const document_t& doc) {
-  validate_selectors(doc);
   for (const auto& component : doc.components) {
     validate_component(component);
   }
@@ -1111,13 +1478,6 @@ void push_row(cuwacunu::camahjucunu::jkimyei_specs_t* out,
 const profile_t* find_profile(const component_t& c, const std::string& profile_name) {
   for (const auto& p : c.profiles) {
     if (p.name == profile_name) return &p;
-  }
-  return nullptr;
-}
-
-const augmentations_t* find_augmentations(const component_t& c, const std::string& set_name) {
-  for (const auto& a : c.augmentation_sets) {
-    if (a.name == set_name) return &a;
   }
   return nullptr;
 }
@@ -1169,15 +1529,7 @@ void materialize_profile_tables(const component_t& component,
     push_row(out, "component_profiles_table", std::move(row));
   }
 
-  {
-    cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
-    row[ROW_ID_COLUMN_HEADER] = profile_id;
-    row["component_id"] = component.id;
-    append_kv_to_row(profile.reproducibility, &row);
-    push_row(out, "component_reproducibility_table", std::move(row));
-  }
-
-  {
+  if (profile.numerics_present) {
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
     row["component_id"] = component.id;
@@ -1185,7 +1537,7 @@ void materialize_profile_tables(const component_t& component,
     push_row(out, "component_numerics_table", std::move(row));
   }
 
-  {
+  if (profile.gradient_present) {
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
     row["component_id"] = component.id;
@@ -1193,7 +1545,7 @@ void materialize_profile_tables(const component_t& component,
     push_row(out, "component_gradient_table", std::move(row));
   }
 
-  {
+  if (profile.checkpoint_present) {
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
     row["component_id"] = component.id;
@@ -1201,7 +1553,7 @@ void materialize_profile_tables(const component_t& component,
     push_row(out, "component_checkpoint_table", std::move(row));
   }
 
-  {
+  if (profile.metrics_present) {
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
     row["component_id"] = component.id;
@@ -1209,7 +1561,7 @@ void materialize_profile_tables(const component_t& component,
     push_row(out, "component_metrics_table", std::move(row));
   }
 
-  {
+  if (profile.data_ref_present) {
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
     row["component_id"] = component.id;
@@ -1230,53 +1582,36 @@ void materialize_profile_tables(const component_t& component,
   }
 }
 
-void materialize_component_augmentations(const component_t& component,
-                                         const profile_t& active_profile,
-                                         cuwacunu::camahjucunu::jkimyei_specs_t* out) {
-  const std::string* aug_set = find_kv(active_profile.component_params, "augmentation_set");
-  if (!aug_set) return;
-
-  const augmentations_t* set = find_augmentations(component, *aug_set);
-  if (!set) {
-    log_fatal("(jkimyei_specs) active profile '%s' references missing augmentation set '%s' in component '%s'\n",
-              active_profile.name.c_str(),
-              aug_set->c_str(),
-              component.id.c_str());
-  }
-
-  for (const auto& curve : set->curves) {
+void materialize_profile_augmentations(const component_t& component,
+                                       const profile_t& profile,
+                                       cuwacunu::camahjucunu::jkimyei_specs_t* out) {
+  if (!profile.augmentations_present) return;
+  const std::string profile_row_id = component.id + "@" + profile.name;
+  std::size_t curve_index = 0;
+  for (const auto& curve : profile.augmentations) {
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
-    row[ROW_ID_COLUMN_HEADER] = "N/A";
-    row["augmentation_set"] = set->name;
-    row["curve"] = curve.kind;
-    row["kind"] = curve.kind;
+    row[ROW_ID_COLUMN_HEADER] = cuwacunu::piaabo::string_format(
+        "%s::augmentation::%zu",
+        profile_row_id.c_str(),
+        curve_index);
+    row["component_id"] = component.id;
+    row["component_type"] = component.canonical_type;
+    row["profile_id"] = profile.name;
+    row["profile_row_id"] = profile_row_id;
+    row["name"] = curve.name;
     append_kv_to_row(curve.kv, &row);
     push_row(out, "vicreg_augmentations", std::move(row));
+    ++curve_index;
   }
 }
 
 void materialize_document(const document_t& doc,
                           cuwacunu::camahjucunu::jkimyei_specs_t* out) {
-  {
-    cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
-    row[ROW_ID_COLUMN_HEADER] = "selectors";
-    append_kv_to_row(doc.selectors, &row);
-    push_row(out, "selectors_table", std::move(row));
-  }
-
   for (const auto& component : doc.components) {
-    const profile_t* active_profile = find_profile(component, component.active_profile);
-    if (!active_profile) {
-      log_fatal("(jkimyei_specs) component '%s' active profile '%s' not found\n",
-                component.id.c_str(),
-                component.active_profile.c_str());
-    }
-
     for (const auto& profile : component.profiles) {
       materialize_profile_tables(component, profile, profile.name == component.active_profile, out);
+      materialize_profile_augmentations(component, profile, out);
     }
-
-    materialize_component_augmentations(component, *active_profile, out);
   }
 }
 
@@ -1404,11 +1739,12 @@ jkimyeiSpecsPipeline::jkimyeiSpecsPipeline(std::string grammar_text)
   }
 }
 
-jkimyei_specs_t jkimyeiSpecsPipeline::decode(std::string instruction) {
+jkimyei_specs_t jkimyeiSpecsPipeline::decode(std::string instruction,
+                                             std::string instruction_label) {
   LOCK_GUARD(current_mutex_);
 
   jkimyei_specs_t out{};
-  out.instruction_filepath = "<inline:jkimyei_specs.dsl>";
+  out.instruction_filepath = std::move(instruction_label);
 
   try {
     parser_t parser(std::move(instruction));
@@ -1424,9 +1760,10 @@ jkimyei_specs_t jkimyeiSpecsPipeline::decode(std::string instruction) {
 
 jkimyei_specs_t decode_jkimyei_specs_from_dsl(
     std::string grammar_text,
-    std::string instruction_text) {
+    std::string instruction_text,
+    std::string instruction_label) {
   jkimyeiSpecsPipeline decoder(std::move(grammar_text));
-  return decoder.decode(std::move(instruction_text));
+  return decoder.decode(std::move(instruction_text), std::move(instruction_label));
 }
 
 } // namespace dsl

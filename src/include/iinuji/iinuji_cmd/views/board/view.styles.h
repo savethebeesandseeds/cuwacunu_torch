@@ -132,6 +132,7 @@ inline circuit_draw_style_t node_style_from_tsi_type(std::string_view tsi_type) 
     case tsiemene::TsiDomain::Source: return circuit_draw_style_t::NodeSource;
     case tsiemene::TsiDomain::Wikimyei: return circuit_draw_style_t::NodeWikimyei;
     case tsiemene::TsiDomain::Sink: return circuit_draw_style_t::NodeSink;
+    case tsiemene::TsiDomain::Probe: return circuit_draw_style_t::NodeSink;
   }
   return circuit_draw_style_t::NodeWikimyei;
 }

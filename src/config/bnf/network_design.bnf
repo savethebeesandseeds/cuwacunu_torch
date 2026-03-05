@@ -1,0 +1,44 @@
+<instruction>           ::= <network_decl> ;
+
+<network_decl>          ::= "NETWORK" <ws> <quoted> <ws> "{" <nl>
+                            [<network_items>]
+                            "}" [<ws>] [<nl>] ;
+
+<network_items>         ::= <network_item> [<network_items>] ;
+<network_item>          ::= <join_policy_stmt>
+                          | <node_decl>
+                          | <export_stmt>
+                          | <blank_line> ;
+
+<join_policy_stmt>      ::= "JOIN_POLICY" [<ws>] "=" [<ws>] <identifier> [<ws>] ";" [<ws>] <nl> ;
+<export_stmt>           ::= "export" <ws> <identifier> [<ws>] "=" [<ws>] <identifier> [<ws>] ";" [<ws>] <nl> ;
+
+<node_decl>             ::= "node" <ws> <identifier> "@" <identifier> [<ws>] "{" <nl>
+                            [<node_params>]
+                            "}" [<ws>] [<nl>] ;
+<node_params>           ::= <node_param_line> [<node_params>] ;
+<node_param_line>       ::= [<ws>] <lhs> [<ws>] "=" [<ws>] <value> [<ws>] [ ";" ] [<ws>] <nl> ;
+
+<lhs>                   ::= <identifier> | <identifier> [<ws>] ":" [<ws>] <type> ;
+<type>                  ::= <identifier> | <identifier> "[" <identifier> "]" ;
+
+<quoted>                ::= "\"" [<qchars>] "\"" ;
+<qchars>                ::= <qchar> [<qchars>] ;
+<qchar>                 ::= <letter> | <digit> | <space> | "." | "_" | "-" | ":" | "/" ;
+
+<value>                 ::= <value_char> [<value>] ;
+<value_char>            ::= <letter> | <digit> | <symbol> | <space> ;
+<symbol>                ::= "." | "," | ":" | ";" | "-" | "_" | "\\" | "/" | "[" | "]" | "(" | ")" | "{" | "}" | "|" | "'" | "\"" | "+" | "*" | "?" | "!" | "<" | ">" | "=" | "@" ;
+
+<identifier>            ::= <identifier_head> [<identifier_tail>] ;
+<identifier_tail>       ::= <identifier_char> [<identifier_tail>] ;
+<identifier_char>       ::= <identifier_head> | <digit> | "." | "-" | ":" ;
+<identifier_head>       ::= <letter> | "_" ;
+
+<blank_line>            ::= [<ws>] <nl> ;
+<ws>                    ::= <space> [<ws>] ;
+<space>                 ::= " " | "\t" ;
+<nl>                    ::= "\n" | "\r\n" ;
+
+<letter>                ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<digit>                 ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;

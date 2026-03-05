@@ -120,13 +120,13 @@ int main() {
       const key_t mid_key = static_cast<key_t>(left + (N/2) * gstep);
       auto s = cds.get_by_key_value(mid_key);
 
-      assert(s.features.dim()        == 3);                  // [K, max_N_past,   D]
-      assert(s.future_features.dim() == 3);                  // [K, max_N_future, D]
-      assert(s.mask.dim()            == 2);                  // [K, max_N_past]
-      assert(s.future_mask.dim()     == 2);                  // [K, max_N_future]
+      assert(s.features.dim()        == 3);                  // [C, max_N_past,   D]
+      assert(s.future_features.dim() == 3);                  // [C, max_N_future, D]
+      assert(s.mask.dim()            == 2);                  // [C, max_N_past]
+      assert(s.future_mask.dim()     == 2);                  // [C, max_N_future]
       assert(s.past_keys.defined() && s.future_keys.defined());
-      assert(s.past_keys.size(0)    == s.features.size(0));  // K
-      assert(s.future_keys.size(0)  == s.features.size(0));  // K
+      assert(s.past_keys.size(0)    == s.features.size(0));  // C
+      assert(s.future_keys.size(0)  == s.features.size(0));  // C
       assert(!s.normalized);
 
       for (int c = 0; c < s.past_keys.size(0); ++c) {

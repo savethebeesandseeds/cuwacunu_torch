@@ -21,6 +21,11 @@ struct tsiemene_wave_source_decl_t {
   std::string symbol{};
   std::string from{};
   std::string to{};
+  std::uint64_t workers{0};
+  bool force_rebuild_cache{true};
+  std::uint64_t range_warn_batches{256};
+  std::string sources_dsl_file{};
+  std::string channels_dsl_file{};
 };
 
 struct tsiemene_wave_t {

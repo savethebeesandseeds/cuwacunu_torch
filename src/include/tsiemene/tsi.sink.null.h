@@ -25,7 +25,7 @@ class TsiSinkNull final : public TsiSink {
 
   [[nodiscard]] std::span<const DirectiveSpec> directives() const noexcept override {
     static constexpr DirectiveSpec kDirectives[] = {
-      directive(IN_STEP, DirectiveDir::In, KindSpec::Tensor(), "drop tensor step payload"),
+      directive(IN_STEP, DirectiveDir::In, KindSpec::Cargo(), "drop cargo impulse payload"),
       directive(OUT_META, DirectiveDir::Out, KindSpec::String(), "runtime trace/meta stream"),
     };
     return std::span<const DirectiveSpec>(kDirectives, 2);
@@ -33,7 +33,7 @@ class TsiSinkNull final : public TsiSink {
 
   void step(const Wave&, Ingress in, BoardContext&, Emitter&) override {
     if (in.directive != IN_STEP) return;
-    if (in.signal.kind != PayloadKind::Tensor) return;
+    if (in.signal.kind != PayloadKind::Cargo) return;
     // Intentionally no-op: consume and discard.
   }
 

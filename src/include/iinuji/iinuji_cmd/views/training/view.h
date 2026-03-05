@@ -24,11 +24,11 @@ inline std::vector<std::size_t> collect_training_occurrences(
   std::vector<std::size_t> counts;
   if (!st.board.ok) return counts;
 
-  counts.resize(st.board.board.contracts.size(), 0);
-  if (aliases_by_circuit) aliases_by_circuit->assign(st.board.board.contracts.size(), {});
+  counts.resize(st.board.board.circuits.size(), 0);
+  if (aliases_by_circuit) aliases_by_circuit->assign(st.board.board.circuits.size(), {});
 
-  for (std::size_t ci = 0; ci < st.board.board.contracts.size(); ++ci) {
-    const auto& c = st.board.board.contracts[ci];
+  for (std::size_t ci = 0; ci < st.board.board.circuits.size(); ++ci) {
+    const auto& c = st.board.board.circuits[ci];
     for (const auto& inst : c.instances) {
       if (std::string_view(inst.tsi_type) == type_name) {
         ++counts[ci];
@@ -80,10 +80,14 @@ inline std::string make_training_left(const CmdState& st) {
     oss << "\nCanonical template\n";
     const std::string base = d.type_name + ".<hashimyei>";
     oss << "  " << base << "\n";
-    oss << "  " << base << "@payload" << d.payload_kind << "\n";
+    oss << "  " << base << "@response" << d.payload_kind << "\n";
     oss << "  " << base << "@meta:str\n";
     if (d.trainable_jkimyei) {
-      oss << "  " << base << "@jkimyei:tensor\n";
+      if (!d.control_call.empty()) {
+        oss << "  control: " << d.control_call << "\n";
+      } else {
+        oss << "  control: n/a\n";
+      }
     } else {
       oss << "  jkimyei: n/a (non-trainable wikimyei)\n";
     }
@@ -96,12 +100,15 @@ inline std::string make_training_left(const CmdState& st) {
     oss << "hashimyei:   " << item.hashimyei << "  [" << (hx + 1) << "/" << artifacts.size() << "]\n";
     oss << "\nCanonical identities\n";
     oss << "  " << base << "\n";
-    oss << "  " << base << "@payload" << d.payload_kind << "\n";
+    oss << "  " << base << "@response" << d.payload_kind << "\n";
     oss << "  " << base << "@meta:str\n";
-    oss << "  " << fused << "@payload" << d.payload_kind << "\n";
+    oss << "  " << fused << "@response" << d.payload_kind << "\n";
     if (d.trainable_jkimyei) {
-      oss << "  " << base << "@jkimyei:tensor\n";
-      oss << "  " << fused << "@jkimyei:tensor\n";
+      if (!d.control_call.empty()) {
+        oss << "  control: " << d.control_call << "\n";
+      } else {
+        oss << "  control: n/a\n";
+      }
     } else {
       oss << "  jkimyei: n/a (non-trainable wikimyei)\n";
     }
@@ -141,7 +148,7 @@ inline std::string make_training_left(const CmdState& st) {
     return oss.str();
   }
   for (const std::size_t ci : circuit_indices) {
-    const auto& c = st.board.board.contracts[ci];
+    const auto& c = st.board.board.circuits[ci];
     oss << "  - circuit[" << (ci + 1) << "] " << c.name
         << " count=" << counts[ci];
     if (!aliases[ci].empty()) oss << " aliases={" << join_aliases_for_display(aliases[ci]) << "}";
@@ -217,7 +224,7 @@ inline std::string make_training_right(const CmdState& st) {
       oss << "  (none)\n";
     } else {
       for (const std::size_t ci : circuit_indices) {
-        const auto& c = st.board.board.contracts[ci];
+        const auto& c = st.board.board.circuits[ci];
         oss << "  [" << (ci + 1) << "] " << c.name << "\n";
       }
     }

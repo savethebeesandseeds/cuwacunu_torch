@@ -106,6 +106,7 @@ namespace {
   s = lower_copy(trim_ascii_ws_copy(std::move(s)));
   if (s == "str" || s == ":str") return ":str";
   if (s == "tensor" || s == ":tensor") return ":tensor";
+  if (s == "cargo" || s == ":cargo") return ":cargo";
   return {};
 }
 
@@ -118,6 +119,7 @@ namespace {
 [[nodiscard]] std::optional<tsiemene::PayloadKind> payload_kind_from_token(std::string_view token) {
   if (token == ":str") return tsiemene::PayloadKind::String;
   if (token == ":tensor") return tsiemene::PayloadKind::Tensor;
+  if (token == ":cargo") return tsiemene::PayloadKind::Cargo;
   return std::nullopt;
 }
 
@@ -345,7 +347,10 @@ struct parsed_core_t {
     return false;
   }
   if (!segs->empty() && segs->back() == "jkimyei") {
-    if (error) *error = "legacy '.jkimyei' facet is removed; use '@jkimyei:<kind>'";
+    if (error) {
+      *error = "legacy '.jkimyei' facet is removed; use control calls "
+               "(for example iinuji.tsi.vicreg.init())";
+    }
     return false;
   }
 

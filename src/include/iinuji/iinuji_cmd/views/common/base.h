@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -17,7 +19,10 @@
 #include "iinuji/iinuji_cmd/catalog.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.paths.h"
 #include "iinuji/iinuji_cmd/state.h"
+#include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
 #include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
+#include "iitepi/board_space_t.h"
+#include "iitepi/wave_space_t.h"
 #include "piaabo/dconfig.h"
 #include "piaabo/dlogs.h"
 #include "tsiemene/tsi.directive.registry.h"
@@ -202,6 +207,107 @@ resolve_configured_board_contract_hash() {
       cuwacunu::iitepi::contract_space_t::register_contract_file(path);
   cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(hash);
   return hash;
+}
+
+struct BoardWaveBatchSizeResolution {
+  bool ok{false};
+  std::size_t batch_size{0};
+  std::string detail{};
+};
+
+inline BoardWaveBatchSizeResolution resolve_configured_board_wave_batch_size() {
+  BoardWaveBatchSizeResolution out{};
+  try {
+    const std::string configured_board = cuwacunu::iitepi::config_space_t::get<std::string>(
+        "GENERAL", GENERAL_BOARD_CONFIG_KEY);
+    const std::filesystem::path board_path(configured_board);
+    const std::string resolved_board_path = board_path.is_absolute()
+        ? board_path.string()
+        : (std::filesystem::path(cuwacunu::iitepi::config_space_t::config_folder) /
+           board_path)
+              .string();
+    const std::string binding_id = cuwacunu::iitepi::config_space_t::get<std::string>(
+        "GENERAL", GENERAL_BOARD_BINDING_KEY);
+
+    if (binding_id.empty()) {
+      out.detail = "missing GENERAL.board_binding_id";
+      return out;
+    }
+
+    const auto board_hash =
+        cuwacunu::iitepi::board_space_t::register_board_file(resolved_board_path);
+    const auto board_itself =
+        cuwacunu::iitepi::board_space_t::board_itself(board_hash);
+    const auto& board_instruction = board_itself->board.decoded();
+
+    const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
+    for (const auto& b : board_instruction.binds) {
+      if (trim_copy(b.id) == trim_copy(binding_id)) {
+        bind = &b;
+        break;
+      }
+    }
+    if (!bind) {
+      out.detail = "board binding not found: " + binding_id;
+      return out;
+    }
+
+    const cuwacunu::camahjucunu::tsiemene_board_wave_decl_t* wave_decl = nullptr;
+    for (const auto& w : board_instruction.waves) {
+      if (trim_copy(w.id) == trim_copy(bind->wave_ref)) {
+        wave_decl = &w;
+        break;
+      }
+    }
+    if (!wave_decl) {
+      out.detail = "board binding wave_ref not found: " + bind->wave_ref;
+      return out;
+    }
+
+    std::filesystem::path wave_path(wave_decl->file);
+    if (!wave_path.is_absolute()) {
+      wave_path = std::filesystem::path(board_itself->config_folder) / wave_path;
+    }
+    const std::string resolved_wave_path = wave_path.lexically_normal().string();
+    const auto wave_hash = cuwacunu::iitepi::wave_space_t::register_wave_file(resolved_wave_path);
+    const auto wave_itself = cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
+    const auto& wave_set = wave_itself->wave.decoded();
+
+    const cuwacunu::camahjucunu::tsiemene_wave_t* selected_wave = nullptr;
+    for (const auto& wave : wave_set.waves) {
+      if (trim_copy(wave.name) == trim_copy(bind->wave_ref)) {
+        if (selected_wave) {
+          out.detail = "ambiguous wave id in wave DSL: " + bind->wave_ref;
+          return out;
+        }
+        selected_wave = &wave;
+      }
+    }
+    if (!selected_wave) {
+      out.detail = "wave not found in wave DSL: " + bind->wave_ref;
+      return out;
+    }
+    if (selected_wave->batch_size == 0) {
+      out.detail = "bound wave has BATCH_SIZE=0: " + bind->wave_ref;
+      return out;
+    }
+    if (selected_wave->batch_size >
+        static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+      out.detail = "bound wave BATCH_SIZE exceeds runtime size_t";
+      return out;
+    }
+
+    out.ok = true;
+    out.batch_size = static_cast<std::size_t>(selected_wave->batch_size);
+    out.detail = "binding=" + binding_id + " wave=" + bind->wave_ref;
+    return out;
+  } catch (const std::exception& ex) {
+    out.detail = std::string("wave batch resolution exception: ") + ex.what();
+    return out;
+  } catch (...) {
+    out.detail = "wave batch resolution exception: unknown";
+    return out;
+  }
 }
 
 inline const std::vector<std::string>& training_hashimyei_catalog() {

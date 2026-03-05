@@ -20,6 +20,7 @@ DB_LINK        = $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)
 WEBSOCKET_LINK = $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)
 
 $(eval $(call TEST_ONEFILE, test_dsl_observation, test_dsl_observation.cpp))
+$(eval $(call TEST_ONEFILE, test_dsl_key_value,            test_dsl_key_value.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_jkimyei_specs,        test_dsl_jkimyei_specs.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_circuit,     test_dsl_tsiemene_circuit.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_wave,        test_dsl_tsiemene_wave.cpp))
@@ -57,6 +58,7 @@ $(TEST_OUT)/test_websocket: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS) $(LIBCURL_INC
 .PHONY: all
 all: \
 	$(TEST_OUT)/test_dsl_observation \
+	$(TEST_OUT)/test_dsl_key_value \
 	$(TEST_OUT)/test_dsl_jkimyei_specs \
 	$(TEST_OUT)/test_dsl_tsiemene_circuit \
 	$(TEST_OUT)/test_dsl_tsiemene_wave \
@@ -83,6 +85,7 @@ all: \
 .PHONY: run
 run: \
 	run-test_dsl_observation \
+	run-test_dsl_key_value \
 	run-test_dsl_jkimyei_specs \
 	run-test_dsl_tsiemene_circuit \
 	run-test_dsl_tsiemene_wave \

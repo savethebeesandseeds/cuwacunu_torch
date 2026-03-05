@@ -135,15 +135,16 @@ find_wave_by_id(
   return false;
 }
 
-[[nodiscard]] inline bool resolve_contract_active_record_type(
-    const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>& contract_itself,
+[[nodiscard]] inline bool resolve_active_record_type_from_observation(
+    const cuwacunu::camahjucunu::observation_spec_t& observation,
     std::string* out_record_type,
     std::string* error) {
-  if (!contract_itself || !out_record_type) {
-    if (error) *error = "missing contract record while resolving observation record_type";
+  if (!out_record_type) {
+    if (error) {
+      *error = "missing output pointer while resolving observation record_type";
+    }
     return false;
   }
-  const auto observation = contract_itself->observation.decoded();
   std::unordered_set<std::string> active_types{};
   for (const auto& ch : observation.channel_forms) {
     bool active = false;
@@ -310,14 +311,6 @@ template <typename Datatype_t,
     const auto wave_itself =
         cuwacunu::iitepi::wave_space_t::wave_itself(out.wave_hash);
 
-    if (!has_non_ws_text(contract_itself->observation.sources.dsl)) {
-      out.error = "missing observation sources DSL text in contract";
-      return out;
-    }
-    if (!has_non_ws_text(contract_itself->observation.channels.dsl)) {
-      out.error = "missing observation channels DSL text in contract";
-      return out;
-    }
     if (!has_non_ws_text(contract_itself->jkimyei.dsl)) {
       out.error = "missing jkimyei specs DSL text in contract";
       return out;
@@ -412,10 +405,31 @@ template <typename Datatype_t,
     cuwacunu::iitepi::wave_space_t::assert_intact_or_fail_fast(wave_hash);
     const auto contract_itself =
         cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+    const auto wave_itself =
+        cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
+
+    const auto& wave_set = wave_itself->wave.decoded();
+    const auto* wave = find_wave_by_id(wave_set, bind->wave_ref);
+    if (!wave) {
+      out.error = "binding references unknown WAVE id: " + bind->wave_ref;
+      return out;
+    }
+
+    cuwacunu::camahjucunu::observation_spec_t effective_observation{};
+    if (!board_builder::load_wave_dataloader_observation_payloads(
+            contract_itself,
+            wave_itself,
+            *wave,
+            nullptr,
+            nullptr,
+            &effective_observation,
+            &out.error)) {
+      return out;
+    }
 
     std::string inferred_record_type;
-    if (!resolve_contract_active_record_type(
-            contract_itself, &inferred_record_type, &out.error)) {
+    if (!resolve_active_record_type_from_observation(
+            effective_observation, &inferred_record_type, &out.error)) {
       return out;
     }
 

@@ -1,6 +1,7 @@
 /* observation_spec.h */
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -21,6 +22,12 @@ DEFINE_HASH(OBSERVATION_PIPELINE_HASH_table_top_line,         "<table_top_line>"
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_table_divider_line,     "<table_divider_line>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_table_bottom_line,      "<table_bottom_line>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_comment,                "<comment>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_csv_policy_block,       "<csv_policy_block>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_csv_bootstrap_assignment, "<csv_bootstrap_assignment>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_csv_step_abs_tol_assignment, "<csv_step_abs_tol_assignment>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_csv_step_rel_tol_assignment, "<csv_step_rel_tol_assignment>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_policy_unsigned_int,     "<policy_unsigned_int>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_policy_float,            "<policy_float>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_norm_window,            "<norm_window>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_source,                 "<source>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_break_block,            "<break_block>");
@@ -66,6 +73,9 @@ struct observation_channel_t {
 struct observation_spec_t {
   std::vector<observation_source_t> source_forms;
   std::vector<observation_channel_t> channel_forms;
+  std::size_t csv_bootstrap_deltas{64};
+  long double csv_step_abs_tol{1e-8L};
+  long double csv_step_rel_tol{1e-10L};
 
   std::vector<observation_source_t> filter_source_forms(
     const std::string& target_instrument,

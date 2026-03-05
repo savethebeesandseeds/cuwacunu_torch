@@ -367,6 +367,12 @@ class parser_t {
     out.source_path = expect_identifier_any().text;
     expect_symbol('{');
 
+    bool has_workers = false;
+    bool has_force_rebuild_cache = false;
+    bool has_range_warn_batches = false;
+    bool has_sources_dsl_file = false;
+    bool has_channels_dsl_file = false;
+
     while (!peek_is_symbol('}')) {
       const token_t key = expect_identifier_any();
       if (key.text == "PATH") {
@@ -385,6 +391,48 @@ class parser_t {
         expect_symbol('=');
         out.to = parse_scalar_value();
         expect_symbol(';');
+      } else if (key.text == "WORKERS") {
+        expect_symbol('=');
+        const std::string value = parse_scalar_value();
+        expect_symbol(';');
+        if (!parse_u64_token(value, &out.workers)) {
+          throw std::runtime_error("invalid SOURCE WORKERS for PATH '" +
+                                   out.source_path + "': " + value);
+        }
+        has_workers = true;
+      } else if (key.text == "FORCE_REBUILD_CACHE") {
+        expect_symbol('=');
+        const std::string value = parse_scalar_value();
+        expect_symbol(';');
+        bool parsed = false;
+        if (!parse_bool_token(value, &parsed)) {
+          throw std::runtime_error(
+              "invalid SOURCE FORCE_REBUILD_CACHE for PATH '" +
+              out.source_path + "': " + value);
+        }
+        out.force_rebuild_cache = parsed;
+        has_force_rebuild_cache = true;
+      } else if (key.text == "RANGE_WARN_BATCHES") {
+        expect_symbol('=');
+        const std::string value = parse_scalar_value();
+        expect_symbol(';');
+        if (!parse_u64_token(value, &out.range_warn_batches) ||
+            out.range_warn_batches == 0) {
+          throw std::runtime_error(
+              "invalid SOURCE RANGE_WARN_BATCHES for PATH '" +
+              out.source_path + "': " + value);
+        }
+        has_range_warn_batches = true;
+      } else if (key.text == "SOURCES_DSL_FILE") {
+        expect_symbol('=');
+        out.sources_dsl_file = parse_scalar_value();
+        expect_symbol(';');
+        has_sources_dsl_file = true;
+      } else if (key.text == "CHANNELS_DSL_FILE") {
+        expect_symbol('=');
+        out.channels_dsl_file = parse_scalar_value();
+        expect_symbol(';');
+        has_channels_dsl_file = true;
       } else {
         throw std::runtime_error("unknown SOURCE key for PATH '" + out.source_path +
                                  "': " + key.text);
@@ -405,6 +453,36 @@ class parser_t {
       throw std::runtime_error("SOURCE '" + out.source_path +
                                "' requires both FROM and TO");
     }
+    if (!has_workers) {
+      throw std::runtime_error("SOURCE '" + out.source_path +
+                               "' missing required WORKERS assignment");
+    }
+    if (!has_force_rebuild_cache) {
+      throw std::runtime_error(
+          "SOURCE '" + out.source_path +
+          "' missing required FORCE_REBUILD_CACHE assignment");
+    }
+    if (!has_range_warn_batches) {
+      throw std::runtime_error(
+          "SOURCE '" + out.source_path +
+          "' missing required RANGE_WARN_BATCHES assignment");
+    }
+    const auto has_non_ws_ascii = [](const std::string& s) {
+      for (const char ch : s) {
+        if (!std::isspace(static_cast<unsigned char>(ch))) return true;
+      }
+      return false;
+    };
+    if (!has_sources_dsl_file || !has_non_ws_ascii(out.sources_dsl_file)) {
+      throw std::runtime_error(
+          "SOURCE '" + out.source_path +
+          "' missing required SOURCES_DSL_FILE assignment");
+    }
+    if (!has_channels_dsl_file || !has_non_ws_ascii(out.channels_dsl_file)) {
+      throw std::runtime_error(
+          "SOURCE '" + out.source_path +
+          "' missing required CHANNELS_DSL_FILE assignment");
+    }
     return out;
   }
 
@@ -421,6 +499,7 @@ class parser_t {
     bool has_sampler = false;
     bool has_epochs = false;
     bool has_batch_size = false;
+    bool has_max_batches_per_epoch = false;
 
     while (!peek_is_symbol('}')) {
       const token_t head = peek();
@@ -475,6 +554,7 @@ class parser_t {
               "WAVE '" + out.name +
               "' invalid MAX_BATCHES_PER_EPOCH: " + value);
         }
+        has_max_batches_per_epoch = true;
         continue;
       }
       if (head.text == "WIKIMYEI") {
@@ -516,6 +596,10 @@ class parser_t {
     if (!has_batch_size) {
       throw std::runtime_error("WAVE '" + out.name +
                                "' missing BATCH_SIZE assignment");
+    }
+    if (!has_max_batches_per_epoch) {
+      throw std::runtime_error("WAVE '" + out.name +
+                               "' missing MAX_BATCHES_PER_EPOCH assignment");
     }
     if (out.wikimyeis.empty()) {
       throw std::runtime_error("WAVE '" + out.name +
@@ -584,6 +668,11 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
       "EPOCHS",
       "BATCH_SIZE",
       "MAX_BATCHES_PER_EPOCH",
+      "WORKERS",
+      "FORCE_REBUILD_CACHE",
+      "RANGE_WARN_BATCHES",
+      "SOURCES_DSL_FILE",
+      "CHANNELS_DSL_FILE",
   };
   for (const auto token : kRequiredGrammarTokens) {
     if (grammar_text.find(token) == std::string::npos) {
@@ -600,12 +689,20 @@ std::string tsiemene_wave_set_t::str() const {
   oss << "tsiemene_wave_set_t: waves=" << waves.size() << "\n";
   for (std::size_t i = 0; i < waves.size(); ++i) {
     const auto& p = waves[i];
+    const bool has_source = !p.sources.empty();
+    const auto& src0 = has_source ? p.sources.front() : cuwacunu::camahjucunu::tsiemene_wave_source_decl_t{};
     oss << "  [" << i << "] name=" << p.name
         << " mode=" << p.mode
         << " sampler=" << p.sampler
         << " epochs=" << p.epochs
         << " batch_size=" << p.batch_size
         << " max_batches_per_epoch=" << p.max_batches_per_epoch
+        << " source0_dataloader(workers=" << src0.workers
+        << ",force_rebuild_cache=" << (src0.force_rebuild_cache ? "true" : "false")
+        << ",range_warn_batches=" << src0.range_warn_batches
+        << ",sources=" << src0.sources_dsl_file
+        << ",channels=" << src0.channels_dsl_file
+        << ")"
         << " wikimyeis=" << p.wikimyeis.size()
         << " sources=" << p.sources.size() << "\n";
   }

@@ -95,20 +95,22 @@ enum class DirectiveDir : std::uint8_t { In, Out };
 [[nodiscard]] constexpr bool is_out(DirectiveDir d) noexcept { return d == DirectiveDir::Out; }
 
 // Minimal payload families.
-enum class PayloadKind : std::uint8_t { Tensor, String };
+enum class PayloadKind : std::uint8_t { Tensor, String, Cargo };
 
-// Kind specifier (:tensor / :str).
+// Kind specifier (:tensor / :str / :cargo).
 struct KindSpec {
   PayloadKind kind{PayloadKind::Tensor};
 
   [[nodiscard]] static constexpr KindSpec Tensor() noexcept { return {PayloadKind::Tensor}; }
   [[nodiscard]] static constexpr KindSpec String() noexcept { return {PayloadKind::String}; }
+  [[nodiscard]] static constexpr KindSpec Cargo() noexcept { return {PayloadKind::Cargo}; }
 };
 
 [[nodiscard]] constexpr std::string_view kind_token(PayloadKind k) noexcept {
   switch (k) {
     case PayloadKind::Tensor: return ":tensor";
     case PayloadKind::String: return ":str";
+    case PayloadKind::Cargo: return ":cargo";
   }
   return ":unknown";
 }

@@ -1,5 +1,5 @@
 /*
-  observation_sources.dsl
+  tsi.source.dataloader.sources.dsl
   =======================
   Purpose:
     Source registry for observation ingestion. This table maps
@@ -17,6 +17,11 @@
     - Missing files or invalid paths are rejected during config/loader setup.
     - This file declares availability, not model training intent.
 */
+CSV_POLICY {
+  CSV_BOOTSTRAP_DELTAS = 128;
+  CSV_STEP_ABS_TOL = 1e-7;
+  CSV_STEP_REL_TOL = 1e-9;
+};
 /---------------------------------------------------------------------------------------------------------\
 |  instrument  |  interval  |  record_type  |  source                                                     |
 |---------------------------------------------------------------------------------------------------------|

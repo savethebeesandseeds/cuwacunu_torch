@@ -142,24 +142,6 @@ inline constexpr std::array<typed_param_descriptor_t, kTypedParamCount> kTypedPa
 #undef JK_AUGMENTATION_PARAM
 }};
 
-struct ini_selector_field_t {
-  std::string_view key;
-  std::string_view description;
-};
-
-inline constexpr std::size_t kIniSelectorFieldCount =
-0
-#define JK_INI_SELECTOR_FIELD(key, description) + 1
-#include "jkimyei/specs/jkimyei_schema.def"
-#undef JK_INI_SELECTOR_FIELD
-;
-
-inline constexpr std::array<ini_selector_field_t, kIniSelectorFieldCount> kIniSelectorFields = {{
-#define JK_INI_SELECTOR_FIELD(key, description) ini_selector_field_t{key, description},
-#include "jkimyei/specs/jkimyei_schema.def"
-#undef JK_INI_SELECTOR_FIELD
-}};
-
 struct runtime_owned_field_t {
   std::string_view key;
   std::string_view description;

@@ -1,91 +1,151 @@
-# iitepi Specification
+# iitepi Architecture
 
-`iitepi` is the runtime registry and configuration space for board/contract/wave execution.
+`iitepi` is the runtime orchestration layer for executing TSI circuits through
+explicit board bindings.
 
-Namespace: `cuwacunu::iitepi`
-Public include forms:
-- `#include "iitepi/iitepi.h"`
-- `#include "piaabo/dconfig.h"` (compat umbrella)
+Namespace: `cuwacunu::iitepi`  
+Primary include: `#include "iitepi/iitepi.h"`
 
-## Core Contract
+## What iitepi Owns
 
-`iitepi` provides four coupled spaces:
+`iitepi` manages four runtime registries (spaces):
 
 1. `config_space_t`
-- global `.config` loading, validation, and typed access
-- exchange mode selection (`TEST` / `REAL`)
-- board path + binding selection values (`GENERAL.board_config_filename`,
-  `GENERAL.board_binding_id`) used by board initialization
+- Loads global `.config`.
+- Exposes typed config access (`get<T>`, `get_arr<T>`).
+- Provides the selected board file and binding id used for runtime lock.
 
 2. `contract_space_t`
-- immutable contract record registry keyed by manifest hash
-- object-level typed access to contract values and module instruction values
-- dependency fingerprinting and integrity checks during runtime
+- Registers immutable contract records (hash-addressed).
+- Holds contract assets and decoders:
+  `circuit`, `observation`, `jkimyei`, `canonical_path`.
 
 3. `wave_space_t`
-- immutable wave record registry keyed by manifest hash
-- grouped access to wave grammar/DSL/decoded payload
+- Registers immutable wave records (hash-addressed).
+- Holds wave grammar/DSL and decoded wave set.
 
 4. `board_space_t`
-- immutable board registry keyed by manifest hash
-- board DSL join-layer resolution (`CONTRACT`, `WAVE`, `BIND`)
-- explicit runtime lock lifecycle via `board_space_t::init(...)`
-- helpers to resolve bound contract/wave hashes from selected binding id
+- Registers immutable board records (hash-addressed).
+- Resolves `BIND` entries to contract/wave hashes.
+- Owns runtime lock state for selected board + selected binding.
 
-## `config_space_t` Contract
+## Responsibility Split
 
-Main behavior:
+Architecture is intentionally split into static topology and dynamic execution:
 
-- `change_config_file(...)` selects global config file and triggers reload.
-- `update_config()` parses, validates, and enforces runtime invariants.
-- `get<T>(section,key,fallback)` and `get_arr<T>(...)` provide typed access.
+1. Contract (static machine)
+- Observation, jkimyei specs, circuit topology.
+- No runtime schedule ownership.
 
-Runtime invariants:
+2. Wave (dynamic execution policy)
+- Mode (`train`/`run`), sampler, epochs, batch size, max batches.
+- Component train flags and profile selection.
+- Source symbol/range window.
+- Dataloader runtime knobs (`WORKERS`, `FORCE_REBUILD_CACHE`,
+  `RANGE_WARN_BATCHES`) and observation file ownership
+  (`SOURCES_DSL_FILE`, `CHANNELS_DSL_FILE`) are declared per `SOURCE` block.
 
-- `GENERAL.exchange_type` must be valid and cannot change mid-run.
-- if board runtime is already initialized, reloads must keep the same locked board path
-  and binding id.
-- locked board/contract/wave records are re-checked for integrity on updates when board
-  runtime is active.
+3. Board (join layer)
+- Imports contract files and wave files.
+- Declares executable `BIND` entries:
+  `CONTRACT = ...`, `WAVE = ...`.
 
-Failure behavior:
+4. Binding (execution choice)
+- Picks one contract + one wave for a run.
+- This is the runtime selection unit.
 
-- malformed/invalid critical config terminates via fail-fast logging path.
-- missing typed keys raise `bad_config_access` unless fallback is provided.
+## DSL Layering
 
-## `contract_space_t` Contract
+1. `iitepi.contract.circuit.example.dsl`
+- Declares TSI instances and hops.
+- Topology only.
 
-Main behavior:
+2. `iitepi.wave.example.dsl`
+- Declares one or more `WAVE` blocks.
+- Runtime behavior for execution/training.
 
-- `register_contract_file(path)` canonicalizes path, builds contract record, and returns immutable contract hash.
-- `contract_itself(hash)` returns the registered immutable contract record.
-- `contract_itself(hash)->get<T>(section,key,fallback)` / `get_arr<T>(...)` provide typed access.
-- grouped assets are exposed on record blobs:
-  - `contract_itself(hash)->circuit.{grammar,dsl,decoded()}`
-  - `contract_itself(hash)->observation.{sources,channels,decoded()}`
-  - `contract_itself(hash)->jkimyei.{grammar,dsl,decoded()}`
+3. `iitepi.board.dsl`
+- Imports contract/wave files.
+- Declares bind ids that join them.
 
-## `wave_space_t` / `board_space_t` Contract
+## Runtime Flow
 
-Main behavior:
+1. Load config
+- `config_space_t::change_config_file(...)`
+- `config_space_t::update_config()`
 
-- `register_wave_file(path)` / `register_board_file(path)` register immutable records.
-- `board_space_t::init()` (or `init(path,binding)`) activates one immutable board+binding
-  runtime lock.
-- `wave_itself(hash)->wave.{grammar,dsl,decoded()}` exposes wave payload.
-- `board_itself(hash)->board.{grammar,dsl,decoded()}` exposes board bind manifest.
-- `contract_hash_for_binding(board_hash,binding_id)` and
-  `wave_hash_for_binding(board_hash,binding_id)` resolve bound hashes.
+2. Initialize board lock
+- `board_space_t::init()` reads configured board path + binding id.
+- `board_space_t::assert_locked_runtime_intact_or_fail_fast()` checks lock integrity.
 
-Integrity contract:
+3. Resolve selected binding
+- Board decode identifies `BIND`.
+- `board_space_t::contract_hash_for_binding(...)`
+- `board_space_t::wave_hash_for_binding(...)`
 
-- `assert_intact_or_fail_fast(hash)` checks dependency files remain intact.
-- change in dependency hash/digest is treated as immutable lock violation.
-- `assert_registry_intact_or_fail_fast()` validates all registered records.
+4. Build runtime board
+- `board.builder` validates and materializes runtime contracts/nodes.
+- Observation runtime payload is selected from wave dataloader file paths
+  (not from contract default observation DSL text).
+- Validations are explicit:
+  `validate_contract_definition(...)`,
+  `validate_wave_definition(...)`,
+  `validate_wave_contract_compatibility(...)`.
 
-## Concurrency Contract
+5. Execute
+- Entry point: `cuwacunu::iitepi::run_binding(binding_id, device)`.
+- Returns `board_binding_run_record_t` with `ok/error`, hashes, sampler/type, steps.
 
-- process-global shared state is guarded by space-specific mutexes.
-- registries are singleton-style runtime state.
+## TSI Execution Model
 
-This specification captures runtime contracts and invariants; source remains authoritative for parsing and fingerprinting details.
+1. Circuit compiles into runtime nodes and route map.
+2. Execution is wave-driven:
+- `run_contract(...)` iterates epochs from wave execution spec.
+- `run_wave_compiled(...)` processes event queue (`Ingress` -> TSI `step` -> emitted signals).
+3. Sources emit payload/future/meta; wikimyei consume/emit payload/loss/meta; sinks consume logs/null.
+4. Artifact load/save is handled through TSI wikimyei + hashimyei integration in contract runtime.
+
+## Record Model
+
+`contract_record_t`, `wave_record_t`, `board_record_t` expose:
+
+1. Raw grammar/DSL blobs.
+2. Lazy-decoded AST accessors (`decoded()`).
+3. Typed `get/get_arr` helpers against parsed config sections.
+4. Dependency manifest fingerprints for integrity checks.
+
+## Integrity and Locking
+
+1. Every registry record stores dependency fingerprint manifest.
+   For waves, this includes wave-selected
+   `SOURCE.SOURCES_DSL_FILE` and `SOURCE.CHANNELS_DSL_FILE`.
+2. `assert_intact_or_fail_fast(hash)` verifies immutable dependency content.
+3. `board_space_t::init(...)` establishes the active runtime lock.
+4. Config reload while active runtime is locked must not drift board/binding identity.
+
+## Device Policy
+
+Execution can fall back from GPU to CPU when configured GPU is unavailable or
+runtime-unusable. Fallback is intentionally loud via
+`[torch_utils][CPU_FALLBACK_ACTIVE] ...` warning logs.
+
+## Practical Entry Points
+
+1. Registry and lock lifecycle
+- `config_space_t::update_config()`
+- `board_space_t::init()`
+- `board_space_t::locked_board_hash()`
+- `board_space_t::locked_board_binding_id()`
+- `board_space_t::network_analytics([std::ostream*], [bool beautify])`
+- `contract_space_t::network_analytics(contract_hash[, std::ostream*], [bool beautify])`
+
+2. Programmatic execution
+- `cuwacunu::iitepi::run_binding(binding_id[, device])`
+
+3. Introspection
+- `contract_space_t::contract_itself(hash)`
+- `wave_space_t::wave_itself(hash)`
+- `board_space_t::board_itself(hash)`
+
+This document defines architecture intent and runtime contracts. Source code
+remains authoritative for low-level parsing, builder details, and diagnostics.

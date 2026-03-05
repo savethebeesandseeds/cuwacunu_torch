@@ -24,13 +24,13 @@ std::string read_text_file(const std::string& path) {
 int main() {
   try {
     const std::string source_grammar_path =
-        "/cuwacunu/src/config/dsl/observation_sources.bnf";
+        "/cuwacunu/src/config/bnf/tsi.source.dataloader.sources.bnf";
     const std::string source_dsl_path =
-        "/cuwacunu/src/config/instructions/observation_sources.dsl";
+        "/cuwacunu/src/config/instructions/tsi.source.dataloader.sources.dsl";
     const std::string channel_grammar_path =
-        "/cuwacunu/src/config/dsl/observation_channels.bnf";
+        "/cuwacunu/src/config/bnf/tsi.source.dataloader.channels.bnf";
     const std::string channel_dsl_path =
-        "/cuwacunu/src/config/instructions/observation_channels.dsl";
+        "/cuwacunu/src/config/instructions/tsi.source.dataloader.channels.dsl";
 
     const std::string source_grammar = read_text_file(source_grammar_path);
     const std::string source_dsl = read_text_file(source_dsl_path);
@@ -50,6 +50,59 @@ int main() {
       std::cerr << "[test_dsl_observation] channel_forms is empty\n";
       return 1;
     }
+    if (decoded.csv_bootstrap_deltas < 2) {
+      std::cerr << "[test_dsl_observation] csv_bootstrap_deltas must be >=2\n";
+      return 1;
+    }
+    if (!(decoded.csv_step_abs_tol > 0.0L)) {
+      std::cerr << "[test_dsl_observation] csv_step_abs_tol must be >0\n";
+      return 1;
+    }
+    if (decoded.csv_step_rel_tol < 0.0L) {
+      std::cerr << "[test_dsl_observation] csv_step_rel_tol must be >=0\n";
+      return 1;
+    }
+
+    const auto expect_decode_fail = [&](std::string source_text) {
+      try {
+        (void)cuwacunu::camahjucunu::decode_observation_spec_from_split_dsl(
+            source_grammar,
+            std::move(source_text),
+            channel_grammar,
+            channel_dsl);
+      } catch (const std::exception&) {
+        return;
+      }
+      throw std::runtime_error(
+          "expected decode failure but decode succeeded");
+    };
+    expect_decode_fail(
+        "/---------------------------------------------------------------------------------------------------------\\\n"
+        "|  instrument  |  interval  |  record_type  |  source                                                     |\n"
+        "|---------------------------------------------------------------------------------------------------------|\n"
+        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
+        "\\---------------------------------------------------------------------------------------------------------/\n");
+    expect_decode_fail(
+        "CSV_POLICY {\n"
+        "  CSV_BOOTSTRAP_DELTAS = 128;\n"
+        "  CSV_STEP_ABS_TOL = 0;\n"
+        "  CSV_STEP_REL_TOL = 1e-9;\n"
+        "};\n"
+        "/---------------------------------------------------------------------------------------------------------\\\n"
+        "|  instrument  |  interval  |  record_type  |  source                                                     |\n"
+        "|---------------------------------------------------------------------------------------------------------|\n"
+        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
+        "\\---------------------------------------------------------------------------------------------------------/\n");
+    expect_decode_fail(
+        "CSV_POLICY {\n"
+        "  CSV_BOOTSTRAP_DELTAS = 128;\n"
+        "  CSV_STEP_ABS_TOL = 1e-7;\n"
+        "};\n"
+        "/---------------------------------------------------------------------------------------------------------\\\n"
+        "|  instrument  |  interval  |  record_type  |  source                                                     |\n"
+        "|---------------------------------------------------------------------------------------------------------|\n"
+        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
+        "\\---------------------------------------------------------------------------------------------------------/\n");
 
     std::cout << "[test_dsl_observation] source_forms=" << decoded.source_forms.size()
               << " channel_forms=" << decoded.channel_forms.size() << "\n";

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iosfwd>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -36,11 +37,22 @@ struct board_space_t {
                                                const std::string& binding_id);
   static std::string wave_hash_for_binding(const board_hash_t& hash,
                                            const std::string& binding_id);
+  static void network_analytics(std::ostream* out = nullptr,
+                                bool beautify = false);
   static void assert_locked_runtime_intact_or_fail_fast();
   static void assert_intact_or_fail_fast(const board_hash_t& hash);
   static void assert_registry_intact_or_fail_fast();
   [[nodiscard]] static bool has_board(const board_hash_t& hash) noexcept;
   [[nodiscard]] static std::vector<board_hash_t> registered_hashes();
+
+ private:
+  static void lifecycle_init();
+  static void lifecycle_finit();
+  struct _init {
+    _init()  { board_space_t::lifecycle_init(); }
+    ~_init() { board_space_t::lifecycle_finit(); }
+  };
+  static _init _initializer;
 };
 
 struct board_file_fingerprint_t {

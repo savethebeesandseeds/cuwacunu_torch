@@ -328,7 +328,12 @@ inline std::uint64_t run_circuit(BoardContract& c,
     return 0;
   }
   const std::uint64_t steps =
-      run_wave_compiled(c.compiled_runtime, c.seed_wave, c.seed_ingress, ctx);
+      run_wave_compiled(
+          c.compiled_runtime,
+          c.seed_wave,
+          c.seed_ingress,
+          ctx,
+          c.execution.runtime);
   for (auto& node : c.nodes) {
     if (node) node->on_epoch_end(ctx);
   }
@@ -435,7 +440,12 @@ inline std::uint64_t run_contract(BoardContract& c,
     reset_contract_nodes(c, ctx);
     const Wave start_wave = wave_for_epoch(c.seed_wave, epoch);
     total_steps +=
-        run_wave_compiled(c.compiled_runtime, start_wave, c.seed_ingress, ctx);
+        run_wave_compiled(
+            c.compiled_runtime,
+            start_wave,
+            c.seed_ingress,
+            ctx,
+            c.execution.runtime);
     for (auto& node : c.nodes) {
       if (node) node->on_epoch_end(ctx);
     }

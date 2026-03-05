@@ -11,6 +11,7 @@ enum class TsiDomain : std::uint8_t {
   Source = 0,
   Wikimyei = 1,
   Sink = 2,
+  Probe = 3,
 };
 
 [[nodiscard]] constexpr std::string_view domain_token(TsiDomain domain) noexcept {
@@ -18,6 +19,7 @@ enum class TsiDomain : std::uint8_t {
     case TsiDomain::Source: return "source";
     case TsiDomain::Wikimyei: return "wikimyei";
     case TsiDomain::Sink: return "sink";
+    case TsiDomain::Probe: return "probe";
   }
   return "unknown";
 }

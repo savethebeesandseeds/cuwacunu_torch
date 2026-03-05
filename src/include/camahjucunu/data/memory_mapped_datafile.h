@@ -20,7 +20,6 @@
 
 #include "piaabo/dutils.h"
 #include "piaabo/dfiles.h"
-#include "piaabo/dconfig.h"
 #include "camahjucunu/types/types_utils.h"
 #include "camahjucunu/types/types_data.h"
 #include "camahjucunu/types/types_enums.h"
@@ -99,23 +98,6 @@ struct csv_step_policy_t {
   long double abs_tol{1e-8L};
   long double rel_tol{1e-10L};
 };
-
-inline csv_step_policy_t load_csv_step_policy() {
-  csv_step_policy_t out{};
-  const int configured_bootstrap = cuwacunu::iitepi::config_space_t::get<int>(
-      "DATA_LOADER", "dataloader_csv_bootstrap_deltas", std::optional<int>{64});
-  const double configured_abs_tol = cuwacunu::iitepi::config_space_t::get<double>(
-      "DATA_LOADER", "dataloader_csv_step_abs_tol", std::optional<double>{1e-8});
-  const double configured_rel_tol = cuwacunu::iitepi::config_space_t::get<double>(
-      "DATA_LOADER", "dataloader_csv_step_rel_tol", std::optional<double>{1e-10});
-
-  out.bootstrap_deltas = static_cast<std::size_t>(std::max(2, configured_bootstrap));
-  out.abs_tol = static_cast<long double>(
-      (configured_abs_tol > 0.0) ? configured_abs_tol : 1e-8);
-  out.rel_tol = static_cast<long double>(
-      (configured_rel_tol >= 0.0) ? configured_rel_tol : 1e-10);
-  return out;
-}
 
 template <typename T>
 long double infer_regular_delta_from_csv(const std::string& csv_filename,
@@ -389,7 +371,9 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
                                           std::size_t normalization_window = 0,
                                           bool        force_rebuild_cache   = false,
                                           std::size_t buffer_size           = 1024,
-                                          char        delimiter             = ',') {
+                                          char        delimiter             = ',',
+                                          const detail::csv_step_policy_t& csv_step_policy =
+                                              detail::csv_step_policy_t{}) {
   static_assert(std::is_trivially_copyable<T>::value,
                 "sanitize_csv_into_binary_file<T>: T must be trivially copyable (POD-like).");
 
@@ -422,8 +406,6 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
   bool need_write_raw = force_rebuild_cache || !newer_than(raw_bin, csv_filename);
 
   if (need_write_raw) {
-    const detail::csv_step_policy_t csv_step_policy =
-        detail::load_csv_step_policy();
     const long double regular_delta = detail::infer_regular_delta_from_csv<T>(
         csv_filename, delimiter, csv_step_policy);
     log_info("[sanitize_csv_into_binary_file] inferred regular_delta=%.15Lf "

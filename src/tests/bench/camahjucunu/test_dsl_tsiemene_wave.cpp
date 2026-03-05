@@ -1,7 +1,9 @@
 // test_dsl_tsiemene_wave.cpp
 #include <cassert>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <unordered_set>
 
 #include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
@@ -56,6 +58,27 @@ int main() {
     std::cout << decoded.str() << "\n";
 
     assert(!decoded.waves.empty());
+
+    std::unordered_set<std::string> manifest_paths;
+    for (const auto& fp : wave_itself->dependency_manifest.files) {
+      manifest_paths.insert(fp.canonical_path);
+    }
+    for (const auto& wave : decoded.waves) {
+      assert(!wave.sources.empty());
+      const std::string sources_path =
+          std::filesystem::weakly_canonical(
+              std::filesystem::path(wave_itself->config_folder) /
+              wave.sources.front().sources_dsl_file)
+              .string();
+      const std::string channels_path =
+          std::filesystem::weakly_canonical(
+              std::filesystem::path(wave_itself->config_folder) /
+              wave.sources.front().channels_dsl_file)
+              .string();
+      assert(manifest_paths.find(sources_path) != manifest_paths.end());
+      assert(manifest_paths.find(channels_path) != manifest_paths.end());
+    }
+
     const auto& p = decoded.waves.front();
     assert(!p.name.empty());
     assert(p.mode == "train" || p.mode == "run");
@@ -65,6 +88,11 @@ int main() {
     assert(p.max_batches_per_epoch > 0);
     assert(!p.wikimyeis.empty());
     assert(!p.sources.empty());
+    for (const auto& s : p.sources) {
+      assert(!s.sources_dsl_file.empty());
+      assert(!s.channels_dsl_file.empty());
+      assert(s.range_warn_batches > 0);
+    }
     for (const auto& w : p.wikimyeis) {
       assert(!w.profile_id.empty());
       assert(!w.wikimyei_path.empty());
@@ -81,24 +109,37 @@ int main() {
           "expected decode failure but decode succeeded");
     };
 
-    expect_decode_fail(
-        "WAVE p {\n"
-        "  MODE = run;\n"
-        "  SAMPLER = sequential;\n"
-        "  EPOCHS = 1;\n"
-        "  BATCH_SIZE = 4;\n"
-        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
-        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
-        "    TRAIN = false;\n"
-        "  };\n"
+    const std::string kSourceBlock =
         "  SOURCE tsi.source.dataloader {\n"
         "    PATH = tsi.source.dataloader;\n"
         "    SYMBOL = BTCUSDT;\n"
         "    FROM = 01.01.2009;\n"
         "    TO = 31.12.2009;\n"
-        "  };\n"
-        "}\n");
-    expect_decode_fail(
+        "    WORKERS = 0;\n"
+        "    FORCE_REBUILD_CACHE = true;\n"
+        "    RANGE_WARN_BATCHES = 256;\n"
+        "    SOURCES_DSL_FILE = /cuwacunu/src/config/instructions/tsi.source.dataloader.sources.dsl;\n"
+        "    CHANNELS_DSL_FILE = /cuwacunu/src/config/instructions/tsi.source.dataloader.channels.dsl;\n"
+        "  };\n";
+
+    const auto wave_with_source = [&](std::string wave_prefix) {
+      wave_prefix += kSourceBlock;
+      wave_prefix += "}\n";
+      return wave_prefix;
+    };
+
+    expect_decode_fail(wave_with_source(
+        "WAVE p {\n"
+        "  MODE = run;\n"
+        "  SAMPLER = sequential;\n"
+        "  EPOCHS = 1;\n"
+        "  BATCH_SIZE = 4;\n"
+        "  MAX_BATCHES_PER_EPOCH = 4;\n"
+        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
+        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
+        "    TRAIN = false;\n"
+        "  };\n"));
+    expect_decode_fail(wave_with_source(
         "WAVE p {\n"
         "  MODE = train;\n"
         "  SAMPLER = sequential;\n"
@@ -109,6 +150,51 @@ int main() {
         "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
         "    TRAIN = true;\n"
         "    PROFILE_ID = stable_pretrain;\n"
+        "  };\n"));
+    expect_decode_fail(wave_with_source(
+        "WAVE p {\n"
+        "  MODE = train;\n"
+        "  SAMPLER = sequential;\n"
+        "  EPOCHS = 1;\n"
+        "  BATCH_SIZE = 4;\n"
+        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
+        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
+        "    TRAIN = true;\n"
+        "    PROFILE_ID = stable_pretrain;\n"
+        "  };\n"));
+    expect_decode_fail(wave_with_source(
+        "WAVE p {\n"
+        "  MODE = train;\n"
+        "  SAMPLER = sequential;\n"
+        "  EPOCHS = 1;\n"
+        "  MAX_BATCHES_PER_EPOCH = 4;\n"
+        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
+        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
+        "    TRAIN = true;\n"
+        "    PROFILE_ID = stable_pretrain;\n"
+        "  };\n"));
+    expect_decode_fail(wave_with_source(
+        "WAVE p {\n"
+        "  MODE = train;\n"
+        "  EPOCHS = 1;\n"
+        "  BATCH_SIZE = 4;\n"
+        "  MAX_BATCHES_PER_EPOCH = 4;\n"
+        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
+        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
+        "    TRAIN = true;\n"
+        "    PROFILE_ID = stable_pretrain;\n"
+        "  };\n"));
+    expect_decode_fail(
+        "WAVE p {\n"
+        "  MODE = train;\n"
+        "  SAMPLER = sequential;\n"
+        "  EPOCHS = 1;\n"
+        "  BATCH_SIZE = 4;\n"
+        "  MAX_BATCHES_PER_EPOCH = 4;\n"
+        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
+        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
+        "    TRAIN = true;\n"
+        "    PROFILE_ID = stable_pretrain;\n"
         "  };\n"
         "  SOURCE tsi.source.dataloader {\n"
         "    PATH = tsi.source.dataloader;\n"
@@ -122,23 +208,8 @@ int main() {
         "  MODE = train;\n"
         "  SAMPLER = sequential;\n"
         "  EPOCHS = 1;\n"
-        "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
-        "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
-        "    TRAIN = true;\n"
-        "    PROFILE_ID = stable_pretrain;\n"
-        "  };\n"
-        "  SOURCE tsi.source.dataloader {\n"
-        "    PATH = tsi.source.dataloader;\n"
-        "    SYMBOL = BTCUSDT;\n"
-        "    FROM = 01.01.2009;\n"
-        "    TO = 31.12.2009;\n"
-        "  };\n"
-        "}\n");
-    expect_decode_fail(
-        "WAVE p {\n"
-        "  MODE = train;\n"
-        "  EPOCHS = 1;\n"
         "  BATCH_SIZE = 4;\n"
+        "  MAX_BATCHES_PER_EPOCH = 4;\n"
         "  WIKIMYEI tsi.wikimyei.representation.vicreg.0x0000 {\n"
         "    PATH = tsi.wikimyei.representation.vicreg.0x0000;\n"
         "    TRAIN = true;\n"
@@ -149,6 +220,11 @@ int main() {
         "    SYMBOL = BTCUSDT;\n"
         "    FROM = 01.01.2009;\n"
         "    TO = 31.12.2009;\n"
+        "    WORKERS = 0;\n"
+        "    FORCE_REBUILD_CACHE = true;\n"
+        "    RANGE_WARN_BATCHES = 0;\n"
+        "    SOURCES_DSL_FILE = /cuwacunu/src/config/instructions/tsi.source.dataloader.sources.dsl;\n"
+        "    CHANNELS_DSL_FILE = /cuwacunu/src/config/instructions/tsi.source.dataloader.channels.dsl;\n"
         "  };\n"
         "}\n");
 

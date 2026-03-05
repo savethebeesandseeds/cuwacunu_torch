@@ -763,16 +763,16 @@ public:
    * (C) stacks past_keys/future_keys across channels.
    */
   observation_sample_t get_by_key_value(typename Datatype_t::key_type_t target_key_value) {
-    const size_t K = datasets_.size();
-    std::vector<torch::Tensor> feats(K), masks(K), fut_feats(K), fut_masks(K);
-    std::vector<torch::Tensor> keys_past(K), keys_future(K);
+    const size_t C = datasets_.size();
+    std::vector<torch::Tensor> feats(C), masks(C), fut_feats(C), fut_masks(C);
+    std::vector<torch::Tensor> keys_past(C), keys_future(C);
     int64_t expected_D = -1;
 
     // key tensor dtype to use for padding
     auto key_opts = torch::TensorOptions().dtype(
         std::is_integral_v<typename Datatype_t::key_type_t> ? torch::kInt64 : torch::kFloat64);
 
-    for (size_t i = 0; i < K; ++i) {
+    for (size_t i = 0; i < C; ++i) {
       auto& d  = datasets_[i];
       const auto np = N_past_[i];
       const auto nf = N_future_[i];
@@ -814,15 +814,15 @@ public:
     }
 
     observation_sample_t out{
-      torch::stack(feats, 0),      // [K, max_N_past,   D]
-      torch::stack(masks, 0),      // [K, max_N_past]
-      torch::stack(fut_feats, 0),  // [K, max_N_future, D]
-      torch::stack(fut_masks, 0),  // [K, max_N_future]
+      torch::stack(feats, 0),      // [C, max_N_past,   D]
+      torch::stack(masks, 0),      // [C, max_N_past]
+      torch::stack(fut_feats, 0),  // [C, max_N_future, D]
+      torch::stack(fut_masks, 0),  // [C, max_N_future]
       torch::Tensor()              // encoding
     };
     // (C) keys
-    out.past_keys   = torch::stack(keys_past, 0);   // [K,max_N_past]
-    out.future_keys = torch::stack(keys_future, 0); // [K,max_N_future]
+    out.past_keys   = torch::stack(keys_past, 0);   // [C,max_N_past]
+    out.future_keys = torch::stack(keys_future, 0); // [C,max_N_future]
     out.normalized  = false; // raw by default
     return out;
   }
@@ -853,7 +853,9 @@ public:
                    std::size_t normalization_window = 0,
                    bool force_rebuild_cache = false,
                    size_t buffer_size = 1024,
-                   char delimiter = ',') {
+                   char delimiter = ',',
+                   const detail::csv_step_policy_t& csv_step_policy =
+                       detail::csv_step_policy_t{}) {
     if (N_past == 0) {
       log_fatal("[MemoryMappedConcatDataset](add_dataset) N_past must be >= 1 for %s\n",
                 csv_filename.c_str());
@@ -861,7 +863,12 @@ public:
 
     /* --- prepare the file: CSV → binary --- */
     std::string bin_filename = sanitize_csv_into_binary_file<Datatype_t>(
-      csv_filename, normalization_window, force_rebuild_cache, buffer_size, delimiter);
+      csv_filename,
+      normalization_window,
+      force_rebuild_cache,
+      buffer_size,
+      delimiter,
+      csv_step_policy);
 
     /* --- add dataset --- */
     file_names_.push_back(bin_filename);
@@ -901,8 +908,8 @@ private:
   void recompute_global_state_() {
     using key_t = typename Datatype_t::key_type_t;
 
-    const std::size_t K = datasets_.size();
-    if (K == 0) {
+    const std::size_t channel_count = datasets_.size();
+    if (channel_count == 0) {
       max_N_past_ = max_N_future_ = num_records_ = 0;
       return;
     }
@@ -916,7 +923,7 @@ private:
           valid_right = rightmost -  N_future   * step     */
     key_t inter_left{};
     key_t inter_right{};
-    for (std::size_t i = 0; i < K; ++i) {
+    for (std::size_t i = 0; i < channel_count; ++i) {
       auto& d = datasets_[i];
       const auto np = N_past_[i];
       const auto nf = N_future_[i];
@@ -949,7 +956,7 @@ private:
     {
       std::size_t sel_idx = 0;
       key_t sel_step = datasets_[0]->key_value_step_;
-      for (std::size_t i = 1; i < K; ++i) {
+      for (std::size_t i = 1; i < channel_count; ++i) {
         const key_t st = datasets_[i]->key_value_step_;
         if (st < sel_step) { sel_step = st; sel_idx = i; }
       }
@@ -960,7 +967,7 @@ private:
     {
       std::size_t sel_idx = 0;
       key_t sel_step = datasets_[0]->key_value_step_;
-      for (std::size_t i = 1; i < K; ++i) {
+      for (std::size_t i = 1; i < channel_count; ++i) {
         const key_t st = datasets_[i]->key_value_step_;
         if (st > sel_step) { sel_step = st; sel_idx = i; }
       }
@@ -1021,6 +1028,13 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
 
   char delimiter = ',';
   size_t buffer_size = 1024;
+  detail::csv_step_policy_t csv_step_policy{};
+  csv_step_policy.bootstrap_deltas =
+      std::max<std::size_t>(2, obs_inst.csv_bootstrap_deltas);
+  csv_step_policy.abs_tol =
+      (obs_inst.csv_step_abs_tol > 0.0L) ? obs_inst.csv_step_abs_tol : 1e-8L;
+  csv_step_policy.rel_tol =
+      (obs_inst.csv_step_rel_tol >= 0.0L) ? obs_inst.csv_step_rel_tol : 1e-10L;
 
   MemoryMappedConcatDataset<Datatype_t> concat;
   const std::string expected_record_type = detail::record_type_name_for_datatype<Datatype_t>();
@@ -1059,7 +1073,8 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
           /* normalization_window */     normalization_window,
           /* force_rebuild_cache */      force_rebuild_cache,
           /* buffer_size */              buffer_size,
-          /* delimiter */                delimiter
+          /* delimiter */                delimiter,
+          /* csv_step_policy */          csv_step_policy
         );
         ++matched_sources;
       }

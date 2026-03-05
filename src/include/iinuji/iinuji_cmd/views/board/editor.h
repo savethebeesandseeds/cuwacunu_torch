@@ -38,9 +38,9 @@ inline std::string render_board_circuit_instruction_text(
 inline std::string render_board_instruction_text(
     const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& board) {
   std::ostringstream oss;
-  for (std::size_t i = 0; i < board.contracts.size(); ++i) {
+  for (std::size_t i = 0; i < board.circuits.size(); ++i) {
     if (i > 0) oss << "\n";
-    oss << render_board_circuit_instruction_text(board.contracts[i]);
+    oss << render_board_circuit_instruction_text(board.circuits[i]);
   }
   return oss.str();
 }
@@ -146,24 +146,24 @@ inline bool build_merged_board_from_virtual_contract_text(
     if (error_out) *error_out = "invalid contract text: " + parse_error;
     return false;
   }
-  if (edited_board.contracts.size() != 1) {
+  if (edited_board.circuits.size() != 1) {
     if (error_out) {
       *error_out = "contract editor expects exactly one contract, got " +
-                   std::to_string(edited_board.contracts.size());
+                   std::to_string(edited_board.circuits.size());
     }
     return false;
   }
 
   const std::size_t merge_index = std::min(
       st.board.editing_contract_index,
-      st.board.board.contracts.empty() ? std::size_t(0) : (st.board.board.contracts.size() - 1));
+      st.board.board.circuits.empty() ? std::size_t(0) : (st.board.board.circuits.size() - 1));
 
   auto merged = st.board.board;
-  if (merge_index >= merged.contracts.size()) {
+  if (merge_index >= merged.circuits.size()) {
     if (error_out) *error_out = "merge index out of range";
     return false;
   }
-  merged.contracts[merge_index] = std::move(edited_board.contracts.front());
+  merged.circuits[merge_index] = std::move(edited_board.circuits.front());
 
   std::string semantic_error;
   if (!cuwacunu::camahjucunu::validate_circuit_instruction(merged, &semantic_error)) {
@@ -172,11 +172,11 @@ inline bool build_merged_board_from_virtual_contract_text(
   }
 
   std::vector<std::vector<cuwacunu::camahjucunu::tsiemene_resolved_hop_t>> resolved{};
-  resolved.reserve(merged.contracts.size());
-  for (std::size_t i = 0; i < merged.contracts.size(); ++i) {
+  resolved.reserve(merged.circuits.size());
+  for (std::size_t i = 0; i < merged.circuits.size(); ++i) {
     std::vector<cuwacunu::camahjucunu::tsiemene_resolved_hop_t> rh;
     std::string resolve_error;
-    if (!cuwacunu::camahjucunu::resolve_hops(merged.contracts[i], &rh, &resolve_error)) {
+    if (!cuwacunu::camahjucunu::resolve_hops(merged.circuits[i], &rh, &resolve_error)) {
       if (error_out) *error_out = "merged board resolve error circuit[" + std::to_string(i) + "]: " + resolve_error;
       return false;
     }
@@ -194,7 +194,7 @@ inline bool enter_selected_contract_virtual_editor(CmdState& st) {
   if (!board_has_circuits(st)) return false;
   clamp_board_navigation_state(st);
   const std::size_t idx = st.board.selected_circuit;
-  if (idx >= st.board.board.contracts.size()) return false;
+  if (idx >= st.board.board.circuits.size()) return false;
 
   if (!st.board.editor) {
     st.board.editor = std::make_shared<cuwacunu::iinuji::editorBox_data_t>(st.board.instruction_path);
@@ -204,7 +204,7 @@ inline bool enter_selected_contract_virtual_editor(CmdState& st) {
   configure_board_editor_highlighting(ed);
   cuwacunu::iinuji::primitives::editor_set_text(
       ed,
-      render_board_circuit_instruction_text(st.board.board.contracts[idx]));
+      render_board_circuit_instruction_text(st.board.board.circuits[idx]));
   ed.dirty = false;
   ed.status = "contract circuit edit mode";
 
@@ -223,7 +223,7 @@ inline bool enter_selected_contract_full_editor(CmdState& st) {
   if (!board_has_circuits(st)) return false;
   clamp_board_navigation_state(st);
   const std::size_t idx = st.board.selected_circuit;
-  if (idx >= st.board.board.contracts.size()) return false;
+  if (idx >= st.board.board.circuits.size()) return false;
 
   if (!st.board.editor) {
     st.board.editor = std::make_shared<cuwacunu::iinuji::editorBox_data_t>(st.board.instruction_path);
@@ -253,7 +253,7 @@ inline bool enter_selected_contract_section_editor(CmdState& st) {
   clamp_board_navigation_state(st);
 
   const std::size_t idx = st.board.selected_circuit;
-  if (idx >= st.board.board.contracts.size()) return false;
+  if (idx >= st.board.board.circuits.size()) return false;
   const BoardContractSection section =
       board_contract_section_from_index(st.board.selected_contract_section);
   const std::string text = board_contract_section_get_text(st, idx, section);
@@ -389,12 +389,12 @@ inline bool persist_board_editor(CmdState& st, std::string* error_out = nullptr)
 
     const std::size_t idx = std::min(
         st.board.editing_contract_index,
-        st.board.board.contracts.empty() ? std::size_t(0) : (st.board.board.contracts.size() - 1));
+        st.board.board.circuits.empty() ? std::size_t(0) : (st.board.board.circuits.size() - 1));
     cuwacunu::iinuji::primitives::editor_set_text(
         ed,
-        st.board.board.contracts.empty()
+        st.board.board.circuits.empty()
             ? std::string()
-            : render_board_circuit_instruction_text(st.board.board.contracts[idx]));
+            : render_board_circuit_instruction_text(st.board.board.circuits[idx]));
     ed.dirty = false;
     return true;
   }
@@ -478,10 +478,10 @@ inline bool handle_board_editor_key(CmdState& st, int ch) {
       clamp_board_navigation_state(st);
       const std::size_t idx = std::min(
           st.board.editing_contract_index,
-          st.board.board.contracts.empty() ? std::size_t(0) : (st.board.board.contracts.size() - 1));
+          st.board.board.circuits.empty() ? std::size_t(0) : (st.board.board.circuits.size() - 1));
       cuwacunu::iinuji::primitives::editor_set_text(
           ed,
-          render_board_circuit_instruction_text(st.board.board.contracts[idx]));
+          render_board_circuit_instruction_text(st.board.board.circuits[idx]));
       ed.dirty = false;
       return std::string("discarded + reloaded contract");
     }

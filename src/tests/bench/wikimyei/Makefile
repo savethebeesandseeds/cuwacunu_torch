@@ -15,7 +15,6 @@ TEST_DEFAULT_LDLIBS :=
 # 3) Tests (build + run aliases)
 COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
 
-$(eval $(call TEST_ONEFILE, test_entropy_methods,                 test_entropy_methods.cpp,                 $(libcommon_a)))
 $(eval $(call TEST_ONEFILE, test_vicreg_4d_projector_gpu_vs_cpu, test_vicreg_4d_projector_gpu_vs_cpu.cpp, $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_vicreg_4d_train,         test_vicreg_4d_train.cpp,         $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_vicreg_4d_save_and_load, test_vicreg_4d_save_and_load.cpp, $(COMMON_LINK)))
@@ -30,7 +29,6 @@ $(TEST_OUT)/test_expected_value: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 # 5) Aggregate: all
 .PHONY: all
 all: \
-	$(TEST_OUT)/test_entropy_methods \
 	$(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu \
 	$(TEST_OUT)/test_vicreg_4d_train \
 	$(TEST_OUT)/test_vicreg_4d_save_and_load \
@@ -41,7 +39,6 @@ all: \
 # 6) Aggregate: run
 .PHONY: run
 run: \
-	run-test_entropy_methods \
 	run-test_vicreg_4d_projector_gpu_vs_cpu \
 	run-test_vicreg_4d_train \
 	run-test_vicreg_4d_save_and_load \
@@ -52,7 +49,6 @@ run: \
 .PHONY: clean
 clean:
 	@rm -f \
-	  $(TEST_OUT)/test_entropy_methods \
 	  $(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu \
 	  $(TEST_OUT)/test_vicreg_4d_train \
 	  $(TEST_OUT)/test_vicreg_4d_save_and_load \

@@ -21,6 +21,7 @@ namespace camahjucunu {
 /* ───────────────────── observation_runtime_t statics ───────────────────── */
 observation_spec_t observation_runtime_t::inst{};
 observation_runtime_t::_init observation_runtime_t::_initializer{};
+static std::string g_observation_runtime_last_contract_hash;
 
 /* ───────────────────── observation_spec_t methods ───────────────────── */
 
@@ -94,13 +95,23 @@ int64_t observation_spec_t::max_future_sequence_length() {
 /* ───────────────────── _t lifecycle ───────────────────── */
 
 void observation_runtime_t::init() {
-  log_info("[observation_runtime_t] initialising\n");
+  log_info(
+      "[observation_runtime_t] initializing static-global observation snapshot "
+      "(single mutable cache updated by explicit contract hash)\n");
   // Runtime callers must explicitly provide a contract hash for updates.
   inst = observation_spec_t{};
+  g_observation_runtime_last_contract_hash.clear();
 }
 
 void observation_runtime_t::finit() {
-  log_info("[observation_runtime_t] finalising\n");
+  const char* last_hash =
+      g_observation_runtime_last_contract_hash.empty()
+          ? "<none>"
+          : g_observation_runtime_last_contract_hash.c_str();
+  log_info(
+      "[observation_runtime_t] finalizing static-global observation snapshot "
+      "(last_contract_hash=%s)\n",
+      last_hash);
 }
 
 void observation_runtime_t::update(const std::string& contract_hash) {
@@ -115,6 +126,7 @@ void observation_runtime_t::update(const std::string& contract_hash) {
     throw std::runtime_error(
         "observation_runtime_t::update requires non-empty contract hash");
   }
+  g_observation_runtime_last_contract_hash = contract_hash;
   inst = decode_observation_spec_from_contract(contract_hash);
 }
 
@@ -150,9 +162,9 @@ std::string observation_spec_source_dump_from_contract(
   }
 
   return "ERROR: split observation DSL is required. Missing one or more of:\n"
-         "  [DSL].observation_sources_grammar_filename\n"
+         "  [BNF].observation_sources_grammar_filename\n"
          "  [DSL].observation_sources_dsl_filename\n"
-         "  [DSL].observation_channels_grammar_filename\n"
+         "  [BNF].observation_channels_grammar_filename\n"
          "  [DSL].observation_channels_dsl_filename\n";
 }
 
@@ -174,6 +186,9 @@ observation_spec_t decode_observation_spec_from_split_dsl(
     observation_spec_t merged{};
     merged.source_forms = std::move(sources_part.source_forms);
     merged.channel_forms = std::move(channels_part.channel_forms);
+    merged.csv_bootstrap_deltas = sources_part.csv_bootstrap_deltas;
+    merged.csv_step_abs_tol = sources_part.csv_step_abs_tol;
+    merged.csv_step_rel_tol = sources_part.csv_step_rel_tol;
     return merged;
   }
 

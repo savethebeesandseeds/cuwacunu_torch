@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@ namespace camahjucunu {
 struct tsiemene_circuit_instruction_t;
 struct observation_spec_t;
 struct jkimyei_specs_t;
+struct network_design_instruction_t;
 }  // namespace camahjucunu
 }  // namespace cuwacunu
 
@@ -33,10 +35,22 @@ struct contract_space_t {
   static contract_hash_t register_contract_file(const std::string& path);
   static std::shared_ptr<const contract_record_t> contract_itself(
       const contract_hash_t& hash);
+  static void network_analytics(const contract_hash_t& hash,
+                                std::ostream* out = nullptr,
+                                bool beautify = false);
   static void assert_intact_or_fail_fast(const contract_hash_t& hash);
   static void assert_registry_intact_or_fail_fast();
   [[nodiscard]] static bool has_contract(const contract_hash_t& hash) noexcept;
   [[nodiscard]] static std::vector<contract_hash_t> registered_hashes();
+
+ private:
+  static void lifecycle_init();
+  static void lifecycle_finit();
+  struct _init {
+    _init()  { contract_space_t::lifecycle_init(); }
+    ~_init() { contract_space_t::lifecycle_finit(); }
+  };
+  static _init _initializer;
 };
 
 /*───────────────────────────────────────────────────────────────────────────*/
@@ -81,6 +95,9 @@ struct observation_blob_t {
 };
 
 struct jkimyei_blob_t : dsl_blob_t {
+  std::vector<std::string> dsl_segments{};
+  std::vector<std::string> dsl_segment_paths{};
+
   const cuwacunu::camahjucunu::jkimyei_specs_t& decoded() const;
 
  private:
@@ -91,6 +108,18 @@ struct jkimyei_blob_t : dsl_blob_t {
 
 struct canonical_path_blob_t {
   std::string grammar{};
+};
+
+struct network_design_blob_t : dsl_blob_t {
+  [[nodiscard]] bool has_payload() const noexcept {
+    return !dsl.empty();
+  }
+  const cuwacunu::camahjucunu::network_design_instruction_t& decoded() const;
+
+ private:
+  mutable std::once_flag decode_once_{};
+  mutable std::shared_ptr<cuwacunu::camahjucunu::network_design_instruction_t>
+      decoded_cache_{};
 };
 
 }  // namespace contract_record
@@ -107,6 +136,7 @@ struct contract_record_t {
   contract_record::observation_blob_t observation{};
   contract_record::jkimyei_blob_t jkimyei{};
   contract_record::canonical_path_blob_t canonical_path{};
+  contract_record::network_design_blob_t vicreg_network_design{};
 
   contract_dependency_manifest_t dependency_manifest{};
 

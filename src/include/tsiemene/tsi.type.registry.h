@@ -161,7 +161,8 @@ inline constexpr std::array kTsiTypeEndpoints = {
 }
 
 [[nodiscard]] constexpr bool is_sink_type(TsiTypeId id) noexcept {
-  return tsi_type_domain(id) == TsiDomain::Sink;
+  const TsiDomain domain = tsi_type_domain(id);
+  return domain == TsiDomain::Sink || domain == TsiDomain::Probe;
 }
 
 [[nodiscard]] constexpr bool is_unique_instance_type(TsiTypeId id) noexcept {

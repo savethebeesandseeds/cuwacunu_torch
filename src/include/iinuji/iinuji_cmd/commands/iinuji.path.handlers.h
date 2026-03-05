@@ -393,13 +393,7 @@ struct IinujiPathHandlers {
       normalized += "()";
     }
 
-    if (state.board.contract_hash.empty()) {
-      push_err("board contract hash is unavailable; reload board first");
-      return true;
-    }
-    const std::string contract_hash = state.board.contract_hash;
-    auto path =
-        cuwacunu::camahjucunu::decode_canonical_path(normalized, contract_hash);
+    auto path = cuwacunu::camahjucunu::decode_canonical_path(normalized);
     if (!path.ok) {
       push_err("invalid iinuji path: " + path.error);
       return true;
@@ -435,13 +429,7 @@ struct IinujiPathHandlers {
       return false;
     }
 
-    if (state.board.contract_hash.empty()) {
-      push_err("board contract hash is unavailable; reload board first");
-      return false;
-    }
-    const std::string contract_hash = state.board.contract_hash;
-    auto path =
-        cuwacunu::camahjucunu::decode_canonical_path(canonical_raw, contract_hash);
+    auto path = cuwacunu::camahjucunu::decode_canonical_path(canonical_raw);
     if (!path.ok) {
       push_err("invalid canonical iinuji path: " + path.error);
       return false;

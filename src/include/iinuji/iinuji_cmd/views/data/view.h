@@ -266,9 +266,9 @@ inline std::size_t feature_dims_for_record_type(std::string_view record_type) {
 
 inline std::string data_focus_instrument(const BoardState* board_view,
                                          const cuwacunu::camahjucunu::observation_spec_t& obs) {
-  if (board_view && board_view->ok && !board_view->board.contracts.empty()) {
+  if (board_view && board_view->ok && !board_view->board.circuits.empty()) {
     const std::string from_board =
-        cuwacunu::camahjucunu::circuit_invoke_symbol(board_view->board.contracts.front());
+        cuwacunu::camahjucunu::circuit_invoke_symbol(board_view->board.circuits.front());
     if (!from_board.empty()) return from_board;
   }
   if (!obs.source_forms.empty()) return obs.source_forms.front().instrument;
@@ -296,13 +296,17 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
     out.error = "missing board contract hash for data view";
     return out;
   }
+  constexpr std::size_t kFallbackBatchSize = 64;
   const std::string contract_hash = board_view->contract_hash;
-  if (board_view->ok && !board_view->board.contracts.empty() &&
-      board_view->board.contracts.front().execution.batch_size > 0) {
-    out.batch_size =
-        static_cast<std::size_t>(board_view->board.contracts.front().execution.batch_size);
+  const auto batch_resolution = resolve_configured_board_wave_batch_size();
+  if (batch_resolution.ok) {
+    out.batch_size = batch_resolution.batch_size;
+    out.batch_size_from_bound_wave = true;
+    out.batch_size_resolution = batch_resolution.detail;
   } else {
-    out.batch_size = 64;
+    out.batch_size = kFallbackBatchSize;
+    out.batch_size_from_bound_wave = false;
+    out.batch_size_resolution = batch_resolution.detail;
   }
   out.raw_instruction =
       cuwacunu::camahjucunu::observation_spec_source_dump_from_contract(
@@ -540,6 +544,10 @@ inline std::string make_data_left(const CmdState& st) {
   oss << "  focus instrument: " << (st.data.focus_instrument.empty() ? "<none>" : st.data.focus_instrument) << "\n";
   oss << "  active channels : " << st.data.active_channels << "\n";
   oss << "  batch size (B)  : " << st.data.batch_size << "\n";
+  oss << "  batch source    : " << (st.data.batch_size_from_bound_wave ? "bound wave" : "fallback(64)") << "\n";
+  if (!st.data.batch_size_resolution.empty()) {
+    oss << "  batch detail    : " << st.data.batch_size_resolution << "\n";
+  }
   oss << "  max seq (T)     : " << st.data.max_seq_length << "\n";
   oss << "  max future (Hf) : " << st.data.max_future_seq_length << "\n";
   if (st.data.feature_dims == 0) {

@@ -1,5 +1,5 @@
 /*
-  wikimyei_vicreg.ini
+  tsi.wikimyei.representation.vicreg.dsl
   ===================
   Purpose:
     Typed key-value profile for VICReg model/runtime settings used by wikimyei.
@@ -8,27 +8,26 @@
   Format:
     <key>:<type> = <value>   # optional inline comment
     Supported type examples used here:
-      path, int, bool, str
+      int, bool, str
 
   Key groups:
-    - Artifact/runtime: model_path, verbose_train, device, dtype
+    - Runtime placement: device, dtype
     - Training budget: wave-owned (not configured in this file)
     - Model shape: encoding_dims, channel_expansion_dim, fused_feature_dim,
       encoder_hidden_dims, encoder_depth
     - Projector config: projector_mlp_spec, projector_norm, projector_activation,
       projector_hidden_bias, projector_last_bias, projector_bn_in_fp32
-    - Optimizer/SWA policy: swa_start_iter, optimizer_threshold_reset,
-      enable_buffer_averaging
+    - Runtime behavior: enable_buffer_averaging
 
   Semantics:
     - This file defines component-local VICReg runtime configuration.
     - Wave + jkimyei selection determine whether and how training is executed.
+    - Training enable/disable is controlled by wave `WIKIMYEI ... TRAIN`.
+    - Profile policy knobs (`swa_start_iter`, `optimizer_threshold_reset`) live in
+      `jkimyei.representation.vicreg.dsl` under `[COMPONENT_PARAMS]`.
 */
 
 # VICReg profile: key:type = value # optional comment
-model_path:path = /tmp/vicreg.ckpt # Path to save/load the model
-swa_start_iter:int = 1000 # Global iteration where SWA begins
-verbose_train:bool = true # Print progress messages
 encoding_dims:int = 72 # Encoder output embedding dimensions
 channel_expansion_dim:int = 64 # Width multiplier for first conv block
 fused_feature_dim:int = 32 # Channel count after fusion block
@@ -40,7 +39,6 @@ projector_activation:str = SiLU # ReLU | SiLU
 projector_hidden_bias:bool = false # Ignored when using BatchNorm1d
 projector_last_bias:bool = false
 projector_bn_in_fp32:bool = true # Used only with BatchNorm1d
-optimizer_threshold_reset:int = 500 # AdamW pow reset step (-1 disables)
 enable_buffer_averaging:bool = false # SWA buffer averaging policy
 dtype:str = kFloat32 # torch dtype token
 device:str = gpu # cpu | cuda:0 | gpu

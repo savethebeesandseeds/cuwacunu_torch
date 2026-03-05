@@ -388,6 +388,24 @@ ExpectedValue::save_checkpoint(const std::string& path) const {
       return false;
     }
 
+    std::filesystem::path network_analytics_path{};
+    std::string network_analytics_error;
+    if (cuwacunu::piaabo::torch_compat::write_network_analytics_sidecar_for_checkpoint(
+            *semantic_model,
+            path,
+            &network_analytics_path,
+            {},
+            &network_analytics_error)) {
+      log_info(
+          "[ExpectedValue::network_analytics] saved → %s\n",
+          network_analytics_path.string().c_str());
+    } else {
+      log_warn(
+          "[ExpectedValue::network_analytics] sidecar skipped for '%s': %s\n",
+          path.c_str(),
+          network_analytics_error.c_str());
+    }
+
     log_info("%s[ExpectedValue::ckpt]%s saved → %s\n",
              ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET, path.c_str());
     return true;

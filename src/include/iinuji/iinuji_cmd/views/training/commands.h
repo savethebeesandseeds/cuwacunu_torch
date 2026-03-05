@@ -126,8 +126,8 @@ inline bool handle_training_show(CmdState& st, PushWarn&& push_warn, AppendLog&&
   } else {
     append_log("metadata=none", "show", "#d8d8ff");
   }
-  if (d.trainable_jkimyei) {
-    append_log("jkimyei=" + base + "@jkimyei:tensor", "show", "#d8d8ff");
+  if (d.trainable_jkimyei && !d.control_call.empty()) {
+    append_log("control.call=" + d.control_call, "show", "#d8d8ff");
   }
   return true;
 }

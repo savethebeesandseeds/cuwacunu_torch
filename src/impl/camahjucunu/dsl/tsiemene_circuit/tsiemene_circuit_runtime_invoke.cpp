@@ -307,6 +307,7 @@ std::optional<tsiemene::PayloadKind> parse_kind_ref(std::string s) {
   s = tsiemene_circuit_runtime_internal::trim_ascii_ws_copy(std::move(s));
   if (s == "tensor" || s == ":tensor") return tsiemene::PayloadKind::Tensor;
   if (s == "str" || s == ":str") return tsiemene::PayloadKind::String;
+  if (s == "cargo" || s == ":cargo") return tsiemene::PayloadKind::Cargo;
   return std::nullopt;
 }
 

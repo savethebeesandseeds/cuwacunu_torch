@@ -96,7 +96,7 @@ int main() {
     TICK(Train_Model);
     const int configured_epochs = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_epochs", -1);
     const int configured_iters = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "n_iters", -1);
-    const int configured_swa_start = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VICReg", "swa_start_iter");
+    const int configured_swa_start = model.training_policy.swa_start_iter;
     const int smoke_epochs = 1;
     const int smoke_iters = 1;
     const int smoke_swa_start = std::max(0, std::min(configured_swa_start, smoke_iters));
@@ -116,7 +116,9 @@ int main() {
     // -----------------------------------------------------
     // 5) Save (Model)
     // -----------------------------------------------------
-    model.save(cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "model_path"));
+    const std::filesystem::path smoke_ckpt_path =
+        std::filesystem::temp_directory_path() / "vicreg_4d_train_smoke.pt";
+    model.save(smoke_ckpt_path.string());
     // -----------------------------------------------------
     // Finalize
     // -----------------------------------------------------

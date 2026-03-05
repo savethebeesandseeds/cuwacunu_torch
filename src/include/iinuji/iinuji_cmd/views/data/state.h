@@ -61,6 +61,8 @@ struct DataState {
   std::string focus_instrument{};
 
   std::size_t batch_size{0};
+  bool batch_size_from_bound_wave{false};
+  std::string batch_size_resolution{};
   std::size_t active_channels{0};
   std::size_t max_seq_length{0};
   std::size_t max_future_seq_length{0};

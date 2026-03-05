@@ -349,7 +349,7 @@ find_component_profile_row(
     }
     wave_paths.insert(*parsed_path);
     wave_wikimyei_paths.insert(*parsed_path);
-    if (w.train && jkimyei_specs) {
+    if (jkimyei_specs) {
       bool profile_found = false;
       const auto parsed_canonical = cuwacunu::camahjucunu::decode_canonical_path(
           *parsed_path, contract_hash);
@@ -387,7 +387,7 @@ find_component_profile_row(
             .severity = CompatibilitySeverity::Error,
             .contract_path = *parsed_path,
             .wave_path = *parsed_path,
-            .message = "PROFILE_ID not found for TRAIN=true wikimyei path: " +
+            .message = "PROFILE_ID not found for wikimyei path: " +
                        w.profile_id + " (component candidates: [" + candidates +
                        "])",
         });

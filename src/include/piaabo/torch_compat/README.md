@@ -29,6 +29,53 @@ From implementation behavior:
 - `validate_module_parameters` enforces defined/non-empty/non-NaN parameters
 - `WARM_UP_CUDA()` performs actual CUDA warm-up + sync side effects
 
+## Network Analytics Sidecar
+
+`torch_compat` now exposes a dedicated network-analytics component in:
+
+- `include/piaabo/torch_compat/network_analytics.h`
+- `impl/piaabo/torch_compat/network_analytics.cpp`
+
+Public API:
+
+- `summarize_module_network_analytics(...)`
+- `summarize_network_design_analytics(...)`
+- `network_design_analytics_to_pretty_text(...)`
+- `write_network_analytics_file(...)`
+- `write_network_analytics_sidecar_for_checkpoint(...)`
+
+The sidecar writer emits a key/value text file next to `.pt` checkpoints
+(extension `.network_analytics.kv`) with compact global parameter diagnostics:
+
+- finite/non-finite ratios (NaN/Inf counts)
+- scale stats (`mean`, `stddev`, `l1_mean_abs`, `l2_rms`, `max_abs`)
+- sparsity/sign balance (`near_zero_ratio`, positive/negative/zero ratios)
+- entropy proxies (`abs_energy_entropy`, `log10_abs_histogram_entropy`)
+- layer-scale stability proxy (`layer_rms_cv`, min/max spread)
+
+The network-design analytics API provides topology-level diagnostics directly
+from `network_design_instruction_t`:
+
+- graph size/shape (`node_count`, internal/export edge counts, density)
+- graph structure (`weakly_connected_components`, `isolated_node_count`,
+  cycle detection, topological coverage, DAG longest path)
+- complexity proxies (`branching_factor`, `cyclomatic_complexity`)
+- entropy proxies over structure and semantics (`node_kind_entropy`,
+  degree entropies, edge transition entropy, parameter key/token entropy)
+
+## Network Design Adapter
+
+`torch_compat` now also exposes an adapter boundary for network-design payloads:
+
+- `include/piaabo/torch_compat/network_design_adapter.h`
+- `impl/piaabo/torch_compat/network_design_adapter.cpp`
+
+Boundary contract:
+
+- DSL decoding remains framework-agnostic (`camahjucunu::dsl::network_design`)
+- semantic validation remains Wikimyei-owned
+- adapter maps validated semantic spec to projector/module options used by LibTorch-facing code
+
 ## Config Bridge Contract
 
 Declared in `torch_utils.h` under namespace `cuwacunu::iitepi`:

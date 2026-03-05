@@ -93,14 +93,10 @@ struct jk_component_t {
       const auto table_it = instruction.tables.find("component_profiles_table");
       if (table_it == instruction.tables.end()) return std::nullopt;
       const auto& table = table_it->second;
-      const cuwacunu::camahjucunu::jkimyei_specs_t::row_t* fallback_profile_match =
-          nullptr;
-      std::size_t fallback_count = 0;
       for (const auto& candidate : table) {
         const auto profile_it = candidate.find("profile_id");
         if (profile_it == candidate.end()) continue;
         if (trim_ascii_copy(profile_it->second) != profile_hint) continue;
-        ++fallback_count;
         const auto component_it = candidate.find("component_id");
         const auto type_it = candidate.find("component_type");
         const std::string candidate_component =
@@ -110,10 +106,6 @@ struct jk_component_t {
         if (candidate_component == component_hint || candidate_type == component_hint) {
           return candidate;
         }
-        if (!fallback_profile_match) fallback_profile_match = &candidate;
-      }
-      if (fallback_count == 1 && fallback_profile_match) {
-        return *fallback_profile_match;
       }
       return std::nullopt;
     };

@@ -8,8 +8,8 @@
 <arg_value>              ::= {<arg_char>} ;
 <endpoint_suffix>        ::= "@" <directive_ref> ":" <kind_ref> ;
 
-<directive_ref>          ::= "step" | "payload" | "loss" | "meta" | "info" | "warn" | "debug" | "error" | "init" | "jkimyei" | "@step" | "@payload" | "@loss" | "@meta" | "@info" | "@warn" | "@debug" | "@error" | "@init" | "@jkimyei" ;
-<kind_ref>               ::= "str" | "tensor" | ":str" | ":tensor" ;
+<directive_ref>          ::= "impulse" | "response" | "loss" | "meta" | "info" | "warn" | "debug" | "error" | "init" | "jkimyei" | "@impulse" | "@response" | "@loss" | "@meta" | "@info" | "@warn" | "@debug" | "@error" | "@init" | "@jkimyei" ;
+<kind_ref>               ::= "str" | "tensor" | "cargo" | ":str" | ":tensor" | ":cargo" ;
 
 <atom>                   ::= <atom_start> {<atom_char>} ;
 <atom_start>             ::= <letter> | <number> | "_" ;

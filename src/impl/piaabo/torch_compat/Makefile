@@ -9,10 +9,12 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 # Build Rules (producer; no lib*.a prerequisites)
 #   - Use BUILD_OBJ_INC to add Torch headers
-#   - Produces: build/libtorch/torch_utils.o
-#   - Exposes:  torch_utils as a named goal
+#   - Produces: build/libtorch/torch_utils.o, build/libtorch/network_analytics.o, build/libtorch/network_design_adapter.o
+#   - Exposes:  torch_utils / network_analytics / network_design_adapter as named goals
 # -----------------------------------------------------------------
 $(eval $(call BUILD_OBJ_INC, libtorch, torch_utils, torch_utils, $(TORCH_INCLUDE_PATHS)))
+$(eval $(call BUILD_OBJ_INC, libtorch, network_analytics, network_analytics, $(TORCH_INCLUDE_PATHS)))
+$(eval $(call BUILD_OBJ_INC, libtorch, network_design_adapter, network_design_adapter, $(TORCH_INCLUDE_PATHS)))
 
 # -----------------------------------------------------------------
 # Aggregate Target
@@ -20,6 +22,6 @@ $(eval $(call BUILD_OBJ_INC, libtorch, torch_utils, torch_utils, $(TORCH_INCLUDE
 #       - distributions
 # -----------------------------------------------------------------
 .PHONY: all
-all: torch_utils
+all: torch_utils network_analytics network_design_adapter
 	$(MAKE) -C $(HERE_PATH)/distributions all
 	@$(LOG_SUCCESS)

@@ -14,7 +14,7 @@
 <tsi_type>               ::= <tsi_type_char> {<tsi_type_char>} ;
 <instance_ref>           ::= <instance_char> {<instance_char>} ;
 <directive_ref>          ::= <directive_char> {<directive_char>} ;
-<kind_ref>               ::= "str" | "tensor" ;
+<kind_ref>               ::= "str" | "tensor" | "cargo" ;
 
 <name_char>              ::= <letter> | <number> | "_" ;
 <instance_char>          ::= <name_char> ;

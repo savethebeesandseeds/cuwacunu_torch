@@ -1,0 +1,116 @@
+/* Per-component JKSPEC grammar.
+   Each jkimyei component lives in its own DSL file and must be declared
+   explicitly through a COMPONENT block. */
+
+<instruction>      ::= <version_decl> <component_payload> ;
+
+<version_decl>     ::= "JKSPEC" <scalar> ;
+
+<component_payload> ::= <component_block> {<component_block>} ;
+
+<component_block>  ::= "COMPONENT" <string> "{" {<component_stmt>} "}" ;
+<component_stmt>   ::= <profile_block> | <active_profile_stmt> ;
+<active_profile_stmt> ::= "ACTIVE_PROFILE" ":" <scalar> ;
+
+<profile_block>    ::= "PROFILE" <string> "{" {<profile_stmt>} "}" ;
+<profile_stmt>     ::= <optimizer_block>
+                     | <lr_scheduler_block>
+                     | <loss_block>
+                     | <component_params_block>
+                     | <numerics_block>
+                     | <gradient_block>
+                     | <checkpoint_block>
+                     | <metrics_block>
+                     | <data_ref_block>
+                     | <augmentations_block> ;
+
+<optimizer_block>      ::= "OPTIMIZER" <string> "{" {<kv_stmt>} "}"
+                         | "[" "OPTIMIZER" "]" {<dotted_kv_stmt>} ;
+<lr_scheduler_block>   ::= "LR_SCHEDULER" <string> "{" {<kv_stmt>} "}"
+                         | "[" "LR_SCHEDULER" "]" {<dotted_kv_stmt>} ;
+<loss_block>           ::= "LOSS" <string> "{" {<kv_stmt>} "}"
+                         | "[" "LOSS" "]" {<dotted_kv_stmt>} ;
+<component_params_block> ::= "COMPONENT_PARAMS" "{" {<kv_stmt>} "}"
+                           | "[" "COMPONENT_PARAMS" "]" {<dotted_kv_stmt>} ;
+<numerics_block>         ::= "NUMERICS" "{" {<kv_stmt>} "}"
+                           | "[" "NUMERICS" "]" {<dotted_kv_stmt>} ;
+<gradient_block>         ::= "GRADIENT" "{" {<kv_stmt>} "}"
+                           | "[" "GRADIENT" "]" {<dotted_kv_stmt>} ;
+<checkpoint_block>       ::= "CHECKPOINT" "{" {<kv_stmt>} "}"
+                           | "[" "CHECKPOINT" "]" {<dotted_kv_stmt>} ;
+<metrics_block>          ::= "METRICS" "{" {<kv_stmt>} "}"
+                           | "[" "METRICS" "]" {<dotted_kv_stmt>} ;
+<data_ref_block>         ::= "DATA_REF" "{" {<kv_stmt>} "}"
+                           | "[" "DATA_REF" "]" {<dotted_kv_stmt>} ;
+
+<augmentations_block> ::= "AUGMENTATIONS" "{" <augmentations_table> "}"
+                        | "[" "AUGMENTATIONS" "]" [ "{" ] <augmentations_table> [ "}" ] ;
+<augmentations_table> ::= <augmentations_rowwise_table> | <augmentations_transposed_table> ;
+<augmentations_rowwise_table> ::= <table_top_line>
+                                  <augmentations_header_line>
+                                  <table_divider_line>
+                                  {<augmentations_row_line>}
+                                  <table_bottom_line> ;
+<augmentations_header_line> ::= "|"
+                                <whitespace> "name" <whitespace> "|"
+                                <whitespace> "active" <whitespace> "|"
+                                <whitespace> "curve_param" <whitespace> "|"
+                                <whitespace> "noise_scale" <whitespace> "|"
+                                <whitespace> "smoothing_kernel_size" <whitespace> "|"
+                                <whitespace> "point_drop_prob" <whitespace> "|"
+                                <whitespace> "value_jitter_std" <whitespace> "|"
+                                <whitespace> "time_mask_band_frac" <whitespace> "|"
+                                <whitespace> "channel_dropout_prob" <whitespace> "|"
+                                <whitespace> "comment" <whitespace> "|"
+                                <line_end> ;
+<augmentations_row_line> ::= "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <whitespace> <scalar> <whitespace> "|"
+                             <line_end> ;
+<augmentations_transposed_table> ::= <table_top_line>
+                                     <augmentations_transposed_name_line>
+                                     {<augmentations_transposed_field_line>}
+                                     <table_bottom_line> ;
+<augmentations_transposed_name_line> ::= "|"
+                                         <whitespace> "name" <whitespace> "|"
+                                         <transpose_cells>
+                                         <line_end> ;
+<augmentations_transposed_field_line> ::= "|"
+                                          <whitespace> <identifier> <whitespace> "|"
+                                          <transpose_cells>
+                                          <line_end> ;
+<transpose_cells> ::= <whitespace> <scalar> <whitespace> "|" {<whitespace> <scalar> <whitespace> "|"} ;
+<table_top_line>      ::= "/" {<frame_char>} "\\" <line_end> ;
+<table_divider_line>  ::= "|" {<frame_char>} "|" <line_end> ;
+<table_bottom_line>   ::= "\\" {<frame_char>} "/" [<line_end>] ;
+<line_end>            ::= [<whitespace>] <break_block> ;
+<break_block>         ::= {<newline>} ;
+<newline>             ::= "\n" | "\r\n" ;
+<frame_char>          ::= "-" ;
+
+<kv_stmt>           ::= <identifier> ":" <value> ;
+<dotted_kv_stmt>    ::= "." <identifier> ":" <value> ;
+<value>             ::= <scalar> | <array> ;
+<array>             ::= "[" [<scalar> {"," <scalar>}] "]" ;
+
+<scalar>            ::= <string> | <identifier> ;
+
+<string>            ::= "\"" {<string_char>} "\"" ;
+<string_char>       ::= <identifier_char> | <space_char> | <symbol_char> ;
+
+<identifier>        ::= <identifier_char> {<identifier_char> | <number> | <symbol_char>} ;
+<identifier_char>   ::= <letter> | "_" ;
+<whitespace>        ::= {<empty>} ;
+<empty>             ::= " " | "\t" ;
+<space_char>        ::= " " | "\t" ;
+<symbol_char>       ::= "." | "," | ":" | ";" | "-" | "_" | "\\" | "/" | "=" | "@" ;
+<letter>            ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<number>            ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;

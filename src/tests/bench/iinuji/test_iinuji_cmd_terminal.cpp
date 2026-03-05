@@ -71,10 +71,8 @@ int main() {
         "iinuji.refresh()",
         "iinuji.view.data.plot(mode=seq)",
         "board.wave",
-        "tsi.source.dataloader@payload:tensor",
-        "tsi.source.dataloader@init:str",
-        "tsi.wikimyei.representation.vicreg.0x0003@payload:tensor",
-        "tsi.wikimyei.representation.vicreg.0x0003@jkimyei:tensor",
+        "tsi.source.dataloader@response:cargo",
+        "tsi.wikimyei.representation.vicreg.0x0003@response:cargo",
     };
 
     std::set<std::string> identity_hashes;
@@ -112,13 +110,18 @@ int main() {
     }
     {
       auto invalid_kind = cuwacunu::camahjucunu::decode_canonical_path(
-          "tsi.wikimyei.representation.vicreg.0x0003@payload:bytes");
+          "tsi.wikimyei.representation.vicreg.0x0003@response:bytes");
       ok = ok && require(!invalid_kind.ok, "invalid kind must fail");
     }
     {
       auto removed_weights = cuwacunu::camahjucunu::decode_canonical_path(
           "tsi.wikimyei.representation.vicreg.0x0003@weights:tensor");
       ok = ok && require(!removed_weights.ok, "removed @weights directive must fail");
+    }
+    {
+      auto removed_jkimyei_endpoint = cuwacunu::camahjucunu::decode_canonical_path(
+          "tsi.wikimyei.representation.vicreg.0x0003@jkimyei:tensor");
+      ok = ok && require(!removed_jkimyei_endpoint.ok, "vicreg should reject control endpoint @jkimyei");
     }
     {
       auto source_jk = cuwacunu::camahjucunu::decode_canonical_path(
@@ -137,7 +140,7 @@ int main() {
     }
     {
       auto source_no_jk = cuwacunu::camahjucunu::decode_canonical_path(
-          "tsi.source.dataloader.jkimyei@payload:tensor");
+          "tsi.source.dataloader.jkimyei@response:cargo");
       ok = ok && require(!source_no_jk.ok, "source dataloader should not accept .jkimyei facet syntax");
     }
     {
@@ -152,8 +155,8 @@ int main() {
     }
     {
       auto bad_init_kind = cuwacunu::camahjucunu::decode_canonical_path(
-          "tsi.source.dataloader@init:tensor");
-      ok = ok && require(!bad_init_kind.ok, "source dataloader should reject @init:tensor");
+          "tsi.source.dataloader@init:str");
+      ok = ok && require(!bad_init_kind.ok, "source dataloader should reject control endpoint @init");
     }
     // Migration adapter stubs (primitive -> DSL) smoke.
     {

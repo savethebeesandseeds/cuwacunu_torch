@@ -17,7 +17,6 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 .PHONY: all
 all:
 	$(MAKE) -C $(HERE_PATH)/dsl all
-	$(MAKE) -C $(HERE_PATH)/types all
 	$(MAKE) -C $(HERE_PATH)/db all
 	$(MAKE) -C $(HERE_PATH)/exchange all
 	$(MAKE) -C $(HERE_PATH)/data all

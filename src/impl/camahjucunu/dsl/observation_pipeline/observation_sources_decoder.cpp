@@ -1,7 +1,12 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_sources_decoder.h"
 
+#include <cerrno>
+#include <charconv>
+#include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
 #include <utility>
 
 #include "camahjucunu/dsl/observation_pipeline/observation_parse_utils.h"
@@ -9,6 +14,51 @@
 namespace cuwacunu {
 namespace camahjucunu {
 namespace dsl {
+
+namespace {
+
+[[nodiscard]] std::string trim_ascii_ws_copy(std::string s) {
+  std::size_t b = 0;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  std::size_t e = s.size();
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  return s.substr(b, e - b);
+}
+
+[[nodiscard]] std::uint64_t parse_u64_strict(const std::string& text,
+                                             const char* field_name) {
+  std::string value = trim_ascii_ws_copy(text);
+  if (value.empty()) {
+    throw std::runtime_error(std::string("missing value for ") + field_name);
+  }
+  std::uint64_t parsed = 0;
+  const char* b = value.data();
+  const char* e = value.data() + value.size();
+  const auto r = std::from_chars(b, e, parsed);
+  if (r.ec != std::errc{} || r.ptr != e) {
+    throw std::runtime_error(std::string("invalid integer for ") + field_name +
+                             ": " + value);
+  }
+  return parsed;
+}
+
+[[nodiscard]] long double parse_long_double_strict(const std::string& text,
+                                                   const char* field_name) {
+  std::string value = trim_ascii_ws_copy(text);
+  if (value.empty()) {
+    throw std::runtime_error(std::string("missing value for ") + field_name);
+  }
+  char* end = nullptr;
+  errno = 0;
+  const long double parsed = std::strtold(value.c_str(), &end);
+  if (errno != 0 || end == nullptr || end != value.c_str() + value.size()) {
+    throw std::runtime_error(std::string("invalid float for ") + field_name +
+                             ": " + value);
+  }
+  return parsed;
+}
+
+} // namespace
 
 observationSourcesDecoder::observationSourcesDecoder(std::string grammar_text)
   : OBSERVATION_SOURCES_GRAMMAR_TEXT(std::move(grammar_text))
@@ -74,6 +124,43 @@ void observationSourcesDecoder::visit(const IntermediaryNode* node, VisitorConte
 
   if (node->hash == OBSERVATION_PIPELINE_HASH_instrument_table) {
     out->source_forms.clear();
+    return;
+  }
+
+  if (node->hash == OBSERVATION_PIPELINE_HASH_csv_bootstrap_assignment) {
+    const ASTNode* n_value = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_policy_unsigned_int);
+    const std::uint64_t parsed = parse_u64_strict(
+        detail::flatten_node_text(n_value), "CSV_BOOTSTRAP_DELTAS");
+    if (parsed < 2) {
+      throw std::runtime_error(
+          "CSV_BOOTSTRAP_DELTAS must be >= 2");
+    }
+    out->csv_bootstrap_deltas = static_cast<std::size_t>(parsed);
+    return;
+  }
+
+  if (node->hash == OBSERVATION_PIPELINE_HASH_csv_step_abs_tol_assignment) {
+    const ASTNode* n_value = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_policy_float);
+    const long double parsed = parse_long_double_strict(
+        detail::flatten_node_text(n_value), "CSV_STEP_ABS_TOL");
+    if (!(parsed > 0.0L)) {
+      throw std::runtime_error("CSV_STEP_ABS_TOL must be > 0");
+    }
+    out->csv_step_abs_tol = parsed;
+    return;
+  }
+
+  if (node->hash == OBSERVATION_PIPELINE_HASH_csv_step_rel_tol_assignment) {
+    const ASTNode* n_value = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_policy_float);
+    const long double parsed = parse_long_double_strict(
+        detail::flatten_node_text(n_value), "CSV_STEP_REL_TOL");
+    if (parsed < 0.0L) {
+      throw std::runtime_error("CSV_STEP_REL_TOL must be >= 0");
+    }
+    out->csv_step_rel_tol = parsed;
     return;
   }
 

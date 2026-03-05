@@ -1,6 +1,15 @@
 # Cuwacnu
 This is an Artificial Intelligence Agent dedicated to managing investment portfolios.
 
+## Project Note
+What we are building here is a semantic transformer that optimizes one's market position with respect to abstract values.  
+An example intent is that money should be placed in instruments that follow an arrow of love, nature, and survival toward the edge of honor.
+
+This is an unlikely portfolio optimizer: it enforces values, while allowing financial entities to define those values as abstract ideas.  
+Inside, a powerful optimization engine still maximizes profit, with those values acting as constraints.
+
+Be aware of the `tsodao`: the abstract dictionary is curated so people cannot define absolute-evil values.
+
 ## Reproducible Setup (Docker + `setup.sh`)
 The canonical environment setup is now scripted in [`setup.sh`](./setup.sh).  
 The script is designed for reproducibility and expects third-party artifacts in `external/`.
