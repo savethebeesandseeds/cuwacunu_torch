@@ -8,6 +8,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <utility>
 
@@ -171,6 +172,89 @@ namespace {
                                         std::string_view prefix) {
   return file_name.size() >= prefix.size() &&
          file_name.compare(0, prefix.size(), prefix) == 0;
+}
+
+struct backup_file_info_t {
+  std::filesystem::path path;
+  std::filesystem::file_time_type mtime;
+};
+
+[[nodiscard]] bool collect_backup_files_sorted_desc(
+    std::string_view source_path, const std::filesystem::path& backup_dir,
+    std::vector<backup_file_info_t>* out, std::string* err) {
+  namespace fs = std::filesystem;
+  if (out == nullptr) {
+    if (err) *err = "backup collector output is null";
+    return false;
+  }
+  out->clear();
+
+  std::error_code ec;
+  if (!fs::exists(backup_dir, ec)) {
+    if (ec) {
+      if (err) *err = "failed to inspect backup directory: " + backup_dir.string();
+      return false;
+    }
+    return true;
+  }
+  if (!fs::is_directory(backup_dir, ec)) {
+    if (ec) {
+      if (err) *err = "failed to inspect backup directory: " + backup_dir.string();
+    } else if (err) {
+      *err = "backup_dir is not a directory: " + backup_dir.string();
+    }
+    return false;
+  }
+
+  const std::string base_name = fs::path(source_path).filename().string();
+  const std::string prefix = base_name + ".bak.";
+
+  const fs::directory_iterator begin(backup_dir, ec);
+  if (ec) {
+    if (err) *err = "failed to enumerate backup directory: " + backup_dir.string();
+    return false;
+  }
+
+  for (const auto& entry : begin) {
+    if (!entry.is_regular_file(ec) || ec) continue;
+    const std::string name = entry.path().filename().string();
+    if (!file_name_has_prefix(name, prefix)) continue;
+    const auto mtime = entry.last_write_time(ec);
+    if (ec) {
+      if (err) *err = "failed to stat backup file: " + entry.path().string();
+      return false;
+    }
+    out->push_back({entry.path(), mtime});
+  }
+
+  std::sort(out->begin(), out->end(), [](const auto& a, const auto& b) {
+    if (a.mtime == b.mtime) return a.path.string() > b.path.string();
+    return a.mtime > b.mtime;
+  });
+  return true;
+}
+
+[[nodiscard]] bool path_is_within(std::filesystem::path base,
+                                  std::filesystem::path candidate) {
+  base = base.lexically_normal();
+  candidate = candidate.lexically_normal();
+  auto base_it = base.begin();
+  auto cand_it = candidate.begin();
+  for (; base_it != base.end() && cand_it != candidate.end();
+       ++base_it, ++cand_it) {
+    if (*base_it != *cand_it) return false;
+  }
+  return base_it == base.end();
+}
+
+[[nodiscard]] bool is_deprecated_legacy_runtime_key(std::string_view key) {
+  return key == "mode" || key == "transport" || key == "endpoint" ||
+         key == "auth_token_env" || key == "model" ||
+         key == "reasoning_effort" || key == "temperature" ||
+         key == "top_p" || key == "max_output_tokens" ||
+         key == "timeout_ms" || key == "connect_timeout_ms" ||
+         key == "retry_max_attempts" || key == "retry_backoff_ms" ||
+         key == "verify_tls";
 }
 
 [[nodiscard]] bool backup_previous_file_with_cap(
@@ -387,6 +471,18 @@ find_runtime_descriptor(std::string_view key) {
   return true;
 }
 
+using parsed_entry_map_t =
+    std::map<std::string, std::pair<std::string, std::string>, std::less<>>;
+
+[[nodiscard]] parsed_entry_map_t build_entry_map_from_parsed_entries(
+    const std::vector<std::array<std::string, 3>>& parsed_entries) {
+  parsed_entry_map_t out;
+  for (const auto& e : parsed_entries) {
+    out[e[0]] = {trim_ascii(e[1]), trim_ascii(e[2])};
+  }
+  return out;
+}
+
 }  // namespace
 
 namespace cuwacunu {
@@ -505,6 +601,210 @@ bool hero_config_store_t::save(std::string* err) {
   return true;
 }
 
+bool hero_config_store_t::preview_save(save_preview_t* out, std::string* err) const {
+  if (out == nullptr) {
+    if (err) *err = "preview output pointer is null";
+    return false;
+  }
+
+  out->file_exists = false;
+  out->text_changed = false;
+  out->has_changes = false;
+  out->diff_count = 0;
+  out->current_text.clear();
+  out->proposed_text.clear();
+  out->diffs.clear();
+
+  out->proposed_text = render();
+
+  std::error_code ec;
+  const bool exists = std::filesystem::exists(config_path_, ec);
+  if (ec) {
+    if (err) *err = "failed to inspect config path: " + config_path_;
+    return false;
+  }
+  out->file_exists = exists;
+  if (exists && !read_text_file(config_path_, &out->current_text, err)) {
+    return false;
+  }
+
+  out->text_changed = (out->current_text != out->proposed_text);
+
+  std::vector<std::array<std::string, 3>> parsed_current;
+  std::vector<std::array<std::string, 3>> parsed_proposed;
+  if (!out->current_text.empty() &&
+      !parse_runtime_kv_text(out->current_text, &parsed_current, err)) {
+    return false;
+  }
+  if (!parse_runtime_kv_text(out->proposed_text, &parsed_proposed, err)) {
+    return false;
+  }
+
+  const parsed_entry_map_t current_map =
+      build_entry_map_from_parsed_entries(parsed_current);
+  const parsed_entry_map_t proposed_map =
+      build_entry_map_from_parsed_entries(parsed_proposed);
+
+  for (const auto& [key, before] : current_map) {
+    const auto it_after = proposed_map.find(key);
+    if (it_after == proposed_map.end()) {
+      out->diffs.push_back(
+          {key, "removed", before.first, before.second, "", ""});
+      continue;
+    }
+    const auto& after = it_after->second;
+    if (before.first != after.first || before.second != after.second) {
+      out->diffs.push_back({key, "updated", before.first, before.second,
+                            after.first, after.second});
+    }
+  }
+
+  for (const auto& [key, after] : proposed_map) {
+    if (current_map.find(key) != current_map.end()) continue;
+    out->diffs.push_back(
+        {key, "added", "", "", after.first, after.second});
+  }
+
+  out->diff_count = out->diffs.size();
+  out->has_changes = out->text_changed || !out->diffs.empty();
+  return true;
+}
+
+bool hero_config_store_t::list_backups(std::vector<backup_entry_t>* out,
+                                       std::string* err) const {
+  if (out == nullptr) {
+    if (err) *err = "backup list output pointer is null";
+    return false;
+  }
+  out->clear();
+
+  const std::string backup_dir_raw = get_or_default("backup_dir");
+  const auto backup_dir = resolve_path_near_config(backup_dir_raw, config_path_);
+  if (backup_dir.empty()) return true;
+
+  std::vector<backup_file_info_t> backups;
+  if (!collect_backup_files_sorted_desc(config_path_, backup_dir, &backups, err)) {
+    return false;
+  }
+
+  out->reserve(backups.size());
+  for (const auto& b : backups) {
+    out->push_back({b.path.filename().string(), b.path.string()});
+  }
+  return true;
+}
+
+bool hero_config_store_t::rollback_to_backup(std::string_view backup_name_or_path,
+                                             std::string* out_selected_path,
+                                             std::string* err) {
+  const std::string backup_enabled_raw = get_or_default("backup_enabled");
+  const std::string backup_max_entries_raw = get_or_default("backup_max_entries");
+  const std::string backup_dir_raw = get_or_default("backup_dir");
+
+  bool backup_enabled = true;
+  int64_t backup_max_entries = 20;
+  if (!backup_enabled_raw.empty() &&
+      !parse_bool_value(backup_enabled_raw, &backup_enabled)) {
+    if (err) *err = "invalid bool for key backup_enabled: " + backup_enabled_raw;
+    return false;
+  }
+  if (!backup_max_entries_raw.empty() &&
+      !parse_int64_value(backup_max_entries_raw, &backup_max_entries)) {
+    if (err) {
+      *err = "invalid int for key backup_max_entries: " + backup_max_entries_raw;
+    }
+    return false;
+  }
+
+  const auto backup_dir = resolve_path_near_config(backup_dir_raw, config_path_);
+  if (backup_dir.empty()) {
+    if (err) *err = "backup_dir must be configured for rollback";
+    return false;
+  }
+
+  std::vector<backup_file_info_t> backups;
+  if (!collect_backup_files_sorted_desc(config_path_, backup_dir, &backups, err)) {
+    return false;
+  }
+  if (backups.empty()) {
+    if (err) *err = "no backup files found in: " + backup_dir.string();
+    return false;
+  }
+
+  std::filesystem::path selected_backup;
+  const std::string selector = trim_ascii(backup_name_or_path);
+  if (selector.empty()) {
+    selected_backup = backups.front().path;
+  } else {
+    std::filesystem::path candidate(selector);
+    if (!candidate.is_absolute()) candidate = backup_dir / candidate;
+    candidate = candidate.lexically_normal();
+    if (!path_is_within(backup_dir, candidate)) {
+      if (err) {
+        *err = "rollback target must stay inside backup_dir: " +
+               backup_dir.string();
+      }
+      return false;
+    }
+
+    std::error_code ec;
+    if (std::filesystem::exists(candidate, ec) &&
+        std::filesystem::is_regular_file(candidate, ec)) {
+      selected_backup = candidate;
+    } else {
+      bool matched = false;
+      for (const auto& b : backups) {
+        if (b.path.filename() == selector || b.path.string() == selector) {
+          selected_backup = b.path;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        if (err) *err = "backup not found: " + selector;
+        return false;
+      }
+    }
+  }
+
+  std::string backup_text;
+  if (!read_text_file(selected_backup.string(), &backup_text, err)) {
+    return false;
+  }
+  std::vector<std::array<std::string, 3>> parsed_entries;
+  if (!parse_runtime_kv_text(backup_text, &parsed_entries, err)) {
+    if (err) {
+      *err = "backup parse validation failed for " + selected_backup.string() +
+             ": " + *err;
+    }
+    return false;
+  }
+
+  if (backup_enabled) {
+    if (backup_max_entries < 1) {
+      if (err) *err = "backup_max_entries must be >= 1 when backup_enabled=true";
+      return false;
+    }
+    if (!backup_previous_file_with_cap(config_path_, backup_dir, backup_max_entries,
+                                       err)) {
+      return false;
+    }
+  }
+
+  if (!write_text_file_atomic(config_path_, backup_text, err)) return false;
+
+  std::string reload_err;
+  if (!load(&reload_err)) {
+    if (err) {
+      *err = "rollback wrote target but reload failed: " + reload_err;
+    }
+    return false;
+  }
+
+  if (out_selected_path) *out_selected_path = selected_backup.string();
+  return true;
+}
+
 std::vector<std::string> hero_config_store_t::validate() const {
   std::vector<std::string> errors;
 
@@ -554,20 +854,6 @@ std::vector<std::string> hero_config_store_t::validate() const {
   }
 
   {
-    const std::string mode = lowercase_copy(get_or_default("mode"));
-    try {
-      cuwacunu::hero::config::validate_backend_mode_or_throw(mode);
-    } catch (const std::exception& e) {
-      errors.emplace_back(std::string("mode validation failed: ") + e.what());
-    }
-
-    const std::string transport = lowercase_copy(get_or_default("transport"));
-    if (mode == "openai" && transport != "curl") {
-      errors.emplace_back("openai mode currently requires transport=curl");
-    }
-  }
-
-  {
     const std::string protocol_layer =
         normalized_protocol_layer(get_or_default("protocol_layer"));
     if (protocol_layer != "stdio" && protocol_layer != "https/sse") {
@@ -576,39 +862,6 @@ std::vector<std::string> hero_config_store_t::validate() const {
     if (protocol_layer == "https/sse") {
       errors.emplace_back(
           std::string(cuwacunu::hero::config::kProtocolLayerHttpsSseFailFastMessage));
-    }
-  }
-
-  {
-    double value = 0.0;
-    if (parse_double_value(get_or_default("top_p"), &value)) {
-      if (!(value > 0.0 && value <= 1.0)) errors.emplace_back("top_p must be in (0,1]");
-    }
-    if (parse_double_value(get_or_default("temperature"), &value)) {
-      if (value < 0.0) errors.emplace_back("temperature must be >= 0");
-    }
-  }
-
-  {
-    int64_t value = 0;
-    if (parse_int64_value(get_or_default("max_output_tokens"), &value) &&
-        value <= 0) {
-      errors.emplace_back("max_output_tokens must be > 0");
-    }
-    if (parse_int64_value(get_or_default("timeout_ms"), &value) && value < 1000) {
-      errors.emplace_back("timeout_ms must be >= 1000");
-    }
-    if (parse_int64_value(get_or_default("connect_timeout_ms"), &value) &&
-        value < 100) {
-      errors.emplace_back("connect_timeout_ms must be >= 100");
-    }
-    if (parse_int64_value(get_or_default("retry_max_attempts"), &value) &&
-        value < 0) {
-      errors.emplace_back("retry_max_attempts must be >= 0");
-    }
-    if (parse_int64_value(get_or_default("retry_backoff_ms"), &value) &&
-        value < 0) {
-      errors.emplace_back("retry_backoff_ms must be >= 0");
     }
   }
 
@@ -699,6 +952,7 @@ std::string hero_config_store_t::render() const {
 
   for (const auto& e : entries_) {
     if (find_runtime_descriptor(e.key) != nullptr) continue;
+    if (is_deprecated_legacy_runtime_key(e.key)) continue;
     const std::string declared = e.declared_type.empty() ? "str" : e.declared_type;
     out << e.key << ":" << declared << " = " << e.value << "\n";
   }

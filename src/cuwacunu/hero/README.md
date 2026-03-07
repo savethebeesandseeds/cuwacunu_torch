@@ -1,11 +1,7 @@
 # HERO Local MCP
 
-`hero_config_mcp` is a local stdin/stdout MCP-style executable dedicated to
-configuration workflows.
-
-HTTP/OpenAI transport is delegated to:
-- `src/include/piaabo/https_compat/curl_toolkit/openai_responses_api.h`
-- `src/impl/piaabo/https_compat/curl_toolkit/openai_responses_api.cpp`
+`hero_config_mcp` is a local stdin/stdout MCP executable dedicated to
+configuration workflows. It is compatible with Codex MCP clients over `stdio`.
 
 Code split:
 - `hero_config_mcp.cpp`: CLI/bootstrap loop only.
@@ -33,15 +29,75 @@ make -C /cuwacunu/src/cuwacunu/hero -j12 install-hero-mcp
 Protocol layers:
 - `protocol_layer=STDIO`: implemented.
   - default runtime mode (`hero_config_mcp` without `--repl`) is JSON-RPC over stdio.
+  - supports MCP `Content-Length` framed messages (Codex-compatible).
+  - also accepts one-JSON-object-per-line requests for local debugging.
 - `protocol_layer=HTTPS/SSE`: intentionally not implemented; startup fails fast.
 
 JSON-RPC stdio methods:
 - `initialize`
+- `notifications/initialized` (notification; no response)
 - `ping`
 - `tools/list`
 - `tools/call` with tool names `hero.status`, `hero.schema`, `hero.show`,
-  `hero.get`, `hero.set`, `hero.validate`, `hero.save`, `hero.reload`,
-  `hero.ask`, `hero.fix`
+  `hero.get`, `hero.set`, `hero.validate`, `hero.diff`, `hero.dry_run`,
+  `hero.backups`, `hero.rollback`, `hero.save`, `hero.reload`
+
+`tools/call` expects MCP shape:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "hero.get",
+    "arguments": { "key": "protocol_layer" }
+  }
+}
+```
+
+Diff preview via MCP:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "hero.diff",
+    "arguments": { "include_text": false }
+  }
+}
+```
+
+`hero.diff` / `hero.dry_run` return:
+- `has_changes`: any save-visible change
+- `diff_count`: semantic key/value/type changes
+- `format_only`: `true` when only canonical formatting would change
+
+Rollback via MCP:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/call",
+  "params": {
+    "name": "hero.rollback",
+    "arguments": { "backup": "hero.config.dsl.bak.1772860000000000.dsl" }
+  }
+}
+```
+
+`hero.rollback` behavior:
+- if `backup` is omitted, restores the latest backup.
+- validates backup DSL syntax before restore.
+- snapshots current config first (when backups are enabled).
+
+Codex integration:
+- register `/cuwacunu/src/cuwacunu/build/hero_config_mcp` as a local MCP server
+  using `stdio` transport in your Codex MCP settings.
+- do not pass `--repl` for MCP usage.
 
 Legacy terminal mode:
 - enable with `--repl` or one-shot with `--once`.
@@ -59,16 +115,16 @@ Core commands:
 - `get <key>`
 - `set <key> <value>`
 - `validate`
+- `diff` (or `dry_run`)
+- `backups`
+- `rollback [backup_filename]`
 - `save`
 - `reload`
-- `ask <prompt>` (OpenAI via curl)
-- `fix <prompt>` (OpenAI via curl)
 
 Backup policy:
 - before each `save`, current config is snapshot to `backup_dir`.
 - retention is capped by `backup_max_entries` (oldest pruned first).
 
-Backend mode policy:
-- `mode=openai` is active.
-- `mode=selfhosted` fails fast with:
-  `isufficient founds for self hosted model deployment, please change mode to openai.`
+Deterministic policy:
+- runtime behavior is deterministic-only.
+- `hero.ask` and `hero.fix` return an explicit "disabled in deterministic mode" error.

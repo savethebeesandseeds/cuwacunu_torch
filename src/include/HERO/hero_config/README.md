@@ -16,7 +16,6 @@ Declared future learning targets (not wired yet):
 - `piaabo/torch_compat/network_analytics`
 - `piaabo/math_compat/statistics_space`
 
-Backend mode policy:
-- `mode=openai` is the active path.
-- `mode=selfhosted` is intentionally fail-fast with:
-  `isufficient founds for self hosted model deployment, please change mode to openai.`
+Runtime policy:
+- deterministic execution only.
+- `hero.ask` and `hero.fix` are disabled in runtime and return explicit errors.

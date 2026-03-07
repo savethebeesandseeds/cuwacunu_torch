@@ -7,22 +7,12 @@ include $(ROOT_PATH)/Makefile.config
 HERE_PATH := $(ROOT_PATH)/cuwacunu/hero
 # Runtime utility binaries should live under src/cuwacunu/build.
 TEST_OUT := $(ROOT_PATH)/cuwacunu/build
-ORDER_PREP := curl_openai_prep
-
-.PHONY: curl_openai_prep
-curl_openai_prep:
-	+$(MAKE) -C $(IMPL_PATH)/piaabo/https_compat all
-	+$(MAKE) lib-bundles
 
 TEST_DEFAULT_LDLIBS :=
 HERO_CONFIG_MCP_OBJS := \
 	$(OUTPUT_PATH)/cuwacunu/hero/hero_config_mcp.o \
 	$(OUTPUT_PATH)/cuwacunu/hero/hero_config_store.o \
 	$(OUTPUT_PATH)/cuwacunu/hero/hero_config_commands.o
-
-$(OUTPUT_PATH)/cuwacunu/hero/hero_config_mcp.o: INCLUDES_EXTRA += $(LIBCURL_INCLUDE_PATHS)
-$(OUTPUT_PATH)/cuwacunu/hero/hero_config_store.o: INCLUDES_EXTRA += $(LIBCURL_INCLUDE_PATHS)
-$(OUTPUT_PATH)/cuwacunu/hero/hero_config_commands.o: INCLUDES_EXTRA += $(LIBCURL_INCLUDE_PATHS)
 
 $(OUTPUT_PATH)/cuwacunu/hero/hero_config_mcp.o: $(HERE_PATH)/hero_config_mcp.cpp
 	$(CC_RULE)
@@ -31,15 +21,14 @@ $(OUTPUT_PATH)/cuwacunu/hero/hero_config_store.o: $(HERE_PATH)/hero_config_store
 $(OUTPUT_PATH)/cuwacunu/hero/hero_config_commands.o: $(HERE_PATH)/hero_config_commands.cpp
 	$(CC_RULE)
 
-$(TEST_OUT)/hero_config_mcp: $(HERO_CONFIG_MCP_OBJS) $(libcurl_a) | $(ORDER_PREP)
+$(TEST_OUT)/hero_config_mcp: $(HERO_CONFIG_MCP_OBJS)
 	$(Q)mkdir -p $(@D) $(DEPDIR) $(OBJTMP)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
 	$(Q)$(CXX_LINK) $(LDFLAGS_E) \
 	      $(HERO_CONFIG_MCP_OBJS) \
 	      $(LDLIBS_common) \
-	      -Wl,--start-group $(libcurl_a) -Wl,--end-group \
-	      $(LDLIBS_curl) $(LDLIBS_EXTRA) \
+	      $(LDLIBS_EXTRA) \
 	      -o $@
 	$(Q)$(LOG_END)
 

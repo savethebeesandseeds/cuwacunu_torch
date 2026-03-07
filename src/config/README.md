@@ -112,38 +112,44 @@ Build/install:
 make -C /cuwacunu/src/cuwacunu/hero -j12 install-hero-mcp
 ```
 
-Run:
+Run as MCP server (Codex/stdio):
+
+```bash
+/cuwacunu/src/config/hero_config_mcp
+```
+
+Run legacy human REPL:
 
 ```bash
 /cuwacunu/src/config/hero_config_mcp --repl
 ```
 
-Useful commands:
-- `status`
-- `schema`
-- `show`
-- `set <key> <value>`
-- `validate`
-- `save`
-- `ask <prompt>`
-- `fix <prompt>`
+Useful MCP tools:
+- `hero.status`
+- `hero.schema`
+- `hero.show`
+- `hero.get`
+- `hero.set`
+- `hero.validate`
+- `hero.diff` / `hero.dry_run` (preview changes before save)
+- `hero.backups` (list snapshots)
+- `hero.rollback` (restore latest or selected snapshot)
+- `hero.save`
+- `hero.reload`
 
-For language-model calls (`ask`/`fix`), export token env first (default):
-
-```bash
-export OPENAI_API_KEY='...'
-```
+Deterministic policy:
+- `hero.ask` and `hero.fix` are disabled by design in current runtime mode.
 
 ## Split Policy
 
 - Global settings live in `./.config`: `[GENERAL]`, `[BNF]`, `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`, `[REAL_HERO]`.
   `GENERAL.board_config_filename` points to the board config file and
   `GENERAL.board_binding_id` selects the active `BIND` entry.
-- HERO backend settings live in `[REAL_HERO]`:
-  - `mode`: `openai | selfhosted` (selfhosted fails fast for now)
-  - `transport`: currently must be `curl`
-  - `OPENAI_api_filename`: path to stored OpenAI API key material (secured file, AEAD envelope)
-  - `endpoint`: OpenAI responses endpoint URL
+- HERO runtime settings for deterministic MCP live in
+  `./instructions/hero.config.dsl` (`protocol_layer`, local read/write policy,
+  backup policy).
+- `[REAL_HERO]` remains as legacy smart-mode wiring and is currently not used by
+  deterministic HERO MCP execution.
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
   - `iitepi_board_grammar_filename`
   - `iitepi_wave_grammar_filename`

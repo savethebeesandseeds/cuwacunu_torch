@@ -7,7 +7,6 @@
 #include "HERO/hero_config/hero.config.h"
 #include "cuwacunu/hero/hero_config_commands.h"
 #include "cuwacunu/hero/hero_config_store.h"
-#include "piaabo/https_compat/curl_toolkit/openai_responses_api.h"
 
 namespace {
 
@@ -76,20 +75,12 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  std::string curl_init_error;
-  if (!cuwacunu::piaabo::curl::openai_curl_global_init(&curl_init_error)) {
-    std::cerr << "Failed to initialize curl global state: "
-              << curl_init_error << "\n";
-    return 2;
-  }
-
   cuwacunu::hero::mcp::hero_config_store_t store(config_path);
   std::string load_error;
   if (!store.load(&load_error)) {
     std::cout << "err\tstartup\t" << load_error << "\n";
     std::cout << "end\n";
     std::cout.flush();
-    cuwacunu::piaabo::curl::openai_curl_global_cleanup();
     return 2;
   }
 
@@ -98,13 +89,11 @@ int main(int argc, char** argv) {
   if (protocol_layer == "https/sse") {
     std::cerr << cuwacunu::hero::config::kProtocolLayerHttpsSseFailFastMessage
               << "\n";
-    cuwacunu::piaabo::curl::openai_curl_global_cleanup();
     return 2;
   }
   if (!protocol_layer.empty() && protocol_layer != "stdio") {
     std::cerr << "Unsupported protocol_layer: " << protocol_layer
               << " (allowed: STDIO|HTTPS/SSE)\n";
-    cuwacunu::piaabo::curl::openai_curl_global_cleanup();
     return 2;
   }
 
@@ -114,13 +103,11 @@ int main(int argc, char** argv) {
     const bool ok = cuwacunu::hero::mcp::execute_command_line(
         once_command, &store, &should_exit);
     exit_code = ok ? 0 : 1;
-    cuwacunu::piaabo::curl::openai_curl_global_cleanup();
     return exit_code;
   }
 
   if (!repl) {
     cuwacunu::hero::mcp::run_jsonrpc_stdio_loop(&store);
-    cuwacunu::piaabo::curl::openai_curl_global_cleanup();
     return 0;
   }
 
@@ -140,6 +127,5 @@ int main(int argc, char** argv) {
     if (should_exit) break;
   }
 
-  cuwacunu::piaabo::curl::openai_curl_global_cleanup();
   return exit_code;
 }
