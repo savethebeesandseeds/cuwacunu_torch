@@ -1,6 +1,7 @@
 #include "iitepi/config_space_t.h"
 
 #include "iitepi/board_space_t.h"
+#include "HERO/hero_config/hero.config.h"
 
 #include <algorithm>
 #include <cctype>
@@ -398,6 +399,46 @@ bool config_space_t::validate_config() {
     }
   };
 
+  auto validate_optional_bool = [&](const char* section, const char* key) {
+    const auto sec_it = config.find(section);
+    if (sec_it == config.end()) return;
+    const auto key_it = sec_it->second.find(key);
+    if (key_it == sec_it->second.end()) return;
+    const std::string value = trim_ascii_ws_copy(key_it->second);
+    if (!has_non_ws_ascii(value)) return;
+    try {
+      (void)parse_scalar_from_string<bool>(value);
+    } catch (const std::exception& e) {
+      log_warn("Invalid bool value <%s> in section [%s]: %s\n",
+               key, section, e.what());
+      ok = false;
+    }
+  };
+
+  auto validate_optional_logs_metadata_filter = [&](const char* section,
+                                                    const char* key) {
+    const auto sec_it = config.find(section);
+    if (sec_it == config.end()) return;
+    const auto key_it = sec_it->second.find(key);
+    if (key_it == sec_it->second.end()) return;
+    std::string value = trim_ascii_ws_copy(key_it->second);
+    std::transform(
+        value.begin(), value.end(), value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (!has_non_ws_ascii(value)) return;
+    if (value == "any" ||
+        value == "meta+" || value == "meta" || value == "any_meta" || value == "with_any_metadata" ||
+        value == "fn+" || value == "function" || value == "with_function" ||
+        value == "path+" || value == "path" || value == "with_path" ||
+        value == "callsite+" || value == "callsite" || value == "with_callsite") {
+      return;
+    }
+    log_warn(
+        "Invalid value <%s> in section [%s]: expected any|any_meta|function|path|callsite\n",
+        key, section);
+    ok = false;
+  };
+
   const auto require_existing_path =
       [&](const char* section, const char* key, const std::string& base_folder) {
         std::string raw_path;
@@ -441,6 +482,14 @@ bool config_space_t::validate_config() {
   (void)require_value("GENERAL", GENERAL_BOARD_BINDING_KEY, nullptr);
 
   require_int_with_bounds("GENERAL", "iinuji_logs_buffer_capacity", 1);
+  validate_optional_bool("GENERAL", "iinuji_logs_show_date");
+  validate_optional_bool("GENERAL", "iinuji_logs_show_thread");
+  validate_optional_bool("GENERAL", "iinuji_logs_show_metadata");
+  validate_optional_bool("GENERAL", "iinuji_logs_show_color");
+  validate_optional_bool("GENERAL", "iinuji_logs_auto_follow");
+  validate_optional_bool("GENERAL", "iinuji_logs_mouse_capture");
+  validate_optional_logs_metadata_filter(
+      "GENERAL", "iinuji_logs_metadata_filter");
   (void)require_value("GENERAL", "hashimyei_store_root", nullptr);
   (void)require_value("GENERAL", "hashimyei_metadata_secret", nullptr);
 
@@ -460,35 +509,6 @@ bool config_space_t::validate_config() {
     require_existing_path("BNF", key, config_folder);
   }
 
-  {
-    const auto dl_it = config.find("DATA_LOADER");
-    if (dl_it != config.end()) {
-      const auto warn_if_present = [&](const char* key,
-                                       const char* replacement) {
-        const auto key_it = dl_it->second.find(key);
-        if (key_it == dl_it->second.end()) return;
-        const std::string value = trim_ascii_ws_copy(key_it->second);
-        if (!has_non_ws_ascii(value)) return;
-        log_warn("[dconfig] DATA_LOADER.%s is legacy/ignored in board runtime; use %s\n",
-                 key, replacement);
-      };
-      warn_if_present("dataloader_batch_size", "WAVE.BATCH_SIZE");
-      warn_if_present("dataloader_workers", "WAVE.SOURCE.WORKERS");
-      warn_if_present("dataloader_force_rebuild_cache",
-                      "WAVE.SOURCE.FORCE_REBUILD_CACHE");
-      warn_if_present("dataloader_range_warn_batches",
-                      "WAVE.SOURCE.RANGE_WARN_BATCHES");
-      warn_if_present("dataloader_csv_bootstrap_deltas",
-                      "sources.dsl CSV_POLICY.CSV_BOOTSTRAP_DELTAS");
-      warn_if_present("dataloader_csv_step_abs_tol",
-                      "sources.dsl CSV_POLICY.CSV_STEP_ABS_TOL");
-      warn_if_present("dataloader_csv_step_rel_tol",
-                      "sources.dsl CSV_POLICY.CSV_STEP_REL_TOL");
-      warn_if_present("dataloader_force_binarization",
-                      "WAVE.SOURCE.FORCE_REBUILD_CACHE");
-    }
-  }
-
   constexpr const char* kExchangeKeys[] = {
       "Ed25519_pkey",
       "EXCHANGE_api_filename",
@@ -498,6 +518,37 @@ bool config_space_t::validate_config() {
     (void)require_value("TEST_EXCHANGE", key, nullptr);
     (void)require_value("REAL_EXCHANGE", key, nullptr);
   }
+
+  std::string hero_mode_value;
+  if (require_value("REAL_HERO", "mode", &hero_mode_value)) {
+    std::string mode_normalized = hero_mode_value;
+    std::transform(mode_normalized.begin(), mode_normalized.end(),
+                   mode_normalized.begin(), [](unsigned char c) {
+                     return static_cast<char>(std::tolower(c));
+                   });
+    try {
+      cuwacunu::hero::config::validate_backend_mode_or_throw(mode_normalized);
+    } catch (const std::exception& e) {
+      log_warn("Invalid value <mode> in section [REAL_HERO]: %s\n",
+               e.what());
+      ok = false;
+    }
+  }
+
+  std::string hero_transport;
+  if (require_value("REAL_HERO", "transport", &hero_transport)) {
+    std::transform(hero_transport.begin(), hero_transport.end(),
+                   hero_transport.begin(), [](unsigned char c) {
+                     return static_cast<char>(std::tolower(c));
+                   });
+    if (hero_transport != "curl") {
+      log_warn("Invalid value <transport> in section [REAL_HERO]: expected curl, got %s\n",
+               hero_transport.c_str());
+      ok = false;
+    }
+  }
+  (void)require_value("REAL_HERO", "OPENAI_api_filename", nullptr);
+  (void)require_value("REAL_HERO", "endpoint", nullptr);
 
   if (!ok) log_terminate_gracefully("Invalid global configuration, aborting.\n");
   return ok;
@@ -548,6 +599,32 @@ std::string config_space_t::Ed25519_pkey() {
   const auto key_it = sec_it->second.find("Ed25519_pkey");
   if (key_it == sec_it->second.end()) {
     throw bad_config_access("Missing key <Ed25519_pkey> in [" + std::string(section) + "]");
+  }
+  return key_it->second;
+}
+
+std::string config_space_t::hero_mode() {
+  LOCK_GUARD(config_mutex);
+  const auto sec_it = config_space_t::config.find("REAL_HERO");
+  if (sec_it == config_space_t::config.end()) {
+    throw bad_config_access("Missing section [REAL_HERO]");
+  }
+  const auto key_it = sec_it->second.find("mode");
+  if (key_it == sec_it->second.end()) {
+    throw bad_config_access("Missing key <mode> in [REAL_HERO]");
+  }
+  return key_it->second;
+}
+
+std::string config_space_t::hero_api_key_filename() {
+  LOCK_GUARD(config_mutex);
+  const auto sec_it = config_space_t::config.find("REAL_HERO");
+  if (sec_it == config_space_t::config.end()) {
+    throw bad_config_access("Missing section [REAL_HERO]");
+  }
+  const auto key_it = sec_it->second.find("OPENAI_api_filename");
+  if (key_it == sec_it->second.end()) {
+    throw bad_config_access("Missing key <OPENAI_api_filename> in [REAL_HERO]");
   }
   return key_it->second;
 }

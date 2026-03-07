@@ -165,7 +165,7 @@ struct DatasetProvider final : public IDataProvider {
 
     bool force_bin =
       cuwacunu::iitepi::config_space_t::get<bool>(
-          "DATA_LOADER", "dataloader_force_rebuild_cache");
+          "DATA_LOADER", "dataloader_force_rebuild_cache", true);
 
     std::string inst = instrument;
     concat = cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(inst, obs_inst, force_bin);

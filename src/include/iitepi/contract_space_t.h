@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "iitepi/config_space_t.h"
+#include "iitepi/network_analytics_mode.h"
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -35,9 +36,17 @@ struct contract_space_t {
   static contract_hash_t register_contract_file(const std::string& path);
   static std::shared_ptr<const contract_record_t> contract_itself(
       const contract_hash_t& hash);
+  static void network_topology_analytics(const contract_hash_t& hash,
+                                         std::ostream* out = nullptr,
+                                         bool beautify = false);
+  static void network_parameter_analytics(const contract_hash_t& hash,
+                                          std::ostream* out = nullptr,
+                                          bool beautify = false);
   static void network_analytics(const contract_hash_t& hash,
                                 std::ostream* out = nullptr,
-                                bool beautify = false);
+                                bool beautify = false,
+                                network_analytics_mode_e mode =
+                                    network_analytics_mode_e::Topology);
   static void assert_intact_or_fail_fast(const contract_hash_t& hash);
   static void assert_registry_intact_or_fail_fast();
   [[nodiscard]] static bool has_contract(const contract_hash_t& hash) noexcept;

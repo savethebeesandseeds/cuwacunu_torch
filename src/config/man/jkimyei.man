@@ -1,0 +1,129 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = jkimyei
+TARGET_DSL = src/config/instructions/jkimyei.representation.vicreg.dsl
+TARGET_BNF = src/config/bnf/jkimyei.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/jkimyei_specs/jkimyei_specs.cpp
+PRIMARY_VALIDATORS = schema in src/include/jkimyei/specs/jkimyei_schema.def and builders in src/include/jkimyei/training_setup/*
+
+[FIELD JKSPEC.VERSION]
+key = JKSPEC <version>
+scope = file
+type = scalar
+required = true
+default = none
+range = non-empty
+allowed = scalar token
+nuance = parser requires at least one COMPONENT block after version
+
+[FIELD COMPONENT.CANONICAL_TYPE]
+key = COMPONENT "<canonical_type>"
+scope = COMPONENT block
+type = enum
+required = true
+default = none
+range = unique across file
+allowed = tsi.wikimyei.representation.vicreg,tsi.wikimyei.inference.mdn
+nuance = canonical type is explicit; duplicate canonical component declarations are rejected
+
+[FIELD COMPONENT.ACTIVE_PROFILE]
+key = ACTIVE_PROFILE
+scope = COMPONENT block
+type = identifier
+required = true
+default = none
+range = must match one PROFILE name in same component
+allowed = profile id token
+nuance = silent default profile selection is forbidden
+
+[FIELD PROFILE.NAME]
+key = PROFILE "<name>"
+scope = COMPONENT block
+type = identifier
+required = true
+default = none
+range = unique inside component
+allowed = profile id token
+nuance = duplicate profile names are rejected
+
+[FIELD PROFILE.OPTIMIZER]
+key = OPTIMIZER.type + optimizer keys
+scope = PROFILE
+type = typed family
+required = component-dependent
+default = none
+range = exact key set per optimizer type
+allowed = AdamW,Adam,SGD,RMSprop,Adagrad
+nuance = options must match schema exactly; epsilon alias eps is accepted where declared as epsilon|eps
+
+[FIELD PROFILE.LR_SCHEDULER]
+key = LR_SCHEDULER.type + scheduler keys
+scope = PROFILE
+type = typed family
+required = component-dependent
+default = none
+range = exact key set per scheduler type
+allowed = StepLR,MultiStepLR,OneCycleLR,ExponentialLR,ReduceLROnPlateau,ConstantLR,CosineAnnealingLR,WarmupLR
+nuance = ReduceLROnPlateau.factor must be in (0,1); several scheduler params are clamped to safe bounds internally
+
+[FIELD PROFILE.LOSS]
+key = LOSS.type + loss keys
+scope = PROFILE
+type = typed family
+required = component-dependent
+default = none
+range = exact key set per loss type
+allowed = NLLLoss,VICReg,CrossEntropy,BinaryCrossEntropy,MeanSquaredError,Hinge,SmoothL1,L1Loss
+nuance = unknown or extra option keys are rejected
+
+[FIELD PROFILE.COMPONENT_PARAMS]
+key = COMPONENT_PARAMS keys
+scope = PROFILE
+type = typed family
+required = component-dependent
+default = none
+range = schema-defined key set
+allowed = schema_defined_per_component_type
+nuance = VICREG requires vicreg_use_swa,vicreg_detach_to_cpu,swa_start_iter,optimizer_threshold_reset; MDN requires target_dims,target_weights,grad_clip,optimizer_threshold_reset
+
+[FIELD PROFILE.GRADIENT]
+key = GRADIENT keys
+scope = PROFILE
+type = typed family
+required = component-dependent
+default = none
+range = schema-defined
+allowed = accumulate_steps,clip_norm,clip_value,skip_on_nan,zero_grad_set_to_none
+nuance = VICReg runtime enforces accumulate_steps>=1 and clip_norm>=0 and clip_value>=0
+
+[FIELD PROFILE.AUGMENTATIONS]
+key = AUGMENTATIONS table/curve blocks
+scope = PROFILE
+type = typed family
+required = VICREG only
+default = none
+range = at least one curve row if block present
+allowed = fields name,active,curve_param,noise_scale,smoothing_kernel_size,point_drop_prob,value_jitter_std,time_mask_band_frac,channel_dropout_prob,comment
+nuance = row-wise and transposed table forms are supported; duplicate curve names are rejected
+
+[RULE FAMILY_REQUIREMENTS_VICREG]
+id = FAMILY_REQUIREMENTS_VICREG
+applies_to = COMPONENT type VICREG
+severity = error
+when = missing required families or present forbidden families
+message = required: Optimizer,Scheduler,Loss,ComponentParams,Gradient,Augmentations; forbidden: Reproducibility,Numerics,Checkpoint,Metrics,DataRef
+
+[RULE FAMILY_REQUIREMENTS_MDN]
+id = FAMILY_REQUIREMENTS_MDN
+applies_to = COMPONENT type MDN
+severity = error
+when = missing required families or present forbidden families
+message = required: Optimizer,Scheduler,Loss,ComponentParams,Numerics,Gradient,Checkpoint,Metrics,DataRef; forbidden: Reproducibility,Augmentations
+
+[RULE MATERIALIZED_TABLES]
+id = MATERIALIZED_TABLES
+applies_to = decoder output
+severity = info
+when = decode succeeds
+message = decoder materializes optimizers_table,lr_schedulers_table,loss_functions_table,component_profiles_table,components_table and optional family tables; row ids are deterministic component@profile forms

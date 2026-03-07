@@ -1735,7 +1735,7 @@ namespace dsl {
 jkimyeiSpecsPipeline::jkimyeiSpecsPipeline(std::string grammar_text)
     : grammar_text_(std::move(grammar_text)) {
   if (grammar_text_.empty()) {
-    RUNTIME_WARNING("(jkimyei_specs) empty grammar text provided; parser uses built-in JKSPEC tokenizer/parser\n");
+    DEV_WARNING("(jkimyei_specs) empty grammar text provided; parser uses built-in JKSPEC tokenizer/parser\n");
   }
 }
 

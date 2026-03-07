@@ -1136,7 +1136,13 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
           std::initializer_list<const char*> float_keys,
           std::initializer_list<const char*> bool_keys,
           std::initializer_list<const char*> arr_int_keys,
-          std::initializer_list<const char*> arr_float_keys) {
+          std::initializer_list<const char*> arr_float_keys,
+          std::initializer_list<const char*> optional_string_keys,
+          std::initializer_list<const char*> optional_int_keys,
+          std::initializer_list<const char*> optional_float_keys,
+          std::initializer_list<const char*> optional_bool_keys,
+          std::initializer_list<const char*> optional_arr_int_keys,
+          std::initializer_list<const char*> optional_arr_float_keys) {
     if (!has_non_ws_ascii(module_path)) return;
     if (!has_non_ws_ascii(module_grammar_text)) {
       log_warn("[dconfig] missing grammar payload for module config [%s]: %s\n",
@@ -1188,13 +1194,43 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       return false;
     };
 
-    const auto require_module_value =
-        [&](const char* key, std::string* out_value) -> bool {
+    std::unordered_set<std::string> allowed_keys;
+    const auto register_allowed_keys =
+        [&](std::initializer_list<const char*> keys) {
+          for (const char* key : keys) {
+            allowed_keys.insert(std::string(key));
+          }
+        };
+    register_allowed_keys(string_keys);
+    register_allowed_keys(int_keys);
+    register_allowed_keys(float_keys);
+    register_allowed_keys(bool_keys);
+    register_allowed_keys(arr_int_keys);
+    register_allowed_keys(arr_float_keys);
+    register_allowed_keys(optional_string_keys);
+    register_allowed_keys(optional_int_keys);
+    register_allowed_keys(optional_float_keys);
+    register_allowed_keys(optional_bool_keys);
+    register_allowed_keys(optional_arr_int_keys);
+    register_allowed_keys(optional_arr_float_keys);
+
+    for (const auto& [key, value] : module_values) {
+      (void)value;
+      if (allowed_keys.find(key) != allowed_keys.end()) continue;
+      log_warn("Unknown key <%s> in module config [%s] file: %s\n",
+               key.c_str(), module_name, module_path.c_str());
+      ok = false;
+    }
+
+    const auto read_module_value =
+        [&](const char* key, bool required, std::string* out_value) -> bool {
       const auto it = module_values.find(key);
       if (it == module_values.end()) {
-        log_warn("Missing key <%s> in module config [%s] file: %s\n", key,
-                 module_name, module_path.c_str());
-        ok = false;
+        if (required) {
+          log_warn("Missing key <%s> in module config [%s] file: %s\n", key,
+                   module_name, module_path.c_str());
+          ok = false;
+        }
         return false;
       }
 
@@ -1210,40 +1246,25 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       return true;
     };
 
-    const auto has_string_key = [&](const char* key) {
-      return std::find_if(
-                 string_keys.begin(),
-                 string_keys.end(),
-                 [&](const char* candidate) {
-                   return std::string_view(candidate) == key;
-                 }) != string_keys.end();
-    };
+    const auto validate_string_key =
+        [&](const char* key, bool required) {
+          std::string value;
+          if (!read_module_value(key, required, &value)) return;
+          if (std::string_view(key) == "dtype" && !is_valid_dtype_token(value)) {
+            log_warn("Invalid dtype token in module config [%s] file %s: %s\n",
+                     module_name, module_path.c_str(), value.c_str());
+            ok = false;
+          }
+          if (std::string_view(key) == "device" && !is_valid_device_token(value)) {
+            log_warn("Invalid device token in module config [%s] file %s: %s\n",
+                     module_name, module_path.c_str(), value.c_str());
+            ok = false;
+          }
+        };
 
-    for (const char* key : string_keys) {
-      (void)require_module_value(key, nullptr);
-    }
-    if (has_string_key("dtype")) {
-      std::string dtype_value;
-      if (require_module_value("dtype", &dtype_value) &&
-          !is_valid_dtype_token(dtype_value)) {
-        log_warn("Invalid dtype token in module config [%s] file %s: %s\n",
-                 module_name, module_path.c_str(), dtype_value.c_str());
-        ok = false;
-      }
-    }
-    if (has_string_key("device")) {
-      std::string device_value;
-      if (require_module_value("device", &device_value) &&
-          !is_valid_device_token(device_value)) {
-        log_warn("Invalid device token in module config [%s] file %s: %s\n",
-                 module_name, module_path.c_str(), device_value.c_str());
-        ok = false;
-      }
-    }
-
-    for (const char* key : int_keys) {
+    const auto validate_int_key = [&](const char* key, bool required) {
       std::string value;
-      if (!require_module_value(key, &value)) continue;
+      if (!read_module_value(key, required, &value)) return;
       try {
         (void)parse_scalar_from_string<int64_t>(value);
       } catch (const std::exception& e) {
@@ -1251,11 +1272,11 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                  key, module_name, module_path.c_str(), e.what());
         ok = false;
       }
-    }
+    };
 
-    for (const char* key : float_keys) {
+    const auto validate_float_key = [&](const char* key, bool required) {
       std::string value;
-      if (!require_module_value(key, &value)) continue;
+      if (!read_module_value(key, required, &value)) return;
       try {
         (void)parse_scalar_from_string<double>(value);
       } catch (const std::exception& e) {
@@ -1264,11 +1285,11 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
             key, module_name, module_path.c_str(), e.what());
         ok = false;
       }
-    }
+    };
 
-    for (const char* key : bool_keys) {
+    const auto validate_bool_key = [&](const char* key, bool required) {
       std::string value;
-      if (!require_module_value(key, &value)) continue;
+      if (!read_module_value(key, required, &value)) return;
       try {
         (void)parse_scalar_from_string<bool>(value);
       } catch (const std::exception& e) {
@@ -1276,17 +1297,17 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                  key, module_name, module_path.c_str(), e.what());
         ok = false;
       }
-    }
+    };
 
-    for (const char* key : arr_int_keys) {
+    const auto validate_int_array_key = [&](const char* key, bool required) {
       std::string value;
-      if (!require_module_value(key, &value)) continue;
+      if (!read_module_value(key, required, &value)) return;
       const auto items = split_string_items(value);
       if (items.empty()) {
         log_warn("Empty integer array for <%s> in module config [%s] file: %s\n",
                  key, module_name, module_path.c_str());
         ok = false;
-        continue;
+        return;
       }
       for (const auto& item : items) {
         try {
@@ -1298,17 +1319,17 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
           ok = false;
         }
       }
-    }
+    };
 
-    for (const char* key : arr_float_keys) {
+    const auto validate_float_array_key = [&](const char* key, bool required) {
       std::string value;
-      if (!require_module_value(key, &value)) continue;
+      if (!read_module_value(key, required, &value)) return;
       const auto items = split_string_items(value);
       if (items.empty()) {
         log_warn("Empty float array for <%s> in module config [%s] file: %s\n",
                  key, module_name, module_path.c_str());
         ok = false;
-        continue;
+        return;
       }
       for (const auto& item : items) {
         try {
@@ -1320,6 +1341,36 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
           ok = false;
         }
       }
+    };
+
+    for (const char* key : string_keys) validate_string_key(key, /*required=*/true);
+    for (const char* key : optional_string_keys) {
+      validate_string_key(key, /*required=*/false);
+    }
+
+    for (const char* key : int_keys) validate_int_key(key, /*required=*/true);
+    for (const char* key : optional_int_keys) validate_int_key(key, /*required=*/false);
+
+    for (const char* key : float_keys) validate_float_key(key, /*required=*/true);
+    for (const char* key : optional_float_keys) {
+      validate_float_key(key, /*required=*/false);
+    }
+
+    for (const char* key : bool_keys) validate_bool_key(key, /*required=*/true);
+    for (const char* key : optional_bool_keys) validate_bool_key(key, /*required=*/false);
+
+    for (const char* key : arr_int_keys) {
+      validate_int_array_key(key, /*required=*/true);
+    }
+    for (const char* key : optional_arr_int_keys) {
+      validate_int_array_key(key, /*required=*/false);
+    }
+
+    for (const char* key : arr_float_keys) {
+      validate_float_array_key(key, /*required=*/true);
+    }
+    for (const char* key : optional_arr_float_keys) {
+      validate_float_array_key(key, /*required=*/false);
     }
   };
 
@@ -1341,6 +1392,18 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       /* arr_int_keys */
       {},
       /* arr_float_keys */
+      {},
+      /* optional_string_keys */
+      {},
+      /* optional_int_keys */
+      {},
+      /* optional_float_keys */
+      {},
+      /* optional_bool_keys */
+      {},
+      /* optional_arr_int_keys */
+      {},
+      /* optional_arr_float_keys */
       {});
 
   validate_module_instruction_file(
@@ -1358,7 +1421,19 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       /* arr_int_keys */
       {"target_dims"},
       /* arr_float_keys */
-      {"target_weights"});
+      {"target_weights"},
+      /* optional_string_keys */
+      {},
+      /* optional_int_keys */
+      {},
+      /* optional_float_keys */
+      {},
+      /* optional_bool_keys */
+      {},
+      /* optional_arr_int_keys */
+      {},
+      /* optional_arr_float_keys */
+      {});
 
   validate_module_instruction_file(
       "TRANSFER_MATRIX_EVALUATION", transfer_matrix_eval_config_path,
@@ -1370,10 +1445,44 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       /* float_keys */
       {},
       /* bool_keys */
-      {"check_temporal_order", "validate_vicreg_out", "report_shapes"},
+      {},
       /* arr_int_keys */
       {},
       /* arr_float_keys */
+      {},
+      /* optional_string_keys */
+      {"dtype", "device"},
+      /* optional_int_keys */
+      {"summary_every_steps",
+       "mdn_mixture_comps",
+       "mdn_features_hidden",
+       "mdn_residual_depth",
+       "prequential_blocks",
+       "control_shuffle_block",
+       "control_shuffle_seed"},
+      /* optional_float_keys */
+      {"optimizer_lr",
+       "optimizer_weight_decay",
+       "optimizer_beta1",
+       "optimizer_beta2",
+       "optimizer_eps",
+       "grad_clip",
+       "nll_eps",
+       "nll_sigma_min",
+       "nll_sigma_max",
+       "anchor_train_ratio",
+       "anchor_val_ratio",
+       "anchor_test_ratio",
+       "linear_ridge_lambda",
+       "gaussian_var_min"},
+      /* optional_bool_keys */
+      {"check_temporal_order",
+       "validate_vicreg_out",
+       "report_shapes",
+       "reset_hashimyei_on_start"},
+      /* optional_arr_int_keys */
+      {"mdn_target_dims"},
+      /* optional_arr_float_keys */
       {});
 
   if (!ok) {
@@ -1773,17 +1882,18 @@ std::shared_ptr<const contract_record_t> contract_space_t::contract_itself(
   return snapshot_ptr_or_fail(hash);
 }
 
-void contract_space_t::network_analytics(const contract_hash_t& hash,
-                                         std::ostream* out,
-                                         bool beautify) {
+void contract_space_t::network_topology_analytics(const contract_hash_t& hash,
+                                                  std::ostream* out,
+                                                  bool beautify) {
   std::ostream& os = (out != nullptr) ? *out : std::cout;
   const auto snapshot = contract_itself(hash);
   if (!snapshot) {
-    os << "[iitepi::contract_space_t::network_analytics] error=null contract snapshot\n";
+    os << "[iitepi::contract_space_t::network_topology_analytics] error=null contract snapshot\n";
     return;
   }
 
-  os << "[iitepi::contract_space_t::network_analytics] contract_hash=" << hash
+  os << "[iitepi::contract_space_t::network_topology_analytics] contract_hash="
+     << hash
      << " path=" << snapshot->config_file_path_canonical << "\n";
 
   const std::optional<std::string> fallback_network_design_grammar =
@@ -1843,7 +1953,8 @@ void contract_space_t::network_analytics(const contract_hash_t& hash,
         seen_network_paths.insert(vicreg_network_design_path);
       }
     } catch (const std::exception& e) {
-      os << "[iitepi::contract_space_t::network_analytics] error=" << e.what()
+      os << "[iitepi::contract_space_t::network_topology_analytics] error="
+         << e.what()
          << "\n";
     }
   }
@@ -1928,7 +2039,9 @@ void contract_space_t::network_analytics(const contract_hash_t& hash,
          << snapshot->config_file_path_canonical << "\x1b[0m\n";
       os << "\t\x1b[90mnetwork_design\x1b[0m : \x1b[93mabsent\x1b[0m\n";
     } else {
-      os << "schema=piaabo.torch_compat.network_design_analytics.v1\n";
+      os << "schema="
+         << cuwacunu::piaabo::torch_compat::kNetworkDesignAnalyticsSchemaCurrent
+         << "\n";
       os << "source_label=" << hash << ":" << snapshot->config_file_path_canonical
          << "\n";
       os << "network_design=absent\n";
@@ -1957,6 +2070,205 @@ void contract_space_t::network_analytics(const contract_hash_t& hash,
       os << payload;
     }
     if (!payload.empty() && payload.back() != '\n') os << "\n";
+  }
+}
+
+void contract_space_t::network_parameter_analytics(const contract_hash_t& hash,
+                                                   std::ostream* out,
+                                                   bool beautify) {
+  std::ostream& os = (out != nullptr) ? *out : std::cout;
+  const auto snapshot = contract_itself(hash);
+  if (!snapshot) {
+    os << "[iitepi::contract_space_t::network_parameter_analytics] error=null contract snapshot\n";
+    return;
+  }
+
+  os << "[iitepi::contract_space_t::network_parameter_analytics] contract_hash="
+     << hash << " path=" << snapshot->config_file_path_canonical << "\n";
+
+  struct parameter_payload_t {
+    std::string source_label{};
+    std::string report_file{};
+    std::string report_schema{};
+    bool report_schema_supported{false};
+    std::string payload{};
+  };
+
+  std::vector<parameter_payload_t> reports{};
+  std::unordered_set<std::string> seen_report_files{};
+  std::vector<std::string> missing_sidecars{};
+  std::unordered_set<std::string> seen_missing{};
+
+  const auto append_if_sidecar_exists = [&](std::string source_label,
+                                            const std::string& candidate_path) {
+    if (!has_non_ws_ascii(candidate_path)) return;
+    std::filesystem::path report_path(candidate_path);
+    bool from_checkpoint = false;
+    if (report_path.extension() == ".pt") {
+      from_checkpoint = true;
+      report_path.replace_extension(".network_analytics.kv");
+    } else if (!ends_with_ascii(report_path.string(), ".network_analytics.kv")) {
+      return;
+    }
+
+    std::error_code ec{};
+    if (!std::filesystem::exists(report_path, ec) ||
+        !std::filesystem::is_regular_file(report_path, ec)) {
+      if (from_checkpoint) {
+        const std::string missing = report_path.string();
+        if (seen_missing.insert(missing).second) missing_sidecars.push_back(missing);
+      }
+      return;
+    }
+
+    std::string canonical = canonicalize_path_best_effort(report_path.string());
+    if (!has_non_ws_ascii(canonical)) canonical = report_path.string();
+    if (!seen_report_files.insert(canonical).second) return;
+
+    const std::string payload = piaabo::dfiles::readFileToString(canonical);
+    if (!has_non_ws_ascii(payload)) return;
+    const std::string report_schema =
+        cuwacunu::piaabo::torch_compat::extract_analytics_kv_schema(payload);
+    const bool report_schema_supported =
+        cuwacunu::piaabo::torch_compat::is_supported_network_analytics_schema(
+            report_schema);
+    reports.push_back(parameter_payload_t{
+        .source_label = std::move(source_label),
+        .report_file = canonical,
+        .report_schema = report_schema,
+        .report_schema_supported = report_schema_supported,
+        .payload = payload,
+    });
+  };
+
+  const auto scan_keyed_paths = [&](const std::string& section_name,
+                                    const parsed_config_section_t& section) {
+    for (const auto& [key, raw_value] : section) {
+      const bool is_single_path_key = ends_with_ascii(key, "_filename");
+      const bool is_list_path_key = ends_with_ascii(key, "_filenames");
+      if (!is_single_path_key && !is_list_path_key) continue;
+
+      std::vector<std::string> path_values{};
+      if (is_list_path_key) {
+        std::string list_raw = trim_ascii_ws_copy(raw_value);
+        if (list_raw.size() >= 2 && list_raw.front() == '[' &&
+            list_raw.back() == ']') {
+          list_raw = trim_ascii_ws_copy(
+              list_raw.substr(1, list_raw.size() - 2));
+        }
+        path_values = split_string_items(list_raw);
+      } else {
+        path_values.push_back(raw_value);
+      }
+
+      for (auto raw_path : path_values) {
+        raw_path = unquote_if_wrapped(trim_ascii_ws_copy(std::move(raw_path)));
+        if (!has_non_ws_ascii(raw_path)) continue;
+        const std::string resolved =
+            resolve_path_from_folder(snapshot->config_folder, raw_path);
+        if (!has_non_ws_ascii(resolved)) continue;
+        if (!std::filesystem::exists(resolved) ||
+            !std::filesystem::is_regular_file(resolved)) {
+          continue;
+        }
+
+        std::string source = hash;
+        source += ":";
+        source += section_name;
+        source += ".";
+        source += key;
+        source += ":";
+        source += canonicalize_path_best_effort(resolved);
+        append_if_sidecar_exists(source, resolved);
+      }
+    }
+  };
+
+  for (const auto& section_name : {"SPECS", "DSL"}) {
+    const auto sec_it = snapshot->config.find(section_name);
+    if (sec_it == snapshot->config.end()) continue;
+    scan_keyed_paths(section_name, sec_it->second);
+  }
+  for (const auto& [section_name, section] : snapshot->module_sections) {
+    scan_keyed_paths(section_name, section);
+  }
+
+  if (reports.empty()) {
+    if (beautify) {
+      os << "\x1b[1;96mNetwork Parameter Analytics Report\x1b[0m\n";
+      os << "\t\x1b[90msource_label\x1b[0m : \x1b[97m" << hash << ":"
+         << snapshot->config_file_path_canonical << "\x1b[0m\n";
+      os << "\t\x1b[90mparameter_analytics\x1b[0m : \x1b[93mabsent\x1b[0m\n";
+    } else {
+      os << "schema="
+         << cuwacunu::piaabo::torch_compat::kNetworkAnalyticsSchemaCurrent << "\n";
+      os << "source_label=" << hash << ":" << snapshot->config_file_path_canonical
+         << "\n";
+      os << "parameter_analytics=absent\n";
+    }
+    for (const auto& missing : missing_sidecars) {
+      os << "[iitepi::contract_space_t::network_parameter_analytics] missing_sidecar="
+         << missing << "\n";
+    }
+    return;
+  }
+
+  if (beautify) {
+    os << "\t\x1b[1;95mparameter_reports_detected\x1b[0m : \x1b[97m"
+       << reports.size() << "\x1b[0m\n";
+  }
+
+  for (std::size_t i = 0; i < reports.size(); ++i) {
+    const auto& item = reports[i];
+    if (beautify) {
+      os << "\t\x1b[1;95mparameter_report[" << (i + 1) << "/" << reports.size()
+         << "]\x1b[0m\n";
+      os << "\t\t\x1b[90msource_label\x1b[0m : \x1b[97m" << item.source_label
+         << "\x1b[0m\n";
+      os << "\t\t\x1b[90mreport_file\x1b[0m : \x1b[97m" << item.report_file
+         << "\x1b[0m\n";
+      os << "\t\t\x1b[90mreport_schema\x1b[0m : \x1b[97m"
+         << non_empty_or(item.report_schema, "<missing>") << "\x1b[0m\n";
+      os << "\t\t\x1b[90mreport_schema_supported\x1b[0m : \x1b[97m"
+         << (item.report_schema_supported ? "true" : "false") << "\x1b[0m\n";
+      os << indent_lines(item.payload, "\t\t");
+      if (!item.payload.empty() && item.payload.back() != '\n') os << "\n";
+    } else {
+      os << "source_label=" << item.source_label << "\n";
+      os << "report_file=" << item.report_file << "\n";
+      os << "report_schema=" << item.report_schema << "\n";
+      os << "report_schema_supported="
+         << (item.report_schema_supported ? "true" : "false") << "\n";
+      os << item.payload;
+      if (!item.payload.empty() && item.payload.back() != '\n') os << "\n";
+    }
+  }
+
+  for (const auto& missing : missing_sidecars) {
+    os << "[iitepi::contract_space_t::network_parameter_analytics] missing_sidecar="
+       << missing << "\n";
+  }
+}
+
+void contract_space_t::network_analytics(const contract_hash_t& hash,
+                                         std::ostream* out,
+                                         bool beautify,
+                                         network_analytics_mode_e mode) {
+  std::ostream& os = (out != nullptr) ? *out : std::cout;
+  switch (mode) {
+    case network_analytics_mode_e::Topology:
+      network_topology_analytics(hash, &os, beautify);
+      return;
+    case network_analytics_mode_e::Parameters:
+      network_parameter_analytics(hash, &os, beautify);
+      return;
+    case network_analytics_mode_e::Both:
+      network_topology_analytics(hash, &os, beautify);
+      if (beautify) {
+        os << "\t\x1b[1;94mParameter Analytics\x1b[0m\n";
+      }
+      network_parameter_analytics(hash, &os, beautify);
+      return;
   }
 }
 

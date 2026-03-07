@@ -1,7 +1,7 @@
 /* types_trade.cpp */
 #include "camahjucunu/types/types_trade.h"
 
-RUNTIME_WARNING("(types_trade.cpp)[] implement other types of orders.\n");
+DEV_WARNING("(types_trade.cpp)[] implement other types of orders.\n");
 
 namespace cuwacunu {
 namespace camahjucunu {

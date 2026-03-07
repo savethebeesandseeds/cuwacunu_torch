@@ -21,6 +21,7 @@ DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_invoke_payload, "<invoke_payload>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_instance_decl, "<instance_decl>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_instance_alias, "<instance_alias>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_tsi_type, "<tsi_type>");
+DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_instance_args, "<instance_args>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_hop_decl, "<hop_decl>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_endpoint_from, "<endpoint_from>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_endpoint_to, "<endpoint_to>");
@@ -37,6 +38,7 @@ struct tsiemene_endpoint_t {
 struct tsiemene_instance_decl_t {
   std::string alias;
   std::string tsi_type;
+  std::vector<std::string> args;
 };
 
 struct tsiemene_hop_decl_t {

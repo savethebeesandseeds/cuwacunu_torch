@@ -1,11 +1,11 @@
 #include "piaabo/math_compat/statistics_space.h"
 
-RUNTIME_WARNING("(statistics_space.h)[] statistics_space_t needs to include delta_time in the calculation.\n");
-RUNTIME_WARNING("(statistics_space.h)[] statistics_space_t and statistics_space_n_t only work for dots spaced equaly in time.\n");
-RUNTIME_WARNING("(statistics_space.cpp)[] #FIXME statistics_space_t for actual charts involve more measures.\n");
-RUNTIME_WARNING("(statistics_space.cpp)[] is better to use Non-parametric spearman rank correlation coheficient.\n");
-RUNTIME_WARNING("(statistics_space.h)[] add RSI to statistics_space_t.\n");
-RUNTIME_WARNING("(statistics_space.h)[] add MACD to statistics_space_t.\n");
+DEV_WARNING("(statistics_space.h)[] statistics_space_t needs to include delta_time in the calculation.\n");
+DEV_WARNING("(statistics_space.h)[] statistics_space_t and statistics_space_n_t only work for dots spaced equaly in time.\n");
+DEV_WARNING("(statistics_space.cpp)[] #FIXME statistics_space_t for actual charts involve more measures.\n");
+DEV_WARNING("(statistics_space.cpp)[] is better to use Non-parametric spearman rank correlation coheficient.\n");
+DEV_WARNING("(statistics_space.h)[] add RSI to statistics_space_t.\n");
+DEV_WARNING("(statistics_space.h)[] add MACD to statistics_space_t.\n");
 
 namespace cuwacunu {
 /* statistics_space_t */

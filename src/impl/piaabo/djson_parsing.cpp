@@ -1,8 +1,8 @@
 /* djson_parsing.cpp */
 #include "piaabo/djson_parsing.h"
 
-RUNTIME_WARNING("(djson_parsing.cpp)[] Trowing errors instead of fatal logs would allow for error catching (but then be aware to prevent terminal inyection).\n");
-RUNTIME_WARNING("(djson_parsing.cpp)[] Error cases are well defined, but better error messages are required.\n");
+DEV_WARNING("(djson_parsing.cpp)[] Trowing errors instead of fatal logs would allow for error catching (but then be aware to prevent terminal inyection).\n");
+DEV_WARNING("(djson_parsing.cpp)[] Error cases are well defined, but better error messages are required.\n");
 
 namespace cuwacunu {
 namespace piaabo {

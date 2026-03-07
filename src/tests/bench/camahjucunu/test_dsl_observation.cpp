@@ -62,6 +62,19 @@ int main() {
       std::cerr << "[test_dsl_observation] csv_step_rel_tol must be >=0\n";
       return 1;
     }
+    if (!decoded.data_analytics_policy.declared) {
+      std::cerr << "[test_dsl_observation] data_analytics_policy must be declared\n";
+      return 1;
+    }
+    if (decoded.data_analytics_policy.max_samples <= 0 ||
+        decoded.data_analytics_policy.max_features <= 0) {
+      std::cerr << "[test_dsl_observation] data_analytics_policy limits must be >0\n";
+      return 1;
+    }
+    if (!(decoded.data_analytics_policy.standardize_epsilon > 0.0L)) {
+      std::cerr << "[test_dsl_observation] standardize_epsilon must be >0\n";
+      return 1;
+    }
 
     const auto expect_decode_fail = [&](std::string source_text) {
       try {
@@ -88,6 +101,12 @@ int main() {
         "  CSV_STEP_ABS_TOL = 0;\n"
         "  CSV_STEP_REL_TOL = 1e-9;\n"
         "};\n"
+        "DATA_ANALYTICS_POLICY {\n"
+        "  MAX_SAMPLES = 4096;\n"
+        "  MAX_FEATURES = 2048;\n"
+        "  MASK_EPSILON = 1e-12;\n"
+        "  STANDARDIZE_EPSILON = 1e-8;\n"
+        "};\n"
         "/---------------------------------------------------------------------------------------------------------\\\n"
         "|  instrument  |  interval  |  record_type  |  source                                                     |\n"
         "|---------------------------------------------------------------------------------------------------------|\n"
@@ -97,6 +116,12 @@ int main() {
         "CSV_POLICY {\n"
         "  CSV_BOOTSTRAP_DELTAS = 128;\n"
         "  CSV_STEP_ABS_TOL = 1e-7;\n"
+        "};\n"
+        "DATA_ANALYTICS_POLICY {\n"
+        "  MAX_SAMPLES = 4096;\n"
+        "  MAX_FEATURES = 2048;\n"
+        "  MASK_EPSILON = 1e-12;\n"
+        "  STANDARDIZE_EPSILON = 1e-8;\n"
         "};\n"
         "/---------------------------------------------------------------------------------------------------------\\\n"
         "|  instrument  |  interval  |  record_type  |  source                                                     |\n"

@@ -294,13 +294,13 @@ public:
             cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
                 *this);
         log_info(
-            "[VICReg::network_analytics] epoch=%d finite=%.6f std=%.6f near_zero=%.6f entropy=%.6f layer_cv=%.6f max_abs=%.6f\n",
+            "[VICReg::network_analytics] epoch=%d finite=%.6f std=%.6f near_zero=%.6f entropy=%.6f tensor_cv=%.6f max_abs=%.6f\n",
             epoch_count,
             analytics.finite_ratio,
             analytics.stddev,
             analytics.near_zero_ratio,
             analytics.abs_energy_entropy,
-            analytics.layer_rms_cv,
+            analytics.tensor_rms_cv,
             analytics.max_abs);
 
         loss_log.push_back({epoch_count, metric});

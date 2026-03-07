@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "iinuji/iinuji_cmd/views/common/base.h"
@@ -32,10 +33,15 @@ inline ConfigTabData make_secrets_tab() {
   oss << "# secrets summary\n";
   oss << "# values are masked; file paths and sizes are shown\n\n";
 
-  const std::vector<std::string> sections{"TEST_EXCHANGE", "REAL_EXCHANGE"};
-  const std::vector<std::string> keys{"Ed25519_pkey", "EXCHANGE_api_filename"};
+  const std::vector<std::pair<std::string, std::vector<std::string>>> section_keys{
+      {"TEST_EXCHANGE", {"Ed25519_pkey", "EXCHANGE_api_filename"}},
+      {"REAL_EXCHANGE", {"Ed25519_pkey", "EXCHANGE_api_filename"}},
+      {"REAL_HERO", {"OPENAI_api_filename"}},
+  };
 
-  for (const std::string& sec : sections) {
+  for (const auto& section_entry : section_keys) {
+    const std::string& sec = section_entry.first;
+    const std::vector<std::string>& keys = section_entry.second;
     oss << "[" << sec << "]\n";
     for (const std::string& key : keys) {
       std::string path;
@@ -44,7 +50,7 @@ inline ConfigTabData make_secrets_tab() {
         continue;
       }
       oss << "  " << key << ": " << format_file_status(path);
-      if (key == "EXCHANGE_api_filename") {
+      if (key == "EXCHANGE_api_filename" || key == "OPENAI_api_filename") {
         std::string content;
         std::string err;
         if (read_text_file_safe(path, &content, &err)) {

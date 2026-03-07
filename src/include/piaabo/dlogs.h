@@ -4,15 +4,46 @@
 // This header intentionally keeps the "macro logger" API used across the project,
 // but centralizes it away from dutils.h.
 //
+// Build-time logging flags:
+//
+// 1) DLOGS_USE_IOSTREAMS (default: 0)
+//    - 0: terminal output goes through stdio FILE* (fprintf/fflush).
+//    - 1: terminal output goes through std::cout/std::cerr (streambuf-capturable).
+//
+// 2) DLOGS_CHECK_SYS_ERRNO_BEFORE_LOG (default: 0)
+//    - 0: do not emit pending errno before each log call.
+//    - 1: emit and clear errno before each log call.
+//
+// 3) DLOGS_ENABLE_METADATA (default: 0)
+//    - 0: keep buffered log entries minimal.
+//    - 1: capture extra metadata in dlog buffer entries:
+//         file/function/line, callsite id, pid, monotonic_ns, canonical scope path.
+//
+// 4) DLOGS_INCLUDE_METADATA_IN_FORMAT (default: 0)
+//    - 0: dlog_format_entry() prints compact lines.
+//    - 1: dlog_format_entry() appends captured metadata fields.
+//
+// 5) Output stream overrides (optional):
+//    - LOG_FILE      (default: stdout)
+//    - LOG_WARN_FILE (default: stdout)
+//    - LOG_ERR_FILE  (default: stderr)
+//    Redefine before including this header to reroute stdio output sinks.
+//
 // iinuji compatibility:
 // iinuji captures std::cout/std::cerr by replacing their streambufs.
-// If you want dlogs.h logs to show up inside iinuji (.sys.stdout/.sys.stderr),
-// build with:
+// For dlogs output to appear inside iinuji (.sys.stdout/.sys.stderr), build with:
 //
 //   -DDLOGS_USE_IOSTREAMS=1
+//   -DDLOGS_CHECK_SYS_ERRNO_BEFORE_LOG=1
 //
-// This routes the log macros (which normally write to stdout/stderr FILE*) to
-// std::cout/std::cerr and flushes each call.
+// Optional metadata capture for iinuji dlog buffer views:
+//
+//   -DDLOGS_ENABLE_METADATA=1
+//   -DDLOGS_INCLUDE_METADATA_IN_FORMAT=0   (recommended default for UI readability)
+//
+// Runtime helpers:
+//   - DLOG_CANONICAL_SCOPE("canonical.path"): attach ambient canonical path metadata.
+//   - DLOG_BUFFER_CAPTURE_SCOPE(false): disable buffer storage in noisy scopes (still prints).
 
 #include <cstdio>
 #include <cstring>
@@ -35,10 +66,36 @@
 #include <algorithm>
 #include <cstddef>
 #include <atomic>
+#include <string_view>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #ifndef DLOGS_USE_IOSTREAMS
 #define DLOGS_USE_IOSTREAMS 0
 #endif
+
+#ifndef DLOGS_CHECK_SYS_ERRNO_BEFORE_LOG
+#define DLOGS_CHECK_SYS_ERRNO_BEFORE_LOG 0
+#endif
+
+#ifndef DLOGS_ENABLE_METADATA
+#define DLOGS_ENABLE_METADATA 0
+#endif
+
+#ifndef DLOGS_INCLUDE_METADATA_IN_FORMAT
+#define DLOGS_INCLUDE_METADATA_IN_FORMAT 0
+#endif
+
+// DLOGS_ENABLE_METADATA:
+//   0 -> keep entry payload minimal.
+//   1 -> capture source callsite and process/monotonic metadata in dlog buffer.
+// DLOGS_INCLUDE_METADATA_IN_FORMAT:
+//   0 -> keep formatted lines compact (default for terminal/logs panel).
+//   1 -> append captured metadata to dlog_format_entry().
 
 #ifndef LOG_FILE
 #define LOG_FILE stdout
@@ -191,12 +248,40 @@ namespace piaabo {
 
 inline const char* cthread_id();
 
+struct dlog_source_location_t {
+  const char* file{nullptr};
+  const char* function{nullptr};
+  int line{0};
+  const char* canonical_path{nullptr};
+};
+
+inline constexpr dlog_source_location_t dlog_source_location(
+    const char* file,
+    const char* function,
+    int line,
+    const char* canonical_path = nullptr) {
+  return dlog_source_location_t{
+      .file = file,
+      .function = function,
+      .line = line,
+      .canonical_path = canonical_path};
+}
+
 struct dlog_entry_t {
   std::uint64_t seq{0};
   std::string timestamp{};
   std::string level{};
   std::string thread{};
   std::string message{};
+#if DLOGS_ENABLE_METADATA
+  std::uint64_t monotonic_ns{0};
+  std::uint64_t callsite_id{0};
+  std::uint32_t pid{0};
+  std::uint32_t line{0};
+  std::string source_file{};
+  std::string source_function{};
+  std::string source_path{};
+#endif
 };
 
 inline std::mutex& dlog_buffer_mutex() {
@@ -297,7 +382,151 @@ inline bool dlog_terminal_output_enabled() {
   return dlog_terminal_output_enabled_storage().load(std::memory_order_relaxed);
 }
 
+inline bool& dlog_thread_buffer_capture_enabled_storage() {
+  thread_local bool enabled = true;
+  return enabled;
+}
+
+inline void dlog_set_thread_buffer_capture_enabled(bool enabled) {
+  dlog_thread_buffer_capture_enabled_storage() = enabled;
+}
+
+inline bool dlog_thread_buffer_capture_enabled() {
+  return dlog_thread_buffer_capture_enabled_storage();
+}
+
+class dlog_buffer_capture_scope final {
+ public:
+  explicit dlog_buffer_capture_scope(bool enabled)
+      : prev_(dlog_thread_buffer_capture_enabled()) {
+    dlog_set_thread_buffer_capture_enabled(enabled);
+  }
+  ~dlog_buffer_capture_scope() { dlog_set_thread_buffer_capture_enabled(prev_); }
+
+  dlog_buffer_capture_scope(const dlog_buffer_capture_scope&) = delete;
+  dlog_buffer_capture_scope& operator=(const dlog_buffer_capture_scope&) =
+      delete;
+
+ private:
+  bool prev_{true};
+};
+
+inline std::vector<std::string>& dlog_canonical_scope_stack_storage() {
+  thread_local std::vector<std::string> stack;
+  return stack;
+}
+
+inline std::string dlog_current_canonical_scope_path() {
+  const auto& stack = dlog_canonical_scope_stack_storage();
+  if (stack.empty()) return {};
+  return stack.back();
+}
+
+class dlog_canonical_scope final {
+ public:
+  explicit dlog_canonical_scope(std::string canonical_path) {
+    if (!canonical_path.empty()) {
+      dlog_canonical_scope_stack_storage().push_back(std::move(canonical_path));
+      active_ = true;
+    }
+  }
+  ~dlog_canonical_scope() {
+    if (!active_) return;
+    auto& stack = dlog_canonical_scope_stack_storage();
+    if (!stack.empty()) stack.pop_back();
+  }
+
+  dlog_canonical_scope(const dlog_canonical_scope&) = delete;
+  dlog_canonical_scope& operator=(const dlog_canonical_scope&) = delete;
+
+ private:
+  bool active_{false};
+};
+
+inline std::string dlog_normalize_path(std::string path) {
+  for (char& ch : path) {
+    if (ch == '\\') ch = '/';
+  }
+  return path;
+}
+
+inline std::uint64_t dlog_hash_callsite(std::string_view file,
+                                        std::string_view function,
+                                        std::uint32_t line) {
+  std::uint64_t h = 14695981039346656037ULL;
+  constexpr std::uint64_t p = 1099511628211ULL;
+  const auto mix = [&](std::string_view v) {
+    for (char c : v) {
+      h ^= static_cast<unsigned char>(c);
+      h *= p;
+    }
+  };
+  mix(file);
+  h ^= static_cast<std::uint64_t>(0xFFU);
+  h *= p;
+  mix(function);
+  h ^= static_cast<std::uint64_t>(0xFEU);
+  h *= p;
+  h ^= static_cast<std::uint64_t>(line & 0xFFU);
+  h *= p;
+  h ^= static_cast<std::uint64_t>((line >> 8) & 0xFFU);
+  h *= p;
+  h ^= static_cast<std::uint64_t>((line >> 16) & 0xFFU);
+  h *= p;
+  h ^= static_cast<std::uint64_t>((line >> 24) & 0xFFU);
+  h *= p;
+  return h;
+}
+
+inline std::uint64_t dlog_monotonic_ns() {
+  using steady = std::chrono::steady_clock;
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          steady::now().time_since_epoch())
+          .count());
+}
+
+inline std::uint32_t dlog_process_id() {
+#if defined(_WIN32)
+  return static_cast<std::uint32_t>(_getpid());
+#else
+  return static_cast<std::uint32_t>(::getpid());
+#endif
+}
+
+inline void dlog_attach_metadata(
+    dlog_entry_t* entry,
+    const dlog_source_location_t* source) {
+  if (!entry) return;
+#if DLOGS_ENABLE_METADATA
+  entry->monotonic_ns = dlog_monotonic_ns();
+  entry->pid = dlog_process_id();
+
+  std::string file;
+  std::string function;
+  std::uint32_t line = 0;
+  if (source) {
+    if (source->file) file = dlog_normalize_path(source->file);
+    if (source->function) function = source->function;
+    if (source->line > 0) line = static_cast<std::uint32_t>(source->line);
+  }
+  entry->line = line;
+  entry->source_file = file;
+  entry->source_function = function;
+  entry->callsite_id = dlog_hash_callsite(file, function, line);
+
+  if (source && source->canonical_path && source->canonical_path[0] != '\0') {
+    entry->source_path = dlog_normalize_path(source->canonical_path);
+  } else {
+    entry->source_path = dlog_current_canonical_scope_path();
+  }
+#else
+  (void)source;
+#endif
+}
+
 inline void dlog_push(const std::string& level, std::string message) {
+  if (!dlog_thread_buffer_capture_enabled()) return;
   const std::string clean = strip_ansi_escapes(message);
   const std::string thread = cthread_id();
 
@@ -321,6 +550,7 @@ inline void dlog_push(const std::string& level, std::string message) {
       entry.level = level.empty() ? "INFO" : level;
       entry.thread = thread;
       entry.message = std::move(line);
+      dlog_attach_metadata(&entry, nullptr);
       storage.push_back(std::move(entry));
       pushed = true;
       while (storage.size() > cap) storage.pop_front();
@@ -337,6 +567,57 @@ inline void dlog_push(const std::string& level, std::string message) {
     entry.level = level.empty() ? "INFO" : level;
     entry.thread = thread;
     entry.message = "<empty>";
+    dlog_attach_metadata(&entry, nullptr);
+    storage.push_back(std::move(entry));
+    while (storage.size() > cap) storage.pop_front();
+  }
+}
+
+inline void dlog_push_with_source(const std::string& level,
+                                  std::string message,
+                                  const dlog_source_location_t& source) {
+  if (!dlog_thread_buffer_capture_enabled()) return;
+  const std::string clean = strip_ansi_escapes(message);
+  const std::string thread = cthread_id();
+
+  LOCK_GUARD(dlog_buffer_mutex());
+  auto& storage = dlog_buffer_storage();
+  auto& seq = dlog_sequence_storage();
+  const std::size_t cap = dlog_buffer_capacity_storage();
+
+  std::size_t start = 0;
+  bool pushed = false;
+  while (start <= clean.size()) {
+    const std::size_t end = clean.find('\n', start);
+    std::string line = (end == std::string::npos)
+                           ? clean.substr(start)
+                           : clean.substr(start, end - start);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (!line.empty()) {
+      dlog_entry_t entry{};
+      entry.seq = ++seq;
+      entry.timestamp = dlog_now_timestamp();
+      entry.level = level.empty() ? "INFO" : level;
+      entry.thread = thread;
+      entry.message = std::move(line);
+      dlog_attach_metadata(&entry, &source);
+      storage.push_back(std::move(entry));
+      pushed = true;
+      while (storage.size() > cap) storage.pop_front();
+    }
+
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+
+  if (!pushed) {
+    dlog_entry_t entry{};
+    entry.seq = ++seq;
+    entry.timestamp = dlog_now_timestamp();
+    entry.level = level.empty() ? "INFO" : level;
+    entry.thread = thread;
+    entry.message = "<empty>";
+    dlog_attach_metadata(&entry, &source);
     storage.push_back(std::move(entry));
     while (storage.size() > cap) storage.pop_front();
   }
@@ -348,6 +629,23 @@ inline std::string dlog_format_entry(const dlog_entry_t& e) {
       << "[0x" << e.thread << "] "
       << "[" << e.level << "] "
       << e.message;
+#if DLOGS_ENABLE_METADATA && DLOGS_INCLUDE_METADATA_IN_FORMAT
+  if (!e.source_function.empty()) {
+    oss << " "
+        << "{fn=" << e.source_function;
+    if (!e.source_file.empty()) {
+      oss << " file=" << e.source_file;
+      if (e.line > 0) oss << ":" << e.line;
+    }
+    if (!e.source_path.empty()) {
+      oss << " path=" << e.source_path;
+    }
+    oss << " cs=0x" << std::hex << e.callsite_id << std::dec
+        << " pid=" << e.pid
+        << " mono_ns=" << e.monotonic_ns
+        << "}";
+  }
+#endif
   return oss.str();
 }
 
@@ -436,6 +734,14 @@ inline void capture_formatted_log_v(const char* level,
                                     const char* fmt,
                                     std::va_list args);
 inline void capture_formatted_log(const char* level, const char* fmt, ...);
+inline void capture_formatted_log_source_v(const char* level,
+                                           const dlog_source_location_t& source,
+                                           const char* fmt,
+                                           std::va_list args);
+inline void capture_formatted_log_source(const char* level,
+                                         const dlog_source_location_t& source,
+                                         const char* fmt,
+                                         ...);
 
 inline void vsecure_log(FILE* out,
                         const char* level_label,
@@ -506,6 +812,23 @@ inline void secure_log(FILE* out,
   va_end(args);
 }
 
+inline void secure_log_source(FILE* out,
+                              const char* level_label,
+                              const char* level_color,
+                              const dlog_source_location_t& source,
+                              const char* fmt,
+                              ...) {
+  std::va_list args;
+  va_start(args, fmt);
+  std::va_list args_copy;
+  va_copy(args_copy, args);
+  capture_formatted_log_source_v(level_label, source, fmt, args_copy);
+  va_end(args_copy);
+  LOCK_GUARD(log_mutex);
+  vsecure_log(out, level_label, level_color, fmt, args);
+  va_end(args);
+}
+
 /* ---------------- iostream helpers (for iinuji capture) ---------------- */
 
 inline std::string vformat(const char* fmt, std::va_list args) {
@@ -544,6 +867,28 @@ inline void capture_formatted_log(const char* level, const char* fmt, ...) {
   std::va_list args;
   va_start(args, fmt);
   capture_formatted_log_v(level, fmt, args);
+  va_end(args);
+}
+
+inline void capture_formatted_log_source_v(const char* level,
+                                           const dlog_source_location_t& source,
+                                           const char* fmt,
+                                           std::va_list args) {
+  if (!fmt) return;
+  std::string msg = vformat(fmt, args);
+  if (msg.empty()) return;
+  cuwacunu::piaabo::dlog_push_with_source(level ? level : "INFO",
+                                          std::move(msg),
+                                          source);
+}
+
+inline void capture_formatted_log_source(const char* level,
+                                         const dlog_source_location_t& source,
+                                         const char* fmt,
+                                         ...) {
+  std::va_list args;
+  va_start(args, fmt);
+  capture_formatted_log_source_v(level, source, fmt, args);
   va_end(args);
 }
 
@@ -625,6 +970,23 @@ inline void secure_log_stream(std::ostream& out,
   va_end(args);
 }
 
+inline void secure_log_stream_source(std::ostream& out,
+                                     const char* level_label,
+                                     const char* level_color,
+                                     const dlog_source_location_t& source,
+                                     const char* fmt,
+                                     ...) {
+  std::va_list args;
+  va_start(args, fmt);
+  std::va_list args_copy;
+  va_copy(args_copy, args);
+  capture_formatted_log_source_v(level_label, source, fmt, args_copy);
+  va_end(args_copy);
+  LOCK_GUARD(log_mutex);
+  vsecure_log_stream(out, level_label, level_color, fmt, args);
+  va_end(args);
+}
+
 } // namespace detail
 
 /* ---- errno wrapper ----
@@ -670,10 +1032,19 @@ inline void log_sys_errno_stdio() {
 } // namespace piaabo
 } // namespace cuwacunu
 
+#if DLOGS_CHECK_SYS_ERRNO_BEFORE_LOG
 #if DLOGS_USE_IOSTREAMS
 #define wrap_log_sys_err() do { cuwacunu::piaabo::log_sys_errno_stream(); } while(false)
 #else
 #define wrap_log_sys_err() do { cuwacunu::piaabo::log_sys_errno_stdio(); } while(false)
+#endif
+#else
+#define wrap_log_sys_err() do {} while(false)
+#endif
+
+#ifndef DLOG_SOURCE_LOC
+#define DLOG_SOURCE_LOC() \
+  cuwacunu::piaabo::dlog_source_location(__FILE__, __func__, __LINE__)
 #endif
 
 /* ---- basic log macros ---- */
@@ -681,7 +1052,7 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_info(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("INFO", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("INFO", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: "; \
@@ -692,7 +1063,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_info(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("INFO", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("INFO", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_FILE, "[%s0x%s%s]: ", \
@@ -708,7 +1079,7 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_dbg(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("DEBUG", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("DEBUG", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cerr << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
@@ -720,7 +1091,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_dbg(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("DEBUG", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("DEBUG", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sDEBUG%s: ", \
@@ -737,7 +1108,7 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_err(...) do {                                           \
   wrap_log_sys_err();                                               \
-  cuwacunu::piaabo::detail::capture_formatted_log("ERROR", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("ERROR", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) {            \
     LOCK_GUARD(log_mutex);                                           \
     std::ostringstream _log_oss;                                     \
@@ -754,7 +1125,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_err(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("ERROR", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("ERROR", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sERROR%s: ", \
@@ -771,7 +1142,7 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_warn(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("WARNING", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("WARNING", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
@@ -783,7 +1154,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_warn(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("WARNING", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("WARNING", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sWARNING%s: ", \
@@ -800,7 +1171,7 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_fatal(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("FATAL", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("FATAL", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cerr << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
@@ -813,7 +1184,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_fatal(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("FATAL", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("FATAL", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sFATAL%s: ", \
@@ -831,7 +1202,7 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_terminate_gracefully(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("TERMINATION", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("TERMINATION", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
@@ -844,7 +1215,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_terminate_gracefully(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("TERMINATION", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("TERMINATION", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sTERMINATION%s: ", \
@@ -862,7 +1233,7 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_runtime_warning(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("DEV_WARNING", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("DEV_WARNING", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::cout << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: " \
@@ -874,7 +1245,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_runtime_warning(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::capture_formatted_log("DEV_WARNING", __VA_ARGS__); \
+  cuwacunu::piaabo::detail::capture_formatted_log_source("DEV_WARNING", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
     std::fprintf(LOG_WARN_FILE, "[%s0x%s%s]: %sDEV_WARNING%s: ", \
@@ -892,12 +1263,12 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_secure_dbg(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log_stream(std::cerr, "DEBUG", ANSI_COLOR_Bright_Blue, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_stream_source(std::cerr, "DEBUG", ANSI_COLOR_Bright_Blue, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #else
 #define log_secure_dbg(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log(LOG_ERR_FILE, "DEBUG", ANSI_COLOR_Bright_Blue, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_source(LOG_ERR_FILE, "DEBUG", ANSI_COLOR_Bright_Blue, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #endif
 #endif
@@ -906,12 +1277,12 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_secure_info(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log_stream(std::cout, nullptr, nullptr, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_stream_source(std::cout, nullptr, nullptr, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #else
 #define log_secure_info(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log(LOG_FILE, nullptr, nullptr, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_source(LOG_FILE, nullptr, nullptr, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #endif
 #endif
@@ -920,12 +1291,12 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_secure_warn(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log_stream(std::cout, "WARNING", ANSI_COLOR_WARNING, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_stream_source(std::cout, "WARNING", ANSI_COLOR_WARNING, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #else
 #define log_secure_warn(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log(LOG_WARN_FILE, "WARNING", ANSI_COLOR_WARNING, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_source(LOG_WARN_FILE, "WARNING", ANSI_COLOR_WARNING, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #endif
 #endif
@@ -934,12 +1305,12 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_secure_error(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log_stream(std::cerr, "ERROR", ANSI_COLOR_ERROR, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_stream_source(std::cerr, "ERROR", ANSI_COLOR_ERROR, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #else
 #define log_secure_error(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log(LOG_ERR_FILE, "ERROR", ANSI_COLOR_ERROR, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_source(LOG_ERR_FILE, "ERROR", ANSI_COLOR_ERROR, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #endif
 #endif
@@ -948,16 +1319,178 @@ inline void log_sys_errno_stdio() {
 #if DLOGS_USE_IOSTREAMS
 #define log_secure_fatal(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log_stream(std::cerr, "FATAL", ANSI_COLOR_FATAL, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_stream_source(std::cerr, "FATAL", ANSI_COLOR_FATAL, DLOG_SOURCE_LOC(), __VA_ARGS__); \
   THROW_RUNTIME_ERROR(); \
 } while(false)
 #else
 #define log_secure_fatal(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log(LOG_ERR_FILE, "FATAL", ANSI_COLOR_FATAL, __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_source(LOG_ERR_FILE, "FATAL", ANSI_COLOR_FATAL, DLOG_SOURCE_LOC(), __VA_ARGS__); \
   THROW_RUNTIME_ERROR(); \
 } while(false)
 #endif
+#endif
+
+namespace cuwacunu {
+namespace piaabo {
+
+// Stream-style logger for one-shot serial dumps:
+//   LOG_INFO << "value=" << x;
+class dlog_serial_stream final {
+ public:
+#if DLOGS_USE_IOSTREAMS
+  dlog_serial_stream(const char* level_label,
+                     const char* level_color,
+                     std::ostream* out_stream,
+                     dlog_source_location_t source)
+      : level_label_(level_label),
+        level_color_(level_color),
+        source_(source),
+        out_stream_(out_stream) {}
+#else
+  dlog_serial_stream(const char* level_label,
+                     const char* level_color,
+                     FILE* out_file,
+                     dlog_source_location_t source)
+      : level_label_(level_label),
+        level_color_(level_color),
+        source_(source),
+        out_file_(out_file) {}
+#endif
+
+  dlog_serial_stream(const dlog_serial_stream&) = delete;
+  dlog_serial_stream& operator=(const dlog_serial_stream&) = delete;
+  dlog_serial_stream& operator=(dlog_serial_stream&&) = delete;
+
+  dlog_serial_stream(dlog_serial_stream&& other) noexcept
+      : level_label_(other.level_label_),
+        level_color_(other.level_color_),
+        source_(other.source_),
+        buffer_(std::move(other.buffer_)),
+#if DLOGS_USE_IOSTREAMS
+        out_stream_(other.out_stream_),
+#else
+        out_file_(other.out_file_),
+#endif
+        flushed_(other.flushed_) {
+    other.flushed_ = true;
+  }
+
+  ~dlog_serial_stream() { flush(); }
+
+  template <typename T>
+  dlog_serial_stream& operator<<(const T& value) {
+    buffer_ << value;
+    return *this;
+  }
+
+  dlog_serial_stream& operator<<(std::ostream& (*manip)(std::ostream&)) {
+    manip(buffer_);
+    return *this;
+  }
+
+  dlog_serial_stream& operator<<(std::ios& (*manip)(std::ios&)) {
+    manip(buffer_);
+    return *this;
+  }
+
+  dlog_serial_stream& operator<<(std::ios_base& (*manip)(std::ios_base&)) {
+    manip(buffer_);
+    return *this;
+  }
+
+ private:
+  void flush() {
+    if (flushed_) return;
+    flushed_ = true;
+    wrap_log_sys_err();
+    const std::string message = buffer_.str();
+#if DLOGS_USE_IOSTREAMS
+    std::ostream& out = out_stream_ ? *out_stream_ : std::cout;
+    cuwacunu::piaabo::detail::secure_log_stream_source(
+        out, level_label_, level_color_, source_, "%s", message.c_str());
+#else
+    FILE* out = out_file_ ? out_file_ : LOG_FILE;
+    cuwacunu::piaabo::detail::secure_log_source(
+        out, level_label_, level_color_, source_, "%s", message.c_str());
+#endif
+  }
+
+  const char* level_label_{nullptr};
+  const char* level_color_{nullptr};
+  dlog_source_location_t source_{};
+  std::ostringstream buffer_{};
+#if DLOGS_USE_IOSTREAMS
+  std::ostream* out_stream_{nullptr};
+#else
+  FILE* out_file_{nullptr};
+#endif
+  bool flushed_{false};
+};
+
+#if DLOGS_USE_IOSTREAMS
+inline dlog_serial_stream make_log_info_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream(nullptr, nullptr, &std::cout, source);
+}
+inline dlog_serial_stream make_log_debug_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream("DEBUG", ANSI_COLOR_Bright_Blue, &std::cerr,
+                            source);
+}
+inline dlog_serial_stream make_log_warn_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream("WARNING", ANSI_COLOR_WARNING, &std::cout, source);
+}
+inline dlog_serial_stream make_log_error_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream("ERROR", ANSI_COLOR_ERROR, &std::cerr, source);
+}
+#else
+inline dlog_serial_stream make_log_info_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream(nullptr, nullptr, LOG_FILE, source);
+}
+inline dlog_serial_stream make_log_debug_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream("DEBUG", ANSI_COLOR_Bright_Blue, LOG_ERR_FILE,
+                            source);
+}
+inline dlog_serial_stream make_log_warn_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream("WARNING", ANSI_COLOR_WARNING, LOG_WARN_FILE,
+                            source);
+}
+inline dlog_serial_stream make_log_error_stream(
+    dlog_source_location_t source = {}) {
+  return dlog_serial_stream("ERROR", ANSI_COLOR_ERROR, LOG_ERR_FILE, source);
+}
+#endif
+
+} // namespace piaabo
+} // namespace cuwacunu
+
+#ifndef LOG_INFO
+#define LOG_INFO (::cuwacunu::piaabo::make_log_info_stream(DLOG_SOURCE_LOC()))
+#endif
+#ifndef LOG_DEBUG
+#define LOG_DEBUG (::cuwacunu::piaabo::make_log_debug_stream(DLOG_SOURCE_LOC()))
+#endif
+#ifndef LOG_WARN
+#define LOG_WARN (::cuwacunu::piaabo::make_log_warn_stream(DLOG_SOURCE_LOC()))
+#endif
+#ifndef LOG_ERROR
+#define LOG_ERROR (::cuwacunu::piaabo::make_log_error_stream(DLOG_SOURCE_LOC()))
+#endif
+
+#ifndef DLOG_CANONICAL_SCOPE
+#define DLOG_CANONICAL_SCOPE(PATH_EXPR) \
+  ::cuwacunu::piaabo::dlog_canonical_scope CONCAT(_dlog_scope_, __COUNTER__)((PATH_EXPR))
+#endif
+
+#ifndef DLOG_BUFFER_CAPTURE_SCOPE
+#define DLOG_BUFFER_CAPTURE_SCOPE(ENABLED_EXPR) \
+  ::cuwacunu::piaabo::dlog_buffer_capture_scope CONCAT(_dlog_buf_scope_, __COUNTER__)((ENABLED_EXPR))
 #endif
 
 /* basename helper */
@@ -1209,8 +1742,8 @@ inline void setLoadingBarCharacter(loading_bar_t &bar, std::string character) {
 struct RuntimeWarning {
   explicit RuntimeWarning(const char *msg) { log_runtime_warning("%s", msg); }
 };
-#ifndef RUNTIME_WARNING
-#define RUNTIME_WARNING(msg) static RuntimeWarning CONCAT(_rw_, __COUNTER__) (msg)
+#ifndef DEV_WARNING
+#define DEV_WARNING(msg) static RuntimeWarning CONCAT(_rw_, __COUNTER__) (msg)
 #endif
 
 /* assertions */

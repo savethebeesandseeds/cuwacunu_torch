@@ -1,0 +1,52 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = key_value
+TARGET_DSL = typed key-value files used by VICReg/VALUE_ESTIMATION/TRANSFER_MATRIX_EVALUATION
+TARGET_BNF = src/config/bnf/key_value.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/key_value/key_value.cpp
+PRIMARY_VALIDATORS = module-specific validators in src/impl/iitepi/contract_space_t.cpp
+
+[FIELD LINE.LHS]
+key = <key>[:<type>]
+scope = line
+type = identifier_with_optional_declared_type
+required = true
+default = none
+range = non-empty identifier
+allowed = identifier or identifier[type]
+nuance = declared type is metadata only at key_value decoder stage; semantic type checks are module-specific
+
+[FIELD LINE.VALUE]
+key = <value>
+scope = line
+type = raw string
+required = false
+default = empty string
+range = any printable tokens accepted by grammar
+allowed = free text
+nuance = values are stored as trimmed text; parsing to bool/int/float/array occurs later in module validators
+
+[FIELD COMMENTS]
+key = comments
+scope = file
+type = syntax
+required = false
+default = none
+range = line/block comments
+allowed = #... ;... //... /*...*/
+nuance = comments are stripped while preserving line count alignment for diagnostics
+
+[RULE DUPLICATE_KEYS]
+id = DUPLICATE_KEYS
+applies_to = LINE.LHS
+severity = warning
+when = duplicate key appears
+message = key_value map consumers usually keep last occurrence; avoid duplicates for deterministic mutation
+
+[RULE TYPE_DECLARATION_LIMIT]
+id = TYPE_DECLARATION_LIMIT
+applies_to = LINE.LHS
+severity = info
+when = declared type provided
+message = declared type is not enforced by key_value decoder itself

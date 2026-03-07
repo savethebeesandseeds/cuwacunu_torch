@@ -1,0 +1,72 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = network_design
+TARGET_DSL = framework-agnostic NETWORK payloads
+TARGET_BNF = src/config/bnf/network_design.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/network_design/network_design.cpp
+PRIMARY_VALIDATORS = semantic validators per consumer (for VICReg: src/include/wikimyei/representation/VICReg/vicreg_4d_network_design.h)
+
+[FIELD NETWORK.ID]
+key = NETWORK "<id>"
+scope = NETWORK block
+type = identifier
+required = true
+default = none
+range = non-empty; parser-valid identifier chars
+allowed = [A-Za-z0-9_.:-]+
+nuance = instruction must contain exactly one NETWORK block and no trailing content
+
+[FIELD NETWORK.JOIN_POLICY]
+key = JOIN_POLICY
+scope = NETWORK block
+type = identifier
+required = false
+default = empty
+range = consumer-defined
+allowed = identifier token
+nuance = parser validates syntax only; consumer performs semantic allow-list checks
+
+[FIELD NODE.DECL]
+key = node <id>@<kind>
+scope = NETWORK block
+type = node declaration
+required = false
+default = none
+range = unique node id
+allowed = id and kind as identifiers
+nuance = duplicate node ids are rejected
+
+[FIELD NODE.PARAM]
+key = <key>[:<declared_type>] = <value>
+scope = node block
+type = key-value
+required = false
+default = none
+range = non-empty value
+allowed = free value string with optional declared_type
+nuance = parser keeps type hint and raw value; consumer resolves strict meaning
+
+[FIELD EXPORT]
+key = export <name> = <node_id>
+scope = NETWORK block
+type = binding
+required = false
+default = none
+range = unique export names; node_id must exist
+allowed = identifier tokens
+nuance = unknown export node references are rejected by decoder
+
+[RULE NETWORK_REQUIRED_BLOCK]
+id = NETWORK_REQUIRED_BLOCK
+applies_to = file
+severity = error
+when = missing NETWORK header
+message = expected NETWORK "<id>" { ... }
+
+[RULE NODE_BLOCK_TERMINATION]
+id = NODE_BLOCK_TERMINATION
+applies_to = node
+severity = error
+when = missing closing brace
+message = unterminated node block

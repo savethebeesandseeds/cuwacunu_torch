@@ -4,8 +4,8 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_channels_decoder.h"
 #include "piaabo/dconfig.h"
 
-RUNTIME_WARNING("(observation_spec.cpp)[] mutex on observation runtime might not be needed \n");
-RUNTIME_WARNING("(observation_spec.cpp)[] observation runtime should include and expose the dataloaders, dataloaders should not be external variables \n");
+DEV_WARNING("(observation_spec.cpp)[] mutex on observation runtime might not be needed \n");
+DEV_WARNING("(observation_spec.cpp)[] observation runtime should include and expose the dataloaders, dataloaders should not be external variables \n");
 
 #include <cctype>
 #include <cstdint>
@@ -21,7 +21,15 @@ namespace camahjucunu {
 /* ───────────────────── observation_runtime_t statics ───────────────────── */
 observation_spec_t observation_runtime_t::inst{};
 observation_runtime_t::_init observation_runtime_t::_initializer{};
-static std::string g_observation_runtime_last_contract_hash;
+
+namespace {
+
+std::string& observation_runtime_last_contract_hash_() {
+  static std::string hash;
+  return hash;
+}
+
+} // namespace
 
 /* ───────────────────── observation_spec_t methods ───────────────────── */
 
@@ -98,16 +106,15 @@ void observation_runtime_t::init() {
   log_info(
       "[observation_runtime_t] initializing static-global observation snapshot "
       "(single mutable cache updated by explicit contract hash)\n");
-  // Runtime callers must explicitly provide a contract hash for updates.
-  inst = observation_spec_t{};
-  g_observation_runtime_last_contract_hash.clear();
+  // Keep startup side-effect free; runtime state is materialized via update().
 }
 
 void observation_runtime_t::finit() {
+  const auto& last_contract_hash = observation_runtime_last_contract_hash_();
   const char* last_hash =
-      g_observation_runtime_last_contract_hash.empty()
+      last_contract_hash.empty()
           ? "<none>"
-          : g_observation_runtime_last_contract_hash.c_str();
+          : last_contract_hash.c_str();
   log_info(
       "[observation_runtime_t] finalizing static-global observation snapshot "
       "(last_contract_hash=%s)\n",
@@ -126,7 +133,7 @@ void observation_runtime_t::update(const std::string& contract_hash) {
     throw std::runtime_error(
         "observation_runtime_t::update requires non-empty contract hash");
   }
-  g_observation_runtime_last_contract_hash = contract_hash;
+  observation_runtime_last_contract_hash_() = contract_hash;
   inst = decode_observation_spec_from_contract(contract_hash);
 }
 
@@ -189,6 +196,24 @@ observation_spec_t decode_observation_spec_from_split_dsl(
     merged.csv_bootstrap_deltas = sources_part.csv_bootstrap_deltas;
     merged.csv_step_abs_tol = sources_part.csv_step_abs_tol;
     merged.csv_step_rel_tol = sources_part.csv_step_rel_tol;
+    merged.data_analytics_policy = sources_part.data_analytics_policy;
+    if (!merged.data_analytics_policy.declared) {
+      throw std::runtime_error(
+          "DATA_ANALYTICS_POLICY block is required in sources DSL");
+    }
+    if (merged.data_analytics_policy.max_samples <= 0 ||
+        merged.data_analytics_policy.max_features <= 0) {
+      throw std::runtime_error(
+          "DATA_ANALYTICS_POLICY requires MAX_SAMPLES and MAX_FEATURES > 0");
+    }
+    if (merged.data_analytics_policy.mask_epsilon < 0.0L) {
+      throw std::runtime_error(
+          "DATA_ANALYTICS_POLICY.MASK_EPSILON must be >= 0");
+    }
+    if (!(merged.data_analytics_policy.standardize_epsilon > 0.0L)) {
+      throw std::runtime_error(
+          "DATA_ANALYTICS_POLICY.STANDARDIZE_EPSILON must be > 0");
+    }
     return merged;
   }
 

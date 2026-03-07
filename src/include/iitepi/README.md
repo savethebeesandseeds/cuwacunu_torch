@@ -38,12 +38,15 @@ Architecture is intentionally split into static topology and dynamic execution:
 - No runtime schedule ownership.
 
 2. Wave (dynamic execution policy)
-- Mode (`train`/`run`), sampler, epochs, batch size, max batches.
+- Mode bitmask (`run`, `train`, `debug`; combinable as symbolic or numeric
+  flags), sampler, epochs, batch size, max batches.
 - Component train flags and profile selection.
 - Source symbol/range window.
 - Dataloader runtime knobs (`WORKERS`, `FORCE_REBUILD_CACHE`,
   `RANGE_WARN_BATCHES`) and observation file ownership
   (`SOURCES_DSL_FILE`, `CHANNELS_DSL_FILE`) are declared per `SOURCE` block.
+  `debug` mode controls probe/report side effects (probe epoch reporting and
+  network-analytics sidecars on artifact save).
 
 3. Board (join layer)
 - Imports contract files and wave files.
@@ -136,8 +139,12 @@ runtime-unusable. Fallback is intentionally loud via
 - `board_space_t::init()`
 - `board_space_t::locked_board_hash()`
 - `board_space_t::locked_board_binding_id()`
-- `board_space_t::network_analytics([std::ostream*], [bool beautify])`
-- `contract_space_t::network_analytics(contract_hash[, std::ostream*], [bool beautify])`
+- `board_space_t::network_topology_analytics([std::ostream*], [bool beautify])`
+- `board_space_t::network_parameter_analytics([std::ostream*], [bool beautify])`
+- `board_space_t::network_analytics([std::ostream*], [bool beautify], [mode=Topology|Parameters|Both])`
+- `contract_space_t::network_topology_analytics(contract_hash[, std::ostream*], [bool beautify])`
+- `contract_space_t::network_parameter_analytics(contract_hash[, std::ostream*], [bool beautify])`
+- `contract_space_t::network_analytics(contract_hash[, std::ostream*], [bool beautify], [mode=Topology|Parameters|Both])`
 
 2. Programmatic execution
 - `cuwacunu::iitepi::run_binding(binding_id[, device])`

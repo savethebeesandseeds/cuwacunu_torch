@@ -70,6 +70,11 @@ struct board_binding_run_record_t {
   Board board{};
 };
 
+[[nodiscard]] inline const char* board_log_value_or_empty(
+    const std::string& value) {
+  return value.empty() ? "<empty>" : value.c_str();
+}
+
 [[nodiscard]] inline bool has_non_ws_text(std::string_view s) {
   for (const unsigned char c : s) {
     if (!std::isspace(c)) return true;
@@ -96,9 +101,9 @@ find_contract_decl_by_id(
   return nullptr;
 }
 
-[[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_t*
+[[nodiscard]] inline const cuwacunu::camahjucunu::iitepi_wave_t*
 find_wave_by_id(
-    const cuwacunu::camahjucunu::tsiemene_wave_set_t& wave_set,
+    const cuwacunu::camahjucunu::iitepi_wave_set_t& wave_set,
     const std::string& wave_id) {
   for (const auto& wave : wave_set.waves) {
     if (wave.name == wave_id) return &wave;
@@ -222,6 +227,7 @@ find_wave_by_id(
 
 [[nodiscard]] inline board_binding_run_record_t run_initialized_board_binding(
     board_contract_init_record_t init) {
+  // Finalize the init snapshot into one immutable run record.
   board_binding_run_record_t out{};
   out.board_hash = init.board_hash;
   out.board_binding_id = init.board_binding_id;
@@ -233,6 +239,11 @@ find_wave_by_id(
     out.wave_hash = std::move(init.wave_hash);
     out.resolved_record_type = std::move(init.resolved_record_type);
     out.resolved_sampler = std::move(init.resolved_sampler);
+    log_err(
+        "[board.binding.run] init failed board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   }
 
@@ -242,22 +253,55 @@ find_wave_by_id(
   out.resolved_sampler = std::move(init.resolved_sampler);
   out.board = std::move(init.board);
   out.contract_steps.reserve(out.board.contracts.size());
+  log_info(
+      "[board.binding.run] start board_hash=%s binding=%s contracts=%zu record_type=%s sampler=%s\n",
+      board_log_value_or_empty(out.board_hash),
+      board_log_value_or_empty(out.board_binding_id),
+      out.board.contracts.size(),
+      board_log_value_or_empty(out.resolved_record_type),
+      board_log_value_or_empty(out.resolved_sampler));
 
+  // Execution phase: contracts are evaluated in board declaration order.
   for (std::size_t i = 0; i < out.board.contracts.size(); ++i) {
     auto& contract = out.board.contracts[i];
+    log_dbg(
+        "[board.binding.run] contract[%zu] begin name=%s epochs=%llu\n",
+        i,
+        board_log_value_or_empty(contract.name),
+        static_cast<unsigned long long>(
+            std::max<std::uint64_t>(1, contract.execution.epochs)));
     BoardContext ctx{};
+    ctx.wave_mode_flags = contract.execution.wave_mode_flags;
+    ctx.debug_enabled = contract.execution.debug_enabled;
     std::string run_error;
     const std::uint64_t steps = run_contract(contract, ctx, &run_error);
     if (!run_error.empty()) {
       out.error = "run_contract failed for contract[" + std::to_string(i) +
                   "]: " + run_error;
+      log_err(
+          "[board.binding.run] contract[%zu] failed name=%s error=%s\n",
+          i,
+          board_log_value_or_empty(contract.name),
+          board_log_value_or_empty(out.error));
       return out;
     }
     out.contract_steps.push_back(steps);
     out.total_steps += steps;
+    log_info(
+        "[board.binding.run] contract[%zu] done steps=%llu cumulative_steps=%llu\n",
+        i,
+        static_cast<unsigned long long>(steps),
+        static_cast<unsigned long long>(out.total_steps));
   }
 
+  // Finalization: publish completed run counters.
   out.ok = true;
+  log_info(
+      "[board.binding.run] done board_hash=%s binding=%s total_steps=%llu contracts=%zu\n",
+      board_log_value_or_empty(out.board_hash),
+      board_log_value_or_empty(out.board_binding_id),
+      static_cast<unsigned long long>(out.total_steps),
+      out.contract_steps.size());
   return out;
 }
 
@@ -271,23 +315,42 @@ template <typename Datatype_t,
   board_contract_init_record_t out{};
   if (!board_itself) {
     out.error = "missing board record";
+    log_err(
+        "[board.contract.init] missing board record board_hash=%s binding=%s\n",
+        board_log_value_or_empty(board_hash),
+        board_log_value_or_empty(board_binding_id));
     return out;
   }
   out.board_hash = board_hash;
   out.board_binding_id = board_binding_id;
   out.source_config_path = board_itself->config_file_path;
+  log_info(
+      "[board.contract.init] start board_hash=%s binding=%s device=%s\n",
+      board_log_value_or_empty(out.board_hash),
+      board_log_value_or_empty(out.board_binding_id),
+      device.str().c_str());
 
   try {
+    // Initialization preflight: bind contract/wave identity from board snapshot.
     const auto& board_instruction = board_itself->board.decoded();
     const auto* bind = find_bind_by_id(board_instruction, board_binding_id);
     if (!bind) {
       out.error = "unknown board binding id: " + board_binding_id;
+      log_err(
+          "[board.contract.init] binding lookup failed board_hash=%s binding=%s\n",
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id));
       return out;
     }
     const auto* contract_decl =
         find_contract_decl_by_id(board_instruction, bind->contract_ref);
     if (!contract_decl) {
       out.error = "binding references unknown CONTRACT id: " + bind->contract_ref;
+      log_err(
+          "[board.contract.init] missing CONTRACT ref=%s board_hash=%s binding=%s\n",
+          board_log_value_or_empty(bind->contract_ref),
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id));
       return out;
     }
 
@@ -301,6 +364,10 @@ template <typename Datatype_t,
     out.wave_hash =
         cuwacunu::iitepi::board_space_t::wave_hash_for_binding(
             board_hash, board_binding_id);
+    log_info(
+        "[board.contract.init] resolved contract_hash=%s wave_hash=%s\n",
+        board_log_value_or_empty(out.contract_hash),
+        board_log_value_or_empty(out.wave_hash));
     cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
         out.contract_hash);
     cuwacunu::iitepi::wave_space_t::assert_intact_or_fail_fast(
@@ -320,7 +387,7 @@ template <typename Datatype_t,
       return out;
     }
     if (!has_non_ws_text(wave_itself->wave.dsl)) {
-      out.error = "missing tsiemene wave DSL text in bound wave file";
+      out.error = "missing iitepi wave DSL text in bound wave file";
       return out;
     }
     if (!has_non_ws_text(contract_itself->circuit.grammar)) {
@@ -328,6 +395,7 @@ template <typename Datatype_t,
       return out;
     }
 
+    // Build runtime board payload from validated contract + wave DSLs.
     const auto& parsed = contract_itself->circuit.decoded();
     std::string build_error;
     if (!board_builder::build_runtime_board_from_instruction<Datatype_t, Sampler_t>(
@@ -349,19 +417,40 @@ template <typename Datatype_t,
     out.board.contract_hash = out.contract_hash;
     out.board.wave_hash = out.wave_hash;
 
+    // Final validation before exposing initialized runtime board.
     BoardIssue issue{};
     if (!validate_board(out.board, &issue)) {
       out.error = "invalid runtime board: " + std::string(issue.circuit_issue.what);
+      log_err(
+          "[board.contract.init] board validation failed board_hash=%s binding=%s error=%s\n",
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id),
+          board_log_value_or_empty(out.error));
       return out;
     }
 
     out.ok = true;
+    log_info(
+        "[board.contract.init] done board_hash=%s binding=%s contracts=%zu\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        out.board.contracts.size());
     return out;
   } catch (const std::exception& e) {
     out.error = std::string(kBoardContractInitCanonicalAction) + " exception: " + e.what();
+    log_err(
+        "[board.contract.init] exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   } catch (...) {
     out.error = std::string(kBoardContractInitCanonicalAction) + " exception: unknown";
+    log_err(
+        "[board.contract.init] exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   }
 }
@@ -375,22 +464,40 @@ template <typename Datatype_t,
   out.board_hash = board_hash;
   out.board_binding_id = board_binding_id;
   if (board_itself) out.source_config_path = board_itself->config_file_path;
+  log_info(
+      "[board.contract.init] infer runtime board_hash=%s binding=%s device=%s\n",
+      board_log_value_or_empty(out.board_hash),
+      board_log_value_or_empty(out.board_binding_id),
+      device.str().c_str());
 
   try {
     if (!board_itself) {
       out.error = "missing board record";
+      log_err(
+          "[board.contract.init] missing board record board_hash=%s binding=%s\n",
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id));
       return out;
     }
     const auto& board_instruction = board_itself->board.decoded();
     const auto* bind = find_bind_by_id(board_instruction, board_binding_id);
     if (!bind) {
       out.error = "unknown board binding id: " + board_binding_id;
+      log_err(
+          "[board.contract.init] binding lookup failed board_hash=%s binding=%s\n",
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id));
       return out;
     }
     const auto* contract_decl =
         find_contract_decl_by_id(board_instruction, bind->contract_ref);
     if (!contract_decl) {
       out.error = "binding references unknown CONTRACT id: " + bind->contract_ref;
+      log_err(
+          "[board.contract.init] missing CONTRACT ref=%s board_hash=%s binding=%s\n",
+          board_log_value_or_empty(bind->contract_ref),
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id));
       return out;
     }
 
@@ -412,6 +519,11 @@ template <typename Datatype_t,
     const auto* wave = find_wave_by_id(wave_set, bind->wave_ref);
     if (!wave) {
       out.error = "binding references unknown WAVE id: " + bind->wave_ref;
+      log_err(
+          "[board.contract.init] missing WAVE ref=%s board_hash=%s binding=%s\n",
+          board_log_value_or_empty(bind->wave_ref),
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id));
       return out;
     }
 
@@ -441,6 +553,12 @@ template <typename Datatype_t,
 
     out.resolved_record_type = inferred_record_type;
     out.resolved_sampler = inferred_sampler;
+    log_info(
+        "[board.contract.init] resolved runtime board_hash=%s binding=%s record_type=%s sampler=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.resolved_record_type),
+        board_log_value_or_empty(out.resolved_sampler));
 
     if (inferred_record_type == "kline") {
       if (inferred_sampler == "sequential") {
@@ -450,6 +568,13 @@ template <typename Datatype_t,
             board_hash, board_binding_id, board_itself, device);
         typed.resolved_record_type = inferred_record_type;
         typed.resolved_sampler = inferred_sampler;
+        if (!typed.ok) {
+          log_err(
+              "[board.contract.init] typed init failed board_hash=%s binding=%s error=%s\n",
+              board_log_value_or_empty(typed.board_hash),
+              board_log_value_or_empty(typed.board_binding_id),
+              board_log_value_or_empty(typed.error));
+        }
         return typed;
       }
       if (inferred_sampler == "random") {
@@ -459,6 +584,13 @@ template <typename Datatype_t,
             board_hash, board_binding_id, board_itself, device);
         typed.resolved_record_type = inferred_record_type;
         typed.resolved_sampler = inferred_sampler;
+        if (!typed.ok) {
+          log_err(
+              "[board.contract.init] typed init failed board_hash=%s binding=%s error=%s\n",
+              board_log_value_or_empty(typed.board_hash),
+              board_log_value_or_empty(typed.board_binding_id),
+              board_log_value_or_empty(typed.error));
+        }
         return typed;
       }
     }
@@ -466,12 +598,27 @@ template <typename Datatype_t,
     out.error = "unsupported runtime combination record_type='" +
                 inferred_record_type + "' sampler='" + inferred_sampler +
                 "' (supported now: kline + sequential|random)";
+    log_err(
+        "[board.contract.init] unsupported runtime board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   } catch (const std::exception& e) {
     out.error = std::string(kBoardContractInitCanonicalAction) + " exception: " + e.what();
+    log_err(
+        "[board.contract.init] exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   } catch (...) {
     out.error = std::string(kBoardContractInitCanonicalAction) + " exception: unknown";
+    log_err(
+        "[board.contract.init] exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   }
 }
@@ -483,10 +630,22 @@ template <typename Datatype_t,
     const std::string& board_binding_id,
     const std::shared_ptr<const cuwacunu::iitepi::board_record_t>& board_itself,
     torch::Device device = torch::kCPU) {
+  log_info(
+      "[board.binding.run] snapshot start board_hash=%s binding=%s\n",
+      board_log_value_or_empty(board_hash),
+      board_log_value_or_empty(board_binding_id));
   try {
-    return run_initialized_board_binding(
+    auto out = run_initialized_board_binding(
         invoke_board_contract_init_from_snapshot<Datatype_t, Sampler_t>(
             board_hash, board_binding_id, board_itself, device));
+    if (!out.ok) {
+      log_err(
+          "[board.binding.run] snapshot failed board_hash=%s binding=%s error=%s\n",
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id),
+          board_log_value_or_empty(out.error));
+    }
+    return out;
   } catch (const std::exception& e) {
     board_binding_run_record_t out{};
     out.board_hash = board_hash;
@@ -494,6 +653,11 @@ template <typename Datatype_t,
     if (board_itself) out.source_config_path = board_itself->config_file_path;
     out.error = std::string(kBoardBindingRunCanonicalAction) + " exception: " +
                 e.what();
+    log_err(
+        "[board.binding.run] snapshot exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   } catch (...) {
     board_binding_run_record_t out{};
@@ -502,6 +666,11 @@ template <typename Datatype_t,
     if (board_itself) out.source_config_path = board_itself->config_file_path;
     out.error =
         std::string(kBoardBindingRunCanonicalAction) + " exception: unknown";
+    log_err(
+        "[board.binding.run] snapshot exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   }
 }
@@ -511,9 +680,21 @@ template <typename Datatype_t,
     const std::string& board_binding_id,
     const std::shared_ptr<const cuwacunu::iitepi::board_record_t>& board_itself,
     torch::Device device = torch::kCPU) {
+  log_info(
+      "[board.binding.run] snapshot start board_hash=%s binding=%s\n",
+      board_log_value_or_empty(board_hash),
+      board_log_value_or_empty(board_binding_id));
   try {
-    return run_initialized_board_binding(invoke_board_contract_init_from_snapshot(
+    auto out = run_initialized_board_binding(invoke_board_contract_init_from_snapshot(
         board_hash, board_binding_id, board_itself, device));
+    if (!out.ok) {
+      log_err(
+          "[board.binding.run] snapshot failed board_hash=%s binding=%s error=%s\n",
+          board_log_value_or_empty(out.board_hash),
+          board_log_value_or_empty(out.board_binding_id),
+          board_log_value_or_empty(out.error));
+    }
+    return out;
   } catch (const std::exception& e) {
     board_binding_run_record_t out{};
     out.board_hash = board_hash;
@@ -521,6 +702,11 @@ template <typename Datatype_t,
     if (board_itself) out.source_config_path = board_itself->config_file_path;
     out.error = std::string(kBoardBindingRunCanonicalAction) + " exception: " +
                 e.what();
+    log_err(
+        "[board.binding.run] snapshot exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   } catch (...) {
     board_binding_run_record_t out{};
@@ -529,6 +715,11 @@ template <typename Datatype_t,
     if (board_itself) out.source_config_path = board_itself->config_file_path;
     out.error =
         std::string(kBoardBindingRunCanonicalAction) + " exception: unknown";
+    log_err(
+        "[board.binding.run] snapshot exception board_hash=%s binding=%s error=%s\n",
+        board_log_value_or_empty(out.board_hash),
+        board_log_value_or_empty(out.board_binding_id),
+        board_log_value_or_empty(out.error));
     return out;
   }
 }
@@ -540,12 +731,19 @@ template <typename Datatype_t,
     torch::Device device = torch::kCPU) {
   board_binding_run_record_t out{};
   try {
+    // Input normalization before hitting runtime lock and snapshots.
     const std::string binding_id = board_init_trim_ascii_copy(board_binding_id);
     if (!has_non_ws_text(binding_id)) {
       out.error = "run_binding requires non-empty board_binding_id";
+      log_err("[board.binding.run] invalid request error=%s\n",
+              board_log_value_or_empty(out.error));
       return out;
     }
     const auto board_hash = cuwacunu::iitepi::board_space_t::locked_board_hash();
+    log_info(
+        "[board.binding.run] dispatch board_hash=%s binding=%s\n",
+        board_log_value_or_empty(board_hash),
+        board_log_value_or_empty(binding_id));
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
     return run_binding_snapshot<Datatype_t, Sampler_t>(
@@ -553,10 +751,14 @@ template <typename Datatype_t,
   } catch (const std::exception& e) {
     out.error = std::string(kBoardBindingRunCanonicalAction) + " exception: " +
                 e.what();
+    log_err("[board.binding.run] dispatch exception error=%s\n",
+            board_log_value_or_empty(out.error));
     return out;
   } catch (...) {
     out.error =
         std::string(kBoardBindingRunCanonicalAction) + " exception: unknown";
+    log_err("[board.binding.run] dispatch exception error=%s\n",
+            board_log_value_or_empty(out.error));
     return out;
   }
 }
@@ -566,12 +768,19 @@ template <typename Datatype_t,
     torch::Device device = torch::kCPU) {
   board_binding_run_record_t out{};
   try {
+    // Input normalization before hitting runtime lock and snapshots.
     const std::string binding_id = board_init_trim_ascii_copy(board_binding_id);
     if (!has_non_ws_text(binding_id)) {
       out.error = "run_binding requires non-empty board_binding_id";
+      log_err("[board.binding.run] invalid request error=%s\n",
+              board_log_value_or_empty(out.error));
       return out;
     }
     const auto board_hash = cuwacunu::iitepi::board_space_t::locked_board_hash();
+    log_info(
+        "[board.binding.run] dispatch board_hash=%s binding=%s\n",
+        board_log_value_or_empty(board_hash),
+        board_log_value_or_empty(binding_id));
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
     return run_binding_snapshot(
@@ -579,10 +788,14 @@ template <typename Datatype_t,
   } catch (const std::exception& e) {
     out.error = std::string(kBoardBindingRunCanonicalAction) + " exception: " +
                 e.what();
+    log_err("[board.binding.run] dispatch exception error=%s\n",
+            board_log_value_or_empty(out.error));
     return out;
   } catch (...) {
     out.error =
         std::string(kBoardBindingRunCanonicalAction) + " exception: unknown";
+    log_err("[board.binding.run] dispatch exception error=%s\n",
+            board_log_value_or_empty(out.error));
     return out;
   }
 }

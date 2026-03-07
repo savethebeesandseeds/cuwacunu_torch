@@ -1,0 +1,72 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = iitepi.board
+TARGET_DSL = src/config/instructions/iitepi.board.dsl
+TARGET_BNF = src/config/bnf/iitepi.board.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_board/tsiemene_board.cpp
+PRIMARY_VALIDATORS = syntax_only_in_decoder
+
+[FIELD IMPORT_CONTRACT_FILE]
+key = IMPORT_CONTRACT_FILE
+scope = BOARD
+type = path
+required = true
+default = none
+range = non-empty string
+allowed = quoted_path_or_identifier
+nuance = each import derives CONTRACT id as contract_<sanitized_basename>; duplicate file paths and duplicate derived ids are rejected
+
+[FIELD IMPORT_WAVE_FILE]
+key = IMPORT_WAVE_FILE
+scope = BOARD
+type = path
+required = true
+default = none
+range = non-empty string
+allowed = quoted_path_or_identifier
+nuance = each import derives wave import id as wave_import_<sanitized_basename>; duplicate file paths and duplicate derived ids are rejected
+
+[FIELD BIND.ID]
+key = BIND.<id>
+scope = BOARD
+type = identifier
+required = true
+default = none
+range = unique within board
+allowed = [A-Za-z0-9_.-]+
+nuance = duplicate bind ids are rejected
+
+[FIELD BIND.CONTRACT]
+key = BIND.CONTRACT
+scope = BIND
+type = identifier
+required = true
+default = none
+range = must exist in derived contract ids from IMPORT_CONTRACT_FILE
+allowed = derived contract id token
+nuance = contract id is not free-form; it must match derived import id (example default.board.contract.config -> contract_default)
+
+[FIELD BIND.WAVE]
+key = BIND.WAVE
+scope = BIND
+type = identifier
+required = true
+default = none
+range = non-empty
+allowed = wave id defined inside imported wave DSLs
+nuance = ambiguity across multiple imported wave files is rejected at board assembly stage
+
+[RULE BOARD_MIN_IMPORTS]
+id = BOARD_MIN_IMPORTS
+applies_to = BOARD
+severity = error
+when = no IMPORT_CONTRACT_FILE or no IMPORT_WAVE_FILE or no BIND
+message = board instruction requires at least one contract import, one wave import, and one bind
+
+[RULE BIND_CONTRACT_REFERENCE]
+id = BIND_CONTRACT_REFERENCE
+applies_to = BIND.CONTRACT
+severity = error
+when = CONTRACT not in derived_contract_import_ids
+message = BIND references unknown CONTRACT id

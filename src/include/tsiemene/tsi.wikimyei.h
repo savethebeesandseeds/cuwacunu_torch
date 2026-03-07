@@ -16,10 +16,14 @@ struct TsiWikimyeiInitRecord {
   std::string error{};
 
   std::string hashimyei{};
+  std::string contract_hash{};
   std::string canonical_base{};
   std::filesystem::path store_root{};
   std::filesystem::path artifact_directory{};
   std::filesystem::path weights_file{};
+  bool enable_network_analytics_sidecar{true};
+  bool enable_entropic_capacity_sidecar{true};
+  std::filesystem::path entropic_capacity_file{};
 
   bool metadata_encrypted{false};
   bool metadata_plaintext_fallback{false};
@@ -48,15 +52,19 @@ class TsiWikimyei : public Tsi {
   [[nodiscard]] virtual bool runtime_autosave_artifacts() const noexcept { return false; }
   [[nodiscard]] virtual bool runtime_load_from_hashimyei(
       std::string_view hashimyei,
-      std::string* error = nullptr) {
+      std::string* error = nullptr,
+      const void* runtime_context = nullptr) {
     (void)hashimyei;
+    (void)runtime_context;
     if (error) error->clear();
     return false;
   }
   [[nodiscard]] virtual bool runtime_save_to_hashimyei(
       std::string_view hashimyei,
-      std::string* error = nullptr) {
+      std::string* error = nullptr,
+      const void* runtime_context = nullptr) {
     (void)hashimyei;
+    (void)runtime_context;
     if (error) error->clear();
     return false;
   }

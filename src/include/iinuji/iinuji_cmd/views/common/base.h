@@ -19,7 +19,7 @@
 #include "iinuji/iinuji_cmd/catalog.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.paths.h"
 #include "iinuji/iinuji_cmd/state.h"
-#include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "iitepi/board_space_t.h"
 #include "iitepi/wave_space_t.h"
@@ -273,7 +273,7 @@ inline BoardWaveBatchSizeResolution resolve_configured_board_wave_batch_size() {
     const auto wave_itself = cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
     const auto& wave_set = wave_itself->wave.decoded();
 
-    const cuwacunu::camahjucunu::tsiemene_wave_t* selected_wave = nullptr;
+    const cuwacunu::camahjucunu::iitepi_wave_t* selected_wave = nullptr;
     for (const auto& wave : wave_set.waves) {
       if (trim_copy(wave.name) == trim_copy(bind->wave_ref)) {
         if (selected_wave) {

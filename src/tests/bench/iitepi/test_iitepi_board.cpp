@@ -1,7 +1,6 @@
 // test_iitepi_board.cpp
 // Demonstration: load config -> init board -> run one configured binding.
 
-#include <iostream>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -10,15 +9,21 @@
 #include <string>
 #include <string_view>
 
+#include "camahjucunu/dsl/canonical_path/canonical_path.h"
+#include "hashimyei/hashimyei_artifacts.h"
 #include "iitepi/iitepi.h"
 #include "iitepi/board/board.contract.init.h"
 #include "iitepi/board/board.contract.h"
 
 namespace {
 
+const char* value_or_empty(const std::string& value) {
+  return value.empty() ? "<empty>" : value.c_str();
+}
+
 bool expect(bool cond, std::string_view message) {
   if (!cond) {
-    std::cerr << "[demo:iitepi_board] FAIL: " << message << "\n";
+    log_err("[demo:iitepi_board] FAIL: %s\n", std::string(message).c_str());
     return false;
   }
   return true;
@@ -74,8 +79,8 @@ const cuwacunu::camahjucunu::tsiemene_board_contract_decl_t* find_contract_decl(
   return nullptr;
 }
 
-const cuwacunu::camahjucunu::tsiemene_wave_t* find_wave(
-    const cuwacunu::camahjucunu::tsiemene_wave_set_t& wave_set,
+const cuwacunu::camahjucunu::iitepi_wave_t* find_wave(
+    const cuwacunu::camahjucunu::iitepi_wave_set_t& wave_set,
     const std::string& wave_id) {
   for (const auto& wave : wave_set.waves) {
     if (wave.name == wave_id) return &wave;
@@ -85,41 +90,37 @@ const cuwacunu::camahjucunu::tsiemene_wave_t* find_wave(
 
 void print_run_failure(
     const cuwacunu::iitepi::board_binding_run_record_t& run) {
-  std::cerr << "[demo:iitepi_board] run.ok=false\n";
-  std::cerr << "[demo:iitepi_board] run.canonical_action="
-            << run.canonical_action << "\n";
-  std::cerr << "[demo:iitepi_board] run.error="
-            << (run.error.empty() ? "<empty>" : run.error) << "\n";
-  std::cerr << "[demo:iitepi_board] run.board_hash="
-            << (run.board_hash.empty() ? "<empty>" : run.board_hash) << "\n";
-  std::cerr << "[demo:iitepi_board] run.board_binding_id="
-            << (run.board_binding_id.empty() ? "<empty>" : run.board_binding_id)
-            << "\n";
-  std::cerr << "[demo:iitepi_board] run.contract_hash="
-            << (run.contract_hash.empty() ? "<empty>" : run.contract_hash)
-            << "\n";
-  std::cerr << "[demo:iitepi_board] run.wave_hash="
-            << (run.wave_hash.empty() ? "<empty>" : run.wave_hash) << "\n";
-  std::cerr << "[demo:iitepi_board] run.record_type="
-            << (run.resolved_record_type.empty() ? "<empty>"
-                                                : run.resolved_record_type)
-            << "\n";
-  std::cerr << "[demo:iitepi_board] run.sampler="
-            << (run.resolved_sampler.empty() ? "<empty>" : run.resolved_sampler)
-            << "\n";
-  std::cerr << "[demo:iitepi_board] run.source_config_path="
-            << (run.source_config_path.empty() ? "<empty>"
-                                               : run.source_config_path)
-            << "\n";
-  std::cerr << "[demo:iitepi_board] run.total_steps=" << run.total_steps << "\n";
-  std::cerr << "[demo:iitepi_board] run.contract_steps=[";
+  log_err("[demo:iitepi_board] run.ok=false\n");
+  log_err("[demo:iitepi_board] run.canonical_action=%s\n",
+          value_or_empty(run.canonical_action));
+  log_err("[demo:iitepi_board] run.error=%s\n", value_or_empty(run.error));
+  log_err("[demo:iitepi_board] run.board_hash=%s\n",
+          value_or_empty(run.board_hash));
+  log_err("[demo:iitepi_board] run.board_binding_id=%s\n",
+          value_or_empty(run.board_binding_id));
+  log_err("[demo:iitepi_board] run.contract_hash=%s\n",
+          value_or_empty(run.contract_hash));
+  log_err("[demo:iitepi_board] run.wave_hash=%s\n",
+          value_or_empty(run.wave_hash));
+  log_err("[demo:iitepi_board] run.record_type=%s\n",
+          value_or_empty(run.resolved_record_type));
+  log_err("[demo:iitepi_board] run.sampler=%s\n",
+          value_or_empty(run.resolved_sampler));
+  log_err("[demo:iitepi_board] run.source_config_path=%s\n",
+          value_or_empty(run.source_config_path));
+  log_err("[demo:iitepi_board] run.total_steps=%llu\n",
+          static_cast<unsigned long long>(run.total_steps));
+  std::ostringstream contract_steps;
+  contract_steps << "[";
   for (std::size_t i = 0; i < run.contract_steps.size(); ++i) {
-    if (i > 0) std::cerr << ",";
-    std::cerr << run.contract_steps[i];
+    if (i > 0) contract_steps << ",";
+    contract_steps << run.contract_steps[i];
   }
-  std::cerr << "]\n";
-  std::cerr << "[demo:iitepi_board] run.board_contracts="
-            << run.board.contracts.size() << "\n";
+  contract_steps << "]";
+  log_err("[demo:iitepi_board] run.contract_steps=%s\n",
+          contract_steps.str().c_str());
+  log_err("[demo:iitepi_board] run.board_contracts=%zu\n",
+          run.board.contracts.size());
 }
 
 }  // namespace
@@ -137,19 +138,19 @@ int main() try {
   const auto binding_id =
       cuwacunu::iitepi::board_space_t::locked_board_binding_id();
 
-  std::cout << "[demo:iitepi_board] board_hash=" << board_hash << "\n";
-  std::cout << "[demo:iitepi_board] binding=" << binding_id << "\n";
+  log_info("[demo:iitepi_board] board_hash=%s\n", board_hash.c_str());
+  log_info("[demo:iitepi_board] binding=%s\n", binding_id.c_str());
 
   const auto board_itself =
       cuwacunu::iitepi::board_space_t::board_itself(board_hash);
   const auto& board_instruction = board_itself->board.decoded();
   const auto* bind = find_bind(board_instruction, binding_id);
   bool ok = true;
-  ok = ok && expect(bind != nullptr, "binding exists in board instruction");
+  ok = ok && expect(bind != nullptr, "binding missing in board instruction");
   if (!ok) return 1;
 
   const auto* contract_decl = find_contract_decl(board_instruction, bind->contract_ref);
-  ok = ok && expect(contract_decl != nullptr, "binding contract exists in board instruction");
+  ok = ok && expect(contract_decl != nullptr, "binding contract missing in board instruction");
   if (!ok) return 1;
 
   const std::string contract_path =
@@ -164,20 +165,47 @@ int main() try {
       cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash_for_check);
   const auto& wave_set = wave_itself->wave.decoded();
   const auto* selected_wave = find_wave(wave_set, bind->wave_ref);
-  ok = ok && expect(selected_wave != nullptr, "binding wave exists in wave instruction");
+  std::string selected_probe_hashimyei{};
+  ok = ok && expect(selected_wave != nullptr, "binding wave missing in wave instruction");
   ok = ok && expect(selected_wave && selected_wave->sources.size() == 1,
-                    "selected wave has exactly one SOURCE block");
+                    "selected wave must define exactly one SOURCE block");
+  ok = ok && expect(selected_wave && selected_wave->probes.size() == 1,
+                    "selected wave must define exactly one PROBE block");
+  if (selected_wave && !selected_wave->probes.empty()) {
+    const auto probe_path = cuwacunu::camahjucunu::decode_canonical_path(
+        selected_wave->probes.front().probe_path, contract_hash_for_check);
+    ok = ok && expect(probe_path.ok, "selected wave PROBE PATH canonical decode failed");
+    ok = ok && expect(!probe_path.hashimyei.empty(),
+                      "selected wave PROBE PATH missing hashimyei suffix");
+    if (probe_path.ok) selected_probe_hashimyei = probe_path.hashimyei;
+    ok = ok && expect(
+        selected_wave->probes.front().policy.training_window ==
+            cuwacunu::camahjucunu::iitepi_wave_probe_training_window_e::
+                IncomingBatch,
+        "selected wave PROBE training_window is not incoming_batch");
+    ok = ok && expect(
+        selected_wave->probes.front().policy.report_policy ==
+            cuwacunu::camahjucunu::iitepi_wave_probe_report_policy_e::
+                EpochEndLog,
+        "selected wave PROBE report_policy is not epoch_end_log");
+    ok = ok && expect(
+        selected_wave->probes.front().policy.objective ==
+            cuwacunu::camahjucunu::iitepi_wave_probe_objective_e::
+                FutureTargetDimsNll,
+        "selected wave PROBE objective is not future_target_dims_nll");
+  }
   if (!ok) return 1;
 
+  // 3) Initialize runtime board for the selected binding.
   auto init = tsiemene::invoke_board_contract_init_from_snapshot(
       board_hash, binding_id, board_itself);
   if (!init.ok) {
-    std::cerr << "[demo:iitepi_board] init.ok=false error="
-              << (init.error.empty() ? "<empty>" : init.error) << "\n";
+    log_err("[demo:iitepi_board] init.ok=false error=%s\n",
+            value_or_empty(init.error));
   }
-  ok = ok && expect(init.ok, "board.contract@init succeeded");
-  ok = ok && expect(init.error.empty(), "board.contract@init has no error");
-  ok = ok && expect(!init.board.contracts.empty(), "runtime board has contracts");
+  ok = ok && expect(init.ok, "board.contract@init failed");
+  ok = ok && expect(init.error.empty(), "board.contract@init has errors");
+  ok = ok && expect(!init.board.contracts.empty(), "runtime board has no contracts");
   if (!ok) return 1;
 
   std::string payload_error;
@@ -192,9 +220,9 @@ int main() try {
       &expected_channels_dsl,
       &expected_observation,
       &payload_error);
-  ok = ok && expect(payload_ok, "wave dataloader observation payload decode succeeded");
+  ok = ok && expect(payload_ok, "wave dataloader observation payload decode failed");
   if (!payload_ok) {
-    std::cerr << "[demo:iitepi_board] payload_error=" << payload_error << "\n";
+    log_err("[demo:iitepi_board] payload_error=%s\n", payload_error.c_str());
     return 1;
   }
 
@@ -209,21 +237,21 @@ int main() try {
           .lexically_normal()
           .string();
   ok = ok && expect(expected_sources_dsl == read_text_file(resolved_sources_path),
-                    "sources DSL payload matches selected wave sources file");
+                    "sources DSL payload does not match selected wave sources file");
   ok = ok && expect(expected_channels_dsl == read_text_file(resolved_channels_path),
-                    "channels DSL payload matches selected wave channels file");
+                    "channels DSL payload does not match selected wave channels file");
   if (!ok) return 1;
 
   const auto* built_sources_dsl = init.board.contracts.front().find_dsl_segment(
       tsiemene::kBoardContractObservationSourcesDslKey);
   const auto* built_channels_dsl = init.board.contracts.front().find_dsl_segment(
       tsiemene::kBoardContractObservationChannelsDslKey);
-  ok = ok && expect(built_sources_dsl != nullptr, "board contract stores sources DSL segment");
-  ok = ok && expect(built_channels_dsl != nullptr, "board contract stores channels DSL segment");
+  ok = ok && expect(built_sources_dsl != nullptr, "board contract missing sources DSL segment");
+  ok = ok && expect(built_channels_dsl != nullptr, "board contract missing channels DSL segment");
   ok = ok && expect(built_sources_dsl && *built_sources_dsl == expected_sources_dsl,
-                    "board contract sources DSL segment uses wave-selected payload");
+                    "board contract sources DSL segment does not use wave-selected payload");
   ok = ok && expect(built_channels_dsl && *built_channels_dsl == expected_channels_dsl,
-                    "board contract channels DSL segment uses wave-selected payload");
+                    "board contract channels DSL segment does not use wave-selected payload");
   if (!ok) return 1;
 
   std::string expected_record_type;
@@ -231,46 +259,66 @@ int main() try {
   ok = ok && expect(
       tsiemene::resolve_active_record_type_from_observation(
           expected_observation, &expected_record_type, &expected_record_error),
-      "effective record_type inference succeeded");
+      "effective record_type inference failed");
   if (!ok) {
-    std::cerr << "[demo:iitepi_board] expected_record_error="
-              << expected_record_error << "\n";
+    log_err("[demo:iitepi_board] expected_record_error=%s\n",
+            expected_record_error.c_str());
     return 1;
   }
 
   const std::string expected_sampler = lower_ascii(trim_ascii(selected_wave->sampler));
   ok = ok && expect(init.resolved_record_type == expected_record_type,
-                    "resolved record_type follows wave-selected channels DSL");
+                    "resolved record_type does not follow wave-selected channels DSL");
   ok = ok && expect(init.resolved_sampler == expected_sampler,
-                    "resolved sampler follows wave root SAMPLER");
+                    "resolved sampler does not follow wave root SAMPLER");
   if (!ok) return 1;
 
-  // 3) Run configured binding explicitly (no implicit binding default in run API).
+  // 4) Run configured binding explicitly (no implicit binding default in run API).
   const auto run = cuwacunu::iitepi::run_binding(binding_id);
   if (!run.ok) {
     print_run_failure(run);
   }
 
-  ok = ok && expect(run.ok, "binding run did not succeeded");
-  ok = ok && expect(run.error.empty(), "binding run has no runtime error");
-  ok = ok && expect(run.board_hash == board_hash, "run record board hash matches lock");
+  ok = ok && expect(run.ok, "binding run failed");
+  ok = ok && expect(run.error.empty(), "binding run has runtime error");
+  ok = ok && expect(run.board_hash == board_hash, "run record board hash mismatches lock");
   ok = ok && expect(run.board_binding_id == binding_id,
-                    "run record binding id matches lock");
-  ok = ok && expect(!run.contract_hash.empty(), "run record contains contract hash");
-  ok = ok && expect(!run.wave_hash.empty(), "run record contains wave hash");
-  ok = ok && expect(!run.contract_steps.empty(), "run record contains contract step counts");
-  ok = ok && expect(run.total_steps > 0, "run record reports executed steps");
+                    "run record binding id mismatches lock");
+  ok = ok && expect(!run.contract_hash.empty(), "run record missing contract hash");
+  ok = ok && expect(!run.wave_hash.empty(), "run record missing wave hash");
+  ok = ok && expect(!run.contract_steps.empty(), "run record missing contract step counts");
+  ok = ok && expect(run.total_steps > 0, "run record reports zero executed steps");
   if (!ok) return 1;
 
-  std::cout << "[demo:iitepi_board] contract_hash=" << run.contract_hash
-            << " wave_hash=" << run.wave_hash
-            << " record_type=" << run.resolved_record_type
-            << " sampler=" << run.resolved_sampler
-            << " contracts=" << run.contract_steps.size()
-            << " total_steps=" << run.total_steps << "\n";
+  log_info(
+      "[demo:iitepi_board] contract_hash=%s wave_hash=%s record_type=%s sampler=%s contracts=%zu total_steps=%llu\n",
+      run.contract_hash.c_str(),
+      run.wave_hash.c_str(),
+      run.resolved_record_type.c_str(),
+      run.resolved_sampler.c_str(),
+      run.contract_steps.size(),
+      static_cast<unsigned long long>(run.total_steps));
+
+  // 5) Finalization checks over persisted probe artifacts.
+  ok = ok && expect(!selected_probe_hashimyei.empty(),
+                    "selected wave probe hashimyei is empty");
+  const auto probe_history_path =
+      cuwacunu::hashimyei::store_root() / "tsi.probe" / "representation" /
+      "transfer_matrix_evaluation" / selected_probe_hashimyei /
+      "metrics.history.v1.txt";
+  ok = ok && expect(std::filesystem::exists(probe_history_path),
+                    "probe metrics history file missing under DSL hashimyei path");
+  if (std::filesystem::exists(probe_history_path)) {
+    const std::string history_text = read_text_file(probe_history_path.string());
+    ok = ok && expect(
+        history_text.find("hashimyei=" + selected_probe_hashimyei) !=
+            std::string::npos,
+        "probe history hashimyei does not match selected wave probe path");
+  }
+  if (!ok) return 1;
 
   return 0;
 } catch (const std::exception& e) {
-  std::cerr << "[demo:iitepi_board] exception: " << e.what() << "\n";
+  log_err("[demo:iitepi_board] exception: %s\n", e.what());
   return 1;
 }

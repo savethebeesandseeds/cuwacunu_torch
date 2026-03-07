@@ -23,8 +23,9 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
-#include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 
+#include "hashimyei/hashimyei_identity.h"
 #include "jkimyei/training_setup/jk_setup.h"
 #include "piaabo/dfiles.h"
 #include "piaabo/dconfig.h"
@@ -86,6 +87,19 @@ using DataloaderT = TsiSourceDataloader<Datatype_t, Sampler_t>;
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::string render_instance_args_suffix(
+    const std::vector<std::string>& args) {
+  if (args.empty()) return {};
+  std::ostringstream oss;
+  oss << "(";
+  for (std::size_t i = 0; i < args.size(); ++i) {
+    if (i > 0) oss << ", ";
+    oss << args[i];
+  }
+  oss << ")";
+  return oss.str();
+}
+
 [[nodiscard]] inline std::string resolve_path_from_folder(
     std::string folder,
     std::string path) {
@@ -101,7 +115,7 @@ using DataloaderT = TsiSourceDataloader<Datatype_t, Sampler_t>;
 [[nodiscard]] inline bool load_wave_dataloader_observation_payloads(
     const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>& contract_record,
     const std::shared_ptr<const cuwacunu::iitepi::wave_record_t>& wave_record,
-    const cuwacunu::camahjucunu::tsiemene_wave_t& selected_wave,
+    const cuwacunu::camahjucunu::iitepi_wave_t& selected_wave,
     std::string* out_sources_dsl,
     std::string* out_channels_dsl,
     cuwacunu::camahjucunu::observation_spec_t* out_observation,
@@ -361,7 +375,9 @@ inline void apply_vicreg_flag_overrides_from_component_row(
       }
       return false;
     }
-    oss << "  " << decl.alias << " = " << canonical_tsi_type << "\n";
+    oss << "  " << decl.alias << " = " << canonical_tsi_type
+        << render_instance_args_suffix(decl.args)
+        << "\n";
   }
   for (const auto& h : parsed.hops) {
     if (h.to.directive.empty()) {
@@ -381,9 +397,9 @@ inline void apply_vicreg_flag_overrides_from_component_row(
   return true;
 }
 
-[[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_t*
+[[nodiscard]] inline const cuwacunu::camahjucunu::iitepi_wave_t*
 select_wave_by_id(
-    const cuwacunu::camahjucunu::tsiemene_wave_set_t& instruction,
+    const cuwacunu::camahjucunu::iitepi_wave_set_t& instruction,
     std::string wave_id,
     std::string* error = nullptr) {
   wave_id = trim_ascii_copy(std::move(wave_id));
@@ -391,7 +407,7 @@ select_wave_by_id(
     if (error) *error = "missing required wave id";
     return nullptr;
   }
-  const cuwacunu::camahjucunu::tsiemene_wave_t* chosen = nullptr;
+  const cuwacunu::camahjucunu::iitepi_wave_t* chosen = nullptr;
   for (const auto& wave : instruction.waves) {
     if (trim_ascii_copy(wave.name) == wave_id) {
       if (chosen) {
@@ -435,9 +451,9 @@ select_wave_by_id(
   return out;
 }
 
-[[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t*
+[[nodiscard]] inline const cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t*
 find_wave_wikimyei_decl_by_path(
-    const cuwacunu::camahjucunu::tsiemene_wave_t& wave,
+    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
     std::string_view canonical_path,
     const std::string& contract_hash) {
   for (const auto& w : wave.wikimyeis) {
@@ -449,9 +465,9 @@ find_wave_wikimyei_decl_by_path(
   return nullptr;
 }
 
-[[nodiscard]] inline const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t*
+[[nodiscard]] inline const cuwacunu::camahjucunu::iitepi_wave_source_decl_t*
 find_wave_source_decl_by_path(
-    const cuwacunu::camahjucunu::tsiemene_wave_t& wave,
+    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
     std::string_view canonical_path,
     const std::string& contract_hash) {
   for (const auto& s : wave.sources) {
@@ -463,14 +479,28 @@ find_wave_source_decl_by_path(
   return nullptr;
 }
 
+[[nodiscard]] inline const cuwacunu::camahjucunu::iitepi_wave_probe_decl_t*
+find_wave_probe_decl_by_path(
+    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
+    std::string_view canonical_path,
+    const std::string& contract_hash) {
+  for (const auto& p : wave.probes) {
+    if (canonical_runtime_node_path(p.probe_path, contract_hash, nullptr) ==
+        canonical_path) {
+      return &p;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] inline std::string compose_source_range_command(
-    const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t& source) {
+    const cuwacunu::camahjucunu::iitepi_wave_source_decl_t& source) {
   return source.symbol + "[" + source.from + "," + source.to + "]";
 }
 
 [[nodiscard]] inline std::string compose_invoke_payload_from_wave_source(
-    const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t& source,
-    const cuwacunu::camahjucunu::tsiemene_wave_t& wave) {
+    const cuwacunu::camahjucunu::iitepi_wave_source_decl_t& source,
+    const cuwacunu::camahjucunu::iitepi_wave_t& wave) {
   const std::string source_command = compose_source_range_command(source);
   std::string payload = "wave@symbol:" + source.symbol +
                         ",epochs:" + std::to_string(wave.epochs) +
@@ -491,6 +521,87 @@ template <typename Datatype_t>
   return std::string(record);
 }
 
+[[nodiscard]] inline bool parse_instance_arg_key_value(
+    std::string text,
+    std::string* out_key,
+    std::string* out_value) {
+  if (!out_key || !out_value) return false;
+  text = trim_ascii_copy(std::move(text));
+  const std::size_t eq = text.find('=');
+  if (eq == std::string::npos || eq == 0 || eq + 1 >= text.size()) return false;
+  *out_key = lower_ascii_copy(trim_ascii_copy(text.substr(0, eq)));
+  *out_value = lower_ascii_copy(trim_ascii_copy(text.substr(eq + 1)));
+  return !out_key->empty() && !out_value->empty();
+}
+
+[[nodiscard]] inline bool parse_probe_log_mode_from_instance_args(
+    const cuwacunu::camahjucunu::tsiemene_instance_decl_t& decl,
+    TsiSinkLogSys::LogMode* out_mode,
+    std::string* error) {
+  if (!out_mode) return false;
+  *out_mode = TsiSinkLogSys::LogMode::EachEvent;
+  if (decl.args.empty()) return true;
+
+  bool mode_seen = false;
+  for (const auto& raw_arg : decl.args) {
+    const std::string token = lower_ascii_copy(trim_ascii_copy(raw_arg));
+    if (token.empty()) {
+      if (error) *error = "empty instance argument for alias '" + decl.alias + "'";
+      return false;
+    }
+
+    std::string key;
+    std::string value;
+    if (parse_instance_arg_key_value(token, &key, &value)) {
+      if (key != "mode" && key != "log_mode" && key != "cadence") {
+        if (error) {
+          *error = "unsupported argument key '" + key +
+                   "' for tsi.probe.log alias '" + decl.alias + "'";
+        }
+        return false;
+      }
+      const auto parsed_mode = TsiSinkLogSys::parse_mode_token(value);
+      if (!parsed_mode.has_value()) {
+        if (error) {
+          *error = "invalid tsi.probe.log mode '" + value + "' for alias '" +
+                   decl.alias + "' (expected event|batch|epoch)";
+        }
+        return false;
+      }
+      if (mode_seen) {
+        if (error) {
+          *error = "duplicated tsi.probe.log mode argument for alias '" +
+                   decl.alias + "'";
+        }
+        return false;
+      }
+      *out_mode = *parsed_mode;
+      mode_seen = true;
+      continue;
+    }
+
+    const auto parsed_mode = TsiSinkLogSys::parse_mode_token(token);
+    if (!parsed_mode.has_value()) {
+      if (error) {
+        *error = "invalid tsi.probe.log argument '" + token + "' for alias '" +
+                 decl.alias + "' (expected mode=event|batch|epoch or positional event|batch|epoch)";
+      }
+      return false;
+    }
+    if (mode_seen) {
+      if (error) {
+        *error = "duplicated tsi.probe.log mode argument for alias '" +
+                 decl.alias + "'";
+      }
+      return false;
+    }
+    *out_mode = *parsed_mode;
+    mode_seen = true;
+  }
+
+  return true;
+}
+
 template <typename Datatype_t,
           typename Sampler_t = torch::data::samplers::SequentialSampler>
 std::unique_ptr<Tsi> make_tsi_for_decl(
@@ -509,7 +620,9 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
     bool dataloader_force_rebuild_cache,
     std::uint64_t dataloader_range_warn_batches,
     const DataloaderT<Datatype_t, Sampler_t>* first_dataloader,
-    const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t* wave_wikimyei_decl,
+    const cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t* wave_wikimyei_decl,
+    const cuwacunu::camahjucunu::iitepi_wave_probe_decl_t* wave_probe_decl,
+    std::string_view probe_hashimyei,
     bool* made_dataloader,
     std::string* error) {
   if (made_dataloader) *made_dataloader = false;
@@ -517,6 +630,13 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
 
   switch (type_id) {
     case TsiTypeId::SourceDataloader:
+      if (!decl.args.empty()) {
+        if (error) {
+          *error = "tsi.source.dataloader does not accept instance arguments for alias '" +
+                   decl.alias + "'";
+        }
+        return nullptr;
+      }
       if (made_dataloader) *made_dataloader = true;
       return std::make_unique<DataloaderT<Datatype_t, Sampler_t>>(
           id,
@@ -526,8 +646,16 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
           source_batch_size_override,
           dataloader_workers,
           dataloader_force_rebuild_cache,
-          dataloader_range_warn_batches);
+          dataloader_range_warn_batches,
+          contract_hash);
     case TsiTypeId::WikimyeiRepresentationVicreg: {
+      if (!decl.args.empty()) {
+        if (error) {
+          *error = "tsi.wikimyei.representation.vicreg does not accept instance arguments for alias '" +
+                   decl.alias + "'";
+        }
+        return nullptr;
+      }
       if (!first_dataloader) return nullptr;
 
       const std::string base_component_lookup_name =
@@ -603,12 +731,51 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
           /*detach_to_cpu=*/spec->vicreg_detach_to_cpu);
     }
     case TsiTypeId::ProbeRepresentationTransferMatrixEvaluation:
+      if (!decl.args.empty()) {
+        if (error) {
+          *error = "tsi.probe.representation.transfer_matrix_evaluation does not accept instance arguments for alias '" +
+                   decl.alias + "'";
+        }
+        return nullptr;
+      }
+      if (probe_hashimyei.empty()) {
+        if (error) {
+          *error = "probe tsi_type requires explicit hashimyei suffix "
+                   "(expected tsi.probe.representation.transfer_matrix_evaluation.0x<hex>)";
+        }
+        return nullptr;
+      }
+      if (!cuwacunu::hashimyei::is_hex_hash_name(probe_hashimyei)) {
+        if (error) {
+          *error = "invalid probe hashimyei suffix: " +
+                   std::string(probe_hashimyei);
+        }
+        return nullptr;
+      }
       return std::make_unique<TsiProbeRepresentationTransferMatrixEvaluation>(
-          id, contract_hash, decl.alias);
+          id,
+          contract_hash,
+          decl.alias,
+          std::string(probe_hashimyei),
+          wave_probe_decl
+              ? wave_probe_decl->policy
+              : TsiProbeRepresentationTransferMatrixEvaluation::default_wave_policy());
     case TsiTypeId::SinkNull:
+      if (!decl.args.empty()) {
+        if (error) {
+          *error = "tsi.sink.null does not accept instance arguments for alias '" +
+                   decl.alias + "'";
+        }
+        return nullptr;
+      }
       return std::make_unique<TsiSinkNull>(id, decl.alias);
-    case TsiTypeId::SinkLogSys:
-      return std::make_unique<TsiSinkLogSys>(id, decl.alias);
+    case TsiTypeId::SinkLogSys: {
+      TsiSinkLogSys::LogMode log_mode = TsiSinkLogSys::LogMode::EachEvent;
+      if (!parse_probe_log_mode_from_instance_args(decl, &log_mode, error)) {
+        return nullptr;
+      }
+      return std::make_unique<TsiSinkLogSys>(id, decl.alias, log_mode);
+    }
   }
   return nullptr;
 }
@@ -621,7 +788,7 @@ bool build_runtime_circuit_from_decl(
     const cuwacunu::camahjucunu::observation_spec_t& observation_instruction,
     const cuwacunu::camahjucunu::jkimyei_specs_t& jkimyei_specs,
     std::string_view jkimyei_specs_dsl_text,
-    const cuwacunu::camahjucunu::tsiemene_wave_t* wave,
+    const cuwacunu::camahjucunu::iitepi_wave_t* wave,
     torch::Device device,
     BoardContract* out,
     std::string* error = nullptr) {
@@ -679,6 +846,23 @@ bool build_runtime_circuit_from_decl(
     out->execution.runtime.max_queue_size = static_cast<std::size_t>(max_queue_cfg);
   }
   if (wave) {
+    std::uint64_t mode_flags = wave->mode_flags;
+    if (mode_flags == 0) {
+      std::string mode_error;
+      if (!cuwacunu::camahjucunu::parse_iitepi_wave_mode_flags(
+              wave->mode, &mode_flags, nullptr, &mode_error)) {
+        if (error) {
+          *error = "wave MODE parse failed for '" + wave->name +
+                   "': " + mode_error;
+        }
+        return false;
+      }
+    }
+    out->execution.wave_mode_flags = mode_flags;
+    out->execution.debug_enabled =
+        cuwacunu::camahjucunu::iitepi_wave_mode_has(
+            mode_flags,
+            cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Debug);
     out->execution.epochs = wave->epochs;
     out->execution.batch_size = wave->batch_size;
   }
@@ -704,7 +888,8 @@ bool build_runtime_circuit_from_decl(
   std::uint64_t next_id = 1;
   std::unordered_set<std::string> circuit_wikimyei_paths;
   std::unordered_set<std::string> circuit_source_paths;
-  const cuwacunu::camahjucunu::tsiemene_wave_source_decl_t* selected_wave_source =
+  std::unordered_set<std::string> circuit_probe_paths;
+  const cuwacunu::camahjucunu::iitepi_wave_source_decl_t* selected_wave_source =
       nullptr;
   struct pending_decl_t {
     const cuwacunu::camahjucunu::tsiemene_instance_decl_t* decl{nullptr};
@@ -712,7 +897,10 @@ bool build_runtime_circuit_from_decl(
     const TsiTypeDescriptor* type_desc{nullptr};
     std::string canonical_identity{};
     std::string decl_path{};
-    const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t* wave_wikimyei_decl{
+    std::string probe_hashimyei{};
+    const cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t* wave_wikimyei_decl{
+        nullptr};
+    const cuwacunu::camahjucunu::iitepi_wave_probe_decl_t* wave_probe_decl{
         nullptr};
   };
   std::vector<pending_decl_t> pending_decls;
@@ -767,7 +955,9 @@ bool build_runtime_circuit_from_decl(
       return false;
     }
 
-    const cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t* wave_wikimyei_decl =
+    const cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t* wave_wikimyei_decl =
+        nullptr;
+    const cuwacunu::camahjucunu::iitepi_wave_probe_decl_t* wave_probe_decl =
         nullptr;
     if (wave && type_desc->domain == TsiDomain::Wikimyei) {
       circuit_wikimyei_paths.insert(decl_path);
@@ -795,13 +985,42 @@ bool build_runtime_circuit_from_decl(
         out->spec.instrument = trim_ascii_copy(wave_source_decl->symbol);
       }
     }
+    if (type_desc->domain == TsiDomain::Probe) {
+      if (type_path.hashimyei.empty()) {
+        if (error) {
+          *error = "probe tsi_type for alias '" + decl.alias +
+                   "' requires explicit hashimyei suffix "
+                   "(expected tsi.probe.representation.transfer_matrix_evaluation.0x<hex>)";
+        }
+        return false;
+      }
+      if (!cuwacunu::hashimyei::is_hex_hash_name(type_path.hashimyei)) {
+        if (error) {
+          *error = "probe tsi_type for alias '" + decl.alias +
+                   "' has invalid hashimyei suffix: " + type_path.hashimyei;
+        }
+        return false;
+      }
+    }
+    if (wave && type_desc->domain == TsiDomain::Probe) {
+      circuit_probe_paths.insert(decl_path);
+      wave_probe_decl = find_wave_probe_decl_by_path(*wave, decl_path, contract_hash);
+      if (!wave_probe_decl) {
+        if (error) {
+          *error = "missing PROBE wave block for path '" + decl_path + "'";
+        }
+        return false;
+      }
+    }
     pending_decls.push_back(pending_decl_t{
         .decl = &decl,
         .type_id = *type_id,
         .type_desc = type_desc,
         .canonical_identity = std::string(type_path.canonical_identity),
         .decl_path = decl_path,
+        .probe_hashimyei = type_path.hashimyei,
         .wave_wikimyei_decl = wave_wikimyei_decl,
+        .wave_probe_decl = wave_probe_decl,
     });
   }
 
@@ -828,6 +1047,19 @@ bool build_runtime_circuit_from_decl(
           *error = "wave '" + wave->name +
                    "' contains unknown SOURCE PATH not present in circuit: " +
                    s.source_path;
+        }
+        return false;
+      }
+    }
+    for (const auto& p : wave->probes) {
+      const std::string wave_path =
+          canonical_runtime_node_path(p.probe_path, contract_hash, nullptr);
+      if (wave_path.empty() ||
+          circuit_probe_paths.find(wave_path) == circuit_probe_paths.end()) {
+        if (error) {
+          *error = "wave '" + wave->name +
+                   "' contains unknown PROBE PATH not present in circuit: " +
+                   p.probe_path;
         }
         return false;
       }
@@ -868,7 +1100,7 @@ bool build_runtime_circuit_from_decl(
   invoke_decl.invoke_name = effective_invoke_name;
   invoke_decl.invoke_payload = effective_invoke_payload;
 
-  cuwacunu::camahjucunu::tsiemene_wave_invoke_t invoke{};
+  cuwacunu::camahjucunu::iitepi_wave_invoke_t invoke{};
   if (!cuwacunu::camahjucunu::parse_circuit_invoke_wave(
           invoke_decl, &invoke, error)) {
     return false;
@@ -908,6 +1140,8 @@ bool build_runtime_circuit_from_decl(
         dataloader_range_warn_batches,
         first_dataloader,
         pending.wave_wikimyei_decl,
+        pending.wave_probe_decl,
+        pending.probe_hashimyei,
         &made_dataloader,
         error);
 
@@ -1116,7 +1350,7 @@ bool build_runtime_board_from_instruction(
 
   cuwacunu::camahjucunu::observation_spec_t observation_instruction{};
   cuwacunu::camahjucunu::jkimyei_specs_t jkimyei_specs{};
-  cuwacunu::camahjucunu::tsiemene_wave_set_t wave_set{};
+  cuwacunu::camahjucunu::iitepi_wave_set_t wave_set{};
   try {
     jkimyei_specs = contract_record->jkimyei.decoded();
     wave_set = wave_record->wave.decoded();

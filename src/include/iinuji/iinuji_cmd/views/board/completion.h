@@ -73,6 +73,31 @@ inline std::string_view trim_completion_line_view(std::string_view s) {
   return s;
 }
 
+inline std::string_view strip_instance_args_suffix(std::string_view s) {
+  s = trim_completion_line_view(s);
+  if (s.empty() || s.back() != ')') return s;
+
+  int depth = 0;
+  std::size_t open = std::string_view::npos;
+  for (std::size_t i = s.size(); i-- > 0;) {
+    const char ch = s[i];
+    if (ch == ')') {
+      ++depth;
+      continue;
+    }
+    if (ch == '(') {
+      if (depth == 0) return s;
+      --depth;
+      if (depth == 0) {
+        open = i;
+        break;
+      }
+    }
+  }
+  if (open == std::string_view::npos || depth != 0) return s;
+  return trim_completion_line_view(s.substr(0, open));
+}
+
 inline bool board_line_looks_like_circuit_header(std::string_view line) {
   line = trim_completion_line_view(line);
   return line.find("= {") != std::string_view::npos ||
@@ -154,7 +179,7 @@ inline std::unordered_map<std::string, tsiemene::TsiTypeId> board_alias_type_map
     const std::size_t eq = line.find('=');
     if (eq == std::string_view::npos) continue;
     const std::string alias(trim_completion_line_view(line.substr(0, eq)));
-    const std::string type(trim_completion_line_view(line.substr(eq + 1)));
+    const std::string type(strip_instance_args_suffix(line.substr(eq + 1)));
     if (alias.empty() || type.empty()) continue;
     const auto type_id = tsiemene::parse_tsi_type_id(type);
     if (!type_id.has_value()) continue;

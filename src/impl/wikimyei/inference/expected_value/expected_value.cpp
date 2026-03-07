@@ -15,11 +15,11 @@
 // ------------------------------------------------------------
 // RUNTIME WARNINGS (non-blocking / informational) .cpp
 // ------------------------------------------------------------
-RUNTIME_WARNING("[expected_value.cpp] select_targets uses from_blob()+clone for indices (tiny extra alloc, safe).\n");
-RUNTIME_WARNING("[expected_value.cpp] Channel EMA weights use 1/(ema+eps) with clamp_max to limit volatility.\n");
-RUNTIME_WARNING("[expected_value.cpp] Optimizer state is skipped on CUDA during save; loader tolerates its absence.\n");
-RUNTIME_WARNING("[expected_value.cpp] Checkpoint uses SAFE state-dict (params/buffers only); avoids JIT pickler & undefined buffers.\n");
-RUNTIME_WARNING("[expected_value.cpp] Checkpoint save writes to .tmp and requires successful rename to final path.\n");
+DEV_WARNING("[expected_value.cpp] select_targets uses from_blob()+clone for indices (tiny extra alloc, safe).\n");
+DEV_WARNING("[expected_value.cpp] Channel EMA weights use 1/(ema+eps) with clamp_max to limit volatility.\n");
+DEV_WARNING("[expected_value.cpp] Optimizer state is skipped on CUDA during save; loader tolerates its absence.\n");
+DEV_WARNING("[expected_value.cpp] Checkpoint uses SAFE state-dict (params/buffers only); avoids JIT pickler & undefined buffers.\n");
+DEV_WARNING("[expected_value.cpp] Checkpoint save writes to .tmp and requires successful rename to final path.\n");
 
 namespace cuwacunu {
 namespace wikimyei {

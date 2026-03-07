@@ -68,6 +68,9 @@ private:
   size_t api_key_size;
   /* Decrypted exchange API credential currently held in process memory. */
   char* api_key;
+  size_t openai_api_key_size;
+  /* Decrypted OpenAI API credential currently held in process memory. */
+  char* openai_api_key;
   /* OpenSSL EVP key handle (Ed25519 private key). */
   EVP_PKEY* pkey;
 public:
@@ -83,6 +86,10 @@ public:
 
   /* Return a snapshot copy of the currently loaded API key value. */
   std::string which_api_key();
+  /* Return a snapshot copy of the currently loaded OpenAI API key value.
+   * If not loaded yet, this method lazily decrypts OPENAI_api_filename.
+   */
+  std::string which_openai_api_key();
 
   /* Produce a Base64-encoded Ed25519 signature for `message`. */
   std::string Ed25519_signMessage(const std::string& message);

@@ -30,7 +30,7 @@ std::string circuit_invoke_symbol(const tsiemene_circuit_decl_t& circuit);
 // Optional wave envelope syntax:
 //   wave@episode:2,batch:0,max_batches:4,from:01.01.2009,to:31.12.2009,symbol:BTCUSDT@BTCUSDT[01.01.2009,31.12.2009]
 // Compact payloads remain valid and are treated as source commands directly.
-struct tsiemene_wave_invoke_t {
+struct iitepi_wave_invoke_t {
   std::string source_command{};
   std::string source_symbol{};
   std::uint64_t wave_i{0};
@@ -44,7 +44,7 @@ struct tsiemene_wave_invoke_t {
 };
 
 bool parse_circuit_invoke_wave(const tsiemene_circuit_decl_t& circuit,
-                               tsiemene_wave_invoke_t* out,
+                               iitepi_wave_invoke_t* out,
                                std::string* error = nullptr);
 
 std::string circuit_invoke_command(const tsiemene_circuit_decl_t& circuit);

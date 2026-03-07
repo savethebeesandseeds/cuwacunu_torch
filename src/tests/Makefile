@@ -22,7 +22,7 @@ BNF_PARSER_CORE := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bn
 $(foreach t,$(BNF_PARSER_CORE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/piaabo)))
 
 # ------------------------------ DSL Decoders ---------------------------------
-DSL := dsl_observation dsl_key_value dsl_jkimyei_specs dsl_tsiemene_circuit dsl_tsiemene_wave dsl_tsiemene_board dsl_canonical_path
+DSL := dsl_observation dsl_key_value dsl_jkimyei_specs dsl_tsiemene_circuit dsl_iitepi_wave dsl_tsiemene_board dsl_canonical_path
 $(foreach t,$(DSL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -54,7 +54,7 @@ TSIEMENE := tsi_board_paths
 $(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
 
 # ------------------------------ iitepi----------------------------------
-IITEPI := iitepi_board network_analytics
+IITEPI := iitepi_board network_analytics network_analytics_metrics entropic_capacity_analytics
 $(foreach t,$(IITEPI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iitepi)))
 
 # --------------------------- camahjucunu/https -------------------------------

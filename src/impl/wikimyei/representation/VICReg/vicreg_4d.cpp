@@ -24,8 +24,8 @@
 // ------------------------------------------------------------
 // RUNTIME WARNINGS (non-blocking / informational) .cpp
 // ------------------------------------------------------------
-RUNTIME_WARNING("[vicreg_4d.cpp] In train+emit execution paths, representation payload encode plus VICReg two-view training currently implies ~2 encoder forwards per batch (payload + batched[aug1,aug2]).\n");
-RUNTIME_WARNING("[vicreg_4d.cpp] Future optimization candidate: stack [payload,aug1,aug2] in one encoder call when runtime semantics (SWA/eval-vs-train parity and deterministic emit policy) allow it.\n");
+DEV_WARNING("[vicreg_4d.cpp] In train+emit execution paths, representation payload encode plus VICReg two-view training currently implies ~2 encoder forwards per batch (payload + batched[aug1,aug2]).\n");
+DEV_WARNING("[vicreg_4d.cpp] Future optimization candidate: stack [payload,aug1,aug2] in one encoder call when runtime semantics (SWA/eval-vs-train parity and deterministic emit policy) allow it.\n");
 
 namespace cuwacunu {
 namespace wikimyei {

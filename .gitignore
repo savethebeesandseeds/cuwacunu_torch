@@ -5,9 +5,12 @@
 .idyicyanere/
 /src/build/*
 /src/tests/build/*
+/src/cuwacunu/build/*
 /src/config/*.pem
 /src/config/*.key
 /src/config/*.enc
+/src/config/secure_key_setup
+/src/config/hero_config_mcp
 parse_temp.txt
 out.txt
 diff.patch

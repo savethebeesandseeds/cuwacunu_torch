@@ -204,7 +204,7 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled
   push("Selected Contract", Emph::Accent);
   push("name: " + c.name, Emph::Info);
   push("invoke: " + c.invoke_name + "(" + c.invoke_payload + ")", Emph::Debug);
-  cuwacunu::camahjucunu::tsiemene_wave_invoke_t w{};
+  cuwacunu::camahjucunu::iitepi_wave_invoke_t w{};
   std::string werr;
   if (cuwacunu::camahjucunu::parse_circuit_invoke_wave(c, &w, &werr)) {
     push("symbol: " + w.source_symbol, Emph::Info);

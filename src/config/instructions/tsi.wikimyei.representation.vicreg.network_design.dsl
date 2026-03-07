@@ -19,9 +19,9 @@ NETWORK "tsi.wikimyei.representation.vicreg" {
   JOIN_POLICY = vicreg_default;
 
   node obs@INPUT {
-    C:int = 36;
-    T:int = 64;
-    D:int = 8;
+    C:int = 3;
+    T:int = 30;
+    D:int = 9;
   }
 
   node enc@VICREG_4D_ENCODER {
@@ -39,6 +39,17 @@ NETWORK "tsi.wikimyei.representation.vicreg" {
     hidden_bias:bool = false;
     last_bias:bool = false;
     bn_in_fp32:bool = true;
+  }
+
+  node analytics@NETWORK_ANALYTICS_POLICY {
+    near_zero_epsilon:float = 1e-8;
+    log10_abs_histogram_bins:int = 72;
+    log10_abs_histogram_min:float = -12.0;
+    log10_abs_histogram_max:float = 6.0;
+    include_buffers:bool = true;
+    enable_spectral_metrics:bool = true;
+    spectral_max_elements:int = 1048576;
+    anomaly_top_k:int = 5;
   }
 
   export embedding = enc;

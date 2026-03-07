@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <new>
@@ -23,8 +24,8 @@
 #define FATAL_NON_TTY_AUTH "Authentication requires an interactive TTY terminal."
 #define MAX_PASSWORD_SIZE 1024
 
-RUNTIME_WARNING("(dsecurity.cpp)[] secure the secret with hardware \n");
-RUNTIME_WARNING("(dsecurity.cpp)[] add second factor authentication \n");
+DEV_WARNING("(dsecurity.cpp)[] secure the secret with hardware \n");
+DEV_WARNING("(dsecurity.cpp)[] add second factor authentication \n");
 
 namespace cuwacunu {
 namespace piaabo {
@@ -278,6 +279,85 @@ void restore_dumpable_state() {
     log_secure_error("Failed to restore dumpable state.\n");
   }
 }
+
+void load_and_refresh_aead_secret_file(
+    const std::string& key_filename,
+    const char* passphrase,
+    const char* key_label,
+    bool allow_missing,
+    char** out_key,
+    size_t* out_key_size) {
+  if (out_key == nullptr || out_key_size == nullptr) {
+    log_secure_fatal("Internal error while loading secured key material.\n");
+  }
+  *out_key = nullptr;
+  *out_key_size = 0;
+
+  const std::string label = (key_label != nullptr) ? key_label : "API key";
+
+  if (allow_missing) {
+    std::error_code ec;
+    if (!std::filesystem::exists(key_filename, ec) ||
+        !std::filesystem::is_regular_file(key_filename, ec)) {
+      log_secure_warn("%s file is missing: %s\n", label.c_str(),
+                      key_filename.c_str());
+      return;
+    }
+  }
+
+  size_t key_file_size = 0;
+  ScopedSecureArray<unsigned char> key_filecontents;
+  key_filecontents.adopt(
+      secure_read_from_file(key_filename.c_str(), key_file_size), key_file_size);
+
+  if (key_file_size == 0 || key_filecontents.data() == nullptr) {
+    if (allow_missing) {
+      log_secure_warn("Empty %s file: %s\n", label.c_str(), key_filename.c_str());
+      return;
+    }
+    log_secure_fatal(
+        "Empty %s file: %s, please follow instructions on ../config/README.md\n",
+        label.c_str(), key_filename.c_str());
+  }
+  if (!dencryption::is_aead_blob(key_filecontents.data(), key_file_size)) {
+    log_secure_fatal("Non-compliant %s file: %s, expected AEAD envelope format\n",
+                     label.c_str(), key_filename.c_str());
+  }
+
+  size_t decrypted_len = 0;
+  ScopedSecureArray<unsigned char> decrypted;
+  unsigned char* decrypted_ptr = dencryption::aead_decrypt_blob(
+      key_filecontents.data(), key_file_size, passphrase, decrypted_len);
+  if (decrypted_ptr == nullptr) {
+    log_secure_fatal("Failed to decrypt AEAD %s file: %s\n", label.c_str(),
+                     key_filename.c_str());
+  }
+  decrypted.adopt(decrypted_ptr, decrypted_len);
+
+  const size_t new_key_size = decrypted_len + 1;
+  char* new_key = secure_allocate<char>(new_key_size);
+  if (decrypted_len > 0) {
+    memcpy(new_key, reinterpret_cast<const char*>(decrypted.data()), decrypted_len);
+  }
+  new_key[decrypted_len] = '\0';
+
+  size_t encrypted_len = 0;
+  unsigned char* encrypted_ptr =
+      dencryption::aead_encrypt_blob(decrypted.data(), decrypted_len, passphrase,
+                                     encrypted_len);
+  if (encrypted_ptr == nullptr) {
+    secure_delete<char>(new_key, new_key_size);
+    log_secure_fatal("Failed to encrypt %s file: %s\n", label.c_str(),
+                     key_filename.c_str());
+  }
+
+  ScopedSecureArray<unsigned char> encrypted;
+  encrypted.adopt(encrypted_ptr, encrypted_len);
+  secure_write_to_file(key_filename.c_str(), encrypted.data(), encrypted_len);
+
+  *out_key = new_key;
+  *out_key_size = new_key_size;
+}
 } // namespace
 
 /* secure data struct */
@@ -288,6 +368,8 @@ SecureStronghold_t::SecureStronghold_t()
       secret(secure_allocate<char>(MAX_PASSWORD_SIZE)),
       api_key_size(0),
       api_key(nullptr),
+      openai_api_key_size(0),
+      openai_api_key(nullptr),
       pkey(nullptr) {
   secure_code();
   try {
@@ -313,6 +395,10 @@ SecureStronghold_t::~SecureStronghold_t() {
     secure_delete<char>(api_key, api_key_size);
     api_key = nullptr;
     api_key_size = 0;
+
+    secure_delete<char>(openai_api_key, openai_api_key_size);
+    openai_api_key = nullptr;
+    openai_api_key_size = 0;
 
     secure_delete<char>(secret, secret_size);
     secret = nullptr;
@@ -346,6 +432,10 @@ void SecureStronghold_t::authenticate() {
     secure_delete<char>(api_key, api_key_size);
     api_key = nullptr;
     api_key_size = 0;
+
+    secure_delete<char>(openai_api_key, openai_api_key_size);
+    openai_api_key = nullptr;
+    openai_api_key_size = 0;
 
     while (true) {
       const auto start_time = std::chrono::steady_clock::now();
@@ -393,54 +483,9 @@ void SecureStronghold_t::authenticate() {
     log_secure_info("%s\n", CORRECT_AUTH);
 
     const std::string api_key_filename = cuwacunu::iitepi::config_space_t::api_key();
-
-    size_t api_key_filesize = 0;
-
-    ScopedSecureArray<unsigned char> api_key_filecontents;
-    api_key_filecontents.adopt(
-        secure_read_from_file(api_key_filename.c_str(), api_key_filesize), api_key_filesize);
-
-    if (api_key_filesize == 0 || api_key_filecontents.data() == nullptr) {
-      log_secure_fatal(
-          "Empty Exchange API Key file: %s, please follow instructions on ../config/README.md\n",
-          api_key_filename.c_str());
-    }
-    if (!dencryption::is_aead_blob(api_key_filecontents.data(), api_key_filesize)) {
-      log_secure_fatal(
-          "Non-compliant Exchange API Key file: %s, expected AEAD envelope format\n",
-          api_key_filename.c_str());
-    }
-
-    size_t decrypted_len = 0;
-    ScopedSecureArray<unsigned char> decrypted;
-    unsigned char* decrypted_ptr = dencryption::aead_decrypt_blob(
-        api_key_filecontents.data(), api_key_filesize, static_cast<const char*>(secret),
-        decrypted_len);
-    if (decrypted_ptr == nullptr) {
-      log_secure_fatal("Failed to decrypt AEAD API key file: %s\n", api_key_filename.c_str());
-    }
-    decrypted.adopt(decrypted_ptr, decrypted_len);
-
-    const size_t new_api_key_size = decrypted_len + 1;
-    char* new_api_key = secure_allocate<char>(new_api_key_size);
-    if (decrypted_len > 0) {
-      memcpy(new_api_key, reinterpret_cast<const char*>(decrypted.data()), decrypted_len);
-    }
-    new_api_key[decrypted_len] = '\0';
-    api_key = new_api_key;
-    api_key_size = new_api_key_size;
-
-    size_t encrypted_len = 0;
-    unsigned char* encrypted_ptr = dencryption::aead_encrypt_blob(
-        decrypted.data(), decrypted_len, static_cast<const char*>(secret), encrypted_len);
-    if (encrypted_ptr == nullptr) {
-      log_secure_fatal("Failed to encrypt API key file: %s\n", api_key_filename.c_str());
-    }
-
-    ScopedSecureArray<unsigned char> encrypted;
-    encrypted.adopt(encrypted_ptr, encrypted_len);
-
-    secure_write_to_file(api_key_filename.c_str(), encrypted.data(), encrypted_len);
+    load_and_refresh_aead_secret_file(
+        api_key_filename, static_cast<const char*>(secret), "Exchange API Key",
+        false, &api_key, &api_key_size);
 
     is_authenticated = true;
     relax_code();
@@ -457,6 +502,37 @@ std::string SecureStronghold_t::which_api_key() {
     return "";
   }
   return std::string(api_key);
+}
+
+std::string SecureStronghold_t::which_openai_api_key() {
+  secure_code();
+  try {
+    std::string value;
+    {
+      std::lock_guard<std::mutex> lock(stronghold_mutex);
+      if (!is_authenticated || secret == nullptr) {
+        relax_code();
+        return value;
+      }
+
+      if (openai_api_key == nullptr || openai_api_key_size == 0) {
+        const std::string openai_key_filename =
+            cuwacunu::iitepi::config_space_t::hero_api_key_filename();
+        load_and_refresh_aead_secret_file(
+            openai_key_filename, static_cast<const char*>(secret), "OpenAI API Key",
+            true, &openai_api_key, &openai_api_key_size);
+      }
+
+      if (openai_api_key != nullptr && openai_api_key_size > 0) {
+        value = std::string(openai_api_key);
+      }
+    }
+    relax_code();
+    return value;
+  } catch (...) {
+    restore_dumpable_state();
+    throw;
+  }
 }
 
 /* Safely sign key data from key file */

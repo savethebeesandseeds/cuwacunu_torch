@@ -68,10 +68,35 @@ int main() {
     const auto probe_decoded =
         cuwacunu::camahjucunu::dsl::decode_key_value_from_dsl(grammar, probe_dsl);
     const auto probe_map = probe_decoded.to_map();
-    assert(probe_map.size() == 3);
+    assert(probe_map.size() == 28);
     assert(probe_map.at("check_temporal_order") == "true");
     assert(probe_map.at("validate_vicreg_out") == "true");
     assert(probe_map.at("report_shapes") == "false");
+    assert(probe_map.at("reset_hashimyei_on_start") == "false");
+    assert(probe_map.at("mdn_mixture_comps") == "1");
+    assert(probe_map.at("mdn_features_hidden") == "8");
+    assert(probe_map.at("mdn_residual_depth") == "0");
+    assert(probe_map.at("mdn_target_dims") == "3");
+    assert(probe_map.at("dtype") == "kFloat32");
+    assert(probe_map.at("device") == "gpu");
+    assert(probe_map.at("optimizer_lr") == "3e-4");
+    assert(probe_map.at("optimizer_weight_decay") == "1e-4");
+    assert(probe_map.at("optimizer_beta1") == "0.9");
+    assert(probe_map.at("optimizer_beta2") == "0.999");
+    assert(probe_map.at("optimizer_eps") == "1e-8");
+    assert(probe_map.at("grad_clip") == "0.5");
+    assert(probe_map.at("nll_eps") == "1e-5");
+    assert(probe_map.at("nll_sigma_min") == "5e-2");
+    assert(probe_map.at("nll_sigma_max") == "0.0");
+    assert(probe_map.at("anchor_train_ratio") == "0.70");
+    assert(probe_map.at("anchor_val_ratio") == "0.15");
+    assert(probe_map.at("anchor_test_ratio") == "0.15");
+    assert(probe_map.at("prequential_blocks") == "5");
+    assert(probe_map.at("control_shuffle_block") == "32");
+    assert(probe_map.at("control_shuffle_seed") == "1337");
+    assert(probe_map.at("linear_ridge_lambda") == "1e-2");
+    assert(probe_map.at("gaussian_var_min") == "1e-4");
+    assert(probe_map.at("summary_every_steps") == "256");
 
     const std::string duplicate_keys =
         "alpha:int = 1\n"

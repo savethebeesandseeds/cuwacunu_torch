@@ -1,11 +1,11 @@
 #include "piaabo/dutils.h"
 
 // Optional developer reminders. Enable explicitly to avoid noisy startup logs.
-#ifdef CUWACUNU_ENABLE_RUNTIME_WARNINGS
-RUNTIME_WARNING("(dutils.cpp) #FIXME be aware to seed all random number generator seeds, seed is for reproducibility, you actually dont want to seed or seed with a random seed.\n");
-RUNTIME_WARNING("(dutils.cpp) #FIXME Valgrind debug with libtorch suppressed warnings.\n");
-RUNTIME_WARNING("(dutils.cpp) #FIXME revisit that all dependencies .d files are correct stated on the makefiles for each file, for instance dutils.cpp is missing as a dependency everywhere.\n");
-RUNTIME_WARNING("(dutils.cpp) be aware of the floating point precision when printing doubles.\n");
+#ifdef CUWACUNU_ENABLE_DEV_WARNINGS
+DEV_WARNING("(dutils.cpp) #FIXME be aware to seed all random number generator seeds, seed is for reproducibility, you actually dont want to seed or seed with a random seed.\n");
+DEV_WARNING("(dutils.cpp) #FIXME Valgrind debug with libtorch suppressed warnings.\n");
+DEV_WARNING("(dutils.cpp) #FIXME revisit that all dependencies .d files are correct stated on the makefiles for each file, for instance dutils.cpp is missing as a dependency everywhere.\n");
+DEV_WARNING("(dutils.cpp) be aware of the floating point precision when printing doubles.\n");
 #endif
 
 #if __cplusplus < 201703L

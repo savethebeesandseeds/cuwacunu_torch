@@ -1,7 +1,7 @@
 /* bnf_grammar_lexer.cpp */
 #include "piaabo/bnf_compat/grammar_lexer.h"
 
-RUNTIME_WARNING("(bnf_grammar_lexer.cpp)[] guard printing the errors with secure methods \n");
+DEV_WARNING("(bnf_grammar_lexer.cpp)[] guard printing the errors with secure methods \n");
 
 namespace cuwacunu {
 namespace piaabo {

@@ -1,7 +1,7 @@
 #include "piaabo/torch_compat/distributions/beta.h"
 
-RUNTIME_WARNING("(beta.cpp)[] #FIXME: Beta distribution needs testing.\n");
-RUNTIME_WARNING("(beta.cpp)[] #FIXME change floats to double. \n");
+DEV_WARNING("(beta.cpp)[] #FIXME: Beta distribution needs testing.\n");
+DEV_WARNING("(beta.cpp)[] #FIXME change floats to double. \n");
 
 namespace cuwacunu {
 namespace piaabo {

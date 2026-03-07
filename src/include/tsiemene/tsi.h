@@ -18,6 +18,8 @@ using TsiId = std::uint64_t;
 // Opaque runtime context (board/session can hang whatever it wants here).
 struct BoardContext {
   void* user = nullptr;
+  std::uint64_t wave_mode_flags{0};
+  bool debug_enabled{false};
 };
 
 // One ingress token delivered to one input directive.

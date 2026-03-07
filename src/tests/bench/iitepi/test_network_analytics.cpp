@@ -11,7 +11,10 @@ int main() try {
 
   cuwacunu::iitepi::board_space_t::init();
   cuwacunu::iitepi::board_space_t::assert_locked_runtime_intact_or_fail_fast();
-  cuwacunu::iitepi::board_space_t::network_analytics(&std::cout, /*beautify=*/true);
+  cuwacunu::iitepi::board_space_t::network_analytics(
+      &std::cout,
+      /*beautify=*/true,
+      cuwacunu::iitepi::network_analytics_mode_e::Both);
 
   return 0;
 } catch (const std::exception& e) {

@@ -314,6 +314,8 @@ inline std::uint64_t run_circuit(BoardContract& c,
                                  BoardContext& ctx,
                                  std::string* error = nullptr) {
   if (error) error->clear();
+  ctx.wave_mode_flags = c.execution.wave_mode_flags;
+  ctx.debug_enabled = c.execution.debug_enabled;
   CircuitIssue issue{};
   if (!c.ensure_compiled(&issue)) {
     if (error) {
@@ -372,9 +374,11 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
     if (!wik->supports_init_artifacts()) continue;
     if (!wik->runtime_autoload_artifacts()) continue;
 
+    const bool enable_debug_outputs = c.execution.debug_enabled;
     std::string local_error;
     if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
-                                          &local_error)) {
+                                          &local_error,
+                                          &enable_debug_outputs)) {
       // Training-enabled wikimyei are allowed to bootstrap from scratch when
       // the configured artifact id is not present yet. The first successful
       // run will persist the artifact at epoch end.
@@ -404,9 +408,11 @@ inline bool save_contract_wikimyei_artifacts(BoardContract& c,
     if (!wik->supports_init_artifacts()) continue;
     if (!wik->runtime_autosave_artifacts()) continue;
 
+    const bool enable_debug_outputs = c.execution.debug_enabled;
     std::string local_error;
     if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
-                                        &local_error)) {
+                                        &local_error,
+                                        &enable_debug_outputs)) {
       if (error) {
         *error = "failed to save wikimyei artifacts for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
@@ -420,40 +426,70 @@ inline bool save_contract_wikimyei_artifacts(BoardContract& c,
 inline std::uint64_t run_contract(BoardContract& c,
                                   BoardContext& ctx,
                                   std::string* error = nullptr) {
+  // Contract runtime initialization: compile + artifact preload.
   if (error) error->clear();
+  ctx.wave_mode_flags = c.execution.wave_mode_flags;
+  ctx.debug_enabled = c.execution.debug_enabled;
+  log_info("[board.contract.run] start contract=%s epochs=%llu\n",
+           c.name.empty() ? "<empty>" : c.name.c_str(),
+           static_cast<unsigned long long>(
+               std::max<std::uint64_t>(1, c.execution.epochs)));
   CircuitIssue issue{};
   if (!c.ensure_compiled(&issue)) {
     if (error) {
       *error = std::string("compile_circuit failed: ");
       error->append(issue.what.data(), issue.what.size());
     }
+    log_err("[board.contract.run] compile failed contract=%s error=%s\n",
+            c.name.empty() ? "<empty>" : c.name.c_str(),
+            error && !error->empty() ? error->c_str() : "<empty>");
     return 0;
   }
   std::string artifact_error;
   if (!load_contract_wikimyei_artifacts(c, &artifact_error)) {
     if (error) *error = artifact_error;
+    log_err("[board.contract.run] preload failed contract=%s error=%s\n",
+            c.name.empty() ? "<empty>" : c.name.c_str(),
+            artifact_error.empty() ? "<empty>" : artifact_error.c_str());
     return 0;
   }
+
+  // Epoch execution + callbacks.
   const std::uint64_t epochs = std::max<std::uint64_t>(1, c.execution.epochs);
   std::uint64_t total_steps = 0;
   for (std::uint64_t epoch = 0; epoch < epochs; ++epoch) {
     reset_contract_nodes(c, ctx);
     const Wave start_wave = wave_for_epoch(c.seed_wave, epoch);
-    total_steps +=
+    const std::uint64_t epoch_steps =
         run_wave_compiled(
             c.compiled_runtime,
             start_wave,
             c.seed_ingress,
             ctx,
             c.execution.runtime);
+    total_steps += epoch_steps;
+    log_info("[board.contract.run] epoch done contract=%s epoch=%llu/%llu steps=%llu cumulative=%llu\n",
+             c.name.empty() ? "<empty>" : c.name.c_str(),
+             static_cast<unsigned long long>(epoch + 1),
+             static_cast<unsigned long long>(epochs),
+             static_cast<unsigned long long>(epoch_steps),
+             static_cast<unsigned long long>(total_steps));
     for (auto& node : c.nodes) {
       if (node) node->on_epoch_end(ctx);
     }
   }
+
+  // Finalization: persist autosave artifacts after the execution loop.
   if (!save_contract_wikimyei_artifacts(c, &artifact_error)) {
     if (error) *error = artifact_error;
+    log_err("[board.contract.run] finalize failed contract=%s error=%s\n",
+            c.name.empty() ? "<empty>" : c.name.c_str(),
+            artifact_error.empty() ? "<empty>" : artifact_error.c_str());
     return 0;
   }
+  log_info("[board.contract.run] done contract=%s total_steps=%llu\n",
+           c.name.empty() ? "<empty>" : c.name.c_str(),
+           static_cast<unsigned long long>(total_steps));
   return total_steps;
 }
 

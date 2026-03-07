@@ -1,0 +1,103 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = iitepi.contract.circuit
+TARGET_DSL = src/config/instructions/iitepi.contract.circuit.example.dsl
+TARGET_BNF = src/config/bnf/iitepi.contract.circuit.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_decode_text.cpp
+PRIMARY_VALIDATORS = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_validate.cpp,src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_resolve.cpp
+
+[FIELD CIRCUIT.NAME]
+key = <circuit_name>
+scope = circuit
+type = identifier
+required = true
+default = none
+range = unique per instruction
+allowed = [A-Za-z0-9_]+
+nuance = duplicate circuit names are rejected
+
+[FIELD INSTANCE.ALIAS]
+key = <instance_alias>
+scope = circuit instance
+type = identifier
+required = true
+default = none
+range = unique within circuit
+allowed = [A-Za-z0-9_]+
+nuance = every declared instance must be referenced by at least one hop endpoint
+
+[FIELD INSTANCE.TSI_TYPE]
+key = <tsi_type>
+scope = circuit instance
+type = canonical_node_path
+required = true
+default = none
+range = supported tsi type id
+allowed = tsi.source.dataloader,tsi.wikimyei.representation.vicreg.0x<hex>,tsi.probe.representation.transfer_matrix_evaluation.0x<hex>,tsi.probe.log,tsi.sink.null
+nuance = unique-instance tsi types are enforced (for example tsi.probe.log is unique per circuit)
+
+[FIELD INSTANCE.ARGS]
+key = <instance_args>
+scope = circuit instance
+type = comma token list
+required = false
+default = empty
+range = parser token list
+allowed = mode=event|batch|epoch,event,batch,epoch plus component-specific tokens
+nuance = tsi.probe.log accepts only mode/log_mode/cadence key forms or positional event|batch|epoch; duplicates are rejected
+
+[FIELD HOP.FROM]
+key = <from>@<directive>:<kind>
+scope = hop
+type = endpoint
+required = true
+default = none
+range = must be valid output lane of source tsi type
+allowed = directive tokens from registry, kind in str|tensor|cargo
+nuance = runtime resolver checks endpoint compatibility against tsi type manifest
+
+[FIELD HOP.TO]
+key = <to>@<directive>
+scope = hop
+type = endpoint
+required = true
+default = none
+range = must be valid input lane of target tsi type
+allowed = directive token only; kind omitted
+nuance = target kind cast is forbidden; target inbound kind is inferred from source endpoint kind
+
+[RULE CIRCUIT_MINIMAL]
+id = CIRCUIT_MINIMAL
+applies_to = circuit
+severity = error
+when = no instances or no hops
+message = circuit must define at least one instance and one hop
+
+[RULE CIRCUIT_ROOT]
+id = CIRCUIT_ROOT
+applies_to = hop graph
+severity = error
+when = root_count != 1
+message = circuit must have exactly one root instance
+
+[RULE CIRCUIT_ACYCLIC]
+id = CIRCUIT_ACYCLIC
+applies_to = hop graph
+severity = error
+when = directed cycle exists
+message = cycle detected in circuit hops
+
+[RULE CIRCUIT_REACHABILITY]
+id = CIRCUIT_REACHABILITY
+applies_to = hop graph
+severity = error
+when = any referenced node unreachable from root
+message = unreachable instance from circuit root
+
+[RULE CIRCUIT_TERMINAL_SINK]
+id = CIRCUIT_TERMINAL_SINK
+applies_to = terminal nodes
+severity = error
+when = node out_degree == 0 and node tsi type is not sink
+message = terminal instance must be sink type

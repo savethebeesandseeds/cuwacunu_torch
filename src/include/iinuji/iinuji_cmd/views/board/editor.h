@@ -21,7 +21,16 @@ inline std::string render_board_circuit_instruction_text(
   std::ostringstream oss;
   oss << c.name << " = {\n";
   for (const auto& inst : c.instances) {
-    oss << "  " << inst.alias << " = " << inst.tsi_type << "\n";
+    oss << "  " << inst.alias << " = " << inst.tsi_type;
+    if (!inst.args.empty()) {
+      oss << "(";
+      for (std::size_t i = 0; i < inst.args.size(); ++i) {
+        if (i > 0) oss << ", ";
+        oss << inst.args[i];
+      }
+      oss << ")";
+    }
+    oss << "\n";
   }
   for (const auto& h : c.hops) {
     oss << "  " << h.from.instance << "@" << h.from.directive;

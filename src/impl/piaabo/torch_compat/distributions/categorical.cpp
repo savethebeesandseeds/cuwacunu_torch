@@ -1,6 +1,6 @@
 #include "piaabo/torch_compat/distributions/categorical.h"
 
-RUNTIME_WARNING("(categorical.cpp)[] #FIXME: Categorical distribution needs testing.\n");
+DEV_WARNING("(categorical.cpp)[] #FIXME: Categorical distribution needs testing.\n");
 
 namespace cuwacunu {
 namespace piaabo {

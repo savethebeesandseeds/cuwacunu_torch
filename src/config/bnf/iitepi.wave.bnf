@@ -12,7 +12,8 @@
                            | <batch_size_assignment>
                            | <max_batches_per_epoch_assignment>
                            | <wikimyei_block>
-                           | <source_block> ;
+                           | <source_block>
+                           | <probe_block> ;
 
 <mode_assignment>        ::= "MODE" [<whitespace>] "=" [<whitespace>] <mode_value> [<whitespace>] ";" <line_end> ;
 <sampler_assignment>     ::= "SAMPLER" [<whitespace>] "=" [<whitespace>] <sampler_value> [<whitespace>] ";" <line_end> ;
@@ -56,16 +57,42 @@
 <source_sources_dsl_file_assignment> ::= "SOURCES_DSL_FILE" [<whitespace>] "=" [<whitespace>] <file_path_value> [<whitespace>] ";" <line_end> ;
 <source_channels_dsl_file_assignment> ::= "CHANNELS_DSL_FILE" [<whitespace>] "=" [<whitespace>] <file_path_value> [<whitespace>] ";" <line_end> ;
 
+<probe_block>            ::= "PROBE" [<whitespace>] <path_ref> [<whitespace>] "{"
+                             <line_end>
+                             {<probe_assignment>}
+                             [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
+<probe_assignment>       ::= [<whitespace>] <probe_assignment_core> ;
+<probe_assignment_core>  ::= <probe_path_assignment>
+                           | <probe_training_window_assignment>
+                           | <probe_report_policy_assignment>
+                           | <probe_objective_assignment> ;
+<probe_path_assignment>  ::= "PATH" [<whitespace>] "=" [<whitespace>] <probe_path_value> [<whitespace>] ";" <line_end> ;
+<probe_training_window_assignment> ::= "TRAINING_WINDOW" [<whitespace>] "=" [<whitespace>] <probe_training_window_value> [<whitespace>] ";" <line_end> ;
+<probe_report_policy_assignment> ::= "REPORT_POLICY" [<whitespace>] "=" [<whitespace>] <probe_report_policy_value> [<whitespace>] ";" <line_end> ;
+<probe_objective_assignment> ::= "OBJECTIVE" [<whitespace>] "=" [<whitespace>] <probe_objective_value> [<whitespace>] ";" <line_end> ;
+
 <wave_name>              ::= <id_value> ;
 <path_ref>               ::= <path_value> ;
 <path_value>             ::= <id_value> ;
+<probe_path_value>       ::= "tsi.probe.representation.transfer_matrix_evaluation" "." <hashimyei_id> ;
+<hashimyei_id>           ::= "0x" <hex_digit> {<hex_digit>}
+                           | "0X" <hex_digit> {<hex_digit>} ;
 <id_value>               ::= <id_char> {<id_char>} ;
-<mode_value>             ::= "train" | "run" ;
+<mode_value>             ::= <mode_atom> { [<whitespace>] <mode_join> [<whitespace>] <mode_atom> } ;
+<mode_atom>              ::= "train" | "run" | "debug" | <unsigned_int> | <hex_literal> | <bin_literal> ;
+<mode_join>              ::= "|" | "," | "+" | "^" ;
 <sampler_value>          ::= "sequential" | "random" | "SequentialSampler" | "RandomSampler" ;
+<probe_training_window_value> ::= "incoming_batch" ;
+<probe_report_policy_value> ::= "epoch_end_log" ;
+<probe_objective_value>  ::= "future_target_dims_nll" ;
 <bool_value>             ::= "true" | "false" | "1" | "0" ;
 <symbol_value>           ::= <symbol_char> {<symbol_char>} ;
 <date_value>             ::= <digit><digit> "." <digit><digit> "." <digit><digit><digit><digit> ;
 <unsigned_int>           ::= <digit> {<digit>} ;
+<hex_literal>            ::= "0x" <hex_digit> {<hex_digit>}
+                           | "0X" <hex_digit> {<hex_digit>} ;
+<bin_literal>            ::= "0b" <bin_digit> {<bin_digit>}
+                           | "0B" <bin_digit> {<bin_digit>} ;
 <file_path_value>        ::= <file_path_char> {<file_path_char>} ;
 
 <id_char>                ::= <letter> | <digit> | "_" | "." | "-" ;
@@ -76,6 +103,8 @@
 <break_block>            ::= {<newline>} ;
 <whitespace>             ::= {<empty>} ;
 <letter>                 ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<hex_digit>              ::= <digit> | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" ;
+<bin_digit>              ::= "0" | "1" ;
 <digit>                  ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 <newline>                ::= "\n" | "\r\n" ;
 <empty>                  ::= " " | "\t" ;

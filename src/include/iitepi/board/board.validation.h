@@ -14,7 +14,7 @@
 #include "camahjucunu/dsl/canonical_path/canonical_path.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
-#include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "tsiemene/tsi.type.registry.h"
 
 namespace tsiemene {
@@ -148,13 +148,14 @@ struct CompatibilityReport {
 }
 
 [[nodiscard]] inline WaveValidationReport validate_wave_definition(
-    const cuwacunu::camahjucunu::tsiemene_wave_t& wave,
+    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
     const std::string& contract_hash = {}) {
   WaveValidationReport report{};
   report.ok = true;
 
   std::unordered_set<std::string> wikimyei_paths;
   std::unordered_set<std::string> source_paths;
+  std::unordered_set<std::string> probe_paths;
   bool has_train_true = false;
 
   for (const auto& w : wave.wikimyeis) {
@@ -212,6 +213,33 @@ struct CompatibilityReport {
     }
   }
 
+  for (const auto& p : wave.probes) {
+    std::string path_error;
+    const auto node_path =
+        canonical_node_path_or_nullopt(p.probe_path, contract_hash, &path_error);
+    if (!node_path.has_value()) {
+      report.ok = false;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::InvalidWavePath,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = {},
+          .wave_path = p.probe_path,
+          .message = "invalid wave PROBE PATH: " + path_error,
+      });
+      continue;
+    }
+    if (!probe_paths.insert(*node_path).second) {
+      report.ok = false;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::InvalidReference,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = {},
+          .wave_path = *node_path,
+          .message = "duplicate PROBE PATH in wave",
+      });
+    }
+  }
+
   auto lower_ascii_copy = [](std::string s) {
     for (char& ch : s) {
       ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
@@ -231,7 +259,39 @@ struct CompatibilityReport {
         .message = "invalid SAMPLER; expected sequential|random",
     });
   }
-  if (mode == "run" && has_train_true) {
+  std::uint64_t mode_flags = wave.mode_flags;
+  if (mode_flags == 0 && !mode.empty() && mode != "none") {
+    std::string mode_error;
+    if (!cuwacunu::camahjucunu::parse_iitepi_wave_mode_flags(
+            mode, &mode_flags, nullptr, &mode_error)) {
+      report.ok = false;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::InvalidReference,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = {},
+          .wave_path = wave.name,
+          .message = "invalid MODE: " + mode_error,
+      });
+    }
+  }
+
+  const bool run_enabled = cuwacunu::camahjucunu::iitepi_wave_mode_has(
+      mode_flags,
+      cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Run);
+  const bool train_enabled = cuwacunu::camahjucunu::iitepi_wave_mode_has(
+      mode_flags,
+      cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Train);
+  if (!run_enabled && !train_enabled) {
+    report.ok = false;
+    report.indicators.push_back(CompatibilityIndicator{
+        .code = CompatibilityCode::InvalidReference,
+        .severity = CompatibilitySeverity::Error,
+        .contract_path = {},
+        .wave_path = wave.name,
+        .message = "MODE must enable run or train",
+    });
+  }
+  if (run_enabled && !train_enabled && has_train_true) {
     report.ok = false;
     report.indicators.push_back(CompatibilityIndicator{
         .code = CompatibilityCode::InvalidReference,
@@ -241,14 +301,14 @@ struct CompatibilityReport {
         .message = "MODE=run forbids TRAIN=true",
     });
   }
-  if (mode == "train" && !has_train_true) {
+  if (train_enabled && !has_train_true) {
     report.ok = false;
     report.indicators.push_back(CompatibilityIndicator{
         .code = CompatibilityCode::InvalidReference,
         .severity = CompatibilitySeverity::Error,
         .contract_path = {},
         .wave_path = wave.name,
-        .message = "MODE=train requires at least one TRAIN=true",
+        .message = "MODE with train bit requires at least one TRAIN=true",
     });
   }
   return report;
@@ -284,7 +344,7 @@ find_component_profile_row(
 
 [[nodiscard]] inline CompatibilityReport validate_wave_contract_compatibility(
     const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& circuit_instruction,
-    const cuwacunu::camahjucunu::tsiemene_wave_t& wave,
+    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
     const std::string& contract_hash,
     const cuwacunu::camahjucunu::jkimyei_specs_t* jkimyei_specs = nullptr,
     std::string contract_id = {},
@@ -297,6 +357,7 @@ find_component_profile_row(
   std::unordered_set<std::string> contract_paths;
   std::unordered_set<std::string> contract_wikimyei_paths;
   std::unordered_set<std::string> contract_source_paths;
+  std::unordered_set<std::string> contract_probe_paths;
   for (const auto& circuit : circuit_instruction.circuits) {
     for (const auto& instance : circuit.instances) {
       std::string path_error;
@@ -324,6 +385,8 @@ find_component_profile_row(
         contract_wikimyei_paths.insert(*parsed_path);
       } else if (tsi_type_domain(*type_id) == TsiDomain::Source) {
         contract_source_paths.insert(*parsed_path);
+      } else if (tsi_type_domain(*type_id) == TsiDomain::Probe) {
+        contract_probe_paths.insert(*parsed_path);
       }
     }
   }
@@ -331,6 +394,7 @@ find_component_profile_row(
   std::unordered_set<std::string> wave_paths;
   std::unordered_set<std::string> wave_wikimyei_paths;
   std::unordered_set<std::string> wave_source_paths;
+  std::unordered_set<std::string> wave_probe_paths;
   for (const auto& w : wave.wikimyeis) {
     std::string path_error;
     const auto parsed_path =
@@ -413,6 +477,25 @@ find_component_profile_row(
     wave_paths.insert(*parsed_path);
     wave_source_paths.insert(*parsed_path);
   }
+  for (const auto& p : wave.probes) {
+    std::string path_error;
+    const auto parsed_path =
+        canonical_node_path_or_nullopt(p.probe_path, contract_hash, &path_error);
+    if (!parsed_path.has_value()) {
+      report.ok = false;
+      ++report.invalid_ref;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::InvalidWavePath,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = {},
+          .wave_path = p.probe_path,
+          .message = "invalid wave probe path: " + path_error,
+      });
+      continue;
+    }
+    wave_paths.insert(*parsed_path);
+    wave_probe_paths.insert(*parsed_path);
+  }
 
   if (contract_source_paths.size() != 1) {
     report.ok = false;
@@ -465,6 +548,19 @@ find_component_profile_row(
       });
     }
   }
+  for (const auto& wave_path : wave_probe_paths) {
+    if (contract_probe_paths.find(wave_path) == contract_probe_paths.end()) {
+      report.ok = false;
+      ++report.missing;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::MissingContractPath,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = {},
+          .wave_path = wave_path,
+          .message = "wave probe path not present in contract",
+      });
+    }
+  }
 
   for (const auto& contract_path : contract_wikimyei_paths) {
     if (wave_wikimyei_paths.find(contract_path) == wave_wikimyei_paths.end()) {
@@ -489,6 +585,19 @@ find_component_profile_row(
           .contract_path = contract_path,
           .wave_path = {},
           .message = "contract source path missing in wave declaration",
+      });
+    }
+  }
+  for (const auto& contract_path : contract_probe_paths) {
+    if (wave_probe_paths.find(contract_path) == wave_probe_paths.end()) {
+      report.ok = false;
+      ++report.extra;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::MissingWavePath,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = contract_path,
+          .wave_path = {},
+          .message = "contract probe path missing in wave declaration",
       });
     }
   }

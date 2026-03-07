@@ -2,7 +2,7 @@
 #include "piaabo/bnf_compat/ast.h"
 #include "piaabo/bnf_compat/visitor.h"
 
-RUNTIME_WARNING("(bnf_ast.cpp)[] node hashes are not actually hashes \n");
+DEV_WARNING("(bnf_ast.cpp)[] node hashes are not actually hashes \n");
 
 namespace cuwacunu {
 namespace piaabo {

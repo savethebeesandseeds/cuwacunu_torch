@@ -114,10 +114,10 @@ parse_ddmmyyyy_to_unix_ms_(std::string_view ddmmyyyy, bool end_of_day) {
 }
 
 bool parse_wave_envelope_(std::string payload,
-                          tsiemene_wave_invoke_t* out,
+                          iitepi_wave_invoke_t* out,
                           std::string* error) {
   if (!out) return false;
-  *out = tsiemene_wave_invoke_t{};
+  *out = iitepi_wave_invoke_t{};
 
   payload = trim_ascii_ws_copy(std::move(payload));
   if (payload.empty()) {
@@ -312,20 +312,20 @@ std::optional<tsiemene::PayloadKind> parse_kind_ref(std::string s) {
 }
 
 bool parse_circuit_invoke_wave(const tsiemene_circuit_decl_t& circuit,
-                               tsiemene_wave_invoke_t* out,
+                               iitepi_wave_invoke_t* out,
                                std::string* error) {
   return parse_wave_envelope_(circuit.invoke_payload, out, error);
 }
 
 std::string circuit_invoke_command(const tsiemene_circuit_decl_t& circuit) {
-  tsiemene_wave_invoke_t parsed{};
+  iitepi_wave_invoke_t parsed{};
   std::string local_error;
   if (!parse_circuit_invoke_wave(circuit, &parsed, &local_error)) return {};
   return parsed.source_command;
 }
 
 std::string circuit_invoke_symbol(const tsiemene_circuit_decl_t& circuit) {
-  tsiemene_wave_invoke_t parsed{};
+  iitepi_wave_invoke_t parsed{};
   std::string local_error;
   if (!parse_circuit_invoke_wave(circuit, &parsed, &local_error)) return {};
   return parsed.source_symbol;

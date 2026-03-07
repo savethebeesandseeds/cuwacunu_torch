@@ -1,0 +1,74 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = canonical_path
+TARGET_DSL = canonical-path textual expressions across board/circuit/wave
+TARGET_BNF = src/config/bnf/canonical_path.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/canonical_path/canonical_path.cpp
+PRIMARY_VALIDATORS = decode_and_validate_canonical_path
+
+[FIELD PATH.BASE]
+key = <base_path>
+scope = canonical path
+type = dot atoms
+required = true
+default = none
+range = root in tsi|board|iinuji
+allowed = atom chars [A-Za-z0-9_]
+nuance = atom punctuation outside underscore is rejected
+
+[FIELD PATH.CALL]
+key = (<arg_list>)
+scope = canonical path
+type = optional call suffix
+required = false
+default = none
+range = zero or more args
+allowed = arg or arg=value where arg key is atom
+nuance = argument keys must be valid atoms; value tokens allow .-/:@
+
+[FIELD PATH.ENDPOINT]
+key = @directive:kind
+scope = canonical path
+type = optional endpoint suffix
+required = false
+default = none
+range = directive in registry, kind in :str|:tensor|:cargo
+allowed = aliases with or without leading @ and colon are normalized
+nuance = for known tsi types, endpoint directive/kind is validated against tsi endpoint compatibility manifest
+
+[ENUM ROOTS]
+key = roots
+values = tsi,board,iinuji
+
+[ENUM KINDS]
+key = kind
+values = :str,:tensor,:cargo
+
+[RULE LEGACY_ALIAS_REMOVAL]
+id = LEGACY_ALIAS_REMOVAL
+applies_to = PATH.BASE
+severity = error
+when = uses removed namespaces tsi.wave.generator or tsi.wikimyei.wave.generator or tsi.wikimyei.source.* or trailing .jkimyei
+message = legacy canonical path aliases are removed and rejected
+
+[RULE HASHIMYEI_REQUIRED]
+id = HASHIMYEI_REQUIRED
+applies_to = tsi hashimyei instance types
+severity = error
+when = hashimyei suffix missing for HashimyeiInstances type
+message = explicit 0x<hex> hashimyei suffix is required
+
+[RULE HASHIMYEI_DEFAULT_REMOVED]
+id = HASHIMYEI_DEFAULT_REMOVED
+applies_to = hashimyei suffix
+severity = error
+when = suffix == default
+message = legacy hashimyei alias default is removed; use explicit 0x<hex>
+
+[RULE KIND_CANONICALIZATION]
+id = KIND_CANONICALIZATION
+applies_to = endpoint kind
+severity = info
+when = kind token supplied as str|tensor|cargo
+message = kind is canonicalized to :str|:tensor|:cargo

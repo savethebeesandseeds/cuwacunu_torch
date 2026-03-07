@@ -7,10 +7,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -27,11 +29,12 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/data/observation_sample.h"
+#include "piaabo/torch_compat/data_analytics.h"
 
 // ------------------------------------------------------------
 // RUNTIME WARNINGS (non-blocking / informational) .h
 // ------------------------------------------------------------
-RUNTIME_WARNING("[tsi.source.dataloader.h] TODO: add regime/OOD-aware sampling policies for representation evaluation (blocked temporal splits, regime holdout, cross-instrument holdout). Current sampler policy is sequential/random index traversal only.\n");
+DEV_WARNING("[tsi.source.dataloader.h] TODO: add regime/OOD-aware sampling policies for representation evaluation (blocked temporal splits, regime holdout, cross-instrument holdout). Current sampler policy is sequential/random index traversal only.\n");
 
 namespace tsiemene {
 
@@ -55,23 +58,28 @@ class TsiSourceDataloader final : public TsiSource {
 
   TsiSourceDataloader(TsiId id,
                       std::string instrument,
-                      cuwacunu::camahjucunu::observation_spec_t observation_instruction,
+                      const cuwacunu::camahjucunu::observation_spec_t& observation_instruction,
                       torch::Device device = torch::kCPU,
                       std::size_t batch_size_override = 0,
                       std::uint64_t dataloader_workers = 0,
                       bool force_rebuild_cache = true,
-                      std::uint64_t range_warn_batches = 256)
+                      std::uint64_t range_warn_batches = 256,
+                      std::string contract_hash = {})
       : id_(id),
         instrument_(std::move(instrument)),
         type_name_("tsi.source.dataloader"),
         instance_name_(type_name_ + "." + instrument_),
+        contract_hash_(std::move(contract_hash)),
         dataloader_workers_(dataloader_workers),
         force_rebuild_cache_(force_rebuild_cache),
         range_warn_batches_(std::max<std::uint64_t>(1, range_warn_batches)),
         device_(device),
         dataset_(make_dataset_(
-            instrument_, std::move(observation_instruction), force_rebuild_cache)),
-        dl_(make_loader_(dataset_, batch_size_override, dataloader_workers)) {
+            instrument_, observation_instruction, force_rebuild_cache)),
+        dl_(make_loader_(dataset_, batch_size_override, dataloader_workers)),
+        data_analytics_options_(
+            data_analytics_options_from_observation_(observation_instruction)),
+        data_analytics_acc_(data_analytics_options_) {
     C_ = dl_.C_;
     T_ = dl_.T_;
     D_ = dl_.D_;
@@ -90,6 +98,9 @@ class TsiSourceDataloader final : public TsiSource {
   [[nodiscard]] int64_t T() const noexcept { return T_; }
   [[nodiscard]] int64_t D() const noexcept { return D_; }
   [[nodiscard]] int64_t batch_size_hint() const noexcept { return B_hint_; }
+  [[nodiscard]] const std::filesystem::path& latest_data_analytics_file() const noexcept {
+    return latest_data_analytics_file_;
+  }
 
   [[nodiscard]] std::span<const DirectiveSpec> directives() const noexcept override {
     static constexpr DirectiveSpec kDirectives[] = {
@@ -166,6 +177,7 @@ class TsiSourceDataloader final : public TsiSource {
     if (!validate_observation_cargo(pb.sample, CargoValidationStage::SourceOut, &cargo_error)) {
       emit_meta_(witem, out, std::string("cargo.invalid stage=source.out reason=") + cargo_error);
     } else {
+      ingest_data_analytics_sample_(*pb.sample);
       out.emit_cargo(witem, OUT_PAYLOAD, std::move(pb.sample));
       ++episode_emitted_;
     }
@@ -192,6 +204,7 @@ class TsiSourceDataloader final : public TsiSource {
     it_ = dl_.begin();
     end_ = dl_.end();
     iter_ready_ = true;
+    data_analytics_acc_.reset();
   }
 
  private:
@@ -334,10 +347,10 @@ class TsiSourceDataloader final : public TsiSource {
 
   static Dataset_t make_dataset_(
       std::string_view instrument,
-      cuwacunu::camahjucunu::observation_spec_t observation_instruction,
+      const cuwacunu::camahjucunu::observation_spec_t& observation_instruction,
       bool force_rebuild_cache) {
     return cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<Datatype_t>(
-        std::string(instrument), std::move(observation_instruction),
+        std::string(instrument), observation_instruction,
         force_rebuild_cache);
   }
 
@@ -444,6 +457,7 @@ class TsiSourceDataloader final : public TsiSource {
 
   [[nodiscard]] bool start_episode_(const Wave& wave, std::string_view cmd_text, Emitter& out) {
     clear_episode_state_();
+    data_analytics_acc_.reset();
     active_cmd_ = parse_command_(cmd_text, wave);
     emit_command_meta_(wave, active_cmd_, out);
 
@@ -574,6 +588,7 @@ class TsiSourceDataloader final : public TsiSource {
         .span_end_ms = episode_wave_span_end_ms_,
         .has_time_span = episode_wave_has_time_span_,
     };
+    persist_data_analytics_(w, out);
     emit_meta_(w, out, std::move(msg));
     clear_episode_state_();
   }
@@ -640,11 +655,80 @@ class TsiSourceDataloader final : public TsiSource {
     emit_meta_(wave, out, oss.str());
   }
 
+  [[nodiscard]] static cuwacunu::piaabo::torch_compat::data_analytics_options_t
+  data_analytics_options_from_observation_(
+      const cuwacunu::camahjucunu::observation_spec_t& observation_instruction) {
+    const auto& policy = observation_instruction.data_analytics_policy;
+    if (!policy.declared) {
+      throw std::runtime_error(
+          "observation DATA_ANALYTICS_POLICY is required for tsi.source.dataloader");
+    }
+    if (policy.max_samples <= 0 || policy.max_features <= 0) {
+      throw std::runtime_error(
+          "observation DATA_ANALYTICS_POLICY requires MAX_SAMPLES/MAX_FEATURES > 0");
+    }
+    if (policy.mask_epsilon < 0.0L) {
+      throw std::runtime_error(
+          "observation DATA_ANALYTICS_POLICY.MASK_EPSILON must be >= 0");
+    }
+    if (!(policy.standardize_epsilon > 0.0L)) {
+      throw std::runtime_error(
+          "observation DATA_ANALYTICS_POLICY.STANDARDIZE_EPSILON must be > 0");
+    }
+
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t out{};
+    out.max_samples = policy.max_samples;
+    out.max_features = policy.max_features;
+    out.mask_epsilon = static_cast<double>(policy.mask_epsilon);
+    out.standardize_epsilon = static_cast<double>(policy.standardize_epsilon);
+    return out;
+  }
+
+  void ingest_data_analytics_sample_(const Sample_t& sample) {
+    if (!sample.features.defined() || sample.features.numel() == 0) return;
+    (void)data_analytics_acc_.ingest(sample.features, sample.mask);
+  }
+
+  void persist_data_analytics_(const Wave& wave, Emitter& out) {
+    if (contract_hash_.empty()) return;
+    const auto output_file =
+        cuwacunu::piaabo::torch_compat::source_data_analytics_latest_file_path(
+            contract_hash_, instance_name_);
+    if (output_file.empty()) return;
+
+    const auto report = data_analytics_acc_.summarize();
+    std::string write_error;
+    if (!cuwacunu::piaabo::torch_compat::write_data_analytics_file(
+            report,
+            data_analytics_options_,
+            output_file,
+            instance_name_,
+            &write_error)) {
+      emit_meta_(
+          wave,
+          out,
+          std::string("dataloader.data_analytics.warn reason=write-failed detail=") +
+              write_error);
+      return;
+    }
+
+    latest_data_analytics_file_ = output_file;
+    std::ostringstream oss;
+    oss.setf(std::ios::fixed);
+    oss << std::setprecision(6)
+        << "dataloader.data_analytics"
+        << " file=" << output_file.string()
+        << " source_entropic_load=" << report.source_entropic_load
+        << " valid_sample_count=" << report.valid_sample_count;
+    emit_meta_(wave, out, oss.str());
+  }
+
  private:
     TsiId id_{};
     std::string instrument_;
     std::string type_name_;
     std::string instance_name_;
+    std::string contract_hash_{};
     std::uint64_t dataloader_workers_{0};
     bool force_rebuild_cache_{true};
     std::uint64_t range_warn_batches_{256};
@@ -659,6 +743,10 @@ class TsiSourceDataloader final : public TsiSource {
     Iterator_t it_{dl_.end()};
     Iterator_t end_{dl_.end()};
     bool iter_ready_{false};
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t data_analytics_options_{};
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t
+        data_analytics_acc_{data_analytics_options_};
+    std::filesystem::path latest_data_analytics_file_{};
 
     // Episode cursor state (single-batch stepping + runtime continuation).
     bool episode_active_{false};

@@ -1,0 +1,73 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = global.config.real_hero
+TARGET_DSL = src/config/.config
+TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
+PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/include/HERO/hero_config/hero.config.h
+
+[ENUM REAL_HERO.mode]
+key = REAL_HERO.mode
+values = openai,selfhosted
+
+[FIELD REAL_HERO.mode]
+key = mode
+scope = REAL_HERO section
+type = enum
+required = true
+default = openai
+range = one token
+allowed = openai,selfhosted
+nuance = selfhosted fails fast with deployment-funds guidance
+
+[FIELD REAL_HERO.transport]
+key = transport
+scope = REAL_HERO section
+type = enum
+required = true
+default = curl
+range = one token
+allowed = curl
+nuance = current implementation is curl-only
+
+[FIELD REAL_HERO.OPENAI_api_filename]
+key = OPENAI_api_filename
+scope = REAL_HERO section
+type = path
+required = true
+default = /cuwacunu/src/config/secrets/real/openai.key
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = should reference secured key material file, not inline plaintext
+
+[FIELD REAL_HERO.endpoint]
+key = endpoint
+scope = REAL_HERO section
+type = string
+required = true
+default = https://api.openai.com/v1/responses
+range = non-empty URL
+allowed = HTTPS URL
+nuance = active endpoint for mode=openai
+
+[RULE REAL_HERO_MODE_ALLOWED]
+id = REAL_HERO_MODE_ALLOWED
+applies_to = REAL_HERO.mode
+severity = error
+when = mode not in {openai,selfhosted}
+message = REAL_HERO.mode must be openai or selfhosted
+
+[RULE REAL_HERO_SELFHOSTED_FAILFAST]
+id = REAL_HERO_SELFHOSTED_FAILFAST
+applies_to = REAL_HERO.mode
+severity = error
+when = mode == selfhosted
+message = isufficient founds for self hosted model deployment, please change mode to openai.
+
+[RULE REAL_HERO_TRANSPORT]
+id = REAL_HERO_TRANSPORT
+applies_to = REAL_HERO.mode,REAL_HERO.transport
+severity = error
+when = mode == openai and transport != curl
+message = REAL_HERO.transport must be curl in openai mode

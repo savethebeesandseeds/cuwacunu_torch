@@ -54,8 +54,8 @@ int main() {
           "dup_log = {\n"
           "  w_source = tsi.source.dataloader\n"
           "  w_rep = tsi.wikimyei.representation.vicreg.0x0000\n"
-          "  w_log_1 = tsi.sink.log.sys\n"
-          "  w_log_2 = tsi.sink.log.sys\n"
+          "  w_log_1 = tsi.probe.log\n"
+          "  w_log_2 = tsi.probe.log\n"
           "  w_source@response:cargo -> w_rep@impulse\n"
           "  w_rep@loss:tensor -> w_log_1@info\n"
           "  w_rep@meta:str -> w_log_2@debug\n"
@@ -69,7 +69,40 @@ int main() {
       if (!invalid_error.empty()) std::cout << " error=\"" << invalid_error << "\"";
       std::cout << "\n";
       if (invalid_ok) {
-        std::cerr << "[FAIL] expected duplicate unique sink.log.sys to be rejected\n";
+        std::cerr << "[FAIL] expected duplicate unique tsi.probe.log to be rejected\n";
+        return 1;
+      }
+    }
+
+    {
+      const std::string mode_instruction =
+          "log_mode_parse = {\n"
+          "  w_source = tsi.source.dataloader\n"
+          "  w_rep = tsi.wikimyei.representation.vicreg.0x0000\n"
+          "  w_log = tsi.probe.log(mode=epoch)\n"
+          "  w_source@response:cargo -> w_rep@impulse\n"
+          "  w_rep@loss:tensor -> w_log@info\n"
+          "}\n";
+      auto mode_decoded = board.decode(mode_instruction);
+      std::string mode_error;
+      const bool mode_ok =
+          cuwacunu::camahjucunu::validate_circuit_instruction(mode_decoded, &mode_error);
+      if (!mode_ok) {
+        std::cerr << "[FAIL] expected tsi.probe.log(mode=epoch) to validate: "
+                  << mode_error << "\n";
+        return 1;
+      }
+      const auto* parsed_log = [&]() -> const cuwacunu::camahjucunu::tsiemene_instance_decl_t* {
+        if (mode_decoded.circuits.empty()) return nullptr;
+        for (const auto& inst : mode_decoded.circuits[0].instances) {
+          if (inst.alias == "w_log") return &inst;
+        }
+        return nullptr;
+      }();
+      if (!parsed_log ||
+          parsed_log->args.size() != 1 ||
+          parsed_log->args[0] != "mode=epoch") {
+        std::cerr << "[FAIL] expected parser to preserve tsi.probe.log instance args\n";
         return 1;
       }
     }
@@ -80,7 +113,7 @@ int main() {
       spec.invoke_name = "wave_dispatch";
       spec.invoke_payload =
           "wave@symbol:BTCUSDT,episode:7,batch:3,max_batches:2,from:01.01.2009,to:31.12.2009@BTCUSDT[01.01.2009,31.12.2009]";
-      cuwacunu::camahjucunu::tsiemene_wave_invoke_t parsed{};
+      cuwacunu::camahjucunu::iitepi_wave_invoke_t parsed{};
       std::string invoke_error;
       const bool ok = cuwacunu::camahjucunu::parse_circuit_invoke_wave(spec, &parsed, &invoke_error);
       std::cout << "[test_dsl_tsiemene_circuit] invoke.wave.parse=" << (ok ? "true" : "false");

@@ -150,8 +150,8 @@ int main() {
     }
     {
       auto bad_log_info = cuwacunu::camahjucunu::decode_canonical_path(
-          "tsi.sink.log.sys@info:str");
-      ok = ok && require(!bad_log_info.ok, "sink.log.sys should reject @info:str");
+          "tsi.probe.log@info:str");
+      ok = ok && require(!bad_log_info.ok, "tsi.probe.log should reject @info:str");
     }
     {
       auto bad_init_kind = cuwacunu::camahjucunu::decode_canonical_path(

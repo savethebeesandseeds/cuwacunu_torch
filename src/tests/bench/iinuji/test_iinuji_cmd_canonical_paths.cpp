@@ -639,8 +639,10 @@ int main() {
                        "show() canonical path should append lines for current screen");
 
     st.logs.level_filter = LogsLevelFilter::DebugOrHigher;
+    st.logs.metadata_filter = LogsMetadataFilter::Any;
     st.logs.show_date = true;
     st.logs.show_thread = true;
+    st.logs.show_metadata = true;
     st.logs.show_color = true;
     st.logs.auto_follow = true;
     st.logs.mouse_capture = true;
@@ -695,6 +697,63 @@ int main() {
         "logs.settings.thread.toggle canonical path should be handled");
     ok = ok && require(st.logs.show_thread != logs_thread_before,
                        "logs.settings.thread.toggle should flip show_thread");
+
+    const bool logs_metadata_before = st.logs.show_metadata;
+    ok = ok && require(
+        handlers.dispatch_text("iinuji.logs.settings.metadata.toggle()", push_info, push_warn, push_err),
+        "logs.settings.metadata.toggle canonical path should be handled");
+    ok = ok && require(st.logs.show_metadata != logs_metadata_before,
+                       "logs.settings.metadata.toggle should flip show_metadata");
+
+    ok = ok && require(
+        handlers.dispatch_text(
+            "iinuji.logs.settings.metadata.filter.any_meta()",
+            push_info,
+            push_warn,
+            push_err),
+        "logs.settings.metadata.filter.any_meta canonical path should be handled");
+    ok = ok && require(st.logs.metadata_filter == LogsMetadataFilter::WithAnyMetadata,
+                       "logs.settings.metadata.filter.any_meta should set metadata filter to WithAnyMetadata");
+
+    ok = ok && require(
+        handlers.dispatch_text(
+            "iinuji.logs.settings.metadata.filter.function()",
+            push_info,
+            push_warn,
+            push_err),
+        "logs.settings.metadata.filter.function canonical path should be handled");
+    ok = ok && require(st.logs.metadata_filter == LogsMetadataFilter::WithFunction,
+                       "logs.settings.metadata.filter.function should set metadata filter to WithFunction");
+
+    ok = ok && require(
+        handlers.dispatch_text(
+            "iinuji.logs.settings.metadata.filter.path()",
+            push_info,
+            push_warn,
+            push_err),
+        "logs.settings.metadata.filter.path canonical path should be handled");
+    ok = ok && require(st.logs.metadata_filter == LogsMetadataFilter::WithPath,
+                       "logs.settings.metadata.filter.path should set metadata filter to WithPath");
+
+    ok = ok && require(
+        handlers.dispatch_text(
+            "iinuji.logs.settings.metadata.filter.callsite()",
+            push_info,
+            push_warn,
+            push_err),
+        "logs.settings.metadata.filter.callsite canonical path should be handled");
+    ok = ok && require(st.logs.metadata_filter == LogsMetadataFilter::WithCallsite,
+                       "logs.settings.metadata.filter.callsite should set metadata filter to WithCallsite");
+
+    ok = ok && require(
+        handlers.dispatch_text(
+            "iinuji.logs.settings.metadata.filter.any()",
+            push_info,
+            push_warn,
+            push_err),
+        "logs.settings.metadata.filter.any canonical path should be handled");
+    ok = ok && require(st.logs.metadata_filter == LogsMetadataFilter::Any,
+                       "logs.settings.metadata.filter.any should set metadata filter to Any");
 
     const bool logs_color_before = st.logs.show_color;
     ok = ok && require(

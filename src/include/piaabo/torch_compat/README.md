@@ -43,25 +43,85 @@ Public API:
 - `network_design_analytics_to_pretty_text(...)`
 - `write_network_analytics_file(...)`
 - `write_network_analytics_sidecar_for_checkpoint(...)`
+- `extract_analytics_kv_schema(...)`
+- `is_supported_network_analytics_schema(...)`
+- `is_supported_network_design_analytics_schema(...)`
 
 The sidecar writer emits a key/value text file next to `.pt` checkpoints
-(extension `.network_analytics.kv`) with compact global parameter diagnostics:
+(extension `.network_analytics.kv`) with compact global parameter diagnostics.
+Current schema is v4 and keeps canonical-only keys:
 
 - finite/non-finite ratios (NaN/Inf counts)
-- scale stats (`mean`, `stddev`, `l1_mean_abs`, `l2_rms`, `max_abs`)
-- sparsity/sign balance (`near_zero_ratio`, positive/negative/zero ratios)
+- scale stats (`stddev`, `l1_mean_abs`, `l2_rms`, `min`, `max`, `max_abs`)
+- sparsity (`near_zero_ratio`, `exact_zero_ratio`)
 - entropy proxies (`abs_energy_entropy`, `log10_abs_histogram_entropy`)
-- layer-scale stability proxy (`layer_rms_cv`, min/max spread)
+- tensor-scale stability (`tensor_rms_*`)
+- robust magnitude quantiles (`abs_p50`, `abs_p90`, `abs_p99`, `log10_abs_iqr`)
+- optional buffer-state diagnostics (`finite_buffer_ratio`, `max_abs_buffer_name`)
+- guarded spectral diagnostics for matrix-like tensors (`spectral_norm_*`,
+  `stable_rank_*`, `effective_rank_*`, row/col norm CV means)
+- global entropic capacity proxy from effective-rank distribution
+  (`network_global_entropic_capacity`, `network_entropic_bottleneck_min`,
+  `network_effective_rank_p50`, `network_effective_rank_p90`)
+- top-k anomaly tables (`top_nonfinite_ratio_*`,
+  `top_max_abs_over_rms_*`, `top_near_zero_ratio_*`,
+  `top_low_stable_rank_*`, `top_low_effective_rank_*`,
+  `top_high_spectral_norm_*`)
+
+## Data Analytics Sidecar
+
+`torch_compat` now includes source-window data analytics in:
+
+- `include/piaabo/torch_compat/data_analytics.h`
+- `impl/piaabo/torch_compat/data_analytics.cpp`
+
+This module computes source entropic load from mask-aware flattened past windows
+and writes deterministic key/value sidecars under the hashimyei data root.
+Schema: `piaabo.torch_compat.data_analytics.v1`.
+
+Runtime config source: `tsi.source.dataloader.sources.dsl` via required block
+`DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
+No silent fallback defaults are used by `tsi.source.dataloader`.
+
+## Entropic Capacity Comparison Sidecar
+
+`torch_compat` now includes a comparison sidecar in:
+
+- `include/piaabo/torch_compat/entropic_capacity_comparison.h`
+- `impl/piaabo/torch_compat/entropic_capacity_comparison.cpp`
+
+It joins source and network analytics into headline metrics:
+
+- `source_entropic_load`
+- `network_entropic_capacity`
+- `capacity_margin`
+- `capacity_ratio`
+- `capacity_regime`
+
+Schema: `piaabo.torch_compat.entropic_capacity_comparison.v1`.
 
 The network-design analytics API provides topology-level diagnostics directly
-from `network_design_instruction_t`:
+from `network_design_instruction_t`. Current schema is v3 and emits only canonical
+topology metrics (no legacy aliases):
 
 - graph size/shape (`node_count`, internal/export edge counts, density)
 - graph structure (`weakly_connected_components`, `isolated_node_count`,
-  cycle detection, topological coverage, DAG longest path)
-- complexity proxies (`branching_factor`, `cyclomatic_complexity`)
-- entropy proxies over structure and semantics (`node_kind_entropy`,
-  degree entropies, edge transition entropy, parameter key/token entropy)
+  cycle detection, topological order count/ratio, DAG longest path)
+- directionality (`source_count`, `internal_sink_count`,
+  `export_reachable_ratio`, `dead_end_node_count`, `orphan_node_count`)
+- path geometry (`longest_source_to_export_path_nodes`,
+  `median_source_to_export_path_nodes`, `skip_edge_count`, `mean_skip_span`)
+- cycle burden (`scc_count`, `largest_scc_size`, `cyclic_node_ratio`)
+- complexity (`active_fanout_mean`, `edge_surplus`)
+- edge evidence transparency (`explicit_edge_count`, `inferred_edge_count`,
+  unresolved/self-reference token counters)
+- entropy proxies over structure (`node_kind_entropy`,
+  degree entropies, edge transition entropy)
+
+Network checkpoint-side analytics options are resolved from
+`network_design.dsl` through required node kind `NETWORK_ANALYTICS_POLICY`
+with strict key validation (unknown/missing keys fail option resolution and
+sidecar generation is explicitly skipped with warning).
 
 ## Network Design Adapter
 

@@ -15,16 +15,26 @@ enum class LogsLevelFilter : std::uint8_t {
   FatalOnly = 4,
 };
 
+enum class LogsMetadataFilter : std::uint8_t {
+  Any = 0,
+  WithAnyMetadata = 1,
+  WithFunction = 2,
+  WithPath = 3,
+  WithCallsite = 4,
+};
+
 inline constexpr std::size_t logs_settings_count() {
-  return 6;
+  return 8;
 }
 
 struct LogsState {
   bool auto_follow{true};
   bool mouse_capture{true};
   LogsLevelFilter level_filter{LogsLevelFilter::DebugOrHigher};
+  LogsMetadataFilter metadata_filter{LogsMetadataFilter::Any};
   bool show_date{true};
   bool show_thread{true};
+  bool show_metadata{true};
   bool show_color{true};
   std::size_t selected_setting{0};
   int pending_scroll_y{0};

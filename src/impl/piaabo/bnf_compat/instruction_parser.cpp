@@ -1,8 +1,8 @@
 /* bnf_instruction_parser.cpp */
 #include "piaabo/bnf_compat/instruction_parser.h"
 
-RUNTIME_WARNING("(bnf_instruction_parser.cpp)[] overall the methods in this file can be faster\n");
-RUNTIME_WARNING("(bnf_instruction_parser.cpp)[parse_ProductionAlternative] ProductionAlternative::Flags are not used\n");
+DEV_WARNING("(bnf_instruction_parser.cpp)[] overall the methods in this file can be faster\n");
+DEV_WARNING("(bnf_instruction_parser.cpp)[parse_ProductionAlternative] ProductionAlternative::Flags are not used\n");
 
 namespace cuwacunu {
 namespace piaabo {

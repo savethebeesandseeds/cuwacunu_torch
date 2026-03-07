@@ -13,6 +13,7 @@ At a high level, it combines:
 - `include/`: public headers and module APIs.
 - `impl/`: module implementations.
 - `tests/`: benchmark-style and functional test targets.
+- `cuwacunu/`: production/operator-facing executable entrypoints.
 - `config/`: runtime configs, DSL grammars, and instruction files.
 - `Makefile`, `Makefile.config`: top-level build orchestration for `src/`.
 
@@ -32,4 +33,5 @@ At a high level, it combines:
 make modules   # build core modules
 make all       # build modules + bundles
 make tests     # run test dispatcher
+make cuwacunu  # build runtime entrypoint tree
 ```

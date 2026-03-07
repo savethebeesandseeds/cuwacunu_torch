@@ -68,7 +68,7 @@ The practical idea is:
 - `tsi.wikimyei.representation.vicreg`
 - `tsi.probe.representation.transfer_matrix_evaluation`
 - `tsi.sink.null`
-- `tsi.sink.log.sys`
+- `tsi.probe.log`
 
 ## Design direction (non-normative)
 The project is moving toward:
@@ -96,7 +96,7 @@ For exact constraints, use:
 
 ## Reference tests
 - `src/tests/bench/camahjucunu/test_dsl_tsiemene_circuit.cpp`
-- `src/tests/bench/camahjucunu/test_dsl_tsiemene_wave.cpp`
+- `src/tests/bench/camahjucunu/test_dsl_iitepi_wave.cpp`
 - `src/tests/bench/iitepi/test_iitepi_board.cpp`
 - `src/tests/bench/tsiemene/test_board_contract_init.cpp`
 - `src/tests/bench/tsiemene/test_tsi_board_paths.cpp`

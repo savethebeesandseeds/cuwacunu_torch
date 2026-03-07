@@ -118,6 +118,36 @@ bool dispatch_logs_call(CallHandlerId call_id,
       screen.logs();
       push_info(std::string("logs.thread=") + (state.logs.show_thread ? "on" : "off"));
       return true;
+    case CallHandlerId::LogsSettingsMetadataToggle:
+      state.logs.show_metadata = !state.logs.show_metadata;
+      screen.logs();
+      push_info(std::string("logs.metadata=") + (state.logs.show_metadata ? "on" : "off"));
+      return true;
+    case CallHandlerId::LogsSettingsMetadataFilterAny:
+      state.logs.metadata_filter = LogsMetadataFilter::Any;
+      screen.logs();
+      push_info("logs.metadata_filter=ANY");
+      return true;
+    case CallHandlerId::LogsSettingsMetadataFilterAnyMeta:
+      state.logs.metadata_filter = LogsMetadataFilter::WithAnyMetadata;
+      screen.logs();
+      push_info("logs.metadata_filter=META+");
+      return true;
+    case CallHandlerId::LogsSettingsMetadataFilterFunction:
+      state.logs.metadata_filter = LogsMetadataFilter::WithFunction;
+      screen.logs();
+      push_info("logs.metadata_filter=FN+");
+      return true;
+    case CallHandlerId::LogsSettingsMetadataFilterPath:
+      state.logs.metadata_filter = LogsMetadataFilter::WithPath;
+      screen.logs();
+      push_info("logs.metadata_filter=PATH+");
+      return true;
+    case CallHandlerId::LogsSettingsMetadataFilterCallsite:
+      state.logs.metadata_filter = LogsMetadataFilter::WithCallsite;
+      screen.logs();
+      push_info("logs.metadata_filter=CALLSITE+");
+      return true;
     case CallHandlerId::LogsSettingsColorToggle:
       state.logs.show_color = !state.logs.show_color;
       screen.logs();

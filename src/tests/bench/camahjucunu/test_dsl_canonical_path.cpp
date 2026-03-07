@@ -73,6 +73,7 @@ int main() {
     cuwacunu::camahjucunu::canonical_path_t d4{};
     cuwacunu::camahjucunu::canonical_path_t d5{};
     cuwacunu::camahjucunu::canonical_path_t d6{};
+    cuwacunu::camahjucunu::canonical_path_t d7{};
 
     ok = ok && expect_ok(
         "tsi",
@@ -124,6 +125,17 @@ int main() {
         &hashes,
         &d6);
     ok = ok && expect_ok(
+        "tsi.probe.representation.transfer_matrix_evaluation.0x0000@meta:str",
+        canonical_path_kind_e::Endpoint,
+        "",
+        &hashes,
+        &d7);
+    ok = ok && expect_ok(
+        "tsi.probe.log@info:tensor",
+        canonical_path_kind_e::Endpoint,
+        "tsi.probe.log@info:tensor",
+        &hashes);
+    ok = ok && expect_ok(
         "tsi.source.dataloader.init()",
         canonical_path_kind_e::Call,
         "tsi.source.dataloader.init()",
@@ -158,7 +170,16 @@ int main() {
       std::cerr << "[FAIL] expected source dataloader payload canonical\n";
       return 1;
     }
+    const std::string c7_expected =
+        "tsi.probe.representation.transfer_matrix_evaluation.0x0000@meta:str";
+    if (d7.canonical != c7_expected) {
+      std::cerr << "[FAIL] expected probe payload canonical with explicit hashimyei\n";
+      return 1;
+    }
     ok = ok && expect_fail("tsi.wikimyei.representation.vicreg@response:cargo");
+    ok = ok && expect_fail("tsi.probe.representation.transfer_matrix_evaluation");
+    ok = ok &&
+         expect_fail("tsi.probe.representation.transfer_matrix_evaluation@meta:str");
     ok = ok && expect_fail("tsi.wikimyei.representation.vicreg.0x0001@jkimyei:tensor");
     ok = ok && expect_fail("tsi.wikimyei.representation.vicreg.default@jkimyei:tensor");
     ok = ok && expect_fail("tsi.wikimyei.representation.vicreg_0x0003@weights:tensor");
@@ -168,7 +189,7 @@ int main() {
     ok = ok && expect_fail("tsi.source.dataloader.jkimyei@response:cargo");
     ok = ok && expect_fail("tsi.source.dataloader@init:str");
     ok = ok && expect_fail("tsi.wikimyei.representation.vicreg.0x0001@meta:tensor");
-    ok = ok && expect_fail("tsi.sink.log.sys@info:str");
+    ok = ok && expect_fail("tsi.probe.log@info:str");
     ok = ok && expect_fail("tsi.source.dataloader@init:tensor");
     ok = ok && expect_fail("tsi.wave");
     ok = ok && expect_fail("tsi.wave.generator");

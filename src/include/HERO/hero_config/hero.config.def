@@ -1,0 +1,119 @@
+/*
+  hero.config.def
+  X-macro registry for HERO configuration profiles.
+
+  Consumers may define:
+
+    HERO_PROFILE(ID, PROFILE_NAME, MODE_TOKEN, MODEL, SUMMARY)                [required]
+    HERO_PROFILE_POLICY(PROFILE_ID, KEY, VALUE, SUMMARY)                      [optional]
+    HERO_FUTURE_TARGET(ID, INCLUDE_PATH, SUMMARY)                             [optional]
+    HERO_RUNTIME_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE, ALLOWED, SUMMARY) [optional]
+*/
+
+#ifndef HERO_PROFILE
+#error "HERO_PROFILE(ID, PROFILE_NAME, MODE_TOKEN, MODEL, SUMMARY) must be defined before including hero.config.def"
+#endif
+
+#ifndef HERO_PROFILE_POLICY
+#define HERO_PROFILE_POLICY(PROFILE_ID, KEY, VALUE, SUMMARY)
+#endif
+
+#ifndef HERO_FUTURE_TARGET
+#define HERO_FUTURE_TARGET(ID, INCLUDE_PATH, SUMMARY)
+#endif
+
+#ifndef HERO_RUNTIME_KEY
+#define HERO_RUNTIME_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE, ALLOWED, SUMMARY)
+#endif
+
+// Canonical profile manifest.
+HERO_PROFILE(Ask, "hero.config.ask", Ask, "gpt-5-mini",
+             "Read/analyze configuration and propose constrained edits")
+HERO_PROFILE(Fix, "hero.config.fix", Fix, "gpt-5",
+             "Apply constrained config edits using patch-safe policy")
+
+// Profile policy expectations.
+HERO_PROFILE_POLICY(Ask, "allow_network", "true",
+                    "Network allowed for model requests")
+HERO_PROFILE_POLICY(Ask, "allow_local_read", "true",
+                    "Config/context file reads allowed")
+HERO_PROFILE_POLICY(Ask, "allow_local_write", "false",
+                    "No local write side effects")
+HERO_PROFILE_POLICY(Ask, "require_curl_only", "true",
+                    "Transport must be curl-based")
+HERO_PROFILE_POLICY(Ask, "require_config_only_context", "true",
+                    "Context scope limited to config root")
+
+HERO_PROFILE_POLICY(Fix, "allow_network", "true",
+                    "Network allowed for model requests")
+HERO_PROFILE_POLICY(Fix, "allow_local_read", "true",
+                    "Config/context file reads allowed")
+HERO_PROFILE_POLICY(Fix, "allow_local_write", "true",
+                    "Local writes allowed under configured roots")
+HERO_PROFILE_POLICY(Fix, "require_curl_only", "true",
+                    "Transport must be curl-based")
+HERO_PROFILE_POLICY(Fix, "require_config_only_context", "true",
+                    "Context scope limited to config root")
+HERO_PROFILE_POLICY(Fix, "require_patch_plan", "true",
+                    "Edits must follow a patch plan")
+HERO_PROFILE_POLICY(Fix, "require_atomic_edits", "true",
+                    "Edits should be atomic and explicit")
+
+// Future capability targets (declared now, wiring later).
+HERO_FUTURE_TARGET(TsiProbe, "tsiemene/tsi.probe",
+                   "Read and reason over probe paths and probe payload flows")
+HERO_FUTURE_TARGET(NetworkAnalytics, "piaabo/torch_compat/network_analytics",
+                   "Interpret network analytics reports and anomalies")
+HERO_FUTURE_TARGET(StatisticsSpace, "piaabo/math_compat/statistics_space",
+                   "Use rolling/infinite statistics interpretation in fixes")
+
+// Runtime key-value DSL surface.
+HERO_RUNTIME_KEY("mode", "enum", 1, "openai", "one token", "openai,selfhosted",
+                 "selfhosted currently fails fast with deployment-funds guidance")
+HERO_RUNTIME_KEY("protocol_layer", "enum", 1, "STDIO", "one token", "STDIO,HTTPS/SSE",
+                 "MCP protocol layer; HTTPS/SSE is intentionally not implemented yet")
+HERO_RUNTIME_KEY("transport", "enum", 1, "curl", "one token", "curl",
+                 "transport layer; currently curl-only policy")
+HERO_RUNTIME_KEY("endpoint", "string", 1, "https://api.openai.com/v1/responses",
+                 "non-empty URL", "HTTPS URL", "OpenAI responses endpoint for mode=openai")
+HERO_RUNTIME_KEY("auth_token_env", "string", 1, "OPENAI_API_KEY", "non-empty env var name",
+                 "process env variable", "environment variable carrying API key")
+HERO_RUNTIME_KEY("model", "string", 1, "gpt-5-mini", "non-empty", "provider model id",
+                 "default model for ask workflows")
+HERO_RUNTIME_KEY("reasoning_effort", "enum", 1, "medium", "one token", "low,medium,high",
+                 "reasoning effort hint")
+HERO_RUNTIME_KEY("temperature", "float", 1, "0.20", ">=0", "float literal",
+                 "sampling temperature")
+HERO_RUNTIME_KEY("top_p", "float", 1, "1.00", "(0,1]", "float literal",
+                 "nucleus sampling parameter")
+HERO_RUNTIME_KEY("max_output_tokens", "int", 1, "1400", ">0", "integer",
+                 "max generated token budget")
+HERO_RUNTIME_KEY("timeout_ms", "int", 1, "30000", ">=1000", "integer",
+                 "request timeout in milliseconds")
+HERO_RUNTIME_KEY("connect_timeout_ms", "int", 1, "10000", ">=100", "integer",
+                 "connection establishment timeout in milliseconds")
+HERO_RUNTIME_KEY("retry_max_attempts", "int", 1, "3", ">=0", "integer",
+                 "retry count for transient failures")
+HERO_RUNTIME_KEY("retry_backoff_ms", "int", 1, "700", ">=0", "integer",
+                 "fixed backoff between retries in milliseconds")
+HERO_RUNTIME_KEY("verify_tls", "bool", 1, "true", "true|false", "true,false",
+                 "TLS certificate verification switch")
+HERO_RUNTIME_KEY("config_scope_root", "path", 1, "/cuwacunu/src/config", "existing directory",
+                 "absolute_or_relative_path", "scope root for config-centric context loading")
+HERO_RUNTIME_KEY("allow_local_read", "bool", 1, "true", "true|false", "true,false",
+                 "allow local filesystem reads")
+HERO_RUNTIME_KEY("allow_local_write", "bool", 1, "false", "true|false", "true,false",
+                 "allow local filesystem writes")
+HERO_RUNTIME_KEY("write_roots", "string", 1, "/tmp", "csv path list", "comma-separated paths",
+                 "allowed write roots when allow_local_write=true")
+HERO_RUNTIME_KEY("backup_enabled", "bool", 1, "true", "true|false", "true,false",
+                 "enable rotating backups before each save")
+HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/src/config/backups/hero.config",
+                 "directory path", "absolute_or_relative_path",
+                 "destination directory for rotating backups")
+HERO_RUNTIME_KEY("backup_max_entries", "int", 1, "20", ">=1", "integer",
+                 "maximum backup snapshots to retain")
+
+#undef HERO_PROFILE_POLICY
+#undef HERO_FUTURE_TARGET
+#undef HERO_RUNTIME_KEY

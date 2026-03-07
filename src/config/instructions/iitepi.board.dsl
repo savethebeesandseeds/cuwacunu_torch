@@ -36,9 +36,4 @@ BOARD {
     CONTRACT = contract_default;
     WAVE = train_vicreg_primary;
   };
-
-  BIND bind_run_vicreg {
-    CONTRACT = contract_default;
-    WAVE = run_vicreg_embedding;
-  };
 }

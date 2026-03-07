@@ -1,0 +1,278 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = hero.config
+TARGET_DSL = src/config/instructions/hero.config.dsl
+TARGET_BNF = src/config/bnf/key_value.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/key_value/key_value.cpp
+PRIMARY_VALIDATORS = src/include/HERO/hero_config/hero.config.h
+
+[ENUM MODE_VALUES]
+key = mode
+values = openai,selfhosted
+
+[ENUM PROTOCOL_LAYER_VALUES]
+key = protocol_layer
+values = STDIO,HTTPS/SSE
+
+[FIELD mode]
+key = mode
+scope = HERO runtime config
+type = enum
+required = true
+default = openai
+range = one token
+allowed = openai,selfhosted
+nuance = selfhosted is currently disabled and must fail fast with explicit deployment-funds guidance
+
+[FIELD protocol_layer]
+key = protocol_layer
+scope = HERO runtime config
+type = enum
+required = true
+default = STDIO
+range = one token
+allowed = STDIO,HTTPS/SSE
+nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast for now
+
+[FIELD transport]
+key = transport
+scope = HERO runtime config
+type = enum
+required = true
+default = curl
+range = one token
+allowed = curl
+nuance = transport is curl-only in this phase
+
+[FIELD endpoint]
+key = endpoint
+scope = HERO runtime config
+type = string
+required = true
+default = https://api.openai.com/v1/responses
+range = non-empty URL
+allowed = HTTPS URL string
+nuance = used only when mode=openai
+
+[FIELD auth_token_env]
+key = auth_token_env
+scope = HERO runtime config
+type = string
+required = true
+default = OPENAI_API_KEY
+range = non-empty env var name
+allowed = process environment variable name
+nuance = token material is never stored in this file
+
+[FIELD model]
+key = model
+scope = HERO runtime config
+type = string
+required = true
+default = gpt-5-mini
+range = non-empty
+allowed = provider model id
+nuance = ask/fix runners may override from profile-specific policy
+
+[FIELD reasoning_effort]
+key = reasoning_effort
+scope = HERO runtime config
+type = enum
+required = true
+default = medium
+range = one token
+allowed = low,medium,high
+nuance = provider-side effort hint
+
+[FIELD temperature]
+key = temperature
+scope = HERO runtime config
+type = float
+required = true
+default = 0.20
+range = >= 0
+allowed = float literal
+nuance = stochasticity control
+
+[FIELD top_p]
+key = top_p
+scope = HERO runtime config
+type = float
+required = true
+default = 1.00
+range = (0,1]
+allowed = float literal
+nuance = nucleus sampling control
+
+[FIELD max_output_tokens]
+key = max_output_tokens
+scope = HERO runtime config
+type = int
+required = true
+default = 1400
+range = > 0
+allowed = integer
+nuance = hard generation cap
+
+[FIELD timeout_ms]
+key = timeout_ms
+scope = HERO runtime config
+type = int
+required = true
+default = 30000
+range = >= 1000
+allowed = integer
+nuance = request timeout budget
+
+[FIELD connect_timeout_ms]
+key = connect_timeout_ms
+scope = HERO runtime config
+type = int
+required = true
+default = 10000
+range = >= 100
+allowed = integer
+nuance = connection setup timeout budget
+
+[FIELD retry_max_attempts]
+key = retry_max_attempts
+scope = HERO runtime config
+type = int
+required = true
+default = 3
+range = >= 0
+allowed = integer
+nuance = transient retry count
+
+[FIELD retry_backoff_ms]
+key = retry_backoff_ms
+scope = HERO runtime config
+type = int
+required = true
+default = 700
+range = >= 0
+allowed = integer
+nuance = fixed retry backoff
+
+[FIELD verify_tls]
+key = verify_tls
+scope = HERO runtime config
+type = bool
+required = true
+default = true
+range = true|false
+allowed = true,false
+nuance = TLS verification should stay true in production
+
+[FIELD config_scope_root]
+key = config_scope_root
+scope = HERO runtime config
+type = path
+required = true
+default = /cuwacunu/src/config
+range = existing directory
+allowed = absolute_or_relative path
+nuance = context and mutation scope root
+
+[FIELD allow_local_read]
+key = allow_local_read
+scope = HERO runtime config
+type = bool
+required = true
+default = true
+range = true|false
+allowed = true,false
+nuance = read permission gate for local context loader
+
+[FIELD allow_local_write]
+key = allow_local_write
+scope = HERO runtime config
+type = bool
+required = true
+default = false
+range = true|false
+allowed = true,false
+nuance = write permission gate for fixer mode
+
+[FIELD write_roots]
+key = write_roots
+scope = HERO runtime config
+type = string
+required = true
+default = /tmp
+range = csv path list
+allowed = comma-separated paths
+nuance = effective only when allow_local_write=true
+
+[FIELD backup_enabled]
+key = backup_enabled
+scope = HERO runtime config
+type = bool
+required = true
+default = true
+range = true|false
+allowed = true,false
+nuance = when true, save operation snapshots previous config before overwrite
+
+[FIELD backup_dir]
+key = backup_dir
+scope = HERO runtime config
+type = path
+required = true
+default = /cuwacunu/src/config/backups/hero.config
+range = directory path
+allowed = absolute_or_relative path
+nuance = backup snapshot destination directory; created on first save if missing
+
+[FIELD backup_max_entries]
+key = backup_max_entries
+scope = HERO runtime config
+type = int
+required = true
+default = 20
+range = >= 1
+allowed = integer
+nuance = retention cap; oldest backups are pruned first
+
+[RULE MODE_ALLOWED]
+id = MODE_ALLOWED
+applies_to = mode
+severity = error
+when = mode not in {openai,selfhosted}
+message = mode must be openai or selfhosted
+
+[RULE MODE_SELFHOSTED_FAIL_FAST]
+id = MODE_SELFHOSTED_FAIL_FAST
+applies_to = mode
+severity = error
+when = mode == selfhosted
+message = isufficient founds for self hosted model deployment, please change mode to openai.
+
+[RULE PROTOCOL_LAYER_ALLOWED]
+id = PROTOCOL_LAYER_ALLOWED
+applies_to = protocol_layer
+severity = error
+when = protocol_layer not in {STDIO,HTTPS/SSE}
+message = protocol_layer must be STDIO or HTTPS/SSE
+
+[RULE PROTOCOL_LAYER_HTTPS_SSE_FAIL_FAST]
+id = PROTOCOL_LAYER_HTTPS_SSE_FAIL_FAST
+applies_to = protocol_layer
+severity = error
+when = protocol_layer == HTTPS/SSE
+message = HTTPS/SSE protocol layer is not implemented yet; set protocol_layer=STDIO.
+
+[RULE OPENAI_TRANSPORT]
+id = OPENAI_TRANSPORT
+applies_to = mode,transport
+severity = error
+when = mode == openai and transport != curl
+message = openai mode currently requires transport=curl
+
+[RULE BACKUP_MAX_ENTRIES]
+id = BACKUP_MAX_ENTRIES
+applies_to = backup_enabled,backup_max_entries
+severity = error
+when = backup_enabled == true and backup_max_entries < 1
+message = backup_max_entries must be >= 1 when backup_enabled=true

@@ -1,8 +1,8 @@
 /* bnf_grammar_parser.cpp */
 #include "piaabo/bnf_compat/grammar_parser.h"
 
-RUNTIME_WARNING("(bnf_grammar_parser.cpp)[] guard printing the errors with secure methods \n");
-RUNTIME_WARNING("(bnf_grammar_parser.cpp)[] could use better grammar verification \n");
+DEV_WARNING("(bnf_grammar_parser.cpp)[] guard printing the errors with secure methods \n");
+DEV_WARNING("(bnf_grammar_parser.cpp)[] could use better grammar verification \n");
 
 
 namespace cuwacunu {

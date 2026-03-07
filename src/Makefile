@@ -33,6 +33,10 @@ wikimyei:
 iinuji:
 	$(MAKE) -C $(IMPL_PATH)/iinuji all
 
+.PHONY: cuwacunu
+cuwacunu:
+	$(MAKE) -C $(ROOT_PATH)/cuwacunu all
+
 
 # -----------------------------------------------------------------
 # Aggregate builds
@@ -53,11 +57,12 @@ all: modules lib-bundles
 # -----------------------------------------------------------------
 # Shortcut aliases (delegate only; no build logic changes)
 # -----------------------------------------------------------------
-.PHONY: build b mods m bundles pack test t
+.PHONY: build b mods m bundles pack test t cuw
 build b: all
 mods m: modules
 bundles pack: lib-bundles
 test t: tests
+cuw: cuwacunu
 
 .PHONY: it pia cam jk wk ii
 it: iitepi
@@ -153,9 +158,9 @@ clean_dsl:
 	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_ast.d \
 	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_ast.o \
 	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_ast.a \
-	  $(OUTPUT_PATH)/common/tsiemene_wave.d \
-	  $(OUTPUT_PATH)/common/tsiemene_wave.o \
-	  $(OUTPUT_PATH)/common/tsiemene_wave.a \
+	  $(OUTPUT_PATH)/common/iitepi_wave.d \
+	  $(OUTPUT_PATH)/common/iitepi_wave.o \
+	  $(OUTPUT_PATH)/common/iitepi_wave.a \
 	  2>/dev/null || true
 
 .PHONY: clean_data

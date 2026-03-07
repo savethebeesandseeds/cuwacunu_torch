@@ -1,14 +1,19 @@
-/* tsiemene_wave.cpp */
-#include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
+/* iitepi_wave.cpp */
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstdint>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
+#include <vector>
+
+#include "hashimyei/hashimyei_identity.h"
 
 namespace {
 
@@ -179,9 +184,9 @@ class parser_t {
  public:
   explicit parser_t(std::string input) : lex_(std::move(input)) {}
 
-  cuwacunu::camahjucunu::tsiemene_wave_set_t parse() {
-    using cuwacunu::camahjucunu::tsiemene_wave_set_t;
-    tsiemene_wave_set_t out{};
+  cuwacunu::camahjucunu::iitepi_wave_set_t parse() {
+    using cuwacunu::camahjucunu::iitepi_wave_set_t;
+    iitepi_wave_set_t out{};
     std::unordered_set<std::string> wave_names;
     while (!peek_is_end()) {
       auto wave = parse_wave();
@@ -202,6 +207,14 @@ class parser_t {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return s;
+  }
+
+  static std::string trim_ascii_copy(std::string s) {
+    std::size_t b = 0;
+    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+    std::size_t e = s.size();
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+    return s.substr(b, e - b);
   }
 
   static bool parse_bool_token(const std::string& value, bool* out) {
@@ -241,6 +254,45 @@ class parser_t {
     if (r.ec != std::errc{} || r.ptr != e) return false;
     *out = x;
     return true;
+  }
+
+  static bool parse_probe_training_window_token(
+      const std::string& value,
+      cuwacunu::camahjucunu::iitepi_wave_probe_training_window_e* out) {
+    if (!out) return false;
+    const std::string v = lower_ascii_copy(value);
+    if (v == "incoming_batch") {
+      *out = cuwacunu::camahjucunu::iitepi_wave_probe_training_window_e::
+          IncomingBatch;
+      return true;
+    }
+    return false;
+  }
+
+  static bool parse_probe_report_policy_token(
+      const std::string& value,
+      cuwacunu::camahjucunu::iitepi_wave_probe_report_policy_e* out) {
+    if (!out) return false;
+    const std::string v = lower_ascii_copy(value);
+    if (v == "epoch_end_log") {
+      *out =
+          cuwacunu::camahjucunu::iitepi_wave_probe_report_policy_e::EpochEndLog;
+      return true;
+    }
+    return false;
+  }
+
+  static bool parse_probe_objective_token(
+      const std::string& value,
+      cuwacunu::camahjucunu::iitepi_wave_probe_objective_e* out) {
+    if (!out) return false;
+    const std::string v = lower_ascii_copy(value);
+    if (v == "future_target_dims_nll") {
+      *out = cuwacunu::camahjucunu::iitepi_wave_probe_objective_e::
+          FutureTargetDimsNll;
+      return true;
+    }
+    return false;
   }
 
   token_t peek() { return lex_.peek(); }
@@ -309,9 +361,35 @@ class parser_t {
     return value;
   }
 
-  cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t parse_wikimyei_block() {
-    using cuwacunu::camahjucunu::tsiemene_wave_wikimyei_decl_t;
-    tsiemene_wave_wikimyei_decl_t out{};
+  std::string parse_assignment_expression(const char* key) {
+    expect_identifier(key);
+    expect_symbol('=');
+    std::ostringstream oss;
+    bool seen_value = false;
+    for (;;) {
+      const token_t t = next();
+      if (t.kind == token_t::kind_e::Symbol && t.text == ";") break;
+      if (t.kind != token_t::kind_e::Identifier &&
+          t.kind != token_t::kind_e::String) {
+        throw std::runtime_error("expected scalar expression token for '" +
+                                 std::string(key) + "' at " +
+                                 std::to_string(t.line) + ":" +
+                                 std::to_string(t.col));
+      }
+      if (seen_value) oss << ' ';
+      oss << t.text;
+      seen_value = true;
+    }
+    if (!seen_value) {
+      throw std::runtime_error("assignment '" + std::string(key) +
+                               "' requires a value");
+    }
+    return trim_ascii_copy(oss.str());
+  }
+
+  cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t parse_wikimyei_block() {
+    using cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t;
+    iitepi_wave_wikimyei_decl_t out{};
     expect_identifier("WIKIMYEI");
     out.wikimyei_path = expect_identifier_any().text;
     expect_symbol('{');
@@ -360,9 +438,9 @@ class parser_t {
     return out;
   }
 
-  cuwacunu::camahjucunu::tsiemene_wave_source_decl_t parse_source_block() {
-    using cuwacunu::camahjucunu::tsiemene_wave_source_decl_t;
-    tsiemene_wave_source_decl_t out{};
+  cuwacunu::camahjucunu::iitepi_wave_source_decl_t parse_source_block() {
+    using cuwacunu::camahjucunu::iitepi_wave_source_decl_t;
+    iitepi_wave_source_decl_t out{};
     expect_identifier("SOURCE");
     out.source_path = expect_identifier_any().text;
     expect_symbol('{');
@@ -486,15 +564,114 @@ class parser_t {
     return out;
   }
 
-  cuwacunu::camahjucunu::tsiemene_wave_t parse_wave() {
-    using cuwacunu::camahjucunu::tsiemene_wave_t;
-    tsiemene_wave_t out{};
+  cuwacunu::camahjucunu::iitepi_wave_probe_decl_t parse_probe_block() {
+    using cuwacunu::camahjucunu::iitepi_wave_probe_decl_t;
+    using cuwacunu::camahjucunu::iitepi_wave_probe_objective_e;
+    using cuwacunu::camahjucunu::iitepi_wave_probe_report_policy_e;
+    using cuwacunu::camahjucunu::iitepi_wave_probe_training_window_e;
+
+    iitepi_wave_probe_decl_t out{};
+    expect_identifier("PROBE");
+    out.probe_path = expect_identifier_any().text;
+    expect_symbol('{');
+
+    bool has_training_window = false;
+    bool has_report_policy = false;
+    bool has_objective = false;
+
+    while (!peek_is_symbol('}')) {
+      const token_t key = expect_identifier_any();
+      if (key.text == "PATH") {
+        expect_symbol('=');
+        out.probe_path = parse_scalar_value();
+        expect_symbol(';');
+      } else if (key.text == "TRAINING_WINDOW") {
+        expect_symbol('=');
+        const std::string value = parse_scalar_value();
+        expect_symbol(';');
+        iitepi_wave_probe_training_window_e parsed{};
+        if (!parse_probe_training_window_token(value, &parsed)) {
+          throw std::runtime_error(
+              "invalid PROBE TRAINING_WINDOW for PATH '" + out.probe_path +
+              "': " + value + " (expected incoming_batch)");
+        }
+        out.policy.training_window = parsed;
+        has_training_window = true;
+      } else if (key.text == "REPORT_POLICY") {
+        expect_symbol('=');
+        const std::string value = parse_scalar_value();
+        expect_symbol(';');
+        iitepi_wave_probe_report_policy_e parsed{};
+        if (!parse_probe_report_policy_token(value, &parsed)) {
+          throw std::runtime_error("invalid PROBE REPORT_POLICY for PATH '" +
+                                   out.probe_path + "': " + value +
+                                   " (expected epoch_end_log)");
+        }
+        out.policy.report_policy = parsed;
+        has_report_policy = true;
+      } else if (key.text == "OBJECTIVE") {
+        expect_symbol('=');
+        const std::string value = parse_scalar_value();
+        expect_symbol(';');
+        iitepi_wave_probe_objective_e parsed{};
+        if (!parse_probe_objective_token(value, &parsed)) {
+          throw std::runtime_error("invalid PROBE OBJECTIVE for PATH '" +
+                                   out.probe_path + "': " + value +
+                                   " (expected future_target_dims_nll)");
+        }
+        out.policy.objective = parsed;
+        has_objective = true;
+      } else {
+        throw std::runtime_error("unknown PROBE key for PATH '" +
+                                 out.probe_path + "': " + key.text);
+      }
+    }
+
+    expect_symbol('}');
+    expect_symbol(';');
+
+    if (out.probe_path.empty()) {
+      throw std::runtime_error("PROBE missing required PATH assignment");
+    }
+    constexpr std::string_view kProbePrefix =
+        "tsi.probe.representation.transfer_matrix_evaluation.";
+    if (out.probe_path.size() <= kProbePrefix.size() ||
+        out.probe_path.rfind(kProbePrefix, 0) != 0) {
+      throw std::runtime_error(
+          "PROBE PATH must be "
+          "'tsi.probe.representation.transfer_matrix_evaluation.0x<hex>', got '" +
+          out.probe_path + "'");
+    }
+    const std::string hash = out.probe_path.substr(kProbePrefix.size());
+    if (!cuwacunu::hashimyei::is_hex_hash_name(hash)) {
+      throw std::runtime_error("PROBE PATH invalid hashimyei suffix: " + hash +
+                               " (expected 0x<hex>)");
+    }
+    if (!has_training_window) {
+      throw std::runtime_error("PROBE '" + out.probe_path +
+                               "' missing required TRAINING_WINDOW assignment");
+    }
+    if (!has_report_policy) {
+      throw std::runtime_error("PROBE '" + out.probe_path +
+                               "' missing required REPORT_POLICY assignment");
+    }
+    if (!has_objective) {
+      throw std::runtime_error("PROBE '" + out.probe_path +
+                               "' missing required OBJECTIVE assignment");
+    }
+    return out;
+  }
+
+  cuwacunu::camahjucunu::iitepi_wave_t parse_wave() {
+    using cuwacunu::camahjucunu::iitepi_wave_t;
+    iitepi_wave_t out{};
     expect_identifier("WAVE");
     out.name = expect_identifier_any().text;
     expect_symbol('{');
 
     std::unordered_set<std::string> seen_wikimyei_paths;
     std::unordered_set<std::string> seen_source_paths;
+    std::unordered_set<std::string> seen_probe_paths;
     bool has_mode = false;
     bool has_sampler = false;
     bool has_epochs = false;
@@ -509,12 +686,17 @@ class parser_t {
                                  std::to_string(head.col));
       }
       if (head.text == "MODE") {
-        out.mode = parse_assignment_value("MODE");
-        out.mode = lower_ascii_copy(out.mode);
-        if (out.mode != "train" && out.mode != "run") {
+        const std::string mode_expression = parse_assignment_expression("MODE");
+        std::string mode_error;
+        if (!cuwacunu::camahjucunu::parse_iitepi_wave_mode_flags(
+                mode_expression,
+                &out.mode_flags,
+                nullptr,
+                &mode_error)) {
           throw std::runtime_error("WAVE '" + out.name +
-                                   "' invalid MODE: " + out.mode);
+                                   "' invalid MODE: " + mode_error);
         }
+        out.mode = lower_ascii_copy(trim_ascii_copy(mode_expression));
         has_mode = true;
         continue;
       }
@@ -575,6 +757,15 @@ class parser_t {
         out.sources.push_back(std::move(s));
         continue;
       }
+      if (head.text == "PROBE") {
+        auto p = parse_probe_block();
+        if (!seen_probe_paths.insert(p.probe_path).second) {
+          throw std::runtime_error("WAVE '" + out.name +
+                                   "' duplicate PROBE PATH: " + p.probe_path);
+        }
+        out.probes.push_back(std::move(p));
+        continue;
+      }
       throw std::runtime_error("WAVE '" + out.name +
                                "' unknown statement: " + head.text);
     }
@@ -610,7 +801,18 @@ class parser_t {
                                "' must declare at least one SOURCE block");
     }
 
-    if (out.mode == "run") {
+    const std::uint64_t run_flag = cuwacunu::camahjucunu::iitepi_wave_mode_value(
+        cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Run);
+    const std::uint64_t train_flag = cuwacunu::camahjucunu::iitepi_wave_mode_value(
+        cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Train);
+    const bool run_enabled = (out.mode_flags & run_flag) != 0;
+    const bool train_enabled = (out.mode_flags & train_flag) != 0;
+    if (!run_enabled && !train_enabled) {
+      throw std::runtime_error(
+          "WAVE '" + out.name +
+          "' MODE must enable at least one execution bit: run or train");
+    }
+    if (run_enabled && !train_enabled) {
       for (const auto& w : out.wikimyeis) {
         if (w.train) {
           throw std::runtime_error(
@@ -618,7 +820,8 @@ class parser_t {
               "' MODE=run forbids WIKIMYEI TRAIN=true (PATH '" + w.wikimyei_path + "')");
         }
       }
-    } else {
+    }
+    if (train_enabled) {
       bool has_train_true = false;
       for (const auto& w : out.wikimyeis) {
         if (w.train) {
@@ -629,7 +832,7 @@ class parser_t {
       if (!has_train_true) {
         throw std::runtime_error(
             "WAVE '" + out.name +
-            "' MODE=train requires at least one WIKIMYEI TRAIN=true");
+            "' MODE with train bit requires at least one WIKIMYEI TRAIN=true");
       }
     }
 
@@ -655,14 +858,18 @@ namespace {
 
 void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
   if (!has_non_ws_ascii_(grammar_text)) {
-    throw std::runtime_error("tsiemene wave grammar text is empty");
+    throw std::runtime_error("iitepi wave grammar text is empty");
   }
   constexpr std::string_view kRequiredGrammarTokens[] = {
       "<wave>",
       "WAVE",
       "WIKIMYEI",
       "SOURCE",
+      "PROBE",
       "PATH",
+      "TRAINING_WINDOW",
+      "REPORT_POLICY",
+      "OBJECTIVE",
       "MODE",
       "SAMPLER",
       "EPOCHS",
@@ -677,22 +884,23 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
   for (const auto token : kRequiredGrammarTokens) {
     if (grammar_text.find(token) == std::string::npos) {
       throw std::runtime_error(
-          "tsiemene wave grammar missing required token: " + std::string(token));
+          "iitepi wave grammar missing required token: " + std::string(token));
     }
   }
 }
 
 } /* namespace */
 
-std::string tsiemene_wave_set_t::str() const {
+std::string iitepi_wave_set_t::str() const {
   std::ostringstream oss;
-  oss << "tsiemene_wave_set_t: waves=" << waves.size() << "\n";
+  oss << "iitepi_wave_set_t: waves=" << waves.size() << "\n";
   for (std::size_t i = 0; i < waves.size(); ++i) {
     const auto& p = waves[i];
     const bool has_source = !p.sources.empty();
-    const auto& src0 = has_source ? p.sources.front() : cuwacunu::camahjucunu::tsiemene_wave_source_decl_t{};
+    const auto& src0 = has_source ? p.sources.front() : cuwacunu::camahjucunu::iitepi_wave_source_decl_t{};
     oss << "  [" << i << "] name=" << p.name
         << " mode=" << p.mode
+        << " mode_flags=0x" << std::hex << p.mode_flags << std::dec
         << " sampler=" << p.sampler
         << " epochs=" << p.epochs
         << " batch_size=" << p.batch_size
@@ -704,28 +912,29 @@ std::string tsiemene_wave_set_t::str() const {
         << ",channels=" << src0.channels_dsl_file
         << ")"
         << " wikimyeis=" << p.wikimyeis.size()
-        << " sources=" << p.sources.size() << "\n";
+        << " sources=" << p.sources.size()
+        << " probes=" << p.probes.size() << "\n";
   }
   return oss.str();
 }
 
 namespace dsl {
 
-tsiemeneWavePipeline::tsiemeneWavePipeline(std::string grammar_text)
+iitepiWavePipeline::iitepiWavePipeline(std::string grammar_text)
     : grammar_text_(std::move(grammar_text)) {
   validate_wave_grammar_text_or_throw_(grammar_text_);
 }
 
-tsiemene_wave_set_t tsiemeneWavePipeline::decode(std::string instruction) {
+iitepi_wave_set_t iitepiWavePipeline::decode(std::string instruction) {
   std::lock_guard<std::mutex> lk(current_mutex_);
   parser_t parser(std::move(instruction));
   return parser.parse();
 }
 
-tsiemene_wave_set_t decode_tsiemene_wave_from_dsl(
+iitepi_wave_set_t decode_iitepi_wave_from_dsl(
     std::string grammar_text,
     std::string instruction_text) {
-  tsiemeneWavePipeline pipeline(std::move(grammar_text));
+  iitepiWavePipeline pipeline(std::move(grammar_text));
   return pipeline.decode(std::move(instruction_text));
 }
 

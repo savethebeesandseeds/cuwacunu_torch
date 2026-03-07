@@ -16,11 +16,18 @@
     - interval + record_type must align with channel declarations.
     - Missing files or invalid paths are rejected during config/loader setup.
     - This file declares availability, not model training intent.
+    - DATA_ANALYTICS_POLICY is required (no silent runtime defaults).
 */
 CSV_POLICY {
   CSV_BOOTSTRAP_DELTAS = 128;
   CSV_STEP_ABS_TOL = 1e-7;
   CSV_STEP_REL_TOL = 1e-9;
+};
+DATA_ANALYTICS_POLICY {
+  MAX_SAMPLES = 4096;
+  MAX_FEATURES = 2048;
+  MASK_EPSILON = 1e-12;
+  STANDARDIZE_EPSILON = 1e-8;
 };
 /---------------------------------------------------------------------------------------------------------\
 |  instrument  |  interval  |  record_type  |  source                                                     |

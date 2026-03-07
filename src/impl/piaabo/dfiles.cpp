@@ -2,7 +2,7 @@
 #include "piaabo/dfiles.h"
 #include <sstream>
 
-RUNTIME_WARNING("(dfiles.cpp)[] binaryFile_to_vector has a note on imporving performance \n");
+DEV_WARNING("(dfiles.cpp)[] binaryFile_to_vector has a note on imporving performance \n");
 
 namespace cuwacunu {
 namespace piaabo {

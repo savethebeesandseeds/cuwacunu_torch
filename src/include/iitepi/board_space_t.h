@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "iitepi/config_space_t.h"
+#include "iitepi/network_analytics_mode.h"
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -37,8 +38,14 @@ struct board_space_t {
                                                const std::string& binding_id);
   static std::string wave_hash_for_binding(const board_hash_t& hash,
                                            const std::string& binding_id);
+  static void network_topology_analytics(std::ostream* out = nullptr,
+                                         bool beautify = false);
+  static void network_parameter_analytics(std::ostream* out = nullptr,
+                                          bool beautify = false);
   static void network_analytics(std::ostream* out = nullptr,
-                                bool beautify = false);
+                                bool beautify = false,
+                                network_analytics_mode_e mode =
+                                    network_analytics_mode_e::Topology);
   static void assert_locked_runtime_intact_or_fail_fast();
   static void assert_intact_or_fail_fast(const board_hash_t& hash);
   static void assert_registry_intact_or_fail_fast();

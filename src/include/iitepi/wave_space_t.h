@@ -10,7 +10,7 @@
 
 namespace cuwacunu {
 namespace camahjucunu {
-struct tsiemene_wave_set_t;
+struct iitepi_wave_set_t;
 }  // namespace camahjucunu
 }  // namespace cuwacunu
 
@@ -60,11 +60,11 @@ struct dsl_blob_t {
 };
 
 struct wave_blob_t : dsl_blob_t {
-  const cuwacunu::camahjucunu::tsiemene_wave_set_t& decoded() const;
+  const cuwacunu::camahjucunu::iitepi_wave_set_t& decoded() const;
 
  private:
   mutable std::once_flag decode_once_{};
-  mutable std::shared_ptr<cuwacunu::camahjucunu::tsiemene_wave_set_t> decoded_cache_{};
+  mutable std::shared_ptr<cuwacunu::camahjucunu::iitepi_wave_set_t> decoded_cache_{};
 };
 
 }  // namespace wave_record

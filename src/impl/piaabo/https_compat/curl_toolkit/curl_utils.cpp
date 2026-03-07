@@ -1,8 +1,8 @@
 /* curl_utils.cpp */
 #include "piaabo/https_compat/curl_toolkit/curl_utils.h"
 
-RUNTIME_WARNING("(curl_utils.cpp)[] fix no internet causes fatal error on session creation.\n");
-RUNTIME_WARNING("(curl_utils.cpp)[] writing to dbg might be slow if dbg is checking config every time.\n");
+DEV_WARNING("(curl_utils.cpp)[] fix no internet causes fatal error on session creation.\n");
+DEV_WARNING("(curl_utils.cpp)[] writing to dbg might be slow if dbg is checking config every time.\n");
 
 namespace cuwacunu {
 namespace piaabo {

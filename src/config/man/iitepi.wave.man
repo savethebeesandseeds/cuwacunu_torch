@@ -1,0 +1,267 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = iitepi.wave
+TARGET_DSL = src/config/instructions/iitepi.wave.example.dsl
+TARGET_BNF = src/config/bnf/iitepi.wave.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/iitepi_wave/iitepi_wave.cpp
+PRIMARY_VALIDATORS = src/include/iitepi/board/board.validation.h,src/include/iitepi/board/board.builder.h
+
+[ENUM MODE_SYMBOLS]
+key = MODE.symbols
+values = run,train,debug
+
+[FIELD WAVE.NAME]
+key = WAVE <name>
+scope = WAVE
+type = identifier
+required = true
+default = none
+range = unique within file
+allowed = [A-Za-z0-9_.-]+
+nuance = duplicate WAVE names are rejected
+
+[FIELD WAVE.MODE]
+key = MODE
+scope = WAVE
+type = bitmask_expression
+required = true
+default = none
+range = uint64
+allowed = symbolic(run|train|debug) plus numeric(dec|0xHEX|0bBIN) joined by |,+,^,comma,whitespace
+nuance = tokens are normalized to lowercase; all join tokens are parsed as bitwise OR composition
+
+[FIELD WAVE.SAMPLER]
+key = SAMPLER
+scope = WAVE
+type = enum
+required = true
+default = none
+range = one token
+allowed = sequential,random,SequentialSampler,RandomSampler
+nuance = normalized to sequential or random
+
+[FIELD WAVE.EPOCHS]
+key = EPOCHS
+scope = WAVE
+type = uint64
+required = true
+default = none
+range = >= 1
+allowed = decimal integer
+nuance = zero is rejected
+
+[FIELD WAVE.BATCH_SIZE]
+key = BATCH_SIZE
+scope = WAVE
+type = uint64
+required = true
+default = none
+range = >= 1
+allowed = decimal integer
+nuance = zero is rejected
+
+[FIELD WAVE.MAX_BATCHES_PER_EPOCH]
+key = MAX_BATCHES_PER_EPOCH
+scope = WAVE
+type = uint64
+required = true
+default = none
+range = >= 1
+allowed = decimal integer
+nuance = zero is rejected; used as per-epoch production cap
+
+[FIELD WIKIMYEI.PATH]
+key = WIKIMYEI.PATH
+scope = WIKIMYEI block
+type = canonical_node_path
+required = true
+default = none
+range = unique within wave
+allowed = tsi.wikimyei.* canonical node path
+nuance = must resolve to a contract wikimyei node path during compatibility validation
+
+[FIELD WIKIMYEI.TRAIN]
+key = WIKIMYEI.TRAIN
+scope = WIKIMYEI block
+type = bool
+required = true
+default = none
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = parse accepts broad bool tokens; policy constraints depend on MODE bits
+
+[FIELD WIKIMYEI.PROFILE_ID]
+key = WIKIMYEI.PROFILE_ID
+scope = WIKIMYEI block
+type = identifier
+required = true
+default = none
+range = non-empty
+allowed = profile id string
+nuance = must match jkimyei component profile row for the referenced component
+
+[FIELD SOURCE.PATH]
+key = SOURCE.PATH
+scope = SOURCE block
+type = canonical_node_path
+required = true
+default = none
+range = unique within wave
+allowed = tsi.source.* canonical node path
+nuance = runtime currently requires exactly one SOURCE path in selected wave
+
+[FIELD SOURCE.SYMBOL]
+key = SOURCE.SYMBOL
+scope = SOURCE block
+type = identifier
+required = true
+default = none
+range = non-empty
+allowed = market symbol token
+nuance = no canonical symbol catalog is enforced by parser
+
+[FIELD SOURCE.FROM]
+key = SOURCE.FROM
+scope = SOURCE block
+type = date_string
+required = true
+default = none
+range = DD.MM.YYYY
+allowed = digit date
+nuance = parser checks presence/shape only; semantic date ordering is external
+
+[FIELD SOURCE.TO]
+key = SOURCE.TO
+scope = SOURCE block
+type = date_string
+required = true
+default = none
+range = DD.MM.YYYY
+allowed = digit date
+nuance = parser checks presence/shape only; semantic date ordering is external
+
+[FIELD SOURCE.WORKERS]
+key = SOURCE.WORKERS
+scope = SOURCE block
+type = uint64
+required = true
+default = none
+range = >= 0
+allowed = decimal integer
+nuance = zero allowed
+
+[FIELD SOURCE.FORCE_REBUILD_CACHE]
+key = SOURCE.FORCE_REBUILD_CACHE
+scope = SOURCE block
+type = bool
+required = true
+default = none
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = strict parse failure on unknown bool token
+
+[FIELD SOURCE.RANGE_WARN_BATCHES]
+key = SOURCE.RANGE_WARN_BATCHES
+scope = SOURCE block
+type = uint64
+required = true
+default = none
+range = >= 1
+allowed = decimal integer
+nuance = zero is rejected
+
+[FIELD SOURCE.SOURCES_DSL_FILE]
+key = SOURCE.SOURCES_DSL_FILE
+scope = SOURCE block
+type = path
+required = true
+default = none
+range = non-empty path
+allowed = absolute_or_relative_path
+nuance = resolved relative to wave config folder; must exist as regular file at board build time
+
+[FIELD SOURCE.CHANNELS_DSL_FILE]
+key = SOURCE.CHANNELS_DSL_FILE
+scope = SOURCE block
+type = path
+required = true
+default = none
+range = non-empty path
+allowed = absolute_or_relative_path
+nuance = resolved relative to wave config folder; must exist as regular file at board build time
+
+[FIELD PROBE.PATH]
+key = PROBE.PATH
+scope = PROBE block
+type = canonical_probe_path
+required = true
+default = none
+range = unique within wave
+allowed = tsi.probe.representation.transfer_matrix_evaluation.0x<hex>
+nuance = explicit hashimyei suffix is mandatory; invalid or missing hex suffix is rejected
+
+[FIELD PROBE.TRAINING_WINDOW]
+key = PROBE.TRAINING_WINDOW
+scope = PROBE block
+type = enum
+required = true
+default = none
+range = fixed token
+allowed = incoming_batch
+nuance = strict singleton policy
+
+[FIELD PROBE.REPORT_POLICY]
+key = PROBE.REPORT_POLICY
+scope = PROBE block
+type = enum
+required = true
+default = none
+range = fixed token
+allowed = epoch_end_log
+nuance = strict singleton policy
+
+[FIELD PROBE.OBJECTIVE]
+key = PROBE.OBJECTIVE
+scope = PROBE block
+type = enum
+required = true
+default = none
+range = fixed token
+allowed = future_target_dims_nll
+nuance = strict singleton policy
+
+[RULE WAVE_MIN_BLOCKS]
+id = WAVE_MIN_BLOCKS
+applies_to = WAVE
+severity = error
+when = WIKIMYEI count == 0 or SOURCE count == 0
+message = each wave must declare at least one WIKIMYEI block and at least one SOURCE block
+
+[RULE MODE_EXECUTION]
+id = MODE_EXECUTION
+applies_to = WAVE.MODE
+severity = error
+when = run bit not set and train bit not set
+message = MODE must enable run or train
+
+[RULE MODE_RUN_ONLY]
+id = MODE_RUN_ONLY
+applies_to = WAVE.MODE,WIKIMYEI.TRAIN
+severity = error
+when = run bit set and train bit not set and exists WIKIMYEI.TRAIN=true
+message = MODE=run forbids WIKIMYEI TRAIN=true
+
+[RULE MODE_TRAIN_REQUIRED]
+id = MODE_TRAIN_REQUIRED
+applies_to = WAVE.MODE,WIKIMYEI.TRAIN
+severity = error
+when = train bit set and no WIKIMYEI.TRAIN=true
+message = MODE with train bit requires at least one WIKIMYEI TRAIN=true
+
+[RULE COMPAT_SOURCE_CARDINALITY]
+id = COMPAT_SOURCE_CARDINALITY
+applies_to = SOURCE.PATH
+severity = error
+when = selected wave has SOURCE path cardinality != 1
+message = runtime currently supports exactly one SOURCE PATH in selected wave

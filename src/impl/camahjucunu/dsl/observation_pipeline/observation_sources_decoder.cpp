@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -127,6 +128,11 @@ void observationSourcesDecoder::visit(const IntermediaryNode* node, VisitorConte
     return;
   }
 
+  if (node->hash == OBSERVATION_PIPELINE_HASH_data_analytics_policy_block) {
+    out->data_analytics_policy.declared = true;
+    return;
+  }
+
   if (node->hash == OBSERVATION_PIPELINE_HASH_csv_bootstrap_assignment) {
     const ASTNode* n_value = detail::find_direct_child_by_hash(
         node, OBSERVATION_PIPELINE_HASH_policy_unsigned_int);
@@ -161,6 +167,67 @@ void observationSourcesDecoder::visit(const IntermediaryNode* node, VisitorConte
       throw std::runtime_error("CSV_STEP_REL_TOL must be >= 0");
     }
     out->csv_step_rel_tol = parsed;
+    return;
+  }
+
+  if (node->hash ==
+      OBSERVATION_PIPELINE_HASH_data_analytics_max_samples_assignment) {
+    const ASTNode* n_value = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_policy_unsigned_int);
+    const std::uint64_t parsed = parse_u64_strict(
+        detail::flatten_node_text(n_value), "MAX_SAMPLES");
+    if (parsed < 1) {
+      throw std::runtime_error("MAX_SAMPLES must be >= 1");
+    }
+    if (parsed >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      throw std::runtime_error("MAX_SAMPLES exceeds int64 range");
+    }
+    out->data_analytics_policy.max_samples =
+        static_cast<std::int64_t>(parsed);
+    return;
+  }
+
+  if (node->hash ==
+      OBSERVATION_PIPELINE_HASH_data_analytics_max_features_assignment) {
+    const ASTNode* n_value = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_policy_unsigned_int);
+    const std::uint64_t parsed = parse_u64_strict(
+        detail::flatten_node_text(n_value), "MAX_FEATURES");
+    if (parsed < 1) {
+      throw std::runtime_error("MAX_FEATURES must be >= 1");
+    }
+    if (parsed >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      throw std::runtime_error("MAX_FEATURES exceeds int64 range");
+    }
+    out->data_analytics_policy.max_features =
+        static_cast<std::int64_t>(parsed);
+    return;
+  }
+
+  if (node->hash == OBSERVATION_PIPELINE_HASH_data_analytics_mask_epsilon_assignment) {
+    const ASTNode* n_value = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_policy_float);
+    const long double parsed = parse_long_double_strict(
+        detail::flatten_node_text(n_value), "MASK_EPSILON");
+    if (parsed < 0.0L) {
+      throw std::runtime_error("MASK_EPSILON must be >= 0");
+    }
+    out->data_analytics_policy.mask_epsilon = parsed;
+    return;
+  }
+
+  if (node->hash ==
+      OBSERVATION_PIPELINE_HASH_data_analytics_standardize_epsilon_assignment) {
+    const ASTNode* n_value = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_policy_float);
+    const long double parsed = parse_long_double_strict(
+        detail::flatten_node_text(n_value), "STANDARDIZE_EPSILON");
+    if (!(parsed > 0.0L)) {
+      throw std::runtime_error("STANDARDIZE_EPSILON must be > 0");
+    }
+    out->data_analytics_policy.standardize_epsilon = parsed;
     return;
   }
 

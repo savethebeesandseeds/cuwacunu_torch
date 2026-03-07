@@ -401,6 +401,57 @@ struct parsed_core_t {
       return false;
     }
   }
+
+  if (root_is_tsi && segs->size() >= 2) {
+    const std::string maybe_hash = segs->back();
+    if (maybe_hash == "default") {
+      std::vector<std::string> base = *segs;
+      base.pop_back();
+      const auto maybe_type = tsiemene::parse_tsi_type_id(join_dot(base));
+      if (maybe_type.has_value()) {
+        const auto* type_desc = tsiemene::find_tsi_type(*maybe_type);
+        if (type_desc &&
+            type_desc->instance_policy ==
+                tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+          if (error) {
+            *error =
+                "legacy hashimyei alias 'default' is removed; use explicit hex hashimyei id";
+          }
+          return false;
+        }
+      }
+    }
+
+    if (cuwacunu::hashimyei::is_hex_hash_name(maybe_hash)) {
+      std::vector<std::string> base = *segs;
+      base.pop_back();
+      const auto maybe_type = tsiemene::parse_tsi_type_id(join_dot(base));
+      if (maybe_type.has_value()) {
+        const auto* type_desc = tsiemene::find_tsi_type(*maybe_type);
+        if (type_desc &&
+            type_desc->instance_policy ==
+                tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+          *hashimyei = maybe_hash;
+          return true;
+        }
+      }
+    }
+
+    const auto maybe_exact_type = tsiemene::parse_tsi_type_id(join_dot(*segs));
+    if (maybe_exact_type.has_value()) {
+      const auto* type_desc = tsiemene::find_tsi_type(*maybe_exact_type);
+      if (type_desc &&
+          type_desc->instance_policy ==
+              tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+        if (error) {
+          *error = "tsi path requires explicit hashimyei suffix "
+                   "(expected " + join_dot(*segs) + ".0x<hex>)";
+        }
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 

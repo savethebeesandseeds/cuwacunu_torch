@@ -148,12 +148,77 @@ bool parse_endpoint_text(const std::string& endpoint_text,
 bool parse_instance_decl_text(
     const std::string& decl_text,
     cuwacunu::camahjucunu::tsiemene_instance_decl_t* out) {
+  auto parse_instance_args_text =
+      [](std::string text, std::vector<std::string>* out_args) -> bool {
+    if (!out_args) return false;
+    out_args->clear();
+    text = trim_ascii_ws(std::move(text));
+    if (text.empty()) return false;
+
+    std::size_t pos = 0;
+    while (pos < text.size()) {
+      std::size_t comma = text.find(',', pos);
+      const std::size_t count =
+          (comma == std::string::npos) ? std::string::npos : (comma - pos);
+      std::string token = trim_ascii_ws(text.substr(pos, count));
+      if (token.empty()) return false;
+      out_args->push_back(std::move(token));
+      if (comma == std::string::npos) break;
+      pos = comma + 1;
+    }
+    return !out_args->empty();
+  };
+
+  auto split_instance_rhs =
+      [&](std::string rhs,
+          std::string* out_tsi_type,
+          std::vector<std::string>* out_args) -> bool {
+    if (!out_tsi_type || !out_args) return false;
+    rhs = trim_ascii_ws(std::move(rhs));
+    out_args->clear();
+    if (rhs.empty()) return false;
+    if (rhs.back() != ')') {
+      *out_tsi_type = rhs;
+      return !out_tsi_type->empty();
+    }
+
+    int depth = 0;
+    std::size_t open = std::string::npos;
+    for (std::size_t i = rhs.size(); i-- > 0;) {
+      const char ch = rhs[i];
+      if (ch == ')') {
+        ++depth;
+        continue;
+      }
+      if (ch == '(') {
+        if (depth == 0) return false;
+        --depth;
+        if (depth == 0) {
+          open = i;
+          break;
+        }
+      }
+    }
+    if (open == std::string::npos || depth != 0) return false;
+
+    *out_tsi_type = trim_ascii_ws(rhs.substr(0, open));
+    if (out_tsi_type->empty()) return false;
+    const std::string args_text =
+        trim_ascii_ws(rhs.substr(open + 1, rhs.size() - open - 2));
+    if (args_text.empty()) return false;
+    return parse_instance_args_text(args_text, out_args);
+  };
+
   if (!out) return false;
   std::string line = normalize_line(decl_text);
   const std::size_t eq = line.find('=');
   if (eq == std::string::npos || eq == 0 || eq + 1 >= line.size()) return false;
   out->alias = trim_ascii_ws(line.substr(0, eq));
-  out->tsi_type = trim_ascii_ws(line.substr(eq + 1));
+  out->tsi_type.clear();
+  out->args.clear();
+  if (!split_instance_rhs(line.substr(eq + 1), &out->tsi_type, &out->args)) {
+    return false;
+  }
   return !(out->alias.empty() || out->tsi_type.empty());
 }
 
@@ -226,15 +291,14 @@ cuwacunu::camahjucunu::tsiemene_circuit_decl_t parse_circuit_node(
 
     if (im->hash == TSIEMENE_CIRCUIT_HASH_instance_decl) {
       cuwacunu::camahjucunu::tsiemene_instance_decl_t inst{};
+      const bool parsed_from_text = parse_instance_decl_text(flatten_node_text(im), &inst);
       const ASTNode* n_alias =
           find_direct_child_by_hash(im, TSIEMENE_CIRCUIT_HASH_instance_alias);
       const ASTNode* n_type =
           find_direct_child_by_hash(im, TSIEMENE_CIRCUIT_HASH_tsi_type);
-      if (n_alias && n_type) {
+      if (!parsed_from_text && n_alias && n_type) {
         inst.alias = trim_ascii_ws(flatten_node_text(n_alias));
         inst.tsi_type = trim_ascii_ws(flatten_node_text(n_type));
-      } else {
-        parse_instance_decl_text(flatten_node_text(im), &inst);
       }
       if (!inst.alias.empty() && !inst.tsi_type.empty()) {
         out.instances.push_back(std::move(inst));

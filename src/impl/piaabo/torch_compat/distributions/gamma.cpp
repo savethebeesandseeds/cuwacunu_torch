@@ -1,6 +1,6 @@
 #include "piaabo/torch_compat/distributions/gamma.h"
 
-RUNTIME_WARNING("(gamma.cpp)[] #FIXME change floats to double. \n");
+DEV_WARNING("(gamma.cpp)[] #FIXME change floats to double. \n");
 
 namespace cuwacunu {
 namespace piaabo {

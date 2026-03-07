@@ -1,0 +1,31 @@
+MAN_SPEC_VERSION = 1
+NAME = cuwacunu_config_man
+DESCRIPTION = machine-oriented configuration manual format for DSL/BNF surfaces and runtime semantics
+
+[SECTION META]
+required_keys = MAN_ID,TARGET_DSL,TARGET_BNF,PRIMARY_DECODER,PRIMARY_VALIDATORS
+notes = one META section per file
+
+[SECTION FIELD]
+required_keys = key,scope,type,required,default,range,allowed,nuance
+rules = one FIELD section describes one assignable value or grammar surface
+
+[SECTION RULE]
+required_keys = id,applies_to,severity,when,message
+rules = one RULE section encodes cross-field or runtime semantic constraints
+
+[SECTION ENUM]
+required_keys = key,values
+rules = use ENUM for closed token sets
+
+[SCALAR_CONVENTIONS]
+bool_tokens = true,false
+required_values = true,false
+range_values = free text using machine-friendly comparators (>=,<=,in,...)
+list_values = comma-separated without nested quoting
+
+[SEVERITY]
+values = error,warning,info
+
+[MCP_INTENT]
+goal = these files are source-of-truth for MCP parsing, validation, and controlled mutation in src/config

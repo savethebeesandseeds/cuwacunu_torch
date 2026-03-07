@@ -6,8 +6,8 @@
 #include <iomanip>
 #include <vector>
 
-RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
-RUNTIME_WARNING("(torch_utils.cpp)[] #FIXME consider the implincations of changing floats to double. \n");
+DEV_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.\n");
+DEV_WARNING("(torch_utils.cpp)[] #FIXME consider the implincations of changing floats to double. \n");
 
 namespace cuwacunu {
 namespace piaabo {

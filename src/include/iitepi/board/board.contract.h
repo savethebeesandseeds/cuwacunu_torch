@@ -122,6 +122,8 @@ struct BoardContract : public BoardContractCircuit {
 
   struct Execution {
     // Wave execution controls selected for this contract.
+    std::uint64_t wave_mode_flags{0};
+    bool debug_enabled{false};
     std::uint64_t epochs{1};
     std::uint64_t batch_size{0};
     // Runtime flow controls for queue backpressure and runtime-generated traces.

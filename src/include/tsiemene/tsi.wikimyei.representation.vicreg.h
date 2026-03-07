@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -21,12 +22,14 @@
 
 #include <torch/torch.h>
 
+#include "camahjucunu/dsl/network_design/network_design.h"
 #include "tsiemene/tsi.wikimyei.representation.h"
 #include "tsiemene/tsi.cargo.validation.h"
 
 // Artifact metadata helpers:
 #include "hashimyei/hashimyei_artifacts.h"
 #include "hashimyei/hashimyei_driver.h"
+#include "piaabo/torch_compat/entropic_capacity_comparison.h"
 #include "piaabo/torch_compat/network_analytics.h"
 
 // Your existing VICReg implementation:
@@ -34,15 +37,23 @@
 
 namespace tsiemene {
 
+struct vicreg_runtime_load_context_t {
+  bool enable_network_analytics_sidecar{false};
+  bool enable_entropic_capacity_sidecar{true};
+};
+
 [[nodiscard]] inline bool load_wikimyei_representation_vicreg_init_into_model(
     std::string_view hashimyei,
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model,
-    std::string* error = nullptr);
+    std::string* error = nullptr,
+    const vicreg_runtime_load_context_t* load_context = nullptr);
 
 [[nodiscard]] inline TsiWikimyeiInitRecord
 update_wikimyei_representation_vicreg_init(
     std::string hashimyei,
-    cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model = nullptr);
+    cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model = nullptr,
+    bool enable_network_analytics_sidecar = true,
+    std::string contract_hash = {});
 
 class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
  public:
@@ -76,15 +87,34 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   [[nodiscard]] bool runtime_autosave_artifacts() const noexcept override { return train_; }
   [[nodiscard]] bool runtime_load_from_hashimyei(
       std::string_view hashimyei,
-      std::string* error = nullptr) override {
+      std::string* error = nullptr,
+      const void* runtime_context = nullptr) override {
+    vicreg_runtime_load_context_t load_context{};
+    if (runtime_context) {
+      load_context.enable_network_analytics_sidecar =
+          *static_cast<const bool*>(runtime_context);
+      load_context.enable_entropic_capacity_sidecar = true;
+    }
     return load_wikimyei_representation_vicreg_init_into_model(
-        hashimyei, &model_, error);
+        hashimyei,
+        &model_,
+        error,
+        runtime_context ? &load_context : nullptr);
   }
   [[nodiscard]] bool runtime_save_to_hashimyei(
       std::string_view hashimyei,
-      std::string* error = nullptr) override {
+      std::string* error = nullptr,
+      const void* runtime_context = nullptr) override {
+    bool enable_network_analytics_sidecar = true;
+    if (runtime_context) {
+      enable_network_analytics_sidecar =
+          *static_cast<const bool*>(runtime_context);
+    }
     auto out = update_wikimyei_representation_vicreg_init(
-        std::string(hashimyei), &model_);
+        std::string(hashimyei),
+        &model_,
+        enable_network_analytics_sidecar,
+        contract_hash_);
     if (out.ok) return true;
     if (error) *error = out.error;
     return false;
@@ -193,23 +223,57 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     }
   }
 
-  void on_epoch_end(BoardContext&) override {
+  void on_epoch_end(BoardContext& ctx) override {
     if (!train_) return;
     if (model_.finalize_pending_training_step(model_.training_policy.swa_start_iter)) {
       epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
       ++epoch_optimizer_steps_;
     }
     apply_epoch_training_policy_();
+    if (!ctx.debug_enabled) return;
+    const auto has_non_ws_ascii = [](std::string_view text) {
+      for (const unsigned char c : text) {
+        if (!std::isspace(c)) return true;
+      }
+      return false;
+    };
+    if (!has_non_ws_ascii(model_.network_design_grammar) ||
+        !has_non_ws_ascii(model_.network_design_dsl)) {
+      log_warn(
+          "[tsi.vicreg] debug network analytics skipped: missing network_design payload (expected NETWORK_ANALYTICS_POLICY)\n");
+      return;
+    }
+    cuwacunu::piaabo::torch_compat::network_analytics_options_t options{};
+    try {
+      const auto design_ir = cuwacunu::camahjucunu::dsl::decode_network_design_from_dsl(
+          model_.network_design_grammar,
+          model_.network_design_dsl);
+      std::string options_error;
+      if (!cuwacunu::piaabo::torch_compat::
+              resolve_network_analytics_options_from_network_design(
+                  design_ir, &options, &options_error)) {
+        log_warn(
+            "[tsi.vicreg] debug network analytics skipped: %s\n",
+            options_error.c_str());
+        return;
+      }
+    } catch (const std::exception& e) {
+      log_warn(
+          "[tsi.vicreg] debug network analytics skipped: failed to decode network_design payload (%s)\n",
+          e.what());
+      return;
+    }
     const auto analytics =
         cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
-            model_);
+            model_,
+            options);
     log_info(
-        "[tsi.vicreg][network_analytics] epoch_end finite=%.6f std=%.6f near_zero=%.6f entropy=%.6f layer_cv=%.6f max_abs=%.6f\n",
+        "[tsi.vicreg][network_analytics] epoch_end finite=%.6f std=%.6f near_zero=%.6f entropy=%.6f tensor_cv=%.6f max_abs=%.6f\n",
         analytics.finite_ratio,
         analytics.stddev,
         analytics.near_zero_ratio,
         analytics.abs_energy_entropy,
-        analytics.layer_rms_cv,
+        analytics.tensor_rms_cv,
         analytics.max_abs);
   }
 
@@ -441,6 +505,37 @@ inline constexpr std::string_view kWikimyeiVicregCanonicalType = "tsi.wikimyei.r
 inline constexpr std::string_view kWikimyeiVicregFamily = "representation";
 inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
 
+[[nodiscard]] inline std::optional<std::filesystem::path>
+find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) {
+  namespace fs = std::filesystem;
+  if (contract_hash.empty()) return std::nullopt;
+
+  const fs::path base =
+      cuwacunu::piaabo::torch_compat::source_data_analytics_contract_directory(
+          contract_hash);
+  std::error_code ec;
+  if (!fs::exists(base, ec) || !fs::is_directory(base, ec)) return std::nullopt;
+
+  fs::path best_path{};
+  fs::file_time_type best_time{};
+  bool seen = false;
+  for (fs::recursive_directory_iterator it(base, ec), end; it != end; it.increment(ec)) {
+    if (ec) break;
+    if (!it->is_regular_file()) continue;
+    if (it->path().filename() != "latest.kv") continue;
+    const auto ts = it->last_write_time(ec);
+    if (ec) continue;
+    if (!seen || ts > best_time) {
+      best_time = ts;
+      best_path = it->path();
+      seen = true;
+    }
+  }
+
+  if (!seen) return std::nullopt;
+  return best_path;
+}
+
 [[nodiscard]] inline bool save_wikimyei_representation_vicreg_artifact_with_driver(
     const cuwacunu::hashimyei::artifact_action_context_t& action,
     std::string* error) {
@@ -462,6 +557,14 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   const fs::path weights_file = action.artifact_directory / "weights.init.pt";
   fs::path weights_network_analytics_file{};
   bool wrote_weights_network_analytics_file = false;
+  fs::path weights_entropic_capacity_file{};
+  bool wrote_weights_entropic_capacity_file = false;
+  auto* out = static_cast<wikimyei_representation_vicreg_init_record_t*>(action.user_data);
+  const bool enable_network_analytics_sidecar =
+      !out || out->enable_network_analytics_sidecar;
+  const bool enable_entropic_capacity_sidecar =
+      !out || out->enable_entropic_capacity_sidecar;
+  const std::string contract_hash = out ? out->contract_hash : std::string{};
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
     auto* model = static_cast<cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(action.object_handle);
@@ -472,19 +575,106 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       return false;
     }
 
-    std::string report_error;
-    if (cuwacunu::piaabo::torch_compat::write_network_analytics_sidecar_for_checkpoint(
-            *model,
-            weights_file,
-            &weights_network_analytics_file,
-            {},
-            &report_error)) {
-      wrote_weights_network_analytics_file = true;
-    } else {
-      log_warn(
-          "[tsi.vicreg] network analytics sidecar skipped for '%s': %s\n",
-          weights_file.string().c_str(),
-          report_error.c_str());
+    cuwacunu::piaabo::torch_compat::network_analytics_options_t
+        network_analytics_options{};
+    bool have_network_analytics_options = false;
+    if (enable_network_analytics_sidecar) {
+      const auto has_non_ws_ascii = [](std::string_view text) {
+        for (const unsigned char c : text) {
+          if (!std::isspace(c)) return true;
+        }
+        return false;
+      };
+
+      if (!has_non_ws_ascii(model->network_design_grammar) ||
+          !has_non_ws_ascii(model->network_design_dsl)) {
+        log_warn(
+            "[tsi.vicreg] network analytics sidecar skipped for '%s': missing network_design payload (expected explicit NETWORK_ANALYTICS_POLICY node)\n",
+            weights_file.string().c_str());
+      } else {
+        try {
+          const auto design_ir =
+              cuwacunu::camahjucunu::dsl::decode_network_design_from_dsl(
+                  model->network_design_grammar, model->network_design_dsl);
+          std::string options_error;
+          if (cuwacunu::piaabo::torch_compat::
+                  resolve_network_analytics_options_from_network_design(
+                      design_ir, &network_analytics_options, &options_error)) {
+            have_network_analytics_options = true;
+          } else {
+            log_warn(
+                "[tsi.vicreg] network analytics sidecar skipped for '%s': %s\n",
+                weights_file.string().c_str(),
+                options_error.c_str());
+          }
+        } catch (const std::exception& e) {
+          log_warn(
+              "[tsi.vicreg] network analytics sidecar skipped for '%s': failed to decode network_design payload (%s)\n",
+              weights_file.string().c_str(),
+              e.what());
+        }
+      }
+
+      if (have_network_analytics_options) {
+        std::string report_error;
+        if (cuwacunu::piaabo::torch_compat::
+                write_network_analytics_sidecar_for_checkpoint(
+                    *model,
+                    weights_file,
+                    &weights_network_analytics_file,
+                    network_analytics_options,
+                    &report_error)) {
+          wrote_weights_network_analytics_file = true;
+        } else {
+          log_warn(
+              "[tsi.vicreg] network analytics sidecar skipped for '%s': %s\n",
+              weights_file.string().c_str(),
+              report_error.c_str());
+        }
+      }
+    }
+
+    if (enable_entropic_capacity_sidecar &&
+        wrote_weights_network_analytics_file &&
+        !contract_hash.empty()) {
+      const auto source_file_opt =
+          find_latest_source_data_analytics_for_contract_(contract_hash);
+      if (source_file_opt.has_value()) {
+        cuwacunu::piaabo::torch_compat::entropic_capacity_comparison_report_t
+            entropic_report{};
+        std::string cmp_error;
+        if (cuwacunu::piaabo::torch_compat::
+                summarize_entropic_capacity_comparison_from_files(
+                    *source_file_opt,
+                    weights_network_analytics_file,
+                    &entropic_report,
+                    &cmp_error)) {
+          weights_entropic_capacity_file = weights_file;
+          weights_entropic_capacity_file += ".entropic_capacity.kv";
+          std::string write_error;
+          if (cuwacunu::piaabo::torch_compat::write_entropic_capacity_comparison_file(
+                  entropic_report,
+                  weights_entropic_capacity_file,
+                  &write_error)) {
+            wrote_weights_entropic_capacity_file = true;
+          } else {
+            log_warn(
+                "[tsi.vicreg] entropic capacity sidecar skipped for '%s': %s\n",
+                weights_entropic_capacity_file.string().c_str(),
+                write_error.c_str());
+          }
+        } else {
+          log_warn(
+              "[tsi.vicreg] entropic capacity sidecar skipped for '%s': %s\n",
+              weights_file.string().c_str(),
+              cmp_error.c_str());
+        }
+      } else {
+        log_warn(
+            "[tsi.vicreg] entropic capacity sidecar skipped for '%s': missing source analytics for contract=%s\n",
+            weights_file.string().c_str(),
+            contract_hash.c_str());
+      }
     }
   } else {
     std::string io_error;
@@ -511,6 +701,11 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   if (wrote_weights_network_analytics_file) {
     metadata << "weights_network_analytics_file="
              << weights_network_analytics_file.filename().string()
+             << "\n";
+  }
+  if (wrote_weights_entropic_capacity_file) {
+    metadata << "weights_entropic_capacity_file="
+             << weights_entropic_capacity_file.filename().string()
              << "\n";
   }
 
@@ -562,6 +757,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   if (wrote_weights_network_analytics_file) {
     append_manifest_file_if_present(weights_network_analytics_file);
   }
+  if (wrote_weights_entropic_capacity_file) {
+    append_manifest_file_if_present(weights_entropic_capacity_file);
+  }
 
   std::string manifest_error;
   if (!cuwacunu::hashimyei::write_artifact_manifest(action.artifact_directory, manifest, &manifest_error)) {
@@ -569,10 +767,14 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     return false;
   }
 
-  auto* out = static_cast<wikimyei_representation_vicreg_init_record_t*>(action.user_data);
   if (out) {
     out->canonical_base = canonical_base;
     out->weights_file = weights_file;
+    if (wrote_weights_entropic_capacity_file) {
+      out->entropic_capacity_file = weights_entropic_capacity_file;
+    } else {
+      out->entropic_capacity_file.clear();
+    }
     out->metadata_encrypted = metadata_encrypted;
     out->metadata_plaintext_fallback = metadata_plaintext_fallback;
     out->metadata_warning = metadata_warning;
@@ -627,6 +829,13 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     }
   }
 
+  const auto* load_ctx =
+      static_cast<const vicreg_runtime_load_context_t*>(action.user_data);
+  const bool enable_network_analytics_sidecar_on_load =
+      load_ctx && load_ctx->enable_network_analytics_sidecar;
+  const bool enable_entropic_capacity_sidecar_on_load =
+      load_ctx && load_ctx->enable_entropic_capacity_sidecar;
+
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
     auto* model = static_cast<cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(action.object_handle);
@@ -647,6 +856,111 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       }
       if (error) *error = "vicreg load failed: " + load_error;
       return false;
+    }
+
+    fs::path weights_network_analytics_file{};
+    bool wrote_weights_network_analytics_file = false;
+    if (enable_network_analytics_sidecar_on_load) {
+      const auto has_non_ws_ascii = [](std::string_view text) {
+        for (const unsigned char c : text) {
+          if (!std::isspace(c)) return true;
+        }
+        return false;
+      };
+
+      cuwacunu::piaabo::torch_compat::network_analytics_options_t
+          network_analytics_options{};
+      bool have_network_analytics_options = false;
+      if (!has_non_ws_ascii(model->network_design_grammar) ||
+          !has_non_ws_ascii(model->network_design_dsl)) {
+        log_warn(
+            "[tsi.vicreg] load sidecar skipped for '%s': missing network_design payload (expected explicit NETWORK_ANALYTICS_POLICY node)\n",
+            weights_file.string().c_str());
+      } else {
+        try {
+          const auto design_ir =
+              cuwacunu::camahjucunu::dsl::decode_network_design_from_dsl(
+                  model->network_design_grammar, model->network_design_dsl);
+          std::string options_error;
+          if (cuwacunu::piaabo::torch_compat::
+                  resolve_network_analytics_options_from_network_design(
+                      design_ir, &network_analytics_options, &options_error)) {
+            have_network_analytics_options = true;
+          } else {
+            log_warn(
+                "[tsi.vicreg] load sidecar skipped for '%s': %s\n",
+                weights_file.string().c_str(),
+                options_error.c_str());
+          }
+        } catch (const std::exception& e) {
+          log_warn(
+              "[tsi.vicreg] load sidecar skipped for '%s': failed to decode network_design payload (%s)\n",
+              weights_file.string().c_str(),
+              e.what());
+        }
+      }
+
+      if (have_network_analytics_options) {
+        std::string report_error;
+        if (cuwacunu::piaabo::torch_compat::
+                write_network_analytics_sidecar_for_checkpoint(
+                    *model,
+                    weights_file,
+                    &weights_network_analytics_file,
+                    network_analytics_options,
+                    &report_error)) {
+          wrote_weights_network_analytics_file = true;
+        } else {
+          log_warn(
+              "[tsi.vicreg] load sidecar skipped for '%s': %s\n",
+              weights_file.string().c_str(),
+              report_error.c_str());
+        }
+      }
+    }
+
+    if (enable_entropic_capacity_sidecar_on_load &&
+        wrote_weights_network_analytics_file) {
+      const std::string contract_hash = model->contract_hash;
+      if (!contract_hash.empty()) {
+        const auto source_file_opt =
+            find_latest_source_data_analytics_for_contract_(contract_hash);
+        if (source_file_opt.has_value()) {
+          cuwacunu::piaabo::torch_compat::entropic_capacity_comparison_report_t
+              entropic_report{};
+          std::string cmp_error;
+          if (cuwacunu::piaabo::torch_compat::
+                  summarize_entropic_capacity_comparison_from_files(
+                      *source_file_opt,
+                      weights_network_analytics_file,
+                      &entropic_report,
+                      &cmp_error)) {
+            fs::path weights_entropic_capacity_file = weights_file;
+            weights_entropic_capacity_file += ".entropic_capacity.kv";
+            std::string write_error;
+            if (!cuwacunu::piaabo::torch_compat::
+                    write_entropic_capacity_comparison_file(
+                        entropic_report,
+                        weights_entropic_capacity_file,
+                        &write_error)) {
+              log_warn(
+                  "[tsi.vicreg] load entropic sidecar skipped for '%s': %s\n",
+                  weights_entropic_capacity_file.string().c_str(),
+                  write_error.c_str());
+            }
+          } else {
+            log_warn(
+                "[tsi.vicreg] load entropic sidecar skipped for '%s': %s\n",
+                weights_file.string().c_str(),
+                cmp_error.c_str());
+          }
+        } else {
+          log_warn(
+              "[tsi.vicreg] load entropic sidecar skipped for '%s': missing source analytics for contract=%s\n",
+              weights_file.string().c_str(),
+              contract_hash.c_str());
+        }
+      }
     }
   }
   return true;
@@ -740,10 +1054,15 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
 
 [[nodiscard]] inline wikimyei_representation_vicreg_init_record_t update_wikimyei_representation_vicreg_init(
     std::string hashimyei,
-    cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model) {
+    cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model,
+    bool enable_network_analytics_sidecar,
+    std::string contract_hash) {
   namespace fs = std::filesystem;
   wikimyei_representation_vicreg_init_record_t out{};
   out.store_root = wikimyei_representation_vicreg_store_root();
+  out.enable_network_analytics_sidecar = enable_network_analytics_sidecar;
+  out.enable_entropic_capacity_sidecar = true;
+  out.contract_hash = std::move(contract_hash);
 
   std::uint64_t parsed = 0;
   if (!parse_wikimyei_hex_hash(hashimyei, &parsed)) {
@@ -779,7 +1098,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
 [[nodiscard]] inline bool load_wikimyei_representation_vicreg_init_into_model(
     std::string_view hashimyei,
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model,
-    std::string* error) {
+    std::string* error,
+    const vicreg_runtime_load_context_t* load_context) {
   namespace fs = std::filesystem;
   if (error) error->clear();
   if (!model) {
@@ -814,6 +1134,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   action.artifact_directory = artifact_directory;
   action.canonical_action = "tsi.wikimyei.representation.vicreg.load()";
   action.object_handle = model;
+  action.user_data = const_cast<vicreg_runtime_load_context_t*>(load_context);
 
   std::string dispatch_error;
   if (!cuwacunu::hashimyei::dispatch_artifact_load(action.canonical_type, action, &dispatch_error)) {

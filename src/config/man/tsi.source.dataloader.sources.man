@@ -1,0 +1,78 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = tsi.source.dataloader.sources
+TARGET_DSL = src/config/instructions/tsi.source.dataloader.sources.dsl
+TARGET_BNF = src/config/bnf/tsi.source.dataloader.sources.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/observation_pipeline/observation_sources_decoder.cpp
+PRIMARY_VALIDATORS = decode_observation_spec_from_split_dsl
+
+[FIELD CSV_POLICY.CSV_BOOTSTRAP_DELTAS]
+key = CSV_BOOTSTRAP_DELTAS
+scope = CSV_POLICY
+type = uint64
+required = true
+default = none
+range = >= 2
+allowed = decimal integer
+nuance = values below 2 are rejected
+
+[FIELD CSV_POLICY.CSV_STEP_ABS_TOL]
+key = CSV_STEP_ABS_TOL
+scope = CSV_POLICY
+type = float
+required = true
+default = none
+range = > 0
+allowed = float literal
+nuance = non-positive values are rejected
+
+[FIELD CSV_POLICY.CSV_STEP_REL_TOL]
+key = CSV_STEP_REL_TOL
+scope = CSV_POLICY
+type = float
+required = true
+default = none
+range = >= 0
+allowed = float literal
+nuance = negative values are rejected
+
+[FIELD TABLE.instrument]
+key = instrument
+scope = instrument table
+type = string
+required = true
+default = none
+range = non-empty
+allowed = free token
+nuance = parsed as string; semantic symbol catalog is external
+
+[FIELD TABLE.interval]
+key = interval
+scope = instrument table
+type = enum
+required = true
+default = none
+range = closed set from grammar
+allowed = constant,sine,triangular,1s,1m,3m,5m,15m,30m,1h,2h,4h,6h,8h,12h,1d,3d,1w,1M
+nuance = decoder attempts enum conversion; unresolved interval may propagate as unset and fail later in pipeline use
+
+[FIELD TABLE.record_type]
+key = record_type
+scope = instrument table
+type = enum
+required = true
+default = none
+range = closed set
+allowed = kline,trade,basic
+nuance = record decoder family compatibility is checked by downstream loaders
+
+[FIELD TABLE.source]
+key = source
+scope = instrument table
+type = path
+required = true
+default = none
+range = non-empty
+allowed = absolute_or_relative path text
+nuance = existence is validated when dataloader initializes

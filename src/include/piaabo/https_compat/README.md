@@ -19,6 +19,11 @@ Two layers are exposed:
 - async TX queueing (`ws_write_*` methods)
 - RX collection and frame-id based response retrieval
 
+3. OpenAI Responses API (`openai_responses_api.h`)
+- structured POST to `/v1/responses` via libcurl
+- retry policy for transient failures
+- request/response structs for local MCP-style callers
+
 ## Session Model Contract
 
 From implementation behavior:

@@ -72,6 +72,8 @@ struct config_space_t {
   static std::string websocket_url();
   static std::string api_key();
   static std::string Ed25519_pkey();
+  static std::string hero_mode();
+  static std::string hero_api_key_filename();
   static std::string locked_board_hash();
   static std::string locked_board_path_canonical();
   static std::string locked_board_binding_id();

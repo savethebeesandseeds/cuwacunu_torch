@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,41 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
       std::max(1, cuwacunu::iitepi::config_space_t::get<int>(
                       "GENERAL",
                       "iinuji_logs_buffer_capacity"));
+  const bool logs_show_date_cfg =
+      cuwacunu::iitepi::config_space_t::get<bool>(
+          "GENERAL",
+          "iinuji_logs_show_date",
+          std::optional<bool>{true});
+  const bool logs_show_thread_cfg =
+      cuwacunu::iitepi::config_space_t::get<bool>(
+          "GENERAL",
+          "iinuji_logs_show_thread",
+          std::optional<bool>{true});
+  const bool logs_show_metadata_cfg =
+      cuwacunu::iitepi::config_space_t::get<bool>(
+          "GENERAL",
+          "iinuji_logs_show_metadata",
+          std::optional<bool>{true});
+  const bool logs_show_color_cfg =
+      cuwacunu::iitepi::config_space_t::get<bool>(
+          "GENERAL",
+          "iinuji_logs_show_color",
+          std::optional<bool>{true});
+  const bool logs_auto_follow_cfg =
+      cuwacunu::iitepi::config_space_t::get<bool>(
+          "GENERAL",
+          "iinuji_logs_auto_follow",
+          std::optional<bool>{true});
+  const bool logs_mouse_capture_cfg =
+      cuwacunu::iitepi::config_space_t::get<bool>(
+          "GENERAL",
+          "iinuji_logs_mouse_capture",
+          std::optional<bool>{true});
+  const std::string logs_metadata_filter_cfg =
+      cuwacunu::iitepi::config_space_t::get<std::string>(
+          "GENERAL",
+          "iinuji_logs_metadata_filter",
+          std::optional<std::string>{"any"});
   cuwacunu::piaabo::dlog_set_buffer_capacity(static_cast<std::size_t>(logs_cap_cfg));
 
   cuwacunu::iinuji::NcursesAppOpts app_opts{};
@@ -150,6 +186,39 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
   root->add_child(cmdline);
 
   CmdState state{};
+  state.logs.show_date = logs_show_date_cfg;
+  state.logs.show_thread = logs_show_thread_cfg;
+  state.logs.show_metadata = logs_show_metadata_cfg;
+  state.logs.show_color = logs_show_color_cfg;
+  state.logs.auto_follow = logs_auto_follow_cfg;
+  state.logs.mouse_capture = logs_mouse_capture_cfg;
+  {
+    const std::string token = to_lower_copy(trim_copy(logs_metadata_filter_cfg));
+    if (token == "any") {
+      state.logs.metadata_filter = LogsMetadataFilter::Any;
+    } else if (token == "meta+" || token == "meta" || token == "any_meta" ||
+               token == "with_any_metadata") {
+      state.logs.metadata_filter = LogsMetadataFilter::WithAnyMetadata;
+    } else if (token == "fn+" || token == "function" ||
+               token == "with_function") {
+      state.logs.metadata_filter = LogsMetadataFilter::WithFunction;
+    } else if (token == "path+" || token == "path" ||
+               token == "with_path") {
+      state.logs.metadata_filter = LogsMetadataFilter::WithPath;
+    } else if (token == "callsite+" || token == "callsite" ||
+               token == "with_callsite") {
+      state.logs.metadata_filter = LogsMetadataFilter::WithCallsite;
+    } else {
+      state.logs.metadata_filter = LogsMetadataFilter::Any;
+      log_warn(
+          "[iinuji_cmd] invalid GENERAL.iinuji_logs_metadata_filter=%s (using any)\n",
+          logs_metadata_filter_cfg.c_str());
+    }
+  }
+#if !DLOGS_ENABLE_METADATA
+  state.logs.show_metadata = false;
+  state.logs.metadata_filter = LogsMetadataFilter::Any;
+#endif
   const auto boot_contract_hash = resolve_configured_board_contract_hash();
   state.config = load_config_view_from_config(boot_contract_hash);
   clamp_selected_tab(state);

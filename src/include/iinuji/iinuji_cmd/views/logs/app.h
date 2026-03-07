@@ -24,6 +24,13 @@ inline bool handle_logs_key(CmdState& state, int ch) {
     state.logs.level_filter = static_cast<LogsLevelFilter>(idx);
   };
 
+  auto cycle_metadata_filter = [&](bool forward) {
+    constexpr std::size_t kFilters = 5;
+    std::size_t idx = static_cast<std::size_t>(state.logs.metadata_filter);
+    idx = forward ? ((idx + 1u) % kFilters) : ((idx + kFilters - 1u) % kFilters);
+    state.logs.metadata_filter = static_cast<LogsMetadataFilter>(idx);
+  };
+
   switch (ch) {
     case KEY_UP:
       state.logs.selected_setting =
@@ -41,18 +48,24 @@ inline bool handle_logs_key(CmdState& state, int ch) {
           cycle_level(forward);
           return true;
         case 1:
-          state.logs.show_date = !state.logs.show_date;
+          cycle_metadata_filter(forward);
           return true;
         case 2:
-          state.logs.show_thread = !state.logs.show_thread;
+          state.logs.show_date = !state.logs.show_date;
           return true;
         case 3:
-          state.logs.show_color = !state.logs.show_color;
+          state.logs.show_thread = !state.logs.show_thread;
           return true;
         case 4:
-          state.logs.auto_follow = !state.logs.auto_follow;
+          state.logs.show_metadata = !state.logs.show_metadata;
           return true;
         case 5:
+          state.logs.show_color = !state.logs.show_color;
+          return true;
+        case 6:
+          state.logs.auto_follow = !state.logs.auto_follow;
+          return true;
+        case 7:
           state.logs.mouse_capture = !state.logs.mouse_capture;
           return true;
         default:

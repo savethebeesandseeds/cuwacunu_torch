@@ -9,12 +9,17 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 # Build Rules (producer; no lib*.a prerequisites)
 #   - Use BUILD_OBJ_INC to add Torch headers
-#   - Produces: build/libtorch/torch_utils.o, build/libtorch/network_analytics.o, build/libtorch/network_design_adapter.o
-#   - Exposes:  torch_utils / network_analytics / network_design_adapter as named goals
+#   - Produces: build/libtorch/torch_utils.o, build/libtorch/network_analytics.o,
+#               build/libtorch/network_design_adapter.o, build/libtorch/data_analytics.o,
+#               build/libtorch/entropic_capacity_comparison.o
+#   - Exposes:  torch_utils / network_analytics / network_design_adapter /
+#               data_analytics / entropic_capacity_comparison as named goals
 # -----------------------------------------------------------------
 $(eval $(call BUILD_OBJ_INC, libtorch, torch_utils, torch_utils, $(TORCH_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, libtorch, network_analytics, network_analytics, $(TORCH_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, libtorch, network_design_adapter, network_design_adapter, $(TORCH_INCLUDE_PATHS)))
+$(eval $(call BUILD_OBJ_INC, libtorch, data_analytics, data_analytics, $(TORCH_INCLUDE_PATHS)))
+$(eval $(call BUILD_OBJ_INC, libtorch, entropic_capacity_comparison, entropic_capacity_comparison, $(TORCH_INCLUDE_PATHS)))
 
 # -----------------------------------------------------------------
 # Aggregate Target
@@ -22,6 +27,6 @@ $(eval $(call BUILD_OBJ_INC, libtorch, network_design_adapter, network_design_ad
 #       - distributions
 # -----------------------------------------------------------------
 .PHONY: all
-all: torch_utils network_analytics network_design_adapter
+all: torch_utils network_analytics network_design_adapter data_analytics entropic_capacity_comparison
 	$(MAKE) -C $(HERE_PATH)/distributions all
 	@$(LOG_SUCCESS)

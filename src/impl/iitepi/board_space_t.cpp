@@ -21,7 +21,7 @@
 #include <unordered_set>
 
 #include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
-#include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "iitepi/contract_space_t.h"
 #include "iitepi/wave_space_t.h"
 
@@ -1169,23 +1169,24 @@ std::string board_space_t::wave_hash_for_binding(const board_hash_t& hash,
   return *resolved_wave_hash;
 }
 
-void board_space_t::network_analytics(std::ostream* out, bool beautify) {
+void board_space_t::network_topology_analytics(std::ostream* out,
+                                               bool beautify) {
   std::ostream& os = (out != nullptr) ? *out : std::cout;
 
   const auto board_hash = locked_board_hash();
   const auto binding_id = locked_board_binding_id();
   const auto board = board_space_t::board_itself(board_hash);
   if (!board) {
-    os << "[iitepi::board_space_t::network_analytics] error=null board record\n";
+    os << "[iitepi::board_space_t::network_topology_analytics] error=null board record\n";
     return;
   }
   const auto& instruction = board->board.decoded();
-  os << "[iitepi::board_space_t::network_analytics] board_hash=" << board_hash
+  os << "[iitepi::board_space_t::network_topology_analytics] board_hash=" << board_hash
      << " binding_id=" << binding_id
      << " contracts=" << instruction.contracts.size() << "\n";
 
   if (instruction.contracts.empty()) {
-    os << "[iitepi::board_space_t::network_analytics] no contracts declared in board\n";
+    os << "[iitepi::board_space_t::network_topology_analytics] no contracts declared in board\n";
     return;
   }
 
@@ -1197,17 +1198,81 @@ void board_space_t::network_analytics(std::ostream* out, bool beautify) {
         contract_space_t::register_contract_file(contract_path);
 
     if (!reported_contract_hashes.insert(contract_hash).second) {
-      os << "[iitepi::board_space_t::network_analytics] contract_id="
+      os << "[iitepi::board_space_t::network_topology_analytics] contract_id="
          << contract_decl.id
          << " hash=" << contract_hash
          << " skipped=duplicate_hash\n";
       continue;
     }
 
-    os << "[iitepi::board_space_t::network_analytics] contract_id="
+    os << "[iitepi::board_space_t::network_topology_analytics] contract_id="
        << contract_decl.id
        << " hash=" << contract_hash << "\n";
-    contract_space_t::network_analytics(contract_hash, &os, beautify);
+    contract_space_t::network_topology_analytics(contract_hash, &os, beautify);
+  }
+}
+
+void board_space_t::network_parameter_analytics(std::ostream* out,
+                                                bool beautify) {
+  std::ostream& os = (out != nullptr) ? *out : std::cout;
+
+  const auto board_hash = locked_board_hash();
+  const auto binding_id = locked_board_binding_id();
+  const auto board = board_space_t::board_itself(board_hash);
+  if (!board) {
+    os << "[iitepi::board_space_t::network_parameter_analytics] error=null board record\n";
+    return;
+  }
+  const auto& instruction = board->board.decoded();
+  os << "[iitepi::board_space_t::network_parameter_analytics] board_hash="
+     << board_hash << " binding_id=" << binding_id
+     << " contracts=" << instruction.contracts.size() << "\n";
+
+  if (instruction.contracts.empty()) {
+    os << "[iitepi::board_space_t::network_parameter_analytics] no contracts declared in board\n";
+    return;
+  }
+
+  std::unordered_set<std::string> reported_contract_hashes{};
+  for (const auto& contract_decl : instruction.contracts) {
+    const std::string contract_path =
+        resolve_path_from_folder(board->config_folder, contract_decl.file);
+    const std::string contract_hash =
+        contract_space_t::register_contract_file(contract_path);
+
+    if (!reported_contract_hashes.insert(contract_hash).second) {
+      os << "[iitepi::board_space_t::network_parameter_analytics] contract_id="
+         << contract_decl.id
+         << " hash=" << contract_hash
+         << " skipped=duplicate_hash\n";
+      continue;
+    }
+
+    os << "[iitepi::board_space_t::network_parameter_analytics] contract_id="
+       << contract_decl.id
+       << " hash=" << contract_hash << "\n";
+    contract_space_t::network_parameter_analytics(contract_hash, &os, beautify);
+  }
+}
+
+void board_space_t::network_analytics(std::ostream* out,
+                                      bool beautify,
+                                      network_analytics_mode_e mode) {
+  std::ostream& os = (out != nullptr) ? *out : std::cout;
+  switch (mode) {
+    case network_analytics_mode_e::Topology:
+      network_topology_analytics(&os, beautify);
+      return;
+    case network_analytics_mode_e::Parameters:
+      network_parameter_analytics(&os, beautify);
+      return;
+    case network_analytics_mode_e::Both:
+      network_topology_analytics(&os, beautify);
+      if (beautify) {
+        os << "\x1b[1;94mBoard Parameter Analytics\x1b[0m\n";
+      }
+      network_parameter_analytics(&os, beautify);
+      return;
   }
 }
 

@@ -13,12 +13,13 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 #   - Exposes:  curl_utils as a named goal
 # -----------------------------------------------------------------
 $(eval $(call BUILD_OBJ_INC, libcurl, curl_utils, curl_utils, $(LIBCURL_INCLUDE_PATHS)))
+$(eval $(call BUILD_OBJ_INC, libcurl, openai_responses_api, openai_responses_api, $(LIBCURL_INCLUDE_PATHS)))
 
 # -----------------------------------------------------------------
 # Aggregate Target
 #   - Build local object, then recurse into websockets_api
 # -----------------------------------------------------------------
 .PHONY: all
-all: curl_utils
+all: curl_utils openai_responses_api
 	$(MAKE) -C $(HERE_PATH)/websockets_api all
 	@$(LOG_SUCCESS)

@@ -90,14 +90,30 @@ inline bool dispatch_logs_setting_adjust(CmdState& state, bool forward) {
       return dispatch_canonical_internal_call(state, kLevelCalls[idx]);
     }
     case 1:
-      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsDateToggle);
+    {
+      constexpr std::array<std::string_view, 5> kMetadataFilterCalls = {
+          canonical_paths::kLogsSettingsMetadataFilterAny,
+          canonical_paths::kLogsSettingsMetadataFilterAnyMeta,
+          canonical_paths::kLogsSettingsMetadataFilterFunction,
+          canonical_paths::kLogsSettingsMetadataFilterPath,
+          canonical_paths::kLogsSettingsMetadataFilterCallsite,
+      };
+      std::size_t idx = static_cast<std::size_t>(state.logs.metadata_filter);
+      idx = forward ? ((idx + 1u) % kMetadataFilterCalls.size())
+                    : ((idx + kMetadataFilterCalls.size() - 1u) % kMetadataFilterCalls.size());
+      return dispatch_canonical_internal_call(state, kMetadataFilterCalls[idx]);
+    }
     case 2:
-      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsThreadToggle);
+      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsDateToggle);
     case 3:
-      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsColorToggle);
+      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsThreadToggle);
     case 4:
-      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsFollowToggle);
+      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsMetadataToggle);
     case 5:
+      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsColorToggle);
+    case 6:
+      return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsFollowToggle);
+    case 7:
       return dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsMouseCaptureToggle);
     default:
       return false;

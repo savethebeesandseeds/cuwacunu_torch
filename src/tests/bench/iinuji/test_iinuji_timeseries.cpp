@@ -405,7 +405,7 @@ int main(int argc, char** argv)
 
   const bool force_bin =
     cuwacunu::iitepi::config_space_t::get<bool>(
-        "DATA_LOADER", "dataloader_force_rebuild_cache");
+        "DATA_LOADER", "dataloader_force_rebuild_cache", true);
 
   // Dataset_t (for time slicing / channels)
   auto inst_copy = INSTRUMENT; // API expects non-const lvalue

@@ -18,7 +18,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "camahjucunu/dsl/tsiemene_wave/tsiemene_wave.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 
 namespace cuwacunu {
 namespace iitepi {
@@ -770,9 +770,9 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
     log_fatal("[dconfig] missing effective wave DSL payload\n");
   }
 
-  cuwacunu::camahjucunu::tsiemene_wave_set_t decoded_wave{};
+  cuwacunu::camahjucunu::iitepi_wave_set_t decoded_wave{};
   try {
-    decoded_wave = cuwacunu::camahjucunu::dsl::decode_tsiemene_wave_from_dsl(
+    decoded_wave = cuwacunu::camahjucunu::dsl::decode_iitepi_wave_from_dsl(
         record->wave.grammar, record->wave.dsl);
   } catch (const std::exception& e) {
     log_fatal("[dconfig] failed to decode wave DSL while building dependency manifest: %s\n",
@@ -1072,15 +1072,15 @@ std::vector<T> wave_record_t::get_arr(
   }
 }
 
-const cuwacunu::camahjucunu::tsiemene_wave_set_t&
+const cuwacunu::camahjucunu::iitepi_wave_set_t&
 wave_record::wave_blob_t::decoded() const {
   std::call_once(decode_once_, [&]() {
     try {
-      auto inst = cuwacunu::camahjucunu::dsl::decode_tsiemene_wave_from_dsl(
+      auto inst = cuwacunu::camahjucunu::dsl::decode_iitepi_wave_from_dsl(
           grammar,
           dsl);
       decoded_cache_ =
-          std::make_shared<cuwacunu::camahjucunu::tsiemene_wave_set_t>(
+          std::make_shared<cuwacunu::camahjucunu::iitepi_wave_set_t>(
               std::move(inst));
     } catch (const std::exception& e) {
       throw std::runtime_error(

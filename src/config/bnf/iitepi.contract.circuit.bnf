@@ -3,7 +3,7 @@
 <circuit_header>         ::= <circuit_name> [<whitespace>] "=" [<whitespace>] "{" <line_end> ;
 <circuit_close>          ::= [<whitespace>] "}" <line_end> ;
 
-<instance_decl>          ::= [<whitespace>] <instance_alias> [<whitespace>] "=" [<whitespace>] <tsi_type> <line_end> ;
+<instance_decl>          ::= [<whitespace>] <instance_alias> [<whitespace>] "=" [<whitespace>] <tsi_type> [<instance_args>] <line_end> ;
 <hop_decl>               ::= [<whitespace>] <endpoint_from> [<whitespace>] "->" [<whitespace>] <endpoint_to> <line_end> ;
 
 <endpoint_from>          ::= <instance_ref> "@" <directive_ref> ":" <kind_ref> ;
@@ -11,20 +11,37 @@
 
 <circuit_name>           ::= <name_char> {<name_char>} ;
 <instance_alias>         ::= <instance_char> {<instance_char>} ;
-<tsi_type>               ::= <tsi_type_char> {<tsi_type_char>} ;
+<tsi_type>               ::= <tsi_type_base>
+                           | <tsi_type_base> "." <hashimyei_id> ;
+<tsi_type_base>          ::= <tsi_type_char> {<tsi_type_char>} ;
+<instance_args>          ::= [<whitespace>] "(" [<whitespace>] <instance_arg_list> [<whitespace>] ")" ;
+<instance_arg_list>      ::= <instance_arg> {[<whitespace>] "," [<whitespace>] <instance_arg>} ;
+<instance_arg>           ::= <log_mode_argument>
+                           | <instance_arg_token> ;
+<log_mode_argument>      ::= "mode=event"
+                           | "mode=batch"
+                           | "mode=epoch"
+                           | "event"
+                           | "batch"
+                           | "epoch" ;
+<instance_arg_token>     ::= <instance_arg_char> {<instance_arg_char>} ;
 <instance_ref>           ::= <instance_char> {<instance_char>} ;
 <directive_ref>          ::= <directive_char> {<directive_char>} ;
 <kind_ref>               ::= "str" | "tensor" | "cargo" ;
+<hashimyei_id>           ::= "0x" <hex_digit> {<hex_digit>}
+                           | "0X" <hex_digit> {<hex_digit>} ;
 
 <name_char>              ::= <letter> | <number> | "_" ;
 <instance_char>          ::= <name_char> ;
 <directive_char>         ::= <name_char> ;
 <tsi_type_char>          ::= <name_char> | "." ;
+<instance_arg_char>      ::= <name_char> | "." | ":" | "-" | "=" ;
 
 <line_end>               ::= [<whitespace>] <break_block> ;
 <break_block>            ::= {<newline>} ;
 <whitespace>             ::= {<empty>} ;
 <letter>                 ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<hex_digit>              ::= <number> | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" ;
 <number>                 ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 <newline>                ::= "\n" | "\r\n" ;
 <empty>                  ::= " " | "\t" ;
