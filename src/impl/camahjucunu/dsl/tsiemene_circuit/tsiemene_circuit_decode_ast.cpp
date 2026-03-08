@@ -90,7 +90,13 @@ void tsiemeneCircuits::visit(const IntermediaryNode* node, VisitorContext& conte
   if (!out) return;
 
   if (node->hash == TSIEMENE_CIRCUIT_HASH_instruction) {
+    out->active_circuit_name.clear();
     out->circuits.clear();
+    return;
+  }
+  if (node->hash == TSIEMENE_CIRCUIT_HASH_active_circuit_decl) {
+    out->active_circuit_name =
+        tsiemene_circuit_decode_internal::parse_active_circuit_decl_node(node);
     return;
   }
   if (node->hash == TSIEMENE_CIRCUIT_HASH_circuit) {

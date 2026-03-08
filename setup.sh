@@ -269,7 +269,7 @@ install_base_requirements() {
   run_cmd "Installing base build/debug dependencies" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
-    gnupg2 valgrind gdb ccache mold locales curl libcurl4-openssl-dev
+    gnupg2 valgrind gdb ccache mold locales curl libcurl4-openssl-dev bash-completion
   run_cmd "Generating locale en_US.UTF-8" "${SUDO[@]}" locale-gen en_US.UTF-8
   run_cmd "Setting LANG=en_US.UTF-8" "${SUDO[@]}" update-locale LANG=en_US.UTF-8
 }

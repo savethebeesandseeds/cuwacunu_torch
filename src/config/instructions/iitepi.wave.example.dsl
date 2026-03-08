@@ -73,8 +73,8 @@
 */
 
 WAVE train_vicreg_primary {
-  MODE = train | debug; // modes: run(0b001), train(0b010), debug(0x0100 == 0b1_0000_0000); combinable: train|debug
-  EPOCHS = 3;
+  MODE = run | train | debug ; // modes: run(0b001), train(0b010), debug(0x0100 == 0b1_0000_0000); combinable: train|debug
+  EPOCHS = 1;
 
   SAMPLER = sequential;
   BATCH_SIZE = 64;

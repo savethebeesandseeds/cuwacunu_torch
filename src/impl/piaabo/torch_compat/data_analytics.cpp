@@ -20,6 +20,7 @@ namespace torch_compat {
 namespace {
 
 constexpr double kNumericEpsilon = 1e-18;
+constexpr std::size_t kDataAnalyticsContractHashPathLen = 8;
 
 [[nodiscard]] inline double clamp_nonneg(double v) {
   return (v > 0.0) ? v : 0.0;
@@ -37,6 +38,19 @@ constexpr double kNumericEpsilon = 1e-18;
     --end;
   }
   return text.substr(begin, end - begin);
+}
+
+[[nodiscard]] std::string contract_hash_path_token_(std::string_view contract_hash) {
+  std::string_view token = trim_ascii_ws_view_(contract_hash);
+  if (token.size() >= 2 && token[0] == '0' &&
+      (token[1] == 'x' || token[1] == 'X')) {
+    token.remove_prefix(2);
+  }
+  if (token.empty()) return {};
+  if (token.size() > kDataAnalyticsContractHashPathLen) {
+    token = token.substr(0, kDataAnalyticsContractHashPathLen);
+  }
+  return std::string(token);
 }
 
 [[nodiscard]] data_analytics_options_t normalize_options_(
@@ -487,8 +501,9 @@ std::filesystem::path source_data_analytics_root_directory() {
 
 std::filesystem::path source_data_analytics_contract_directory(
     std::string_view contract_hash) {
-  if (contract_hash.empty()) return {};
-  return source_data_analytics_root_directory() / std::string(contract_hash);
+  const std::string token = contract_hash_path_token_(contract_hash);
+  if (token.empty()) return {};
+  return source_data_analytics_root_directory() / token;
 }
 
 std::filesystem::path source_data_analytics_instance_directory(

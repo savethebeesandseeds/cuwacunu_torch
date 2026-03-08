@@ -222,7 +222,7 @@ allow_local_read:bool = true
 allow_local_write:bool = false
 write_roots:str = /tmp
 backup_enabled:bool = true
-backup_dir:str = /cuwacunu/src/config/backups/hero.config
+backup_dir:str = /cuwacunu/src/config/.backups/hero.config
 backup_max_entries:int = 20
 )";
 

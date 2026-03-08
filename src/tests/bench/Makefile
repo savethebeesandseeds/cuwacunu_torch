@@ -28,6 +28,7 @@ all:
 	+$(MAKE) -C $(HERE_PATH)/wikimyei all
 	+$(MAKE) -C $(HERE_PATH)/tsiemene all
 	+$(MAKE) -C $(HERE_PATH)/iinuji all
+	+$(MAKE) -C $(HERE_PATH)/hashimyei all
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run

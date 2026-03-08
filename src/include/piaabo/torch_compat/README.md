@@ -40,6 +40,7 @@ Public API:
 
 - `summarize_module_network_analytics(...)`
 - `summarize_network_design_analytics(...)`
+- `network_analytics_to_pretty_text(...)`
 - `network_design_analytics_to_pretty_text(...)`
 - `write_network_analytics_file(...)`
 - `write_network_analytics_sidecar_for_checkpoint(...)`

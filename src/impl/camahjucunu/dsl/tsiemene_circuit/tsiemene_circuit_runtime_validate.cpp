@@ -173,12 +173,30 @@ bool validate_circuit_instruction(
     }
   }
 
+  const std::string active_name =
+      tsiemene_circuit_runtime_internal::trim_ascii_ws_copy(
+          circuit_instruction.active_circuit_name);
+  if (!active_name.empty() &&
+      circuit_names.find(active_name) == circuit_names.end()) {
+    if (error) {
+      *error = "active_circuit references unknown circuit name: " + active_name;
+    }
+    return false;
+  }
+
   return true;
 }
 
 std::string tsiemene_circuit_instruction_t::str() const {
   std::ostringstream oss;
-  oss << "tsiemene_circuit_instruction_t: circuits=" << circuits.size() << "\n";
+  oss << "tsiemene_circuit_instruction_t: circuits=" << circuits.size()
+      << " active_circuit=";
+  if (active_circuit_name.empty()) {
+    oss << "<unset>";
+  } else {
+    oss << active_circuit_name;
+  }
+  oss << "\n";
   for (std::size_t i = 0; i < circuits.size(); ++i) {
     const auto& c = circuits[i];
     oss << "  [" << i << "] " << c.name

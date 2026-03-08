@@ -36,6 +36,7 @@ $(eval $(call TEST_ONEFILE, test_memory_mapped_edge_cases,        test_memory_ma
 
 $(eval $(call TEST_ONEFILE, test_db,     test_db.cpp,     $(DB_LINK)))
 $(eval $(call TEST_ONEFILE, test_db_rag, test_db_rag.cpp, $(DB_LINK)))
+$(eval $(call TEST_ONEFILE, test_db_query_utils, test_db_query_utils.cpp, $(DB_LINK)))
 
 $(eval $(call TEST_ONEFILE, test_binance_testnet,      test_binance_testnet.cpp,      $(EXCHANGE_LINK)))
 $(eval $(call TEST_ONEFILE, test_binance_mech_server,  test_binance_mech_server.cpp,  $(EXCHANGE_LINK)))
@@ -72,6 +73,7 @@ all: \
 	$(TEST_OUT)/test_memory_mapped_edge_cases \
 	$(TEST_OUT)/test_db \
 	$(TEST_OUT)/test_db_rag \
+	$(TEST_OUT)/test_db_query_utils \
 	$(TEST_OUT)/test_binance_testnet \
 	$(TEST_OUT)/test_binance_mech_server \
 	$(TEST_OUT)/test_binance_mech_data \

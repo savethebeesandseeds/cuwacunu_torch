@@ -27,10 +27,14 @@ wikimyei:
 jkimyei:
 	$(MAKE) -C $(HERE_PATH)/jkimyei all
 
+.PHONY: hero
+hero:
+	$(MAKE) -C $(HERE_PATH)/HERO all
+
 .PHONY: iinuji
 iinuji:
 	$(MAKE) -C $(HERE_PATH)/iinuji all
 
 .PHONY: all
-all: iitepi piaabo camahjucunu wikimyei
+all: iitepi piaabo camahjucunu wikimyei hero
 	@$(LOG_SUCCESS)

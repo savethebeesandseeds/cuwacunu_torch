@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <mutex>
@@ -85,6 +86,7 @@ inline std::mutex& artifact_driver_registry_mutex() {
   std::vector<std::string> out;
   out.reserve(registry.size());
   for (const auto& kv : registry) out.push_back(kv.first);
+  std::sort(out.begin(), out.end());
   return out;
 }
 

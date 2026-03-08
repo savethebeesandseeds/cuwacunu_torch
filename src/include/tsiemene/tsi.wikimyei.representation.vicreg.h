@@ -244,10 +244,14 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
       return;
     }
     cuwacunu::piaabo::torch_compat::network_analytics_options_t options{};
+    std::string network_label = model_.network_design_network_id;
     try {
       const auto design_ir = cuwacunu::camahjucunu::dsl::decode_network_design_from_dsl(
           model_.network_design_grammar,
           model_.network_design_dsl);
+      if (!has_non_ws_ascii(network_label) && has_non_ws_ascii(design_ir.network_id)) {
+        network_label = design_ir.network_id;
+      }
       std::string options_error;
       if (!cuwacunu::piaabo::torch_compat::
               resolve_network_analytics_options_from_network_design(
@@ -263,18 +267,19 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
           e.what());
       return;
     }
+    if (!has_non_ws_ascii(network_label)) {
+      network_label = model_.component_name;
+    }
     const auto analytics =
         cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
             model_,
             options);
-    log_info(
-        "[tsi.vicreg][network_analytics] epoch_end finite=%.6f std=%.6f near_zero=%.6f entropy=%.6f tensor_cv=%.6f max_abs=%.6f\n",
-        analytics.finite_ratio,
-        analytics.stddev,
-        analytics.near_zero_ratio,
-        analytics.abs_energy_entropy,
-        analytics.tensor_rms_cv,
-        analytics.max_abs);
+    std::ostringstream oss;
+    oss << "[tsi.vicreg][network_analytics] epoch_end"
+        << " network=" << network_label << "\n";
+    oss << cuwacunu::piaabo::torch_compat::network_analytics_to_pretty_text(
+        analytics, options, network_label, /*use_color=*/true);
+    log_info("%s", oss.str().c_str());
   }
 
   void reset(BoardContext&) override {
@@ -510,26 +515,39 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   namespace fs = std::filesystem;
   if (contract_hash.empty()) return std::nullopt;
 
-  const fs::path base =
+  const fs::path short_base =
       cuwacunu::piaabo::torch_compat::source_data_analytics_contract_directory(
           contract_hash);
-  std::error_code ec;
-  if (!fs::exists(base, ec) || !fs::is_directory(base, ec)) return std::nullopt;
+  const fs::path legacy_base =
+      cuwacunu::piaabo::torch_compat::source_data_analytics_root_directory() /
+      std::string(contract_hash);
 
   fs::path best_path{};
   fs::file_time_type best_time{};
   bool seen = false;
-  for (fs::recursive_directory_iterator it(base, ec), end; it != end; it.increment(ec)) {
-    if (ec) break;
-    if (!it->is_regular_file()) continue;
-    if (it->path().filename() != "latest.kv") continue;
-    const auto ts = it->last_write_time(ec);
-    if (ec) continue;
-    if (!seen || ts > best_time) {
-      best_time = ts;
-      best_path = it->path();
-      seen = true;
+
+  const auto scan_base = [&](const fs::path& base) {
+    std::error_code ec;
+    if (base.empty()) return;
+    if (!fs::exists(base, ec) || !fs::is_directory(base, ec)) return;
+    for (fs::recursive_directory_iterator it(base, ec), end; it != end;
+         it.increment(ec)) {
+      if (ec) break;
+      if (!it->is_regular_file()) continue;
+      if (it->path().filename() != "latest.kv") continue;
+      const auto ts = it->last_write_time(ec);
+      if (ec) continue;
+      if (!seen || ts > best_time) {
+        best_time = ts;
+        best_path = it->path();
+        seen = true;
+      }
     }
+  };
+
+  scan_base(short_base);
+  if (legacy_base != short_base) {
+    scan_base(legacy_base);
   }
 
   if (!seen) return std::nullopt;

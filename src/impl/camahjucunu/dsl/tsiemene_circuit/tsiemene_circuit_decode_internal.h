@@ -12,6 +12,7 @@ namespace tsiemene_circuit_decode_internal {
 
 cuwacunu::camahjucunu::tsiemene_circuit_decl_t parse_circuit_node(
     const IntermediaryNode* node);
+std::string parse_active_circuit_decl_node(const IntermediaryNode* node);
 
 } /* namespace tsiemene_circuit_decode_internal */
 } /* namespace dsl */

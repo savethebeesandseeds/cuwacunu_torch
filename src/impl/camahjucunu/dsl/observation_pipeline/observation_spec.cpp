@@ -103,7 +103,7 @@ int64_t observation_spec_t::max_future_sequence_length() {
 /* ───────────────────── _t lifecycle ───────────────────── */
 
 void observation_runtime_t::init() {
-  log_info(
+  log_dbg(
       "[observation_runtime_t] initializing static-global observation snapshot "
       "(single mutable cache updated by explicit contract hash)\n");
   // Keep startup side-effect free; runtime state is materialized via update().
@@ -115,7 +115,7 @@ void observation_runtime_t::finit() {
       last_contract_hash.empty()
           ? "<none>"
           : last_contract_hash.c_str();
-  log_info(
+  log_dbg(
       "[observation_runtime_t] finalizing static-global observation snapshot "
       "(last_contract_hash=%s)\n",
       last_hash);

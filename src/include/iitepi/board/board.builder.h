@@ -387,9 +387,9 @@ inline void apply_vicreg_flag_overrides_from_component_row(
       }
       return false;
     }
-    oss << "  " << h.from.instance << h.from.directive << ":" << h.from.kind
+    oss << "  " << h.from.instance << "@" << h.from.directive << ":" << h.from.kind
         << " -> "
-        << h.to.instance << h.to.directive
+        << h.to.instance << "@" << h.to.directive
         << "\n";
   }
   oss << "}\n";
@@ -425,6 +425,31 @@ select_wave_by_id(
     *error = "no WAVE matches requested wave id '" + wave_id + "'";
   }
   return nullptr;
+}
+
+[[nodiscard]] inline bool select_active_circuit(
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& instruction,
+    cuwacunu::camahjucunu::tsiemene_circuit_instruction_t* out,
+    std::string* error = nullptr) {
+  if (!out) return false;
+  *out = instruction;
+
+  const std::string active_name =
+      trim_ascii_copy(instruction.active_circuit_name);
+  if (active_name.empty()) return true;
+
+  for (const auto& c : instruction.circuits) {
+    if (trim_ascii_copy(c.name) != active_name) continue;
+    out->active_circuit_name = active_name;
+    out->circuits = {c};
+    return true;
+  }
+
+  if (error) {
+    *error = "active_circuit selector '" + active_name +
+             "' does not match any circuit declaration";
+  }
+  return false;
 }
 
 [[nodiscard]] inline std::string canonical_runtime_node_path(
@@ -539,7 +564,7 @@ template <typename Datatype_t>
     TsiSinkLogSys::LogMode* out_mode,
     std::string* error) {
   if (!out_mode) return false;
-  *out_mode = TsiSinkLogSys::LogMode::EachEvent;
+  *out_mode = TsiSinkLogSys::LogMode::EachBatch;
   if (decl.args.empty()) return true;
 
   bool mode_seen = false;
@@ -564,7 +589,7 @@ template <typename Datatype_t>
       if (!parsed_mode.has_value()) {
         if (error) {
           *error = "invalid tsi.probe.log mode '" + value + "' for alias '" +
-                   decl.alias + "' (expected event|batch|epoch)";
+                   decl.alias + "' (expected batch|epoch)";
         }
         return false;
       }
@@ -584,7 +609,7 @@ template <typename Datatype_t>
     if (!parsed_mode.has_value()) {
       if (error) {
         *error = "invalid tsi.probe.log argument '" + token + "' for alias '" +
-                 decl.alias + "' (expected mode=event|batch|epoch or positional event|batch|epoch)";
+                 decl.alias + "' (expected mode=batch|epoch or positional batch|epoch)";
       }
       return false;
     }
@@ -770,7 +795,7 @@ std::unique_ptr<Tsi> make_tsi_for_decl(
       }
       return std::make_unique<TsiSinkNull>(id, decl.alias);
     case TsiTypeId::SinkLogSys: {
-      TsiSinkLogSys::LogMode log_mode = TsiSinkLogSys::LogMode::EachEvent;
+      TsiSinkLogSys::LogMode log_mode = TsiSinkLogSys::LogMode::EachBatch;
       if (!parse_probe_log_mode_from_instance_args(decl, &log_mode, error)) {
         return nullptr;
       }
@@ -1314,7 +1339,8 @@ bool build_runtime_board_from_instruction(
   }
   (void)wave_hash;
 
-  const auto contract_report = validate_contract_definition(inst, contract_hash);
+  const auto contract_report =
+      validate_contract_definition(inst, contract_hash);
   if (!contract_report.ok) {
     if (error) {
       *error = contract_report.indicators.empty()
@@ -1324,10 +1350,13 @@ bool build_runtime_board_from_instruction(
     return false;
   }
 
+  cuwacunu::camahjucunu::tsiemene_circuit_instruction_t effective_inst{};
+  if (!select_active_circuit(inst, &effective_inst, error)) return false;
+
   out->contract_hash = contract_hash;
   out->wave_hash = wave_hash;
   out->contracts.clear();
-  out->contracts.reserve(inst.circuits.size());
+  out->contracts.reserve(effective_inst.circuits.size());
 
   std::string observation_sources_dsl;
   std::string observation_channels_dsl;
@@ -1381,7 +1410,7 @@ bool build_runtime_board_from_instruction(
     return false;
   }
   const auto compat_report = validate_wave_contract_compatibility(
-      inst,
+      effective_inst,
       *selected_wave,
       contract_hash,
       &jkimyei_specs,
@@ -1396,11 +1425,11 @@ bool build_runtime_board_from_instruction(
     return false;
   }
 
-  for (std::size_t i = 0; i < inst.circuits.size(); ++i) {
+  for (std::size_t i = 0; i < effective_inst.circuits.size(); ++i) {
     BoardContract c{};
     std::string local_error;
     if (!build_runtime_circuit_from_decl<Datatype_t, Sampler_t>(
-            inst.circuits[i],
+            effective_inst.circuits[i],
             contract_hash,
             observation_instruction,
             jkimyei_specs,
@@ -1416,7 +1445,10 @@ bool build_runtime_board_from_instruction(
     }
     std::string circuit_dsl;
     if (!render_contract_circuit_dsl(
-            contract_hash, inst.circuits[i], &circuit_dsl, &local_error)) {
+            contract_hash,
+            effective_inst.circuits[i],
+            &circuit_dsl,
+            &local_error)) {
       if (error) *error = "contract[" + std::to_string(i) + "] " + local_error;
       return false;
     }

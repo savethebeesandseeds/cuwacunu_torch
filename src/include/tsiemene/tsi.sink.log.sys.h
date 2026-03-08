@@ -17,14 +17,12 @@ namespace tsiemene {
 class TsiSinkLogSys final : public TsiSink {
  public:
   enum class LogMode : std::uint8_t {
-    EachEvent = 0,
-    EachBatch = 1,
-    EachEpoch = 2,
+    EachBatch = 0,
+    EachEpoch = 1,
   };
 
   [[nodiscard]] static std::optional<LogMode> parse_mode_token(
       std::string_view token) {
-    if (token == "event" || token == "each_event") return LogMode::EachEvent;
     if (token == "batch" || token == "each_batch") return LogMode::EachBatch;
     if (token == "epoch" || token == "each_epoch") return LogMode::EachEpoch;
     return std::nullopt;
@@ -37,7 +35,7 @@ class TsiSinkLogSys final : public TsiSink {
 
   explicit TsiSinkLogSys(TsiId id,
                          std::string instance_name = "tsi.probe.log",
-                         LogMode mode = LogMode::EachEvent)
+                         LogMode mode = LogMode::EachBatch)
       : id_(id),
         instance_name_(std::move(instance_name)),
         mode_(mode) {}
@@ -76,50 +74,54 @@ class TsiSinkLogSys final : public TsiSink {
     if (!should_emit_for_wave_(wave)) return;
     if (in.signal.kind == PayloadKind::Cargo) {
       if (in.directive == IN_DEBUG) {
-        log_info("[tsi.probe.log.debug] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-                 (unsigned long long)wave.cursor.id,
-                 (unsigned long long)wave.cursor.episode,
-                 (unsigned long long)wave.cursor.batch,
-                 (unsigned long long)wave.cursor.i,
-                 summarize_cargo_(in.signal.cargo).c_str());
+        log_dbg(
+            "[tsi.probe.log.debug] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) signal=cargo\n",
+            (unsigned long long)wave.cursor.id,
+            (unsigned long long)wave.cursor.episode,
+            (unsigned long long)wave.cursor.batch,
+            (unsigned long long)wave.cursor.i);
         return;
       }
       if (in.directive == IN_WARN) {
-        log_warn("[tsi.probe.log.warn] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-                 (unsigned long long)wave.cursor.id,
-                 (unsigned long long)wave.cursor.episode,
-                 (unsigned long long)wave.cursor.batch,
-                 (unsigned long long)wave.cursor.i,
-                 summarize_cargo_(in.signal.cargo).c_str());
+        log_warn(
+            "[tsi.probe.log.warn] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) signal=cargo\n",
+            (unsigned long long)wave.cursor.id,
+            (unsigned long long)wave.cursor.episode,
+            (unsigned long long)wave.cursor.batch,
+            (unsigned long long)wave.cursor.i);
         return;
       }
       if (in.directive == IN_ERROR) {
-        log_err("[tsi.probe.log.error] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-                (unsigned long long)wave.cursor.id,
-                (unsigned long long)wave.cursor.episode,
-                (unsigned long long)wave.cursor.batch,
-                (unsigned long long)wave.cursor.i,
-                summarize_cargo_(in.signal.cargo).c_str());
+        log_err(
+            "[tsi.probe.log.error] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) signal=cargo\n",
+            (unsigned long long)wave.cursor.id,
+            (unsigned long long)wave.cursor.episode,
+            (unsigned long long)wave.cursor.batch,
+            (unsigned long long)wave.cursor.i);
         return;
       }
       if (in.directive == IN_INFO) {
-        log_info("[tsi.probe.log.info] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-                 (unsigned long long)wave.cursor.id,
-                 (unsigned long long)wave.cursor.episode,
-                 (unsigned long long)wave.cursor.batch,
-                 (unsigned long long)wave.cursor.i,
-                 summarize_cargo_(in.signal.cargo).c_str());
+        log_info(
+            "[tsi.probe.log.info] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) signal=cargo\n",
+            (unsigned long long)wave.cursor.id,
+            (unsigned long long)wave.cursor.episode,
+            (unsigned long long)wave.cursor.batch,
+            (unsigned long long)wave.cursor.i);
         return;
       }
     }
 
     if (in.directive == IN_DEBUG && in.signal.kind == PayloadKind::String) {
-      log_info("[tsi.probe.log.debug] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
-               (unsigned long long)wave.cursor.id,
-               (unsigned long long)wave.cursor.episode,
-               (unsigned long long)wave.cursor.batch,
-               (unsigned long long)wave.cursor.i,
-               in.signal.text.c_str());
+      if (is_runtime_trace_noise_(in.signal.text)) {
+        return;
+      } else {
+        log_dbg("[tsi.probe.log.debug] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) %s\n",
+                (unsigned long long)wave.cursor.id,
+                (unsigned long long)wave.cursor.episode,
+                (unsigned long long)wave.cursor.batch,
+                (unsigned long long)wave.cursor.i,
+                in.signal.text.c_str());
+      }
       return;
     }
 
@@ -155,7 +157,7 @@ class TsiSinkLogSys final : public TsiSink {
                  (unsigned long long)wave.cursor.i,
                  (double)v);
       } else {
-        log_warn("[tsi.probe.log.info] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) tensor=<undefined>\n",
+        log_info("[tsi.probe.log.info] wave(id=%llu,episode=%llu,batch=%llu,i=%llu) tensor=<undefined>\n",
                  (unsigned long long)wave.cursor.id,
                  (unsigned long long)wave.cursor.episode,
                  (unsigned long long)wave.cursor.batch,
@@ -166,8 +168,14 @@ class TsiSinkLogSys final : public TsiSink {
   }
 
  private:
+  [[nodiscard]] static bool is_runtime_trace_noise_(std::string_view text) {
+    return text.rfind("step tsi=", 0) == 0 ||
+           text.rfind("step.done tsi=", 0) == 0 ||
+           text.rfind("route from=", 0) == 0 ||
+           text.rfind("drop from=", 0) == 0;
+  }
+
   [[nodiscard]] bool should_emit_for_wave_(const Wave& wave) {
-    if (mode_ == LogMode::EachEvent) return true;
     if (mode_ == LogMode::EachEpoch) {
       if (has_last_emit_scope_ && last_emit_episode_ == wave.cursor.episode) {
         return false;
@@ -234,7 +242,7 @@ class TsiSinkLogSys final : public TsiSink {
 
   TsiId id_{};
   std::string instance_name_;
-  LogMode mode_{LogMode::EachEvent};
+  LogMode mode_{LogMode::EachBatch};
   bool has_last_emit_scope_{false};
   std::uint64_t last_emit_episode_{0};
   std::uint64_t last_emit_batch_{0};

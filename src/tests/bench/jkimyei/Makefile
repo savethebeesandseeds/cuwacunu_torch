@@ -24,4 +24,3 @@ run: run-test_jk_setup
 .PHONY: clean
 clean:
 	@rm -f $(TEST_OUT)/test_jk_setup
-

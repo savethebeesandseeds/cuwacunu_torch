@@ -734,6 +734,159 @@ void accumulate_buffer_tensor_(
   return oss.str();
 }
 
+void append_topk_pretty_lines_(
+    std::ostringstream* oss,
+    std::string_view label,
+    const std::vector<analytics_topk_entry_t>& entries,
+    const char* c_key,
+    const char* c_value,
+    const char* c_note,
+    const char* c_reset) {
+  if (oss == nullptr) return;
+  if (entries.empty()) {
+    *oss << "\t" << c_key << std::left << std::setw(34) << label << c_reset
+         << " : " << c_note << "(none)" << c_reset << "\n";
+    return;
+  }
+  for (std::size_t i = 0; i < entries.size(); ++i) {
+    std::ostringstream key;
+    key << label << "[" << (i + 1) << "]";
+    std::ostringstream value;
+    value.setf(std::ios::fixed);
+    value << std::setprecision(6) << entries[i].value;
+    *oss << "\t" << c_key << std::left << std::setw(34) << key.str() << c_reset
+         << " : " << c_value << entries[i].tensor_name << c_reset
+         << "  " << c_note << value.str() << c_reset << "\n";
+  }
+}
+
+[[nodiscard]] std::string as_pretty_text_(
+    const network_analytics_report_t& report,
+    const network_analytics_options_t& options,
+    std::string_view network_label,
+    bool use_color) {
+  const char* c_reset = use_color ? "\x1b[0m" : "";
+  const char* c_title = use_color ? "\x1b[1;96m" : "";
+  const char* c_section = use_color ? "\x1b[1;94m" : "";
+  const char* c_key = use_color ? "\x1b[90m" : "";
+  const char* c_value = use_color ? "\x1b[97m" : "";
+  const char* c_note = use_color ? "\x1b[36m" : "";
+  const char* c_good = use_color ? "\x1b[92m" : "";
+  const char* c_bad = use_color ? "\x1b[91m" : "";
+  const char* c_warn = use_color ? "\x1b[93m" : "";
+  const char* c_entropy = use_color ? "\x1b[1;95m" : "";
+
+  std::ostringstream oss;
+  oss.setf(std::ios::fixed);
+  oss << std::setprecision(6);
+
+  auto line = [&](std::string_view key,
+                  const auto& value,
+                  std::string_view note) {
+    oss << "\t" << c_key << std::left << std::setw(34) << key << c_reset
+        << " : " << c_value << value << c_reset << "\t" << c_note << note
+        << c_reset << "\n";
+  };
+  auto line_color = [&](std::string_view key,
+                        const auto& value,
+                        const char* color,
+                        std::string_view note) {
+    oss << "\t" << c_key << std::left << std::setw(34) << key << c_reset
+        << " : " << color << value << c_reset << "\t" << c_note << note
+        << c_reset << "\n";
+  };
+  auto section = [&](std::string_view title) {
+    oss << c_section << title << c_reset << "\n";
+  };
+
+  oss << c_title << "Network Analytics Report" << c_reset << "\n";
+  line("schema", report.schema, "report schema id");
+  if (!network_label.empty()) {
+    line("network_label", network_label, "network/component under analysis");
+  }
+  line("tensor_count", report.tensor_count, "parameter tensors visited");
+  line("trainable_tensor_count",
+       report.trainable_tensor_count,
+       "requires_grad=true tensors");
+  line("anomaly_top_k",
+       options.anomaly_top_k,
+       "top-k entries retained per anomaly family");
+  oss << "\n";
+
+  section("Health Snapshot");
+  line_color("finite_ratio",
+             report.finite_ratio,
+             (report.finite_ratio >= 0.999999) ? c_good : c_warn,
+             "finite / total");
+  line_color("non_finite_ratio",
+             report.non_finite_ratio,
+             (report.non_finite_ratio <= 0.0) ? c_good : c_bad,
+             "(nan + inf) / total");
+  line("near_zero_ratio", report.near_zero_ratio, "fraction near zero threshold");
+  line("stddev", report.stddev, "global finite stddev");
+  line("max_abs", report.max_abs, "global finite absolute maximum");
+  line("max_abs_over_rms", report.max_abs_over_rms, "outlier heaviness");
+  line("tensor_rms_cv", report.tensor_rms_cv, "cross-tensor RMS variability");
+  line("abs_energy_entropy",
+       report.abs_energy_entropy,
+       "normalized abs-energy entropy");
+  oss << "\n";
+
+  section("Network Entropy Capacity");
+  line_color("Network Entropy Capacity",
+             report.network_global_entropic_capacity,
+             c_entropy,
+             "primary capacity indicator");
+  line("network_entropic_bottleneck_min",
+       report.network_entropic_bottleneck_min,
+       "lowest effective-rank bottleneck");
+  line("network_effective_rank_p50",
+       report.network_effective_rank_p50,
+       "effective-rank median");
+  line("network_effective_rank_p90",
+       report.network_effective_rank_p90,
+       "effective-rank p90");
+  line("network_capacity_tensor_count",
+       report.network_capacity_tensor_count,
+       "tensors participating in capacity rollup");
+  line("spectral_tensor_count",
+       report.spectral_tensor_count,
+       "tensors with spectral metrics");
+  line_color("spectral_failed_tensor_count",
+             report.spectral_failed_tensor_count,
+             (report.spectral_failed_tensor_count == 0) ? c_good : c_bad,
+             "SVD failures");
+  oss << "\n";
+
+  section("Top Alerts");
+  append_topk_pretty_lines_(
+      &oss,
+      "top_nonfinite_ratio",
+      report.top_nonfinite_ratio_tensors,
+      c_key,
+      c_value,
+      c_note,
+      c_reset);
+  append_topk_pretty_lines_(
+      &oss,
+      "top_max_abs_over_rms",
+      report.top_max_abs_over_rms_tensors,
+      c_key,
+      c_value,
+      c_note,
+      c_reset);
+  append_topk_pretty_lines_(
+      &oss,
+      "top_low_effective_rank",
+      report.top_low_effective_rank_tensors,
+      c_key,
+      c_value,
+      c_note,
+      c_reset);
+
+  return oss.str();
+}
+
 [[nodiscard]] std::string as_ascii_key_value_(
     const network_design_analytics_report_t& report,
     std::string_view source_label) {
@@ -1960,6 +2113,14 @@ std::string network_analytics_to_key_value_text(
     const network_analytics_options_t& options,
     std::string_view checkpoint_filename) {
   return as_ascii_key_value_(report, options, checkpoint_filename);
+}
+
+std::string network_analytics_to_pretty_text(
+    const network_analytics_report_t& report,
+    const network_analytics_options_t& options,
+    std::string_view network_label,
+    bool use_color) {
+  return as_pretty_text_(report, options, network_label, use_color);
 }
 
 std::string network_design_analytics_to_key_value_text(

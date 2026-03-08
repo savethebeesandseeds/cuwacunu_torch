@@ -3,7 +3,7 @@
 // and plots *both* raw data and the *real* VICReg embedding from the trained encoder.
 //
 // Run:
-//   /cuwacunu/src/tests/build/test_iinuji_timeseries BTCUSDT
+//   /cuwacunu/.build/tests/test_iinuji_timeseries BTCUSDT
 //
 // Controls:
 //   ←/→ : pan           (by ~window/8)

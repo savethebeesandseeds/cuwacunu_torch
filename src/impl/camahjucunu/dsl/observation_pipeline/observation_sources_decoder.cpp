@@ -69,13 +69,13 @@ observationSourcesDecoder::observationSourcesDecoder(std::string grammar_text)
   , iParser(iLexer, grammar)
 {
 #ifdef OBSERVARION_PIPELINE_DEBUG
-  log_info("%s\n", OBSERVATION_SOURCES_GRAMMAR_TEXT.c_str());
+  log_dbg("%s\n", OBSERVATION_SOURCES_GRAMMAR_TEXT.c_str());
 #endif
 }
 
 observation_spec_t observationSourcesDecoder::decode(std::string instruction) {
 #ifdef OBSERVARION_PIPELINE_DEBUG
-  log_info("Request to decode observationSourcesDecoder\n");
+  log_dbg("Request to decode observationSourcesDecoder\n");
 #endif
   LOCK_GUARD(current_mutex);
   ASTNodePtr actualAST = iParser.parse_Instruction(instruction);
@@ -83,7 +83,7 @@ observation_spec_t observationSourcesDecoder::decode(std::string instruction) {
 #ifdef OBSERVARION_PIPELINE_DEBUG
   std::ostringstream oss;
   printAST(actualAST.get(), true, 2, oss);
-  log_info("Parsed AST:\n%s\n", oss.str().c_str());
+  log_dbg("Parsed AST:\n%s\n", oss.str().c_str());
 #endif
 
   observation_spec_t current;

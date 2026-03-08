@@ -244,8 +244,8 @@ void normalize_binary_file(const std::string& bin_filename,
   static_assert(std::is_trivially_copyable<T>::value,
                 "normalize_binary_file<T>: T must be trivially copyable (POD-like).");
 
-  log_info("[normalize_binary_file] policy=causal_partial_window_keep_len, W=%zu. File: %s%s%s\n",
-           window_size, ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
+  log_dbg("[normalize_binary_file] policy=causal_partial_window_keep_len, W=%zu. File: %s%s%s\n",
+          window_size, ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
 
   // Determine file size via filesystem (robust even if tellg would fail).
   std::error_code ec;
@@ -262,7 +262,7 @@ void normalize_binary_file(const std::string& bin_filename,
 
   const std::size_t total_records = static_cast<std::size_t>(file_size_u / sizeof(T));
   if (total_records == 0) {
-    log_info("[normalize_binary_file] Empty file, nothing to do.\n");
+    log_dbg("[normalize_binary_file] Empty file, nothing to do.\n");
     return;
   }
 
@@ -342,11 +342,11 @@ void normalize_binary_file(const std::string& bin_filename,
   io.close();
 
   const std::size_t partial_window_valid = std::min(filled_valid, window_size);
-  log_info("(normalize_binary_file) %sNormalization completed%s. File: %s%s%s | "
-           "partial_window_valid=%zu, normalized_valid=%zu, invalid_passthrough=%zu\n",
-           ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
-           ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET,
-           partial_window_valid, normalized_count, invalid_count);
+  log_dbg("(normalize_binary_file) %sNormalization completed%s. File: %s%s%s | "
+          "partial_window_valid=%zu, normalized_valid=%zu, invalid_passthrough=%zu\n",
+          ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
+          ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET,
+          partial_window_valid, normalized_count, invalid_count);
 }
 
 /*
@@ -377,8 +377,8 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
   static_assert(std::is_trivially_copyable<T>::value,
                 "sanitize_csv_into_binary_file<T>: T must be trivially copyable (POD-like).");
 
-  log_info("[sanitize_csv_into_binary_file]\t %sPreparing binary%s from CSV: %s\n",
-           ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, csv_filename.c_str());
+  log_dbg("[sanitize_csv_into_binary_file]\t %sPreparing binary%s from CSV: %s\n",
+          ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, csv_filename.c_str());
 
   if (buffer_size < 1) {
     log_fatal("[sanitize_csv_into_binary_file] buffer_size must be >= 1 for file: %s\n",
@@ -408,12 +408,12 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
   if (need_write_raw) {
     const long double regular_delta = detail::infer_regular_delta_from_csv<T>(
         csv_filename, delimiter, csv_step_policy);
-    log_info("[sanitize_csv_into_binary_file] inferred regular_delta=%.15Lf "
-             "(bootstrap_deltas=%zu, abs_tol=%.3Le, rel_tol=%.3Le)\n",
-             regular_delta,
-             csv_step_policy.bootstrap_deltas,
-             csv_step_policy.abs_tol,
-             csv_step_policy.rel_tol);
+    log_dbg("[sanitize_csv_into_binary_file] inferred regular_delta=%.15Lf "
+            "(bootstrap_deltas=%zu, abs_tol=%.3Le, rel_tol=%.3Le)\n",
+            regular_delta,
+            csv_step_policy.bootstrap_deltas,
+            csv_step_policy.abs_tol,
+            csv_step_policy.rel_tol);
 
     std::ifstream csv_file = cuwacunu::piaabo::dfiles::readFileToStream(csv_filename);
     if (!csv_file.is_open()) {
@@ -557,18 +557,18 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     csv_file.close();
     bin_file.close();
 
-    log_info("(sanitize_csv_into_binary_file) Raw lattice ready: %s%s%s\n",
-             ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
+    log_dbg("(sanitize_csv_into_binary_file) Raw lattice ready: %s%s%s\n",
+            ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
   } else {
-    log_info("(sanitize_csv_into_binary_file) %sRaw up-to-date%s: %s\n",
-             ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, raw_bin.c_str());
+    log_dbg("(sanitize_csv_into_binary_file) %sRaw up-to-date%s: %s\n",
+            ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, raw_bin.c_str());
   }
 
   // Normalized output?
   if (!want_norm) {
-    log_info("(sanitize_csv_into_binary_file) No normalization configured (W=0). %s%s%s -> %s%s%s\n",
-             ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET,
-             ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
+    log_dbg("(sanitize_csv_into_binary_file) No normalization configured (W=0). %s%s%s -> %s%s%s\n",
+            ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET,
+            ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
     return raw_bin;
   }
 
@@ -589,12 +589,12 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     chmod(norm_bin.c_str(), S_IRUSR | S_IWUSR);
 #endif
     normalize_binary_file<T>(norm_bin, normalization_window);
-    log_info("(sanitize_csv_into_binary_file) %sNormalized%s: %s%s%s (W=%zu)\n",
-             ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET,
-             ANSI_COLOR_Dim_Gray, norm_bin.c_str(), ANSI_COLOR_RESET, normalization_window);
+    log_dbg("(sanitize_csv_into_binary_file) %sNormalized%s: %s%s%s (W=%zu)\n",
+            ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET,
+            ANSI_COLOR_Dim_Gray, norm_bin.c_str(), ANSI_COLOR_RESET, normalization_window);
   } else {
-    log_info("(sanitize_csv_into_binary_file) %sNormalized up-to-date%s: %s\n",
-             ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, norm_bin.c_str());
+    log_dbg("(sanitize_csv_into_binary_file) %sNormalized up-to-date%s: %s\n",
+            ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, norm_bin.c_str());
   }
 
   return norm_bin;

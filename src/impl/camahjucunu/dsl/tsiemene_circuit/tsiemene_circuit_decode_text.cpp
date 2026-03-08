@@ -245,6 +245,16 @@ bool parse_circuit_header_text(const std::string& header_text,
   return !out_name->empty();
 }
 
+bool parse_active_circuit_decl_text(const std::string& decl_text,
+                                    std::string* out_name) {
+  if (!out_name) return false;
+  std::string line = normalize_line(decl_text);
+  const std::size_t eq = line.find('=');
+  if (eq == std::string::npos || eq + 1 >= line.size()) return false;
+  *out_name = trim_ascii_ws(line.substr(eq + 1));
+  return !out_name->empty();
+}
+
 bool parse_circuit_invoke_text(const std::string& invoke_text,
                                std::string* out_name,
                                std::string* out_payload) {
@@ -342,6 +352,18 @@ cuwacunu::camahjucunu::tsiemene_circuit_decl_t parse_circuit_node(
 
   if (out.name.empty()) out.name = out.invoke_name;
   if (out.invoke_name.empty()) out.invoke_name = out.name;
+  return out;
+}
+
+std::string parse_active_circuit_decl_node(const IntermediaryNode* node) {
+  if (!node) return {};
+  if (const ASTNode* n_name =
+          find_direct_child_by_hash(node, TSIEMENE_CIRCUIT_HASH_circuit_name)) {
+    const std::string name = trim_ascii_ws(flatten_node_text(n_name));
+    if (!name.empty()) return name;
+  }
+  std::string out{};
+  (void)parse_active_circuit_decl_text(flatten_node_text(node), &out);
   return out;
 }
 

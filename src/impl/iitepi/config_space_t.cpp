@@ -1,7 +1,6 @@
 #include "iitepi/config_space_t.h"
 
 #include "iitepi/board_space_t.h"
-#include "HERO/hero_config/hero.config.h"
 
 #include <algorithm>
 #include <cctype>
@@ -526,11 +525,12 @@ bool config_space_t::validate_config() {
                    mode_normalized.begin(), [](unsigned char c) {
                      return static_cast<char>(std::tolower(c));
                    });
-    try {
-      cuwacunu::hero::config::validate_backend_mode_or_throw(mode_normalized);
-    } catch (const std::exception& e) {
-      log_warn("Invalid value <mode> in section [REAL_HERO]: %s\n",
-               e.what());
+    if (mode_normalized != "openai" && mode_normalized != "selfhosted") {
+      log_warn("Invalid value <mode> in section [REAL_HERO]: expected openai or selfhosted, got %s\n",
+               mode_normalized.c_str());
+      ok = false;
+    } else if (mode_normalized == "selfhosted") {
+      log_warn("Invalid value <mode> in section [REAL_HERO]: isufficient founds for self hosted model deployment, please change mode to openai.\n");
       ok = false;
     }
   }

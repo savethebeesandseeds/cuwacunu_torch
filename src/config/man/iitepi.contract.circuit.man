@@ -7,6 +7,16 @@ TARGET_BNF = src/config/bnf/iitepi.contract.circuit.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_decode_text.cpp
 PRIMARY_VALIDATORS = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_validate.cpp,src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_resolve.cpp
 
+[FIELD INSTRUCTION.ACTIVE_CIRCUIT]
+key = active_circuit
+scope = instruction
+type = identifier
+required = false
+default = unset
+range = must match one declared <circuit_name> when set
+allowed = [A-Za-z0-9_]+
+nuance = when set, runtime selects and executes only the named circuit
+
 [FIELD CIRCUIT.NAME]
 key = <circuit_name>
 scope = circuit
@@ -44,8 +54,8 @@ type = comma token list
 required = false
 default = empty
 range = parser token list
-allowed = mode=event|batch|epoch,event,batch,epoch plus component-specific tokens
-nuance = tsi.probe.log accepts only mode/log_mode/cadence key forms or positional event|batch|epoch; duplicates are rejected
+allowed = mode=batch|epoch,batch,epoch plus component-specific tokens
+nuance = tsi.probe.log accepts only mode/log_mode/cadence key forms or positional batch|epoch; duplicates are rejected
 
 [FIELD HOP.FROM]
 key = <from>@<directive>:<kind>
@@ -66,6 +76,16 @@ default = none
 range = must be valid input lane of target tsi type
 allowed = directive token only; kind omitted
 nuance = target kind cast is forbidden; target inbound kind is inferred from source endpoint kind
+
+[FIELD SYNTAX.WHITESPACE]
+key = inter-token whitespace
+scope = circuit DSL
+type = lexical
+required = n/a
+default = space/tab/newline aware
+range = valid between declarations and within hop expression around ->
+allowed = space,tab,newline,/* block comments */,# line comments
+nuance = # comments are newline-terminated; block comments can span multiple lines
 
 [RULE CIRCUIT_MINIMAL]
 id = CIRCUIT_MINIMAL
@@ -101,3 +121,10 @@ applies_to = terminal nodes
 severity = error
 when = node out_degree == 0 and node tsi type is not sink
 message = terminal instance must be sink type
+
+[RULE ACTIVE_CIRCUIT_REFERENCE]
+id = ACTIVE_CIRCUIT_REFERENCE
+applies_to = instruction
+severity = error
+when = active_circuit is set and no declared circuit name matches
+message = active_circuit references unknown circuit name

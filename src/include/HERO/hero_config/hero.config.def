@@ -74,7 +74,7 @@ HERO_RUNTIME_KEY("write_roots", "string", 1, "/tmp", "csv path list", "comma-sep
                  "allowed write roots when allow_local_write=true")
 HERO_RUNTIME_KEY("backup_enabled", "bool", 1, "true", "true|false", "true,false",
                  "enable rotating backups before each save")
-HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/src/config/backups/hero.config",
+HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/src/config/.backups/hero.config",
                  "directory path", "absolute_or_relative_path",
                  "destination directory for rotating backups")
 HERO_RUNTIME_KEY("backup_max_entries", "int", 1, "20", ">=1", "integer",

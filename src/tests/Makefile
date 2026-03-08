@@ -62,8 +62,12 @@ HTTPS := websocket
 $(foreach t,$(HTTPS),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- camahjucunu/db -------------------------------
-DB := db db_rag
+DB := db db_rag db_query_utils
 $(foreach t,$(DB),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
+
+# --------------------------- hashimyei -------------------------------
+HASHIMYEI := hashimyei_catalog hashimyei_artifacts
+$(foreach t,$(HASHIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/hashimyei)))
 
 # ------------------------------ jkimyei --------------------------------------
 JKIMYEI := jk_setup
@@ -82,7 +86,7 @@ EXPVAL := expected_value
 $(foreach t,$(EXPVAL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
 
 # 4) Shortcut groups (delegate only; no test logic changes)
-.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi https db jkimyei vicreg mdn expval
+.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval
 parser: $(addprefix test_,$(BNF_PARSER_CORE))
 dsl: $(addprefix test_,$(DSL))
 types: $(addprefix test_,$(TYPES))
@@ -95,6 +99,7 @@ tsiemene: $(addprefix test_,$(TSIEMENE))
 iitepi: $(addprefix test_,$(IITEPI))
 https: $(addprefix test_,$(HTTPS))
 db: $(addprefix test_,$(DB))
+hashimyei: $(addprefix test_,$(HASHIMYEI))
 jkimyei: $(addprefix test_,$(JKIMYEI))
 vicreg: $(addprefix test_,$(VICREG))
 mdn: $(addprefix test_,$(MDN))
@@ -114,4 +119,4 @@ all:
 .PHONY: clean_tests
 clean_tests:
 	@echo "$(COLOR_RED) Cleaning test build $(COLOR_RESET)"
-	@rm -f $(OUTPUT_PATH)/*.o $(OUTPUT_PATH)/*.d $(OUTPUT_PATH)/test_*
+	@rm -f $(TEST_OUT)/test_*

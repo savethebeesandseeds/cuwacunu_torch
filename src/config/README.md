@@ -64,7 +64,7 @@ Use `ed25519pub.pem` when registering API access at the exchange.
 Use the built-in C++ utility instead of a shell script for key enrollment:
 
 ```bash
-make -C /cuwacunu/src/cuwacunu/tools -j12 install-secure-key-setup
+make -C /cuwacunu/src/main/tools -j12 install-secure-key-setup
 ```
 
 This installs a standalone executable at:
@@ -109,7 +109,7 @@ The utility:
 Build/install:
 
 ```bash
-make -C /cuwacunu/src/cuwacunu/hero -j12 install-hero-mcp
+make -C /cuwacunu/src/main/hero -j12 install-hero-mcp
 ```
 
 Run as MCP server (Codex/stdio):
@@ -117,6 +117,40 @@ Run as MCP server (Codex/stdio):
 ```bash
 /cuwacunu/src/config/hero_config_mcp
 ```
+
+Find/install in Codex CLI:
+
+```bash
+# Check what MCP servers are already configured
+codex mcp list
+
+# Register HERO MCP in Codex (stdio transport)
+codex mcp add hero-config -- \
+  /cuwacunu/src/config/hero_config_mcp \
+  --config /cuwacunu/src/config/instructions/hero.config.dsl
+
+# Inspect the registered server configuration
+codex mcp get hero-config --json
+```
+
+Remove from Codex CLI:
+
+```bash
+codex mcp remove hero-config
+```
+
+Codex test calls:
+
+```bash
+codex exec -C /cuwacunu \
+  "You must call MCP tool hero.status and return only structuredContent JSON."
+
+codex exec -C /cuwacunu \
+  "Call hero.diff with include_text=false and return structuredContent JSON."
+```
+
+Required runtime mode:
+- `instructions/hero.config.dsl` must keep `protocol_layer:str = STDIO`.
 
 Run legacy human REPL:
 
@@ -139,6 +173,39 @@ Useful MCP tools:
 
 Deterministic policy:
 - `hero.ask` and `hero.fix` are disabled by design in current runtime mode.
+
+## Hashimyei Catalog MCP
+
+Build/install:
+
+```bash
+make -C /cuwacunu/src/main/hero -j12 install-hashimyei-tools
+```
+
+Installed binaries:
+- `/cuwacunu/src/config/hero_hashimyei_ingest`
+- `/cuwacunu/src/config/hero_hashimyei_mcp`
+
+Initialize catalog from artifacts:
+
+```bash
+/cuwacunu/src/config/hero_hashimyei_ingest \
+  --store-root /cuwacunu/.hashimyei
+```
+
+Run MCP:
+
+```bash
+/cuwacunu/src/config/hero_hashimyei_mcp \
+  --store-root /cuwacunu/.hashimyei
+```
+
+Supported MCP tools:
+- `hero.hashimyei.scan`
+- `hero.hashimyei.latest`
+- `hero.hashimyei.history`
+- `hero.hashimyei.performance`
+- `hero.hashimyei.provenance`
 
 ## Split Policy
 
@@ -182,6 +249,10 @@ Deterministic policy:
   - primary per-component jkimyei payload: `jkimyei_specs_dsl_filename`
   - optional extra per-component jkimyei payloads: `jkimyei_specs_extra_dsl_filenames`
   - canonical circuit payload: `tsiemene_circuit_dsl_filename`
+  - circuit payload can declare optional `active_circuit = <circuit_name>`;
+    when set, runtime builds/runs only that circuit
+  - circuit grammar accepts multiline hop expressions and comments:
+    `/* ... */` and `# ...`
 - Wave settings live in `./default.wave.config`: `[DSL]`.
   - `iitepi_wave_dsl_filename`
   - split train/run keys are removed and rejected by validation.
@@ -195,6 +266,8 @@ Deterministic policy:
     `REPORT_POLICY=epoch_end_log`,
     `OBJECTIVE=future_target_dims_nll`.
     Probe path parity with circuit probe nodes is strict.
+  - `tsi.probe.log` circuit instance mode accepts `batch` or `epoch`
+    (keyed `mode/log_mode/cadence` or positional token); `event` mode is removed.
   - `SOURCE.SOURCES_DSL_FILE` and `SOURCE.CHANNELS_DSL_FILE` have no contract fallback.
 - `instructions/tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
   `CSV_POLICY { CSV_BOOTSTRAP_DELTAS, CSV_STEP_ABS_TOL, CSV_STEP_REL_TOL }`.

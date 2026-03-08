@@ -44,10 +44,9 @@ inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV3 =
 inline constexpr std::string_view kNetworkDesignAnalyticsSchemaCurrent =
     kNetworkDesignAnalyticsSchemaV3;
 
-DEV_WARNING(
-    "network_analytics: pending improvements include node<->module crosswalk, "
-    "explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk), "
-    "capacity concentration metrics (param/norm HHI), and expanded matrix diagnostics.");
+DEV_WARNING("network_analytics: pending improvements include node<->module crosswalk. \n");
+DEV_WARNING("explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk). \n");
+DEV_WARNING("capacity concentration metrics (param/norm HHI), and expanded matrix diagnostics.\n");
 
 struct network_analytics_options_t {
   double near_zero_epsilon{1e-8};
@@ -222,6 +221,12 @@ struct network_design_analytics_report_t {
     const network_analytics_report_t& report,
     const network_analytics_options_t& options,
     std::string_view checkpoint_filename = {});
+
+[[nodiscard]] std::string network_analytics_to_pretty_text(
+    const network_analytics_report_t& report,
+    const network_analytics_options_t& options,
+    std::string_view network_label = {},
+    bool use_color = true);
 
 [[nodiscard]] std::string network_design_analytics_to_key_value_text(
     const network_design_analytics_report_t& report,

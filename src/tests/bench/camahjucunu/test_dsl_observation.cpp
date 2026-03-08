@@ -93,7 +93,7 @@ int main() {
         "/---------------------------------------------------------------------------------------------------------\\\n"
         "|  instrument  |  interval  |  record_type  |  source                                                     |\n"
         "|---------------------------------------------------------------------------------------------------------|\n"
-        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
+        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
         "\\---------------------------------------------------------------------------------------------------------/\n");
     expect_decode_fail(
         "CSV_POLICY {\n"
@@ -110,7 +110,7 @@ int main() {
         "/---------------------------------------------------------------------------------------------------------\\\n"
         "|  instrument  |  interval  |  record_type  |  source                                                     |\n"
         "|---------------------------------------------------------------------------------------------------------|\n"
-        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
+        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
         "\\---------------------------------------------------------------------------------------------------------/\n");
     expect_decode_fail(
         "CSV_POLICY {\n"
@@ -126,7 +126,7 @@ int main() {
         "/---------------------------------------------------------------------------------------------------------\\\n"
         "|  instrument  |  interval  |  record_type  |  source                                                     |\n"
         "|---------------------------------------------------------------------------------------------------------|\n"
-        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
+        "|   BTCUSDT    |    1d      |     kline     |  /cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv     |\n"
         "\\---------------------------------------------------------------------------------------------------------/\n");
 
     std::cout << "[test_dsl_observation] source_forms=" << decoded.source_forms.size()

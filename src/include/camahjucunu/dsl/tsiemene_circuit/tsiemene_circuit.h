@@ -11,6 +11,7 @@
 #undef TSIEMENE_CIRCUIT_DEBUG /* define to see verbose parsing output */
 
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_instruction, "<instruction>");
+DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_active_circuit_decl, "<active_circuit_decl>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_circuit, "<circuit>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_circuit_header, "<circuit_header>");
 DEFINE_HASH(TSIEMENE_CIRCUIT_HASH_circuit_close, "<circuit_close>");
@@ -55,6 +56,7 @@ struct tsiemene_circuit_decl_t {
 };
 
 struct tsiemene_circuit_instruction_t {
+  std::string active_circuit_name;
   std::vector<tsiemene_circuit_decl_t> circuits;
   std::string str() const;
 };

@@ -1,12 +1,12 @@
 // test_db.cpp (C++20)
 // Compile example (adjust include/lib paths to your project):
 // g++ -std=c++20 -O2 -Wall -Wextra -I../../../include test_db.cpp
-//   ../../../impl/camahjucunu/db/db.cpp -L$(SSL_PATH)/lib/x86_64-linux-gnu/ -lcrypto -lssl -o test_db
+//   ../../../impl/camahjucunu/db/idydb.cpp -L$(SSL_PATH)/lib/x86_64-linux-gnu/ -lcrypto -lssl -o test_db
 //
 // Run:
 // ./test_db
 
-#include <camahjucunu/db/db.h>
+#include <camahjucunu/db/idydb.h>
 
 #include <cassert>
 #include <cmath>

@@ -191,6 +191,9 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     }
     run_epoch_training_cycle_();
     update_persisted_epoch_history_();
+    persist_probe_activation_report_kv_();
+    persist_probe_prequential_raw_kv_();
+    persist_probe_epoch_report_kv_();
     log_info("%s\n", build_epoch_report_string_(/*beautify=*/true).c_str());
     reset_epoch_accumulators_();
   }
@@ -260,7 +263,10 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     std::uint64_t missing_future{0};
     std::uint64_t shape_mismatch{0};
     std::uint64_t optimizer_failures{0};
+    std::uint64_t train_batches_attempted{0};
     std::uint64_t train_steps{0};
+    double train_ingested_positions{0.0};
+    double train_ingested_support{0.0};
   };
 
   enum class anchor_split_e : std::uint8_t { Train = 0, Val = 1, Test = 2 };
@@ -320,6 +326,40 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     double mean{0.0};
     double m2{0.0};
     std::uint64_t updates{0};
+  };
+
+  struct activation_report_t {
+    bool valid{false};
+    std::uint64_t batch_count{0};
+    std::uint64_t sample_count{0};
+    std::uint64_t encoding_dims{0};
+    double finite_ratio{0.0};
+    double mean{std::numeric_limits<double>::quiet_NaN()};
+    double stddev{std::numeric_limits<double>::quiet_NaN()};
+    double l1_mean_abs{std::numeric_limits<double>::quiet_NaN()};
+    double l2_rms{std::numeric_limits<double>::quiet_NaN()};
+    double abs_p50{std::numeric_limits<double>::quiet_NaN()};
+    double abs_p90{std::numeric_limits<double>::quiet_NaN()};
+    double abs_p99{std::numeric_limits<double>::quiet_NaN()};
+    double per_dim_std_mean{std::numeric_limits<double>::quiet_NaN()};
+    double per_dim_std_min{std::numeric_limits<double>::quiet_NaN()};
+    double per_dim_std_max{std::numeric_limits<double>::quiet_NaN()};
+    double dead_dim_epsilon{1e-4};
+    double dead_dim_ratio{std::numeric_limits<double>::quiet_NaN()};
+    double cov_trace{std::numeric_limits<double>::quiet_NaN()};
+    double cov_top_eigenvalue{std::numeric_limits<double>::quiet_NaN()};
+    double cov_effective_rank{std::numeric_limits<double>::quiet_NaN()};
+    double cov_condition_proxy{std::numeric_limits<double>::quiet_NaN()};
+  };
+
+  struct prequential_row_t {
+    std::string method{};
+    std::uint64_t block_index{0};
+    double prefix_support{std::numeric_limits<double>::quiet_NaN()};
+    double eval_support{std::numeric_limits<double>::quiet_NaN()};
+    double model_bits{std::numeric_limits<double>::quiet_NaN()};
+    double null_bits{std::numeric_limits<double>::quiet_NaN()};
+    double skill_bits{std::numeric_limits<double>::quiet_NaN()};
   };
 
   struct report_cell_t {
@@ -950,6 +990,17 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
       optimizer_->step();
 
       ++epoch_.train_steps;
+      try {
+        const double dy = std::max<double>(
+            1.0, static_cast<double>(model_.target_dims.size()));
+        const double positions = runtime_batch.future_mask.sum().item<double>();
+        if (std::isfinite(positions) && positions > 0.0) {
+          epoch_.train_ingested_positions += positions;
+          epoch_.train_ingested_support += positions * dy;
+        }
+      } catch (...) {
+        // Keep training behavior deterministic even if reporting accumulation fails.
+      }
       return true;
     } catch (const std::exception& e) {
       if (error) *error = e.what();
@@ -1122,6 +1173,7 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
                           const target_norm_t* target_norm) {
     for (const auto* batch : batches) {
       if (!batch) continue;
+      ++epoch_.train_batches_attempted;
       std::string train_error;
       if (!train_one_batch_(*batch, target_norm, &train_error)) {
         ++epoch_.optimizer_failures;
@@ -1667,9 +1719,15 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     gaussian_baseline_t null_fit{};
     if (fit_null_baseline_(train_s, &null_fit, nullptr)) {
       const auto blocks = make_prequential_blocks_(train_s, cfg_.prequential_blocks);
+      std::vector<double> block_supports(blocks.size(), 0.0);
+      for (std::size_t i = 0; i < blocks.size(); ++i) {
+        (void)support_elements_(blocks[i], &block_supports[i]);
+      }
       double effort_sum = 0.0;
       double effort_w = 0.0;
+      double prefix_support = 0.0;
       for (std::size_t i = 1; i < blocks.size(); ++i) {
+        prefix_support += block_supports[i - 1];
         std::vector<const train_batch_t*> prefix{};
         append_prefix_blocks_(blocks, i, &prefix);
         gaussian_baseline_t prefix_fit{};
@@ -1677,6 +1735,8 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
         double bits = std::numeric_limits<double>::quiet_NaN();
         double w = 0.0;
         if (!eval_null_baseline_bits_(prefix_fit, blocks[i], &bits, &w, nullptr)) continue;
+        record_prequential_row_(
+            "forecast_null", i, prefix_support, w, bits, bits);
         if (std::isfinite(bits) && w > 0.0) {
           effort_sum += bits * w;
           effort_w += w;
@@ -1752,6 +1812,8 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
             std::isfinite(null_bits) && std::isfinite(row_bits)) {
           linear_skill_curve.emplace_back(prefix_support, null_bits - row_bits);
         }
+        record_prequential_row_(
+            "forecast_linear", i, prefix_support, w, row_bits, null_bits);
       }
       if (effort_w > 0.0) {
         epoch_matrix_.forecast_linear.effort = effort_sum / effort_w;
@@ -1841,6 +1903,8 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
               std::isfinite(null_bits) && std::isfinite(row_bits)) {
             mdn_skill_curve.emplace_back(prefix_support, null_bits - row_bits);
           }
+          record_prequential_row_(
+              "forecast_mdn", i, prefix_support, w, row_bits, null_bits);
         }
         train_mdn_batches_(blocks[i], mdn_norm_ptr);
         prefix.insert(prefix.end(), blocks[i].begin(), blocks[i].end());
@@ -1996,6 +2060,9 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
           epoch_matrix_.forecast_mdn.error_skill > 0.0) {
         const auto saved_steps = epoch_.train_steps;
         const auto saved_failures = epoch_.optimizer_failures;
+        const auto saved_train_attempted = epoch_.train_batches_attempted;
+        const auto saved_train_positions = epoch_.train_ingested_positions;
+        const auto saved_train_support = epoch_.train_ingested_support;
         try {
           initialize_runtime_model_or_throw_();
           train_mdn_batches_(ctrl_train_val, mdn_norm_ptr);
@@ -2012,6 +2079,9 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
         }
         epoch_.train_steps = saved_steps;
         epoch_.optimizer_failures = saved_failures;
+        epoch_.train_batches_attempted = saved_train_attempted;
+        epoch_.train_ingested_positions = saved_train_positions;
+        epoch_.train_ingested_support = saved_train_support;
       }
     }
 
@@ -2034,7 +2104,10 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
         << " accepted=" << epoch_.accepted
         << " buffered_batches=" << epoch_batches_.size()
         << " invalid=" << invalid
+        << " train_batches_attempted=" << epoch_.train_batches_attempted
         << " train_steps=" << epoch_.train_steps
+        << " train_ingested_positions=" << epoch_.train_ingested_positions
+        << " train_ingested_support=" << epoch_.train_ingested_support
         << " null_cargo=" << epoch_.null_cargo
         << " invalid_cargo=" << epoch_.invalid_cargo
         << " missing_encoding=" << epoch_.missing_encoding
@@ -2052,6 +2125,244 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     m.buffered_batches = static_cast<std::uint64_t>(epoch_batches_.size());
     m.matrix = epoch_matrix_;
     return m;
+  }
+
+  [[nodiscard]] static double sorted_quantile_1d_(const torch::Tensor& sorted,
+                                                   double q) {
+    if (!sorted.defined() || sorted.dim() != 1 || sorted.numel() <= 0) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    const std::int64_t n = sorted.size(0);
+    if (n <= 0) return std::numeric_limits<double>::quiet_NaN();
+    if (n == 1) return sorted.select(/*dim=*/0, /*index=*/0).item<double>();
+
+    const double qq = std::clamp(q, 0.0, 1.0);
+    const double pos = qq * static_cast<double>(n - 1);
+    const auto lo = static_cast<std::int64_t>(std::floor(pos));
+    const auto hi = static_cast<std::int64_t>(std::ceil(pos));
+    const double lo_v = sorted.select(/*dim=*/0, /*index=*/lo).item<double>();
+    const double hi_v = sorted.select(/*dim=*/0, /*index=*/hi).item<double>();
+    if (lo == hi) return lo_v;
+    const double w = pos - static_cast<double>(lo);
+    return lo_v + (hi_v - lo_v) * w;
+  }
+
+  void record_prequential_row_(std::string_view method,
+                               std::size_t block_index,
+                               double prefix_support,
+                               double eval_support,
+                               double model_bits,
+                               double null_bits) {
+    ++epoch_prequential_rows_total_;
+    if (epoch_prequential_rows_.size() >= kMaxPersistedPrequentialRows_) {
+      epoch_prequential_rows_truncated_ = true;
+      return;
+    }
+    prequential_row_t row{};
+    row.method = std::string(method);
+    row.block_index = static_cast<std::uint64_t>(block_index);
+    row.prefix_support = prefix_support;
+    row.eval_support = eval_support;
+    row.model_bits = model_bits;
+    row.null_bits = null_bits;
+    if (std::isfinite(null_bits) && std::isfinite(model_bits)) {
+      row.skill_bits = null_bits - model_bits;
+    }
+    epoch_prequential_rows_.push_back(std::move(row));
+  }
+
+  [[nodiscard]] bool summarize_epoch_activation_report_(
+      activation_report_t* out) const {
+    if (!out) return false;
+    *out = activation_report_t{};
+    out->batch_count = static_cast<std::uint64_t>(epoch_batches_.size());
+    out->encoding_dims = static_cast<std::uint64_t>(
+        std::max<std::int64_t>(0, model_.encoding_dims));
+
+    std::vector<torch::Tensor> encodings{};
+    encodings.reserve(epoch_batches_.size());
+    for (const auto& batch : epoch_batches_) {
+      if (!batch.encoding.defined() || batch.encoding.numel() == 0 ||
+          batch.encoding.dim() != 2) {
+        continue;
+      }
+      encodings.push_back(batch.encoding.to(torch::kCPU, torch::kFloat64));
+    }
+    if (encodings.empty()) return false;
+
+    torch::Tensor x{};
+    try {
+      x = torch::cat(encodings, 0);
+    } catch (...) {
+      return false;
+    }
+    if (!x.defined() || x.dim() != 2 || x.numel() == 0) return false;
+
+    out->sample_count = static_cast<std::uint64_t>(x.size(0));
+    out->encoding_dims = static_cast<std::uint64_t>(x.size(1));
+
+    auto finite = torch::isfinite(x);
+    out->finite_ratio = finite.to(torch::kFloat64).mean().item<double>();
+    x = torch::where(finite, x, torch::zeros_like(x));
+
+    auto abs_x = torch::abs(x);
+    auto centered_all = x - x.mean();
+    out->mean = x.mean().item<double>();
+    out->stddev = std::sqrt((centered_all * centered_all).mean().item<double>());
+    out->l1_mean_abs = abs_x.mean().item<double>();
+    out->l2_rms = std::sqrt((x * x).mean().item<double>());
+
+    auto abs_flat = abs_x.flatten();
+    if (abs_flat.defined() && abs_flat.numel() > 0) {
+      auto abs_sorted = std::get<0>(abs_flat.sort(/*dim=*/0, /*descending=*/false));
+      out->abs_p50 = sorted_quantile_1d_(abs_sorted, 0.50);
+      out->abs_p90 = sorted_quantile_1d_(abs_sorted, 0.90);
+      out->abs_p99 = sorted_quantile_1d_(abs_sorted, 0.99);
+    }
+
+    auto per_dim_centered = x - x.mean(/*dim=*/0, /*keepdim=*/true);
+    auto per_dim_std = (per_dim_centered * per_dim_centered).mean(/*dim=*/0).sqrt();
+    out->per_dim_std_mean = per_dim_std.mean().item<double>();
+    out->per_dim_std_min = per_dim_std.min().item<double>();
+    out->per_dim_std_max = per_dim_std.max().item<double>();
+    out->dead_dim_ratio = per_dim_std.le(out->dead_dim_epsilon)
+                              .to(torch::kFloat64)
+                              .mean()
+                              .item<double>();
+
+    if (x.size(0) >= 2 && x.size(1) > 0) {
+      auto centered = x - x.mean(/*dim=*/0, /*keepdim=*/true);
+      const double denom =
+          std::max<double>(1.0, static_cast<double>(x.size(0) - 1));
+      auto cov = centered.transpose(0, 1).matmul(centered) / denom;
+      out->cov_trace = cov.trace().item<double>();
+
+      try {
+        auto svd = torch::linalg::svd(
+            centered, /*full_matrices=*/false, c10::nullopt);
+        auto s = std::get<1>(svd).to(torch::kFloat64).contiguous();
+        if (s.defined() && s.numel() > 0) {
+          auto eig = (s * s) / denom;
+          out->cov_top_eigenvalue = eig.max().item<double>();
+          const double min_eig = eig.min().item<double>();
+          if (std::isfinite(out->cov_top_eigenvalue) && std::isfinite(min_eig)) {
+            out->cov_condition_proxy =
+                out->cov_top_eigenvalue / std::max(1e-12, min_eig);
+          }
+          const double eig_sum = eig.sum().item<double>();
+          if (std::isfinite(eig_sum) && eig_sum > 0.0) {
+            auto p = eig / eig_sum;
+            auto p_clamped = p.clamp_min(1e-18);
+            const double entropy =
+                (-(p * p_clamped.log()).sum()).item<double>();
+            if (std::isfinite(entropy)) {
+              out->cov_effective_rank = std::exp(entropy);
+            }
+          }
+        }
+      } catch (...) {
+        // Keep activation report best-effort even when SVD fails.
+      }
+    }
+
+    out->valid = true;
+    return true;
+  }
+
+  void persist_probe_activation_report_kv_() const {
+    if (probe_activation_report_kv_path_.empty()) return;
+    std::ofstream out(
+        probe_activation_report_kv_path_, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      log_warn(
+          "[transfer_matrix_eval] unable to persist activation report kv: %s\n",
+          probe_activation_report_kv_path_.string().c_str());
+      return;
+    }
+
+    activation_report_t report{};
+    const bool has_report = summarize_epoch_activation_report_(&report);
+
+    out << std::fixed << std::setprecision(10);
+    out << "schema=tsi.probe.representation.transfer_matrix_evaluation.activation.v1\n";
+    out << "hashimyei=" << probe_hashimyei_ << "\n";
+    out << "canonical_base=" << probe_canonical_base_ << "\n";
+    out << "contract_hash=" << contract_hash_ << "\n";
+    out << "instance_name=" << std::string(instance_name()) << "\n";
+    out << "epoch_count=" << persisted_epoch_count_ << "\n";
+    out << "has_data=" << ((has_report && report.valid) ? "true" : "false")
+        << "\n";
+    out << "batch_count=" << report.batch_count << "\n";
+    out << "sample_count=" << report.sample_count << "\n";
+    out << "encoding_dims=" << report.encoding_dims << "\n";
+    out << "finite_ratio=" << report.finite_ratio << "\n";
+    out << "mean=" << report.mean << "\n";
+    out << "stddev=" << report.stddev << "\n";
+    out << "l1_mean_abs=" << report.l1_mean_abs << "\n";
+    out << "l2_rms=" << report.l2_rms << "\n";
+    out << "abs_p50=" << report.abs_p50 << "\n";
+    out << "abs_p90=" << report.abs_p90 << "\n";
+    out << "abs_p99=" << report.abs_p99 << "\n";
+    out << "per_dim_std_mean=" << report.per_dim_std_mean << "\n";
+    out << "per_dim_std_min=" << report.per_dim_std_min << "\n";
+    out << "per_dim_std_max=" << report.per_dim_std_max << "\n";
+    out << "dead_dim_epsilon=" << report.dead_dim_epsilon << "\n";
+    out << "dead_dim_ratio=" << report.dead_dim_ratio << "\n";
+    out << "cov_trace=" << report.cov_trace << "\n";
+    out << "cov_top_eigenvalue=" << report.cov_top_eigenvalue << "\n";
+    out << "cov_effective_rank=" << report.cov_effective_rank << "\n";
+    out << "cov_condition_proxy=" << report.cov_condition_proxy << "\n";
+
+    if (!out) {
+      log_warn(
+          "[transfer_matrix_eval] unable to flush activation report kv: %s\n",
+          probe_activation_report_kv_path_.string().c_str());
+    }
+  }
+
+  void persist_probe_prequential_raw_kv_() const {
+    if (probe_prequential_raw_kv_path_.empty()) return;
+    std::ofstream out(
+        probe_prequential_raw_kv_path_, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      log_warn(
+          "[transfer_matrix_eval] unable to persist prequential raw kv: %s\n",
+          probe_prequential_raw_kv_path_.string().c_str());
+      return;
+    }
+
+    out << std::fixed << std::setprecision(10);
+    out << "schema=tsi.probe.representation.transfer_matrix_evaluation.prequential_raw.v1\n";
+    out << "hashimyei=" << probe_hashimyei_ << "\n";
+    out << "canonical_base=" << probe_canonical_base_ << "\n";
+    out << "contract_hash=" << contract_hash_ << "\n";
+    out << "instance_name=" << std::string(instance_name()) << "\n";
+    out << "epoch_count=" << persisted_epoch_count_ << "\n";
+    out << "max_rows=" << kMaxPersistedPrequentialRows_ << "\n";
+    out << "row_count_total=" << epoch_prequential_rows_total_ << "\n";
+    out << "row_count_written=" << epoch_prequential_rows_.size() << "\n";
+    out << "truncated=" << (epoch_prequential_rows_truncated_ ? "true" : "false")
+        << "\n";
+
+    for (std::size_t i = 0; i < epoch_prequential_rows_.size(); ++i) {
+      const auto& row = epoch_prequential_rows_[i];
+      std::ostringstream pfx;
+      pfx << "row_" << std::setw(4) << std::setfill('0') << i << "_";
+      const std::string key = pfx.str();
+      out << key << "method=" << row.method << "\n";
+      out << key << "block_index=" << row.block_index << "\n";
+      out << key << "prefix_support=" << row.prefix_support << "\n";
+      out << key << "eval_support=" << row.eval_support << "\n";
+      out << key << "model_bits=" << row.model_bits << "\n";
+      out << key << "null_bits=" << row.null_bits << "\n";
+      out << key << "skill_bits=" << row.skill_bits << "\n";
+    }
+
+    if (!out) {
+      log_warn(
+          "[transfer_matrix_eval] unable to flush prequential raw kv: %s\n",
+          probe_prequential_raw_kv_path_.string().c_str());
+    }
   }
 
   [[nodiscard]] static std::string trim_ascii_copy_(std::string s) {
@@ -2164,6 +2475,12 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     probe_artifact_directory_ = probe_store_root_ / probe_hashimyei_;
     probe_metric_history_path_ =
         probe_artifact_directory_ / "metrics.history.v1.txt";
+    probe_epoch_report_kv_path_ =
+        probe_artifact_directory_ / "metrics.epoch.latest.kv";
+    probe_activation_report_kv_path_ =
+        probe_artifact_directory_ / "metrics.activation.latest.kv";
+    probe_prequential_raw_kv_path_ =
+        probe_artifact_directory_ / "metrics.prequential_raw.latest.kv";
     probe_anchor_split_path_ =
         probe_artifact_directory_ / "anchor_split.v1.txt";
 
@@ -2174,6 +2491,9 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
           "[transfer_matrix_eval] cannot create probe hashimyei directory: %s\n",
           probe_artifact_directory_.string().c_str());
       probe_metric_history_path_.clear();
+      probe_epoch_report_kv_path_.clear();
+      probe_activation_report_kv_path_.clear();
+      probe_prequential_raw_kv_path_.clear();
       return;
     }
     if (cfg_.reset_hashimyei_on_start) {
@@ -2196,6 +2516,33 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
         if (rm_ec) {
           log_warn("[transfer_matrix_eval] unable to reset anchor split file: %s\n",
                    probe_anchor_split_path_.string().c_str());
+        }
+      }
+      rm_ec.clear();
+      if (!probe_epoch_report_kv_path_.empty()) {
+        fs::remove(probe_epoch_report_kv_path_, rm_ec);
+        if (rm_ec) {
+          log_warn(
+              "[transfer_matrix_eval] unable to reset epoch report kv file: %s\n",
+              probe_epoch_report_kv_path_.string().c_str());
+        }
+      }
+      rm_ec.clear();
+      if (!probe_activation_report_kv_path_.empty()) {
+        fs::remove(probe_activation_report_kv_path_, rm_ec);
+        if (rm_ec) {
+          log_warn(
+              "[transfer_matrix_eval] unable to reset activation report kv file: %s\n",
+              probe_activation_report_kv_path_.string().c_str());
+        }
+      }
+      rm_ec.clear();
+      if (!probe_prequential_raw_kv_path_.empty()) {
+        fs::remove(probe_prequential_raw_kv_path_, rm_ec);
+        if (rm_ec) {
+          log_warn(
+              "[transfer_matrix_eval] unable to reset prequential raw kv file: %s\n",
+              probe_prequential_raw_kv_path_.string().c_str());
         }
       }
       return;
@@ -2382,6 +2729,120 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     }
   }
 
+  void persist_probe_epoch_report_kv_() const {
+    if (probe_epoch_report_kv_path_.empty()) return;
+
+    const auto metrics = collect_epoch_report_metrics_();
+    const auto& mx = metrics.matrix;
+
+    std::ofstream out(
+        probe_epoch_report_kv_path_, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      log_warn("[transfer_matrix_eval] unable to persist epoch report kv: %s\n",
+               probe_epoch_report_kv_path_.string().c_str());
+      return;
+    }
+
+    out << std::fixed << std::setprecision(10);
+    out << "schema=tsi.probe.representation.transfer_matrix_evaluation.epoch.v1\n";
+    out << "hashimyei=" << probe_hashimyei_ << "\n";
+    out << "canonical_base=" << probe_canonical_base_ << "\n";
+    out << "contract_hash=" << contract_hash_ << "\n";
+    out << "instance_name=" << std::string(instance_name()) << "\n";
+    out << "epoch_count=" << persisted_epoch_count_ << "\n";
+    out << "history_file=" << probe_metric_history_path_.string() << "\n";
+    out << "anchor_split_file=" << probe_anchor_split_path_.string() << "\n";
+    out << "activation_file=" << probe_activation_report_kv_path_.string()
+        << "\n";
+    out << "prequential_raw_file=" << probe_prequential_raw_kv_path_.string()
+        << "\n";
+
+    out << "seen=" << epoch_.seen << "\n";
+    out << "accepted=" << epoch_.accepted << "\n";
+    out << "buffered_batches=" << metrics.buffered_batches << "\n";
+    out << "invalid=" << metrics.invalid << "\n";
+    out << "train_batches_attempted=" << epoch_.train_batches_attempted << "\n";
+    out << "train_steps=" << epoch_.train_steps << "\n";
+    out << "train_ingested_positions=" << epoch_.train_ingested_positions
+        << "\n";
+    out << "train_ingested_support=" << epoch_.train_ingested_support << "\n";
+    out << "training_effort_data_support=" << epoch_.train_ingested_support
+        << "\n";
+
+    out << "null_cargo=" << epoch_.null_cargo << "\n";
+    out << "invalid_cargo=" << epoch_.invalid_cargo << "\n";
+    out << "missing_encoding=" << epoch_.missing_encoding << "\n";
+    out << "non_finite_encoding=" << epoch_.non_finite_encoding << "\n";
+    out << "temporal_overlap=" << epoch_.temporal_overlap << "\n";
+    out << "missing_future=" << epoch_.missing_future << "\n";
+    out << "future_values_present=" << epoch_.future_values_present << "\n";
+    out << "shape_mismatch=" << epoch_.shape_mismatch << "\n";
+    out << "optimizer_failures=" << epoch_.optimizer_failures << "\n";
+    out << "prequential_raw_row_count_total=" << epoch_prequential_rows_total_
+        << "\n";
+    out << "prequential_raw_row_count_written="
+        << epoch_prequential_rows_.size() << "\n";
+    out << "prequential_raw_truncated="
+        << (epoch_prequential_rows_truncated_ ? "true" : "false") << "\n";
+
+    const auto append_row = [&out](std::string_view prefix,
+                                   const row_result_t& row) {
+      const auto write_scalar = [&out, prefix](std::string_view key,
+                                               double value,
+                                               bool valid) {
+        out << prefix << "_" << key << "=";
+        if (valid && std::isfinite(value)) {
+          out << value;
+        } else {
+          out << "nan";
+        }
+        out << "\n";
+      };
+      write_scalar("support", row.support, row.has_support);
+      write_scalar("effort", row.effort, row.has_effort);
+      write_scalar("error", row.error, row.has_error);
+      write_scalar("effort_skill", row.effort_skill, row.has_effort_skill);
+      write_scalar("error_skill", row.error_skill, row.has_error_skill);
+      write_scalar("n90", row.n90, row.has_n90);
+      write_scalar("selectivity", row.selectivity, row.has_selectivity);
+    };
+
+    append_row("forecast_null", mx.forecast_null);
+    append_row("forecast_stats_only", mx.forecast_stats_only);
+    append_row("forecast_linear", mx.forecast_linear);
+    append_row("forecast_residual_linear", mx.forecast_residual_linear);
+    append_row("forecast_mdn", mx.forecast_mdn);
+
+    out << "cold_start_loss=";
+    if (mx.has_cold_start_loss && std::isfinite(mx.cold_start_loss)) {
+      out << mx.cold_start_loss;
+    } else {
+      out << "nan";
+    }
+    out << "\n";
+
+    out << "train_fit_loss=";
+    if (mx.has_train_fit_loss && std::isfinite(mx.train_fit_loss)) {
+      out << mx.train_fit_loss;
+    } else {
+      out << "nan";
+    }
+    out << "\n";
+
+    out << "generalization_gap=";
+    if (mx.has_generalization_gap && std::isfinite(mx.generalization_gap)) {
+      out << mx.generalization_gap;
+    } else {
+      out << "nan";
+    }
+    out << "\n";
+
+    if (!out) {
+      log_warn("[transfer_matrix_eval] unable to flush epoch report kv: %s\n",
+               probe_epoch_report_kv_path_.string().c_str());
+    }
+  }
+
   void update_history_metric_(std::string_view key,
                               double value,
                               bool higher_is_better) {
@@ -2434,8 +2895,17 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     update_history_metric_("buffered_batches",
                            static_cast<double>(metrics.buffered_batches),
                            true);
+    update_history_metric_("train_batches_attempted",
+                           static_cast<double>(epoch_.train_batches_attempted),
+                           true);
     update_history_metric_("train_steps",
                            static_cast<double>(epoch_.train_steps),
+                           true);
+    update_history_metric_("train_ingested_positions",
+                           epoch_.train_ingested_positions,
+                           true);
+    update_history_metric_("train_ingested_support",
+                           epoch_.train_ingested_support,
                            true);
 
     update_history_metric_("null_cargo", static_cast<double>(epoch_.null_cargo),
@@ -2499,6 +2969,25 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     }
     if (mx.has_generalization_gap) {
       update_history_metric_("generalization_gap", mx.generalization_gap, false);
+    }
+
+    activation_report_t activation{};
+    if (summarize_epoch_activation_report_(&activation) && activation.valid) {
+      update_history_metric_("activation_finite_ratio",
+                             activation.finite_ratio,
+                             true);
+      update_history_metric_("activation_dead_dim_ratio",
+                             activation.dead_dim_ratio,
+                             false);
+      update_history_metric_("activation_cov_effective_rank",
+                             activation.cov_effective_rank,
+                             true);
+      update_history_metric_("activation_cov_trace",
+                             activation.cov_trace,
+                             true);
+      update_history_metric_("activation_stddev",
+                             activation.stddev,
+                             true);
     }
 
     ++persisted_epoch_count_;
@@ -2634,7 +3123,10 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
           << " accepted=" << epoch_.accepted
           << " buffered_batches=" << metrics.buffered_batches
           << " invalid=" << metrics.invalid
+          << " train_batches_attempted=" << epoch_.train_batches_attempted
           << " train_steps=" << epoch_.train_steps
+          << " train_ingested_positions=" << epoch_.train_ingested_positions
+          << " train_ingested_support=" << epoch_.train_ingested_support
           << " forecast_null_support=" << mx.forecast_null.support
           << " forecast_null_effort=" << mx.forecast_null.effort
           << " forecast_null_error=" << mx.forecast_null.error
@@ -2695,6 +3187,13 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
                                          true,
                                          true,
                                          true},
+                           report_cell_t{"train_batches_attempted",
+                                         "train_attempted",
+                                         static_cast<double>(
+                                             epoch_.train_batches_attempted),
+                                         true,
+                                         true,
+                                         true},
                            report_cell_t{"invalid", "invalid",
                                          static_cast<double>(metrics.invalid),
                                          true,
@@ -2703,6 +3202,13 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
                            report_cell_t{"train_steps", "train_steps",
                                          static_cast<double>(epoch_.train_steps),
                                          true,
+                                         true,
+                                         true},
+                           report_cell_t{"train_ingested_support",
+                                         "train_support",
+                                         epoch_.train_ingested_support,
+                                         std::isfinite(
+                                             epoch_.train_ingested_support),
                                          true,
                                          true},
                        });
@@ -3077,6 +3583,9 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
     epoch_ = epoch_stats_t{};
     epoch_matrix_ = matrix_results_t{};
     epoch_batches_.clear();
+    epoch_prequential_rows_.clear();
+    epoch_prequential_rows_total_ = 0;
+    epoch_prequential_rows_truncated_ = false;
   }
 
   std::string contract_hash_{};
@@ -3086,8 +3595,12 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
   std::filesystem::path probe_store_root_{};
   std::filesystem::path probe_artifact_directory_{};
   std::filesystem::path probe_metric_history_path_{};
+  std::filesystem::path probe_epoch_report_kv_path_{};
+  std::filesystem::path probe_activation_report_kv_path_{};
+  std::filesystem::path probe_prequential_raw_kv_path_{};
   std::filesystem::path probe_anchor_split_path_{};
   std::uint64_t persisted_epoch_count_{0};
+  static constexpr std::size_t kMaxPersistedPrequentialRows_{512};
   std::unordered_map<std::string, history_metric_t> metric_history_{};
   std::unordered_map<std::string, anchor_split_e> anchor_split_manifest_{};
   bool anchor_split_dirty_{false};
@@ -3096,6 +3609,9 @@ class TsiProbeRepresentationTransferMatrixEvaluation final : public TsiProbeRepr
   epoch_stats_t epoch_{};
   matrix_results_t epoch_matrix_{};
   std::vector<train_batch_t> epoch_batches_{};
+  std::vector<prequential_row_t> epoch_prequential_rows_{};
+  std::uint64_t epoch_prequential_rows_total_{0};
+  bool epoch_prequential_rows_truncated_{false};
 
   cuwacunu::wikimyei::mdn::MdnModel semantic_model_{nullptr};
   std::unique_ptr<torch::optim::Optimizer> optimizer_{};

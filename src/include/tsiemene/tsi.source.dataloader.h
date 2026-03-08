@@ -78,8 +78,7 @@ class TsiSourceDataloader final : public TsiSource {
             instrument_, observation_instruction, force_rebuild_cache)),
         dl_(make_loader_(dataset_, batch_size_override, dataloader_workers)),
         data_analytics_options_(
-            data_analytics_options_from_observation_(observation_instruction)),
-        data_analytics_acc_(data_analytics_options_) {
+            data_analytics_options_from_observation_(observation_instruction)) {
     C_ = dl_.C_;
     T_ = dl_.T_;
     D_ = dl_.D_;
@@ -137,14 +136,14 @@ class TsiSourceDataloader final : public TsiSource {
     };
   }
 
-  void step(const Wave& wave, Ingress in, BoardContext&, Emitter& out) override {
+  void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) override {
     continue_requested_ = false;
     if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::String) return;
 
     const std::string_view cmd_text = trim_(in.signal.text);
     if (!cmd_text.empty()) {
-      if (!start_episode_(wave, cmd_text, out)) return;
+      if (!start_episode_(wave, cmd_text, ctx, out)) return;
     } else if (!episode_active_) {
       emit_meta_(wave, out, "dataloader.continue noop reason=no-active-episode");
       return;
@@ -157,7 +156,7 @@ class TsiSourceDataloader final : public TsiSource {
       if (!active_cmd_.has_range && batch_remaining_ > 0) {
         oss << " reason=exhausted";
       }
-      finish_episode_(out, oss.str());
+      finish_episode_(ctx, out, oss.str());
       return;
     }
 
@@ -177,7 +176,6 @@ class TsiSourceDataloader final : public TsiSource {
     if (!validate_observation_cargo(pb.sample, CargoValidationStage::SourceOut, &cargo_error)) {
       emit_meta_(witem, out, std::string("cargo.invalid stage=source.out reason=") + cargo_error);
     } else {
-      ingest_data_analytics_sample_(*pb.sample);
       out.emit_cargo(witem, OUT_PAYLOAD, std::move(pb.sample));
       ++episode_emitted_;
     }
@@ -195,7 +193,7 @@ class TsiSourceDataloader final : public TsiSource {
       } else {
         oss << " wave_i=<none>";
       }
-      finish_episode_(out, oss.str());
+      finish_episode_(ctx, out, oss.str());
     }
   }
 
@@ -204,7 +202,6 @@ class TsiSourceDataloader final : public TsiSource {
     it_ = dl_.begin();
     end_ = dl_.end();
     iter_ready_ = true;
-    data_analytics_acc_.reset();
   }
 
  private:
@@ -455,9 +452,11 @@ class TsiSourceDataloader final : public TsiSource {
     episode_wave_span_end_ms_ = 0;
   }
 
-  [[nodiscard]] bool start_episode_(const Wave& wave, std::string_view cmd_text, Emitter& out) {
+  [[nodiscard]] bool start_episode_(const Wave& wave,
+                                    std::string_view cmd_text,
+                                    const BoardContext& ctx,
+                                    Emitter& out) {
     clear_episode_state_();
-    data_analytics_acc_.reset();
     active_cmd_ = parse_command_(cmd_text, wave);
     emit_command_meta_(wave, active_cmd_, out);
 
@@ -519,6 +518,7 @@ class TsiSourceDataloader final : public TsiSource {
         }
       }
 
+      ensure_data_analytics_report_(wave, active_cmd_, ctx, out);
       episode_active_ = true;
       return true;
     }
@@ -538,6 +538,7 @@ class TsiSourceDataloader final : public TsiSource {
           << " cursor=continue-from-loader";
       emit_meta_(wave, out, oss.str());
     }
+    ensure_data_analytics_report_(wave, active_cmd_, ctx, out);
     episode_active_ = true;
     return true;
   }
@@ -576,7 +577,8 @@ class TsiSourceDataloader final : public TsiSource {
     return batch_remaining_ > 0;
   }
 
-  void finish_episode_(Emitter& out, std::string msg) {
+  void finish_episode_(const BoardContext& ctx, Emitter& out, std::string msg) {
+    (void)ctx;
     const Wave w{
         .cursor = WaveCursor{
             .id = episode_wave_id_,
@@ -588,7 +590,6 @@ class TsiSourceDataloader final : public TsiSource {
         .span_end_ms = episode_wave_span_end_ms_,
         .has_time_span = episode_wave_has_time_span_,
     };
-    persist_data_analytics_(w, out);
     emit_meta_(w, out, std::move(msg));
     clear_episode_state_();
   }
@@ -655,6 +656,212 @@ class TsiSourceDataloader final : public TsiSource {
     emit_meta_(wave, out, oss.str());
   }
 
+  [[nodiscard]] static std::string format_data_analytics_debug_report_(
+      const cuwacunu::piaabo::torch_compat::data_source_analytics_report_t& report,
+      const cuwacunu::piaabo::torch_compat::data_analytics_options_t& options,
+      std::string_view source_label,
+      const std::filesystem::path& output_file,
+      bool use_color) {
+    const char* c_reset = use_color ? "\x1b[0m" : "";
+    const char* c_title = use_color ? "\x1b[1;96m" : "";
+    const char* c_key = use_color ? "\x1b[90m" : "";
+    const char* c_value = use_color ? "\x1b[97m" : "";
+    const char* c_note = use_color ? "\x1b[36m" : "";
+    const char* c_focus_value = use_color ? "\x1b[95m" : "";
+
+    std::ostringstream oss;
+    oss.setf(std::ios::fixed);
+    oss << std::setprecision(6);
+
+    auto line = [&](std::string_view key, const auto& value, std::string_view note) {
+      oss << "\t" << c_key << std::left << std::setw(30) << key << c_reset
+          << " : " << c_value << value << c_reset
+          << "\t" << c_note << note << c_reset << "\n";
+    };
+
+    oss << c_title << "Source Data Analytics Report" << c_reset << "\n";
+    if (!source_label.empty()) {
+      line("source_label", source_label, "tsi source instance");
+    }
+    line("schema", report.schema, "report schema id");
+    line("file", output_file.string(), "persisted latest report");
+    line("valid_sample_count", report.valid_sample_count, "samples used for estimation");
+    line("source_effective_feature_count",
+         report.source_effective_feature_count,
+         "mask-filtered feature count");
+    line("source_cov_trace", report.source_cov_trace, "standardized covariance trace");
+    line("source_nonzero_eigen_count",
+         report.source_nonzero_eigen_count,
+         "eigenvalues > standardize_epsilon");
+    line("max_samples", options.max_samples, "configured analytics cap");
+    oss << "\t" << c_key << std::left << std::setw(30) << "source_entropic_load"
+        << c_reset << " : " << c_focus_value << report.source_entropic_load << c_reset
+        << "\t" << c_note << "source entropy load" << c_reset << "\n";
+    return oss.str();
+  }
+
+  [[nodiscard]] static std::string key_to_text_(Key_t key) {
+    std::ostringstream oss;
+    if constexpr (std::is_integral_v<Key_t>) {
+      if constexpr (std::is_signed_v<Key_t>) {
+        oss << static_cast<long long>(key);
+      } else {
+        oss << static_cast<unsigned long long>(key);
+      }
+    } else {
+      oss.setf(std::ios::fixed);
+      oss << std::setprecision(12) << static_cast<long double>(key);
+    }
+    return oss.str();
+  }
+
+  [[nodiscard]] bool resolve_analytics_range_(
+      const CommandSpec& cmd,
+      std::size_t* out_begin_idx,
+      std::size_t* out_count,
+      Key_t* out_left_key,
+      Key_t* out_right_key) const {
+    if (!out_begin_idx || !out_count || !out_left_key || !out_right_key) {
+      return false;
+    }
+    *out_begin_idx = 0;
+    *out_count = 0;
+
+    if (cmd.has_range) {
+      if (!dataset_.compute_index_range_by_keys(
+              cmd.key_left, cmd.key_right, out_begin_idx, out_count)) {
+        return false;
+      }
+      *out_left_key = std::min(cmd.key_left, cmd.key_right);
+      *out_right_key = std::max(cmd.key_left, cmd.key_right);
+      return *out_count > 0;
+    }
+
+    const auto total_opt = dataset_.size();
+    if (!total_opt.has_value() || *total_opt == 0) return false;
+
+    *out_begin_idx = 0;
+    *out_count = *total_opt;
+    *out_left_key = dataset_.leftmost_key_value_;
+    *out_right_key = dataset_.rightmost_key_value_;
+    return true;
+  }
+
+  [[nodiscard]] std::string build_data_analytics_signature_(
+      Key_t left_key,
+      Key_t right_key,
+      std::size_t begin_idx,
+      std::size_t count) const {
+    const auto total_opt = dataset_.size();
+    const std::size_t total_records = total_opt.has_value() ? *total_opt : 0;
+
+    std::ostringstream dataset_sig;
+    dataset_sig.setf(std::ios::fixed);
+    dataset_sig << "records=" << total_records
+                << ",left=" << key_to_text_(dataset_.leftmost_key_value_)
+                << ",right=" << key_to_text_(dataset_.rightmost_key_value_)
+                << ",step=" << key_to_text_(dataset_.key_value_step_)
+                << ",max_N_past=" << dataset_.max_N_past_
+                << ",max_N_future=" << dataset_.max_N_future_;
+
+    std::ostringstream oss;
+    oss.setf(std::ios::fixed);
+    oss << "contract_hash=" << contract_hash_
+        << "|source=" << instance_name_
+        << "|dataset_sig=" << dataset_sig.str()
+        << "|left_key=" << key_to_text_(left_key)
+        << "|right_key=" << key_to_text_(right_key)
+        << "|begin_idx=" << begin_idx
+        << "|count=" << count
+        << "|max_samples=" << data_analytics_options_.max_samples
+        << "|max_features=" << data_analytics_options_.max_features
+        << "|mask_epsilon=" << data_analytics_options_.mask_epsilon
+        << "|standardize_epsilon=" << data_analytics_options_.standardize_epsilon;
+    return oss.str();
+  }
+
+  void ensure_data_analytics_report_(const Wave& wave,
+                                     const CommandSpec& cmd,
+                                     const BoardContext& ctx,
+                                     Emitter& out) {
+    if (!ctx.debug_enabled) return;
+    if (contract_hash_.empty()) return;
+
+    std::size_t begin_idx = 0;
+    std::size_t count = 0;
+    Key_t left_key{};
+    Key_t right_key{};
+    if (!resolve_analytics_range_(
+            cmd, &begin_idx, &count, &left_key, &right_key)) {
+      emit_meta_(
+          wave,
+          out,
+          "dataloader.data_analytics.warn reason=empty-effective-range");
+      return;
+    }
+
+    const std::string signature = build_data_analytics_signature_(
+        left_key, right_key, begin_idx, count);
+    if (data_analytics_report_ready_ &&
+        signature == data_analytics_signature_) {
+      return;
+    }
+
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t acc(
+        data_analytics_options_);
+    for (std::size_t i = 0; i < count; ++i) {
+      const auto sample = dataset_.get(begin_idx + i);
+      (void)acc.ingest(sample.features, sample.mask);
+    }
+    const auto report = acc.summarize();
+
+    const auto output_file =
+        cuwacunu::piaabo::torch_compat::source_data_analytics_latest_file_path(
+            contract_hash_, instance_name_);
+    if (output_file.empty()) return;
+
+    std::string write_error;
+    if (!cuwacunu::piaabo::torch_compat::write_data_analytics_file(
+            report,
+            data_analytics_options_,
+            output_file,
+            instance_name_,
+            &write_error)) {
+      emit_meta_(
+          wave,
+          out,
+          std::string("dataloader.data_analytics.warn reason=write-failed detail=") +
+              write_error);
+      return;
+    }
+
+    latest_data_analytics_file_ = output_file;
+    data_analytics_signature_ = signature;
+    data_analytics_report_ready_ = true;
+
+    std::ostringstream oss;
+    oss.setf(std::ios::fixed);
+    oss << std::setprecision(6)
+        << "dataloader.data_analytics"
+        << " file=" << output_file.string()
+        << " source_entropic_load=" << report.source_entropic_load
+        << " valid_sample_count=" << report.valid_sample_count
+        << " range=[" << key_to_text_(left_key) << "," << key_to_text_(right_key)
+        << "]";
+    emit_meta_(wave, out, oss.str());
+
+    std::ostringstream pretty;
+    pretty << "[tsi.source.dataloader][data_analytics] startup"
+           << " source=" << instance_name_ << "\n";
+    pretty << format_data_analytics_debug_report_(
+        report,
+        data_analytics_options_,
+        instance_name_,
+        output_file,
+        /*use_color=*/true);
+    log_info("%s", pretty.str().c_str());
+  }
+
   [[nodiscard]] static cuwacunu::piaabo::torch_compat::data_analytics_options_t
   data_analytics_options_from_observation_(
       const cuwacunu::camahjucunu::observation_spec_t& observation_instruction) {
@@ -684,45 +891,6 @@ class TsiSourceDataloader final : public TsiSource {
     return out;
   }
 
-  void ingest_data_analytics_sample_(const Sample_t& sample) {
-    if (!sample.features.defined() || sample.features.numel() == 0) return;
-    (void)data_analytics_acc_.ingest(sample.features, sample.mask);
-  }
-
-  void persist_data_analytics_(const Wave& wave, Emitter& out) {
-    if (contract_hash_.empty()) return;
-    const auto output_file =
-        cuwacunu::piaabo::torch_compat::source_data_analytics_latest_file_path(
-            contract_hash_, instance_name_);
-    if (output_file.empty()) return;
-
-    const auto report = data_analytics_acc_.summarize();
-    std::string write_error;
-    if (!cuwacunu::piaabo::torch_compat::write_data_analytics_file(
-            report,
-            data_analytics_options_,
-            output_file,
-            instance_name_,
-            &write_error)) {
-      emit_meta_(
-          wave,
-          out,
-          std::string("dataloader.data_analytics.warn reason=write-failed detail=") +
-              write_error);
-      return;
-    }
-
-    latest_data_analytics_file_ = output_file;
-    std::ostringstream oss;
-    oss.setf(std::ios::fixed);
-    oss << std::setprecision(6)
-        << "dataloader.data_analytics"
-        << " file=" << output_file.string()
-        << " source_entropic_load=" << report.source_entropic_load
-        << " valid_sample_count=" << report.valid_sample_count;
-    emit_meta_(wave, out, oss.str());
-  }
-
  private:
     TsiId id_{};
     std::string instrument_;
@@ -744,8 +912,8 @@ class TsiSourceDataloader final : public TsiSource {
     Iterator_t end_{dl_.end()};
     bool iter_ready_{false};
     cuwacunu::piaabo::torch_compat::data_analytics_options_t data_analytics_options_{};
-    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t
-        data_analytics_acc_{data_analytics_options_};
+    std::string data_analytics_signature_{};
+    bool data_analytics_report_ready_{false};
     std::filesystem::path latest_data_analytics_file_{};
 
     // Episode cursor state (single-batch stepping + runtime continuation).

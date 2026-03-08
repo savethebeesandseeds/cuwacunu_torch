@@ -47,6 +47,9 @@ inline std::string render_board_circuit_instruction_text(
 inline std::string render_board_instruction_text(
     const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& board) {
   std::ostringstream oss;
+  if (!board.active_circuit_name.empty()) {
+    oss << "active_circuit = " << board.active_circuit_name << "\n\n";
+  }
   for (std::size_t i = 0; i < board.circuits.size(); ++i) {
     if (i > 0) oss << "\n";
     oss << render_board_circuit_instruction_text(board.circuits[i]);

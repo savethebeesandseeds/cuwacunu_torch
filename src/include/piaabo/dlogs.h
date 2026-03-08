@@ -1632,14 +1632,16 @@ inline void printLoadingBar(const loading_bar_t &bar) {
 
   LOCK_GUARD(log_mutex);
 #if DLOGS_USE_IOSTREAMS
-  std::cout << ANSI_CLEAR_LINE
+  std::cerr << ANSI_CLEAR_LINE
             << "[" << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET << "]: "
+            << ANSI_COLOR_Bright_Blue << "DEBUG" << ANSI_COLOR_RESET << ": "
             << ss.str() << " ";
-  std::cout.flush();
+  std::cerr.flush();
 #else
-  std::fprintf(LOG_FILE, "%s[%s0x%s%s]: %s ",
-    ANSI_CLEAR_LINE, ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, ss.str().c_str());
-  std::fflush(LOG_FILE);
+  std::fprintf(LOG_ERR_FILE, "%s[%s0x%s%s]: %sDEBUG%s: %s ",
+    ANSI_CLEAR_LINE, ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET,
+    ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET, ss.str().c_str());
+  std::fflush(LOG_ERR_FILE);
 #endif
 }
 
@@ -1671,17 +1673,21 @@ inline void finishLoadingBar(loading_bar_t &bar) {
   if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) return;
   LOCK_GUARD(log_mutex);
 #if DLOGS_USE_IOSTREAMS
-  std::cout << "\t " << bar.color
-            << "Execution time " << ANSI_COLOR_RESET
+  std::cerr << "\t ["
+            << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET
+            << "]: " << ANSI_COLOR_Bright_Blue << "DEBUG" << ANSI_COLOR_RESET << ": "
+            << bar.color << "Execution time " << ANSI_COLOR_RESET
             << " [" << ANSI_COLOR_Yellow << bar.label << ANSI_COLOR_RESET << "] : "
             << GET_READABLE_TIME_ms(TOCK_ms(bar.tick)) << " \n";
-  std::cout.flush();
+  std::cerr.flush();
 #else
-  std::fprintf(LOG_FILE, "\t %sExecution time %s [%s%s%s] : %s \n",
+  std::fprintf(LOG_ERR_FILE, "\t [%s0x%s%s]: %sDEBUG%s: %sExecution time %s [%s%s%s] : %s \n",
+    ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET,
+    ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET,
     bar.color.c_str(), ANSI_COLOR_RESET,
     ANSI_COLOR_Yellow, bar.label.c_str(), ANSI_COLOR_RESET,
     GET_READABLE_TIME_ms(TOCK_ms(bar.tick)).c_str());
-  std::fflush(LOG_FILE);
+  std::fflush(LOG_ERR_FILE);
 #endif
 }
 

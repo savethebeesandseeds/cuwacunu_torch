@@ -8,19 +8,29 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <openssl/rand.h>
 
+#include "hashimyei/hashimyei_identity.h"
 #include "piaabo/dconfig.h"
 #include "piaabo/dencryption.h"
 #include "piaabo/dsecurity.h"
 
 namespace cuwacunu {
 namespace hashimyei {
+
+inline constexpr std::string_view kArtifactManifestFilename = "manifest.v2.kv";
+inline constexpr std::string_view kArtifactManifestSchema = "hashimyei.artifact.manifest.v2";
+inline constexpr std::string_view kDefaultHashimyeiStoreRoot = "/cuwacunu/.hashimyei";
+inline constexpr std::string_view kCatalogFilename = "hashimyei_catalog.idydb";
 
 struct artifact_metadata_t {
   bool present{false};
@@ -45,13 +55,66 @@ struct artifact_manifest_file_t {
 };
 
 struct artifact_manifest_t {
-  std::string schema{"hashimyei.artifact.manifest.v1"};
+  std::string schema{std::string(kArtifactManifestSchema)};
   std::string canonical_type{};
   std::string family{};
   std::string model{};
   std::string artifact_id{};
   std::vector<artifact_manifest_file_t> files{};
 };
+
+[[nodiscard]] inline std::string trim_ascii(std::string value) {
+  std::size_t b = 0;
+  while (b < value.size() &&
+         std::isspace(static_cast<unsigned char>(value[b])) != 0) {
+    ++b;
+  }
+  std::size_t e = value.size();
+  while (e > b &&
+         std::isspace(static_cast<unsigned char>(value[e - 1])) != 0) {
+    --e;
+  }
+  return value.substr(b, e - b);
+}
+
+[[nodiscard]] inline std::string manifest_file_key(std::size_t index,
+                                                   std::string_view suffix) {
+  std::ostringstream oss;
+  oss << "file_" << std::setfill('0') << std::setw(4) << index << "_" << suffix;
+  return oss.str();
+}
+
+[[nodiscard]] inline bool parse_uintmax(std::string_view text,
+                                        std::uintmax_t* out_value) {
+  if (!out_value) return false;
+  const std::string trimmed = trim_ascii(std::string(text));
+  if (trimmed.empty()) return false;
+  try {
+    *out_value = static_cast<std::uintmax_t>(std::stoull(trimmed));
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+[[nodiscard]] inline std::vector<artifact_manifest_file_t> normalized_manifest_files(
+    const std::vector<artifact_manifest_file_t>& files) {
+  std::map<std::string, std::uintmax_t> merged{};
+  for (const auto& file : files) {
+    if (file.path.empty()) continue;
+    const auto it = merged.find(file.path);
+    if (it == merged.end() || file.size > it->second) {
+      merged[file.path] = file.size;
+    }
+  }
+
+  std::vector<artifact_manifest_file_t> out;
+  out.reserve(merged.size());
+  for (const auto& [path, size] : merged) {
+    out.push_back(artifact_manifest_file_t{path, size});
+  }
+  return out;
+}
 
 [[nodiscard]] inline std::vector<std::string> split_dot(std::string_view s) {
   std::vector<std::string> out;
@@ -69,7 +132,7 @@ struct artifact_manifest_t {
 }
 
 [[nodiscard]] inline std::filesystem::path artifact_manifest_path(const std::filesystem::path& artifact_dir) {
-  return artifact_dir / "manifest.txt";
+  return artifact_dir / std::string(kArtifactManifestFilename);
 }
 
 [[nodiscard]] inline bool artifact_manifest_exists(const std::filesystem::path& artifact_dir) {
@@ -99,22 +162,27 @@ struct artifact_manifest_t {
     return false;
   }
 
-  std::ofstream out(artifact_manifest_path(artifact_dir), std::ios::binary | std::ios::trunc);
+  const std::vector<artifact_manifest_file_t> files =
+      normalized_manifest_files(manifest.files);
+  const auto target_path = artifact_manifest_path(artifact_dir);
+  std::ofstream out(target_path, std::ios::binary | std::ios::trunc);
   if (!out) {
-    if (error) *error = "cannot open manifest for write: " + artifact_manifest_path(artifact_dir).string();
+    if (error) *error = "cannot open manifest for write: " + target_path.string();
     return false;
   }
 
-  out << "schema=" << manifest.schema << "\n";
+  out << "schema=" << kArtifactManifestSchema << "\n";
   out << "canonical_type=" << manifest.canonical_type << "\n";
   out << "family=" << manifest.family << "\n";
   out << "model=" << manifest.model << "\n";
   out << "artifact_id=" << manifest.artifact_id << "\n";
-  for (const auto& file : manifest.files) {
-    out << "file=" << file.path << "|" << file.size << "\n";
+  out << "file_count=" << files.size() << "\n";
+  for (std::size_t i = 0; i < files.size(); ++i) {
+    out << manifest_file_key(i, "path") << "=" << files[i].path << "\n";
+    out << manifest_file_key(i, "size") << "=" << files[i].size << "\n";
   }
   if (!out) {
-    if (error) *error = "cannot write manifest contents: " + artifact_manifest_path(artifact_dir).string();
+    if (error) *error = "cannot write manifest contents: " + target_path.string();
     return false;
   }
   return true;
@@ -127,58 +195,91 @@ struct artifact_manifest_t {
   if (error) error->clear();
   *out = artifact_manifest_t{};
 
-  std::ifstream in(artifact_manifest_path(artifact_dir), std::ios::binary);
+  const auto manifest_path = artifact_manifest_path(artifact_dir);
+  std::ifstream in(manifest_path, std::ios::binary);
   if (!in) {
-    if (error) *error = "manifest file not found: " + artifact_manifest_path(artifact_dir).string();
+    if (error) *error = "manifest file not found: " + manifest_path.string();
     return false;
   }
 
+  std::unordered_map<std::string, std::string> kv;
   std::string line;
   while (std::getline(in, line)) {
     if (line.empty()) continue;
     const std::size_t eq = line.find('=');
     if (eq == std::string::npos) continue;
-    const std::string key = line.substr(0, eq);
+    const std::string key = trim_ascii(line.substr(0, eq));
     const std::string value = line.substr(eq + 1);
-
-    if (key == "schema") {
-      out->schema = value;
-      continue;
-    }
-    if (key == "canonical_type") {
-      out->canonical_type = value;
-      continue;
-    }
-    if (key == "family") {
-      out->family = value;
-      continue;
-    }
-    if (key == "model") {
-      out->model = value;
-      continue;
-    }
-    if (key == "artifact_id") {
-      out->artifact_id = value;
-      continue;
-    }
-    if (key == "file") {
-      const std::size_t bar = value.rfind('|');
-      if (bar == std::string::npos) continue;
-      artifact_manifest_file_t f{};
-      f.path = value.substr(0, bar);
-      try {
-        f.size = static_cast<std::uintmax_t>(std::stoull(value.substr(bar + 1)));
-      } catch (...) {
-        f.size = 0;
-      }
-      out->files.push_back(std::move(f));
-    }
+    if (!key.empty()) kv[key] = value;
   }
 
   if (!in.eof() && in.fail()) {
-    if (error) *error = "cannot parse manifest: " + artifact_manifest_path(artifact_dir).string();
+    if (error) *error = "cannot parse manifest: " + manifest_path.string();
     return false;
   }
+
+  const auto read_kv = [&](const char* key, std::string* out_value) {
+    if (!out_value) return;
+    const auto it = kv.find(key);
+    if (it == kv.end()) return;
+    *out_value = it->second;
+  };
+
+  read_kv("schema", &out->schema);
+  if (out->schema.empty()) out->schema = std::string(kArtifactManifestSchema);
+  if (out->schema != kArtifactManifestSchema) {
+    if (error) *error = "unsupported artifact manifest schema: " + out->schema;
+    return false;
+  }
+
+  read_kv("canonical_type", &out->canonical_type);
+  read_kv("family", &out->family);
+  read_kv("model", &out->model);
+  read_kv("artifact_id", &out->artifact_id);
+
+  const auto file_count_it = kv.find("file_count");
+  if (file_count_it == kv.end()) {
+    if (error) *error = "manifest missing file_count";
+    return false;
+  }
+
+  std::uintmax_t file_count_u = 0;
+  if (!parse_uintmax(file_count_it->second, &file_count_u)) {
+    if (error) *error = "manifest has invalid file_count";
+    return false;
+  }
+  if (file_count_u > 1000000u) {
+    if (error) *error = "manifest file_count too large";
+    return false;
+  }
+  const std::size_t file_count = static_cast<std::size_t>(file_count_u);
+
+  out->files.clear();
+  out->files.reserve(file_count);
+  for (std::size_t i = 0; i < file_count; ++i) {
+    const std::string path_key = manifest_file_key(i, "path");
+    const std::string size_key = manifest_file_key(i, "size");
+
+    const auto it_path = kv.find(path_key);
+    const auto it_size = kv.find(size_key);
+    if (it_path == kv.end() || it_size == kv.end()) {
+      if (error) *error = "manifest missing indexed file entry";
+      return false;
+    }
+
+    std::uintmax_t size = 0;
+    if (!parse_uintmax(it_size->second, &size)) {
+      if (error) *error = "manifest has invalid indexed file size";
+      return false;
+    }
+    if (it_path->second.empty()) {
+      if (error) *error = "manifest has empty indexed file path";
+      return false;
+    }
+
+    out->files.push_back(artifact_manifest_file_t{it_path->second, size});
+  }
+  out->files = normalized_manifest_files(out->files);
 
   if (out->canonical_type.empty() ||
       out->family.empty() ||
@@ -214,17 +315,44 @@ struct artifact_manifest_t {
 
 [[nodiscard]] inline std::string metadata_secret() {
   const char* env = std::getenv("CUWACUNU_HASHIMYEI_META_SECRET");
-  if (env != nullptr && env[0] != '\0') return std::string(env);
-  return cuwacunu::iitepi::config_space_t::get<std::string>(
-      "GENERAL",
-      "hashimyei_metadata_secret");
+  if (env != nullptr && env[0] != '\0') {
+    const std::string env_value = trim_ascii(std::string(env));
+    if (!env_value.empty()) return env_value;
+  }
+
+  try {
+    const std::string configured = trim_ascii(cuwacunu::iitepi::config_space_t::get<std::string>(
+        "GENERAL", "hashimyei_metadata_secret", std::string{}));
+    if (!configured.empty()) return configured;
+  } catch (...) {
+  }
+
+  return {};
 }
 
 [[nodiscard]] inline std::filesystem::path store_root() {
-  const std::string configured = cuwacunu::iitepi::config_space_t::get<std::string>(
-      "GENERAL",
-      "hashimyei_store_root");
-  return std::filesystem::path(configured);
+  const char* env = std::getenv("CUWACUNU_HASHIMYEI_STORE_ROOT");
+  if (env != nullptr && env[0] != '\0') {
+    const std::string env_value = trim_ascii(std::string(env));
+    if (!env_value.empty()) return std::filesystem::path(env_value);
+  }
+
+  try {
+    const std::string configured = trim_ascii(cuwacunu::iitepi::config_space_t::get<std::string>(
+        "GENERAL", "hashimyei_store_root", std::string{}));
+    if (!configured.empty()) return std::filesystem::path(configured);
+  } catch (...) {
+  }
+
+  return std::filesystem::path(std::string(kDefaultHashimyeiStoreRoot));
+}
+
+[[nodiscard]] inline std::filesystem::path catalog_db_path(const std::filesystem::path& root) {
+  return root / "catalog" / std::string(kCatalogFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path catalog_db_path() {
+  return catalog_db_path(store_root());
 }
 
 [[nodiscard]] inline bool starts_with_weights_filename(const std::filesystem::path& p) {
@@ -416,7 +544,7 @@ struct artifact_manifest_t {
     if (ec) break;
     if (!entry.is_directory()) continue;
     const std::string hash = entry.path().filename().string();
-    if (!is_valid_atom(hash)) continue;
+    if (!is_hex_hash_name(hash)) continue;
 
     artifact_identity_t item{};
     item.family = std::string(family);
@@ -425,13 +553,14 @@ struct artifact_manifest_t {
     item.canonical_base = "tsi.wikimyei." + item.family + "." + item.model + "." + item.hashimyei;
     item.directory = entry.path();
 
+    const bool has_manifest = artifact_manifest_exists(entry.path());
     for (const auto& f : fs::directory_iterator(entry.path(), ec)) {
       if (ec) break;
       if (!f.is_regular_file()) continue;
       if (!starts_with_weights_filename(f.path().filename())) continue;
       item.weight_files.push_back(f.path());
     }
-    if (item.weight_files.empty()) continue;
+    if (item.weight_files.empty() && !has_manifest) continue;
 
     std::sort(item.weight_files.begin(), item.weight_files.end());
     item.metadata = load_artifact_metadata(entry.path());

@@ -278,7 +278,7 @@ int main() {
       assert(n && w == 64);
     }
 
-    fs::path tmp = fs::path("/cuwacunu/data/tests");
+    fs::path tmp = fs::path("/cuwacunu/.data/tests");
     fs::create_directories(tmp);
 
     const std::size_t W = 3; // normalization window >= 1 => normalized

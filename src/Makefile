@@ -33,9 +33,16 @@ wikimyei:
 iinuji:
 	$(MAKE) -C $(IMPL_PATH)/iinuji all
 
+.PHONY: hero_impl
+hero_impl:
+	$(MAKE) -C $(IMPL_PATH)/HERO all
+
+.PHONY: main
+main:
+	$(MAKE) -C $(ROOT_PATH)/main all
+
 .PHONY: cuwacunu
-cuwacunu:
-	$(MAKE) -C $(ROOT_PATH)/cuwacunu all
+cuwacunu: main
 
 
 # -----------------------------------------------------------------
@@ -43,9 +50,9 @@ cuwacunu:
 #   - Run with: make -j all   (control parallelism at CLI)
 # -----------------------------------------------------------------
 
-# Group the modules behind a single prerequisite
+# Group the library modules behind a single prerequisite
 .PHONY: modules
-modules: iitepi piaabo camahjucunu jkimyei wikimyei
+modules: iitepi piaabo camahjucunu jkimyei wikimyei hero_impl
 
 # Ensure packing runs *after* modules
 lib-bundles: modules
@@ -62,7 +69,17 @@ build b: all
 mods m: modules
 bundles pack: lib-bundles
 test t: tests
-cuw: cuwacunu
+cuw: main
+
+# Namespaced aliases (recommended)
+.PHONY: lib_all lib_modules lib_bundles lib_tests main_all main_tests
+lib_all: all
+lib_modules: modules
+lib_bundles: lib-bundles
+lib_tests: tests
+main_all: main
+main_tests:
+	$(MAKE) -C $(TESTS_PATH) all
 
 .PHONY: it pia cam jk wk ii
 it: iitepi
@@ -188,7 +205,7 @@ clean:
 	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then \
 		echo "Aborting clean."; exit 1; fi
 	@echo "$(COLOR_RED) Cleaning cuwacunu build $(COLOR_RESET)"
-	@for d in "$(OUTPUT_PATH)" "$(TEST_OUT)"; do \
+	@for d in "$(OUTPUT_PATH)" "$(TEST_OUT)" "$(HERO_OUT)"; do \
 	  [ -d "$$d" ] || continue; \
 	  find "$$d" -type f -exec shred -u {} + 2>/dev/null || true; \
 	  find "$$d" -depth -type d -empty -delete 2>/dev/null || true; \

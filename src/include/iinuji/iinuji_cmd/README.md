@@ -3,7 +3,7 @@
 `iinuji_cmd` is the command-first terminal shell for cuwacunu.
 
 Bench bootstrap:
-- `src/tests/bench/iinuji/torch_include/test_iinuji_cmd.cpp`
+- `src/tests/bench/iinuji/test_iinuji_cmd.cpp`
 
 ## Current layout
 

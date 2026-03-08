@@ -11,11 +11,11 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 #   - Use BUILD_OBJ_INC
 #   - Produces in: build/common/*.o
 # -----------------------------------------------------------------
-$(eval $(call BUILD_OBJ_INC, common, db,   db))
+$(eval $(call BUILD_OBJ_INC, common, idydb, idydb))
 
 # Group the objects for a convenient target
 DATALOADER_DATASETS := \
-  $(OUTPUT_PATH)/common/db.o
+  $(OUTPUT_PATH)/common/idydb.o
 
 # -----------------------------------------------------------------
 # Aggregate Target (module-level)

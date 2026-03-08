@@ -302,18 +302,22 @@ int main() try {
   // 5) Finalization checks over persisted probe artifacts.
   ok = ok && expect(!selected_probe_hashimyei.empty(),
                     "selected wave probe hashimyei is empty");
+  const bool debug_side_effects_enabled =
+      init.board.contracts.front().execution.debug_enabled;
   const auto probe_history_path =
       cuwacunu::hashimyei::store_root() / "tsi.probe" / "representation" /
       "transfer_matrix_evaluation" / selected_probe_hashimyei /
       "metrics.history.v1.txt";
-  ok = ok && expect(std::filesystem::exists(probe_history_path),
-                    "probe metrics history file missing under DSL hashimyei path");
-  if (std::filesystem::exists(probe_history_path)) {
-    const std::string history_text = read_text_file(probe_history_path.string());
-    ok = ok && expect(
-        history_text.find("hashimyei=" + selected_probe_hashimyei) !=
-            std::string::npos,
-        "probe history hashimyei does not match selected wave probe path");
+  if (debug_side_effects_enabled) {
+    ok = ok && expect(std::filesystem::exists(probe_history_path),
+                      "probe metrics history file missing under DSL hashimyei path");
+    if (std::filesystem::exists(probe_history_path)) {
+      const std::string history_text = read_text_file(probe_history_path.string());
+      ok = ok && expect(
+          history_text.find("hashimyei=" + selected_probe_hashimyei) !=
+              std::string::npos,
+          "probe history hashimyei does not match selected wave probe path");
+    }
   }
   if (!ok) return 1;
 

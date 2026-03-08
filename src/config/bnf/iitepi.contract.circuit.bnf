@@ -1,10 +1,12 @@
-<instruction>            ::= {<circuit>} ;
+<instruction>            ::= [<layout>] [<active_circuit_decl>] {<circuit>} [<layout>] ;
+<active_circuit_decl>    ::= <active_circuit_key> [<layout>] "=" [<layout>] <circuit_name> <line_end> ;
+<active_circuit_key>     ::= "active_circuit" | "ACTIVE_CIRCUIT" ;
 <circuit>                ::= <circuit_header> {<instance_decl>} {<hop_decl>} <circuit_close> ;
-<circuit_header>         ::= <circuit_name> [<whitespace>] "=" [<whitespace>] "{" <line_end> ;
-<circuit_close>          ::= [<whitespace>] "}" <line_end> ;
+<circuit_header>         ::= [<layout>] <circuit_name> [<layout>] "=" [<layout>] "{" <line_end> ;
+<circuit_close>          ::= [<layout>] "}" [<line_end>] ;
 
-<instance_decl>          ::= [<whitespace>] <instance_alias> [<whitespace>] "=" [<whitespace>] <tsi_type> [<instance_args>] <line_end> ;
-<hop_decl>               ::= [<whitespace>] <endpoint_from> [<whitespace>] "->" [<whitespace>] <endpoint_to> <line_end> ;
+<instance_decl>          ::= [<layout>] <instance_alias> [<layout>] "=" [<layout>] <tsi_type> [<instance_args>] <line_end> ;
+<hop_decl>               ::= [<layout>] <endpoint_from> [<layout>] "->" [<layout>] <endpoint_to> <line_end> ;
 
 <endpoint_from>          ::= <instance_ref> "@" <directive_ref> ":" <kind_ref> ;
 <endpoint_to>            ::= <instance_ref> "@" <directive_ref> ;
@@ -14,16 +16,12 @@
 <tsi_type>               ::= <tsi_type_base>
                            | <tsi_type_base> "." <hashimyei_id> ;
 <tsi_type_base>          ::= <tsi_type_char> {<tsi_type_char>} ;
-<instance_args>          ::= [<whitespace>] "(" [<whitespace>] <instance_arg_list> [<whitespace>] ")" ;
-<instance_arg_list>      ::= <instance_arg> {[<whitespace>] "," [<whitespace>] <instance_arg>} ;
-<instance_arg>           ::= <log_mode_argument>
-                           | <instance_arg_token> ;
-<log_mode_argument>      ::= "mode=event"
-                           | "mode=batch"
-                           | "mode=epoch"
-                           | "event"
-                           | "batch"
-                           | "epoch" ;
+<instance_args>          ::= [<layout>] "(" [<layout>] <instance_arg_list> [<layout>] ")" ;
+<instance_arg_list>      ::= <instance_arg> [<instance_arg_tail_list>] ;
+<instance_arg_tail_list> ::= <instance_arg_tail>
+                           | <instance_arg_tail> <instance_arg_tail_list> ;
+<instance_arg_tail>      ::= [<layout>] "," [<layout>] <instance_arg> ;
+<instance_arg>           ::= <instance_arg_token> ;
 <instance_arg_token>     ::= <instance_arg_char> {<instance_arg_char>} ;
 <instance_ref>           ::= <instance_char> {<instance_char>} ;
 <directive_ref>          ::= <directive_char> {<directive_char>} ;
@@ -37,9 +35,24 @@
 <tsi_type_char>          ::= <name_char> | "." ;
 <instance_arg_char>      ::= <name_char> | "." | ":" | "-" | "=" ;
 
-<line_end>               ::= [<whitespace>] <break_block> ;
+<line_end>               ::= [<whitespace>] [<line_comment_prefix>] <break_block> ;
 <break_block>            ::= {<newline>} ;
+<layout>                 ::= <layout_unit>
+                           | <layout_unit> <layout> ;
+<layout_unit>            ::= <empty> | <newline> | <block_comment> | <line_comment> ;
+<line_comment>           ::= <line_comment_prefix> <newline> ;
+<line_comment_prefix>    ::= "#"
+                           | "#" <line_comment_body> ;
+<line_comment_body>      ::= <comment_char>
+                           | <comment_char> <line_comment_body> ;
+<block_comment>          ::= "/*" "*/"
+                           | "/*" <block_comment_body> "*/" ;
+<block_comment_body>     ::= <block_comment_char>
+                           | <block_comment_char> <block_comment_body> ;
+<block_comment_char>     ::= <comment_char> | <newline> ;
 <whitespace>             ::= {<empty>} ;
+<comment_char>           ::= <empty> | <letter> | <number> | <comment_special> ;
+<comment_special>        ::= "." | "," | ":" | ";" | "-" | "_" | "\\" | "/" | "(" | ")" | "[" | "]" | "=" | ">" | "<" | "!" | "?" | "+" | "@" | "{" | "}" | "|" | "#" ;
 <letter>                 ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
 <hex_digit>              ::= <number> | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" ;
 <number>                 ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;

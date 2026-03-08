@@ -61,7 +61,9 @@ Architecture is intentionally split into static topology and dynamic execution:
 
 1. `iitepi.contract.circuit.example.dsl`
 - Declares TSI instances and hops.
-- Topology only.
+- Optional instruction-level selector: `active_circuit = <circuit_name>`.
+- When selector is set, runtime builds/executes only that circuit.
+- Circuit DSL accepts multiline hop expressions and comments (`/* ... */`, `# ...`).
 
 2. `iitepi.wave.example.dsl`
 - Declares one or more `WAVE` blocks.

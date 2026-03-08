@@ -359,7 +359,7 @@ VICReg_4D::init_from_contract_t resolve_init_from_contract_or_throw(
   out.network_design_grammar = snapshot->vicreg_network_design.grammar;
   out.network_design_dsl = snapshot->vicreg_network_design.dsl;
 
-  log_info(
+  log_dbg(
       "[VICReg_4D] network_design loaded for `%s` (join_policy=%s)\n",
       semantic.network_id.c_str(),
       semantic.join_policy.c_str());
@@ -1034,19 +1034,57 @@ void VICReg_4D::load(const std::string& path)
                 effective_projector_options.bn_in_fp32,
         "[VICReg_4D::load] network_design projector options mismatch with "
         "checkpoint metadata/model");
-    network_design_network_id = semantic.network_id;
-    network_design_join_policy = semantic.join_policy;
-    network_design_grammar = *checkpoint_network_design_grammar;
-    network_design_dsl = *checkpoint_network_design_dsl;
-    log_info(
-        "[VICReg_4D::load] validated checkpoint network_design `%s` (join_policy=%s)\n",
-        network_design_network_id.c_str(),
-        network_design_join_policy.c_str());
+    const bool checkpoint_has_analytics_policy =
+        !ir.find_nodes_by_kind("NETWORK_ANALYTICS_POLICY").empty();
+    bool runtime_has_analytics_policy = false;
+    if (has_non_ws_ascii(network_design_grammar) &&
+        has_non_ws_ascii(network_design_dsl)) {
+      try {
+        const auto runtime_ir =
+            cuwacunu::camahjucunu::dsl::decode_network_design_from_dsl(
+                network_design_grammar, network_design_dsl);
+        runtime_has_analytics_policy =
+            !runtime_ir.find_nodes_by_kind("NETWORK_ANALYTICS_POLICY").empty();
+      } catch (...) {
+        runtime_has_analytics_policy = false;
+      }
+    }
+
+    if (!checkpoint_has_analytics_policy && runtime_has_analytics_policy) {
+      network_design_network_id = semantic.network_id;
+      network_design_join_policy = semantic.join_policy;
+      log_warn(
+          "[VICReg_4D::load] checkpoint network_design lacks "
+          "NETWORK_ANALYTICS_POLICY; preserving runtime contract "
+          "network_design for analytics sidecars\n");
+      log_info(
+          "[VICReg_4D::load] validated checkpoint network_design `%s` "
+          "(join_policy=%s)\n",
+          network_design_network_id.c_str(),
+          network_design_join_policy.c_str());
+    } else {
+      network_design_network_id = semantic.network_id;
+      network_design_join_policy = semantic.join_policy;
+      network_design_grammar = *checkpoint_network_design_grammar;
+      network_design_dsl = *checkpoint_network_design_dsl;
+      log_info(
+          "[VICReg_4D::load] validated checkpoint network_design `%s` "
+          "(join_policy=%s)\n",
+          network_design_network_id.c_str(),
+          network_design_join_policy.c_str());
+    }
   } else {
-    network_design_network_id.clear();
-    network_design_join_policy.clear();
-    network_design_grammar.clear();
-    network_design_dsl.clear();
+    if (!has_non_ws_ascii(network_design_grammar) ||
+        !has_non_ws_ascii(network_design_dsl)) {
+      network_design_network_id.clear();
+      network_design_join_policy.clear();
+      network_design_grammar.clear();
+      network_design_dsl.clear();
+    } else {
+      log_warn(
+          "[VICReg_4D::load] checkpoint missing network_design metadata; "
+          "preserving runtime contract network_design payload\n");
+    }
   }
 
   for (auto& p : this->parameters()) p.set_requires_grad(true);
