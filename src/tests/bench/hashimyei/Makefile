@@ -11,13 +11,13 @@ DB_LINK   = $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)
 DATA_LINK = $(libtorch_a) $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
 
 $(eval $(call TEST_ONEFILE, test_hashimyei_catalog, test_hashimyei_catalog.cpp, $(DB_LINK)))
-$(eval $(call TEST_ONEFILE, test_hashimyei_artifacts, test_hashimyei_artifacts.cpp, $(DATA_LINK)))
+$(eval $(call TEST_ONEFILE, test_hashimyei_report_fragments, test_hashimyei_report_fragments.cpp, $(DATA_LINK)))
 $(eval $(call TEST_ONEFILE, test_lattice_catalog, test_lattice_catalog.cpp, $(DB_LINK)))
 $(eval $(call TEST_ONEFILE, test_source_runtime_projection, test_source_runtime_projection.cpp))
 $(eval $(call TEST_ONEFILE, test_hero_mcp_surface, test_hero_mcp_surface.cpp))
 
 $(TEST_OUT)/test_hashimyei_catalog: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
-$(TEST_OUT)/test_hashimyei_artifacts: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_hashimyei_report_fragments: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_lattice_catalog: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 
 .PHONY: hero-mcp-binaries
@@ -34,20 +34,20 @@ $(TEST_OUT)/test_hero_mcp_surface: $(HERO_OUT)/hero_hashimyei_mcp $(HERO_OUT)/he
 .PHONY: all
 all: \
 	$(TEST_OUT)/test_hashimyei_catalog \
-	$(TEST_OUT)/test_hashimyei_artifacts \
+	$(TEST_OUT)/test_hashimyei_report_fragments \
 	$(TEST_OUT)/test_lattice_catalog \
 	$(TEST_OUT)/test_source_runtime_projection \
 	$(TEST_OUT)/test_hero_mcp_surface
 	@$(LOG_SUCCESS)
 
 .PHONY: run
-run: run-test_hashimyei_catalog run-test_hashimyei_artifacts run-test_lattice_catalog run-test_source_runtime_projection run-test_hero_mcp_surface
+run: run-test_hashimyei_catalog run-test_hashimyei_report_fragments run-test_lattice_catalog run-test_source_runtime_projection run-test_hero_mcp_surface
 
 .PHONY: clean
 clean:
 	@rm -f \
 	  $(TEST_OUT)/test_hashimyei_catalog \
-	  $(TEST_OUT)/test_hashimyei_artifacts \
+	  $(TEST_OUT)/test_hashimyei_report_fragments \
 	  $(TEST_OUT)/test_lattice_catalog \
 	  $(TEST_OUT)/test_source_runtime_projection \
 	  $(TEST_OUT)/test_hero_mcp_surface

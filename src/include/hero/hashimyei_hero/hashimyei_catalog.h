@@ -72,24 +72,24 @@ struct component_state_t {
   std::string component_id{};
   std::uint64_t ts_ms{0};
   std::string manifest_path{};
-  std::string artifact_sha256{};
+  std::string report_fragment_sha256{};
   component_manifest_t manifest{};
 };
 
-struct artifact_entry_t {
-  std::string artifact_id{};
+struct report_fragment_entry_t {
+  std::string report_fragment_id{};
   std::string run_id{};
   std::string canonical_path{};
   std::string hashimyei{};
   std::string schema{};
-  std::string artifact_sha256{};
+  std::string report_fragment_sha256{};
   std::string path{};
   std::uint64_t ts_ms{0};
   std::string payload_json{};
 };
 
-struct performance_snapshot_t {
-  artifact_entry_t artifact{};
+struct report_fragment_snapshot_t {
+  report_fragment_entry_t report_fragment{};
   std::vector<std::pair<std::string, double>> numeric_metrics{};
   std::vector<std::pair<std::string, std::string>> text_metrics{};
 };
@@ -144,7 +144,6 @@ class hashimyei_catalog_store_t {
   [[nodiscard]] const options_t& options() const noexcept { return options_; }
 
   [[nodiscard]] bool ingest_filesystem(const std::filesystem::path& store_root,
-                                       bool backfill_legacy,
                                        std::string* error = nullptr);
   [[nodiscard]] bool rebuild_indexes(std::string* error = nullptr);
 
@@ -156,21 +155,21 @@ class hashimyei_catalog_store_t {
                                           std::vector<run_manifest_t>* out,
                                           std::string* error = nullptr) const;
 
-  [[nodiscard]] bool latest_artifact(std::string_view canonical_path,
+  [[nodiscard]] bool latest_report_fragment(std::string_view canonical_path,
                                      std::string_view schema,
-                                     artifact_entry_t* out,
+                                     report_fragment_entry_t* out,
                                      std::string* error = nullptr) const;
-  [[nodiscard]] bool get_artifact(std::string_view artifact_id, artifact_entry_t* out,
+  [[nodiscard]] bool get_report_fragment(std::string_view report_fragment_id, report_fragment_entry_t* out,
                                   std::string* error = nullptr) const;
-  [[nodiscard]] bool artifact_metrics(
-      std::string_view artifact_id,
+  [[nodiscard]] bool report_fragment_metrics(
+      std::string_view report_fragment_id,
       std::vector<std::pair<std::string, double>>* out_numeric,
       std::vector<std::pair<std::string, std::string>>* out_text,
       std::string* error = nullptr) const;
-  [[nodiscard]] bool list_artifacts(
+  [[nodiscard]] bool list_report_fragments(
       std::string_view canonical_path, std::string_view schema,
       std::size_t limit, std::size_t offset, bool newest_first,
-      std::vector<artifact_entry_t>* out, std::string* error = nullptr) const;
+      std::vector<report_fragment_entry_t>* out, std::string* error = nullptr) const;
   [[nodiscard]] bool resolve_component(std::string_view canonical_path,
                                        std::string_view hashimyei,
                                        component_state_t* out,
@@ -191,11 +190,11 @@ class hashimyei_catalog_store_t {
   [[nodiscard]] bool register_component_manifest(
       const component_manifest_t& manifest, std::string* out_component_id = nullptr,
       bool* out_inserted = nullptr, std::string* error = nullptr);
-  [[nodiscard]] bool performance_snapshot(std::string_view canonical_path,
-                                          std::string_view run_id,
-                                          performance_snapshot_t* out,
-                                          std::string* error = nullptr) const;
-  [[nodiscard]] bool provenance_trace(std::string_view artifact_id,
+  [[nodiscard]] bool report_fragment_snapshot(std::string_view canonical_path,
+                                       std::string_view run_id,
+                                       report_fragment_snapshot_t* out,
+                                       std::string* error = nullptr) const;
+  [[nodiscard]] bool dependency_trace(std::string_view report_fragment_id,
                                       std::vector<dependency_file_t>* out,
                                       std::string* error = nullptr) const;
 
@@ -214,13 +213,13 @@ class hashimyei_catalog_store_t {
                                  std::string_view schema,
                                  std::string_view metric_key, double metric_num,
                                  std::string_view metric_txt,
-                                 std::string_view artifact_sha256,
+                                 std::string_view report_fragment_sha256,
                                  std::string_view path, std::string_view ts_ms,
                                  std::string_view payload_json,
                                  std::string* error);
-  [[nodiscard]] bool ledger_contains_(std::string_view artifact_sha256,
+  [[nodiscard]] bool ledger_contains_(std::string_view report_fragment_sha256,
                                       bool* out_exists, std::string* error);
-  [[nodiscard]] bool append_ledger_(std::string_view artifact_sha256,
+  [[nodiscard]] bool append_ledger_(std::string_view report_fragment_sha256,
                                     std::string_view path, std::string* error);
   [[nodiscard]] bool append_kind_counter_(
       cuwacunu::hashimyei::hashimyei_kind_e kind, std::uint64_t next_value,
@@ -236,11 +235,10 @@ class hashimyei_catalog_store_t {
   [[nodiscard]] bool ingest_component_manifest_file_(
       const std::filesystem::path& path,
       std::string* error);
-  [[nodiscard]] bool ingest_artifact_file_(const std::filesystem::path& path,
-                                           bool backfill_legacy,
-                                           std::string* error);
+  [[nodiscard]] bool ingest_report_fragment_file_(const std::filesystem::path& path,
+                                                  std::string* error);
   [[nodiscard]] bool parse_and_append_metrics_(
-      std::string_view artifact_id,
+      std::string_view report_fragment_id,
       const std::unordered_map<std::string, std::string>& kv,
       std::string* error);
   [[nodiscard]] bool acquire_ingest_lock_(const std::filesystem::path& store_root,
@@ -257,7 +255,7 @@ class hashimyei_catalog_store_t {
   static constexpr idydb_column_row_sizing kColMetricKey = 7;
   static constexpr idydb_column_row_sizing kColMetricNum = 8;
   static constexpr idydb_column_row_sizing kColMetricTxt = 9;
-  static constexpr idydb_column_row_sizing kColArtifactSha256 = 10;
+  static constexpr idydb_column_row_sizing kColReportFragmentSha256 = 10;
   static constexpr idydb_column_row_sizing kColPath = 11;
   static constexpr idydb_column_row_sizing kColTsMs = 12;
   static constexpr idydb_column_row_sizing kColPayload = 13;
@@ -266,13 +264,13 @@ class hashimyei_catalog_store_t {
   idydb* db_{nullptr};
 
   std::unordered_map<std::string, run_manifest_t> runs_by_id_{};
-  std::unordered_map<std::string, artifact_entry_t> artifacts_by_id_{};
-  std::unordered_map<std::string, std::string> latest_artifact_by_key_{};
+  std::unordered_map<std::string, report_fragment_entry_t> report_fragments_by_id_{};
+  std::unordered_map<std::string, std::string> latest_report_fragment_by_key_{};
   std::unordered_map<std::string, std::vector<std::pair<std::string, double>>>
-      metrics_num_by_artifact_{};
+      metrics_num_by_report_fragment_{};
   std::unordered_map<std::string,
                      std::vector<std::pair<std::string, std::string>>>
-      metrics_txt_by_artifact_{};
+      metrics_txt_by_report_fragment_{};
   std::unordered_map<std::string, component_state_t> components_by_id_{};
   std::unordered_map<std::string, std::string> latest_component_by_canonical_{};
   std::unordered_map<std::string, std::string> latest_component_by_hashimyei_{};
@@ -280,7 +278,7 @@ class hashimyei_catalog_store_t {
   std::unordered_map<std::string, std::string> active_component_by_key_{};
   std::unordered_map<std::string, std::string> active_component_by_canonical_{};
   std::unordered_map<std::string, std::vector<dependency_file_t>>
-      provenance_by_run_id_{};
+      dependency_files_by_run_id_{};
   std::unordered_map<int, std::uint64_t> kind_counters_{};
   std::unordered_map<std::string, cuwacunu::hashimyei::hashimyei_t>
       hash_identity_by_kind_sha_{};

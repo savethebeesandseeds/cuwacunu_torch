@@ -447,7 +447,7 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
   return std::string(tail);
 }
 
-[[nodiscard]] std::string canonical_path_from_artifact_path(
+[[nodiscard]] std::string canonical_path_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
   const auto find_after = [&](std::string_view needle) -> std::string {
@@ -481,7 +481,7 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
   return {};
 }
 
-[[nodiscard]] std::string contract_hash_from_artifact_path(
+[[nodiscard]] std::string contract_hash_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
   const std::string source_head = "/tsi.source/data_analytics/";
@@ -843,61 +843,60 @@ std::string compute_cell_id(std::string_view contract_hash,
   return out;
 }
 
-bool encode_artifact_link_payload(const wave_artifact_link_t& artifact_link,
-                                  std::string* out_payload,
-                                  std::string* error) {
+bool encode_cell_report_payload(const lattice_cell_report_t& report,
+                                std::string* out_payload,
+                                std::string* error) {
   clear_error(error);
   if (!out_payload) {
-    set_error(error, "artifact payload output pointer is null");
+    set_error(error, "cell-report payload output pointer is null");
     return false;
   }
 
   std::ostringstream out;
-  out << "aggregate_schema=" << artifact_link.aggregate_schema << "\n";
-  out << "aggregate_sha256=" << artifact_link.aggregate_sha256 << "\n";
+  out << "report_schema=" << report.report_schema << "\n";
+  out << "report_sha256=" << report.report_sha256 << "\n";
 
-  out << "artifact_count=" << artifact_link.artifact_ids.size() << "\n";
-  for (std::size_t i = 0; i < artifact_link.artifact_ids.size(); ++i) {
-    out << "artifact_" << std::setw(4) << std::setfill('0') << i
-        << "=" << to_hex(artifact_link.artifact_ids[i]) << "\n";
+  out << "source_report_fragment_count=" << report.source_report_fragment_ids.size() << "\n";
+  for (std::size_t i = 0; i < report.source_report_fragment_ids.size(); ++i) {
+    out << "source_report_fragment_" << std::setw(4) << std::setfill('0') << i
+        << "=" << to_hex(report.source_report_fragment_ids[i]) << "\n";
   }
 
-  out << "num_count=" << artifact_link.numeric_summary.size() << "\n";
-  for (std::size_t i = 0; i < artifact_link.numeric_summary.size(); ++i) {
-    out << "num_" << std::setw(4) << std::setfill('0') << i
-        << "_key=" << to_hex(artifact_link.numeric_summary[i].first) << "\n";
-    out << "num_" << std::setw(4) << std::setfill('0') << i
+  out << "summary_num_count=" << report.summary_num.size() << "\n";
+  for (std::size_t i = 0; i < report.summary_num.size(); ++i) {
+    out << "summary_num_" << std::setw(4) << std::setfill('0') << i
+        << "_key=" << to_hex(report.summary_num[i].first) << "\n";
+    out << "summary_num_" << std::setw(4) << std::setfill('0') << i
         << "_value=" << std::setprecision(17)
-        << artifact_link.numeric_summary[i].second << "\n";
+        << report.summary_num[i].second << "\n";
   }
 
-  out << "txt_count=" << artifact_link.text_summary.size() << "\n";
-  for (std::size_t i = 0; i < artifact_link.text_summary.size(); ++i) {
-    out << "txt_" << std::setw(4) << std::setfill('0') << i
-        << "_key=" << to_hex(artifact_link.text_summary[i].first) << "\n";
-    out << "txt_" << std::setw(4) << std::setfill('0') << i
-        << "_value=" << to_hex(artifact_link.text_summary[i].second) << "\n";
+  out << "summary_txt_count=" << report.summary_txt.size() << "\n";
+  for (std::size_t i = 0; i < report.summary_txt.size(); ++i) {
+    out << "summary_txt_" << std::setw(4) << std::setfill('0') << i
+        << "_key=" << to_hex(report.summary_txt[i].first) << "\n";
+    out << "summary_txt_" << std::setw(4) << std::setfill('0') << i
+        << "_value=" << to_hex(report.summary_txt[i].second) << "\n";
   }
 
-  out << "joined_kv_report_hex=" << to_hex(artifact_link.joined_kv_report)
-      << "\n";
+  out << "report_lls_hex=" << to_hex(report.report_lls) << "\n";
   *out_payload = out.str();
   return true;
 }
 
-bool decode_artifact_link_payload(std::string_view payload,
-                                  wave_artifact_link_t* out,
-                                  std::string* error) {
+bool decode_cell_report_payload(std::string_view payload,
+                                lattice_cell_report_t* out,
+                                std::string* error) {
   clear_error(error);
   if (!out) {
-    set_error(error, "artifact payload output pointer is null");
+    set_error(error, "cell-report payload output pointer is null");
     return false;
   }
-  *out = wave_artifact_link_t{};
+  *out = lattice_cell_report_t{};
 
   std::unordered_map<std::string, std::string> kv{};
   if (!parse_kv_payload(payload, &kv)) {
-    set_error(error, "cannot parse artifact payload");
+    set_error(error, "cannot parse cell-report payload");
     return false;
   }
 
@@ -907,35 +906,36 @@ bool decode_artifact_link_payload(std::string_view payload,
     return parse_u64(it->second, v);
   };
 
-  if (const auto it = kv.find("aggregate_schema"); it != kv.end()) {
-    out->aggregate_schema = it->second;
+  if (const auto it = kv.find("report_schema"); it != kv.end()) {
+    out->report_schema = it->second;
   }
-  if (const auto it = kv.find("aggregate_sha256"); it != kv.end()) {
-    out->aggregate_sha256 = it->second;
+  if (const auto it = kv.find("report_sha256"); it != kv.end()) {
+    out->report_sha256 = it->second;
   }
 
   std::uint64_t count = 0;
-  if (read_u64("artifact_count", &count)) {
-    out->artifact_ids.reserve(static_cast<std::size_t>(count));
+  if (read_u64("source_report_fragment_count", &count)) {
+    out->source_report_fragment_ids.reserve(static_cast<std::size_t>(count));
     for (std::uint64_t i = 0; i < count; ++i) {
       std::ostringstream k;
-      k << "artifact_" << std::setw(4) << std::setfill('0') << i;
+      k << "source_report_fragment_" << std::setw(4) << std::setfill('0') << i;
       const auto it = kv.find(k.str());
       if (it == kv.end()) continue;
       std::string decoded;
       if (!from_hex(it->second, &decoded, error)) return false;
-      out->artifact_ids.push_back(std::move(decoded));
+      out->source_report_fragment_ids.push_back(std::move(decoded));
     }
   }
 
   count = 0;
-  if (read_u64("num_count", &count)) {
-    out->numeric_summary.reserve(static_cast<std::size_t>(count));
+  if (read_u64("summary_num_count", &count)) {
+    out->summary_num.reserve(static_cast<std::size_t>(count));
     for (std::uint64_t i = 0; i < count; ++i) {
       std::ostringstream kk;
-      kk << "num_" << std::setw(4) << std::setfill('0') << i << "_key";
+      kk << "summary_num_" << std::setw(4) << std::setfill('0') << i << "_key";
       std::ostringstream kvv;
-      kvv << "num_" << std::setw(4) << std::setfill('0') << i << "_value";
+      kvv << "summary_num_" << std::setw(4) << std::setfill('0') << i
+          << "_value";
       const auto itk = kv.find(kk.str());
       const auto itv = kv.find(kvv.str());
       if (itk == kv.end() || itv == kv.end()) continue;
@@ -944,18 +944,19 @@ bool decode_artifact_link_payload(std::string_view payload,
       if (!from_hex(itk->second, &key, error)) return false;
       double value = 0.0;
       if (!parse_double(itv->second, &value)) continue;
-      out->numeric_summary.emplace_back(std::move(key), value);
+      out->summary_num.emplace_back(std::move(key), value);
     }
   }
 
   count = 0;
-  if (read_u64("txt_count", &count)) {
-    out->text_summary.reserve(static_cast<std::size_t>(count));
+  if (read_u64("summary_txt_count", &count)) {
+    out->summary_txt.reserve(static_cast<std::size_t>(count));
     for (std::uint64_t i = 0; i < count; ++i) {
       std::ostringstream kk;
-      kk << "txt_" << std::setw(4) << std::setfill('0') << i << "_key";
+      kk << "summary_txt_" << std::setw(4) << std::setfill('0') << i << "_key";
       std::ostringstream kvv;
-      kvv << "txt_" << std::setw(4) << std::setfill('0') << i << "_value";
+      kvv << "summary_txt_" << std::setw(4) << std::setfill('0') << i
+          << "_value";
       const auto itk = kv.find(kk.str());
       const auto itv = kv.find(kvv.str());
       if (itk == kv.end() || itv == kv.end()) continue;
@@ -964,12 +965,12 @@ bool decode_artifact_link_payload(std::string_view payload,
       std::string value;
       if (!from_hex(itk->second, &key, error)) return false;
       if (!from_hex(itv->second, &value, error)) return false;
-      out->text_summary.emplace_back(std::move(key), std::move(value));
+      out->summary_txt.emplace_back(std::move(key), std::move(value));
     }
   }
 
-  if (const auto it = kv.find("joined_kv_report_hex"); it != kv.end()) {
-    if (!from_hex(it->second, &out->joined_kv_report, error)) return false;
+  if (const auto it = kv.find("report_lls_hex"); it != kv.end()) {
+    if (!from_hex(it->second, &out->report_lls, error)) return false;
   }
 
   return true;
@@ -1065,13 +1066,14 @@ bool lattice_catalog_store_t::close(std::string* error) {
   cells_by_id_.clear();
   cell_id_by_coord_profile_.clear();
   trials_by_cell_.clear();
-  artifact_by_trial_id_.clear();
+  report_by_trial_id_.clear();
   projection_num_by_cell_.clear();
   projection_txt_by_cell_.clear();
   runtime_runs_by_id_.clear();
-  runtime_artifacts_by_id_.clear();
-  runtime_latest_artifact_by_key_.clear();
-  runtime_provenance_by_run_id_.clear();
+  runtime_report_fragments_by_id_.clear();
+  runtime_latest_report_fragment_by_key_.clear();
+  runtime_dependency_files_by_run_id_.clear();
+  runtime_reports_by_intersection_.clear();
   runtime_ledger_.clear();
   return true;
 }
@@ -1262,12 +1264,12 @@ std::string lattice_catalog_store_t::coord_profile_key_(
 }
 
 bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
-                                        const wave_execution_profile_t& profile,
-                                        const wave_trial_t& trial,
-                                        const wave_artifact_link_t& artifact_link,
-                                        const wave_projection_t& projection,
-                                        wave_cell_t* out_cell,
-                                        std::string* error) {
+                                           const wave_execution_profile_t& profile,
+                                           const wave_trial_t& trial,
+                                           const lattice_cell_report_t& report,
+                                           const wave_projection_t& projection,
+                                           wave_cell_t* out_cell,
+                                           std::string* error) {
   clear_error(error);
   if (!db_) {
     set_error(error, "catalog is not open");
@@ -1303,8 +1305,8 @@ bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
     stored_trial.finished_at_ms = std::max(stored_trial.started_at_ms, ts_now);
   }
 
-  std::string artifact_payload;
-  if (!encode_artifact_link_payload(artifact_link, &artifact_payload, error)) {
+  std::string report_payload;
+  if (!encode_cell_report_payload(report, &report_payload, error)) {
     return false;
   }
 
@@ -1312,7 +1314,7 @@ bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
   cell.state = stored_trial.ok ? "ready" : "error";
   cell.trial_count = cell.trial_count + 1;
   cell.last_trial_id = stored_trial.trial_id;
-  cell.artifact_link = artifact_link;
+  cell.report = report;
   cell.projection_version = projection.projection_version;
   cell.updated_at_ms = std::max(stored_trial.finished_at_ms, ts_now);
 
@@ -1325,7 +1327,7 @@ bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
                    stored_trial.ok ? "ok" : "error",
                    static_cast<double>(stored_trial.total_steps),
                    stored_trial.error, stored_trial.state_snapshot_id, pv,
-                   std::to_string(stored_trial.started_at_ms), artifact_payload, "",
+                   std::to_string(stored_trial.started_at_ms), report_payload, "",
                    std::numeric_limits<double>::quiet_NaN(), "", "", "",
                    std::to_string(stored_trial.started_at_ms),
                    std::to_string(stored_trial.finished_at_ms),
@@ -1338,9 +1340,9 @@ bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCELL, cell_id, cell_id, coord.contract_hash, coord.wave_hash,
                    profile_id, execution_profile_json, cell.state,
                    static_cast<double>(cell.trial_count),
-                   artifact_link.aggregate_schema,
-                   artifact_link.aggregate_sha256,
-                   pv, std::to_string(cell.updated_at_ms), artifact_payload, "",
+                   report.report_schema,
+                   report.report_sha256,
+                   pv, std::to_string(cell.updated_at_ms), report_payload, "",
                    std::numeric_limits<double>::quiet_NaN(), "", "", "", "",
                    "", "", "", "", "", error)) {
     return false;
@@ -1353,7 +1355,7 @@ bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
   cells_by_id_[cell_id] = cell;
   cell_id_by_coord_profile_[coord_key] = cell_id;
   trials_by_cell_[cell_id].push_back(stored_trial);
-  artifact_by_trial_id_[stored_trial.trial_id] = artifact_link;
+  report_by_trial_id_[stored_trial.trial_id] = report;
 
   auto& projection_num = projection_num_by_cell_[cell_id];
   for (const auto& [k, v] : projection.projection_num) {
@@ -1378,9 +1380,10 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   cells_by_id_.clear();
   cell_id_by_coord_profile_.clear();
   trials_by_cell_.clear();
-  artifact_by_trial_id_.clear();
+  report_by_trial_id_.clear();
   projection_num_by_cell_.clear();
   projection_txt_by_cell_.clear();
+  runtime_reports_by_intersection_.clear();
 
   db::query::query_spec_t q{};
   q.select_columns = {kColRecordKind};
@@ -1407,8 +1410,8 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
           n.has_value() && n.value() >= 0.0) {
         cell.trial_count = static_cast<std::size_t>(n.value());
       }
-      cell.artifact_link.aggregate_schema = as_text_or_empty(&db_, kColTextA, row);
-      cell.artifact_link.aggregate_sha256 = as_text_or_empty(&db_, kColTextB, row);
+      cell.report.report_schema = as_text_or_empty(&db_, kColTextA, row);
+      cell.report.report_sha256 = as_text_or_empty(&db_, kColTextB, row);
 
       if (const std::string pv = as_text_or_empty(&db_, kColProjectionVersion, row);
           !pv.empty()) {
@@ -1431,10 +1434,10 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
 
       const std::string payload = as_text_or_empty(&db_, kColPayload, row);
       if (!payload.empty()) {
-        wave_artifact_link_t decoded{};
+        lattice_cell_report_t decoded{};
         std::string ignored;
-        if (decode_artifact_link_payload(payload, &decoded, &ignored)) {
-          cell.artifact_link = std::move(decoded);
+        if (decode_cell_report_payload(payload, &decoded, &ignored)) {
+          cell.report = std::move(decoded);
         }
       }
 
@@ -1483,10 +1486,10 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
                       &trial.total_steps);
       const std::string payload = as_text_or_empty(&db_, kColPayload, row);
       if (!trial.trial_id.empty() && !payload.empty()) {
-        wave_artifact_link_t decoded{};
+        lattice_cell_report_t decoded{};
         std::string ignored{};
-        if (decode_artifact_link_payload(payload, &decoded, &ignored)) {
-          artifact_by_trial_id_[trial.trial_id] = std::move(decoded);
+        if (decode_cell_report_payload(payload, &decoded, &ignored)) {
+          report_by_trial_id_[trial.trial_id] = std::move(decoded);
         }
       }
       if (!trial.cell_id.empty()) {
@@ -1511,6 +1514,31 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
       const std::string value = as_text_or_empty(&db_, kColProjectionTxt, row);
       if (!cell_id.empty() && !key.empty()) {
         projection_txt_by_cell_[cell_id][key] = value;
+      }
+      continue;
+    }
+
+    if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT) {
+      const std::string intersection_cursor =
+          trim_ascii(as_text_or_empty(&db_, kColRecordId, row));
+      if (intersection_cursor.empty()) continue;
+      const std::string canonical_path =
+          normalize_source_hashimyei_cursor(as_text_or_empty(&db_, kColTextA, row));
+      const std::string run_id = trim_ascii(as_text_or_empty(&db_, kColRunId, row));
+      const std::string report_lls = as_text_or_empty(&db_, kColPayload, row);
+      if (report_lls.empty()) continue;
+      std::uint64_t ts_ms = 0;
+      (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &ts_ms);
+
+      auto it = runtime_reports_by_intersection_.find(intersection_cursor);
+      if (it == runtime_reports_by_intersection_.end() ||
+          ts_ms > it->second.ts_ms) {
+        runtime_intersection_report_entry_t entry{};
+        entry.canonical_path = canonical_path;
+        entry.run_id = run_id;
+        entry.ts_ms = ts_ms;
+        entry.report_lls = report_lls;
+        runtime_reports_by_intersection_[intersection_cursor] = std::move(entry);
       }
       continue;
     }
@@ -1716,9 +1744,9 @@ bool lattice_catalog_store_t::query_matrix(const matrix_query_t& query,
       selected.state = chosen_trial->ok ? "ready" : "error";
       selected.updated_at_ms = std::max(selected.updated_at_ms,
                                         chosen_trial->finished_at_ms);
-      const auto it_artifact = artifact_by_trial_id_.find(chosen_trial->trial_id);
-      if (it_artifact != artifact_by_trial_id_.end()) {
-        selected.artifact_link = it_artifact->second;
+      const auto it_report = report_by_trial_id_.find(chosen_trial->trial_id);
+      if (it_report != report_by_trial_id_.end()) {
+        selected.report = it_report->second;
       }
     }
 
@@ -1743,32 +1771,31 @@ bool lattice_catalog_store_t::query_matrix(const matrix_query_t& query,
   return true;
 }
 
-bool lattice_catalog_store_t::provenance(std::string_view cell_id,
-                                      wave_artifact_link_t* out,
-                                      std::string* error) const {
+bool lattice_catalog_store_t::get_cell_report(std::string_view cell_id,
+                                              lattice_cell_report_t* out,
+                                              std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "provenance output pointer is null");
+    set_error(error, "cell-report output pointer is null");
     return false;
   }
-  *out = wave_artifact_link_t{};
+  *out = lattice_cell_report_t{};
 
   wave_cell_t cell{};
   if (!get_cell(cell_id, &cell, error)) return false;
-  *out = cell.artifact_link;
+  *out = cell.report;
   return true;
 }
 
-bool lattice_catalog_store_t::runtime_ledger_contains_(std::string_view artifact_id,
-                                                    bool* out_exists,
-                                                    std::string* error) {
+bool lattice_catalog_store_t::runtime_ledger_contains_(
+    std::string_view report_fragment_id, bool* out_exists, std::string* error) {
   clear_error(error);
   if (!out_exists) {
     set_error(error, "runtime ledger output pointer is null");
     return false;
   }
   *out_exists = false;
-  const std::string id(artifact_id);
+  const std::string id(report_fragment_id);
   if (id.empty()) return true;
   if (runtime_ledger_.count(id) != 0) {
     *out_exists = true;
@@ -1790,17 +1817,18 @@ bool lattice_catalog_store_t::runtime_ledger_contains_(std::string_view artifact
   return true;
 }
 
-bool lattice_catalog_store_t::append_runtime_ledger_(std::string_view artifact_id,
-                                                  std::string_view path,
-                                                  std::string* error) {
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_LEDGER, artifact_id, "", "", "", "", "",
+bool lattice_catalog_store_t::append_runtime_ledger_(
+    std::string_view report_fragment_id, std::string_view path,
+    std::string* error) {
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_LEDGER,
+                   report_fragment_id, "", "", "", "", "",
                    "", std::numeric_limits<double>::quiet_NaN(),
                    path, "", "2", std::to_string(now_ms_utc()), "{}",
                    "", std::numeric_limits<double>::quiet_NaN(), "", "", "", "",
                    "", "", "", "", "", error)) {
     return false;
   }
-  runtime_ledger_.insert(std::string(artifact_id));
+  runtime_ledger_.insert(std::string(report_fragment_id));
   return true;
 }
 
@@ -1811,7 +1839,7 @@ bool lattice_catalog_store_t::ingest_runtime_run_manifest_file_(
   if (!cuwacunu::hero::hashimyei::load_run_manifest(path, &m, error)) return false;
 
   runtime_runs_by_id_[m.run_id] = m;
-  runtime_provenance_by_run_id_[m.run_id] = m.dependency_files;
+  runtime_dependency_files_by_run_id_[m.run_id] = m.dependency_files;
 
   idydb_filter_term t_kind{};
   t_kind.column = kColRecordKind;
@@ -1848,7 +1876,7 @@ bool lattice_catalog_store_t::ingest_runtime_run_manifest_file_(
   }
   for (const auto& d : m.dependency_files) {
     const std::string rec_id = m.run_id + "|" + d.canonical_path;
-    if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_PROVENANCE, rec_id, "", "", "", "", "",
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_DEPENDENCY, rec_id, "", "", "", "", "",
                      d.canonical_path, std::numeric_limits<double>::quiet_NaN(),
                      d.sha256_hex, "", "2", std::to_string(m.started_at_ms), "{}",
                      "", std::numeric_limits<double>::quiet_NaN(), "", "", "", "", "",
@@ -1859,7 +1887,7 @@ bool lattice_catalog_store_t::ingest_runtime_run_manifest_file_(
   return true;
 }
 
-bool lattice_catalog_store_t::ingest_runtime_artifact_file_(
+bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
     const std::filesystem::path& path, std::string* error) {
   clear_error(error);
   if (!std::filesystem::exists(path) || !std::filesystem::is_regular_file(path)) {
@@ -1875,19 +1903,19 @@ bool lattice_catalog_store_t::ingest_runtime_artifact_file_(
   const std::string schema = kv["schema"];
   if (!is_known_runtime_schema(schema)) return true;
 
-  std::string artifact_sha;
-  if (!sha256_hex_file(path, &artifact_sha, error)) return false;
+  std::string report_fragment_sha;
+  if (!sha256_hex_file(path, &report_fragment_sha, error)) return false;
 
   std::string canonical_path = kv["canonical_base"];
   if (canonical_path.empty()) canonical_path = kv["source_label"];
-  if (canonical_path.empty()) canonical_path = canonical_path_from_artifact_path(path);
+  if (canonical_path.empty()) canonical_path = canonical_path_from_report_fragment_path(path);
   canonical_path = normalize_source_hashimyei_cursor(canonical_path);
 
   std::string hashimyei = kv["hashimyei"];
   if (hashimyei.empty()) hashimyei = maybe_hashimyei_from_canonical(canonical_path);
 
   std::string contract_hash = kv["contract_hash"];
-  if (contract_hash.empty()) contract_hash = contract_hash_from_artifact_path(path);
+  if (contract_hash.empty()) contract_hash = contract_hash_from_report_fragment_path(path);
 
   std::uint64_t ts_ms = now_ms_utc();
   {
@@ -1903,7 +1931,7 @@ bool lattice_catalog_store_t::ingest_runtime_artifact_file_(
   std::string run_id = kv["run_id"];
   if (run_id.empty()) {
     set_error(error,
-              "runtime artifact missing run_id: " + path.string());
+              "runtime report_fragment missing run_id: " + path.string());
     return false;
   }
   std::uint64_t wave_cursor = 0;
@@ -1932,44 +1960,44 @@ bool lattice_catalog_store_t::ingest_runtime_artifact_file_(
   if (const auto can = canonicalized(path); can.has_value()) cp = *can;
   const std::string canonical_file_path = cp.string();
 
-  cuwacunu::hero::hashimyei::artifact_entry_t art{};
-  art.artifact_id = artifact_sha;
-  art.run_id = run_id;
-  art.canonical_path = canonical_path;
-  art.hashimyei = hashimyei;
-  art.schema = schema;
-  art.artifact_sha256 = artifact_sha;
-  art.path = canonical_file_path;
-  art.ts_ms = ts_ms;
-  art.payload_json = payload_with_cursor;
-  runtime_artifacts_by_id_[artifact_sha] = art;
+  runtime_report_fragment_t fragment{};
+  fragment.report_fragment_id = report_fragment_sha;
+  fragment.run_id = run_id;
+  fragment.canonical_path = canonical_path;
+  fragment.hashimyei = hashimyei;
+  fragment.schema = schema;
+  fragment.report_fragment_sha256 = report_fragment_sha;
+  fragment.path = canonical_file_path;
+  fragment.ts_ms = ts_ms;
+  fragment.payload_json = payload_with_cursor;
+  runtime_report_fragments_by_id_[report_fragment_sha] = fragment;
   const std::string latest_key = join_key(canonical_path, schema);
-  auto it_latest = runtime_latest_artifact_by_key_.find(latest_key);
-  if (it_latest == runtime_latest_artifact_by_key_.end()) {
-    runtime_latest_artifact_by_key_[latest_key] = artifact_sha;
+  auto it_latest = runtime_latest_report_fragment_by_key_.find(latest_key);
+  if (it_latest == runtime_latest_report_fragment_by_key_.end()) {
+    runtime_latest_report_fragment_by_key_[latest_key] = report_fragment_sha;
   } else {
-    const auto it_old = runtime_artifacts_by_id_.find(it_latest->second);
-    if (it_old == runtime_artifacts_by_id_.end() || ts_ms > it_old->second.ts_ms ||
-        (ts_ms == it_old->second.ts_ms && artifact_sha > it_old->second.artifact_id)) {
-      it_latest->second = artifact_sha;
+    const auto it_old = runtime_report_fragments_by_id_.find(it_latest->second);
+    if (it_old == runtime_report_fragments_by_id_.end() || ts_ms > it_old->second.ts_ms ||
+        (ts_ms == it_old->second.ts_ms && report_fragment_sha > it_old->second.report_fragment_id)) {
+      it_latest->second = report_fragment_sha;
     }
   }
 
   bool already = false;
-  if (!runtime_ledger_contains_(artifact_sha, &already, error)) return false;
+  if (!runtime_ledger_contains_(report_fragment_sha, &already, error)) return false;
   if (already) return true;
 
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_ARTIFACT, artifact_sha, "", contract_hash, "", "", "",
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT_FRAGMENT, report_fragment_sha, "", contract_hash, "", "", "",
                    schema, std::numeric_limits<double>::quiet_NaN(), canonical_path,
                    hashimyei, "2", std::to_string(ts_ms), payload_with_cursor, "",
                    std::numeric_limits<double>::quiet_NaN(), "", "", "", "", "", "",
                    "", "", run_id, error)) {
     return false;
   }
-  return append_runtime_ledger_(artifact_sha, canonical_file_path, error);
+  return append_runtime_ledger_(report_fragment_sha, canonical_file_path, error);
 }
 
-bool lattice_catalog_store_t::ingest_runtime_reports(
+bool lattice_catalog_store_t::ingest_runtime_report_fragments(
     const std::filesystem::path& store_root, std::string* error) {
   clear_error(error);
   if (!db_) {
@@ -2046,7 +2074,7 @@ bool lattice_catalog_store_t::ingest_runtime_reports(
 
     const auto ext = p.extension().string();
     if (ext != ".lls") continue;
-    if (!ingest_runtime_artifact_file_(p, error)) return false;
+    if (!ingest_runtime_report_fragment_file_(p, error)) return false;
   }
 
   return true;
@@ -2084,35 +2112,35 @@ bool lattice_catalog_store_t::list_runtime_runs_by_binding(
   return true;
 }
 
-bool lattice_catalog_store_t::list_runtime_artifacts(
+bool lattice_catalog_store_t::list_runtime_report_fragments(
     std::string_view canonical_path, std::string_view schema, std::size_t limit,
     std::size_t offset, bool newest_first,
-    std::vector<cuwacunu::hero::hashimyei::artifact_entry_t>* out,
+    std::vector<runtime_report_fragment_t>* out,
     std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "artifact list output pointer is null");
+    set_error(error, "report_fragment list output pointer is null");
     return false;
   }
   out->clear();
 
   const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
   const std::string sc(schema);
-  for (const auto& [_, art] : runtime_artifacts_by_id_) {
-    const std::string art_cp =
-        normalize_source_hashimyei_cursor(art.canonical_path);
-    if (!cp.empty() && art_cp != cp) continue;
-    if (!sc.empty() && art.schema != sc) continue;
-    cuwacunu::hero::hashimyei::artifact_entry_t normalized_art = art;
-    normalized_art.canonical_path = art_cp;
-    out->push_back(std::move(normalized_art));
+  for (const auto& [_, fragment] : runtime_report_fragments_by_id_) {
+    const std::string fragment_cp =
+        normalize_source_hashimyei_cursor(fragment.canonical_path);
+    if (!cp.empty() && fragment_cp != cp) continue;
+    if (!sc.empty() && fragment.schema != sc) continue;
+    runtime_report_fragment_t normalized_fragment = fragment;
+    normalized_fragment.canonical_path = fragment_cp;
+    out->push_back(std::move(normalized_fragment));
   }
 
   if (!cp.empty() && starts_with(cp, "tsi.source.") &&
       (sc.empty() || sc == "wave.source.runtime.projection.v2")) {
     for (const auto& [_, cell] : cells_by_id_) {
       std::unordered_map<std::string, std::string> joined_kv{};
-      (void)parse_kv_payload(cell.artifact_link.joined_kv_report, &joined_kv);
+      (void)parse_kv_payload(cell.report.report_lls, &joined_kv);
       const auto it_schema = joined_kv.find("source.runtime.projection.schema");
       if (it_schema == joined_kv.end()) continue;
       const std::string synthetic_schema = trim_ascii(it_schema->second);
@@ -2174,18 +2202,20 @@ bool lattice_catalog_store_t::list_runtime_artifacts(
       }
       const std::string synthetic_payload = payload.str();
 
-      std::string synthetic_artifact_id{};
+      std::string synthetic_report_fragment_id{};
       const std::string seed = "source-runtime-synth|" + cell.cell_id + "|" +
                                synthetic_run_id + "|" + synthetic_payload;
-      if (!sha256_hex_bytes(seed, &synthetic_artifact_id, nullptr)) continue;
+      if (!sha256_hex_bytes(seed, &synthetic_report_fragment_id, nullptr)) {
+        continue;
+      }
 
-      cuwacunu::hero::hashimyei::artifact_entry_t synthetic{};
-      synthetic.artifact_id = synthetic_artifact_id;
+      runtime_report_fragment_t synthetic{};
+      synthetic.report_fragment_id = synthetic_report_fragment_id;
       synthetic.run_id = synthetic_run_id;
       synthetic.canonical_path = cp;
       synthetic.hashimyei = maybe_hashimyei_from_canonical(cp);
       synthetic.schema = synthetic_schema;
-      synthetic.artifact_sha256 = synthetic_artifact_id;
+      synthetic.report_fragment_sha256 = synthetic_report_fragment_id;
       synthetic.path = "[lattice.synthetic.source_runtime cell=" + cell.cell_id +
                        "]";
       synthetic.ts_ms = cell.updated_at_ms;
@@ -2199,8 +2229,8 @@ bool lattice_catalog_store_t::list_runtime_artifacts(
               if (a.ts_ms != b.ts_ms) {
                 return newest_first ? (a.ts_ms > b.ts_ms) : (a.ts_ms < b.ts_ms);
               }
-              return newest_first ? (a.artifact_id > b.artifact_id)
-                                  : (a.artifact_id < b.artifact_id);
+              return newest_first ? (a.report_fragment_id > b.report_fragment_id)
+                                  : (a.report_fragment_id < b.report_fragment_id);
             });
 
   const std::size_t off = std::min(offset, out->size());
@@ -2209,6 +2239,82 @@ bool lattice_catalog_store_t::list_runtime_artifacts(
   count = std::min(count, out->size() - off);
   out->assign(out->begin() + static_cast<std::ptrdiff_t>(off),
               out->begin() + static_cast<std::ptrdiff_t>(off + count));
+  return true;
+}
+
+bool lattice_catalog_store_t::upsert_runtime_intersection_report(
+    std::string_view intersection_cursor, std::string_view canonical_path,
+    std::string_view run_id, std::uint64_t ts_ms, std::string_view report_lls,
+    std::string* error) {
+  clear_error(error);
+  if (!db_) {
+    set_error(error, "catalog is not open");
+    return false;
+  }
+  const std::string key = trim_ascii(intersection_cursor);
+  if (key.empty()) {
+    set_error(error, "intersection_cursor is empty");
+    return false;
+  }
+  const std::string payload(report_lls);
+  if (payload.empty()) {
+    set_error(error, "report_lls is empty");
+    return false;
+  }
+  const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
+  const std::string rid = trim_ascii(run_id);
+  const std::uint64_t effective_ts = (ts_ms == 0) ? now_ms_utc() : ts_ms;
+  const std::string ts = std::to_string(effective_ts);
+
+  auto it_existing = runtime_reports_by_intersection_.find(key);
+  if (it_existing != runtime_reports_by_intersection_.end()) {
+    const bool same_payload = (it_existing->second.report_lls == payload);
+    const bool ts_not_newer = (effective_ts <= it_existing->second.ts_ms);
+    if (same_payload && ts_not_newer) {
+      return true;
+    }
+  }
+
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT, key, "", "",
+                   "", "", "", "wave.intersection.report.v1",
+                   std::numeric_limits<double>::quiet_NaN(), cp,
+                   "wave.intersection.report.v1", "2", ts, payload, "",
+                   std::numeric_limits<double>::quiet_NaN(), "", "", "", "", "",
+                   "", "", "", rid, error)) {
+    return false;
+  }
+
+  runtime_intersection_report_entry_t entry{};
+  entry.canonical_path = cp;
+  entry.run_id = rid;
+  entry.ts_ms = effective_ts;
+  entry.report_lls = payload;
+  runtime_reports_by_intersection_[key] = std::move(entry);
+  return true;
+}
+
+bool lattice_catalog_store_t::get_runtime_intersection_report(
+    std::string_view intersection_cursor, std::string* out_report_lls,
+    std::string* out_canonical_path, std::string* out_run_id,
+    std::string* error) const {
+  clear_error(error);
+  if (!out_report_lls) {
+    set_error(error, "intersection report output pointer is null");
+    return false;
+  }
+  out_report_lls->clear();
+  if (out_canonical_path) out_canonical_path->clear();
+  if (out_run_id) out_run_id->clear();
+
+  const std::string key = trim_ascii(intersection_cursor);
+  if (key.empty()) return true;
+
+  const auto it = runtime_reports_by_intersection_.find(key);
+  if (it == runtime_reports_by_intersection_.end()) return true;
+
+  *out_report_lls = it->second.report_lls;
+  if (out_canonical_path) *out_canonical_path = it->second.canonical_path;
+  if (out_run_id) *out_run_id = it->second.run_id;
   return true;
 }
 

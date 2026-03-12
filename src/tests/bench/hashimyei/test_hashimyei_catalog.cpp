@@ -273,7 +273,7 @@ int main() {
               cuwacunu::hero::schema::kRecordKindRUN) ==
           cuwacunu::hero::schema::logical_table_e::ENTITY);
   REQUIRE(cuwacunu::hero::schema::logical_table_for_record_kind(
-              cuwacunu::hero::schema::kRecordKindRUNTIME_ARTIFACT) ==
+              cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT_FRAGMENT) ==
           cuwacunu::hero::schema::logical_table_e::BLOB);
   REQUIRE(!cuwacunu::hero::schema::is_known_record_kind("unknown_kind"));
 
@@ -354,7 +354,7 @@ int main() {
   options.ingest_version = 2;
 
   REQUIRE(catalog.open(options, &error));
-  REQUIRE(catalog.ingest_filesystem(store_root, false, &error));
+  REQUIRE(catalog.ingest_filesystem(store_root, &error));
 
   std::vector<run_manifest_t> runs{};
   REQUIRE(catalog.list_runs_by_binding(component_manifest.wave_contract_binding.contract.name,
@@ -453,10 +453,11 @@ int main() {
           resolved_auto_a.manifest.wave_contract_binding.identity.name);
 
   // strict v2 ingest: v1 run filename must fail fast
-  const fs::path legacy_run =
-      store_root / "runs" / "legacy" / "run.manifest.v1.kv";
-  write_text_file(legacy_run, "schema=hashimyei.run.manifest.v1\nrun_id=legacy\n");
-  REQUIRE(!catalog.ingest_filesystem(store_root, false, &error));
+  const fs::path unsupported_v1_run_manifest =
+      store_root / "runs" / "unsupported" / "run.manifest.v1.kv";
+  write_text_file(unsupported_v1_run_manifest,
+                  "schema=hashimyei.run.manifest.v1\nrun_id=v1\n");
+  REQUIRE(!catalog.ingest_filesystem(store_root, &error));
   REQUIRE(error.find("v1") != std::string::npos);
 
   REQUIRE(catalog.close(&error));

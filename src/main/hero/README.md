@@ -59,8 +59,15 @@ Typical startup errors:
 ## Ownership Boundaries
 
 - `Hashimyei Hero` owns identity resolution and canonical founding references.
-- `Lattice Hero` owns execution/runtime history, exposure, and report queries.
-- Hashimyei APIs must remain identity-oriented; report/history endpoints belong to Lattice.
+- `Lattice Hero` owns execution/runtime report fragment streams, exposure, and report queries.
+- Hashimyei APIs must remain identity-oriented; runtime report fragment/report endpoints belong to Lattice.
+
+## Naming Conventions
+
+- `report_fragment`: atomic `.lls` payload emitted by one runtime producer (`runtime_report_fragment` rows).
+- `report`: joined `.lls` payload at one lattice intersection (`runtime_report` rows and cell `report_lls`).
+- `projection`: derived sparse dimensions for indexing/distance, persisted as canonical `projection_lls` with `projection_num`, `projection_txt`, and `projection_meta` sections.
+- Joined report sections use `source_report_fragment_*` keys (for example `source_report_fragment_id`, `source_report_fragment_count`).
 
 ## Hashimyei Identity v2
 
@@ -114,15 +121,18 @@ are documented in:
 
 Lattice MCP runtime/report query tools:
 - `hero.lattice.get_runs`
-- `hero.lattice.get_history`
+- `hero.lattice.list_report_fragments`
 - `hero.lattice.get_report_lls`
 - `hero.lattice.reset_catalog`
 
 `hero.lattice.get_report_lls` returns a joined `report_lls` payload.
 For `tsi.source.*` cursors, `get_report_lls` joins both source data analytics
-and source-runtime projection artifacts when both are available for the same
+and source-runtime projection report fragments when both are available for the same
 wave/hashimyei intersection scope.
-Runtime report ingest in Lattice is `.lls`-only and accepts:
+The joined payload is persisted in the lattice catalog as a
+`runtime_report` row keyed by `intersection_cursor`, so each intersection can
+hold one coherent report view while raw component report fragments remain queryable.
+Runtime report fragment ingest in Lattice is `.lls`-only and accepts:
 - `wave.source.runtime.projection.v2`
 - `piaabo.torch_compat.data_analytics.v1`
 - `tsi.wikimyei.representation.vicreg.status.v1`
@@ -132,10 +142,10 @@ Runtime report ingest in Lattice is `.lls`-only and accepts:
 
 All ingested runtime `.lls` payloads must include `run_id=<...>`.
 
-Runtime artifact queries now support two primary cursors:
+Runtime report fragment queries now support two primary cursors:
 - `wave_cursor`: packed numeric cursor `[run_id|episode_k|batch_j]` used for
   mask-based filtering (`wave_cursor_mask`).
-- `wave_cursor_resolution`: per-artifact scope (`run|episode|batch`) used so
+- `wave_cursor_resolution`: per-report fragment scope (`run|episode|batch`) used so
   coarse reports can still match finer query cursors (for example: run-level
   report queried with batch-level cursor).
 - `hashimyei_cursor`: canonical component path alias (same value as
@@ -143,7 +153,7 @@ Runtime artifact queries now support two primary cursors:
 - `intersection_cursor`: `hashimyei_cursor|wave_cursor` convenience key
   representing one lattice intersection.
 
-`hero.lattice.get_history` and `hero.lattice.get_report_lls` accept
+`hero.lattice.list_report_fragments` and `hero.lattice.get_report_lls` accept
 `intersection_cursor` directly. When
 provided, it drives cursor filtering for the selected lattice intersection.
 
@@ -168,13 +178,11 @@ Projection `.lls` payload (`projection_lls`) includes:
 - numeric dimensions (`projection_num`), including source-runtime ratios/flags
 - text dimensions (`projection_txt`), including `source.runtime.symbol`,
   `source.runtime.range_basis`, and `source.runtime.interval_semantics`
+- metadata/event section (`projection_meta`), including:
+  `projection_version = 2` and `projector_build_id = wave.projector.v2`
 
-Projection metadata:
-- `projection_version = 2`
-- `projector_build_id = wave.projector.v2`
-
-Raw epoch-ms fields are audit-only and are appended to joined provenance payloads
-(`joined_kv_report`) as latent-lineage formatted text, not to `projection_num`.
+Raw epoch-ms fields are audit-only and are appended to joined report payloads
+(`report_lls`) as latent-lineage formatted text, not to `projection_num`.
 
 ## Smoke Tests
 

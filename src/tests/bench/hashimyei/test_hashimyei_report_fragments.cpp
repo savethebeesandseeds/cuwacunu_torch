@@ -1,4 +1,4 @@
-#include "hero/hashimyei_hero/hashimyei_artifacts.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_driver.h"
 #include "hero/hashimyei_hero/hashimyei_identity.h"
 
@@ -37,7 +37,7 @@ static std::string random_suffix() {
 struct temp_dir_t {
   fs::path dir{};
   temp_dir_t() {
-    dir = fs::temp_directory_path() / ("test_hashimyei_artifacts_" + random_suffix());
+    dir = fs::temp_directory_path() / ("test_hashimyei_report_fragments_" + random_suffix());
     fs::create_directories(dir);
   }
   ~temp_dir_t() {
@@ -89,47 +89,47 @@ static std::string read_text_file(const fs::path& path) {
 }
 
 static void test_manifest_roundtrip(const fs::path& store_root) {
-  const fs::path artifact_dir =
+  const fs::path report_fragment_dir =
       store_root / "tsi.wikimyei" / "representation" / "vicreg" / "0x00ab";
 
-  cuwacunu::hashimyei::artifact_manifest_t manifest{};
+  cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
   manifest.canonical_type = "tsi.wikimyei.representation.vicreg";
   manifest.family = "representation";
   manifest.model = "vicreg";
-  manifest.artifact_id = "0x00ab";
+  manifest.report_fragment_id = "0x00ab";
   manifest.files.push_back({"weights.init.pt", 100});
   manifest.files.push_back({"metadata.enc", 7});
   manifest.files.push_back({"weights.init.pt", 88});
   manifest.files.push_back({"weights.init.network_analytics.lls", 25});
 
   std::string error;
-  REQUIRE(cuwacunu::hashimyei::write_artifact_manifest(artifact_dir, manifest, &error));
-  REQUIRE(cuwacunu::hashimyei::artifact_manifest_exists(artifact_dir));
+  REQUIRE(cuwacunu::hashimyei::write_report_fragment_manifest(report_fragment_dir, manifest, &error));
+  REQUIRE(cuwacunu::hashimyei::report_fragment_manifest_exists(report_fragment_dir));
 
-  const fs::path manifest_path = cuwacunu::hashimyei::artifact_manifest_path(artifact_dir);
+  const fs::path manifest_path = cuwacunu::hashimyei::report_fragment_manifest_path(report_fragment_dir);
   REQUIRE(manifest_path.filename() == "manifest.v2.kv");
 
   const std::string payload = read_text_file(manifest_path);
-  REQUIRE(payload.find("schema=hashimyei.artifact.manifest.v2\n") != std::string::npos);
+  REQUIRE(payload.find("schema=hashimyei.report_fragment.manifest.v2\n") != std::string::npos);
   REQUIRE(payload.find("file_count=3\n") != std::string::npos);
   REQUIRE(payload.find("file_0000_path=metadata.enc\n") != std::string::npos);
   REQUIRE(payload.find("file_0001_path=weights.init.network_analytics.lls\n") != std::string::npos);
   REQUIRE(payload.find("file_0002_path=weights.init.pt\n") != std::string::npos);
   REQUIRE(payload.find("file_0002_size=100\n") != std::string::npos);
 
-  cuwacunu::hashimyei::artifact_manifest_t parsed{};
-  REQUIRE(cuwacunu::hashimyei::read_artifact_manifest(artifact_dir, &parsed, &error));
-  REQUIRE(parsed.schema == "hashimyei.artifact.manifest.v2");
+  cuwacunu::hashimyei::report_fragment_manifest_t parsed{};
+  REQUIRE(cuwacunu::hashimyei::read_report_fragment_manifest(report_fragment_dir, &parsed, &error));
+  REQUIRE(parsed.schema == "hashimyei.report_fragment.manifest.v2");
   REQUIRE(parsed.canonical_type == manifest.canonical_type);
   REQUIRE(parsed.family == manifest.family);
   REQUIRE(parsed.model == manifest.model);
-  REQUIRE(parsed.artifact_id == manifest.artifact_id);
+  REQUIRE(parsed.report_fragment_id == manifest.report_fragment_id);
   REQUIRE(parsed.files.size() == 3);
   REQUIRE(parsed.files[0].path == "metadata.enc");
   REQUIRE(parsed.files[1].path == "weights.init.network_analytics.lls");
   REQUIRE(parsed.files[2].path == "weights.init.pt");
   REQUIRE(parsed.files[2].size == 100);
-  REQUIRE(cuwacunu::hashimyei::artifact_manifest_has_file(parsed, "weights.init.pt"));
+  REQUIRE(cuwacunu::hashimyei::report_fragment_manifest_has_file(parsed, "weights.init.pt"));
 }
 
 static void test_store_root_and_catalog_defaults(const fs::path& store_root) {
@@ -159,14 +159,14 @@ static void test_discovery_rules(const fs::path& store_root) {
   std::error_code ec;
   fs::create_directories(base, ec);
 
-  const auto create_manifest = [&](const fs::path& artifact_dir, std::string_view hash) {
-    cuwacunu::hashimyei::artifact_manifest_t manifest{};
+  const auto create_manifest = [&](const fs::path& report_fragment_dir, std::string_view hash) {
+    cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
     manifest.canonical_type = "tsi.wikimyei.representation.vicreg";
     manifest.family = "representation";
     manifest.model = "vicreg";
-    manifest.artifact_id = std::string(hash);
+    manifest.report_fragment_id = std::string(hash);
     std::string error;
-    REQUIRE(cuwacunu::hashimyei::write_artifact_manifest(artifact_dir, manifest, &error));
+    REQUIRE(cuwacunu::hashimyei::write_report_fragment_manifest(report_fragment_dir, manifest, &error));
   };
 
   const fs::path manifest_only = base / "0x00aa";
@@ -182,7 +182,7 @@ static void test_discovery_rules(const fs::path& store_root) {
   create_manifest(manifest_and_weights, "0x00ac");
   write_text_file(manifest_and_weights / "weights.init.pt", "w2");
 
-  const fs::path invalid_atom = base / "legacy_name";
+  const fs::path invalid_atom = base / "invalid_name";
   fs::create_directories(invalid_atom, ec);
   write_text_file(invalid_atom / "weights.init.pt", "ignored");
 
@@ -191,7 +191,7 @@ static void test_discovery_rules(const fs::path& store_root) {
   write_text_file(invalid_hex / "weights.init.pt", "ignored");
 
   const auto discovered =
-      cuwacunu::hashimyei::discover_created_artifacts_for("representation", "vicreg");
+      cuwacunu::hashimyei::discover_created_report_fragments_for("representation", "vicreg");
   REQUIRE(discovered.size() == 3);
   REQUIRE(discovered[0].hashimyei == "0x00aa");
   REQUIRE(discovered[1].hashimyei == "0x00ab");
@@ -210,18 +210,18 @@ static void test_driver_registry_ordering() {
   const std::string b = "tsi.test.driver.b." + suffix;
   const std::string c = "tsi.test.driver.c." + suffix;
 
-  const auto cb = [](const cuwacunu::hashimyei::artifact_action_context_t&,
+  const auto cb = [](const cuwacunu::hashimyei::report_fragment_action_context_t&,
                      std::string*) { return true; };
   std::string error;
 
-  REQUIRE(cuwacunu::hashimyei::register_artifact_driver(
+  REQUIRE(cuwacunu::hashimyei::register_report_fragment_driver(
       {.canonical_type = c, .save = cb}, &error));
-  REQUIRE(cuwacunu::hashimyei::register_artifact_driver(
+  REQUIRE(cuwacunu::hashimyei::register_report_fragment_driver(
       {.canonical_type = a, .save = cb}, &error));
-  REQUIRE(cuwacunu::hashimyei::register_artifact_driver(
+  REQUIRE(cuwacunu::hashimyei::register_report_fragment_driver(
       {.canonical_type = b, .save = cb}, &error));
 
-  const auto types = cuwacunu::hashimyei::registered_artifact_driver_types();
+  const auto types = cuwacunu::hashimyei::registered_report_fragment_driver_types();
   REQUIRE(std::is_sorted(types.begin(), types.end()));
   REQUIRE(std::find(types.begin(), types.end(), a) != types.end());
   REQUIRE(std::find(types.begin(), types.end(), b) != types.end());
@@ -256,6 +256,6 @@ int main() {
   test_driver_registry_ordering();
   test_identity_helper_regressions();
 
-  std::cout << "[PASS] test_hashimyei_artifacts\n";
+  std::cout << "[PASS] test_hashimyei_report_fragments\n";
   return 0;
 }

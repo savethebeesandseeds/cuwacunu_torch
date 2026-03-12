@@ -1,7 +1,7 @@
 #include "piaabo/torch_compat/data_analytics.h"
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
-#include "hero/hashimyei_hero/hashimyei_artifacts.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 
 #include <algorithm>
 #include <cctype>

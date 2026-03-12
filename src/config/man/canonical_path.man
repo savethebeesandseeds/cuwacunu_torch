@@ -50,7 +50,7 @@ id = LEGACY_ALIAS_REMOVAL
 applies_to = PATH.BASE
 severity = error
 when = uses removed namespaces tsi.wave.generator or tsi.wikimyei.wave.generator or tsi.wikimyei.source.* or trailing .jkimyei
-message = legacy canonical path aliases are removed and rejected
+message = removed canonical path aliases are rejected
 
 [RULE HASHIMYEI_REQUIRED]
 id = HASHIMYEI_REQUIRED
@@ -64,7 +64,7 @@ id = HASHIMYEI_DEFAULT_REMOVED
 applies_to = hashimyei suffix
 severity = error
 when = suffix == default
-message = legacy hashimyei alias default is removed; use explicit 0x<hex>
+message = removed hashimyei alias default; use explicit 0x<hex>
 
 [RULE KIND_CANONICALIZATION]
 id = KIND_CANONICALIZATION

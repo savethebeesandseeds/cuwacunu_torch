@@ -209,7 +209,7 @@ required = false
 default = none
 range = reserved for future probe families
 allowed = no active probe runtime families
-nuance = legacy `tsi.probe.representation.transfer_matrix_evaluation` runtime binding was removed; transfer-matrix reporting is owned by `tsi.wikimyei.representation.vicreg`
+nuance = removed `tsi.probe.representation.transfer_matrix_evaluation` runtime binding; transfer-matrix reporting is owned by `tsi.wikimyei.representation.vicreg`
 
 [FIELD PROBE.TRAINING_WINDOW]
 key = PROBE.TRAINING_WINDOW
@@ -219,7 +219,7 @@ required = false
 default = n/a
 range = n/a
 allowed = n/a
-nuance = legacy transfer-matrix probe runtime key
+nuance = removed transfer-matrix probe runtime key
 
 [FIELD PROBE.REPORT_POLICY]
 key = PROBE.REPORT_POLICY
@@ -229,7 +229,7 @@ required = false
 default = n/a
 range = n/a
 allowed = n/a
-nuance = legacy transfer-matrix probe runtime key
+nuance = removed transfer-matrix probe runtime key
 
 [FIELD PROBE.OBJECTIVE]
 key = PROBE.OBJECTIVE
@@ -239,7 +239,7 @@ required = false
 default = n/a
 range = n/a
 allowed = n/a
-nuance = legacy transfer-matrix probe runtime key
+nuance = removed transfer-matrix probe runtime key
 
 [FIELD SINK.PATH]
 key = SINK.PATH

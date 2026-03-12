@@ -153,7 +153,7 @@ IINUJI_CANONICAL_CALL(TsiTabNext, "iinuji.tsi.tab.next()", "Select next tsiemene
 IINUJI_CANONICAL_CALL(TsiTabPrev, "iinuji.tsi.tab.prev()", "Select previous tsiemene tab")
 IINUJI_CANONICAL_PATTERN(TsiTabIndexPattern, "iinuji.tsi.tab.index.n1()", "Select tsiemene tab by 1-based index", OptionalTailAtom)
 IINUJI_CANONICAL_PATTERN(TsiTabIdPattern, "iinuji.tsi.tab.id.source_dataloader()", "Select tsiemene tab by id token", OptionalTailAtom)
-IINUJI_CANONICAL_CALL(TsiDataloaderInit, "iinuji.tsi.dataloader.init()", "Persist a tsi.source.dataloader.init() artifact")
+IINUJI_CANONICAL_CALL(TsiDataloaderInit, "iinuji.tsi.dataloader.init()", "Persist a tsi.source.dataloader.init() report fragment")
 IINUJI_CANONICAL_CALL(TsiDataloaderCreate, "iinuji.tsi.dataloader.create()", "Create tsi.source.dataloader.<hashimyei> from central config")
 IINUJI_CANONICAL_CALL(TsiDataloaderEdit, "iinuji.tsi.dataloader.edit()", "Edit selected tsi.source.dataloader.<hashimyei> from central config")
 IINUJI_CANONICAL_PATTERN(TsiDataloaderEditIdPattern, "iinuji.tsi.dataloader.edit.0x0001()", "Edit tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)

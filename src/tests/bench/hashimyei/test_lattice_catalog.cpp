@@ -16,10 +16,10 @@
 namespace fs = std::filesystem;
 using cuwacunu::hero::wave::compute_cell_id;
 using cuwacunu::hero::wave::compute_profile_id;
-using cuwacunu::hero::wave::decode_artifact_link_payload;
-using cuwacunu::hero::wave::encode_artifact_link_payload;
+using cuwacunu::hero::wave::decode_cell_report_payload;
+using cuwacunu::hero::wave::encode_cell_report_payload;
 using cuwacunu::hero::wave::matrix_query_t;
-using cuwacunu::hero::wave::wave_artifact_link_t;
+using cuwacunu::hero::wave::lattice_cell_report_t;
 using cuwacunu::hero::wave::lattice_catalog_store_t;
 using cuwacunu::hero::wave::wave_cell_coord_t;
 using cuwacunu::hero::wave::wave_cell_t;
@@ -115,30 +115,30 @@ int main() {
   REQUIRE(!cell_id_1.empty());
   REQUIRE(cell_id_1 == cell_id_2);
 
-  wave_artifact_link_t artifact_link{};
-  artifact_link.aggregate_schema = "wave.sink.artifact_link.v1";
-  artifact_link.artifact_ids = {"a1", "a2"};
-  artifact_link.numeric_summary = {{"loss", 0.123}, {"accuracy", 0.99}};
-  artifact_link.text_summary = {{"status", "ok"}, {"schema", "report.v1"}};
-  artifact_link.joined_kv_report =
-      "schema=wave.report.v1\n"
+  lattice_cell_report_t report{};
+  report.report_schema = "wave.cell.report.v1";
+  report.source_report_fragment_ids = {"a1", "a2"};
+  report.summary_num = {{"loss", 0.123}, {"accuracy", 0.99}};
+  report.summary_txt = {{"status", "ok"}, {"report_schema", "report.v1"}};
+  report.report_lls =
+      "report_schema=wave.cell.report.v1\n"
       "run_id=run_runtime_001\n"
       "source.runtime.projection.run_id=run_runtime_001\n"
       "source.runtime.projection.schema=wave.source.runtime.projection.v2\n"
       "source.runtime.symbol=BTCUSDT\n"
       "source.runtime.request.from_ratio=0.125\n";
-  artifact_link.aggregate_sha256 = "deadbeef";
+  report.report_sha256 = "deadbeef";
 
   std::string encoded{};
   std::string error;
-  REQUIRE(encode_artifact_link_payload(artifact_link, &encoded, &error));
+  REQUIRE(encode_cell_report_payload(report, &encoded, &error));
   REQUIRE(!encoded.empty());
 
-  wave_artifact_link_t decoded{};
-  REQUIRE(decode_artifact_link_payload(encoded, &decoded, &error));
-  REQUIRE(decoded.aggregate_schema == artifact_link.aggregate_schema);
-  REQUIRE(decoded.artifact_ids.size() == artifact_link.artifact_ids.size());
-  REQUIRE(decoded.joined_kv_report == artifact_link.joined_kv_report);
+  lattice_cell_report_t decoded{};
+  REQUIRE(decode_cell_report_payload(encoded, &decoded, &error));
+  REQUIRE(decoded.report_schema == report.report_schema);
+  REQUIRE(decoded.source_report_fragment_ids.size() == report.source_report_fragment_ids.size());
+  REQUIRE(decoded.report_lls == report.report_lls);
 
   lattice_catalog_store_t catalog{};
   lattice_catalog_store_t::options_t opts{};
@@ -210,7 +210,7 @@ int main() {
   }
 
   wave_cell_t cell{};
-  REQUIRE(catalog.record_trial(coord, profile, trial, artifact_link, projection, &cell,
+  REQUIRE(catalog.record_trial(coord, profile, trial, report, projection, &cell,
                                &error));
   REQUIRE(cell.cell_id == cell_id_1);
   REQUIRE(cell.trial_count == 1);
@@ -286,11 +286,11 @@ int main() {
   failed_trial.run_id = "run_hash_002";
   failed_trial.state_snapshot_id = "snapshot_state_002";
 
-  wave_artifact_link_t failed_link = artifact_link;
-  failed_link.numeric_summary = {{"loss", 0.555}};
-  failed_link.text_summary = {{"status", "error"}};
-  failed_link.joined_kv_report =
-      "schema=wave.report.v1\n"
+  lattice_cell_report_t failed_report = report;
+  failed_report.summary_num = {{"loss", 0.555}};
+  failed_report.summary_txt = {{"status", "error"}};
+  failed_report.report_lls =
+      "report_schema=wave.cell.report.v1\n"
       "status=error\n"
       "note=sink unavailable\n"
       "run_id=run_runtime_001\n"
@@ -298,9 +298,9 @@ int main() {
       "source.runtime.projection.schema=wave.source.runtime.projection.v2\n"
       "source.runtime.symbol=BTCUSDT\n"
       "source.runtime.request.from_ratio=0.125\n";
-  failed_link.aggregate_sha256 = "feedface";
+  failed_report.report_sha256 = "feedface";
 
-  REQUIRE(catalog.record_trial(coord, profile, failed_trial, failed_link, projection,
+  REQUIRE(catalog.record_trial(coord, profile, failed_trial, failed_report, projection,
                                &cell, &error));
   REQUIRE(cell.trial_count == 2);
   REQUIRE(cell.state == "error");
@@ -313,8 +313,8 @@ int main() {
   REQUIRE(latest_success_cells.size() == 1);
   REQUIRE(latest_success_cells.front().state == "ready");
   REQUIRE(latest_success_cells.front().last_trial_id == trial.trial_id);
-  REQUIRE(latest_success_cells.front().artifact_link.joined_kv_report ==
-          artifact_link.joined_kv_report);
+  REQUIRE(latest_success_cells.front().report.report_lls ==
+          report.report_lls);
 
   matrix_query_t latest_any_query = query;
   latest_any_query.latest_success_only = false;
@@ -324,12 +324,12 @@ int main() {
   REQUIRE(latest_any_cells.size() == 1);
   REQUIRE(latest_any_cells.front().state == "error");
   REQUIRE(latest_any_cells.front().last_trial_id == failed_trial.trial_id);
-  REQUIRE(latest_any_cells.front().artifact_link.joined_kv_report ==
-          failed_link.joined_kv_report);
+  REQUIRE(latest_any_cells.front().report.report_lls ==
+          failed_report.report_lls);
 
-  wave_artifact_link_t provenance{};
-  REQUIRE(catalog.provenance(cell.cell_id, &provenance, &error));
-  REQUIRE(provenance.joined_kv_report == failed_link.joined_kv_report);
+  lattice_cell_report_t report_snapshot{};
+  REQUIRE(catalog.get_cell_report(cell.cell_id, &report_snapshot, &error));
+  REQUIRE(report_snapshot.report_lls == failed_report.report_lls);
 
   REQUIRE(catalog.close(&error));
 
@@ -361,7 +361,7 @@ int main() {
       "canonical_base = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss = 0.77\n");
 
-  REQUIRE(!runtime_catalog.ingest_runtime_reports(runtime_store, &error));
+  REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
   REQUIRE(error.find("missing run_id") != std::string::npos);
   fs::remove(runtime_store / "reports" / "runtime_missing_run_id.lls");
 
@@ -381,7 +381,7 @@ int main() {
       "sample_count = 256\n"
       "source_entropic_load = 7.5\n");
   write_text_file(
-      runtime_store / "reports" / "runtime_legacy_schema.lls",
+      runtime_store / "reports" / "runtime_unsupported_schema.lls",
       "schema = piaabo.torch_compat.network_analytics.v3\n"
       "run_id = run_runtime_000\n"
       "canonical_base = tsi.wikimyei.representation.vicreg.0x0042\n"
@@ -393,23 +393,23 @@ int main() {
       "canonical_base = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss = 0.50\n");
 
-  REQUIRE(runtime_catalog.ingest_runtime_reports(runtime_store, &error));
+  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
 
-  std::vector<cuwacunu::hero::hashimyei::artifact_entry_t> runtime_artifacts{};
-  REQUIRE(runtime_catalog.list_runtime_artifacts(canonical_runtime_path, "", 0, 0,
-                                                 true, &runtime_artifacts, &error));
-  REQUIRE(runtime_artifacts.size() == 1);
-  REQUIRE(runtime_artifacts.front().schema ==
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> runtime_report_fragments{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments(canonical_runtime_path, "", 0, 0,
+                                                 true, &runtime_report_fragments, &error));
+  REQUIRE(runtime_report_fragments.size() == 1);
+  REQUIRE(runtime_report_fragments.front().schema ==
           "piaabo.torch_compat.network_analytics.v4");
-  REQUIRE(runtime_artifacts.front().path.find(".lls") != std::string::npos);
+  REQUIRE(runtime_report_fragments.front().path.find(".lls") != std::string::npos);
 
-  std::vector<cuwacunu::hero::hashimyei::artifact_entry_t> source_artifacts{};
-  REQUIRE(runtime_catalog.list_runtime_artifacts("tsi.source.dataloader",
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> source_report_fragments{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments("tsi.source.dataloader",
                                                  "", 0, 0, true,
-                                                 &source_artifacts, &error));
+                                                 &source_report_fragments, &error));
   bool saw_data_analytics = false;
   bool saw_source_runtime = false;
-  for (const auto& row : source_artifacts) {
+  for (const auto& row : source_report_fragments) {
     REQUIRE(row.canonical_path == "tsi.source.dataloader");
     if (row.schema == "piaabo.torch_compat.data_analytics.v1") {
       saw_data_analytics = true;
@@ -425,15 +425,34 @@ int main() {
   REQUIRE(saw_data_analytics);
   REQUIRE(saw_source_runtime);
 
-  std::vector<cuwacunu::hero::hashimyei::artifact_entry_t>
-      source_artifacts_symbol_cursor{};
-  REQUIRE(runtime_catalog.list_runtime_artifacts(
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+      source_report_fragments_symbol_cursor{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments(
       "tsi.source.dataloader.BTCUSDT", "", 0, 0, true,
-      &source_artifacts_symbol_cursor, &error));
-  REQUIRE(source_artifacts_symbol_cursor.size() == source_artifacts.size());
-  for (const auto& row : source_artifacts_symbol_cursor) {
+      &source_report_fragments_symbol_cursor, &error));
+  REQUIRE(source_report_fragments_symbol_cursor.size() == source_report_fragments.size());
+  for (const auto& row : source_report_fragments_symbol_cursor) {
     REQUIRE(row.canonical_path == "tsi.source.dataloader");
   }
+
+  const std::string intersection_cursor = "tsi.source.dataloader|123456";
+  const std::string intersection_report =
+      "# hashimyei.joined_report.v1\n"
+      "report_schema=hashimyei.joined_report.v1\n"
+      "canonical_path=tsi.source.dataloader\n"
+      "source_report_fragment_count=2\n";
+  REQUIRE(runtime_catalog.upsert_runtime_intersection_report(
+      intersection_cursor, "tsi.source.dataloader", "run_runtime_001",
+      1711111000999ULL, intersection_report, &error));
+
+  std::string restored_report{};
+  std::string restored_path{};
+  std::string restored_run{};
+  REQUIRE(runtime_catalog.get_runtime_intersection_report(
+      intersection_cursor, &restored_report, &restored_path, &restored_run, &error));
+  REQUIRE(restored_report == intersection_report);
+  REQUIRE(restored_path == "tsi.source.dataloader");
+  REQUIRE(restored_run == "run_runtime_001");
 
   REQUIRE(runtime_catalog.close(&error));
 

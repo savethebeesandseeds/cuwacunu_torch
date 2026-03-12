@@ -105,7 +105,7 @@ bool dispatch_training_hash_index(const cuwacunu::camahjucunu::canonical_path_t&
                                   PushErr&& push_err) const {
   const auto hashes = training_hashes_for_selected_tab(state);
   if (hashes.empty()) {
-    push_warn("no created hashimyei artifacts for selected wikimyei");
+    push_warn("no created hashimyei report fragments for selected wikimyei");
     return true;
   }
 
@@ -131,7 +131,7 @@ bool dispatch_training_hash_id(const cuwacunu::camahjucunu::canonical_path_t& pa
                                PushErr&& push_err) const {
   const auto hashes = training_hashes_for_selected_tab(state);
   if (hashes.empty()) {
-    push_warn("no created hashimyei artifacts for selected wikimyei");
+    push_warn("no created hashimyei report fragments for selected wikimyei");
     return true;
   }
 

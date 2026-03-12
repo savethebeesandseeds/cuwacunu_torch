@@ -33,8 +33,12 @@ class TsiSource : public Tsi {
   [[nodiscard]] TsiDomain domain() const noexcept final { return TsiDomain::Source; }
   [[nodiscard]] bool can_be_circuit_root() const noexcept override { return true; }
   [[nodiscard]] bool can_be_circuit_terminal() const noexcept override { return false; }
-  [[nodiscard]] virtual bool supports_init_artifacts() const noexcept { return false; }
-  [[nodiscard]] virtual std::string_view init_artifact_schema() const noexcept { return {}; }
+  [[nodiscard]] virtual bool supports_init_report_fragments() const noexcept {
+    return false;
+  }
+  [[nodiscard]] virtual std::string_view init_report_fragment_schema() const noexcept {
+    return {};
+  }
   [[nodiscard]] bool allows_hop_to(const Tsi& downstream,
                                    DirectiveId out_directive,
                                    DirectiveId in_directive) const noexcept override {

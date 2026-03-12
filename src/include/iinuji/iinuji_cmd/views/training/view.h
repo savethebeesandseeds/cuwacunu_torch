@@ -39,7 +39,7 @@ inline std::vector<std::size_t> collect_training_occurrences(
   return counts;
 }
 
-inline std::string metadata_status_for_display(const cuwacunu::hashimyei::artifact_metadata_t& meta) {
+inline std::string metadata_status_for_display(const cuwacunu::hashimyei::report_fragment_metadata_t& meta) {
   if (!meta.present) return "none";
   if (meta.decrypted) return "encrypted+decrypted";
   if (!meta.error.empty()) return "encrypted(error)";
@@ -61,7 +61,7 @@ inline std::string make_training_left(const CmdState& st) {
 
   const std::size_t tab = clamp_training_wikimyei_index(st.training.selected_tab);
   const auto& d = docs[tab];
-  const auto artifacts = training_artifacts_for_selected_tab(st);
+  const auto report_fragments = training_report_fragments_for_selected_tab(st);
 
   std::string family = d.id;
   std::string model = "model";
@@ -74,7 +74,7 @@ inline std::string make_training_left(const CmdState& st) {
   oss << "role:        " << d.role << "\n";
   oss << "notes:       " << d.notes << "\n";
 
-  if (artifacts.empty()) {
+  if (report_fragments.empty()) {
     oss << "created hashimyei: none\n";
     oss << "store root:       " << cuwacunu::hashimyei::store_root().string() << "\n";
     oss << "\nCanonical template\n";
@@ -92,12 +92,12 @@ inline std::string make_training_left(const CmdState& st) {
       oss << "  jkimyei: n/a (non-trainable wikimyei)\n";
     }
   } else {
-    const std::size_t hx = (st.training.selected_hash < artifacts.size()) ? st.training.selected_hash : 0;
-    const auto& item = artifacts[hx];
+    const std::size_t hx = (st.training.selected_hash < report_fragments.size()) ? st.training.selected_hash : 0;
+    const auto& item = report_fragments[hx];
     const std::string base = item.canonical_base;
     const std::string fused = "tsi.wikimyei." + family + "." + model + "_" + item.hashimyei;
 
-    oss << "hashimyei:   " << item.hashimyei << "  [" << (hx + 1) << "/" << artifacts.size() << "]\n";
+    oss << "hashimyei:   " << item.hashimyei << "  [" << (hx + 1) << "/" << report_fragments.size() << "]\n";
     oss << "\nCanonical identities\n";
     oss << "  " << base << "\n";
     oss << "  " << base << "@response" << d.payload_kind << "\n";
@@ -113,7 +113,7 @@ inline std::string make_training_left(const CmdState& st) {
       oss << "  jkimyei: n/a (non-trainable wikimyei)\n";
     }
 
-    oss << "\nArtifact storage\n";
+    oss << "\nReport Fragment Storage\n";
     oss << "  dir: " << item.directory.string() << "\n";
     oss << "  weights: " << item.weight_files.size() << "\n";
     for (const auto& wf : item.weight_files) {
@@ -161,9 +161,9 @@ inline std::string make_training_right(const CmdState& st) {
   const auto& docs = training_wikimyei_docs();
 
   const std::size_t active_tab = clamp_training_wikimyei_index(st.training.selected_tab);
-  const auto active_artifacts = training_artifacts_for_tab_index(st, active_tab);
+  const auto active_report_fragments = training_report_fragments_for_tab_index(st, active_tab);
   const std::size_t active_hash =
-      active_artifacts.empty() ? 0 : ((st.training.selected_hash < active_artifacts.size()) ? st.training.selected_hash : 0);
+      active_report_fragments.empty() ? 0 : ((st.training.selected_hash < active_report_fragments.size()) ? st.training.selected_hash : 0);
 
   std::ostringstream oss;
   oss << "Training Wikimyei Tabs\n";
@@ -177,29 +177,29 @@ inline std::string make_training_right(const CmdState& st) {
         const auto counts = collect_training_occurrences(st, docs[i].type_name);
         for (const auto v : counts) total += v;
       }
-      const auto artifacts = training_artifacts_for_tab_index(st, i);
+      const auto report_fragments = training_report_fragments_for_tab_index(st, i);
       std::ostringstream row;
       row << "  " << (active ? ">" : " ") << "[" << (i + 1) << "] "
           << docs[i].id << "  occ=" << total
-          << " created=" << artifacts.size();
+          << " created=" << report_fragments.size();
       if (active) oss << mark_selected_line(row.str()) << "\n";
       else oss << row.str() << "\n";
     }
   }
 
-  oss << "\nCreated Hashimyei Artifacts\n";
-  if (active_artifacts.empty()) {
+  oss << "\nCreated Hashimyei Report Fragments\n";
+  if (active_report_fragments.empty()) {
     oss << "  (none created)\n";
     oss << "  root=" << cuwacunu::hashimyei::store_root().string() << "\n";
   } else {
     const std::size_t window = 11;
     std::size_t start = (active_hash > (window / 2)) ? (active_hash - (window / 2)) : 0;
-    std::size_t end = std::min(active_artifacts.size(), start + window);
+    std::size_t end = std::min(active_report_fragments.size(), start + window);
     if (end - start < window && end > window) start = end - window;
 
     for (std::size_t i = start; i < end; ++i) {
       const bool active = (i == active_hash);
-      const auto& item = active_artifacts[i];
+      const auto& item = active_report_fragments[i];
       std::ostringstream row;
       row << "  " << (active ? ">" : " ") << "[" << (i + 1) << "] " << item.hashimyei
           << " w=" << item.weight_files.size()
@@ -207,8 +207,8 @@ inline std::string make_training_right(const CmdState& st) {
       if (active) oss << mark_selected_line(row.str()) << "\n";
       else oss << row.str() << "\n";
     }
-    if (active_artifacts.size() > window) {
-      oss << "  ... total=" << active_artifacts.size()
+    if (active_report_fragments.size() > window) {
+      oss << "  ... total=" << active_report_fragments.size()
           << " selected=" << (active_hash + 1) << "\n";
     }
   }

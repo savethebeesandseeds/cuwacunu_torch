@@ -489,9 +489,9 @@ int main() {
                                  push_info,
                                  push_warn,
                                  push_err),
-          "training.hash.id canonical path should be handled when no artifacts exist");
+          "training.hash.id canonical path should be handled when no report fragments exist");
       ok = ok && require(warns.size() > warns_before_training_hash_id,
-                         "training.hash.id should warn when no created artifacts exist");
+                         "training.hash.id should warn when no created report fragments exist");
     }
 
     const std::size_t appends_before_tsi_tabs = appends.size();
@@ -827,9 +827,9 @@ int main() {
                        "non-tsi command should not be consumed by canonical dispatcher");
 
     ok = ok && require(cleanup_new_source_dataloader_inits(source_dataloader_ids_before),
-                       "cleanup: created tsi.source.dataloader init artifacts should be removed");
+                       "cleanup: created tsi.source.dataloader init report fragments should be removed");
     ok = ok && require(cleanup_new_wikimyei_vicreg_inits(vicreg_ids_before),
-                       "cleanup: created wikimyei vicreg artifacts should be removed");
+                       "cleanup: created wikimyei vicreg report fragments should be removed");
 
     std::cout << "infos=" << infos.size() << " warns=" << warns.size() << " errs=" << errs.size() << "\n";
     std::cout << "[round-canon] NOTE(hashimyei): hex identity catalog active (0x0000..0x000f).\n";

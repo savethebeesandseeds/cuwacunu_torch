@@ -76,7 +76,7 @@ The project is moving toward:
 - stable layering between topology/orchestration/policy
 - explicit runtime intent in wave files
 - reproducible default behavior for data-loading/training runs
-- less hidden behavior and fewer legacy shortcuts
+- less hidden behavior and fewer deprecated shortcuts
 
 ## Notes on documentation style
 This README intentionally avoids over-precise constraints, to reduce doc/code drift.

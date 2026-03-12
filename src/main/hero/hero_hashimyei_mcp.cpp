@@ -469,7 +469,7 @@ struct hashimyei_runtime_defaults_t {
     return true;
   }
 
-  if (!app->catalog.ingest_filesystem(app->store_root, true, out_error)) {
+  if (!app->catalog.ingest_filesystem(app->store_root, out_error)) {
     return false;
   }
 
@@ -900,7 +900,7 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
       << "\"component_id\":" << json_quote(component.component_id) << ","
       << "\"ts_ms\":" << component.ts_ms << ","
       << "\"manifest_path\":" << json_quote(component.manifest_path) << ","
-      << "\"artifact_sha256\":" << json_quote(component.artifact_sha256) << ","
+      << "\"report_fragment_sha256\":" << json_quote(component.report_fragment_sha256) << ","
       << "\"manifest\":{"
       << "\"schema\":" << json_quote(m.schema) << ","
       << "\"canonical_path\":" << json_quote(m.canonical_path) << ","
@@ -977,7 +977,7 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   struct ref_rollup_t {
     std::string canonical_path{};
     std::string hashimyei{};
-    std::size_t artifact_count{0};
+    std::size_t report_fragment_count{0};
     std::size_t component_count{0};
   };
   std::unordered_map<std::string, ref_rollup_t> by_ref{};
@@ -1015,7 +1015,7 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
                                              ? maybe_hashimyei_from_canonical(
                                                    canonical_ref)
                                              : hash,
-                            .artifact_count = 0,
+                            .report_fragment_count = 0,
                             .component_count = 0,
                         })
                .first;
@@ -1023,7 +1023,7 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
     if (from_component) {
       ++it->second.component_count;
     } else {
-      ++it->second.artifact_count;
+      ++it->second.report_fragment_count;
     }
   };
 
@@ -1033,6 +1033,15 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   }
   for (const auto& c : components) {
     add_entry(c.manifest.component_identity.name, c.manifest.canonical_path, true);
+  }
+
+  std::vector<cuwacunu::hero::hashimyei::report_fragment_entry_t> report_fragments{};
+  if (!app->catalog.list_report_fragments("", "", 0, 0, true, &report_fragments,
+                                          out_error)) {
+    return false;
+  }
+  for (const auto& fragment : report_fragments) {
+    add_entry(fragment.hashimyei, fragment.canonical_path, false);
   }
 
   std::vector<ref_rollup_t> rows{};
@@ -1062,7 +1071,7 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
     rows_json << "{\"canonical_path\":"
               << json_quote(rows[i].canonical_path)
               << ",\"hashimyei\":" << json_quote(rows[i].hashimyei)
-              << ",\"artifact_count\":" << rows[i].artifact_count
+              << ",\"report_fragment_count\":" << rows[i].report_fragment_count
               << ",\"component_count\":" << rows[i].component_count << "}";
   }
   rows_json << "]";

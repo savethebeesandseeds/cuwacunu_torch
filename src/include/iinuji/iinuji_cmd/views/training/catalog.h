@@ -3,7 +3,7 @@
 #include <utility>
 #include <vector>
 
-#include "hero/hashimyei_hero/hashimyei_artifacts.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "iinuji/iinuji_cmd/views/common.h"
 #include "tsiemene/tsi.wikimyei.representation.vicreg.h"
 
@@ -11,27 +11,27 @@ namespace cuwacunu {
 namespace iinuji {
 namespace iinuji_cmd {
 
-[[nodiscard]] inline std::vector<cuwacunu::hashimyei::artifact_identity_t>
-training_artifacts_for_tab_index(const CmdState& st, std::size_t tab_index) {
+[[nodiscard]] inline std::vector<cuwacunu::hashimyei::report_fragment_identity_t>
+training_report_fragments_for_tab_index(const CmdState& st, std::size_t tab_index) {
   const auto& docs = training_wikimyei_docs();
   if (docs.empty()) return {};
   const std::size_t tab = (tab_index < docs.size()) ? tab_index : 0;
   if (docs[tab].type_name == "tsi.wikimyei.representation.vicreg") {
-    return tsiemene::list_wikimyei_representation_vicreg_artifacts();
+    return tsiemene::list_wikimyei_representation_vicreg_report_fragments();
   }
-  return cuwacunu::hashimyei::discover_created_artifacts_for_type(docs[tab].type_name);
+  return cuwacunu::hashimyei::discover_created_report_fragments_for_type(docs[tab].type_name);
 }
 
-[[nodiscard]] inline std::vector<cuwacunu::hashimyei::artifact_identity_t>
-training_artifacts_for_selected_tab(const CmdState& st) {
-  return training_artifacts_for_tab_index(st, clamp_training_wikimyei_index(st.training.selected_tab));
+[[nodiscard]] inline std::vector<cuwacunu::hashimyei::report_fragment_identity_t>
+training_report_fragments_for_selected_tab(const CmdState& st) {
+  return training_report_fragments_for_tab_index(st, clamp_training_wikimyei_index(st.training.selected_tab));
 }
 
 [[nodiscard]] inline std::vector<std::string> training_hashes_for_selected_tab(const CmdState& st) {
   std::vector<std::string> out;
-  const auto artifacts = training_artifacts_for_selected_tab(st);
-  out.reserve(artifacts.size());
-  for (const auto& item : artifacts) out.push_back(item.hashimyei);
+  const auto report_fragments = training_report_fragments_for_selected_tab(st);
+  out.reserve(report_fragments.size());
+  for (const auto& item : report_fragments) out.push_back(item.hashimyei);
   return out;
 }
 

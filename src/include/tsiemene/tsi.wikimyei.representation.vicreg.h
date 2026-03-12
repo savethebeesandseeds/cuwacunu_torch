@@ -28,8 +28,8 @@
 #include "tsiemene/tsi.cargo.validation.h"
 #include "wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h"
 
-// Artifact metadata helpers:
-#include "hero/hashimyei_hero/hashimyei_artifacts.h"
+// Report-fragment metadata helpers:
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_driver.h"
 #include "piaabo/torch_compat/entropic_capacity_comparison.h"
 #include "piaabo/torch_compat/network_analytics.h"
@@ -115,7 +115,7 @@ struct vicreg_network_analytics_plan_t {
     const std::filesystem::path& weights_file,
     std::string_view canonical_base,
     std::string_view canonical_type,
-    std::string_view artifact_id,
+    std::string_view report_fragment_id,
     std::string_view contract_hash,
     std::string_view run_id,
     std::filesystem::path* out_sidecar_file,
@@ -135,7 +135,7 @@ struct vicreg_network_analytics_plan_t {
       "network_analytics",
       canonical_base,
       canonical_type,
-      artifact_id,
+      report_fragment_id,
       contract_hash,
       {},
       {},
@@ -194,8 +194,12 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   [[nodiscard]] TsiId id() const noexcept override { return id_; }
   [[nodiscard]] bool emits_loss_directive() const noexcept override { return true; }
   [[nodiscard]] bool supports_jkimyei_facet() const noexcept override { return true; }
-  [[nodiscard]] bool supports_init_artifacts() const noexcept override { return true; }
-  [[nodiscard]] bool runtime_autosave_artifacts() const noexcept override { return train_; }
+  [[nodiscard]] bool supports_init_report_fragments() const noexcept override {
+    return true;
+  }
+  [[nodiscard]] bool runtime_autosave_report_fragments() const noexcept override {
+    return train_;
+  }
   [[nodiscard]] bool runtime_load_from_hashimyei(
       std::string_view hashimyei,
       std::string* error = nullptr,
@@ -242,11 +246,15 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   [[nodiscard]] int optimizer_steps() const noexcept {
     return model_.runtime_optimizer_steps();
   }
-  [[nodiscard]] std::string_view init_artifact_schema() const noexcept override {
+  [[nodiscard]] std::string_view init_report_fragment_schema() const noexcept override {
     return "tsi.wikimyei.representation.vicreg.init.v1";
   }
-  [[nodiscard]] std::string_view artifact_family() const noexcept override { return "representation"; }
-  [[nodiscard]] std::string_view artifact_model() const noexcept override { return "vicreg"; }
+  [[nodiscard]] std::string_view report_fragment_family() const noexcept override {
+    return "representation";
+  }
+  [[nodiscard]] std::string_view report_fragment_model() const noexcept override {
+    return "vicreg";
+  }
 
   [[nodiscard]] std::span<const DirectiveSpec> directives() const noexcept override {
     static constexpr DirectiveSpec kDirectives[] = {
@@ -684,21 +692,22 @@ using wikimyei_representation_vicreg_init_entry_t = TsiWikimyeiInitEntry;
   return parse_wikimyei_hex_hash(hashimyei, &parsed);
 }
 
-[[nodiscard]] inline std::vector<cuwacunu::hashimyei::artifact_identity_t>
-list_wikimyei_representation_vicreg_artifacts() {
-  return cuwacunu::hashimyei::discover_created_artifacts_for("representation", "vicreg");
+[[nodiscard]] inline std::vector<cuwacunu::hashimyei::report_fragment_identity_t>
+list_wikimyei_representation_vicreg_report_fragments() {
+  return cuwacunu::hashimyei::discover_created_report_fragments_for("representation", "vicreg");
 }
 
 [[nodiscard]] inline std::vector<wikimyei_representation_vicreg_init_entry_t>
 list_wikimyei_representation_vicreg_init_entries() {
-  const auto artifacts = list_wikimyei_representation_vicreg_artifacts();
+  const auto report_fragments =
+      list_wikimyei_representation_vicreg_report_fragments();
   std::vector<wikimyei_representation_vicreg_init_entry_t> out;
-  out.reserve(artifacts.size());
-  for (const auto& item : artifacts) {
+  out.reserve(report_fragments.size());
+  for (const auto& item : report_fragments) {
     wikimyei_representation_vicreg_init_entry_t e{};
     e.hashimyei = item.hashimyei;
     e.canonical_base = item.canonical_base;
-    e.artifact_directory = item.directory;
+    e.report_fragment_directory = item.directory;
     e.weights_count = item.weight_files.size();
     out.push_back(std::move(e));
   }
@@ -734,14 +743,15 @@ list_wikimyei_representation_vicreg_init_entries() {
 }
 
 [[nodiscard]] inline std::string next_wikimyei_representation_vicreg_hash(
-    const std::filesystem::path& artifacts_root) {
+    const std::filesystem::path& report_fragments_root) {
   namespace fs = std::filesystem;
   std::error_code ec;
   std::uint64_t max_seen = 0;
   bool seen_any = false;
 
-  if (fs::exists(artifacts_root, ec) && fs::is_directory(artifacts_root, ec)) {
-    for (const auto& entry : fs::directory_iterator(artifacts_root, ec)) {
+  if (fs::exists(report_fragments_root, ec) &&
+      fs::is_directory(report_fragments_root, ec)) {
+    for (const auto& entry : fs::directory_iterator(report_fragments_root, ec)) {
       if (ec) break;
       if (!entry.is_directory()) continue;
 
@@ -803,30 +813,30 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   return best_path;
 }
 
-[[nodiscard]] inline bool save_wikimyei_representation_vicreg_artifact_with_driver(
-    const cuwacunu::hashimyei::artifact_action_context_t& action,
+[[nodiscard]] inline bool save_wikimyei_representation_vicreg_report_fragment_with_driver(
+    const cuwacunu::hashimyei::report_fragment_action_context_t& action,
     std::string* error) {
   namespace fs = std::filesystem;
   if (error) error->clear();
 
-  if (!is_valid_wikimyei_representation_vicreg_hash(action.artifact_id)) {
-    if (error) *error = "invalid wikimyei hashimyei id: " + action.artifact_id;
+  if (!is_valid_wikimyei_representation_vicreg_hash(action.report_fragment_id)) {
+    if (error) *error = "invalid wikimyei hashimyei id: " + action.report_fragment_id;
     return false;
   }
 
   std::error_code ec;
-  fs::create_directories(action.artifact_directory, ec);
+  fs::create_directories(action.report_fragment_directory, ec);
   if (ec) {
-    if (error) *error = "cannot create wikimyei artifact directory: " + action.artifact_directory.string();
+    if (error) *error = "cannot create wikimyei report_fragment directory: " + action.report_fragment_directory.string();
     return false;
   }
 
-  const fs::path weights_file = action.artifact_directory / "weights.init.pt";
+  const fs::path weights_file = action.report_fragment_directory / "weights.init.pt";
   fs::path weights_network_analytics_file{};
   bool wrote_weights_network_analytics_file = false;
   fs::path weights_entropic_capacity_file{};
   bool wrote_weights_entropic_capacity_file = false;
-  const fs::path status_kv_file = action.artifact_directory / "status.latest.kv";
+  const fs::path status_kv_file = action.report_fragment_directory / "status.latest.kv";
   bool wrote_status_kv_file = false;
   auto* out = static_cast<wikimyei_representation_vicreg_init_record_t*>(action.user_data);
   const bool enable_network_analytics_sidecar =
@@ -836,7 +846,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   const std::string contract_hash = out ? out->contract_hash : std::string{};
   const std::string run_id = out ? out->run_id : std::string{};
   const std::string canonical_base =
-      std::string(kWikimyeiVicregCanonicalType) + "." + action.artifact_id;
+      std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
     auto* model = static_cast<cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(action.object_handle);
@@ -854,7 +864,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
               weights_file,
               canonical_base,
               kWikimyeiVicregCanonicalType,
-              action.artifact_id,
+              action.report_fragment_id,
               contract_hash,
               run_id,
               &weights_network_analytics_file,
@@ -885,7 +895,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
                     &cmp_error)) {
           entropic_report.run_id = run_id;
           weights_entropic_capacity_file = weights_file;
-          weights_entropic_capacity_file += ".entropic_capacity.kv";
+          weights_entropic_capacity_file += ".entropic_capacity.lls";
           std::string write_error;
           if (cuwacunu::piaabo::torch_compat::write_entropic_capacity_comparison_file(
                   entropic_report,
@@ -929,7 +939,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   metadata << "canonical_target=tsi.wikimyei.representation.vicreg\n";
   metadata << "family=" << kWikimyeiVicregFamily << "\n";
   metadata << "model=" << kWikimyeiVicregModel << "\n";
-  metadata << "hashimyei=" << action.artifact_id << "\n";
+  metadata << "hashimyei=" << action.report_fragment_id << "\n";
   metadata << "canonical_base=" << canonical_base << "\n";
   metadata << "weights_file=" << weights_file.filename().string() << "\n";
   metadata << "status_file=" << status_kv_file.filename().string() << "\n";
@@ -949,12 +959,12 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   std::string metadata_warning;
 
   std::string metadata_error;
-  if (cuwacunu::hashimyei::write_encrypted_metadata(action.artifact_directory, metadata.str(), &metadata_error)) {
+  if (cuwacunu::hashimyei::write_encrypted_metadata(action.report_fragment_directory, metadata.str(), &metadata_error)) {
     metadata_encrypted = true;
   } else {
     metadata_warning = metadata_error;
     std::string io_error;
-    if (!write_wikimyei_text_file(action.artifact_directory / "metadata.txt", metadata.str(), &io_error)) {
+    if (!write_wikimyei_text_file(action.report_fragment_directory / "metadata.txt", metadata.str(), &io_error)) {
       if (error) {
         *error =
             "cannot persist metadata (encrypted failed: " + metadata_error + "; plaintext failed: " + io_error + ")";
@@ -980,7 +990,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
     std::ostringstream status_kv;
     status_kv << "schema=tsi.wikimyei.representation.vicreg.status.v1\n";
     status_kv << "canonical_base=" << canonical_base << "\n";
-    status_kv << "hashimyei=" << action.artifact_id << "\n";
+    status_kv << "hashimyei=" << action.report_fragment_id << "\n";
     status_kv << "trained_epochs=0\n";
     status_kv << "trained_steps=" << trained_steps << "\n";
     status_kv << "trained_samples=0\n";
@@ -999,15 +1009,15 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
     wrote_status_kv_file = true;
   }
 
-  cuwacunu::hashimyei::artifact_manifest_t manifest{};
+  cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
   manifest.canonical_type = std::string(kWikimyeiVicregCanonicalType);
   manifest.family = std::string(kWikimyeiVicregFamily);
   manifest.model = std::string(kWikimyeiVicregModel);
-  manifest.artifact_id = action.artifact_id;
+  manifest.report_fragment_id = action.report_fragment_id;
   {
     std::error_code size_ec;
     const auto weights_size = fs::file_size(weights_file, size_ec);
-    manifest.files.push_back(cuwacunu::hashimyei::artifact_manifest_file_t{
+    manifest.files.push_back(cuwacunu::hashimyei::report_fragment_manifest_file_t{
         .path = weights_file.filename().string(),
         .size = size_ec ? 0 : weights_size,
     });
@@ -1017,13 +1027,13 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
         std::error_code file_ec;
         if (!fs::exists(path, file_ec) || !fs::is_regular_file(path, file_ec)) return;
         const auto size = fs::file_size(path, file_ec);
-        manifest.files.push_back(cuwacunu::hashimyei::artifact_manifest_file_t{
+        manifest.files.push_back(cuwacunu::hashimyei::report_fragment_manifest_file_t{
             .path = path.filename().string(),
             .size = file_ec ? 0 : size,
         });
       };
-  append_manifest_file_if_present(action.artifact_directory / "metadata.enc");
-  append_manifest_file_if_present(action.artifact_directory / "metadata.txt");
+  append_manifest_file_if_present(action.report_fragment_directory / "metadata.enc");
+  append_manifest_file_if_present(action.report_fragment_directory / "metadata.txt");
   if (wrote_status_kv_file) {
     append_manifest_file_if_present(status_kv_file);
   }
@@ -1035,8 +1045,8 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   }
 
   std::string manifest_error;
-  if (!cuwacunu::hashimyei::write_artifact_manifest(action.artifact_directory, manifest, &manifest_error)) {
-    if (error) *error = "cannot persist artifact manifest: " + manifest_error;
+  if (!cuwacunu::hashimyei::write_report_fragment_manifest(action.report_fragment_directory, manifest, &manifest_error)) {
+    if (error) *error = "cannot persist report_fragment manifest: " + manifest_error;
     return false;
   }
 
@@ -1055,51 +1065,51 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   return true;
 }
 
-[[nodiscard]] inline bool load_wikimyei_representation_vicreg_artifact_with_driver(
-    const cuwacunu::hashimyei::artifact_action_context_t& action,
+[[nodiscard]] inline bool load_wikimyei_representation_vicreg_report_fragment_with_driver(
+    const cuwacunu::hashimyei::report_fragment_action_context_t& action,
     std::string* error) {
   namespace fs = std::filesystem;
   if (error) error->clear();
 
-  if (!is_valid_wikimyei_representation_vicreg_hash(action.artifact_id)) {
-    if (error) *error = "invalid wikimyei hashimyei id: " + action.artifact_id;
+  if (!is_valid_wikimyei_representation_vicreg_hash(action.report_fragment_id)) {
+    if (error) *error = "invalid wikimyei hashimyei id: " + action.report_fragment_id;
     return false;
   }
 
-  const fs::path weights_file = action.artifact_directory / "weights.init.pt";
+  const fs::path weights_file = action.report_fragment_directory / "weights.init.pt";
   const std::string canonical_base =
-      std::string(kWikimyeiVicregCanonicalType) + "." + action.artifact_id;
+      std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
   std::error_code ec;
   if (!fs::exists(weights_file, ec) || !fs::is_regular_file(weights_file, ec)) {
-    if (error) *error = "vicreg artifact weights file not found: " + weights_file.string();
+    if (error) *error = "vicreg report_fragment weights file not found: " + weights_file.string();
     return false;
   }
 
-  if (cuwacunu::hashimyei::artifact_manifest_exists(action.artifact_directory)) {
-    cuwacunu::hashimyei::artifact_manifest_t manifest{};
+  if (cuwacunu::hashimyei::report_fragment_manifest_exists(action.report_fragment_directory)) {
+    cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
     std::string manifest_error;
-    if (!cuwacunu::hashimyei::read_artifact_manifest(action.artifact_directory, &manifest, &manifest_error)) {
-      if (error) *error = "cannot read artifact manifest: " + manifest_error;
+    if (!cuwacunu::hashimyei::read_report_fragment_manifest(action.report_fragment_directory, &manifest, &manifest_error)) {
+      if (error) *error = "cannot read report_fragment manifest: " + manifest_error;
       return false;
     }
     if (manifest.canonical_type != std::string(kWikimyeiVicregCanonicalType)) {
-      if (error) *error = "artifact manifest canonical_type mismatch: " + manifest.canonical_type;
+      if (error) *error = "report_fragment manifest canonical_type mismatch: " + manifest.canonical_type;
       return false;
     }
     if (!action.family.empty() && manifest.family != action.family) {
-      if (error) *error = "artifact manifest family mismatch: " + manifest.family;
+      if (error) *error = "report_fragment manifest family mismatch: " + manifest.family;
       return false;
     }
     if (!action.model.empty() && manifest.model != action.model) {
-      if (error) *error = "artifact manifest model mismatch: " + manifest.model;
+      if (error) *error = "report_fragment manifest model mismatch: " + manifest.model;
       return false;
     }
-    if (manifest.artifact_id != action.artifact_id) {
-      if (error) *error = "artifact manifest hashimyei mismatch: " + manifest.artifact_id;
+    if (manifest.report_fragment_id != action.report_fragment_id) {
+      if (error) *error = "report_fragment manifest hashimyei mismatch: " + manifest.report_fragment_id;
       return false;
     }
-    if (!cuwacunu::hashimyei::artifact_manifest_has_file(manifest, weights_file.filename().string())) {
-      if (error) *error = "artifact manifest missing weights file entry: " + weights_file.filename().string();
+    if (!cuwacunu::hashimyei::report_fragment_manifest_has_file(manifest, weights_file.filename().string())) {
+      if (error) *error = "report_fragment manifest missing weights file entry: " + weights_file.filename().string();
       return false;
     }
   }
@@ -1126,7 +1136,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
           load_error.find("operation not supported on this OS") != std::string::npos;
       if (cuda_runtime_only_failure) {
         log_warn(
-            "[tsi.vicreg] artifact load skipped (cuda runtime unavailable). "
+            "[tsi.vicreg] report_fragment load skipped (cuda runtime unavailable). "
             "Using fresh-initialized model for this run.\n");
         if (error) error->clear();
         return true;
@@ -1144,7 +1154,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
               weights_file,
               canonical_base,
               kWikimyeiVicregCanonicalType,
-              action.artifact_id,
+              action.report_fragment_id,
               model->contract_hash,
               run_id,
               &weights_network_analytics_file,
@@ -1176,7 +1186,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
                       &cmp_error)) {
             entropic_report.run_id = run_id;
             fs::path weights_entropic_capacity_file = weights_file;
-            weights_entropic_capacity_file += ".entropic_capacity.kv";
+            weights_entropic_capacity_file += ".entropic_capacity.lls";
             std::string write_error;
             if (!cuwacunu::piaabo::torch_compat::
                     write_entropic_capacity_comparison_file(
@@ -1209,21 +1219,21 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
 [[nodiscard]] inline bool ensure_wikimyei_representation_vicreg_driver_registered(
     std::string* error = nullptr) {
   if (error) error->clear();
-  if (cuwacunu::hashimyei::has_artifact_driver(kWikimyeiVicregCanonicalType)) return true;
+  if (cuwacunu::hashimyei::has_report_fragment_driver(kWikimyeiVicregCanonicalType)) return true;
 
-  cuwacunu::hashimyei::artifact_driver_t driver{};
+  cuwacunu::hashimyei::report_fragment_driver_t driver{};
   driver.canonical_type = std::string(kWikimyeiVicregCanonicalType);
   driver.family = std::string(kWikimyeiVicregFamily);
   driver.model = std::string(kWikimyeiVicregModel);
-  driver.save = save_wikimyei_representation_vicreg_artifact_with_driver;
-  driver.load = load_wikimyei_representation_vicreg_artifact_with_driver;
+  driver.save = save_wikimyei_representation_vicreg_report_fragment_with_driver;
+  driver.load = load_wikimyei_representation_vicreg_report_fragment_with_driver;
 
-  if (cuwacunu::hashimyei::register_artifact_driver(std::move(driver), error)) return true;
+  if (cuwacunu::hashimyei::register_report_fragment_driver(std::move(driver), error)) return true;
   // Registration may race in multi-entry contexts; treat "already registered" as success.
-  return cuwacunu::hashimyei::has_artifact_driver(kWikimyeiVicregCanonicalType);
+  return cuwacunu::hashimyei::has_report_fragment_driver(kWikimyeiVicregCanonicalType);
 }
 
-[[nodiscard]] inline bool write_wikimyei_representation_vicreg_artifact_payload(
+[[nodiscard]] inline bool write_wikimyei_representation_vicreg_report_fragment_payload(
     std::string canonical_action,
     wikimyei_representation_vicreg_init_record_t* out,
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model = nullptr) {
@@ -1237,22 +1247,22 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
 
   std::string registration_error;
   if (!ensure_wikimyei_representation_vicreg_driver_registered(&registration_error)) {
-    out->error = "failed to register vicreg artifact driver: " + registration_error;
+    out->error = "failed to register vicreg report_fragment driver: " + registration_error;
     return false;
   }
 
-  cuwacunu::hashimyei::artifact_action_context_t action{};
+  cuwacunu::hashimyei::report_fragment_action_context_t action{};
   action.canonical_type = std::string(kWikimyeiVicregCanonicalType);
   action.family = std::string(kWikimyeiVicregFamily);
   action.model = std::string(kWikimyeiVicregModel);
-  action.artifact_id = out->hashimyei;
-  action.artifact_directory = out->artifact_directory;
+  action.report_fragment_id = out->hashimyei;
+  action.report_fragment_directory = out->report_fragment_directory;
   action.canonical_action = std::move(canonical_action);
   action.object_handle = model;
   action.user_data = out;
 
   std::string dispatch_error;
-  if (!cuwacunu::hashimyei::dispatch_artifact_save(action.canonical_type, action, &dispatch_error)) {
+  if (!cuwacunu::hashimyei::dispatch_report_fragment_save(action.canonical_type, action, &dispatch_error)) {
     out->error = dispatch_error;
     return false;
   }
@@ -1271,20 +1281,20 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   std::error_code ec;
   fs::create_directories(out.store_root, ec);
   if (ec) {
-    out.error = "cannot create wikimyei artifact root: " + out.store_root.string();
+    out.error = "cannot create wikimyei report_fragment root: " + out.store_root.string();
     return out;
   }
 
   out.hashimyei = next_wikimyei_representation_vicreg_hash(out.store_root);
-  out.artifact_directory = out.store_root / out.hashimyei;
+  out.report_fragment_directory = out.store_root / out.hashimyei;
 
-  fs::create_directories(out.artifact_directory, ec);
+  fs::create_directories(out.report_fragment_directory, ec);
   if (ec) {
-    out.error = "cannot create wikimyei artifact directory: " + out.artifact_directory.string();
+    out.error = "cannot create wikimyei report_fragment directory: " + out.report_fragment_directory.string();
     return out;
   }
 
-  if (!write_wikimyei_representation_vicreg_artifact_payload(
+  if (!write_wikimyei_representation_vicreg_report_fragment_payload(
           "tsi.wikimyei.representation.vicreg.init()", &out, model)) {
     return out;
   }
@@ -1313,23 +1323,23 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   }
 
   out.hashimyei = std::move(hashimyei);
-  out.artifact_directory = out.store_root / out.hashimyei;
+  out.report_fragment_directory = out.store_root / out.hashimyei;
 
   std::error_code ec;
-  if (!fs::exists(out.artifact_directory, ec)) {
-    fs::create_directories(out.artifact_directory, ec);
+  if (!fs::exists(out.report_fragment_directory, ec)) {
+    fs::create_directories(out.report_fragment_directory, ec);
     if (ec) {
       out.error =
-          "cannot create wikimyei artifact directory: " + out.artifact_directory.string();
+          "cannot create wikimyei report_fragment directory: " + out.report_fragment_directory.string();
       return out;
     }
-  } else if (!fs::is_directory(out.artifact_directory, ec)) {
-    out.error = "wikimyei artifact path is not a directory: " +
-                out.artifact_directory.string();
+  } else if (!fs::is_directory(out.report_fragment_directory, ec)) {
+    out.error = "wikimyei report_fragment path is not a directory: " +
+                out.report_fragment_directory.string();
     return out;
   }
 
-  if (!write_wikimyei_representation_vicreg_artifact_payload(
+  if (!write_wikimyei_representation_vicreg_report_fragment_payload(
           "tsi.wikimyei.representation.vicreg.edit()", &out, model)) {
     return out;
   }
@@ -1355,31 +1365,31 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
     return false;
   }
 
-  const fs::path artifact_directory = wikimyei_representation_vicreg_store_root() / std::string(hashimyei);
+  const fs::path report_fragment_directory = wikimyei_representation_vicreg_store_root() / std::string(hashimyei);
   std::error_code ec;
-  if (!fs::exists(artifact_directory, ec) || !fs::is_directory(artifact_directory, ec)) {
-    if (error) *error = "wikimyei artifact not found: " + artifact_directory.string();
+  if (!fs::exists(report_fragment_directory, ec) || !fs::is_directory(report_fragment_directory, ec)) {
+    if (error) *error = "wikimyei report_fragment not found: " + report_fragment_directory.string();
     return false;
   }
 
   std::string registration_error;
   if (!ensure_wikimyei_representation_vicreg_driver_registered(&registration_error)) {
-    if (error) *error = "failed to register vicreg artifact driver: " + registration_error;
+    if (error) *error = "failed to register vicreg report_fragment driver: " + registration_error;
     return false;
   }
 
-  cuwacunu::hashimyei::artifact_action_context_t action{};
+  cuwacunu::hashimyei::report_fragment_action_context_t action{};
   action.canonical_type = std::string(kWikimyeiVicregCanonicalType);
   action.family = std::string(kWikimyeiVicregFamily);
   action.model = std::string(kWikimyeiVicregModel);
-  action.artifact_id = std::string(hashimyei);
-  action.artifact_directory = artifact_directory;
+  action.report_fragment_id = std::string(hashimyei);
+  action.report_fragment_directory = report_fragment_directory;
   action.canonical_action = "tsi.wikimyei.representation.vicreg.load()";
   action.object_handle = model;
   action.user_data = const_cast<vicreg_runtime_load_context_t*>(load_context);
 
   std::string dispatch_error;
-  if (!cuwacunu::hashimyei::dispatch_artifact_load(action.canonical_type, action, &dispatch_error)) {
+  if (!cuwacunu::hashimyei::dispatch_report_fragment_load(action.canonical_type, action, &dispatch_error)) {
     if (error) *error = dispatch_error;
     return false;
   }
@@ -1403,13 +1413,13 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   const fs::path target = wikimyei_representation_vicreg_store_root() / std::string(hashimyei);
   std::error_code ec;
   if (!fs::exists(target, ec) || !fs::is_directory(target, ec)) {
-    if (error) *error = "wikimyei artifact not found: " + target.string();
+    if (error) *error = "wikimyei report_fragment not found: " + target.string();
     return false;
   }
 
   const std::uintmax_t removed = fs::remove_all(target, ec);
   if (ec) {
-    if (error) *error = "failed to delete wikimyei artifact: " + target.string();
+    if (error) *error = "failed to delete wikimyei report_fragment: " + target.string();
     return false;
   }
 

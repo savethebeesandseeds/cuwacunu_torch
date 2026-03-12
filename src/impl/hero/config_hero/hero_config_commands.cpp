@@ -2364,7 +2364,7 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
           protocol_version = protocol_candidate;
         }
       } else {
-        // Compatibility path for legacy initialize shape.
+        // Fallback for initialize requests that omit the params object.
         std::string protocol_candidate;
         if (extract_json_string_field(trimmed, "protocolVersion",
                                       &protocol_candidate) &&

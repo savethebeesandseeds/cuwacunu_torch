@@ -35,7 +35,7 @@ required = true
 default = /cuwacunu/.hashimyei/catalog/hashimyei_catalog.idydb
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = optional hashimyei catalog for snapshot/provenance enrichment; loaded from Lattice HERO defaults DSL
+nuance = optional hashimyei catalog for snapshot/dependency enrichment; loaded from Lattice HERO defaults DSL
 
 [FIELD config_folder]
 key = config_folder

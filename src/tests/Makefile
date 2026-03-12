@@ -66,7 +66,7 @@ DB := db db_rag db_query_utils
 $(foreach t,$(DB),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- hashimyei -------------------------------
-HASHIMYEI := hashimyei_catalog hashimyei_artifacts lattice_catalog source_runtime_projection hero_mcp_surface
+HASHIMYEI := hashimyei_catalog hashimyei_report_fragments lattice_catalog source_runtime_projection hero_mcp_surface
 $(foreach t,$(HASHIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/hashimyei)))
 
 # ------------------------------ jkimyei --------------------------------------

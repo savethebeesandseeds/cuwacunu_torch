@@ -194,7 +194,7 @@ int main() try {
                   "kv output missing tensor_rms key");
   ok = ok && expect(
                   !has_lhs_key(params_kv, "layer_rms_cv"),
-                  "kv output should not include removed legacy key");
+                  "kv output should not include removed deprecated key");
   ok = ok && expect(
                   has_lhs_key(params_kv, "network_global_entropic_capacity"),
                   "kv output missing network global entropic capacity");
@@ -458,7 +458,7 @@ int main() try {
                   "design kv missing current schema");
   ok = ok && expect(
                   !has_lhs_key(design_kv, "topological_order_coverage"),
-                  "design kv should not include removed legacy topological key");
+                  "design kv should not include removed deprecated topological key");
   ok = ok && expect(
                   has_lhs_key(design_kv, "topological_order_ratio"),
                   "design kv missing ratio key");

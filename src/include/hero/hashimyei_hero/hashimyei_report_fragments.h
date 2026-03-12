@@ -1,4 +1,4 @@
-// ./include/hero/hashimyei_hero/hashimyei_artifacts.h
+// ./include/hero/hashimyei_hero/hashimyei_report_fragments.h
 // SPDX-License-Identifier: MIT
 #pragma once
 
@@ -27,40 +27,40 @@
 namespace cuwacunu {
 namespace hashimyei {
 
-inline constexpr std::string_view kArtifactManifestFilename = "manifest.v2.kv";
-inline constexpr std::string_view kArtifactManifestSchema = "hashimyei.artifact.manifest.v2";
+inline constexpr std::string_view kReportFragmentManifestFilename = "manifest.v2.kv";
+inline constexpr std::string_view kReportFragmentManifestSchema = "hashimyei.report_fragment.manifest.v2";
 inline constexpr std::string_view kDefaultHashimyeiStoreRoot = "/cuwacunu/.hashimyei";
 inline constexpr std::string_view kCatalogFilename = "hashimyei_catalog.idydb";
 
-struct artifact_metadata_t {
+struct report_fragment_metadata_t {
   bool present{false};
   bool decrypted{false};
   std::string text{};
   std::string error{};
 };
 
-struct artifact_identity_t {
+struct report_fragment_identity_t {
   std::string family{};
   std::string model{};
   std::string hashimyei{};
   std::string canonical_base{};
   std::filesystem::path directory{};
   std::vector<std::filesystem::path> weight_files{};
-  artifact_metadata_t metadata{};
+  report_fragment_metadata_t metadata{};
 };
 
-struct artifact_manifest_file_t {
+struct report_fragment_manifest_file_t {
   std::string path{};
   std::uintmax_t size{0};
 };
 
-struct artifact_manifest_t {
-  std::string schema{std::string(kArtifactManifestSchema)};
+struct report_fragment_manifest_t {
+  std::string schema{std::string(kReportFragmentManifestSchema)};
   std::string canonical_type{};
   std::string family{};
   std::string model{};
-  std::string artifact_id{};
-  std::vector<artifact_manifest_file_t> files{};
+  std::string report_fragment_id{};
+  std::vector<report_fragment_manifest_file_t> files{};
 };
 
 [[nodiscard]] inline std::string trim_ascii(std::string value) {
@@ -97,8 +97,8 @@ struct artifact_manifest_t {
   }
 }
 
-[[nodiscard]] inline std::vector<artifact_manifest_file_t> normalized_manifest_files(
-    const std::vector<artifact_manifest_file_t>& files) {
+[[nodiscard]] inline std::vector<report_fragment_manifest_file_t> normalized_manifest_files(
+    const std::vector<report_fragment_manifest_file_t>& files) {
   std::map<std::string, std::uintmax_t> merged{};
   for (const auto& file : files) {
     if (file.path.empty()) continue;
@@ -108,10 +108,10 @@ struct artifact_manifest_t {
     }
   }
 
-  std::vector<artifact_manifest_file_t> out;
+  std::vector<report_fragment_manifest_file_t> out;
   out.reserve(merged.size());
   for (const auto& [path, size] : merged) {
-    out.push_back(artifact_manifest_file_t{path, size});
+    out.push_back(report_fragment_manifest_file_t{path, size});
   }
   return out;
 }
@@ -131,18 +131,18 @@ struct artifact_manifest_t {
   return out;
 }
 
-[[nodiscard]] inline std::filesystem::path artifact_manifest_path(const std::filesystem::path& artifact_dir) {
-  return artifact_dir / std::string(kArtifactManifestFilename);
+[[nodiscard]] inline std::filesystem::path report_fragment_manifest_path(const std::filesystem::path& report_fragment_dir) {
+  return report_fragment_dir / std::string(kReportFragmentManifestFilename);
 }
 
-[[nodiscard]] inline bool artifact_manifest_exists(const std::filesystem::path& artifact_dir) {
+[[nodiscard]] inline bool report_fragment_manifest_exists(const std::filesystem::path& report_fragment_dir) {
   std::error_code ec;
-  const auto p = artifact_manifest_path(artifact_dir);
+  const auto p = report_fragment_manifest_path(report_fragment_dir);
   return std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec);
 }
 
-[[nodiscard]] inline bool write_artifact_manifest(const std::filesystem::path& artifact_dir,
-                                                  const artifact_manifest_t& manifest,
+[[nodiscard]] inline bool write_report_fragment_manifest(const std::filesystem::path& report_fragment_dir,
+                                                  const report_fragment_manifest_t& manifest,
                                                   std::string* error = nullptr) {
   namespace fs = std::filesystem;
   if (error) error->clear();
@@ -150,32 +150,32 @@ struct artifact_manifest_t {
   if (manifest.canonical_type.empty() ||
       manifest.family.empty() ||
       manifest.model.empty() ||
-      manifest.artifact_id.empty()) {
-    if (error) *error = "artifact manifest missing canonical_type/family/model/artifact_id";
+      manifest.report_fragment_id.empty()) {
+    if (error) *error = "report_fragment manifest missing canonical_type/family/model/report_fragment_id";
     return false;
   }
 
   std::error_code ec;
-  fs::create_directories(artifact_dir, ec);
+  fs::create_directories(report_fragment_dir, ec);
   if (ec) {
-    if (error) *error = "cannot create artifact directory: " + artifact_dir.string();
+    if (error) *error = "cannot create report_fragment directory: " + report_fragment_dir.string();
     return false;
   }
 
-  const std::vector<artifact_manifest_file_t> files =
+  const std::vector<report_fragment_manifest_file_t> files =
       normalized_manifest_files(manifest.files);
-  const auto target_path = artifact_manifest_path(artifact_dir);
+  const auto target_path = report_fragment_manifest_path(report_fragment_dir);
   std::ofstream out(target_path, std::ios::binary | std::ios::trunc);
   if (!out) {
     if (error) *error = "cannot open manifest for write: " + target_path.string();
     return false;
   }
 
-  out << "schema=" << kArtifactManifestSchema << "\n";
+  out << "schema=" << kReportFragmentManifestSchema << "\n";
   out << "canonical_type=" << manifest.canonical_type << "\n";
   out << "family=" << manifest.family << "\n";
   out << "model=" << manifest.model << "\n";
-  out << "artifact_id=" << manifest.artifact_id << "\n";
+  out << "report_fragment_id=" << manifest.report_fragment_id << "\n";
   out << "file_count=" << files.size() << "\n";
   for (std::size_t i = 0; i < files.size(); ++i) {
     out << manifest_file_key(i, "path") << "=" << files[i].path << "\n";
@@ -188,14 +188,14 @@ struct artifact_manifest_t {
   return true;
 }
 
-[[nodiscard]] inline bool read_artifact_manifest(const std::filesystem::path& artifact_dir,
-                                                 artifact_manifest_t* out,
+[[nodiscard]] inline bool read_report_fragment_manifest(const std::filesystem::path& report_fragment_dir,
+                                                 report_fragment_manifest_t* out,
                                                  std::string* error = nullptr) {
   if (!out) return false;
   if (error) error->clear();
-  *out = artifact_manifest_t{};
+  *out = report_fragment_manifest_t{};
 
-  const auto manifest_path = artifact_manifest_path(artifact_dir);
+  const auto manifest_path = report_fragment_manifest_path(report_fragment_dir);
   std::ifstream in(manifest_path, std::ios::binary);
   if (!in) {
     if (error) *error = "manifest file not found: " + manifest_path.string();
@@ -226,16 +226,16 @@ struct artifact_manifest_t {
   };
 
   read_kv("schema", &out->schema);
-  if (out->schema.empty()) out->schema = std::string(kArtifactManifestSchema);
-  if (out->schema != kArtifactManifestSchema) {
-    if (error) *error = "unsupported artifact manifest schema: " + out->schema;
+  if (out->schema.empty()) out->schema = std::string(kReportFragmentManifestSchema);
+  if (out->schema != kReportFragmentManifestSchema) {
+    if (error) *error = "unsupported report_fragment manifest schema: " + out->schema;
     return false;
   }
 
   read_kv("canonical_type", &out->canonical_type);
   read_kv("family", &out->family);
   read_kv("model", &out->model);
-  read_kv("artifact_id", &out->artifact_id);
+  read_kv("report_fragment_id", &out->report_fragment_id);
 
   const auto file_count_it = kv.find("file_count");
   if (file_count_it == kv.end()) {
@@ -277,21 +277,21 @@ struct artifact_manifest_t {
       return false;
     }
 
-    out->files.push_back(artifact_manifest_file_t{it_path->second, size});
+    out->files.push_back(report_fragment_manifest_file_t{it_path->second, size});
   }
   out->files = normalized_manifest_files(out->files);
 
   if (out->canonical_type.empty() ||
       out->family.empty() ||
       out->model.empty() ||
-      out->artifact_id.empty()) {
-    if (error) *error = "manifest missing canonical_type/family/model/artifact_id";
+      out->report_fragment_id.empty()) {
+    if (error) *error = "manifest missing canonical_type/family/model/report_fragment_id";
     return false;
   }
   return true;
 }
 
-[[nodiscard]] inline bool artifact_manifest_has_file(const artifact_manifest_t& manifest,
+[[nodiscard]] inline bool report_fragment_manifest_has_file(const report_fragment_manifest_t& manifest,
                                                      std::string_view path) {
   for (const auto& file : manifest.files) {
     if (file.path == path) return true;
@@ -476,14 +476,14 @@ struct artifact_manifest_t {
   return true;
 }
 
-[[nodiscard]] inline bool write_encrypted_metadata(const std::filesystem::path& artifact_dir,
+[[nodiscard]] inline bool write_encrypted_metadata(const std::filesystem::path& report_fragment_dir,
                                                    const std::string& metadata_text,
                                                    std::string* error = nullptr) {
   namespace fs = std::filesystem;
   std::error_code ec;
-  fs::create_directories(artifact_dir, ec);
+  fs::create_directories(report_fragment_dir, ec);
   if (ec) {
-    if (error) *error = "cannot create artifact directory: " + artifact_dir.string();
+    if (error) *error = "cannot create report_fragment directory: " + report_fragment_dir.string();
     return false;
   }
 
@@ -494,15 +494,15 @@ struct artifact_manifest_t {
     return false;
   }
 
-  if (!write_file_binary(artifact_dir / "metadata.enc", encrypted.data(), encrypted.size(), error)) {
+  if (!write_file_binary(report_fragment_dir / "metadata.enc", encrypted.data(), encrypted.size(), error)) {
     return false;
   }
   return true;
 }
 
-[[nodiscard]] inline artifact_metadata_t load_artifact_metadata(const std::filesystem::path& artifact_dir) {
-  artifact_metadata_t out{};
-  const auto enc_path = artifact_dir / "metadata.enc";
+[[nodiscard]] inline report_fragment_metadata_t load_report_fragment_metadata(const std::filesystem::path& report_fragment_dir) {
+  report_fragment_metadata_t out{};
+  const auto enc_path = report_fragment_dir / "metadata.enc";
 
   if (!std::filesystem::exists(enc_path)) {
     return out;
@@ -529,11 +529,11 @@ struct artifact_manifest_t {
   return out;
 }
 
-[[nodiscard]] inline std::vector<artifact_identity_t> discover_created_artifacts_for(
+[[nodiscard]] inline std::vector<report_fragment_identity_t> discover_created_report_fragments_for(
     std::string_view family,
     std::string_view model) {
   namespace fs = std::filesystem;
-  std::vector<artifact_identity_t> out;
+  std::vector<report_fragment_identity_t> out;
   if (!is_valid_atom(family) || !is_valid_atom(model)) return out;
 
   const fs::path base = store_root() / "tsi.wikimyei" / std::string(family) / std::string(model);
@@ -546,14 +546,14 @@ struct artifact_manifest_t {
     const std::string hash = entry.path().filename().string();
     if (!is_hex_hash_name(hash)) continue;
 
-    artifact_identity_t item{};
+    report_fragment_identity_t item{};
     item.family = std::string(family);
     item.model = std::string(model);
     item.hashimyei = hash;
     item.canonical_base = "tsi.wikimyei." + item.family + "." + item.model + "." + item.hashimyei;
     item.directory = entry.path();
 
-    const bool has_manifest = artifact_manifest_exists(entry.path());
+    const bool has_manifest = report_fragment_manifest_exists(entry.path());
     for (const auto& f : fs::directory_iterator(entry.path(), ec)) {
       if (ec) break;
       if (!f.is_regular_file()) continue;
@@ -563,22 +563,22 @@ struct artifact_manifest_t {
     if (item.weight_files.empty() && !has_manifest) continue;
 
     std::sort(item.weight_files.begin(), item.weight_files.end());
-    item.metadata = load_artifact_metadata(entry.path());
+    item.metadata = load_report_fragment_metadata(entry.path());
     out.push_back(std::move(item));
   }
 
-  std::sort(out.begin(), out.end(), [](const artifact_identity_t& a, const artifact_identity_t& b) {
+  std::sort(out.begin(), out.end(), [](const report_fragment_identity_t& a, const report_fragment_identity_t& b) {
     return a.hashimyei < b.hashimyei;
   });
   return out;
 }
 
-[[nodiscard]] inline std::vector<artifact_identity_t> discover_created_artifacts_for_type(
+[[nodiscard]] inline std::vector<report_fragment_identity_t> discover_created_report_fragments_for_type(
     std::string_view tsi_wikimyei_type) {
   const auto segs = split_dot(tsi_wikimyei_type);
   if (segs.size() != 4) return {};
   if (segs[0] != "tsi" || segs[1] != "wikimyei") return {};
-  return discover_created_artifacts_for(segs[2], segs[3]);
+  return discover_created_report_fragments_for(segs[2], segs[3]);
 }
 
 }  // namespace hashimyei

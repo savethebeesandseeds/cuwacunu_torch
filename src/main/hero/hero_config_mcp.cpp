@@ -27,7 +27,7 @@ void print_cli_help(const char* argv0) {
             << "  default config path: [REAL_HERO].config_hero_dsl_filename"
                " in --global-config (default /cuwacunu/src/config/.config)\n"
             << "  --tool/--args-json: execute one MCP tool call and exit\n"
-            << "  --repl: legacy human command shell\n";
+            << "  --repl: human command shell (deprecated)\n";
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {

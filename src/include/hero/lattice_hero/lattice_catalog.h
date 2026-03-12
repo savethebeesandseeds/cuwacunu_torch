@@ -33,13 +33,13 @@ struct wave_execution_profile_t {
   std::string determinism_policy{"non_deterministic"};
 };
 
-struct wave_artifact_link_t {
-  std::string aggregate_schema{"wave.sink.artifact_link.v1"};
-  std::vector<std::string> artifact_ids{};
-  std::vector<std::pair<std::string, double>> numeric_summary{};
-  std::vector<std::pair<std::string, std::string>> text_summary{};
-  std::string joined_kv_report{};
-  std::string aggregate_sha256{};
+struct lattice_cell_report_t {
+  std::string report_schema{"wave.cell.report.v1"};
+  std::vector<std::string> source_report_fragment_ids{};
+  std::vector<std::pair<std::string, double>> summary_num{};
+  std::vector<std::pair<std::string, std::string>> summary_txt{};
+  std::string report_lls{};
+  std::string report_sha256{};
 };
 
 struct wave_trial_t {
@@ -62,7 +62,7 @@ struct wave_cell_t {
   std::string state{"pending"};
   std::size_t trial_count{0};
   std::string last_trial_id{};
-  wave_artifact_link_t artifact_link{};
+  lattice_cell_report_t report{};
   std::uint32_t projection_version{2};
   std::uint64_t created_at_ms{0};
   std::uint64_t updated_at_ms{0};
@@ -88,6 +88,18 @@ struct matrix_query_t {
   bool latest_success_only{true};
 };
 
+struct runtime_report_fragment_t {
+  std::string report_fragment_id{};
+  std::string run_id{};
+  std::string canonical_path{};
+  std::string hashimyei{};
+  std::string schema{};
+  std::string report_fragment_sha256{};
+  std::string path{};
+  std::uint64_t ts_ms{0};
+  std::string payload_json{};
+};
+
 [[nodiscard]] std::string compute_coord_hash(std::string_view contract_hash,
                                              std::string_view wave_hash);
 [[nodiscard]] std::string canonical_execution_profile_json(
@@ -98,13 +110,13 @@ struct matrix_query_t {
                                           std::string_view wave_hash,
                                           const wave_execution_profile_t& profile);
 
-[[nodiscard]] bool encode_artifact_link_payload(
-    const wave_artifact_link_t& artifact_link,
+[[nodiscard]] bool encode_cell_report_payload(
+    const lattice_cell_report_t& report,
     std::string* out_payload,
     std::string* error = nullptr);
-[[nodiscard]] bool decode_artifact_link_payload(std::string_view payload,
-                                                wave_artifact_link_t* out,
-                                                std::string* error = nullptr);
+[[nodiscard]] bool decode_cell_report_payload(std::string_view payload,
+                                              lattice_cell_report_t* out,
+                                              std::string* error = nullptr);
 
 class lattice_catalog_store_t {
  public:
@@ -151,8 +163,8 @@ class lattice_catalog_store_t {
   [[nodiscard]] const options_t& options() const noexcept { return options_; }
 
   [[nodiscard]] bool rebuild_indexes(std::string* error = nullptr);
-  [[nodiscard]] bool ingest_runtime_reports(const std::filesystem::path& store_root,
-                                            std::string* error = nullptr);
+  [[nodiscard]] bool ingest_runtime_report_fragments(
+      const std::filesystem::path& store_root, std::string* error = nullptr);
 
   [[nodiscard]] bool resolve_cell(const wave_cell_coord_t& coord,
                                   const wave_execution_profile_t& profile,
@@ -170,24 +182,32 @@ class lattice_catalog_store_t {
   [[nodiscard]] bool query_matrix(const matrix_query_t& query,
                                   std::vector<wave_cell_t>* out,
                                   std::string* error = nullptr) const;
-  [[nodiscard]] bool provenance(std::string_view cell_id,
-                                wave_artifact_link_t* out,
-                                std::string* error = nullptr) const;
+  [[nodiscard]] bool get_cell_report(
+      std::string_view cell_id, lattice_cell_report_t* out,
+      std::string* error = nullptr) const;
   [[nodiscard]] bool list_runtime_runs_by_binding(
       std::string_view contract_hashimyei, std::string_view wave_hashimyei,
       std::string_view binding_hashimyei,
       std::vector<cuwacunu::hero::hashimyei::run_manifest_t>* out,
       std::string* error = nullptr) const;
-  [[nodiscard]] bool list_runtime_artifacts(
+  [[nodiscard]] bool list_runtime_report_fragments(
       std::string_view canonical_path, std::string_view schema, std::size_t limit,
       std::size_t offset, bool newest_first,
-      std::vector<cuwacunu::hero::hashimyei::artifact_entry_t>* out,
+      std::vector<runtime_report_fragment_t>* out,
+      std::string* error = nullptr) const;
+  [[nodiscard]] bool upsert_runtime_intersection_report(
+      std::string_view intersection_cursor, std::string_view canonical_path,
+      std::string_view run_id, std::uint64_t ts_ms, std::string_view report_lls,
+      std::string* error = nullptr);
+  [[nodiscard]] bool get_runtime_intersection_report(
+      std::string_view intersection_cursor, std::string* out_report_lls,
+      std::string* out_canonical_path, std::string* out_run_id,
       std::string* error = nullptr) const;
 
   [[nodiscard]] bool record_trial(const wave_cell_coord_t& coord,
                                   const wave_execution_profile_t& profile,
                                   const wave_trial_t& trial,
-                                  const wave_artifact_link_t& artifact_link,
+                                  const lattice_cell_report_t& report,
                                   const wave_projection_t& projection,
                                   wave_cell_t* out_cell,
                                   std::string* error = nullptr);
@@ -227,14 +247,14 @@ class lattice_catalog_store_t {
                                              std::string* error);
   [[nodiscard]] bool ingest_runtime_run_manifest_file_(
       const std::filesystem::path& path, std::string* error);
-  [[nodiscard]] bool ingest_runtime_artifact_file_(const std::filesystem::path& path,
-                                                   std::string* error);
-  [[nodiscard]] bool runtime_ledger_contains_(std::string_view artifact_id,
-                                              bool* out_exists,
-                                              std::string* error);
-  [[nodiscard]] bool append_runtime_ledger_(std::string_view artifact_id,
-                                            std::string_view path,
-                                            std::string* error);
+  [[nodiscard]] bool ingest_runtime_report_fragment_file_(
+      const std::filesystem::path& path, std::string* error);
+  [[nodiscard]] bool runtime_ledger_contains_(
+      std::string_view report_fragment_id, bool* out_exists,
+      std::string* error);
+  [[nodiscard]] bool append_runtime_ledger_(
+      std::string_view report_fragment_id, std::string_view path,
+      std::string* error);
 
   [[nodiscard]] static std::string coord_profile_key_(
       std::string_view contract_hash,
@@ -273,7 +293,7 @@ class lattice_catalog_store_t {
   std::unordered_map<std::string, wave_cell_t> cells_by_id_{};
   std::unordered_map<std::string, std::string> cell_id_by_coord_profile_{};
   std::unordered_map<std::string, std::vector<wave_trial_t>> trials_by_cell_{};
-  std::unordered_map<std::string, wave_artifact_link_t> artifact_by_trial_id_{};
+  std::unordered_map<std::string, lattice_cell_report_t> report_by_trial_id_{};
   std::unordered_map<std::string, std::unordered_map<std::string, double>>
       projection_num_by_cell_{};
   std::unordered_map<std::string,
@@ -281,11 +301,21 @@ class lattice_catalog_store_t {
       projection_txt_by_cell_{};
   std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>
       runtime_runs_by_id_{};
-  std::unordered_map<std::string, cuwacunu::hero::hashimyei::artifact_entry_t>
-      runtime_artifacts_by_id_{};
-  std::unordered_map<std::string, std::string> runtime_latest_artifact_by_key_{};
-  std::unordered_map<std::string, std::vector<cuwacunu::hero::hashimyei::dependency_file_t>>
-      runtime_provenance_by_run_id_{};
+  std::unordered_map<std::string, runtime_report_fragment_t>
+      runtime_report_fragments_by_id_{};
+  std::unordered_map<std::string, std::string>
+      runtime_latest_report_fragment_by_key_{};
+  std::unordered_map<std::string,
+                     std::vector<cuwacunu::hero::hashimyei::dependency_file_t>>
+      runtime_dependency_files_by_run_id_{};
+  struct runtime_intersection_report_entry_t {
+    std::string canonical_path{};
+    std::string run_id{};
+    std::uint64_t ts_ms{0};
+    std::string report_lls{};
+  };
+  std::unordered_map<std::string, runtime_intersection_report_entry_t>
+      runtime_reports_by_intersection_{};
   std::unordered_set<std::string> runtime_ledger_{};
 };
 

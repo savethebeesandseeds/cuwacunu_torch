@@ -11,7 +11,7 @@
       int, float, bool, str, arr[int], arr[float]
 
   Key groups:
-    - Artifact/runtime: model_path, verbose_train, telemetry_every, device, dtype
+    - Runtime/checkpoint: model_path, verbose_train, telemetry_every, device, dtype
     - Training budget: wave-owned (not configured in this file)
     - Target definition: target_dims, target_weights
     - Model structure: mixture_comps, features_hidden, residual_depth

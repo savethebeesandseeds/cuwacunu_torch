@@ -214,7 +214,7 @@ int main() {
     }
 
     ok = ok && require(cleanup_new_source_dataloader_inits(source_dataloader_init_before),
-                       "cleanup: created tsi.source.dataloader init artifacts should be removed");
+                       "cleanup: created tsi.source.dataloader init report fragments should be removed");
 
     std::cout << "[round2] " << cuwacunu::camahjucunu::hashimyei_round_note() << "\n";
 

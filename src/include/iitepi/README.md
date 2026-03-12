@@ -51,7 +51,7 @@ Architecture is intentionally split into static topology and dynamic execution:
 - Sink path ownership is wave-local via `SINK { PATH = ...; }` blocks and
   validated against sink nodes declared by the selected circuit.
   `debug` mode controls probe/report side effects (probe epoch reporting and
-  network-analytics sidecars on artifact save).
+  network-analytics sidecars on report fragment save).
 
 3. Board (join layer)
 - Imports contract files and wave files.
@@ -119,7 +119,7 @@ Architecture is intentionally split into static topology and dynamic execution:
 - `run_wave_compiled(...)` processes event queue (`Ingress` -> TSI `step` -> emitted signals) and dispatches typed runtime events (`StepStart/Done`, `Route`, `Drop`, `Backpressure`, `QueueDrained`).
 - source-style continuation is requested through `on_event(QueueDrained)` returning `RuntimeEventAction`.
 3. Sources emit payload/future/meta; wikimyei consume/emit payload/loss/meta; sinks consume logs/null.
-4. Artifact load/save is handled through TSI wikimyei + hashimyei integration in contract runtime.
+4. Report-fragment load/save is handled through TSI wikimyei + hashimyei integration in contract runtime.
 
 ## Record Model
 

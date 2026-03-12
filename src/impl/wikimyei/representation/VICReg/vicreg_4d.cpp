@@ -38,7 +38,7 @@ namespace {
 
 inline torch::Tensor read_tensor_strict(const std::string& path, const char* key) {
   // Always map archived tensors to CPU first so loading remains portable when
-  // artifacts were produced on CUDA hosts.
+  // report fragments were produced on CUDA hosts.
   torch::serialize::InputArchive ar;
   ar.load_from(path, torch::Device(torch::kCPU));
   torch::Tensor t;

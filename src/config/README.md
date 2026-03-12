@@ -284,9 +284,8 @@ codex mcp add hero-lattice -- \
 
 Supported MCP tools:
 - `hero.lattice.get_runs`
-- `hero.lattice.get_history`
+- `hero.lattice.list_report_fragments`
 - `hero.lattice.get_report_lls`
-- `hero.lattice.get_performance`
 - `hero.lattice.reset_catalog`
 
 ## Split Policy

@@ -259,7 +259,7 @@ struct backup_file_info_t {
   return base_it == base.end();
 }
 
-[[nodiscard]] bool is_deprecated_legacy_runtime_key(std::string_view key) {
+[[nodiscard]] bool is_deprecated_runtime_key(std::string_view key) {
   return key == "mode" || key == "transport" || key == "endpoint" ||
          key == "auth_token_env" || key == "model" ||
          key == "reasoning_effort" || key == "temperature" ||
@@ -1014,7 +1014,7 @@ std::string hero_config_store_t::render() const {
 
   for (const auto& e : entries_) {
     if (find_runtime_descriptor(e.key) != nullptr) continue;
-    if (is_deprecated_legacy_runtime_key(e.key)) continue;
+    if (is_deprecated_runtime_key(e.key)) continue;
     const std::string declared = e.declared_type.empty() ? "str" : e.declared_type;
     const std::string declared_domain = e.declared_domain.empty()
                                             ? cuwacunu::camahjucunu::dsl::

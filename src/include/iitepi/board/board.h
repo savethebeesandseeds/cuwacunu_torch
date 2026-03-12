@@ -316,10 +316,10 @@ struct BoardIssue {
   return true;
 }
 
-inline bool load_contract_wikimyei_artifacts(BoardContract& c,
+inline bool load_contract_wikimyei_report_fragments(BoardContract& c,
                                              const BoardContext& ctx,
                                              std::string* error = nullptr);
-inline bool save_contract_wikimyei_artifacts(BoardContract& c,
+inline bool save_contract_wikimyei_report_fragments(BoardContract& c,
                                              const BoardContext& ctx,
                                              std::string* error = nullptr);
 
@@ -401,9 +401,9 @@ inline std::uint64_t run_circuit(BoardContract& c,
              dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
     return 0;
   }
-  std::string artifact_error;
-  if (!load_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
-    if (error) *error = artifact_error;
+  std::string report_fragment_error;
+  if (!load_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
+    if (error) *error = report_fragment_error;
     return 0;
   }
   broadcast_contract_runtime_event(
@@ -428,8 +428,8 @@ inline std::uint64_t run_circuit(BoardContract& c,
   }
   broadcast_contract_runtime_event(
       c, RuntimeEventKind::EpochEnd, &c.seed_wave, ctx);
-  if (!save_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
-    if (error) *error = artifact_error;
+  if (!save_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
+    if (error) *error = report_fragment_error;
     broadcast_contract_runtime_event(
         c, RuntimeEventKind::RunEnd, &c.seed_wave, ctx);
     return 0;
@@ -450,7 +450,7 @@ inline std::uint64_t run_circuit(BoardContract& c,
   return out;
 }
 
-inline bool load_contract_wikimyei_artifacts(BoardContract& c,
+inline bool load_contract_wikimyei_report_fragments(BoardContract& c,
                                              const BoardContext& ctx,
                                              std::string* error) {
   if (error) error->clear();
@@ -459,8 +459,8 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
   for (auto& node : c.nodes) {
     auto* wik = dynamic_cast<TsiWikimyei*>(node.get());
     if (!wik) continue;
-    if (!wik->supports_init_artifacts()) continue;
-    if (!wik->runtime_autoload_artifacts()) continue;
+    if (!wik->supports_init_report_fragments()) continue;
+    if (!wik->runtime_autoload_report_fragments()) continue;
 
     TsiWikimyeiRuntimeIoContext io_ctx{};
     io_ctx.enable_debug_outputs = c.execution.debug_enabled;
@@ -470,15 +470,15 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
                                           &local_error,
                                           &io_ctx)) {
       // Training-enabled wikimyei are allowed to bootstrap from scratch when
-      // the configured artifact id is not present yet. The first successful
-      // run will persist the artifact at epoch end.
-      const bool missing_artifact =
+      // the configured report_fragment id is not present yet. The first
+      // successful run will persist the report_fragment at epoch end.
+      const bool missing_report_fragment =
           local_error.find("not found") != std::string::npos;
-      if (missing_artifact && wik->runtime_autosave_artifacts()) {
+      if (missing_report_fragment && wik->runtime_autosave_report_fragments()) {
         continue;
       }
       if (error) {
-        *error = "failed to load wikimyei artifacts for node '" +
+        *error = "failed to load wikimyei report fragments for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
       }
       return false;
@@ -487,7 +487,7 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
   return true;
 }
 
-inline bool save_contract_wikimyei_artifacts(BoardContract& c,
+inline bool save_contract_wikimyei_report_fragments(BoardContract& c,
                                              const BoardContext& ctx,
                                              std::string* error) {
   if (error) error->clear();
@@ -496,8 +496,8 @@ inline bool save_contract_wikimyei_artifacts(BoardContract& c,
   for (auto& node : c.nodes) {
     auto* wik = dynamic_cast<TsiWikimyei*>(node.get());
     if (!wik) continue;
-    if (!wik->supports_init_artifacts()) continue;
-    if (!wik->runtime_autosave_artifacts()) continue;
+    if (!wik->supports_init_report_fragments()) continue;
+    if (!wik->runtime_autosave_report_fragments()) continue;
 
     TsiWikimyeiRuntimeIoContext io_ctx{};
     io_ctx.enable_debug_outputs = c.execution.debug_enabled;
@@ -507,7 +507,7 @@ inline bool save_contract_wikimyei_artifacts(BoardContract& c,
                                         &local_error,
                                         &io_ctx)) {
       if (error) {
-        *error = "failed to save wikimyei artifacts for node '" +
+        *error = "failed to save wikimyei report fragments for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
       }
       return false;
@@ -519,7 +519,7 @@ inline bool save_contract_wikimyei_artifacts(BoardContract& c,
 inline std::uint64_t run_contract(BoardContract& c,
                                   BoardContext& ctx,
                                   std::string* error = nullptr) {
-  // Contract runtime initialization: compile + artifact preload.
+  // Contract runtime initialization: compile + report_fragment preload.
   if (error) error->clear();
   ctx.wave_mode_flags = c.execution.wave_mode_flags;
   ctx.debug_enabled = c.execution.debug_enabled;
@@ -547,12 +547,12 @@ inline std::uint64_t run_contract(BoardContract& c,
              dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
     return 0;
   }
-  std::string artifact_error;
-  if (!load_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
-    if (error) *error = artifact_error;
+  std::string report_fragment_error;
+  if (!load_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
+    if (error) *error = report_fragment_error;
     log_err("[board.contract.run] preload failed contract=%s error=%s\n",
             c.name.empty() ? "<empty>" : c.name.c_str(),
-            artifact_error.empty() ? "<empty>" : artifact_error.c_str());
+            report_fragment_error.empty() ? "<empty>" : report_fragment_error.c_str());
     return 0;
   }
   broadcast_contract_runtime_event(
@@ -605,7 +605,7 @@ inline std::uint64_t run_contract(BoardContract& c,
         c, RuntimeEventKind::EpochEnd, &start_wave, ctx);
   }
 
-  // Finalization: persist autosave artifacts after the execution loop.
+  // Finalization: persist autosave report fragments after the execution loop.
   if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
     if (error) *error = dsl_guard_error;
     log_warn("[board.contract.run] abort contract=%s reason=%s\n",
@@ -615,11 +615,11 @@ inline std::uint64_t run_contract(BoardContract& c,
         c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
     return 0;
   }
-  if (!save_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
-    if (error) *error = artifact_error;
+  if (!save_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
+    if (error) *error = report_fragment_error;
     log_err("[board.contract.run] finalize failed contract=%s error=%s\n",
             c.name.empty() ? "<empty>" : c.name.c_str(),
-            artifact_error.empty() ? "<empty>" : artifact_error.c_str());
+            report_fragment_error.empty() ? "<empty>" : report_fragment_error.c_str());
     broadcast_contract_runtime_event(
         c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
     return 0;

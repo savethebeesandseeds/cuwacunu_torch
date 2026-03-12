@@ -20,7 +20,7 @@ struct TsiWikimyeiInitRecord {
   std::string run_id{};
   std::string canonical_base{};
   std::filesystem::path store_root{};
-  std::filesystem::path artifact_directory{};
+  std::filesystem::path report_fragment_directory{};
   std::filesystem::path weights_file{};
   bool enable_network_analytics_sidecar{true};
   bool enable_entropic_capacity_sidecar{true};
@@ -39,7 +39,7 @@ struct TsiWikimyeiRuntimeIoContext {
 struct TsiWikimyeiInitEntry {
   std::string hashimyei{};
   std::string canonical_base{};
-  std::filesystem::path artifact_directory{};
+  std::filesystem::path report_fragment_directory{};
   std::size_t weights_count{0};
 };
 
@@ -48,14 +48,24 @@ class TsiWikimyei : public Tsi {
   [[nodiscard]] TsiDomain domain() const noexcept final { return TsiDomain::Wikimyei; }
   [[nodiscard]] bool can_be_circuit_root() const noexcept override { return false; }
   [[nodiscard]] bool can_be_circuit_terminal() const noexcept override { return false; }
-  [[nodiscard]] virtual bool supports_init_artifacts() const noexcept { return false; }
-  [[nodiscard]] virtual std::string_view init_artifact_schema() const noexcept { return {}; }
-  [[nodiscard]] virtual std::string_view artifact_family() const noexcept { return {}; }
-  [[nodiscard]] virtual std::string_view artifact_model() const noexcept { return {}; }
-  [[nodiscard]] virtual bool runtime_autoload_artifacts() const noexcept {
-    return supports_init_artifacts();
+  [[nodiscard]] virtual bool supports_init_report_fragments() const noexcept {
+    return false;
   }
-  [[nodiscard]] virtual bool runtime_autosave_artifacts() const noexcept { return false; }
+  [[nodiscard]] virtual std::string_view init_report_fragment_schema() const noexcept {
+    return {};
+  }
+  [[nodiscard]] virtual std::string_view report_fragment_family() const noexcept {
+    return {};
+  }
+  [[nodiscard]] virtual std::string_view report_fragment_model() const noexcept {
+    return {};
+  }
+  [[nodiscard]] virtual bool runtime_autoload_report_fragments() const noexcept {
+    return supports_init_report_fragments();
+  }
+  [[nodiscard]] virtual bool runtime_autosave_report_fragments() const noexcept {
+    return false;
+  }
   [[nodiscard]] virtual bool runtime_load_from_hashimyei(
       std::string_view hashimyei,
       std::string* error = nullptr,

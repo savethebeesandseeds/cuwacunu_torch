@@ -133,7 +133,8 @@ static std::string reset_lattice_command(const fs::path& store_root,
       << shell_quote(catalog_path.string()) << " --hashimyei-catalog "
       << shell_quote(hashimyei_catalog_path.string())
       << " --tool hero.lattice.reset_catalog"
-      << " --args-json " << shell_quote(R"({"reingest_runtime":false})");
+      << " --args-json "
+      << shell_quote(R"({"reingest_report_fragments":false})");
   return cmd.str();
 }
 
@@ -177,9 +178,10 @@ static void test_lattice_tools_list_surface() {
       tools_list_command(kLatticeMcpBin, store_root, catalog, hash_catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"hero.lattice.get_runs\""));
-  REQUIRE(contains(result.output, "\"hero.lattice.get_history\""));
+  REQUIRE(contains(result.output, "\"hero.lattice.list_report_fragments\""));
   REQUIRE(contains(result.output, "\"hero.lattice.get_report_lls\""));
   REQUIRE(contains(result.output, "\"hero.lattice.reset_catalog\""));
+  REQUIRE(!contains(result.output, "\"hero.lattice.get_history\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_performance\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.provenance\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.run_or_get\""));
@@ -212,7 +214,7 @@ static void test_lattice_reset_catalog_smoke() {
       reset_lattice_command(store_root, catalog, hash_catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"isError\":false"));
-  REQUIRE(contains(result.output, "\"runtime_artifact_count\":"));
+  REQUIRE(contains(result.output, "\"runtime_report_fragment_count\":"));
   REQUIRE(fs::exists(catalog));
 }
 

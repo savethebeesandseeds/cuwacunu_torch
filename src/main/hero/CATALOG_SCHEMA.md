@@ -8,11 +8,11 @@ Hashimyei Hero and Lattice Hero catalogs.
 | Logical Table | Meaning |
 | --- | --- |
 | `entity` | Stable identified objects (run, component, cell, runtime run). |
-| `edge` | Relationships between entities (provenance, binding pointers). |
+| `edge` | Relationships between entities (dependency, binding pointers). |
 | `event` | Time-ordered state transitions or control rows (trial, revision, header/counter). |
 | `metric_num` | Numeric scalar features and metrics. |
 | `metric_txt` | Text scalar features and metrics. |
-| `blob` | Content-addressed payload-bearing rows (artifacts, ledgers). |
+| `blob` | Content-addressed payload-bearing rows (report fragments, ledgers). |
 
 ## Shared Vocabulary Source
 
@@ -30,13 +30,13 @@ Hashimyei Hero and Lattice Hero catalogs.
 | `ledger` | `blob` |
 | `counter` | `event` |
 | `run` | `entity` |
-| `provenance` | `edge` |
+| `run_dependency` | `edge` |
 | `component` | `entity` |
-| `component_provenance` | `edge` |
+| `component_dependency` | `edge` |
 | `component_revision` | `event` |
 | `component_binding` | `edge` |
 | `component_active` | `edge` |
-| `artifact` | `blob` |
+| `report_fragment` | `blob` |
 | `metric_num` | `metric_num` |
 | `metric_txt` | `metric_txt` |
 | `cell` | `entity` |
@@ -45,8 +45,9 @@ Hashimyei Hero and Lattice Hero catalogs.
 | `projection_txt` | `metric_txt` |
 | `projection_meta` | `event` |
 | `runtime_run` | `entity` |
-| `runtime_provenance` | `edge` |
-| `runtime_artifact` | `blob` |
+| `runtime_dependency` | `edge` |
+| `runtime_report_fragment` | `blob` |
+| `runtime_report` | `blob` |
 | `runtime_ledger` | `blob` |
 
 ## Physical Catalogs (Current)
@@ -56,7 +57,7 @@ Hashimyei Hero and Lattice Hero catalogs.
 - File schema: `hashimyei.catalog.v2`
 - Single wide row table with columns:
   `record_kind, record_id, run_id, canonical_path, hashimyei, schema, metric_key,
-  metric_num, metric_txt, artifact_sha256, path, ts_ms, payload_json`.
+  metric_num, metric_txt, report_fragment_sha256, path, ts_ms, payload_json`.
 
 ### Lattice catalog
 
@@ -105,7 +106,7 @@ Key/index plan:
 | Column | Type | Notes |
 | --- | --- | --- |
 | `edge_id` | text | Primary key. |
-| `edge_kind` | text | `provenance/binding/active/...` |
+| `edge_kind` | text | `dependency/binding/active/...` |
 | `src_entity_id` | text | Source entity id. |
 | `dst_entity_id` | text | Destination entity id (optional). |
 | `owner_scope` | text | `hashimyei` or `lattice`. |
@@ -160,7 +161,7 @@ Key/index plan:
 | Column | Type | Notes |
 | --- | --- | --- |
 | `blob_id` | text | Primary key (`sha256` or synthetic id). |
-| `blob_kind` | text | `artifact/ledger/report/...` |
+| `blob_kind` | text | `report_fragment/ledger/report/...` |
 | `entity_id` | text | Owning entity id (optional). |
 | `owner_scope` | text | `hashimyei` or `lattice`. |
 | `path` | text | Filesystem/virtual path. |

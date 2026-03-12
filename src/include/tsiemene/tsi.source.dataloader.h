@@ -112,8 +112,10 @@ class TsiSourceDataloader final : public TsiSource {
     };
     return std::span<const DirectiveSpec>(kDirectives, 3);
   }
-  [[nodiscard]] bool supports_init_artifacts() const noexcept override { return true; }
-  [[nodiscard]] std::string_view init_artifact_schema() const noexcept override {
+  [[nodiscard]] bool supports_init_report_fragments() const noexcept override {
+    return true;
+  }
+  [[nodiscard]] std::string_view init_report_fragment_schema() const noexcept override {
     return "tsi.source.dataloader.init.v1";
   }
 

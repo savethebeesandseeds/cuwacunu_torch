@@ -171,7 +171,7 @@ int main() try {
   ok = ok && expect(selected_wave && selected_wave->sources.size() == 1,
                     "selected wave must define exactly one SOURCE block");
   ok = ok && expect(selected_wave && selected_wave->probes.empty(),
-                    "selected wave must not define legacy transfer-matrix PROBE blocks");
+                    "selected wave must not define removed transfer-matrix PROBE blocks");
   ok = ok && expect(selected_wave && !selected_wave->wikimyeis.empty(),
                     "selected wave must define at least one WIKIMYEI block");
   ok = ok && expect(selected_wave && !selected_wave->sinks.empty(),
@@ -292,7 +292,7 @@ int main() try {
       static_cast<unsigned long long>(run.total_steps));
 
   // 5) Transfer-matrix evaluation is now an ephemeral report: no hashimyei-owned
-  // history files are expected as side effects.
+  // persisted report-fragment files are expected as side effects.
   ok = ok && expect(!selected_representation_hashimyei.empty(),
                     "selected wave representation hashimyei is empty");
   if (!ok) return 1;

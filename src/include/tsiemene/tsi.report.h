@@ -16,8 +16,8 @@ enum class report_event_e : std::uint8_t {
   EpochEnd = 2,
   RunStart = 3,
   RunEnd = 4,
-  ArtifactLoad = 5,
-  ArtifactSave = 6,
+  ReportFragmentLoad = 5,
+  ReportFragmentSave = 6,
 };
 
 [[nodiscard]] constexpr std::string_view report_event_token(
@@ -33,10 +33,10 @@ enum class report_event_e : std::uint8_t {
       return "run_start";
     case report_event_e::RunEnd:
       return "run_end";
-    case report_event_e::ArtifactLoad:
-      return "artifact_load";
-    case report_event_e::ArtifactSave:
-      return "artifact_save";
+    case report_event_e::ReportFragmentLoad:
+      return "report_fragment_load";
+    case report_event_e::ReportFragmentSave:
+      return "report_fragment_save";
   }
   return "unknown";
 }

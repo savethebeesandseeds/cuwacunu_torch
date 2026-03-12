@@ -97,20 +97,20 @@ inline bool select_training_hash_by_token(CmdState& st, const std::string& token
 template <class PushWarn, class AppendLog>
 inline bool handle_training_show(CmdState& st, PushWarn&& push_warn, AppendLog&& append_log) {
   const auto& docs = training_wikimyei_docs();
-  const auto artifacts = training_artifacts_for_selected_tab(st);
+  const auto report_fragments = training_report_fragments_for_selected_tab(st);
   if (docs.empty()) {
     push_warn("no training wikimyei entries");
     return true;
   }
-  if (artifacts.empty()) {
-    push_warn("no created hashimyei artifacts for selected wikimyei");
+  if (report_fragments.empty()) {
+    push_warn("no created hashimyei report fragments for selected wikimyei");
     return true;
   }
 
   const std::size_t tab = clamp_training_wikimyei_index(st.training.selected_tab);
-  const std::size_t hx = (st.training.selected_hash < artifacts.size()) ? st.training.selected_hash : 0;
+  const std::size_t hx = (st.training.selected_hash < report_fragments.size()) ? st.training.selected_hash : 0;
   const auto& d = docs[tab];
-  const auto& item = artifacts[hx];
+  const auto& item = report_fragments[hx];
   const auto& h = item.hashimyei;
 
   const std::string base = item.canonical_base;

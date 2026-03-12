@@ -616,7 +616,7 @@ namespace {
   return !std::filesystem::exists(lock_path, ec) && !ec;
 }
 
-[[nodiscard]] std::string canonical_path_from_artifact_path(
+[[nodiscard]] std::string canonical_path_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
   const auto find_after = [&](std::string_view needle) -> std::string {
@@ -651,7 +651,7 @@ namespace {
   return {};
 }
 
-[[nodiscard]] std::string contract_hash_from_artifact_path(
+[[nodiscard]] std::string contract_hash_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
   const std::string source_head = "/tsi.source/data_analytics/";
@@ -1267,17 +1267,17 @@ bool hashimyei_catalog_store_t::close(std::string* error) {
     return false;
   }
   runs_by_id_.clear();
-  artifacts_by_id_.clear();
-  latest_artifact_by_key_.clear();
-  metrics_num_by_artifact_.clear();
-  metrics_txt_by_artifact_.clear();
+  report_fragments_by_id_.clear();
+  latest_report_fragment_by_key_.clear();
+  metrics_num_by_report_fragment_.clear();
+  metrics_txt_by_report_fragment_.clear();
   components_by_id_.clear();
   latest_component_by_canonical_.clear();
   latest_component_by_hashimyei_.clear();
   active_hashimyei_by_key_.clear();
   active_component_by_key_.clear();
   active_component_by_canonical_.clear();
-  provenance_by_run_id_.clear();
+  dependency_files_by_run_id_.clear();
   kind_counters_.clear();
   hash_identity_by_kind_sha_.clear();
   component_ids_by_binding_hashimyei_.clear();
@@ -1335,7 +1335,7 @@ bool hashimyei_catalog_store_t::append_row_(
     std::string_view record_kind, std::string_view record_id, std::string_view run_id,
     std::string_view canonical_path, std::string_view hashimyei, std::string_view schema,
     std::string_view metric_key, double metric_num, std::string_view metric_txt,
-    std::string_view artifact_sha256, std::string_view path, std::string_view ts_ms,
+    std::string_view report_fragment_sha256, std::string_view path, std::string_view ts_ms,
     std::string_view payload_json, std::string* error) {
   clear_error(error);
   if (!db_) {
@@ -1360,14 +1360,14 @@ bool hashimyei_catalog_store_t::append_row_(
   if (!insert_text(&db_, kColMetricKey, row, metric_key, error)) return false;
   if (!insert_num(&db_, kColMetricNum, row, metric_num, error)) return false;
   if (!insert_text(&db_, kColMetricTxt, row, metric_txt, error)) return false;
-  if (!insert_text(&db_, kColArtifactSha256, row, artifact_sha256, error)) return false;
+  if (!insert_text(&db_, kColReportFragmentSha256, row, report_fragment_sha256, error)) return false;
   if (!insert_text(&db_, kColPath, row, path, error)) return false;
   if (!insert_text(&db_, kColTsMs, row, ts_ms, error)) return false;
   if (!insert_text(&db_, kColPayload, row, payload_json, error)) return false;
   return true;
 }
 
-bool hashimyei_catalog_store_t::ledger_contains_(std::string_view artifact_sha256,
+bool hashimyei_catalog_store_t::ledger_contains_(std::string_view report_fragment_sha256,
                                                  bool* out_exists,
                                                  std::string* error) {
   clear_error(error);
@@ -1380,7 +1380,7 @@ bool hashimyei_catalog_store_t::ledger_contains_(std::string_view artifact_sha25
     set_error(error, "catalog is not open");
     return false;
   }
-  if (artifact_sha256.empty()) return true;
+  if (report_fragment_sha256.empty()) return true;
 
   idydb_filter_term t_kind{};
   t_kind.column = kColRecordKind;
@@ -1388,21 +1388,21 @@ bool hashimyei_catalog_store_t::ledger_contains_(std::string_view artifact_sha25
   t_kind.op = IDYDB_FILTER_OP_EQ;
   t_kind.value.s = cuwacunu::hero::schema::kRecordKindLEDGER;
   idydb_filter_term t_sha{};
-  t_sha.column = kColArtifactSha256;
+  t_sha.column = kColReportFragmentSha256;
   t_sha.type = IDYDB_CHAR;
   t_sha.op = IDYDB_FILTER_OP_EQ;
-  const std::string sha(artifact_sha256);
+  const std::string sha(report_fragment_sha256);
   t_sha.value.s = sha.c_str();
   return db::query::exists_row(&db_, {t_kind, t_sha}, out_exists, error);
 }
 
-bool hashimyei_catalog_store_t::append_ledger_(std::string_view artifact_sha256,
+bool hashimyei_catalog_store_t::append_ledger_(std::string_view report_fragment_sha256,
                                                std::string_view path,
                                                std::string* error) {
   return append_row_(cuwacunu::hero::schema::kRecordKindLEDGER,
-                     std::string(artifact_sha256), "", "", "", "",
+                     std::string(report_fragment_sha256), "", "", "", "",
                      "ingest_version", static_cast<double>(options_.ingest_version),
-                     "", artifact_sha256, path, std::to_string(now_ms_utc()), "{}",
+                     "", report_fragment_sha256, path, std::to_string(now_ms_utc()), "{}",
                      error);
 }
 
@@ -1549,7 +1549,7 @@ bool hashimyei_catalog_store_t::ingest_run_manifest_file_(const std::filesystem:
     }
     for (const auto& d : m.dependency_files) {
       const std::string rec_id = m.run_id + "|" + d.canonical_path;
-      if (!append_row_(cuwacunu::hero::schema::kRecordKindPROVENANCE, rec_id, m.run_id, "", "", m.schema,
+      if (!append_row_(cuwacunu::hero::schema::kRecordKindRUN_DEPENDENCY, rec_id, m.run_id, "", "", m.schema,
                        d.canonical_path,
                        std::numeric_limits<double>::quiet_NaN(), d.sha256_hex, "",
                        cp.string(), std::to_string(m.started_at_ms), "{}", error)) {
@@ -1579,10 +1579,10 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
     return false;
   }
 
-  std::string artifact_sha;
-  if (!sha256_hex_file(path, &artifact_sha, error)) return false;
+  std::string report_fragment_sha;
+  if (!sha256_hex_file(path, &report_fragment_sha, error)) return false;
   bool already = false;
-  if (!ledger_contains_(artifact_sha, &already, error)) return false;
+  if (!ledger_contains_(report_fragment_sha, &already, error)) return false;
   if (already) return true;
 
   std::filesystem::path cp = path;
@@ -1597,13 +1597,13 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
                    manifest.component_identity.name, manifest.schema,
                    manifest.tsi_type,
                    std::numeric_limits<double>::quiet_NaN(), manifest.status,
-                   artifact_sha, cp.string(), std::to_string(ts_ms), payload,
+                   report_fragment_sha, cp.string(), std::to_string(ts_ms), payload,
                    error)) {
     return false;
   }
 
   const std::string prov_id = component_id + "|dsl";
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_PROVENANCE, prov_id, "", manifest.canonical_path,
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_DEPENDENCY, prov_id, "", manifest.canonical_path,
                    manifest.component_identity.name, manifest.schema,
                    manifest.dsl_canonical_path,
                    std::numeric_limits<double>::quiet_NaN(),
@@ -1661,11 +1661,11 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
     }
   }
 
-  return append_ledger_(artifact_sha, cp.string(), error);
+  return append_ledger_(report_fragment_sha, cp.string(), error);
 }
 
 bool hashimyei_catalog_store_t::parse_and_append_metrics_(
-    std::string_view artifact_id,
+    std::string_view report_fragment_id,
     const std::unordered_map<std::string, std::string>& kv, std::string* error) {
   clear_error(error);
   for (const auto& [k, v] : kv) {
@@ -1678,15 +1678,15 @@ bool hashimyei_catalog_store_t::parse_and_append_metrics_(
 
     double num = 0.0;
     if (parse_double_token(v, &num)) {
-      const std::string rec_id = std::string(artifact_id) + "|num|" + k;
+      const std::string rec_id = std::string(report_fragment_id) + "|num|" + k;
       if (!append_row_(cuwacunu::hero::schema::kRecordKindMETRIC_NUM, rec_id, "", "", "", "", k, num, "",
-                       artifact_id, "", std::to_string(now_ms_utc()), "{}", error)) {
+                       report_fragment_id, "", std::to_string(now_ms_utc()), "{}", error)) {
         return false;
       }
     } else {
-      const std::string rec_id = std::string(artifact_id) + "|txt|" + k;
+      const std::string rec_id = std::string(report_fragment_id) + "|txt|" + k;
       if (!append_row_(cuwacunu::hero::schema::kRecordKindMETRIC_TXT, rec_id, "", "", "", "", k,
-                       std::numeric_limits<double>::quiet_NaN(), v, artifact_id, "",
+                       std::numeric_limits<double>::quiet_NaN(), v, report_fragment_id, "",
                        std::to_string(now_ms_utc()), "{}", error)) {
         return false;
       }
@@ -1695,11 +1695,9 @@ bool hashimyei_catalog_store_t::parse_and_append_metrics_(
   return true;
 }
 
-bool hashimyei_catalog_store_t::ingest_artifact_file_(const std::filesystem::path& path,
-                                                      bool backfill_legacy,
-                                                      std::string* error) {
+bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
+    const std::filesystem::path& path, std::string* error) {
   clear_error(error);
-  (void)backfill_legacy;
   if (!std::filesystem::exists(path) || !std::filesystem::is_regular_file(path)) {
     return true;
   }
@@ -1715,21 +1713,21 @@ bool hashimyei_catalog_store_t::ingest_artifact_file_(const std::filesystem::pat
   const std::string schema = kv["schema"];
   if (!is_known_schema(schema)) return true;
 
-  std::string artifact_sha;
-  if (!sha256_hex_file(path, &artifact_sha, error)) return false;
+  std::string report_fragment_sha;
+  if (!sha256_hex_file(path, &report_fragment_sha, error)) return false;
   bool already = false;
-  if (!ledger_contains_(artifact_sha, &already, error)) return false;
+  if (!ledger_contains_(report_fragment_sha, &already, error)) return false;
   if (already) return true;
 
   std::string canonical_path = kv["canonical_base"];
   if (canonical_path.empty()) canonical_path = kv["source_label"];
-  if (canonical_path.empty()) canonical_path = canonical_path_from_artifact_path(path);
+  if (canonical_path.empty()) canonical_path = canonical_path_from_report_fragment_path(path);
 
   std::string hashimyei = kv["hashimyei"];
   if (hashimyei.empty()) hashimyei = maybe_hashimyei_from_canonical(canonical_path);
 
   std::string contract_hash = kv["contract_hash"];
-  if (contract_hash.empty()) contract_hash = contract_hash_from_artifact_path(path);
+  if (contract_hash.empty()) contract_hash = contract_hash_from_report_fragment_path(path);
 
   std::uint64_t ts_ms = now_ms_utc();
   {
@@ -1762,13 +1760,13 @@ bool hashimyei_catalog_store_t::ingest_artifact_file_(const std::filesystem::pat
   std::filesystem::path cp = path;
   if (const auto can = canonicalized(path); can.has_value()) cp = *can;
 
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindARTIFACT, artifact_sha, run_id, canonical_path, hashimyei, schema,
-                   "", std::numeric_limits<double>::quiet_NaN(), "", artifact_sha,
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT, report_fragment_sha, run_id, canonical_path, hashimyei, schema,
+                   "", std::numeric_limits<double>::quiet_NaN(), "", report_fragment_sha,
                    cp.string(), std::to_string(ts_ms), payload, error)) {
     return false;
   }
-  if (!parse_and_append_metrics_(artifact_sha, kv, error)) return false;
-  return append_ledger_(artifact_sha, cp.string(), error);
+  if (!parse_and_append_metrics_(report_fragment_sha, kv, error)) return false;
+  return append_ledger_(report_fragment_sha, cp.string(), error);
 }
 
 bool hashimyei_catalog_store_t::acquire_ingest_lock_(
@@ -1837,9 +1835,8 @@ void hashimyei_catalog_store_t::release_ingest_lock_(ingest_lock_t* lock) {
   lock->held = false;
 }
 
-bool hashimyei_catalog_store_t::ingest_filesystem(const std::filesystem::path& store_root,
-                                                  bool backfill_legacy,
-                                                  std::string* error) {
+bool hashimyei_catalog_store_t::ingest_filesystem(
+    const std::filesystem::path& store_root, std::string* error) {
   clear_error(error);
   if (!db_) {
     set_error(error, "catalog is not open");
@@ -1887,17 +1884,16 @@ bool hashimyei_catalog_store_t::ingest_filesystem(const std::filesystem::path& s
     if (p.filename() == "run.manifest.v1.kv") {
       release_lock();
       set_error(error,
-                "legacy run manifest filename run.manifest.v1.kv is not supported");
+                "unsupported v1 run manifest filename run.manifest.v1.kv");
       return false;
     }
     if (p.filename() == "component.manifest.v1.kv") {
       release_lock();
       set_error(
           error,
-          "legacy component manifest filename component.manifest.v1.kv is not supported");
+          "unsupported v1 component manifest filename component.manifest.v1.kv");
       return false;
     }
-    if (p.filename() == "run.manifest.v1.kv") continue;
     if (p.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) {
       if (!ingest_run_manifest_file_(p, error)) {
         release_lock();
@@ -1912,7 +1908,7 @@ bool hashimyei_catalog_store_t::ingest_filesystem(const std::filesystem::path& s
       }
       continue;
     }
-    if (!ingest_artifact_file_(p, backfill_legacy, error)) {
+    if (!ingest_report_fragment_file_(p, error)) {
       release_lock();
       return false;
     }
@@ -1930,17 +1926,17 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
   }
 
   runs_by_id_.clear();
-  artifacts_by_id_.clear();
-  latest_artifact_by_key_.clear();
-  metrics_num_by_artifact_.clear();
-  metrics_txt_by_artifact_.clear();
+  report_fragments_by_id_.clear();
+  latest_report_fragment_by_key_.clear();
+  metrics_num_by_report_fragment_.clear();
+  metrics_txt_by_report_fragment_.clear();
   components_by_id_.clear();
   latest_component_by_canonical_.clear();
   latest_component_by_hashimyei_.clear();
   active_hashimyei_by_key_.clear();
   active_component_by_key_.clear();
   active_component_by_canonical_.clear();
-  provenance_by_run_id_.clear();
+  dependency_files_by_run_id_.clear();
   kind_counters_.clear();
   hash_identity_by_kind_sha_.clear();
   component_ids_by_binding_hashimyei_.clear();
@@ -1964,7 +1960,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
           hash_identity_by_kind_sha_.emplace(key, identity);
           return;
         }
-        // Keep the smallest ordinal when conflicting legacy aliases are observed.
+        // Keep the smallest ordinal when conflicting aliases are observed.
         if (identity.ordinal < it->second.ordinal) {
           it->second = identity;
         }
@@ -2067,12 +2063,12 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
-    if (kind == cuwacunu::hero::schema::kRecordKindPROVENANCE) {
+    if (kind == cuwacunu::hero::schema::kRecordKindRUN_DEPENDENCY) {
       const std::string run_id = as_text_or_empty(&db_, kColRunId, row);
       const std::string dep_path = as_text_or_empty(&db_, kColMetricKey, row);
       const std::string dep_sha = as_text_or_empty(&db_, kColMetricTxt, row);
       if (!run_id.empty() && !dep_path.empty()) {
-        provenance_by_run_id_[run_id].push_back({dep_path, dep_sha});
+        dependency_files_by_run_id_[run_id].push_back({dep_path, dep_sha});
       }
       continue;
     }
@@ -2081,7 +2077,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       component_state_t component{};
       component.component_id = as_text_or_empty(&db_, kColRecordId, row);
       component.manifest_path = as_text_or_empty(&db_, kColPath, row);
-      component.artifact_sha256 = as_text_or_empty(&db_, kColArtifactSha256, row);
+      component.report_fragment_sha256 = as_text_or_empty(&db_, kColReportFragmentSha256, row);
       (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &component.ts_ms);
 
       component.manifest.schema = as_text_or_empty(&db_, kColSchema, row);
@@ -2272,31 +2268,31 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
-    if (kind == cuwacunu::hero::schema::kRecordKindARTIFACT) {
-      artifact_entry_t e{};
-      e.artifact_id = as_text_or_empty(&db_, kColRecordId, row);
+    if (kind == cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT) {
+      report_fragment_entry_t e{};
+      e.report_fragment_id = as_text_or_empty(&db_, kColRecordId, row);
       e.run_id = as_text_or_empty(&db_, kColRunId, row);
       e.canonical_path = as_text_or_empty(&db_, kColCanonicalPath, row);
       e.hashimyei = as_text_or_empty(&db_, kColHashimyei, row);
       e.schema = as_text_or_empty(&db_, kColSchema, row);
-      e.artifact_sha256 = as_text_or_empty(&db_, kColArtifactSha256, row);
+      e.report_fragment_sha256 = as_text_or_empty(&db_, kColReportFragmentSha256, row);
       e.path = as_text_or_empty(&db_, kColPath, row);
       e.payload_json = as_text_or_empty(&db_, kColPayload, row);
       (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &e.ts_ms);
 
-      if (!e.artifact_id.empty()) {
-        artifacts_by_id_[e.artifact_id] = e;
+      if (!e.report_fragment_id.empty()) {
+        report_fragments_by_id_[e.report_fragment_id] = e;
         const std::string key = join_key(e.canonical_path, e.schema);
-        auto it = latest_artifact_by_key_.find(key);
-        if (it == latest_artifact_by_key_.end()) {
-          latest_artifact_by_key_[key] = e.artifact_id;
+        auto it = latest_report_fragment_by_key_.find(key);
+        if (it == latest_report_fragment_by_key_.end()) {
+          latest_report_fragment_by_key_[key] = e.report_fragment_id;
         } else {
-          const auto old_it = artifacts_by_id_.find(it->second);
-          if (old_it == artifacts_by_id_.end() ||
+          const auto old_it = report_fragments_by_id_.find(it->second);
+          if (old_it == report_fragments_by_id_.end() ||
               e.ts_ms > old_it->second.ts_ms ||
               (e.ts_ms == old_it->second.ts_ms &&
-               e.artifact_id > old_it->second.artifact_id)) {
-            it->second = e.artifact_id;
+               e.report_fragment_id > old_it->second.report_fragment_id)) {
+            it->second = e.report_fragment_id;
           }
         }
       }
@@ -2304,21 +2300,21 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
     }
 
     if (kind == cuwacunu::hero::schema::kRecordKindMETRIC_NUM) {
-      const std::string artifact_id = as_text_or_empty(&db_, kColArtifactSha256, row);
+      const std::string report_fragment_id = as_text_or_empty(&db_, kColReportFragmentSha256, row);
       const std::string key = as_text_or_empty(&db_, kColMetricKey, row);
       const auto num = as_numeric_or_null(&db_, kColMetricNum, row);
-      if (!artifact_id.empty() && !key.empty() && num.has_value()) {
-        metrics_num_by_artifact_[artifact_id].push_back({key, *num});
+      if (!report_fragment_id.empty() && !key.empty() && num.has_value()) {
+        metrics_num_by_report_fragment_[report_fragment_id].push_back({key, *num});
       }
       continue;
     }
 
     if (kind == cuwacunu::hero::schema::kRecordKindMETRIC_TXT) {
-      const std::string artifact_id = as_text_or_empty(&db_, kColArtifactSha256, row);
+      const std::string report_fragment_id = as_text_or_empty(&db_, kColReportFragmentSha256, row);
       const std::string key = as_text_or_empty(&db_, kColMetricKey, row);
       const std::string val = as_text_or_empty(&db_, kColMetricTxt, row);
-      if (!artifact_id.empty() && !key.empty()) {
-        metrics_txt_by_artifact_[artifact_id].push_back({key, val});
+      if (!report_fragment_id.empty() && !key.empty()) {
+        metrics_txt_by_report_fragment_[report_fragment_id].push_back({key, val});
       }
       continue;
     }
@@ -2413,94 +2409,94 @@ bool hashimyei_catalog_store_t::list_runs_by_binding(
   return true;
 }
 
-bool hashimyei_catalog_store_t::latest_artifact(std::string_view canonical_path,
+bool hashimyei_catalog_store_t::latest_report_fragment(std::string_view canonical_path,
                                                 std::string_view schema,
-                                                artifact_entry_t* out,
+                                                report_fragment_entry_t* out,
                                                 std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "artifact output pointer is null");
+    set_error(error, "report_fragment output pointer is null");
     return false;
   }
   const std::string key = join_key(canonical_path, schema);
-  const auto it = latest_artifact_by_key_.find(key);
-  if (it == latest_artifact_by_key_.end()) {
-    set_error(error, "latest artifact not found for key: " + key);
+  const auto it = latest_report_fragment_by_key_.find(key);
+  if (it == latest_report_fragment_by_key_.end()) {
+    set_error(error, "latest report_fragment not found for key: " + key);
     return false;
   }
-  const auto it_art = artifacts_by_id_.find(it->second);
-  if (it_art == artifacts_by_id_.end()) {
-    set_error(error, "catalog inconsistency: latest artifact id missing");
+  const auto it_art = report_fragments_by_id_.find(it->second);
+  if (it_art == report_fragments_by_id_.end()) {
+    set_error(error, "catalog inconsistency: latest report_fragment id missing");
     return false;
   }
   *out = it_art->second;
   return true;
 }
 
-bool hashimyei_catalog_store_t::get_artifact(std::string_view artifact_id,
-                                             artifact_entry_t* out,
+bool hashimyei_catalog_store_t::get_report_fragment(std::string_view report_fragment_id,
+                                             report_fragment_entry_t* out,
                                              std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "artifact output pointer is null");
+    set_error(error, "report_fragment output pointer is null");
     return false;
   }
-  const auto it = artifacts_by_id_.find(std::string(artifact_id));
-  if (it == artifacts_by_id_.end()) {
-    set_error(error, "artifact not found: " + std::string(artifact_id));
+  const auto it = report_fragments_by_id_.find(std::string(report_fragment_id));
+  if (it == report_fragments_by_id_.end()) {
+    set_error(error, "report_fragment not found: " + std::string(report_fragment_id));
     return false;
   }
   *out = it->second;
   return true;
 }
 
-bool hashimyei_catalog_store_t::artifact_metrics(
-    std::string_view artifact_id,
+bool hashimyei_catalog_store_t::report_fragment_metrics(
+    std::string_view report_fragment_id,
     std::vector<std::pair<std::string, double>>* out_numeric,
     std::vector<std::pair<std::string, std::string>>* out_text,
     std::string* error) const {
   clear_error(error);
   if (!out_numeric || !out_text) {
-    set_error(error, "artifact metrics output pointer is null");
+    set_error(error, "report_fragment metrics output pointer is null");
     return false;
   }
   out_numeric->clear();
   out_text->clear();
 
-  const std::string id(artifact_id);
-  const auto it_num = metrics_num_by_artifact_.find(id);
-  if (it_num != metrics_num_by_artifact_.end()) *out_numeric = it_num->second;
-  const auto it_txt = metrics_txt_by_artifact_.find(id);
-  if (it_txt != metrics_txt_by_artifact_.end()) *out_text = it_txt->second;
+  const std::string id(report_fragment_id);
+  const auto it_num = metrics_num_by_report_fragment_.find(id);
+  if (it_num != metrics_num_by_report_fragment_.end()) *out_numeric = it_num->second;
+  const auto it_txt = metrics_txt_by_report_fragment_.find(id);
+  if (it_txt != metrics_txt_by_report_fragment_.end()) *out_text = it_txt->second;
   return true;
 }
 
-bool hashimyei_catalog_store_t::list_artifacts(
+bool hashimyei_catalog_store_t::list_report_fragments(
     std::string_view canonical_path, std::string_view schema, std::size_t limit,
-    std::size_t offset, bool newest_first, std::vector<artifact_entry_t>* out,
+    std::size_t offset, bool newest_first, std::vector<report_fragment_entry_t>* out,
     std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "artifact list output pointer is null");
+    set_error(error, "report_fragment list output pointer is null");
     return false;
   }
   out->clear();
 
   const std::string cp(canonical_path);
   const std::string sc(schema);
-  for (const auto& [_, art] : artifacts_by_id_) {
+  for (const auto& [_, art] : report_fragments_by_id_) {
     if (!cp.empty() && art.canonical_path != cp) continue;
     if (!sc.empty() && art.schema != sc) continue;
     out->push_back(art);
   }
 
   std::sort(out->begin(), out->end(),
-            [newest_first](const artifact_entry_t& a, const artifact_entry_t& b) {
+            [newest_first](const report_fragment_entry_t& a, const report_fragment_entry_t& b) {
               if (a.ts_ms != b.ts_ms) {
                 return newest_first ? (a.ts_ms > b.ts_ms) : (a.ts_ms < b.ts_ms);
               }
-              return newest_first ? (a.artifact_id > b.artifact_id)
-                                  : (a.artifact_id < b.artifact_id);
+              return newest_first ? (a.report_fragment_id > b.report_fragment_id)
+                                  : (a.report_fragment_id < b.report_fragment_id);
             });
 
   const std::size_t off = std::min(offset, out->size());
@@ -2805,14 +2801,14 @@ bool hashimyei_catalog_store_t::register_component_manifest(
   if (!validate_component_manifest(manifest, error)) return false;
 
   const std::string payload = component_manifest_payload(manifest);
-  std::string artifact_sha;
-  if (!sha256_hex_bytes(payload, &artifact_sha)) {
+  std::string report_fragment_sha;
+  if (!sha256_hex_bytes(payload, &report_fragment_sha)) {
     set_error(error, "failed to compute component manifest payload sha256");
     return false;
   }
 
   bool already = false;
-  if (!ledger_contains_(artifact_sha, &already, error)) return false;
+  if (!ledger_contains_(report_fragment_sha, &already, error)) return false;
 
   const std::string component_id = compute_component_manifest_id(manifest);
   if (out_component_id) *out_component_id = component_id;
@@ -2832,12 +2828,12 @@ bool hashimyei_catalog_store_t::register_component_manifest(
                    manifest.component_identity.name, manifest.schema,
                    manifest.tsi_type,
                    std::numeric_limits<double>::quiet_NaN(), manifest.status,
-                   artifact_sha, virtual_manifest_path, std::to_string(ts_ms),
+                   report_fragment_sha, virtual_manifest_path, std::to_string(ts_ms),
                    payload, error)) {
     return false;
   }
 
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_PROVENANCE, component_id + "|dsl", "",
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_DEPENDENCY, component_id + "|dsl", "",
                    manifest.canonical_path, manifest.component_identity.name,
                    manifest.schema,
                    manifest.dsl_canonical_path,
@@ -2897,62 +2893,62 @@ bool hashimyei_catalog_store_t::register_component_manifest(
     }
   }
 
-  if (!append_ledger_(artifact_sha, virtual_manifest_path, error)) return false;
+  if (!append_ledger_(report_fragment_sha, virtual_manifest_path, error)) return false;
   if (!rebuild_indexes(error)) return false;
 
   if (out_inserted) *out_inserted = true;
   return true;
 }
 
-bool hashimyei_catalog_store_t::performance_snapshot(
+bool hashimyei_catalog_store_t::report_fragment_snapshot(
     std::string_view canonical_path, std::string_view run_id,
-    performance_snapshot_t* out, std::string* error) const {
+    report_fragment_snapshot_t* out, std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "performance snapshot output pointer is null");
+    set_error(error, "report_fragment snapshot output pointer is null");
     return false;
   }
-  *out = performance_snapshot_t{};
+  *out = report_fragment_snapshot_t{};
 
   const std::string cp(canonical_path);
-  artifact_entry_t best{};
+  report_fragment_entry_t best{};
   bool found = false;
-  for (const auto& [_, art] : artifacts_by_id_) {
+  for (const auto& [_, art] : report_fragments_by_id_) {
     if (art.canonical_path != cp) continue;
     if (!run_id.empty() && art.run_id != run_id) continue;
     if (!found || art.ts_ms > best.ts_ms ||
-        (art.ts_ms == best.ts_ms && art.artifact_id > best.artifact_id)) {
+        (art.ts_ms == best.ts_ms && art.report_fragment_id > best.report_fragment_id)) {
       best = art;
       found = true;
     }
   }
   if (!found) {
-    set_error(error, "performance snapshot artifact not found");
+    set_error(error, "report_fragment snapshot not found");
     return false;
   }
 
-  out->artifact = best;
-  (void)artifact_metrics(best.artifact_id, &out->numeric_metrics, &out->text_metrics,
+  out->report_fragment = best;
+  (void)report_fragment_metrics(best.report_fragment_id, &out->numeric_metrics, &out->text_metrics,
                          nullptr);
   return true;
 }
 
-bool hashimyei_catalog_store_t::provenance_trace(
-    std::string_view artifact_id, std::vector<dependency_file_t>* out,
+bool hashimyei_catalog_store_t::dependency_trace(
+    std::string_view report_fragment_id, std::vector<dependency_file_t>* out,
     std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "provenance output pointer is null");
+    set_error(error, "dependency output pointer is null");
     return false;
   }
   out->clear();
-  const auto it_art = artifacts_by_id_.find(std::string(artifact_id));
-  if (it_art == artifacts_by_id_.end()) {
-    set_error(error, "artifact not found: " + std::string(artifact_id));
+  const auto it_art = report_fragments_by_id_.find(std::string(report_fragment_id));
+  if (it_art == report_fragments_by_id_.end()) {
+    set_error(error, "report_fragment not found: " + std::string(report_fragment_id));
     return false;
   }
-  const auto it = provenance_by_run_id_.find(it_art->second.run_id);
-  if (it == provenance_by_run_id_.end()) return true;
+  const auto it = dependency_files_by_run_id_.find(it_art->second.run_id);
+  if (it == dependency_files_by_run_id_.end()) return true;
   *out = it->second;
   return true;
 }

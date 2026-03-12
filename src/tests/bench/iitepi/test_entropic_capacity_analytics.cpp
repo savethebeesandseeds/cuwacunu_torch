@@ -154,7 +154,7 @@ int main() try {
 
     const auto source_file = dir / "data_analytics.latest.lls";
     const auto network_file = dir / "weights.init.pt.network_analytics.lls";
-    const auto out_file = dir / "weights.init.pt.entropic_capacity.kv";
+    const auto out_file = dir / "weights.init.pt.entropic_capacity.lls";
 
     {
       std::ofstream out(source_file, std::ios::binary | std::ios::trunc);
