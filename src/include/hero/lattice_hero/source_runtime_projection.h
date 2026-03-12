@@ -37,9 +37,8 @@ struct source_runtime_projection_input_t {
 };
 
 struct source_runtime_projection_fragment_t {
-  std::vector<std::pair<std::string, double>> axis_num{};
-  std::vector<std::pair<std::string, std::string>> axis_txt{};
-  std::vector<std::pair<std::string, std::string>> tags{};
+  std::vector<std::pair<std::string, double>> projection_num{};
+  std::vector<std::pair<std::string, std::string>> projection_txt{};
   std::string projection_lls{};
 };
 
@@ -274,7 +273,7 @@ namespace source_runtime_projection_detail {
           ? 0.0
           : (static_cast<double>(active_count) / static_cast<double>(total_count));
 
-  out->axis_num = {
+  out->projection_num = {
       {"source.runtime.request.from_ratio", request_from_ratio},
       {"source.runtime.request.to_ratio", request_to_ratio},
       {"source.runtime.request.span_ratio", request_span_ratio},
@@ -287,34 +286,32 @@ namespace source_runtime_projection_detail {
   };
 
   for (const auto& [interval, is_active] : interval_active) {
-    out->axis_num.emplace_back(
+    out->projection_num.emplace_back(
         "source.channel." + interval + ".active", is_active ? 1.0 : 0.0);
   }
 
-  out->axis_txt.emplace_back("source.runtime.symbol", symbol);
-  out->tags.emplace_back("source.runtime.range_basis", "effective_intersection");
-  out->tags.emplace_back(
+  out->projection_txt.emplace_back("source.runtime.symbol", symbol);
+  out->projection_txt.emplace_back("source.runtime.range_basis",
+                                   "effective_intersection");
+  out->projection_txt.emplace_back(
       "source.runtime.interval_semantics", "half_open_utc_day");
 
-  std::sort(out->axis_num.begin(), out->axis_num.end(),
+  std::sort(out->projection_num.begin(), out->projection_num.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+  std::sort(out->projection_txt.begin(), out->projection_txt.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
 
   std::ostringstream projection;
   projection << "# source.runtime.projection.v2\n";
   projection << "source.runtime.projection.schema=wave.source.runtime.projection.v2\n";
 
-  projection << "\n# section.axis_num\n";
-  for (const auto& [k, v] : out->axis_num) {
+  projection << "\n# section.projection_num\n";
+  for (const auto& [k, v] : out->projection_num) {
     projection << k << "=" << format_double(v) << "\n";
   }
 
-  projection << "\n# section.axis_txt\n";
-  for (const auto& [k, v] : out->axis_txt) {
-    projection << k << "=" << v << "\n";
-  }
-
-  projection << "\n# section.tags\n";
-  for (const auto& [k, v] : out->tags) {
+  projection << "\n# section.projection_txt\n";
+  for (const auto& [k, v] : out->projection_txt) {
     projection << k << "=" << v << "\n";
   }
 

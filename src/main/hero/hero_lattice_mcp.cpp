@@ -2526,15 +2526,14 @@ void write_jsonrpc_error(std::string_view id_json, int code,
 
 [[nodiscard]] std::string build_projection_lls_payload(
     const cuwacunu::hero::wave::wave_projection_t& projection) {
-  std::vector<std::pair<std::string, double>> axis_num = projection.axis_num;
-  std::vector<std::pair<std::string, std::string>> axis_txt = projection.axis_txt;
-  std::vector<std::pair<std::string, std::string>> tags = projection.tags;
+  std::vector<std::pair<std::string, double>> projection_num =
+      projection.projection_num;
+  std::vector<std::pair<std::string, std::string>> projection_txt =
+      projection.projection_txt;
 
-  std::sort(axis_num.begin(), axis_num.end(),
+  std::sort(projection_num.begin(), projection_num.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
-  std::sort(axis_txt.begin(), axis_txt.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
-  std::sort(tags.begin(), tags.end(),
+  std::sort(projection_txt.begin(), projection_txt.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
 
   std::ostringstream payload;
@@ -2543,18 +2542,13 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   payload << "projection_version=" << projection.projection_version << "\n";
   payload << "projector_build_id=" << projection.projector_build_id << "\n";
 
-  payload << "\n# section.axis_num\n";
-  for (const auto& [k, v] : axis_num) {
+  payload << "\n# section.projection_num\n";
+  for (const auto& [k, v] : projection_num) {
     payload << k << "=" << format_projection_double(v) << "\n";
   }
 
-  payload << "\n# section.axis_txt\n";
-  for (const auto& [k, v] : axis_txt) {
-    payload << k << "=" << v << "\n";
-  }
-
-  payload << "\n# section.tags\n";
-  for (const auto& [k, v] : tags) {
+  payload << "\n# section.projection_txt\n";
+  for (const auto& [k, v] : projection_txt) {
     payload << k << "=" << v << "\n";
   }
 
@@ -2625,22 +2619,23 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     }
     const auto& design_blob = contract_itself->vicreg_network_design;
 
-    out->axis_num.push_back({"mode_flags", static_cast<double>(wave->mode_flags)});
-    out->axis_num.push_back({"epochs", static_cast<double>(wave->epochs)});
-    out->axis_num.push_back({"batch_size", static_cast<double>(wave->batch_size)});
-    out->axis_num.push_back(
+    out->projection_num.push_back({"mode_flags", static_cast<double>(wave->mode_flags)});
+    out->projection_num.push_back({"epochs", static_cast<double>(wave->epochs)});
+    out->projection_num.push_back({"batch_size", static_cast<double>(wave->batch_size)});
+    out->projection_num.push_back(
         {"max_batches_per_epoch", static_cast<double>(wave->max_batches_per_epoch)});
-    out->axis_num.push_back(
+    out->projection_num.push_back(
         {"source_count", static_cast<double>(wave->sources.size())});
-    out->axis_num.push_back(
+    out->projection_num.push_back(
         {"wikimyei_count", static_cast<double>(wave->wikimyeis.size())});
-    out->axis_num.push_back({"probe_count", static_cast<double>(wave->probes.size())});
+    out->projection_num.push_back(
+        {"probe_count", static_cast<double>(wave->probes.size())});
 
     std::uint64_t workers_sum = 0;
     for (const auto& src : wave->sources) {
       workers_sum += src.workers;
     }
-    out->axis_num.push_back(
+    out->projection_num.push_back(
         {"source_workers_sum", static_cast<double>(workers_sum)});
 
     contract_component_stats_t component_stats{};
@@ -2650,28 +2645,29 @@ void write_jsonrpc_error(std::string_view id_json, int code,
                                           error)) {
       return false;
     }
-    out->axis_num.push_back(
+    out->projection_num.push_back(
         {"component_count_total",
          static_cast<double>(component_stats.component_count_total)});
-    out->axis_num.push_back(
+    out->projection_num.push_back(
         {"component_count_hashimyei",
          static_cast<double>(component_stats.component_count_hashimyei)});
-    out->axis_num.push_back(
+    out->projection_num.push_back(
         {"component_count_non_hashimyei",
          static_cast<double>(component_stats.component_count_non_hashimyei)});
     for (const auto& [tsi_type, count] : component_stats.component_count_by_tsi_type) {
-      out->axis_num.push_back(
+      out->projection_num.push_back(
           {"component_count_by_tsi_type." + tsi_type,
            static_cast<double>(count)});
     }
 
     auto obs = observation;
-    out->axis_num.push_back({"observation.channel_count",
-                             static_cast<double>(obs.count_channels())});
-    out->axis_num.push_back({"observation.max_seq_len",
-                             static_cast<double>(obs.max_sequence_length())});
-    out->axis_num.push_back({"observation.max_future_seq_len",
-                             static_cast<double>(obs.max_future_sequence_length())});
+    out->projection_num.push_back({"observation.channel_count",
+                                   static_cast<double>(obs.count_channels())});
+    out->projection_num.push_back({"observation.max_seq_len",
+                                   static_cast<double>(obs.max_sequence_length())});
+    out->projection_num.push_back(
+        {"observation.max_future_seq_len",
+         static_cast<double>(obs.max_future_sequence_length())});
 
     std::string join_policy = "none";
     double node_count = 0.0;
@@ -2682,30 +2678,27 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       node_count = static_cast<double>(design.nodes.size());
       export_count = static_cast<double>(design.exports.size());
     }
-    out->axis_num.push_back({"network.node_count", node_count});
-    out->axis_num.push_back({"network.export_count", export_count});
-    for (const auto& [k, v] : source_runtime_fragment.axis_num) {
-      out->axis_num.push_back({k, v});
+    out->projection_num.push_back({"network.node_count", node_count});
+    out->projection_num.push_back({"network.export_count", export_count});
+    for (const auto& [k, v] : source_runtime_fragment.projection_num) {
+      out->projection_num.push_back({k, v});
     }
 
-    out->axis_txt.push_back(
+    out->projection_txt.push_back(
         {"mode", cuwacunu::camahjucunu::canonical_iitepi_wave_mode(wave->mode_flags)});
-    out->axis_txt.push_back({"sampler", wave->sampler});
-    out->axis_txt.push_back({"network.join_policy", join_policy});
-    for (const auto& [k, v] : source_runtime_fragment.axis_txt) {
-      out->axis_txt.push_back({k, v});
+    out->projection_txt.push_back({"sampler", wave->sampler});
+    out->projection_txt.push_back({"network.join_policy", join_policy});
+    for (const auto& [k, v] : source_runtime_fragment.projection_txt) {
+      out->projection_txt.push_back({k, v});
     }
 
-    out->tags.push_back({"binding_id", profile.binding_id});
-    out->tags.push_back({"wave_id", profile.wave_id});
-    out->tags.push_back({"determinism_policy", profile.determinism_policy});
-    out->tags.push_back({"record_type", profile.record_type});
-    out->tags.push_back({"device", profile.device});
-    out->tags.push_back({"dtype", profile.dtype});
-    out->tags.push_back({"seed", profile.seed});
-    for (const auto& [k, v] : source_runtime_fragment.tags) {
-      out->tags.push_back({k, v});
-    }
+    out->projection_txt.push_back({"binding_id", profile.binding_id});
+    out->projection_txt.push_back({"wave_id", profile.wave_id});
+    out->projection_txt.push_back({"determinism_policy", profile.determinism_policy});
+    out->projection_txt.push_back({"record_type", profile.record_type});
+    out->projection_txt.push_back({"device", profile.device});
+    out->projection_txt.push_back({"dtype", profile.dtype});
+    out->projection_txt.push_back({"seed", profile.seed});
     out->projection_lls = build_projection_lls_payload(*out);
     return true;
   } catch (const std::exception& e) {

@@ -11,7 +11,7 @@ Hashimyei Hero and Lattice Hero catalogs.
 | `edge` | Relationships between entities (provenance, binding pointers). |
 | `event` | Time-ordered state transitions or control rows (trial, revision, header/counter). |
 | `metric_num` | Numeric scalar features and metrics. |
-| `metric_txt` | Text/tag features and metrics. |
+| `metric_txt` | Text scalar features and metrics. |
 | `blob` | Content-addressed payload-bearing rows (artifacts, ledgers). |
 
 ## Shared Vocabulary Source
@@ -41,9 +41,8 @@ Hashimyei Hero and Lattice Hero catalogs.
 | `metric_txt` | `metric_txt` |
 | `cell` | `entity` |
 | `trial` | `event` |
-| `axis_num` | `metric_num` |
-| `axis_txt` | `metric_txt` |
-| `tag` | `metric_txt` |
+| `projection_num` | `metric_num` |
+| `projection_txt` | `metric_txt` |
 | `projection_meta` | `event` |
 | `runtime_run` | `entity` |
 | `runtime_provenance` | `edge` |
@@ -61,11 +60,12 @@ Hashimyei Hero and Lattice Hero catalogs.
 
 ### Lattice catalog
 
-- File schema: `lattice.catalog.v1`
+- File schema: `lattice.catalog.v2`
 - Single wide row table with columns:
   `record_kind, record_id, cell_id, contract_hash, wave_hash, profile_id,
   execution_profile_json, state_txt, metric_num, text_a, text_b, projection_version,
-  ts_ms, payload_json, axis_key, axis_num, axis_txt, tag_key, tag_value,
+  ts_ms, payload_json, projection_key, projection_num, projection_txt,
+  projection_key_aux, projection_txt_aux,
   started_at_ms, finished_at_ms, ok_txt, total_steps, board_hash, run_id`.
 - `projection_meta.payload_json` stores canonical projection payload as
   latent-lineage-state text (`projection_lls`).
@@ -141,7 +141,7 @@ Key/index plan:
 | Column | Type | Notes |
 | --- | --- | --- |
 | `metric_id` | text | Primary key. |
-| `metric_kind` | text | `metric_num/metric_txt/axis_num/axis_txt/tag/...` |
+| `metric_kind` | text | `metric_num/metric_txt/projection_num/projection_txt/...` |
 | `entity_id` | text | Owning entity id. |
 | `owner_scope` | text | `hashimyei` or `lattice`. |
 | `metric_key` | text | Sparse dimension key. |

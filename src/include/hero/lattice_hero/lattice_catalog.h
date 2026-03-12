@@ -63,27 +63,25 @@ struct wave_cell_t {
   std::size_t trial_count{0};
   std::string last_trial_id{};
   wave_artifact_link_t artifact_link{};
-  std::uint32_t projection_version{1};
+  std::uint32_t projection_version{2};
   std::uint64_t created_at_ms{0};
   std::uint64_t updated_at_ms{0};
 };
 
 struct wave_projection_t {
-  std::uint32_t projection_version{1};
-  std::string projector_build_id{"wave.projector.v1"};
+  std::uint32_t projection_version{2};
+  std::string projector_build_id{"wave.projector.v2"};
   std::string projection_lls{};
-  std::vector<std::pair<std::string, double>> axis_num{};
-  std::vector<std::pair<std::string, std::string>> axis_txt{};
-  std::vector<std::pair<std::string, std::string>> tags{};
+  std::vector<std::pair<std::string, double>> projection_num{};
+  std::vector<std::pair<std::string, std::string>> projection_txt{};
 };
 
 struct matrix_query_t {
   std::string contract_hash{};
   std::string wave_hash{};
   std::string state_snapshot_id{};
-  std::vector<std::pair<std::string, double>> axis_num_eq{};
-  std::vector<std::pair<std::string, std::string>> axis_txt_eq{};
-  std::vector<std::pair<std::string, std::string>> tag_eq{};
+  std::vector<std::pair<std::string, double>> projection_num_eq{};
+  std::vector<std::pair<std::string, std::string>> projection_txt_eq{};
   std::size_t limit{64};
   std::size_t offset{0};
   bool newest_first{true};
@@ -138,7 +136,7 @@ class lattice_catalog_store_t {
     std::filesystem::path catalog_path{};
     std::string passphrase{};
     bool encrypted{true};
-    std::uint32_t projection_version{1};
+    std::uint32_t projection_version{2};
   };
 
   lattice_catalog_store_t() = default;
@@ -210,11 +208,11 @@ class lattice_catalog_store_t {
                                  std::string_view projection_version,
                                  std::string_view ts_ms,
                                  std::string_view payload_json,
-                                 std::string_view axis_key,
-                                 double axis_num,
-                                 std::string_view axis_txt,
-                                 std::string_view tag_key,
-                                 std::string_view tag_value,
+                                 std::string_view projection_key,
+                                 double projection_num,
+                                 std::string_view projection_txt,
+                                 std::string_view projection_key_aux,
+                                 std::string_view projection_txt_aux,
                                  std::string_view started_at_ms,
                                  std::string_view finished_at_ms,
                                  std::string_view ok_txt,
@@ -257,11 +255,11 @@ class lattice_catalog_store_t {
   static constexpr idydb_column_row_sizing kColProjectionVersion = 12;
   static constexpr idydb_column_row_sizing kColTsMs = 13;
   static constexpr idydb_column_row_sizing kColPayload = 14;
-  static constexpr idydb_column_row_sizing kColAxisKey = 15;
-  static constexpr idydb_column_row_sizing kColAxisNum = 16;
-  static constexpr idydb_column_row_sizing kColAxisTxt = 17;
-  static constexpr idydb_column_row_sizing kColTagKey = 18;
-  static constexpr idydb_column_row_sizing kColTagValue = 19;
+  static constexpr idydb_column_row_sizing kColProjectionKey = 15;
+  static constexpr idydb_column_row_sizing kColProjectionNum = 16;
+  static constexpr idydb_column_row_sizing kColProjectionTxt = 17;
+  static constexpr idydb_column_row_sizing kColProjectionKeyAux = 18;
+  static constexpr idydb_column_row_sizing kColProjectionTxtAux = 19;
   static constexpr idydb_column_row_sizing kColStartedAtMs = 20;
   static constexpr idydb_column_row_sizing kColFinishedAtMs = 21;
   static constexpr idydb_column_row_sizing kColOkTxt = 22;
@@ -277,13 +275,10 @@ class lattice_catalog_store_t {
   std::unordered_map<std::string, std::vector<wave_trial_t>> trials_by_cell_{};
   std::unordered_map<std::string, wave_artifact_link_t> artifact_by_trial_id_{};
   std::unordered_map<std::string, std::unordered_map<std::string, double>>
-      axis_num_by_cell_{};
+      projection_num_by_cell_{};
   std::unordered_map<std::string,
                      std::unordered_map<std::string, std::string>>
-      axis_txt_by_cell_{};
-  std::unordered_map<std::string,
-                     std::unordered_map<std::string, std::string>>
-      tags_by_cell_{};
+      projection_txt_by_cell_{};
   std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>
       runtime_runs_by_id_{};
   std::unordered_map<std::string, cuwacunu::hero::hashimyei::artifact_entry_t>

@@ -157,15 +157,14 @@ namespace {
 
 [[nodiscard]] std::string build_projection_lls_payload(
     const wave_projection_t& projection) {
-  std::vector<std::pair<std::string, double>> axis_num = projection.axis_num;
-  std::vector<std::pair<std::string, std::string>> axis_txt = projection.axis_txt;
-  std::vector<std::pair<std::string, std::string>> tags = projection.tags;
+  std::vector<std::pair<std::string, double>> projection_num =
+      projection.projection_num;
+  std::vector<std::pair<std::string, std::string>> projection_txt =
+      projection.projection_txt;
 
-  std::sort(axis_num.begin(), axis_num.end(),
+  std::sort(projection_num.begin(), projection_num.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
-  std::sort(axis_txt.begin(), axis_txt.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
-  std::sort(tags.begin(), tags.end(),
+  std::sort(projection_txt.begin(), projection_txt.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
 
   std::ostringstream payload;
@@ -174,18 +173,13 @@ namespace {
   payload << "projection_version=" << projection.projection_version << "\n";
   payload << "projector_build_id=" << projection.projector_build_id << "\n";
 
-  payload << "\n# section.axis_num\n";
-  for (const auto& [k, v] : axis_num) {
+  payload << "\n# section.projection_num\n";
+  for (const auto& [k, v] : projection_num) {
     payload << k << "=" << format_projection_double(v) << "\n";
   }
 
-  payload << "\n# section.axis_txt\n";
-  for (const auto& [k, v] : axis_txt) {
-    payload << k << "=" << v << "\n";
-  }
-
-  payload << "\n# section.tags\n";
-  for (const auto& [k, v] : tags) {
+  payload << "\n# section.projection_txt\n";
+  for (const auto& [k, v] : projection_txt) {
     payload << k << "=" << v << "\n";
   }
 
@@ -1042,7 +1036,7 @@ bool lattice_catalog_store_t::open(const options_t& options, std::string* error)
     if (rc == IDYDB_BUSY) {
       detail += "; catalog lock is held by another process";
     }
-    set_error(error, "cannot open wave catalog: " + detail);
+    set_error(error, "cannot open lattice catalog: " + detail);
     if (db_) {
       (void)idydb_close(&db_);
       db_ = nullptr;
@@ -1072,9 +1066,8 @@ bool lattice_catalog_store_t::close(std::string* error) {
   cell_id_by_coord_profile_.clear();
   trials_by_cell_.clear();
   artifact_by_trial_id_.clear();
-  axis_num_by_cell_.clear();
-  axis_txt_by_cell_.clear();
-  tags_by_cell_.clear();
+  projection_num_by_cell_.clear();
+  projection_txt_by_cell_.clear();
   runtime_runs_by_id_.clear();
   runtime_artifacts_by_id_.clear();
   runtime_latest_artifact_by_key_.clear();
@@ -1104,12 +1097,36 @@ bool lattice_catalog_store_t::ensure_catalog_header_(std::string* error) {
 
   bool exists = false;
   if (!db::query::exists_row(&db_, {t_kind, t_id}, &exists, error)) return false;
-  if (exists) return true;
+  if (exists) {
+    const idydb_column_row_sizing next = idydb_column_next_row(&db_, kColRecordKind);
+    for (idydb_column_row_sizing row = 1; row < next; ++row) {
+      const std::string row_kind = as_text_or_empty(&db_, kColRecordKind, row);
+      const std::string row_id = as_text_or_empty(&db_, kColRecordId, row);
+      if (row_kind != cuwacunu::hero::schema::kRecordKindHEADER ||
+          row_id != "catalog_schema_version") {
+        continue;
+      }
+      const std::string schema =
+          trim_ascii(as_text_or_empty(&db_, kColTextA, row));
+      const std::string version =
+          trim_ascii(as_text_or_empty(&db_, kColProjectionVersion, row));
+      if (schema != "lattice.catalog.v2" || version != "2") {
+        set_error(error,
+                  "unsupported lattice catalog schema '" + schema +
+                      "' (version '" + version + "'); expected strict v2");
+        return false;
+      }
+      return true;
+    }
+    set_error(error, "catalog_schema_version header row exists but cannot be read");
+    return false;
+  }
 
   return append_row_(cuwacunu::hero::schema::kRecordKindHEADER,
                      "catalog_schema_version", "", "", "", "", "",
-                     "schema", std::numeric_limits<double>::quiet_NaN(), "lattice.catalog.v1",
-                     "", "1", std::to_string(now_ms_utc()), "{}", "",
+                     "schema", std::numeric_limits<double>::quiet_NaN(),
+                     "lattice.catalog.v2", "", "2",
+                     std::to_string(now_ms_utc()), "{}", "",
                      std::numeric_limits<double>::quiet_NaN(), "", "", "", "",
                      "", "", "", "", "", error);
 }
@@ -1121,9 +1138,10 @@ bool lattice_catalog_store_t::append_row_(
     std::string_view execution_profile_json, std::string_view state_txt,
     double metric_num, std::string_view text_a, std::string_view text_b,
     std::string_view projection_version, std::string_view ts_ms,
-    std::string_view payload_json, std::string_view axis_key,
-    double axis_num, std::string_view axis_txt, std::string_view tag_key,
-    std::string_view tag_value, std::string_view started_at_ms,
+    std::string_view payload_json, std::string_view projection_key,
+    double projection_num, std::string_view projection_txt,
+    std::string_view projection_key_aux,
+    std::string_view projection_txt_aux, std::string_view started_at_ms,
     std::string_view finished_at_ms, std::string_view ok_txt,
     std::string_view total_steps, std::string_view board_hash,
     std::string_view run_id, std::string* error) {
@@ -1162,11 +1180,21 @@ bool lattice_catalog_store_t::append_row_(
   }
   if (!insert_text(&db_, kColTsMs, row, ts_ms, error)) return false;
   if (!insert_text(&db_, kColPayload, row, payload_json, error)) return false;
-  if (!insert_text(&db_, kColAxisKey, row, axis_key, error)) return false;
-  if (!insert_num(&db_, kColAxisNum, row, axis_num, error)) return false;
-  if (!insert_text(&db_, kColAxisTxt, row, axis_txt, error)) return false;
-  if (!insert_text(&db_, kColTagKey, row, tag_key, error)) return false;
-  if (!insert_text(&db_, kColTagValue, row, tag_value, error)) return false;
+  if (!insert_text(&db_, kColProjectionKey, row, projection_key, error)) {
+    return false;
+  }
+  if (!insert_num(&db_, kColProjectionNum, row, projection_num, error)) {
+    return false;
+  }
+  if (!insert_text(&db_, kColProjectionTxt, row, projection_txt, error)) {
+    return false;
+  }
+  if (!insert_text(&db_, kColProjectionKeyAux, row, projection_key_aux, error)) {
+    return false;
+  }
+  if (!insert_text(&db_, kColProjectionTxtAux, row, projection_txt_aux, error)) {
+    return false;
+  }
   if (!insert_text(&db_, kColStartedAtMs, row, started_at_ms, error)) return false;
   if (!insert_text(&db_, kColFinishedAtMs, row, finished_at_ms, error)) {
     return false;
@@ -1188,29 +1216,21 @@ bool lattice_catalog_store_t::record_cell_projection_(std::string_view cell_id,
   if (projection_lls.empty()) {
     projection_lls = build_projection_lls_payload(projection);
   }
-  for (const auto& [k, v] : projection.axis_num) {
-    const std::string rec_id = std::string(cell_id) + "|axis_num|" + k;
-    if (!append_row_(cuwacunu::hero::schema::kRecordKindAXIS_NUM, rec_id, cell_id, "", "", "", "", "",
+  for (const auto& [k, v] : projection.projection_num) {
+    const std::string rec_id = std::string(cell_id) + "|projection_num|" + k;
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindPROJECTION_NUM, rec_id, cell_id, "", "", "", "", "",
                      std::numeric_limits<double>::quiet_NaN(), "", "", pv, ts,
                      "", k, v, "", "", "", "", "", "", "", "", "",
                      error)) {
       return false;
     }
   }
-  for (const auto& [k, v] : projection.axis_txt) {
-    const std::string rec_id = std::string(cell_id) + "|axis_txt|" + k;
-    if (!append_row_(cuwacunu::hero::schema::kRecordKindAXIS_TXT, rec_id, cell_id, "", "", "", "", "",
+  for (const auto& [k, v] : projection.projection_txt) {
+    const std::string rec_id = std::string(cell_id) + "|projection_txt|" + k;
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindPROJECTION_TXT, rec_id,
+                     cell_id, "", "", "", "", "",
                      std::numeric_limits<double>::quiet_NaN(), "", "", pv, ts,
                      "", k, std::numeric_limits<double>::quiet_NaN(), v, "", "",
-                     "", "", "", "", "", "", error)) {
-      return false;
-    }
-  }
-  for (const auto& [k, v] : projection.tags) {
-    const std::string rec_id = std::string(cell_id) + "|tag|" + k;
-    if (!append_row_(cuwacunu::hero::schema::kRecordKindTAG, rec_id, cell_id, "", "", "", "", "",
-                     std::numeric_limits<double>::quiet_NaN(), "", "", pv, ts,
-                     "", "", std::numeric_limits<double>::quiet_NaN(), "", k, v,
                      "", "", "", "", "", "", error)) {
       return false;
     }
@@ -1335,17 +1355,13 @@ bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
   trials_by_cell_[cell_id].push_back(stored_trial);
   artifact_by_trial_id_[stored_trial.trial_id] = artifact_link;
 
-  auto& axis_num = axis_num_by_cell_[cell_id];
-  for (const auto& [k, v] : projection.axis_num) {
-    axis_num[k] = v;
+  auto& projection_num = projection_num_by_cell_[cell_id];
+  for (const auto& [k, v] : projection.projection_num) {
+    projection_num[k] = v;
   }
-  auto& axis_txt = axis_txt_by_cell_[cell_id];
-  for (const auto& [k, v] : projection.axis_txt) {
-    axis_txt[k] = v;
-  }
-  auto& tags = tags_by_cell_[cell_id];
-  for (const auto& [k, v] : projection.tags) {
-    tags[k] = v;
+  auto& projection_txt = projection_txt_by_cell_[cell_id];
+  for (const auto& [k, v] : projection.projection_txt) {
+    projection_txt[k] = v;
   }
 
   if (out_cell) *out_cell = std::move(cell);
@@ -1363,9 +1379,8 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   cell_id_by_coord_profile_.clear();
   trials_by_cell_.clear();
   artifact_by_trial_id_.clear();
-  axis_num_by_cell_.clear();
-  axis_txt_by_cell_.clear();
-  tags_by_cell_.clear();
+  projection_num_by_cell_.clear();
+  projection_txt_by_cell_.clear();
 
   db::query::query_spec_t q{};
   q.select_columns = {kColRecordKind};
@@ -1480,32 +1495,22 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
-    if (kind == cuwacunu::hero::schema::kRecordKindAXIS_NUM) {
+    if (kind == cuwacunu::hero::schema::kRecordKindPROJECTION_NUM) {
       const std::string cell_id = as_text_or_empty(&db_, kColCellId, row);
-      const std::string key = as_text_or_empty(&db_, kColAxisKey, row);
-      const auto value = as_num_or_empty(&db_, kColAxisNum, row);
+      const std::string key = as_text_or_empty(&db_, kColProjectionKey, row);
+      const auto value = as_num_or_empty(&db_, kColProjectionNum, row);
       if (!cell_id.empty() && !key.empty() && value.has_value()) {
-        axis_num_by_cell_[cell_id][key] = value.value();
+        projection_num_by_cell_[cell_id][key] = value.value();
       }
       continue;
     }
 
-    if (kind == cuwacunu::hero::schema::kRecordKindAXIS_TXT) {
+    if (kind == cuwacunu::hero::schema::kRecordKindPROJECTION_TXT) {
       const std::string cell_id = as_text_or_empty(&db_, kColCellId, row);
-      const std::string key = as_text_or_empty(&db_, kColAxisKey, row);
-      const std::string value = as_text_or_empty(&db_, kColAxisTxt, row);
+      const std::string key = as_text_or_empty(&db_, kColProjectionKey, row);
+      const std::string value = as_text_or_empty(&db_, kColProjectionTxt, row);
       if (!cell_id.empty() && !key.empty()) {
-        axis_txt_by_cell_[cell_id][key] = value;
-      }
-      continue;
-    }
-
-    if (kind == cuwacunu::hero::schema::kRecordKindTAG) {
-      const std::string cell_id = as_text_or_empty(&db_, kColCellId, row);
-      const std::string key = as_text_or_empty(&db_, kColTagKey, row);
-      const std::string value = as_text_or_empty(&db_, kColTagValue, row);
-      if (!cell_id.empty() && !key.empty()) {
-        tags_by_cell_[cell_id][key] = value;
+        projection_txt_by_cell_[cell_id][key] = value;
       }
       continue;
     }
@@ -1645,14 +1650,15 @@ bool lattice_catalog_store_t::query_matrix(const matrix_query_t& query,
     }
 
     bool matched = true;
-    if (const auto it_axis = axis_num_by_cell_.find(cell.cell_id);
-        !query.axis_num_eq.empty()) {
-      if (it_axis == axis_num_by_cell_.end()) {
+    if (const auto it_projection = projection_num_by_cell_.find(cell.cell_id);
+        !query.projection_num_eq.empty()) {
+      if (it_projection == projection_num_by_cell_.end()) {
         matched = false;
       } else {
-        for (const auto& [k, v] : query.axis_num_eq) {
-          const auto it = it_axis->second.find(k);
-          if (it == it_axis->second.end() || !is_numeric_close(it->second, v)) {
+        for (const auto& [k, v] : query.projection_num_eq) {
+          const auto it = it_projection->second.find(k);
+          if (it == it_projection->second.end() ||
+              !is_numeric_close(it->second, v)) {
             matched = false;
             break;
           }
@@ -1661,30 +1667,14 @@ bool lattice_catalog_store_t::query_matrix(const matrix_query_t& query,
     }
     if (!matched) continue;
 
-    if (const auto it_axis = axis_txt_by_cell_.find(cell.cell_id);
-        !query.axis_txt_eq.empty()) {
-      if (it_axis == axis_txt_by_cell_.end()) {
+    if (const auto it_projection = projection_txt_by_cell_.find(cell.cell_id);
+        !query.projection_txt_eq.empty()) {
+      if (it_projection == projection_txt_by_cell_.end()) {
         matched = false;
       } else {
-        for (const auto& [k, v] : query.axis_txt_eq) {
-          const auto it = it_axis->second.find(k);
-          if (it == it_axis->second.end() || it->second != v) {
-            matched = false;
-            break;
-          }
-        }
-      }
-    }
-    if (!matched) continue;
-
-    if (const auto it_tag = tags_by_cell_.find(cell.cell_id);
-        !query.tag_eq.empty()) {
-      if (it_tag == tags_by_cell_.end()) {
-        matched = false;
-      } else {
-        for (const auto& [k, v] : query.tag_eq) {
-          const auto it = it_tag->second.find(k);
-          if (it == it_tag->second.end() || it->second != v) {
+        for (const auto& [k, v] : query.projection_txt_eq) {
+          const auto it = it_projection->second.find(k);
+          if (it == it_projection->second.end() || it->second != v) {
             matched = false;
             break;
           }

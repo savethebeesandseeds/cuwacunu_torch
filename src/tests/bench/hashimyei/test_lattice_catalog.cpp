@@ -35,10 +35,10 @@ static void require_impl(bool ok, const char* expr, const char* file, int line) 
 }
 #define REQUIRE(x) require_impl((x), #x, __FILE__, __LINE__)
 
-[[nodiscard]] static bool find_axis_num(const wave_projection_t& projection,
-                                        std::string_view key, double* out) {
+[[nodiscard]] static bool find_projection_num(
+    const wave_projection_t& projection, std::string_view key, double* out) {
   if (!out) return false;
-  for (const auto& [k, v] : projection.axis_num) {
+  for (const auto& [k, v] : projection.projection_num) {
     if (k == key) {
       *out = v;
       return true;
@@ -47,10 +47,10 @@ static void require_impl(bool ok, const char* expr, const char* file, int line) 
   return false;
 }
 
-[[nodiscard]] static double axis_num_must(const wave_projection_t& projection,
-                                          std::string_view key) {
+[[nodiscard]] static double projection_num_must(const wave_projection_t& projection,
+                                                std::string_view key) {
   double out = 0.0;
-  REQUIRE(find_axis_num(projection, key, &out));
+  REQUIRE(find_projection_num(projection, key, &out));
   return out;
 }
 
@@ -161,7 +161,7 @@ int main() {
   wave_projection_t projection{};
   projection.projection_version = 2;
   projection.projector_build_id = "wave.projector.v2";
-  projection.axis_num = {
+  projection.projection_num = {
       {"epochs", 10.0},
       {"source_count", 1.0},
       {"source.runtime.request.from_ratio", 0.125},
@@ -177,15 +177,15 @@ int main() {
       {"source.channel.5m.active", 0.0},
       {"source.channel.1h.active", 1.0},
   };
-  projection.axis_txt = {
+  projection.projection_txt = {
       {"sampler", "sequential"},
       {"mode", "train|run"},
       {"source.runtime.symbol", "BTCUSDT"},
+      {"determinism_policy", "deterministic"},
+      {"wave_id", profile.wave_id},
+      {"source.runtime.range_basis", "effective_intersection"},
+      {"source.runtime.interval_semantics", "half_open_utc_day"},
   };
-  projection.tags = {{"determinism_policy", "deterministic"},
-                     {"wave_id", profile.wave_id},
-                     {"source.runtime.range_basis", "effective_intersection"},
-                     {"source.runtime.interval_semantics", "half_open_utc_day"}};
 
   const std::vector<std::string> ratio_keys = {
       "source.runtime.request.from_ratio",
@@ -195,17 +195,17 @@ int main() {
       "source.channels.active_ratio",
   };
   for (const auto& key : ratio_keys) {
-    const double v = axis_num_must(projection, key);
+    const double v = projection_num_must(projection, key);
     REQUIRE(v >= 0.0);
     REQUIRE(v <= 1.0);
   }
   const double clipped_left =
-      axis_num_must(projection, "source.runtime.flags.clipped_left");
+      projection_num_must(projection, "source.runtime.flags.clipped_left");
   const double clipped_right =
-      axis_num_must(projection, "source.runtime.flags.clipped_right");
+      projection_num_must(projection, "source.runtime.flags.clipped_right");
   REQUIRE(clipped_left == 0.0 || clipped_left == 1.0);
   REQUIRE(clipped_right == 0.0 || clipped_right == 1.0);
-  for (const auto& [k, _] : projection.axis_num) {
+  for (const auto& [k, _] : projection.projection_num) {
     REQUIRE(k.find("_ms") == std::string::npos);
   }
 
@@ -232,9 +232,9 @@ int main() {
   matrix_query_t query{};
   query.contract_hash = coord.contract_hash;
   query.wave_hash = coord.wave_hash;
-  query.axis_num_eq = {{"epochs", 10}};
-  query.axis_txt_eq = {{"sampler", "sequential"}};
-  query.tag_eq = {{"determinism_policy", "deterministic"}};
+  query.projection_num_eq = {{"epochs", 10}};
+  query.projection_txt_eq = {{"sampler", "sequential"},
+                             {"determinism_policy", "deterministic"}};
   query.limit = 10;
 
   std::vector<wave_cell_t> matches{};
@@ -246,7 +246,7 @@ int main() {
   matrix_query_t runtime_query{};
   runtime_query.contract_hash = coord.contract_hash;
   runtime_query.wave_hash = coord.wave_hash;
-  runtime_query.axis_num_eq = {
+  runtime_query.projection_num_eq = {
       {"source.runtime.request.from_ratio", 0.125},
       {"source.runtime.request.to_ratio", 0.5},
       {"source.runtime.request.span_ratio", 0.375},
@@ -256,8 +256,7 @@ int main() {
       {"source.channel.1m.active", 1.0},
       {"source.channel.5m.active", 0.0},
   };
-  runtime_query.axis_txt_eq = {{"source.runtime.symbol", "BTCUSDT"}};
-  runtime_query.tag_eq = {
+  runtime_query.projection_txt_eq = {{"source.runtime.symbol", "BTCUSDT"},
       {"source.runtime.range_basis", "effective_intersection"},
       {"source.runtime.interval_semantics", "half_open_utc_day"},
   };
@@ -270,7 +269,7 @@ int main() {
   matrix_query_t raw_ms_query{};
   raw_ms_query.contract_hash = coord.contract_hash;
   raw_ms_query.wave_hash = coord.wave_hash;
-  raw_ms_query.axis_num_eq = {{"source.runtime.debug.domain_from_ms", 1.0}};
+  raw_ms_query.projection_num_eq = {{"source.runtime.debug.domain_from_ms", 1.0}};
   raw_ms_query.limit = 10;
   std::vector<wave_cell_t> raw_ms_matches{};
   REQUIRE(catalog.query_matrix(raw_ms_query, &raw_ms_matches, &error));

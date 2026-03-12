@@ -165,17 +165,16 @@ Core numeric axes:
 - `source.channel.<interval>.active`
 
 Projection `.lls` payload (`projection_lls`) includes:
-- numeric dimensions (former `axis_num`), including all source-runtime ratios/flags
-- text dimensions (former `axis_txt`), for example `source.runtime.symbol`
-- tags (former `tags`), for example `source.runtime.range_basis`
-  and `source.runtime.interval_semantics`
+- numeric dimensions (`projection_num`), including source-runtime ratios/flags
+- text dimensions (`projection_txt`), including `source.runtime.symbol`,
+  `source.runtime.range_basis`, and `source.runtime.interval_semantics`
 
 Projection metadata:
 - `projection_version = 2`
 - `projector_build_id = wave.projector.v2`
 
 Raw epoch-ms fields are audit-only and are appended to joined provenance payloads
-(`joined_kv_report`) as latent-lineage formatted text, not to `axis_num`.
+(`joined_kv_report`) as latent-lineage formatted text, not to `projection_num`.
 
 ## Smoke Tests
 
