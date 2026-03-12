@@ -21,12 +21,12 @@ WEBSOCKET_LINK = $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_
 DSL_RUNTIME_LINK = $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
 
 $(eval $(call TEST_ONEFILE, test_dsl_observation, test_dsl_observation.cpp, $(DSL_RUNTIME_LINK)))
-$(eval $(call TEST_ONEFILE, test_dsl_key_value,            test_dsl_key_value.cpp))
-$(eval $(call TEST_ONEFILE, test_dsl_jkimyei_specs,        test_dsl_jkimyei_specs.cpp))
+$(eval $(call TEST_ONEFILE, test_dsl_latent_lineage_state,            test_dsl_latent_lineage_state.cpp))
+$(eval $(call TEST_ONEFILE, test_dsl_jkimyei_specs,        test_dsl_jkimyei_specs.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_circuit,     test_dsl_tsiemene_circuit.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_iitepi_wave,        test_dsl_iitepi_wave.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_board,       test_dsl_tsiemene_board.cpp, $(DSL_RUNTIME_LINK)))
-$(eval $(call TEST_ONEFILE, test_dsl_canonical_path,       test_dsl_canonical_path.cpp))
+$(eval $(call TEST_ONEFILE, test_dsl_canonical_path,       test_dsl_canonical_path.cpp, $(DSL_RUNTIME_LINK)))
 
 $(eval $(call TEST_ONEFILE, test_memory_mapped_datafile,          test_memory_mapped_datafile.cpp,          $(DATA_LINK)))
 $(eval $(call TEST_ONEFILE, test_memory_mapped_dataset,           test_memory_mapped_dataset.cpp,           $(DATA_LINK)))
@@ -60,7 +60,7 @@ $(TEST_OUT)/test_websocket: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS) $(LIBCURL_INC
 .PHONY: all
 all: \
 	$(TEST_OUT)/test_dsl_observation \
-	$(TEST_OUT)/test_dsl_key_value \
+	$(TEST_OUT)/test_dsl_latent_lineage_state \
 	$(TEST_OUT)/test_dsl_jkimyei_specs \
 	$(TEST_OUT)/test_dsl_tsiemene_circuit \
 	$(TEST_OUT)/test_dsl_iitepi_wave \
@@ -88,7 +88,7 @@ all: \
 .PHONY: run
 run: \
 	run-test_dsl_observation \
-	run-test_dsl_key_value \
+	run-test_dsl_latent_lineage_state \
 	run-test_dsl_jkimyei_specs \
 	run-test_dsl_tsiemene_circuit \
 	run-test_dsl_iitepi_wave \

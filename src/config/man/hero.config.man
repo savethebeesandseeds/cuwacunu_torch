@@ -2,10 +2,10 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = hero.config
-TARGET_DSL = src/config/instructions/hero.config.dsl
-TARGET_BNF = src/config/bnf/key_value.bnf
-PRIMARY_DECODER = src/impl/camahjucunu/dsl/key_value/key_value.cpp
-PRIMARY_VALIDATORS = src/include/HERO/hero_config/hero.config.h
+TARGET_DSL = src/config/instructions/default.hero.config.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
+PRIMARY_VALIDATORS = src/include/hero/config_hero/hero.config.h
 
 [ENUM PROTOCOL_LAYER_VALUES]
 key = protocol_layer

@@ -35,7 +35,7 @@ iinuji:
 
 .PHONY: hero_impl
 hero_impl:
-	$(MAKE) -C $(IMPL_PATH)/HERO all
+	$(MAKE) -C $(IMPL_PATH) hero
 
 .PHONY: main
 main:

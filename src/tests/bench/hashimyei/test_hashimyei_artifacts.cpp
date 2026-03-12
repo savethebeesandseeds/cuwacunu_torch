@@ -1,5 +1,6 @@
-#include "hashimyei/hashimyei_artifacts.h"
-#include "hashimyei/hashimyei_driver.h"
+#include "hero/hashimyei_hero/hashimyei_artifacts.h"
+#include "hero/hashimyei_hero/hashimyei_driver.h"
+#include "hero/hashimyei_hero/hashimyei_identity.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -99,7 +100,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   manifest.files.push_back({"weights.init.pt", 100});
   manifest.files.push_back({"metadata.enc", 7});
   manifest.files.push_back({"weights.init.pt", 88});
-  manifest.files.push_back({"weights.init.network_analytics.kv", 25});
+  manifest.files.push_back({"weights.init.network_analytics.lls", 25});
 
   std::string error;
   REQUIRE(cuwacunu::hashimyei::write_artifact_manifest(artifact_dir, manifest, &error));
@@ -112,7 +113,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   REQUIRE(payload.find("schema=hashimyei.artifact.manifest.v2\n") != std::string::npos);
   REQUIRE(payload.find("file_count=3\n") != std::string::npos);
   REQUIRE(payload.find("file_0000_path=metadata.enc\n") != std::string::npos);
-  REQUIRE(payload.find("file_0001_path=weights.init.network_analytics.kv\n") != std::string::npos);
+  REQUIRE(payload.find("file_0001_path=weights.init.network_analytics.lls\n") != std::string::npos);
   REQUIRE(payload.find("file_0002_path=weights.init.pt\n") != std::string::npos);
   REQUIRE(payload.find("file_0002_size=100\n") != std::string::npos);
 
@@ -125,7 +126,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   REQUIRE(parsed.artifact_id == manifest.artifact_id);
   REQUIRE(parsed.files.size() == 3);
   REQUIRE(parsed.files[0].path == "metadata.enc");
-  REQUIRE(parsed.files[1].path == "weights.init.network_analytics.kv");
+  REQUIRE(parsed.files[1].path == "weights.init.network_analytics.lls");
   REQUIRE(parsed.files[2].path == "weights.init.pt");
   REQUIRE(parsed.files[2].size == 100);
   REQUIRE(cuwacunu::hashimyei::artifact_manifest_has_file(parsed, "weights.init.pt"));
@@ -227,6 +228,24 @@ static void test_driver_registry_ordering() {
   REQUIRE(std::find(types.begin(), types.end(), c) != types.end());
 }
 
+static void test_identity_helper_regressions() {
+  using cuwacunu::hashimyei::hashimyei_kind_e;
+  using cuwacunu::hashimyei::hashimyei_t;
+
+  std::uint64_t ordinal = 0;
+  REQUIRE(cuwacunu::hashimyei::parse_hex_hash_name_ordinal("0x000f", &ordinal));
+  REQUIRE(ordinal == 15);
+
+  hashimyei_t ok = cuwacunu::hashimyei::make_identity(
+      hashimyei_kind_e::WAVE, 9, std::string(64, 'a'));
+  std::string error;
+  REQUIRE(cuwacunu::hashimyei::validate_hashimyei(ok, &error));
+
+  hashimyei_t bad = ok;
+  bad.hash_sha256_hex.clear();
+  REQUIRE(!cuwacunu::hashimyei::validate_hashimyei(bad, &error));
+}
+
 int main() {
   temp_dir_t tmp{};
   const fs::path store_root = tmp.dir / ".hashimyei";
@@ -235,6 +254,7 @@ int main() {
   test_store_root_and_catalog_defaults(store_root);
   test_discovery_rules(store_root);
   test_driver_registry_ordering();
+  test_identity_helper_regressions();
 
   std::cout << "[PASS] test_hashimyei_artifacts\n";
   return 0;

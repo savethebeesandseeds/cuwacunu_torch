@@ -2,6 +2,10 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_sources_decoder.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_channels_decoder.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
+#include "iitepi/board_space_t.h"
+#include "iitepi/wave_space_t.h"
 #include "piaabo/dconfig.h"
 
 DEV_WARNING("(observation_spec.cpp)[] mutex on observation runtime might not be needed \n");
@@ -146,6 +150,36 @@ namespace {
   return false;
 }
 
+[[nodiscard]] std::string trim_ascii_ws_copy(std::string s) {
+  std::size_t b = 0;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  std::size_t e = s.size();
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  return s.substr(b, e - b);
+}
+
+[[nodiscard]] std::string unquote_if_wrapped(std::string s) {
+  s = trim_ascii_ws_copy(std::move(s));
+  if (s.size() >= 2) {
+    const char a = s.front();
+    const char b = s.back();
+    if ((a == '"' && b == '"') || (a == '\'' && b == '\'')) {
+      return s.substr(1, s.size() - 2);
+    }
+  }
+  return s;
+}
+
+[[nodiscard]] std::string resolve_path_from_folder(const std::string& folder,
+                                                   std::string path) {
+  path = trim_ascii_ws_copy(std::move(path));
+  if (path.empty()) return {};
+  const std::filesystem::path p(path);
+  if (p.is_absolute()) return p.string();
+  if (folder.empty()) return p.string();
+  return (std::filesystem::path(folder) / p).string();
+}
+
 [[nodiscard]] std::string maybe_concat_instruction(std::string title,
                                                    const std::string& payload) {
   if (!has_non_ws(payload)) return {};
@@ -154,25 +188,142 @@ namespace {
   return oss.str();
 }
 
+struct resolved_observation_payload_t {
+  std::string source_instruction{};
+  std::string channel_instruction{};
+  std::string source_grammar{};
+  std::string channel_grammar{};
+};
+
+[[nodiscard]] const cuwacunu::camahjucunu::iitepi_wave_t*
+find_wave_by_id_or_null(const cuwacunu::camahjucunu::iitepi_wave_set_t& wave_set,
+                        const std::string& wave_id) {
+  for (const auto& wave : wave_set.waves) {
+    if (wave.name == wave_id) return &wave;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] resolved_observation_payload_t
+resolve_observation_payload_for_contract_or_throw(
+    const std::string& contract_hash) {
+  if (!has_non_ws(contract_hash)) {
+    throw std::runtime_error(
+        "decode_observation_spec_from_contract requires non-empty contract hash");
+  }
+
+  const std::string board_hash = cuwacunu::iitepi::config_space_t::locked_board_hash();
+  const std::string binding_id =
+      cuwacunu::iitepi::config_space_t::locked_board_binding_id();
+  if (!has_non_ws(board_hash) || !has_non_ws(binding_id)) {
+    throw std::runtime_error(
+        "cannot resolve active board binding while loading observation DSL");
+  }
+
+  const std::string bound_contract_hash =
+      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+          board_hash, binding_id);
+  if (bound_contract_hash != contract_hash) {
+    throw std::runtime_error(
+        "decode_observation_spec_from_contract received contract hash that does not "
+        "match active board binding");
+  }
+
+  const auto board_itself =
+      cuwacunu::iitepi::board_space_t::board_itself(board_hash);
+  const auto& board_instruction = board_itself->board.decoded();
+  const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
+  for (const auto& b : board_instruction.binds) {
+    if (b.id == binding_id) {
+      bind = &b;
+      break;
+    }
+  }
+  if (!bind) {
+    throw std::runtime_error(
+        "active board binding id not found in decoded board instruction");
+  }
+
+  const std::string wave_hash = cuwacunu::iitepi::board_space_t::wave_hash_for_binding(
+      board_hash, binding_id);
+  const auto wave_itself = cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
+  const auto& wave_set = wave_itself->wave.decoded();
+  const auto* selected_wave = find_wave_by_id_or_null(wave_set, bind->wave_ref);
+  if (!selected_wave) {
+    throw std::runtime_error("bound wave id not found in decoded wave DSL");
+  }
+  if (selected_wave->sources.size() != 1) {
+    throw std::runtime_error(
+        "runtime currently requires exactly one SOURCE block in selected wave");
+  }
+
+  const auto& source_decl = selected_wave->sources.front();
+  const std::string source_path = resolve_path_from_folder(
+      wave_itself->config_folder,
+      unquote_if_wrapped(source_decl.sources_dsl_file));
+  const std::string channel_path = resolve_path_from_folder(
+      wave_itself->config_folder,
+      unquote_if_wrapped(source_decl.channels_dsl_file));
+  if (!has_non_ws(source_path) || !std::filesystem::exists(source_path) ||
+      !std::filesystem::is_regular_file(source_path)) {
+    throw std::runtime_error(
+        "invalid SOURCE.SOURCES_DSL_FILE for selected wave: " + source_path);
+  }
+  if (!has_non_ws(channel_path) || !std::filesystem::exists(channel_path) ||
+      !std::filesystem::is_regular_file(channel_path)) {
+    throw std::runtime_error(
+        "invalid SOURCE.CHANNELS_DSL_FILE for selected wave: " + channel_path);
+  }
+
+  const std::string source_grammar_path = resolve_path_from_folder(
+      cuwacunu::iitepi::config_space_t::config_folder,
+      unquote_if_wrapped(cuwacunu::iitepi::config_space_t::get<std::string>(
+          "BNF", "observation_sources_grammar_filename")));
+  const std::string channel_grammar_path = resolve_path_from_folder(
+      cuwacunu::iitepi::config_space_t::config_folder,
+      unquote_if_wrapped(cuwacunu::iitepi::config_space_t::get<std::string>(
+          "BNF", "observation_channels_grammar_filename")));
+  if (!has_non_ws(source_grammar_path) ||
+      !std::filesystem::exists(source_grammar_path) ||
+      !std::filesystem::is_regular_file(source_grammar_path)) {
+    throw std::runtime_error(
+        "invalid [BNF].observation_sources_grammar_filename path");
+  }
+  if (!has_non_ws(channel_grammar_path) ||
+      !std::filesystem::exists(channel_grammar_path) ||
+      !std::filesystem::is_regular_file(channel_grammar_path)) {
+    throw std::runtime_error(
+        "invalid [BNF].observation_channels_grammar_filename path");
+  }
+
+  resolved_observation_payload_t out{};
+  out.source_instruction = cuwacunu::piaabo::dfiles::readFileToString(source_path);
+  out.channel_instruction = cuwacunu::piaabo::dfiles::readFileToString(channel_path);
+  out.source_grammar = cuwacunu::piaabo::dfiles::readFileToString(source_grammar_path);
+  out.channel_grammar =
+      cuwacunu::piaabo::dfiles::readFileToString(channel_grammar_path);
+  if (!has_non_ws(out.source_instruction) || !has_non_ws(out.channel_instruction)) {
+    throw std::runtime_error("selected wave observation DSL payload is empty");
+  }
+  if (!has_non_ws(out.source_grammar) || !has_non_ws(out.channel_grammar)) {
+    throw std::runtime_error("observation grammar payload is empty");
+  }
+  return out;
+}
+
 } // namespace
 
 std::string observation_spec_source_dump_from_contract(
     const std::string& contract_hash) {
-  const auto contract_itself =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
-  const auto& source_instruction = contract_itself->observation.sources.dsl;
-  const auto& channel_instruction = contract_itself->observation.channels.dsl;
-
-  if (has_non_ws(source_instruction) && has_non_ws(channel_instruction)) {
-    return maybe_concat_instruction("observation.sources", source_instruction) +
-           maybe_concat_instruction("observation.channels", channel_instruction);
+  try {
+    const auto payload =
+        resolve_observation_payload_for_contract_or_throw(contract_hash);
+    return maybe_concat_instruction("observation.sources", payload.source_instruction) +
+           maybe_concat_instruction("observation.channels", payload.channel_instruction);
+  } catch (const std::exception& e) {
+    return std::string("ERROR: failed to resolve wave-owned observation DSL: ") +
+           e.what() + "\n";
   }
-
-  return "ERROR: split observation DSL is required. Missing one or more of:\n"
-         "  [BNF].observation_sources_grammar_filename\n"
-         "  [DSL].observation_sources_dsl_filename\n"
-         "  [BNF].observation_channels_grammar_filename\n"
-         "  [DSL].observation_channels_dsl_filename\n";
 }
 
 observation_spec_t decode_observation_spec_from_split_dsl(
@@ -223,9 +374,13 @@ observation_spec_t decode_observation_spec_from_split_dsl(
 
 observation_spec_t decode_observation_spec_from_contract(
     const std::string& contract_hash) {
-  const auto contract_itself =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
-  return contract_itself->observation.decoded();
+  const auto payload =
+      resolve_observation_payload_for_contract_or_throw(contract_hash);
+  return decode_observation_spec_from_split_dsl(
+      payload.source_grammar,
+      payload.source_instruction,
+      payload.channel_grammar,
+      payload.channel_instruction);
 }
 
 } // namespace camahjucunu

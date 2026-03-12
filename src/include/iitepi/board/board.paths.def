@@ -30,15 +30,6 @@ BOARD_PATH_ACTION(ContractInit, "board.contract@init",
 BOARD_PATH_DSL_SEGMENT(ContractCircuit,
                        "board.contract.circuit@DSL:str",
                        "Contract-local canonical circuit DSL")
-BOARD_PATH_DSL_SEGMENT(ContractObservationSources,
-                       "board.contract.observation_sources@DSL:str",
-                       "Observation sources DSL segment")
-BOARD_PATH_DSL_SEGMENT(ContractObservationChannels,
-                       "board.contract.observation_channels@DSL:str",
-                       "Observation channels DSL segment")
-BOARD_PATH_DSL_SEGMENT(ContractJkimyeiSpecs,
-                       "board.contract.jkimyei_specs@DSL:str",
-                       "Jkimyei specs DSL segment")
 BOARD_PATH_DSL_SEGMENT(ContractWave,
                        "board.contract.wave@DSL:str",
                        "Wave/invoke DSL segment")

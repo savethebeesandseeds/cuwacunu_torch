@@ -7,6 +7,7 @@
 #include <chrono>
 #include <mutex>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <condition_variable>
@@ -65,17 +66,19 @@ private:
       - session thread for the TX (outgoing) events
       - session conditional trigger variable
   */
-  static std::unordered_map<ws_session_id_t, int> curl_ws_session_still_running;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<int>> curl_ws_session_still_running;
   static std::unordered_map<ws_session_id_t, CURL*> curl_ws_sessions;
   static std::unordered_map<ws_session_id_t, CURLM *> curl_multi_handles;
-  static std::unordered_map<ws_session_id_t, ws_session_id_t> id_sessions;  /* this unusual map is to preserve in memory a reference to the ws_session_id when passed to the curl constructor */
-  static std::unordered_map<ws_session_id_t, std::deque<ws_incomming_data_t>> session_RX_frames_deque;
-  static std::unordered_map<ws_session_id_t, std::deque<ws_outgoing_data_t>> session_TX_frames_deque;
-  static std::unordered_map<ws_session_id_t, std::string> session_RX_buffer;
-  static std::unordered_map<ws_session_id_t, std::mutex> session_mutex;
-  static std::unordered_map<ws_session_id_t, std::thread> session_RX_thread;
-  static std::unordered_map<ws_session_id_t, std::thread> session_TX_thread;
-  static std::unordered_map<ws_session_id_t, std::condition_variable> session_triggers;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<ws_session_id_t>> id_sessions;  /* this unusual map is to preserve in memory a reference to the ws_session_id when passed to the curl constructor */
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<std::deque<ws_incomming_data_t>>> session_RX_frames_deque;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<std::deque<ws_outgoing_data_t>>> session_TX_frames_deque;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<std::string>> session_RX_buffer;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<bool>> session_shutdown_requested;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<bool>> session_handshake_ready;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<std::mutex>> session_mutex;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<std::thread>> session_RX_thread;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<std::thread>> session_TX_thread;
+  static std::unordered_map<ws_session_id_t, std::shared_ptr<std::condition_variable>> session_triggers;
   static std::mutex global_ws_mutex;
   static int sessions_counter;
 
@@ -106,9 +109,18 @@ private:
       - remove session from the heap
   */
   static CURL* get_session(const ws_session_id_t session_id);
-  static std::mutex* get_session_mutex(const ws_session_id_t session_id);
-  static std::deque<ws_incomming_data_t>* get_session_RX_deque(const ws_session_id_t session_id);
-  static std::deque<ws_outgoing_data_t>* get_session_TX_deque(const ws_session_id_t session_id);
+  static CURLM* get_session_multi_handle(const ws_session_id_t session_id);
+  static std::shared_ptr<std::mutex> get_session_mutex(const ws_session_id_t session_id);
+  static std::shared_ptr<std::condition_variable> get_session_trigger(const ws_session_id_t session_id);
+  static std::shared_ptr<int> get_session_still_running(const ws_session_id_t session_id);
+  static std::shared_ptr<ws_session_id_t> get_session_id_ref(const ws_session_id_t session_id);
+  static std::shared_ptr<bool> get_session_shutdown_flag(const ws_session_id_t session_id);
+  static std::shared_ptr<bool> get_session_handshake_flag(const ws_session_id_t session_id);
+  static std::shared_ptr<std::thread> get_session_RX_thread(const ws_session_id_t session_id);
+  static std::shared_ptr<std::thread> get_session_TX_thread(const ws_session_id_t session_id);
+  static std::shared_ptr<std::string> get_session_RX_buffer(const ws_session_id_t session_id);
+  static std::shared_ptr<std::deque<ws_incomming_data_t>> get_session_RX_deque(const ws_session_id_t session_id);
+  static std::shared_ptr<std::deque<ws_outgoing_data_t>> get_session_TX_deque(const ws_session_id_t session_id);
   static void remove_session(const ws_session_id_t session_id);
 
   /* 

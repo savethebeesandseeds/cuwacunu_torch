@@ -18,20 +18,26 @@ namespace cuwacunu {
 namespace piaabo {
 namespace curl {
 
+namespace {
+constexpr std::size_t kWsMaxRxBufferBytes = 1u << 20; /* 1 MiB safety cap */
+}
+
 /* Static member variable definitions */
 int WebsocketAPI::sessions_counter = 0;
 std::mutex WebsocketAPI::global_ws_mutex;
 std::unordered_map<ws_session_id_t, CURL*> WebsocketAPI::curl_ws_sessions;
 std::unordered_map<ws_session_id_t, CURLM *> WebsocketAPI::curl_multi_handles;
-std::unordered_map<ws_session_id_t, int> WebsocketAPI::curl_ws_session_still_running;
-std::unordered_map<ws_session_id_t, std::mutex> WebsocketAPI::session_mutex;
-std::unordered_map<ws_session_id_t, std::thread> WebsocketAPI::session_RX_thread;
-std::unordered_map<ws_session_id_t, std::thread> WebsocketAPI::session_TX_thread;
-std::unordered_map<ws_session_id_t, std::deque<ws_incomming_data_t>> WebsocketAPI::session_RX_frames_deque;
-std::unordered_map<ws_session_id_t, std::deque<ws_outgoing_data_t>> WebsocketAPI::session_TX_frames_deque;
-std::unordered_map<ws_session_id_t, std::string> WebsocketAPI::session_RX_buffer;
-std::unordered_map<ws_session_id_t, ws_session_id_t> WebsocketAPI::id_sessions;
-std::unordered_map<ws_session_id_t, std::condition_variable> WebsocketAPI::session_triggers;
+std::unordered_map<ws_session_id_t, std::shared_ptr<int>> WebsocketAPI::curl_ws_session_still_running;
+std::unordered_map<ws_session_id_t, std::shared_ptr<std::mutex>> WebsocketAPI::session_mutex;
+std::unordered_map<ws_session_id_t, std::shared_ptr<std::thread>> WebsocketAPI::session_RX_thread;
+std::unordered_map<ws_session_id_t, std::shared_ptr<std::thread>> WebsocketAPI::session_TX_thread;
+std::unordered_map<ws_session_id_t, std::shared_ptr<std::deque<ws_incomming_data_t>>> WebsocketAPI::session_RX_frames_deque;
+std::unordered_map<ws_session_id_t, std::shared_ptr<std::deque<ws_outgoing_data_t>>> WebsocketAPI::session_TX_frames_deque;
+std::unordered_map<ws_session_id_t, std::shared_ptr<std::string>> WebsocketAPI::session_RX_buffer;
+std::unordered_map<ws_session_id_t, std::shared_ptr<bool>> WebsocketAPI::session_shutdown_requested;
+std::unordered_map<ws_session_id_t, std::shared_ptr<bool>> WebsocketAPI::session_handshake_ready;
+std::unordered_map<ws_session_id_t, std::shared_ptr<ws_session_id_t>> WebsocketAPI::id_sessions;
+std::unordered_map<ws_session_id_t, std::shared_ptr<std::condition_variable>> WebsocketAPI::session_triggers;
 
 WebsocketAPI::_init WebsocketAPI::_initializer;
 
@@ -55,67 +61,181 @@ void WebsocketAPI::init() {
 }
 void WebsocketAPI::finit() {
   log_info("Finalizing WebsocketAPI \n");
-  
+
+  /* Gracefully finalize active sessions before global cleanup. */
+  std::vector<ws_session_id_t> active_sessions;
   {
     LOCK_GUARD(WebsocketAPI::global_ws_mutex);
-    /* Do a curl global cleanup */
+    active_sessions.reserve(WebsocketAPI::session_mutex.size());
+    for (const auto& it : WebsocketAPI::session_mutex) {
+      if (it.first != NULL_CURL_SESSION) active_sessions.push_back(it.first);
+    }
+  }
+  for (const ws_session_id_t session_id : active_sessions) {
+    bool exists = false;
+    {
+      LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+      exists = WebsocketAPI::session_mutex.find(session_id) !=
+               WebsocketAPI::session_mutex.end();
+    }
+    if (!exists) continue;
+    try {
+      WebsocketAPI::ws_finalize(session_id);
+    } catch (...) {
+      log_err("WebsocketAPI::finit failed to finalize session_id[ %d ]\n",
+              session_id);
+    }
+  }
+
+  {
+    LOCK_GUARD(WebsocketAPI::global_ws_mutex);
     dcurl_global_cleanup();
   }
 }
 
 /* Session utilities (private) */
 CURL* WebsocketAPI::get_session(const ws_session_id_t session_id) {
-  /* Validate */
-  if (session_id == NULL_CURL_SESSION || curl_ws_sessions.find(session_id) == curl_ws_sessions.end()) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = curl_ws_sessions.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == curl_ws_sessions.end()) {
     log_fatal("%s with session_id[ %d ]\n", "Failed to identify curl websocket session", session_id);
     return nullptr;
   }
-  /* Retrieve session */
-  return curl_ws_sessions.at(session_id);
+  return it->second;
 }
-std::mutex* WebsocketAPI::get_session_mutex(const ws_session_id_t session_id) {
-  /* Validate */
-  if (session_id == NULL_CURL_SESSION || WebsocketAPI::session_mutex.find(session_id) == WebsocketAPI::session_mutex.end()) {
+CURLM* WebsocketAPI::get_session_multi_handle(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::curl_multi_handles.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::curl_multi_handles.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify curl websocket multi handle", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<std::mutex> WebsocketAPI::get_session_mutex(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_mutex.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_mutex.end()) {
     log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session mutex", session_id);
     return nullptr;
   }
-  /* Retrieve session mutex */
-  return &(WebsocketAPI::session_mutex.at(session_id));
+  return it->second;
 }
-std::deque<ws_incomming_data_t>* WebsocketAPI::get_session_RX_deque(const ws_session_id_t session_id) {
-  /* Validate */
-  if (session_id == NULL_CURL_SESSION || WebsocketAPI::session_RX_frames_deque.find(session_id) == WebsocketAPI::session_RX_frames_deque.end()) {
+std::shared_ptr<std::condition_variable> WebsocketAPI::get_session_trigger(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_triggers.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_triggers.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session trigger", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<int> WebsocketAPI::get_session_still_running(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::curl_ws_session_still_running.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::curl_ws_session_still_running.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session running state", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<ws_session_id_t> WebsocketAPI::get_session_id_ref(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::id_sessions.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::id_sessions.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session id reference", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<bool> WebsocketAPI::get_session_shutdown_flag(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_shutdown_requested.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_shutdown_requested.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session shutdown flag", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<bool> WebsocketAPI::get_session_handshake_flag(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_handshake_ready.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_handshake_ready.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session handshake flag", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<std::thread> WebsocketAPI::get_session_RX_thread(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_RX_thread.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_RX_thread.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket RX thread", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<std::thread> WebsocketAPI::get_session_TX_thread(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_TX_thread.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_TX_thread.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket TX thread", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<std::string> WebsocketAPI::get_session_RX_buffer(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_RX_buffer.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_RX_buffer.end()) {
+    log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session RX buffer", session_id);
+    return nullptr;
+  }
+  return it->second;
+}
+std::shared_ptr<std::deque<ws_incomming_data_t>> WebsocketAPI::get_session_RX_deque(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_RX_frames_deque.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_RX_frames_deque.end()) {
     log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session RX deque", session_id);
     return nullptr;
   }
-  /* Retrieve session RX deque */
-  return &(WebsocketAPI::session_RX_frames_deque.at(session_id));
+  return it->second;
 }
-std::deque<ws_outgoing_data_t>* WebsocketAPI::get_session_TX_deque(const ws_session_id_t session_id) {
-  /* Validate */
-  if (session_id == NULL_CURL_SESSION || WebsocketAPI::session_TX_frames_deque.find(session_id) == WebsocketAPI::session_TX_frames_deque.end()) {
+std::shared_ptr<std::deque<ws_outgoing_data_t>> WebsocketAPI::get_session_TX_deque(const ws_session_id_t session_id) {
+  LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+  const auto it = WebsocketAPI::session_TX_frames_deque.find(session_id);
+  if (session_id == NULL_CURL_SESSION || it == WebsocketAPI::session_TX_frames_deque.end()) {
     log_fatal("%s with session_id[ %d ]\n", "Failed to identify websocket session TX deque", session_id);
     return nullptr;
   }
-  /* Retrieve session TX deque */
-  return &(WebsocketAPI::session_TX_frames_deque.at(session_id));
+  return it->second;
 }
 void WebsocketAPI::remove_session(const ws_session_id_t session_id) {
-  /* Free memory */
-  {
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
-    WebsocketAPI::curl_ws_sessions.erase(session_id);
-    WebsocketAPI::curl_multi_handles.erase(session_id);
-    WebsocketAPI::session_RX_frames_deque.erase(session_id);
-    WebsocketAPI::session_RX_thread.erase(session_id);
-    WebsocketAPI::session_TX_thread.erase(session_id);
-    WebsocketAPI::curl_ws_session_still_running.erase(session_id);
-    WebsocketAPI::session_triggers.erase(session_id);
-    WebsocketAPI::session_RX_buffer.erase(session_id);
-    /* Instead of erasing the reference session_id, we mark it null to indicate this is no longer a valid session */
-    WebsocketAPI::id_sessions.at(session_id) = NULL_CURL_SESSION;
+  std::unique_lock<std::mutex> global_lock(WebsocketAPI::global_ws_mutex);
+  if (session_id == NULL_CURL_SESSION) {
+    log_warn("remove_session ignored NULL session_id[ %d ]\n", session_id);
+    return;
   }
-  WebsocketAPI::session_mutex.erase(session_id);
+  auto mutex_it = WebsocketAPI::session_mutex.find(session_id);
+  if (mutex_it == WebsocketAPI::session_mutex.end()) {
+    return;
+  }
+
+  std::unique_lock<std::mutex> session_lock(*mutex_it->second);
+  WebsocketAPI::curl_ws_sessions.erase(session_id);
+  WebsocketAPI::curl_multi_handles.erase(session_id);
+  WebsocketAPI::session_RX_frames_deque.erase(session_id);
+  WebsocketAPI::session_RX_thread.erase(session_id);
+  WebsocketAPI::session_TX_thread.erase(session_id);
+  WebsocketAPI::curl_ws_session_still_running.erase(session_id);
+  WebsocketAPI::session_triggers.erase(session_id);
+  WebsocketAPI::session_RX_buffer.erase(session_id);
+  WebsocketAPI::session_shutdown_requested.erase(session_id);
+  WebsocketAPI::session_handshake_ready.erase(session_id);
+  WebsocketAPI::id_sessions.erase(session_id);
+  session_lock.unlock();
+  WebsocketAPI::session_mutex.erase(mutex_it);
 }
 
 /* Session utils (private)
@@ -128,29 +248,52 @@ ws_session_id_t WebsocketAPI::initialize_curl_ws_session() {
   
   /* Initialize the multi init object */
   CURLM * new_curl_multi_handle = curl_multi_init();
+  if (new_curl_multi_handle == nullptr) {
+    curl_easy_cleanup(new_curl_session);
+    log_fatal("%s\n", "Failed to initialize curl websocket multi handle");
+    return NULL_CURL_SESSION;
+  }
 
-  /* Create the session variables */
-  ws_session_id_t new_session_id = WebsocketAPI::sessions_counter;
-  std::deque<ws_incomming_data_t> new_session_RX_frames_deque;
-  std::deque<ws_outgoing_data_t> new_session_TX_frames_deque;
-  std::condition_variable new_session_trigger;
-  WebsocketAPI::sessions_counter++;
+  ws_session_id_t new_session_id = NULL_CURL_SESSION;
+  {
+    LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+    new_session_id = WebsocketAPI::sessions_counter++;
+    WebsocketAPI::curl_ws_sessions.emplace(new_session_id, new_curl_session);
+    WebsocketAPI::curl_multi_handles.emplace(new_session_id, new_curl_multi_handle);
+    WebsocketAPI::id_sessions.emplace(
+        new_session_id, std::make_shared<ws_session_id_t>(new_session_id));
+    /* Mark as running until curl_loop explicitly transitions to stopped. */
+    WebsocketAPI::curl_ws_session_still_running.emplace(
+        new_session_id, std::make_shared<int>(1));
+    WebsocketAPI::session_RX_frames_deque.emplace(
+        new_session_id,
+        std::make_shared<std::deque<ws_incomming_data_t>>());
+    WebsocketAPI::session_TX_frames_deque.emplace(
+        new_session_id,
+        std::make_shared<std::deque<ws_outgoing_data_t>>());
+    WebsocketAPI::session_RX_buffer.emplace(new_session_id,
+                                            std::make_shared<std::string>(""));
+    WebsocketAPI::session_shutdown_requested.emplace(
+        new_session_id, std::make_shared<bool>(false));
+    WebsocketAPI::session_handshake_ready.emplace(
+        new_session_id, std::make_shared<bool>(false));
+    WebsocketAPI::session_mutex.emplace(new_session_id,
+                                        std::make_shared<std::mutex>());
+    WebsocketAPI::session_triggers.emplace(
+        new_session_id, std::make_shared<std::condition_variable>());
+    WebsocketAPI::session_RX_thread.emplace(new_session_id,
+                                            std::make_shared<std::thread>());
+    WebsocketAPI::session_TX_thread.emplace(new_session_id,
+                                            std::make_shared<std::thread>());
+  }
 
-  /* Add the session variables to the session maps */
-  WebsocketAPI::curl_ws_sessions.emplace(new_session_id, new_curl_session);
-  WebsocketAPI::curl_multi_handles.emplace(new_session_id, new_curl_multi_handle);
-  WebsocketAPI::id_sessions.emplace(new_session_id, new_session_id);
-  WebsocketAPI::curl_ws_session_still_running.emplace(new_session_id, 0);
-  WebsocketAPI::session_RX_frames_deque.emplace(new_session_id, new_session_RX_frames_deque);
-  WebsocketAPI::session_TX_frames_deque.emplace(new_session_id, new_session_TX_frames_deque);
-  WebsocketAPI::session_RX_buffer.emplace(new_session_id, "");
-  WebsocketAPI::session_mutex.emplace(std::piecewise_construct, std::forward_as_tuple(new_session_id), std::forward_as_tuple());
-  WebsocketAPI::session_triggers.emplace(std::piecewise_construct, std::forward_as_tuple(new_session_id), std::forward_as_tuple());
-
-  /* Launch the flush TX messages (outgoing messages) thread */
-  std::thread new_flush_TX_deque_thread(WebsocketAPI::flush_messages_loop, new_session_id);
-  WebsocketAPI::session_TX_thread.emplace(new_session_id, std::move(new_flush_TX_deque_thread));
-  WebsocketAPI::session_TX_thread.at(new_session_id).detach();
+  /* Launch the flush TX messages (outgoing messages) thread (joined on finalize). */
+  {
+    LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+    WebsocketAPI::session_TX_thread.at(new_session_id) =
+        std::make_shared<std::thread>(WebsocketAPI::flush_messages_loop,
+                                      new_session_id);
+  }
 
   /* Log */
   log_info("[success] New Websocket session created with session_id[ %d ].\n", new_session_id);
@@ -163,10 +306,16 @@ ws_session_id_t WebsocketAPI::initialize_curl_ws_session() {
     - waits until session_id TX deque has been flushed
 */
 void WebsocketAPI::ws_wait_to_flush(const ws_session_id_t session_id) {
-  std::unique_lock<std::mutex> lock(*WebsocketAPI::get_session_mutex(session_id));
-  WebsocketAPI::session_triggers.at(session_id).wait(lock, [session_id] { 
-    return WebsocketAPI::get_session_TX_deque(session_id)->empty();
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+  std::unique_lock<std::mutex> lock(*session_mtx);
+  const bool flushed = trigger->wait_for(lock, WS_MAX_WAIT, [tx_deque] {
+    return tx_deque->empty();
   });
+  if (!flushed) {
+    log_warn("Timeout while waiting TX flush on session_id[ %d ]\n", session_id);
+  }
 }
 
 /*
@@ -174,10 +323,16 @@ void WebsocketAPI::ws_wait_to_flush(const ws_session_id_t session_id) {
     - waits until the curl loop has finished
 */
 void WebsocketAPI::ws_wait_loop_to_finish(const ws_session_id_t session_id) {
-  std::unique_lock<std::mutex> lock(*WebsocketAPI::get_session_mutex(session_id));
-  WebsocketAPI::session_triggers.at(session_id).wait(lock, [session_id] { 
-    return WebsocketAPI::curl_ws_session_still_running.at(session_id) == 0;
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto still_running = WebsocketAPI::get_session_still_running(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+  std::unique_lock<std::mutex> lock(*session_mtx);
+  const bool stopped = trigger->wait_for(lock, WS_MAX_WAIT, [still_running] {
+    return *still_running == 0;
   });
+  if (!stopped) {
+    log_warn("Timeout while waiting curl loop stop on session_id[ %d ]\n", session_id);
+  }
 }
 
 /*
@@ -185,9 +340,12 @@ void WebsocketAPI::ws_wait_loop_to_finish(const ws_session_id_t session_id) {
     - waits until the curl loop has finished
 */
 bool WebsocketAPI::ws_wait_server_response(const ws_session_id_t session_id, const std::string target_frame_id) {
-  std::unique_lock<std::mutex> lock(*WebsocketAPI::get_session_mutex(session_id));
-  bool condition_met = WebsocketAPI::session_triggers.at(session_id).wait_for(lock, WS_MAX_WAIT, [session_id, target_frame_id] {
-    const auto &deque = *WebsocketAPI::get_session_RX_deque(session_id);
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto rx_deque = WebsocketAPI::get_session_RX_deque(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+  std::unique_lock<std::mutex> lock(*session_mtx);
+  bool condition_met = trigger->wait_for(lock, WS_MAX_WAIT, [rx_deque, &target_frame_id] {
+    const auto& deque = *rx_deque;
     for (auto it = deque.rbegin(); it != deque.rend(); ++it) {
       if (it->frame_id == target_frame_id) { return true; }
     }
@@ -215,36 +373,60 @@ void WebsocketAPI::ws_finalize(const ws_session_id_t session_id) {
     return;
   }
 
-  /* Close session */
-  std::string close_frame_id = WebsocketAPI::ws_write_close(session_id, WS_NORMAL_TERMINATION);
-  
-  /* Wait until the RX deque is flushed */
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto tx_thread = WebsocketAPI::get_session_TX_thread(session_id);
+  auto rx_thread = WebsocketAPI::get_session_RX_thread(session_id);
+  CURL* curl_session = WebsocketAPI::get_session(session_id);
+  CURLM* multi_handle = WebsocketAPI::get_session_multi_handle(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+
+  /* Atomically enqueue close frame and block further writes. */
+  std::string close_frame_id = "close-skipped";
+  {
+    LOCK_GUARD(*session_mtx);
+    if (!*shutdown_requested) {
+      ws_outgoing_data_t close_frame{};
+      const unsigned short close_code = ws_htons(WS_NORMAL_TERMINATION);
+      close_frame.frame_data.resize(sizeof(close_code));
+      memcpy(close_frame.frame_data.data(), &close_code, sizeof(close_code));
+      close_frame.frame_size = close_frame.frame_data.size();
+      close_frame.frame_type = CURLWS_CLOSE;
+      close_frame.frame_id =
+          cuwacunu::piaabo::generate_random_string(CLOSE_FRAME_ID_FORMAT);
+      close_frame.local_timestamp = std::chrono::system_clock::now();
+      close_frame_id = close_frame.frame_id;
+      tx_deque->push_back(std::move(close_frame));
+    }
+    *shutdown_requested = true;
+  }
+  trigger->notify_all();
+
+  /* Wait until the TX deque is flushed */
   WebsocketAPI::ws_wait_to_flush(session_id);
 
-  /* Mark the end of the session validity */
-  WebsocketAPI::id_sessions.at(session_id) = NULL_CURL_SESSION;
-  
   /* Wait until the curl_loop is done */
   WebsocketAPI::ws_wait_loop_to_finish(session_id);
-  
-  /* Terminate session */
+
+  if (tx_thread->joinable() &&
+      tx_thread->get_id() != std::this_thread::get_id()) {
+    tx_thread->join();
+  }
+  if (rx_thread->joinable() &&
+      rx_thread->get_id() != std::this_thread::get_id()) {
+    rx_thread->join();
+  }
+
+  /* Terminate curl handles */
   {
-    /* Lock */
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
-
-    /* Cleanup from the curl-multi-object */
-    curl_multi_remove_handle(
-        WebsocketAPI::curl_multi_handles.at(session_id), 
-        WebsocketAPI::get_session(session_id));
-
-    /* Cleanup the curl_multi handle */
-    curl_multi_cleanup(WebsocketAPI::curl_multi_handles.at(session_id));
-    
-    /* Cleanup (free) memory */
-    curl_easy_cleanup(WebsocketAPI::get_session(session_id));
+    LOCK_GUARD(*session_mtx);
+    curl_multi_remove_handle(multi_handle, curl_session);
+    curl_multi_cleanup(multi_handle);
+    curl_easy_cleanup(curl_session);
   } /* Unlock */
-  
-  /* Finalize session */
+
+  /* Finalize session maps */
   WebsocketAPI::remove_session(session_id);
 
   log_info("Finalized WebSocket connection with session_id[ %d ] frame_id[ %s ].\n", 
@@ -262,18 +444,25 @@ ws_session_id_t WebsocketAPI::ws_init(const std::string& url) {
 
   /* Get curl session from the session_id */
   CURL* curl_session = WebsocketAPI::get_session(session_id);
+  CURLM* multi_handle = WebsocketAPI::get_session_multi_handle(session_id);
+  auto session_id_ref = WebsocketAPI::get_session_id_ref(session_id);
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+  auto handshake_ready = WebsocketAPI::get_session_handshake_flag(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto still_running = WebsocketAPI::get_session_still_running(session_id);
   
   /* Configure curl session for websockets */
   curl_easy_setopt(curl_session, CURLOPT_URL, url.c_str());
   curl_easy_setopt(curl_session, CURLOPT_WRITEFUNCTION, WebsocketAPI::websocket_RX_callback);
-  curl_easy_setopt(curl_session, CURLOPT_WRITEDATA, &(WebsocketAPI::id_sessions.at(session_id)));
+  curl_easy_setopt(curl_session, CURLOPT_WRITEDATA, session_id_ref.get());
   curl_easy_setopt(curl_session, CURLOPT_SSL_VERIFYPEER, 1L);
   curl_easy_setopt(curl_session, CURLOPT_SSL_VERIFYHOST, 2L);
   curl_easy_setopt(curl_session, CURLOPT_CONNECTTIMEOUT, 5L);
   curl_easy_setopt(curl_session, CURLOPT_SERVER_RESPONSE_TIMEOUT, 10L);
   curl_easy_setopt(curl_session, CURLOPT_BUFFERSIZE, CURL_MAX_WRITE_SIZE);
 
-  curl_easy_setopt(curl_session, CURLOPT_VERBOSE, 1L);
+  curl_easy_setopt(curl_session, CURLOPT_VERBOSE, 0L);
   
 
   /* // Optional setup options, to be reviewed
@@ -292,37 +481,54 @@ ws_session_id_t WebsocketAPI::ws_init(const std::string& url) {
   */
 
   /* Add the session to the curl-multi-object */
-  {
-    LOCK_GUARD(WebsocketAPI::global_ws_mutex);
-    curl_multi_add_handle(WebsocketAPI::curl_multi_handles.at(session_id), curl_session); /* Only add one session per multi_handle */
+  const CURLMcode add_rc = curl_multi_add_handle(
+      multi_handle, curl_session); /* Only add one session per multi_handle */
+  if (add_rc != CURLM_OK) {
+    {
+      LOCK_GUARD(*session_mtx);
+      *shutdown_requested = true;
+      *still_running = 0;
+    }
+    trigger->notify_all();
+    auto tx_thread = WebsocketAPI::get_session_TX_thread(session_id);
+    if (tx_thread->joinable() &&
+        tx_thread->get_id() != std::this_thread::get_id()) {
+      tx_thread->join();
+    }
+    curl_multi_cleanup(multi_handle);
+    curl_easy_cleanup(curl_session);
+    WebsocketAPI::remove_session(session_id);
+    log_err("Failed to add websocket handle to multi stack for session_id[ %d ]: %s\n",
+            session_id, curl_multi_strerror(add_rc));
+    return NULL_CURL_SESSION;
   }
 
   /* Launch a thread for the curl loop to run on this session */
-  std::thread new_curl_thread(WebsocketAPI::curl_loop, session_id);
+  {
+    LOCK_GUARD(WebsocketAPI::global_ws_mutex);
+    WebsocketAPI::session_RX_thread.at(session_id) =
+        std::make_shared<std::thread>(WebsocketAPI::curl_loop, session_id);
+  }
 
-  /* Detach the new thread */
-  new_curl_thread.detach();
-
-  /* Wait for a successful schema change */
-  std::mutex aux_mutex; std::unique_lock<std::mutex> lock(aux_mutex);
-
-  WebsocketAPI::session_triggers.at(session_id).wait(lock, [session_id] {
-    char *scheme = NULL;
-    if (curl_easy_getinfo(
-          WebsocketAPI::curl_ws_sessions.at(session_id), 
-          CURLINFO_SCHEME, &scheme) == CURLE_OK) 
-    {
-      if (scheme && (strcmp(scheme, "WS") == 0 || strcmp(scheme, "WSS") == 0)) {
-        log_dbg("Scheme change detected on session_id[ %d ] \n", session_id);
-        /* Continue */
-        return true;
-      }
-    }
-    /* Wait */
-    return false;
+  /* Wait for a successful scheme change or early failure. */
+  std::unique_lock<std::mutex> lock(*session_mtx);
+  const bool signaled = trigger->wait_for(lock, WS_MAX_WAIT, [handshake_ready, still_running]() {
+    return *handshake_ready || *still_running == 0;
   });
+  const bool handshake_ok = signaled && *handshake_ready;
+  lock.unlock();
 
-  /* After waiting */
+  if (!handshake_ok) {
+    {
+      LOCK_GUARD(*session_mtx);
+      *shutdown_requested = true;
+    }
+    trigger->notify_all();
+    log_err("WebSocket handshake failed or timed out for session_id[ %d ]\n", session_id);
+    WebsocketAPI::ws_finalize(session_id);
+    return NULL_CURL_SESSION;
+  }
+
   log_info("[success] WebSocket connection established, session_id[ %d ]\n", session_id);
   
   return session_id;
@@ -333,6 +539,11 @@ ws_session_id_t WebsocketAPI::ws_init(const std::string& url) {
     - push a message to the TX deque
 */
 std::string WebsocketAPI::ws_write_ping(const ws_session_id_t session_id, const std::string frame_id) {
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+
   /* Create the Ping frame object */
   ws_outgoing_data_t frame_to_deque;
   std::string return_frame_id;
@@ -346,11 +557,16 @@ std::string WebsocketAPI::ws_write_ping(const ws_session_id_t session_id, const 
   }
   /* Push to deque */
   {
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
+    LOCK_GUARD(*session_mtx);
+    if (*shutdown_requested) {
+      log_warn("Ignoring ws_write_ping on finalizing session_id[ %d ]\n",
+               session_id);
+      return "";
+    }
     return_frame_id = frame_to_deque.frame_id;
-    WebsocketAPI::get_session_TX_deque(session_id)->push_back(std::move(frame_to_deque));
+    tx_deque->push_back(std::move(frame_to_deque));
   }
-  WebsocketAPI::session_triggers.at(session_id).notify_all();
+  trigger->notify_all();
   return return_frame_id;
 }
 
@@ -359,6 +575,11 @@ std::string WebsocketAPI::ws_write_ping(const ws_session_id_t session_id, const 
     - push a message to the TX deque
 */
 std::string WebsocketAPI::ws_write_pong(const ws_session_id_t session_id, const std::string frame_id) {
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+
   /* Create the Pong frame object */
   ws_outgoing_data_t frame_to_deque;
   std::string return_frame_id;
@@ -372,11 +593,16 @@ std::string WebsocketAPI::ws_write_pong(const ws_session_id_t session_id, const 
   }
   /* Push to deque */
   {
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
+    LOCK_GUARD(*session_mtx);
+    if (*shutdown_requested) {
+      log_warn("Ignoring ws_write_pong on finalizing session_id[ %d ]\n",
+               session_id);
+      return "";
+    }
     return_frame_id = frame_to_deque.frame_id;
-    WebsocketAPI::get_session_TX_deque(session_id)->push_back(std::move(frame_to_deque));
+    tx_deque->push_back(std::move(frame_to_deque));
   }
-  WebsocketAPI::session_triggers.at(session_id).notify_all();
+  trigger->notify_all();
   return return_frame_id;
 }
 
@@ -385,6 +611,11 @@ std::string WebsocketAPI::ws_write_pong(const ws_session_id_t session_id, const 
     - push a message to the TX deque
 */
 std::string WebsocketAPI::ws_write_close(const ws_session_id_t session_id, unsigned short closing_code, const std::string frame_id) {
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+
   /* Create the object */
   ws_outgoing_data_t frame_to_deque;
   std::string return_frame_id;
@@ -400,11 +631,16 @@ std::string WebsocketAPI::ws_write_close(const ws_session_id_t session_id, unsig
   }
   /* Push to deque */
   {
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
+    LOCK_GUARD(*session_mtx);
+    if (*shutdown_requested) {
+      log_warn("Ignoring ws_write_close on finalizing session_id[ %d ]\n",
+               session_id);
+      return "";
+    }
     return_frame_id = frame_to_deque.frame_id;
-    WebsocketAPI::get_session_TX_deque(session_id)->push_back(std::move(frame_to_deque));
+    tx_deque->push_back(std::move(frame_to_deque));
   }
-  WebsocketAPI::session_triggers.at(session_id).notify_all();
+  trigger->notify_all();
   return return_frame_id;
 }
 
@@ -413,6 +649,11 @@ std::string WebsocketAPI::ws_write_close(const ws_session_id_t session_id, unsig
     - push a message to the TX deque
 */
 std::string WebsocketAPI::ws_write_binary(const ws_session_id_t session_id, const std::vector<unsigned char>& data, const std::string frame_id) {
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+
   /* Create the object */
   ws_outgoing_data_t frame_to_deque;
   std::string return_frame_id;
@@ -426,11 +667,16 @@ std::string WebsocketAPI::ws_write_binary(const ws_session_id_t session_id, cons
   }
   /* Push to deque */
   {
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
+    LOCK_GUARD(*session_mtx);
+    if (*shutdown_requested) {
+      log_warn("Ignoring ws_write_binary on finalizing session_id[ %d ]\n",
+               session_id);
+      return "";
+    }
     return_frame_id = frame_to_deque.frame_id;
-    WebsocketAPI::get_session_TX_deque(session_id)->push_back(std::move(frame_to_deque));
+    tx_deque->push_back(std::move(frame_to_deque));
   }
-  WebsocketAPI::session_triggers.at(session_id).notify_all();
+  trigger->notify_all();
   return return_frame_id;
 }
 
@@ -439,6 +685,11 @@ std::string WebsocketAPI::ws_write_binary(const ws_session_id_t session_id, cons
     - push a message to the TX deque
 */
 std::string WebsocketAPI::ws_write_text(const ws_session_id_t session_id, std::string data, const std::string frame_id) {
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+
   /* Create the object */
   ws_outgoing_data_t frame_to_deque;
   std::string return_frame_id;
@@ -453,11 +704,16 @@ std::string WebsocketAPI::ws_write_text(const ws_session_id_t session_id, std::s
   }
   /* Push to deque */
   {
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
+    LOCK_GUARD(*session_mtx);
+    if (*shutdown_requested) {
+      log_warn("Ignoring ws_write_text on finalizing session_id[ %d ]\n",
+               session_id);
+      return "";
+    }
     return_frame_id = frame_to_deque.frame_id;
-    WebsocketAPI::get_session_TX_deque(session_id)->push_back(std::move(frame_to_deque));
+    tx_deque->push_back(std::move(frame_to_deque));
   }
-  WebsocketAPI::session_triggers.at(session_id).notify_all();
+  trigger->notify_all();
   return return_frame_id;
 }
 
@@ -465,6 +721,8 @@ std::string WebsocketAPI::ws_write_text(const ws_session_id_t session_id, std::s
   Await and retrieve server response
 */
 std::optional<ws_incomming_data_t> WebsocketAPI::ws_await_and_retrive_server_response(const ws_session_id_t session_id, const std::string target_frame_id) {
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto rx_deque = WebsocketAPI::get_session_RX_deque(session_id);
   
   /* Wait for the server to respond */
   bool condition_met = cuwacunu::piaabo::curl::WebsocketAPI::ws_wait_server_response(session_id, target_frame_id);
@@ -477,10 +735,10 @@ std::optional<ws_incomming_data_t> WebsocketAPI::ws_await_and_retrive_server_res
   /* Success: response from the server was retrieved */
   { 
     /* Lock */
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
+    LOCK_GUARD(*session_mtx);
     
     /* Retrieve the response (and remove it from the queue) */
-    auto &deque = *WebsocketAPI::get_session_RX_deque(session_id);
+    auto &deque = *rx_deque;
     for (std::size_t idx = deque.size(); idx > 0; --idx) {
       std::size_t i = idx - 1; /* Adjust index for counting down */
       if (deque[i].frame_id == target_frame_id) {
@@ -506,99 +764,103 @@ std::optional<ws_incomming_data_t> WebsocketAPI::ws_await_and_retrive_server_res
 */
 void WebsocketAPI::curl_loop(const ws_session_id_t session_id) {
   log_dbg("Dispatching a new curl-thread on session_id[ %d ].\n", session_id);
+  CURL* curl_session = WebsocketAPI::get_session(session_id);
+  CURLM* multi_handle = WebsocketAPI::get_session_multi_handle(session_id);
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+  auto still_running_state = WebsocketAPI::get_session_still_running(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto handshake_ready = WebsocketAPI::get_session_handshake_flag(session_id);
+
   bool notified_scheme_change = false;
-  int numfds;
-  CURLMcode res_code;
+  int numfds = 0;
+  int still_running_local = 0;
+  CURLMcode res_code = CURLM_OK;
 
-  do {
-    /* Check session is still active */
-    if (WebsocketAPI::id_sessions.at(session_id) == NULL_CURL_SESSION) { break; }
-
-    /* Perform the next action in curl */
-    if (
-      (res_code = curl_multi_perform(
-        WebsocketAPI::curl_multi_handles.at(session_id), 
-        &WebsocketAPI::curl_ws_session_still_running.at(session_id)))
-      != CURLM_OK)
+  while (true) {
     {
-      log_fatal("Failed to perform curl_multi operation with error: %s\n",
-        curl_multi_strerror(res_code));
-      return;
+      LOCK_GUARD(*session_mtx);
+      if (*shutdown_requested) break;
     }
 
-    /* Check session is still active */
-    if (WebsocketAPI::id_sessions.at(session_id) == NULL_CURL_SESSION) { break; }
-
-    /* Wait for activity or timeout */
-    if (
-      (res_code = curl_multi_wait(
-        WebsocketAPI::curl_multi_handles.at(session_id), 
-        NULL, 0, 1000, &numfds))
-      != CURLM_OK)
+    res_code = curl_multi_perform(multi_handle, &still_running_local);
     {
-      log_err("curl_multi_wait() failed: %s\n", 
-        curl_multi_strerror(res_code));
+      LOCK_GUARD(*session_mtx);
+      *still_running_state = still_running_local;
+    }
+    trigger->notify_all();
+    if (res_code != CURLM_OK) {
+      log_err("Failed to perform curl_multi operation with error: %s\n",
+              curl_multi_strerror(res_code));
       break;
     }
 
-    /* Check session is still active */
-    if (WebsocketAPI::id_sessions.at(session_id) == NULL_CURL_SESSION) { break; }
+    {
+      LOCK_GUARD(*session_mtx);
+      if (*shutdown_requested) break;
+    }
+
+    res_code = curl_multi_wait(multi_handle, NULL, 0, 1000, &numfds);
+    if (res_code != CURLM_OK) {
+      log_err("curl_multi_wait() failed: %s\n", curl_multi_strerror(res_code));
+      break;
+    }
+
+    {
+      LOCK_GUARD(*session_mtx);
+      if (*shutdown_requested) break;
+    }
 
     /* Verify connection failure, overall verify errors */
-    {
-      CURLMsg *curl_dbg_msg;
-      int dbg_msgs_left;
-      while ((curl_dbg_msg = curl_multi_info_read(WebsocketAPI::curl_multi_handles.at(session_id), &dbg_msgs_left))) {
-        if (curl_dbg_msg->msg == CURLMSG_DONE) {
-          if (curl_dbg_msg->data.result == CURLE_COULDNT_RESOLVE_HOST) {
-            log_err("Curl failed to resolve host (no internet). %s\n", curl_easy_strerror(curl_dbg_msg->data.result));
-          } else if (curl_dbg_msg->data.result == CURLE_COULDNT_CONNECT) {
-            log_err("Curl failed to connect or shutting down connection. %s\n", curl_easy_strerror(curl_dbg_msg->data.result));
-          } else if (curl_dbg_msg->data.result != CURLE_OK) {
-            log_err("Curl general error: %s\n", curl_easy_strerror(curl_dbg_msg->data.result));
-          }
+    CURLMsg* curl_dbg_msg = nullptr;
+    int dbg_msgs_left = 0;
+    while ((curl_dbg_msg = curl_multi_info_read(multi_handle, &dbg_msgs_left))) {
+      if (curl_dbg_msg->msg == CURLMSG_DONE) {
+        if (curl_dbg_msg->data.result == CURLE_COULDNT_RESOLVE_HOST) {
+          log_err("Curl failed to resolve host (no internet). %s\n",
+                  curl_easy_strerror(curl_dbg_msg->data.result));
+        } else if (curl_dbg_msg->data.result == CURLE_COULDNT_CONNECT) {
+          log_err("Curl failed to connect or shutting down connection. %s\n",
+                  curl_easy_strerror(curl_dbg_msg->data.result));
+        } else if (curl_dbg_msg->data.result != CURLE_OK) {
+          log_err("Curl general error: %s\n",
+                  curl_easy_strerror(curl_dbg_msg->data.result));
         }
       }
     }
-
-    /* Check session is still active */
-    if (WebsocketAPI::id_sessions.at(session_id) == NULL_CURL_SESSION) { break; }
 
     /* Verify scheme change */
     if (!notified_scheme_change) {
-      char *scheme = NULL;
-      if (curl_easy_getinfo(
-            WebsocketAPI::curl_ws_sessions.at(session_id), 
-            CURLINFO_SCHEME, &scheme) == CURLE_OK) 
-      {
+      char* scheme = NULL;
+      if (curl_easy_getinfo(curl_session, CURLINFO_SCHEME, &scheme) == CURLE_OK) {
         if (scheme && (strcmp(scheme, "WS") == 0 || strcmp(scheme, "WSS") == 0)) {
-          
-          /* Validate the response code is 101 (switch protocol) */
-          long response_code;
-          CURLcode res = curl_easy_getinfo(
-            WebsocketAPI::curl_ws_sessions.at(session_id), 
-            CURLINFO_RESPONSE_CODE, &response_code);
-          
+          long response_code = 0;
+          const CURLcode res =
+              curl_easy_getinfo(curl_session, CURLINFO_RESPONSE_CODE, &response_code);
           if (res == CURLE_OK && response_code == 101) {
-            /* Notify scheme has changed to WebSocket */
             notified_scheme_change = true;
-            WebsocketAPI::session_triggers.at(session_id).notify_all();
+            {
+              LOCK_GUARD(*session_mtx);
+              *handshake_ready = true;
+            }
+            trigger->notify_all();
           }
         }
       }
     }
 
-    /* Check session is still active */
-    if (WebsocketAPI::id_sessions.at(session_id) == NULL_CURL_SESSION) { break; }
-
-  } while (WebsocketAPI::curl_ws_session_still_running.at(session_id) > 0);
+    if (still_running_local <= 0) break;
+  }
 
   /* Curl ran out of jobs */
   CLEAR_SYS_ERR(); /* Curl triggers some errors that are not critical */
   log_info("[success] curl-thread session_id[ %d ] finished operating.\n", session_id);
 
-  WebsocketAPI::curl_ws_session_still_running.at(session_id) = 0;
-  WebsocketAPI::session_triggers.at(session_id).notify_all();
+  {
+    LOCK_GUARD(*session_mtx);
+    *still_running_state = 0;
+  }
+  trigger->notify_all();
   
   return;
 }
@@ -609,53 +871,51 @@ void WebsocketAPI::curl_loop(const ws_session_id_t session_id) {
     - trigger (notify) when on WebsocketAPI::ws_write_* methods
 */
 void WebsocketAPI::flush_messages_loop(const ws_session_id_t session_id) {
-  do {
-    std::deque<ws_outgoing_data_t>* deque = WebsocketAPI::get_session_TX_deque(session_id);
-    /* Retrieve the TX deque */
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto tx_deque = WebsocketAPI::get_session_TX_deque(session_id);
+  auto shutdown_requested = WebsocketAPI::get_session_shutdown_flag(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
+  CURL* curl_session = WebsocketAPI::get_session(session_id);
 
-    /* Wait until TX deque is not empty */
-    std::mutex aux_mutex;
-    std::unique_lock<std::mutex> lock(aux_mutex);
-    WebsocketAPI::session_triggers.at(session_id).wait_for(lock, WS_MAX_WAIT, [deque, session_id]() { 
-      return WebsocketAPI::id_sessions.at(session_id) == NULL_CURL_SESSION || !deque->empty(); 
-    });
-
-    /* Check to break the thread loop and finalize */
-    if (WebsocketAPI::id_sessions.at(session_id) == NULL_CURL_SESSION) {
-      log_dbg("Stop flushing messages for session_id[ %d ]\n", session_id);
-      break;
-    }
-
-    /* Flush the deque */
-    while (WebsocketAPI::id_sessions.at(session_id) != NULL_CURL_SESSION && !deque->empty()) {
-      /* Retrieve the first element of the deque */
-      ws_outgoing_data_t frame_from_deque = deque->front(); /* FIFO */
-
-      /* Send the message */
-      CURLcode res = send_ws_frame(
-        WebsocketAPI::get_session(session_id),
-        frame_from_deque.frame_data.data(),
-        frame_from_deque.frame_size,
-        frame_from_deque.frame_type
-      );
-
-      /* Validate the response */
-      if (res != CURLE_OK) {
-        log_err("Unable to send frame_id[%s] from session_id[ %d ], with error: %s\n", 
-          frame_from_deque.frame_id.c_str(), session_id, curl_easy_strerror(res));
-      } else {
-        log_secure_dbg("[success] Sent session_id[ %d ]'s message with frame_id[ %s ]\n", 
-          session_id, frame_from_deque.frame_id.c_str());
+  while (true) {
+    ws_outgoing_data_t frame_from_deque;
+    bool should_send = false;
+    {
+      std::unique_lock<std::mutex> lock(*session_mtx);
+      trigger->wait_for(lock, WS_MAX_WAIT, [shutdown_requested, tx_deque]() {
+        return *shutdown_requested || !tx_deque->empty();
+      });
+      if (*shutdown_requested && tx_deque->empty()) {
+        log_dbg("Stop flushing messages for session_id[ %d ]\n", session_id);
+        break;
       }
-
-      /* Remove the first element from the deque */
-      deque->pop_front();
+      if (!tx_deque->empty()) {
+        frame_from_deque = std::move(tx_deque->front());
+        tx_deque->pop_front();
+        should_send = true;
+      }
     }
-    
-    /* Unlock the session mutex and notify trigger */
-    WebsocketAPI::session_triggers.at(session_id).notify_all();
 
-  } while (true); /* Low CPU consumption loop; await handled by the trigger variable */
+    if (!should_send) continue;
+
+    /* Send the message outside lock. */
+    const CURLcode res = send_ws_frame(
+        curl_session, frame_from_deque.frame_data.data(),
+        frame_from_deque.frame_size, frame_from_deque.frame_type);
+
+    /* Validate the response */
+    if (res != CURLE_OK) {
+      log_err("Unable to send frame_id[%s] from session_id[ %d ], with error: %s\n",
+              frame_from_deque.frame_id.c_str(), session_id, curl_easy_strerror(res));
+    } else {
+      log_secure_dbg("[success] Sent session_id[ %d ]'s message with frame_id[ %s ]\n",
+                     session_id, frame_from_deque.frame_id.c_str());
+    }
+
+    trigger->notify_all();
+  }
+
+  trigger->notify_all();
 }
 
 /* 
@@ -667,49 +927,63 @@ size_t WebsocketAPI::websocket_RX_callback(char* ptr, size_t size, size_t nmemb,
   /* Get the message arrival time */
   std::chrono::system_clock::time_point local_timestamp = std::chrono::system_clock::now();
 
+  if (userdata == nullptr || ptr == nullptr) return size * nmemb;
+
   /* Interpret the session_id */
   ws_session_id_t session_id = *(ws_session_id_t*)userdata;
+  auto session_mtx = WebsocketAPI::get_session_mutex(session_id);
+  auto rx_buffer = WebsocketAPI::get_session_RX_buffer(session_id);
+  auto rx_deque = WebsocketAPI::get_session_RX_deque(session_id);
+  auto trigger = WebsocketAPI::get_session_trigger(session_id);
   ws_incomming_data_t frame_to_deque;
+  bool produced_complete_frame = false;
     
   /* Lock the current session mutex */
   {
-    LOCK_GUARD(*WebsocketAPI::get_session_mutex(session_id));
+    LOCK_GUARD(*session_mtx);
 
     /* Push the received RX frame to the session_id FIFO deque */
     {
-      std::string *chunk_or_total_buffer = &WebsocketAPI::session_RX_buffer.at(session_id);
-
       /* Append the incoming buffer */
-      *chunk_or_total_buffer += std::string(ptr, size * nmemb);
+      *rx_buffer += std::string(ptr, size * nmemb);
+      if (rx_buffer->size() > kWsMaxRxBufferBytes) {
+        log_warn("Websocket session_id[ %d ] RX buffer exceeded %ld bytes; dropping partial frame.\n",
+                 session_id, static_cast<long>(kWsMaxRxBufferBytes));
+        rx_buffer->clear();
+      }
 
       /* Validate if the callback was invoked on a chunk or the total */
-      if (cuwacunu::piaabo::json_fast_validity_check(*chunk_or_total_buffer)) {
+      if (!rx_buffer->empty() &&
+          cuwacunu::piaabo::json_fast_validity_check(*rx_buffer)) {
         /* Total data was reached in the chunk */
-        frame_to_deque.data = *chunk_or_total_buffer;
+        frame_to_deque.data = *rx_buffer;
         frame_to_deque.local_timestamp = local_timestamp;
         frame_to_deque.frame_id = cuwacunu::piaabo::extract_json_string_value(frame_to_deque.data, "id", "NULL");
         
         /* Reset buffer */
-        WebsocketAPI::session_RX_buffer.at(session_id) = "";
+        rx_buffer->clear();
+        produced_complete_frame = true;
 
         /* Log info */
         log_secure_info("[total] Websocket session_id[ %d ] callback received frame_id[ %s ]\n", 
           session_id, 
           frame_to_deque.frame_id.c_str());
-        log_secure_dbg("[total] Websocket session_id[ %d ] callback received frame_id[ %s ] message: \n%s\n", 
+        log_secure_dbg("[total] Websocket session_id[ %d ] callback received frame_id[ %s ] bytes=%ld\n", 
           session_id, 
           frame_to_deque.frame_id.c_str(), 
-          frame_to_deque.data.c_str());
+          static_cast<long>(frame_to_deque.data.size()));
       } else {
         log_secure_dbg("[chunk] Websocket session_id[ %d ] callback received data chunk of size: %ld\n", 
           session_id, 
           size * nmemb);
       }
     }
-    WebsocketAPI::get_session_RX_deque(session_id)->push_back(std::move(frame_to_deque));
+    if (produced_complete_frame) {
+      rx_deque->push_back(std::move(frame_to_deque));
+    }
   } /* Unlock */
 
-  WebsocketAPI::session_triggers.at(session_id).notify_all();
+  if (produced_complete_frame) trigger->notify_all();
 
   /* Return the number of processed bytes; in this case, we return the total count */
   return size * nmemb;

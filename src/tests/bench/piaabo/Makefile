@@ -14,7 +14,7 @@ TEST_DEFAULT_LDLIBS :=
 
 # 3) Tests (build + run aliases)
 $(eval $(call TEST_ONEFILE, test_dconfig,                 test_dconfig.cpp,                 $(libcommon_a)))
-$(eval $(call TEST_ONEFILE, test_dconfig_contract_lock,   test_dconfig_contract_lock.cpp,   $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
+$(eval $(call TEST_ONEFILE, test_dconfig_contract_lock,   test_dconfig_contract_lock.cpp,   $(libtorch_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_dsecurity,               test_dsecurity.cpp,               $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_dencryption,             test_dencryption.cpp,             $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_djson_parsing,           test_djson_parsing.cpp,           $(libcommon_a)))
@@ -27,6 +27,7 @@ $(eval $(call TEST_ONEFILE, test_bnf_instruction_parser, test_bnf_instruction_pa
 # 4) Target-specific includes/link flags
 $(TEST_OUT)/test_dsecurity:               INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_dconfig_contract_lock:   INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_dconfig_contract_lock:   INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 $(TEST_OUT)/test_dencryption:             INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 
 # 5) Aggregate: all

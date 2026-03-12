@@ -27,6 +27,7 @@ struct entropic_capacity_comparison_report_t {
   std::string capacity_regime{"matched"};
   std::string source_analytics_file{};
   std::string network_analytics_file{};
+  std::string run_id{};
 };
 
 [[nodiscard]] entropic_capacity_comparison_report_t
@@ -45,7 +46,7 @@ summarize_entropic_capacity_comparison(
     entropic_capacity_comparison_report_t* out,
     std::string* error = nullptr);
 
-[[nodiscard]] std::string entropic_capacity_comparison_to_key_value_text(
+[[nodiscard]] std::string entropic_capacity_comparison_to_latent_lineage_state_text(
     const entropic_capacity_comparison_report_t& report);
 
 [[nodiscard]] bool write_entropic_capacity_comparison_file(

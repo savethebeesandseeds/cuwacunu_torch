@@ -73,7 +73,6 @@ int main() {
     cuwacunu::camahjucunu::canonical_path_t d4{};
     cuwacunu::camahjucunu::canonical_path_t d5{};
     cuwacunu::camahjucunu::canonical_path_t d6{};
-    cuwacunu::camahjucunu::canonical_path_t d7{};
 
     ok = ok && expect_ok(
         "tsi",
@@ -125,12 +124,6 @@ int main() {
         &hashes,
         &d6);
     ok = ok && expect_ok(
-        "tsi.probe.representation.transfer_matrix_evaluation.0x0000@meta:str",
-        canonical_path_kind_e::Endpoint,
-        "",
-        &hashes,
-        &d7);
-    ok = ok && expect_ok(
         "tsi.probe.log@info:tensor",
         canonical_path_kind_e::Endpoint,
         "tsi.probe.log@info:tensor",
@@ -168,12 +161,6 @@ int main() {
     const std::string c6_expected = "tsi.source.dataloader@response:cargo";
     if (d6.canonical != c6_expected) {
       std::cerr << "[FAIL] expected source dataloader payload canonical\n";
-      return 1;
-    }
-    const std::string c7_expected =
-        "tsi.probe.representation.transfer_matrix_evaluation.0x0000@meta:str";
-    if (d7.canonical != c7_expected) {
-      std::cerr << "[FAIL] expected probe payload canonical with explicit hashimyei\n";
       return 1;
     }
     ok = ok && expect_fail("tsi.wikimyei.representation.vicreg@response:cargo");

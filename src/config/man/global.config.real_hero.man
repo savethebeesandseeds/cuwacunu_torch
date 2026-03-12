@@ -5,7 +5,7 @@ MAN_ID = global.config.real_hero
 TARGET_DSL = src/config/.config
 TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
 PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
-PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/include/HERO/hero_config/hero.config.h
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/include/hero/config_hero/hero.config.h
 
 [ENUM REAL_HERO.mode]
 key = REAL_HERO.mode
@@ -50,6 +50,36 @@ default = https://api.openai.com/v1/responses
 range = non-empty URL
 allowed = HTTPS URL
 nuance = active endpoint for mode=openai
+
+[FIELD REAL_HERO.config_hero_dsl_filename]
+key = config_hero_dsl_filename
+scope = REAL_HERO section
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/default.hero.config.dsl
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = deterministic Config HERO runtime DSL file used by hero_config_mcp
+
+[FIELD REAL_HERO.hashimyei_hero_dsl_filename]
+key = hashimyei_hero_dsl_filename
+scope = REAL_HERO section
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/default.hero.hashimyei.dsl
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = deterministic Hashimyei HERO defaults DSL used by hero_hashimyei_mcp
+
+[FIELD REAL_HERO.lattice_hero_dsl_filename]
+key = lattice_hero_dsl_filename
+scope = REAL_HERO section
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/default.hero.lattice.dsl
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = deterministic Lattice HERO defaults DSL used by hero_lattice_mcp
 
 [RULE REAL_HERO_MODE_ALLOWED]
 id = REAL_HERO_MODE_ALLOWED

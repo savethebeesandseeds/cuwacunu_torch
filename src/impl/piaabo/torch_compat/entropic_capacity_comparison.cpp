@@ -1,5 +1,7 @@
 #include "piaabo/torch_compat/entropic_capacity_comparison.h"
 
+#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -47,8 +49,9 @@ constexpr double kNumericEpsilon = 1e-18;
     if (!line.empty()) {
       const std::size_t sep = line.find('=');
       if (sep != std::string_view::npos) {
-        const std::string_view parsed_key =
-            trim_ascii_ws_view_(line.substr(0, sep));
+        const std::string parsed_key =
+            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
+                line.substr(0, sep));
         if (parsed_key == key) {
           const std::string value(trim_ascii_ws_view_(line.substr(sep + 1)));
           if (value.empty()) return std::nullopt;
@@ -163,7 +166,7 @@ bool summarize_entropic_capacity_comparison_from_files(
   return true;
 }
 
-std::string entropic_capacity_comparison_to_key_value_text(
+std::string entropic_capacity_comparison_to_latent_lineage_state_text(
     const entropic_capacity_comparison_report_t& report) {
   std::ostringstream oss;
   oss.setf(std::ios::fixed);
@@ -175,13 +178,17 @@ std::string entropic_capacity_comparison_to_key_value_text(
   oss << "capacity_margin=" << report.capacity_margin << "\n";
   oss << "capacity_ratio=" << report.capacity_ratio << "\n";
   oss << "capacity_regime=" << report.capacity_regime << "\n";
+  if (!report.run_id.empty()) {
+    oss << "run_id=" << report.run_id << "\n";
+  }
   if (!report.source_analytics_file.empty()) {
     oss << "source_analytics_file=" << report.source_analytics_file << "\n";
   }
   if (!report.network_analytics_file.empty()) {
     oss << "network_analytics_file=" << report.network_analytics_file << "\n";
   }
-  return oss.str();
+  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
+      oss.str());
 }
 
 bool write_entropic_capacity_comparison_file(
@@ -210,7 +217,7 @@ bool write_entropic_capacity_comparison_file(
     }
     return false;
   }
-  out << entropic_capacity_comparison_to_key_value_text(report);
+  out << entropic_capacity_comparison_to_latent_lineage_state_text(report);
   if (!out.good()) {
     if (error) {
       *error = "cannot write comparison output file: " + output_file.string();

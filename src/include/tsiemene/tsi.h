@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -14,12 +15,14 @@
 namespace tsiemene {
 
 using TsiId = std::uint64_t;
+class Tsi;
 
 // Opaque runtime context (board/session can hang whatever it wants here).
 struct BoardContext {
   void* user = nullptr;
   std::uint64_t wave_mode_flags{0};
   bool debug_enabled{false};
+  std::string run_id{};
 };
 
 // One ingress token delivered to one input directive.
@@ -49,6 +52,41 @@ enum class Determinism : std::uint8_t {
   Deterministic,
   SeededStochastic,
   Nondeterministic,
+};
+
+enum class RuntimeEventKind : std::uint8_t {
+  RunStart = 0,
+  RunEnd = 1,
+  EpochStart = 2,
+  EpochEnd = 3,
+  QueueDrained = 4,
+  StepStart = 5,
+  StepDone = 6,
+  Route = 7,
+  Drop = 8,
+  Backpressure = 9,
+};
+
+struct RuntimeEvent {
+  RuntimeEventKind kind{RuntimeEventKind::StepStart};
+  const Wave* wave{nullptr};
+  const Ingress* ingress{nullptr};
+  const Signal* signal{nullptr};
+
+  Tsi* source{nullptr};
+  Tsi* target{nullptr};
+  DirectiveId out_directive{};
+  DirectiveId in_directive{};
+
+  std::uint64_t step_count{0};
+  std::size_t queue_size{0};
+  std::size_t max_queue_size{0};
+  std::size_t dropped_by_backpressure{0};
+};
+
+struct RuntimeEventAction {
+  bool request_continuation{false};
+  Ingress continuation_ingress{};
 };
 
 // A TSI is a step-driven process.
@@ -117,21 +155,12 @@ class Tsi {
   // Returns true when runtime should not auto-emit @meta to avoid feedback loops.
   [[nodiscard]] virtual bool suppress_runtime_meta_feedback() const noexcept { return false; }
 
-  // Optional runtime continuation hook.
-  // When true, runtime may enqueue another step for this same tsi after the
-  // current event queue is drained (used by pull-style sources).
-  [[nodiscard]] virtual bool requests_runtime_continuation() const noexcept { return false; }
-  [[nodiscard]] virtual Ingress runtime_continuation_ingress() const {
-    return Ingress{};
-  }
-
   virtual void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) = 0;
-  // Optional epoch boundary hook invoked by board-level execution.
-  // Use this for end-of-epoch bookkeeping that must happen even when
-  // no further ingress events are emitted (for example committing
-  // gradient accumulation tails).
-  virtual void on_epoch_end(BoardContext& /*ctx*/) {}
-  virtual void reset(BoardContext& /*ctx*/) {}
+  virtual RuntimeEventAction on_event(const RuntimeEvent&,
+                                      BoardContext&,
+                                      Emitter&) {
+    return RuntimeEventAction{};
+  }
 };
 
 } // namespace tsiemene

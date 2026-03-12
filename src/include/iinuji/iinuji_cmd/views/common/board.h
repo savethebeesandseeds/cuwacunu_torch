@@ -5,11 +5,14 @@
 #include <string>
 #include <vector>
 
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
 #include "iinuji/iinuji_cmd/views/board/contract.section.circuit.h"
 #include "iinuji/iinuji_cmd/views/board/editor.highlight.h"
 #include "iinuji/iinuji_cmd/views/common/base.h"
+#include "piaabo/dfiles.h"
 
 namespace cuwacunu {
 namespace iinuji {
@@ -19,11 +22,11 @@ inline std::string board_instruction_path_from_config(
     const cuwacunu::iitepi::contract_hash_t& contract_hash) {
   std::string path;
   if (!lookup_contract_config_value(
-          "DSL", "tsiemene_circuit_dsl_filename", contract_hash, &path)) {
-    return "src/config/instructions/iitepi.contract.circuit.example.dsl";
+          "CONTRACT", "circuit_dsl_filename", contract_hash, &path)) {
+    return "src/config/instructions/default.iitepi.contract.circuit.dsl";
   }
   if (path.empty()) {
-    return "src/config/instructions/iitepi.contract.circuit.example.dsl";
+    return "src/config/instructions/default.iitepi.contract.circuit.dsl";
   }
   return path;
 }
@@ -97,9 +100,89 @@ inline BoardState load_board_from_contract_hash(
       out.contract_hash);
 
   out.instruction_path = board_instruction_path_from_config(out.contract_hash);
-  out.contract_observation_sources_dsl = contract_itself->observation.sources.dsl;
-  out.contract_observation_channels_dsl = contract_itself->observation.channels.dsl;
-  out.contract_jkimyei_specs_dsl = contract_itself->jkimyei.dsl;
+  out.contract_observation_sources_dsl.clear();
+  out.contract_observation_channels_dsl.clear();
+  out.contract_jkimyei_specs_dsl.clear();
+  {
+    const auto sec_it = contract_itself->module_sections.find("VICReg");
+    if (sec_it != contract_itself->module_sections.end()) {
+      const auto key_it = sec_it->second.find("jkimyei_dsl_file");
+      if (key_it != sec_it->second.end()) {
+        std::filesystem::path module_path{};
+        const auto path_it = contract_itself->module_section_paths.find("VICReg");
+        if (path_it != contract_itself->module_section_paths.end()) {
+          module_path = path_it->second;
+        }
+        std::filesystem::path dsl_path = key_it->second;
+        if (dsl_path.is_relative() && !module_path.empty()) {
+          dsl_path = module_path.parent_path() / dsl_path;
+        }
+        std::error_code ec;
+        if (std::filesystem::exists(dsl_path, ec) &&
+            std::filesystem::is_regular_file(dsl_path, ec)) {
+          out.contract_jkimyei_specs_dsl =
+              cuwacunu::piaabo::dfiles::readFileToString(dsl_path);
+        }
+      }
+    }
+  }
+  try {
+    const std::string board_hash =
+        cuwacunu::iitepi::config_space_t::locked_board_hash();
+    const std::string binding_id =
+        cuwacunu::iitepi::config_space_t::locked_board_binding_id();
+    const std::string bound_contract_hash =
+        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+            board_hash, binding_id);
+    if (bound_contract_hash == out.contract_hash) {
+      const auto board_itself =
+          cuwacunu::iitepi::board_space_t::board_itself(board_hash);
+      const auto& board_instruction = board_itself->board.decoded();
+      const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
+      for (const auto& b : board_instruction.binds) {
+        if (b.id == binding_id) {
+          bind = &b;
+          break;
+        }
+      }
+      if (bind) {
+        const std::string wave_hash =
+            cuwacunu::iitepi::board_space_t::wave_hash_for_binding(
+                board_hash, binding_id);
+        const auto wave_itself =
+            cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
+        const auto& wave_set = wave_itself->wave.decoded();
+        const cuwacunu::camahjucunu::iitepi_wave_t* selected_wave = nullptr;
+        for (const auto& wave : wave_set.waves) {
+          if (wave.name == bind->wave_ref) {
+            selected_wave = &wave;
+            break;
+          }
+        }
+        if (selected_wave && !selected_wave->sources.empty()) {
+          const auto& source_decl = selected_wave->sources.front();
+          const std::string sources_path = (std::filesystem::path(
+                                                wave_itself->config_folder) /
+                                            source_decl.sources_dsl_file)
+                                               .string();
+          const std::string channels_path = (std::filesystem::path(
+                                                 wave_itself->config_folder) /
+                                             source_decl.channels_dsl_file)
+                                                .string();
+          if (std::filesystem::exists(sources_path)) {
+            out.contract_observation_sources_dsl =
+                cuwacunu::piaabo::dfiles::readFileToString(sources_path);
+          }
+          if (std::filesystem::exists(channels_path)) {
+            out.contract_observation_channels_dsl =
+                cuwacunu::piaabo::dfiles::readFileToString(channels_path);
+          }
+        }
+      }
+    }
+  } catch (...) {
+    // keep editor state best-effort; missing runtime binding context is not fatal.
+  }
   out.raw_instruction = contract_itself->circuit.dsl;
   out.editor = std::make_shared<cuwacunu::iinuji::editorBox_data_t>(out.instruction_path);
   configure_board_editor_highlighting(*out.editor);

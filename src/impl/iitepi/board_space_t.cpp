@@ -62,6 +62,8 @@ hash_by_board_path() {
 [[nodiscard]] static parsed_config_t parse_config_file(const std::string& path);
 [[nodiscard]] static std::vector<std::string> split_string_items(
     const std::string& s);
+[[nodiscard]] static bool has_suffix_case_insensitive(std::string_view text,
+                                                      std::string_view suffix);
 [[nodiscard]] static std::string resolve_path_from_folder(
     const std::string& folder,
     std::string path);
@@ -191,6 +193,18 @@ static T parse_scalar_from_string(const std::string& s);
     }
   }
   return out;
+}
+
+[[nodiscard]] static bool has_suffix_case_insensitive(std::string_view text,
+                                                      std::string_view suffix) {
+  if (suffix.size() > text.size()) return false;
+  const std::size_t offset = text.size() - suffix.size();
+  for (std::size_t i = 0; i < suffix.size(); ++i) {
+    const unsigned char a = static_cast<unsigned char>(text[offset + i]);
+    const unsigned char b = static_cast<unsigned char>(suffix[i]);
+    if (std::tolower(a) != std::tolower(b)) return false;
+  }
+  return true;
 }
 
 [[nodiscard]] static bool has_non_ws_ascii(const std::string& s) {
@@ -713,11 +727,11 @@ build_board_record_from_board_path(const std::string& board_file_path) {
   const std::string resolved_board_path =
       canonicalize_path_best_effort(board_file_path);
   if (!has_non_ws_ascii(resolved_board_path)) {
-    log_fatal("[dconfig] cannot resolve board config path from: %s\n",
+    log_fatal("[dconfig] cannot resolve board file path from: %s\n",
               board_file_path.c_str());
   }
   if (!std::filesystem::exists(resolved_board_path)) {
-    log_fatal("[dconfig] board config path does not exist: %s\n",
+    log_fatal("[dconfig] board file path does not exist: %s\n",
               resolved_board_path.c_str());
   }
 
@@ -727,34 +741,45 @@ build_board_record_from_board_path(const std::string& board_file_path) {
     board_folder = board_path.parent_path().string();
   }
 
-  parsed_config_t parsed = parse_config_file(resolved_board_path);
-  (void)validate_board_config_or_terminate(parsed, board_folder);
+  const bool board_path_is_dsl =
+      has_suffix_case_insensitive(resolved_board_path, ".dsl");
 
   auto record = std::make_shared<board_record_t>();
   record->config_folder = board_folder;
   record->config_file_path = resolved_board_path;
   record->config_file_path_canonical =
       canonicalize_path_best_effort(resolved_board_path);
-  record->config = parsed;
+  std::string dsl_path = resolved_board_path;
+  if (!board_path_is_dsl) {
+    parsed_config_t parsed = parse_config_file(resolved_board_path);
+    (void)validate_board_config_or_terminate(parsed, board_folder);
+    record->config = parsed;
+    dsl_path = board_required_resolved_path(
+        record->config,
+        record->config_folder,
+        "DSL",
+        "iitepi_board_dsl_filename");
+  }
 
-  const std::string grammar_path = global_required_resolved_path(
-      "BNF", "iitepi_board_grammar_filename");
-  const std::string dsl_path = board_required_resolved_path(
-      record->config,
-      record->config_folder,
-      "DSL",
-      "iitepi_board_dsl_filename");
+  const std::string grammar_path =
+      global_required_resolved_path("BNF", "iitepi_board_grammar_filename");
 
   std::set<std::string> dependency_paths;
   dependency_paths.insert(record->config_file_path_canonical);
   dependency_paths.insert(canonicalize_path_best_effort(grammar_path));
-  dependency_paths.insert(canonicalize_path_best_effort(dsl_path));
+  if (!board_path_is_dsl) {
+    dependency_paths.insert(canonicalize_path_best_effort(dsl_path));
+  }
 
   record->board.grammar = piaabo::dfiles::readFileToString(grammar_path);
-  record->board.dsl =
-      snapshot_board_dsl_value_or_empty(record->config, "iitepi_board_dsl_text");
-  if (!has_non_ws_ascii(record->board.dsl)) {
+  if (board_path_is_dsl) {
     record->board.dsl = piaabo::dfiles::readFileToString(dsl_path);
+  } else {
+    record->board.dsl =
+        snapshot_board_dsl_value_or_empty(record->config, "iitepi_board_dsl_text");
+    if (!has_non_ws_ascii(record->board.dsl)) {
+      record->board.dsl = piaabo::dfiles::readFileToString(dsl_path);
+    }
   }
 
   if (!has_non_ws_ascii(record->board.grammar)) {

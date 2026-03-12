@@ -149,7 +149,7 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled
     push("Board instruction invalid", Emph::Error);
     push("error: " + st.board.error, Emph::Error);
     push("");
-    push("Fix src/config/instructions/iitepi.contract.circuit.example.dsl then run: reload", Emph::Warning);
+    push("Fix src/config/instructions/default.iitepi.contract.circuit.dsl then run: reload", Emph::Warning);
     return lines;
   }
   if (st.board.board.circuits.empty()) {
@@ -218,18 +218,18 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled
   } else if (!werr.empty()) {
     push("wave parse error: " + werr, Emph::Warning);
   }
-  push("contract segments", Emph::Accent);
+  push("runtime segments", Emph::Accent);
   push(" - board.contract.circuit@DSL:str : local/derived", Emph::Debug);
   push(
-      std::string(" - board.contract.observation_sources@DSL:str : ") +
+      std::string(" - board.wave.source.sources@DSL:str : ") +
           (st.board.contract_observation_sources_dsl.empty() ? "missing" : "loaded"),
       st.board.contract_observation_sources_dsl.empty() ? Emph::Warning : Emph::Debug);
   push(
-      std::string(" - board.contract.observation_channels@DSL:str : ") +
+      std::string(" - board.wave.source.channels@DSL:str : ") +
           (st.board.contract_observation_channels_dsl.empty() ? "missing" : "loaded"),
       st.board.contract_observation_channels_dsl.empty() ? Emph::Warning : Emph::Debug);
   push(
-      std::string(" - board.contract.jkimyei_specs@DSL:str : ") +
+      std::string(" - board.contract.vicreg.jkimyei@DSL:str : ") +
           (st.board.contract_jkimyei_specs_dsl.empty() ? "missing" : "loaded"),
       st.board.contract_jkimyei_specs_dsl.empty() ? Emph::Warning : Emph::Debug);
   if (focus_context) {

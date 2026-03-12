@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "piaabo/dlogs.h"
+#include "tsiemene/tsi.report.h"
 
 namespace torch {
 namespace nn {
@@ -217,10 +218,11 @@ struct network_design_analytics_report_t {
     network_analytics_options_t* out_options,
     std::string* error = nullptr);
 
-[[nodiscard]] std::string network_analytics_to_key_value_text(
+[[nodiscard]] std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_report_t& report,
     const network_analytics_options_t& options,
-    std::string_view checkpoint_filename = {});
+    std::string_view checkpoint_filename = {},
+    const tsiemene::component_report_identity_t& report_identity = {});
 
 [[nodiscard]] std::string network_analytics_to_pretty_text(
     const network_analytics_report_t& report,
@@ -228,7 +230,7 @@ struct network_design_analytics_report_t {
     std::string_view network_label = {},
     bool use_color = true);
 
-[[nodiscard]] std::string network_design_analytics_to_key_value_text(
+[[nodiscard]] std::string network_design_analytics_to_latent_lineage_state_text(
     const network_design_analytics_report_t& report,
     std::string_view source_label = {});
 
@@ -250,14 +252,16 @@ struct network_design_analytics_report_t {
     const torch::nn::Module& model,
     const std::filesystem::path& output_file,
     const network_analytics_options_t& options = {},
-    std::string* error = nullptr);
+    std::string* error = nullptr,
+    const tsiemene::component_report_identity_t& report_identity = {});
 
 [[nodiscard]] bool write_network_analytics_sidecar_for_checkpoint(
     const torch::nn::Module& model,
     const std::filesystem::path& checkpoint_file,
     std::filesystem::path* out_sidecar_file = nullptr,
     const network_analytics_options_t& options = {},
-    std::string* error = nullptr);
+    std::string* error = nullptr,
+    const tsiemene::component_report_identity_t& report_identity = {});
 
 } /* namespace torch_compat */
 } /* namespace piaabo */

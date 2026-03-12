@@ -7,80 +7,117 @@
 
 <wave_stmt>              ::= [<whitespace>] <wave_stmt_core> ;
 <wave_stmt_core>         ::= <mode_assignment>
+                           | <determinism_assignment>
                            | <sampler_assignment>
                            | <epochs_assignment>
                            | <batch_size_assignment>
                            | <max_batches_per_epoch_assignment>
                            | <wikimyei_block>
                            | <source_block>
-                           | <probe_block> ;
+                           | <probe_block>
+                           | <sink_block> ;
 
-<mode_assignment>        ::= "MODE" [<whitespace>] "=" [<whitespace>] <mode_value> [<whitespace>] ";" <line_end> ;
-<sampler_assignment>     ::= "SAMPLER" [<whitespace>] "=" [<whitespace>] <sampler_value> [<whitespace>] ";" <line_end> ;
-<epochs_assignment>      ::= "EPOCHS" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
-<batch_size_assignment>  ::= "BATCH_SIZE" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
-<max_batches_per_epoch_assignment> ::= "MAX_BATCHES_PER_EPOCH" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
+<assign>                 ::= [<whitespace>] (":" | "=") [<whitespace>] ;
 
-<wikimyei_block>         ::= "WIKIMYEI" [<whitespace>] <path_ref> [<whitespace>] "{"
+<mode_assignment>        ::= "MODE" <assign> <mode_value> [<whitespace>] ";" <line_end> ;
+<determinism_assignment> ::= "DETERMINISM" <assign> <determinism_value> [<whitespace>] ";" <line_end> ;
+<sampler_assignment>     ::= "SAMPLER" <assign> <sampler_value> [<whitespace>] ";" <line_end> ;
+<epochs_assignment>      ::= "EPOCHS" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
+<batch_size_assignment>  ::= "BATCH_SIZE" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
+<max_batches_per_epoch_assignment> ::= "MAX_BATCHES_PER_EPOCH" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
+
+<binding_ref>            ::= "<" [<whitespace>] <id_value> [<whitespace>] ">" ;
+
+<wikimyei_block>         ::= "WIKIMYEI" [<whitespace>] [":" [<whitespace>]] <binding_ref> [<whitespace>] "{"
                              <line_end>
                              {<wikimyei_assignment>}
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 <wikimyei_assignment>    ::= [<whitespace>] <wikimyei_assignment_core> ;
-<wikimyei_assignment_core> ::= <wikimyei_path_assignment>
-                             | <wikimyei_train_assignment>
-                             | <wikimyei_profile_id_assignment> ;
-<wikimyei_path_assignment>      ::= "PATH" [<whitespace>] "=" [<whitespace>] <path_value> [<whitespace>] ";" <line_end> ;
-<wikimyei_train_assignment>     ::= "TRAIN" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end> ;
-<wikimyei_profile_id_assignment> ::= "PROFILE_ID" [<whitespace>] "=" [<whitespace>] <id_value> [<whitespace>] ";" <line_end> ;
+<wikimyei_assignment_core> ::= <family_assignment>
+                             | <hashimyei_assignment>
+                             | <path_assignment>
+                             | <jkimyei_block> ;
+<jkimyei_block>          ::= "JKIMYEI" <assign> "{" <line_end>
+                             [<whitespace>] "HALT_TRAIN" <assign> <bool_value> [<whitespace>] ";" <line_end>
+                             [<whitespace>] "PROFILE_ID" <assign> <id_value> [<whitespace>] ";" <line_end>
+                             [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 
-<source_block>           ::= "SOURCE" [<whitespace>] <path_ref> [<whitespace>] "{"
+<source_block>           ::= "SOURCE" [<whitespace>] [":" [<whitespace>]] <binding_ref> [<whitespace>] "{"
                              <line_end>
                              {<source_assignment>}
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 <source_assignment>      ::= [<whitespace>] <source_assignment_core> ;
-<source_assignment_core> ::= <source_path_assignment>
-                           | <source_symbol_assignment>
-                           | <source_from_assignment>
-                           | <source_to_assignment>
-                           | <source_workers_assignment>
-                           | <source_force_rebuild_cache_assignment>
-                           | <source_range_warn_batches_assignment>
-                           | <source_sources_dsl_file_assignment>
-                           | <source_channels_dsl_file_assignment> ;
-<source_path_assignment>   ::= "PATH" [<whitespace>] "=" [<whitespace>] <path_value> [<whitespace>] ";" <line_end> ;
-<source_symbol_assignment> ::= "SYMBOL" [<whitespace>] "=" [<whitespace>] <symbol_value> [<whitespace>] ";" <line_end> ;
-<source_from_assignment>   ::= "FROM" [<whitespace>] "=" [<whitespace>] <date_value> [<whitespace>] ";" <line_end> ;
-<source_to_assignment>     ::= "TO" [<whitespace>] "=" [<whitespace>] <date_value> [<whitespace>] ";" <line_end> ;
-<source_workers_assignment> ::= "WORKERS" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
-<source_force_rebuild_cache_assignment> ::= "FORCE_REBUILD_CACHE" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end> ;
-<source_range_warn_batches_assignment> ::= "RANGE_WARN_BATCHES" [<whitespace>] "=" [<whitespace>] <unsigned_int> [<whitespace>] ";" <line_end> ;
-<source_sources_dsl_file_assignment> ::= "SOURCES_DSL_FILE" [<whitespace>] "=" [<whitespace>] <file_path_value> [<whitespace>] ";" <line_end> ;
-<source_channels_dsl_file_assignment> ::= "CHANNELS_DSL_FILE" [<whitespace>] "=" [<whitespace>] <file_path_value> [<whitespace>] ";" <line_end> ;
+<source_assignment_core> ::= <family_assignment>
+                           | <path_assignment>
+                           | <source_settings_block>
+                           | <source_runtime_block> ;
+<source_settings_block>  ::= "SETTINGS" <assign> "{" <line_end>
+                             {<source_settings_assignment>}
+                             [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
+<source_settings_assignment> ::= [<whitespace>] <source_settings_assignment_core> ;
+<source_settings_assignment_core> ::= <sampler_assignment>
+                                    | <source_workers_assignment>
+                                    | <source_force_rebuild_cache_assignment>
+                                    | <source_range_warn_batches_assignment> ;
+<source_runtime_block>   ::= "RUNTIME" <assign> "{" <line_end>
+                             {<source_runtime_assignment>}
+                             [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
+<source_runtime_assignment> ::= [<whitespace>] <source_runtime_assignment_core> ;
+<source_runtime_assignment_core> ::= <source_symbol_assignment>
+                                   | <source_from_assignment>
+                                   | <source_to_assignment>
+                                   | <source_sources_dsl_file_assignment>
+                                   | <source_channels_dsl_file_assignment> ;
+<source_symbol_assignment> ::= "SYMBOL" <assign> <symbol_value> [<whitespace>] ";" <line_end> ;
+<source_from_assignment>   ::= "FROM" <assign> <date_value> [<whitespace>] ";" <line_end> ;
+<source_to_assignment>     ::= "TO" <assign> <date_value> [<whitespace>] ";" <line_end> ;
+<source_workers_assignment> ::= "WORKERS" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
+<source_force_rebuild_cache_assignment> ::= "FORCE_REBUILD_CACHE" <assign> <bool_value> [<whitespace>] ";" <line_end> ;
+<source_range_warn_batches_assignment> ::= "RANGE_WARN_BATCHES" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
+<source_sources_dsl_file_assignment> ::= "SOURCES_DSL_FILE" <assign> <file_path_value> [<whitespace>] ";" <line_end> ;
+<source_channels_dsl_file_assignment> ::= "CHANNELS_DSL_FILE" <assign> <file_path_value> [<whitespace>] ";" <line_end> ;
 
-<probe_block>            ::= "PROBE" [<whitespace>] <path_ref> [<whitespace>] "{"
+<probe_block>            ::= "PROBE" [<whitespace>] [":" [<whitespace>]] <binding_ref> [<whitespace>] "{"
                              <line_end>
                              {<probe_assignment>}
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 <probe_assignment>       ::= [<whitespace>] <probe_assignment_core> ;
-<probe_assignment_core>  ::= <probe_path_assignment>
-                           | <probe_training_window_assignment>
-                           | <probe_report_policy_assignment>
-                           | <probe_objective_assignment> ;
-<probe_path_assignment>  ::= "PATH" [<whitespace>] "=" [<whitespace>] <probe_path_value> [<whitespace>] ";" <line_end> ;
-<probe_training_window_assignment> ::= "TRAINING_WINDOW" [<whitespace>] "=" [<whitespace>] <probe_training_window_value> [<whitespace>] ";" <line_end> ;
-<probe_report_policy_assignment> ::= "REPORT_POLICY" [<whitespace>] "=" [<whitespace>] <probe_report_policy_value> [<whitespace>] ";" <line_end> ;
-<probe_objective_assignment> ::= "OBJECTIVE" [<whitespace>] "=" [<whitespace>] <probe_objective_value> [<whitespace>] ";" <line_end> ;
+<probe_assignment_core>  ::= <family_assignment>
+                           | <hashimyei_assignment>
+                           | <path_assignment>
+                           | <probe_runtime_block>
+                           | <probe_runtime_assignment> ;
+<probe_runtime_block>    ::= "RUNTIME" <assign> "{" <line_end>
+                             {<probe_runtime_assignment>}
+                             [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
+<probe_runtime_assignment> ::= [<whitespace>] <probe_runtime_assignment_core> ;
+<probe_runtime_assignment_core> ::= <probe_training_window_assignment>
+                                  | <probe_report_policy_assignment>
+                                  | <probe_objective_assignment> ;
+<probe_training_window_assignment> ::= "TRAINING_WINDOW" <assign> <probe_training_window_value> [<whitespace>] ";" <line_end> ;
+<probe_report_policy_assignment> ::= "REPORT_POLICY" <assign> <probe_report_policy_value> [<whitespace>] ";" <line_end> ;
+<probe_objective_assignment> ::= "OBJECTIVE" <assign> <probe_objective_value> [<whitespace>] ";" <line_end> ;
+
+<sink_block>             ::= "SINK" [<whitespace>] [":" [<whitespace>]] <binding_ref> [<whitespace>] "{"
+                             <line_end>
+                             {<sink_assignment>}
+                             [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
+<sink_assignment>        ::= [<whitespace>] <sink_assignment_core> ;
+<sink_assignment_core>   ::= <family_assignment> | <path_assignment> ;
+
+<family_assignment>      ::= "FAMILY" <assign> <path_value> [<whitespace>] ";" <line_end> ;
+<hashimyei_assignment>   ::= "HASHIMYEI" <assign> <hashimyei_id> [<whitespace>] ";" <line_end> ;
+<path_assignment>        ::= "PATH" <assign> <path_value> [<whitespace>] ";" <line_end> ;
 
 <wave_name>              ::= <id_value> ;
-<path_ref>               ::= <path_value> ;
 <path_value>             ::= <id_value> ;
-<probe_path_value>       ::= "tsi.probe.representation.transfer_matrix_evaluation" "." <hashimyei_id> ;
 <hashimyei_id>           ::= "0x" <hex_digit> {<hex_digit>}
                            | "0X" <hex_digit> {<hex_digit>} ;
 <id_value>               ::= <id_char> {<id_char>} ;
 <mode_value>             ::= <mode_atom> { [<whitespace>] <mode_join> [<whitespace>] <mode_atom> } ;
-<mode_atom>              ::= "train" | "run" | "debug" | <unsigned_int> | <hex_literal> | <bin_literal> ;
+<mode_atom>              ::= "run" | "train" | "debug" | <unsigned_int> | <hex_literal> | <bin_literal> ;
 <mode_join>              ::= "|" | "," | "+" | "^" ;
+<determinism_value>      ::= "deterministic" | "non_deterministic" | "nondeterministic" | "non-deterministic" | "stochastic" ;
 <sampler_value>          ::= "sequential" | "random" | "SequentialSampler" | "RandomSampler" ;
 <probe_training_window_value> ::= "incoming_batch" ;
 <probe_report_policy_value> ::= "epoch_end_log" ;

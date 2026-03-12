@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "piaabo/dconfig.h"
 
 namespace fs = std::filesystem;
@@ -100,9 +102,9 @@ struct FileRestoreGuard {
 int main() try {
   const fs::path global_cfg_path = "/cuwacunu/src/config/.config";
   const fs::path board_cfg_path =
-      "/cuwacunu/src/config/default.board.config";
+      "/cuwacunu/src/config/instructions/default.iitepi.board.dsl";
   const fs::path alt_board_cfg_path =
-      fs::temp_directory_path() / "default.board.alt.config";
+      "/cuwacunu/src/config/instructions/default.iitepi.board.alt.dsl";
 
   cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/");
   cuwacunu::iitepi::config_space_t::update_config();
@@ -166,16 +168,46 @@ int main() try {
   write_text(board_cfg_path, board_original);
   cuwacunu::iitepi::config_space_t::update_config();
 
-  // Case 4: tamper transitive dependency (bound contract observation sources DSL) -> fail-fast.
+  // Case 4: tamper transitive dependency (bound wave observation sources DSL) -> fail-fast.
   const std::string binding_id =
       cuwacunu::iitepi::board_space_t::locked_board_binding_id();
   const std::string locked_contract_hash =
       cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
           locked_board_hash, binding_id);
-  const fs::path obs_dsl_path =
-      cuwacunu::iitepi::contract_space_t::contract_itself(
-          locked_contract_hash)
-          ->get<std::string>("DSL", "observation_sources_dsl_filename");
+  (void)locked_contract_hash;
+  const auto board_itself_locked =
+      cuwacunu::iitepi::board_space_t::board_itself(locked_board_hash);
+  const auto& board_instruction = board_itself_locked->board.decoded();
+  const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
+  for (const auto& b : board_instruction.binds) {
+    if (b.id == binding_id) {
+      bind = &b;
+      break;
+    }
+  }
+  if (!bind) {
+    std::cerr << "[dconfig_contract_lock] cannot resolve active bind in board DSL\n";
+    return 1;
+  }
+  const std::string locked_wave_hash =
+      cuwacunu::iitepi::board_space_t::wave_hash_for_binding(
+          locked_board_hash, binding_id);
+  const auto wave_itself =
+      cuwacunu::iitepi::wave_space_t::wave_itself(locked_wave_hash);
+  const auto& wave_set = wave_itself->wave.decoded();
+  const cuwacunu::camahjucunu::iitepi_wave_t* selected_wave = nullptr;
+  for (const auto& wave : wave_set.waves) {
+    if (wave.name == bind->wave_ref) {
+      selected_wave = &wave;
+      break;
+    }
+  }
+  if (!selected_wave || selected_wave->sources.empty()) {
+    std::cerr << "[dconfig_contract_lock] cannot resolve selected SOURCE block in wave DSL\n";
+    return 1;
+  }
+  const fs::path obs_dsl_path = fs::path(wave_itself->config_folder) /
+                                selected_wave->sources.front().sources_dsl_file;
   const std::string obs_dsl_original = read_text(obs_dsl_path);
   FileRestoreGuard obs_restore{obs_dsl_path, obs_dsl_original};
   write_text(obs_dsl_path, obs_dsl_original + "\n# tamper-transitive\n");

@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = iitepi.board
-TARGET_DSL = src/config/instructions/iitepi.board.dsl
+TARGET_DSL = src/config/instructions/default.iitepi.board.dsl
 TARGET_BNF = src/config/bnf/iitepi.board.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_board/tsiemene_board.cpp
 PRIMARY_VALIDATORS = syntax_only_in_decoder
@@ -45,7 +45,7 @@ required = true
 default = none
 range = must exist in derived contract ids from IMPORT_CONTRACT_FILE
 allowed = derived contract id token
-nuance = contract id is not free-form; it must match derived import id (example default.board.contract.config -> contract_default)
+nuance = contract id is not free-form; it must match derived import id (example default.iitepi.contract.dsl -> contract_default_iitepi)
 
 [FIELD BIND.WAVE]
 key = BIND.WAVE

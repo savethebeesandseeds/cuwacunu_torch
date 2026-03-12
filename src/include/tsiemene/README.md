@@ -25,6 +25,7 @@ Think of it as an event-driven graph:
 - edges are typed hops (`directive + kind`)
 - runtime pushes events through the graph
 - waves carry execution context (episode/batch/index and optional time span)
+- control-plane lifecycle/runtime signals are delivered through typed `on_event(...)`
 
 ## High-level separation
 
@@ -60,13 +61,13 @@ The practical idea is:
 ## Current behavior themes
 - typed lane routing (not positional ports)
 - queue-based runtime execution
-- optional source continuation for multi-batch flows
+- queue-drained continuation requested via `RuntimeEventAction` from `on_event(QueueDrained)`
+- standardized lifecycle events (`RunStart/RunEnd`, `EpochStart/End`, step/route/drop/backpressure)
 - graph-level observability through `@meta` signals
 
 ## Current component family in active use
 - `tsi.source.dataloader`
 - `tsi.wikimyei.representation.vicreg`
-- `tsi.probe.representation.transfer_matrix_evaluation`
 - `tsi.sink.null`
 - `tsi.probe.log`
 
@@ -91,8 +92,8 @@ For exact constraints, use:
 2. `src/include/iitepi/board/board.contract.h`
 3. `src/include/iitepi/board/board.runtime.h`
 4. `src/include/iitepi/board/board.builder.h`
-5. `src/config/instructions/iitepi.contract.circuit.example.dsl`
-6. `src/config/instructions/iitepi.wave.example.dsl`
+5. `src/config/instructions/default.iitepi.contract.circuit.dsl`
+6. `src/config/instructions/default.iitepi.wave.dsl`
 
 ## Reference tests
 - `src/tests/bench/camahjucunu/test_dsl_tsiemene_circuit.cpp`

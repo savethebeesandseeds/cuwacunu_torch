@@ -2,9 +2,9 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = tsi.wikimyei.inference.mdn.value_estimation
-TARGET_DSL = src/config/instructions/tsi.wikimyei.inference.mdn.value_estimation.dsl
-TARGET_BNF = src/config/bnf/key_value.bnf
-PRIMARY_DECODER = key_value decoder + contract module validator
+TARGET_DSL = src/config/instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
 PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/impl/wikimyei/inference/expected_value/expected_value.cpp,src/impl/wikimyei/inference/mdn/mixture_density_network.cpp
 
 [FIELD model_path]

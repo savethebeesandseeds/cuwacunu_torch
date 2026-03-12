@@ -3,7 +3,7 @@
 #include <utility>
 #include <vector>
 
-#include "hashimyei/hashimyei_artifacts.h"
+#include "hero/hashimyei_hero/hashimyei_artifacts.h"
 #include "iinuji/iinuji_cmd/views/common.h"
 #include "tsiemene/tsi.wikimyei.representation.vicreg.h"
 

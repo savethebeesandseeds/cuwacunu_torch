@@ -6,8 +6,16 @@ include $(ROOT_PATH)/Makefile.config
 
 HERE_PATH := $(ROOT_PATH)/main
 TESTS_PATH := $(ROOT_PATH)/tests
-PRODUCTION_RULES := all hero board_hero hashimyei_hero tools config_hero install-hashimyei-tools clean
-MAIN_LOCAL_TARGETS := all clean hero board_hero hashimyei_hero tools config_hero install-hashimyei-tools tests test ta clean_tests \
+# Runtime utility binaries should live under .build/hero.
+TEST_OUT := $(HERO_OUT)
+
+TEST_DEFAULT_LDLIBS :=
+MAIN_BOARD_LINK := $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
+$(eval $(call TEST_ONEFILE, main_board, main_board.cpp, $(MAIN_BOARD_LINK)))
+$(TEST_OUT)/main_board: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+
+PRODUCTION_RULES := all hero board hashimyei_hero tools config_hero install-hashimyei-tools clean
+MAIN_LOCAL_TARGETS := all clean hero board hashimyei_hero tools config_hero install-hashimyei-tools tests test ta clean_tests \
 	parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi \
 	https db hashimyei jkimyei vicreg mdn expval
 SRC_BRIDGE_TARGETS := all modules lib-bundles build b mods m bundles pack test \
@@ -24,9 +32,16 @@ TARGET_RULES := $(sort \
 hero:
 	+$(MAKE) -C $(HERE_PATH)/hero all
 
-.PHONY: board_hero
-board_hero:
-	+$(MAKE) -C $(HERE_PATH)/hero board_hero
+.PHONY: build-board
+build-board: $(TEST_OUT)/main_board
+	@$(LOG_SUCCESS)
+
+.PHONY: run-board
+run-board: $(TEST_OUT)/main_board
+	$(Q)$(RUN_MODE) $(TEST_OUT)/main_board
+
+.PHONY: board
+board: run-board
 
 .PHONY: hashimyei_hero
 hashimyei_hero:
@@ -89,13 +104,14 @@ targets:
 .PHONY: help
 help:
 	@echo "main targets:"
-	@echo "  all hero board_hero hashimyei_hero tools config_hero install-hashimyei-tools tests clean"
+	@echo "  all hero board hashimyei_hero tools config_hero install-hashimyei-tools tests clean"
 	@echo "  test groups: parser dsl types exchange piaabo data iinuji ... vicreg"
 	@echo "  aliases: main_<target> (local), src_<target> (bridge to src/Makefile)"
 	@echo "  list targets: make -C $(HERE_PATH) targets"
 
 .PHONY: clean
 clean:
+	@rm -f $(TEST_OUT)/main_board
 	+$(MAKE) -C $(HERE_PATH)/hero clean
 	+$(MAKE) -C $(HERE_PATH)/tools clean
 	+$(MAKE) -C $(TESTS_PATH) clean

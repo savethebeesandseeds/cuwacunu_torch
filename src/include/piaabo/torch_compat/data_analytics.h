@@ -8,6 +8,8 @@
 
 #include <torch/torch.h>
 
+#include "tsiemene/tsi.report.h"
+
 namespace cuwacunu {
 namespace piaabo {
 namespace torch_compat {
@@ -16,6 +18,8 @@ inline constexpr std::string_view kDataAnalyticsSchemaV1 =
     "piaabo.torch_compat.data_analytics.v1";
 inline constexpr std::string_view kDataAnalyticsSchemaCurrent =
     kDataAnalyticsSchemaV1;
+inline constexpr std::string_view kDataAnalyticsLatestReportFilename =
+    "data_analytics.latest.lls";
 
 struct data_analytics_options_t {
   std::int64_t max_samples{4096};
@@ -68,17 +72,19 @@ class data_source_analytics_accumulator_t {
   std::int64_t source_effective_feature_count_{0};
 };
 
-[[nodiscard]] std::string data_analytics_to_key_value_text(
+[[nodiscard]] std::string data_analytics_to_latent_lineage_state_text(
     const data_source_analytics_report_t& report,
     const data_analytics_options_t& options,
-    std::string_view source_label = {});
+    std::string_view source_label = {},
+    const tsiemene::component_report_identity_t& report_identity = {});
 
 [[nodiscard]] bool write_data_analytics_file(
     const data_source_analytics_report_t& report,
     const data_analytics_options_t& options,
     const std::filesystem::path& output_file,
     std::string_view source_label = {},
-    std::string* error = nullptr);
+    std::string* error = nullptr,
+    const tsiemene::component_report_identity_t& report_identity = {});
 
 [[nodiscard]] std::string extract_data_analytics_kv_schema(
     std::string_view payload);

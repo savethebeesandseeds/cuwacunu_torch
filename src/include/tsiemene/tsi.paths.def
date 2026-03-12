@@ -42,9 +42,6 @@ TSI_PATH_COMPONENT(SourceDataloader, "tsi.source.dataloader", Source, ManyInstan
                    "Source dataloader component")
 TSI_PATH_COMPONENT(WikimyeiRepresentationVicreg, "tsi.wikimyei.representation.vicreg", Wikimyei,
                    HashimyeiInstances, "VICReg representation wikimyei")
-TSI_PATH_COMPONENT(ProbeRepresentationTransferMatrixEvaluation,
-                   "tsi.probe.representation.transfer_matrix_evaluation", Probe, HashimyeiInstances,
-                   "Probe terminal for representation transfer-matrix evaluation")
 TSI_PATH_COMPONENT(SinkNull, "tsi.sink.null", Sink, ManyInstances,
                    "Null sink terminal")
 TSI_PATH_COMPONENT(SinkLogSys, "tsi.probe.log", Sink, UniquePerCircuit,
@@ -65,11 +62,6 @@ TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Payload, Cargo,
 TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Loss, Tensor,
               "training loss")
 TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Meta, String,
-              "runtime trace/meta stream")
-
-TSI_PATH_LANE(ProbeRepresentationTransferMatrixEvaluation, In, Step, Cargo,
-              "probe ingress cargo for transfer-matrix evaluation")
-TSI_PATH_LANE(ProbeRepresentationTransferMatrixEvaluation, Out, Meta, String,
               "runtime trace/meta stream")
 
 TSI_PATH_LANE(SinkNull, In, Step, Cargo,
@@ -110,11 +102,6 @@ TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Payload, Cargo,
 TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Loss, Tensor,
                   "training loss")
 TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Meta, String,
-                  "runtime trace/meta stream")
-
-TSI_PATH_ENDPOINT(ProbeRepresentationTransferMatrixEvaluation, Step, Cargo,
-                  "probe ingress cargo for transfer-matrix evaluation")
-TSI_PATH_ENDPOINT(ProbeRepresentationTransferMatrixEvaluation, Meta, String,
                   "runtime trace/meta stream")
 
 TSI_PATH_ENDPOINT(SinkNull, Step, Cargo,

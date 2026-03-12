@@ -86,26 +86,9 @@ inline std::string board_contract_section_editor_path(const std::string& instruc
 inline std::string board_contract_section_instruction_path(BoardContractSection section,
                                                            const std::string& circuit_fallback_path,
                                                            const std::string& contract_hash) {
-  if (section == BoardContractSection::Circuit) return circuit_fallback_path;
-  std::string key;
-  switch (section) {
-    case BoardContractSection::ObservationSources:
-      key = "observation_sources_dsl_filename";
-      break;
-    case BoardContractSection::ObservationChannels:
-      key = "observation_channels_dsl_filename";
-      break;
-    case BoardContractSection::JkimyeiSpecs:
-      key = "jkimyei_specs_dsl_filename";
-      break;
-    case BoardContractSection::Circuit:
-      break;
-  }
-  std::string path;
-  if (lookup_contract_config_value("DSL", key, contract_hash, &path) && !path.empty()) {
-    return path;
-  }
-  return {};
+  (void)section;
+  (void)contract_hash;
+  return circuit_fallback_path;
 }
 
 inline bool write_text_file(const std::string& path,

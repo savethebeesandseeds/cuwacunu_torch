@@ -222,9 +222,10 @@ static T parse_scalar_from_string(const std::string& s) {
     throw bad_config_access("Invalid bool '" + s + "'");
   } else if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
     T v{};
-    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
-    if (ec != std::errc()) throw bad_config_access("Invalid integer '" + s + "'");
-    (void)ptr;
+    const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+    if (ec != std::errc() || ptr != s.data() + s.size()) {
+      throw bad_config_access("Invalid integer '" + s + "'");
+    }
     return v;
   } else if constexpr (std::is_floating_point_v<T>) {
     char* end{};
@@ -453,6 +454,12 @@ bool config_space_t::validate_config() {
           log_warn("Configured path does not exist for <%s> in section [%s]: %s\n",
                    key, section, resolved.c_str());
           ok = false;
+          return;
+        }
+        if (!std::filesystem::is_regular_file(resolved)) {
+          log_warn("Configured path is not a regular file for <%s> in section [%s]: %s\n",
+                   key, section, resolved.c_str());
+          ok = false;
         }
       };
 
@@ -473,6 +480,12 @@ bool config_space_t::validate_config() {
     if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
       log_warn(
           "Configured board file does not exist: %s (resolved: %s)\n",
+          board_cfg_path.c_str(),
+          resolved.c_str());
+      ok = false;
+    } else if (!std::filesystem::is_regular_file(resolved)) {
+      log_warn(
+          "Configured board file is not a regular file: %s (resolved: %s)\n",
           board_cfg_path.c_str(),
           resolved.c_str());
       ok = false;
@@ -497,7 +510,7 @@ bool config_space_t::validate_config() {
       "iitepi_wave_grammar_filename",
       "vicreg_grammar_filename",
       "value_estimation_grammar_filename",
-      "transfer_matrix_evaluation_grammar_filename",
+      "wikimyei_inference_transfer_matrix_evaluation_grammar_filename",
       "observation_sources_grammar_filename",
       "observation_channels_grammar_filename",
       "jkimyei_specs_grammar_filename",
@@ -549,6 +562,9 @@ bool config_space_t::validate_config() {
   }
   (void)require_value("REAL_HERO", "OPENAI_api_filename", nullptr);
   (void)require_value("REAL_HERO", "endpoint", nullptr);
+  require_existing_path("REAL_HERO", "config_hero_dsl_filename", config_folder);
+  require_existing_path("REAL_HERO", "hashimyei_hero_dsl_filename", config_folder);
+  require_existing_path("REAL_HERO", "lattice_hero_dsl_filename", config_folder);
 
   if (!ok) log_terminate_gracefully("Invalid global configuration, aborting.\n");
   return ok;

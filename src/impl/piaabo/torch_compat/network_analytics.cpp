@@ -1,6 +1,7 @@
 /* network_analytics.cpp */
 #include "piaabo/torch_compat/network_analytics.h"
 
+#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "camahjucunu/dsl/network_design/network_design.h"
 #include <torch/torch.h>
 
@@ -121,6 +122,36 @@ struct tensor_snapshot_t {
 
 [[nodiscard]] inline std::string bool_to_ascii(bool value) {
   return value ? "true" : "false";
+}
+
+void append_component_report_identity_kv_(
+    std::ostringstream* oss,
+    const tsiemene::component_report_identity_t& report_identity) {
+  if (!oss) return;
+  if (!report_identity.report_kind.empty()) {
+    *oss << "report_kind=" << report_identity.report_kind << "\n";
+  }
+  if (!report_identity.tsi_type.empty()) {
+    *oss << "tsi_type=" << report_identity.tsi_type << "\n";
+  }
+  if (!report_identity.canonical_path.empty()) {
+    *oss << "canonical_path=" << report_identity.canonical_path << "\n";
+  }
+  if (!report_identity.hashimyei.empty()) {
+    *oss << "hashimyei=" << report_identity.hashimyei << "\n";
+  }
+  if (!report_identity.contract_hash.empty()) {
+    *oss << "contract_hash=" << report_identity.contract_hash << "\n";
+  }
+  if (!report_identity.wave_hash.empty()) {
+    *oss << "wave_hash=" << report_identity.wave_hash << "\n";
+  }
+  if (!report_identity.binding_id.empty()) {
+    *oss << "binding_id=" << report_identity.binding_id << "\n";
+  }
+  if (!report_identity.run_id.empty()) {
+    *oss << "run_id=" << report_identity.run_id << "\n";
+  }
 }
 
 [[nodiscard]] std::string_view trim_ascii_ws_view_(std::string_view text) {
@@ -628,12 +659,14 @@ void accumulate_buffer_tensor_(
 [[nodiscard]] std::string as_ascii_key_value_(
     const network_analytics_report_t& report,
     const network_analytics_options_t& options,
-    std::string_view checkpoint_filename) {
+    std::string_view checkpoint_filename,
+    const tsiemene::component_report_identity_t& report_identity) {
   std::ostringstream oss;
   oss.setf(std::ios::fixed);
   oss << std::setprecision(10);
 
   oss << "schema=" << report.schema << "\n";
+  append_component_report_identity_kv_(&oss, report_identity);
   if (!checkpoint_filename.empty()) {
     oss << "checkpoint_file=" << checkpoint_filename << "\n";
   }
@@ -2080,7 +2113,9 @@ std::string extract_analytics_kv_schema(std::string_view payload) {
     if (!line.empty()) {
       const std::size_t sep = line.find('=');
       if (sep != std::string_view::npos) {
-        const std::string_view key = trim_ascii_ws_view_(line.substr(0, sep));
+        const std::string key =
+            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
+                line.substr(0, sep));
         if (key == "schema") {
           const std::string_view value =
               trim_ascii_ws_view_(line.substr(sep + 1));
@@ -2108,11 +2143,13 @@ bool is_supported_network_design_analytics_schema(std::string_view schema) {
          schema == kNetworkDesignAnalyticsSchemaV3;
 }
 
-std::string network_analytics_to_key_value_text(
+std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_report_t& report,
     const network_analytics_options_t& options,
-    std::string_view checkpoint_filename) {
-  return as_ascii_key_value_(report, options, checkpoint_filename);
+    std::string_view checkpoint_filename,
+    const tsiemene::component_report_identity_t& report_identity) {
+  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
+      as_ascii_key_value_(report, options, checkpoint_filename, report_identity));
 }
 
 std::string network_analytics_to_pretty_text(
@@ -2123,10 +2160,11 @@ std::string network_analytics_to_pretty_text(
   return as_pretty_text_(report, options, network_label, use_color);
 }
 
-std::string network_design_analytics_to_key_value_text(
+std::string network_design_analytics_to_latent_lineage_state_text(
     const network_design_analytics_report_t& report,
     std::string_view source_label) {
-  return as_ascii_key_value_(report, source_label);
+  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
+      as_ascii_key_value_(report, source_label));
 }
 
 std::string network_design_analytics_to_pretty_text(
@@ -2140,7 +2178,8 @@ bool write_network_analytics_file(
     const torch::nn::Module& model,
     const std::filesystem::path& output_file,
     const network_analytics_options_t& options,
-    std::string* error) {
+    std::string* error,
+    const tsiemene::component_report_identity_t& report_identity) {
   if (error) error->clear();
   const network_analytics_options_t effective = normalize_options_(options);
   network_analytics_report_t report{};
@@ -2173,7 +2212,8 @@ bool write_network_analytics_file(
   }
 
   const std::string payload =
-      network_analytics_to_key_value_text(report, effective, {});
+      network_analytics_to_latent_lineage_state_text(
+          report, effective, {}, report_identity);
   out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
   if (!out) {
     if (error) *error = "cannot write report file: " + output_file.string();
@@ -2187,14 +2227,15 @@ bool write_network_analytics_sidecar_for_checkpoint(
     const std::filesystem::path& checkpoint_file,
     std::filesystem::path* out_sidecar_file,
     const network_analytics_options_t& options,
-    std::string* error) {
+    std::string* error,
+    const tsiemene::component_report_identity_t& report_identity) {
   if (error) error->clear();
   const network_analytics_options_t effective = normalize_options_(options);
   std::filesystem::path sidecar = checkpoint_file;
   if (sidecar.extension() == ".pt") {
-    sidecar.replace_extension(".network_analytics.kv");
+    sidecar.replace_extension(".network_analytics.lls");
   } else {
-    sidecar += ".network_analytics.kv";
+    sidecar += ".network_analytics.lls";
   }
 
   network_analytics_report_t report{};
@@ -2226,8 +2267,8 @@ bool write_network_analytics_sidecar_for_checkpoint(
     return false;
   }
 
-  const std::string payload = network_analytics_to_key_value_text(
-      report, effective, checkpoint_file.filename().string());
+  const std::string payload = network_analytics_to_latent_lineage_state_text(
+      report, effective, checkpoint_file.filename().string(), report_identity);
   out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
   if (!out) {
     if (error) *error = "cannot write report file: " + sidecar.string();

@@ -7,6 +7,7 @@
 
 #include <torch/torch.h>
 
+#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "piaabo/torch_compat/data_analytics.h"
 #include "piaabo/torch_compat/entropic_capacity_comparison.h"
 #include "piaabo/torch_compat/network_analytics.h"
@@ -33,6 +34,26 @@ struct tiny_model_t final : torch::nn::Module {
         true);
   }
 };
+
+bool has_lhs_key(const std::string& payload, const std::string& key) {
+  std::size_t cursor = 0;
+  while (cursor < payload.size()) {
+    std::size_t line_end = payload.find('\n', cursor);
+    if (line_end == std::string::npos) line_end = payload.size();
+    std::string line = payload.substr(cursor, line_end - cursor);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    const std::size_t eq = line.find('=');
+    if (eq != std::string::npos) {
+      const std::string lhs_key =
+          cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
+              std::string_view(line).substr(0, eq));
+      if (lhs_key == key) return true;
+    }
+    if (line_end == payload.size()) break;
+    cursor = line_end + 1;
+  }
+  return false;
+}
 
 }  // namespace
 
@@ -67,16 +88,31 @@ int main() try {
     ok = ok && expect(report.source_entropic_load <= 4.1, "source entropic load upper bound sanity");
 
     const std::string kv =
-        cuwacunu::piaabo::torch_compat::data_analytics_to_key_value_text(
+        cuwacunu::piaabo::torch_compat::data_analytics_to_latent_lineage_state_text(
             report,
             opt,
             "tsi.source.dataloader.test");
+    const auto source_identity = tsiemene::make_component_report_identity(
+        "data_analytics",
+        "tsi.source.dataloader.BTCUSDT",
+        "tsi.source.dataloader",
+        {},
+        "contract.deadbeef");
+    const std::string kv_with_identity =
+        cuwacunu::piaabo::torch_compat::data_analytics_to_latent_lineage_state_text(
+            report,
+            opt,
+            "tsi.source.dataloader.test",
+            source_identity);
     ok = ok && expect(
-                    kv.find("source_entropic_load=") != std::string::npos,
+                    has_lhs_key(kv, "source_entropic_load"),
                     "data analytics kv missing source_entropic_load");
     ok = ok && expect(
-                    kv.find("schema=") != std::string::npos,
+                    has_lhs_key(kv, "schema"),
                     "data analytics kv missing schema");
+    ok = ok && expect(
+                    has_lhs_key(kv_with_identity, "canonical_path"),
+                    "data analytics kv missing canonical_path in component envelope");
   }
 
   tiny_model_t model{};
@@ -116,8 +152,8 @@ int main() try {
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
 
-    const auto source_file = dir / "source.latest.kv";
-    const auto network_file = dir / "weights.init.pt.network_analytics.kv";
+    const auto source_file = dir / "data_analytics.latest.lls";
+    const auto network_file = dir / "weights.init.pt.network_analytics.lls";
     const auto out_file = dir / "weights.init.pt.entropic_capacity.kv";
 
     {
@@ -152,7 +188,7 @@ int main() try {
     std::ifstream in(out_file, std::ios::binary);
     std::string payload((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     ok = ok && expect(
-                    payload.find("capacity_ratio=") != std::string::npos,
+                    has_lhs_key(payload, "capacity_ratio"),
                     "comparison sidecar should include capacity_ratio");
   }
 

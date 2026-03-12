@@ -12,21 +12,42 @@ DATA_LINK = $(libtorch_a) $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_torch
 
 $(eval $(call TEST_ONEFILE, test_hashimyei_catalog, test_hashimyei_catalog.cpp, $(DB_LINK)))
 $(eval $(call TEST_ONEFILE, test_hashimyei_artifacts, test_hashimyei_artifacts.cpp, $(DATA_LINK)))
+$(eval $(call TEST_ONEFILE, test_lattice_catalog, test_lattice_catalog.cpp, $(DB_LINK)))
+$(eval $(call TEST_ONEFILE, test_source_runtime_projection, test_source_runtime_projection.cpp))
+$(eval $(call TEST_ONEFILE, test_hero_mcp_surface, test_hero_mcp_surface.cpp))
 
 $(TEST_OUT)/test_hashimyei_catalog: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_hashimyei_artifacts: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_lattice_catalog: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+
+.PHONY: hero-mcp-binaries
+hero-mcp-binaries: $(HERO_OUT)/hero_hashimyei_mcp $(HERO_OUT)/hero_lattice_mcp
+
+$(HERO_OUT)/hero_hashimyei_mcp:
+	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_hashimyei_mcp
+
+$(HERO_OUT)/hero_lattice_mcp:
+	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_lattice_mcp
+
+$(TEST_OUT)/test_hero_mcp_surface: $(HERO_OUT)/hero_hashimyei_mcp $(HERO_OUT)/hero_lattice_mcp
 
 .PHONY: all
 all: \
 	$(TEST_OUT)/test_hashimyei_catalog \
-	$(TEST_OUT)/test_hashimyei_artifacts
+	$(TEST_OUT)/test_hashimyei_artifacts \
+	$(TEST_OUT)/test_lattice_catalog \
+	$(TEST_OUT)/test_source_runtime_projection \
+	$(TEST_OUT)/test_hero_mcp_surface
 	@$(LOG_SUCCESS)
 
 .PHONY: run
-run: run-test_hashimyei_catalog run-test_hashimyei_artifacts
+run: run-test_hashimyei_catalog run-test_hashimyei_artifacts run-test_lattice_catalog run-test_source_runtime_projection run-test_hero_mcp_surface
 
 .PHONY: clean
 clean:
 	@rm -f \
 	  $(TEST_OUT)/test_hashimyei_catalog \
-	  $(TEST_OUT)/test_hashimyei_artifacts
+	  $(TEST_OUT)/test_hashimyei_artifacts \
+	  $(TEST_OUT)/test_lattice_catalog \
+	  $(TEST_OUT)/test_source_runtime_projection \
+	  $(TEST_OUT)/test_hero_mcp_surface

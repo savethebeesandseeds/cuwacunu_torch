@@ -421,7 +421,7 @@ int main() try {
       set_text_content(canvas_box, coss.str());
       set_text_content(
           info_box,
-          "Fix src/config/instructions/iitepi.contract.circuit.example.dsl and press 'r' to reload.\n");
+          "Fix src/config/instructions/default.iitepi.contract.circuit.dsl and press 'r' to reload.\n");
       set_text_content(status, make_status(board_view, selected));
       return;
     }

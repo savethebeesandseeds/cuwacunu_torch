@@ -22,7 +22,7 @@ BNF_PARSER_CORE := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bn
 $(foreach t,$(BNF_PARSER_CORE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/piaabo)))
 
 # ------------------------------ DSL Decoders ---------------------------------
-DSL := dsl_observation dsl_key_value dsl_jkimyei_specs dsl_tsiemene_circuit dsl_iitepi_wave dsl_tsiemene_board dsl_canonical_path
+DSL := dsl_observation dsl_latent_lineage_state dsl_jkimyei_specs dsl_tsiemene_circuit dsl_iitepi_wave dsl_tsiemene_board dsl_canonical_path
 $(foreach t,$(DSL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -66,7 +66,7 @@ DB := db db_rag db_query_utils
 $(foreach t,$(DB),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- hashimyei -------------------------------
-HASHIMYEI := hashimyei_catalog hashimyei_artifacts
+HASHIMYEI := hashimyei_catalog hashimyei_artifacts lattice_catalog source_runtime_projection hero_mcp_surface
 $(foreach t,$(HASHIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/hashimyei)))
 
 # ------------------------------ jkimyei --------------------------------------

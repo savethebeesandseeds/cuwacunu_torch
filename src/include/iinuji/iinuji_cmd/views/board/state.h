@@ -29,9 +29,6 @@ enum class BoardDisplayMode : std::uint8_t {
 
 enum class BoardContractSection : std::uint8_t {
   Circuit = 0,
-  ObservationSources = 1,
-  ObservationChannels = 2,
-  JkimyeiSpecs = 3,
 };
 
 enum class BoardEditorScope : std::uint8_t {

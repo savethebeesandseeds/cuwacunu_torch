@@ -10,7 +10,6 @@
 #include <string_view>
 
 #include "camahjucunu/dsl/canonical_path/canonical_path.h"
-#include "hashimyei/hashimyei_artifacts.h"
 #include "iitepi/iitepi.h"
 #include "iitepi/board/board.contract.init.h"
 #include "iitepi/board/board.contract.h"
@@ -165,34 +164,32 @@ int main() try {
       cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash_for_check);
   const auto& wave_set = wave_itself->wave.decoded();
   const auto* selected_wave = find_wave(wave_set, bind->wave_ref);
-  std::string selected_probe_hashimyei{};
+  const cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t* selected_wikimyei =
+      nullptr;
+  std::string selected_representation_hashimyei{};
   ok = ok && expect(selected_wave != nullptr, "binding wave missing in wave instruction");
   ok = ok && expect(selected_wave && selected_wave->sources.size() == 1,
                     "selected wave must define exactly one SOURCE block");
-  ok = ok && expect(selected_wave && selected_wave->probes.size() == 1,
-                    "selected wave must define exactly one PROBE block");
-  if (selected_wave && !selected_wave->probes.empty()) {
-    const auto probe_path = cuwacunu::camahjucunu::decode_canonical_path(
-        selected_wave->probes.front().probe_path, contract_hash_for_check);
-    ok = ok && expect(probe_path.ok, "selected wave PROBE PATH canonical decode failed");
-    ok = ok && expect(!probe_path.hashimyei.empty(),
-                      "selected wave PROBE PATH missing hashimyei suffix");
-    if (probe_path.ok) selected_probe_hashimyei = probe_path.hashimyei;
-    ok = ok && expect(
-        selected_wave->probes.front().policy.training_window ==
-            cuwacunu::camahjucunu::iitepi_wave_probe_training_window_e::
-                IncomingBatch,
-        "selected wave PROBE training_window is not incoming_batch");
-    ok = ok && expect(
-        selected_wave->probes.front().policy.report_policy ==
-            cuwacunu::camahjucunu::iitepi_wave_probe_report_policy_e::
-                EpochEndLog,
-        "selected wave PROBE report_policy is not epoch_end_log");
-    ok = ok && expect(
-        selected_wave->probes.front().policy.objective ==
-            cuwacunu::camahjucunu::iitepi_wave_probe_objective_e::
-                FutureTargetDimsNll,
-        "selected wave PROBE objective is not future_target_dims_nll");
+  ok = ok && expect(selected_wave && selected_wave->probes.empty(),
+                    "selected wave must not define legacy transfer-matrix PROBE blocks");
+  ok = ok && expect(selected_wave && !selected_wave->wikimyeis.empty(),
+                    "selected wave must define at least one WIKIMYEI block");
+  ok = ok && expect(selected_wave && !selected_wave->sinks.empty(),
+                    "selected wave must define at least one SINK block");
+  if (selected_wave && !selected_wave->wikimyeis.empty()) {
+    for (const auto& wikimyei_decl : selected_wave->wikimyeis) {
+      const auto wikimyei_path = cuwacunu::camahjucunu::decode_canonical_path(
+          wikimyei_decl.wikimyei_path, contract_hash_for_check);
+      if (!wikimyei_path.ok) continue;
+      if (wikimyei_path.hashimyei.empty()) continue;
+      selected_wikimyei = &wikimyei_decl;
+      selected_representation_hashimyei = wikimyei_path.hashimyei;
+      break;
+    }
+    ok = ok && expect(selected_wikimyei != nullptr,
+                      "selected wave must include at least one hashimyei-scoped WIKIMYEI");
+    ok = ok && expect(!selected_representation_hashimyei.empty(),
+                      "selected wave WIKIMYEI missing hashimyei suffix");
   }
   if (!ok) return 1;
 
@@ -213,7 +210,6 @@ int main() try {
   std::string expected_channels_dsl;
   cuwacunu::camahjucunu::observation_spec_t expected_observation{};
   const bool payload_ok = tsiemene::board_builder::load_wave_dataloader_observation_payloads(
-      contract_itself,
       wave_itself,
       *selected_wave,
       &expected_sources_dsl,
@@ -242,16 +238,12 @@ int main() try {
                     "channels DSL payload does not match selected wave channels file");
   if (!ok) return 1;
 
-  const auto* built_sources_dsl = init.board.contracts.front().find_dsl_segment(
-      tsiemene::kBoardContractObservationSourcesDslKey);
-  const auto* built_channels_dsl = init.board.contracts.front().find_dsl_segment(
-      tsiemene::kBoardContractObservationChannelsDslKey);
-  ok = ok && expect(built_sources_dsl != nullptr, "board contract missing sources DSL segment");
-  ok = ok && expect(built_channels_dsl != nullptr, "board contract missing channels DSL segment");
-  ok = ok && expect(built_sources_dsl && *built_sources_dsl == expected_sources_dsl,
-                    "board contract sources DSL segment does not use wave-selected payload");
-  ok = ok && expect(built_channels_dsl && *built_channels_dsl == expected_channels_dsl,
-                    "board contract channels DSL segment does not use wave-selected payload");
+  const auto* built_circuit_dsl = init.board.contracts.front().find_dsl_segment(
+      tsiemene::kBoardContractCircuitDslKey);
+  const auto* built_wave_dsl = init.board.contracts.front().find_dsl_segment(
+      tsiemene::kBoardContractWaveDslKey);
+  ok = ok && expect(built_circuit_dsl != nullptr, "board contract missing circuit DSL segment");
+  ok = ok && expect(built_wave_dsl != nullptr, "board contract missing wave DSL segment");
   if (!ok) return 1;
 
   std::string expected_record_type;
@@ -299,26 +291,10 @@ int main() try {
       run.contract_steps.size(),
       static_cast<unsigned long long>(run.total_steps));
 
-  // 5) Finalization checks over persisted probe artifacts.
-  ok = ok && expect(!selected_probe_hashimyei.empty(),
-                    "selected wave probe hashimyei is empty");
-  const bool debug_side_effects_enabled =
-      init.board.contracts.front().execution.debug_enabled;
-  const auto probe_history_path =
-      cuwacunu::hashimyei::store_root() / "tsi.probe" / "representation" /
-      "transfer_matrix_evaluation" / selected_probe_hashimyei /
-      "metrics.history.v1.txt";
-  if (debug_side_effects_enabled) {
-    ok = ok && expect(std::filesystem::exists(probe_history_path),
-                      "probe metrics history file missing under DSL hashimyei path");
-    if (std::filesystem::exists(probe_history_path)) {
-      const std::string history_text = read_text_file(probe_history_path.string());
-      ok = ok && expect(
-          history_text.find("hashimyei=" + selected_probe_hashimyei) !=
-              std::string::npos,
-          "probe history hashimyei does not match selected wave probe path");
-    }
-  }
+  // 5) Transfer-matrix evaluation is now an ephemeral report: no hashimyei-owned
+  // history files are expected as side effects.
+  ok = ok && expect(!selected_representation_hashimyei.empty(),
+                    "selected wave representation hashimyei is empty");
   if (!ok) return 1;
 
   return 0;

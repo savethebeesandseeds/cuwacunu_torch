@@ -52,6 +52,8 @@ hash_by_wave_path() {
 [[nodiscard]] static parsed_config_t parse_config_file(const std::string& path);
 [[nodiscard]] static std::vector<std::string> split_string_items(
     const std::string& s);
+[[nodiscard]] static bool has_suffix_case_insensitive(std::string_view text,
+                                                      std::string_view suffix);
 [[nodiscard]] static std::string resolve_path_from_folder(
     const std::string& folder,
     std::string path);
@@ -181,6 +183,18 @@ static T parse_scalar_from_string(const std::string& s);
     }
   }
   return out;
+}
+
+[[nodiscard]] static bool has_suffix_case_insensitive(std::string_view text,
+                                                      std::string_view suffix) {
+  if (suffix.size() > text.size()) return false;
+  const std::size_t offset = text.size() - suffix.size();
+  for (std::size_t i = 0; i < suffix.size(); ++i) {
+    const unsigned char a = static_cast<unsigned char>(text[offset + i]);
+    const unsigned char b = static_cast<unsigned char>(suffix[i]);
+    if (std::tolower(a) != std::tolower(b)) return false;
+  }
+  return true;
 }
 
 [[nodiscard]] static bool has_non_ws_ascii(const std::string& s) {
@@ -719,11 +733,11 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
   const std::string resolved_wave_path =
       canonicalize_path_best_effort(wave_file_path);
   if (!has_non_ws_ascii(resolved_wave_path)) {
-    log_fatal("[dconfig] cannot resolve wave config path from: %s\n",
+    log_fatal("[dconfig] cannot resolve wave file path from: %s\n",
               wave_file_path.c_str());
   }
   if (!std::filesystem::exists(resolved_wave_path)) {
-    log_fatal("[dconfig] wave config path does not exist: %s\n",
+    log_fatal("[dconfig] wave file path does not exist: %s\n",
               resolved_wave_path.c_str());
   }
 
@@ -733,34 +747,45 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
     wave_folder = wave_path.parent_path().string();
   }
 
-  parsed_config_t parsed = parse_config_file(resolved_wave_path);
-  (void)validate_wave_config_or_terminate(parsed, wave_folder);
+  const bool wave_path_is_dsl =
+      has_suffix_case_insensitive(resolved_wave_path, ".dsl");
 
   auto record = std::make_shared<wave_record_t>();
   record->config_folder = wave_folder;
   record->config_file_path = resolved_wave_path;
   record->config_file_path_canonical =
       canonicalize_path_best_effort(resolved_wave_path);
-  record->config = parsed;
+  std::string dsl_path = resolved_wave_path;
+  if (!wave_path_is_dsl) {
+    parsed_config_t parsed = parse_config_file(resolved_wave_path);
+    (void)validate_wave_config_or_terminate(parsed, wave_folder);
+    record->config = parsed;
+    dsl_path = wave_required_resolved_path(
+        record->config,
+        record->config_folder,
+        "DSL",
+        "iitepi_wave_dsl_filename");
+  }
 
   const std::string grammar_path = global_required_resolved_path(
       "BNF", "iitepi_wave_grammar_filename");
-  const std::string dsl_path = wave_required_resolved_path(
-      record->config,
-      record->config_folder,
-      "DSL",
-      "iitepi_wave_dsl_filename");
 
   std::set<std::string> dependency_paths;
   dependency_paths.insert(record->config_file_path_canonical);
   dependency_paths.insert(canonicalize_path_best_effort(grammar_path));
-  dependency_paths.insert(canonicalize_path_best_effort(dsl_path));
+  if (!wave_path_is_dsl) {
+    dependency_paths.insert(canonicalize_path_best_effort(dsl_path));
+  }
 
   record->wave.grammar = piaabo::dfiles::readFileToString(grammar_path);
-  record->wave.dsl =
-      snapshot_wave_dsl_value_or_empty(record->config, "iitepi_wave_dsl_text");
-  if (!has_non_ws_ascii(record->wave.dsl)) {
+  if (wave_path_is_dsl) {
     record->wave.dsl = piaabo::dfiles::readFileToString(dsl_path);
+  } else {
+    record->wave.dsl =
+        snapshot_wave_dsl_value_or_empty(record->config, "iitepi_wave_dsl_text");
+    if (!has_non_ws_ascii(record->wave.dsl)) {
+      record->wave.dsl = piaabo::dfiles::readFileToString(dsl_path);
+    }
   }
 
   if (!has_non_ws_ascii(record->wave.grammar)) {

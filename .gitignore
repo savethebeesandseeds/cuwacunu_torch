@@ -17,6 +17,9 @@
 /src/config/*.enc
 /src/config/secure_key_setup
 /src/config/hero_config_mcp
+/src/config/hero_hashimyei_ingest
+/src/config/hero_hashimyei_mcp
+/src/config/hero_lattice_mcp
 parse_temp.txt
 out.txt
 diff.patch

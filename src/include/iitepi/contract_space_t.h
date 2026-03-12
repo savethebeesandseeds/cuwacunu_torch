@@ -16,8 +16,6 @@
 namespace cuwacunu {
 namespace camahjucunu {
 struct tsiemene_circuit_instruction_t;
-struct observation_spec_t;
-struct jkimyei_specs_t;
 struct network_design_instruction_t;
 }  // namespace camahjucunu
 }  // namespace cuwacunu
@@ -49,6 +47,8 @@ struct contract_space_t {
                                     network_analytics_mode_e::Topology);
   static void assert_intact_or_fail_fast(const contract_hash_t& hash);
   static void assert_registry_intact_or_fail_fast();
+  [[nodiscard]] static std::string sha256_hex_for_file(
+      const std::string& path);
   [[nodiscard]] static bool has_contract(const contract_hash_t& hash) noexcept;
   [[nodiscard]] static std::vector<contract_hash_t> registered_hashes();
 
@@ -75,6 +75,26 @@ struct contract_dependency_manifest_t {
   std::string aggregate_sha256_hex{};
 };
 
+struct contract_component_binding_t {
+  std::string canonical_path{};
+  std::string tsi_type{};
+  std::string hashimyei{};
+  std::string tsi_dsl_path{};
+  std::string tsi_dsl_sha256_hex{};
+};
+
+struct contract_module_signature_entry_t {
+  std::string module_id{};
+  std::string module_dsl_path{};
+  std::string module_dsl_sha256_hex{};
+};
+
+struct contract_signature_t {
+  std::string circuit_dsl_sha256_hex{};
+  std::vector<contract_component_binding_t> bindings{};
+  std::vector<contract_module_signature_entry_t> module_dsl_entries{};
+};
+
 namespace contract_record {
 
 struct dsl_blob_t {
@@ -88,30 +108,6 @@ struct circuit_blob_t : dsl_blob_t {
  private:
   mutable std::once_flag decode_once_{};
   mutable std::shared_ptr<cuwacunu::camahjucunu::tsiemene_circuit_instruction_t>
-      decoded_cache_{};
-};
-
-struct observation_blob_t {
-  dsl_blob_t sources{};
-  dsl_blob_t channels{};
-
-  const cuwacunu::camahjucunu::observation_spec_t& decoded() const;
-
- private:
-  mutable std::once_flag decode_once_{};
-  mutable std::shared_ptr<cuwacunu::camahjucunu::observation_spec_t>
-      decoded_cache_{};
-};
-
-struct jkimyei_blob_t : dsl_blob_t {
-  std::vector<std::string> dsl_segments{};
-  std::vector<std::string> dsl_segment_paths{};
-
-  const cuwacunu::camahjucunu::jkimyei_specs_t& decoded() const;
-
- private:
-  mutable std::once_flag decode_once_{};
-  mutable std::shared_ptr<cuwacunu::camahjucunu::jkimyei_specs_t>
       decoded_cache_{};
 };
 
@@ -142,10 +138,9 @@ struct contract_record_t {
   std::map<std::string, std::string> module_section_paths{};
 
   contract_record::circuit_blob_t circuit{};
-  contract_record::observation_blob_t observation{};
-  contract_record::jkimyei_blob_t jkimyei{};
   contract_record::canonical_path_blob_t canonical_path{};
   contract_record::network_design_blob_t vicreg_network_design{};
+  contract_signature_t signature{};
 
   contract_dependency_manifest_t dependency_manifest{};
 

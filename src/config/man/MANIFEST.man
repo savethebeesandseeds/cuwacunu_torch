@@ -4,23 +4,23 @@ ROOT = src/config/man
 
 [ENTRY 01]
 file = iitepi.board.man
-covers = instructions/iitepi.board.dsl,bnf/iitepi.board.bnf
+covers = instructions/default.iitepi.board.dsl,bnf/iitepi.board.bnf
 
 [ENTRY 02]
 file = iitepi.wave.man
-covers = instructions/iitepi.wave.example.dsl,bnf/iitepi.wave.bnf
+covers = instructions/default.iitepi.wave.dsl,bnf/iitepi.wave.bnf
 
 [ENTRY 03]
 file = iitepi.contract.circuit.man
-covers = instructions/iitepi.contract.circuit.example.dsl,bnf/iitepi.contract.circuit.bnf
+covers = instructions/default.iitepi.contract.circuit.dsl,bnf/iitepi.contract.circuit.bnf
 
 [ENTRY 04]
 file = canonical_path.man
 covers = bnf/canonical_path.bnf
 
 [ENTRY 05]
-file = key_value.man
-covers = bnf/key_value.bnf
+file = latent_lineage_state.man
+covers = bnf/latent_lineage_state.bnf
 
 [ENTRY 06]
 file = network_design.man
@@ -28,36 +28,48 @@ covers = bnf/network_design.bnf
 
 [ENTRY 07]
 file = jkimyei.man
-covers = instructions/jkimyei.representation.vicreg.dsl,bnf/jkimyei.bnf
+covers = instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl,bnf/jkimyei.bnf
 
 [ENTRY 08]
 file = tsi.source.dataloader.sources.man
-covers = instructions/tsi.source.dataloader.sources.dsl,bnf/tsi.source.dataloader.sources.bnf
+covers = instructions/default.tsi.source.dataloader.sources.dsl,bnf/tsi.source.dataloader.sources.bnf
 
 [ENTRY 09]
 file = tsi.source.dataloader.channels.man
-covers = instructions/tsi.source.dataloader.channels.dsl,bnf/tsi.source.dataloader.channels.bnf
+covers = instructions/default.tsi.source.dataloader.channels.dsl,bnf/tsi.source.dataloader.channels.bnf
 
 [ENTRY 10]
 file = tsi.wikimyei.representation.vicreg.man
-covers = instructions/tsi.wikimyei.representation.vicreg.dsl,bnf/key_value.bnf
+covers = instructions/default.tsi.wikimyei.representation.vicreg.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 11]
 file = tsi.wikimyei.representation.vicreg.network_design.man
-covers = instructions/tsi.wikimyei.representation.vicreg.network_design.dsl,bnf/network_design.bnf
+covers = instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl,bnf/network_design.bnf
 
 [ENTRY 12]
 file = tsi.wikimyei.inference.mdn.value_estimation.man
-covers = instructions/tsi.wikimyei.inference.mdn.value_estimation.dsl,bnf/key_value.bnf
+covers = instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 13]
-file = tsi.probe.representation.transfer_matrix_evaluation.man
-covers = instructions/tsi.probe.representation.transfer_matrix_evaluation.dsl,bnf/key_value.bnf
+file = tsi.wikimyei.inference.transfer_matrix_evaluation.man
+covers = instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 14]
 file = hero.config.man
-covers = instructions/hero.config.dsl,bnf/key_value.bnf
+covers = instructions/default.hero.config.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 15]
 file = global.config.real_hero.man
 covers = .config
+
+[ENTRY 16]
+file = hero.hashimyei.config.man
+covers = instructions/default.hero.hashimyei.dsl,bnf/latent_lineage_state.bnf
+
+[ENTRY 17]
+file = hero.lattice.config.man
+covers = instructions/default.hero.lattice.dsl,bnf/latent_lineage_state.bnf
+
+[ENTRY 18]
+file = iitepi.contract.man
+covers = instructions/default.iitepi.contract.dsl,bnf/iitepi.contract.bnf

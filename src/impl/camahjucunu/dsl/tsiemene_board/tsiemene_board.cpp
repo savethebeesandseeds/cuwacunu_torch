@@ -57,7 +57,17 @@ struct token_t {
   if (file_name.empty()) {
     return "contract_" + std::to_string(import_index + 1);
   }
-  if (ends_with(file_name, ".board.contract.config")) {
+  if (ends_with(file_name, ".board.contract.dsl")) {
+    file_name.resize(file_name.size() - std::string(".board.contract.dsl").size());
+  } else if (ends_with(file_name, ".contract.dsl")) {
+    file_name.resize(file_name.size() - std::string(".contract.dsl").size());
+  } else if (ends_with(file_name, ".board.contract.config.dsl")) {
+    file_name.resize(file_name.size() - std::string(".board.contract.config.dsl").size());
+  } else if (ends_with(file_name, ".contract.config.dsl")) {
+    file_name.resize(file_name.size() - std::string(".contract.config.dsl").size());
+  } else if (ends_with(file_name, ".config.dsl")) {
+    file_name.resize(file_name.size() - std::string(".config.dsl").size());
+  } else if (ends_with(file_name, ".board.contract.config")) {
     file_name.resize(file_name.size() - std::string(".board.contract.config").size());
   } else if (ends_with(file_name, ".contract.config")) {
     file_name.resize(file_name.size() - std::string(".contract.config").size());

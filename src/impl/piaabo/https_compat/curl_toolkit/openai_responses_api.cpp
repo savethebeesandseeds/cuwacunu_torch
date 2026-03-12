@@ -105,14 +105,23 @@ struct http_attempt_t {
   std::string response_body;
   struct curl_slist* headers = nullptr;
   headers = curl_slist_append(headers, "Content-Type: application/json");
-  const std::string auth_header = "Authorization: Bearer " + request.bearer_token;
-  headers = curl_slist_append(headers, auth_header.c_str());
   if (headers == nullptr) {
     curl_easy_cleanup(curl);
     out.error = "failed to build HTTP headers";
     out.retryable = true;
     return out;
   }
+  const std::string auth_header = "Authorization: Bearer " + request.bearer_token;
+  struct curl_slist* updated_headers =
+      curl_slist_append(headers, auth_header.c_str());
+  if (updated_headers == nullptr) {
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    out.error = "failed to build HTTP headers";
+    out.retryable = true;
+    return out;
+  }
+  headers = updated_headers;
 
   curl_easy_setopt(curl, CURLOPT_URL, request.endpoint.c_str());
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);

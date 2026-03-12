@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include "hashimyei/hashimyei_identity.h"
+#include "hero/hashimyei_hero/hashimyei_identity.h"
 #include "iinuji/iinuji_cmd/catalog.h"
 #include "iinuji/iinuji_cmd/views/board/state.h"
 #include "iinuji/iinuji_cmd/views/config/state.h"

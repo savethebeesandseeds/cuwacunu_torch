@@ -27,14 +27,25 @@ wikimyei:
 jkimyei:
 	$(MAKE) -C $(HERE_PATH)/jkimyei all
 
+.PHONY: hashimyei
+hashimyei:
+	$(MAKE) -C $(HERE_PATH)/hero/hashimyei_hero all
+
+.PHONY: lattice_hero
+lattice_hero:
+	$(MAKE) -C $(HERE_PATH)/hero/lattice_hero all
+
+.PHONY: config_hero
+config_hero:
+	$(MAKE) -C $(HERE_PATH)/hero/config_hero all
+
 .PHONY: hero
-hero:
-	$(MAKE) -C $(HERE_PATH)/HERO all
+hero: hashimyei lattice_hero config_hero
 
 .PHONY: iinuji
 iinuji:
 	$(MAKE) -C $(HERE_PATH)/iinuji all
 
 .PHONY: all
-all: iitepi piaabo camahjucunu wikimyei hero
+all: iitepi piaabo camahjucunu wikimyei hashimyei lattice_hero config_hero
 	@$(LOG_SUCCESS)

@@ -1,0 +1,52 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = tsi.wikimyei.inference.transfer_matrix_evaluation
+TARGET_DSL = src/config/instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
+PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/include/wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h
+RUNTIME_NOTE = transfer_matrix_evaluation is an ephemeral vicreg-owned report engine; no hashimyei-bound persistence or history files are produced. Runtime dispatch is debug-gated and emits final report at run_end.
+RUNTIME_SECTION = WIKIMYEI_INFERENCE_TRANSFER_MATRIX_EVALUATION
+RUNTIME_ACTIVE_KEYS = check_temporal_order,validate_vicreg_out,report_shapes
+RUNTIME_DEPRECATED_KEYS = summary_every_steps,reset_hashimyei_on_start,mdn_mixture_comps,mdn_features_hidden,mdn_residual_depth,mdn_target_dims,optimizer_lr,optimizer_weight_decay,optimizer_beta1,optimizer_beta2,optimizer_eps,grad_clip,nll_eps,nll_sigma_min,nll_sigma_max,anchor_train_ratio,anchor_val_ratio,anchor_test_ratio,prequential_blocks,linear_ridge_lambda,gaussian_var_min,control_shuffle_block,control_shuffle_seed
+
+[FIELD check_temporal_order]
+key = check_temporal_order
+scope = WIKIMYEI_INFERENCE_TRANSFER_MATRIX_EVALUATION
+type = bool
+required = false
+default = true
+range = bool token
+allowed = contract bool parse tokens
+nuance = enables temporal overlap guard between past and future key ranges
+
+[FIELD validate_vicreg_out]
+key = validate_vicreg_out
+scope = WIKIMYEI_INFERENCE_TRANSFER_MATRIX_EVALUATION
+type = bool
+required = false
+default = true
+range = bool token
+allowed = contract bool parse tokens
+nuance = enforces cargo validation stage checks before report aggregation
+
+[FIELD report_shapes]
+key = report_shapes
+scope = WIKIMYEI_INFERENCE_TRANSFER_MATRIX_EVALUATION
+type = bool
+required = false
+default = false
+range = bool token
+allowed = contract bool parse tokens
+nuance = shape diagnostics emitted only on anomalies
+
+[FIELD summary_every_steps]
+key = summary_every_steps
+scope = WIKIMYEI_INFERENCE_TRANSFER_MATRIX_EVALUATION
+type = int
+required = false
+default = 256
+range = >= 0 (clamped)
+allowed = integer
+nuance = reserved/deprecated; periodic per-step summary emission was removed when dispatch was standardized to run_end-only.

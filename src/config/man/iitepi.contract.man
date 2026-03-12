@@ -1,0 +1,62 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = iitepi.contract
+TARGET_DSL = src/config/instructions/default.iitepi.contract.dsl
+TARGET_BNF = src/config/bnf/iitepi.contract.bnf
+PRIMARY_DECODER = src/impl/iitepi/contract_space_t.cpp:parse_config_file
+PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp:validate_contract_config_or_terminate
+
+[FIELD CONTRACT_BEGIN]
+key = -----BEGIN IITEPI CONTRACT-----
+scope = file
+type = marker
+required = true
+default = none
+range = exact token
+allowed = literal marker
+nuance = parser requires this marker before any declarations
+
+[FIELD CONTRACT_END]
+key = -----END IITEPI CONTRACT-----
+scope = file
+type = marker
+required = true
+default = none
+range = exact token
+allowed = literal marker
+nuance = parser requires this marker after declarations
+
+[FIELD CONTRACT.CIRCUIT_FILE]
+key = CIRCUIT_FILE
+scope = CONTRACT
+type = path
+required = true
+default = none
+range = existing readable file
+allowed = quoted_path_or_identifier_path
+nuance = points to static circuit topology DSL payload
+
+[FIELD CONTRACT.AKNOWLEDGE]
+key = AKNOWLEDGE
+scope = CONTRACT
+type = alias_to_family
+required = true
+default = none
+range = one line per circuit alias
+allowed = <alias> = <tsi canonical family token>
+nuance = family token must omit hashimyei suffix; wave owns runtime hashimyei selection
+
+[RULE ACKNOWLEDGE_ALIAS_COVERAGE]
+id = ACKNOWLEDGE_ALIAS_COVERAGE
+applies_to = CONTRACT.AKNOWLEDGE
+severity = error
+when = any circuit alias missing or extra in acknowledge map
+message = AKNOWLEDGE entries must match circuit instance aliases one-to-one
+
+[RULE ACKNOWLEDGE_FAMILY_ONLY]
+id = ACKNOWLEDGE_FAMILY_ONLY
+applies_to = CONTRACT.AKNOWLEDGE
+severity = error
+when = family token is not exact canonical tsi family (contains hashimyei or invalid path)
+message = AKNOWLEDGE values must be canonical family tokens without hashimyei suffix

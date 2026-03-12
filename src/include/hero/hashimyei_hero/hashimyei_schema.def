@@ -1,0 +1,14 @@
+#ifndef HASHIMYEI_CONST_STR
+#error "HASHIMYEI_CONST_STR(NAME, VALUE) must be defined before including hashimyei_schema.def"
+#endif
+
+HASHIMYEI_CONST_STR(kIdentitySchemaV2, "hashimyei.identity.v2")
+HASHIMYEI_CONST_STR(kRunManifestSchemaV2, "hashimyei.run.manifest.v2")
+HASHIMYEI_CONST_STR(kComponentManifestSchemaV2, "hashimyei.component.manifest.v2")
+HASHIMYEI_CONST_STR(kCatalogSchemaV2, "hashimyei.catalog.v2")
+HASHIMYEI_CONST_STR(kCounterSchemaV2, "hashimyei.counter.v2")
+HASHIMYEI_CONST_STR(kComponentActivePointerSchemaV2, "hashimyei.component.active_pointer.v2")
+HASHIMYEI_CONST_STR(kJoinedReportSchemaV1, "hashimyei.joined_report.v1")
+
+HASHIMYEI_CONST_STR(kRunManifestFilenameV2, "run.manifest.v2.kv")
+HASHIMYEI_CONST_STR(kComponentManifestFilenameV2, "component.manifest.v2.kv")

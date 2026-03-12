@@ -273,11 +273,70 @@ static void test_encrypted_queries(const fs::path& db_file) {
   }
 }
 
+static void test_wave_cursor_indexing_helpers() {
+  const db::wave_cursor::layout_t layout{
+      .run_bits = 24,
+      .episode_bits = 20,
+      .batch_bits = 19,
+  };
+  REQUIRE(db::wave_cursor::valid_layout(layout));
+
+  const db::wave_cursor::parts_t p{
+      .run_id = 0x12345ULL,
+      .episode_k = 33ULL,
+      .batch_j = 7ULL,
+  };
+
+  std::uint64_t packed = 0;
+  REQUIRE(db::wave_cursor::pack(layout, p, &packed));
+
+  db::wave_cursor::parts_t roundtrip{};
+  REQUIRE(db::wave_cursor::unpack(layout, packed, &roundtrip));
+  REQUIRE(roundtrip.run_id == p.run_id);
+  REQUIRE(roundtrip.episode_k == p.episode_k);
+  REQUIRE(roundtrip.batch_j == p.batch_j);
+
+  db::wave_cursor::masked_query_t q{};
+  REQUIRE(db::wave_cursor::build_masked_query(
+      layout,
+      p,
+      static_cast<std::uint8_t>(db::wave_cursor::field_run |
+                                db::wave_cursor::field_episode),
+      &q));
+
+  const db::wave_cursor::parts_t same_scope_diff_batch{
+      .run_id = p.run_id,
+      .episode_k = p.episode_k,
+      .batch_j = p.batch_j + 1ULL,
+  };
+  std::uint64_t packed_same_scope = 0;
+  REQUIRE(db::wave_cursor::pack(layout, same_scope_diff_batch, &packed_same_scope));
+  REQUIRE(db::wave_cursor::match_masked(packed_same_scope, q));
+
+  const db::wave_cursor::parts_t different_scope{
+      .run_id = p.run_id + 1ULL,
+      .episode_k = p.episode_k,
+      .batch_j = p.batch_j,
+  };
+  std::uint64_t packed_different_scope = 0;
+  REQUIRE(db::wave_cursor::pack(layout, different_scope, &packed_different_scope));
+  REQUIRE(!db::wave_cursor::match_masked(packed_different_scope, q));
+
+  // Overflow must fail (run_id exceeds 24 bits in this layout).
+  const db::wave_cursor::parts_t overflow{
+      .run_id = (1ULL << 24),
+      .episode_k = 0ULL,
+      .batch_j = 0ULL,
+  };
+  REQUIRE(!db::wave_cursor::pack(layout, overflow, &packed));
+}
+
 int main() {
   temp_dir_t tmp{};
   test_filters_and_null_checks(tmp.dir / "filters.idydb");
   test_limit_offset_ordering_and_latest(tmp.dir / "ordering.idydb");
   test_encrypted_queries(tmp.dir / "enc.idydb");
+  test_wave_cursor_indexing_helpers();
   std::cout << "[PASS] test_db_query_utils\n";
   return 0;
 }

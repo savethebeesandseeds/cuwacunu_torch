@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "hashimyei/hashimyei_identity.h"
+#include "hero/hashimyei_hero/hashimyei_identity.h"
 #include "piaabo/dconfig.h"
 #include "tsiemene/tsi.directive.registry.h"
 #include "tsiemene/tsi.type.registry.h"
@@ -328,6 +328,17 @@ struct parsed_core_t {
       (*segs)[1] == "wikimyei" &&
       (*segs)[2] == "source") {
     if (error) *error = "legacy namespace 'tsi.wikimyei.source.*' is removed; use 'tsi.source.*'";
+    return false;
+  }
+  if (segs->size() >= 4 &&
+      (*segs)[0] == "tsi" &&
+      (*segs)[1] == "probe" &&
+      (*segs)[2] == "representation" &&
+      (*segs)[3] == "transfer_matrix_evaluation") {
+    if (error) {
+      *error = "legacy family 'tsi.probe.representation.transfer_matrix_evaluation' is removed; "
+               "transfer-matrix evaluation is vicreg-owned runtime reporting";
+    }
     return false;
   }
 

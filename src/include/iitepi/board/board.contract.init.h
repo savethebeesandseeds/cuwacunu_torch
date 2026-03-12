@@ -3,17 +3,21 @@
 #pragma once
 
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #include <torch/torch.h>
 
+#include "hero/hero_runtime_lock.h"
 #include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
 #include "camahjucunu/types/types_data.h"
@@ -111,6 +115,11 @@ find_wave_by_id(
   return nullptr;
 }
 
+[[nodiscard]] inline std::mutex& board_binding_runtime_mutex() {
+  static std::mutex mutex{};
+  return mutex;
+}
+
 [[nodiscard]] inline std::string board_init_trim_ascii_copy(std::string s) {
   std::size_t b = 0;
   while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
@@ -138,6 +147,25 @@ find_wave_by_id(
     return true;
   }
   return false;
+}
+
+[[nodiscard]] inline std::uint64_t board_now_ms_utc() {
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count());
+}
+
+[[nodiscard]] inline std::string make_board_contract_run_id(
+    const board_binding_run_record_t& run_record,
+    std::size_t contract_index) {
+  std::ostringstream out;
+  out << "run."
+      << board_init_trim_ascii_copy(run_record.board_hash) << "."
+      << board_init_trim_ascii_copy(run_record.board_binding_id) << "."
+      << contract_index << "."
+      << board_now_ms_utc();
+  return out.str();
 }
 
 [[nodiscard]] inline bool resolve_active_record_type_from_observation(
@@ -273,6 +301,7 @@ find_wave_by_id(
     BoardContext ctx{};
     ctx.wave_mode_flags = contract.execution.wave_mode_flags;
     ctx.debug_enabled = contract.execution.debug_enabled;
+    ctx.run_id = make_board_contract_run_id(out, i);
     std::string run_error;
     const std::uint64_t steps = run_contract(contract, ctx, &run_error);
     if (!run_error.empty()) {
@@ -378,10 +407,6 @@ template <typename Datatype_t,
     const auto wave_itself =
         cuwacunu::iitepi::wave_space_t::wave_itself(out.wave_hash);
 
-    if (!has_non_ws_text(contract_itself->jkimyei.dsl)) {
-      out.error = "missing jkimyei specs DSL text in contract";
-      return out;
-    }
     if (!has_non_ws_text(contract_itself->circuit.dsl)) {
       out.error = "missing tsiemene circuit DSL text in contract";
       return out;
@@ -529,7 +554,6 @@ template <typename Datatype_t,
 
     cuwacunu::camahjucunu::observation_spec_t effective_observation{};
     if (!board_builder::load_wave_dataloader_observation_payloads(
-            contract_itself,
             wave_itself,
             *wave,
             nullptr,
@@ -746,6 +770,25 @@ template <typename Datatype_t,
         board_log_value_or_empty(binding_id));
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
+    std::lock_guard<std::mutex> run_guard(board_binding_runtime_mutex());
+    cuwacunu::hero::runtime_lock::scoped_lock_t global_runtime_lock{};
+    std::string global_lock_error;
+    if (!cuwacunu::hero::runtime_lock::acquire(&global_runtime_lock,
+                                               &global_lock_error)) {
+      out.error =
+          "failed to acquire global runtime lock: " + global_lock_error;
+      log_err(
+          "[board.binding.run] global lock failed board_hash=%s binding=%s error=%s\n",
+          board_log_value_or_empty(board_hash),
+          board_log_value_or_empty(binding_id),
+          board_log_value_or_empty(out.error));
+      return out;
+    }
+    log_info(
+        "[board.binding.run] runtime lock acquired board_hash=%s binding=%s lock_path=%s\n",
+        board_log_value_or_empty(board_hash),
+        board_log_value_or_empty(binding_id),
+        board_log_value_or_empty(global_runtime_lock.path));
     return run_binding_snapshot<Datatype_t, Sampler_t>(
         board_hash, binding_id, board_itself, device);
   } catch (const std::exception& e) {
@@ -783,6 +826,25 @@ template <typename Datatype_t,
         board_log_value_or_empty(binding_id));
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
+    std::lock_guard<std::mutex> run_guard(board_binding_runtime_mutex());
+    cuwacunu::hero::runtime_lock::scoped_lock_t global_runtime_lock{};
+    std::string global_lock_error;
+    if (!cuwacunu::hero::runtime_lock::acquire(&global_runtime_lock,
+                                               &global_lock_error)) {
+      out.error =
+          "failed to acquire global runtime lock: " + global_lock_error;
+      log_err(
+          "[board.binding.run] global lock failed board_hash=%s binding=%s error=%s\n",
+          board_log_value_or_empty(board_hash),
+          board_log_value_or_empty(binding_id),
+          board_log_value_or_empty(out.error));
+      return out;
+    }
+    log_info(
+        "[board.binding.run] runtime lock acquired board_hash=%s binding=%s lock_path=%s\n",
+        board_log_value_or_empty(board_hash),
+        board_log_value_or_empty(binding_id),
+        board_log_value_or_empty(global_runtime_lock.path));
     return run_binding_snapshot(
         board_hash, binding_id, board_itself, device);
   } catch (const std::exception& e) {

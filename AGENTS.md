@@ -12,6 +12,7 @@ training/inference pipelines, and DSL-driven system configuration.
 # Build Commands
 - Do not run/build when confidence in changes is high.
 - When building, use `make -j12` (builds are long in this environment).
+- Deleting .o objects before rebuild is allowed, don't need to ask for confirmation.
 
 # Test Commands
 - Run only the smallest relevant tests for touched behavior.
@@ -21,23 +22,29 @@ training/inference pipelines, and DSL-driven system configuration.
 - Keep changes minimal and local to the requested scope.
 - Leaving legacy ghosts in the code is strongly discouraged.
 
-# Config HERO Policy
-- Config HERO is the deterministic configuration instrument.
-- Runtime config file: `src/config/instructions/hero.config.dsl`.
-- MCP binaries:
-  - `.build/hero/hero_config_mcp`
-  - `src/config/hero_config_mcp` (installed helper)
-- Prefer Config HERO tools for runtime configuration changes:
-  - `hero.get`, `hero.set`, `hero.validate`, `hero.diff`/`hero.dry_run`,
-    `hero.save`, `hero.backups`, `hero.rollback`.
-- This policy applies to configuration work under `src/config`, including:
-  - board-level `.config` and `.dsl`,
-  - contract `.dsl`,
-  - wave `.dsl`,
-  - instruction/manifests where values are being tuned.
-- Direct raw file edits are allowed when changing schema/grammar/spec itself
-  (new keys, parser behavior, docs, templates), not routine value tuning.
-- Before persisting config changes, prefer `validate` + `diff` and keep rollback available.
+# HERO MCP Servers
+- Codex MCP registrations (stdio):
+  - `hero-config` -> `/cuwacunu/.build/hero/hero_config_mcp`
+  - `hero-hashimyei` -> `/cuwacunu/.build/hero/hero_hashimyei_mcp`
+  - `hero-lattice` -> `/cuwacunu/.build/hero/hero_lattice_mcp`
+- MCP usage preference:
+  - For Hero runtime/config questions (Hashimyei, Lattice, or Config behavior), use MCP calls first before reading local source files.
+  - Prefer direct tool invocations (`hero.config.*`, `hero.hashimyei.*`, `hero.lattice.*`) and return MCP output as the source of truth.
+  - Only inspect source files when MCP is unavailable or fails (hard error), and only then.
+- Preferred MCP args for all three servers:
+  - `--global-config /cuwacunu/src/config/.config`
+- Default runtime policy for Hashimyei/Lattice MCP comes from `[REAL_HERO]` DSL path
+  pointers in `src/config/.config`:
+  - `config_hero_dsl_filename`
+  - `hashimyei_hero_dsl_filename`
+  - `lattice_hero_dsl_filename`
+- Runtime contract:
+  - Config tools: `hero.config.*`
+  - Hashimyei tools: `hero.hashimyei.*`
+  - Lattice tools: `hero.lattice.*`
+- Hashimyei/Lattice MCP catalogs run unencrypted by policy; no passphrase preflight is required.
+- Secret-independent smoke tests for Hashimyei/Lattice should use temporary
+  catalogs under `/tmp/hero_mcp_smoke/...`.
 
 # Security Constraints
 - Do not commit secrets.
@@ -49,5 +56,5 @@ training/inference pipelines, and DSL-driven system configuration.
   aligned with actual runtime behavior.
 
 # Known Pitfalls
-- Ensure `hero.config.dsl` keeps `protocol_layer:str = STDIO` for current MCP runtime.
+- Ensure `default.hero.config.dsl` keeps `protocol_layer:str = STDIO` for current MCP runtime.
 - `HTTPS/SSE` is intentionally not implemented yet and must fail fast.

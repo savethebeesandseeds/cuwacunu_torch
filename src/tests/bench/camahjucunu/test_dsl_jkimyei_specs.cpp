@@ -1,8 +1,11 @@
 // test_dsl_jkimyei_specs.cpp
 #include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -12,6 +15,7 @@
 #include "iitepi/board_space_t.h"
 #include "iitepi/config_space_t.h"
 #include "iitepi/contract_space_t.h"
+#include "piaabo/dfiles.h"
 
 namespace {
 
@@ -21,6 +25,32 @@ using table_t = specs_t::table_t;
 
 [[noreturn]] void fail(const std::string& msg) {
   throw std::runtime_error("[test_dsl_jkimyei_specs] " + msg);
+}
+
+[[nodiscard]] std::string trim_ascii(std::string s) {
+  std::size_t b = 0;
+  while (b < s.size() &&
+         std::isspace(static_cast<unsigned char>(s[b])) != 0) {
+    ++b;
+  }
+  std::size_t e = s.size();
+  while (e > b &&
+         std::isspace(static_cast<unsigned char>(s[e - 1])) != 0) {
+    --e;
+  }
+  return s.substr(b, e - b);
+}
+
+[[nodiscard]] std::string unquote_if_wrapped(std::string s) {
+  s = trim_ascii(std::move(s));
+  if (s.size() >= 2) {
+    const char a = s.front();
+    const char b = s.back();
+    if ((a == '\'' && b == '\'') || (a == '"' && b == '"')) {
+      return s.substr(1, s.size() - 2);
+    }
+  }
+  return s;
 }
 
 const table_t& require_table(const specs_t& decoded, const std::string& table_name) {
@@ -43,6 +73,42 @@ const row_t& require_row_by_id(const table_t& table,
     if (it != row.end() && it->second == row_id) return row;
   }
   fail("missing row_id '" + row_id + "' in table '" + table_name + "'");
+}
+
+const row_t& require_row_by_field(const table_t& table,
+                                  const std::string& table_name,
+                                  const std::string& field_name,
+                                  const std::string& field_value) {
+  for (const auto& row : table) {
+    const auto it = row.find(field_name);
+    if (it != row.end() && it->second == field_value) return row;
+  }
+  fail("missing row with " + field_name + "='" + field_value +
+       "' in table '" + table_name + "'");
+}
+
+const row_t& require_row_by_fields(
+    const table_t& table,
+    const std::string& table_name,
+    const std::vector<std::pair<std::string, std::string>>& terms) {
+  for (const auto& row : table) {
+    bool ok = true;
+    for (const auto& [k, v] : terms) {
+      const auto it = row.find(k);
+      if (it == row.end() || it->second != v) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return row;
+  }
+  std::ostringstream msg;
+  msg << "missing row in table '" << table_name << "' with terms: ";
+  for (std::size_t i = 0; i < terms.size(); ++i) {
+    if (i != 0) msg << ", ";
+    msg << terms[i].first << "='" << terms[i].second << "'";
+  }
+  fail(msg.str());
 }
 
 std::vector<const row_t*> rows_by_field(const table_t& table,
@@ -95,6 +161,7 @@ std::map<std::string, std::string> parse_options(const std::string& options_csv)
 
 void validate_profile(const specs_t& decoded,
                       const std::string& profile_row_id,
+                      const std::string& component_id,
                       const std::string& profile_name,
                       const std::string& active,
                       const std::string& linear_active,
@@ -108,7 +175,7 @@ void validate_profile(const specs_t& decoded,
   const auto& augmentations = require_table(decoded, "vicreg_augmentations");
 
   const row_t& p = require_row_by_id(profiles, "component_profiles_table", profile_row_id);
-  expect_eq(p, "component_id", "VICReg_representation", profile_row_id);
+  expect_eq(p, "component_id", component_id, profile_row_id);
   expect_eq(p, "component_type", "tsi.wikimyei.representation.vicreg", profile_row_id);
   expect_eq(p, "profile_id", profile_name, profile_row_id);
   expect_eq(p, "active", active, profile_row_id);
@@ -315,9 +382,49 @@ void print_profile_readable(const specs_t& decoded, const std::string& profile_r
   print_aug_matrix(rows_by_field(augmentations, "profile_row_id", profile_row_id));
 }
 
+struct vicreg_profile_rows_t {
+  std::string component_id{};
+  std::string stable_profile_row_id{};
+  std::string eval_profile_row_id{};
+};
+
+vicreg_profile_rows_t resolve_vicreg_profile_rows(const specs_t& decoded) {
+  const auto& components = require_table(decoded, "components_table");
+  const row_t& c = require_row_by_field(
+      components,
+      "components_table",
+      "component_type",
+      "tsi.wikimyei.representation.vicreg");
+  const std::string component_id =
+      require_field(c, ROW_ID_COLUMN_HEADER, "components_table");
+
+  const auto& profiles = require_table(decoded, "component_profiles_table");
+  const row_t& stable_profile_row = require_row_by_fields(
+      profiles,
+      "component_profiles_table",
+      {{"component_id", component_id}, {"profile_id", "stable_pretrain"}});
+  const row_t& eval_profile_row = require_row_by_fields(
+      profiles,
+      "component_profiles_table",
+      {{"component_id", component_id}, {"profile_id", "eval_payload_only"}});
+  const std::string stable_profile_row_id =
+      require_field(stable_profile_row, ROW_ID_COLUMN_HEADER, "stable profile");
+  const std::string eval_profile_row_id =
+      require_field(eval_profile_row, ROW_ID_COLUMN_HEADER, "eval profile");
+  return vicreg_profile_rows_t{
+      .component_id = component_id,
+      .stable_profile_row_id = stable_profile_row_id,
+      .eval_profile_row_id = eval_profile_row_id,
+  };
+}
+
 void validate_decoded(const specs_t& decoded) {
   const auto& components = require_table(decoded, "components_table");
-  const row_t& c = require_row_by_id(components, "components_table", "VICReg_representation");
+  const row_t& c = require_row_by_field(
+      components,
+      "components_table",
+      "component_type",
+      "tsi.wikimyei.representation.vicreg");
   expect_eq(c, "component_type", "tsi.wikimyei.representation.vicreg", "components_table");
   expect_eq(c, "active_profile", "stable_pretrain", "components_table");
   expect_table_absent(decoded, "component_reproducibility_table");
@@ -326,15 +433,19 @@ void validate_decoded(const specs_t& decoded) {
   expect_table_absent(decoded, "component_metrics_table");
   expect_table_absent(decoded, "component_data_ref_table");
 
+  const vicreg_profile_rows_t rows = resolve_vicreg_profile_rows(decoded);
+
   validate_profile(decoded,
-                   "VICReg_representation@stable_pretrain",
+                   rows.stable_profile_row_id,
+                   rows.component_id,
                    "stable_pretrain",
                    "true",
                    "true",
                    "0.02",
                    "true");
   validate_profile(decoded,
-                   "VICReg_representation@eval_payload_only",
+                   rows.eval_profile_row_id,
+                   rows.component_id,
                    "eval_payload_only",
                    "false",
                    "true",
@@ -343,10 +454,11 @@ void validate_decoded(const specs_t& decoded) {
 }
 
 void print_readable_summary(const specs_t& decoded) {
+  const vicreg_profile_rows_t rows = resolve_vicreg_profile_rows(decoded);
   std::cout << "===== decoded summary (readable) =====\n";
-  print_profile_readable(decoded, "VICReg_representation@stable_pretrain");
+  print_profile_readable(decoded, rows.stable_profile_row_id);
   std::cout << "\n";
-  print_profile_readable(decoded, "VICReg_representation@eval_payload_only");
+  print_profile_readable(decoded, rows.eval_profile_row_id);
   std::cout << std::flush;
 }
 
@@ -358,21 +470,68 @@ int main() {
     cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
     cuwacunu::iitepi::config_space_t::update_config();
 
+    const std::string board_hash =
+        cuwacunu::iitepi::config_space_t::locked_board_hash();
+    const std::string binding_id =
+        cuwacunu::iitepi::config_space_t::locked_board_binding_id();
     const std::string contract_hash =
         cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-            cuwacunu::iitepi::config_space_t::locked_board_hash(),
-            cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+            board_hash, binding_id);
     const auto contract_itself =
         cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+    if (!contract_itself) fail("contract snapshot is null");
 
-    const std::string instruction = contract_itself->jkimyei.dsl;
-    const std::string grammar = contract_itself->jkimyei.grammar;
-    const auto decoded =
-        cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
-            grammar, instruction);
+    const auto sec_it = contract_itself->module_sections.find("VICReg");
+    if (sec_it == contract_itself->module_sections.end()) {
+      fail("missing VICReg module section in contract");
+    }
+    const auto dsl_key_it = sec_it->second.find("jkimyei_dsl_file");
+    if (dsl_key_it == sec_it->second.end()) {
+      fail("missing VICReg.jkimyei_dsl_file");
+    }
+
+    std::string module_path{};
+    const auto module_it = contract_itself->module_section_paths.find("VICReg");
+    if (module_it != contract_itself->module_section_paths.end()) {
+      module_path = trim_ascii(module_it->second);
+    }
+    std::filesystem::path module_folder{};
+    if (!module_path.empty()) {
+      const std::filesystem::path p(module_path);
+      if (p.has_parent_path()) module_folder = p.parent_path();
+    }
+
+    const std::string rel_dsl_path =
+        unquote_if_wrapped(dsl_key_it->second);
+    std::filesystem::path dsl_path(rel_dsl_path);
+    if (!dsl_path.is_absolute()) {
+      dsl_path = module_folder / dsl_path;
+    }
+    if (!std::filesystem::exists(dsl_path) ||
+        !std::filesystem::is_regular_file(dsl_path)) {
+      fail("invalid VICReg.jkimyei_dsl_file path: " + dsl_path.string());
+    }
+
+    const std::string grammar_path =
+        std::filesystem::path(cuwacunu::iitepi::config_space_t::config_folder) /
+        cuwacunu::iitepi::config_space_t::get<std::string>(
+            "BNF", "jkimyei_specs_grammar_filename");
+    if (!std::filesystem::exists(grammar_path) ||
+        !std::filesystem::is_regular_file(grammar_path)) {
+      fail("invalid [BNF].jkimyei_specs_grammar_filename path: " + grammar_path);
+    }
+
+    const std::string grammar_text =
+        cuwacunu::piaabo::dfiles::readFileToString(grammar_path);
+    const std::string dsl_text =
+        cuwacunu::piaabo::dfiles::readFileToString(dsl_path.string());
+    if (trim_ascii(grammar_text).empty()) fail("empty jkimyei grammar payload");
+    if (trim_ascii(dsl_text).empty()) fail("empty jkimyei DSL payload");
+    const auto decoded = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
+        grammar_text, dsl_text, dsl_path.string());
 
     validate_decoded(decoded);
-    std::cout << "Validation: PASS (decoded values match expected jkimyei.representation.vicreg.dsl values)\n";
+    std::cout << "Validation: PASS (decoded values match expected default.tsi.wikimyei.representation.vicreg.jkimyei.dsl values)\n";
     print_readable_summary(decoded);
     return 0;
   } catch (const std::exception& e) {

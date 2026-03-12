@@ -401,7 +401,7 @@ ExpectedValue::save_checkpoint(const std::string& path) const {
           network_analytics_path.string().c_str());
     } else {
       log_warn(
-          "[ExpectedValue::network_analytics] sidecar skipped for '%s': %s\n",
+          "[ExpectedValue::network_analytics] report skipped for '%s': %s\n",
           path.c_str(),
           network_analytics_error.c_str());
     }

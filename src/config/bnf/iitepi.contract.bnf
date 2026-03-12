@@ -1,0 +1,34 @@
+<instruction>                ::= <contract_begin> <line_end>
+                                 <circuit_file_decl>
+                                 {<acknowledge_decl>}
+                                 <contract_end> <line_end> ;
+
+<contract_begin>             ::= "-----BEGIN IITEPI CONTRACT-----" ;
+<contract_end>               ::= "-----END IITEPI CONTRACT-----" ;
+
+<circuit_file_decl>          ::= [<whitespace>] "CIRCUIT_FILE"
+                                 [<whitespace>] ":"
+                                 [<whitespace>] <path_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<acknowledge_decl>           ::= [<whitespace>] "AKNOWLEDGE"
+                                 [<whitespace>] ":"
+                                 [<whitespace>] <alias_value>
+                                 [<whitespace>] "="
+                                 [<whitespace>] <family_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<alias_value>                ::= <id_char> {<id_char>} ;
+<family_value>               ::= <id_char> {<id_char>} ;
+<path_value>                 ::= <family_value> | <quoted_text> ;
+<quoted_text>                ::= "\"" {<quoted_char>} "\"" ;
+<quoted_char>                ::= <id_char> | "/" | ":" | "\\" | "." | "-" | "_" | " " ;
+
+<line_end>                   ::= [<whitespace>] <break_block> ;
+<break_block>                ::= {<newline>} ;
+<whitespace>                 ::= {<empty>} ;
+<id_char>                    ::= <letter> | <digit> | "_" | "." | "-" ;
+<letter>                     ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<digit>                      ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+<newline>                    ::= "\n" | "\r\n" ;
+<empty>                      ::= " " | "\t" ;

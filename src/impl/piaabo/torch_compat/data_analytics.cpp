@@ -1,6 +1,7 @@
 #include "piaabo/torch_compat/data_analytics.h"
 
-#include "hashimyei/hashimyei_artifacts.h"
+#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "hero/hashimyei_hero/hashimyei_artifacts.h"
 
 #include <algorithm>
 #include <cctype>
@@ -51,6 +52,36 @@ constexpr std::size_t kDataAnalyticsContractHashPathLen = 8;
     token = token.substr(0, kDataAnalyticsContractHashPathLen);
   }
   return std::string(token);
+}
+
+void append_component_report_identity_kv_(
+    std::ostringstream* oss,
+    const tsiemene::component_report_identity_t& report_identity) {
+  if (!oss) return;
+  if (!report_identity.report_kind.empty()) {
+    *oss << "report_kind=" << report_identity.report_kind << "\n";
+  }
+  if (!report_identity.tsi_type.empty()) {
+    *oss << "tsi_type=" << report_identity.tsi_type << "\n";
+  }
+  if (!report_identity.canonical_path.empty()) {
+    *oss << "canonical_path=" << report_identity.canonical_path << "\n";
+  }
+  if (!report_identity.hashimyei.empty()) {
+    *oss << "hashimyei=" << report_identity.hashimyei << "\n";
+  }
+  if (!report_identity.contract_hash.empty()) {
+    *oss << "contract_hash=" << report_identity.contract_hash << "\n";
+  }
+  if (!report_identity.wave_hash.empty()) {
+    *oss << "wave_hash=" << report_identity.wave_hash << "\n";
+  }
+  if (!report_identity.binding_id.empty()) {
+    *oss << "binding_id=" << report_identity.binding_id << "\n";
+  }
+  if (!report_identity.run_id.empty()) {
+    *oss << "run_id=" << report_identity.run_id << "\n";
+  }
 }
 
 [[nodiscard]] data_analytics_options_t normalize_options_(
@@ -389,15 +420,17 @@ data_source_analytics_report_t data_source_analytics_accumulator_t::summarize()
   return out;
 }
 
-std::string data_analytics_to_key_value_text(
+std::string data_analytics_to_latent_lineage_state_text(
     const data_source_analytics_report_t& report,
     const data_analytics_options_t& options,
-    std::string_view source_label) {
+    std::string_view source_label,
+    const tsiemene::component_report_identity_t& report_identity) {
   std::ostringstream oss;
   oss.setf(std::ios::fixed);
   oss << std::setprecision(10);
 
   oss << "schema=" << report.schema << "\n";
+  append_component_report_identity_kv_(&oss, report_identity);
   if (!source_label.empty()) {
     oss << "source_label=" << source_label << "\n";
   }
@@ -424,7 +457,8 @@ std::string data_analytics_to_key_value_text(
   oss << "mask_epsilon=" << options.mask_epsilon << "\n";
   oss << "standardize_epsilon=" << options.standardize_epsilon << "\n";
 
-  return oss.str();
+  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
+      oss.str());
 }
 
 bool write_data_analytics_file(
@@ -432,7 +466,8 @@ bool write_data_analytics_file(
     const data_analytics_options_t& options,
     const std::filesystem::path& output_file,
     std::string_view source_label,
-    std::string* error) {
+    std::string* error,
+    const tsiemene::component_report_identity_t& report_identity) {
   if (error) error->clear();
 
   std::error_code ec;
@@ -454,7 +489,8 @@ bool write_data_analytics_file(
   }
 
   const std::string payload =
-      data_analytics_to_key_value_text(report, options, source_label);
+      data_analytics_to_latent_lineage_state_text(
+          report, options, source_label, report_identity);
   out << payload;
   if (!out.good()) {
     if (error) *error = "cannot write output file: " + output_file.string();
@@ -476,7 +512,9 @@ std::string extract_data_analytics_kv_schema(std::string_view payload) {
     if (!line.empty()) {
       const std::size_t sep = line.find('=');
       if (sep != std::string_view::npos) {
-        const std::string_view key = trim_ascii_ws_view_(line.substr(0, sep));
+        const std::string key =
+            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
+                line.substr(0, sep));
         if (key == "schema") {
           const std::string_view value =
               trim_ascii_ws_view_(line.substr(sep + 1));
@@ -521,7 +559,7 @@ std::filesystem::path source_data_analytics_latest_file_path(
       contract_hash,
       source_instance);
   if (base.empty()) return {};
-  return base / "latest.kv";
+  return base / std::string(kDataAnalyticsLatestReportFilename);
 }
 
 }  // namespace torch_compat

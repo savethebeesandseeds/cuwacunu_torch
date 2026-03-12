@@ -29,9 +29,6 @@ namespace board_contract_dsl_key_highlight {
 enum class board_contract_section_kind_t : std::uint8_t {
   None = 0,
   Circuit,
-  ObservationSources,
-  ObservationChannels,
-  JkimyeiSpecs,
   Other,
 };
 
@@ -42,7 +39,7 @@ inline std::string lower_ascii_copy_board_editor(std::string s) {
 
 inline bool is_board_instruction_path(const std::string& path) {
   const std::string p = lower_ascii_copy_board_editor(path);
-  return p.find("iitepi.contract.circuit.example.dsl") != std::string::npos ||
+  return p.find("default.iitepi.contract.circuit.dsl") != std::string::npos ||
          p.find("board.dsl") != std::string::npos;
 }
 
@@ -74,15 +71,6 @@ inline std::string_view parse_segment_marker_key_board_editor(std::string_view l
 inline board_contract_section_kind_t section_kind_from_key_board_editor(std::string_view key) {
   if (key == board_contract_dsl_key_highlight::ContractCircuit) {
     return board_contract_section_kind_t::Circuit;
-  }
-  if (key == board_contract_dsl_key_highlight::ContractObservationSources) {
-    return board_contract_section_kind_t::ObservationSources;
-  }
-  if (key == board_contract_dsl_key_highlight::ContractObservationChannels) {
-    return board_contract_section_kind_t::ObservationChannels;
-  }
-  if (key == board_contract_dsl_key_highlight::ContractJkimyeiSpecs) {
-    return board_contract_section_kind_t::JkimyeiSpecs;
   }
   if (key.empty()) return board_contract_section_kind_t::None;
   return board_contract_section_kind_t::Other;

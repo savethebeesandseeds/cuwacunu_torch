@@ -1673,7 +1673,7 @@ inline void finishLoadingBar(loading_bar_t &bar) {
   if (!cuwacunu::piaabo::dlog_terminal_output_enabled()) return;
   LOCK_GUARD(log_mutex);
 #if DLOGS_USE_IOSTREAMS
-  std::cerr << "\t ["
+  std::cerr << "\n\t ["
             << ANSI_COLOR_Cyan << "0x" << cuwacunu::piaabo::cthread_id() << ANSI_COLOR_RESET
             << "]: " << ANSI_COLOR_Bright_Blue << "DEBUG" << ANSI_COLOR_RESET << ": "
             << bar.color << "Execution time " << ANSI_COLOR_RESET
@@ -1681,7 +1681,7 @@ inline void finishLoadingBar(loading_bar_t &bar) {
             << GET_READABLE_TIME_ms(TOCK_ms(bar.tick)) << " \n";
   std::cerr.flush();
 #else
-  std::fprintf(LOG_ERR_FILE, "\t [%s0x%s%s]: %sDEBUG%s: %sExecution time %s [%s%s%s] : %s \n",
+  std::fprintf(LOG_ERR_FILE, "\n\t [%s0x%s%s]: %sDEBUG%s: %sExecution time %s [%s%s%s] : %s \n",
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET,
     bar.color.c_str(), ANSI_COLOR_RESET,

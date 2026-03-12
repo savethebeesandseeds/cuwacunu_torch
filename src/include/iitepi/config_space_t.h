@@ -21,7 +21,7 @@
 
 #define DEFAULT_CONFIG_FOLDER "/cuwacunu/src/config/"
 #define DEFAULT_CONFIG_FILE ".config"
-#define DEFAULT_BOARD_CONFIG_FILE "default.board.config"
+#define DEFAULT_BOARD_CONFIG_FILE "instructions/default.iitepi.board.dsl"
 #define GENERAL_BOARD_CONFIG_KEY "board_config_filename"
 #define GENERAL_BOARD_BINDING_KEY "board_binding_id"
 

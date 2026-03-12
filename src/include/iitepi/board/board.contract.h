@@ -31,20 +31,11 @@ namespace board_contract_dsl_key {
 
 inline constexpr const char* kBoardContractCircuitDslKey =
     board_contract_dsl_key::ContractCircuit;
-inline constexpr const char* kBoardContractObservationSourcesDslKey =
-    board_contract_dsl_key::ContractObservationSources;
-inline constexpr const char* kBoardContractObservationChannelsDslKey =
-    board_contract_dsl_key::ContractObservationChannels;
-inline constexpr const char* kBoardContractJkimyeiSpecsDslKey =
-    board_contract_dsl_key::ContractJkimyeiSpecs;
 inline constexpr const char* kBoardContractWaveDslKey =
     board_contract_dsl_key::ContractWave;
 
-inline constexpr std::array<std::string_view, 5> kBoardContractRequiredDslKeys = {
+inline constexpr std::array<std::string_view, 2> kBoardContractRequiredDslKeys = {
     kBoardContractCircuitDslKey,
-    kBoardContractObservationSourcesDslKey,
-    kBoardContractObservationChannelsDslKey,
-    kBoardContractJkimyeiSpecsDslKey,
     kBoardContractWaveDslKey,
 };
 
@@ -120,6 +111,14 @@ struct BoardContractCircuit {
 struct BoardContract : public BoardContractCircuit {
   using DslSegments = std::map<std::string, std::string>;
 
+  struct ComponentDslFingerprint {
+    std::string canonical_path{};
+    std::string tsi_type{};
+    std::string hashimyei{};
+    std::string tsi_dsl_path{};
+    std::string tsi_dsl_sha256_hex{};
+  };
+
   struct Execution {
     // Wave execution controls selected for this contract.
     std::uint64_t wave_mode_flags{0};
@@ -131,6 +130,8 @@ struct BoardContract : public BoardContractCircuit {
   };
 
   struct Spec {
+    // Contract hash backing this runtime contract instance.
+    std::string contract_hash{};
     // Source identity for this contract's data stream (e.g., BTCUSDT).
     std::string instrument{};
     // Concrete sample record type used by source dataloader.
@@ -145,6 +146,8 @@ struct BoardContract : public BoardContractCircuit {
     std::string representation_component_name{};
     // Canonical component type set present in this contract circuit.
     std::vector<std::string> component_types{};
+    // Immutable DSL fingerprints captured from the contract signature.
+    std::vector<ComponentDslFingerprint> component_dsl_fingerprints{};
 
     // Training toggles are intentionally kept as soft knobs for now.
     bool vicreg_train{true};
@@ -168,7 +171,7 @@ struct BoardContract : public BoardContractCircuit {
   Execution execution{};
   DslSegments dsl_segments{};
 
-  [[nodiscard]] static constexpr const std::array<std::string_view, 5>& required_dsl_keys() noexcept {
+  [[nodiscard]] static constexpr const std::array<std::string_view, 2>& required_dsl_keys() noexcept {
     return kBoardContractRequiredDslKeys;
   }
 

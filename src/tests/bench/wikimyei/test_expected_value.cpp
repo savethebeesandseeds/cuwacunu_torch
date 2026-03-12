@@ -45,7 +45,7 @@ static std::string replace_once(std::string text, const std::string& from, const
 static std::string rewrite_device_to_cpu(std::string text) {
   const std::size_t key_pos = text.find("device:str");
   TORCH_CHECK(key_pos != std::string::npos,
-              "[test_expected_value] missing device:str row in key_value dsl text.");
+              "[test_expected_value] missing device:str row in latent_lineage_state DSL text.");
   const std::size_t line_start =
       (text.rfind('\n', key_pos) == std::string::npos)
           ? 0
@@ -192,7 +192,7 @@ int main() {
               "[test_expected_value] PerEpoch scheduler should step once per epoch.");
   PRINT_TOCK_ms(fit_value_estimation_);
 
-  const std::filesystem::path base_jk_specs = "/cuwacunu/src/config/instructions/jkimyei.representation.vicreg.dsl";
+  const std::filesystem::path base_jk_specs = "/cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl";
   const std::string base_specs_text = read_text_file(base_jk_specs);
 
   // Scheduler mode semantics: PerBatch

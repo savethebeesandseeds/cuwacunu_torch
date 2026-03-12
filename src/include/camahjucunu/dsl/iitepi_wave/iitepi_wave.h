@@ -15,14 +15,21 @@ namespace cuwacunu {
 namespace camahjucunu {
 
 struct iitepi_wave_wikimyei_decl_t {
+  std::string binding_alias{};
+  std::string family{};
+  std::string hashimyei{};
   std::string wikimyei_path{};
   bool train{false};
   bool has_train{false};
+  bool halt_train{false};
   std::string profile_id{};
 };
 
 struct iitepi_wave_source_decl_t {
+  std::string binding_alias{};
+  std::string family{};
   std::string source_path{};
+  std::string sampler{};
   std::string symbol{};
   std::string from{};
   std::string to{};
@@ -55,8 +62,18 @@ struct iitepi_wave_probe_policy_t {
 };
 
 struct iitepi_wave_probe_decl_t {
+  std::string binding_alias{};
+  std::string family{};
+  std::string hashimyei{};
   std::string probe_path{};
+  bool has_runtime{false};
   iitepi_wave_probe_policy_t policy{};
+};
+
+struct iitepi_wave_sink_decl_t {
+  std::string binding_alias{};
+  std::string family{};
+  std::string sink_path{};
 };
 
 enum class iitepi_wave_mode_flag_e : std::uint64_t {
@@ -244,6 +261,7 @@ struct iitepi_wave_t {
   std::string name{};
   std::string mode{};
   std::uint64_t mode_flags{0};
+  std::string determinism_policy{"non_deterministic"};
   std::string sampler{};
   std::uint64_t epochs{0};
   std::uint64_t batch_size{0};
@@ -251,6 +269,7 @@ struct iitepi_wave_t {
   std::vector<iitepi_wave_wikimyei_decl_t> wikimyeis{};
   std::vector<iitepi_wave_source_decl_t> sources{};
   std::vector<iitepi_wave_probe_decl_t> probes{};
+  std::vector<iitepi_wave_sink_decl_t> sinks{};
 };
 
 struct iitepi_wave_set_t {

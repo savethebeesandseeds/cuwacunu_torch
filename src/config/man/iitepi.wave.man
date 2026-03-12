@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = iitepi.wave
-TARGET_DSL = src/config/instructions/iitepi.wave.example.dsl
+TARGET_DSL = src/config/instructions/default.iitepi.wave.dsl
 TARGET_BNF = src/config/bnf/iitepi.wave.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/iitepi_wave/iitepi_wave.cpp
 PRIMARY_VALIDATORS = src/include/iitepi/board/board.validation.h,src/include/iitepi/board/board.builder.h
@@ -30,6 +30,16 @@ default = none
 range = uint64
 allowed = symbolic(run|train|debug) plus numeric(dec|0xHEX|0bBIN) joined by |,+,^,comma,whitespace
 nuance = tokens are normalized to lowercase; all join tokens are parsed as bitwise OR composition
+
+[FIELD WAVE.DETERMINISM]
+key = DETERMINISM
+scope = WAVE
+type = enum
+required = false
+default = non_deterministic
+range = deterministic policy
+allowed = deterministic,non_deterministic,nondeterministic,non-deterministic,stochastic
+nuance = normalized to deterministic or non_deterministic and used by lattice HERO cache policy
 
 [FIELD WAVE.SAMPLER]
 key = SAMPLER
@@ -81,19 +91,19 @@ range = unique within wave
 allowed = tsi.wikimyei.* canonical node path
 nuance = must resolve to a contract wikimyei node path during compatibility validation
 
-[FIELD WIKIMYEI.TRAIN]
-key = WIKIMYEI.TRAIN
-scope = WIKIMYEI block
+[FIELD WIKIMYEI.JKIMYEI.HALT_TRAIN]
+key = WIKIMYEI.JKIMYEI.HALT_TRAIN
+scope = WIKIMYEI.JKIMYEI block
 type = bool
 required = true
 default = none
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = parse accepts broad bool tokens; policy constraints depend on MODE bits
+nuance = per-component training halt flag; effective training requires MODE train bit and HALT_TRAIN=false
 
-[FIELD WIKIMYEI.PROFILE_ID]
-key = WIKIMYEI.PROFILE_ID
-scope = WIKIMYEI block
+[FIELD WIKIMYEI.JKIMYEI.PROFILE_ID]
+key = WIKIMYEI.JKIMYEI.PROFILE_ID
+scope = WIKIMYEI.JKIMYEI block
 type = identifier
 required = true
 default = none
@@ -112,8 +122,8 @@ allowed = tsi.source.* canonical node path
 nuance = runtime currently requires exactly one SOURCE path in selected wave
 
 [FIELD SOURCE.SYMBOL]
-key = SOURCE.SYMBOL
-scope = SOURCE block
+key = SOURCE.RUNTIME.SYMBOL
+scope = SOURCE.RUNTIME block
 type = identifier
 required = true
 default = none
@@ -122,28 +132,28 @@ allowed = market symbol token
 nuance = no canonical symbol catalog is enforced by parser
 
 [FIELD SOURCE.FROM]
-key = SOURCE.FROM
-scope = SOURCE block
+key = SOURCE.RUNTIME.FROM
+scope = SOURCE.RUNTIME block
 type = date_string
 required = true
 default = none
 range = DD.MM.YYYY
 allowed = digit date
-nuance = parser checks presence/shape only; semantic date ordering is external
+nuance = parser checks presence/shape; lattice projection v2 interprets FROM/TO as half-open UTC day interval [from,to+1d) and fails when FROM > TO
 
 [FIELD SOURCE.TO]
-key = SOURCE.TO
-scope = SOURCE block
+key = SOURCE.RUNTIME.TO
+scope = SOURCE.RUNTIME block
 type = date_string
 required = true
 default = none
 range = DD.MM.YYYY
 allowed = digit date
-nuance = parser checks presence/shape only; semantic date ordering is external
+nuance = parser checks presence/shape; lattice projection v2 computes request/effective coverage against effective_intersection domain and exposes clip flags when request exceeds domain bounds
 
 [FIELD SOURCE.WORKERS]
-key = SOURCE.WORKERS
-scope = SOURCE block
+key = SOURCE.SETTINGS.WORKERS
+scope = SOURCE.SETTINGS block
 type = uint64
 required = true
 default = none
@@ -152,8 +162,8 @@ allowed = decimal integer
 nuance = zero allowed
 
 [FIELD SOURCE.FORCE_REBUILD_CACHE]
-key = SOURCE.FORCE_REBUILD_CACHE
-scope = SOURCE block
+key = SOURCE.SETTINGS.FORCE_REBUILD_CACHE
+scope = SOURCE.SETTINGS block
 type = bool
 required = true
 default = none
@@ -162,8 +172,8 @@ allowed = true,false,1,0,yes,no,on,off
 nuance = strict parse failure on unknown bool token
 
 [FIELD SOURCE.RANGE_WARN_BATCHES]
-key = SOURCE.RANGE_WARN_BATCHES
-scope = SOURCE block
+key = SOURCE.SETTINGS.RANGE_WARN_BATCHES
+scope = SOURCE.SETTINGS block
 type = uint64
 required = true
 default = none
@@ -172,64 +182,74 @@ allowed = decimal integer
 nuance = zero is rejected
 
 [FIELD SOURCE.SOURCES_DSL_FILE]
-key = SOURCE.SOURCES_DSL_FILE
-scope = SOURCE block
+key = SOURCE.RUNTIME.SOURCES_DSL_FILE
+scope = SOURCE.RUNTIME block
 type = path
 required = true
 default = none
 range = non-empty path
 allowed = absolute_or_relative_path
-nuance = resolved relative to wave config folder; must exist as regular file at board build time
+nuance = resolved relative to wave file folder; must exist as regular file at board build time
 
 [FIELD SOURCE.CHANNELS_DSL_FILE]
-key = SOURCE.CHANNELS_DSL_FILE
-scope = SOURCE block
+key = SOURCE.RUNTIME.CHANNELS_DSL_FILE
+scope = SOURCE.RUNTIME block
 type = path
 required = true
 default = none
 range = non-empty path
 allowed = absolute_or_relative_path
-nuance = resolved relative to wave config folder; must exist as regular file at board build time
+nuance = resolved relative to wave file folder; must exist as regular file at board build time
 
 [FIELD PROBE.PATH]
 key = PROBE.PATH
 scope = PROBE block
 type = canonical_probe_path
-required = true
+required = false
 default = none
-range = unique within wave
-allowed = tsi.probe.representation.transfer_matrix_evaluation.0x<hex>
-nuance = explicit hashimyei suffix is mandatory; invalid or missing hex suffix is rejected
+range = reserved for future probe families
+allowed = no active probe runtime families
+nuance = legacy `tsi.probe.representation.transfer_matrix_evaluation` runtime binding was removed; transfer-matrix reporting is owned by `tsi.wikimyei.representation.vicreg`
 
 [FIELD PROBE.TRAINING_WINDOW]
 key = PROBE.TRAINING_WINDOW
 scope = PROBE block
 type = enum
-required = true
-default = none
-range = fixed token
-allowed = incoming_batch
-nuance = strict singleton policy
+required = false
+default = n/a
+range = n/a
+allowed = n/a
+nuance = legacy transfer-matrix probe runtime key
 
 [FIELD PROBE.REPORT_POLICY]
 key = PROBE.REPORT_POLICY
 scope = PROBE block
 type = enum
-required = true
-default = none
-range = fixed token
-allowed = epoch_end_log
-nuance = strict singleton policy
+required = false
+default = n/a
+range = n/a
+allowed = n/a
+nuance = legacy transfer-matrix probe runtime key
 
 [FIELD PROBE.OBJECTIVE]
 key = PROBE.OBJECTIVE
 scope = PROBE block
 type = enum
+required = false
+default = n/a
+range = n/a
+allowed = n/a
+nuance = legacy transfer-matrix probe runtime key
+
+[FIELD SINK.PATH]
+key = SINK.PATH
+scope = SINK block
+type = canonical_node_path
 required = true
 default = none
-range = fixed token
-allowed = future_target_dims_nll
-nuance = strict singleton policy
+range = unique within wave
+allowed = tsi.sink.* canonical node path
+nuance = must resolve to a contract sink node path during compatibility validation
 
 [RULE WAVE_MIN_BLOCKS]
 id = WAVE_MIN_BLOCKS
@@ -247,17 +267,17 @@ message = MODE must enable run or train
 
 [RULE MODE_RUN_ONLY]
 id = MODE_RUN_ONLY
-applies_to = WAVE.MODE,WIKIMYEI.TRAIN
+applies_to = WAVE.MODE,WIKIMYEI.JKIMYEI.HALT_TRAIN
 severity = error
-when = run bit set and train bit not set and exists WIKIMYEI.TRAIN=true
-message = MODE=run forbids WIKIMYEI TRAIN=true
+when = run bit set and train bit not set and exists WIKIMYEI.JKIMYEI.HALT_TRAIN=false
+message = MODE without train bit forbids JKIMYEI.HALT_TRAIN=false
 
 [RULE MODE_TRAIN_REQUIRED]
 id = MODE_TRAIN_REQUIRED
-applies_to = WAVE.MODE,WIKIMYEI.TRAIN
+applies_to = WAVE.MODE,WIKIMYEI.JKIMYEI.HALT_TRAIN
 severity = error
-when = train bit set and no WIKIMYEI.TRAIN=true
-message = MODE with train bit requires at least one WIKIMYEI TRAIN=true
+when = train bit set and no WIKIMYEI.JKIMYEI.HALT_TRAIN=false
+message = MODE with train bit requires at least one WIKIMYEI JKIMYEI.HALT_TRAIN=false
 
 [RULE COMPAT_SOURCE_CARDINALITY]
 id = COMPAT_SOURCE_CARDINALITY

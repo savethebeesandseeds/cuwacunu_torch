@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = jkimyei
-TARGET_DSL = src/config/instructions/jkimyei.representation.vicreg.dsl
+TARGET_DSL = src/config/instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl
 TARGET_BNF = src/config/bnf/jkimyei.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/jkimyei_specs/jkimyei_specs.cpp
 PRIMARY_VALIDATORS = schema in src/include/jkimyei/specs/jkimyei_schema.def and builders in src/include/jkimyei/training_setup/*

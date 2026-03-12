@@ -48,8 +48,12 @@ Public API:
 - `is_supported_network_analytics_schema(...)`
 - `is_supported_network_design_analytics_schema(...)`
 
-The sidecar writer emits a key/value text file next to `.pt` checkpoints
-(extension `.network_analytics.kv`) with compact global parameter diagnostics.
+The checkpoint report writer emits a key/value text file next to `.pt`
+checkpoints (extension `.network_analytics.lls`) with compact global parameter
+diagnostics.
+Every component report can also carry a `tsiemene::component_report_identity_t`
+envelope (`report_kind`, `canonical_path`, `tsi_type`, optional
+`hashimyei/contract_hash/wave_hash/binding_id`).
 Current schema is v4 and keeps canonical-only keys:
 
 - finite/non-finite ratios (NaN/Inf counts)
@@ -69,7 +73,7 @@ Current schema is v4 and keeps canonical-only keys:
   `top_low_stable_rank_*`, `top_low_effective_rank_*`,
   `top_high_spectral_norm_*`)
 
-## Data Analytics Sidecar
+## Data Analytics Report
 
 `torch_compat` now includes source-window data analytics in:
 
@@ -77,14 +81,15 @@ Current schema is v4 and keeps canonical-only keys:
 - `impl/piaabo/torch_compat/data_analytics.cpp`
 
 This module computes source entropic load from mask-aware flattened past windows
-and writes deterministic key/value sidecars under the hashimyei data root.
+and writes deterministic key/value reports (`data_analytics.latest.lls`) under
+the hashimyei data root.
 Schema: `piaabo.torch_compat.data_analytics.v1`.
 
-Runtime config source: `tsi.source.dataloader.sources.dsl` via required block
+Runtime config source: `default.tsi.source.dataloader.sources.dsl` via required block
 `DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
 No silent fallback defaults are used by `tsi.source.dataloader`.
 
-## Entropic Capacity Comparison Sidecar
+## Entropic Capacity Comparison Report
 
 `torch_compat` now includes a comparison sidecar in:
 

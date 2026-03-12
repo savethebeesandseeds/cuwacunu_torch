@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = iitepi.contract.circuit
-TARGET_DSL = src/config/instructions/iitepi.contract.circuit.example.dsl
+TARGET_DSL = src/config/instructions/default.iitepi.contract.circuit.dsl
 TARGET_BNF = src/config/bnf/iitepi.contract.circuit.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_decode_text.cpp
 PRIMARY_VALIDATORS = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_validate.cpp,src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_resolve.cpp
@@ -44,8 +44,8 @@ type = canonical_node_path
 required = true
 default = none
 range = supported tsi type id
-allowed = tsi.source.dataloader,tsi.wikimyei.representation.vicreg.0x<hex>,tsi.probe.representation.transfer_matrix_evaluation.0x<hex>,tsi.probe.log,tsi.sink.null
-nuance = unique-instance tsi types are enforced (for example tsi.probe.log is unique per circuit)
+allowed = tsi.source.dataloader,tsi.wikimyei.representation.vicreg[.0x<hex>],tsi.probe.log,tsi.sink.null
+nuance = family-only paths are accepted for hashimyei-instance types so wave can own runtime hash selection
 
 [FIELD INSTANCE.ARGS]
 key = <instance_args>

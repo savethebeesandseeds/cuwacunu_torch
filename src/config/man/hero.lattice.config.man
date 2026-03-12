@@ -1,0 +1,58 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = hero.lattice.config
+TARGET_DSL = src/config/instructions/default.hero.lattice.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
+PRIMARY_VALIDATORS = src/main/hero/hero_lattice_mcp.cpp
+
+[FIELD store_root]
+key = store_root
+scope = hero lattice runtime defaults
+type = path
+required = true
+default = /cuwacunu/.hashimyei
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = runtime store root loaded from Lattice HERO defaults DSL via [REAL_HERO].lattice_hero_dsl_filename
+
+[FIELD catalog_path]
+key = catalog_path
+scope = hero lattice runtime defaults
+type = path
+required = true
+default = /cuwacunu/.hashimyei/catalog/lattice_catalog.idydb
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = runtime lattice catalog path loaded from Lattice HERO defaults DSL via [REAL_HERO].lattice_hero_dsl_filename
+
+[FIELD hashimyei_catalog_path]
+key = hashimyei_catalog_path
+scope = hero lattice runtime defaults
+type = path
+required = true
+default = /cuwacunu/.hashimyei/catalog/hashimyei_catalog.idydb
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = optional hashimyei catalog for snapshot/provenance enrichment; loaded from Lattice HERO defaults DSL
+
+[FIELD config_folder]
+key = config_folder
+scope = hero lattice runtime defaults
+type = path
+required = true
+default = /cuwacunu/src/config
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = root config folder passed to runtime board/wave execution context; loaded from Lattice HERO defaults DSL
+
+[FIELD encrypted]
+key = encrypted
+scope = hero lattice runtime defaults
+type = bool
+required = true
+default = false
+range = false
+allowed = false,0,no,off
+nuance = catalog runtime is unencrypted in MCP mode; keep this value false

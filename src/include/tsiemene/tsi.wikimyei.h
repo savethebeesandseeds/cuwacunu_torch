@@ -17,6 +17,7 @@ struct TsiWikimyeiInitRecord {
 
   std::string hashimyei{};
   std::string contract_hash{};
+  std::string run_id{};
   std::string canonical_base{};
   std::filesystem::path store_root{};
   std::filesystem::path artifact_directory{};
@@ -28,6 +29,11 @@ struct TsiWikimyeiInitRecord {
   bool metadata_encrypted{false};
   bool metadata_plaintext_fallback{false};
   std::string metadata_warning{};
+};
+
+struct TsiWikimyeiRuntimeIoContext {
+  bool enable_debug_outputs{false};
+  std::string run_id{};
 };
 
 struct TsiWikimyeiInitEntry {

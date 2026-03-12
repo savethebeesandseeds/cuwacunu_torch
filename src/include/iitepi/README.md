@@ -34,7 +34,9 @@ Primary include: `#include "iitepi/iitepi.h"`
 Architecture is intentionally split into static topology and dynamic execution:
 
 1. Contract (static machine)
-- Observation, jkimyei specs, circuit topology.
+- Contract wrapper + circuit topology + component-family acknowledgements.
+- Contract paths for hashimyei-instance component types are family-level
+  (`tsi.*` without `.0x<hex>`).
 - No runtime schedule ownership.
 
 2. Wave (dynamic execution policy)
@@ -42,9 +44,12 @@ Architecture is intentionally split into static topology and dynamic execution:
   flags), sampler, epochs, batch size, max batches.
 - Component train flags and profile selection.
 - Source symbol/range window.
-- Dataloader runtime knobs (`WORKERS`, `FORCE_REBUILD_CACHE`,
-  `RANGE_WARN_BATCHES`) and observation file ownership
-  (`SOURCES_DSL_FILE`, `CHANNELS_DSL_FILE`) are declared per `SOURCE` block.
+- Source `SETTINGS` owns dataloader knobs
+  (`WORKERS`, `SAMPLER`, `FORCE_REBUILD_CACHE`, `RANGE_WARN_BATCHES`).
+- Source `RUNTIME` owns symbol/date window and observation file paths
+  (`SYMBOL`, `FROM`, `TO`, `SOURCES_DSL_FILE`, `CHANNELS_DSL_FILE`).
+- Sink path ownership is wave-local via `SINK { PATH = ...; }` blocks and
+  validated against sink nodes declared by the selected circuit.
   `debug` mode controls probe/report side effects (probe epoch reporting and
   network-analytics sidecars on artifact save).
 
@@ -59,17 +64,22 @@ Architecture is intentionally split into static topology and dynamic execution:
 
 ## DSL Layering
 
-1. `iitepi.contract.circuit.example.dsl`
+1. `default.iitepi.contract.dsl`
+- Static contract wrapper:
+  `CIRCUIT_FILE: ...;` and `AKNOWLEDGE: <alias> = <tsi family>;`.
+- `AKNOWLEDGE` keeps contract hash-free for hashimyei-instance families.
+
+2. `default.iitepi.contract.circuit.dsl`
 - Declares TSI instances and hops.
 - Optional instruction-level selector: `active_circuit = <circuit_name>`.
 - When selector is set, runtime builds/executes only that circuit.
 - Circuit DSL accepts multiline hop expressions and comments (`/* ... */`, `# ...`).
 
-2. `iitepi.wave.example.dsl`
+3. `default.iitepi.wave.dsl`
 - Declares one or more `WAVE` blocks.
-- Runtime behavior for execution/training.
+- Runtime behavior for execution/training, including runtime hashimyei paths.
 
-3. `iitepi.board.dsl`
+4. `default.iitepi.board.dsl`
 - Imports contract/wave files.
 - Declares bind ids that join them.
 
@@ -105,8 +115,9 @@ Architecture is intentionally split into static topology and dynamic execution:
 
 1. Circuit compiles into runtime nodes and route map.
 2. Execution is wave-driven:
-- `run_contract(...)` iterates epochs from wave execution spec.
-- `run_wave_compiled(...)` processes event queue (`Ingress` -> TSI `step` -> emitted signals).
+- `run_contract(...)` iterates epochs from wave execution spec and broadcasts typed lifecycle events (`RunStart/RunEnd`, `EpochStart/End`) to all nodes.
+- `run_wave_compiled(...)` processes event queue (`Ingress` -> TSI `step` -> emitted signals) and dispatches typed runtime events (`StepStart/Done`, `Route`, `Drop`, `Backpressure`, `QueueDrained`).
+- source-style continuation is requested through `on_event(QueueDrained)` returning `RuntimeEventAction`.
 3. Sources emit payload/future/meta; wikimyei consume/emit payload/loss/meta; sinks consume logs/null.
 4. Artifact load/save is handled through TSI wikimyei + hashimyei integration in contract runtime.
 
@@ -123,7 +134,7 @@ Architecture is intentionally split into static topology and dynamic execution:
 
 1. Every registry record stores dependency fingerprint manifest.
    For waves, this includes wave-selected
-   `SOURCE.SOURCES_DSL_FILE` and `SOURCE.CHANNELS_DSL_FILE`.
+   `SOURCE.RUNTIME.SOURCES_DSL_FILE` and `SOURCE.RUNTIME.CHANNELS_DSL_FILE`.
 2. `assert_intact_or_fail_fast(hash)` verifies immutable dependency content.
 3. `board_space_t::init(...)` establishes the active runtime lock.
 4. Config reload while active runtime is locked must not drift board/binding identity.

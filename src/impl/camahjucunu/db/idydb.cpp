@@ -888,7 +888,9 @@ static int idydb_connection_setup_stream(idydb **handler, FILE* stream, int flag
 
 	(*handler)->configured = true;
 
-	if (flock(fileno((*handler)->file_descriptor), LOCK_EX | LOCK_NB) != 0)
+	const int lock_mode =
+		(((flags & IDYDB_READONLY) == IDYDB_READONLY) ? LOCK_SH : LOCK_EX) | LOCK_NB;
+	if (flock(fileno((*handler)->file_descriptor), lock_mode) != 0)
 	{
 		idydb_error_state(handler, 6);
 		return IDYDB_BUSY;
@@ -964,7 +966,9 @@ static int idydb_connection_setup(idydb **handler, const char *filename, int fla
 
 	(*handler)->configured = true;
 
-	if (flock(fileno((*handler)->file_descriptor), LOCK_EX | LOCK_NB) != 0)
+	const int lock_mode =
+		(((flags & IDYDB_READONLY) == IDYDB_READONLY) ? LOCK_SH : LOCK_EX) | LOCK_NB;
+	if (flock(fileno((*handler)->file_descriptor), lock_mode) != 0)
 	{
 		idydb_error_state(handler, 6);
 		return IDYDB_BUSY;
@@ -1083,7 +1087,8 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 		return idydb_open_fail_cleanup(handler, IDYDB_PERM);
 	}
 
-	if (flock(fileno(backing), LOCK_EX | LOCK_NB) != 0)
+	const int backing_lock_mode = (ro ? LOCK_SH : LOCK_EX) | LOCK_NB;
+	if (flock(fileno(backing), backing_lock_mode) != 0)
 	{
 		fclose(backing);
 		idydb_error_state(handler, 6);
@@ -1150,6 +1155,7 @@ int idydb_open_with_options(const char *filename, idydb **handler, const idydb_o
 		fseek(plain, 0L, SEEK_END);
 		long psz = ftell(plain);
 		fseek(plain, 0L, SEEK_SET);
+		(void)psz;
 		DB_DEBUGF(handler, "decrypt OK -> plaintext bytes=%ld pbkdf2_iter=%u", psz, iter);
 	}
 	else
@@ -1717,13 +1723,15 @@ static unsigned char idydb_read_at(idydb **handler, idydb_column_row_sizing colu
 				}
 				else
 #endif
-					if (fread((*handler)->value.char_value, response_length, sizeof(char), (*handler)->file_descriptor) != sizeof(char))
+				{
+					if (fread((*handler)->value.char_value, sizeof(char), response_length, (*handler)->file_descriptor) != response_length)
 					{
 						idydb_error_state(handler, 18);
 						return IDYDB_ERROR;
 					}
-					return IDYDB_DONE;
 				}
+				return IDYDB_DONE;
+			}
 			response_length += sizeof(short);
 			break;
 		case IDYDB_READ_BOOL_TRUE:
@@ -1855,11 +1863,11 @@ static unsigned char idydb_insert_at(idydb **handler, idydb_column_row_sizing co
 		return IDYDB_RANGE;
 	}
 
+#if CUWACUNU_CAMAHJUCUNU_DB_VERBOSE_DEBUG
 	/* Keep original coords for debug */
 	idydb_column_row_sizing dbg_col = column_position;
 	idydb_column_row_sizing dbg_row = row_position;
 
-#if CUWACUNU_CAMAHJUCUNU_DB_VERBOSE_DEBUG
 	/* Capture before/after in a way that doesn't break the staged write. */
 	idydb_sizing_max dbg_size_before = (*handler)->size;
 
@@ -2818,7 +2826,9 @@ static int idydb_filter_build_term_mask(idydb **handler,
 							v = idydb_read_mmap(offset_mmap_standard_diff, sizeof(int), (*handler)->buffer).integer;
 						else
 #endif
-							(void)fread(&v, 1, sizeof(int), (*handler)->file_descriptor);
+						{
+							if (fread(&v, sizeof(int), 1, (*handler)->file_descriptor) != 1) return 0;
+						}
 						term_mask[row_api] = (unsigned char)(idydb_filter_cmp_int(v, op, term->value.i) ? 1 : 0);
 					}
 				}
@@ -2839,7 +2849,9 @@ static int idydb_filter_build_term_mask(idydb **handler,
 							v = idydb_read_mmap(offset_mmap_standard_diff, sizeof(float), (*handler)->buffer).floating_point;
 						else
 #endif
-							(void)fread(&v, 1, sizeof(float), (*handler)->file_descriptor);
+						{
+							if (fread(&v, sizeof(float), 1, (*handler)->file_descriptor) != 1) return 0;
+						}
 						term_mask[row_api] = (unsigned char)(idydb_filter_cmp_float(v, op, term->value.f) ? 1 : 0);
 					}
 				}
@@ -2850,12 +2862,14 @@ static int idydb_filter_build_term_mask(idydb **handler,
 			{
 				unsigned short n = 0; /* stored length (no '\0') */
 #ifdef IDYDB_MMAP_OK
-				if ((*handler)->read_only == IDYDB_READONLY_MMAPPED)
-					n = (unsigned short)idydb_read_mmap(offset_mmap_standard_diff, sizeof(short), (*handler)->buffer).integer;
-				else
+					if ((*handler)->read_only == IDYDB_READONLY_MMAPPED)
+						n = (unsigned short)idydb_read_mmap(offset_mmap_standard_diff, sizeof(short), (*handler)->buffer).integer;
+					else
 #endif
-					(void)fread(&n, 1, sizeof(short), (*handler)->file_descriptor);
-				adv = (unsigned short)(sizeof(short) + n + 1);
+					{
+						if (fread(&n, sizeof(short), 1, (*handler)->file_descriptor) != 1) return 0;
+					}
+					adv = (unsigned short)(sizeof(short) + n + 1);
 
 				if (in_target && row_in_range)
 				{
@@ -2902,12 +2916,14 @@ static int idydb_filter_build_term_mask(idydb **handler,
 			{
 				unsigned short d = 0;
 #ifdef IDYDB_MMAP_OK
-				if ((*handler)->read_only == IDYDB_READONLY_MMAPPED)
-					d = (unsigned short)idydb_read_mmap(offset_mmap_standard_diff, sizeof(short), (*handler)->buffer).integer;
-				else
+					if ((*handler)->read_only == IDYDB_READONLY_MMAPPED)
+						d = (unsigned short)idydb_read_mmap(offset_mmap_standard_diff, sizeof(short), (*handler)->buffer).integer;
+					else
 #endif
-					(void)fread(&d, 1, sizeof(short), (*handler)->file_descriptor);
-				adv = (unsigned short)(sizeof(short) + d * sizeof(float));
+					{
+						if (fread(&d, sizeof(short), 1, (*handler)->file_descriptor) != 1) return 0;
+					}
+					adv = (unsigned short)(sizeof(short) + d * sizeof(float));
 
 				if (in_target && row_in_range)
 				{

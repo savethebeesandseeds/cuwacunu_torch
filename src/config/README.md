@@ -3,7 +3,7 @@
 This folder is organized by role:
 
 - `./.config`: global runtime settings (exchange, seeds, UI/system knobs).
-- `./default.board.contract.config`: board contract config file.
+- `./instructions/default.iitepi.contract.dsl`: board contract defaults file.
 - `./bnf/`: grammar files (`*.bnf`).
 - `./instructions/`: DSL payload files (`*.dsl`).
 - `./secrets/real/`: real exchange secret material.
@@ -14,23 +14,24 @@ This folder is organized by role:
 - `bnf/tsi.source.dataloader.sources.bnf`
 - `bnf/tsi.source.dataloader.channels.bnf`
 - `bnf/jkimyei.bnf`
+- `bnf/iitepi.contract.bnf`
 - `bnf/iitepi.contract.circuit.bnf`
 - `bnf/iitepi.wave.bnf`
 - `bnf/network_design.bnf`
 - `bnf/canonical_path.bnf`
-- `bnf/key_value.bnf`
+- `bnf/latent_lineage_state.bnf`
 - `.config`
-- `default.board.contract.config`
-- `instructions/tsi.source.dataloader.sources.dsl`
-- `instructions/tsi.source.dataloader.channels.dsl`
-- `instructions/jkimyei.representation.vicreg.dsl`
-- `instructions/iitepi.board.dsl`
-- `instructions/iitepi.contract.circuit.example.dsl`
-- `instructions/iitepi.wave.example.dsl` (canonical wave payload set)
-- `instructions/tsi.wikimyei.representation.vicreg.dsl`
-- `instructions/tsi.wikimyei.representation.vicreg.network_design.dsl`
-- `instructions/tsi.wikimyei.inference.mdn.value_estimation.dsl`
-- `instructions/tsi.probe.representation.transfer_matrix_evaluation.dsl`
+- `instructions/default.iitepi.contract.dsl`
+- `instructions/default.tsi.source.dataloader.sources.dsl`
+- `instructions/default.tsi.source.dataloader.channels.dsl`
+- `instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl`
+- `instructions/default.iitepi.board.dsl`
+- `instructions/default.iitepi.contract.circuit.dsl`
+- `instructions/default.iitepi.wave.dsl` (canonical wave payload set)
+- `instructions/default.tsi.wikimyei.representation.vicreg.dsl`
+- `instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
+- `instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl`
+- `instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl`
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
 - `secrets/real/exchange.key` (expected, may be absent locally)
 - `secrets/real/openai.key` (expected for HERO/OpenAI, may be absent locally)
@@ -106,17 +107,32 @@ The utility:
 
 ## HERO local MCP utility
 
-Build/install:
+Build:
 
 ```bash
-make -C /cuwacunu/src/main/hero -j12 install-hero-mcp
+make -C /cuwacunu/src/main/hero -j12 all
 ```
 
 Run as MCP server (Codex/stdio):
 
 ```bash
-/cuwacunu/src/config/hero_config_mcp
+/cuwacunu/.build/hero/hero_config_mcp
 ```
+
+Defaults:
+- global config path defaults to `/cuwacunu/src/config/.config`
+- config MCP does not require a passphrase at runtime
+
+Direct one-shot tool call (no manual JSON-RPC framing):
+
+```bash
+/cuwacunu/.build/hero/hero_config_mcp \
+  --tool hero.config.status \
+  --args-json '{}'
+```
+
+MCP `initialize` responses from HERO servers include an `instructions` string
+with concise runtime prerequisites.
 
 Find/install in Codex CLI:
 
@@ -126,8 +142,7 @@ codex mcp list
 
 # Register HERO MCP in Codex (stdio transport)
 codex mcp add hero-config -- \
-  /cuwacunu/src/config/hero_config_mcp \
-  --config /cuwacunu/src/config/instructions/hero.config.dsl
+  /cuwacunu/.build/hero/hero_config_mcp
 
 # Inspect the registered server configuration
 codex mcp get hero-config --json
@@ -143,133 +158,206 @@ Codex test calls:
 
 ```bash
 codex exec -C /cuwacunu \
-  "You must call MCP tool hero.status and return only structuredContent JSON."
+  "You must call MCP tool hero.config.status and return only structuredContent JSON."
 
 codex exec -C /cuwacunu \
-  "Call hero.diff with include_text=false and return structuredContent JSON."
+  "Call hero.config.diff with include_text=false and return structuredContent JSON."
 ```
 
 Required runtime mode:
-- `instructions/hero.config.dsl` must keep `protocol_layer:str = STDIO`.
+- `instructions/default.hero.config.dsl` must keep
+  `protocol_layer[STDIO|HTTPS/SSE]:str = STDIO`.
 
 Run legacy human REPL:
 
 ```bash
-/cuwacunu/src/config/hero_config_mcp --repl
+/cuwacunu/.build/hero/hero_config_mcp --repl
 ```
 
 Useful MCP tools:
-- `hero.status`
-- `hero.schema`
-- `hero.show`
-- `hero.get`
-- `hero.set`
-- `hero.validate`
-- `hero.diff` / `hero.dry_run` (preview changes before save)
-- `hero.backups` (list snapshots)
-- `hero.rollback` (restore latest or selected snapshot)
-- `hero.save`
-- `hero.reload`
+- `hero.config.status`
+- `hero.config.schema`
+- `hero.config.show`
+- `hero.config.get`
+- `hero.config.set`
+- `hero.config.dsl.get` (read one key from `instructions/default.*.dsl`)
+- `hero.config.dsl.set` (set one key in `instructions/default.*.dsl`)
+- `hero.config.validate`
+- `hero.config.diff` / `hero.config.dry_run` (preview changes before save)
+- `hero.config.backups` (list snapshots)
+- `hero.config.rollback` (restore latest or selected snapshot)
+- `hero.config.save` (persists config, takes shared runtime lock, returns deterministic `cutover` metadata)
+- `hero.config.reload`
 
 Deterministic policy:
-- `hero.ask` and `hero.fix` are disabled by design in current runtime mode.
+- `hero.config.ask` and `hero.config.fix` are disabled by design in current runtime mode.
+- Config HERO edits defaults only. Existing hashimyei instances are not mutated
+  by `hero.config.dsl.set`; instance revisions are handled by Hashimyei HERO lineage.
 
 ## Hashimyei Catalog MCP
 
-Build/install:
+Build:
 
 ```bash
-make -C /cuwacunu/src/main/hero -j12 install-hashimyei-tools
+make -C /cuwacunu/src/main/hero -j12 all
 ```
 
-Installed binaries:
-- `/cuwacunu/src/config/hero_hashimyei_ingest`
-- `/cuwacunu/src/config/hero_hashimyei_mcp`
+Installed binary:
+- `/cuwacunu/.build/hero/hero_hashimyei_mcp`
 
-Initialize catalog from artifacts:
+Run MCP:
 
 ```bash
-/cuwacunu/src/config/hero_hashimyei_ingest \
-  --store-root /cuwacunu/.hashimyei
+/cuwacunu/.build/hero/hero_hashimyei_mcp
+```
+
+Defaults:
+- global config path defaults to `/cuwacunu/src/config/.config`
+- catalog mode is unencrypted in MCP runtime
+
+Direct one-shot tool call:
+
+```bash
+/cuwacunu/.build/hero/hero_hashimyei_mcp \
+  --tool hero.hashimyei.list \
+  --args-json '{}'
+```
+
+`store_root` and `catalog_path` are loaded from
+`default.hero.hashimyei.dsl` through
+`[REAL_HERO].hashimyei_hero_dsl_filename` in the global config.
+Catalog encryption mode is fixed to unencrypted in MCP runtime.
+
+MCP ingest behavior:
+- startup performs an initial ingest into catalog.
+- each read tool call auto-refreshes ingest (debounced).
+
+Register in Codex:
+
+```bash
+codex mcp add hero-hashimyei -- \
+  /cuwacunu/.build/hero/hero_hashimyei_mcp
+```
+
+Supported MCP tools:
+- `hero.hashimyei.list`
+- `hero.hashimyei.get_founding_dsl`
+- `hero.hashimyei.reset_catalog`
+
+## Lattice MCP
+
+Build:
+
+```bash
+make -C /cuwacunu/src/main/hero -j12 all
 ```
 
 Run MCP:
 
 ```bash
-/cuwacunu/src/config/hero_hashimyei_mcp \
-  --store-root /cuwacunu/.hashimyei
+/cuwacunu/.build/hero/hero_lattice_mcp
+```
+
+Defaults:
+- global config path defaults to `/cuwacunu/src/config/.config`
+- catalog mode is unencrypted in MCP runtime
+
+Direct one-shot tool call:
+
+```bash
+/cuwacunu/.build/hero/hero_lattice_mcp \
+  --tool hero.lattice.get_runs \
+  --args-json '{}'
+```
+
+`store_root`, `catalog_path`, `hashimyei_catalog_path`, and `config_folder`
+are loaded from `default.hero.lattice.dsl` through
+`[REAL_HERO].lattice_hero_dsl_filename` in the global config.
+Catalog encryption mode is fixed to unencrypted in MCP runtime.
+
+If you also use lattice MCP, register it the same way:
+
+```bash
+codex mcp add hero-lattice -- \
+  /cuwacunu/.build/hero/hero_lattice_mcp
 ```
 
 Supported MCP tools:
-- `hero.hashimyei.scan`
-- `hero.hashimyei.latest`
-- `hero.hashimyei.history`
-- `hero.hashimyei.performance`
-- `hero.hashimyei.provenance`
+- `hero.lattice.get_runs`
+- `hero.lattice.get_history`
+- `hero.lattice.get_report_lls`
+- `hero.lattice.get_performance`
+- `hero.lattice.reset_catalog`
 
 ## Split Policy
 
 - Global settings live in `./.config`: `[GENERAL]`, `[BNF]`, `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`, `[REAL_HERO]`.
-  `GENERAL.board_config_filename` points to the board config file and
+  `GENERAL.board_config_filename` points to the board DSL file and
   `GENERAL.board_binding_id` selects the active `BIND` entry.
-- HERO runtime settings for deterministic MCP live in
-  `./instructions/hero.config.dsl` (`protocol_layer`, local read/write policy,
-  backup policy).
-- `[REAL_HERO]` remains as legacy smart-mode wiring and is currently not used by
-  deterministic HERO MCP execution.
+- HERO runtime settings for deterministic MCP live in:
+  - `./instructions/default.hero.config.dsl` (Config HERO runtime policy)
+  - `./instructions/default.hero.hashimyei.dsl` (Hashimyei HERO catalog defaults)
+  - `./instructions/default.hero.lattice.dsl` (Lattice HERO catalog/runtime defaults)
+- `[REAL_HERO]` owns the canonical pointer paths for those three HERO DSL files:
+  - `config_hero_dsl_filename`
+  - `hashimyei_hero_dsl_filename`
+  - `lattice_hero_dsl_filename`
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
   - `iitepi_board_grammar_filename`
   - `iitepi_wave_grammar_filename`
   - `network_design_grammar_filename`
   - `vicreg_grammar_filename`
   - `value_estimation_grammar_filename`
-  - `transfer_matrix_evaluation_grammar_filename`
+  - `wikimyei_inference_transfer_matrix_evaluation_grammar_filename`
   - `observation_sources_grammar_filename`
   - `observation_channels_grammar_filename`
   - `jkimyei_specs_grammar_filename`
     shared grammar (`bnf/jkimyei.bnf`) for per-component jkimyei DSL files
   - `tsiemene_circuit_grammar_filename`
   - `canonical_path_grammar_filename`
-- Board settings live in `./default.board.config`: `[DSL]`.
-  - `iitepi_board_dsl_filename`
-- Board DSL (`./instructions/iitepi.board.dsl`) declares:
+- Board DSL (`./instructions/default.iitepi.board.dsl`) declares:
   - `BOARD { ... }` root block
-  - `IMPORT_CONTRACT_FILE "<contract_config_file>";`
-  - `IMPORT_WAVE_FILE "<wave_config_file>";`
+  - `IMPORT_CONTRACT_FILE "<contract_defaults_file>";`
+  - `IMPORT_WAVE_FILE "<wave_dsl_file>";`
   - `BIND <id> { CONTRACT = <derived_contract_id>; WAVE = <wave_id>; }`
-- Contract settings live in `./default.board.contract.config`: `[SPECS]`, `[DSL]`.
-  `SPECS.vicreg_config_filename` points to the VICReg module key-value DSL file.
-  `SPECS.vicreg_network_design_filename` is optional and carries neutral node/graph design payload.
-  `SPECS.value_estimation_config_filename` is optional while value-estimation
-  is not part of the active contract.
-  `SPECS.transfer_matrix_evaluation_config_filename` is optional and enables
-  probe-local transfer-matrix trainer policy (optimizer + NLL numerics + diagnostics).
-  `BOARD_CONTRACT_DSL.*_dsl_text` inline payload keys are removed; contract payloads are file-path only.
-  `[DSL]` should provide:
-  - primary per-component jkimyei payload: `jkimyei_specs_dsl_filename`
-  - optional extra per-component jkimyei payloads: `jkimyei_specs_extra_dsl_filenames`
-  - canonical circuit payload: `tsiemene_circuit_dsl_filename`
-  - circuit payload can declare optional `active_circuit = <circuit_name>`;
-    when set, runtime builds/runs only that circuit
-  - circuit grammar accepts multiline hop expressions and comments:
-    `/* ... */` and `# ...`
-- Wave settings live in `./default.wave.config`: `[DSL]`.
-  - `iitepi_wave_dsl_filename`
-  - split train/run keys are removed and rejected by validation.
-  - runtime dataloader ownership is wave-local via root `WAVE` keys:
+- Legacy wrapper files `default.board.config` and `default.wave.config` are removed.
+  Use direct DSL paths in `GENERAL.board_config_filename` and board `IMPORT_WAVE_FILE`.
+- Contract settings live in `./instructions/default.iitepi.contract.dsl` with
+  marker format:
+  - `-----BEGIN IITEPI CONTRACT-----`
+  - `CIRCUIT_FILE: <path>;`
+  - `AKNOWLEDGE: <alias> = <tsi family>;` (one per circuit alias)
+  - `-----END IITEPI CONTRACT-----`
+  `AKNOWLEDGE` values must be family tokens (no hashimyei suffix). This keeps
+  contract static while wave owns runtime hashimyei selection.
+  Runtime derives module configuration defaults from colocated files:
+  `default.tsi.wikimyei.representation.vicreg.dsl`,
+  `default.tsi.wikimyei.inference.mdn.value_estimation.dsl`,
+  `default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl`.
+  Circuit payload can declare optional `active_circuit = <circuit_name>`;
+  when set, runtime builds/runs only that circuit. Circuit grammar accepts
+  multiline hop expressions and comments: `/* ... */` and `# ...`.
+- Wave settings are authored directly in `./instructions/default.iitepi.wave.dsl`.
+  split train/run keys are removed and rejected by validation.
+  runtime dataloader ownership is wave-local via root `WAVE` keys:
     `SAMPLER`, `BATCH_SIZE`, `MAX_BATCHES_PER_EPOCH`,
-    with source-owned dataloader fields inside each `SOURCE { ... }` block:
-    `WORKERS`, `FORCE_REBUILD_CACHE`, `RANGE_WARN_BATCHES`,
-    `SOURCES_DSL_FILE`, `CHANNELS_DSL_FILE`.
+    with source-owned fields split inside each `SOURCE { ... }` block:
+    `SETTINGS { WORKERS, SAMPLER, FORCE_REBUILD_CACHE, RANGE_WARN_BATCHES }`,
+    `RUNTIME { SYMBOL, FROM, TO, SOURCES_DSL_FILE, CHANNELS_DSL_FILE }`.
+  - wave `WIKIMYEI { ... }` is profile policy only:
+    `JKIMYEI { HALT_TRAIN, PROFILE_ID }`; jkimyei DSL payload file ownership is contract-local.
   - runtime probe policy is wave-local via `PROBE { ... }` blocks:
     `TRAINING_WINDOW=incoming_batch`,
     `REPORT_POLICY=epoch_end_log`,
     `OBJECTIVE=future_target_dims_nll`.
     Probe path parity with circuit probe nodes is strict.
+  - runtime sink ownership is wave-local via `SINK { ... }` blocks:
+    `PATH=<canonical_sink_node_path>`.
+    Sink path parity with circuit sink nodes is strict.
   - `tsi.probe.log` circuit instance mode accepts `batch` or `epoch`
     (keyed `mode/log_mode/cadence` or positional token); `event` mode is removed.
-  - `SOURCE.SOURCES_DSL_FILE` and `SOURCE.CHANNELS_DSL_FILE` have no contract fallback.
-- `instructions/tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
+  - `SOURCE.RUNTIME.SOURCES_DSL_FILE` and `SOURCE.RUNTIME.CHANNELS_DSL_FILE` have no contract fallback.
+- `instructions/default.tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
   `CSV_POLICY { CSV_BOOTSTRAP_DELTAS, CSV_STEP_ABS_TOL, CSV_STEP_REL_TOL }`.
   It also owns required source analytics policy:
   `DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
@@ -301,10 +389,13 @@ Supported MCP tools:
 ## VICReg Runtime Notes
 
 - `jkimyei.*.dsl` files use explicit `COMPONENT "<canonical_type>" { ... }` blocks; implicit component identity is removed and `component_id` is derived from canonical type.
-- Loaded `jkimyei.*.dsl` files must have unique `canonical_type` values; duplicates are rejected at contract decode time.
-- `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `jkimyei.representation.vicreg.dsl` (`[COMPONENT_PARAMS]`), not by `tsi.wikimyei.representation.vicreg.dsl`.
-- VICReg train/eval enable is owned by wave `WIKIMYEI ... TRAIN`; `jkimyei.representation.vicreg.dsl` no longer defines a `vicreg_train` key.
+- Contract-owned VICReg jkimyei payload is bound via `jkimyei_dsl_file` inside
+  `default.tsi.wikimyei.representation.vicreg.dsl`.
+- `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` (`[COMPONENT_PARAMS]`), not by `default.tsi.wikimyei.representation.vicreg.dsl`.
+- VICReg train/eval enable is owned by wave `WIKIMYEI ... JKIMYEI.HALT_TRAIN` together with root `WAVE.MODE` train bit; `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` no longer defines a `vicreg_train` key.
 - `network_design` is the naming for graph/node architecture payloads.
+  Optional path binding is configured by `network_design_dsl_file` inside
+  `default.tsi.wikimyei.representation.vicreg.dsl`.
   Decoder layer is framework-agnostic; semantic validation is Wikimyei-owned;
   LibTorch-facing mapping is performed in `piaabo/torch_compat`.
   For checkpoint-side network analytics sidecars, declare exactly one

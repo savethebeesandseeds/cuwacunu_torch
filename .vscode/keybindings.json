@@ -1,0 +1,54 @@
+[
+  {
+    "key": "ctrl+j",
+    "command": "-workbench.action.togglePanel"
+  },
+  {
+    "key": "ctrl+j",
+    "command": "runCommands",
+    "when": "terminalFocus && panelMaximized",
+    "args": {
+      "commands": [
+        "workbench.action.closeSidebar",
+        "workbench.action.toggleMaximizedPanel",
+        "workbench.action.closePanel",
+        "workbench.action.focusActiveEditorGroup"
+      ]
+    }
+  },
+  {
+    "key": "ctrl+j",
+    "command": "runCommands",
+    "when": "terminalFocus && !panelMaximized",
+    "args": {
+      "commands": [
+        "workbench.action.closeSidebar",
+        "workbench.action.closePanel",
+        "workbench.action.focusActiveEditorGroup"
+      ]
+    }
+  },
+  {
+    "key": "ctrl+j",
+    "command": "runCommands",
+    "when": "!terminalFocus && panelMaximized",
+    "args": {
+      "commands": [
+        "workbench.action.closeSidebar",
+        "workbench.action.terminal.focus"
+      ]
+    }
+  },
+  {
+    "key": "ctrl+j",
+    "command": "runCommands",
+    "when": "!terminalFocus && !panelMaximized",
+    "args": {
+      "commands": [
+        "workbench.action.closeSidebar",
+        "workbench.action.terminal.focus",
+        "workbench.action.toggleMaximizedPanel"
+      ]
+    }
+  }
+]

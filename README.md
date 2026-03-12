@@ -1,14 +1,11 @@
-# Cuwacnu
-This is an Artificial Intelligence Agent dedicated to managing investment portfolios.
+# Cuwacunu
+An artificial intelligence agent for portfolio management.
 
 ## Project Note
-What we are building here is a semantic transformer that optimizes one's market position with respect to abstract values.  
-An example intent is that money should be placed in instruments that follow an arrow of love, nature, and survival toward the edge of honor.
+Cuwacunu is a semantic transformer for portfolio positioning under abstract values.  
+Think of it as a lance that cannot be turned toward harm.
 
-This is an unlikely portfolio optimizer: it enforces values, while allowing financial entities to define those values as abstract ideas.  
-Inside, a powerful optimization engine still maximizes profit, with those values acting as constraints.
-
-Be aware of the `tsodao`: the abstract dictionary is curated so people cannot define absolute-evil values.
+The `tsodao` is not the abstract transformer but the eyes on the edge of the lance. 
 
 ## Reproducible Setup (Docker + `setup.sh`)
 The canonical environment setup is now scripted in [`setup.sh`](./setup.sh).  
@@ -67,6 +64,26 @@ source ~/.bashrc
 nvcc --version
 nvidia-smi
 ```
+
+## HERO MCP Preflight (Codex)
+
+Build MCP binaries:
+
+```bash
+make -C /cuwacunu/src/main/hero -j12 all
+```
+
+Use minimal MCP args:
+
+```bash
+--global-config /cuwacunu/src/config/.config
+```
+
+Hashimyei/Lattice catalogs are unencrypted in MCP mode, so no passphrase is
+required. For deterministic smoke tests, use temp catalogs under
+`/tmp/hero_mcp_smoke/...`.
+
+Detailed HERO MCP guidance lives in `src/main/hero/README.md`.
 
 ## License and Attribution
 This project's original code is open source under the MIT license (`LICENSE`).

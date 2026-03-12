@@ -34,27 +34,28 @@ bool build_alias_type_map(
     }
 
     const auto type_path = cuwacunu::camahjucunu::decode_canonical_path(type);
-    if (!type_path.ok) {
-      if (error) {
-        *error = "invalid tsi_type canonical path for alias " + alias + ": " +
-                 type_path.error;
-      }
-      return false;
+    std::optional<tsiemene::TsiTypeId> type_id{};
+    if (type_path.ok &&
+        type_path.path_kind ==
+            cuwacunu::camahjucunu::canonical_path_kind_e::Node) {
+      type_id = tsiemene::parse_tsi_type_id(type_path.canonical_identity);
     }
-    if (type_path.path_kind !=
-        cuwacunu::camahjucunu::canonical_path_kind_e::Node) {
-      if (error) {
-        *error = "tsi_type must be canonical node path for alias " + alias +
-                 ": " + type_path.canonical;
+    if (!type_id.has_value()) {
+      const auto direct_type_id = tsiemene::parse_tsi_type_id(type);
+      if (direct_type_id.has_value() &&
+          type == std::string(tsiemene::tsi_type_token(*direct_type_id))) {
+        type_id = direct_type_id;
       }
-      return false;
     }
-
-    const auto type_id = tsiemene::parse_tsi_type_id(type_path.canonical_identity);
-    if (!type_id) {
+    if (!type_id.has_value()) {
       if (error) {
-        *error = "unsupported tsi_type for alias " + alias + ": " +
-                 type_path.canonical_identity;
+        if (type_path.ok) {
+          *error = "unsupported tsi_type for alias " + alias + ": " +
+                   type_path.canonical_identity;
+        } else {
+          *error = "invalid tsi_type canonical path for alias " + alias + ": " +
+                   type_path.error;
+        }
       }
       return false;
     }

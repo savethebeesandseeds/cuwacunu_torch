@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-#include "hashimyei/hashimyei_identity.h"
+#include "hero/hashimyei_hero/hashimyei_identity.h"
 #include "iinuji/primitives/editor.h"
 #include "iinuji/iinuji_types.h"
 #include "iinuji/iinuji_cmd/catalog.h"

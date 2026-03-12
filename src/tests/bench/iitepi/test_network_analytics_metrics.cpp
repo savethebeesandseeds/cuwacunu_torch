@@ -10,6 +10,7 @@
 
 #include <torch/torch.h>
 
+#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "camahjucunu/dsl/network_design/network_design.h"
 #include "piaabo/torch_compat/network_analytics.h"
 
@@ -29,6 +30,26 @@ bool approx(double a, double b, double tol = 1e-9) {
 
 bool contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
+}
+
+bool has_lhs_key(const std::string& payload, const std::string& key) {
+  std::size_t cursor = 0;
+  while (cursor < payload.size()) {
+    std::size_t line_end = payload.find('\n', cursor);
+    if (line_end == std::string::npos) line_end = payload.size();
+    std::string line = payload.substr(cursor, line_end - cursor);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    const std::size_t eq = line.find('=');
+    if (eq != std::string::npos) {
+      const std::string lhs_key =
+          cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
+              std::string_view(line).substr(0, eq));
+      if (lhs_key == key) return true;
+    }
+    if (line_end == payload.size()) break;
+    cursor = line_end + 1;
+  }
+  return false;
 }
 
 struct toy_network_t final : torch::nn::Module {
@@ -145,33 +166,57 @@ int main() try {
                   "w_diag should lead top spectral norm table");
 
   const std::string params_kv =
-      cuwacunu::piaabo::torch_compat::network_analytics_to_key_value_text(
+      cuwacunu::piaabo::torch_compat::network_analytics_to_latent_lineage_state_text(
           report,
           options,
           "weights.init.pt");
+  const auto report_identity = tsiemene::make_component_report_identity(
+      "network_analytics",
+      "tsi.wikimyei.representation.vicreg.0x0001",
+      "tsi.wikimyei.representation.vicreg",
+      "0x0001",
+      "contract.deadbeef");
+  const std::string params_kv_with_identity =
+      cuwacunu::piaabo::torch_compat::network_analytics_to_latent_lineage_state_text(
+          report,
+          options,
+          "weights.init.pt",
+          report_identity);
+  const std::string extracted_schema =
+      cuwacunu::piaabo::torch_compat::extract_analytics_kv_schema(params_kv);
   ok = ok && expect(
-                  contains(
-                      params_kv,
-                      "schema=" +
-                          std::string(cuwacunu::piaabo::torch_compat::
-                                          kNetworkAnalyticsSchemaCurrent)),
+                  extracted_schema ==
+                      std::string(cuwacunu::piaabo::torch_compat::
+                                      kNetworkAnalyticsSchemaCurrent),
                   "kv output missing current schema");
-  ok = ok && expect(contains(params_kv, "tensor_rms_cv="), "kv output missing tensor_rms key");
   ok = ok && expect(
-                  !contains(params_kv, "layer_rms_cv="),
+                  has_lhs_key(params_kv, "tensor_rms_cv"),
+                  "kv output missing tensor_rms key");
+  ok = ok && expect(
+                  !has_lhs_key(params_kv, "layer_rms_cv"),
                   "kv output should not include removed legacy key");
   ok = ok && expect(
-                  contains(params_kv, "network_global_entropic_capacity="),
+                  has_lhs_key(params_kv, "network_global_entropic_capacity"),
                   "kv output missing network global entropic capacity");
   ok = ok && expect(
-                  contains(params_kv, "network_capacity_tensor_count="),
+                  has_lhs_key(params_kv, "network_capacity_tensor_count"),
                   "kv output missing capacity tensor count");
-  ok = ok && expect(contains(params_kv, "top_nonfinite_ratio_count="), "kv output missing top-k count");
   ok = ok && expect(
-                  contains(params_kv, "top_high_spectral_norm_1_name="),
+                  has_lhs_key(params_kv, "top_nonfinite_ratio_count"),
+                  "kv output missing top-k count");
+  ok = ok && expect(
+                  has_lhs_key(params_kv, "top_high_spectral_norm_1_name"),
                   "kv output missing indexed top-k key");
-  const std::string param_schema =
-      cuwacunu::piaabo::torch_compat::extract_analytics_kv_schema(params_kv);
+  ok = ok && expect(
+                  has_lhs_key(params_kv_with_identity, "canonical_path") &&
+                      contains(params_kv_with_identity,
+                               "tsi.wikimyei.representation.vicreg.0x0001"),
+                  "component-aware kv output missing canonical_path");
+  ok = ok && expect(
+                  has_lhs_key(params_kv_with_identity, "report_kind") &&
+                      contains(params_kv_with_identity, "network_analytics"),
+                  "component-aware kv output missing report_kind");
+  const std::string param_schema = extracted_schema;
   ok = ok && expect(
                   param_schema ==
                       std::string(
@@ -401,30 +446,28 @@ int main() try {
                   "self reference token count mismatch");
 
   const std::string design_kv =
-      cuwacunu::piaabo::torch_compat::network_design_analytics_to_key_value_text(
+      cuwacunu::piaabo::torch_compat::network_design_analytics_to_latent_lineage_state_text(
           design_report,
           "toy-source");
-  ok = ok && expect(
-                  contains(
-                      design_kv,
-                      "schema=" +
-                          std::string(cuwacunu::piaabo::torch_compat::
-                                          kNetworkDesignAnalyticsSchemaCurrent)),
-                  "design kv missing current schema");
-  ok = ok && expect(
-                  !contains(design_kv, "topological_order_coverage="),
-                  "design kv should not include removed legacy topological key");
-  ok = ok && expect(
-                  contains(design_kv, "topological_order_ratio="),
-                  "design kv missing ratio key");
-  ok = ok && expect(
-                  contains(design_kv, "skip_edge_count="),
-                  "design kv missing skip key");
-  ok = ok && expect(
-                  contains(design_kv, "unresolved_identifier_token_count="),
-                  "design kv missing token evidence key");
   const std::string design_schema =
       cuwacunu::piaabo::torch_compat::extract_analytics_kv_schema(design_kv);
+  ok = ok && expect(
+                  design_schema ==
+                      std::string(cuwacunu::piaabo::torch_compat::
+                                      kNetworkDesignAnalyticsSchemaCurrent),
+                  "design kv missing current schema");
+  ok = ok && expect(
+                  !has_lhs_key(design_kv, "topological_order_coverage"),
+                  "design kv should not include removed legacy topological key");
+  ok = ok && expect(
+                  has_lhs_key(design_kv, "topological_order_ratio"),
+                  "design kv missing ratio key");
+  ok = ok && expect(
+                  has_lhs_key(design_kv, "skip_edge_count"),
+                  "design kv missing skip key");
+  ok = ok && expect(
+                  has_lhs_key(design_kv, "unresolved_identifier_token_count"),
+                  "design kv missing token evidence key");
   ok = ok && expect(
                   design_schema ==
                       std::string(cuwacunu::piaabo::torch_compat::

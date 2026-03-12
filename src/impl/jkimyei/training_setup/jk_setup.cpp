@@ -1,8 +1,123 @@
 /* jk_setup.cpp */
 #include "jkimyei/training_setup/jk_setup.h"
+
+#include <cctype>
 #include <filesystem>
-#include <utility>
 #include <string>
+#include <string_view>
+#include <stdexcept>
+#include <utility>
+
+#include "iitepi/contract_space_t.h"
+#include "piaabo/dfiles.h"
+
+namespace {
+
+[[nodiscard]] bool has_non_ws_ascii(std::string_view text) {
+  for (const unsigned char c : text) {
+    if (!std::isspace(c)) return true;
+  }
+  return false;
+}
+
+[[nodiscard]] std::string trim_ascii_copy(std::string s) {
+  std::size_t b = 0;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  std::size_t e = s.size();
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  return s.substr(b, e - b);
+}
+
+[[nodiscard]] std::string unquote_if_wrapped(std::string s) {
+  s = trim_ascii_copy(std::move(s));
+  if (s.size() >= 2) {
+    const char a = s.front();
+    const char b = s.back();
+    if ((a == '"' && b == '"') || (a == '\'' && b == '\'')) {
+      return s.substr(1, s.size() - 2);
+    }
+  }
+  return s;
+}
+
+[[nodiscard]] std::string resolve_path_from_folder(const std::string& folder,
+                                                   std::string path) {
+  path = trim_ascii_copy(std::move(path));
+  if (path.empty()) return {};
+  const std::filesystem::path p(path);
+  if (p.is_absolute()) return p.string();
+  if (folder.empty()) return p.string();
+  return (std::filesystem::path(folder) / p).string();
+}
+
+[[nodiscard]] std::string load_jkimyei_grammar_or_throw() {
+  const std::string grammar_path = resolve_path_from_folder(
+      cuwacunu::iitepi::config_space_t::config_folder,
+      unquote_if_wrapped(cuwacunu::iitepi::config_space_t::get<std::string>(
+          "BNF", "jkimyei_specs_grammar_filename")));
+  if (!has_non_ws_ascii(grammar_path) || !std::filesystem::exists(grammar_path) ||
+      !std::filesystem::is_regular_file(grammar_path)) {
+    throw std::runtime_error(
+        "invalid [BNF].jkimyei_specs_grammar_filename path");
+  }
+  const std::string grammar =
+      cuwacunu::piaabo::dfiles::readFileToString(grammar_path);
+  if (!has_non_ws_ascii(grammar)) {
+    throw std::runtime_error("empty jkimyei grammar payload");
+  }
+  return grammar;
+}
+
+[[nodiscard]] cuwacunu::camahjucunu::jkimyei_specs_t
+decode_contract_selected_jkimyei_or_throw(
+    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
+  if (!has_non_ws_ascii(contract_hash)) {
+    throw std::runtime_error("missing contract hash");
+  }
+
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+  if (!contract_itself) {
+    throw std::runtime_error("failed to resolve contract snapshot");
+  }
+  const auto sec_it = contract_itself->module_sections.find("VICReg");
+  if (sec_it == contract_itself->module_sections.end()) {
+    throw std::runtime_error("missing contract VICReg module section");
+  }
+  const auto key_it = sec_it->second.find("jkimyei_dsl_file");
+  if (key_it == sec_it->second.end()) {
+    throw std::runtime_error(
+        "missing component-local jkimyei payload in VICReg module (expected key jkimyei_dsl_file)");
+  }
+  std::string module_path;
+  const auto module_path_it = contract_itself->module_section_paths.find("VICReg");
+  if (module_path_it != contract_itself->module_section_paths.end()) {
+    module_path = module_path_it->second;
+  }
+  std::string module_folder{};
+  if (has_non_ws_ascii(module_path)) {
+    const std::filesystem::path p(module_path);
+    if (p.has_parent_path()) module_folder = p.parent_path().string();
+  }
+
+  const std::string jkimyei_path = resolve_path_from_folder(
+      module_folder, unquote_if_wrapped(key_it->second));
+  if (!has_non_ws_ascii(jkimyei_path) || !std::filesystem::exists(jkimyei_path) ||
+      !std::filesystem::is_regular_file(jkimyei_path)) {
+    throw std::runtime_error("invalid VICReg.jkimyei_dsl_file path: " +
+                             jkimyei_path);
+  }
+  const std::string dsl_text =
+      cuwacunu::piaabo::dfiles::readFileToString(jkimyei_path);
+  if (!has_non_ws_ascii(dsl_text)) {
+    throw std::runtime_error("empty jkimyei DSL payload: " + jkimyei_path);
+  }
+  const std::string grammar = load_jkimyei_grammar_or_throw();
+  return cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
+      grammar, dsl_text, jkimyei_path);
+}
+
+}  // namespace
 
 namespace cuwacunu {
 namespace jkimyei {
@@ -54,16 +169,14 @@ jk_component_t& jk_setup_t::operator()(
     }
   }
 
-  const auto contract_itself =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
-
-  // Cache miss: decode instruction from override text or contract record payload.
+  // Cache miss: decode instruction from override text or contract payload.
   cuwacunu::camahjucunu::jkimyei_specs_t inst{};
   if (instr_text.empty()) {
-    inst = contract_itself->jkimyei.decoded();
+    inst = decode_contract_selected_jkimyei_or_throw(contract_hash);
   } else {
+    const std::string grammar = load_jkimyei_grammar_or_throw();
     inst = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
-        contract_itself->jkimyei.grammar,
+        grammar,
         std::move(instr_text));
   }
 

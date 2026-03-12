@@ -1,11 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "iinuji/iinuji_cmd/views/common.h"
 #include "iinuji/iinuji_cmd/views/tsiemene/commands.h"
 #include "tsiemene/tsi.source.dataloader.h"
@@ -88,12 +91,53 @@ inline void append_tsi_dataloader_form(const CmdState& st, std::ostringstream& o
     oss << "  contract: unavailable\n";
     return;
   }
-  std::string sources_path =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
-          ->get<std::string>("DSL", "observation_sources_dsl_filename");
-  std::string channels_path =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
-          ->get<std::string>("DSL", "observation_channels_dsl_filename");
+  std::string sources_path = "<unresolved>";
+  std::string channels_path = "<unresolved>";
+  try {
+    const std::string board_hash =
+        cuwacunu::iitepi::config_space_t::locked_board_hash();
+    const std::string binding_id =
+        cuwacunu::iitepi::config_space_t::locked_board_binding_id();
+    const std::string bound_contract_hash =
+        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
+            board_hash, binding_id);
+    if (bound_contract_hash == contract_hash) {
+      const auto board_itself =
+          cuwacunu::iitepi::board_space_t::board_itself(board_hash);
+      const auto& board_instruction = board_itself->board.decoded();
+      const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
+      for (const auto& b : board_instruction.binds) {
+        if (b.id == binding_id) {
+          bind = &b;
+          break;
+        }
+      }
+      if (bind) {
+        const std::string wave_hash =
+            cuwacunu::iitepi::board_space_t::wave_hash_for_binding(
+                board_hash, binding_id);
+        const auto wave_itself =
+            cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
+        const auto& wave_set = wave_itself->wave.decoded();
+        const cuwacunu::camahjucunu::iitepi_wave_t* selected_wave = nullptr;
+        for (const auto& wave : wave_set.waves) {
+          if (wave.name == bind->wave_ref) {
+            selected_wave = &wave;
+            break;
+          }
+        }
+        if (selected_wave && !selected_wave->sources.empty()) {
+          sources_path = (std::filesystem::path(wave_itself->config_folder) /
+                          selected_wave->sources.front().sources_dsl_file)
+                             .string();
+          channels_path = (std::filesystem::path(wave_itself->config_folder) /
+                           selected_wave->sources.front().channels_dsl_file)
+                              .string();
+        }
+      }
+    }
+  } catch (...) {
+  }
 
   const std::string next_id = tsiemene::next_source_dataloader_init_id({});
   const auto items = tsi_source_dataloader_instances();

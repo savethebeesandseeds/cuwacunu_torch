@@ -361,6 +361,134 @@ using ::idydb_free;
 using ::idydb_value_free;
 using ::idydb_values_free;
 
+namespace wave_cursor {
+
+// Packed wave-cursor index:
+// [ run_id | episode_k | batch_j ]
+// The layout is configurable by bit-widths and must fit in 63 bits.
+struct layout_t {
+    std::uint8_t run_bits{21};
+    std::uint8_t episode_bits{21};
+    std::uint8_t batch_bits{21};
+};
+
+struct parts_t {
+    std::uint64_t run_id{0};
+    std::uint64_t episode_k{0};
+    std::uint64_t batch_j{0};
+};
+
+struct masked_query_t {
+    std::uint64_t value{0};
+    std::uint64_t mask{0};
+};
+
+inline constexpr std::uint8_t field_run = 0x01;
+inline constexpr std::uint8_t field_episode = 0x02;
+inline constexpr std::uint8_t field_batch = 0x04;
+
+[[nodiscard]] inline constexpr std::uint64_t bitmask(std::uint8_t bits) noexcept {
+    if (bits == 0) return 0ULL;
+    if (bits >= 64) return ~0ULL;
+    return (1ULL << bits) - 1ULL;
+}
+
+[[nodiscard]] inline constexpr bool valid_layout(const layout_t &layout) noexcept {
+    const unsigned total = static_cast<unsigned>(layout.run_bits) +
+                           static_cast<unsigned>(layout.episode_bits) +
+                           static_cast<unsigned>(layout.batch_bits);
+    if (layout.run_bits == 0 || layout.episode_bits == 0 || layout.batch_bits == 0) {
+        return false;
+    }
+    // Keep sign bit clear for compatibility with signed transports.
+    return total <= 63U;
+}
+
+[[nodiscard]] inline constexpr bool fits_bits(std::uint64_t value,
+                                              std::uint8_t bits) noexcept {
+    const std::uint64_t m = bitmask(bits);
+    return (value & ~m) == 0ULL;
+}
+
+[[nodiscard]] inline constexpr bool pack(const layout_t &layout,
+                                         const parts_t &parts,
+                                         std::uint64_t *out) noexcept {
+    if (!out || !valid_layout(layout)) return false;
+    if (!fits_bits(parts.run_id, layout.run_bits)) return false;
+    if (!fits_bits(parts.episode_k, layout.episode_bits)) return false;
+    if (!fits_bits(parts.batch_j, layout.batch_bits)) return false;
+
+    const std::uint8_t shift_episode = layout.batch_bits;
+    const std::uint8_t shift_run = static_cast<std::uint8_t>(layout.batch_bits +
+                                                              layout.episode_bits);
+    *out = (parts.run_id << shift_run) |
+           (parts.episode_k << shift_episode) |
+           parts.batch_j;
+    return true;
+}
+
+[[nodiscard]] inline constexpr bool unpack(const layout_t &layout,
+                                           std::uint64_t packed,
+                                           parts_t *out) noexcept {
+    if (!out || !valid_layout(layout)) return false;
+    const std::uint64_t batch_m = bitmask(layout.batch_bits);
+    const std::uint64_t episode_m = bitmask(layout.episode_bits);
+    const std::uint64_t run_m = bitmask(layout.run_bits);
+
+    parts_t parts{};
+    parts.batch_j = packed & batch_m;
+    packed >>= layout.batch_bits;
+    parts.episode_k = packed & episode_m;
+    packed >>= layout.episode_bits;
+    parts.run_id = packed & run_m;
+    *out = parts;
+    return true;
+}
+
+[[nodiscard]] inline constexpr bool build_masked_query(
+    const layout_t &layout,
+    const parts_t &parts,
+    std::uint8_t field_mask,
+    masked_query_t *out) noexcept {
+    if (!out || !valid_layout(layout)) return false;
+    constexpr std::uint8_t known = field_run | field_episode | field_batch;
+    if ((field_mask & ~known) != 0) return false;
+
+    parts_t masked_parts = parts;
+    if ((field_mask & field_run) == 0) masked_parts.run_id = 0;
+    if ((field_mask & field_episode) == 0) masked_parts.episode_k = 0;
+    if ((field_mask & field_batch) == 0) masked_parts.batch_j = 0;
+
+    std::uint64_t packed = 0;
+    if (!pack(layout, masked_parts, &packed)) return false;
+
+    const std::uint8_t shift_episode = layout.batch_bits;
+    const std::uint8_t shift_run = static_cast<std::uint8_t>(layout.batch_bits +
+                                                              layout.episode_bits);
+    std::uint64_t m = 0;
+    if ((field_mask & field_batch) != 0) {
+        m |= bitmask(layout.batch_bits);
+    }
+    if ((field_mask & field_episode) != 0) {
+        m |= (bitmask(layout.episode_bits) << shift_episode);
+    }
+    if ((field_mask & field_run) != 0) {
+        m |= (bitmask(layout.run_bits) << shift_run);
+    }
+
+    out->mask = m;
+    out->value = packed & m;
+    return true;
+}
+
+[[nodiscard]] inline constexpr bool match_masked(
+    std::uint64_t packed,
+    const masked_query_t &query) noexcept {
+    return (packed & query.mask) == query.value;
+}
+
+} // namespace wave_cursor
+
 namespace query {
 
 struct query_spec_t {

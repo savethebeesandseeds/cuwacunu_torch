@@ -125,15 +125,49 @@ class TsiSourceDataloader final : public TsiSource {
     }
   }
 
-  [[nodiscard]] bool requests_runtime_continuation() const noexcept override {
-    return continue_requested_;
-  }
-
-  [[nodiscard]] Ingress runtime_continuation_ingress() const override {
-    return Ingress{
-        .directive = IN_STEP,
-        .signal = string_signal(""),
-    };
+  RuntimeEventAction on_event(const RuntimeEvent& event,
+                              BoardContext& ctx,
+                              Emitter& out) override {
+    RuntimeEventAction action{};
+    if (event.kind == RuntimeEventKind::RunStart) {
+      clear_episode_state_();
+      it_ = dl_.begin();
+      end_ = dl_.end();
+      iter_ready_ = true;
+      continue_requested_ = false;
+      data_analytics_signature_.clear();
+      data_analytics_report_ready_ = false;
+      const Wave empty_wave{};
+      const Wave& runtime_wave = event.wave ? *event.wave : empty_wave;
+      ensure_data_analytics_report_(
+          runtime_wave,
+          analytics_command_from_wave_(event.wave),
+          ctx,
+          out);
+      return action;
+    }
+    if (event.kind == RuntimeEventKind::EpochStart) {
+      clear_episode_state_();
+      it_ = dl_.begin();
+      end_ = dl_.end();
+      iter_ready_ = true;
+      continue_requested_ = false;
+      return action;
+    }
+    if (event.kind == RuntimeEventKind::RunEnd) {
+      clear_episode_state_();
+      continue_requested_ = false;
+      return action;
+    }
+    if (event.kind == RuntimeEventKind::QueueDrained && continue_requested_) {
+      action.request_continuation = true;
+      action.continuation_ingress = Ingress{
+          .directive = IN_STEP,
+          .signal = string_signal(""),
+      };
+      return action;
+    }
+    return action;
   }
 
   void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) override {
@@ -143,7 +177,7 @@ class TsiSourceDataloader final : public TsiSource {
 
     const std::string_view cmd_text = trim_(in.signal.text);
     if (!cmd_text.empty()) {
-      if (!start_episode_(wave, cmd_text, ctx, out)) return;
+      if (!start_episode_(wave, cmd_text, out)) return;
     } else if (!episode_active_) {
       emit_meta_(wave, out, "dataloader.continue noop reason=no-active-episode");
       return;
@@ -195,13 +229,6 @@ class TsiSourceDataloader final : public TsiSource {
       }
       finish_episode_(ctx, out, oss.str());
     }
-  }
-
-  void reset(BoardContext&) override {
-    clear_episode_state_();
-    it_ = dl_.begin();
-    end_ = dl_.end();
-    iter_ready_ = true;
   }
 
  private:
@@ -342,6 +369,19 @@ class TsiSourceDataloader final : public TsiSource {
     return cmd;
   }
 
+  [[nodiscard]] CommandSpec analytics_command_from_wave_(
+      const Wave* wave) const noexcept {
+    CommandSpec cmd{};
+    if (!wave || !wave->has_time_span) return cmd;
+    cmd.has_range = true;
+    cmd.range_from_wave = true;
+    cmd.key_left =
+        static_cast<Key_t>(std::min(wave->span_begin_ms, wave->span_end_ms));
+    cmd.key_right =
+        static_cast<Key_t>(std::max(wave->span_begin_ms, wave->span_end_ms));
+    return cmd;
+  }
+
   static Dataset_t make_dataset_(
       std::string_view instrument,
       const cuwacunu::camahjucunu::observation_spec_t& observation_instruction,
@@ -454,7 +494,6 @@ class TsiSourceDataloader final : public TsiSource {
 
   [[nodiscard]] bool start_episode_(const Wave& wave,
                                     std::string_view cmd_text,
-                                    const BoardContext& ctx,
                                     Emitter& out) {
     clear_episode_state_();
     active_cmd_ = parse_command_(cmd_text, wave);
@@ -518,7 +557,6 @@ class TsiSourceDataloader final : public TsiSource {
         }
       }
 
-      ensure_data_analytics_report_(wave, active_cmd_, ctx, out);
       episode_active_ = true;
       return true;
     }
@@ -538,7 +576,6 @@ class TsiSourceDataloader final : public TsiSource {
           << " cursor=continue-from-loader";
       emit_meta_(wave, out, oss.str());
     }
-    ensure_data_analytics_report_(wave, active_cmd_, ctx, out);
     episode_active_ = true;
     return true;
   }
@@ -780,6 +817,19 @@ class TsiSourceDataloader final : public TsiSource {
     return oss.str();
   }
 
+  [[nodiscard]] component_report_identity_t
+  build_data_analytics_report_identity_(std::string_view run_id) const {
+    return make_component_report_identity(
+        "data_analytics",
+        instance_name_,
+        type_name_,
+        {},
+        contract_hash_,
+        {},
+        {},
+        run_id);
+  }
+
   void ensure_data_analytics_report_(const Wave& wave,
                                      const CommandSpec& cmd,
                                      const BoardContext& ctx,
@@ -820,13 +870,15 @@ class TsiSourceDataloader final : public TsiSource {
             contract_hash_, instance_name_);
     if (output_file.empty()) return;
 
+    const auto report_identity = build_data_analytics_report_identity_(ctx.run_id);
     std::string write_error;
     if (!cuwacunu::piaabo::torch_compat::write_data_analytics_file(
             report,
             data_analytics_options_,
             output_file,
             instance_name_,
-            &write_error)) {
+            &write_error,
+            report_identity)) {
       emit_meta_(
           wave,
           out,

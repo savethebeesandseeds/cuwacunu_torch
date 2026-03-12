@@ -3,15 +3,18 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
 
 #include "iitepi/board/board.contract.h"
+#include "iitepi/contract_space_t.h"
 #include "tsiemene/tsi.type.registry.h"
 #include "tsiemene/tsi.wikimyei.h"
 
@@ -62,6 +65,20 @@ struct Board {
     if (d.dir == DirectiveDir::In) return d.id;
   }
   return directive_id::Step;
+}
+
+[[nodiscard]] inline std::string make_runtime_run_id(
+    const BoardContract& contract) {
+  const std::uint64_t now_ms = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count());
+  std::ostringstream out;
+  out << "run."
+      << (contract.spec.contract_hash.empty() ? "unknown" : contract.spec.contract_hash)
+      << "."
+      << now_ms;
+  return out.str();
 }
 
 [[nodiscard]] inline bool validate_circuit(const BoardContract& c, CircuitIssue* issue = nullptr) noexcept {
@@ -132,14 +149,8 @@ struct BoardIssue {
       if (missing_dsl == kBoardContractCircuitDslKey) {
         return fail("contract missing board.contract.circuit@DSL:str", 0);
       }
-      if (missing_dsl == kBoardContractObservationSourcesDslKey) {
-        return fail("contract missing board.contract.observation_sources@DSL:str", 0);
-      }
-      if (missing_dsl == kBoardContractObservationChannelsDslKey) {
-        return fail("contract missing board.contract.observation_channels@DSL:str", 0);
-      }
-      if (missing_dsl == kBoardContractJkimyeiSpecsDslKey) {
-        return fail("contract missing board.contract.jkimyei_specs@DSL:str", 0);
+      if (missing_dsl == kBoardContractWaveDslKey) {
+        return fail("contract missing board.contract.wave@DSL:str", 0);
       }
       return fail("contract missing required DSL segment", 0);
     }
@@ -306,9 +317,66 @@ struct BoardIssue {
 }
 
 inline bool load_contract_wikimyei_artifacts(BoardContract& c,
+                                             const BoardContext& ctx,
                                              std::string* error = nullptr);
 inline bool save_contract_wikimyei_artifacts(BoardContract& c,
+                                             const BoardContext& ctx,
                                              std::string* error = nullptr);
+
+class board_runtime_null_emitter_t final : public Emitter {
+ public:
+  void emit(const Wave&, DirectiveId, Signal) override {}
+};
+
+inline void broadcast_contract_runtime_event(BoardContract& c,
+                                             RuntimeEventKind kind,
+                                             const Wave* wave,
+                                             BoardContext& ctx) {
+  board_runtime_null_emitter_t emitter{};
+  for (auto& node : c.nodes) {
+    if (!node) continue;
+    RuntimeEvent event{};
+    event.kind = kind;
+    event.wave = wave;
+    event.source = node.get();
+    event.target = node.get();
+    (void)node->on_event(event, ctx, emitter);
+  }
+}
+
+[[nodiscard]] inline bool validate_contract_component_dsl_fingerprints(
+    const BoardContract& c,
+    std::string* error = nullptr) {
+  if (error) error->clear();
+  for (const auto& fp : c.spec.component_dsl_fingerprints) {
+    if (fp.tsi_dsl_path.empty() && fp.tsi_dsl_sha256_hex.empty()) continue;
+    if (fp.tsi_dsl_path.empty()) {
+      if (error) {
+        *error = "component DSL fingerprint missing path for canonical_path='" +
+                 fp.canonical_path + "'";
+      }
+      return false;
+    }
+    const std::string current_sha256 =
+        cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(fp.tsi_dsl_path);
+    if (current_sha256.empty()) {
+      if (error) {
+        *error = "component DSL fingerprint file is missing/unreadable path='" +
+                 fp.tsi_dsl_path + "'";
+      }
+      return false;
+    }
+    if (!fp.tsi_dsl_sha256_hex.empty() && current_sha256 != fp.tsi_dsl_sha256_hex) {
+      if (error) {
+        *error = "component DSL drift detected canonical_path='" + fp.canonical_path +
+                 "' path='" + fp.tsi_dsl_path + "' expected_sha256='" +
+                 fp.tsi_dsl_sha256_hex + "' actual_sha256='" + current_sha256 + "'";
+      }
+      return false;
+    }
+  }
+  return true;
+}
 
 inline std::uint64_t run_circuit(BoardContract& c,
                                  BoardContext& ctx,
@@ -316,6 +384,7 @@ inline std::uint64_t run_circuit(BoardContract& c,
   if (error) error->clear();
   ctx.wave_mode_flags = c.execution.wave_mode_flags;
   ctx.debug_enabled = c.execution.debug_enabled;
+  if (ctx.run_id.empty()) ctx.run_id = make_runtime_run_id(c);
   CircuitIssue issue{};
   if (!c.ensure_compiled(&issue)) {
     if (error) {
@@ -324,11 +393,23 @@ inline std::uint64_t run_circuit(BoardContract& c,
     }
     return 0;
   }
+  std::string dsl_guard_error;
+  if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
+    if (error) *error = dsl_guard_error;
+    log_warn("[board.contract.run] abort contract=%s reason=%s\n",
+             c.name.empty() ? "<empty>" : c.name.c_str(),
+             dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
+    return 0;
+  }
   std::string artifact_error;
-  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) {
+  if (!load_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
     if (error) *error = artifact_error;
     return 0;
   }
+  broadcast_contract_runtime_event(
+      c, RuntimeEventKind::RunStart, &c.seed_wave, ctx);
+  broadcast_contract_runtime_event(
+      c, RuntimeEventKind::EpochStart, &c.seed_wave, ctx);
   const std::uint64_t steps =
       run_wave_compiled(
           c.compiled_runtime,
@@ -336,20 +417,26 @@ inline std::uint64_t run_circuit(BoardContract& c,
           c.seed_ingress,
           ctx,
           c.execution.runtime);
-  for (auto& node : c.nodes) {
-    if (node) node->on_epoch_end(ctx);
-  }
-  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) {
-    if (error) *error = artifact_error;
+  if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
+    if (error) *error = dsl_guard_error;
+    log_warn("[board.contract.run] abort contract=%s reason=%s\n",
+             c.name.empty() ? "<empty>" : c.name.c_str(),
+             dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
+    broadcast_contract_runtime_event(
+        c, RuntimeEventKind::RunEnd, &c.seed_wave, ctx);
     return 0;
   }
-  return steps;
-}
-
-inline void reset_contract_nodes(BoardContract& c, BoardContext& ctx) {
-  for (auto& node : c.nodes) {
-    if (node) node->reset(ctx);
+  broadcast_contract_runtime_event(
+      c, RuntimeEventKind::EpochEnd, &c.seed_wave, ctx);
+  if (!save_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
+    if (error) *error = artifact_error;
+    broadcast_contract_runtime_event(
+        c, RuntimeEventKind::RunEnd, &c.seed_wave, ctx);
+    return 0;
   }
+  broadcast_contract_runtime_event(
+      c, RuntimeEventKind::RunEnd, &c.seed_wave, ctx);
+  return steps;
 }
 
 [[nodiscard]] inline Wave wave_for_epoch(const Wave& seed, std::uint64_t epoch_index) {
@@ -364,6 +451,7 @@ inline void reset_contract_nodes(BoardContract& c, BoardContext& ctx) {
 }
 
 inline bool load_contract_wikimyei_artifacts(BoardContract& c,
+                                             const BoardContext& ctx,
                                              std::string* error) {
   if (error) error->clear();
   if (c.spec.representation_hashimyei.empty()) return true;
@@ -374,11 +462,13 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
     if (!wik->supports_init_artifacts()) continue;
     if (!wik->runtime_autoload_artifacts()) continue;
 
-    const bool enable_debug_outputs = c.execution.debug_enabled;
+    TsiWikimyeiRuntimeIoContext io_ctx{};
+    io_ctx.enable_debug_outputs = c.execution.debug_enabled;
+    io_ctx.run_id = ctx.run_id;
     std::string local_error;
     if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
                                           &local_error,
-                                          &enable_debug_outputs)) {
+                                          &io_ctx)) {
       // Training-enabled wikimyei are allowed to bootstrap from scratch when
       // the configured artifact id is not present yet. The first successful
       // run will persist the artifact at epoch end.
@@ -398,6 +488,7 @@ inline bool load_contract_wikimyei_artifacts(BoardContract& c,
 }
 
 inline bool save_contract_wikimyei_artifacts(BoardContract& c,
+                                             const BoardContext& ctx,
                                              std::string* error) {
   if (error) error->clear();
   if (c.spec.representation_hashimyei.empty()) return true;
@@ -408,11 +499,13 @@ inline bool save_contract_wikimyei_artifacts(BoardContract& c,
     if (!wik->supports_init_artifacts()) continue;
     if (!wik->runtime_autosave_artifacts()) continue;
 
-    const bool enable_debug_outputs = c.execution.debug_enabled;
+    TsiWikimyeiRuntimeIoContext io_ctx{};
+    io_ctx.enable_debug_outputs = c.execution.debug_enabled;
+    io_ctx.run_id = ctx.run_id;
     std::string local_error;
     if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
                                         &local_error,
-                                        &enable_debug_outputs)) {
+                                        &io_ctx)) {
       if (error) {
         *error = "failed to save wikimyei artifacts for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
@@ -430,6 +523,7 @@ inline std::uint64_t run_contract(BoardContract& c,
   if (error) error->clear();
   ctx.wave_mode_flags = c.execution.wave_mode_flags;
   ctx.debug_enabled = c.execution.debug_enabled;
+  if (ctx.run_id.empty()) ctx.run_id = make_runtime_run_id(c);
   log_info("[board.contract.run] start contract=%s epochs=%llu\n",
            c.name.empty() ? "<empty>" : c.name.c_str(),
            static_cast<unsigned long long>(
@@ -445,21 +539,44 @@ inline std::uint64_t run_contract(BoardContract& c,
             error && !error->empty() ? error->c_str() : "<empty>");
     return 0;
   }
+  std::string dsl_guard_error;
+  if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
+    if (error) *error = dsl_guard_error;
+    log_warn("[board.contract.run] abort contract=%s reason=%s\n",
+             c.name.empty() ? "<empty>" : c.name.c_str(),
+             dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
+    return 0;
+  }
   std::string artifact_error;
-  if (!load_contract_wikimyei_artifacts(c, &artifact_error)) {
+  if (!load_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
     if (error) *error = artifact_error;
     log_err("[board.contract.run] preload failed contract=%s error=%s\n",
             c.name.empty() ? "<empty>" : c.name.c_str(),
             artifact_error.empty() ? "<empty>" : artifact_error.c_str());
     return 0;
   }
+  broadcast_contract_runtime_event(
+      c, RuntimeEventKind::RunStart, &c.seed_wave, ctx);
+  Wave run_end_wave = c.seed_wave;
 
   // Epoch execution + callbacks.
   const std::uint64_t epochs = std::max<std::uint64_t>(1, c.execution.epochs);
   std::uint64_t total_steps = 0;
   for (std::uint64_t epoch = 0; epoch < epochs; ++epoch) {
-    reset_contract_nodes(c, ctx);
+    if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
+      if (error) *error = dsl_guard_error;
+      log_warn("[board.contract.run] abort contract=%s epoch=%llu reason=%s\n",
+               c.name.empty() ? "<empty>" : c.name.c_str(),
+               static_cast<unsigned long long>(epoch + 1),
+               dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
+      broadcast_contract_runtime_event(
+          c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+      return 0;
+    }
     const Wave start_wave = wave_for_epoch(c.seed_wave, epoch);
+    run_end_wave = start_wave;
+    broadcast_contract_runtime_event(
+        c, RuntimeEventKind::EpochStart, &start_wave, ctx);
     const std::uint64_t epoch_steps =
         run_wave_compiled(
             c.compiled_runtime,
@@ -467,6 +584,16 @@ inline std::uint64_t run_contract(BoardContract& c,
             c.seed_ingress,
             ctx,
             c.execution.runtime);
+    if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
+      if (error) *error = dsl_guard_error;
+      log_warn("[board.contract.run] abort contract=%s epoch=%llu reason=%s\n",
+               c.name.empty() ? "<empty>" : c.name.c_str(),
+               static_cast<unsigned long long>(epoch + 1),
+               dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
+      broadcast_contract_runtime_event(
+          c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+      return 0;
+    }
     total_steps += epoch_steps;
     log_info("[board.contract.run] epoch done contract=%s epoch=%llu/%llu steps=%llu cumulative=%llu\n",
              c.name.empty() ? "<empty>" : c.name.c_str(),
@@ -474,19 +601,31 @@ inline std::uint64_t run_contract(BoardContract& c,
              static_cast<unsigned long long>(epochs),
              static_cast<unsigned long long>(epoch_steps),
              static_cast<unsigned long long>(total_steps));
-    for (auto& node : c.nodes) {
-      if (node) node->on_epoch_end(ctx);
-    }
+    broadcast_contract_runtime_event(
+        c, RuntimeEventKind::EpochEnd, &start_wave, ctx);
   }
 
   // Finalization: persist autosave artifacts after the execution loop.
-  if (!save_contract_wikimyei_artifacts(c, &artifact_error)) {
+  if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
+    if (error) *error = dsl_guard_error;
+    log_warn("[board.contract.run] abort contract=%s reason=%s\n",
+             c.name.empty() ? "<empty>" : c.name.c_str(),
+             dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
+    broadcast_contract_runtime_event(
+        c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+    return 0;
+  }
+  if (!save_contract_wikimyei_artifacts(c, ctx, &artifact_error)) {
     if (error) *error = artifact_error;
     log_err("[board.contract.run] finalize failed contract=%s error=%s\n",
             c.name.empty() ? "<empty>" : c.name.c_str(),
             artifact_error.empty() ? "<empty>" : artifact_error.c_str());
+    broadcast_contract_runtime_event(
+        c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
     return 0;
   }
+  broadcast_contract_runtime_event(
+      c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
   log_info("[board.contract.run] done contract=%s total_steps=%llu\n",
            c.name.empty() ? "<empty>" : c.name.c_str(),
            static_cast<unsigned long long>(total_steps));
