@@ -36,6 +36,7 @@ struct runtime_job_record_t {
   std::string schema{std::string(kRuntimeJobSchemaV1)};
   std::string job_cursor{};
   std::string job_kind{"default_board"};
+  std::string boot_id{};
   std::string state{"launching"};
   std::string state_detail{};
   std::string worker_binary{};
@@ -49,8 +50,10 @@ struct runtime_job_record_t {
   std::uint64_t updated_at_ms{0};
   std::optional<std::uint64_t> finished_at_ms{};
   std::optional<std::uint64_t> runner_pid{};
+  std::optional<std::uint64_t> runner_start_ticks{};
   std::optional<std::uint64_t> target_pid{};
   std::optional<std::uint64_t> target_pgid{};
+  std::optional<std::uint64_t> target_start_ticks{};
   std::optional<std::int64_t> exit_code{};
   std::optional<std::int64_t> term_signal{};
 };
@@ -79,6 +82,14 @@ struct runtime_job_observation_t {
       std::chrono::duration_cast<std::chrono::milliseconds>(
           now.time_since_epoch())
           .count());
+}
+
+[[nodiscard]] inline std::string current_boot_id() {
+  std::ifstream in("/proc/sys/kernel/random/boot_id");
+  if (!in) return {};
+  std::string boot_id;
+  std::getline(in, boot_id);
+  return trim_ascii(boot_id);
 }
 
 [[nodiscard]] inline std::string hex_lower_u64(std::uint64_t value) {
@@ -281,6 +292,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
       make_runtime_lls_string_entry("job_cursor", record.job_cursor));
   document.entries.push_back(
       make_runtime_lls_string_entry("job_kind", record.job_kind));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("boot_id", record.boot_id));
   document.entries.push_back(make_runtime_lls_string_entry("state", record.state));
   document.entries.push_back(
       make_runtime_lls_string_entry("state_detail", record.state_detail));
@@ -313,6 +326,10 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
         make_runtime_lls_uint_entry("runner_pid", *record.runner_pid,
                                     "(0,+inf)"));
   }
+  if (record.runner_start_ticks.has_value()) {
+    document.entries.push_back(make_runtime_lls_uint_entry(
+        "runner_start_ticks", *record.runner_start_ticks, "(0,+inf)"));
+  }
   if (record.target_pid.has_value()) {
     document.entries.push_back(
         make_runtime_lls_uint_entry("target_pid", *record.target_pid,
@@ -322,6 +339,10 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     document.entries.push_back(
         make_runtime_lls_uint_entry("target_pgid", *record.target_pgid,
                                     "(0,+inf)"));
+  }
+  if (record.target_start_ticks.has_value()) {
+    document.entries.push_back(make_runtime_lls_uint_entry(
+        "target_start_ticks", *record.target_start_ticks, "(0,+inf)"));
   }
   if (record.exit_code.has_value()) {
     document.entries.push_back(
@@ -358,6 +379,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   }
   parsed.job_cursor = kv["job_cursor"];
   parsed.job_kind = kv["job_kind"];
+  parsed.boot_id = kv["boot_id"];
   parsed.state = kv["state"];
   parsed.state_detail = kv["state_detail"];
   parsed.worker_binary = kv["worker_binary"];
@@ -402,6 +424,13 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     }
     parsed.runner_pid = u64;
   }
+  if (!kv["runner_start_ticks"].empty()) {
+    if (!parse_u64(kv["runner_start_ticks"], &u64)) {
+      if (error) *error = "runtime job record has invalid runner_start_ticks";
+      return false;
+    }
+    parsed.runner_start_ticks = u64;
+  }
   if (!kv["target_pid"].empty()) {
     if (!parse_u64(kv["target_pid"], &u64)) {
       if (error) *error = "runtime job record has invalid target_pid";
@@ -415,6 +444,13 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
       return false;
     }
     parsed.target_pgid = u64;
+  }
+  if (!kv["target_start_ticks"].empty()) {
+    if (!parse_u64(kv["target_start_ticks"], &u64)) {
+      if (error) *error = "runtime job record has invalid target_start_ticks";
+      return false;
+    }
+    parsed.target_start_ticks = u64;
   }
   if (!kv["exit_code"].empty()) {
     if (!parse_i64(kv["exit_code"], &i64)) {
@@ -540,24 +576,72 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   return errno == EPERM;
 }
 
-[[nodiscard]] inline bool process_group_alive(std::uint64_t pgid_value) {
+[[nodiscard]] inline bool read_process_start_ticks(std::uint64_t pid_value,
+                                                   std::uint64_t* out) {
+  if (!out) return false;
+  *out = 0;
+  if (pid_value == 0) return false;
+  const pid_t pid = static_cast<pid_t>(pid_value);
+  if (pid <= 0) return false;
+
+  std::ifstream in("/proc/" + std::to_string(pid) + "/stat");
+  if (!in) return false;
+  std::string stat_line;
+  std::getline(in, stat_line);
+  if (stat_line.empty()) return false;
+
+  const std::size_t close_paren = stat_line.rfind(')');
+  if (close_paren == std::string::npos || close_paren + 2 >= stat_line.size()) {
+    return false;
+  }
+  std::istringstream rest(stat_line.substr(close_paren + 2));
+  std::string token;
+  for (int index = 0; index <= 19; ++index) {
+    if (!(rest >> token)) return false;
+  }
+  return parse_u64(token, out);
+}
+
+[[nodiscard]] inline bool process_identity_alive(
+    std::uint64_t pid_value, const std::optional<std::uint64_t>& start_ticks,
+    std::string_view boot_id) {
+  if (pid_value == 0) return false;
+  if (::kill(static_cast<pid_t>(pid_value), 0) != 0 && errno != EPERM) {
+    return false;
+  }
+  const std::string current_boot = current_boot_id();
+  if (!boot_id.empty() && !current_boot.empty() && current_boot != boot_id) {
+    return false;
+  }
+  if (!start_ticks.has_value()) return false;
+  std::uint64_t current_start_ticks = 0;
+  if (!read_process_start_ticks(pid_value, &current_start_ticks)) return false;
+  return current_start_ticks == *start_ticks;
+}
+
+[[nodiscard]] inline bool process_group_alive(
+    std::uint64_t pgid_value, const std::optional<std::uint64_t>& leader_start_ticks,
+    std::string_view boot_id) {
   if (pgid_value == 0) return false;
   const pid_t pgid = static_cast<pid_t>(pgid_value);
   if (pgid <= 0) return false;
-  if (::kill(-pgid, 0) == 0) return true;
-  return errno == EPERM;
+  if (::kill(-pgid, 0) != 0 && errno != EPERM) return false;
+  return process_identity_alive(pgid_value, leader_start_ticks, boot_id);
 }
 
 [[nodiscard]] inline runtime_job_observation_t observe_runtime_job(
     const runtime_job_record_t& record) {
   runtime_job_observation_t observation{};
   if (record.runner_pid.has_value()) {
-    observation.runner_alive = pid_alive(*record.runner_pid);
+    observation.runner_alive = process_identity_alive(
+        *record.runner_pid, record.runner_start_ticks, record.boot_id);
   }
   if (record.target_pgid.has_value()) {
-    observation.target_alive = process_group_alive(*record.target_pgid);
+    observation.target_alive = process_group_alive(
+        *record.target_pgid, record.target_start_ticks, record.boot_id);
   } else if (record.target_pid.has_value()) {
-    observation.target_alive = pid_alive(*record.target_pid);
+    observation.target_alive = process_identity_alive(
+        *record.target_pid, record.target_start_ticks, record.boot_id);
   }
   return observation;
 }
@@ -575,6 +659,30 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   if (observation.target_alive && !observation.runner_alive) return "orphaned";
   if (!observation.target_alive && !observation.runner_alive) return "lost";
   return record.state;
+}
+
+[[nodiscard]] inline bool list_active_runtime_job_cursors(
+    const std::filesystem::path& jobs_root, std::vector<std::string>* out,
+    std::string* error = nullptr) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "missing destination for active runtime jobs";
+    return false;
+  }
+  out->clear();
+
+  std::vector<runtime_job_record_t> records{};
+  if (!scan_runtime_job_records(jobs_root, &records, error)) return false;
+  for (const auto& record : records) {
+    const runtime_job_observation_t observation = observe_runtime_job(record);
+    const std::string stable_state =
+        stable_state_for_observation(record, observation);
+    if (stable_state == "launching" || stable_state == "running" ||
+        stable_state == "stopping" || stable_state == "orphaned") {
+      out->push_back(record.job_cursor);
+    }
+  }
+  return true;
 }
 
 }  // namespace runtime

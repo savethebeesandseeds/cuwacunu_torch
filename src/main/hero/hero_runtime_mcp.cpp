@@ -648,6 +648,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"schema\":" << json_quote(record.schema) << ","
       << "\"job_cursor\":" << json_quote(record.job_cursor) << ","
       << "\"job_kind\":" << json_quote(record.job_kind) << ","
+      << "\"boot_id\":" << json_quote(record.boot_id) << ","
       << "\"state\":" << json_quote(record.state) << ","
       << "\"observed_state\":" << json_quote(observed_state) << ","
       << "\"state_detail\":" << json_quote(record.state_detail) << ","
@@ -668,12 +669,20 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << ",\"runner_pid\":"
       << (record.runner_pid.has_value() ? std::to_string(*record.runner_pid)
                                         : "null")
+      << ",\"runner_start_ticks\":"
+      << (record.runner_start_ticks.has_value()
+              ? std::to_string(*record.runner_start_ticks)
+              : "null")
       << ",\"target_pid\":"
       << (record.target_pid.has_value() ? std::to_string(*record.target_pid)
                                         : "null")
       << ",\"target_pgid\":"
       << (record.target_pgid.has_value() ? std::to_string(*record.target_pgid)
                                          : "null")
+      << ",\"target_start_ticks\":"
+      << (record.target_start_ticks.has_value()
+              ? std::to_string(*record.target_start_ticks)
+              : "null")
       << ",\"exit_code\":"
       << (record.exit_code.has_value() ? std::to_string(*record.exit_code)
                                        : "null")
@@ -869,6 +878,19 @@ void write_jsonrpc_error(std::string_view id_json, int code,
 
   cuwacunu::hero::runtime::runtime_job_record_t record = seed_record;
   record.runner_pid = static_cast<std::uint64_t>(child);
+  std::uint64_t runner_start_ticks = 0;
+  if (!cuwacunu::hero::runtime::read_process_start_ticks(record.runner_pid.value(),
+                                                         &runner_start_ticks)) {
+    (void)::kill(child, SIGKILL);
+    int ignored_status = 0;
+    while (::waitpid(child, &ignored_status, 0) < 0 && errno == EINTR) {
+    }
+    if (error) {
+      *error = "cannot determine detached runtime job runner identity";
+    }
+    return false;
+  }
+  record.runner_start_ticks = runner_start_ticks;
   record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   if (!write_runtime_job(app, record, error)) return false;
   return true;
@@ -932,6 +954,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   cuwacunu::hero::runtime::runtime_job_record_t record{};
   record.job_cursor = job_cursor;
   record.job_kind = "default_board";
+  record.boot_id = cuwacunu::hero::runtime::current_boot_id();
   record.state = "launching";
   record.state_detail = "detached runner requested";
   record.worker_binary = app->defaults.main_board_binary.string();
@@ -963,6 +986,16 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     return false;
   }
 
+  for (int attempt = 0; attempt < 80; ++attempt) {
+    std::string poll_error{};
+    if (read_runtime_job(*app, job_cursor, &record, &poll_error)) {
+      if (record.target_pgid.has_value() || record.target_pid.has_value() ||
+          record.state != "launching") {
+        break;
+      }
+    }
+    ::usleep(25 * 1000);
+  }
   if (!read_runtime_job(*app, job_cursor, &record, out_error)) return false;
   const auto observation = cuwacunu::hero::runtime::observe_runtime_job(record);
   *out_structured =
@@ -1098,14 +1131,28 @@ void write_jsonrpc_error(std::string_view id_json, int code,
 
   int rc = -1;
   int sig = force ? SIGKILL : SIGTERM;
-  const bool use_process_group =
-      record.target_pgid.has_value() && *record.target_pgid > 0;
-  if (record.target_pgid.has_value() && *record.target_pgid > 0) {
+  bool use_process_group = false;
+  bool used_runner_fallback = false;
+  if (record.target_pgid.has_value() &&
+      cuwacunu::hero::runtime::process_group_alive(
+          *record.target_pgid, record.target_start_ticks, record.boot_id)) {
+    use_process_group = true;
     rc = ::kill(-static_cast<pid_t>(*record.target_pgid), sig);
-  } else if (record.target_pid.has_value() && *record.target_pid > 0) {
+  } else if (record.target_pid.has_value() &&
+             cuwacunu::hero::runtime::process_identity_alive(
+                 *record.target_pid, record.target_start_ticks,
+                 record.boot_id)) {
     rc = ::kill(static_cast<pid_t>(*record.target_pid), sig);
+  } else if (record.runner_pid.has_value() &&
+             cuwacunu::hero::runtime::process_identity_alive(
+                 *record.runner_pid, record.runner_start_ticks,
+                 record.boot_id) &&
+             (!record.target_pid.has_value() || !record.target_pgid.has_value() ||
+              record.state == "launching")) {
+    used_runner_fallback = true;
+    rc = ::kill(static_cast<pid_t>(*record.runner_pid), sig);
   } else {
-    *out_error = "job has no target process metadata";
+    *out_error = "job has no live process identity metadata";
     return false;
   }
   if (rc != 0 && errno != ESRCH) {
@@ -1117,6 +1164,10 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   if (use_process_group) {
     record.state_detail = force ? "sent SIGKILL to target process group"
                                 : "sent SIGTERM to target process group";
+  } else if (used_runner_fallback) {
+    record.state_detail =
+        force ? "sent SIGKILL to job runner before target publication"
+              : "sent SIGTERM to job runner before target publication";
   } else {
     record.state_detail =
         force ? "sent SIGKILL to target process"
@@ -1418,6 +1469,14 @@ int run_job_runner(int argc, char** argv) {
     return 1;
   }
   record.runner_pid = static_cast<std::uint64_t>(::getpid());
+  std::uint64_t runner_start_ticks = 0;
+  if (cuwacunu::hero::runtime::read_process_start_ticks(*record.runner_pid,
+                                                        &runner_start_ticks)) {
+    record.runner_start_ticks = runner_start_ticks;
+  }
+  if (record.boot_id.empty()) {
+    record.boot_id = cuwacunu::hero::runtime::current_boot_id();
+  }
   record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   record.state = "launching";
   record.state_detail = "runner alive";
@@ -1514,6 +1573,24 @@ int run_job_runner(int argc, char** argv) {
 
   record.target_pid = static_cast<std::uint64_t>(child);
   record.target_pgid = static_cast<std::uint64_t>(child);
+  std::uint64_t target_start_ticks = 0;
+  if (!cuwacunu::hero::runtime::read_process_start_ticks(*record.target_pid,
+                                                         &target_start_ticks)) {
+    (void)::kill(child, SIGKILL);
+    int ignored_status = 0;
+    while (::waitpid(child, &ignored_status, 0) < 0 && errno == EINTR) {
+    }
+    record.state = "failed_to_start";
+    record.state_detail = "cannot determine worker identity";
+    record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    record.finished_at_ms = record.updated_at_ms;
+    record.exit_code = 127;
+    std::string ignored;
+    (void)cuwacunu::hero::runtime::write_runtime_job_record(jobs_root, record,
+                                                            &ignored);
+    return 1;
+  }
+  record.target_start_ticks = target_start_ticks;
   record.state = "running";
   record.state_detail = "worker process alive";
   record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();

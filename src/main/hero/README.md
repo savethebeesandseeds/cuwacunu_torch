@@ -151,7 +151,7 @@ Runtime MCP job-control tools:
 
 Runtime Hero job model:
 - `job_cursor` is the only public job identity
-- `pid`, `pgid`, and future `run_id` are job metadata, not public identifiers
+- `pid`, `pgid`, boot id, start ticks, and future `run_id` are job metadata, not public identifiers
 - each job persists under `jobs_root/<job_cursor>/`
 - job manifests use schema `hero.runtime.job.v1`
 - launched workers run as separate Linux processes supervised by a detached runner
@@ -206,7 +206,8 @@ returns one fragment body with payload.
 
 `hero.config.dev_nuke_reset` removes runtime dump folders, Runtime Hero jobs_root,
 and Hero catalog files resolved from the saved global config, then reloads
-Config Hero state. It does not use unsaved in-memory config edits.
+Config Hero state. It does not use unsaved in-memory config edits, and it fails
+fast if active Runtime Hero jobs still exist.
 
 For `tsi.source.*`, symbol tokens are normalized out of path identity:
 - canonical/hashimyei cursor uses source family identity (for example

@@ -197,7 +197,7 @@ Useful MCP tools:
 - `hero.config.rollback` (restore latest or selected snapshot)
 - `hero.config.save` (persists config, takes shared runtime lock, returns deterministic `cutover` metadata)
 - `hero.config.reload`
-- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, Runtime HERO jobs root, and Hero catalogs resolved from the saved global config)
+- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, Runtime HERO jobs root, and Hero catalogs resolved from the saved global config; refuses reset while active runtime jobs exist)
 
 Runtime MCP tools:
 - `hero.runtime.launch_default_board`
@@ -211,6 +211,7 @@ Runtime HERO defaults:
 - loaded from `instructions/default.hero.runtime.dsl`
 - resolved through `[REAL_HERO].runtime_hero_dsl_filename`
 - jobs persist under `jobs_root` by `job_cursor`, with manifest + stdout/stderr logs per job
+- runtime job liveness is reconciled using boot id + process start ticks, not bare pid reuse
 
 Deterministic policy:
 - `hero.config.ask` and `hero.config.fix` are disabled by design in current runtime mode.
@@ -218,6 +219,7 @@ Deterministic policy:
   by `hero.config.dsl.set`; instance revisions are handled by Hashimyei HERO lineage.
 - `hero.config.dev_nuke_reset` uses the saved global config on disk, not dirty
   unsaved in-memory edits.
+- `hero.config.dev_nuke_reset` fails fast while active Runtime HERO jobs still exist.
 
 ## Hashimyei Catalog MCP
 

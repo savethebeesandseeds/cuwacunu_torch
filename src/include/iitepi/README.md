@@ -175,6 +175,7 @@ runtime-unusable. Fallback is intentionally loud via
 - `.build/hero/runtime_reset`
 - `hero.config.dev_nuke_reset`
 - `GENERAL.reset_runtime_state_at_start=true`
+- reset fails fast while active Runtime HERO jobs still exist
 
 This document defines architecture intent and runtime contracts. Source code
 remains authoritative for low-level parsing, builder details, and diagnostics.

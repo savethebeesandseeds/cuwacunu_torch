@@ -59,7 +59,7 @@ required = false
 default = false
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = when true, main_board clears runtime dump store roots, Runtime HERO jobs_root, and Hero catalog files resolved from active .config + HERO DSL defaults before board init
+nuance = when true, main_board clears runtime dump store roots, Runtime HERO jobs_root, and Hero catalog files resolved from active .config + HERO DSL defaults before board init; reset fails fast if active Runtime HERO jobs still exist
 
 [RULE GENERAL_EXCHANGE_TYPE_ALLOWED]
 id = GENERAL_EXCHANGE_TYPE_ALLOWED

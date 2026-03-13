@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "hero/runtime_hero/runtime_job.h"
 #include "iitepi/config_space_t.h"
 
 namespace cuwacunu {
@@ -23,6 +24,7 @@ struct runtime_reset_targets_t {
   std::filesystem::path hashimyei_hero_dsl_path{};
   std::filesystem::path lattice_hero_dsl_path{};
   std::filesystem::path runtime_hero_dsl_path{};
+  std::filesystem::path runtime_jobs_root{};
   std::vector<std::filesystem::path> store_roots{};
   std::vector<std::filesystem::path> catalog_paths{};
 };
@@ -381,11 +383,12 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       }
       const auto it_jobs_root = runtime_defaults.find("jobs_root");
       if (it_jobs_root != runtime_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.store_roots, &store_root_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
+        resolved.runtime_jobs_root = std::filesystem::path(
+            detail::resolve_path_from_base_folder(
                 resolved.runtime_hero_dsl_path.parent_path().string(),
-                it_jobs_root->second)));
+                it_jobs_root->second));
+        detail::push_unique_path(&resolved.store_roots, &store_root_seen,
+                                 resolved.runtime_jobs_root);
       }
     }
   } catch (const std::exception& e) {
@@ -529,11 +532,12 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       }
       if (const auto it = runtime_defaults.find("jobs_root");
           it != runtime_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.store_roots, &store_root_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
+        resolved.runtime_jobs_root = std::filesystem::path(
+            detail::resolve_path_from_base_folder(
                 resolved.runtime_hero_dsl_path.parent_path().string(),
-                it->second)));
+                it->second));
+        detail::push_unique_path(&resolved.store_roots, &store_root_seen,
+                                 resolved.runtime_jobs_root);
       }
     }
   } catch (const std::exception& e) {
@@ -558,6 +562,29 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     runtime_reset_result_t* out_result = nullptr, std::string* error = nullptr) {
   if (error) error->clear();
   runtime_reset_result_t result{};
+
+  if (!targets.runtime_jobs_root.empty()) {
+    std::vector<std::string> active_jobs{};
+    std::string active_error{};
+    if (!cuwacunu::hero::runtime::list_active_runtime_job_cursors(
+            targets.runtime_jobs_root, &active_jobs, &active_error)) {
+      if (error) {
+        *error = "cannot inspect runtime jobs before reset: " + active_error;
+      }
+      return false;
+    }
+    if (!active_jobs.empty()) {
+      std::ostringstream out;
+      out << "refusing runtime reset while active jobs exist under "
+          << targets.runtime_jobs_root.string() << ": ";
+      for (std::size_t i = 0; i < active_jobs.size(); ++i) {
+        if (i != 0) out << ", ";
+        out << active_jobs[i];
+      }
+      if (error) *error = out.str();
+      return false;
+    }
+  }
 
   std::vector<std::filesystem::path> removed_roots{};
   removed_roots.reserve(targets.store_roots.size());
