@@ -7,7 +7,8 @@
 
   Notes:
     - This is no longer a standalone tsi.probe component.
-    - No hashimyei-bound report persistence is produced.
+    - No standalone probe hashimyei/history state is produced.
+    - Vicreg emits run-end summary + matrix `.lls` reports.
 
   Format:
     <key>(domain):<type> = <value>

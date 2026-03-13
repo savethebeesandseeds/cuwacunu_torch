@@ -1,0 +1,69 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = global.config.general
+TARGET_DSL = src/config/.config
+TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
+PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/main_board.cpp
+
+[ENUM GENERAL.exchange_type]
+key = GENERAL.exchange_type
+values = TEST,REAL
+
+[FIELD GENERAL.exchange_type]
+key = exchange_type
+scope = GENERAL section
+type = enum
+required = true
+default = TEST
+range = one token
+allowed = TEST,REAL
+nuance = selects runtime exchange credential section and websocket target
+
+[FIELD GENERAL.board_config_filename]
+key = board_config_filename
+scope = GENERAL section
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/default.iitepi.board.dsl
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = resolved from config folder and used by board_space_t lock/init
+
+[FIELD GENERAL.board_binding_id]
+key = board_binding_id
+scope = GENERAL section
+type = string
+required = true
+default = bind_train_vicreg
+range = non-empty token
+allowed = board BIND id
+nuance = selected runtime binding when no CLI override is provided
+
+[FIELD GENERAL.hashimyei_store_root]
+key = hashimyei_store_root
+scope = GENERAL section
+type = path
+required = true
+default = /cuwacunu/.hashimyei
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = runtime report fragment root; reset-runtime utilities treat this as a reset target
+
+[FIELD GENERAL.reset_runtime_state_at_start]
+key = reset_runtime_state_at_start
+scope = GENERAL section
+type = bool
+required = false
+default = false
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = when true, main_board clears runtime dump store roots, Runtime HERO jobs_root, and Hero catalog files resolved from active .config + HERO DSL defaults before board init
+
+[RULE GENERAL_EXCHANGE_TYPE_ALLOWED]
+id = GENERAL_EXCHANGE_TYPE_ALLOWED
+applies_to = GENERAL.exchange_type
+severity = error
+when = exchange_type not in {TEST,REAL}
+message = GENERAL.exchange_type must be TEST or REAL

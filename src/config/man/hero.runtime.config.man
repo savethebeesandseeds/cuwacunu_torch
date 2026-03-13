@@ -1,0 +1,58 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = hero.runtime.config
+TARGET_DSL = src/config/instructions/default.hero.runtime.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
+PRIMARY_VALIDATORS = src/main/hero/hero_runtime_mcp.cpp
+
+[FIELD jobs_root]
+key = jobs_root
+scope = hero runtime defaults
+type = path
+required = true
+default = /cuwacunu/.runtime/jobs
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = runtime job ledger root; each job_cursor gets its own directory with manifest and logs
+
+[FIELD main_board_binary]
+key = main_board_binary
+scope = hero runtime defaults
+type = path
+required = true
+default = /cuwacunu/.build/hero/main_board
+range = executable path
+allowed = absolute_or_relative path
+nuance = worker binary launched for hero.runtime.launch_default_board jobs
+
+[FIELD config_folder]
+key = config_folder
+scope = hero runtime defaults
+type = path
+required = true
+default = /cuwacunu/src/config
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = default config folder passed to launched workers unless overridden per job
+
+[FIELD tail_default_lines]
+key = tail_default_lines
+scope = hero runtime defaults
+type = uint
+required = true
+default = 120
+range = [1,+inf)
+allowed = unsigned integer
+nuance = default line count used by hero.runtime.tail_log when lines is omitted
+
+[FIELD max_active_jobs]
+key = max_active_jobs
+scope = hero runtime defaults
+type = uint
+required = true
+default = 1
+range = [0,+inf)
+allowed = unsigned integer
+nuance = launch guard for concurrently active jobs; 0 disables the limit

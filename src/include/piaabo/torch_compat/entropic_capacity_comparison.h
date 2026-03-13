@@ -47,12 +47,14 @@ summarize_entropic_capacity_comparison(
     std::string* error = nullptr);
 
 [[nodiscard]] std::string entropic_capacity_comparison_to_latent_lineage_state_text(
-    const entropic_capacity_comparison_report_t& report);
+    const entropic_capacity_comparison_report_t& report,
+    const tsiemene::component_report_identity_t& report_identity = {});
 
 [[nodiscard]] bool write_entropic_capacity_comparison_file(
     const entropic_capacity_comparison_report_t& report,
     const std::filesystem::path& output_file,
-    std::string* error = nullptr);
+    std::string* error = nullptr,
+    const tsiemene::component_report_identity_t& report_identity = {});
 
 }  // namespace torch_compat
 }  // namespace piaabo

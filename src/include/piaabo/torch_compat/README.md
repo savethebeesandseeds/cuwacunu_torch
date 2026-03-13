@@ -48,6 +48,14 @@ Public API:
 - `is_supported_network_analytics_schema(...)`
 - `is_supported_network_design_analytics_schema(...)`
 
+Runtime `.lls` note:
+
+- the sidecar/report payloads in this module are now documented under
+  `src/include/piaabo/latent_lineage_state/`
+- the shared strict validator/canonical emitter in `piaabo` is now the emitted
+  runtime `.lls` path for data analytics, network analytics, and entropic-capacity
+  sidecars
+
 The checkpoint report writer emits a key/value text file next to `.pt`
 checkpoints (extension `.network_analytics.lls`) with compact global parameter
 diagnostics.

@@ -3,6 +3,7 @@
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "camahjucunu/dsl/network_design/network_design.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 #include <torch/torch.h>
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <exception>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -35,6 +37,13 @@ namespace torch_compat {
 namespace {
 
 constexpr double kNumericEpsilon = 1e-18;
+constexpr std::string_view kRefRangeUnitInterval = "(0,1)";
+constexpr std::string_view kRefRangeNonNegative = "(0,+inf)";
+constexpr std::string_view kRefRangePositive = "(1,+inf)";
+constexpr std::string_view kRefRangeSigned = "(-inf,+inf)";
+
+using runtime_lls_document_t =
+    cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
 
 struct report_accumulator_t {
   std::uint64_t tensor_count{0};
@@ -124,34 +133,114 @@ struct tensor_snapshot_t {
   return value ? "true" : "false";
 }
 
-void append_component_report_identity_kv_(
-    std::ostringstream* oss,
+void append_component_report_identity_entries_(
+    runtime_lls_document_t* document,
     const tsiemene::component_report_identity_t& report_identity) {
-  if (!oss) return;
+  if (!document) return;
   if (!report_identity.report_kind.empty()) {
-    *oss << "report_kind=" << report_identity.report_kind << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "report_kind", report_identity.report_kind));
   }
   if (!report_identity.tsi_type.empty()) {
-    *oss << "tsi_type=" << report_identity.tsi_type << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "tsi_type", report_identity.tsi_type));
   }
   if (!report_identity.canonical_path.empty()) {
-    *oss << "canonical_path=" << report_identity.canonical_path << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "canonical_path", report_identity.canonical_path));
   }
   if (!report_identity.hashimyei.empty()) {
-    *oss << "hashimyei=" << report_identity.hashimyei << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "hashimyei", report_identity.hashimyei));
   }
   if (!report_identity.contract_hash.empty()) {
-    *oss << "contract_hash=" << report_identity.contract_hash << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "contract_hash", report_identity.contract_hash));
   }
   if (!report_identity.wave_hash.empty()) {
-    *oss << "wave_hash=" << report_identity.wave_hash << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_hash", report_identity.wave_hash));
   }
   if (!report_identity.binding_id.empty()) {
-    *oss << "binding_id=" << report_identity.binding_id << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "binding_id", report_identity.binding_id));
   }
   if (!report_identity.run_id.empty()) {
-    *oss << "run_id=" << report_identity.run_id << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "run_id", report_identity.run_id));
   }
+}
+
+void append_string_entry_if_nonempty_(runtime_lls_document_t* document,
+                                      std::string_view key,
+                                      std::string_view value) {
+  if (!document || value.empty()) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          std::string(key), std::string(value)));
+}
+
+void append_bool_entry_(runtime_lls_document_t* document,
+                        std::string_view key,
+                        bool value) {
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_bool_entry(
+          std::string(key), value));
+}
+
+void append_int_entry_(runtime_lls_document_t* document,
+                       std::string_view key,
+                       std::int64_t value,
+                       std::string_view declared_domain = kRefRangeSigned) {
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_int_entry(
+          std::string(key), value, std::string(declared_domain)));
+}
+
+void append_u64_entry_(runtime_lls_document_t* document,
+                       std::string_view key,
+                       std::uint64_t value,
+                       std::string_view declared_domain = kRefRangeNonNegative) {
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+          std::string(key), value, std::string(declared_domain)));
+}
+
+void append_double_entry_(runtime_lls_document_t* document,
+                          std::string_view key,
+                          double value,
+                          std::string_view declared_domain = kRefRangeSigned) {
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          std::string(key), value, std::string(declared_domain)));
+}
+
+void append_ratio_entry_(runtime_lls_document_t* document,
+                         std::string_view key,
+                         double value) {
+  append_double_entry_(document, key, value, kRefRangeUnitInterval);
+}
+
+void append_nonneg_double_entry_(runtime_lls_document_t* document,
+                                 std::string_view key,
+                                 double value) {
+  append_double_entry_(document, key, value, kRefRangeNonNegative);
+}
+
+[[nodiscard]] std::string_view topk_value_reference_domain_(
+    std::string_view prefix) {
+  if (prefix == "top_nonfinite_ratio" || prefix == "top_near_zero_ratio") {
+    return kRefRangeUnitInterval;
+  }
+  return kRefRangeNonNegative;
 }
 
 [[nodiscard]] std::string_view trim_ascii_ws_view_(std::string_view text) {
@@ -383,16 +472,23 @@ template <class Key_t>
   return candidates;
 }
 
-void append_topk_key_values_(
-    std::ostringstream* oss,
+void append_topk_entries_(
+    runtime_lls_document_t* document,
     std::string_view prefix,
     const std::vector<analytics_topk_entry_t>& entries) {
-  if (oss == nullptr) return;
-  *oss << prefix << "_count=" << entries.size() << "\n";
+  if (document == nullptr) return;
+  append_u64_entry_(
+      document, std::string(prefix) + "_count", entries.size(), kRefRangeNonNegative);
   for (std::size_t i = 0; i < entries.size(); ++i) {
-    *oss << prefix << "_" << (i + 1) << "_name=" << entries[i].tensor_name
-         << "\n";
-    *oss << prefix << "_" << (i + 1) << "_value=" << entries[i].value << "\n";
+    const std::string index = std::to_string(i + 1);
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            std::string(prefix) + "_" + index + "_name", entries[i].tensor_name));
+    append_double_entry_(
+        document,
+        std::string(prefix) + "_" + index + "_value",
+        entries[i].value,
+        topk_value_reference_domain_(prefix));
   }
 }
 
@@ -656,115 +752,125 @@ void accumulate_buffer_tensor_(
   return snapshot;
 }
 
-[[nodiscard]] std::string as_ascii_key_value_(
+[[nodiscard]] runtime_lls_document_t make_runtime_lls_document_(
     const network_analytics_report_t& report,
     const network_analytics_options_t& options,
     std::string_view checkpoint_filename,
     const tsiemene::component_report_identity_t& report_identity) {
-  std::ostringstream oss;
-  oss.setf(std::ios::fixed);
-  oss << std::setprecision(10);
+  runtime_lls_document_t document{};
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "schema", report.schema));
+  append_component_report_identity_entries_(&document, report_identity);
+  append_string_entry_if_nonempty_(&document, "checkpoint_file", checkpoint_filename);
+  append_u64_entry_(&document, "tensor_count", report.tensor_count, kRefRangeNonNegative);
+  append_u64_entry_(
+      &document, "trainable_tensor_count", report.trainable_tensor_count, kRefRangeNonNegative);
+  append_u64_entry_(
+      &document, "total_parameter_count", report.total_parameter_count, kRefRangeNonNegative);
+  append_u64_entry_(
+      &document, "finite_parameter_count", report.finite_parameter_count, kRefRangeNonNegative);
+  append_u64_entry_(&document, "nan_parameter_count", report.nan_parameter_count, kRefRangeNonNegative);
+  append_u64_entry_(&document, "inf_parameter_count", report.inf_parameter_count, kRefRangeNonNegative);
+  append_ratio_entry_(&document, "finite_ratio", report.finite_ratio);
+  append_ratio_entry_(&document, "non_finite_ratio", report.non_finite_ratio);
+  append_nonneg_double_entry_(&document, "stddev", report.stddev);
+  append_double_entry_(&document, "min", report.min, kRefRangeSigned);
+  append_double_entry_(&document, "max", report.max, kRefRangeSigned);
+  append_nonneg_double_entry_(&document, "l1_mean_abs", report.l1_mean_abs);
+  append_nonneg_double_entry_(&document, "l2_rms", report.l2_rms);
+  append_nonneg_double_entry_(&document, "max_abs", report.max_abs);
+  append_nonneg_double_entry_(&document, "max_abs_over_rms", report.max_abs_over_rms);
+  append_nonneg_double_entry_(&document, "near_zero_threshold", report.near_zero_threshold);
+  append_ratio_entry_(&document, "near_zero_ratio", report.near_zero_ratio);
+  append_ratio_entry_(&document, "exact_zero_ratio", report.exact_zero_ratio);
+  append_nonneg_double_entry_(&document, "abs_energy_entropy", report.abs_energy_entropy);
+  append_nonneg_double_entry_(
+      &document, "log10_abs_histogram_entropy", report.log10_abs_histogram_entropy);
+  append_int_entry_(
+      &document, "log10_abs_histogram_bins", options.log10_abs_histogram_bins, kRefRangePositive);
+  append_double_entry_(
+      &document, "log10_abs_histogram_min", options.log10_abs_histogram_min, kRefRangeSigned);
+  append_double_entry_(
+      &document, "log10_abs_histogram_max", options.log10_abs_histogram_max, kRefRangeSigned);
+  append_string_entry_if_nonempty_(&document, "max_abs_tensor_name", report.max_abs_tensor_name);
+  append_nonneg_double_entry_(&document, "max_abs_tensor_value", report.max_abs_tensor_value);
 
-  oss << "schema=" << report.schema << "\n";
-  append_component_report_identity_kv_(&oss, report_identity);
-  if (!checkpoint_filename.empty()) {
-    oss << "checkpoint_file=" << checkpoint_filename << "\n";
-  }
-  oss << "tensor_count=" << report.tensor_count << "\n";
-  oss << "trainable_tensor_count=" << report.trainable_tensor_count << "\n";
-  oss << "total_parameter_count=" << report.total_parameter_count << "\n";
-  oss << "finite_parameter_count=" << report.finite_parameter_count << "\n";
-  oss << "nan_parameter_count=" << report.nan_parameter_count << "\n";
-  oss << "inf_parameter_count=" << report.inf_parameter_count << "\n";
-  oss << "finite_ratio=" << report.finite_ratio << "\n";
-  oss << "non_finite_ratio=" << report.non_finite_ratio << "\n";
-  oss << "stddev=" << report.stddev << "\n";
-  oss << "min=" << report.min << "\n";
-  oss << "max=" << report.max << "\n";
-  oss << "l1_mean_abs=" << report.l1_mean_abs << "\n";
-  oss << "l2_rms=" << report.l2_rms << "\n";
-  oss << "max_abs=" << report.max_abs << "\n";
-  oss << "max_abs_over_rms=" << report.max_abs_over_rms << "\n";
-  oss << "near_zero_threshold=" << report.near_zero_threshold << "\n";
-  oss << "near_zero_ratio=" << report.near_zero_ratio << "\n";
-  oss << "exact_zero_ratio=" << report.exact_zero_ratio << "\n";
-  oss << "abs_energy_entropy=" << report.abs_energy_entropy << "\n";
-  oss << "log10_abs_histogram_entropy=" << report.log10_abs_histogram_entropy
-      << "\n";
-  oss << "log10_abs_histogram_bins=" << options.log10_abs_histogram_bins << "\n";
-  oss << "log10_abs_histogram_min=" << options.log10_abs_histogram_min << "\n";
-  oss << "log10_abs_histogram_max=" << options.log10_abs_histogram_max << "\n";
-  oss << "max_abs_tensor_name=" << report.max_abs_tensor_name << "\n";
-  oss << "max_abs_tensor_value=" << report.max_abs_tensor_value << "\n";
+  append_bool_entry_(&document, "include_buffers", options.include_buffers);
+  append_bool_entry_(
+      &document, "enable_spectral_metrics", options.enable_spectral_metrics);
+  append_int_entry_(
+      &document, "spectral_max_elements", options.spectral_max_elements, kRefRangePositive);
+  append_int_entry_(&document, "anomaly_top_k", options.anomaly_top_k, kRefRangePositive);
 
-  oss << "include_buffers=" << bool_to_ascii(options.include_buffers) << "\n";
-  oss << "enable_spectral_metrics=" << bool_to_ascii(options.enable_spectral_metrics)
-      << "\n";
-  oss << "spectral_max_elements=" << options.spectral_max_elements << "\n";
-  oss << "anomaly_top_k=" << options.anomaly_top_k << "\n";
+  append_nonneg_double_entry_(&document, "tensor_rms_mean", report.tensor_rms_mean);
+  append_nonneg_double_entry_(&document, "tensor_rms_std", report.tensor_rms_std);
+  append_nonneg_double_entry_(&document, "tensor_rms_cv", report.tensor_rms_cv);
+  append_nonneg_double_entry_(&document, "tensor_rms_min", report.tensor_rms_min);
+  append_nonneg_double_entry_(&document, "tensor_rms_max", report.tensor_rms_max);
+  append_nonneg_double_entry_(
+      &document, "tensor_rms_max_over_min", report.tensor_rms_max_over_min);
 
-  oss << "tensor_rms_mean=" << report.tensor_rms_mean << "\n";
-  oss << "tensor_rms_std=" << report.tensor_rms_std << "\n";
-  oss << "tensor_rms_cv=" << report.tensor_rms_cv << "\n";
-  oss << "tensor_rms_min=" << report.tensor_rms_min << "\n";
-  oss << "tensor_rms_max=" << report.tensor_rms_max << "\n";
-  oss << "tensor_rms_max_over_min=" << report.tensor_rms_max_over_min << "\n";
+  append_nonneg_double_entry_(&document, "abs_p50", report.abs_p50);
+  append_nonneg_double_entry_(&document, "abs_p90", report.abs_p90);
+  append_nonneg_double_entry_(&document, "abs_p99", report.abs_p99);
+  append_double_entry_(&document, "log10_abs_p50", report.log10_abs_p50, kRefRangeSigned);
+  append_nonneg_double_entry_(&document, "log10_abs_iqr", report.log10_abs_iqr);
 
-  oss << "abs_p50=" << report.abs_p50 << "\n";
-  oss << "abs_p90=" << report.abs_p90 << "\n";
-  oss << "abs_p99=" << report.abs_p99 << "\n";
-  oss << "log10_abs_p50=" << report.log10_abs_p50 << "\n";
-  oss << "log10_abs_iqr=" << report.log10_abs_iqr << "\n";
+  append_u64_entry_(&document, "buffer_tensor_count", report.buffer_tensor_count, kRefRangeNonNegative);
+  append_u64_entry_(&document, "total_buffer_count", report.total_buffer_count, kRefRangeNonNegative);
+  append_u64_entry_(&document, "finite_buffer_count", report.finite_buffer_count, kRefRangeNonNegative);
+  append_u64_entry_(&document, "nan_buffer_count", report.nan_buffer_count, kRefRangeNonNegative);
+  append_u64_entry_(&document, "inf_buffer_count", report.inf_buffer_count, kRefRangeNonNegative);
+  append_ratio_entry_(&document, "finite_buffer_ratio", report.finite_buffer_ratio);
+  append_string_entry_if_nonempty_(&document, "max_abs_buffer_name", report.max_abs_buffer_name);
+  append_nonneg_double_entry_(&document, "max_abs_buffer_value", report.max_abs_buffer_value);
 
-  oss << "buffer_tensor_count=" << report.buffer_tensor_count << "\n";
-  oss << "total_buffer_count=" << report.total_buffer_count << "\n";
-  oss << "finite_buffer_count=" << report.finite_buffer_count << "\n";
-  oss << "nan_buffer_count=" << report.nan_buffer_count << "\n";
-  oss << "inf_buffer_count=" << report.inf_buffer_count << "\n";
-  oss << "finite_buffer_ratio=" << report.finite_buffer_ratio << "\n";
-  oss << "max_abs_buffer_name=" << report.max_abs_buffer_name << "\n";
-  oss << "max_abs_buffer_value=" << report.max_abs_buffer_value << "\n";
+  append_u64_entry_(&document, "matrix_tensor_count", report.matrix_tensor_count, kRefRangeNonNegative);
+  append_u64_entry_(&document, "spectral_tensor_count", report.spectral_tensor_count, kRefRangeNonNegative);
+  append_u64_entry_(
+      &document,
+      "spectral_skipped_tensor_count",
+      report.spectral_skipped_tensor_count,
+      kRefRangeNonNegative);
+  append_u64_entry_(
+      &document,
+      "spectral_failed_tensor_count",
+      report.spectral_failed_tensor_count,
+      kRefRangeNonNegative);
+  append_nonneg_double_entry_(&document, "spectral_norm_mean", report.spectral_norm_mean);
+  append_nonneg_double_entry_(&document, "spectral_norm_max", report.spectral_norm_max);
+  append_nonneg_double_entry_(&document, "stable_rank_mean", report.stable_rank_mean);
+  append_nonneg_double_entry_(&document, "stable_rank_min", report.stable_rank_min);
+  append_nonneg_double_entry_(&document, "effective_rank_mean", report.effective_rank_mean);
+  append_nonneg_double_entry_(&document, "effective_rank_min", report.effective_rank_min);
+  append_nonneg_double_entry_(&document, "row_norm_cv_mean", report.row_norm_cv_mean);
+  append_nonneg_double_entry_(&document, "col_norm_cv_mean", report.col_norm_cv_mean);
+  append_nonneg_double_entry_(
+      &document, "network_global_entropic_capacity", report.network_global_entropic_capacity);
+  append_nonneg_double_entry_(
+      &document, "network_entropic_bottleneck_min", report.network_entropic_bottleneck_min);
+  append_nonneg_double_entry_(
+      &document, "network_effective_rank_p50", report.network_effective_rank_p50);
+  append_nonneg_double_entry_(
+      &document, "network_effective_rank_p90", report.network_effective_rank_p90);
+  append_u64_entry_(
+      &document,
+      "network_capacity_tensor_count",
+      report.network_capacity_tensor_count,
+      kRefRangeNonNegative);
 
-  oss << "matrix_tensor_count=" << report.matrix_tensor_count << "\n";
-  oss << "spectral_tensor_count=" << report.spectral_tensor_count << "\n";
-  oss << "spectral_skipped_tensor_count=" << report.spectral_skipped_tensor_count
-      << "\n";
-  oss << "spectral_failed_tensor_count=" << report.spectral_failed_tensor_count
-      << "\n";
-  oss << "spectral_norm_mean=" << report.spectral_norm_mean << "\n";
-  oss << "spectral_norm_max=" << report.spectral_norm_max << "\n";
-  oss << "stable_rank_mean=" << report.stable_rank_mean << "\n";
-  oss << "stable_rank_min=" << report.stable_rank_min << "\n";
-  oss << "effective_rank_mean=" << report.effective_rank_mean << "\n";
-  oss << "effective_rank_min=" << report.effective_rank_min << "\n";
-  oss << "row_norm_cv_mean=" << report.row_norm_cv_mean << "\n";
-  oss << "col_norm_cv_mean=" << report.col_norm_cv_mean << "\n";
-  oss << "network_global_entropic_capacity="
-      << report.network_global_entropic_capacity << "\n";
-  oss << "network_entropic_bottleneck_min="
-      << report.network_entropic_bottleneck_min << "\n";
-  oss << "network_effective_rank_p50=" << report.network_effective_rank_p50
-      << "\n";
-  oss << "network_effective_rank_p90=" << report.network_effective_rank_p90
-      << "\n";
-  oss << "network_capacity_tensor_count=" << report.network_capacity_tensor_count
-      << "\n";
+  append_topk_entries_(&document, "top_nonfinite_ratio", report.top_nonfinite_ratio_tensors);
+  append_topk_entries_(
+      &document, "top_max_abs_over_rms", report.top_max_abs_over_rms_tensors);
+  append_topk_entries_(&document, "top_near_zero_ratio", report.top_near_zero_ratio_tensors);
+  append_topk_entries_(&document, "top_low_stable_rank", report.top_low_stable_rank_tensors);
+  append_topk_entries_(
+      &document, "top_low_effective_rank", report.top_low_effective_rank_tensors);
+  append_topk_entries_(
+      &document, "top_high_spectral_norm", report.top_high_spectral_norm_tensors);
 
-  append_topk_key_values_(&oss, "top_nonfinite_ratio", report.top_nonfinite_ratio_tensors);
-  append_topk_key_values_(
-      &oss, "top_max_abs_over_rms", report.top_max_abs_over_rms_tensors);
-  append_topk_key_values_(&oss, "top_near_zero_ratio", report.top_near_zero_ratio_tensors);
-  append_topk_key_values_(&oss, "top_low_stable_rank", report.top_low_stable_rank_tensors);
-  append_topk_key_values_(
-      &oss,
-      "top_low_effective_rank",
-      report.top_low_effective_rank_tensors);
-  append_topk_key_values_(
-      &oss,
-      "top_high_spectral_norm",
-      report.top_high_spectral_norm_tensors);
-
-  return oss.str();
+  return document;
 }
 
 void append_topk_pretty_lines_(
@@ -2101,32 +2207,18 @@ bool resolve_network_analytics_options_from_network_design(
 }
 
 std::string extract_analytics_kv_schema(std::string_view payload) {
-  std::size_t cursor = 0;
-  while (cursor < payload.size()) {
-    std::size_t line_end = payload.find('\n', cursor);
-    if (line_end == std::string_view::npos) line_end = payload.size();
-
-    std::string_view line = payload.substr(cursor, line_end - cursor);
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-    line = trim_ascii_ws_view_(line);
-
-    if (!line.empty()) {
-      const std::size_t sep = line.find('=');
-      if (sep != std::string_view::npos) {
-        const std::string key =
-            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
-                line.substr(0, sep));
-        if (key == "schema") {
-          const std::string_view value =
-              trim_ascii_ws_view_(line.substr(sep + 1));
-          return std::string(value);
-        }
-      }
-    }
-
-    if (line_end == payload.size()) break;
-    cursor = line_end + 1;
+  runtime_lls_document_t document{};
+  std::string parse_error;
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          payload, &document, &parse_error)) {
+    return {};
   }
+  std::unordered_map<std::string, std::string> kv{};
+  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          document, &kv, &parse_error)) {
+    return {};
+  }
+  if (const auto it = kv.find("schema"); it != kv.end()) return it->second;
   return {};
 }
 
@@ -2148,8 +2240,8 @@ std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_options_t& options,
     std::string_view checkpoint_filename,
     const tsiemene::component_report_identity_t& report_identity) {
-  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
-      as_ascii_key_value_(report, options, checkpoint_filename, report_identity));
+  return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+      make_runtime_lls_document_(report, options, checkpoint_filename, report_identity));
 }
 
 std::string network_analytics_to_pretty_text(
@@ -2211,9 +2303,16 @@ bool write_network_analytics_file(
     return false;
   }
 
-  const std::string payload =
-      network_analytics_to_latent_lineage_state_text(
-          report, effective, {}, report_identity);
+  std::string payload;
+  try {
+    payload = network_analytics_to_latent_lineage_state_text(
+        report, effective, {}, report_identity);
+  } catch (const std::exception& e) {
+    if (error) {
+      *error = "cannot serialize network analytics report: " + std::string(e.what());
+    }
+    return false;
+  }
   out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
   if (!out) {
     if (error) *error = "cannot write report file: " + output_file.string();
@@ -2267,8 +2366,16 @@ bool write_network_analytics_sidecar_for_checkpoint(
     return false;
   }
 
-  const std::string payload = network_analytics_to_latent_lineage_state_text(
-      report, effective, checkpoint_file.filename().string(), report_identity);
+  std::string payload;
+  try {
+    payload = network_analytics_to_latent_lineage_state_text(
+        report, effective, checkpoint_file.filename().string(), report_identity);
+  } catch (const std::exception& e) {
+    if (error) {
+      *error = "cannot serialize network analytics report: " + std::string(e.what());
+    }
+    return false;
+  }
   out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
   if (!out) {
     if (error) *error = "cannot write report file: " + sidecar.string();

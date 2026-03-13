@@ -24,6 +24,7 @@
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "hero/config_hero/hero.config.h"
+#include "hero/runtime_dev_loop.h"
 
 namespace {
 constexpr const char* kDeterministicOnlyMessage =
@@ -1606,7 +1607,19 @@ void print_help() {
 }
 
 [[nodiscard]] std::string build_tools_list_result() {
-  return R"JSON({"tools":[{"name":"hero.config.status","description":"Runtime status and validation snapshot","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.schema","description":"Runtime key schema","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.show","description":"Current key-value entries","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.get","description":"Get one key","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"],"additionalProperties":false}},{"name":"hero.config.set","description":"Set one key","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"],"additionalProperties":false}},{"name":"hero.config.dsl.get","description":"Read one key from src/config/instructions/default.*.dsl only","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"dsl_path":{"type":"string"},"key":{"type":"string"}},"required":["key"],"additionalProperties":false}},{"name":"hero.config.dsl.set","description":"Set one key in src/config/instructions/default.*.dsl only","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"dsl_path":{"type":"string"},"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"],"additionalProperties":false}},{"name":"hero.config.validate","description":"Validate runtime config","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.diff","description":"Preview config changes before save","inputSchema":{"type":"object","properties":{"include_text":{"type":"boolean"}},"additionalProperties":false}},{"name":"hero.config.dry_run","description":"Alias of hero.config.diff","inputSchema":{"type":"object","properties":{"include_text":{"type":"boolean"}},"additionalProperties":false}},{"name":"hero.config.backups","description":"List available config backups","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.rollback","description":"Rollback config to a backup snapshot","inputSchema":{"type":"object","properties":{"backup":{"type":"string"}},"additionalProperties":false}},{"name":"hero.config.save","description":"Save runtime config to disk","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.reload","description":"Reload runtime config from disk","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}]})JSON";
+  return R"JSON({"tools":[{"name":"hero.config.status","description":"Runtime status and validation snapshot","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.schema","description":"Runtime key schema","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.show","description":"Current key-value entries","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.get","description":"Get one key","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"],"additionalProperties":false}},{"name":"hero.config.set","description":"Set one key","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"],"additionalProperties":false}},{"name":"hero.config.dsl.get","description":"Read one key from src/config/instructions/default.*.dsl only","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"dsl_path":{"type":"string"},"key":{"type":"string"}},"required":["key"],"additionalProperties":false}},{"name":"hero.config.dsl.set","description":"Set one key in src/config/instructions/default.*.dsl only","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"dsl_path":{"type":"string"},"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"],"additionalProperties":false}},{"name":"hero.config.validate","description":"Validate runtime config","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.diff","description":"Preview config changes before save","inputSchema":{"type":"object","properties":{"include_text":{"type":"boolean"}},"additionalProperties":false}},{"name":"hero.config.dry_run","description":"Alias of hero.config.diff","inputSchema":{"type":"object","properties":{"include_text":{"type":"boolean"}},"additionalProperties":false}},{"name":"hero.config.backups","description":"List available config backups","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.rollback","description":"Rollback config to a backup snapshot","inputSchema":{"type":"object","properties":{"backup":{"type":"string"}},"additionalProperties":false}},{"name":"hero.config.save","description":"Save runtime config to disk","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.reload","description":"Reload runtime config from disk","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.dev_nuke_reset","description":"Developer reset: remove runtime dump folders and Hero catalogs resolved from the saved global config, then reload Config Hero state","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}]})JSON";
+}
+
+[[nodiscard]] std::string path_vector_json(
+    const std::vector<std::filesystem::path>& paths) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < paths.size(); ++i) {
+    if (i != 0) out << ",";
+    out << json_quote(paths[i].string());
+  }
+  out << "]";
+  return out.str();
 }
 
 [[nodiscard]] bool dispatch_tool_jsonrpc(
@@ -1994,6 +2007,62 @@ void print_help() {
     if (out_result_json) {
       *out_result_json = "{\"reloaded\":true,\"path\":" +
                          json_quote(store->config_path()) + "}";
+    }
+    return true;
+  }
+  if (tool_name == "hero.config.dev_nuke_reset") {
+    cuwacunu::hero::runtime_dev::runtime_reset_targets_t targets{};
+    std::string err;
+    if (!cuwacunu::hero::runtime_dev::resolve_runtime_reset_targets_from_global_config(
+            store->global_config_path(), &targets, &err)) {
+      if (out_error_code) *out_error_code = -32603;
+      if (out_error_message) *out_error_message = err;
+      return false;
+    }
+
+    const bool dirty_before_reset = store->dirty();
+    cuwacunu::hero::runtime_dev::runtime_reset_result_t reset_result{};
+    if (!cuwacunu::hero::runtime_dev::reset_runtime_state(
+            targets, &reset_result, &err)) {
+      if (out_error_code) *out_error_code = -32603;
+      if (out_error_message) *out_error_message = err;
+      return false;
+    }
+
+    if (!store->load(&err)) {
+      if (out_error_code) *out_error_code = -32603;
+      if (out_error_message) {
+        *out_error_message =
+            "runtime state reset succeeded but config reload failed: " + err;
+      }
+      return false;
+    }
+
+    if (out_result_json) {
+      std::ostringstream out;
+      out << "{"
+          << "\"reset\":true,"
+          << "\"config_path\":" << json_quote(store->config_path()) << ","
+          << "\"global_config_path\":"
+          << json_quote(store->global_config_path()) << ","
+          << "\"dirty_before_reset\":" << bool_json(dirty_before_reset) << ","
+          << "\"resolved_from_saved_global_config\":true,"
+          << "\"hashimyei_hero_dsl_path\":"
+          << json_quote(targets.hashimyei_hero_dsl_path.string()) << ","
+          << "\"lattice_hero_dsl_path\":"
+          << json_quote(targets.lattice_hero_dsl_path.string()) << ","
+          << "\"target_store_roots\":"
+          << path_vector_json(targets.store_roots) << ","
+          << "\"target_catalog_paths\":"
+          << path_vector_json(targets.catalog_paths) << ","
+          << "\"removed_store_roots\":"
+          << path_vector_json(reset_result.removed_store_roots) << ","
+          << "\"removed_catalog_paths\":"
+          << path_vector_json(reset_result.removed_catalog_paths) << ","
+          << "\"removed_store_entries\":" << reset_result.removed_store_entries
+          << ",\"reloaded\":true"
+          << "}";
+      *out_result_json = out.str();
     }
     return true;
   }

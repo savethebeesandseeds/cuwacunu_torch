@@ -17,6 +17,7 @@ training/inference pipelines, and DSL-driven system configuration.
 # Test Commands
 - Run only the smallest relevant tests for touched behavior.
 - If full test execution is too expensive, state clearly what was not run.
+- Build and test only when mayor milestones have been reached.
 
 # Code Style
 - Keep changes minimal and local to the requested scope.

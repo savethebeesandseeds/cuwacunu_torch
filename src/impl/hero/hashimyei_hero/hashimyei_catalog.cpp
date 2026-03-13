@@ -26,11 +26,15 @@
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "camahjucunu/db/idydb.h"
 #include "hero/hero_catalog_schema.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 
 namespace cuwacunu {
 namespace hero {
 namespace hashimyei {
 namespace {
+
+using runtime_lls_document_t =
+    cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t b = 0;
@@ -746,6 +750,36 @@ constexpr auto kCatalogOpenBusyRetryDelay = std::chrono::milliseconds(25);
 [[nodiscard]] std::string join_key(std::string_view canonical_path,
                                    std::string_view schema) {
   return std::string(canonical_path) + "|" + std::string(schema);
+}
+
+[[nodiscard]] bool parse_runtime_lls_payload(
+    std::string_view payload,
+    std::unordered_map<std::string, std::string>* out,
+    runtime_lls_document_t* out_document,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "runtime .lls kv output pointer is null";
+    return false;
+  }
+  out->clear();
+  if (out_document) out_document->entries.clear();
+
+  runtime_lls_document_t parsed{};
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          payload, &parsed, error)) {
+    return false;
+  }
+  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          parsed, out, error)) {
+    return false;
+  }
+  if (const auto it = out->find("schema"); it == out->end() || it->second.empty()) {
+    if (error) *error = "persisted runtime .lls requires top-level schema key";
+    return false;
+  }
+  if (out_document) *out_document = std::move(parsed);
+  return true;
 }
 
 }  // namespace
@@ -1669,8 +1703,9 @@ bool hashimyei_catalog_store_t::parse_and_append_metrics_(
     const std::unordered_map<std::string, std::string>& kv, std::string* error) {
   clear_error(error);
   for (const auto& [k, v] : kv) {
-    if (k == "schema" || k == "run_id" || k == "canonical_base" || k == "hashimyei" ||
-        k == "contract_hash" || k == "report_kind" || k == "tsi_type" ||
+    if (k == "schema" || k == "run_id" || k == "canonical_path" ||
+        k == "hashimyei" || k == "contract_hash" || k == "wave_hash" ||
+        k == "binding_id" || k == "report_kind" || k == "tsi_type" ||
         k == "component_instance_name" || k == "report_event" ||
         k == "source_label") {
       continue;
@@ -1701,6 +1736,7 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
   if (!std::filesystem::exists(path) || !std::filesystem::is_regular_file(path)) {
     return true;
   }
+  if (path.extension() != ".lls") return true;
 
   std::string payload;
   if (!read_text_file(path, &payload, nullptr)) {
@@ -1709,7 +1745,12 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
   if (payload.empty()) return true;
 
   std::unordered_map<std::string, std::string> kv;
-  (void)parse_latent_lineage_state_payload(payload, &kv);
+  std::string parse_error;
+  if (!parse_runtime_lls_payload(payload, &kv, nullptr, &parse_error)) {
+    set_error(error, "runtime .lls parse failure for " + path.string() + ": " +
+                         parse_error);
+    return false;
+  }
   const std::string schema = kv["schema"];
   if (!is_known_schema(schema)) return true;
 
@@ -1719,7 +1760,7 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
   if (!ledger_contains_(report_fragment_sha, &already, error)) return false;
   if (already) return true;
 
-  std::string canonical_path = kv["canonical_base"];
+  std::string canonical_path = kv["canonical_path"];
   if (canonical_path.empty()) canonical_path = kv["source_label"];
   if (canonical_path.empty()) canonical_path = canonical_path_from_report_fragment_path(path);
 
@@ -1741,20 +1782,9 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
   }
 
   std::string run_id = kv["run_id"];
-  if (run_id.empty() && !contract_hash.empty()) {
-    std::string best_run_id{};
-    std::uint64_t best_started_at_ms = 0;
-    bool found = false;
-    for (const auto& [id, run] : runs_by_id_) {
-      if (run.wave_contract_binding.contract.hash_sha256_hex != contract_hash) continue;
-      if (!found || run.started_at_ms > best_started_at_ms ||
-          (run.started_at_ms == best_started_at_ms && id < best_run_id)) {
-        best_run_id = id;
-        best_started_at_ms = run.started_at_ms;
-        found = true;
-      }
-    }
-    if (found) run_id = best_run_id;
+  if (run_id.empty()) {
+    set_error(error, "runtime report_fragment missing run_id: " + path.string());
+    return false;
   }
 
   std::filesystem::path cp = path;

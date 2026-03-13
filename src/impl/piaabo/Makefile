@@ -14,6 +14,7 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 $(eval $(call BUILD_OBJ,      common,  dutils,         dutils))
 $(eval $(call BUILD_OBJ,      common,  djson_parsing,  djson_parsing))
 $(eval $(call BUILD_OBJ,      common,  dfiles,         dfiles))
+$(eval $(call BUILD_OBJ,      common,  latent_lineage_state/runtime_lls,    runtime_lls))
 $(eval $(call BUILD_OBJ_INC,  openssl, dencryption,    dencryption, $(SSL_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC,  openssl, dsecurity,      dsecurity,   $(SSL_INCLUDE_PATHS)))
 
@@ -21,6 +22,7 @@ PIAABO := \
   $(OUTPUT_PATH)/common/dutils.o \
   $(OUTPUT_PATH)/common/djson_parsing.o \
   $(OUTPUT_PATH)/common/dfiles.o \
+  $(OUTPUT_PATH)/common/latent_lineage_state/runtime_lls.o \
   $(OUTPUT_PATH)/openssl/dencryption.o \
   $(OUTPUT_PATH)/openssl/dsecurity.o
 

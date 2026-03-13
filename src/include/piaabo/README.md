@@ -13,7 +13,29 @@ Public include form: `#include "piaabo/..."`
 - typed utility/file/json primitives reused across modules
 - explicit secret-memory and crypto interfaces
 - runtime config loading and contract snapshot locking
+- runtime `.lls` profile documentation plus strict validation/canonical emission
 - compatibility bridges (BNF parser, torch utilities, curl/websocket)
+
+## Runtime `.lls` Standard
+
+`piaabo` is now the documentation home for the standardized runtime `.lls`
+profile:
+
+- `src/include/piaabo/latent_lineage_state/README.md`
+- `src/include/piaabo/latent_lineage_state/CURRENT_RUNTIME_AUDIT.md`
+- `src/include/piaabo/latent_lineage_state/SCHEMA_REGISTRY.md`
+- `src/include/piaabo/latent_lineage_state/MIGRATION_BACKLOG.md`
+- `src/config/man/runtime_lls.man`
+
+Current status:
+
+- strict runtime grammar is now `src/config/bnf/runtime_lls.bnf`
+- shared runtime validator/emitter/parser lives in
+  `src/include/piaabo/latent_lineage_state/runtime_lls.h` and
+  `src/impl/piaabo/latent_lineage_state/runtime_lls.cpp`
+- persisted runtime artifact readers/writers are now on the strict runtime `.lls`
+  path; legacy relaxed readers remain only for non-runtime manifests and synthetic
+  helper transports
 
 ## dlogs Dual-Mode Contract (Important)
 

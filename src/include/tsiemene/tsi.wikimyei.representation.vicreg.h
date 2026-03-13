@@ -31,6 +31,7 @@
 // Report-fragment metadata helpers:
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_driver.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 #include "piaabo/torch_compat/entropic_capacity_comparison.h"
 #include "piaabo/torch_compat/network_analytics.h"
 
@@ -53,6 +54,52 @@ struct vicreg_runtime_load_context_t {
     if (!std::isspace(c)) return true;
   }
   return false;
+}
+
+using runtime_lls_document_t =
+    cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
+
+[[nodiscard]] inline std::string effective_runtime_report_run_id_(
+    std::string_view run_id,
+    std::string_view hashimyei) {
+  if (!run_id.empty()) return std::string(run_id);
+  if (hashimyei.empty()) return "run.vicreg.unknown";
+  return "run.vicreg." + std::string(hashimyei);
+}
+
+inline void append_runtime_string_entry_(runtime_lls_document_t* document,
+                                         std::string_view key,
+                                         std::string_view value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          std::string(key), std::string(value)));
+}
+
+inline void append_runtime_string_entry_if_nonempty_(
+    runtime_lls_document_t* document,
+    std::string_view key,
+    std::string_view value) {
+  if (!document || value.empty()) return;
+  append_runtime_string_entry_(document, key, value);
+}
+
+inline void append_runtime_int_entry_(runtime_lls_document_t* document,
+                                      std::string_view key,
+                                      std::int64_t value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_int_entry(
+          std::string(key), value));
+}
+
+inline void append_runtime_u64_entry_(runtime_lls_document_t* document,
+                                      std::string_view key,
+                                      std::uint64_t value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+          std::string(key), value, "(0,+inf)"));
 }
 
 struct vicreg_network_analytics_plan_t {
@@ -113,7 +160,7 @@ struct vicreg_network_analytics_plan_t {
 [[nodiscard]] inline bool write_vicreg_network_analytics_sidecar_(
     const cuwacunu::wikimyei::vicreg_4d::VICReg_4D& model,
     const std::filesystem::path& weights_file,
-    std::string_view canonical_base,
+    std::string_view canonical_path,
     std::string_view canonical_type,
     std::string_view report_fragment_id,
     std::string_view contract_hash,
@@ -133,13 +180,13 @@ struct vicreg_network_analytics_plan_t {
   }
   const auto network_report_identity = make_component_report_identity(
       "network_analytics",
-      canonical_base,
+      canonical_path,
       canonical_type,
       report_fragment_id,
       contract_hash,
       {},
       {},
-      run_id);
+      effective_runtime_report_run_id_(run_id, report_fragment_id));
   return cuwacunu::piaabo::torch_compat::write_network_analytics_sidecar_for_checkpoint(
       model,
       weights_file,
@@ -435,7 +482,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     return out;
   }
 
-  [[nodiscard]] static std::string build_transfer_matrix_report_canonical_base_(
+  [[nodiscard]] static std::string build_transfer_matrix_report_canonical_path_(
       std::string_view representation_hashimyei) {
     std::string out("tsi.wikimyei.representation.vicreg");
     if (!has_non_ws_ascii_(representation_hashimyei)) return out;
@@ -446,34 +493,47 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
 
   [[nodiscard]] std::filesystem::path
   build_transfer_matrix_runtime_report_path_(
-      std::string_view canonical_base) const {
+      std::string_view canonical_path) const {
     const std::string contract_token = sanitize_path_token_(contract_hash_);
     const std::string component_token =
         has_non_ws_ascii_(representation_hashimyei_)
             ? sanitize_path_token_(representation_hashimyei_)
-            : sanitize_path_token_(canonical_base);
+            : sanitize_path_token_(canonical_path);
     return cuwacunu::hashimyei::store_root() / "tsi.wikimyei" / "evaluation" /
            "transfer_matrix_evaluation" / contract_token / component_token /
-           "transfer_matrix_evaluation.latest.lls";
+           "transfer_matrix_evaluation.summary.latest.lls";
   }
 
-  [[nodiscard]] static std::string ensure_trailing_newline_(
-      std::string text) {
-    if (!text.empty() && text.back() != '\n') text.push_back('\n');
-    return text;
+  [[nodiscard]] std::filesystem::path
+  build_transfer_matrix_runtime_matrix_report_path_(
+      std::string_view canonical_path) const {
+    const std::string contract_token = sanitize_path_token_(contract_hash_);
+    const std::string component_token =
+        has_non_ws_ascii_(representation_hashimyei_)
+            ? sanitize_path_token_(representation_hashimyei_)
+            : sanitize_path_token_(canonical_path);
+    return cuwacunu::hashimyei::store_root() / "tsi.wikimyei" / "evaluation" /
+           "transfer_matrix_evaluation" / contract_token / component_token /
+           "transfer_matrix_evaluation.matrix.latest.lls";
   }
 
   void persist_transfer_matrix_run_report_(const RuntimeEvent& event,
                                            Emitter& out) const {
     if (!transfer_matrix_evaluator_) return;
     std::string report_lls = transfer_matrix_evaluator_->last_run_report_lls();
-    if (!has_non_ws_ascii_(report_lls)) return;
+    std::string matrix_report_lls =
+        transfer_matrix_evaluator_->last_run_matrix_report_lls();
+    if (!has_non_ws_ascii_(report_lls) && !has_non_ws_ascii_(matrix_report_lls)) {
+      return;
+    }
 
-    const std::string canonical_base =
-        build_transfer_matrix_report_canonical_base_(
+    const std::string canonical_path =
+        build_transfer_matrix_report_canonical_path_(
             representation_hashimyei_);
     const std::filesystem::path report_file =
-        build_transfer_matrix_runtime_report_path_(canonical_base);
+        build_transfer_matrix_runtime_report_path_(canonical_path);
+    const std::filesystem::path matrix_report_file =
+        build_transfer_matrix_runtime_matrix_report_path_(canonical_path);
 
     std::error_code ec;
     std::filesystem::create_directories(report_file.parent_path(), ec);
@@ -488,47 +548,85 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
       return;
     }
 
-    std::ostringstream payload;
-    payload << "report_kind=transfer_matrix_evaluation\n";
-    payload << "canonical_base=" << canonical_base << "\n";
-    payload << "source_label=" << canonical_base << "\n";
-    payload << "tsi_type=tsi.wikimyei.representation.vicreg\n";
-    payload << "component_instance_name=" << component_name_ << "\n";
-    payload << "report_event=" << report_event_token(report_event_e::RunEnd)
-            << "\n";
-    if (!runtime_run_id_.empty()) {
-      payload << "run_id=" << runtime_run_id_ << "\n";
-    }
-    if (has_non_ws_ascii_(representation_hashimyei_)) {
-      payload << "hashimyei=" << representation_hashimyei_ << "\n";
-    }
-    payload << ensure_trailing_newline_(std::move(report_lls));
-
-    std::ofstream out_file(report_file, std::ios::binary | std::ios::trunc);
-    if (!out_file) {
-      log_warn("[tsi.vicreg] transfer-matrix report open failed: %s\n",
-               report_file.string().c_str());
-      if (event.wave) {
-        emit_meta_(*event.wave, out,
-                   "transfer_matrix_eval.report_save_failed reason=open_file");
+    const auto write_payload = [&](const std::filesystem::path& path,
+                                   std::string_view report_kind,
+                                   std::string payload_lls) -> bool {
+      if (!has_non_ws_ascii_(payload_lls)) return true;
+      runtime_lls_document_t payload{};
+      std::string parse_error;
+      if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+              payload_lls, &payload, &parse_error)) {
+        log_warn("[tsi.vicreg] transfer-matrix report parse failed: %s (%s)\n",
+                 path.string().c_str(), parse_error.c_str());
+        return false;
       }
-      return;
-    }
-    out_file << payload.str();
-    if (!out_file.good()) {
-      log_warn("[tsi.vicreg] transfer-matrix report write failed: %s\n",
-               report_file.string().c_str());
+      append_runtime_string_entry_(&payload, "report_kind", report_kind);
+      append_runtime_string_entry_(&payload, "canonical_path", canonical_path);
+      append_runtime_string_entry_(&payload, "source_label", canonical_path);
+      append_runtime_string_entry_(
+          &payload, "tsi_type", "tsi.wikimyei.representation.vicreg");
+      append_runtime_string_entry_if_nonempty_(
+          &payload, "component_instance_name", component_name_);
+      append_runtime_string_entry_(
+          &payload, "report_event", report_event_token(report_event_e::RunEnd));
+      append_runtime_string_entry_(
+          &payload,
+          "run_id",
+          effective_runtime_report_run_id_(
+              runtime_run_id_, representation_hashimyei_));
+      append_runtime_string_entry_if_nonempty_(
+          &payload, "hashimyei", representation_hashimyei_);
+
+      std::string canonical_payload;
+      try {
+        canonical_payload =
+            cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+                payload);
+      } catch (const std::exception& e) {
+        log_warn("[tsi.vicreg] transfer-matrix report emit failed: %s (%s)\n",
+                 path.string().c_str(), e.what());
+        return false;
+      }
+
+      std::ofstream out_file(path, std::ios::binary | std::ios::trunc);
+      if (!out_file) {
+        log_warn("[tsi.vicreg] transfer-matrix report open failed: %s\n",
+                 path.string().c_str());
+        return false;
+      }
+      out_file << canonical_payload;
+      if (!out_file.good()) {
+        log_warn("[tsi.vicreg] transfer-matrix report write failed: %s\n",
+                 path.string().c_str());
+        return false;
+      }
+      return true;
+    };
+
+    const bool has_summary_payload = has_non_ws_ascii_(report_lls);
+    const bool has_matrix_payload = has_non_ws_ascii_(matrix_report_lls);
+    const bool wrote_summary = !has_summary_payload ||
+                               write_payload(report_file,
+                                             "transfer_matrix_evaluation",
+                                             std::move(report_lls));
+    const bool wrote_matrix = !has_matrix_payload ||
+                              write_payload(matrix_report_file,
+                                            "transfer_matrix_evaluation_matrix",
+                                            std::move(matrix_report_lls));
+    if (!wrote_summary || !wrote_matrix) {
       if (event.wave) {
         emit_meta_(*event.wave, out,
                    "transfer_matrix_eval.report_save_failed reason=write_file");
       }
       return;
     }
-
     if (event.wave) {
-      emit_meta_(*event.wave, out,
-                 std::string("transfer_matrix_eval.report_saved path=") +
-                     report_file.string());
+      std::string msg =
+          std::string("transfer_matrix_eval.report_saved path=") + report_file.string();
+      if (has_matrix_payload && wrote_matrix) {
+        msg += " matrix_path=" + matrix_report_file.string();
+      }
+      emit_meta_(*event.wave, out, std::move(msg));
     }
   }
 
@@ -836,8 +934,8 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   bool wrote_weights_network_analytics_file = false;
   fs::path weights_entropic_capacity_file{};
   bool wrote_weights_entropic_capacity_file = false;
-  const fs::path status_kv_file = action.report_fragment_directory / "status.latest.kv";
-  bool wrote_status_kv_file = false;
+  const fs::path status_lls_file = action.report_fragment_directory / "status.latest.lls";
+  bool wrote_status_lls_file = false;
   auto* out = static_cast<wikimyei_representation_vicreg_init_record_t*>(action.user_data);
   const bool enable_network_analytics_sidecar =
       !out || out->enable_network_analytics_sidecar;
@@ -845,8 +943,10 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       !out || out->enable_entropic_capacity_sidecar;
   const std::string contract_hash = out ? out->contract_hash : std::string{};
   const std::string run_id = out ? out->run_id : std::string{};
-  const std::string canonical_base =
+  const std::string canonical_path =
       std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
+  const std::string effective_run_id =
+      effective_runtime_report_run_id_(run_id, action.report_fragment_id);
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
     auto* model = static_cast<cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(action.object_handle);
@@ -862,11 +962,11 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       if (write_vicreg_network_analytics_sidecar_(
               *model,
               weights_file,
-              canonical_base,
+              canonical_path,
               kWikimyeiVicregCanonicalType,
               action.report_fragment_id,
               contract_hash,
-              run_id,
+              effective_run_id,
               &weights_network_analytics_file,
               &report_error)) {
         wrote_weights_network_analytics_file = true;
@@ -893,14 +993,24 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
                     weights_network_analytics_file,
                     &entropic_report,
                     &cmp_error)) {
-          entropic_report.run_id = run_id;
+          entropic_report.run_id = effective_run_id;
+          const auto entropic_report_identity = make_component_report_identity(
+              "entropic_capacity_comparison",
+              canonical_path,
+              kWikimyeiVicregCanonicalType,
+              action.report_fragment_id,
+              contract_hash,
+              {},
+              {},
+              effective_run_id);
           weights_entropic_capacity_file = weights_file;
           weights_entropic_capacity_file += ".entropic_capacity.lls";
           std::string write_error;
           if (cuwacunu::piaabo::torch_compat::write_entropic_capacity_comparison_file(
                   entropic_report,
                   weights_entropic_capacity_file,
-                  &write_error)) {
+                  &write_error,
+                  entropic_report_identity)) {
             wrote_weights_entropic_capacity_file = true;
           } else {
             log_warn(
@@ -940,9 +1050,9 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   metadata << "family=" << kWikimyeiVicregFamily << "\n";
   metadata << "model=" << kWikimyeiVicregModel << "\n";
   metadata << "hashimyei=" << action.report_fragment_id << "\n";
-  metadata << "canonical_base=" << canonical_base << "\n";
+  metadata << "canonical_path=" << canonical_path << "\n";
   metadata << "weights_file=" << weights_file.filename().string() << "\n";
-  metadata << "status_file=" << status_kv_file.filename().string() << "\n";
+  metadata << "status_file=" << status_lls_file.filename().string() << "\n";
   if (wrote_weights_network_analytics_file) {
     metadata << "weights_network_analytics_file="
              << weights_network_analytics_file.filename().string()
@@ -987,26 +1097,43 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       trained_steps =
           static_cast<std::uint64_t>(std::max(0, model->runtime_state.optimizer_steps));
     }
-    std::ostringstream status_kv;
-    status_kv << "schema=tsi.wikimyei.representation.vicreg.status.v1\n";
-    status_kv << "canonical_base=" << canonical_base << "\n";
-    status_kv << "hashimyei=" << action.report_fragment_id << "\n";
-    status_kv << "trained_epochs=0\n";
-    status_kv << "trained_steps=" << trained_steps << "\n";
-    status_kv << "trained_samples=0\n";
-    status_kv << "last_trial_id=\n";
-    status_kv << "last_wave_hash=\n";
-    status_kv << "last_contract_hash=" << contract_hash << "\n";
-    if (!run_id.empty()) {
-      status_kv << "run_id=" << run_id << "\n";
-    }
-    status_kv << "updated_at_ms=" << now_ms << "\n";
+    runtime_lls_document_t status_lls{};
+    append_runtime_string_entry_(
+        &status_lls, "schema", "tsi.wikimyei.representation.vicreg.status.v1");
+    append_runtime_string_entry_(&status_lls, "report_kind", "status");
+    append_runtime_string_entry_(
+        &status_lls, "tsi_type", kWikimyeiVicregCanonicalType);
+    append_runtime_string_entry_(&status_lls, "canonical_path", canonical_path);
+    append_runtime_string_entry_(
+        &status_lls, "source_label", canonical_path);
+    append_runtime_string_entry_(
+        &status_lls, "hashimyei", action.report_fragment_id);
+    append_runtime_string_entry_(&status_lls, "contract_hash", contract_hash);
+    append_runtime_string_entry_(&status_lls, "run_id", effective_run_id);
+    append_runtime_u64_entry_(&status_lls, "trained_epochs", 0);
+    append_runtime_u64_entry_(&status_lls, "trained_steps", trained_steps);
+    append_runtime_u64_entry_(&status_lls, "trained_samples", 0);
+    append_runtime_string_entry_(&status_lls, "last_trial_id", "");
+    append_runtime_string_entry_(&status_lls, "last_wave_hash", "");
+    append_runtime_string_entry_(&status_lls, "last_contract_hash", contract_hash);
+    append_runtime_u64_entry_(&status_lls, "updated_at_ms", now_ms);
     std::string status_error;
-    if (!write_wikimyei_text_file(status_kv_file, status_kv.str(), &status_error)) {
+    std::string status_payload;
+    try {
+      status_payload =
+          cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+              status_lls);
+    } catch (const std::exception& e) {
+      if (error) {
+        *error = "cannot serialize status report: " + std::string(e.what());
+      }
+      return false;
+    }
+    if (!write_wikimyei_text_file(status_lls_file, status_payload, &status_error)) {
       if (error) *error = "cannot persist status report: " + status_error;
       return false;
     }
-    wrote_status_kv_file = true;
+    wrote_status_lls_file = true;
   }
 
   cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
@@ -1034,8 +1161,8 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       };
   append_manifest_file_if_present(action.report_fragment_directory / "metadata.enc");
   append_manifest_file_if_present(action.report_fragment_directory / "metadata.txt");
-  if (wrote_status_kv_file) {
-    append_manifest_file_if_present(status_kv_file);
+  if (wrote_status_lls_file) {
+    append_manifest_file_if_present(status_lls_file);
   }
   if (wrote_weights_network_analytics_file) {
     append_manifest_file_if_present(weights_network_analytics_file);
@@ -1051,7 +1178,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   }
 
   if (out) {
-    out->canonical_base = canonical_base;
+    out->canonical_base = canonical_path;
     out->weights_file = weights_file;
     if (wrote_weights_entropic_capacity_file) {
       out->entropic_capacity_file = weights_entropic_capacity_file;
@@ -1077,7 +1204,7 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   }
 
   const fs::path weights_file = action.report_fragment_directory / "weights.init.pt";
-  const std::string canonical_base =
+  const std::string canonical_path =
       std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
   std::error_code ec;
   if (!fs::exists(weights_file, ec) || !fs::is_regular_file(weights_file, ec)) {
@@ -1122,6 +1249,8 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       load_ctx && load_ctx->enable_entropic_capacity_sidecar;
   const std::string run_id =
       (load_ctx && !load_ctx->run_id.empty()) ? load_ctx->run_id : std::string{};
+  const std::string effective_run_id =
+      effective_runtime_report_run_id_(run_id, action.report_fragment_id);
 
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
@@ -1152,11 +1281,11 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       if (write_vicreg_network_analytics_sidecar_(
               *model,
               weights_file,
-              canonical_base,
+              canonical_path,
               kWikimyeiVicregCanonicalType,
               action.report_fragment_id,
               model->contract_hash,
-              run_id,
+              effective_run_id,
               &weights_network_analytics_file,
               &report_error)) {
         wrote_weights_network_analytics_file = true;
@@ -1184,7 +1313,16 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
                       weights_network_analytics_file,
                       &entropic_report,
                       &cmp_error)) {
-            entropic_report.run_id = run_id;
+            entropic_report.run_id = effective_run_id;
+            const auto entropic_report_identity = make_component_report_identity(
+                "entropic_capacity_comparison",
+                canonical_path,
+                kWikimyeiVicregCanonicalType,
+                action.report_fragment_id,
+                contract_hash,
+                {},
+                {},
+                effective_run_id);
             fs::path weights_entropic_capacity_file = weights_file;
             weights_entropic_capacity_file += ".entropic_capacity.lls";
             std::string write_error;
@@ -1192,7 +1330,8 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
                     write_entropic_capacity_comparison_file(
                         entropic_report,
                         weights_entropic_capacity_file,
-                        &write_error)) {
+                        &write_error,
+                        entropic_report_identity)) {
               log_warn(
                   "[tsi.vicreg] load entropic report skipped for '%s': %s\n",
                   weights_entropic_capacity_file.string().c_str(),

@@ -1,16 +1,18 @@
 #include "piaabo/torch_compat/entropic_capacity_comparison.h"
 
-#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace cuwacunu {
 namespace piaabo {
@@ -19,56 +21,83 @@ namespace torch_compat {
 namespace {
 
 constexpr double kNumericEpsilon = 1e-18;
+constexpr std::string_view kRefRangeNonNegative = "(0,+inf)";
+constexpr std::string_view kRefRangeSigned = "(-inf,+inf)";
+constexpr std::string_view kCapacityRegimeDomain =
+    "[under_capacity,matched,surplus_capacity]";
 
-[[nodiscard]] std::string_view trim_ascii_ws_view_(std::string_view text) {
-  std::size_t begin = 0;
-  std::size_t end = text.size();
-  while (begin < end &&
-         std::isspace(static_cast<unsigned char>(text[begin])) != 0) {
-    ++begin;
+using runtime_lls_document_t =
+    cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
+
+void append_component_report_identity_entries_(
+    runtime_lls_document_t* document,
+    const tsiemene::component_report_identity_t& report_identity) {
+  if (!document) return;
+  if (!report_identity.report_kind.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "report_kind", report_identity.report_kind));
   }
-  while (end > begin &&
-         std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) {
-    --end;
+  if (!report_identity.tsi_type.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "tsi_type", report_identity.tsi_type));
   }
-  return text.substr(begin, end - begin);
+  if (!report_identity.canonical_path.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "canonical_path", report_identity.canonical_path));
+  }
+  if (!report_identity.hashimyei.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "hashimyei", report_identity.hashimyei));
+  }
+  if (!report_identity.contract_hash.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "contract_hash", report_identity.contract_hash));
+  }
+  if (!report_identity.wave_hash.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_hash", report_identity.wave_hash));
+  }
+  if (!report_identity.binding_id.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "binding_id", report_identity.binding_id));
+  }
+  if (!report_identity.run_id.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "run_id", report_identity.run_id));
+  }
 }
 
 [[nodiscard]] std::optional<double> extract_numeric_kv_(
     std::string_view payload,
     std::string_view key) {
-  std::size_t cursor = 0;
-  while (cursor < payload.size()) {
-    std::size_t line_end = payload.find('\n', cursor);
-    if (line_end == std::string_view::npos) line_end = payload.size();
-
-    std::string_view line = payload.substr(cursor, line_end - cursor);
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-    line = trim_ascii_ws_view_(line);
-
-    if (!line.empty()) {
-      const std::size_t sep = line.find('=');
-      if (sep != std::string_view::npos) {
-        const std::string parsed_key =
-            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
-                line.substr(0, sep));
-        if (parsed_key == key) {
-          const std::string value(trim_ascii_ws_view_(line.substr(sep + 1)));
-          if (value.empty()) return std::nullopt;
-          try {
-            std::size_t pos = 0;
-            const double numeric = std::stod(value, &pos);
-            if (pos != value.size()) return std::nullopt;
-            return numeric;
-          } catch (...) {
-            return std::nullopt;
-          }
-        }
-      }
-    }
-
-    if (line_end == payload.size()) break;
-    cursor = line_end + 1;
+  runtime_lls_document_t document{};
+  std::string parse_error;
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          payload, &document, &parse_error)) {
+    return std::nullopt;
+  }
+  std::unordered_map<std::string, std::string> kv{};
+  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          document, &kv, &parse_error)) {
+    return std::nullopt;
+  }
+  const auto it = kv.find(std::string(key));
+  if (it == kv.end() || it->second.empty()) return std::nullopt;
+  try {
+    std::size_t pos = 0;
+    const double numeric = std::stod(it->second, &pos);
+    if (pos != it->second.size()) return std::nullopt;
+    return numeric;
+  } catch (...) {
+    return std::nullopt;
   }
   return std::nullopt;
 }
@@ -167,34 +196,61 @@ bool summarize_entropic_capacity_comparison_from_files(
 }
 
 std::string entropic_capacity_comparison_to_latent_lineage_state_text(
-    const entropic_capacity_comparison_report_t& report) {
-  std::ostringstream oss;
-  oss.setf(std::ios::fixed);
-  oss << std::setprecision(10);
-
-  oss << "schema=" << report.schema << "\n";
-  oss << "source_entropic_load=" << report.source_entropic_load << "\n";
-  oss << "network_entropic_capacity=" << report.network_entropic_capacity << "\n";
-  oss << "capacity_margin=" << report.capacity_margin << "\n";
-  oss << "capacity_ratio=" << report.capacity_ratio << "\n";
-  oss << "capacity_regime=" << report.capacity_regime << "\n";
-  if (!report.run_id.empty()) {
-    oss << "run_id=" << report.run_id << "\n";
+    const entropic_capacity_comparison_report_t& report,
+    const tsiemene::component_report_identity_t& report_identity) {
+  runtime_lls_document_t document{};
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "schema", report.schema));
+  append_component_report_identity_entries_(&document, report_identity);
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source_entropic_load",
+          report.source_entropic_load,
+          std::string(kRefRangeNonNegative)));
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "network_entropic_capacity",
+          report.network_entropic_capacity,
+          std::string(kRefRangeNonNegative)));
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "capacity_margin", report.capacity_margin, std::string(kRefRangeSigned)));
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "capacity_ratio",
+          report.capacity_ratio,
+          std::string(kRefRangeNonNegative)));
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_entry(
+          "capacity_regime",
+          report.capacity_regime,
+          "str",
+          std::string(kCapacityRegimeDomain)));
+  if (!report.run_id.empty() && report_identity.run_id.empty()) {
+    document.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "run_id", report.run_id));
   }
   if (!report.source_analytics_file.empty()) {
-    oss << "source_analytics_file=" << report.source_analytics_file << "\n";
+    document.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "source_analytics_file", report.source_analytics_file));
   }
   if (!report.network_analytics_file.empty()) {
-    oss << "network_analytics_file=" << report.network_analytics_file << "\n";
+    document.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "network_analytics_file", report.network_analytics_file));
   }
-  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
-      oss.str());
+  return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+      document);
 }
 
 bool write_entropic_capacity_comparison_file(
     const entropic_capacity_comparison_report_t& report,
     const std::filesystem::path& output_file,
-    std::string* error) {
+    std::string* error,
+    const tsiemene::component_report_identity_t& report_identity) {
   if (error) error->clear();
 
   std::error_code ec;
@@ -217,7 +273,15 @@ bool write_entropic_capacity_comparison_file(
     }
     return false;
   }
-  out << entropic_capacity_comparison_to_latent_lineage_state_text(report);
+  try {
+    out << entropic_capacity_comparison_to_latent_lineage_state_text(
+        report, report_identity);
+  } catch (const std::exception& e) {
+    if (error) {
+      *error = "cannot serialize comparison report: " + std::string(e.what());
+    }
+    return false;
+  }
   if (!out.good()) {
     if (error) {
       *error = "cannot write comparison output file: " + output_file.string();

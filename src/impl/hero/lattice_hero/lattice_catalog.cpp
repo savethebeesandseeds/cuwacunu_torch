@@ -20,11 +20,15 @@
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/hero_catalog_schema.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 
 namespace cuwacunu {
 namespace hero {
 namespace wave {
 namespace {
+
+using runtime_lls_document_t =
+    cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t b = 0;
@@ -148,11 +152,172 @@ namespace {
   return true;
 }
 
-[[nodiscard]] std::string format_projection_double(double v) {
-  std::ostringstream oss;
-  oss.setf(std::ios::fixed);
-  oss << std::setprecision(12) << v;
-  return oss.str();
+void append_runtime_string_entry_(runtime_lls_document_t* document,
+                                  std::string_view key,
+                                  std::string_view value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          std::string(key), std::string(value)));
+}
+
+void append_runtime_string_entry_if_nonempty_(runtime_lls_document_t* document,
+                                              std::string_view key,
+                                              std::string_view value) {
+  if (!document || value.empty()) return;
+  append_runtime_string_entry_(document, key, value);
+}
+
+void append_runtime_int_entry_(runtime_lls_document_t* document,
+                               std::string_view key,
+                               std::int64_t value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_int_entry(
+          std::string(key), value));
+}
+
+void append_runtime_u64_entry_(runtime_lls_document_t* document,
+                               std::string_view key,
+                               std::uint64_t value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+          std::string(key), value));
+}
+
+void append_runtime_double_entry_(runtime_lls_document_t* document,
+                                  std::string_view key,
+                                  double value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          std::string(key), value));
+}
+
+[[nodiscard]] bool parse_runtime_lls_payload(
+    std::string_view payload,
+    std::unordered_map<std::string, std::string>* out,
+    runtime_lls_document_t* out_document,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "runtime .lls kv output pointer is null";
+    return false;
+  }
+  out->clear();
+  if (out_document) out_document->entries.clear();
+
+  runtime_lls_document_t parsed{};
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          payload, &parsed, error)) {
+    return false;
+  }
+  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          parsed, out, error)) {
+    return false;
+  }
+  if (const auto it = out->find("schema"); it == out->end() || it->second.empty()) {
+    if (error) *error = "persisted runtime .lls requires top-level schema key";
+    return false;
+  }
+  if (out_document) *out_document = std::move(parsed);
+  return true;
+}
+
+[[nodiscard]] bool extract_joined_source_runtime_projection_document(
+    std::string_view joined_report_lls,
+    std::string_view fallback_run_id,
+    runtime_lls_document_t* out_document,
+    std::string* out_schema,
+    std::string* out_run_id,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out_document) {
+    if (error) *error = "source runtime projection document output pointer is null";
+    return false;
+  }
+  out_document->entries.clear();
+  if (out_schema) out_schema->clear();
+  if (out_run_id) out_run_id->clear();
+
+  std::string schema_line{};
+  std::vector<std::string> normalized_lines{};
+  std::string explicit_run_id{};
+  std::size_t cursor = 0;
+  while (cursor < joined_report_lls.size()) {
+    std::size_t line_end = joined_report_lls.find('\n', cursor);
+    if (line_end == std::string_view::npos) line_end = joined_report_lls.size();
+    std::string_view line = joined_report_lls.substr(cursor, line_end - cursor);
+    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    const std::string trimmed = trim_ascii(line);
+    if (!trimmed.empty() && trimmed.front() != '#') {
+      const std::size_t eq = trimmed.find('=');
+      if (eq != std::string::npos && eq > 0) {
+        const std::string lhs = trim_ascii(trimmed.substr(0, eq));
+        const std::string rhs = trim_ascii(trimmed.substr(eq + 1));
+        const std::string key =
+            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(lhs);
+        if (key.size() >= 15 && key.compare(0, 15, "source.runtime.") == 0) {
+          if (key == "source.runtime.projection.run_id") {
+            if (explicit_run_id.empty()) explicit_run_id = rhs;
+          } else {
+            const std::string normalized =
+                cuwacunu::camahjucunu::dsl::normalize_assignment_to_lattice_state(
+                    lhs, rhs);
+            if (normalized.empty()) {
+              if (error) {
+                *error = "cannot normalize source runtime projection assignment: " +
+                         trimmed;
+              }
+              return false;
+            }
+            if (key == "source.runtime.projection.schema") {
+              schema_line = normalized;
+            } else {
+              normalized_lines.push_back(normalized);
+            }
+          }
+        }
+      }
+    }
+    if (line_end == joined_report_lls.size()) break;
+    cursor = line_end + 1;
+  }
+
+  if (schema_line.empty()) {
+    if (error) *error = "joined report_lls missing source.runtime.projection.schema";
+    return false;
+  }
+
+  std::ostringstream payload;
+  payload << schema_line << "\n";
+  for (const auto& line : normalized_lines) payload << line << "\n";
+
+  runtime_lls_document_t parsed{};
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          payload.str(), &parsed, error)) {
+    return false;
+  }
+  std::unordered_map<std::string, std::string> kv{};
+  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          parsed, &kv, error)) {
+    return false;
+  }
+
+  const auto it_schema = kv.find("source.runtime.projection.schema");
+  if (it_schema == kv.end() || trim_ascii(it_schema->second).empty()) {
+    if (error) *error = "source runtime projection document is missing schema";
+    return false;
+  }
+
+  *out_document = std::move(parsed);
+  if (out_schema) *out_schema = trim_ascii(it_schema->second);
+  if (out_run_id) {
+    *out_run_id = trim_ascii(explicit_run_id);
+    if (out_run_id->empty()) *out_run_id = trim_ascii(fallback_run_id);
+  }
+  return true;
 }
 
 [[nodiscard]] std::string build_projection_lls_payload(
@@ -167,24 +332,20 @@ namespace {
   std::sort(projection_txt.begin(), projection_txt.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
 
-  std::ostringstream payload;
-  payload << "# wave.projection.lls.v2\n";
-  payload << "schema=wave.projection.lls.v2\n";
-  payload << "projection_version=" << projection.projection_version << "\n";
-  payload << "projector_build_id=" << projection.projector_build_id << "\n";
-
-  payload << "\n# section.projection_num\n";
+  runtime_lls_document_t payload{};
+  append_runtime_string_entry_(&payload, "schema", "wave.projection.lls.v2");
+  append_runtime_int_entry_(
+      &payload, "projection_version", static_cast<std::int64_t>(projection.projection_version));
+  append_runtime_string_entry_(
+      &payload, "projector_build_id", projection.projector_build_id);
   for (const auto& [k, v] : projection_num) {
-    payload << k << "=" << format_projection_double(v) << "\n";
+    append_runtime_double_entry_(&payload, k, v);
   }
-
-  payload << "\n# section.projection_txt\n";
   for (const auto& [k, v] : projection_txt) {
-    payload << k << "=" << v << "\n";
+    append_runtime_string_entry_(&payload, k, v);
   }
-
-  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
-      payload.str());
+  return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+      payload);
 }
 
 [[nodiscard]] std::uint64_t fnv1a64(std::string_view text) {
@@ -537,6 +698,86 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
   std::ostringstream out;
   out << trim_ascii(hashimyei_cursor) << "|" << wave_cursor;
   return out.str();
+}
+
+void append_synthetic_source_runtime_report_fragments(
+    const std::unordered_map<std::string, wave_cell_t>& cells_by_id,
+    const std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>&
+        runtime_runs_by_id,
+    std::string_view canonical_path, std::string_view schema,
+    std::vector<runtime_report_fragment_t>* out) {
+  if (!out) return;
+  const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
+  const std::string sc(schema);
+  if (cp.empty() || !starts_with(cp, "tsi.source.")) return;
+  if (!sc.empty() && sc != "wave.source.runtime.projection.v2") return;
+
+  for (const auto& [_, cell] : cells_by_id) {
+    std::unordered_map<std::string, std::string> joined_kv{};
+    (void)parse_kv_payload(cell.report.report_lls, &joined_kv);
+    std::string fallback_run_id{};
+    if (const auto it = joined_kv.find("run_id"); it != joined_kv.end()) {
+      fallback_run_id = trim_ascii(it->second);
+    }
+
+    runtime_lls_document_t source_payload{};
+    std::string synthetic_schema{};
+    std::string synthetic_run_id{};
+    std::string projection_error{};
+    if (!extract_joined_source_runtime_projection_document(
+            cell.report.report_lls, fallback_run_id, &source_payload,
+            &synthetic_schema, &synthetic_run_id, &projection_error)) {
+      continue;
+    }
+    if (synthetic_schema.empty()) continue;
+    if (!sc.empty() && synthetic_schema != sc) continue;
+    if (synthetic_run_id.empty()) continue;
+
+    std::unordered_map<std::string, std::string> runtime_kv{};
+    runtime_kv["run_id"] = synthetic_run_id;
+    std::uint64_t synthetic_wave_cursor = 0;
+    if (!build_runtime_wave_cursor(synthetic_run_id, runtime_kv,
+                                   runtime_runs_by_id,
+                                   &synthetic_wave_cursor)) {
+      continue;
+    }
+
+    runtime_lls_document_t payload = std::move(source_payload);
+    append_runtime_string_entry_(
+        &payload, "source.runtime.projection.run_id", synthetic_run_id);
+    append_runtime_string_entry_(&payload, "run_id", synthetic_run_id);
+    append_runtime_string_entry_(&payload, "canonical_path", cp);
+    append_runtime_string_entry_(&payload, "source_label", cp);
+    append_runtime_u64_entry_(&payload, "wave_cursor", synthetic_wave_cursor);
+    append_runtime_string_entry_(&payload, "wave_cursor_resolution", "run");
+    append_runtime_string_entry_(&payload, "hashimyei_cursor", cp);
+    append_runtime_string_entry_(
+        &payload, "intersection_cursor",
+        build_intersection_cursor(cp, synthetic_wave_cursor));
+    const std::string synthetic_payload =
+        cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+            payload);
+
+    std::string synthetic_report_fragment_id{};
+    const std::string seed = "source-runtime-synth|" + cell.cell_id + "|" +
+                             synthetic_run_id + "|" + synthetic_payload;
+    if (!sha256_hex_bytes(seed, &synthetic_report_fragment_id, nullptr)) {
+      continue;
+    }
+
+    runtime_report_fragment_t synthetic{};
+    synthetic.report_fragment_id = synthetic_report_fragment_id;
+    synthetic.run_id = synthetic_run_id;
+    synthetic.canonical_path = cp;
+    synthetic.hashimyei = maybe_hashimyei_from_canonical(cp);
+    synthetic.schema = synthetic_schema;
+    synthetic.report_fragment_sha256 = synthetic_report_fragment_id;
+    synthetic.path =
+        "[lattice.synthetic.source_runtime cell=" + cell.cell_id + "]";
+    synthetic.ts_ms = cell.updated_at_ms;
+    synthetic.payload_json = synthetic_payload;
+    out->push_back(std::move(synthetic));
+  }
 }
 
 [[nodiscard]] bool is_known_runtime_schema(std::string_view schema) {
@@ -1899,14 +2140,19 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
   if (payload.empty()) return true;
 
   std::unordered_map<std::string, std::string> kv;
-  (void)parse_kv_payload(payload, &kv);
+  runtime_lls_document_t document{};
+  if (!parse_runtime_lls_payload(payload, &kv, &document, error)) {
+    set_error(error, "runtime .lls parse failure for " + path.string() + ": " +
+                         (error ? *error : std::string{}));
+    return false;
+  }
   const std::string schema = kv["schema"];
   if (!is_known_runtime_schema(schema)) return true;
 
   std::string report_fragment_sha;
   if (!sha256_hex_file(path, &report_fragment_sha, error)) return false;
 
-  std::string canonical_path = kv["canonical_base"];
+  std::string canonical_path = kv["canonical_path"];
   if (canonical_path.empty()) canonical_path = kv["source_label"];
   if (canonical_path.empty()) canonical_path = canonical_path_from_report_fragment_path(path);
   canonical_path = normalize_source_hashimyei_cursor(canonical_path);
@@ -1944,17 +2190,16 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
       infer_runtime_wave_cursor_resolution(kv);
   const std::string wave_cursor_resolution_token =
       runtime_wave_cursor_resolution_token(wave_cursor_resolution);
-  std::string payload_with_cursor = payload;
-  if (!payload_with_cursor.empty() && payload_with_cursor.back() != '\n') {
-    payload_with_cursor.push_back('\n');
-  }
-  payload_with_cursor += "wave_cursor=" + std::to_string(wave_cursor) + "\n";
-  payload_with_cursor +=
-      "wave_cursor_resolution=" + wave_cursor_resolution_token + "\n";
-  payload_with_cursor += "hashimyei_cursor=" + canonical_path + "\n";
-  payload_with_cursor += "intersection_cursor=" +
-                         build_intersection_cursor(canonical_path, wave_cursor) +
-                         "\n";
+  append_runtime_u64_entry_(&document, "wave_cursor", wave_cursor);
+  append_runtime_string_entry_(
+      &document, "wave_cursor_resolution", wave_cursor_resolution_token);
+  append_runtime_string_entry_(&document, "hashimyei_cursor", canonical_path);
+  append_runtime_string_entry_(
+      &document,
+      "intersection_cursor",
+      build_intersection_cursor(canonical_path, wave_cursor));
+  const std::string payload_with_cursor =
+      cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(document);
 
   std::filesystem::path cp = path;
   if (const auto can = canonicalized(path); can.has_value()) cp = *can;
@@ -2135,94 +2380,8 @@ bool lattice_catalog_store_t::list_runtime_report_fragments(
     normalized_fragment.canonical_path = fragment_cp;
     out->push_back(std::move(normalized_fragment));
   }
-
-  if (!cp.empty() && starts_with(cp, "tsi.source.") &&
-      (sc.empty() || sc == "wave.source.runtime.projection.v2")) {
-    for (const auto& [_, cell] : cells_by_id_) {
-      std::unordered_map<std::string, std::string> joined_kv{};
-      (void)parse_kv_payload(cell.report.report_lls, &joined_kv);
-      const auto it_schema = joined_kv.find("source.runtime.projection.schema");
-      if (it_schema == joined_kv.end()) continue;
-      const std::string synthetic_schema = trim_ascii(it_schema->second);
-      if (synthetic_schema.empty()) continue;
-      if (!sc.empty() && synthetic_schema != sc) continue;
-
-      const auto it_symbol = joined_kv.find("source.runtime.symbol");
-      const std::string source_symbol =
-          (it_symbol == joined_kv.end()) ? "" : trim_ascii(it_symbol->second);
-      (void)source_symbol;
-
-      std::string synthetic_run_id{};
-      if (const auto it = joined_kv.find("source.runtime.projection.run_id");
-          it != joined_kv.end()) {
-        synthetic_run_id = trim_ascii(it->second);
-      }
-      if (synthetic_run_id.empty()) {
-        if (const auto it = joined_kv.find("run_id"); it != joined_kv.end()) {
-          synthetic_run_id = trim_ascii(it->second);
-        }
-      }
-      if (synthetic_run_id.empty()) continue;
-
-      std::vector<std::pair<std::string, std::string>> source_pairs{};
-      source_pairs.reserve(joined_kv.size());
-      for (const auto& [k, v] : joined_kv) {
-        if (starts_with(k, "source.runtime.")) {
-          source_pairs.push_back({k, v});
-        }
-      }
-      std::sort(source_pairs.begin(), source_pairs.end(),
-                [](const auto& a, const auto& b) {
-                  if (a.first != b.first) return a.first < b.first;
-                  return a.second < b.second;
-                });
-
-      std::unordered_map<std::string, std::string> runtime_kv{};
-      runtime_kv["run_id"] = synthetic_run_id;
-      std::uint64_t synthetic_wave_cursor = 0;
-      if (!build_runtime_wave_cursor(synthetic_run_id, runtime_kv,
-                                     runtime_runs_by_id_,
-                                     &synthetic_wave_cursor)) {
-        continue;
-      }
-
-      std::ostringstream payload;
-      payload << "schema=" << synthetic_schema << "\n";
-      payload << "run_id=" << synthetic_run_id << "\n";
-      payload << "canonical_base=" << cp << "\n";
-      payload << "source_label=" << cp << "\n";
-      payload << "wave_cursor=" << synthetic_wave_cursor << "\n";
-      payload << "wave_cursor_resolution=run\n";
-      payload << "hashimyei_cursor=" << cp << "\n";
-      payload << "intersection_cursor="
-              << build_intersection_cursor(cp, synthetic_wave_cursor)
-              << "\n";
-      for (const auto& [k, v] : source_pairs) {
-        payload << k << "=" << v << "\n";
-      }
-      const std::string synthetic_payload = payload.str();
-
-      std::string synthetic_report_fragment_id{};
-      const std::string seed = "source-runtime-synth|" + cell.cell_id + "|" +
-                               synthetic_run_id + "|" + synthetic_payload;
-      if (!sha256_hex_bytes(seed, &synthetic_report_fragment_id, nullptr)) {
-        continue;
-      }
-
-      runtime_report_fragment_t synthetic{};
-      synthetic.report_fragment_id = synthetic_report_fragment_id;
-      synthetic.run_id = synthetic_run_id;
-      synthetic.canonical_path = cp;
-      synthetic.hashimyei = maybe_hashimyei_from_canonical(cp);
-      synthetic.schema = synthetic_schema;
-      synthetic.report_fragment_sha256 = synthetic_report_fragment_id;
-      synthetic.path = "[lattice.synthetic.source_runtime cell=" + cell.cell_id +
-                       "]";
-      synthetic.ts_ms = cell.updated_at_ms;
-      synthetic.payload_json = synthetic_payload;
-      out->push_back(std::move(synthetic));
-    }
-  }
+  append_synthetic_source_runtime_report_fragments(
+      cells_by_id_, runtime_runs_by_id_, cp, sc, out);
 
   std::sort(out->begin(), out->end(),
             [newest_first](const auto& a, const auto& b) {
@@ -2239,6 +2398,98 @@ bool lattice_catalog_store_t::list_runtime_report_fragments(
   count = std::min(count, out->size() - off);
   out->assign(out->begin() + static_cast<std::ptrdiff_t>(off),
               out->begin() + static_cast<std::ptrdiff_t>(off + count));
+  return true;
+}
+
+bool lattice_catalog_store_t::latest_runtime_report_fragment(
+    std::string_view canonical_path, std::string_view schema,
+    runtime_report_fragment_t* out, std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "report_fragment output pointer is null");
+    return false;
+  }
+  *out = runtime_report_fragment_t{};
+
+  std::vector<runtime_report_fragment_t> rows{};
+  if (!list_runtime_report_fragments(canonical_path, schema, 1, 0, true, &rows,
+                                     error)) {
+    return false;
+  }
+  if (rows.empty()) {
+    set_error(error, "report_fragment not found for canonical_path/schema");
+    return false;
+  }
+  *out = std::move(rows.front());
+  return true;
+}
+
+bool lattice_catalog_store_t::get_runtime_report_fragment(
+    std::string_view report_fragment_id, runtime_report_fragment_t* out,
+    std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "report_fragment output pointer is null");
+    return false;
+  }
+  *out = runtime_report_fragment_t{};
+
+  const auto it = runtime_report_fragments_by_id_.find(std::string(report_fragment_id));
+  if (it != runtime_report_fragments_by_id_.end()) {
+    *out = it->second;
+    out->canonical_path = normalize_source_hashimyei_cursor(out->canonical_path);
+    return true;
+  }
+
+  std::unordered_set<std::string> source_paths{};
+  for (const auto& [_, fragment] : runtime_report_fragments_by_id_) {
+    const std::string cp =
+        normalize_source_hashimyei_cursor(fragment.canonical_path);
+    if (starts_with(cp, "tsi.source.")) {
+      source_paths.insert(cp);
+    }
+  }
+
+  for (const auto& cp : source_paths) {
+    std::vector<runtime_report_fragment_t> synthetic_rows{};
+    append_synthetic_source_runtime_report_fragments(
+        cells_by_id_, runtime_runs_by_id_, cp,
+        "wave.source.runtime.projection.v2", &synthetic_rows);
+    for (const auto& fragment : synthetic_rows) {
+      if (fragment.report_fragment_id == report_fragment_id) {
+        *out = fragment;
+        return true;
+      }
+    }
+  }
+
+  set_error(error, "report_fragment not found: " + std::string(report_fragment_id));
+  return false;
+}
+
+bool lattice_catalog_store_t::list_runtime_report_schemas(
+    std::string_view canonical_path, std::vector<std::string>* out,
+    std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "schema list output pointer is null");
+    return false;
+  }
+  out->clear();
+
+  std::vector<runtime_report_fragment_t> rows{};
+  if (!list_runtime_report_fragments(canonical_path, "", 0, 0, true, &rows,
+                                     error)) {
+    return false;
+  }
+
+  std::unordered_set<std::string> seen{};
+  for (const auto& row : rows) {
+    if (row.schema.empty()) continue;
+    if (!seen.insert(row.schema).second) continue;
+    out->push_back(row.schema);
+  }
+  std::sort(out->begin(), out->end());
   return true;
 }
 

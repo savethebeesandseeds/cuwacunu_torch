@@ -22,8 +22,11 @@ HERO_CONFIG_LINK := $(libcommon_a) $(libssl_a) $(LDLIBS_ssl)
 $(eval $(call TEST_ONEFILE, hero_config_mcp, hero_config_mcp.cpp, $(HERO_CONFIG_LINK)))
 $(TEST_OUT)/hero_config_mcp: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 
+HERO_RUNTIME_LINK := $(libcommon_a)
+$(eval $(call TEST_ONEFILE, hero_runtime_mcp, hero_runtime_mcp.cpp, $(HERO_RUNTIME_LINK)))
+
 .PHONY: all
-all: $(TEST_OUT)/hero_config_mcp $(TEST_OUT)/hero_hashimyei_mcp $(TEST_OUT)/hero_lattice_mcp
+all: $(TEST_OUT)/hero_config_mcp $(TEST_OUT)/hero_hashimyei_mcp $(TEST_OUT)/hero_lattice_mcp $(TEST_OUT)/hero_runtime_mcp
 	@$(LOG_SUCCESS)
 
 .PHONY: run
@@ -45,8 +48,14 @@ install-lattice-tools: $(TEST_OUT)/hero_lattice_mcp
 	@chmod 700 $(TEST_OUT)/hero_lattice_mcp
 	@printf "\033[2;33m[\033[90mUTIL: \033[2;32mBUILT\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(TEST_OUT)/hero_lattice_mcp"
 
+.PHONY: install-runtime-tools
+install-runtime-tools: $(TEST_OUT)/hero_runtime_mcp
+	@chmod 700 $(TEST_OUT)/hero_runtime_mcp
+	@printf "\033[2;33m[\033[90mUTIL: \033[2;32mBUILT\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(TEST_OUT)/hero_runtime_mcp"
+
 .PHONY: clean
 clean:
 	@rm -f $(TEST_OUT)/hero_config_mcp \
 	  $(TEST_OUT)/hero_hashimyei_mcp \
-	  $(TEST_OUT)/hero_lattice_mcp
+	  $(TEST_OUT)/hero_lattice_mcp \
+	  $(TEST_OUT)/hero_runtime_mcp

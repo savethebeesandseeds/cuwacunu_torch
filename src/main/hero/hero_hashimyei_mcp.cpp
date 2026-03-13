@@ -1155,6 +1155,38 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   return true;
 }
 
+[[nodiscard]] bool handle_tool_get_component_manifest(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string canonical_path{};
+  std::string hashimyei{};
+  (void)extract_json_string_field(arguments_json, "canonical_path", &canonical_path);
+  (void)extract_json_string_field(arguments_json, "hashimyei", &hashimyei);
+  if (canonical_path.empty() && hashimyei.empty()) {
+    *out_error =
+        "get_component_manifest requires arguments.canonical_path or arguments.hashimyei";
+    return false;
+  }
+
+  cuwacunu::hero::hashimyei::component_state_t component{};
+  if (!app->catalog.resolve_component(canonical_path, hashimyei, &component,
+                                      out_error)) {
+    return false;
+  }
+
+  std::ostringstream out;
+  out << "{\"canonical_path\":"
+      << json_quote(component.manifest.canonical_path)
+      << ",\"hashimyei\":"
+      << json_quote(component.manifest.component_identity.name)
+      << ",\"component\":" << component_state_to_json(component) << "}";
+  *out_structured = out.str();
+  return true;
+}
+
 [[nodiscard]] bool handle_tool_reset_catalog(app_context_t* app,
                                              const std::string& arguments_json,
                                              std::string* out_structured,
@@ -1210,6 +1242,9 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
     ok = handle_tool_list(app, arguments_json, &structured, &err);
   } else if (!ok && tool_name == "hero.hashimyei.get_founding_dsl") {
     ok = handle_tool_get_founding_dsl(app, arguments_json, &structured, &err);
+  } else if (!ok && tool_name == "hero.hashimyei.get_component_manifest") {
+    ok = handle_tool_get_component_manifest(app, arguments_json, &structured,
+                                            &err);
   } else if (!ok && tool_name != "hero.hashimyei.reset_catalog") {
     *out_error_json = "unknown tool: " + tool_name;
     return false;

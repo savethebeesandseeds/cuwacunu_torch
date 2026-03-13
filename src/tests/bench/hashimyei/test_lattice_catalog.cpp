@@ -357,51 +357,79 @@ int main() {
 
   write_text_file(
       runtime_store / "reports" / "runtime_missing_run_id.lls",
-      "schema = piaabo.torch_compat.network_analytics.v4\n"
-      "canonical_base = tsi.wikimyei.representation.vicreg.0x0042\n"
-      "metric.loss = 0.77\n");
+      "schema:str = piaabo.torch_compat.network_analytics.v4\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "metric.loss(-inf,+inf):double = 0.770000000000\n");
 
   REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
   REQUIRE(error.find("missing run_id") != std::string::npos);
   fs::remove(runtime_store / "reports" / "runtime_missing_run_id.lls");
 
   write_text_file(
+      runtime_store / "reports" / "runtime_namespaced_schema.lls",
+      "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
+      "run_id:str = run_runtime_001\n"
+      "canonical_path:str = tsi.source.dataloader.BTCUSDT\n");
+
+  REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+  REQUIRE(error.find("top-level schema key") != std::string::npos);
+  fs::remove(runtime_store / "reports" / "runtime_namespaced_schema.lls");
+
+  write_text_file(
       runtime_store / "reports" / "runtime_new.lls",
-      "schema = piaabo.torch_compat.network_analytics.v4\n"
-      "run_id = run_runtime_001\n"
-      "canonical_base = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "schema:str = piaabo.torch_compat.network_analytics.v4\n"
+      "run_id:str = run_runtime_001\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss(-inf,+inf):double = 0.25\n"
       "metric.phase:str = eval\n");
   write_text_file(
+      runtime_store / "reports" / "status.latest.lls",
+      "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
+      "report_kind:str = status\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "hashimyei:str = 0x0042\n"
+      "run_id:str = run_runtime_001\n"
+      "trained_steps(0,+inf):uint = 12\n");
+  write_text_file(
       runtime_store / "reports" / "source_data_analytics.lls",
-      "schema = piaabo.torch_compat.data_analytics.v1\n"
-      "run_id = run_runtime_001\n"
-      "canonical_base = tsi.source.dataloader.BTCUSDT\n"
-      "source_label = tsi.source.dataloader.BTCUSDT\n"
-      "sample_count = 256\n"
-      "source_entropic_load = 7.5\n");
+      "schema:str = piaabo.torch_compat.data_analytics.v1\n"
+      "run_id:str = run_runtime_001\n"
+      "canonical_path:str = tsi.source.dataloader.BTCUSDT\n"
+      "source_label:str = tsi.source.dataloader.BTCUSDT\n"
+      "sample_count(0,+inf):uint = 256\n"
+      "source_entropic_load(0,+inf):double = 7.500000000000\n");
   write_text_file(
       runtime_store / "reports" / "runtime_unsupported_schema.lls",
-      "schema = piaabo.torch_compat.network_analytics.v3\n"
-      "run_id = run_runtime_000\n"
-      "canonical_base = tsi.wikimyei.representation.vicreg.0x0042\n"
-      "metric.loss = 0.99\n");
+      "schema:str = piaabo.torch_compat.network_analytics.v3\n"
+      "run_id:str = run_runtime_000\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "metric.loss(-inf,+inf):double = 0.990000000000\n");
   write_text_file(
       runtime_store / "reports" / "runtime_wrong_ext.kv",
-      "schema = piaabo.torch_compat.network_analytics.v4\n"
-      "run_id = run_runtime_002\n"
-      "canonical_base = tsi.wikimyei.representation.vicreg.0x0042\n"
-      "metric.loss = 0.50\n");
+      "schema:str = piaabo.torch_compat.network_analytics.v4\n"
+      "run_id:str = run_runtime_002\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "metric.loss(-inf,+inf):double = 0.500000000000\n");
 
   REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> runtime_report_fragments{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments(canonical_runtime_path, "", 0, 0,
                                                  true, &runtime_report_fragments, &error));
-  REQUIRE(runtime_report_fragments.size() == 1);
-  REQUIRE(runtime_report_fragments.front().schema ==
-          "piaabo.torch_compat.network_analytics.v4");
-  REQUIRE(runtime_report_fragments.front().path.find(".lls") != std::string::npos);
+  REQUIRE(runtime_report_fragments.size() == 2);
+  bool saw_network_runtime = false;
+  bool saw_status_runtime = false;
+  for (const auto& row : runtime_report_fragments) {
+    REQUIRE(row.path.find(".lls") != std::string::npos);
+    if (row.schema == "piaabo.torch_compat.network_analytics.v4") {
+      saw_network_runtime = true;
+    }
+    if (row.schema == "tsi.wikimyei.representation.vicreg.status.v1") {
+      saw_status_runtime = true;
+    }
+  }
+  REQUIRE(saw_network_runtime);
+  REQUIRE(saw_status_runtime);
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> source_report_fragments{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments("tsi.source.dataloader",
@@ -416,9 +444,13 @@ int main() {
     }
     if (row.schema == "wave.source.runtime.projection.v2") {
       saw_source_runtime = true;
-      REQUIRE(row.payload_json.find("wave_cursor_resolution=run") !=
+      REQUIRE(row.payload_json.find(
+                  "source.runtime.request.from_ratio(0,1):double = "
+                  "0.125000000000") != std::string::npos);
+      REQUIRE(row.payload_json.find("wave_cursor_resolution:str = run") !=
               std::string::npos);
-      REQUIRE(row.payload_json.find("intersection_cursor=tsi.source.dataloader|") !=
+      REQUIRE(row.payload_json.find(
+                  "intersection_cursor:str = tsi.source.dataloader|") !=
               std::string::npos);
     }
   }

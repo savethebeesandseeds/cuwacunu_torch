@@ -1,0 +1,33 @@
+<instruction>          ::= [<line_list>] ;
+<line_list>            ::= <line> [<line_list>] ;
+
+<line>                 ::= <kv_line> | <blank_line> ;
+<kv_line>              ::= [<whitespace>] <lhs> [<whitespace>] "=" [<whitespace>] [<value>] [<whitespace>] <line_end> ;
+<blank_line>           ::= [<whitespace>] <line_end> ;
+
+<lhs>                  ::= <key> [<domain>] [<whitespace>] ":" [<whitespace>] <type> ;
+<key>                  ::= <identifier> ;
+<type>                 ::= "str" | "bool" | "int" | "uint" | "double" ;
+<domain>               ::= <range_domain> | <enum_domain> ;
+<range_domain>         ::= "(" [<range_domain_value>] ")" ;
+<range_domain_value>   ::= <range_domain_char> [<range_domain_value>] ;
+<range_domain_char>    ::= <letter> | <digit> | <space_char> | "." | "," | ":" | "-" | "_" | "\\" | "/" | "[" | "]" | "{" | "}" | "|" | "'" | "\"" | "+" | "*" | "?" | "!" | "<" | ">" | "=" | "@" ;
+<enum_domain>          ::= "[" [<enum_domain_value>] "]" ;
+<enum_domain_value>    ::= <enum_domain_char> [<enum_domain_value>] ;
+<enum_domain_char>     ::= <letter> | <digit> | <space_char> | "." | "," | ":" | "-" | "_" | "\\" | "/" | "(" | ")" | "{" | "}" | "|" | "'" | "\"" | "+" | "*" | "?" | "!" | "<" | ">" | "=" | "@" ;
+
+<value>                ::= <value_char> [<value>] ;
+<value_char>           ::= <letter> | <digit> | <symbol> | <space_char> ;
+<symbol>               ::= "." | "," | ":" | "-" | "_" | "\\" | "/" | "[" | "]" | "(" | ")" | "{" | "}" | "|" | "'" | "\"" | "+" | "*" | "?" | "!" | "<" | ">" | "=" | "@" ;
+
+<identifier>           ::= <identifier_head> [<identifier_tail>] ;
+<identifier_tail>      ::= <identifier_char> [<identifier_tail>] ;
+<identifier_char>      ::= <identifier_head> | <digit> | "." | "-" ;
+<identifier_head>      ::= <letter> | "_" ;
+
+<line_end>             ::= <newline> ;
+<whitespace>           ::= <space_char> [<whitespace>] ;
+<space_char>           ::= " " | "\t" ;
+<newline>              ::= "\n" | "\r\n" ;
+<letter>               ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<digit>                ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;

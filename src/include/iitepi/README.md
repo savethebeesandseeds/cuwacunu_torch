@@ -14,6 +14,9 @@ Primary include: `#include "iitepi/iitepi.h"`
 - Loads global `.config`.
 - Exposes typed config access (`get<T>`, `get_arr<T>`).
 - Provides the selected board file and binding id used for runtime lock.
+- Carries the optional dev-loop switch
+  `GENERAL.reset_runtime_state_at_start` consumed by `main_board`
+  to clear runtime dump roots, Runtime HERO jobs root, and Hero catalogs.
 
 2. `contract_space_t`
 - Registers immutable contract records (hash-addressed).
@@ -166,6 +169,12 @@ runtime-unusable. Fallback is intentionally loud via
 - `contract_space_t::contract_itself(hash)`
 - `wave_space_t::wave_itself(hash)`
 - `board_space_t::board_itself(hash)`
+
+4. Dev-loop runtime reset
+- `main_board --reset-runtime-state`
+- `.build/hero/runtime_reset`
+- `hero.config.dev_nuke_reset`
+- `GENERAL.reset_runtime_state_at_start=true`
 
 This document defines architecture intent and runtime contracts. Source code
 remains authoritative for low-level parsing, builder details, and diagnostics.

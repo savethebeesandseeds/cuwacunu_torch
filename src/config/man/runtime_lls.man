@@ -1,0 +1,115 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = runtime_lls
+TARGET_DSL = standardized runtime .lls payload profile layered over latent_lineage_state syntax
+TARGET_BNF = src/config/bnf/runtime_lls.bnf
+PRIMARY_DECODER = src/impl/piaabo/latent_lineage_state/runtime_lls.cpp
+PRIMARY_VALIDATORS = src/impl/piaabo/latent_lineage_state/runtime_lls.cpp
+
+[FIELD schema]
+key = schema
+scope = standalone runtime .lls artifact
+type = versioned identifier
+required = true
+default = none
+range = non-empty identifier with .v<integer> suffix
+allowed = owner.namespace.name.vN
+nuance = embedded subdocuments inside joined report_lls may use a namespaced schema key instead of top-level schema
+nuance_extra = persisted standalone runtime-artifact ingest still requires top-level schema
+
+[FIELD report_kind]
+key = report_kind
+scope = runtime identity envelope
+type = identifier
+required = when known by producer
+default = omitted
+range = non-empty identifier
+allowed = producer-defined
+nuance = standard common envelope field for report family intent
+
+[FIELD tsi_type]
+key = tsi_type
+scope = runtime identity envelope
+type = canonical type token
+required = when known by producer
+default = omitted
+range = non-empty identifier
+allowed = tsi.source...,tsi.wikimyei...,other registered canonical types
+nuance = distinguishes producer family from schema token
+
+[FIELD canonical_path]
+key = canonical_path
+scope = runtime identity envelope
+type = canonical component path
+required = when known by producer
+default = omitted
+range = non-empty canonical alias
+allowed = canonical path tokens
+nuance = canonical emission and migrated runtime ingest use canonical_path; legacy canonical_base is out of the strict runtime payload contract
+
+[FIELD run_id]
+key = run_id
+scope = runtime identity envelope
+type = identifier
+required = for Lattice-ingestable standalone artifacts
+default = omitted
+range = non-empty identifier
+allowed = producer-defined run token
+nuance = current file-scan ingestion rejects ingestable .lls payloads that lack run_id
+
+[RULE RUNTIME_COMMENT_PORTABLE]
+id = RUNTIME_COMMENT_PORTABLE
+applies_to = runtime .lls comments
+severity = error
+when = runtime payload uses comments other than /* ... */
+message = runtime .lls standard accepts only /* ... */ comments in source payload; canonical emitted payloads contain no comments
+
+[RULE SCALAR_TYPES_ONLY]
+id = SCALAR_TYPES_ONLY
+applies_to = declared_type
+severity = error
+when = declared_type is not str, bool, int, uint, or double
+message = runtime .lls currently standardizes scalar declared types only; list-like payloads must be flattened into key families
+
+[RULE RAW_STRING_REPRESENTATION]
+id = RAW_STRING_REPRESENTATION
+applies_to = str payloads and declared domains
+severity = error
+when = raw text requires escaping, spans multiple lines, or contains /* or */
+message = runtime .lls has no quoting/escaping layer; raw str values and domains must be single-line grammar-representable text
+
+[RULE DOMAIN_REFERENCE_SEMANTICS]
+id = DOMAIN_REFERENCE_SEMANTICS
+applies_to = declared_domain
+severity = info
+when = runtime payload uses range or enum domains
+message = runtime .lls domains are producer-declared interpretation references; validators check domain syntax only and do not enforce numeric membership against the declared range text
+
+[RULE SCHEMA_FIRST]
+id = SCHEMA_FIRST
+applies_to = source assignment order
+severity = error
+when = first assignment key is not schema or a namespaced *.schema key
+message = runtime .lls payload must declare its schema-like key on the first assignment
+
+[RULE DUPLICATE_RUNTIME_KEYS]
+id = DUPLICATE_RUNTIME_KEYS
+applies_to = runtime semantic keys
+severity = error
+when = duplicate semantic key appears
+message = runtime .lls payload contains duplicate keys; duplicates are invalid even though legacy readers kept the last occurrence
+
+[RULE VERSION_IN_SCHEMA]
+id = VERSION_IN_SCHEMA
+applies_to = schema
+severity = error
+when = schema omits explicit .v<integer> suffix
+message = runtime .lls schema version is carried by the schema token suffix
+
+[RULE CANONICAL_EMIT_PROFILE]
+id = CANONICAL_EMIT_PROFILE
+applies_to = canonical emission
+severity = info
+when = runtime payload is emitted canonically
+message = canonical emitters use deterministic key order, lowercase bools, decimal signed/unsigned integers, fixed-point doubles, explicit declared types, and canonical_path over canonical_base

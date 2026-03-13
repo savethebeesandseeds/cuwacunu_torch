@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 
+#include "hero/runtime_dev_loop.h"
 #include "iitepi/board/board.contract.init.h"
 #include "iitepi/iitepi.h"
 
@@ -13,7 +14,8 @@ const char* value_or_empty(const std::string& value) {
 
 void print_help(const char* argv0) {
   std::cerr << "Usage: " << argv0
-            << " [--config-folder <path>] [--binding <binding_id>]\n"
+            << " [--config-folder <path>] [--binding <binding_id>]"
+            << " [--reset-runtime-state]\n"
             << "Defaults:\n"
             << "  --config-folder " << DEFAULT_CONFIG_FOLDER << "\n";
 }
@@ -23,6 +25,7 @@ void print_help(const char* argv0) {
 int main(int argc, char** argv) {
   std::string config_folder = DEFAULT_CONFIG_FOLDER;
   std::string binding_override;
+  bool reset_runtime_state_flag = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -32,6 +35,10 @@ int main(int argc, char** argv) {
     }
     if (arg == "--binding" && i + 1 < argc) {
       binding_override = argv[++i];
+      continue;
+    }
+    if (arg == "--reset-runtime-state") {
+      reset_runtime_state_flag = true;
       continue;
     }
     if (arg == "--help" || arg == "-h") {
@@ -46,6 +53,32 @@ int main(int argc, char** argv) {
   try {
     cuwacunu::iitepi::config_space_t::change_config_file(config_folder.c_str());
     cuwacunu::iitepi::config_space_t::update_config();
+
+    const bool reset_runtime_state =
+        reset_runtime_state_flag ||
+        cuwacunu::iitepi::config_space_t::get<bool>(
+            "GENERAL", "reset_runtime_state_at_start", false);
+    if (reset_runtime_state) {
+      cuwacunu::hero::runtime_dev::runtime_reset_result_t reset{};
+      std::string reset_error;
+      if (!cuwacunu::hero::runtime_dev::reset_runtime_state_from_active_config(
+              &reset, &reset_error)) {
+        std::cerr << "[main_board] runtime reset failed: " << reset_error << "\n";
+        return 1;
+      }
+      log_info(
+          "[main_board] runtime reset ok removed_store_roots=%zu removed_catalogs=%zu removed_entries=%llu\n",
+          reset.removed_store_roots.size(),
+          reset.removed_catalog_paths.size(),
+          static_cast<unsigned long long>(reset.removed_store_entries));
+      for (const auto& path : reset.removed_store_roots) {
+        log_info("[main_board] runtime reset store_root=%s\n", path.string().c_str());
+      }
+      for (const auto& path : reset.removed_catalog_paths) {
+        log_info("[main_board] runtime reset catalog_path=%s\n",
+                 path.string().c_str());
+      }
+    }
 
     cuwacunu::iitepi::board_space_t::init();
     cuwacunu::iitepi::board_space_t::assert_locked_runtime_intact_or_fail_fast();

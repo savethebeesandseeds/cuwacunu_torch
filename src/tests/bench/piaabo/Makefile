@@ -19,6 +19,7 @@ $(eval $(call TEST_ONEFILE, test_dsecurity,               test_dsecurity.cpp,   
 $(eval $(call TEST_ONEFILE, test_dencryption,             test_dencryption.cpp,             $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_djson_parsing,           test_djson_parsing.cpp,           $(libcommon_a)))
 $(eval $(call TEST_ONEFILE, test_dfiles_binary_to_vector, test_dfiles_binary_to_vector.cpp, $(libcommon_a)))
+$(eval $(call TEST_ONEFILE, test_runtime_lls,             test_runtime_lls.cpp,             $(libcommon_a)))
 $(eval $(call TEST_ONEFILE, test_bnf_grammar_lexer,      test_bnf_grammar_lexer.cpp,      $(libcommon_a)))
 $(eval $(call TEST_ONEFILE, test_bnf_grammar_parser,     test_bnf_grammar_parser.cpp,     $(libcommon_a)))
 $(eval $(call TEST_ONEFILE, test_bnf_instruction_lexer,  test_bnf_instruction_lexer.cpp,  $(libcommon_a)))
@@ -39,6 +40,7 @@ all: \
 	$(TEST_OUT)/test_dencryption \
 	$(TEST_OUT)/test_djson_parsing \
 	$(TEST_OUT)/test_dfiles_binary_to_vector \
+	$(TEST_OUT)/test_runtime_lls \
 	$(TEST_OUT)/test_bnf_grammar_lexer \
 	$(TEST_OUT)/test_bnf_grammar_parser \
 	$(TEST_OUT)/test_bnf_instruction_lexer \
@@ -55,6 +57,7 @@ run: \
 	run-test_dencryption \
 	run-test_djson_parsing \
 	run-test_dfiles_binary_to_vector \
+	run-test_runtime_lls \
 	run-test_bnf_grammar_lexer \
 	run-test_bnf_grammar_parser \
 	run-test_bnf_instruction_lexer \
@@ -69,6 +72,7 @@ clean:
 	       $(TEST_OUT)/test_dencryption \
 	       $(TEST_OUT)/test_djson_parsing \
 	       $(TEST_OUT)/test_dfiles_binary_to_vector \
+	       $(TEST_OUT)/test_runtime_lls \
 	       $(TEST_OUT)/test_bnf_grammar_lexer \
 	       $(TEST_OUT)/test_bnf_grammar_parser \
 	       $(TEST_OUT)/test_bnf_instruction_lexer \

@@ -1,17 +1,19 @@
 #include "piaabo/torch_compat/data_analytics.h"
 
-#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <limits>
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace cuwacunu {
@@ -22,6 +24,12 @@ namespace {
 
 constexpr double kNumericEpsilon = 1e-18;
 constexpr std::size_t kDataAnalyticsContractHashPathLen = 8;
+constexpr std::string_view kRefRangeNonNegative = "(0,+inf)";
+constexpr std::string_view kRefRangePositive = "(1,+inf)";
+constexpr std::string_view kRefRangeSigned = "(-inf,+inf)";
+
+using runtime_lls_document_t =
+    cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
 
 [[nodiscard]] inline double clamp_nonneg(double v) {
   return (v > 0.0) ? v : 0.0;
@@ -54,34 +62,86 @@ constexpr std::size_t kDataAnalyticsContractHashPathLen = 8;
   return std::string(token);
 }
 
-void append_component_report_identity_kv_(
-    std::ostringstream* oss,
+void append_component_report_identity_entries_(
+    runtime_lls_document_t* document,
     const tsiemene::component_report_identity_t& report_identity) {
-  if (!oss) return;
+  if (!document) return;
   if (!report_identity.report_kind.empty()) {
-    *oss << "report_kind=" << report_identity.report_kind << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "report_kind", report_identity.report_kind));
   }
   if (!report_identity.tsi_type.empty()) {
-    *oss << "tsi_type=" << report_identity.tsi_type << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "tsi_type", report_identity.tsi_type));
   }
   if (!report_identity.canonical_path.empty()) {
-    *oss << "canonical_path=" << report_identity.canonical_path << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "canonical_path", report_identity.canonical_path));
   }
   if (!report_identity.hashimyei.empty()) {
-    *oss << "hashimyei=" << report_identity.hashimyei << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "hashimyei", report_identity.hashimyei));
   }
   if (!report_identity.contract_hash.empty()) {
-    *oss << "contract_hash=" << report_identity.contract_hash << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "contract_hash", report_identity.contract_hash));
   }
   if (!report_identity.wave_hash.empty()) {
-    *oss << "wave_hash=" << report_identity.wave_hash << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_hash", report_identity.wave_hash));
   }
   if (!report_identity.binding_id.empty()) {
-    *oss << "binding_id=" << report_identity.binding_id << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "binding_id", report_identity.binding_id));
   }
   if (!report_identity.run_id.empty()) {
-    *oss << "run_id=" << report_identity.run_id << "\n";
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "run_id", report_identity.run_id));
   }
+}
+
+void append_string_entry_if_nonempty_(runtime_lls_document_t* document,
+                                      std::string_view key,
+                                      std::string_view value) {
+  if (!document || value.empty()) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          std::string(key), std::string(value)));
+}
+
+void append_u64_entry_(runtime_lls_document_t* document,
+                       std::string_view key,
+                       std::uint64_t value,
+                       std::string_view declared_domain = kRefRangeNonNegative) {
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+          std::string(key), value, std::string(declared_domain)));
+}
+
+void append_i64_entry_(runtime_lls_document_t* document,
+                       std::string_view key,
+                       std::int64_t value,
+                       std::string_view declared_domain = kRefRangeSigned) {
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_int_entry(
+          std::string(key), value, std::string(declared_domain)));
+}
+
+void append_double_entry_(runtime_lls_document_t* document,
+                          std::string_view key,
+                          double value,
+                          std::string_view declared_domain = kRefRangeSigned) {
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          std::string(key), value, std::string(declared_domain)));
 }
 
 [[nodiscard]] data_analytics_options_t normalize_options_(
@@ -425,40 +485,54 @@ std::string data_analytics_to_latent_lineage_state_text(
     const data_analytics_options_t& options,
     std::string_view source_label,
     const tsiemene::component_report_identity_t& report_identity) {
-  std::ostringstream oss;
-  oss.setf(std::ios::fixed);
-  oss << std::setprecision(10);
+  runtime_lls_document_t document{};
+  document.entries.reserve(18);
+  document.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "schema", report.schema));
+  append_component_report_identity_entries_(&document, report_identity);
+  append_string_entry_if_nonempty_(&document, "source_label", source_label);
 
-  oss << "schema=" << report.schema << "\n";
-  append_component_report_identity_kv_(&oss, report_identity);
-  if (!source_label.empty()) {
-    oss << "source_label=" << source_label << "\n";
-  }
+  append_u64_entry_(&document, "sample_count", report.sample_count, kRefRangeNonNegative);
+  append_u64_entry_(
+      &document, "valid_sample_count", report.valid_sample_count, kRefRangeNonNegative);
+  append_u64_entry_(
+      &document, "skipped_sample_count", report.skipped_sample_count, kRefRangeNonNegative);
 
-  oss << "sample_count=" << report.sample_count << "\n";
-  oss << "valid_sample_count=" << report.valid_sample_count << "\n";
-  oss << "skipped_sample_count=" << report.skipped_sample_count << "\n";
+  append_i64_entry_(&document, "source_channels", report.source_channels, kRefRangeNonNegative);
+  append_i64_entry_(
+      &document, "source_timesteps", report.source_timesteps, kRefRangeNonNegative);
+  append_i64_entry_(
+      &document,
+      "source_features_per_timestep",
+      report.source_features_per_timestep,
+      kRefRangeNonNegative);
+  append_i64_entry_(
+      &document, "source_flat_feature_count", report.source_flat_feature_count, kRefRangeNonNegative);
+  append_i64_entry_(
+      &document,
+      "source_effective_feature_count",
+      report.source_effective_feature_count,
+      kRefRangeNonNegative);
 
-  oss << "source_channels=" << report.source_channels << "\n";
-  oss << "source_timesteps=" << report.source_timesteps << "\n";
-  oss << "source_features_per_timestep=" << report.source_features_per_timestep
-      << "\n";
-  oss << "source_flat_feature_count=" << report.source_flat_feature_count << "\n";
-  oss << "source_effective_feature_count=" << report.source_effective_feature_count
-      << "\n";
+  append_double_entry_(
+      &document, "source_entropic_load", report.source_entropic_load, kRefRangeNonNegative);
+  append_double_entry_(
+      &document, "source_cov_trace", report.source_cov_trace, kRefRangeNonNegative);
+  append_u64_entry_(
+      &document,
+      "source_nonzero_eigen_count",
+      report.source_nonzero_eigen_count,
+      kRefRangeNonNegative);
 
-  oss << "source_entropic_load=" << report.source_entropic_load << "\n";
-  oss << "source_cov_trace=" << report.source_cov_trace << "\n";
-  oss << "source_nonzero_eigen_count=" << report.source_nonzero_eigen_count
-      << "\n";
+  append_i64_entry_(&document, "max_samples", options.max_samples, kRefRangePositive);
+  append_i64_entry_(&document, "max_features", options.max_features, kRefRangePositive);
+  append_double_entry_(&document, "mask_epsilon", options.mask_epsilon, kRefRangeNonNegative);
+  append_double_entry_(
+      &document, "standardize_epsilon", options.standardize_epsilon, kRefRangeNonNegative);
 
-  oss << "max_samples=" << options.max_samples << "\n";
-  oss << "max_features=" << options.max_features << "\n";
-  oss << "mask_epsilon=" << options.mask_epsilon << "\n";
-  oss << "standardize_epsilon=" << options.standardize_epsilon << "\n";
-
-  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
-      oss.str());
+  return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+      document);
 }
 
 bool write_data_analytics_file(
@@ -488,9 +562,14 @@ bool write_data_analytics_file(
     return false;
   }
 
-  const std::string payload =
-      data_analytics_to_latent_lineage_state_text(
-          report, options, source_label, report_identity);
+  std::string payload;
+  try {
+    payload = data_analytics_to_latent_lineage_state_text(
+        report, options, source_label, report_identity);
+  } catch (const std::exception& e) {
+    if (error) *error = "cannot serialize data analytics report: " + std::string(e.what());
+    return false;
+  }
   out << payload;
   if (!out.good()) {
     if (error) *error = "cannot write output file: " + output_file.string();
@@ -500,32 +579,18 @@ bool write_data_analytics_file(
 }
 
 std::string extract_data_analytics_kv_schema(std::string_view payload) {
-  std::size_t cursor = 0;
-  while (cursor < payload.size()) {
-    std::size_t line_end = payload.find('\n', cursor);
-    if (line_end == std::string_view::npos) line_end = payload.size();
-
-    std::string_view line = payload.substr(cursor, line_end - cursor);
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-    line = trim_ascii_ws_view_(line);
-
-    if (!line.empty()) {
-      const std::size_t sep = line.find('=');
-      if (sep != std::string_view::npos) {
-        const std::string key =
-            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
-                line.substr(0, sep));
-        if (key == "schema") {
-          const std::string_view value =
-              trim_ascii_ws_view_(line.substr(sep + 1));
-          return std::string(value);
-        }
-      }
-    }
-
-    if (line_end == payload.size()) break;
-    cursor = line_end + 1;
+  runtime_lls_document_t document{};
+  std::string parse_error;
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          payload, &document, &parse_error)) {
+    return {};
   }
+  std::unordered_map<std::string, std::string> kv{};
+  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          document, &kv, &parse_error)) {
+    return {};
+  }
+  if (const auto it = kv.find("schema"); it != kv.end()) return it->second;
   return {};
 }
 

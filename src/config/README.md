@@ -20,6 +20,7 @@ This folder is organized by role:
 - `bnf/network_design.bnf`
 - `bnf/canonical_path.bnf`
 - `bnf/latent_lineage_state.bnf`
+- `bnf/runtime_lls.bnf`
 - `.config`
 - `instructions/default.iitepi.contract.dsl`
 - `instructions/default.tsi.source.dataloader.sources.dsl`
@@ -32,6 +33,7 @@ This folder is organized by role:
 - `instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
 - `instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl`
 - `instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl`
+- `instructions/default.hero.runtime.dsl`
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
 - `secrets/real/exchange.key` (expected, may be absent locally)
 - `secrets/real/openai.key` (expected for HERO/OpenAI, may be absent locally)
@@ -129,6 +131,10 @@ Direct one-shot tool call (no manual JSON-RPC framing):
 /cuwacunu/.build/hero/hero_config_mcp \
   --tool hero.config.status \
   --args-json '{}'
+
+/cuwacunu/.build/hero/hero_runtime_mcp \
+  --tool hero.runtime.list_jobs \
+  --args-json '{}'
 ```
 
 MCP `initialize` responses from HERO servers include an `instructions` string
@@ -143,6 +149,9 @@ codex mcp list
 # Register HERO MCP in Codex (stdio transport)
 codex mcp add hero-config -- \
   /cuwacunu/.build/hero/hero_config_mcp
+
+codex mcp add hero-runtime -- \
+  /cuwacunu/.build/hero/hero_runtime_mcp
 
 # Inspect the registered server configuration
 codex mcp get hero-config --json
@@ -188,11 +197,27 @@ Useful MCP tools:
 - `hero.config.rollback` (restore latest or selected snapshot)
 - `hero.config.save` (persists config, takes shared runtime lock, returns deterministic `cutover` metadata)
 - `hero.config.reload`
+- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, Runtime HERO jobs root, and Hero catalogs resolved from the saved global config)
+
+Runtime MCP tools:
+- `hero.runtime.launch_default_board`
+- `hero.runtime.list_jobs`
+- `hero.runtime.get_job`
+- `hero.runtime.stop_job`
+- `hero.runtime.tail_log`
+- `hero.runtime.reconcile`
+
+Runtime HERO defaults:
+- loaded from `instructions/default.hero.runtime.dsl`
+- resolved through `[REAL_HERO].runtime_hero_dsl_filename`
+- jobs persist under `jobs_root` by `job_cursor`, with manifest + stdout/stderr logs per job
 
 Deterministic policy:
 - `hero.config.ask` and `hero.config.fix` are disabled by design in current runtime mode.
 - Config HERO edits defaults only. Existing hashimyei instances are not mutated
   by `hero.config.dsl.set`; instance revisions are handled by Hashimyei HERO lineage.
+- `hero.config.dev_nuke_reset` uses the saved global config on disk, not dirty
+  unsaved in-memory edits.
 
 ## Hashimyei Catalog MCP
 
@@ -293,14 +318,21 @@ Supported MCP tools:
 - Global settings live in `./.config`: `[GENERAL]`, `[BNF]`, `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`, `[REAL_HERO]`.
   `GENERAL.board_config_filename` points to the board DSL file and
   `GENERAL.board_binding_id` selects the active `BIND` entry.
+  `GENERAL.reset_runtime_state_at_start=true` makes `main_board` clear the
+  active runtime dump roots, Runtime HERO jobs root, and Hero catalogs before board init, which is
+  useful for a clean dev loop.
+  The same reset can be invoked explicitly through
+  `/cuwacunu/.build/hero/runtime_reset` or `make -C /cuwacunu/src/main reset-runtime`.
 - HERO runtime settings for deterministic MCP live in:
   - `./instructions/default.hero.config.dsl` (Config HERO runtime policy)
   - `./instructions/default.hero.hashimyei.dsl` (Hashimyei HERO catalog defaults)
   - `./instructions/default.hero.lattice.dsl` (Lattice HERO catalog/runtime defaults)
-- `[REAL_HERO]` owns the canonical pointer paths for those three HERO DSL files:
+  - `./instructions/default.hero.runtime.dsl` (Runtime HERO detached job defaults)
+- `[REAL_HERO]` owns the canonical pointer paths for those four HERO DSL files:
   - `config_hero_dsl_filename`
   - `hashimyei_hero_dsl_filename`
   - `lattice_hero_dsl_filename`
+  - `runtime_hero_dsl_filename`
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
   - `iitepi_board_grammar_filename`
   - `iitepi_wave_grammar_filename`

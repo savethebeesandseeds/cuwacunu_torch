@@ -7,6 +7,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -16,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 
 namespace cuwacunu {
 namespace hero {
@@ -167,11 +168,22 @@ namespace source_runtime_projection_detail {
   return v;
 }
 
-[[nodiscard]] inline std::string format_double(double v) {
-  std::ostringstream oss;
-  oss.setf(std::ios::fixed);
-  oss << std::setprecision(10) << v;
-  return oss.str();
+[[nodiscard]] inline std::string_view projection_reference_domain(
+    std::string_view key) {
+  if (key == "source.runtime.request.from_ratio" ||
+      key == "source.runtime.request.to_ratio" ||
+      key == "source.runtime.request.span_ratio" ||
+      key == "source.runtime.effective.coverage_ratio" ||
+      key == "source.runtime.flags.clipped_left" ||
+      key == "source.runtime.flags.clipped_right" ||
+      key == "source.channels.active_ratio" || key.ends_with(".active")) {
+    return "(0,1)";
+  }
+  if (key == "source.channels.active_count" ||
+      key == "source.channels.total_count") {
+    return "(0,+inf)";
+  }
+  return "(-inf,+inf)";
 }
 
 }  // namespace source_runtime_projection_detail
@@ -301,47 +313,66 @@ namespace source_runtime_projection_detail {
   std::sort(out->projection_txt.begin(), out->projection_txt.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
 
-  std::ostringstream projection;
-  projection << "# source.runtime.projection.v2\n";
-  projection << "source.runtime.projection.schema=wave.source.runtime.projection.v2\n";
-
-  projection << "\n# section.projection_num\n";
+  cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t projection{};
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "source.runtime.projection.schema", "wave.source.runtime.projection.v2"));
   for (const auto& [k, v] : out->projection_num) {
-    projection << k << "=" << format_double(v) << "\n";
+    projection.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+            k, v, std::string(projection_reference_domain(k))));
   }
-
-  projection << "\n# section.projection_txt\n";
   for (const auto& [k, v] : out->projection_txt) {
-    projection << k << "=" << v << "\n";
+    projection.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(k, v));
   }
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.domain_from_ms", domain_from_ms));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.domain_to_ms", domain_to_ms));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.domain_span_ms", domain_span_ms, "(0,+inf)"));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.request_from_ms", request_from_ms));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.request_to_ms", request_to_ms));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.request_span_ms",
+          std::max(0.0, request_to_ms - request_from_ms),
+          "(0,+inf)"));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.effective_from_ms", effective_from_ms));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.effective_to_ms", effective_to_ms));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          "source.runtime.debug.covered_ms", covered_ms, "(0,+inf)"));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_bool_entry(
+          "source.runtime.debug.flags.clipped_left", clipped_left));
+  projection.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_bool_entry(
+          "source.runtime.debug.flags.clipped_right", clipped_right));
 
-  projection << "\n# section.audit\n";
-  projection << "source.runtime.debug.domain_from_ms=" << format_double(domain_from_ms)
-             << "\n";
-  projection << "source.runtime.debug.domain_to_ms=" << format_double(domain_to_ms)
-             << "\n";
-  projection << "source.runtime.debug.domain_span_ms=" << format_double(domain_span_ms)
-             << "\n";
-  projection << "source.runtime.debug.request_from_ms=" << format_double(request_from_ms)
-             << "\n";
-  projection << "source.runtime.debug.request_to_ms=" << format_double(request_to_ms)
-             << "\n";
-  projection << "source.runtime.debug.request_span_ms="
-             << format_double(std::max(0.0, request_to_ms - request_from_ms)) << "\n";
-  projection << "source.runtime.debug.effective_from_ms="
-             << format_double(effective_from_ms) << "\n";
-  projection << "source.runtime.debug.effective_to_ms="
-             << format_double(effective_to_ms) << "\n";
-  projection << "source.runtime.debug.covered_ms=" << format_double(covered_ms)
-             << "\n";
-  projection << "source.runtime.debug.flags.clipped_left="
-        << (clipped_left ? "1" : "0") << "\n";
-  projection << "source.runtime.debug.flags.clipped_right="
-        << (clipped_right ? "1" : "0") << "\n";
-
-  out->projection_lls =
-      cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
-          projection.str());
+  try {
+    out->projection_lls =
+        cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+            projection);
+  } catch (const std::exception& e) {
+    if (error) {
+      *error = std::string("cannot emit source runtime projection .lls: ") +
+               e.what();
+    }
+    return false;
+  }
   return true;
 }
 

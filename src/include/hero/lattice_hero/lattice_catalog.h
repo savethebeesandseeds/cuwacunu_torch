@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -120,6 +122,44 @@ struct runtime_report_fragment_t {
 
 class lattice_catalog_store_t {
  public:
+  [[nodiscard]] static std::string trim_runtime_wave_cursor_token(
+      std::string_view text) {
+    std::size_t begin = 0;
+    std::size_t end = text.size();
+    while (begin < end &&
+           std::isspace(static_cast<unsigned char>(text[begin])) != 0) {
+      ++begin;
+    }
+    while (end > begin &&
+           std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) {
+      --end;
+    }
+    return std::string(text.substr(begin, end - begin));
+  }
+
+  [[nodiscard]] static bool parse_runtime_wave_cursor_scalar(
+      std::string_view text, std::uint64_t* out) noexcept {
+    if (!out) return false;
+    const std::string token = trim_runtime_wave_cursor_token(text);
+    if (token.empty()) return false;
+
+    int base = 10;
+    const char* begin = token.data();
+    const char* end = token.data() + token.size();
+    if (token.size() > 2 && token[0] == '0' &&
+        (token[1] == 'x' || token[1] == 'X')) {
+      base = 16;
+      begin += 2;
+      if (begin == end) return false;
+    }
+
+    std::uint64_t parsed = 0;
+    const auto [ptr, ec] = std::from_chars(begin, end, parsed, base);
+    if (ec != std::errc{} || ptr != end) return false;
+    *out = parsed;
+    return true;
+  }
+
   [[nodiscard]] static constexpr db::wave_cursor::layout_t
   runtime_wave_cursor_layout() noexcept {
     return db::wave_cursor::layout_t{
@@ -142,6 +182,60 @@ class lattice_catalog_store_t {
             db::wave_cursor::field_batch),
         &q);
     return q.mask;
+  }
+
+  [[nodiscard]] static bool unpack_runtime_wave_cursor(
+      std::uint64_t packed, db::wave_cursor::parts_t* out_parts) noexcept {
+    return db::wave_cursor::unpack(runtime_wave_cursor_layout(), packed, out_parts);
+  }
+
+  [[nodiscard]] static bool parse_runtime_wave_cursor_token(
+      std::string_view text, std::uint64_t* out) noexcept {
+    if (!out) return false;
+    const std::string token = trim_runtime_wave_cursor_token(text);
+    if (token.empty()) return false;
+    if (token.find('.') == std::string::npos &&
+        token.find(',') == std::string::npos) {
+      return parse_runtime_wave_cursor_scalar(token, out);
+    }
+
+    const std::size_t dot = token.find('.');
+    const std::size_t comma = token.find(',', dot == std::string::npos ? 0 : dot + 1);
+    if (dot == std::string::npos || comma == std::string::npos) return false;
+    if (token.find('.', dot + 1) != std::string::npos) return false;
+    if (token.find(',', comma + 1) != std::string::npos) return false;
+
+    std::uint64_t run_id = 0;
+    std::uint64_t episode_k = 0;
+    std::uint64_t batch_j = 0;
+    if (!parse_runtime_wave_cursor_scalar(token.substr(0, dot), &run_id)) {
+      return false;
+    }
+    if (!parse_runtime_wave_cursor_scalar(
+            token.substr(dot + 1, comma - dot - 1), &episode_k)) {
+      return false;
+    }
+    if (!parse_runtime_wave_cursor_scalar(token.substr(comma + 1), &batch_j)) {
+      return false;
+    }
+
+    const db::wave_cursor::parts_t parts{
+        .run_id = run_id,
+        .episode_k = episode_k,
+        .batch_j = batch_j,
+    };
+    return db::wave_cursor::pack(runtime_wave_cursor_layout(), parts, out);
+  }
+
+  [[nodiscard]] static std::string format_runtime_wave_cursor(
+      std::uint64_t packed) {
+    db::wave_cursor::parts_t parts{};
+    if (!unpack_runtime_wave_cursor(packed, &parts)) {
+      return std::to_string(packed);
+    }
+    return std::to_string(parts.run_id) + "." +
+           std::to_string(parts.episode_k) + "," +
+           std::to_string(parts.batch_j);
   }
 
   struct options_t {
@@ -194,6 +288,15 @@ class lattice_catalog_store_t {
       std::string_view canonical_path, std::string_view schema, std::size_t limit,
       std::size_t offset, bool newest_first,
       std::vector<runtime_report_fragment_t>* out,
+      std::string* error = nullptr) const;
+  [[nodiscard]] bool latest_runtime_report_fragment(
+      std::string_view canonical_path, std::string_view schema,
+      runtime_report_fragment_t* out, std::string* error = nullptr) const;
+  [[nodiscard]] bool get_runtime_report_fragment(
+      std::string_view report_fragment_id, runtime_report_fragment_t* out,
+      std::string* error = nullptr) const;
+  [[nodiscard]] bool list_runtime_report_schemas(
+      std::string_view canonical_path, std::vector<std::string>* out,
       std::string* error = nullptr) const;
   [[nodiscard]] bool upsert_runtime_intersection_report(
       std::string_view intersection_cursor, std::string_view canonical_path,

@@ -158,13 +158,13 @@ int main() try {
 
     {
       std::ofstream out(source_file, std::ios::binary | std::ios::trunc);
-      out << "schema=piaabo.torch_compat.data_analytics.v1\n";
-      out << "source_entropic_load=3.0\n";
+      out << "schema:str = piaabo.torch_compat.data_analytics.v1\n";
+      out << "source_entropic_load(0,+inf):double = 3.000000000000\n";
     }
     {
       std::ofstream out(network_file, std::ios::binary | std::ios::trunc);
-      out << "schema=piaabo.torch_compat.network_analytics.v4\n";
-      out << "network_global_entropic_capacity=4.5\n";
+      out << "schema:str = piaabo.torch_compat.network_analytics.v4\n";
+      out << "network_global_entropic_capacity(0,+inf):double = 4.500000000000\n";
     }
 
     cuwacunu::piaabo::torch_compat::entropic_capacity_comparison_report_t from_files{};

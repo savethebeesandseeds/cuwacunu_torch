@@ -500,6 +500,7 @@ bool config_space_t::validate_config() {
   validate_optional_bool("GENERAL", "iinuji_logs_show_color");
   validate_optional_bool("GENERAL", "iinuji_logs_auto_follow");
   validate_optional_bool("GENERAL", "iinuji_logs_mouse_capture");
+  validate_optional_bool("GENERAL", "reset_runtime_state_at_start");
   validate_optional_logs_metadata_filter(
       "GENERAL", "iinuji_logs_metadata_filter");
   (void)require_value("GENERAL", "hashimyei_store_root", nullptr);
@@ -565,6 +566,7 @@ bool config_space_t::validate_config() {
   require_existing_path("REAL_HERO", "config_hero_dsl_filename", config_folder);
   require_existing_path("REAL_HERO", "hashimyei_hero_dsl_filename", config_folder);
   require_existing_path("REAL_HERO", "lattice_hero_dsl_filename", config_folder);
+  require_existing_path("REAL_HERO", "runtime_hero_dsl_filename", config_folder);
 
   if (!ok) log_terminate_gracefully("Invalid global configuration, aborting.\n");
   return ok;

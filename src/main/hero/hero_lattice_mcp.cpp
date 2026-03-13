@@ -38,6 +38,7 @@
 #include "iitepi/board/board.contract.init.h"
 #include "iitepi/iitepi.h"
 #include "piaabo/dlogs.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 #include "tsiemene/tsi.type.registry.h"
 
 namespace {
@@ -947,6 +948,36 @@ template <typename Datatype_t>
   return true;
 }
 
+[[nodiscard]] bool extract_json_wave_cursor_field(const std::string& json,
+                                                  const std::string& key,
+                                                  std::uint64_t* out) {
+  if (!out) return false;
+  std::string raw;
+  if (!extract_json_raw_field(json, key, &raw)) return false;
+  raw = trim_ascii(raw);
+  if (raw.empty()) return false;
+
+  std::string as_text;
+  std::size_t end_pos = 0;
+  if (parse_json_string_at(raw, 0, &as_text, &end_pos)) {
+    end_pos = skip_json_whitespace(raw, end_pos);
+    if (end_pos != raw.size()) return false;
+    return cuwacunu::hero::wave::lattice_catalog_store_t::
+        parse_runtime_wave_cursor_token(as_text, out);
+  }
+
+  double as_number = 0.0;
+  if (!extract_json_number_field(json, key, &as_number)) return false;
+  if (!std::isfinite(as_number) || as_number < 0.0) return false;
+  const double rounded = std::floor(as_number);
+  if (rounded != as_number) return false;
+  if (rounded > static_cast<double>(std::numeric_limits<std::uint64_t>::max())) {
+    return false;
+  }
+  *out = static_cast<std::uint64_t>(rounded);
+  return true;
+}
+
 enum class wave_cursor_resolution_e : std::uint8_t {
   Run = 0,
   Episode = 1,
@@ -1060,8 +1091,13 @@ struct intersection_cursor_filter_t {
   }
 
   std::uint64_t parsed_wave_cursor = 0;
-  if (!parse_u64_token(wave_cursor_text, &parsed_wave_cursor)) {
-    if (error) *error = "intersection_cursor wave_cursor is not a valid integer";
+  if (!cuwacunu::hero::wave::lattice_catalog_store_t::
+          parse_runtime_wave_cursor_token(wave_cursor_text,
+                                          &parsed_wave_cursor)) {
+    if (error) {
+      *error =
+          "intersection_cursor wave_cursor is not valid; expected integer or <run>.<epoch>,<batch>";
+    }
     return false;
   }
 
@@ -1724,11 +1760,14 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     const cuwacunu::hero::wave::runtime_report_fragment_t& fragment) {
   const std::string canonical_path =
       normalize_source_hashimyei_cursor(fragment.canonical_path);
-  std::string wave_cursor_text;
-  if (!extract_payload_kv(fragment.payload_json, "wave_cursor",
-                          &wave_cursor_text)) {
-    wave_cursor_text = "0";
+  std::uint64_t wave_cursor = 0;
+  if (!extract_wave_cursor_from_payload(fragment.payload_json, &wave_cursor)) {
+    wave_cursor = 0;
   }
+  const std::string wave_cursor_text = std::to_string(wave_cursor);
+  const std::string wave_cursor_view =
+      cuwacunu::hero::wave::lattice_catalog_store_t::format_runtime_wave_cursor(
+          wave_cursor);
   std::string wave_cursor_resolution_text;
   if (!extract_payload_kv(fragment.payload_json, "wave_cursor_resolution",
                           &wave_cursor_resolution_text)) {
@@ -1742,16 +1781,21 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   hashimyei_cursor = normalize_source_hashimyei_cursor(hashimyei_cursor);
   const std::string intersection_cursor =
       hashimyei_cursor + "|" + wave_cursor_text;
+  const std::string intersection_cursor_view =
+      hashimyei_cursor + "|" + wave_cursor_view;
   std::ostringstream out;
   out << "{"
       << "\"report_fragment_id\":" << json_quote(fragment.report_fragment_id) << ","
       << "\"run_id\":" << json_quote(fragment.run_id) << ","
       << "\"wave_cursor\":" << json_quote(wave_cursor_text) << ","
+      << "\"wave_cursor_view\":" << json_quote(wave_cursor_view) << ","
       << "\"wave_cursor_resolution\":"
       << json_quote(wave_cursor_resolution_text) << ","
       << "\"canonical_path\":" << json_quote(canonical_path) << ","
       << "\"hashimyei_cursor\":" << json_quote(hashimyei_cursor) << ","
       << "\"intersection_cursor\":" << json_quote(intersection_cursor) << ","
+      << "\"intersection_cursor_view\":"
+      << json_quote(intersection_cursor_view) << ","
       << "\"hashimyei\":" << json_quote(fragment.hashimyei) << ","
       << "\"schema\":" << json_quote(fragment.schema) << ","
       << "\"report_fragment_sha256\":"
@@ -1760,6 +1804,24 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"ts_ms\":" << fragment.ts_ms
       << "}";
   return out.str();
+}
+
+[[nodiscard]] std::string report_fragment_detail_to_json(
+    const cuwacunu::hero::wave::runtime_report_fragment_t& fragment) {
+  std::string base = report_fragment_to_json(fragment);
+  if (!base.empty() && base.back() == '}') {
+    base.pop_back();
+  } else {
+    base = "{";
+  }
+  base += ",\"synthetic\":";
+  base += starts_with(fragment.path, "[lattice.synthetic.")
+              ? "true"
+              : "false";
+  base += ",\"payload_lls\":";
+  base += json_quote(fragment.payload_json);
+  base += "}";
+  return base;
 }
 
 [[nodiscard]] std::string ensure_trailing_newline(std::string value) {
@@ -1793,15 +1855,22 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     hashimyei_cursor = normalize_source_hashimyei_cursor(hashimyei_cursor);
     const std::string intersection_cursor =
         hashimyei_cursor + "|" + std::to_string(wave_cursor);
+    const std::string wave_cursor_view =
+        cuwacunu::hero::wave::lattice_catalog_store_t::format_runtime_wave_cursor(
+            wave_cursor);
+    const std::string intersection_cursor_view =
+        hashimyei_cursor + "|" + wave_cursor_view;
     out << "\n# --- source_report_fragment[" << i << "] ---\n";
     out << "source_report_fragment_index=" << i << "\n";
     out << "source_report_fragment_id=" << fragment.report_fragment_id << "\n";
     out << "schema=" << fragment.schema << "\n";
     out << "run_id=" << fragment.run_id << "\n";
     out << "wave_cursor=" << wave_cursor << "\n";
+    out << "wave_cursor_view=" << wave_cursor_view << "\n";
     out << "wave_cursor_resolution=" << wave_cursor_resolution_text << "\n";
     out << "hashimyei_cursor=" << hashimyei_cursor << "\n";
     out << "intersection_cursor=" << intersection_cursor << "\n";
+    out << "intersection_cursor_view=" << intersection_cursor_view << "\n";
     out << "hashimyei=" << fragment.hashimyei << "\n";
     out << "ts_ms=" << fragment.ts_ms << "\n";
     out << "path=" << fragment.path << "\n";
@@ -2520,15 +2589,10 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   return out.str();
 }
 
-[[nodiscard]] std::string format_projection_double(double v) {
-  std::ostringstream oss;
-  oss.setf(std::ios::fixed);
-  oss << std::setprecision(12) << v;
-  return oss.str();
-}
-
 [[nodiscard]] std::string build_projection_lls_payload(
     const cuwacunu::hero::wave::wave_projection_t& projection) {
+  using runtime_lls_document_t =
+      cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
   std::vector<std::pair<std::string, double>> projection_num =
       projection.projection_num;
   std::vector<std::pair<std::string, std::string>> projection_txt =
@@ -2539,24 +2603,26 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   std::sort(projection_txt.begin(), projection_txt.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
 
-  std::ostringstream payload;
-  payload << "# wave.projection.lls.v2\n";
-  payload << "schema=wave.projection.lls.v2\n";
-  payload << "projection_version=" << projection.projection_version << "\n";
-  payload << "projector_build_id=" << projection.projector_build_id << "\n";
-
-  payload << "\n# section.projection_num\n";
+  runtime_lls_document_t payload{};
+  payload.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "schema", "wave.projection.lls.v2"));
+  payload.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_int_entry(
+          "projection_version", static_cast<std::int64_t>(projection.projection_version)));
+  payload.entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "projector_build_id", projection.projector_build_id));
   for (const auto& [k, v] : projection_num) {
-    payload << k << "=" << format_projection_double(v) << "\n";
+    payload.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(k, v));
   }
-
-  payload << "\n# section.projection_txt\n";
   for (const auto& [k, v] : projection_txt) {
-    payload << k << "=" << v << "\n";
+    payload.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(k, v));
   }
-
-  return cuwacunu::camahjucunu::dsl::convert_latent_lineage_state_payload_to_lattice_state(
-      payload.str());
+  return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+      payload);
 }
 
 [[nodiscard]] bool build_projection(
@@ -2841,7 +2907,8 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     wave_cursor_mask =
         cuwacunu::hero::wave::lattice_catalog_store_t::runtime_wave_cursor_full_mask();
     intersection_cursor_arg = canonical_path + "|" + std::to_string(wave_cursor);
-  } else if (extract_json_u64_field(arguments_json, "wave_cursor", &wave_cursor)) {
+  } else if (extract_json_wave_cursor_field(arguments_json, "wave_cursor",
+                                            &wave_cursor)) {
     use_wave_cursor = true;
     (void)extract_json_u64_field(arguments_json, "wave_cursor_mask",
                                  &wave_cursor_mask);
@@ -2918,18 +2985,271 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     normalized_intersection =
         canonical_path + "|" + std::to_string(wave_cursor);
   }
+  const std::string wave_cursor_view =
+      use_wave_cursor
+          ? cuwacunu::hero::wave::lattice_catalog_store_t::format_runtime_wave_cursor(
+                wave_cursor)
+          : std::string{};
+  const std::string normalized_intersection_view =
+      (use_wave_cursor && !canonical_path.empty())
+          ? canonical_path + "|" + wave_cursor_view
+          : std::string{};
   out << "{\"canonical_path\":" << json_quote(canonical_path)
       << ",\"hashimyei_cursor\":" << json_quote(canonical_path)
       << ",\"intersection_cursor\":"
       << (normalized_intersection.empty() ? "null"
                                           : json_quote(normalized_intersection))
+      << ",\"intersection_cursor_view\":"
+      << (normalized_intersection_view.empty()
+              ? "null"
+              : json_quote(normalized_intersection_view))
       << ",\"count\":" << rows.size()
       << ",\"wave_cursor\":"
       << (use_wave_cursor ? json_quote(std::to_string(wave_cursor)) : "null")
+      << ",\"wave_cursor_view\":"
+      << (use_wave_cursor ? json_quote(wave_cursor_view) : "null")
       << ",\"wave_cursor_mask\":"
       << (use_wave_cursor ? json_quote(std::to_string(wave_cursor_mask))
                           : "null")
       << ",\"report_fragments\":" << report_fragments_json.str() << "}";
+  *out_structured = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_get_latest_report_fragment(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string canonical_path{};
+  std::string intersection_cursor_arg{};
+  (void)extract_json_string_field(arguments_json, "canonical_path", &canonical_path);
+  if (canonical_path.empty()) {
+    (void)extract_json_string_field(arguments_json, "hashimyei_cursor",
+                                    &canonical_path);
+  }
+  (void)extract_json_string_field(arguments_json, "intersection_cursor",
+                                  &intersection_cursor_arg);
+  canonical_path = normalize_source_hashimyei_cursor(canonical_path);
+  intersection_cursor_arg = trim_ascii(intersection_cursor_arg);
+
+  std::string schema{};
+  (void)extract_json_string_field(arguments_json, "schema", &schema);
+  schema = trim_ascii(schema);
+  if (schema.empty()) {
+    *out_error = "get_latest_report_fragment requires arguments.schema";
+    return false;
+  }
+
+  std::uint64_t wave_cursor = 0;
+  std::uint64_t wave_cursor_mask =
+      cuwacunu::hero::wave::lattice_catalog_store_t::runtime_wave_cursor_full_mask();
+  bool use_wave_cursor = false;
+  if (!intersection_cursor_arg.empty()) {
+    intersection_cursor_filter_t parsed{};
+    if (!parse_intersection_cursor(intersection_cursor_arg, &parsed, out_error)) {
+      return false;
+    }
+    canonical_path = parsed.hashimyei_cursor;
+    use_wave_cursor = true;
+    wave_cursor = parsed.wave_cursor;
+    intersection_cursor_arg = canonical_path + "|" + std::to_string(wave_cursor);
+  } else if (extract_json_wave_cursor_field(arguments_json, "wave_cursor",
+                                            &wave_cursor)) {
+    use_wave_cursor = true;
+    (void)extract_json_u64_field(arguments_json, "wave_cursor_mask",
+                                 &wave_cursor_mask);
+  } else {
+    std::uint64_t mask_only = 0;
+    if (extract_json_u64_field(arguments_json, "wave_cursor_mask", &mask_only)) {
+      *out_error = "wave_cursor_mask requires wave_cursor";
+      return false;
+    }
+  }
+  if (canonical_path.empty()) {
+    *out_error =
+        "get_latest_report_fragment requires arguments.canonical_path, arguments.hashimyei_cursor, or arguments.intersection_cursor";
+    return false;
+  }
+
+  if (!refresh_runtime_report_fragment_catalog(app, out_error)) return false;
+
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> rows{};
+  if (!app->catalog.list_runtime_report_fragments(canonical_path, schema, 0, 0,
+                                                  true, &rows, out_error)) {
+    return false;
+  }
+
+  std::optional<cuwacunu::hero::wave::runtime_report_fragment_t> selected{};
+  for (const auto& row : rows) {
+    if (!use_wave_cursor) {
+      selected = row;
+      break;
+    }
+    std::uint64_t row_wave_cursor = 0;
+    if (!extract_wave_cursor_from_payload(row.payload_json, &row_wave_cursor)) {
+      continue;
+    }
+    wave_cursor_resolution_e row_cursor_resolution =
+        wave_cursor_resolution_e::Run;
+    (void)extract_wave_cursor_resolution_from_payload(
+        row.payload_json, &row_cursor_resolution);
+    if (!matches_wave_cursor_filter(row_wave_cursor, wave_cursor, wave_cursor_mask,
+                                    row_cursor_resolution)) {
+      continue;
+    }
+    selected = row;
+    break;
+  }
+  if (!selected.has_value()) {
+    *out_error = "report_fragment not found for requested scope";
+    return false;
+  }
+
+  canonical_path = normalize_source_hashimyei_cursor(selected->canonical_path);
+  std::string normalized_intersection = intersection_cursor_arg;
+  if (normalized_intersection.empty() && use_wave_cursor) {
+    normalized_intersection =
+        canonical_path + "|" + std::to_string(wave_cursor);
+  }
+  const std::string wave_cursor_view =
+      use_wave_cursor
+          ? cuwacunu::hero::wave::lattice_catalog_store_t::format_runtime_wave_cursor(
+                wave_cursor)
+          : std::string{};
+  const std::string normalized_intersection_view =
+      (use_wave_cursor && !canonical_path.empty())
+          ? canonical_path + "|" + wave_cursor_view
+          : std::string{};
+
+  std::ostringstream out;
+  out << "{\"canonical_path\":" << json_quote(canonical_path)
+      << ",\"hashimyei_cursor\":" << json_quote(canonical_path)
+      << ",\"schema\":" << json_quote(schema)
+      << ",\"intersection_cursor\":"
+      << (normalized_intersection.empty() ? "null"
+                                          : json_quote(normalized_intersection))
+      << ",\"intersection_cursor_view\":"
+      << (normalized_intersection_view.empty()
+              ? "null"
+              : json_quote(normalized_intersection_view))
+      << ",\"wave_cursor\":"
+      << (use_wave_cursor ? json_quote(std::to_string(wave_cursor)) : "null")
+      << ",\"wave_cursor_view\":"
+      << (use_wave_cursor ? json_quote(wave_cursor_view) : "null")
+      << ",\"wave_cursor_mask\":"
+      << (use_wave_cursor ? json_quote(std::to_string(wave_cursor_mask))
+                          : "null")
+      << ",\"report_fragment\":"
+      << report_fragment_detail_to_json(*selected) << "}";
+  *out_structured = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_get_report_fragment(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string report_fragment_id{};
+  (void)extract_json_string_field(arguments_json, "report_fragment_id",
+                                  &report_fragment_id);
+  report_fragment_id = trim_ascii(report_fragment_id);
+  if (report_fragment_id.empty()) {
+    *out_error = "get_report_fragment requires arguments.report_fragment_id";
+    return false;
+  }
+
+  if (!refresh_runtime_report_fragment_catalog(app, out_error)) return false;
+
+  cuwacunu::hero::wave::runtime_report_fragment_t fragment{};
+  if (!app->catalog.get_runtime_report_fragment(report_fragment_id, &fragment,
+                                                out_error)) {
+    return false;
+  }
+
+  const std::string canonical_path =
+      normalize_source_hashimyei_cursor(fragment.canonical_path);
+  std::ostringstream out;
+  out << "{\"canonical_path\":" << json_quote(canonical_path)
+      << ",\"hashimyei_cursor\":" << json_quote(canonical_path)
+      << ",\"report_fragment_id\":" << json_quote(report_fragment_id)
+      << ",\"report_fragment\":" << report_fragment_detail_to_json(fragment)
+      << "}";
+  *out_structured = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_list_report_schemas(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string canonical_path{};
+  (void)extract_json_string_field(arguments_json, "canonical_path", &canonical_path);
+  if (canonical_path.empty()) {
+    (void)extract_json_string_field(arguments_json, "hashimyei_cursor",
+                                    &canonical_path);
+  }
+  canonical_path = normalize_source_hashimyei_cursor(canonical_path);
+  if (canonical_path.empty()) {
+    *out_error =
+        "list_report_schemas requires arguments.canonical_path or arguments.hashimyei_cursor";
+    return false;
+  }
+
+  if (!refresh_runtime_report_fragment_catalog(app, out_error)) return false;
+
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> rows{};
+  if (!app->catalog.list_runtime_report_fragments(canonical_path, "", 0, 0,
+                                                  true, &rows, out_error)) {
+    return false;
+  }
+
+  struct schema_summary_t {
+    std::size_t count{0};
+    std::string latest_report_fragment_id{};
+    std::string latest_run_id{};
+    std::uint64_t latest_ts_ms{0};
+  };
+  std::map<std::string, schema_summary_t> by_schema{};
+  for (const auto& row : rows) {
+    if (row.schema.empty()) continue;
+    auto& summary = by_schema[row.schema];
+    ++summary.count;
+    if (summary.latest_report_fragment_id.empty() || row.ts_ms > summary.latest_ts_ms ||
+        (row.ts_ms == summary.latest_ts_ms &&
+         row.report_fragment_id > summary.latest_report_fragment_id)) {
+      summary.latest_report_fragment_id = row.report_fragment_id;
+      summary.latest_run_id = row.run_id;
+      summary.latest_ts_ms = row.ts_ms;
+    }
+  }
+
+  std::ostringstream schemas_json;
+  schemas_json << "[";
+  bool first = true;
+  for (const auto& [schema_name, summary] : by_schema) {
+    if (!first) schemas_json << ",";
+    first = false;
+    schemas_json << "{\"schema\":" << json_quote(schema_name)
+                 << ",\"report_fragment_count\":" << summary.count
+                 << ",\"latest_report_fragment_id\":"
+                 << json_quote(summary.latest_report_fragment_id)
+                 << ",\"latest_run_id\":"
+                 << json_quote(summary.latest_run_id)
+                 << ",\"latest_ts_ms\":" << summary.latest_ts_ms << "}";
+  }
+  schemas_json << "]";
+
+  std::ostringstream out;
+  out << "{\"canonical_path\":" << json_quote(canonical_path)
+      << ",\"hashimyei_cursor\":" << json_quote(canonical_path)
+      << ",\"count\":" << by_schema.size()
+      << ",\"schemas\":" << schemas_json.str() << "}";
   *out_structured = out.str();
   return true;
 }
@@ -2979,7 +3299,8 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     wave_cursor_mask =
         cuwacunu::hero::wave::lattice_catalog_store_t::runtime_wave_cursor_full_mask();
     intersection_cursor_arg = canonical_path + "|" + std::to_string(wave_cursor);
-  } else if (extract_json_u64_field(arguments_json, "wave_cursor", &wave_cursor)) {
+  } else if (extract_json_wave_cursor_field(arguments_json, "wave_cursor",
+                                            &wave_cursor)) {
     use_wave_cursor = true;
     (void)extract_json_u64_field(arguments_json, "wave_cursor_mask",
                                  &wave_cursor_mask);
@@ -3051,6 +3372,15 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     normalized_intersection =
         canonical_path + "|" + std::to_string(wave_cursor);
   }
+  const std::string wave_cursor_view =
+      use_wave_cursor
+          ? cuwacunu::hero::wave::lattice_catalog_store_t::format_runtime_wave_cursor(
+                wave_cursor)
+          : std::string{};
+  const std::string normalized_intersection_view =
+      (use_wave_cursor && !canonical_path.empty())
+          ? canonical_path + "|" + wave_cursor_view
+          : std::string{};
   if (!normalized_intersection.empty() && !report_text.empty()) {
     std::uint64_t report_ts_ms = 0;
     std::string report_run_id = run_id;
@@ -3071,10 +3401,16 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << ",\"intersection_cursor\":"
       << (normalized_intersection.empty() ? "null"
                                           : json_quote(normalized_intersection))
+      << ",\"intersection_cursor_view\":"
+      << (normalized_intersection_view.empty()
+              ? "null"
+              : json_quote(normalized_intersection_view))
       << ",\"run_id\":" << json_quote(run_id)
       << ",\"schema\":" << json_quote(schema)
       << ",\"wave_cursor\":"
       << (use_wave_cursor ? json_quote(std::to_string(wave_cursor)) : "null")
+      << ",\"wave_cursor_view\":"
+      << (use_wave_cursor ? json_quote(wave_cursor_view) : "null")
       << ",\"wave_cursor_mask\":"
       << (use_wave_cursor ? json_quote(std::to_string(wave_cursor_mask))
                           : "null")
@@ -3128,6 +3464,13 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     ok = handle_tool_get_runs(app, arguments_json, &structured, &err);
   } else if (tool_name == "hero.lattice.list_report_fragments") {
     ok = handle_tool_list_report_fragments(app, arguments_json, &structured, &err);
+  } else if (tool_name == "hero.lattice.get_latest_report_fragment") {
+    ok = handle_tool_get_latest_report_fragment(app, arguments_json, &structured,
+                                                &err);
+  } else if (tool_name == "hero.lattice.get_report_fragment") {
+    ok = handle_tool_get_report_fragment(app, arguments_json, &structured, &err);
+  } else if (tool_name == "hero.lattice.list_report_schemas") {
+    ok = handle_tool_list_report_schemas(app, arguments_json, &structured, &err);
   } else if (tool_name == "hero.lattice.get_report_lls") {
     ok = handle_tool_get_report_lls(app, arguments_json, &structured, &err);
   } else if (tool_name == "hero.lattice.reset_catalog") {
