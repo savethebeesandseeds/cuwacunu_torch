@@ -10,17 +10,26 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 TEST_DEFAULT_LDLIBS :=
 
 $(eval $(call TEST_ONEFILE, test_jk_setup, test_jk_setup.cpp))
+$(eval $(call TEST_ONEFILE, test_jkimyei_campaign_snapshot, test_jkimyei_campaign_snapshot.cpp))
+$(eval $(call TEST_ONEFILE, test_wave_contract_binding_runtime_snapshot, test_wave_contract_binding_runtime_snapshot.cpp))
 
 $(TEST_OUT)/test_jk_setup: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 $(TEST_OUT)/test_jk_setup: LDLIBS_EXTRA  += $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
+$(TEST_OUT)/test_jkimyei_campaign_snapshot: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_jkimyei_campaign_snapshot: LDLIBS_EXTRA  += $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
+$(TEST_OUT)/test_wave_contract_binding_runtime_snapshot: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_wave_contract_binding_runtime_snapshot: LDLIBS_EXTRA  += $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
 
 .PHONY: all
-all: $(TEST_OUT)/test_jk_setup
+all: $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_jkimyei_campaign_snapshot \
+	$(TEST_OUT)/test_wave_contract_binding_runtime_snapshot
 	@$(LOG_SUCCESS)
 
 .PHONY: run
-run: run-test_jk_setup
+run: run-test_jk_setup run-test_jkimyei_campaign_snapshot \
+	run-test_wave_contract_binding_runtime_snapshot
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/test_jk_setup
+	@rm -f $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_jkimyei_campaign_snapshot \
+	  $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot

@@ -11,8 +11,10 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # Build Rules
 # -----------------------------------------------------------------
 $(eval $(call BUILD_OBJ_INC, common, hashimyei_catalog, hashimyei_catalog))
+$(eval $(call BUILD_OBJ_INC, common, hero_hashimyei_tools, hero_hashimyei_tools))
 
-HASHIMYEI_OBJS := $(OUTPUT_PATH)/common/hashimyei_catalog.o
+HASHIMYEI_OBJS := $(OUTPUT_PATH)/common/hashimyei_catalog.o \
+	$(OUTPUT_PATH)/common/hero_hashimyei_tools.o
 
 # -----------------------------------------------------------------
 # Aggregate Target

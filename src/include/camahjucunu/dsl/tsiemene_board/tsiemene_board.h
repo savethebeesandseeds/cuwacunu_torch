@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "camahjucunu/dsl/wave_contract_binding/wave_contract_binding.h"
+
 namespace cuwacunu {
 namespace camahjucunu {
 
@@ -17,13 +19,10 @@ struct tsiemene_board_wave_decl_t {
   std::string file{};
 };
 
-struct tsiemene_board_bind_decl_t {
-  std::string id{};
-  std::string contract_ref{};
-  std::string wave_ref{};
-};
+using tsiemene_board_bind_decl_t = wave_contract_binding_decl_t;
 
 struct tsiemene_board_instruction_t {
+  std::string active_bind_id{};
   std::vector<tsiemene_board_contract_decl_t> contracts{};
   std::vector<tsiemene_board_wave_decl_t> waves{};
   std::vector<tsiemene_board_bind_decl_t> binds{};

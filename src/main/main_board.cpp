@@ -15,7 +15,7 @@ const char* value_or_empty(const std::string& value) {
 void print_help(const char* argv0) {
   std::cerr << "Usage: " << argv0
             << " [--config-folder <path>] [--binding <binding_id>]"
-            << " [--reset-runtime-state]\n"
+            << " [--board-dsl <path>] [--reset-runtime-state]\n"
             << "Defaults:\n"
             << "  --config-folder " << DEFAULT_CONFIG_FOLDER << "\n";
 }
@@ -25,6 +25,7 @@ void print_help(const char* argv0) {
 int main(int argc, char** argv) {
   std::string config_folder = DEFAULT_CONFIG_FOLDER;
   std::string binding_override;
+  std::string board_dsl_override;
   bool reset_runtime_state_flag = false;
 
   for (int i = 1; i < argc; ++i) {
@@ -35,6 +36,10 @@ int main(int argc, char** argv) {
     }
     if (arg == "--binding" && i + 1 < argc) {
       binding_override = argv[++i];
+      continue;
+    }
+    if (arg == "--board-dsl" && i + 1 < argc) {
+      board_dsl_override = argv[++i];
       continue;
     }
     if (arg == "--reset-runtime-state") {
@@ -52,6 +57,12 @@ int main(int argc, char** argv) {
 
   try {
     cuwacunu::iitepi::config_space_t::change_config_file(config_folder.c_str());
+    if (!board_dsl_override.empty()) {
+      cuwacunu::iitepi::config_space_t::set_runtime_board_dsl_override(
+          board_dsl_override);
+    } else {
+      cuwacunu::iitepi::config_space_t::clear_runtime_board_dsl_override();
+    }
     cuwacunu::iitepi::config_space_t::update_config();
 
     const bool reset_runtime_state =

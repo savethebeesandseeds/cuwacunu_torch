@@ -72,5 +72,7 @@ The following are the main gaps between live payloads and the canonical emitted 
 - internal non-runtime structs still expose some `canonical_base` field names
 - joined Hero `report_lls` remains a separate synthetic transport, not a strict
   standalone runtime `.lls` document
+- synthetic joined transports may use `/* ... */` comment boundaries for human
+  readability only
 
 Those deltas are mapped file-by-file in `MIGRATION_BACKLOG.md`.

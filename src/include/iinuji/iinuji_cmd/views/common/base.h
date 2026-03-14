@@ -159,25 +159,19 @@ inline bool lookup_config_value(const std::string& section,
 }
 
 inline std::string resolve_configured_board_contract_path() {
-  const std::string configured_board = cuwacunu::iitepi::config_space_t::get<std::string>(
-      "GENERAL", GENERAL_BOARD_CONFIG_KEY);
-  const std::filesystem::path board_path(configured_board);
-  const std::string resolved_board_path = board_path.is_absolute()
-      ? board_path.string()
-      : (std::filesystem::path(cuwacunu::iitepi::config_space_t::config_folder) /
-         board_path)
-            .string();
-  const std::string binding_id = cuwacunu::iitepi::config_space_t::get<std::string>(
-      "GENERAL", GENERAL_BOARD_BINDING_KEY);
+  const std::string resolved_board_path =
+      cuwacunu::iitepi::config_space_t::effective_board_dsl_path();
   const auto board_hash =
       cuwacunu::iitepi::board_space_t::register_board_file(resolved_board_path);
   const auto board_itself =
       cuwacunu::iitepi::board_space_t::board_itself(board_hash);
   const auto& board_instruction = board_itself->board.decoded();
+  const std::string binding_id = trim_copy(board_instruction.active_bind_id);
+  if (binding_id.empty()) return {};
 
   const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
   for (const auto& b : board_instruction.binds) {
-    if (b.id == binding_id) {
+    if (trim_copy(b.id) == binding_id) {
       bind = &b;
       break;
     }
@@ -218,31 +212,24 @@ struct BoardWaveBatchSizeResolution {
 inline BoardWaveBatchSizeResolution resolve_configured_board_wave_batch_size() {
   BoardWaveBatchSizeResolution out{};
   try {
-    const std::string configured_board = cuwacunu::iitepi::config_space_t::get<std::string>(
-        "GENERAL", GENERAL_BOARD_CONFIG_KEY);
-    const std::filesystem::path board_path(configured_board);
-    const std::string resolved_board_path = board_path.is_absolute()
-        ? board_path.string()
-        : (std::filesystem::path(cuwacunu::iitepi::config_space_t::config_folder) /
-           board_path)
-              .string();
-    const std::string binding_id = cuwacunu::iitepi::config_space_t::get<std::string>(
-        "GENERAL", GENERAL_BOARD_BINDING_KEY);
-
-    if (binding_id.empty()) {
-      out.detail = "missing GENERAL.board_binding_id";
-      return out;
-    }
+    const std::string resolved_board_path =
+        cuwacunu::iitepi::config_space_t::effective_board_dsl_path();
 
     const auto board_hash =
         cuwacunu::iitepi::board_space_t::register_board_file(resolved_board_path);
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
     const auto& board_instruction = board_itself->board.decoded();
+    const std::string binding_id = trim_copy(board_instruction.active_bind_id);
+
+    if (binding_id.empty()) {
+      out.detail = "missing ACTIVE_BIND in board DSL";
+      return out;
+    }
 
     const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
     for (const auto& b : board_instruction.binds) {
-      if (trim_copy(b.id) == trim_copy(binding_id)) {
+      if (trim_copy(b.id) == binding_id) {
         bind = &b;
         break;
       }

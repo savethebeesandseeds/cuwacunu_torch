@@ -149,7 +149,7 @@ int main() try {
   }
 
   // Case 2: mutate configured board path mid-run -> fail-fast.
-  set_ini_key_value(global_cfg_path, "GENERAL", "board_config_filename",
+  set_ini_key_value(global_cfg_path, "GENERAL", "default_board_dsl_filename",
                     alt_board_cfg_path.string());
   if (!expect_update_throws()) {
     std::cerr << "[dconfig_contract_lock] expected fail-fast for board path mutation\n";

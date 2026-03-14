@@ -46,6 +46,15 @@ Defines how execution runs:
 Defines policy catalogs:
 - optimizer/scheduler/loss and related options
 
+Wikimyei components may expose a small runtime `jkimyei` facet:
+- current resolved component/profile identity
+- current train-enabled state
+- current runtime training counters/policy snapshot
+- safe flush of pending accumulated gradients
+
+That facet is intentionally small.
+It is not meant to genericize component-specific math or losses.
+
 The practical idea is:
 - circuit tells "how it is connected"
 - wave tells "how to run now"

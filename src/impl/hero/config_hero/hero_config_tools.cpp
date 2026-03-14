@@ -1,4 +1,4 @@
-#include "hero/config_hero/hero_config_commands.h"
+#include "hero/config_hero/hero_config_tools.h"
 
 #include <algorithm>
 #include <array>
@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <sstream>
@@ -387,41 +388,6 @@ enum class dsl_path_resolution_error_t {
     std::string_view global_config_path) {
   return configured_hashimyei_store_root(global_config_path) / "catalog" /
          kCatalogFilename;
-}
-
-[[nodiscard]] std::string field_escape(std::string_view in) {
-  std::string out;
-  out.reserve(in.size() + 8);
-  for (const char c : in) {
-    if (c == '\t') {
-      out += "\\t";
-    } else if (c == '\n') {
-      out += "\\n";
-    } else if (c == '\r') {
-      out += "\\r";
-    } else {
-      out.push_back(c);
-    }
-  }
-  return out;
-}
-
-void emit_ok(std::string_view command, std::string_view message) {
-  std::cout << "ok\t" << command << '\t' << field_escape(message) << '\n';
-}
-
-void emit_err(std::string_view command, std::string_view message) {
-  std::cout << "err\t" << command << '\t' << field_escape(message) << '\n';
-}
-
-void emit_data(std::string_view key, std::string_view value) {
-  std::cout << "data\t" << field_escape(key) << '\t' << field_escape(value)
-            << '\n';
-}
-
-void emit_end() {
-  std::cout << "end\n";
-  std::cout.flush();
 }
 
 [[nodiscard]] std::string json_escape(std::string_view in) {
@@ -1091,7 +1057,7 @@ struct cutover_receipt_entry_t {
   bool inserted{false};
 };
 
-[[nodiscard]] std::string build_cutover_receipt_json(
+[[nodiscard]] std::string build_cutover_receipt_json_impl(
     const cuwacunu::hero::mcp::hero_config_store_t::save_preview_t& preview,
     std::string_view config_path, std::string_view global_config_path) {
   std::vector<touched_component_dsl_diff_t> touched{};
@@ -1525,27 +1491,6 @@ struct cutover_receipt_entry_t {
   return out.str();
 }
 
-void print_help() {
-  emit_ok("help", "available commands");
-  emit_data("help", "ping");
-  emit_data("help", "status");
-  emit_data("help", "profiles");
-  emit_data("help", "targets");
-  emit_data("help", "schema");
-  emit_data("help", "show");
-  emit_data("help", "get <key>");
-  emit_data("help", "set <key> <value>");
-  emit_data("help", "validate");
-  emit_data("help", "diff");
-  emit_data("help", "dry_run");
-  emit_data("help", "backups");
-  emit_data("help", "rollback [backup_filename]");
-  emit_data("help", "save");
-  emit_data("help", "reload");
-  emit_data("help", "quit");
-  emit_end();
-}
-
 [[nodiscard]] std::string build_status_result(
     const cuwacunu::hero::mcp::hero_config_store_t& store) {
   const auto errors = store.validate();
@@ -1606,8 +1551,126 @@ void print_help() {
   return out.str();
 }
 
-[[nodiscard]] std::string build_tools_list_result() {
-  return R"JSON({"tools":[{"name":"hero.config.status","description":"Runtime status and validation snapshot","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.schema","description":"Runtime key schema","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.show","description":"Current key-value entries","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.get","description":"Get one key","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"],"additionalProperties":false}},{"name":"hero.config.set","description":"Set one key","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"],"additionalProperties":false}},{"name":"hero.config.dsl.get","description":"Read one key from src/config/instructions/default.*.dsl only","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"dsl_path":{"type":"string"},"key":{"type":"string"}},"required":["key"],"additionalProperties":false}},{"name":"hero.config.dsl.set","description":"Set one key in src/config/instructions/default.*.dsl only","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"dsl_path":{"type":"string"},"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"],"additionalProperties":false}},{"name":"hero.config.validate","description":"Validate runtime config","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.diff","description":"Preview config changes before save","inputSchema":{"type":"object","properties":{"include_text":{"type":"boolean"}},"additionalProperties":false}},{"name":"hero.config.dry_run","description":"Alias of hero.config.diff","inputSchema":{"type":"object","properties":{"include_text":{"type":"boolean"}},"additionalProperties":false}},{"name":"hero.config.backups","description":"List available config backups","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.rollback","description":"Rollback config to a backup snapshot","inputSchema":{"type":"object","properties":{"backup":{"type":"string"}},"additionalProperties":false}},{"name":"hero.config.save","description":"Save runtime config to disk","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.reload","description":"Reload runtime config from disk","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},{"name":"hero.config.dev_nuke_reset","description":"Developer reset: remove runtime dump folders and Hero catalogs resolved from the saved global config, then reload Config Hero state","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}]})JSON";
+using hero_config_tool_handler_t = bool (*)(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+
+struct hero_config_tool_descriptor_t {
+  std::string_view name;
+  std::string_view description;
+  std::string_view input_schema_json;
+  hero_config_tool_handler_t handler;
+};
+
+[[nodiscard]] bool handle_tool_status(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_schema(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_show(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_get(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_set(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_dsl_get(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_dsl_set(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_validate(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_diff(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_backups(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_rollback(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_save(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_reload(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_dev_nuke_reset(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+
+constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
+#define HERO_CONFIG_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) \
+  hero_config_tool_descriptor_t{NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER},
+#include "hero/config_hero/hero_config_tools.def"
+#undef HERO_CONFIG_TOOL
+};
+
+[[nodiscard]] const hero_config_tool_descriptor_t* find_tool_descriptor(
+    std::string_view name) {
+  for (const auto& descriptor : kHeroConfigTools) {
+    if (descriptor.name == name) return &descriptor;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::string build_tools_list_result_json_impl() {
+  std::ostringstream out;
+  out << "{\"tools\":[";
+  for (std::size_t i = 0; i < std::size(kHeroConfigTools); ++i) {
+    const auto& tool = kHeroConfigTools[i];
+    if (i != 0) out << ",";
+    out << "{"
+        << "\"name\":" << json_quote(tool.name) << ","
+        << "\"description\":" << json_quote(tool.description) << ","
+        << "\"inputSchema\":" << tool.input_schema_json << "}";
+  }
+  out << "]}";
+  return out.str();
+}
+
+[[nodiscard]] std::string build_tools_list_human_text_impl() {
+  std::ostringstream out;
+  for (const auto& tool : kHeroConfigTools) {
+    out << tool.name << "\t" << tool.description << "\n";
+  }
+  return out.str();
 }
 
 [[nodiscard]] std::string path_vector_json(
@@ -1622,6 +1685,549 @@ void print_help() {
   return out.str();
 }
 
+[[nodiscard]] bool handle_tool_status(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  (void)out_error_code;
+  (void)out_error_message;
+  if (out_result_json) *out_result_json = build_status_result(*store);
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_schema(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  (void)store;
+  (void)out_error_code;
+  (void)out_error_message;
+  std::ostringstream out;
+  out << "{\"keys\":[";
+  for (std::size_t i = 0;
+       i < cuwacunu::hero::config::kRuntimeKeyDescriptors.size(); ++i) {
+    const auto& d = cuwacunu::hero::config::kRuntimeKeyDescriptors[i];
+    if (i != 0) out << ",";
+    out << "{"
+        << "\"key\":" << json_quote(d.key) << ","
+        << "\"type\":" << json_quote(d.type) << ","
+        << "\"required\":" << bool_json(d.required) << ","
+        << "\"default\":" << json_quote(d.default_value) << ","
+        << "\"range\":" << json_quote(d.range) << ","
+        << "\"allowed\":" << json_quote(d.allowed) << "}";
+  }
+  out << "]}";
+  if (out_result_json) *out_result_json = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_show(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  (void)out_error_code;
+  (void)out_error_message;
+  const auto entries = store->entries_snapshot();
+  std::ostringstream out;
+  out << "{\"entries\":[";
+  for (std::size_t i = 0; i < entries.size(); ++i) {
+    if (i != 0) out << ",";
+    out << "{"
+        << "\"key\":" << json_quote(entries[i].key) << ","
+        << "\"domain\":" << json_quote(entries[i].declared_domain) << ","
+        << "\"type\":" << json_quote(entries[i].declared_type) << ","
+        << "\"value\":" << json_quote(entries[i].value) << "}";
+  }
+  out << "]}";
+  if (out_result_json) *out_result_json = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_get(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string key;
+  if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument key";
+    }
+    return false;
+  }
+  const auto value = store->get_value(key);
+  if (!value.has_value()) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) *out_error_message = "key not found: " + key;
+    return false;
+  }
+  if (out_result_json) {
+    *out_result_json = "{\"key\":" + json_quote(key) + ",\"value\":" +
+                       json_quote(*value) + "}";
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_set(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string key;
+  std::string value;
+  if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument key";
+    }
+    return false;
+  }
+  if (!extract_json_string_field(request_json, "value", &value)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument value";
+    }
+    return false;
+  }
+  std::string err;
+  if (!store->set_value(key, value, &err)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (out_result_json) {
+    *out_result_json = "{\"updated\":true,\"key\":" + json_quote(key) +
+                       ",\"value\":" + json_quote(value) + "}";
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_dsl_get(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string dsl_path_raw;
+  std::string key;
+  if (!extract_json_string_field(request_json, "path", &dsl_path_raw) ||
+      dsl_path_raw.empty()) {
+    (void)extract_json_string_field(request_json, "dsl_path", &dsl_path_raw);
+  }
+  if (dsl_path_raw.empty()) dsl_path_raw = store->config_path();
+  if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument key";
+    }
+    return false;
+  }
+
+  std::filesystem::path dsl_path{};
+  std::string err{};
+  dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
+  if (!resolve_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
+                                   &dsl_err)) {
+    if (out_error_code) {
+      *out_error_code =
+          is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
+    }
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::string text{};
+  if (!read_text_file(dsl_path.string(), &text, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  std::istringstream input(text);
+  std::string line{};
+  std::string value{};
+  std::string declared_type{};
+  std::size_t line_no = 0;
+  bool found = false;
+  while (std::getline(input, line)) {
+    ++line_no;
+    const parsed_dsl_line_t parsed = parse_dsl_line(line);
+    if (!parsed.has_assignment) continue;
+    if (parsed.key != key) continue;
+    value = parsed.value;
+    declared_type = parsed.declared_type;
+    found = true;
+    break;
+  }
+  if (!found) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message =
+          "key not found in dsl file: " + key + " @ " + dsl_path.string();
+    }
+    return false;
+  }
+  if (out_result_json) {
+    std::ostringstream out;
+    out << "{\"dsl_path\":" << json_quote(dsl_path.string())
+        << ",\"key\":" << json_quote(key)
+        << ",\"declared_type\":" << json_quote(declared_type)
+        << ",\"value\":" << json_quote(value)
+        << ",\"line\":" << line_no << "}";
+    *out_result_json = out.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_dsl_set(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string dsl_path_raw;
+  std::string key;
+  std::string value;
+  if (!extract_json_string_field(request_json, "path", &dsl_path_raw) ||
+      dsl_path_raw.empty()) {
+    (void)extract_json_string_field(request_json, "dsl_path", &dsl_path_raw);
+  }
+  if (dsl_path_raw.empty()) dsl_path_raw = store->config_path();
+  if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument key";
+    }
+    return false;
+  }
+  if (!extract_json_string_field(request_json, "value", &value)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument value";
+    }
+    return false;
+  }
+
+  std::filesystem::path dsl_path{};
+  std::string err{};
+  dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
+  if (!resolve_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
+                                   &dsl_err)) {
+    if (out_error_code) {
+      *out_error_code =
+          is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
+    }
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::string text{};
+  if (!read_text_file(dsl_path.string(), &text, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  std::istringstream input(text);
+  std::vector<std::string> lines{};
+  std::string line{};
+  while (std::getline(input, line)) {
+    lines.push_back(line);
+  }
+
+  bool updated = false;
+  std::size_t updated_line = 0;
+  std::string before_value{};
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const parsed_dsl_line_t parsed = parse_dsl_line(lines[i]);
+    if (!parsed.has_assignment) continue;
+    if (parsed.key != key) continue;
+    before_value = parsed.value;
+    std::string next = parsed.leading + parsed.lhs + " = " + value;
+    if (!parsed.comment.empty()) next += " " + parsed.comment;
+    lines[i] = std::move(next);
+    updated = true;
+    updated_line = i + 1;
+    break;
+  }
+  if (!updated) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message =
+          "key not found in dsl file: " + key + " @ " + dsl_path.string();
+    }
+    return false;
+  }
+
+  std::ostringstream rebuilt{};
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    rebuilt << lines[i];
+    if (i + 1 < lines.size()) rebuilt << "\n";
+  }
+  if (text.empty() || text.back() == '\n') rebuilt << "\n";
+
+  if (!write_text_file_atomic(dsl_path.string(), rebuilt.str(), &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (out_result_json) {
+    std::ostringstream out;
+    out << "{\"updated\":true,\"dsl_path\":"
+        << json_quote(dsl_path.string()) << ",\"key\":" << json_quote(key)
+        << ",\"before_value\":" << json_quote(before_value)
+        << ",\"value\":" << json_quote(value)
+        << ",\"line\":" << updated_line << "}";
+    *out_result_json = out.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_validate(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  (void)out_error_code;
+  (void)out_error_message;
+  const auto errors = store->validate();
+  std::ostringstream out;
+  out << "{\"valid\":" << bool_json(errors.empty()) << ",\"errors\":[";
+  for (std::size_t i = 0; i < errors.size(); ++i) {
+    if (i != 0) out << ",";
+    out << json_quote(errors[i]);
+  }
+  out << "]}";
+  if (out_result_json) *out_result_json = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_diff(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  bool include_text = false;
+  bool parsed_include_text = false;
+  if (extract_json_raw_field(request_json, "include_text", nullptr)) {
+    if (!extract_json_bool_field(request_json, "include_text", &include_text)) {
+      if (out_error_code) *out_error_code = -32602;
+      if (out_error_message) {
+        *out_error_message =
+            std::string(tool_name) + " include_text must be boolean";
+      }
+      return false;
+    }
+    parsed_include_text = true;
+  }
+  if (!parsed_include_text &&
+      extract_json_bool_field(request_json, "includeText", &include_text)) {
+    parsed_include_text = true;
+  }
+  (void)parsed_include_text;
+
+  cuwacunu::hero::mcp::hero_config_store_t::save_preview_t preview;
+  std::string err;
+  if (!store->preview_save(&preview, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (out_result_json) {
+    *out_result_json = build_save_preview_result(preview, include_text);
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_backups(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  std::vector<cuwacunu::hero::mcp::hero_config_store_t::backup_entry_t>
+      backups;
+  std::string err;
+  if (!store->list_backups(&backups, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::ostringstream out;
+  out << "{\"count\":" << backups.size() << ",\"backups\":[";
+  for (std::size_t i = 0; i < backups.size(); ++i) {
+    if (i != 0) out << ",";
+    out << "{"
+        << "\"index\":" << i << ","
+        << "\"filename\":" << json_quote(backups[i].filename) << ","
+        << "\"path\":" << json_quote(backups[i].path) << "}";
+  }
+  out << "]}";
+  if (out_result_json) *out_result_json = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_rollback(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string selector;
+  if (extract_json_raw_field(request_json, "backup", nullptr)) {
+    if (!extract_json_string_field(request_json, "backup", &selector)) {
+      if (out_error_code) *out_error_code = -32602;
+      if (out_error_message) {
+        *out_error_message = std::string(tool_name) + " backup must be string";
+      }
+      return false;
+    }
+  }
+
+  std::string selected;
+  std::string err;
+  if (!store->rollback_to_backup(selector, &selected, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (out_result_json) {
+    *out_result_json = "{\"rolled_back\":true,\"path\":" +
+                       json_quote(store->config_path()) +
+                       ",\"selected_backup\":" + json_quote(selected) + "}";
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_save(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  cuwacunu::hero::mcp::hero_config_store_t::save_preview_t preview;
+  std::string err;
+  if (!store->preview_save(&preview, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (!store->save(&err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (out_result_json) {
+    *out_result_json = "{\"saved\":true,\"path\":" +
+                       json_quote(store->config_path()) + ",\"cutover\":" +
+                       build_cutover_receipt_json_impl(
+                           preview, store->config_path(),
+                           store->global_config_path()) +
+                       "}";
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_reload(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  std::string err;
+  if (!store->load(&err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (out_result_json) {
+    *out_result_json = "{\"reloaded\":true,\"path\":" +
+                       json_quote(store->config_path()) + "}";
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_dev_nuke_reset(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  (void)tool_name;
+  (void)request_json;
+  cuwacunu::hero::runtime_dev::runtime_reset_targets_t targets{};
+  std::string err;
+  if (!cuwacunu::hero::runtime_dev::resolve_runtime_reset_targets_from_global_config(
+          store->global_config_path(), &targets, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  const bool dirty_before_reset = store->dirty();
+  cuwacunu::hero::runtime_dev::runtime_reset_result_t reset_result{};
+  if (!cuwacunu::hero::runtime_dev::reset_runtime_state(targets, &reset_result,
+                                                        &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  if (!store->load(&err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) {
+      *out_error_message =
+          "runtime state reset succeeded but config reload failed: " + err;
+    }
+    return false;
+  }
+
+  if (out_result_json) {
+    std::ostringstream out;
+    out << "{"
+        << "\"reset\":true,"
+        << "\"config_path\":" << json_quote(store->config_path()) << ","
+        << "\"global_config_path\":"
+        << json_quote(store->global_config_path()) << ","
+        << "\"dirty_before_reset\":" << bool_json(dirty_before_reset) << ","
+        << "\"resolved_from_saved_global_config\":true,"
+        << "\"hashimyei_hero_dsl_path\":"
+        << json_quote(targets.hashimyei_hero_dsl_path.string()) << ","
+        << "\"lattice_hero_dsl_path\":"
+        << json_quote(targets.lattice_hero_dsl_path.string()) << ","
+        << "\"runtime_hero_dsl_path\":"
+        << json_quote(targets.runtime_hero_dsl_path.string()) << ","
+        << "\"runtime_jobs_root\":"
+        << json_quote(targets.runtime_jobs_root.string()) << ","
+        << "\"jkimyei_hero_dsl_path\":"
+        << json_quote(targets.jkimyei_hero_dsl_path.string()) << ","
+        << "\"jkimyei_campaigns_root\":"
+        << json_quote(targets.jkimyei_campaigns_root.string()) << ","
+        << "\"target_store_roots\":" << path_vector_json(targets.store_roots)
+        << ","
+        << "\"target_catalog_paths\":"
+        << path_vector_json(targets.catalog_paths) << ","
+        << "\"removed_store_roots\":"
+        << path_vector_json(reset_result.removed_store_roots) << ","
+        << "\"removed_catalog_paths\":"
+        << path_vector_json(reset_result.removed_catalog_paths) << ","
+        << "\"removed_store_entries\":" << reset_result.removed_store_entries
+        << ",\"reloaded\":true"
+        << "}";
+    *out_result_json = out.str();
+  }
+  return true;
+}
+
 [[nodiscard]] bool dispatch_tool_jsonrpc(
     const std::string& tool_name, const std::string& request_json,
     cuwacunu::hero::mcp::hero_config_store_t* store, std::string* out_result_json,
@@ -1629,446 +2235,10 @@ void print_help() {
   if (out_error_code) *out_error_code = -32603;
   if (out_error_message) *out_error_message = "internal error";
 
-  if (tool_name == "hero.config.status") {
-    if (out_result_json) *out_result_json = build_status_result(*store);
-    return true;
-  }
-  if (tool_name == "hero.config.schema") {
-    std::ostringstream out;
-    out << "{\"keys\":[";
-    for (std::size_t i = 0; i < cuwacunu::hero::config::kRuntimeKeyDescriptors.size();
-         ++i) {
-      const auto& d = cuwacunu::hero::config::kRuntimeKeyDescriptors[i];
-      if (i != 0) out << ",";
-      out << "{"
-          << "\"key\":" << json_quote(d.key) << ","
-          << "\"type\":" << json_quote(d.type) << ","
-          << "\"required\":" << bool_json(d.required) << ","
-          << "\"default\":" << json_quote(d.default_value) << ","
-          << "\"range\":" << json_quote(d.range) << ","
-          << "\"allowed\":" << json_quote(d.allowed) << "}";
-    }
-    out << "]}";
-    if (out_result_json) *out_result_json = out.str();
-    return true;
-  }
-  if (tool_name == "hero.config.show") {
-    const auto entries = store->entries_snapshot();
-    std::ostringstream out;
-    out << "{\"entries\":[";
-    for (std::size_t i = 0; i < entries.size(); ++i) {
-      if (i != 0) out << ",";
-      out << "{"
-          << "\"key\":" << json_quote(entries[i].key) << ","
-          << "\"domain\":" << json_quote(entries[i].declared_domain) << ","
-          << "\"type\":" << json_quote(entries[i].declared_type) << ","
-          << "\"value\":" << json_quote(entries[i].value) << "}";
-    }
-    out << "]}";
-    if (out_result_json) *out_result_json = out.str();
-    return true;
-  }
-  if (tool_name == "hero.config.get") {
-    std::string key;
-    if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) *out_error_message = "hero.config.get requires argument key";
-      return false;
-    }
-    const auto value = store->get_value(key);
-    if (!value.has_value()) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) *out_error_message = "key not found: " + key;
-      return false;
-    }
-    if (out_result_json) {
-      *out_result_json = "{\"key\":" + json_quote(key) + ",\"value\":" +
-                         json_quote(*value) + "}";
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.set") {
-    std::string key;
-    std::string value;
-    if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) *out_error_message = "hero.config.set requires argument key";
-      return false;
-    }
-    if (!extract_json_string_field(request_json, "value", &value)) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) *out_error_message = "hero.config.set requires argument value";
-      return false;
-    }
-    std::string err;
-    if (!store->set_value(key, value, &err)) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    if (out_result_json) {
-      *out_result_json = "{\"updated\":true,\"key\":" + json_quote(key) +
-                         ",\"value\":" + json_quote(value) + "}";
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.dsl.get") {
-    std::string dsl_path_raw;
-    std::string key;
-    if (!extract_json_string_field(request_json, "path", &dsl_path_raw) ||
-        dsl_path_raw.empty()) {
-      (void)extract_json_string_field(request_json, "dsl_path", &dsl_path_raw);
-    }
-    if (dsl_path_raw.empty()) {
-      dsl_path_raw = store->config_path();
-    }
-    if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) {
-        *out_error_message = "hero.config.dsl.get requires argument key";
-      }
-      return false;
-    }
-    std::filesystem::path dsl_path{};
-    std::string err{};
-    dsl_path_resolution_error_t dsl_err =
-        dsl_path_resolution_error_t::kNone;
-    if (!resolve_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
-                                     &dsl_err)) {
-      if (out_error_code) {
-        *out_error_code =
-            is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
-      }
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    std::string text{};
-    if (!read_text_file(dsl_path.string(), &text, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-
-    std::istringstream input(text);
-    std::string line{};
-    std::string value{};
-    std::string declared_type{};
-    std::size_t line_no = 0;
-    bool found = false;
-    while (std::getline(input, line)) {
-      ++line_no;
-      const parsed_dsl_line_t parsed = parse_dsl_line(line);
-      if (!parsed.has_assignment) continue;
-      if (parsed.key != key) continue;
-      value = parsed.value;
-      declared_type = parsed.declared_type;
-      found = true;
-      break;
-    }
-    if (!found) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) {
-        *out_error_message =
-            "key not found in dsl file: " + key + " @ " + dsl_path.string();
-      }
-      return false;
-    }
-    if (out_result_json) {
-      std::ostringstream out;
-      out << "{\"dsl_path\":" << json_quote(dsl_path.string())
-          << ",\"key\":" << json_quote(key)
-          << ",\"declared_type\":" << json_quote(declared_type)
-          << ",\"value\":" << json_quote(value)
-          << ",\"line\":" << line_no << "}";
-      *out_result_json = out.str();
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.dsl.set") {
-    std::string dsl_path_raw;
-    std::string key;
-    std::string value;
-    if (!extract_json_string_field(request_json, "path", &dsl_path_raw) ||
-        dsl_path_raw.empty()) {
-      (void)extract_json_string_field(request_json, "dsl_path", &dsl_path_raw);
-    }
-    if (dsl_path_raw.empty()) {
-      dsl_path_raw = store->config_path();
-    }
-    if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) {
-        *out_error_message = "hero.config.dsl.set requires argument key";
-      }
-      return false;
-    }
-    if (!extract_json_string_field(request_json, "value", &value)) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) {
-        *out_error_message = "hero.config.dsl.set requires argument value";
-      }
-      return false;
-    }
-
-    std::filesystem::path dsl_path{};
-    std::string err{};
-    dsl_path_resolution_error_t dsl_err =
-        dsl_path_resolution_error_t::kNone;
-    if (!resolve_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
-                                     &dsl_err)) {
-      if (out_error_code) {
-        *out_error_code =
-            is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
-      }
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    std::string text{};
-    if (!read_text_file(dsl_path.string(), &text, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-
-    std::istringstream input(text);
-    std::vector<std::string> lines{};
-    std::string line{};
-    while (std::getline(input, line)) {
-      lines.push_back(line);
-    }
-
-    bool updated = false;
-    std::size_t updated_line = 0;
-    std::string before_value{};
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-      const parsed_dsl_line_t parsed = parse_dsl_line(lines[i]);
-      if (!parsed.has_assignment) continue;
-      if (parsed.key != key) continue;
-      before_value = parsed.value;
-      std::string next = parsed.leading + parsed.lhs + " = " + value;
-      if (!parsed.comment.empty()) next += " " + parsed.comment;
-      lines[i] = std::move(next);
-      updated = true;
-      updated_line = i + 1;
-      break;
-    }
-    if (!updated) {
-      if (out_error_code) *out_error_code = -32602;
-      if (out_error_message) {
-        *out_error_message =
-            "key not found in dsl file: " + key + " @ " + dsl_path.string();
-      }
-      return false;
-    }
-
-    std::ostringstream rebuilt{};
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-      rebuilt << lines[i];
-      if (i + 1 < lines.size()) rebuilt << "\n";
-    }
-    if (text.empty() || text.back() == '\n') rebuilt << "\n";
-
-    if (!write_text_file_atomic(dsl_path.string(), rebuilt.str(), &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    if (out_result_json) {
-      std::ostringstream out;
-      out << "{\"updated\":true,\"dsl_path\":"
-          << json_quote(dsl_path.string()) << ",\"key\":" << json_quote(key)
-          << ",\"before_value\":" << json_quote(before_value)
-          << ",\"value\":" << json_quote(value)
-          << ",\"line\":" << updated_line << "}";
-      *out_result_json = out.str();
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.validate") {
-    const auto errors = store->validate();
-    std::ostringstream out;
-    out << "{\"valid\":" << bool_json(errors.empty()) << ",\"errors\":[";
-    for (std::size_t i = 0; i < errors.size(); ++i) {
-      if (i != 0) out << ",";
-      out << json_quote(errors[i]);
-    }
-    out << "]}";
-    if (out_result_json) *out_result_json = out.str();
-    return true;
-  }
-  if (tool_name == "hero.config.diff" || tool_name == "hero.config.dry_run") {
-    bool include_text = false;
-    bool parsed_include_text = false;
-    if (extract_json_raw_field(request_json, "include_text", nullptr)) {
-      if (!extract_json_bool_field(request_json, "include_text", &include_text)) {
-        if (out_error_code) *out_error_code = -32602;
-        if (out_error_message) {
-          *out_error_message = tool_name + " include_text must be boolean";
-        }
-        return false;
-      }
-      parsed_include_text = true;
-    }
-    if (!parsed_include_text &&
-        extract_json_bool_field(request_json, "includeText", &include_text)) {
-      parsed_include_text = true;
-    }
-    (void)parsed_include_text;
-
-    cuwacunu::hero::mcp::hero_config_store_t::save_preview_t preview;
-    std::string err;
-    if (!store->preview_save(&preview, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    if (out_result_json) {
-      *out_result_json = build_save_preview_result(preview, include_text);
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.backups") {
-    std::vector<cuwacunu::hero::mcp::hero_config_store_t::backup_entry_t>
-        backups;
-    std::string err;
-    if (!store->list_backups(&backups, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    std::ostringstream out;
-    out << "{\"count\":" << backups.size() << ",\"backups\":[";
-    for (std::size_t i = 0; i < backups.size(); ++i) {
-      if (i != 0) out << ",";
-      out << "{"
-          << "\"index\":" << i << ","
-          << "\"filename\":" << json_quote(backups[i].filename) << ","
-          << "\"path\":" << json_quote(backups[i].path) << "}";
-    }
-    out << "]}";
-    if (out_result_json) *out_result_json = out.str();
-    return true;
-  }
-  if (tool_name == "hero.config.rollback") {
-    std::string selector;
-    if (extract_json_raw_field(request_json, "backup", nullptr)) {
-      if (!extract_json_string_field(request_json, "backup", &selector)) {
-        if (out_error_code) *out_error_code = -32602;
-        if (out_error_message) {
-          *out_error_message = "hero.config.rollback backup must be string";
-        }
-        return false;
-      }
-    }
-
-    std::string selected;
-    std::string err;
-    if (!store->rollback_to_backup(selector, &selected, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    if (out_result_json) {
-      *out_result_json = "{\"rolled_back\":true,\"path\":" +
-                         json_quote(store->config_path()) +
-                         ",\"selected_backup\":" + json_quote(selected) + "}";
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.save") {
-    cuwacunu::hero::mcp::hero_config_store_t::save_preview_t preview;
-    std::string err;
-    if (!store->preview_save(&preview, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    if (!store->save(&err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    if (out_result_json) {
-      *out_result_json = "{\"saved\":true,\"path\":" +
-                         json_quote(store->config_path()) + ",\"cutover\":" +
-                         build_cutover_receipt_json(preview, store->config_path(),
-                                                    store->global_config_path()) +
-                         "}";
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.reload") {
-    std::string err;
-    if (!store->load(&err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-    if (out_result_json) {
-      *out_result_json = "{\"reloaded\":true,\"path\":" +
-                         json_quote(store->config_path()) + "}";
-    }
-    return true;
-  }
-  if (tool_name == "hero.config.dev_nuke_reset") {
-    cuwacunu::hero::runtime_dev::runtime_reset_targets_t targets{};
-    std::string err;
-    if (!cuwacunu::hero::runtime_dev::resolve_runtime_reset_targets_from_global_config(
-            store->global_config_path(), &targets, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-
-    const bool dirty_before_reset = store->dirty();
-    cuwacunu::hero::runtime_dev::runtime_reset_result_t reset_result{};
-    if (!cuwacunu::hero::runtime_dev::reset_runtime_state(
-            targets, &reset_result, &err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) *out_error_message = err;
-      return false;
-    }
-
-    if (!store->load(&err)) {
-      if (out_error_code) *out_error_code = -32603;
-      if (out_error_message) {
-        *out_error_message =
-            "runtime state reset succeeded but config reload failed: " + err;
-      }
-      return false;
-    }
-
-    if (out_result_json) {
-      std::ostringstream out;
-      out << "{"
-          << "\"reset\":true,"
-          << "\"config_path\":" << json_quote(store->config_path()) << ","
-          << "\"global_config_path\":"
-          << json_quote(store->global_config_path()) << ","
-          << "\"dirty_before_reset\":" << bool_json(dirty_before_reset) << ","
-          << "\"resolved_from_saved_global_config\":true,"
-          << "\"hashimyei_hero_dsl_path\":"
-          << json_quote(targets.hashimyei_hero_dsl_path.string()) << ","
-          << "\"lattice_hero_dsl_path\":"
-          << json_quote(targets.lattice_hero_dsl_path.string()) << ","
-          << "\"runtime_hero_dsl_path\":"
-          << json_quote(targets.runtime_hero_dsl_path.string()) << ","
-          << "\"runtime_jobs_root\":"
-          << json_quote(targets.runtime_jobs_root.string()) << ","
-          << "\"target_store_roots\":"
-          << path_vector_json(targets.store_roots) << ","
-          << "\"target_catalog_paths\":"
-          << path_vector_json(targets.catalog_paths) << ","
-          << "\"removed_store_roots\":"
-          << path_vector_json(reset_result.removed_store_roots) << ","
-          << "\"removed_catalog_paths\":"
-          << path_vector_json(reset_result.removed_catalog_paths) << ","
-          << "\"removed_store_entries\":" << reset_result.removed_store_entries
-          << ",\"reloaded\":true"
-          << "}";
-      *out_result_json = out.str();
-    }
-    return true;
+  const auto* descriptor = find_tool_descriptor(tool_name);
+  if (descriptor != nullptr) {
+    return descriptor->handler(tool_name, request_json, store, out_result_json,
+                               out_error_code, out_error_message);
   }
   if (tool_name == "hero.config.ask" || tool_name == "hero.config.fix") {
     if (out_error_code) *out_error_code = -32601;
@@ -2087,258 +2257,12 @@ namespace cuwacunu {
 namespace hero {
 namespace mcp {
 
-void emit_startup_banner(const hero_config_store_t& store) {
-  emit_ok("startup", "hero_config_mcp ready; run help for commands");
-  emit_data("config_path", store.config_path());
-  emit_data("from_template", store.from_template() ? "true" : "false");
-  emit_end();
+[[nodiscard]] std::string build_tools_list_result_json() {
+  return build_tools_list_result_json_impl();
 }
 
-bool execute_command_line(std::string line, hero_config_store_t* store,
-                          bool* should_exit) {
-  line = trim_ascii(line);
-  if (line.empty()) return true;
-
-  std::string command;
-  std::string args;
-  {
-    const std::size_t space = line.find_first_of(" \t");
-    if (space == std::string::npos) {
-      command = lowercase_copy(line);
-    } else {
-      command = lowercase_copy(line.substr(0, space));
-      args = trim_ascii(line.substr(space + 1));
-    }
-  }
-
-  if (command == "quit" || command == "exit") {
-    emit_ok(command, "bye");
-    emit_end();
-    if (should_exit) *should_exit = true;
-    return true;
-  }
-  if (command == "help") {
-    print_help();
-    return true;
-  }
-  if (command == "ping") {
-    emit_ok(command, "pong");
-    emit_end();
-    return true;
-  }
-  if (command == "status") {
-    const auto errors = store->validate();
-    emit_ok(command, errors.empty() ? "valid" : "invalid");
-    emit_data("config_path", store->config_path());
-    emit_data("dirty", store->dirty() ? "true" : "false");
-    emit_data("from_template", store->from_template() ? "true" : "false");
-    emit_data("protocol_layer", store->get_or_default("protocol_layer"));
-    emit_data("backup_enabled", store->get_or_default("backup_enabled"));
-    emit_data("backup_dir", store->get_or_default("backup_dir"));
-    emit_data("backup_max_entries", store->get_or_default("backup_max_entries"));
-    emit_data("error_count", std::to_string(errors.size()));
-    emit_end();
-    return true;
-  }
-  if (command == "profiles") {
-    emit_ok(command, "profile manifest");
-    for (const auto& p : cuwacunu::hero::config::kProfileDescriptors) {
-      emit_data(std::string("profile.") + std::string(p.profile_name),
-                std::string("model=") + std::string(p.model) + ",summary=" +
-                    std::string(p.summary));
-    }
-    emit_end();
-    return true;
-  }
-  if (command == "targets") {
-    emit_ok(command, "future learning targets");
-    for (const auto& t : cuwacunu::hero::config::kFutureLearningTargets) {
-      emit_data(std::string(t.include_path), std::string(t.summary));
-    }
-    emit_end();
-    return true;
-  }
-  if (command == "schema") {
-    emit_ok(command, "runtime key schema");
-    for (const auto& d : cuwacunu::hero::config::kRuntimeKeyDescriptors) {
-      std::ostringstream row;
-      row << "type=" << d.type << ",required=" << (d.required ? "true" : "false")
-          << ",default=" << d.default_value << ",range=" << d.range
-          << ",allowed=" << d.allowed;
-      emit_data(d.key, row.str());
-    }
-    emit_end();
-    return true;
-  }
-  if (command == "show") {
-    emit_ok(command, "current values");
-    for (const auto& e : store->entries_snapshot()) {
-      emit_data(e.key, e.value + " (type=" + e.declared_type + ")");
-    }
-    emit_end();
-    return true;
-  }
-  if (command == "get") {
-    if (args.empty()) {
-      emit_err(command, "usage: get <key>");
-      emit_end();
-      return false;
-    }
-    const auto value = store->get_value(args);
-    if (!value.has_value()) {
-      emit_err(command, "key not found: " + args);
-      emit_end();
-      return false;
-    }
-    emit_ok(command, "value");
-    emit_data(args, *value);
-    emit_end();
-    return true;
-  }
-  if (command == "set") {
-    const std::size_t split = args.find_first_of(" \t");
-    if (args.empty() || split == std::string::npos) {
-      emit_err(command, "usage: set <key> <value>");
-      emit_end();
-      return false;
-    }
-    const std::string key = trim_ascii(args.substr(0, split));
-    std::string value = trim_ascii(args.substr(split + 1));
-    if (value.size() >= 2 &&
-        ((value.front() == '"' && value.back() == '"') ||
-         (value.front() == '\'' && value.back() == '\''))) {
-      value = value.substr(1, value.size() - 2);
-    }
-    std::string err;
-    if (!store->set_value(key, value, &err)) {
-      emit_err(command, err);
-      emit_end();
-      return false;
-    }
-    emit_ok(command, "updated");
-    emit_data(key, value);
-    emit_end();
-    return true;
-  }
-  if (command == "validate") {
-    const auto errors = store->validate();
-    if (errors.empty()) {
-      emit_ok(command, "valid");
-    } else {
-      emit_err(command, "invalid");
-      for (const auto& e : errors) emit_data("error", e);
-    }
-    emit_end();
-    return errors.empty();
-  }
-  if (command == "diff" || command == "dry_run") {
-    hero_config_store_t::save_preview_t preview;
-    std::string err;
-    if (!store->preview_save(&preview, &err)) {
-      emit_err(command, err);
-      emit_end();
-      return false;
-    }
-    const bool format_only = preview.text_changed && preview.diffs.empty();
-    if (!preview.has_changes) {
-      emit_ok(command, "no_changes");
-    } else if (format_only) {
-      emit_ok(command, "format_changes_only");
-    } else {
-      emit_ok(command, "changes_detected");
-    }
-    emit_data("file_exists", preview.file_exists ? "true" : "false");
-    emit_data("text_changed", preview.text_changed ? "true" : "false");
-    emit_data("format_only", format_only ? "true" : "false");
-    emit_data("diff_count", std::to_string(preview.diff_count));
-    for (const auto& d : preview.diffs) {
-      std::ostringstream row;
-      row << "action=" << d.action
-          << ",before_domain=" << d.before_declared_domain
-          << ",before_type=" << d.before_declared_type
-          << ",before_value=" << d.before_value
-          << ",after_domain=" << d.after_declared_domain
-          << ",after_type=" << d.after_declared_type
-          << ",after_value=" << d.after_value;
-      emit_data(std::string("diff.") + d.key, row.str());
-    }
-    emit_end();
-    return true;
-  }
-  if (command == "backups") {
-    std::vector<hero_config_store_t::backup_entry_t> backups;
-    std::string err;
-    if (!store->list_backups(&backups, &err)) {
-      emit_err(command, err);
-      emit_end();
-      return false;
-    }
-    emit_ok(command, backups.empty() ? "no_backups" : "backup_list");
-    emit_data("count", std::to_string(backups.size()));
-    for (std::size_t i = 0; i < backups.size(); ++i) {
-      emit_data(std::string("backup.") + std::to_string(i),
-                backups[i].filename + " -> " + backups[i].path);
-    }
-    emit_end();
-    return true;
-  }
-  if (command == "rollback") {
-    const std::string selector = trim_ascii(args);
-    std::string selected;
-    std::string err;
-    if (!store->rollback_to_backup(selector, &selected, &err)) {
-      emit_err(command, err);
-      emit_end();
-      return false;
-    }
-    emit_ok(command, "rolled_back");
-    emit_data("path", store->config_path());
-    emit_data("selected_backup", selected);
-    emit_end();
-    return true;
-  }
-  if (command == "save") {
-    hero_config_store_t::save_preview_t preview;
-    std::string err;
-    if (!store->preview_save(&preview, &err)) {
-      emit_err(command, err);
-      emit_end();
-      return false;
-    }
-    if (!store->save(&err)) {
-      emit_err(command, err);
-      emit_end();
-      return false;
-    }
-    emit_ok(command, "saved");
-    emit_data("path", store->config_path());
-    emit_data("cutover",
-              build_cutover_receipt_json(preview, store->config_path(),
-                                         store->global_config_path()));
-    emit_end();
-    return true;
-  }
-  if (command == "reload") {
-    std::string err;
-    if (!store->load(&err)) {
-      emit_err(command, err);
-      emit_end();
-      return false;
-    }
-    emit_ok(command, "reloaded");
-    emit_data("path", store->config_path());
-    emit_end();
-    return true;
-  }
-  if (command == "ask" || command == "fix") {
-    emit_err(command, kDeterministicOnlyMessage);
-    emit_end();
-    return true;
-  }
-
-  emit_err(command, "unknown command; run help");
-  emit_end();
-  return false;
+[[nodiscard]] std::string build_tools_list_human_text() {
+  return build_tools_list_human_text_impl();
 }
 
 bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
@@ -2466,7 +2390,7 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
     }
     if (method == "tools/list") {
       if (has_id) {
-        emit_jsonrpc_result(id_json, build_tools_list_result());
+        emit_jsonrpc_result(id_json, build_tools_list_result_json_impl());
       }
       continue;
     }

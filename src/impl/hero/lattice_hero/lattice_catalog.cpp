@@ -30,6 +30,10 @@ namespace {
 using runtime_lls_document_t =
     cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
 
+[[nodiscard]] bool parse_kv_payload(
+    std::string_view payload,
+    std::unordered_map<std::string, std::string>* out);
+
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t b = 0;
   while (b < in.size() && std::isspace(static_cast<unsigned char>(in[b])) != 0) {
@@ -195,6 +199,43 @@ void append_runtime_double_entry_(runtime_lls_document_t* document,
           std::string(key), value));
 }
 
+[[nodiscard]] cuwacunu::piaabo::latent_lineage_state::runtime_lls_entry_t*
+find_runtime_entry_(runtime_lls_document_t* document, std::string_view key) {
+  if (!document) return nullptr;
+  for (auto& entry : document->entries) {
+    if (entry.key == key) return &entry;
+  }
+  return nullptr;
+}
+
+void upsert_runtime_string_entry_(runtime_lls_document_t* document,
+                                  std::string_view key,
+                                  std::string_view value) {
+  if (!document) return;
+  auto replacement =
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          std::string(key), std::string(value));
+  if (auto* existing = find_runtime_entry_(document, key)) {
+    *existing = std::move(replacement);
+    return;
+  }
+  document->entries.push_back(std::move(replacement));
+}
+
+void upsert_runtime_u64_entry_(runtime_lls_document_t* document,
+                               std::string_view key,
+                               std::uint64_t value) {
+  if (!document) return;
+  auto replacement =
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+          std::string(key), value);
+  if (auto* existing = find_runtime_entry_(document, key)) {
+    *existing = std::move(replacement);
+    return;
+  }
+  document->entries.push_back(std::move(replacement));
+}
+
 [[nodiscard]] bool parse_runtime_lls_payload(
     std::string_view payload,
     std::unordered_map<std::string, std::string>* out,
@@ -232,6 +273,10 @@ void append_runtime_double_entry_(runtime_lls_document_t* document,
     std::string* out_schema,
     std::string* out_run_id,
     std::string* error) {
+  // DEV_WARNING: this is the remaining bridge from the synthetic joined
+  // report_lls transport back into strict runtime .lls. The goal is to delete
+  // this path once source-runtime projection is preserved as a first-class
+  // runtime fragment instead of being reconstructed from joined text.
   if (error) error->clear();
   if (!out_document) {
     if (error) *error = "source runtime projection document output pointer is null";
@@ -244,6 +289,8 @@ void append_runtime_double_entry_(runtime_lls_document_t* document,
   std::string schema_line{};
   std::vector<std::string> normalized_lines{};
   std::string explicit_run_id{};
+  bool saw_embedded_marker = false;
+  bool in_embedded_section = false;
   std::size_t cursor = 0;
   while (cursor < joined_report_lls.size()) {
     std::size_t line_end = joined_report_lls.find('\n', cursor);
@@ -251,6 +298,19 @@ void append_runtime_double_entry_(runtime_lls_document_t* document,
     std::string_view line = joined_report_lls.substr(cursor, line_end - cursor);
     if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
     const std::string trimmed = trim_ascii(line);
+    if (trimmed == "/* embedded source.runtime.projection.v2 */") {
+      saw_embedded_marker = true;
+      in_embedded_section = true;
+      if (line_end == joined_report_lls.size()) break;
+      cursor = line_end + 1;
+      continue;
+    }
+    if (in_embedded_section && trimmed.rfind("/*", 0) == 0) {
+      in_embedded_section = false;
+      if (line_end == joined_report_lls.size()) break;
+      cursor = line_end + 1;
+      continue;
+    }
     if (!trimmed.empty() && trimmed.front() != '#') {
       const std::size_t eq = trimmed.find('=');
       if (eq != std::string::npos && eq > 0) {
@@ -258,24 +318,22 @@ void append_runtime_double_entry_(runtime_lls_document_t* document,
         const std::string rhs = trim_ascii(trimmed.substr(eq + 1));
         const std::string key =
             cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(lhs);
+        if (in_embedded_section &&
+            !(key.size() >= 15 &&
+              key.compare(0, 15, "source.runtime.") == 0)) {
+          in_embedded_section = false;
+          if (line_end == joined_report_lls.size()) break;
+          cursor = line_end + 1;
+          continue;
+        }
         if (key.size() >= 15 && key.compare(0, 15, "source.runtime.") == 0) {
           if (key == "source.runtime.projection.run_id") {
             if (explicit_run_id.empty()) explicit_run_id = rhs;
           } else {
-            const std::string normalized =
-                cuwacunu::camahjucunu::dsl::normalize_assignment_to_lattice_state(
-                    lhs, rhs);
-            if (normalized.empty()) {
-              if (error) {
-                *error = "cannot normalize source runtime projection assignment: " +
-                         trimmed;
-              }
-              return false;
-            }
             if (key == "source.runtime.projection.schema") {
-              schema_line = normalized;
+              schema_line = trimmed;
             } else {
-              normalized_lines.push_back(normalized);
+              normalized_lines.push_back(trimmed);
             }
           }
         }
@@ -286,7 +344,12 @@ void append_runtime_double_entry_(runtime_lls_document_t* document,
   }
 
   if (schema_line.empty()) {
-    if (error) *error = "joined report_lls missing source.runtime.projection.schema";
+    if (error) {
+      *error = saw_embedded_marker
+                   ? "joined report_lls embedded source.runtime.projection.v2 "
+                     "section is missing source.runtime.projection.schema"
+                   : "joined report_lls missing source.runtime.projection.schema";
+    }
     return false;
   }
 
@@ -713,6 +776,9 @@ void append_synthetic_source_runtime_report_fragments(
   if (!sc.empty() && sc != "wave.source.runtime.projection.v2") return;
 
   for (const auto& [_, cell] : cells_by_id) {
+    // DEV_WARNING: synthetic source-runtime fragments are still reconstructed
+    // from joined transport text, not from a persisted original fragment body.
+    // This is the last major Lattice/runtime-LLS compatibility gap.
     std::unordered_map<std::string, std::string> joined_kv{};
     (void)parse_kv_payload(cell.report.report_lls, &joined_kv);
     std::string fallback_run_id{};
@@ -743,15 +809,15 @@ void append_synthetic_source_runtime_report_fragments(
     }
 
     runtime_lls_document_t payload = std::move(source_payload);
-    append_runtime_string_entry_(
+    upsert_runtime_string_entry_(
         &payload, "source.runtime.projection.run_id", synthetic_run_id);
-    append_runtime_string_entry_(&payload, "run_id", synthetic_run_id);
-    append_runtime_string_entry_(&payload, "canonical_path", cp);
-    append_runtime_string_entry_(&payload, "source_label", cp);
-    append_runtime_u64_entry_(&payload, "wave_cursor", synthetic_wave_cursor);
-    append_runtime_string_entry_(&payload, "wave_cursor_resolution", "run");
-    append_runtime_string_entry_(&payload, "hashimyei_cursor", cp);
-    append_runtime_string_entry_(
+    upsert_runtime_string_entry_(&payload, "run_id", synthetic_run_id);
+    upsert_runtime_string_entry_(&payload, "canonical_path", cp);
+    upsert_runtime_string_entry_(&payload, "source_label", cp);
+    upsert_runtime_u64_entry_(&payload, "wave_cursor", synthetic_wave_cursor);
+    upsert_runtime_string_entry_(&payload, "wave_cursor_resolution", "run");
+    upsert_runtime_string_entry_(&payload, "hashimyei_cursor", cp);
+    upsert_runtime_string_entry_(
         &payload, "intersection_cursor",
         build_intersection_cursor(cp, synthetic_wave_cursor));
     const std::string synthetic_payload =
@@ -2190,11 +2256,11 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
       infer_runtime_wave_cursor_resolution(kv);
   const std::string wave_cursor_resolution_token =
       runtime_wave_cursor_resolution_token(wave_cursor_resolution);
-  append_runtime_u64_entry_(&document, "wave_cursor", wave_cursor);
-  append_runtime_string_entry_(
+  upsert_runtime_u64_entry_(&document, "wave_cursor", wave_cursor);
+  upsert_runtime_string_entry_(
       &document, "wave_cursor_resolution", wave_cursor_resolution_token);
-  append_runtime_string_entry_(&document, "hashimyei_cursor", canonical_path);
-  append_runtime_string_entry_(
+  upsert_runtime_string_entry_(&document, "hashimyei_cursor", canonical_path);
+  upsert_runtime_string_entry_(
       &document,
       "intersection_cursor",
       build_intersection_cursor(canonical_path, wave_cursor));

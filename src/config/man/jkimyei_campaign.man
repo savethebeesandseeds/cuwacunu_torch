@@ -1,0 +1,133 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = jkimyei.campaign
+TARGET_DSL = src/config/instructions/default.jkimyei.campaign.dsl
+TARGET_BNF = src/config/bnf/jkimyei_campaign.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/jkimyei_campaign/jkimyei_campaign.cpp
+PRIMARY_VALIDATORS = syntax_only_in_decoder
+
+[FIELD ACTIVE_CAMPAIGN]
+key = ACTIVE_CAMPAIGN
+scope = campaign root
+type = identifier
+required = true
+default = none
+range = must match one declared CAMPAIGN id
+allowed = [A-Za-z0-9_.-]+
+nuance = selects the default campaign entry that a future jkimyei dispatcher should run when no explicit campaign id is requested
+
+[FIELD IMPORT_CONTRACT_FILE]
+key = IMPORT_CONTRACT_FILE
+scope = JKIMYEI_CAMPAIGN
+type = path
+required = true
+default = none
+range = non-empty string
+allowed = quoted_path_or_identifier
+nuance = each import derives CONTRACT id as contract_<sanitized_basename>; duplicate file paths and duplicate derived ids are rejected
+
+[FIELD IMPORT_WAVE_FILE]
+key = IMPORT_WAVE_FILE
+scope = JKIMYEI_CAMPAIGN
+type = path
+required = true
+default = none
+range = non-empty string
+allowed = quoted_path_or_identifier
+nuance = each import derives wave import id as wave_import_<sanitized_basename>; duplicate file paths and duplicate derived ids are rejected
+
+[FIELD BIND.ID]
+key = BIND.<id>
+scope = JKIMYEI_CAMPAIGN
+type = identifier
+required = true
+default = none
+range = unique within file
+allowed = [A-Za-z0-9_.-]+
+nuance = a bind is the reusable wave-contract execution unit referenced by campaigns
+
+[FIELD BIND.CONTRACT]
+key = BIND.CONTRACT
+scope = BIND
+type = identifier
+required = true
+default = none
+range = must exist in derived contract ids from IMPORT_CONTRACT_FILE
+allowed = derived contract id token
+nuance = contract id is not free-form; it must match a derived import id
+
+[FIELD BIND.WAVE]
+key = BIND.WAVE
+scope = BIND
+type = identifier
+required = true
+default = none
+range = non-empty
+allowed = wave id defined inside imported wave DSLs
+nuance = wave presence and ambiguity are deferred to the runtime assembly layer, as with board binds
+
+[FIELD BIND.__VAR]
+key = BIND.__<name>
+scope = BIND
+type = scalar
+required = false
+default = none
+range = zero or more bind-local variable assignments
+allowed = variable names starting with double underscore
+nuance = bind-local variable values are intended for shared wave-contract placeholder resolution before downstream DSL decode (`% __name ? default %`)
+
+[RULE BIND_VARIABLE_PREFIX]
+id = BIND_VARIABLE_PREFIX
+applies_to = BIND.__VAR
+severity = error
+when = variable_name does not start with "__"
+message = BIND variables must start with double underscore
+
+[FIELD CAMPAIGN.ID]
+key = CAMPAIGN.<id>
+scope = JKIMYEI_CAMPAIGN
+type = identifier
+required = true
+default = none
+range = unique within file
+allowed = [A-Za-z0-9_.-]+
+nuance = a campaign is an ordered list of bind refs
+
+[FIELD CAMPAIGN.BINDS]
+key = CAMPAIGN.BINDS
+scope = CAMPAIGN
+type = identifier_list
+required = true
+default = none
+range = one or more bind ids
+allowed = comma-separated BIND ids
+nuance = order is preserved and is intended to become execution order for future jkimyei campaigns
+
+[RULE CAMPAIGN_MIN_IMPORTS]
+id = CAMPAIGN_MIN_IMPORTS
+applies_to = JKIMYEI_CAMPAIGN
+severity = error
+when = no IMPORT_CONTRACT_FILE or no IMPORT_WAVE_FILE or no BIND or no CAMPAIGN
+message = jkimyei campaign instruction requires at least one contract import, one wave import, one bind, and one campaign
+
+[RULE ACTIVE_CAMPAIGN_REFERENCE]
+id = ACTIVE_CAMPAIGN_REFERENCE
+applies_to = ACTIVE_CAMPAIGN
+severity = error
+when = ACTIVE_CAMPAIGN not in declared_campaign_ids
+message = ACTIVE_CAMPAIGN references unknown CAMPAIGN id
+
+[RULE BIND_CONTRACT_REFERENCE]
+id = BIND_CONTRACT_REFERENCE
+applies_to = BIND.CONTRACT
+severity = error
+when = CONTRACT not in derived_contract_import_ids
+message = BIND references unknown CONTRACT id
+
+[RULE CAMPAIGN_BIND_REFERENCE]
+id = CAMPAIGN_BIND_REFERENCE
+applies_to = CAMPAIGN.BINDS
+severity = error
+when = CAMPAIGN references unknown BIND id
+message = CAMPAIGN references unknown BIND id

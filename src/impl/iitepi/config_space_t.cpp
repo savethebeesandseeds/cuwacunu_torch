@@ -16,6 +16,7 @@ std::mutex config_mutex;
 exchange_type_e config_space_t::exchange_type;
 std::string config_space_t::config_folder;
 std::string config_space_t::config_file_path;
+std::string config_space_t::runtime_board_dsl_override_path;
 parsed_config_t config_space_t::config;
 
 [[nodiscard]] static std::string strip_comment(std::string_view line,
@@ -298,6 +299,58 @@ void config_space_t::change_config_file(const char* folder, const char* file) {
   update_config();
 }
 
+void config_space_t::set_runtime_board_dsl_override(const std::string& path) {
+  LOCK_GUARD(config_mutex);
+  runtime_board_dsl_override_path = trim_ascii_ws_copy(path);
+}
+
+void config_space_t::clear_runtime_board_dsl_override() {
+  LOCK_GUARD(config_mutex);
+  runtime_board_dsl_override_path.clear();
+}
+
+std::string config_space_t::effective_board_dsl_path() {
+  std::string config_folder_copy{};
+  std::string override_copy{};
+  std::string configured_board_path{};
+  {
+    LOCK_GUARD(config_mutex);
+    config_folder_copy = config_folder;
+    override_copy = runtime_board_dsl_override_path;
+    const auto sec_it = config.find("GENERAL");
+    if (sec_it != config.end()) {
+      const auto key_it = sec_it->second.find(GENERAL_DEFAULT_BOARD_DSL_KEY);
+      if (key_it != sec_it->second.end()) {
+        configured_board_path = key_it->second;
+      }
+    }
+  }
+  const std::string chosen =
+      has_non_ws_ascii(override_copy) ? override_copy : configured_board_path;
+  return resolve_path_from_folder(config_folder_copy, chosen);
+}
+
+std::string config_space_t::effective_jkimyei_campaign_dsl_path() {
+  std::string config_folder_copy{};
+  std::string configured_campaign_path{};
+  {
+    LOCK_GUARD(config_mutex);
+    config_folder_copy = config_folder;
+    const auto sec_it = config.find("GENERAL");
+    if (sec_it != config.end()) {
+      const auto key_it =
+          sec_it->second.find(GENERAL_DEFAULT_JKIMYEI_CAMPAIGN_DSL_KEY);
+      if (key_it != sec_it->second.end()) {
+        configured_campaign_path = key_it->second;
+      }
+    }
+  }
+  const std::string chosen = has_non_ws_ascii(configured_campaign_path)
+                                 ? configured_campaign_path
+                                 : DEFAULT_JKIMYEI_CAMPAIGN_DSL_FILE;
+  return resolve_path_from_folder(config_folder_copy, chosen);
+}
+
 void config_space_t::update_config() {
   if (!std::filesystem::exists(config_file_path)) {
     log_warn("[dconfig] global config file %s does not exist\n",
@@ -328,23 +381,16 @@ void config_space_t::update_config() {
   }
   exchange_type = exchange_type_temp;
 
-  const std::string configured_board_path = resolve_path_from_folder(
-      config_folder,
-      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_CONFIG_KEY));
+  const std::string configured_board_path = effective_board_dsl_path();
   const std::string configured_board_canonical =
       canonicalize_path_best_effort(configured_board_path);
   if (!has_non_ws_ascii(configured_board_canonical)) {
     log_fatal("[dconfig] invalid configured board path: %s\n",
               configured_board_path.c_str());
   }
-  const std::string configured_binding_id = trim_ascii_ws_copy(
-      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_BINDING_KEY));
-  if (!has_non_ws_ascii(configured_binding_id)) {
-    log_fatal("[dconfig] invalid configured board binding id\n");
-  }
 
   if (board_space_t::is_initialized()) {
-    board_space_t::init(configured_board_canonical, configured_binding_id);
+    board_space_t::init(configured_board_canonical);
     board_space_t::assert_locked_runtime_intact_or_fail_fast();
   }
 }
@@ -474,7 +520,7 @@ bool config_space_t::validate_config() {
   }
 
   std::string board_cfg_path;
-  if (require_value("GENERAL", GENERAL_BOARD_CONFIG_KEY, &board_cfg_path)) {
+  if (require_value("GENERAL", GENERAL_DEFAULT_BOARD_DSL_KEY, &board_cfg_path)) {
     const std::string resolved =
         resolve_path_from_folder(config_folder, board_cfg_path);
     if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
@@ -491,18 +537,65 @@ bool config_space_t::validate_config() {
       ok = false;
     }
   }
-  (void)require_value("GENERAL", GENERAL_BOARD_BINDING_KEY, nullptr);
+  {
+    LOCK_GUARD(config_mutex);
+    if (has_non_ws_ascii(runtime_board_dsl_override_path)) {
+      const std::string resolved = resolve_path_from_folder(
+          config_folder, runtime_board_dsl_override_path);
+      if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
+        log_warn("Runtime board override does not exist: %s (resolved: %s)\n",
+                 runtime_board_dsl_override_path.c_str(), resolved.c_str());
+        ok = false;
+      } else if (!std::filesystem::is_regular_file(resolved)) {
+        log_warn(
+            "Runtime board override is not a regular file: %s (resolved: %s)\n",
+            runtime_board_dsl_override_path.c_str(), resolved.c_str());
+        ok = false;
+      }
+    }
+  }
 
-  require_int_with_bounds("GENERAL", "iinuji_logs_buffer_capacity", 1);
-  validate_optional_bool("GENERAL", "iinuji_logs_show_date");
-  validate_optional_bool("GENERAL", "iinuji_logs_show_thread");
-  validate_optional_bool("GENERAL", "iinuji_logs_show_metadata");
-  validate_optional_bool("GENERAL", "iinuji_logs_show_color");
-  validate_optional_bool("GENERAL", "iinuji_logs_auto_follow");
-  validate_optional_bool("GENERAL", "iinuji_logs_mouse_capture");
+  std::string campaign_cfg_path = DEFAULT_JKIMYEI_CAMPAIGN_DSL_FILE;
+  {
+    LOCK_GUARD(config_mutex);
+    const auto sec_it = config.find("GENERAL");
+    if (sec_it != config.end()) {
+      const auto key_it =
+          sec_it->second.find(GENERAL_DEFAULT_JKIMYEI_CAMPAIGN_DSL_KEY);
+      if (key_it != sec_it->second.end() &&
+          has_non_ws_ascii(key_it->second)) {
+        campaign_cfg_path = key_it->second;
+      }
+    }
+  }
+  {
+    const std::string resolved =
+        resolve_path_from_folder(config_folder, campaign_cfg_path);
+    if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
+      log_warn(
+          "Configured jkimyei campaign file does not exist: %s (resolved: %s)\n",
+          campaign_cfg_path.c_str(),
+          resolved.c_str());
+      ok = false;
+    } else if (!std::filesystem::is_regular_file(resolved)) {
+      log_warn(
+          "Configured jkimyei campaign file is not a regular file: %s (resolved: %s)\n",
+          campaign_cfg_path.c_str(),
+          resolved.c_str());
+      ok = false;
+    }
+  }
+
+  require_int_with_bounds("GUI", "iinuji_logs_buffer_capacity", 1);
+  validate_optional_bool("GUI", "iinuji_logs_show_date");
+  validate_optional_bool("GUI", "iinuji_logs_show_thread");
+  validate_optional_bool("GUI", "iinuji_logs_show_metadata");
+  validate_optional_bool("GUI", "iinuji_logs_show_color");
+  validate_optional_bool("GUI", "iinuji_logs_auto_follow");
+  validate_optional_bool("GUI", "iinuji_logs_mouse_capture");
   validate_optional_bool("GENERAL", "reset_runtime_state_at_start");
   validate_optional_logs_metadata_filter(
-      "GENERAL", "iinuji_logs_metadata_filter");
+      "GUI", "iinuji_logs_metadata_filter");
   (void)require_value("GENERAL", "hashimyei_store_root", nullptr);
   (void)require_value("GENERAL", "hashimyei_metadata_secret", nullptr);
 
@@ -567,6 +660,7 @@ bool config_space_t::validate_config() {
   require_existing_path("REAL_HERO", "hashimyei_hero_dsl_filename", config_folder);
   require_existing_path("REAL_HERO", "lattice_hero_dsl_filename", config_folder);
   require_existing_path("REAL_HERO", "runtime_hero_dsl_filename", config_folder);
+  require_existing_path("REAL_HERO", "jkimyei_hero_dsl_filename", config_folder);
 
   if (!ok) log_terminate_gracefully("Invalid global configuration, aborting.\n");
   return ok;

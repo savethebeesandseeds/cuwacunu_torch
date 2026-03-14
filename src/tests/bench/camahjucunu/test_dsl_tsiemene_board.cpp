@@ -28,13 +28,18 @@ int main() {
     std::cout << instruction << "\n";
     std::cout << decoded.str() << "\n";
 
+    assert(!decoded.active_bind_id.empty());
     assert(!decoded.contracts.empty());
     assert(!decoded.waves.empty());
     assert(!decoded.binds.empty());
+    bool found_active_bind = false;
     for (const auto& b : decoded.binds) {
       assert(!b.contract_ref.empty());
       assert(!b.wave_ref.empty());
+      assert(b.variables.size() == 3);
+      if (b.id == decoded.active_bind_id) found_active_bind = true;
     }
+    assert(found_active_bind);
 
     return 0;
   } catch (const std::exception& e) {

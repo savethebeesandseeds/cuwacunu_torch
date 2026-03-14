@@ -9,8 +9,9 @@
 #include <unistd.h>
 
 #include "hero/config_hero/hero.config.h"
-#include "hero/config_hero/hero_config_commands.h"
 #include "hero/config_hero/hero_config_store.h"
+#include "hero/config_hero/hero_config_tools.h"
+#include "piaabo/dlogs.h"
 
 namespace {
 
@@ -18,16 +19,21 @@ constexpr const char* kDefaultHeroConfigPath =
     "/cuwacunu/src/config/instructions/default.hero.config.dsl";
 constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 
+__attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
+  cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
+}
+
 void print_cli_help(const char* argv0) {
   std::cerr << "Usage: " << argv0
             << " [--global-config <path>] [--config <hero_config_dsl>]"
-               " [--once <command>] [--repl]"
-               " [--tool <name>] [--args-json <json>]\n"
+               " [--tool <name>] [--args-json <json>]"
+               " [--list-tools] [--list-tools-json]\n"
             << "  default mode: JSON-RPC over stdio\n"
             << "  default config path: [REAL_HERO].config_hero_dsl_filename"
                " in --global-config (default /cuwacunu/src/config/.config)\n"
             << "  --tool/--args-json: execute one MCP tool call and exit\n"
-            << "  --repl: human command shell (deprecated)\n";
+            << "  --list-tools: human-readable tool list\n"
+            << "  --list-tools-json: print MCP tools/list JSON and exit\n";
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
@@ -129,12 +135,12 @@ int main(int argc, char** argv) {
   std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
   std::string config_path;
   bool config_overridden = false;
-  std::string once_command;
-  bool repl = false;
   std::string direct_tool_name;
   std::string direct_tool_args_json = "{}";
   bool direct_tool_mode = false;
   bool direct_tool_args_overridden = false;
+  bool list_tools = false;
+  bool list_tools_json = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -147,14 +153,6 @@ int main(int argc, char** argv) {
       config_overridden = true;
       continue;
     }
-    if (arg == "--once" && i + 1 < argc) {
-      once_command = argv[++i];
-      continue;
-    }
-    if (arg == "--repl") {
-      repl = true;
-      continue;
-    }
     if (arg == "--tool" && i + 1 < argc) {
       direct_tool_name = argv[++i];
       direct_tool_mode = true;
@@ -163,6 +161,14 @@ int main(int argc, char** argv) {
     if (arg == "--args-json" && i + 1 < argc) {
       direct_tool_args_json = argv[++i];
       direct_tool_args_overridden = true;
+      continue;
+    }
+    if (arg == "--list-tools") {
+      list_tools = true;
+      continue;
+    }
+    if (arg == "--list-tools-json") {
+      list_tools_json = true;
       continue;
     }
     if (arg == "--help" || arg == "-h") {
@@ -178,8 +184,13 @@ int main(int argc, char** argv) {
     std::cerr << "--args-json requires --tool\n";
     return 2;
   }
-  if (direct_tool_mode && (!once_command.empty() || repl)) {
-    std::cerr << "--tool cannot be combined with --once or --repl\n";
+  if (list_tools && list_tools_json) {
+    std::cerr << "--list-tools and --list-tools-json are mutually exclusive\n";
+    return 2;
+  }
+  if ((list_tools || list_tools_json) && direct_tool_mode) {
+    std::cerr << "--list-tools/--list-tools-json cannot be combined with "
+                 "--tool\n";
     return 2;
   }
   if (direct_tool_mode) {
@@ -198,6 +209,15 @@ int main(int argc, char** argv) {
 
   if (!config_overridden) {
     config_path = default_config_path_from_real_hero(global_config_path);
+  }
+
+  if (list_tools_json) {
+    std::cout << cuwacunu::hero::mcp::build_tools_list_result_json() << "\n";
+    return 0;
+  }
+  if (list_tools) {
+    std::cout << cuwacunu::hero::mcp::build_tools_list_human_text();
+    return 0;
   }
 
   cuwacunu::hero::mcp::hero_config_store_t store(config_path,
@@ -240,40 +260,12 @@ int main(int argc, char** argv) {
   }
 
   int exit_code = 0;
-  if (!once_command.empty()) {
-    bool should_exit = false;
-    const bool ok = cuwacunu::hero::mcp::execute_command_line(
-        once_command, &store, &should_exit);
-    exit_code = ok ? 0 : 1;
-    return exit_code;
+  if (::isatty(STDIN_FILENO) != 0) {
+    std::cerr << "[hero_config_mcp] no --tool provided and stdin is a terminal; "
+                 "default mode expects JSON-RPC input on stdin.\n";
+    print_cli_help(argv[0]);
+    return 2;
   }
-
-  if (!repl) {
-    if (::isatty(STDIN_FILENO) != 0) {
-      std::cerr << "[hero_config_mcp] no --tool/--once/--repl provided and stdin "
-                   "is a terminal; default mode expects JSON-RPC input on stdin.\n";
-      print_cli_help(argv[0]);
-      return 2;
-    }
-    cuwacunu::hero::mcp::run_jsonrpc_stdio_loop(&store);
-    return 0;
-  }
-
-  cuwacunu::hero::mcp::emit_startup_banner(store);
-
-  std::string line;
-  while (true) {
-    if (repl) {
-      std::cout << "hero.config.mcp> ";
-      std::cout.flush();
-    }
-    if (!std::getline(std::cin, line)) break;
-    bool should_exit = false;
-    const bool ok =
-        cuwacunu::hero::mcp::execute_command_line(line, &store, &should_exit);
-    if (!ok) exit_code = 1;
-    if (should_exit) break;
-  }
-
+  cuwacunu::hero::mcp::run_jsonrpc_stdio_loop(&store);
   return exit_code;
 }

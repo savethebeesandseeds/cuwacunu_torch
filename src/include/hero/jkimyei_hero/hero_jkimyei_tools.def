@@ -1,0 +1,16 @@
+#ifndef HERO_JKIMYEI_TOOL
+#error "HERO_JKIMYEI_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_jkimyei_tools.def"
+#endif
+
+HERO_JKIMYEI_TOOL("hero.jkimyei.create_campaign",
+                  "Snapshot the configured default jkimyei campaign DSL, resolve one campaign id, and persist a staged campaign manifest keyed by campaign_cursor",
+                  "{\"type\":\"object\",\"properties\":{\"campaign_id\":{\"type\":\"string\"},\"config_folder\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+                  handle_tool_create_campaign)
+HERO_JKIMYEI_TOOL("hero.jkimyei.list_campaigns",
+                  "List known staged jkimyei campaigns keyed by campaign_cursor",
+                  "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+                  handle_tool_list_campaigns)
+HERO_JKIMYEI_TOOL("hero.jkimyei.get_campaign",
+                  "Fetch one staged jkimyei campaign by campaign_cursor",
+                  "{\"type\":\"object\",\"properties\":{\"campaign_cursor\":{\"type\":\"string\"}},\"required\":[\"campaign_cursor\"],\"additionalProperties\":false}",
+                  handle_tool_get_campaign)

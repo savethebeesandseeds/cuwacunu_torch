@@ -37,6 +37,7 @@ using board_ptr_t = std::shared_ptr<const board_record_t>;
 static bool g_board_runtime_lock_initialized = false;
 static std::string g_locked_board_path_canonical;
 static board_hash_t g_locked_board_hash;
+static std::string g_locked_board_binding_id;
 static std::string g_last_requested_board_binding_id;
 static std::size_t g_registered_board_count = 0;
 static board_hash_t g_last_registered_board_hash;
@@ -90,6 +91,8 @@ hash_by_board_path() {
 build_board_record_from_board_path(const std::string& board_file_path);
 [[nodiscard]] static board_ptr_t board_ptr_or_fail(const board_hash_t& hash);
 [[nodiscard]] static std::vector<board_ptr_t> registry_boards_copy_locked();
+[[nodiscard]] static std::string board_active_bind_id_or_fail(
+    const board_ptr_t& board_itself);
 static bool validate_board_config_or_terminate(const parsed_config_t& cfg,
                                                const std::string& cfg_folder);
 
@@ -839,6 +842,24 @@ find_contract_by_id(
   return nullptr;
 }
 
+[[nodiscard]] static std::string board_active_bind_id_or_fail(
+    const board_ptr_t& board_itself) {
+  if (!board_itself) {
+    log_fatal("[iitepi] board active bind resolve received null board record\n");
+  }
+  const auto& board_instruction = board_itself->board.decoded();
+  const std::string active_bind_id =
+      trim_ascii_ws_copy(board_instruction.active_bind_id);
+  if (!has_non_ws_ascii(active_bind_id)) {
+    log_fatal("[iitepi] board DSL missing ACTIVE_BIND directive\n");
+  }
+  if (!find_bind_by_id(board_instruction, active_bind_id)) {
+    log_fatal("[iitepi] board ACTIVE_BIND references unknown BIND id: %s\n",
+              active_bind_id.c_str());
+  }
+  return active_bind_id;
+}
+
 static void resolve_and_assert_board_dependencies(
     const board_ptr_t& board_itself,
     const std::optional<std::string>& selected_binding_id,
@@ -903,13 +924,15 @@ board_space_t::_init board_space_t::_initializer{};
 void board_space_t::lifecycle_init() {
   log_info(
       "[board_space_t] initializing static-global board runtime lock "
-      "(single locked board hash/path, selected lazily via board_space_t::init)\n");
+      "(single locked board hash/path/binding, selected lazily via "
+      "board_space_t::init)\n");
 }
 
 void board_space_t::lifecycle_finit() {
   bool lock_initialized = false;
   std::string locked_hash;
   std::string locked_path;
+  std::string locked_binding_id;
   std::string last_binding_id;
   std::size_t registered_count = 0;
   std::string last_registered_hash;
@@ -919,6 +942,7 @@ void board_space_t::lifecycle_finit() {
     lock_initialized = g_board_runtime_lock_initialized;
     locked_hash = g_locked_board_hash;
     locked_path = g_locked_board_path_canonical;
+    locked_binding_id = g_locked_board_binding_id;
     last_binding_id = g_last_requested_board_binding_id;
     registered_count = g_registered_board_count;
     last_registered_hash = g_last_registered_board_hash;
@@ -928,11 +952,12 @@ void board_space_t::lifecycle_finit() {
   log_info(
       "[board_space_t] finalizing static-global board runtime lock "
       "(lock_initialized=%s, locked_hash=%s, locked_path=%s, "
-      "last_binding_id=%s, registered_boards=%zu, last_registered_hash=%s, "
-      "last_registered_path=%s)\n",
+      "locked_binding_id=%s, last_binding_id=%s, registered_boards=%zu, "
+      "last_registered_hash=%s, last_registered_path=%s)\n",
       lock_initialized ? "true" : "false",
       non_empty_or(locked_hash, "<none>"),
       non_empty_or(locked_path, "<none>"),
+      non_empty_or(locked_binding_id, "<none>"),
       non_empty_or(last_binding_id, "<none>"),
       registered_count,
       non_empty_or(last_registered_hash, "<none>"),
@@ -940,12 +965,21 @@ void board_space_t::lifecycle_finit() {
 }
 
 void board_space_t::init() {
-  const std::string configured_board_path = resolve_path_from_folder(
-      config_space_t::config_folder,
-      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_CONFIG_KEY));
-  const std::string configured_binding_id = trim_ascii_ws_copy(
-      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_BINDING_KEY));
-  init(configured_board_path, configured_binding_id);
+  const std::string configured_board_path =
+      config_space_t::effective_board_dsl_path();
+  init(configured_board_path);
+}
+
+void board_space_t::init(const std::string& board_file_path) {
+  const std::string configured_board_canonical =
+      canonicalize_path_best_effort(board_file_path);
+  if (!has_non_ws_ascii(configured_board_canonical)) {
+    log_fatal("[iitepi] invalid configured board path: %s\n",
+              board_file_path.c_str());
+  }
+  const board_hash_t board_hash = register_board_file(configured_board_canonical);
+  const auto board_itself = board_space_t::board_itself(board_hash);
+  init(configured_board_canonical, board_active_bind_id_or_fail(board_itself));
 }
 
 void board_space_t::init(const std::string& board_file_path,
@@ -969,6 +1003,7 @@ void board_space_t::init(const std::string& board_file_path,
     if (!g_board_runtime_lock_initialized) {
       g_locked_board_hash = board_hash;
       g_locked_board_path_canonical = configured_board_canonical;
+      g_locked_board_binding_id = configured_binding_id;
       g_board_runtime_lock_initialized = true;
     } else {
       if (configured_board_canonical != g_locked_board_path_canonical) {
@@ -985,6 +1020,13 @@ void board_space_t::init(const std::string& board_file_path,
             board_hash.c_str(),
             g_locked_board_hash.c_str());
       }
+      if (configured_binding_id != g_locked_board_binding_id) {
+        log_fatal(
+            "[iitepi] immutable board lock violation: board binding changed "
+            "mid-run (configured=%s, locked=%s)\n",
+            configured_binding_id.c_str(),
+            g_locked_board_binding_id.c_str());
+      }
     }
   }
 
@@ -999,7 +1041,8 @@ bool board_space_t::is_initialized() noexcept {
   LOCK_GUARD(board_config_mutex);
   return g_board_runtime_lock_initialized &&
          has_non_ws_ascii(g_locked_board_hash) &&
-         has_non_ws_ascii(g_locked_board_path_canonical);
+         has_non_ws_ascii(g_locked_board_path_canonical) &&
+         has_non_ws_ascii(g_locked_board_binding_id);
 }
 
 board_hash_t board_space_t::locked_board_hash() {
@@ -1020,31 +1063,32 @@ std::string board_space_t::locked_board_path_canonical() {
 }
 
 std::string board_space_t::locked_board_binding_id() {
-  const std::string configured_binding_id = trim_ascii_ws_copy(
-      config_space_t::get<std::string>("GENERAL", GENERAL_BOARD_BINDING_KEY));
-  if (!has_non_ws_ascii(configured_binding_id)) {
-    log_fatal("[iitepi] invalid configured board binding id\n");
-  }
   LOCK_GUARD(board_config_mutex);
-  if (!g_board_runtime_lock_initialized || !has_non_ws_ascii(g_locked_board_hash)) {
+  if (!g_board_runtime_lock_initialized ||
+      !has_non_ws_ascii(g_locked_board_hash) ||
+      !has_non_ws_ascii(g_locked_board_binding_id)) {
     log_fatal("[iitepi] locked board binding requested before board_space_t::init\n");
   }
-  return configured_binding_id;
+  return g_locked_board_binding_id;
 }
 
 void board_space_t::assert_locked_runtime_intact_or_fail_fast() {
   board_hash_t locked_hash;
+  std::string locked_binding_id;
   {
     LOCK_GUARD(board_config_mutex);
     if (!g_board_runtime_lock_initialized ||
-        !has_non_ws_ascii(g_locked_board_hash)) {
+        !has_non_ws_ascii(g_locked_board_hash) ||
+        !has_non_ws_ascii(g_locked_board_binding_id)) {
       log_fatal("[iitepi] locked runtime integrity requested before board init\n");
     }
     locked_hash = g_locked_board_hash;
+    locked_binding_id = g_locked_board_binding_id;
   }
   board_space_t::assert_intact_or_fail_fast(locked_hash);
   const auto board_itself = board_space_t::board_itself(locked_hash);
-  resolve_and_assert_board_dependencies(board_itself, std::nullopt, locked_hash);
+  resolve_and_assert_board_dependencies(
+      board_itself, std::optional<std::string>{locked_binding_id}, locked_hash);
   board_space_t::assert_registry_intact_or_fail_fast();
   contract_space_t::assert_registry_intact_or_fail_fast();
   wave_space_t::assert_registry_intact_or_fail_fast();

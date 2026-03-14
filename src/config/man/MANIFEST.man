@@ -67,21 +67,33 @@ file = global.config.general.man
 covers = .config
 
 [ENTRY 17]
+file = global.config.gui.man
+covers = .config
+
+[ENTRY 18]
 file = hero.hashimyei.config.man
 covers = instructions/default.hero.hashimyei.dsl,bnf/latent_lineage_state.bnf
 
-[ENTRY 18]
+[ENTRY 19]
 file = hero.lattice.config.man
 covers = instructions/default.hero.lattice.dsl,bnf/latent_lineage_state.bnf
 
-[ENTRY 19]
+[ENTRY 20]
 file = iitepi.contract.man
 covers = instructions/default.iitepi.contract.dsl,bnf/iitepi.contract.bnf
 
-[ENTRY 20]
+[ENTRY 21]
 file = runtime_lls.man
 covers = bnf/runtime_lls.bnf
 
-[ENTRY 21]
+[ENTRY 22]
 file = hero.runtime.config.man
 covers = instructions/default.hero.runtime.dsl,bnf/latent_lineage_state.bnf
+
+[ENTRY 23]
+file = jkimyei_campaign.man
+covers = instructions/default.jkimyei.campaign.dsl,bnf/jkimyei_campaign.bnf
+
+[ENTRY 24]
+file = hero.jkimyei.config.man
+covers = instructions/default.hero.jkimyei.dsl,bnf/latent_lineage_state.bnf

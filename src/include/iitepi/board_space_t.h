@@ -26,6 +26,7 @@ struct board_record_t;
 
 struct board_space_t {
   static void init();
+  static void init(const std::string& board_file_path);
   static void init(const std::string& board_file_path,
                    const std::string& board_binding_id);
   [[nodiscard]] static bool is_initialized() noexcept;

@@ -25,7 +25,8 @@
 //
 // 5) Output stream overrides (optional):
 //    - LOG_FILE      (default: stdout)
-//    - LOG_WARN_FILE (default: stdout)
+//    - LOG_DBG_FILE  (default: LOG_FILE)
+//    - LOG_WARN_FILE (default: LOG_ERR_FILE)
 //    - LOG_ERR_FILE  (default: stderr)
 //    Redefine before including this header to reroute stdio output sinks.
 //
@@ -105,8 +106,12 @@
 #define LOG_ERR_FILE stderr
 #endif
 
+#ifndef LOG_DBG_FILE
+#define LOG_DBG_FILE LOG_FILE
+#endif
+
 #ifndef LOG_WARN_FILE
-#define LOG_WARN_FILE stdout
+#define LOG_WARN_FILE LOG_ERR_FILE
 #endif
 
 /* ANSI colors */
@@ -1094,11 +1099,11 @@ inline void log_sys_errno_stdio() {
   cuwacunu::piaabo::detail::capture_formatted_log_source("DEBUG", DLOG_SOURCE_LOC(), __VA_ARGS__); \
   if (cuwacunu::piaabo::dlog_terminal_output_enabled()) { \
     LOCK_GUARD(log_mutex); \
-    std::fprintf(LOG_ERR_FILE, "[%s0x%s%s]: %sDEBUG%s: ", \
+    std::fprintf(LOG_DBG_FILE, "[%s0x%s%s]: %sDEBUG%s: ", \
       ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET, \
       ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET); \
-    std::fprintf(LOG_ERR_FILE, __VA_ARGS__); \
-    std::fflush(LOG_ERR_FILE); \
+    std::fprintf(LOG_DBG_FILE, __VA_ARGS__); \
+    std::fflush(LOG_DBG_FILE); \
   } \
 } while(false)
 #endif
@@ -1268,7 +1273,7 @@ inline void log_sys_errno_stdio() {
 #else
 #define log_secure_dbg(...) do { \
   wrap_log_sys_err(); \
-  cuwacunu::piaabo::detail::secure_log_source(LOG_ERR_FILE, "DEBUG", ANSI_COLOR_Bright_Blue, DLOG_SOURCE_LOC(), __VA_ARGS__); \
+  cuwacunu::piaabo::detail::secure_log_source(LOG_DBG_FILE, "DEBUG", ANSI_COLOR_Bright_Blue, DLOG_SOURCE_LOC(), __VA_ARGS__); \
 } while(false)
 #endif
 #endif
@@ -1453,7 +1458,7 @@ inline dlog_serial_stream make_log_info_stream(
 }
 inline dlog_serial_stream make_log_debug_stream(
     dlog_source_location_t source = {}) {
-  return dlog_serial_stream("DEBUG", ANSI_COLOR_Bright_Blue, LOG_ERR_FILE,
+  return dlog_serial_stream("DEBUG", ANSI_COLOR_Bright_Blue, LOG_DBG_FILE,
                             source);
 }
 inline dlog_serial_stream make_log_warn_stream(
@@ -1638,10 +1643,10 @@ inline void printLoadingBar(const loading_bar_t &bar) {
             << ss.str() << " ";
   std::cerr.flush();
 #else
-  std::fprintf(LOG_ERR_FILE, "%s[%s0x%s%s]: %sDEBUG%s: %s ",
+  std::fprintf(LOG_DBG_FILE, "%s[%s0x%s%s]: %sDEBUG%s: %s ",
     ANSI_CLEAR_LINE, ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET, ss.str().c_str());
-  std::fflush(LOG_ERR_FILE);
+  std::fflush(LOG_DBG_FILE);
 #endif
 }
 
@@ -1681,13 +1686,13 @@ inline void finishLoadingBar(loading_bar_t &bar) {
             << GET_READABLE_TIME_ms(TOCK_ms(bar.tick)) << " \n";
   std::cerr.flush();
 #else
-  std::fprintf(LOG_ERR_FILE, "\n\t [%s0x%s%s]: %sDEBUG%s: %sExecution time %s [%s%s%s] : %s \n",
+  std::fprintf(LOG_DBG_FILE, "\n\t [%s0x%s%s]: %sDEBUG%s: %sExecution time %s [%s%s%s] : %s \n",
     ANSI_COLOR_Cyan, cuwacunu::piaabo::cthread_id(), ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET,
     bar.color.c_str(), ANSI_COLOR_RESET,
     ANSI_COLOR_Yellow, bar.label.c_str(), ANSI_COLOR_RESET,
     GET_READABLE_TIME_ms(TOCK_ms(bar.tick)).c_str());
-  std::fflush(LOG_ERR_FILE);
+  std::fflush(LOG_DBG_FILE);
 #endif
 }
 

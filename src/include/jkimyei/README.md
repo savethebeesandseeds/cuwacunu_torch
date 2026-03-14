@@ -13,6 +13,16 @@ Batch-1 layout:
 - `training_setup/jk_setup.h`: component-scoped setup registry and lazy builders.
 - `jkimyei.h`: umbrella include for batch-1 API.
 
+Runtime boundary:
+- `jkimyei` owns policy/schema selection and component setup.
+- runtime episode budgets such as `n_epochs`, `n_iters`, and `batches` stay wave-owned.
+- wikimyei components may expose a small runtime `jkimyei` facet for
+  inspection and safe control of pending training state, but component-specific
+  train loops remain component-owned.
+- campaign orchestration is moving toward a standalone wave-contract join DSL
+  (`src/config/instructions/default.jkimyei.campaign.dsl`) that reuses bind-like
+  wave-contract references without the board abstraction.
+
 Design goals:
 - schema-first definitions (`.def` is source of truth)
 - strict allow-lists and no silent defaults

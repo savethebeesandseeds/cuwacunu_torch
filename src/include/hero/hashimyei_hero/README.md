@@ -7,6 +7,7 @@ Identity and report_fragment dispatch layer for hashimyei-based components.
 - `hero/hashimyei_hero/hashimyei_report_fragments.h`
 - `hero/hashimyei_hero/hashimyei_driver.h`
 - `hero/hashimyei_hero/hashimyei_catalog.h`
+- `hero/hashimyei_hero/hero_hashimyei_tools.h`
 
 - Hard cutoff: use `hashimyei_report_fragments.h` directly.
 

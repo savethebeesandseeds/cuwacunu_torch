@@ -1,0 +1,8 @@
+#ifndef HERO_HASHIMYEI_TOOL
+#error "HERO_HASHIMYEI_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_hashimyei_tools.def"
+#endif
+
+HERO_HASHIMYEI_TOOL("hero.hashimyei.list", "List known hashimyei canonical references from catalog components", "{\"type\":\"object\",\"properties\":{\"include_non_hashimyei\":{\"type\":\"boolean\"},\"canonical_path_prefix\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"}},\"additionalProperties\":false}", handle_tool_list)
+HERO_HASHIMYEI_TOOL("hero.hashimyei.get_founding_dsl", "Fetch founding component DSL for a hashimyei/canonical component", "{\"type\":\"object\",\"properties\":{\"canonical_path\":{\"type\":\"string\"},\"hashimyei\":{\"type\":\"string\"},\"include_content\":{\"type\":\"boolean\"}},\"anyOf\":[{\"required\":[\"canonical_path\"]},{\"required\":[\"hashimyei\"]}],\"additionalProperties\":false}", handle_tool_get_founding_dsl)
+HERO_HASHIMYEI_TOOL("hero.hashimyei.get_component_manifest", "Fetch the current component manifest/state for a hashimyei or canonical component", "{\"type\":\"object\",\"properties\":{\"canonical_path\":{\"type\":\"string\"},\"hashimyei\":{\"type\":\"string\"}},\"anyOf\":[{\"required\":[\"canonical_path\"]},{\"required\":[\"hashimyei\"]}],\"additionalProperties\":false}", handle_tool_get_component_manifest)
+HERO_HASHIMYEI_TOOL("hero.hashimyei.reset_catalog", "Reset hashimyei catalog file (strict v2) and optionally reingest from store_root", "{\"type\":\"object\",\"properties\":{\"reingest\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_reset_catalog)

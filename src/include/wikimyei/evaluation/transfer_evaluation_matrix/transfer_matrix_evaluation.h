@@ -2560,6 +2560,12 @@ class TransferMatrixEvaluationReport final {
     const char* pos = use_color ? ANSI_COLOR_Bright_Green : "";
     const char* neg = use_color ? ANSI_COLOR_Bright_Red : "";
 
+    struct debug_cell_t {
+      std::string text{};
+      const char* color{""};
+      bool left_align{false};
+    };
+
     auto fmt_value = [](bool has, double value) {
       if (!has || !std::isfinite(value)) return std::string("n/a");
       std::ostringstream oss;
@@ -2569,61 +2575,215 @@ class TransferMatrixEvaluationReport final {
       return oss.str();
     };
 
+    auto fmt_u64 = [](std::uint64_t value) { return std::to_string(value); };
+
     auto skill_color = [&](bool has, double value) -> const char* {
       if (!use_color || !has || !std::isfinite(value)) return dim;
       return value >= 0.0 ? pos : neg;
     };
 
+    auto colorize = [&](std::string text, const char* color) {
+      if (!use_color || color == nullptr || *color == '\0') return text;
+      return std::string(color).append(text).append(reset);
+    };
+
+    auto pad_cell = [](std::string text, std::size_t width, bool left_align) {
+      if (text.size() >= width) return text;
+      const std::size_t pad = width - text.size();
+      if (left_align) {
+        text.append(pad, ' ');
+      } else {
+        text.insert(0, pad, ' ');
+      }
+      return text;
+    };
+
+    auto measure_widths =
+        [](const std::vector<debug_cell_t>& header,
+           const std::vector<std::vector<debug_cell_t>>& rows) {
+          std::vector<std::size_t> widths(header.size(), 0);
+          for (std::size_t i = 0; i < header.size(); ++i) {
+            widths[i] = header[i].text.size();
+          }
+          for (const auto& row : rows) {
+            for (std::size_t i = 0; i < row.size(); ++i) {
+              widths[i] = std::max(widths[i], row[i].text.size());
+            }
+          }
+          return widths;
+        };
+
     std::ostringstream out;
+    auto emit_rule = [&](const std::vector<std::size_t>& widths) {
+      std::string rule = "+";
+      for (const std::size_t width : widths) {
+        rule.append(width + 2, '-');
+        rule.push_back('+');
+      }
+      out << colorize(std::move(rule), header_color) << "\n";
+    };
+
+    auto emit_row = [&](const std::vector<debug_cell_t>& row,
+                        const std::vector<std::size_t>& widths,
+                        const char* default_color) {
+      out << "|";
+      for (std::size_t i = 0; i < row.size(); ++i) {
+        const char* cell_color =
+            (row[i].color != nullptr && *row[i].color != '\0') ? row[i].color
+                                                                : default_color;
+        out << " "
+            << colorize(
+                   pad_cell(row[i].text, widths[i], row[i].left_align),
+                   cell_color)
+            << " |";
+      }
+      out << "\n";
+    };
+
+    auto value_cell = [&](bool has, double value) {
+      return debug_cell_t{
+          .text = fmt_value(has, value),
+          .color = (!has || !std::isfinite(value)) ? dim : "",
+          .left_align = false,
+      };
+    };
+
+    auto skill_cell = [&](bool has, double value) {
+      return debug_cell_t{
+          .text = fmt_value(has, value),
+          .color = skill_color(has, value),
+          .left_align = false,
+      };
+    };
+
     out << title_color << "transfer_matrix_eval.matrix" << reset
         << " schema=" << kMatrixSchema
         << " contract_hash=" << contract_hash_ << "\n";
-    out << header_color
-        << "method                         support       effort        error         effort_skill   error_skill    n90           selectivity"
-        << reset << "\n";
 
-    auto emit_row = [&](std::string_view method, const row_result_t& row) {
-      out << label_color << std::left << std::setw(30) << method << reset << " ";
-      out << fmt_value(row.has_support, row.support) << "  ";
-      out << fmt_value(row.has_effort, row.effort) << "  ";
-      out << fmt_value(row.has_error, row.error) << "  ";
-      out << skill_color(row.has_effort_skill, row.effort_skill)
-          << fmt_value(row.has_effort_skill, row.effort_skill) << reset << "  ";
-      out << skill_color(row.has_error_skill, row.error_skill)
-          << fmt_value(row.has_error_skill, row.error_skill) << reset << "  ";
-      out << fmt_value(row.has_n90, row.n90) << "  ";
-      out << fmt_value(row.has_selectivity, row.selectivity) << "\n";
+    const std::vector<debug_cell_t> matrix_header{
+        {"method", "", true},
+        {"support", "", false},
+        {"effort", "", false},
+        {"error", "", false},
+        {"effort_skill", "", false},
+        {"error_skill", "", false},
+        {"n90", "", false},
+        {"selectivity", "", false},
+    };
+    std::vector<std::vector<debug_cell_t>> matrix_rows{};
+    auto append_matrix_row = [&](std::string_view method, const row_result_t& row) {
+      matrix_rows.push_back({
+          debug_cell_t{std::string(method), label_color, true},
+          value_cell(row.has_support, row.support),
+          value_cell(row.has_effort, row.effort),
+          value_cell(row.has_error, row.error),
+          skill_cell(row.has_effort_skill, row.effort_skill),
+          skill_cell(row.has_error_skill, row.error_skill),
+          value_cell(row.has_n90, row.n90),
+          value_cell(row.has_selectivity, row.selectivity),
+      });
     };
 
-    emit_row("forecast.null", mx.forecast_null);
-    emit_row("forecast.stats_only", mx.forecast_stats_only);
-    emit_row("forecast.linear", mx.forecast_linear);
-    emit_row("forecast.residual_linear", mx.forecast_residual_linear);
-    emit_row("forecast.mdn", mx.forecast_mdn);
+    append_matrix_row("forecast.null", mx.forecast_null);
+    append_matrix_row("forecast.stats_only", mx.forecast_stats_only);
+    append_matrix_row("forecast.linear", mx.forecast_linear);
+    append_matrix_row("forecast.residual_linear", mx.forecast_residual_linear);
+    append_matrix_row("forecast.mdn", mx.forecast_mdn);
 
-    out << header_color << "training_losses" << reset
-        << " cold_start=" << fmt_value(mx.has_cold_start_loss, mx.cold_start_loss)
-        << " train_fit=" << fmt_value(mx.has_train_fit_loss, mx.train_fit_loss)
-        << " generalization_gap="
-        << fmt_value(mx.has_generalization_gap, mx.generalization_gap) << "\n";
+    const auto matrix_widths = measure_widths(matrix_header, matrix_rows);
+    emit_rule(matrix_widths);
+    emit_row(matrix_header, matrix_widths, header_color);
+    emit_rule(matrix_widths);
+    for (const auto& row : matrix_rows) {
+      emit_row(row, matrix_widths, "");
+    }
+    emit_rule(matrix_widths);
 
-    out << header_color << "prequential_rows" << reset
-        << " total=" << epoch_prequential_rows_total_
-        << " persisted=" << epoch_prequential_rows_.size()
-        << " truncated=" << (epoch_prequential_rows_truncated_ ? "true" : "false")
-        << "\n";
+    out << header_color << "training_losses" << reset << "\n";
+    const std::vector<debug_cell_t> training_header{
+        {"cold_start", "", false},
+        {"train_fit", "", false},
+        {"generalization_gap", "", false},
+    };
+    const std::vector<std::vector<debug_cell_t>> training_rows{{
+        value_cell(mx.has_cold_start_loss, mx.cold_start_loss),
+        value_cell(mx.has_train_fit_loss, mx.train_fit_loss),
+        value_cell(mx.has_generalization_gap, mx.generalization_gap),
+    }};
+    const auto training_widths = measure_widths(training_header, training_rows);
+    emit_rule(training_widths);
+    emit_row(training_header, training_widths, header_color);
+    emit_rule(training_widths);
+    emit_row(training_rows.front(), training_widths, "");
+    emit_rule(training_widths);
+
+    out << header_color << "prequential_rows" << reset << "\n";
+    const std::vector<debug_cell_t> prequential_meta_header{
+        {"total", "", false},
+        {"persisted", "", false},
+        {"truncated", "", false},
+    };
+    const std::vector<std::vector<debug_cell_t>> prequential_meta_rows{{
+        debug_cell_t{fmt_u64(epoch_prequential_rows_total_), "", false},
+        debug_cell_t{fmt_u64(epoch_prequential_rows_.size()), "", false},
+        debug_cell_t{epoch_prequential_rows_truncated_ ? "true" : "false",
+                     epoch_prequential_rows_truncated_ ? neg : pos,
+                     false},
+    }};
+    const auto prequential_meta_widths =
+        measure_widths(prequential_meta_header, prequential_meta_rows);
+    emit_rule(prequential_meta_widths);
+    emit_row(prequential_meta_header, prequential_meta_widths, header_color);
+    emit_rule(prequential_meta_widths);
+    emit_row(prequential_meta_rows.front(), prequential_meta_widths, "");
+    emit_rule(prequential_meta_widths);
+
+    const std::vector<debug_cell_t> prequential_header{
+        {"idx", "", true},
+        {"method", "", true},
+        {"block", "", false},
+        {"prefix_support", "", false},
+        {"eval_support", "", false},
+        {"model_bits", "", false},
+        {"null_bits", "", false},
+        {"skill_bits", "", false},
+    };
+    std::vector<std::vector<debug_cell_t>> prequential_rows{};
+    prequential_rows.reserve(epoch_prequential_rows_.size());
     for (std::size_t i = 0; i < epoch_prequential_rows_.size(); ++i) {
       const auto& row = epoch_prequential_rows_[i];
-      out << dim << "[p" << std::setw(4) << std::setfill('0') << i << "]" << reset
-          << " method=" << row.method
-          << " block=" << row.block_index
-          << " prefix_support=" << row.prefix_support
-          << " eval_support=" << row.eval_support
-          << " model_bits=" << row.model_bits
-          << " null_bits=" << row.null_bits
-          << " skill_bits=" << row.skill_bits << "\n";
-      out << std::setfill(' ');
+      std::ostringstream idx;
+      idx << "p" << std::setw(4) << std::setfill('0') << i;
+      prequential_rows.push_back({
+          debug_cell_t{idx.str(), dim, true},
+          debug_cell_t{row.method, label_color, true},
+          debug_cell_t{fmt_u64(row.block_index), "", false},
+          value_cell(/*has=*/true, row.prefix_support),
+          value_cell(/*has=*/true, row.eval_support),
+          value_cell(/*has=*/true, row.model_bits),
+          value_cell(/*has=*/true, row.null_bits),
+          skill_cell(/*has=*/true, row.skill_bits),
+      });
     }
+    const auto prequential_widths =
+        measure_widths(prequential_header, prequential_rows);
+    emit_rule(prequential_widths);
+    emit_row(prequential_header, prequential_widths, header_color);
+    emit_rule(prequential_widths);
+    if (prequential_rows.empty()) {
+      std::vector<debug_cell_t> empty_row = prequential_header;
+      for (std::size_t i = 0; i < empty_row.size(); ++i) {
+        empty_row[i].text = (i == 0) ? "(none)" : "";
+        empty_row[i].color = dim;
+        empty_row[i].left_align = true;
+      }
+      emit_row(empty_row, prequential_widths, "");
+    } else {
+      for (const auto& row : prequential_rows) {
+        emit_row(row, prequential_widths, "");
+      }
+    }
+    emit_rule(prequential_widths);
     return out.str();
   }
 

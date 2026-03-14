@@ -121,12 +121,14 @@ int main() {
   report.summary_num = {{"loss", 0.123}, {"accuracy", 0.99}};
   report.summary_txt = {{"status", "ok"}, {"report_schema", "report.v1"}};
   report.report_lls =
-      "report_schema=wave.cell.report.v1\n"
+      "/* synthetic cell report transport: wave.cell.report.v1 */\n"
+      "report_transport_schema=wave.cell.report.v1\n"
       "run_id=run_runtime_001\n"
+      "/* embedded source.runtime.projection.v2 */\n"
       "source.runtime.projection.run_id=run_runtime_001\n"
-      "source.runtime.projection.schema=wave.source.runtime.projection.v2\n"
-      "source.runtime.symbol=BTCUSDT\n"
-      "source.runtime.request.from_ratio=0.125\n";
+      "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
+      "source.runtime.symbol:str = BTCUSDT\n"
+      "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n";
   report.report_sha256 = "deadbeef";
 
   std::string encoded{};
@@ -290,14 +292,16 @@ int main() {
   failed_report.summary_num = {{"loss", 0.555}};
   failed_report.summary_txt = {{"status", "error"}};
   failed_report.report_lls =
-      "report_schema=wave.cell.report.v1\n"
+      "/* synthetic cell report transport: wave.cell.report.v1 */\n"
+      "report_transport_schema=wave.cell.report.v1\n"
       "status=error\n"
       "note=sink unavailable\n"
       "run_id=run_runtime_001\n"
+      "/* embedded source.runtime.projection.v2 */\n"
       "source.runtime.projection.run_id=run_runtime_001\n"
-      "source.runtime.projection.schema=wave.source.runtime.projection.v2\n"
-      "source.runtime.symbol=BTCUSDT\n"
-      "source.runtime.request.from_ratio=0.125\n";
+      "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
+      "source.runtime.symbol:str = BTCUSDT\n"
+      "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n";
   failed_report.report_sha256 = "feedface";
 
   REQUIRE(catalog.record_trial(coord, profile, failed_trial, failed_report, projection,
@@ -469,8 +473,8 @@ int main() {
 
   const std::string intersection_cursor = "tsi.source.dataloader|123456";
   const std::string intersection_report =
-      "# hashimyei.joined_report.v1\n"
-      "report_schema=hashimyei.joined_report.v1\n"
+      "/* synthetic report_lls transport: hashimyei.joined_report.v1 */\n"
+      "report_transport_schema=hashimyei.joined_report.v1\n"
       "canonical_path=tsi.source.dataloader\n"
       "source_report_fragment_count=2\n";
   REQUIRE(runtime_catalog.upsert_runtime_intersection_report(

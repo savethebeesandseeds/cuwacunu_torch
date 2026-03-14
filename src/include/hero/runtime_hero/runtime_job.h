@@ -28,7 +28,11 @@ namespace hero {
 namespace runtime {
 
 inline constexpr std::string_view kRuntimeJobSchemaV1 = "hero.runtime.job.v1";
-inline constexpr std::string_view kRuntimeJobManifestFilename = "job.latest.lls";
+inline constexpr std::string_view kRuntimeJobManifestFilename = "job.lls";
+inline constexpr std::string_view kRuntimeJobBoardDslFilename = "board.dsl";
+inline constexpr std::string_view kRuntimeJobContractDslFilename =
+    "binding.contract.dsl";
+inline constexpr std::string_view kRuntimeJobWaveDslFilename = "binding.wave.dsl";
 inline constexpr std::string_view kRuntimeJobStdoutFilename = "stdout.log";
 inline constexpr std::string_view kRuntimeJobStderrFilename = "stderr.log";
 
@@ -42,6 +46,12 @@ struct runtime_job_record_t {
   std::string worker_binary{};
   std::string worker_command{};
   std::string config_folder{};
+  std::string source_board_dsl_path{};
+  std::string source_contract_dsl_path{};
+  std::string source_wave_dsl_path{};
+  std::string board_dsl_path{};
+  std::string contract_dsl_path{};
+  std::string wave_dsl_path{};
   std::string binding_id{};
   bool reset_runtime_state{false};
   std::string stdout_path{};
@@ -118,6 +128,24 @@ struct runtime_job_observation_t {
     const std::filesystem::path& jobs_root, std::string_view job_cursor) {
   return runtime_job_dir(jobs_root, job_cursor) /
          std::string(kRuntimeJobStdoutFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path runtime_job_board_dsl_path(
+    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
+  return runtime_job_dir(jobs_root, job_cursor) /
+         std::string(kRuntimeJobBoardDslFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path runtime_job_contract_dsl_path(
+    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
+  return runtime_job_dir(jobs_root, job_cursor) /
+         std::string(kRuntimeJobContractDslFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path runtime_job_wave_dsl_path(
+    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
+  return runtime_job_dir(jobs_root, job_cursor) /
+         std::string(kRuntimeJobWaveDslFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_stderr_path(
@@ -303,6 +331,18 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
       make_runtime_lls_string_entry("worker_command", record.worker_command));
   document.entries.push_back(
       make_runtime_lls_string_entry("config_folder", record.config_folder));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "source_board_dsl_path", record.source_board_dsl_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "source_contract_dsl_path", record.source_contract_dsl_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "source_wave_dsl_path", record.source_wave_dsl_path));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("board_dsl_path", record.board_dsl_path));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("contract_dsl_path", record.contract_dsl_path));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("wave_dsl_path", record.wave_dsl_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("binding_id", record.binding_id));
   document.entries.push_back(make_runtime_lls_bool_entry(
@@ -385,6 +425,12 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   parsed.worker_binary = kv["worker_binary"];
   parsed.worker_command = kv["worker_command"];
   parsed.config_folder = kv["config_folder"];
+  parsed.source_board_dsl_path = kv["source_board_dsl_path"];
+  parsed.source_contract_dsl_path = kv["source_contract_dsl_path"];
+  parsed.source_wave_dsl_path = kv["source_wave_dsl_path"];
+  parsed.board_dsl_path = kv["board_dsl_path"];
+  parsed.contract_dsl_path = kv["contract_dsl_path"];
+  parsed.wave_dsl_path = kv["wave_dsl_path"];
   parsed.binding_id = kv["binding_id"];
   parsed.stdout_path = kv["stdout_path"];
   parsed.stderr_path = kv["stderr_path"];

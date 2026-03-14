@@ -43,6 +43,38 @@ struct TsiWikimyeiInitEntry {
   std::size_t weights_count{0};
 };
 
+struct TsiWikimyeiJkimyeiRuntimeState {
+  std::string runtime_component_name{};
+  std::string resolved_component_id{};
+  std::string profile_id{};
+  std::string profile_row_id{};
+  std::string run_id{};
+
+  bool train_enabled{false};
+  bool use_swa{false};
+  bool detach_to_cpu{false};
+  bool supports_runtime_profile_switch{false};
+  bool has_pending_grad{false};
+  bool skip_on_nan{true};
+  bool zero_grad_set_to_none{true};
+
+  int optimizer_steps{0};
+  int accumulate_steps{1};
+  int accum_counter{0};
+  int swa_start_iter{0};
+
+  double clip_norm{0.0};
+  double clip_value{0.0};
+  double last_committed_loss_mean{0.0};
+};
+
+struct TsiWikimyeiJkimyeiFlushResult {
+  bool had_pending_grad{false};
+  bool optimizer_step_applied{false};
+  bool has_pending_grad_after{false};
+  double last_committed_loss_mean{0.0};
+};
+
 class TsiWikimyei : public Tsi {
  public:
   [[nodiscard]] TsiDomain domain() const noexcept final { return TsiDomain::Wikimyei; }
@@ -64,6 +96,28 @@ class TsiWikimyei : public Tsi {
     return supports_init_report_fragments();
   }
   [[nodiscard]] virtual bool runtime_autosave_report_fragments() const noexcept {
+    return false;
+  }
+  [[nodiscard]] virtual bool supports_jkimyei_facet() const noexcept { return false; }
+  [[nodiscard]] virtual bool jkimyei_get_runtime_state(
+      TsiWikimyeiJkimyeiRuntimeState* out,
+      std::string* error = nullptr) const {
+    if (out) *out = TsiWikimyeiJkimyeiRuntimeState{};
+    if (error) *error = "jkimyei facet unsupported";
+    return false;
+  }
+  [[nodiscard]] virtual bool jkimyei_set_train_enabled(
+      bool enabled,
+      std::string* error = nullptr) {
+    (void)enabled;
+    if (error) *error = "jkimyei facet unsupported";
+    return false;
+  }
+  [[nodiscard]] virtual bool jkimyei_flush_pending_training_step(
+      TsiWikimyeiJkimyeiFlushResult* out = nullptr,
+      std::string* error = nullptr) {
+    if (out) *out = TsiWikimyeiJkimyeiFlushResult{};
+    if (error) *error = "jkimyei facet unsupported";
     return false;
   }
   [[nodiscard]] virtual bool runtime_load_from_hashimyei(

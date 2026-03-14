@@ -277,6 +277,7 @@ class parser_t {
     std::unordered_set<std::string> contract_files{};
     std::unordered_set<std::string> wave_files{};
 
+    out.active_bind_id = parse_active_bind_decl();
     expect_identifier("BOARD");
     expect_symbol('{');
 
@@ -346,6 +347,10 @@ class parser_t {
     if (out.binds.empty()) {
       throw std::runtime_error("board instruction requires at least one BIND");
     }
+    if (bind_ids.find(out.active_bind_id) == bind_ids.end()) {
+      throw std::runtime_error("ACTIVE_BIND references unknown BIND id: " +
+                               out.active_bind_id);
+    }
 
     for (const auto& bind : out.binds) {
       if (contract_ids.find(bind.contract_ref) == contract_ids.end()) {
@@ -396,6 +401,16 @@ class parser_t {
                                std::to_string(t.line) + ":" +
                                std::to_string(t.col) + ", got '" + t.text + "'");
     }
+  }
+
+  std::string parse_active_bind_decl() {
+    expect_identifier("ACTIVE_BIND");
+    const std::string active_bind_id = expect_identifier_any().text;
+    expect_symbol(';');
+    if (active_bind_id.empty()) {
+      throw std::runtime_error("ACTIVE_BIND missing bind id");
+    }
+    return active_bind_id;
   }
 
   std::string parse_scalar_value() {
@@ -470,6 +485,16 @@ class parser_t {
         has_wave = true;
         continue;
       }
+      if (cuwacunu::camahjucunu::is_wave_contract_binding_variable_name(
+              key.text)) {
+        std::string variable_error{};
+        if (!cuwacunu::camahjucunu::append_wave_contract_binding_variable(
+                &out, key.text, parse_assignment_value(key.text.c_str()),
+                &variable_error)) {
+          throw std::runtime_error("BIND '" + out.id + "' " + variable_error);
+        }
+        continue;
+      }
       throw std::runtime_error("unknown BIND key for '" + out.id + "': " + key.text);
     }
     expect_symbol('}');
@@ -506,10 +531,12 @@ void validate_board_grammar_text_or_throw_(const std::string& grammar_text) {
     throw std::runtime_error("tsiemene board grammar text is empty");
   }
   constexpr std::string_view kRequiredGrammarTokens[] = {
+      "<active_bind_decl>",
       "<board_block>",
       "<contract_import_decl>",
       "<wave_import_decl>",
       "<bind_decl>",
+      "ACTIVE_BIND",
       "BOARD",
       "IMPORT_CONTRACT_FILE",
       "IMPORT_WAVE_FILE",
@@ -530,14 +557,20 @@ void validate_board_grammar_text_or_throw_(const std::string& grammar_text) {
 
 std::string tsiemene_board_instruction_t::str() const {
   std::ostringstream oss;
-  oss << "tsiemene_board_instruction_t: contracts=" << contracts.size()
+  oss << "tsiemene_board_instruction_t: active_bind_id=" << active_bind_id
+      << " contracts=" << contracts.size()
       << " waves=" << waves.size()
       << " binds=" << binds.size() << "\n";
   for (std::size_t i = 0; i < binds.size(); ++i) {
     const auto& b = binds[i];
     oss << "  [bind:" << i << "] id=" << b.id
         << " contract=" << b.contract_ref
-        << " wave=" << b.wave_ref << "\n";
+        << " wave=" << b.wave_ref
+        << " variables=" << b.variables.size() << "\n";
+    for (std::size_t j = 0; j < b.variables.size(); ++j) {
+      oss << "    [var:" << j << "] " << b.variables[j].name << "="
+          << b.variables[j].value << "\n";
+    }
   }
   return oss.str();
 }

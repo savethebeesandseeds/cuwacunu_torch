@@ -11,11 +11,11 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # Build Rules
 # -----------------------------------------------------------------
 $(eval $(call BUILD_OBJ_INC, common, hero_config_store, hero_config_store))
-$(eval $(call BUILD_OBJ_INC, common, hero_config_commands, hero_config_commands))
+$(eval $(call BUILD_OBJ_INC, common, hero_config_tools, hero_config_tools))
 
 CONFIG_HERO_OBJS := \
   $(OUTPUT_PATH)/common/hero_config_store.o \
-  $(OUTPUT_PATH)/common/hero_config_commands.o
+  $(OUTPUT_PATH)/common/hero_config_tools.o
 
 # -----------------------------------------------------------------
 # Aggregate Target

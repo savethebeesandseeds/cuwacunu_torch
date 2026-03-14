@@ -21,25 +21,25 @@ range = one token
 allowed = TEST,REAL
 nuance = selects runtime exchange credential section and websocket target
 
-[FIELD GENERAL.board_config_filename]
-key = board_config_filename
+[FIELD GENERAL.default_board_dsl_filename]
+key = default_board_dsl_filename
 scope = GENERAL section
 type = path
 required = true
 default = /cuwacunu/src/config/instructions/default.iitepi.board.dsl
 range = existing regular file
 allowed = absolute_or_relative path
-nuance = resolved from config folder and used by board_space_t lock/init
+nuance = resolved from config folder and used by board_space_t lock/init as the shared default board DSL; Runtime HERO may snapshot this file into a job-local board.dsl and run with that snapshot; active runtime binding is declared inside the board DSL via ACTIVE_BIND
 
-[FIELD GENERAL.board_binding_id]
-key = board_binding_id
+[FIELD GENERAL.default_jkimyei_campaign_dsl_filename]
+key = default_jkimyei_campaign_dsl_filename
 scope = GENERAL section
-type = string
-required = true
-default = bind_train_vicreg
-range = non-empty token
-allowed = board BIND id
-nuance = selected runtime binding when no CLI override is provided
+type = path
+required = false
+default = /cuwacunu/src/config/instructions/default.jkimyei.campaign.dsl
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = resolved from config folder and intended to be snapshotted into a campaign-local campaign.dsl by a future Jkimyei HERO runtime, analogous to Runtime HERO board.dsl snapshots
 
 [FIELD GENERAL.hashimyei_store_root]
 key = hashimyei_store_root

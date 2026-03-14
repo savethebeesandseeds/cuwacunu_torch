@@ -145,6 +145,10 @@ strict persisted runtime-artifact contract:
 - synthetic joined `report_lls` transport
 - cell-report and other non-runtime helper payloads
 
+Synthetic joined `report_lls` transports may use `/* ... */` comment separators
+for readability, but they remain transport text, not canonical runtime `.lls`
+documents.
+
 ## Document Set
 
 - `CURRENT_RUNTIME_AUDIT.md`: deployed producers, consumers, and mismatches

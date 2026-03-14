@@ -1,10 +1,11 @@
 # HERO MCP Runtime Guide
 
-This directory builds four stdio MCP servers:
+This directory builds five stdio MCP servers:
 - `/cuwacunu/.build/hero/hero_config_mcp`
 - `/cuwacunu/.build/hero/hero_hashimyei_mcp`
 - `/cuwacunu/.build/hero/hero_lattice_mcp`
 - `/cuwacunu/.build/hero/hero_runtime_mcp`
+- `/cuwacunu/.build/hero/hero_jkimyei_mcp`
 
 ## Build
 
@@ -14,11 +15,11 @@ make -C /cuwacunu/src/main/hero -j12 all
 
 ## Defaults (No Extra Flags Needed)
 
-All four MCP binaries already default to:
+All five MCP binaries already default to:
 - global config path: `/cuwacunu/src/config/.config`
 - unencrypted catalog mode for Hashimyei/Lattice
 
-Hashimyei/Lattice/Runtime runtime paths are loaded from their HERO defaults DSL
+Hashimyei/Lattice/Runtime/Jkimyei runtime paths are loaded from their HERO defaults DSL
 files via `[REAL_HERO]` pointers in that default global config.
 
 ## Direct One-Shot Tool Calls
@@ -41,17 +42,33 @@ Each HERO MCP binary supports direct tool invocation without manual JSON-RPC fra
 /cuwacunu/.build/hero/hero_runtime_mcp \
   --tool hero.runtime.list_jobs \
   --args-json '{}'
+
+/cuwacunu/.build/hero/hero_jkimyei_mcp \
+  --tool hero.jkimyei.list_campaigns \
+  --args-json '{}'
 ```
 
 The output is the same JSON object shape returned by MCP `tools/call`
 (`content`, `structuredContent`, `isError`).
 
-MCP `initialize` responses from all four HERO servers now also include
+Human-friendly tool discovery is also available directly:
+
+```bash
+hero_config_mcp --list-tools
+hero_config_mcp --list-tools-json
+hero_runtime_mcp --list-tools
+hero_hashimyei_mcp --list-tools
+hero_lattice_mcp --list-tools
+hero_jkimyei_mcp --list-tools
+```
+
+MCP `initialize` responses from all five HERO servers now also include
 an `instructions` string with concise startup/preflight guidance.
 
 Optional override flags when needed:
 - `--global-config <path>`
 - `hero_runtime_mcp` also supports `--hero-config <path>` and `--jobs-root <path>`
+- `hero_jkimyei_mcp` also supports `--hero-config <path>`, `--campaigns-root <path>`, and `--config-folder <path>`
 
 ## Startup Notes
 
@@ -67,6 +84,7 @@ Typical startup errors:
 - `Hashimyei Hero` owns identity resolution and canonical founding references.
 - `Lattice Hero` owns execution/runtime report fragment streams, exposure, and report queries.
 - `Runtime Hero` owns detached process launch, job tracking, log tails, and stop/reconcile controls.
+- `Jkimyei Hero` owns staged wave-contract campaign snapshots and later campaign orchestration.
 - `Config Hero` owns developer reset/cutover utilities that operate from the saved config view.
 - `main_board` remains a worker entrypoint; Runtime Hero is the detached process supervisor keyed by `job_cursor`.
 - Hashimyei APIs must remain identity-oriented; runtime report fragment/report endpoints belong to Lattice.
@@ -149,20 +167,39 @@ Runtime MCP job-control tools:
 - `hero.runtime.tail_log`
 - `hero.runtime.reconcile`
 
+Jkimyei MCP staged-campaign tools:
+- `hero.jkimyei.create_campaign`
+- `hero.jkimyei.list_campaigns`
+- `hero.jkimyei.get_campaign`
+
 Runtime Hero job model:
 - `job_cursor` is the only public job identity
 - `pid`, `pgid`, boot id, start ticks, and future `run_id` are job metadata, not public identifiers
 - each job persists under `jobs_root/<job_cursor>/`
 - job manifests use schema `hero.runtime.job.v1`
+- Runtime Hero stages one resolved binding bundle per job:
+- `jobs_root/<job_cursor>/board.dsl`
+- `jobs_root/<job_cursor>/binding.contract.dsl`
+- `jobs_root/<job_cursor>/binding.wave.dsl`
+- the contract and wave snapshots resolve `% __var ? default %` placeholders before launch and rewrite known downstream DSL-file references to absolute paths
 - launched workers run as separate Linux processes supervised by a detached runner
 
-`hero.lattice.get_report_lls` returns a joined `report_lls` payload.
+Jkimyei Hero campaign model:
+- `campaign_cursor` is the public staged-campaign identity
+- each staged campaign persists under `campaigns_root/<campaign_cursor>/`
+- campaign manifests use schema `hero.jkimyei.campaign.v1`
+- Jkimyei Hero snapshots the configured default campaign DSL into `campaigns_root/<campaign_cursor>/campaign.dsl`
+- the current narrow surface stages immutable campaign plans only; dispatch of campaign binds into runtime jobs is still pending
+
+`hero.lattice.get_report_lls` returns a synthetic joined `report_lls` transport.
 For `tsi.source.*` cursors, `get_report_lls` joins both source data analytics
 and source-runtime projection report fragments when both are available for the same
 wave/hashimyei intersection scope.
 The joined payload is persisted in the lattice catalog as a
 `runtime_report` row keyed by `intersection_cursor`, so each intersection can
 hold one coherent report view while raw component report fragments remain queryable.
+The transport uses `/* ... */` section comments for readability, but it is not
+itself a strict standalone runtime `.lls` document.
 Runtime report fragment ingest in Lattice is `.lls`-only.
 The effective standalone/synthetic ingest surface today is:
 - `wave.source.runtime.projection.v2`
@@ -205,6 +242,7 @@ provided, it drives cursor filtering for the selected lattice intersection.
 returns one fragment body with payload.
 
 `hero.config.dev_nuke_reset` removes runtime dump folders, Runtime Hero jobs_root,
+Jkimyei Hero campaigns_root,
 and Hero catalog files resolved from the saved global config, then reloads
 Config Hero state. It does not use unsaved in-memory config edits, and it fails
 fast if active Runtime Hero jobs still exist.
@@ -245,7 +283,7 @@ The current runtime `.lls` profile and migration backlog are documented under
 Quick config MCP smoke:
 
 ```bash
-/cuwacunu/.build/hero/hero_config_mcp --once status
+/cuwacunu/.build/hero/hero_config_mcp --tool hero.config.status
 ```
 
 Hashimyei/Lattice smoke (uses temp catalogs):

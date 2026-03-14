@@ -91,6 +91,16 @@ range = non-empty path
 allowed = absolute_or_relative path
 nuance = deterministic Runtime HERO defaults DSL used by hero_runtime_mcp
 
+[FIELD REAL_HERO.jkimyei_hero_dsl_filename]
+key = jkimyei_hero_dsl_filename
+scope = REAL_HERO section
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/default.hero.jkimyei.dsl
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = deterministic Jkimyei HERO defaults DSL used by hero_jkimyei_mcp
+
 [RULE REAL_HERO_MODE_ALLOWED]
 id = REAL_HERO_MODE_ALLOWED
 applies_to = REAL_HERO.mode

@@ -35,6 +35,7 @@
 // RUNTIME WARNINGS (non-blocking / informational) .h
 // ------------------------------------------------------------
 DEV_WARNING("[tsi.source.dataloader.h] TODO: add regime/OOD-aware sampling policies for representation evaluation (blocked temporal splits, regime holdout, cross-instrument holdout). Current sampler policy is sequential/random index traversal only.\n");
+DEV_WARNING("[tsi.source.dataloader.h] TODO: there are other forms of normalization e.g. log(x_t/x_(t-1)), volatility scaling, or z-score windows.");
 
 namespace tsiemene {
 

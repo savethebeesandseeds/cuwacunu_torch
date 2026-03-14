@@ -1,0 +1,56 @@
+#ifndef HERO_CONFIG_TOOL
+#error "HERO_CONFIG_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_config_tools.def"
+#endif
+
+// Config Hero tool registry. Keep tool metadata and handler bindings here so
+// transport wrappers can derive tools/list/help/dispatch from one source.
+
+HERO_CONFIG_TOOL("hero.config.status", "Runtime status and validation snapshot",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_status)
+HERO_CONFIG_TOOL("hero.config.schema", "Runtime key schema",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_schema)
+HERO_CONFIG_TOOL("hero.config.show", "Current key-value entries",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_show)
+HERO_CONFIG_TOOL("hero.config.get", "Get one key",
+                 "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"}},\"required\":[\"key\"],\"additionalProperties\":false}",
+                 handle_tool_get)
+HERO_CONFIG_TOOL("hero.config.set", "Set one key",
+                 "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}},\"required\":[\"key\",\"value\"],\"additionalProperties\":false}",
+                 handle_tool_set)
+HERO_CONFIG_TOOL("hero.config.dsl.get",
+                 "Read one key from src/config/instructions/default.*.dsl only",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"}},\"required\":[\"key\"],\"additionalProperties\":false}",
+                 handle_tool_dsl_get)
+HERO_CONFIG_TOOL("hero.config.dsl.set",
+                 "Set one key in src/config/instructions/default.*.dsl only",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}},\"required\":[\"key\",\"value\"],\"additionalProperties\":false}",
+                 handle_tool_dsl_set)
+HERO_CONFIG_TOOL("hero.config.validate", "Validate runtime config",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_validate)
+HERO_CONFIG_TOOL("hero.config.diff", "Preview config changes before save",
+                 "{\"type\":\"object\",\"properties\":{\"include_text\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+                 handle_tool_diff)
+HERO_CONFIG_TOOL("hero.config.dry_run", "Alias of hero.config.diff",
+                 "{\"type\":\"object\",\"properties\":{\"include_text\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+                 handle_tool_diff)
+HERO_CONFIG_TOOL("hero.config.backups", "List available config backups",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_backups)
+HERO_CONFIG_TOOL("hero.config.rollback",
+                 "Rollback config to a backup snapshot",
+                 "{\"type\":\"object\",\"properties\":{\"backup\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+                 handle_tool_rollback)
+HERO_CONFIG_TOOL("hero.config.save", "Save runtime config to disk",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_save)
+HERO_CONFIG_TOOL("hero.config.reload", "Reload runtime config from disk",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_reload)
+HERO_CONFIG_TOOL("hero.config.dev_nuke_reset",
+                 "Developer reset: remove runtime dump folders and Hero catalogs resolved from the saved global config, then reload Config Hero state",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_dev_nuke_reset)

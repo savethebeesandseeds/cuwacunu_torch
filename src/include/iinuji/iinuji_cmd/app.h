@@ -49,41 +49,41 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
   cuwacunu::iitepi::config_space_t::update_config();
   const int logs_cap_cfg =
       std::max(1, cuwacunu::iitepi::config_space_t::get<int>(
-                      "GENERAL",
+                      "GUI",
                       "iinuji_logs_buffer_capacity"));
   const bool logs_show_date_cfg =
       cuwacunu::iitepi::config_space_t::get<bool>(
-          "GENERAL",
+          "GUI",
           "iinuji_logs_show_date",
           std::optional<bool>{true});
   const bool logs_show_thread_cfg =
       cuwacunu::iitepi::config_space_t::get<bool>(
-          "GENERAL",
+          "GUI",
           "iinuji_logs_show_thread",
           std::optional<bool>{true});
   const bool logs_show_metadata_cfg =
       cuwacunu::iitepi::config_space_t::get<bool>(
-          "GENERAL",
+          "GUI",
           "iinuji_logs_show_metadata",
           std::optional<bool>{true});
   const bool logs_show_color_cfg =
       cuwacunu::iitepi::config_space_t::get<bool>(
-          "GENERAL",
+          "GUI",
           "iinuji_logs_show_color",
           std::optional<bool>{true});
   const bool logs_auto_follow_cfg =
       cuwacunu::iitepi::config_space_t::get<bool>(
-          "GENERAL",
+          "GUI",
           "iinuji_logs_auto_follow",
           std::optional<bool>{true});
   const bool logs_mouse_capture_cfg =
       cuwacunu::iitepi::config_space_t::get<bool>(
-          "GENERAL",
+          "GUI",
           "iinuji_logs_mouse_capture",
           std::optional<bool>{true});
   const std::string logs_metadata_filter_cfg =
       cuwacunu::iitepi::config_space_t::get<std::string>(
-          "GENERAL",
+          "GUI",
           "iinuji_logs_metadata_filter",
           std::optional<std::string>{"any"});
   cuwacunu::piaabo::dlog_set_buffer_capacity(static_cast<std::size_t>(logs_cap_cfg));
@@ -211,7 +211,7 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
     } else {
       state.logs.metadata_filter = LogsMetadataFilter::Any;
       log_warn(
-          "[iinuji_cmd] invalid GENERAL.iinuji_logs_metadata_filter=%s (using any)\n",
+          "[iinuji_cmd] invalid GUI.iinuji_logs_metadata_filter=%s (using any)\n",
           logs_metadata_filter_cfg.c_str());
     }
   }

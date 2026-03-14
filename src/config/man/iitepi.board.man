@@ -7,6 +7,16 @@ TARGET_BNF = src/config/bnf/iitepi.board.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_board/tsiemene_board.cpp
 PRIMARY_VALIDATORS = syntax_only_in_decoder
 
+[FIELD ACTIVE_BIND]
+key = ACTIVE_BIND
+scope = board root
+type = identifier
+required = true
+default = none
+range = must match one declared BIND id
+allowed = [A-Za-z0-9_.-]+
+nuance = selects the default runtime BIND entry for board_space_t::init and config-driven execution
+
 [FIELD IMPORT_CONTRACT_FILE]
 key = IMPORT_CONTRACT_FILE
 scope = BOARD
@@ -57,12 +67,36 @@ range = non-empty
 allowed = wave id defined inside imported wave DSLs
 nuance = ambiguity across multiple imported wave files is rejected at board assembly stage
 
+[FIELD BIND.__VAR]
+key = BIND.__<name>
+scope = BIND
+type = scalar
+required = false
+default = none
+range = zero or more bind-local variable assignments
+allowed = variable names starting with double underscore
+nuance = reserved for shared wave-contract binding variable resolution; values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %`
+
+[RULE BIND_VARIABLE_PREFIX]
+id = BIND_VARIABLE_PREFIX
+applies_to = BIND.__VAR
+severity = error
+when = variable_name does not start with "__"
+message = BIND variables must start with double underscore
+
 [RULE BOARD_MIN_IMPORTS]
 id = BOARD_MIN_IMPORTS
 applies_to = BOARD
 severity = error
 when = no IMPORT_CONTRACT_FILE or no IMPORT_WAVE_FILE or no BIND
 message = board instruction requires at least one contract import, one wave import, and one bind
+
+[RULE ACTIVE_BIND_REFERENCE]
+id = ACTIVE_BIND_REFERENCE
+applies_to = ACTIVE_BIND
+severity = error
+when = ACTIVE_BIND not in declared_bind_ids
+message = ACTIVE_BIND references unknown BIND id
 
 [RULE BIND_CONTRACT_REFERENCE]
 id = BIND_CONTRACT_REFERENCE

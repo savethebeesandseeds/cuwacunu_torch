@@ -22,8 +22,9 @@
 #define DEFAULT_CONFIG_FOLDER "/cuwacunu/src/config/"
 #define DEFAULT_CONFIG_FILE ".config"
 #define DEFAULT_BOARD_CONFIG_FILE "instructions/default.iitepi.board.dsl"
-#define GENERAL_BOARD_CONFIG_KEY "board_config_filename"
-#define GENERAL_BOARD_BINDING_KEY "board_binding_id"
+#define DEFAULT_JKIMYEI_CAMPAIGN_DSL_FILE "instructions/default.jkimyei.campaign.dsl"
+#define GENERAL_DEFAULT_BOARD_DSL_KEY "default_board_dsl_filename"
+#define GENERAL_DEFAULT_JKIMYEI_CAMPAIGN_DSL_KEY "default_jkimyei_campaign_dsl_filename"
 
 #include "piaabo/dfiles.h"
 #include "piaabo/dutils.h"
@@ -49,6 +50,7 @@ struct config_space_t {
   static exchange_type_e exchange_type;
   static std::string config_folder;
   static std::string config_file_path;
+  static std::string runtime_board_dsl_override_path;
   static parsed_config_t config;
 
   /*—initialisation—*/
@@ -56,6 +58,10 @@ struct config_space_t {
                                  const char* file = DEFAULT_CONFIG_FILE);
   static void update_config();    // re-read from disk
   static bool validate_config();  // throws on fatal errors
+  static void set_runtime_board_dsl_override(const std::string& path);
+  static void clear_runtime_board_dsl_override();
+  static std::string effective_board_dsl_path();
+  static std::string effective_jkimyei_campaign_dsl_path();
 
   /*—generic accessor—*/
   template <class T = std::string>

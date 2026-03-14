@@ -84,7 +84,7 @@ Architecture is intentionally split into static topology and dynamic execution:
 
 4. `default.iitepi.board.dsl`
 - Imports contract/wave files.
-- Declares bind ids that join them.
+- Declares `ACTIVE_BIND` and the bind ids that join imports together.
 
 ## Runtime Flow
 
@@ -93,7 +93,8 @@ Architecture is intentionally split into static topology and dynamic execution:
 - `config_space_t::update_config()`
 
 2. Initialize board lock
-- `board_space_t::init()` reads configured board path + binding id.
+- `board_space_t::init()` reads the configured board path and resolves the
+  active binding from the board DSL `ACTIVE_BIND` directive.
 - `board_space_t::assert_locked_runtime_intact_or_fail_fast()` checks lock integrity.
 
 3. Resolve selected binding

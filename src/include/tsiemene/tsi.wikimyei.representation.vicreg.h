@@ -293,6 +293,96 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   [[nodiscard]] int optimizer_steps() const noexcept {
     return model_.runtime_optimizer_steps();
   }
+  [[nodiscard]] bool jkimyei_get_runtime_state(
+      TsiWikimyeiJkimyeiRuntimeState* out,
+      std::string* error = nullptr) const override {
+    if (error) error->clear();
+    if (!out) {
+      if (error) *error = "jkimyei runtime state output pointer is null";
+      return false;
+    }
+
+    *out = TsiWikimyeiJkimyeiRuntimeState{};
+    out->runtime_component_name = component_name_;
+    out->run_id = runtime_run_id_;
+    out->train_enabled = train_;
+    out->use_swa = use_swa_;
+    out->detach_to_cpu = detach_to_cpu_;
+    out->supports_runtime_profile_switch = false;
+    out->has_pending_grad = model_.runtime_state.has_pending_grad;
+    out->skip_on_nan = model_.training_policy.skip_on_nan;
+    out->zero_grad_set_to_none = model_.training_policy.zero_grad_set_to_none;
+    out->optimizer_steps = model_.runtime_state.optimizer_steps;
+    out->accumulate_steps = model_.training_policy.accumulate_steps;
+    out->accum_counter = model_.runtime_state.accum_counter;
+    out->swa_start_iter = model_.training_policy.swa_start_iter;
+    out->clip_norm = model_.training_policy.clip_norm;
+    out->clip_value = model_.training_policy.clip_value;
+    out->last_committed_loss_mean =
+        model_.runtime_state.last_committed_loss_mean;
+
+    try {
+      const auto& jk_component =
+          cuwacunu::jkimyei::jk_setup(component_name_, contract_hash_);
+      out->resolved_component_id = jk_component.resolved_component_id;
+      out->profile_id = jk_component.resolved_profile_id;
+      out->profile_row_id = jk_component.resolved_profile_row_id;
+    } catch (const std::exception& e) {
+      if (error) {
+        *error = std::string("failed to resolve jkimyei runtime state: ") +
+                 e.what();
+      }
+      return false;
+    } catch (...) {
+      if (error) {
+        *error =
+            "failed to resolve jkimyei runtime state: unknown exception";
+      }
+      return false;
+    }
+
+    return true;
+  }
+  [[nodiscard]] bool jkimyei_set_train_enabled(
+      bool enabled,
+      std::string* error = nullptr) override {
+    if (error) error->clear();
+    set_train(enabled);
+    return true;
+  }
+  [[nodiscard]] bool jkimyei_flush_pending_training_step(
+      TsiWikimyeiJkimyeiFlushResult* out = nullptr,
+      std::string* error = nullptr) override {
+    if (error) error->clear();
+    if (out) *out = TsiWikimyeiJkimyeiFlushResult{};
+
+    const bool had_pending_grad = model_.runtime_state.has_pending_grad;
+    bool optimizer_step_applied = false;
+    try {
+      optimizer_step_applied = flush_pending_training_step_if_any_();
+    } catch (const std::exception& e) {
+      if (error) {
+        *error = std::string("failed to flush pending training step: ") +
+                 e.what();
+      }
+      return false;
+    } catch (...) {
+      if (error) {
+        *error =
+            "failed to flush pending training step: unknown exception";
+      }
+      return false;
+    }
+
+    if (out) {
+      out->had_pending_grad = had_pending_grad;
+      out->optimizer_step_applied = optimizer_step_applied;
+      out->has_pending_grad_after = model_.runtime_state.has_pending_grad;
+      out->last_committed_loss_mean =
+          model_.runtime_state.last_committed_loss_mean;
+    }
+    return true;
+  }
   [[nodiscard]] std::string_view init_report_fragment_schema() const noexcept override {
     return "tsi.wikimyei.representation.vicreg.init.v1";
   }
@@ -316,10 +406,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   void set_train(bool on) noexcept {
     if (train_ && !on) {
       try {
-        if (model_.finalize_pending_training_step(model_.training_policy.swa_start_iter)) {
-          epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
-          ++epoch_optimizer_steps_;
-        }
+        (void)flush_pending_training_step_if_any_();
         apply_epoch_training_policy_();
       } catch (const std::exception& e) {
         log_warn("[tsi.vicreg] set_train(false) flush failed: %s\n", e.what());
@@ -422,11 +509,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
       }
       case RuntimeEventKind::EpochEnd: {
         if (!train_) return RuntimeEventAction{};
-        if (model_.finalize_pending_training_step(
-                model_.training_policy.swa_start_iter)) {
-          epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
-          ++epoch_optimizer_steps_;
-        }
+        (void)flush_pending_training_step_if_any_();
         apply_epoch_training_policy_();
         if (!ctx.debug_enabled) return RuntimeEventAction{};
         vicreg_network_analytics_plan_t plan{};
@@ -451,11 +534,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         // Keep training counters/state across epochs and only commit any
         // leftover accumulation tail before the next epoch starts.
         if (!train_) return RuntimeEventAction{};
-        if (model_.finalize_pending_training_step(
-                model_.training_policy.swa_start_iter)) {
-          epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
-          ++epoch_optimizer_steps_;
-        }
+        (void)flush_pending_training_step_if_any_();
         if (epoch_optimizer_steps_ > 0) {
           // Safety flush in case an epoch boundary was missed upstream.
           apply_epoch_training_policy_();
@@ -653,6 +732,16 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
 
     epoch_loss_sum_ = 0.0;
     epoch_optimizer_steps_ = 0;
+  }
+
+  [[nodiscard]] bool flush_pending_training_step_if_any_() {
+    if (!model_.finalize_pending_training_step(
+            model_.training_policy.swa_start_iter)) {
+      return false;
+    }
+    epoch_loss_sum_ += model_.runtime_state.last_committed_loss_mean;
+    ++epoch_optimizer_steps_;
+    return true;
   }
 
   void apply_runtime_policy_from_jkimyei_(bool requested_train,
