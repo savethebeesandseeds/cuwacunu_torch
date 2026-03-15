@@ -11,6 +11,8 @@
 #include <cmath>
 #include <algorithm>
 #include <cassert>
+#include <limits>
+#include <optional>
 
 #include "piaabo/dutils.h"
 #include "piaabo/dfiles.h"
@@ -22,6 +24,8 @@
 namespace fs = std::filesystem;
 using cuwacunu::camahjucunu::data::sanitize_csv_into_binary_file;
 using cuwacunu::camahjucunu::data::is_bin_filename_normalized;
+using cuwacunu::camahjucunu::data::canonical_normalization_policy;
+using cuwacunu::camahjucunu::data::binary_record_type_t;
 
 // ---------- Small helpers ----------------------------------------------------
 template <typename T>
@@ -45,6 +49,18 @@ static std::vector<T> read_bin_all(const std::string& bin_path) {
   if (n) {
     in.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(n * sizeof(T)));
     if (!in) log_fatal("[test] Failed reading BIN payload: %s\n", bin_path.c_str());
+  }
+  return out;
+}
+
+template <typename RawT>
+static std::vector<binary_record_type_t<RawT>> materialize_binary_records(
+    const std::vector<RawT>& raw_records) {
+  using BinaryT = binary_record_type_t<RawT>;
+  std::vector<BinaryT> out;
+  out.reserve(raw_records.size());
+  for (const auto& raw : raw_records) {
+    out.push_back(BinaryT::from_raw(raw));
   }
   return out;
 }
@@ -94,28 +110,29 @@ static std::vector<T> sanitize_in_memory(const std::string& csv_path, char delim
   return out;
 }
 
-// Simulate the header's causal_partial_window_keep_len normalization exactly,
+// Simulate the header's causal log-return preprocessing exactly,
 // producing the expected sequence.
 template <typename T>
-static std::vector<T> simulate_causal_partial_window_normalization(const std::vector<T>& sanitized_seq,
-                                                                   std::size_t window_size) {
-  auto pack = T::initialize_statistics_pack((unsigned)window_size);
+static std::vector<T> simulate_log_returns_normalization(
+    const std::vector<T>& sanitized_seq) {
   std::vector<T> out; out.reserve(sanitized_seq.size());
-
-  std::size_t filled_valid = 0;
+  std::optional<T> previous_valid{};
   for (std::size_t i=0; i<sanitized_seq.size(); ++i) {
     const T& x = sanitized_seq[i];
     T y = x;
 
     if (x.is_valid()) {
-      y = pack.normalize(x);
+      if (previous_valid.has_value()) {
+        y = T::normalize_log_returns(x, previous_valid ? &(*previous_valid) : nullptr);
+      } else {
+        T key_holder = x;
+        y = T::null_instance(key_holder.key_value());
+      }
+      previous_valid = x;
+    } else {
+      previous_valid.reset();
     }
     out.push_back(y);
-
-    if (x.is_valid()) {
-      pack.update(x);
-      if (filled_valid < window_size) ++filled_valid;
-    }
   }
   return out;
 }
@@ -155,6 +172,23 @@ static std::string write_kline_bootstrap_outlier_csv(const fs::path& dir) {
   return path;
 }
 
+static std::string write_trade_csv(const fs::path& dir) {
+  std::string path = (dir / "trades.csv").string();
+  std::ofstream os(path);
+  if (!os.is_open()) log_fatal("[test] Could not open %s\n", path.c_str());
+  auto emit = [&](int64_t id, double price, double qty, double quote_qty,
+                  int64_t time, bool is_buyer_maker, bool is_best_match) {
+    os << id << ',' << price << ',' << qty << ',' << quote_qty << ','
+       << time << ',' << std::boolalpha << is_buyer_maker << ','
+       << is_best_match << '\n';
+  };
+  emit(1, 100.0, 1.5, 150.0, 60, false, true);
+  emit(2, 101.0, 2.0, 202.0, 120, true, true);
+  emit(3, 102.0, 2.2, 224.4, 120, true, true);   // duplicate
+  emit(4, 104.0, 3.0, 312.0, 240, false, false); // +120 -> one null inserted
+  return path;
+}
+
 static std::string write_basic_csv(const fs::path& dir) {
   // time,value  (delta=0.5; gap +1.5 -> two nulls)
   std::string path = (dir / "basic.csv").string();
@@ -173,21 +207,25 @@ static std::string write_basic_csv(const fs::path& dir) {
 template <typename T>
 static void run_case(const std::string& label,
                      const std::string& csv_path,
-                     std::size_t norm_window) {
+                     const std::string& normalization_policy) {
   log_info("\n[test][%s] CSV: %s\n", label.c_str(), csv_path.c_str());
+  const std::string canonical_policy =
+      canonical_normalization_policy(normalization_policy);
 
   // 1) Sanitize without normalization (byte-for-byte lattice/nulls test)
-  std::string bin_no_norm = sanitize_csv_into_binary_file<T>(csv_path, /*norm_window=*/0,
+  std::string bin_no_norm = sanitize_csv_into_binary_file<T>(csv_path, /*normalization_policy=*/"none",
                                                              /*force_rebuild_cache=*/true,
                                                              /*buffer_size=*/4, /*delimiter=*/',');
-  // Name detector: RAW should be not-normalized; window_out must remain untouched.
-  std::size_t Wdet = 123456;
-  bool is_norm = is_bin_filename_normalized(bin_no_norm, &Wdet);
+  // Name detector: RAW should be not-normalized; policy_out must remain untouched.
+  std::string detected_policy = "sentinel";
+  bool is_norm = is_bin_filename_normalized(bin_no_norm, &detected_policy);
   if (is_norm) log_fatal("[test][%s] raw file unexpectedly marked as normalized: %s\n", label.c_str(), bin_no_norm.c_str());
-  if (Wdet != 123456) log_fatal("[test][%s] window_out modified for raw file\n", label.c_str());
+  if (detected_policy != "sentinel") log_fatal("[test][%s] policy_out modified for raw file\n", label.c_str());
 
-  auto recs_no_norm = read_bin_all<T>(bin_no_norm);
-  auto sanitized_in_mem = sanitize_in_memory<T>(csv_path, ',');
+  using BinaryT = binary_record_type_t<T>;
+  auto recs_no_norm = read_bin_all<BinaryT>(bin_no_norm);
+  auto sanitized_raw = sanitize_in_memory<T>(csv_path, ',');
+  auto sanitized_in_mem = materialize_binary_records<T>(sanitized_raw);
 
   if (sanitized_in_mem.size() != recs_no_norm.size())
     log_fatal("[test][%s] sanitize size mismatch: mem=%zu bin=%zu\n",
@@ -197,39 +235,42 @@ static void run_case(const std::string& label,
       log_fatal("[test][%s] sanitize byte mismatch @%zu\n", label.c_str(), i);
   log_info("[test][%s] ✔ Sanitize byte-identical (no-norm)\n", label.c_str());
 
-  // 2) Sanitize WITH normalization (causal_partial_window_keep_len, in-place on copy)
-  const std::size_t W = norm_window;
-  std::string bin_norm = sanitize_csv_into_binary_file<T>(csv_path, /*norm_window=*/W,
-                                                          /*force_rebuild_cache=*/true);
-  std::size_t Wgot = 0;
-  bool is_norm2 = is_bin_filename_normalized(bin_norm, &Wgot);
+  // 2) Sanitize WITH normalization (causal log-return preprocessing, in-place on copy)
+  std::string bin_norm = sanitize_csv_into_binary_file<T>(
+      csv_path, /*normalization_policy=*/normalization_policy,
+      /*force_rebuild_cache=*/true);
+  std::string policy_got;
+  bool is_norm2 = is_bin_filename_normalized(bin_norm, &policy_got);
   if (!is_norm2) log_fatal("[test][%s] normalized file not detected by name: %s\n", label.c_str(), bin_norm.c_str());
-  if (Wgot != W)
-    log_fatal("[test][%s] window parsed from name != requested window (got %zu, want %zu) file=%s\n",
-              label.c_str(), Wgot, W, bin_norm.c_str());
+  if (policy_got != canonical_policy)
+    log_fatal("[test][%s] policy parsed from name != requested policy (got %s, want %s) file=%s\n",
+              label.c_str(), policy_got.c_str(), canonical_policy.c_str(), bin_norm.c_str());
 
-  auto recs_norm = read_bin_all<T>(bin_norm);
+  auto recs_norm = read_bin_all<BinaryT>(bin_norm);
 
   if (recs_norm.size() != recs_no_norm.size())
-    log_fatal("[test][%s] normalized BIN changed record count (keep_len policy expected same size)\n",
+    log_fatal("[test][%s] normalized BIN changed record count (same lattice expected)\n",
               label.c_str());
 
-  auto expected_norm = simulate_causal_partial_window_normalization<T>(sanitized_in_mem, W);
+  auto expected_norm = simulate_log_returns_normalization<BinaryT>(sanitized_in_mem);
   if (expected_norm.size() != recs_norm.size())
     log_fatal("[test][%s] simulate size mismatch\n", label.c_str());
 
-  std::size_t valid_seen = 0, normalized_valid = 0, invalid_passthrough = 0;
+  std::size_t normalized_valid = 0, masked_missing_context = 0, invalid_passthrough = 0;
   for (size_t i=0;i<recs_norm.size();++i) {
-    const T& s = sanitized_in_mem[i];
-    const T& y = recs_norm[i];
-    const T& e = expected_norm[i];
+    const BinaryT& s = sanitized_in_mem[i];
+    const BinaryT& y = recs_norm[i];
+    const BinaryT& e = expected_norm[i];
 
     if (!bytes_equal(y, e))
       log_fatal("[test][%s] norm byte mismatch @%zu\n", label.c_str(), i);
 
     if (s.is_valid()) {
-      ++valid_seen;
-      ++normalized_valid;
+      if (e.is_valid()) {
+        ++normalized_valid;
+      } else {
+        ++masked_missing_context;
+      }
     } else {
       if (!bytes_equal(s, y))
         log_fatal("[test][%s] invalid record modified @%zu\n", label.c_str(), i);
@@ -237,22 +278,26 @@ static void run_case(const std::string& label,
     }
   }
 
-  log_info("[test][%s] ✔ Causal partial-window keep_len matches. W=%zu, partial_window_valid=%zu, normalized_valid=%zu, invalid_passthrough=%zu\n",
-           label.c_str(), W, std::min(valid_seen, W), normalized_valid, invalid_passthrough);
+  log_info("[test][%s] ✔ Strict log-return policy=%s, normalized_valid=%zu, masked_missing_context=%zu, invalid_passthrough=%zu\n",
+           label.c_str(), canonical_policy.c_str(), normalized_valid, masked_missing_context, invalid_passthrough);
 
   // 3) Idempotency: rerun without force should skip and yield identical bytes
-  std::string bin_norm2 = sanitize_csv_into_binary_file<T>(csv_path, W, /*force*/false);
-  auto recs_norm2 = read_bin_all<T>(bin_norm2);
+  std::string bin_norm2 = sanitize_csv_into_binary_file<T>(
+      csv_path, normalization_policy, /*force*/false);
+  auto recs_norm2 = read_bin_all<BinaryT>(bin_norm2);
   if (recs_norm2.size() != recs_norm.size())
     log_fatal("[test][%s] Up-to-date skip changed size\n", label.c_str());
   for (size_t i=0;i<recs_norm.size();++i)
     if (!bytes_equal(recs_norm2[i], recs_norm[i]))
       log_fatal("[test][%s] Up-to-date skip changed bytes @%zu\n", label.c_str(), i);
 
-  std::size_t Wgot2 = 0;
-  bool is_norm3 = is_bin_filename_normalized(bin_norm2, &Wgot2);
+  std::string policy_got2;
+  bool is_norm3 = is_bin_filename_normalized(bin_norm2, &policy_got2);
   if (!is_norm3) log_fatal("[test][%s] up-to-date normalized name not detected\n", label.c_str());
-  if (Wgot2 != W) log_fatal("[test][%s] window parse mismatch on re-run (got %zu, want %zu)\n", label.c_str(), Wgot2, W);
+  if (policy_got2 != canonical_policy) {
+    log_fatal("[test][%s] policy parse mismatch on re-run (got %s, want %s)\n",
+              label.c_str(), policy_got2.c_str(), canonical_policy.c_str());
+  }
 
   log_info("[test][%s] ✔ All checks passed.\n", label.c_str());
 }
@@ -261,38 +306,55 @@ int main() {
   try {
     // --- Name detector smoke tests (no file I/O needed) ---
     {
-      std::size_t w = 777;
-      bool n = is_bin_filename_normalized("/tmp/foo.bin", &w);
-      assert(!n && w == 777);
+      std::string policy = "sentinel";
+      bool n = is_bin_filename_normalized("/tmp/foo.bin", &policy);
+      assert(!n && policy == "sentinel");
 
-      w = 777;
-      n = is_bin_filename_normalized("/tmp/foo.norm.bin", &w);   // old-style/invalid
-      assert(!n && w == 777);
+      policy = "sentinel";
+      n = is_bin_filename_normalized("/tmp/foo.norm.bin", &policy);   // invalid: missing policy token
+      assert(!n && policy == "sentinel");
 
-      w = 777;
-      n = is_bin_filename_normalized("/tmp/foo.normW0.bin", &w); // window 0 -> not normalized
-      assert(!n && w == 777);
+      policy = "sentinel";
+      n = is_bin_filename_normalized("/tmp/foo.norm.unexpected.bin", &policy);
+      assert(!n && policy == "sentinel");
 
-      w = 777;
-      n = is_bin_filename_normalized("/tmp/foo.normW64.bin", &w);
-      assert(n && w == 64);
+      policy = "sentinel";
+      n = is_bin_filename_normalized("/tmp/foo.cache.norm.log_returns.bin", &policy);
+      assert(n && policy == "log_returns");
     }
 
     fs::path tmp = fs::path("/cuwacunu/.data/tests");
     fs::create_directories(tmp);
 
-    const std::size_t W = 3; // normalization window >= 1 => normalized
+    const std::string policy = "log_returns";
 
     // --- kline_t ---
     auto kline_csv = write_kline_csv(tmp);
-    run_case<cuwacunu::camahjucunu::exchange::kline_t>("kline_t", kline_csv, W);
+    run_case<cuwacunu::camahjucunu::exchange::kline_t>("kline_t", kline_csv, policy);
+    {
+      std::string kline_norm =
+          sanitize_csv_into_binary_file<cuwacunu::camahjucunu::exchange::kline_t>(
+              kline_csv, /*normalization_policy=*/policy,
+              /*force_rebuild_cache=*/false);
+      auto recs = read_bin_all<cuwacunu::camahjucunu::exchange::kline_cache_t>(kline_norm);
+      if (recs.size() < 5) {
+        log_fatal("[test][kline_t] expected at least 5 normalized records for explicit trade-count check\n");
+      }
+      if (recs[0].is_valid() ||
+          !recs[1].is_valid() ||
+          recs[4].is_valid() ||
+          std::fabs(recs[1].number_of_trades - std::log1p(12.0)) > 1e-12) {
+        log_fatal("[test][kline_t] strict context or number_of_trades normalization is incorrect under log_returns\n");
+      }
+      log_info("[test][kline_t] ✔ first-segment masking and number_of_trades log1p are correct.\n");
+    }
 
     // --- kline_t bootstrap min-step regression (first delta outlier) ---
     {
       auto kline_outlier_csv = write_kline_bootstrap_outlier_csv(tmp);
       std::string out_bin = sanitize_csv_into_binary_file<cuwacunu::camahjucunu::exchange::kline_t>(
-          kline_outlier_csv, /*norm_window=*/0, /*force_rebuild_cache=*/true);
-      auto recs = read_bin_all<cuwacunu::camahjucunu::exchange::kline_t>(out_bin);
+          kline_outlier_csv, /*normalization_policy=*/"none", /*force_rebuild_cache=*/true);
+      auto recs = read_bin_all<cuwacunu::camahjucunu::exchange::kline_cache_t>(out_bin);
       std::vector<int64_t> got;
       got.reserve(recs.size());
       for (const auto& r : recs) got.push_back(r.close_time);
@@ -303,9 +365,85 @@ int main() {
       log_info("[test][kline_t] ✔ Bootstrap min-step inferred expected lattice under first-delta outlier.\n");
     }
 
+    // --- kline_t gap continuation strict-context regression ---
+    {
+      auto kline_gap_csv = write_kline_bootstrap_outlier_csv(tmp);
+      std::string gap_norm = sanitize_csv_into_binary_file<cuwacunu::camahjucunu::exchange::kline_t>(
+          kline_gap_csv, /*normalization_policy=*/policy, /*force_rebuild_cache=*/true);
+      auto recs = read_bin_all<cuwacunu::camahjucunu::exchange::kline_cache_t>(gap_norm);
+      if (recs.size() != 6) {
+        log_fatal("[test][kline_t] strict gap regression expected 6 lattice rows, got %zu\n", recs.size());
+      }
+      if (recs[0].is_valid() || recs[3].is_valid() || !recs[4].is_valid() || !recs[5].is_valid()) {
+        log_fatal("[test][kline_t] strict gap masking/continuation behavior is incorrect\n");
+      }
+      if (std::fabs(recs[4].close_price - std::log(104.0 / 103.0)) > 1e-12 ||
+          std::fabs(recs[5].close_price - std::log(105.0 / 104.0)) > 1e-12) {
+        log_fatal("[test][kline_t] post-gap normalization did not reuse the masked raw predecessor as context\n");
+      }
+      log_info("[test][kline_t] ✔ Gap masking and post-gap context recovery are correct.\n");
+    }
+
+    // --- trade_t ---
+    auto trade_csv = write_trade_csv(tmp);
+    run_case<cuwacunu::camahjucunu::exchange::trade_t>("trade_t", trade_csv, policy);
+
     // --- basic_t ---
     auto basic_csv = write_basic_csv(tmp);
-    run_case<cuwacunu::camahjucunu::exchange::basic_t>("basic_t", basic_csv, W);
+    run_case<cuwacunu::camahjucunu::exchange::basic_t>("basic_t", basic_csv, policy);
+
+    // --- numeric-domain clamp behavior ---
+    {
+      using Kline = cuwacunu::camahjucunu::exchange::kline_cache_t;
+      Kline prev{};
+      prev.open_time = 59;
+      prev.open_price = 99.0;
+      prev.high_price = 101.0;
+      prev.low_price = 98.0;
+      prev.close_price = 100.0;
+      prev.volume = 5.0;
+      prev.close_time = 60;
+      prev.quote_asset_volume = 10.0;
+      prev.number_of_trades = 3.0;
+      prev.taker_buy_base_volume = 2.0;
+      prev.taker_buy_quote_volume = 4.0;
+
+      Kline cur = prev;
+      cur.open_time = 119;
+      cur.close_time = 120;
+      cur.open_price = 0.0;
+      cur.high_price = -5.0;
+      cur.low_price = std::numeric_limits<double>::infinity();
+      cur.close_price = std::numeric_limits<double>::quiet_NaN();
+      cur.volume = -0.5;
+      cur.quote_asset_volume = -1.0;
+      cur.number_of_trades = -5.0;
+      cur.taker_buy_base_volume = std::numeric_limits<double>::quiet_NaN();
+      cur.taker_buy_quote_volume = 0.0;
+
+      const Kline normalized = Kline::normalize_log_returns(cur, &prev);
+      const double kFloor = 1e-12;
+      const double kLog1pFloor = std::log1p(-1.0 + kFloor);
+
+      if (!std::isfinite(normalized.open_price) ||
+          !std::isfinite(normalized.high_price) ||
+          !std::isfinite(normalized.low_price) ||
+          !std::isfinite(normalized.close_price) ||
+          std::fabs(normalized.volume - std::log1p(-0.5)) > 1e-12 ||
+          std::fabs(normalized.quote_asset_volume - kLog1pFloor) > 1e-12 ||
+          std::fabs(normalized.number_of_trades - kLog1pFloor) > 1e-12 ||
+          std::fabs(normalized.taker_buy_base_volume - kLog1pFloor) > 1e-12 ||
+          std::fabs(normalized.taker_buy_quote_volume) > 1e-12) {
+        log_fatal("[test][numeric-domain] clamp policy produced unexpected outputs\n");
+      }
+      if (std::fabs(normalized.open_price - std::log(kFloor / prev.close_price)) > 1e-12 ||
+          std::fabs(normalized.high_price - std::log(kFloor / prev.close_price)) > 1e-12 ||
+          std::fabs(normalized.low_price - std::log(kFloor / prev.close_price)) > 1e-12 ||
+          std::fabs(normalized.close_price - std::log(kFloor / prev.close_price)) > 1e-12) {
+        log_fatal("[test][numeric-domain] log-return clamp outputs do not match the configured floor\n");
+      }
+      log_info("[test][numeric-domain] ✔ Out-of-domain inputs clamp to finite values.\n");
+    }
 
     log_info("\n[test] ✅ All test cases succeeded.\n");
     return 0;

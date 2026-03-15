@@ -23,6 +23,7 @@
 #include "camahjucunu/data/observation_sample.h"
 
 using Kline = cuwacunu::camahjucunu::exchange::kline_t;
+using KlineCache = cuwacunu::camahjucunu::exchange::kline_cache_t;
 using Obs = cuwacunu::camahjucunu::data::observation_sample_t;
 
 template <class T>
@@ -56,6 +57,13 @@ static std::vector<Kline> make_kline_rows(int64_t start, int64_t step, int n, do
   v.reserve(static_cast<std::size_t>(n));
   for (int i = 0; i < n; ++i) v.push_back(make_kline(start + i * step, base));
   return v;
+}
+
+static std::vector<KlineCache> cache_rows(const std::vector<Kline>& rows) {
+  std::vector<KlineCache> out;
+  out.reserve(rows.size());
+  for (const auto& row : rows) out.push_back(KlineCache::from_raw(row));
+  return out;
 }
 
 static std::string write_kline_csv(const std::vector<Kline>& rows, const std::string& path, char delimiter = ',') {
@@ -119,7 +127,7 @@ int main() {
     {
       const std::string one_bin = "/tmp/mm_single_kline.bin";
       auto rows = make_kline_rows(/*start*/2000, /*step*/60, /*n*/1);
-      write_binary(rows, one_bin);
+      write_binary(cache_rows(rows), one_bin);
 
       cuwacunu::camahjucunu::data::MemoryMappedDataset<Kline> ds(one_bin, /*N_past*/1, /*N_future*/0);
       assert(ds.size().has_value());
@@ -138,7 +146,7 @@ int main() {
     {
       const std::string one_bin = "/tmp/mm_single_kline_guard.bin";
       auto rows = make_kline_rows(/*start*/3000, /*step*/60, /*n*/1);
-      write_binary(rows, one_bin);
+      write_binary(cache_rows(rows), one_bin);
       expect_child_failure([&]() {
         cuwacunu::camahjucunu::data::MemoryMappedDataset<Kline> ds(one_bin, /*N_past*/0, /*N_future*/0);
         (void)ds;
@@ -155,8 +163,8 @@ int main() {
       write_kline_csv(rows, csv_b);
 
       CDS cds;
-      cds.add_dataset(csv_a, /*N_past*/2, /*N_future*/1, /*norm*/0, /*force*/true);
-      cds.add_dataset(csv_b, /*N_past*/2, /*N_future*/1, /*norm*/0, /*force*/true);
+      cds.add_dataset(csv_a, /*N_past*/2, /*N_future*/1, /*norm*/"none", /*force*/true);
+      cds.add_dataset(csv_b, /*N_past*/2, /*N_future*/1, /*norm*/"none", /*force*/true);
       assert(cds.size().has_value());
       assert(cds.size().value() == 1);
       assert(cds.leftmost_key_value_ == 101);
@@ -174,24 +182,37 @@ int main() {
       assert(rng.size() == 1);
     }
 
-    // 4) normalized-zero payload must remain valid for kline_t
+    // 4) strict normalization masks the first row in a contiguous segment and
+    //    propagates that mask through dataset samples without changing shape.
     {
       const std::string csv_const = "/tmp/mm_kline_constant.csv";
       const auto rows = make_kline_rows(/*start*/5000, /*step*/60, /*n*/5, /*base*/123.0);
       write_kline_csv(rows, csv_const);
       const std::string norm_bin = cuwacunu::camahjucunu::data::sanitize_csv_into_binary_file<Kline>(
-        csv_const, /*normalization_window*/3, /*force*/true);
+        csv_const, /*normalization_policy*/"log_returns", /*force*/true);
 
-      auto norm_rows = read_bin_all<Kline>(norm_bin);
+      auto norm_rows = read_bin_all<KlineCache>(norm_bin);
       assert(norm_rows.size() == rows.size());
       for (std::size_t i = 0; i < norm_rows.size(); ++i) {
         const auto& r = norm_rows[i];
         assert(r.close_time == rows[i].close_time);
-        assert(r.open_time == rows[i].open_time);
-        assert(r.open_time != INT64_MIN);
-        // constant series -> z-score is 0.0 in current normalization policy
-        assert(std::fabs(r.open_price) < 1e-12);
+        if (i == 0) {
+          assert(!r.is_valid());
+          assert(r.open_time == INT64_MIN);
+        } else {
+          assert(r.open_time == rows[i].open_time);
+          assert(r.open_time != INT64_MIN);
+          // Constant closes collapse to zero log-return once strict context exists.
+          assert(std::fabs(r.close_price) < 1e-12);
+        }
       }
+
+      cuwacunu::camahjucunu::data::MemoryMappedDataset<Kline> ds(
+          norm_bin, /*N_past*/1, /*N_future*/0);
+      auto s0 = ds.get(0);
+      auto s1 = ds.get(1);
+      assert(!s0.mask.item<bool>());
+      assert(s1.mask.item<bool>());
     }
 
     // 5) collate/decollate keeps key tensors and normalization metadata aligned
@@ -263,7 +284,7 @@ int main() {
 
       expect_child_failure([&]() {
         (void)cuwacunu::camahjucunu::data::sanitize_csv_into_binary_file<Kline>(
-            csv_bad_ratio, /*normalization_window*/0, /*force*/true);
+            csv_bad_ratio, /*normalization_policy*/"none", /*force*/true);
       }, "sanitize non-near-integer step ratio");
     }
 

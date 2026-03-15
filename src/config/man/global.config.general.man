@@ -5,7 +5,7 @@ MAN_ID = global.config.general
 TARGET_DSL = src/config/.config
 TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
 PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
-PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/main_board.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/main_campaign.cpp
 
 [ENUM GENERAL.exchange_type]
 key = GENERAL.exchange_type
@@ -21,25 +21,15 @@ range = one token
 allowed = TEST,REAL
 nuance = selects runtime exchange credential section and websocket target
 
-[FIELD GENERAL.default_board_dsl_filename]
-key = default_board_dsl_filename
+[FIELD GENERAL.default_iitepi_campaign_dsl_filename]
+key = default_iitepi_campaign_dsl_filename
 scope = GENERAL section
 type = path
 required = true
-default = /cuwacunu/src/config/instructions/default.iitepi.board.dsl
+default = /cuwacunu/src/config/instructions/default.iitepi.campaign.dsl
 range = existing regular file
 allowed = absolute_or_relative path
-nuance = resolved from config folder and used by board_space_t lock/init as the shared default board DSL; Runtime HERO may snapshot this file into a job-local board.dsl and run with that snapshot; active runtime binding is declared inside the board DSL via ACTIVE_BIND
-
-[FIELD GENERAL.default_jkimyei_campaign_dsl_filename]
-key = default_jkimyei_campaign_dsl_filename
-scope = GENERAL section
-type = path
-required = false
-default = /cuwacunu/src/config/instructions/default.jkimyei.campaign.dsl
-range = existing regular file
-allowed = absolute_or_relative path
-nuance = resolved from config folder and intended to be snapshotted into a campaign-local campaign.dsl by a future Jkimyei HERO runtime, analogous to Runtime HERO board.dsl snapshots
+nuance = resolved from config folder and used as the shared default top-level runtime campaign DSL; Runtime HERO snapshots this file into campaign-local and job-local campaign.dsl artifacts before dispatch
 
 [FIELD GENERAL.hashimyei_store_root]
 key = hashimyei_store_root
@@ -50,16 +40,6 @@ default = /cuwacunu/.hashimyei
 range = non-empty path
 allowed = absolute_or_relative path
 nuance = runtime report fragment root; reset-runtime utilities treat this as a reset target
-
-[FIELD GENERAL.reset_runtime_state_at_start]
-key = reset_runtime_state_at_start
-scope = GENERAL section
-type = bool
-required = false
-default = false
-range = true|false
-allowed = true,false,1,0,yes,no,on,off
-nuance = when true, main_board clears runtime dump store roots, Runtime HERO jobs_root, and Hero catalog files resolved from active .config + HERO DSL defaults before board init; reset fails fast if active Runtime HERO jobs still exist
 
 [RULE GENERAL_EXCHANGE_TYPE_ALLOWED]
 id = GENERAL_EXCHANGE_TYPE_ALLOWED

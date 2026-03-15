@@ -33,7 +33,7 @@ DEFINE_HASH(OBSERVATION_PIPELINE_HASH_data_analytics_mask_epsilon_assignment, "<
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_data_analytics_standardize_epsilon_assignment, "<data_analytics_standardize_epsilon_assignment>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_policy_unsigned_int,     "<policy_unsigned_int>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_policy_float,            "<policy_float>");
-DEFINE_HASH(OBSERVATION_PIPELINE_HASH_norm_window,            "<norm_window>");
+DEFINE_HASH(OBSERVATION_PIPELINE_HASH_normalization_policy,   "<normalization_policy>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_source,                 "<source>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_break_block,            "<break_block>");
 DEFINE_HASH(OBSERVATION_PIPELINE_HASH_file_path,              "<file_path>");
@@ -72,7 +72,7 @@ struct observation_channel_t {
   std::string seq_length;
   std::string future_seq_length;
   std::string channel_weight;
-  std::string norm_window;
+  std::string normalization_policy;
 };
 
 struct observation_data_analytics_policy_t {

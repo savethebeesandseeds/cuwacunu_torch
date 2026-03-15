@@ -1,0 +1,39 @@
+#ifndef RUNTIME_BINDING_PATH_DIRECTIVE
+#error "RUNTIME_BINDING_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) must be defined before including runtime_binding.paths.def"
+#endif
+
+#ifndef RUNTIME_BINDING_PATH_METHOD
+#define RUNTIME_BINDING_PATH_METHOD(ID, TOKEN, SUMMARY)
+#endif
+
+#ifndef RUNTIME_BINDING_PATH_ACTION
+#define RUNTIME_BINDING_PATH_ACTION(ID, TOKEN, SUMMARY)
+#endif
+
+#ifndef RUNTIME_BINDING_PATH_DSL_SEGMENT
+#define RUNTIME_BINDING_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
+#endif
+
+// Runtime-binding control directives shared by internal runtime coordination and tsi endpoints.
+RUNTIME_BINDING_PATH_DIRECTIVE(Init, "@init", "Initialization control lane")
+RUNTIME_BINDING_PATH_DIRECTIVE(Jkimyei, "@jkimyei", "Training control lane")
+
+// Canonical runtime-binding control method tokens.
+RUNTIME_BINDING_PATH_METHOD(Init, "init", "Initialization method")
+RUNTIME_BINDING_PATH_METHOD(Jkimyei, "jkimyei", "Training method")
+
+// Canonical runtime-binding actions.
+RUNTIME_BINDING_PATH_ACTION(ContractInit, "runtime_binding.contract@init",
+                            "Initialize runtime binding contracts from default runtime binding contract config")
+
+// Canonical runtime-binding contract DSL segment keys.
+RUNTIME_BINDING_PATH_DSL_SEGMENT(ContractCircuit,
+                                 "runtime_binding.contract.circuit@DSL:str",
+                                 "Contract-local canonical circuit DSL")
+RUNTIME_BINDING_PATH_DSL_SEGMENT(ContractWave,
+                                 "runtime_binding.contract.wave@DSL:str",
+                                 "Wave/invoke DSL segment")
+
+#undef RUNTIME_BINDING_PATH_DSL_SEGMENT
+#undef RUNTIME_BINDING_PATH_ACTION
+#undef RUNTIME_BINDING_PATH_METHOD

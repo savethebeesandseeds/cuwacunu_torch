@@ -30,6 +30,18 @@ namespace {
 using runtime_lls_document_t =
     cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
 
+constexpr std::string_view kEntropicCapacityComparisonViewKind =
+    "entropic_capacity_comparison";
+constexpr std::string_view kEntropicCapacityComparisonViewCanonicalPath =
+    "tsi.analysis.entropic_capacity_comparison";
+constexpr std::string_view kEntropicCapacityComparisonViewTransportSchema =
+    "lattice.derived_view.entropic_capacity_comparison.v1";
+constexpr std::string_view kSourceDataAnalyticsSchema =
+    "piaabo.torch_compat.data_analytics.v1";
+constexpr std::string_view kNetworkAnalyticsSchema =
+    "piaabo.torch_compat.network_analytics.v4";
+constexpr double kEntropicCapacityComparisonNumericEpsilon = 1e-18;
+
 [[nodiscard]] bool parse_kv_payload(
     std::string_view payload,
     std::unordered_map<std::string, std::string>* out);
@@ -736,23 +748,15 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
 
 [[nodiscard]] std::string normalize_source_hashimyei_cursor(
     std::string_view canonical_path) {
-  const std::string cp = trim_ascii(canonical_path);
-  if (!starts_with(cp, "tsi.source.")) return cp;
-  std::vector<std::string> parts{};
-  std::size_t begin = 0;
-  while (begin <= cp.size()) {
-    const std::size_t dot = cp.find('.', begin);
-    if (dot == std::string::npos) {
-      parts.push_back(cp.substr(begin));
-      break;
-    }
-    parts.push_back(cp.substr(begin, dot - begin));
-    begin = dot + 1;
-  }
-  if (parts.size() <= 3) return cp;
-  const std::string& tail = parts.back();
-  if (is_hashimyei_hex_token(tail)) return cp;
-  return parts[0] + "." + parts[1] + "." + parts[2];
+  return lattice_catalog_store_t::normalize_runtime_hashimyei_cursor(
+      canonical_path);
+}
+
+[[nodiscard]] bool runtime_hashimyei_cursor_matches(
+    std::string_view query_canonical_path,
+    std::string_view fragment_canonical_path) {
+  return lattice_catalog_store_t::runtime_hashimyei_cursor_matches(
+      query_canonical_path, fragment_canonical_path);
 }
 
 [[nodiscard]] std::string build_intersection_cursor(
@@ -849,16 +853,142 @@ void append_synthetic_source_runtime_report_fragments(
 [[nodiscard]] bool is_known_runtime_schema(std::string_view schema) {
   if (schema == "wave.source.runtime.projection.v2") return true;
   if (schema == "piaabo.torch_compat.data_analytics.v1") return true;
+  if (schema == "piaabo.torch_compat.data_analytics_symbolic.v1") return true;
+  if (schema == "piaabo.torch_compat.embedding_sequence_analytics.v1")
+    return true;
+  if (schema ==
+      "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1") {
+    return true;
+  }
   if (schema == "tsi.wikimyei.representation.vicreg.status.v1") return true;
   if (schema ==
       "tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1") {
     return true;
   }
-  if (schema == "piaabo.torch_compat.entropic_capacity_comparison.v1") return true;
   if (schema == "piaabo.torch_compat.network_analytics.v4") {
     return true;
   }
   return false;
+}
+
+struct entropic_capacity_view_candidate_t {
+  const runtime_report_fragment_t* fragment{nullptr};
+  std::uint64_t wave_cursor{0};
+  std::string contract_hash{};
+};
+
+struct entropic_capacity_view_summary_t {
+  double source_entropic_load{0.0};
+  double network_entropic_capacity{0.0};
+  double capacity_margin{0.0};
+  double capacity_ratio{0.0};
+  std::string capacity_regime{"matched"};
+};
+
+[[nodiscard]] std::string classify_entropic_capacity_regime(double ratio) {
+  if (!std::isfinite(ratio)) return "matched";
+  if (ratio < 0.8) return "under_capacity";
+  if (ratio > 1.5) return "surplus_capacity";
+  return "matched";
+}
+
+[[nodiscard]] bool summarize_entropic_capacity_view_from_payloads(
+    std::string_view source_payload, std::string_view network_payload,
+    entropic_capacity_view_summary_t* out, std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "entropic comparison output pointer is null";
+    return false;
+  }
+  *out = entropic_capacity_view_summary_t{};
+
+  std::unordered_map<std::string, std::string> source_kv{};
+  std::unordered_map<std::string, std::string> network_kv{};
+  if (!parse_kv_payload(source_payload, &source_kv)) {
+    if (error) *error = "invalid source analytics payload";
+    return false;
+  }
+  if (!parse_kv_payload(network_payload, &network_kv)) {
+    if (error) *error = "invalid network analytics payload";
+    return false;
+  }
+
+  const auto it_source = source_kv.find("source_entropic_load");
+  if (it_source == source_kv.end() ||
+      !parse_double(it_source->second, &out->source_entropic_load)) {
+    if (error) {
+      *error = "source analytics key missing or invalid: source_entropic_load";
+    }
+    return false;
+  }
+  const auto it_network = network_kv.find("network_global_entropic_capacity");
+  if (it_network == network_kv.end() ||
+      !parse_double(it_network->second, &out->network_entropic_capacity)) {
+    if (error) {
+      *error =
+          "network analytics key missing or invalid: network_global_entropic_capacity";
+    }
+    return false;
+  }
+
+  out->capacity_margin =
+      out->network_entropic_capacity - out->source_entropic_load;
+  out->capacity_ratio = out->network_entropic_capacity /
+                        (out->source_entropic_load +
+                         kEntropicCapacityComparisonNumericEpsilon);
+  out->capacity_regime = classify_entropic_capacity_regime(out->capacity_ratio);
+  return true;
+}
+
+[[nodiscard]] bool build_entropic_capacity_view_candidate(
+    const runtime_report_fragment_t& fragment,
+    entropic_capacity_view_candidate_t* out) {
+  if (!out) return false;
+  std::unordered_map<std::string, std::string> kv{};
+  if (!parse_kv_payload(fragment.payload_json, &kv)) return false;
+
+  std::uint64_t wave_cursor = 0;
+  const auto it_wave = kv.find("wave_cursor");
+  if (it_wave == kv.end() || !parse_u64(it_wave->second, &wave_cursor)) {
+    return false;
+  }
+
+  std::string contract_hash{};
+  if (const auto it = kv.find("contract_hash");
+      it != kv.end() && !trim_ascii(it->second).empty()) {
+    contract_hash = trim_ascii(it->second);
+  } else {
+    contract_hash = contract_hash_from_report_fragment_path(fragment.path);
+  }
+
+  out->fragment = &fragment;
+  out->wave_cursor = wave_cursor;
+  out->contract_hash = std::move(contract_hash);
+  return true;
+}
+
+void append_view_line(std::ostringstream* out, std::string_view key,
+                      std::string_view value) {
+  if (!out) return;
+  *out << key << "=" << value << "\n";
+}
+
+void append_view_u64_line(std::ostringstream* out, std::string_view key,
+                          std::uint64_t value) {
+  if (!out) return;
+  *out << key << "=" << value << "\n";
+}
+
+void append_view_size_line(std::ostringstream* out, std::string_view key,
+                           std::size_t value) {
+  if (!out) return;
+  *out << key << "=" << value << "\n";
+}
+
+void append_view_double_line(std::ostringstream* out, std::string_view key,
+                             double value) {
+  if (!out) return;
+  *out << key << "=" << std::fixed << std::setprecision(12) << value << "\n";
 }
 
 [[nodiscard]] std::uint64_t now_ms_utc() {
@@ -1452,7 +1582,7 @@ bool lattice_catalog_store_t::append_row_(
     std::string_view projection_key_aux,
     std::string_view projection_txt_aux, std::string_view started_at_ms,
     std::string_view finished_at_ms, std::string_view ok_txt,
-    std::string_view total_steps, std::string_view board_hash,
+    std::string_view total_steps, std::string_view campaign_hash,
     std::string_view run_id, std::string* error) {
   clear_error(error);
   if (!db_) {
@@ -1510,7 +1640,7 @@ bool lattice_catalog_store_t::append_row_(
   }
   if (!insert_text(&db_, kColOkTxt, row, ok_txt, error)) return false;
   if (!insert_text(&db_, kColTotalSteps, row, total_steps, error)) return false;
-  if (!insert_text(&db_, kColBoardHash, row, board_hash, error)) return false;
+  if (!insert_text(&db_, kColCampaignHash, row, campaign_hash, error)) return false;
   if (!insert_text(&db_, kColRunId, row, run_id, error)) return false;
   return true;
 }
@@ -1639,7 +1769,8 @@ bool lattice_catalog_store_t::record_trial(const wave_cell_coord_t& coord,
                    std::to_string(stored_trial.started_at_ms),
                    std::to_string(stored_trial.finished_at_ms),
                    stored_trial.ok ? "1" : "0",
-                   std::to_string(stored_trial.total_steps), stored_trial.board_hash,
+                   std::to_string(stored_trial.total_steps),
+                   stored_trial.campaign_hash,
                    stored_trial.run_id, error)) {
     return false;
   }
@@ -1787,7 +1918,7 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
       trial.ok = as_text_or_empty(&db_, kColOkTxt, row) == "1";
       trial.error = as_text_or_empty(&db_, kColTextA, row);
       trial.state_snapshot_id = as_text_or_empty(&db_, kColTextB, row);
-      trial.board_hash = as_text_or_empty(&db_, kColBoardHash, row);
+      trial.campaign_hash = as_text_or_empty(&db_, kColCampaignHash, row);
       trial.run_id = as_text_or_empty(&db_, kColRunId, row);
       (void)parse_u64(as_text_or_empty(&db_, kColTotalSteps, row),
                       &trial.total_steps);
@@ -2175,7 +2306,7 @@ bool lattice_catalog_store_t::ingest_runtime_run_manifest_file_(
                    m.wave_contract_binding.identity.name,
                    "", m.schema, static_cast<double>(m.started_at_ms),
                    m.wave_contract_binding.binding_alias,
-                   m.board_identity.name, "2", std::to_string(m.started_at_ms),
+                   m.campaign_identity.name, "2", std::to_string(m.started_at_ms),
                    payload, "", std::numeric_limits<double>::quiet_NaN(), "", "", "",
                    std::to_string(m.started_at_ms), "", "", "", manifest_sha,
                    m.run_id, error)) {
@@ -2440,7 +2571,7 @@ bool lattice_catalog_store_t::list_runtime_report_fragments(
   for (const auto& [_, fragment] : runtime_report_fragments_by_id_) {
     const std::string fragment_cp =
         normalize_source_hashimyei_cursor(fragment.canonical_path);
-    if (!cp.empty() && fragment_cp != cp) continue;
+    if (!runtime_hashimyei_cursor_matches(cp, fragment_cp)) continue;
     if (!sc.empty() && fragment.schema != sc) continue;
     runtime_report_fragment_t normalized_fragment = fragment;
     normalized_fragment.canonical_path = fragment_cp;
@@ -2632,6 +2763,255 @@ bool lattice_catalog_store_t::get_runtime_intersection_report(
   *out_report_lls = it->second.report_lls;
   if (out_canonical_path) *out_canonical_path = it->second.canonical_path;
   if (out_run_id) *out_run_id = it->second.run_id;
+  return true;
+}
+
+bool lattice_catalog_store_t::get_runtime_view_lls(
+    std::string_view view_kind, std::string_view run_id,
+    std::uint64_t wave_cursor, bool use_wave_cursor,
+    std::string_view contract_hash, runtime_view_report_t* out,
+    std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "runtime view output pointer is null");
+    return false;
+  }
+  *out = runtime_view_report_t{};
+
+  const std::string view_kind_token = trim_ascii(view_kind);
+  const std::string run_id_token = trim_ascii(run_id);
+  const std::string contract_hash_token = trim_ascii(contract_hash);
+  if (view_kind_token.empty()) {
+    set_error(error, "view_kind is empty");
+    return false;
+  }
+  if (run_id_token.empty()) {
+    set_error(error, "run_id is empty");
+    return false;
+  }
+  if (view_kind_token != kEntropicCapacityComparisonViewKind) {
+    set_error(error, "unsupported runtime view_kind: " + view_kind_token);
+    return false;
+  }
+
+  out->view_kind = view_kind_token;
+  out->canonical_path = std::string(kEntropicCapacityComparisonViewCanonicalPath);
+  out->run_id = run_id_token;
+  out->contract_hash = contract_hash_token;
+  out->wave_cursor = wave_cursor;
+  out->has_wave_cursor = use_wave_cursor;
+
+  std::vector<runtime_report_fragment_t> source_rows{};
+  std::vector<runtime_report_fragment_t> network_rows{};
+  if (!list_runtime_report_fragments(
+          "tsi.source.dataloader", kSourceDataAnalyticsSchema, 0, 0, true,
+          &source_rows, error)) {
+    return false;
+  }
+  if (!list_runtime_report_fragments(
+          "tsi.wikimyei.representation.vicreg", kNetworkAnalyticsSchema, 0, 0,
+          true, &network_rows, error)) {
+    return false;
+  }
+
+  std::unordered_map<std::uint64_t, std::vector<entropic_capacity_view_candidate_t>>
+      sources_by_wave{};
+  std::unordered_map<std::uint64_t, std::vector<entropic_capacity_view_candidate_t>>
+      networks_by_wave{};
+  auto append_candidate =
+      [&](const runtime_report_fragment_t& row,
+          std::unordered_map<std::uint64_t,
+                             std::vector<entropic_capacity_view_candidate_t>>*
+              out_groups) {
+        if (row.run_id != run_id_token || !out_groups) return;
+        entropic_capacity_view_candidate_t candidate{};
+        if (!build_entropic_capacity_view_candidate(row, &candidate)) return;
+        if (use_wave_cursor && candidate.wave_cursor != wave_cursor) return;
+        if (!contract_hash_token.empty() &&
+            candidate.contract_hash != contract_hash_token) {
+          return;
+        }
+        (*out_groups)[candidate.wave_cursor].push_back(std::move(candidate));
+      };
+  for (const auto& row : source_rows) append_candidate(row, &sources_by_wave);
+  for (const auto& row : network_rows) append_candidate(row, &networks_by_wave);
+
+  std::vector<std::uint64_t> group_wave_cursors{};
+  group_wave_cursors.reserve(sources_by_wave.size() + networks_by_wave.size());
+  for (const auto& [group_wave_cursor, _] : sources_by_wave) {
+    if (const auto it = networks_by_wave.find(group_wave_cursor);
+        it != networks_by_wave.end() && !it->second.empty()) {
+      group_wave_cursors.push_back(group_wave_cursor);
+    }
+  }
+  std::sort(group_wave_cursors.begin(), group_wave_cursors.end());
+  group_wave_cursors.erase(
+      std::unique(group_wave_cursors.begin(), group_wave_cursors.end()),
+      group_wave_cursors.end());
+
+  std::ostringstream view{};
+  view << "/* synthetic view transport: "
+       << kEntropicCapacityComparisonViewTransportSchema << " */\n";
+  append_view_line(&view, "report_transport_schema",
+                   kEntropicCapacityComparisonViewTransportSchema);
+  append_view_line(&view, "view_kind", out->view_kind);
+  append_view_line(&view, "canonical_path", out->canonical_path);
+  append_view_line(&view, "run_id", out->run_id);
+  if (!out->contract_hash.empty()) {
+    append_view_line(&view, "contract_hash", out->contract_hash);
+  }
+  if (out->has_wave_cursor) {
+    append_view_u64_line(&view, "wave_cursor", out->wave_cursor);
+    append_view_line(&view, "wave_cursor_view",
+                     format_runtime_wave_cursor(out->wave_cursor));
+  }
+
+  std::size_t block_index = 0;
+  for (const std::uint64_t group_wave_cursor : group_wave_cursors) {
+    const auto& sources = sources_by_wave[group_wave_cursor];
+    const auto& networks = networks_by_wave[group_wave_cursor];
+    if (sources.empty() || networks.empty()) continue;
+
+    ++block_index;
+    view << "/* view block " << block_index << " */\n";
+    append_view_u64_line(
+        &view, "view_block." + std::to_string(block_index) + ".wave_cursor",
+        group_wave_cursor);
+    append_view_line(
+        &view,
+        "view_block." + std::to_string(block_index) + ".wave_cursor_view",
+        format_runtime_wave_cursor(group_wave_cursor));
+
+    if (sources.size() == 1 && networks.size() == 1) {
+      entropic_capacity_view_summary_t comparison{};
+      std::string summarize_error{};
+      if (!summarize_entropic_capacity_view_from_payloads(
+              sources.front().fragment->payload_json,
+              networks.front().fragment->payload_json, &comparison,
+              &summarize_error)) {
+        set_error(
+            error,
+            "failed to resolve entropic_capacity_comparison view for run_id=" +
+                run_id_token + " wave_cursor=" +
+                std::to_string(group_wave_cursor) + ": " + summarize_error);
+        return false;
+      }
+
+      ++out->match_count;
+      append_view_line(&view,
+                       "view_block." + std::to_string(block_index) + ".kind",
+                       "comparison");
+      append_view_line(
+          &view,
+          "view_block." + std::to_string(block_index) +
+              ".source.report_fragment_id",
+          sources.front().fragment->report_fragment_id);
+      append_view_line(
+          &view,
+          "view_block." + std::to_string(block_index) +
+              ".source.canonical_path",
+          sources.front().fragment->canonical_path);
+      append_view_line(&view,
+                       "view_block." + std::to_string(block_index) +
+                           ".source.schema",
+                       sources.front().fragment->schema);
+      if (!sources.front().contract_hash.empty()) {
+        append_view_line(
+            &view,
+            "view_block." + std::to_string(block_index) +
+                ".source.contract_hash",
+            sources.front().contract_hash);
+      }
+      append_view_line(
+          &view,
+          "view_block." + std::to_string(block_index) +
+              ".network.report_fragment_id",
+          networks.front().fragment->report_fragment_id);
+      append_view_line(
+          &view,
+          "view_block." + std::to_string(block_index) +
+              ".network.canonical_path",
+          networks.front().fragment->canonical_path);
+      append_view_line(&view,
+                       "view_block." + std::to_string(block_index) +
+                           ".network.schema",
+                       networks.front().fragment->schema);
+      if (!networks.front().contract_hash.empty()) {
+        append_view_line(
+            &view,
+            "view_block." + std::to_string(block_index) +
+                ".network.contract_hash",
+            networks.front().contract_hash);
+      }
+      append_view_double_line(
+          &view,
+          "view_block." + std::to_string(block_index) + ".source_entropic_load",
+          comparison.source_entropic_load);
+      append_view_double_line(
+          &view,
+          "view_block." + std::to_string(block_index) +
+              ".network_entropic_capacity",
+          comparison.network_entropic_capacity);
+      append_view_double_line(
+          &view,
+          "view_block." + std::to_string(block_index) + ".capacity_margin",
+          comparison.capacity_margin);
+      append_view_double_line(
+          &view,
+          "view_block." + std::to_string(block_index) + ".capacity_ratio",
+          comparison.capacity_ratio);
+      append_view_line(
+          &view,
+          "view_block." + std::to_string(block_index) + ".capacity_regime",
+          comparison.capacity_regime);
+      continue;
+    }
+
+    ++out->ambiguity_count;
+    append_view_line(&view,
+                     "view_block." + std::to_string(block_index) + ".kind",
+                     "ambiguity");
+    append_view_size_line(
+        &view,
+        "view_block." + std::to_string(block_index) + ".source_count",
+        sources.size());
+    append_view_size_line(
+        &view,
+        "view_block." + std::to_string(block_index) + ".network_count",
+        networks.size());
+    for (std::size_t i = 0; i < sources.size(); ++i) {
+      const auto& source = sources[i];
+      const std::string prefix =
+          "view_block." + std::to_string(block_index) + ".source." +
+          std::to_string(i + 1);
+      append_view_line(&view, prefix + ".report_fragment_id",
+                       source.fragment->report_fragment_id);
+      append_view_line(&view, prefix + ".canonical_path",
+                       source.fragment->canonical_path);
+      append_view_line(&view, prefix + ".schema", source.fragment->schema);
+      if (!source.contract_hash.empty()) {
+        append_view_line(&view, prefix + ".contract_hash", source.contract_hash);
+      }
+    }
+    for (std::size_t i = 0; i < networks.size(); ++i) {
+      const auto& network = networks[i];
+      const std::string prefix =
+          "view_block." + std::to_string(block_index) + ".network." +
+          std::to_string(i + 1);
+      append_view_line(&view, prefix + ".report_fragment_id",
+                       network.fragment->report_fragment_id);
+      append_view_line(&view, prefix + ".canonical_path",
+                       network.fragment->canonical_path);
+      append_view_line(&view, prefix + ".schema", network.fragment->schema);
+      if (!network.contract_hash.empty()) {
+        append_view_line(&view, prefix + ".contract_hash", network.contract_hash);
+      }
+    }
+  }
+
+  append_view_size_line(&view, "match_count", out->match_count);
+  append_view_size_line(&view, "ambiguity_count", out->ambiguity_count);
+  out->view_lls = view.str();
   return true;
 }
 

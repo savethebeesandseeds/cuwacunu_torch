@@ -201,9 +201,15 @@ template<typename T>
 inline constexpr const char* record_type_name_for_datatype() {
   if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::kline_t>) {
     return "kline";
+  } else if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::kline_cache_t>) {
+    return "kline";
   } else if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::trade_t>) {
     return "trade";
+  } else if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::trade_cache_t>) {
+    return "trade";
   } else if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::basic_t>) {
+    return "basic";
+  } else if constexpr (std::is_same_v<T, cuwacunu::camahjucunu::exchange::basic_cache_t>) {
     return "basic";
   } else {
     return "";
@@ -224,6 +230,8 @@ inline constexpr const char* record_type_name_for_datatype() {
  */
 template <typename Datatype_t>
 class MemoryMappedDataset : public torch::data::datasets::Dataset<MemoryMappedDataset<Datatype_t>, observation_sample_t> {
+  using BinaryDatatype_t = cuwacunu::camahjucunu::data::binary_record_type_t<Datatype_t>;
+
 private:
   struct MappedData {
     int fd_;                 /* File descriptor for the binary file */
@@ -284,11 +292,12 @@ public:
   std::size_t N_past_{1};
   std::size_t N_future_{1};
   std::size_t sliding_count_{0};               /* Number of sliding anchors (size()) */
+  bool normalized_records_{false};             /* Whether the mapped file is a normalized cache */
 
 private:
-  // Build a 1D tensor of keys from a mutable vector (Datatype_t::key_value() is non-const).
-  static inline torch::Tensor keys_from_records_1d(std::vector<Datatype_t>& recs) {
-    using KeyT = typename Datatype_t::key_type_t;
+  // Build a 1D tensor of keys from a mutable vector (key_value() is non-const).
+  static inline torch::Tensor keys_from_records_1d(std::vector<BinaryDatatype_t>& recs) {
+    using KeyT = typename BinaryDatatype_t::key_type_t;
     const long n = static_cast<long>(recs.size());
     if constexpr (std::is_integral_v<KeyT>) {
       if (n == 0) return torch::empty({0}, torch::TensorOptions().dtype(torch::kInt64));
@@ -312,12 +321,12 @@ public:
                                std::size_t N_future = 1)
       : bin_filename_(bin_filename),
         mapped_data_(std::make_unique<MappedData>(bin_filename)),
-        num_records_(mapped_data_->file_size_ / sizeof(Datatype_t)),
-        key_value_offset_(Datatype_t::key_offset()),
+        num_records_(mapped_data_->file_size_ / sizeof(BinaryDatatype_t)),
+        key_value_offset_(BinaryDatatype_t::key_offset()),
         N_past_(N_past),
         N_future_(N_future) {
 
-    if (mapped_data_->file_size_ % sizeof(Datatype_t) != 0) {
+    if (mapped_data_->file_size_ % sizeof(BinaryDatatype_t) != 0) {
       log_fatal("[MemoryMappedDataset] Error: Binary file size is not a multiple of struct size. File: %s\n",
                 bin_filename_.c_str());
     }
@@ -328,8 +337,10 @@ public:
       log_fatal("[MemoryMappedDataset] Error: N_past must be >= 1. File: %s\n", bin_filename_.c_str());
     }
 
-    leftmost_key_value_  = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 0,               key_value_offset_);
-    rightmost_key_value_ = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, num_records_-1,  key_value_offset_);
+    normalized_records_ = is_bin_filename_normalized(bin_filename_);
+
+    leftmost_key_value_  = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, 0,               key_value_offset_);
+    rightmost_key_value_ = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, num_records_-1,  key_value_offset_);
     key_value_span_      = rightmost_key_value_ - leftmost_key_value_;
 
     if (num_records_ > 1 && !(leftmost_key_value_ < rightmost_key_value_)) {
@@ -337,12 +348,15 @@ public:
                 bin_filename_.c_str());
     }
 
-    static_assert(std::is_same_v<decltype(std::declval<Datatype_t>().tensor_features()), std::vector<double>>,
+    static_assert(std::is_same_v<decltype(std::declval<BinaryDatatype_t>().tensor_features()), std::vector<double>>,
                   "[MemoryMappedDataset] Error: Template argument must provide tensor_features() returning std::vector<double>");
-    static_assert(std::is_standard_layout<Datatype_t>::value,
+    static_assert(std::is_standard_layout<BinaryDatatype_t>::value,
                   "[MemoryMappedDataset] Error: Template argument must be a standard layout type");
-    static_assert(std::is_trivially_copyable<Datatype_t>::value,
+    static_assert(std::is_trivially_copyable<BinaryDatatype_t>::value,
                   "[MemoryMappedDataset] Error: Template argument must be trivially copyable");
+    static_assert(std::is_same_v<typename Datatype_t::key_type_t,
+                                 typename BinaryDatatype_t::key_type_t>,
+                  "[MemoryMappedDataset] Error: raw and binary key types must match");
 
     if (num_records_ == 1) {
       if constexpr (std::is_integral_v<typename Datatype_t::key_type_t>) {
@@ -352,8 +366,8 @@ public:
       }
     } else {
       // Infer regular step (warn on irregularities)
-      typename Datatype_t::key_type_t prev = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 0, key_value_offset_);
-      typename Datatype_t::key_type_t curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, 1, key_value_offset_);
+      typename Datatype_t::key_type_t prev = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, 0, key_value_offset_);
+      typename Datatype_t::key_type_t curr = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, 1, key_value_offset_);
       key_value_step_ = curr - prev;
 
       if (key_value_step_ <= 0) {
@@ -362,7 +376,7 @@ public:
       }
 
       for (std::size_t idx = 1; idx < num_records_; ++idx) {
-        curr = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx, key_value_offset_);
+        curr = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, idx, key_value_offset_);
         if (curr < prev) {
           log_fatal("[MemoryMappedDataset] Error: Binary Dataset is not sequential and increasing (not sorted). File: %s, on index: %zu\n",
                     bin_filename_.c_str(), idx);
@@ -400,6 +414,7 @@ public:
    * @brief Expose raw row count for external validation.
    */
   std::size_t raw_records() const noexcept { return num_records_; }
+  bool is_normalized() const noexcept { return normalized_records_; }
 
   /**
    * @brief Retrieves both past and future windows around a key value.
@@ -427,7 +442,7 @@ public:
     }
 
     const std::size_t past_start = i - (N_past - 1);
-    auto past_records = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, past_start, N_past);
+    auto past_records = read_memory_structs<BinaryDatatype_t>(mapped_data_->data_ptr_, past_start, N_past);
     if (past_records.empty()) {
       throw std::runtime_error("[MemoryMappedDataset] Empty past window in get_sequences_around_key_value");
     }
@@ -447,7 +462,7 @@ public:
     torch::Tensor past_keys = keys_from_records_1d(past_records);
 
     const std::size_t fut_start = i + 1;
-    auto fut_records = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, fut_start, N_future);
+    auto fut_records = read_memory_structs<BinaryDatatype_t>(mapped_data_->data_ptr_, fut_start, N_future);
 
     torch::Tensor fut_X   = torch::empty({ static_cast<long>(N_future), static_cast<long>(D) }, torch::kFloat32);
     torch::Tensor fut_msk = torch::empty({ static_cast<long>(N_future) },                       torch::kBool);
@@ -465,7 +480,7 @@ public:
     observation_sample_t s{ past_X, past_msk, fut_X, fut_msk, torch::Tensor() };
     s.past_keys   = past_keys;
     s.future_keys = fut_keys;
-    s.normalized  = false; // raw by default
+    s.normalized  = normalized_records_;
     return s;
   }
 
@@ -484,8 +499,8 @@ public:
     const std::size_t past_start = (N_past_ > 0 ? (a - (N_past_ - 1)) : a);
     const std::size_t fut_start  = a + 1;
 
-    auto past_records = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, past_start, N_past_);
-    auto fut_records  = read_memory_structs<Datatype_t>(mapped_data_->data_ptr_, fut_start,  N_future_);
+    auto past_records = read_memory_structs<BinaryDatatype_t>(mapped_data_->data_ptr_, past_start, N_past_);
+    auto fut_records  = read_memory_structs<BinaryDatatype_t>(mapped_data_->data_ptr_, fut_start,  N_future_);
 
     const std::size_t D = past_records[0].tensor_features().size();
 
@@ -518,7 +533,7 @@ public:
     observation_sample_t s{ past_X, past_msk, fut_X, fut_msk, torch::Tensor() };
     s.past_keys   = past_keys;
     s.future_keys = fut_keys;
-    s.normalized  = false;
+    s.normalized  = normalized_records_;
     return s;
   }
 
@@ -571,7 +586,7 @@ public:
       std::size_t mid = left + static_cast<std::size_t>(r * (right - left));
       if (mid >= num_records_) mid = num_records_ - 1;
 
-      auto mid_key_value = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, mid, key_value_offset_);
+      auto mid_key_value = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, mid, key_value_offset_);
 
       if (mid_key_value <= target_key_value) {
         const auto diff = absolute_difference(mid_key_value, target_key_value);
@@ -581,11 +596,11 @@ public:
         }
         if (mid == right) break;
         left = mid + 1;
-        left_key_value = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, left, key_value_offset_);
+        left_key_value = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, left, key_value_offset_);
       } else {
         if (mid == 0) break;
         right = mid - 1;
-        right_key_value = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, right, key_value_offset_);
+        right_key_value = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, right, key_value_offset_);
       }
     }
     return best_index;
@@ -608,12 +623,12 @@ public:
     // compute raw anchor bounds [a_min, a_max] such that key[a] in [left, right]
     // first raw index >= left
     std::size_t idx_left = find_closest_index(key_left);
-    key_t key_at_left = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx_left, key_value_offset_);
+    key_t key_at_left = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, idx_left, key_value_offset_);
     if (key_at_left < key_left && idx_left + 1 < num_records_) ++idx_left;
 
     // last raw index <= right
     std::size_t idx_right = find_closest_index(key_right);
-    key_t key_at_right = read_memory_value<Datatype_t>(mapped_data_->data_ptr_, idx_right, key_value_offset_);
+    key_t key_at_right = read_memory_value<BinaryDatatype_t>(mapped_data_->data_ptr_, idx_right, key_value_offset_);
     if (key_at_right > key_right && idx_right > 0) --idx_right;
 
     // translate to valid anchor range respecting past/future windows
@@ -767,6 +782,7 @@ public:
     std::vector<torch::Tensor> feats(C), masks(C), fut_feats(C), fut_masks(C);
     std::vector<torch::Tensor> keys_past(C), keys_future(C);
     int64_t expected_D = -1;
+    bool all_normalized = !datasets_.empty();
 
     // key tensor dtype to use for padding
     auto key_opts = torch::TensorOptions().dtype(
@@ -776,6 +792,7 @@ public:
       auto& d  = datasets_[i];
       const auto np = N_past_[i];
       const auto nf = N_future_[i];
+      all_normalized = all_normalized && d->is_normalized();
 
       auto s = d->get_sequences_around_key_value(target_key_value, np, nf);
       const int64_t past_D = (s.features.defined() && s.features.dim() >= 2) ? s.features.size(1) : -1;
@@ -823,7 +840,7 @@ public:
     // (C) keys
     out.past_keys   = torch::stack(keys_past, 0);   // [C,max_N_past]
     out.future_keys = torch::stack(keys_future, 0); // [C,max_N_future]
-    out.normalized  = false; // raw by default
+    out.normalized  = all_normalized;
     return out;
   }
 
@@ -850,7 +867,7 @@ public:
    */
   void add_dataset(const std::string csv_filename,
                    std::size_t N_past, std::size_t N_future,
-                   std::size_t normalization_window = 0,
+                   std::string normalization_policy = "none",
                    bool force_rebuild_cache = false,
                    size_t buffer_size = 1024,
                    char delimiter = ',',
@@ -864,7 +881,7 @@ public:
     /* --- prepare the file: CSV → binary --- */
     std::string bin_filename = sanitize_csv_into_binary_file<Datatype_t>(
       csv_filename,
-      normalization_window,
+      normalization_policy,
       force_rebuild_cache,
       buffer_size,
       delimiter,
@@ -1054,12 +1071,10 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
 
         const std::size_t N_past   = std::stoul(in_form.seq_length);
         const std::size_t N_future = std::stoul(in_form.future_seq_length);
-        std::size_t normalization_window = 0;
-        try {
-          normalization_window = in_form.norm_window.empty() ? 0 : std::stoul(in_form.norm_window);
-        } catch (...) {
-          normalization_window = 0;
-        }
+        const std::string normalization_policy =
+            in_form.normalization_policy.empty()
+                ? std::string("none")
+                : in_form.normalization_policy;
         if (N_past == 0) {
           log_fatal("[create_memory_mapped_concat_dataset] Invalid seq_length=0 for interval=%s, record_type=%s\n",
                     cuwacunu::camahjucunu::exchange::enum_to_string(in_form.interval).c_str(),
@@ -1070,7 +1085,7 @@ MemoryMappedConcatDataset<Datatype_t> create_memory_mapped_concat_dataset(
           /* csv file */                 instr_form.source,
           /* N_past */                   N_past,
           /* N_future */                 N_future,
-          /* normalization_window */     normalization_window,
+          /* normalization_policy */     normalization_policy,
           /* force_rebuild_cache */      force_rebuild_cache,
           /* buffer_size */              buffer_size,
           /* delimiter */                delimiter,

@@ -95,8 +95,8 @@ int main() {
     // 2) Concat dataset: add two sources with different (Np, Nf) to exercise padding
     using CDS = MemoryMappedConcatDataset<Datatype_t>;
     CDS cds;
-    cds.add_dataset(/*csv*/ fA, /*Np*/ 5, /*Nf*/ 3, /*norm_window*/ 0, /*force_bin*/ true);
-    cds.add_dataset(/*csv*/ fB, /*Np*/ 3, /*Nf*/ 5, /*norm_window*/ 0, /*force_bin*/ true);
+    cds.add_dataset(/*csv*/ fA, /*Np*/ 5, /*Nf*/ 3, /*norm_policy*/ "none", /*force_bin*/ true);
+    cds.add_dataset(/*csv*/ fB, /*Np*/ 3, /*Nf*/ 5, /*norm_policy*/ "none", /*force_bin*/ true);
 
     // 3) Sanity properties
     assert(cds.size().has_value());

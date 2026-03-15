@@ -9,7 +9,7 @@
 #include <torch/torch.h>
 
 #include "camahjucunu/data/observation_sample.h"
-#include "iitepi/board/board.wave.h"
+#include "iitepi/runtime_binding/runtime_binding.wave.h"
 
 namespace tsiemene {
 

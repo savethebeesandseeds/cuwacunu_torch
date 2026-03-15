@@ -37,7 +37,7 @@ fi
 PRODUCTION_TARGETS=(
   all
   hero
-  board_hero
+  runtime_hero
   tools
   config_hero
   clean
@@ -47,7 +47,7 @@ MAIN_BASE_TARGETS=(
   all
   clean
   hero
-  board_hero
+  runtime_hero
   tools
   config_hero
   tests
@@ -235,7 +235,7 @@ Notes:
   - Use "mkc main_all" for runtime-only main aggregate.
   - Local aliases: main_<target> (same as local target in src/main/Makefile).
   - Root bridge aliases: src_<target> (delegates to src/Makefile).
-  - Example: mkc all, mkc main_all, mkc board_hero, mkc src_all, mkc test_iitepi_board.
+  - Example: mkc all, mkc main_all, mkc runtime_hero, mkc src_all, mkc test_network_analytics.
 EOF
 }
 

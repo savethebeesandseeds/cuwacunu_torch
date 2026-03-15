@@ -39,7 +39,7 @@ struct run_manifest_t {
   std::string schema{cuwacunu::hashimyei::kRunManifestSchemaV2};
   std::string run_id{};
   std::uint64_t started_at_ms{0};
-  cuwacunu::hashimyei::hashimyei_t board_identity{};
+  cuwacunu::hashimyei::hashimyei_t campaign_identity{};
   wave_contract_binding_t wave_contract_binding{};
   std::string sampler{};
   std::string record_type{};
@@ -95,7 +95,7 @@ struct report_fragment_snapshot_t {
 };
 
 [[nodiscard]] std::string compute_run_id(
-    const cuwacunu::hashimyei::hashimyei_t& board_identity,
+    const cuwacunu::hashimyei::hashimyei_t& campaign_identity,
     const wave_contract_binding_t& wave_contract_binding,
                                          std::uint64_t started_at_ms);
 

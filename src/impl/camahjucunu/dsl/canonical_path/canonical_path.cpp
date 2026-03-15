@@ -312,7 +312,10 @@ struct parsed_core_t {
       (*segs)[0] == "tsi" &&
       (*segs)[1] == "wave" &&
       (*segs)[2] == "generator") {
-    if (error) *error = "legacy alias 'tsi.wave.generator' is removed; use 'board.wave'";
+    if (error) {
+      *error =
+          "legacy alias 'tsi.wave.generator' is removed; use 'campaign.wave'";
+    }
     return false;
   }
   if (segs->size() >= 4 &&
@@ -320,7 +323,10 @@ struct parsed_core_t {
       (*segs)[1] == "wikimyei" &&
       (*segs)[2] == "wave" &&
       (*segs)[3] == "generator") {
-    if (error) *error = "legacy alias 'tsi.wikimyei.wave.generator' is removed; use 'board.wave'";
+    if (error) {
+      *error = "legacy alias 'tsi.wikimyei.wave.generator' is removed; use "
+               "'campaign.wave'";
+    }
     return false;
   }
   if (segs->size() >= 3 &&
@@ -344,9 +350,9 @@ struct parsed_core_t {
 
   const bool root_is_tsi = (*segs)[0] == "tsi";
   const bool root_is_iinuji = (*segs)[0] == "iinuji";
-  const bool root_is_board = (*segs)[0] == "board";
-  if (!root_is_tsi && !root_is_iinuji && !root_is_board) {
-    if (error) *error = "path root must be 'tsi', 'board', or 'iinuji'";
+  const bool root_is_campaign = (*segs)[0] == "campaign";
+  if (!root_is_tsi && !root_is_iinuji && !root_is_campaign) {
+    if (error) *error = "path root must be 'tsi', 'campaign', or 'iinuji'";
     return false;
   }
   if (segs->size() >= 2 && root_is_tsi && (*segs)[1] == "iinuji") {
@@ -354,7 +360,10 @@ struct parsed_core_t {
     return false;
   }
   if (segs->size() >= 2 && root_is_tsi && (*segs)[1] == "wave") {
-    if (error) *error = "tsi.wave is not a TSI component anymore; use board.wave and source roots";
+    if (error) {
+      *error = "tsi.wave is not a TSI component anymore; use campaign.wave "
+               "and source roots";
+    }
     return false;
   }
   if (!segs->empty() && segs->back() == "jkimyei") {

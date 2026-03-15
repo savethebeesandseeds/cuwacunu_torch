@@ -14,7 +14,6 @@ TEST_DEFAULT_LDLIBS :=
 
 # 3) Tests (build + run aliases)
 COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
-$(eval $(call TEST_ONEFILE, test_tsi_board_paths,          test_tsi_board_paths.cpp,          $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_tsi_wikimyei_jkimyei_facet, test_tsi_wikimyei_jkimyei_facet.cpp, $(COMMON_LINK)))
 
 # 4) Target-specific includes/link flags
@@ -23,19 +22,16 @@ $(TEST_OUT)/test_tsi_%: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_P
 # 5) Aggregate: all
 .PHONY: all
 all: \
-		$(TEST_OUT)/test_tsi_board_paths \
 		$(TEST_OUT)/test_tsi_wikimyei_jkimyei_facet
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
 .PHONY: run
 run: \
-		run-test_tsi_board_paths \
 		run-test_tsi_wikimyei_jkimyei_facet
 
 # 7) Clean
 .PHONY: clean
 clean:
 	@rm -f \
-	  $(TEST_OUT)/test_tsi_board_paths \
 	  $(TEST_OUT)/test_tsi_wikimyei_jkimyei_facet

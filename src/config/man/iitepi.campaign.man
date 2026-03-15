@@ -1,0 +1,88 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = iitepi.campaign
+TARGET_DSL = src/config/instructions/default.iitepi.campaign.dsl
+TARGET_BNF = src/config/bnf/iitepi.campaign.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/iitepi_campaign/iitepi_campaign.cpp
+PRIMARY_VALIDATORS = syntax_only_in_decoder
+
+[FIELD CAMPAIGN]
+key = CAMPAIGN
+scope = campaign root
+type = block
+required = true
+default = none
+range = exactly one top-level block
+allowed = CAMPAIGN { ... }
+nuance = unified top-level runtime dispatch language consumed by Runtime HERO and worker campaign snapshots
+
+[FIELD IMPORT_CONTRACT_FILE]
+key = IMPORT_CONTRACT_FILE
+scope = CAMPAIGN
+type = path
+required = true
+default = none
+range = at least one
+allowed = quoted_path_or_identifier
+nuance = each import derives CONTRACT id as contract_<sanitized_basename>; duplicate file paths and duplicate derived ids are rejected
+
+[FIELD IMPORT_WAVE_FILE]
+key = IMPORT_WAVE_FILE
+scope = CAMPAIGN
+type = path
+required = true
+default = none
+range = at least one
+allowed = quoted_path_or_identifier
+nuance = imported wave files provide the WAVE ids referenced by BIND entries
+
+[FIELD BIND.ID]
+key = BIND.<id>
+scope = CAMPAIGN
+type = identifier
+required = true
+default = none
+range = unique within campaign
+allowed = [A-Za-z0-9_.-]+
+nuance = reusable execution unit combining one CONTRACT ref, one WAVE ref, and optional __variables
+
+[FIELD BIND.CONTRACT]
+key = BIND.CONTRACT
+scope = BIND
+type = identifier
+required = true
+default = none
+range = must exist in derived contract ids from IMPORT_CONTRACT_FILE
+allowed = derived contract id token
+nuance = contract id is not free-form; it must match a derived import id
+
+[FIELD BIND.WAVE]
+key = BIND.WAVE
+scope = BIND
+type = identifier
+required = true
+default = none
+range = non-empty
+allowed = wave id defined inside imported wave DSLs
+nuance = ambiguity across multiple imported wave files is rejected at binding snapshot assembly stage
+
+[FIELD BIND.__VAR]
+key = BIND.__<name>
+scope = BIND
+type = scalar
+required = false
+default = none
+range = zero or more bind-local variable assignments
+allowed = variable names starting with double underscore
+nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %`
+
+[FIELD RUN]
+key = RUN <bind_id>
+scope = CAMPAIGN
+type = identifier reference
+required = true
+default = none
+range = at least one ordered RUN entry
+allowed = declared BIND id
+nuance = Runtime HERO executes RUN entries sequentially in declaration order

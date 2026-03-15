@@ -70,8 +70,8 @@ int main() try {
 
   // --- 2) Build the concat dataset with different (Np, Nf) to exercise padding
   Dataset_t cds;
-  cds.add_dataset(/*csv*/ fA, /*Np*/ 5, /*Nf*/ 3, /*norm_window*/ 0, /*force_bin*/ true);
-  cds.add_dataset(/*csv*/ fB, /*Np*/ 3, /*Nf*/ 5, /*norm_window*/ 0, /*force_bin*/ true);
+  cds.add_dataset(/*csv*/ fA, /*Np*/ 5, /*Nf*/ 3, /*norm_policy*/ "none", /*force_bin*/ true);
+  cds.add_dataset(/*csv*/ fB, /*Np*/ 3, /*Nf*/ 5, /*norm_policy*/ "none", /*force_bin*/ true);
 
   // Expected global properties
   assert(cds.size().has_value());

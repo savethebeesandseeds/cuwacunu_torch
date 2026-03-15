@@ -10,14 +10,14 @@ TESTS_PATH := $(ROOT_PATH)/tests
 TEST_OUT := $(HERO_OUT)
 
 TEST_DEFAULT_LDLIBS :=
-MAIN_BOARD_LINK := $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
+MAIN_CAMPAIGN_LINK := $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
 RUNTIME_RESET_LINK := $(libcommon_a)
-$(eval $(call TEST_ONEFILE, main_board, main_board.cpp, $(MAIN_BOARD_LINK)))
+$(eval $(call TEST_ONEFILE, main_campaign, main_campaign.cpp, $(MAIN_CAMPAIGN_LINK)))
 $(eval $(call TEST_ONEFILE, runtime_reset, runtime_reset.cpp, $(RUNTIME_RESET_LINK)))
-$(TEST_OUT)/main_board: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+$(TEST_OUT)/main_campaign: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
-PRODUCTION_RULES := all hero board hashimyei_hero runtime_hero jkimyei_hero tools config_hero install-hashimyei-tools install-runtime-tools install-jkimyei-tools clean
-MAIN_LOCAL_TARGETS := all clean hero board hashimyei_hero runtime_hero jkimyei_hero tools config_hero install-hashimyei-tools install-runtime-tools install-jkimyei-tools tests test ta clean_tests \
+PRODUCTION_RULES := all hero campaign hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools clean
+MAIN_LOCAL_TARGETS := all clean hero campaign hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools tests test ta clean_tests \
 	build-reset-runtime run-reset-runtime reset-runtime \
 	parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi \
 	https db hashimyei jkimyei vicreg mdn expval
@@ -35,16 +35,16 @@ TARGET_RULES := $(sort \
 hero:
 	+$(MAKE) -C $(HERE_PATH)/hero all
 
-.PHONY: build-board
-build-board: $(TEST_OUT)/main_board
+.PHONY: build-campaign
+build-campaign: $(TEST_OUT)/main_campaign
 	@$(LOG_SUCCESS)
 
-.PHONY: run-board
-run-board: $(TEST_OUT)/main_board
-	$(Q)$(RUN_MODE) $(TEST_OUT)/main_board
+.PHONY: run-campaign
+run-campaign: $(TEST_OUT)/main_campaign
+	$(Q)$(RUN_MODE) $(TEST_OUT)/main_campaign
 
-.PHONY: board
-board: run-board
+.PHONY: campaign
+campaign: run-campaign
 
 .PHONY: build-reset-runtime
 build-reset-runtime: $(TEST_OUT)/runtime_reset
@@ -64,10 +64,6 @@ hashimyei_hero:
 .PHONY: runtime_hero
 runtime_hero:
 	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools
-
-.PHONY: jkimyei_hero
-jkimyei_hero:
-	+$(MAKE) -C $(HERE_PATH)/hero install-jkimyei-tools
 
 .PHONY: tools
 tools:
@@ -103,10 +99,6 @@ install-hashimyei-tools:
 install-runtime-tools:
 	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools
 
-.PHONY: install-jkimyei-tools
-install-jkimyei-tools:
-	+$(MAKE) -C $(HERE_PATH)/hero install-jkimyei-tools
-
 # Pass-through test dispatcher targets so root-level mkc usage can call tests
 # directly (for example: mkc parser, mkc test_dconfig).
 .PHONY: test ta clean_tests parser dsl types exchange piaabo data iinuji \
@@ -134,14 +126,14 @@ targets:
 .PHONY: help
 help:
 	@echo "main targets:"
-	@echo "  all hero board reset-runtime hashimyei_hero runtime_hero jkimyei_hero tools config_hero install-hashimyei-tools install-runtime-tools install-jkimyei-tools tests clean"
+	@echo "  all hero campaign reset-runtime hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools tests clean"
 	@echo "  test groups: parser dsl types exchange piaabo data iinuji ... vicreg"
 	@echo "  aliases: main_<target> (local), src_<target> (bridge to src/Makefile)"
 	@echo "  list targets: make -C $(HERE_PATH) targets"
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/main_board
+	@rm -f $(TEST_OUT)/main_campaign
 	@rm -f $(TEST_OUT)/runtime_reset
 	+$(MAKE) -C $(HERE_PATH)/hero clean
 	+$(MAKE) -C $(HERE_PATH)/tools clean

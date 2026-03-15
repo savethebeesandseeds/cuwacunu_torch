@@ -92,8 +92,8 @@ void observationChannelsDecoder::visit(const IntermediaryNode* node, VisitorCont
         node, OBSERVATION_PIPELINE_HASH_future_seq_length);
     const ASTNode* n_channel_weight = detail::find_direct_child_by_hash(
         node, OBSERVATION_PIPELINE_HASH_channel_weight);
-    const ASTNode* n_norm_window = detail::find_direct_child_by_hash(
-        node, OBSERVATION_PIPELINE_HASH_norm_window);
+    const ASTNode* n_normalization_policy = detail::find_direct_child_by_hash(
+        node, OBSERVATION_PIPELINE_HASH_normalization_policy);
 
     std::string interval_s = detail::trim_spaces_tabs(detail::flatten_node_text(n_interval));
     f.active = detail::trim_spaces_tabs(detail::flatten_node_text(n_active));
@@ -101,7 +101,8 @@ void observationChannelsDecoder::visit(const IntermediaryNode* node, VisitorCont
     f.seq_length = detail::trim_spaces_tabs(detail::flatten_node_text(n_seq_length));
     f.future_seq_length = detail::trim_spaces_tabs(detail::flatten_node_text(n_future_seq_length));
     f.channel_weight = detail::trim_spaces_tabs(detail::flatten_node_text(n_channel_weight));
-    f.norm_window = detail::trim_spaces_tabs(detail::flatten_node_text(n_norm_window));
+    f.normalization_policy =
+        detail::trim_spaces_tabs(detail::flatten_node_text(n_normalization_policy));
 
     try {
       f.interval = cuwacunu::camahjucunu::exchange::string_to_enum<

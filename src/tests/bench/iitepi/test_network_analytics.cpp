@@ -1,5 +1,5 @@
 // test_network_analytics.cpp
-// Demonstration: load config -> init board -> emit network design analytics.
+// Demonstration: load config -> init runtime binding -> emit network design analytics.
 
 #include <iostream>
 
@@ -9,9 +9,9 @@ int main() try {
   cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/");
   cuwacunu::iitepi::config_space_t::update_config();
 
-  cuwacunu::iitepi::board_space_t::init();
-  cuwacunu::iitepi::board_space_t::assert_locked_runtime_intact_or_fail_fast();
-  cuwacunu::iitepi::board_space_t::network_analytics(
+  cuwacunu::iitepi::runtime_binding_space_t::init();
+  cuwacunu::iitepi::runtime_binding_space_t::assert_locked_runtime_intact_or_fail_fast();
+  cuwacunu::iitepi::runtime_binding_space_t::network_analytics(
       &std::cout,
       /*beautify=*/true,
       cuwacunu::iitepi::network_analytics_mode_e::Both);

@@ -1,12 +1,12 @@
 <instruction>            ::= [<comment>] <input_table> ;
 <input_table>            ::= <table_top_line> <input_header_line> <table_divider_line> {<input_form>} <table_bottom_line> ;
-<input_header_line>      ::= "|" <whitespace> "interval" <whitespace> "|" <whitespace> "active" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "seq_length" <whitespace> "|" <whitespace> "future_seq_length" <whitespace> "|" <whitespace> "channel_weight" <whitespace> "|" <whitespace> "norm_window" <whitespace> "|" <break_block> ;
-<input_form>             ::= "|" <whitespace> <interval> <whitespace> "|" <whitespace> <active> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <seq_length> <whitespace> "|" <whitespace> <future_seq_length> <whitespace> "|" <whitespace> <channel_weight> <whitespace> "|" <whitespace> <norm_window> <whitespace> "|" <break_block> ;
+<input_header_line>      ::= "|" <whitespace> "interval" <whitespace> "|" <whitespace> "active" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "seq_length" <whitespace> "|" <whitespace> "future_seq_length" <whitespace> "|" <whitespace> "channel_weight" <whitespace> "|" <whitespace> "normalization_policy" <whitespace> "|" <break_block> ;
+<input_form>             ::= "|" <whitespace> <interval> <whitespace> "|" <whitespace> <active> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <seq_length> <whitespace> "|" <whitespace> <future_seq_length> <whitespace> "|" <whitespace> <channel_weight> <whitespace> "|" <whitespace> <normalization_policy> <whitespace> "|" <break_block> ;
 <table_top_line>         ::= "/" {<frame_char>} "\\" <line_end> ;
 <table_divider_line>     ::= "|" {<frame_char>} "|" <line_end> ;
 <table_bottom_line>      ::= "\\" {<frame_char>} "/" [<line_end>] ;
 <comment>                ::= "/*" {<character>} "*/" <line_end> ;
-<norm_window>            ::= {<number>} ;
+<normalization_policy>   ::= "none" | "log_returns" ;
 <active>                 ::= <boolean> ;
 <seq_length>             ::= {<number>} ;
 <future_seq_length>      ::= {<number>} ;

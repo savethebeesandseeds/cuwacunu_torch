@@ -95,9 +95,9 @@ int main() {
         "iinuji.refresh()",
         &hashes);
     ok = ok && expect_ok(
-        "board.wave",
+        "campaign.wave",
         canonical_path_kind_e::Node,
-        "board.wave",
+        "campaign.wave",
         &hashes);
     ok = ok && expect_ok(
         "tsi.wikimyei.representation.vicreg.0x0001@response:cargo",

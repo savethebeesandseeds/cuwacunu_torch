@@ -1998,7 +1998,7 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
   }
 
   if (!ok) {
-    log_terminate_gracefully("Invalid board contract configuration, aborting.\n");
+    log_terminate_gracefully("Invalid runtime-binding contract configuration, aborting.\n");
   }
   return ok;
 }
@@ -2008,7 +2008,7 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   const std::string resolved_contract_path =
       canonicalize_path_best_effort(contract_file_path);
   if (!has_non_ws_ascii(resolved_contract_path)) {
-    log_fatal("[dconfig] cannot resolve board contract file path from: %s\n",
+    log_fatal("[dconfig] cannot resolve runtime-binding contract file path from: %s\n",
               contract_file_path.c_str());
   }
   if (!std::filesystem::exists(resolved_contract_path)) {

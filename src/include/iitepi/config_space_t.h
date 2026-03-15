@@ -21,10 +21,8 @@
 
 #define DEFAULT_CONFIG_FOLDER "/cuwacunu/src/config/"
 #define DEFAULT_CONFIG_FILE ".config"
-#define DEFAULT_BOARD_CONFIG_FILE "instructions/default.iitepi.board.dsl"
-#define DEFAULT_JKIMYEI_CAMPAIGN_DSL_FILE "instructions/default.jkimyei.campaign.dsl"
-#define GENERAL_DEFAULT_BOARD_DSL_KEY "default_board_dsl_filename"
-#define GENERAL_DEFAULT_JKIMYEI_CAMPAIGN_DSL_KEY "default_jkimyei_campaign_dsl_filename"
+#define DEFAULT_IITEPI_CAMPAIGN_DSL_FILE "instructions/default.iitepi.campaign.dsl"
+#define GENERAL_DEFAULT_IITEPI_CAMPAIGN_DSL_KEY "default_iitepi_campaign_dsl_filename"
 
 #include "piaabo/dfiles.h"
 #include "piaabo/dutils.h"
@@ -50,7 +48,7 @@ struct config_space_t {
   static exchange_type_e exchange_type;
   static std::string config_folder;
   static std::string config_file_path;
-  static std::string runtime_board_dsl_override_path;
+  static std::string runtime_campaign_dsl_override_path;
   static parsed_config_t config;
 
   /*—initialisation—*/
@@ -58,10 +56,12 @@ struct config_space_t {
                                  const char* file = DEFAULT_CONFIG_FILE);
   static void update_config();    // re-read from disk
   static bool validate_config();  // throws on fatal errors
-  static void set_runtime_board_dsl_override(const std::string& path);
-  static void clear_runtime_board_dsl_override();
-  static std::string effective_board_dsl_path();
-  static std::string effective_jkimyei_campaign_dsl_path();
+  static void set_runtime_campaign_dsl_override(const std::string& path);
+  static void clear_runtime_campaign_dsl_override();
+  static std::string effective_campaign_dsl_path();
+  static std::string locked_campaign_hash();
+  static std::string locked_campaign_path_canonical();
+  static std::string locked_binding_id();
 
   /*—generic accessor—*/
   template <class T = std::string>
@@ -80,9 +80,7 @@ struct config_space_t {
   static std::string Ed25519_pkey();
   static std::string hero_mode();
   static std::string hero_api_key_filename();
-  static std::string locked_board_hash();
-  static std::string locked_board_path_canonical();
-  static std::string locked_board_binding_id();
+  static std::string locked_runtime_binding_hash();
 
  private:
   /*—raw readers—*/

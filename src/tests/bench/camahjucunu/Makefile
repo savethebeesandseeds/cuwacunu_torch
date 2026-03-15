@@ -23,11 +23,10 @@ DSL_RUNTIME_LINK = $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
 $(eval $(call TEST_ONEFILE, test_dsl_observation, test_dsl_observation.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_latent_lineage_state,            test_dsl_latent_lineage_state.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_jkimyei_specs,        test_dsl_jkimyei_specs.cpp, $(DSL_RUNTIME_LINK)))
-$(eval $(call TEST_ONEFILE, test_dsl_jkimyei_campaign,     test_dsl_jkimyei_campaign.cpp, $(DSL_RUNTIME_LINK)))
+$(eval $(call TEST_ONEFILE, test_dsl_iitepi_campaign,      test_dsl_iitepi_campaign.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_wave_contract_binding_variables, test_wave_contract_binding_variables.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_circuit,     test_dsl_tsiemene_circuit.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_iitepi_wave,        test_dsl_iitepi_wave.cpp, $(DSL_RUNTIME_LINK)))
-$(eval $(call TEST_ONEFILE, test_dsl_tsiemene_board,       test_dsl_tsiemene_board.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_canonical_path,       test_dsl_canonical_path.cpp, $(DSL_RUNTIME_LINK)))
 
 $(eval $(call TEST_ONEFILE, test_memory_mapped_datafile,          test_memory_mapped_datafile.cpp,          $(DATA_LINK)))
@@ -64,11 +63,10 @@ all: \
 	$(TEST_OUT)/test_dsl_observation \
 	$(TEST_OUT)/test_dsl_latent_lineage_state \
 	$(TEST_OUT)/test_dsl_jkimyei_specs \
-	$(TEST_OUT)/test_dsl_jkimyei_campaign \
+	$(TEST_OUT)/test_dsl_iitepi_campaign \
 	$(TEST_OUT)/test_wave_contract_binding_variables \
 	$(TEST_OUT)/test_dsl_tsiemene_circuit \
 	$(TEST_OUT)/test_dsl_iitepi_wave \
-	$(TEST_OUT)/test_dsl_tsiemene_board \
 	$(TEST_OUT)/test_dsl_canonical_path \
 	$(TEST_OUT)/test_memory_mapped_datafile \
 	$(TEST_OUT)/test_memory_mapped_dataset \
@@ -94,11 +92,10 @@ run: \
 	run-test_dsl_observation \
 	run-test_dsl_latent_lineage_state \
 	run-test_dsl_jkimyei_specs \
-	run-test_dsl_jkimyei_campaign \
+	run-test_dsl_iitepi_campaign \
 	run-test_wave_contract_binding_variables \
 	run-test_dsl_tsiemene_circuit \
 	run-test_dsl_iitepi_wave \
-	run-test_dsl_tsiemene_board \
 	run-test_dsl_canonical_path \
 	run-test_memory_mapped_datafile \
 	run-test_memory_mapped_dataset \

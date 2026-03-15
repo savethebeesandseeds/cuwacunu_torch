@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = canonical_path
-TARGET_DSL = canonical-path textual expressions across board/circuit/wave
+TARGET_DSL = canonical-path textual expressions across campaign/circuit/wave
 TARGET_BNF = src/config/bnf/canonical_path.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/canonical_path/canonical_path.cpp
 PRIMARY_VALIDATORS = decode_and_validate_canonical_path
@@ -13,7 +13,7 @@ scope = canonical path
 type = dot atoms
 required = true
 default = none
-range = root in tsi|board|iinuji
+range = root in tsi|campaign|iinuji
 allowed = atom chars [A-Za-z0-9_]
 nuance = atom punctuation outside underscore is rejected
 
@@ -39,7 +39,7 @@ nuance = for known tsi types, endpoint directive/kind is validated against tsi e
 
 [ENUM ROOTS]
 key = roots
-values = tsi,board,iinuji
+values = tsi,campaign,iinuji
 
 [ENUM KINDS]
 key = kind

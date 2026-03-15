@@ -50,6 +50,14 @@ int main() {
       std::cerr << "[test_dsl_observation] channel_forms is empty\n";
       return 1;
     }
+    for (const auto& channel : decoded.channel_forms) {
+      if (channel.normalization_policy != "none" &&
+          channel.normalization_policy != "log_returns") {
+        std::cerr << "[test_dsl_observation] unexpected normalization_policy: "
+                  << channel.normalization_policy << "\n";
+        return 1;
+      }
+    }
     if (decoded.csv_bootstrap_deltas < 2) {
       std::cerr << "[test_dsl_observation] csv_bootstrap_deltas must be >=2\n";
       return 1;

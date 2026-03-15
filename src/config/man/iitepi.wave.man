@@ -5,7 +5,7 @@ MAN_ID = iitepi.wave
 TARGET_DSL = src/config/instructions/default.iitepi.wave.dsl
 TARGET_BNF = src/config/bnf/iitepi.wave.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/iitepi_wave/iitepi_wave.cpp
-PRIMARY_VALIDATORS = src/include/iitepi/board/board.validation.h,src/include/iitepi/board/board.builder.h
+PRIMARY_VALIDATORS = src/include/iitepi/runtime_binding/runtime_binding.validation.h,src/include/iitepi/runtime_binding/runtime_binding.builder.h
 
 [ENUM MODE_SYMBOLS]
 key = MODE.symbols
@@ -189,7 +189,7 @@ required = true
 default = none
 range = non-empty path
 allowed = absolute_or_relative_path
-nuance = resolved relative to wave file folder; must exist as regular file at board build time
+nuance = resolved relative to wave file folder; must exist as regular file at campaign snapshot time
 
 [FIELD SOURCE.CHANNELS_DSL_FILE]
 key = SOURCE.RUNTIME.CHANNELS_DSL_FILE
@@ -199,7 +199,7 @@ required = true
 default = none
 range = non-empty path
 allowed = absolute_or_relative_path
-nuance = resolved relative to wave file folder; must exist as regular file at board build time
+nuance = resolved relative to wave file folder; must exist as regular file at campaign snapshot time
 
 [FIELD PROBE.PATH]
 key = PROBE.PATH

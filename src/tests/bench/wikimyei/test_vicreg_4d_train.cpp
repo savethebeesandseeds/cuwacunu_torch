@@ -39,9 +39,9 @@ int main() {
     PRINT_TOCK_ms(read_config_);
 
     const auto contract_hash =
-        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-            cuwacunu::iitepi::config_space_t::locked_board_hash(),
-            cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+        cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+            cuwacunu::iitepi::config_space_t::locked_campaign_hash(),
+            cuwacunu::iitepi::config_space_t::locked_binding_id());
     cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(contract_hash);
     {
         std::string configured_device =

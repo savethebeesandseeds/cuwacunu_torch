@@ -1,90 +1,72 @@
 # iitepi Architecture
 
-`iitepi` is the runtime orchestration layer for executing TSI circuits through
-explicit board bindings.
+`iitepi` is the runtime orchestration layer that executes ordered campaign binds
+over contracts and waves.
 
 Namespace: `cuwacunu::iitepi`  
 Primary include: `#include "iitepi/iitepi.h"`
 
-## What iitepi Owns
+## Public Runtime Model
 
-`iitepi` manages four runtime registries (spaces):
+The public dispatcher is now campaign-oriented:
+
+1. Contract
+- static machine topology and acknowledgements
+
+2. Wave
+- runtime execution/training policy
+
+3. Campaign
+- imports contract files and wave files
+- declares reusable `BIND` entries
+- executes ordered `RUN <bind_id>;` steps
+
+4. Binding
+- one selected `contract + wave + bind-local variables`
+- this is the execution unit launched by Runtime Hero
+
+## Core Spaces
+
+`iitepi` still manages the same internal runtime registries:
 
 1. `config_space_t`
-- Loads global `.config`.
-- Exposes typed config access (`get<T>`, `get_arr<T>`).
-- Provides the selected board file and binding id used for runtime lock.
-- Carries the optional dev-loop switch
-  `GENERAL.reset_runtime_state_at_start` consumed by `main_board`
-  to clear runtime dump roots, Runtime HERO jobs root, and Hero catalogs.
+- loads `.config`
+- exposes typed config access
+- resolves `GENERAL.default_iitepi_campaign_dsl_filename`
 
 2. `contract_space_t`
-- Registers immutable contract records (hash-addressed).
-- Holds contract assets and decoders:
-  `circuit`, `observation`, `jkimyei`, `canonical_path`.
+- immutable contract registry
 
 3. `wave_space_t`
-- Registers immutable wave records (hash-addressed).
-- Holds wave grammar/DSL and decoded wave set.
+- immutable wave registry
 
-4. `board_space_t`
-- Registers immutable board records (hash-addressed).
-- Resolves `BIND` entries to contract/wave hashes.
-- Owns runtime lock state for selected board + selected binding.
-
-## Responsibility Split
-
-Architecture is intentionally split into static topology and dynamic execution:
-
-1. Contract (static machine)
-- Contract wrapper + circuit topology + component-family acknowledgements.
-- Contract paths for hashimyei-instance component types are family-level
-  (`tsi.*` without `.0x<hex>`).
-- No runtime schedule ownership.
-
-2. Wave (dynamic execution policy)
-- Mode bitmask (`run`, `train`, `debug`; combinable as symbolic or numeric
-  flags), sampler, epochs, batch size, max batches.
-- Component train flags and profile selection.
-- Source symbol/range window.
-- Source `SETTINGS` owns dataloader knobs
-  (`WORKERS`, `SAMPLER`, `FORCE_REBUILD_CACHE`, `RANGE_WARN_BATCHES`).
-- Source `RUNTIME` owns symbol/date window and observation file paths
-  (`SYMBOL`, `FROM`, `TO`, `SOURCES_DSL_FILE`, `CHANNELS_DSL_FILE`).
-- Sink path ownership is wave-local via `SINK { PATH = ...; }` blocks and
-  validated against sink nodes declared by the selected circuit.
-  `debug` mode controls probe/report side effects (probe epoch reporting and
-  network-analytics sidecars on report fragment save).
-
-3. Board (join layer)
-- Imports contract files and wave files.
-- Declares executable `BIND` entries:
-  `CONTRACT = ...`, `WAVE = ...`.
-
-4. Binding (execution choice)
-- Picks one contract + one wave for a run.
-- This is the runtime selection unit.
+4. `runtime_binding_space_t`
+- private/internal worker join layer
+- still materializes the internal runtime join state used by `run_runtime_binding(...)`
+- no longer defines the public DSL model
 
 ## DSL Layering
 
 1. `default.iitepi.contract.dsl`
-- Static contract wrapper:
-  `CIRCUIT_FILE: ...;` and `AKNOWLEDGE: <alias> = <tsi family>;`.
-- `AKNOWLEDGE` keeps contract hash-free for hashimyei-instance families.
+- static contract wrapper
+- `CIRCUIT_FILE: ...;`
+- `AKNOWLEDGE: <alias> = <tsi family>;`
 
 2. `default.iitepi.contract.circuit.dsl`
-- Declares TSI instances and hops.
-- Optional instruction-level selector: `active_circuit = <circuit_name>`.
-- When selector is set, runtime builds/executes only that circuit.
-- Circuit DSL accepts multiline hop expressions and comments (`/* ... */`, `# ...`).
+- TSI instances and hops
+- optional `active_circuit = <circuit_name>`
 
 3. `default.iitepi.wave.dsl`
-- Declares one or more `WAVE` blocks.
-- Runtime behavior for execution/training, including runtime hashimyei paths.
+- execution/training policy
+- source runtime window and observation file paths
+- wave-local `JKIMYEI { HALT_TRAIN, PROFILE_ID }`
 
-4. `default.iitepi.board.dsl`
-- Imports contract/wave files.
-- Declares `ACTIVE_BIND` and the bind ids that join imports together.
+4. `default.iitepi.campaign.dsl`
+- `CAMPAIGN { ... }`
+- `IMPORT_CONTRACT_FILE`
+- `IMPORT_WAVE_FILE`
+- `BIND <id> { __var = value; CONTRACT = ...; WAVE = ...; }`
+- ordered `RUN <bind_id>;`
 
 ## Runtime Flow
 
@@ -92,91 +74,48 @@ Architecture is intentionally split into static topology and dynamic execution:
 - `config_space_t::change_config_file(...)`
 - `config_space_t::update_config()`
 
-2. Initialize board lock
-- `board_space_t::init()` reads the configured board path and resolves the
-  active binding from the board DSL `ACTIVE_BIND` directive.
-- `board_space_t::assert_locked_runtime_intact_or_fail_fast()` checks lock integrity.
+2. Initialize runtime selection
+- Runtime Hero or `main_campaign` resolves the configured campaign DSL
+- one selected `RUN` becomes one execution binding
 
-3. Resolve selected binding
-- Board decode identifies `BIND`.
-- `board_space_t::contract_hash_for_binding(...)`
-- `board_space_t::wave_hash_for_binding(...)`
+3. Internal worker bridge
+- the selected campaign bind is materialized into the private internal
+  runtime-binding snapshot consumed by existing builder/runtime code
 
-4. Build runtime board
-- `board.builder` validates and materializes runtime contracts/nodes.
-- Observation runtime payload is selected from wave dataloader file paths
-  (not from contract default observation DSL text).
-- Validations are explicit:
-  `validate_contract_definition(...)`,
-  `validate_wave_definition(...)`,
-  `validate_wave_contract_compatibility(...)`.
-
-5. Execute
-- Entry point: `cuwacunu::iitepi::run_binding(binding_id, device)`.
-- Returns `board_binding_run_record_t` with `ok/error`, hashes, sampler/type, steps.
-
-## TSI Execution Model
-
-1. Circuit compiles into runtime nodes and route map.
-2. Execution is wave-driven:
-- `run_contract(...)` iterates epochs from wave execution spec and broadcasts typed lifecycle events (`RunStart/RunEnd`, `EpochStart/End`) to all nodes.
-- `run_wave_compiled(...)` processes event queue (`Ingress` -> TSI `step` -> emitted signals) and dispatches typed runtime events (`StepStart/Done`, `Route`, `Drop`, `Backpressure`, `QueueDrained`).
-- source-style continuation is requested through `on_event(QueueDrained)` returning `RuntimeEventAction`.
-3. Sources emit payload/future/meta; wikimyei consume/emit payload/loss/meta; sinks consume logs/null.
-4. Report-fragment load/save is handled through TSI wikimyei + hashimyei integration in contract runtime.
-
-## Record Model
-
-`contract_record_t`, `wave_record_t`, `board_record_t` expose:
-
-1. Raw grammar/DSL blobs.
-2. Lazy-decoded AST accessors (`decoded()`).
-3. Typed `get/get_arr` helpers against parsed config sections.
-4. Dependency manifest fingerprints for integrity checks.
+4. Execute
+- entry point remains `cuwacunu::iitepi::run_runtime_binding(binding_id, device)`
+- the public caller supplies campaign/binding context before that step
 
 ## Integrity and Locking
 
-1. Every registry record stores dependency fingerprint manifest.
-   For waves, this includes wave-selected
-   `SOURCE.RUNTIME.SOURCES_DSL_FILE` and `SOURCE.RUNTIME.CHANNELS_DSL_FILE`.
-2. `assert_intact_or_fail_fast(hash)` verifies immutable dependency content.
-3. `board_space_t::init(...)` establishes the active runtime lock.
-4. Config reload while active runtime is locked must not drift board/binding identity.
-
-## Device Policy
-
-Execution can fall back from GPU to CPU when configured GPU is unavailable or
-runtime-unusable. Fallback is intentionally loud via
-`[torch_utils][CPU_FALLBACK_ACTIVE] ...` warning logs.
+1. Contract, wave, and internal join records remain immutable and hash-addressed.
+2. Runtime lock integrity still fails fast on campaign-driven dependency drift.
+3. Editing campaign/contract/wave files on disk mid-run is allowed, but changes
+   are not reloaded into the active run.
+4. Restart is required for edits to take effect.
 
 ## Practical Entry Points
 
 1. Registry and lock lifecycle
 - `config_space_t::update_config()`
-- `board_space_t::init()`
-- `board_space_t::locked_board_hash()`
-- `board_space_t::locked_board_binding_id()`
-- `board_space_t::network_topology_analytics([std::ostream*], [bool beautify])`
-- `board_space_t::network_parameter_analytics([std::ostream*], [bool beautify])`
-- `board_space_t::network_analytics([std::ostream*], [bool beautify], [mode=Topology|Parameters|Both])`
-- `contract_space_t::network_topology_analytics(contract_hash[, std::ostream*], [bool beautify])`
-- `contract_space_t::network_parameter_analytics(contract_hash[, std::ostream*], [bool beautify])`
-- `contract_space_t::network_analytics(contract_hash[, std::ostream*], [bool beautify], [mode=Topology|Parameters|Both])`
+- `config_space_t::effective_campaign_dsl_path()`
+- `config_space_t::locked_campaign_hash()`
+- `config_space_t::locked_binding_id()`
 
 2. Programmatic execution
-- `cuwacunu::iitepi::run_binding(binding_id[, device])`
+- `cuwacunu::iitepi::run_runtime_binding(binding_id[, device])`
 
-3. Introspection
-- `contract_space_t::contract_itself(hash)`
-- `wave_space_t::wave_itself(hash)`
-- `board_space_t::board_itself(hash)`
+3. Runtime dispatch
+- `hero.runtime.start_campaign`
+- `hero.runtime.get_campaign`
+- `hero.runtime.list_campaigns`
+- `hero.runtime.stop_campaign`
 
-4. Dev-loop runtime reset
-- `main_board --reset-runtime-state`
+4. Dev-loop reset
+- `main_campaign --reset-runtime-state`
 - `.build/hero/runtime_reset`
 - `hero.config.dev_nuke_reset`
-- `GENERAL.reset_runtime_state_at_start=true`
-- reset fails fast while active Runtime HERO jobs still exist
 
-This document defines architecture intent and runtime contracts. Source code
-remains authoritative for low-level parsing, builder details, and diagnostics.
+This document reflects the public runtime model. Internal runtime-binding
+machinery still exists as a worker implementation detail until the lower
+runtime builder is fully campaign-native.

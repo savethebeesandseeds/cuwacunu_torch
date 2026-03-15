@@ -79,7 +79,10 @@ class TsiSourceDataloader final : public TsiSource {
             instrument_, observation_instruction, force_rebuild_cache)),
         dl_(make_loader_(dataset_, batch_size_override, dataloader_workers)),
         data_analytics_options_(
-            data_analytics_options_from_observation_(observation_instruction)) {
+            data_analytics_options_from_observation_(observation_instruction)),
+        data_symbolic_channel_descriptors_(
+            make_data_symbolic_channel_descriptors_(
+                instrument_, observation_instruction)) {
     C_ = dl_.C_;
     T_ = dl_.T_;
     D_ = dl_.D_;
@@ -100,6 +103,10 @@ class TsiSourceDataloader final : public TsiSource {
   [[nodiscard]] int64_t batch_size_hint() const noexcept { return B_hint_; }
   [[nodiscard]] const std::filesystem::path& latest_data_analytics_file() const noexcept {
     return latest_data_analytics_file_;
+  }
+  [[nodiscard]] const std::filesystem::path&
+  latest_data_analytics_symbolic_file() const noexcept {
+    return latest_data_analytics_symbolic_file_;
   }
 
   [[nodiscard]] std::span<const DirectiveSpec> directives() const noexcept override {
@@ -129,7 +136,7 @@ class TsiSourceDataloader final : public TsiSource {
   }
 
   RuntimeEventAction on_event(const RuntimeEvent& event,
-                              BoardContext& ctx,
+                              RuntimeContext& ctx,
                               Emitter& out) override {
     RuntimeEventAction action{};
     if (event.kind == RuntimeEventKind::RunStart) {
@@ -173,7 +180,7 @@ class TsiSourceDataloader final : public TsiSource {
     return action;
   }
 
-  void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) override {
+  void step(const Wave& wave, Ingress in, RuntimeContext& ctx, Emitter& out) override {
     continue_requested_ = false;
     if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::String) return;
@@ -415,6 +422,76 @@ class TsiSourceDataloader final : public TsiSource {
     }
   }
 
+  [[nodiscard]] static constexpr std::string_view record_type_name_for_datatype_() noexcept {
+    if constexpr (std::is_same_v<Datatype_t, cuwacunu::camahjucunu::exchange::kline_t> ||
+                  std::is_same_v<Datatype_t, cuwacunu::camahjucunu::exchange::kline_cache_t>) {
+      return "kline";
+    } else if constexpr (std::is_same_v<Datatype_t, cuwacunu::camahjucunu::exchange::trade_t> ||
+                         std::is_same_v<Datatype_t, cuwacunu::camahjucunu::exchange::trade_cache_t>) {
+      return "trade";
+    } else if constexpr (std::is_same_v<Datatype_t, cuwacunu::camahjucunu::exchange::basic_t> ||
+                         std::is_same_v<Datatype_t, cuwacunu::camahjucunu::exchange::basic_cache_t>) {
+      return "basic";
+    } else {
+      return {};
+    }
+  }
+
+  [[nodiscard]] static std::string join_csv_(
+      const std::vector<std::string>& parts) {
+    if (parts.empty()) return {};
+    std::ostringstream oss;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+      if (i > 0) oss << ",";
+      oss << parts[i];
+    }
+    return oss.str();
+  }
+
+  [[nodiscard]] static std::vector<
+      cuwacunu::piaabo::torch_compat::data_symbolic_channel_descriptor_t>
+  make_data_symbolic_channel_descriptors_(
+      std::string_view instrument,
+      const cuwacunu::camahjucunu::observation_spec_t& observation_instruction) {
+    using descriptor_t =
+        cuwacunu::piaabo::torch_compat::data_symbolic_channel_descriptor_t;
+
+    std::vector<descriptor_t> out{};
+    const std::string_view expected_record_type = record_type_name_for_datatype_();
+    if (expected_record_type.empty()) return out;
+
+    for (const auto& channel_form : observation_instruction.channel_forms) {
+      if (channel_form.active != "true") continue;
+      if (channel_form.record_type != expected_record_type) continue;
+
+      for (const auto& source_form : observation_instruction.filter_source_forms(
+               std::string(instrument),
+               channel_form.record_type,
+               channel_form.interval)) {
+        descriptor_t descriptor{};
+        descriptor.record_type = source_form.record_type;
+        descriptor.label = source_form.instrument + "/" +
+                           cuwacunu::camahjucunu::exchange::enum_to_string(
+                               source_form.interval) +
+                           "/" + source_form.record_type;
+        descriptor.anchor_feature = std::string(
+            cuwacunu::piaabo::torch_compat::
+                data_symbolic_anchor_feature_name_for_record_type(
+                    source_form.record_type));
+        descriptor.anchor_feature_index =
+            cuwacunu::piaabo::torch_compat::
+                data_symbolic_anchor_feature_index_for_record_type(
+                    source_form.record_type);
+        descriptor.feature_names = join_csv_(
+            cuwacunu::piaabo::torch_compat::data_feature_names_for_record_type(
+                source_form.record_type));
+        out.push_back(std::move(descriptor));
+      }
+    }
+
+    return out;
+  }
+
   [[nodiscard]] std::uint64_t range_warn_batches_threshold_() const {
     return range_warn_batches_;
   }
@@ -617,7 +694,7 @@ class TsiSourceDataloader final : public TsiSource {
     return batch_remaining_ > 0;
   }
 
-  void finish_episode_(const BoardContext& ctx, Emitter& out, std::string msg) {
+  void finish_episode_(const RuntimeContext& ctx, Emitter& out, std::string msg) {
     (void)ctx;
     const Wave w{
         .cursor = WaveCursor{
@@ -833,9 +910,22 @@ class TsiSourceDataloader final : public TsiSource {
         run_id);
   }
 
+  [[nodiscard]] component_report_identity_t
+  build_data_symbolic_analytics_report_identity_(std::string_view run_id) const {
+    return make_component_report_identity(
+        "data_analytics_symbolic",
+        instance_name_,
+        type_name_,
+        {},
+        contract_hash_,
+        {},
+        {},
+        run_id);
+  }
+
   void ensure_data_analytics_report_(const Wave& wave,
                                      const CommandSpec& cmd,
-                                     const BoardContext& ctx,
+                                     const RuntimeContext& ctx,
                                      Emitter& out) {
     if (!ctx.debug_enabled) return;
     if (contract_hash_.empty()) return;
@@ -862,18 +952,29 @@ class TsiSourceDataloader final : public TsiSource {
 
     cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t acc(
         data_analytics_options_);
+    cuwacunu::piaabo::torch_compat::data_symbolic_analytics_accumulator_t
+        symbolic_acc(data_symbolic_channel_descriptors_);
     for (std::size_t i = 0; i < count; ++i) {
       const auto sample = dataset_.get(begin_idx + i);
       (void)acc.ingest(sample.features, sample.mask);
+      (void)symbolic_acc.ingest(sample.features, sample.mask);
     }
     const auto report = acc.summarize();
+    const auto symbolic_report = symbolic_acc.summarize();
 
     const auto output_file =
         cuwacunu::piaabo::torch_compat::source_data_analytics_latest_file_path(
             contract_hash_, instance_name_);
     if (output_file.empty()) return;
+    const auto symbolic_output_file =
+        cuwacunu::piaabo::torch_compat::
+            source_data_analytics_symbolic_latest_file_path(
+                contract_hash_, instance_name_);
+    if (symbolic_output_file.empty()) return;
 
     const auto report_identity = build_data_analytics_report_identity_(ctx.run_id);
+    const auto symbolic_report_identity =
+        build_data_symbolic_analytics_report_identity_(ctx.run_id);
     std::string write_error;
     if (!cuwacunu::piaabo::torch_compat::write_data_analytics_file(
             report,
@@ -889,8 +990,23 @@ class TsiSourceDataloader final : public TsiSource {
               write_error);
       return;
     }
+    if (!cuwacunu::piaabo::torch_compat::write_data_symbolic_analytics_file(
+            symbolic_report,
+            symbolic_output_file,
+            instance_name_,
+            &write_error,
+            symbolic_report_identity)) {
+      emit_meta_(
+          wave,
+          out,
+          std::string(
+              "dataloader.data_analytics.symbolic.warn reason=write-failed detail=") +
+              write_error);
+      return;
+    }
 
     latest_data_analytics_file_ = output_file;
+    latest_data_analytics_symbolic_file_ = symbolic_output_file;
     data_analytics_signature_ = signature;
     data_analytics_report_ready_ = true;
 
@@ -905,6 +1021,25 @@ class TsiSourceDataloader final : public TsiSource {
         << "]";
     emit_meta_(wave, out, oss.str());
 
+    std::ostringstream symbolic_meta;
+    symbolic_meta.setf(std::ios::fixed);
+    symbolic_meta << std::setprecision(6)
+                  << "dataloader.data_analytics.symbolic"
+                  << " file=" << symbolic_output_file.string()
+                  << " eligible_channel_count="
+                  << symbolic_report.eligible_channel_count
+                  << " lz76_normalized_mean="
+                  << symbolic_report.lz76_normalized_mean
+                  << " information_density_mean="
+                  << symbolic_report.information_density_mean
+                  << " compression_ratio_mean="
+                  << symbolic_report.compression_ratio_mean
+                  << " power_spectrum_entropy_mean="
+                  << symbolic_report.power_spectrum_entropy_mean
+                  << " hurst_exponent_mean="
+                  << symbolic_report.hurst_exponent_mean;
+    emit_meta_(wave, out, symbolic_meta.str());
+
     std::ostringstream pretty;
     pretty << "[tsi.source.dataloader][data_analytics] startup"
            << " source=" << instance_name_ << "\n";
@@ -913,6 +1048,11 @@ class TsiSourceDataloader final : public TsiSource {
         data_analytics_options_,
         instance_name_,
         output_file,
+        /*use_color=*/true);
+    pretty << cuwacunu::piaabo::torch_compat::data_symbolic_analytics_to_pretty_text(
+        symbolic_report,
+        instance_name_,
+        symbolic_output_file.string(),
         /*use_color=*/true);
     log_info("%s", pretty.str().c_str());
   }
@@ -967,9 +1107,12 @@ class TsiSourceDataloader final : public TsiSource {
     Iterator_t end_{dl_.end()};
     bool iter_ready_{false};
     cuwacunu::piaabo::torch_compat::data_analytics_options_t data_analytics_options_{};
+    std::vector<cuwacunu::piaabo::torch_compat::data_symbolic_channel_descriptor_t>
+        data_symbolic_channel_descriptors_{};
     std::string data_analytics_signature_{};
     bool data_analytics_report_ready_{false};
     std::filesystem::path latest_data_analytics_file_{};
+    std::filesystem::path latest_data_analytics_symbolic_file_{};
 
     // Episode cursor state (single-batch stepping + runtime continuation).
     bool episode_active_{false};

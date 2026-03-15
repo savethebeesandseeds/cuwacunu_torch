@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <string_view>
 #include <limits>
 #include <cmath>
 #include <cstdint>
@@ -12,7 +13,7 @@
 #include <cerrno>
 #include <algorithm>
 #include <optional>
-#include <cctype>   // std::isdigit
+#include <cctype>
 
 #ifdef __unix__
   #include <sys/stat.h>
@@ -31,6 +32,52 @@ namespace data {
 namespace detail {
 
 constexpr std::int64_t kMaxGapFillSteps = 10000000;
+
+template <typename T>
+struct binary_record_type {
+  using type = T;
+};
+
+template <>
+struct binary_record_type<cuwacunu::camahjucunu::exchange::trade_t> {
+  using type = cuwacunu::camahjucunu::exchange::trade_cache_t;
+};
+
+template <>
+struct binary_record_type<cuwacunu::camahjucunu::exchange::kline_t> {
+  using type = cuwacunu::camahjucunu::exchange::kline_cache_t;
+};
+
+template <>
+struct binary_record_type<cuwacunu::camahjucunu::exchange::basic_t> {
+  using type = cuwacunu::camahjucunu::exchange::basic_cache_t;
+};
+
+template <typename T>
+using binary_record_type_t = typename binary_record_type<T>::type;
+
+template <typename T>
+struct raw_csv_record_type {
+  using type = T;
+};
+
+template <>
+struct raw_csv_record_type<cuwacunu::camahjucunu::exchange::trade_cache_t> {
+  using type = cuwacunu::camahjucunu::exchange::trade_t;
+};
+
+template <>
+struct raw_csv_record_type<cuwacunu::camahjucunu::exchange::kline_cache_t> {
+  using type = cuwacunu::camahjucunu::exchange::kline_t;
+};
+
+template <>
+struct raw_csv_record_type<cuwacunu::camahjucunu::exchange::basic_cache_t> {
+  using type = cuwacunu::camahjucunu::exchange::basic_t;
+};
+
+template <typename T>
+using raw_csv_record_type_t = typename raw_csv_record_type<T>::type;
 
 // Cast a long double key to T::key_type_t with correct rounding for integrals.
 template <typename KeyT>
@@ -164,88 +211,200 @@ long double infer_regular_delta_from_csv(const std::string& csv_filename,
   return regular_delta;
 }
 
+enum class normalization_policy_kind_e : std::uint8_t {
+  None = 0,
+  LogReturns = 1,
+};
+
+struct normalization_policy_t {
+  normalization_policy_kind_e kind{normalization_policy_kind_e::None};
+
+  [[nodiscard]] bool enabled() const {
+    return kind != normalization_policy_kind_e::None;
+  }
+
+  [[nodiscard]] std::string canonical_name() const {
+    switch (kind) {
+      case normalization_policy_kind_e::LogReturns:
+        return "log_returns";
+      case normalization_policy_kind_e::None:
+      default:
+        return "none";
+    }
+  }
+};
+
+[[nodiscard]] inline std::string trim_ascii_ws_copy(std::string_view text) {
+  std::size_t begin = 0;
+  while (begin < text.size() &&
+         std::isspace(static_cast<unsigned char>(text[begin]))) {
+    ++begin;
+  }
+  std::size_t end = text.size();
+  while (end > begin &&
+         std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+    --end;
+  }
+  return std::string(text.substr(begin, end - begin));
+}
+
+[[nodiscard]] inline std::string lowercase_ascii_copy(std::string_view text) {
+  std::string out(text);
+  std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return out;
+}
+
+[[nodiscard]] inline normalization_policy_t parse_normalization_policy_or_fatal(
+    std::string_view raw_policy,
+    const char* context_label) {
+  const std::string normalized =
+      lowercase_ascii_copy(trim_ascii_ws_copy(raw_policy));
+  if (normalized.empty() || normalized == "none" || normalized == "raw" ||
+      normalized == "off" || normalized == "disabled") {
+    return normalization_policy_t{};
+  }
+  if (normalized == "log_returns") {
+    return normalization_policy_t{normalization_policy_kind_e::LogReturns};
+  }
+  log_fatal("[%s] Unsupported normalization policy: %s%s%s\n",
+            context_label,
+            ANSI_COLOR_Yellow,
+            normalized.c_str(),
+            ANSI_COLOR_RESET);
+  return normalization_policy_t{};
+}
+
+[[nodiscard]] inline std::optional<normalization_policy_t>
+try_parse_normalization_policy(std::string_view raw_policy) {
+  const std::string normalized =
+      lowercase_ascii_copy(trim_ascii_ws_copy(raw_policy));
+  if (normalized.empty() || normalized == "none" || normalized == "raw" ||
+      normalized == "off" || normalized == "disabled") {
+    return normalization_policy_t{};
+  }
+  if (normalized == "log_returns") {
+    return normalization_policy_t{normalization_policy_kind_e::LogReturns};
+  }
+  return std::nullopt;
+}
+
 // ----------------------------------------------------------------------------
-// Filenaming helpers for normalized binaries
-//   - Raw:   <stem>.bin
-//   - Norm:  <stem>.normW<window>.bin    (with window >= 1)
+// Filenaming helpers for cache binaries
+//   - Raw cache:   <stem>.cache.bin
+//   - Norm cache:  <stem>.cache.norm.<policy>.bin
 // ----------------------------------------------------------------------------
 inline std::string raw_bin_for_csv(const std::string& csv_filename) {
   std::filesystem::path p(csv_filename);
-  p.replace_extension(".bin");
-  return p.string();
+  const auto parent = p.parent_path();
+  const auto stem = p.stem().string();
+  return (parent / (stem + ".cache.bin")).string();
 }
 
-inline std::string norm_bin_for_csv(const std::string& csv_filename, std::size_t window) {
-  // Precondition: window >= 1 (callers must enforce)
+inline std::string norm_bin_for_csv(const std::string& csv_filename,
+                                    std::string_view normalization_policy) {
+  const normalization_policy_t policy =
+      parse_normalization_policy_or_fatal(normalization_policy,
+                                          "norm_bin_for_csv");
+  if (!policy.enabled()) return {};
   std::filesystem::path p(csv_filename);
   const auto parent = p.parent_path();
   const auto stem   = p.stem().string();
-  std::string fname = stem + ".normW" + std::to_string(window) + ".bin";
+  std::string fname = stem + ".cache.norm." + policy.canonical_name() + ".bin";
   std::filesystem::path out = parent / fname;
   return out.string();
 }
 
-// Detector: file name must be .../something.normW<digits>.bin with digits >= 1
-inline bool is_bin_filename_normalized_strict(const std::string& bin_filename, std::size_t* window_out = nullptr) {
-  // IMPORTANT: do not touch *window_out unless the name is recognized as normalized.
+// Detector: file name must be .../something.cache.norm.<policy>.bin with a
+// canonical non-empty policy token.
+inline bool is_bin_filename_normalized_strict(const std::string& bin_filename,
+                                              std::string* policy_out = nullptr) {
+  // IMPORTANT: do not touch *policy_out unless the name is recognized as normalized.
   std::filesystem::path p(bin_filename);
   if (p.extension() != ".bin") return false;
 
   const std::string fname = p.filename().string();
-  const auto pos_norm = fname.rfind(".normW");
-  if (pos_norm == std::string::npos) return false;  // not a normalized name
+  constexpr std::string_view kNormMarker = ".cache.norm.";
+  const auto pos_norm = fname.rfind(kNormMarker);
+  if (pos_norm == std::string::npos) return false;
 
-  // parse digits after 'W' up to ".bin"
-  const auto wpos = pos_norm + 5; // position of 'W' in ".normW"
+  const auto policy_pos = pos_norm + kNormMarker.size();
   const auto end  = fname.rfind(".bin");
-  if (end == std::string::npos || wpos + 1 >= end) return false;
+  if (end == std::string::npos || policy_pos >= end) return false;
 
-  const std::string wstr = fname.substr(wpos + 1, end - (wpos + 1));
-  const bool digits = !wstr.empty() &&
-                      std::all_of(wstr.begin(), wstr.end(), [](unsigned char c){ return std::isdigit(c); });
-  if (!digits) return false;
+  const std::string token = fname.substr(policy_pos, end - policy_pos);
+  if (token.empty()) return false;
 
-  std::size_t win = 0;
-  try { win = static_cast<std::size_t>(std::stoull(wstr)); } catch (...) { return false; }
-  if (win < 1) return false;
+  const auto parsed = try_parse_normalization_policy(token);
+  if (!parsed.has_value() || !parsed->enabled()) return false;
 
-  if (window_out) *window_out = win;
+  if (policy_out) *policy_out = parsed->canonical_name();
   return true;
 }
 
 } // namespace detail
 
-// Public shim so other headers/tests can use it without reaching into detail::
-inline bool is_bin_filename_normalized(const std::string& bin_filename, std::size_t* window_out = nullptr) {
-  return detail::is_bin_filename_normalized_strict(bin_filename, window_out);
+// Public shims so other headers/tests can use the policy helpers.
+inline bool is_bin_filename_normalized(const std::string& bin_filename,
+                                       std::string* policy_out = nullptr) {
+  return detail::is_bin_filename_normalized_strict(bin_filename, policy_out);
 }
+
+inline std::string canonical_normalization_policy(
+    std::string_view normalization_policy) {
+  return detail::parse_normalization_policy_or_fatal(
+             normalization_policy, "canonical_normalization_policy")
+      .canonical_name();
+}
+
+inline bool normalization_policy_enabled(std::string_view normalization_policy) {
+  return detail::parse_normalization_policy_or_fatal(
+             normalization_policy, "normalization_policy_enabled")
+      .enabled();
+}
+
+inline std::string normalized_bin_for_csv(
+    const std::string& csv_filename,
+    std::string_view normalization_policy) {
+  return detail::norm_bin_for_csv(csv_filename, normalization_policy);
+}
+
+inline std::string raw_binary_for_csv(const std::string& csv_filename) {
+  return detail::raw_bin_for_csv(csv_filename);
+}
+
+template <typename T>
+using binary_record_type_t = detail::binary_record_type_t<T>;
 
 /*
  * normalize_binary_file<T>
  * ------------------------
- * In-place normalization of a binary file of records T using a rolling window
- * built from the **previous** up-to-window_size valid records.
- *
- * At the beginning of the sequence (burn-in), when fewer than window_size
- * valid samples are available, normalization still runs against the partial
- * history. This keeps the file in a single normalized scale from the start
- * (instead of mixing raw-prefix + normalized-tail).
+ * In-place normalization of a binary file of records T using the configured
+ * causal binary preprocessing policy.
  *
  * Requirements on T:
  *  - POD / trivially copyable
- *  - static auto initialize_statistics_pack(std::size_t window);
  *  - bool is_valid() const;
- *  - T normalize(const T& rec) const;      // uses stats_pack
- *  - void stats_pack.update(const T& rec); // sliding window update (internal pop if needed)
+ *  - static T null_instance(key_type_t key_value);
+ *  - static T normalize_log_returns(const T& current, const T* previous_valid);
  */
 template <typename T>
 void normalize_binary_file(const std::string& bin_filename,
-                           std::size_t window_size = std::numeric_limits<std::size_t>::max()) {
+                           std::string_view normalization_policy) {
   static_assert(std::is_trivially_copyable<T>::value,
                 "normalize_binary_file<T>: T must be trivially copyable (POD-like).");
 
-  log_dbg("[normalize_binary_file] policy=causal_partial_window_keep_len, W=%zu. File: %s%s%s\n",
-          window_size, ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
+  const detail::normalization_policy_t policy =
+      detail::parse_normalization_policy_or_fatal(normalization_policy,
+                                                  "normalize_binary_file");
+  if (!policy.enabled()) return;
+
+  log_dbg("[normalize_binary_file] policy=%s. File: %s%s%s\n",
+          policy.canonical_name().c_str(),
+          ANSI_COLOR_Dim_Gray,
+          bin_filename.c_str(),
+          ANSI_COLOR_RESET);
 
   // Determine file size via filesystem (robust even if tellg would fail).
   std::error_code ec;
@@ -266,29 +425,24 @@ void normalize_binary_file(const std::string& bin_filename,
     return;
   }
 
-  if (window_size == std::numeric_limits<std::size_t>::max() || window_size > total_records) {
-    window_size = total_records;
-  }
-
   std::fstream io(bin_filename, std::ios::in | std::ios::out | std::ios::binary);
   if (!io.is_open()) {
     log_fatal("[normalize_binary_file] Could not open: %s%s%s\n",
               ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
   }
 
-  auto stats_pack = T::initialize_statistics_pack(window_size);
-
-  // We normalize record i using stats from previous valid records
-  // (count <= window_size). During burn-in, this is a partial history.
-  std::size_t filled_valid = 0;         // count of valid samples seen (caps at window_size)
   std::size_t normalized_count = 0;     // diagnostics: valid records normalized
+  std::size_t masked_count = 0;         // diagnostics: valid records masked for missing context
   std::size_t invalid_count = 0;        // diagnostics: invalid passthrough
+  std::optional<T> previous_valid{};    // previous immediate on-grid raw valid record
 
   io.clear();
   io.seekg(0, std::ios::beg);
   io.seekp(0, std::ios::beg);
 
   START_LOADING_BAR(normalization_progress_bar_, 60, "Normalize binary file");
+  cuwacunu::camahjucunu::exchange::begin_normalization_warning_scope(
+      bin_filename, policy.canonical_name());
 
   for (std::size_t i = 0; i < total_records; ++i) {
     // Read original record
@@ -302,13 +456,25 @@ void normalize_binary_file(const std::string& bin_filename,
     // Decide output
     T out = rec;
     if (rec.is_valid()) {
-      // Normalize from the first valid sample using whatever past context exists.
-      // With zero/low context, per-field stddev can be zero and normalize() returns 0,
-      // yielding a neutral burn-in instead of leaking raw-scale values.
-      out = stats_pack.normalize(rec);
-      ++normalized_count;
+      if (previous_valid.has_value()) {
+        switch (policy.kind) {
+          case detail::normalization_policy_kind_e::LogReturns:
+            out = T::normalize_log_returns(
+                rec, previous_valid ? &(*previous_valid) : nullptr);
+            break;
+          case detail::normalization_policy_kind_e::None:
+          default:
+            break;
+        }
+        ++normalized_count;
+      } else {
+        out = T::null_instance(rec.key_value());
+        ++masked_count;
+      }
+      previous_valid = rec;
     } else {
       ++invalid_count; // passthrough invalids, do not update stats
+      previous_valid.reset();
     }
 
     // Write back in place at position i
@@ -318,12 +484,6 @@ void normalize_binary_file(const std::string& bin_filename,
     if (!io) {
       log_fatal("[normalize_binary_file] Write failed at record %zu: %s%s%s\n",
                 i, ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET);
-    }
-
-    // Update stats with the original (un-normalized) record if valid
-    if (rec.is_valid()) {
-      stats_pack.update(rec);
-      if (filled_valid < window_size) ++filled_valid;
     }
 
     // Standard streams require a seek between output->input sequences.
@@ -341,41 +501,71 @@ void normalize_binary_file(const std::string& bin_filename,
   FINISH_LOADING_BAR(normalization_progress_bar_);
   io.close();
 
-  const std::size_t partial_window_valid = std::min(filled_valid, window_size);
+  const auto warning_summary =
+      cuwacunu::camahjucunu::exchange::end_normalization_warning_scope();
+  if (warning_summary.any()) {
+    log_warn("[normalize_binary_file] warning summary policy=%s file=%s%s%s | "
+             "value_nonpositive=%zu value_nonfinite=%zu "
+             "reference_nonpositive=%zu reference_nonfinite=%zu "
+             "log1p_below_floor=%zu log1p_nonfinite=%zu\n",
+             policy.canonical_name().c_str(),
+             ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET,
+             warning_summary.log_return_value_nonpositive,
+             warning_summary.log_return_value_nonfinite,
+             warning_summary.log_return_reference_nonpositive,
+             warning_summary.log_return_reference_nonfinite,
+             warning_summary.log1p_below_floor,
+             warning_summary.log1p_nonfinite);
+  }
+
   log_dbg("(normalize_binary_file) %sNormalization completed%s. File: %s%s%s | "
-          "partial_window_valid=%zu, normalized_valid=%zu, invalid_passthrough=%zu\n",
+          "policy=%s, normalized_valid=%zu, masked_missing_context=%zu, invalid_passthrough=%zu\n",
           ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
           ANSI_COLOR_Dim_Gray, bin_filename.c_str(), ANSI_COLOR_RESET,
-          partial_window_valid, normalized_count, invalid_count);
+          policy.canonical_name().c_str(), normalized_count, masked_count, invalid_count);
 }
 
 /*
  * sanitize_csv_into_binary_file<T>
  * --------------------------------
  * Validates monotone key, fills gaps with null instances at regular increments,
- * writes raw .bin, and optionally produces a separate normalized .normW<window>.bin.
+ * writes a raw cache `.cache.bin`, and optionally produces a separate
+ * normalized cache `.cache.norm.<policy>.bin`.
  *
  * Policy:
- *  - normalization_window == 0  -> NO normalized file. Return RAW .bin.
- *  - normalization_window >= 1  -> Produce <stem>.normW<window>.bin (copy raw, normalize in place). Return that path.
+ *  - normalization_policy == none         -> NO normalized file. Return RAW cache.
+ *  - normalization_policy == log_returns  -> Produce
+ *      `<stem>.cache.norm.log_returns.bin`
+ *      (copy raw cache, normalize in place). Return that path.
  *
  * Requirements on T:
- *  - static T from_csv(const std::string&, char, std::size_t line_no);
- *  - bool is_valid() const;
- *  - using key_type_t = ...;             // numeric
- *  - key_type_t key_value() const;
- *  - static T null_instance(key_type_t); // make a "gap filler"
+ *  - RawT::from_csv(const std::string&, char, std::size_t line_no)
+ *  - RawT::is_valid() const
+ *  - RawT::key_type_t matches BinaryT::key_type_t
+ *  - BinaryT::from_raw(const RawT&)
+ *  - BinaryT::null_instance(key_type_t)
  */
 template<typename T>
 std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
-                                          std::size_t normalization_window = 0,
+                                          std::string normalization_policy = "none",
                                           bool        force_rebuild_cache   = false,
                                           std::size_t buffer_size           = 1024,
                                           char        delimiter             = ',',
                                           const detail::csv_step_policy_t& csv_step_policy =
                                               detail::csv_step_policy_t{}) {
-  static_assert(std::is_trivially_copyable<T>::value,
-                "sanitize_csv_into_binary_file<T>: T must be trivially copyable (POD-like).");
+  using RawT = detail::raw_csv_record_type_t<T>;
+  using BinaryT = detail::binary_record_type_t<T>;
+  static_assert(std::is_trivially_copyable<RawT>::value,
+                "sanitize_csv_into_binary_file<T>: RawT must be trivially copyable (POD-like).");
+  static_assert(std::is_trivially_copyable<BinaryT>::value,
+                "sanitize_csv_into_binary_file<T>: BinaryT must be trivially copyable (POD-like).");
+  static_assert(std::is_same_v<typename RawT::key_type_t, typename BinaryT::key_type_t>,
+                "sanitize_csv_into_binary_file<T>: raw and binary key types must match.");
+
+  const detail::normalization_policy_t policy =
+      detail::parse_normalization_policy_or_fatal(normalization_policy,
+                                                  "sanitize_csv_into_binary_file");
+  normalization_policy = policy.canonical_name();
 
   log_dbg("[sanitize_csv_into_binary_file]\t %sPreparing binary%s from CSV: %s\n",
           ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, csv_filename.c_str());
@@ -390,9 +580,11 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
 
   // Resolve output names
   const std::string raw_bin  = detail::raw_bin_for_csv(csv_filename);
-  const bool want_norm       = (normalization_window >= 1);
-  const std::string norm_bin = want_norm ? detail::norm_bin_for_csv(csv_filename, normalization_window)
-                                         : std::string{};
+  const bool want_norm       = policy.enabled();
+  const std::string norm_bin = want_norm
+                                   ? detail::norm_bin_for_csv(csv_filename,
+                                                              normalization_policy)
+                                   : std::string{};
 
   // If not forced, decide if target output is already up-to-date.
   auto newer_than = [](const std::string& a, const std::string& b) -> bool {
@@ -401,12 +593,12 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     return std::filesystem::last_write_time(a, ec1) > std::filesystem::last_write_time(b, ec2);
   };
 
-  // We will *always* ensure the raw .bin is up-to-date w.r.t. the CSV,
-  // because normalized files are derived from it.
+  // We will *always* ensure the raw cache is up-to-date w.r.t. the CSV,
+  // because normalized caches are derived from it.
   bool need_write_raw = force_rebuild_cache || !newer_than(raw_bin, csv_filename);
 
   if (need_write_raw) {
-    const long double regular_delta = detail::infer_regular_delta_from_csv<T>(
+    const long double regular_delta = detail::infer_regular_delta_from_csv<RawT>(
         csv_filename, delimiter, csv_step_policy);
     log_dbg("[sanitize_csv_into_binary_file] inferred regular_delta=%.15Lf "
             "(bootstrap_deltas=%zu, abs_tol=%.3Le, rel_tol=%.3Le)\n",
@@ -430,13 +622,13 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     chmod(raw_bin.c_str(), S_IRUSR | S_IWUSR);
 #endif
 
-    std::vector<T> buffer;
+    std::vector<BinaryT> buffer;
     buffer.reserve(buffer_size);
 
     auto flush_buffer = [&]() {
       if (buffer.empty()) return;
       bin_file.write(reinterpret_cast<const char*>(buffer.data()),
-                     static_cast<std::streamsize>(buffer.size() * sizeof(T)));
+                     static_cast<std::streamsize>(buffer.size() * sizeof(BinaryT)));
       if (!bin_file) {
         log_fatal("[sanitize_csv_into_binary_file] Buffered write failed.\n");
       }
@@ -448,7 +640,7 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     std::size_t processed_lines = 0;
     std::size_t line_number = 0;
     bool have_anchor = false;
-    T obj_p0{};
+    RawT obj_p0{};
 
     std::string line_p1;
     while (std::getline(csv_file, line_p1)) {
@@ -462,7 +654,7 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
         UPDATE_LOADING_BAR(csv_file_preparation_progress_bar_, pct);
       }
 
-      T obj_p1 = T::from_csv(line_p1, delimiter, line_number);
+      RawT obj_p1 = RawT::from_csv(line_p1, delimiter, line_number);
       if (!obj_p1.is_valid()) continue;
 
       if (!have_anchor) {
@@ -526,9 +718,9 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
       // Emit p0 and intermediate nulls (not p1; p1 becomes next anchor and is emitted later)
       for (std::int64_t i = 0; i < delta_steps; ++i) {
         const bool first = (i == 0);
-        T obj_px = first ? obj_p0
-                         : T::null_instance(
-                             detail::cast_key_longdouble<typename T::key_type_t>(
+        BinaryT obj_px = first ? BinaryT::from_raw(obj_p0)
+                               : BinaryT::null_instance(
+                             detail::cast_key_longdouble<typename BinaryT::key_type_t>(
                                kv0 + static_cast<long double>(i) * regular_delta));
         try {
           buffer.push_back(obj_px);
@@ -550,23 +742,23 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
     }
 
     // Push the final record (last anchor)
-    buffer.push_back(obj_p0);
+    buffer.push_back(BinaryT::from_raw(obj_p0));
     flush_buffer();
 
     FINISH_LOADING_BAR(csv_file_preparation_progress_bar_);
     csv_file.close();
     bin_file.close();
 
-    log_dbg("(sanitize_csv_into_binary_file) Raw lattice ready: %s%s%s\n",
+    log_dbg("(sanitize_csv_into_binary_file) Raw cache lattice ready: %s%s%s\n",
             ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
   } else {
-    log_dbg("(sanitize_csv_into_binary_file) %sRaw up-to-date%s: %s\n",
+    log_dbg("(sanitize_csv_into_binary_file) %sRaw cache up-to-date%s: %s\n",
             ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, raw_bin.c_str());
   }
 
   // Normalized output?
   if (!want_norm) {
-    log_dbg("(sanitize_csv_into_binary_file) No normalization configured (W=0). %s%s%s -> %s%s%s\n",
+    log_dbg("(sanitize_csv_into_binary_file) No normalization configured (policy=none). %s%s%s -> %s%s%s\n",
             ANSI_COLOR_Dim_Gray, csv_filename.c_str(), ANSI_COLOR_RESET,
             ANSI_COLOR_Dim_Gray, raw_bin.c_str(), ANSI_COLOR_RESET);
     return raw_bin;
@@ -588,10 +780,11 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
 #ifdef __unix__
     chmod(norm_bin.c_str(), S_IRUSR | S_IWUSR);
 #endif
-    normalize_binary_file<T>(norm_bin, normalization_window);
-    log_dbg("(sanitize_csv_into_binary_file) %sNormalized%s: %s%s%s (W=%zu)\n",
+    normalize_binary_file<BinaryT>(norm_bin, normalization_policy);
+    log_dbg("(sanitize_csv_into_binary_file) %sNormalized%s: %s%s%s (policy=%s)\n",
             ANSI_COLOR_Bright_Green, ANSI_COLOR_RESET,
-            ANSI_COLOR_Dim_Gray, norm_bin.c_str(), ANSI_COLOR_RESET, normalization_window);
+            ANSI_COLOR_Dim_Gray, norm_bin.c_str(), ANSI_COLOR_RESET,
+            normalization_policy.c_str());
   } else {
     log_dbg("(sanitize_csv_into_binary_file) %sNormalized up-to-date%s: %s\n",
             ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, norm_bin.c_str());

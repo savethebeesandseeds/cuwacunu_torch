@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "hero/runtime_hero/runtime_campaign.h"
 #include "hero/runtime_hero/runtime_job.h"
 #include "iitepi/config_space_t.h"
 
@@ -24,9 +25,7 @@ struct runtime_reset_targets_t {
   std::filesystem::path hashimyei_hero_dsl_path{};
   std::filesystem::path lattice_hero_dsl_path{};
   std::filesystem::path runtime_hero_dsl_path{};
-  std::filesystem::path jkimyei_hero_dsl_path{};
-  std::filesystem::path runtime_jobs_root{};
-  std::filesystem::path jkimyei_campaigns_root{};
+  std::filesystem::path runtime_campaigns_root{};
   std::vector<std::filesystem::path> store_roots{};
   std::vector<std::filesystem::path> catalog_paths{};
 };
@@ -307,10 +306,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
         cuwacunu::iitepi::config_space_t::get<std::string>(
             "REAL_HERO", "runtime_hero_dsl_filename",
             std::string("/cuwacunu/src/config/instructions/default.hero.runtime.dsl"));
-    const std::string jkimyei_hero_dsl =
-        cuwacunu::iitepi::config_space_t::get<std::string>(
-            "REAL_HERO", "jkimyei_hero_dsl_filename",
-            std::string("/cuwacunu/src/config/instructions/default.hero.jkimyei.dsl"));
 
     resolved.hashimyei_hero_dsl_path = std::filesystem::path(
         detail::resolve_path_from_base_folder(config_folder, hashimyei_hero_dsl));
@@ -318,8 +313,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
         detail::resolve_path_from_base_folder(config_folder, lattice_hero_dsl));
     resolved.runtime_hero_dsl_path = std::filesystem::path(
         detail::resolve_path_from_base_folder(config_folder, runtime_hero_dsl));
-    resolved.jkimyei_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, jkimyei_hero_dsl));
 
     std::map<std::string, std::string, std::less<>> hash_defaults{};
     if (!resolved.hashimyei_hero_dsl_path.empty()) {
@@ -389,33 +382,14 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
         if (error) *error = parse_error;
         return false;
       }
-      const auto it_jobs_root = runtime_defaults.find("jobs_root");
-      if (it_jobs_root != runtime_defaults.end()) {
-        resolved.runtime_jobs_root = std::filesystem::path(
+      const auto it_campaigns_root = runtime_defaults.find("campaigns_root");
+      if (it_campaigns_root != runtime_defaults.end()) {
+        resolved.runtime_campaigns_root = std::filesystem::path(
             detail::resolve_path_from_base_folder(
                 resolved.runtime_hero_dsl_path.parent_path().string(),
-                it_jobs_root->second));
-        detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                                 resolved.runtime_jobs_root);
-      }
-    }
-
-    std::map<std::string, std::string, std::less<>> jkimyei_defaults{};
-    if (!resolved.jkimyei_hero_dsl_path.empty()) {
-      std::string parse_error;
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.jkimyei_hero_dsl_path, &jkimyei_defaults, &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      const auto it_campaigns_root = jkimyei_defaults.find("campaigns_root");
-      if (it_campaigns_root != jkimyei_defaults.end()) {
-        resolved.jkimyei_campaigns_root = std::filesystem::path(
-            detail::resolve_path_from_base_folder(
-                resolved.jkimyei_hero_dsl_path.parent_path().string(),
                 it_campaigns_root->second));
         detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                                 resolved.jkimyei_campaigns_root);
+                                 resolved.runtime_campaigns_root);
       }
     }
   } catch (const std::exception& e) {
@@ -470,7 +444,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     std::string hashimyei_hero_dsl = "/cuwacunu/src/config/instructions/default.hero.hashimyei.dsl";
     std::string lattice_hero_dsl = "/cuwacunu/src/config/instructions/default.hero.lattice.dsl";
     std::string runtime_hero_dsl = "/cuwacunu/src/config/instructions/default.hero.runtime.dsl";
-    std::string jkimyei_hero_dsl = "/cuwacunu/src/config/instructions/default.hero.jkimyei.dsl";
     (void)detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
                                  "hashimyei_hero_dsl_filename",
                                  &hashimyei_hero_dsl);
@@ -480,9 +453,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     (void)detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
                                  "runtime_hero_dsl_filename",
                                  &runtime_hero_dsl);
-    (void)detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
-                                 "jkimyei_hero_dsl_filename",
-                                 &jkimyei_hero_dsl);
 
     resolved.hashimyei_hero_dsl_path = std::filesystem::path(
         detail::resolve_path_from_base_folder(config_folder, hashimyei_hero_dsl));
@@ -490,8 +460,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
         detail::resolve_path_from_base_folder(config_folder, lattice_hero_dsl));
     resolved.runtime_hero_dsl_path = std::filesystem::path(
         detail::resolve_path_from_base_folder(config_folder, runtime_hero_dsl));
-    resolved.jkimyei_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, jkimyei_hero_dsl));
 
     std::map<std::string, std::string, std::less<>> hash_defaults{};
     if (!resolved.hashimyei_hero_dsl_path.empty()) {
@@ -563,34 +531,14 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
         if (error) *error = parse_error;
         return false;
       }
-      if (const auto it = runtime_defaults.find("jobs_root");
+      if (const auto it = runtime_defaults.find("campaigns_root");
           it != runtime_defaults.end()) {
-        resolved.runtime_jobs_root = std::filesystem::path(
+        resolved.runtime_campaigns_root = std::filesystem::path(
             detail::resolve_path_from_base_folder(
                 resolved.runtime_hero_dsl_path.parent_path().string(),
                 it->second));
         detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                                 resolved.runtime_jobs_root);
-      }
-    }
-
-    std::map<std::string, std::string, std::less<>> jkimyei_defaults{};
-    if (!resolved.jkimyei_hero_dsl_path.empty()) {
-      std::string parse_error{};
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.jkimyei_hero_dsl_path, &jkimyei_defaults,
-              &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      if (const auto it = jkimyei_defaults.find("campaigns_root");
-          it != jkimyei_defaults.end()) {
-        resolved.jkimyei_campaigns_root = std::filesystem::path(
-            detail::resolve_path_from_base_folder(
-                resolved.jkimyei_hero_dsl_path.parent_path().string(),
-                it->second));
-        detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                                 resolved.jkimyei_campaigns_root);
+                                 resolved.runtime_campaigns_root);
       }
     }
   } catch (const std::exception& e) {
@@ -616,11 +564,11 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
   if (error) error->clear();
   runtime_reset_result_t result{};
 
-  if (!targets.runtime_jobs_root.empty()) {
+  if (!targets.runtime_campaigns_root.empty()) {
     std::vector<std::string> active_jobs{};
     std::string active_error{};
     if (!cuwacunu::hero::runtime::list_active_runtime_job_cursors(
-            targets.runtime_jobs_root, &active_jobs, &active_error)) {
+            targets.runtime_campaigns_root, &active_jobs, &active_error)) {
       if (error) {
         *error = "cannot inspect runtime jobs before reset: " + active_error;
       }
@@ -629,10 +577,41 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     if (!active_jobs.empty()) {
       std::ostringstream out;
       out << "refusing runtime reset while active jobs exist under "
-          << targets.runtime_jobs_root.string() << ": ";
+          << targets.runtime_campaigns_root.string() << ": ";
       for (std::size_t i = 0; i < active_jobs.size(); ++i) {
         if (i != 0) out << ", ";
         out << active_jobs[i];
+      }
+      if (error) *error = out.str();
+      return false;
+    }
+  }
+
+  if (!targets.runtime_campaigns_root.empty()) {
+    std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t>
+        campaigns{};
+    std::string active_error{};
+    if (!cuwacunu::hero::runtime::scan_runtime_campaign_records(
+            targets.runtime_campaigns_root, &campaigns, &active_error)) {
+      if (error) {
+        *error = "cannot inspect runtime campaigns before reset: " + active_error;
+      }
+      return false;
+    }
+    std::vector<std::string> active_campaigns{};
+    for (const auto& campaign : campaigns) {
+      if (campaign.state == "launching" || campaign.state == "running" ||
+          campaign.state == "stopping") {
+        active_campaigns.push_back(campaign.campaign_cursor);
+      }
+    }
+    if (!active_campaigns.empty()) {
+      std::ostringstream out;
+      out << "refusing runtime reset while active campaigns exist under "
+          << targets.runtime_campaigns_root.string() << ": ";
+      for (std::size_t i = 0; i < active_campaigns.size(); ++i) {
+        if (i != 0) out << ", ";
+        out << active_campaigns[i];
       }
       if (error) *error = out.str();
       return false;

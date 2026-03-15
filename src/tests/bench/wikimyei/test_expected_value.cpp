@@ -17,6 +17,7 @@
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
+#include "iitepi/runtime_binding_space_t.h"
 
 #include "wikimyei/representation/VICReg/vicreg_4d.h"
 #include "wikimyei/inference/expected_value/expected_value.h"
@@ -75,9 +76,9 @@ int main() {
   PRINT_TOCK_ms(read_config_);
 
   const std::string base_contract_hash =
-      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-          cuwacunu::iitepi::config_space_t::locked_board_hash(),
-          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+      cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_campaign_hash(),
+          cuwacunu::iitepi::config_space_t::locked_binding_id());
   const auto base_contract_itself =
       cuwacunu::iitepi::contract_space_t::contract_itself(base_contract_hash);
   const std::string resolved_contract_path = base_contract_itself->config_file_path;
@@ -90,7 +91,8 @@ int main() {
   std::filesystem::create_directories(cpu_contract_dir);
   const std::filesystem::path cpu_vicreg_dsl = cpu_contract_dir / "wikimyei_vicreg.cpu.dsl";
   const std::filesystem::path cpu_value_dsl = cpu_contract_dir / "wikimyei_value_estimation.cpu.dsl";
-  const std::filesystem::path cpu_contract = cpu_contract_dir / "default.board.contract.cpu.config";
+  const std::filesystem::path cpu_contract =
+      cpu_contract_dir / "default.runtime_binding.contract.cpu.config";
 
   write_text_file(
       cpu_vicreg_dsl,
@@ -312,7 +314,8 @@ int main() {
 
   // Reject contract hash mismatch.
   const std::filesystem::path base_contract = cpu_contract;
-  const std::filesystem::path mismatch_contract = tmp_dir / "default.board.contract.contract_mismatch.config";
+  const std::filesystem::path mismatch_contract =
+      tmp_dir / "default.runtime_binding.contract.contract_mismatch.config";
   write_text_file(
       mismatch_contract,
       read_text_file(base_contract) + "\n# contract_mismatch_variant\n");

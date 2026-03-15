@@ -3,8 +3,8 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_sources_decoder.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_channels_decoder.h"
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
-#include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
-#include "iitepi/board_space_t.h"
+#include "camahjucunu/dsl/runtime_binding_instruction/runtime_binding_instruction.h"
+#include "iitepi/runtime_binding_space_t.h"
 #include "iitepi/wave_space_t.h"
 #include "piaabo/dconfig.h"
 
@@ -212,28 +212,31 @@ resolve_observation_payload_for_contract_or_throw(
         "decode_observation_spec_from_contract requires non-empty contract hash");
   }
 
-  const std::string board_hash = cuwacunu::iitepi::config_space_t::locked_board_hash();
+  const std::string runtime_binding_hash =
+      cuwacunu::iitepi::config_space_t::locked_runtime_binding_hash();
   const std::string binding_id =
-      cuwacunu::iitepi::config_space_t::locked_board_binding_id();
-  if (!has_non_ws(board_hash) || !has_non_ws(binding_id)) {
+      cuwacunu::iitepi::config_space_t::locked_binding_id();
+  if (!has_non_ws(runtime_binding_hash) || !has_non_ws(binding_id)) {
     throw std::runtime_error(
-        "cannot resolve active board binding while loading observation DSL");
+        "cannot resolve active runtime binding while loading observation DSL");
   }
 
   const std::string bound_contract_hash =
-      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-          board_hash, binding_id);
+      cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+          runtime_binding_hash, binding_id);
   if (bound_contract_hash != contract_hash) {
     throw std::runtime_error(
         "decode_observation_spec_from_contract received contract hash that does not "
-        "match active board binding");
+        "match the active runtime binding");
   }
 
-  const auto board_itself =
-      cuwacunu::iitepi::board_space_t::board_itself(board_hash);
-  const auto& board_instruction = board_itself->board.decoded();
-  const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
-  for (const auto& b : board_instruction.binds) {
+  const auto runtime_binding_itself =
+      cuwacunu::iitepi::runtime_binding_space_t::runtime_binding_itself(
+          runtime_binding_hash);
+  const auto& runtime_binding_instruction =
+      runtime_binding_itself->runtime_binding.decoded();
+  const cuwacunu::camahjucunu::runtime_binding_bind_decl_t* bind = nullptr;
+  for (const auto& b : runtime_binding_instruction.binds) {
     if (b.id == binding_id) {
       bind = &b;
       break;
@@ -241,11 +244,11 @@ resolve_observation_payload_for_contract_or_throw(
   }
   if (!bind) {
     throw std::runtime_error(
-        "active board binding id not found in decoded board instruction");
+        "active runtime binding id not found in decoded runtime-binding instruction");
   }
 
-  const std::string wave_hash = cuwacunu::iitepi::board_space_t::wave_hash_for_binding(
-      board_hash, binding_id);
+  const std::string wave_hash = cuwacunu::iitepi::runtime_binding_space_t::wave_hash_for_binding(
+      runtime_binding_hash, binding_id);
   const auto wave_itself = cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
   const auto& wave_set = wave_itself->wave.decoded();
   const auto* selected_wave = find_wave_by_id_or_null(wave_set, bind->wave_ref);

@@ -395,7 +395,7 @@ using runtime_lls_document_t =
   out << "schema=" << m.schema << "\n";
   out << "run_id=" << m.run_id << "\n";
   out << "started_at_ms=" << m.started_at_ms << "\n";
-  (void)write_identity_kv(&out, "board_identity", m.board_identity);
+  (void)write_identity_kv(&out, "campaign_identity", m.campaign_identity);
   (void)write_binding_kv(&out, "wave_contract_binding", m.wave_contract_binding);
   out << "sampler=" << m.sampler << "\n";
   out << "record_type=" << m.record_type << "\n";
@@ -471,13 +471,18 @@ using runtime_lls_document_t =
 
 [[nodiscard]] bool is_known_schema(std::string_view schema) {
   if (schema == "piaabo.torch_compat.data_analytics.v1") return true;
+  if (schema == "piaabo.torch_compat.data_analytics_symbolic.v1") return true;
+  if (schema == "piaabo.torch_compat.embedding_sequence_analytics.v1")
+    return true;
+  if (schema ==
+      "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1") {
+    return true;
+  }
   if (schema == "tsi.wikimyei.representation.vicreg.status.v1") return true;
   if (schema ==
       "tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1") {
     return true;
   }
-  if (schema == "piaabo.torch_compat.entropic_capacity_comparison.v1")
-    return true;
   if (schema == "piaabo.torch_compat.network_analytics.v1" ||
       schema == "piaabo.torch_compat.network_analytics.v2" ||
       schema == "piaabo.torch_compat.network_analytics.v3" ||
@@ -812,14 +817,14 @@ bool parse_latent_lineage_state_payload(
 }
 
 std::string compute_run_id(
-    const cuwacunu::hashimyei::hashimyei_t& board_identity,
+    const cuwacunu::hashimyei::hashimyei_t& campaign_identity,
     const wave_contract_binding_t& wave_contract_binding,
     std::uint64_t started_at_ms) {
   std::ostringstream seed;
-  seed << board_identity.schema << "|"
-       << cuwacunu::hashimyei::hashimyei_kind_to_string(board_identity.kind) << "|"
-       << board_identity.name << "|" << board_identity.ordinal << "|"
-       << board_identity.hash_sha256_hex << "|"
+  seed << campaign_identity.schema << "|"
+       << cuwacunu::hashimyei::hashimyei_kind_to_string(campaign_identity.kind) << "|"
+       << campaign_identity.name << "|" << campaign_identity.ordinal << "|"
+       << campaign_identity.hash_sha256_hex << "|"
        << wave_contract_binding.identity.schema << "|"
        << cuwacunu::hashimyei::hashimyei_kind_to_string(
               wave_contract_binding.identity.kind)
@@ -874,7 +879,8 @@ bool load_run_manifest(const std::filesystem::path& path, run_manifest_t* out,
   }
   out->run_id = kv["run_id"];
   (void)parse_u64(kv["started_at_ms"], &out->started_at_ms);
-  if (!parse_identity_kv(kv, "board_identity", true, &out->board_identity, error)) {
+  if (!parse_identity_kv(kv, "campaign_identity", true, &out->campaign_identity,
+                         error)) {
     return false;
   }
   if (!parse_binding_kv(kv, "wave_contract_binding", &out->wave_contract_binding,
@@ -1178,9 +1184,9 @@ bool save_run_manifest(const std::filesystem::path& store_root,
     return false;
   }
   std::string identity_error;
-  if (!cuwacunu::hashimyei::validate_hashimyei(manifest.board_identity,
+  if (!cuwacunu::hashimyei::validate_hashimyei(manifest.campaign_identity,
                                                 &identity_error)) {
-    set_error(error, "run manifest board_identity invalid: " + identity_error);
+    set_error(error, "run manifest campaign_identity invalid: " + identity_error);
     return false;
   }
   if (!validate_wave_contract_binding(manifest.wave_contract_binding, &identity_error)) {
@@ -2028,9 +2034,10 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         run.run_id = kv["run_id"];
         (void)parse_u64(kv["started_at_ms"], &run.started_at_ms);
         std::string parse_error;
-        if (!parse_identity_kv(kv, "board_identity", false, &run.board_identity,
+        if (!parse_identity_kv(kv, "campaign_identity", false,
+                               &run.campaign_identity,
                                &parse_error)) {
-          run.board_identity = cuwacunu::hashimyei::hashimyei_t{};
+          run.campaign_identity = cuwacunu::hashimyei::hashimyei_t{};
         }
         if (!parse_binding_kv(kv, "wave_contract_binding", &run.wave_contract_binding,
                               &parse_error)) {
@@ -2081,7 +2088,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         if (parse_u64(as_text_or_empty(&db_, kColTsMs, row), &parsed)) run.started_at_ms = parsed;
       }
       if (!run.run_id.empty()) {
-        bump_counter_from_identity(run.board_identity);
+        bump_counter_from_identity(run.campaign_identity);
         bump_counter_from_identity(run.wave_contract_binding.identity);
         bump_counter_from_identity(run.wave_contract_binding.contract);
         bump_counter_from_identity(run.wave_contract_binding.wave);

@@ -10,15 +10,15 @@
 
 #include "tsiemene/tsi.directive.registry.h"
 #include "tsiemene/tsi.domain.h"
-#include "iitepi/board/board.wave.h"
+#include "iitepi/runtime_binding/runtime_binding.wave.h"
 
 namespace tsiemene {
 
 using TsiId = std::uint64_t;
 class Tsi;
 
-// Opaque runtime context (board/session can hang whatever it wants here).
-struct BoardContext {
+// Opaque runtime context (the runtime/session can hang whatever it wants here).
+struct RuntimeContext {
   void* user = nullptr;
   std::uint64_t wave_mode_flags{0};
   bool debug_enabled{false};
@@ -31,7 +31,7 @@ struct Ingress {
   Signal signal{};
 };
 
-// Output interface. The board/runtime owns routing + broadcasting.
+// Output interface. The runtime owns routing + broadcasting.
 class Emitter {
  public:
   virtual ~Emitter() = default;
@@ -121,7 +121,7 @@ class Tsi {
     return spec && spec->kind.kind == expected_kind;
   }
 
-  // Hop compatibility hook used by board/circuit validation:
+  // Hop compatibility hook used by runtime/circuit validation:
   // target input directive must accept source outgoing kind.
   // Default policy is strict kind equality; subclasses may override.
   [[nodiscard]] virtual bool is_compatible(DirectiveId target_incoming_directive,
@@ -155,9 +155,9 @@ class Tsi {
   // Returns true when runtime should not auto-emit @meta to avoid feedback loops.
   [[nodiscard]] virtual bool suppress_runtime_meta_feedback() const noexcept { return false; }
 
-  virtual void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) = 0;
+  virtual void step(const Wave& wave, Ingress in, RuntimeContext& ctx, Emitter& out) = 0;
   virtual RuntimeEventAction on_event(const RuntimeEvent&,
-                                      BoardContext&,
+                                      RuntimeContext&,
                                       Emitter&) {
     return RuntimeEventAction{};
   }

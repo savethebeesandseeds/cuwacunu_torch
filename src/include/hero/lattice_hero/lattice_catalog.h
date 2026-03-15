@@ -52,7 +52,7 @@ struct wave_trial_t {
   bool ok{false};
   std::string error{};
   std::uint64_t total_steps{0};
-  std::string board_hash{};
+  std::string campaign_hash{};
   std::string run_id{};
   std::string state_snapshot_id{};
 };
@@ -100,6 +100,18 @@ struct runtime_report_fragment_t {
   std::string path{};
   std::uint64_t ts_ms{0};
   std::string payload_json{};
+};
+
+struct runtime_view_report_t {
+  std::string view_kind{};
+  std::string canonical_path{};
+  std::string run_id{};
+  std::string contract_hash{};
+  std::uint64_t wave_cursor{0};
+  bool has_wave_cursor{false};
+  std::size_t match_count{0};
+  std::size_t ambiguity_count{0};
+  std::string view_lls{};
 };
 
 [[nodiscard]] std::string compute_coord_hash(std::string_view contract_hash,
@@ -238,6 +250,77 @@ class lattice_catalog_store_t {
            std::to_string(parts.batch_j);
   }
 
+  [[nodiscard]] static std::string normalize_runtime_hashimyei_cursor(
+      std::string_view canonical_path) {
+    const auto trim_ascii_local = [](std::string_view in) {
+      std::size_t begin = 0;
+      std::size_t end = in.size();
+      while (begin < end &&
+             std::isspace(static_cast<unsigned char>(in[begin])) != 0) {
+        ++begin;
+      }
+      while (end > begin &&
+             std::isspace(static_cast<unsigned char>(in[end - 1])) != 0) {
+        --end;
+      }
+      return std::string(in.substr(begin, end - begin));
+    };
+    const auto is_hashimyei_hex_token_local = [](std::string_view token) {
+      if (token.size() < 3) return false;
+      if (token[0] != '0' || token[1] != 'x') return false;
+      for (std::size_t i = 2; i < token.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(token[i]);
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        if (!hex) return false;
+      }
+      return true;
+    };
+
+    const std::string cp = trim_ascii_local(canonical_path);
+    if (cp.rfind("tsi.source.", 0) != 0) return cp;
+    std::vector<std::string> parts{};
+    std::size_t begin = 0;
+    while (begin <= cp.size()) {
+      const std::size_t dot = cp.find('.', begin);
+      if (dot == std::string::npos) {
+        parts.push_back(cp.substr(begin));
+        break;
+      }
+      parts.push_back(cp.substr(begin, dot - begin));
+      begin = dot + 1;
+    }
+    if (parts.size() <= 3) return cp;
+    const std::string& tail = parts.back();
+    if (is_hashimyei_hex_token_local(tail)) return cp;
+    return parts[0] + "." + parts[1] + "." + parts[2];
+  }
+  [[nodiscard]] static bool runtime_hashimyei_cursor_matches(
+      std::string_view query_canonical_path,
+      std::string_view fragment_canonical_path) {
+    const auto is_hashimyei_hex_token_local = [](std::string_view token) {
+      if (token.size() < 3) return false;
+      if (token[0] != '0' || token[1] != 'x') return false;
+      for (std::size_t i = 2; i < token.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(token[i]);
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        if (!hex) return false;
+      }
+      return true;
+    };
+    const std::string query = normalize_runtime_hashimyei_cursor(query_canonical_path);
+    if (query.empty()) return true;
+    const std::string fragment =
+        normalize_runtime_hashimyei_cursor(fragment_canonical_path);
+    if (fragment == query) return true;
+    const std::size_t dot = query.rfind('.');
+    const std::string tail =
+        (dot == std::string::npos) ? query : query.substr(dot + 1);
+    if (is_hashimyei_hex_token_local(tail)) return false;
+    return fragment.size() > query.size() &&
+           fragment.compare(0, query.size(), query) == 0 &&
+           fragment[query.size()] == '.';
+  }
+
   struct options_t {
     std::filesystem::path catalog_path{};
     std::string passphrase{};
@@ -306,6 +389,11 @@ class lattice_catalog_store_t {
       std::string_view intersection_cursor, std::string* out_report_lls,
       std::string* out_canonical_path, std::string* out_run_id,
       std::string* error = nullptr) const;
+  [[nodiscard]] bool get_runtime_view_lls(
+      std::string_view view_kind, std::string_view run_id,
+      std::uint64_t wave_cursor, bool use_wave_cursor,
+      std::string_view contract_hash, runtime_view_report_t* out,
+      std::string* error = nullptr) const;
 
   [[nodiscard]] bool record_trial(const wave_cell_coord_t& coord,
                                   const wave_execution_profile_t& profile,
@@ -340,7 +428,7 @@ class lattice_catalog_store_t {
                                  std::string_view finished_at_ms,
                                  std::string_view ok_txt,
                                  std::string_view total_steps,
-                                 std::string_view board_hash,
+                                 std::string_view campaign_hash,
                                  std::string_view run_id,
                                  std::string* error);
 
@@ -387,7 +475,7 @@ class lattice_catalog_store_t {
   static constexpr idydb_column_row_sizing kColFinishedAtMs = 21;
   static constexpr idydb_column_row_sizing kColOkTxt = 22;
   static constexpr idydb_column_row_sizing kColTotalSteps = 23;
-  static constexpr idydb_column_row_sizing kColBoardHash = 24;
+  static constexpr idydb_column_row_sizing kColCampaignHash = 24;
   static constexpr idydb_column_row_sizing kColRunId = 25;
 
   options_t options_{};

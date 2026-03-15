@@ -23,16 +23,12 @@ HERO_CONFIG_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(L
 $(eval $(call TEST_ONEFILE, hero_config_mcp, hero_config_mcp.cpp, $(HERO_CONFIG_LINK)))
 $(TEST_OUT)/hero_config_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
 
-HERO_RUNTIME_LINK := $(libcommon_a)
+HERO_RUNTIME_LINK := $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
 $(eval $(call TEST_ONEFILE, hero_runtime_mcp, hero_runtime_mcp.cpp, $(HERO_RUNTIME_LINK)))
-$(TEST_OUT)/hero_runtime_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES)
-
-HERO_JKIMYEI_LINK := $(libcommon_a)
-$(eval $(call TEST_ONEFILE, hero_jkimyei_mcp, hero_jkimyei_mcp.cpp, $(HERO_JKIMYEI_LINK)))
-$(TEST_OUT)/hero_jkimyei_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES)
+$(TEST_OUT)/hero_runtime_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS)
 
 .PHONY: all
-all: $(TEST_OUT)/hero_config_mcp $(TEST_OUT)/hero_hashimyei_mcp $(TEST_OUT)/hero_lattice_mcp $(TEST_OUT)/hero_runtime_mcp $(TEST_OUT)/hero_jkimyei_mcp
+all: $(TEST_OUT)/hero_config_mcp $(TEST_OUT)/hero_hashimyei_mcp $(TEST_OUT)/hero_lattice_mcp $(TEST_OUT)/hero_runtime_mcp
 	@$(LOG_SUCCESS)
 
 .PHONY: run
@@ -59,15 +55,9 @@ install-runtime-tools: $(TEST_OUT)/hero_runtime_mcp
 	@chmod 700 $(TEST_OUT)/hero_runtime_mcp
 	@printf "\033[2;33m[\033[90mUTIL: \033[2;32mBUILT\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(TEST_OUT)/hero_runtime_mcp"
 
-.PHONY: install-jkimyei-tools
-install-jkimyei-tools: $(TEST_OUT)/hero_jkimyei_mcp
-	@chmod 700 $(TEST_OUT)/hero_jkimyei_mcp
-	@printf "\033[2;33m[\033[90mUTIL: \033[2;32mBUILT\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(TEST_OUT)/hero_jkimyei_mcp"
-
 .PHONY: clean
 clean:
 	@rm -f $(TEST_OUT)/hero_config_mcp \
 	  $(TEST_OUT)/hero_hashimyei_mcp \
 	  $(TEST_OUT)/hero_lattice_mcp \
-	  $(TEST_OUT)/hero_runtime_mcp \
-	  $(TEST_OUT)/hero_jkimyei_mcp
+	  $(TEST_OUT)/hero_runtime_mcp

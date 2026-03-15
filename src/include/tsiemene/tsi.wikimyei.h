@@ -23,8 +23,6 @@ struct TsiWikimyeiInitRecord {
   std::filesystem::path report_fragment_directory{};
   std::filesystem::path weights_file{};
   bool enable_network_analytics_sidecar{true};
-  bool enable_entropic_capacity_sidecar{true};
-  std::filesystem::path entropic_capacity_file{};
 
   bool metadata_encrypted{false};
   bool metadata_plaintext_fallback{false};

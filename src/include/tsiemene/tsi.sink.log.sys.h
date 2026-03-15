@@ -67,7 +67,7 @@ class TsiSinkLogSys final : public TsiSink {
     return Tsi::is_compatible(target_incoming_directive, source_outgoing_kind);
   }
 
-  void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter&) override {
+  void step(const Wave& wave, Ingress in, RuntimeContext& ctx, Emitter&) override {
     if (!ctx.debug_enabled) return;
     // Sink logs are high-volume trace output; print them but avoid buffering.
     const cuwacunu::piaabo::dlog_buffer_capture_scope no_buffer_capture(false);

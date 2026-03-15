@@ -32,7 +32,7 @@
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_driver.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
-#include "piaabo/torch_compat/entropic_capacity_comparison.h"
+#include "piaabo/torch_compat/data_analytics.h"
 #include "piaabo/torch_compat/network_analytics.h"
 
 // Your existing VICReg implementation:
@@ -45,9 +45,24 @@ using TransferMatrixEvaluationReport =
 
 struct vicreg_runtime_load_context_t {
   bool enable_network_analytics_sidecar{false};
-  bool enable_entropic_capacity_sidecar{true};
   std::string run_id{};
 };
+
+struct wikimyei_representation_vicreg_init_record_t
+    : TsiWikimyeiInitRecord {
+  bool enable_embedding_sequence_analytics_sidecar{true};
+  bool has_embedding_sequence_analytics{false};
+  cuwacunu::piaabo::torch_compat::data_analytics_options_t
+      embedding_sequence_analytics_options{};
+  cuwacunu::piaabo::torch_compat::sequence_analytics_report_t
+      embedding_sequence_analytics_report{};
+  cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_report_t
+      embedding_sequence_symbolic_analytics_report{};
+  std::filesystem::path embedding_sequence_analytics_file{};
+  std::filesystem::path embedding_sequence_symbolic_analytics_file{};
+};
+
+using wikimyei_representation_vicreg_init_entry_t = TsiWikimyeiInitEntry;
 
 [[nodiscard]] inline bool has_non_ws_ascii_(std::string_view text) {
   for (const unsigned char c : text) {
@@ -202,13 +217,20 @@ struct vicreg_network_analytics_plan_t {
     std::string* error = nullptr,
     const vicreg_runtime_load_context_t* load_context = nullptr);
 
-[[nodiscard]] inline TsiWikimyeiInitRecord
+[[nodiscard]] inline wikimyei_representation_vicreg_init_record_t
 update_wikimyei_representation_vicreg_init(
     std::string hashimyei,
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model = nullptr,
     bool enable_network_analytics_sidecar = true,
+    bool enable_embedding_sequence_analytics_sidecar = true,
     std::string contract_hash = {},
-    std::string run_id = {});
+    std::string run_id = {},
+    const cuwacunu::piaabo::torch_compat::sequence_analytics_report_t*
+        embedding_sequence_analytics_report = nullptr,
+    const cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_report_t*
+        embedding_sequence_symbolic_analytics_report = nullptr,
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t
+        embedding_sequence_analytics_options = {});
 
 class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
  public:
@@ -234,6 +256,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         model_(contract_hash_, component_name_, C, T, D) {
     apply_runtime_policy_from_jkimyei_(train, use_swa, detach_to_cpu);
     maybe_initialize_transfer_matrix_evaluator_();
+    reset_embedding_sequence_analytics_();
   }
 
   [[nodiscard]] std::string_view type_name() const noexcept override { return "tsi.wikimyei.representation.vicreg"; }
@@ -257,34 +280,56 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
           static_cast<const TsiWikimyeiRuntimeIoContext*>(runtime_context);
       load_context.enable_network_analytics_sidecar =
           io_ctx->enable_debug_outputs;
-      load_context.enable_entropic_capacity_sidecar = true;
       load_context.run_id = io_ctx->run_id;
     }
-    return load_wikimyei_representation_vicreg_init_into_model(
-        hashimyei,
-        &model_,
-        error,
-        runtime_context ? &load_context : nullptr);
+    const bool loaded = load_wikimyei_representation_vicreg_init_into_model(
+        hashimyei, &model_, error, runtime_context ? &load_context : nullptr);
+    if (loaded) reset_embedding_sequence_analytics_();
+    return loaded;
   }
   [[nodiscard]] bool runtime_save_to_hashimyei(
       std::string_view hashimyei,
       std::string* error = nullptr,
       const void* runtime_context = nullptr) override {
+    // DEV_WARNING: VICReg saves directly into the target hashimyei report
+    // fragment tree and assumes single-writer execution at the campaign level.
+    // Runtime Hero must add per-hashimyei write coordination before allowing
+    // concurrent campaigns against the same representation hashimyei.
     bool enable_network_analytics_sidecar = true;
+    bool enable_embedding_sequence_analytics_sidecar = true;
     if (runtime_context) {
       const auto* io_ctx =
           static_cast<const TsiWikimyeiRuntimeIoContext*>(runtime_context);
       enable_network_analytics_sidecar = io_ctx->enable_debug_outputs;
+      enable_embedding_sequence_analytics_sidecar = io_ctx->enable_debug_outputs;
       if (!io_ctx->run_id.empty()) {
         runtime_run_id_ = io_ctx->run_id;
       }
     }
+    const auto embedding_sequence_report =
+        embedding_sequence_observed_
+            ? std::optional<
+                  cuwacunu::piaabo::torch_compat::sequence_analytics_report_t>(
+                  embedding_sequence_analytics_accumulator_.summarize())
+            : std::nullopt;
+    const auto embedding_sequence_symbolic_report =
+        embedding_sequence_observed_
+            ? std::optional<cuwacunu::piaabo::torch_compat::
+                                sequence_symbolic_analytics_report_t>(
+                  embedding_sequence_symbolic_analytics_accumulator_.summarize())
+            : std::nullopt;
     auto out = update_wikimyei_representation_vicreg_init(
         std::string(hashimyei),
         &model_,
         enable_network_analytics_sidecar,
+        enable_embedding_sequence_analytics_sidecar,
         contract_hash_,
-        runtime_run_id_);
+        runtime_run_id_,
+        embedding_sequence_report ? &(*embedding_sequence_report) : nullptr,
+        embedding_sequence_symbolic_report
+            ? &(*embedding_sequence_symbolic_report)
+            : nullptr,
+        embedding_sequence_analytics_options_);
     if (out.ok) return true;
     if (error) *error = out.error;
     return false;
@@ -417,7 +462,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     train_ = on;
   }
 
-  void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) override {
+  void step(const Wave& wave, Ingress in, RuntimeContext& ctx, Emitter& out) override {
     if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::Cargo) return;
 
@@ -449,6 +494,9 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     auto repr = model_.encode(
         data, mask, /*use_swa=*/use_swa_, /*detach_to_cpu=*/detach_to_cpu_);
     if (detach_to_cpu_) repr = repr.cpu();
+    if (ctx.debug_enabled) {
+      ingest_embedding_sequence_analytics_(repr, sample.mask);
+    }
     out_sample->encoding = repr;
     if (!validate_observation_cargo(out_sample, CargoValidationStage::VicregOut, &cargo_error)) {
       emit_meta_(wave, out, std::string("cargo.invalid stage=vicreg.out reason=") + cargo_error);
@@ -491,7 +539,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   }
 
   RuntimeEventAction on_event(const RuntimeEvent& event,
-                              BoardContext& ctx,
+                              RuntimeContext& ctx,
                               Emitter& out) override {
     if (transfer_matrix_evaluator_) {
       (void)transfer_matrix_evaluator_->on_event(event, ctx, out);
@@ -499,6 +547,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     switch (event.kind) {
       case RuntimeEventKind::RunStart: {
         runtime_run_id_ = ctx.run_id;
+        reset_embedding_sequence_analytics_();
         return RuntimeEventAction{};
       }
       case RuntimeEventKind::RunEnd: {
@@ -786,6 +835,139 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     }
   }
 
+  [[nodiscard]] static std::vector<
+      cuwacunu::piaabo::torch_compat::sequence_symbolic_stream_descriptor_t>
+  build_embedding_sequence_stream_descriptors_(std::int64_t stream_count) {
+    using descriptor_t = cuwacunu::piaabo::torch_compat::
+        sequence_symbolic_stream_descriptor_t;
+    std::vector<descriptor_t> out;
+    if (stream_count <= 0) return out;
+    out.reserve(static_cast<std::size_t>(stream_count));
+
+    std::int64_t width = 1;
+    for (std::int64_t value = std::max<std::int64_t>(0, stream_count - 1);
+         value >= 10;
+         value /= 10) {
+      ++width;
+    }
+
+    for (std::int64_t i = 0; i < stream_count; ++i) {
+      std::ostringstream label;
+      label << "latent_dim_" << std::setw(static_cast<int>(width))
+            << std::setfill('0') << i;
+      descriptor_t descriptor{};
+      descriptor.label = label.str();
+      descriptor.stream_family = "embedding_dimension";
+      descriptor.anchor_feature = "value";
+      descriptor.feature_names = "value";
+      descriptor.anchor_feature_index = 0;
+      out.push_back(std::move(descriptor));
+    }
+    return out;
+  }
+
+  [[nodiscard]] static bool build_embedding_sequence_mask_(
+      const torch::Tensor& source_mask,
+      std::int64_t batch_size,
+      std::int64_t timesteps,
+      std::int64_t stream_count,
+      torch::Tensor* out_mask) {
+    if (!out_mask || batch_size <= 0 || timesteps <= 0 || stream_count <= 0) {
+      return false;
+    }
+    out_mask->reset();
+
+    torch::Tensor collapsed;
+    if (source_mask.defined() && source_mask.numel() > 0) {
+      torch::Tensor m = source_mask.to(torch::kFloat64);
+      if (m.dim() == 1) {
+        if (batch_size != 1 || m.size(0) != timesteps) return false;
+        collapsed = m.view({1, 1, timesteps});
+      } else if (m.dim() == 2) {
+        if (batch_size != 1 || m.size(1) != timesteps) return false;
+        collapsed = m.amax({0}, /*keepdim=*/false).view({1, 1, timesteps});
+      } else if (m.dim() == 3) {
+        if (m.size(0) != batch_size || m.size(2) != timesteps) return false;
+        collapsed = m.amax({1}, /*keepdim=*/true);
+      } else {
+        return false;
+      }
+      collapsed = collapsed.clamp_min(0.0);
+    } else {
+      collapsed = torch::ones(
+          {batch_size, 1, timesteps},
+          torch::TensorOptions()
+              .dtype(torch::kFloat64)
+              .device(torch::kCPU));
+    }
+
+    *out_mask = collapsed.expand({batch_size, stream_count, timesteps});
+    return true;
+  }
+
+  [[nodiscard]] static bool reshape_embedding_sequence_for_analytics_(
+      const torch::Tensor& encoding,
+      const torch::Tensor& source_mask,
+      torch::Tensor* out_features,
+      torch::Tensor* out_mask) {
+    if (!out_features || !out_mask) return false;
+    out_features->reset();
+    out_mask->reset();
+    if (!encoding.defined() || encoding.numel() == 0) return false;
+
+    torch::Tensor seq = encoding;
+    if (seq.dim() == 2) {
+      seq = seq.unsqueeze(0);
+    } else if (seq.dim() != 3) {
+      return false;
+    }
+    if (seq.size(0) <= 0 || seq.size(1) <= 0 || seq.size(2) <= 0) return false;
+
+    const std::int64_t batch_size = seq.size(0);
+    const std::int64_t timesteps = seq.size(1);
+    const std::int64_t stream_count = seq.size(2);
+    seq = seq.transpose(1, 2).unsqueeze(-1);  // [B,E,T,1]
+
+    torch::Tensor mask;
+    if (!build_embedding_sequence_mask_(
+            source_mask, batch_size, timesteps, stream_count, &mask)) {
+      return false;
+    }
+
+    *out_features = std::move(seq);
+    *out_mask = std::move(mask);
+    return true;
+  }
+
+  void reset_embedding_sequence_analytics_() {
+    embedding_sequence_analytics_accumulator_ =
+        cuwacunu::piaabo::torch_compat::sequence_analytics_accumulator_t(
+            embedding_sequence_analytics_options_);
+    embedding_sequence_symbolic_analytics_accumulator_ =
+        cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_accumulator_t(
+            build_embedding_sequence_stream_descriptors_(model_.encoding_dims));
+    embedding_sequence_observed_ = false;
+  }
+
+  void ingest_embedding_sequence_analytics_(const torch::Tensor& encoding,
+                                            const torch::Tensor& source_mask) {
+    torch::Tensor sequence_features;
+    torch::Tensor sequence_mask;
+    if (!reshape_embedding_sequence_for_analytics_(
+            encoding, source_mask, &sequence_features, &sequence_mask)) {
+      return;
+    }
+
+    const bool ingested_global =
+        embedding_sequence_analytics_accumulator_.ingest(
+            sequence_features, sequence_mask);
+    const bool ingested_symbolic =
+        embedding_sequence_symbolic_analytics_accumulator_.ingest(
+            sequence_features, sequence_mask);
+    embedding_sequence_observed_ =
+        embedding_sequence_observed_ || ingested_global || ingested_symbolic;
+  }
+
   static std::string tensor_shape_(const torch::Tensor& t) {
     if (!t.defined()) return ":tensor undefined";
     std::ostringstream oss;
@@ -831,14 +1013,18 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   bool detach_to_cpu_{true};
   double epoch_loss_sum_{0.0};
   int epoch_optimizer_steps_{0};
+  bool embedding_sequence_observed_{false};
   std::unique_ptr<TransferMatrixEvaluationReport>
       transfer_matrix_evaluator_{};
+  cuwacunu::piaabo::torch_compat::data_analytics_options_t
+      embedding_sequence_analytics_options_{};
+  cuwacunu::piaabo::torch_compat::sequence_analytics_accumulator_t
+      embedding_sequence_analytics_accumulator_{embedding_sequence_analytics_options_};
+  cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_accumulator_t
+      embedding_sequence_symbolic_analytics_accumulator_{};
 
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D model_;
 };
-
-using wikimyei_representation_vicreg_init_record_t = TsiWikimyeiInitRecord;
-using wikimyei_representation_vicreg_init_entry_t = TsiWikimyeiInitEntry;
 
 [[nodiscard]] inline bool parse_wikimyei_hex_hash(std::string_view s, std::uint64_t* out) {
   if (!out) return false;
@@ -958,48 +1144,6 @@ inline constexpr std::string_view kWikimyeiVicregCanonicalType = "tsi.wikimyei.r
 inline constexpr std::string_view kWikimyeiVicregFamily = "representation";
 inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
 
-[[nodiscard]] inline std::optional<std::filesystem::path>
-find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) {
-  namespace fs = std::filesystem;
-  if (contract_hash.empty()) return std::nullopt;
-
-  const fs::path short_base =
-      cuwacunu::piaabo::torch_compat::source_data_analytics_contract_directory(
-          contract_hash);
-
-  fs::path best_path{};
-  fs::file_time_type best_time{};
-  bool seen = false;
-
-  const auto scan_base = [&](const fs::path& base) {
-    std::error_code ec;
-    if (base.empty()) return;
-    if (!fs::exists(base, ec) || !fs::is_directory(base, ec)) return;
-    for (fs::recursive_directory_iterator it(base, ec), end; it != end;
-         it.increment(ec)) {
-      if (ec) break;
-      if (!it->is_regular_file()) continue;
-      const auto file_name = it->path().filename().string();
-      if (file_name !=
-          cuwacunu::piaabo::torch_compat::kDataAnalyticsLatestReportFilename) {
-        continue;
-      }
-      const auto ts = it->last_write_time(ec);
-      if (ec) continue;
-      if (!seen || ts > best_time) {
-        best_time = ts;
-        best_path = it->path();
-        seen = true;
-      }
-    }
-  };
-
-  scan_base(short_base);
-
-  if (!seen) return std::nullopt;
-  return best_path;
-}
-
 [[nodiscard]] inline bool save_wikimyei_representation_vicreg_report_fragment_with_driver(
     const cuwacunu::hashimyei::report_fragment_action_context_t& action,
     std::string* error) {
@@ -1021,15 +1165,17 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   const fs::path weights_file = action.report_fragment_directory / "weights.init.pt";
   fs::path weights_network_analytics_file{};
   bool wrote_weights_network_analytics_file = false;
-  fs::path weights_entropic_capacity_file{};
-  bool wrote_weights_entropic_capacity_file = false;
+  fs::path embedding_sequence_analytics_file{};
+  bool wrote_embedding_sequence_analytics_file = false;
+  fs::path embedding_sequence_symbolic_analytics_file{};
+  bool wrote_embedding_sequence_symbolic_analytics_file = false;
   const fs::path status_lls_file = action.report_fragment_directory / "status.latest.lls";
   bool wrote_status_lls_file = false;
   auto* out = static_cast<wikimyei_representation_vicreg_init_record_t*>(action.user_data);
   const bool enable_network_analytics_sidecar =
       !out || out->enable_network_analytics_sidecar;
-  const bool enable_entropic_capacity_sidecar =
-      !out || out->enable_entropic_capacity_sidecar;
+  const bool enable_embedding_sequence_analytics_sidecar =
+      !out || out->enable_embedding_sequence_analytics_sidecar;
   const std::string contract_hash = out ? out->contract_hash : std::string{};
   const std::string run_id = out ? out->run_id : std::string{};
   const std::string canonical_path =
@@ -1067,24 +1213,39 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       }
     }
 
-    if (enable_entropic_capacity_sidecar &&
-        wrote_weights_network_analytics_file &&
-        !contract_hash.empty()) {
-      const auto source_file_opt =
-          find_latest_source_data_analytics_for_contract_(contract_hash);
-      if (source_file_opt.has_value()) {
-        cuwacunu::piaabo::torch_compat::entropic_capacity_comparison_report_t
-            entropic_report{};
-        std::string cmp_error;
-        if (cuwacunu::piaabo::torch_compat::
-                summarize_entropic_capacity_comparison_from_files(
-                    *source_file_opt,
-                    weights_network_analytics_file,
-                    &entropic_report,
-                    &cmp_error)) {
-          entropic_report.run_id = effective_run_id;
-          const auto entropic_report_identity = make_component_report_identity(
-              "entropic_capacity_comparison",
+    if (enable_embedding_sequence_analytics_sidecar &&
+        out && out->has_embedding_sequence_analytics) {
+      auto embedding_report = out->embedding_sequence_analytics_report;
+      embedding_report.schema = std::string(
+          cuwacunu::piaabo::torch_compat::
+              kEmbeddingSequenceAnalyticsSchemaCurrent);
+      auto embedding_symbolic_report =
+          out->embedding_sequence_symbolic_analytics_report;
+      embedding_symbolic_report.schema = std::string(
+          cuwacunu::piaabo::torch_compat::
+              kEmbeddingSequenceAnalyticsSymbolicSchemaCurrent);
+
+      embedding_sequence_analytics_file =
+          action.report_fragment_directory /
+          std::string(cuwacunu::piaabo::torch_compat::
+                          kEmbeddingSequenceAnalyticsLatestReportFilename);
+      embedding_sequence_symbolic_analytics_file =
+          action.report_fragment_directory /
+          std::string(cuwacunu::piaabo::torch_compat::
+                          kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename);
+
+      const auto embedding_report_identity = make_component_report_identity(
+          "embedding_sequence_analytics",
+          canonical_path,
+          kWikimyeiVicregCanonicalType,
+          action.report_fragment_id,
+          contract_hash,
+          {},
+          {},
+          effective_run_id);
+      const auto embedding_symbolic_report_identity =
+          make_component_report_identity(
+              "embedding_sequence_analytics_symbolic",
               canonical_path,
               kWikimyeiVicregCanonicalType,
               action.report_fragment_id,
@@ -1092,34 +1253,38 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
               {},
               {},
               effective_run_id);
-          weights_entropic_capacity_file = weights_file;
-          weights_entropic_capacity_file += ".entropic_capacity.lls";
-          std::string write_error;
-          if (cuwacunu::piaabo::torch_compat::write_entropic_capacity_comparison_file(
-                  entropic_report,
-                  weights_entropic_capacity_file,
-                  &write_error,
-                  entropic_report_identity)) {
-            wrote_weights_entropic_capacity_file = true;
-          } else {
-            log_warn(
-                "[tsi.vicreg] entropic capacity report skipped for '%s': %s\n",
-                weights_entropic_capacity_file.string().c_str(),
-                write_error.c_str());
-          }
-        } else {
-          log_warn(
-              "[tsi.vicreg] entropic capacity report skipped for '%s': %s\n",
-              weights_file.string().c_str(),
-              cmp_error.c_str());
-        }
+
+      std::string write_error;
+      if (cuwacunu::piaabo::torch_compat::write_sequence_analytics_file(
+              embedding_report,
+              out->embedding_sequence_analytics_options,
+              embedding_sequence_analytics_file,
+              canonical_path,
+              &write_error,
+              embedding_report_identity)) {
+        wrote_embedding_sequence_analytics_file = true;
       } else {
         log_warn(
-            "[tsi.vicreg] entropic capacity report skipped for '%s': missing source analytics for contract=%s\n",
-            weights_file.string().c_str(),
-            contract_hash.c_str());
+            "[tsi.vicreg] embedding analytics report skipped for '%s': %s\n",
+            embedding_sequence_analytics_file.string().c_str(),
+            write_error.c_str());
+      }
+
+      if (cuwacunu::piaabo::torch_compat::write_sequence_symbolic_analytics_file(
+              embedding_symbolic_report,
+              embedding_sequence_symbolic_analytics_file,
+              canonical_path,
+              &write_error,
+              embedding_symbolic_report_identity)) {
+        wrote_embedding_sequence_symbolic_analytics_file = true;
+      } else {
+        log_warn(
+            "[tsi.vicreg] embedding symbolic analytics report skipped for '%s': %s\n",
+            embedding_sequence_symbolic_analytics_file.string().c_str(),
+            write_error.c_str());
       }
     }
+
   } else {
     std::string io_error;
     if (!ensure_wikimyei_vicreg_weights_placeholder(weights_file, &io_error)) {
@@ -1147,12 +1312,15 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
              << weights_network_analytics_file.filename().string()
              << "\n";
   }
-  if (wrote_weights_entropic_capacity_file) {
-    metadata << "weights_entropic_capacity_file="
-             << weights_entropic_capacity_file.filename().string()
+  if (wrote_embedding_sequence_analytics_file) {
+    metadata << "embedding_sequence_analytics_file="
+             << embedding_sequence_analytics_file.filename().string() << "\n";
+  }
+  if (wrote_embedding_sequence_symbolic_analytics_file) {
+    metadata << "embedding_sequence_symbolic_analytics_file="
+             << embedding_sequence_symbolic_analytics_file.filename().string()
              << "\n";
   }
-
   bool metadata_encrypted = false;
   bool metadata_plaintext_fallback = false;
   std::string metadata_warning;
@@ -1256,10 +1424,12 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   if (wrote_weights_network_analytics_file) {
     append_manifest_file_if_present(weights_network_analytics_file);
   }
-  if (wrote_weights_entropic_capacity_file) {
-    append_manifest_file_if_present(weights_entropic_capacity_file);
+  if (wrote_embedding_sequence_analytics_file) {
+    append_manifest_file_if_present(embedding_sequence_analytics_file);
   }
-
+  if (wrote_embedding_sequence_symbolic_analytics_file) {
+    append_manifest_file_if_present(embedding_sequence_symbolic_analytics_file);
+  }
   std::string manifest_error;
   if (!cuwacunu::hashimyei::write_report_fragment_manifest(action.report_fragment_directory, manifest, &manifest_error)) {
     if (error) *error = "cannot persist report_fragment manifest: " + manifest_error;
@@ -1269,11 +1439,14 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
   if (out) {
     out->canonical_base = canonical_path;
     out->weights_file = weights_file;
-    if (wrote_weights_entropic_capacity_file) {
-      out->entropic_capacity_file = weights_entropic_capacity_file;
-    } else {
-      out->entropic_capacity_file.clear();
-    }
+    out->embedding_sequence_analytics_file =
+        wrote_embedding_sequence_analytics_file
+            ? embedding_sequence_analytics_file
+            : fs::path{};
+    out->embedding_sequence_symbolic_analytics_file =
+        wrote_embedding_sequence_symbolic_analytics_file
+            ? embedding_sequence_symbolic_analytics_file
+            : fs::path{};
     out->metadata_encrypted = metadata_encrypted;
     out->metadata_plaintext_fallback = metadata_plaintext_fallback;
     out->metadata_warning = metadata_warning;
@@ -1334,8 +1507,6 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       static_cast<const vicreg_runtime_load_context_t*>(action.user_data);
   const bool enable_network_analytics_sidecar_on_load =
       load_ctx && load_ctx->enable_network_analytics_sidecar;
-  const bool enable_entropic_capacity_sidecar_on_load =
-      load_ctx && load_ctx->enable_entropic_capacity_sidecar;
   const std::string run_id =
       (load_ctx && !load_ctx->run_id.empty()) ? load_ctx->run_id : std::string{};
   const std::string effective_run_id =
@@ -1386,60 +1557,6 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
       }
     }
 
-    if (enable_entropic_capacity_sidecar_on_load &&
-        wrote_weights_network_analytics_file) {
-      const std::string contract_hash = model->contract_hash;
-      if (!contract_hash.empty()) {
-        const auto source_file_opt =
-            find_latest_source_data_analytics_for_contract_(contract_hash);
-        if (source_file_opt.has_value()) {
-          cuwacunu::piaabo::torch_compat::entropic_capacity_comparison_report_t
-              entropic_report{};
-          std::string cmp_error;
-          if (cuwacunu::piaabo::torch_compat::
-                  summarize_entropic_capacity_comparison_from_files(
-                      *source_file_opt,
-                      weights_network_analytics_file,
-                      &entropic_report,
-                      &cmp_error)) {
-            entropic_report.run_id = effective_run_id;
-            const auto entropic_report_identity = make_component_report_identity(
-                "entropic_capacity_comparison",
-                canonical_path,
-                kWikimyeiVicregCanonicalType,
-                action.report_fragment_id,
-                contract_hash,
-                {},
-                {},
-                effective_run_id);
-            fs::path weights_entropic_capacity_file = weights_file;
-            weights_entropic_capacity_file += ".entropic_capacity.lls";
-            std::string write_error;
-            if (!cuwacunu::piaabo::torch_compat::
-                    write_entropic_capacity_comparison_file(
-                        entropic_report,
-                        weights_entropic_capacity_file,
-                        &write_error,
-                        entropic_report_identity)) {
-              log_warn(
-                  "[tsi.vicreg] load entropic report skipped for '%s': %s\n",
-                  weights_entropic_capacity_file.string().c_str(),
-                  write_error.c_str());
-            }
-          } else {
-            log_warn(
-                "[tsi.vicreg] load entropic report skipped for '%s': %s\n",
-                weights_file.string().c_str(),
-                cmp_error.c_str());
-          }
-        } else {
-          log_warn(
-              "[tsi.vicreg] load entropic report skipped for '%s': missing source analytics for contract=%s\n",
-              weights_file.string().c_str(),
-              contract_hash.c_str());
-        }
-      }
-    }
   }
   return true;
 }
@@ -1534,15 +1651,33 @@ find_latest_source_data_analytics_for_contract_(std::string_view contract_hash) 
     std::string hashimyei,
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D* model,
     bool enable_network_analytics_sidecar,
+    bool enable_embedding_sequence_analytics_sidecar,
     std::string contract_hash,
-    std::string run_id) {
+    std::string run_id,
+    const cuwacunu::piaabo::torch_compat::sequence_analytics_report_t*
+        embedding_sequence_analytics_report,
+    const cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_report_t*
+        embedding_sequence_symbolic_analytics_report,
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t
+        embedding_sequence_analytics_options) {
   namespace fs = std::filesystem;
   wikimyei_representation_vicreg_init_record_t out{};
   out.store_root = wikimyei_representation_vicreg_store_root();
   out.enable_network_analytics_sidecar = enable_network_analytics_sidecar;
-  out.enable_entropic_capacity_sidecar = true;
+  out.enable_embedding_sequence_analytics_sidecar =
+      enable_embedding_sequence_analytics_sidecar;
   out.contract_hash = std::move(contract_hash);
   out.run_id = std::move(run_id);
+  out.embedding_sequence_analytics_options =
+      embedding_sequence_analytics_options;
+  if (embedding_sequence_analytics_report &&
+      embedding_sequence_symbolic_analytics_report) {
+    out.has_embedding_sequence_analytics = true;
+    out.embedding_sequence_analytics_report =
+        *embedding_sequence_analytics_report;
+    out.embedding_sequence_symbolic_analytics_report =
+        *embedding_sequence_symbolic_analytics_report;
+  }
 
   std::uint64_t parsed = 0;
   if (!parse_wikimyei_hex_hash(hashimyei, &parsed)) {

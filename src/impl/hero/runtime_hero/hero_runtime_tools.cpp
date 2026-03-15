@@ -23,13 +23,16 @@
 #include <string_view>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/file.h>
 #include <tuple>
 #include <unordered_map>
 #include <unistd.h>
 #include <vector>
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 #include "hero/wave_contract_binding_runtime.h"
+#include "hero/runtime_hero/runtime_campaign.h"
 #include "hero/runtime_hero/runtime_job.h"
 
 namespace cuwacunu {
@@ -41,7 +44,7 @@ namespace {
 constexpr const char* kDefaultRuntimeHeroDslPath =
     "/cuwacunu/src/config/instructions/default.hero.runtime.dsl";
 constexpr const char* kDefaultConfigFilename = ".config";
-constexpr const char* kDefaultBoardDslKey = "default_board_dsl_filename";
+constexpr const char* kDefaultCampaignDslKey = "default_iitepi_campaign_dsl_filename";
 constexpr const char* kServerName = "hero_runtime_mcp";
 constexpr const char* kServerVersion = "0.1.0";
 constexpr const char* kProtocolVersion = "2025-03-26";
@@ -516,7 +519,9 @@ void write_jsonrpc_error(std::string_view id_json, int code,
 [[nodiscard]] std::string tool_result_json_for_error(std::string_view message) {
   return make_tool_result_json(
       message,
-      "{\"job_cursor\":\"\",\"error\":" + json_quote(message) + "}", true);
+      "{\"campaign_cursor\":\"\",\"job_cursor\":\"\",\"error\":" +
+          json_quote(message) + "}",
+      true);
 }
 
 [[nodiscard]] std::string runtime_job_to_json(
@@ -536,13 +541,13 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"worker_binary\":" << json_quote(record.worker_binary) << ","
       << "\"worker_command\":" << json_quote(record.worker_command) << ","
       << "\"config_folder\":" << json_quote(record.config_folder) << ","
-      << "\"source_board_dsl_path\":"
-      << json_quote(record.source_board_dsl_path) << ","
+      << "\"source_campaign_dsl_path\":"
+      << json_quote(record.source_campaign_dsl_path) << ","
       << "\"source_contract_dsl_path\":"
       << json_quote(record.source_contract_dsl_path) << ","
       << "\"source_wave_dsl_path\":"
       << json_quote(record.source_wave_dsl_path) << ","
-      << "\"board_dsl_path\":" << json_quote(record.board_dsl_path) << ","
+      << "\"campaign_dsl_path\":" << json_quote(record.campaign_dsl_path) << ","
       << "\"contract_dsl_path\":" << json_quote(record.contract_dsl_path) << ","
       << "\"wave_dsl_path\":" << json_quote(record.wave_dsl_path) << ","
       << "\"binding_id\":" << json_quote(record.binding_id) << ","
@@ -591,15 +596,15 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     const app_context_t& app, std::string_view job_cursor,
     cuwacunu::hero::runtime::runtime_job_record_t* out, std::string* error) {
   return cuwacunu::hero::runtime::read_runtime_job_record(
-      app.defaults.jobs_root, job_cursor, out, error);
+      app.defaults.campaigns_root, job_cursor, out, error);
 }
 
 [[nodiscard]] bool list_runtime_jobs(
     const app_context_t& app,
     std::vector<cuwacunu::hero::runtime::runtime_job_record_t>* out,
     std::string* error) {
-  return cuwacunu::hero::runtime::scan_runtime_job_records(app.defaults.jobs_root,
-                                                           out, error);
+  return cuwacunu::hero::runtime::scan_runtime_job_records(
+      app.defaults.campaigns_root, out, error);
 }
 
 [[nodiscard]] bool write_runtime_job(
@@ -607,7 +612,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     const cuwacunu::hero::runtime::runtime_job_record_t& record,
     std::string* error) {
   return cuwacunu::hero::runtime::write_runtime_job_record(
-      app.defaults.jobs_root, record, error);
+      app.defaults.campaigns_root, record, error);
 }
 
 [[nodiscard]] bool reconcile_job_record(
@@ -647,6 +652,131 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   return true;
 }
 
+[[nodiscard]] std::string runtime_campaign_to_json(
+    const cuwacunu::hero::runtime::runtime_campaign_record_t& record) {
+  const bool runner_alive =
+      record.runner_pid.has_value() &&
+      cuwacunu::hero::runtime::process_identity_alive(
+          *record.runner_pid, record.runner_start_ticks, record.boot_id);
+  std::ostringstream run_bind_ids_json;
+  run_bind_ids_json << "[";
+  for (std::size_t i = 0; i < record.run_bind_ids.size(); ++i) {
+    if (i != 0) run_bind_ids_json << ",";
+    run_bind_ids_json << json_quote(record.run_bind_ids[i]);
+  }
+  run_bind_ids_json << "]";
+
+  std::ostringstream job_cursors_json;
+  job_cursors_json << "[";
+  for (std::size_t i = 0; i < record.job_cursors.size(); ++i) {
+    if (i != 0) job_cursors_json << ",";
+    job_cursors_json << json_quote(record.job_cursors[i]);
+  }
+  job_cursors_json << "]";
+
+  std::ostringstream out;
+  out << "{"
+      << "\"schema\":" << json_quote(record.schema) << ","
+      << "\"campaign_cursor\":" << json_quote(record.campaign_cursor) << ","
+      << "\"boot_id\":" << json_quote(record.boot_id) << ","
+      << "\"state\":" << json_quote(record.state) << ","
+      << "\"state_detail\":" << json_quote(record.state_detail) << ","
+      << "\"config_folder\":" << json_quote(record.config_folder) << ","
+      << "\"source_campaign_dsl_path\":"
+      << json_quote(record.source_campaign_dsl_path) << ","
+      << "\"campaign_dsl_path\":" << json_quote(record.campaign_dsl_path) << ","
+      << "\"reset_runtime_state\":"
+      << (record.reset_runtime_state ? "true" : "false") << ","
+      << "\"stdout_path\":" << json_quote(record.stdout_path) << ","
+      << "\"stderr_path\":" << json_quote(record.stderr_path) << ","
+      << "\"started_at_ms\":" << record.started_at_ms << ","
+      << "\"updated_at_ms\":" << record.updated_at_ms << ","
+      << "\"finished_at_ms\":"
+      << (record.finished_at_ms.has_value()
+              ? std::to_string(*record.finished_at_ms)
+              : "null")
+      << ",\"runner_pid\":"
+      << (record.runner_pid.has_value() ? std::to_string(*record.runner_pid)
+                                        : "null")
+      << ",\"runner_start_ticks\":"
+      << (record.runner_start_ticks.has_value()
+              ? std::to_string(*record.runner_start_ticks)
+              : "null")
+      << ",\"current_run_index\":"
+      << (record.current_run_index.has_value()
+              ? std::to_string(*record.current_run_index)
+              : "null")
+      << ",\"runner_alive\":" << (runner_alive ? "true" : "false")
+      << ",\"run_bind_ids\":" << run_bind_ids_json.str()
+      << ",\"job_cursors\":" << job_cursors_json.str()
+      << "}";
+  return out.str();
+}
+
+[[nodiscard]] bool read_runtime_campaign(
+    const app_context_t& app, std::string_view campaign_cursor,
+    cuwacunu::hero::runtime::runtime_campaign_record_t* out,
+    std::string* error) {
+  return cuwacunu::hero::runtime::read_runtime_campaign_record(
+      app.defaults.campaigns_root, campaign_cursor, out, error);
+}
+
+[[nodiscard]] bool list_runtime_campaigns(
+    const app_context_t& app,
+    std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t>* out,
+    std::string* error) {
+  return cuwacunu::hero::runtime::scan_runtime_campaign_records(
+      app.defaults.campaigns_root, out, error);
+}
+
+[[nodiscard]] bool write_runtime_campaign(
+    const app_context_t& app,
+    const cuwacunu::hero::runtime::runtime_campaign_record_t& record,
+    std::string* error) {
+  return cuwacunu::hero::runtime::write_runtime_campaign_record(
+      app.defaults.campaigns_root, record, error);
+}
+
+[[nodiscard]] bool reconcile_campaign_record(
+    const app_context_t& app,
+    cuwacunu::hero::runtime::runtime_campaign_record_t* record,
+    bool* out_changed, std::string* error) {
+  if (error) error->clear();
+  if (out_changed) *out_changed = false;
+  if (!record) {
+    if (error) *error = "campaign record pointer is null";
+    return false;
+  }
+
+  const bool runner_alive =
+      record->runner_pid.has_value() &&
+      cuwacunu::hero::runtime::process_identity_alive(
+          *record->runner_pid, record->runner_start_ticks, record->boot_id);
+  if (record->state == "launching" || record->state == "running" ||
+      record->state == "stopping") {
+    std::string next_state = record->state;
+    std::string next_detail = record->state_detail;
+    if (runner_alive) {
+      if (record->state == "launching") {
+        next_state = "running";
+        next_detail = "campaign runner alive";
+      }
+    } else if (!record->finished_at_ms.has_value()) {
+      next_state = "lost";
+      next_detail = "campaign runner missing";
+      record->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    }
+    if (next_state != record->state || next_detail != record->state_detail) {
+      record->state = std::move(next_state);
+      record->state_detail = std::move(next_detail);
+      record->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      if (!write_runtime_campaign(app, *record, error)) return false;
+      if (out_changed) *out_changed = true;
+    }
+  }
+  return true;
+}
+
 using runtime_tool_handler_t = bool (*)(
     app_context_t* app, const std::string& arguments_json,
     std::string* out_structured, std::string* out_error);
@@ -658,7 +788,58 @@ struct runtime_tool_descriptor_t {
   runtime_tool_handler_t handler;
 };
 
-[[nodiscard]] bool handle_tool_launch_default_board(
+struct campaign_start_lock_guard_t {
+  int fd{-1};
+
+  campaign_start_lock_guard_t() = default;
+  campaign_start_lock_guard_t(const campaign_start_lock_guard_t&) = delete;
+  campaign_start_lock_guard_t& operator=(const campaign_start_lock_guard_t&) =
+      delete;
+
+  campaign_start_lock_guard_t(campaign_start_lock_guard_t&& other) noexcept
+      : fd(other.fd) {
+    other.fd = -1;
+  }
+
+  campaign_start_lock_guard_t& operator=(
+      campaign_start_lock_guard_t&& other) noexcept {
+    if (this == &other) return *this;
+    reset();
+    fd = other.fd;
+    other.fd = -1;
+    return *this;
+  }
+
+  ~campaign_start_lock_guard_t() { reset(); }
+
+  void reset() {
+    if (fd >= 0) {
+      (void)::flock(fd, LOCK_UN);
+      (void)::close(fd);
+      fd = -1;
+    }
+  }
+};
+
+[[nodiscard]] bool is_runtime_campaign_terminal_state(std::string_view state) {
+  return state != "launching" && state != "running" && state != "stopping";
+}
+
+[[nodiscard]] bool is_runtime_job_terminal_state(std::string_view state) {
+  return state != "launching" && state != "running" && state != "stopping" &&
+         state != "orphaned";
+}
+
+[[nodiscard]] bool handle_tool_start_campaign(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error);
+[[nodiscard]] bool handle_tool_list_campaigns(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error);
+[[nodiscard]] bool handle_tool_get_campaign(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error);
+[[nodiscard]] bool handle_tool_stop_campaign(
     app_context_t* app, const std::string& arguments_json,
     std::string* out_structured, std::string* out_error);
 [[nodiscard]] bool handle_tool_list_jobs(app_context_t* app,
@@ -709,6 +890,50 @@ constexpr runtime_tool_descriptor_t kRuntimeTools[] = {
   return out.str();
 }
 
+[[nodiscard]] bool acquire_campaign_start_lock(
+    const app_context_t& app, campaign_start_lock_guard_t* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "campaign start lock output pointer is null";
+    return false;
+  }
+  out->reset();
+
+  std::error_code ec{};
+  std::filesystem::create_directories(app.defaults.campaigns_root, ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create campaigns_root for campaign start lock: " +
+               app.defaults.campaigns_root.string();
+    }
+    return false;
+  }
+
+  const std::filesystem::path lock_path =
+      app.defaults.campaigns_root / ".campaign.start.lock";
+  const int fd = ::open(lock_path.c_str(), O_CREAT | O_RDWR, 0600);
+  if (fd < 0) {
+    if (error) {
+      *error = "cannot open campaign start lock: " + lock_path.string();
+    }
+    return false;
+  }
+
+  for (;;) {
+    if (::flock(fd, LOCK_EX) == 0) {
+      out->fd = fd;
+      return true;
+    }
+    if (errno == EINTR) continue;
+    (void)::close(fd);
+    if (error) {
+      *error = "cannot acquire campaign start lock: " + lock_path.string();
+    }
+    return false;
+  }
+}
+
 void write_child_errno_noexcept(int fd, int child_errno) {
   const char* ptr = reinterpret_cast<const char*>(&child_errno);
   std::size_t remaining = sizeof(child_errno);
@@ -724,74 +949,156 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   }
 }
 
-[[nodiscard]] bool prepare_job_board_dsl_snapshot(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor,
-    const std::filesystem::path& config_folder, std::string_view binding_id,
-    std::string* out_resolved_binding_id, std::string* out_source_board_path,
-    std::string* out_job_board_path,
-    std::string* out_source_contract_path, std::string* out_source_wave_path,
-    std::string* out_job_contract_path, std::string* out_job_wave_path,
+[[nodiscard]] bool rewrite_campaign_imports_absolute(
+    const std::filesystem::path& source_campaign_path,
+    std::string_view input_text, std::string* out_text,
     std::string* error) {
   if (error) error->clear();
-  if (out_resolved_binding_id) out_resolved_binding_id->clear();
-  if (out_source_board_path) out_source_board_path->clear();
-  if (out_job_board_path) out_job_board_path->clear();
-  if (out_source_contract_path) out_source_contract_path->clear();
-  if (out_source_wave_path) out_source_wave_path->clear();
-  if (out_job_contract_path) out_job_contract_path->clear();
-  if (out_job_wave_path) out_job_wave_path->clear();
+  if (!out_text) {
+    if (error) *error = "campaign snapshot output pointer is null";
+    return false;
+  }
+  *out_text = "";
+
+  bool in_block_comment = false;
+  std::ostringstream out;
+  std::size_t pos = 0;
+  bool first = true;
+  while (pos <= input_text.size()) {
+    const std::size_t end = input_text.find('\n', pos);
+    std::string line = (end == std::string::npos)
+                           ? std::string(input_text.substr(pos))
+                           : std::string(input_text.substr(pos, end - pos));
+
+    const auto rewrite_import =
+        [&](std::string_view token, const std::string& current_line) {
+          std::size_t token_pos = current_line.find(token);
+          if (token_pos == std::string::npos) return current_line;
+          const std::size_t quote_begin =
+              current_line.find('"', token_pos + token.size());
+          if (quote_begin == std::string::npos) return current_line;
+          const std::size_t quote_end = current_line.find('"', quote_begin + 1);
+          if (quote_end == std::string::npos) return current_line;
+          const std::filesystem::path raw_path(
+              current_line.substr(quote_begin + 1, quote_end - quote_begin - 1));
+          if (raw_path.is_absolute()) return current_line;
+          const std::filesystem::path rewritten =
+              (source_campaign_path.parent_path() / raw_path).lexically_normal();
+          return current_line.substr(0, quote_begin + 1) + rewritten.string() +
+                 current_line.substr(quote_end);
+        };
+
+    if (!in_block_comment) {
+      line = rewrite_import("IMPORT_CONTRACT_FILE", line);
+      line = rewrite_import("IMPORT_WAVE_FILE", line);
+    }
+    if (!first) out << "\n";
+    first = false;
+    out << line;
+    in_block_comment =
+        cuwacunu::hero::wave_contract_binding_runtime::detail::
+            next_block_comment_state(line, in_block_comment);
+    if (end == std::string::npos) break;
+    pos = end + 1;
+  }
+  *out_text = out.str();
+  return true;
+}
+
+[[nodiscard]] bool prepare_campaign_dsl_snapshot(
+    const app_context_t& app, const std::string& campaign_cursor,
+    const std::filesystem::path& config_folder,
+    std::string* out_source_campaign_path,
+    std::string* out_campaign_snapshot_path, std::string* error) {
+  if (error) error->clear();
+  if (out_source_campaign_path) out_source_campaign_path->clear();
+  if (out_campaign_snapshot_path) out_campaign_snapshot_path->clear();
 
   const std::filesystem::path config_path = config_folder / kDefaultConfigFilename;
   const std::optional<std::string> configured =
-      read_ini_value(config_path, "GENERAL", kDefaultBoardDslKey);
+      read_ini_value(config_path, "GENERAL", kDefaultCampaignDslKey);
   if (!configured.has_value()) {
     if (error) {
-      *error = "missing GENERAL." + std::string(kDefaultBoardDslKey) +
+      *error = "missing GENERAL." + std::string(kDefaultCampaignDslKey) +
                " in " + config_path.string();
     }
     return false;
   }
 
-  const std::filesystem::path source_board_path(resolve_path_from_base_folder(
+  const std::filesystem::path source_campaign_path(resolve_path_from_base_folder(
       config_folder.string(), *configured));
   std::error_code ec{};
-  if (!std::filesystem::exists(source_board_path, ec) ||
-      !std::filesystem::is_regular_file(source_board_path, ec)) {
+  if (!std::filesystem::exists(source_campaign_path, ec) ||
+      !std::filesystem::is_regular_file(source_campaign_path, ec)) {
     if (error) {
-      *error = "configured default board DSL does not exist: " +
-               source_board_path.string();
+      *error = "configured default campaign DSL does not exist: " +
+               source_campaign_path.string();
     }
     return false;
   }
 
-  cuwacunu::hero::wave_contract_binding_runtime::
-      resolved_wave_contract_binding_snapshot_t snapshot{};
-  if (!cuwacunu::hero::wave_contract_binding_runtime::
-          prepare_board_binding_snapshot(
-              source_board_path, binding_id,
-              cuwacunu::hero::runtime::runtime_job_dir(jobs_root, job_cursor),
-              &snapshot, error)) {
+  std::string campaign_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(source_campaign_path,
+                                               &campaign_text, error)) {
     return false;
   }
-  if (out_source_board_path) {
-    *out_source_board_path = snapshot.source_scope_dsl_path;
+  std::string snapshot_text{};
+  if (!rewrite_campaign_imports_absolute(source_campaign_path, campaign_text,
+                                         &snapshot_text, error)) {
+    return false;
   }
-  if (out_resolved_binding_id) *out_resolved_binding_id = snapshot.binding_id;
-  if (out_job_board_path) *out_job_board_path = snapshot.board_dsl_path;
-  if (out_source_contract_path) {
-    *out_source_contract_path = snapshot.source_contract_dsl_path;
+  const std::filesystem::path snapshot_path =
+      cuwacunu::hero::runtime::runtime_campaign_dsl_path(
+          app.defaults.campaigns_root, campaign_cursor);
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(snapshot_path,
+                                                       snapshot_text, error)) {
+    return false;
   }
-  if (out_source_wave_path) {
-    *out_source_wave_path = snapshot.source_wave_dsl_path;
+  if (out_source_campaign_path) {
+    *out_source_campaign_path = source_campaign_path.string();
   }
-  if (out_job_contract_path) *out_job_contract_path = snapshot.contract_dsl_path;
-  if (out_job_wave_path) *out_job_wave_path = snapshot.wave_dsl_path;
+  if (out_campaign_snapshot_path) {
+    *out_campaign_snapshot_path = snapshot_path.string();
+  }
   return true;
 }
 
-[[nodiscard]] bool launch_runner_process(
+[[nodiscard]] bool decode_campaign_snapshot(
+    const app_context_t& app, const std::string& campaign_dsl_path,
+    cuwacunu::camahjucunu::iitepi_campaign_instruction_t* out_instruction,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out_instruction) {
+    if (error) *error = "campaign decode output pointer is null";
+    return false;
+  }
+  std::string grammar_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(app.defaults.campaign_grammar_path,
+                                               &grammar_text, error)) {
+    return false;
+  }
+  std::string campaign_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(campaign_dsl_path, &campaign_text,
+                                               error)) {
+    return false;
+  }
+  try {
+    *out_instruction =
+        cuwacunu::camahjucunu::dsl::decode_iitepi_campaign_from_dsl(
+            grammar_text, campaign_text);
+  } catch (const std::exception& e) {
+    if (error) {
+      *error = "failed to decode campaign DSL snapshot '" + campaign_dsl_path +
+               "': " + e.what();
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool launch_campaign_runner_process(
     const app_context_t& app,
-    const cuwacunu::hero::runtime::runtime_job_record_t& seed_record,
+    const cuwacunu::hero::runtime::runtime_campaign_record_t& seed_record,
     std::string* error) {
   if (error) error->clear();
 
@@ -836,25 +1143,15 @@ void write_child_errno_noexcept(int fd, int child_errno) {
 
     std::vector<std::string> args{};
     args.push_back(app.self_binary_path.string());
-    args.push_back("--job-runner");
-    args.push_back("--jobs-root");
-    args.push_back(app.defaults.jobs_root.string());
-    args.push_back("--job-cursor");
-    args.push_back(seed_record.job_cursor);
+    args.push_back("--campaign-runner");
+    args.push_back("--campaigns-root");
+    args.push_back(app.defaults.campaigns_root.string());
+    args.push_back("--campaign-cursor");
+    args.push_back(seed_record.campaign_cursor);
     args.push_back("--worker-binary");
-    args.push_back(seed_record.worker_binary);
-    args.push_back("--job-kind");
-    args.push_back(seed_record.job_kind);
+    args.push_back(app.defaults.main_campaign_binary.string());
     args.push_back("--config-folder");
     args.push_back(seed_record.config_folder);
-    if (!seed_record.board_dsl_path.empty()) {
-      args.push_back("--board-dsl");
-      args.push_back(seed_record.board_dsl_path);
-    }
-    if (!seed_record.binding_id.empty()) {
-      args.push_back("--binding");
-      args.push_back(seed_record.binding_id);
-    }
     if (seed_record.reset_runtime_state) {
       args.push_back("--reset-runtime-state");
     }
@@ -876,13 +1173,13 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   (void)::close(pipe_fds[0]);
   if (n > 0) {
     if (error) {
-      *error = "cannot exec detached runtime job runner: errno=" +
+      *error = "cannot exec detached runtime campaign runner: errno=" +
                std::to_string(exec_errno);
     }
     return false;
   }
 
-  cuwacunu::hero::runtime::runtime_job_record_t record = seed_record;
+  cuwacunu::hero::runtime::runtime_campaign_record_t record = seed_record;
   record.runner_pid = static_cast<std::uint64_t>(child);
   std::uint64_t runner_start_ticks = 0;
   if (!cuwacunu::hero::runtime::read_process_start_ticks(record.runner_pid.value(),
@@ -892,26 +1189,24 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     while (::waitpid(child, &ignored_status, 0) < 0 && errno == EINTR) {
     }
     if (error) {
-      *error = "cannot determine detached runtime job runner identity";
+      *error = "cannot determine detached runtime campaign runner identity";
     }
     return false;
   }
   record.runner_start_ticks = runner_start_ticks;
   record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  if (!write_runtime_job(app, record, error)) return false;
+  if (!write_runtime_campaign(app, record, error)) return false;
   return true;
 }
 
-[[nodiscard]] bool handle_tool_launch_default_board(
+[[nodiscard]] bool handle_tool_start_campaign(
     app_context_t* app, const std::string& arguments_json,
     std::string* out_structured, std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
-  std::string binding{};
   std::string config_folder = app->defaults.config_folder.string();
   bool reset_runtime_state = false;
-  (void)extract_json_string_field(arguments_json, "binding", &binding);
   (void)extract_json_string_field(arguments_json, "config_folder", &config_folder);
   (void)extract_json_bool_field(arguments_json, "reset_runtime_state",
                                 &reset_runtime_state);
@@ -920,121 +1215,183 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     config_folder = app->defaults.config_folder.string();
   }
 
-  std::vector<cuwacunu::hero::runtime::runtime_job_record_t> jobs{};
-  if (!list_runtime_jobs(*app, &jobs, out_error)) return false;
-  std::size_t active_jobs = 0;
-  for (auto& job : jobs) {
+  campaign_start_lock_guard_t start_lock{};
+  if (!acquire_campaign_start_lock(*app, &start_lock, out_error)) return false;
+
+  std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t> campaigns{};
+  if (!list_runtime_campaigns(*app, &campaigns, out_error)) return false;
+  std::size_t active_campaigns = 0;
+  for (auto& campaign : campaigns) {
     bool changed = false;
-    if (!reconcile_job_record(*app, &job, &changed, out_error)) return false;
-    const auto observation = cuwacunu::hero::runtime::observe_runtime_job(job);
-    const std::string stable =
-        cuwacunu::hero::runtime::stable_state_for_observation(job, observation);
-    if (stable == "launching" || stable == "running" || stable == "stopping" ||
-        stable == "orphaned") {
-      ++active_jobs;
+    if (!reconcile_campaign_record(*app, &campaign, &changed, out_error)) {
+      return false;
+    }
+    if (campaign.state == "launching" || campaign.state == "running" ||
+        campaign.state == "stopping") {
+      ++active_campaigns;
     }
   }
-  if (app->defaults.max_active_jobs > 0 &&
-      active_jobs >= app->defaults.max_active_jobs) {
-    *out_error = "max_active_jobs reached";
+  if (app->defaults.max_active_campaigns > 0 &&
+      active_campaigns >= app->defaults.max_active_campaigns) {
+    *out_error = "max_active_campaigns reached";
     return false;
   }
 
-  const std::string job_cursor =
-      cuwacunu::hero::runtime::make_job_cursor(app->defaults.jobs_root);
-  std::string resolved_binding_id{};
-  std::string source_board_dsl_path{};
-  std::string source_contract_dsl_path{};
-  std::string source_wave_dsl_path{};
-  std::string job_board_dsl_path{};
-  std::string job_contract_dsl_path{};
-  std::string job_wave_dsl_path{};
-  if (!prepare_job_board_dsl_snapshot(app->defaults.jobs_root, job_cursor,
-                                      std::filesystem::path(config_folder), binding,
-                                      &resolved_binding_id,
-                                      &source_board_dsl_path,
-                                      &job_board_dsl_path,
-                                      &source_contract_dsl_path,
-                                      &source_wave_dsl_path,
-                                      &job_contract_dsl_path,
-                                      &job_wave_dsl_path, out_error)) {
+  const std::string campaign_cursor =
+      cuwacunu::hero::runtime::make_campaign_cursor(app->defaults.campaigns_root);
+  std::string source_campaign_dsl_path{};
+  std::string campaign_dsl_path{};
+  if (!prepare_campaign_dsl_snapshot(*app, campaign_cursor,
+                                     std::filesystem::path(config_folder),
+                                     &source_campaign_dsl_path,
+                                     &campaign_dsl_path, out_error)) {
     return false;
   }
-  const std::vector<std::string> worker_argv = [&]() {
-    std::vector<std::string> args{};
-    args.push_back(app->defaults.main_board_binary.string());
-    args.push_back("--config-folder");
-    args.push_back(config_folder);
-    if (!job_board_dsl_path.empty()) {
-      args.push_back("--board-dsl");
-      args.push_back(job_board_dsl_path);
-    }
-    if (!resolved_binding_id.empty()) {
-      args.push_back("--binding");
-      args.push_back(resolved_binding_id);
-    }
-    if (reset_runtime_state) {
-      args.push_back("--reset-runtime-state");
-    }
-    return args;
-  }();
+  cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
+  if (!decode_campaign_snapshot(*app, campaign_dsl_path, &instruction, out_error)) {
+    return false;
+  }
 
-  cuwacunu::hero::runtime::runtime_job_record_t record{};
-  record.job_cursor = job_cursor;
-  record.job_kind = "default_board";
+  cuwacunu::hero::runtime::runtime_campaign_record_t record{};
+  record.campaign_cursor = campaign_cursor;
   record.boot_id = cuwacunu::hero::runtime::current_boot_id();
   record.state = "launching";
-  record.state_detail = "detached runner requested";
-  record.worker_binary = app->defaults.main_board_binary.string();
-  record.worker_command =
-      cuwacunu::hero::runtime::shell_join_command(worker_argv);
+  record.state_detail = "detached campaign runner requested";
   record.config_folder = config_folder;
-  record.source_board_dsl_path = source_board_dsl_path;
-  record.source_contract_dsl_path = source_contract_dsl_path;
-  record.source_wave_dsl_path = source_wave_dsl_path;
-  record.board_dsl_path = job_board_dsl_path;
-  record.contract_dsl_path = job_contract_dsl_path;
-  record.wave_dsl_path = job_wave_dsl_path;
-  record.binding_id = resolved_binding_id;
+  record.source_campaign_dsl_path = source_campaign_dsl_path;
+  record.campaign_dsl_path = campaign_dsl_path;
   record.reset_runtime_state = reset_runtime_state;
-  record.stdout_path =
-      cuwacunu::hero::runtime::runtime_job_stdout_path(app->defaults.jobs_root,
-                                                       job_cursor)
-          .string();
-  record.stderr_path =
-      cuwacunu::hero::runtime::runtime_job_stderr_path(app->defaults.jobs_root,
-                                                       job_cursor)
-          .string();
+  record.stdout_path = cuwacunu::hero::runtime::runtime_campaign_stdout_path(
+                           app->defaults.campaigns_root, campaign_cursor)
+                           .string();
+  record.stderr_path = cuwacunu::hero::runtime::runtime_campaign_stderr_path(
+                           app->defaults.campaigns_root, campaign_cursor)
+                           .string();
   record.started_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   record.updated_at_ms = record.started_at_ms;
+  for (const auto& run : instruction.runs) {
+    record.run_bind_ids.push_back(run.bind_ref);
+  }
 
-  if (!write_runtime_job(*app, record, out_error)) return false;
-  if (!launch_runner_process(*app, record, out_error)) {
+  if (!write_runtime_campaign(*app, record, out_error)) return false;
+  if (!launch_campaign_runner_process(*app, record, out_error)) {
     record.state = "failed_to_start";
     record.state_detail = *out_error;
     record.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     record.updated_at_ms = *record.finished_at_ms;
-    record.exit_code = 127;
     std::string ignored{};
-    (void)write_runtime_job(*app, record, &ignored);
+    (void)write_runtime_campaign(*app, record, &ignored);
     return false;
   }
 
   for (int attempt = 0; attempt < 80; ++attempt) {
     std::string poll_error{};
-    if (read_runtime_job(*app, job_cursor, &record, &poll_error)) {
-      if (record.target_pgid.has_value() || record.target_pid.has_value() ||
+    if (read_runtime_campaign(*app, campaign_cursor, &record, &poll_error)) {
+      if (record.runner_pid.has_value() ||
           record.state != "launching") {
         break;
       }
     }
     ::usleep(25 * 1000);
   }
-  if (!read_runtime_job(*app, job_cursor, &record, out_error)) return false;
-  const auto observation = cuwacunu::hero::runtime::observe_runtime_job(record);
+  if (!read_runtime_campaign(*app, campaign_cursor, &record, out_error)) {
+    return false;
+  }
   *out_structured =
-      "{\"job_cursor\":" + json_quote(job_cursor) + ",\"job\":" +
-      runtime_job_to_json(record, observation) + "}";
+      "{\"campaign_cursor\":" + json_quote(campaign_cursor) + ",\"campaign\":" +
+      runtime_campaign_to_json(record) + "}";
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_list_campaigns(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string state_filter{};
+  std::size_t limit = 0;
+  std::size_t offset = 0;
+  bool newest_first = true;
+  (void)extract_json_string_field(arguments_json, "state", &state_filter);
+  (void)extract_json_size_field(arguments_json, "limit", &limit);
+  (void)extract_json_size_field(arguments_json, "offset", &offset);
+  (void)extract_json_bool_field(arguments_json, "newest_first", &newest_first);
+  state_filter = trim_ascii(state_filter);
+
+  std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t> campaigns{};
+  if (!list_runtime_campaigns(*app, &campaigns, out_error)) return false;
+
+  std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t> rows{};
+  for (auto& campaign : campaigns) {
+    bool changed = false;
+    if (!reconcile_campaign_record(*app, &campaign, &changed, out_error)) {
+      return false;
+    }
+    if (!state_filter.empty() && campaign.state != state_filter) continue;
+    rows.push_back(std::move(campaign));
+  }
+
+  std::sort(rows.begin(), rows.end(), [newest_first](const auto& a,
+                                                     const auto& b) {
+    if (a.started_at_ms != b.started_at_ms) {
+      return newest_first ? (a.started_at_ms > b.started_at_ms)
+                          : (a.started_at_ms < b.started_at_ms);
+    }
+    return newest_first ? (a.campaign_cursor > b.campaign_cursor)
+                        : (a.campaign_cursor < b.campaign_cursor);
+  });
+
+  const std::size_t total = rows.size();
+  const std::size_t off = std::min(offset, rows.size());
+  std::size_t count = limit;
+  if (count == 0) count = rows.size() - off;
+  count = std::min(count, rows.size() - off);
+
+  std::ostringstream campaigns_json;
+  campaigns_json << "[";
+  for (std::size_t i = 0; i < count; ++i) {
+    if (i != 0) campaigns_json << ",";
+    campaigns_json << runtime_campaign_to_json(rows[off + i]);
+  }
+  campaigns_json << "]";
+
+  std::ostringstream out;
+  out << "{\"campaign_cursor\":\"\""
+      << ",\"count\":" << count
+      << ",\"total\":" << total
+      << ",\"state\":" << json_quote(state_filter)
+      << ",\"campaigns\":" << campaigns_json.str() << "}";
+  *out_structured = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_get_campaign(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string campaign_cursor{};
+  (void)extract_json_string_field(arguments_json, "campaign_cursor",
+                                  &campaign_cursor);
+  campaign_cursor = trim_ascii(campaign_cursor);
+  if (campaign_cursor.empty()) {
+    *out_error = "get_campaign requires arguments.campaign_cursor";
+    return false;
+  }
+
+  cuwacunu::hero::runtime::runtime_campaign_record_t record{};
+  if (!read_runtime_campaign(*app, campaign_cursor, &record, out_error)) {
+    return false;
+  }
+  bool changed = false;
+  if (!reconcile_campaign_record(*app, &record, &changed, out_error)) {
+    return false;
+  }
+  *out_structured =
+      "{\"campaign_cursor\":" + json_quote(campaign_cursor) + ",\"campaign\":" +
+      runtime_campaign_to_json(record) + "}";
   return true;
 }
 
@@ -1217,6 +1574,104 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   return true;
 }
 
+[[nodiscard]] bool handle_tool_stop_campaign(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string campaign_cursor{};
+  bool force = false;
+  (void)extract_json_string_field(arguments_json, "campaign_cursor",
+                                  &campaign_cursor);
+  (void)extract_json_bool_field(arguments_json, "force", &force);
+  campaign_cursor = trim_ascii(campaign_cursor);
+  if (campaign_cursor.empty()) {
+    *out_error = "stop_campaign requires arguments.campaign_cursor";
+    return false;
+  }
+
+  cuwacunu::hero::runtime::runtime_campaign_record_t campaign{};
+  if (!read_runtime_campaign(*app, campaign_cursor, &campaign, out_error)) {
+    return false;
+  }
+  bool campaign_changed = false;
+  if (!reconcile_campaign_record(*app, &campaign, &campaign_changed, out_error)) {
+    return false;
+  }
+  if (is_runtime_campaign_terminal_state(campaign.state)) {
+    *out_structured =
+        "{\"campaign_cursor\":" + json_quote(campaign_cursor) +
+        ",\"campaign\":" + runtime_campaign_to_json(campaign) + "}";
+    return true;
+  }
+
+  bool issued_stop = false;
+  if (!campaign.job_cursors.empty()) {
+    const std::string latest_job_cursor = campaign.job_cursors.back();
+    cuwacunu::hero::runtime::runtime_job_record_t latest_job{};
+    if (!read_runtime_job(*app, latest_job_cursor, &latest_job, out_error)) {
+      return false;
+    }
+    bool job_changed = false;
+    if (!reconcile_job_record(*app, &latest_job, &job_changed, out_error)) {
+      return false;
+    }
+    const auto observation =
+        cuwacunu::hero::runtime::observe_runtime_job(latest_job);
+    const std::string stable_state =
+        cuwacunu::hero::runtime::stable_state_for_observation(latest_job,
+                                                              observation);
+    if (!is_runtime_job_terminal_state(stable_state)) {
+      std::string ignored{};
+      const std::string stop_job_args =
+          "{\"job_cursor\":" + json_quote(latest_job_cursor) +
+          ",\"force\":" + std::string(force ? "true" : "false") + "}";
+      if (!handle_tool_stop_job(app, stop_job_args, &ignored, out_error)) {
+        return false;
+      }
+      issued_stop = true;
+    }
+  }
+
+  if (campaign.runner_pid.has_value() &&
+      cuwacunu::hero::runtime::process_identity_alive(
+          *campaign.runner_pid, campaign.runner_start_ticks, campaign.boot_id)) {
+    const int sig = force ? SIGKILL : SIGTERM;
+    if (::kill(static_cast<pid_t>(*campaign.runner_pid), sig) != 0 &&
+        errno != ESRCH) {
+      if (out_error->empty()) *out_error = "failed to signal campaign runner";
+      return false;
+    }
+    issued_stop = true;
+  }
+
+  if (!issued_stop) {
+    if (!reconcile_campaign_record(*app, &campaign, &campaign_changed, out_error)) {
+      return false;
+    }
+    if (is_runtime_campaign_terminal_state(campaign.state)) {
+      *out_structured =
+          "{\"campaign_cursor\":" + json_quote(campaign_cursor) +
+          ",\"campaign\":" + runtime_campaign_to_json(campaign) + "}";
+      return true;
+    }
+    *out_error = "campaign has no live process identity metadata";
+    return false;
+  }
+
+  campaign.state = "stopping";
+  campaign.state_detail = force ? "sent SIGKILL to campaign runner"
+                                : "sent SIGTERM to campaign runner";
+  campaign.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  if (!write_runtime_campaign(*app, campaign, out_error)) return false;
+
+  *out_structured =
+      "{\"campaign_cursor\":" + json_quote(campaign_cursor) +
+      ",\"campaign\":" + runtime_campaign_to_json(campaign) + "}";
+  return true;
+}
+
 [[nodiscard]] bool tail_file_lines(const std::filesystem::path& path,
                                    std::size_t lines, std::string* out,
                                    std::string* error) {
@@ -1312,15 +1767,18 @@ void write_child_errno_noexcept(int fd, int child_errno) {
 
   std::vector<cuwacunu::hero::runtime::runtime_job_record_t> jobs{};
   if (!list_runtime_jobs(*app, &jobs, out_error)) return false;
+  std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t> campaigns{};
+  if (!list_runtime_campaigns(*app, &campaigns, out_error)) return false;
 
-  std::size_t changed = 0;
+  std::size_t changed_jobs = 0;
+  std::size_t changed_campaigns = 0;
   std::ostringstream jobs_json;
   jobs_json << "[";
   bool first = true;
   for (auto& job : jobs) {
     bool updated = false;
     if (!reconcile_job_record(*app, &job, &updated, out_error)) return false;
-    if (updated) ++changed;
+    if (updated) ++changed_jobs;
     const auto observation = cuwacunu::hero::runtime::observe_runtime_job(job);
     if (!first) jobs_json << ",";
     first = false;
@@ -1328,11 +1786,29 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   }
   jobs_json << "]";
 
+  std::ostringstream campaigns_json;
+  campaigns_json << "[";
+  first = true;
+  for (auto& campaign : campaigns) {
+    bool updated = false;
+    if (!reconcile_campaign_record(*app, &campaign, &updated, out_error)) {
+      return false;
+    }
+    if (updated) ++changed_campaigns;
+    if (!first) campaigns_json << ",";
+    first = false;
+    campaigns_json << runtime_campaign_to_json(campaign);
+  }
+  campaigns_json << "]";
+
   std::ostringstream out;
-  out << "{\"job_cursor\":\"\""
-      << ",\"count\":" << jobs.size()
-      << ",\"changed\":" << changed
-      << ",\"jobs\":" << jobs_json.str() << "}";
+  out << "{\"campaign_cursor\":\"\",\"job_cursor\":\"\""
+      << ",\"job_count\":" << jobs.size()
+      << ",\"campaign_count\":" << campaigns.size()
+      << ",\"changed_jobs\":" << changed_jobs
+      << ",\"changed_campaigns\":" << changed_campaigns
+      << ",\"jobs\":" << jobs_json.str()
+      << ",\"campaigns\":" << campaigns_json.str() << "}";
   *out_structured = out.str();
   return true;
 }
@@ -1406,14 +1882,18 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
         hero_dsl_path.parent_path().string(), value));
   };
 
-  if (const auto it = values.find("jobs_root"); it != values.end()) {
-    out->jobs_root = resolve_local_path(it->second);
+  if (const auto it = values.find("campaigns_root"); it != values.end()) {
+    out->campaigns_root = resolve_local_path(it->second);
   }
-  if (const auto it = values.find("main_board_binary"); it != values.end()) {
-    out->main_board_binary = resolve_local_path(it->second);
+  if (const auto it = values.find("main_campaign_binary"); it != values.end()) {
+    out->main_campaign_binary = resolve_local_path(it->second);
   }
   if (const auto it = values.find("config_folder"); it != values.end()) {
     out->config_folder = resolve_local_path(it->second);
+  }
+  if (const auto it = values.find("campaign_grammar_filename");
+      it != values.end()) {
+    out->campaign_grammar_path = resolve_local_path(it->second);
   }
   if (const auto it = values.find("tail_default_lines"); it != values.end()) {
     if (!parse_size_token(it->second, &out->tail_default_lines)) {
@@ -1421,21 +1901,24 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
       return false;
     }
   }
-  if (const auto it = values.find("max_active_jobs"); it != values.end()) {
-    if (!parse_size_token(it->second, &out->max_active_jobs)) {
-      if (error) *error = "invalid max_active_jobs in " + hero_dsl_path.string();
+  if (const auto it = values.find("max_active_campaigns"); it != values.end()) {
+    if (!parse_size_token(it->second, &out->max_active_campaigns)) {
+      if (error) *error = "invalid max_active_campaigns in " + hero_dsl_path.string();
       return false;
     }
   }
 
-  if (out->jobs_root.empty()) {
-    out->jobs_root = "/cuwacunu/.runtime/jobs";
+  if (out->campaigns_root.empty()) {
+    out->campaigns_root = "/cuwacunu/.runtime/campaigns";
   }
-  if (out->main_board_binary.empty()) {
-    out->main_board_binary = "/cuwacunu/.build/hero/main_board";
+  if (out->main_campaign_binary.empty()) {
+    out->main_campaign_binary = "/cuwacunu/.build/hero/main_campaign";
   }
   if (out->config_folder.empty()) {
     out->config_folder = "/cuwacunu/src/config";
+  }
+  if (out->campaign_grammar_path.empty()) {
+    out->campaign_grammar_path = "/cuwacunu/src/config/bnf/iitepi.campaign.bnf";
   }
   if (out->tail_default_lines == 0) out->tail_default_lines = 120;
   return true;

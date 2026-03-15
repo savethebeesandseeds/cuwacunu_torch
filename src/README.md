@@ -20,12 +20,12 @@ At a high level, it combines:
 ## Core Modules
 
 - `piaabo`: shared utilities (config parsing, encryption, JSON/files, compat helpers).
-- `iitepi`: runtime registry for board/contract/wave configuration and locking.
+- `iitepi`: runtime registry for campaign/binding/contract/wave configuration and locking.
 - `camahjucunu`: data/exchange connectivity and typed trading/domain models.
 - `jkimyei`: training setup/orchestration (optimizers, schedulers, losses, schema).
 - `wikimyei`: model inference and representation-learning components (e.g. VICReg/MDN).
 - `iinuji`: terminal/UI rendering and command views for interactive inspection.
-- `tsiemene`: DSL and runtime directive infrastructure used across board/contract flows.
+- `tsiemene`: DSL and runtime directive infrastructure used across campaign/contract flows.
 
 ## Build and Test (from `src/`)
 

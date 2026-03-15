@@ -440,6 +440,10 @@ using hashimyei_runtime_defaults_t =
   return store_root / "catalog" / "hashimyei_catalog.idydb";
 }
 
+[[nodiscard]] bool is_ingest_lock_held_error(std::string_view error) {
+  return error.find("ingest lock already held:") != std::string_view::npos;
+}
+
 [[nodiscard]] bool maybe_auto_ingest_catalog(app_context_t* app,
                                              bool force,
                                              std::string* out_error) {
@@ -459,7 +463,15 @@ using hashimyei_runtime_defaults_t =
     return true;
   }
 
-  if (!app->catalog.ingest_filesystem(app->store_root, out_error)) {
+  std::string ingest_error;
+  if (!app->catalog.ingest_filesystem(app->store_root, &ingest_error)) {
+    if (app->catalog.opened() && is_ingest_lock_held_error(ingest_error)) {
+      if (out_error) out_error->clear();
+      app->last_auto_ingest_at = std::chrono::steady_clock::now();
+      app->auto_ingest_ready = true;
+      return true;
+    }
+    if (out_error) *out_error = std::move(ingest_error);
     return false;
   }
 
@@ -1417,13 +1429,6 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
     std::string open_error;
     if (!app->catalog.open(app->catalog_options, &open_error)) {
       *out_error_message = "catalog open failed: " + open_error;
-      return false;
-    }
-  }
-  if (tool_name != "hero.hashimyei.reset_catalog") {
-    std::string ingest_error;
-    if (!::maybe_auto_ingest_catalog(app, true, &ingest_error)) {
-      *out_error_message = "catalog initial ingest failed: " + ingest_error;
       return false;
     }
   }

@@ -67,7 +67,7 @@ Hashimyei Hero and Lattice Hero catalogs.
   execution_profile_json, state_txt, metric_num, text_a, text_b, projection_version,
   ts_ms, payload_json, projection_key, projection_num, projection_txt,
   projection_key_aux, projection_txt_aux,
-  started_at_ms, finished_at_ms, ok_txt, total_steps, board_hash, run_id`.
+  started_at_ms, finished_at_ms, ok_txt, total_steps, campaign_hash, run_id`.
 - `projection_meta.payload_json` stores canonical projection payload as
   latent-lineage-state text (`projection_lls`).
 

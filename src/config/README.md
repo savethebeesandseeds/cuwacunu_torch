@@ -3,7 +3,7 @@
 This folder is organized by role:
 
 - `./.config`: global runtime settings (exchange, seeds, UI/system knobs).
-- `./instructions/default.iitepi.contract.dsl`: board contract defaults file.
+- `./instructions/default.iitepi.contract.dsl`: campaign contract defaults file.
 - `./bnf/`: grammar files (`*.bnf`).
 - `./instructions/`: DSL payload files (`*.dsl`).
 - `./secrets/real/`: real exchange secret material.
@@ -14,6 +14,7 @@ This folder is organized by role:
 - `bnf/tsi.source.dataloader.sources.bnf`
 - `bnf/tsi.source.dataloader.channels.bnf`
 - `bnf/jkimyei.bnf`
+- `bnf/iitepi.campaign.bnf`
 - `bnf/iitepi.contract.bnf`
 - `bnf/iitepi.contract.circuit.bnf`
 - `bnf/iitepi.wave.bnf`
@@ -26,7 +27,7 @@ This folder is organized by role:
 - `instructions/default.tsi.source.dataloader.sources.dsl`
 - `instructions/default.tsi.source.dataloader.channels.dsl`
 - `instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl`
-- `instructions/default.iitepi.board.dsl`
+- `instructions/default.iitepi.campaign.dsl`
 - `instructions/default.iitepi.contract.circuit.dsl`
 - `instructions/default.iitepi.wave.dsl` (canonical wave payload set)
 - `instructions/default.tsi.wikimyei.representation.vicreg.dsl`
@@ -34,7 +35,6 @@ This folder is organized by role:
 - `instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl`
 - `instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl`
 - `instructions/default.hero.runtime.dsl`
-- `instructions/default.hero.jkimyei.dsl`
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
 - `secrets/real/exchange.key` (expected, may be absent locally)
 - `secrets/real/openai.key` (expected for HERO/OpenAI, may be absent locally)
@@ -208,7 +208,10 @@ Useful MCP tools:
 - `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, Runtime HERO jobs root, and Hero catalogs resolved from the saved global config; refuses reset while active runtime jobs exist)
 
 Runtime MCP tools:
-- `hero.runtime.launch_default_board`
+- `hero.runtime.start_campaign`
+- `hero.runtime.list_campaigns`
+- `hero.runtime.get_campaign`
+- `hero.runtime.stop_campaign`
 - `hero.runtime.list_jobs`
 - `hero.runtime.get_job`
 - `hero.runtime.stop_job`
@@ -219,14 +222,13 @@ Runtime HERO defaults:
 - loaded from `instructions/default.hero.runtime.dsl`
 - resolved through `[REAL_HERO].runtime_hero_dsl_filename`
 
-`hero_jkimyei_mcp`
-- stages immutable `jkimyei` campaign snapshots under `campaigns_root`
-- loaded from `instructions/default.hero.jkimyei.dsl`
-- resolved through `[REAL_HERO].jkimyei_hero_dsl_filename`
-- Runtime Hero jobs persist under `jobs_root` by `job_cursor`, with `job.lls`,
-  `board.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and stdout/stderr logs
-  per job
-- runtime job liveness is reconciled using boot id + process start ticks, not bare pid reuse
+Runtime Hero campaigns persist under `campaigns_root` by `campaign_cursor`, with
+`campaign.lls`, `campaign.dsl`, and campaign-level stdout/stderr logs. Child jobs
+persist under `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/`, where
+`job_cursor` is derived from the parent `campaign_cursor`, with `job.lls`,
+`campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and worker
+stdout/stderr logs.
+Runtime liveness is reconciled using boot id + process start ticks, not bare pid reuse.
 
 Deterministic policy:
 - `hero.config.ask` and `hero.config.fix` are disabled by design in current runtime mode.
@@ -234,7 +236,7 @@ Deterministic policy:
   by `hero.config.dsl.set`; instance revisions are handled by Hashimyei HERO lineage.
 - `hero.config.dev_nuke_reset` uses the saved global config on disk, not dirty
   unsaved in-memory edits.
-- `hero.config.dev_nuke_reset` fails fast while active Runtime HERO jobs still exist.
+- `hero.config.dev_nuke_reset` fails fast while active Runtime HERO jobs or campaigns still exist under `campaigns_root`.
 
 ## Hashimyei Catalog MCP
 
@@ -333,15 +335,9 @@ Supported MCP tools:
 ## Split Policy
 
 - Global settings live in `./.config`: `[GENERAL]`, `[GUI]`, `[BNF]`, `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`, `[REAL_HERO]`.
-  `GENERAL.default_board_dsl_filename` points to the board DSL file.
-  `GENERAL.default_jkimyei_campaign_dsl_filename` points to the default
-  jkimyei campaign DSL file.
-  The active runtime `BIND` entry is selected inside that board DSL via
-  `ACTIVE_BIND <bind_id>;`.
-  `GENERAL.reset_runtime_state_at_start=true` makes `main_board` clear the
-  active runtime dump roots, Runtime HERO jobs root, and Hero catalogs before board init, which is
-  useful for a clean dev loop.
-  The same reset can be invoked explicitly through
+  `GENERAL.default_iitepi_campaign_dsl_filename` points to the default
+  runtime campaign DSL file.
+  Runtime reset is intentionally explicit and can be invoked through
   `/cuwacunu/.build/hero/runtime_reset` or `make -C /cuwacunu/src/main reset-runtime`.
 - `[GUI]` holds iinuji defaults, currently:
   `iinuji_logs_buffer_capacity`, `iinuji_logs_show_date`,
@@ -352,16 +348,14 @@ Supported MCP tools:
   - `./instructions/default.hero.config.dsl` (Config HERO runtime policy)
   - `./instructions/default.hero.hashimyei.dsl` (Hashimyei HERO catalog defaults)
   - `./instructions/default.hero.lattice.dsl` (Lattice HERO catalog/runtime defaults)
-  - `./instructions/default.hero.runtime.dsl` (Runtime HERO detached job defaults)
-  - `./instructions/default.hero.jkimyei.dsl` (Jkimyei HERO staged campaign defaults)
-- `[REAL_HERO]` owns the canonical pointer paths for those five HERO DSL files:
+  - `./instructions/default.hero.runtime.dsl` (Runtime HERO campaign/job defaults)
+- `[REAL_HERO]` owns the canonical pointer paths for those four HERO DSL files:
   - `config_hero_dsl_filename`
   - `hashimyei_hero_dsl_filename`
   - `lattice_hero_dsl_filename`
   - `runtime_hero_dsl_filename`
-  - `jkimyei_hero_dsl_filename`
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
-  - `iitepi_board_grammar_filename`
+  - `iitepi_campaign_grammar_filename`
   - `iitepi_wave_grammar_filename`
   - `network_design_grammar_filename`
   - `vicreg_grammar_filename`
@@ -373,34 +367,21 @@ Supported MCP tools:
     shared grammar (`bnf/jkimyei.bnf`) for per-component jkimyei DSL files
   - `tsiemene_circuit_grammar_filename`
   - `canonical_path_grammar_filename`
-- Board DSL (`./instructions/default.iitepi.board.dsl`) declares:
-  - `ACTIVE_BIND <bind_id>;`
-  - `BOARD { ... }` root block
+- Unified campaign DSL (`./instructions/default.iitepi.campaign.dsl`) declares:
+  - `CAMPAIGN { ... }` root block
   - `IMPORT_CONTRACT_FILE "<contract_defaults_file>";`
   - `IMPORT_WAVE_FILE "<wave_dsl_file>";`
   - `BIND <id> { CONTRACT = <derived_contract_id>; WAVE = <wave_id>; }`
+  - ordered `RUN <bind_id>;`
   - optional bind-local variables inside `BIND`, where names must start with `__`
     and are intended for shared pre-decode placeholder resolution such as
     `% __sampler ? sequential %`
-- Standalone jkimyei campaign DSL foundation
-  (`./instructions/default.jkimyei.campaign.dsl`) declares:
-  - `ACTIVE_CAMPAIGN <campaign_id>;`
-  - `JKIMYEI_CAMPAIGN { ... }` root block
-  - the same `IMPORT_CONTRACT_FILE` / `IMPORT_WAVE_FILE` wave-contract bind layer
-  - `CAMPAIGN <id> { BINDS = <bind_id>, ...; }`
-  - the same optional `__*` bind-local variable assignments used by board binds
-  `GENERAL.default_jkimyei_campaign_dsl_filename` now points at the default
-  source file, and campaign snapshots are expected to follow the same immutable
-  source->runtime copy pattern as Runtime HERO board snapshots.
-- Jkimyei HERO defaults (`./instructions/default.hero.jkimyei.dsl`) currently
-  own:
-  - `campaigns_root`
-  - `config_folder`
-  - `campaign_grammar_filename`
-  and the first narrow tool surface stages immutable campaign snapshots under
-  `campaigns_root/<campaign_cursor>/`.
-- Legacy wrapper files `default.board.config` and `default.wave.config` are removed.
-  Use direct DSL paths in `GENERAL.default_board_dsl_filename` and board `IMPORT_WAVE_FILE`.
+- Runtime Hero owns campaign dispatch and persists immutable snapshots under
+  `campaigns_root/<campaign_cursor>/`. Each child job receives a staged
+  `campaign.dsl`, `binding.contract.dsl`, and `binding.wave.dsl` under
+  `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/`.
+- The public dispatcher is campaign-oriented. The top-level runtime DSL is now
+  `campaign.dsl`, and `jkimyei` is not a separate Hero.
 - Contract settings live in `./instructions/default.iitepi.contract.dsl` with
   marker format:
   - `-----BEGIN IITEPI CONTRACT-----`
@@ -443,11 +424,11 @@ Supported MCP tools:
 
 ## Runtime Contract Lock
 
-- Board, contract, and wave files are loaded into immutable runtime snapshots keyed by manifest SHA-256 hash.
-- `board.contract@init` is board-binding driven (`CONTRACT` + `WAVE`).
-- Editing board/contract/wave dependencies on disk during runtime is allowed, but changes are not reloaded mid-run.
+- Campaign, contract, and wave files are loaded into immutable runtime snapshots keyed by manifest SHA-256 hash.
+- `runtime_binding.contract@init` is binding driven (`CONTRACT` + `WAVE`).
+- Editing campaign/contract/wave dependencies on disk during runtime is allowed, but changes are not reloaded mid-run.
 - A restart is required for edits to take effect.
-- Reload/refresh boundaries perform integrity checks across all registered board/contract/wave snapshots; if dependencies changed on disk,
+- Reload/refresh boundaries perform integrity checks across all registered campaign/contract/wave snapshots; if dependencies changed on disk,
   runtime fails fast to prevent mixed state.
 
 ## Value Estimation Runtime Notes

@@ -45,7 +45,7 @@ required = true
 default = /cuwacunu/src/config
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = root config folder passed to runtime board/wave execution context; loaded from Lattice HERO defaults DSL
+nuance = root config folder passed to runtime campaign/wave execution context; loaded from Lattice HERO defaults DSL
 
 [FIELD encrypted]
 key = encrypted

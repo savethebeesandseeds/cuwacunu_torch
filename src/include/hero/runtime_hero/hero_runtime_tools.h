@@ -1,19 +1,22 @@
 #pragma once
 
 #include <cstddef>
+#include <cctype>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace cuwacunu {
 namespace hero {
 namespace runtime_mcp {
 
 struct runtime_defaults_t {
-  std::filesystem::path jobs_root{};
-  std::filesystem::path main_board_binary{};
+  std::filesystem::path campaigns_root{};
+  std::filesystem::path main_campaign_binary{};
   std::filesystem::path config_folder{};
+  std::filesystem::path campaign_grammar_path{};
   std::size_t tail_default_lines{120};
-  std::size_t max_active_jobs{1};
+  std::size_t max_active_campaigns{1};
 };
 
 struct app_context_t {
@@ -35,6 +38,11 @@ struct app_context_t {
                                      app_context_t* app,
                                      std::string* out_tool_result_json,
                                      std::string* out_error_message);
+[[nodiscard]] inline bool tool_result_is_error(
+    std::string_view tool_result_json) {
+  return tool_result_json.find("\"isError\":true") != std::string_view::npos ||
+         tool_result_json.find("\"isError\": true") != std::string_view::npos;
+}
 
 [[nodiscard]] std::string build_tools_list_result_json();
 [[nodiscard]] std::string build_tools_list_human_text();

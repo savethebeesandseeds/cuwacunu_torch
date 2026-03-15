@@ -13,13 +13,13 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 $(eval $(call BUILD_OBJ, common/iitepi, config_space_t,   iitepi_config_space_t))
 $(eval $(call BUILD_OBJ, common/iitepi, contract_space_t, iitepi_contract_space_t))
 $(eval $(call BUILD_OBJ, common/iitepi, wave_space_t,     iitepi_wave_space_t))
-$(eval $(call BUILD_OBJ, common/iitepi, board_space_t,    iitepi_board_space_t))
+$(eval $(call BUILD_OBJ, common/iitepi, runtime_binding_space_t,    iitepi_runtime_binding_space_t))
 
 IITEPI := \
   $(OUTPUT_PATH)/common/iitepi/config_space_t.o \
   $(OUTPUT_PATH)/common/iitepi/contract_space_t.o \
   $(OUTPUT_PATH)/common/iitepi/wave_space_t.o \
-  $(OUTPUT_PATH)/common/iitepi/board_space_t.o
+  $(OUTPUT_PATH)/common/iitepi/runtime_binding_space_t.o
 
 # -----------------------------------------------------------------
 # Aggregate Target

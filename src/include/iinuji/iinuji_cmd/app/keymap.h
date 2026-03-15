@@ -342,7 +342,7 @@ inline AppKeyDispatchResult dispatch_app_key(
           case DataPlotMode::ChannelWeight:
             dispatch_canonical_internal_call(state, canonical_paths::kDataPlotModeWeight);
             break;
-          case DataPlotMode::NormWindow:
+          case DataPlotMode::NormalizationPolicy:
             dispatch_canonical_internal_call(state, canonical_paths::kDataPlotModeNorm);
             break;
           case DataPlotMode::FileBytes:

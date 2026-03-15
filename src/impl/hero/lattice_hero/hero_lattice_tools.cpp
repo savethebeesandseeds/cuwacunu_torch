@@ -37,7 +37,7 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/types/types_data.h"
 #include "camahjucunu/types/types_enums.h"
-#include "iitepi/board/board.contract.init.h"
+#include "iitepi/runtime_binding/runtime_binding.contract.init.h"
 #include "iitepi/iitepi.h"
 #include "piaabo/dlogs.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
@@ -63,7 +63,7 @@ using app_context_t = cuwacunu::hero::lattice_mcp::app_context_t;
 using wave_runtime_defaults_t = cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t;
 
 struct binding_resolution_t {
-  std::string board_hash{};
+  std::string campaign_hash{};
   std::string binding_id{};
   std::string wave_id{};
   cuwacunu::hero::wave::wave_cell_coord_t coord{};
@@ -125,36 +125,10 @@ __attribute__((constructor(102))) void disable_terminal_logs_pre_main() {
          text.substr(0, prefix.size()) == prefix;
 }
 
-[[nodiscard]] bool is_hashimyei_hex_token(std::string_view token) {
-  if (token.size() < 3) return false;
-  if (token[0] != '0' || token[1] != 'x') return false;
-  for (std::size_t i = 2; i < token.size(); ++i) {
-    const unsigned char c = static_cast<unsigned char>(token[i]);
-    const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-    if (!hex) return false;
-  }
-  return true;
-}
-
 [[nodiscard]] std::string normalize_source_hashimyei_cursor(
     std::string_view canonical_path) {
-  const std::string cp = trim_ascii(canonical_path);
-  if (!starts_with(cp, "tsi.source.")) return cp;
-  std::vector<std::string> parts{};
-  std::size_t begin = 0;
-  while (begin <= cp.size()) {
-    const std::size_t dot = cp.find('.', begin);
-    if (dot == std::string::npos) {
-      parts.push_back(cp.substr(begin));
-      break;
-    }
-    parts.push_back(cp.substr(begin, dot - begin));
-    begin = dot + 1;
-  }
-  if (parts.size() <= 3) return cp;
-  const std::string& tail = parts.back();
-  if (is_hashimyei_hex_token(tail)) return cp;
-  return parts[0] + "." + parts[1] + "." + parts[2];
+  return cuwacunu::hero::wave::lattice_catalog_store_t::
+      normalize_runtime_hashimyei_cursor(canonical_path);
 }
 
 [[nodiscard]] std::string strip_inline_comment(std::string_view in) {
@@ -1647,7 +1621,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"ok\":" << (t.ok ? "true" : "false") << ","
       << "\"error\":" << json_quote(t.error) << ","
       << "\"total_steps\":" << t.total_steps << ","
-      << "\"board_hash\":" << json_quote(t.board_hash) << ","
+      << "\"campaign_hash\":" << json_quote(t.campaign_hash) << ","
       << "\"run_id\":" << json_quote(t.run_id) << "}";
   return out.str();
 }
@@ -1678,13 +1652,17 @@ void write_jsonrpc_error(std::string_view id_json, int code,
 
 [[nodiscard]] std::string run_manifest_to_json(
     const cuwacunu::hero::hashimyei::run_manifest_t& run) {
+  // DEV_WARNING: the report plane exposes campaign_hash/campaign_identity, but
+  // it still does not carry Runtime Hero campaign_cursor/job_cursor. Add that
+  // control-plane lineage before relying on lattice data for campaign-level
+  // orchestration or multi-campaign reconciliation.
   std::ostringstream out;
   out << "{"
       << "\"schema\":" << json_quote(run.schema) << ","
       << "\"run_id\":" << json_quote(run.run_id) << ","
       << "\"started_at_ms\":" << run.started_at_ms << ","
-      << "\"board_identity\":"
-      << hashimyei_identity_to_json(run.board_identity) << ","
+      << "\"campaign_identity\":"
+      << hashimyei_identity_to_json(run.campaign_identity) << ","
       << "\"wave_contract_binding\":"
       << wave_contract_binding_to_json(run.wave_contract_binding) << ","
       << "\"sampler\":" << json_quote(run.sampler) << ","
@@ -2155,7 +2133,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
 [[nodiscard]] bool collect_wave_sink_cell_report(
     const binding_resolution_t& resolved,
     const cuwacunu::hero::wave::wave_execution_profile_t& profile,
-    const cuwacunu::iitepi::board_binding_run_record_t& run,
+    const cuwacunu::iitepi::runtime_binding_run_record_t& run,
     const cuwacunu::hero::wave::wave_trial_t& trial,
     std::string_view source_runtime_projection_lls,
     cuwacunu::hero::wave::lattice_cell_report_t* out,
@@ -2185,7 +2163,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   joined << "wave_hash=" << resolved.coord.wave_hash << "\n";
   joined << "binding_id=" << profile.binding_id << "\n";
   joined << "wave_id=" << profile.wave_id << "\n";
-  joined << "board_hash=" << run.board_hash << "\n";
+  joined << "campaign_hash=" << run.campaign_hash << "\n";
   joined << "run_id=" << trial.run_id << "\n";
   joined << "trial_id=" << trial.trial_id << "\n";
   joined << "state_snapshot_id=" << trial.state_snapshot_id << "\n";
@@ -2320,8 +2298,8 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     cuwacunu::iitepi::config_space_t::change_config_file(
         app->config_folder.string().c_str());
     cuwacunu::iitepi::config_space_t::update_config();
-    cuwacunu::iitepi::board_space_t::init();
-    cuwacunu::iitepi::board_space_t::assert_locked_runtime_intact_or_fail_fast();
+    cuwacunu::iitepi::runtime_binding_space_t::init();
+    cuwacunu::iitepi::runtime_binding_space_t::assert_locked_runtime_intact_or_fail_fast();
     app->runtime_initialized = true;
     return true;
   } catch (const std::exception& e) {
@@ -2350,14 +2328,15 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   if (!ensure_runtime_initialized(app, error)) return false;
 
   try {
-    out->board_hash = cuwacunu::iitepi::board_space_t::locked_board_hash();
-    const auto board = cuwacunu::iitepi::board_space_t::board_itself(out->board_hash);
-    if (!board) {
-      if (error) *error = "board record is null";
+    out->campaign_hash = cuwacunu::iitepi::runtime_binding_space_t::locked_runtime_binding_hash();
+    const auto runtime_binding_record =
+        cuwacunu::iitepi::runtime_binding_space_t::runtime_binding_itself(out->campaign_hash);
+    if (!runtime_binding_record) {
+      if (error) *error = "runtime binding record is null";
       return false;
     }
 
-    const auto& instruction = board->board.decoded();
+    const auto& instruction = runtime_binding_record->runtime_binding.decoded();
 
     struct candidate_t {
       std::string binding_id;
@@ -2372,10 +2351,10 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       if (!requested_wave_id.empty() && bind.wave_ref != requested_wave_id) continue;
 
       const std::string contract_hash =
-          cuwacunu::iitepi::board_space_t::contract_hash_for_binding(out->board_hash,
+          cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(out->campaign_hash,
                                                                      bind.id);
       const std::string wave_hash =
-          cuwacunu::iitepi::board_space_t::wave_hash_for_binding(out->board_hash,
+          cuwacunu::iitepi::runtime_binding_space_t::wave_hash_for_binding(out->campaign_hash,
                                                                  bind.id);
 
       if (!requested_contract_hash.empty() && contract_hash != requested_contract_hash) {
@@ -2391,7 +2370,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
 
     if (candidates.empty()) {
       if (error) {
-        *error = "no board binding matches requested coordinate (contract_hash=" +
+        *error = "no campaign binding matches requested coordinate (contract_hash=" +
                  std::string(requested_contract_hash) + ", wave_hash=" +
                  std::string(requested_wave_hash) + ")";
       }
@@ -2772,6 +2751,10 @@ struct lattice_tool_descriptor_t {
                                               const std::string& arguments_json,
                                               std::string* out_structured,
                                               std::string* out_error);
+[[nodiscard]] bool handle_tool_get_view_lls(app_context_t* app,
+                                            const std::string& arguments_json,
+                                            std::string* out_structured,
+                                            std::string* out_error);
 [[nodiscard]] bool handle_tool_reset_catalog(app_context_t* app,
                                              const std::string& arguments_json,
                                              std::string* out_structured,
@@ -2970,7 +2953,7 @@ constexpr lattice_tool_descriptor_t kLatticeTools[] = {
     report_fragments_json << report_fragment_to_json(rows[i]);
   }
   report_fragments_json << "]";
-  if (!rows.empty()) {
+  if (canonical_path.empty() && !rows.empty()) {
     canonical_path = normalize_source_hashimyei_cursor(rows.front().canonical_path);
   }
 
@@ -3102,7 +3085,9 @@ constexpr lattice_tool_descriptor_t kLatticeTools[] = {
     return false;
   }
 
-  canonical_path = normalize_source_hashimyei_cursor(selected->canonical_path);
+  if (canonical_path.empty()) {
+    canonical_path = normalize_source_hashimyei_cursor(selected->canonical_path);
+  }
   std::string normalized_intersection = intersection_cursor_arg;
   if (normalized_intersection.empty() && use_wave_cursor) {
     normalized_intersection =
@@ -3355,7 +3340,7 @@ constexpr lattice_tool_descriptor_t kLatticeTools[] = {
     report_fragments_json << report_fragment_to_json(selected[i]);
   }
   report_fragments_json << "]";
-  if (!selected.empty()) {
+  if (canonical_path.empty() && !selected.empty()) {
     canonical_path = normalize_source_hashimyei_cursor(
         selected.front().canonical_path);
   }
@@ -3412,6 +3397,72 @@ constexpr lattice_tool_descriptor_t kLatticeTools[] = {
       << ",\"count\":" << selected.size()
       << ",\"report_fragments\":" << report_fragments_json.str()
       << ",\"report_lls\":" << json_quote(report_text) << "}";
+  *out_structured = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_get_view_lls(app_context_t* app,
+                                            const std::string& arguments_json,
+                                            std::string* out_structured,
+                                            std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string view_kind{};
+  std::string run_id{};
+  std::string contract_hash{};
+  (void)extract_json_string_field(arguments_json, "view_kind", &view_kind);
+  (void)extract_json_string_field(arguments_json, "run_id", &run_id);
+  (void)extract_json_string_field(arguments_json, "contract_hash",
+                                  &contract_hash);
+  view_kind = trim_ascii(view_kind);
+  run_id = trim_ascii(run_id);
+  contract_hash = trim_ascii(contract_hash);
+  if (view_kind.empty()) {
+    *out_error = "get_view_lls requires arguments.view_kind";
+    return false;
+  }
+  if (run_id.empty()) {
+    *out_error = "get_view_lls requires arguments.run_id";
+    return false;
+  }
+
+  std::uint64_t wave_cursor = 0;
+  bool use_wave_cursor =
+      extract_json_wave_cursor_field(arguments_json, "wave_cursor", &wave_cursor);
+  std::uint64_t mask_only = 0;
+  if (extract_json_u64_field(arguments_json, "wave_cursor_mask", &mask_only)) {
+    *out_error = "get_view_lls does not support wave_cursor_mask";
+    return false;
+  }
+
+  if (!refresh_runtime_report_fragment_catalog(app, out_error)) return false;
+
+  cuwacunu::hero::wave::runtime_view_report_t view{};
+  if (!app->catalog.get_runtime_view_lls(view_kind, run_id, wave_cursor,
+                                         use_wave_cursor, contract_hash, &view,
+                                         out_error)) {
+    return false;
+  }
+
+  std::ostringstream out;
+  out << "{\"canonical_path\":" << json_quote(view.canonical_path)
+      << ",\"view_kind\":" << json_quote(view.view_kind)
+      << ",\"run_id\":" << json_quote(view.run_id)
+      << ",\"contract_hash\":"
+      << (view.contract_hash.empty() ? "null" : json_quote(view.contract_hash))
+      << ",\"wave_cursor\":"
+      << (view.has_wave_cursor ? json_quote(std::to_string(view.wave_cursor))
+                               : "null")
+      << ",\"wave_cursor_view\":"
+      << (view.has_wave_cursor
+              ? json_quote(
+                    cuwacunu::hero::wave::lattice_catalog_store_t::
+                        format_runtime_wave_cursor(view.wave_cursor))
+              : "null")
+      << ",\"match_count\":" << view.match_count
+      << ",\"ambiguity_count\":" << view.ambiguity_count
+      << ",\"view_lls\":" << json_quote(view.view_lls) << "}";
   *out_structured = out.str();
   return true;
 }

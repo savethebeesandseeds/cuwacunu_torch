@@ -10,6 +10,7 @@
 #include <csignal>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <optional>
 #include <sstream>
@@ -27,29 +28,32 @@ namespace cuwacunu {
 namespace hero {
 namespace runtime {
 
-inline constexpr std::string_view kRuntimeJobSchemaV1 = "hero.runtime.job.v1";
+inline constexpr std::string_view kRuntimeJobSchemaV2 = "hero.runtime.job.v2";
 inline constexpr std::string_view kRuntimeJobManifestFilename = "job.lls";
-inline constexpr std::string_view kRuntimeJobBoardDslFilename = "board.dsl";
+inline constexpr std::string_view kRuntimeJobCampaignDslFilename = "campaign.dsl";
 inline constexpr std::string_view kRuntimeJobContractDslFilename =
     "binding.contract.dsl";
 inline constexpr std::string_view kRuntimeJobWaveDslFilename = "binding.wave.dsl";
+inline constexpr std::string_view kRuntimeJobInstructionsDirname = "instructions";
 inline constexpr std::string_view kRuntimeJobStdoutFilename = "stdout.log";
 inline constexpr std::string_view kRuntimeJobStderrFilename = "stderr.log";
+inline constexpr std::string_view kRuntimeCampaignJobsDirname = "jobs";
+inline constexpr std::string_view kRuntimeLegacyJobsDirname = ".jobs";
 
 struct runtime_job_record_t {
-  std::string schema{std::string(kRuntimeJobSchemaV1)};
+  std::string schema{std::string(kRuntimeJobSchemaV2)};
   std::string job_cursor{};
-  std::string job_kind{"default_board"};
+  std::string job_kind{"campaign_run"};
   std::string boot_id{};
   std::string state{"launching"};
   std::string state_detail{};
   std::string worker_binary{};
   std::string worker_command{};
   std::string config_folder{};
-  std::string source_board_dsl_path{};
+  std::string source_campaign_dsl_path{};
   std::string source_contract_dsl_path{};
   std::string source_wave_dsl_path{};
-  std::string board_dsl_path{};
+  std::string campaign_dsl_path{};
   std::string contract_dsl_path{};
   std::string wave_dsl_path{};
   std::string binding_id{};
@@ -114,43 +118,53 @@ struct runtime_job_observation_t {
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_dir(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
-  return jobs_root / std::string(job_cursor);
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  const std::string trimmed = trim_ascii(job_cursor);
+  const std::size_t marker = trimmed.find(".job.");
+  if (marker != std::string::npos && marker != 0) {
+    const std::string campaign_cursor = trimmed.substr(0, marker);
+    return campaigns_root / campaign_cursor /
+           std::string(kRuntimeCampaignJobsDirname) / trimmed;
+  }
+  return campaigns_root / std::string(kRuntimeLegacyJobsDirname) / trimmed;
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_manifest_path(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
-  return runtime_job_dir(jobs_root, job_cursor) /
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobManifestFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_stdout_path(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
-  return runtime_job_dir(jobs_root, job_cursor) /
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobStdoutFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_board_dsl_path(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
-  return runtime_job_dir(jobs_root, job_cursor) /
-         std::string(kRuntimeJobBoardDslFilename);
+[[nodiscard]] inline std::filesystem::path runtime_job_campaign_dsl_path(
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
+         std::string(kRuntimeJobInstructionsDirname) /
+         std::string(kRuntimeJobCampaignDslFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_contract_dsl_path(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
-  return runtime_job_dir(jobs_root, job_cursor) /
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
+         std::string(kRuntimeJobInstructionsDirname) /
          std::string(kRuntimeJobContractDslFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_wave_dsl_path(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
-  return runtime_job_dir(jobs_root, job_cursor) /
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
+         std::string(kRuntimeJobInstructionsDirname) /
          std::string(kRuntimeJobWaveDslFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_stderr_path(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor) {
-  return runtime_job_dir(jobs_root, job_cursor) /
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobStderrFilename);
 }
 
@@ -250,7 +264,33 @@ struct runtime_job_observation_t {
 }
 
 [[nodiscard]] inline std::string make_job_cursor(
-    const std::filesystem::path& jobs_root) {
+    const std::filesystem::path& campaigns_root, std::string_view campaign_cursor,
+    std::size_t job_index) {
+  const std::string parent = trim_ascii(campaign_cursor);
+  auto format_index = [](std::size_t value) {
+    std::ostringstream out;
+    out << std::setw(4) << std::setfill('0') << value;
+    return out.str();
+  };
+  if (!parent.empty()) {
+    const std::string base =
+        parent + ".job." + format_index(job_index);
+    std::error_code ec{};
+    if (!std::filesystem::exists(runtime_job_dir(campaigns_root, base), ec) ||
+        ec) {
+      return base;
+    }
+    for (std::size_t retry = 1; retry != 0; ++retry) {
+      const std::string candidate =
+          base + ".retry." + format_index(retry);
+      std::error_code retry_ec{};
+      if (!std::filesystem::exists(runtime_job_dir(campaigns_root, candidate),
+                                   retry_ec) ||
+          retry_ec) {
+        return candidate;
+      }
+    }
+  }
   const std::uint64_t started_at_ms = now_ms_utc();
   for (std::uint64_t nonce = 1; nonce != 0; ++nonce) {
     const std::uint64_t salt =
@@ -261,7 +301,8 @@ struct runtime_job_observation_t {
         "job." + std::to_string(started_at_ms) + "." +
         hex_lower_u64(salt).substr(0, 8);
     std::error_code ec{};
-    if (!std::filesystem::exists(runtime_job_dir(jobs_root, candidate), ec) ||
+    if (!std::filesystem::exists(runtime_job_dir(campaigns_root, candidate),
+                                 ec) ||
         ec) {
       return candidate;
     }
@@ -332,13 +373,13 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   document.entries.push_back(
       make_runtime_lls_string_entry("config_folder", record.config_folder));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "source_board_dsl_path", record.source_board_dsl_path));
+      "source_campaign_dsl_path", record.source_campaign_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_contract_dsl_path", record.source_contract_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_wave_dsl_path", record.source_wave_dsl_path));
   document.entries.push_back(
-      make_runtime_lls_string_entry("board_dsl_path", record.board_dsl_path));
+      make_runtime_lls_string_entry("campaign_dsl_path", record.campaign_dsl_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("contract_dsl_path", record.contract_dsl_path));
   document.entries.push_back(
@@ -413,7 +454,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
 
   runtime_job_record_t parsed{};
   parsed.schema = kv["schema"];
-  if (parsed.schema != kRuntimeJobSchemaV1) {
+  if (parsed.schema != kRuntimeJobSchemaV2) {
     if (error) *error = "unexpected runtime job schema: " + parsed.schema;
     return false;
   }
@@ -425,10 +466,10 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   parsed.worker_binary = kv["worker_binary"];
   parsed.worker_command = kv["worker_command"];
   parsed.config_folder = kv["config_folder"];
-  parsed.source_board_dsl_path = kv["source_board_dsl_path"];
+  parsed.source_campaign_dsl_path = kv["source_campaign_dsl_path"];
   parsed.source_contract_dsl_path = kv["source_contract_dsl_path"];
   parsed.source_wave_dsl_path = kv["source_wave_dsl_path"];
-  parsed.board_dsl_path = kv["board_dsl_path"];
+  parsed.campaign_dsl_path = kv["campaign_dsl_path"];
   parsed.contract_dsl_path = kv["contract_dsl_path"];
   parsed.wave_dsl_path = kv["wave_dsl_path"];
   parsed.binding_id = kv["binding_id"];
@@ -518,7 +559,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
 }
 
 [[nodiscard]] inline bool write_runtime_job_record(
-    const std::filesystem::path& jobs_root, const runtime_job_record_t& record,
+    const std::filesystem::path& campaigns_root,
+    const runtime_job_record_t& record,
     std::string* error = nullptr) {
   if (error) error->clear();
   if (record.job_cursor.empty()) {
@@ -526,7 +568,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     return false;
   }
 
-  const auto job_dir = runtime_job_dir(jobs_root, record.job_cursor);
+  const auto job_dir = runtime_job_dir(campaigns_root, record.job_cursor);
   std::error_code ec{};
   std::filesystem::create_directories(job_dir, ec);
   if (ec) {
@@ -541,14 +583,15 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     if (error) *error = validate_error;
     return false;
   }
-  return write_text_file_atomic(runtime_job_manifest_path(jobs_root, record.job_cursor),
+  return write_text_file_atomic(
+      runtime_job_manifest_path(campaigns_root, record.job_cursor),
                                 cuwacunu::piaabo::latent_lineage_state::
                                     emit_runtime_lls_canonical(document),
                                 error);
 }
 
 [[nodiscard]] inline bool read_runtime_job_record(
-    const std::filesystem::path& jobs_root, std::string_view job_cursor,
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor,
     runtime_job_record_t* out, std::string* error = nullptr) {
   if (error) error->clear();
   if (!out) {
@@ -557,7 +600,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   }
 
   std::string text{};
-  if (!read_text_file(runtime_job_manifest_path(jobs_root, job_cursor), &text,
+  if (!read_text_file(runtime_job_manifest_path(campaigns_root, job_cursor),
+                      &text,
                       error)) {
     return false;
   }
@@ -570,7 +614,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
 }
 
 [[nodiscard]] inline bool scan_runtime_job_records(
-    const std::filesystem::path& jobs_root, std::vector<runtime_job_record_t>* out,
+    const std::filesystem::path& campaigns_root,
+    std::vector<runtime_job_record_t>* out,
     std::string* error = nullptr) {
   if (error) error->clear();
   if (!out) {
@@ -580,36 +625,72 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   out->clear();
 
   std::error_code ec{};
-  if (!std::filesystem::exists(jobs_root, ec)) return true;
+  if (!std::filesystem::exists(campaigns_root, ec)) return true;
   if (ec) {
-    if (error) *error = "cannot access jobs_root: " + jobs_root.string();
+    if (error) *error = "cannot access campaigns_root: " + campaigns_root.string();
     return false;
   }
 
-  for (std::filesystem::directory_iterator it(jobs_root, ec), end; it != end;
+  const auto scan_job_leaf_dir =
+      [&](const std::filesystem::path& jobs_dir) -> bool {
+    if (!std::filesystem::exists(jobs_dir, ec)) return true;
+    if (ec) {
+      if (error) *error = "cannot access runtime jobs directory: " + jobs_dir.string();
+      return false;
+    }
+    for (std::filesystem::directory_iterator job_it(jobs_dir, ec), job_end;
+         job_it != job_end; job_it.increment(ec)) {
+      if (ec) {
+        if (error) *error = "failed scanning runtime jobs directory: " + jobs_dir.string();
+        return false;
+      }
+      if (!job_it->is_directory(ec)) {
+        if (ec) {
+          if (error) *error = "failed reading runtime job entry type";
+          return false;
+        }
+        continue;
+      }
+      const auto manifest_path =
+          job_it->path() / std::string(kRuntimeJobManifestFilename);
+      if (!std::filesystem::exists(manifest_path, ec) || ec) continue;
+      runtime_job_record_t record{};
+      std::string record_error{};
+      if (!read_runtime_job_record(campaigns_root,
+                                   job_it->path().filename().string(),
+                                   &record, &record_error)) {
+        if (error) *error = record_error;
+        return false;
+      }
+      out->push_back(std::move(record));
+    }
+    return true;
+  };
+
+  for (std::filesystem::directory_iterator it(campaigns_root, ec), end; it != end;
        it.increment(ec)) {
     if (ec) {
-      if (error) *error = "failed scanning jobs_root: " + jobs_root.string();
+      if (error) {
+        *error = "failed scanning campaigns_root for runtime jobs: " +
+                 campaigns_root.string();
+      }
       return false;
     }
     if (!it->is_directory(ec)) {
       if (ec) {
-        if (error) *error = "failed reading jobs_root entry type";
+        if (error) *error = "failed reading campaigns_root entry type";
         return false;
       }
       continue;
     }
-    const auto manifest_path =
-        it->path() / std::string(kRuntimeJobManifestFilename);
-    if (!std::filesystem::exists(manifest_path, ec) || ec) continue;
-    runtime_job_record_t record{};
-    std::string record_error{};
-    if (!read_runtime_job_record(jobs_root, it->path().filename().string(),
-                                 &record, &record_error)) {
-      if (error) *error = record_error;
+    const std::string entry_name = it->path().filename().string();
+    if (entry_name == kRuntimeLegacyJobsDirname) {
+      if (!scan_job_leaf_dir(it->path())) return false;
+      continue;
+    }
+    if (!scan_job_leaf_dir(it->path() / std::string(kRuntimeCampaignJobsDirname))) {
       return false;
     }
-    out->push_back(std::move(record));
   }
   return true;
 }
@@ -708,7 +789,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
 }
 
 [[nodiscard]] inline bool list_active_runtime_job_cursors(
-    const std::filesystem::path& jobs_root, std::vector<std::string>* out,
+    const std::filesystem::path& campaigns_root, std::vector<std::string>* out,
     std::string* error = nullptr) {
   if (error) error->clear();
   if (!out) {
@@ -718,7 +799,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   out->clear();
 
   std::vector<runtime_job_record_t> records{};
-  if (!scan_runtime_job_records(jobs_root, &records, error)) return false;
+  if (!scan_runtime_job_records(campaigns_root, &records, error)) return false;
   for (const auto& record : records) {
     const runtime_job_observation_t observation = observe_runtime_job(record);
     const std::string stable_state =

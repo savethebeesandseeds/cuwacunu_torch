@@ -14,6 +14,7 @@
 #include <string_view>
 #include <system_error>
 
+#include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/types/types_enums.h"
 
@@ -96,7 +97,7 @@ inline std::string data_plot_mode_name(DataPlotMode mode) {
     case DataPlotMode::SeqLength: return "seq_length";
     case DataPlotMode::FutureSeqLength: return "future_seq_length";
     case DataPlotMode::ChannelWeight: return "channel_weight";
-    case DataPlotMode::NormWindow: return "norm_window";
+    case DataPlotMode::NormalizationPolicy: return "normalization_policy";
     case DataPlotMode::FileBytes: return "file_bytes";
   }
   return "seq_length";
@@ -107,7 +108,7 @@ inline std::string data_plot_mode_token(DataPlotMode mode) {
     case DataPlotMode::SeqLength: return "seq";
     case DataPlotMode::FutureSeqLength: return "future";
     case DataPlotMode::ChannelWeight: return "weight";
-    case DataPlotMode::NormWindow: return "norm";
+    case DataPlotMode::NormalizationPolicy: return "norm";
     case DataPlotMode::FileBytes: return "bytes";
   }
   return "seq";
@@ -121,10 +122,10 @@ inline std::string data_plot_mode_description(DataPlotMode mode) {
       return "future sequence values (future features over Hf)";
     case DataPlotMode::ChannelWeight:
       return "configured channel_weight per active channel";
-    case DataPlotMode::NormWindow:
-      return "configured norm_window per active channel";
+    case DataPlotMode::NormalizationPolicy:
+      return "configured normalization policy per active channel";
     case DataPlotMode::FileBytes:
-      return "resolved data footprint (norm.bin > raw.bin > csv)";
+      return "resolved data footprint (normalized cache > raw cache > csv)";
   }
   return "past sequence values (features over T)";
 }
@@ -199,8 +200,9 @@ inline std::optional<DataPlotMode> parse_data_plot_mode_token(std::string token)
   if (token == "weight" || token == "channel_weight") {
     return DataPlotMode::ChannelWeight;
   }
-  if (token == "norm" || token == "norm_window") {
-    return DataPlotMode::NormWindow;
+  if (token == "norm" || token == "norm_policy" ||
+      token == "normalization_policy") {
+    return DataPlotMode::NormalizationPolicy;
   }
   if (token == "bytes" || token == "file" || token == "size") {
     return DataPlotMode::FileBytes;
@@ -228,17 +230,13 @@ inline double parse_double_value(std::string_view text, double fallback = 0.0) {
 }
 
 inline std::string raw_bin_for_source(const std::string& source_csv) {
-  std::filesystem::path p(source_csv);
-  p.replace_extension(".bin");
-  return p.string();
+  return cuwacunu::camahjucunu::data::raw_binary_for_csv(source_csv);
 }
 
-inline std::string norm_bin_for_source(const std::string& source_csv, std::size_t norm_window) {
-  if (norm_window == 0) return {};
-  std::filesystem::path p(source_csv);
-  const std::string stem = p.stem().string();
-  const std::string name = stem + ".normW" + std::to_string(norm_window) + ".bin";
-  return (p.parent_path() / name).string();
+inline std::string norm_bin_for_source(const std::string& source_csv,
+                                       std::string_view normalization_policy) {
+  return cuwacunu::camahjucunu::data::normalized_bin_for_csv(
+      source_csv, normalization_policy);
 }
 
 inline void probe_file(const std::string& path, bool* exists, std::uintmax_t* bytes) {
@@ -351,13 +349,15 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
       v.seq_length = seq_length;
       v.future_seq_length = future_seq_length;
       v.channel_weight = channel_weight;
-      parse_size_t_value(in_form.norm_window, &v.norm_window);
+      v.normalization_policy =
+          cuwacunu::camahjucunu::data::canonical_normalization_policy(
+              in_form.normalization_policy);
       v.feature_dims = feature_dims_for_record_type(v.record_type);
       v.from_focus_instrument = true;
 
       v.csv_path = instr_form.source;
       v.raw_bin_path = raw_bin_for_source(v.csv_path);
-      v.norm_bin_path = norm_bin_for_source(v.csv_path, v.norm_window);
+      v.norm_bin_path = norm_bin_for_source(v.csv_path, v.normalization_policy);
 
       probe_file(v.csv_path, &v.csv_exists, &v.csv_bytes);
       probe_file(v.raw_bin_path, &v.raw_bin_exists, &v.raw_bin_bytes);
@@ -389,13 +389,15 @@ inline DataState load_data_view_from_config(const BoardState* board_view = nullp
       v.seq_length = seq_length;
       v.future_seq_length = future_seq_length;
       v.channel_weight = channel_weight;
-      parse_size_t_value(in_form.norm_window, &v.norm_window);
+      v.normalization_policy =
+          cuwacunu::camahjucunu::data::canonical_normalization_policy(
+              in_form.normalization_policy);
       v.feature_dims = feature_dims_for_record_type(v.record_type);
       v.from_focus_instrument = false;
 
       v.csv_path = instr_form.source;
       v.raw_bin_path = raw_bin_for_source(v.csv_path);
-      v.norm_bin_path = norm_bin_for_source(v.csv_path, v.norm_window);
+      v.norm_bin_path = norm_bin_for_source(v.csv_path, v.normalization_policy);
 
       probe_file(v.csv_path, &v.csv_exists, &v.csv_bytes);
       probe_file(v.raw_bin_path, &v.raw_bin_exists, &v.raw_bin_bytes);
@@ -439,9 +441,11 @@ inline double plot_value_for_channel(const DataChannelView& c, DataPlotMode mode
     case DataPlotMode::SeqLength: return static_cast<double>(c.seq_length);
     case DataPlotMode::FutureSeqLength: return static_cast<double>(c.future_seq_length);
     case DataPlotMode::ChannelWeight: return c.channel_weight;
-    case DataPlotMode::NormWindow: return static_cast<double>(c.norm_window);
+    case DataPlotMode::NormalizationPolicy: return 0.0;
     case DataPlotMode::FileBytes: {
-      if (c.norm_window > 0 && c.norm_bin_exists) return static_cast<double>(c.norm_bin_bytes);
+      if (!c.norm_bin_path.empty() && c.norm_bin_exists) {
+        return static_cast<double>(c.norm_bin_bytes);
+      }
       if (c.raw_bin_exists) return static_cast<double>(c.raw_bin_bytes);
       return static_cast<double>(c.csv_bytes);
     }
@@ -484,13 +488,17 @@ inline std::string make_data_plot(const DataState& dv, int width = 22, bool focu
     }
     for (std::size_t i = 0; i < dv.channels.size(); ++i) {
       const auto& c = dv.channels[i];
-      const double v = plot_value_for_channel(c, mode);
       oss << (i == sel ? " >" : "  ")
           << "[" << (i + 1) << "] "
           << (c.from_focus_instrument ? "*" : " ")
           << c.interval << "/" << c.record_type
-          << " value=" << format_plot_value(v, mode)
-          << "\n";
+          << " value=";
+      if (mode == DataPlotMode::NormalizationPolicy) {
+        oss << c.normalization_policy << "\n";
+      } else {
+        const double v = plot_value_for_channel(c, mode);
+        oss << format_plot_value(v, mode) << "\n";
+      }
     }
     return oss.str();
   }
@@ -608,7 +616,7 @@ inline std::string make_data_left(const CmdState& st) {
   oss << "  key       : " << c.instrument << " " << c.interval << " " << c.record_type << "\n";
   oss << "  seq/future: " << c.seq_length << "/" << c.future_seq_length << "\n";
   oss << "  weight    : " << c.channel_weight << "\n";
-  oss << "  normW     : " << c.norm_window << "\n";
+  oss << "  norm      : " << c.normalization_policy << "\n";
   oss << "  dims      : " << c.feature_dims << "\n";
   if (st.data.plot_D > 0) {
     const std::size_t dim = std::min(st.data.plot_feature_dim, st.data.plot_D - 1);
@@ -624,7 +632,7 @@ inline std::string make_data_left(const CmdState& st) {
   if (!c.norm_bin_path.empty()) {
     oss << "  norm: " << (c.norm_bin_exists ? "ok " : "missing ") << format_bytes_approx(c.norm_bin_bytes) << "\n";
   } else {
-    oss << "  norm: n/a (norm_window=0)\n";
+    oss << "  norm: n/a (policy=none)\n";
   }
 
   oss << "\nOption details\n";
@@ -632,7 +640,7 @@ inline std::string make_data_left(const CmdState& st) {
   for (const auto mode : {DataPlotMode::SeqLength,
                           DataPlotMode::FutureSeqLength,
                           DataPlotMode::ChannelWeight,
-                          DataPlotMode::NormWindow,
+                          DataPlotMode::NormalizationPolicy,
                           DataPlotMode::FileBytes}) {
     const bool active = (mode == st.data.plot_mode);
     oss << "  " << (active ? ">" : " ")
@@ -663,7 +671,7 @@ inline std::string make_data_left(const CmdState& st) {
         << " seq=" << ch.seq_length
         << " fut=" << ch.future_seq_length
         << " w=" << std::fixed << std::setprecision(3) << ch.channel_weight
-        << " normW=" << ch.norm_window
+        << " norm=" << ch.normalization_policy
         << "\n";
   }
 

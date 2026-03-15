@@ -13,7 +13,7 @@ enum class DataPlotMode : std::uint8_t {
   SeqLength = 0,
   FutureSeqLength = 1,
   ChannelWeight = 2,
-  NormWindow = 3,
+  NormalizationPolicy = 3,
   FileBytes = 4,
 };
 
@@ -38,7 +38,7 @@ struct DataChannelView {
   std::size_t seq_length{0};
   std::size_t future_seq_length{0};
   double channel_weight{0.0};
-  std::size_t norm_window{0};
+  std::string normalization_policy{};
   std::size_t feature_dims{0};
   bool from_focus_instrument{false};
 

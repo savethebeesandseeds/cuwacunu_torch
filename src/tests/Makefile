@@ -22,7 +22,7 @@ BNF_PARSER_CORE := bnf_grammar_lexer bnf_grammar_parser bnf_instruction_lexer bn
 $(foreach t,$(BNF_PARSER_CORE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/piaabo)))
 
 # ------------------------------ DSL Decoders ---------------------------------
-DSL := dsl_observation dsl_latent_lineage_state dsl_jkimyei_specs dsl_tsiemene_circuit dsl_iitepi_wave dsl_tsiemene_board dsl_canonical_path
+DSL := dsl_observation dsl_latent_lineage_state dsl_jkimyei_specs dsl_tsiemene_circuit dsl_iitepi_wave dsl_canonical_path
 $(foreach t,$(DSL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # --------------------------- camahjucunu/types -------------------------------
@@ -50,11 +50,11 @@ IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd iinuji_cmd_
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ tsiemene--------------------------------
-TSIEMENE := tsi_board_paths
+TSIEMENE := tsi_wikimyei_jkimyei_facet
 $(foreach t,$(TSIEMENE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/tsiemene)))
 
 # ------------------------------ iitepi----------------------------------
-IITEPI := iitepi_board network_analytics network_analytics_metrics entropic_capacity_analytics
+IITEPI := network_analytics network_analytics_metrics entropic_capacity_analytics
 $(foreach t,$(IITEPI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iitepi)))
 
 # --------------------------- camahjucunu/https -------------------------------

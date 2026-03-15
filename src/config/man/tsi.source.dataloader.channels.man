@@ -67,12 +67,12 @@ range = parseable float in downstream usage
 allowed = number text
 nuance = invalid float parses become 0.0 fallback in retrieve_channel_weights
 
-[FIELD TABLE.norm_window]
-key = norm_window
+[FIELD TABLE.normalization_policy]
+key = normalization_policy
 scope = channel table
-type = numeric string
+type = enum token
 required = true
 default = none
-range = parseable integer in downstream usage
-allowed = number text
-nuance = parsed as raw text by decoder; semantic normalization policy is downstream
+range = closed set from grammar
+allowed = none,log_returns
+nuance = `none` leaves cached binaries raw; `log_returns` stores price fields as causal log-returns against the immediate previous on-grid valid record, rows without that context are masked, and volume/count-like fields use log1p with warn-and-clamp handling for out-of-domain inputs

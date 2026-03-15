@@ -61,10 +61,10 @@ The practical idea is:
 - jkimyei tells "which policy to use"
 
 ## Core runtime objects (conceptual)
-- `Board`: runtime container with one or more contracts
-- `BoardContract`: one executable unit (graph + seeds + metadata)
+- `RuntimeBinding`: runtime container with one or more contracts
+- `RuntimeBindingContract`: one executable unit (graph + seeds + metadata)
 - `Wave`: execution state carried across events
-- `BoardContext`: optional host context passed into nodes
+- `RuntimeContext`: optional host context passed into nodes
 - `Emitter`: runtime routing interface for node outputs
 
 ## Current behavior themes
@@ -97,16 +97,14 @@ For exact constraints, use:
 - bench tests under `src/tests/bench/camahjucunu` and `src/tests/bench/tsiemene`
 
 ## Useful reading order
-1. `src/include/iitepi/board/board.h`
-2. `src/include/iitepi/board/board.contract.h`
-3. `src/include/iitepi/board/board.runtime.h`
-4. `src/include/iitepi/board/board.builder.h`
+1. `src/include/iitepi/runtime_binding/runtime_binding.h`
+2. `src/include/iitepi/runtime_binding/runtime_binding.contract.h`
+3. `src/include/iitepi/runtime_binding/runtime_binding.runtime.h`
+4. `src/include/iitepi/runtime_binding/runtime_binding.builder.h`
 5. `src/config/instructions/default.iitepi.contract.circuit.dsl`
 6. `src/config/instructions/default.iitepi.wave.dsl`
 
 ## Reference tests
 - `src/tests/bench/camahjucunu/test_dsl_tsiemene_circuit.cpp`
 - `src/tests/bench/camahjucunu/test_dsl_iitepi_wave.cpp`
-- `src/tests/bench/iitepi/test_iitepi_board.cpp`
-- `src/tests/bench/tsiemene/test_board_contract_init.cpp`
-- `src/tests/bench/tsiemene/test_tsi_board_paths.cpp`
+- `src/tests/bench/tsiemene/test_tsi_wikimyei_jkimyei_facet.cpp`

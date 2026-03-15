@@ -5,6 +5,7 @@
 #include <torch/torch.h>
 
 #include "jkimyei/jkimyei.h"
+#include "iitepi/runtime_binding_space_t.h"
 #include "piaabo/dconfig.h"
 
 namespace {
@@ -30,9 +31,9 @@ int main() {
   cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
   cuwacunu::iitepi::config_space_t::update_config();
   const std::string contract_hash =
-      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-          cuwacunu::iitepi::config_space_t::locked_board_hash(),
-          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+      cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_campaign_hash(),
+          cuwacunu::iitepi::config_space_t::locked_binding_id());
 
   const auto& vicreg_setup = cuwacunu::jkimyei::jk_setup("VICReg_representation", contract_hash);
 

@@ -19,7 +19,7 @@
 #endif
 
 // Canonical TSI dataflow directives used by:
-// - board hop DSL directive parsing
+// - runtime-binding hop DSL directive parsing
 // - canonical path endpoint normalization
 // - tsi directive ids
 TSI_PATH_DIRECTIVE(Step, "@impulse", "Primary ingress impulse lane")
@@ -31,7 +31,8 @@ TSI_PATH_DIRECTIVE(Info, "@info", "Info lane (log sinks)")
 TSI_PATH_DIRECTIVE(Warn, "@warn", "Warn lane (log sinks)")
 TSI_PATH_DIRECTIVE(Debug, "@debug", "Debug lane (log sinks)")
 TSI_PATH_DIRECTIVE(Error, "@error", "Error lane (log sinks)")
-// Board/control directives and methods live in `iitepi/board/board.paths.def`.
+// Runtime-binding control directives and methods live in
+// `iitepi/runtime_binding/runtime_binding.paths.def`.
 
 // TSI component manifest.
 // INSTANCE_POLICY:

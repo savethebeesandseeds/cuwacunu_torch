@@ -20,9 +20,9 @@ namespace directive_id {
 #include "tsiemene/tsi.paths.def"
 #undef TSI_PATH_DIRECTIVE
 
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) inline constexpr DirectiveId ID = TOKEN;
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_DIRECTIVE
+#define RUNTIME_BINDING_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) inline constexpr DirectiveId ID = TOKEN;
+#include "iitepi/runtime_binding/runtime_binding.paths.def"
+#undef RUNTIME_BINDING_PATH_DIRECTIVE
 } // namespace directive_id
 
 // Canonical callable method ids in tsi paths.
@@ -33,11 +33,11 @@ namespace method_id {
 #undef TSI_PATH_METHOD
 #undef TSI_PATH_DIRECTIVE
 
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY) inline constexpr MethodId ID = TOKEN;
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_METHOD
-#undef BOARD_PATH_DIRECTIVE
+#define RUNTIME_BINDING_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
+#define RUNTIME_BINDING_PATH_METHOD(ID, TOKEN, SUMMARY) inline constexpr MethodId ID = TOKEN;
+#include "iitepi/runtime_binding/runtime_binding.paths.def"
+#undef RUNTIME_BINDING_PATH_METHOD
+#undef RUNTIME_BINDING_PATH_DIRECTIVE
 } // namespace method_id
 
 [[nodiscard]] inline std::string trim_ascii_ws_copy(std::string s) {
@@ -63,10 +63,10 @@ namespace method_id {
 #include "tsiemene/tsi.paths.def"
 #undef TSI_PATH_DIRECTIVE
 
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) \
+#define RUNTIME_BINDING_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) \
   if (token == TOKEN) return directive_id::ID;
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_DIRECTIVE
+#include "iitepi/runtime_binding/runtime_binding.paths.def"
+#undef RUNTIME_BINDING_PATH_DIRECTIVE
   return std::nullopt;
 }
 
@@ -81,12 +81,12 @@ namespace method_id {
 #undef TSI_PATH_METHOD
 #undef TSI_PATH_DIRECTIVE
 
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY) \
+#define RUNTIME_BINDING_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
+#define RUNTIME_BINDING_PATH_METHOD(ID, TOKEN, SUMMARY) \
   if (token == TOKEN) return method_id::ID;
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_METHOD
-#undef BOARD_PATH_DIRECTIVE
+#include "iitepi/runtime_binding/runtime_binding.paths.def"
+#undef RUNTIME_BINDING_PATH_METHOD
+#undef RUNTIME_BINDING_PATH_DIRECTIVE
   return std::nullopt;
 }
 

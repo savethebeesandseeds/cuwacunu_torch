@@ -3,9 +3,9 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
-#include "piaabo/torch_compat/data_analytics.h"
-#include "piaabo/torch_compat/network_analytics.h"
+#include "tsiemene/tsi.report.h"
 
 namespace cuwacunu {
 namespace piaabo {
@@ -35,10 +35,17 @@ summarize_entropic_capacity_comparison(
     double source_entropic_load,
     double network_entropic_capacity);
 
-[[nodiscard]] entropic_capacity_comparison_report_t
-summarize_entropic_capacity_comparison(
-    const data_source_analytics_report_t& source,
-    const network_analytics_report_t& network);
+[[nodiscard]] bool summarize_entropic_capacity_comparison_from_payloads(
+    std::string_view source_analytics_payload,
+    std::string_view network_analytics_payload,
+    entropic_capacity_comparison_report_t* out,
+    std::string* error = nullptr);
+
+[[nodiscard]] bool summarize_entropic_capacity_comparison_from_kv_maps(
+    const std::unordered_map<std::string, std::string>& source_kv,
+    const std::unordered_map<std::string, std::string>& network_kv,
+    entropic_capacity_comparison_report_t* out,
+    std::string* error = nullptr);
 
 [[nodiscard]] bool summarize_entropic_capacity_comparison_from_files(
     const std::filesystem::path& source_analytics_file,

@@ -1,4 +1,5 @@
 #include <hero/lattice_hero/lattice_catalog.h>
+#include <hero/lattice_hero/hero_lattice_tools.h>
 
 #include <cmath>
 #include <cstdint>
@@ -84,6 +85,36 @@ static void write_text_file(const fs::path& path, std::string_view payload) {
   REQUIRE(static_cast<bool>(out));
 }
 
+[[nodiscard]] static std::string extract_line_value(std::string_view payload,
+                                                    std::string_view key) {
+  std::size_t cursor = 0;
+  while (cursor < payload.size()) {
+    std::size_t line_end = payload.find('\n', cursor);
+    if (line_end == std::string_view::npos) line_end = payload.size();
+    std::string_view line = payload.substr(cursor, line_end - cursor);
+    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    const std::size_t eq = line.find('=');
+    if (eq != std::string_view::npos) {
+      std::string_view lhs = line.substr(0, eq);
+      while (!lhs.empty() &&
+             std::isspace(static_cast<unsigned char>(lhs.back())) != 0) {
+        lhs.remove_suffix(1);
+      }
+      if (lhs.rfind(key, 0) == 0) {
+        std::string_view rhs = line.substr(eq + 1);
+        while (!rhs.empty() &&
+               std::isspace(static_cast<unsigned char>(rhs.front())) != 0) {
+          rhs.remove_prefix(1);
+        }
+        return std::string(rhs);
+      }
+    }
+    if (line_end == payload.size()) break;
+    cursor = line_end + 1;
+  }
+  return {};
+}
+
 int main() {
   temp_dir_t tmp{};
   const fs::path catalog_path = tmp.dir / "catalog" / "lattice_catalog.idydb";
@@ -156,7 +187,7 @@ int main() {
   trial.finished_at_ms = 1711111000123ULL;
   trial.ok = true;
   trial.total_steps = 64;
-  trial.board_hash = "board_hash_abc";
+  trial.campaign_hash = "campaign_hash_abc";
   trial.run_id = "run_hash_001";
   trial.state_snapshot_id = "snapshot_state_001";
 
@@ -284,7 +315,7 @@ int main() {
   failed_trial.ok = false;
   failed_trial.error = "sink unavailable";
   failed_trial.total_steps = 64;
-  failed_trial.board_hash = "board_hash_abc";
+  failed_trial.campaign_hash = "campaign_hash_abc";
   failed_trial.run_id = "run_hash_002";
   failed_trial.state_snapshot_id = "snapshot_state_002";
 
@@ -384,6 +415,8 @@ int main() {
       "schema:str = piaabo.torch_compat.network_analytics.v4\n"
       "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "contract_hash:str = contract_hash_123\n"
+      "network_global_entropic_capacity(0,+inf):double = 9.250000000000\n"
       "metric.loss(-inf,+inf):double = 0.25\n"
       "metric.phase:str = eval\n");
   write_text_file(
@@ -399,6 +432,7 @@ int main() {
       "schema:str = piaabo.torch_compat.data_analytics.v1\n"
       "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.source.dataloader.BTCUSDT\n"
+      "contract_hash:str = contract_hash_123\n"
       "source_label:str = tsi.source.dataloader.BTCUSDT\n"
       "sample_count(0,+inf):uint = 256\n"
       "source_entropic_load(0,+inf):double = 7.500000000000\n");
@@ -434,6 +468,21 @@ int main() {
   }
   REQUIRE(saw_network_runtime);
   REQUIRE(saw_status_runtime);
+
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+      runtime_report_fragments_family{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments(
+      "tsi.wikimyei.representation.vicreg", "", 0, 0, true,
+      &runtime_report_fragments_family, &error));
+  REQUIRE(runtime_report_fragments_family.size() == runtime_report_fragments.size());
+  bool saw_family_exact_hash = false;
+  for (const auto& row : runtime_report_fragments_family) {
+    if (row.canonical_path == canonical_runtime_path) {
+      saw_family_exact_hash = true;
+      break;
+    }
+  }
+  REQUIRE(saw_family_exact_hash);
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> source_report_fragments{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments("tsi.source.dataloader",
@@ -471,6 +520,77 @@ int main() {
     REQUIRE(row.canonical_path == "tsi.source.dataloader");
   }
 
+  std::string matched_wave_cursor{};
+  for (const auto& row : runtime_report_fragments) {
+    if (row.schema == "piaabo.torch_compat.network_analytics.v4") {
+      matched_wave_cursor = extract_line_value(row.payload_json, "wave_cursor");
+      break;
+    }
+  }
+  REQUIRE(!matched_wave_cursor.empty());
+  std::uint64_t matched_wave_cursor_u64 = 0;
+  REQUIRE(lattice_catalog_store_t::parse_runtime_wave_cursor_scalar(
+      matched_wave_cursor, &matched_wave_cursor_u64));
+
+  cuwacunu::hero::wave::runtime_view_report_t comparison_view{};
+  REQUIRE(runtime_catalog.get_runtime_view_lls(
+      "entropic_capacity_comparison", "run_runtime_001", 0, false, "",
+      &comparison_view, &error));
+  REQUIRE(comparison_view.view_kind == "entropic_capacity_comparison");
+  REQUIRE(comparison_view.canonical_path ==
+          "tsi.analysis.entropic_capacity_comparison");
+  REQUIRE(comparison_view.match_count == 1);
+  REQUIRE(comparison_view.ambiguity_count == 0);
+  REQUIRE(comparison_view.view_lls.find("match_count=1") != std::string::npos);
+  REQUIRE(comparison_view.view_lls.find("capacity_ratio=") != std::string::npos);
+  REQUIRE(comparison_view.view_lls.find("source_entropic_load=7.500000000000") !=
+          std::string::npos);
+  REQUIRE(comparison_view.view_lls.find(
+              "network_entropic_capacity=9.250000000000") !=
+          std::string::npos);
+
+  cuwacunu::hero::wave::runtime_view_report_t filtered_view{};
+  REQUIRE(runtime_catalog.get_runtime_view_lls(
+      "entropic_capacity_comparison", "run_runtime_001", matched_wave_cursor_u64,
+      true, "contract_hash_123", &filtered_view, &error));
+  REQUIRE(filtered_view.match_count == 1);
+  REQUIRE(filtered_view.ambiguity_count == 0);
+
+  cuwacunu::hero::wave::runtime_view_report_t empty_wave_view{};
+  REQUIRE(runtime_catalog.get_runtime_view_lls(
+      "entropic_capacity_comparison", "run_runtime_001",
+      matched_wave_cursor_u64 + 1, true, "", &empty_wave_view, &error));
+  REQUIRE(empty_wave_view.match_count == 0);
+  REQUIRE(empty_wave_view.ambiguity_count == 0);
+  REQUIRE(empty_wave_view.view_lls.find("match_count=0") != std::string::npos);
+
+  cuwacunu::hero::wave::runtime_view_report_t empty_contract_view{};
+  REQUIRE(runtime_catalog.get_runtime_view_lls(
+      "entropic_capacity_comparison", "run_runtime_001", 0, false,
+      "contract_hash_missing", &empty_contract_view, &error));
+  REQUIRE(empty_contract_view.match_count == 0);
+  REQUIRE(empty_contract_view.ambiguity_count == 0);
+
+  write_text_file(
+      runtime_store / "reports" / "runtime_new_ambiguous.lls",
+      "schema:str = piaabo.torch_compat.network_analytics.v4\n"
+      "run_id:str = run_runtime_001\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0043\n"
+      "contract_hash:str = contract_hash_123\n"
+      "network_global_entropic_capacity(0,+inf):double = 8.500000000000\n"
+      "metric.loss(-inf,+inf):double = 0.31\n");
+  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+
+  cuwacunu::hero::wave::runtime_view_report_t ambiguous_view{};
+  REQUIRE(runtime_catalog.get_runtime_view_lls(
+      "entropic_capacity_comparison", "run_runtime_001", 0, false, "",
+      &ambiguous_view, &error));
+  REQUIRE(ambiguous_view.match_count == 0);
+  REQUIRE(ambiguous_view.ambiguity_count == 1);
+  REQUIRE(ambiguous_view.view_lls.find("kind=ambiguity") != std::string::npos);
+  REQUIRE(ambiguous_view.view_lls.find("source_count=1") != std::string::npos);
+  REQUIRE(ambiguous_view.view_lls.find("network_count=2") != std::string::npos);
+
   const std::string intersection_cursor = "tsi.source.dataloader|123456";
   const std::string intersection_report =
       "/* synthetic report_lls transport: hashimyei.joined_report.v1 */\n"
@@ -491,6 +611,34 @@ int main() {
   REQUIRE(restored_run == "run_runtime_001");
 
   REQUIRE(runtime_catalog.close(&error));
+
+  cuwacunu::hero::lattice_mcp::app_context_t lattice_app{};
+  lattice_app.store_root = runtime_store;
+  lattice_app.lattice_catalog_path = catalog_path;
+  lattice_app.hashimyei_catalog_path = tmp.dir / "runtime_hashimyei_catalog.idydb";
+
+  std::string tool_result{};
+  std::string tool_error{};
+  REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
+      "hero.lattice.get_view_lls",
+      "{\"view_kind\":\"entropic_capacity_comparison\",\"run_id\":\"run_runtime_001\"}",
+      &lattice_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"view_kind\":\"entropic_capacity_comparison\"") !=
+          std::string::npos);
+  REQUIRE(tool_result.find("\"ambiguity_count\":1") != std::string::npos);
+  REQUIRE(tool_result.find("kind=ambiguity") != std::string::npos);
+
+  tool_result.clear();
+  tool_error.clear();
+  REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
+      "hero.lattice.get_view_lls",
+      "{\"view_kind\":\"entropic_capacity_comparison\",\"run_id\":\"run_runtime_001\",\"wave_cursor\":\"999999999\",\"contract_hash\":\"contract_hash_missing\"}",
+      &lattice_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"match_count\":0") != std::string::npos);
 
   lattice_catalog_store_t wrong_pass{};
   opts.passphrase = "wrong-passphrase";

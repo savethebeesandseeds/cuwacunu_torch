@@ -61,7 +61,7 @@ bool dispatch_data_call(CallHandlerId call_id,
       return true;
     case CallHandlerId::DataPlotModeNorm:
       screen.data();
-      state.data.plot_mode = DataPlotMode::NormWindow;
+      state.data.plot_mode = DataPlotMode::NormalizationPolicy;
       clamp_data_plot_mode(state);
       push_info("data plot=norm");
       return true;

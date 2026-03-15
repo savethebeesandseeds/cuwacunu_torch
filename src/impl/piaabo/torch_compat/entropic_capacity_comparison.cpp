@@ -76,19 +76,8 @@ void append_component_report_identity_entries_(
 }
 
 [[nodiscard]] std::optional<double> extract_numeric_kv_(
-    std::string_view payload,
+    const std::unordered_map<std::string, std::string>& kv,
     std::string_view key) {
-  runtime_lls_document_t document{};
-  std::string parse_error;
-  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
-          payload, &document, &parse_error)) {
-    return std::nullopt;
-  }
-  std::unordered_map<std::string, std::string> kv{};
-  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
-          document, &kv, &parse_error)) {
-    return std::nullopt;
-  }
   const auto it = kv.find(std::string(key));
   if (it == kv.end() || it->second.empty()) return std::nullopt;
   try {
@@ -126,12 +115,79 @@ entropic_capacity_comparison_report_t summarize_entropic_capacity_comparison(
   return out;
 }
 
-entropic_capacity_comparison_report_t summarize_entropic_capacity_comparison(
-    const data_source_analytics_report_t& source,
-    const network_analytics_report_t& network) {
-  return summarize_entropic_capacity_comparison(
-      source.source_entropic_load,
-      network.network_global_entropic_capacity);
+bool summarize_entropic_capacity_comparison_from_kv_maps(
+    const std::unordered_map<std::string, std::string>& source_kv,
+    const std::unordered_map<std::string, std::string>& network_kv,
+    entropic_capacity_comparison_report_t* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "comparison output pointer is null";
+    return false;
+  }
+  *out = entropic_capacity_comparison_report_t{};
+
+  const auto source_load = extract_numeric_kv_(source_kv, "source_entropic_load");
+  const auto network_capacity =
+      extract_numeric_kv_(network_kv, "network_global_entropic_capacity");
+  if (!source_load.has_value()) {
+    if (error) {
+      *error = "source analytics key missing or invalid: source_entropic_load";
+    }
+    return false;
+  }
+  if (!network_capacity.has_value()) {
+    if (error) {
+      *error =
+          "network analytics key missing or invalid: network_global_entropic_capacity";
+    }
+    return false;
+  }
+
+  *out = summarize_entropic_capacity_comparison(*source_load, *network_capacity);
+  if (const auto it = source_kv.find("run_id");
+      it != source_kv.end() && !it->second.empty()) {
+    out->run_id = it->second;
+  } else if (const auto it = network_kv.find("run_id");
+             it != network_kv.end() && !it->second.empty()) {
+    out->run_id = it->second;
+  }
+  return true;
+}
+
+bool summarize_entropic_capacity_comparison_from_payloads(
+    std::string_view source_analytics_payload,
+    std::string_view network_analytics_payload,
+    entropic_capacity_comparison_report_t* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "comparison output pointer is null";
+    return false;
+  }
+  *out = entropic_capacity_comparison_report_t{};
+
+  runtime_lls_document_t source_document{};
+  runtime_lls_document_t network_document{};
+  std::unordered_map<std::string, std::string> source_kv{};
+  std::unordered_map<std::string, std::string> network_kv{};
+  std::string parse_error{};
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          source_analytics_payload, &source_document, &parse_error) ||
+      !cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          source_document, &source_kv, &parse_error)) {
+    if (error) *error = "invalid source analytics payload: " + parse_error;
+    return false;
+  }
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
+          network_analytics_payload, &network_document, &parse_error) ||
+      !cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
+          network_document, &network_kv, &parse_error)) {
+    if (error) *error = "invalid network analytics payload: " + parse_error;
+    return false;
+  }
+  return summarize_entropic_capacity_comparison_from_kv_maps(
+      source_kv, network_kv, out, error);
 }
 
 bool summarize_entropic_capacity_comparison_from_files(
@@ -170,26 +226,10 @@ bool summarize_entropic_capacity_comparison_from_files(
   network_buf << network_in.rdbuf();
   const std::string network_payload = network_buf.str();
 
-  const auto source_load =
-      extract_numeric_kv_(source_payload, "source_entropic_load");
-  const auto network_capacity =
-      extract_numeric_kv_(network_payload, "network_global_entropic_capacity");
-
-  if (!source_load.has_value()) {
-    if (error) {
-      *error = "source analytics key missing or invalid: source_entropic_load";
-    }
+  if (!summarize_entropic_capacity_comparison_from_payloads(
+          source_payload, network_payload, out, error)) {
     return false;
   }
-  if (!network_capacity.has_value()) {
-    if (error) {
-      *error =
-          "network analytics key missing or invalid: network_global_entropic_capacity";
-    }
-    return false;
-  }
-
-  *out = summarize_entropic_capacity_comparison(*source_load, *network_capacity);
   out->source_analytics_file = source_analytics_file.string();
   out->network_analytics_file = network_analytics_file.string();
   return true;

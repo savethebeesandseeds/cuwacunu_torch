@@ -199,15 +199,17 @@ static run_manifest_t make_run_manifest() {
   run_manifest_t m{};
   m.schema = cuwacunu::hashimyei::kRunManifestSchemaV2;
   m.started_at_ms = 1711111111000ULL;
-  m.board_identity = make_test_identity(hashimyei_kind_e::BOARD, 4);
+  m.campaign_identity = make_test_identity(hashimyei_kind_e::CAMPAIGN, 4);
   m.wave_contract_binding = make_binding("bind_train_vicreg");
   m.sampler = "uniform";
   m.record_type = "train";
   m.seed = "42";
   m.device = "cpu";
   m.dtype = "float32";
-  m.run_id = compute_run_id(m.board_identity, m.wave_contract_binding, m.started_at_ms);
-  m.dependency_files.push_back({"iitepi.board.bind_train_vicreg", "sha.board"});
+  m.run_id = compute_run_id(m.campaign_identity, m.wave_contract_binding,
+                            m.started_at_ms);
+  m.dependency_files.push_back({"iitepi.campaign.bind_train_vicreg",
+                                "sha.campaign"});
   m.dependency_files.push_back({"iitepi.contract.bind_train_vicreg", "sha.contract"});
   m.components.push_back({"tsi.source.dataloader", "tsi.source.dataloader", ""});
   m.components.push_back({"tsi.wikimyei.representation.vicreg.0x0010",
@@ -288,8 +290,10 @@ int main() {
   REQUIRE(!cuwacunu::hashimyei::validate_hashimyei(missing_contract_hash, &identity_error));
   REQUIRE(identity_error.find("hash_sha256_hex") != std::string::npos);
 
-  hashimyei_t board_with_hash = make_test_identity(hashimyei_kind_e::BOARD, 5, sixty_four_hex('f'));
-  REQUIRE(!cuwacunu::hashimyei::validate_hashimyei(board_with_hash, &identity_error));
+  hashimyei_t campaign_with_hash =
+      make_test_identity(hashimyei_kind_e::CAMPAIGN, 5, sixty_four_hex('f'));
+  REQUIRE(!cuwacunu::hashimyei::validate_hashimyei(campaign_with_hash,
+                                                   &identity_error));
 
   const wave_contract_binding_t binding_a = make_binding("bind_A", 1, 2, 3);
   const wave_contract_binding_t binding_b = make_binding("bind_A", 1, 2, 3);
@@ -310,7 +314,8 @@ int main() {
   run_manifest_t loaded_run{};
   REQUIRE(load_run_manifest(run_manifest_path, &loaded_run, &error));
   REQUIRE(loaded_run.run_id == manifest.run_id);
-  REQUIRE(loaded_run.board_identity.name == manifest.board_identity.name);
+  REQUIRE(loaded_run.campaign_identity.name ==
+          manifest.campaign_identity.name);
   REQUIRE(loaded_run.wave_contract_binding.identity.hash_sha256_hex ==
           manifest.wave_contract_binding.identity.hash_sha256_hex);
 

@@ -15,9 +15,9 @@ all:
 	$(MAKE) -C $(HERE_PATH)/latent_lineage_state all
 	$(MAKE) -C $(HERE_PATH)/network_design all
 	$(MAKE) -C $(HERE_PATH)/jkimyei_specs all
-	$(MAKE) -C $(HERE_PATH)/jkimyei_campaign all
+	$(MAKE) -C $(HERE_PATH)/iitepi_campaign all
 	$(MAKE) -C $(HERE_PATH)/tsiemene_circuit all
 	$(MAKE) -C $(HERE_PATH)/iitepi_wave all
-	$(MAKE) -C $(HERE_PATH)/tsiemene_board all
+	$(MAKE) -C $(HERE_PATH)/runtime_binding_instruction all
 	$(MAKE) -C $(HERE_PATH)/canonical_path all
 	@$(LOG_SUCCESS)

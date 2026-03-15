@@ -19,11 +19,12 @@
 
 using cuwacunu::camahjucunu::data::MemoryMappedDataset;
 using cuwacunu::camahjucunu::data::observation_sample_t;
-using Kline = cuwacunu::camahjucunu::exchange::kline_t;
+using KlineRaw = cuwacunu::camahjucunu::exchange::kline_t;
+using KlineBin = cuwacunu::camahjucunu::exchange::kline_cache_t;
 
 // ---------- helpers to build tiny kline datasets ----------
-static Kline make_kline(int64_t close_time, bool valid = true, double base = 100.0, int i = 0) {
-  Kline r{};
+static KlineRaw make_kline(int64_t close_time, bool valid = true, double base = 100.0, int i = 0) {
+  KlineRaw r{};
   r.open_time              = close_time - 1;
   r.open_price             = base + i;
   r.high_price             = r.open_price + 1.0;
@@ -38,11 +39,18 @@ static Kline make_kline(int64_t close_time, bool valid = true, double base = 100
   return r;
 }
 
-static std::vector<Kline> make_regular_rows(int64_t start_key, int64_t step, int n) {
-  std::vector<Kline> v; v.reserve(n);
+static std::vector<KlineRaw> make_regular_rows(int64_t start_key, int64_t step, int n) {
+  std::vector<KlineRaw> v; v.reserve(n);
   for (int i = 0; i < n; ++i)
     v.push_back(make_kline(start_key + i * step, /*valid=*/(i % 7 != 0), 100.0, i));
   return v;
+}
+
+static std::vector<KlineBin> cache_rows(const std::vector<KlineRaw>& rows) {
+  std::vector<KlineBin> out;
+  out.reserve(rows.size());
+  for (const auto& row : rows) out.push_back(KlineBin::from_raw(row));
+  return out;
 }
 
 template <class T>
@@ -55,7 +63,7 @@ static std::string write_binary(const std::vector<T>& rows, const std::string& t
   return tmp_path;
 }
 
-static torch::Tensor features_f32(const Kline& r) {
+static torch::Tensor features_f32(const KlineRaw& r) {
   const auto vd = r.tensor_features();
   std::vector<float> vf(vd.begin(), vd.end());
   return torch::from_blob(vf.data(), {(long)vf.size()}, torch::kFloat32).clone();
@@ -68,7 +76,7 @@ static void print_shape(const char* name, const torch::Tensor& t) {
 }
 
 // Find the last index with close_time <= target
-static std::size_t find_le_idx(const std::vector<Kline>& v, int64_t target) {
+static std::size_t find_le_idx(const std::vector<KlineRaw>& v, int64_t target) {
   std::size_t idx = 0;
   for (std::size_t j = 0; j < v.size(); ++j) { if (v[j].close_time <= target) idx = j; else break; }
   return idx;
@@ -90,15 +98,15 @@ int main() try {
     // Keep the regular grid by preserving the original key.
     const int j = std::min(7, (int)rows_regular.size() - 2);
     const auto key = rows_regular[j + 1].close_time;
-    rows_regular[j + 1] = Kline::null_instance(key);   // guaranteed invalid
+    rows_regular[j + 1] = KlineRaw::null_instance(key);   // guaranteed invalid
     anchor_with_invalid_future = j;
   }
 
   // Write the finalized sequence to disk AFTER any forced invalidation.
   const std::string f_regular_bin = "/tmp/kline_regular.bin";
-  write_binary(rows_regular, f_regular_bin);
+  write_binary(cache_rows(rows_regular), f_regular_bin);
 
-  using DS = MemoryMappedDataset<Kline>;
+  using DS = MemoryMappedDataset<KlineRaw>;
   DS ds_regular(f_regular_bin);
 
   // Dataset defaults: Np=1, Nf=1 -> size = rows - 1

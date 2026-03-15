@@ -3,8 +3,8 @@ MAN_ID = config.manifest
 ROOT = src/config/man
 
 [ENTRY 01]
-file = iitepi.board.man
-covers = instructions/default.iitepi.board.dsl,bnf/iitepi.board.bnf
+file = iitepi.campaign.man
+covers = instructions/default.iitepi.campaign.dsl,bnf/iitepi.campaign.bnf
 
 [ENTRY 02]
 file = iitepi.wave.man
@@ -89,11 +89,3 @@ covers = bnf/runtime_lls.bnf
 [ENTRY 22]
 file = hero.runtime.config.man
 covers = instructions/default.hero.runtime.dsl,bnf/latent_lineage_state.bnf
-
-[ENTRY 23]
-file = jkimyei_campaign.man
-covers = instructions/default.jkimyei.campaign.dsl,bnf/jkimyei_campaign.bnf
-
-[ENTRY 24]
-file = hero.jkimyei.config.man
-covers = instructions/default.hero.jkimyei.dsl,bnf/latent_lineage_state.bnf

@@ -46,7 +46,7 @@ class TransferMatrixEvaluationReport final {
   using WaveProbePolicy = cuwacunu::camahjucunu::iitepi_wave_probe_policy_t;
   using Wave = ::tsiemene::Wave;
   using Ingress = ::tsiemene::Ingress;
-  using BoardContext = ::tsiemene::BoardContext;
+  using RuntimeContext = ::tsiemene::RuntimeContext;
   using Emitter = ::tsiemene::Emitter;
   using ObservationCargo = ::tsiemene::ObservationCargo;
   using PayloadKind = ::tsiemene::PayloadKind;
@@ -103,7 +103,7 @@ class TransferMatrixEvaluationReport final {
     return last_run_matrix_report_lls_;
   }
 
-  void step(const Wave& wave, Ingress in, BoardContext& ctx, Emitter& out) {
+  void step(const Wave& wave, Ingress in, RuntimeContext& ctx, Emitter& out) {
     if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::Cargo) return;
     if (!ctx.debug_enabled) return;
@@ -206,7 +206,7 @@ class TransferMatrixEvaluationReport final {
   }
 
   RuntimeEventAction on_event(const RuntimeEvent& event,
-                              BoardContext& ctx,
+                              RuntimeContext& ctx,
                               Emitter& out) {
     switch (event.kind) {
       case RuntimeEventKind::RunStart:

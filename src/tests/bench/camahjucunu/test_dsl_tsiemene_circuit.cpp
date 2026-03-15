@@ -5,6 +5,7 @@
 #include "piaabo/dconfig.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
+#include "iitepi/runtime_binding_space_t.h"
 
 int main() {
   try {
@@ -12,21 +13,21 @@ int main() {
     cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
     cuwacunu::iitepi::config_space_t::update_config();
     const std::string contract_hash =
-        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-            cuwacunu::iitepi::config_space_t::locked_board_hash(),
-            cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+        cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+            cuwacunu::iitepi::config_space_t::locked_campaign_hash(),
+            cuwacunu::iitepi::config_space_t::locked_binding_id());
     const auto contract_itself =
         cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
 
     std::string instruction = contract_itself->circuit.dsl;
 
     TICK(tsiemene_circuit_loadGrammar);
-    auto board = cuwacunu::camahjucunu::dsl::tsiemeneCircuits(
+    auto circuits = cuwacunu::camahjucunu::dsl::tsiemeneCircuits(
         contract_itself->circuit.grammar);
     PRINT_TOCK_ns(tsiemene_circuit_loadGrammar);
 
     TICK(tsiemene_circuit_decodeInstruction);
-    auto decoded = board.decode(instruction);
+    auto decoded = circuits.decode(instruction);
     PRINT_TOCK_ns(tsiemene_circuit_decodeInstruction);
 
     std::cout << "[test_dsl_tsiemene_circuit] instruction:\n";
@@ -37,13 +38,14 @@ int main() {
     std::cout << decoded.str() << "\n";
 
     {
-      std::string board_error;
-      const bool board_ok = cuwacunu::camahjucunu::validate_circuit_instruction(decoded, &board_error);
-      std::cout << "[test_dsl_tsiemene_circuit] semantic.board.valid="
-                << (board_ok ? "true" : "false");
-      if (!board_ok) std::cout << " error=\"" << board_error << "\"";
+      std::string circuit_error;
+      const bool circuit_ok =
+          cuwacunu::camahjucunu::validate_circuit_instruction(decoded, &circuit_error);
+      std::cout << "[test_dsl_tsiemene_circuit] semantic.circuit.valid="
+                << (circuit_ok ? "true" : "false");
+      if (!circuit_ok) std::cout << " error=\"" << circuit_error << "\"";
       std::cout << "\n";
-      if (!board_ok) {
+      if (!circuit_ok) {
         std::cerr << "[FAIL] expected primary circuit instruction to be semantically valid\n";
         return 1;
       }
@@ -60,7 +62,7 @@ int main() {
           "  w_rep@loss:tensor -> w_log_1@info\n"
           "  w_rep@meta:str -> w_log_2@debug\n"
           "}\n";
-      auto invalid_decoded = board.decode(invalid_unique_instruction);
+      auto invalid_decoded = circuits.decode(invalid_unique_instruction);
       std::string invalid_error;
       const bool invalid_ok =
           cuwacunu::camahjucunu::validate_circuit_instruction(invalid_decoded, &invalid_error);
@@ -83,7 +85,7 @@ int main() {
           "  w_source@response:cargo -> w_rep@impulse\n"
           "  w_rep@loss:tensor -> w_log@info\n"
           "}\n";
-      auto mode_decoded = board.decode(mode_instruction);
+      auto mode_decoded = circuits.decode(mode_instruction);
       std::string mode_error;
       const bool mode_ok =
           cuwacunu::camahjucunu::validate_circuit_instruction(mode_decoded, &mode_error);
@@ -124,7 +126,7 @@ int main() {
           "  w_source@response:cargo -> w_rep@impulse\n"
           "  w_rep@loss:tensor -> w_log@info\n"
           "}\n";
-      auto active_decoded = board.decode(active_selector_instruction);
+      auto active_decoded = circuits.decode(active_selector_instruction);
       std::string active_error;
       const bool active_ok = cuwacunu::camahjucunu::validate_circuit_instruction(
           active_decoded, &active_error);
@@ -147,7 +149,8 @@ int main() {
           "  w_source@response:cargo -> w_rep@impulse\n"
           "  w_rep@loss:tensor -> w_log@info\n"
           "}\n";
-      auto invalid_active_decoded = board.decode(invalid_active_selector_instruction);
+      auto invalid_active_decoded =
+          circuits.decode(invalid_active_selector_instruction);
       std::string invalid_active_error;
       const bool invalid_active_ok = cuwacunu::camahjucunu::validate_circuit_instruction(
           invalid_active_decoded, &invalid_active_error);
@@ -175,7 +178,7 @@ int main() {
           "    w_log@info\n"
           "  w_rep@meta:str -> w_log@debug # trailing comment\n"
           "}\n";
-      auto multiline_decoded = board.decode(multiline_comments_instruction);
+      auto multiline_decoded = circuits.decode(multiline_comments_instruction);
       std::string multiline_error;
       const bool multiline_ok = cuwacunu::camahjucunu::validate_circuit_instruction(
           multiline_decoded, &multiline_error);

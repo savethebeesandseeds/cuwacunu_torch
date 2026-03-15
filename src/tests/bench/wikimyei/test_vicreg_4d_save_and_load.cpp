@@ -23,6 +23,7 @@
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
+#include "iitepi/runtime_binding_space_t.h"
 
 #include "wikimyei/representation/VICReg/vicreg_4d.h"
 
@@ -70,9 +71,9 @@ int main()
   cuwacunu::iitepi::config_space_t::change_config_file(CONFIG_ROOT);
   cuwacunu::iitepi::config_space_t::update_config();
   const std::string contract_hash =
-      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-          cuwacunu::iitepi::config_space_t::locked_board_hash(),
-          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+      cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_campaign_hash(),
+          cuwacunu::iitepi::config_space_t::locked_binding_id());
   {
     std::string configured_device =
         cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("VICReg", "device");

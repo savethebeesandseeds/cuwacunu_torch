@@ -88,16 +88,82 @@ Current schema is v4 and keeps canonical-only keys:
 - `include/piaabo/torch_compat/data_analytics.h`
 - `impl/piaabo/torch_compat/data_analytics.cpp`
 
+The module is now split into:
+
+- generic `sequence_*` analytics/report APIs for any ordered temporal tensor
+- source-facing `data_*` wrappers that preserve the existing raw-data report
+  schemas and file contracts
+
+Generic sequence entry points operate on canonical sequence layouts already
+accepted by the core normalizer (`[T,D]`, `[C,T,D]`, `[B,C,T,D]`) and emit:
+
+- `piaabo.torch_compat.sequence_analytics.v1`
+- `piaabo.torch_compat.sequence_analytics_symbolic.v1`
+
+These generic reports are intended for latent/embedding sequences and other
+non-source temporal tensors.
+For large generalized stream sets, the generic symbolic serializer now
+automatically reduces the emitted per-stream section to a representative subset
+when `stream_count > 32`, keeping at most `16` streams in the artifact while
+preserving full aggregate metrics over the original stream population.
+Canonical `.lls` output records:
+
+- `reported_stream_count`
+- `omitted_stream_count`
+- `stream_report_reduced`
+- `stream_report_reduction_mode`
+
+Pretty/debug text adds `/* ... */` comments that explain the generalized-stream
+context and any representative-stream reduction.
+
+The VICReg representation runtime now reuses those generic sequence reports for
+its latent output and writes representation-owned sidecars in the report
+fragment directory:
+
+- `embedding_sequence_analytics.latest.lls`
+- `embedding_sequence_analytics.symbolic.latest.lls`
+
+Those runtime sidecars use distinct embedding-facing schemas:
+
+- `piaabo.torch_compat.embedding_sequence_analytics.v1`
+- `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1`
+
 This module computes source entropic load from mask-aware flattened past windows
 and writes deterministic key/value reports (`data_analytics.latest.lls`) under
 the hashimyei data root.
 Schema: `piaabo.torch_compat.data_analytics.v1`.
 
+The same module also emits a compact symbolic sidecar
+(`data_analytics.symbolic.latest.lls`) with per-channel:
+
+- `label`, `record_type`, `anchor_feature`, `feature_names`
+- `valid_count`, `observed_symbol_count`, `eligible`
+- `lz76_complexity`, `lz76_normalized`
+- `entropy_rate_bits`
+- `information_density`
+- `compression_ratio` on the ternary symbolic stream
+- `autocorrelation_decay_lag` on the anchor series
+- `power_spectrum_entropy` on the anchor series
+- `hurst_exponent` via a dyadic R/S estimate
+
+Top-level symbolic summaries emit mean/min/max plus channel labels for:
+
+- `lz76_normalized`
+- `information_density`
+- `compression_ratio`
+- `autocorrelation_decay_lag`
+- `power_spectrum_entropy`
+- `hurst_exponent`
+
+Schema: `piaabo.torch_compat.data_analytics_symbolic.v1`.
+The symbolic sidecar stays comment-free in canonical `.lls`; human-facing pretty
+output includes `/* ... */` channel annotations.
+
 Runtime config source: `default.tsi.source.dataloader.sources.dsl` via required block
 `DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
 No silent fallback defaults are used by `tsi.source.dataloader`.
 
-## Entropic Capacity Comparison Report
+## Entropic Capacity Comparison Helper
 
 `torch_compat` now includes a comparison sidecar in:
 
@@ -113,6 +179,18 @@ It joins source and network analytics into headline metrics:
 - `capacity_regime`
 
 Schema: `piaabo.torch_compat.entropic_capacity_comparison.v1`.
+
+This module is now a compatibility/helper surface, not a standard component-owned
+runtime report. The preferred cross-report comparison surface is the query-time
+Lattice view
+`hero.lattice.get_view_lls(view_kind=entropic_capacity_comparison, ...)`,
+which derives directly from the source/network fact reports instead of reading a
+component-emitted comparison sidecar back as an intermediate artifact.
+
+The helper still supports payload reducers and standalone writers for tests or
+ad hoc tooling, but Hashimyei/Lattice no longer treat
+`piaabo.torch_compat.entropic_capacity_comparison.v1` as a first-class ingested
+runtime fact.
 
 The network-design analytics API provides topology-level diagnostics directly
 from `network_design_instruction_t`. Current schema is v3 and emits only canonical

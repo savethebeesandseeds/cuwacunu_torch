@@ -180,6 +180,7 @@ static void test_lattice_tools_list_surface() {
   REQUIRE(contains(result.output, "\"hero.lattice.get_runs\""));
   REQUIRE(contains(result.output, "\"hero.lattice.list_report_fragments\""));
   REQUIRE(contains(result.output, "\"hero.lattice.get_report_lls\""));
+  REQUIRE(contains(result.output, "\"hero.lattice.get_view_lls\""));
   REQUIRE(contains(result.output, "\"hero.lattice.reset_catalog\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_history\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_performance\""));
