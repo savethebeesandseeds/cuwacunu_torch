@@ -37,6 +37,46 @@ range = >= 0
 allowed = float literal
 nuance = negative values are rejected
 
+[FIELD DATA_ANALYTICS_POLICY.MAX_SAMPLES]
+key = MAX_SAMPLES
+scope = DATA_ANALYTICS_POLICY
+type = uint64
+required = true
+default = none
+range = >= 1
+allowed = decimal integer
+nuance = maximum accepted row count retained for one analytics report; values below 1 are rejected
+
+[FIELD DATA_ANALYTICS_POLICY.MAX_FEATURES]
+key = MAX_FEATURES
+scope = DATA_ANALYTICS_POLICY
+type = uint64
+required = true
+default = none
+range = >= 1
+allowed = decimal integer
+nuance = maximum flattened feature coordinates retained after deterministic subsampling; values below 1 are rejected
+
+[FIELD DATA_ANALYTICS_POLICY.MASK_EPSILON]
+key = MASK_EPSILON
+scope = DATA_ANALYTICS_POLICY
+type = float
+required = true
+default = none
+range = >= 0
+allowed = float literal
+nuance = minimum accepted valid-timestep ratio per sample; rows at or below the threshold are skipped and accepted rows exclude invalid positions from numeric analytics
+
+[FIELD DATA_ANALYTICS_POLICY.STANDARDIZE_EPSILON]
+key = STANDARDIZE_EPSILON
+scope = DATA_ANALYTICS_POLICY
+type = float
+required = true
+default = none
+range = > 0
+allowed = float literal
+nuance = lower bound used when standardizing per-feature variance before covariance/effective-rank estimation
+
 [FIELD TABLE.instrument]
 key = instrument
 scope = instrument table

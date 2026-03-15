@@ -7,6 +7,7 @@
 #include <string>
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state.h"
+#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 
 namespace {
 
@@ -102,6 +103,22 @@ int main() {
     assert(e_legacy != nullptr);
     assert(e_legacy->declared_domain.empty());
     assert(e_legacy->declared_type.empty());
+
+    const auto mixed_interval_lhs =
+        cuwacunu::camahjucunu::dsl::parse_latent_lineage_state_lhs(
+            "sample_count[0,+inf):uint");
+    assert(mixed_interval_lhs.key == "sample_count");
+    assert(mixed_interval_lhs.declared_domain == "[0,+inf)");
+    assert(mixed_interval_lhs.declared_type == "uint");
+    const std::string mixed_interval_domain =
+        "sample_count[0,+inf):uint = 0\n";
+    const auto mixed_interval_decoded =
+        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
+            grammar, mixed_interval_domain);
+    const auto* e_sample_count = find_entry(mixed_interval_decoded, "sample_count");
+    assert(e_sample_count != nullptr);
+    assert(e_sample_count->declared_domain == "[0,+inf)");
+    assert(e_sample_count->declared_type == "uint");
 
     const std::string malformed =
         "alpha:int = 1\n"

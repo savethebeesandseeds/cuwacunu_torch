@@ -136,7 +136,7 @@ the shared parser:
 
 - persisted standalone runtime `.lls` files must use top-level `schema`
 - namespaced `*.schema` keys remain valid only for embedded synthetic subdocuments
-  such as source-runtime projection payloads carried inside joined `report_lls`
+  carried inside joined/query-time transports
 
 Legacy relaxed readers still remain only where the payload is not part of the
 strict persisted runtime-artifact contract:

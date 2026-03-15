@@ -205,5 +205,24 @@ int main() {
       make_runtime_lls_entry("metric", "1", "int", "(bad#domain)"));
   expect_invalid_document(invalid_domain_document, "invalid declared_domain");
 
+  runtime_lls_document_t mixed_interval_domain_document{};
+  mixed_interval_domain_document.entries.push_back(
+      make_runtime_lls_string_entry("schema", "piaabo.test.runtime_lls.v1"));
+  mixed_interval_domain_document.entries.push_back(
+      make_runtime_lls_uint_entry("sample_count", 0, "[0,+inf)"));
+  mixed_interval_domain_document.entries.push_back(
+      make_runtime_lls_int_entry("max_samples", 1, "[1,+inf)"));
+  const std::string mixed_interval_payload =
+      emit_runtime_lls_canonical(mixed_interval_domain_document);
+  assert(mixed_interval_payload.find("sample_count[0,+inf):uint = 0") !=
+         std::string::npos);
+  assert(mixed_interval_payload.find("max_samples[1,+inf):int = 1") !=
+         std::string::npos);
+  runtime_lls_document_t mixed_interval_parsed{};
+  std::string mixed_interval_error{};
+  assert(parse_runtime_lls_text(
+      mixed_interval_payload, &mixed_interval_parsed, &mixed_interval_error));
+  assert(mixed_interval_error.empty());
+
   return 0;
 }

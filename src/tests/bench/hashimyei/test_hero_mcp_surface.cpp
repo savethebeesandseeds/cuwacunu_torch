@@ -95,8 +95,7 @@ static constexpr const char* kGlobalConfig = "/cuwacunu/src/config/.config";
 
 static std::string tools_list_command(const fs::path& binary_path,
                                       const fs::path& store_root,
-                                      const fs::path& catalog_path,
-                                      const fs::path& hashimyei_catalog_path = {}) {
+                                      const fs::path& catalog_path) {
   const std::string req =
       R"({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}})";
   std::ostringstream cmd;
@@ -106,9 +105,6 @@ static std::string tools_list_command(const fs::path& binary_path,
       << shell_quote(kGlobalConfig) << " --store-root "
       << shell_quote(store_root.string()) << " --catalog "
       << shell_quote(catalog_path.string());
-  if (!hashimyei_catalog_path.empty()) {
-    cmd << " --hashimyei-catalog " << shell_quote(hashimyei_catalog_path.string());
-  }
   return cmd.str();
 }
 
@@ -124,29 +120,25 @@ static std::string reset_hashimyei_command(const fs::path& store_root,
 }
 
 static std::string reset_lattice_command(const fs::path& store_root,
-                                         const fs::path& catalog_path,
-                                         const fs::path& hashimyei_catalog_path) {
+                                         const fs::path& catalog_path) {
   std::ostringstream cmd;
   cmd << shell_quote(kLatticeMcpBin) << " --global-config "
       << shell_quote(kGlobalConfig) << " --store-root "
       << shell_quote(store_root.string()) << " --catalog "
-      << shell_quote(catalog_path.string()) << " --hashimyei-catalog "
-      << shell_quote(hashimyei_catalog_path.string())
-      << " --tool hero.lattice.reset_catalog"
+      << shell_quote(catalog_path.string())
+      << " --tool hero.lattice.refresh"
       << " --args-json "
-      << shell_quote(R"({"reingest_report_fragments":false})");
+      << shell_quote(R"({"reingest":false})");
   return cmd.str();
 }
 
 static std::string call_removed_lattice_tool_command(
-    const fs::path& store_root, const fs::path& catalog_path,
-    const fs::path& hashimyei_catalog_path) {
+    const fs::path& store_root, const fs::path& catalog_path) {
   std::ostringstream cmd;
   cmd << shell_quote(kLatticeMcpBin) << " --global-config "
       << shell_quote(kGlobalConfig) << " --store-root "
       << shell_quote(store_root.string()) << " --catalog "
-      << shell_quote(catalog_path.string()) << " --hashimyei-catalog "
-      << shell_quote(hashimyei_catalog_path.string())
+      << shell_quote(catalog_path.string())
       << " --tool hero.lattice.matrix --args-json " << shell_quote("{}");
   return cmd.str();
 }
@@ -171,17 +163,21 @@ static void test_lattice_tools_list_surface() {
   temp_dir_t tmp("test_lattice_mcp_tools");
   const fs::path store_root = tmp.dir / "lat_store";
   const fs::path catalog = store_root / "lattice_catalog.idydb";
-  const fs::path hash_catalog = store_root / "hashimyei_catalog.idydb";
   fs::create_directories(store_root);
 
   const command_result_t result = run_command(
-      tools_list_command(kLatticeMcpBin, store_root, catalog, hash_catalog));
+      tools_list_command(kLatticeMcpBin, store_root, catalog));
   REQUIRE(result.exit_code == 0);
-  REQUIRE(contains(result.output, "\"hero.lattice.get_runs\""));
-  REQUIRE(contains(result.output, "\"hero.lattice.list_report_fragments\""));
-  REQUIRE(contains(result.output, "\"hero.lattice.get_report_lls\""));
-  REQUIRE(contains(result.output, "\"hero.lattice.get_view_lls\""));
-  REQUIRE(contains(result.output, "\"hero.lattice.reset_catalog\""));
+  REQUIRE(contains(result.output, "\"hero.lattice.list_facts\""));
+  REQUIRE(contains(result.output, "\"hero.lattice.get_fact\""));
+  REQUIRE(contains(result.output, "\"hero.lattice.list_views\""));
+  REQUIRE(contains(result.output, "\"hero.lattice.get_view\""));
+  REQUIRE(contains(result.output, "\"hero.lattice.refresh\""));
+  REQUIRE(!contains(result.output, "\"hero.lattice.get_runs\""));
+  REQUIRE(!contains(result.output, "\"hero.lattice.list_report_fragments\""));
+  REQUIRE(!contains(result.output, "\"hero.lattice.get_report_lls\""));
+  REQUIRE(!contains(result.output, "\"hero.lattice.get_view_lls\""));
+  REQUIRE(!contains(result.output, "\"hero.lattice.reset_catalog\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_history\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_performance\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.provenance\""));
@@ -208,11 +204,10 @@ static void test_lattice_reset_catalog_smoke() {
   temp_dir_t tmp("test_lattice_mcp_reset");
   const fs::path store_root = tmp.dir / "lat_store";
   const fs::path catalog = store_root / "lattice_catalog.idydb";
-  const fs::path hash_catalog = store_root / "hashimyei_catalog.idydb";
   fs::create_directories(store_root);
 
   const command_result_t result = run_command(
-      reset_lattice_command(store_root, catalog, hash_catalog));
+      reset_lattice_command(store_root, catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"isError\":false"));
   REQUIRE(contains(result.output, "\"runtime_report_fragment_count\":"));
@@ -223,11 +218,10 @@ static void test_lattice_removed_tool_rejected() {
   temp_dir_t tmp("test_lattice_mcp_removed_tool");
   const fs::path store_root = tmp.dir / "lat_store";
   const fs::path catalog = store_root / "lattice_catalog.idydb";
-  const fs::path hash_catalog = store_root / "hashimyei_catalog.idydb";
   fs::create_directories(store_root);
 
   const command_result_t result = run_command(
-      call_removed_lattice_tool_command(store_root, catalog, hash_catalog));
+      call_removed_lattice_tool_command(store_root, catalog));
   REQUIRE(result.exit_code != 0);
   REQUIRE(contains(result.output, "unknown tool: hero.lattice.matrix"));
 }

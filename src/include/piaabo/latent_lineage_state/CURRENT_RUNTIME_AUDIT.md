@@ -7,13 +7,13 @@ behavior from desired future standard behavior.
 
 | Payload | Producer | Main consumers | Surface | Ingest class | Current notes |
 | --- | --- | --- | --- | --- | --- |
-| `wave.source.runtime.projection.v2` | `src/include/hero/lattice_hero/source_runtime_projection.h` | `src/impl/hero/lattice_hero/lattice_catalog.cpp` synthetic fragment queries | embedded inside joined `report_lls`, no standalone file | embedded synthetic | strict runtime `.lls`, namespaced `source.runtime.projection.schema`, fixed 12 digits |
+| `wave.source.runtime.projection.v2` | `src/main/main_campaign.cpp` via `src/include/hero/lattice_hero/source_runtime_projection.h` | Hero Lattice ingest, assembled fact bundles, humans / direct artifact readers | `source_runtime_projection.latest.lls` under the runtime store `tsi.source/runtime_projection/...` tree | standalone, ingestable | strict runtime `.lls`, top-level `schema`, fixed 12 digits |
 | `wave.projection.lls.v2` | `src/impl/hero/lattice_hero/lattice_catalog.cpp` | lattice catalog cells / MCP report joins | stored in catalog `projection_lls`, no standalone file | catalog-only | top-level `schema`, `projection_version`, `projector_build_id`, sorted numeric/text sections, fixed 12 digits |
-| `piaabo.torch_compat.data_analytics.v1` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `.hashimyei/.../data_analytics.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, common identity envelope when provided |
-| `piaabo.torch_compat.data_analytics_symbolic.v1` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `.hashimyei/.../data_analytics.symbolic.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `channel_<n>_*` keys and comment-free canonical emission; pretty/debug output may add `/* ... */` channel annotations |
-| `piaabo.torch_compat.embedding_sequence_analytics.v1` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` via `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, generic sequence envelope over latent `[B,T,E]` encodings reshaped to per-dimension streams |
-| `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` via `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.symbolic.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `stream_<n>_*` keys, representative-stream reduction when latent width is large, pretty/debug output may add generalized `/* ... */` comments |
-| `piaabo.torch_compat.network_analytics.v4` | `src/impl/piaabo/torch_compat/network_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `<checkpoint>.network_analytics.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, top-k collection flattening uses `_count`, `_1_name`, `_1_value` |
+| `piaabo.torch_compat.data_analytics.v2` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `.hashimyei/.../tsi.source/data_analytics.v2/.../data_analytics.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, common identity envelope when provided; `MASK_EPSILON` is an ingest gate and invalid positions are excluded from numeric statistics |
+| `piaabo.torch_compat.data_analytics_symbolic.v2` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `.hashimyei/.../tsi.source/data_analytics.v2/.../data_analytics.symbolic.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `channel_<n>_*` keys and comment-free canonical emission; pretty/debug output may add `/* ... */` channel annotations; symbolic time-series metrics use the last valid timestep anchor in ingest order |
+| `piaabo.torch_compat.embedding_sequence_analytics.v2` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` via `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.v2.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, generic sequence envelope over latent `[B,T,E]` encodings reshaped to per-dimension streams |
+| `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` via `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.symbolic.v2.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `stream_<n>_*` keys, representative-stream reduction when latent width is large, pretty/debug output may add generalized `/* ... */` comments; symbolic metrics remain ingest-order heuristics |
+| `piaabo.torch_compat.network_analytics.v5` | `src/impl/piaabo/torch_compat/network_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `<checkpoint>.network_analytics.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, top-k collection flattening uses `_count`, `_1_name`, `_1_value`; serializer options come from the stored normalized report options |
 | `tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1` | `src/include/wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h` wrapped by `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` | Hero Hashimyei/Lattice ingest | `transfer_matrix_evaluation.summary.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, canonical `canonical_path` envelope |
 | `tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.matrix.v1` | same as above | humans / direct artifact readers | `transfer_matrix_evaluation.matrix.latest.lls` | artifact-only | strict runtime `.lls`, fixed 12 digits, remains outside the current Lattice ingest allow-list |
 | `tsi.wikimyei.representation.vicreg.status.v1` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` | known-schema allow-lists in Hero | `status.latest.lls` | standalone, ingestable | strict runtime `.lls`, canonical `canonical_path`, deterministic fallback `run_id` when no live run id is available |
@@ -34,14 +34,19 @@ Standardized runtime validator/emitter foundation:
 
 Lattice query-time view surfaces:
 
-- `hero.lattice.get_view_lls`
+- `hero.lattice.list_views`
+- `hero.lattice.get_view`
 - current view kind: `entropic_capacity_comparison`
+- current selector form: required `wave_cursor`, optional `canonical_path`, optional `contract_hash`
 - derived views are not persisted runtime report fragments in this pass
+- read tools query only the current lattice catalog; they do not implicitly
+  rescan the runtime store on each request; refresh is explicit via
+  `hero.lattice.refresh(reingest=true)`
 
 Legacy comparison helper:
 
 - `src/impl/piaabo/torch_compat/entropic_capacity_comparison.cpp`
-- still provides payload/file reducers and standalone writers for compatibility tests
+- still provides payload reducers and canonical text serialization for compatibility tests
 - no standard component runtime currently emits or ingests
   `piaabo.torch_compat.entropic_capacity_comparison.v1`
 
@@ -129,10 +134,10 @@ Identity envelope:
    `status.latest.lls`.
 
 3. Hero uses two distinct projection payload shapes:
-   `source.runtime.projection.schema=wave.source.runtime.projection.v2` for the
-   embedded source-runtime subdocument, and `schema=wave.projection.lls.v2` for the
-   catalog cell `projection_lls`. The earlier documentation treated them as one
-   surface.
+   `schema=wave.source.runtime.projection.v2` for the standalone source-runtime
+   fact, and `schema=wave.projection.lls.v2` for the catalog cell
+   `projection_lls`. The embedded projection text inside joined transports still
+   uses `source.runtime.projection.schema=wave.source.runtime.projection.v2`.
 
 4. Declared type/domain metadata is part of the shared LHS syntax, but many runtime
    consumers flatten to semantic keys immediately and do not preserve the declared

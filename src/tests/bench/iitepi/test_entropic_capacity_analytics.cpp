@@ -25,6 +25,15 @@ bool expect(bool cond, const std::string& msg) {
   return true;
 }
 
+bool expect_near(double lhs, double rhs, double tol, const std::string& msg) {
+  if (std::abs(lhs - rhs) > tol) {
+    std::cerr << "[test_entropic_capacity_analytics] FAIL: " << msg
+              << " lhs=" << lhs << " rhs=" << rhs << " tol=" << tol << "\n";
+    return false;
+  }
+  return true;
+}
+
 struct tiny_model_t final : torch::nn::Module {
   tiny_model_t() {
     register_parameter(
@@ -65,6 +74,13 @@ std::string join_csv(const std::vector<std::string>& parts) {
     out += parts[i];
   }
   return out;
+}
+
+std::string read_file_text(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  return std::string(
+      (std::istreambuf_iterator<char>(in)),
+      std::istreambuf_iterator<char>());
 }
 
 std::vector<int> make_repeating_tokens(std::size_t repeats) {
@@ -207,9 +223,137 @@ int main() try {
                     has_lhs_key(kv_with_identity, "canonical_path"),
                     "data analytics kv missing canonical_path in component envelope");
     ok = ok && expect(
-                    kv.find("schema:str = piaabo.torch_compat.data_analytics.v1") !=
+                    kv.find("schema:str = piaabo.torch_compat.data_analytics.v2") !=
                         std::string::npos,
-                    "data analytics kv should keep legacy schema");
+                    "data analytics kv should carry v2 schema");
+    ok = ok && expect(
+                    kv.find("sample_count[0,+inf):uint = 6") != std::string::npos,
+                    "data analytics kv should emit nonnegative uint domains");
+    ok = ok && expect(
+                    kv.find("max_samples[1,+inf):int = 64") != std::string::npos,
+                    "data analytics kv should emit positive int domains");
+  }
+
+  {
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t opt{};
+    opt.max_samples = 16;
+    opt.max_features = 16;
+    opt.mask_epsilon = 0.25;
+
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t zero_acc(opt);
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t garbage_acc(
+        opt);
+
+    const auto features_zero = torch::tensor(
+        {{{{1.0, 10.0}, {0.0, 0.0}}},
+         {{{2.0, 20.0}, {0.0, 0.0}}},
+         {{{3.0, 30.0}, {0.0, 0.0}}},
+         {{{4.0, 40.0}, {0.0, 0.0}}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto features_garbage = torch::tensor(
+        {{{{1.0, 10.0}, {1000.0, -1000.0}}},
+         {{{2.0, 20.0}, {2000.0, -2000.0}}},
+         {{{3.0, 30.0}, {3000.0, -3000.0}}},
+         {{{4.0, 40.0}, {4000.0, -4000.0}}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto mask = torch::tensor(
+        {{{1.0, 0.0}},
+         {{1.0, 0.0}},
+         {{1.0, 0.0}},
+         {{1.0, 0.0}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+
+    ok = ok && expect(
+                    zero_acc.ingest(features_zero, mask),
+                    "mask-aware zero ingest should succeed");
+    ok = ok && expect(
+                    garbage_acc.ingest(features_garbage, mask),
+                    "mask-aware garbage ingest should succeed");
+
+    const auto zero_report = zero_acc.summarize();
+    const auto garbage_report = garbage_acc.summarize();
+    ok = ok && expect(
+                    zero_report.valid_sample_count == 4,
+                    "partial-valid rows above threshold should be accepted");
+    ok = ok && expect(
+                    zero_report.source_effective_feature_count == 2,
+                    "effective feature count should reflect only valid sampled columns");
+    ok = ok && expect_near(
+                    zero_report.source_entropic_load,
+                    garbage_report.source_entropic_load,
+                    1e-9,
+                    "masked garbage should not change entropic load");
+    ok = ok && expect_near(
+                    zero_report.source_cov_trace,
+                    garbage_report.source_cov_trace,
+                    1e-9,
+                    "masked garbage should not change covariance trace");
+    ok = ok && expect(
+                    zero_report.source_nonzero_eigen_count ==
+                        garbage_report.source_nonzero_eigen_count,
+                    "masked garbage should not change nonzero eigen count");
+  }
+
+  {
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t opt{};
+    opt.max_samples = 16;
+    opt.max_features = 16;
+    opt.mask_epsilon = 0.5;
+
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t acc(opt);
+    const auto features = torch::tensor(
+        {{{{1.0, 10.0}, {0.0, 0.0}}},
+         {{{2.0, 20.0}, {0.0, 0.0}}},
+         {{{3.0, 30.0}, {0.0, 0.0}}},
+         {{{4.0, 40.0}, {0.0, 0.0}}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto mask = torch::tensor(
+        {{{1.0, 0.0}},
+         {{1.0, 0.0}},
+         {{1.0, 0.0}},
+         {{1.0, 0.0}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+
+    ok = ok && expect(
+                    acc.ingest(features, mask),
+                    "threshold-gated ingest should still normalize successfully");
+    const auto report = acc.summarize();
+    ok = ok && expect(report.sample_count == 4, "threshold-gated sample count mismatch");
+    ok = ok && expect(
+                    report.valid_sample_count == 0,
+                    "rows at or below mask_epsilon should be skipped");
+    ok = ok && expect(
+                    report.skipped_sample_count == 4,
+                    "rows at or below mask_epsilon should count as skipped");
+  }
+
+  {
+    using cuwacunu::piaabo::torch_compat::source_data_analytics_contract_directory;
+    using cuwacunu::piaabo::torch_compat::source_data_analytics_instance_directory;
+
+    ok = ok && expect(
+                    source_data_analytics_contract_directory("0x").empty(),
+                    "0x-only contract hash should not yield a directory");
+    ok = ok && expect(
+                    source_data_analytics_contract_directory("   ").empty(),
+                    "whitespace contract hash should not yield a directory");
+    ok = ok && expect(
+                    source_data_analytics_instance_directory("0x", "spot").empty(),
+                    "empty normalized contract token should invalidate instance paths");
+    const auto sanitized =
+        source_data_analytics_contract_directory("contract/hash");
+    ok = ok && expect(
+                    sanitized.filename() == "contract_hash",
+                    "path token sanitization should replace unsafe separators");
+    const auto full_hash =
+        source_data_analytics_contract_directory("0xabcdef0123456789");
+    ok = ok && expect(
+                    full_hash.filename() == "abcdef0123456789",
+                    "contract hash path token should no longer truncate");
+    ok = ok && expect(
+                    full_hash.generic_string().find("/tsi.source/data_analytics.v2/") !=
+                        std::string::npos,
+                    "source analytics paths should use the v2 root");
   }
 
   {
@@ -259,9 +403,82 @@ int main() try {
                     has_lhs_key(kv, "sequence_channels"),
                     "generic sequence kv missing sequence_channels");
     ok = ok && expect(
-                    kv.find("schema:str = piaabo.torch_compat.sequence_analytics.v1") !=
+                    kv.find("schema:str = piaabo.torch_compat.sequence_analytics.v2") !=
                         std::string::npos,
-                    "generic sequence kv should carry generic schema");
+                    "generic sequence kv should carry v2 schema");
+  }
+
+  {
+    using cuwacunu::piaabo::torch_compat::sequence_analytics_accumulator_t;
+
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t opt{};
+    opt.max_samples = 8;
+    opt.max_features = 32;
+
+    sequence_analytics_accumulator_t acc(opt);
+    const auto three_d = torch::tensor(
+        {{{1.0}, {2.0}, {3.0}, {4.0}},
+         {{5.0}, {6.0}, {7.0}, {8.0}},
+         {{9.0}, {10.0}, {11.0}, {12.0}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto mask =
+        torch::ones({3, 4}, torch::TensorOptions().dtype(torch::kFloat64));
+
+    ok = ok && expect(
+                    acc.ingest(three_d, mask),
+                    "3D generic sequence ingest should succeed");
+    const auto report = acc.summarize();
+    ok = ok && expect(
+                    report.sequence_channels == 3,
+                    "3D generic sequence should treat the first axis as channels");
+    ok = ok && expect(
+                    report.sequence_timesteps == 4,
+                    "3D generic sequence timestep count mismatch");
+    ok = ok && expect(
+                    report.sequence_features_per_timestep == 1,
+                    "3D generic sequence feature count mismatch");
+  }
+
+  {
+    using cuwacunu::piaabo::torch_compat::sequence_analytics_accumulator_t;
+
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t opt{};
+    opt.max_samples = 8;
+    opt.max_features = 32;
+
+    sequence_analytics_accumulator_t acc(opt);
+    const auto first = torch::tensor(
+        {{1.0, 0.0}, {2.0, 1.0}, {3.0, 1.5}, {4.0, 2.5}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto second = torch::tensor(
+        {{{1.0, 2.0}, {3.0, 4.0}},
+         {{5.0, 6.0}, {7.0, 8.0}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto first_mask =
+        torch::ones({4}, torch::TensorOptions().dtype(torch::kFloat64));
+    const auto second_mask =
+        torch::ones({2, 2}, torch::TensorOptions().dtype(torch::kFloat64));
+
+    ok = ok && expect(
+                    acc.ingest(first, first_mask),
+                    "baseline geometry ingest should succeed");
+    ok = ok && expect(
+                    !acc.ingest(second, second_mask),
+                    "mismatched normalized geometry should be rejected");
+    const auto report = acc.summarize();
+    ok = ok && expect(
+                    report.sample_count == 2,
+                    "geometry-rejection sample count mismatch");
+    ok = ok && expect(
+                    report.valid_sample_count == 1,
+                    "geometry-rejection should preserve only the first ingest");
+    ok = ok && expect(
+                    report.skipped_sample_count == 1,
+                    "geometry-rejection should count the rejected ingest as skipped");
+    ok = ok && expect(
+                    report.sequence_channels == 1 && report.sequence_timesteps == 4 &&
+                        report.sequence_features_per_timestep == 2,
+                    "geometry-rejection should preserve the locked layout");
   }
 
   {
@@ -409,7 +626,7 @@ int main() try {
         cuwacunu::piaabo::torch_compat::data_symbolic_analytics_to_pretty_text(
             low_report,
             "tsi.source.dataloader.test",
-            "/tmp/data_analytics.symbolic.latest.lls",
+            "/tmp/data_analytics.symbolic.v2.latest.lls",
             /*use_color=*/false);
     ok = ok && expect(
                     symbolic_pretty.find("/* BTCUSDT/1d/kline */") != std::string::npos,
@@ -420,9 +637,9 @@ int main() try {
                     "symbolic pretty text should include anchor-feature comment");
     ok = ok && expect(
                     symbolic_kv.find(
-                        "schema:str = piaabo.torch_compat.data_analytics_symbolic.v1") !=
+                        "schema:str = piaabo.torch_compat.data_analytics_symbolic.v2") !=
                         std::string::npos,
-                    "symbolic kv should keep legacy schema");
+                    "symbolic kv should carry v2 schema");
   }
 
   {
@@ -484,7 +701,7 @@ int main() try {
         cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_to_pretty_text(
             report,
             "wikimyei.latent_sequence",
-            "/tmp/sequence_analytics.symbolic.latest.lls",
+            "/tmp/sequence_analytics.symbolic.v2.latest.lls",
             /*use_color=*/false);
     ok = ok && expect(
                     pretty.find("stream[1].stream_family") != std::string::npos,
@@ -556,11 +773,11 @@ int main() try {
                     has_lhs_key(reduced_kv, "stream_report_reduced"),
                     "wide generic symbolic kv missing reduction flag");
     ok = ok && expect(
-                    reduced_kv.find("reported_stream_count(0,+inf):uint = 16") !=
+                    reduced_kv.find("reported_stream_count[0,+inf):uint = 16") !=
                         std::string::npos,
                     "wide generic symbolic kv should cap reported streams");
     ok = ok && expect(
-                    reduced_kv.find("omitted_stream_count(0,+inf):uint = 24") !=
+                    reduced_kv.find("omitted_stream_count[0,+inf):uint = 24") !=
                         std::string::npos,
                     "wide generic symbolic kv should report omitted streams");
     ok = ok && expect(
@@ -571,7 +788,7 @@ int main() try {
         cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_to_pretty_text(
             wide_report,
             "wikimyei.latent_sequence",
-            "/tmp/sequence_analytics.symbolic.latest.lls",
+            "/tmp/sequence_analytics.symbolic.v2.latest.lls",
             /*use_color=*/false);
     ok = ok && expect(
                     reduced_pretty.find("/* reduced stream view: showing 16 representative streams out of 40") !=
@@ -628,6 +845,47 @@ int main() try {
                     "trend series should have higher hurst estimate than alternating series");
   }
 
+  {
+    using cuwacunu::piaabo::torch_compat::data_symbolic_analytics_accumulator_t;
+    using cuwacunu::piaabo::torch_compat::data_symbolic_channel_descriptor_t;
+
+    data_symbolic_channel_descriptor_t descriptor{};
+    descriptor.label = "BTCUSDT/1d/basic";
+    descriptor.record_type = "basic";
+    descriptor.anchor_feature = "value";
+    descriptor.anchor_feature_index = 0;
+    descriptor.feature_names = "value";
+
+    const auto sample_count = std::size_t{150};
+    auto features = torch::zeros(
+        {static_cast<long>(sample_count), 1, 3, 1},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    auto mask = torch::zeros(
+        {static_cast<long>(sample_count), 1, 3},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    for (std::size_t i = 0; i < sample_count; ++i) {
+      const double anchor_value = static_cast<double>((i % 7) - 3);
+      features.index_put_({static_cast<long>(i), 0, 0, 0}, -99.0);
+      features.index_put_({static_cast<long>(i), 0, 1, 0}, anchor_value);
+      features.index_put_({static_cast<long>(i), 0, 2, 0}, 1000.0 + i);
+      mask.index_put_({static_cast<long>(i), 0, 0}, 1.0);
+      mask.index_put_({static_cast<long>(i), 0, 1}, 1.0);
+      mask.index_put_({static_cast<long>(i), 0, 2}, 0.0);
+    }
+
+    data_symbolic_analytics_accumulator_t acc({descriptor});
+    ok = ok && expect(
+                    acc.ingest(features, mask),
+                    "symbolic last-valid-timestep ingest should succeed");
+    const auto report = acc.summarize();
+    ok = ok && expect(
+                    report.eligible_channel_count == 1,
+                    "last-valid symbolic series should stay eligible");
+    ok = ok && expect(
+                    report.channels[0].valid_count == sample_count,
+                    "last-valid symbolic series should use the last valid timestep per sample");
+  }
+
   tiny_model_t model{};
   cuwacunu::piaabo::torch_compat::network_analytics_options_t nopt{};
   nopt.spectral_max_elements = 64;
@@ -665,41 +923,17 @@ int main() try {
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
 
-    const auto source_file = dir / "data_analytics.latest.lls";
-    const auto network_file = dir / "weights.init.pt.network_analytics.lls";
-    const auto out_file = dir / "weights.init.pt.entropic_capacity.lls";
-    const auto symbolic_file = dir / "data_analytics.symbolic.latest.lls";
-
-    {
-      std::ofstream out(source_file, std::ios::binary | std::ios::trunc);
-      out << "schema:str = piaabo.torch_compat.data_analytics.v1\n";
-      out << "source_entropic_load(0,+inf):double = 3.000000000000\n";
-    }
-    {
-      std::ofstream out(network_file, std::ios::binary | std::ios::trunc);
-      out << "schema:str = piaabo.torch_compat.network_analytics.v4\n";
-      out << "network_global_entropic_capacity(0,+inf):double = 4.500000000000\n";
-    }
-
-    cuwacunu::piaabo::torch_compat::entropic_capacity_comparison_report_t from_files{};
+    const auto symbolic_file = dir / "data_analytics.symbolic.v2.latest.lls";
     cuwacunu::piaabo::torch_compat::entropic_capacity_comparison_report_t
         from_payloads{};
     std::string err;
     ok = ok && expect(
-                    cuwacunu::piaabo::torch_compat::summarize_entropic_capacity_comparison_from_files(
-                        source_file,
-                        network_file,
-                        &from_files,
-                        &err),
-                    "comparison from files should succeed");
-    ok = ok && expect(from_files.capacity_margin > 1.4, "capacity margin from files mismatch");
-    ok = ok && expect(
                     cuwacunu::piaabo::torch_compat::
                         summarize_entropic_capacity_comparison_from_payloads(
-                            "schema:str = piaabo.torch_compat.data_analytics.v1\n"
+                            "schema:str = piaabo.torch_compat.data_analytics.v2\n"
                             "run_id:str = run_runtime_001\n"
-                            "source_entropic_load(0,+inf):double = 3.000000000000\n",
-                            "schema:str = piaabo.torch_compat.network_analytics.v4\n"
+                            "source_entropic_load[0,+inf):double = 3.000000000000\n",
+                            "schema:str = piaabo.torch_compat.network_analytics.v5\n"
                             "run_id:str = run_runtime_001\n"
                             "network_global_entropic_capacity(0,+inf):double = "
                             "4.500000000000\n",
@@ -709,12 +943,23 @@ int main() try {
     ok = ok && expect(
                     from_payloads.capacity_margin > 1.4,
                     "capacity margin from payloads mismatch");
+    const auto comparison_text =
+        cuwacunu::piaabo::torch_compat::
+            entropic_capacity_comparison_to_latent_lineage_state_text(
+                from_payloads);
+    ok = ok && expect(
+                    has_lhs_key(comparison_text, "capacity_ratio"),
+                    "comparison text should include capacity_ratio");
+    ok = ok && expect(
+                    comparison_text.find("source_entropic_load") !=
+                        std::string::npos,
+                    "comparison text should include source_entropic_load");
     err.clear();
     ok = ok && expect(
                     !cuwacunu::piaabo::torch_compat::
                         summarize_entropic_capacity_comparison_from_payloads(
-                            "schema:str = piaabo.torch_compat.data_analytics.v1\n",
-                            "schema:str = piaabo.torch_compat.network_analytics.v4\n"
+                            "schema:str = piaabo.torch_compat.data_analytics.v2\n",
+                            "schema:str = piaabo.torch_compat.network_analytics.v5\n"
                             "network_global_entropic_capacity(0,+inf):double = "
                             "4.500000000000\n",
                             &from_payloads,
@@ -723,13 +968,6 @@ int main() try {
     ok = ok && expect(
                     err.find("source_entropic_load") != std::string::npos,
                     "missing source key error should mention source_entropic_load");
-
-    ok = ok && expect(
-                    cuwacunu::piaabo::torch_compat::write_entropic_capacity_comparison_file(
-                        from_files,
-                        out_file,
-                        &err),
-                    "comparison sidecar write should succeed");
 
     {
       cuwacunu::piaabo::torch_compat::data_symbolic_channel_report_t channel{};
@@ -799,10 +1037,7 @@ int main() try {
                           &err),
                       "symbolic report write should succeed");
 
-      std::ifstream in(symbolic_file, std::ios::binary);
-      std::string payload(
-          (std::istreambuf_iterator<char>(in)),
-          std::istreambuf_iterator<char>());
+      std::string payload = read_file_text(symbolic_file);
       ok = ok && expect(
                       has_lhs_key(payload, "channel_1_information_density"),
                       "symbolic sidecar should include information density");
@@ -821,13 +1056,32 @@ int main() try {
       ok = ok && expect(
                       payload.find("/*") == std::string::npos,
                       "symbolic sidecar should remain comment-free");
-    }
 
-    std::ifstream in(out_file, std::ios::binary);
-    std::string payload((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    ok = ok && expect(
-                    has_lhs_key(payload, "capacity_ratio"),
-                    "comparison sidecar should include capacity_ratio");
+      const auto failing_target = dir / "data_analytics.symbolic.atomic_target";
+      std::filesystem::create_directories(failing_target, ec);
+      err.clear();
+      ok = ok && expect(
+                      !cuwacunu::piaabo::torch_compat::write_data_symbolic_analytics_file(
+                          symbolic_report,
+                          failing_target,
+                          "tsi.source.dataloader.test",
+                          &err),
+                      "atomic writer should fail when the destination is a directory");
+      ok = ok && expect(
+                      std::filesystem::is_directory(failing_target),
+                      "atomic writer failure should preserve the existing target");
+      bool left_temp_file = false;
+      for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        const auto name = entry.path().filename().string();
+        if (name.find("data_analytics.symbolic.atomic_target.tmp.") == 0) {
+          left_temp_file = true;
+          break;
+        }
+      }
+      ok = ok && expect(
+                      !left_temp_file,
+                      "atomic writer failure should clean up temporary files");
+    }
   }
 
   if (!ok) return 1;

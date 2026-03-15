@@ -36,7 +36,7 @@ Each HERO MCP binary supports direct tool invocation:
   --args-json '{}'
 
 /cuwacunu/.build/hero/hero_lattice_mcp \
-  --tool hero.lattice.get_runs \
+  --tool hero.lattice.list_facts \
   --args-json '{}'
 
 /cuwacunu/.build/hero/hero_runtime_mcp \
@@ -85,20 +85,25 @@ Config MCP:
 Hashimyei MCP:
 
 - `hero.hashimyei.list`
-- `hero.hashimyei.get_founding_dsl`
 - `hero.hashimyei.get_component_manifest`
+- `hero.hashimyei.get_founding_dsl`
 - `hero.hashimyei.reset_catalog`
+
+Hashimyei is the component identity/discovery layer.
 
 Lattice MCP:
 
-- `hero.lattice.get_runs`
-- `hero.lattice.list_report_fragments`
-- `hero.lattice.get_latest_report_fragment`
-- `hero.lattice.get_report_fragment`
-- `hero.lattice.list_report_schemas`
-- `hero.lattice.get_report_lls`
-- `hero.lattice.get_view_lls`
-- `hero.lattice.reset_catalog`
+- `hero.lattice.list_facts`
+- `hero.lattice.get_fact`
+- `hero.lattice.list_views`
+- `hero.lattice.get_view`
+- `hero.lattice.refresh`
+
+Lattice is the fact index plus query-time view layer.
+Use `hero.lattice.get_fact` for assembled component fact bundles.
+Use `hero.lattice.get_view` for derived comparisons.
+Refresh catalog state explicitly with `hero.lattice.refresh(reingest=true)`
+when needed.
 
 Runtime MCP:
 
@@ -151,22 +156,24 @@ Runtime manifests:
 
 Lattice is healthiest as a fact index plus query-time view engine.
 
-- `hero.lattice.get_report_lls` returns a synthetic joined transport, not a canonical standalone runtime `.lls` document.
-- `hero.lattice.get_view_lls` returns a query-time derived transport, not a persisted runtime report fragment.
+- `hero.lattice.get_view` returns a query-time derived transport, not a persisted runtime report fragment.
+- `hero.lattice.get_fact` returns an assembled complete fact bundle for one component canonical path and selector context.
 - persisted fragments remain strict runtime `.lls` facts emitted by their owning components.
 - fact retrieval is component/canonical-path centric; correlation keys such as
-  `run_id` and `wave_cursor` are view selectors, not the primary identity of a
+  `wave_cursor` are view selectors, not the primary identity of a
   persisted fact.
+- normal read tools query the current lattice catalog only; refreshing from the
+  runtime store is explicit via `hero.lattice.refresh(reingest=true)`.
 
 For runtime report query surfaces:
 
 - `campaign_hash` is the public campaign-era runtime metadata field
 - `binding_id` is the public binding selection field
-- `wave_cursor_view` exposes readable `<run>.<epoch>,<batch>` form
+- public `wave_cursor` uses readable `<run>.<epoch>.<batch>` form
 
 Current derived view kinds:
 
-- `entropic_capacity_comparison`: compares `piaabo.torch_compat.data_analytics.v1` facts against `piaabo.torch_compat.network_analytics.v4` facts for one correlation `run_id`, with optional `wave_cursor` and `contract_hash` filters
+- `entropic_capacity_comparison`: compares `piaabo.torch_compat.data_analytics.v2` facts against `piaabo.torch_compat.network_analytics.v5` facts for one `wave_cursor`, with optional `canonical_path` narrowing and optional `contract_hash` filtering
 
 ## Dev Reset
 

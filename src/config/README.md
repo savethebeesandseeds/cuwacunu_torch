@@ -310,11 +310,11 @@ Direct one-shot tool call:
 
 ```bash
 /cuwacunu/.build/hero/hero_lattice_mcp \
-  --tool hero.lattice.get_runs \
+  --tool hero.lattice.list_views \
   --args-json '{}'
 ```
 
-`store_root`, `catalog_path`, `hashimyei_catalog_path`, and `config_folder`
+`store_root`, `catalog_path`, and `config_folder`
 are loaded from `default.hero.lattice.dsl` through
 `[REAL_HERO].lattice_hero_dsl_filename` in the global config.
 Catalog encryption mode is fixed to unencrypted in MCP runtime.
@@ -327,10 +327,11 @@ codex mcp add hero-lattice -- \
 ```
 
 Supported MCP tools:
-- `hero.lattice.get_runs`
-- `hero.lattice.list_report_fragments`
-- `hero.lattice.get_report_lls`
-- `hero.lattice.reset_catalog`
+- `hero.lattice.list_facts`
+- `hero.lattice.get_fact`
+- `hero.lattice.list_views`
+- `hero.lattice.get_view`
+- `hero.lattice.refresh`
 
 ## Split Policy
 
@@ -421,6 +422,8 @@ Supported MCP tools:
   `CSV_POLICY { CSV_BOOTSTRAP_DELTAS, CSV_STEP_ABS_TOL, CSV_STEP_REL_TOL }`.
   It also owns required source analytics policy:
   `DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
+  `MASK_EPSILON` is the minimum accepted valid-timestep ratio for a sample;
+  accepted samples exclude invalid positions from the numeric analytics.
 
 ## Runtime Contract Lock
 

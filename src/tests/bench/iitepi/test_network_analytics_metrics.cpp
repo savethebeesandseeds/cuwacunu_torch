@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -86,6 +87,15 @@ struct toy_network_t final : torch::nn::Module {
   }
 };
 
+struct histogram_quantile_network_t final : torch::nn::Module {
+  histogram_quantile_network_t() {
+    register_parameter(
+        "tiny",
+        torch::tensor({1e-3, 1e-2, 1e-1}, torch::kFloat64),
+        true);
+  }
+};
+
 }  // namespace
 
 int main() try {
@@ -165,10 +175,16 @@ int main() try {
                   report.top_high_spectral_norm_tensors.front().tensor_name == "w_diag",
                   "w_diag should lead top spectral norm table");
 
+  ok = ok && expect(
+                  report.normalized_options.spectral_max_elements == 4,
+                  "report should store normalized options");
+  ok = ok && expect(
+                  report.normalized_options.anomaly_top_k == 3,
+                  "report normalized options anomaly_top_k mismatch");
+
   const std::string params_kv =
       cuwacunu::piaabo::torch_compat::network_analytics_to_latent_lineage_state_text(
           report,
-          options,
           "weights.init.pt");
   const auto report_identity = tsiemene::make_component_report_identity(
       "network_analytics",
@@ -179,7 +195,6 @@ int main() try {
   const std::string params_kv_with_identity =
       cuwacunu::piaabo::torch_compat::network_analytics_to_latent_lineage_state_text(
           report,
-          options,
           "weights.init.pt",
           report_identity);
   const std::string extracted_schema =
@@ -208,6 +223,12 @@ int main() try {
                   has_lhs_key(params_kv, "top_high_spectral_norm_1_name"),
                   "kv output missing indexed top-k key");
   ok = ok && expect(
+                  contains(params_kv, "finite_ratio[0,1]:double"),
+                  "finite_ratio should use a closed unit interval domain");
+  ok = ok && expect(
+                  contains(params_kv, "tensor_count[0,+inf):uint"),
+                  "tensor_count should use a nonnegative domain");
+  ok = ok && expect(
                   has_lhs_key(params_kv_with_identity, "canonical_path") &&
                       contains(params_kv_with_identity,
                                "tsi.wikimyei.representation.vicreg.0x0001"),
@@ -227,21 +248,77 @@ int main() try {
                       param_schema),
                   "current parameter schema should be supported");
   ok = ok && expect(
-                  cuwacunu::piaabo::torch_compat::is_supported_network_analytics_schema(
-                      cuwacunu::piaabo::torch_compat::kNetworkAnalyticsSchemaV1),
-                  "v1 parameter schema should remain supported");
-  ok = ok && expect(
-                  cuwacunu::piaabo::torch_compat::is_supported_network_analytics_schema(
-                      cuwacunu::piaabo::torch_compat::kNetworkAnalyticsSchemaV2),
-                  "v2 parameter schema should remain supported");
-  ok = ok && expect(
-                  cuwacunu::piaabo::torch_compat::is_supported_network_analytics_schema(
-                      cuwacunu::piaabo::torch_compat::kNetworkAnalyticsSchemaV3),
-                  "v3 parameter schema should remain supported");
+                  !cuwacunu::piaabo::torch_compat::is_supported_network_analytics_schema(
+                      "piaabo.torch_compat.network_analytics.v4"),
+                  "legacy parameter schema should be unsupported");
   ok = ok && expect(
                   !cuwacunu::piaabo::torch_compat::is_supported_network_analytics_schema(
                       "piaabo.torch_compat.network_analytics.v999"),
                   "unknown parameter schema should be unsupported");
+
+  {
+    cuwacunu::piaabo::torch_compat::network_analytics_options_t normalized_options{};
+    normalized_options.near_zero_epsilon = -1.0;
+    normalized_options.log10_abs_histogram_bins = 0;
+    normalized_options.spectral_max_elements = 0;
+    normalized_options.anomaly_top_k = -5;
+    normalized_options.log10_abs_histogram_min = 2.0;
+    normalized_options.log10_abs_histogram_max = 1.0;
+
+    const auto normalized_report =
+        cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
+            model, normalized_options);
+    ok = ok && expect(
+                    approx(normalized_report.normalized_options.near_zero_epsilon,
+                           0.0,
+                           1e-15),
+                    "negative near_zero_epsilon should normalize to zero");
+    ok = ok && expect(
+                    normalized_report.normalized_options.log10_abs_histogram_bins == 1,
+                    "histogram bins should normalize to one");
+    ok = ok && expect(
+                    normalized_report.normalized_options.spectral_max_elements == 1,
+                    "spectral_max_elements should normalize to one");
+    ok = ok && expect(
+                    normalized_report.normalized_options.anomaly_top_k == 0,
+                    "anomaly_top_k should normalize to zero");
+    const std::string normalized_kv =
+        cuwacunu::piaabo::torch_compat::network_analytics_to_latent_lineage_state_text(
+            normalized_report, "weights.norm.pt");
+    ok = ok && expect(
+                    contains(normalized_kv, "log10_abs_histogram_bins[1,+inf):int = 1"),
+                    "serialized histogram bins should come from normalized report options");
+    ok = ok && expect(
+                    contains(normalized_kv, "spectral_max_elements[1,+inf):int = 1"),
+                    "serialized spectral_max_elements should use a positive domain");
+    ok = ok && expect(
+                    contains(normalized_kv, "anomaly_top_k[0,+inf):int = 0"),
+                    "serialized anomaly_top_k should allow zero");
+  }
+
+  {
+    histogram_quantile_network_t histogram_model{};
+    cuwacunu::piaabo::torch_compat::network_analytics_options_t one_bin_options{};
+    one_bin_options.log10_abs_histogram_bins = 1;
+    one_bin_options.enable_spectral_metrics = false;
+    one_bin_options.include_buffers = false;
+
+    const auto one_bin_report =
+        cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
+            histogram_model, one_bin_options);
+    ok = ok && expect(
+                    approx(one_bin_report.log10_abs_histogram_entropy, 0.0, 1e-15),
+                    "one-bin histogram entropy should be zero");
+    ok = ok && expect(
+                    one_bin_report.log10_abs_p50 < -1.5,
+                    "one-bin p50 should come from exact quantiles, not the single bin midpoint");
+    ok = ok && expect(
+                    one_bin_report.abs_p50 < 0.02,
+                    "one-bin absolute p50 should track actual tensor magnitudes");
+    ok = ok && expect(
+                    one_bin_report.abs_p99 > one_bin_report.abs_p50,
+                    "one-bin quantiles should remain ordered");
+  }
 
   cuwacunu::camahjucunu::network_design_instruction_t policy_design{};
   policy_design.network_id = "toy.policy";
@@ -406,23 +483,24 @@ int main() try {
                                       kNetworkDesignAnalyticsSchemaCurrent),
                   "network design schema should be current");
   ok = ok && expect(design_report.node_count == 5, "node count mismatch");
-  ok = ok && expect(design_report.internal_edge_count == 6, "internal edge count mismatch");
-  ok = ok && expect(design_report.inferred_edge_count == 6, "inferred edge count mismatch");
+  ok = ok && expect(design_report.analysis_valid, "design report should be valid");
+  ok = ok && expect(design_report.internal_edge_count == 7, "internal edge count mismatch");
+  ok = ok && expect(design_report.inferred_edge_count == 7, "inferred edge count mismatch");
   ok = ok && expect(design_report.explicit_edge_count == 0, "explicit edge count should be zero");
-  ok = ok && expect(design_report.source_count == 2, "source count mismatch");
-  ok = ok && expect(design_report.internal_sink_count == 2, "internal sink count mismatch");
+  ok = ok && expect(design_report.source_count == 1, "source count mismatch");
+  ok = ok && expect(design_report.internal_sink_count == 1, "internal sink count mismatch");
   ok = ok && expect(
                   design_report.export_reachable_node_count == 4,
                   "export reachable node count mismatch");
   ok = ok && expect(design_report.dead_end_node_count == 1, "dead-end count mismatch");
-  ok = ok && expect(design_report.orphan_node_count == 0, "orphan count mismatch");
+  ok = ok && expect(design_report.orphan_node_count == 1, "orphan count mismatch");
   ok = ok && expect(design_report.branch_node_count == 3, "branch node count mismatch");
   ok = ok && expect(design_report.merge_node_count == 2, "merge node count mismatch");
   ok = ok && expect(design_report.scc_count == 4, "SCC count mismatch");
   ok = ok && expect(design_report.largest_scc_size == 2, "largest SCC size mismatch");
-  ok = ok && expect(design_report.cyclic_node_count == 2, "cyclic node count mismatch");
+  ok = ok && expect(design_report.cyclic_node_count == 3, "cyclic node count mismatch");
   ok = ok && expect(
-                  approx(design_report.cyclic_node_ratio, 2.0 / 5.0, 1e-12),
+                  approx(design_report.cyclic_node_ratio, 3.0 / 5.0, 1e-12),
                   "cyclic node ratio mismatch");
   ok = ok && expect(design_report.skip_edge_count == 1, "skip edge count mismatch");
   ok = ok && expect(design_report.max_skip_span == 2, "max skip span mismatch");
@@ -444,6 +522,9 @@ int main() try {
   ok = ok && expect(
                   design_report.self_reference_token_count == 1,
                   "self reference token count mismatch");
+  ok = ok && expect(
+                  design_report.topological_order_count == 1,
+                  "self-loop should reduce the topological order count");
 
   const std::string design_kv =
       cuwacunu::piaabo::torch_compat::network_design_analytics_to_latent_lineage_state_text(
@@ -469,6 +550,9 @@ int main() try {
                   has_lhs_key(design_kv, "unresolved_identifier_token_count"),
                   "design kv missing token evidence key");
   ok = ok && expect(
+                  has_lhs_key(design_kv, "analysis_valid"),
+                  "design kv should include the validity state");
+  ok = ok && expect(
                   design_schema ==
                       std::string(cuwacunu::piaabo::torch_compat::
                                       kNetworkDesignAnalyticsSchemaCurrent),
@@ -478,22 +562,129 @@ int main() try {
                       is_supported_network_design_analytics_schema(design_schema),
                   "current design schema should be supported");
   ok = ok && expect(
-                  cuwacunu::piaabo::torch_compat::
+                  !cuwacunu::piaabo::torch_compat::
                       is_supported_network_design_analytics_schema(
-                          cuwacunu::piaabo::torch_compat::
-                              kNetworkDesignAnalyticsSchemaV1),
-                  "v1 design schema should remain supported");
-  ok = ok && expect(
-                  cuwacunu::piaabo::torch_compat::
-                      is_supported_network_design_analytics_schema(
-                          cuwacunu::piaabo::torch_compat::
-                              kNetworkDesignAnalyticsSchemaV2),
-                  "v2 design schema should remain supported");
+                          "piaabo.torch_compat.network_design_analytics.v3"),
+                  "legacy design schema should be unsupported");
   ok = ok && expect(
                   !cuwacunu::piaabo::torch_compat::
                       is_supported_network_design_analytics_schema(
                           "piaabo.torch_compat.network_design_analytics.v999"),
                   "unknown design schema should be unsupported");
+
+  {
+    cuwacunu::camahjucunu::network_design_instruction_t cyclic_entry_design{};
+    cyclic_entry_design.network_id = "cyclic.entry";
+    cyclic_entry_design.join_policy = "sum";
+    cyclic_entry_design.nodes = {
+        cuwacunu::camahjucunu::network_design_node_t{
+            .id = "A",
+            .kind = "Block",
+            .params = {cuwacunu::camahjucunu::network_design_param_t{
+                .key = "from",
+                .declared_type = "str",
+                .value = "B",
+                .line = 1,
+            }},
+        },
+        cuwacunu::camahjucunu::network_design_node_t{
+            .id = "B",
+            .kind = "Head",
+            .params = {cuwacunu::camahjucunu::network_design_param_t{
+                .key = "from",
+                .declared_type = "str",
+                .value = "A",
+                .line = 2,
+            }},
+        },
+    };
+    cyclic_entry_design.exports = {
+        cuwacunu::camahjucunu::network_design_export_t{
+            .name = "repr",
+            .node_id = "B",
+        },
+    };
+
+    const auto cyclic_entry_report =
+        cuwacunu::piaabo::torch_compat::summarize_network_design_analytics(
+            cyclic_entry_design);
+    ok = ok && expect(
+                    cyclic_entry_report.source_count == 0,
+                    "cyclic entry SCC should keep node-level source_count semantics");
+    ok = ok && expect(
+                    cyclic_entry_report.longest_source_to_export_path_nodes == 2,
+                    "cyclic entry SCC should still seed source-to-export paths");
+    ok = ok && expect(
+                    cyclic_entry_report.median_source_to_export_path_nodes == 2,
+                    "cyclic entry SCC median path should use the source SCC");
+  }
+
+  {
+    cuwacunu::camahjucunu::network_design_instruction_t duplicate_design{};
+    duplicate_design.network_id = "duplicate.ids";
+    duplicate_design.nodes = {
+        cuwacunu::camahjucunu::network_design_node_t{
+            .id = "dup",
+            .kind = "Input",
+            .params = {},
+        },
+        cuwacunu::camahjucunu::network_design_node_t{
+            .id = "dup",
+            .kind = "Head",
+            .params = {},
+        },
+    };
+
+    const auto duplicate_report =
+        cuwacunu::piaabo::torch_compat::summarize_network_design_analytics(
+            duplicate_design);
+    ok = ok && expect(
+                    !duplicate_report.analysis_valid,
+                    "duplicate node ids should invalidate the report");
+    ok = ok && expect(
+                    duplicate_report.analysis_error == "duplicate_node_id",
+                    "duplicate node id error should be explicit");
+    ok = ok && expect(
+                    duplicate_report.duplicate_node_id_count == 1,
+                    "duplicate node id count mismatch");
+    ok = ok && expect(
+                    duplicate_report.duplicate_node_id_example == "dup",
+                    "duplicate node id example mismatch");
+    ok = ok && expect(
+                    duplicate_report.internal_edge_count == 0 &&
+                        duplicate_report.skip_edge_count == 0,
+                    "invalid duplicate-id reports should leave graph metrics uncomputed");
+  }
+
+  {
+    const auto tmp_dir =
+        std::filesystem::temp_directory_path() /
+        "cuwacunu_network_analytics_atomic";
+    std::error_code ec;
+    std::filesystem::remove_all(tmp_dir, ec);
+    std::filesystem::create_directories(tmp_dir, ec);
+    const auto failing_target = tmp_dir / "network_atomic_target";
+    std::filesystem::create_directories(failing_target, ec);
+    std::string write_error;
+    ok = ok && expect(
+                    !cuwacunu::piaabo::torch_compat::write_network_analytics_file(
+                        model, failing_target, options, &write_error),
+                    "atomic network analytics writer should fail on directory target");
+    ok = ok && expect(
+                    std::filesystem::is_directory(failing_target),
+                    "atomic write failure should preserve the existing target");
+    bool left_temp_file = false;
+    for (const auto& entry : std::filesystem::directory_iterator(tmp_dir)) {
+      const auto name = entry.path().filename().string();
+      if (name.find("network_atomic_target.tmp.") == 0) {
+        left_temp_file = true;
+        break;
+      }
+    }
+    ok = ok && expect(
+                    !left_temp_file,
+                    "atomic write failure should clean up temporary files");
+  }
 
   if (!ok) return 1;
   std::cout << "[test_network_analytics_metrics] All checks passed.\n";

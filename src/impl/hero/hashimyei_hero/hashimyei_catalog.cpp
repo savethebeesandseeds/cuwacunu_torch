@@ -470,12 +470,13 @@ using runtime_lls_document_t =
 }
 
 [[nodiscard]] bool is_known_schema(std::string_view schema) {
-  if (schema == "piaabo.torch_compat.data_analytics.v1") return true;
-  if (schema == "piaabo.torch_compat.data_analytics_symbolic.v1") return true;
-  if (schema == "piaabo.torch_compat.embedding_sequence_analytics.v1")
+  if (schema == "wave.source.runtime.projection.v2") return true;
+  if (schema == "piaabo.torch_compat.data_analytics.v2") return true;
+  if (schema == "piaabo.torch_compat.data_analytics_symbolic.v2") return true;
+  if (schema == "piaabo.torch_compat.embedding_sequence_analytics.v2")
     return true;
   if (schema ==
-      "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1") {
+      "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2") {
     return true;
   }
   if (schema == "tsi.wikimyei.representation.vicreg.status.v1") return true;
@@ -483,10 +484,7 @@ using runtime_lls_document_t =
       "tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1") {
     return true;
   }
-  if (schema == "piaabo.torch_compat.network_analytics.v1" ||
-      schema == "piaabo.torch_compat.network_analytics.v2" ||
-      schema == "piaabo.torch_compat.network_analytics.v3" ||
-      schema == "piaabo.torch_compat.network_analytics.v4") {
+  if (schema == "piaabo.torch_compat.network_analytics.v5") {
     return true;
   }
   return false;
@@ -644,7 +642,7 @@ using runtime_lls_document_t =
     return "tsi.wikimyei.representation.vicreg." + vicreg_hash;
   }
 
-  const std::string source_head = "/tsi.source/data_analytics/";
+  const std::string source_head = "/tsi.source/data_analytics.v2/";
   const std::size_t p0 = s.find(source_head);
   if (p0 != std::string::npos) {
     const std::size_t b0 = p0 + source_head.size();
@@ -663,7 +661,7 @@ using runtime_lls_document_t =
 [[nodiscard]] std::string contract_hash_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
-  const std::string source_head = "/tsi.source/data_analytics/";
+  const std::string source_head = "/tsi.source/data_analytics.v2/";
   const std::size_t p0 = s.find(source_head);
   if (p0 == std::string::npos) return {};
   const std::size_t b0 = p0 + source_head.size();

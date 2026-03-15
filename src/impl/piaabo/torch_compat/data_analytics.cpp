@@ -3,9 +3,11 @@
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 
+#include <atomic>
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <exception>
 #include <fstream>
@@ -24,9 +26,8 @@ namespace torch_compat {
 namespace {
 
 constexpr double kNumericEpsilon = 1e-18;
-constexpr std::size_t kDataAnalyticsContractHashPathLen = 8;
-constexpr std::string_view kRefRangeNonNegative = "(0,+inf)";
-constexpr std::string_view kRefRangePositive = "(1,+inf)";
+constexpr std::string_view kRefRangeNonNegative = "[0,+inf)";
+constexpr std::string_view kRefRangePositive = "[1,+inf)";
 constexpr std::string_view kRefRangeSigned = "(-inf,+inf)";
 constexpr std::string_view kRefRangeUnitInterval = "[0,1]";
 constexpr std::size_t kSymbolicAlphabetSize = 3;
@@ -65,10 +66,15 @@ using runtime_lls_document_t =
     token.remove_prefix(2);
   }
   if (token.empty()) return {};
-  if (token.size() > kDataAnalyticsContractHashPathLen) {
-    token = token.substr(0, kDataAnalyticsContractHashPathLen);
+
+  std::string out;
+  out.reserve(token.size());
+  for (const unsigned char c : token) {
+    const bool ok =
+        (std::isalnum(c) != 0) || c == '_' || c == '-' || c == '.';
+    out.push_back(ok ? static_cast<char>(c) : '_');
   }
-  return std::string(token);
+  return out;
 }
 
 void append_component_report_identity_entries_(
@@ -114,6 +120,38 @@ void append_component_report_identity_entries_(
     document->entries.push_back(
         cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
             "run_id", report_identity.run_id));
+  }
+  if (!report_identity.wave_cursor_resolution.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_cursor_resolution", report_identity.wave_cursor_resolution));
+  }
+  if (!report_identity.intersection_cursor.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "intersection_cursor", report_identity.intersection_cursor));
+  }
+  if (report_identity.has_wave_cursor) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave_cursor", report_identity.wave_cursor, "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_run) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.run", report_identity.wave_cursor_run, "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_episode) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.episode",
+            report_identity.wave_cursor_episode,
+            "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_batch) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.batch", report_identity.wave_cursor_batch, "[0,+inf)"));
   }
 }
 
@@ -1232,53 +1270,69 @@ void fill_remaining_stream_indices_evenly_(
   return true;
 }
 
-[[nodiscard]] torch::Tensor deterministic_feature_subsample_(
-    const torch::Tensor& row,
+struct extracted_sequence_rows_t {
+  std::vector<torch::Tensor> rows{};
+  std::vector<torch::Tensor> validity_masks{};
+  std::uint64_t sample_count{0};
+  std::uint64_t skipped_sample_count{0};
+  std::int64_t channels{0};
+  std::int64_t timesteps{0};
+  std::int64_t features_per_timestep{0};
+  std::int64_t flat_feature_count{0};
+  std::int64_t sampled_feature_count{0};
+};
+
+[[nodiscard]] torch::Tensor deterministic_feature_subsample_index_(
+    std::int64_t feature_count,
     std::int64_t max_features) {
-  if (!row.defined() || row.dim() != 1 || row.numel() <= 0) return torch::Tensor{};
-  if (row.size(0) <= max_features) return row;
+  if (feature_count <= 0 || max_features <= 0) return torch::Tensor{};
+  if (feature_count <= max_features) {
+    return torch::arange(
+        feature_count,
+        torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU));
+  }
 
   if (max_features <= 1) {
-    return row.slice(/*dim=*/0, /*start=*/0, /*end=*/1);
+    return torch::zeros(
+        {1}, torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU));
   }
 
   std::vector<std::int64_t> idx;
   idx.reserve(static_cast<std::size_t>(max_features));
-  const double span = static_cast<double>(row.size(0) - 1);
+  const double span = static_cast<double>(feature_count - 1);
   const double denom = static_cast<double>(max_features - 1);
   for (std::int64_t i = 0; i < max_features; ++i) {
     const double pos = (denom > 0.0) ? (span * static_cast<double>(i) / denom)
                                      : 0.0;
     std::int64_t id = static_cast<std::int64_t>(std::llround(pos));
     if (id < 0) id = 0;
-    if (id >= row.size(0)) id = row.size(0) - 1;
+    if (id >= feature_count) id = feature_count - 1;
     idx.push_back(id);
   }
 
-  const auto index = torch::tensor(
+  return torch::tensor(
       idx,
-      torch::TensorOptions().dtype(torch::kLong).device(row.device()));
-  return row.index_select(/*dim=*/0, index);
+      torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU));
+}
+
+[[nodiscard]] torch::Tensor sample_feature_vector_(
+    const torch::Tensor& row,
+    const torch::Tensor& index) {
+  if (!row.defined() || row.dim() != 1 || row.numel() <= 0) return torch::Tensor{};
+  if (!index.defined() || index.dim() != 1 || index.numel() <= 0) {
+    return torch::Tensor{};
+  }
+  if (index.size(0) == row.size(0)) return row;
+  return row.index_select(/*dim=*/0, index.to(row.device()));
 }
 
 [[nodiscard]] bool extract_row_vectors_(
     const torch::Tensor& features,
     const torch::Tensor& mask,
     const data_analytics_options_t& options,
-    std::vector<torch::Tensor>* out_rows,
-    std::vector<double>* out_weights,
-    std::uint64_t* out_sample_count,
-    std::uint64_t* out_skipped_sample_count,
-    std::int64_t* out_channels,
-    std::int64_t* out_timesteps,
-    std::int64_t* out_features_per_timestep,
-    std::int64_t* out_flat_feature_count,
-    std::int64_t* out_effective_feature_count) {
-  if (!out_rows || !out_weights || !out_sample_count || !out_skipped_sample_count ||
-      !out_channels || !out_timesteps || !out_features_per_timestep ||
-      !out_flat_feature_count || !out_effective_feature_count) {
-    return false;
-  }
+    extracted_sequence_rows_t* out) {
+  if (!out) return false;
+  *out = extracted_sequence_rows_t{};
 
   torch::Tensor f;
   torch::Tensor m;
@@ -1294,55 +1348,71 @@ void fill_remaining_stream_indices_evenly_(
   const std::int64_t T = f.size(2);
   const std::int64_t D = f.size(3);
   const std::int64_t flat_features = C * T * D;
+  const torch::Tensor sampled_index =
+      deterministic_feature_subsample_index_(flat_features, options.max_features);
+  if (!sampled_index.defined() || sampled_index.dim() != 1 ||
+      sampled_index.numel() <= 0) {
+    return false;
+  }
 
-  *out_channels = C;
-  *out_timesteps = T;
-  *out_features_per_timestep = D;
-  *out_flat_feature_count = flat_features;
+  out->channels = C;
+  out->timesteps = T;
+  out->features_per_timestep = D;
+  out->flat_feature_count = flat_features;
+  out->sampled_feature_count = sampled_index.size(0);
 
   for (std::int64_t b = 0; b < B; ++b) {
-    ++(*out_sample_count);
+    ++out->sample_count;
 
     torch::Tensor mask_b = m[b];
     torch::Tensor valid_b = mask_b > 0.0;
-    double weight = 0.0;
+    double accepted_timestep_ratio = 0.0;
     try {
-      weight = valid_b.to(torch::kFloat64).mean().item<double>();
+      accepted_timestep_ratio = valid_b.to(torch::kFloat64).mean().item<double>();
     } catch (...) {
-      weight = 0.0;
+      accepted_timestep_ratio = 0.0;
     }
 
-    if (!std::isfinite(weight) || weight <= options.mask_epsilon) {
-      ++(*out_skipped_sample_count);
+    if (!std::isfinite(accepted_timestep_ratio) ||
+        accepted_timestep_ratio <= options.mask_epsilon) {
+      ++out->skipped_sample_count;
       continue;
     }
 
     torch::Tensor row = f[b].reshape({flat_features});
-    row = deterministic_feature_subsample_(row, options.max_features);
+    torch::Tensor valid_row =
+        valid_b.to(torch::kFloat64)
+            .unsqueeze(-1)
+            .expand({C, T, D})
+            .reshape({flat_features});
+    row = sample_feature_vector_(row, sampled_index);
+    valid_row = sample_feature_vector_(valid_row, sampled_index);
     if (!row.defined() || row.dim() != 1 || row.numel() <= 0) {
-      ++(*out_skipped_sample_count);
+      ++out->skipped_sample_count;
+      continue;
+    }
+    if (!valid_row.defined() || valid_row.dim() != 1 ||
+        valid_row.size(0) != row.size(0)) {
+      ++out->skipped_sample_count;
+      continue;
+    }
+    if (!tensor_is_finite_(row) || !tensor_is_finite_(valid_row)) {
+      ++out->skipped_sample_count;
+      continue;
+    }
+    const double sampled_valid_mass = valid_row.sum().item<double>();
+    if (!std::isfinite(sampled_valid_mass) || sampled_valid_mass <= kNumericEpsilon) {
+      ++out->skipped_sample_count;
       continue;
     }
 
-    if (!tensor_is_finite_(row)) {
-      ++(*out_skipped_sample_count);
+    if (static_cast<std::int64_t>(out->rows.size()) >= options.max_samples) {
+      ++out->skipped_sample_count;
       continue;
     }
 
-    if (static_cast<std::int64_t>(out_rows->size()) >= options.max_samples) {
-      ++(*out_skipped_sample_count);
-      continue;
-    }
-
-    if (*out_effective_feature_count == 0) {
-      *out_effective_feature_count = row.size(0);
-    } else if (*out_effective_feature_count != row.size(0)) {
-      ++(*out_skipped_sample_count);
-      continue;
-    }
-
-    out_rows->push_back(std::move(row));
-    out_weights->push_back(weight);
+    out->rows.push_back(std::move(row));
+    out->validity_masks.push_back(std::move(valid_row));
   }
 
   return true;
@@ -1361,6 +1431,71 @@ void fill_remaining_stream_indices_evenly_(
   }
 }
 
+[[nodiscard]] bool write_text_file_atomically_(
+    const std::string& payload,
+    const std::filesystem::path& output_file,
+    std::string_view artifact_name,
+    std::string* error) {
+  if (error) error->clear();
+
+  std::error_code ec;
+  const auto parent = output_file.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      if (error) {
+        *error = "cannot create " + std::string(artifact_name) +
+                 " directory: " + parent.string();
+      }
+      return false;
+    }
+  }
+
+  static std::atomic<std::uint64_t> s_temp_counter{0};
+  const auto temp_suffix =
+      std::to_string(static_cast<std::uint64_t>(
+                         std::chrono::steady_clock::now()
+                             .time_since_epoch()
+                             .count())) +
+      "." + std::to_string(s_temp_counter.fetch_add(1, std::memory_order_relaxed));
+  const std::filesystem::path temp_file =
+      output_file.string() + ".tmp." + temp_suffix;
+
+  {
+    std::ofstream out(temp_file, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      if (error) {
+        *error = "cannot open temporary " + std::string(artifact_name) +
+                 " file: " + temp_file.string();
+      }
+      return false;
+    }
+    out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+    out.close();
+    if (!out) {
+      std::error_code remove_ec;
+      std::filesystem::remove(temp_file, remove_ec);
+      if (error) {
+        *error = "cannot write temporary " + std::string(artifact_name) +
+                 " file: " + temp_file.string();
+      }
+      return false;
+    }
+  }
+
+  std::filesystem::rename(temp_file, output_file, ec);
+  if (ec) {
+    std::error_code remove_ec;
+    std::filesystem::remove(temp_file, remove_ec);
+    if (error) {
+      *error = "cannot replace " + std::string(artifact_name) +
+               " file: " + output_file.string();
+    }
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 sequence_analytics_accumulator_t::sequence_analytics_accumulator_t(
@@ -1369,54 +1504,60 @@ sequence_analytics_accumulator_t::sequence_analytics_accumulator_t(
 
 void sequence_analytics_accumulator_t::reset() {
   rows_.clear();
-  row_weights_.clear();
+  row_validity_masks_.clear();
   sample_count_ = 0;
   skipped_sample_count_ = 0;
   sequence_channels_ = 0;
   sequence_timesteps_ = 0;
   sequence_features_per_timestep_ = 0;
   sequence_flat_feature_count_ = 0;
-  sequence_effective_feature_count_ = 0;
+  sequence_sampled_feature_count_ = 0;
 }
 
 bool sequence_analytics_accumulator_t::ingest(
     const torch::Tensor& features,
     const torch::Tensor& mask) {
-  std::int64_t channels = 0;
-  std::int64_t timesteps = 0;
-  std::int64_t features_per_timestep = 0;
-  std::int64_t flat_feature_count = 0;
-  std::int64_t effective_feature_count = sequence_effective_feature_count_;
-
-  const bool ok = extract_row_vectors_(
-      features,
-      mask,
-      options_,
-      &rows_,
-      &row_weights_,
-      &sample_count_,
-      &skipped_sample_count_,
-      &channels,
-      &timesteps,
-      &features_per_timestep,
-      &flat_feature_count,
-      &effective_feature_count);
-  if (!ok) {
+  extracted_sequence_rows_t extracted{};
+  if (!extract_row_vectors_(features, mask, options_, &extracted)) {
     ++sample_count_;
     ++skipped_sample_count_;
     return false;
   }
 
-  if (sequence_channels_ == 0 && channels > 0) sequence_channels_ = channels;
-  if (sequence_timesteps_ == 0 && timesteps > 0) sequence_timesteps_ = timesteps;
-  if (sequence_features_per_timestep_ == 0 && features_per_timestep > 0) {
-    sequence_features_per_timestep_ = features_per_timestep;
+  sample_count_ += extracted.sample_count;
+  skipped_sample_count_ += extracted.skipped_sample_count;
+
+  const bool geometry_locked = sequence_flat_feature_count_ > 0;
+  const bool geometry_mismatch =
+      geometry_locked &&
+      (sequence_channels_ != extracted.channels ||
+       sequence_timesteps_ != extracted.timesteps ||
+       sequence_features_per_timestep_ != extracted.features_per_timestep ||
+       sequence_flat_feature_count_ != extracted.flat_feature_count ||
+       sequence_sampled_feature_count_ != extracted.sampled_feature_count);
+  if (geometry_mismatch) {
+    skipped_sample_count_ +=
+        static_cast<std::uint64_t>(extracted.rows.size());
+    return false;
   }
-  if (sequence_flat_feature_count_ == 0 && flat_feature_count > 0) {
-    sequence_flat_feature_count_ = flat_feature_count;
+
+  if (!geometry_locked && !extracted.rows.empty()) {
+    sequence_channels_ = extracted.channels;
+    sequence_timesteps_ = extracted.timesteps;
+    sequence_features_per_timestep_ = extracted.features_per_timestep;
+    sequence_flat_feature_count_ = extracted.flat_feature_count;
+    sequence_sampled_feature_count_ = extracted.sampled_feature_count;
   }
-  if (effective_feature_count > 0) {
-    sequence_effective_feature_count_ = effective_feature_count;
+
+  if (!extracted.rows.empty()) {
+    rows_.insert(
+        rows_.end(),
+        std::make_move_iterator(extracted.rows.begin()),
+        std::make_move_iterator(extracted.rows.end()));
+    row_validity_masks_.insert(
+        row_validity_masks_.end(),
+        std::make_move_iterator(extracted.validity_masks.begin()),
+        std::make_move_iterator(extracted.validity_masks.end()));
   }
 
   return true;
@@ -1432,18 +1573,16 @@ sequence_analytics_report_t sequence_analytics_accumulator_t::summarize()
   out.sequence_timesteps = sequence_timesteps_;
   out.sequence_features_per_timestep = sequence_features_per_timestep_;
   out.sequence_flat_feature_count = sequence_flat_feature_count_;
-  out.sequence_effective_feature_count = sequence_effective_feature_count_;
+  out.sequence_effective_feature_count = 0;
 
   if (rows_.empty()) return out;
-  if (rows_.size() != row_weights_.size()) return out;
+  if (rows_.size() != row_validity_masks_.size()) return out;
 
   torch::Tensor X;
-  torch::Tensor w;
+  torch::Tensor V;
   try {
     X = torch::stack(rows_, /*dim=*/0);  // [N,F]
-    w = torch::tensor(
-        row_weights_,
-        torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU));
+    V = torch::stack(row_validity_masks_, /*dim=*/0);  // [N,F]
   } catch (...) {
     return out;
   }
@@ -1451,26 +1590,36 @@ sequence_analytics_report_t sequence_analytics_accumulator_t::summarize()
   if (!X.defined() || X.dim() != 2 || X.size(0) <= 0 || X.size(1) <= 0) {
     return out;
   }
-  if (!w.defined() || w.dim() != 1 || w.size(0) != X.size(0)) {
+  if (!V.defined() || V.dim() != 2 || V.sizes() != X.sizes()) {
     return out;
   }
 
   try {
-    w = w.clamp_min(0.0);
-    const double w_sum = w.sum().item<double>();
-    if (!std::isfinite(w_sum) || w_sum <= kNumericEpsilon) return out;
+    V = V.clamp(0.0, 1.0);
+    torch::Tensor valid_mass = V.sum(/*dim=*/0);  // [F]
+    const torch::Tensor active = valid_mass > kNumericEpsilon;
+    const std::int64_t active_feature_count =
+        active.sum().item<std::int64_t>();
+    out.sequence_effective_feature_count = active_feature_count;
+    if (active_feature_count <= 0) return out;
 
-    const torch::Tensor w_col = w.unsqueeze(1);  // [N,1]
-    const torch::Tensor mean = (X * w_col).sum(/*dim=*/0) / w_sum;
+    const torch::Tensor active_index =
+        torch::nonzero(active).reshape({active_feature_count});
+    X = X.index_select(/*dim=*/1, active_index);
+    V = V.index_select(/*dim=*/1, active_index);
+    valid_mass = valid_mass.index_select(/*dim=*/0, active_index);
 
-    const torch::Tensor centered = X - mean;
-    const torch::Tensor var = (centered * centered * w_col).sum(/*dim=*/0) / w_sum;
-    const torch::Tensor stdev = torch::sqrt(var.clamp_min(options_.standardize_epsilon));
+    const torch::Tensor mean = (X * V).sum(/*dim=*/0) / valid_mass;
+    const torch::Tensor centered = (X - mean) * V;
+    const torch::Tensor var =
+        (centered * centered).sum(/*dim=*/0) / valid_mass;
+    const torch::Tensor stdev =
+        torch::sqrt(var.clamp_min(options_.standardize_epsilon));
     const torch::Tensor Z = centered / stdev;
 
-    const torch::Tensor ws = torch::sqrt(w_col);
-    const torch::Tensor Zw = Z * ws;
-    const torch::Tensor cov = Zw.transpose(0, 1).mm(Zw) / w_sum;
+    torch::Tensor support = V.transpose(0, 1).mm(V);
+    support = support.clamp_min(1.0);
+    const torch::Tensor cov = Z.transpose(0, 1).mm(Z) / support;
 
     torch::Tensor eigvals = torch::linalg::eigvalsh(cov, "L");
     eigvals = eigvals.clamp_min(0.0);
@@ -1546,7 +1695,6 @@ bool sequence_symbolic_analytics_accumulator_t::ingest(
   const std::int64_t D = f.size(3);
   if (T <= 0 || D <= 0) return false;
 
-  constexpr std::int64_t kAnchorTimestep = -1;
   for (std::int64_t b = 0; b < B; ++b) {
     for (std::int64_t c = 0; c < C; ++c) {
       const auto& descriptor = descriptors_[static_cast<std::size_t>(c)];
@@ -1555,12 +1703,19 @@ bool sequence_symbolic_analytics_accumulator_t::ingest(
         continue;
       }
 
-      const double mask_value =
-          m.index({b, c, T + kAnchorTimestep}).item<double>();
-      if (!std::isfinite(mask_value) || mask_value <= 0.0) continue;
+      std::int64_t anchor_timestep = -1;
+      for (std::int64_t t = T - 1; t >= 0; --t) {
+        const double mask_value = m.index({b, c, t}).item<double>();
+        if (std::isfinite(mask_value) && mask_value > 0.0) {
+          anchor_timestep = t;
+          break;
+        }
+      }
+      if (anchor_timestep < 0) continue;
 
+      // Symbolic heuristics operate on the anchor series induced by ingest order.
       const double anchor_value =
-          f.index({b, c, T + kAnchorTimestep, descriptor.anchor_feature_index})
+          f.index({b, c, anchor_timestep, descriptor.anchor_feature_index})
               .item<double>();
       if (!std::isfinite(anchor_value)) continue;
 
@@ -2134,24 +2289,6 @@ bool write_sequence_analytics_file(
     const tsiemene::component_report_identity_t& report_identity) {
   if (error) error->clear();
 
-  std::error_code ec;
-  const auto parent = output_file.parent_path();
-  if (!parent.empty()) {
-    std::filesystem::create_directories(parent, ec);
-    if (ec) {
-      if (error) {
-        *error = "cannot create sequence analytics directory: " + parent.string();
-      }
-      return false;
-    }
-  }
-
-  std::ofstream out(output_file, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    if (error) *error = "cannot open output file: " + output_file.string();
-    return false;
-  }
-
   std::string payload;
   try {
     payload = sequence_analytics_to_latent_lineage_state_text(
@@ -2163,12 +2300,8 @@ bool write_sequence_analytics_file(
     }
     return false;
   }
-  out << payload;
-  if (!out.good()) {
-    if (error) *error = "cannot write output file: " + output_file.string();
-    return false;
-  }
-  return true;
+  return write_text_file_atomically_(
+      payload, output_file, "sequence analytics", error);
 }
 
 bool write_data_analytics_file(
@@ -2180,24 +2313,6 @@ bool write_data_analytics_file(
     const tsiemene::component_report_identity_t& report_identity) {
   if (error) error->clear();
 
-  std::error_code ec;
-  const auto parent = output_file.parent_path();
-  if (!parent.empty()) {
-    std::filesystem::create_directories(parent, ec);
-    if (ec) {
-      if (error) {
-        *error = "cannot create data analytics directory: " + parent.string();
-      }
-      return false;
-    }
-  }
-
-  std::ofstream out(output_file, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    if (error) *error = "cannot open output file: " + output_file.string();
-    return false;
-  }
-
   std::string payload;
   try {
     payload = data_analytics_to_latent_lineage_state_text(
@@ -2206,12 +2321,7 @@ bool write_data_analytics_file(
     if (error) *error = "cannot serialize data analytics report: " + std::string(e.what());
     return false;
   }
-  out << payload;
-  if (!out.good()) {
-    if (error) *error = "cannot write output file: " + output_file.string();
-    return false;
-  }
-  return true;
+  return write_text_file_atomically_(payload, output_file, "data analytics", error);
 }
 
 bool write_sequence_symbolic_analytics_file(
@@ -2222,26 +2332,6 @@ bool write_sequence_symbolic_analytics_file(
     const tsiemene::component_report_identity_t& report_identity,
     sequence_symbolic_report_compaction_options_t compaction_options) {
   if (error) error->clear();
-
-  std::error_code ec;
-  const auto parent = output_file.parent_path();
-  if (!parent.empty()) {
-    std::filesystem::create_directories(parent, ec);
-    if (ec) {
-      if (error) {
-        *error =
-            "cannot create sequence symbolic analytics directory: " +
-            parent.string();
-      }
-      return false;
-    }
-  }
-
-  std::ofstream out(output_file, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    if (error) *error = "cannot open output file: " + output_file.string();
-    return false;
-  }
 
   std::string payload;
   try {
@@ -2255,13 +2345,8 @@ bool write_sequence_symbolic_analytics_file(
     }
     return false;
   }
-
-  out << payload;
-  if (!out.good()) {
-    if (error) *error = "cannot write output file: " + output_file.string();
-    return false;
-  }
-  return true;
+  return write_text_file_atomically_(
+      payload, output_file, "sequence symbolic analytics", error);
 }
 
 bool write_data_symbolic_analytics_file(
@@ -2271,25 +2356,6 @@ bool write_data_symbolic_analytics_file(
     std::string* error,
     const tsiemene::component_report_identity_t& report_identity) {
   if (error) error->clear();
-
-  std::error_code ec;
-  const auto parent = output_file.parent_path();
-  if (!parent.empty()) {
-    std::filesystem::create_directories(parent, ec);
-    if (ec) {
-      if (error) {
-        *error = "cannot create symbolic data analytics directory: " +
-                 parent.string();
-      }
-      return false;
-    }
-  }
-
-  std::ofstream out(output_file, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    if (error) *error = "cannot open output file: " + output_file.string();
-    return false;
-  }
 
   std::string payload;
   try {
@@ -2303,13 +2369,8 @@ bool write_data_symbolic_analytics_file(
     }
     return false;
   }
-
-  out << payload;
-  if (!out.good()) {
-    if (error) *error = "cannot write output file: " + output_file.string();
-    return false;
-  }
-  return true;
+  return write_text_file_atomically_(
+      payload, output_file, "symbolic data analytics", error);
 }
 
 std::string extract_data_analytics_kv_schema(std::string_view payload) {
@@ -2342,25 +2403,25 @@ std::string extract_data_symbolic_analytics_kv_schema(std::string_view payload) 
 }
 
 bool is_supported_sequence_analytics_schema(std::string_view schema) {
-  return schema == kSequenceAnalyticsSchemaV1 ||
-         schema == kEmbeddingSequenceAnalyticsSchemaV1;
+  return schema == kSequenceAnalyticsSchemaCurrent ||
+         schema == kEmbeddingSequenceAnalyticsSchemaCurrent;
 }
 
 bool is_supported_data_analytics_schema(std::string_view schema) {
-  return schema == kDataAnalyticsSchemaV1;
+  return schema == kDataAnalyticsSchemaCurrent;
 }
 
 bool is_supported_sequence_symbolic_analytics_schema(std::string_view schema) {
-  return schema == kSequenceAnalyticsSymbolicSchemaV1 ||
-         schema == kEmbeddingSequenceAnalyticsSymbolicSchemaV1;
+  return schema == kSequenceAnalyticsSymbolicSchemaCurrent ||
+         schema == kEmbeddingSequenceAnalyticsSymbolicSchemaCurrent;
 }
 
 bool is_supported_data_symbolic_analytics_schema(std::string_view schema) {
-  return schema == kDataAnalyticsSymbolicSchemaV1;
+  return schema == kDataAnalyticsSymbolicSchemaCurrent;
 }
 
 std::filesystem::path source_data_analytics_root_directory() {
-  return cuwacunu::hashimyei::store_root() / "tsi.source" / "data_analytics";
+  return cuwacunu::hashimyei::store_root() / "tsi.source" / "data_analytics.v2";
 }
 
 std::filesystem::path source_data_analytics_contract_directory(
@@ -2373,8 +2434,10 @@ std::filesystem::path source_data_analytics_contract_directory(
 std::filesystem::path source_data_analytics_instance_directory(
     std::string_view contract_hash,
     std::string_view source_instance) {
-  if (contract_hash.empty() || source_instance.empty()) return {};
-  return source_data_analytics_contract_directory(contract_hash) /
+  if (source_instance.empty()) return {};
+  const auto contract_dir = source_data_analytics_contract_directory(contract_hash);
+  if (contract_dir.empty()) return {};
+  return contract_dir /
          std::string(source_instance);
 }
 

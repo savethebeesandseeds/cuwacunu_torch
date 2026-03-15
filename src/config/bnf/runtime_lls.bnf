@@ -9,7 +9,9 @@
 <key>                  ::= <identifier> ;
 <type>                 ::= "str" | "bool" | "int" | "uint" | "double" ;
 <domain>               ::= <range_domain> | <enum_domain> ;
-<range_domain>         ::= "(" [<range_domain_value>] ")" ;
+<range_domain>         ::= <range_domain_open> [<range_domain_value>] <range_domain_close> ;
+<range_domain_open>    ::= "(" | "[" ;
+<range_domain_close>   ::= ")" | "]" ;
 <range_domain_value>   ::= <range_domain_char> [<range_domain_value>] ;
 <range_domain_char>    ::= <letter> | <digit> | <space_char> | "." | "," | ":" | "-" | "_" | "\\" | "/" | "[" | "]" | "{" | "}" | "|" | "'" | "\"" | "+" | "*" | "?" | "!" | "<" | ">" | "=" | "@" ;
 <enum_domain>          ::= "[" [<enum_domain_value>] "]" ;

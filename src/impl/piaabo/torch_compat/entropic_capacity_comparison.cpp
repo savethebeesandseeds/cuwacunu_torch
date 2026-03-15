@@ -2,12 +2,7 @@
 
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 
-#include <algorithm>
 #include <cmath>
-#include <cctype>
-#include <exception>
-#include <fstream>
-#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -72,6 +67,38 @@ void append_component_report_identity_entries_(
     document->entries.push_back(
         cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
             "run_id", report_identity.run_id));
+  }
+  if (!report_identity.wave_cursor_resolution.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_cursor_resolution", report_identity.wave_cursor_resolution));
+  }
+  if (!report_identity.intersection_cursor.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "intersection_cursor", report_identity.intersection_cursor));
+  }
+  if (report_identity.has_wave_cursor) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave_cursor", report_identity.wave_cursor, "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_run) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.run", report_identity.wave_cursor_run, "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_episode) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.episode",
+            report_identity.wave_cursor_episode,
+            "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_batch) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.batch", report_identity.wave_cursor_batch, "[0,+inf)"));
   }
 }
 
@@ -190,51 +217,6 @@ bool summarize_entropic_capacity_comparison_from_payloads(
       source_kv, network_kv, out, error);
 }
 
-bool summarize_entropic_capacity_comparison_from_files(
-    const std::filesystem::path& source_analytics_file,
-    const std::filesystem::path& network_analytics_file,
-    entropic_capacity_comparison_report_t* out,
-    std::string* error) {
-  if (error) error->clear();
-  if (!out) {
-    if (error) *error = "comparison output pointer is null";
-    return false;
-  }
-  *out = entropic_capacity_comparison_report_t{};
-
-  std::ifstream source_in(source_analytics_file, std::ios::binary);
-  if (!source_in) {
-    if (error) {
-      *error = "cannot open source analytics file: " +
-               source_analytics_file.string();
-    }
-    return false;
-  }
-  std::stringstream source_buf;
-  source_buf << source_in.rdbuf();
-  const std::string source_payload = source_buf.str();
-
-  std::ifstream network_in(network_analytics_file, std::ios::binary);
-  if (!network_in) {
-    if (error) {
-      *error = "cannot open network analytics file: " +
-               network_analytics_file.string();
-    }
-    return false;
-  }
-  std::stringstream network_buf;
-  network_buf << network_in.rdbuf();
-  const std::string network_payload = network_buf.str();
-
-  if (!summarize_entropic_capacity_comparison_from_payloads(
-          source_payload, network_payload, out, error)) {
-    return false;
-  }
-  out->source_analytics_file = source_analytics_file.string();
-  out->network_analytics_file = network_analytics_file.string();
-  return true;
-}
-
 std::string entropic_capacity_comparison_to_latent_lineage_state_text(
     const entropic_capacity_comparison_report_t& report,
     const tsiemene::component_report_identity_t& report_identity) {
@@ -272,63 +254,8 @@ std::string entropic_capacity_comparison_to_latent_lineage_state_text(
         cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
             "run_id", report.run_id));
   }
-  if (!report.source_analytics_file.empty()) {
-    document.entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "source_analytics_file", report.source_analytics_file));
-  }
-  if (!report.network_analytics_file.empty()) {
-    document.entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "network_analytics_file", report.network_analytics_file));
-  }
   return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
       document);
-}
-
-bool write_entropic_capacity_comparison_file(
-    const entropic_capacity_comparison_report_t& report,
-    const std::filesystem::path& output_file,
-    std::string* error,
-    const tsiemene::component_report_identity_t& report_identity) {
-  if (error) error->clear();
-
-  std::error_code ec;
-  const auto parent = output_file.parent_path();
-  if (!parent.empty()) {
-    std::filesystem::create_directories(parent, ec);
-    if (ec) {
-      if (error) {
-        *error = "cannot create comparison output directory: " +
-                 parent.string();
-      }
-      return false;
-    }
-  }
-
-  std::ofstream out(output_file, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    if (error) {
-      *error = "cannot open comparison output file: " + output_file.string();
-    }
-    return false;
-  }
-  try {
-    out << entropic_capacity_comparison_to_latent_lineage_state_text(
-        report, report_identity);
-  } catch (const std::exception& e) {
-    if (error) {
-      *error = "cannot serialize comparison report: " + std::string(e.what());
-    }
-    return false;
-  }
-  if (!out.good()) {
-    if (error) {
-      *error = "cannot write comparison output file: " + output_file.string();
-    }
-    return false;
-  }
-  return true;
 }
 
 }  // namespace torch_compat

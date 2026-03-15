@@ -4,7 +4,6 @@
 #include <string>
 #include <string_view>
 
-#include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "hero/lattice_hero/lattice_catalog.h"
 
 namespace cuwacunu {
@@ -14,7 +13,6 @@ namespace lattice_mcp {
 struct wave_runtime_defaults_t {
   std::filesystem::path store_root{};
   std::filesystem::path catalog_path{};
-  std::filesystem::path hashimyei_catalog_path{};
   std::filesystem::path config_folder{};
 };
 
@@ -22,17 +20,11 @@ struct app_context_t {
   std::filesystem::path store_root{};
   std::filesystem::path config_folder{};
   std::filesystem::path lattice_catalog_path{};
-  std::filesystem::path hashimyei_catalog_path{};
   cuwacunu::hero::wave::lattice_catalog_store_t catalog{};
-  cuwacunu::hero::hashimyei::hashimyei_catalog_store_t hashimyei_catalog{};
-  bool hashimyei_catalog_ready{false};
-  bool runtime_initialized{false};
 };
 
 [[nodiscard]] std::filesystem::path default_store_root();
 [[nodiscard]] std::filesystem::path default_catalog_path(
-    const std::filesystem::path& store_root);
-[[nodiscard]] std::filesystem::path default_hashimyei_catalog_path(
     const std::filesystem::path& store_root);
 [[nodiscard]] std::filesystem::path resolve_lattice_hero_dsl_path(
     const std::filesystem::path& global_config_path);

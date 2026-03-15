@@ -27,16 +27,6 @@ range = non-empty path
 allowed = absolute_or_relative path
 nuance = runtime lattice catalog path loaded from Lattice HERO defaults DSL via [REAL_HERO].lattice_hero_dsl_filename
 
-[FIELD hashimyei_catalog_path]
-key = hashimyei_catalog_path
-scope = hero lattice runtime defaults
-type = path
-required = true
-default = /cuwacunu/.hashimyei/catalog/hashimyei_catalog.idydb
-range = non-empty path
-allowed = absolute_or_relative path
-nuance = optional hashimyei catalog for snapshot/dependency enrichment; loaded from Lattice HERO defaults DSL
-
 [FIELD config_folder]
 key = config_folder
 scope = hero lattice runtime defaults

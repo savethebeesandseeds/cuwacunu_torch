@@ -205,7 +205,11 @@ void set_error(std::string* error, std::string message) {
     return false;
   }
   if (find_runtime_comment_delimiter(value) != nullptr) return false;
-  if (value.front() == '(' && value.back() == ')') {
+  const bool interval_domain =
+      (value.front() == '(' || value.front() == '[') &&
+      (value.back() == ')' || value.back() == ']') &&
+      value.find(',') != std::string::npos;
+  if (interval_domain) {
     for (std::size_t i = 1; i + 1 < value.size(); ++i) {
       if (!is_runtime_range_domain_char(value[i])) return false;
     }

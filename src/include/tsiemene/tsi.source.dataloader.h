@@ -899,7 +899,7 @@ class TsiSourceDataloader final : public TsiSource {
 
   [[nodiscard]] component_report_identity_t
   build_data_analytics_report_identity_(std::string_view run_id) const {
-    return make_component_report_identity(
+    auto identity = make_component_report_identity(
         "data_analytics",
         instance_name_,
         type_name_,
@@ -908,11 +908,13 @@ class TsiSourceDataloader final : public TsiSource {
         {},
         {},
         run_id);
+    identity.wave_cursor_resolution = "run";
+    return identity;
   }
 
   [[nodiscard]] component_report_identity_t
   build_data_symbolic_analytics_report_identity_(std::string_view run_id) const {
-    return make_component_report_identity(
+    auto identity = make_component_report_identity(
         "data_analytics_symbolic",
         instance_name_,
         type_name_,
@@ -921,6 +923,8 @@ class TsiSourceDataloader final : public TsiSource {
         {},
         {},
         run_id);
+    identity.wave_cursor_resolution = "run";
+    return identity;
   }
 
   void ensure_data_analytics_report_(const Wave& wave,

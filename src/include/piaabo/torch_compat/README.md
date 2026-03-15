@@ -61,8 +61,10 @@ checkpoints (extension `.network_analytics.lls`) with compact global parameter
 diagnostics.
 Every component report can also carry a `tsiemene::component_report_identity_t`
 envelope (`report_kind`, `canonical_path`, `tsi_type`, optional
-`hashimyei/contract_hash/wave_hash/binding_id`).
-Current schema is v4 and keeps canonical-only keys:
+`hashimyei/contract_hash/wave_hash/binding_id`, plus optional correlation
+metadata such as `run_id`, `wave_cursor_resolution`, explicit `wave_cursor`, or
+decomposed `wave.cursor.*` fields).
+Current schema is v5 and keeps canonical-only keys:
 
 - finite/non-finite ratios (NaN/Inf counts)
 - scale stats (`stddev`, `l1_mean_abs`, `l2_rms`, `min`, `max`, `max_abs`)
@@ -81,6 +83,13 @@ Current schema is v4 and keeps canonical-only keys:
   `top_low_stable_rank_*`, `top_low_effective_rank_*`,
   `top_high_spectral_norm_*`)
 
+The parameter-network report now stores normalized analytics options in the
+report itself. `network_analytics_to_latent_lineage_state_text(...)` and
+`network_analytics_to_pretty_text(...)` emit from `report.normalized_options` instead of
+accepting a separate options object, so the serialized sidecar cannot claim a
+different histogram/spectral/top-k configuration than the one used to compute
+the metrics.
+
 ## Data Analytics Report
 
 `torch_compat` now includes source-window data analytics in:
@@ -91,14 +100,14 @@ Current schema is v4 and keeps canonical-only keys:
 The module is now split into:
 
 - generic `sequence_*` analytics/report APIs for any ordered temporal tensor
-- source-facing `data_*` wrappers that preserve the existing raw-data report
-  schemas and file contracts
+- source-facing `data_*` wrappers for raw source windows and their runtime
+  report contracts
 
 Generic sequence entry points operate on canonical sequence layouts already
 accepted by the core normalizer (`[T,D]`, `[C,T,D]`, `[B,C,T,D]`) and emit:
 
-- `piaabo.torch_compat.sequence_analytics.v1`
-- `piaabo.torch_compat.sequence_analytics_symbolic.v1`
+- `piaabo.torch_compat.sequence_analytics.v2`
+- `piaabo.torch_compat.sequence_analytics_symbolic.v2`
 
 These generic reports are intended for latent/embedding sequences and other
 non-source temporal tensors.
@@ -120,31 +129,34 @@ The VICReg representation runtime now reuses those generic sequence reports for
 its latent output and writes representation-owned sidecars in the report
 fragment directory:
 
-- `embedding_sequence_analytics.latest.lls`
-- `embedding_sequence_analytics.symbolic.latest.lls`
+- `embedding_sequence_analytics.v2.latest.lls`
+- `embedding_sequence_analytics.symbolic.v2.latest.lls`
 
 Those runtime sidecars use distinct embedding-facing schemas:
 
-- `piaabo.torch_compat.embedding_sequence_analytics.v1`
-- `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1`
+- `piaabo.torch_compat.embedding_sequence_analytics.v2`
+- `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2`
 
 This module computes source entropic load from mask-aware flattened past windows
-and writes deterministic key/value reports (`data_analytics.latest.lls`) under
-the hashimyei data root.
-Schema: `piaabo.torch_compat.data_analytics.v1`.
+and writes deterministic key/value reports (`data_analytics.v2.latest.lls`)
+under the hashimyei data root `tsi.source/data_analytics.v2/<contract>/<source_instance>/`.
+`MASK_EPSILON` is a minimum accepted valid-timestep ratio per sample. Accepted
+samples exclude invalid positions from the numeric mean/variance/covariance
+statistics instead of merely down-weighting them.
+Schema: `piaabo.torch_compat.data_analytics.v2`.
 
 The same module also emits a compact symbolic sidecar
-(`data_analytics.symbolic.latest.lls`) with per-channel:
+(`data_analytics.symbolic.v2.latest.lls`) with per-channel:
 
 - `label`, `record_type`, `anchor_feature`, `feature_names`
 - `valid_count`, `observed_symbol_count`, `eligible`
 - `lz76_complexity`, `lz76_normalized`
 - `entropy_rate_bits`
 - `information_density`
-- `compression_ratio` on the ternary symbolic stream
-- `autocorrelation_decay_lag` on the anchor series
-- `power_spectrum_entropy` on the anchor series
-- `hurst_exponent` via a dyadic R/S estimate
+- `compression_ratio` as an LZW-style proxy on the ternary symbolic stream
+- `autocorrelation_decay_lag` on the ingest-order anchor series
+- `power_spectrum_entropy` as an approximate anchor-series spectral summary
+- `hurst_exponent` as an approximate dyadic R/S estimate on the anchor series
 
 Top-level symbolic summaries emit mean/min/max plus channel labels for:
 
@@ -155,9 +167,11 @@ Top-level symbolic summaries emit mean/min/max plus channel labels for:
 - `power_spectrum_entropy`
 - `hurst_exponent`
 
-Schema: `piaabo.torch_compat.data_analytics_symbolic.v1`.
+Schema: `piaabo.torch_compat.data_analytics_symbolic.v2`.
 The symbolic sidecar stays comment-free in canonical `.lls`; human-facing pretty
-output includes `/* ... */` channel annotations.
+output includes `/* ... */` channel annotations. Symbolic time-series metrics
+are ingest-order anchor-series heuristics: for each sample/channel, the module
+uses the anchor feature at the last valid timestep.
 
 Runtime config source: `default.tsi.source.dataloader.sources.dsl` via required block
 `DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
@@ -165,7 +179,7 @@ No silent fallback defaults are used by `tsi.source.dataloader`.
 
 ## Entropic Capacity Comparison Helper
 
-`torch_compat` now includes a comparison sidecar in:
+`torch_compat` now includes a comparison helper in:
 
 - `include/piaabo/torch_compat/entropic_capacity_comparison.h`
 - `impl/piaabo/torch_compat/entropic_capacity_comparison.cpp`
@@ -187,8 +201,8 @@ Lattice view
 which derives directly from the source/network fact reports instead of reading a
 component-emitted comparison sidecar back as an intermediate artifact.
 
-The helper still supports payload reducers and standalone writers for tests or
-ad hoc tooling, but Hashimyei/Lattice no longer treat
+The helper still supports payload reducers and canonical text serialization for
+tests or ad hoc tooling, but Hashimyei/Lattice no longer treat
 `piaabo.torch_compat.entropic_capacity_comparison.v1` as a first-class ingested
 runtime fact.
 

@@ -26,24 +26,14 @@ namespace cuwacunu {
 namespace piaabo {
 namespace torch_compat {
 
-inline constexpr std::string_view kNetworkAnalyticsSchemaV1 =
-    "piaabo.torch_compat.network_analytics.v1";
-inline constexpr std::string_view kNetworkAnalyticsSchemaV2 =
-    "piaabo.torch_compat.network_analytics.v2";
-inline constexpr std::string_view kNetworkAnalyticsSchemaV3 =
-    "piaabo.torch_compat.network_analytics.v3";
-inline constexpr std::string_view kNetworkAnalyticsSchemaV4 =
-    "piaabo.torch_compat.network_analytics.v4";
+inline constexpr std::string_view kNetworkAnalyticsSchemaV5 =
+    "piaabo.torch_compat.network_analytics.v5";
 inline constexpr std::string_view kNetworkAnalyticsSchemaCurrent =
-    kNetworkAnalyticsSchemaV4;
-inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV1 =
-    "piaabo.torch_compat.network_design_analytics.v1";
-inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV2 =
-    "piaabo.torch_compat.network_design_analytics.v2";
-inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV3 =
-    "piaabo.torch_compat.network_design_analytics.v3";
+    kNetworkAnalyticsSchemaV5;
+inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV4 =
+    "piaabo.torch_compat.network_design_analytics.v4";
 inline constexpr std::string_view kNetworkDesignAnalyticsSchemaCurrent =
-    kNetworkDesignAnalyticsSchemaV3;
+    kNetworkDesignAnalyticsSchemaV4;
 
 DEV_WARNING("network_analytics: pending improvements include node<->module crosswalk. \n");
 DEV_WARNING("explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk). \n");
@@ -67,6 +57,7 @@ struct analytics_topk_entry_t {
 
 struct network_analytics_report_t {
   std::string schema{std::string(kNetworkAnalyticsSchemaCurrent)};
+  network_analytics_options_t normalized_options{};
 
   std::uint64_t tensor_count{0};
   std::uint64_t trainable_tensor_count{0};
@@ -146,6 +137,10 @@ struct network_analytics_report_t {
 
 struct network_design_analytics_report_t {
   std::string schema{std::string(kNetworkDesignAnalyticsSchemaCurrent)};
+  bool analysis_valid{true};
+  std::string analysis_error{};
+  std::uint64_t duplicate_node_id_count{0};
+  std::string duplicate_node_id_example{};
 
   std::string network_id{};
   std::string join_policy{};
@@ -220,13 +215,11 @@ struct network_design_analytics_report_t {
 
 [[nodiscard]] std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_report_t& report,
-    const network_analytics_options_t& options,
     std::string_view checkpoint_filename = {},
     const tsiemene::component_report_identity_t& report_identity = {});
 
 [[nodiscard]] std::string network_analytics_to_pretty_text(
     const network_analytics_report_t& report,
-    const network_analytics_options_t& options,
     std::string_view network_label = {},
     bool use_color = true);
 

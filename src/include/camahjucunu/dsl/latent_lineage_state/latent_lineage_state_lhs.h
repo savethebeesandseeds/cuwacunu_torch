@@ -39,27 +39,18 @@ struct latent_lineage_state_lhs_t {
 
 [[nodiscard]] inline std::size_t find_top_level_colon(
     std::string_view text) {
-  int square_depth = 0;
-  int round_depth = 0;
+  int bracket_depth = 0;
   for (std::size_t i = 0; i < text.size(); ++i) {
     const char c = text[i];
-    if (c == '[') {
-      ++square_depth;
+    if (c == '[' || c == '(') {
+      ++bracket_depth;
       continue;
     }
-    if (c == ']') {
-      if (square_depth > 0) --square_depth;
+    if (c == ']' || c == ')') {
+      if (bracket_depth > 0) --bracket_depth;
       continue;
     }
-    if (c == '(') {
-      ++round_depth;
-      continue;
-    }
-    if (c == ')') {
-      if (round_depth > 0) --round_depth;
-      continue;
-    }
-    if (c == ':' && square_depth == 0 && round_depth == 0) {
+    if (c == ':' && bracket_depth == 0) {
       return i;
     }
   }
@@ -71,17 +62,16 @@ struct latent_lineage_state_lhs_t {
   if (text.empty()) return std::string_view::npos;
   const char close = text.back();
   if (close != ']' && close != ')') return std::string_view::npos;
-  const char open = (close == ']') ? '[' : '(';
-  int depth = 0;
-  for (std::size_t i = text.size(); i-- > 0;) {
+  int bracket_depth = 1;
+  for (std::size_t i = text.size() - 1; i-- > 0;) {
     const char c = text[i];
-    if (c == close) {
-      ++depth;
+    if (c == ']' || c == ')') {
+      ++bracket_depth;
       continue;
     }
-    if (c == open) {
-      --depth;
-      if (depth == 0) return i;
+    if (c == '[' || c == '(') {
+      --bracket_depth;
+      if (bracket_depth == 0) return i;
     }
   }
   return std::string_view::npos;

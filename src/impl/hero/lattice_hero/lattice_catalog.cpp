@@ -37,9 +37,9 @@ constexpr std::string_view kEntropicCapacityComparisonViewCanonicalPath =
 constexpr std::string_view kEntropicCapacityComparisonViewTransportSchema =
     "lattice.derived_view.entropic_capacity_comparison.v1";
 constexpr std::string_view kSourceDataAnalyticsSchema =
-    "piaabo.torch_compat.data_analytics.v1";
+    "piaabo.torch_compat.data_analytics.v2";
 constexpr std::string_view kNetworkAnalyticsSchema =
-    "piaabo.torch_compat.network_analytics.v4";
+    "piaabo.torch_compat.network_analytics.v5";
 constexpr double kEntropicCapacityComparisonNumericEpsilon = 1e-18;
 
 [[nodiscard]] bool parse_kv_payload(
@@ -278,123 +278,6 @@ void upsert_runtime_u64_entry_(runtime_lls_document_t* document,
   return true;
 }
 
-[[nodiscard]] bool extract_joined_source_runtime_projection_document(
-    std::string_view joined_report_lls,
-    std::string_view fallback_run_id,
-    runtime_lls_document_t* out_document,
-    std::string* out_schema,
-    std::string* out_run_id,
-    std::string* error) {
-  // DEV_WARNING: this is the remaining bridge from the synthetic joined
-  // report_lls transport back into strict runtime .lls. The goal is to delete
-  // this path once source-runtime projection is preserved as a first-class
-  // runtime fragment instead of being reconstructed from joined text.
-  if (error) error->clear();
-  if (!out_document) {
-    if (error) *error = "source runtime projection document output pointer is null";
-    return false;
-  }
-  out_document->entries.clear();
-  if (out_schema) out_schema->clear();
-  if (out_run_id) out_run_id->clear();
-
-  std::string schema_line{};
-  std::vector<std::string> normalized_lines{};
-  std::string explicit_run_id{};
-  bool saw_embedded_marker = false;
-  bool in_embedded_section = false;
-  std::size_t cursor = 0;
-  while (cursor < joined_report_lls.size()) {
-    std::size_t line_end = joined_report_lls.find('\n', cursor);
-    if (line_end == std::string_view::npos) line_end = joined_report_lls.size();
-    std::string_view line = joined_report_lls.substr(cursor, line_end - cursor);
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-    const std::string trimmed = trim_ascii(line);
-    if (trimmed == "/* embedded source.runtime.projection.v2 */") {
-      saw_embedded_marker = true;
-      in_embedded_section = true;
-      if (line_end == joined_report_lls.size()) break;
-      cursor = line_end + 1;
-      continue;
-    }
-    if (in_embedded_section && trimmed.rfind("/*", 0) == 0) {
-      in_embedded_section = false;
-      if (line_end == joined_report_lls.size()) break;
-      cursor = line_end + 1;
-      continue;
-    }
-    if (!trimmed.empty() && trimmed.front() != '#') {
-      const std::size_t eq = trimmed.find('=');
-      if (eq != std::string::npos && eq > 0) {
-        const std::string lhs = trim_ascii(trimmed.substr(0, eq));
-        const std::string rhs = trim_ascii(trimmed.substr(eq + 1));
-        const std::string key =
-            cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(lhs);
-        if (in_embedded_section &&
-            !(key.size() >= 15 &&
-              key.compare(0, 15, "source.runtime.") == 0)) {
-          in_embedded_section = false;
-          if (line_end == joined_report_lls.size()) break;
-          cursor = line_end + 1;
-          continue;
-        }
-        if (key.size() >= 15 && key.compare(0, 15, "source.runtime.") == 0) {
-          if (key == "source.runtime.projection.run_id") {
-            if (explicit_run_id.empty()) explicit_run_id = rhs;
-          } else {
-            if (key == "source.runtime.projection.schema") {
-              schema_line = trimmed;
-            } else {
-              normalized_lines.push_back(trimmed);
-            }
-          }
-        }
-      }
-    }
-    if (line_end == joined_report_lls.size()) break;
-    cursor = line_end + 1;
-  }
-
-  if (schema_line.empty()) {
-    if (error) {
-      *error = saw_embedded_marker
-                   ? "joined report_lls embedded source.runtime.projection.v2 "
-                     "section is missing source.runtime.projection.schema"
-                   : "joined report_lls missing source.runtime.projection.schema";
-    }
-    return false;
-  }
-
-  std::ostringstream payload;
-  payload << schema_line << "\n";
-  for (const auto& line : normalized_lines) payload << line << "\n";
-
-  runtime_lls_document_t parsed{};
-  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
-          payload.str(), &parsed, error)) {
-    return false;
-  }
-  std::unordered_map<std::string, std::string> kv{};
-  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
-          parsed, &kv, error)) {
-    return false;
-  }
-
-  const auto it_schema = kv.find("source.runtime.projection.schema");
-  if (it_schema == kv.end() || trim_ascii(it_schema->second).empty()) {
-    if (error) *error = "source runtime projection document is missing schema";
-    return false;
-  }
-
-  *out_document = std::move(parsed);
-  if (out_schema) *out_schema = trim_ascii(it_schema->second);
-  if (out_run_id) {
-    *out_run_id = trim_ascii(explicit_run_id);
-    if (out_run_id->empty()) *out_run_id = trim_ascii(fallback_run_id);
-  }
-  return true;
-}
-
 [[nodiscard]] std::string build_projection_lls_payload(
     const wave_projection_t& projection) {
   std::vector<std::pair<std::string, double>> projection_num =
@@ -423,46 +306,24 @@ void upsert_runtime_u64_entry_(runtime_lls_document_t* document,
       payload);
 }
 
-[[nodiscard]] std::uint64_t fnv1a64(std::string_view text) {
-  std::uint64_t h = 1469598103934665603ULL;
-  for (const unsigned char c : text) {
-    h ^= static_cast<std::uint64_t>(c);
-    h *= 1099511628211ULL;
-  }
-  return h;
-}
-
-[[nodiscard]] bool parse_trailing_u64_suffix(std::string_view text,
-                                             std::uint64_t* out) {
-  if (!out) return false;
-  const std::string t = trim_ascii(text);
-  if (t.empty()) return false;
-  std::size_t begin = t.size();
-  while (begin > 0 &&
-         std::isdigit(static_cast<unsigned char>(t[begin - 1])) != 0) {
-    --begin;
-  }
-  if (begin == t.size()) return false;
-  return parse_u64(std::string_view(t).substr(begin), out);
-}
-
 [[nodiscard]] std::uint64_t normalize_to_bits(std::uint64_t v,
                                               std::uint8_t bits) {
   const std::uint64_t m = db::wave_cursor::bitmask(bits);
   return v & m;
 }
 
-[[nodiscard]] std::uint64_t runtime_run_numeric_id(
+[[nodiscard]] bool runtime_run_numeric_from_manifest(
     std::string_view run_id,
     const std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>&
-        runtime_runs_by_id) {
-  if (const auto it = runtime_runs_by_id.find(std::string(run_id));
-      it != runtime_runs_by_id.end() && it->second.started_at_ms > 0) {
-    return it->second.started_at_ms;
+        runtime_runs_by_id,
+    std::uint64_t* out) {
+  if (!out) return false;
+  const auto it = runtime_runs_by_id.find(std::string(run_id));
+  if (it == runtime_runs_by_id.end() || it->second.started_at_ms == 0) {
+    return false;
   }
-  std::uint64_t suffix = 0;
-  if (parse_trailing_u64_suffix(run_id, &suffix)) return suffix;
-  return fnv1a64(run_id);
+  *out = it->second.started_at_ms;
+  return true;
 }
 
 [[nodiscard]] std::uint64_t runtime_kv_u64_or_default(
@@ -576,8 +437,24 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
   const auto layout = lattice_catalog_store_t::runtime_wave_cursor_layout();
   if (!db::wave_cursor::valid_layout(layout)) return false;
 
-  const std::uint64_t run_id_numeric =
-      runtime_run_numeric_id(run_id, runtime_runs_by_id);
+  if (const auto it = kv.find("wave_cursor"); it != kv.end()) {
+    std::uint64_t explicit_wave_cursor = 0;
+    if (parse_u64(it->second, &explicit_wave_cursor) ||
+        lattice_catalog_store_t::parse_runtime_wave_cursor_token(
+            it->second, &explicit_wave_cursor)) {
+      *out_wave_cursor = explicit_wave_cursor;
+      return true;
+    }
+    return false;
+  }
+
+  std::uint64_t run_id_numeric = runtime_kv_u64_or_default(
+      kv, {"wave.cursor.run", "wave_run", "wave_run_id"}, 0ULL);
+  if (run_id_numeric == 0 &&
+      !runtime_run_numeric_from_manifest(run_id, runtime_runs_by_id,
+                                         &run_id_numeric)) {
+    return false;
+  }
   const std::uint64_t episode_k = runtime_kv_u64_or_default(
       kv, {"wave.cursor.episode", "episode_k", "episode", "wave_episode"}, 0ULL);
   const std::uint64_t batch_j = runtime_kv_u64_or_default(
@@ -701,7 +578,7 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
     return "tsi.wikimyei.representation.vicreg." + vicreg_hash;
   }
 
-  const std::string source_head = "/tsi.source/data_analytics/";
+  const std::string source_head = "/tsi.source/data_analytics.v2/";
   const std::size_t p0 = s.find(source_head);
   if (p0 != std::string::npos) {
     const std::size_t b0 = p0 + source_head.size();
@@ -720,19 +597,13 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
 [[nodiscard]] std::string contract_hash_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
-  const std::string source_head = "/tsi.source/data_analytics/";
+  const std::string source_head = "/tsi.source/data_analytics.v2/";
   const std::size_t p0 = s.find(source_head);
   if (p0 == std::string::npos) return {};
   const std::size_t b0 = p0 + source_head.size();
   const std::size_t slash1 = s.find('/', b0);
   if (slash1 == std::string::npos || slash1 <= b0) return {};
   return s.substr(b0, slash1 - b0);
-}
-
-[[nodiscard]] bool starts_with(std::string_view text,
-                               std::string_view prefix) {
-  return text.size() >= prefix.size() &&
-         text.substr(0, prefix.size()) == prefix;
 }
 
 [[nodiscard]] bool is_hashimyei_hex_token(std::string_view token) {
@@ -767,97 +638,14 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
   return out.str();
 }
 
-void append_synthetic_source_runtime_report_fragments(
-    const std::unordered_map<std::string, wave_cell_t>& cells_by_id,
-    const std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>&
-        runtime_runs_by_id,
-    std::string_view canonical_path, std::string_view schema,
-    std::vector<runtime_report_fragment_t>* out) {
-  if (!out) return;
-  const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
-  const std::string sc(schema);
-  if (cp.empty() || !starts_with(cp, "tsi.source.")) return;
-  if (!sc.empty() && sc != "wave.source.runtime.projection.v2") return;
-
-  for (const auto& [_, cell] : cells_by_id) {
-    // DEV_WARNING: synthetic source-runtime fragments are still reconstructed
-    // from joined transport text, not from a persisted original fragment body.
-    // This is the last major Lattice/runtime-LLS compatibility gap.
-    std::unordered_map<std::string, std::string> joined_kv{};
-    (void)parse_kv_payload(cell.report.report_lls, &joined_kv);
-    std::string fallback_run_id{};
-    if (const auto it = joined_kv.find("run_id"); it != joined_kv.end()) {
-      fallback_run_id = trim_ascii(it->second);
-    }
-
-    runtime_lls_document_t source_payload{};
-    std::string synthetic_schema{};
-    std::string synthetic_run_id{};
-    std::string projection_error{};
-    if (!extract_joined_source_runtime_projection_document(
-            cell.report.report_lls, fallback_run_id, &source_payload,
-            &synthetic_schema, &synthetic_run_id, &projection_error)) {
-      continue;
-    }
-    if (synthetic_schema.empty()) continue;
-    if (!sc.empty() && synthetic_schema != sc) continue;
-    if (synthetic_run_id.empty()) continue;
-
-    std::unordered_map<std::string, std::string> runtime_kv{};
-    runtime_kv["run_id"] = synthetic_run_id;
-    std::uint64_t synthetic_wave_cursor = 0;
-    if (!build_runtime_wave_cursor(synthetic_run_id, runtime_kv,
-                                   runtime_runs_by_id,
-                                   &synthetic_wave_cursor)) {
-      continue;
-    }
-
-    runtime_lls_document_t payload = std::move(source_payload);
-    upsert_runtime_string_entry_(
-        &payload, "source.runtime.projection.run_id", synthetic_run_id);
-    upsert_runtime_string_entry_(&payload, "run_id", synthetic_run_id);
-    upsert_runtime_string_entry_(&payload, "canonical_path", cp);
-    upsert_runtime_string_entry_(&payload, "source_label", cp);
-    upsert_runtime_u64_entry_(&payload, "wave_cursor", synthetic_wave_cursor);
-    upsert_runtime_string_entry_(&payload, "wave_cursor_resolution", "run");
-    upsert_runtime_string_entry_(&payload, "hashimyei_cursor", cp);
-    upsert_runtime_string_entry_(
-        &payload, "intersection_cursor",
-        build_intersection_cursor(cp, synthetic_wave_cursor));
-    const std::string synthetic_payload =
-        cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
-            payload);
-
-    std::string synthetic_report_fragment_id{};
-    const std::string seed = "source-runtime-synth|" + cell.cell_id + "|" +
-                             synthetic_run_id + "|" + synthetic_payload;
-    if (!sha256_hex_bytes(seed, &synthetic_report_fragment_id, nullptr)) {
-      continue;
-    }
-
-    runtime_report_fragment_t synthetic{};
-    synthetic.report_fragment_id = synthetic_report_fragment_id;
-    synthetic.run_id = synthetic_run_id;
-    synthetic.canonical_path = cp;
-    synthetic.hashimyei = maybe_hashimyei_from_canonical(cp);
-    synthetic.schema = synthetic_schema;
-    synthetic.report_fragment_sha256 = synthetic_report_fragment_id;
-    synthetic.path =
-        "[lattice.synthetic.source_runtime cell=" + cell.cell_id + "]";
-    synthetic.ts_ms = cell.updated_at_ms;
-    synthetic.payload_json = synthetic_payload;
-    out->push_back(std::move(synthetic));
-  }
-}
-
 [[nodiscard]] bool is_known_runtime_schema(std::string_view schema) {
   if (schema == "wave.source.runtime.projection.v2") return true;
-  if (schema == "piaabo.torch_compat.data_analytics.v1") return true;
-  if (schema == "piaabo.torch_compat.data_analytics_symbolic.v1") return true;
-  if (schema == "piaabo.torch_compat.embedding_sequence_analytics.v1")
+  if (schema == "piaabo.torch_compat.data_analytics.v2") return true;
+  if (schema == "piaabo.torch_compat.data_analytics_symbolic.v2") return true;
+  if (schema == "piaabo.torch_compat.embedding_sequence_analytics.v2")
     return true;
   if (schema ==
-      "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1") {
+      "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2") {
     return true;
   }
   if (schema == "tsi.wikimyei.representation.vicreg.status.v1") return true;
@@ -865,7 +653,7 @@ void append_synthetic_source_runtime_report_fragments(
       "tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1") {
     return true;
   }
-  if (schema == "piaabo.torch_compat.network_analytics.v4") {
+  if (schema == "piaabo.torch_compat.network_analytics.v5") {
     return true;
   }
   return false;
@@ -904,12 +692,18 @@ struct entropic_capacity_view_summary_t {
 
   std::unordered_map<std::string, std::string> source_kv{};
   std::unordered_map<std::string, std::string> network_kv{};
-  if (!parse_kv_payload(source_payload, &source_kv)) {
-    if (error) *error = "invalid source analytics payload";
+  runtime_lls_document_t source_document{};
+  runtime_lls_document_t network_document{};
+  std::string parse_error{};
+  if (!parse_runtime_lls_payload(source_payload, &source_kv, &source_document,
+                                 &parse_error)) {
+    if (error) *error = "invalid source analytics payload: " + parse_error;
     return false;
   }
-  if (!parse_kv_payload(network_payload, &network_kv)) {
-    if (error) *error = "invalid network analytics payload";
+  parse_error.clear();
+  if (!parse_runtime_lls_payload(network_payload, &network_kv, &network_document,
+                                 &parse_error)) {
+    if (error) *error = "invalid network analytics payload: " + parse_error;
     return false;
   }
 
@@ -944,27 +738,123 @@ struct entropic_capacity_view_summary_t {
     const runtime_report_fragment_t& fragment,
     entropic_capacity_view_candidate_t* out) {
   if (!out) return false;
-  std::unordered_map<std::string, std::string> kv{};
-  if (!parse_kv_payload(fragment.payload_json, &kv)) return false;
-
-  std::uint64_t wave_cursor = 0;
-  const auto it_wave = kv.find("wave_cursor");
-  if (it_wave == kv.end() || !parse_u64(it_wave->second, &wave_cursor)) {
-    return false;
-  }
-
-  std::string contract_hash{};
-  if (const auto it = kv.find("contract_hash");
-      it != kv.end() && !trim_ascii(it->second).empty()) {
-    contract_hash = trim_ascii(it->second);
-  } else {
-    contract_hash = contract_hash_from_report_fragment_path(fragment.path);
+  std::uint64_t wave_cursor = fragment.wave_cursor;
+  std::string contract_hash = trim_ascii(fragment.contract_hash);
+  if (wave_cursor == 0 || contract_hash.empty()) {
+    std::unordered_map<std::string, std::string> kv{};
+    runtime_lls_document_t document{};
+    std::string parse_error{};
+    if (!parse_runtime_lls_payload(fragment.payload_json, &kv, &document,
+                                   &parse_error)) {
+      return false;
+    }
+    if (wave_cursor == 0) {
+      const auto it_wave = kv.find("wave_cursor");
+      if (it_wave == kv.end() ||
+          (!parse_u64(it_wave->second, &wave_cursor) &&
+           !lattice_catalog_store_t::parse_runtime_wave_cursor_token(
+               it_wave->second, &wave_cursor))) {
+        return false;
+      }
+    }
+    if (contract_hash.empty()) {
+      if (const auto it = kv.find("contract_hash");
+          it != kv.end() && !trim_ascii(it->second).empty()) {
+        contract_hash = trim_ascii(it->second);
+      } else {
+        contract_hash = contract_hash_from_report_fragment_path(fragment.path);
+      }
+    }
   }
 
   out->fragment = &fragment;
   out->wave_cursor = wave_cursor;
   out->contract_hash = std::move(contract_hash);
   return true;
+}
+
+void collect_runtime_report_fragment_candidates_(
+    const std::unordered_map<std::string, runtime_report_fragment_t>& fragments_by_id,
+    const std::unordered_map<std::uint64_t, std::vector<std::string>>&
+        fragments_by_wave_cursor,
+    std::string_view canonical_path,
+    std::string_view schema,
+    std::uint64_t wave_cursor,
+    bool use_wave_cursor,
+    std::vector<runtime_report_fragment_t>* out) {
+  if (!out) return;
+  out->clear();
+
+  const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
+  const std::string sc = trim_ascii(schema);
+  const auto accept_fragment = [&](const runtime_report_fragment_t& fragment) {
+    if (!sc.empty() && fragment.schema != sc) return;
+    if (use_wave_cursor && fragment.wave_cursor != wave_cursor) return;
+    const std::string fragment_cp =
+        normalize_source_hashimyei_cursor(fragment.canonical_path);
+    if (!runtime_hashimyei_cursor_matches(cp, fragment_cp)) return;
+    out->push_back(fragment);
+  };
+
+  if (use_wave_cursor) {
+    if (const auto it = fragments_by_wave_cursor.find(wave_cursor);
+        it != fragments_by_wave_cursor.end()) {
+      for (const auto& report_fragment_id : it->second) {
+        const auto it_fragment = fragments_by_id.find(report_fragment_id);
+        if (it_fragment == fragments_by_id.end()) continue;
+        accept_fragment(it_fragment->second);
+      }
+    }
+  } else {
+    for (const auto& [_, fragment] : fragments_by_id) {
+      accept_fragment(fragment);
+    }
+  }
+
+  std::sort(out->begin(), out->end(),
+            [](const runtime_report_fragment_t& a,
+               const runtime_report_fragment_t& b) {
+              if (a.ts_ms != b.ts_ms) return a.ts_ms > b.ts_ms;
+              return a.report_fragment_id > b.report_fragment_id;
+            });
+}
+
+void update_latest_runtime_report_fragment_key_(
+    const runtime_report_fragment_t& fragment,
+    const std::unordered_map<std::string, runtime_report_fragment_t>& fragments_by_id,
+    std::unordered_map<std::string, std::string>* latest_by_key) {
+  if (!latest_by_key) return;
+  const std::string latest_key = join_key(fragment.canonical_path, fragment.schema);
+  auto it_latest = latest_by_key->find(latest_key);
+  if (it_latest == latest_by_key->end()) {
+    (*latest_by_key)[latest_key] = fragment.report_fragment_id;
+    return;
+  }
+  const auto it_old = fragments_by_id.find(it_latest->second);
+  if (it_old == fragments_by_id.end() ||
+      fragment.ts_ms > it_old->second.ts_ms ||
+      (fragment.ts_ms == it_old->second.ts_ms &&
+       fragment.report_fragment_id > it_old->second.report_fragment_id)) {
+    it_latest->second = fragment.report_fragment_id;
+  }
+}
+
+void index_runtime_report_fragment_(
+    const runtime_report_fragment_t& fragment,
+    std::unordered_map<std::string, runtime_report_fragment_t>* fragments_by_id,
+    std::unordered_map<std::string, std::string>* latest_by_key,
+    std::unordered_map<std::uint64_t, std::vector<std::string>>*
+        fragments_by_wave_cursor) {
+  if (!fragments_by_id) return;
+  const bool already_known =
+      fragments_by_id->find(fragment.report_fragment_id) != fragments_by_id->end();
+  (*fragments_by_id)[fragment.report_fragment_id] = fragment;
+  if (!already_known && fragments_by_wave_cursor) {
+    (*fragments_by_wave_cursor)[fragment.wave_cursor].push_back(
+        fragment.report_fragment_id);
+  }
+  update_latest_runtime_report_fragment_key_(
+      fragment, *fragments_by_id, latest_by_key);
 }
 
 void append_view_line(std::ostringstream* out, std::string_view key,
@@ -1510,7 +1400,7 @@ bool lattice_catalog_store_t::close(std::string* error) {
   runtime_report_fragments_by_id_.clear();
   runtime_latest_report_fragment_by_key_.clear();
   runtime_dependency_files_by_run_id_.clear();
-  runtime_reports_by_intersection_.clear();
+  runtime_report_fragment_ids_by_wave_cursor_.clear();
   runtime_ledger_.clear();
   return true;
 }
@@ -1821,7 +1711,10 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   report_by_trial_id_.clear();
   projection_num_by_cell_.clear();
   projection_txt_by_cell_.clear();
-  runtime_reports_by_intersection_.clear();
+  runtime_report_fragments_by_id_.clear();
+  runtime_latest_report_fragment_by_key_.clear();
+  runtime_dependency_files_by_run_id_.clear();
+  runtime_report_fragment_ids_by_wave_cursor_.clear();
 
   db::query::query_spec_t q{};
   q.select_columns = {kColRecordKind};
@@ -1956,30 +1849,56 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
-    if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT) {
-      const std::string intersection_cursor =
-          trim_ascii(as_text_or_empty(&db_, kColRecordId, row));
-      if (intersection_cursor.empty()) continue;
-      const std::string canonical_path =
-          normalize_source_hashimyei_cursor(as_text_or_empty(&db_, kColTextA, row));
-      const std::string run_id = trim_ascii(as_text_or_empty(&db_, kColRunId, row));
-      const std::string report_lls = as_text_or_empty(&db_, kColPayload, row);
-      if (report_lls.empty()) continue;
-      std::uint64_t ts_ms = 0;
-      (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &ts_ms);
+    if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT_FRAGMENT) {
+      runtime_report_fragment_t fragment{};
+      fragment.report_fragment_id = as_text_or_empty(&db_, kColRecordId, row);
+      if (fragment.report_fragment_id.empty()) continue;
+      fragment.run_id = trim_ascii(as_text_or_empty(&db_, kColRunId, row));
+      fragment.canonical_path = trim_ascii(as_text_or_empty(&db_, kColTextA, row));
+      fragment.hashimyei = as_text_or_empty(&db_, kColTextB, row);
+      fragment.contract_hash = as_text_or_empty(&db_, kColContractHash, row);
+      fragment.schema = as_text_or_empty(&db_, kColStateTxt, row);
+      fragment.report_fragment_sha256 = fragment.report_fragment_id;
+      fragment.payload_json = as_text_or_empty(&db_, kColPayload, row);
+      (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &fragment.ts_ms);
 
-      auto it = runtime_reports_by_intersection_.find(intersection_cursor);
-      if (it == runtime_reports_by_intersection_.end() ||
-          ts_ms > it->second.ts_ms) {
-        runtime_intersection_report_entry_t entry{};
-        entry.canonical_path = canonical_path;
-        entry.run_id = run_id;
-        entry.ts_ms = ts_ms;
-        entry.report_lls = report_lls;
-        runtime_reports_by_intersection_[intersection_cursor] = std::move(entry);
+      std::unordered_map<std::string, std::string> kv{};
+      runtime_lls_document_t ignored_document{};
+      std::string parse_error{};
+      if (!fragment.payload_json.empty() &&
+          parse_runtime_lls_payload(fragment.payload_json, &kv, &ignored_document,
+                                    &parse_error)) {
+        if (fragment.canonical_path.empty()) {
+          fragment.canonical_path = trim_ascii(kv["canonical_path"]);
+        }
+        if (fragment.hashimyei.empty()) fragment.hashimyei = kv["hashimyei"];
+        if (fragment.contract_hash.empty()) {
+          fragment.contract_hash = kv["contract_hash"];
+        }
+        if (fragment.schema.empty()) fragment.schema = kv["schema"];
+        if (fragment.run_id.empty()) fragment.run_id = kv["run_id"];
+        if (const auto it = kv.find("wave_cursor");
+            it != kv.end()) {
+          (void)parse_u64(it->second, &fragment.wave_cursor);
+        }
+        if (const auto it = kv.find("intersection_cursor");
+            it != kv.end()) {
+          fragment.intersection_cursor = trim_ascii(it->second);
+        }
       }
+      if (fragment.intersection_cursor.empty() && fragment.wave_cursor != 0 &&
+          !fragment.canonical_path.empty()) {
+        fragment.intersection_cursor =
+            build_intersection_cursor(fragment.canonical_path, fragment.wave_cursor);
+      }
+      index_runtime_report_fragment_(
+          fragment, &runtime_report_fragments_by_id_,
+          &runtime_latest_report_fragment_by_key_,
+          &runtime_report_fragment_ids_by_wave_cursor_);
       continue;
     }
+
+    if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT) continue;
   }
 
   for (auto& [cell_id, cell] : cells_by_id_) {
@@ -2407,23 +2326,18 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
   fragment.run_id = run_id;
   fragment.canonical_path = canonical_path;
   fragment.hashimyei = hashimyei;
+  fragment.contract_hash = contract_hash;
   fragment.schema = schema;
   fragment.report_fragment_sha256 = report_fragment_sha;
   fragment.path = canonical_file_path;
   fragment.ts_ms = ts_ms;
+  fragment.wave_cursor = wave_cursor;
+  fragment.intersection_cursor = build_intersection_cursor(canonical_path, wave_cursor);
   fragment.payload_json = payload_with_cursor;
-  runtime_report_fragments_by_id_[report_fragment_sha] = fragment;
-  const std::string latest_key = join_key(canonical_path, schema);
-  auto it_latest = runtime_latest_report_fragment_by_key_.find(latest_key);
-  if (it_latest == runtime_latest_report_fragment_by_key_.end()) {
-    runtime_latest_report_fragment_by_key_[latest_key] = report_fragment_sha;
-  } else {
-    const auto it_old = runtime_report_fragments_by_id_.find(it_latest->second);
-    if (it_old == runtime_report_fragments_by_id_.end() || ts_ms > it_old->second.ts_ms ||
-        (ts_ms == it_old->second.ts_ms && report_fragment_sha > it_old->second.report_fragment_id)) {
-      it_latest->second = report_fragment_sha;
-    }
-  }
+  index_runtime_report_fragment_(
+      fragment, &runtime_report_fragments_by_id_,
+      &runtime_latest_report_fragment_by_key_,
+      &runtime_report_fragment_ids_by_wave_cursor_);
 
   bool already = false;
   if (!runtime_ledger_contains_(report_fragment_sha, &already, error)) return false;
@@ -2573,12 +2487,8 @@ bool lattice_catalog_store_t::list_runtime_report_fragments(
         normalize_source_hashimyei_cursor(fragment.canonical_path);
     if (!runtime_hashimyei_cursor_matches(cp, fragment_cp)) continue;
     if (!sc.empty() && fragment.schema != sc) continue;
-    runtime_report_fragment_t normalized_fragment = fragment;
-    normalized_fragment.canonical_path = fragment_cp;
-    out->push_back(std::move(normalized_fragment));
+    out->push_back(fragment);
   }
-  append_synthetic_source_runtime_report_fragments(
-      cells_by_id_, runtime_runs_by_id_, cp, sc, out);
 
   std::sort(out->begin(), out->end(),
             [newest_first](const auto& a, const auto& b) {
@@ -2634,30 +2544,7 @@ bool lattice_catalog_store_t::get_runtime_report_fragment(
   const auto it = runtime_report_fragments_by_id_.find(std::string(report_fragment_id));
   if (it != runtime_report_fragments_by_id_.end()) {
     *out = it->second;
-    out->canonical_path = normalize_source_hashimyei_cursor(out->canonical_path);
     return true;
-  }
-
-  std::unordered_set<std::string> source_paths{};
-  for (const auto& [_, fragment] : runtime_report_fragments_by_id_) {
-    const std::string cp =
-        normalize_source_hashimyei_cursor(fragment.canonical_path);
-    if (starts_with(cp, "tsi.source.")) {
-      source_paths.insert(cp);
-    }
-  }
-
-  for (const auto& cp : source_paths) {
-    std::vector<runtime_report_fragment_t> synthetic_rows{};
-    append_synthetic_source_runtime_report_fragments(
-        cells_by_id_, runtime_runs_by_id_, cp,
-        "wave.source.runtime.projection.v2", &synthetic_rows);
-    for (const auto& fragment : synthetic_rows) {
-      if (fragment.report_fragment_id == report_fragment_id) {
-        *out = fragment;
-        return true;
-      }
-    }
   }
 
   set_error(error, "report_fragment not found: " + std::string(report_fragment_id));
@@ -2690,84 +2577,8 @@ bool lattice_catalog_store_t::list_runtime_report_schemas(
   return true;
 }
 
-bool lattice_catalog_store_t::upsert_runtime_intersection_report(
-    std::string_view intersection_cursor, std::string_view canonical_path,
-    std::string_view run_id, std::uint64_t ts_ms, std::string_view report_lls,
-    std::string* error) {
-  clear_error(error);
-  if (!db_) {
-    set_error(error, "catalog is not open");
-    return false;
-  }
-  const std::string key = trim_ascii(intersection_cursor);
-  if (key.empty()) {
-    set_error(error, "intersection_cursor is empty");
-    return false;
-  }
-  const std::string payload(report_lls);
-  if (payload.empty()) {
-    set_error(error, "report_lls is empty");
-    return false;
-  }
-  const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
-  const std::string rid = trim_ascii(run_id);
-  const std::uint64_t effective_ts = (ts_ms == 0) ? now_ms_utc() : ts_ms;
-  const std::string ts = std::to_string(effective_ts);
-
-  auto it_existing = runtime_reports_by_intersection_.find(key);
-  if (it_existing != runtime_reports_by_intersection_.end()) {
-    const bool same_payload = (it_existing->second.report_lls == payload);
-    const bool ts_not_newer = (effective_ts <= it_existing->second.ts_ms);
-    if (same_payload && ts_not_newer) {
-      return true;
-    }
-  }
-
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT, key, "", "",
-                   "", "", "", "wave.intersection.report.v1",
-                   std::numeric_limits<double>::quiet_NaN(), cp,
-                   "wave.intersection.report.v1", "2", ts, payload, "",
-                   std::numeric_limits<double>::quiet_NaN(), "", "", "", "", "",
-                   "", "", "", rid, error)) {
-    return false;
-  }
-
-  runtime_intersection_report_entry_t entry{};
-  entry.canonical_path = cp;
-  entry.run_id = rid;
-  entry.ts_ms = effective_ts;
-  entry.report_lls = payload;
-  runtime_reports_by_intersection_[key] = std::move(entry);
-  return true;
-}
-
-bool lattice_catalog_store_t::get_runtime_intersection_report(
-    std::string_view intersection_cursor, std::string* out_report_lls,
-    std::string* out_canonical_path, std::string* out_run_id,
-    std::string* error) const {
-  clear_error(error);
-  if (!out_report_lls) {
-    set_error(error, "intersection report output pointer is null");
-    return false;
-  }
-  out_report_lls->clear();
-  if (out_canonical_path) out_canonical_path->clear();
-  if (out_run_id) out_run_id->clear();
-
-  const std::string key = trim_ascii(intersection_cursor);
-  if (key.empty()) return true;
-
-  const auto it = runtime_reports_by_intersection_.find(key);
-  if (it == runtime_reports_by_intersection_.end()) return true;
-
-  *out_report_lls = it->second.report_lls;
-  if (out_canonical_path) *out_canonical_path = it->second.canonical_path;
-  if (out_run_id) *out_run_id = it->second.run_id;
-  return true;
-}
-
 bool lattice_catalog_store_t::get_runtime_view_lls(
-    std::string_view view_kind, std::string_view run_id,
+    std::string_view view_kind, std::string_view intersection_cursor,
     std::uint64_t wave_cursor, bool use_wave_cursor,
     std::string_view contract_hash, runtime_view_report_t* out,
     std::string* error) const {
@@ -2779,40 +2590,73 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
   *out = runtime_view_report_t{};
 
   const std::string view_kind_token = trim_ascii(view_kind);
-  const std::string run_id_token = trim_ascii(run_id);
+  const std::string intersection_cursor_token = trim_ascii(intersection_cursor);
   const std::string contract_hash_token = trim_ascii(contract_hash);
   if (view_kind_token.empty()) {
     set_error(error, "view_kind is empty");
-    return false;
-  }
-  if (run_id_token.empty()) {
-    set_error(error, "run_id is empty");
     return false;
   }
   if (view_kind_token != kEntropicCapacityComparisonViewKind) {
     set_error(error, "unsupported runtime view_kind: " + view_kind_token);
     return false;
   }
+  std::string source_selector_canonical_path = "tsi.source.dataloader";
+  std::string network_selector_canonical_path =
+      "tsi.wikimyei.representation.vicreg";
+  if (!intersection_cursor_token.empty()) {
+    runtime_intersection_cursor_t parsed_intersection{};
+    std::string parse_error{};
+    if (!lattice_catalog_store_t::parse_runtime_intersection_cursor(
+            intersection_cursor_token, &parsed_intersection, &parse_error)) {
+      set_error(error, parse_error);
+      return false;
+    }
+    if (use_wave_cursor && parsed_intersection.wave_cursor != wave_cursor) {
+      set_error(
+          error,
+          "wave_cursor and intersection_cursor select different wave_cursor values");
+      return false;
+    }
+    wave_cursor = parsed_intersection.wave_cursor;
+    use_wave_cursor = true;
+    out->selector_hashimyei_cursor = parsed_intersection.hashimyei_cursor;
+    if (runtime_hashimyei_cursor_matches(source_selector_canonical_path,
+                                         parsed_intersection.hashimyei_cursor)) {
+      source_selector_canonical_path = parsed_intersection.hashimyei_cursor;
+    } else if (runtime_hashimyei_cursor_matches(
+                   network_selector_canonical_path,
+                   parsed_intersection.hashimyei_cursor)) {
+      network_selector_canonical_path = parsed_intersection.hashimyei_cursor;
+    } else {
+      set_error(
+          error,
+          "intersection_cursor canonical_path is not supported for view_kind=" +
+              view_kind_token);
+      return false;
+    }
+  }
+  if (!use_wave_cursor) {
+    set_error(error, "view selector requires wave_cursor or intersection_cursor");
+    return false;
+  }
 
   out->view_kind = view_kind_token;
   out->canonical_path = std::string(kEntropicCapacityComparisonViewCanonicalPath);
-  out->run_id = run_id_token;
+  out->selector_intersection_cursor = intersection_cursor_token;
   out->contract_hash = contract_hash_token;
   out->wave_cursor = wave_cursor;
   out->has_wave_cursor = use_wave_cursor;
 
   std::vector<runtime_report_fragment_t> source_rows{};
   std::vector<runtime_report_fragment_t> network_rows{};
-  if (!list_runtime_report_fragments(
-          "tsi.source.dataloader", kSourceDataAnalyticsSchema, 0, 0, true,
-          &source_rows, error)) {
-    return false;
-  }
-  if (!list_runtime_report_fragments(
-          "tsi.wikimyei.representation.vicreg", kNetworkAnalyticsSchema, 0, 0,
-          true, &network_rows, error)) {
-    return false;
-  }
+  collect_runtime_report_fragment_candidates_(
+      runtime_report_fragments_by_id_, runtime_report_fragment_ids_by_wave_cursor_,
+      source_selector_canonical_path, kSourceDataAnalyticsSchema, wave_cursor,
+      use_wave_cursor, &source_rows);
+  collect_runtime_report_fragment_candidates_(
+      runtime_report_fragments_by_id_, runtime_report_fragment_ids_by_wave_cursor_,
+      network_selector_canonical_path, kNetworkAnalyticsSchema, wave_cursor,
+      use_wave_cursor, &network_rows);
 
   std::unordered_map<std::uint64_t, std::vector<entropic_capacity_view_candidate_t>>
       sources_by_wave{};
@@ -2823,7 +2667,7 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
           std::unordered_map<std::uint64_t,
                              std::vector<entropic_capacity_view_candidate_t>>*
               out_groups) {
-        if (row.run_id != run_id_token || !out_groups) return;
+        if (!out_groups) return;
         entropic_capacity_view_candidate_t candidate{};
         if (!build_entropic_capacity_view_candidate(row, &candidate)) return;
         if (use_wave_cursor && candidate.wave_cursor != wave_cursor) return;
@@ -2856,7 +2700,14 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
                    kEntropicCapacityComparisonViewTransportSchema);
   append_view_line(&view, "view_kind", out->view_kind);
   append_view_line(&view, "canonical_path", out->canonical_path);
-  append_view_line(&view, "run_id", out->run_id);
+  if (!out->selector_intersection_cursor.empty()) {
+    append_view_line(
+        &view, "selector_intersection_cursor", out->selector_intersection_cursor);
+  }
+  if (!out->selector_hashimyei_cursor.empty()) {
+    append_view_line(&view, "selector_hashimyei_cursor",
+                     out->selector_hashimyei_cursor);
+  }
   if (!out->contract_hash.empty()) {
     append_view_line(&view, "contract_hash", out->contract_hash);
   }
@@ -2891,9 +2742,9 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
               &summarize_error)) {
         set_error(
             error,
-            "failed to resolve entropic_capacity_comparison view for run_id=" +
-                run_id_token + " wave_cursor=" +
-                std::to_string(group_wave_cursor) + ": " + summarize_error);
+            "failed to resolve entropic_capacity_comparison view for selector "
+            "wave_cursor=" + std::to_string(group_wave_cursor) + ": " +
+                summarize_error);
         return false;
       }
 

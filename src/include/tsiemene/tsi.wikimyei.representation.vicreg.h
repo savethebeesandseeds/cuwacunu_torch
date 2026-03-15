@@ -193,7 +193,7 @@ struct vicreg_network_analytics_plan_t {
     if (error) *error = plan_error;
     return false;
   }
-  const auto network_report_identity = make_component_report_identity(
+  auto network_report_identity = make_component_report_identity(
       "network_analytics",
       canonical_path,
       canonical_type,
@@ -202,6 +202,7 @@ struct vicreg_network_analytics_plan_t {
       {},
       {},
       effective_runtime_report_run_id_(run_id, report_fragment_id));
+  network_report_identity.wave_cursor_resolution = "run";
   return cuwacunu::piaabo::torch_compat::write_network_analytics_sidecar_for_checkpoint(
       model,
       weights_file,
@@ -575,7 +576,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         oss << "[tsi.vicreg][network_analytics] epoch_end"
             << " network=" << plan.network_label << "\n";
         oss << cuwacunu::piaabo::torch_compat::network_analytics_to_pretty_text(
-            analytics, plan.options, plan.network_label, /*use_color=*/true);
+            analytics, plan.network_label, /*use_color=*/true);
         log_info("%s", oss.str().c_str());
         return RuntimeEventAction{};
       }
@@ -1234,7 +1235,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
           std::string(cuwacunu::piaabo::torch_compat::
                           kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename);
 
-      const auto embedding_report_identity = make_component_report_identity(
+      auto embedding_report_identity = make_component_report_identity(
           "embedding_sequence_analytics",
           canonical_path,
           kWikimyeiVicregCanonicalType,
@@ -1243,7 +1244,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
           {},
           {},
           effective_run_id);
-      const auto embedding_symbolic_report_identity =
+      embedding_report_identity.wave_cursor_resolution = "run";
+      auto embedding_symbolic_report_identity =
           make_component_report_identity(
               "embedding_sequence_analytics_symbolic",
               canonical_path,
@@ -1253,6 +1255,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
               {},
               {},
               effective_run_id);
+      embedding_symbolic_report_identity.wave_cursor_resolution = "run";
 
       std::string write_error;
       if (cuwacunu::piaabo::torch_compat::write_sequence_analytics_file(

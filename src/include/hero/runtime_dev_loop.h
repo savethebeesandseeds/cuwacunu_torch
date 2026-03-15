@@ -364,14 +364,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
                 resolved.lattice_hero_dsl_path.parent_path().string(),
                 it_catalog->second)));
       }
-      const auto it_hash_catalog = lattice_defaults.find("hashimyei_catalog_path");
-      if (it_hash_catalog != lattice_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.catalog_paths, &catalog_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.lattice_hero_dsl_path.parent_path().string(),
-                it_hash_catalog->second)));
-      }
     }
 
     std::map<std::string, std::string, std::less<>> runtime_defaults{};
@@ -505,14 +497,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
                 it->second)));
       }
       if (const auto it = lattice_defaults.find("catalog_path");
-          it != lattice_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.catalog_paths, &catalog_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.lattice_hero_dsl_path.parent_path().string(),
-                it->second)));
-      }
-      if (const auto it = lattice_defaults.find("hashimyei_catalog_path");
           it != lattice_defaults.end()) {
         detail::push_unique_path(
             &resolved.catalog_paths, &catalog_seen,

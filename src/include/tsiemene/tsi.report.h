@@ -8,8 +8,8 @@
 
 namespace tsiemene {
 
-// Report-dispatch vocabulary is intentionally run-centric to align with
-// lattice-facing terminology.
+// Report-dispatch vocabulary is component/fact centric. Correlation selectors
+// like run_id or wave cursor fields are metadata, not the primary identity.
 enum class report_event_e : std::uint8_t {
   Step = 0,
   EpochStart = 1,
@@ -50,6 +50,16 @@ struct component_report_identity_t {
   std::string wave_hash{};
   std::string binding_id{};
   std::string run_id{};
+  std::string wave_cursor_resolution{};
+  std::string intersection_cursor{};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
+  bool has_wave_cursor_run{false};
+  std::uint64_t wave_cursor_run{0};
+  bool has_wave_cursor_episode{false};
+  std::uint64_t wave_cursor_episode{0};
+  bool has_wave_cursor_batch{false};
+  std::uint64_t wave_cursor_batch{0};
 };
 
 [[nodiscard]] inline component_report_identity_t make_component_report_identity(

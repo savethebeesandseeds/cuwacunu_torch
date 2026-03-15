@@ -6,10 +6,12 @@
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 #include <torch/torch.h>
 
+#include <atomic>
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -37,9 +39,9 @@ namespace torch_compat {
 namespace {
 
 constexpr double kNumericEpsilon = 1e-18;
-constexpr std::string_view kRefRangeUnitInterval = "(0,1)";
-constexpr std::string_view kRefRangeNonNegative = "(0,+inf)";
-constexpr std::string_view kRefRangePositive = "(1,+inf)";
+constexpr std::string_view kRefRangeUnitInterval = "[0,1]";
+constexpr std::string_view kRefRangeNonNegative = "[0,+inf)";
+constexpr std::string_view kRefRangePositive = "[1,+inf)";
 constexpr std::string_view kRefRangeSigned = "(-inf,+inf)";
 
 using runtime_lls_document_t =
@@ -176,6 +178,38 @@ void append_component_report_identity_entries_(
     document->entries.push_back(
         cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
             "run_id", report_identity.run_id));
+  }
+  if (!report_identity.wave_cursor_resolution.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_cursor_resolution", report_identity.wave_cursor_resolution));
+  }
+  if (!report_identity.intersection_cursor.empty()) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "intersection_cursor", report_identity.intersection_cursor));
+  }
+  if (report_identity.has_wave_cursor) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave_cursor", report_identity.wave_cursor, "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_run) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.run", report_identity.wave_cursor_run, "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_episode) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.episode",
+            report_identity.wave_cursor_episode,
+            "[0,+inf)"));
+  }
+  if (report_identity.has_wave_cursor_batch) {
+    document->entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.batch", report_identity.wave_cursor_batch, "[0,+inf)"));
   }
 }
 
@@ -453,6 +487,71 @@ template <class Key_t>
   return values[lo] * (1.0 - t) + values[hi] * t;
 }
 
+[[nodiscard]] bool write_text_file_atomically_(
+    const std::string& payload,
+    const std::filesystem::path& output_file,
+    std::string_view artifact_name,
+    std::string* error) {
+  if (error) error->clear();
+
+  std::error_code ec;
+  const auto parent = output_file.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      if (error) {
+        *error = "cannot create " + std::string(artifact_name) +
+                 " directory: " + parent.string();
+      }
+      return false;
+    }
+  }
+
+  static std::atomic<std::uint64_t> s_temp_counter{0};
+  const auto temp_suffix =
+      std::to_string(static_cast<std::uint64_t>(
+                         std::chrono::steady_clock::now()
+                             .time_since_epoch()
+                             .count())) +
+      "." + std::to_string(s_temp_counter.fetch_add(1, std::memory_order_relaxed));
+  const std::filesystem::path temp_file =
+      output_file.string() + ".tmp." + temp_suffix;
+
+  {
+    std::ofstream out(temp_file, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      if (error) {
+        *error = "cannot open temporary " + std::string(artifact_name) +
+                 " file: " + temp_file.string();
+      }
+      return false;
+    }
+    out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+    out.close();
+    if (!out) {
+      std::error_code remove_ec;
+      std::filesystem::remove(temp_file, remove_ec);
+      if (error) {
+        *error = "cannot write temporary " + std::string(artifact_name) +
+                 " file: " + temp_file.string();
+      }
+      return false;
+    }
+  }
+
+  std::filesystem::rename(temp_file, output_file, ec);
+  if (ec) {
+    std::error_code remove_ec;
+    std::filesystem::remove(temp_file, remove_ec);
+    if (error) {
+      *error = "cannot replace " + std::string(artifact_name) +
+               " file: " + output_file.string();
+    }
+    return false;
+  }
+  return true;
+}
+
 [[nodiscard]] std::vector<analytics_topk_entry_t> take_top_k_(
     std::vector<analytics_topk_entry_t> candidates,
     std::size_t k,
@@ -535,6 +634,7 @@ void accumulate_buffer_tensor_(
     const torch::Tensor& param,
     const network_analytics_options_t& options,
     std::vector<std::uint64_t>* hist_counts,
+    std::vector<double>* exact_logabs_samples,
     report_accumulator_t* acc,
     spectral_aggregate_t* spectral_acc) {
   tensor_snapshot_t snapshot{};
@@ -636,7 +736,7 @@ void accumulate_buffer_tensor_(
       const std::int64_t bins = static_cast<std::int64_t>(hist_counts->size());
       const double hmin = options.log10_abs_histogram_min;
       const double hmax = options.log10_abs_histogram_max;
-      if (bins > 1 && hmax > hmin) {
+      if (bins > 0 && hmax > hmin) {
         const double eps = std::max(options.near_zero_epsilon, 1e-16);
         auto logabs = (abs_values + eps).log10().clamp(hmin, hmax);
         auto scaled =
@@ -646,6 +746,16 @@ void accumulate_buffer_tensor_(
         for (std::int64_t i = 0; i < bins; ++i) {
           (*hist_counts)[static_cast<std::size_t>(i)] +=
               static_cast<std::uint64_t>(bincount[i].item<std::int64_t>());
+        }
+
+        if (bins == 1 && exact_logabs_samples != nullptr) {
+          const auto sample_count = static_cast<std::size_t>(logabs.numel());
+          exact_logabs_samples->reserve(
+              exact_logabs_samples->size() + sample_count);
+          auto flattened_logabs = logabs.contiguous().flatten();
+          const double* begin = flattened_logabs.data_ptr<double>();
+          exact_logabs_samples->insert(
+              exact_logabs_samples->end(), begin, begin + sample_count);
         }
       }
     }
@@ -754,7 +864,6 @@ void accumulate_buffer_tensor_(
 
 [[nodiscard]] runtime_lls_document_t make_runtime_lls_document_(
     const network_analytics_report_t& report,
-    const network_analytics_options_t& options,
     std::string_view checkpoint_filename,
     const tsiemene::component_report_identity_t& report_identity) {
   runtime_lls_document_t document{};
@@ -784,24 +893,43 @@ void accumulate_buffer_tensor_(
   append_nonneg_double_entry_(&document, "near_zero_threshold", report.near_zero_threshold);
   append_ratio_entry_(&document, "near_zero_ratio", report.near_zero_ratio);
   append_ratio_entry_(&document, "exact_zero_ratio", report.exact_zero_ratio);
-  append_nonneg_double_entry_(&document, "abs_energy_entropy", report.abs_energy_entropy);
-  append_nonneg_double_entry_(
+  append_ratio_entry_(&document, "abs_energy_entropy", report.abs_energy_entropy);
+  append_ratio_entry_(
       &document, "log10_abs_histogram_entropy", report.log10_abs_histogram_entropy);
   append_int_entry_(
-      &document, "log10_abs_histogram_bins", options.log10_abs_histogram_bins, kRefRangePositive);
+      &document,
+      "log10_abs_histogram_bins",
+      report.normalized_options.log10_abs_histogram_bins,
+      kRefRangePositive);
   append_double_entry_(
-      &document, "log10_abs_histogram_min", options.log10_abs_histogram_min, kRefRangeSigned);
+      &document,
+      "log10_abs_histogram_min",
+      report.normalized_options.log10_abs_histogram_min,
+      kRefRangeSigned);
   append_double_entry_(
-      &document, "log10_abs_histogram_max", options.log10_abs_histogram_max, kRefRangeSigned);
+      &document,
+      "log10_abs_histogram_max",
+      report.normalized_options.log10_abs_histogram_max,
+      kRefRangeSigned);
   append_string_entry_if_nonempty_(&document, "max_abs_tensor_name", report.max_abs_tensor_name);
   append_nonneg_double_entry_(&document, "max_abs_tensor_value", report.max_abs_tensor_value);
 
-  append_bool_entry_(&document, "include_buffers", options.include_buffers);
   append_bool_entry_(
-      &document, "enable_spectral_metrics", options.enable_spectral_metrics);
+      &document, "include_buffers", report.normalized_options.include_buffers);
+  append_bool_entry_(
+      &document,
+      "enable_spectral_metrics",
+      report.normalized_options.enable_spectral_metrics);
   append_int_entry_(
-      &document, "spectral_max_elements", options.spectral_max_elements, kRefRangePositive);
-  append_int_entry_(&document, "anomaly_top_k", options.anomaly_top_k, kRefRangePositive);
+      &document,
+      "spectral_max_elements",
+      report.normalized_options.spectral_max_elements,
+      kRefRangePositive);
+  append_int_entry_(
+      &document,
+      "anomaly_top_k",
+      report.normalized_options.anomaly_top_k,
+      kRefRangeNonNegative);
 
   append_nonneg_double_entry_(&document, "tensor_rms_mean", report.tensor_rms_mean);
   append_nonneg_double_entry_(&document, "tensor_rms_std", report.tensor_rms_std);
@@ -901,7 +1029,6 @@ void append_topk_pretty_lines_(
 
 [[nodiscard]] std::string as_pretty_text_(
     const network_analytics_report_t& report,
-    const network_analytics_options_t& options,
     std::string_view network_label,
     bool use_color) {
   const char* c_reset = use_color ? "\x1b[0m" : "";
@@ -948,7 +1075,7 @@ void append_topk_pretty_lines_(
        report.trainable_tensor_count,
        "requires_grad=true tensors");
   line("anomaly_top_k",
-       options.anomaly_top_k,
+       report.normalized_options.anomaly_top_k,
        "top-k entries retained per anomaly family");
   oss << "\n";
 
@@ -1036,6 +1163,14 @@ void append_topk_pretty_lines_(
   oss << "schema=" << report.schema << "\n";
   if (!source_label.empty()) {
     oss << "source_label=" << source_label << "\n";
+  }
+  oss << "analysis_valid=" << bool_to_ascii(report.analysis_valid) << "\n";
+  if (!report.analysis_error.empty()) {
+    oss << "analysis_error=" << report.analysis_error << "\n";
+  }
+  oss << "duplicate_node_id_count=" << report.duplicate_node_id_count << "\n";
+  if (!report.duplicate_node_id_example.empty()) {
+    oss << "duplicate_node_id_example=" << report.duplicate_node_id_example << "\n";
   }
   oss << "network_id=" << report.network_id << "\n";
   oss << "join_policy=" << report.join_policy << "\n";
@@ -1147,6 +1282,23 @@ void append_topk_pretty_lines_(
 
   section("Identity");
   line("schema", report.schema, "report schema id (best: fixed)");
+  line_color("analysis_valid",
+             bool_to_ascii(report.analysis_valid),
+             report.analysis_valid ? c_good : c_bad,
+             "input validity state");
+  if (!report.analysis_error.empty()) {
+    line("analysis_error", report.analysis_error, "invalid-report reason");
+  }
+  if (report.duplicate_node_id_count > 0) {
+    line("duplicate_node_id_count",
+         report.duplicate_node_id_count,
+         "extra node ids rejected before graph analysis");
+  }
+  if (!report.duplicate_node_id_example.empty()) {
+    line("duplicate_node_id_example",
+         report.duplicate_node_id_example,
+         "first duplicate node id encountered");
+  }
   line("network_id", report.network_id, "canonical network id (best: stable)");
   line("join_policy", report.join_policy, "assembly policy tag (best: expected)");
   oss << "\n";
@@ -1280,11 +1432,16 @@ network_analytics_report_t summarize_module_network_analytics(
   const network_analytics_options_t effective = normalize_options_(options);
 
   network_analytics_report_t out{};
+  out.normalized_options = effective;
   out.near_zero_threshold = effective.near_zero_epsilon;
 
   const std::int64_t bins =
       std::max<std::int64_t>(1, effective.log10_abs_histogram_bins);
   std::vector<std::uint64_t> hist_counts(static_cast<std::size_t>(bins), 0ULL);
+  std::vector<double> exact_logabs_samples{};
+  if (bins == 1) {
+    exact_logabs_samples.reserve(1024);
+  }
 
   report_accumulator_t acc{};
   buffer_accumulator_t buffer_acc{};
@@ -1305,6 +1462,7 @@ network_analytics_report_t summarize_module_network_analytics(
         param,
         effective,
         &hist_counts,
+        (bins == 1) ? &exact_logabs_samples : nullptr,
         &acc,
         &spectral_acc);
 
@@ -1374,33 +1532,48 @@ network_analytics_report_t summarize_module_network_analytics(
         acc.sum_abs,
         acc.sum_abs_log_abs);
     out.log10_abs_histogram_entropy =
-        normalized_histogram_entropy_(hist_counts, out.finite_parameter_count);
+        (bins == 1) ? 0.0
+                    : normalized_histogram_entropy_(
+                          hist_counts, out.finite_parameter_count);
 
-    const double p25 = histogram_quantile_log10_(
-        hist_counts,
-        effective.log10_abs_histogram_min,
-        effective.log10_abs_histogram_max,
-        0.25);
-    const double p50 = histogram_quantile_log10_(
-        hist_counts,
-        effective.log10_abs_histogram_min,
-        effective.log10_abs_histogram_max,
-        0.50);
-    const double p75 = histogram_quantile_log10_(
-        hist_counts,
-        effective.log10_abs_histogram_min,
-        effective.log10_abs_histogram_max,
-        0.75);
-    const double p90 = histogram_quantile_log10_(
-        hist_counts,
-        effective.log10_abs_histogram_min,
-        effective.log10_abs_histogram_max,
-        0.90);
-    const double p99 = histogram_quantile_log10_(
-        hist_counts,
-        effective.log10_abs_histogram_min,
-        effective.log10_abs_histogram_max,
-        0.99);
+    double p25 = 0.0;
+    double p50 = 0.0;
+    double p75 = 0.0;
+    double p90 = 0.0;
+    double p99 = 0.0;
+    if (bins == 1 && !exact_logabs_samples.empty()) {
+      p25 = sorted_quantile_(exact_logabs_samples, 0.25);
+      p50 = sorted_quantile_(exact_logabs_samples, 0.50);
+      p75 = sorted_quantile_(exact_logabs_samples, 0.75);
+      p90 = sorted_quantile_(exact_logabs_samples, 0.90);
+      p99 = sorted_quantile_(exact_logabs_samples, 0.99);
+    } else {
+      p25 = histogram_quantile_log10_(
+          hist_counts,
+          effective.log10_abs_histogram_min,
+          effective.log10_abs_histogram_max,
+          0.25);
+      p50 = histogram_quantile_log10_(
+          hist_counts,
+          effective.log10_abs_histogram_min,
+          effective.log10_abs_histogram_max,
+          0.50);
+      p75 = histogram_quantile_log10_(
+          hist_counts,
+          effective.log10_abs_histogram_min,
+          effective.log10_abs_histogram_max,
+          0.75);
+      p90 = histogram_quantile_log10_(
+          hist_counts,
+          effective.log10_abs_histogram_min,
+          effective.log10_abs_histogram_max,
+          0.90);
+      p99 = histogram_quantile_log10_(
+          hist_counts,
+          effective.log10_abs_histogram_min,
+          effective.log10_abs_histogram_max,
+          0.99);
+    }
 
     out.log10_abs_p50 = p50;
     out.log10_abs_iqr = p75 - p25;
@@ -1530,8 +1703,18 @@ network_design_analytics_report_t summarize_network_design_analytics(
   std::unordered_map<std::string, std::size_t> node_index;
   node_index.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
-    node_index[instruction.nodes[i].id] = i;
+    const auto [it, inserted] = node_index.emplace(instruction.nodes[i].id, i);
+    if (!inserted) {
+      out.analysis_valid = false;
+      out.analysis_error = "duplicate_node_id";
+      ++out.duplicate_node_id_count;
+      if (out.duplicate_node_id_example.empty()) {
+        out.duplicate_node_id_example = instruction.nodes[i].id;
+      }
+      continue;
+    }
   }
+  if (!out.analysis_valid) return out;
 
   std::vector<std::unordered_set<std::size_t>> internal_out(n);
   std::vector<std::uint64_t> in_degree(n, 0ULL);
@@ -1565,7 +1748,6 @@ network_design_analytics_report_t summarize_network_design_analytics(
         }
         if (it->second == dst) {
           ++out.self_reference_token_count;
-          continue;
         }
         source_candidates.insert(it->second);
       }
@@ -1871,9 +2053,11 @@ network_design_analytics_report_t summarize_network_design_analytics(
 
   std::vector<unsigned char> source_scc(scc_n, static_cast<unsigned char>(0));
   std::vector<unsigned char> export_scc(scc_n, static_cast<unsigned char>(0));
+  for (std::size_t sid = 0; sid < scc_n; ++sid) {
+    if (dag_in_degree[sid] == 0) source_scc[sid] = 1;
+  }
   for (std::size_t i = 0; i < n; ++i) {
     const std::size_t sid = static_cast<std::size_t>(node_to_scc[i]);
-    if (in_degree[i] == 0) source_scc[sid] = 1;
     if (out_degree_export[i] > 0) export_scc[sid] = 1;
   }
 
@@ -2223,33 +2407,26 @@ std::string extract_analytics_kv_schema(std::string_view payload) {
 }
 
 bool is_supported_network_analytics_schema(std::string_view schema) {
-  return schema == kNetworkAnalyticsSchemaV1 ||
-         schema == kNetworkAnalyticsSchemaV2 ||
-         schema == kNetworkAnalyticsSchemaV3 ||
-         schema == kNetworkAnalyticsSchemaV4;
+  return schema == kNetworkAnalyticsSchemaCurrent;
 }
 
 bool is_supported_network_design_analytics_schema(std::string_view schema) {
-  return schema == kNetworkDesignAnalyticsSchemaV1 ||
-         schema == kNetworkDesignAnalyticsSchemaV2 ||
-         schema == kNetworkDesignAnalyticsSchemaV3;
+  return schema == kNetworkDesignAnalyticsSchemaCurrent;
 }
 
 std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_report_t& report,
-    const network_analytics_options_t& options,
     std::string_view checkpoint_filename,
     const tsiemene::component_report_identity_t& report_identity) {
   return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
-      make_runtime_lls_document_(report, options, checkpoint_filename, report_identity));
+      make_runtime_lls_document_(report, checkpoint_filename, report_identity));
 }
 
 std::string network_analytics_to_pretty_text(
     const network_analytics_report_t& report,
-    const network_analytics_options_t& options,
     std::string_view network_label,
     bool use_color) {
-  return as_pretty_text_(report, options, network_label, use_color);
+  return as_pretty_text_(report, network_label, use_color);
 }
 
 std::string network_design_analytics_to_latent_lineage_state_text(
@@ -2297,28 +2474,18 @@ bool write_network_analytics_file(
     }
   }
 
-  std::ofstream out(output_file, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    if (error) *error = "cannot open report file for write: " + output_file.string();
-    return false;
-  }
-
   std::string payload;
   try {
     payload = network_analytics_to_latent_lineage_state_text(
-        report, effective, {}, report_identity);
+        report, {}, report_identity);
   } catch (const std::exception& e) {
     if (error) {
       *error = "cannot serialize network analytics report: " + std::string(e.what());
     }
     return false;
   }
-  out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
-  if (!out) {
-    if (error) *error = "cannot write report file: " + output_file.string();
-    return false;
-  }
-  return true;
+  return write_text_file_atomically_(
+      payload, output_file, "network analytics report", error);
 }
 
 bool write_network_analytics_sidecar_for_checkpoint(
@@ -2360,25 +2527,18 @@ bool write_network_analytics_sidecar_for_checkpoint(
     }
   }
 
-  std::ofstream out(sidecar, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    if (error) *error = "cannot open report file for write: " + sidecar.string();
-    return false;
-  }
-
   std::string payload;
   try {
     payload = network_analytics_to_latent_lineage_state_text(
-        report, effective, checkpoint_file.filename().string(), report_identity);
+        report, checkpoint_file.filename().string(), report_identity);
   } catch (const std::exception& e) {
     if (error) {
       *error = "cannot serialize network analytics report: " + std::string(e.what());
     }
     return false;
   }
-  out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
-  if (!out) {
-    if (error) *error = "cannot write report file: " + sidecar.string();
+  if (!write_text_file_atomically_(
+          payload, sidecar, "network analytics sidecar", error)) {
     return false;
   }
 

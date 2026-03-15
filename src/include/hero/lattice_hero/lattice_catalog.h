@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <cstddef>
@@ -95,23 +96,32 @@ struct runtime_report_fragment_t {
   std::string run_id{};
   std::string canonical_path{};
   std::string hashimyei{};
+  std::string contract_hash{};
   std::string schema{};
   std::string report_fragment_sha256{};
   std::string path{};
   std::uint64_t ts_ms{0};
+  std::uint64_t wave_cursor{0};
+  std::string intersection_cursor{};
   std::string payload_json{};
 };
 
 struct runtime_view_report_t {
   std::string view_kind{};
   std::string canonical_path{};
-  std::string run_id{};
+  std::string selector_hashimyei_cursor{};
+  std::string selector_intersection_cursor{};
   std::string contract_hash{};
   std::uint64_t wave_cursor{0};
   bool has_wave_cursor{false};
   std::size_t match_count{0};
   std::size_t ambiguity_count{0};
   std::string view_lls{};
+};
+
+struct runtime_intersection_cursor_t {
+  std::string hashimyei_cursor{};
+  std::uint64_t wave_cursor{0};
 };
 
 [[nodiscard]] std::string compute_coord_hash(std::string_view contract_hash,
@@ -211,23 +221,35 @@ class lattice_catalog_store_t {
       return parse_runtime_wave_cursor_scalar(token, out);
     }
 
-    const std::size_t dot = token.find('.');
-    const std::size_t comma = token.find(',', dot == std::string::npos ? 0 : dot + 1);
-    if (dot == std::string::npos || comma == std::string::npos) return false;
-    if (token.find('.', dot + 1) != std::string::npos) return false;
-    if (token.find(',', comma + 1) != std::string::npos) return false;
+    const std::size_t first_dot = token.find('.');
+    if (first_dot == std::string::npos) return false;
+
+    std::size_t second_sep = std::string::npos;
+    if (const std::size_t second_dot = token.find('.', first_dot + 1);
+        second_dot != std::string::npos) {
+      second_sep = second_dot;
+    } else if (const std::size_t comma = token.find(',', first_dot + 1);
+               comma != std::string::npos) {
+      second_sep = comma;
+    } else {
+      return false;
+    }
+    if (token.find('.', second_sep + 1) != std::string::npos) return false;
+    if (token.find(',', second_sep + 1) != std::string::npos) return false;
 
     std::uint64_t run_id = 0;
     std::uint64_t episode_k = 0;
     std::uint64_t batch_j = 0;
-    if (!parse_runtime_wave_cursor_scalar(token.substr(0, dot), &run_id)) {
+    if (!parse_runtime_wave_cursor_scalar(token.substr(0, first_dot), &run_id)) {
       return false;
     }
     if (!parse_runtime_wave_cursor_scalar(
-            token.substr(dot + 1, comma - dot - 1), &episode_k)) {
+            token.substr(first_dot + 1, second_sep - first_dot - 1),
+            &episode_k)) {
       return false;
     }
-    if (!parse_runtime_wave_cursor_scalar(token.substr(comma + 1), &batch_j)) {
+    if (!parse_runtime_wave_cursor_scalar(token.substr(second_sep + 1),
+                                          &batch_j)) {
       return false;
     }
 
@@ -246,7 +268,7 @@ class lattice_catalog_store_t {
       return std::to_string(packed);
     }
     return std::to_string(parts.run_id) + "." +
-           std::to_string(parts.episode_k) + "," +
+           std::to_string(parts.episode_k) + "." +
            std::to_string(parts.batch_j);
   }
 
@@ -265,34 +287,52 @@ class lattice_catalog_store_t {
       }
       return std::string(in.substr(begin, end - begin));
     };
-    const auto is_hashimyei_hex_token_local = [](std::string_view token) {
-      if (token.size() < 3) return false;
-      if (token[0] != '0' || token[1] != 'x') return false;
-      for (std::size_t i = 2; i < token.size(); ++i) {
-        const unsigned char c = static_cast<unsigned char>(token[i]);
-        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-        if (!hex) return false;
-      }
-      return true;
-    };
-
-    const std::string cp = trim_ascii_local(canonical_path);
-    if (cp.rfind("tsi.source.", 0) != 0) return cp;
-    std::vector<std::string> parts{};
-    std::size_t begin = 0;
-    while (begin <= cp.size()) {
-      const std::size_t dot = cp.find('.', begin);
-      if (dot == std::string::npos) {
-        parts.push_back(cp.substr(begin));
-        break;
-      }
-      parts.push_back(cp.substr(begin, dot - begin));
-      begin = dot + 1;
+    return trim_ascii_local(canonical_path);
+  }
+  [[nodiscard]] static bool parse_runtime_intersection_cursor(
+      std::string_view intersection_cursor,
+      runtime_intersection_cursor_t* out,
+      std::string* error = nullptr) {
+    if (error) error->clear();
+    if (!out) {
+      if (error) *error = "intersection cursor output pointer is null";
+      return false;
     }
-    if (parts.size() <= 3) return cp;
-    const std::string& tail = parts.back();
-    if (is_hashimyei_hex_token_local(tail)) return cp;
-    return parts[0] + "." + parts[1] + "." + parts[2];
+    *out = runtime_intersection_cursor_t{};
+    const std::string token = trim_runtime_wave_cursor_token(intersection_cursor);
+    if (token.empty()) {
+      if (error) *error = "intersection_cursor is empty";
+      return false;
+    }
+    const std::size_t sep = token.rfind('|');
+    if (sep == std::string::npos || sep == 0 || sep + 1 >= token.size()) {
+      if (error) {
+        *error =
+            "intersection_cursor must be formatted as <canonical_path>|<wave_cursor>";
+      }
+      return false;
+    }
+    if (token.find('|', sep + 1) != std::string::npos) {
+      if (error) *error = "intersection_cursor has too many separators";
+      return false;
+    }
+    const std::string hashimyei_cursor =
+        normalize_runtime_hashimyei_cursor(token.substr(0, sep));
+    if (hashimyei_cursor.empty()) {
+      if (error) *error = "intersection_cursor is missing canonical_path";
+      return false;
+    }
+    std::uint64_t wave_cursor = 0;
+    if (!parse_runtime_wave_cursor_token(token.substr(sep + 1), &wave_cursor)) {
+      if (error) {
+        *error =
+            "intersection_cursor wave_cursor is not valid; expected integer or <run>.<epoch>.<batch>";
+      }
+      return false;
+    }
+    out->hashimyei_cursor = hashimyei_cursor;
+    out->wave_cursor = wave_cursor;
+    return true;
   }
   [[nodiscard]] static bool runtime_hashimyei_cursor_matches(
       std::string_view query_canonical_path,
@@ -307,18 +347,27 @@ class lattice_catalog_store_t {
       }
       return true;
     };
+    const auto dot_count_local = [](std::string_view value) {
+      return static_cast<std::size_t>(
+          std::count(value.begin(), value.end(), '.'));
+    };
     const std::string query = normalize_runtime_hashimyei_cursor(query_canonical_path);
     if (query.empty()) return true;
     const std::string fragment =
         normalize_runtime_hashimyei_cursor(fragment_canonical_path);
     if (fragment == query) return true;
-    const std::size_t dot = query.rfind('.');
-    const std::string tail =
-        (dot == std::string::npos) ? query : query.substr(dot + 1);
-    if (is_hashimyei_hex_token_local(tail)) return false;
-    return fragment.size() > query.size() &&
-           fragment.compare(0, query.size(), query) == 0 &&
-           fragment[query.size()] == '.';
+    if (fragment.size() <= query.size() ||
+        fragment.compare(0, query.size(), query) != 0 ||
+        fragment[query.size()] != '.') {
+      return false;
+    }
+    const std::string_view suffix(fragment.data() + query.size() + 1,
+                                  fragment.size() - query.size() - 1);
+    if (suffix.empty() || suffix.find('.') != std::string_view::npos) {
+      return false;
+    }
+    if (is_hashimyei_hex_token_local(suffix)) return true;
+    return query.rfind("tsi.source.", 0) == 0 && dot_count_local(query) == 2;
   }
 
   struct options_t {
@@ -381,16 +430,8 @@ class lattice_catalog_store_t {
   [[nodiscard]] bool list_runtime_report_schemas(
       std::string_view canonical_path, std::vector<std::string>* out,
       std::string* error = nullptr) const;
-  [[nodiscard]] bool upsert_runtime_intersection_report(
-      std::string_view intersection_cursor, std::string_view canonical_path,
-      std::string_view run_id, std::uint64_t ts_ms, std::string_view report_lls,
-      std::string* error = nullptr);
-  [[nodiscard]] bool get_runtime_intersection_report(
-      std::string_view intersection_cursor, std::string* out_report_lls,
-      std::string* out_canonical_path, std::string* out_run_id,
-      std::string* error = nullptr) const;
   [[nodiscard]] bool get_runtime_view_lls(
-      std::string_view view_kind, std::string_view run_id,
+      std::string_view view_kind, std::string_view intersection_cursor,
       std::uint64_t wave_cursor, bool use_wave_cursor,
       std::string_view contract_hash, runtime_view_report_t* out,
       std::string* error = nullptr) const;
@@ -499,14 +540,8 @@ class lattice_catalog_store_t {
   std::unordered_map<std::string,
                      std::vector<cuwacunu::hero::hashimyei::dependency_file_t>>
       runtime_dependency_files_by_run_id_{};
-  struct runtime_intersection_report_entry_t {
-    std::string canonical_path{};
-    std::string run_id{};
-    std::uint64_t ts_ms{0};
-    std::string report_lls{};
-  };
-  std::unordered_map<std::string, runtime_intersection_report_entry_t>
-      runtime_reports_by_intersection_{};
+  std::unordered_map<std::uint64_t, std::vector<std::string>>
+      runtime_report_fragment_ids_by_wave_cursor_{};
   std::unordered_set<std::string> runtime_ledger_{};
 };
 

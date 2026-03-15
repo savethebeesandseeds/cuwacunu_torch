@@ -12,13 +12,13 @@ Status values:
 
 | Schema / payload | Class | Owner | Required keys now | Hero/Lattice status | Status |
 | --- | --- | --- | --- | --- | --- |
-| `wave.source.runtime.projection.v2` via `source.runtime.projection.schema` | embedded synthetic subdocument | Hero/Lattice | namespaced schema key, source projection axes, joined `run_id` | synthetic runtime fragment surface | conforming now |
+| `wave.source.runtime.projection.v2` | standalone artifact | Runtime binding / campaign runtime via `src/include/hero/lattice_hero/source_runtime_projection.h` | `schema`, `canonical_path`; optional correlation metadata (`run_id`, `wave_cursor*`, `intersection_cursor`) | ingestable | conforming now |
 | `wave.projection.lls.v2` | catalog-only payload | Hero/Lattice | `schema`, `projection_version`, `projector_build_id` | stored in lattice cells, not a report fragment file | conforming now |
-| `piaabo.torch_compat.data_analytics.v1` | standalone artifact | `piaabo::torch_compat` | `schema`; `run_id` when ingested | ingestable | conforming now |
-| `piaabo.torch_compat.data_analytics_symbolic.v1` | standalone artifact | `piaabo::torch_compat` | `schema`; `run_id` when ingested | ingestable | conforming now |
-| `piaabo.torch_compat.embedding_sequence_analytics.v1` | standalone artifact | `tsi.wikimyei.representation.vicreg` via `piaabo::torch_compat` | `schema`; `run_id` when ingested | ingestable | conforming now |
-| `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1` | standalone artifact | `tsi.wikimyei.representation.vicreg` via `piaabo::torch_compat` | `schema`; `run_id` when ingested | ingestable | conforming now |
-| `piaabo.torch_compat.network_analytics.v4` | standalone artifact | `piaabo::torch_compat` | `schema`; `run_id` when ingested | ingestable | conforming now |
+| `piaabo.torch_compat.data_analytics.v2` | standalone artifact | `piaabo::torch_compat` | `schema`; optional common identity envelope with correlation metadata | ingestable | conforming now |
+| `piaabo.torch_compat.data_analytics_symbolic.v2` | standalone artifact | `piaabo::torch_compat` | `schema`; optional common identity envelope with correlation metadata | ingestable | conforming now |
+| `piaabo.torch_compat.embedding_sequence_analytics.v2` | standalone artifact | `tsi.wikimyei.representation.vicreg` via `piaabo::torch_compat` | `schema`; optional common identity envelope with correlation metadata | ingestable | conforming now |
+| `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2` | standalone artifact | `tsi.wikimyei.representation.vicreg` via `piaabo::torch_compat` | `schema`; optional common identity envelope with correlation metadata | ingestable | conforming now |
+| `piaabo.torch_compat.network_analytics.v5` | standalone artifact | `piaabo::torch_compat` | `schema`; optional common identity envelope with correlation metadata | ingestable | conforming now |
 | `tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1` | standalone artifact | `tsi.wikimyei.representation.vicreg` | `schema`, `run_id` | ingestable | conforming now |
 | `tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.matrix.v1` | artifact-only payload | `tsi.wikimyei.representation.vicreg` | `schema` | not on current ingest allow-list | artifact-only |
 | `tsi.wikimyei.representation.vicreg.status.v1` | standalone artifact | `tsi.wikimyei.representation.vicreg` | `schema`, `run_id`, status fields | ingestable | conforming now |
@@ -27,13 +27,8 @@ Status values:
 
 | Schema | Current role | Notes | Status |
 | --- | --- | --- | --- |
-| `piaabo.torch_compat.network_analytics.v1` | legacy reader compatibility | accepted by network/hashimyei readers; no current producer | reader-only |
-| `piaabo.torch_compat.network_analytics.v2` | legacy reader compatibility | accepted by network/hashimyei readers; no current producer | reader-only |
-| `piaabo.torch_compat.network_analytics.v3` | legacy reader compatibility | accepted by network/hashimyei readers; Lattice ingest requires v4 | reader-only |
 | `piaabo.torch_compat.entropic_capacity_comparison.v1` | legacy helper / reader compatibility | query-time comparison now lives in Lattice; no standard component producer or ingest path | reader-only |
-| `piaabo.torch_compat.network_design_analytics.v1` | API serializer only | emitted by helper APIs, not persisted as a standard runtime artifact | reader-only |
-| `piaabo.torch_compat.network_design_analytics.v2` | API serializer only | emitted by helper APIs, not persisted as a standard runtime artifact | reader-only |
-| `piaabo.torch_compat.network_design_analytics.v3` | API serializer only | emitted by helper APIs, not persisted as a standard runtime artifact | reader-only |
+| `piaabo.torch_compat.network_design_analytics.v4` | API serializer only | emitted by helper APIs, not persisted as a standard runtime artifact | reader-only |
 
 ## Canonical Required Keys by Class
 
@@ -48,12 +43,6 @@ Standalone artifact:
 - `wave_hash` when known
 - `binding_id` when known
 - `run_id` when ingestable
-
-Embedded synthetic subdocument:
-
-- namespaced schema key first
-- namespaced payload keys only
-- joined report may supply the enclosing `run_id`
 
 Catalog-only payload:
 

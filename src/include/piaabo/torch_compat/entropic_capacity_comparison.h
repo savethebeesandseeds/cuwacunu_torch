@@ -1,6 +1,5 @@
 #pragma once
 
-#include <filesystem>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -25,8 +24,6 @@ struct entropic_capacity_comparison_report_t {
   double capacity_ratio{0.0};
 
   std::string capacity_regime{"matched"};
-  std::string source_analytics_file{};
-  std::string network_analytics_file{};
   std::string run_id{};
 };
 
@@ -47,20 +44,8 @@ summarize_entropic_capacity_comparison(
     entropic_capacity_comparison_report_t* out,
     std::string* error = nullptr);
 
-[[nodiscard]] bool summarize_entropic_capacity_comparison_from_files(
-    const std::filesystem::path& source_analytics_file,
-    const std::filesystem::path& network_analytics_file,
-    entropic_capacity_comparison_report_t* out,
-    std::string* error = nullptr);
-
 [[nodiscard]] std::string entropic_capacity_comparison_to_latent_lineage_state_text(
     const entropic_capacity_comparison_report_t& report,
-    const tsiemene::component_report_identity_t& report_identity = {});
-
-[[nodiscard]] bool write_entropic_capacity_comparison_file(
-    const entropic_capacity_comparison_report_t& report,
-    const std::filesystem::path& output_file,
-    std::string* error = nullptr,
     const tsiemene::component_report_identity_t& report_identity = {});
 
 }  // namespace torch_compat

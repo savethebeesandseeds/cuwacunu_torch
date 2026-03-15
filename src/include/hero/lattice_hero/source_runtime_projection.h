@@ -43,6 +43,32 @@ struct source_runtime_projection_fragment_t {
   std::string projection_lls{};
 };
 
+inline constexpr std::string_view kSourceRuntimeProjectionSchemaV2 =
+    "wave.source.runtime.projection.v2";
+inline constexpr std::string_view
+    kSourceRuntimeProjectionLatestReportFilename =
+        "source_runtime_projection.latest.lls";
+
+struct source_runtime_projection_report_identity_t {
+  std::string canonical_path{};
+  std::string source_label{};
+  std::string contract_hash{};
+  std::string binding_id{};
+  std::string wave_hash{};
+  std::string wave_id{};
+  std::string run_id{};
+  std::string wave_cursor_resolution{};
+  std::string intersection_cursor{};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
+  bool has_wave_cursor_run{false};
+  std::uint64_t wave_cursor_run{0};
+  bool has_wave_cursor_episode{false};
+  std::uint64_t wave_cursor_episode{0};
+  bool has_wave_cursor_batch{false};
+  std::uint64_t wave_cursor_batch{0};
+};
+
 namespace source_runtime_projection_detail {
 
 [[nodiscard]] inline std::string trim_ascii(std::string_view in) {
@@ -373,6 +399,140 @@ namespace source_runtime_projection_detail {
     }
     return false;
   }
+  return true;
+}
+
+[[nodiscard]] inline bool
+build_source_runtime_projection_runtime_report_document(
+    const source_runtime_projection_fragment_t& fragment,
+    const source_runtime_projection_report_identity_t& identity,
+    cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "runtime report document output pointer is null";
+    return false;
+  }
+  *out = cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t{};
+
+  if (identity.run_id.empty()) {
+    if (error) *error = "source runtime projection runtime report missing run_id";
+    return false;
+  }
+  if (identity.canonical_path.empty()) {
+    if (error) {
+      *error = "source runtime projection runtime report missing canonical_path";
+    }
+    return false;
+  }
+
+  auto& entries = out->entries;
+  entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "schema", std::string(kSourceRuntimeProjectionSchemaV2)));
+  entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "report_kind", "source_runtime_projection"));
+  entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "canonical_path", identity.canonical_path));
+  entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "source_label",
+          identity.source_label.empty() ? identity.canonical_path
+                                        : identity.source_label));
+  entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "run_id", identity.run_id));
+  entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+          "source.runtime.projection.run_id", identity.run_id));
+  if (!identity.wave_cursor_resolution.empty()) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_cursor_resolution", identity.wave_cursor_resolution));
+  }
+  if (!identity.intersection_cursor.empty()) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "intersection_cursor", identity.intersection_cursor));
+  }
+  if (identity.has_wave_cursor) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave_cursor", identity.wave_cursor, "[0,+inf)"));
+  }
+  if (identity.has_wave_cursor_run) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.run", identity.wave_cursor_run, "[0,+inf)"));
+  }
+  if (identity.has_wave_cursor_episode) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.episode", identity.wave_cursor_episode, "[0,+inf)"));
+  }
+  if (identity.has_wave_cursor_batch) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
+            "wave.cursor.batch", identity.wave_cursor_batch, "[0,+inf)"));
+  }
+  if (!identity.contract_hash.empty()) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "contract_hash", identity.contract_hash));
+  }
+  if (!identity.binding_id.empty()) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "binding_id", identity.binding_id));
+  }
+  if (!identity.wave_hash.empty()) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_hash", identity.wave_hash));
+  }
+  if (!identity.wave_id.empty()) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "wave_id", identity.wave_id));
+  }
+  for (const auto& [k, v] : fragment.projection_num) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+            k, v,
+            std::string(
+                source_runtime_projection_detail::projection_reference_domain(
+                    k))));
+  }
+  for (const auto& [k, v] : fragment.projection_txt) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            k, v));
+  }
+  return cuwacunu::piaabo::latent_lineage_state::validate_runtime_lls_document(
+      *out, error);
+}
+
+[[nodiscard]] inline bool emit_source_runtime_projection_runtime_report(
+    const source_runtime_projection_fragment_t& fragment,
+    const source_runtime_projection_report_identity_t& identity,
+    std::string* out_text,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out_text) {
+    if (error) *error = "runtime report text output pointer is null";
+    return false;
+  }
+  out_text->clear();
+  cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t document{};
+  if (!build_source_runtime_projection_runtime_report_document(
+          fragment, identity, &document, error)) {
+    return false;
+  }
+  *out_text =
+      cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+          document);
   return true;
 }
 

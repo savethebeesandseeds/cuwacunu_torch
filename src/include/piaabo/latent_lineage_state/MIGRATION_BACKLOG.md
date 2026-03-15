@@ -32,9 +32,9 @@ migration landed.
 
 `src/impl/hero/lattice_hero/lattice_catalog.cpp`
 
-- Keep `wave.source.runtime.projection.v2` as the embedded synthetic projection
-  schema and `wave.projection.lls.v2` as the catalog-cell schema unless a later
-  redesign collapses them.
+- Keep `wave.projection.lls.v2` as the catalog-cell schema; `wave.source.runtime.projection.v2`
+  is now a standalone runtime fact and should not regress back to synthetic
+  reconstruction from joined transports.
 
 `src/impl/hero/hashimyei_hero/hashimyei_catalog.cpp`
 

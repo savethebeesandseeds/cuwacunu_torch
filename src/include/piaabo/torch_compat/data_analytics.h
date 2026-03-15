@@ -14,45 +14,45 @@ namespace cuwacunu {
 namespace piaabo {
 namespace torch_compat {
 
-inline constexpr std::string_view kDataAnalyticsSchemaV1 =
-    "piaabo.torch_compat.data_analytics.v1";
+inline constexpr std::string_view kDataAnalyticsSchemaV2 =
+    "piaabo.torch_compat.data_analytics.v2";
 inline constexpr std::string_view kDataAnalyticsSchemaCurrent =
-    kDataAnalyticsSchemaV1;
+    kDataAnalyticsSchemaV2;
 inline constexpr std::string_view kDataAnalyticsLatestReportFilename =
-    "data_analytics.latest.lls";
-inline constexpr std::string_view kSequenceAnalyticsSchemaV1 =
-    "piaabo.torch_compat.sequence_analytics.v1";
+    "data_analytics.v2.latest.lls";
+inline constexpr std::string_view kSequenceAnalyticsSchemaV2 =
+    "piaabo.torch_compat.sequence_analytics.v2";
 inline constexpr std::string_view kSequenceAnalyticsSchemaCurrent =
-    kSequenceAnalyticsSchemaV1;
+    kSequenceAnalyticsSchemaV2;
 inline constexpr std::string_view kSequenceAnalyticsLatestReportFilename =
-    "sequence_analytics.latest.lls";
-inline constexpr std::string_view kEmbeddingSequenceAnalyticsSchemaV1 =
-    "piaabo.torch_compat.embedding_sequence_analytics.v1";
+    "sequence_analytics.v2.latest.lls";
+inline constexpr std::string_view kEmbeddingSequenceAnalyticsSchemaV2 =
+    "piaabo.torch_compat.embedding_sequence_analytics.v2";
 inline constexpr std::string_view kEmbeddingSequenceAnalyticsSchemaCurrent =
-    kEmbeddingSequenceAnalyticsSchemaV1;
+    kEmbeddingSequenceAnalyticsSchemaV2;
 inline constexpr std::string_view
     kEmbeddingSequenceAnalyticsLatestReportFilename =
-        "embedding_sequence_analytics.latest.lls";
-inline constexpr std::string_view kDataAnalyticsSymbolicSchemaV1 =
-    "piaabo.torch_compat.data_analytics_symbolic.v1";
+        "embedding_sequence_analytics.v2.latest.lls";
+inline constexpr std::string_view kDataAnalyticsSymbolicSchemaV2 =
+    "piaabo.torch_compat.data_analytics_symbolic.v2";
 inline constexpr std::string_view kDataAnalyticsSymbolicSchemaCurrent =
-    kDataAnalyticsSymbolicSchemaV1;
+    kDataAnalyticsSymbolicSchemaV2;
 inline constexpr std::string_view kDataAnalyticsSymbolicLatestReportFilename =
-    "data_analytics.symbolic.latest.lls";
-inline constexpr std::string_view kSequenceAnalyticsSymbolicSchemaV1 =
-    "piaabo.torch_compat.sequence_analytics_symbolic.v1";
+    "data_analytics.symbolic.v2.latest.lls";
+inline constexpr std::string_view kSequenceAnalyticsSymbolicSchemaV2 =
+    "piaabo.torch_compat.sequence_analytics_symbolic.v2";
 inline constexpr std::string_view kSequenceAnalyticsSymbolicSchemaCurrent =
-    kSequenceAnalyticsSymbolicSchemaV1;
+    kSequenceAnalyticsSymbolicSchemaV2;
 inline constexpr std::string_view kSequenceAnalyticsSymbolicLatestReportFilename =
-    "sequence_analytics.symbolic.latest.lls";
-inline constexpr std::string_view kEmbeddingSequenceAnalyticsSymbolicSchemaV1 =
-    "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v1";
+    "sequence_analytics.symbolic.v2.latest.lls";
+inline constexpr std::string_view kEmbeddingSequenceAnalyticsSymbolicSchemaV2 =
+    "piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2";
 inline constexpr std::string_view
     kEmbeddingSequenceAnalyticsSymbolicSchemaCurrent =
-        kEmbeddingSequenceAnalyticsSymbolicSchemaV1;
+        kEmbeddingSequenceAnalyticsSymbolicSchemaV2;
 inline constexpr std::string_view
     kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename =
-        "embedding_sequence_analytics.symbolic.latest.lls";
+        "embedding_sequence_analytics.symbolic.v2.latest.lls";
 
 struct data_analytics_options_t {
   std::int64_t max_samples{4096};
@@ -264,14 +264,14 @@ class sequence_analytics_accumulator_t {
  private:
   data_analytics_options_t options_{};
   std::vector<torch::Tensor> rows_{};
-  std::vector<double> row_weights_{};
+  std::vector<torch::Tensor> row_validity_masks_{};
   std::uint64_t sample_count_{0};
   std::uint64_t skipped_sample_count_{0};
   std::int64_t sequence_channels_{0};
   std::int64_t sequence_timesteps_{0};
   std::int64_t sequence_features_per_timestep_{0};
   std::int64_t sequence_flat_feature_count_{0};
-  std::int64_t sequence_effective_feature_count_{0};
+  std::int64_t sequence_sampled_feature_count_{0};
 };
 
 class data_source_analytics_accumulator_t {

@@ -29,7 +29,6 @@ void print_help(const char* argv0) {
             << "  --hero-config <path>     Explicit Lattice HERO defaults DSL\n"
             << "  --store-root <path>      Override store_root from HERO defaults DSL\n"
             << "  --catalog <path>         Override catalog_path from HERO defaults DSL\n"
-            << "  --hashimyei-catalog <path> Override hashimyei catalog path from HERO defaults DSL\n"
             << "  --config-folder <path>   Override config_folder from HERO defaults DSL\n"
             << "  (without --tool, server mode reads JSON-RPC messages from stdin)\n"
             << "  --help                   Show this help\n";
@@ -59,7 +58,6 @@ int main(int argc, char** argv) {
   std::filesystem::path hero_config_path{};
   std::filesystem::path store_root{};
   std::filesystem::path catalog_path{};
-  std::filesystem::path hashimyei_catalog_path{};
   std::string direct_tool_name{};
   std::string direct_tool_args_json = "{}";
   bool direct_tool_mode = false;
@@ -68,7 +66,6 @@ int main(int argc, char** argv) {
   bool list_tools_json = false;
   bool store_root_overridden = false;
   bool catalog_overridden = false;
-  bool hash_catalog_overridden = false;
   bool config_folder_overridden = false;
 
   for (int i = 1; i < argc; ++i) {
@@ -89,11 +86,6 @@ int main(int argc, char** argv) {
     if (arg == "--catalog" && i + 1 < argc) {
       catalog_path = argv[++i];
       catalog_overridden = true;
-      continue;
-    }
-    if (arg == "--hashimyei-catalog" && i + 1 < argc) {
-      hashimyei_catalog_path = argv[++i];
-      hash_catalog_overridden = true;
       continue;
     }
     if (arg == "--config-folder" && i + 1 < argc) {
@@ -197,24 +189,12 @@ int main(int argc, char** argv) {
   } else if (catalog_path.empty()) {
     catalog_path = cuwacunu::hero::lattice_mcp::default_catalog_path(store_root);
   }
-  if (!hash_catalog_overridden) {
-    if (!defaults.hashimyei_catalog_path.empty()) {
-      hashimyei_catalog_path = defaults.hashimyei_catalog_path;
-    } else {
-      hashimyei_catalog_path =
-          cuwacunu::hero::lattice_mcp::default_hashimyei_catalog_path(store_root);
-    }
-  } else if (hashimyei_catalog_path.empty()) {
-    hashimyei_catalog_path =
-        cuwacunu::hero::lattice_mcp::default_hashimyei_catalog_path(store_root);
-  }
   if (!config_folder_overridden && !defaults.config_folder.empty()) {
     app.config_folder = defaults.config_folder;
   }
 
   app.store_root = store_root;
   app.lattice_catalog_path = catalog_path;
-  app.hashimyei_catalog_path = hashimyei_catalog_path;
 
   if (direct_tool_mode) {
     std::string tool_result{};

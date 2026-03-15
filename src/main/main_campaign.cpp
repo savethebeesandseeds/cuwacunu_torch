@@ -15,9 +15,13 @@
 
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
+#include "hero/lattice_hero/source_runtime_projection_runtime.h"
 #include "hero/runtime_dev_loop.h"
+#include "hero/runtime_hero/runtime_job.h"
 #include "iitepi/runtime_binding/runtime_binding.contract.init.h"
+#include "iitepi/runtime_binding/runtime_binding.builder.h"
 #include "iitepi/iitepi.h"
+#include "tsiemene/tsi.type.registry.h"
 
 namespace {
 
@@ -173,6 +177,145 @@ bool persist_runtime_run_manifests(
   return true;
 }
 
+std::filesystem::path source_runtime_projection_report_path(
+    std::string_view contract_hash, std::string_view binding_id,
+    std::string_view run_id) {
+  return cuwacunu::hashimyei::store_root() / "tsi.source" /
+         "runtime_projection" / std::string(contract_hash) /
+         std::string(binding_id) / std::string(run_id) /
+         std::string(
+             cuwacunu::hero::wave::kSourceRuntimeProjectionLatestReportFilename);
+}
+
+bool persist_source_runtime_projection_reports(
+    const tsiemene::runtime_binding_run_record_t& run_record,
+    const std::shared_ptr<const cuwacunu::iitepi::runtime_binding_record_t>&
+        runtime_binding_itself,
+    std::string* error) {
+  if (error) error->clear();
+  if (!runtime_binding_itself) {
+    if (error) {
+      *error =
+          "missing runtime binding record while saving source runtime projection";
+    }
+    return false;
+  }
+  if (run_record.run_ids.size() != run_record.runtime_binding.contracts.size()) {
+    if (error) {
+      *error = "runtime binding run_ids/contracts size mismatch while saving "
+               "source runtime projection";
+    }
+    return false;
+  }
+
+  const auto& instruction = runtime_binding_itself->runtime_binding.decoded();
+  const auto* bind = ::tsiemene::find_bind_by_id(instruction, run_record.binding_id);
+  if (!bind) {
+    if (error) {
+      *error = "binding not found while saving source runtime projection: " +
+               run_record.binding_id;
+    }
+    return false;
+  }
+
+  const auto wave_hash = cuwacunu::iitepi::runtime_binding_space_t::
+      wave_hash_for_binding(run_record.campaign_hash, run_record.binding_id);
+  const auto wave_itself = cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
+  if (!wave_itself) {
+    if (error) {
+      *error = "wave record not found while saving source runtime projection: " +
+               wave_hash;
+    }
+    return false;
+  }
+  const auto& wave_set = wave_itself->wave.decoded();
+  const auto* wave = ::tsiemene::find_wave_by_id(wave_set, bind->wave_ref);
+  if (!wave) {
+    if (error) {
+      *error = "binding references unknown WAVE id while saving source runtime "
+               "projection: " +
+               bind->wave_ref;
+    }
+    return false;
+  }
+
+  cuwacunu::camahjucunu::observation_spec_t observation{};
+  std::string observation_error{};
+  if (!::tsiemene::runtime_binding_builder::load_wave_dataloader_observation_payloads(
+          wave_itself, *wave, nullptr, nullptr, &observation,
+          &observation_error)) {
+    if (error) {
+      *error = "cannot resolve wave observation while saving source runtime "
+               "projection: " +
+               observation_error;
+    }
+    return false;
+  }
+
+  for (std::size_t i = 0; i < run_record.runtime_binding.contracts.size(); ++i) {
+    const auto& contract = run_record.runtime_binding.contracts[i];
+    const std::string record_type =
+        contract.spec.sample_type.empty() ? run_record.resolved_record_type
+                                          : contract.spec.sample_type;
+    cuwacunu::hero::wave::source_runtime_projection_fragment_t fragment{};
+    std::string fragment_error{};
+    if (!cuwacunu::hero::wave::build_source_runtime_projection_fragment_for_wave(
+            record_type, *wave, observation, &fragment, &fragment_error)) {
+      if (error) {
+        *error = "cannot build source runtime projection for contract[" +
+                 std::to_string(i) + "]: " + fragment_error;
+      }
+      return false;
+    }
+
+    std::string canonical_source_type = trim_ascii_copy(contract.spec.source_type);
+    if (canonical_source_type.empty()) {
+      canonical_source_type = std::string(
+          tsiemene::tsi_type_token(tsiemene::TsiTypeId::SourceDataloader));
+    }
+    std::string symbol{};
+    if (!wave->sources.empty()) symbol = trim_ascii_copy(wave->sources.front().symbol);
+    std::string canonical_path = canonical_source_type;
+    if (!symbol.empty()) canonical_path += "." + symbol;
+
+    cuwacunu::hero::wave::source_runtime_projection_report_identity_t identity{};
+    identity.canonical_path = canonical_path;
+    identity.source_label = canonical_path;
+    identity.contract_hash = contract.spec.contract_hash.empty()
+                                 ? run_record.contract_hash
+                                 : contract.spec.contract_hash;
+    identity.binding_id = run_record.binding_id;
+    identity.wave_hash = run_record.wave_hash;
+    identity.wave_id = bind->wave_ref;
+    identity.run_id = run_record.run_ids[i];
+    identity.wave_cursor_resolution = "run";
+
+    std::string report_payload{};
+    std::string report_error{};
+    if (!cuwacunu::hero::wave::emit_source_runtime_projection_runtime_report(
+            fragment, identity, &report_payload, &report_error)) {
+      if (error) {
+        *error = "cannot serialize source runtime projection for contract[" +
+                 std::to_string(i) + "]: " + report_error;
+      }
+      return false;
+    }
+
+    const auto output_path = source_runtime_projection_report_path(
+        identity.contract_hash, identity.binding_id, identity.run_id);
+    if (!cuwacunu::hero::runtime::write_text_file_atomic(
+            output_path, report_payload, &report_error)) {
+      if (error) {
+        *error = "cannot persist source runtime projection for contract[" +
+                 std::to_string(i) + "] at " + output_path.string() + ": " +
+                 report_error;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
 void print_help(const char* argv0) {
   std::cerr << "Usage: " << argv0
             << " [--config-folder <path>] [--binding <binding_id>]"
@@ -299,6 +442,15 @@ int main(int argc, char** argv) {
             campaign_hash, run, runtime_binding_itself, &manifest_error)) {
       log_err(
           "[main_campaign] run manifest persistence failed campaign_hash=%s binding=%s error=%s\n",
+          value_or_empty(run.campaign_hash),
+          value_or_empty(run.binding_id),
+          value_or_empty(manifest_error));
+      return 1;
+    }
+    if (!persist_source_runtime_projection_reports(
+            run, runtime_binding_itself, &manifest_error)) {
+      log_err(
+          "[main_campaign] source runtime projection persistence failed campaign_hash=%s binding=%s error=%s\n",
           value_or_empty(run.campaign_hash),
           value_or_empty(run.binding_id),
           value_or_empty(manifest_error));
