@@ -2,6 +2,10 @@
 
 This `src/` directory contains the core C++ implementation of **Cuwacunu**, an AI-driven trading and portfolio runtime.
 
+This source tree is part of an official `WAAJACU TM` publication.
+See [`../TRADEMARKS.md`](../TRADEMARKS.md) for source identity and trademark
+usage guidance.
+
 At a high level, it combines:
 - market/exchange integration
 - configuration and DSL-driven runtime wiring

@@ -391,6 +391,13 @@ Supported MCP tools:
   - `-----END IITEPI CONTRACT-----`
   `AKNOWLEDGE` values must be family tokens (no hashimyei suffix). This keeps
   contract static while wave owns runtime hashimyei selection.
+  Family reranking is a runtime artifact concern, not a contract parameter:
+  `hero.hashimyei.update_rank` persists contract-scoped
+  `hero.family.rank.v1` overlays keyed by `(family, contract_hash)`, and
+  `hero.lattice.get_view(view_kind=family_evaluation_report, ...)`
+  serializes the family evidence used by client-owned ranking logic. Ranking
+  stays inert until an explicit overlay is written; it does not bootstrap a
+  default order and does not alter runtime component selection in this phase.
   Runtime derives module configuration defaults from colocated files:
   `default.tsi.wikimyei.representation.vicreg.dsl`,
   `default.tsi.wikimyei.inference.mdn.value_estimation.dsl`,

@@ -1,6 +1,8 @@
+#include <hero/hashimyei_hero/family_rank.h>
 #include <hero/lattice_hero/lattice_catalog.h>
 #include <hero/lattice_hero/hero_lattice_tools.h>
 
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -720,6 +722,160 @@ int main() {
   REQUIRE(intersection_selected_view.view_lls.find("network_count=2") !=
           std::string::npos);
 
+  const std::uint64_t latest_family_wave_cursor_u64 = packed_runtime_wave_cursor(9);
+  const std::string latest_family_wave_cursor =
+      std::to_string(latest_family_wave_cursor_u64);
+  write_text_file(
+      runtime_store / "reports" / "runtime_new_latest.lls",
+      "schema:str = piaabo.torch_compat.network_analytics.v5\n"
+      "run_id:str = run_runtime_001\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "contract_hash:str = contract_hash_123\n"
+      "wave_cursor:uint = " + latest_family_wave_cursor + "\n"
+      "wave_cursor_resolution:str = run\n"
+      "network_global_entropic_capacity(0,+inf):double = 9.750000000000\n"
+      "metric.loss(-inf,+inf):double = 0.20\n");
+  write_text_file(
+      runtime_store / "reports" / "status.latest.newer.lls",
+      "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
+      "report_kind:str = status\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "hashimyei:str = 0x0042\n"
+      "run_id:str = run_runtime_001\n"
+      "wave_cursor:uint = " + latest_family_wave_cursor + "\n"
+      "wave_cursor_resolution:str = run\n"
+      "trained_steps(0,+inf):uint = 24\n");
+
+  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+
+  cuwacunu::hero::family_rank::state_t missing_family_rank{};
+  REQUIRE(!runtime_catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
+                                           "contract_hash_123",
+                                           &missing_family_rank, &error));
+  REQUIRE(error.find("family rank not found") != std::string::npos);
+
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> unranked_family_rows{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments(
+      "tsi.wikimyei.representation.vicreg", "", 0, 0, true, &unranked_family_rows,
+      &error));
+  for (const auto& row : unranked_family_rows) {
+    if (row.contract_hash != "contract_hash_123") continue;
+    REQUIRE(!row.family_rank.has_value());
+  }
+
+  const fs::path family_rank_path =
+      runtime_store / "hero" / "family_rank" / "family_rank_contract_123.lls";
+  cuwacunu::hero::family_rank::state_t family_rank_state{};
+  family_rank_state.family = "tsi.wikimyei.representation.vicreg";
+  family_rank_state.contract_hash = "contract_hash_123";
+  family_rank_state.source_view_kind = "family_evaluation_report";
+  family_rank_state.source_view_transport_sha256 = "rank_view_sha256_001";
+  family_rank_state.updated_at_ms = 1711111000444ULL;
+  family_rank_state.assignments = {
+      cuwacunu::hero::family_rank::assignment_t{
+          .rank = 0,
+          .hashimyei = "0x0043",
+          .canonical_path = "tsi.wikimyei.representation.vicreg.0x0043",
+          .component_id = "vicreg_component_0043",
+      },
+      cuwacunu::hero::family_rank::assignment_t{
+          .rank = 1,
+          .hashimyei = "0x0042",
+          .canonical_path = "tsi.wikimyei.representation.vicreg.0x0042",
+          .component_id = "vicreg_component_0042",
+      },
+  };
+  write_text_file(
+      family_rank_path,
+      cuwacunu::hero::family_rank::emit_state_payload(family_rank_state));
+  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+
+  cuwacunu::hero::family_rank::state_t restored_family_rank{};
+  REQUIRE(runtime_catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
+                                          "contract_hash_123",
+                                          &restored_family_rank, &error));
+  REQUIRE(restored_family_rank.family == family_rank_state.family);
+  REQUIRE(restored_family_rank.contract_hash == family_rank_state.contract_hash);
+  REQUIRE(restored_family_rank.source_view_kind ==
+          family_rank_state.source_view_kind);
+  REQUIRE(restored_family_rank.source_view_transport_sha256 ==
+          family_rank_state.source_view_transport_sha256);
+  REQUIRE(restored_family_rank.assignments.size() == 2);
+  REQUIRE(restored_family_rank.assignments[0].hashimyei == "0x0043");
+  REQUIRE(restored_family_rank.assignments[1].hashimyei == "0x0042");
+
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> ranked_family_rows{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments(
+      "tsi.wikimyei.representation.vicreg", "", 0, 0, true, &ranked_family_rows,
+      &error));
+  REQUIRE(ranked_family_rows.size() == 5);
+  for (const auto& row : ranked_family_rows) {
+    REQUIRE(row.family == "tsi.wikimyei.representation.vicreg");
+    if (row.hashimyei == "0x0043") {
+      REQUIRE(row.family_rank.has_value());
+      REQUIRE(*row.family_rank == 0);
+    } else if (row.hashimyei == "0x0042") {
+      REQUIRE(row.family_rank.has_value());
+      REQUIRE(*row.family_rank == 1);
+    }
+  }
+
+  cuwacunu::hero::wave::runtime_view_report_t family_view{};
+  REQUIRE(runtime_catalog.get_runtime_view_lls(
+      "family_evaluation_report",
+      "tsi.wikimyei.representation.vicreg", 0, false, "contract_hash_123",
+      &family_view, &error));
+  REQUIRE(family_view.view_kind == "family_evaluation_report");
+  REQUIRE(family_view.canonical_path ==
+          "tsi.analysis.family_evaluation_report");
+  REQUIRE(family_view.selector_hashimyei_cursor ==
+          "tsi.wikimyei.representation.vicreg");
+  REQUIRE(family_view.match_count == 2);
+  REQUIRE(family_view.ambiguity_count == 0);
+  REQUIRE(family_view.view_lls.find("family=tsi.wikimyei.representation.vicreg") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find("current_rank.assignment_count=2") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find(
+              "current_rank.source_view_kind=family_evaluation_report") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find(
+              "current_rank.source_view_transport_sha256=rank_view_sha256_001") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find("selection_mode=latest") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find("candidate_count=2") != std::string::npos);
+  REQUIRE(family_view.view_lls.find("candidate.1.hashimyei=0x0043") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find("candidate.1.current_rank=0") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find("candidate.2.hashimyei=0x0042") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find("candidate.2.current_rank=1") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find(
+              "candidate.2.bundle_wave_cursor=" +
+              std::to_string(latest_family_wave_cursor_u64)) !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find(
+              "candidate.2.fragment.2.kv.schema=tsi.wikimyei.representation.vicreg.status.v1") !=
+          std::string::npos);
+  REQUIRE(family_view.view_lls.find("match_count=2") != std::string::npos);
+  REQUIRE(family_view.view_lls.find("ambiguity_count=0") !=
+          std::string::npos);
+
+  cuwacunu::hero::wave::runtime_view_report_t historical_family_view{};
+  REQUIRE(runtime_catalog.get_runtime_view_lls(
+      "family_evaluation_report",
+      "tsi.wikimyei.representation.vicreg|" + matched_wave_cursor, 0, false,
+      "contract_hash_123", &historical_family_view, &error));
+  REQUIRE(historical_family_view.view_lls.find("selection_mode=historical") !=
+          std::string::npos);
+  REQUIRE(historical_family_view.view_lls.find(
+              "candidate.2.bundle_wave_cursor=" +
+              std::to_string(matched_wave_cursor_u64)) !=
+          std::string::npos);
+
   REQUIRE(runtime_catalog.close(&error));
 
   cuwacunu::hero::lattice_mcp::app_context_t lattice_app{};
@@ -749,7 +905,15 @@ int main() {
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"count\":2") != std::string::npos);
   REQUIRE(tool_result.find("\"view_kind\":\"entropic_capacity_comparison\"") !=
+          std::string::npos);
+  REQUIRE(tool_result.find("\"view_kind\":\"family_evaluation_report\"") !=
+          std::string::npos);
+  REQUIRE(tool_result.find(
+              "\"required_selectors\":[\"canonical_path\",\"contract_hash\"]") !=
+          std::string::npos);
+  REQUIRE(tool_result.find("\"optional_selectors\":[\"wave_cursor\"]") !=
           std::string::npos);
 
   tool_result.clear();
@@ -805,6 +969,41 @@ int main() {
           std::string::npos);
   REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view + "\"") !=
           std::string::npos);
+
+  tool_result.clear();
+  tool_error.clear();
+  REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
+      "hero.lattice.get_view",
+      "{\"view_kind\":\"family_evaluation_report\","
+      "\"canonical_path\":\"tsi.wikimyei.representation.vicreg\","
+      "\"contract_hash\":\"contract_hash_123\"}",
+      &lattice_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"view_kind\":\"family_evaluation_report\"") !=
+          std::string::npos);
+  REQUIRE(tool_result.find(
+              "\"selector_canonical_path\":\"tsi.wikimyei.representation.vicreg\"") !=
+          std::string::npos);
+  REQUIRE(tool_result.find("\"match_count\":2") != std::string::npos);
+  REQUIRE(tool_result.find("candidate.1.hashimyei=0x0043") !=
+          std::string::npos);
+  REQUIRE(tool_result.find("\"wave_cursor\":null") != std::string::npos);
+  REQUIRE(tool_result.find("selection_mode=latest") != std::string::npos);
+
+  tool_result.clear();
+  tool_error.clear();
+  REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
+      "hero.lattice.get_view",
+      std::string(
+          "{\"view_kind\":\"family_evaluation_report\",\"canonical_path\":\"tsi.wikimyei.representation.vicreg\",\"contract_hash\":\"contract_hash_123\",\"wave_cursor\":\"") +
+          matched_wave_cursor_view + "\"}",
+      &lattice_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view + "\"") !=
+          std::string::npos);
+  REQUIRE(tool_result.find("selection_mode=historical") != std::string::npos);
 
   tool_result.clear();
   tool_error.clear();

@@ -87,9 +87,16 @@ Hashimyei MCP:
 - `hero.hashimyei.list`
 - `hero.hashimyei.get_component_manifest`
 - `hero.hashimyei.get_founding_dsl`
+- `hero.hashimyei.update_rank`
 - `hero.hashimyei.reset_catalog`
 
 Hashimyei is the component identity/discovery layer.
+`hero.hashimyei.update_rank` persists a shared `hero.family.rank.v1` runtime
+artifact scoped by `(family, contract_hash)`, returns before/after family
+ordering, and synchronizes the lattice catalog so report views see the same
+rank overlay. Rank exists only after an explicit overlay is written; it does
+not bootstrap automatically and does not affect runtime component selection or
+docking.
 
 Lattice MCP:
 
@@ -174,6 +181,7 @@ For runtime report query surfaces:
 Current derived view kinds:
 
 - `entropic_capacity_comparison`: compares `piaabo.torch_compat.data_analytics.v2` facts against `piaabo.torch_compat.network_analytics.v5` facts for one `wave_cursor`, with optional `canonical_path` narrowing and optional `contract_hash` filtering
+- `family_evaluation_report`: serializes runtime reports for one tsiemene family and one `contract_hash`, defaulting to the latest coherent bundle per family member. Optional `wave_cursor` requests one historical context instead. Ranking decisions stay client-owned; this view only exposes the evidence transport.
 
 ## Dev Reset
 

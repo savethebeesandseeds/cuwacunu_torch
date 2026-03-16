@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -95,6 +96,7 @@ struct runtime_report_fragment_t {
   std::string report_fragment_id{};
   std::string run_id{};
   std::string canonical_path{};
+  std::string family{};
   std::string hashimyei{};
   std::string contract_hash{};
   std::string schema{};
@@ -102,6 +104,7 @@ struct runtime_report_fragment_t {
   std::string path{};
   std::uint64_t ts_ms{0};
   std::uint64_t wave_cursor{0};
+  std::optional<std::uint64_t> family_rank{};
   std::string intersection_cursor{};
   std::string payload_json{};
 };
@@ -435,6 +438,14 @@ class lattice_catalog_store_t {
       std::uint64_t wave_cursor, bool use_wave_cursor,
       std::string_view contract_hash, runtime_view_report_t* out,
       std::string* error = nullptr) const;
+  [[nodiscard]] bool get_explicit_family_rank(
+      std::string_view family, std::string_view contract_hash,
+      cuwacunu::hero::family_rank::state_t* out,
+      std::string* error = nullptr) const;
+  [[nodiscard]] bool get_family_rank(
+      std::string_view family, std::string_view contract_hash,
+      cuwacunu::hero::family_rank::state_t* out,
+      std::string* error = nullptr) const;
 
   [[nodiscard]] bool record_trial(const wave_cell_coord_t& coord,
                                   const wave_execution_profile_t& profile,
@@ -478,6 +489,8 @@ class lattice_catalog_store_t {
                                              std::uint64_t ts_ms,
                                              std::string* error);
   [[nodiscard]] bool ingest_runtime_run_manifest_file_(
+      const std::filesystem::path& path, std::string* error);
+  [[nodiscard]] bool ingest_runtime_component_manifest_file_(
       const std::filesystem::path& path, std::string* error);
   [[nodiscard]] bool ingest_runtime_report_fragment_file_(
       const std::filesystem::path& path, std::string* error);
@@ -533,6 +546,8 @@ class lattice_catalog_store_t {
       projection_txt_by_cell_{};
   std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>
       runtime_runs_by_id_{};
+  std::unordered_map<std::string, cuwacunu::hero::hashimyei::component_state_t>
+      runtime_components_by_id_{};
   std::unordered_map<std::string, runtime_report_fragment_t>
       runtime_report_fragments_by_id_{};
   std::unordered_map<std::string, std::string>
@@ -543,6 +558,8 @@ class lattice_catalog_store_t {
   std::unordered_map<std::uint64_t, std::vector<std::string>>
       runtime_report_fragment_ids_by_wave_cursor_{};
   std::unordered_set<std::string> runtime_ledger_{};
+  std::unordered_map<std::string, cuwacunu::hero::family_rank::state_t>
+      explicit_family_rank_by_scope_{};
 };
 
 }  // namespace wave

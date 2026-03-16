@@ -1,6 +1,11 @@
 # Cuwacunu
 An artificial intelligence agent for portfolio management.
 
+`Cuwacunu` is an official `WAAJACU TM` project.
+Official source identity for this repository is `waajacu.com` and the GitHub
+account `savethebeesandseeds`.
+See [`TRADEMARKS.md`](./TRADEMARKS.md) for trademark usage guidance.
+
 ## Project Note
 Cuwacunu is a semantic transformer for portfolio positioning under abstract values.  
 Think of it as a lance that cannot be turned toward harm.
@@ -87,6 +92,9 @@ Detailed HERO MCP guidance lives in `src/main/hero/README.md`.
 
 ## License and Attribution
 This project's original code is open source under the MIT license (`LICENSE`).
+The MIT license covers copyright permissions for the code and documentation.
+Brand names, logos, and source identity remain subject to the trademark notice
+in [`TRADEMARKS.md`](./TRADEMARKS.md).
 
 For feature requests and ideas, open a GitHub Discussion in this repository.
 

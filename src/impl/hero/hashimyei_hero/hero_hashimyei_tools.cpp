@@ -22,6 +22,7 @@
 #include <openssl/evp.h>
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "hero/lattice_hero/lattice_catalog.h"
 
 namespace {
 
@@ -84,6 +85,13 @@ using hashimyei_runtime_defaults_t =
     out.push_back(c);
   }
   return out;
+}
+
+[[nodiscard]] std::uint64_t now_ms_utc() {
+  const auto now = std::chrono::system_clock::now();
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
+          .count());
 }
 
 [[nodiscard]] std::string unquote_if_wrapped(std::string s) {
@@ -766,6 +774,44 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   return true;
 }
 
+[[nodiscard]] bool extract_json_string_array_field(const std::string& json,
+                                                   const std::string& key,
+                                                   std::vector<std::string>* out) {
+  if (!out) return false;
+  out->clear();
+
+  std::string raw;
+  if (!extract_json_raw_field(json, key, &raw)) return false;
+  std::size_t pos = skip_json_whitespace(raw, 0);
+  if (pos >= raw.size() || raw[pos] != '[') return false;
+  ++pos;
+  while (true) {
+    pos = skip_json_whitespace(raw, pos);
+    if (pos >= raw.size()) return false;
+    if (raw[pos] == ']') {
+      ++pos;
+      pos = skip_json_whitespace(raw, pos);
+      return pos == raw.size();
+    }
+    std::string value{};
+    std::size_t end_pos = pos;
+    if (!parse_json_string_at(raw, pos, &value, &end_pos)) return false;
+    out->push_back(value);
+    pos = skip_json_whitespace(raw, end_pos);
+    if (pos >= raw.size()) return false;
+    if (raw[pos] == ',') {
+      ++pos;
+      continue;
+    }
+    if (raw[pos] == ']') {
+      ++pos;
+      pos = skip_json_whitespace(raw, pos);
+      return pos == raw.size();
+    }
+    return false;
+  }
+}
+
 [[nodiscard]] bool extract_json_id_field(const std::string& json,
                                          std::string* out_id_json) {
   std::string raw_id;
@@ -903,6 +949,11 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
       << "\"ts_ms\":" << component.ts_ms << ","
       << "\"manifest_path\":" << json_quote(component.manifest_path) << ","
       << "\"report_fragment_sha256\":" << json_quote(component.report_fragment_sha256) << ","
+      << "\"family_rank\":"
+      << (component.family_rank.has_value()
+              ? std::to_string(*component.family_rank)
+              : "null")
+      << ","
       << "\"manifest\":{"
       << "\"schema\":" << json_quote(m.schema) << ","
       << "\"canonical_path\":" << json_quote(m.canonical_path) << ","
@@ -930,6 +981,107 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   return out.str();
 }
 
+[[nodiscard]] std::string family_rank_state_to_json(
+    const cuwacunu::hero::family_rank::state_t& state) {
+  std::ostringstream out;
+  out << "{"
+      << "\"schema\":" << json_quote(state.schema) << ","
+      << "\"family\":" << json_quote(state.family) << ","
+      << "\"contract_hash\":"
+      << (state.contract_hash.empty() ? "null" : json_quote(state.contract_hash))
+      << ",\"source_view_kind\":"
+      << (state.source_view_kind.empty() ? "null"
+                                         : json_quote(state.source_view_kind))
+      << ",\"source_view_transport_sha256\":"
+      << (state.source_view_transport_sha256.empty()
+              ? "null"
+              : json_quote(state.source_view_transport_sha256))
+      << ",\"updated_at_ms\":" << state.updated_at_ms
+      << ",\"assignments\":[";
+  for (std::size_t i = 0; i < state.assignments.size(); ++i) {
+    const auto& assignment = state.assignments[i];
+    if (i != 0) out << ",";
+    out << "{"
+        << "\"rank\":" << assignment.rank << ","
+        << "\"hashimyei\":" << json_quote(assignment.hashimyei) << ","
+        << "\"canonical_path\":" << json_quote(assignment.canonical_path) << ","
+        << "\"component_id\":" << json_quote(assignment.component_id) << "}";
+  }
+  out << "]}";
+  return out.str();
+}
+
+[[nodiscard]] std::string sanitize_family_rank_path_token(std::string_view family) {
+  std::string out;
+  out.reserve(family.size());
+  for (const unsigned char c : family) {
+    const bool alpha = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    const bool digit = (c >= '0' && c <= '9');
+    if (alpha || digit) {
+      out.push_back(static_cast<char>(c));
+    } else {
+      out.push_back('_');
+    }
+  }
+  if (out.empty()) out = "family";
+  return out;
+}
+
+[[nodiscard]] std::filesystem::path family_rank_file_path(
+    const std::filesystem::path& store_root, std::string_view family,
+    std::string_view contract_hash) {
+  std::string family_sha{};
+  if (!sha256_hex_bytes(std::string(family), &family_sha)) family_sha.clear();
+  std::string contract_sha{};
+  if (!sha256_hex_bytes(std::string(contract_hash), &contract_sha)) {
+    contract_sha.clear();
+  }
+  const std::string folder =
+      sanitize_family_rank_path_token(family) +
+      (family_sha.empty() ? std::string{} : ("_" + family_sha.substr(0, 12)));
+  const std::string contract_folder =
+      sanitize_family_rank_path_token(contract_hash) +
+      (contract_sha.empty() ? std::string{} : ("_" + contract_sha.substr(0, 12)));
+  return store_root / "hero" / "family_rank" / folder / contract_folder /
+         "family.rank.latest.lls";
+}
+
+[[nodiscard]] bool write_text_file_atomic(const std::filesystem::path& path,
+                                          std::string_view payload,
+                                          std::string* error) {
+  if (error) error->clear();
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec) {
+    if (error) *error = "cannot create rank directory: " + path.parent_path().string();
+    return false;
+  }
+  const std::filesystem::path tmp_path = path.string() + ".tmp";
+  {
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      if (error) *error = "cannot open temp rank file: " + tmp_path.string();
+      return false;
+    }
+    out << payload;
+    if (!out) {
+      if (error) *error = "cannot write temp rank file: " + tmp_path.string();
+      return false;
+    }
+  }
+  std::filesystem::rename(tmp_path, path, ec);
+  if (ec) {
+    std::filesystem::remove(path, ec);
+    ec.clear();
+    std::filesystem::rename(tmp_path, path, ec);
+  }
+  if (ec) {
+    if (error) *error = "cannot finalize rank file: " + path.string();
+    return false;
+  }
+  return true;
+}
+
 using hashimyei_tool_handler_t = bool (*)(
     app_context_t* app, const std::string& arguments_json,
     std::string* out_structured, std::string* out_error);
@@ -952,6 +1104,10 @@ struct hashimyei_tool_descriptor_t {
 [[nodiscard]] bool handle_tool_get_component_manifest(
     app_context_t* app, const std::string& arguments_json,
     std::string* out_structured, std::string* out_error);
+[[nodiscard]] bool handle_tool_update_rank(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                           std::string* out_error);
 [[nodiscard]] bool handle_tool_reset_catalog(app_context_t* app,
                                              const std::string& arguments_json,
                                              std::string* out_structured,
@@ -1230,6 +1386,185 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
       << ",\"hashimyei\":"
       << json_quote(component.manifest.component_identity.name)
       << ",\"component\":" << component_state_to_json(component) << "}";
+  *out_structured = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_update_rank(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                           std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string family{};
+  std::string contract_hash{};
+  std::string source_view_kind{};
+  std::string source_view_transport_sha256{};
+  std::vector<std::string> ordered_hashimyeis{};
+  (void)extract_json_string_field(arguments_json, "family", &family);
+  (void)extract_json_string_field(arguments_json, "contract_hash", &contract_hash);
+  (void)extract_json_string_field(arguments_json, "source_view_kind",
+                                  &source_view_kind);
+  (void)extract_json_string_field(arguments_json, "source_view_transport_sha256",
+                                  &source_view_transport_sha256);
+  (void)extract_json_string_array_field(arguments_json, "ordered_hashimyeis",
+                                        &ordered_hashimyeis);
+  family = trim_ascii(family);
+  contract_hash = trim_ascii(contract_hash);
+  source_view_kind = trim_ascii(source_view_kind);
+  source_view_transport_sha256 = trim_ascii(source_view_transport_sha256);
+  if (family.empty()) {
+    *out_error = "update_rank requires arguments.family";
+    return false;
+  }
+  if (contract_hash.empty()) {
+    *out_error = "update_rank requires arguments.contract_hash";
+    return false;
+  }
+  if (ordered_hashimyeis.empty()) {
+    *out_error = "update_rank requires arguments.ordered_hashimyeis";
+    return false;
+  }
+  if (source_view_kind.empty()) source_view_kind = "family_evaluation_report";
+
+  std::unordered_set<std::string> requested_hashimyeis{};
+  for (auto& hashimyei : ordered_hashimyeis) {
+    hashimyei = trim_ascii(hashimyei);
+    if (hashimyei.empty()) {
+      *out_error = "ordered_hashimyeis cannot contain empty values";
+      return false;
+    }
+    if (!requested_hashimyeis.insert(hashimyei).second) {
+      *out_error = "ordered_hashimyeis contains duplicates";
+      return false;
+    }
+  }
+
+  std::vector<cuwacunu::hero::hashimyei::component_state_t> components{};
+  if (!app->catalog.list_components("", "", 0, 0, true, &components, out_error)) {
+    return false;
+  }
+
+  std::unordered_map<std::string, cuwacunu::hero::hashimyei::component_state_t>
+      latest_by_hashimyei{};
+  for (const auto& component : components) {
+    if (component.manifest.family != family) continue;
+    if (component.manifest.wave_contract_binding.contract.name != contract_hash) {
+      continue;
+    }
+    const std::string hashimyei = component.manifest.component_identity.name;
+    if (hashimyei.empty()) continue;
+    const auto it = latest_by_hashimyei.find(hashimyei);
+    if (it == latest_by_hashimyei.end() ||
+        component.ts_ms > it->second.ts_ms ||
+        (component.ts_ms == it->second.ts_ms &&
+         component.component_id > it->second.component_id)) {
+      latest_by_hashimyei[hashimyei] = component;
+    }
+  }
+  if (latest_by_hashimyei.empty()) {
+    *out_error = "family has no components in the catalog for contract_hash=" +
+                 contract_hash + ": " + family;
+    return false;
+  }
+  if (ordered_hashimyeis.size() != latest_by_hashimyei.size()) {
+    *out_error =
+        "ordered_hashimyeis must enumerate every current family member exactly once";
+    return false;
+  }
+  for (const auto& [hashimyei, _] : latest_by_hashimyei) {
+    if (requested_hashimyeis.find(hashimyei) == requested_hashimyeis.end()) {
+      *out_error =
+          "ordered_hashimyeis is missing family member: " + hashimyei;
+      return false;
+    }
+  }
+
+  cuwacunu::hero::family_rank::state_t before_state{};
+  const bool has_before_rank = app->catalog.get_explicit_family_rank(
+      family, contract_hash, &before_state, nullptr);
+
+  cuwacunu::hero::family_rank::state_t desired_state{};
+  desired_state.family = family;
+  desired_state.contract_hash = contract_hash;
+  desired_state.source_view_kind = source_view_kind;
+  desired_state.source_view_transport_sha256 = source_view_transport_sha256;
+  desired_state.updated_at_ms = now_ms_utc();
+  desired_state.assignments.reserve(ordered_hashimyeis.size());
+  for (std::size_t i = 0; i < ordered_hashimyeis.size(); ++i) {
+    const auto it = latest_by_hashimyei.find(ordered_hashimyeis[i]);
+    if (it == latest_by_hashimyei.end()) {
+      *out_error = "ordered_hashimyeis contains unknown family member";
+      return false;
+    }
+    desired_state.assignments.push_back(cuwacunu::hero::family_rank::assignment_t{
+        .rank = static_cast<std::uint64_t>(i),
+        .hashimyei = ordered_hashimyeis[i],
+        .canonical_path = it->second.manifest.canonical_path,
+        .component_id = it->second.component_id,
+    });
+  }
+
+  const auto state_matches = [&](const cuwacunu::hero::family_rank::state_t& lhs,
+                                 const cuwacunu::hero::family_rank::state_t& rhs) {
+    return cuwacunu::hero::family_rank::ordering_matches(lhs, rhs);
+  };
+
+  const std::filesystem::path rank_file =
+      family_rank_file_path(app->store_root, family, contract_hash);
+  const bool changed = !has_before_rank || !state_matches(before_state, desired_state);
+  if (changed) {
+    const std::string payload =
+        cuwacunu::hero::family_rank::emit_state_payload(desired_state);
+    if (!write_text_file_atomic(rank_file, payload, out_error)) return false;
+    if (!app->catalog.ingest_filesystem(app->store_root, out_error)) return false;
+  }
+
+  bool synchronized_lattice = false;
+  std::string lattice_catalog_error{};
+  const std::filesystem::path lattice_catalog_path =
+      app->lattice_catalog_path.empty()
+          ? (app->store_root / "catalog" / "lattice_catalog.idydb")
+          : app->lattice_catalog_path;
+  if (!lattice_catalog_path.empty()) {
+    cuwacunu::hero::wave::lattice_catalog_store_t lattice_catalog{};
+    cuwacunu::hero::wave::lattice_catalog_store_t::options_t lattice_options{};
+    lattice_options.catalog_path = lattice_catalog_path;
+    lattice_options.encrypted = false;
+    lattice_options.projection_version = 2;
+    if (!lattice_catalog.open(lattice_options, &lattice_catalog_error)) {
+      *out_error = "lattice sync open failed: " + lattice_catalog_error;
+      return false;
+    }
+    if (!lattice_catalog.ingest_runtime_report_fragments(app->store_root,
+                                                         &lattice_catalog_error)) {
+      *out_error = "lattice sync ingest failed: " + lattice_catalog_error;
+      return false;
+    }
+    synchronized_lattice = true;
+    (void)lattice_catalog.close(nullptr);
+  }
+
+  cuwacunu::hero::family_rank::state_t after_state{};
+  if (!app->catalog.get_family_rank(family, contract_hash, &after_state,
+                                    out_error)) {
+    return false;
+  }
+
+  std::ostringstream out;
+  out << "{\"family\":" << json_quote(family)
+      << ",\"contract_hash\":" << json_quote(contract_hash)
+      << ",\"changed\":" << (changed ? "true" : "false")
+      << ",\"rank_file\":" << json_quote(rank_file.string())
+      << ",\"lattice_catalog_path\":"
+      << json_quote(lattice_catalog_path.string())
+      << ",\"synchronized_lattice\":"
+      << (synchronized_lattice ? "true" : "false")
+      << ",\"component_count\":" << latest_by_hashimyei.size()
+      << ",\"before\":"
+      << (has_before_rank ? family_rank_state_to_json(before_state) : "null")
+      << ",\"after\":" << family_rank_state_to_json(after_state) << "}";
   *out_structured = out.str();
   return true;
 }

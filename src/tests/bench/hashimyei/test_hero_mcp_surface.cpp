@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -154,6 +155,9 @@ static void test_hashimyei_tools_list_surface() {
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"hero.hashimyei.list\""));
   REQUIRE(contains(result.output, "\"hero.hashimyei.get_founding_dsl\""));
+  REQUIRE(contains(result.output, "\"hero.hashimyei.update_rank\""));
+  REQUIRE(contains(result.output,
+                   "\"required\":[\"family\",\"contract_hash\",\"ordered_hashimyeis\"]"));
   REQUIRE(contains(result.output, "\"hero.hashimyei.reset_catalog\""));
   REQUIRE(!contains(result.output, "\"hero.hashimyei.get_history\""));
   REQUIRE(!contains(result.output, "\"hero.hashimyei.get_report_lls\""));
@@ -172,6 +176,7 @@ static void test_lattice_tools_list_surface() {
   REQUIRE(contains(result.output, "\"hero.lattice.get_fact\""));
   REQUIRE(contains(result.output, "\"hero.lattice.list_views\""));
   REQUIRE(contains(result.output, "\"hero.lattice.get_view\""));
+  REQUIRE(contains(result.output, "\"required\":[\"view_kind\"]"));
   REQUIRE(contains(result.output, "\"hero.lattice.refresh\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_runs\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.list_report_fragments\""));

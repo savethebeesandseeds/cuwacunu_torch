@@ -1540,13 +1540,20 @@ struct fact_path_summary_t {
   }
 
   std::ostringstream out;
-  out << "{\"count\":1,\"views\":[{"
+  const bool has_family_reports = !network_rows.empty();
+  out << "{\"count\":2,\"views\":[{"
       << "\"view_kind\":\"entropic_capacity_comparison\""
       << ",\"preferred_selector\":\"wave_cursor\""
       << ",\"required_selectors\":[\"wave_cursor\"]"
       << ",\"optional_selectors\":[\"canonical_path\",\"contract_hash\"]"
       << ",\"ready\":"
       << ((!source_rows.empty() && !network_rows.empty()) ? "true" : "false")
+      << "},{"
+      << "\"view_kind\":\"family_evaluation_report\""
+      << ",\"preferred_selector\":\"canonical_path\""
+      << ",\"required_selectors\":[\"canonical_path\",\"contract_hash\"]"
+      << ",\"optional_selectors\":[\"wave_cursor\"]"
+      << ",\"ready\":" << (has_family_reports ? "true" : "false")
       << "}]}";
   *out_structured = out.str();
   return true;
@@ -1579,17 +1586,15 @@ struct fact_path_summary_t {
   const bool use_wave_cursor =
       extract_json_wave_cursor_field(arguments_json, "wave_cursor",
                                     &wave_cursor);
-  if (!use_wave_cursor) {
-    *out_error = "get_view requires arguments.wave_cursor";
-    return false;
-  }
-
   std::string internal_intersection_cursor{};
   if (!canonical_path.empty() && use_wave_cursor) {
     internal_intersection_cursor =
         canonical_path + "|" +
         cuwacunu::hero::wave::lattice_catalog_store_t::format_runtime_wave_cursor(
             wave_cursor);
+  } else if (!canonical_path.empty() &&
+             view_kind == "family_evaluation_report") {
+    internal_intersection_cursor = canonical_path;
   }
 
   cuwacunu::hero::wave::runtime_view_report_t view{};

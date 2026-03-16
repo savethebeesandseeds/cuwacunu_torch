@@ -17,6 +17,7 @@ struct hashimyei_runtime_defaults_t {
 
 struct app_context_t {
   std::filesystem::path store_root{};
+  std::filesystem::path lattice_catalog_path{};
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t
       catalog_options{};
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t catalog{};

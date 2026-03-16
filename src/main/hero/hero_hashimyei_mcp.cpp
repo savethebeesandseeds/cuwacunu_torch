@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "hero/hashimyei_hero/hero_hashimyei_tools.h"
+#include "hero/lattice_hero/hero_lattice_tools.h"
 #include "piaabo/dlogs.h"
 
 namespace {
@@ -186,7 +187,24 @@ int main(int argc, char** argv) {
   options.catalog_path = catalog_path;
   options.encrypted = false;
 
+  std::filesystem::path lattice_catalog_path =
+      cuwacunu::hero::lattice_mcp::default_catalog_path(store_root);
+  {
+    const auto lattice_hero_config_path =
+        cuwacunu::hero::lattice_mcp::resolve_lattice_hero_dsl_path(
+            global_config_path);
+    cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t lattice_defaults{};
+    std::string lattice_defaults_error{};
+    if (cuwacunu::hero::lattice_mcp::load_wave_runtime_defaults(
+            lattice_hero_config_path, &lattice_defaults, &lattice_defaults_error)) {
+      if (!lattice_defaults.catalog_path.empty()) {
+        lattice_catalog_path = lattice_defaults.catalog_path;
+      }
+    }
+  }
+
   app.store_root = store_root;
+  app.lattice_catalog_path = lattice_catalog_path;
   app.catalog_options = options;
 
   if (direct_tool_mode) {

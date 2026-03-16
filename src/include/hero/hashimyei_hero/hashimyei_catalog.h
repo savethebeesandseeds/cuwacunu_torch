@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "camahjucunu/db/idydb.h"
+#include "hero/hashimyei_hero/family_rank.h"
 #include "hero/hashimyei_hero/hashimyei_identity.h"
 #include "hero/hashimyei_hero/hashimyei_schema.h"
 
@@ -73,6 +74,7 @@ struct component_state_t {
   std::uint64_t ts_ms{0};
   std::string manifest_path{};
   std::string report_fragment_sha256{};
+  std::optional<std::uint64_t> family_rank{};
   component_manifest_t manifest{};
 };
 
@@ -187,6 +189,19 @@ class hashimyei_catalog_store_t {
                                               std::string_view family,
                                               std::string* out_hashimyei,
                                               std::string* error = nullptr) const;
+  [[nodiscard]] bool get_explicit_family_rank(
+      std::string_view family, std::string_view contract_hash,
+      cuwacunu::hero::family_rank::state_t* out,
+      std::string* error = nullptr) const;
+  [[nodiscard]] bool get_family_rank(
+      std::string_view family, std::string_view contract_hash,
+      cuwacunu::hero::family_rank::state_t* out,
+      std::string* error = nullptr) const;
+  [[nodiscard]] bool resolve_ranked_hashimyei(std::string_view family,
+                                              std::string_view contract_hash,
+                                              std::uint64_t rank,
+                                              std::string* out_hashimyei,
+                                              std::string* error = nullptr) const;
   [[nodiscard]] bool register_component_manifest(
       const component_manifest_t& manifest, std::string* out_component_id = nullptr,
       bool* out_inserted = nullptr, std::string* error = nullptr);
@@ -284,6 +299,8 @@ class hashimyei_catalog_store_t {
       hash_identity_by_kind_sha_{};
   std::unordered_map<std::string, std::vector<std::string>>
       component_ids_by_binding_hashimyei_{};
+  std::unordered_map<std::string, cuwacunu::hero::family_rank::state_t>
+      explicit_family_rank_by_scope_{};
 };
 
 }  // namespace hashimyei

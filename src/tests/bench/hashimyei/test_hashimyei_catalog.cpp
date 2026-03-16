@@ -1,5 +1,7 @@
 #include <hero/hashimyei_hero/hashimyei_catalog.h>
+#include <hero/hashimyei_hero/hero_hashimyei_tools.h>
 #include <hero/hero_catalog_schema.h>
+#include <hero/lattice_hero/lattice_catalog.h>
 
 #include <openssl/evp.h>
 
@@ -456,6 +458,152 @@ int main() {
           resolved_auto_a.manifest.wave_contract_binding.identity.name);
   REQUIRE(binding_components[1].manifest.wave_contract_binding.identity.name ==
           resolved_auto_a.manifest.wave_contract_binding.identity.name);
+
+  const std::string base_contract_hash =
+      component_manifest.wave_contract_binding.contract.name;
+  const std::string auto_contract_hash =
+      resolved_auto_a.manifest.wave_contract_binding.contract.name;
+
+  cuwacunu::hero::family_rank::state_t bootstrap_rank{};
+  REQUIRE(!catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
+                                   base_contract_hash, &bootstrap_rank, &error));
+  REQUIRE(error.find("family rank not found") != std::string::npos);
+
+  cuwacunu::hero::hashimyei_mcp::app_context_t rank_app{};
+  rank_app.store_root = store_root;
+  rank_app.lattice_catalog_path = store_root / "catalog" / "lattice_catalog.idydb";
+  rank_app.catalog_options = options;
+
+  std::string tool_result{};
+  std::string tool_error{};
+  REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
+      "hero.hashimyei.update_rank",
+      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
+      "\"contract_hash\":\"" + auto_contract_hash + "\","
+      "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"],"
+      "\"source_view_kind\":\"family_evaluation_report\","
+      "\"source_view_transport_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",
+      &rank_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"changed\":true") != std::string::npos);
+  REQUIRE(tool_result.find("\"synchronized_lattice\":true") != std::string::npos);
+
+  REQUIRE(catalog.ingest_filesystem(store_root, &error));
+
+  cuwacunu::hero::family_rank::state_t family_rank{};
+  REQUIRE(catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
+                                  auto_contract_hash, &family_rank, &error));
+  REQUIRE(family_rank.assignments.size() == 2);
+  REQUIRE(family_rank.assignments[0].hashimyei == "0x0032");
+  REQUIRE(family_rank.assignments[1].hashimyei == "0x0031");
+  REQUIRE(family_rank.contract_hash == auto_contract_hash);
+
+  std::string ranked_zero_hashimyei{};
+  REQUIRE(catalog.resolve_ranked_hashimyei("tsi.wikimyei.representation.vicreg",
+                                           auto_contract_hash, 0,
+                                           &ranked_zero_hashimyei, &error));
+  REQUIRE(ranked_zero_hashimyei == "0x0032");
+
+  std::vector<component_state_t> ranked_components{};
+  REQUIRE(catalog.list_components("", "", 0, 0, true, &ranked_components, &error));
+  std::unordered_map<std::string, std::optional<std::uint64_t>> observed_ranks{};
+  for (const auto& component : ranked_components) {
+    if (component.manifest.family != "tsi.wikimyei.representation.vicreg") continue;
+    if (component.manifest.wave_contract_binding.contract.name != auto_contract_hash) {
+      continue;
+    }
+    observed_ranks[component.manifest.component_identity.name] = component.family_rank;
+  }
+  REQUIRE(observed_ranks["0x0032"].has_value());
+  REQUIRE(*observed_ranks["0x0032"] == 0);
+  REQUIRE(observed_ranks["0x0031"].has_value());
+  REQUIRE(*observed_ranks["0x0031"] == 1);
+
+  tool_result.clear();
+  tool_error.clear();
+  REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
+      "hero.hashimyei.update_rank",
+      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
+      "\"contract_hash\":\"" + auto_contract_hash + "\","
+      "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
+      &rank_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"changed\":false") != std::string::npos);
+
+  component_manifest_t auto_component_c =
+      make_auto_binding_component_manifest(0x43, sixty_four_hex('1'),
+                                           sixty_four_hex('2'), "bind_auto", 'g',
+                                           1711111116000ULL);
+  std::string auto_component_id_c{};
+  bool auto_inserted_c = false;
+  REQUIRE(catalog.register_component_manifest(auto_component_c, &auto_component_id_c,
+                                              &auto_inserted_c, &error));
+  REQUIRE(auto_inserted_c);
+
+  cuwacunu::hero::family_rank::state_t normalized_rank{};
+  REQUIRE(catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
+                                  auto_contract_hash, &normalized_rank, &error));
+  REQUIRE(normalized_rank.assignments.size() == 2);
+  REQUIRE(normalized_rank.assignments[0].hashimyei == "0x0032");
+  REQUIRE(normalized_rank.assignments[1].hashimyei == "0x0031");
+
+  ranked_components.clear();
+  REQUIRE(catalog.list_components("", "", 0, 0, true, &ranked_components, &error));
+  observed_ranks.clear();
+  for (const auto& component : ranked_components) {
+    if (component.manifest.family != "tsi.wikimyei.representation.vicreg") continue;
+    if (component.manifest.wave_contract_binding.contract.name != auto_contract_hash) {
+      continue;
+    }
+    observed_ranks[component.manifest.component_identity.name] = component.family_rank;
+  }
+  REQUIRE(observed_ranks["0x0043"] == std::nullopt);
+
+  tool_result.clear();
+  tool_error.clear();
+  REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
+      "hero.hashimyei.update_rank",
+      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
+      "\"contract_hash\":\"" + auto_contract_hash + "\","
+      "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
+      &rank_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":true") != std::string::npos);
+  REQUIRE(tool_result.find("must enumerate every current family member exactly once") !=
+          std::string::npos);
+
+  tool_result.clear();
+  tool_error.clear();
+  REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
+      "hero.hashimyei.update_rank",
+      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
+      "\"contract_hash\":\"" + auto_contract_hash + "\","
+      "\"ordered_hashimyeis\":[\"0x0032\",\"0x0032\"]}",
+      &rank_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":true") != std::string::npos);
+  REQUIRE(tool_result.find("duplicates") != std::string::npos);
+
+  cuwacunu::hero::wave::lattice_catalog_store_t lattice_catalog{};
+  cuwacunu::hero::wave::lattice_catalog_store_t::options_t lattice_options{};
+  lattice_options.catalog_path = rank_app.lattice_catalog_path;
+  lattice_options.encrypted = false;
+  lattice_options.projection_version = 2;
+  REQUIRE(lattice_catalog.open(lattice_options, &error));
+  cuwacunu::hero::family_rank::state_t lattice_family_rank{};
+  REQUIRE(lattice_catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
+                                          auto_contract_hash,
+                                          &lattice_family_rank, &error));
+  REQUIRE(lattice_family_rank.assignments.size() == family_rank.assignments.size());
+  for (std::size_t i = 0; i < family_rank.assignments.size(); ++i) {
+    REQUIRE(lattice_family_rank.assignments[i].hashimyei ==
+            family_rank.assignments[i].hashimyei);
+    REQUIRE(lattice_family_rank.assignments[i].rank ==
+            family_rank.assignments[i].rank);
+  }
+  REQUIRE(lattice_catalog.close(&error));
 
   // strict v2 ingest: v1 run filename must fail fast
   const fs::path unsupported_v1_run_manifest =

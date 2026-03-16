@@ -470,6 +470,7 @@ using runtime_lls_document_t =
 }
 
 [[nodiscard]] bool is_known_schema(std::string_view schema) {
+  if (schema == cuwacunu::hero::family_rank::kFamilyRankSchemaV1) return true;
   if (schema == "wave.source.runtime.projection.v2") return true;
   if (schema == "piaabo.torch_compat.data_analytics.v2") return true;
   if (schema == "piaabo.torch_compat.data_analytics_symbolic.v2") return true;
@@ -558,6 +559,17 @@ using runtime_lls_document_t =
       family.empty() ? component_family_from_parts(canonical_path, hashimyei, "")
                      : std::string(family);
   return canonical_key_path + "|" + family_key;
+}
+
+[[nodiscard]] bool is_family_rank_schema(std::string_view schema) {
+  return schema == cuwacunu::hero::family_rank::kFamilyRankSchemaV1;
+}
+
+[[nodiscard]] std::string family_rank_record_id(std::string_view family,
+                                                std::string_view contract_hash,
+                                                std::string_view artifact_sha256) {
+  return cuwacunu::hero::family_rank::scope_key(family, contract_hash) + "|" +
+         std::string(artifact_sha256);
 }
 
 [[nodiscard]] std::optional<std::filesystem::path> canonicalized(
@@ -1319,6 +1331,7 @@ bool hashimyei_catalog_store_t::close(std::string* error) {
   kind_counters_.clear();
   hash_identity_by_kind_sha_.clear();
   component_ids_by_binding_hashimyei_.clear();
+  explicit_family_rank_by_scope_.clear();
   return true;
 }
 
@@ -1794,6 +1807,29 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
   std::filesystem::path cp = path;
   if (const auto can = canonicalized(path); can.has_value()) cp = *can;
 
+  if (is_family_rank_schema(schema)) {
+    cuwacunu::hero::family_rank::state_t rank_state{};
+    if (!cuwacunu::hero::family_rank::parse_state_from_kv(kv, &rank_state, error)) {
+      set_error(error, "family rank payload parse failure for " + path.string() +
+                           ": " + (error ? *error : std::string{}));
+      return false;
+    }
+    std::uint64_t ts_ms = rank_state.updated_at_ms;
+    if (ts_ms == 0) ts_ms = now_ms_utc();
+    const std::string record_id =
+        family_rank_record_id(rank_state.family, rank_state.contract_hash,
+                              report_fragment_sha);
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindFAMILY_RANK, record_id, "",
+                     rank_state.family, "", rank_state.schema,
+                     rank_state.contract_hash,
+                     static_cast<double>(rank_state.assignments.size()),
+                     rank_state.source_view_kind, report_fragment_sha, cp.string(),
+                     std::to_string(ts_ms), payload, error)) {
+      return false;
+    }
+    return append_ledger_(report_fragment_sha, cp.string(), error);
+  }
+
   if (!append_row_(cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT, report_fragment_sha, run_id, canonical_path, hashimyei, schema,
                    "", std::numeric_limits<double>::quiet_NaN(), "", report_fragment_sha,
                    cp.string(), std::to_string(ts_ms), payload, error)) {
@@ -1974,6 +2010,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
   kind_counters_.clear();
   hash_identity_by_kind_sha_.clear();
   component_ids_by_binding_hashimyei_.clear();
+  explicit_family_rank_by_scope_.clear();
 
   const auto bump_counter_from_identity =
       [&](const cuwacunu::hashimyei::hashimyei_t& identity) {
@@ -1999,6 +2036,9 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
           it->second = identity;
         }
       };
+
+  std::unordered_map<std::string, std::uint64_t> family_rank_row_ts_by_scope{};
+  std::unordered_map<std::string, std::string> family_rank_row_id_by_scope{};
 
   const idydb_column_row_sizing next = idydb_column_next_row(&db_, kColRecordKind);
   for (idydb_column_row_sizing row = 1; row < next; ++row) {
@@ -2303,6 +2343,41 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
+    if (kind == cuwacunu::hero::schema::kRecordKindFAMILY_RANK) {
+      const std::string payload = as_text_or_empty(&db_, kColPayload, row);
+      if (!payload.empty()) {
+        std::unordered_map<std::string, std::string> kv;
+        std::string parse_error{};
+        if (parse_runtime_lls_payload(payload, &kv, nullptr, &parse_error)) {
+          cuwacunu::hero::family_rank::state_t rank_state{};
+          if (cuwacunu::hero::family_rank::parse_state_from_kv(
+                  kv, &rank_state, &parse_error)) {
+            const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
+                rank_state.family, rank_state.contract_hash);
+            std::uint64_t row_ts = 0;
+            if (rank_state.updated_at_ms != 0) {
+              row_ts = rank_state.updated_at_ms;
+            } else {
+              (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &row_ts);
+            }
+            const std::string row_id = as_text_or_empty(&db_, kColRecordId, row);
+            const auto current_ts_it = family_rank_row_ts_by_scope.find(scope_key);
+            const bool should_replace =
+                current_ts_it == family_rank_row_ts_by_scope.end() ||
+                row_ts > current_ts_it->second ||
+                (row_ts == current_ts_it->second &&
+                 row_id > family_rank_row_id_by_scope[scope_key]);
+            if (should_replace) {
+              family_rank_row_ts_by_scope[scope_key] = row_ts;
+              family_rank_row_id_by_scope[scope_key] = row_id;
+              explicit_family_rank_by_scope_[scope_key] = std::move(rank_state);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
     if (kind == cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT) {
       report_fragment_entry_t e{};
       e.report_fragment_id = as_text_or_empty(&db_, kColRecordId, row);
@@ -2391,6 +2466,17 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
     active_component_by_key_[pointer_key] = best.component_id;
     active_component_by_canonical_[canonical_path] = best.component_id;
     active_component_by_canonical_[best.manifest.canonical_path] = best.component_id;
+  }
+
+  for (auto& [_, component] : components_by_id_) {
+    component.family_rank.reset();
+    const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
+        component.manifest.family,
+        component.manifest.wave_contract_binding.contract.name);
+    const auto it_rank = explicit_family_rank_by_scope_.find(scope_key);
+    if (it_rank == explicit_family_rank_by_scope_.end()) continue;
+    component.family_rank = cuwacunu::hero::family_rank::rank_for_hashimyei(
+        it_rank->second, component.manifest.component_identity.name);
   }
 
   return true;
@@ -2791,6 +2877,82 @@ bool hashimyei_catalog_store_t::resolve_active_hashimyei(
     return false;
   }
   return true;
+}
+
+bool hashimyei_catalog_store_t::get_explicit_family_rank(
+    std::string_view family, std::string_view contract_hash,
+    cuwacunu::hero::family_rank::state_t* out, std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "family rank output pointer is null");
+    return false;
+  }
+  *out = cuwacunu::hero::family_rank::state_t{};
+
+  const std::string family_key = trim_ascii(family);
+  const std::string contract_key = trim_ascii(contract_hash);
+  if (family_key.empty() || contract_key.empty()) {
+    set_error(error, "family and contract_hash are required");
+    return false;
+  }
+  const std::string scope_key =
+      cuwacunu::hero::family_rank::scope_key(family_key, contract_key);
+  const auto it = explicit_family_rank_by_scope_.find(scope_key);
+  if (it == explicit_family_rank_by_scope_.end()) {
+    set_error(error, "explicit family rank not found: " + scope_key);
+    return false;
+  }
+  *out = it->second;
+  return true;
+}
+
+bool hashimyei_catalog_store_t::get_family_rank(
+    std::string_view family, std::string_view contract_hash,
+    cuwacunu::hero::family_rank::state_t* out, std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "family rank output pointer is null");
+    return false;
+  }
+  *out = cuwacunu::hero::family_rank::state_t{};
+
+  const std::string family_key = trim_ascii(family);
+  const std::string contract_key = trim_ascii(contract_hash);
+  if (family_key.empty() || contract_key.empty()) {
+    set_error(error, "family and contract_hash are required");
+    return false;
+  }
+  const std::string scope_key =
+      cuwacunu::hero::family_rank::scope_key(family_key, contract_key);
+  const auto it = explicit_family_rank_by_scope_.find(scope_key);
+  if (it == explicit_family_rank_by_scope_.end()) {
+    set_error(error, "family rank not found: " + scope_key);
+    return false;
+  }
+  *out = it->second;
+  return true;
+}
+
+bool hashimyei_catalog_store_t::resolve_ranked_hashimyei(
+    std::string_view family, std::string_view contract_hash, std::uint64_t rank,
+    std::string* out_hashimyei, std::string* error) const {
+  clear_error(error);
+  if (!out_hashimyei) {
+    set_error(error, "ranked hashimyei output pointer is null");
+    return false;
+  }
+  out_hashimyei->clear();
+
+  cuwacunu::hero::family_rank::state_t rank_state{};
+  if (!get_family_rank(family, contract_hash, &rank_state, error)) return false;
+  for (const auto& assignment : rank_state.assignments) {
+    if (assignment.rank != rank) continue;
+    *out_hashimyei = assignment.hashimyei;
+    return true;
+  }
+
+  set_error(error, "family rank not found for requested rank");
+  return false;
 }
 
 bool hashimyei_catalog_store_t::register_component_manifest(

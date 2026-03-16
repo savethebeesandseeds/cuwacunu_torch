@@ -36,6 +36,12 @@ constexpr std::string_view kEntropicCapacityComparisonViewCanonicalPath =
     "tsi.analysis.entropic_capacity_comparison";
 constexpr std::string_view kEntropicCapacityComparisonViewTransportSchema =
     "lattice.derived_view.entropic_capacity_comparison.v1";
+constexpr std::string_view kFamilyEvaluationReportViewKind =
+    "family_evaluation_report";
+constexpr std::string_view kFamilyEvaluationReportViewCanonicalPath =
+    "tsi.analysis.family_evaluation_report";
+constexpr std::string_view kFamilyEvaluationReportViewTransportSchema =
+    "lattice.derived_view.family_evaluation_report.v1";
 constexpr std::string_view kSourceDataAnalyticsSchema =
     "piaabo.torch_compat.data_analytics.v2";
 constexpr std::string_view kNetworkAnalyticsSchema =
@@ -636,6 +642,26 @@ enum class runtime_wave_cursor_resolution_e : std::uint8_t {
   std::ostringstream out;
   out << trim_ascii(hashimyei_cursor) << "|" << wave_cursor;
   return out.str();
+}
+
+[[nodiscard]] std::string runtime_family_from_canonical(
+    std::string_view canonical_path) {
+  const std::string hashimyei = maybe_hashimyei_from_canonical(canonical_path);
+  if (hashimyei.empty()) return trim_ascii(canonical_path);
+  const std::string canonical = trim_ascii(canonical_path);
+  if (canonical.size() <= hashimyei.size() + 1) return canonical;
+  return canonical.substr(0, canonical.size() - hashimyei.size() - 1);
+}
+
+[[nodiscard]] bool is_family_rank_schema(std::string_view schema) {
+  return schema == cuwacunu::hero::family_rank::kFamilyRankSchemaV1;
+}
+
+[[nodiscard]] std::string family_rank_record_id(std::string_view family,
+                                                std::string_view contract_hash,
+                                                std::string_view artifact_sha256) {
+  return cuwacunu::hero::family_rank::scope_key(family, contract_hash) + "|" +
+         std::string(artifact_sha256);
 }
 
 [[nodiscard]] bool is_known_runtime_schema(std::string_view schema) {
@@ -1397,11 +1423,13 @@ bool lattice_catalog_store_t::close(std::string* error) {
   projection_num_by_cell_.clear();
   projection_txt_by_cell_.clear();
   runtime_runs_by_id_.clear();
+  runtime_components_by_id_.clear();
   runtime_report_fragments_by_id_.clear();
   runtime_latest_report_fragment_by_key_.clear();
   runtime_dependency_files_by_run_id_.clear();
   runtime_report_fragment_ids_by_wave_cursor_.clear();
   runtime_ledger_.clear();
+  explicit_family_rank_by_scope_.clear();
   return true;
 }
 
@@ -1715,6 +1743,11 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   runtime_latest_report_fragment_by_key_.clear();
   runtime_dependency_files_by_run_id_.clear();
   runtime_report_fragment_ids_by_wave_cursor_.clear();
+  runtime_components_by_id_.clear();
+  explicit_family_rank_by_scope_.clear();
+
+  std::unordered_map<std::string, std::uint64_t> family_rank_row_ts_by_scope{};
+  std::unordered_map<std::string, std::string> family_rank_row_id_by_scope{};
 
   db::query::query_spec_t q{};
   q.select_columns = {kColRecordKind};
@@ -1849,6 +1882,91 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
+    if (kind == cuwacunu::hero::schema::kRecordKindFAMILY_RANK) {
+      const std::string payload = as_text_or_empty(&db_, kColPayload, row);
+      if (!payload.empty()) {
+        std::unordered_map<std::string, std::string> kv{};
+        runtime_lls_document_t ignored_document{};
+        std::string parse_error{};
+        if (parse_runtime_lls_payload(payload, &kv, &ignored_document,
+                                      &parse_error)) {
+          cuwacunu::hero::family_rank::state_t rank_state{};
+          if (cuwacunu::hero::family_rank::parse_state_from_kv(
+                  kv, &rank_state, &parse_error)) {
+            std::uint64_t row_ts = rank_state.updated_at_ms;
+            if (row_ts == 0) {
+              (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &row_ts);
+            }
+            const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
+                rank_state.family, rank_state.contract_hash);
+            const std::string row_id = as_text_or_empty(&db_, kColRecordId, row);
+            const auto current_ts_it = family_rank_row_ts_by_scope.find(scope_key);
+            const bool should_replace =
+                current_ts_it == family_rank_row_ts_by_scope.end() ||
+                row_ts > current_ts_it->second ||
+                (row_ts == current_ts_it->second &&
+                 row_id > family_rank_row_id_by_scope[scope_key]);
+            if (should_replace) {
+              family_rank_row_ts_by_scope[scope_key] = row_ts;
+              family_rank_row_id_by_scope[scope_key] = row_id;
+              explicit_family_rank_by_scope_[scope_key] = std::move(rank_state);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_COMPONENT) {
+      cuwacunu::hero::hashimyei::component_state_t component{};
+      component.component_id = as_text_or_empty(&db_, kColRecordId, row);
+      component.manifest_path = as_text_or_empty(&db_, kColTextB, row);
+      component.report_fragment_sha256 = as_text_or_empty(&db_, kColCampaignHash, row);
+      (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &component.ts_ms);
+
+      const std::string payload = as_text_or_empty(&db_, kColPayload, row);
+      if (!payload.empty()) {
+        std::unordered_map<std::string, std::string> kv{};
+        if (cuwacunu::hero::hashimyei::parse_latent_lineage_state_payload(
+                payload, &kv)) {
+          std::string parse_error{};
+          cuwacunu::hero::hashimyei::component_manifest_t manifest{};
+          if (cuwacunu::hero::hashimyei::parse_component_manifest_kv(
+                  kv, &manifest, &parse_error)) {
+            component.manifest = std::move(manifest);
+          }
+        }
+      }
+      if (component.manifest.canonical_path.empty()) {
+        component.manifest.canonical_path = as_text_or_empty(&db_, kColTextA, row);
+      }
+      if (component.manifest.wave_contract_binding.contract.name.empty()) {
+        component.manifest.wave_contract_binding.contract.name =
+            as_text_or_empty(&db_, kColContractHash, row);
+      }
+      if (component.manifest.wave_contract_binding.wave.name.empty()) {
+        component.manifest.wave_contract_binding.wave.name =
+            as_text_or_empty(&db_, kColWaveHash, row);
+      }
+      if (component.manifest.component_identity.name.empty()) {
+        component.manifest.component_identity.name = as_text_or_empty(&db_, kColStateTxt, row);
+      }
+      if (component.manifest.family.empty()) {
+        component.manifest.family =
+            runtime_family_from_canonical(component.manifest.canonical_path);
+      }
+      if (component.manifest.created_at_ms == 0) {
+        component.manifest.created_at_ms = component.ts_ms;
+      }
+      if (component.manifest.updated_at_ms == 0) {
+        component.manifest.updated_at_ms = component.ts_ms;
+      }
+      if (!component.component_id.empty()) {
+        runtime_components_by_id_[component.component_id] = component;
+      }
+      continue;
+    }
+
     if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT_FRAGMENT) {
       runtime_report_fragment_t fragment{};
       fragment.report_fragment_id = as_text_or_empty(&db_, kColRecordId, row);
@@ -1891,6 +2009,7 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
         fragment.intersection_cursor =
             build_intersection_cursor(fragment.canonical_path, fragment.wave_cursor);
       }
+      fragment.family = runtime_family_from_canonical(fragment.canonical_path);
       index_runtime_report_fragment_(
           fragment, &runtime_report_fragments_by_id_,
           &runtime_latest_report_fragment_by_key_,
@@ -1924,6 +2043,17 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
         }
       }
     }
+  }
+
+  for (auto& [_, fragment] : runtime_report_fragments_by_id_) {
+    fragment.family = runtime_family_from_canonical(fragment.canonical_path);
+    fragment.family_rank.reset();
+    const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
+        fragment.family, fragment.contract_hash);
+    const auto it_rank = explicit_family_rank_by_scope_.find(scope_key);
+    if (it_rank == explicit_family_rank_by_scope_.end()) continue;
+    fragment.family_rank = cuwacunu::hero::family_rank::rank_for_hashimyei(
+        it_rank->second, fragment.hashimyei);
   }
 
   return true;
@@ -2244,6 +2374,61 @@ bool lattice_catalog_store_t::ingest_runtime_run_manifest_file_(
   return true;
 }
 
+bool lattice_catalog_store_t::ingest_runtime_component_manifest_file_(
+    const std::filesystem::path& path, std::string* error) {
+  clear_error(error);
+  cuwacunu::hero::hashimyei::component_manifest_t manifest{};
+  if (!cuwacunu::hero::hashimyei::load_component_manifest(path, &manifest, error)) {
+    return false;
+  }
+
+  std::string payload{};
+  if (!read_text_file(path, &payload, error)) return false;
+  std::string manifest_sha{};
+  if (!sha256_hex_file(path, &manifest_sha, error)) return false;
+
+  runtime_components_by_id_[cuwacunu::hero::hashimyei::compute_component_manifest_id(
+      manifest)] = cuwacunu::hero::hashimyei::component_state_t{
+      .component_id =
+          cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest),
+      .ts_ms = manifest.updated_at_ms != 0 ? manifest.updated_at_ms
+                                           : manifest.created_at_ms,
+      .manifest_path = path.string(),
+      .report_fragment_sha256 = manifest_sha,
+      .family_rank = std::nullopt,
+      .manifest = manifest,
+  };
+
+  bool already = false;
+  if (!runtime_ledger_contains_(manifest_sha, &already, error)) return false;
+  if (already) return true;
+
+  std::filesystem::path cp = path;
+  if (const auto can = canonicalized(path); can.has_value()) cp = *can;
+
+  const std::string component_id =
+      cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
+  const std::uint64_t ts_ms = manifest.updated_at_ms != 0
+                                  ? manifest.updated_at_ms
+                                  : (manifest.created_at_ms != 0
+                                         ? manifest.created_at_ms
+                                         : now_ms_utc());
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindRUNTIME_COMPONENT,
+                   component_id, "", manifest.wave_contract_binding.contract.name,
+                   manifest.wave_contract_binding.wave.name,
+                   manifest.wave_contract_binding.identity.name,
+                   manifest.wave_contract_binding.binding_alias,
+                   manifest.component_identity.name,
+                   std::numeric_limits<double>::quiet_NaN(),
+                   manifest.canonical_path, cp.string(), "2",
+                   std::to_string(ts_ms), payload, "",
+                   std::numeric_limits<double>::quiet_NaN(), "", "", "", "", "",
+                   "", "", manifest_sha, "", error)) {
+    return false;
+  }
+  return append_runtime_ledger_(manifest_sha, cp.string(), error);
+}
+
 bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
     const std::filesystem::path& path, std::string* error) {
   clear_error(error);
@@ -2263,6 +2448,43 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
     return false;
   }
   const std::string schema = kv["schema"];
+  if (is_family_rank_schema(schema)) {
+    cuwacunu::hero::family_rank::state_t rank_state{};
+    if (!cuwacunu::hero::family_rank::parse_state_from_kv(kv, &rank_state, error)) {
+      set_error(error, "family rank payload parse failure for " + path.string() +
+                           ": " + (error ? *error : std::string{}));
+      return false;
+    }
+    std::string artifact_sha256{};
+    if (!sha256_hex_file(path, &artifact_sha256, error)) return false;
+    bool already = false;
+    if (!runtime_ledger_contains_(artifact_sha256, &already, error)) return false;
+    if (already) {
+      explicit_family_rank_by_scope_[cuwacunu::hero::family_rank::scope_key(
+          rank_state.family, rank_state.contract_hash)] = rank_state;
+      return true;
+    }
+    std::filesystem::path cp = path;
+    if (const auto can = canonicalized(path); can.has_value()) cp = *can;
+    const std::string canonical_file_path = cp.string();
+    const std::uint64_t ts_ms =
+        rank_state.updated_at_ms != 0 ? rank_state.updated_at_ms : now_ms_utc();
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindFAMILY_RANK,
+                     family_rank_record_id(rank_state.family,
+                                           rank_state.contract_hash,
+                                           artifact_sha256), "",
+                     rank_state.contract_hash, "", "", "", rank_state.family,
+                     static_cast<double>(rank_state.assignments.size()),
+                     rank_state.schema, "", "2",
+                     std::to_string(ts_ms), payload, "",
+                     std::numeric_limits<double>::quiet_NaN(), "", "", "", "",
+                     "", "", "", "", "", error)) {
+      return false;
+    }
+    explicit_family_rank_by_scope_[cuwacunu::hero::family_rank::scope_key(
+        rank_state.family, rank_state.contract_hash)] = rank_state;
+    return append_runtime_ledger_(artifact_sha256, canonical_file_path, error);
+  }
   if (!is_known_runtime_schema(schema)) return true;
 
   std::string report_fragment_sha;
@@ -2325,6 +2547,7 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
   fragment.report_fragment_id = report_fragment_sha;
   fragment.run_id = run_id;
   fragment.canonical_path = canonical_path;
+  fragment.family = runtime_family_from_canonical(canonical_path);
   fragment.hashimyei = hashimyei;
   fragment.contract_hash = contract_hash;
   fragment.schema = schema;
@@ -2426,14 +2649,17 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragments(
     const auto p = it->path();
     if (p == options_.catalog_path) continue;
     if (p.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) continue;
-    if (p.filename() == cuwacunu::hashimyei::kComponentManifestFilenameV2) continue;
+    if (p.filename() == cuwacunu::hashimyei::kComponentManifestFilenameV2) {
+      if (!ingest_runtime_component_manifest_file_(p, error)) return false;
+      continue;
+    }
 
     const auto ext = p.extension().string();
     if (ext != ".lls") continue;
     if (!ingest_runtime_report_fragment_file_(p, error)) return false;
   }
 
-  return true;
+  return rebuild_indexes(error);
 }
 
 bool lattice_catalog_store_t::list_runtime_runs_by_binding(
@@ -2577,6 +2803,60 @@ bool lattice_catalog_store_t::list_runtime_report_schemas(
   return true;
 }
 
+bool lattice_catalog_store_t::get_explicit_family_rank(
+    std::string_view family, std::string_view contract_hash,
+    cuwacunu::hero::family_rank::state_t* out, std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "family rank output pointer is null");
+    return false;
+  }
+  *out = cuwacunu::hero::family_rank::state_t{};
+
+  const std::string family_key = trim_ascii(family);
+  const std::string contract_key = trim_ascii(contract_hash);
+  if (family_key.empty() || contract_key.empty()) {
+    set_error(error, "family and contract_hash are required");
+    return false;
+  }
+  const std::string scope_key =
+      cuwacunu::hero::family_rank::scope_key(family_key, contract_key);
+  const auto it = explicit_family_rank_by_scope_.find(scope_key);
+  if (it == explicit_family_rank_by_scope_.end()) {
+    set_error(error, "explicit family rank not found: " + scope_key);
+    return false;
+  }
+  *out = it->second;
+  return true;
+}
+
+bool lattice_catalog_store_t::get_family_rank(
+    std::string_view family, std::string_view contract_hash,
+    cuwacunu::hero::family_rank::state_t* out, std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "family rank output pointer is null");
+    return false;
+  }
+  *out = cuwacunu::hero::family_rank::state_t{};
+
+  const std::string family_key = trim_ascii(family);
+  const std::string contract_key = trim_ascii(contract_hash);
+  if (family_key.empty() || contract_key.empty()) {
+    set_error(error, "family and contract_hash are required");
+    return false;
+  }
+  const std::string scope_key =
+      cuwacunu::hero::family_rank::scope_key(family_key, contract_key);
+  const auto it = explicit_family_rank_by_scope_.find(scope_key);
+  if (it == explicit_family_rank_by_scope_.end()) {
+    set_error(error, "family rank not found: " + scope_key);
+    return false;
+  }
+  *out = it->second;
+  return true;
+}
+
 bool lattice_catalog_store_t::get_runtime_view_lls(
     std::string_view view_kind, std::string_view intersection_cursor,
     std::uint64_t wave_cursor, bool use_wave_cursor,
@@ -2596,37 +2876,287 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
     set_error(error, "view_kind is empty");
     return false;
   }
-  if (view_kind_token != kEntropicCapacityComparisonViewKind) {
+  if (view_kind_token != kEntropicCapacityComparisonViewKind &&
+      view_kind_token != kFamilyEvaluationReportViewKind) {
     set_error(error, "unsupported runtime view_kind: " + view_kind_token);
     return false;
   }
+  std::string selector_canonical_path{};
+  if (!intersection_cursor_token.empty()) {
+    if (view_kind_token == kFamilyEvaluationReportViewKind &&
+        !use_wave_cursor && intersection_cursor_token.find('|') == std::string::npos) {
+      selector_canonical_path = normalize_source_hashimyei_cursor(intersection_cursor_token);
+      out->selector_hashimyei_cursor = selector_canonical_path;
+    } else {
+      runtime_intersection_cursor_t parsed_intersection{};
+      std::string parse_error{};
+      if (!lattice_catalog_store_t::parse_runtime_intersection_cursor(
+              intersection_cursor_token, &parsed_intersection, &parse_error)) {
+        set_error(error, parse_error);
+        return false;
+      }
+      if (use_wave_cursor && parsed_intersection.wave_cursor != wave_cursor) {
+        set_error(
+            error,
+            "wave_cursor and intersection_cursor select different wave_cursor values");
+        return false;
+      }
+      wave_cursor = parsed_intersection.wave_cursor;
+      use_wave_cursor = true;
+      selector_canonical_path = parsed_intersection.hashimyei_cursor;
+      out->selector_hashimyei_cursor = selector_canonical_path;
+      out->selector_intersection_cursor = intersection_cursor_token;
+    }
+  }
+
+  out->view_kind = view_kind_token;
+  out->contract_hash = contract_hash_token;
+  out->wave_cursor = wave_cursor;
+  out->has_wave_cursor = use_wave_cursor;
+
+  if (view_kind_token == kFamilyEvaluationReportViewKind) {
+    if (contract_hash_token.empty()) {
+      set_error(error, "family_evaluation_report requires contract_hash");
+      return false;
+    }
+    const std::string family_selector =
+        runtime_family_from_canonical(selector_canonical_path);
+    if (family_selector.empty()) {
+      set_error(
+          error,
+          "family_evaluation_report requires a family canonical_path selector");
+      return false;
+    }
+    if (!maybe_hashimyei_from_canonical(family_selector).empty()) {
+      set_error(
+          error,
+          "family_evaluation_report selector must be a family token without hashimyei suffix");
+      return false;
+    }
+
+    out->canonical_path = std::string(kFamilyEvaluationReportViewCanonicalPath);
+    out->selector_hashimyei_cursor = family_selector;
+
+    std::vector<runtime_report_fragment_t> family_rows{};
+    collect_runtime_report_fragment_candidates_(
+        runtime_report_fragments_by_id_, runtime_report_fragment_ids_by_wave_cursor_,
+        family_selector, "", wave_cursor, use_wave_cursor, &family_rows);
+
+    cuwacunu::hero::family_rank::state_t current_rank_state{};
+    const bool has_current_rank_state =
+        get_family_rank(family_selector, contract_hash_token, &current_rank_state,
+                        nullptr);
+
+    struct family_candidate_t {
+      std::string hashimyei{};
+      std::string canonical_path{};
+      std::optional<std::uint64_t> current_rank{};
+      std::string selected_run_id{};
+      std::uint64_t selected_wave_cursor{0};
+      std::uint64_t selected_bundle_ts_ms{0};
+      std::vector<runtime_report_fragment_t> fragments{};
+    };
+
+    struct bundle_t {
+      std::string run_id{};
+      std::uint64_t wave_cursor{0};
+      std::uint64_t latest_ts_ms{0};
+      std::vector<runtime_report_fragment_t> fragments{};
+    };
+
+    std::unordered_map<std::string, std::unordered_map<std::string, bundle_t>>
+        bundles_by_hash{};
+    for (const auto& row : family_rows) {
+      if (row.contract_hash != contract_hash_token) continue;
+      const std::string hash =
+          row.hashimyei.empty() ? maybe_hashimyei_from_canonical(row.canonical_path)
+                                : row.hashimyei;
+      if (hash.empty()) continue;
+      const std::string bundle_key =
+          trim_ascii(row.run_id) + "|" + std::to_string(row.wave_cursor);
+      auto& bundle = bundles_by_hash[hash][bundle_key];
+      bundle.run_id = trim_ascii(row.run_id);
+      bundle.wave_cursor = row.wave_cursor;
+      bundle.latest_ts_ms = std::max(bundle.latest_ts_ms, row.ts_ms);
+      bundle.fragments.push_back(row);
+    }
+
+    std::vector<family_candidate_t> candidates{};
+    candidates.reserve(bundles_by_hash.size());
+    for (auto& [hash, bundles] : bundles_by_hash) {
+      family_candidate_t candidate{};
+      candidate.hashimyei = hash;
+      if (has_current_rank_state) {
+        candidate.current_rank =
+            cuwacunu::hero::family_rank::rank_for_hashimyei(current_rank_state, hash);
+      }
+
+      bundle_t* selected_bundle = nullptr;
+      for (auto& [_, bundle] : bundles) {
+        if (!selected_bundle) {
+          selected_bundle = &bundle;
+          continue;
+        }
+        if (bundle.latest_ts_ms != selected_bundle->latest_ts_ms) {
+          if (bundle.latest_ts_ms > selected_bundle->latest_ts_ms) {
+            selected_bundle = &bundle;
+          }
+          continue;
+        }
+        if (bundle.wave_cursor != selected_bundle->wave_cursor) {
+          if (bundle.wave_cursor > selected_bundle->wave_cursor) {
+            selected_bundle = &bundle;
+          }
+          continue;
+        }
+        if (bundle.run_id < selected_bundle->run_id) {
+          selected_bundle = &bundle;
+        }
+      }
+      if (!selected_bundle) continue;
+      candidate.selected_run_id = selected_bundle->run_id;
+      candidate.selected_wave_cursor = selected_bundle->wave_cursor;
+      candidate.selected_bundle_ts_ms = selected_bundle->latest_ts_ms;
+      candidate.fragments = std::move(selected_bundle->fragments);
+      if (!candidate.fragments.empty()) {
+        candidate.canonical_path = candidate.fragments.front().canonical_path.empty()
+                                       ? (family_selector + "." + hash)
+                                       : candidate.fragments.front().canonical_path;
+      }
+      std::sort(candidate.fragments.begin(), candidate.fragments.end(),
+                [](const runtime_report_fragment_t& a,
+                   const runtime_report_fragment_t& b) {
+                  if (a.schema != b.schema) return a.schema < b.schema;
+                  if (a.ts_ms != b.ts_ms) return a.ts_ms > b.ts_ms;
+                  return a.report_fragment_id > b.report_fragment_id;
+                });
+      candidates.push_back(std::move(candidate));
+    }
+
+    std::sort(candidates.begin(), candidates.end(),
+              [](const family_candidate_t& a, const family_candidate_t& b) {
+                if (a.current_rank.has_value() != b.current_rank.has_value()) {
+                  return a.current_rank.has_value();
+                }
+                if (a.current_rank.has_value() && b.current_rank.has_value() &&
+                    a.current_rank != b.current_rank) {
+                  return *a.current_rank < *b.current_rank;
+                }
+                return a.hashimyei < b.hashimyei;
+              });
+
+    out->match_count = candidates.size();
+    out->ambiguity_count = 0;
+
+    std::ostringstream view{};
+    view << "/* synthetic view transport: "
+         << kFamilyEvaluationReportViewTransportSchema << " */\n";
+    append_view_line(&view, "report_transport_schema",
+                     kFamilyEvaluationReportViewTransportSchema);
+    append_view_line(&view, "view_kind", out->view_kind);
+    append_view_line(&view, "canonical_path", out->canonical_path);
+    append_view_line(&view, "family", family_selector);
+    if (!out->selector_intersection_cursor.empty()) {
+      append_view_line(&view, "selector_intersection_cursor",
+                       out->selector_intersection_cursor);
+    }
+    append_view_line(&view, "selector_hashimyei_cursor",
+                     out->selector_hashimyei_cursor);
+    append_view_line(&view, "contract_hash", out->contract_hash);
+    append_view_line(&view, "selection_mode",
+                     out->has_wave_cursor ? "historical" : "latest");
+    if (out->has_wave_cursor) {
+      append_view_u64_line(&view, "wave_cursor", out->wave_cursor);
+      append_view_line(&view, "wave_cursor_view",
+                       format_runtime_wave_cursor(out->wave_cursor));
+    }
+    if (has_current_rank_state) {
+      append_view_size_line(&view, "current_rank.assignment_count",
+                            current_rank_state.assignments.size());
+      if (!current_rank_state.source_view_kind.empty()) {
+        append_view_line(&view, "current_rank.source_view_kind",
+                         current_rank_state.source_view_kind);
+      }
+      if (!current_rank_state.source_view_transport_sha256.empty()) {
+        append_view_line(&view, "current_rank.source_view_transport_sha256",
+                         current_rank_state.source_view_transport_sha256);
+      }
+    }
+    append_view_size_line(&view, "candidate_count", candidates.size());
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+      const auto& candidate = candidates[i];
+      const std::string prefix = "candidate." + std::to_string(i + 1);
+      append_view_line(&view, prefix + ".hashimyei", candidate.hashimyei);
+      append_view_line(&view, prefix + ".canonical_path", candidate.canonical_path);
+      if (candidate.current_rank.has_value()) {
+        append_view_u64_line(&view, prefix + ".current_rank",
+                             *candidate.current_rank);
+      }
+      append_view_line(&view, prefix + ".run_id", candidate.selected_run_id);
+      append_view_u64_line(&view, prefix + ".bundle_wave_cursor",
+                           candidate.selected_wave_cursor);
+      append_view_line(&view, prefix + ".bundle_wave_cursor_view",
+                       format_runtime_wave_cursor(candidate.selected_wave_cursor));
+      append_view_u64_line(&view, prefix + ".bundle_ts_ms",
+                           candidate.selected_bundle_ts_ms);
+      append_view_size_line(&view, prefix + ".fragment_count",
+                            candidate.fragments.size());
+      for (std::size_t j = 0; j < candidate.fragments.size(); ++j) {
+        const auto& fragment = candidate.fragments[j];
+        const std::string fragment_prefix =
+            prefix + ".fragment." + std::to_string(j + 1);
+        append_view_line(&view, fragment_prefix + ".report_fragment_id",
+                         fragment.report_fragment_id);
+        append_view_line(&view, fragment_prefix + ".canonical_path",
+                         fragment.canonical_path);
+        append_view_line(&view, fragment_prefix + ".schema", fragment.schema);
+        append_view_u64_line(&view, fragment_prefix + ".ts_ms", fragment.ts_ms);
+        if (!fragment.contract_hash.empty()) {
+          append_view_line(&view, fragment_prefix + ".contract_hash",
+                           fragment.contract_hash);
+        }
+        std::unordered_map<std::string, std::string> kv{};
+        runtime_lls_document_t ignored_document{};
+        std::string parse_error{};
+        if (!fragment.payload_json.empty() &&
+            parse_runtime_lls_payload(fragment.payload_json, &kv, &ignored_document,
+                                      &parse_error)) {
+          std::vector<std::pair<std::string, std::string>> keys{};
+          keys.reserve(kv.size());
+          for (const auto& [key, value] : kv) {
+            keys.push_back({key, value});
+          }
+          std::sort(keys.begin(), keys.end(),
+                    [](const auto& a, const auto& b) { return a.first < b.first; });
+          for (const auto& [key, value] : keys) {
+            append_view_line(&view, fragment_prefix + ".kv." + key, value);
+          }
+        } else if (!parse_error.empty()) {
+          append_view_line(&view, fragment_prefix + ".parse_error", parse_error);
+        }
+      }
+    }
+    append_view_size_line(&view, "match_count", out->match_count);
+    append_view_size_line(&view, "ambiguity_count", out->ambiguity_count);
+    out->view_lls = view.str();
+    return true;
+  }
+
+  if (!use_wave_cursor) {
+    set_error(error, "view selector requires wave_cursor or intersection_cursor");
+    return false;
+  }
+
   std::string source_selector_canonical_path = "tsi.source.dataloader";
   std::string network_selector_canonical_path =
       "tsi.wikimyei.representation.vicreg";
-  if (!intersection_cursor_token.empty()) {
-    runtime_intersection_cursor_t parsed_intersection{};
-    std::string parse_error{};
-    if (!lattice_catalog_store_t::parse_runtime_intersection_cursor(
-            intersection_cursor_token, &parsed_intersection, &parse_error)) {
-      set_error(error, parse_error);
-      return false;
-    }
-    if (use_wave_cursor && parsed_intersection.wave_cursor != wave_cursor) {
-      set_error(
-          error,
-          "wave_cursor and intersection_cursor select different wave_cursor values");
-      return false;
-    }
-    wave_cursor = parsed_intersection.wave_cursor;
-    use_wave_cursor = true;
-    out->selector_hashimyei_cursor = parsed_intersection.hashimyei_cursor;
+  if (!selector_canonical_path.empty()) {
     if (runtime_hashimyei_cursor_matches(source_selector_canonical_path,
-                                         parsed_intersection.hashimyei_cursor)) {
-      source_selector_canonical_path = parsed_intersection.hashimyei_cursor;
+                                         selector_canonical_path)) {
+      source_selector_canonical_path = selector_canonical_path;
     } else if (runtime_hashimyei_cursor_matches(
-                   network_selector_canonical_path,
-                   parsed_intersection.hashimyei_cursor)) {
-      network_selector_canonical_path = parsed_intersection.hashimyei_cursor;
+                   network_selector_canonical_path, selector_canonical_path)) {
+      network_selector_canonical_path = selector_canonical_path;
     } else {
       set_error(
           error,
@@ -2635,17 +3165,8 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
       return false;
     }
   }
-  if (!use_wave_cursor) {
-    set_error(error, "view selector requires wave_cursor or intersection_cursor");
-    return false;
-  }
 
-  out->view_kind = view_kind_token;
   out->canonical_path = std::string(kEntropicCapacityComparisonViewCanonicalPath);
-  out->selector_intersection_cursor = intersection_cursor_token;
-  out->contract_hash = contract_hash_token;
-  out->wave_cursor = wave_cursor;
-  out->has_wave_cursor = use_wave_cursor;
 
   std::vector<runtime_report_fragment_t> source_rows{};
   std::vector<runtime_report_fragment_t> network_rows{};

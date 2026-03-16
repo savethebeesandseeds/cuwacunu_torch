@@ -14,6 +14,12 @@ By submitting a feature request or other content (ideas, docs, assets, snippets,
 
 In short: inbound = outbound. We do not add extra restrictions beyond MIT for project contributions.
 
+## Trademark usage
+
+Contributing content to this repository does not grant any right to use
+`WAAJACU` branding in a way that suggests official status or endorsement.
+See [`TRADEMARKS.md`](./TRADEMARKS.md).
+
 ## Third-party material
 
 Do not remove or alter existing third-party notices.
