@@ -51,14 +51,18 @@ file = tsi.wikimyei.inference.mdn.value_estimation.man
 covers = instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 13]
-file = tsi.wikimyei.inference.transfer_matrix_evaluation.man
-covers = instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl,bnf/latent_lineage_state.bnf
+file = tsi.wikimyei.evaluation.embedding_sequence_analytics.man
+covers = instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 14]
+file = tsi.wikimyei.evaluation.transfer_matrix_evaluation.man
+covers = instructions/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl,bnf/latent_lineage_state.bnf
+
+[ENTRY 15]
 file = hero.config.man
 covers = instructions/default.hero.config.dsl,bnf/latent_lineage_state.bnf
 
-[ENTRY 15]
+[ENTRY 16]
 file = global.config.real_hero.man
 covers = .config
 
@@ -89,3 +93,11 @@ covers = bnf/runtime_lls.bnf
 [ENTRY 22]
 file = hero.runtime.config.man
 covers = instructions/default.hero.runtime.dsl,bnf/latent_lineage_state.bnf
+
+[ENTRY 23]
+file = global.config.bnf.man
+covers = .config
+
+[ENTRY 24]
+file = iitepi.runtime_binding.man
+covers = bnf/iitepi.runtime_binding.bnf

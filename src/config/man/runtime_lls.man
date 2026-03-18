@@ -18,45 +18,64 @@ allowed = owner.namespace.name.vN
 nuance = embedded subdocuments inside joined report_lls may use a namespaced schema key instead of top-level schema
 nuance_extra = persisted standalone runtime-artifact ingest still requires top-level schema
 
-[FIELD report_kind]
-key = report_kind
-scope = runtime identity envelope
-type = identifier
-required = when known by producer
-default = omitted
-range = non-empty identifier
-allowed = producer-defined
-nuance = standard common envelope field for report family intent
+[PROFILE RUNTIME_REPORT_HEADER]
+scope = persisted runtime report artifacts
+shape = flat top-level header plus flat payload
+required = schema,context,payload
+context = canonical_path,binding_id,wave_cursor[,source_runtime_cursor]
+semantic_taxon = required for analytics/evaluation reports and optional for operational reports in v1
+nuance = runtime reports stay flat in .lls form; payload is every remaining top-level key after schema, semantic_taxon, and context keys; source-selected reports may also add source_runtime_cursor to context
+nuance_extra = runtime reports are latest-facing facts by default; historical retrieval is an explicit wave_cursor query concern, while campaign/job lineage remains in runtime state and manifests
 
-[FIELD tsi_type]
-key = tsi_type
-scope = runtime identity envelope
-type = canonical type token
-required = when known by producer
-default = omitted
-range = non-empty identifier
-allowed = tsi.source...,tsi.wikimyei...,other registered canonical types
-nuance = distinguishes producer family from schema token
+[FIELD semantic_taxon]
+key = semantic_taxon
+scope = runtime report top-level header
+type = enum
+required = false
+default = omitted for operational reports in v1
+range = one runtime report taxonomy token
+allowed = source.data,embedding.data,embedding.evaluation,embedding.network
+nuance = analytics/evaluation reports use semantic_taxon to declare what the report means; when present it must be one of the allowed canonical taxonomy values
 
 [FIELD canonical_path]
 key = canonical_path
-scope = runtime identity envelope
-type = canonical component path
-required = when known by producer
-default = omitted
-range = non-empty canonical alias
-allowed = canonical path tokens
-nuance = canonical emission and migrated runtime ingest use canonical_path; legacy canonical_base is out of the strict runtime payload contract
-
-[FIELD run_id]
-key = run_id
-scope = runtime identity envelope
+scope = runtime report top-level context
 type = identifier
-required = for Lattice-ingestable standalone artifacts
+required = true for persisted runtime reports
+default = none
+range = stable semantic canonical path
+allowed = tsi.source.dataloader,tsi.wikimyei.representation.vicreg.0x<hex>
+nuance = canonical_path names the stable semantic report subject and must not absorb wave-selected runtime configuration such as symbol or date range
+
+[FIELD binding_id]
+key = binding_id
+scope = runtime report top-level context
+type = identifier
+required = true for persisted runtime reports
+default = none
+range = non-empty binding token
+allowed = runtime binding id string
+nuance = binding_id is the compact runtime selector that already identifies the effective contract and wave setup for the report context; campaign/job ids are intentionally not part of the shared report header
+
+[FIELD wave_cursor]
+key = wave_cursor
+scope = runtime report top-level context
+type = uint64
+required = true for persisted runtime reports
+default = none
+range = >= 0
+allowed = decimal integer
+nuance = persisted runtime reports store the packed wave cursor at top level; public query surfaces may additionally render it as <run>.<epoch>.<batch>
+
+[FIELD source_runtime_cursor]
+key = source_runtime_cursor
+scope = runtime report top-level context
+type = identifier
+required = false
 default = omitted
-range = non-empty identifier
-allowed = producer-defined run token
-nuance = current file-scan ingestion rejects ingestable .lls payloads that lack run_id
+range = compact source runtime selector
+allowed = <symbol>|<FROM>|<TO>
+nuance = optional semantic source selector derived from SOURCE.RUNTIME.{SYMBOL,FROM,TO}; useful for source-selected reports without promoting source projection metrics into the shared header
 
 [RULE RUNTIME_COMMENT_PORTABLE]
 id = RUNTIME_COMMENT_PORTABLE
@@ -112,4 +131,4 @@ id = CANONICAL_EMIT_PROFILE
 applies_to = canonical emission
 severity = info
 when = runtime payload is emitted canonically
-message = canonical emitters use deterministic key order, lowercase bools, decimal signed/unsigned integers, fixed-point doubles, explicit declared types, and canonical_path over canonical_base
+message = canonical emitters use deterministic key order, simplified report header fields first, lowercase bools, decimal signed/unsigned integers, fixed-point doubles, and explicit declared types

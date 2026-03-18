@@ -466,8 +466,8 @@ void print_readable_summary(const specs_t& decoded) {
 
 int main() {
   try {
-    const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    const char* global_config_path = "/cuwacunu/src/config/.config";
+    cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
     cuwacunu::iitepi::config_space_t::update_config();
 
     const std::string campaign_hash =
@@ -513,7 +513,8 @@ int main() {
     }
 
     const std::string grammar_path =
-        std::filesystem::path(cuwacunu::iitepi::config_space_t::config_folder) /
+        std::filesystem::path(cuwacunu::iitepi::config_space_t::config_file_path)
+            .parent_path() /
         cuwacunu::iitepi::config_space_t::get<std::string>(
             "BNF", "jkimyei_specs_grammar_filename");
     if (!std::filesystem::exists(grammar_path) ||

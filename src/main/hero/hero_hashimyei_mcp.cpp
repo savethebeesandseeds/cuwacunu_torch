@@ -50,7 +50,6 @@ void print_help(const char* argv0) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  cuwacunu::hero::hashimyei_mcp::app_context_t app{};
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 
   std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
@@ -151,10 +150,18 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  cuwacunu::hero::hashimyei_mcp::app_context_t app{};
+
   if (hero_config_path.empty()) {
     hero_config_path =
         cuwacunu::hero::hashimyei_mcp::resolve_hashimyei_hero_dsl_path(
             global_config_path);
+  }
+  if (hero_config_path.empty()) {
+    std::cerr << "[" << kServerName
+              << "] missing [REAL_HERO].hashimyei_hero_dsl_filename in "
+              << global_config_path.string() << "\n";
+    return 2;
   }
 
   cuwacunu::hero::hashimyei_mcp::hashimyei_runtime_defaults_t defaults{};
@@ -166,41 +173,47 @@ int main(int argc, char** argv) {
   }
 
   if (!store_root_overridden) {
-    if (!defaults.store_root.empty()) {
-      store_root = defaults.store_root;
-    } else {
-      store_root = cuwacunu::hero::hashimyei_mcp::default_store_root();
-    }
+    store_root = defaults.store_root;
   }
   if (!catalog_overridden) {
-    if (!defaults.catalog_path.empty()) {
-      catalog_path = defaults.catalog_path;
-    } else {
-      catalog_path =
-          cuwacunu::hero::hashimyei_mcp::default_catalog_path(store_root);
-    }
-  } else if (catalog_path.empty()) {
-    catalog_path = cuwacunu::hero::hashimyei_mcp::default_catalog_path(store_root);
+    catalog_path = defaults.catalog_path;
+  }
+  if (store_root.empty()) {
+    std::cerr << "[" << kServerName << "] resolved empty store_root\n";
+    return 2;
+  }
+  if (catalog_path.empty()) {
+    std::cerr << "[" << kServerName << "] resolved empty catalog_path\n";
+    return 2;
   }
 
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t options{};
   options.catalog_path = catalog_path;
   options.encrypted = false;
 
-  std::filesystem::path lattice_catalog_path =
-      cuwacunu::hero::lattice_mcp::default_catalog_path(store_root);
+  std::filesystem::path lattice_catalog_path{};
   {
     const auto lattice_hero_config_path =
         cuwacunu::hero::lattice_mcp::resolve_lattice_hero_dsl_path(
             global_config_path);
+    if (lattice_hero_config_path.empty()) {
+      std::cerr << "[" << kServerName
+                << "] missing [REAL_HERO].lattice_hero_dsl_filename in "
+                << global_config_path.string() << "\n";
+      return 2;
+    }
     cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t lattice_defaults{};
     std::string lattice_defaults_error{};
-    if (cuwacunu::hero::lattice_mcp::load_wave_runtime_defaults(
+    if (!cuwacunu::hero::lattice_mcp::load_wave_runtime_defaults(
             lattice_hero_config_path, &lattice_defaults, &lattice_defaults_error)) {
-      if (!lattice_defaults.catalog_path.empty()) {
-        lattice_catalog_path = lattice_defaults.catalog_path;
-      }
+      std::cerr << "[" << kServerName << "] " << lattice_defaults_error << "\n";
+      return 2;
     }
+    lattice_catalog_path = lattice_defaults.catalog_path;
+  }
+  if (lattice_catalog_path.empty()) {
+    std::cerr << "[" << kServerName << "] resolved empty lattice catalog_path\n";
+    return 2;
   }
 
   app.store_root = store_root;

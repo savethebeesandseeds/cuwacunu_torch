@@ -86,7 +86,7 @@ Hashimyei MCP:
 
 - `hero.hashimyei.list`
 - `hero.hashimyei.get_component_manifest`
-- `hero.hashimyei.get_founding_dsl`
+- `hero.hashimyei.get_founding_dsl_bundle`
 - `hero.hashimyei.update_rank`
 - `hero.hashimyei.reset_catalog`
 
@@ -97,6 +97,15 @@ ordering, and synchronizes the lattice catalog so report views see the same
 rank overlay. Rank exists only after an explicit overlay is written; it does
 not bootstrap automatically and does not affect runtime component selection or
 docking.
+Component manifests are contract-scoped revisions and carry both
+`founding_dsl_provenance_*` metadata and `docking_signature_sha256_hex`, so
+Hashimyei can distinguish lineage origin from contract docking compatibility.
+They also carry a component `lineage_state` such as `active`, `deprecated`,
+`replaced`, or `tombstone`.
+Each component revision also stores an immutable founding DSL bundle snapshot
+under `.hashimyei/founding_dsl_bundles/<component_id>/...`; the
+`hero.hashimyei.get_founding_dsl_bundle` tool reads that stored bundle as the
+canonical founding-bundle surface.
 
 Lattice MCP:
 
@@ -156,8 +165,8 @@ The staged contract and wave snapshots resolve `% __var ? default %` placeholder
 
 Runtime manifests:
 
-- campaign schema: `hero.runtime.campaign.v1`
-- job schema: `hero.runtime.job.v2`
+- campaign schema: `hero.runtime.campaign.v2`
+- job schema: `hero.runtime.job.v3`
 
 ## Lattice Notes
 
@@ -166,22 +175,29 @@ Lattice is healthiest as a fact index plus query-time view engine.
 - `hero.lattice.get_view` returns a query-time derived transport, not a persisted runtime report fragment.
 - `hero.lattice.get_fact` returns an assembled complete fact bundle for one component canonical path and selector context.
 - persisted fragments remain strict runtime `.lls` facts emitted by their owning components.
+- persisted reports should be read as latest semantic facts by default; historical retrieval is an explicit `wave_cursor` query, not the primary report model.
+- fact tool outputs now foreground `canonical_path`, semantic taxa, and context summaries.
 - fact retrieval is component/canonical-path centric; correlation keys such as
-  `wave_cursor` are view selectors, not the primary identity of a
-  persisted fact.
+  `wave_cursor` remain view selectors, while persisted report meaning now lives
+  in the flat header `schema`, `semantic_taxon`, `canonical_path`, `binding_id`,
+  `wave_cursor`, with optional `source_runtime_cursor` on source-selected
+  reports.
+- persisted runtime reports are now documented around the flat header
+  `schema`, `semantic_taxon`, `canonical_path`, `binding_id`, `wave_cursor`, optional
+  `source_runtime_cursor`, plus payload keys.
 - normal read tools query the current lattice catalog only; refreshing from the
   runtime store is explicit via `hero.lattice.refresh(reingest=true)`.
 
 For runtime report query surfaces:
 
-- `campaign_hash` is the public campaign-era runtime metadata field
-- `binding_id` is the public binding selection field
-- public `wave_cursor` uses readable `<run>.<epoch>.<batch>` form
+- `binding_id` is the primary runtime selection field carried inside report context
+- public `wave_cursor` uses readable `<run>.<epoch>.<batch>` form when a historical context is explicitly requested
+- campaign and job lineage stay in Runtime Hero campaign/job state plus run manifests; they are adjacent to report facts, not part of the report header
 
 Current derived view kinds:
 
-- `entropic_capacity_comparison`: compares `piaabo.torch_compat.data_analytics.v2` facts against `piaabo.torch_compat.network_analytics.v5` facts for one `wave_cursor`, with optional `canonical_path` narrowing and optional `contract_hash` filtering
-- `family_evaluation_report`: serializes runtime reports for one tsiemene family and one `contract_hash`, defaulting to the latest coherent bundle per family member. Optional `wave_cursor` requests one historical context instead. Ranking decisions stay client-owned; this view only exposes the evidence transport.
+- `entropic_capacity_comparison`: compares `source.data` facts against `embedding.network` facts for one `wave_cursor`, with optional `canonical_path` narrowing and optional `contract_hash` filtering
+- `family_evaluation_report`: serializes runtime reports for one tsiemene family and one `contract_hash`, defaulting to the latest coherent bundle per family member. Optional `wave_cursor` requests a historical context instead. Ranking decisions stay client-owned; this view only exposes the evidence transport.
 
 ## Dev Reset
 

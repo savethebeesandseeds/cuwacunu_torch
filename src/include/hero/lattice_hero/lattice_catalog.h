@@ -94,10 +94,13 @@ struct matrix_query_t {
 
 struct runtime_report_fragment_t {
   std::string report_fragment_id{};
-  std::string run_id{};
   std::string canonical_path{};
+  std::string semantic_taxon{};
+  std::string report_canonical_path{};
   std::string family{};
   std::string hashimyei{};
+  std::string binding_id{};
+  std::string source_runtime_cursor{};
   std::string contract_hash{};
   std::string schema{};
   std::string report_fragment_sha256{};
@@ -394,6 +397,8 @@ class lattice_catalog_store_t {
   [[nodiscard]] bool rebuild_indexes(std::string* error = nullptr);
   [[nodiscard]] bool ingest_runtime_report_fragments(
       const std::filesystem::path& store_root, std::string* error = nullptr);
+  [[nodiscard]] bool ingest_runtime_artifact(
+      const std::filesystem::path& path, std::string* error = nullptr);
 
   [[nodiscard]] bool resolve_cell(const wave_cell_coord_t& coord,
                                   const wave_execution_profile_t& profile,
@@ -558,6 +563,7 @@ class lattice_catalog_store_t {
   std::unordered_map<std::uint64_t, std::vector<std::string>>
       runtime_report_fragment_ids_by_wave_cursor_{};
   std::unordered_set<std::string> runtime_ledger_{};
+  std::unordered_map<std::string, std::string> runtime_ledger_path_by_id_{};
   std::unordered_map<std::string, cuwacunu::hero::family_rank::state_t>
       explicit_family_rank_by_scope_{};
 };

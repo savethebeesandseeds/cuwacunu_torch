@@ -1,0 +1,57 @@
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: [tsi.source.dataloader.h] TODO: add regime/OOD-aware sampling policies for representation evaluation (blocked temporal splits, regime holdout, cross-instrument holdout). Current sampler policy is sequential/random index traversal only.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: [tsi.source.dataloader.h] TODO: there are other forms of normalization e.g. log(x_t/x_(t-1)), volatility scaling, or z-score windows.[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: [wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h] Transfer-matrix evaluation is vicreg-owned (no standalone probe hashimyei/history state). It restores matrix-evaluation training/evaluation core (null/linear/residual/mdn, prequential effort/skill/n90/selectivity) and emits run-end reports.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: network_analytics: pending improvements include node<->module crosswalk. 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk). 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: capacity concentration metrics (param/norm HHI), and expanded matrix diagnostics.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: network_analytics: pending improvements include node<->module crosswalk. 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk). 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: capacity concentration metrics (param/norm HHI), and expanded matrix diagnostics.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (torch_utils.cpp)[] #FIXME be aware to also seed the random number generator for libtorch.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (torch_utils.cpp)[] #FIXME consider the implincations of changing floats to double. 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: network_analytics: pending improvements include node<->module crosswalk. 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk). 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: capacity concentration metrics (param/norm HHI), and expanded matrix diagnostics.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: [vicreg_4d.cpp] In train+emit execution paths, representation payload encode plus VICReg two-view training currently implies ~2 encoder forwards per batch (payload + batched[aug1,aug2]).
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: [vicreg_4d.cpp] Future optimization candidate: stack [payload,aug1,aug2] in one encoder call when runtime semantics (SWA/eval-vs-train parity and deterministic emit policy) allow it.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (exchange_utils.cpp)[serialization] parsing args and resp to and from json is somehow slow. Leaving this until further upgrade.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (exchange_utils.cpp)[serialization] validate DOUBLE_SERIALIZATION_PRECISION
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (dsecurity.cpp)[] secure the secret with hardware 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (dsecurity.cpp)[] add second factor authentication 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (dfiles.cpp)[] binaryFile_to_vector has a note on imporving performance 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: network_analytics: pending improvements include node<->module crosswalk. 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk). 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: capacity concentration metrics (param/norm HHI), and expanded matrix diagnostics.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (observation_spec.cpp)[] mutex on observation runtime might not be needed 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (observation_spec.cpp)[] observation runtime should include and expose the dataloaders, dataloaders should not be external variables 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (statistics_space.h)[] statistics_space_t needs to include delta_time in the calculation.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (statistics_space.h)[] statistics_space_t and statistics_space_n_t only work for dots spaced equaly in time.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (statistics_space.cpp)[] #FIXME statistics_space_t for actual charts involve more measures.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (statistics_space.cpp)[] is better to use Non-parametric spearman rank correlation coheficient.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (statistics_space.h)[] add RSI to statistics_space_t.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (statistics_space.h)[] add MACD to statistics_space_t.
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (bnf_ast.cpp)[] node hashes are not actually hashes 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (bnf_grammar_lexer.cpp)[] guard printing the errors with secure methods 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (bnf_grammar_parser.cpp)[] guard printing the errors with secure methods 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (bnf_grammar_parser.cpp)[] could use better grammar verification 
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (bnf_instruction_parser.cpp)[] overall the methods in this file can be faster
+[[36m0x125916432719872[0m]: [48;2;255;165;0mDEV_WARNING[0m: (bnf_instruction_parser.cpp)[parse_ProductionAlternative] ProductionAlternative::Flags are not used
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m126[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m129[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m137[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m140[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m144[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m147[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m183[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m233[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m242[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m261[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m311[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m320[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m400[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [2K	 [33m-[2;90m [sanitize_csv_into_binary_file][0m extra large step (d=[33m2[0m) at line [34m409[0m in [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv[0m
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [MemoryMappedDataLoader] Multi-channel stepping follows the highest channel progression; this is deterministic but may not match all alignment policies.
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [torch_utils][CPU_FALLBACK_ACTIVE] requested='gpu' attempted='cuda' reason='cuda unavailable'. Heavy compute will run on CPU for this component.
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [torch_utils][CPU_FALLBACK_ACTIVE] requested='gpu' attempted='cuda' reason='cuda unavailable'. Heavy compute will run on CPU for this component.
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [runtime_binding.contract.run] configured hashimyei missing for node=w_rep hashimyei=0x0000; bootstrapping a new hashimyei from the active founding_dsl_bundle/runtime state
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [torch_utils][CPU_FALLBACK_ACTIVE] requested='gpu' attempted='cuda' reason='cuda unavailable'. Heavy compute will run on CPU for this component.
+[[36m0x125916432719872[0m]: [43mWARNING[0m: [torch_utils][CPU_FALLBACK_ACTIVE] requested='gpu' attempted='cuda' reason='cuda unavailable'. Heavy compute will run on CPU for this component.

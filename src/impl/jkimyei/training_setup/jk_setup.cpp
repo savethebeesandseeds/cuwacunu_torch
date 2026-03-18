@@ -52,7 +52,9 @@ namespace {
 
 [[nodiscard]] std::string load_jkimyei_grammar_or_throw() {
   const std::string grammar_path = resolve_path_from_folder(
-      cuwacunu::iitepi::config_space_t::config_folder,
+      std::filesystem::path(cuwacunu::iitepi::config_space_t::config_file_path)
+          .parent_path()
+          .string(),
       unquote_if_wrapped(cuwacunu::iitepi::config_space_t::get<std::string>(
           "BNF", "jkimyei_specs_grammar_filename")));
   if (!has_non_ws_ascii(grammar_path) || !std::filesystem::exists(grammar_path) ||

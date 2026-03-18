@@ -6,7 +6,7 @@
 #include "iitepi/iitepi.h"
 
 int main() try {
-  cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/");
+  cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/.config");
   cuwacunu::iitepi::config_space_t::update_config();
 
   cuwacunu::iitepi::runtime_binding_space_t::init();

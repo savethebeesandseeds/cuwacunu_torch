@@ -5,9 +5,11 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state.h"
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "camahjucunu/dsl/wave_contract_binding/wave_contract_binding.h"
 
 namespace {
 
@@ -38,16 +40,29 @@ int main() {
         "/cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.dsl";
     const std::string mdn_dsl_path =
         "/cuwacunu/src/config/instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl";
-    const std::string probe_dsl_path =
-        "/cuwacunu/src/config/instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl";
+    const std::string embedding_eval_dsl_path =
+        "/cuwacunu/src/config/instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
+    const std::string evaluation_dsl_path =
+        "/cuwacunu/src/config/instructions/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
 
     const std::string grammar = read_text_file(grammar_path);
     const std::string vicreg_dsl = read_text_file(vicreg_dsl_path);
     const std::string mdn_dsl = read_text_file(mdn_dsl_path);
-    const std::string probe_dsl = read_text_file(probe_dsl_path);
+    const std::string embedding_eval_dsl = read_text_file(embedding_eval_dsl_path);
+    const std::string evaluation_dsl = read_text_file(evaluation_dsl_path);
+
+    std::string resolved_vicreg_dsl;
+    std::string resolve_error;
+    const std::vector<cuwacunu::camahjucunu::dsl_variable_t> no_variables;
+    if (!cuwacunu::camahjucunu::resolve_dsl_variables_in_text(
+            vicreg_dsl, no_variables, &resolved_vicreg_dsl, &resolve_error)) {
+      throw std::runtime_error("failed to resolve vicreg dsl defaults: " +
+                               resolve_error);
+    }
 
     const auto vicreg_decoded =
-        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(grammar, vicreg_dsl);
+        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
+            grammar, resolved_vicreg_dsl);
     const auto vicreg_map = vicreg_decoded.to_map();
     assert(vicreg_decoded.entries.size() >= 10);
     assert(vicreg_map.at("encoding_dims") == "72");
@@ -66,14 +81,24 @@ int main() {
     assert(e_target_dims != nullptr);
     assert(e_target_dims->declared_type == "arr[int]");
 
-    const auto probe_decoded =
-        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(grammar, probe_dsl);
-    const auto probe_map = probe_decoded.to_map();
-    assert(probe_map.size() == 4);
-    assert(probe_map.at("check_temporal_order") == "true");
-    assert(probe_map.at("validate_vicreg_out") == "true");
-    assert(probe_map.at("report_shapes") == "false");
-    assert(probe_map.at("summary_every_steps") == "256");
+    const auto embedding_eval_decoded =
+        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
+            grammar, embedding_eval_dsl);
+    const auto embedding_eval_map = embedding_eval_decoded.to_map();
+    assert(embedding_eval_map.size() == 4);
+    assert(embedding_eval_map.at("max_samples") == "4096");
+    assert(embedding_eval_map.at("max_features") == "2048");
+    assert(embedding_eval_map.at("mask_epsilon") == "1e-12");
+    assert(embedding_eval_map.at("standardize_epsilon") == "1e-8");
+
+    const auto evaluation_decoded =
+        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(grammar, evaluation_dsl);
+    const auto evaluation_map = evaluation_decoded.to_map();
+    assert(evaluation_map.size() == 4);
+    assert(evaluation_map.at("check_temporal_order") == "true");
+    assert(evaluation_map.at("validate_vicreg_out") == "true");
+    assert(evaluation_map.at("report_shapes") == "false");
+    assert(evaluation_map.at("summary_every_steps") == "256");
 
     const std::string duplicate_keys =
         "alpha:int = 1\n"
@@ -132,10 +157,11 @@ int main() {
     }
     assert(malformed_rejected);
 
-    std::cout << "[test_dsl_latent_lineage_state] entries(vicreg/mdn/probe)="
+    std::cout << "[test_dsl_latent_lineage_state] entries(vicreg/mdn/embedding/evaluation)="
               << vicreg_decoded.entries.size() << "/"
               << mdn_decoded.entries.size() << "/"
-              << probe_decoded.entries.size() << "\n";
+              << embedding_eval_decoded.entries.size() << "/"
+              << evaluation_decoded.entries.size() << "\n";
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "[test_dsl_latent_lineage_state] exception: " << e.what() << "\n";

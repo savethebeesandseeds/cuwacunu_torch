@@ -44,6 +44,8 @@ int main() {
   const fs::path channels_path = source_dir / "demo.channels.dsl";
   const fs::path vicreg_path =
       source_dir / "default.tsi.wikimyei.representation.vicreg.dsl";
+  const fs::path embedding_eval_path =
+      source_dir / "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
   const fs::path network_design_path = source_dir / "demo.network.dsl";
   const fs::path jkimyei_path = source_dir / "demo.jkimyei.dsl";
   const fs::path campaign_path = source_dir / "demo.campaign.dsl";
@@ -53,6 +55,7 @@ int main() {
   write_file(channels_path, "CHANNELS { }\n");
   write_file(network_design_path, "NETWORK_DESIGN { }\n");
   write_file(jkimyei_path, "JKSPEC 2.0\n");
+  write_file(embedding_eval_path, "max_samples:int = 1024\n");
   write_file(vicreg_path,
              "learning_rate:float = % __lr ? 0.001 %\n"
              "network_design_dsl_file:str = demo.network.dsl\n"
@@ -60,6 +63,7 @@ int main() {
 
   write_file(contract_path,
              "-----BEGIN IITEPI CONTRACT-----\n"
+             "__lr = 0.123;\n"
              "CIRCUIT_FILE: demo.contract.circuit.dsl;\n"
              "AKNOWLEDGE: src = tsi.source.dataloader;\n"
              "AKNOWLEDGE: rep = tsi.wikimyei.representation.vicreg;\n"
@@ -109,7 +113,6 @@ int main() {
              "  BIND bind_alpha {\n"
              "    __sampler = random;\n"
              "    __workers = 2;\n"
-             "    __lr = 0.123;\n"
              "    __symbol = ADAUSDT;\n"
              "    CONTRACT = contract_demo;\n"
              "    WAVE = wave_alpha;\n"
@@ -132,7 +135,7 @@ int main() {
   assert(campaign_snapshot.binding_id == "bind_alpha");
   assert(campaign_snapshot.original_contract_ref == "contract_demo");
   assert(campaign_snapshot.wave_ref == "wave_alpha");
-  assert(campaign_snapshot.variables.size() == 4);
+  assert(campaign_snapshot.variables.size() == 3);
 
   const std::string campaign_snapshot_text =
       read_file(campaign_snapshot.campaign_dsl_path);
@@ -140,9 +143,16 @@ int main() {
       read_file(campaign_snapshot.contract_dsl_path);
   const std::string wave_snapshot_text =
       read_file(campaign_snapshot.wave_dsl_path);
+  const fs::path instructions_dir =
+      fs::path(campaign_snapshot.campaign_dsl_path).parent_path();
+  const fs::path vicreg_snapshot_path =
+      instructions_dir / "tsi.wikimyei.representation.vicreg.dsl";
+  const fs::path embedding_eval_snapshot_path =
+      instructions_dir / "tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
   const std::string vicreg_snapshot_text =
-      read_file(root / "campaign_job" /
-                "default.tsi.wikimyei.representation.vicreg.dsl");
+      read_file(vicreg_snapshot_path);
+  const std::string embedding_eval_snapshot_text =
+      read_file(embedding_eval_snapshot_path);
   assert(campaign_snapshot_text.find("IMPORT_CONTRACT_FILE \"binding.contract.dsl\";") !=
          std::string::npos);
   assert(campaign_snapshot_text.find("IMPORT_WAVE_FILE \"binding.wave.dsl\";") !=
@@ -150,6 +160,7 @@ int main() {
   assert(campaign_snapshot_text.find("CONTRACT = contract_binding;") !=
          std::string::npos);
   assert(campaign_snapshot_text.find("RUN bind_alpha;") != std::string::npos);
+  assert(contract_snapshot_text.find("__lr = 0.123;") != std::string::npos);
   assert(contract_snapshot_text.find("CIRCUIT_FILE: demo.contract.circuit.dsl;") !=
          std::string::npos);
   assert(wave_snapshot_text.find("WORKERS: 2;") != std::string::npos);
@@ -159,18 +170,20 @@ int main() {
          std::string::npos);
   assert(wave_snapshot_text.find("CHANNELS_DSL_FILE: demo.channels.dsl;") !=
          std::string::npos);
-  assert(fs::exists(root / "campaign_job" / "demo.contract.circuit.dsl"));
-  assert(fs::exists(root / "campaign_job" / "demo.sources.dsl"));
-  assert(fs::exists(root / "campaign_job" / "demo.channels.dsl"));
-  assert(fs::exists(root / "campaign_job" /
-                    "default.tsi.wikimyei.representation.vicreg.dsl"));
-  assert(fs::exists(root / "campaign_job" / "demo.network.dsl"));
-  assert(fs::exists(root / "campaign_job" / "demo.jkimyei.dsl"));
+  assert(fs::exists(instructions_dir / "demo.contract.circuit.dsl"));
+  assert(fs::exists(instructions_dir / "demo.sources.dsl"));
+  assert(fs::exists(instructions_dir / "demo.channels.dsl"));
+  assert(fs::exists(vicreg_snapshot_path));
+  assert(fs::exists(embedding_eval_snapshot_path));
+  assert(fs::exists(instructions_dir / "demo.network.dsl"));
+  assert(fs::exists(instructions_dir / "demo.jkimyei.dsl"));
   assert(vicreg_snapshot_text.find("learning_rate:float = 0.123") !=
          std::string::npos);
   assert(vicreg_snapshot_text.find("network_design_dsl_file:str = demo.network.dsl") !=
          std::string::npos);
   assert(vicreg_snapshot_text.find("jkimyei_dsl_file:str = demo.jkimyei.dsl") !=
+         std::string::npos);
+  assert(embedding_eval_snapshot_text.find("max_samples:int = 1024") !=
          std::string::npos);
 
   ok = cuwacunu::hero::wave_contract_binding_runtime::

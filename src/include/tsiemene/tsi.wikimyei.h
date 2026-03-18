@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -17,8 +18,12 @@ struct TsiWikimyeiInitRecord {
 
   std::string hashimyei{};
   std::string contract_hash{};
+  std::string binding_id{};
   std::string run_id{};
-  std::string canonical_base{};
+  std::string source_runtime_cursor{};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
+  std::string canonical_path{};
   std::filesystem::path store_root{};
   std::filesystem::path report_fragment_directory{};
   std::filesystem::path weights_file{};
@@ -31,12 +36,16 @@ struct TsiWikimyeiInitRecord {
 
 struct TsiWikimyeiRuntimeIoContext {
   bool enable_debug_outputs{false};
+  std::string binding_id{};
   std::string run_id{};
+  std::string source_runtime_cursor{};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
 };
 
 struct TsiWikimyeiInitEntry {
   std::string hashimyei{};
-  std::string canonical_base{};
+  std::string canonical_path{};
   std::filesystem::path report_fragment_directory{};
   std::size_t weights_count{0};
 };

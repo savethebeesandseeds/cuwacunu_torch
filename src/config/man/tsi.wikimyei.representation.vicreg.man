@@ -15,7 +15,7 @@ required = true
 default = none
 range = > 0 at runtime
 allowed = integer
-nuance = can be overridden by network_design payload if present
+nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
 
 [FIELD channel_expansion_dim]
 key = channel_expansion_dim
@@ -25,7 +25,7 @@ required = true
 default = none
 range = > 0 at runtime
 allowed = integer
-nuance = can be overridden by network_design payload if present
+nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
 
 [FIELD fused_feature_dim]
 key = fused_feature_dim
@@ -35,7 +35,7 @@ required = true
 default = none
 range = > 0 at runtime
 allowed = integer
-nuance = can be overridden by network_design payload if present
+nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
 
 [FIELD encoder_hidden_dims]
 key = encoder_hidden_dims
@@ -45,7 +45,7 @@ required = true
 default = none
 range = > 0 at runtime
 allowed = integer
-nuance = can be overridden by network_design payload if present
+nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
 
 [FIELD encoder_depth]
 key = encoder_depth
@@ -55,7 +55,7 @@ required = true
 default = none
 range = > 0 at runtime
 allowed = integer
-nuance = can be overridden by network_design payload if present
+nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
 
 [FIELD projector_mlp_spec]
 key = projector_mlp_spec
@@ -65,7 +65,7 @@ required = true
 default = none
 range = non-empty
 allowed = hyphen-separated widths string (for example 128-256-128)
-nuance = may be overridden by network_design projector dims mapping
+nuance = may be overridden by network_design projector dims mapping; contract-scoped __variables may resolve this value before module decode
 
 [FIELD projector_norm]
 key = projector_norm
@@ -165,7 +165,7 @@ required = true
 default = none
 range = existing file
 allowed = absolute path or path relative to vicreg module file folder
-nuance = contract-owned jkimyei specs payload binding; wave selects only PROFILE_ID and TRAIN policy
+nuance = contract-owned jkimyei specs payload binding; wave selects TRAIN policy and only needs PROFILE_ID when the contract exposes multiple compatible profiles
 
 [RULE UNKNOWN_KEYS]
 id = UNKNOWN_KEYS

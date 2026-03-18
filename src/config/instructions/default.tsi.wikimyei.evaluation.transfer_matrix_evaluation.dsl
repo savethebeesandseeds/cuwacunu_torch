@@ -1,5 +1,5 @@
 /*
-  default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl
+  default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl
   ============================================================
   Purpose:
     Ephemeral transfer-matrix evaluation runtime knobs owned by

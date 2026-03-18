@@ -108,7 +108,7 @@ tests:
 # -----------------------------------------------------------------
 .PHONY: clean_common
 clean_common:
-	@shred -u \
+	$(Q)$(CLEAN_SHRED_CMD) \
 	  $(OUTPUT_PATH)/common/*.d \
 	  $(OUTPUT_PATH)/common/*.o \
 	  $(OUTPUT_PATH)/common/*.a \
@@ -121,12 +121,11 @@ clean_common:
 	  $(OUTPUT_PATH)/common/dconfig/*.o \
 	  $(OUTPUT_PATH)/common/dconfig/*.a \
 	  $(OUTPUT_PATH)/.deps/common/dconfig.d \
-	  $(OUTPUT_PATH)/.deps/common/dconfig/*.d \
-	  2>/dev/null || true
+	  $(OUTPUT_PATH)/.deps/common/dconfig/*.d
 
 .PHONY: clean_dsl
 clean_dsl:
-	@shred -u \
+	$(Q)$(CLEAN_SHRED_CMD) \
 	  $(OUTPUT_PATH)/common/parser_types.d \
 	  $(OUTPUT_PATH)/common/parser_types.o \
 	  $(OUTPUT_PATH)/common/parser_types.a \
@@ -177,24 +176,21 @@ clean_dsl:
 	  $(OUTPUT_PATH)/common/tsiemene_circuit_decode_ast.a \
 	  $(OUTPUT_PATH)/common/iitepi_wave.d \
 	  $(OUTPUT_PATH)/common/iitepi_wave.o \
-	  $(OUTPUT_PATH)/common/iitepi_wave.a \
-	  2>/dev/null || true
+	  $(OUTPUT_PATH)/common/iitepi_wave.a
 
 .PHONY: clean_data
 clean_data:
-	@shred -u \
+	$(Q)$(CLEAN_SHRED_CMD) \
 	  $(OUTPUT_PATH)/libtorch/memory_mapped_*.d \
 	  $(OUTPUT_PATH)/libtorch/memory_mapped_*.o \
-	  $(OUTPUT_PATH)/libtorch/memory_mapped_*.a \
-	  2>/dev/null || true
+	  $(OUTPUT_PATH)/libtorch/memory_mapped_*.a
 
 .PHONY: clean_wikimyei
 clean_wikimyei:
-	@shred -u \
+	$(Q)$(CLEAN_SHRED_CMD) \
 	  $(OUTPUT_PATH)/libtorch/vicreg_4d.d \
 	  $(OUTPUT_PATH)/libtorch/vicreg_4d.o \
-	  $(OUTPUT_PATH)/libtorch/vicreg_4d.a \
-	  2>/dev/null || true
+	  $(OUTPUT_PATH)/libtorch/vicreg_4d.a
 
 # -----------------------------------------------------------------
 # Full clean (interactive) — wipes all object, dep, and archive files
@@ -205,8 +201,4 @@ clean:
 	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then \
 		echo "Aborting clean."; exit 1; fi
 	@echo "$(COLOR_RED) Cleaning cuwacunu build $(COLOR_RESET)"
-	@for d in "$(OUTPUT_PATH)" "$(TEST_OUT)" "$(HERO_OUT)"; do \
-	  [ -d "$$d" ] || continue; \
-	  find "$$d" -type f -exec shred -u {} + 2>/dev/null || true; \
-	  find "$$d" -depth -type d -empty -delete 2>/dev/null || true; \
-	done
+	$(Q)$(CLEAN_TREE_CMD) "$(OUTPUT_PATH)" "$(TEST_OUT)" "$(HERO_OUT)"

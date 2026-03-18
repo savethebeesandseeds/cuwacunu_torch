@@ -4,7 +4,7 @@
 
 // Runtime Hero tool registry. Keep the metadata and handler binding together so
 // tools/list, one-shot CLI, and MCP dispatch share one source of truth.
-HERO_RUNTIME_TOOL("hero.runtime.start_campaign", "Start the default iitepi campaign as a detached supervised campaign keyed by campaign_cursor", "{\"type\":\"object\",\"properties\":{\"config_folder\":{\"type\":\"string\"},\"reset_runtime_state\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_start_campaign)
+HERO_RUNTIME_TOOL("hero.runtime.start_campaign", "Start the default iitepi campaign as a detached supervised campaign keyed by campaign_cursor", "{\"type\":\"object\",\"properties\":{\"reset_runtime_state\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_start_campaign)
 HERO_RUNTIME_TOOL("hero.runtime.list_campaigns", "List known runtime campaigns keyed by campaign_cursor", "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_list_campaigns)
 HERO_RUNTIME_TOOL("hero.runtime.get_campaign", "Fetch one runtime campaign by campaign_cursor", "{\"type\":\"object\",\"properties\":{\"campaign_cursor\":{\"type\":\"string\"}},\"required\":[\"campaign_cursor\"],\"additionalProperties\":false}", handle_tool_get_campaign)
 HERO_RUNTIME_TOOL("hero.runtime.stop_campaign", "Signal one runtime campaign by campaign_cursor and stop its active child job when present", "{\"type\":\"object\",\"properties\":{\"campaign_cursor\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"}},\"required\":[\"campaign_cursor\"],\"additionalProperties\":false}", handle_tool_stop_campaign)

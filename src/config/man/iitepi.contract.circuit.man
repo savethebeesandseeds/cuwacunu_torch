@@ -7,16 +7,6 @@ TARGET_BNF = src/config/bnf/iitepi.contract.circuit.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_decode_text.cpp
 PRIMARY_VALIDATORS = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_validate.cpp,src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_resolve.cpp
 
-[FIELD INSTRUCTION.ACTIVE_CIRCUIT]
-key = active_circuit
-scope = instruction
-type = identifier
-required = false
-default = unset
-range = must match one declared <circuit_name> when set
-allowed = [A-Za-z0-9_]+
-nuance = when set, runtime selects and executes only the named circuit
-
 [FIELD CIRCUIT.NAME]
 key = <circuit_name>
 scope = circuit
@@ -25,7 +15,7 @@ required = true
 default = none
 range = unique per instruction
 allowed = [A-Za-z0-9_]+
-nuance = duplicate circuit names are rejected
+nuance = duplicate circuit names are rejected; the contract declares compatible named circuits while wave selects the operational target when more than one exists
 
 [FIELD INSTANCE.ALIAS]
 key = <instance_alias>
@@ -121,10 +111,3 @@ applies_to = terminal nodes
 severity = error
 when = node out_degree == 0 and node tsi type is not sink
 message = terminal instance must be sink type
-
-[RULE ACTIVE_CIRCUIT_REFERENCE]
-id = ACTIVE_CIRCUIT_REFERENCE
-applies_to = instruction
-severity = error
-when = active_circuit is set and no declared circuit name matches
-message = active_circuit references unknown circuit name

@@ -29,7 +29,6 @@ namespace hashimyei {
 
 inline constexpr std::string_view kReportFragmentManifestFilename = "manifest.v2.kv";
 inline constexpr std::string_view kReportFragmentManifestSchema = "hashimyei.report_fragment.manifest.v2";
-inline constexpr std::string_view kDefaultHashimyeiStoreRoot = "/cuwacunu/.hashimyei";
 inline constexpr std::string_view kCatalogFilename = "hashimyei_catalog.idydb";
 
 struct report_fragment_metadata_t {
@@ -43,7 +42,7 @@ struct report_fragment_identity_t {
   std::string family{};
   std::string model{};
   std::string hashimyei{};
-  std::string canonical_base{};
+  std::string canonical_path{};
   std::filesystem::path directory{};
   std::vector<std::filesystem::path> weight_files{};
   report_fragment_metadata_t metadata{};
@@ -56,7 +55,7 @@ struct report_fragment_manifest_file_t {
 
 struct report_fragment_manifest_t {
   std::string schema{std::string(kReportFragmentManifestSchema)};
-  std::string canonical_type{};
+  std::string family_canonical_path{};
   std::string family{};
   std::string model{};
   std::string report_fragment_id{};
@@ -147,11 +146,11 @@ struct report_fragment_manifest_t {
   namespace fs = std::filesystem;
   if (error) error->clear();
 
-  if (manifest.canonical_type.empty() ||
+  if (manifest.family_canonical_path.empty() ||
       manifest.family.empty() ||
       manifest.model.empty() ||
       manifest.report_fragment_id.empty()) {
-    if (error) *error = "report_fragment manifest missing canonical_type/family/model/report_fragment_id";
+    if (error) *error = "report_fragment manifest missing family_canonical_path/family/model/report_fragment_id";
     return false;
   }
 
@@ -172,7 +171,7 @@ struct report_fragment_manifest_t {
   }
 
   out << "schema=" << kReportFragmentManifestSchema << "\n";
-  out << "canonical_type=" << manifest.canonical_type << "\n";
+  out << "family_canonical_path=" << manifest.family_canonical_path << "\n";
   out << "family=" << manifest.family << "\n";
   out << "model=" << manifest.model << "\n";
   out << "report_fragment_id=" << manifest.report_fragment_id << "\n";
@@ -232,7 +231,7 @@ struct report_fragment_manifest_t {
     return false;
   }
 
-  read_kv("canonical_type", &out->canonical_type);
+  read_kv("family_canonical_path", &out->family_canonical_path);
   read_kv("family", &out->family);
   read_kv("model", &out->model);
   read_kv("report_fragment_id", &out->report_fragment_id);
@@ -281,11 +280,11 @@ struct report_fragment_manifest_t {
   }
   out->files = normalized_manifest_files(out->files);
 
-  if (out->canonical_type.empty() ||
+  if (out->family_canonical_path.empty() ||
       out->family.empty() ||
       out->model.empty() ||
       out->report_fragment_id.empty()) {
-    if (error) *error = "manifest missing canonical_type/family/model/report_fragment_id";
+    if (error) *error = "manifest missing family_canonical_path/family/model/report_fragment_id";
     return false;
   }
   return true;
@@ -337,14 +336,11 @@ struct report_fragment_manifest_t {
     if (!env_value.empty()) return std::filesystem::path(env_value);
   }
 
-  try {
-    const std::string configured = trim_ascii(cuwacunu::iitepi::config_space_t::get<std::string>(
-        "GENERAL", "hashimyei_store_root", std::string{}));
-    if (!configured.empty()) return std::filesystem::path(configured);
-  } catch (...) {
-  }
-
-  return std::filesystem::path(std::string(kDefaultHashimyeiStoreRoot));
+  const std::string configured = trim_ascii(cuwacunu::iitepi::config_space_t::get<std::string>(
+      "GENERAL", "hashimyei_store_root", std::string{}));
+  if (!configured.empty()) return std::filesystem::path(configured);
+  throw std::runtime_error(
+      "missing GENERAL.hashimyei_store_root in active global config");
 }
 
 [[nodiscard]] inline std::filesystem::path catalog_db_path(const std::filesystem::path& root) {
@@ -550,7 +546,7 @@ struct report_fragment_manifest_t {
     item.family = std::string(family);
     item.model = std::string(model);
     item.hashimyei = hash;
-    item.canonical_base = "tsi.wikimyei." + item.family + "." + item.model + "." + item.hashimyei;
+    item.canonical_path = "tsi.wikimyei." + item.family + "." + item.model + "." + item.hashimyei;
     item.directory = entry.path();
 
     const bool has_manifest = report_fragment_manifest_exists(entry.path());

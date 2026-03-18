@@ -23,8 +23,6 @@ migration landed.
 
 `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h`
 
-- Retire internal `canonical_base` field names in non-runtime helper structs when a
-  larger hashimyei/vicreg cleanup pass is scheduled.
 - Preserve the current matrix artifact as artifact-only unless a later change
   explicitly promotes it to an ingestable runtime schema.
 

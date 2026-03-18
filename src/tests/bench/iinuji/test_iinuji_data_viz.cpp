@@ -149,11 +149,11 @@ struct DatasetProvider final : public IDataProvider {
   torch::Tensor proj_; // [C*D, De]
 
   DatasetProvider(const std::string& instrument = "BTCUSDT",
-                  const char* config_folder = "/cuwacunu/src/config/",
+                  const char* global_config_path = "/cuwacunu/src/config/.config",
                   int De_vis = 64)
   : de_{De_vis} {
     // load config (paths, obs pipeline)
-    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
     cuwacunu::iitepi::config_space_t::update_config();
     const auto contract_hash =
         cuwacunu::iitepi::board_space_t::contract_hash_for_binding(

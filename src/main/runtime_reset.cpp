@@ -8,20 +8,20 @@
 namespace {
 
 void print_help(const char* argv0) {
-  std::cerr << "Usage: " << argv0 << " [--config-folder <path>]\n"
+  std::cerr << "Usage: " << argv0 << " [--global-config <path>]\n"
             << "Defaults:\n"
-            << "  --config-folder " << DEFAULT_CONFIG_FOLDER << "\n";
+            << "  --global-config " << DEFAULT_GLOBAL_CONFIG_PATH << "\n";
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string config_folder = DEFAULT_CONFIG_FOLDER;
+  std::string global_config_path = DEFAULT_GLOBAL_CONFIG_PATH;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--config-folder" && i + 1 < argc) {
-      config_folder = argv[++i];
+    if (arg == "--global-config" && i + 1 < argc) {
+      global_config_path = argv[++i];
       continue;
     }
     if (arg == "--help" || arg == "-h") {
@@ -34,7 +34,8 @@ int main(int argc, char** argv) {
   }
 
   try {
-    cuwacunu::iitepi::config_space_t::change_config_file(config_folder.c_str());
+    cuwacunu::iitepi::config_space_t::change_config_file(
+        global_config_path.c_str());
     cuwacunu::iitepi::config_space_t::update_config();
 
     cuwacunu::hero::runtime_dev::runtime_reset_result_t reset{};

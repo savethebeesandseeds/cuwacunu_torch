@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <exception>
@@ -280,7 +281,8 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
 
   runtime_reset_targets_t resolved{};
   resolved.global_config_path = cuwacunu::iitepi::config_space_t::config_file_path;
-  const std::string config_folder = cuwacunu::iitepi::config_space_t::config_folder;
+  const std::string global_config_base =
+      resolved.global_config_path.parent_path().string();
 
   std::vector<std::string> store_root_seen{};
   std::vector<std::string> catalog_seen{};
@@ -292,27 +294,46 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     detail::push_unique_path(
         &resolved.store_roots, &store_root_seen,
         std::filesystem::path(
-            detail::resolve_path_from_base_folder(config_folder, general_store_root)));
+            detail::resolve_path_from_base_folder(global_config_base,
+                                                  general_store_root)));
 
     const std::string hashimyei_hero_dsl =
         cuwacunu::iitepi::config_space_t::get<std::string>(
-            "REAL_HERO", "hashimyei_hero_dsl_filename",
-            std::string("/cuwacunu/src/config/instructions/default.hero.hashimyei.dsl"));
+            "REAL_HERO", "hashimyei_hero_dsl_filename", std::string{});
     const std::string lattice_hero_dsl =
         cuwacunu::iitepi::config_space_t::get<std::string>(
-            "REAL_HERO", "lattice_hero_dsl_filename",
-            std::string("/cuwacunu/src/config/instructions/default.hero.lattice.dsl"));
+            "REAL_HERO", "lattice_hero_dsl_filename", std::string{});
     const std::string runtime_hero_dsl =
         cuwacunu::iitepi::config_space_t::get<std::string>(
-            "REAL_HERO", "runtime_hero_dsl_filename",
-            std::string("/cuwacunu/src/config/instructions/default.hero.runtime.dsl"));
+            "REAL_HERO", "runtime_hero_dsl_filename", std::string{});
+    if (detail::trim_ascii(hashimyei_hero_dsl).empty()) {
+      if (error) {
+        *error = "missing [REAL_HERO].hashimyei_hero_dsl_filename in active global config";
+      }
+      return false;
+    }
+    if (detail::trim_ascii(lattice_hero_dsl).empty()) {
+      if (error) {
+        *error = "missing [REAL_HERO].lattice_hero_dsl_filename in active global config";
+      }
+      return false;
+    }
+    if (detail::trim_ascii(runtime_hero_dsl).empty()) {
+      if (error) {
+        *error = "missing [REAL_HERO].runtime_hero_dsl_filename in active global config";
+      }
+      return false;
+    }
 
     resolved.hashimyei_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, hashimyei_hero_dsl));
+        detail::resolve_path_from_base_folder(global_config_base,
+                                              hashimyei_hero_dsl));
     resolved.lattice_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, lattice_hero_dsl));
+        detail::resolve_path_from_base_folder(global_config_base,
+                                              lattice_hero_dsl));
     resolved.runtime_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, runtime_hero_dsl));
+        detail::resolve_path_from_base_folder(global_config_base,
+                                              runtime_hero_dsl));
 
     std::map<std::string, std::string, std::less<>> hash_defaults{};
     if (!resolved.hashimyei_hero_dsl_path.empty()) {
@@ -417,7 +438,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     resolved.global_config_path = std::filesystem::path(requested_global_config);
   }
   resolved.global_config_path = resolved.global_config_path.lexically_normal();
-  const std::string config_folder =
+  const std::string global_config_base =
       resolved.global_config_path.parent_path().string();
 
   std::vector<std::string> store_root_seen{};
@@ -430,28 +451,52 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       detail::push_unique_path(
           &resolved.store_roots, &store_root_seen,
           std::filesystem::path(detail::resolve_path_from_base_folder(
-              config_folder, general_store_root)));
+              global_config_base, general_store_root)));
     }
 
-    std::string hashimyei_hero_dsl = "/cuwacunu/src/config/instructions/default.hero.hashimyei.dsl";
-    std::string lattice_hero_dsl = "/cuwacunu/src/config/instructions/default.hero.lattice.dsl";
-    std::string runtime_hero_dsl = "/cuwacunu/src/config/instructions/default.hero.runtime.dsl";
-    (void)detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
-                                 "hashimyei_hero_dsl_filename",
-                                 &hashimyei_hero_dsl);
-    (void)detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
-                                 "lattice_hero_dsl_filename",
-                                 &lattice_hero_dsl);
-    (void)detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
-                                 "runtime_hero_dsl_filename",
-                                 &runtime_hero_dsl);
+    std::string hashimyei_hero_dsl{};
+    std::string lattice_hero_dsl{};
+    std::string runtime_hero_dsl{};
+    if (!detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
+                                "hashimyei_hero_dsl_filename",
+                                &hashimyei_hero_dsl) ||
+        detail::trim_ascii(hashimyei_hero_dsl).empty()) {
+      if (error) {
+        *error = "missing [REAL_HERO].hashimyei_hero_dsl_filename in " +
+                 resolved.global_config_path.string();
+      }
+      return false;
+    }
+    if (!detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
+                                "lattice_hero_dsl_filename",
+                                &lattice_hero_dsl) ||
+        detail::trim_ascii(lattice_hero_dsl).empty()) {
+      if (error) {
+        *error = "missing [REAL_HERO].lattice_hero_dsl_filename in " +
+                 resolved.global_config_path.string();
+      }
+      return false;
+    }
+    if (!detail::read_ini_value(resolved.global_config_path, "REAL_HERO",
+                                "runtime_hero_dsl_filename",
+                                &runtime_hero_dsl) ||
+        detail::trim_ascii(runtime_hero_dsl).empty()) {
+      if (error) {
+        *error = "missing [REAL_HERO].runtime_hero_dsl_filename in " +
+                 resolved.global_config_path.string();
+      }
+      return false;
+    }
 
     resolved.hashimyei_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, hashimyei_hero_dsl));
+        detail::resolve_path_from_base_folder(global_config_base,
+                                              hashimyei_hero_dsl));
     resolved.lattice_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, lattice_hero_dsl));
+        detail::resolve_path_from_base_folder(global_config_base,
+                                              lattice_hero_dsl));
     resolved.runtime_hero_dsl_path = std::filesystem::path(
-        detail::resolve_path_from_base_folder(config_folder, runtime_hero_dsl));
+        detail::resolve_path_from_base_folder(global_config_base,
+                                              runtime_hero_dsl));
 
     std::map<std::string, std::string, std::less<>> hash_defaults{};
     if (!resolved.hashimyei_hero_dsl_path.empty()) {
@@ -544,7 +589,9 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
 
 [[nodiscard]] inline bool reset_runtime_state(
     const runtime_reset_targets_t& targets,
-    runtime_reset_result_t* out_result = nullptr, std::string* error = nullptr) {
+    runtime_reset_result_t* out_result = nullptr, std::string* error = nullptr,
+    const std::vector<std::string>& ignored_campaign_cursors = {},
+    const std::vector<std::string>& ignored_job_cursors = {}) {
   if (error) error->clear();
   runtime_reset_result_t result{};
 
@@ -557,6 +604,16 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
         *error = "cannot inspect runtime jobs before reset: " + active_error;
       }
       return false;
+    }
+    if (!ignored_job_cursors.empty()) {
+      active_jobs.erase(
+          std::remove_if(active_jobs.begin(), active_jobs.end(),
+                         [&](const std::string& cursor) {
+                           return std::find(ignored_job_cursors.begin(),
+                                            ignored_job_cursors.end(),
+                                            cursor) != ignored_job_cursors.end();
+                         }),
+          active_jobs.end());
     }
     if (!active_jobs.empty()) {
       std::ostringstream out;
@@ -588,6 +645,17 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
           campaign.state == "stopping") {
         active_campaigns.push_back(campaign.campaign_cursor);
       }
+    }
+    if (!ignored_campaign_cursors.empty()) {
+      active_campaigns.erase(
+          std::remove_if(active_campaigns.begin(), active_campaigns.end(),
+                         [&](const std::string& cursor) {
+                           return std::find(ignored_campaign_cursors.begin(),
+                                            ignored_campaign_cursors.end(),
+                                            cursor) !=
+                                  ignored_campaign_cursors.end();
+                         }),
+          active_campaigns.end());
     }
     if (!active_campaigns.empty()) {
       std::ostringstream out;
@@ -658,12 +726,15 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
 }
 
 [[nodiscard]] inline bool reset_runtime_state_from_active_config(
-    runtime_reset_result_t* out_result = nullptr, std::string* error = nullptr) {
+    runtime_reset_result_t* out_result = nullptr, std::string* error = nullptr,
+    const std::vector<std::string>& ignored_campaign_cursors = {},
+    const std::vector<std::string>& ignored_job_cursors = {}) {
   runtime_reset_targets_t targets{};
   if (!resolve_runtime_reset_targets_from_active_config(&targets, error)) {
     return false;
   }
-  return reset_runtime_state(targets, out_result, error);
+  return reset_runtime_state(targets, out_result, error, ignored_campaign_cursors,
+                             ignored_job_cursors);
 }
 
 }  // namespace runtime_dev

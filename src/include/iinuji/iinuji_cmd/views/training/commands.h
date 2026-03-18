@@ -113,7 +113,7 @@ inline bool handle_training_show(CmdState& st, PushWarn&& push_warn, AppendLog&&
   const auto& item = report_fragments[hx];
   const auto& h = item.hashimyei;
 
-  const std::string base = item.canonical_base;
+  const std::string base = item.canonical_path;
   append_log("training.wikimyei=" + d.id, "show", "#d8d8ff");
   append_log("training.hashimyei=" + h, "show", "#d8d8ff");
   append_log("canonical=" + base, "show", "#d8d8ff");

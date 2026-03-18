@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
@@ -43,14 +44,14 @@ struct resolved_wave_contract_binding_snapshot_t {
 
 namespace detail {
 
-inline constexpr std::string_view kDefaultCampaignGrammarPath =
-    "/cuwacunu/src/config/bnf/iitepi.campaign.bnf";
 inline constexpr std::string_view kDefaultVicregConfigFilename =
     "default.tsi.wikimyei.representation.vicreg.dsl";
 inline constexpr std::string_view kDefaultValueEstimationConfigFilename =
     "default.tsi.wikimyei.inference.mdn.value_estimation.dsl";
+inline constexpr std::string_view kDefaultEmbeddingSequenceAnalyticsConfigFilename =
+    "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
 inline constexpr std::string_view kDefaultTransferMatrixConfigFilename =
-    "default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl";
+    "default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
 
 [[nodiscard]] inline std::string trim_ascii(std::string_view in) {
   return cuwacunu::hero::runtime::trim_ascii(in);
@@ -75,8 +76,7 @@ inline constexpr std::string_view kDefaultTransferMatrixConfigFilename =
   try {
     const std::string configured =
         cuwacunu::iitepi::config_space_t::get<std::string>(
-            "BNF", "iitepi_campaign_grammar_filename",
-            std::string(kDefaultCampaignGrammarPath));
+            "BNF", "iitepi_campaign_grammar_filename", std::string{});
     const std::string trimmed = trim_ascii(configured);
     if (!trimmed.empty()) {
       const std::filesystem::path configured_path(trimmed);
@@ -84,14 +84,14 @@ inline constexpr std::string_view kDefaultTransferMatrixConfigFilename =
         return configured_path.lexically_normal().string();
       }
       const std::filesystem::path base_folder =
-          cuwacunu::iitepi::config_space_t::config_folder.empty()
-              ? std::filesystem::path(DEFAULT_CONFIG_FOLDER)
-              : std::filesystem::path(cuwacunu::iitepi::config_space_t::config_folder);
+          std::filesystem::path(
+              cuwacunu::iitepi::config_space_t::config_file_path)
+              .parent_path();
       return (base_folder / configured_path).lexically_normal().string();
     }
   } catch (const std::exception&) {
   }
-  return std::string(kDefaultCampaignGrammarPath);
+  return {};
 }
 
 [[nodiscard]] inline bool store_text_file(const std::filesystem::path& path,
@@ -417,13 +417,96 @@ implicit_contract_module_sources(const std::filesystem::path& source_contract_pa
   return {
       folder / std::string(kDefaultVicregConfigFilename),
       folder / std::string(kDefaultValueEstimationConfigFilename),
+      folder / std::string(kDefaultEmbeddingSequenceAnalyticsConfigFilename),
       folder / std::string(kDefaultTransferMatrixConfigFilename),
   };
 }
 
+[[nodiscard]] inline bool load_contract_dsl_variables(
+    const std::filesystem::path& contract_path,
+    std::vector<cuwacunu::camahjucunu::dsl_variable_t>* out_variables,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out_variables) {
+    if (error) *error = "missing contract variable output";
+    return false;
+  }
+  out_variables->clear();
+
+  std::string raw_text{};
+  if (!load_text_file(contract_path, &raw_text, error)) return false;
+
+  bool begin_seen = false;
+  bool end_seen = false;
+  std::istringstream input(raw_text);
+  std::string raw_line{};
+  while (std::getline(input, raw_line)) {
+    std::string line = trim_ascii(raw_line);
+    if (line.empty()) continue;
+    if (!begin_seen) {
+      if (line == "-----BEGIN IITEPI CONTRACT-----") begin_seen = true;
+      continue;
+    }
+    if (line == "-----END IITEPI CONTRACT-----") {
+      end_seen = true;
+      break;
+    }
+    if (!line.empty() && line.back() == ';') {
+      line.pop_back();
+      line = trim_ascii(line);
+    }
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    const std::string variable_name = trim_ascii(line.substr(0, eq));
+    if (!cuwacunu::camahjucunu::is_dsl_variable_name(variable_name)) continue;
+    const std::string variable_value =
+        unquote_if_wrapped(trim_ascii(line.substr(eq + 1)));
+    if (!cuwacunu::camahjucunu::append_dsl_variable(
+            out_variables, variable_name, variable_value, error)) {
+      return false;
+    }
+  }
+  if (begin_seen && !end_seen) {
+    if (error) {
+      *error = "missing -----END IITEPI CONTRACT----- while loading contract variables";
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] inline bool validate_bind_variables_do_not_shadow_contract_variables(
+    const std::vector<cuwacunu::camahjucunu::dsl_variable_t>& contract_variables,
+    const std::vector<cuwacunu::camahjucunu::dsl_variable_t>& bind_variables,
+    std::string* error) {
+  if (error) error->clear();
+  if (contract_variables.empty() || bind_variables.empty()) return true;
+
+  std::unordered_set<std::string> contract_names{};
+  contract_names.reserve(contract_variables.size());
+  for (const auto& variable : contract_variables) {
+    const std::string name = trim_ascii(variable.name);
+    if (!name.empty()) contract_names.insert(name);
+  }
+
+  for (const auto& variable : bind_variables) {
+    const std::string name = trim_ascii(variable.name);
+    if (name.empty()) continue;
+    if (contract_names.find(name) == contract_names.end()) continue;
+    if (error) {
+      *error =
+          "bind variable '" + name +
+          "' conflicts with a contract __variable; bind-local variables are "
+          "wave-scoped only and may not shadow contract docking variables";
+    }
+    return false;
+  }
+  return true;
+}
+
 [[nodiscard]] inline bool stage_dsl_graph_file(
     const std::filesystem::path& source_path,
-    const cuwacunu::camahjucunu::wave_contract_binding_decl_t& bind,
+    const std::vector<cuwacunu::camahjucunu::dsl_variable_t>& variables,
     const std::filesystem::path& target_path, const std::filesystem::path& output_dir,
     staged_dsl_graph_state_t* state, std::string* error);
 
@@ -623,7 +706,7 @@ template <typename BindDeclT>
 
 [[nodiscard]] inline bool stage_dsl_graph_file(
     const std::filesystem::path& source_path,
-    const cuwacunu::camahjucunu::wave_contract_binding_decl_t& bind,
+    const std::vector<cuwacunu::camahjucunu::dsl_variable_t>& variables,
     const std::filesystem::path& target_path, const std::filesystem::path& output_dir,
     staged_dsl_graph_state_t* state, std::string* error) {
   if (error) error->clear();
@@ -681,8 +764,8 @@ template <typename BindDeclT>
   }
 
   std::string resolved_text{};
-  if (!cuwacunu::camahjucunu::resolve_wave_contract_binding_variables_in_text(
-          raw_text, bind, &resolved_text, error)) {
+  if (!cuwacunu::camahjucunu::resolve_dsl_variables_in_text(
+          raw_text, variables, &resolved_text, error)) {
     cleanup_active();
     return false;
   }
@@ -715,7 +798,7 @@ template <typename BindDeclT>
 
       const std::filesystem::path child_target = make_unique_snapshot_path(
           output_dir, child_source.filename(), normalize_path_key(child_source), state);
-      if (!stage_dsl_graph_file(child_source, bind, child_target, output_dir, state,
+      if (!stage_dsl_graph_file(child_source, variables, child_target, output_dir, state,
                                 error)) {
         cleanup_active();
         return false;
@@ -751,7 +834,7 @@ template <typename BindDeclT>
       const std::filesystem::path implicit_target = make_unique_snapshot_path(
           output_dir, implicit_source.filename(),
           normalize_path_key(implicit_source), state);
-      if (!stage_dsl_graph_file(implicit_source, bind, implicit_target, output_dir,
+      if (!stage_dsl_graph_file(implicit_source, variables, implicit_target, output_dir,
                                 state, error)) {
         cleanup_active();
         return false;
@@ -809,12 +892,20 @@ template <typename BindDeclT>
       wave_path.filename().string());
 
   staged_dsl_graph_state_t staged_graph{};
-  if (!stage_dsl_graph_file(source_contract_path, bind, contract_path, instructions_dir,
-                            &staged_graph, error)) {
+  std::vector<cuwacunu::camahjucunu::dsl_variable_t> contract_variables{};
+  if (!load_contract_dsl_variables(source_contract_path, &contract_variables, error)) {
     return false;
   }
-  if (!stage_dsl_graph_file(source_wave_path, bind, wave_path, instructions_dir,
-                            &staged_graph, error)) {
+  if (!validate_bind_variables_do_not_shadow_contract_variables(
+          contract_variables, bind.variables, error)) {
+    return false;
+  }
+  if (!stage_dsl_graph_file(source_contract_path, contract_variables, contract_path,
+                            instructions_dir, &staged_graph, error)) {
+    return false;
+  }
+  if (!stage_dsl_graph_file(source_wave_path, bind.variables, wave_path,
+                            instructions_dir, &staged_graph, error)) {
     return false;
   }
   if (!store_text_file(campaign_path, campaign_text, error)) return false;

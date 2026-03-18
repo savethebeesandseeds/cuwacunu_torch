@@ -26,11 +26,7 @@
 
 namespace {
 
-constexpr const char* kStoreRootEnv = "CUWACUNU_HASHIMYEI_STORE_ROOT";
-constexpr const char* kDefaultStoreRoot = "/cuwacunu/.hashimyei";
 constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
-constexpr const char* kDefaultHashimyeiHeroDslPath =
-    "/cuwacunu/src/config/instructions/default.hero.hashimyei.dsl";
 constexpr const char* kServerName = "hero_hashimyei_mcp";
 constexpr const char* kServerVersion = "0.1.0";
 constexpr const char* kProtocolVersion = "2025-03-26";
@@ -161,14 +157,10 @@ using hashimyei_runtime_defaults_t =
     const std::filesystem::path& global_config_path) {
   const std::optional<std::string> configured = read_ini_value(
       global_config_path, "REAL_HERO", "hashimyei_hero_dsl_filename");
-  if (!configured.has_value()) {
-    return std::filesystem::path(kDefaultHashimyeiHeroDslPath);
-  }
+  if (!configured.has_value()) return {};
   const std::string resolved = resolve_path_from_base_folder(
       global_config_path.parent_path().string(), *configured);
-  if (resolved.empty()) {
-    return std::filesystem::path(kDefaultHashimyeiHeroDslPath);
-  }
+  if (resolved.empty()) return {};
   return std::filesystem::path(resolved);
 }
 
@@ -187,6 +179,7 @@ using hashimyei_runtime_defaults_t =
     if (error) *error = "hero hashimyei DSL file not found: " + hero_dsl_path.string();
     return false;
   }
+  *out = hashimyei_runtime_defaults_t{};
 
   std::ifstream in(hero_dsl_path);
   if (!in) {
@@ -227,18 +220,24 @@ using hashimyei_runtime_defaults_t =
     values[lhs] = value;
   }
 
+  bool saw_store_root = false;
   const auto it_store_root = values.find("store_root");
   if (it_store_root != values.end()) {
+    saw_store_root = true;
     out->store_root = resolve_path_from_base_folder(
         hero_dsl_path.parent_path().string(), it_store_root->second);
   }
+  bool saw_catalog_path = false;
   const auto it_catalog_path = values.find("catalog_path");
   if (it_catalog_path != values.end()) {
+    saw_catalog_path = true;
     out->catalog_path = resolve_path_from_base_folder(
         hero_dsl_path.parent_path().string(), it_catalog_path->second);
   }
+  bool saw_encrypted = false;
   const auto it_encrypted = values.find("encrypted");
   if (it_encrypted != values.end()) {
+    saw_encrypted = true;
     bool parsed = false;
     if (!parse_bool_token(it_encrypted->second, &parsed)) {
       if (error) *error = "invalid bool for key encrypted in " + hero_dsl_path.string();
@@ -251,6 +250,18 @@ using hashimyei_runtime_defaults_t =
       }
       return false;
     }
+  }
+  if (!saw_store_root || out->store_root.empty()) {
+    if (error) *error = "missing store_root in " + hero_dsl_path.string();
+    return false;
+  }
+  if (!saw_catalog_path || out->catalog_path.empty()) {
+    if (error) *error = "missing catalog_path in " + hero_dsl_path.string();
+    return false;
+  }
+  if (!saw_encrypted) {
+    if (error) *error = "missing encrypted in " + hero_dsl_path.string();
+    return false;
   }
   return true;
 }
@@ -324,75 +335,6 @@ using hashimyei_runtime_defaults_t =
   return true;
 }
 
-[[nodiscard]] std::optional<std::filesystem::path> resolve_dsl_path(
-    const app_context_t& app, std::string_view dsl_canonical_path) {
-  namespace fs = std::filesystem;
-  const auto canonical_or_normalized = [](const fs::path& p) {
-    std::error_code ec;
-    const fs::path canonical = fs::weakly_canonical(p, ec);
-    return ec ? p.lexically_normal() : canonical;
-  };
-  const auto path_is_within = [&](fs::path base, fs::path candidate) {
-    base = canonical_or_normalized(base);
-    candidate = canonical_or_normalized(candidate);
-    auto b = base.begin();
-    auto c = candidate.begin();
-    for (; b != base.end() && c != candidate.end(); ++b, ++c) {
-      if (*b != *c) return false;
-    }
-    return b == base.end();
-  };
-  const auto is_allowed_dsl_path = [&](const fs::path& candidate) {
-    const fs::path instructions_root =
-        fs::path(kDefaultHashimyeiHeroDslPath).parent_path();
-    std::vector<fs::path> allowed_roots{};
-    allowed_roots.reserve(2);
-    if (!app.store_root.empty()) {
-      allowed_roots.push_back(canonical_or_normalized(app.store_root));
-    }
-    if (!instructions_root.empty()) {
-      allowed_roots.push_back(canonical_or_normalized(instructions_root));
-    }
-    const fs::path resolved = canonical_or_normalized(candidate);
-    for (const auto& root : allowed_roots) {
-      if (path_is_within(root, resolved)) return true;
-    }
-    return false;
-  };
-
-  const fs::path input = fs::path(std::string(dsl_canonical_path));
-  if (dsl_canonical_path.empty()) return std::nullopt;
-
-  std::vector<fs::path> candidates{};
-  candidates.reserve(4);
-  if (input.is_absolute()) {
-    candidates.push_back(input);
-  } else {
-    std::error_code ec;
-    candidates.push_back(fs::current_path(ec) / input);
-    candidates.push_back(app.store_root / input);
-    const fs::path instructions_root =
-        fs::path(kDefaultHashimyeiHeroDslPath).parent_path();
-    if (!instructions_root.empty()) {
-      candidates.push_back(instructions_root / input);
-    }
-  }
-
-  std::unordered_set<std::string> seen{};
-  for (const auto& c : candidates) {
-    const std::string key = c.generic_string();
-    if (seen.find(key) != seen.end()) continue;
-    seen.insert(key);
-    std::error_code ec;
-    if (!fs::exists(c, ec) || !fs::is_regular_file(c, ec)) continue;
-    const auto canonical = fs::weakly_canonical(c, ec);
-    const fs::path resolved = ec ? c.lexically_normal() : canonical;
-    if (!is_allowed_dsl_path(resolved)) continue;
-    return resolved;
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] std::string json_escape(std::string_view in) {
   std::ostringstream out;
   for (const unsigned char c : in) {
@@ -436,18 +378,6 @@ using hashimyei_runtime_defaults_t =
   return "\"" + json_escape(in) + "\"";
 }
 
-[[nodiscard]] std::filesystem::path default_store_root() {
-  if (const char* env = std::getenv(kStoreRootEnv); env && env[0] != '\0') {
-    return std::filesystem::path(env);
-  }
-  return std::filesystem::path(kDefaultStoreRoot);
-}
-
-[[nodiscard]] std::filesystem::path default_catalog_path(
-    const std::filesystem::path& store_root) {
-  return store_root / "catalog" / "hashimyei_catalog.idydb";
-}
-
 [[nodiscard]] bool is_ingest_lock_held_error(std::string_view error) {
   return error.find("ingest lock already held:") != std::string_view::npos;
 }
@@ -486,6 +416,13 @@ using hashimyei_runtime_defaults_t =
   app->last_auto_ingest_at = std::chrono::steady_clock::now();
   app->auto_ingest_ready = true;
   return true;
+}
+
+[[nodiscard]] bool close_catalog_if_open(app_context_t* app,
+                                         std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !app->catalog.opened()) return true;
+  return app->catalog.close(out_error);
 }
 
 [[nodiscard]] bool reset_catalog(app_context_t* app, bool reingest,
@@ -929,17 +866,6 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   return out.str();
 }
 
-[[nodiscard]] std::string wave_contract_binding_to_json(
-    const cuwacunu::hero::hashimyei::wave_contract_binding_t& binding) {
-  std::ostringstream out;
-  out << "{"
-      << "\"identity\":" << hashimyei_identity_to_json(binding.identity) << ","
-      << "\"contract\":" << hashimyei_identity_to_json(binding.contract) << ","
-      << "\"wave\":" << hashimyei_identity_to_json(binding.wave) << ","
-      << "\"binding_alias\":" << json_quote(binding.binding_alias) << "}";
-  return out.str();
-}
-
 [[nodiscard]] std::string component_state_to_json(
     const cuwacunu::hero::hashimyei::component_state_t& component) {
   const auto& m = component.manifest;
@@ -958,21 +884,25 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
       << "\"schema\":" << json_quote(m.schema) << ","
       << "\"canonical_path\":" << json_quote(m.canonical_path) << ","
       << "\"family\":" << json_quote(m.family) << ","
-      << "\"tsi_type\":" << json_quote(m.tsi_type) << ","
-      << "\"component_identity\":"
-      << hashimyei_identity_to_json(m.component_identity) << ","
+      << "\"hashimyei_identity\":"
+      << hashimyei_identity_to_json(m.hashimyei_identity) << ","
+      << "\"contract_identity\":"
+      << hashimyei_identity_to_json(m.contract_identity) << ","
       << "\"parent_identity\":"
       << (m.parent_identity.has_value()
               ? hashimyei_identity_to_json(*m.parent_identity)
               : "null")
       << ","
       << "\"revision_reason\":" << json_quote(m.revision_reason) << ","
-      << "\"config_revision_id\":" << json_quote(m.config_revision_id) << ","
-      << "\"wave_contract_binding\":"
-      << wave_contract_binding_to_json(m.wave_contract_binding) << ","
-      << "\"dsl_canonical_path\":" << json_quote(m.dsl_canonical_path) << ","
-      << "\"dsl_sha256_hex\":" << json_quote(m.dsl_sha256_hex) << ","
-      << "\"status\":" << json_quote(m.status) << ","
+      << "\"founding_revision_id\":"
+      << json_quote(m.founding_revision_id) << ","
+      << "\"founding_dsl_provenance_path\":"
+      << json_quote(m.founding_dsl_provenance_path) << ","
+      << "\"founding_dsl_provenance_sha256_hex\":"
+      << json_quote(m.founding_dsl_provenance_sha256_hex) << ","
+      << "\"docking_signature_sha256_hex\":"
+      << json_quote(m.docking_signature_sha256_hex) << ","
+      << "\"lineage_state\":" << json_quote(m.lineage_state) << ","
       << "\"replaced_by\":" << json_quote(m.replaced_by) << ","
       << "\"created_at_ms\":" << m.created_at_ms << ","
       << "\"updated_at_ms\":" << m.updated_at_ms
@@ -1097,10 +1027,9 @@ struct hashimyei_tool_descriptor_t {
                                     const std::string& arguments_json,
                                     std::string* out_structured,
                                     std::string* out_error);
-[[nodiscard]] bool handle_tool_get_founding_dsl(app_context_t* app,
-                                                const std::string& arguments_json,
-                                                std::string* out_structured,
-                                                std::string* out_error);
+[[nodiscard]] bool handle_tool_get_founding_dsl_bundle(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error);
 [[nodiscard]] bool handle_tool_get_component_manifest(
     app_context_t* app, const std::string& arguments_json,
     std::string* out_structured, std::string* out_error);
@@ -1235,7 +1164,8 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
     return false;
   }
   for (const auto& c : components) {
-    add_entry(c.manifest.component_identity.name, c.manifest.canonical_path, true);
+    add_entry(c.manifest.hashimyei_identity.name, c.manifest.canonical_path,
+              true);
   }
 
   std::vector<cuwacunu::hero::hashimyei::report_fragment_entry_t> report_fragments{};
@@ -1290,10 +1220,9 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_get_founding_dsl(app_context_t* app,
-                                                const std::string& arguments_json,
-                                                std::string* out_structured,
-                                                std::string* out_error) {
+[[nodiscard]] bool handle_tool_get_founding_dsl_bundle(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
@@ -1303,7 +1232,8 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
   (void)extract_json_string_field(arguments_json, "hashimyei", &hashimyei);
   if (canonical_path.empty() && hashimyei.empty()) {
     *out_error =
-        "get_founding_dsl requires arguments.canonical_path or arguments.hashimyei";
+        "get_founding_dsl_bundle requires arguments.canonical_path or "
+        "arguments.hashimyei";
     return false;
   }
 
@@ -1316,42 +1246,130 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
     return false;
   }
 
-  const auto resolved =
-      resolve_dsl_path(*app, component.manifest.dsl_canonical_path);
-  if (!resolved.has_value()) {
-    *out_error = "founding DSL file is missing or outside allowed roots: " +
-                 component.manifest.dsl_canonical_path;
+  const std::string component_id =
+      component.component_id.empty()
+          ? cuwacunu::hero::hashimyei::compute_component_manifest_id(
+                component.manifest)
+          : component.component_id;
+  const auto bundle_dir =
+      cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(
+          app->store_root, component_id);
+  const auto bundle_manifest_path =
+      cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_path(
+          app->store_root, component_id);
+
+  cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_t bundle_manifest{};
+  if (!cuwacunu::hero::hashimyei::read_founding_dsl_bundle_manifest(
+          app->store_root, component_id, &bundle_manifest, out_error)) {
+    return false;
+  }
+  if (!bundle_manifest.component_id.empty() &&
+      bundle_manifest.component_id != component_id) {
+    *out_error = "founding DSL bundle manifest component_id mismatch: " +
+                 bundle_manifest.component_id + " != " + component_id;
+    return false;
+  }
+  if (!bundle_manifest.canonical_path.empty() &&
+      bundle_manifest.canonical_path != component.manifest.canonical_path) {
+    *out_error = "founding DSL bundle manifest canonical_path mismatch: " +
+                 bundle_manifest.canonical_path + " != " +
+                 component.manifest.canonical_path;
+    return false;
+  }
+  if (!bundle_manifest.hashimyei_name.empty() &&
+      bundle_manifest.hashimyei_name != component.manifest.hashimyei_identity.name) {
+    *out_error = "founding DSL bundle manifest hashimyei_name mismatch: " +
+                 bundle_manifest.hashimyei_name + " != " +
+                 component.manifest.hashimyei_identity.name;
+    return false;
+  }
+  if (bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex.empty()) {
+    *out_error =
+        "founding DSL bundle manifest missing founding_dsl_bundle_aggregate_sha256_hex";
     return false;
   }
 
-  std::string dsl_text;
-  if (!read_text_file(*resolved, &dsl_text, out_error)) return false;
+  std::ostringstream files_json;
+  files_json << "[";
+  bool all_files_match = true;
+  std::string bundle_sha_actual{};
 
-  std::string dsl_sha_actual;
-  if (!sha256_hex_bytes(dsl_text, &dsl_sha_actual)) {
-    *out_error = "cannot compute sha256 for founding DSL";
+  auto verified_manifest = bundle_manifest;
+  for (std::size_t i = 0; i < bundle_manifest.files.size(); ++i) {
+    if (i != 0) files_json << ",";
+    const auto& file = bundle_manifest.files[i];
+    const std::filesystem::path stored_path = bundle_dir / file.snapshot_relpath;
+    std::string dsl_text{};
+    if (!read_text_file(stored_path, &dsl_text, out_error)) {
+      *out_error = "cannot read founding DSL bundle snapshot '" +
+                   stored_path.string() + "': " + *out_error;
+      return false;
+    }
+
+    std::string dsl_sha_actual{};
+    if (!sha256_hex_bytes(dsl_text, &dsl_sha_actual)) {
+      *out_error = "cannot compute sha256 for founding DSL bundle snapshot: " +
+                   stored_path.string();
+      return false;
+    }
+
+    const bool dsl_sha_match =
+        lowercase_copy(dsl_sha_actual) == lowercase_copy(file.sha256_hex);
+    all_files_match = all_files_match && dsl_sha_match;
+    verified_manifest.files[i].sha256_hex = dsl_sha_actual;
+
+    files_json << "{"
+               << "\"source_path\":" << json_quote(file.source_path) << ","
+               << "\"stored_path\":" << json_quote(stored_path.string()) << ","
+               << "\"snapshot_relpath\":"
+               << json_quote(file.snapshot_relpath)
+               << ",\"sha256_expected\":"
+               << json_quote(file.sha256_hex)
+               << ",\"sha256_actual\":"
+               << json_quote(dsl_sha_actual) << ","
+               << "\"sha256_match\":"
+               << (dsl_sha_match ? "true" : "false");
+    if (include_content) {
+      files_json << ",\"text\":" << json_quote(dsl_text);
+    }
+    files_json << "}";
+  }
+  bundle_sha_actual =
+      cuwacunu::hero::hashimyei::compute_founding_dsl_bundle_aggregate_sha256(
+          verified_manifest);
+  if (bundle_sha_actual.empty()) {
+    *out_error = "cannot compute founding DSL bundle aggregate sha256";
     return false;
   }
-  const bool dsl_sha_match =
-      lowercase_copy(dsl_sha_actual) ==
-      lowercase_copy(component.manifest.dsl_sha256_hex);
+  const bool bundle_sha_match =
+      lowercase_copy(bundle_sha_actual) ==
+      lowercase_copy(bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex);
+  all_files_match = all_files_match && bundle_sha_match;
+  files_json << "]";
 
   std::ostringstream out;
   out << "{\"canonical_path\":"
       << json_quote(component.manifest.canonical_path)
       << ",\"hashimyei\":"
-      << json_quote(component.manifest.component_identity.name)
-      << ",\"dsl_canonical_path\":"
-      << json_quote(component.manifest.dsl_canonical_path)
-      << ",\"dsl_resolved_path\":" << json_quote(resolved->string())
-      << ",\"dsl_sha256_expected\":"
-      << json_quote(component.manifest.dsl_sha256_hex)
-      << ",\"dsl_sha256_actual\":" << json_quote(dsl_sha_actual)
-      << ",\"dsl_sha256_match\":" << (dsl_sha_match ? "true" : "false")
+      << json_quote(component.manifest.hashimyei_identity.name)
+      << ",\"component_id\":" << json_quote(component_id)
+      << ",\"founding_dsl_provenance_path\":"
+      << json_quote(component.manifest.founding_dsl_provenance_path)
+      << ",\"founding_dsl_provenance_sha256_expected\":"
+      << json_quote(component.manifest.founding_dsl_provenance_sha256_hex)
+      << ",\"founding_dsl_bundle_manifest_path\":"
+      << json_quote(bundle_manifest_path.string())
+      << ",\"founding_dsl_bundle_directory\":"
+      << json_quote(bundle_dir.string())
+      << ",\"founding_dsl_bundle_aggregate_sha256_expected\":"
+      << json_quote(bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex)
+      << ",\"founding_dsl_bundle_aggregate_sha256_actual\":"
+      << json_quote(bundle_sha_actual)
+      << ",\"founding_dsl_bundle_consistent\":"
+      << (all_files_match ? "true" : "false")
+      << ",\"founding_dsl_bundle_files\":"
+      << files_json.str()
       << ",\"component\":" << component_state_to_json(component);
-  if (include_content) {
-    out << ",\"dsl_text\":" << json_quote(dsl_text);
-  }
   out << "}";
 
   *out_structured = out.str();
@@ -1384,7 +1402,7 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
   out << "{\"canonical_path\":"
       << json_quote(component.manifest.canonical_path)
       << ",\"hashimyei\":"
-      << json_quote(component.manifest.component_identity.name)
+      << json_quote(component.manifest.hashimyei_identity.name)
       << ",\"component\":" << component_state_to_json(component) << "}";
   *out_structured = out.str();
   return true;
@@ -1450,10 +1468,11 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
       latest_by_hashimyei{};
   for (const auto& component : components) {
     if (component.manifest.family != family) continue;
-    if (component.manifest.wave_contract_binding.contract.name != contract_hash) {
+    if (cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            component.manifest.contract_identity) != contract_hash) {
       continue;
     }
-    const std::string hashimyei = component.manifest.component_identity.name;
+    const std::string hashimyei = component.manifest.hashimyei_identity.name;
     if (hashimyei.empty()) continue;
     const auto it = latest_by_hashimyei.find(hashimyei);
     if (it == latest_by_hashimyei.end() ||
@@ -1523,28 +1542,27 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
 
   bool synchronized_lattice = false;
   std::string lattice_catalog_error{};
-  const std::filesystem::path lattice_catalog_path =
-      app->lattice_catalog_path.empty()
-          ? (app->store_root / "catalog" / "lattice_catalog.idydb")
-          : app->lattice_catalog_path;
-  if (!lattice_catalog_path.empty()) {
-    cuwacunu::hero::wave::lattice_catalog_store_t lattice_catalog{};
-    cuwacunu::hero::wave::lattice_catalog_store_t::options_t lattice_options{};
-    lattice_options.catalog_path = lattice_catalog_path;
-    lattice_options.encrypted = false;
-    lattice_options.projection_version = 2;
-    if (!lattice_catalog.open(lattice_options, &lattice_catalog_error)) {
-      *out_error = "lattice sync open failed: " + lattice_catalog_error;
-      return false;
-    }
-    if (!lattice_catalog.ingest_runtime_report_fragments(app->store_root,
-                                                         &lattice_catalog_error)) {
-      *out_error = "lattice sync ingest failed: " + lattice_catalog_error;
-      return false;
-    }
-    synchronized_lattice = true;
-    (void)lattice_catalog.close(nullptr);
+  if (app->lattice_catalog_path.empty()) {
+    *out_error = "lattice_catalog_path is empty";
+    return false;
   }
+  const std::filesystem::path lattice_catalog_path = app->lattice_catalog_path;
+  cuwacunu::hero::wave::lattice_catalog_store_t lattice_catalog{};
+  cuwacunu::hero::wave::lattice_catalog_store_t::options_t lattice_options{};
+  lattice_options.catalog_path = lattice_catalog_path;
+  lattice_options.encrypted = false;
+  lattice_options.projection_version = 2;
+  if (!lattice_catalog.open(lattice_options, &lattice_catalog_error)) {
+    *out_error = "lattice sync open failed: " + lattice_catalog_error;
+    return false;
+  }
+  if (!lattice_catalog.ingest_runtime_artifact(rank_file,
+                                               &lattice_catalog_error)) {
+    *out_error = "lattice sync ingest failed: " + lattice_catalog_error;
+    return false;
+  }
+  synchronized_lattice = true;
+  (void)lattice_catalog.close(nullptr);
 
   cuwacunu::hero::family_rank::state_t after_state{};
   if (!app->catalog.get_family_rank(family, contract_hash, &after_state,
@@ -1721,7 +1739,19 @@ void run_jsonrpc_stdio_loop(app_context_t* app) {
 
     std::string tool_result;
     std::string tool_error;
-    if (!handle_tool_call(app, name, arguments, &tool_result, &tool_error)) {
+    const bool ok =
+        handle_tool_call(app, name, arguments, &tool_result, &tool_error);
+
+    // Release the catalog lock after every request so idle stdio servers do
+    // not block other clients from opening the catalog.
+    std::string close_error;
+    if (!close_catalog_if_open(app, &close_error)) {
+      write_jsonrpc_error(id_json, -32603,
+                          "catalog close failed: " + close_error);
+      continue;
+    }
+
+    if (!ok) {
       write_jsonrpc_error(id_json, -32601, tool_error);
       continue;
     }
@@ -1747,28 +1777,31 @@ bool load_hashimyei_runtime_defaults(const std::filesystem::path& hero_dsl_path,
   return ::load_hashimyei_runtime_defaults(hero_dsl_path, out, error);
 }
 
-std::filesystem::path default_store_root() { return ::default_store_root(); }
-
-std::filesystem::path default_catalog_path(
-    const std::filesystem::path& store_root) {
-  return ::default_catalog_path(store_root);
-}
-
 bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
                        app_context_t* app,
                        std::string* out_tool_result_json,
                        std::string* out_error_message) {
   if (out_error_message) out_error_message->clear();
   if (!app || !out_tool_result_json || !out_error_message) return false;
-  if (!app->catalog.opened()) {
+  const bool opened_here = !app->catalog.opened();
+  if (opened_here) {
     std::string open_error;
     if (!app->catalog.open(app->catalog_options, &open_error)) {
       *out_error_message = "catalog open failed: " + open_error;
       return false;
     }
   }
-  return ::handle_tool_call(app, tool_name, arguments_json, out_tool_result_json,
-                            out_error_message);
+  const bool ok = ::handle_tool_call(app, tool_name, arguments_json,
+                                     out_tool_result_json, out_error_message);
+  if (opened_here) {
+    std::string close_error;
+    if (!::close_catalog_if_open(app, &close_error)) {
+      if (!out_error_message->empty()) out_error_message->append("; ");
+      out_error_message->append("catalog close failed: " + close_error);
+      return false;
+    }
+  }
+  return ok;
 }
 
 bool tool_result_is_error(std::string_view tool_result_json) {

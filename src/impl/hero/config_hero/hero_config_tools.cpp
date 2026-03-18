@@ -26,6 +26,7 @@
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "hero/config_hero/hero.config.h"
 #include "hero/runtime_dev_loop.h"
+#include "iitepi/contract_space_t.h"
 
 namespace {
 constexpr const char* kDeterministicOnlyMessage =
@@ -37,7 +38,6 @@ constexpr const char* kMcpInitializeInstructions =
     "Use tools/list for tool schemas. Use tools/call with hero.config.*.";
 constexpr const char* kConfigDslScopeErrorTag = "E_CONFIG_DSL_SCOPE";
 constexpr int kConfigDslScopeErrorCode = -32041;
-constexpr const char* kDefaultHashimyeiStoreRoot = "/cuwacunu/.hashimyei";
 constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 constexpr const char* kCatalogFilename = "hashimyei_catalog.idydb";
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
@@ -381,13 +381,144 @@ enum class dsl_path_resolution_error_t {
     configured = trim_ascii(configured);
     if (!configured.empty()) return std::filesystem::path(configured);
   }
-  return std::filesystem::path(kDefaultHashimyeiStoreRoot);
+  return {};
 }
 
 [[nodiscard]] std::filesystem::path configured_hashimyei_catalog_path(
     std::string_view global_config_path) {
   return configured_hashimyei_store_root(global_config_path) / "catalog" /
          kCatalogFilename;
+}
+
+[[nodiscard]] std::string normalized_path_key(
+    const std::filesystem::path& path);
+[[nodiscard]] bool sha256_hex_file(const std::filesystem::path& path,
+                                   std::string* out_hex,
+                                   std::string* err);
+
+[[nodiscard]] std::string sanitize_bundle_snapshot_filename(
+    std::string_view filename) {
+  std::string out{};
+  out.reserve(filename.size());
+  for (const char ch : filename) {
+    const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' ||
+                    ch == '-';
+    out.push_back(ok ? ch : '_');
+  }
+  if (out.empty()) out = "dsl";
+  return out;
+}
+
+[[nodiscard]] bool write_component_founding_dsl_bundle_snapshot(
+    const std::filesystem::path& store_root,
+    const cuwacunu::hero::hashimyei::component_manifest_t& manifest,
+    std::string_view primary_source_path,
+    const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>& contract_record,
+    std::string* error) {
+  if (error) error->clear();
+  if (!contract_record) {
+    if (error) *error = "missing contract snapshot for founding DSL bundle";
+    return false;
+  }
+
+  std::vector<std::filesystem::path> source_paths{};
+  std::unordered_set<std::string> seen{};
+  const auto add_source_path = [&](std::string_view raw_path) {
+    const std::string trimmed = trim_ascii(raw_path);
+    if (trimmed.empty()) return;
+    const std::filesystem::path source_path(trimmed);
+    const std::string key = normalized_path_key(source_path);
+    if (!seen.insert(key).second) return;
+    source_paths.push_back(source_path);
+  };
+
+  add_source_path(contract_record->config_file_path_canonical);
+  add_source_path(primary_source_path);
+  for (const auto& surface : contract_record->docking_signature.surfaces) {
+    add_source_path(surface.canonical_path);
+  }
+  for (const auto& module : contract_record->signature.module_dsl_entries) {
+    add_source_path(module.module_dsl_path);
+  }
+
+  std::sort(source_paths.begin(), source_paths.end(),
+            [](const std::filesystem::path& a, const std::filesystem::path& b) {
+              return normalized_path_key(a) < normalized_path_key(b);
+            });
+
+  const std::string component_id =
+      cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
+  const auto bundle_dir =
+      cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(store_root,
+                                                               component_id);
+  std::error_code ec{};
+  std::filesystem::create_directories(bundle_dir, ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create founding DSL bundle directory: " +
+               bundle_dir.string();
+    }
+    return false;
+  }
+
+  cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_t bundle_manifest{};
+  bundle_manifest.component_id = component_id;
+  bundle_manifest.canonical_path = manifest.canonical_path;
+  bundle_manifest.hashimyei_name = manifest.hashimyei_identity.name;
+  bundle_manifest.files.reserve(source_paths.size());
+
+  for (std::size_t i = 0; i < source_paths.size(); ++i) {
+    const auto& source_path = source_paths[i];
+    std::string text{};
+    if (!read_text_file(source_path.string(), &text, error)) {
+      if (error) {
+        *error = "cannot read founding DSL source '" + source_path.string() +
+                 "': " + *error;
+      }
+      return false;
+    }
+    std::ostringstream filename;
+    filename << std::setfill('0') << std::setw(4) << i << "_"
+             << sanitize_bundle_snapshot_filename(source_path.filename().string());
+    const auto snapshot_path = bundle_dir / filename.str();
+    if (!write_text_file_atomic(snapshot_path.string(), text, error)) {
+      if (error) {
+        *error = "cannot write founding DSL snapshot '" + snapshot_path.string() +
+                 "': " + *error;
+      }
+      return false;
+    }
+    std::string sha256_hex{};
+    if (!sha256_hex_file(snapshot_path, &sha256_hex, error)) {
+      if (error) {
+        *error = "cannot fingerprint founding DSL snapshot '" +
+                 snapshot_path.string() + "': " + *error;
+      }
+      return false;
+    }
+    bundle_manifest.files.push_back(
+        cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_file_t{
+            .source_path = source_path.string(),
+            .snapshot_relpath = filename.str(),
+            .sha256_hex = sha256_hex,
+        });
+  }
+  bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex =
+      cuwacunu::hero::hashimyei::compute_founding_dsl_bundle_aggregate_sha256(
+          bundle_manifest);
+  if (bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex.empty()) {
+    if (error) {
+      *error = "cannot compute founding DSL bundle aggregate digest";
+    }
+    return false;
+  }
+
+  if (!cuwacunu::hero::hashimyei::write_founding_dsl_bundle_manifest(
+          store_root, bundle_manifest, error)) {
+    return false;
+  }
+  return true;
 }
 
 [[nodiscard]] std::string json_escape(std::string_view in) {
@@ -1116,7 +1247,7 @@ struct cutover_receipt_entry_t {
 
   const std::string base_payload =
       preview.proposed_text.empty() ? preview.current_text : preview.proposed_text;
-  const std::string config_revision_id =
+  const std::string founding_revision_id =
       "cfgrev." + hex_u64(fnv1a64(base_payload));
   const std::uint64_t generated_at_ms = now_ms_utc();
 
@@ -1126,9 +1257,20 @@ struct cutover_receipt_entry_t {
   const std::filesystem::path store_root =
       configured_hashimyei_store_root(global_config_path);
   const std::filesystem::path catalog_path =
-      configured_hashimyei_catalog_path(global_config_path);
-
+      store_root.empty() ? std::filesystem::path{}
+                         : configured_hashimyei_catalog_path(global_config_path);
   std::string catalog_error{};
+  if (!touched.empty()) {
+    if (store_root.empty()) {
+      catalog_error = "missing GENERAL.hashimyei_store_root in " +
+                      std::string(global_config_path.empty()
+                                      ? kDefaultGlobalConfigPath
+                                      : global_config_path);
+    } else if (catalog_path.empty()) {
+      catalog_error =
+          "cannot derive hashimyei catalog path from GENERAL.hashimyei_store_root";
+    }
+  }
   std::size_t matched_components_count = 0;
   std::size_t applied_count = 0;
   std::size_t noop_count = 0;
@@ -1143,7 +1285,7 @@ struct cutover_receipt_entry_t {
   std::unordered_map<std::string, std::optional<std::string>>
       active_hash_cache_by_pointer{};
 
-  if (!touched.empty()) {
+  if (!touched.empty() && catalog_error.empty()) {
     cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t options{};
     options.catalog_path = catalog_path;
     options.encrypted = false;
@@ -1158,8 +1300,12 @@ struct cutover_receipt_entry_t {
       } else {
         latest_component_id_by_pointer.reserve(components.size());
         for (const auto& component : components) {
+          const std::string contract_hash =
+              cuwacunu::hero::hashimyei::contract_hash_from_identity(
+                  component.manifest.contract_identity);
           const std::string pointer_key =
-              component.manifest.canonical_path + "|" + component.manifest.family;
+              component.manifest.canonical_path + "|" + component.manifest.family +
+              "|" + contract_hash;
           if (latest_component_id_by_pointer.count(pointer_key) == 0) {
             latest_component_id_by_pointer[pointer_key] = component.component_id;
           }
@@ -1201,7 +1347,7 @@ struct cutover_receipt_entry_t {
       auto it = component_dsl_norm_cache.find(component.component_id);
       if (it != component_dsl_norm_cache.end()) return it->second;
       const std::filesystem::path resolved = resolve_path_near_config(
-          component.manifest.dsl_canonical_path, config_path);
+          component.manifest.founding_dsl_provenance_path, config_path);
       auto [inserted_it, _] =
           component_dsl_norm_cache.emplace(component.component_id,
                                            normalized_path_key(resolved));
@@ -1210,8 +1356,12 @@ struct cutover_receipt_entry_t {
 
     auto is_active_component = [&](const cuwacunu::hero::hashimyei::component_state_t&
                                        component) {
+      const std::string contract_hash =
+          cuwacunu::hero::hashimyei::contract_hash_from_identity(
+              component.manifest.contract_identity);
       const std::string pointer_key =
-          component.manifest.canonical_path + "|" + component.manifest.family;
+          component.manifest.canonical_path + "|" + component.manifest.family +
+          "|" + contract_hash;
       const auto cache_it = active_hash_cache_by_pointer.find(pointer_key);
       if (cache_it != active_hash_cache_by_pointer.end()) {
         if (!cache_it->second.has_value()) {
@@ -1219,16 +1369,18 @@ struct cutover_receipt_entry_t {
           return latest_it != latest_component_id_by_pointer.end() &&
                  latest_it->second == component.component_id;
         }
-        return *cache_it->second == component.manifest.component_identity.name;
+        return *cache_it->second == component.manifest.hashimyei_identity.name;
       }
 
       std::string active_hash{};
       std::string active_error{};
       if (catalog.resolve_active_hashimyei(component.manifest.canonical_path,
-                                           component.manifest.family, &active_hash,
+                                           component.manifest.family,
+                                           contract_hash,
+                                           &active_hash,
                                            &active_error)) {
         active_hash_cache_by_pointer.emplace(pointer_key, active_hash);
-        return active_hash == component.manifest.component_identity.name;
+        return active_hash == component.manifest.hashimyei_identity.name;
       }
 
       active_hash_cache_by_pointer.emplace(pointer_key, std::nullopt);
@@ -1243,8 +1395,12 @@ struct cutover_receipt_entry_t {
     for (const auto& component : components) {
       if (component_dsl_norm(component) != t.resolved_norm) continue;
       if (!is_active_component(component)) continue;
+      const std::string contract_hash =
+          cuwacunu::hero::hashimyei::contract_hash_from_identity(
+              component.manifest.contract_identity);
       const std::string pointer_key =
-          component.manifest.canonical_path + "|" + component.manifest.family;
+          component.manifest.canonical_path + "|" + component.manifest.family +
+          "|" + contract_hash;
       if (seen_pointer.insert(pointer_key).second) matched.push_back(component);
     }
 
@@ -1282,16 +1438,18 @@ struct cutover_receipt_entry_t {
       row.dsl_path = t.resolved_norm;
       row.canonical_path = active_component.manifest.canonical_path;
       row.family = active_component.manifest.family;
-      row.old_hashimyei = active_component.manifest.component_identity.name;
-      row.new_hashimyei = active_component.manifest.component_identity.name;
+      row.old_hashimyei = active_component.manifest.hashimyei_identity.name;
+      row.new_hashimyei = active_component.manifest.hashimyei_identity.name;
 
       const std::string pointer_canonical =
-          !active_component.manifest.component_identity.name.empty() &&
+          !active_component.manifest.hashimyei_identity.name.empty() &&
                   !active_component.manifest.family.empty()
               ? active_component.manifest.family
               : active_component.manifest.canonical_path;
-      const std::string pointer_key =
-          pointer_canonical + "|" + active_component.manifest.family;
+      const std::string pointer_key = pointer_canonical + "|" +
+                                      active_component.manifest.family + "|" +
+                                      cuwacunu::hero::hashimyei::contract_hash_from_identity(
+                                          active_component.manifest.contract_identity);
       if (!processed_component_pointer_keys.insert(pointer_key).second) {
         row.status = "noop";
         row.message =
@@ -1302,11 +1460,13 @@ struct cutover_receipt_entry_t {
       }
 
       const std::filesystem::path old_dsl_resolved = resolve_path_near_config(
-          active_component.manifest.dsl_canonical_path, config_path);
+          active_component.manifest.founding_dsl_provenance_path,
+          config_path);
       const std::string old_dsl_norm = normalized_path_key(old_dsl_resolved);
       const bool dsl_path_changed = old_dsl_norm != t.resolved_norm;
       const bool dsl_sha_changed =
-          lowercase_copy(active_component.manifest.dsl_sha256_hex) !=
+          lowercase_copy(
+              active_component.manifest.founding_dsl_provenance_sha256_hex) !=
           lowercase_copy(t.dsl_sha256_hex);
 
       if (!dsl_path_changed && !dsl_sha_changed) {
@@ -1320,28 +1480,30 @@ struct cutover_receipt_entry_t {
       cuwacunu::hero::hashimyei::component_manifest_t next_manifest =
           active_component.manifest;
       next_manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
-      next_manifest.parent_identity = active_component.manifest.component_identity;
+      next_manifest.parent_identity = active_component.manifest.hashimyei_identity;
       next_manifest.revision_reason = "dsl_change";
-      next_manifest.config_revision_id = config_revision_id;
-      next_manifest.dsl_canonical_path = t.resolved_norm;
-      next_manifest.dsl_sha256_hex = t.dsl_sha256_hex;
-      next_manifest.status = "active";
+      next_manifest.founding_revision_id = founding_revision_id;
+      next_manifest.founding_dsl_provenance_path = t.resolved_norm;
+      next_manifest.founding_dsl_provenance_sha256_hex = t.dsl_sha256_hex;
+      next_manifest.lineage_state = "active";
       next_manifest.replaced_by.clear();
       next_manifest.updated_at_ms = deterministic_cutover_ts_ms(
-          config_revision_id + "|" + active_component.manifest.canonical_path + "|" +
+          founding_revision_id + "|" +
+          active_component.manifest.canonical_path + "|" +
           t.dsl_sha256_hex + "|" + t.resolved_norm);
       next_manifest.created_at_ms = next_manifest.updated_at_ms;
 
-      if (!active_component.manifest.component_identity.name.empty()) {
+      if (!active_component.manifest.hashimyei_identity.name.empty()) {
         std::string next_hashimyei = synthesize_hashimyei_from_sha(
-            t.dsl_sha256_hex, active_component.manifest.component_identity.name);
-        if (next_hashimyei == active_component.manifest.component_identity.name) {
+            t.dsl_sha256_hex, active_component.manifest.hashimyei_identity.name);
+        if (next_hashimyei ==
+            active_component.manifest.hashimyei_identity.name) {
           next_hashimyei =
-              "0x" + hex_u64(fnv1a64(config_revision_id + "|" +
+              "0x" + hex_u64(fnv1a64(founding_revision_id + "|" +
                                      active_component.manifest.canonical_path +
                                      "|" + t.dsl_sha256_hex));
         }
-        next_manifest.component_identity.name = next_hashimyei;
+        next_manifest.hashimyei_identity.name = next_hashimyei;
         std::uint64_t parsed_ordinal = 0;
         if (!cuwacunu::hashimyei::parse_hex_hash_name_ordinal(next_hashimyei,
                                                                &parsed_ordinal)) {
@@ -1352,11 +1514,12 @@ struct cutover_receipt_entry_t {
           ++error_count;
           continue;
         }
-        next_manifest.component_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
-        next_manifest.component_identity.kind =
+        next_manifest.hashimyei_identity.schema =
+            cuwacunu::hashimyei::kIdentitySchemaV2;
+        next_manifest.hashimyei_identity.kind =
             cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE;
-        next_manifest.component_identity.ordinal = parsed_ordinal;
-        next_manifest.component_identity.hash_sha256_hex.clear();
+        next_manifest.hashimyei_identity.ordinal = parsed_ordinal;
+        next_manifest.hashimyei_identity.hash_sha256_hex.clear();
         if (!next_manifest.family.empty()) {
           next_manifest.canonical_path =
               next_manifest.family + "." + next_hashimyei;
@@ -1365,14 +1528,32 @@ struct cutover_receipt_entry_t {
 
       const std::string dedup_seed =
           next_manifest.canonical_path + "|" + next_manifest.family + "|" +
-          next_manifest.dsl_sha256_hex + "|" + next_manifest.dsl_canonical_path +
-          "|" + next_manifest.config_revision_id;
+          next_manifest.founding_dsl_provenance_sha256_hex + "|" +
+          next_manifest.founding_dsl_provenance_path +
+          "|" + next_manifest.founding_revision_id;
       if (!emitted_revision_dedup.insert(dedup_seed).second) {
         row.status = "noop";
-        row.new_hashimyei = next_manifest.component_identity.name;
+        row.new_hashimyei = next_manifest.hashimyei_identity.name;
         row.message = "duplicate cutover payload deduplicated in this save";
         receipts.push_back(std::move(row));
         ++noop_count;
+        continue;
+      }
+
+      const auto contract_snapshot =
+          cuwacunu::iitepi::contract_space_t::contract_itself(
+              cuwacunu::hero::hashimyei::contract_hash_from_identity(
+                  next_manifest.contract_identity));
+      std::string founding_bundle_error{};
+      if (!write_component_founding_dsl_bundle_snapshot(
+              store_root, next_manifest, t.resolved_norm, contract_snapshot,
+              &founding_bundle_error)) {
+        row.status = "error";
+        row.new_hashimyei = next_manifest.hashimyei_identity.name;
+        row.message = "cannot persist founding DSL bundle snapshot: " +
+                      founding_bundle_error;
+        receipts.push_back(std::move(row));
+        ++error_count;
         continue;
       }
 
@@ -1382,14 +1563,14 @@ struct cutover_receipt_entry_t {
       if (!catalog.register_component_manifest(next_manifest, &component_id, &inserted,
                                                &register_error)) {
         row.status = "error";
-        row.new_hashimyei = next_manifest.component_identity.name;
+        row.new_hashimyei = next_manifest.hashimyei_identity.name;
         row.message = register_error;
         receipts.push_back(std::move(row));
         ++error_count;
         continue;
       }
 
-      row.new_hashimyei = next_manifest.component_identity.name;
+      row.new_hashimyei = next_manifest.hashimyei_identity.name;
       row.component_id = component_id;
       row.inserted = inserted;
       row.status = inserted ? "applied" : "noop";
@@ -1413,7 +1594,8 @@ struct cutover_receipt_entry_t {
 
   std::ostringstream out;
   out << "{"
-      << "\"config_revision_id\":" << json_quote(config_revision_id) << ","
+      << "\"founding_revision_id\":"
+      << json_quote(founding_revision_id) << ","
       << "\"generated_at_ms\":" << generated_at_ms << ","
       << "\"cutover_triggered\":" << bool_json(!touched.empty()) << ","
       << "\"path\":" << json_quote(config_path) << ","
@@ -1443,7 +1625,8 @@ struct cutover_receipt_entry_t {
         << ",\"status\":" << json_quote(receipts[i].status)
         << ",\"inserted\":" << bool_json(receipts[i].inserted)
         << ",\"message\":" << json_quote(receipts[i].message)
-        << ",\"config_revision_id\":" << json_quote(config_revision_id) << "}";
+        << ",\"founding_revision_id\":"
+        << json_quote(founding_revision_id) << "}";
   }
   out << "]}";
   return out.str();

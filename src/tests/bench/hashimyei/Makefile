@@ -10,9 +10,9 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 DB_LINK   = $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)
 DATA_LINK = $(libtorch_a) $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_curl)
 
-$(eval $(call TEST_ONEFILE, test_hashimyei_catalog, test_hashimyei_catalog.cpp, $(DB_LINK)))
+$(eval $(call TEST_ONEFILE, test_hashimyei_catalog, test_hashimyei_catalog.cpp, $(DATA_LINK)))
 $(eval $(call TEST_ONEFILE, test_hashimyei_report_fragments, test_hashimyei_report_fragments.cpp, $(DATA_LINK)))
-$(eval $(call TEST_ONEFILE, test_lattice_catalog, test_lattice_catalog.cpp, $(DB_LINK)))
+$(eval $(call TEST_ONEFILE, test_lattice_catalog, test_lattice_catalog.cpp, $(DATA_LINK)))
 $(eval $(call TEST_ONEFILE, test_source_runtime_projection, test_source_runtime_projection.cpp))
 $(eval $(call TEST_ONEFILE, test_hero_mcp_surface, test_hero_mcp_surface.cpp))
 
@@ -45,7 +45,7 @@ run: run-test_hashimyei_catalog run-test_hashimyei_report_fragments run-test_lat
 
 .PHONY: clean
 clean:
-	@rm -f \
+	$(Q)$(CLEAN_RM_CMD) \
 	  $(TEST_OUT)/test_hashimyei_catalog \
 	  $(TEST_OUT)/test_hashimyei_report_fragments \
 	  $(TEST_OUT)/test_lattice_catalog \

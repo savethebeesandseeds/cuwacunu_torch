@@ -48,7 +48,7 @@ run: \
 # 7) Clean
 .PHONY: clean
 clean:
-	@rm -f \
+	$(Q)$(CLEAN_RM_CMD) \
 	  $(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu \
 	  $(TEST_OUT)/test_vicreg_4d_train \
 	  $(TEST_OUT)/test_vicreg_4d_save_and_load \

@@ -2,10 +2,73 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = latent_lineage_state
-TARGET_DSL = typed latent-lineage-state files used by VICReg/VALUE_ESTIMATION/WIKIMYEI_INFERENCE_TRANSFER_MATRIX_EVALUATION
+TARGET_DSL = typed latent-lineage-state files used by VICReg/VALUE_ESTIMATION/WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS/WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION
 TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
 PRIMARY_VALIDATORS = module-specific validators in src/impl/iitepi/contract_space_t.cpp
+
+[PROFILE RUNTIME_REPORT_MODEL]
+scope = persisted runtime .lls reports
+shape = flat top-level header plus flat payload
+required = schema,context,payload
+context = canonical_path,binding_id,wave_cursor[,source_runtime_cursor]
+semantic_taxon = required for analytics/evaluation reports and optional for operational reports in v1
+nuance = runtime reports stay flat in .lls form; payload is every remaining top-level key after schema, semantic_taxon, and context keys; source-selected reports may also add source_runtime_cursor to context
+nuance_extra = reports are latest-facing semantic facts by default; campaign/job lineage remains outside the report header in runtime manifests and Runtime Hero state
+
+[ENUM RUNTIME_REPORT_SEMANTIC_TAXON]
+key = semantic_taxon
+values = source.data,embedding.data,embedding.evaluation,embedding.network
+
+[FIELD RUNTIME_REPORT.SEMANTIC_TAXON]
+key = semantic_taxon
+scope = runtime report top level
+type = enum
+required = false
+default = omitted for operational reports in v1
+range = one runtime report taxonomy token
+allowed = source.data,embedding.data,embedding.evaluation,embedding.network
+nuance = analytics/evaluation reports use semantic_taxon to declare what the report means; when present it must be one of the allowed canonical taxonomy values, while operational reports may omit it in v1
+
+[FIELD RUNTIME_REPORT.CANONICAL_PATH]
+key = canonical_path
+scope = runtime report top level
+type = identifier
+required = true for persisted runtime reports
+default = none
+range = stable semantic canonical path
+allowed = tsi.source.dataloader,tsi.wikimyei.representation.vicreg.0x<hex>
+nuance = canonical_path names the stable semantic report subject and must not absorb wave-selected runtime configuration such as symbol or date range
+
+[FIELD RUNTIME_REPORT.BINDING_ID]
+key = binding_id
+scope = runtime report top level
+type = identifier
+required = true for persisted runtime reports
+default = none
+range = non-empty binding token
+allowed = runtime binding id string
+nuance = binding_id is the compact runtime selector that already identifies the effective contract and wave setup for the report context; it is the report-facing bridge to campaign/run lineage without embedding campaign/job ids in the report itself
+
+[FIELD RUNTIME_REPORT.SOURCE_RUNTIME_CURSOR]
+key = source_runtime_cursor
+scope = runtime report top level
+type = identifier
+required = false
+default = omitted
+range = compact source runtime selector
+allowed = <symbol>|<FROM>|<TO>
+nuance = optional semantic source selector derived from SOURCE.RUNTIME.{SYMBOL,FROM,TO}; useful for source-selected reports without promoting source projection metrics into the shared header
+
+[FIELD RUNTIME_REPORT.WAVE_CURSOR]
+key = wave_cursor
+scope = runtime report top level
+type = uint64
+required = true for persisted runtime reports
+default = none
+range = >= 0
+allowed = decimal integer
+nuance = persisted runtime reports store the packed wave cursor at top level; public query surfaces may additionally render it as <run>.<epoch>.<batch>
 
 [FIELD LINE.LHS]
 key = <key>[<domain>][:<type>]

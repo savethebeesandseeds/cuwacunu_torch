@@ -7,6 +7,7 @@
 
 <wave_stmt>              ::= [<whitespace>] <wave_stmt_core> ;
 <wave_stmt_core>         ::= <mode_assignment>
+                           | <circuit_assignment>
                            | <determinism_assignment>
                            | <sampler_assignment>
                            | <epochs_assignment>
@@ -20,6 +21,7 @@
 <assign>                 ::= [<whitespace>] (":" | "=") [<whitespace>] ;
 
 <mode_assignment>        ::= "MODE" <assign> <mode_value> [<whitespace>] ";" <line_end> ;
+<circuit_assignment>     ::= "CIRCUIT" <assign> <id_value> [<whitespace>] ";" <line_end> ;
 <determinism_assignment> ::= "DETERMINISM" <assign> <determinism_value> [<whitespace>] ";" <line_end> ;
 <sampler_assignment>     ::= "SAMPLER" <assign> <sampler_value> [<whitespace>] ";" <line_end> ;
 <epochs_assignment>      ::= "EPOCHS" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
@@ -39,6 +41,9 @@
                              | <jkimyei_block> ;
 <jkimyei_block>          ::= "JKIMYEI" <assign> "{" <line_end>
                              [<whitespace>] "HALT_TRAIN" <assign> <bool_value> [<whitespace>] ";" <line_end>
+                             [<whitespace>] "}" [<whitespace>] ";" <line_end>
+                           | "JKIMYEI" <assign> "{" <line_end>
+                             [<whitespace>] "HALT_TRAIN" <assign> <bool_value> [<whitespace>] ";" <line_end>
                              [<whitespace>] "PROFILE_ID" <assign> <id_value> [<whitespace>] ";" <line_end>
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 
@@ -55,8 +60,7 @@
                              {<source_settings_assignment>}
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 <source_settings_assignment> ::= [<whitespace>] <source_settings_assignment_core> ;
-<source_settings_assignment_core> ::= <sampler_assignment>
-                                    | <source_workers_assignment>
+<source_settings_assignment_core> ::= <source_workers_assignment>
                                     | <source_force_rebuild_cache_assignment>
                                     | <source_range_warn_batches_assignment> ;
 <source_runtime_block>   ::= "RUNTIME" <assign> "{" <line_end>
@@ -65,17 +69,13 @@
 <source_runtime_assignment> ::= [<whitespace>] <source_runtime_assignment_core> ;
 <source_runtime_assignment_core> ::= <source_symbol_assignment>
                                    | <source_from_assignment>
-                                   | <source_to_assignment>
-                                   | <source_sources_dsl_file_assignment>
-                                   | <source_channels_dsl_file_assignment> ;
+                                   | <source_to_assignment> ;
 <source_symbol_assignment> ::= "SYMBOL" <assign> <symbol_value> [<whitespace>] ";" <line_end> ;
 <source_from_assignment>   ::= "FROM" <assign> <date_value> [<whitespace>] ";" <line_end> ;
 <source_to_assignment>     ::= "TO" <assign> <date_value> [<whitespace>] ";" <line_end> ;
 <source_workers_assignment> ::= "WORKERS" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
 <source_force_rebuild_cache_assignment> ::= "FORCE_REBUILD_CACHE" <assign> <bool_value> [<whitespace>] ";" <line_end> ;
 <source_range_warn_batches_assignment> ::= "RANGE_WARN_BATCHES" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
-<source_sources_dsl_file_assignment> ::= "SOURCES_DSL_FILE" <assign> <file_path_value> [<whitespace>] ";" <line_end> ;
-<source_channels_dsl_file_assignment> ::= "CHANNELS_DSL_FILE" <assign> <file_path_value> [<whitespace>] ";" <line_end> ;
 
 <probe_block>            ::= "PROBE" [<whitespace>] [":" [<whitespace>]] <binding_ref> [<whitespace>] "{"
                              <line_end>
@@ -130,11 +130,8 @@
                            | "0X" <hex_digit> {<hex_digit>} ;
 <bin_literal>            ::= "0b" <bin_digit> {<bin_digit>}
                            | "0B" <bin_digit> {<bin_digit>} ;
-<file_path_value>        ::= <file_path_char> {<file_path_char>} ;
-
 <id_char>                ::= <letter> | <digit> | "_" | "." | "-" ;
 <symbol_char>            ::= <letter> | <digit> | "_" | "." | "-" ;
-<file_path_char>         ::= <letter> | <digit> | "_" | "." | "-" | "/" | ":" ;
 
 <line_end>               ::= [<whitespace>] <break_block> ;
 <break_block>            ::= {<newline>} ;

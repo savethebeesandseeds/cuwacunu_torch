@@ -27,16 +27,6 @@ range = executable path
 allowed = absolute_or_relative path
 nuance = worker binary launched for each sequential RUN step of hero.runtime.start_campaign
 
-[FIELD config_folder]
-key = config_folder
-scope = hero runtime defaults
-type = path
-required = true
-default = /cuwacunu/src/config
-range = non-empty path
-allowed = absolute_or_relative path
-nuance = default config folder passed to launched workers unless overridden per job
-
 [FIELD campaign_grammar_filename]
 key = campaign_grammar_filename
 scope = hero runtime defaults

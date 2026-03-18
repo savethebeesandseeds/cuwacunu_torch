@@ -134,6 +134,8 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     std::string contract_hash{};
     // Source identity for this contract's data stream (e.g., BTCUSDT).
     std::string instrument{};
+    // Compact semantic selector derived from SOURCE.RUNTIME.{SYMBOL,FROM,TO}.
+    std::string source_runtime_cursor{};
     // Concrete sample record type used by source dataloader.
     std::string sample_type{};
     // Canonical source tsi type (manifest aligned).

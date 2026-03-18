@@ -49,7 +49,7 @@ struct wave_file_fingerprint_t {
 
 struct wave_dependency_manifest_t {
   std::vector<wave_file_fingerprint_t> files{};
-  std::string aggregate_sha256_hex{};
+  std::string dependency_manifest_aggregate_sha256_hex{};
 };
 
 namespace wave_record {
@@ -70,7 +70,6 @@ struct wave_blob_t : dsl_blob_t {
 }  // namespace wave_record
 
 struct wave_record_t {
-  std::string config_folder{};
   std::string config_file_path{};
   std::string config_file_path_canonical{};
   parsed_config_t config{};

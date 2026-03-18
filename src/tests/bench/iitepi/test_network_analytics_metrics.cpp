@@ -187,11 +187,9 @@ int main() try {
           report,
           "weights.init.pt");
   const auto report_identity = tsiemene::make_component_report_identity(
-      "network_analytics",
       "tsi.wikimyei.representation.vicreg.0x0001",
-      "tsi.wikimyei.representation.vicreg",
-      "0x0001",
-      "contract.deadbeef");
+      "bind.train.v1",
+      "embedding.network");
   const std::string params_kv_with_identity =
       cuwacunu::piaabo::torch_compat::network_analytics_to_latent_lineage_state_text(
           report,
@@ -229,14 +227,18 @@ int main() try {
                   contains(params_kv, "tensor_count[0,+inf):uint"),
                   "tensor_count should use a nonnegative domain");
   ok = ok && expect(
+                  has_lhs_key(params_kv_with_identity, "semantic_taxon") &&
+                      contains(params_kv_with_identity, "embedding.network"),
+                  "component-aware kv output missing semantic_taxon");
+  ok = ok && expect(
                   has_lhs_key(params_kv_with_identity, "canonical_path") &&
                       contains(params_kv_with_identity,
-                               "tsi.wikimyei.representation.vicreg.0x0001"),
+                               "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0001"),
                   "component-aware kv output missing canonical_path");
   ok = ok && expect(
-                  has_lhs_key(params_kv_with_identity, "report_kind") &&
-                      contains(params_kv_with_identity, "network_analytics"),
-                  "component-aware kv output missing report_kind");
+                  has_lhs_key(params_kv_with_identity, "binding_id") &&
+                      contains(params_kv_with_identity, "binding_id:str = bind.train.v1"),
+                  "component-aware kv output missing binding_id");
   const std::string param_schema = extracted_schema;
   ok = ok && expect(
                   param_schema ==

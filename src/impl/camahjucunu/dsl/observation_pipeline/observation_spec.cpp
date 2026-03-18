@@ -4,6 +4,8 @@
 #include "camahjucunu/dsl/observation_pipeline/observation_channels_decoder.h"
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "camahjucunu/dsl/runtime_binding_instruction/runtime_binding_instruction.h"
+#include "iitepi/contract_space_t.h"
+#include "iitepi/observation_contract_wave_paths.h"
 #include "iitepi/runtime_binding_space_t.h"
 #include "iitepi/wave_space_t.h"
 #include "piaabo/dconfig.h"
@@ -249,6 +251,8 @@ resolve_observation_payload_for_contract_or_throw(
 
   const std::string wave_hash = cuwacunu::iitepi::runtime_binding_space_t::wave_hash_for_binding(
       runtime_binding_hash, binding_id);
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
   const auto wave_itself = cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
   const auto& wave_set = wave_itself->wave.decoded();
   const auto* selected_wave = find_wave_by_id_or_null(wave_set, bind->wave_ref);
@@ -260,30 +264,38 @@ resolve_observation_payload_for_contract_or_throw(
         "runtime currently requires exactly one SOURCE block in selected wave");
   }
 
-  const auto& source_decl = selected_wave->sources.front();
-  const std::string source_path = resolve_path_from_folder(
-      wave_itself->config_folder,
-      unquote_if_wrapped(source_decl.sources_dsl_file));
-  const std::string channel_path = resolve_path_from_folder(
-      wave_itself->config_folder,
-      unquote_if_wrapped(source_decl.channels_dsl_file));
-  if (!has_non_ws(source_path) || !std::filesystem::exists(source_path) ||
-      !std::filesystem::is_regular_file(source_path)) {
-    throw std::runtime_error(
-        "invalid SOURCE.SOURCES_DSL_FILE for selected wave: " + source_path);
+  cuwacunu::iitepi::observation_dsl_path_resolution_t observation_paths{};
+  std::string path_error{};
+  if (!cuwacunu::iitepi::resolve_observation_dsl_paths(
+          contract_itself, wave_itself, *selected_wave, &observation_paths,
+          &path_error)) {
+    throw std::runtime_error(path_error);
   }
-  if (!has_non_ws(channel_path) || !std::filesystem::exists(channel_path) ||
-      !std::filesystem::is_regular_file(channel_path)) {
+  if (!has_non_ws(observation_paths.sources_path) ||
+      !std::filesystem::exists(observation_paths.sources_path) ||
+      !std::filesystem::is_regular_file(observation_paths.sources_path)) {
     throw std::runtime_error(
-        "invalid SOURCE.CHANNELS_DSL_FILE for selected wave: " + channel_path);
+        "invalid observation sources DSL for selected wave: " +
+        observation_paths.sources_path);
+  }
+  if (!has_non_ws(observation_paths.channels_path) ||
+      !std::filesystem::exists(observation_paths.channels_path) ||
+      !std::filesystem::is_regular_file(observation_paths.channels_path)) {
+    throw std::runtime_error(
+        "invalid observation channels DSL for selected wave: " +
+        observation_paths.channels_path);
   }
 
   const std::string source_grammar_path = resolve_path_from_folder(
-      cuwacunu::iitepi::config_space_t::config_folder,
+      std::filesystem::path(cuwacunu::iitepi::config_space_t::config_file_path)
+          .parent_path()
+          .string(),
       unquote_if_wrapped(cuwacunu::iitepi::config_space_t::get<std::string>(
           "BNF", "observation_sources_grammar_filename")));
   const std::string channel_grammar_path = resolve_path_from_folder(
-      cuwacunu::iitepi::config_space_t::config_folder,
+      std::filesystem::path(cuwacunu::iitepi::config_space_t::config_file_path)
+          .parent_path()
+          .string(),
       unquote_if_wrapped(cuwacunu::iitepi::config_space_t::get<std::string>(
           "BNF", "observation_channels_grammar_filename")));
   if (!has_non_ws(source_grammar_path) ||
@@ -300,8 +312,10 @@ resolve_observation_payload_for_contract_or_throw(
   }
 
   resolved_observation_payload_t out{};
-  out.source_instruction = cuwacunu::piaabo::dfiles::readFileToString(source_path);
-  out.channel_instruction = cuwacunu::piaabo::dfiles::readFileToString(channel_path);
+  out.source_instruction =
+      cuwacunu::piaabo::dfiles::readFileToString(observation_paths.sources_path);
+  out.channel_instruction =
+      cuwacunu::piaabo::dfiles::readFileToString(observation_paths.channels_path);
   out.source_grammar = cuwacunu::piaabo::dfiles::readFileToString(source_grammar_path);
   out.channel_grammar =
       cuwacunu::piaabo::dfiles::readFileToString(channel_grammar_path);
@@ -324,7 +338,7 @@ std::string observation_spec_source_dump_from_contract(
     return maybe_concat_instruction("observation.sources", payload.source_instruction) +
            maybe_concat_instruction("observation.channels", payload.channel_instruction);
   } catch (const std::exception& e) {
-    return std::string("ERROR: failed to resolve wave-owned observation DSL: ") +
+    return std::string("ERROR: failed to resolve contract/wave observation DSL: ") +
            e.what() + "\n";
   }
 }

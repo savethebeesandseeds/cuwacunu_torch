@@ -31,7 +31,7 @@ run: run-test_network_analytics run-test_network_analytics_metrics run-test_entr
 
 .PHONY: clean
 clean:
-	@rm -f \
+	$(Q)$(CLEAN_RM_CMD) \
 	  $(TEST_OUT)/test_network_analytics \
 	  $(TEST_OUT)/test_network_analytics_metrics \
 	  $(TEST_OUT)/test_entropic_capacity_analytics

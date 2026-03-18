@@ -1,0 +1,18 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = global.config.bnf
+TARGET_DSL = src/config/.config
+TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
+PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/impl/iitepi/runtime_binding_space_t.cpp
+
+[FIELD BNF.iitepi_runtime_binding_grammar_filename]
+key = iitepi_runtime_binding_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/iitepi.runtime_binding.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for internal runtime-binding snapshots materialized from campaign dispatch before contract and wave resolution

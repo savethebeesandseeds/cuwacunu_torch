@@ -405,21 +405,21 @@ int main() {
   const std::uint64_t expected_wave_cursor_u64 = packed_runtime_wave_cursor(1);
   const std::string expected_wave_cursor =
       std::to_string(expected_wave_cursor_u64);
+  const std::string source_runtime_cursor =
+      "BTCUSDT|03.01.2024|05.01.2024";
 
   write_text_file(
-      runtime_store / "reports" / "runtime_missing_run_id.lls",
+      runtime_store / "reports" / "runtime_missing_canonical_path.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss(-inf,+inf):double = 0.770000000000\n");
 
   REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
-  REQUIRE(error.find("missing run_id") != std::string::npos);
-  fs::remove(runtime_store / "reports" / "runtime_missing_run_id.lls");
+  REQUIRE(error.find("missing canonical_path") != std::string::npos);
+  fs::remove(runtime_store / "reports" / "runtime_missing_canonical_path.lls");
 
   write_text_file(
       runtime_store / "reports" / "runtime_namespaced_schema.lls",
       "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
-      "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.source.dataloader.BTCUSDT\n");
 
   REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
@@ -429,49 +429,47 @@ int main() {
   write_text_file(
       runtime_store / "reports" / "runtime_new.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "semantic_taxon:str = embedding.network\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
       "network_global_entropic_capacity(0,+inf):double = 9.250000000000\n"
       "metric.loss(-inf,+inf):double = 0.25\n"
       "metric.phase:str = eval\n");
   write_text_file(
       runtime_store / "reports" / "status.latest.lls",
       "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
-      "report_kind:str = status\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
-      "hashimyei:str = 0x0042\n"
-      "run_id:str = run_runtime_001\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "binding_id:str = bind.train.vicreg\n"
+      "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
       "trained_steps(0,+inf):uint = 12\n");
   write_text_file(
       runtime_store / "reports" / "source_data_analytics.v2.latest.lls",
       "schema:str = piaabo.torch_compat.data_analytics.v2\n"
-      "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.source.dataloader.BTCUSDT\n"
+      "semantic_taxon:str = source.data\n"
+      "canonical_path:str = tsi.source.dataloader\n"
+      "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
+      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
       "source_label:str = tsi.source.dataloader.BTCUSDT\n"
       "sample_count(0,+inf):uint = 256\n"
       "source_entropic_load(0,+inf):double = 7.500000000000\n");
   write_text_file(
       runtime_store / "reports" / "source_runtime_projection.latest.lls",
       "schema:str = wave.source.runtime.projection.v2\n"
-      "report_kind:str = source_runtime_projection\n"
-      "run_id:str = run_runtime_001\n"
-      "source.runtime.projection.run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.source.dataloader.BTCUSDT\n"
-      "source_label:str = tsi.source.dataloader.BTCUSDT\n"
+      "canonical_path:str = tsi.source.dataloader\n"
+      "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
-      "binding_id:str = bind.train.vicreg\n"
-      "wave_hash:str = wave_hash_456\n"
-      "wave_id:str = wave.train.main\n"
+      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
+      "source_label:str = tsi.source.dataloader.BTCUSDT\n"
       "source.runtime.symbol:str = BTCUSDT\n"
       "source.runtime.range_basis:str = effective_intersection\n"
       "source.runtime.interval_semantics:str = half_open_utc_day\n"
@@ -490,13 +488,11 @@ int main() {
   write_text_file(
       runtime_store / "reports" / "runtime_unsupported_schema.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v4\n"
-      "run_id:str = run_runtime_000\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss(-inf,+inf):double = 0.990000000000\n");
   write_text_file(
       runtime_store / "reports" / "runtime_wrong_ext.kv",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "run_id:str = run_runtime_002\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss(-inf,+inf):double = 0.500000000000\n");
 
@@ -512,6 +508,10 @@ int main() {
     REQUIRE(row.path.find(".lls") != std::string::npos);
     if (row.schema == "piaabo.torch_compat.network_analytics.v5") {
       saw_network_runtime = true;
+      REQUIRE(row.semantic_taxon == "embedding.network");
+      REQUIRE(row.report_canonical_path ==
+              "tsi.wikimyei.representation.vicreg.0x0042");
+      REQUIRE(row.binding_id == "bind.train.vicreg");
     }
     if (row.schema == "tsi.wikimyei.representation.vicreg.status.v1") {
       saw_status_runtime = true;
@@ -546,9 +546,15 @@ int main() {
     REQUIRE(row.canonical_path == "tsi.source.dataloader.BTCUSDT");
     if (row.schema == "piaabo.torch_compat.data_analytics.v2") {
       saw_data_analytics = true;
+      REQUIRE(row.semantic_taxon == "source.data");
+      REQUIRE(row.report_canonical_path == "tsi.source.dataloader");
+      REQUIRE(row.binding_id == "bind.train.vicreg");
     }
     if (row.schema == "wave.source.runtime.projection.v2") {
       saw_source_runtime = true;
+      REQUIRE(row.report_canonical_path == "tsi.source.dataloader");
+      REQUIRE(row.binding_id == "bind.train.vicreg");
+      REQUIRE(row.source_runtime_cursor == source_runtime_cursor);
       REQUIRE(row.path.find("source_runtime_projection.latest.lls") !=
               std::string::npos);
       REQUIRE(row.path.find("[lattice.synthetic.source_runtime") ==
@@ -556,11 +562,6 @@ int main() {
       REQUIRE(row.payload_json.find(
                   "source.runtime.request.from_ratio(0,1):double = "
                   "0.125000000000") != std::string::npos);
-      REQUIRE(row.payload_json.find("wave_cursor_resolution:str = run") !=
-              std::string::npos);
-      REQUIRE(row.payload_json.find(
-                  "intersection_cursor:str = tsi.source.dataloader.BTCUSDT|") !=
-              std::string::npos);
     }
   }
   REQUIRE(saw_data_analytics);
@@ -652,11 +653,13 @@ int main() {
   write_text_file(
       runtime_store / "reports" / "source_data_analytics_eth.v2.latest.lls",
       "schema:str = piaabo.torch_compat.data_analytics.v2\n"
-      "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.source.dataloader.ETHUSDT\n"
+      "semantic_taxon:str = source.data\n"
+      "canonical_path:str = tsi.source.dataloader\n"
+      "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
+      "source_runtime_cursor:str = ETHUSDT|03.01.2024|05.01.2024\n"
       "source_label:str = tsi.source.dataloader.ETHUSDT\n"
       "sample_count(0,+inf):uint = 256\n"
       "source_entropic_load(0,+inf):double = 6.250000000000\n");
@@ -689,11 +692,12 @@ int main() {
   write_text_file(
       runtime_store / "reports" / "runtime_new_ambiguous.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0043\n"
+      "semantic_taxon:str = embedding.network\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0043\n"
+      "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
       "network_global_entropic_capacity(0,+inf):double = 8.500000000000\n"
       "metric.loss(-inf,+inf):double = 0.31\n");
   REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
@@ -728,22 +732,22 @@ int main() {
   write_text_file(
       runtime_store / "reports" / "runtime_new_latest.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "run_id:str = run_runtime_001\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "semantic_taxon:str = embedding.network\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + latest_family_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
       "network_global_entropic_capacity(0,+inf):double = 9.750000000000\n"
       "metric.loss(-inf,+inf):double = 0.20\n");
   write_text_file(
       runtime_store / "reports" / "status.latest.newer.lls",
       "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
-      "report_kind:str = status\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
-      "hashimyei:str = 0x0042\n"
-      "run_id:str = run_runtime_001\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "binding_id:str = bind.train.vicreg\n"
+      "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + latest_family_wave_cursor + "\n"
-      "wave_cursor_resolution:str = run\n"
       "trained_steps(0,+inf):uint = 24\n");
 
   REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));

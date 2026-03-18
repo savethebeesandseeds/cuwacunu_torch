@@ -66,7 +66,7 @@ run: \
 # 7) Clean
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/test_dconfig \
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_dconfig \
 	       $(TEST_OUT)/test_dconfig_contract_lock \
 	       $(TEST_OUT)/test_dsecurity \
 	       $(TEST_OUT)/test_dencryption \

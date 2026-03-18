@@ -6,10 +6,12 @@
 #include <string>
 #include <string_view>
 
+#include "piaabo/latent_lineage_state/runtime_lls.h"
+
 namespace tsiemene {
 
-// Report-dispatch vocabulary is component/fact centric. Correlation selectors
-// like run_id or wave cursor fields are metadata, not the primary identity.
+// Report-dispatch vocabulary is component/fact centric. Runtime report identity
+// is carried by semantic_taxon plus the compact context header.
 enum class report_event_e : std::uint8_t {
   Step = 0,
   EpochStart = 1,
@@ -42,44 +44,34 @@ enum class report_event_e : std::uint8_t {
 }
 
 struct component_report_identity_t {
-  std::string report_kind{};
   std::string canonical_path{};
-  std::string tsi_type{};
-  std::string hashimyei{};
-  std::string contract_hash{};
-  std::string wave_hash{};
+  std::string semantic_taxon{};
   std::string binding_id{};
-  std::string run_id{};
-  std::string wave_cursor_resolution{};
-  std::string intersection_cursor{};
+  std::string source_runtime_cursor{};
   bool has_wave_cursor{false};
   std::uint64_t wave_cursor{0};
-  bool has_wave_cursor_run{false};
-  std::uint64_t wave_cursor_run{0};
-  bool has_wave_cursor_episode{false};
-  std::uint64_t wave_cursor_episode{0};
-  bool has_wave_cursor_batch{false};
-  std::uint64_t wave_cursor_batch{0};
 };
 
+[[nodiscard]] inline cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t
+make_runtime_report_header(const component_report_identity_t& identity) {
+  cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t out{};
+  out.semantic_taxon = identity.semantic_taxon;
+  out.context.canonical_path = identity.canonical_path;
+  out.context.binding_id = identity.binding_id;
+  out.context.source_runtime_cursor = identity.source_runtime_cursor;
+  out.context.has_wave_cursor = identity.has_wave_cursor;
+  out.context.wave_cursor = identity.wave_cursor;
+  return out;
+}
+
 [[nodiscard]] inline component_report_identity_t make_component_report_identity(
-    std::string_view report_kind,
     std::string_view canonical_path,
-    std::string_view tsi_type,
-    std::string_view hashimyei = {},
-    std::string_view contract_hash = {},
-    std::string_view wave_hash = {},
     std::string_view binding_id = {},
-    std::string_view run_id = {}) {
+    std::string_view semantic_taxon = {}) {
   component_report_identity_t out{};
-  out.report_kind = std::string(report_kind);
   out.canonical_path = std::string(canonical_path);
-  out.tsi_type = std::string(tsi_type);
-  out.hashimyei = std::string(hashimyei);
-  out.contract_hash = std::string(contract_hash);
-  out.wave_hash = std::string(wave_hash);
+  out.semantic_taxon = std::string(semantic_taxon);
   out.binding_id = std::string(binding_id);
-  out.run_id = std::string(run_id);
   return out;
 }
 

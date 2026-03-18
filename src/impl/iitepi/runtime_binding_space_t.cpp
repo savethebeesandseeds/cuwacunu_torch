@@ -44,11 +44,6 @@ static std::string g_last_requested_binding_id;
 static std::size_t g_registered_runtime_binding_count = 0;
 static runtime_binding_hash_t g_last_registered_runtime_binding_hash;
 static std::string g_last_registered_runtime_binding_path_canonical;
-constexpr const char* kDefaultInternalRuntimeBindingGrammarPath =
-    "/cuwacunu/src/include/iitepi/runtime_binding/internal.iitepi.runtime_binding.bnf";
-constexpr const char* kDefaultCampaignGrammarPath =
-    "/cuwacunu/src/config/bnf/iitepi.campaign.bnf";
-
 [[nodiscard]] static std::unordered_map<runtime_binding_hash_t, runtime_binding_ptr_t>&
 runtime_bindings_by_hash() {
   static std::unordered_map<runtime_binding_hash_t, runtime_binding_ptr_t> registry;
@@ -341,6 +336,12 @@ static T parse_scalar_from_string(const std::string& s);
   return (std::filesystem::path(folder) / p).string();
 }
 
+[[nodiscard]] static std::string parent_folder_from_path(const std::string& path) {
+  const std::filesystem::path p(path);
+  if (!p.has_parent_path()) return {};
+  return p.parent_path().string();
+}
+
 [[nodiscard]] static std::string canonicalize_path_best_effort(
     const std::string& path) {
   if (!has_non_ws_ascii(path)) return {};
@@ -358,9 +359,18 @@ static T parse_scalar_from_string(const std::string& s);
 }
 
 [[nodiscard]] static std::string default_campaign_grammar_path() {
-  return config_space_t::get<std::string>(
-      "BNF", "iitepi_campaign_grammar_filename",
-      std::string(kDefaultCampaignGrammarPath));
+  const std::string raw = trim_ascii_ws_copy(config_space_t::get<std::string>(
+      "BNF", "iitepi_campaign_grammar_filename", std::string{}));
+  if (!has_non_ws_ascii(raw)) {
+    log_fatal(
+        "[dconfig] missing [BNF].iitepi_campaign_grammar_filename in active global config\n");
+  }
+  const std::string resolved = resolve_path_from_folder(
+      parent_folder_from_path(config_space_t::config_file_path), raw);
+  if (!has_non_ws_ascii(resolved)) {
+    log_fatal("[dconfig] unable to resolve [BNF].iitepi_campaign_grammar_filename\n");
+  }
+  return resolved;
 }
 
 [[nodiscard]] static std::string select_campaign_binding_id_or_throw(
@@ -790,7 +800,8 @@ static T parse_scalar_from_string(const std::string& s) {
     log_fatal("[dconfig] empty global key <%s> in section [%s]\n", key, section);
   }
   const std::string resolved =
-      resolve_path_from_folder(config_space_t::config_folder, raw);
+      resolve_path_from_folder(parent_folder_from_path(config_space_t::config_file_path),
+                               raw);
   if (!has_non_ws_ascii(resolved)) {
     log_fatal("[dconfig] unable to resolve global path <%s> in [%s]\n", key, section);
   }
@@ -809,14 +820,17 @@ static T parse_scalar_from_string(const std::string& s) {
       const std::string raw = trim_ascii_ws_copy(key_it->second);
       if (has_non_ws_ascii(raw)) {
         const std::string resolved =
-            resolve_path_from_folder(config_space_t::config_folder, raw);
+            resolve_path_from_folder(
+                parent_folder_from_path(config_space_t::config_file_path), raw);
         if (has_non_ws_ascii(resolved) && std::filesystem::exists(resolved)) {
           return resolved;
         }
       }
     }
   }
-  return std::string(kDefaultInternalRuntimeBindingGrammarPath);
+  log_fatal(
+      "[dconfig] missing/invalid [BNF].iitepi_runtime_binding_grammar_filename in active global config\n");
+  return {};
 }
 
 [[nodiscard]] static std::string snapshot_runtime_binding_dsl_value_or_empty(
@@ -898,7 +912,6 @@ build_runtime_binding_record_from_path(const std::string& runtime_binding_file_p
       has_suffix_case_insensitive(resolved_runtime_binding_path, ".dsl");
 
   auto record = std::make_shared<runtime_binding_record_t>();
-  record->config_folder = runtime_binding_folder;
   record->config_file_path = resolved_runtime_binding_path;
   record->config_file_path_canonical =
       canonicalize_path_best_effort(resolved_runtime_binding_path);
@@ -909,7 +922,7 @@ build_runtime_binding_record_from_path(const std::string& runtime_binding_file_p
     record->config = parsed;
     dsl_path = runtime_binding_required_resolved_path(
         record->config,
-        record->config_folder,
+        runtime_binding_folder,
         "DSL",
         "iitepi_runtime_binding_dsl_filename");
   }
@@ -945,7 +958,7 @@ build_runtime_binding_record_from_path(const std::string& runtime_binding_file_p
     if (!has_non_ws_ascii(dep_path)) continue;
     record->dependency_manifest.files.push_back(fingerprint_file(dep_path));
   }
-  record->dependency_manifest.aggregate_sha256_hex =
+  record->dependency_manifest.dependency_manifest_aggregate_sha256_hex =
       compute_manifest_digest_hex(record->dependency_manifest.files);
   return record;
 }
@@ -1032,7 +1045,9 @@ static void resolve_and_assert_runtime_binding_dependencies(
   std::unordered_map<std::string, std::string> contract_hash_by_id{};
   for (const auto& contract_decl : runtime_binding_instruction.contracts) {
     const std::string resolved_contract_path =
-        resolve_path_from_folder(runtime_binding_itself->config_folder, contract_decl.file);
+        resolve_path_from_folder(
+            parent_folder_from_path(runtime_binding_itself->config_file_path),
+            contract_decl.file);
     const auto contract_hash =
         contract_space_t::register_contract_file(resolved_contract_path);
     contract_space_t::assert_intact_or_fail_fast(contract_hash);
@@ -1041,7 +1056,9 @@ static void resolve_and_assert_runtime_binding_dependencies(
 
   for (const auto& wave_decl : runtime_binding_instruction.waves) {
     const std::string resolved_wave_path =
-        resolve_path_from_folder(runtime_binding_itself->config_folder, wave_decl.file);
+        resolve_path_from_folder(
+            parent_folder_from_path(runtime_binding_itself->config_file_path),
+            wave_decl.file);
     const auto wave_hash = wave_space_t::register_wave_file(resolved_wave_path);
     wave_space_t::assert_intact_or_fail_fast(wave_hash);
   }
@@ -1333,7 +1350,7 @@ runtime_binding_hash_t runtime_binding_space_t::register_runtime_binding_file(co
               canonical_path.c_str());
   }
   const runtime_binding_hash_t built_hash =
-      built_runtime_binding->dependency_manifest.aggregate_sha256_hex;
+      built_runtime_binding->dependency_manifest.dependency_manifest_aggregate_sha256_hex;
   if (!has_non_ws_ascii(built_hash)) {
     log_fatal("[dconfig] built runtime binding record has empty manifest hash for: %s\n",
               canonical_path.c_str());
@@ -1401,7 +1418,9 @@ std::string runtime_binding_space_t::contract_hash_for_binding(
               bind->contract_ref.c_str());
   }
   const std::string contract_path =
-      resolve_path_from_folder(runtime_binding->config_folder, contract_decl->file);
+      resolve_path_from_folder(
+          parent_folder_from_path(runtime_binding->config_file_path),
+          contract_decl->file);
   return contract_space_t::register_contract_file(contract_path);
 }
 
@@ -1418,7 +1437,9 @@ std::string runtime_binding_space_t::wave_hash_for_binding(const runtime_binding
   const std::string bind_wave_id = trim_ascii_ws_copy(bind->wave_ref);
   for (const auto& wave_decl : instruction.waves) {
     const std::string wave_path =
-        resolve_path_from_folder(runtime_binding->config_folder, wave_decl.file);
+        resolve_path_from_folder(
+            parent_folder_from_path(runtime_binding->config_file_path),
+            wave_decl.file);
     const auto wave_hash = wave_space_t::register_wave_file(wave_path);
     const auto wave_itself = wave_space_t::wave_itself(wave_hash);
     const auto& wave_set = wave_itself->wave.decoded();
@@ -1464,7 +1485,9 @@ void runtime_binding_space_t::network_topology_analytics(std::ostream* out,
   std::unordered_set<std::string> reported_contract_hashes{};
   for (const auto& contract_decl : instruction.contracts) {
     const std::string contract_path =
-        resolve_path_from_folder(runtime_binding->config_folder, contract_decl.file);
+        resolve_path_from_folder(
+            parent_folder_from_path(runtime_binding->config_file_path),
+            contract_decl.file);
     const std::string contract_hash =
         contract_space_t::register_contract_file(contract_path);
 
@@ -1507,7 +1530,9 @@ void runtime_binding_space_t::network_parameter_analytics(std::ostream* out,
   std::unordered_set<std::string> reported_contract_hashes{};
   for (const auto& contract_decl : instruction.contracts) {
     const std::string contract_path =
-        resolve_path_from_folder(runtime_binding->config_folder, contract_decl.file);
+        resolve_path_from_folder(
+            parent_folder_from_path(runtime_binding->config_file_path),
+            contract_decl.file);
     const std::string contract_hash =
         contract_space_t::register_contract_file(contract_path);
 
@@ -1579,7 +1604,9 @@ void runtime_binding_space_t::assert_intact_or_fail_fast(const runtime_binding_h
   }
 
   const std::string digest = compute_manifest_digest_hex(refreshed);
-  if (digest != runtime_binding->dependency_manifest.aggregate_sha256_hex) {
+  if (digest !=
+      runtime_binding->dependency_manifest
+          .dependency_manifest_aggregate_sha256_hex) {
     log_fatal(
         "[dconfig] immutable runtime-binding lock violation: dependency manifest digest "
         "mismatch mid-run\n");
@@ -1594,7 +1621,8 @@ void runtime_binding_space_t::assert_registry_intact_or_fail_fast() {
   }
   for (const auto& ptr : runtime_bindings) {
     if (!ptr) continue;
-    assert_intact_or_fail_fast(ptr->dependency_manifest.aggregate_sha256_hex);
+    assert_intact_or_fail_fast(
+        ptr->dependency_manifest.dependency_manifest_aggregate_sha256_hex);
   }
 }
 

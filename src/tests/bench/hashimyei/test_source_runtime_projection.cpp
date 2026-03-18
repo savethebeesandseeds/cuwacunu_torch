@@ -151,13 +151,11 @@ static void test_valid_in_range_request() {
   require_no_raw_ms_axes(fragment);
 
   cuwacunu::hero::wave::source_runtime_projection_report_identity_t identity{};
-  identity.canonical_path = "tsi.source.dataloader.BTCUSDT";
+  identity.canonical_path = "tsi.source.dataloader";
   identity.source_label = "tsi.source.dataloader.BTCUSDT";
-  identity.contract_hash = "contract_hash_123";
   identity.binding_id = "bind.train.vicreg";
-  identity.wave_hash = "wave_hash_456";
-  identity.wave_id = "wave.train.main";
-  identity.run_id = "run_runtime_001";
+  identity.has_wave_cursor = true;
+  identity.wave_cursor = 123456ULL;
 
   std::string runtime_report_text{};
   REQUIRE(cuwacunu::hero::wave::emit_source_runtime_projection_runtime_report(
@@ -165,9 +163,9 @@ static void test_valid_in_range_request() {
   REQUIRE(!runtime_report_text.empty());
   REQUIRE(runtime_report_text.find("schema:str = wave.source.runtime.projection.v2") !=
           std::string::npos);
-  REQUIRE(runtime_report_text.find("run_id:str = run_runtime_001") !=
+  REQUIRE(runtime_report_text.find("canonical_path:str = tsi.source.dataloader") !=
           std::string::npos);
-  REQUIRE(runtime_report_text.find("canonical_path:str = tsi.source.dataloader.BTCUSDT") !=
+  REQUIRE(runtime_report_text.find("wave_cursor[0,+inf):uint = 123456") !=
           std::string::npos);
 
   cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t document{};
@@ -177,7 +175,7 @@ static void test_valid_in_range_request() {
   REQUIRE(cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
       document, &kv, &error));
   REQUIRE(kv["schema"] == "wave.source.runtime.projection.v2");
-  REQUIRE(kv["run_id"] == "run_runtime_001");
+  REQUIRE(kv["canonical_path"] == "tsi.source.dataloader");
 }
 
 static void test_left_clip_only() {

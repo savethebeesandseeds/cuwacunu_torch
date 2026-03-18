@@ -26,11 +26,13 @@
 #include "camahjucunu/dsl/network_design/network_design.h"
 #include "tsiemene/tsi.wikimyei.representation.h"
 #include "tsiemene/tsi.cargo.validation.h"
+#include "wikimyei/evaluation/embedding_sequence_analytics/embedding_sequence_analytics.h"
 #include "wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h"
 
 // Report-fragment metadata helpers:
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_driver.h"
+#include "piaabo/latent_lineage_state/report_taxonomy.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 #include "piaabo/torch_compat/data_analytics.h"
 #include "piaabo/torch_compat/network_analytics.h"
@@ -40,12 +42,18 @@
 
 namespace tsiemene {
 
-using TransferMatrixEvaluationReport =
-    cuwacunu::wikimyei::evaluation::TransferMatrixEvaluationReport;
+using VicregTransferMatrixEvaluator =
+    cuwacunu::wikimyei::evaluation::VicregTransferMatrixEvaluator;
+using VicregEmbeddingSequenceEvaluator =
+    cuwacunu::wikimyei::evaluation::VicregEmbeddingSequenceEvaluator;
 
 struct vicreg_runtime_load_context_t {
   bool enable_network_analytics_sidecar{false};
+  std::string binding_id{};
   std::string run_id{};
+  std::string source_runtime_cursor{};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
 };
 
 struct wikimyei_representation_vicreg_init_record_t
@@ -176,10 +184,14 @@ struct vicreg_network_analytics_plan_t {
     const cuwacunu::wikimyei::vicreg_4d::VICReg_4D& model,
     const std::filesystem::path& weights_file,
     std::string_view canonical_path,
-    std::string_view canonical_type,
+    std::string_view family_canonical_path,
     std::string_view report_fragment_id,
     std::string_view contract_hash,
+    std::string_view binding_id,
     std::string_view run_id,
+    std::string_view source_runtime_cursor,
+    bool has_wave_cursor,
+    std::uint64_t wave_cursor,
     std::filesystem::path* out_sidecar_file,
     std::string* error = nullptr) {
   if (error) error->clear();
@@ -187,6 +199,9 @@ struct vicreg_network_analytics_plan_t {
     if (error) *error = "internal: null network analytics sidecar output path";
     return false;
   }
+  (void)canonical_path;
+  (void)contract_hash;
+  (void)run_id;
   vicreg_network_analytics_plan_t plan{};
   std::string plan_error;
   if (!resolve_vicreg_network_analytics_plan_(model, &plan, &plan_error)) {
@@ -194,15 +209,14 @@ struct vicreg_network_analytics_plan_t {
     return false;
   }
   auto network_report_identity = make_component_report_identity(
-      "network_analytics",
-      canonical_path,
-      canonical_type,
-      report_fragment_id,
-      contract_hash,
-      {},
-      {},
-      effective_runtime_report_run_id_(run_id, report_fragment_id));
-  network_report_identity.wave_cursor_resolution = "run";
+      std::string(family_canonical_path) + "." + std::string(report_fragment_id),
+      binding_id,
+      cuwacunu::piaabo::latent_lineage_state::report_taxonomy::
+          kEmbeddingNetwork);
+  network_report_identity.source_runtime_cursor =
+      std::string(source_runtime_cursor);
+  network_report_identity.has_wave_cursor = has_wave_cursor;
+  network_report_identity.wave_cursor = wave_cursor;
   return cuwacunu::piaabo::torch_compat::write_network_analytics_sidecar_for_checkpoint(
       model,
       weights_file,
@@ -225,7 +239,11 @@ update_wikimyei_representation_vicreg_init(
     bool enable_network_analytics_sidecar = true,
     bool enable_embedding_sequence_analytics_sidecar = true,
     std::string contract_hash = {},
+    std::string binding_id = {},
     std::string run_id = {},
+    std::string source_runtime_cursor = {},
+    bool has_wave_cursor = false,
+    std::uint64_t wave_cursor = 0,
     const cuwacunu::piaabo::torch_compat::sequence_analytics_report_t*
         embedding_sequence_analytics_report = nullptr,
     const cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_report_t*
@@ -256,8 +274,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         component_name_(std::move(component_name)),
         model_(contract_hash_, component_name_, C, T, D) {
     apply_runtime_policy_from_jkimyei_(train, use_swa, detach_to_cpu);
+    maybe_initialize_embedding_sequence_evaluator_();
     maybe_initialize_transfer_matrix_evaluator_();
-    reset_embedding_sequence_analytics_();
   }
 
   [[nodiscard]] std::string_view type_name() const noexcept override { return "tsi.wikimyei.representation.vicreg"; }
@@ -281,11 +299,17 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
           static_cast<const TsiWikimyeiRuntimeIoContext*>(runtime_context);
       load_context.enable_network_analytics_sidecar =
           io_ctx->enable_debug_outputs;
+      load_context.binding_id = io_ctx->binding_id;
       load_context.run_id = io_ctx->run_id;
+      load_context.source_runtime_cursor = io_ctx->source_runtime_cursor;
+      load_context.has_wave_cursor = io_ctx->has_wave_cursor;
+      load_context.wave_cursor = io_ctx->wave_cursor;
     }
     const bool loaded = load_wikimyei_representation_vicreg_init_into_model(
         hashimyei, &model_, error, runtime_context ? &load_context : nullptr);
-    if (loaded) reset_embedding_sequence_analytics_();
+    if (loaded && embedding_sequence_evaluator_) {
+      embedding_sequence_evaluator_->reset();
+    }
     return loaded;
   }
   [[nodiscard]] bool runtime_save_to_hashimyei(
@@ -303,34 +327,42 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
           static_cast<const TsiWikimyeiRuntimeIoContext*>(runtime_context);
       enable_network_analytics_sidecar = io_ctx->enable_debug_outputs;
       enable_embedding_sequence_analytics_sidecar = io_ctx->enable_debug_outputs;
+      if (!io_ctx->binding_id.empty()) {
+        runtime_binding_id_ = io_ctx->binding_id;
+      }
       if (!io_ctx->run_id.empty()) {
         runtime_run_id_ = io_ctx->run_id;
       }
+      if (!io_ctx->source_runtime_cursor.empty()) {
+        runtime_source_runtime_cursor_ = io_ctx->source_runtime_cursor;
+      }
+      if (io_ctx->has_wave_cursor) {
+        runtime_has_wave_cursor_ = true;
+        runtime_wave_cursor_ = io_ctx->wave_cursor;
+      }
     }
-    const auto embedding_sequence_report =
-        embedding_sequence_observed_
-            ? std::optional<
-                  cuwacunu::piaabo::torch_compat::sequence_analytics_report_t>(
-                  embedding_sequence_analytics_accumulator_.summarize())
-            : std::nullopt;
-    const auto embedding_sequence_symbolic_report =
-        embedding_sequence_observed_
-            ? std::optional<cuwacunu::piaabo::torch_compat::
-                                sequence_symbolic_analytics_report_t>(
-                  embedding_sequence_symbolic_analytics_accumulator_.summarize())
-            : std::nullopt;
+    const auto embedding_sequence_snapshot =
+        embedding_sequence_evaluator_ ? embedding_sequence_evaluator_->snapshot()
+                                      : std::nullopt;
     auto out = update_wikimyei_representation_vicreg_init(
         std::string(hashimyei),
         &model_,
         enable_network_analytics_sidecar,
         enable_embedding_sequence_analytics_sidecar,
         contract_hash_,
+        runtime_binding_id_,
         runtime_run_id_,
-        embedding_sequence_report ? &(*embedding_sequence_report) : nullptr,
-        embedding_sequence_symbolic_report
-            ? &(*embedding_sequence_symbolic_report)
+        runtime_source_runtime_cursor_,
+        runtime_has_wave_cursor_,
+        runtime_wave_cursor_,
+        embedding_sequence_snapshot ? &embedding_sequence_snapshot->report
+                                    : nullptr,
+        embedding_sequence_snapshot
+            ? &embedding_sequence_snapshot->symbolic_report
             : nullptr,
-        embedding_sequence_analytics_options_);
+        embedding_sequence_snapshot
+            ? embedding_sequence_snapshot->options
+            : cuwacunu::piaabo::torch_compat::data_analytics_options_t{});
     if (out.ok) return true;
     if (error) *error = out.error;
     return false;
@@ -466,6 +498,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   void step(const Wave& wave, Ingress in, RuntimeContext& ctx, Emitter& out) override {
     if (in.directive != IN_STEP) return;
     if (in.signal.kind != PayloadKind::Cargo) return;
+    capture_runtime_report_context_(&wave, ctx);
 
     {
       std::ostringstream oss;
@@ -495,8 +528,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     auto repr = model_.encode(
         data, mask, /*use_swa=*/use_swa_, /*detach_to_cpu=*/detach_to_cpu_);
     if (detach_to_cpu_) repr = repr.cpu();
-    if (ctx.debug_enabled) {
-      ingest_embedding_sequence_analytics_(repr, sample.mask);
+    if (ctx.debug_enabled && embedding_sequence_evaluator_) {
+      embedding_sequence_evaluator_->ingest_encoding(repr, sample.mask);
     }
     out_sample->encoding = repr;
     if (!validate_observation_cargo(out_sample, CargoValidationStage::VicregOut, &cargo_error)) {
@@ -504,10 +537,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
       return;
     }
     if (transfer_matrix_evaluator_) {
-      Ingress eval_ingress{};
-      eval_ingress.directive = TransferMatrixEvaluationReport::IN_STEP;
-      eval_ingress.signal = cargo_signal(out_sample);
-      transfer_matrix_evaluator_->step(wave, std::move(eval_ingress), ctx, out);
+      transfer_matrix_evaluator_->ingest_representation_output(
+          wave, out_sample.get(), ctx, out);
     }
     const std::string repr_shape = tensor_shape_(repr);
     out.emit_cargo(wave, OUT_PAYLOAD, std::move(out_sample));
@@ -542,13 +573,15 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   RuntimeEventAction on_event(const RuntimeEvent& event,
                               RuntimeContext& ctx,
                               Emitter& out) override {
+    capture_runtime_report_context_(event.wave, ctx);
     if (transfer_matrix_evaluator_) {
-      (void)transfer_matrix_evaluator_->on_event(event, ctx, out);
+      transfer_matrix_evaluator_->handle_runtime_event(event, ctx, out);
     }
     switch (event.kind) {
       case RuntimeEventKind::RunStart: {
-        runtime_run_id_ = ctx.run_id;
-        reset_embedding_sequence_analytics_();
+        if (embedding_sequence_evaluator_) {
+          embedding_sequence_evaluator_->reset();
+        }
         return RuntimeEventAction{};
       }
       case RuntimeEventKind::RunEnd: {
@@ -678,7 +711,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     }
 
     const auto write_payload = [&](const std::filesystem::path& path,
-                                   std::string_view report_kind,
+                                   std::string_view semantic_taxon,
                                    std::string payload_lls) -> bool {
       if (!has_non_ws_ascii_(payload_lls)) return true;
       runtime_lls_document_t payload{};
@@ -689,22 +722,17 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
                  path.string().c_str(), parse_error.c_str());
         return false;
       }
-      append_runtime_string_entry_(&payload, "report_kind", report_kind);
-      append_runtime_string_entry_(&payload, "canonical_path", canonical_path);
-      append_runtime_string_entry_(&payload, "source_label", canonical_path);
-      append_runtime_string_entry_(
-          &payload, "tsi_type", "tsi.wikimyei.representation.vicreg");
+      auto report_identity = make_component_report_identity(
+          canonical_path, runtime_binding_id_, semantic_taxon);
+      report_identity.source_runtime_cursor = runtime_source_runtime_cursor_;
+      report_identity.has_wave_cursor = runtime_has_wave_cursor_;
+      report_identity.wave_cursor = runtime_wave_cursor_;
+      cuwacunu::piaabo::latent_lineage_state::append_runtime_report_header_entries(
+          &payload, make_runtime_report_header(report_identity));
       append_runtime_string_entry_if_nonempty_(
           &payload, "component_instance_name", component_name_);
       append_runtime_string_entry_(
           &payload, "report_event", report_event_token(report_event_e::RunEnd));
-      append_runtime_string_entry_(
-          &payload,
-          "run_id",
-          effective_runtime_report_run_id_(
-              runtime_run_id_, representation_hashimyei_));
-      append_runtime_string_entry_if_nonempty_(
-          &payload, "hashimyei", representation_hashimyei_);
 
       std::string canonical_payload;
       try {
@@ -736,11 +764,17 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     const bool has_matrix_payload = has_non_ws_ascii_(matrix_report_lls);
     const bool wrote_summary = !has_summary_payload ||
                                write_payload(report_file,
-                                             "transfer_matrix_evaluation",
+                                             cuwacunu::piaabo::
+                                                 latent_lineage_state::
+                                                     report_taxonomy::
+                                                         kEmbeddingEvaluation,
                                              std::move(report_lls));
     const bool wrote_matrix = !has_matrix_payload ||
                               write_payload(matrix_report_file,
-                                            "transfer_matrix_evaluation_matrix",
+                                            cuwacunu::piaabo::
+                                                latent_lineage_state::
+                                                    report_taxonomy::
+                                                        kEmbeddingEvaluation,
                                             std::move(matrix_report_lls));
     if (!wrote_summary || !wrote_matrix) {
       if (event.wave) {
@@ -816,12 +850,31 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     detach_to_cpu_ = jk_detach_to_cpu;
   }
 
+  void maybe_initialize_embedding_sequence_evaluator_() {
+    try {
+      embedding_sequence_evaluator_ =
+          std::make_unique<VicregEmbeddingSequenceEvaluator>(
+              contract_hash_, model_.encoding_dims);
+    } catch (const std::exception& e) {
+      log_warn(
+          "[tsi.vicreg] embedding-sequence evaluator disabled for '%s': %s\n",
+          component_name_.c_str(),
+          e.what());
+      embedding_sequence_evaluator_.reset();
+    } catch (...) {
+      log_warn(
+          "[tsi.vicreg] embedding-sequence evaluator disabled for '%s': unknown error\n",
+          component_name_.c_str());
+      embedding_sequence_evaluator_.reset();
+    }
+  }
+
   void maybe_initialize_transfer_matrix_evaluator_() {
     try {
       transfer_matrix_evaluator_ =
-          std::make_unique<TransferMatrixEvaluationReport>(
+          std::make_unique<VicregTransferMatrixEvaluator>(
               contract_hash_,
-              TransferMatrixEvaluationReport::default_wave_policy());
+              VicregTransferMatrixEvaluator::default_evaluation_policy());
     } catch (const std::exception& e) {
       log_warn(
           "[tsi.vicreg] transfer-matrix evaluator disabled for '%s': %s\n",
@@ -834,139 +887,6 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
           component_name_.c_str());
       transfer_matrix_evaluator_.reset();
     }
-  }
-
-  [[nodiscard]] static std::vector<
-      cuwacunu::piaabo::torch_compat::sequence_symbolic_stream_descriptor_t>
-  build_embedding_sequence_stream_descriptors_(std::int64_t stream_count) {
-    using descriptor_t = cuwacunu::piaabo::torch_compat::
-        sequence_symbolic_stream_descriptor_t;
-    std::vector<descriptor_t> out;
-    if (stream_count <= 0) return out;
-    out.reserve(static_cast<std::size_t>(stream_count));
-
-    std::int64_t width = 1;
-    for (std::int64_t value = std::max<std::int64_t>(0, stream_count - 1);
-         value >= 10;
-         value /= 10) {
-      ++width;
-    }
-
-    for (std::int64_t i = 0; i < stream_count; ++i) {
-      std::ostringstream label;
-      label << "latent_dim_" << std::setw(static_cast<int>(width))
-            << std::setfill('0') << i;
-      descriptor_t descriptor{};
-      descriptor.label = label.str();
-      descriptor.stream_family = "embedding_dimension";
-      descriptor.anchor_feature = "value";
-      descriptor.feature_names = "value";
-      descriptor.anchor_feature_index = 0;
-      out.push_back(std::move(descriptor));
-    }
-    return out;
-  }
-
-  [[nodiscard]] static bool build_embedding_sequence_mask_(
-      const torch::Tensor& source_mask,
-      std::int64_t batch_size,
-      std::int64_t timesteps,
-      std::int64_t stream_count,
-      torch::Tensor* out_mask) {
-    if (!out_mask || batch_size <= 0 || timesteps <= 0 || stream_count <= 0) {
-      return false;
-    }
-    out_mask->reset();
-
-    torch::Tensor collapsed;
-    if (source_mask.defined() && source_mask.numel() > 0) {
-      torch::Tensor m = source_mask.to(torch::kFloat64);
-      if (m.dim() == 1) {
-        if (batch_size != 1 || m.size(0) != timesteps) return false;
-        collapsed = m.view({1, 1, timesteps});
-      } else if (m.dim() == 2) {
-        if (batch_size != 1 || m.size(1) != timesteps) return false;
-        collapsed = m.amax({0}, /*keepdim=*/false).view({1, 1, timesteps});
-      } else if (m.dim() == 3) {
-        if (m.size(0) != batch_size || m.size(2) != timesteps) return false;
-        collapsed = m.amax({1}, /*keepdim=*/true);
-      } else {
-        return false;
-      }
-      collapsed = collapsed.clamp_min(0.0);
-    } else {
-      collapsed = torch::ones(
-          {batch_size, 1, timesteps},
-          torch::TensorOptions()
-              .dtype(torch::kFloat64)
-              .device(torch::kCPU));
-    }
-
-    *out_mask = collapsed.expand({batch_size, stream_count, timesteps});
-    return true;
-  }
-
-  [[nodiscard]] static bool reshape_embedding_sequence_for_analytics_(
-      const torch::Tensor& encoding,
-      const torch::Tensor& source_mask,
-      torch::Tensor* out_features,
-      torch::Tensor* out_mask) {
-    if (!out_features || !out_mask) return false;
-    out_features->reset();
-    out_mask->reset();
-    if (!encoding.defined() || encoding.numel() == 0) return false;
-
-    torch::Tensor seq = encoding;
-    if (seq.dim() == 2) {
-      seq = seq.unsqueeze(0);
-    } else if (seq.dim() != 3) {
-      return false;
-    }
-    if (seq.size(0) <= 0 || seq.size(1) <= 0 || seq.size(2) <= 0) return false;
-
-    const std::int64_t batch_size = seq.size(0);
-    const std::int64_t timesteps = seq.size(1);
-    const std::int64_t stream_count = seq.size(2);
-    seq = seq.transpose(1, 2).unsqueeze(-1);  // [B,E,T,1]
-
-    torch::Tensor mask;
-    if (!build_embedding_sequence_mask_(
-            source_mask, batch_size, timesteps, stream_count, &mask)) {
-      return false;
-    }
-
-    *out_features = std::move(seq);
-    *out_mask = std::move(mask);
-    return true;
-  }
-
-  void reset_embedding_sequence_analytics_() {
-    embedding_sequence_analytics_accumulator_ =
-        cuwacunu::piaabo::torch_compat::sequence_analytics_accumulator_t(
-            embedding_sequence_analytics_options_);
-    embedding_sequence_symbolic_analytics_accumulator_ =
-        cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_accumulator_t(
-            build_embedding_sequence_stream_descriptors_(model_.encoding_dims));
-    embedding_sequence_observed_ = false;
-  }
-
-  void ingest_embedding_sequence_analytics_(const torch::Tensor& encoding,
-                                            const torch::Tensor& source_mask) {
-    torch::Tensor sequence_features;
-    torch::Tensor sequence_mask;
-    if (!reshape_embedding_sequence_for_analytics_(
-            encoding, source_mask, &sequence_features, &sequence_mask)) {
-      return;
-    }
-
-    const bool ingested_global =
-        embedding_sequence_analytics_accumulator_.ingest(
-            sequence_features, sequence_mask);
-    const bool ingested_symbolic =
-        embedding_sequence_symbolic_analytics_accumulator_.ingest(
-            sequence_features, sequence_mask);
-    embedding_sequence_observed_ =
-        embedding_sequence_observed_ || ingested_global || ingested_symbolic;
   }
 
   static std::string tensor_shape_(const torch::Tensor& t) {
@@ -1002,10 +922,40 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     out.emit_string(wave, OUT_META, std::move(msg));
   }
 
+  void capture_runtime_report_context_(const Wave* wave,
+                                       const RuntimeContext& ctx) {
+    if (!ctx.binding_id.empty()) runtime_binding_id_ = ctx.binding_id;
+    if (!ctx.run_id.empty()) runtime_run_id_ = ctx.run_id;
+    if (!ctx.source_runtime_cursor.empty()) {
+      runtime_source_runtime_cursor_ = ctx.source_runtime_cursor;
+    }
+    if (!wave) return;
+    std::uint64_t packed_wave_cursor = 0;
+    if (!cuwacunu::piaabo::latent_lineage_state::pack_runtime_wave_cursor(
+            wave->cursor.i,
+            wave->cursor.episode,
+            wave->cursor.batch,
+            &packed_wave_cursor)) {
+      return;
+    }
+    runtime_has_wave_cursor_ = true;
+    runtime_wave_cursor_ = packed_wave_cursor;
+    runtime_wave_cursor_run_ = wave->cursor.i;
+    runtime_wave_cursor_episode_ = wave->cursor.episode;
+    runtime_wave_cursor_batch_ = wave->cursor.batch;
+  }
+
   TsiId id_{};
   std::string instance_name_;
   std::string contract_hash_;
+  std::string runtime_binding_id_{};
   std::string runtime_run_id_{};
+  std::string runtime_source_runtime_cursor_{};
+  bool runtime_has_wave_cursor_{false};
+  std::uint64_t runtime_wave_cursor_{0};
+  std::uint64_t runtime_wave_cursor_run_{0};
+  std::uint64_t runtime_wave_cursor_episode_{0};
+  std::uint64_t runtime_wave_cursor_batch_{0};
   std::string representation_hashimyei_;
   std::string component_name_;
 
@@ -1014,15 +964,10 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   bool detach_to_cpu_{true};
   double epoch_loss_sum_{0.0};
   int epoch_optimizer_steps_{0};
-  bool embedding_sequence_observed_{false};
-  std::unique_ptr<TransferMatrixEvaluationReport>
+  std::unique_ptr<VicregEmbeddingSequenceEvaluator>
+      embedding_sequence_evaluator_{};
+  std::unique_ptr<VicregTransferMatrixEvaluator>
       transfer_matrix_evaluator_{};
-  cuwacunu::piaabo::torch_compat::data_analytics_options_t
-      embedding_sequence_analytics_options_{};
-  cuwacunu::piaabo::torch_compat::sequence_analytics_accumulator_t
-      embedding_sequence_analytics_accumulator_{embedding_sequence_analytics_options_};
-  cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_accumulator_t
-      embedding_sequence_symbolic_analytics_accumulator_{};
 
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D model_;
 };
@@ -1080,7 +1025,7 @@ list_wikimyei_representation_vicreg_init_entries() {
   for (const auto& item : report_fragments) {
     wikimyei_representation_vicreg_init_entry_t e{};
     e.hashimyei = item.hashimyei;
-    e.canonical_base = item.canonical_base;
+    e.canonical_path = item.canonical_path;
     e.report_fragment_directory = item.directory;
     e.weights_count = item.weight_files.size();
     out.push_back(std::move(e));
@@ -1178,7 +1123,10 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   const bool enable_embedding_sequence_analytics_sidecar =
       !out || out->enable_embedding_sequence_analytics_sidecar;
   const std::string contract_hash = out ? out->contract_hash : std::string{};
+  const std::string binding_id = out ? out->binding_id : std::string{};
   const std::string run_id = out ? out->run_id : std::string{};
+  const bool has_wave_cursor = out && out->has_wave_cursor;
+  const std::uint64_t wave_cursor = out ? out->wave_cursor : 0;
   const std::string canonical_path =
       std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
   const std::string effective_run_id =
@@ -1202,7 +1150,12 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
               kWikimyeiVicregCanonicalType,
               action.report_fragment_id,
               contract_hash,
+              binding_id,
               effective_run_id,
+              out ? std::string_view(out->source_runtime_cursor)
+                  : std::string_view{},
+              has_wave_cursor,
+              wave_cursor,
               &weights_network_analytics_file,
               &report_error)) {
         wrote_weights_network_analytics_file = true;
@@ -1236,26 +1189,24 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
                           kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename);
 
       auto embedding_report_identity = make_component_report_identity(
-          "embedding_sequence_analytics",
           canonical_path,
-          kWikimyeiVicregCanonicalType,
-          action.report_fragment_id,
-          contract_hash,
-          {},
-          {},
-          effective_run_id);
-      embedding_report_identity.wave_cursor_resolution = "run";
+          binding_id,
+          cuwacunu::piaabo::latent_lineage_state::report_taxonomy::
+              kEmbeddingData);
+      embedding_report_identity.source_runtime_cursor =
+          out->source_runtime_cursor;
+      embedding_report_identity.has_wave_cursor = has_wave_cursor;
+      embedding_report_identity.wave_cursor = wave_cursor;
       auto embedding_symbolic_report_identity =
           make_component_report_identity(
-              "embedding_sequence_analytics_symbolic",
               canonical_path,
-              kWikimyeiVicregCanonicalType,
-              action.report_fragment_id,
-              contract_hash,
-              {},
-              {},
-              effective_run_id);
-      embedding_symbolic_report_identity.wave_cursor_resolution = "run";
+              binding_id,
+              cuwacunu::piaabo::latent_lineage_state::report_taxonomy::
+                  kEmbeddingData);
+      embedding_symbolic_report_identity.source_runtime_cursor =
+          out->source_runtime_cursor;
+      embedding_symbolic_report_identity.has_wave_cursor = has_wave_cursor;
+      embedding_symbolic_report_identity.wave_cursor = wave_cursor;
 
       std::string write_error;
       if (cuwacunu::piaabo::torch_compat::write_sequence_analytics_file(
@@ -1360,16 +1311,15 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     runtime_lls_document_t status_lls{};
     append_runtime_string_entry_(
         &status_lls, "schema", "tsi.wikimyei.representation.vicreg.status.v1");
-    append_runtime_string_entry_(&status_lls, "report_kind", "status");
-    append_runtime_string_entry_(
-        &status_lls, "tsi_type", kWikimyeiVicregCanonicalType);
-    append_runtime_string_entry_(&status_lls, "canonical_path", canonical_path);
-    append_runtime_string_entry_(
-        &status_lls, "source_label", canonical_path);
-    append_runtime_string_entry_(
-        &status_lls, "hashimyei", action.report_fragment_id);
-    append_runtime_string_entry_(&status_lls, "contract_hash", contract_hash);
-    append_runtime_string_entry_(&status_lls, "run_id", effective_run_id);
+    {
+      auto status_identity = make_component_report_identity(canonical_path, binding_id);
+      status_identity.source_runtime_cursor =
+          out ? out->source_runtime_cursor : std::string{};
+      status_identity.has_wave_cursor = has_wave_cursor;
+      status_identity.wave_cursor = wave_cursor;
+      cuwacunu::piaabo::latent_lineage_state::append_runtime_report_header_entries(
+          &status_lls, make_runtime_report_header(status_identity));
+    }
     append_runtime_u64_entry_(&status_lls, "trained_epochs", 0);
     append_runtime_u64_entry_(&status_lls, "trained_steps", trained_steps);
     append_runtime_u64_entry_(&status_lls, "trained_samples", 0);
@@ -1397,7 +1347,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
-  manifest.canonical_type = std::string(kWikimyeiVicregCanonicalType);
+  manifest.family_canonical_path =
+      std::string(kWikimyeiVicregCanonicalType);
   manifest.family = std::string(kWikimyeiVicregFamily);
   manifest.model = std::string(kWikimyeiVicregModel);
   manifest.report_fragment_id = action.report_fragment_id;
@@ -1440,7 +1391,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   if (out) {
-    out->canonical_base = canonical_path;
+    out->canonical_path = canonical_path;
     out->weights_file = weights_file;
     out->embedding_sequence_analytics_file =
         wrote_embedding_sequence_analytics_file
@@ -1484,8 +1435,13 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       if (error) *error = "cannot read report_fragment manifest: " + manifest_error;
       return false;
     }
-    if (manifest.canonical_type != std::string(kWikimyeiVicregCanonicalType)) {
-      if (error) *error = "report_fragment manifest canonical_type mismatch: " + manifest.canonical_type;
+    if (manifest.family_canonical_path !=
+        std::string(kWikimyeiVicregCanonicalType)) {
+      if (error) {
+        *error =
+            "report_fragment manifest family_canonical_path mismatch: " +
+            manifest.family_canonical_path;
+      }
       return false;
     }
     if (!action.family.empty() && manifest.family != action.family) {
@@ -1510,8 +1466,17 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       static_cast<const vicreg_runtime_load_context_t*>(action.user_data);
   const bool enable_network_analytics_sidecar_on_load =
       load_ctx && load_ctx->enable_network_analytics_sidecar;
+  const std::string binding_id =
+      (load_ctx && !load_ctx->binding_id.empty()) ? load_ctx->binding_id
+                                                  : std::string{};
   const std::string run_id =
       (load_ctx && !load_ctx->run_id.empty()) ? load_ctx->run_id : std::string{};
+  const std::string source_runtime_cursor =
+      (load_ctx && !load_ctx->source_runtime_cursor.empty())
+          ? load_ctx->source_runtime_cursor
+          : std::string{};
+  const bool has_wave_cursor = load_ctx && load_ctx->has_wave_cursor;
+  const std::uint64_t wave_cursor = load_ctx ? load_ctx->wave_cursor : 0;
   const std::string effective_run_id =
       effective_runtime_report_run_id_(run_id, action.report_fragment_id);
 
@@ -1538,21 +1503,22 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     }
 
     fs::path weights_network_analytics_file{};
-    bool wrote_weights_network_analytics_file = false;
     if (enable_network_analytics_sidecar_on_load) {
       std::string report_error;
-      if (write_vicreg_network_analytics_sidecar_(
+      if (!write_vicreg_network_analytics_sidecar_(
               *model,
               weights_file,
               canonical_path,
               kWikimyeiVicregCanonicalType,
               action.report_fragment_id,
               model->contract_hash,
+              binding_id,
               effective_run_id,
+              source_runtime_cursor,
+              has_wave_cursor,
+              wave_cursor,
               &weights_network_analytics_file,
               &report_error)) {
-        wrote_weights_network_analytics_file = true;
-      } else {
         log_warn(
             "[tsi.vicreg] load report skipped for '%s': %s\n",
             weights_file.string().c_str(),
@@ -1570,7 +1536,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   if (cuwacunu::hashimyei::has_report_fragment_driver(kWikimyeiVicregCanonicalType)) return true;
 
   cuwacunu::hashimyei::report_fragment_driver_t driver{};
-  driver.canonical_type = std::string(kWikimyeiVicregCanonicalType);
+  driver.family_canonical_path = std::string(kWikimyeiVicregCanonicalType);
   driver.family = std::string(kWikimyeiVicregFamily);
   driver.model = std::string(kWikimyeiVicregModel);
   driver.save = save_wikimyei_representation_vicreg_report_fragment_with_driver;
@@ -1590,7 +1556,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   out->metadata_encrypted = false;
   out->metadata_plaintext_fallback = false;
   out->metadata_warning.clear();
-  out->canonical_base.clear();
+  out->canonical_path.clear();
   out->weights_file.clear();
 
   std::string registration_error;
@@ -1600,7 +1566,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   cuwacunu::hashimyei::report_fragment_action_context_t action{};
-  action.canonical_type = std::string(kWikimyeiVicregCanonicalType);
+  action.family_canonical_path = std::string(kWikimyeiVicregCanonicalType);
   action.family = std::string(kWikimyeiVicregFamily);
   action.model = std::string(kWikimyeiVicregModel);
   action.report_fragment_id = out->hashimyei;
@@ -1610,7 +1576,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   action.user_data = out;
 
   std::string dispatch_error;
-  if (!cuwacunu::hashimyei::dispatch_report_fragment_save(action.canonical_type, action, &dispatch_error)) {
+  if (!cuwacunu::hashimyei::dispatch_report_fragment_save(
+          action.family_canonical_path, action, &dispatch_error)) {
     out->error = dispatch_error;
     return false;
   }
@@ -1656,7 +1623,11 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     bool enable_network_analytics_sidecar,
     bool enable_embedding_sequence_analytics_sidecar,
     std::string contract_hash,
+    std::string binding_id,
     std::string run_id,
+    std::string source_runtime_cursor,
+    bool has_wave_cursor,
+    std::uint64_t wave_cursor,
     const cuwacunu::piaabo::torch_compat::sequence_analytics_report_t*
         embedding_sequence_analytics_report,
     const cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_report_t*
@@ -1670,7 +1641,11 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   out.enable_embedding_sequence_analytics_sidecar =
       enable_embedding_sequence_analytics_sidecar;
   out.contract_hash = std::move(contract_hash);
+  out.binding_id = std::move(binding_id);
   out.run_id = std::move(run_id);
+  out.source_runtime_cursor = std::move(source_runtime_cursor);
+  out.has_wave_cursor = has_wave_cursor;
+  out.wave_cursor = wave_cursor;
   out.embedding_sequence_analytics_options =
       embedding_sequence_analytics_options;
   if (embedding_sequence_analytics_report &&
@@ -1745,7 +1720,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   cuwacunu::hashimyei::report_fragment_action_context_t action{};
-  action.canonical_type = std::string(kWikimyeiVicregCanonicalType);
+  action.family_canonical_path = std::string(kWikimyeiVicregCanonicalType);
   action.family = std::string(kWikimyeiVicregFamily);
   action.model = std::string(kWikimyeiVicregModel);
   action.report_fragment_id = std::string(hashimyei);
@@ -1755,7 +1730,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   action.user_data = const_cast<vicreg_runtime_load_context_t*>(load_context);
 
   std::string dispatch_error;
-  if (!cuwacunu::hashimyei::dispatch_report_fragment_load(action.canonical_type, action, &dispatch_error)) {
+  if (!cuwacunu::hashimyei::dispatch_report_fragment_load(
+          action.family_canonical_path, action, &dispatch_error)) {
     if (error) *error = dispatch_error;
     return false;
   }

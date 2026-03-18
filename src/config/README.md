@@ -33,7 +33,8 @@ This folder is organized by role:
 - `instructions/default.tsi.wikimyei.representation.vicreg.dsl`
 - `instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
 - `instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl`
-- `instructions/default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl`
+- `instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`
+- `instructions/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl`
 - `instructions/default.hero.runtime.dsl`
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
 - `secrets/real/exchange.key` (expected, may be absent locally)
@@ -285,7 +286,11 @@ codex mcp add hero-hashimyei -- \
 
 Supported MCP tools:
 - `hero.hashimyei.list`
-- `hero.hashimyei.get_founding_dsl`
+- `hero.hashimyei.get_component_manifest`
+- `hero.hashimyei.get_founding_dsl_bundle`
+  - returns the stored `.hashimyei` founding DSL bundle snapshot for a
+    component revision
+- `hero.hashimyei.update_rank`
 - `hero.hashimyei.reset_catalog`
 
 ## Lattice MCP
@@ -314,7 +319,7 @@ Direct one-shot tool call:
   --args-json '{}'
 ```
 
-`store_root`, `catalog_path`, and `config_folder`
+`store_root` and `catalog_path`
 are loaded from `default.hero.lattice.dsl` through
 `[REAL_HERO].lattice_hero_dsl_filename` in the global config.
 Catalog encryption mode is fixed to unencrypted in MCP runtime.
@@ -350,6 +355,8 @@ Supported MCP tools:
   - `./instructions/default.hero.hashimyei.dsl` (Hashimyei HERO catalog defaults)
   - `./instructions/default.hero.lattice.dsl` (Lattice HERO catalog/runtime defaults)
   - `./instructions/default.hero.runtime.dsl` (Runtime HERO campaign/job defaults)
+  `default.hero.hashimyei.dsl` is the Hashimyei HERO runtime defaults file. It is
+  not the founding DSL bundle for component hashimyei lineage.
 - `[REAL_HERO]` owns the canonical pointer paths for those four HERO DSL files:
   - `config_hero_dsl_filename`
   - `hashimyei_hero_dsl_filename`
@@ -357,11 +364,13 @@ Supported MCP tools:
   - `runtime_hero_dsl_filename`
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
   - `iitepi_campaign_grammar_filename`
+  - `iitepi_runtime_binding_grammar_filename`
   - `iitepi_wave_grammar_filename`
   - `network_design_grammar_filename`
   - `vicreg_grammar_filename`
   - `value_estimation_grammar_filename`
-  - `wikimyei_inference_transfer_matrix_evaluation_grammar_filename`
+  - `wikimyei_evaluation_embedding_sequence_analytics_grammar_filename`
+  - `wikimyei_evaluation_transfer_matrix_evaluation_grammar_filename`
   - `observation_sources_grammar_filename`
   - `observation_channels_grammar_filename`
   - `jkimyei_specs_grammar_filename`
@@ -375,22 +384,37 @@ Supported MCP tools:
   - `BIND <id> { CONTRACT = <derived_contract_id>; WAVE = <wave_id>; }`
   - ordered `RUN <bind_id>;`
   - optional bind-local variables inside `BIND`, where names must start with `__`
-    and are intended for shared pre-decode placeholder resolution such as
+    and are intended for wave-local pre-decode placeholder resolution such as
     `% __sampler ? sequential %`
+  - bind-local variables are operational only; they do not override
+    contract-defined docking variables
+  - bind-local variables may not reuse names already declared by contract
+    `__variables`; shadowing is rejected during campaign snapshot staging
 - Runtime Hero owns campaign dispatch and persists immutable snapshots under
   `campaigns_root/<campaign_cursor>/`. Each child job receives a staged
   `campaign.dsl`, `binding.contract.dsl`, and `binding.wave.dsl` under
   `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/`.
+- Internal runtime-binding snapshots are validated against
+  `bnf/iitepi.runtime_binding.bnf` and follow this staged shape:
+  - `ACTIVE_BIND <bind_id>;`
+  - `RUNTIME_BINDING { ... }`
+  - `IMPORT_CONTRACT_FILE "<contract_defaults_file>";`
+  - `IMPORT_WAVE_FILE "<wave_dsl_file>";`
+  - `BIND <id> { CONTRACT = <derived_contract_id>; WAVE = <wave_id>; }`
 - The public dispatcher is campaign-oriented. The top-level runtime DSL is now
   `campaign.dsl`, and `jkimyei` is not a separate Hero.
 - Contract settings live in `./instructions/default.iitepi.contract.dsl` with
   marker format:
   - `-----BEGIN IITEPI CONTRACT-----`
+  - optional contract `__variables` for hard-static docking compatibility
   - `CIRCUIT_FILE: <path>;`
   - `AKNOWLEDGE: <alias> = <tsi family>;` (one per circuit alias)
   - `-----END IITEPI CONTRACT-----`
   `AKNOWLEDGE` values must be family tokens (no hashimyei suffix). This keeps
-  contract static while wave owns runtime hashimyei selection.
+  contract static while wave owns runtime hashimyei selection. Component
+  hashimyei lineage is contract-scoped; reusing the same component hashimyei
+  across contracts is invalid. Active component selection is also
+  contract-scoped, so "active" is never a global family-wide pointer.
   Family reranking is a runtime artifact concern, not a contract parameter:
   `hero.hashimyei.update_rank` persists contract-scoped
   `hero.family.rank.v1` overlays keyed by `(family, contract_hash)`, and
@@ -401,19 +425,45 @@ Supported MCP tools:
   Runtime derives module configuration defaults from colocated files:
   `default.tsi.wikimyei.representation.vicreg.dsl`,
   `default.tsi.wikimyei.inference.mdn.value_estimation.dsl`,
-  `default.tsi.wikimyei.inference.transfer_matrix_evaluation.dsl`.
-  Circuit payload can declare optional `active_circuit = <circuit_name>`;
-  when set, runtime builds/runs only that circuit. Circuit grammar accepts
-  multiline hop expressions and comments: `/* ... */` and `# ...`.
+  `default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`,
+  `default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl`.
+  Contract `__variables` are resolved across that contract-local DSL graph, so
+  docking-critical values such as input tensor shape and embedding dimensions
+  can be defined once by the contract. Changing those values changes contract
+  identity and therefore hashimyei compatibility lineage.
+  Runtime also derives an explicit contract docking signature from the
+  compatible circuit set, contract `__variables`, and docking-bearing contract
+  DSL surfaces (circuit, VICReg, VICReg network design, and contract-owned
+  observation/channel DSLs when present). Component manifests persist that
+  digest as `docking_signature_sha256_hex`, alongside a contract-scoped
+  `lineage_state`.
+  When wave reuses an existing component hashimyei, runtime validates that the
+  selected component manifest belongs to the same contract and that its
+  `docking_signature_sha256_hex` matches the current contract before accepting
+  the load.
+  When contract-owned observation/channel DSL paths are present together with a
+  VICReg network design, contract validation also checks that observation
+  active-channel count and max sequence length match `INPUT.C` and `INPUT.T`,
+  and that contract `__obs_feature_dim` matches `INPUT.D` when declared.
+  Contract circuit payload declares one or more compatible named circuits, and
+  the operational selector is wave-local `CIRCUIT: <circuit_name>;`.
+  If a contract exposes multiple circuits and wave omits `CIRCUIT`, runtime
+  now rejects the binding instead of relying on a contract-local default.
+  Circuit grammar accepts multiline hop expressions and comments:
+  `/* ... */` and `# ...`.
 - Wave settings are authored directly in `./instructions/default.iitepi.wave.dsl`.
   split train/run keys are removed and rejected by validation.
+  wave owns operational circuit selection via `CIRCUIT: <circuit_name>;`.
   runtime dataloader ownership is wave-local via root `WAVE` keys:
     `SAMPLER`, `BATCH_SIZE`, `MAX_BATCHES_PER_EPOCH`,
     with source-owned fields split inside each `SOURCE { ... }` block:
-    `SETTINGS { WORKERS, SAMPLER, FORCE_REBUILD_CACHE, RANGE_WARN_BATCHES }`,
-    `RUNTIME { SYMBOL, FROM, TO, SOURCES_DSL_FILE, CHANNELS_DSL_FILE }`.
+    `SETTINGS { WORKERS, FORCE_REBUILD_CACHE, RANGE_WARN_BATCHES }`,
+    `RUNTIME { SYMBOL, FROM, TO }`.
+  - observation/channel DSL selection is contract-owned through
+    `__observation_sources_dsl_file` and
+    `__observation_channels_dsl_file`.
   - wave `WIKIMYEI { ... }` is profile policy only:
-    `JKIMYEI { HALT_TRAIN, PROFILE_ID }`; jkimyei DSL payload file ownership is contract-local.
+    `JKIMYEI { HALT_TRAIN, PROFILE_ID }`; jkimyei DSL payload file ownership is contract-local, and `PROFILE_ID` is only required when the contract exposes multiple compatible profiles.
   - runtime probe policy is wave-local via `PROBE { ... }` blocks:
     `TRAINING_WINDOW=incoming_batch`,
     `REPORT_POLICY=epoch_end_log`,
@@ -424,7 +474,10 @@ Supported MCP tools:
     Sink path parity with circuit sink nodes is strict.
   - `tsi.probe.log` circuit instance mode accepts `batch` or `epoch`
     (keyed `mode/log_mode/cadence` or positional token); `event` mode is removed.
-  - `SOURCE.RUNTIME.SOURCES_DSL_FILE` and `SOURCE.RUNTIME.CHANNELS_DSL_FILE` have no contract fallback.
+  - contract `__observation_sources_dsl_file` and
+    `__observation_channels_dsl_file` now own static observation/channel
+    policy selection. This keeps source symbol and date range wave-local while
+    moving docking-critical observation payload selection fully into contract.
 - `instructions/default.tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
   `CSV_POLICY { CSV_BOOTSTRAP_DELTAS, CSV_STEP_ABS_TOL, CSV_STEP_REL_TOL }`.
   It also owns required source analytics policy:
@@ -463,6 +516,11 @@ Supported MCP tools:
   `default.tsi.wikimyei.representation.vicreg.dsl`.
 - `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` (`[COMPONENT_PARAMS]`), not by `default.tsi.wikimyei.representation.vicreg.dsl`.
 - VICReg train/eval enable is owned by wave `WIKIMYEI ... JKIMYEI.HALT_TRAIN` together with root `WAVE.MODE` train bit; `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` no longer defines a `vicreg_train` key.
+- Embedding-sequence sidecars are now owned by
+  `default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`, not by
+  silent `piaabo` defaults. The module config controls
+  `max_samples`, `max_features`, `mask_epsilon`, and `standardize_epsilon`
+  while runtime `debug_enabled` still gates whether the sidecars are emitted.
 - `network_design` is the naming for graph/node architecture payloads.
   Optional path binding is configured by `network_design_dsl_file` inside
   `default.tsi.wikimyei.representation.vicreg.dsl`.

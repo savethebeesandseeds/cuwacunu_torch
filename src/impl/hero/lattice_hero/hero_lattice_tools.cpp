@@ -16,6 +16,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -34,10 +35,6 @@
 
 namespace {
 
-constexpr const char* kStoreRootEnv = "CUWACUNU_HASHIMYEI_STORE_ROOT";
-constexpr const char* kDefaultStoreRoot = "/cuwacunu/.hashimyei";
-constexpr const char* kDefaultWaveHeroDslPath =
-    "/cuwacunu/src/config/instructions/default.hero.lattice.dsl";
 constexpr const char* kServerName = "hero_lattice_mcp";
 constexpr const char* kServerVersion = "0.1.0";
 constexpr const char* kProtocolVersion = "2025-03-26";
@@ -599,66 +596,6 @@ __attribute__((constructor(102))) void disable_terminal_logs_pre_main() {
   return false;
 }
 
-enum class wave_cursor_resolution_e : std::uint8_t {
-  Run = 0,
-  Episode = 1,
-  Batch = 2,
-};
-
-[[nodiscard]] std::uint64_t wave_cursor_mask_for_resolution(
-    wave_cursor_resolution_e resolution) {
-  const auto layout =
-      cuwacunu::hero::wave::lattice_catalog_store_t::runtime_wave_cursor_layout();
-  db::wave_cursor::masked_query_t q{};
-  const db::wave_cursor::parts_t zero{};
-  std::uint8_t field_mask = db::wave_cursor::field_run;
-  if (resolution == wave_cursor_resolution_e::Episode ||
-      resolution == wave_cursor_resolution_e::Batch) {
-    field_mask = static_cast<std::uint8_t>(field_mask |
-                                           db::wave_cursor::field_episode);
-  }
-  if (resolution == wave_cursor_resolution_e::Batch) {
-    field_mask =
-        static_cast<std::uint8_t>(field_mask | db::wave_cursor::field_batch);
-  }
-  (void)db::wave_cursor::build_masked_query(layout, zero, field_mask, &q);
-  return q.mask;
-}
-
-[[nodiscard]] bool parse_wave_cursor_resolution(
-    std::string_view token,
-    wave_cursor_resolution_e* out_resolution) {
-  if (!out_resolution) return false;
-  const std::string lowered = lowercase_copy(trim_ascii(token));
-  if (lowered == "run") {
-    *out_resolution = wave_cursor_resolution_e::Run;
-    return true;
-  }
-  if (lowered == "episode") {
-    *out_resolution = wave_cursor_resolution_e::Episode;
-    return true;
-  }
-  if (lowered == "batch") {
-    *out_resolution = wave_cursor_resolution_e::Batch;
-    return true;
-  }
-  return false;
-}
-
-[[nodiscard]] const char* wave_cursor_resolution_to_text(
-    wave_cursor_resolution_e resolution) {
-  switch (resolution) {
-    case wave_cursor_resolution_e::Run:
-      return "run";
-    case wave_cursor_resolution_e::Episode:
-      return "episode";
-    case wave_cursor_resolution_e::Batch:
-      return "batch";
-    default:
-      return "run";
-  }
-}
-
 [[nodiscard]] bool extract_payload_kv(std::string_view payload,
                                       std::string_view key,
                                       std::string* out) {
@@ -680,20 +617,6 @@ enum class wave_cursor_resolution_e : std::uint8_t {
   return true;
 }
 
-[[nodiscard]] bool matches_wave_cursor_filter(
-    std::uint64_t wave_cursor,
-    std::uint64_t expected,
-    std::uint64_t mask,
-    wave_cursor_resolution_e cursor_resolution) {
-  const std::uint64_t comparable_mask =
-      mask & wave_cursor_mask_for_resolution(cursor_resolution);
-  if (mask != 0 && comparable_mask == 0) return false;
-  db::wave_cursor::masked_query_t q{};
-  q.value = expected & comparable_mask;
-  q.mask = comparable_mask;
-  return db::wave_cursor::match_masked(wave_cursor, q);
-}
-
 [[nodiscard]] bool extract_wave_cursor_from_payload(
     std::string_view payload,
     std::uint64_t* out_wave_cursor) {
@@ -704,44 +627,30 @@ enum class wave_cursor_resolution_e : std::uint8_t {
          parse_u64_token(wave_cursor_text, out_wave_cursor);
 }
 
-[[nodiscard]] bool extract_wave_cursor_resolution_from_payload(
-    std::string_view payload,
-    wave_cursor_resolution_e* out_resolution) {
-  if (!out_resolution) return false;
-  *out_resolution = wave_cursor_resolution_e::Run;
-  cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t document{};
-  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
-          payload, &document, nullptr)) {
-    return false;
+[[nodiscard]] bool fragment_wave_cursor(
+    const cuwacunu::hero::wave::runtime_report_fragment_t& fragment,
+    std::uint64_t* out_wave_cursor) {
+  if (!out_wave_cursor) return false;
+  *out_wave_cursor = 0;
+  if (fragment.wave_cursor != 0) {
+    *out_wave_cursor = fragment.wave_cursor;
+    return true;
   }
-  std::unordered_map<std::string, std::string> kv{};
-  if (!cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_to_kv_map(
-          document, &kv, nullptr)) {
-    return false;
+  return extract_wave_cursor_from_payload(fragment.payload_json, out_wave_cursor);
+}
+
+template <typename SetLike>
+[[nodiscard]] std::string json_string_array_from_set(const SetLike& values) {
+  std::ostringstream out;
+  out << "[";
+  bool first = true;
+  for (const auto& value : values) {
+    if (!first) out << ",";
+    first = false;
+    out << json_quote(value);
   }
-  bool has_episode_keys = false;
-  bool has_batch_keys = false;
-  for (const auto& [key, value] : kv) {
-    if (key == "wave_cursor_resolution") {
-      return parse_wave_cursor_resolution(value, out_resolution);
-    }
-    if (key == "wave.cursor.episode" || key == "episode_k" || key == "episode" ||
-        key == "wave_episode" || key == "epoch_k") {
-      has_episode_keys = true;
-    }
-    if (key == "wave.cursor.batch" || key == "batch_j" || key == "batch" ||
-        key == "wave_batch") {
-      has_batch_keys = true;
-    }
-  }
-  if (has_batch_keys) {
-    *out_resolution = wave_cursor_resolution_e::Batch;
-  } else if (has_episode_keys) {
-    *out_resolution = wave_cursor_resolution_e::Episode;
-  } else {
-    *out_resolution = wave_cursor_resolution_e::Run;
-  }
-  return true;
+  out << "]";
+  return out.str();
 }
 
 [[nodiscard]] bool extract_json_id_field(const std::string& json,
@@ -935,30 +844,14 @@ enum class wave_cursor_resolution_e : std::uint8_t {
   return false;
 }
 
-[[nodiscard]] std::filesystem::path default_store_root() {
-  if (const char* env = std::getenv(kStoreRootEnv); env && env[0] != '\0') {
-    return std::filesystem::path(env);
-  }
-  return std::filesystem::path(kDefaultStoreRoot);
-}
-
-[[nodiscard]] std::filesystem::path default_catalog_path(
-    const std::filesystem::path& store_root) {
-  return store_root / "catalog" / "lattice_catalog.idydb";
-}
-
 [[nodiscard]] std::filesystem::path resolve_lattice_hero_dsl_path(
     const std::filesystem::path& global_config_path) {
   const std::optional<std::string> configured = read_ini_value(
       global_config_path, "REAL_HERO", "lattice_hero_dsl_filename");
-  if (!configured.has_value()) {
-    return std::filesystem::path(kDefaultWaveHeroDslPath);
-  }
+  if (!configured.has_value()) return {};
   const std::string resolved = resolve_path_from_folder(
       global_config_path.parent_path().string(), *configured);
-  if (resolved.empty()) {
-    return std::filesystem::path(kDefaultWaveHeroDslPath);
-  }
+  if (resolved.empty()) return {};
   return std::filesystem::path(resolved);
 }
 
@@ -977,6 +870,7 @@ enum class wave_cursor_resolution_e : std::uint8_t {
     if (error) *error = "hero lattice DSL file not found: " + hero_dsl_path.string();
     return false;
   }
+  *out = wave_runtime_defaults_t{};
 
   std::ifstream in(hero_dsl_path);
   if (!in) {
@@ -1017,23 +911,24 @@ enum class wave_cursor_resolution_e : std::uint8_t {
     values[lhs] = value;
   }
 
+  bool saw_store_root = false;
   const auto it_store_root = values.find("store_root");
   if (it_store_root != values.end()) {
+    saw_store_root = true;
     out->store_root = resolve_path_from_folder(
         hero_dsl_path.parent_path().string(), it_store_root->second);
   }
+  bool saw_catalog_path = false;
   const auto it_catalog_path = values.find("catalog_path");
   if (it_catalog_path != values.end()) {
+    saw_catalog_path = true;
     out->catalog_path = resolve_path_from_folder(
         hero_dsl_path.parent_path().string(), it_catalog_path->second);
   }
-  const auto it_config_folder = values.find("config_folder");
-  if (it_config_folder != values.end()) {
-    out->config_folder = resolve_path_from_folder(
-        hero_dsl_path.parent_path().string(), it_config_folder->second);
-  }
+  bool saw_encrypted = false;
   const auto it_encrypted = values.find("encrypted");
   if (it_encrypted != values.end()) {
+    saw_encrypted = true;
     bool parsed = false;
     if (!parse_bool_token(it_encrypted->second, &parsed)) {
       if (error) *error = "invalid bool for key encrypted in " + hero_dsl_path.string();
@@ -1046,6 +941,18 @@ enum class wave_cursor_resolution_e : std::uint8_t {
       }
       return false;
     }
+  }
+  if (!saw_store_root || out->store_root.empty()) {
+    if (error) *error = "missing store_root in " + hero_dsl_path.string();
+    return false;
+  }
+  if (!saw_catalog_path || out->catalog_path.empty()) {
+    if (error) *error = "missing catalog_path in " + hero_dsl_path.string();
+    return false;
+  }
+  if (!saw_encrypted) {
+    if (error) *error = "missing encrypted in " + hero_dsl_path.string();
+    return false;
   }
   return true;
 }
@@ -1118,11 +1025,6 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     const auto& fragment = report_fragments[i];
     std::uint64_t wave_cursor = 0;
     (void)extract_wave_cursor_from_payload(fragment.payload_json, &wave_cursor);
-    wave_cursor_resolution_e wave_cursor_resolution = wave_cursor_resolution_e::Run;
-    (void)extract_wave_cursor_resolution_from_payload(
-        fragment.payload_json, &wave_cursor_resolution);
-    const std::string wave_cursor_resolution_text =
-        wave_cursor_resolution_to_text(wave_cursor_resolution);
     std::string hashimyei_cursor;
     if (!extract_payload_kv(fragment.payload_json, "hashimyei_cursor",
                             &hashimyei_cursor)) {
@@ -1140,10 +1042,20 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     out << "source_report_fragment_index=" << i << "\n";
     out << "source_report_fragment_id=" << fragment.report_fragment_id << "\n";
     out << "schema=" << fragment.schema << "\n";
-    out << "run_id=" << fragment.run_id << "\n";
+    if (!fragment.semantic_taxon.empty()) {
+      out << "semantic_taxon=" << fragment.semantic_taxon << "\n";
+    }
+    if (!fragment.report_canonical_path.empty()) {
+      out << "report_canonical_path=" << fragment.report_canonical_path << "\n";
+    }
+    if (!fragment.binding_id.empty()) {
+      out << "binding_id=" << fragment.binding_id << "\n";
+    }
+    if (!fragment.source_runtime_cursor.empty()) {
+      out << "source_runtime_cursor=" << fragment.source_runtime_cursor << "\n";
+    }
     out << "wave_cursor=" << wave_cursor << "\n";
     out << "wave_cursor_view=" << wave_cursor_view << "\n";
-    out << "wave_cursor_resolution=" << wave_cursor_resolution_text << "\n";
     out << "hashimyei_cursor=" << hashimyei_cursor << "\n";
     out << "intersection_cursor=" << intersection_cursor << "\n";
     out << "intersection_cursor_view=" << intersection_cursor_view << "\n";
@@ -1272,17 +1184,21 @@ struct fact_bundle_summary_t {
   std::string canonical_path{};
   std::uint64_t wave_cursor{0};
   std::uint64_t latest_ts_ms{0};
-  std::string latest_run_id{};
   std::size_t fragment_count{0};
+  std::set<std::string> binding_ids{};
+  std::set<std::string> semantic_taxa{};
+  std::set<std::string> source_runtime_cursors{};
 };
 
 struct fact_path_summary_t {
   std::string canonical_path{};
   std::uint64_t latest_wave_cursor{0};
   std::uint64_t latest_ts_ms{0};
-  std::string latest_run_id{};
   std::size_t fragment_count{0};
   std::unordered_set<std::uint64_t> wave_cursors{};
+  std::set<std::string> binding_ids{};
+  std::set<std::string> semantic_taxa{};
+  std::set<std::string> source_runtime_cursors{};
 };
 
 [[nodiscard]] bool build_fact_bundle_summaries(
@@ -1294,18 +1210,24 @@ struct fact_path_summary_t {
   std::map<std::uint64_t, fact_bundle_summary_t> by_wave{};
   for (const auto& row : rows) {
     std::uint64_t row_wave_cursor = 0;
-    if (!extract_wave_cursor_from_payload(row.payload_json, &row_wave_cursor)) {
+    if (!fragment_wave_cursor(row, &row_wave_cursor)) {
       continue;
     }
     auto& summary = by_wave[row_wave_cursor];
     summary.canonical_path = normalize_source_hashimyei_cursor(canonical_path);
     summary.wave_cursor = row_wave_cursor;
     ++summary.fragment_count;
-    if (summary.latest_run_id.empty() || row.ts_ms > summary.latest_ts_ms ||
-        (row.ts_ms == summary.latest_ts_ms &&
-         row.run_id > summary.latest_run_id)) {
+    if (!row.binding_id.empty()) {
+      summary.binding_ids.insert(trim_ascii(row.binding_id));
+    }
+    if (!row.semantic_taxon.empty()) {
+      summary.semantic_taxa.insert(trim_ascii(row.semantic_taxon));
+    }
+    if (!row.source_runtime_cursor.empty()) {
+      summary.source_runtime_cursors.insert(trim_ascii(row.source_runtime_cursor));
+    }
+    if (row.ts_ms > summary.latest_ts_ms) {
       summary.latest_ts_ms = row.ts_ms;
-      summary.latest_run_id = row.run_id;
     }
   }
   out->reserve(by_wave.size());
@@ -1353,18 +1275,24 @@ struct fact_path_summary_t {
           normalize_source_hashimyei_cursor(row.canonical_path);
       if (row_path.empty()) continue;
       std::uint64_t row_wave_cursor = 0;
-      if (!extract_wave_cursor_from_payload(row.payload_json, &row_wave_cursor)) {
+      if (!fragment_wave_cursor(row, &row_wave_cursor)) {
         continue;
       }
       auto& summary = by_path[row_path];
       summary.canonical_path = row_path;
       ++summary.fragment_count;
       summary.wave_cursors.insert(row_wave_cursor);
-      if (summary.latest_run_id.empty() || row.ts_ms > summary.latest_ts_ms ||
-          (row.ts_ms == summary.latest_ts_ms &&
-           row.run_id > summary.latest_run_id)) {
+      if (!row.binding_id.empty()) {
+        summary.binding_ids.insert(trim_ascii(row.binding_id));
+      }
+      if (!row.semantic_taxon.empty()) {
+        summary.semantic_taxa.insert(trim_ascii(row.semantic_taxon));
+      }
+      if (!row.source_runtime_cursor.empty()) {
+        summary.source_runtime_cursors.insert(trim_ascii(row.source_runtime_cursor));
+      }
+      if (row.ts_ms > summary.latest_ts_ms) {
         summary.latest_ts_ms = row.ts_ms;
-        summary.latest_run_id = row.run_id;
         summary.latest_wave_cursor = row_wave_cursor;
       }
     }
@@ -1393,8 +1321,13 @@ struct fact_path_summary_t {
                  << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
                                    format_runtime_wave_cursor(
                                        fact.latest_wave_cursor))
-                 << ",\"latest_run_id\":" << json_quote(fact.latest_run_id)
                  << ",\"latest_ts_ms\":" << fact.latest_ts_ms
+                 << ",\"binding_ids\":"
+                 << json_string_array_from_set(fact.binding_ids)
+                 << ",\"semantic_taxa\":"
+                 << json_string_array_from_set(fact.semantic_taxa)
+                 << ",\"source_runtime_cursors\":"
+                 << json_string_array_from_set(fact.source_runtime_cursors)
                  << ",\"available_context_count\":" << fact.wave_cursors.size()
                  << ",\"fragment_count\":" << fact.fragment_count << "}";
     }
@@ -1418,8 +1351,13 @@ struct fact_path_summary_t {
                  << ",\"wave_cursor\":"
                  << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
                                    format_runtime_wave_cursor(fact.wave_cursor))
-                 << ",\"latest_run_id\":" << json_quote(fact.latest_run_id)
                  << ",\"latest_ts_ms\":" << fact.latest_ts_ms
+                 << ",\"binding_ids\":"
+                 << json_string_array_from_set(fact.binding_ids)
+                 << ",\"semantic_taxa\":"
+                 << json_string_array_from_set(fact.semantic_taxa)
+                 << ",\"source_runtime_cursors\":"
+                 << json_string_array_from_set(fact.source_runtime_cursors)
                  << ",\"fragment_count\":" << fact.fragment_count << "}";
     }
   }
@@ -1469,7 +1407,7 @@ struct fact_path_summary_t {
   if (!use_wave_cursor) {
     bool found_latest = false;
     for (const auto& row : rows) {
-      if (extract_wave_cursor_from_payload(row.payload_json, &selected_wave_cursor)) {
+      if (fragment_wave_cursor(row, &selected_wave_cursor)) {
         found_latest = true;
         break;
       }
@@ -1483,7 +1421,7 @@ struct fact_path_summary_t {
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> selected{};
   for (const auto& row : rows) {
     std::uint64_t row_wave_cursor = 0;
-    if (!extract_wave_cursor_from_payload(row.payload_json, &row_wave_cursor)) {
+    if (!fragment_wave_cursor(row, &row_wave_cursor)) {
       continue;
     }
     if (row_wave_cursor != selected_wave_cursor) continue;
@@ -1495,22 +1433,36 @@ struct fact_path_summary_t {
   }
 
   const std::string fact_text = build_joined_report_lls(canonical_path, selected);
-  std::string latest_run_id = selected.front().run_id;
   std::uint64_t latest_ts_ms = selected.front().ts_ms;
+  std::set<std::string> binding_ids{};
+  std::set<std::string> semantic_taxa{};
+  std::set<std::string> source_runtime_cursors{};
   for (const auto& row : selected) {
     if (row.ts_ms > latest_ts_ms) {
       latest_ts_ms = row.ts_ms;
-      latest_run_id = row.run_id;
+    }
+    if (!row.binding_id.empty()) {
+      binding_ids.insert(trim_ascii(row.binding_id));
+    }
+    if (!row.semantic_taxon.empty()) {
+      semantic_taxa.insert(trim_ascii(row.semantic_taxon));
+    }
+    if (!row.source_runtime_cursor.empty()) {
+      source_runtime_cursors.insert(trim_ascii(row.source_runtime_cursor));
     }
   }
 
   std::ostringstream out;
   out << "{\"canonical_path\":" << json_quote(canonical_path)
+      << ",\"selection_mode\":" << json_quote(use_wave_cursor ? "historical" : "latest")
       << ",\"wave_cursor\":"
       << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
                         format_runtime_wave_cursor(selected_wave_cursor))
-      << ",\"latest_run_id\":" << json_quote(latest_run_id)
       << ",\"latest_ts_ms\":" << latest_ts_ms
+      << ",\"binding_ids\":" << json_string_array_from_set(binding_ids)
+      << ",\"semantic_taxa\":" << json_string_array_from_set(semantic_taxa)
+      << ",\"source_runtime_cursors\":"
+      << json_string_array_from_set(source_runtime_cursors)
       << ",\"fragment_count\":" << selected.size()
       << ",\"fact_lls\":" << json_quote(fact_text) << "}";
   *out_structured = out.str();
@@ -1693,6 +1645,13 @@ struct fact_path_summary_t {
   return app->catalog.open(opts, out_error);
 }
 
+[[nodiscard]] bool close_lattice_catalog_if_open(app_context_t* app,
+                                                 std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !app->catalog.opened()) return true;
+  return app->catalog.close(out_error);
+}
+
 [[nodiscard]] bool handle_tool_call(app_context_t* app,
                                     const std::string& tool_name,
                                     const std::string& arguments_json,
@@ -1792,7 +1751,15 @@ void run_jsonrpc_stdio_loop_impl(app_context_t* app) {
 
     std::string tool_result;
     std::string tool_error;
-    if (!handle_tool_call(app, name, arguments, &tool_result, &tool_error)) {
+    const bool ok =
+        handle_tool_call(app, name, arguments, &tool_result, &tool_error);
+    std::string close_error;
+    if (!close_lattice_catalog_if_open(app, &close_error)) {
+      write_jsonrpc_error(id_json, -32603,
+                          "catalog close failed: " + close_error);
+      continue;
+    }
+    if (!ok) {
       write_jsonrpc_error(id_json, -32601, tool_error);
       continue;
     }
@@ -1805,13 +1772,6 @@ void run_jsonrpc_stdio_loop_impl(app_context_t* app) {
 namespace cuwacunu {
 namespace hero {
 namespace lattice_mcp {
-
-std::filesystem::path default_store_root() { return ::default_store_root(); }
-
-std::filesystem::path default_catalog_path(
-    const std::filesystem::path& store_root) {
-  return ::default_catalog_path(store_root);
-}
 
 std::filesystem::path resolve_lattice_hero_dsl_path(
     const std::filesystem::path& global_config_path) {
@@ -1830,12 +1790,22 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
                        std::string* out_error_message) {
   if (out_error_message) out_error_message->clear();
   if (!app || !out_tool_result_json || !out_error_message) return false;
+  const bool opened_here = !app->catalog.opened();
   if (!::open_lattice_catalog_if_needed(app, out_error_message)) {
     *out_error_message = "catalog open failed: " + *out_error_message;
     return false;
   }
-  return ::handle_tool_call(app, tool_name, arguments_json, out_tool_result_json,
-                            out_error_message);
+  const bool ok = ::handle_tool_call(app, tool_name, arguments_json,
+                                     out_tool_result_json, out_error_message);
+  if (opened_here) {
+    std::string close_error;
+    if (!::close_lattice_catalog_if_open(app, &close_error)) {
+      if (!out_error_message->empty()) out_error_message->append("; ");
+      out_error_message->append("catalog close failed: " + close_error);
+      return false;
+    }
+  }
+  return ok;
 }
 
 bool tool_result_is_error(std::string_view tool_result_json) {

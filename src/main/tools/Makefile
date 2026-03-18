@@ -30,4 +30,4 @@ install-secure-key-setup: $(TEST_OUT)/secure_key_setup
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/secure_key_setup
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/secure_key_setup

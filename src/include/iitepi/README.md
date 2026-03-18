@@ -54,12 +54,16 @@ The public dispatcher is now campaign-oriented:
 
 2. `default.iitepi.contract.circuit.dsl`
 - TSI instances and hops
-- optional `active_circuit = <circuit_name>`
+- one or more named compatible circuits
 
 3. `default.iitepi.wave.dsl`
 - execution/training policy
-- source runtime window and observation file paths
+- operational `CIRCUIT = <circuit_name>` selector when the contract declares
+  more than one circuit
+- source runtime window
 - wave-local `JKIMYEI { HALT_TRAIN, PROFILE_ID }`
+  where `PROFILE_ID` is only needed when the contract exposes multiple
+  compatible profiles
 
 4. `default.iitepi.campaign.dsl`
 - `CAMPAIGN { ... }`
@@ -71,7 +75,7 @@ The public dispatcher is now campaign-oriented:
 ## Runtime Flow
 
 1. Load config
-- `config_space_t::change_config_file(...)`
+- `config_space_t::change_config_file("/path/to/.config")`
 - `config_space_t::update_config()`
 
 2. Initialize runtime selection
@@ -81,6 +85,21 @@ The public dispatcher is now campaign-oriented:
 3. Internal worker bridge
 - the selected campaign bind is materialized into the private internal
   runtime-binding snapshot consumed by existing builder/runtime code
+- contract-local `__variables` are resolved into the staged contract DSL graph
+  while bind-local `__variables` remain wave-scoped operational overrides
+- bind-local `__variables` may not shadow names already declared by the
+  contract; overlapping names are rejected during campaign snapshot staging
+- observation/channel DSL selection is contract-owned through contract
+  `__variables`, while source symbol and date range remain wave-local runtime
+  scope
+- contract snapshots also derive an explicit docking signature from the
+  compatible circuit set, contract `__variables`, and docking-bearing contract
+  DSL surfaces; component lineage can use that digest to talk about docking
+  compatibility directly
+- runtime reuse/load of an existing component hashimyei validates the selected
+  component manifest against the current contract hash and docking signature
+- component manifests describe revision lifecycle through `lineage_state`,
+  rather than the older generic `status`
 
 4. Execute
 - entry point remains `cuwacunu::iitepi::run_runtime_binding(binding_id, device)`

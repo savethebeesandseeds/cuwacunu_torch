@@ -94,7 +94,7 @@ inline std::string make_training_left(const CmdState& st) {
   } else {
     const std::size_t hx = (st.training.selected_hash < report_fragments.size()) ? st.training.selected_hash : 0;
     const auto& item = report_fragments[hx];
-    const std::string base = item.canonical_base;
+    const std::string base = item.canonical_path;
     const std::string fused = "tsi.wikimyei." + family + "." + model + "_" + item.hashimyei;
 
     oss << "hashimyei:   " << item.hashimyei << "  [" << (hx + 1) << "/" << report_fragments.size() << "]\n";

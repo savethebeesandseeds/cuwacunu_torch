@@ -67,11 +67,11 @@ int main() {
   WARM_UP_CUDA();
 
   /* set the test variables */
-  const char* config_folder = "/cuwacunu/src/config/";
+  const char* global_config_path = "/cuwacunu/src/config/.config";
 
   /* read the config */
   TICK(read_config_);
-  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
   cuwacunu::iitepi::config_space_t::update_config();
   PRINT_TOCK_ms(read_config_);
 

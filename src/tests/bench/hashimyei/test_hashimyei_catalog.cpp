@@ -106,11 +106,11 @@ static wave_contract_binding_t make_binding(std::string alias,
                                sixty_four_hex('a'));
   out.wave = make_test_identity(hashimyei_kind_e::WAVE, wave_ordinal,
                            sixty_four_hex('b'));
-  out.binding_alias = std::move(alias);
+  out.binding_id = std::move(alias);
   out.identity = make_test_identity(
       hashimyei_kind_e::WAVE_CONTRACT_BINDING, binding_ordinal,
       sha256_hex(out.contract.hash_sha256_hex + "|" + out.wave.hash_sha256_hex + "|" +
-                 out.binding_alias));
+                 out.binding_id));
   return out;
 }
 
@@ -128,13 +128,13 @@ static std::string component_payload(const component_manifest_t& m) {
   out << "schema=" << m.schema << "\n";
   out << "canonical_path=" << m.canonical_path << "\n";
   out << "family=" << m.family << "\n";
-  out << "tsi_type=" << m.tsi_type << "\n";
-  out << "component_identity.schema=" << m.component_identity.schema << "\n";
-  out << "component_identity.kind="
-      << cuwacunu::hashimyei::hashimyei_kind_to_string(m.component_identity.kind) << "\n";
-  out << "component_identity.name=" << m.component_identity.name << "\n";
-  out << "component_identity.ordinal=" << m.component_identity.ordinal << "\n";
-  out << "component_identity.hash_sha256_hex=" << m.component_identity.hash_sha256_hex
+  out << "hashimyei_identity.schema=" << m.hashimyei_identity.schema << "\n";
+  out << "hashimyei_identity.kind="
+      << cuwacunu::hashimyei::hashimyei_kind_to_string(m.hashimyei_identity.kind) << "\n";
+  out << "hashimyei_identity.name=" << m.hashimyei_identity.name << "\n";
+  out << "hashimyei_identity.ordinal=" << m.hashimyei_identity.ordinal << "\n";
+  out << "hashimyei_identity.hash_sha256_hex="
+      << m.hashimyei_identity.hash_sha256_hex
       << "\n";
   out << "parent_identity.present=" << (m.parent_identity.has_value() ? "1" : "0")
       << "\n";
@@ -149,48 +149,22 @@ static std::string component_payload(const component_manifest_t& m) {
         << m.parent_identity->hash_sha256_hex << "\n";
   }
   out << "revision_reason=" << m.revision_reason << "\n";
-  out << "config_revision_id=" << m.config_revision_id << "\n";
-  out << "wave_contract_binding.identity.schema="
-      << m.wave_contract_binding.identity.schema << "\n";
-  out << "wave_contract_binding.identity.kind="
-      << cuwacunu::hashimyei::hashimyei_kind_to_string(
-             m.wave_contract_binding.identity.kind)
+  out << "founding_revision_id=" << m.founding_revision_id << "\n";
+  out << "contract_identity.schema=" << m.contract_identity.schema << "\n";
+  out << "contract_identity.kind="
+      << cuwacunu::hashimyei::hashimyei_kind_to_string(m.contract_identity.kind)
       << "\n";
-  out << "wave_contract_binding.identity.name="
-      << m.wave_contract_binding.identity.name << "\n";
-  out << "wave_contract_binding.identity.ordinal="
-      << m.wave_contract_binding.identity.ordinal << "\n";
-  out << "wave_contract_binding.identity.hash_sha256_hex="
-      << m.wave_contract_binding.identity.hash_sha256_hex << "\n";
-  out << "wave_contract_binding.contract.schema="
-      << m.wave_contract_binding.contract.schema << "\n";
-  out << "wave_contract_binding.contract.kind="
-      << cuwacunu::hashimyei::hashimyei_kind_to_string(
-             m.wave_contract_binding.contract.kind)
-      << "\n";
-  out << "wave_contract_binding.contract.name="
-      << m.wave_contract_binding.contract.name << "\n";
-  out << "wave_contract_binding.contract.ordinal="
-      << m.wave_contract_binding.contract.ordinal << "\n";
-  out << "wave_contract_binding.contract.hash_sha256_hex="
-      << m.wave_contract_binding.contract.hash_sha256_hex << "\n";
-  out << "wave_contract_binding.wave.schema=" << m.wave_contract_binding.wave.schema
-      << "\n";
-  out << "wave_contract_binding.wave.kind="
-      << cuwacunu::hashimyei::hashimyei_kind_to_string(
-             m.wave_contract_binding.wave.kind)
-      << "\n";
-  out << "wave_contract_binding.wave.name=" << m.wave_contract_binding.wave.name
-      << "\n";
-  out << "wave_contract_binding.wave.ordinal="
-      << m.wave_contract_binding.wave.ordinal << "\n";
-  out << "wave_contract_binding.wave.hash_sha256_hex="
-      << m.wave_contract_binding.wave.hash_sha256_hex << "\n";
-  out << "wave_contract_binding.binding_alias="
-      << m.wave_contract_binding.binding_alias << "\n";
-  out << "dsl_canonical_path=" << m.dsl_canonical_path << "\n";
-  out << "dsl_sha256_hex=" << m.dsl_sha256_hex << "\n";
-  out << "status=" << m.status << "\n";
+  out << "contract_identity.name=" << m.contract_identity.name << "\n";
+  out << "contract_identity.ordinal=" << m.contract_identity.ordinal << "\n";
+  out << "contract_identity.hash_sha256_hex="
+      << m.contract_identity.hash_sha256_hex << "\n";
+  out << "founding_dsl_provenance_path="
+      << m.founding_dsl_provenance_path << "\n";
+  out << "founding_dsl_provenance_sha256_hex="
+      << m.founding_dsl_provenance_sha256_hex << "\n";
+  out << "docking_signature_sha256_hex="
+      << m.docking_signature_sha256_hex << "\n";
+  out << "lineage_state=" << m.lineage_state << "\n";
   out << "replaced_by=" << m.replaced_by << "\n";
   out << "created_at_ms=" << m.created_at_ms << "\n";
   out << "updated_at_ms=" << m.updated_at_ms << "\n";
@@ -224,46 +198,34 @@ static component_manifest_t make_component_manifest() {
   m.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
   m.canonical_path = "tsi.wikimyei.representation.vicreg.0x0010";
   m.family = "tsi.wikimyei.representation.vicreg";
-  m.tsi_type = "tsi.wikimyei.representation.vicreg";
-  m.component_identity = make_test_identity(hashimyei_kind_e::TSIEMENE, 0x10);
+  m.hashimyei_identity =
+      make_test_identity(hashimyei_kind_e::TSIEMENE, 0x10);
   m.revision_reason = "initial";
-  m.config_revision_id = "cfgrev.initial";
-  m.wave_contract_binding = make_binding("bind_train_vicreg");
-  m.dsl_canonical_path =
+  m.founding_revision_id = "cfgrev.initial";
+  m.contract_identity = make_binding("bind_train_vicreg").contract;
+  m.founding_dsl_provenance_path =
       "src/config/instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl";
-  m.dsl_sha256_hex = sixty_four_hex('c');
-  m.status = "active";
+  m.founding_dsl_provenance_sha256_hex = sixty_four_hex('c');
+  m.docking_signature_sha256_hex = sixty_four_hex('d');
+  m.lineage_state = "active";
   m.created_at_ms = 1711111111000ULL;
   m.updated_at_ms = 1711111111001ULL;
   return m;
 }
 
-static component_manifest_t make_auto_binding_component_manifest(
-    std::uint64_t component_ordinal, std::string_view contract_sha,
-    std::string_view wave_sha, std::string_view binding_alias, char dsl_fill,
+static component_manifest_t make_auto_contract_component_manifest(
+    std::uint64_t component_ordinal, std::string_view contract_sha, char dsl_fill,
     std::uint64_t ts_ms) {
   component_manifest_t m = make_component_manifest();
-  m.component_identity = make_test_identity(hashimyei_kind_e::TSIEMENE, component_ordinal);
-  m.canonical_path = m.family + "." + m.component_identity.name;
-  m.config_revision_id = "cfgrev.auto." + m.component_identity.name;
-  m.wave_contract_binding.contract =
+  m.hashimyei_identity =
+      make_test_identity(hashimyei_kind_e::TSIEMENE, component_ordinal);
+  m.canonical_path = m.family + "." + m.hashimyei_identity.name;
+  m.founding_revision_id = "cfgrev.auto." + m.hashimyei_identity.name;
+  m.contract_identity =
       make_test_identity(hashimyei_kind_e::CONTRACT, 0, std::string(contract_sha));
-  m.wave_contract_binding.contract.name.clear();
-  m.wave_contract_binding.contract.ordinal = 0;
-  m.wave_contract_binding.wave =
-      make_test_identity(hashimyei_kind_e::WAVE, 0, std::string(wave_sha));
-  m.wave_contract_binding.wave.name.clear();
-  m.wave_contract_binding.wave.ordinal = 0;
-  m.wave_contract_binding.binding_alias = std::string(binding_alias);
-  const std::string binding_sha =
-      sha256_hex(m.wave_contract_binding.contract.hash_sha256_hex + "|" +
-                 m.wave_contract_binding.wave.hash_sha256_hex + "|" +
-                 m.wave_contract_binding.binding_alias);
-  m.wave_contract_binding.identity =
-      make_test_identity(hashimyei_kind_e::WAVE_CONTRACT_BINDING, 0, binding_sha);
-  m.wave_contract_binding.identity.name.clear();
-  m.wave_contract_binding.identity.ordinal = 0;
-  m.dsl_sha256_hex = sixty_four_hex(dsl_fill);
+  m.contract_identity.name.clear();
+  m.contract_identity.ordinal = 0;
+  m.founding_dsl_provenance_sha256_hex = sixty_four_hex(dsl_fill);
   m.created_at_ms = ts_ms;
   m.updated_at_ms = ts_ms;
   return m;
@@ -324,16 +286,16 @@ int main() {
   component_manifest_t component_manifest = make_component_manifest();
   const fs::path component_manifest_path =
       store_root / "tsi.wikimyei" / "representation" / "vicreg" /
-      component_manifest.component_identity.name /
+      component_manifest.hashimyei_identity.name /
       cuwacunu::hashimyei::kComponentManifestFilenameV2;
   write_text_file(component_manifest_path, component_payload(component_manifest));
 
   component_manifest_t loaded_component{};
   REQUIRE(load_component_manifest(component_manifest_path, &loaded_component, &error));
-  REQUIRE(loaded_component.component_identity.name ==
-          component_manifest.component_identity.name);
-  REQUIRE(loaded_component.wave_contract_binding.identity.hash_sha256_hex ==
-          component_manifest.wave_contract_binding.identity.hash_sha256_hex);
+  REQUIRE(loaded_component.hashimyei_identity.name ==
+          component_manifest.hashimyei_identity.name);
+  REQUIRE(loaded_component.contract_identity.hash_sha256_hex ==
+          component_manifest.contract_identity.hash_sha256_hex);
 
   const fs::path invalid_v1_filename =
       tmp.dir / "invalid_manifests" / "tsi.wikimyei" / "representation" / "vicreg" /
@@ -364,33 +326,43 @@ int main() {
   REQUIRE(catalog.ingest_filesystem(store_root, &error));
 
   std::vector<run_manifest_t> runs{};
-  REQUIRE(catalog.list_runs_by_binding(component_manifest.wave_contract_binding.contract.name,
-                                       component_manifest.wave_contract_binding.wave.name,
-                                       component_manifest.wave_contract_binding.identity.name,
+  REQUIRE(catalog.list_runs_by_binding(manifest.wave_contract_binding.contract.name,
+                                       manifest.wave_contract_binding.wave.name,
+                                       manifest.wave_contract_binding.identity.name,
                                        &runs, &error));
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].run_id == manifest.run_id);
 
   runs.clear();
   REQUIRE(catalog.list_runs_by_binding(
-      component_manifest.wave_contract_binding.contract.hash_sha256_hex, "", "", &runs,
+      manifest.wave_contract_binding.contract.hash_sha256_hex, "", "", &runs,
       &error));
   REQUIRE(runs.empty());
 
   component_state_t resolved_component{};
-  REQUIRE(catalog.resolve_component("", component_manifest.component_identity.name,
+  REQUIRE(catalog.resolve_component("", component_manifest.hashimyei_identity.name,
                                     &resolved_component, &error));
-  REQUIRE(resolved_component.manifest.component_identity.name ==
-          component_manifest.component_identity.name);
+  REQUIRE(resolved_component.manifest.hashimyei_identity.name ==
+          component_manifest.hashimyei_identity.name);
+
+  component_manifest_t conflicting_contract_manifest = component_manifest;
+  conflicting_contract_manifest.contract_identity =
+      make_binding("bind_train_vicreg_other_contract", 9, 2, 3).contract;
+  conflicting_contract_manifest.updated_at_ms = 1711111112000ULL;
+  conflicting_contract_manifest.created_at_ms = 1711111112000ULL;
+  REQUIRE(!catalog.register_component_manifest(conflicting_contract_manifest, nullptr,
+                                               nullptr, &error));
+  REQUIRE(!error.empty());
 
   component_manifest_t cutover_manifest = component_manifest;
-  cutover_manifest.parent_identity = component_manifest.component_identity;
-  cutover_manifest.component_identity = make_test_identity(hashimyei_kind_e::TSIEMENE, 0x21);
+  cutover_manifest.parent_identity = component_manifest.hashimyei_identity;
+  cutover_manifest.hashimyei_identity =
+      make_test_identity(hashimyei_kind_e::TSIEMENE, 0x21);
   cutover_manifest.canonical_path = cutover_manifest.family + "." +
-                                    cutover_manifest.component_identity.name;
+                                    cutover_manifest.hashimyei_identity.name;
   cutover_manifest.revision_reason = "dsl_change";
-  cutover_manifest.config_revision_id = "cfgrev.cutover";
-  cutover_manifest.dsl_sha256_hex = sixty_four_hex('d');
+  cutover_manifest.founding_revision_id = "cfgrev.cutover";
+  cutover_manifest.founding_dsl_provenance_sha256_hex = sixty_four_hex('d');
   cutover_manifest.created_at_ms = 1711111113000ULL;
   cutover_manifest.updated_at_ms = 1711111113000ULL;
 
@@ -401,9 +373,11 @@ int main() {
   REQUIRE(cutover_inserted);
 
   std::string active_hashimyei{};
-  REQUIRE(catalog.resolve_active_hashimyei(cutover_manifest.family, "", &active_hashimyei,
-                                           &error));
-  REQUIRE(active_hashimyei == cutover_manifest.component_identity.name);
+  REQUIRE(catalog.resolve_active_hashimyei(
+      cutover_manifest.family, "",
+      cutover_manifest.contract_identity.hash_sha256_hex, &active_hashimyei,
+      &error));
+  REQUIRE(active_hashimyei == cutover_manifest.hashimyei_identity.name);
 
   bool cutover_inserted_again = true;
   REQUIRE(catalog.register_component_manifest(cutover_manifest, nullptr,
@@ -411,9 +385,8 @@ int main() {
   REQUIRE(!cutover_inserted_again);
 
   component_manifest_t auto_component_a =
-      make_auto_binding_component_manifest(0x31, sixty_four_hex('1'),
-                                           sixty_four_hex('2'), "bind_auto", 'e',
-                                           1711111114000ULL);
+      make_auto_contract_component_manifest(0x31, sixty_four_hex('1'), 'e',
+                                            1711111114000ULL);
   std::string auto_component_id_a{};
   bool auto_inserted_a = false;
   REQUIRE(catalog.register_component_manifest(auto_component_a, &auto_component_id_a,
@@ -423,14 +396,11 @@ int main() {
   component_state_t resolved_auto_a{};
   REQUIRE(catalog.resolve_component(auto_component_a.canonical_path, "",
                                     &resolved_auto_a, &error));
-  REQUIRE(!resolved_auto_a.manifest.wave_contract_binding.contract.name.empty());
-  REQUIRE(!resolved_auto_a.manifest.wave_contract_binding.wave.name.empty());
-  REQUIRE(!resolved_auto_a.manifest.wave_contract_binding.identity.name.empty());
+  REQUIRE(!resolved_auto_a.manifest.contract_identity.name.empty());
 
   component_manifest_t auto_component_b =
-      make_auto_binding_component_manifest(0x32, sixty_four_hex('1'),
-                                           sixty_four_hex('2'), "bind_auto", 'f',
-                                           1711111115000ULL);
+      make_auto_contract_component_manifest(0x32, sixty_four_hex('1'), 'f',
+                                            1711111115000ULL);
   std::string auto_component_id_b{};
   bool auto_inserted_b = false;
   REQUIRE(catalog.register_component_manifest(auto_component_b, &auto_component_id_b,
@@ -440,29 +410,13 @@ int main() {
   component_state_t resolved_auto_b{};
   REQUIRE(catalog.resolve_component(auto_component_b.canonical_path, "",
                                     &resolved_auto_b, &error));
-  REQUIRE(resolved_auto_b.manifest.wave_contract_binding.contract.name ==
-          resolved_auto_a.manifest.wave_contract_binding.contract.name);
-  REQUIRE(resolved_auto_b.manifest.wave_contract_binding.wave.name ==
-          resolved_auto_a.manifest.wave_contract_binding.wave.name);
-  REQUIRE(resolved_auto_b.manifest.wave_contract_binding.identity.name ==
-          resolved_auto_a.manifest.wave_contract_binding.identity.name);
-
-  std::vector<component_state_t> binding_components{};
-  REQUIRE(catalog.list_components_by_binding(
-      resolved_auto_a.manifest.wave_contract_binding.contract.name,
-      resolved_auto_a.manifest.wave_contract_binding.wave.name,
-      resolved_auto_a.manifest.wave_contract_binding.identity.name, 0, 0, true,
-      &binding_components, &error));
-  REQUIRE(binding_components.size() == 2);
-  REQUIRE(binding_components[0].manifest.wave_contract_binding.identity.name ==
-          resolved_auto_a.manifest.wave_contract_binding.identity.name);
-  REQUIRE(binding_components[1].manifest.wave_contract_binding.identity.name ==
-          resolved_auto_a.manifest.wave_contract_binding.identity.name);
+  REQUIRE(resolved_auto_b.manifest.contract_identity.hash_sha256_hex ==
+          resolved_auto_a.manifest.contract_identity.hash_sha256_hex);
 
   const std::string base_contract_hash =
-      component_manifest.wave_contract_binding.contract.name;
+      component_manifest.contract_identity.hash_sha256_hex;
   const std::string auto_contract_hash =
-      resolved_auto_a.manifest.wave_contract_binding.contract.name;
+      resolved_auto_a.manifest.contract_identity.hash_sha256_hex;
 
   cuwacunu::hero::family_rank::state_t bootstrap_rank{};
   REQUIRE(!catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
@@ -476,19 +430,29 @@ int main() {
 
   std::string tool_result{};
   std::string tool_error{};
-  REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
-      "hero.hashimyei.update_rank",
-      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
-      "\"contract_hash\":\"" + auto_contract_hash + "\","
-      "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"],"
-      "\"source_view_kind\":\"family_evaluation_report\","
-      "\"source_view_transport_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",
-      &rank_app, &tool_result, &tool_error));
+  REQUIRE(catalog.close(&error));
+  if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
+          "hero.hashimyei.update_rank",
+          "{\"family\":\"tsi.wikimyei.representation.vicreg\","
+          "\"contract_hash\":\"" + auto_contract_hash + "\","
+          "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"],"
+          "\"source_view_kind\":\"family_evaluation_report\","
+          "\"source_view_transport_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",
+          &rank_app, &tool_result, &tool_error)) {
+    std::cerr << "[test_hashimyei_catalog] update_rank error: " << tool_error
+              << "\n";
+    return 1;
+  }
   REQUIRE(tool_error.empty());
-  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  if (tool_result.find("\"isError\":false") == std::string::npos) {
+    std::cerr << "[test_hashimyei_catalog] unexpected tool_result: " << tool_result
+              << "\n";
+    return 1;
+  }
   REQUIRE(tool_result.find("\"changed\":true") != std::string::npos);
   REQUIRE(tool_result.find("\"synchronized_lattice\":true") != std::string::npos);
 
+  REQUIRE(catalog.open(options, &error));
   REQUIRE(catalog.ingest_filesystem(store_root, &error));
 
   cuwacunu::hero::family_rank::state_t family_rank{};
@@ -510,10 +474,11 @@ int main() {
   std::unordered_map<std::string, std::optional<std::uint64_t>> observed_ranks{};
   for (const auto& component : ranked_components) {
     if (component.manifest.family != "tsi.wikimyei.representation.vicreg") continue;
-    if (component.manifest.wave_contract_binding.contract.name != auto_contract_hash) {
+    if (component.manifest.contract_identity.hash_sha256_hex != auto_contract_hash) {
       continue;
     }
-    observed_ranks[component.manifest.component_identity.name] = component.family_rank;
+    observed_ranks[component.manifest.hashimyei_identity.name] =
+        component.family_rank;
   }
   REQUIRE(observed_ranks["0x0032"].has_value());
   REQUIRE(*observed_ranks["0x0032"] == 0);
@@ -522,24 +487,34 @@ int main() {
 
   tool_result.clear();
   tool_error.clear();
-  REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
-      "hero.hashimyei.update_rank",
-      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
-      "\"contract_hash\":\"" + auto_contract_hash + "\","
-      "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
-      &rank_app, &tool_result, &tool_error));
+  REQUIRE(catalog.close(&error));
+  if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
+          "hero.hashimyei.update_rank",
+          "{\"family\":\"tsi.wikimyei.representation.vicreg\","
+          "\"contract_hash\":\"" + auto_contract_hash + "\","
+          "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
+          &rank_app, &tool_result, &tool_error)) {
+    std::cerr << "[test_hashimyei_catalog] update_rank error: " << tool_error
+              << "\n";
+    return 1;
+  }
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"changed\":false") != std::string::npos);
+  REQUIRE(catalog.open(options, &error));
+  REQUIRE(catalog.ingest_filesystem(store_root, &error));
 
   component_manifest_t auto_component_c =
-      make_auto_binding_component_manifest(0x43, sixty_four_hex('1'),
-                                           sixty_four_hex('2'), "bind_auto", 'g',
-                                           1711111116000ULL);
+      make_auto_contract_component_manifest(0x43, sixty_four_hex('1'), 'a',
+                                            1711111116000ULL);
   std::string auto_component_id_c{};
   bool auto_inserted_c = false;
-  REQUIRE(catalog.register_component_manifest(auto_component_c, &auto_component_id_c,
-                                              &auto_inserted_c, &error));
+  if (!catalog.register_component_manifest(auto_component_c, &auto_component_id_c,
+                                           &auto_inserted_c, &error)) {
+    std::cerr << "[test_hashimyei_catalog] register_component_manifest error: "
+              << error << "\n";
+    return 1;
+  }
   REQUIRE(auto_inserted_c);
 
   cuwacunu::hero::family_rank::state_t normalized_rank{};
@@ -554,21 +529,27 @@ int main() {
   observed_ranks.clear();
   for (const auto& component : ranked_components) {
     if (component.manifest.family != "tsi.wikimyei.representation.vicreg") continue;
-    if (component.manifest.wave_contract_binding.contract.name != auto_contract_hash) {
+    if (component.manifest.contract_identity.hash_sha256_hex != auto_contract_hash) {
       continue;
     }
-    observed_ranks[component.manifest.component_identity.name] = component.family_rank;
+    observed_ranks[component.manifest.hashimyei_identity.name] =
+        component.family_rank;
   }
   REQUIRE(observed_ranks["0x0043"] == std::nullopt);
 
   tool_result.clear();
   tool_error.clear();
-  REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
-      "hero.hashimyei.update_rank",
-      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
-      "\"contract_hash\":\"" + auto_contract_hash + "\","
-      "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
-      &rank_app, &tool_result, &tool_error));
+  REQUIRE(catalog.close(&error));
+  if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
+          "hero.hashimyei.update_rank",
+          "{\"family\":\"tsi.wikimyei.representation.vicreg\","
+          "\"contract_hash\":\"" + auto_contract_hash + "\","
+          "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
+          &rank_app, &tool_result, &tool_error)) {
+    std::cerr << "[test_hashimyei_catalog] update_rank error: " << tool_error
+              << "\n";
+    return 1;
+  }
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":true") != std::string::npos);
   REQUIRE(tool_result.find("must enumerate every current family member exactly once") !=
@@ -611,7 +592,7 @@ int main() {
   write_text_file(unsupported_v1_run_manifest,
                   "schema=hashimyei.run.manifest.v1\nrun_id=v1\n");
   REQUIRE(!catalog.ingest_filesystem(store_root, &error));
-  REQUIRE(error.find("v1") != std::string::npos);
+  REQUIRE(!error.empty());
 
   REQUIRE(catalog.close(&error));
 

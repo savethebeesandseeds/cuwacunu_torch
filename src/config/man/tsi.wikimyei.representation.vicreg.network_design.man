@@ -55,7 +55,7 @@ required = true
 default = none
 range = > 0
 allowed = integer
-nuance = must match runtime observation channel count expected by VICReg instantiation context
+nuance = must match runtime observation channel count expected by VICReg instantiation context; contract-scoped __variables are the preferred way to freeze this docking size
 
 [FIELD INPUT.T]
 key = INPUT.T
@@ -65,7 +65,7 @@ required = true
 default = none
 range = > 0
 allowed = integer
-nuance = must match runtime sequence length context
+nuance = must match runtime sequence length context; contract-scoped __variables are the preferred way to freeze this docking size
 
 [FIELD INPUT.D]
 key = INPUT.D
@@ -75,7 +75,7 @@ required = true
 default = none
 range = > 0
 allowed = integer
-nuance = must match runtime feature-dimension context
+nuance = must match runtime feature-dimension context; contract-scoped __variables are the preferred way to freeze this docking size
 
 [FIELD ENCODER.PARAMS]
 key = encoding_dims,channel_expansion_dim,fused_feature_dim,hidden_dims|encoder_hidden_dims,depth|encoder_depth
@@ -85,7 +85,7 @@ required = true
 default = none
 range = each > 0
 allowed = integer
-nuance = hidden/depth support alias keys for compatibility
+nuance = hidden/depth support alias keys for compatibility; contract-scoped __variables may resolve these values before network decode
 
 [FIELD PROJECTOR.DIMS]
 key = dims or projector_mlp_spec
@@ -95,7 +95,7 @@ required = true
 default = none
 range = at least two positive widths
 allowed = dims csv int list or projector_mlp_spec string
-nuance = dims is normalized into hyphen-spec string for torch adapter
+nuance = dims is normalized into hyphen-spec string for torch adapter; contract-scoped __variables may resolve this topology before network decode
 
 [FIELD PROJECTOR.NORM_ACT]
 key = norm/projector_norm and activation/projector_activation

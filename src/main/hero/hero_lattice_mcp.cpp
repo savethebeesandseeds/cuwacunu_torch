@@ -29,7 +29,6 @@ void print_help(const char* argv0) {
             << "  --hero-config <path>     Explicit Lattice HERO defaults DSL\n"
             << "  --store-root <path>      Override store_root from HERO defaults DSL\n"
             << "  --catalog <path>         Override catalog_path from HERO defaults DSL\n"
-            << "  --config-folder <path>   Override config_folder from HERO defaults DSL\n"
             << "  (without --tool, server mode reads JSON-RPC messages from stdin)\n"
             << "  --help                   Show this help\n";
 }
@@ -51,7 +50,6 @@ void print_help(const char* argv0) {
 
 int main(int argc, char** argv) {
   cuwacunu::hero::lattice_mcp::app_context_t app{};
-  app.config_folder = DEFAULT_CONFIG_FOLDER;
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 
   std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
@@ -66,8 +64,6 @@ int main(int argc, char** argv) {
   bool list_tools_json = false;
   bool store_root_overridden = false;
   bool catalog_overridden = false;
-  bool config_folder_overridden = false;
-
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--hero-config" && i + 1 < argc) {
@@ -86,11 +82,6 @@ int main(int argc, char** argv) {
     if (arg == "--catalog" && i + 1 < argc) {
       catalog_path = argv[++i];
       catalog_overridden = true;
-      continue;
-    }
-    if (arg == "--config-folder" && i + 1 < argc) {
-      app.config_folder = argv[++i];
-      config_folder_overridden = true;
       continue;
     }
     if (arg == "--tool" && i + 1 < argc) {
@@ -162,6 +153,12 @@ int main(int argc, char** argv) {
         cuwacunu::hero::lattice_mcp::resolve_lattice_hero_dsl_path(
             global_config_path);
   }
+  if (hero_config_path.empty()) {
+    std::cerr << "[" << kServerName
+              << "] missing [REAL_HERO].lattice_hero_dsl_filename in "
+              << global_config_path.string() << "\n";
+    return 2;
+  }
 
   cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t defaults{};
   std::string defaults_error{};
@@ -172,27 +169,19 @@ int main(int argc, char** argv) {
   }
 
   if (!store_root_overridden) {
-    if (!defaults.store_root.empty()) {
-      store_root = defaults.store_root;
-    } else {
-      store_root = cuwacunu::hero::lattice_mcp::default_store_root();
-    }
-  } else if (store_root.empty()) {
-    store_root = cuwacunu::hero::lattice_mcp::default_store_root();
+    store_root = defaults.store_root;
   }
   if (!catalog_overridden) {
-    if (!defaults.catalog_path.empty()) {
-      catalog_path = defaults.catalog_path;
-    } else {
-      catalog_path = cuwacunu::hero::lattice_mcp::default_catalog_path(store_root);
-    }
-  } else if (catalog_path.empty()) {
-    catalog_path = cuwacunu::hero::lattice_mcp::default_catalog_path(store_root);
+    catalog_path = defaults.catalog_path;
   }
-  if (!config_folder_overridden && !defaults.config_folder.empty()) {
-    app.config_folder = defaults.config_folder;
+  if (store_root.empty()) {
+    std::cerr << "[" << kServerName << "] resolved empty store_root\n";
+    return 2;
   }
-
+  if (catalog_path.empty()) {
+    std::cerr << "[" << kServerName << "] resolved empty catalog_path\n";
+    return 2;
+  }
   app.store_root = store_root;
   app.lattice_catalog_path = catalog_path;
 

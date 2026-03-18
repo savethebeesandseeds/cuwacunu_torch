@@ -41,9 +41,6 @@ namespace runtime_mcp {
 
 namespace {
 
-constexpr const char* kDefaultRuntimeHeroDslPath =
-    "/cuwacunu/src/config/instructions/default.hero.runtime.dsl";
-constexpr const char* kDefaultConfigFilename = ".config";
 constexpr const char* kDefaultCampaignDslKey = "default_iitepi_campaign_dsl_filename";
 constexpr const char* kServerName = "hero_runtime_mcp";
 constexpr const char* kServerVersion = "0.1.0";
@@ -540,7 +537,8 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"state_detail\":" << json_quote(record.state_detail) << ","
       << "\"worker_binary\":" << json_quote(record.worker_binary) << ","
       << "\"worker_command\":" << json_quote(record.worker_command) << ","
-      << "\"config_folder\":" << json_quote(record.config_folder) << ","
+      << "\"global_config_path\":"
+      << json_quote(record.global_config_path) << ","
       << "\"source_campaign_dsl_path\":"
       << json_quote(record.source_campaign_dsl_path) << ","
       << "\"source_contract_dsl_path\":"
@@ -629,20 +627,14 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   const auto observation = cuwacunu::hero::runtime::observe_runtime_job(*record);
   const std::string stable_state =
       cuwacunu::hero::runtime::stable_state_for_observation(*record, observation);
-  if (stable_state == record->state) return true;
+  if (stable_state == record->state || stable_state == "orphaned" ||
+      stable_state == "lost") {
+    return true;
+  }
 
   if (stable_state == "running") {
     record->state = "running";
     record->state_detail = "target process alive";
-  } else if (stable_state == "orphaned") {
-    record->state = "orphaned";
-    record->state_detail = "target process alive but runner is missing";
-  } else if (stable_state == "lost") {
-    record->state = "lost";
-    record->state_detail = "no live runner or target process";
-    if (!record->finished_at_ms.has_value()) {
-      record->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    }
   } else {
     record->state = stable_state;
   }
@@ -681,7 +673,8 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"boot_id\":" << json_quote(record.boot_id) << ","
       << "\"state\":" << json_quote(record.state) << ","
       << "\"state_detail\":" << json_quote(record.state_detail) << ","
-      << "\"config_folder\":" << json_quote(record.config_folder) << ","
+      << "\"global_config_path\":"
+      << json_quote(record.global_config_path) << ","
       << "\"source_campaign_dsl_path\":"
       << json_quote(record.source_campaign_dsl_path) << ","
       << "\"campaign_dsl_path\":" << json_quote(record.campaign_dsl_path) << ","
@@ -761,10 +754,6 @@ void write_jsonrpc_error(std::string_view id_json, int code,
         next_state = "running";
         next_detail = "campaign runner alive";
       }
-    } else if (!record->finished_at_ms.has_value()) {
-      next_state = "lost";
-      next_detail = "campaign runner missing";
-      record->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     }
     if (next_state != record->state || next_detail != record->state_detail) {
       record->state = std::move(next_state);
@@ -1007,26 +996,25 @@ void write_child_errno_noexcept(int fd, int child_errno) {
 
 [[nodiscard]] bool prepare_campaign_dsl_snapshot(
     const app_context_t& app, const std::string& campaign_cursor,
-    const std::filesystem::path& config_folder,
+    const std::filesystem::path& global_config_path,
     std::string* out_source_campaign_path,
     std::string* out_campaign_snapshot_path, std::string* error) {
   if (error) error->clear();
   if (out_source_campaign_path) out_source_campaign_path->clear();
   if (out_campaign_snapshot_path) out_campaign_snapshot_path->clear();
 
-  const std::filesystem::path config_path = config_folder / kDefaultConfigFilename;
   const std::optional<std::string> configured =
-      read_ini_value(config_path, "GENERAL", kDefaultCampaignDslKey);
+      read_ini_value(global_config_path, "GENERAL", kDefaultCampaignDslKey);
   if (!configured.has_value()) {
     if (error) {
       *error = "missing GENERAL." + std::string(kDefaultCampaignDslKey) +
-               " in " + config_path.string();
+               " in " + global_config_path.string();
     }
     return false;
   }
 
   const std::filesystem::path source_campaign_path(resolve_path_from_base_folder(
-      config_folder.string(), *configured));
+      global_config_path.parent_path().string(), *configured));
   std::error_code ec{};
   if (!std::filesystem::exists(source_campaign_path, ec) ||
       !std::filesystem::is_regular_file(source_campaign_path, ec)) {
@@ -1060,6 +1048,37 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   if (out_campaign_snapshot_path) {
     *out_campaign_snapshot_path = snapshot_path.string();
   }
+  return true;
+}
+
+[[nodiscard]] bool validate_main_campaign_binary_for_launch(
+    const app_context_t& app, std::string* error) {
+  if (error) error->clear();
+
+  const std::filesystem::path& worker_path = app.defaults.main_campaign_binary;
+  if (worker_path.empty()) {
+    if (error) *error = "runtime defaults missing main_campaign_binary";
+    return false;
+  }
+
+  std::error_code ec{};
+  if (!std::filesystem::exists(worker_path, ec) ||
+      !std::filesystem::is_regular_file(worker_path, ec)) {
+    if (error) {
+      *error = "configured main_campaign_binary does not exist: " +
+               worker_path.string();
+    }
+    return false;
+  }
+
+  if (::access(worker_path.c_str(), X_OK) != 0) {
+    if (error) {
+      *error = "configured main_campaign_binary is not executable: " +
+               worker_path.string();
+    }
+    return false;
+  }
+
   return true;
 }
 
@@ -1133,6 +1152,16 @@ void write_child_errno_noexcept(int fd, int child_errno) {
       _exit(127);
     }
 
+    const pid_t grandchild = ::fork();
+    if (grandchild < 0) {
+      const int child_errno = errno;
+      write_child_errno_noexcept(pipe_fds[1], child_errno);
+      _exit(127);
+    }
+    if (grandchild > 0) {
+      _exit(0);
+    }
+
     const int devnull = ::open("/dev/null", O_RDWR);
     if (devnull >= 0) {
       (void)::dup2(devnull, STDIN_FILENO);
@@ -1150,8 +1179,8 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     args.push_back(seed_record.campaign_cursor);
     args.push_back("--worker-binary");
     args.push_back(app.defaults.main_campaign_binary.string());
-    args.push_back("--config-folder");
-    args.push_back(seed_record.config_folder);
+    args.push_back("--global-config");
+    args.push_back(seed_record.global_config_path);
     if (seed_record.reset_runtime_state) {
       args.push_back("--reset-runtime-state");
     }
@@ -1171,6 +1200,9 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   int exec_errno = 0;
   const ssize_t n = ::read(pipe_fds[0], &exec_errno, sizeof(exec_errno));
   (void)::close(pipe_fds[0]);
+  int ignored_status = 0;
+  while (::waitpid(child, &ignored_status, 0) < 0 && errno == EINTR) {
+  }
   if (n > 0) {
     if (error) {
       *error = "cannot exec detached runtime campaign runner: errno=" +
@@ -1178,24 +1210,6 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     }
     return false;
   }
-
-  cuwacunu::hero::runtime::runtime_campaign_record_t record = seed_record;
-  record.runner_pid = static_cast<std::uint64_t>(child);
-  std::uint64_t runner_start_ticks = 0;
-  if (!cuwacunu::hero::runtime::read_process_start_ticks(record.runner_pid.value(),
-                                                         &runner_start_ticks)) {
-    (void)::kill(child, SIGKILL);
-    int ignored_status = 0;
-    while (::waitpid(child, &ignored_status, 0) < 0 && errno == EINTR) {
-    }
-    if (error) {
-      *error = "cannot determine detached runtime campaign runner identity";
-    }
-    return false;
-  }
-  record.runner_start_ticks = runner_start_ticks;
-  record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  if (!write_runtime_campaign(app, record, error)) return false;
   return true;
 }
 
@@ -1205,14 +1219,14 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
-  std::string config_folder = app->defaults.config_folder.string();
+  std::string global_config_path = app->global_config_path.string();
   bool reset_runtime_state = false;
-  (void)extract_json_string_field(arguments_json, "config_folder", &config_folder);
   (void)extract_json_bool_field(arguments_json, "reset_runtime_state",
                                 &reset_runtime_state);
-  config_folder = trim_ascii(config_folder);
-  if (config_folder.empty()) {
-    config_folder = app->defaults.config_folder.string();
+  global_config_path = trim_ascii(global_config_path);
+  if (global_config_path.empty()) {
+    *out_error = "runtime MCP app missing global_config_path";
+    return false;
   }
 
   campaign_start_lock_guard_t start_lock{};
@@ -1236,13 +1250,14 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     *out_error = "max_active_campaigns reached";
     return false;
   }
+  if (!validate_main_campaign_binary_for_launch(*app, out_error)) return false;
 
   const std::string campaign_cursor =
       cuwacunu::hero::runtime::make_campaign_cursor(app->defaults.campaigns_root);
   std::string source_campaign_dsl_path{};
   std::string campaign_dsl_path{};
   if (!prepare_campaign_dsl_snapshot(*app, campaign_cursor,
-                                     std::filesystem::path(config_folder),
+                                     std::filesystem::path(global_config_path),
                                      &source_campaign_dsl_path,
                                      &campaign_dsl_path, out_error)) {
     return false;
@@ -1257,7 +1272,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   record.boot_id = cuwacunu::hero::runtime::current_boot_id();
   record.state = "launching";
   record.state_detail = "detached campaign runner requested";
-  record.config_folder = config_folder;
+  record.global_config_path = global_config_path;
   record.source_campaign_dsl_path = source_campaign_dsl_path;
   record.campaign_dsl_path = campaign_dsl_path;
   record.reset_runtime_state = reset_runtime_state;
@@ -1819,14 +1834,10 @@ std::filesystem::path resolve_runtime_hero_dsl_path(
     const std::filesystem::path& global_config_path) {
   const std::optional<std::string> configured = read_ini_value(
       global_config_path, "REAL_HERO", "runtime_hero_dsl_filename");
-  if (!configured.has_value()) {
-    return std::filesystem::path(kDefaultRuntimeHeroDslPath);
-  }
+  if (!configured.has_value()) return {};
   const std::string resolved = resolve_path_from_base_folder(
       global_config_path.parent_path().string(), *configured);
-  if (resolved.empty()) {
-    return std::filesystem::path(kDefaultRuntimeHeroDslPath);
-  }
+  if (resolved.empty()) return {};
   return std::filesystem::path(resolved);
 }
 
@@ -1882,45 +1893,59 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
         hero_dsl_path.parent_path().string(), value));
   };
 
+  bool saw_campaigns_root = false;
   if (const auto it = values.find("campaigns_root"); it != values.end()) {
+    saw_campaigns_root = true;
     out->campaigns_root = resolve_local_path(it->second);
   }
+  bool saw_main_campaign_binary = false;
   if (const auto it = values.find("main_campaign_binary"); it != values.end()) {
+    saw_main_campaign_binary = true;
     out->main_campaign_binary = resolve_local_path(it->second);
   }
-  if (const auto it = values.find("config_folder"); it != values.end()) {
-    out->config_folder = resolve_local_path(it->second);
-  }
+  bool saw_campaign_grammar = false;
   if (const auto it = values.find("campaign_grammar_filename");
       it != values.end()) {
+    saw_campaign_grammar = true;
     out->campaign_grammar_path = resolve_local_path(it->second);
   }
+  bool saw_tail_default_lines = false;
   if (const auto it = values.find("tail_default_lines"); it != values.end()) {
+    saw_tail_default_lines = true;
     if (!parse_size_token(it->second, &out->tail_default_lines)) {
       if (error) *error = "invalid tail_default_lines in " + hero_dsl_path.string();
       return false;
     }
   }
+  bool saw_max_active_campaigns = false;
   if (const auto it = values.find("max_active_campaigns"); it != values.end()) {
+    saw_max_active_campaigns = true;
     if (!parse_size_token(it->second, &out->max_active_campaigns)) {
       if (error) *error = "invalid max_active_campaigns in " + hero_dsl_path.string();
       return false;
     }
   }
 
-  if (out->campaigns_root.empty()) {
-    out->campaigns_root = "/cuwacunu/.runtime/campaigns";
+  if (!saw_campaigns_root || out->campaigns_root.empty()) {
+    if (error) *error = "missing campaigns_root in " + hero_dsl_path.string();
+    return false;
   }
-  if (out->main_campaign_binary.empty()) {
-    out->main_campaign_binary = "/cuwacunu/.build/hero/main_campaign";
+  if (!saw_main_campaign_binary || out->main_campaign_binary.empty()) {
+    if (error) *error = "missing main_campaign_binary in " + hero_dsl_path.string();
+    return false;
   }
-  if (out->config_folder.empty()) {
-    out->config_folder = "/cuwacunu/src/config";
+  if (!saw_campaign_grammar || out->campaign_grammar_path.empty()) {
+    if (error) *error = "missing campaign_grammar_filename in " + hero_dsl_path.string();
+    return false;
   }
-  if (out->campaign_grammar_path.empty()) {
-    out->campaign_grammar_path = "/cuwacunu/src/config/bnf/iitepi.campaign.bnf";
+  if (!saw_tail_default_lines || out->tail_default_lines == 0) {
+    if (error) *error = "missing/invalid tail_default_lines in " + hero_dsl_path.string();
+    return false;
   }
-  if (out->tail_default_lines == 0) out->tail_default_lines = 120;
+  if (!saw_max_active_campaigns) {
+    if (error) *error = "missing max_active_campaigns in " + hero_dsl_path.string();
+    return false;
+  }
   return true;
 }
 

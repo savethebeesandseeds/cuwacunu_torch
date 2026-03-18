@@ -38,13 +38,13 @@ int main() {
     error.clear();
     assert(!append_wave_contract_binding_variable(&binding, "__workers", "4",
                                                   &error));
-    assert(error.find("duplicate binding variable") != std::string::npos);
+    assert(error.find("duplicate DSL variable") != std::string::npos);
 
     resolved.clear();
     error.clear();
     assert(!resolve_wave_contract_binding_variables_in_text(
         "VALUE: % __missing %;\n", binding, &resolved, &error));
-    assert(error.find("missing binding variable") != std::string::npos);
+    assert(error.find("missing DSL variable") != std::string::npos);
 
     std::cout << "[test_wave_contract_binding_variables] pass\n";
     return 0;

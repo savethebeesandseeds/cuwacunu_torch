@@ -272,6 +272,12 @@ static T parse_scalar_from_string(const std::string& s);
   return (std::filesystem::path(folder) / p).string();
 }
 
+[[nodiscard]] static std::string parent_folder_from_path(const std::string& path) {
+  const std::filesystem::path p(path);
+  if (!p.has_parent_path()) return {};
+  return p.parent_path().string();
+}
+
 [[nodiscard]] static std::string canonicalize_path_best_effort(
     const std::string& path) {
   if (!has_non_ws_ascii(path)) return {};
@@ -620,7 +626,8 @@ static T parse_scalar_from_string(const std::string& s) {
     log_fatal("[dconfig] empty global key <%s> in section [%s]\n", key, section);
   }
   const std::string resolved =
-      resolve_path_from_folder(config_space_t::config_folder, raw);
+      resolve_path_from_folder(parent_folder_from_path(config_space_t::config_file_path),
+                               raw);
   if (!has_non_ws_ascii(resolved)) {
     log_fatal("[dconfig] unable to resolve global path <%s> in [%s]\n", key, section);
   }
@@ -695,7 +702,8 @@ static bool validate_wave_config_or_terminate(const parsed_config_t& cfg,
           return;
         }
         const std::string resolved =
-            resolve_path_from_folder(config_space_t::config_folder, raw);
+            resolve_path_from_folder(
+                parent_folder_from_path(config_space_t::config_file_path), raw);
         if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
           log_warn("Configured global path does not exist for <%s> in [%s]: %s\n",
                    key, section, resolved.c_str());
@@ -751,7 +759,6 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
       has_suffix_case_insensitive(resolved_wave_path, ".dsl");
 
   auto record = std::make_shared<wave_record_t>();
-  record->config_folder = wave_folder;
   record->config_file_path = resolved_wave_path;
   record->config_file_path_canonical =
       canonicalize_path_best_effort(resolved_wave_path);
@@ -762,7 +769,7 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
     record->config = parsed;
     dsl_path = wave_required_resolved_path(
         record->config,
-        record->config_folder,
+        wave_folder,
         "DSL",
         "iitepi_wave_dsl_filename");
   }
@@ -803,38 +810,13 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
     log_fatal("[dconfig] failed to decode wave DSL while building dependency manifest: %s\n",
               e.what());
   }
-  for (const auto& wave : decoded_wave.waves) {
-    for (const auto& source : wave.sources) {
-      const std::string resolved_sources_path = resolve_path_from_folder(
-          record->config_folder, source.sources_dsl_file);
-      const std::string resolved_channels_path = resolve_path_from_folder(
-          record->config_folder, source.channels_dsl_file);
-      if (!has_non_ws_ascii(resolved_sources_path) ||
-          !std::filesystem::exists(resolved_sources_path) ||
-          !std::filesystem::is_regular_file(resolved_sources_path)) {
-        log_fatal("[dconfig] invalid WAVE.SOURCE.SOURCES_DSL_FILE for wave '%s' source '%s': %s\n",
-                  wave.name.c_str(),
-                  source.source_path.c_str(),
-                  resolved_sources_path.c_str());
-      }
-      if (!has_non_ws_ascii(resolved_channels_path) ||
-          !std::filesystem::exists(resolved_channels_path) ||
-          !std::filesystem::is_regular_file(resolved_channels_path)) {
-        log_fatal("[dconfig] invalid WAVE.SOURCE.CHANNELS_DSL_FILE for wave '%s' source '%s': %s\n",
-                  wave.name.c_str(),
-                  source.source_path.c_str(),
-                  resolved_channels_path.c_str());
-      }
-      dependency_paths.insert(canonicalize_path_best_effort(resolved_sources_path));
-      dependency_paths.insert(canonicalize_path_best_effort(resolved_channels_path));
-    }
-  }
+  (void)decoded_wave;
 
   for (const auto& dep_path : dependency_paths) {
     if (!has_non_ws_ascii(dep_path)) continue;
     record->dependency_manifest.files.push_back(fingerprint_file(dep_path));
   }
-  record->dependency_manifest.aggregate_sha256_hex =
+  record->dependency_manifest.dependency_manifest_aggregate_sha256_hex =
       compute_manifest_digest_hex(record->dependency_manifest.files);
   return record;
 }
@@ -928,7 +910,7 @@ wave_hash_t wave_space_t::register_wave_file(const std::string& path) {
               canonical_path.c_str());
   }
   const wave_hash_t built_hash =
-      built_wave->dependency_manifest.aggregate_sha256_hex;
+      built_wave->dependency_manifest.dependency_manifest_aggregate_sha256_hex;
   if (!has_non_ws_ascii(built_hash)) {
     log_fatal("[dconfig] built wave record has empty manifest hash for: %s\n",
               canonical_path.c_str());
@@ -1013,7 +995,7 @@ void wave_space_t::assert_intact_or_fail_fast(const wave_hash_t& hash) {
   }
 
   const std::string digest = compute_manifest_digest_hex(refreshed);
-  if (digest != wave->dependency_manifest.aggregate_sha256_hex) {
+  if (digest != wave->dependency_manifest.dependency_manifest_aggregate_sha256_hex) {
     log_fatal(
         "[dconfig] immutable wave lock violation: dependency manifest digest "
         "mismatch mid-run\n");
@@ -1028,7 +1010,8 @@ void wave_space_t::assert_registry_intact_or_fail_fast() {
   }
   for (const auto& ptr : waves) {
     if (!ptr) continue;
-    assert_intact_or_fail_fast(ptr->dependency_manifest.aggregate_sha256_hex);
+    assert_intact_or_fail_fast(
+        ptr->dependency_manifest.dependency_manifest_aggregate_sha256_hex);
   }
 }
 

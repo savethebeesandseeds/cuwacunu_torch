@@ -13,19 +13,14 @@ namespace lattice_mcp {
 struct wave_runtime_defaults_t {
   std::filesystem::path store_root{};
   std::filesystem::path catalog_path{};
-  std::filesystem::path config_folder{};
 };
 
 struct app_context_t {
   std::filesystem::path store_root{};
-  std::filesystem::path config_folder{};
   std::filesystem::path lattice_catalog_path{};
   cuwacunu::hero::wave::lattice_catalog_store_t catalog{};
 };
 
-[[nodiscard]] std::filesystem::path default_store_root();
-[[nodiscard]] std::filesystem::path default_catalog_path(
-    const std::filesystem::path& store_root);
 [[nodiscard]] std::filesystem::path resolve_lattice_hero_dsl_path(
     const std::filesystem::path& global_config_path);
 [[nodiscard]] bool load_wave_runtime_defaults(

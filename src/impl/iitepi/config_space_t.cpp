@@ -14,7 +14,6 @@ namespace iitepi {
 
 std::mutex config_mutex;
 exchange_type_e config_space_t::exchange_type;
-std::string config_space_t::config_folder;
 std::string config_space_t::config_file_path;
 std::string config_space_t::runtime_campaign_dsl_override_path;
 parsed_config_t config_space_t::config;
@@ -170,6 +169,15 @@ static T parse_scalar_from_string(const std::string& s);
   return normal.string();
 }
 
+[[nodiscard]] static std::string global_config_parent_path(
+    const std::string& config_path) {
+  const std::string trimmed = trim_ascii_ws_copy(config_path);
+  if (!has_non_ws_ascii(trimmed)) return {};
+  const std::filesystem::path p(trimmed);
+  if (!p.has_parent_path()) return {};
+  return p.parent_path().string();
+}
+
 [[nodiscard]] static parsed_config_t parse_config_file(const std::string& path) {
   std::ifstream file = cuwacunu::piaabo::dfiles::readFileToStream(path);
   if (!file) {
@@ -291,11 +299,11 @@ parsed_config_t config_space_t::read_config(const std::string& path) {
   return parse_config_file(path);
 }
 
-void config_space_t::change_config_file(const char* folder, const char* file) {
-  config_folder = folder ? folder : DEFAULT_CONFIG_FOLDER;
-  std::string requested_file = file ? file : DEFAULT_CONFIG_FILE;
-  if (!has_non_ws_ascii(requested_file)) requested_file = DEFAULT_CONFIG_FILE;
-  config_file_path = resolve_path_from_folder(config_folder, requested_file);
+void config_space_t::change_config_file(const char* config_path) {
+  std::string requested = config_path ? config_path : DEFAULT_GLOBAL_CONFIG_PATH;
+  requested = trim_ascii_ws_copy(std::move(requested));
+  if (!has_non_ws_ascii(requested)) requested = DEFAULT_GLOBAL_CONFIG_PATH;
+  config_file_path = canonicalize_path_best_effort(requested);
   update_config();
 }
 
@@ -310,12 +318,12 @@ void config_space_t::clear_runtime_campaign_dsl_override() {
 }
 
 std::string config_space_t::effective_campaign_dsl_path() {
-  std::string config_folder_copy{};
+  std::string config_path_copy{};
   std::string override_copy{};
   std::string configured_campaign_path{};
   {
     LOCK_GUARD(config_mutex);
-    config_folder_copy = config_folder;
+    config_path_copy = config_file_path;
     override_copy = runtime_campaign_dsl_override_path;
     const auto sec_it = config.find("GENERAL");
     if (sec_it != config.end()) {
@@ -332,7 +340,7 @@ std::string config_space_t::effective_campaign_dsl_path() {
           : (has_non_ws_ascii(configured_campaign_path)
                  ? configured_campaign_path
                  : DEFAULT_IITEPI_CAMPAIGN_DSL_FILE);
-  return resolve_path_from_folder(config_folder_copy, chosen);
+  return resolve_path_from_folder(global_config_parent_path(config_path_copy), chosen);
 }
 
 std::string config_space_t::locked_campaign_hash() {
@@ -403,6 +411,7 @@ void config_space_t::update_config() {
 }
 
 bool config_space_t::validate_config() {
+  const std::string config_base_folder = global_config_parent_path(config_file_path);
   bool ok = true;
 
   const auto require_value =
@@ -530,7 +539,7 @@ bool config_space_t::validate_config() {
   if (require_value("GENERAL", GENERAL_DEFAULT_IITEPI_CAMPAIGN_DSL_KEY,
                     &campaign_cfg_path)) {
     const std::string resolved =
-        resolve_path_from_folder(config_folder, campaign_cfg_path);
+        resolve_path_from_folder(config_base_folder, campaign_cfg_path);
     if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
       log_warn(
           "Configured campaign file does not exist: %s (resolved: %s)\n",
@@ -549,7 +558,7 @@ bool config_space_t::validate_config() {
     LOCK_GUARD(config_mutex);
     if (has_non_ws_ascii(runtime_campaign_dsl_override_path)) {
       const std::string resolved = resolve_path_from_folder(
-          config_folder, runtime_campaign_dsl_override_path);
+          config_base_folder, runtime_campaign_dsl_override_path);
       if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved)) {
         log_warn("Runtime campaign override does not exist: %s (resolved: %s)\n",
                  runtime_campaign_dsl_override_path.c_str(), resolved.c_str());
@@ -577,10 +586,12 @@ bool config_space_t::validate_config() {
 
   constexpr const char* kBnfKeys[] = {
       "iitepi_campaign_grammar_filename",
+      "iitepi_runtime_binding_grammar_filename",
       "iitepi_wave_grammar_filename",
       "vicreg_grammar_filename",
       "value_estimation_grammar_filename",
-      "wikimyei_inference_transfer_matrix_evaluation_grammar_filename",
+      "wikimyei_evaluation_embedding_sequence_analytics_grammar_filename",
+      "wikimyei_evaluation_transfer_matrix_evaluation_grammar_filename",
       "observation_sources_grammar_filename",
       "observation_channels_grammar_filename",
       "jkimyei_specs_grammar_filename",
@@ -588,7 +599,7 @@ bool config_space_t::validate_config() {
       "canonical_path_grammar_filename",
   };
   for (const char* key : kBnfKeys) {
-    require_existing_path("BNF", key, config_folder);
+    require_existing_path("BNF", key, config_base_folder);
   }
 
   constexpr const char* kExchangeKeys[] = {
@@ -632,10 +643,10 @@ bool config_space_t::validate_config() {
   }
   (void)require_value("REAL_HERO", "OPENAI_api_filename", nullptr);
   (void)require_value("REAL_HERO", "endpoint", nullptr);
-  require_existing_path("REAL_HERO", "config_hero_dsl_filename", config_folder);
-  require_existing_path("REAL_HERO", "hashimyei_hero_dsl_filename", config_folder);
-  require_existing_path("REAL_HERO", "lattice_hero_dsl_filename", config_folder);
-  require_existing_path("REAL_HERO", "runtime_hero_dsl_filename", config_folder);
+  require_existing_path("REAL_HERO", "config_hero_dsl_filename", config_base_folder);
+  require_existing_path("REAL_HERO", "hashimyei_hero_dsl_filename", config_base_folder);
+  require_existing_path("REAL_HERO", "lattice_hero_dsl_filename", config_base_folder);
+  require_existing_path("REAL_HERO", "runtime_hero_dsl_filename", config_base_folder);
 
   if (!ok) log_terminate_gracefully("Invalid global configuration, aborting.\n");
   return ok;

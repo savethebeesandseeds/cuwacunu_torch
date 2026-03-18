@@ -93,7 +93,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
       store_root / "tsi.wikimyei" / "representation" / "vicreg" / "0x00ab";
 
   cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
-  manifest.canonical_type = "tsi.wikimyei.representation.vicreg";
+  manifest.family_canonical_path = "tsi.wikimyei.representation.vicreg";
   manifest.family = "representation";
   manifest.model = "vicreg";
   manifest.report_fragment_id = "0x00ab";
@@ -120,7 +120,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   cuwacunu::hashimyei::report_fragment_manifest_t parsed{};
   REQUIRE(cuwacunu::hashimyei::read_report_fragment_manifest(report_fragment_dir, &parsed, &error));
   REQUIRE(parsed.schema == "hashimyei.report_fragment.manifest.v2");
-  REQUIRE(parsed.canonical_type == manifest.canonical_type);
+  REQUIRE(parsed.family_canonical_path == manifest.family_canonical_path);
   REQUIRE(parsed.family == manifest.family);
   REQUIRE(parsed.model == manifest.model);
   REQUIRE(parsed.report_fragment_id == manifest.report_fragment_id);
@@ -161,7 +161,7 @@ static void test_discovery_rules(const fs::path& store_root) {
 
   const auto create_manifest = [&](const fs::path& report_fragment_dir, std::string_view hash) {
     cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
-    manifest.canonical_type = "tsi.wikimyei.representation.vicreg";
+    manifest.family_canonical_path = "tsi.wikimyei.representation.vicreg";
     manifest.family = "representation";
     manifest.model = "vicreg";
     manifest.report_fragment_id = std::string(hash);
@@ -200,7 +200,7 @@ static void test_discovery_rules(const fs::path& store_root) {
   REQUIRE(discovered[0].weight_files.empty());
   REQUIRE(discovered[1].weight_files.size() == 1);
   REQUIRE(discovered[2].weight_files.size() == 1);
-  REQUIRE(discovered[0].canonical_base ==
+  REQUIRE(discovered[0].canonical_path ==
           "tsi.wikimyei.representation.vicreg.0x00aa");
 }
 
@@ -215,17 +215,18 @@ static void test_driver_registry_ordering() {
   std::string error;
 
   REQUIRE(cuwacunu::hashimyei::register_report_fragment_driver(
-      {.canonical_type = c, .save = cb}, &error));
+      {.family_canonical_path = c, .save = cb}, &error));
   REQUIRE(cuwacunu::hashimyei::register_report_fragment_driver(
-      {.canonical_type = a, .save = cb}, &error));
+      {.family_canonical_path = a, .save = cb}, &error));
   REQUIRE(cuwacunu::hashimyei::register_report_fragment_driver(
-      {.canonical_type = b, .save = cb}, &error));
+      {.family_canonical_path = b, .save = cb}, &error));
 
-  const auto types = cuwacunu::hashimyei::registered_report_fragment_driver_types();
-  REQUIRE(std::is_sorted(types.begin(), types.end()));
-  REQUIRE(std::find(types.begin(), types.end(), a) != types.end());
-  REQUIRE(std::find(types.begin(), types.end(), b) != types.end());
-  REQUIRE(std::find(types.begin(), types.end(), c) != types.end());
+  const auto paths =
+      cuwacunu::hashimyei::registered_report_fragment_driver_paths();
+  REQUIRE(std::is_sorted(paths.begin(), paths.end()));
+  REQUIRE(std::find(paths.begin(), paths.end(), a) != paths.end());
+  REQUIRE(std::find(paths.begin(), paths.end(), b) != paths.end());
+  REQUIRE(std::find(paths.begin(), paths.end(), c) != paths.end());
 }
 
 static void test_identity_helper_regressions() {

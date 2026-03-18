@@ -25,7 +25,7 @@ $(eval $(call TEST_ONEFILE, test_dsl_latent_lineage_state,            test_dsl_l
 $(eval $(call TEST_ONEFILE, test_dsl_jkimyei_specs,        test_dsl_jkimyei_specs.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_iitepi_campaign,      test_dsl_iitepi_campaign.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_wave_contract_binding_variables, test_wave_contract_binding_variables.cpp, $(DSL_RUNTIME_LINK)))
-$(eval $(call TEST_ONEFILE, test_dsl_tsiemene_circuit,     test_dsl_tsiemene_circuit.cpp))
+$(eval $(call TEST_ONEFILE, test_dsl_tsiemene_circuit,     test_dsl_tsiemene_circuit.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_iitepi_wave,        test_dsl_iitepi_wave.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_canonical_path,       test_dsl_canonical_path.cpp, $(DSL_RUNTIME_LINK)))
 
@@ -116,7 +116,7 @@ run: \
 # 7) Clean
 .PHONY: clean
 clean:
-	@rm -f \
+	$(Q)$(CLEAN_RM_CMD) \
 	  $(TEST_OUT)/test_dsl_* \
 	  $(TEST_OUT)/test_memory_mapped_* \
 	  $(TEST_OUT)/test_db* \

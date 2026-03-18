@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <unistd.h>
 
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
@@ -21,6 +21,7 @@
 #include "iitepi/runtime_binding/runtime_binding.contract.init.h"
 #include "iitepi/runtime_binding/runtime_binding.builder.h"
 #include "iitepi/iitepi.h"
+#include "source/dataloader/dataloader_component.h"
 #include "tsiemene/tsi.type.registry.h"
 
 namespace {
@@ -45,19 +46,22 @@ std::string trim_ascii_copy(std::string_view text) {
 
 bool sha256_hex_bytes(std::string_view payload, std::string* out_hex) {
   if (!out_hex) return false;
-  unsigned char digest[SHA256_DIGEST_LENGTH];
-  SHA256_CTX ctx{};
-  if (SHA256_Init(&ctx) != 1) return false;
-  if (!payload.empty() &&
-      SHA256_Update(&ctx, payload.data(), payload.size()) != 1) {
-    return false;
-  }
-  if (SHA256_Final(digest, &ctx) != 1) return false;
+  constexpr std::size_t kSha256DigestBytes = 32;
+  unsigned char digest[EVP_MAX_MD_SIZE];
+  unsigned int digest_len = 0;
+  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+  if (!ctx) return false;
+  const bool ok = EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) == 1 &&
+                  EVP_DigestUpdate(ctx, payload.data(), payload.size()) == 1 &&
+                  EVP_DigestFinal_ex(ctx, digest, &digest_len) == 1;
+  EVP_MD_CTX_free(ctx);
+  if (!ok || digest_len != kSha256DigestBytes) return false;
 
   static constexpr char kHex[] = "0123456789abcdef";
   out_hex->clear();
-  out_hex->reserve(SHA256_DIGEST_LENGTH * 2);
-  for (unsigned char byte : digest) {
+  out_hex->reserve(kSha256DigestBytes * 2);
+  for (unsigned int i = 0; i < digest_len; ++i) {
+    const unsigned char byte = digest[i];
     out_hex->push_back(kHex[(byte >> 4) & 0x0f]);
     out_hex->push_back(kHex[byte & 0x0f]);
   }
@@ -90,7 +94,7 @@ cuwacunu::hashimyei::hashimyei_t make_hashimyei_identity(
 bool build_wave_contract_binding_identity(
     std::string_view contract_hash,
     std::string_view wave_hash,
-    std::string_view binding_alias,
+    std::string_view binding_id,
     cuwacunu::hero::hashimyei::wave_contract_binding_t* out) {
   if (!out) return false;
   out->contract = make_hashimyei_identity(
@@ -101,10 +105,10 @@ bool build_wave_contract_binding_identity(
       cuwacunu::hashimyei::hashimyei_kind_e::WAVE,
       wave_hash,
       std::string(wave_hash));
-  out->binding_alias = std::string(binding_alias);
+  out->binding_id = std::string(binding_id);
 
   std::ostringstream seed;
-  seed << contract_hash << "|" << wave_hash << "|" << binding_alias;
+  seed << contract_hash << "|" << wave_hash << "|" << binding_id;
   std::string binding_hash{};
   if (!sha256_hex_bytes(seed.str(), &binding_hash) || binding_hash.empty()) {
     return false;
@@ -239,21 +243,35 @@ bool persist_source_runtime_projection_reports(
     return false;
   }
 
-  cuwacunu::camahjucunu::observation_spec_t observation{};
-  std::string observation_error{};
-  if (!::tsiemene::runtime_binding_builder::load_wave_dataloader_observation_payloads(
-          wave_itself, *wave, nullptr, nullptr, &observation,
-          &observation_error)) {
-    if (error) {
-      *error = "cannot resolve wave observation while saving source runtime "
-               "projection: " +
-               observation_error;
-    }
-    return false;
-  }
-
   for (std::size_t i = 0; i < run_record.runtime_binding.contracts.size(); ++i) {
     const auto& contract = run_record.runtime_binding.contracts[i];
+    const std::string contract_hash =
+        contract.spec.contract_hash.empty() ? run_record.contract_hash
+                                            : contract.spec.contract_hash;
+    const auto contract_itself =
+        cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+    if (!contract_itself) {
+      if (error) {
+        *error = "contract record not found while saving source runtime "
+                 "projection: " +
+                 contract_hash;
+      }
+      return false;
+    }
+
+    cuwacunu::camahjucunu::observation_spec_t observation{};
+    std::string observation_error{};
+    if (!::tsiemene::runtime_binding_builder::load_wave_dataloader_observation_payloads(
+            contract_itself, wave_itself, *wave, nullptr, nullptr,
+            &observation, &observation_error)) {
+      if (error) {
+        *error = "cannot resolve wave observation while saving source runtime "
+                 "projection for contract[" +
+                 std::to_string(i) + "]: " + observation_error;
+      }
+      return false;
+    }
+
     const std::string record_type =
         contract.spec.sample_type.empty() ? run_record.resolved_record_type
                                           : contract.spec.sample_type;
@@ -275,20 +293,25 @@ bool persist_source_runtime_projection_reports(
     }
     std::string symbol{};
     if (!wave->sources.empty()) symbol = trim_ascii_copy(wave->sources.front().symbol);
-    std::string canonical_path = canonical_source_type;
-    if (!symbol.empty()) canonical_path += "." + symbol;
-
     cuwacunu::hero::wave::source_runtime_projection_report_identity_t identity{};
-    identity.canonical_path = canonical_path;
-    identity.source_label = canonical_path;
-    identity.contract_hash = contract.spec.contract_hash.empty()
-                                 ? run_record.contract_hash
-                                 : contract.spec.contract_hash;
+    identity.canonical_path = canonical_source_type;
+    if (!wave->sources.empty()) {
+      const auto& source_decl = wave->sources.front();
+      identity.source_runtime_cursor =
+          cuwacunu::source::dataloader::make_source_runtime_cursor(
+              source_decl.symbol,
+              source_decl.from,
+              source_decl.to);
+    }
+    identity.source_label =
+        symbol.empty() ? canonical_source_type : std::move(symbol);
     identity.binding_id = run_record.binding_id;
-    identity.wave_hash = run_record.wave_hash;
-    identity.wave_id = bind->wave_ref;
-    identity.run_id = run_record.run_ids[i];
-    identity.wave_cursor_resolution = "run";
+    std::uint64_t run_started_at_ms = 0;
+    if (parse_trailing_u64_suffix(run_record.run_ids[i], &run_started_at_ms) &&
+        cuwacunu::piaabo::latent_lineage_state::pack_runtime_wave_cursor(
+            run_started_at_ms, 0, 0, &identity.wave_cursor)) {
+      identity.has_wave_cursor = true;
+    }
 
     std::string report_payload{};
     std::string report_error{};
@@ -302,7 +325,7 @@ bool persist_source_runtime_projection_reports(
     }
 
     const auto output_path = source_runtime_projection_report_path(
-        identity.contract_hash, identity.binding_id, identity.run_id);
+        contract_hash, identity.binding_id, run_record.run_ids[i]);
     if (!cuwacunu::hero::runtime::write_text_file_atomic(
             output_path, report_payload, &report_error)) {
       if (error) {
@@ -318,24 +341,24 @@ bool persist_source_runtime_projection_reports(
 
 void print_help(const char* argv0) {
   std::cerr << "Usage: " << argv0
-            << " [--config-folder <path>] [--binding <binding_id>]"
+            << " [--global-config <path>] [--binding <binding_id>]"
             << " [--campaign-dsl <path>] [--reset-runtime-state]\n"
             << "Defaults:\n"
-            << "  --config-folder " << DEFAULT_CONFIG_FOLDER << "\n";
+            << "  --global-config " << DEFAULT_GLOBAL_CONFIG_PATH << "\n";
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string config_folder = DEFAULT_CONFIG_FOLDER;
+  std::string global_config_path = DEFAULT_GLOBAL_CONFIG_PATH;
   std::string binding_override;
   std::string campaign_dsl_override;
   bool reset_runtime_state_flag = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--config-folder" && i + 1 < argc) {
-      config_folder = argv[++i];
+    if (arg == "--global-config" && i + 1 < argc) {
+      global_config_path = argv[++i];
       continue;
     }
     if (arg == "--binding" && i + 1 < argc) {
@@ -360,7 +383,8 @@ int main(int argc, char** argv) {
   }
 
   try {
-    cuwacunu::iitepi::config_space_t::change_config_file(config_folder.c_str());
+    cuwacunu::iitepi::config_space_t::change_config_file(
+        global_config_path.c_str());
     if (!campaign_dsl_override.empty()) {
       cuwacunu::iitepi::config_space_t::set_runtime_campaign_dsl_override(
           campaign_dsl_override);

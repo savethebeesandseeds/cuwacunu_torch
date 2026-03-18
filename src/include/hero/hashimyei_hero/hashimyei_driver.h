@@ -18,7 +18,7 @@ namespace hashimyei {
 // driver. The driver may use object_handle to call component-owned save/load
 // routines without transferring ownership to hashimyei.
 struct report_fragment_action_context_t {
-  std::string canonical_type{};
+  std::string family_canonical_path{};
   std::string family{};
   std::string model{};
   std::string report_fragment_id{};
@@ -34,7 +34,7 @@ using report_fragment_load_callback_t =
     std::function<bool(const report_fragment_action_context_t&, std::string* error)>;
 
 struct report_fragment_driver_t {
-  std::string canonical_type{};
+  std::string family_canonical_path{};
   std::string family{};
   std::string model{};
   report_fragment_save_callback_t save{};
@@ -54,8 +54,8 @@ inline std::mutex& report_fragment_driver_registry_mutex() {
 [[nodiscard]] inline bool register_report_fragment_driver(report_fragment_driver_t driver,
                                                    std::string* error = nullptr) {
   if (error) error->clear();
-  if (driver.canonical_type.empty()) {
-    if (error) *error = "report_fragment driver canonical_type is empty";
+  if (driver.family_canonical_path.empty()) {
+    if (error) *error = "report_fragment driver family_canonical_path is empty";
     return false;
   }
   if (!driver.save && !driver.load) {
@@ -65,22 +65,22 @@ inline std::mutex& report_fragment_driver_registry_mutex() {
 
   std::lock_guard<std::mutex> lk(report_fragment_driver_registry_mutex());
   auto& registry = report_fragment_driver_registry();
-  const auto it = registry.find(driver.canonical_type);
+  const auto it = registry.find(driver.family_canonical_path);
   if (it != registry.end()) {
-    if (error) *error = "report_fragment driver already registered for canonical_type: " + driver.canonical_type;
+    if (error) *error = "report_fragment driver already registered for family_canonical_path: " + driver.family_canonical_path;
     return false;
   }
-  registry.emplace(driver.canonical_type, std::move(driver));
+  registry.emplace(driver.family_canonical_path, std::move(driver));
   return true;
 }
 
-[[nodiscard]] inline bool has_report_fragment_driver(std::string_view canonical_type) {
+[[nodiscard]] inline bool has_report_fragment_driver(std::string_view family_canonical_path) {
   std::lock_guard<std::mutex> lk(report_fragment_driver_registry_mutex());
   const auto& registry = report_fragment_driver_registry();
-  return registry.find(std::string(canonical_type)) != registry.end();
+  return registry.find(std::string(family_canonical_path)) != registry.end();
 }
 
-[[nodiscard]] inline std::vector<std::string> registered_report_fragment_driver_types() {
+[[nodiscard]] inline std::vector<std::string> registered_report_fragment_driver_paths() {
   std::lock_guard<std::mutex> lk(report_fragment_driver_registry_mutex());
   const auto& registry = report_fragment_driver_registry();
   std::vector<std::string> out;
@@ -90,7 +90,7 @@ inline std::mutex& report_fragment_driver_registry_mutex() {
   return out;
 }
 
-[[nodiscard]] inline bool dispatch_report_fragment_save(std::string_view canonical_type,
+[[nodiscard]] inline bool dispatch_report_fragment_save(std::string_view family_canonical_path,
                                                  const report_fragment_action_context_t& ctx,
                                                  std::string* error = nullptr) {
   if (error) error->clear();
@@ -98,21 +98,21 @@ inline std::mutex& report_fragment_driver_registry_mutex() {
   {
     std::lock_guard<std::mutex> lk(report_fragment_driver_registry_mutex());
     const auto& registry = report_fragment_driver_registry();
-    const auto it = registry.find(std::string(canonical_type));
+    const auto it = registry.find(std::string(family_canonical_path));
     if (it == registry.end()) {
-      if (error) *error = "no report_fragment driver registered for canonical_type: " + std::string(canonical_type);
+      if (error) *error = "no report_fragment driver registered for family_canonical_path: " + std::string(family_canonical_path);
       return false;
     }
     callback = it->second.save;
   }
   if (!callback) {
-    if (error) *error = "report_fragment driver does not support save for canonical_type: " + std::string(canonical_type);
+    if (error) *error = "report_fragment driver does not support save for family_canonical_path: " + std::string(family_canonical_path);
     return false;
   }
   return callback(ctx, error);
 }
 
-[[nodiscard]] inline bool dispatch_report_fragment_load(std::string_view canonical_type,
+[[nodiscard]] inline bool dispatch_report_fragment_load(std::string_view family_canonical_path,
                                                  const report_fragment_action_context_t& ctx,
                                                  std::string* error = nullptr) {
   if (error) error->clear();
@@ -120,15 +120,15 @@ inline std::mutex& report_fragment_driver_registry_mutex() {
   {
     std::lock_guard<std::mutex> lk(report_fragment_driver_registry_mutex());
     const auto& registry = report_fragment_driver_registry();
-    const auto it = registry.find(std::string(canonical_type));
+    const auto it = registry.find(std::string(family_canonical_path));
     if (it == registry.end()) {
-      if (error) *error = "no report_fragment driver registered for canonical_type: " + std::string(canonical_type);
+      if (error) *error = "no report_fragment driver registered for family_canonical_path: " + std::string(family_canonical_path);
       return false;
     }
     callback = it->second.load;
   }
   if (!callback) {
-    if (error) *error = "report_fragment driver does not support load for canonical_type: " + std::string(canonical_type);
+    if (error) *error = "report_fragment driver does not support load for family_canonical_path: " + std::string(family_canonical_path);
     return false;
   }
   return callback(ctx, error);

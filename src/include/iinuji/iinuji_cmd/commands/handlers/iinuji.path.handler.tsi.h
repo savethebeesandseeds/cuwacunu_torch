@@ -148,7 +148,7 @@ bool dispatch_tsi_call(CallHandlerId call_id,
         }
         append_log("invoke=tsi.wikimyei.representation.vicreg.init()", "tsi.action", "#d8d8ff");
         append_log("hashimyei=" + init.hashimyei, "tsi.action", "#d8d8ff");
-        append_log("canonical=" + init.canonical_base, "tsi.action", "#d8d8ff");
+        append_log("canonical=" + init.canonical_path, "tsi.action", "#d8d8ff");
         append_log("report_fragment.dir=" + init.report_fragment_directory.string(), "tsi.action", "#d8d8ff");
         append_log("weights.file=" + init.weights_file.filename().string(), "tsi.action", "#d8d8ff");
         if (init.metadata_encrypted) {

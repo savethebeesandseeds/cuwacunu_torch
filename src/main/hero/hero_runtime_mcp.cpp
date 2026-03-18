@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fcntl.h>
@@ -14,6 +16,7 @@
 #include "hero/runtime_hero/hero_runtime_tools.h"
 #include "hero/runtime_hero/runtime_campaign.h"
 #include "hero/runtime_hero/runtime_job.h"
+#include "hero/runtime_dev_loop.h"
 #include "hero/wave_contract_binding_runtime.h"
 #include "piaabo/dlogs.h"
 
@@ -44,6 +47,31 @@ void print_help(const char* argv0) {
   return cuwacunu::hero::runtime::trim_ascii(in);
 }
 
+[[nodiscard]] std::string campaign_cursor_from_job_cursor(
+    std::string_view job_cursor) {
+  const std::string trimmed = trim_ascii(job_cursor);
+  const std::size_t marker = trimmed.find(".job.");
+  if (marker == std::string::npos || marker == 0) return {};
+  return trimmed.substr(0, marker);
+}
+
+bool write_all_fd(int fd, const void* bytes, std::size_t size) {
+  const char* data = reinterpret_cast<const char*>(bytes);
+  std::size_t remaining = size;
+  while (remaining > 0) {
+    const ssize_t wrote = ::write(fd, data, remaining);
+    if (wrote < 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    if (wrote == 0) return false;
+    const auto wrote_size = static_cast<std::size_t>(wrote);
+    data += wrote_size;
+    remaining -= wrote_size;
+  }
+  return true;
+}
+
 int run_job_runner(int argc, char** argv) {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 
@@ -51,7 +79,7 @@ int run_job_runner(int argc, char** argv) {
   std::string job_cursor{};
   std::filesystem::path worker_binary{};
   std::string job_kind{"campaign_run"};
-  std::string config_folder{};
+  std::string global_config_path{};
   std::string campaign_dsl_path{};
   std::string binding_id{};
   bool reset_runtime_state = false;
@@ -75,8 +103,8 @@ int run_job_runner(int argc, char** argv) {
       job_kind = argv[++i];
       continue;
     }
-    if (arg == "--config-folder" && i + 1 < argc) {
-      config_folder = argv[++i];
+    if (arg == "--global-config" && i + 1 < argc) {
+      global_config_path = argv[++i];
       continue;
     }
     if (arg == "--campaign-dsl" && i + 1 < argc) {
@@ -103,6 +131,13 @@ int run_job_runner(int argc, char** argv) {
                                                         &record, &error)) {
     return 1;
   }
+  if (global_config_path.empty()) {
+    global_config_path = record.global_config_path;
+  }
+  if (global_config_path.empty()) {
+    return 2;
+  }
+  cuwacunu::iitepi::config_space_t::change_config_file(global_config_path.c_str());
   record.runner_pid = static_cast<std::uint64_t>(::getpid());
   std::uint64_t runner_start_ticks = 0;
   if (cuwacunu::hero::runtime::read_process_start_ticks(*record.runner_pid,
@@ -148,6 +183,60 @@ int run_job_runner(int argc, char** argv) {
     return 1;
   }
 
+  if (reset_runtime_state) {
+    cuwacunu::hero::runtime_dev::runtime_reset_targets_t reset_targets{};
+    if (!cuwacunu::hero::runtime_dev::resolve_runtime_reset_targets_from_active_config(
+            &reset_targets, &error)) {
+      const std::string log_line =
+          "[runtime_job_runner] runtime reset target resolution failed: " +
+          error + "\n";
+      (void)write_all_fd(stderr_fd, log_line.data(), log_line.size());
+      (void)::close(stdout_fd);
+      (void)::close(stderr_fd);
+      record.state = "failed_to_start";
+      record.state_detail = "runtime reset target resolution failed";
+      record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      record.finished_at_ms = record.updated_at_ms;
+      record.exit_code = 126;
+      std::string ignored;
+      (void)cuwacunu::hero::runtime::write_runtime_job_record(campaigns_root,
+                                                              record, &ignored);
+      return 1;
+    }
+    reset_targets.store_roots.erase(
+        std::remove(reset_targets.store_roots.begin(),
+                    reset_targets.store_roots.end(),
+                    reset_targets.runtime_campaigns_root),
+        reset_targets.store_roots.end());
+    cuwacunu::hero::runtime_dev::runtime_reset_result_t reset_result{};
+    std::string reset_error{};
+    std::vector<std::string> ignored_campaign_cursors{};
+    const std::string campaign_cursor =
+        campaign_cursor_from_job_cursor(record.job_cursor);
+    if (!campaign_cursor.empty()) {
+      ignored_campaign_cursors.push_back(campaign_cursor);
+    }
+    if (!cuwacunu::hero::runtime_dev::reset_runtime_state(
+            reset_targets, &reset_result, &reset_error,
+            ignored_campaign_cursors, {record.job_cursor})) {
+      const std::string log_line =
+          "[runtime_job_runner] runtime reset failed: " + reset_error + "\n";
+      (void)write_all_fd(stderr_fd, log_line.data(), log_line.size());
+      (void)::close(stdout_fd);
+      (void)::close(stderr_fd);
+      record.state = "failed_to_start";
+      record.state_detail = "runtime reset failed";
+      record.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      record.finished_at_ms = record.updated_at_ms;
+      record.exit_code = 126;
+      std::string ignored;
+      (void)cuwacunu::hero::runtime::write_runtime_job_record(campaigns_root,
+                                                              record, &ignored);
+      return 1;
+    }
+    reset_runtime_state = false;
+  }
+
   const pid_t child = ::fork();
   if (child < 0) {
     (void)::close(stdout_fd);
@@ -177,10 +266,8 @@ int run_job_runner(int argc, char** argv) {
     std::vector<std::string> args{};
     if (job_kind == "campaign_run") {
       args.push_back(worker_binary.string());
-      if (!config_folder.empty()) {
-        args.push_back("--config-folder");
-        args.push_back(config_folder);
-      }
+      args.push_back("--global-config");
+      args.push_back(global_config_path);
       if (!campaign_dsl_path.empty()) {
         args.push_back("--campaign-dsl");
         args.push_back(campaign_dsl_path);
@@ -306,11 +393,6 @@ int run_job_runner(int argc, char** argv) {
   }
   if (child == 0) {
     (void)::close(pipe_fds[0]);
-    if (::setsid() < 0) {
-      int child_errno = errno;
-      (void)::write(pipe_fds[1], &child_errno, sizeof(child_errno));
-      _exit(127);
-    }
     const int devnull = ::open("/dev/null", O_RDWR);
     if (devnull >= 0) {
       (void)::dup2(devnull, STDIN_FILENO);
@@ -330,8 +412,8 @@ int run_job_runner(int argc, char** argv) {
     args.push_back(record->worker_binary);
     args.push_back("--job-kind");
     args.push_back(record->job_kind);
-    args.push_back("--config-folder");
-    args.push_back(record->config_folder);
+    args.push_back("--global-config");
+    args.push_back(record->global_config_path);
     if (!record->campaign_dsl_path.empty()) {
       args.push_back("--campaign-dsl");
       args.push_back(record->campaign_dsl_path);
@@ -351,7 +433,7 @@ int run_job_runner(int argc, char** argv) {
     ::execv(argv[0], argv.data());
 
     int child_errno = errno;
-    (void)::write(pipe_fds[1], &child_errno, sizeof(child_errno));
+    (void)write_all_fd(pipe_fds[1], &child_errno, sizeof(child_errno));
     _exit(127);
   }
 
@@ -371,7 +453,7 @@ int run_job_runner(int argc, char** argv) {
   std::uint64_t runner_start_ticks = 0;
   if (!cuwacunu::hero::runtime::read_process_start_ticks(*record->runner_pid,
                                                          &runner_start_ticks)) {
-    if (error) *error = "cannot determine detached runtime job runner identity";
+    if (error) *error = "cannot determine runtime job runner identity";
     return false;
   }
   record->runner_start_ticks = runner_start_ticks;
@@ -386,7 +468,7 @@ int run_campaign_runner(int argc, char** argv) {
   std::filesystem::path campaigns_root{};
   std::string campaign_cursor{};
   std::filesystem::path worker_binary{};
-  std::string config_folder{};
+  std::string global_config_path{};
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -403,8 +485,8 @@ int run_campaign_runner(int argc, char** argv) {
       worker_binary = argv[++i];
       continue;
     }
-    if (arg == "--config-folder" && i + 1 < argc) {
-      config_folder = argv[++i];
+    if (arg == "--global-config" && i + 1 < argc) {
+      global_config_path = argv[++i];
       continue;
     }
   }
@@ -419,6 +501,13 @@ int run_campaign_runner(int argc, char** argv) {
           campaigns_root, campaign_cursor, &campaign, &error)) {
     return 1;
   }
+  if (global_config_path.empty()) {
+    global_config_path = campaign.global_config_path;
+  }
+  if (global_config_path.empty()) {
+    return 2;
+  }
+  cuwacunu::iitepi::config_space_t::change_config_file(global_config_path.c_str());
 
   const int stdout_fd =
       ::open(campaign.stdout_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0600);
@@ -488,10 +577,10 @@ int run_campaign_runner(int argc, char** argv) {
     job.state_detail = "detached job runner requested";
     job.worker_binary = worker_binary.string();
     job.worker_command =
-        worker_binary.string() + " --config-folder " + config_folder +
+        worker_binary.string() + " --global-config " + global_config_path +
         " --campaign-dsl " + snapshot.campaign_dsl_path + " --binding " +
         snapshot.binding_id;
-    job.config_folder = config_folder;
+    job.global_config_path = global_config_path;
     job.source_campaign_dsl_path = snapshot.source_scope_dsl_path;
     job.source_contract_dsl_path = snapshot.source_contract_dsl_path;
     job.source_wave_dsl_path = snapshot.source_wave_dsl_path;
@@ -700,6 +789,12 @@ int main(int argc, char** argv) {
     hero_config_path =
         cuwacunu::hero::runtime_mcp::resolve_runtime_hero_dsl_path(
             app.global_config_path);
+  }
+  if (hero_config_path.empty()) {
+    std::cerr << "[" << kServerName
+              << "] missing [REAL_HERO].runtime_hero_dsl_filename in "
+              << app.global_config_path.string() << "\n";
+    return 2;
   }
   app.hero_config_path = hero_config_path;
   app.self_binary_path = cuwacunu::hero::runtime_mcp::current_executable_path();

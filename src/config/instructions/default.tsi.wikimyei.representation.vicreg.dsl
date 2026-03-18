@@ -23,6 +23,8 @@
 
   Semantics:
     - This file defines component-local VICReg runtime configuration.
+    - Contract-scoped `__variables` may own docking-critical shape defaults so
+      compatible circuits share one static interface.
     - Wave + jkimyei profile selection determine whether and how training is executed.
     - Training enable/disable is controlled by wave root `MODE` + `WIKIMYEI ... JKIMYEI.HALT_TRAIN`.
     - Profile policy knobs (`swa_start_iter`, `optimizer_threshold_reset`) are
@@ -30,12 +32,12 @@
 */
 
 # VICReg profile: key(domain):type = value # optional comment
-encoding_dims(1,4096):int = 72 # Encoder output embedding dimensions
-channel_expansion_dim(1,4096):int = 64 # Width multiplier for first conv block
-fused_feature_dim(1,4096):int = 32 # Channel count after fusion block
-encoder_hidden_dims(1,4096):int = 24 # Hidden width inside residual blocks
-encoder_depth(1,512):int = 10 # Number of residual blocks
-projector_mlp_spec:str = 128-256-128 # Projector layer widths
+encoding_dims(1,4096):int = % __embedding_dims ? 72 % # Encoder output embedding dimensions
+channel_expansion_dim(1,4096):int = % __channel_expansion_dim ? 64 % # Width multiplier for first conv block
+fused_feature_dim(1,4096):int = % __fused_feature_dim ? 32 % # Channel count after fusion block
+encoder_hidden_dims(1,4096):int = % __encoder_hidden_dims ? 24 % # Hidden width inside residual blocks
+encoder_depth(1,512):int = % __encoder_depth ? 10 % # Number of residual blocks
+projector_mlp_spec:str = % __projector_mlp_spec ? 128-256-128 % # Projector layer widths
 projector_norm[BatchNorm1d|LayerNorm|None]:str = LayerNorm # BatchNorm1d | LayerNorm | None
 projector_activation[ReLU|SiLU]:str = SiLU # ReLU | SiLU
 projector_hidden_bias:bool = false # Ignored when using BatchNorm1d

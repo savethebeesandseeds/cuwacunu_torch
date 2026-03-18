@@ -19,8 +19,7 @@
 #include <type_traits>
 #include <vector>
 
-#define DEFAULT_CONFIG_FOLDER "/cuwacunu/src/config/"
-#define DEFAULT_CONFIG_FILE ".config"
+#define DEFAULT_GLOBAL_CONFIG_PATH "/cuwacunu/src/config/.config"
 #define DEFAULT_IITEPI_CAMPAIGN_DSL_FILE "instructions/default.iitepi.campaign.dsl"
 #define GENERAL_DEFAULT_IITEPI_CAMPAIGN_DSL_KEY "default_iitepi_campaign_dsl_filename"
 
@@ -46,14 +45,13 @@ class bad_config_access : public std::runtime_error {
 struct config_space_t {
   /*—static data—*/
   static exchange_type_e exchange_type;
-  static std::string config_folder;
   static std::string config_file_path;
   static std::string runtime_campaign_dsl_override_path;
   static parsed_config_t config;
 
   /*—initialisation—*/
-  static void change_config_file(const char* folder = DEFAULT_CONFIG_FOLDER,
-                                 const char* file = DEFAULT_CONFIG_FILE);
+  static void change_config_file(
+      const char* config_path = DEFAULT_GLOBAL_CONFIG_PATH);
   static void update_config();    // re-read from disk
   static bool validate_config();  // throws on fatal errors
   static void set_runtime_campaign_dsl_override(const std::string& path);

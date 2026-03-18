@@ -67,7 +67,7 @@ int main()
   /* -------------------------------------------------- */
   /*  1) Load config                                    */
   /* -------------------------------------------------- */
-  const char* CONFIG_ROOT = "/cuwacunu/src/config/";
+  const char* CONFIG_ROOT = "/cuwacunu/src/config/.config";
   cuwacunu::iitepi::config_space_t::change_config_file(CONFIG_ROOT);
   cuwacunu::iitepi::config_space_t::update_config();
   const std::string contract_hash =

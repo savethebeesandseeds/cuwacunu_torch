@@ -303,7 +303,9 @@ find_wave_by_id(
     RuntimeContext ctx{};
     ctx.wave_mode_flags = contract.execution.wave_mode_flags;
     ctx.debug_enabled = contract.execution.debug_enabled;
+    ctx.binding_id = out.binding_id;
     ctx.run_id = make_runtime_binding_contract_run_id(out, i);
+    ctx.source_runtime_cursor = contract.spec.source_runtime_cursor;
     out.run_ids.push_back(ctx.run_id);
     std::string run_error;
     const std::uint64_t steps = run_runtime_binding_contract(contract, ctx, &run_error);
@@ -387,9 +389,11 @@ template <typename Datatype_t,
       return out;
     }
 
-    const std::string contract_path = (std::filesystem::path(runtime_binding_itself->config_folder) /
-                                       contract_decl->file)
-                                          .string();
+    const std::string contract_path =
+        (std::filesystem::path(runtime_binding_itself->config_file_path)
+             .parent_path() /
+         contract_decl->file)
+            .string();
 
     out.contract_hash =
         cuwacunu::iitepi::contract_space_t::register_contract_file(
@@ -531,9 +535,11 @@ template <typename Datatype_t,
       return out;
     }
 
-    const std::string contract_path = (std::filesystem::path(runtime_binding_itself->config_folder) /
-                                       contract_decl->file)
-                                          .string();
+    const std::string contract_path =
+        (std::filesystem::path(runtime_binding_itself->config_file_path)
+             .parent_path() /
+         contract_decl->file)
+            .string();
     const auto contract_hash =
         cuwacunu::iitepi::contract_space_t::register_contract_file(contract_path);
     const auto wave_hash =
@@ -559,6 +565,7 @@ template <typename Datatype_t,
 
     cuwacunu::camahjucunu::observation_spec_t effective_observation{};
     if (!runtime_binding_builder::load_wave_dataloader_observation_payloads(
+            contract_itself,
             wave_itself,
             *wave,
             nullptr,

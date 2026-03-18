@@ -77,82 +77,26 @@ using runtime_lls_document_t =
   return out;
 }
 
+[[nodiscard]] std::string analytics_path_token_(std::string_view token_text) {
+  const std::string_view token = trim_ascii_ws_view_(token_text);
+  if (token.empty()) return {};
+
+  std::string out;
+  out.reserve(token.size());
+  for (const unsigned char c : token) {
+    const bool ok =
+        (std::isalnum(c) != 0) || c == '_' || c == '-' || c == '.';
+    out.push_back(ok ? static_cast<char>(c) : '_');
+  }
+  return out;
+}
+
 void append_component_report_identity_entries_(
     runtime_lls_document_t* document,
     const tsiemene::component_report_identity_t& report_identity) {
   if (!document) return;
-  if (!report_identity.report_kind.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "report_kind", report_identity.report_kind));
-  }
-  if (!report_identity.tsi_type.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "tsi_type", report_identity.tsi_type));
-  }
-  if (!report_identity.canonical_path.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "canonical_path", report_identity.canonical_path));
-  }
-  if (!report_identity.hashimyei.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "hashimyei", report_identity.hashimyei));
-  }
-  if (!report_identity.contract_hash.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "contract_hash", report_identity.contract_hash));
-  }
-  if (!report_identity.wave_hash.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "wave_hash", report_identity.wave_hash));
-  }
-  if (!report_identity.binding_id.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "binding_id", report_identity.binding_id));
-  }
-  if (!report_identity.run_id.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "run_id", report_identity.run_id));
-  }
-  if (!report_identity.wave_cursor_resolution.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "wave_cursor_resolution", report_identity.wave_cursor_resolution));
-  }
-  if (!report_identity.intersection_cursor.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "intersection_cursor", report_identity.intersection_cursor));
-  }
-  if (report_identity.has_wave_cursor) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave_cursor", report_identity.wave_cursor, "[0,+inf)"));
-  }
-  if (report_identity.has_wave_cursor_run) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.run", report_identity.wave_cursor_run, "[0,+inf)"));
-  }
-  if (report_identity.has_wave_cursor_episode) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.episode",
-            report_identity.wave_cursor_episode,
-            "[0,+inf)"));
-  }
-  if (report_identity.has_wave_cursor_batch) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.batch", report_identity.wave_cursor_batch, "[0,+inf)"));
-  }
+  cuwacunu::piaabo::latent_lineage_state::append_runtime_report_header_entries(
+      document, tsiemene::make_runtime_report_header(report_identity));
 }
 
 void append_string_entry_if_nonempty_(runtime_lls_document_t* document,
@@ -2431,32 +2375,37 @@ std::filesystem::path source_data_analytics_contract_directory(
   return source_data_analytics_root_directory() / token;
 }
 
-std::filesystem::path source_data_analytics_instance_directory(
+std::filesystem::path source_data_analytics_context_directory(
     std::string_view contract_hash,
-    std::string_view source_instance) {
-  if (source_instance.empty()) return {};
+    std::string_view canonical_path,
+    std::string_view source_runtime_cursor) {
   const auto contract_dir = source_data_analytics_contract_directory(contract_hash);
   if (contract_dir.empty()) return {};
-  return contract_dir /
-         std::string(source_instance);
+  const std::string canonical_path_token = analytics_path_token_(canonical_path);
+  if (canonical_path_token.empty()) return {};
+  const std::string source_runtime_token =
+      analytics_path_token_(source_runtime_cursor);
+  return contract_dir / canonical_path_token /
+         (source_runtime_token.empty() ? std::string("default")
+                                       : source_runtime_token);
 }
 
 std::filesystem::path source_data_analytics_latest_file_path(
     std::string_view contract_hash,
-    std::string_view source_instance) {
-  const auto base = source_data_analytics_instance_directory(
-      contract_hash,
-      source_instance);
+    std::string_view canonical_path,
+    std::string_view source_runtime_cursor) {
+  const auto base = source_data_analytics_context_directory(
+      contract_hash, canonical_path, source_runtime_cursor);
   if (base.empty()) return {};
   return base / std::string(kDataAnalyticsLatestReportFilename);
 }
 
 std::filesystem::path source_data_analytics_symbolic_latest_file_path(
     std::string_view contract_hash,
-    std::string_view source_instance) {
-  const auto base = source_data_analytics_instance_directory(
-      contract_hash,
-      source_instance);
+    std::string_view canonical_path,
+    std::string_view source_runtime_cursor) {
+  const auto base = source_data_analytics_context_directory(
+      contract_hash, canonical_path, source_runtime_cursor);
   if (base.empty()) return {};
   return base / std::string(kDataAnalyticsSymbolicLatestReportFilename);
 }

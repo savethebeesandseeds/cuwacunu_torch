@@ -27,8 +27,8 @@ std::string first_line(const std::string& s) {
 
 int main() {
   try {
-    const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    const char* global_config_path = "/cuwacunu/src/config/.config";
+    cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
     cuwacunu::iitepi::config_space_t::update_config();
 
     cuwacunu::iinuji::iinuji_cmd::CmdState st{};

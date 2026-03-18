@@ -41,49 +41,44 @@ DEV_WARNING(
 
 namespace cuwacunu::wikimyei::evaluation {
 
-class TransferMatrixEvaluationReport final {
+class VicregTransferMatrixEvaluator final {
  public:
-  using WaveProbePolicy = cuwacunu::camahjucunu::iitepi_wave_probe_policy_t;
+  using EvaluationPolicy = cuwacunu::camahjucunu::iitepi_wave_evaluation_policy_t;
   using Wave = ::tsiemene::Wave;
-  using Ingress = ::tsiemene::Ingress;
   using RuntimeContext = ::tsiemene::RuntimeContext;
   using Emitter = ::tsiemene::Emitter;
   using ObservationCargo = ::tsiemene::ObservationCargo;
-  using PayloadKind = ::tsiemene::PayloadKind;
   using CargoValidationStage = ::tsiemene::CargoValidationStage;
   using RuntimeEventKind = ::tsiemene::RuntimeEventKind;
   using RuntimeEvent = ::tsiemene::RuntimeEvent;
-  using RuntimeEventAction = ::tsiemene::RuntimeEventAction;
   using runtime_lls_document_t =
       cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
-  static constexpr ::tsiemene::DirectiveId IN_STEP =
-      ::tsiemene::directive_id::Step;
 
-  [[nodiscard]] static constexpr WaveProbePolicy default_wave_policy() {
-    return WaveProbePolicy{
+  [[nodiscard]] static constexpr EvaluationPolicy default_evaluation_policy() {
+    return EvaluationPolicy{
         .training_window =
-            cuwacunu::camahjucunu::iitepi_wave_probe_training_window_e::
+            cuwacunu::camahjucunu::iitepi_wave_evaluation_training_window_e::
                 IncomingBatch,
         .report_policy =
-            cuwacunu::camahjucunu::iitepi_wave_probe_report_policy_e::
+            cuwacunu::camahjucunu::iitepi_wave_evaluation_report_policy_e::
                 EpochEndLog,
         .objective =
-            cuwacunu::camahjucunu::iitepi_wave_probe_objective_e::
+            cuwacunu::camahjucunu::iitepi_wave_evaluation_objective_e::
                 FutureTargetDimsNll,
     };
   }
 
-  explicit TransferMatrixEvaluationReport(
+  explicit VicregTransferMatrixEvaluator(
       std::string contract_hash,
-      WaveProbePolicy policy = default_wave_policy())
+      EvaluationPolicy policy = default_evaluation_policy())
       : contract_hash_(std::move(contract_hash)),
         policy_(policy) {
     load_config_();
-    validate_wave_policy_or_throw_();
+    validate_evaluation_policy_or_throw_();
     initialize_runtime_model_or_throw_();
   }
 
-  [[nodiscard]] std::string_view type_name() const noexcept {
+  [[nodiscard]] std::string_view evaluator_name() const noexcept {
     return "wikimyei.evaluation.transfer_matrix_evaluation";
   }
 
@@ -103,35 +98,36 @@ class TransferMatrixEvaluationReport final {
     return last_run_matrix_report_lls_;
   }
 
-  void step(const Wave& wave, Ingress in, RuntimeContext& ctx, Emitter& out) {
-    if (in.directive != IN_STEP) return;
-    if (in.signal.kind != PayloadKind::Cargo) return;
+  void ingest_representation_output(const Wave& wave,
+                                    const ObservationCargo* sample,
+                                    RuntimeContext& ctx,
+                                    Emitter& out) {
     if (!ctx.debug_enabled) return;
 
     ++epoch_.seen;
 
-    if (!in.signal.cargo) {
+    if (!sample) {
       ++epoch_.null_cargo;
       emit_meta_(wave, out, "transfer_matrix_eval.warn reason=null-cargo");
       emit_periodic_summary_(wave, out, /*force=*/false);
       return;
     }
 
-    const ObservationCargo& sample = *in.signal.cargo;
+    const ObservationCargo& cargo = *sample;
     bool diagnostics_anomaly = false;
     bool hard_invalid = false;
 
     if (cfg_.validate_vicreg_out) {
       std::string cargo_error;
       if (!::tsiemene::validate_observation_cargo(
-              sample, CargoValidationStage::VicregOut, &cargo_error)) {
+              cargo, CargoValidationStage::VicregOut, &cargo_error)) {
         ++epoch_.invalid_cargo;
         diagnostics_anomaly = true;
         const bool missing_future_mask_only =
             (cargo_error == "future features/mask partial") &&
-            sample.future_features.defined() &&
-            sample.future_features.numel() > 0 &&
-            (!sample.future_mask.defined() || sample.future_mask.numel() == 0);
+            cargo.future_features.defined() &&
+            cargo.future_features.numel() > 0 &&
+            (!cargo.future_mask.defined() || cargo.future_mask.numel() == 0);
         hard_invalid = !missing_future_mask_only;
         emit_meta_(wave,
                    out,
@@ -140,7 +136,7 @@ class TransferMatrixEvaluationReport final {
       }
     }
 
-    const bool has_encoding = sample.encoding.defined() && sample.encoding.numel() > 0;
+    const bool has_encoding = cargo.encoding.defined() && cargo.encoding.numel() > 0;
     if (!has_encoding) {
       ++epoch_.missing_encoding;
       diagnostics_anomaly = true;
@@ -148,21 +144,21 @@ class TransferMatrixEvaluationReport final {
       emit_meta_(wave, out, "transfer_matrix_eval.warn reason=missing-encoding");
     }
 
-    if (has_encoding && !encoding_all_finite_(sample.encoding)) {
+    if (has_encoding && !encoding_all_finite_(cargo.encoding)) {
       ++epoch_.non_finite_encoding;
       diagnostics_anomaly = true;
       hard_invalid = true;
       emit_meta_(wave, out, "transfer_matrix_eval.warn reason=non-finite-encoding");
     }
 
-    if (has_future_values_(sample)) {
+    if (has_future_values_(cargo)) {
       ++epoch_.future_values_present;
       diagnostics_anomaly = true;
       emit_meta_(wave, out, "transfer_matrix_eval.warn reason=future-values-present");
     }
 
     if (cfg_.check_temporal_order) {
-      const auto order = temporal_order_ok_(sample);
+      const auto order = temporal_order_ok_(cargo);
       if (order.has_value() && !*order) {
         ++epoch_.temporal_overlap;
         diagnostics_anomaly = true;
@@ -175,11 +171,11 @@ class TransferMatrixEvaluationReport final {
       emit_meta_(wave,
                  out,
                  std::string("transfer_matrix_eval.shape encoding=") +
-                     tensor_shape_(sample.encoding) + " future_features=" +
-                     tensor_shape_(sample.future_features) + " future_mask=" +
-                     tensor_shape_(sample.future_mask) + " past_keys=" +
-                     tensor_shape_(sample.past_keys) + " future_keys=" +
-                     tensor_shape_(sample.future_keys));
+                     tensor_shape_(cargo.encoding) + " future_features=" +
+                     tensor_shape_(cargo.future_features) + " future_mask=" +
+                     tensor_shape_(cargo.future_mask) + " past_keys=" +
+                     tensor_shape_(cargo.past_keys) + " future_keys=" +
+                     tensor_shape_(cargo.future_keys));
     }
 
     if (hard_invalid) {
@@ -189,7 +185,7 @@ class TransferMatrixEvaluationReport final {
 
     train_batch_t batch{};
     std::string prep_error;
-    if (!prepare_train_batch_(sample, &batch, &prep_error)) {
+    if (!prepare_train_batch_(cargo, &batch, &prep_error)) {
       emit_meta_(wave,
                  out,
                  std::string("transfer_matrix_eval.warn reason=train-skip detail=") +
@@ -198,28 +194,28 @@ class TransferMatrixEvaluationReport final {
       return;
     }
 
-    batch.anchor_key = derive_anchor_key_(sample, epoch_.seen);
+    batch.anchor_key = derive_anchor_key_(cargo, epoch_.seen);
     ++epoch_.accepted;
     buffer_epoch_batch_(std::move(batch));
 
     emit_periodic_summary_(wave, out, /*force=*/false);
   }
 
-  RuntimeEventAction on_event(const RuntimeEvent& event,
-                              RuntimeContext& ctx,
-                              Emitter& out) {
+  void handle_runtime_event(const RuntimeEvent& event,
+                            RuntimeContext& ctx,
+                            Emitter& out) {
     switch (event.kind) {
       case RuntimeEventKind::RunStart:
         last_run_report_lls_.clear();
         last_run_matrix_report_lls_.clear();
         reset_epoch_accumulators_();
-        return RuntimeEventAction{};
+        return;
       case RuntimeEventKind::RunEnd:
         if (!ctx.debug_enabled) {
           last_run_report_lls_.clear();
           last_run_matrix_report_lls_.clear();
           reset_epoch_accumulators_();
-          return RuntimeEventAction{};
+          return;
         }
         if (epoch_.seen > 0 || !epoch_batches_.empty()) {
           run_epoch_training_cycle_();
@@ -241,11 +237,10 @@ class TransferMatrixEvaluationReport final {
           }
         }
         reset_epoch_accumulators_();
-        return RuntimeEventAction{};
+        return;
       default:
-        break;
+        return;
     }
-    return RuntimeEventAction{};
   }
 
  private:
@@ -254,7 +249,7 @@ class TransferMatrixEvaluationReport final {
     bool validate_vicreg_out{true};
     bool report_shapes{false};
 
-    // Probe-local simple MDN architecture knobs.
+    // Evaluator-local simple MDN architecture knobs.
     std::int64_t mdn_mixture_comps{1};
     std::int64_t mdn_features_hidden{16};
     std::int64_t mdn_residual_depth{0};
@@ -281,7 +276,7 @@ class TransferMatrixEvaluationReport final {
     std::int64_t control_shuffle_block{16};
     std::int64_t control_shuffle_seed{1337};
 
-    std::int64_t summary_every_steps{64};
+    std::int64_t summary_every_steps{256};
   };
 
   struct model_spec_t {
@@ -949,7 +944,7 @@ class TransferMatrixEvaluationReport final {
                                         std::string* error) {
     if (error) error->clear();
     if (!semantic_model_) {
-      if (error) *error = "probe model is not initialized";
+      if (error) *error = "evaluation model is not initialized";
       return false;
     }
     if (!out_nll) return false;
@@ -993,7 +988,7 @@ class TransferMatrixEvaluationReport final {
                                       std::string* error) {
     if (error) error->clear();
     if (!semantic_model_ || !optimizer_) {
-      if (error) *error = "probe model is not initialized";
+      if (error) *error = "evaluation model is not initialized";
       return false;
     }
 
@@ -2815,24 +2810,24 @@ class TransferMatrixEvaluationReport final {
     out.emit_string(wave, ::tsiemene::directive_id::Meta, std::move(msg));
   }
 
-  void validate_wave_policy_or_throw_() const {
+  void validate_evaluation_policy_or_throw_() const {
     if (policy_.training_window !=
-        cuwacunu::camahjucunu::iitepi_wave_probe_training_window_e::
+        cuwacunu::camahjucunu::iitepi_wave_evaluation_training_window_e::
             IncomingBatch) {
       throw std::runtime_error(
-          "transfer_matrix_eval unsupported wave policy TRAINING_WINDOW");
+          "transfer_matrix_eval unsupported evaluation policy TRAINING_WINDOW");
     }
     if (policy_.report_policy !=
-        cuwacunu::camahjucunu::iitepi_wave_probe_report_policy_e::
+        cuwacunu::camahjucunu::iitepi_wave_evaluation_report_policy_e::
             EpochEndLog) {
       throw std::runtime_error(
-          "transfer_matrix_eval unsupported wave policy REPORT_POLICY");
+          "transfer_matrix_eval unsupported evaluation policy REPORT_POLICY");
     }
     if (policy_.objective !=
-        cuwacunu::camahjucunu::iitepi_wave_probe_objective_e::
+        cuwacunu::camahjucunu::iitepi_wave_evaluation_objective_e::
             FutureTargetDimsNll) {
       throw std::runtime_error(
-          "transfer_matrix_eval unsupported wave policy OBJECTIVE");
+          "transfer_matrix_eval unsupported evaluation policy OBJECTIVE");
     }
   }
 
@@ -3014,7 +3009,7 @@ class TransferMatrixEvaluationReport final {
     cfg_.summary_every_steps = static_cast<std::int64_t>(contract->get<int>(
         kContractSection,
         "summary_every_steps",
-        std::optional<int>{64}));
+        std::optional<int>{256}));
     cfg_.anchor_train_ratio = contract->get<double>(
         kContractSection,
         "anchor_train_ratio",
@@ -3095,14 +3090,14 @@ class TransferMatrixEvaluationReport final {
   }
 
   static constexpr const char* kContractSection =
-      "WIKIMYEI_INFERENCE_TRANSFER_MATRIX_EVALUATION";
+      "WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION";
   static constexpr const char* kRunSchema =
       "tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1";
   static constexpr const char* kMatrixSchema =
       "tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.matrix.v1";
 
   std::string contract_hash_{};
-  WaveProbePolicy policy_{};
+  EvaluationPolicy policy_{};
   static constexpr std::size_t kMaxPersistedPrequentialRows_{512};
   std::unordered_map<std::string, anchor_split_e> anchor_split_manifest_{};
   config_t cfg_{};

@@ -1,0 +1,51 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = tsi.wikimyei.evaluation.embedding_sequence_analytics
+TARGET_DSL = src/config/instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
+PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/include/wikimyei/evaluation/embedding_sequence_analytics/embedding_sequence_analytics.h
+RUNTIME_NOTE = embedding_sequence_analytics is a vicreg-owned run-end evaluation wrapper over piaabo sequence analytics kernels and symbolic stream summarizers.
+RUNTIME_SECTION = WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS
+RUNTIME_ACTIVE_KEYS = max_samples,max_features,mask_epsilon,standardize_epsilon
+
+[FIELD max_samples]
+key = max_samples
+scope = WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS
+type = int
+required = false
+default = 4096
+range = >= 1 after runtime clamp
+allowed = integer
+nuance = maximum retained sequence samples used when summarizing latent embedding analytics
+
+[FIELD max_features]
+key = max_features
+scope = WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS
+type = int
+required = false
+default = 2048
+range = >= 1 after runtime clamp
+allowed = integer
+nuance = maximum retained latent coordinates after deterministic subsampling for sequence analytics
+
+[FIELD mask_epsilon]
+key = mask_epsilon
+scope = WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS
+type = float
+required = false
+default = 1e-12
+range = >= 0
+allowed = float literal
+nuance = minimum accepted valid-timestep ratio per latent sequence sample
+
+[FIELD standardize_epsilon]
+key = standardize_epsilon
+scope = WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS
+type = float
+required = false
+default = 1e-8
+range = > 0 after runtime clamp
+allowed = float literal
+nuance = lower bound used when standardizing latent sequence variance before covariance/effective-rank estimation

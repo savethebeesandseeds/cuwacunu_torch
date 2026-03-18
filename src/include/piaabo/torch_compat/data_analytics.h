@@ -461,18 +461,21 @@ make_data_symbolic_analytics_report(
 [[nodiscard]] std::filesystem::path source_data_analytics_contract_directory(
     std::string_view contract_hash);
 
-[[nodiscard]] std::filesystem::path source_data_analytics_instance_directory(
+[[nodiscard]] std::filesystem::path source_data_analytics_context_directory(
     std::string_view contract_hash,
-    std::string_view source_instance);
+    std::string_view canonical_path,
+    std::string_view source_runtime_cursor = {});
 
 [[nodiscard]] std::filesystem::path source_data_analytics_latest_file_path(
     std::string_view contract_hash,
-    std::string_view source_instance);
+    std::string_view canonical_path,
+    std::string_view source_runtime_cursor = {});
 
 [[nodiscard]] std::filesystem::path
 source_data_analytics_symbolic_latest_file_path(
     std::string_view contract_hash,
-    std::string_view source_instance);
+    std::string_view canonical_path,
+    std::string_view source_runtime_cursor = {});
 
 }  // namespace torch_compat
 }  // namespace piaabo

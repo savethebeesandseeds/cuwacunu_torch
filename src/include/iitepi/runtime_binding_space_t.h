@@ -72,7 +72,7 @@ struct runtime_binding_file_fingerprint_t {
 
 struct runtime_binding_dependency_manifest_t {
   std::vector<runtime_binding_file_fingerprint_t> files{};
-  std::string aggregate_sha256_hex{};
+  std::string dependency_manifest_aggregate_sha256_hex{};
 };
 
 namespace runtime_binding_record {
@@ -94,7 +94,6 @@ struct runtime_binding_blob_t : dsl_blob_t {
 }  // namespace runtime_binding_record
 
 struct runtime_binding_record_t {
-  std::string config_folder{};
   std::string config_file_path{};
   std::string config_file_path_canonical{};
   parsed_config_t config{};

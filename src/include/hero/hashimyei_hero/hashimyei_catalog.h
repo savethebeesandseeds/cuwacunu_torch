@@ -25,7 +25,7 @@ struct dependency_file_t {
 
 struct component_instance_t {
   std::string canonical_path{};
-  std::string tsi_type{};
+  std::string family{};
   std::string hashimyei{};
 };
 
@@ -33,7 +33,7 @@ struct wave_contract_binding_t {
   cuwacunu::hashimyei::hashimyei_t identity{};
   cuwacunu::hashimyei::hashimyei_t contract{};
   cuwacunu::hashimyei::hashimyei_t wave{};
-  std::string binding_alias{};
+  std::string binding_id{};
 };
 
 struct run_manifest_t {
@@ -55,18 +55,38 @@ struct component_manifest_t {
   std::string schema{cuwacunu::hashimyei::kComponentManifestSchemaV2};
   std::string canonical_path{};
   std::string family{};
-  std::string tsi_type{};
-  cuwacunu::hashimyei::hashimyei_t component_identity{};
+  cuwacunu::hashimyei::hashimyei_t hashimyei_identity{};
+  cuwacunu::hashimyei::hashimyei_t contract_identity{};
   std::optional<cuwacunu::hashimyei::hashimyei_t> parent_identity{};
   std::string revision_reason{"initial"};
-  std::string config_revision_id{};
-  wave_contract_binding_t wave_contract_binding{};
-  std::string dsl_canonical_path{};
-  std::string dsl_sha256_hex{};
-  std::string status{"active"};
+  std::string founding_revision_id{};
+  std::string founding_dsl_provenance_path{};
+  std::string founding_dsl_provenance_sha256_hex{};
+  std::string docking_signature_sha256_hex{};
+  std::string lineage_state{"active"};
   std::string replaced_by{};
   std::uint64_t created_at_ms{0};
   std::uint64_t updated_at_ms{0};
+};
+
+[[nodiscard]] inline std::string contract_hash_from_identity(
+    const cuwacunu::hashimyei::hashimyei_t& id) {
+  return !id.hash_sha256_hex.empty() ? id.hash_sha256_hex : id.name;
+}
+
+struct founding_dsl_bundle_manifest_file_t {
+  std::string source_path{};
+  std::string snapshot_relpath{};
+  std::string sha256_hex{};
+};
+
+struct founding_dsl_bundle_manifest_t {
+  std::string schema{cuwacunu::hashimyei::kFoundingDslBundleManifestSchemaV1};
+  std::string component_id{};
+  std::string canonical_path{};
+  std::string hashimyei_name{};
+  std::string founding_dsl_bundle_aggregate_sha256_hex{};
+  std::vector<founding_dsl_bundle_manifest_file_t> files{};
 };
 
 struct component_state_t {
@@ -80,13 +100,18 @@ struct component_state_t {
 
 struct report_fragment_entry_t {
   std::string report_fragment_id{};
-  std::string run_id{};
   std::string canonical_path{};
+  std::string semantic_taxon{};
+  std::string report_canonical_path{};
   std::string hashimyei{};
+  std::string binding_id{};
+  std::string source_runtime_cursor{};
   std::string schema{};
   std::string report_fragment_sha256{};
   std::string path{};
   std::uint64_t ts_ms{0};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
   std::string payload_json{};
 };
 
@@ -116,6 +141,15 @@ struct report_fragment_snapshot_t {
                                            std::string* error = nullptr);
 [[nodiscard]] std::string compute_component_manifest_id(
     const component_manifest_t& manifest);
+[[nodiscard]] std::filesystem::path component_manifest_directory(
+    const std::filesystem::path& store_root, std::string_view component_id);
+[[nodiscard]] std::filesystem::path component_manifest_path(
+    const std::filesystem::path& store_root, std::string_view component_id);
+[[nodiscard]] bool save_component_manifest(
+    const std::filesystem::path& store_root,
+    const component_manifest_t& manifest,
+    std::filesystem::path* out_path = nullptr,
+    std::string* error = nullptr);
 
 [[nodiscard]] bool save_run_manifest(const std::filesystem::path& store_root,
                                      const run_manifest_t& manifest,
@@ -124,6 +158,18 @@ struct report_fragment_snapshot_t {
 
 [[nodiscard]] bool parse_latent_lineage_state_payload(
     std::string_view payload, std::unordered_map<std::string, std::string>* out);
+[[nodiscard]] std::filesystem::path founding_dsl_bundle_directory(
+    const std::filesystem::path& store_root, std::string_view component_id);
+[[nodiscard]] std::filesystem::path founding_dsl_bundle_manifest_path(
+    const std::filesystem::path& store_root, std::string_view component_id);
+[[nodiscard]] bool write_founding_dsl_bundle_manifest(
+    const std::filesystem::path& store_root, const founding_dsl_bundle_manifest_t& manifest,
+    std::string* error = nullptr);
+[[nodiscard]] bool read_founding_dsl_bundle_manifest(
+    const std::filesystem::path& store_root, std::string_view component_id,
+    founding_dsl_bundle_manifest_t* out, std::string* error = nullptr);
+[[nodiscard]] std::string compute_founding_dsl_bundle_aggregate_sha256(
+    const founding_dsl_bundle_manifest_t& manifest);
 
 class hashimyei_catalog_store_t {
  public:
@@ -180,13 +226,9 @@ class hashimyei_catalog_store_t {
       std::string_view canonical_path, std::string_view hashimyei,
       std::size_t limit, std::size_t offset, bool newest_first,
       std::vector<component_state_t>* out, std::string* error = nullptr) const;
-  [[nodiscard]] bool list_components_by_binding(
-      std::string_view contract_hashimyei, std::string_view wave_hashimyei,
-      std::string_view binding_hashimyei, std::size_t limit, std::size_t offset,
-      bool newest_first, std::vector<component_state_t>* out,
-      std::string* error = nullptr) const;
   [[nodiscard]] bool resolve_active_hashimyei(std::string_view canonical_path,
                                               std::string_view family,
+                                              std::string_view contract_hash,
                                               std::string* out_hashimyei,
                                               std::string* error = nullptr) const;
   [[nodiscard]] bool get_explicit_family_rank(
@@ -205,13 +247,9 @@ class hashimyei_catalog_store_t {
   [[nodiscard]] bool register_component_manifest(
       const component_manifest_t& manifest, std::string* out_component_id = nullptr,
       bool* out_inserted = nullptr, std::string* error = nullptr);
-  [[nodiscard]] bool report_fragment_snapshot(std::string_view canonical_path,
-                                       std::string_view run_id,
-                                       report_fragment_snapshot_t* out,
-                                       std::string* error = nullptr) const;
-  [[nodiscard]] bool dependency_trace(std::string_view report_fragment_id,
-                                      std::vector<dependency_file_t>* out,
-                                      std::string* error = nullptr) const;
+  [[nodiscard]] bool latest_report_fragment_snapshot(
+      std::string_view canonical_path, report_fragment_snapshot_t* out,
+      std::string* error = nullptr) const;
 
  private:
   struct ingest_lock_t {
@@ -297,8 +335,6 @@ class hashimyei_catalog_store_t {
   std::unordered_map<int, std::uint64_t> kind_counters_{};
   std::unordered_map<std::string, cuwacunu::hashimyei::hashimyei_t>
       hash_identity_by_kind_sha_{};
-  std::unordered_map<std::string, std::vector<std::string>>
-      component_ids_by_binding_hashimyei_{};
   std::unordered_map<std::string, cuwacunu::hero::family_rank::state_t>
       explicit_family_rank_by_scope_{};
 };

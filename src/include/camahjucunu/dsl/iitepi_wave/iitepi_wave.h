@@ -15,7 +15,7 @@ namespace cuwacunu {
 namespace camahjucunu {
 
 struct iitepi_wave_wikimyei_decl_t {
-  std::string binding_alias{};
+  std::string binding_id{};
   std::string family{};
   std::string hashimyei{};
   std::string wikimyei_path{};
@@ -26,52 +26,56 @@ struct iitepi_wave_wikimyei_decl_t {
 };
 
 struct iitepi_wave_source_decl_t {
-  std::string binding_alias{};
+  std::string binding_id{};
   std::string family{};
   std::string source_path{};
-  std::string sampler{};
   std::string symbol{};
   std::string from{};
   std::string to{};
   std::uint64_t workers{0};
   bool force_rebuild_cache{true};
   std::uint64_t range_warn_batches{256};
-  std::string sources_dsl_file{};
-  std::string channels_dsl_file{};
 };
 
-enum class iitepi_wave_probe_training_window_e : std::uint8_t {
+enum class iitepi_wave_evaluation_training_window_e : std::uint8_t {
   IncomingBatch = 0,
 };
 
-enum class iitepi_wave_probe_report_policy_e : std::uint8_t {
+enum class iitepi_wave_evaluation_report_policy_e : std::uint8_t {
   EpochEndLog = 0,
 };
 
-enum class iitepi_wave_probe_objective_e : std::uint8_t {
+enum class iitepi_wave_evaluation_objective_e : std::uint8_t {
   FutureTargetDimsNll = 0,
 };
 
-struct iitepi_wave_probe_policy_t {
-  iitepi_wave_probe_training_window_e training_window{
-      iitepi_wave_probe_training_window_e::IncomingBatch};
-  iitepi_wave_probe_report_policy_e report_policy{
-      iitepi_wave_probe_report_policy_e::EpochEndLog};
-  iitepi_wave_probe_objective_e objective{
-      iitepi_wave_probe_objective_e::FutureTargetDimsNll};
+struct iitepi_wave_evaluation_policy_t {
+  iitepi_wave_evaluation_training_window_e training_window{
+      iitepi_wave_evaluation_training_window_e::IncomingBatch};
+  iitepi_wave_evaluation_report_policy_e report_policy{
+      iitepi_wave_evaluation_report_policy_e::EpochEndLog};
+  iitepi_wave_evaluation_objective_e objective{
+      iitepi_wave_evaluation_objective_e::FutureTargetDimsNll};
 };
 
+// Legacy probe aliases remain because the wave DSL still reserves PROBE blocks,
+// even though transfer-matrix evaluation is now modeled as a VICReg-owned evaluator.
+using iitepi_wave_probe_training_window_e = iitepi_wave_evaluation_training_window_e;
+using iitepi_wave_probe_report_policy_e = iitepi_wave_evaluation_report_policy_e;
+using iitepi_wave_probe_objective_e = iitepi_wave_evaluation_objective_e;
+using iitepi_wave_probe_policy_t = iitepi_wave_evaluation_policy_t;
+
 struct iitepi_wave_probe_decl_t {
-  std::string binding_alias{};
+  std::string binding_id{};
   std::string family{};
   std::string hashimyei{};
   std::string probe_path{};
   bool has_runtime{false};
-  iitepi_wave_probe_policy_t policy{};
+  iitepi_wave_evaluation_policy_t policy{};
 };
 
 struct iitepi_wave_sink_decl_t {
-  std::string binding_alias{};
+  std::string binding_id{};
   std::string family{};
   std::string sink_path{};
 };
@@ -259,6 +263,7 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
 
 struct iitepi_wave_t {
   std::string name{};
+  std::string circuit_name{};
   std::string mode{};
   std::uint64_t mode_flags{0};
   std::string determinism_policy{"non_deterministic"};

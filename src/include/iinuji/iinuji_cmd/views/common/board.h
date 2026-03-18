@@ -12,6 +12,7 @@
 #include "iinuji/iinuji_cmd/views/board/contract.section.circuit.h"
 #include "iinuji/iinuji_cmd/views/board/editor.highlight.h"
 #include "iinuji/iinuji_cmd/views/common/base.h"
+#include "iitepi/observation_contract_wave_paths.h"
 #include "piaabo/dfiles.h"
 
 namespace cuwacunu {
@@ -160,22 +161,21 @@ inline BoardState load_board_from_contract_hash(
           }
         }
         if (selected_wave && !selected_wave->sources.empty()) {
-          const auto& source_decl = selected_wave->sources.front();
-          const std::string sources_path = (std::filesystem::path(
-                                                wave_itself->config_folder) /
-                                            source_decl.sources_dsl_file)
-                                               .string();
-          const std::string channels_path = (std::filesystem::path(
-                                                 wave_itself->config_folder) /
-                                             source_decl.channels_dsl_file)
-                                                .string();
-          if (std::filesystem::exists(sources_path)) {
-            out.contract_observation_sources_dsl =
-                cuwacunu::piaabo::dfiles::readFileToString(sources_path);
-          }
-          if (std::filesystem::exists(channels_path)) {
-            out.contract_observation_channels_dsl =
-                cuwacunu::piaabo::dfiles::readFileToString(channels_path);
+          cuwacunu::iitepi::observation_dsl_path_resolution_t observation_paths{};
+          std::string path_error{};
+          if (cuwacunu::iitepi::resolve_observation_dsl_paths(
+                  contract_itself, wave_itself, *selected_wave,
+                  &observation_paths, &path_error)) {
+            if (std::filesystem::exists(observation_paths.sources_path)) {
+              out.contract_observation_sources_dsl =
+                  cuwacunu::piaabo::dfiles::readFileToString(
+                      observation_paths.sources_path);
+            }
+            if (std::filesystem::exists(observation_paths.channels_path)) {
+              out.contract_observation_channels_dsl =
+                  cuwacunu::piaabo::dfiles::readFileToString(
+                      observation_paths.channels_path);
+            }
           }
         }
       }

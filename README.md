@@ -14,28 +14,24 @@ The `tsodao` is not the abstract transformer but the eyes on the edge of the lan
 
 ## Reproducible Setup (Docker + `setup.sh`)
 The canonical environment setup is now scripted in [`setup.sh`](./setup.sh).  
-The script is designed for reproducibility and expects third-party artifacts in `external/`.
+The script is designed for reproducibility and expects the staged LibTorch bundle in `.external/`.
 
 ### 1. Host prerequisites
 Install Docker: https://docker.com
 
-### 2. Stage third-party artifacts in `external/`
-Some dependencies require manual download because of vendor terms:
+### 2. Stage the LibTorch bundle in `.external/`
+The current build is wired for the upgraded LibTorch bundle:
 
-1. Download `libtorch` from https://pytorch.org/ and extract into:
-   `external/libtorch`
-2. Download the cuDNN Debian package (Debian 11, CUDA 12.x family) from NVIDIA:
-   https://developer.nvidia.com/rdp/cudnn-download
-3. Place the `.deb` file in:
-   `external/cudnn/`
+1. Download `libtorch` from https://pytorch.org/ with CUDA 12.4 support.
+2. Extract it into:
+   `.external/libtorch-upd`
 
-Default expected cuDNN filename:
-`cudnn-local-repo-debian11-8.9.7.29_1.0-1_amd64.deb`
+`setup.sh` installs CUDA 12.4 and cuDNN 9 from NVIDIA's Debian 12 network repository, so no separate cuDNN `.deb` needs to be staged.
 
 ### 3. Start a Debian container
 ```bash
-docker pull debian:latest
-docker run --name cuwacunu-dev --gpus all -it -v "$PWD":/cuwacunu debian:latest /bin/bash
+docker pull debian:12
+docker run --name cuwacunu-dev --gpus all -it --shm-size=1g -v "$PWD":/cuwacunu -w /cuwacunu debian:12 /bin/bash
 ```
 
 ### 4. Run setup inside the container
@@ -68,6 +64,7 @@ MAKE_TARGETS="piaabo camahjucunu" ./setup.sh --verbose
 source ~/.bashrc
 nvcc --version
 nvidia-smi
+/cuwacunu/.build/tests/test_cuda_probe
 ```
 
 ## HERO MCP Preflight (Codex)

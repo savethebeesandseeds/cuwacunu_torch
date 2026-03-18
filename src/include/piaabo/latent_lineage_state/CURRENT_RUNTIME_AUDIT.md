@@ -7,16 +7,16 @@ behavior from desired future standard behavior.
 
 | Payload | Producer | Main consumers | Surface | Ingest class | Current notes |
 | --- | --- | --- | --- | --- | --- |
-| `wave.source.runtime.projection.v2` | `src/main/main_campaign.cpp` via `src/include/hero/lattice_hero/source_runtime_projection.h` | Hero Lattice ingest, assembled fact bundles, humans / direct artifact readers | `source_runtime_projection.latest.lls` under the runtime store `tsi.source/runtime_projection/...` tree | standalone, ingestable | strict runtime `.lls`, top-level `schema`, fixed 12 digits |
+| `wave.source.runtime.projection.v2` | `src/main/main_campaign.cpp` via `src/include/hero/lattice_hero/source_runtime_projection.h` | Hero Lattice ingest, assembled fact bundles, humans / direct artifact readers | `source_runtime_projection.latest.lls` under the runtime store `tsi.source/runtime_projection/...` tree | standalone, ingestable | strict runtime `.lls`, top-level `schema`, context header (`canonical_path`, `binding_id`, `wave_cursor`), optional context extension `source_runtime_cursor`, fixed 12 digits |
 | `wave.projection.lls.v2` | `src/impl/hero/lattice_hero/lattice_catalog.cpp` | lattice catalog cells / MCP report joins | stored in catalog `projection_lls`, no standalone file | catalog-only | top-level `schema`, `projection_version`, `projector_build_id`, sorted numeric/text sections, fixed 12 digits |
-| `piaabo.torch_compat.data_analytics.v2` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `.hashimyei/.../tsi.source/data_analytics.v2/.../data_analytics.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, common identity envelope when provided; `MASK_EPSILON` is an ingest gate and invalid positions are excluded from numeric statistics |
-| `piaabo.torch_compat.data_analytics_symbolic.v2` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `.hashimyei/.../tsi.source/data_analytics.v2/.../data_analytics.symbolic.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `channel_<n>_*` keys and comment-free canonical emission; pretty/debug output may add `/* ... */` channel annotations; symbolic time-series metrics use the last valid timestep anchor in ingest order |
-| `piaabo.torch_compat.embedding_sequence_analytics.v2` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` via `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.v2.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, generic sequence envelope over latent `[B,T,E]` encodings reshaped to per-dimension streams |
-| `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` via `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.symbolic.v2.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `stream_<n>_*` keys, representative-stream reduction when latent width is large, pretty/debug output may add generalized `/* ... */` comments; symbolic metrics remain ingest-order heuristics |
-| `piaabo.torch_compat.network_analytics.v5` | `src/impl/piaabo/torch_compat/network_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `<checkpoint>.network_analytics.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, top-k collection flattening uses `_count`, `_1_name`, `_1_value`; serializer options come from the stored normalized report options |
-| `tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1` | `src/include/wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h` wrapped by `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` | Hero Hashimyei/Lattice ingest | `transfer_matrix_evaluation.summary.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, canonical `canonical_path` envelope |
+| `piaabo.torch_compat.data_analytics.v2` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `.hashimyei/.../tsi.source/data_analytics.v2/<contract>/<canonical_path>/<source_runtime_cursor>/data_analytics.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, simplified runtime report header (`semantic_taxon`, `canonical_path`, `binding_id`, `wave_cursor`, optional `source_runtime_cursor`) plus payload; storage is now partitioned by semantic canonical path plus source runtime cursor; `MASK_EPSILON` is an ingest gate and invalid positions are excluded from numeric statistics |
+| `piaabo.torch_compat.data_analytics_symbolic.v2` | `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `.hashimyei/.../tsi.source/data_analytics.v2/<contract>/<canonical_path>/<source_runtime_cursor>/data_analytics.symbolic.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `channel_<n>_*` keys, simplified runtime report header, and comment-free canonical emission; pretty/debug output may add `/* ... */` channel annotations; symbolic time-series metrics use the last valid timestep anchor in ingest order |
+| `piaabo.torch_compat.embedding_sequence_analytics.v2` | `src/include/wikimyei/evaluation/embedding_sequence_analytics/embedding_sequence_analytics.h` wrapped by `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` and backed by `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.v2.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, simplified runtime report header, and generic sequence envelope over latent `[B,T,E]` encodings reshaped to per-dimension streams |
+| `piaabo.torch_compat.embedding_sequence_analytics_symbolic.v2` | `src/include/wikimyei/evaluation/embedding_sequence_analytics/embedding_sequence_analytics.h` wrapped by `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` and backed by `src/impl/piaabo/torch_compat/data_analytics.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.symbolic.v2.latest.lls` in the VICReg report fragment directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, simplified runtime report header, flattened `stream_<n>_*` keys, representative-stream reduction when latent width is large, pretty/debug output may add generalized `/* ... */` comments; symbolic metrics remain ingest-order heuristics |
+| `piaabo.torch_compat.network_analytics.v5` | `src/impl/piaabo/torch_compat/network_analytics.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `<checkpoint>.network_analytics.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, simplified runtime report header, and top-k collection flattening uses `_count`, `_1_name`, `_1_value`; serializer options come from the stored normalized report options |
+| `tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1` | `src/include/wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h` wrapped by `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` | Hero Hashimyei/Lattice ingest | `transfer_matrix_evaluation.summary.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, simplified runtime report header |
 | `tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.matrix.v1` | same as above | humans / direct artifact readers | `transfer_matrix_evaluation.matrix.latest.lls` | artifact-only | strict runtime `.lls`, fixed 12 digits, remains outside the current Lattice ingest allow-list |
-| `tsi.wikimyei.representation.vicreg.status.v1` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` | known-schema allow-lists in Hero | `status.latest.lls` | standalone, ingestable | strict runtime `.lls`, canonical `canonical_path`, deterministic fallback `run_id` when no live run id is available |
+| `tsi.wikimyei.representation.vicreg.status.v1` | `src/include/tsiemene/tsi.wikimyei.representation.vicreg.h` | known-schema allow-lists in Hero | `status.latest.lls` | standalone, ingestable | strict runtime `.lls`, simplified runtime report header without required `semantic_taxon` |
 
 ## Reader Surfaces In Use Today
 
@@ -37,7 +37,7 @@ Lattice query-time view surfaces:
 - `hero.lattice.list_views`
 - `hero.lattice.get_view`
 - current view kind: `entropic_capacity_comparison`
-- current selector form: required `wave_cursor`, optional `canonical_path`, optional `contract_hash`
+- current selector form: required `wave_cursor`, optional `canonical_path` narrowing, optional `contract_hash`
 - derived views are not persisted runtime report fragments in this pass
 - read tools query only the current lattice catalog; they do not implicitly
   rescan the runtime store on each request; refresh is explicit via
@@ -110,23 +110,28 @@ Collection encoding:
 
 Identity envelope:
 
-- `torch_compat` data/network writers can emit the common
-  `component_report_identity_t` envelope (`report_kind`, `tsi_type`,
-  `canonical_path`, `hashimyei`, `contract_hash`, `wave_hash`, `binding_id`,
-  `run_id`)
-- entropic-capacity helper payloads can still emit the common identity envelope
+- the documented runtime report header is now:
+  `schema`, `semantic_taxon`, `canonical_path`, `binding_id`, `wave_cursor`
+- source-selected reports may also carry `source_runtime_cursor` derived from
+  `SOURCE.RUNTIME.{SYMBOL,FROM,TO}`
+- the default reading is latest fact first; historical retrieval is explicit via
+  `wave_cursor`, while campaign/run lineage remains adjacent in runtime state
+  and manifests
+- analytics/evaluation reports use the simplified taxonomy
+  `source.data`, `embedding.data`, `embedding.evaluation`, `embedding.network`
+- `torch_compat` data/network writers emit only the simplified report header
+- entropic-capacity helper payloads can still emit the common simplified header
   when the caller provides it, but that helper is no longer part of the
   standard component runtime artifact set
-- transfer-matrix wrapper now emits canonical `canonical_path`
-- source projection embedded payloads use the source-runtime namespace rather than
-  the common top-level identity envelope
+- operational reports such as status and source runtime projection use the same
+  context header and may omit `semantic_taxon` in v1
 
 ## Code-vs-Doc Mismatches
 
-1. `src/config/man/latent_lineage_state.man` documents `#`, `;`, `//`, and
-   `/* ... */` as comments, but deployed runtime readers only guarantee full-line
-   `#` comments. The new runtime `.lls` standard narrows this further to `/* ... */`
-   only, so producer/reader migration is still required.
+1. `src/config/man/latent_lineage_state.man` documents the broader typed
+   latent-lineage syntax, including multiple comment forms, while strict runtime
+   `.lls` producers now emit comment-free documents and readers should not rely
+   on comments in persisted runtime report artifacts.
 
 2. Earlier Hero docs listed
    `tsi.wikimyei.representation.vicreg.status.v1` among accepted runtime `.lls`
@@ -146,8 +151,10 @@ Identity envelope:
 5. API-only network-design analytics still uses the older normalization path; it is
    intentionally outside the strict persisted runtime-artifact surface.
 
-6. Internal non-runtime data structures still carry some `canonical_base` field
-   names, even though the strict runtime payload surface now emits `canonical_path`.
+6. Non-runtime helper surfaces now use `canonical_path` consistently where they
+   describe a stable subject identity, matching the strict runtime payload
+   surface documented around `schema`, `semantic_taxon`, `canonical_path`,
+   `binding_id`, `wave_cursor`, optional `source_runtime_cursor`, and payload.
 
 ## Representative Payload Sources
 

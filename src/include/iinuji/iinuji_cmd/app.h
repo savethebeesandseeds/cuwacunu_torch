@@ -17,6 +17,7 @@
 #include "iinuji/iinuji_render.h"
 #include "iinuji/iinuji_types.h"
 #include "iinuji/iinuji_utils.h"
+#include "iitepi/config_space_t.h"
 #include "iinuji/primitives/editor.h"
 #include "iinuji/ncurses/iinuji_app_ncurses.h"
 #include "piaabo/dconfig.h"
@@ -35,7 +36,7 @@ namespace cuwacunu {
 namespace iinuji {
 namespace iinuji_cmd {
 
-inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
+inline int run(const char* global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   struct DlogTerminalOutputGuard {
     bool prev{true};
     ~DlogTerminalOutputGuard() {
@@ -44,8 +45,8 @@ inline int run(const char* config_folder = "/cuwacunu/src/config/") try {
   };
   DlogTerminalOutputGuard dlog_guard{cuwacunu::piaabo::dlog_terminal_output_enabled()};
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
-  log_info("[iinuji_cmd] boot config_folder=%s\n", config_folder);
-  cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+  log_info("[iinuji_cmd] boot global_config_path=%s\n", global_config_path);
+  cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
   cuwacunu::iitepi::config_space_t::update_config();
   const int logs_cap_cfg =
       std::max(1, cuwacunu::iitepi::config_space_t::get<int>(

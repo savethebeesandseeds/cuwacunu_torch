@@ -11,7 +11,7 @@ TEST_OUT := $(HERO_OUT)
 
 TEST_DEFAULT_LDLIBS :=
 MAIN_CAMPAIGN_LINK := $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
-RUNTIME_RESET_LINK := $(libcommon_a)
+RUNTIME_RESET_LINK := $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
 $(eval $(call TEST_ONEFILE, main_campaign, main_campaign.cpp, $(MAIN_CAMPAIGN_LINK)))
 $(eval $(call TEST_ONEFILE, runtime_reset, runtime_reset.cpp, $(RUNTIME_RESET_LINK)))
 $(TEST_OUT)/main_campaign: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
@@ -62,7 +62,7 @@ hashimyei_hero:
 	+$(MAKE) -C $(HERE_PATH)/hero all
 
 .PHONY: runtime_hero
-runtime_hero:
+runtime_hero: build-campaign build-reset-runtime
 	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools
 
 .PHONY: tools
@@ -112,7 +112,7 @@ test_% clear_% clear-test_%:
 	+$(MAKE) -C $(TESTS_PATH) $@
 
 .PHONY: all
-all: hero tools
+all: hero tools build-campaign build-reset-runtime
 	@$(LOG_SUCCESS)
 
 .PHONY: production_rules rules
@@ -126,15 +126,15 @@ targets:
 .PHONY: help
 help:
 	@echo "main targets:"
-	@echo "  all hero campaign reset-runtime hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools tests clean"
+	@echo "  all hero build-campaign campaign build-reset-runtime reset-runtime hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools tests clean"
 	@echo "  test groups: parser dsl types exchange piaabo data iinuji ... vicreg"
 	@echo "  aliases: main_<target> (local), src_<target> (bridge to src/Makefile)"
 	@echo "  list targets: make -C $(HERE_PATH) targets"
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/main_campaign
-	@rm -f $(TEST_OUT)/runtime_reset
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/main_campaign
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/runtime_reset
 	+$(MAKE) -C $(HERE_PATH)/hero clean
 	+$(MAKE) -C $(HERE_PATH)/tools clean
 	+$(MAKE) -C $(TESTS_PATH) clean

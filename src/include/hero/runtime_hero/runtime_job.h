@@ -28,7 +28,7 @@ namespace cuwacunu {
 namespace hero {
 namespace runtime {
 
-inline constexpr std::string_view kRuntimeJobSchemaV2 = "hero.runtime.job.v2";
+inline constexpr std::string_view kRuntimeJobSchemaV3 = "hero.runtime.job.v3";
 inline constexpr std::string_view kRuntimeJobManifestFilename = "job.lls";
 inline constexpr std::string_view kRuntimeJobCampaignDslFilename = "campaign.dsl";
 inline constexpr std::string_view kRuntimeJobContractDslFilename =
@@ -41,7 +41,7 @@ inline constexpr std::string_view kRuntimeCampaignJobsDirname = "jobs";
 inline constexpr std::string_view kRuntimeLegacyJobsDirname = ".jobs";
 
 struct runtime_job_record_t {
-  std::string schema{std::string(kRuntimeJobSchemaV2)};
+  std::string schema{std::string(kRuntimeJobSchemaV3)};
   std::string job_cursor{};
   std::string job_kind{"campaign_run"};
   std::string boot_id{};
@@ -49,7 +49,7 @@ struct runtime_job_record_t {
   std::string state_detail{};
   std::string worker_binary{};
   std::string worker_command{};
-  std::string config_folder{};
+  std::string global_config_path{};
   std::string source_campaign_dsl_path{};
   std::string source_contract_dsl_path{};
   std::string source_wave_dsl_path{};
@@ -371,7 +371,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   document.entries.push_back(
       make_runtime_lls_string_entry("worker_command", record.worker_command));
   document.entries.push_back(
-      make_runtime_lls_string_entry("config_folder", record.config_folder));
+      make_runtime_lls_string_entry("global_config_path",
+                                    record.global_config_path));
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_campaign_dsl_path", record.source_campaign_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
@@ -454,7 +455,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
 
   runtime_job_record_t parsed{};
   parsed.schema = kv["schema"];
-  if (parsed.schema != kRuntimeJobSchemaV2) {
+  if (parsed.schema != kRuntimeJobSchemaV3) {
     if (error) *error = "unexpected runtime job schema: " + parsed.schema;
     return false;
   }
@@ -465,7 +466,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   parsed.state_detail = kv["state_detail"];
   parsed.worker_binary = kv["worker_binary"];
   parsed.worker_command = kv["worker_command"];
-  parsed.config_folder = kv["config_folder"];
+  parsed.global_config_path = kv["global_config_path"];
   parsed.source_campaign_dsl_path = kv["source_campaign_dsl_path"];
   parsed.source_contract_dsl_path = kv["source_contract_dsl_path"];
   parsed.source_wave_dsl_path = kv["source_wave_dsl_path"];
@@ -477,6 +478,10 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   parsed.stderr_path = kv["stderr_path"];
   if (parsed.job_cursor.empty()) {
     if (error) *error = "runtime job record missing job_cursor";
+    return false;
+  }
+  if (parsed.global_config_path.empty()) {
+    if (error) *error = "runtime job record missing global_config_path";
     return false;
   }
   if (!parse_u64(kv["started_at_ms"], &parsed.started_at_ms)) {
@@ -613,6 +618,15 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   return parse_runtime_job_record(document, out, error);
 }
 
+[[nodiscard]] inline bool is_legacy_runtime_job_schema_error(
+    std::string_view error) {
+  constexpr std::string_view kPrefix = "unexpected runtime job schema: ";
+  if (error.rfind(kPrefix, 0) != 0) return false;
+  const std::string_view schema = error.substr(kPrefix.size());
+  return !schema.empty() && schema != kRuntimeJobSchemaV3 &&
+         schema.rfind("hero.runtime.job.v", 0) == 0;
+}
+
 [[nodiscard]] inline bool scan_runtime_job_records(
     const std::filesystem::path& campaigns_root,
     std::vector<runtime_job_record_t>* out,
@@ -659,7 +673,14 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
       if (!read_runtime_job_record(campaigns_root,
                                    job_it->path().filename().string(),
                                    &record, &record_error)) {
-        if (error) *error = record_error;
+        if (is_legacy_runtime_job_schema_error(record_error)) continue;
+        if (error) {
+          *error = "failed reading runtime job manifest " +
+                   runtime_job_manifest_path(campaigns_root,
+                                             job_it->path().filename().string())
+                       .string() +
+                   ": " + record_error;
+        }
         return false;
       }
       out->push_back(std::move(record));

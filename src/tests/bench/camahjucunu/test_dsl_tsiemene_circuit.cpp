@@ -9,8 +9,8 @@
 
 int main() {
   try {
-    const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    const char* global_config_path = "/cuwacunu/src/config/.config";
+    cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
     cuwacunu::iitepi::config_space_t::update_config();
     const std::string contract_hash =
         cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
@@ -110,8 +110,7 @@ int main() {
     }
 
     {
-      const std::string active_selector_instruction =
-          "active_circuit = circuit_epoch\n"
+      const std::string multi_circuit_instruction =
           "circuit_batch = {\n"
           "  w_source = tsi.source.dataloader\n"
           "  w_rep = tsi.wikimyei.representation.vicreg.0x0000\n"
@@ -126,44 +125,24 @@ int main() {
           "  w_source@response:cargo -> w_rep@impulse\n"
           "  w_rep@loss:tensor -> w_log@info\n"
           "}\n";
-      auto active_decoded = circuits.decode(active_selector_instruction);
-      std::string active_error;
-      const bool active_ok = cuwacunu::camahjucunu::validate_circuit_instruction(
-          active_decoded, &active_error);
-      if (!active_ok) {
-        std::cerr << "[FAIL] expected active selector to validate: " << active_error
-                  << "\n";
+      auto multi_circuit_decoded = circuits.decode(multi_circuit_instruction);
+      std::string multi_circuit_error;
+      const bool multi_circuit_ok =
+          cuwacunu::camahjucunu::validate_circuit_instruction(
+              multi_circuit_decoded, &multi_circuit_error);
+      if (!multi_circuit_ok) {
+        std::cerr << "[FAIL] expected multi-circuit instruction to validate: "
+                  << multi_circuit_error << "\n";
         return 1;
       }
-      if (active_decoded.active_circuit_name != "circuit_epoch") {
-        std::cerr << "[FAIL] expected active selector to decode as circuit_epoch\n";
-        return 1;
-      }
-
-      const std::string invalid_active_selector_instruction =
-          "active_circuit = missing_circuit\n"
-          "circuit_batch = {\n"
-          "  w_source = tsi.source.dataloader\n"
-          "  w_rep = tsi.wikimyei.representation.vicreg.0x0000\n"
-          "  w_log = tsi.probe.log(mode=batch)\n"
-          "  w_source@response:cargo -> w_rep@impulse\n"
-          "  w_rep@loss:tensor -> w_log@info\n"
-          "}\n";
-      auto invalid_active_decoded =
-          circuits.decode(invalid_active_selector_instruction);
-      std::string invalid_active_error;
-      const bool invalid_active_ok = cuwacunu::camahjucunu::validate_circuit_instruction(
-          invalid_active_decoded, &invalid_active_error);
-      if (invalid_active_ok) {
-        std::cerr
-            << "[FAIL] expected unknown active_circuit selector to be rejected\n";
+      if (multi_circuit_decoded.circuits.size() != 2) {
+        std::cerr << "[FAIL] expected multi-circuit instruction to decode both circuits\n";
         return 1;
       }
     }
 
     {
       const std::string multiline_comments_instruction =
-          "active_circuit = circuit_comment\n"
           "# instruction-level comment\n"
           "circuit_comment = {\n"
           "  /* block comment before declarations */\n"
@@ -185,11 +164,6 @@ int main() {
       if (!multiline_ok) {
         std::cerr << "[FAIL] expected multiline/comment circuit to validate: "
                   << multiline_error << "\n";
-        return 1;
-      }
-      if (multiline_decoded.active_circuit_name != "circuit_comment") {
-        std::cerr
-            << "[FAIL] expected multiline/comment selector to decode as circuit_comment\n";
         return 1;
       }
       if (multiline_decoded.circuits.empty() ||

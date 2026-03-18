@@ -4,18 +4,15 @@
 #
 # What this script installs/configures (inside a Debian-based environment):
 # - Base toolchain and system deps via apt:
-#   ca-certificates, build-essential, libssl-dev, ncurses dev libs, gnupg2,
+#   ca-certificates, build-essential, libssl-dev, ncurses dev libs, gnupg,
 #   valgrind, gdb, ccache, mold, locales, curl, libcurl4-openssl-dev
 # - curl websocket capability check (ws/wss), with optional source build fallback
-# - NVIDIA CUDA apt repository + CUDA Toolkit (default series: 12-1)
-# - cuDNN runtime/dev packages from a local NVIDIA .deb repo package
+# - NVIDIA CUDA apt repository + CUDA Toolkit (default series: 12-4)
+# - cuDNN 9 runtime packages from the NVIDIA network repository
 # - Project build targets from /cuwacunu/src (default target: "modules")
 #
 # Required staged artifacts (for reproducibility):
-# - Extract libtorch under: /cuwacunu/external/libtorch
-# - Place cuDNN local repo package under: /cuwacunu/external/cudnn/
-#   default file:
-#   cudnn-local-repo-debian11-8.9.7.29_1.0-1_amd64.deb
+# - Extract libtorch under: /cuwacunu/.external/libtorch-upd
 #
 # Typical usage:
 # - ./setup.sh
@@ -32,22 +29,27 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-EXTERNAL_DIR="${EXTERNAL_DIR:-$REPO_ROOT/external}"
+DEFAULT_EXTERNAL_DIR="$REPO_ROOT/.external"
+if [[ ! -d "${DEFAULT_EXTERNAL_DIR}" && -d "$REPO_ROOT/external" ]]; then
+  DEFAULT_EXTERNAL_DIR="$REPO_ROOT/external"
+fi
+EXTERNAL_DIR="${EXTERNAL_DIR:-$DEFAULT_EXTERNAL_DIR}"
 DATA_DIR="${DATA_DIR:-$REPO_ROOT/data}"
 SRC_DIR="${SRC_DIR:-$REPO_ROOT/src}"
+LIBTORCH_DIRNAME="${LIBTORCH_DIRNAME:-libtorch-upd}"
 
-CUDA_VERSION="${CUDA_VERSION:-12.1}"
-CUDA_APT_SERIES="${CUDA_APT_SERIES:-12-1}"
-CUDA_REPO_KEY_URL="${CUDA_REPO_KEY_URL:-https://developer.download.nvidia.com/compute/cuda/repos/debian11/x86_64/3bf863cc.pub}"
-CUDA_REPO_URL="${CUDA_REPO_URL:-https://developer.download.nvidia.com/compute/cuda/repos/debian11/x86_64/}"
-
-CUDNN_DEB_FILE="${CUDNN_DEB_FILE:-cudnn-local-repo-debian11-8.9.7.29_1.0-1_amd64.deb}"
-CUDNN_LOCAL_REPO_DIR="${CUDNN_LOCAL_REPO_DIR:-cudnn-local-repo-debian11-8.9.7.29}"
-CUDNN_KEYRING_FILE="${CUDNN_KEYRING_FILE:-cudnn-local-9EAC560A-keyring.gpg}"
+CUDA_VERSION="${SETUP_CUDA_VERSION:-12.4}"
+CUDA_APT_SERIES="${SETUP_CUDA_APT_SERIES:-12-4}"
+CUDA_REPO_DISTRO="${SETUP_CUDA_REPO_DISTRO:-debian12}"
+CUDA_REPO_ARCH="${SETUP_CUDA_REPO_ARCH:-x86_64}"
+CUDA_KEYRING_DEB="${SETUP_CUDA_KEYRING_DEB:-cuda-keyring_1.1-1_all.deb}"
+CUDA_KEYRING_URL="${CUDA_KEYRING_URL:-https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO_DISTRO}/${CUDA_REPO_ARCH}/${CUDA_KEYRING_DEB}}"
+CUDNN_APT_PACKAGE="${SETUP_CUDNN_APT_PACKAGE:-cudnn9-cuda-12}"
 
 CURL_SOURCE_VERSION="${CURL_SOURCE_VERSION:-8.9.1}"
 CURL_SOURCE_ARCHIVE="curl-${CURL_SOURCE_VERSION}.tar.gz"
 MAKE_TARGETS="${MAKE_TARGETS:-modules}"
+MAKE_JOBS="${MAKE_JOBS:-12}"
 
 VERBOSE=0
 DRY_RUN=0
@@ -93,7 +95,7 @@ Options:
   -n, --dry-run           Print steps without executing commands.
       --with-curl-source  Build curl from source if distro curl lacks ws/wss.
       --skip-cuda         Skip CUDA repository and toolkit installation.
-      --skip-cudnn        Skip cuDNN local package installation.
+      --skip-cudnn        Skip cuDNN package installation.
       --skip-build        Skip project compilation.
   -h, --help              Show this help message.
 
@@ -101,11 +103,15 @@ Environment overrides:
   EXTERNAL_DIR            Default: ${EXTERNAL_DIR}
   DATA_DIR                Default: ${DATA_DIR}
   SRC_DIR                 Default: ${SRC_DIR}
-  CUDA_VERSION            Default: ${CUDA_VERSION}
-  CUDA_APT_SERIES         Default: ${CUDA_APT_SERIES}
+  LIBTORCH_DIRNAME        Default: ${LIBTORCH_DIRNAME}
+  SETUP_CUDA_VERSION      Default: ${CUDA_VERSION}
+  SETUP_CUDA_APT_SERIES   Default: ${CUDA_APT_SERIES}
+  SETUP_CUDA_REPO_DISTRO  Default: ${CUDA_REPO_DISTRO}
+  SETUP_CUDA_REPO_ARCH    Default: ${CUDA_REPO_ARCH}
   CURL_SOURCE_VERSION     Default: ${CURL_SOURCE_VERSION}
-  CUDNN_DEB_FILE          Default: ${CUDNN_DEB_FILE}
+  SETUP_CUDNN_APT_PACKAGE Default: ${CUDNN_APT_PACKAGE}
   MAKE_TARGETS            Default: "${MAKE_TARGETS}"
+  MAKE_JOBS               Default: ${MAKE_JOBS}
 
 Examples:
   ${SCRIPT_NAME}
@@ -258,8 +264,35 @@ require_root_or_sudo() {
 
 ensure_directories() {
   section "Directory Preparation"
-  run_cmd "Creating ${EXTERNAL_DIR}, ${EXTERNAL_DIR}/cudnn, and ${DATA_DIR}" \
-    mkdir -p "${EXTERNAL_DIR}" "${EXTERNAL_DIR}/cudnn" "${DATA_DIR}"
+  run_cmd "Creating ${EXTERNAL_DIR} and ${DATA_DIR}" \
+    mkdir -p "${EXTERNAL_DIR}" "${DATA_DIR}"
+}
+
+validate_libtorch_bundle() {
+  section "LibTorch Bundle"
+
+  local libtorch_dir="${EXTERNAL_DIR}/${LIBTORCH_DIRNAME}"
+
+  if (( DRY_RUN )); then
+    info "Dry run: would validate staged LibTorch bundle at ${libtorch_dir}"
+    return 0
+  fi
+
+  if [[ ! -d "${libtorch_dir}" ]]; then
+    fail "Missing LibTorch directory: ${libtorch_dir}"
+    fail "Extract the LibTorch bundle into ${libtorch_dir} first."
+    exit 1
+  fi
+
+  if [[ ! -f "${libtorch_dir}/include/torch/torch.h" ]]; then
+    fail "Expected LibTorch headers not found in ${libtorch_dir}"
+    exit 1
+  fi
+
+  success "Found staged LibTorch bundle: ${libtorch_dir}"
+  if [[ -f "${libtorch_dir}/build-version" ]]; then
+    run_cmd "Reporting LibTorch bundle version" cat "${libtorch_dir}/build-version"
+  fi
 }
 
 install_base_requirements() {
@@ -269,7 +302,7 @@ install_base_requirements() {
   run_cmd "Installing base build/debug dependencies" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
-    gnupg2 valgrind gdb ccache mold locales curl libcurl4-openssl-dev bash-completion
+    gnupg valgrind gdb ccache mold locales curl libcurl4-openssl-dev bash-completion
   run_cmd "Generating locale en_US.UTF-8" "${SUDO[@]}" locale-gen en_US.UTF-8
   run_cmd "Setting LANG=en_US.UTF-8" "${SUDO[@]}" update-locale LANG=en_US.UTF-8
 }
@@ -359,20 +392,14 @@ install_curl_from_source() {
 configure_nvidia_repo() {
   section "NVIDIA CUDA Apt Repository"
 
-  local key_tmp
-  local list_tmp
-  key_tmp="$(mktemp)"
-  list_tmp="$(mktemp)"
+  local keyring_deb
+  keyring_deb="$(mktemp --suffix=.deb)"
 
-  run_cmd "Downloading NVIDIA CUDA apt key" curl -fsSL -o "${key_tmp}" "${CUDA_REPO_KEY_URL}"
-  run_cmd "Installing NVIDIA keyring" "${SUDO[@]}" gpg --dearmor --yes \
-    --output /usr/share/keyrings/nvidia-cuda-archive-keyring.gpg "${key_tmp}"
-
-  printf 'deb [signed-by=/usr/share/keyrings/nvidia-cuda-archive-keyring.gpg] %s /\n' "${CUDA_REPO_URL}" >"${list_tmp}"
-  run_cmd "Writing /etc/apt/sources.list.d/cuda.list" "${SUDO[@]}" install -m 644 "${list_tmp}" /etc/apt/sources.list.d/cuda.list
+  run_cmd "Downloading NVIDIA cuda-keyring package" curl -fsSL -o "${keyring_deb}" "${CUDA_KEYRING_URL}"
+  run_cmd "Installing NVIDIA cuda-keyring package" "${SUDO[@]}" dpkg -i "${keyring_deb}"
   run_cmd "Refreshing apt metadata after adding NVIDIA repo" "${SUDO[@]}" apt-get update
 
-  rm -f "${key_tmp}" "${list_tmp}"
+  rm -f "${keyring_deb}"
 }
 
 install_cuda() {
@@ -402,43 +429,21 @@ install_cuda() {
 install_cudnn() {
   section "cuDNN Installation"
 
-  local cudnn_deb_path="${EXTERNAL_DIR}/cudnn/${CUDNN_DEB_FILE}"
-  local cudnn_key_src="/var/${CUDNN_LOCAL_REPO_DIR}/${CUDNN_KEYRING_FILE}"
-
   if (( DRY_RUN )); then
-    run_cmd "Installing local cuDNN repository package" "${SUDO[@]}" dpkg -i "${cudnn_deb_path}"
-    run_cmd "Installing cuDNN apt keyring" "${SUDO[@]}" install -m 644 "${cudnn_key_src}" "/usr/share/keyrings/${CUDNN_KEYRING_FILE}"
-    run_cmd "Refreshing apt metadata for cuDNN repo" "${SUDO[@]}" apt-get update
-    run_cmd "Installing libcudnn8" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libcudnn8
-    run_cmd "Installing libcudnn8-dev" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libcudnn8-dev
-    append_line_once 'export CUDNN_VERSION=8' "${HOME}/.bashrc"
+    run_cmd "Installing ${CUDNN_APT_PACKAGE}" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
+      apt-get install -y --no-install-recommends "${CUDNN_APT_PACKAGE}"
+    append_line_once 'export CUDNN_VERSION=9' "${HOME}/.bashrc"
     append_line_once 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' "${HOME}/.bashrc"
-    info "Dry run: skipping local cuDNN file existence checks."
+    info "Dry run: skipping cuDNN package validation."
     return 0
   fi
 
-  if [[ ! -f "${cudnn_deb_path}" ]]; then
-    fail "Missing ${cudnn_deb_path}"
-    fail "Download the cuDNN Debian package and place it in ${EXTERNAL_DIR}/cudnn first."
-    exit 1
-  fi
+  run_cmd "Installing ${CUDNN_APT_PACKAGE}" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --no-install-recommends "${CUDNN_APT_PACKAGE}"
 
-  run_cmd "Installing local cuDNN repository package" "${SUDO[@]}" dpkg -i "${cudnn_deb_path}"
-
-  if [[ ! -f "${cudnn_key_src}" ]]; then
-    fail "Expected cuDNN keyring not found: ${cudnn_key_src}"
-    fail "Check CUDNN_LOCAL_REPO_DIR / CUDNN_KEYRING_FILE values for your package version."
-    exit 1
-  fi
-
-  run_cmd "Installing cuDNN apt keyring" "${SUDO[@]}" install -m 644 "${cudnn_key_src}" "/usr/share/keyrings/${CUDNN_KEYRING_FILE}"
-  run_cmd "Refreshing apt metadata for cuDNN repo" "${SUDO[@]}" apt-get update
-  run_cmd "Installing libcudnn8" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libcudnn8
-  run_cmd "Installing libcudnn8-dev" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libcudnn8-dev
-
-  append_line_once 'export CUDNN_VERSION=8' "${HOME}/.bashrc"
+  append_line_once 'export CUDNN_VERSION=9' "${HOME}/.bashrc"
   append_line_once 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' "${HOME}/.bashrc"
-  run_cmd "Validating cuDNN packages in dpkg" dpkg -l libcudnn8 libcudnn8-dev
+  run_cmd "Validating cuDNN package in dpkg" dpkg -l "${CUDNN_APT_PACKAGE}"
 }
 
 build_project() {
@@ -451,7 +456,7 @@ build_project() {
 
   pushd "${SRC_DIR}" >/dev/null
   for target in ${MAKE_TARGETS}; do
-    run_cmd "Running make ${target}" make "${target}"
+    run_cmd "Running make -j${MAKE_JOBS} ${target}" make -j"${MAKE_JOBS}" "${target}"
   done
   popd >/dev/null
 }
@@ -477,6 +482,7 @@ main() {
 
   require_root_or_sudo
   ensure_directories
+  validate_libtorch_bundle
   install_base_requirements
   verify_curl
 
@@ -505,6 +511,7 @@ main() {
   success "Provisioning flow finished."
   info "Open a new shell or run: source ~/.bashrc"
   info "Useful check: nvidia-smi"
+  info "Useful check: /cuwacunu/.build/tests/test_cuda_probe"
   if (( VERBOSE == 0 )); then
     info "Execution log: ${LOG_FILE}"
   fi

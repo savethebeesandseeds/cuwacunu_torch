@@ -13,21 +13,21 @@ REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 TEST_DEFAULT_LDLIBS :=
 
 # 3) Tests (build + run aliases)
-# (none yet — placeholder module)
+$(eval $(call TEST_ONEFILE, test_cuda_probe, test_cuda_probe.cpp, $(LDLIBS_torch)))
 
 # 4) Target-specific includes/link flags
-# (none)
+$(TEST_OUT)/test_cuda_probe: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 
 # 5) Aggregate: all
 .PHONY: all
-all:
-	@echo "$(COLOR_GRAY)[INFO]$(COLOR_RESET) No torch_compat tests defined in $(REL_MODULE)."
+all: $(TEST_OUT)/test_cuda_probe
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
-# (not used)
+.PHONY: run
+run: run-test_cuda_probe
 
 # 7) Clean
 .PHONY: clean
 clean:
-	@true
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_cuda_probe

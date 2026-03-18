@@ -1,4 +1,5 @@
 <instruction>                ::= <contract_begin> <line_end>
+                                 {<contract_variable_decl>}
                                  <circuit_file_decl>
                                  {<acknowledge_decl>}
                                  <contract_end> <line_end> ;
@@ -11,6 +12,11 @@
                                  [<whitespace>] <path_value>
                                  [<whitespace>] ";" <line_end> ;
 
+<contract_variable_decl>     ::= [<whitespace>] <contract_variable_name>
+                                 [<whitespace>] "="
+                                 [<whitespace>] <path_value>
+                                 [<whitespace>] ";" <line_end> ;
+
 <acknowledge_decl>           ::= [<whitespace>] "AKNOWLEDGE"
                                  [<whitespace>] ":"
                                  [<whitespace>] <alias_value>
@@ -19,6 +25,7 @@
                                  [<whitespace>] ";" <line_end> ;
 
 <alias_value>                ::= <id_char> {<id_char>} ;
+<contract_variable_name>     ::= "_" "_" <id_char> {<id_char>} ;
 <family_value>               ::= <id_char> {<id_char>} ;
 <path_value>                 ::= <family_value> | <quoted_text> ;
 <quoted_text>                ::= "\"" {<quoted_char>} "\"" ;

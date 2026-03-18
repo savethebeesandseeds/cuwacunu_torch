@@ -21,8 +21,8 @@ namespace cuwacunu {
 namespace hero {
 namespace runtime {
 
-inline constexpr std::string_view kRuntimeCampaignSchemaV1 =
-    "hero.runtime.campaign.v1";
+inline constexpr std::string_view kRuntimeCampaignSchemaV2 =
+    "hero.runtime.campaign.v2";
 inline constexpr std::string_view kRuntimeCampaignManifestFilename =
     "campaign.lls";
 inline constexpr std::string_view kRuntimeCampaignDslFilename = "campaign.dsl";
@@ -30,12 +30,12 @@ inline constexpr std::string_view kRuntimeCampaignStdoutFilename = "stdout.log";
 inline constexpr std::string_view kRuntimeCampaignStderrFilename = "stderr.log";
 
 struct runtime_campaign_record_t {
-  std::string schema{std::string(kRuntimeCampaignSchemaV1)};
+  std::string schema{std::string(kRuntimeCampaignSchemaV2)};
   std::string campaign_cursor{};
   std::string boot_id{};
   std::string state{"launching"};
   std::string state_detail{};
-  std::string config_folder{};
+  std::string global_config_path{};
   std::string source_campaign_dsl_path{};
   std::string campaign_dsl_path{};
   bool reset_runtime_state{false};
@@ -131,7 +131,8 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   document.entries.push_back(
       make_runtime_lls_string_entry("state_detail", record.state_detail));
   document.entries.push_back(
-      make_runtime_lls_string_entry("config_folder", record.config_folder));
+      make_runtime_lls_string_entry("global_config_path",
+                                    record.global_config_path));
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_campaign_dsl_path", record.source_campaign_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
@@ -191,11 +192,15 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
 
   runtime_campaign_record_t parsed{};
   parsed.schema = kv["schema"];
+  if (parsed.schema != kRuntimeCampaignSchemaV2) {
+    if (error) *error = "unexpected runtime campaign schema: " + parsed.schema;
+    return false;
+  }
   parsed.campaign_cursor = kv["campaign_cursor"];
   parsed.boot_id = kv["boot_id"];
   parsed.state = kv["state"];
   parsed.state_detail = kv["state_detail"];
-  parsed.config_folder = kv["config_folder"];
+  parsed.global_config_path = kv["global_config_path"];
   parsed.source_campaign_dsl_path = kv["source_campaign_dsl_path"];
   parsed.campaign_dsl_path = kv["campaign_dsl_path"];
   (void)parse_bool(kv["reset_runtime_state"], &parsed.reset_runtime_state);
@@ -225,6 +230,10 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   }
   if (parsed.state.empty()) {
     if (error) *error = "runtime campaign record missing state";
+    return false;
+  }
+  if (parsed.global_config_path.empty()) {
+    if (error) *error = "runtime campaign record missing global_config_path";
     return false;
   }
 
@@ -277,6 +286,15 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   return parse_runtime_campaign_record_document(document, out, error);
 }
 
+[[nodiscard]] inline bool is_legacy_runtime_campaign_schema_error(
+    std::string_view error) {
+  constexpr std::string_view kPrefix = "unexpected runtime campaign schema: ";
+  if (error.rfind(kPrefix, 0) != 0) return false;
+  const std::string_view schema = error.substr(kPrefix.size());
+  return !schema.empty() && schema != kRuntimeCampaignSchemaV2 &&
+         schema.rfind("hero.runtime.campaign.v", 0) == 0;
+}
+
 [[nodiscard]] inline bool scan_runtime_campaign_records(
     const std::filesystem::path& campaigns_root,
     std::vector<runtime_campaign_record_t>* out,
@@ -306,7 +324,15 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
     if (!read_runtime_campaign_record(campaigns_root,
                                       it.path().filename().string(),
                                       &record, &record_error)) {
-      continue;
+      if (is_legacy_runtime_campaign_schema_error(record_error)) continue;
+      if (error) {
+        *error = "failed reading runtime campaign manifest " +
+                 runtime_campaign_manifest_path(campaigns_root,
+                                                it.path().filename().string())
+                     .string() +
+                 ": " + record_error;
+      }
+      return false;
     }
     out->push_back(std::move(record));
   }

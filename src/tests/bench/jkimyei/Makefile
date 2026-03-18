@@ -25,4 +25,4 @@ run: run-test_jk_setup run-test_wave_contract_binding_runtime_snapshot
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot

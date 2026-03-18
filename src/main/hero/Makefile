@@ -57,7 +57,7 @@ install-runtime-tools: $(TEST_OUT)/hero_runtime_mcp
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/hero_config_mcp \
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/hero_config_mcp \
 	  $(TEST_OUT)/hero_hashimyei_mcp \
 	  $(TEST_OUT)/hero_lattice_mcp \
 	  $(TEST_OUT)/hero_runtime_mcp

@@ -30,6 +30,8 @@
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/data/observation_sample.h"
 #include "piaabo/torch_compat/data_analytics.h"
+#include "source/dataloader/dataloader_component.h"
+#include "source/evaluation/source_data_analytics.h"
 
 // ------------------------------------------------------------
 // RUNTIME WARNINGS (non-blocking / informational) .h
@@ -68,8 +70,10 @@ class TsiSourceDataloader final : public TsiSource {
                       std::string contract_hash = {})
       : id_(id),
         instrument_(std::move(instrument)),
-        type_name_("tsi.source.dataloader"),
-        instance_name_(type_name_ + "." + instrument_),
+        type_name_(std::string(cuwacunu::source::dataloader::kCanonicalType)),
+        instance_name_(
+            cuwacunu::source::dataloader::make_display_instance_name(
+                instrument_)),
         contract_hash_(std::move(contract_hash)),
         dataloader_workers_(dataloader_workers),
         force_rebuild_cache_(force_rebuild_cache),
@@ -897,36 +901,6 @@ class TsiSourceDataloader final : public TsiSource {
     return oss.str();
   }
 
-  [[nodiscard]] component_report_identity_t
-  build_data_analytics_report_identity_(std::string_view run_id) const {
-    auto identity = make_component_report_identity(
-        "data_analytics",
-        instance_name_,
-        type_name_,
-        {},
-        contract_hash_,
-        {},
-        {},
-        run_id);
-    identity.wave_cursor_resolution = "run";
-    return identity;
-  }
-
-  [[nodiscard]] component_report_identity_t
-  build_data_symbolic_analytics_report_identity_(std::string_view run_id) const {
-    auto identity = make_component_report_identity(
-        "data_analytics_symbolic",
-        instance_name_,
-        type_name_,
-        {},
-        contract_hash_,
-        {},
-        {},
-        run_id);
-    identity.wave_cursor_resolution = "run";
-    return identity;
-  }
-
   void ensure_data_analytics_report_(const Wave& wave,
                                      const CommandSpec& cmd,
                                      const RuntimeContext& ctx,
@@ -966,19 +940,38 @@ class TsiSourceDataloader final : public TsiSource {
     const auto report = acc.summarize();
     const auto symbolic_report = symbolic_acc.summarize();
 
-    const auto output_file =
-        cuwacunu::piaabo::torch_compat::source_data_analytics_latest_file_path(
-            contract_hash_, instance_name_);
+    const auto artifact_paths =
+        cuwacunu::source::evaluation::
+            latest_source_data_analytics_artifact_paths(
+                contract_hash_,
+                type_name_,
+                ctx.source_runtime_cursor);
+    const auto& output_file = artifact_paths.numeric_file;
     if (output_file.empty()) return;
-    const auto symbolic_output_file =
-        cuwacunu::piaabo::torch_compat::
-            source_data_analytics_symbolic_latest_file_path(
-                contract_hash_, instance_name_);
+    const auto& symbolic_output_file = artifact_paths.symbolic_file;
     if (symbolic_output_file.empty()) return;
 
-    const auto report_identity = build_data_analytics_report_identity_(ctx.run_id);
+    const auto report_identity =
+        cuwacunu::source::evaluation::make_source_data_analytics_report_identity(
+            ctx.binding_id, ctx.source_runtime_cursor);
     const auto symbolic_report_identity =
-        build_data_symbolic_analytics_report_identity_(ctx.run_id);
+        cuwacunu::source::evaluation::
+            make_source_data_symbolic_analytics_report_identity(
+                ctx.binding_id, ctx.source_runtime_cursor);
+    auto report_identity_with_cursor = report_identity;
+    auto symbolic_report_identity_with_cursor = symbolic_report_identity;
+    std::uint64_t packed_wave_cursor = 0;
+    if (cuwacunu::piaabo::latent_lineage_state::pack_runtime_wave_cursor(
+            wave.cursor.i,
+            wave.cursor.episode,
+            wave.cursor.batch,
+            &packed_wave_cursor)) {
+      report_identity_with_cursor.has_wave_cursor = true;
+      report_identity_with_cursor.wave_cursor = packed_wave_cursor;
+      symbolic_report_identity_with_cursor = report_identity_with_cursor;
+      symbolic_report_identity_with_cursor.semantic_taxon =
+          symbolic_report_identity.semantic_taxon;
+    }
     std::string write_error;
     if (!cuwacunu::piaabo::torch_compat::write_data_analytics_file(
             report,
@@ -986,7 +979,7 @@ class TsiSourceDataloader final : public TsiSource {
             output_file,
             instance_name_,
             &write_error,
-            report_identity)) {
+            report_identity_with_cursor)) {
       emit_meta_(
           wave,
           out,
@@ -999,7 +992,7 @@ class TsiSourceDataloader final : public TsiSource {
             symbolic_output_file,
             instance_name_,
             &write_error,
-            symbolic_report_identity)) {
+            symbolic_report_identity_with_cursor)) {
       emit_meta_(
           wave,
           out,

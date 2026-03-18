@@ -33,5 +33,5 @@ run: \
 # 7) Clean
 .PHONY: clean
 clean:
-	@rm -f \
+	$(Q)$(CLEAN_RM_CMD) \
 	  $(TEST_OUT)/test_tsi_wikimyei_jkimyei_facet

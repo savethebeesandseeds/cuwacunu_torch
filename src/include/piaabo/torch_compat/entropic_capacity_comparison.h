@@ -24,7 +24,6 @@ struct entropic_capacity_comparison_report_t {
   double capacity_ratio{0.0};
 
   std::string capacity_regime{"matched"};
-  std::string run_id{};
 };
 
 [[nodiscard]] entropic_capacity_comparison_report_t

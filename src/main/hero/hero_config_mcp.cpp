@@ -15,8 +15,6 @@
 
 namespace {
 
-constexpr const char* kDefaultHeroConfigPath =
-    "/cuwacunu/src/config/instructions/default.hero.config.dsl";
 constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 
 __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
@@ -122,10 +120,10 @@ void print_cli_help(const char* argv0) {
     const std::filesystem::path& global_cfg) {
   const std::optional<std::string> configured = read_ini_value(
       global_cfg.string(), "REAL_HERO", "config_hero_dsl_filename");
-  if (!configured.has_value()) return kDefaultHeroConfigPath;
+  if (!configured.has_value()) return {};
   const std::string resolved = resolve_path_from_folder(
       global_cfg.parent_path().string(), *configured);
-  if (resolved.empty()) return kDefaultHeroConfigPath;
+  if (resolved.empty()) return {};
   return resolved;
 }
 
@@ -209,6 +207,11 @@ int main(int argc, char** argv) {
 
   if (!config_overridden) {
     config_path = default_config_path_from_real_hero(global_config_path);
+  }
+  if (config_path.empty()) {
+    std::cerr << "missing [REAL_HERO].config_hero_dsl_filename in "
+              << global_config_path.string() << "\n";
+    return 2;
   }
 
   if (list_tools_json) {

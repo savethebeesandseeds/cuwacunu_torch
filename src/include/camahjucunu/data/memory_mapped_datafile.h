@@ -567,9 +567,6 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
                                                   "sanitize_csv_into_binary_file");
   normalization_policy = policy.canonical_name();
 
-  log_dbg("[sanitize_csv_into_binary_file]\t %sPreparing binary%s from CSV: %s\n",
-          ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, csv_filename.c_str());
-
   if (buffer_size < 1) {
     log_fatal("[sanitize_csv_into_binary_file] buffer_size must be >= 1 for file: %s\n",
               csv_filename.c_str());
@@ -598,6 +595,8 @@ std::string sanitize_csv_into_binary_file(const std::string& csv_filename,
   bool need_write_raw = force_rebuild_cache || !newer_than(raw_bin, csv_filename);
 
   if (need_write_raw) {
+    log_dbg("[sanitize_csv_into_binary_file]\t %sPreparing binary%s from CSV: %s\n",
+            ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, csv_filename.c_str());
     const long double regular_delta = detail::infer_regular_delta_from_csv<RawT>(
         csv_filename, delimiter, csv_step_policy);
     log_dbg("[sanitize_csv_into_binary_file] inferred regular_delta=%.15Lf "

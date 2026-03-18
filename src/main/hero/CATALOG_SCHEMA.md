@@ -8,7 +8,7 @@ Hashimyei Hero and Lattice Hero catalogs.
 | Logical Table | Meaning |
 | --- | --- |
 | `entity` | Stable identified objects (run, component, cell, runtime run). |
-| `edge` | Relationships between entities (dependency, binding pointers). |
+| `edge` | Relationships between entities (dependency, active pointers). |
 | `event` | Time-ordered state transitions or control rows (trial, revision, header/counter). |
 | `metric_num` | Numeric scalar features and metrics. |
 | `metric_txt` | Text scalar features and metrics. |
@@ -32,9 +32,8 @@ Hashimyei Hero and Lattice Hero catalogs.
 | `run` | `entity` |
 | `run_dependency` | `edge` |
 | `component` | `entity` |
-| `component_dependency` | `edge` |
+| `component_lineage` | `edge` |
 | `component_revision` | `event` |
-| `component_binding` | `edge` |
 | `component_active` | `edge` |
 | `report_fragment` | `blob` |
 | `metric_num` | `metric_num` |
@@ -47,6 +46,9 @@ Hashimyei Hero and Lattice Hero catalogs.
 | `runtime_run` | `entity` |
 | `runtime_dependency` | `edge` |
 | `runtime_report_fragment` | `blob` |
+
+Note: `component_lineage` currently carries both component founding
+provenance edges and stored founding-bundle snapshot edges.
 | `runtime_report` | `blob` |
 | `runtime_ledger` | `blob` |
 
@@ -90,7 +92,7 @@ The next cut should use five narrow physical tables, shared by Hashimyei and Lat
 | `entity_kind` | text | `run/component/cell/runtime_run/...` |
 | `canonical_path` | text | Optional canonical path. |
 | `identity_json` | text | Typed `hashimyei_t` envelope or empty. |
-| `owner_scope` | text | `hashimyei` or `lattice`. |
+| `catalog_scope` | text | `hashimyei` or `lattice`. |
 | `schema` | text | Entity payload schema id. |
 | `created_at_ms` | int64 | Creation time. |
 | `updated_at_ms` | int64 | Last update time. |
@@ -99,20 +101,23 @@ The next cut should use five narrow physical tables, shared by Hashimyei and Lat
 Key/index plan:
 - `PK(entity_id)`
 - `IDX(entity_kind, canonical_path)`
-- `IDX(owner_scope, updated_at_ms)`
+- `IDX(catalog_scope, updated_at_ms)`
 
 ### `h_edge`
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `edge_id` | text | Primary key. |
-| `edge_kind` | text | `dependency/binding/active/...` |
+| `edge_kind` | text | `dependency/active/...` |
 | `src_entity_id` | text | Source entity id. |
 | `dst_entity_id` | text | Destination entity id (optional). |
-| `owner_scope` | text | `hashimyei` or `lattice`. |
+| `catalog_scope` | text | `hashimyei` or `lattice`. |
 | `schema` | text | Edge schema id. |
 | `ts_ms` | int64 | Event/order timestamp. |
 | `payload_json` | text | Extra edge attributes. |
+
+For component lineage edges, `payload_json` may distinguish
+`founding_dsl_provenance` vs `founding_dsl_bundle`.
 
 Key/index plan:
 - `PK(edge_id)`
@@ -126,7 +131,7 @@ Key/index plan:
 | `event_id` | text | Primary key. |
 | `event_kind` | text | `trial/revision/header/counter/...` |
 | `entity_id` | text | Owning entity id. |
-| `owner_scope` | text | `hashimyei` or `lattice`. |
+| `catalog_scope` | text | `hashimyei` or `lattice`. |
 | `schema` | text | Event schema id. |
 | `ts_ms` | int64 | Event timestamp. |
 | `status_txt` | text | Optional state/status field. |
@@ -135,7 +140,7 @@ Key/index plan:
 Key/index plan:
 - `PK(event_id)`
 - `IDX(entity_id, event_kind, ts_ms)`
-- `IDX(owner_scope, event_kind, ts_ms)`
+- `IDX(catalog_scope, event_kind, ts_ms)`
 
 ### `h_metric`
 
@@ -144,7 +149,7 @@ Key/index plan:
 | `metric_id` | text | Primary key. |
 | `metric_kind` | text | `metric_num/metric_txt/projection_num/projection_txt/...` |
 | `entity_id` | text | Owning entity id. |
-| `owner_scope` | text | `hashimyei` or `lattice`. |
+| `catalog_scope` | text | `hashimyei` or `lattice`. |
 | `metric_key` | text | Sparse dimension key. |
 | `num_value` | float64 | Nullable numeric value. |
 | `txt_value` | text | Nullable text value. |
@@ -154,7 +159,7 @@ Key/index plan:
 Key/index plan:
 - `PK(metric_id)`
 - `IDX(entity_id, metric_key, ts_ms)`
-- `IDX(owner_scope, metric_kind, metric_key)`
+- `IDX(catalog_scope, metric_kind, metric_key)`
 
 ### `h_blob`
 
@@ -163,7 +168,7 @@ Key/index plan:
 | `blob_id` | text | Primary key (`sha256` or synthetic id). |
 | `blob_kind` | text | `report_fragment/ledger/report/...` |
 | `entity_id` | text | Owning entity id (optional). |
-| `owner_scope` | text | `hashimyei` or `lattice`. |
+| `catalog_scope` | text | `hashimyei` or `lattice`. |
 | `path` | text | Filesystem/virtual path. |
 | `sha256` | text | Content hash when available. |
 | `schema` | text | Blob schema id. |

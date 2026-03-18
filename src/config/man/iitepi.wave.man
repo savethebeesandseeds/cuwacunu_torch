@@ -21,6 +21,16 @@ range = unique within file
 allowed = [A-Za-z0-9_.-]+
 nuance = duplicate WAVE names are rejected
 
+[FIELD WAVE.CIRCUIT]
+key = CIRCUIT
+scope = WAVE
+type = identifier
+required = false
+default = sole contract circuit when the contract declares exactly one circuit
+range = must match one declared contract <circuit_name> when set
+allowed = [A-Za-z0-9_]+
+nuance = operational circuit selector; when a contract exposes multiple circuits, wave must choose the compatible one here
+
 [FIELD WAVE.MODE]
 key = MODE
 scope = WAVE
@@ -50,6 +60,7 @@ default = none
 range = one token
 allowed = sequential,random,SequentialSampler,RandomSampler
 nuance = normalized to sequential or random
+note = source-local SETTINGS.SAMPLER is removed; wave SAMPLER is the single operational sampler selector
 
 [FIELD WAVE.EPOCHS]
 key = EPOCHS
@@ -105,11 +116,11 @@ nuance = per-component training halt flag; effective training requires MODE trai
 key = WIKIMYEI.JKIMYEI.PROFILE_ID
 scope = WIKIMYEI.JKIMYEI block
 type = identifier
-required = true
-default = none
+required = false
+default = sole compatible contract profile when exactly one exists
 range = non-empty
 allowed = profile id string
-nuance = must match jkimyei component profile row for the referenced component
+nuance = when set it must match a jkimyei component profile row for the referenced component; when omitted, runtime infers the profile only if the contract exposes exactly one compatible profile
 
 [FIELD SOURCE.PATH]
 key = SOURCE.PATH
@@ -180,26 +191,6 @@ default = none
 range = >= 1
 allowed = decimal integer
 nuance = zero is rejected
-
-[FIELD SOURCE.SOURCES_DSL_FILE]
-key = SOURCE.RUNTIME.SOURCES_DSL_FILE
-scope = SOURCE.RUNTIME block
-type = path
-required = true
-default = none
-range = non-empty path
-allowed = absolute_or_relative_path
-nuance = resolved relative to wave file folder; must exist as regular file at campaign snapshot time
-
-[FIELD SOURCE.CHANNELS_DSL_FILE]
-key = SOURCE.RUNTIME.CHANNELS_DSL_FILE
-scope = SOURCE.RUNTIME block
-type = path
-required = true
-default = none
-range = non-empty path
-allowed = absolute_or_relative_path
-nuance = resolved relative to wave file folder; must exist as regular file at campaign snapshot time
 
 [FIELD PROBE.PATH]
 key = PROBE.PATH

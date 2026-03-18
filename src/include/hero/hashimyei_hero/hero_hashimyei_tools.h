@@ -30,9 +30,6 @@ struct app_context_t {
 [[nodiscard]] bool load_hashimyei_runtime_defaults(
     const std::filesystem::path& hero_dsl_path, hashimyei_runtime_defaults_t* out,
     std::string* error);
-[[nodiscard]] std::filesystem::path default_store_root();
-[[nodiscard]] std::filesystem::path default_catalog_path(
-    const std::filesystem::path& store_root);
 
 [[nodiscard]] bool execute_tool_json(const std::string& tool_name,
                                      std::string arguments_json,

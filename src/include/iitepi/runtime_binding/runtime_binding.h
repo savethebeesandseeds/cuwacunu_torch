@@ -4,15 +4,22 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_set>
 #include <vector>
 
+#include "hero/hashimyei_hero/hashimyei_catalog.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "iitepi/runtime_binding/runtime_binding.contract.h"
 #include "iitepi/contract_space_t.h"
 #include "tsiemene/tsi.type.registry.h"
@@ -79,6 +86,396 @@ struct RuntimeBinding {
       << "."
       << now_ms;
   return out.str();
+}
+
+[[nodiscard]] inline std::string lowercase_copy(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return s;
+}
+
+[[nodiscard]] inline std::uint64_t now_ms_utc_runtime_binding() {
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count());
+}
+
+[[nodiscard]] inline bool write_runtime_text_file_atomic(
+    const std::filesystem::path& target, std::string_view content,
+    std::string* error = nullptr) {
+  if (error) error->clear();
+  if (target.empty()) {
+    if (error) *error = "target path is empty";
+    return false;
+  }
+  std::error_code ec{};
+  if (target.has_parent_path()) {
+    std::filesystem::create_directories(target.parent_path(), ec);
+    if (ec) {
+      if (error) {
+        *error = "cannot create parent directory: " +
+                 target.parent_path().string();
+      }
+      return false;
+    }
+  }
+  const auto tmp = target.string() + ".tmp";
+  std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    if (error) *error = "cannot open temporary file: " + tmp;
+    return false;
+  }
+  out << content;
+  out.flush();
+  if (!out.good()) {
+    if (error) *error = "cannot write temporary file: " + tmp;
+    return false;
+  }
+  out.close();
+  std::filesystem::rename(tmp, target, ec);
+  if (ec) {
+    std::filesystem::remove(tmp, ec);
+    if (error) *error = "cannot replace target file: " + target.string();
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] inline std::string sanitize_bundle_snapshot_filename(
+    std::string_view filename) {
+  std::string out{};
+  out.reserve(filename.size());
+  for (const char ch : filename) {
+    const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' ||
+                    ch == '-';
+    out.push_back(ok ? ch : '_');
+  }
+  if (out.empty()) out = "dsl";
+  return out;
+}
+
+[[nodiscard]] inline std::optional<cuwacunu::hero::hashimyei::component_manifest_t>
+build_runtime_component_manifest(const RuntimeBindingContract& c,
+                                 const TsiWikimyei&,
+                                 std::string* error = nullptr) {
+  if (error) error->clear();
+  if (c.spec.representation_hashimyei.empty()) {
+    if (error) *error = "representation_hashimyei is empty";
+    return std::nullopt;
+  }
+
+  std::string family = c.spec.representation_type;
+  if (family.empty()) {
+    if (error) *error = "wikimyei family is empty";
+    return std::nullopt;
+  }
+
+  const RuntimeBindingContract::ComponentDslFingerprint* selected_fp = nullptr;
+  for (const auto& fp : c.spec.component_dsl_fingerprints) {
+    if (!fp.hashimyei.empty() && fp.hashimyei == c.spec.representation_hashimyei) {
+      selected_fp = &fp;
+      break;
+    }
+    if (!selected_fp && fp.tsi_type == family) selected_fp = &fp;
+  }
+  if (!selected_fp) {
+    if (error) {
+      *error = "missing component DSL fingerprint for runtime bootstrap family: " +
+               family;
+    }
+    return std::nullopt;
+  }
+
+  const auto contract_snapshot =
+      cuwacunu::iitepi::contract_space_t::contract_itself(c.spec.contract_hash);
+  if (!contract_snapshot) {
+    if (error) *error = "missing contract snapshot for runtime component manifest";
+    return std::nullopt;
+  }
+
+  std::uint64_t component_ordinal = 0;
+  if (!cuwacunu::hashimyei::parse_hex_hash_name_ordinal(
+          c.spec.representation_hashimyei, &component_ordinal)) {
+    if (error) {
+      *error = "representation_hashimyei is not a valid lowercase 0x... ordinal";
+    }
+    return std::nullopt;
+  }
+  const std::string contract_hash = lowercase_copy(c.spec.contract_hash);
+  const std::uint64_t contract_ordinal =
+      cuwacunu::hashimyei::fnv1a64(contract_hash) & 0xffffull;
+
+  cuwacunu::hero::hashimyei::component_manifest_t manifest{};
+  manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
+  manifest.canonical_path = family + "." + c.spec.representation_hashimyei;
+  manifest.family = family;
+  manifest.hashimyei_identity =
+      cuwacunu::hashimyei::make_identity(
+          cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE, component_ordinal);
+  manifest.contract_identity =
+      cuwacunu::hashimyei::make_identity(
+          cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT, contract_ordinal,
+          contract_hash);
+  manifest.parent_identity = std::nullopt;
+  manifest.revision_reason = "runtime_bootstrap";
+  manifest.founding_revision_id = "runtime_bootstrap:" + contract_hash;
+  manifest.founding_dsl_provenance_path = selected_fp->tsi_dsl_path;
+  manifest.founding_dsl_provenance_sha256_hex = lowercase_copy(
+      selected_fp->tsi_dsl_sha256_hex.empty()
+          ? cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(
+                selected_fp->tsi_dsl_path)
+          : selected_fp->tsi_dsl_sha256_hex);
+  manifest.docking_signature_sha256_hex =
+      lowercase_copy(contract_snapshot->signature.docking_signature_sha256_hex);
+  manifest.lineage_state = "active";
+  manifest.replaced_by.clear();
+  manifest.created_at_ms = now_ms_utc_runtime_binding();
+  manifest.updated_at_ms = manifest.created_at_ms;
+
+  std::string validate_error{};
+  if (!cuwacunu::hero::hashimyei::validate_component_manifest(
+          manifest, &validate_error)) {
+    if (error) {
+      *error = "runtime component manifest invalid: " + validate_error;
+    }
+    return std::nullopt;
+  }
+  return manifest;
+}
+
+[[nodiscard]] inline bool persist_runtime_component_lineage(
+    const RuntimeBindingContract& c, const TsiWikimyei& wik,
+    std::string* error = nullptr) {
+  if (error) error->clear();
+  const auto manifest_opt = build_runtime_component_manifest(c, wik, error);
+  if (!manifest_opt.has_value()) return false;
+  const auto& manifest = *manifest_opt;
+
+  const auto store_root = cuwacunu::hashimyei::store_root();
+  const std::string component_id =
+      cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
+  const auto manifest_path =
+      cuwacunu::hero::hashimyei::component_manifest_path(store_root, component_id);
+  if (!std::filesystem::exists(manifest_path)) {
+    if (!cuwacunu::hero::hashimyei::save_component_manifest(
+            store_root, manifest, nullptr, error)) {
+      return false;
+    }
+  }
+
+  const auto bundle_manifest_path =
+      cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_path(store_root,
+                                                                   component_id);
+  if (std::filesystem::exists(bundle_manifest_path)) return true;
+
+  const auto contract_snapshot =
+      cuwacunu::iitepi::contract_space_t::contract_itself(c.spec.contract_hash);
+  if (!contract_snapshot) {
+    if (error) *error = "missing contract snapshot for founding DSL bundle";
+    return false;
+  }
+
+  std::vector<std::filesystem::path> source_paths{};
+  std::unordered_set<std::string> seen{};
+  const auto add_source_path = [&](std::string_view raw_path) {
+    const std::string trimmed = std::string(raw_path);
+    if (trimmed.empty()) return;
+    const std::filesystem::path p(trimmed);
+    const std::string key = p.lexically_normal().string();
+    if (!seen.insert(key).second) return;
+    source_paths.push_back(p);
+  };
+
+  add_source_path(contract_snapshot->config_file_path_canonical);
+  add_source_path(manifest.founding_dsl_provenance_path);
+  for (const auto& fp : c.spec.component_dsl_fingerprints) {
+    add_source_path(fp.tsi_dsl_path);
+  }
+  for (const auto& surface : contract_snapshot->docking_signature.surfaces) {
+    add_source_path(surface.canonical_path);
+  }
+  for (const auto& entry : contract_snapshot->signature.module_dsl_entries) {
+    add_source_path(entry.module_dsl_path);
+  }
+
+  const auto bundle_dir =
+      cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(store_root,
+                                                               component_id);
+  std::error_code ec{};
+  std::filesystem::create_directories(bundle_dir, ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create founding DSL bundle directory: " +
+               bundle_dir.string();
+    }
+    return false;
+  }
+
+  cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_t bundle_manifest{};
+  bundle_manifest.component_id = component_id;
+  bundle_manifest.canonical_path = manifest.canonical_path;
+  bundle_manifest.hashimyei_name = manifest.hashimyei_identity.name;
+  bundle_manifest.files.reserve(source_paths.size());
+
+  for (std::size_t i = 0; i < source_paths.size(); ++i) {
+    const auto& source_path = source_paths[i];
+    std::ifstream in(source_path, std::ios::binary);
+    if (!in) {
+      if (error) {
+        *error = "cannot read founding DSL source: " + source_path.string();
+      }
+      return false;
+    }
+    std::ostringstream payload;
+    payload << in.rdbuf();
+    if (!in.good() && !in.eof()) {
+      if (error) {
+        *error = "cannot read founding DSL source: " + source_path.string();
+      }
+      return false;
+    }
+    std::ostringstream name;
+    name << std::setfill('0') << std::setw(4) << i << "_"
+         << sanitize_bundle_snapshot_filename(source_path.filename().string());
+    const auto snapshot_path = bundle_dir / name.str();
+    if (!write_runtime_text_file_atomic(snapshot_path, payload.str(), error)) {
+      return false;
+    }
+    bundle_manifest.files.push_back(
+        cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_file_t{
+            .source_path = source_path.string(),
+            .snapshot_relpath = name.str(),
+            .sha256_hex =
+                lowercase_copy(cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(
+                    snapshot_path.string())),
+        });
+  }
+  bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex =
+      cuwacunu::hero::hashimyei::compute_founding_dsl_bundle_aggregate_sha256(
+          bundle_manifest);
+  if (bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex.empty()) {
+    if (error) *error = "cannot compute founding DSL bundle aggregate digest";
+    return false;
+  }
+
+  return cuwacunu::hero::hashimyei::write_founding_dsl_bundle_manifest(
+      store_root, bundle_manifest, error);
+}
+
+[[nodiscard]] inline bool validate_runtime_hashimyei_contract_docking(
+    std::string_view hashimyei,
+    std::string_view contract_hash,
+    bool require_registered_manifest,
+    std::string* error = nullptr) {
+  if (error) error->clear();
+
+  const std::string selected_hashimyei(hashimyei);
+  const std::string selected_contract_hash(contract_hash);
+  if (selected_hashimyei.empty() || selected_contract_hash.empty()) return true;
+
+  const auto contract_snapshot =
+      cuwacunu::iitepi::contract_space_t::contract_itself(
+          selected_contract_hash);
+  const std::string expected_docking_signature = lowercase_copy(
+      contract_snapshot->signature.docking_signature_sha256_hex);
+  if (expected_docking_signature.empty()) {
+    if (error) {
+      *error = "contract snapshot is missing docking_signature_sha256_hex";
+    }
+    return false;
+  }
+
+  cuwacunu::hero::hashimyei::hashimyei_catalog_store_t catalog{};
+  cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t options{};
+  const auto hashimyei_store_root = cuwacunu::hashimyei::store_root();
+  options.catalog_path = cuwacunu::hashimyei::catalog_db_path();
+  options.encrypted = false;
+
+  std::string catalog_error{};
+  if (!catalog.open(options, &catalog_error)) {
+    if (error) {
+      *error = "failed to open hashimyei catalog for docking validation: " +
+               catalog_error;
+    }
+    return false;
+  }
+
+  cuwacunu::hero::hashimyei::component_state_t component{};
+  std::string resolve_error{};
+  if (!catalog.resolve_component("", selected_hashimyei, &component,
+                                 &resolve_error)) {
+    if (!std::filesystem::exists(hashimyei_store_root)) {
+      if (require_registered_manifest) {
+        if (error) {
+          *error = "hashimyei store root does not exist for configured "
+                   "hashimyei: " +
+                   hashimyei_store_root.string();
+        }
+        return false;
+      }
+      return true;
+    }
+    std::string ingest_error{};
+    if (!catalog.ingest_filesystem(hashimyei_store_root, &ingest_error)) {
+      if (error) {
+        *error =
+            "failed to refresh hashimyei catalog for docking validation: " +
+            ingest_error;
+      }
+      return false;
+    }
+    if (!catalog.resolve_component("", selected_hashimyei, &component,
+                                   &resolve_error)) {
+      if (require_registered_manifest) {
+        if (error) {
+          *error = "configured hashimyei manifest lookup failed: " + resolve_error;
+        }
+        return false;
+      }
+      return true;
+    }
+  }
+
+  const std::string component_contract_hash =
+      cuwacunu::hero::hashimyei::contract_hash_from_identity(
+          component.manifest.contract_identity);
+  if (component_contract_hash != selected_contract_hash) {
+    if (error) {
+      *error =
+          "configured hashimyei belongs to a different contract: hashimyei=" +
+          selected_hashimyei + " component_contract=" +
+          component_contract_hash +
+          " requested_contract=" + selected_contract_hash;
+    }
+    return false;
+  }
+
+  const std::string actual_docking_signature =
+      lowercase_copy(component.manifest.docking_signature_sha256_hex);
+  if (actual_docking_signature.empty()) {
+    if (error) {
+      *error = "configured hashimyei manifest is missing "
+               "docking_signature_sha256_hex: " +
+               selected_hashimyei;
+    }
+    return false;
+  }
+  if (actual_docking_signature != expected_docking_signature) {
+    if (error) {
+      *error =
+          "configured hashimyei docking signature mismatch: hashimyei=" +
+          selected_hashimyei + " canonical_path=" +
+          component.manifest.canonical_path + " component_docking=" +
+          actual_docking_signature + " contract_docking=" +
+          expected_docking_signature;
+    }
+    return false;
+  }
+
+  return true;
 }
 
 [[nodiscard]] inline bool validate_runtime_binding_circuit(
@@ -389,6 +786,9 @@ inline std::uint64_t run_runtime_binding_circuit(RuntimeBindingContract& c,
   ctx.wave_mode_flags = c.execution.wave_mode_flags;
   ctx.debug_enabled = c.execution.debug_enabled;
   if (ctx.run_id.empty()) ctx.run_id = make_runtime_run_id(c);
+  if (ctx.source_runtime_cursor.empty()) {
+    ctx.source_runtime_cursor = c.spec.source_runtime_cursor;
+  }
   CircuitIssue issue{};
   if (!c.ensure_compiled(&issue)) {
     if (error) {
@@ -468,21 +868,42 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
 
     TsiWikimyeiRuntimeIoContext io_ctx{};
     io_ctx.enable_debug_outputs = c.execution.debug_enabled;
+    io_ctx.binding_id = ctx.binding_id;
     io_ctx.run_id = ctx.run_id;
+    io_ctx.source_runtime_cursor = ctx.source_runtime_cursor;
     std::string local_error;
     if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
                                           &local_error,
                                           &io_ctx)) {
       // Training-enabled wikimyei are allowed to bootstrap from scratch when
-      // the configured report_fragment id is not present yet. The first
-      // successful run will persist the report_fragment at epoch end.
+      // the configured hashimyei has not been founded yet. The first
+      // successful run will persist the freshly constructed state as the
+      // initial report_fragment set.
       const bool missing_report_fragment =
           local_error.find("not found") != std::string::npos;
       if (missing_report_fragment && wik->runtime_autosave_report_fragments()) {
+        const std::string instance_name(wik->instance_name());
+        log_warn(
+            "[runtime_binding.contract.run] configured hashimyei missing for "
+            "node=%s hashimyei=%s; bootstrapping a new hashimyei from the "
+            "active founding_dsl_bundle/runtime state\n",
+            instance_name.c_str(), c.spec.representation_hashimyei.c_str());
         continue;
       }
       if (error) {
         *error = "failed to load wikimyei report fragments for node '" +
+                 std::string(wik->instance_name()) + "': " + local_error;
+      }
+      return false;
+    }
+    if (!validate_runtime_hashimyei_contract_docking(
+            c.spec.representation_hashimyei,
+            c.spec.contract_hash,
+            /*require_registered_manifest=*/true,
+            &local_error)) {
+      if (error) {
+        *error = "configured hashimyei failed contract docking validation for "
+                 "node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
       }
       return false;
@@ -509,13 +930,22 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
 
     TsiWikimyeiRuntimeIoContext io_ctx{};
     io_ctx.enable_debug_outputs = c.execution.debug_enabled;
+    io_ctx.binding_id = ctx.binding_id;
     io_ctx.run_id = ctx.run_id;
+    io_ctx.source_runtime_cursor = ctx.source_runtime_cursor;
     std::string local_error;
     if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
                                         &local_error,
                                         &io_ctx)) {
       if (error) {
         *error = "failed to save wikimyei report fragments for node '" +
+                 std::string(wik->instance_name()) + "': " + local_error;
+      }
+      return false;
+    }
+    if (!persist_runtime_component_lineage(c, *wik, &local_error)) {
+      if (error) {
+        *error = "failed to persist wikimyei component lineage for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
       }
       return false;
@@ -532,6 +962,9 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
   ctx.wave_mode_flags = c.execution.wave_mode_flags;
   ctx.debug_enabled = c.execution.debug_enabled;
   if (ctx.run_id.empty()) ctx.run_id = make_runtime_run_id(c);
+  if (ctx.source_runtime_cursor.empty()) {
+    ctx.source_runtime_cursor = c.spec.source_runtime_cursor;
+  }
   log_info("[runtime_binding.contract.run] start contract=%s epochs=%llu\n",
            c.name.empty() ? "<empty>" : c.name.c_str(),
            static_cast<unsigned long long>(

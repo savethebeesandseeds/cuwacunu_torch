@@ -72,7 +72,7 @@ struct contract_file_fingerprint_t {
 
 struct contract_dependency_manifest_t {
   std::vector<contract_file_fingerprint_t> files{};
-  std::string aggregate_sha256_hex{};
+  std::string dependency_manifest_aggregate_sha256_hex{};
 };
 
 struct contract_component_binding_t {
@@ -89,10 +89,31 @@ struct contract_module_signature_entry_t {
   std::string module_dsl_sha256_hex{};
 };
 
+struct contract_variable_assignment_t {
+  std::string name{};
+  std::string value{};
+};
+
+struct contract_docking_surface_entry_t {
+  std::string surface_id{};
+  std::string canonical_path{};
+  std::string sha256_hex{};
+};
+
+struct contract_docking_signature_t {
+  std::string schema{"iitepi.contract.docking_signature.v1"};
+  std::vector<std::string> compatible_circuits{};
+  std::vector<contract_variable_assignment_t> variable_assignments{};
+  std::vector<contract_docking_surface_entry_t> surfaces{};
+  std::string sha256_hex{};
+};
+
 struct contract_signature_t {
   std::string circuit_dsl_sha256_hex{};
+  std::string docking_signature_sha256_hex{};
   std::vector<contract_component_binding_t> bindings{};
   std::vector<contract_module_signature_entry_t> module_dsl_entries{};
+  std::vector<contract_variable_assignment_t> variable_assignments{};
 };
 
 namespace contract_record {
@@ -130,7 +151,6 @@ struct network_design_blob_t : dsl_blob_t {
 }  // namespace contract_record
 
 struct contract_record_t {
-  std::string config_folder{};
   std::string config_file_path{};
   std::string config_file_path_canonical{};
   parsed_config_t config{};
@@ -140,6 +160,7 @@ struct contract_record_t {
   contract_record::circuit_blob_t circuit{};
   contract_record::canonical_path_blob_t canonical_path{};
   contract_record::network_design_blob_t vicreg_network_design{};
+  contract_docking_signature_t docking_signature{};
   contract_signature_t signature{};
 
   contract_dependency_manifest_t dependency_manifest{};

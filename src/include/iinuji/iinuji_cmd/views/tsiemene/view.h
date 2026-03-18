@@ -11,6 +11,7 @@
 #include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
 #include "iinuji/iinuji_cmd/views/common.h"
 #include "iinuji/iinuji_cmd/views/tsiemene/commands.h"
+#include "iitepi/observation_contract_wave_paths.h"
 #include "tsiemene/tsi.source.dataloader.h"
 #include "tsiemene/tsi.wikimyei.representation.vicreg.h"
 
@@ -73,7 +74,7 @@ inline std::vector<std::string> tsi_created_instances_for_family(const TsiNodeDo
     const auto items = tsiemene::list_wikimyei_representation_vicreg_init_entries();
     out.reserve(items.size());
     for (const auto& item : items) {
-      out.push_back(item.canonical_base);
+      out.push_back(item.canonical_path);
     }
   }
   return out;
@@ -127,12 +128,16 @@ inline void append_tsi_dataloader_form(const CmdState& st, std::ostringstream& o
           }
         }
         if (selected_wave && !selected_wave->sources.empty()) {
-          sources_path = (std::filesystem::path(wave_itself->config_folder) /
-                          selected_wave->sources.front().sources_dsl_file)
-                             .string();
-          channels_path = (std::filesystem::path(wave_itself->config_folder) /
-                           selected_wave->sources.front().channels_dsl_file)
-                              .string();
+          const auto contract_itself =
+              cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+          cuwacunu::iitepi::observation_dsl_path_resolution_t observation_paths{};
+          std::string path_error{};
+          if (cuwacunu::iitepi::resolve_observation_dsl_paths(
+                  contract_itself, wave_itself, *selected_wave,
+                  &observation_paths, &path_error)) {
+            sources_path = observation_paths.sources_path;
+            channels_path = observation_paths.channels_path;
+          }
         }
       }
     }

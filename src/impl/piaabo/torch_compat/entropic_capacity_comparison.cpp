@@ -28,78 +28,8 @@ void append_component_report_identity_entries_(
     runtime_lls_document_t* document,
     const tsiemene::component_report_identity_t& report_identity) {
   if (!document) return;
-  if (!report_identity.report_kind.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "report_kind", report_identity.report_kind));
-  }
-  if (!report_identity.tsi_type.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "tsi_type", report_identity.tsi_type));
-  }
-  if (!report_identity.canonical_path.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "canonical_path", report_identity.canonical_path));
-  }
-  if (!report_identity.hashimyei.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "hashimyei", report_identity.hashimyei));
-  }
-  if (!report_identity.contract_hash.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "contract_hash", report_identity.contract_hash));
-  }
-  if (!report_identity.wave_hash.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "wave_hash", report_identity.wave_hash));
-  }
-  if (!report_identity.binding_id.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "binding_id", report_identity.binding_id));
-  }
-  if (!report_identity.run_id.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "run_id", report_identity.run_id));
-  }
-  if (!report_identity.wave_cursor_resolution.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "wave_cursor_resolution", report_identity.wave_cursor_resolution));
-  }
-  if (!report_identity.intersection_cursor.empty()) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "intersection_cursor", report_identity.intersection_cursor));
-  }
-  if (report_identity.has_wave_cursor) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave_cursor", report_identity.wave_cursor, "[0,+inf)"));
-  }
-  if (report_identity.has_wave_cursor_run) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.run", report_identity.wave_cursor_run, "[0,+inf)"));
-  }
-  if (report_identity.has_wave_cursor_episode) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.episode",
-            report_identity.wave_cursor_episode,
-            "[0,+inf)"));
-  }
-  if (report_identity.has_wave_cursor_batch) {
-    document->entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.batch", report_identity.wave_cursor_batch, "[0,+inf)"));
-  }
+  cuwacunu::piaabo::latent_lineage_state::append_runtime_report_header_entries(
+      document, tsiemene::make_runtime_report_header(report_identity));
 }
 
 [[nodiscard]] std::optional<double> extract_numeric_kv_(
@@ -172,13 +102,6 @@ bool summarize_entropic_capacity_comparison_from_kv_maps(
   }
 
   *out = summarize_entropic_capacity_comparison(*source_load, *network_capacity);
-  if (const auto it = source_kv.find("run_id");
-      it != source_kv.end() && !it->second.empty()) {
-    out->run_id = it->second;
-  } else if (const auto it = network_kv.find("run_id");
-             it != network_kv.end() && !it->second.empty()) {
-    out->run_id = it->second;
-  }
   return true;
 }
 
@@ -249,11 +172,6 @@ std::string entropic_capacity_comparison_to_latent_lineage_state_text(
           report.capacity_regime,
           "str",
           std::string(kCapacityRegimeDomain)));
-  if (!report.run_id.empty() && report_identity.run_id.empty()) {
-    document.entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "run_id", report.run_id));
-  }
   return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
       document);
 }

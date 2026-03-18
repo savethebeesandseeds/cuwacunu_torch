@@ -54,19 +54,16 @@ int main() {
     assert(!wave.sinks.empty());
 
     for (const auto& w : wave.wikimyeis) {
-      assert(!w.binding_alias.empty());
+      assert(!w.binding_id.empty());
       assert(!w.wikimyei_path.empty());
-      assert(!w.profile_id.empty());
     }
     for (const auto& s : wave.sources) {
-      assert(!s.binding_alias.empty());
+      assert(!s.binding_id.empty());
       assert(!s.source_path.empty());
-      assert(!s.sources_dsl_file.empty());
-      assert(!s.channels_dsl_file.empty());
       assert(s.range_warn_batches > 0);
     }
     for (const auto& s : wave.sinks) {
-      assert(!s.binding_alias.empty());
+      assert(!s.binding_id.empty());
       assert(!s.sink_path.empty());
     }
 
@@ -74,10 +71,11 @@ int main() {
         grammar,
         "WAVE bad_missing_alias {\n"
         "  MODE: run;\n"
+        "  SAMPLER: sequential;\n"
         "  EPOCHS: 1;\n"
         "  BATCH_SIZE: 4;\n"
         "  MAX_BATCHES_PER_EPOCH: 4;\n"
-        "  SOURCE: { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; SAMPLER: sequential; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; SOURCES_DSL_FILE: /tmp/a.dsl; CHANNELS_DSL_FILE: /tmp/b.dsl; }; };\n"
+        "  SOURCE: { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
         "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; HASHIMYEI: 0x0000; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
         "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
         "}\n");
@@ -86,10 +84,11 @@ int main() {
         grammar,
         "WAVE bad_wikimyei_hash {\n"
         "  MODE: run|train;\n"
+        "  SAMPLER: sequential;\n"
         "  EPOCHS: 1;\n"
         "  BATCH_SIZE: 4;\n"
         "  MAX_BATCHES_PER_EPOCH: 4;\n"
-        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; SAMPLER: sequential; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; SOURCES_DSL_FILE: /tmp/a.dsl; CHANNELS_DSL_FILE: /tmp/b.dsl; }; };\n"
+        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
         "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
         "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
         "}\n");
@@ -98,10 +97,11 @@ int main() {
         grammar,
         "WAVE bad_legacy_train_key {\n"
         "  MODE: run|train;\n"
+        "  SAMPLER: sequential;\n"
         "  EPOCHS: 1;\n"
         "  BATCH_SIZE: 4;\n"
         "  MAX_BATCHES_PER_EPOCH: 4;\n"
-        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; SAMPLER: sequential; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; SOURCES_DSL_FILE: /tmp/a.dsl; CHANNELS_DSL_FILE: /tmp/b.dsl; }; };\n"
+        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
         "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; HASHIMYEI: 0x0000; TRAIN: false; PROFILE_ID: stable_pretrain; };\n"
         "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
         "}\n");
@@ -110,13 +110,33 @@ int main() {
         grammar,
         "WAVE bad_mode_run_train_flag {\n"
         "  MODE: run;\n"
+        "  SAMPLER: sequential;\n"
         "  EPOCHS: 1;\n"
         "  BATCH_SIZE: 4;\n"
         "  MAX_BATCHES_PER_EPOCH: 4;\n"
-        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; SAMPLER: sequential; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; SOURCES_DSL_FILE: /tmp/a.dsl; CHANNELS_DSL_FILE: /tmp/b.dsl; }; };\n"
+        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
         "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; HASHIMYEI: 0x0000; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
         "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
         "}\n");
+
+    {
+      const auto inferred_profile = cuwacunu::camahjucunu::dsl::decode_iitepi_wave_from_dsl(
+          grammar,
+          "WAVE infer_profile {\n"
+          "  MODE: run|train;\n"
+          "  SAMPLER: sequential;\n"
+          "  EPOCHS: 1;\n"
+          "  BATCH_SIZE: 4;\n"
+          "  MAX_BATCHES_PER_EPOCH: 4;\n"
+          "  CIRCUIT: circuit_1;\n"
+          "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
+          "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; HASHIMYEI: 0x0000; JKIMYEI: { HALT_TRAIN: false; }; };\n"
+          "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
+          "}\n");
+      assert(inferred_profile.waves.size() == 1);
+      assert(inferred_profile.waves.front().wikimyeis.size() == 1);
+      assert(inferred_profile.waves.front().wikimyeis.front().profile_id.empty());
+    }
 
     std::cout << "[test_dsl_iitepi_wave] ok\n";
     return 0;

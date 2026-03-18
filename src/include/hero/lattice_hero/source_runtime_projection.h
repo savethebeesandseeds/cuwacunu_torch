@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "piaabo/latent_lineage_state/runtime_lls.h"
+#include "tsiemene/tsi.report.h"
 
 namespace cuwacunu {
 namespace hero {
@@ -51,22 +52,11 @@ inline constexpr std::string_view
 
 struct source_runtime_projection_report_identity_t {
   std::string canonical_path{};
+  std::string source_runtime_cursor{};
   std::string source_label{};
-  std::string contract_hash{};
   std::string binding_id{};
-  std::string wave_hash{};
-  std::string wave_id{};
-  std::string run_id{};
-  std::string wave_cursor_resolution{};
-  std::string intersection_cursor{};
   bool has_wave_cursor{false};
   std::uint64_t wave_cursor{0};
-  bool has_wave_cursor_run{false};
-  std::uint64_t wave_cursor_run{0};
-  bool has_wave_cursor_episode{false};
-  std::uint64_t wave_cursor_episode{0};
-  bool has_wave_cursor_batch{false};
-  std::uint64_t wave_cursor_batch{0};
 };
 
 namespace source_runtime_projection_detail {
@@ -415,10 +405,6 @@ build_source_runtime_projection_runtime_report_document(
   }
   *out = cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t{};
 
-  if (identity.run_id.empty()) {
-    if (error) *error = "source runtime projection runtime report missing run_id";
-    return false;
-  }
   if (identity.canonical_path.empty()) {
     if (error) {
       *error = "source runtime projection runtime report missing canonical_path";
@@ -430,72 +416,22 @@ build_source_runtime_projection_runtime_report_document(
   entries.push_back(
       cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
           "schema", std::string(kSourceRuntimeProjectionSchemaV2)));
-  entries.push_back(
-      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-          "report_kind", "source_runtime_projection"));
-  entries.push_back(
-      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-          "canonical_path", identity.canonical_path));
-  entries.push_back(
-      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-          "source_label",
-          identity.source_label.empty() ? identity.canonical_path
-                                        : identity.source_label));
-  entries.push_back(
-      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-          "run_id", identity.run_id));
-  entries.push_back(
-      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-          "source.runtime.projection.run_id", identity.run_id));
-  if (!identity.wave_cursor_resolution.empty()) {
+  {
+    ::tsiemene::component_report_identity_t header_identity{};
+    header_identity.canonical_path = identity.canonical_path;
+    header_identity.binding_id = identity.binding_id;
+    header_identity.source_runtime_cursor = identity.source_runtime_cursor;
+    header_identity.has_wave_cursor = identity.has_wave_cursor;
+    header_identity.wave_cursor = identity.wave_cursor;
+    cuwacunu::piaabo::latent_lineage_state::append_runtime_report_header_entries(
+        out, ::tsiemene::make_runtime_report_header(header_identity));
+  }
+  const std::string source_label =
+      identity.source_label.empty() ? identity.canonical_path : identity.source_label;
+  if (!source_label.empty()) {
     entries.push_back(
         cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "wave_cursor_resolution", identity.wave_cursor_resolution));
-  }
-  if (!identity.intersection_cursor.empty()) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "intersection_cursor", identity.intersection_cursor));
-  }
-  if (identity.has_wave_cursor) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave_cursor", identity.wave_cursor, "[0,+inf)"));
-  }
-  if (identity.has_wave_cursor_run) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.run", identity.wave_cursor_run, "[0,+inf)"));
-  }
-  if (identity.has_wave_cursor_episode) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.episode", identity.wave_cursor_episode, "[0,+inf)"));
-  }
-  if (identity.has_wave_cursor_batch) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
-            "wave.cursor.batch", identity.wave_cursor_batch, "[0,+inf)"));
-  }
-  if (!identity.contract_hash.empty()) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "contract_hash", identity.contract_hash));
-  }
-  if (!identity.binding_id.empty()) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "binding_id", identity.binding_id));
-  }
-  if (!identity.wave_hash.empty()) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "wave_hash", identity.wave_hash));
-  }
-  if (!identity.wave_id.empty()) {
-    entries.push_back(
-        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "wave_id", identity.wave_id));
+            "source_label", source_label));
   }
   for (const auto& [k, v] : fragment.projection_num) {
     entries.push_back(

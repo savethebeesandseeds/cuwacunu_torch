@@ -8,10 +8,16 @@
 namespace cuwacunu {
 namespace camahjucunu {
 
-struct wave_contract_binding_variable_t {
+struct dsl_variable_t {
   std::string name{};
   std::string value{};
 };
+
+struct dsl_variable_scope_t {
+  std::vector<dsl_variable_t> variables{};
+};
+
+using wave_contract_binding_variable_t = dsl_variable_t;
 
 struct wave_contract_binding_decl_t {
   std::string id{};
@@ -20,8 +26,7 @@ struct wave_contract_binding_decl_t {
   std::vector<wave_contract_binding_variable_t> variables{};
 };
 
-[[nodiscard]] inline std::string wave_contract_binding_trim_ascii(
-    std::string_view in) {
+[[nodiscard]] inline std::string dsl_variable_trim_ascii(std::string_view in) {
   std::size_t b = 0;
   while (b < in.size() &&
          std::isspace(static_cast<unsigned char>(in[b])) != 0) {
@@ -34,8 +39,12 @@ struct wave_contract_binding_decl_t {
   return std::string(in.substr(b, e - b));
 }
 
-[[nodiscard]] inline bool is_wave_contract_binding_variable_name(
-    std::string_view name) {
+[[nodiscard]] inline std::string wave_contract_binding_trim_ascii(
+    std::string_view in) {
+  return dsl_variable_trim_ascii(in);
+}
+
+[[nodiscard]] inline bool is_dsl_variable_name(std::string_view name) {
   if (name.size() < 3) return false;
   if (name[0] != '_' || name[1] != '_') return false;
   for (std::size_t i = 2; i < name.size(); ++i) {
@@ -48,13 +57,47 @@ struct wave_contract_binding_decl_t {
   return true;
 }
 
-[[nodiscard]] inline const wave_contract_binding_variable_t*
-find_wave_contract_binding_variable(
-    const wave_contract_binding_decl_t& binding, std::string_view name) {
-  for (const auto& variable : binding.variables) {
+[[nodiscard]] inline bool is_wave_contract_binding_variable_name(
+    std::string_view name) {
+  return is_dsl_variable_name(name);
+}
+
+[[nodiscard]] inline const dsl_variable_t* find_dsl_variable(
+    const std::vector<dsl_variable_t>& variables, std::string_view name) {
+  for (const auto& variable : variables) {
     if (variable.name == name) return &variable;
   }
   return nullptr;
+}
+
+[[nodiscard]] inline const wave_contract_binding_variable_t*
+find_wave_contract_binding_variable(
+    const wave_contract_binding_decl_t& binding, std::string_view name) {
+  return find_dsl_variable(binding.variables, name);
+}
+
+[[nodiscard]] inline bool append_dsl_variable(
+    std::vector<dsl_variable_t>* variables, std::string name, std::string value,
+    std::string* error = nullptr) {
+  if (error) error->clear();
+  if (!variables) {
+    if (error) *error = "missing DSL variable destination";
+    return false;
+  }
+  name = dsl_variable_trim_ascii(name);
+  if (!is_dsl_variable_name(name)) {
+    if (error) {
+      *error = "invalid DSL variable name '" + name +
+               "' (variables must start with '__')";
+    }
+    return false;
+  }
+  if (find_dsl_variable(*variables, name) != nullptr) {
+    if (error) *error = "duplicate DSL variable: " + name;
+    return false;
+  }
+  variables->push_back(dsl_variable_t{std::move(name), std::move(value)});
+  return true;
 }
 
 [[nodiscard]] inline bool append_wave_contract_binding_variable(
@@ -65,21 +108,8 @@ find_wave_contract_binding_variable(
     if (error) *error = "missing wave-contract binding destination";
     return false;
   }
-  name = wave_contract_binding_trim_ascii(name);
-  if (!is_wave_contract_binding_variable_name(name)) {
-    if (error) {
-      *error = "invalid binding variable name '" + name +
-               "' (variables must start with '__')";
-    }
-    return false;
-  }
-  if (find_wave_contract_binding_variable(*binding, name) != nullptr) {
-    if (error) *error = "duplicate binding variable: " + name;
-    return false;
-  }
-  binding->variables.push_back(
-      wave_contract_binding_variable_t{std::move(name), std::move(value)});
-  return true;
+  return append_dsl_variable(&binding->variables, std::move(name), std::move(value),
+                             error);
 }
 
 namespace detail {
@@ -102,7 +132,7 @@ struct wave_contract_binding_placeholder_t {
   out->default_value.clear();
   out->has_default = false;
 
-  const std::string trimmed = wave_contract_binding_trim_ascii(body);
+  const std::string trimmed = dsl_variable_trim_ascii(body);
   if (trimmed.empty()) {
     if (error) *error = "empty binding variable placeholder";
     return false;
@@ -124,9 +154,9 @@ struct wave_contract_binding_placeholder_t {
   }
   const std::string variable_name =
       trimmed.substr(name_begin, pos - name_begin);
-  if (!is_wave_contract_binding_variable_name(variable_name)) {
+  if (!is_dsl_variable_name(variable_name)) {
     if (error) {
-      *error = "invalid binding placeholder variable '" + variable_name +
+      *error = "invalid DSL placeholder variable '" + variable_name +
                "' (variables must start with '__')";
     }
     return false;
@@ -149,7 +179,7 @@ struct wave_contract_binding_placeholder_t {
   }
   ++pos;
   const std::string default_value =
-      wave_contract_binding_trim_ascii(trimmed.substr(pos));
+      dsl_variable_trim_ascii(trimmed.substr(pos));
   if (default_value.empty()) {
     if (error) {
       *error = "binding placeholder default is empty for variable '" +
@@ -166,12 +196,22 @@ struct wave_contract_binding_placeholder_t {
 
 }  // namespace detail
 
+[[nodiscard]] inline bool resolve_dsl_variables_in_text(
+    std::string_view text, const std::vector<dsl_variable_t>& variables,
+    std::string* out_text, std::string* error = nullptr);
+
 [[nodiscard]] inline bool resolve_wave_contract_binding_variables_in_text(
     std::string_view text, const wave_contract_binding_decl_t& binding,
     std::string* out_text, std::string* error = nullptr) {
+  return resolve_dsl_variables_in_text(text, binding.variables, out_text, error);
+}
+
+[[nodiscard]] inline bool resolve_dsl_variables_in_text(
+    std::string_view text, const std::vector<dsl_variable_t>& variables,
+    std::string* out_text, std::string* error) {
   if (error) error->clear();
   if (!out_text) {
-    if (error) *error = "missing destination for resolved binding text";
+    if (error) *error = "missing destination for resolved DSL text";
     return false;
   }
   out_text->clear();
@@ -230,7 +270,7 @@ struct wave_contract_binding_placeholder_t {
 
     const std::size_t close = text.find('%', i + 1);
     if (close == std::string_view::npos) {
-      if (error) *error = "unterminated binding variable placeholder";
+      if (error) *error = "unterminated DSL variable placeholder";
       return false;
     }
 
@@ -242,15 +282,14 @@ struct wave_contract_binding_placeholder_t {
       return false;
     }
 
-    const auto* variable =
-        find_wave_contract_binding_variable(binding, placeholder.variable_name);
+    const auto* variable = find_dsl_variable(variables, placeholder.variable_name);
     if (variable != nullptr) {
       out_text->append(variable->value);
     } else if (placeholder.has_default) {
       out_text->append(placeholder.default_value);
     } else {
       if (error) {
-        *error = "missing binding variable '" + placeholder.variable_name +
+        *error = "missing DSL variable '" + placeholder.variable_name +
                  "' and no default was provided";
       }
       return false;

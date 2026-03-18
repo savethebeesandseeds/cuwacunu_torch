@@ -27,16 +27,6 @@ range = non-empty path
 allowed = absolute_or_relative path
 nuance = runtime lattice catalog path loaded from Lattice HERO defaults DSL via [REAL_HERO].lattice_hero_dsl_filename
 
-[FIELD config_folder]
-key = config_folder
-scope = hero lattice runtime defaults
-type = path
-required = true
-default = /cuwacunu/src/config
-range = non-empty path
-allowed = absolute_or_relative path
-nuance = root config folder passed to runtime campaign/wave execution context; loaded from Lattice HERO defaults DSL
-
 [FIELD encrypted]
 key = encrypted
 scope = hero lattice runtime defaults

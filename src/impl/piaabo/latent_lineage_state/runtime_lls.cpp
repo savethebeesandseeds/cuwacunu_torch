@@ -12,7 +12,9 @@
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state.h"
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
+#include "camahjucunu/db/idydb.h"
 #include "piaabo/dfiles.h"
+#include "piaabo/latent_lineage_state/report_taxonomy.h"
 
 namespace {
 
@@ -57,6 +59,15 @@ void set_error(std::string* error, std::string message) {
   return value == "str" || value == "bool" || value == "int" ||
          value == "uint" ||
          value == "double";
+}
+
+[[nodiscard]] bool is_known_runtime_report_semantic_taxon(
+    std::string_view semantic_taxon) {
+  using namespace cuwacunu::piaabo::latent_lineage_state::report_taxonomy;
+  return semantic_taxon == kSourceData ||
+         semantic_taxon == kEmbeddingData ||
+         semantic_taxon == kEmbeddingEvaluation ||
+         semantic_taxon == kEmbeddingNetwork;
 }
 
 [[nodiscard]] bool is_runtime_symbol_char(char ch) {
@@ -343,14 +354,11 @@ void set_error(std::string* error, std::string message) {
 [[nodiscard]] int canonical_key_rank(std::string_view key) {
   const std::string k = trim_ascii_copy(key);
   if (is_schema_key(k)) return 0;
-  if (k == "report_kind") return 1;
-  if (k == "tsi_type") return 2;
-  if (k == "canonical_path") return 3;
-  if (k == "hashimyei") return 4;
-  if (k == "contract_hash") return 5;
-  if (k == "wave_hash") return 6;
-  if (k == "binding_id") return 7;
-  if (k == "run_id") return 8;
+  if (k == "semantic_taxon") return 1;
+  if (k == "canonical_path") return 2;
+  if (k == "binding_id") return 3;
+  if (k == "wave_cursor") return 4;
+  if (k == "source_runtime_cursor") return 5;
   return 100;
 }
 
@@ -648,6 +656,101 @@ bool runtime_lls_document_to_kv_map(
     (*out)[entry.key] = value;
   }
   return true;
+}
+
+std::string normalize_runtime_report_semantic_taxon(std::string_view semantic_taxon,
+                                                    std::string_view schema) {
+  (void)schema;
+  return trim_ascii_copy(semantic_taxon);
+}
+
+void append_runtime_report_header_entries(runtime_lls_document_t* document,
+                                          const runtime_report_header_t& header) {
+  if (!document) return;
+  const std::string semantic_taxon =
+      normalize_runtime_report_semantic_taxon(header.semantic_taxon);
+  if (!semantic_taxon.empty()) {
+    if (!is_known_runtime_report_semantic_taxon(semantic_taxon)) {
+      throw std::invalid_argument("unknown runtime report semantic_taxon: " +
+                                  semantic_taxon);
+    }
+    document->entries.push_back(make_runtime_lls_string_entry("semantic_taxon",
+                                                              semantic_taxon));
+  }
+  if (!header.context.canonical_path.empty()) {
+    document->entries.push_back(
+        make_runtime_lls_string_entry("canonical_path",
+                                      header.context.canonical_path));
+  }
+  if (!header.context.binding_id.empty()) {
+    document->entries.push_back(
+        make_runtime_lls_string_entry("binding_id", header.context.binding_id));
+  }
+  if (header.context.has_wave_cursor) {
+    document->entries.push_back(make_runtime_lls_uint_entry(
+        "wave_cursor", header.context.wave_cursor, "[0,+inf)"));
+  }
+  if (!header.context.source_runtime_cursor.empty()) {
+    document->entries.push_back(make_runtime_lls_string_entry(
+        "source_runtime_cursor", header.context.source_runtime_cursor));
+  }
+}
+
+bool parse_runtime_report_header_from_kv(
+    const std::unordered_map<std::string, std::string>& kv,
+    runtime_report_header_t* out,
+    std::string* error) {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "runtime report header output pointer is null");
+    return false;
+  }
+  *out = runtime_report_header_t{};
+
+  const auto lookup = [&](std::string_view key) -> std::string {
+    const auto it = kv.find(std::string(key));
+    if (it == kv.end()) return {};
+    return trim_ascii_copy(it->second);
+  };
+
+  const std::string schema = lookup("schema");
+  out->semantic_taxon =
+      normalize_runtime_report_semantic_taxon(lookup("semantic_taxon"), schema);
+  if (!out->semantic_taxon.empty() &&
+      !is_known_runtime_report_semantic_taxon(out->semantic_taxon)) {
+    set_error(error, "unknown runtime report semantic_taxon: " +
+                         out->semantic_taxon);
+    *out = runtime_report_header_t{};
+    return false;
+  }
+  out->context.canonical_path = lookup("canonical_path");
+  out->context.binding_id = lookup("binding_id");
+  out->context.source_runtime_cursor = lookup("source_runtime_cursor");
+  std::uint64_t parsed_wave_cursor = 0;
+  if (parse_u64_ascii(lookup("wave_cursor"), &parsed_wave_cursor)) {
+    out->context.has_wave_cursor = true;
+    out->context.wave_cursor = parsed_wave_cursor;
+  }
+
+  return true;
+}
+
+bool pack_runtime_wave_cursor(std::uint64_t run_id,
+                              std::uint64_t episode,
+                              std::uint64_t batch,
+                              std::uint64_t* out) {
+  if (!out) return false;
+  const db::wave_cursor::layout_t layout{
+      .run_bits = 41,
+      .episode_bits = 11,
+      .batch_bits = 11,
+  };
+  const db::wave_cursor::parts_t parts{
+      .run_id = run_id,
+      .episode_k = episode,
+      .batch_j = batch,
+  };
+  return db::wave_cursor::pack(layout, parts, out);
 }
 
 std::string emit_runtime_lls_canonical(const runtime_lls_document_t& document) {

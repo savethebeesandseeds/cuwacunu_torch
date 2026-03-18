@@ -22,7 +22,9 @@ struct RuntimeContext {
   void* user = nullptr;
   std::uint64_t wave_mode_flags{0};
   bool debug_enabled{false};
+  std::string binding_id{};
   std::string run_id{};
+  std::string source_runtime_cursor{};
 };
 
 // One ingress token delivered to one input directive.

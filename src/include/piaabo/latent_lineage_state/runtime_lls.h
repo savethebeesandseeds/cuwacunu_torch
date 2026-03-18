@@ -25,6 +25,19 @@ struct runtime_lls_document_t {
   std::vector<runtime_lls_entry_t> entries{};
 };
 
+struct runtime_report_context_t {
+  std::string canonical_path{};
+  std::string binding_id{};
+  std::string source_runtime_cursor{};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
+};
+
+struct runtime_report_header_t {
+  std::string semantic_taxon{};
+  runtime_report_context_t context{};
+};
+
 [[nodiscard]] std::string runtime_lls_grammar_text();
 
 [[nodiscard]] bool validate_runtime_lls_text(
@@ -47,6 +60,25 @@ struct runtime_lls_document_t {
 
 [[nodiscard]] std::string emit_runtime_lls_canonical(
     const runtime_lls_document_t& document);
+
+[[nodiscard]] std::string normalize_runtime_report_semantic_taxon(
+    std::string_view semantic_taxon,
+    std::string_view schema = {});
+
+void append_runtime_report_header_entries(
+    runtime_lls_document_t* document,
+    const runtime_report_header_t& header);
+
+[[nodiscard]] bool parse_runtime_report_header_from_kv(
+    const std::unordered_map<std::string, std::string>& kv,
+    runtime_report_header_t* out,
+    std::string* error = nullptr);
+
+[[nodiscard]] bool pack_runtime_wave_cursor(
+    std::uint64_t run_id,
+    std::uint64_t episode,
+    std::uint64_t batch,
+    std::uint64_t* out);
 
 [[nodiscard]] runtime_lls_entry_t make_runtime_lls_entry(
     std::string key,

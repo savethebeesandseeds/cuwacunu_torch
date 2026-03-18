@@ -119,4 +119,4 @@ all:
 .PHONY: clean_tests
 clean_tests:
 	@echo "$(COLOR_RED) Cleaning test build $(COLOR_RESET)"
-	@rm -f $(TEST_OUT)/test_*
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_*

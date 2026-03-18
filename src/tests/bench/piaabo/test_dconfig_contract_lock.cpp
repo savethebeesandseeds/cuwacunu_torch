@@ -8,6 +8,7 @@
 
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "camahjucunu/dsl/runtime_binding_instruction/runtime_binding_instruction.h"
+#include "iitepi/observation_contract_wave_paths.h"
 #include "piaabo/dconfig.h"
 
 namespace fs = std::filesystem;
@@ -106,7 +107,7 @@ int main() try {
   const fs::path alt_campaign_cfg_path =
       "/cuwacunu/src/config/instructions/default.iitepi.campaign.alt.dsl";
 
-  cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/");
+  cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/.config");
   cuwacunu::iitepi::config_space_t::update_config();
   cuwacunu::iitepi::runtime_binding_space_t::init();
   const auto locked_runtime_binding_hash =
@@ -126,7 +127,8 @@ int main() try {
   write_text(campaign_cfg_path, campaign_cfg_original);
 
   const std::string locked_digest =
-      runtime_binding_itself_boot->dependency_manifest.aggregate_sha256_hex;
+      runtime_binding_itself_boot->dependency_manifest
+          .dependency_manifest_aggregate_sha256_hex;
   const std::string locked_path = runtime_binding_itself_boot->config_file_path;
   if (locked_digest.empty() || locked_path.empty()) {
     std::cerr << "[dconfig_contract_lock] runtime binding metadata is incomplete\n";
@@ -148,7 +150,7 @@ int main() try {
       cuwacunu::iitepi::runtime_binding_space_t::runtime_binding_itself(
           locked_runtime_binding_hash);
   if (runtime_binding_itself_after_reload->dependency_manifest
-          .aggregate_sha256_hex != locked_digest) {
+          .dependency_manifest_aggregate_sha256_hex != locked_digest) {
     std::cerr << "[dconfig_contract_lock] lock digest changed on global-only reload\n";
     return 1;
   }
@@ -179,10 +181,6 @@ int main() try {
   // Case 4: tamper transitive dependency (bound wave observation sources DSL) -> fail-fast.
   const std::string binding_id =
       cuwacunu::iitepi::runtime_binding_space_t::locked_binding_id();
-  const std::string locked_contract_hash =
-      cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
-          locked_runtime_binding_hash, binding_id);
-  (void)locked_contract_hash;
   const auto runtime_binding_itself_locked =
       cuwacunu::iitepi::runtime_binding_space_t::runtime_binding_itself(
           locked_runtime_binding_hash);
@@ -203,8 +201,13 @@ int main() try {
   const std::string locked_wave_hash =
       cuwacunu::iitepi::runtime_binding_space_t::wave_hash_for_binding(
           locked_runtime_binding_hash, binding_id);
+  const std::string locked_contract_hash =
+      cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+          locked_runtime_binding_hash, binding_id);
   const auto wave_itself =
       cuwacunu::iitepi::wave_space_t::wave_itself(locked_wave_hash);
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(locked_contract_hash);
   const auto& wave_set = wave_itself->wave.decoded();
   const cuwacunu::camahjucunu::iitepi_wave_t* selected_wave = nullptr;
   for (const auto& wave : wave_set.waves) {
@@ -217,8 +220,16 @@ int main() try {
     std::cerr << "[dconfig_contract_lock] cannot resolve selected SOURCE block in wave DSL\n";
     return 1;
   }
-  const fs::path obs_dsl_path = fs::path(wave_itself->config_folder) /
-                                selected_wave->sources.front().sources_dsl_file;
+  cuwacunu::iitepi::observation_dsl_path_resolution_t observation_paths{};
+  std::string observation_error;
+  if (!cuwacunu::iitepi::resolve_observation_dsl_paths(
+          contract_itself, wave_itself, *selected_wave, &observation_paths,
+          &observation_error)) {
+    std::cerr << "[dconfig_contract_lock] cannot resolve observation DSL paths: "
+              << observation_error << "\n";
+    return 1;
+  }
+  const fs::path obs_dsl_path = observation_paths.sources_path;
   const std::string obs_dsl_original = read_text(obs_dsl_path);
   FileRestoreGuard obs_restore{obs_dsl_path, obs_dsl_original};
   write_text(obs_dsl_path, obs_dsl_original + "\n# tamper-transitive\n");

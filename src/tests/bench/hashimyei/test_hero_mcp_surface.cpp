@@ -154,7 +154,7 @@ static void test_hashimyei_tools_list_surface() {
       tools_list_command(kHashimyeiMcpBin, store_root, catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"hero.hashimyei.list\""));
-  REQUIRE(contains(result.output, "\"hero.hashimyei.get_founding_dsl\""));
+  REQUIRE(contains(result.output, "\"hero.hashimyei.get_founding_dsl_bundle\""));
   REQUIRE(contains(result.output, "\"hero.hashimyei.update_rank\""));
   REQUIRE(contains(result.output,
                    "\"required\":[\"family\",\"contract_hash\",\"ordered_hashimyeis\"]"));

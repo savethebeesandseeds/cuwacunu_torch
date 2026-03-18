@@ -13,27 +13,29 @@
       exports:
         embedding -> encoder node
         projected -> projector node
+    - Contract-scoped `__variables` may own docking-critical tensor sizes so
+      wave remains operational instead of structural.
 */
 
 NETWORK "tsi.wikimyei.representation.vicreg" {
   JOIN_POLICY = vicreg_default;
 
   node obs@INPUT {
-    C:int = 3;
-    T:int = 30;
-    D:int = 9;
+    C:int = % __obs_channels ? 3 %;
+    T:int = % __obs_seq_length ? 30 %;
+    D:int = % __obs_feature_dim ? 9 %;
   }
 
   node enc@VICREG_4D_ENCODER {
-    encoding_dims:int = 72;
-    channel_expansion_dim:int = 64;
-    fused_feature_dim:int = 32;
-    hidden_dims:int = 24;
-    depth:int = 10;
+    encoding_dims:int = % __embedding_dims ? 72 %;
+    channel_expansion_dim:int = % __channel_expansion_dim ? 64 %;
+    fused_feature_dim:int = % __fused_feature_dim ? 32 %;
+    hidden_dims:int = % __encoder_hidden_dims ? 24 %;
+    depth:int = % __encoder_depth ? 10 %;
   }
 
   node proj@MLP {
-    dims:arr[int] = 72,128,256,128;
+    dims:arr[int] = % __projector_dims ? 72,128,256,128 %;
     norm:str = LayerNorm;
     activation:str = SiLU;
     hidden_bias:bool = false;

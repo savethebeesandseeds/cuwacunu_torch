@@ -75,4 +75,4 @@ run: \
 # 7) Clean
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/test_iinuji_*
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_iinuji_*

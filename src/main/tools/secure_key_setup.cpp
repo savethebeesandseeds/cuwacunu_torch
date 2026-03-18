@@ -1,5 +1,6 @@
 #include "piaabo/dencryption.h"
 #include "piaabo/dsecurity.h"
+#include "iitepi/config_space_t.h"
 
 #include <algorithm>
 #include <cctype>
@@ -148,7 +149,7 @@ void print_usage(const char* argv0) {
   std::cout
       << "Usage:\n"
       << "  " << argv0
-      << " [--config-folder <path>] [--only <csv>] [--skip <csv>] [--yes] [--skip-existing] [--dry-run]\n"
+      << " [--global-config <path>] [--only <csv>] [--skip <csv>] [--yes] [--skip-existing] [--dry-run]\n"
       << "  " << argv0 << " --list-targets\n"
       << "\n"
       << "Targets:\n"
@@ -264,10 +265,8 @@ std::string strip_comment(std::string line) {
   return line;
 }
 
-std::filesystem::path resolve_config_file_path(const std::string& config_folder_or_file) {
-  std::filesystem::path p(config_folder_or_file);
-  if (p.filename() == ".config") return p;
-  return p / ".config";
+std::filesystem::path resolve_global_config_path(const std::string& global_config_path) {
+  return std::filesystem::path(global_config_path);
 }
 
 bool parse_global_config(const std::filesystem::path& path,
@@ -320,7 +319,7 @@ bool lookup_value(const parsed_config_t& cfg,
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string config_folder = "/cuwacunu/src/config/";
+  std::string global_config_path = DEFAULT_GLOBAL_CONFIG_PATH;
   std::string only_csv;
   std::string skip_csv;
   bool assume_yes = false;
@@ -349,7 +348,7 @@ int main(int argc, char** argv) {
       dry_run = true;
       continue;
     }
-    if (consume_arg(argc, argv, &i, "--config-folder", &config_folder)) continue;
+    if (consume_arg(argc, argv, &i, "--global-config", &global_config_path)) continue;
     if (consume_arg(argc, argv, &i, "--only", &only_csv)) continue;
     if (consume_arg(argc, argv, &i, "--skip", &skip_csv)) continue;
     std::cerr << "error: unknown argument: " << argv[i] << "\n";
@@ -394,7 +393,7 @@ int main(int argc, char** argv) {
   }
 
   const std::filesystem::path config_file =
-      resolve_config_file_path(config_folder);
+      resolve_global_config_path(global_config_path);
   const std::filesystem::path config_root = config_file.parent_path();
 
   parsed_config_t parsed_config;

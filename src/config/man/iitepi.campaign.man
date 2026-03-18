@@ -45,7 +45,7 @@ required = true
 default = none
 range = unique within campaign
 allowed = [A-Za-z0-9_.-]+
-nuance = reusable execution unit combining one CONTRACT ref, one WAVE ref, and optional __variables
+nuance = reusable execution unit combining one CONTRACT ref, one WAVE ref, and optional wave-scoping __variables
 
 [FIELD BIND.CONTRACT]
 key = BIND.CONTRACT
@@ -75,7 +75,9 @@ required = false
 default = none
 range = zero or more bind-local variable assignments
 allowed = variable names starting with double underscore
-nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %`
+nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %` only for the selected WAVE graph; they do not override contract-defined __variables
+note = use bind __variables for operational wave scope such as sampler choice, workers, symbol, or runtime date range, not for docking-critical compatibility
+note_2 = bind __variables may not reuse names already declared by contract __variables; overlapping names are rejected during campaign snapshot staging
 
 [FIELD RUN]
 key = RUN <bind_id>

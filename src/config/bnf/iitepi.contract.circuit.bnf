@@ -1,6 +1,4 @@
-<instruction>            ::= [<layout>] [<active_circuit_decl>] {<circuit>} [<layout>] ;
-<active_circuit_decl>    ::= <active_circuit_key> [<layout>] "=" [<layout>] <circuit_name> <line_end> ;
-<active_circuit_key>     ::= "active_circuit" | "ACTIVE_CIRCUIT" ;
+<instruction>            ::= [<layout>] {<circuit>} [<layout>] ;
 <circuit>                ::= <circuit_header> {<instance_decl>} {<hop_decl>} <circuit_close> ;
 <circuit_header>         ::= [<layout>] <circuit_name> [<layout>] "=" [<layout>] "{" <line_end> ;
 <circuit_close>          ::= [<layout>] "}" [<line_end>] ;

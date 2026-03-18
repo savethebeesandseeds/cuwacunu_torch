@@ -26,6 +26,7 @@
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "camahjucunu/db/idydb.h"
 #include "hero/hero_catalog_schema.h"
+#include "iitepi/contract_space_t.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 
 namespace cuwacunu {
@@ -291,7 +292,7 @@ using runtime_lls_document_t =
     const cuwacunu::hero::hashimyei::wave_contract_binding_t& binding) {
   std::ostringstream seed;
   seed << binding.contract.hash_sha256_hex << "|"
-       << binding.wave.hash_sha256_hex << "|" << binding.binding_alias;
+       << binding.wave.hash_sha256_hex << "|" << binding.binding_id;
   std::string digest;
   if (!sha256_hex_bytes(seed.str(), &digest)) return {};
   return digest;
@@ -301,8 +302,8 @@ using runtime_lls_document_t =
     const cuwacunu::hero::hashimyei::wave_contract_binding_t& binding,
     std::string* error = nullptr) {
   if (error) error->clear();
-  if (binding.binding_alias.empty()) {
-    if (error) *error = "binding_alias is required";
+  if (binding.binding_id.empty()) {
+    if (error) *error = "binding_id is required";
     return false;
   }
   if (binding.contract.kind != cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT) {
@@ -343,6 +344,17 @@ using runtime_lls_document_t =
   return true;
 }
 
+[[nodiscard]] bool same_contract_identity_(
+    const cuwacunu::hashimyei::hashimyei_t& lhs,
+    const cuwacunu::hashimyei::hashimyei_t& rhs) {
+  const std::string lhs_hash = trim_ascii(lhs.hash_sha256_hex);
+  const std::string rhs_hash = trim_ascii(rhs.hash_sha256_hex);
+  if (!lhs_hash.empty() && !rhs_hash.empty()) {
+    return lowercase_copy(lhs_hash) == lowercase_copy(rhs_hash);
+  }
+  return trim_ascii(lhs.name) == trim_ascii(rhs.name);
+}
+
 [[nodiscard]] bool write_binding_kv(
     std::ostringstream* out, std::string_view prefix,
     const cuwacunu::hero::hashimyei::wave_contract_binding_t& binding) {
@@ -356,7 +368,7 @@ using runtime_lls_document_t =
   if (!write_identity_kv(out, std::string(prefix) + ".wave", binding.wave)) {
     return false;
   }
-  *out << prefix << ".binding_alias=" << binding.binding_alias << "\n";
+  *out << prefix << ".binding_id=" << binding.binding_id << "\n";
   return true;
 }
 
@@ -371,12 +383,12 @@ using runtime_lls_document_t =
   *out = cuwacunu::hero::hashimyei::wave_contract_binding_t{};
 
   const std::string prefix_s(prefix);
-  const auto alias_it = kv.find(prefix_s + ".binding_alias");
-  if (alias_it == kv.end()) {
-    if (error) *error = "missing binding field: " + prefix_s + ".binding_alias";
+  const auto binding_id_it = kv.find(prefix_s + ".binding_id");
+  if (binding_id_it == kv.end()) {
+    if (error) *error = "missing binding field: " + prefix_s + ".binding_id";
     return false;
   }
-  out->binding_alias = trim_ascii(alias_it->second);
+  out->binding_id = trim_ascii(binding_id_it->second);
 
   if (!parse_identity_kv(kv, prefix_s + ".identity", true, &out->identity, error)) {
     return false;
@@ -402,11 +414,11 @@ using runtime_lls_document_t =
   out << "seed=" << m.seed << "\n";
   out << "device=" << m.device << "\n";
   out << "dtype=" << m.dtype << "\n";
-  out << "dep_count=" << m.dependency_files.size() << "\n";
+  out << "dependency_count=" << m.dependency_files.size() << "\n";
   for (std::size_t i = 0; i < m.dependency_files.size(); ++i) {
-    out << "dep_" << std::setw(4) << std::setfill('0') << i << "_path="
+    out << "dependency_" << std::setw(4) << std::setfill('0') << i << "_path="
         << m.dependency_files[i].canonical_path << "\n";
-    out << "dep_" << std::setw(4) << std::setfill('0') << i << "_sha256="
+    out << "dependency_" << std::setw(4) << std::setfill('0') << i << "_sha256="
         << m.dependency_files[i].sha256_hex << "\n";
   }
   out << "component_count=" << m.components.size() << "\n";
@@ -414,7 +426,7 @@ using runtime_lls_document_t =
     out << "component_" << std::setw(4) << std::setfill('0') << i
         << "_canonical_path=" << m.components[i].canonical_path << "\n";
     out << "component_" << std::setw(4) << std::setfill('0') << i
-        << "_tsi_type=" << m.components[i].tsi_type << "\n";
+        << "_family=" << m.components[i].family << "\n";
     out << "component_" << std::setw(4) << std::setfill('0') << i
         << "_hashimyei=" << m.components[i].hashimyei << "\n";
   }
@@ -427,46 +439,226 @@ using runtime_lls_document_t =
   out << "schema=" << manifest.schema << "\n";
   out << "canonical_path=" << manifest.canonical_path << "\n";
   out << "family=" << manifest.family << "\n";
-  out << "tsi_type=" << manifest.tsi_type << "\n";
-  (void)write_identity_kv(&out, "component_identity", manifest.component_identity);
+  (void)write_identity_kv(&out, "hashimyei_identity",
+                          manifest.hashimyei_identity);
+  (void)write_identity_kv(&out, "contract_identity", manifest.contract_identity);
   out << "parent_identity.present="
       << (manifest.parent_identity.has_value() ? "1" : "0") << "\n";
   if (manifest.parent_identity.has_value()) {
     (void)write_identity_kv(&out, "parent_identity", *manifest.parent_identity);
   }
   out << "revision_reason=" << manifest.revision_reason << "\n";
-  out << "config_revision_id=" << manifest.config_revision_id << "\n";
-  (void)write_binding_kv(&out, "wave_contract_binding",
-                         manifest.wave_contract_binding);
-  out << "dsl_canonical_path=" << manifest.dsl_canonical_path << "\n";
-  out << "dsl_sha256_hex=" << manifest.dsl_sha256_hex << "\n";
-  out << "status=" << manifest.status << "\n";
+  out << "founding_revision_id=" << manifest.founding_revision_id << "\n";
+  out << "founding_dsl_provenance_path="
+      << manifest.founding_dsl_provenance_path << "\n";
+  out << "founding_dsl_provenance_sha256_hex="
+      << manifest.founding_dsl_provenance_sha256_hex << "\n";
+  out << "docking_signature_sha256_hex="
+      << manifest.docking_signature_sha256_hex << "\n";
+  out << "lineage_state=" << manifest.lineage_state << "\n";
   out << "replaced_by=" << manifest.replaced_by << "\n";
   out << "created_at_ms=" << manifest.created_at_ms << "\n";
   out << "updated_at_ms=" << manifest.updated_at_ms << "\n";
   return out.str();
 }
 
+[[nodiscard]] static std::string founding_bundle_file_key(
+    std::size_t index, std::string_view suffix) {
+  std::ostringstream oss;
+  oss << "file_" << std::setfill('0') << std::setw(4) << index << "_"
+      << suffix;
+  return oss.str();
+}
+
+}  // namespace
+
+std::filesystem::path founding_dsl_bundle_directory(
+    const std::filesystem::path& store_root, std::string_view component_id) {
+  return store_root / "founding_dsl_bundles" / std::string(component_id);
+}
+
+std::filesystem::path founding_dsl_bundle_manifest_path(
+    const std::filesystem::path& store_root, std::string_view component_id) {
+  return founding_dsl_bundle_directory(store_root, component_id) /
+         std::string(cuwacunu::hashimyei::kFoundingDslBundleManifestFilenameV1);
+}
+
+[[nodiscard]] std::filesystem::path store_root_from_catalog_path(
+    const std::filesystem::path& catalog_path) {
+  const std::filesystem::path catalog_dir = catalog_path.parent_path();
+  return catalog_dir.parent_path();
+}
+
+std::string compute_founding_dsl_bundle_aggregate_sha256(
+    const founding_dsl_bundle_manifest_t& manifest) {
+  std::ostringstream seed;
+  seed << manifest.schema << "|" << manifest.component_id << "|"
+       << manifest.canonical_path << "|" << manifest.hashimyei_name << "|"
+       << manifest.files.size() << "|";
+  for (const auto& file : manifest.files) {
+    seed << file.source_path << "|" << file.snapshot_relpath << "|"
+         << file.sha256_hex << "|";
+  }
+  std::string digest{};
+  if (!sha256_hex_bytes(seed.str(), &digest)) return {};
+  return digest;
+}
+
+bool write_founding_dsl_bundle_manifest(
+    const std::filesystem::path& store_root,
+    const founding_dsl_bundle_manifest_t& manifest, std::string* error) {
+  if (error) error->clear();
+  if (trim_ascii(manifest.component_id).empty()) {
+    if (error) *error = "founding DSL bundle manifest missing component_id";
+    return false;
+  }
+
+  const auto manifest_path =
+      founding_dsl_bundle_manifest_path(store_root, manifest.component_id);
+  std::error_code ec{};
+  std::filesystem::create_directories(manifest_path.parent_path(), ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create founding DSL bundle directory: " +
+               manifest_path.parent_path().string();
+    }
+    return false;
+  }
+
+  std::ofstream out(manifest_path, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    if (error) {
+      *error = "cannot open founding DSL bundle manifest for write: " +
+               manifest_path.string();
+    }
+    return false;
+  }
+
+  out << "schema=" << cuwacunu::hashimyei::kFoundingDslBundleManifestSchemaV1
+      << "\n";
+  out << "component_id=" << manifest.component_id << "\n";
+  out << "canonical_path=" << manifest.canonical_path << "\n";
+  out << "hashimyei_name=" << manifest.hashimyei_name << "\n";
+  out << "founding_dsl_bundle_aggregate_sha256_hex="
+      << manifest.founding_dsl_bundle_aggregate_sha256_hex << "\n";
+  out << "file_count=" << manifest.files.size() << "\n";
+  for (std::size_t i = 0; i < manifest.files.size(); ++i) {
+    out << founding_bundle_file_key(i, "source_path") << "="
+        << manifest.files[i].source_path << "\n";
+    out << founding_bundle_file_key(i, "snapshot_relpath") << "="
+        << manifest.files[i].snapshot_relpath << "\n";
+    out << founding_bundle_file_key(i, "sha256_hex") << "="
+        << manifest.files[i].sha256_hex << "\n";
+  }
+  if (!out) {
+    if (error) {
+      *error =
+          "cannot write founding DSL bundle manifest: " + manifest_path.string();
+    }
+    return false;
+  }
+  return true;
+}
+
+bool read_founding_dsl_bundle_manifest(
+    const std::filesystem::path& store_root, std::string_view component_id,
+    founding_dsl_bundle_manifest_t* out, std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) {
+      *error = "founding DSL bundle manifest output pointer is null";
+    }
+    return false;
+  }
+  *out = founding_dsl_bundle_manifest_t{};
+
+  const auto manifest_path = founding_dsl_bundle_manifest_path(store_root, component_id);
+  std::ifstream in(manifest_path, std::ios::binary);
+  if (!in) {
+    if (error) {
+      *error =
+          "founding DSL bundle manifest not found: " + manifest_path.string();
+    }
+    return false;
+  }
+
+  std::unordered_map<std::string, std::string> kv{};
+  std::string line{};
+  while (std::getline(in, line)) {
+    if (line.empty()) continue;
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    const std::string key = trim_ascii(line.substr(0, eq));
+    const std::string value = line.substr(eq + 1);
+    if (!key.empty()) kv[key] = value;
+  }
+  if (!in.eof() && in.fail()) {
+    if (error) {
+      *error = "cannot parse founding DSL bundle manifest: " +
+               manifest_path.string();
+    }
+    return false;
+  }
+
+  if (const auto it = kv.find("schema"); it != kv.end()) out->schema = it->second;
+  if (out->schema != cuwacunu::hashimyei::kFoundingDslBundleManifestSchemaV1) {
+    if (error) {
+      *error = "unsupported founding DSL bundle manifest schema: " + out->schema;
+    }
+    return false;
+  }
+  if (const auto it = kv.find("component_id"); it != kv.end()) {
+    out->component_id = it->second;
+  }
+  if (const auto it = kv.find("canonical_path"); it != kv.end()) {
+    out->canonical_path = it->second;
+  }
+  if (const auto it = kv.find("hashimyei_name"); it != kv.end()) {
+    out->hashimyei_name = it->second;
+  }
+  if (const auto it = kv.find("founding_dsl_bundle_aggregate_sha256_hex");
+      it != kv.end()) {
+    out->founding_dsl_bundle_aggregate_sha256_hex = it->second;
+  }
+  const auto count_it = kv.find("file_count");
+  if (count_it == kv.end()) {
+    if (error) *error = "founding DSL bundle manifest missing file_count";
+    return false;
+  }
+  std::size_t file_count = 0;
+  try {
+    file_count = static_cast<std::size_t>(std::stoull(trim_ascii(count_it->second)));
+  } catch (...) {
+    if (error) *error = "founding DSL bundle manifest has invalid file_count";
+    return false;
+  }
+  out->files.clear();
+  out->files.reserve(file_count);
+  for (std::size_t i = 0; i < file_count; ++i) {
+    founding_dsl_bundle_manifest_file_t file{};
+    if (const auto it = kv.find(founding_bundle_file_key(i, "source_path"));
+        it != kv.end()) {
+      file.source_path = it->second;
+    }
+    if (const auto it = kv.find(founding_bundle_file_key(i, "snapshot_relpath"));
+        it != kv.end()) {
+      file.snapshot_relpath = it->second;
+    }
+    if (const auto it = kv.find(founding_bundle_file_key(i, "sha256_hex"));
+        it != kv.end()) {
+      file.sha256_hex = it->second;
+    }
+    out->files.push_back(std::move(file));
+  }
+  return true;
+}
+
+namespace {
+
 [[nodiscard]] std::string kind_sha_key(
     cuwacunu::hashimyei::hashimyei_kind_e kind, std::string_view sha256_hex) {
   return cuwacunu::hashimyei::hashimyei_kind_to_string(kind) + "|" +
          std::string(sha256_hex);
-}
-
-[[nodiscard]] std::string component_binding_index_payload(
-    const component_manifest_t& manifest) {
-  std::ostringstream out;
-  out << "binding_hashimyei=" << manifest.wave_contract_binding.identity.name << "\n";
-  out << "contract_hashimyei=" << manifest.wave_contract_binding.contract.name << "\n";
-  out << "wave_hashimyei=" << manifest.wave_contract_binding.wave.name << "\n";
-  out << "binding_alias=" << manifest.wave_contract_binding.binding_alias << "\n";
-  out << "binding_hash_sha256="
-      << manifest.wave_contract_binding.identity.hash_sha256_hex << "\n";
-  out << "contract_hash_sha256="
-      << manifest.wave_contract_binding.contract.hash_sha256_hex << "\n";
-  out << "wave_hash_sha256=" << manifest.wave_contract_binding.wave.hash_sha256_hex
-      << "\n";
-  return out.str();
 }
 
 [[nodiscard]] bool is_known_schema(std::string_view schema) {
@@ -525,8 +717,7 @@ using runtime_lls_document_t =
 }
 
 [[nodiscard]] std::string component_family_from_parts(std::string_view canonical_path,
-                                                      std::string_view hashimyei,
-                                                      std::string_view tsi_type) {
+                                                      std::string_view hashimyei) {
   if (!hashimyei.empty() && !canonical_path.empty()) {
     std::string family = std::string(canonical_path);
     const std::string suffix = "." + std::string(hashimyei);
@@ -537,7 +728,6 @@ using runtime_lls_document_t =
     }
     if (!family.empty()) return family;
   }
-  if (!tsi_type.empty()) return std::string(tsi_type);
   if (!canonical_path.empty()) {
     const std::string family = std::string(canonical_path);
     if (!family.empty()) {
@@ -549,16 +739,37 @@ using runtime_lls_document_t =
 
 [[nodiscard]] std::string component_active_pointer_key(std::string_view canonical_path,
                                                        std::string_view family,
-                                                       std::string_view hashimyei) {
+                                                       std::string_view hashimyei,
+                                                       std::string_view contract_hash) {
   std::string canonical_key_path = std::string(canonical_path);
   if (!hashimyei.empty()) {
-    canonical_key_path =
-        component_family_from_parts(canonical_path, hashimyei, "");
+    canonical_key_path = component_family_from_parts(canonical_path, hashimyei);
   }
   const std::string family_key =
-      family.empty() ? component_family_from_parts(canonical_path, hashimyei, "")
+      family.empty() ? component_family_from_parts(canonical_path, hashimyei)
                      : std::string(family);
-  return canonical_key_path + "|" + family_key;
+  return canonical_key_path + "|" + family_key + "|" +
+         trim_ascii(contract_hash);
+}
+
+[[nodiscard]] bool parse_component_active_pointer_key(
+    std::string_view key, std::string* out_canonical_path,
+    std::string* out_family, std::string* out_contract_hash) {
+  const std::size_t first_sep = key.find('|');
+  if (first_sep == std::string::npos) return false;
+  const std::size_t second_sep = key.find('|', first_sep + 1);
+  if (second_sep == std::string::npos) return false;
+  if (out_canonical_path) {
+    *out_canonical_path = std::string(key.substr(0, first_sep));
+  }
+  if (out_family) {
+    *out_family =
+        std::string(key.substr(first_sep + 1, second_sep - first_sep - 1));
+  }
+  if (out_contract_hash) {
+    *out_contract_hash = std::string(key.substr(second_sep + 1));
+  }
+  return true;
 }
 
 [[nodiscard]] bool is_family_rank_schema(std::string_view schema) {
@@ -797,6 +1008,34 @@ constexpr auto kCatalogOpenBusyRetryDelay = std::chrono::milliseconds(25);
   return true;
 }
 
+void populate_runtime_report_entry_header_fields_(
+    const std::unordered_map<std::string, std::string>& kv,
+    report_fragment_entry_t* entry) {
+  if (!entry) return;
+  cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t header{};
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_report_header_from_kv(
+          kv, &header, nullptr)) {
+    return;
+  }
+  if (entry->semantic_taxon.empty()) {
+    entry->semantic_taxon = trim_ascii(header.semantic_taxon);
+  }
+  if (entry->report_canonical_path.empty()) {
+    entry->report_canonical_path = trim_ascii(header.context.canonical_path);
+  }
+  if (entry->binding_id.empty()) {
+    entry->binding_id = trim_ascii(header.context.binding_id);
+  }
+  if (entry->source_runtime_cursor.empty()) {
+    entry->source_runtime_cursor =
+        trim_ascii(header.context.source_runtime_cursor);
+  }
+  if (!entry->has_wave_cursor && header.context.has_wave_cursor) {
+    entry->has_wave_cursor = true;
+    entry->wave_cursor = header.context.wave_cursor;
+  }
+}
+
 }  // namespace
 
 bool parse_latent_lineage_state_payload(
@@ -843,7 +1082,7 @@ std::string compute_run_id(
        << wave_contract_binding.identity.hash_sha256_hex << "|"
        << wave_contract_binding.contract.hash_sha256_hex << "|"
        << wave_contract_binding.wave.hash_sha256_hex << "|"
-       << wave_contract_binding.binding_alias << "|" << started_at_ms;
+       << wave_contract_binding.binding_id << "|" << started_at_ms;
   std::string hash_hex;
   if (!sha256_hex_bytes(seed.str(), &hash_hex) || hash_hex.empty()) {
     return "run.invalid";
@@ -903,12 +1142,12 @@ bool load_run_manifest(const std::filesystem::path& path, run_manifest_t* out,
   out->device = kv["device"];
   out->dtype = kv["dtype"];
 
-  std::uint64_t dep_count = 0;
-  if (parse_u64(kv["dep_count"], &dep_count)) {
-    out->dependency_files.reserve(static_cast<std::size_t>(dep_count));
-    for (std::uint64_t i = 0; i < dep_count; ++i) {
+  std::uint64_t dependency_count = 0;
+  if (parse_u64(kv["dependency_count"], &dependency_count)) {
+    out->dependency_files.reserve(static_cast<std::size_t>(dependency_count));
+    for (std::uint64_t i = 0; i < dependency_count; ++i) {
       std::ostringstream pfx;
-      pfx << "dep_" << std::setw(4) << std::setfill('0') << i << "_";
+      pfx << "dependency_" << std::setw(4) << std::setfill('0') << i << "_";
       dependency_file_t d{};
       d.canonical_path = kv[pfx.str() + "path"];
       d.sha256_hex = kv[pfx.str() + "sha256"];
@@ -926,9 +1165,9 @@ bool load_run_manifest(const std::filesystem::path& path, run_manifest_t* out,
       pfx << "component_" << std::setw(4) << std::setfill('0') << i << "_";
       component_instance_t c{};
       c.canonical_path = kv[pfx.str() + "canonical_path"];
-      c.tsi_type = kv[pfx.str() + "tsi_type"];
+      c.family = kv[pfx.str() + "family"];
       c.hashimyei = kv[pfx.str() + "hashimyei"];
-      if (!c.canonical_path.empty() || !c.tsi_type.empty() || !c.hashimyei.empty()) {
+      if (!c.canonical_path.empty() || !c.family.empty() || !c.hashimyei.empty()) {
         out->components.push_back(std::move(c));
       }
     }
@@ -955,16 +1194,15 @@ bool parse_component_manifest_kv(
   out->schema = kv.count("schema") != 0
                     ? trim_ascii(kv.at("schema"))
                     : cuwacunu::hashimyei::kComponentManifestSchemaV2;
-  out->canonical_path = kv.count("canonical_path") != 0
-                            ? kv.at("canonical_path")
-                            : kv.count("canonical_base") != 0 ? kv.at("canonical_base")
-                                                               : std::string{};
+  out->canonical_path =
+      kv.count("canonical_path") != 0 ? kv.at("canonical_path") : std::string{};
   out->family = kv.count("family") != 0 ? kv.at("family") : std::string{};
-  out->tsi_type = kv.count("tsi_type") != 0
-                      ? kv.at("tsi_type")
-                      : kv.count("canonical_type") != 0 ? kv.at("canonical_type")
-                                                        : std::string{};
-  if (!parse_identity_kv(kv, "component_identity", true, &out->component_identity,
+  if (!parse_identity_kv(kv, "hashimyei_identity", true,
+                         &out->hashimyei_identity,
+                         error)) {
+    return false;
+  }
+  if (!parse_identity_kv(kv, "contract_identity", true, &out->contract_identity,
                          error)) {
     return false;
   }
@@ -984,31 +1222,32 @@ bool parse_component_manifest_kv(
                              ? kv.at("revision_reason")
                              : (out->parent_identity.has_value() ? "dsl_change"
                                                                  : "initial");
-  out->config_revision_id = kv.count("config_revision_id") != 0
-                                ? kv.at("config_revision_id")
+  out->founding_revision_id = kv.count("founding_revision_id") != 0
+                                ? kv.at("founding_revision_id")
                                 : std::string{};
-  if (!parse_binding_kv(kv, "wave_contract_binding", &out->wave_contract_binding,
-                        error)) {
-    return false;
-  }
-  out->dsl_canonical_path = kv.count("dsl_canonical_path") != 0
-                                ? kv.at("dsl_canonical_path")
-                                : kv.count("dsl_path") != 0 ? kv.at("dsl_path")
-                                                             : std::string{};
-  out->dsl_sha256_hex = kv.count("dsl_sha256_hex") != 0
-                            ? kv.at("dsl_sha256_hex")
-                            : kv.count("dsl_sha256") != 0 ? kv.at("dsl_sha256")
-                                                           : std::string{};
-  out->status = kv.count("status") != 0 ? kv.at("status") : std::string{"active"};
+  out->founding_dsl_provenance_path =
+      kv.count("founding_dsl_provenance_path") != 0
+          ? kv.at("founding_dsl_provenance_path")
+          : std::string{};
+  out->founding_dsl_provenance_sha256_hex =
+      kv.count("founding_dsl_provenance_sha256_hex") != 0
+          ? kv.at("founding_dsl_provenance_sha256_hex")
+          : std::string{};
+  out->docking_signature_sha256_hex =
+      kv.count("docking_signature_sha256_hex") != 0
+          ? kv.at("docking_signature_sha256_hex")
+          : std::string{};
+  out->lineage_state = kv.count("lineage_state") != 0
+                           ? kv.at("lineage_state")
+                           : std::string{"active"};
   out->replaced_by = kv.count("replaced_by") != 0 ? kv.at("replaced_by") : std::string{};
   (void)parse_u64(kv.count("created_at_ms") != 0 ? kv.at("created_at_ms") : "0",
                   &out->created_at_ms);
   (void)parse_u64(kv.count("updated_at_ms") != 0 ? kv.at("updated_at_ms") : "0",
                   &out->updated_at_ms);
   if (out->family.empty()) {
-    out->family = component_family_from_parts(out->canonical_path,
-                                              out->component_identity.name,
-                                              out->tsi_type);
+    out->family =
+        component_family_from_parts(out->canonical_path, out->hashimyei_identity.name);
   }
 
   return validate_component_manifest(*out, error);
@@ -1045,19 +1284,28 @@ bool validate_component_manifest(const component_manifest_t& manifest,
     set_error(error, "component manifest missing family");
     return false;
   }
-  if (manifest.tsi_type.empty() || !starts_with(manifest.tsi_type, "tsi.")) {
-    set_error(error, "component manifest missing tsi_type");
-    return false;
-  }
   std::string identity_error;
-  if (!cuwacunu::hashimyei::validate_hashimyei(manifest.component_identity,
+  if (!cuwacunu::hashimyei::validate_hashimyei(manifest.hashimyei_identity,
                                                 &identity_error)) {
-    set_error(error, "component manifest component_identity invalid: " + identity_error);
+    set_error(error, "component manifest hashimyei_identity invalid: " +
+                         identity_error);
     return false;
   }
-  if (manifest.component_identity.kind !=
+  if (manifest.hashimyei_identity.kind !=
       cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE) {
-    set_error(error, "component manifest component_identity.kind must be TSIEMENE");
+    set_error(error,
+              "component manifest hashimyei_identity.kind must be TSIEMENE");
+    return false;
+  }
+  if (!cuwacunu::hashimyei::validate_hashimyei(manifest.contract_identity,
+                                                &identity_error)) {
+    set_error(error, "component manifest contract_identity invalid: " +
+                          identity_error);
+    return false;
+  }
+  if (manifest.contract_identity.kind !=
+      cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT) {
+    set_error(error, "component manifest contract_identity.kind must be CONTRACT");
     return false;
   }
   if (manifest.parent_identity.has_value()) {
@@ -1076,28 +1324,33 @@ bool validate_component_manifest(const component_manifest_t& manifest,
     set_error(error, "component manifest missing revision_reason");
     return false;
   }
-  if (!validate_wave_contract_binding(manifest.wave_contract_binding, &identity_error)) {
+  if (manifest.founding_dsl_provenance_path.empty()) {
     set_error(error,
-              "component manifest wave_contract_binding invalid: " + identity_error);
+              "component manifest missing founding_dsl_provenance_path");
     return false;
   }
-  if (manifest.dsl_canonical_path.empty()) {
-    set_error(error, "component manifest missing dsl_canonical_path");
+  if (!is_hex_64(manifest.founding_dsl_provenance_sha256_hex)) {
+    set_error(error,
+              "component manifest founding_dsl_provenance_sha256_hex must be 64 "
+              "hex chars");
     return false;
   }
-  if (!is_hex_64(manifest.dsl_sha256_hex)) {
-    set_error(error, "component manifest dsl_sha256_hex must be 64 hex chars");
+  if (!trim_ascii(manifest.docking_signature_sha256_hex).empty() &&
+      !is_hex_64(manifest.docking_signature_sha256_hex)) {
+    set_error(error,
+              "component manifest docking_signature_sha256_hex must be 64 "
+              "hex chars when present");
     return false;
   }
 
-  const std::string status = trim_ascii(manifest.status);
-  if (status != "active" && status != "deprecated" && status != "replaced" &&
-      status != "tombstone") {
-    set_error(error, "component manifest status must be active/deprecated/replaced/tombstone");
+  const std::string lineage_state = trim_ascii(manifest.lineage_state);
+  if (lineage_state != "active" && lineage_state != "deprecated" &&
+      lineage_state != "replaced" && lineage_state != "tombstone") {
+    set_error(error, "component manifest lineage_state must be active/deprecated/replaced/tombstone");
     return false;
   }
-  if (status == "replaced" && manifest.replaced_by.empty()) {
-    set_error(error, "component manifest status=replaced requires replaced_by");
+  if (lineage_state == "replaced" && manifest.replaced_by.empty()) {
+    set_error(error, "component manifest lineage_state=replaced requires replaced_by");
     return false;
   }
   if (manifest.created_at_ms == 0) {
@@ -1152,13 +1405,12 @@ bool load_component_manifest(const std::filesystem::path& path,
 std::string compute_component_manifest_id(const component_manifest_t& manifest) {
   std::ostringstream seed;
   seed << manifest.canonical_path << "|" << manifest.family << "|"
-       << manifest.tsi_type << "|"
-       << manifest.component_identity.schema << "|"
+       << manifest.hashimyei_identity.schema << "|"
        << cuwacunu::hashimyei::hashimyei_kind_to_string(
-              manifest.component_identity.kind)
-       << "|" << manifest.component_identity.name << "|"
-       << manifest.component_identity.ordinal << "|"
-       << manifest.component_identity.hash_sha256_hex << "|";
+              manifest.hashimyei_identity.kind)
+       << "|" << manifest.hashimyei_identity.name << "|"
+       << manifest.hashimyei_identity.ordinal << "|"
+       << manifest.hashimyei_identity.hash_sha256_hex << "|";
   if (manifest.parent_identity.has_value()) {
     seed << manifest.parent_identity->schema << "|"
          << cuwacunu::hashimyei::hashimyei_kind_to_string(
@@ -1167,17 +1419,83 @@ std::string compute_component_manifest_id(const component_manifest_t& manifest) 
          << manifest.parent_identity->ordinal << "|"
          << manifest.parent_identity->hash_sha256_hex << "|";
   }
-  seed << manifest.revision_reason << "|" << manifest.config_revision_id << "|"
-       << manifest.wave_contract_binding.identity.hash_sha256_hex << "|"
-       << manifest.wave_contract_binding.contract.hash_sha256_hex << "|"
-       << manifest.wave_contract_binding.wave.hash_sha256_hex << "|"
-       << manifest.wave_contract_binding.binding_alias << "|"
-       << manifest.dsl_canonical_path << "|" << manifest.dsl_sha256_hex;
+  seed << manifest.revision_reason << "|" << manifest.founding_revision_id
+       << "|"
+       << manifest.contract_identity.hash_sha256_hex << "|"
+       << manifest.founding_dsl_provenance_path << "|"
+       << manifest.founding_dsl_provenance_sha256_hex << "|"
+       << manifest.docking_signature_sha256_hex;
   std::string digest;
   if (!sha256_hex_bytes(seed.str(), &digest) || digest.empty()) {
     return "component.invalid";
   }
   return "component." + digest.substr(0, 24);
+}
+
+std::filesystem::path component_manifest_directory(
+    const std::filesystem::path& store_root, std::string_view component_id) {
+  return store_root / "components" / std::string(component_id);
+}
+
+std::filesystem::path component_manifest_path(
+    const std::filesystem::path& store_root, std::string_view component_id) {
+  return component_manifest_directory(store_root, component_id) /
+         std::string(cuwacunu::hashimyei::kComponentManifestFilenameV2);
+}
+
+bool save_component_manifest(const std::filesystem::path& store_root,
+                             const component_manifest_t& manifest,
+                             std::filesystem::path* out_path,
+                             std::string* error) {
+  clear_error(error);
+  std::string validate_error;
+  if (!validate_component_manifest(manifest, &validate_error)) {
+    set_error(error, "component manifest invalid: " + validate_error);
+    return false;
+  }
+
+  const std::string component_id = compute_component_manifest_id(manifest);
+  if (trim_ascii(component_id).empty() || component_id == "component.invalid") {
+    set_error(error, "component manifest id is invalid");
+    return false;
+  }
+
+  std::error_code ec;
+  const auto dir = component_manifest_directory(store_root, component_id);
+  std::filesystem::create_directories(dir, ec);
+  if (ec) {
+    set_error(error, "cannot create component manifest directory: " +
+                         dir.string());
+    return false;
+  }
+
+  const auto target = component_manifest_path(store_root, component_id);
+  const auto tmp = target.string() + ".tmp";
+  std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    set_error(error,
+              "cannot write component manifest temporary file: " + tmp);
+    return false;
+  }
+  out << component_manifest_payload(manifest);
+  out.flush();
+  if (!out) {
+    set_error(error,
+              "cannot flush component manifest temporary file: " + tmp);
+    return false;
+  }
+  out.close();
+
+  std::filesystem::rename(tmp, target, ec);
+  if (ec) {
+    std::filesystem::remove(tmp, ec);
+    set_error(error,
+              "cannot rename component manifest into place: " +
+                  target.string());
+    return false;
+  }
+  if (out_path) *out_path = target;
+  return true;
 }
 
 bool save_run_manifest(const std::filesystem::path& store_root,
@@ -1330,7 +1648,6 @@ bool hashimyei_catalog_store_t::close(std::string* error) {
   dependency_files_by_run_id_.clear();
   kind_counters_.clear();
   hash_identity_by_kind_sha_.clear();
-  component_ids_by_binding_hashimyei_.clear();
   explicit_family_rank_by_scope_.clear();
   return true;
 }
@@ -1645,26 +1962,53 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
 
   const std::string component_id = compute_component_manifest_id(manifest);
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT, component_id, "", manifest.canonical_path,
-                   manifest.component_identity.name, manifest.schema,
-                   manifest.tsi_type,
-                   std::numeric_limits<double>::quiet_NaN(), manifest.status,
+                   manifest.hashimyei_identity.name, manifest.schema,
+                   manifest.family,
+                   std::numeric_limits<double>::quiet_NaN(), manifest.lineage_state,
                    report_fragment_sha, cp.string(), std::to_string(ts_ms), payload,
                    error)) {
     return false;
   }
 
-  const std::string prov_id = component_id + "|dsl";
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_DEPENDENCY, prov_id, "", manifest.canonical_path,
-                   manifest.component_identity.name, manifest.schema,
-                   manifest.dsl_canonical_path,
+  const std::string provenance_payload =
+      "{\"component_edge_kind\":\"founding_dsl_provenance\"}";
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_LINEAGE,
+                   component_id + "|founding_dsl_provenance", "",
+                   manifest.canonical_path, manifest.hashimyei_identity.name,
+                   manifest.schema, manifest.founding_dsl_provenance_path,
                    std::numeric_limits<double>::quiet_NaN(),
-                   manifest.dsl_sha256_hex, "", cp.string(),
-                   std::to_string(ts_ms), "{}", error)) {
+                   manifest.founding_dsl_provenance_sha256_hex, "",
+                   cp.string(), std::to_string(ts_ms), provenance_payload,
+                   error)) {
     return false;
   }
 
+  const std::filesystem::path store_root =
+      store_root_from_catalog_path(options_.catalog_path);
+  founding_dsl_bundle_manifest_t bundle_manifest{};
+  std::string bundle_error{};
+  if (read_founding_dsl_bundle_manifest(store_root, component_id, &bundle_manifest,
+                                        &bundle_error)) {
+    const std::string bundle_payload =
+        std::string("{\"component_edge_kind\":\"founding_dsl_bundle\","
+                    "\"founding_dsl_bundle_aggregate_sha256_hex\":\"") +
+        bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex + "\"}";
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_LINEAGE,
+                     component_id + "|founding_dsl_bundle", "",
+                     manifest.canonical_path, manifest.hashimyei_identity.name,
+                     manifest.schema,
+                     founding_dsl_bundle_manifest_path(store_root, component_id)
+                         .string(),
+                     std::numeric_limits<double>::quiet_NaN(),
+                     bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex, "",
+                     cp.string(),
+                     std::to_string(ts_ms), bundle_payload, error)) {
+      return false;
+    }
+  }
+
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_REVISION, component_id + "|revision", "",
-                   manifest.canonical_path, manifest.component_identity.name,
+                   manifest.canonical_path, manifest.hashimyei_identity.name,
                    manifest.schema,
                    manifest.family, std::numeric_limits<double>::quiet_NaN(),
                    manifest.parent_identity.has_value()
@@ -1675,38 +2019,35 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
     return false;
   }
 
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_BINDING, component_id + "|binding", "",
-                   manifest.canonical_path, manifest.component_identity.name,
-                   manifest.schema, manifest.wave_contract_binding.identity.name,
-                   std::numeric_limits<double>::quiet_NaN(),
-                   manifest.wave_contract_binding.contract.name + "|" +
-                       manifest.wave_contract_binding.wave.name,
-                   "", cp.string(), std::to_string(ts_ms),
-                   component_binding_index_payload(manifest), error)) {
-    return false;
-  }
-
-  if (trim_ascii(manifest.status) == "active") {
+  if (trim_ascii(manifest.lineage_state) == "active") {
+    const std::string contract_hash =
+        cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            manifest.contract_identity);
     const std::string pointer_key = component_active_pointer_key(
-        manifest.canonical_path, manifest.family, manifest.component_identity.name);
+        manifest.canonical_path, manifest.family,
+        manifest.hashimyei_identity.name, contract_hash);
     std::ostringstream pointer_payload;
     pointer_payload << "canonical_path=" << manifest.canonical_path << "\n";
     pointer_payload << "family=" << manifest.family << "\n";
-    pointer_payload << "active_hashimyei=" << manifest.component_identity.name
+    pointer_payload << "contract_hash=" << contract_hash << "\n";
+    pointer_payload << "active_hashimyei=" << manifest.hashimyei_identity.name
                     << "\n";
     pointer_payload << "component_id=" << component_id << "\n";
+    pointer_payload << "docking_signature_sha256_hex="
+                    << manifest.docking_signature_sha256_hex << "\n";
     pointer_payload << "parent_hashimyei="
                     << (manifest.parent_identity.has_value()
                             ? std::string_view(manifest.parent_identity->name)
                             : std::string_view{})
                     << "\n";
     pointer_payload << "revision_reason=" << manifest.revision_reason << "\n";
-    pointer_payload << "config_revision_id=" << manifest.config_revision_id << "\n";
+    pointer_payload << "founding_revision_id=" << manifest.founding_revision_id
+                    << "\n";
     if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_ACTIVE, pointer_key, "", manifest.canonical_path,
-                     manifest.component_identity.name,
+                     manifest.hashimyei_identity.name,
                      cuwacunu::hashimyei::kComponentActivePointerSchemaV2,
                      manifest.family, std::numeric_limits<double>::quiet_NaN(),
-                     manifest.config_revision_id, "", cp.string(),
+                     manifest.founding_revision_id, "", cp.string(),
                      std::to_string(ts_ms), pointer_payload.str(), error)) {
       return false;
     }
@@ -1720,9 +2061,9 @@ bool hashimyei_catalog_store_t::parse_and_append_metrics_(
     const std::unordered_map<std::string, std::string>& kv, std::string* error) {
   clear_error(error);
   for (const auto& [k, v] : kv) {
-    if (k == "schema" || k == "run_id" || k == "canonical_path" ||
-        k == "hashimyei" || k == "contract_hash" || k == "wave_hash" ||
-        k == "binding_id" || k == "report_kind" || k == "tsi_type" ||
+    if (k == "schema" || k == "canonical_path" || k == "binding_id" ||
+        k == "source_runtime_cursor" || k == "wave_cursor" ||
+        k == "semantic_taxon" ||
         k == "component_instance_name" || k == "report_event" ||
         k == "source_label") {
       continue;
@@ -1777,33 +2118,6 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
   if (!ledger_contains_(report_fragment_sha, &already, error)) return false;
   if (already) return true;
 
-  std::string canonical_path = kv["canonical_path"];
-  if (canonical_path.empty()) canonical_path = kv["source_label"];
-  if (canonical_path.empty()) canonical_path = canonical_path_from_report_fragment_path(path);
-
-  std::string hashimyei = kv["hashimyei"];
-  if (hashimyei.empty()) hashimyei = maybe_hashimyei_from_canonical(canonical_path);
-
-  std::string contract_hash = kv["contract_hash"];
-  if (contract_hash.empty()) contract_hash = contract_hash_from_report_fragment_path(path);
-
-  std::uint64_t ts_ms = now_ms_utc();
-  {
-    std::error_code ec;
-    const auto fts = std::filesystem::last_write_time(path, ec);
-    if (!ec) {
-      const auto d = fts.time_since_epoch();
-      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
-      if (ms > 0) ts_ms = static_cast<std::uint64_t>(ms);
-    }
-  }
-
-  std::string run_id = kv["run_id"];
-  if (run_id.empty()) {
-    set_error(error, "runtime report_fragment missing run_id: " + path.string());
-    return false;
-  }
-
   std::filesystem::path cp = path;
   if (const auto can = canonicalized(path); can.has_value()) cp = *can;
 
@@ -1830,10 +2144,70 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
     return append_ledger_(report_fragment_sha, cp.string(), error);
   }
 
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT, report_fragment_sha, run_id, canonical_path, hashimyei, schema,
+  cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t header{};
+  if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_report_header_from_kv(
+          kv, &header, error)) {
+    set_error(error, "runtime report_fragment header parse failure: " + path.string());
+    return false;
+  }
+  const std::string report_canonical_path =
+      trim_ascii(header.context.canonical_path);
+  if (report_canonical_path.empty()) {
+    set_error(error,
+              "runtime report_fragment missing canonical_path: " +
+                  path.string());
+    return false;
+  }
+  std::string canonical_path = trim_ascii(kv["canonical_path"]);
+  if (canonical_path.empty()) canonical_path = report_canonical_path;
+
+  std::string hashimyei = kv["hashimyei"];
+  if (hashimyei.empty()) hashimyei = maybe_hashimyei_from_canonical(canonical_path);
+
+  std::string contract_hash = kv["contract_hash"];
+  if (contract_hash.empty()) contract_hash = contract_hash_from_report_fragment_path(path);
+
+  std::uint64_t ts_ms = now_ms_utc();
+  {
+    std::error_code ec;
+    const auto fts = std::filesystem::last_write_time(path, ec);
+    if (!ec) {
+      const auto d = fts.time_since_epoch();
+      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
+      if (ms > 0) ts_ms = static_cast<std::uint64_t>(ms);
+    }
+  }
+
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT, report_fragment_sha, "", canonical_path, hashimyei, schema,
                    "", std::numeric_limits<double>::quiet_NaN(), "", report_fragment_sha,
                    cp.string(), std::to_string(ts_ms), payload, error)) {
     return false;
+  }
+  report_fragment_entry_t entry{};
+  entry.report_fragment_id = report_fragment_sha;
+  entry.canonical_path = canonical_path;
+  entry.hashimyei = hashimyei;
+  entry.schema = schema;
+  entry.report_fragment_sha256 = report_fragment_sha;
+  entry.path = cp.string();
+  entry.ts_ms = ts_ms;
+  entry.payload_json = payload;
+  populate_runtime_report_entry_header_fields_(kv, &entry);
+  report_fragments_by_id_[entry.report_fragment_id] = entry;
+  {
+    const std::string key = join_key(entry.canonical_path, entry.schema);
+    auto it = latest_report_fragment_by_key_.find(key);
+    if (it == latest_report_fragment_by_key_.end()) {
+      latest_report_fragment_by_key_[key] = entry.report_fragment_id;
+    } else {
+      const auto old_it = report_fragments_by_id_.find(it->second);
+      if (old_it == report_fragments_by_id_.end() ||
+          entry.ts_ms > old_it->second.ts_ms ||
+          (entry.ts_ms == old_it->second.ts_ms &&
+           entry.report_fragment_id > old_it->second.report_fragment_id)) {
+        it->second = entry.report_fragment_id;
+      }
+    }
   }
   if (!parse_and_append_metrics_(report_fragment_sha, kv, error)) return false;
   return append_ledger_(report_fragment_sha, cp.string(), error);
@@ -1918,6 +2292,9 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
   const auto release_lock = [&]() { release_ingest_lock_(&lock); };
   const std::filesystem::path canonical_store_root =
       canonicalized(store_root).value_or(store_root.lexically_normal());
+  const std::filesystem::path canonical_catalog_root =
+      canonicalized(lock.path.parent_path())
+          .value_or(lock.path.parent_path().lexically_normal());
 
   std::error_code ec;
   for (std::filesystem::recursive_directory_iterator it(store_root, ec), end;
@@ -1948,9 +2325,11 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
         !path_is_within(canonical_store_root, *canonical_entry)) {
       continue;
     }
+    if (path_is_within(canonical_catalog_root, *canonical_entry)) {
+      continue;
+    }
 
     const auto p = it->path();
-    if (p == options_.catalog_path) continue;
     if (p.filename() == "run.manifest.v1.kv") {
       release_lock();
       set_error(error,
@@ -2009,7 +2388,6 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
   dependency_files_by_run_id_.clear();
   kind_counters_.clear();
   hash_identity_by_kind_sha_.clear();
-  component_ids_by_binding_hashimyei_.clear();
   explicit_family_rank_by_scope_.clear();
 
   const auto bump_counter_from_identity =
@@ -2087,12 +2465,12 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         run.device = kv["device"];
         run.dtype = kv["dtype"];
 
-        std::uint64_t dep_count = 0;
-        if (parse_u64(kv["dep_count"], &dep_count)) {
-          run.dependency_files.reserve(static_cast<std::size_t>(dep_count));
-          for (std::uint64_t i = 0; i < dep_count; ++i) {
+        std::uint64_t dependency_count = 0;
+        if (parse_u64(kv["dependency_count"], &dependency_count)) {
+          run.dependency_files.reserve(static_cast<std::size_t>(dependency_count));
+          for (std::uint64_t i = 0; i < dependency_count; ++i) {
             std::ostringstream pfx;
-            pfx << "dep_" << std::setw(4) << std::setfill('0') << i << "_";
+            pfx << "dependency_" << std::setw(4) << std::setfill('0') << i << "_";
             dependency_file_t d{};
             d.canonical_path = kv[pfx.str() + "path"];
             d.sha256_hex = kv[pfx.str() + "sha256"];
@@ -2110,9 +2488,9 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
             pfx << "component_" << std::setw(4) << std::setfill('0') << i << "_";
             component_instance_t c{};
             c.canonical_path = kv[pfx.str() + "canonical_path"];
-            c.tsi_type = kv[pfx.str() + "tsi_type"];
+            c.family = kv[pfx.str() + "family"];
             c.hashimyei = kv[pfx.str() + "hashimyei"];
-            if (!c.canonical_path.empty() || !c.tsi_type.empty() ||
+            if (!c.canonical_path.empty() || !c.family.empty() ||
                 !c.hashimyei.empty()) {
               run.components.push_back(std::move(c));
             }
@@ -2162,17 +2540,20 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       std::uint64_t parsed_ordinal = 0;
       if (cuwacunu::hashimyei::parse_hex_hash_name_ordinal(hashimyei_name,
                                                             &parsed_ordinal)) {
-        component.manifest.component_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
-        component.manifest.component_identity.kind =
+        component.manifest.hashimyei_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
+        component.manifest.hashimyei_identity.kind =
             cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE;
-        component.manifest.component_identity.name = hashimyei_name;
-        component.manifest.component_identity.ordinal = parsed_ordinal;
+        component.manifest.hashimyei_identity.name = hashimyei_name;
+        component.manifest.hashimyei_identity.ordinal = parsed_ordinal;
       }
       component.manifest.family = component_family_from_parts(
-          component.manifest.canonical_path, component.manifest.component_identity.name,
-          as_text_or_empty(&db_, kColMetricKey, row));
-      component.manifest.tsi_type = as_text_or_empty(&db_, kColMetricKey, row);
-      component.manifest.status = as_text_or_empty(&db_, kColMetricTxt, row);
+          component.manifest.canonical_path,
+          component.manifest.hashimyei_identity.name);
+      const std::string stored_family = as_text_or_empty(&db_, kColMetricKey, row);
+      if (!stored_family.empty()) {
+        component.manifest.family = stored_family;
+      }
+      component.manifest.lineage_state = as_text_or_empty(&db_, kColMetricTxt, row);
 
       const std::string payload = as_text_or_empty(&db_, kColPayload, row);
       if (!payload.empty()) {
@@ -2192,28 +2573,24 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         component.manifest.canonical_path =
             as_text_or_empty(&db_, kColCanonicalPath, row);
       }
-      if (component.manifest.component_identity.name.empty()) {
+      if (component.manifest.hashimyei_identity.name.empty()) {
         const std::string fallback_name = as_text_or_empty(&db_, kColHashimyei, row);
         if (cuwacunu::hashimyei::parse_hex_hash_name_ordinal(fallback_name,
                                                               &parsed_ordinal)) {
-          component.manifest.component_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
-          component.manifest.component_identity.kind =
+          component.manifest.hashimyei_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
+          component.manifest.hashimyei_identity.kind =
               cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE;
-          component.manifest.component_identity.name = fallback_name;
-          component.manifest.component_identity.ordinal = parsed_ordinal;
+          component.manifest.hashimyei_identity.name = fallback_name;
+          component.manifest.hashimyei_identity.ordinal = parsed_ordinal;
         }
-      }
-      if (component.manifest.tsi_type.empty()) {
-        component.manifest.tsi_type = as_text_or_empty(&db_, kColMetricKey, row);
       }
       if (component.manifest.family.empty()) {
         component.manifest.family = component_family_from_parts(
             component.manifest.canonical_path,
-            component.manifest.component_identity.name,
-            component.manifest.tsi_type);
+            component.manifest.hashimyei_identity.name);
       }
-      if (component.manifest.status.empty()) {
-        component.manifest.status = as_text_or_empty(&db_, kColMetricTxt, row);
+      if (component.manifest.lineage_state.empty()) {
+        component.manifest.lineage_state = as_text_or_empty(&db_, kColMetricTxt, row);
       }
       if (component.manifest.updated_at_ms == 0) {
         component.manifest.updated_at_ms = component.ts_ms;
@@ -2223,16 +2600,12 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       }
 
       if (!component.component_id.empty()) {
-        bump_counter_from_identity(component.manifest.component_identity);
+        bump_counter_from_identity(component.manifest.hashimyei_identity);
         if (component.manifest.parent_identity.has_value()) {
           bump_counter_from_identity(*component.manifest.parent_identity);
         }
-        bump_counter_from_identity(component.manifest.wave_contract_binding.identity);
-        bump_counter_from_identity(component.manifest.wave_contract_binding.contract);
-        bump_counter_from_identity(component.manifest.wave_contract_binding.wave);
-        index_hash_identity(component.manifest.wave_contract_binding.identity);
-        index_hash_identity(component.manifest.wave_contract_binding.contract);
-        index_hash_identity(component.manifest.wave_contract_binding.wave);
+        bump_counter_from_identity(component.manifest.contract_identity);
+        index_hash_identity(component.manifest.contract_identity);
         components_by_id_[component.component_id] = component;
 
         const auto pick_latest = [&](std::unordered_map<std::string, std::string>* map,
@@ -2256,9 +2629,9 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         };
         pick_latest(&latest_component_by_canonical_,
                     component.manifest.canonical_path);
-        if (!component.manifest.component_identity.name.empty()) {
+        if (!component.manifest.hashimyei_identity.name.empty()) {
           pick_latest(&latest_component_by_hashimyei_,
-                      component.manifest.component_identity.name);
+                      component.manifest.hashimyei_identity.name);
         }
       }
       continue;
@@ -2297,11 +2670,11 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
           placeholder.manifest.canonical_path = canonical_path;
           std::uint64_t ord = 0;
           if (cuwacunu::hashimyei::parse_hex_hash_name_ordinal(hashimyei, &ord)) {
-            placeholder.manifest.component_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
-            placeholder.manifest.component_identity.kind =
+            placeholder.manifest.hashimyei_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
+            placeholder.manifest.hashimyei_identity.kind =
                 cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE;
-            placeholder.manifest.component_identity.name = hashimyei;
-            placeholder.manifest.component_identity.ordinal = ord;
+            placeholder.manifest.hashimyei_identity.name = hashimyei;
+            placeholder.manifest.hashimyei_identity.ordinal = ord;
           }
           if (!parent_hashimyei.empty()) {
             std::uint64_t parent_ord = 0;
@@ -2319,7 +2692,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
               revision_reason.empty() ? "initial" : revision_reason;
           placeholder.manifest.family = family.empty()
                                             ? component_family_from_parts(
-                                                  canonical_path, hashimyei, "")
+                                                  canonical_path, hashimyei)
                                             : family;
           components_by_id_[component_id] = std::move(placeholder);
         }
@@ -2333,11 +2706,18 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       std::string family = as_text_or_empty(&db_, kColMetricKey, row);
       const std::string hashimyei = as_text_or_empty(&db_, kColHashimyei, row);
       if (family.empty()) {
-        family = component_family_from_parts(canonical_path, hashimyei, "");
+        family = component_family_from_parts(canonical_path, hashimyei);
+      }
+      std::string contract_hash{};
+      const std::string payload = as_text_or_empty(&db_, kColPayload, row);
+      if (!payload.empty()) {
+        std::unordered_map<std::string, std::string> kv{};
+        (void)parse_latent_lineage_state_payload(payload, &kv);
+        contract_hash = trim_ascii(kv["contract_hash"]);
       }
       if (!canonical_path.empty() && !family.empty()) {
-        const std::string key =
-            component_active_pointer_key(canonical_path, family, hashimyei);
+        const std::string key = component_active_pointer_key(
+            canonical_path, family, hashimyei, contract_hash);
         active_hashimyei_by_key_[key] = hashimyei;
       }
       continue;
@@ -2381,7 +2761,6 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
     if (kind == cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT) {
       report_fragment_entry_t e{};
       e.report_fragment_id = as_text_or_empty(&db_, kColRecordId, row);
-      e.run_id = as_text_or_empty(&db_, kColRunId, row);
       e.canonical_path = as_text_or_empty(&db_, kColCanonicalPath, row);
       e.hashimyei = as_text_or_empty(&db_, kColHashimyei, row);
       e.schema = as_text_or_empty(&db_, kColSchema, row);
@@ -2389,6 +2768,18 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       e.path = as_text_or_empty(&db_, kColPath, row);
       e.payload_json = as_text_or_empty(&db_, kColPayload, row);
       (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &e.ts_ms);
+      if (!e.payload_json.empty()) {
+        std::unordered_map<std::string, std::string> kv{};
+        std::string parse_error{};
+        if (parse_runtime_lls_payload(e.payload_json, &kv, nullptr, &parse_error)) {
+          populate_runtime_report_entry_header_fields_(kv, &e);
+          if (e.canonical_path.empty()) {
+            e.canonical_path = kv["canonical_path"];
+          }
+          if (e.hashimyei.empty()) e.hashimyei = kv["hashimyei"];
+          if (e.schema.empty()) e.schema = kv["schema"];
+        }
+      }
 
       if (!e.report_fragment_id.empty()) {
         report_fragments_by_id_[e.report_fragment_id] = e;
@@ -2430,31 +2821,30 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
     }
   }
 
-  for (const auto& [component_id, component] : components_by_id_) {
-    const std::string binding_hashimyei =
-        component.manifest.wave_contract_binding.identity.name;
-    if (binding_hashimyei.empty()) continue;
-    component_ids_by_binding_hashimyei_[binding_hashimyei].push_back(component_id);
-  }
-  for (auto& [_, ids] : component_ids_by_binding_hashimyei_) {
-    std::sort(ids.begin(), ids.end());
-  }
-
   for (const auto& [pointer_key, pointer_hashimyei] : active_hashimyei_by_key_) {
-    const std::size_t sep = pointer_key.rfind('|');
-    if (sep == std::string::npos) continue;
-    const std::string canonical_path = pointer_key.substr(0, sep);
-    const std::string family = pointer_key.substr(sep + 1);
+    std::string canonical_path{};
+    std::string family{};
+    std::string contract_hash{};
+    if (!parse_component_active_pointer_key(pointer_key, &canonical_path, &family,
+                                            &contract_hash)) {
+      continue;
+    }
 
     component_state_t best{};
     bool found = false;
     for (const auto& [_, component] : components_by_id_) {
+      const std::string component_contract_hash =
+          cuwacunu::hero::hashimyei::contract_hash_from_identity(
+              component.manifest.contract_identity);
       const std::string component_key = component_active_pointer_key(
           component.manifest.canonical_path, component.manifest.family,
-          component.manifest.component_identity.name);
+          component.manifest.hashimyei_identity.name, component_contract_hash);
       if (component_key != pointer_key) continue;
       if (!family.empty() && component.manifest.family != family) continue;
-      if (component.manifest.component_identity.name != pointer_hashimyei) continue;
+      if (!contract_hash.empty() && component_contract_hash != contract_hash) {
+        continue;
+      }
+      if (component.manifest.hashimyei_identity.name != pointer_hashimyei) continue;
       if (!found || component.ts_ms > best.ts_ms ||
           (component.ts_ms == best.ts_ms &&
            component.component_id > best.component_id)) {
@@ -2472,11 +2862,12 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
     component.family_rank.reset();
     const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
         component.manifest.family,
-        component.manifest.wave_contract_binding.contract.name);
+        cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            component.manifest.contract_identity));
     const auto it_rank = explicit_family_rank_by_scope_.find(scope_key);
     if (it_rank == explicit_family_rank_by_scope_.end()) continue;
     component.family_rank = cuwacunu::hero::family_rank::rank_for_hashimyei(
-        it_rank->second, component.manifest.component_identity.name);
+        it_rank->second, component.manifest.hashimyei_identity.name);
   }
 
   return true;
@@ -2647,7 +3038,7 @@ bool hashimyei_catalog_store_t::resolve_component(
     bool found = false;
     for (const auto& [_, component] : components_by_id_) {
       if (component.manifest.canonical_path != canonical) continue;
-      if (component.manifest.component_identity.name != hash) continue;
+      if (component.manifest.hashimyei_identity.name != hash) continue;
       if (!found || component.ts_ms > best.ts_ms ||
           (component.ts_ms == best.ts_ms &&
            component.component_id > best.component_id)) {
@@ -2729,73 +3120,11 @@ bool hashimyei_catalog_store_t::list_components(
 
   for (const auto& [_, component] : components_by_id_) {
     if (!canonical.empty() && component.manifest.canonical_path != canonical) continue;
-    if (!hash.empty() && component.manifest.component_identity.name != hash) continue;
+    if (!hash.empty() &&
+        component.manifest.hashimyei_identity.name != hash) {
+      continue;
+    }
     out->push_back(component);
-  }
-
-  std::sort(out->begin(), out->end(),
-            [newest_first](const component_state_t& a, const component_state_t& b) {
-              if (a.ts_ms != b.ts_ms) {
-                return newest_first ? (a.ts_ms > b.ts_ms) : (a.ts_ms < b.ts_ms);
-              }
-              return newest_first ? (a.component_id > b.component_id)
-                                  : (a.component_id < b.component_id);
-            });
-
-  const std::size_t off = std::min(offset, out->size());
-  std::size_t count = limit;
-  if (count == 0) count = out->size() - off;
-  count = std::min(count, out->size() - off);
-  out->assign(out->begin() + static_cast<std::ptrdiff_t>(off),
-              out->begin() + static_cast<std::ptrdiff_t>(off + count));
-  return true;
-}
-
-bool hashimyei_catalog_store_t::list_components_by_binding(
-    std::string_view contract_hashimyei, std::string_view wave_hashimyei,
-    std::string_view binding_hashimyei, std::size_t limit, std::size_t offset,
-    bool newest_first, std::vector<component_state_t>* out, std::string* error) const {
-  clear_error(error);
-  if (!out) {
-    set_error(error, "component list output pointer is null");
-    return false;
-  }
-  out->clear();
-
-  const std::string contract(contract_hashimyei);
-  const std::string wave(wave_hashimyei);
-  const std::string binding(binding_hashimyei);
-
-  const auto passes_binding_filters = [&](const component_state_t& component) {
-    if (!contract.empty() &&
-        component.manifest.wave_contract_binding.contract.name != contract) {
-      return false;
-    }
-    if (!wave.empty() && component.manifest.wave_contract_binding.wave.name != wave) {
-      return false;
-    }
-    if (!binding.empty() &&
-        component.manifest.wave_contract_binding.identity.name != binding) {
-      return false;
-    }
-    return true;
-  };
-
-  if (!binding.empty()) {
-    const auto it = component_ids_by_binding_hashimyei_.find(binding);
-    if (it != component_ids_by_binding_hashimyei_.end()) {
-      for (const auto& component_id : it->second) {
-        const auto it_component = components_by_id_.find(component_id);
-        if (it_component == components_by_id_.end()) continue;
-        if (!passes_binding_filters(it_component->second)) continue;
-        out->push_back(it_component->second);
-      }
-    }
-  } else {
-    for (const auto& [_, component] : components_by_id_) {
-      if (!passes_binding_filters(component)) continue;
-      out->push_back(component);
-    }
   }
 
   std::sort(out->begin(), out->end(),
@@ -2818,6 +3147,7 @@ bool hashimyei_catalog_store_t::list_components_by_binding(
 
 bool hashimyei_catalog_store_t::resolve_active_hashimyei(
     std::string_view canonical_path, std::string_view family,
+    std::string_view contract_hash,
     std::string* out_hashimyei, std::string* error) const {
   clear_error(error);
   if (!out_hashimyei) {
@@ -2828,22 +3158,28 @@ bool hashimyei_catalog_store_t::resolve_active_hashimyei(
 
   const std::string canonical(canonical_path);
   const std::string fam(family);
+  const std::string contract = trim_ascii(contract_hash);
   if (canonical.empty()) {
     set_error(error, "canonical_path is required");
+    return false;
+  }
+  if (contract.empty()) {
+    set_error(error, "contract_hash is required");
     return false;
   }
   const std::string canonical_hash_tail = maybe_hashimyei_from_canonical(canonical);
   std::string canonical_lookup = canonical;
   if (!canonical_hash_tail.empty()) {
-    canonical_lookup = component_family_from_parts(canonical, canonical_hash_tail, "");
+    canonical_lookup = component_family_from_parts(canonical, canonical_hash_tail);
   }
 
   if (!fam.empty()) {
-    const std::string key =
-        component_active_pointer_key(canonical_lookup, fam, canonical_hash_tail);
+    const std::string key = component_active_pointer_key(
+        canonical_lookup, fam, canonical_hash_tail, contract);
     const auto it = active_hashimyei_by_key_.find(key);
     if (it == active_hashimyei_by_key_.end()) {
-      set_error(error, "active hashimyei not found for canonical_path/family");
+      set_error(error,
+                "active hashimyei not found for canonical_path/family/contract");
       return false;
     }
     *out_hashimyei = it->second;
@@ -2854,9 +3190,15 @@ bool hashimyei_catalog_store_t::resolve_active_hashimyei(
   std::uint64_t best_ts = 0;
   bool found = false;
   for (const auto& [key, value] : active_hashimyei_by_key_) {
-    const std::size_t sep = key.rfind('|');
-    if (sep == std::string::npos) continue;
-    if (key.substr(0, sep) != canonical_lookup) continue;
+    std::string key_canonical{};
+    std::string key_family{};
+    std::string key_contract{};
+    if (!parse_component_active_pointer_key(key, &key_canonical, &key_family,
+                                            &key_contract)) {
+      continue;
+    }
+    if (key_canonical != canonical_lookup) continue;
+    if (key_contract != contract) continue;
     std::uint64_t ts = 0;
     if (const auto it_comp = active_component_by_key_.find(key);
         it_comp != active_component_by_key_.end()) {
@@ -2970,7 +3312,18 @@ bool hashimyei_catalog_store_t::register_component_manifest(
   if (trim_ascii(manifest.schema).empty()) {
     manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
   }
-  if (!ensure_identity_allocated_(&manifest.component_identity, error)) return false;
+  if (!ensure_identity_allocated_(&manifest.hashimyei_identity, error)) return false;
+  if (!ensure_identity_allocated_(&manifest.contract_identity, error)) return false;
+  const std::string contract_hash =
+      cuwacunu::hero::hashimyei::contract_hash_from_identity(
+          manifest.contract_identity);
+  if (trim_ascii(manifest.docking_signature_sha256_hex).empty() &&
+      !trim_ascii(contract_hash).empty()) {
+    const auto contract_snapshot =
+        cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
+    manifest.docking_signature_sha256_hex =
+        contract_snapshot->signature.docking_signature_sha256_hex;
+  }
   if (manifest.parent_identity.has_value() &&
       !manifest.parent_identity->name.empty()) {
     std::string parent_error;
@@ -2980,22 +3333,28 @@ bool hashimyei_catalog_store_t::register_component_manifest(
       return false;
     }
   }
-  if (!ensure_identity_allocated_(&manifest.wave_contract_binding.contract, error)) {
-    return false;
-  }
-  if (!ensure_identity_allocated_(&manifest.wave_contract_binding.wave, error)) {
-    return false;
-  }
-  if (manifest.wave_contract_binding.identity.hash_sha256_hex.empty()) {
-    manifest.wave_contract_binding.identity.hash_sha256_hex =
-        compute_wave_contract_binding_hash(manifest.wave_contract_binding);
-  }
-  if (!ensure_identity_allocated_(&manifest.wave_contract_binding.identity, error)) {
-    return false;
-  }
   if (manifest.created_at_ms == 0) manifest.created_at_ms = now_ms_utc();
   if (manifest.updated_at_ms == 0) manifest.updated_at_ms = manifest.created_at_ms;
   if (!validate_component_manifest(manifest, error)) return false;
+
+  if (!manifest.hashimyei_identity.name.empty()) {
+    const auto existing_it =
+        latest_component_by_hashimyei_.find(manifest.hashimyei_identity.name);
+    if (existing_it != latest_component_by_hashimyei_.end()) {
+      const auto component_it = components_by_id_.find(existing_it->second);
+      if (component_it != components_by_id_.end() &&
+          !same_contract_identity_(
+              component_it->second.manifest.contract_identity,
+              manifest.contract_identity)) {
+        set_error(
+            error,
+            "component hashimyei is contract-scoped and cannot be reused across "
+            "contracts: " +
+                manifest.hashimyei_identity.name);
+        return false;
+      }
+    }
+  }
 
   const std::string payload = component_manifest_payload(manifest);
   std::string report_fragment_sha;
@@ -3004,11 +3363,20 @@ bool hashimyei_catalog_store_t::register_component_manifest(
     return false;
   }
 
-  bool already = false;
-  if (!ledger_contains_(report_fragment_sha, &already, error)) return false;
-
   const std::string component_id = compute_component_manifest_id(manifest);
   if (out_component_id) *out_component_id = component_id;
+  const std::filesystem::path store_root =
+      store_root_from_catalog_path(options_.catalog_path);
+  std::filesystem::path manifest_path =
+      component_manifest_path(store_root, component_id);
+  if (!std::filesystem::exists(manifest_path)) {
+    if (!save_component_manifest(store_root, manifest, &manifest_path, error)) {
+      return false;
+    }
+  }
+
+  bool already = false;
+  if (!ledger_contains_(report_fragment_sha, &already, error)) return false;
   if (already) return true;
 
   const std::uint64_t ts_ms =
@@ -3017,92 +3385,110 @@ bool hashimyei_catalog_store_t::register_component_manifest(
                                          ? manifest.created_at_ms
                                          : now_ms_utc());
 
-  const std::string virtual_manifest_path =
-      "virtual://hero.config/cutover/" + component_id +
-      "/" + std::string(cuwacunu::hashimyei::kComponentManifestFilenameV2);
+  const std::string manifest_path_s = manifest_path.string();
 
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT, component_id, "", manifest.canonical_path,
-                   manifest.component_identity.name, manifest.schema,
-                   manifest.tsi_type,
-                   std::numeric_limits<double>::quiet_NaN(), manifest.status,
-                   report_fragment_sha, virtual_manifest_path, std::to_string(ts_ms),
+                   manifest.hashimyei_identity.name, manifest.schema,
+                   manifest.family,
+                   std::numeric_limits<double>::quiet_NaN(), manifest.lineage_state,
+                   report_fragment_sha, manifest_path_s, std::to_string(ts_ms),
                    payload, error)) {
     return false;
   }
 
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_DEPENDENCY, component_id + "|dsl", "",
-                   manifest.canonical_path, manifest.component_identity.name,
-                   manifest.schema,
-                   manifest.dsl_canonical_path,
+  const std::string provenance_payload =
+      "{\"component_edge_kind\":\"founding_dsl_provenance\"}";
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_LINEAGE,
+                   component_id + "|founding_dsl_provenance", "",
+                   manifest.canonical_path, manifest.hashimyei_identity.name,
+                   manifest.schema, manifest.founding_dsl_provenance_path,
                    std::numeric_limits<double>::quiet_NaN(),
-                   manifest.dsl_sha256_hex, "", virtual_manifest_path,
-                   std::to_string(ts_ms), "{}", error)) {
+                   manifest.founding_dsl_provenance_sha256_hex, "",
+                   manifest_path_s, std::to_string(ts_ms),
+                   provenance_payload, error)) {
     return false;
+  }
+  founding_dsl_bundle_manifest_t bundle_manifest{};
+  std::string bundle_error{};
+  if (read_founding_dsl_bundle_manifest(store_root, component_id, &bundle_manifest,
+                                        &bundle_error)) {
+    const std::string bundle_payload =
+        std::string("{\"component_edge_kind\":\"founding_dsl_bundle\","
+                    "\"founding_dsl_bundle_aggregate_sha256_hex\":\"") +
+        bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex + "\"}";
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_LINEAGE,
+                     component_id + "|founding_dsl_bundle", "",
+                     manifest.canonical_path, manifest.hashimyei_identity.name,
+                     manifest.schema,
+                     founding_dsl_bundle_manifest_path(store_root, component_id)
+                         .string(),
+                     std::numeric_limits<double>::quiet_NaN(),
+                     bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex, "",
+                     manifest_path_s, std::to_string(ts_ms),
+                     bundle_payload, error)) {
+      return false;
+    }
   }
 
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_REVISION, component_id + "|revision", "",
-                   manifest.canonical_path, manifest.component_identity.name,
+                   manifest.canonical_path, manifest.hashimyei_identity.name,
                    manifest.schema,
                    manifest.family, std::numeric_limits<double>::quiet_NaN(),
                    manifest.parent_identity.has_value()
                        ? std::string_view(manifest.parent_identity->name)
                        : std::string_view{},
-                   "", virtual_manifest_path,
+                   "", manifest_path_s,
                    std::to_string(ts_ms), manifest.revision_reason, error)) {
     return false;
   }
 
-  if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_BINDING, component_id + "|binding", "",
-                   manifest.canonical_path, manifest.component_identity.name,
-                   manifest.schema, manifest.wave_contract_binding.identity.name,
-                   std::numeric_limits<double>::quiet_NaN(),
-                   manifest.wave_contract_binding.contract.name + "|" +
-                       manifest.wave_contract_binding.wave.name,
-                   "", virtual_manifest_path, std::to_string(ts_ms),
-                   component_binding_index_payload(manifest), error)) {
-    return false;
-  }
-
-  if (trim_ascii(manifest.status) == "active") {
+  if (trim_ascii(manifest.lineage_state) == "active") {
+    const std::string contract_hash =
+        cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            manifest.contract_identity);
     const std::string pointer_key = component_active_pointer_key(
-        manifest.canonical_path, manifest.family, manifest.component_identity.name);
+        manifest.canonical_path, manifest.family,
+        manifest.hashimyei_identity.name, contract_hash);
     std::ostringstream pointer_payload;
     pointer_payload << "canonical_path=" << manifest.canonical_path << "\n";
     pointer_payload << "family=" << manifest.family << "\n";
+    pointer_payload << "contract_hash=" << contract_hash << "\n";
     pointer_payload << "active_hashimyei="
-                    << manifest.component_identity.name << "\n";
+                    << manifest.hashimyei_identity.name << "\n";
     pointer_payload << "component_id=" << component_id << "\n";
+    pointer_payload << "docking_signature_sha256_hex="
+                    << manifest.docking_signature_sha256_hex << "\n";
     pointer_payload << "parent_hashimyei="
                     << (manifest.parent_identity.has_value()
                             ? std::string_view(manifest.parent_identity->name)
                             : std::string_view{})
                     << "\n";
     pointer_payload << "revision_reason=" << manifest.revision_reason << "\n";
-    pointer_payload << "config_revision_id=" << manifest.config_revision_id
+    pointer_payload << "founding_revision_id=" << manifest.founding_revision_id
                     << "\n";
     if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_ACTIVE, pointer_key, "",
-                     manifest.canonical_path, manifest.component_identity.name,
+                     manifest.canonical_path, manifest.hashimyei_identity.name,
                      cuwacunu::hashimyei::kComponentActivePointerSchemaV2, manifest.family,
                      std::numeric_limits<double>::quiet_NaN(),
-                     manifest.config_revision_id, "", virtual_manifest_path,
+                     manifest.founding_revision_id, "", manifest_path_s,
                      std::to_string(ts_ms), pointer_payload.str(), error)) {
       return false;
     }
   }
 
-  if (!append_ledger_(report_fragment_sha, virtual_manifest_path, error)) return false;
+  if (!append_ledger_(report_fragment_sha, manifest_path_s, error)) return false;
   if (!rebuild_indexes(error)) return false;
 
   if (out_inserted) *out_inserted = true;
   return true;
 }
 
-bool hashimyei_catalog_store_t::report_fragment_snapshot(
-    std::string_view canonical_path, std::string_view run_id,
-    report_fragment_snapshot_t* out, std::string* error) const {
+bool hashimyei_catalog_store_t::latest_report_fragment_snapshot(
+    std::string_view canonical_path, report_fragment_snapshot_t* out,
+    std::string* error) const {
   clear_error(error);
   if (!out) {
-    set_error(error, "report_fragment snapshot output pointer is null");
+    set_error(error, "latest report_fragment snapshot output pointer is null");
     return false;
   }
   *out = report_fragment_snapshot_t{};
@@ -3112,7 +3498,6 @@ bool hashimyei_catalog_store_t::report_fragment_snapshot(
   bool found = false;
   for (const auto& [_, art] : report_fragments_by_id_) {
     if (art.canonical_path != cp) continue;
-    if (!run_id.empty() && art.run_id != run_id) continue;
     if (!found || art.ts_ms > best.ts_ms ||
         (art.ts_ms == best.ts_ms && art.report_fragment_id > best.report_fragment_id)) {
       best = art;
@@ -3120,33 +3505,13 @@ bool hashimyei_catalog_store_t::report_fragment_snapshot(
     }
   }
   if (!found) {
-    set_error(error, "report_fragment snapshot not found");
+    set_error(error, "latest report_fragment snapshot not found");
     return false;
   }
 
   out->report_fragment = best;
   (void)report_fragment_metrics(best.report_fragment_id, &out->numeric_metrics, &out->text_metrics,
                          nullptr);
-  return true;
-}
-
-bool hashimyei_catalog_store_t::dependency_trace(
-    std::string_view report_fragment_id, std::vector<dependency_file_t>* out,
-    std::string* error) const {
-  clear_error(error);
-  if (!out) {
-    set_error(error, "dependency output pointer is null");
-    return false;
-  }
-  out->clear();
-  const auto it_art = report_fragments_by_id_.find(std::string(report_fragment_id));
-  if (it_art == report_fragments_by_id_.end()) {
-    set_error(error, "report_fragment not found: " + std::string(report_fragment_id));
-    return false;
-  }
-  const auto it = dependency_files_by_run_id_.find(it_art->second.run_id);
-  if (it == dependency_files_by_run_id_.end()) return true;
-  *out = it->second;
   return true;
 }
 

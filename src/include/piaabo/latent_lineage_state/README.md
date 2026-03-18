@@ -39,6 +39,31 @@ The current `piaabo` surface is intentionally small:
 - `emit_runtime_lls_canonical(...)`
 - typed entry builders for `str`, `bool`, `int`, `uint`, and `double`
 
+## Runtime Report Model
+
+Persisted runtime reports are documented around one flat model:
+
+- `schema`
+- `semantic_taxon`
+- context: `canonical_path`, `binding_id`, `wave_cursor`, optional `source_runtime_cursor`
+- payload: every remaining report-specific key
+
+`semantic_taxon` is now strict when present. The accepted analytics/evaluation
+taxonomy is exactly:
+
+- `source.data`
+- `embedding.data`
+- `embedding.evaluation`
+- `embedding.network`
+
+Reports are intended to behave as latest semantic facts by default. Historical
+selection is an explicit query concern, typically through `wave_cursor`, while
+campaign/job lineage remains in Runtime Hero state and run manifests rather
+than inside the runtime report header.
+
+Operational reports such as status or source runtime projection use the same
+flat header and may omit `semantic_taxon` in v1.
+
 ## Standard Layers
 
 ### 1. Source Pre-Pass
@@ -106,9 +131,8 @@ Canonical emission rules:
 - unsigned integers emit as base-10 ASCII
 - doubles emit as fixed-point ASCII with 12 fractional digits
 - keys emit in deterministic order:
-  schema-like key, `report_kind`, `tsi_type`, `canonical_path`, `hashimyei`,
-  `contract_hash`, `wave_hash`, `binding_id`, `run_id`, then remaining keys in
-  lexicographic order
+  schema-like key, `semantic_taxon`, `canonical_path`, `binding_id`, `wave_cursor`,
+  optional `source_runtime_cursor`, then remaining keys in lexicographic order
 
 Collection rule:
 

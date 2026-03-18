@@ -1,0 +1,253 @@
+[[36m0x125916432719872[0m]: [jk_setup] initialising
+[[36m0x125916432719872[0m]: [dconfig] initializing
+[[36m0x125916432719872[0m]: [dconfig] exchange_type = TEST
+[[36m0x125916432719872[0m]: [contract_space_t] initializing static-global contract registry (hash-keyed snapshots loaded lazily; no single locked runtime hash)
+[[36m0x125916432719872[0m]: [runtime_binding_space_t] initializing static-global runtime-binding lock (single locked runtime-binding hash/path/binding, selected lazily via runtime_binding_space_t::init)
+[[36m0x125916432719872[0m]: [wave_space_t] initializing static-global wave registry (hash-keyed wave sets loaded lazily; no single locked runtime hash)
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [observation_runtime_t] initializing static-global observation snapshot (single mutable cache updated by explicit contract hash)
+[[36m0x125916432719872[0m]: [dconfig] exchange_type = TEST
+[[36m0x125916432719872[0m]: [dconfig] exchange_type = TEST
+[[36m0x125916432719872[0m]: [main_campaign] campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary campaign=/cuwacunu/.runtime/campaigns/campaign.1773793418504.9e3714e5/jobs/campaign.1773793418504.9e3714e5.job.0000/instructions/campaign.dsl
+[[36m0x125916432719872[0m]: [runtime_binding.run] dispatch campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary
+[[36m0x125916432719872[0m]: [runtime_binding.run] runtime lock acquired campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary lock_path=/tmp/cuwacunu.hero.runtime.lock
+[[36m0x125916432719872[0m]: [runtime_binding.run] snapshot start campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary
+[[36m0x125916432719872[0m]: [runtime_binding.contract.init] infer runtime campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary device=cpu
+[[36m0x125916432719872[0m]: [runtime_binding.contract.init] resolved runtime campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary record_type=kline sampler=sequential
+[[36m0x125916432719872[0m]: [runtime_binding.contract.init] start campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary device=cpu
+[[36m0x125916432719872[0m]: [runtime_binding.contract.init] resolved contract_hash=05961fc3dfa93e59ad7240060abf0f710d2038f8109fa22e41913060196d6a06 wave_hash=11880ae5c4aea792f2b8deb7df021b31764502f7868c06488b386c294939d3dc
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [sanitize_csv_into_binary_file]	 [2;92mPreparing binary[0m from CSV: /cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.csv
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [sanitize_csv_into_binary_file] inferred regular_delta=604800000.000000000000000 (bootstrap_deltas=128, abs_tol=1.000e-07, rel_tol=1.000e-09)
+[2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Preparing Binary data file [[2;92m                                                            [0m] 0.00% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Preparing Binary data file [[2;92m████████████████████████████████████████████████████████████[0m] 100.00% 
+	 [[36m0x125916432719872[0m]: [94mDEBUG[0m: [2;92mExecution time [0m [[33mPreparing Binary data file[0m] : 9ms. 
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) Raw cache lattice ready: [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.cache.bin[0m
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [normalize_binary_file] policy=log_returns. File: [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.cache.norm.log_returns.bin[0m
+[2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m                                                            [0m] 0.00% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m                                                            [0m] 0.41% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m████████████████████████████████████████████████████████████[0m] 100.00% 
+	 [[36m0x125916432719872[0m]: [94mDEBUG[0m: [2;92mExecution time [0m [[33mNormalize binary file[0m] : 183ms. 
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (normalize_binary_file) [2;92mNormalization completed[0m. File: [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.cache.norm.log_returns.bin[0m | policy=log_returns, normalized_valid=230, masked_missing_context=7, invalid_passthrough=6
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [92mNormalized[0m: [2;90m/cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.cache.norm.log_returns.bin[0m (policy=log_returns)
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [sanitize_csv_into_binary_file]	 [2;92mPreparing binary[0m from CSV: /cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.csv
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [sanitize_csv_into_binary_file] inferred regular_delta=259200000.000000000000000 (bootstrap_deltas=128, abs_tol=1.000e-07, rel_tol=1.000e-09)
+[2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Preparing Binary data file [[2;92m                                                            [0m] 0.00% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Preparing Binary data file [[2;92m████████████████████████████████████████████████████████████[0m] 100.00% 
+	 [[36m0x125916432719872[0m]: [94mDEBUG[0m: [2;92mExecution time [0m [[33mPreparing Binary data file[0m] : 11ms. 
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) Raw cache lattice ready: [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.cache.bin[0m
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [normalize_binary_file] policy=log_returns. File: [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.cache.norm.log_returns.bin[0m
+[2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m                                                            [0m] 0.00% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m                                                            [0m] 0.18% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m████████████████████████████████████████████████████████████[0m] 100.00% 
+	 [[36m0x125916432719872[0m]: [94mDEBUG[0m: [2;92mExecution time [0m [[33mNormalize binary file[0m] : 414ms. 
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (normalize_binary_file) [2;92mNormalization completed[0m. File: [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.cache.norm.log_returns.bin[0m | policy=log_returns, normalized_valid=552, masked_missing_context=9, invalid_passthrough=8
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [92mNormalized[0m: [2;90m/cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.cache.norm.log_returns.bin[0m (policy=log_returns)
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [sanitize_csv_into_binary_file]	 [2;92mPreparing binary[0m from CSV: /cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.csv
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [sanitize_csv_into_binary_file] inferred regular_delta=86400000.000000000000000 (bootstrap_deltas=128, abs_tol=1.000e-07, rel_tol=1.000e-09)
+[2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Preparing Binary data file [[2;92m                                                            [0m] 0.00% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Preparing Binary data file [[2;92m████████████████████████████████████                        [0m] 60.06% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Preparing Binary data file [[2;92m████████████████████████████████████████████████████████████[0m] 100.00% 
+	 [[36m0x125916432719872[0m]: [94mDEBUG[0m: [2;92mExecution time [0m [[33mPreparing Binary data file[0m] : 31ms. 
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) Raw cache lattice ready: [2;90m/cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.cache.bin[0m
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [normalize_binary_file] policy=log_returns. File: [2;90m/cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.cache.norm.log_returns.bin[0m
+[2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m                                                            [0m] 0.00% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m                                                            [0m] 0.06% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m████████████████████████████████████                        [0m] 60.12% [2K[[36m0x125916432719872[0m]: [94mDEBUG[0m: Normalize binary file [[2;92m████████████████████████████████████████████████████████████[0m] 100.00% 
+	 [[36m0x125916432719872[0m]: [94mDEBUG[0m: [2;92mExecution time [0m [[33mNormalize binary file[0m] : 1s.876ms. 
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (normalize_binary_file) [2;92mNormalization completed[0m. File: [2;90m/cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.cache.norm.log_returns.bin[0m | policy=log_returns, normalized_valid=1704, masked_missing_context=1, invalid_passthrough=0
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [92mNormalized[0m: [2;90m/cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.cache.norm.log_returns.bin[0m (policy=log_returns)
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [VICReg_4D] network_design loaded for `tsi.wikimyei.representation.vicreg` (join_policy=vicreg_default)
+[[36m0x125916432719872[0m]: 
+[2;92m 	[Representation Learning] VICReg_4D:  [0m
+		[90mComponent:               [0m [94mtsi.wikimyei.representation.vicreg@stable_pretrain@circuit_1.w_rep[0m
+		[90mChannels  (C):           [0m [94m3       [0m
+		[90mTimesteps (T):           [0m [94m30      [0m
+		[90mFeatures  (D):           [0m [94m9       [0m
+		[90mOptimizer:               [0m [94mtsi.wikimyei.representation.vicreg@stable_pretrain::optimizer[0m
+		[90mLR Scheduler:            [0m [94mtsi.wikimyei.representation.vicreg@stable_pretrain::scheduler[0m
+		[90mLoss:                    [0m [94mtsi.wikimyei.representation.vicreg@stable_pretrain::loss[0m
+		[90m    - Sim coeff (λ₁): [0m    [94m25.0000 [0m
+		[90m    - Std coeff (λ₂): [0m    [94m25.0000 [0m
+		[90m    - Cov coeff (λ₃): [0m    [94m1.0000  [0m
+		[90mEncoding dims:           [0m [94m72      [0m
+		[90mChannel expansion:       [0m [94m64      [0m
+		[90mFused feature dim:       [0m [94m32      [0m
+		[90mEncoder hidden dims:     [0m [94m24      [0m
+		[90mEncoder depth:           [0m [94m10      [0m
+		[90mProj MLP spec:           [0m [94m72-128-256-128[0m
+		[90mProjector norm:          [0m [94mLayerNorm[0m
+		[90mProjector activation:    [0m [94mSiLU    [0m
+		[90mProjector hidden bias:   [0m [94mfalse   [0m
+		[90mProjector last bias:     [0m [94mfalse   [0m
+		[90mProjector BN in FP32:    [0m [94mtrue    [0m
+		[90mNetwork design:          [0m [94mtrue    [0m
+		[90mNetwork design id:       [0m [94mtsi.wikimyei.representation.vicreg[0m
+		[90mJoin policy:             [0m [94mvicreg_default[0m
+		[90mData type:               [0m [94mFloat32 [0m
+		[90mDevice:                  [0m [94mcpu     [0m
+		[90mOptimizer threshold reset:[0m [94m500     [0m
+		[90mSWA buffer avg:          [0m [94mfalse   [0m
+[[36m0x125916432719872[0m]: Initialized VICReg encoder from Configuration file...
+[[36m0x125916432719872[0m]: [runtime_binding.contract.init] done campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary contracts=1
+[[36m0x125916432719872[0m]: [runtime_binding.run] start campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary contracts=1 record_type=kline sampler=sequential
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [runtime_binding.run] contract[0] begin name=circuit_1 epochs=1
+[[36m0x125916432719872[0m]: [runtime_binding.contract.run] start contract=circuit_1 epochs=1
+[[36m0x125916432719872[0m]: [tsi.source.dataloader][data_analytics] startup source=tsi.source.dataloader.BTCUSDT
+[1;96mSource Data Analytics Report[0m
+	[90msource_label                  [0m : [97mtsi.source.dataloader.BTCUSDT[0m	[36mtsi source instance[0m
+	[90mschema                        [0m : [97mpiaabo.torch_compat.data_analytics.v2[0m	[36mreport schema id[0m
+	[90mfile                          [0m : [97m/cuwacunu/.hashimyei/tsi.source/data_analytics.v2/05961fc3dfa93e59ad7240060abf0f710d2038f8109fa22e41913060196d6a06/tsi.source.dataloader/BTCUSDT_01.01.2020_31.08.2024/data_analytics.v2.latest.lls[0m	[36mpersisted latest report[0m
+	[90mvalid_sample_count            [0m : [97m1667[0m	[36msamples used for estimation[0m
+	[90msource_effective_feature_count[0m : [97m396[0m	[36mmask-filtered feature count[0m
+	[90msource_cov_trace              [0m : [97m380.132179[0m	[36mstandardized covariance trace[0m
+	[90msource_nonzero_eigen_count    [0m : [97m371[0m	[36meigenvalues > standardize_epsilon[0m
+	[90mmax_samples                   [0m : [97m4096[0m	[36mconfigured analytics cap[0m
+	[90msource_entropic_load          [0m : [95m28.345068[0m	[36msource entropy load[0m
+[1;96mSource Symbolic Data Analytics Report[0m
+	[90msource_label                  [0m : [97mtsi.source.dataloader.BTCUSDT[0m	[36mtsi source instance[0m
+	[90mschema                        [0m : [97mpiaabo.torch_compat.data_analytics_symbolic.v2[0m	[36mreport schema id[0m
+	[90mfile                          [0m : [97m/cuwacunu/.hashimyei/tsi.source/data_analytics.v2/05961fc3dfa93e59ad7240060abf0f710d2038f8109fa22e41913060196d6a06/tsi.source.dataloader/BTCUSDT_01.01.2020_31.08.2024/data_analytics.symbolic.v2.latest.lls[0m	[36mpersisted symbolic report[0m
+	[90mchannel_count                 [0m : [97m3[0m	[36mchannels considered[0m
+	[90meligible_channel_count        [0m : [97m3[0m	[36mchannels with enough anchor samples[0m
+	[90mlz76_normalized_mean          [0m : [97m0.603585[0m	[36mmean across eligible streams[0m
+	[90minformation_density_mean      [0m : [97m0.632515[0m	[36mmean across eligible streams[0m
+	[90mcompression_ratio_mean        [0m : [97m0.165492[0m	[36mmean LZW token compression ratio[0m
+	[90mautocorrelation_decay_lag_mean[0m : [97m3.333333[0m	[36mmean first lag with |acf| <= exp(-1)[0m
+	[90mpower_spectrum_entropy_mean   [0m : [97m0.925490[0m	[36mmean normalized positive-frequency entropy[0m
+	[90mhurst_exponent_mean           [0m : [97m0.665717[0m	[36mmean R/S H estimate[0m
+	[36m/* BTCUSDT/1w/kline */[0m
+	[36m/* features: open_price,high_price,low_price,close_price,volume,quote_asset_volume,number_of_trades,taker_buy_base_volume,taker_buy_quote_volume */[0m
+	[36m/* anchor_feature: close_price */[0m
+	[90mchannel[1].record_type        [0m : [97mkline[0m	[36mrecord family[0m
+	[90mchannel[1].eligible           [0m : [97mtrue[0m	[36mmetric eligibility[0m
+	[90mchannel[1].valid_count        [0m : [97m1667[0m	[36mvalid anchor points[0m
+	[90mchannel[1].observed_symbol_count[0m : [97m3[0m	[36munique tertile symbols observed[0m
+	[90mchannel[1].lz76_complexity    [0m : [97m73[0m	[36mraw phrase count[0m
+	[90mchannel[1].lz76_normalized    [0m : [95m0.295716[0m	[36mnormalized LZ76 complexity[0m
+	[90mchannel[1].entropy_rate_bits  [0m : [97m0.502353[0m	[36mH(X_t | X_{t-1})[0m
+	[90mchannel[1].information_density[0m : [97m0.316950[0m	[36mentropy_rate_bits / log2(3)[0m
+	[90mchannel[1].compression_ratio  [0m : [97m0.100180[0m	[36mLZW-coded token bits / raw token bits[0m
+	[90mchannel[1].autocorrelation_decay_lag[0m : [97m6.000000[0m	[36mfirst lag with |acf| <= exp(-1)[0m
+	[90mchannel[1].power_spectrum_entropy[0m : [97m0.921361[0m	[36mnormalized entropy over positive frequency bins[0m
+	[90mchannel[1].hurst_exponent     [0m : [97m0.772567[0m	[36mR/S dyadic-scale estimate[0m
+	[36m/* BTCUSDT/3d/kline */[0m
+	[36m/* features: open_price,high_price,low_price,close_price,volume,quote_asset_volume,number_of_trades,taker_buy_base_volume,taker_buy_quote_volume */[0m
+	[36m/* anchor_feature: close_price */[0m
+	[90mchannel[2].record_type        [0m : [97mkline[0m	[36mrecord family[0m
+	[90mchannel[2].eligible           [0m : [97mtrue[0m	[36mmetric eligibility[0m
+	[90mchannel[2].valid_count        [0m : [97m1667[0m	[36mvalid anchor points[0m
+	[90mchannel[2].observed_symbol_count[0m : [97m3[0m	[36munique tertile symbols observed[0m
+	[90mchannel[2].lz76_complexity    [0m : [97m123[0m	[36mraw phrase count[0m
+	[90mchannel[2].lz76_normalized    [0m : [95m0.498262[0m	[36mnormalized LZ76 complexity[0m
+	[90mchannel[2].entropy_rate_bits  [0m : [97m0.932405[0m	[36mH(X_t | X_{t-1})[0m
+	[90mchannel[2].information_density[0m : [97m0.588282[0m	[36mentropy_rate_bits / log2(3)[0m
+	[90mchannel[2].compression_ratio  [0m : [97m0.151245[0m	[36mLZW-coded token bits / raw token bits[0m
+	[90mchannel[2].autocorrelation_decay_lag[0m : [97m3.000000[0m	[36mfirst lag with |acf| <= exp(-1)[0m
+	[90mchannel[2].power_spectrum_entropy[0m : [97m0.917315[0m	[36mnormalized entropy over positive frequency bins[0m
+	[90mchannel[2].hurst_exponent     [0m : [97m0.646699[0m	[36mR/S dyadic-scale estimate[0m
+	[36m/* BTCUSDT/1d/kline */[0m
+	[36m/* features: open_price,high_price,low_price,close_price,volume,quote_asset_volume,number_of_trades,taker_buy_base_volume,taker_buy_quote_volume */[0m
+	[36m/* anchor_feature: close_price */[0m
+	[90mchannel[3].record_type        [0m : [97mkline[0m	[36mrecord family[0m
+	[90mchannel[3].eligible           [0m : [97mtrue[0m	[36mmetric eligibility[0m
+	[90mchannel[3].valid_count        [0m : [97m1667[0m	[36mvalid anchor points[0m
+	[90mchannel[3].observed_symbol_count[0m : [97m3[0m	[36munique tertile symbols observed[0m
+	[90mchannel[3].lz76_complexity    [0m : [97m251[0m	[36mraw phrase count[0m
+	[90mchannel[3].lz76_normalized    [0m : [95m1.016778[0m	[36mnormalized LZ76 complexity[0m
+	[90mchannel[3].entropy_rate_bits  [0m : [97m1.572779[0m	[36mH(X_t | X_{t-1})[0m
+	[90mchannel[3].information_density[0m : [97m0.992313[0m	[36mentropy_rate_bits / log2(3)[0m
+	[90mchannel[3].compression_ratio  [0m : [97m0.245051[0m	[36mLZW-coded token bits / raw token bits[0m
+	[90mchannel[3].autocorrelation_decay_lag[0m : [97m1.000000[0m	[36mfirst lag with |acf| <= exp(-1)[0m
+	[90mchannel[3].power_spectrum_entropy[0m : [97m0.937793[0m	[36mnormalized entropy over positive frequency bins[0m
+	[90mchannel[3].hurst_exponent     [0m : [97m0.577884[0m	[36mR/S dyadic-scale estimate[0m
+[[36m0x125916432719872[0m]: [runtime_binding.contract.run] epoch done contract=circuit_1 epoch=1/1 steps=270 cumulative=270
+[[36m0x125916432719872[0m]: [tsi.vicreg][network_analytics] epoch_end network=tsi.wikimyei.representation.vicreg
+[1;96mNetwork Analytics Report[0m
+	[90mschema                            [0m : [97mpiaabo.torch_compat.network_analytics.v5[0m	[36mreport schema id[0m
+	[90mnetwork_label                     [0m : [97mtsi.wikimyei.representation.vicreg[0m	[36mnetwork/component under analysis[0m
+	[90mtensor_count                      [0m : [97m132[0m	[36mparameter tensors visited[0m
+	[90mtrainable_tensor_count            [0m : [97m132[0m	[36mrequires_grad=true tensors[0m
+	[90manomaly_top_k                     [0m : [97m5[0m	[36mtop-k entries retained per anomaly family[0m
+
+[1;94mHealth Snapshot[0m
+	[90mfinite_ratio                      [0m : [92m1.000000[0m	[36mfinite / total[0m
+	[90mnon_finite_ratio                  [0m : [92m0.000000[0m	[36m(nan + inf) / total[0m
+	[90mnear_zero_ratio                   [0m : [97m0.000001[0m	[36mfraction near zero threshold[0m
+	[90mstddev                            [0m : [97m0.060178[0m	[36mglobal finite stddev[0m
+	[90mmax_abs                           [0m : [97m2.554775[0m	[36mglobal finite absolute maximum[0m
+	[90mmax_abs_over_rms                  [0m : [97m42.453557[0m	[36moutlier heaviness[0m
+	[90mtensor_rms_cv                     [0m : [97m1.591647[0m	[36mcross-tensor RMS variability[0m
+	[90mabs_energy_entropy                [0m : [97m0.960221[0m	[36mnormalized abs-energy entropy[0m
+
+[1;94mNetwork Entropy Capacity[0m
+	[90mNetwork Entropy Capacity          [0m : [1;95m14.887862[0m	[36mprimary capacity indicator[0m
+	[90mnetwork_entropic_bottleneck_min   [0m : [97m2.761744[0m	[36mlowest effective-rank bottleneck[0m
+	[90mnetwork_effective_rank_p50        [0m : [97m22.871203[0m	[36meffective-rank median[0m
+	[90mnetwork_effective_rank_p90        [0m : [97m68.688645[0m	[36meffective-rank p90[0m
+	[90mnetwork_capacity_tensor_count     [0m : [97m66[0m	[36mtensors participating in capacity rollup[0m
+	[90mspectral_tensor_count             [0m : [97m66[0m	[36mtensors with spectral metrics[0m
+	[90mspectral_failed_tensor_count      [0m : [92m0[0m	[36mSVD failures[0m
+
+[1;94mTop Alerts[0m
+	[90mtop_nonfinite_ratio[1]            [0m : [97m_encoder_net.conv_depthwise.bias[0m  [36m0.000000[0m
+	[90mtop_nonfinite_ratio[2]            [0m : [97m_encoder_net.conv_depthwise.weight[0m  [36m0.000000[0m
+	[90mtop_nonfinite_ratio[3]            [0m : [97m_encoder_net.conv_fuse_channels.bias[0m  [36m0.000000[0m
+	[90mtop_nonfinite_ratio[4]            [0m : [97m_encoder_net.conv_fuse_channels.weight[0m  [36m0.000000[0m
+	[90mtop_nonfinite_ratio[5]            [0m : [97m_encoder_net.conv_proj.bias[0m  [36m0.000000[0m
+	[90mtop_max_abs_over_rms[1]           [0m : [97m_projector_net.layers.6.weight[0m  [36m5.022247[0m
+	[90mtop_max_abs_over_rms[2]           [0m : [97m_projector_net.layers.0.weight[0m  [36m4.035171[0m
+	[90mtop_max_abs_over_rms[3]           [0m : [97m_projector_net.layers.3.weight[0m  [36m3.732817[0m
+	[90mtop_max_abs_over_rms[4]           [0m : [97m_encoder_net.feature_extractor.net.0.conv1.conv.weight[0m  [36m2.862700[0m
+	[90mtop_max_abs_over_rms[5]           [0m : [97m_swa_encoder_net.averaged_encoder.feature_embed.weight[0m  [36m2.615604[0m
+	[90mtop_low_effective_rank[1]         [0m : [97m_encoder_net.conv_depthwise.weight[0m  [36m2.761744[0m
+	[90mtop_low_effective_rank[2]         [0m : [97m_swa_encoder_net.averaged_encoder.conv_depthwise.weight[0m  [36m2.765471[0m
+	[90mtop_low_effective_rank[3]         [0m : [97m_encoder_net.conv_fuse_channels.weight[0m  [36m2.970439[0m
+	[90mtop_low_effective_rank[4]         [0m : [97m_swa_encoder_net.averaged_encoder.conv_fuse_channels.weight[0m  [36m2.970570[0m
+	[90mtop_low_effective_rank[5]         [0m : [97m_encoder_net.feature_embed.weight[0m  [36m2.979499[0m
+[[36m0x125916432719872[0m]: VICReg model saved to : /cuwacunu/.hashimyei/tsi.wikimyei/representation/vicreg/0x0000/weights.init.pt 
+[[36m0x125916432719872[0m]: [96mtransfer_matrix_eval.run[0m
+	contract_hash: 05961fc3dfa93e59ad7240060abf0f710d2038f8109fa22e41913060196d6a06
+	schema: tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1
+	seen=27 accepted=27 train_steps=2566 optimizer_failures=0
+	forecast.null.error=-1.617530 forecast.linear.error=-1.618374 forecast.mdn.error=8.054345
+
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [96mtransfer_matrix_eval.matrix[0m schema=tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.matrix.v1 contract_hash=05961fc3dfa93e59ad7240060abf0f710d2038f8109fa22e41913060196d6a06
+[94m+--------------------------+------------+-----------+-----------+--------------+-------------+------------+-------------+[0m
+| [94mmethod                  [0m | [94m   support[0m | [94m   effort[0m | [94m    error[0m | [94meffort_skill[0m | [94merror_skill[0m | [94m       n90[0m | [94mselectivity[0m |
+[94m+--------------------------+------------+-----------+-----------+--------------+-------------+------------+-------------+[0m
+| [97mforecast.null           [0m | 730.000000 | -1.901223 | -1.617530 | [92m    0.000000[0m | [92m   0.000000[0m | [2;97m       n/a[0m | [2;97m        n/a[0m |
+| [97mforecast.stats_only     [0m | 730.000000 | [2;97m      n/a[0m | -1.707502 | [2;97m         n/a[0m | [92m   0.089972[0m | [2;97m       n/a[0m | [2;97m        n/a[0m |
+| [97mforecast.linear         [0m | 730.000000 | -1.899539 | -1.618374 | [91m   -0.001684[0m | [92m   0.000845[0m | 822.000000 |    0.002598 |
+| [97mforecast.residual_linear[0m | 730.000000 | [2;97m      n/a[0m | -1.703901 | [2;97m         n/a[0m | [92m   0.086372[0m | [2;97m       n/a[0m | [2;97m        n/a[0m |
+| [97mforecast.mdn            [0m | 730.000000 | -1.280084 |  8.054345 | [91m   -0.621139[0m | [91m  -9.671874[0m | [2;97m       n/a[0m | [2;97m        n/a[0m |
+[94m+--------------------------+------------+-----------+-----------+--------------+-------------+------------+-------------+[0m
+[94mtraining_losses[0m
+[94m+------------+-----------+--------------------+[0m
+| [94mcold_start[0m | [94mtrain_fit[0m | [94mgeneralization_gap[0m |
+[94m+------------+-----------+--------------------+[0m
+| 143.458302 |  4.770902 |          -3.283442 |
+[94m+------------+-----------+--------------------+[0m
+[94mprequential_rows[0m
+[94m+-------+-----------+-----------+[0m
+| [94mtotal[0m | [94mpersisted[0m | [94mtruncated[0m |
+[94m+-------+-----------+-----------+[0m
+|     9 |         9 | [92m    false[0m |
+[94m+-------+-----------+-----------+[0m
+[94m+-------+-----------------+-------+----------------+--------------+------------+-----------+------------+[0m
+| [94midx  [0m | [94mmethod         [0m | [94mblock[0m | [94mprefix_support[0m | [94meval_support[0m | [94mmodel_bits[0m | [94mnull_bits[0m | [94mskill_bits[0m |
+[94m+-------+-----------------+-------+----------------+--------------+------------+-----------+------------+[0m
+| [2;97mp0000[0m | [97mforecast_null  [0m |     1 |     822.000000 |   867.000000 |  -2.128948 | -2.128948 | [92m  0.000000[0m |
+| [2;97mp0001[0m | [97mforecast_null  [0m |     2 |    1689.000000 |   851.000000 |  -1.525741 | -1.525741 | [92m  0.000000[0m |
+| [2;97mp0002[0m | [97mforecast_null  [0m |     3 |    2540.000000 |   861.000000 |  -2.043032 | -2.043032 | [92m  0.000000[0m |
+| [2;97mp0003[0m | [97mforecast_linear[0m |     1 |     822.000000 |   867.000000 |  -2.135457 | -2.128948 | [92m  0.006509[0m |
+| [2;97mp0004[0m | [97mforecast_linear[0m |     2 |    1689.000000 |   851.000000 |  -1.518155 | -1.525741 | [91m -0.007586[0m |
+| [2;97mp0005[0m | [97mforecast_linear[0m |     3 |    2540.000000 |   861.000000 |  -2.038932 | -2.043032 | [91m -0.004100[0m |
+| [2;97mp0006[0m | [97mforecast_mdn   [0m |     1 |     822.000000 |   867.000000 |  -1.985272 | -2.128948 | [91m -0.143676[0m |
+| [2;97mp0007[0m | [97mforecast_mdn   [0m |     2 |    1689.000000 |   851.000000 |  -0.115102 | -1.525741 | [91m -1.410639[0m |
+| [2;97mp0008[0m | [97mforecast_mdn   [0m |     3 |    2540.000000 |   861.000000 |  -1.721434 | -2.043032 | [91m -0.321597[0m |
+[94m+-------+-----------------+-------+----------------+--------------+------------+-----------+------------+[0m
+
+[[36m0x125916432719872[0m]: [runtime_binding.contract.run] done contract=circuit_1 total_steps=270
+[[36m0x125916432719872[0m]: [runtime_binding.run] contract[0] done steps=270 cumulative_steps=270
+[[36m0x125916432719872[0m]: [runtime_binding.run] done campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary total_steps=270 contracts=1
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [2;92mRaw cache up-to-date[0m: /cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.cache.bin
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [2;92mNormalized up-to-date[0m: /cuwacunu/.data/raw/BTCUSDT/1w/BTCUSDT-1w-all-years.cache.norm.log_returns.bin
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [2;92mRaw cache up-to-date[0m: /cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.cache.bin
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [2;92mNormalized up-to-date[0m: /cuwacunu/.data/raw/BTCUSDT/3d/BTCUSDT-3d-all-years.cache.norm.log_returns.bin
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [2;92mRaw cache up-to-date[0m: /cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.cache.bin
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: (sanitize_csv_into_binary_file) [2;92mNormalized up-to-date[0m: /cuwacunu/.data/raw/BTCUSDT/1d/BTCUSDT-1d-all-years.cache.norm.log_returns.bin
+[[36m0x125916432719872[0m]: [main_campaign] run ok campaign_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624 binding=bind_train_vicreg_primary contract_hash=05961fc3dfa93e59ad7240060abf0f710d2038f8109fa22e41913060196d6a06 wave_hash=11880ae5c4aea792f2b8deb7df021b31764502f7868c06488b386c294939d3dc record_type=kline sampler=sequential contracts=1 total_steps=270
+[[36m0x125916432719872[0m]: [94mDEBUG[0m: [observation_runtime_t] finalizing static-global observation snapshot (last_contract_hash=<none>)
+[[36m0x125916432719872[0m]: [wave_space_t] finalizing static-global wave registry (registered_waves=1, last_registered_hash=11880ae5c4aea792f2b8deb7df021b31764502f7868c06488b386c294939d3dc, last_registered_path=/cuwacunu/.runtime/campaigns/campaign.1773793418504.9e3714e5/jobs/campaign.1773793418504.9e3714e5.job.0000/instructions/binding.wave.dsl)
+[[36m0x125916432719872[0m]: [runtime_binding_space_t] finalizing static-global runtime-binding lock (lock_initialized=true, locked_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624, locked_path=/cuwacunu/.runtime/campaigns/campaign.1773793418504.9e3714e5/jobs/campaign.1773793418504.9e3714e5.job.0000/instructions/campaign.dsl, locked_binding_id=bind_train_vicreg_primary, last_binding_id=bind_train_vicreg_primary, registered_runtime_bindings=1, last_runtime_binding_hash=26aede76dc1db43b8f30e38101403957dea234606d4544af3e1d3399da68e624, last_runtime_binding_path=/tmp/iitepi.internal.0925ab600f284583.runtime_binding.dsl)
+[[36m0x125916432719872[0m]: [contract_space_t] finalizing static-global contract registry (registered_contracts=1, last_registered_hash=05961fc3dfa93e59ad7240060abf0f710d2038f8109fa22e41913060196d6a06, last_registered_path=/cuwacunu/.runtime/campaigns/campaign.1773793418504.9e3714e5/jobs/campaign.1773793418504.9e3714e5.job.0000/instructions/binding.contract.dsl)
+[[36m0x125916432719872[0m]: [jk_setup] finalising

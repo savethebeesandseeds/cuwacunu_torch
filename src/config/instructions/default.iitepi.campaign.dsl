@@ -12,6 +12,8 @@
       IMPORT_WAVE_FILE "<wave_dsl_file>";
 
       BIND <binding_id> {
+        // bind-local __variables scope only the selected wave graph
+        // keep hard-static docking variables in the imported contract DSL
         __sampler = sequential;
         __workers = 0;
         __symbol = BTCUSDT;
@@ -28,6 +30,7 @@ CAMPAIGN {
   IMPORT_WAVE_FILE "default.iitepi.wave.dsl";
 
   BIND bind_train_vicreg_primary {
+    // operational wave scope only; does not modify contract __variables
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;

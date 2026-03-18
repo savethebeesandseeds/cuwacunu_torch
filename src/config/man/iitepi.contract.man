@@ -37,6 +37,20 @@ range = existing readable file
 allowed = quoted_path_or_identifier_path
 nuance = points to static circuit topology DSL payload
 
+[FIELD CONTRACT.__VAR]
+key = __<name>
+scope = CONTRACT
+type = scalar
+required = false
+default = none
+range = zero or more contract-local variable assignments
+allowed = variable names starting with double underscore
+nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %` for the contract DSL graph; these variables are contract-scoped and cannot be overridden by campaign BIND __variables
+note = use contract __variables for hard-static docking compatibility such as input tensor shape, embedding dimensions, projector layout, and contract-owned observation/channel DSL paths; changing these values should reset hashimyei lineage
+note_2 = runtime derives an explicit docking signature from the compatible circuit set, contract __variables, and docking-bearing contract DSL surfaces; component manifests carry that digest as docking_signature_sha256_hex
+note_3 = when wave selects an existing component hashimyei, runtime validates that the selected component manifest belongs to the same contract and that its docking_signature_sha256_hex matches the current contract before accepting the load
+validation = when contract-owned observation/channel DSL paths and VICReg network_design are both present, contract validation checks observation active channel count and max sequence length against VICReg INPUT.C and INPUT.T, and checks contract __obs_feature_dim against INPUT.D when declared
+
 [FIELD CONTRACT.AKNOWLEDGE]
 key = AKNOWLEDGE
 scope = CONTRACT

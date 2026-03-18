@@ -63,8 +63,8 @@ bool expect_fail(const std::string& raw) {
 
 int main() {
   try {
-    const char* config_folder = "/cuwacunu/src/config/";
-    cuwacunu::iitepi::config_space_t::change_config_file(config_folder);
+    const char* global_config_path = "/cuwacunu/src/config/.config";
+    cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
     cuwacunu::iitepi::config_space_t::update_config();
 
     std::set<std::string> hashes{};

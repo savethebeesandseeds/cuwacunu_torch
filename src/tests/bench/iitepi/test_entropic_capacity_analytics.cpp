@@ -202,11 +202,9 @@ int main() try {
             opt,
             "tsi.source.dataloader.test");
     const auto source_identity = tsiemene::make_component_report_identity(
-        "data_analytics",
-        "tsi.source.dataloader.BTCUSDT",
         "tsi.source.dataloader",
-        {},
-        "contract.deadbeef");
+        "bind.train.v1",
+        "source.data");
     const std::string kv_with_identity =
         cuwacunu::piaabo::torch_compat::data_analytics_to_latent_lineage_state_text(
             report,
@@ -220,8 +218,20 @@ int main() try {
                     has_lhs_key(kv, "schema"),
                     "data analytics kv missing schema");
     ok = ok && expect(
-                    has_lhs_key(kv_with_identity, "canonical_path"),
-                    "data analytics kv missing canonical_path in component envelope");
+                    has_lhs_key(kv_with_identity, "semantic_taxon") &&
+                        kv_with_identity.find("source.data") !=
+                            std::string::npos,
+                    "data analytics kv missing source semantic_taxon");
+    ok = ok && expect(
+                    has_lhs_key(kv_with_identity, "canonical_path") &&
+                        kv_with_identity.find("canonical_path:str = tsi.source.dataloader") !=
+                            std::string::npos,
+                    "data analytics kv missing canonical_path");
+    ok = ok && expect(
+                    has_lhs_key(kv_with_identity, "binding_id") &&
+                        kv_with_identity.find("binding_id:str = bind.train.v1") !=
+                            std::string::npos,
+                    "data analytics kv missing binding_id");
     ok = ok && expect(
                     kv.find("schema:str = piaabo.torch_compat.data_analytics.v2") !=
                         std::string::npos,
@@ -329,7 +339,7 @@ int main() try {
 
   {
     using cuwacunu::piaabo::torch_compat::source_data_analytics_contract_directory;
-    using cuwacunu::piaabo::torch_compat::source_data_analytics_instance_directory;
+    using cuwacunu::piaabo::torch_compat::source_data_analytics_context_directory;
 
     ok = ok && expect(
                     source_data_analytics_contract_directory("0x").empty(),
@@ -338,8 +348,10 @@ int main() try {
                     source_data_analytics_contract_directory("   ").empty(),
                     "whitespace contract hash should not yield a directory");
     ok = ok && expect(
-                    source_data_analytics_instance_directory("0x", "spot").empty(),
-                    "empty normalized contract token should invalidate instance paths");
+                    source_data_analytics_context_directory(
+                        "0x", "tsi.source.dataloader", "BTCUSDT|01.01.2009|31.12.2009")
+                        .empty(),
+                    "empty normalized contract token should invalidate context paths");
     const auto sanitized =
         source_data_analytics_contract_directory("contract/hash");
     ok = ok && expect(
@@ -354,6 +366,16 @@ int main() try {
                     full_hash.generic_string().find("/tsi.source/data_analytics.v2/") !=
                         std::string::npos,
                     "source analytics paths should use the v2 root");
+    const auto context_dir = source_data_analytics_context_directory(
+        "0xabcdef0123456789",
+        "tsi.source.dataloader",
+        "BTCUSDT|01.01.2009|31.12.2009");
+    ok = ok && expect(
+                    context_dir.filename() == "BTCUSDT_01.01.2009_31.12.2009",
+                    "source runtime cursor should be path-normalized");
+    ok = ok && expect(
+                    context_dir.parent_path().filename() == "tsi.source.dataloader",
+                    "source analytics paths should partition by semantic canonical path");
   }
 
   {
@@ -581,11 +603,9 @@ int main() try {
                     "repeating symbolic pattern should have lower spectral entropy");
 
     const auto symbolic_identity = tsiemene::make_component_report_identity(
-        "data_analytics_symbolic",
-        "tsi.source.dataloader.BTCUSDT",
         "tsi.source.dataloader",
-        {},
-        "contract.deadbeef");
+        "bind.train.v1",
+        "source.data");
     const std::string symbolic_kv =
         cuwacunu::piaabo::torch_compat::
             data_symbolic_analytics_to_latent_lineage_state_text(
@@ -610,6 +630,16 @@ int main() try {
     ok = ok && expect(
                     symbolic_kv.find("/*") == std::string::npos,
                     "symbolic kv must remain comment-free");
+    ok = ok && expect(
+                    has_lhs_key(symbolic_kv, "semantic_taxon") &&
+                        symbolic_kv.find("source.data") !=
+                            std::string::npos,
+                    "symbolic kv missing source semantic_taxon");
+    ok = ok && expect(
+                    has_lhs_key(symbolic_kv, "canonical_path") &&
+                        symbolic_kv.find("canonical_path:str = tsi.source.dataloader") !=
+                            std::string::npos,
+                    "symbolic kv missing canonical_path");
     ok = ok && expect(
                     symbolic_kv.find("channel_1_anchor_feature:str = close_price") !=
                         std::string::npos,
@@ -931,10 +961,8 @@ int main() try {
                     cuwacunu::piaabo::torch_compat::
                         summarize_entropic_capacity_comparison_from_payloads(
                             "schema:str = piaabo.torch_compat.data_analytics.v2\n"
-                            "run_id:str = run_runtime_001\n"
                             "source_entropic_load[0,+inf):double = 3.000000000000\n",
                             "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-                            "run_id:str = run_runtime_001\n"
                             "network_global_entropic_capacity(0,+inf):double = "
                             "4.500000000000\n",
                             &from_payloads,
