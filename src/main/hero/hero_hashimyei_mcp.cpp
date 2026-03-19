@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -167,7 +168,7 @@ int main(int argc, char** argv) {
   cuwacunu::hero::hashimyei_mcp::hashimyei_runtime_defaults_t defaults{};
   std::string defaults_error{};
   if (!cuwacunu::hero::hashimyei_mcp::load_hashimyei_runtime_defaults(
-          hero_config_path, &defaults, &defaults_error)) {
+          hero_config_path, global_config_path, &defaults, &defaults_error)) {
     std::cerr << "[" << kServerName << "] " << defaults_error << "\n";
     return 2;
   }
@@ -205,7 +206,8 @@ int main(int argc, char** argv) {
     cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t lattice_defaults{};
     std::string lattice_defaults_error{};
     if (!cuwacunu::hero::lattice_mcp::load_wave_runtime_defaults(
-            lattice_hero_config_path, &lattice_defaults, &lattice_defaults_error)) {
+            lattice_hero_config_path, global_config_path, &lattice_defaults,
+            &lattice_defaults_error)) {
       std::cerr << "[" << kServerName << "] " << lattice_defaults_error << "\n";
       return 2;
     }
@@ -221,18 +223,26 @@ int main(int argc, char** argv) {
   app.catalog_options = options;
 
   if (direct_tool_mode) {
+    app.close_catalog_after_execute = false;
     std::string tool_result{};
     std::string tool_error{};
     if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
             direct_tool_name, direct_tool_args_json, &app, &tool_result,
             &tool_error)) {
       std::cerr << "[" << kServerName << "] " << tool_error << "\n";
-      return 2;
+      std::cerr.flush();
+      // Direct CLI mode is single-shot; avoid destructor-driven catalog close
+      // stalls on process teardown.
+      std::_Exit(2);
     }
     std::cout << tool_result << "\n";
-    const bool is_error =
-        cuwacunu::hero::hashimyei_mcp::tool_result_is_error(tool_result);
-    return is_error ? 1 : 0;
+    std::cout.flush();
+    const int exit_code =
+        cuwacunu::hero::hashimyei_mcp::tool_result_is_error(tool_result) ? 1
+                                                                         : 0;
+    // Direct CLI mode is single-shot; avoid destructor-driven catalog close
+    // stalls on process teardown.
+    std::_Exit(exit_code);
   }
 
   if (::isatty(STDIN_FILENO) != 0) {

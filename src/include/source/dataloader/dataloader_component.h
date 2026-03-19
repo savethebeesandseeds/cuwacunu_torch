@@ -36,6 +36,13 @@ inline constexpr std::string_view kCanonicalType = "tsi.source.dataloader";
   return out;
 }
 
+// Runtime reports keep canonical ownership in `canonical_path`; `source_label`
+// only carries the configured source setting (for example a symbol).
+[[nodiscard]] inline std::string make_source_label(
+    std::string_view instrument) {
+  return trim_ascii_copy(instrument);
+}
+
 [[nodiscard]] inline std::string make_source_runtime_cursor(
     std::string_view symbol,
     std::string_view from_date_ddmmyyyy,

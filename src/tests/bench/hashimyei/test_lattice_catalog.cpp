@@ -130,7 +130,8 @@ static void write_text_file(const fs::path& path, std::string_view payload) {
 
 int main() {
   temp_dir_t tmp{};
-  const fs::path catalog_path = tmp.dir / "catalog" / "lattice_catalog.idydb";
+  const fs::path catalog_path =
+      tmp.dir / "_meta" / "catalog" / "lattice_catalog.idydb";
   constexpr const char* kPass = "wave-catalog-test-pass";
 
   wave_cell_coord_t coord{};
@@ -407,31 +408,46 @@ int main() {
       std::to_string(expected_wave_cursor_u64);
   const std::string source_runtime_cursor =
       "BTCUSDT|03.01.2024|05.01.2024";
+  const fs::path vicreg_0042_dir =
+      runtime_store / "tsi" / "wikimyei" / "representation" / "vicreg" /
+      "0x0042";
+  const fs::path vicreg_0043_dir =
+      runtime_store / "tsi" / "wikimyei" / "representation" / "vicreg" /
+      "0x0043";
+  const fs::path source_contract_dir =
+      runtime_store / "tsi" / "source" / "dataloader" / "contracts" /
+      "contract_hash_123";
+  const fs::path source_context_dir =
+      source_contract_dir / "contexts" / "BTCUSDT_03.01.2024_05.01.2024";
+  const fs::path source_context_eth_dir =
+      source_contract_dir / "contexts" / "ETHUSDT_03.01.2024_05.01.2024";
+  const fs::path source_projection_dir =
+      source_contract_dir / "bindings" / "bind.train.vicreg" / "runs" /
+      "run.source.001";
 
   write_text_file(
-      runtime_store / "reports" / "runtime_missing_canonical_path.lls",
+      vicreg_0042_dir / "runtime_missing_canonical_path.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
       "metric.loss(-inf,+inf):double = 0.770000000000\n");
 
   REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
   REQUIRE(error.find("missing canonical_path") != std::string::npos);
-  fs::remove(runtime_store / "reports" / "runtime_missing_canonical_path.lls");
+  fs::remove(vicreg_0042_dir / "runtime_missing_canonical_path.lls");
 
   write_text_file(
-      runtime_store / "reports" / "runtime_namespaced_schema.lls",
+      source_projection_dir / "runtime_namespaced_schema.lls",
       "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
-      "canonical_path:str = tsi.source.dataloader.BTCUSDT\n");
+      "canonical_path:str = tsi.source.dataloader\n");
 
   REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
   REQUIRE(error.find("top-level schema key") != std::string::npos);
-  fs::remove(runtime_store / "reports" / "runtime_namespaced_schema.lls");
+  fs::remove(source_projection_dir / "runtime_namespaced_schema.lls");
 
   write_text_file(
-      runtime_store / "reports" / "runtime_new.lls",
+      vicreg_0042_dir / "runtime_new.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "semantic_taxon:str = embedding.network\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
@@ -439,37 +455,34 @@ int main() {
       "metric.loss(-inf,+inf):double = 0.25\n"
       "metric.phase:str = eval\n");
   write_text_file(
-      runtime_store / "reports" / "status.latest.lls",
+      vicreg_0042_dir / "status.latest.lls",
       "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
       "trained_steps(0,+inf):uint = 12\n");
   write_text_file(
-      runtime_store / "reports" / "source_data_analytics.v2.latest.lls",
+      source_context_dir / "data_analytics.v2.latest.lls",
       "schema:str = piaabo.torch_compat.data_analytics.v2\n"
-      "canonical_path:str = tsi.source.dataloader.BTCUSDT\n"
-      "semantic_taxon:str = source.data\n"
       "canonical_path:str = tsi.source.dataloader\n"
+      "semantic_taxon:str = source.data\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
       "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
-      "source_label:str = tsi.source.dataloader.BTCUSDT\n"
+      "source_label:str = BTCUSDT\n"
       "sample_count(0,+inf):uint = 256\n"
       "source_entropic_load(0,+inf):double = 7.500000000000\n");
   write_text_file(
-      runtime_store / "reports" / "source_runtime_projection.latest.lls",
+      source_projection_dir / "source_runtime_projection.latest.lls",
       "schema:str = wave.source.runtime.projection.v2\n"
-      "canonical_path:str = tsi.source.dataloader.BTCUSDT\n"
       "canonical_path:str = tsi.source.dataloader\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
       "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
-      "source_label:str = tsi.source.dataloader.BTCUSDT\n"
+      "source_label:str = BTCUSDT\n"
       "source.runtime.symbol:str = BTCUSDT\n"
       "source.runtime.range_basis:str = effective_intersection\n"
       "source.runtime.interval_semantics:str = half_open_utc_day\n"
@@ -486,17 +499,20 @@ int main() {
       "source.channel.5m.active(0,1):double = 0.000000000000\n"
       "source.channel.1h.active(0,1):double = 1.000000000000\n");
   write_text_file(
-      runtime_store / "reports" / "runtime_unsupported_schema.lls",
+      vicreg_0042_dir / "runtime_unsupported_schema.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v4\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss(-inf,+inf):double = 0.990000000000\n");
   write_text_file(
-      runtime_store / "reports" / "runtime_wrong_ext.kv",
+      vicreg_0042_dir / "runtime_wrong_ext.kv",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "metric.loss(-inf,+inf):double = 0.500000000000\n");
 
-  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+  if (!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error)) {
+    std::cerr << "[TEST CONTEXT] ingest error: " << error << "\n";
+    REQUIRE(false);
+  }
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> runtime_report_fragments{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments(canonical_runtime_path, "", 0, 0,
@@ -543,7 +559,8 @@ int main() {
   bool saw_data_analytics = false;
   bool saw_source_runtime = false;
   for (const auto& row : source_report_fragments) {
-    REQUIRE(row.canonical_path == "tsi.source.dataloader.BTCUSDT");
+    REQUIRE(row.canonical_path == "tsi.source.dataloader");
+    REQUIRE(row.source_label == "BTCUSDT");
     if (row.schema == "piaabo.torch_compat.data_analytics.v2") {
       saw_data_analytics = true;
       REQUIRE(row.semantic_taxon == "source.data");
@@ -556,6 +573,10 @@ int main() {
       REQUIRE(row.binding_id == "bind.train.vicreg");
       REQUIRE(row.source_runtime_cursor == source_runtime_cursor);
       REQUIRE(row.path.find("source_runtime_projection.latest.lls") !=
+              std::string::npos);
+      REQUIRE(row.path.find(
+                  "/tsi/source/dataloader/contracts/contract_hash_123/bindings/"
+                  "bind.train.vicreg/runs/run.source.001/") !=
               std::string::npos);
       REQUIRE(row.path.find("[lattice.synthetic.source_runtime") ==
               std::string::npos);
@@ -583,16 +604,16 @@ int main() {
   REQUIRE(restored_source_projection.schema == "wave.source.runtime.projection.v2");
   REQUIRE(restored_source_projection.path.find("source_runtime_projection.latest.lls") !=
           std::string::npos);
+  REQUIRE(restored_source_projection.path.find(
+              "/tsi/source/dataloader/contracts/contract_hash_123/bindings/"
+              "bind.train.vicreg/runs/run.source.001/") != std::string::npos);
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
-      source_report_fragments_symbol_cursor{};
+      source_report_fragments_invalid_selector{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments(
       "tsi.source.dataloader.BTCUSDT", "", 0, 0, true,
-      &source_report_fragments_symbol_cursor, &error));
-  REQUIRE(source_report_fragments_symbol_cursor.size() == source_report_fragments.size());
-  for (const auto& row : source_report_fragments_symbol_cursor) {
-    REQUIRE(row.canonical_path == "tsi.source.dataloader.BTCUSDT");
-  }
+      &source_report_fragments_invalid_selector, &error));
+  REQUIRE(source_report_fragments_invalid_selector.empty());
 
   std::string matched_wave_cursor{};
   for (const auto& row : runtime_report_fragments) {
@@ -651,16 +672,15 @@ int main() {
   REQUIRE(wave_only_view.ambiguity_count == 0);
 
   write_text_file(
-      runtime_store / "reports" / "source_data_analytics_eth.v2.latest.lls",
+      source_context_eth_dir / "data_analytics.v2.latest.lls",
       "schema:str = piaabo.torch_compat.data_analytics.v2\n"
-      "canonical_path:str = tsi.source.dataloader.ETHUSDT\n"
-      "semantic_taxon:str = source.data\n"
       "canonical_path:str = tsi.source.dataloader\n"
+      "semantic_taxon:str = source.data\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
       "source_runtime_cursor:str = ETHUSDT|03.01.2024|05.01.2024\n"
-      "source_label:str = tsi.source.dataloader.ETHUSDT\n"
+      "source_label:str = ETHUSDT\n"
       "sample_count(0,+inf):uint = 256\n"
       "source_entropic_load(0,+inf):double = 6.250000000000\n");
   REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
@@ -676,25 +696,19 @@ int main() {
   REQUIRE(ambiguous_source_view.view_lls.find("network_count=1") !=
           std::string::npos);
 
-  cuwacunu::hero::wave::runtime_view_report_t exact_source_selected_view{};
-  REQUIRE(runtime_catalog.get_runtime_view_lls(
+  cuwacunu::hero::wave::runtime_view_report_t invalid_source_selector_view{};
+  REQUIRE(!runtime_catalog.get_runtime_view_lls(
       "entropic_capacity_comparison",
       "tsi.source.dataloader.BTCUSDT|" + matched_wave_cursor, 0, false,
-      "contract_hash_123", &exact_source_selected_view, &error));
-  REQUIRE(exact_source_selected_view.selector_hashimyei_cursor ==
-          "tsi.source.dataloader.BTCUSDT");
-  REQUIRE(exact_source_selected_view.match_count == 1);
-  REQUIRE(exact_source_selected_view.ambiguity_count == 0);
-  REQUIRE(exact_source_selected_view.view_lls.find(
-              "selector_hashimyei_cursor=tsi.source.dataloader.BTCUSDT") !=
+      "contract_hash_123", &invalid_source_selector_view, &error));
+  REQUIRE(error.find("intersection_cursor canonical_path is not supported") !=
           std::string::npos);
 
   write_text_file(
-      runtime_store / "reports" / "runtime_new_ambiguous.lls",
+      vicreg_0043_dir / "runtime_new_ambiguous.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0043\n"
       "semantic_taxon:str = embedding.network\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0043\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
@@ -712,18 +726,13 @@ int main() {
   REQUIRE(ambiguous_view.view_lls.find("source_count=2") != std::string::npos);
   REQUIRE(ambiguous_view.view_lls.find("network_count=2") != std::string::npos);
 
-  cuwacunu::hero::wave::runtime_view_report_t intersection_selected_view{};
-  REQUIRE(runtime_catalog.get_runtime_view_lls(
+  error.clear();
+  cuwacunu::hero::wave::runtime_view_report_t invalid_source_selector_view_2{};
+  REQUIRE(!runtime_catalog.get_runtime_view_lls(
       "entropic_capacity_comparison",
       "tsi.source.dataloader.BTCUSDT|" + matched_wave_cursor, 0, false,
-      "contract_hash_123", &intersection_selected_view, &error));
-  REQUIRE(intersection_selected_view.selector_intersection_cursor ==
-          "tsi.source.dataloader.BTCUSDT|" + matched_wave_cursor);
-  REQUIRE(intersection_selected_view.match_count == 0);
-  REQUIRE(intersection_selected_view.ambiguity_count == 1);
-  REQUIRE(intersection_selected_view.view_lls.find("source_count=1") !=
-          std::string::npos);
-  REQUIRE(intersection_selected_view.view_lls.find("network_count=2") !=
+      "contract_hash_123", &invalid_source_selector_view_2, &error));
+  REQUIRE(error.find("intersection_cursor canonical_path is not supported") !=
           std::string::npos);
 
   const std::uint64_t latest_family_wave_cursor_u64 = packed_runtime_wave_cursor(9);
@@ -734,7 +743,6 @@ int main() {
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "semantic_taxon:str = embedding.network\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
       "wave_cursor:uint = " + latest_family_wave_cursor + "\n"
@@ -743,7 +751,6 @@ int main() {
   write_text_file(
       runtime_store / "reports" / "status.latest.newer.lls",
       "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
@@ -885,13 +892,97 @@ int main() {
   cuwacunu::hero::lattice_mcp::app_context_t lattice_app{};
   lattice_app.store_root = runtime_store;
   lattice_app.lattice_catalog_path =
-      tmp.dir / "catalog" / "runtime_tool_catalog.idydb";
+      tmp.dir / "_meta" / "catalog" / "runtime_tool_catalog.idydb";
+  const fs::path legacy_tool_catalog_path =
+      runtime_store / "catalog" / "lattice_catalog.idydb";
+  write_text_file(legacy_tool_catalog_path, "legacy lattice catalog placeholder\n");
+  REQUIRE(fs::exists(legacy_tool_catalog_path));
   const std::string matched_wave_cursor_view =
       lattice_catalog_store_t::format_runtime_wave_cursor(
           matched_wave_cursor_u64);
 
   std::string tool_result{};
   std::string tool_error{};
+  REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
+      "hero.lattice.list_facts",
+      "{}",
+      &lattice_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"canonical_path\":\"tsi.source.dataloader\"") !=
+          std::string::npos);
+  REQUIRE(fs::exists(lattice_app.lattice_catalog_path));
+  REQUIRE(fs::exists(
+      lattice_app.lattice_catalog_path.parent_path() /
+      "runtime_tool_catalog.idydb.sync.sha256"));
+  REQUIRE(!fs::exists(legacy_tool_catalog_path));
+
+  fs::remove(source_context_dir / "data_analytics.v2.latest.lls");
+  fs::remove(source_context_eth_dir / "data_analytics.v2.latest.lls");
+  fs::remove(source_projection_dir / "source_runtime_projection.latest.lls");
+
+  tool_result.clear();
+  tool_error.clear();
+  REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
+      "hero.lattice.list_facts",
+      "{}",
+      &lattice_app, &tool_result, &tool_error));
+  REQUIRE(tool_error.empty());
+  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"canonical_path\":\"tsi.source.dataloader\"") ==
+          std::string::npos);
+
+  write_text_file(
+      source_context_dir / "data_analytics.v2.latest.lls",
+      "schema:str = piaabo.torch_compat.data_analytics.v2\n"
+      "canonical_path:str = tsi.source.dataloader\n"
+      "semantic_taxon:str = source.data\n"
+      "binding_id:str = bind.train.vicreg\n"
+      "contract_hash:str = contract_hash_123\n"
+      "wave_cursor:uint = " + expected_wave_cursor + "\n"
+      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
+      "source_label:str = BTCUSDT\n"
+      "sample_count(0,+inf):uint = 256\n"
+      "source_entropic_load(0,+inf):double = 7.500000000000\n");
+  write_text_file(
+      source_projection_dir / "source_runtime_projection.latest.lls",
+      "schema:str = wave.source.runtime.projection.v2\n"
+      "canonical_path:str = tsi.source.dataloader\n"
+      "binding_id:str = bind.train.vicreg\n"
+      "contract_hash:str = contract_hash_123\n"
+      "wave_cursor:uint = " + expected_wave_cursor + "\n"
+      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
+      "source_label:str = BTCUSDT\n"
+      "source.runtime.symbol:str = BTCUSDT\n"
+      "source.runtime.range_basis:str = effective_intersection\n"
+      "source.runtime.interval_semantics:str = half_open_utc_day\n"
+      "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n"
+      "source.runtime.request.to_ratio(0,1):double = 0.500000000000\n"
+      "source.runtime.request.span_ratio(0,1):double = 0.375000000000\n"
+      "source.runtime.effective.coverage_ratio(0,1):double = 0.375000000000\n"
+      "source.runtime.flags.clipped_left(0,1):double = 0.000000000000\n"
+      "source.runtime.flags.clipped_right(0,1):double = 0.000000000000\n"
+      "source.channels.active_count(0,+inf):double = 2.000000000000\n"
+      "source.channels.total_count(0,+inf):double = 3.000000000000\n"
+      "source.channels.active_ratio(0,1):double = 0.666666666667\n"
+      "source.channel.1m.active(0,1):double = 1.000000000000\n"
+      "source.channel.5m.active(0,1):double = 0.000000000000\n"
+      "source.channel.1h.active(0,1):double = 1.000000000000\n");
+  write_text_file(
+      source_context_eth_dir / "data_analytics.v2.latest.lls",
+      "schema:str = piaabo.torch_compat.data_analytics.v2\n"
+      "canonical_path:str = tsi.source.dataloader\n"
+      "semantic_taxon:str = source.data\n"
+      "binding_id:str = bind.train.vicreg\n"
+      "contract_hash:str = contract_hash_123\n"
+      "wave_cursor:uint = " + expected_wave_cursor + "\n"
+      "source_runtime_cursor:str = ETHUSDT|03.01.2024|05.01.2024\n"
+      "source_label:str = ETHUSDT\n"
+      "sample_count(0,+inf):uint = 256\n"
+      "source_entropic_load(0,+inf):double = 6.250000000000\n");
+
+  tool_result.clear();
+  tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
       "hero.lattice.refresh",
       "{\"reingest\":true}",
@@ -928,7 +1019,7 @@ int main() {
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
-  REQUIRE(tool_result.find("\"canonical_path\":\"tsi.source.dataloader.BTCUSDT\"") !=
+  REQUIRE(tool_result.find("\"canonical_path\":\"" + canonical_runtime_path + "\"") !=
           std::string::npos);
 
   tool_result.clear();
@@ -967,11 +1058,9 @@ int main() {
           matched_wave_cursor_view + "\",\"contract_hash\":\"contract_hash_123\"}",
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
-  REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"isError\":true") != std::string::npos);
   REQUIRE(tool_result.find(
-              "\"selector_canonical_path\":\"tsi.source.dataloader.BTCUSDT\"") !=
-          std::string::npos);
-  REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view + "\"") !=
+              "intersection_cursor canonical_path is not supported for view_kind=entropic_capacity_comparison") !=
           std::string::npos);
 
   tool_result.clear();
@@ -1014,11 +1103,13 @@ int main() {
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
       "hero.lattice.get_fact",
       std::string(
-          "{\"canonical_path\":\"tsi.source.dataloader.BTCUSDT\",\"wave_cursor\":\"") +
+          "{\"canonical_path\":\"tsi.source.dataloader\",\"wave_cursor\":\"") +
           matched_wave_cursor_view + "\"}",
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
+  REQUIRE(tool_result.find("\"canonical_path\":\"tsi.source.dataloader\"") !=
+          std::string::npos);
   REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view + "\"") !=
           std::string::npos);
   REQUIRE(tool_result.find("\"fact_lls\":\"") != std::string::npos);

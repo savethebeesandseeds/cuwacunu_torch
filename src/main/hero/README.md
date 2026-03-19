@@ -98,12 +98,13 @@ rank overlay. Rank exists only after an explicit overlay is written; it does
 not bootstrap automatically and does not affect runtime component selection or
 docking.
 Component manifests are contract-scoped revisions and carry both
-`founding_dsl_provenance_*` metadata and `docking_signature_sha256_hex`, so
+`founding_dsl_source_*` metadata and `docking_signature_sha256_hex`, so
 Hashimyei can distinguish lineage origin from contract docking compatibility.
 They also carry a component `lineage_state` such as `active`, `deprecated`,
 `replaced`, or `tombstone`.
 Each component revision also stores an immutable founding DSL bundle snapshot
-under `.hashimyei/founding_dsl_bundles/<component_id>/...`; the
+under its canonical artifact leaf at
+`.runtime/.hashimyei/tsi/.../_definition/<component_id>/...`; the
 `hero.hashimyei.get_founding_dsl_bundle` tool reads that stored bundle as the
 canonical founding-bundle surface.
 
@@ -118,8 +119,9 @@ Lattice MCP:
 Lattice is the fact index plus query-time view layer.
 Use `hero.lattice.get_fact` for assembled component fact bundles.
 Use `hero.lattice.get_view` for derived comparisons.
-Refresh catalog state explicitly with `hero.lattice.refresh(reingest=true)`
-when needed.
+Normal read tools synchronize the catalog to the current runtime store before
+querying. Use `hero.lattice.refresh(reingest=true)` when you want to force a
+rebuild explicitly.
 
 Runtime MCP:
 
@@ -145,21 +147,21 @@ Runtime Hero dispatches one immutable campaign snapshot at a time.
 
 Runtime campaign state persists under:
 
-- `campaigns_root/<campaign_cursor>/campaign.lls`
-- `campaigns_root/<campaign_cursor>/campaign.dsl`
-- `campaigns_root/<campaign_cursor>/jobs/`
-- `campaigns_root/<campaign_cursor>/stdout.log`
-- `campaigns_root/<campaign_cursor>/stderr.log`
+- `<runtime_root>/.campaigns/<campaign_cursor>/campaign.lls`
+- `<runtime_root>/.campaigns/<campaign_cursor>/campaign.dsl`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/`
+- `<runtime_root>/.campaigns/<campaign_cursor>/stdout.log`
+- `<runtime_root>/.campaigns/<campaign_cursor>/stderr.log`
 
 Runtime job state persists under:
 
-- `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/job.lls`
-- `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/instructions/campaign.dsl`
-- `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/instructions/binding.contract.dsl`
-- `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/instructions/binding.wave.dsl`
-- `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/instructions/*.dsl`
-- `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/stdout.log`
-- `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/stderr.log`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/job.lls`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/instructions/campaign.dsl`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/instructions/binding.contract.dsl`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/instructions/binding.wave.dsl`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/instructions/*.dsl`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/stdout.log`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/stderr.log`
 
 The staged contract and wave snapshots resolve `% __var ? default %` placeholders before launch, rewrite known downstream DSL-file references to local staged files, and normalize copied instruction filenames by dropping a leading `default.` prefix.
 
@@ -185,8 +187,9 @@ Lattice is healthiest as a fact index plus query-time view engine.
 - persisted runtime reports are now documented around the flat header
   `schema`, `semantic_taxon`, `canonical_path`, `binding_id`, `wave_cursor`, optional
   `source_runtime_cursor`, plus payload keys.
-- normal read tools query the current lattice catalog only; refreshing from the
-  runtime store is explicit via `hero.lattice.refresh(reingest=true)`.
+- normal read tools synchronize the lattice catalog to the current runtime
+  store before querying; `hero.lattice.refresh(reingest=true)` remains the
+  explicit force-rebuild tool.
 
 For runtime report query surfaces:
 
@@ -204,8 +207,8 @@ Current derived view kinds:
 `hero.config.dev_nuke_reset` removes:
 
 - runtime dump roots
-- Runtime Hero `campaigns_root`
+- Runtime Hero `<runtime_root>/.campaigns`
 - Hashimyei/Lattice catalog files
 
 It uses the saved global config on disk and fails fast while active campaigns or
-jobs still exist under `campaigns_root`.
+jobs still exist under `<runtime_root>/.campaigns`.

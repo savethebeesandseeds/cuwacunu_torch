@@ -90,6 +90,35 @@ using runtime_lls_document_t =
   return "run.vicreg." + std::string(hashimyei);
 }
 
+[[nodiscard]] inline std::string sanitize_runtime_history_token_(
+    std::string_view token) {
+  std::string out;
+  out.reserve(token.size());
+  for (const unsigned char c : token) {
+    const bool ok =
+        (std::isalnum(c) != 0) || c == '_' || c == '-' || c == '.';
+    out.push_back(ok ? static_cast<char>(c) : '_');
+  }
+  if (out.empty()) return "run.unknown";
+  return out;
+}
+
+[[nodiscard]] inline std::filesystem::path runtime_history_file_path_(
+    const std::filesystem::path& stable_file,
+    std::string_view history_token) {
+  const std::string sanitized = sanitize_runtime_history_token_(history_token);
+  const std::string stem = stable_file.stem().string();
+  std::string stem_prefix = stem;
+  constexpr std::string_view kLatestSuffix = ".latest";
+  if (stem_prefix.size() > kLatestSuffix.size() &&
+      stem_prefix.compare(stem_prefix.size() - kLatestSuffix.size(),
+                          kLatestSuffix.size(), kLatestSuffix) == 0) {
+    stem_prefix.erase(stem_prefix.size() - kLatestSuffix.size());
+  }
+  return stable_file.parent_path() /
+         (stem_prefix + "." + sanitized + stable_file.extension().string());
+}
+
 inline void append_runtime_string_entry_(runtime_lls_document_t* document,
                                          std::string_view key,
                                          std::string_view value) {
@@ -394,6 +423,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     out->accumulate_steps = model_.training_policy.accumulate_steps;
     out->accum_counter = model_.runtime_state.accum_counter;
     out->swa_start_iter = model_.training_policy.swa_start_iter;
+    out->trained_epochs = model_.runtime_state.trained_epochs;
+    out->trained_samples = model_.runtime_state.trained_samples;
     out->clip_norm = model_.training_policy.clip_norm;
     out->clip_value = model_.training_policy.clip_value;
     out->last_committed_loss_mean =
@@ -657,12 +688,9 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   build_transfer_matrix_runtime_report_path_(
       std::string_view canonical_path) const {
     const std::string contract_token = sanitize_path_token_(contract_hash_);
-    const std::string component_token =
-        has_non_ws_ascii_(representation_hashimyei_)
-            ? sanitize_path_token_(representation_hashimyei_)
-            : sanitize_path_token_(canonical_path);
-    return cuwacunu::hashimyei::store_root() / "tsi.wikimyei" / "evaluation" /
-           "transfer_matrix_evaluation" / contract_token / component_token /
+    return cuwacunu::hashimyei::canonical_path_directory(
+               cuwacunu::hashimyei::store_root(), canonical_path) /
+           "contracts" / contract_token /
            "transfer_matrix_evaluation.summary.latest.lls";
   }
 
@@ -670,12 +698,9 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   build_transfer_matrix_runtime_matrix_report_path_(
       std::string_view canonical_path) const {
     const std::string contract_token = sanitize_path_token_(contract_hash_);
-    const std::string component_token =
-        has_non_ws_ascii_(representation_hashimyei_)
-            ? sanitize_path_token_(representation_hashimyei_)
-            : sanitize_path_token_(canonical_path);
-    return cuwacunu::hashimyei::store_root() / "tsi.wikimyei" / "evaluation" /
-           "transfer_matrix_evaluation" / contract_token / component_token /
+    return cuwacunu::hashimyei::canonical_path_directory(
+               cuwacunu::hashimyei::store_root(), canonical_path) /
+           "contracts" / contract_token /
            "transfer_matrix_evaluation.matrix.latest.lls";
   }
 
@@ -795,6 +820,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
 
   void apply_epoch_training_policy_() {
     if (epoch_optimizer_steps_ <= 0) return;
+    ++model_.runtime_state.trained_epochs;
 
     if (model_.optimizer_threshold_reset >= 0 && model_.optimizer) {
       cuwacunu::jkimyei::optim::clamp_adam_step(
@@ -929,6 +955,14 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     if (!ctx.source_runtime_cursor.empty()) {
       runtime_source_runtime_cursor_ = ctx.source_runtime_cursor;
     }
+    if (ctx.has_wave_cursor) {
+      runtime_has_wave_cursor_ = true;
+      runtime_wave_cursor_ = ctx.wave_cursor;
+      runtime_wave_cursor_run_ = 0;
+      runtime_wave_cursor_episode_ = 0;
+      runtime_wave_cursor_batch_ = 0;
+      return;
+    }
     if (!wave) return;
     std::uint64_t packed_wave_cursor = 0;
     if (!cuwacunu::piaabo::latent_lineage_state::pack_runtime_wave_cursor(
@@ -1003,7 +1037,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
 }
 
 [[nodiscard]] inline std::filesystem::path wikimyei_representation_vicreg_store_root() {
-  return cuwacunu::hashimyei::store_root() / "tsi.wikimyei" / "representation" / "vicreg";
+  return cuwacunu::hashimyei::canonical_path_directory(
+      cuwacunu::hashimyei::store_root(), "tsi.wikimyei.representation.vicreg");
 }
 
 [[nodiscard]] inline bool is_valid_wikimyei_representation_vicreg_hash(std::string_view hashimyei) {
@@ -1109,11 +1144,18 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   const fs::path weights_file = action.report_fragment_directory / "weights.init.pt";
-  fs::path weights_network_analytics_file{};
+  fs::path weights_network_analytics_file = weights_file;
+  weights_network_analytics_file.replace_extension(".network_analytics.lls");
   bool wrote_weights_network_analytics_file = false;
-  fs::path embedding_sequence_analytics_file{};
+  fs::path embedding_sequence_analytics_file =
+      action.report_fragment_directory /
+      std::string(cuwacunu::piaabo::torch_compat::
+                      kEmbeddingSequenceAnalyticsLatestReportFilename);
   bool wrote_embedding_sequence_analytics_file = false;
-  fs::path embedding_sequence_symbolic_analytics_file{};
+  fs::path embedding_sequence_symbolic_analytics_file =
+      action.report_fragment_directory /
+      std::string(cuwacunu::piaabo::torch_compat::
+                      kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename);
   bool wrote_embedding_sequence_symbolic_analytics_file = false;
   const fs::path status_lls_file = action.report_fragment_directory / "status.latest.lls";
   bool wrote_status_lls_file = false;
@@ -1131,6 +1173,29 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
   const std::string effective_run_id =
       effective_runtime_report_run_id_(run_id, action.report_fragment_id);
+  std::vector<fs::path> history_files{};
+  const auto write_history_copy =
+      [&](const fs::path& stable_file) -> bool {
+        std::error_code file_ec;
+        if (!fs::exists(stable_file, file_ec) ||
+            !fs::is_regular_file(stable_file, file_ec)) {
+          return true;
+        }
+        const fs::path history_file =
+            runtime_history_file_path_(stable_file, effective_run_id);
+        if (history_file == stable_file) return true;
+        fs::copy_file(stable_file, history_file,
+                      fs::copy_options::overwrite_existing, file_ec);
+        if (file_ec) {
+          if (error) {
+            *error = "cannot persist vicreg runtime history file: " +
+                     history_file.string();
+          }
+          return false;
+        }
+        history_files.push_back(history_file);
+        return true;
+      };
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
     auto* model = static_cast<cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(action.object_handle);
@@ -1178,15 +1243,6 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       embedding_symbolic_report.schema = std::string(
           cuwacunu::piaabo::torch_compat::
               kEmbeddingSequenceAnalyticsSymbolicSchemaCurrent);
-
-      embedding_sequence_analytics_file =
-          action.report_fragment_directory /
-          std::string(cuwacunu::piaabo::torch_compat::
-                          kEmbeddingSequenceAnalyticsLatestReportFilename);
-      embedding_sequence_symbolic_analytics_file =
-          action.report_fragment_directory /
-          std::string(cuwacunu::piaabo::torch_compat::
-                          kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename);
 
       auto embedding_report_identity = make_component_report_identity(
           canonical_path,
@@ -1246,6 +1302,19 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       return false;
     }
   }
+  if (!wrote_weights_network_analytics_file) {
+    std::error_code stale_ec;
+    (void)fs::remove(weights_network_analytics_file, stale_ec);
+  }
+  if (!wrote_embedding_sequence_analytics_file) {
+    std::error_code stale_ec;
+    (void)fs::remove(embedding_sequence_analytics_file, stale_ec);
+  }
+  if (!wrote_embedding_sequence_symbolic_analytics_file) {
+    std::error_code stale_ec;
+    (void)fs::remove(embedding_sequence_symbolic_analytics_file, stale_ec);
+  }
+  if (!write_history_copy(weights_file)) return false;
 
   const std::string canonical_action = action.canonical_action.empty()
       ? "tsi.wikimyei.representation.vicreg.init()"
@@ -1282,6 +1351,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   std::string metadata_error;
   if (cuwacunu::hashimyei::write_encrypted_metadata(action.report_fragment_directory, metadata.str(), &metadata_error)) {
     metadata_encrypted = true;
+    std::error_code stale_ec;
+    (void)fs::remove(action.report_fragment_directory / "metadata.txt",
+                     stale_ec);
   } else {
     metadata_warning = metadata_error;
     std::string io_error;
@@ -1293,6 +1365,15 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       return false;
     }
     metadata_plaintext_fallback = true;
+    std::error_code stale_ec;
+    (void)fs::remove(action.report_fragment_directory / "metadata.enc",
+                     stale_ec);
+  }
+  if (!write_history_copy(action.report_fragment_directory / "metadata.enc")) {
+    return false;
+  }
+  if (!write_history_copy(action.report_fragment_directory / "metadata.txt")) {
+    return false;
   }
 
   {
@@ -1301,12 +1382,16 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
             std::chrono::system_clock::now().time_since_epoch())
             .count());
     std::uint64_t trained_steps = 0;
+    std::uint64_t trained_epochs = 0;
+    std::uint64_t trained_samples = 0;
     if (action.object_handle) {
       const auto* model =
           static_cast<const cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(
               action.object_handle);
       trained_steps =
           static_cast<std::uint64_t>(std::max(0, model->runtime_state.optimizer_steps));
+      trained_epochs = model->runtime_state.trained_epochs;
+      trained_samples = model->runtime_state.trained_samples;
     }
     runtime_lls_document_t status_lls{};
     append_runtime_string_entry_(
@@ -1320,10 +1405,10 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       cuwacunu::piaabo::latent_lineage_state::append_runtime_report_header_entries(
           &status_lls, make_runtime_report_header(status_identity));
     }
-    append_runtime_u64_entry_(&status_lls, "trained_epochs", 0);
+    append_runtime_u64_entry_(&status_lls, "trained_epochs", trained_epochs);
     append_runtime_u64_entry_(&status_lls, "trained_steps", trained_steps);
-    append_runtime_u64_entry_(&status_lls, "trained_samples", 0);
-    append_runtime_string_entry_(&status_lls, "last_trial_id", "");
+    append_runtime_u64_entry_(&status_lls, "trained_samples", trained_samples);
+    append_runtime_string_entry_(&status_lls, "last_trial_id", effective_run_id);
     append_runtime_string_entry_(&status_lls, "last_wave_hash", "");
     append_runtime_string_entry_(&status_lls, "last_contract_hash", contract_hash);
     append_runtime_u64_entry_(&status_lls, "updated_at_ms", now_ms);
@@ -1344,6 +1429,19 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       return false;
     }
     wrote_status_lls_file = true;
+  }
+  if (!write_history_copy(status_lls_file)) return false;
+  if (wrote_weights_network_analytics_file &&
+      !write_history_copy(weights_network_analytics_file)) {
+    return false;
+  }
+  if (wrote_embedding_sequence_analytics_file &&
+      !write_history_copy(embedding_sequence_analytics_file)) {
+    return false;
+  }
+  if (wrote_embedding_sequence_symbolic_analytics_file &&
+      !write_history_copy(embedding_sequence_symbolic_analytics_file)) {
+    return false;
   }
 
   cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
@@ -1383,6 +1481,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
   if (wrote_embedding_sequence_symbolic_analytics_file) {
     append_manifest_file_if_present(embedding_sequence_symbolic_analytics_file);
+  }
+  for (const auto& history_file : history_files) {
+    append_manifest_file_if_present(history_file);
   }
   std::string manifest_error;
   if (!cuwacunu::hashimyei::write_report_fragment_manifest(action.report_fragment_directory, manifest, &manifest_error)) {

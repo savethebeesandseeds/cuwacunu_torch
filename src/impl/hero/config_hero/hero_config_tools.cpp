@@ -376,18 +376,19 @@ enum class dsl_path_resolution_error_t {
   const std::string ini_path =
       cfg_path.empty() ? std::string(kDefaultGlobalConfigPath) : cfg_path;
   std::string configured{};
-  if (read_ini_general_key(ini_path, "hashimyei_store_root",
-                           &configured)) {
+  if (read_ini_general_key(ini_path, "runtime_root", &configured)) {
     configured = trim_ascii(configured);
-    if (!configured.empty()) return std::filesystem::path(configured);
+    if (!configured.empty()) {
+      return (std::filesystem::path(configured) / ".hashimyei").lexically_normal();
+    }
   }
   return {};
 }
 
 [[nodiscard]] std::filesystem::path configured_hashimyei_catalog_path(
     std::string_view global_config_path) {
-  return configured_hashimyei_store_root(global_config_path) / "catalog" /
-         kCatalogFilename;
+  return cuwacunu::hashimyei::catalog_db_path(
+      configured_hashimyei_store_root(global_config_path));
 }
 
 [[nodiscard]] std::string normalized_path_key(
@@ -451,6 +452,7 @@ enum class dsl_path_resolution_error_t {
       cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
   const auto bundle_dir =
       cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(store_root,
+                                                               manifest.canonical_path,
                                                                component_id);
   std::error_code ec{};
   std::filesystem::create_directories(bundle_dir, ec);
@@ -1262,13 +1264,12 @@ struct cutover_receipt_entry_t {
   std::string catalog_error{};
   if (!touched.empty()) {
     if (store_root.empty()) {
-      catalog_error = "missing GENERAL.hashimyei_store_root in " +
+      catalog_error = "missing GENERAL.runtime_root in " +
                       std::string(global_config_path.empty()
                                       ? kDefaultGlobalConfigPath
                                       : global_config_path);
     } else if (catalog_path.empty()) {
-      catalog_error =
-          "cannot derive hashimyei catalog path from GENERAL.hashimyei_store_root";
+      catalog_error = "cannot derive hashimyei catalog path from GENERAL.runtime_root";
     }
   }
   std::size_t matched_components_count = 0;
@@ -1342,16 +1343,43 @@ struct cutover_receipt_entry_t {
       continue;
     }
 
-    auto component_dsl_norm = [&](const cuwacunu::hero::hashimyei::component_state_t&
-                                      component) -> const std::string& {
+    const std::string target_family =
+        derive_family_from_key_or_path(t.key, t.raw_path);
+    const std::string target_filename =
+        std::filesystem::path(t.resolved_norm).filename().string();
+
+    auto component_dsl_source_key =
+        [&](const cuwacunu::hero::hashimyei::component_state_t& component)
+            -> const std::string& {
       auto it = component_dsl_norm_cache.find(component.component_id);
       if (it != component_dsl_norm_cache.end()) return it->second;
-      const std::filesystem::path resolved = resolve_path_near_config(
-          component.manifest.founding_dsl_provenance_path, config_path);
+      const std::string raw_source =
+          trim_ascii(component.manifest.founding_dsl_source_path);
+      std::string normalized{};
+      if (!raw_source.empty()) {
+        const std::filesystem::path source_path(raw_source);
+        if (source_path.is_absolute()) {
+          normalized = normalized_path_key(
+              resolve_path_near_config(source_path.string(), config_path));
+        } else {
+          normalized = source_path.filename().string();
+        }
+      }
       auto [inserted_it, _] =
-          component_dsl_norm_cache.emplace(component.component_id,
-                                           normalized_path_key(resolved));
+          component_dsl_norm_cache.emplace(component.component_id, normalized);
       return inserted_it->second;
+    };
+
+    auto component_matches_target_dsl =
+        [&](const cuwacunu::hero::hashimyei::component_state_t& component) {
+      const std::string& source_key = component_dsl_source_key(component);
+      if (source_key.empty()) return false;
+      if (source_key == t.resolved_norm) return true;
+      if (!target_filename.empty() && source_key == target_filename) {
+        return target_family.empty() ||
+               component.manifest.family == target_family;
+      }
+      return false;
     };
 
     auto is_active_component = [&](const cuwacunu::hero::hashimyei::component_state_t&
@@ -1393,7 +1421,7 @@ struct cutover_receipt_entry_t {
     matched.reserve(8);
     std::unordered_set<std::string> seen_pointer{};
     for (const auto& component : components) {
-      if (component_dsl_norm(component) != t.resolved_norm) continue;
+      if (!component_matches_target_dsl(component)) continue;
       if (!is_active_component(component)) continue;
       const std::string contract_hash =
           cuwacunu::hero::hashimyei::contract_hash_from_identity(
@@ -1421,7 +1449,7 @@ struct cutover_receipt_entry_t {
           .component_dsl_key = t.key,
           .action = t.action,
           .dsl_path = t.resolved_norm,
-          .family = derive_family_from_key_or_path(t.key, t.raw_path),
+          .family = target_family,
           .status = "skipped",
           .message =
               "no active catalog component matched this DSL path; no cutover",
@@ -1459,14 +1487,13 @@ struct cutover_receipt_entry_t {
         continue;
       }
 
-      const std::filesystem::path old_dsl_resolved = resolve_path_near_config(
-          active_component.manifest.founding_dsl_provenance_path,
-          config_path);
-      const std::string old_dsl_norm = normalized_path_key(old_dsl_resolved);
-      const bool dsl_path_changed = old_dsl_norm != t.resolved_norm;
+      const std::string& old_dsl_key =
+          component_dsl_source_key(active_component);
+      const bool dsl_path_changed =
+          old_dsl_key != t.resolved_norm && old_dsl_key != target_filename;
       const bool dsl_sha_changed =
           lowercase_copy(
-              active_component.manifest.founding_dsl_provenance_sha256_hex) !=
+              active_component.manifest.founding_dsl_source_sha256_hex) !=
           lowercase_copy(t.dsl_sha256_hex);
 
       if (!dsl_path_changed && !dsl_sha_changed) {
@@ -1483,8 +1510,9 @@ struct cutover_receipt_entry_t {
       next_manifest.parent_identity = active_component.manifest.hashimyei_identity;
       next_manifest.revision_reason = "dsl_change";
       next_manifest.founding_revision_id = founding_revision_id;
-      next_manifest.founding_dsl_provenance_path = t.resolved_norm;
-      next_manifest.founding_dsl_provenance_sha256_hex = t.dsl_sha256_hex;
+      next_manifest.founding_dsl_source_path =
+          target_filename.empty() ? t.resolved_norm : target_filename;
+      next_manifest.founding_dsl_source_sha256_hex = t.dsl_sha256_hex;
       next_manifest.lineage_state = "active";
       next_manifest.replaced_by.clear();
       next_manifest.updated_at_ms = deterministic_cutover_ts_ms(
@@ -1528,8 +1556,8 @@ struct cutover_receipt_entry_t {
 
       const std::string dedup_seed =
           next_manifest.canonical_path + "|" + next_manifest.family + "|" +
-          next_manifest.founding_dsl_provenance_sha256_hex + "|" +
-          next_manifest.founding_dsl_provenance_path +
+          next_manifest.founding_dsl_source_sha256_hex + "|" +
+          next_manifest.founding_dsl_source_path +
           "|" + next_manifest.founding_revision_id;
       if (!emitted_revision_dedup.insert(dedup_seed).second) {
         row.status = "noop";

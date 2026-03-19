@@ -12,6 +12,7 @@
 #include "camahjucunu/db/idydb.h"
 #include "hero/hashimyei_hero/family_rank.h"
 #include "hero/hashimyei_hero/hashimyei_identity.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_schema.h"
 
 namespace cuwacunu {
@@ -60,8 +61,8 @@ struct component_manifest_t {
   std::optional<cuwacunu::hashimyei::hashimyei_t> parent_identity{};
   std::string revision_reason{"initial"};
   std::string founding_revision_id{};
-  std::string founding_dsl_provenance_path{};
-  std::string founding_dsl_provenance_sha256_hex{};
+  std::string founding_dsl_source_path{};
+  std::string founding_dsl_source_sha256_hex{};
   std::string docking_signature_sha256_hex{};
   std::string lineage_state{"active"};
   std::string replaced_by{};
@@ -101,6 +102,7 @@ struct component_state_t {
 struct report_fragment_entry_t {
   std::string report_fragment_id{};
   std::string canonical_path{};
+  std::string source_label{};
   std::string semantic_taxon{};
   std::string report_canonical_path{};
   std::string hashimyei{};
@@ -141,10 +143,28 @@ struct report_fragment_snapshot_t {
                                            std::string* error = nullptr);
 [[nodiscard]] std::string compute_component_manifest_id(
     const component_manifest_t& manifest);
-[[nodiscard]] std::filesystem::path component_manifest_directory(
-    const std::filesystem::path& store_root, std::string_view component_id);
-[[nodiscard]] std::filesystem::path component_manifest_path(
-    const std::filesystem::path& store_root, std::string_view component_id);
+[[nodiscard]] inline std::filesystem::path run_manifest_directory(
+    const std::filesystem::path& store_root, std::string_view run_id) {
+  return cuwacunu::hashimyei::runs_root(store_root) / std::string(run_id);
+}
+[[nodiscard]] inline std::filesystem::path run_manifest_path(
+    const std::filesystem::path& store_root, std::string_view run_id) {
+  return run_manifest_directory(store_root, run_id) /
+         std::string(cuwacunu::hashimyei::kRunManifestFilenameV2);
+}
+[[nodiscard]] inline std::filesystem::path component_manifest_directory(
+    const std::filesystem::path& store_root, std::string_view canonical_path,
+    std::string_view component_id) {
+  return cuwacunu::hashimyei::canonical_path_directory(store_root,
+                                                       canonical_path) /
+         "_definition" / std::string(component_id);
+}
+[[nodiscard]] inline std::filesystem::path component_manifest_path(
+    const std::filesystem::path& store_root, std::string_view canonical_path,
+    std::string_view component_id) {
+  return component_manifest_directory(store_root, canonical_path, component_id) /
+         std::string(cuwacunu::hashimyei::kComponentManifestFilenameV2);
+}
 [[nodiscard]] bool save_component_manifest(
     const std::filesystem::path& store_root,
     const component_manifest_t& manifest,
@@ -158,15 +178,23 @@ struct report_fragment_snapshot_t {
 
 [[nodiscard]] bool parse_latent_lineage_state_payload(
     std::string_view payload, std::unordered_map<std::string, std::string>* out);
-[[nodiscard]] std::filesystem::path founding_dsl_bundle_directory(
-    const std::filesystem::path& store_root, std::string_view component_id);
-[[nodiscard]] std::filesystem::path founding_dsl_bundle_manifest_path(
-    const std::filesystem::path& store_root, std::string_view component_id);
+[[nodiscard]] inline std::filesystem::path founding_dsl_bundle_directory(
+    const std::filesystem::path& store_root, std::string_view canonical_path,
+    std::string_view component_id) {
+  return component_manifest_directory(store_root, canonical_path, component_id);
+}
+[[nodiscard]] inline std::filesystem::path founding_dsl_bundle_manifest_path(
+    const std::filesystem::path& store_root, std::string_view canonical_path,
+    std::string_view component_id) {
+  return founding_dsl_bundle_directory(store_root, canonical_path, component_id) /
+         std::string(cuwacunu::hashimyei::kFoundingDslBundleManifestFilenameV1);
+}
 [[nodiscard]] bool write_founding_dsl_bundle_manifest(
     const std::filesystem::path& store_root, const founding_dsl_bundle_manifest_t& manifest,
     std::string* error = nullptr);
 [[nodiscard]] bool read_founding_dsl_bundle_manifest(
-    const std::filesystem::path& store_root, std::string_view component_id,
+    const std::filesystem::path& store_root, std::string_view canonical_path,
+    std::string_view component_id,
     founding_dsl_bundle_manifest_t* out, std::string* error = nullptr);
 [[nodiscard]] std::string compute_founding_dsl_bundle_aggregate_sha256(
     const founding_dsl_bundle_manifest_t& manifest);

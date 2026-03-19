@@ -48,7 +48,7 @@ Hashimyei Hero and Lattice Hero catalogs.
 | `runtime_report_fragment` | `blob` |
 
 Note: `component_lineage` currently carries both component founding
-provenance edges and stored founding-bundle snapshot edges.
+source edges and stored founding-bundle snapshot edges.
 | `runtime_report` | `blob` |
 | `runtime_ledger` | `blob` |
 
@@ -117,7 +117,7 @@ Key/index plan:
 | `payload_json` | text | Extra edge attributes. |
 
 For component lineage edges, `payload_json` may distinguish
-`founding_dsl_provenance` vs `founding_dsl_bundle`.
+`founding_dsl_source` vs `founding_dsl_bundle`.
 
 Key/index plan:
 - `PK(edge_id)`

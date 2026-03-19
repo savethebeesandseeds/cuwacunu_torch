@@ -89,6 +89,9 @@ public:
     int optimizer_steps{0};
     int accum_counter{0};
     bool has_pending_grad{false};
+    std::uint64_t trained_epochs{0};
+    std::uint64_t trained_samples{0};
+    std::uint64_t pending_sample_count{0};
     double pending_loss_sum{0.0};
     int pending_loss_count{0};
     double last_committed_loss_mean{0.0};
@@ -266,6 +269,7 @@ public:
       ++epoch_count;
 
       if (!stop_loop && epoch_iters > 0) {
+        ++runtime_state.trained_epochs;
         if (optimizer_threshold_reset >= 0) {
           cuwacunu::jkimyei::optim::clamp_adam_step(
               *optimizer, static_cast<int64_t>(optimizer_threshold_reset));

@@ -95,6 +95,7 @@ struct matrix_query_t {
 struct runtime_report_fragment_t {
   std::string report_fragment_id{};
   std::string canonical_path{};
+  std::string source_label{};
   std::string semantic_taxon{};
   std::string report_canonical_path{};
   std::string family{};
@@ -353,10 +354,6 @@ class lattice_catalog_store_t {
       }
       return true;
     };
-    const auto dot_count_local = [](std::string_view value) {
-      return static_cast<std::size_t>(
-          std::count(value.begin(), value.end(), '.'));
-    };
     const std::string query = normalize_runtime_hashimyei_cursor(query_canonical_path);
     if (query.empty()) return true;
     const std::string fragment =
@@ -373,7 +370,7 @@ class lattice_catalog_store_t {
       return false;
     }
     if (is_hashimyei_hex_token_local(suffix)) return true;
-    return query.rfind("tsi.source.", 0) == 0 && dot_count_local(query) == 2;
+    return false;
   }
 
   struct options_t {

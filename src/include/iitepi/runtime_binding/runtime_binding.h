@@ -3,6 +3,7 @@
 #pragma once
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cctype>
 #include <cstddef>
@@ -21,6 +22,7 @@
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "iitepi/runtime_binding/runtime_binding.contract.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 #include "iitepi/contract_space_t.h"
 #include "tsiemene/tsi.type.registry.h"
 #include "tsiemene/tsi.wikimyei.h"
@@ -95,11 +97,104 @@ struct RuntimeBinding {
   return s;
 }
 
+[[nodiscard]] inline std::string compact_runtime_source_path_label(
+    std::string_view raw_path) {
+  std::string trimmed_input(raw_path);
+  const auto not_space = [](unsigned char ch) { return std::isspace(ch) == 0; };
+  trimmed_input.erase(
+      trimmed_input.begin(),
+      std::find_if(trimmed_input.begin(), trimmed_input.end(), not_space));
+  trimmed_input.erase(
+      std::find_if(trimmed_input.rbegin(), trimmed_input.rend(), not_space)
+          .base(),
+      trimmed_input.end());
+  const std::string trimmed = lowercase_copy(trimmed_input);
+  const std::filesystem::path path(trimmed_input);
+  const std::string filename = path.filename().string();
+  if (filename.empty()) return path.lexically_normal().string();
+  if (trimmed.find("/.campaigns/") != std::string::npos) {
+    return filename;
+  }
+  if (trimmed.find("/tmp/iitepi.internal.") != std::string::npos &&
+      filename.find(".runtime_binding.dsl") != std::string::npos) {
+    return "iitepi.runtime_binding.dsl";
+  }
+  return path.lexically_normal().string();
+}
+
+inline void prune_legacy_component_definition_siblings(
+    const std::filesystem::path& store_root,
+    std::string_view canonical_path,
+    std::string_view current_component_id) {
+  namespace fs = std::filesystem;
+  const fs::path definition_root =
+      cuwacunu::hashimyei::canonical_path_directory(store_root, canonical_path) /
+      "_definition";
+  std::error_code ec;
+  if (!fs::exists(definition_root, ec) || !fs::is_directory(definition_root, ec)) {
+    return;
+  }
+  for (const auto& entry : fs::directory_iterator(definition_root, ec)) {
+    if (ec) return;
+    if (!entry.is_directory()) continue;
+    if (entry.path().filename() == current_component_id) continue;
+    const fs::path manifest_path =
+        entry.path() / cuwacunu::hashimyei::kComponentManifestFilenameV2;
+    std::ifstream in(manifest_path, std::ios::binary);
+    if (!in) continue;
+    std::string payload((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    const bool is_pre_hard_cut_manifest =
+        payload.find("schema=hashimyei.component.manifest.v2") !=
+            std::string::npos &&
+        payload.find("canonical_path=") != std::string::npos &&
+        payload.find("founding_revision_id=") != std::string::npos &&
+        payload.find("docking_signature_sha256_hex=") != std::string::npos &&
+        payload.find("founding_dsl_source_path=") == std::string::npos;
+    if (!is_pre_hard_cut_manifest) {
+      continue;
+    }
+    std::error_code rm_ec;
+    fs::remove_all(entry.path(), rm_ec);
+  }
+}
+
 [[nodiscard]] inline std::uint64_t now_ms_utc_runtime_binding() {
   return static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())
           .count());
+}
+
+[[nodiscard]] inline bool parse_runtime_run_started_at_ms(
+    std::string_view run_id, std::uint64_t* out) {
+  if (!out) return false;
+  const std::size_t dot = run_id.rfind('.');
+  if (dot == std::string_view::npos || dot + 1 >= run_id.size()) return false;
+  std::uint64_t value = 0;
+  const auto* begin = run_id.data() + dot + 1;
+  const auto* end = run_id.data() + run_id.size();
+  const auto result = std::from_chars(begin, end, value);
+  if (result.ec != std::errc{} || result.ptr != end) return false;
+  *out = value;
+  return true;
+}
+
+inline bool ensure_runtime_context_wave_cursor(RuntimeContext* ctx) {
+  if (!ctx) return false;
+  if (ctx->has_wave_cursor) return true;
+  std::uint64_t run_started_at_ms = 0;
+  if (!parse_runtime_run_started_at_ms(ctx->run_id, &run_started_at_ms)) {
+    return false;
+  }
+  std::uint64_t packed_wave_cursor = 0;
+  if (!cuwacunu::piaabo::latent_lineage_state::pack_runtime_wave_cursor(
+          run_started_at_ms, 0, 0, &packed_wave_cursor)) {
+    return false;
+  }
+  ctx->has_wave_cursor = true;
+  ctx->wave_cursor = packed_wave_cursor;
+  return true;
 }
 
 [[nodiscard]] inline bool write_runtime_text_file_atomic(
@@ -222,8 +317,9 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   manifest.parent_identity = std::nullopt;
   manifest.revision_reason = "runtime_bootstrap";
   manifest.founding_revision_id = "runtime_bootstrap:" + contract_hash;
-  manifest.founding_dsl_provenance_path = selected_fp->tsi_dsl_path;
-  manifest.founding_dsl_provenance_sha256_hex = lowercase_copy(
+  manifest.founding_dsl_source_path =
+      compact_runtime_source_path_label(selected_fp->tsi_dsl_path);
+  manifest.founding_dsl_source_sha256_hex = lowercase_copy(
       selected_fp->tsi_dsl_sha256_hex.empty()
           ? cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(
                 selected_fp->tsi_dsl_path)
@@ -257,19 +353,12 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   const auto store_root = cuwacunu::hashimyei::store_root();
   const std::string component_id =
       cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
-  const auto manifest_path =
-      cuwacunu::hero::hashimyei::component_manifest_path(store_root, component_id);
-  if (!std::filesystem::exists(manifest_path)) {
-    if (!cuwacunu::hero::hashimyei::save_component_manifest(
-            store_root, manifest, nullptr, error)) {
-      return false;
-    }
+  if (!cuwacunu::hero::hashimyei::save_component_manifest(
+          store_root, manifest, nullptr, error)) {
+    return false;
   }
-
-  const auto bundle_manifest_path =
-      cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_path(store_root,
-                                                                   component_id);
-  if (std::filesystem::exists(bundle_manifest_path)) return true;
+  prune_legacy_component_definition_siblings(store_root, manifest.canonical_path,
+                                             component_id);
 
   const auto contract_snapshot =
       cuwacunu::iitepi::contract_space_t::contract_itself(c.spec.contract_hash);
@@ -290,7 +379,6 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   };
 
   add_source_path(contract_snapshot->config_file_path_canonical);
-  add_source_path(manifest.founding_dsl_provenance_path);
   for (const auto& fp : c.spec.component_dsl_fingerprints) {
     add_source_path(fp.tsi_dsl_path);
   }
@@ -302,8 +390,8 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   }
 
   const auto bundle_dir =
-      cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(store_root,
-                                                               component_id);
+      cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(
+          store_root, manifest.canonical_path, component_id);
   std::error_code ec{};
   std::filesystem::create_directories(bundle_dir, ec);
   if (ec) {
@@ -346,7 +434,8 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
     }
     bundle_manifest.files.push_back(
         cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_file_t{
-            .source_path = source_path.string(),
+            .source_path =
+                compact_runtime_source_path_label(source_path.string()),
             .snapshot_relpath = name.str(),
             .sha256_hex =
                 lowercase_copy(cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(
@@ -789,6 +878,7 @@ inline std::uint64_t run_runtime_binding_circuit(RuntimeBindingContract& c,
   if (ctx.source_runtime_cursor.empty()) {
     ctx.source_runtime_cursor = c.spec.source_runtime_cursor;
   }
+  (void)ensure_runtime_context_wave_cursor(&ctx);
   CircuitIssue issue{};
   if (!c.ensure_compiled(&issue)) {
     if (error) {
@@ -871,6 +961,8 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
     io_ctx.binding_id = ctx.binding_id;
     io_ctx.run_id = ctx.run_id;
     io_ctx.source_runtime_cursor = ctx.source_runtime_cursor;
+    io_ctx.has_wave_cursor = ctx.has_wave_cursor;
+    io_ctx.wave_cursor = ctx.wave_cursor;
     std::string local_error;
     if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
                                           &local_error,
@@ -893,6 +985,14 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
       if (error) {
         *error = "failed to load wikimyei report fragments for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
+      }
+      return false;
+    }
+    if (!persist_runtime_component_lineage(c, *wik, &local_error)) {
+      if (error) {
+        *error =
+            "failed to refresh wikimyei component lineage for node '" +
+            std::string(wik->instance_name()) + "': " + local_error;
       }
       return false;
     }
@@ -933,6 +1033,8 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
     io_ctx.binding_id = ctx.binding_id;
     io_ctx.run_id = ctx.run_id;
     io_ctx.source_runtime_cursor = ctx.source_runtime_cursor;
+    io_ctx.has_wave_cursor = ctx.has_wave_cursor;
+    io_ctx.wave_cursor = ctx.wave_cursor;
     std::string local_error;
     if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
                                         &local_error,
@@ -965,6 +1067,7 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
   if (ctx.source_runtime_cursor.empty()) {
     ctx.source_runtime_cursor = c.spec.source_runtime_cursor;
   }
+  (void)ensure_runtime_context_wave_cursor(&ctx);
   log_info("[runtime_binding.contract.run] start contract=%s epochs=%llu\n",
            c.name.empty() ? "<empty>" : c.name.c_str(),
            static_cast<unsigned long long>(

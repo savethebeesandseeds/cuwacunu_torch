@@ -43,6 +43,14 @@ This folder is organized by role:
 - `secrets/test/ed25519pub.pem`
 - `secrets/test/exchange.key`
 
+## Default runtime roots
+
+- Runtime campaign state defaults to `/cuwacunu/.runtime/.campaigns`.
+- Hashimyei and Lattice default to the shared runtime store
+  `/cuwacunu/.runtime/.hashimyei`.
+- Hashimyei and Lattice MCP tools automatically rebuild their catalogs when the
+  catalog-visible store surface changes.
+
 ## Generate Ed25519 keys
 
 ```bash
@@ -222,10 +230,13 @@ Runtime MCP tools:
 Runtime HERO defaults:
 - loaded from `instructions/default.hero.runtime.dsl`
 - resolved through `[REAL_HERO].runtime_hero_dsl_filename`
+- campaigns root derived from `[GENERAL].runtime_root` as
+  `<runtime_root>/.campaigns`
+- campaign grammar loaded from `[BNF].iitepi_campaign_grammar_filename`
 
-Runtime Hero campaigns persist under `campaigns_root` by `campaign_cursor`, with
+Runtime Hero campaigns persist under the derived campaigns root by `campaign_cursor`, with
 `campaign.lls`, `campaign.dsl`, and campaign-level stdout/stderr logs. Child jobs
-persist under `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/`, where
+persist under `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`, where
 `job_cursor` is derived from the parent `campaign_cursor`, with `job.lls`,
 `campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and worker
 stdout/stderr logs.
@@ -237,7 +248,7 @@ Deterministic policy:
   by `hero.config.dsl.set`; instance revisions are handled by Hashimyei HERO lineage.
 - `hero.config.dev_nuke_reset` uses the saved global config on disk, not dirty
   unsaved in-memory edits.
-- `hero.config.dev_nuke_reset` fails fast while active Runtime HERO jobs or campaigns still exist under `campaigns_root`.
+- `hero.config.dev_nuke_reset` fails fast while active Runtime HERO jobs or campaigns still exist under `<runtime_root>/.campaigns`.
 
 ## Hashimyei Catalog MCP
 
@@ -268,14 +279,15 @@ Direct one-shot tool call:
   --args-json '{}'
 ```
 
-`store_root` and `catalog_path` are loaded from
-`default.hero.hashimyei.dsl` through
-`[REAL_HERO].hashimyei_hero_dsl_filename` in the global config.
+Hashimyei HERO is loaded from `default.hero.hashimyei.dsl` through
+`[REAL_HERO].hashimyei_hero_dsl_filename` in the global config, while
+`store_root` and `catalog_path` are derived from `[GENERAL].runtime_root`.
 Catalog encryption mode is fixed to unencrypted in MCP runtime.
 
 MCP ingest behavior:
-- startup performs an initial ingest into catalog.
-- each read tool call auto-refreshes ingest (debounced).
+- each read tool call fingerprints the catalog-visible store surface and
+  rebuilds the catalog when that fingerprint changes.
+- `hero.hashimyei.reset_catalog` remains the explicit force-rebuild tool.
 
 Register in Codex:
 
@@ -288,7 +300,7 @@ Supported MCP tools:
 - `hero.hashimyei.list`
 - `hero.hashimyei.get_component_manifest`
 - `hero.hashimyei.get_founding_dsl_bundle`
-  - returns the stored `.hashimyei` founding DSL bundle snapshot for a
+  - returns the stored `.runtime/.hashimyei` founding DSL bundle snapshot for a
     component revision
 - `hero.hashimyei.update_rank`
 - `hero.hashimyei.reset_catalog`
@@ -319,10 +331,15 @@ Direct one-shot tool call:
   --args-json '{}'
 ```
 
-`store_root` and `catalog_path`
-are loaded from `default.hero.lattice.dsl` through
-`[REAL_HERO].lattice_hero_dsl_filename` in the global config.
+Lattice HERO is loaded from `default.hero.lattice.dsl` through
+`[REAL_HERO].lattice_hero_dsl_filename` in the global config, while
+`store_root` and `catalog_path` are derived from `[GENERAL].runtime_root`.
 Catalog encryption mode is fixed to unencrypted in MCP runtime.
+
+Catalog sync behavior:
+- each read tool call fingerprints the catalog-visible store surface and
+  rebuilds the catalog when that fingerprint changes.
+- `hero.lattice.refresh` remains the explicit force-rebuild tool.
 
 If you also use lattice MCP, register it the same way:
 
@@ -391,9 +408,9 @@ Supported MCP tools:
   - bind-local variables may not reuse names already declared by contract
     `__variables`; shadowing is rejected during campaign snapshot staging
 - Runtime Hero owns campaign dispatch and persists immutable snapshots under
-  `campaigns_root/<campaign_cursor>/`. Each child job receives a staged
+  `<runtime_root>/.campaigns/<campaign_cursor>/`. Each child job receives a staged
   `campaign.dsl`, `binding.contract.dsl`, and `binding.wave.dsl` under
-  `campaigns_root/<campaign_cursor>/jobs/<job_cursor>/`.
+  `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`.
 - Internal runtime-binding snapshots are validated against
   `bnf/iitepi.runtime_binding.bnf` and follow this staged shape:
   - `ACTIVE_BIND <bind_id>;`

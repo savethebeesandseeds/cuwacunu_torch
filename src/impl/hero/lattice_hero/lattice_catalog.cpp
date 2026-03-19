@@ -20,6 +20,7 @@
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/hero_catalog_schema.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "piaabo/latent_lineage_state/report_taxonomy.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 
@@ -289,6 +290,11 @@ void populate_runtime_report_fragment_header_fields_(
     const std::unordered_map<std::string, std::string>& kv,
     runtime_report_fragment_t* fragment) {
   if (!fragment) return;
+  if (fragment->source_label.empty()) {
+    if (const auto it = kv.find("source_label"); it != kv.end()) {
+      fragment->source_label = trim_ascii(it->second);
+    }
+  }
   cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t header{};
   if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_report_header_from_kv(
           kv, &header, nullptr)) {
@@ -423,33 +429,31 @@ void populate_runtime_report_fragment_header_fields_(
 [[nodiscard]] std::string canonical_path_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
-  const auto find_after = [&](std::string_view needle) -> std::string {
-    const std::size_t pos = s.find(needle);
-    if (pos == std::string::npos) return {};
-    const std::size_t begin = pos + needle.size();
-    if (begin >= s.size()) return {};
-    std::size_t end = s.find('/', begin);
-    if (end == std::string::npos) end = s.size();
-    return s.substr(begin, end - begin);
-  };
+  std::size_t begin = s.find("/tsi/");
+  begin = (begin == std::string::npos) ? s.find("tsi/") : begin + 1;
+  if (begin == std::string::npos) return {};
 
-  const std::string vicreg_hash = find_after("/tsi.wikimyei/representation/vicreg/");
-  if (!vicreg_hash.empty()) {
-    return "tsi.wikimyei.representation.vicreg." + vicreg_hash;
+  std::vector<std::string> parts{};
+  std::size_t pos = begin;
+  while (pos <= s.size()) {
+    const std::size_t slash = s.find('/', pos);
+    if (slash == std::string::npos) {
+      parts.emplace_back(s.substr(pos));
+      break;
+    }
+    parts.emplace_back(s.substr(pos, slash - pos));
+    pos = slash + 1;
   }
 
-  const std::string source_head = "/tsi.source/data_analytics.v2/";
-  const std::size_t p0 = s.find(source_head);
-  if (p0 != std::string::npos) {
-    const std::size_t b0 = p0 + source_head.size();
-    const std::size_t slash1 = s.find('/', b0);
-    if (slash1 != std::string::npos) {
-      const std::size_t b1 = slash1 + 1;
-      const std::size_t slash2 = s.find('/', b1);
-      if (slash2 != std::string::npos && slash2 > b1) {
-        return s.substr(b1, slash2 - b1);
-      }
-    }
+  if (parts.size() >= 5 && parts[0] == "tsi" && parts[1] == "wikimyei" &&
+      parts[2] == "representation" && parts[3] == "vicreg" &&
+      !parts[4].empty() && parts[4].rfind("0x", 0) == 0) {
+    return "tsi.wikimyei.representation.vicreg." + parts[4];
+  }
+
+  if (parts.size() >= 3 && parts[0] == "tsi" && parts[1] == "source" &&
+      parts[2] == "dataloader") {
+    return "tsi.source.dataloader";
   }
   return {};
 }
@@ -457,13 +461,25 @@ void populate_runtime_report_fragment_header_fields_(
 [[nodiscard]] std::string contract_hash_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
-  const std::string source_head = "/tsi.source/data_analytics.v2/";
-  const std::size_t p0 = s.find(source_head);
-  if (p0 == std::string::npos) return {};
-  const std::size_t b0 = p0 + source_head.size();
-  const std::size_t slash1 = s.find('/', b0);
-  if (slash1 == std::string::npos || slash1 <= b0) return {};
-  return s.substr(b0, slash1 - b0);
+  std::size_t begin = s.find("/tsi/");
+  begin = (begin == std::string::npos) ? s.find("tsi/") : begin + 1;
+  if (begin == std::string::npos) return {};
+
+  std::vector<std::string> parts{};
+  std::size_t pos = begin;
+  while (pos <= s.size()) {
+    const std::size_t slash = s.find('/', pos);
+    if (slash == std::string::npos) {
+      parts.emplace_back(s.substr(pos));
+      break;
+    }
+    parts.emplace_back(s.substr(pos, slash - pos));
+    pos = slash + 1;
+  }
+  for (std::size_t i = 0; i + 1 < parts.size(); ++i) {
+    if (parts[i] == "contracts") return parts[i + 1];
+  }
+  return {};
 }
 
 [[nodiscard]] bool is_hashimyei_hex_token(std::string_view token) {
@@ -488,6 +504,23 @@ void populate_runtime_report_fragment_header_fields_(
     std::string_view fragment_canonical_path) {
   return lattice_catalog_store_t::runtime_hashimyei_cursor_matches(
       query_canonical_path, fragment_canonical_path);
+}
+
+[[nodiscard]] bool runtime_hashimyei_cursor_matches_fragment(
+    std::string_view query_canonical_path,
+    const runtime_report_fragment_t& fragment) {
+  const std::string query =
+      normalize_source_hashimyei_cursor(query_canonical_path);
+  if (query.empty()) return true;
+  if (runtime_hashimyei_cursor_matches(
+          query, fragment.canonical_path)) {
+    return true;
+  }
+  if (!fragment.report_canonical_path.empty() &&
+      runtime_hashimyei_cursor_matches(query, fragment.report_canonical_path)) {
+    return true;
+  }
+  return false;
 }
 
 [[nodiscard]] std::string build_intersection_cursor(
@@ -670,9 +703,7 @@ void collect_runtime_report_fragment_candidates_(
   const auto accept_fragment = [&](const runtime_report_fragment_t& fragment) {
     if (!sc.empty() && fragment.schema != sc) return;
     if (use_wave_cursor && fragment.wave_cursor != wave_cursor) return;
-    const std::string fragment_cp =
-        normalize_source_hashimyei_cursor(fragment.canonical_path);
-    if (!runtime_hashimyei_cursor_matches(cp, fragment_cp)) return;
+    if (!runtime_hashimyei_cursor_matches_fragment(cp, fragment)) return;
     out->push_back(fragment);
   };
 
@@ -2493,7 +2524,7 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragments(
       canonicalized(store_root).value_or(store_root.lexically_normal());
   std::error_code ec;
 
-  const auto runs_root = store_root / "runs";
+  const auto runs_root = cuwacunu::hashimyei::runs_root(store_root);
   if (std::filesystem::exists(runs_root, ec) && std::filesystem::is_directory(runs_root, ec)) {
     for (std::filesystem::recursive_directory_iterator it(runs_root, ec), end;
          it != end; it.increment(ec)) {
@@ -2643,9 +2674,7 @@ bool lattice_catalog_store_t::list_runtime_report_fragments(
   const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
   const std::string sc(schema);
   for (const auto& [_, fragment] : runtime_report_fragments_by_id_) {
-    const std::string fragment_cp =
-        normalize_source_hashimyei_cursor(fragment.canonical_path);
-    if (!runtime_hashimyei_cursor_matches(cp, fragment_cp)) continue;
+    if (!runtime_hashimyei_cursor_matches_fragment(cp, fragment)) continue;
     if (!sc.empty() && fragment.schema != sc) continue;
     out->push_back(fragment);
   }
@@ -3120,12 +3149,7 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
           if (fragment_taxon != normalized_taxon) continue;
           if (!selector_canonical.empty()) {
             const std::string selector = trim_ascii(selector_canonical);
-            const std::string report_canonical_path =
-                fragment.report_canonical_path.empty()
-                    ? fragment.canonical_path
-                    : fragment.report_canonical_path;
-            if (!runtime_hashimyei_cursor_matches(selector, fragment.canonical_path) &&
-                !runtime_hashimyei_cursor_matches(selector, report_canonical_path)) {
+            if (!runtime_hashimyei_cursor_matches_fragment(selector, fragment)) {
               continue;
             }
           }
@@ -3245,6 +3269,12 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
           "view_block." + std::to_string(block_index) +
               ".source.canonical_path",
           sources.front().fragment->canonical_path);
+      if (!sources.front().fragment->source_label.empty()) {
+        append_view_line(
+            &view,
+            "view_block." + std::to_string(block_index) + ".source.source_label",
+            sources.front().fragment->source_label);
+      }
       if (!sources.front().fragment->semantic_taxon.empty()) {
         append_view_line(
             &view,
@@ -3364,6 +3394,10 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
                        source.fragment->report_fragment_id);
       append_view_line(&view, prefix + ".canonical_path",
                        source.fragment->canonical_path);
+      if (!source.fragment->source_label.empty()) {
+        append_view_line(&view, prefix + ".source_label",
+                         source.fragment->source_label);
+      }
       if (!source.fragment->semantic_taxon.empty()) {
         append_view_line(&view, prefix + ".semantic_taxon",
                          source.fragment->semantic_taxon);

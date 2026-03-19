@@ -32,7 +32,6 @@ constexpr const char* kServerVersion = "0.1.0";
 constexpr const char* kProtocolVersion = "2025-03-26";
 constexpr const char* kInitializeInstructions =
     "Use tools/list for tool schemas. Use tools/call with hero.hashimyei.*.";
-constexpr auto kAutoIngestMinInterval = std::chrono::seconds(2);
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
 
 bool g_jsonrpc_use_content_length_framing = false;
@@ -164,8 +163,34 @@ using hashimyei_runtime_defaults_t =
   return std::filesystem::path(resolved);
 }
 
+[[nodiscard]] std::filesystem::path resolve_runtime_root_from_global_config(
+    const std::filesystem::path& global_config_path) {
+  const std::optional<std::string> configured =
+      read_ini_value(global_config_path, "GENERAL", "runtime_root");
+  if (!configured.has_value()) return {};
+  const std::string resolved = resolve_path_from_base_folder(
+      global_config_path.parent_path().string(), *configured);
+  if (resolved.empty()) return {};
+  return std::filesystem::path(resolved);
+}
+
+[[nodiscard]] std::filesystem::path derive_hashimyei_store_root(
+    const std::filesystem::path& runtime_root) {
+  if (runtime_root.empty()) return {};
+  return (runtime_root / ".hashimyei").lexically_normal();
+}
+
+[[nodiscard]] std::filesystem::path derive_hashimyei_catalog_path(
+    const std::filesystem::path& store_root) {
+  if (store_root.empty()) return {};
+  return (store_root / "_meta" / "catalog" / "hashimyei_catalog.idydb")
+      .lexically_normal();
+}
+
 [[nodiscard]] bool load_hashimyei_runtime_defaults(
-    const std::filesystem::path& hero_dsl_path, hashimyei_runtime_defaults_t* out,
+    const std::filesystem::path& hero_dsl_path,
+    const std::filesystem::path& global_config_path,
+    hashimyei_runtime_defaults_t* out,
     std::string* error) {
   if (error) error->clear();
   if (!out) {
@@ -180,6 +205,9 @@ using hashimyei_runtime_defaults_t =
     return false;
   }
   *out = hashimyei_runtime_defaults_t{};
+  out->store_root = derive_hashimyei_store_root(
+      resolve_runtime_root_from_global_config(global_config_path));
+  out->catalog_path = derive_hashimyei_catalog_path(out->store_root);
 
   std::ifstream in(hero_dsl_path);
   if (!in) {
@@ -220,20 +248,6 @@ using hashimyei_runtime_defaults_t =
     values[lhs] = value;
   }
 
-  bool saw_store_root = false;
-  const auto it_store_root = values.find("store_root");
-  if (it_store_root != values.end()) {
-    saw_store_root = true;
-    out->store_root = resolve_path_from_base_folder(
-        hero_dsl_path.parent_path().string(), it_store_root->second);
-  }
-  bool saw_catalog_path = false;
-  const auto it_catalog_path = values.find("catalog_path");
-  if (it_catalog_path != values.end()) {
-    saw_catalog_path = true;
-    out->catalog_path = resolve_path_from_base_folder(
-        hero_dsl_path.parent_path().string(), it_catalog_path->second);
-  }
   bool saw_encrypted = false;
   const auto it_encrypted = values.find("encrypted");
   if (it_encrypted != values.end()) {
@@ -251,12 +265,15 @@ using hashimyei_runtime_defaults_t =
       return false;
     }
   }
-  if (!saw_store_root || out->store_root.empty()) {
-    if (error) *error = "missing store_root in " + hero_dsl_path.string();
+  if (out->store_root.empty()) {
+    if (error) *error = "missing GENERAL.runtime_root in " + global_config_path.string();
     return false;
   }
-  if (!saw_catalog_path || out->catalog_path.empty()) {
-    if (error) *error = "missing catalog_path in " + hero_dsl_path.string();
+  if (out->catalog_path.empty()) {
+    if (error) {
+      *error = "cannot derive hashimyei catalog path from GENERAL.runtime_root in " +
+               global_config_path.string();
+    }
     return false;
   }
   if (!saw_encrypted) {
@@ -378,45 +395,12 @@ using hashimyei_runtime_defaults_t =
   return "\"" + json_escape(in) + "\"";
 }
 
-[[nodiscard]] bool is_ingest_lock_held_error(std::string_view error) {
-  return error.find("ingest lock already held:") != std::string_view::npos;
-}
-
-[[nodiscard]] bool maybe_auto_ingest_catalog(app_context_t* app,
-                                             bool force,
-                                             std::string* out_error) {
-  if (out_error) out_error->clear();
-  if (!app) {
-    if (out_error) *out_error = "missing app context";
-    return false;
-  }
-  if (app->store_root.empty()) {
-    if (out_error) *out_error = "store_root is empty";
-    return false;
-  }
-
-  if (!force && app->auto_ingest_ready &&
-      std::chrono::steady_clock::now() - app->last_auto_ingest_at <
-          kAutoIngestMinInterval) {
-    return true;
-  }
-
-  std::string ingest_error;
-  if (!app->catalog.ingest_filesystem(app->store_root, &ingest_error)) {
-    if (app->catalog.opened() && is_ingest_lock_held_error(ingest_error)) {
-      if (out_error) out_error->clear();
-      app->last_auto_ingest_at = std::chrono::steady_clock::now();
-      app->auto_ingest_ready = true;
-      return true;
-    }
-    if (out_error) *out_error = std::move(ingest_error);
-    return false;
-  }
-
-  app->last_auto_ingest_at = std::chrono::steady_clock::now();
-  app->auto_ingest_ready = true;
-  return true;
-}
+[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_needed(
+    app_context_t* app, std::string* out_error);
+[[nodiscard]] bool remove_catalog_sync_state(
+    const std::filesystem::path& catalog_path, std::string* error);
+[[nodiscard]] bool ensure_hashimyei_catalog_synced_to_store(
+    app_context_t* app, bool force_rebuild, std::string* out_error);
 
 [[nodiscard]] bool close_catalog_if_open(app_context_t* app,
                                          std::string* out_error) {
@@ -432,6 +416,7 @@ using hashimyei_runtime_defaults_t =
     if (out_error) *out_error = "missing app context";
     return false;
   }
+  if (!remove_legacy_hashimyei_catalog_if_needed(app, out_error)) return false;
 
   if (app->catalog.opened()) {
     std::string close_error;
@@ -455,13 +440,13 @@ using hashimyei_runtime_defaults_t =
     }
     return false;
   }
+  if (!remove_catalog_sync_state(catalog_path, out_error)) return false;
 
   if (!app->catalog.open(app->catalog_options, out_error)) return false;
-  app->auto_ingest_ready = false;
-  app->last_auto_ingest_at = std::chrono::steady_clock::time_point{};
+  app->last_store_sync_token.clear();
   if (!reingest) return true;
 
-  return maybe_auto_ingest_catalog(app, true, out_error);
+  return ensure_hashimyei_catalog_synced_to_store(app, true, out_error);
 }
 
 void write_jsonrpc_payload(std::string_view payload) {
@@ -896,10 +881,10 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
       << "\"revision_reason\":" << json_quote(m.revision_reason) << ","
       << "\"founding_revision_id\":"
       << json_quote(m.founding_revision_id) << ","
-      << "\"founding_dsl_provenance_path\":"
-      << json_quote(m.founding_dsl_provenance_path) << ","
-      << "\"founding_dsl_provenance_sha256_hex\":"
-      << json_quote(m.founding_dsl_provenance_sha256_hex) << ","
+      << "\"founding_dsl_source_path\":"
+      << json_quote(m.founding_dsl_source_path) << ","
+      << "\"founding_dsl_source_sha256_hex\":"
+      << json_quote(m.founding_dsl_source_sha256_hex) << ","
       << "\"docking_signature_sha256_hex\":"
       << json_quote(m.docking_signature_sha256_hex) << ","
       << "\"lineage_state\":" << json_quote(m.lineage_state) << ","
@@ -1010,6 +995,309 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
     return false;
   }
   return true;
+}
+
+[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_needed(
+    app_context_t* app, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || app->store_root.empty() || app->catalog_options.catalog_path.empty()) {
+    return true;
+  }
+
+  const std::filesystem::path legacy_catalog_path =
+      (app->store_root / "catalog" / "hashimyei_catalog.idydb").lexically_normal();
+  const std::filesystem::path active_catalog_path =
+      app->catalog_options.catalog_path.lexically_normal();
+  if (legacy_catalog_path == active_catalog_path) return true;
+
+  std::error_code ec{};
+  if (!std::filesystem::exists(legacy_catalog_path, ec)) return true;
+
+  std::filesystem::remove(legacy_catalog_path, ec);
+  if (ec && std::filesystem::exists(legacy_catalog_path)) {
+    if (out_error) {
+      *out_error = "cannot remove legacy hashimyei catalog file: " +
+                   legacy_catalog_path.string();
+    }
+    return false;
+  }
+
+  ec.clear();
+  (void)std::filesystem::remove(legacy_catalog_path.parent_path(), ec);
+  return true;
+}
+
+[[nodiscard]] std::optional<std::filesystem::path> canonicalized(
+    const std::filesystem::path& path) {
+  std::error_code ec{};
+  const auto canonical = std::filesystem::weakly_canonical(path, ec);
+  if (ec) return std::nullopt;
+  return canonical.lexically_normal();
+}
+
+[[nodiscard]] bool path_is_within(std::filesystem::path base,
+                                  std::filesystem::path candidate) {
+  if (const auto c = canonicalized(base); c.has_value()) {
+    base = *c;
+  } else {
+    base = base.lexically_normal();
+  }
+  if (const auto c = canonicalized(candidate); c.has_value()) {
+    candidate = *c;
+  } else {
+    candidate = candidate.lexically_normal();
+  }
+  auto b = base.begin();
+  auto c = candidate.begin();
+  for (; b != base.end() && c != candidate.end(); ++b, ++c) {
+    if (*b != *c) return false;
+  }
+  return b == base.end();
+}
+
+[[nodiscard]] std::filesystem::path catalog_sync_state_path(
+    const std::filesystem::path& catalog_path) {
+  return catalog_path.parent_path() /
+         (catalog_path.filename().string() + ".sync.sha256");
+}
+
+[[nodiscard]] bool read_catalog_sync_state(
+    const std::filesystem::path& catalog_path, std::string* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "sync state output pointer is null";
+    return false;
+  }
+  out->clear();
+  const auto path = catalog_sync_state_path(catalog_path);
+  std::error_code ec{};
+  if (!std::filesystem::exists(path, ec)) return true;
+  if (!read_text_file(path, out, error)) return false;
+  *out = trim_ascii(*out);
+  return true;
+}
+
+[[nodiscard]] bool write_catalog_sync_state(
+    const std::filesystem::path& catalog_path, std::string_view token,
+    std::string* error) {
+  return write_text_file_atomic(catalog_sync_state_path(catalog_path),
+                                std::string(token) + "\n", error);
+}
+
+[[nodiscard]] bool remove_catalog_sync_state(
+    const std::filesystem::path& catalog_path, std::string* error) {
+  if (error) error->clear();
+  std::error_code ec{};
+  const auto sync_path = catalog_sync_state_path(catalog_path);
+  std::filesystem::remove(sync_path, ec);
+  if (ec && std::filesystem::exists(sync_path)) {
+    if (error) *error = "cannot remove catalog sync state: " + sync_path.string();
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool should_include_hashimyei_sync_file(
+    const std::filesystem::path& path) {
+  if (path.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) return true;
+  if (path.filename() == cuwacunu::hashimyei::kComponentManifestFilenameV2) {
+    return true;
+  }
+  return path.extension() == ".lls";
+}
+
+[[nodiscard]] bool compute_hashimyei_store_sync_token(
+    const std::filesystem::path& store_root,
+    const std::filesystem::path& catalog_path, std::string* out_token,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out_token) {
+    if (error) *error = "sync token output pointer is null";
+    return false;
+  }
+  out_token->clear();
+
+  const std::filesystem::path normalized_store_root =
+      canonicalized(store_root).value_or(store_root.lexically_normal());
+  const std::filesystem::path normalized_catalog_root =
+      catalog_path.parent_path().empty()
+          ? std::filesystem::path{}
+          : canonicalized(catalog_path.parent_path())
+                .value_or(catalog_path.parent_path().lexically_normal());
+
+  std::vector<std::pair<std::string, std::string>> entries{};
+  std::error_code ec{};
+  if (std::filesystem::exists(store_root, ec) &&
+      std::filesystem::is_directory(store_root, ec)) {
+    for (std::filesystem::recursive_directory_iterator it(store_root, ec), end;
+         it != end; it.increment(ec)) {
+      if (ec) {
+        if (error) *error = "failed scanning store root for hashimyei sync";
+        return false;
+      }
+      std::error_code entry_ec{};
+      const auto symlink_state = it->symlink_status(entry_ec);
+      if (entry_ec) {
+        if (error) *error = "failed reading store entry status";
+        return false;
+      }
+      if (std::filesystem::is_symlink(symlink_state)) continue;
+      if (!it->is_regular_file(entry_ec)) {
+        if (entry_ec) {
+          if (error) *error = "failed reading store entry type";
+          return false;
+        }
+        continue;
+      }
+
+      const auto entry_path = it->path();
+      const auto canonical_entry =
+          canonicalized(entry_path).value_or(entry_path.lexically_normal());
+      if (!path_is_within(normalized_store_root, canonical_entry)) continue;
+      if (!normalized_catalog_root.empty() &&
+          path_is_within(normalized_catalog_root, canonical_entry)) {
+        continue;
+      }
+      if (!should_include_hashimyei_sync_file(entry_path)) continue;
+
+      const auto file_size = std::filesystem::file_size(entry_path, entry_ec);
+      if (entry_ec) {
+        if (error) *error = "failed reading store entry size";
+        return false;
+      }
+      const auto last_write_time =
+          std::filesystem::last_write_time(entry_path, entry_ec);
+      if (entry_ec) {
+        if (error) *error = "failed reading store entry mtime";
+        return false;
+      }
+      const auto mtime_ticks = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   last_write_time.time_since_epoch())
+                                   .count();
+      std::ostringstream fingerprint;
+      fingerprint << file_size << "|" << mtime_ticks;
+
+      std::error_code rel_ec{};
+      std::filesystem::path rel =
+          std::filesystem::relative(canonical_entry, normalized_store_root, rel_ec);
+      if (rel_ec) rel = entry_path.lexically_normal().filename();
+      entries.emplace_back(rel.generic_string(), fingerprint.str());
+    }
+  }
+
+  std::sort(entries.begin(), entries.end());
+  std::ostringstream seed;
+  seed << "store_root=" << normalized_store_root.generic_string() << "\n";
+  for (const auto& [rel, fingerprint] : entries) {
+    seed << rel << "|" << fingerprint << "\n";
+  }
+  if (!sha256_hex_bytes(seed.str(), out_token)) {
+    if (error) *error = "cannot compute hashimyei store sync token";
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool rebuild_hashimyei_catalog_for_token(
+    app_context_t* app, std::string_view expected_token, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app) {
+    if (out_error) *out_error = "missing app context";
+    return false;
+  }
+  const std::filesystem::path catalog_path = app->catalog_options.catalog_path;
+  if (catalog_path.empty()) {
+    if (out_error) *out_error = "catalog_path is empty";
+    return false;
+  }
+
+  if (app->catalog.opened()) {
+    std::string close_error;
+    if (!app->catalog.close(&close_error)) {
+      if (out_error) *out_error = "catalog close failed: " + close_error;
+      return false;
+    }
+  }
+
+  std::error_code ec{};
+  std::filesystem::remove(catalog_path, ec);
+  if (ec && std::filesystem::exists(catalog_path)) {
+    if (out_error) *out_error = "cannot remove catalog file: " + catalog_path.string();
+    return false;
+  }
+  if (!remove_catalog_sync_state(catalog_path, out_error)) return false;
+
+  if (!app->catalog.open(app->catalog_options, out_error)) return false;
+  if (!app->catalog.ingest_filesystem(app->store_root, out_error)) return false;
+  if (!write_catalog_sync_state(catalog_path, expected_token, out_error)) {
+    return false;
+  }
+  app->last_store_sync_token = std::string(expected_token);
+  return true;
+}
+
+[[nodiscard]] bool ensure_hashimyei_catalog_synced_to_store(
+    app_context_t* app, bool force_rebuild, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app) {
+    if (out_error) *out_error = "missing app context";
+    return false;
+  }
+  if (app->store_root.empty()) {
+    if (out_error) *out_error = "store_root is empty";
+    return false;
+  }
+  const std::filesystem::path catalog_path = app->catalog_options.catalog_path;
+  if (catalog_path.empty()) {
+    if (out_error) *out_error = "catalog_path is empty";
+    return false;
+  }
+  if (!remove_legacy_hashimyei_catalog_if_needed(app, out_error)) return false;
+
+  std::string current_token{};
+  if (!compute_hashimyei_store_sync_token(app->store_root, catalog_path,
+                                          &current_token, out_error)) {
+    return false;
+  }
+
+  std::error_code ec{};
+  const bool catalog_exists = std::filesystem::exists(catalog_path, ec);
+  if (!force_rebuild && catalog_exists &&
+      app->last_store_sync_token == current_token) {
+    return true;
+  }
+
+  std::string recorded_token{};
+  if (!read_catalog_sync_state(catalog_path, &recorded_token, out_error)) {
+    return false;
+  }
+  if (!force_rebuild && catalog_exists && recorded_token == current_token) {
+    app->last_store_sync_token = current_token;
+    return true;
+  }
+
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    if (!rebuild_hashimyei_catalog_for_token(app, current_token, out_error)) {
+      return false;
+    }
+    std::string observed_token{};
+    if (!compute_hashimyei_store_sync_token(app->store_root, catalog_path,
+                                            &observed_token, out_error)) {
+      return false;
+    }
+    if (observed_token == current_token) {
+      app->last_store_sync_token = observed_token;
+      return true;
+    }
+    current_token = observed_token;
+  }
+
+  if (out_error) {
+    *out_error =
+        "runtime store changed while synchronizing hashimyei catalog";
+  }
+  return false;
 }
 
 using hashimyei_tool_handler_t = bool (*)(
@@ -1253,14 +1541,15 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
           : component.component_id;
   const auto bundle_dir =
       cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(
-          app->store_root, component_id);
+          app->store_root, component.manifest.canonical_path, component_id);
   const auto bundle_manifest_path =
       cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_path(
-          app->store_root, component_id);
+          app->store_root, component.manifest.canonical_path, component_id);
 
   cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_t bundle_manifest{};
   if (!cuwacunu::hero::hashimyei::read_founding_dsl_bundle_manifest(
-          app->store_root, component_id, &bundle_manifest, out_error)) {
+          app->store_root, component.manifest.canonical_path, component_id,
+          &bundle_manifest, out_error)) {
     return false;
   }
   if (!bundle_manifest.component_id.empty() &&
@@ -1353,10 +1642,10 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
       << ",\"hashimyei\":"
       << json_quote(component.manifest.hashimyei_identity.name)
       << ",\"component_id\":" << json_quote(component_id)
-      << ",\"founding_dsl_provenance_path\":"
-      << json_quote(component.manifest.founding_dsl_provenance_path)
-      << ",\"founding_dsl_provenance_sha256_expected\":"
-      << json_quote(component.manifest.founding_dsl_provenance_sha256_hex)
+      << ",\"founding_dsl_source_path\":"
+      << json_quote(component.manifest.founding_dsl_source_path)
+      << ",\"founding_dsl_source_sha256_expected\":"
+      << json_quote(component.manifest.founding_dsl_source_sha256_hex)
       << ",\"founding_dsl_bundle_manifest_path\":"
       << json_quote(bundle_manifest_path.string())
       << ",\"founding_dsl_bundle_directory\":"
@@ -1631,9 +1920,9 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
   std::string structured;
   std::string err;
   if (tool_name != "hero.hashimyei.reset_catalog") {
-    std::string ingest_error;
-    if (!maybe_auto_ingest_catalog(app, false, &ingest_error)) {
-      const std::string err_ingest = "auto-ingest failed: " + ingest_error;
+    std::string sync_error;
+    if (!ensure_hashimyei_catalog_synced_to_store(app, false, &sync_error)) {
+      const std::string err_ingest = "catalog sync failed: " + sync_error;
       const std::string fallback =
           "{\"canonical_path\":\"\",\"error\":" + json_quote(err_ingest) + "}";
       *out_result_json = make_tool_result_json(err_ingest, fallback, true);
@@ -1772,9 +2061,11 @@ std::filesystem::path resolve_hashimyei_hero_dsl_path(
 }
 
 bool load_hashimyei_runtime_defaults(const std::filesystem::path& hero_dsl_path,
+                                     const std::filesystem::path& global_config_path,
                                      hashimyei_runtime_defaults_t* out,
                                      std::string* error) {
-  return ::load_hashimyei_runtime_defaults(hero_dsl_path, out, error);
+  return ::load_hashimyei_runtime_defaults(hero_dsl_path, global_config_path,
+                                           out, error);
 }
 
 bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
@@ -1793,7 +2084,7 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
   }
   const bool ok = ::handle_tool_call(app, tool_name, arguments_json,
                                      out_tool_result_json, out_error_message);
-  if (opened_here) {
+  if (opened_here && app->close_catalog_after_execute) {
     std::string close_error;
     if (!::close_catalog_if_open(app, &close_error)) {
       if (!out_error_message->empty()) out_error_message->append("; ");

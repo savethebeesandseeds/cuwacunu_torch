@@ -272,6 +272,8 @@ validate_libtorch_bundle() {
   section "LibTorch Bundle"
 
   local libtorch_dir="${EXTERNAL_DIR}/${LIBTORCH_DIRNAME}"
+  local core_header="${libtorch_dir}/include/ATen/ATen.h"
+  local cpp_api_header="${libtorch_dir}/include/torch/csrc/api/include/torch/torch.h"
 
   if (( DRY_RUN )); then
     info "Dry run: would validate staged LibTorch bundle at ${libtorch_dir}"
@@ -284,8 +286,11 @@ validate_libtorch_bundle() {
     exit 1
   fi
 
-  if [[ ! -f "${libtorch_dir}/include/torch/torch.h" ]]; then
+  if [[ ! -f "${core_header}" || ! -f "${cpp_api_header}" ]]; then
     fail "Expected LibTorch headers not found in ${libtorch_dir}"
+    fail "Missing required files:"
+    [[ -f "${core_header}" ]] || fail "  - ${core_header}"
+    [[ -f "${cpp_api_header}" ]] || fail "  - ${cpp_api_header}"
     exit 1
   fi
 
@@ -303,8 +308,14 @@ install_base_requirements() {
     apt-get install -y --no-install-recommends \
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
     gnupg valgrind gdb ccache mold locales curl libcurl4-openssl-dev bash-completion
+  run_cmd "Enabling en_US.UTF-8 in /etc/locale.gen" "${SUDO[@]}" bash -lc \
+    "if grep -Eq '^[[:space:]]*#?[[:space:]]*en_US\.UTF-8[[:space:]]+UTF-8[[:space:]]*$' /etc/locale.gen; then \
+       sed -i 's/^[[:space:]]*#\?[[:space:]]*en_US\.UTF-8[[:space:]]\+UTF-8[[:space:]]*$/en_US.UTF-8 UTF-8/' /etc/locale.gen; \
+     else \
+       printf 'en_US.UTF-8 UTF-8\n' >> /etc/locale.gen; \
+     fi"
   run_cmd "Generating locale en_US.UTF-8" "${SUDO[@]}" locale-gen en_US.UTF-8
-  run_cmd "Setting LANG=en_US.UTF-8" "${SUDO[@]}" update-locale LANG=en_US.UTF-8
+  run_cmd "Setting LANG=en_US.UTF-8" "${SUDO[@]}" update-locale --reset LANG=en_US.UTF-8
 }
 
 curl_supports_websockets() {

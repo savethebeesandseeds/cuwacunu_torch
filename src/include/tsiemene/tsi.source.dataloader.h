@@ -802,7 +802,7 @@ class TsiSourceDataloader final : public TsiSource {
 
     oss << c_title << "Source Data Analytics Report" << c_reset << "\n";
     if (!source_label.empty()) {
-      line("source_label", source_label, "tsi source instance");
+      line("source_label", source_label, "configured source label");
     }
     line("schema", report.schema, "report schema id");
     line("file", output_file.string(), "persisted latest report");
@@ -960,24 +960,34 @@ class TsiSourceDataloader final : public TsiSource {
                 ctx.binding_id, ctx.source_runtime_cursor);
     auto report_identity_with_cursor = report_identity;
     auto symbolic_report_identity_with_cursor = symbolic_report_identity;
-    std::uint64_t packed_wave_cursor = 0;
-    if (cuwacunu::piaabo::latent_lineage_state::pack_runtime_wave_cursor(
-            wave.cursor.i,
-            wave.cursor.episode,
-            wave.cursor.batch,
-            &packed_wave_cursor)) {
+    if (ctx.has_wave_cursor) {
       report_identity_with_cursor.has_wave_cursor = true;
-      report_identity_with_cursor.wave_cursor = packed_wave_cursor;
+      report_identity_with_cursor.wave_cursor = ctx.wave_cursor;
       symbolic_report_identity_with_cursor = report_identity_with_cursor;
       symbolic_report_identity_with_cursor.semantic_taxon =
           symbolic_report_identity.semantic_taxon;
+    } else {
+      std::uint64_t packed_wave_cursor = 0;
+      if (cuwacunu::piaabo::latent_lineage_state::pack_runtime_wave_cursor(
+              wave.cursor.i,
+              wave.cursor.episode,
+              wave.cursor.batch,
+              &packed_wave_cursor)) {
+        report_identity_with_cursor.has_wave_cursor = true;
+        report_identity_with_cursor.wave_cursor = packed_wave_cursor;
+        symbolic_report_identity_with_cursor = report_identity_with_cursor;
+        symbolic_report_identity_with_cursor.semantic_taxon =
+            symbolic_report_identity.semantic_taxon;
+      }
     }
+    const std::string source_label =
+        cuwacunu::source::dataloader::make_source_label(instrument_);
     std::string write_error;
     if (!cuwacunu::piaabo::torch_compat::write_data_analytics_file(
             report,
             data_analytics_options_,
             output_file,
-            instance_name_,
+            source_label,
             &write_error,
             report_identity_with_cursor)) {
       emit_meta_(
@@ -990,7 +1000,7 @@ class TsiSourceDataloader final : public TsiSource {
     if (!cuwacunu::piaabo::torch_compat::write_data_symbolic_analytics_file(
             symbolic_report,
             symbolic_output_file,
-            instance_name_,
+            source_label,
             &write_error,
             symbolic_report_identity_with_cursor)) {
       emit_meta_(
@@ -1043,12 +1053,12 @@ class TsiSourceDataloader final : public TsiSource {
     pretty << format_data_analytics_debug_report_(
         report,
         data_analytics_options_,
-        instance_name_,
+        source_label,
         output_file,
         /*use_color=*/true);
     pretty << cuwacunu::piaabo::torch_compat::data_symbolic_analytics_to_pretty_text(
         symbolic_report,
-        instance_name_,
+        source_label,
         symbolic_output_file.string(),
         /*use_color=*/true);
     log_info("%s", pretty.str().c_str());

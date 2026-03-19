@@ -426,12 +426,10 @@ build_source_runtime_projection_runtime_report_document(
     cuwacunu::piaabo::latent_lineage_state::append_runtime_report_header_entries(
         out, ::tsiemene::make_runtime_report_header(header_identity));
   }
-  const std::string source_label =
-      identity.source_label.empty() ? identity.canonical_path : identity.source_label;
-  if (!source_label.empty()) {
+  if (!identity.source_label.empty()) {
     entries.push_back(
         cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
-            "source_label", source_label));
+            "source_label", identity.source_label));
   }
   for (const auto& [k, v] : fragment.projection_num) {
     entries.push_back(

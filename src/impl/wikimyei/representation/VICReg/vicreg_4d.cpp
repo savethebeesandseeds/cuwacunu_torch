@@ -559,10 +559,15 @@ void VICReg_4D::clear_pending_runtime_state_(bool reset_optimizer_steps) {
   if (optimizer) optimizer->zero_grad(training_policy.zero_grad_set_to_none);
   runtime_state.accum_counter = 0;
   runtime_state.has_pending_grad = false;
+  runtime_state.pending_sample_count = 0;
   runtime_state.pending_loss_sum = 0.0;
   runtime_state.pending_loss_count = 0;
   runtime_state.last_committed_loss_mean = 0.0;
-  if (reset_optimizer_steps) runtime_state.optimizer_steps = 0;
+  if (reset_optimizer_steps) {
+    runtime_state.optimizer_steps = 0;
+    runtime_state.trained_epochs = 0;
+    runtime_state.trained_samples = 0;
+  }
 }
 
 std::vector<torch::Tensor> VICReg_4D::params_with_grad_() const {
@@ -632,6 +637,8 @@ bool VICReg_4D::commit_pending_training_step_(int swa_start_iter) {
           ? (runtime_state.pending_loss_sum /
              static_cast<double>(runtime_state.pending_loss_count))
           : 0.0;
+  runtime_state.trained_samples += runtime_state.pending_sample_count;
+  runtime_state.pending_sample_count = 0;
   runtime_state.pending_loss_sum = 0.0;
   runtime_state.pending_loss_count = 0;
   runtime_state.accum_counter = 0;
@@ -754,6 +761,10 @@ VICReg_4D::train_step_result_t VICReg_4D::train_one_batch(
 
   runtime_state.pending_loss_sum += loss_scalar;
   ++runtime_state.pending_loss_count;
+  if (data.dim() > 0 && data.size(0) > 0) {
+    runtime_state.pending_sample_count +=
+        static_cast<std::uint64_t>(data.size(0));
+  }
 
   auto backprop_loss = (training_policy.accumulate_steps > 1)
       ? (loss / static_cast<double>(training_policy.accumulate_steps))

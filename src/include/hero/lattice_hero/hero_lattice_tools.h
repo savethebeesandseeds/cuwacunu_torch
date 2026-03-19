@@ -19,12 +19,15 @@ struct app_context_t {
   std::filesystem::path store_root{};
   std::filesystem::path lattice_catalog_path{};
   cuwacunu::hero::wave::lattice_catalog_store_t catalog{};
+  std::string last_store_sync_token{};
 };
 
 [[nodiscard]] std::filesystem::path resolve_lattice_hero_dsl_path(
     const std::filesystem::path& global_config_path);
 [[nodiscard]] bool load_wave_runtime_defaults(
-    const std::filesystem::path& hero_dsl_path, wave_runtime_defaults_t* out,
+    const std::filesystem::path& hero_dsl_path,
+    const std::filesystem::path& global_config_path,
+    wave_runtime_defaults_t* out,
     std::string* error);
 
 [[nodiscard]] bool execute_tool_json(const std::string& tool_name,

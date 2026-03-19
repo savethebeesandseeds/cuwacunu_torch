@@ -2,6 +2,7 @@
 
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
+#include <ATen/ops/linalg_eigvalsh.h>
 
 #include <atomic>
 #include <algorithm>
@@ -639,7 +640,7 @@ source_symbolic_pretty_config_() {
       "source_label",
       "channel_count",
       "eligible_channel_count",
-      "tsi source instance",
+      "configured source label",
       "channels considered",
       "channels with enough anchor samples",
       "record_type",
@@ -1565,7 +1566,7 @@ sequence_analytics_report_t sequence_analytics_accumulator_t::summarize()
     support = support.clamp_min(1.0);
     const torch::Tensor cov = Z.transpose(0, 1).mm(Z) / support;
 
-    torch::Tensor eigvals = torch::linalg::eigvalsh(cov, "L");
+    torch::Tensor eigvals = at::linalg_eigvalsh(cov, "L");
     eigvals = eigvals.clamp_min(0.0);
 
     const double trace = eigvals.sum().item<double>();
@@ -2365,27 +2366,30 @@ bool is_supported_data_symbolic_analytics_schema(std::string_view schema) {
 }
 
 std::filesystem::path source_data_analytics_root_directory() {
-  return cuwacunu::hashimyei::store_root() / "tsi.source" / "data_analytics.v2";
+  return cuwacunu::hashimyei::canonical_path_directory(
+      cuwacunu::hashimyei::store_root(), "tsi.source.dataloader");
 }
 
 std::filesystem::path source_data_analytics_contract_directory(
     std::string_view contract_hash) {
   const std::string token = contract_hash_path_token_(contract_hash);
   if (token.empty()) return {};
-  return source_data_analytics_root_directory() / token;
+  return source_data_analytics_root_directory() / "contracts" / token;
 }
 
 std::filesystem::path source_data_analytics_context_directory(
     std::string_view contract_hash,
     std::string_view canonical_path,
     std::string_view source_runtime_cursor) {
-  const auto contract_dir = source_data_analytics_contract_directory(contract_hash);
-  if (contract_dir.empty()) return {};
+  const std::string contract_token = contract_hash_path_token_(contract_hash);
+  if (contract_token.empty()) return {};
   const std::string canonical_path_token = analytics_path_token_(canonical_path);
   if (canonical_path_token.empty()) return {};
   const std::string source_runtime_token =
       analytics_path_token_(source_runtime_cursor);
-  return contract_dir / canonical_path_token /
+  return cuwacunu::hashimyei::canonical_path_directory(
+             cuwacunu::hashimyei::store_root(), canonical_path) /
+         "contracts" / contract_token / "contexts" /
          (source_runtime_token.empty() ? std::string("default")
                                        : source_runtime_token);
 }

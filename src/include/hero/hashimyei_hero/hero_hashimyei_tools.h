@@ -1,6 +1,5 @@
 #pragma once
 
-#include <chrono>
 #include <filesystem>
 #include <string>
 
@@ -21,14 +20,16 @@ struct app_context_t {
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t
       catalog_options{};
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t catalog{};
-  std::chrono::steady_clock::time_point last_auto_ingest_at{};
-  bool auto_ingest_ready{false};
+  std::string last_store_sync_token{};
+  bool close_catalog_after_execute{true};
 };
 
 [[nodiscard]] std::filesystem::path resolve_hashimyei_hero_dsl_path(
     const std::filesystem::path& global_config_path);
 [[nodiscard]] bool load_hashimyei_runtime_defaults(
-    const std::filesystem::path& hero_dsl_path, hashimyei_runtime_defaults_t* out,
+    const std::filesystem::path& hero_dsl_path,
+    const std::filesystem::path& global_config_path,
+    hashimyei_runtime_defaults_t* out,
     std::string* error);
 
 [[nodiscard]] bool execute_tool_json(const std::string& tool_name,

@@ -115,6 +115,32 @@ namespace detail {
   return (std::filesystem::path(base_folder) / p).lexically_normal().string();
 }
 
+[[nodiscard]] inline std::filesystem::path derive_runtime_campaigns_root(
+    const std::filesystem::path& runtime_root) {
+  if (runtime_root.empty()) return {};
+  return (runtime_root / ".campaigns").lexically_normal();
+}
+
+[[nodiscard]] inline std::filesystem::path derive_hashimyei_store_root(
+    const std::filesystem::path& runtime_root) {
+  if (runtime_root.empty()) return {};
+  return (runtime_root / ".hashimyei").lexically_normal();
+}
+
+[[nodiscard]] inline std::filesystem::path derive_hashimyei_catalog_path(
+    const std::filesystem::path& hashimyei_store_root) {
+  if (hashimyei_store_root.empty()) return {};
+  return (hashimyei_store_root / "_meta" / "catalog" / "hashimyei_catalog.idydb")
+      .lexically_normal();
+}
+
+[[nodiscard]] inline std::filesystem::path derive_lattice_catalog_path(
+    const std::filesystem::path& hashimyei_store_root) {
+  if (hashimyei_store_root.empty()) return {};
+  return (hashimyei_store_root / "_meta" / "catalog" / "lattice_catalog.idydb")
+      .lexically_normal();
+}
+
 [[nodiscard]] inline std::string strip_ini_comment(std::string_view line) {
   std::string out;
   out.reserve(line.size());
@@ -288,14 +314,32 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
   std::vector<std::string> catalog_seen{};
 
   try {
-    const std::string general_store_root =
+    const std::string general_runtime_root =
         cuwacunu::iitepi::config_space_t::get<std::string>(
-            "GENERAL", "hashimyei_store_root", std::string{});
+            "GENERAL", "runtime_root", std::string{});
+    if (detail::trim_ascii(general_runtime_root).empty()) {
+      if (error) {
+        *error = "missing [GENERAL].runtime_root in active global config";
+      }
+      return false;
+    }
+    const std::filesystem::path resolved_runtime_root =
+        std::filesystem::path(detail::resolve_path_from_base_folder(
+            global_config_base, general_runtime_root));
+    resolved.runtime_campaigns_root =
+        detail::derive_runtime_campaigns_root(resolved_runtime_root);
+    const std::filesystem::path hashimyei_store_root =
+        detail::derive_hashimyei_store_root(resolved_runtime_root);
     detail::push_unique_path(
-        &resolved.store_roots, &store_root_seen,
-        std::filesystem::path(
-            detail::resolve_path_from_base_folder(global_config_base,
-                                                  general_store_root)));
+        &resolved.store_roots, &store_root_seen, hashimyei_store_root);
+    detail::push_unique_path(
+        &resolved.store_roots, &store_root_seen, resolved.runtime_campaigns_root);
+    detail::push_unique_path(
+        &resolved.catalog_paths, &catalog_seen,
+        detail::derive_hashimyei_catalog_path(hashimyei_store_root));
+    detail::push_unique_path(
+        &resolved.catalog_paths, &catalog_seen,
+        detail::derive_lattice_catalog_path(hashimyei_store_root));
 
     const std::string hashimyei_hero_dsl =
         cuwacunu::iitepi::config_space_t::get<std::string>(
@@ -334,77 +378,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     resolved.runtime_hero_dsl_path = std::filesystem::path(
         detail::resolve_path_from_base_folder(global_config_base,
                                               runtime_hero_dsl));
-
-    std::map<std::string, std::string, std::less<>> hash_defaults{};
-    if (!resolved.hashimyei_hero_dsl_path.empty()) {
-      std::string parse_error;
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.hashimyei_hero_dsl_path, &hash_defaults, &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      const auto it_store_root = hash_defaults.find("store_root");
-      if (it_store_root != hash_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.store_roots, &store_root_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.hashimyei_hero_dsl_path.parent_path().string(),
-                it_store_root->second)));
-      }
-      const auto it_catalog = hash_defaults.find("catalog_path");
-      if (it_catalog != hash_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.catalog_paths, &catalog_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.hashimyei_hero_dsl_path.parent_path().string(),
-                it_catalog->second)));
-      }
-    }
-
-    std::map<std::string, std::string, std::less<>> lattice_defaults{};
-    if (!resolved.lattice_hero_dsl_path.empty()) {
-      std::string parse_error;
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.lattice_hero_dsl_path, &lattice_defaults, &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      const auto it_store_root = lattice_defaults.find("store_root");
-      if (it_store_root != lattice_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.store_roots, &store_root_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.lattice_hero_dsl_path.parent_path().string(),
-                it_store_root->second)));
-      }
-      const auto it_catalog = lattice_defaults.find("catalog_path");
-      if (it_catalog != lattice_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.catalog_paths, &catalog_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.lattice_hero_dsl_path.parent_path().string(),
-                it_catalog->second)));
-      }
-    }
-
-    std::map<std::string, std::string, std::less<>> runtime_defaults{};
-    if (!resolved.runtime_hero_dsl_path.empty()) {
-      std::string parse_error;
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.runtime_hero_dsl_path, &runtime_defaults, &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      const auto it_campaigns_root = runtime_defaults.find("campaigns_root");
-      if (it_campaigns_root != runtime_defaults.end()) {
-        resolved.runtime_campaigns_root = std::filesystem::path(
-            detail::resolve_path_from_base_folder(
-                resolved.runtime_hero_dsl_path.parent_path().string(),
-                it_campaigns_root->second));
-        detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                                 resolved.runtime_campaigns_root);
-      }
-    }
   } catch (const std::exception& e) {
     if (error) *error = e.what();
     return false;
@@ -445,13 +418,32 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
   std::vector<std::string> catalog_seen{};
 
   try {
-    std::string general_store_root{};
+    std::string general_runtime_root{};
     if (detail::read_ini_value(resolved.global_config_path, "GENERAL",
-                               "hashimyei_store_root", &general_store_root)) {
-      detail::push_unique_path(
-          &resolved.store_roots, &store_root_seen,
+                               "runtime_root", &general_runtime_root)) {
+      const std::filesystem::path resolved_runtime_root =
           std::filesystem::path(detail::resolve_path_from_base_folder(
-              global_config_base, general_store_root)));
+              global_config_base, general_runtime_root));
+      resolved.runtime_campaigns_root =
+          detail::derive_runtime_campaigns_root(resolved_runtime_root);
+      const std::filesystem::path hashimyei_store_root =
+          detail::derive_hashimyei_store_root(resolved_runtime_root);
+      detail::push_unique_path(
+          &resolved.store_roots, &store_root_seen, hashimyei_store_root);
+      detail::push_unique_path(&resolved.store_roots, &store_root_seen,
+                               resolved.runtime_campaigns_root);
+      detail::push_unique_path(
+          &resolved.catalog_paths, &catalog_seen,
+          detail::derive_hashimyei_catalog_path(hashimyei_store_root));
+      detail::push_unique_path(
+          &resolved.catalog_paths, &catalog_seen,
+          detail::derive_lattice_catalog_path(hashimyei_store_root));
+    } else {
+      if (error) {
+        *error = "missing [GENERAL].runtime_root in " +
+                 resolved.global_config_path.string();
+      }
+      return false;
     }
 
     std::string hashimyei_hero_dsl{};
@@ -497,79 +489,6 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     resolved.runtime_hero_dsl_path = std::filesystem::path(
         detail::resolve_path_from_base_folder(global_config_base,
                                               runtime_hero_dsl));
-
-    std::map<std::string, std::string, std::less<>> hash_defaults{};
-    if (!resolved.hashimyei_hero_dsl_path.empty()) {
-      std::string parse_error{};
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.hashimyei_hero_dsl_path, &hash_defaults, &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      if (const auto it = hash_defaults.find("store_root");
-          it != hash_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.store_roots, &store_root_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.hashimyei_hero_dsl_path.parent_path().string(),
-                it->second)));
-      }
-      if (const auto it = hash_defaults.find("catalog_path");
-          it != hash_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.catalog_paths, &catalog_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.hashimyei_hero_dsl_path.parent_path().string(),
-                it->second)));
-      }
-    }
-
-    std::map<std::string, std::string, std::less<>> lattice_defaults{};
-    if (!resolved.lattice_hero_dsl_path.empty()) {
-      std::string parse_error{};
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.lattice_hero_dsl_path, &lattice_defaults,
-              &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      if (const auto it = lattice_defaults.find("store_root");
-          it != lattice_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.store_roots, &store_root_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.lattice_hero_dsl_path.parent_path().string(),
-                it->second)));
-      }
-      if (const auto it = lattice_defaults.find("catalog_path");
-          it != lattice_defaults.end()) {
-        detail::push_unique_path(
-            &resolved.catalog_paths, &catalog_seen,
-            std::filesystem::path(detail::resolve_path_from_base_folder(
-                resolved.lattice_hero_dsl_path.parent_path().string(),
-                it->second)));
-      }
-    }
-
-    std::map<std::string, std::string, std::less<>> runtime_defaults{};
-    if (!resolved.runtime_hero_dsl_path.empty()) {
-      std::string parse_error{};
-      if (!detail::parse_latent_lineage_kv_file(
-              resolved.runtime_hero_dsl_path, &runtime_defaults,
-              &parse_error)) {
-        if (error) *error = parse_error;
-        return false;
-      }
-      if (const auto it = runtime_defaults.find("campaigns_root");
-          it != runtime_defaults.end()) {
-        resolved.runtime_campaigns_root = std::filesystem::path(
-            detail::resolve_path_from_base_folder(
-                resolved.runtime_hero_dsl_path.parent_path().string(),
-                it->second));
-        detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                                 resolved.runtime_campaigns_root);
-      }
-    }
   } catch (const std::exception& e) {
     if (error) *error = e.what();
     return false;

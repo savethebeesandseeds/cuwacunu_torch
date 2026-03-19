@@ -90,7 +90,8 @@ static std::string read_text_file(const fs::path& path) {
 
 static void test_manifest_roundtrip(const fs::path& store_root) {
   const fs::path report_fragment_dir =
-      store_root / "tsi.wikimyei" / "representation" / "vicreg" / "0x00ab";
+      store_root / "tsi" / "wikimyei" / "representation" / "vicreg" /
+      "0x00ab";
 
   cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
   manifest.family_canonical_path = "tsi.wikimyei.representation.vicreg";
@@ -141,9 +142,9 @@ static void test_store_root_and_catalog_defaults(const fs::path& store_root) {
 
   REQUIRE(cuwacunu::hashimyei::store_root() == store_root);
   REQUIRE(cuwacunu::hashimyei::catalog_db_path() ==
-          (store_root / "catalog" / "hashimyei_catalog.idydb"));
+          (store_root / "_meta" / "catalog" / "hashimyei_catalog.idydb"));
   REQUIRE(cuwacunu::hashimyei::catalog_db_path(store_root) ==
-          (store_root / "catalog" / "hashimyei_catalog.idydb"));
+          (store_root / "_meta" / "catalog" / "hashimyei_catalog.idydb"));
   REQUIRE(cuwacunu::hashimyei::metadata_secret() == "hashimyei-secret-test");
 
   secret_env.unset();
@@ -155,7 +156,7 @@ static void test_discovery_rules(const fs::path& store_root) {
   root_env.set(store_root.string());
 
   const fs::path base =
-      store_root / "tsi.wikimyei" / "representation" / "vicreg";
+      store_root / "tsi" / "wikimyei" / "representation" / "vicreg";
   std::error_code ec;
   fs::create_directories(base, ec);
 
@@ -181,6 +182,7 @@ static void test_discovery_rules(const fs::path& store_root) {
   fs::create_directories(manifest_and_weights, ec);
   create_manifest(manifest_and_weights, "0x00ac");
   write_text_file(manifest_and_weights / "weights.init.pt", "w2");
+  write_text_file(manifest_and_weights / "weights.init.run.test.pt", "w2h");
 
   const fs::path invalid_atom = base / "invalid_name";
   fs::create_directories(invalid_atom, ec);
@@ -199,7 +201,7 @@ static void test_discovery_rules(const fs::path& store_root) {
 
   REQUIRE(discovered[0].weight_files.empty());
   REQUIRE(discovered[1].weight_files.size() == 1);
-  REQUIRE(discovered[2].weight_files.size() == 1);
+  REQUIRE(discovered[2].weight_files.size() == 2);
   REQUIRE(discovered[0].canonical_path ==
           "tsi.wikimyei.representation.vicreg.0x00aa");
 }

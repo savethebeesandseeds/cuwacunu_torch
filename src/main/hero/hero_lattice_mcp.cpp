@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
   cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t defaults{};
   std::string defaults_error{};
   if (!cuwacunu::hero::lattice_mcp::load_wave_runtime_defaults(
-          hero_config_path, &defaults, &defaults_error)) {
+          hero_config_path, global_config_path, &defaults, &defaults_error)) {
     std::cerr << "[" << kServerName << "] " << defaults_error << "\n";
     return 2;
   }

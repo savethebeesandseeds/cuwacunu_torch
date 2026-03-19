@@ -200,7 +200,7 @@ int main() try {
         cuwacunu::piaabo::torch_compat::data_analytics_to_latent_lineage_state_text(
             report,
             opt,
-            "tsi.source.dataloader.test");
+            "BTCUSDT");
     const auto source_identity = tsiemene::make_component_report_identity(
         "tsi.source.dataloader",
         "bind.train.v1",
@@ -209,7 +209,7 @@ int main() try {
         cuwacunu::piaabo::torch_compat::data_analytics_to_latent_lineage_state_text(
             report,
             opt,
-            "tsi.source.dataloader.test",
+            "BTCUSDT",
             source_identity);
     ok = ok && expect(
                     has_lhs_key(kv, "source_entropic_load"),
@@ -232,6 +232,11 @@ int main() try {
                         kv_with_identity.find("binding_id:str = bind.train.v1") !=
                             std::string::npos,
                     "data analytics kv missing binding_id");
+    ok = ok && expect(
+                    has_lhs_key(kv_with_identity, "source_label") &&
+                        kv_with_identity.find("source_label:str = BTCUSDT") !=
+                            std::string::npos,
+                    "data analytics kv missing bare source_label");
     ok = ok && expect(
                     kv.find("schema:str = piaabo.torch_compat.data_analytics.v2") !=
                         std::string::npos,
@@ -363,9 +368,12 @@ int main() try {
                     full_hash.filename() == "abcdef0123456789",
                     "contract hash path token should no longer truncate");
     ok = ok && expect(
-                    full_hash.generic_string().find("/tsi.source/data_analytics.v2/") !=
-                        std::string::npos,
-                    "source analytics paths should use the v2 root");
+                    full_hash.parent_path().filename() == "contracts",
+                    "source analytics paths should bucket contract hashes");
+    ok = ok && expect(
+                    full_hash.parent_path().parent_path().filename() ==
+                        "dataloader",
+                    "source analytics paths should use the canonical source root");
     const auto context_dir = source_data_analytics_context_directory(
         "0xabcdef0123456789",
         "tsi.source.dataloader",
@@ -374,8 +382,12 @@ int main() try {
                     context_dir.filename() == "BTCUSDT_01.01.2009_31.12.2009",
                     "source runtime cursor should be path-normalized");
     ok = ok && expect(
-                    context_dir.parent_path().filename() == "tsi.source.dataloader",
-                    "source analytics paths should partition by semantic canonical path");
+                    context_dir.parent_path().filename() == "contexts",
+                    "source analytics paths should partition by context buckets");
+    ok = ok && expect(
+                    context_dir.parent_path().parent_path().filename() ==
+                        "abcdef0123456789",
+                    "source analytics paths should partition by contract hash");
   }
 
   {
@@ -610,7 +622,7 @@ int main() try {
         cuwacunu::piaabo::torch_compat::
             data_symbolic_analytics_to_latent_lineage_state_text(
                 low_report,
-                "tsi.source.dataloader.test",
+                "BTCUSDT",
                 symbolic_identity);
     ok = ok && expect(
                     has_lhs_key(symbolic_kv, "channel_1_anchor_feature"),
@@ -651,11 +663,16 @@ int main() try {
                         "quote_asset_volume,number_of_trades,taker_buy_base_volume,"
                         "taker_buy_quote_volume") != std::string::npos,
                     "symbolic kv should carry ordered kline feature names");
+    ok = ok && expect(
+                    has_lhs_key(symbolic_kv, "source_label") &&
+                        symbolic_kv.find("source_label:str = BTCUSDT") !=
+                            std::string::npos,
+                    "symbolic kv missing bare source_label");
 
     const std::string symbolic_pretty =
         cuwacunu::piaabo::torch_compat::data_symbolic_analytics_to_pretty_text(
             low_report,
-            "tsi.source.dataloader.test",
+            "BTCUSDT",
             "/tmp/data_analytics.symbolic.v2.latest.lls",
             /*use_color=*/false);
     ok = ok && expect(
@@ -1061,7 +1078,7 @@ int main() try {
                       cuwacunu::piaabo::torch_compat::write_data_symbolic_analytics_file(
                           symbolic_report,
                           symbolic_file,
-                          "tsi.source.dataloader.test",
+                          "BTCUSDT",
                           &err),
                       "symbolic report write should succeed");
 
@@ -1084,6 +1101,11 @@ int main() try {
       ok = ok && expect(
                       payload.find("/*") == std::string::npos,
                       "symbolic sidecar should remain comment-free");
+      ok = ok && expect(
+                      has_lhs_key(payload, "source_label") &&
+                          payload.find("source_label:str = BTCUSDT") !=
+                              std::string::npos,
+                      "symbolic sidecar should carry bare source_label");
 
       const auto failing_target = dir / "data_analytics.symbolic.atomic_target";
       std::filesystem::create_directories(failing_target, ec);
@@ -1092,7 +1114,7 @@ int main() try {
                       !cuwacunu::piaabo::torch_compat::write_data_symbolic_analytics_file(
                           symbolic_report,
                           failing_target,
-                          "tsi.source.dataloader.test",
+                          "BTCUSDT",
                           &err),
                       "atomic writer should fail when the destination is a directory");
       ok = ok && expect(

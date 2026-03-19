@@ -25,6 +25,8 @@ struct RuntimeContext {
   std::string binding_id{};
   std::string run_id{};
   std::string source_runtime_cursor{};
+  bool has_wave_cursor{false};
+  std::uint64_t wave_cursor{0};
 };
 
 // One ingress token delivered to one input directive.

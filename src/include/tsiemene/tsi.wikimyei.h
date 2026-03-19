@@ -69,6 +69,8 @@ struct TsiWikimyeiJkimyeiRuntimeState {
   int accumulate_steps{1};
   int accum_counter{0};
   int swa_start_iter{0};
+  std::uint64_t trained_epochs{0};
+  std::uint64_t trained_samples{0};
 
   double clip_norm{0.0};
   double clip_value{0.0};

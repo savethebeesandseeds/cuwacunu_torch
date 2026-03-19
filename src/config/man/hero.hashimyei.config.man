@@ -7,26 +7,6 @@ TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
 PRIMARY_VALIDATORS = src/main/hero/hero_hashimyei_mcp.cpp
 
-[FIELD store_root]
-key = store_root
-scope = hero hashimyei runtime defaults
-type = path
-required = true
-default = /cuwacunu/.hashimyei
-range = non-empty path
-allowed = absolute_or_relative path
-nuance = runtime store root loaded from Hashimyei HERO defaults DSL via [REAL_HERO].hashimyei_hero_dsl_filename
-
-[FIELD catalog_path]
-key = catalog_path
-scope = hero hashimyei runtime defaults
-type = path
-required = true
-default = /cuwacunu/.hashimyei/catalog/hashimyei_catalog.idydb
-range = non-empty path
-allowed = absolute_or_relative path
-nuance = runtime catalog path loaded from Hashimyei HERO defaults DSL via [REAL_HERO].hashimyei_hero_dsl_filename
-
 [FIELD encrypted]
 key = encrypted
 scope = hero hashimyei runtime defaults
@@ -36,3 +16,7 @@ default = false
 range = false
 allowed = false,0,no,off
 nuance = catalog runtime is unencrypted in MCP mode; keep this value false
+
+[NOTE DERIVED_HASHIMYEI_PATHS]
+scope = hero hashimyei runtime defaults
+text = Hashimyei HERO derives its store root from `[GENERAL].runtime_root` as `<runtime_root>/.hashimyei` and derives its catalog path as `<store_root>/_meta/catalog/hashimyei_catalog.idydb`.

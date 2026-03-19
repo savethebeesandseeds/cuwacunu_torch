@@ -152,7 +152,7 @@ static void test_valid_in_range_request() {
 
   cuwacunu::hero::wave::source_runtime_projection_report_identity_t identity{};
   identity.canonical_path = "tsi.source.dataloader";
-  identity.source_label = "tsi.source.dataloader.BTCUSDT";
+  identity.source_label = "BTCUSDT";
   identity.binding_id = "bind.train.vicreg";
   identity.has_wave_cursor = true;
   identity.wave_cursor = 123456ULL;
@@ -164,6 +164,9 @@ static void test_valid_in_range_request() {
   REQUIRE(runtime_report_text.find("schema:str = wave.source.runtime.projection.v2") !=
           std::string::npos);
   REQUIRE(runtime_report_text.find("canonical_path:str = tsi.source.dataloader") !=
+          std::string::npos);
+  REQUIRE(runtime_report_text.find(
+              "source_label:str = BTCUSDT") !=
           std::string::npos);
   REQUIRE(runtime_report_text.find("wave_cursor[0,+inf):uint = 123456") !=
           std::string::npos);

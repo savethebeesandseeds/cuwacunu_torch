@@ -28,7 +28,8 @@ struct app_context_t {
 [[nodiscard]] std::filesystem::path resolve_runtime_hero_dsl_path(
     const std::filesystem::path& global_config_path);
 [[nodiscard]] bool load_runtime_defaults(
-    const std::filesystem::path& hero_dsl_path, runtime_defaults_t* out,
+    const std::filesystem::path& hero_dsl_path,
+    const std::filesystem::path& global_config_path, runtime_defaults_t* out,
     std::string* error);
 [[nodiscard]] std::filesystem::path current_executable_path();
 

@@ -26,6 +26,7 @@
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "camahjucunu/db/idydb.h"
 #include "hero/hero_catalog_schema.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "iitepi/contract_space_t.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 
@@ -449,10 +450,10 @@ using runtime_lls_document_t =
   }
   out << "revision_reason=" << manifest.revision_reason << "\n";
   out << "founding_revision_id=" << manifest.founding_revision_id << "\n";
-  out << "founding_dsl_provenance_path="
-      << manifest.founding_dsl_provenance_path << "\n";
-  out << "founding_dsl_provenance_sha256_hex="
-      << manifest.founding_dsl_provenance_sha256_hex << "\n";
+  out << "founding_dsl_source_path="
+      << manifest.founding_dsl_source_path << "\n";
+  out << "founding_dsl_source_sha256_hex="
+      << manifest.founding_dsl_source_sha256_hex << "\n";
   out << "docking_signature_sha256_hex="
       << manifest.docking_signature_sha256_hex << "\n";
   out << "lineage_state=" << manifest.lineage_state << "\n";
@@ -472,21 +473,15 @@ using runtime_lls_document_t =
 
 }  // namespace
 
-std::filesystem::path founding_dsl_bundle_directory(
-    const std::filesystem::path& store_root, std::string_view component_id) {
-  return store_root / "founding_dsl_bundles" / std::string(component_id);
-}
-
-std::filesystem::path founding_dsl_bundle_manifest_path(
-    const std::filesystem::path& store_root, std::string_view component_id) {
-  return founding_dsl_bundle_directory(store_root, component_id) /
-         std::string(cuwacunu::hashimyei::kFoundingDslBundleManifestFilenameV1);
-}
-
 [[nodiscard]] std::filesystem::path store_root_from_catalog_path(
     const std::filesystem::path& catalog_path) {
   const std::filesystem::path catalog_dir = catalog_path.parent_path();
-  return catalog_dir.parent_path();
+  if (catalog_dir.filename() == "catalog" &&
+      catalog_dir.parent_path().filename() ==
+          std::string(cuwacunu::hashimyei::kHashimyeiMetaDirname)) {
+    return catalog_dir.parent_path().parent_path();
+  }
+  return catalog_dir;
 }
 
 std::string compute_founding_dsl_bundle_aggregate_sha256(
@@ -496,8 +491,7 @@ std::string compute_founding_dsl_bundle_aggregate_sha256(
        << manifest.canonical_path << "|" << manifest.hashimyei_name << "|"
        << manifest.files.size() << "|";
   for (const auto& file : manifest.files) {
-    seed << file.source_path << "|" << file.snapshot_relpath << "|"
-         << file.sha256_hex << "|";
+    seed << file.snapshot_relpath << "|" << file.sha256_hex << "|";
   }
   std::string digest{};
   if (!sha256_hex_bytes(seed.str(), &digest)) return {};
@@ -513,8 +507,8 @@ bool write_founding_dsl_bundle_manifest(
     return false;
   }
 
-  const auto manifest_path =
-      founding_dsl_bundle_manifest_path(store_root, manifest.component_id);
+  const auto manifest_path = founding_dsl_bundle_manifest_path(
+      store_root, manifest.canonical_path, manifest.component_id);
   std::error_code ec{};
   std::filesystem::create_directories(manifest_path.parent_path(), ec);
   if (ec) {
@@ -561,7 +555,8 @@ bool write_founding_dsl_bundle_manifest(
 }
 
 bool read_founding_dsl_bundle_manifest(
-    const std::filesystem::path& store_root, std::string_view component_id,
+    const std::filesystem::path& store_root, std::string_view canonical_path,
+    std::string_view component_id,
     founding_dsl_bundle_manifest_t* out, std::string* error) {
   if (error) error->clear();
   if (!out) {
@@ -572,7 +567,8 @@ bool read_founding_dsl_bundle_manifest(
   }
   *out = founding_dsl_bundle_manifest_t{};
 
-  const auto manifest_path = founding_dsl_bundle_manifest_path(store_root, component_id);
+  const auto manifest_path =
+      founding_dsl_bundle_manifest_path(store_root, canonical_path, component_id);
   std::ifstream in(manifest_path, std::ios::binary);
   if (!in) {
     if (error) {
@@ -849,34 +845,31 @@ namespace {
 [[nodiscard]] std::string canonical_path_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
-  const auto find_after = [&](std::string_view needle) -> std::string {
-    const std::size_t pos = s.find(needle);
-    if (pos == std::string::npos) return {};
-    const std::size_t begin = pos + needle.size();
-    if (begin >= s.size()) return {};
-    std::size_t end = s.find('/', begin);
-    if (end == std::string::npos) end = s.size();
-    return s.substr(begin, end - begin);
-  };
+  std::size_t begin = s.find("/tsi/");
+  begin = (begin == std::string::npos) ? s.find("tsi/") : begin + 1;
+  if (begin == std::string::npos) return {};
 
-  const std::string vicreg_hash =
-      find_after("/tsi.wikimyei/representation/vicreg/");
-  if (!vicreg_hash.empty()) {
-    return "tsi.wikimyei.representation.vicreg." + vicreg_hash;
+  std::vector<std::string> parts{};
+  std::size_t pos = begin;
+  while (pos <= s.size()) {
+    const std::size_t slash = s.find('/', pos);
+    if (slash == std::string::npos) {
+      parts.emplace_back(s.substr(pos));
+      break;
+    }
+    parts.emplace_back(s.substr(pos, slash - pos));
+    pos = slash + 1;
   }
 
-  const std::string source_head = "/tsi.source/data_analytics.v2/";
-  const std::size_t p0 = s.find(source_head);
-  if (p0 != std::string::npos) {
-    const std::size_t b0 = p0 + source_head.size();
-    const std::size_t slash1 = s.find('/', b0);
-    if (slash1 != std::string::npos) {
-      const std::size_t b1 = slash1 + 1;
-      const std::size_t slash2 = s.find('/', b1);
-      if (slash2 != std::string::npos && slash2 > b1) {
-        return s.substr(b1, slash2 - b1);
-      }
-    }
+  if (parts.size() >= 5 && parts[0] == "tsi" && parts[1] == "wikimyei" &&
+      parts[2] == "representation" && parts[3] == "vicreg" &&
+      !parts[4].empty() && parts[4].rfind("0x", 0) == 0) {
+    return "tsi.wikimyei.representation.vicreg." + parts[4];
+  }
+
+  if (parts.size() >= 3 && parts[0] == "tsi" && parts[1] == "source" &&
+      parts[2] == "dataloader") {
+    return "tsi.source.dataloader";
   }
   return {};
 }
@@ -884,13 +877,25 @@ namespace {
 [[nodiscard]] std::string contract_hash_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
-  const std::string source_head = "/tsi.source/data_analytics.v2/";
-  const std::size_t p0 = s.find(source_head);
-  if (p0 == std::string::npos) return {};
-  const std::size_t b0 = p0 + source_head.size();
-  const std::size_t slash1 = s.find('/', b0);
-  if (slash1 == std::string::npos || slash1 <= b0) return {};
-  return s.substr(b0, slash1 - b0);
+  std::size_t begin = s.find("/tsi/");
+  begin = (begin == std::string::npos) ? s.find("tsi/") : begin + 1;
+  if (begin == std::string::npos) return {};
+
+  std::vector<std::string> parts{};
+  std::size_t pos = begin;
+  while (pos <= s.size()) {
+    const std::size_t slash = s.find('/', pos);
+    if (slash == std::string::npos) {
+      parts.emplace_back(s.substr(pos));
+      break;
+    }
+    parts.emplace_back(s.substr(pos, slash - pos));
+    pos = slash + 1;
+  }
+  for (std::size_t i = 0; i + 1 < parts.size(); ++i) {
+    if (parts[i] == "contracts") return parts[i + 1];
+  }
+  return {};
 }
 
 [[nodiscard]] std::string as_text_or_empty(idydb** db,
@@ -1012,6 +1017,11 @@ void populate_runtime_report_entry_header_fields_(
     const std::unordered_map<std::string, std::string>& kv,
     report_fragment_entry_t* entry) {
   if (!entry) return;
+  if (entry->source_label.empty()) {
+    if (const auto it = kv.find("source_label"); it != kv.end()) {
+      entry->source_label = trim_ascii(it->second);
+    }
+  }
   cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t header{};
   if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_report_header_from_kv(
           kv, &header, nullptr)) {
@@ -1225,13 +1235,13 @@ bool parse_component_manifest_kv(
   out->founding_revision_id = kv.count("founding_revision_id") != 0
                                 ? kv.at("founding_revision_id")
                                 : std::string{};
-  out->founding_dsl_provenance_path =
-      kv.count("founding_dsl_provenance_path") != 0
-          ? kv.at("founding_dsl_provenance_path")
+  out->founding_dsl_source_path =
+      kv.count("founding_dsl_source_path") != 0
+          ? kv.at("founding_dsl_source_path")
           : std::string{};
-  out->founding_dsl_provenance_sha256_hex =
-      kv.count("founding_dsl_provenance_sha256_hex") != 0
-          ? kv.at("founding_dsl_provenance_sha256_hex")
+  out->founding_dsl_source_sha256_hex =
+      kv.count("founding_dsl_source_sha256_hex") != 0
+          ? kv.at("founding_dsl_source_sha256_hex")
           : std::string{};
   out->docking_signature_sha256_hex =
       kv.count("docking_signature_sha256_hex") != 0
@@ -1324,14 +1334,14 @@ bool validate_component_manifest(const component_manifest_t& manifest,
     set_error(error, "component manifest missing revision_reason");
     return false;
   }
-  if (manifest.founding_dsl_provenance_path.empty()) {
+  if (manifest.founding_dsl_source_path.empty()) {
     set_error(error,
-              "component manifest missing founding_dsl_provenance_path");
+              "component manifest missing founding_dsl_source_path");
     return false;
   }
-  if (!is_hex_64(manifest.founding_dsl_provenance_sha256_hex)) {
+  if (!is_hex_64(manifest.founding_dsl_source_sha256_hex)) {
     set_error(error,
-              "component manifest founding_dsl_provenance_sha256_hex must be 64 "
+              "component manifest founding_dsl_source_sha256_hex must be 64 "
               "hex chars");
     return false;
   }
@@ -1362,6 +1372,17 @@ bool validate_component_manifest(const component_manifest_t& manifest,
     return false;
   }
   return true;
+}
+
+[[nodiscard]] bool is_pre_hard_cut_component_manifest_payload(
+    std::string_view payload) {
+  return payload.find("schema=hashimyei.component.manifest.v2") !=
+             std::string_view::npos &&
+         payload.find("canonical_path=") != std::string_view::npos &&
+         payload.find("founding_revision_id=") != std::string_view::npos &&
+         payload.find("docking_signature_sha256_hex=") !=
+             std::string_view::npos &&
+         payload.find("founding_dsl_source_path=") == std::string_view::npos;
 }
 
 bool load_component_manifest(const std::filesystem::path& path,
@@ -1395,6 +1416,11 @@ bool load_component_manifest(const std::filesystem::path& path,
     set_error(error, "component manifest payload is empty");
     return false;
   }
+  if (is_pre_hard_cut_component_manifest_payload(payload)) {
+    set_error(error,
+              "pre-hard-cut component manifest is not supported after the hard cut");
+    return false;
+  }
 
   std::unordered_map<std::string, std::string> kv;
   (void)parse_latent_lineage_state_payload(payload, &kv);
@@ -1422,25 +1448,13 @@ std::string compute_component_manifest_id(const component_manifest_t& manifest) 
   seed << manifest.revision_reason << "|" << manifest.founding_revision_id
        << "|"
        << manifest.contract_identity.hash_sha256_hex << "|"
-       << manifest.founding_dsl_provenance_path << "|"
-       << manifest.founding_dsl_provenance_sha256_hex << "|"
+       << manifest.founding_dsl_source_sha256_hex << "|"
        << manifest.docking_signature_sha256_hex;
   std::string digest;
   if (!sha256_hex_bytes(seed.str(), &digest) || digest.empty()) {
     return "component.invalid";
   }
   return "component." + digest.substr(0, 24);
-}
-
-std::filesystem::path component_manifest_directory(
-    const std::filesystem::path& store_root, std::string_view component_id) {
-  return store_root / "components" / std::string(component_id);
-}
-
-std::filesystem::path component_manifest_path(
-    const std::filesystem::path& store_root, std::string_view component_id) {
-  return component_manifest_directory(store_root, component_id) /
-         std::string(cuwacunu::hashimyei::kComponentManifestFilenameV2);
 }
 
 bool save_component_manifest(const std::filesystem::path& store_root,
@@ -1461,7 +1475,8 @@ bool save_component_manifest(const std::filesystem::path& store_root,
   }
 
   std::error_code ec;
-  const auto dir = component_manifest_directory(store_root, component_id);
+  const auto dir =
+      component_manifest_directory(store_root, manifest.canonical_path, component_id);
   std::filesystem::create_directories(dir, ec);
   if (ec) {
     set_error(error, "cannot create component manifest directory: " +
@@ -1469,7 +1484,8 @@ bool save_component_manifest(const std::filesystem::path& store_root,
     return false;
   }
 
-  const auto target = component_manifest_path(store_root, component_id);
+  const auto target =
+      component_manifest_path(store_root, manifest.canonical_path, component_id);
   const auto tmp = target.string() + ".tmp";
   std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
   if (!out) {
@@ -1523,14 +1539,14 @@ bool save_run_manifest(const std::filesystem::path& store_root,
   }
 
   std::error_code ec;
-  const auto dir = store_root / "runs" / manifest.run_id;
+  const auto dir = run_manifest_directory(store_root, manifest.run_id);
   std::filesystem::create_directories(dir, ec);
   if (ec) {
     set_error(error, "cannot create run manifest directory: " + dir.string());
     return false;
   }
 
-  const auto target = dir / cuwacunu::hashimyei::kRunManifestFilenameV2;
+  const auto target = run_manifest_path(store_root, manifest.run_id);
   const auto tmp = target.string() + ".tmp";
   std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
   if (!out) {
@@ -1577,52 +1593,89 @@ bool hashimyei_catalog_store_t::open(const options_t& options, std::string* erro
     }
   }
 
-  int rc = IDYDB_ERROR;
-  for (int attempt = 0; attempt <= kCatalogOpenBusyRetryCount; ++attempt) {
-    if (options.encrypted) {
-      if (options.passphrase.empty()) {
-        set_error(error, "encrypted catalog requires passphrase");
-        return false;
+  const std::filesystem::path store_root =
+      store_root_from_catalog_path(options.catalog_path);
+  const std::filesystem::path ingest_lock_path =
+      cuwacunu::hashimyei::catalog_directory(store_root) / ".ingest.lock";
+  (void)clear_stale_ingest_lock_if_needed(ingest_lock_path);
+
+  const auto remove_catalog_for_recovery =
+      [&](std::string* out_error) -> bool {
+        if (out_error) out_error->clear();
+        std::error_code rm_ec{};
+        std::filesystem::remove(options.catalog_path, rm_ec);
+        if (rm_ec && std::filesystem::exists(options.catalog_path)) {
+          set_error(out_error,
+                    "cannot remove damaged catalog: " +
+                        options.catalog_path.string());
+          return false;
+        }
+        (void)clear_stale_ingest_lock_if_needed(ingest_lock_path);
+        return true;
+      };
+
+  for (int recovery_attempt = 0; recovery_attempt < 2; ++recovery_attempt) {
+    int rc = IDYDB_ERROR;
+    for (int attempt = 0; attempt <= kCatalogOpenBusyRetryCount; ++attempt) {
+      if (options.encrypted) {
+        if (options.passphrase.empty()) {
+          set_error(error, "encrypted catalog requires passphrase");
+          return false;
+        }
+        rc = idydb_open_encrypted(options.catalog_path.string().c_str(), &db_,
+                                  IDYDB_CREATE, options.passphrase.c_str());
+      } else {
+        rc = idydb_open(options.catalog_path.string().c_str(), &db_,
+                        IDYDB_CREATE);
       }
-      rc = idydb_open_encrypted(options.catalog_path.string().c_str(), &db_,
-                                IDYDB_CREATE, options.passphrase.c_str());
-    } else {
-      rc = idydb_open(options.catalog_path.string().c_str(), &db_, IDYDB_CREATE);
+
+      if (rc == IDYDB_SUCCESS && db_ != nullptr) break;
+      if (db_) {
+        (void)idydb_close(&db_);
+        db_ = nullptr;
+      }
+
+      if (rc != IDYDB_BUSY || attempt >= kCatalogOpenBusyRetryCount) break;
+      std::this_thread::sleep_for(kCatalogOpenBusyRetryDelay);
+    }
+    if (rc != IDYDB_SUCCESS || db_ == nullptr) {
+      const char* msg = db_ ? idydb_errmsg(&db_) : nullptr;
+      std::string detail =
+          (msg && msg[0] != '\0')
+              ? std::string(msg)
+              : ("idydb rc=" + std::to_string(rc) + " (" +
+                 idydb_rc_label(rc) + ")");
+      if (rc == IDYDB_BUSY) {
+        detail += "; catalog lock is held by another process";
+      }
+      if (db_) {
+        (void)idydb_close(&db_);
+        db_ = nullptr;
+      }
+      if (recovery_attempt == 0 &&
+          remove_catalog_for_recovery(nullptr)) {
+        continue;
+      }
+      set_error(error, "cannot open catalog: " + detail);
+      return false;
     }
 
-    if (rc == IDYDB_SUCCESS && db_ != nullptr) break;
-    if (db_) {
-      (void)idydb_close(&db_);
-      db_ = nullptr;
+    options_ = options;
+    if (ensure_catalog_header_(error) && rebuild_indexes(error)) {
+      return true;
     }
 
-    if (rc != IDYDB_BUSY || attempt >= kCatalogOpenBusyRetryCount) break;
-    std::this_thread::sleep_for(kCatalogOpenBusyRetryDelay);
-  }
-  if (rc != IDYDB_SUCCESS || db_ == nullptr) {
-    const char* msg = db_ ? idydb_errmsg(&db_) : nullptr;
-    std::string detail =
-        (msg && msg[0] != '\0')
-            ? std::string(msg)
-            : ("idydb rc=" + std::to_string(rc) + " (" + idydb_rc_label(rc) + ")");
-    if (rc == IDYDB_BUSY) {
-      detail += "; catalog lock is held by another process";
-    }
-    set_error(error, "cannot open catalog: " + detail);
-    if (db_) {
-      (void)idydb_close(&db_);
-      db_ = nullptr;
-    }
-    return false;
-  }
-
-  options_ = options;
-  if (!ensure_catalog_header_(error)) {
     std::string ignored;
     (void)close(&ignored);
+    if (recovery_attempt == 0 &&
+        remove_catalog_for_recovery(nullptr)) {
+      continue;
+    }
     return false;
   }
-  return rebuild_indexes(error);
+
+  set_error(error, "cannot open catalog after recovery attempts");
+  return false;
 }
 
 bool hashimyei_catalog_store_t::close(std::string* error) {
@@ -1937,13 +1990,24 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
     return false;
   }
 
-  component_manifest_t manifest{};
-  if (!load_component_manifest(path, &manifest, error)) return false;
-
   std::string payload;
   std::string read_error;
   if (!read_text_file(path, &payload, &read_error)) {
     set_error(error, "cannot read component manifest payload: " + read_error);
+    return false;
+  }
+  if (is_pre_hard_cut_component_manifest_payload(payload)) {
+    return true;
+  }
+
+  component_manifest_t manifest{};
+  if (!load_component_manifest(path, &manifest, error)) {
+    if (error != nullptr &&
+        *error ==
+            "pre-hard-cut component manifest is not supported after the hard cut") {
+      error->clear();
+      return true;
+    }
     return false;
   }
 
@@ -1970,15 +2034,15 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
     return false;
   }
 
-  const std::string provenance_payload =
-      "{\"component_edge_kind\":\"founding_dsl_provenance\"}";
+  const std::string source_payload =
+      "{\"component_edge_kind\":\"founding_dsl_source\"}";
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_LINEAGE,
-                   component_id + "|founding_dsl_provenance", "",
+                   component_id + "|founding_dsl_source", "",
                    manifest.canonical_path, manifest.hashimyei_identity.name,
-                   manifest.schema, manifest.founding_dsl_provenance_path,
+                   manifest.schema, manifest.founding_dsl_source_path,
                    std::numeric_limits<double>::quiet_NaN(),
-                   manifest.founding_dsl_provenance_sha256_hex, "",
-                   cp.string(), std::to_string(ts_ms), provenance_payload,
+                   manifest.founding_dsl_source_sha256_hex, "",
+                   cp.string(), std::to_string(ts_ms), source_payload,
                    error)) {
     return false;
   }
@@ -1987,7 +2051,8 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
       store_root_from_catalog_path(options_.catalog_path);
   founding_dsl_bundle_manifest_t bundle_manifest{};
   std::string bundle_error{};
-  if (read_founding_dsl_bundle_manifest(store_root, component_id, &bundle_manifest,
+  if (read_founding_dsl_bundle_manifest(store_root, manifest.canonical_path,
+                                        component_id, &bundle_manifest,
                                         &bundle_error)) {
     const std::string bundle_payload =
         std::string("{\"component_edge_kind\":\"founding_dsl_bundle\","
@@ -1997,7 +2062,8 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
                      component_id + "|founding_dsl_bundle", "",
                      manifest.canonical_path, manifest.hashimyei_identity.name,
                      manifest.schema,
-                     founding_dsl_bundle_manifest_path(store_root, component_id)
+                     founding_dsl_bundle_manifest_path(
+                         store_root, manifest.canonical_path, component_id)
                          .string(),
                      std::numeric_limits<double>::quiet_NaN(),
                      bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex, "",
@@ -2223,7 +2289,7 @@ bool hashimyei_catalog_store_t::acquire_ingest_lock_(
   lock->path.clear();
   lock->held = false;
   std::error_code ec;
-  const auto lock_dir = store_root / "catalog";
+  const auto lock_dir = cuwacunu::hashimyei::catalog_directory(store_root);
   std::filesystem::create_directories(lock_dir, ec);
   if (ec) {
     set_error(error, "cannot create lock directory: " + lock_dir.string());
@@ -3368,7 +3434,7 @@ bool hashimyei_catalog_store_t::register_component_manifest(
   const std::filesystem::path store_root =
       store_root_from_catalog_path(options_.catalog_path);
   std::filesystem::path manifest_path =
-      component_manifest_path(store_root, component_id);
+      component_manifest_path(store_root, manifest.canonical_path, component_id);
   if (!std::filesystem::exists(manifest_path)) {
     if (!save_component_manifest(store_root, manifest, &manifest_path, error)) {
       return false;
@@ -3396,21 +3462,22 @@ bool hashimyei_catalog_store_t::register_component_manifest(
     return false;
   }
 
-  const std::string provenance_payload =
-      "{\"component_edge_kind\":\"founding_dsl_provenance\"}";
+  const std::string source_payload =
+      "{\"component_edge_kind\":\"founding_dsl_source\"}";
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_LINEAGE,
-                   component_id + "|founding_dsl_provenance", "",
+                   component_id + "|founding_dsl_source", "",
                    manifest.canonical_path, manifest.hashimyei_identity.name,
-                   manifest.schema, manifest.founding_dsl_provenance_path,
+                   manifest.schema, manifest.founding_dsl_source_path,
                    std::numeric_limits<double>::quiet_NaN(),
-                   manifest.founding_dsl_provenance_sha256_hex, "",
+                   manifest.founding_dsl_source_sha256_hex, "",
                    manifest_path_s, std::to_string(ts_ms),
-                   provenance_payload, error)) {
+                   source_payload, error)) {
     return false;
   }
   founding_dsl_bundle_manifest_t bundle_manifest{};
   std::string bundle_error{};
-  if (read_founding_dsl_bundle_manifest(store_root, component_id, &bundle_manifest,
+  if (read_founding_dsl_bundle_manifest(store_root, manifest.canonical_path,
+                                        component_id, &bundle_manifest,
                                         &bundle_error)) {
     const std::string bundle_payload =
         std::string("{\"component_edge_kind\":\"founding_dsl_bundle\","
@@ -3420,7 +3487,8 @@ bool hashimyei_catalog_store_t::register_component_manifest(
                      component_id + "|founding_dsl_bundle", "",
                      manifest.canonical_path, manifest.hashimyei_identity.name,
                      manifest.schema,
-                     founding_dsl_bundle_manifest_path(store_root, component_id)
+                     founding_dsl_bundle_manifest_path(
+                         store_root, manifest.canonical_path, component_id)
                          .string(),
                      std::numeric_limits<double>::quiet_NaN(),
                      bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex, "",

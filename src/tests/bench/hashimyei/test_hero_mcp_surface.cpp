@@ -185,7 +185,7 @@ static void test_lattice_tools_list_surface() {
   REQUIRE(!contains(result.output, "\"hero.lattice.reset_catalog\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_history\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.get_performance\""));
-  REQUIRE(!contains(result.output, "\"hero.lattice.provenance\""));
+  REQUIRE(!contains(result.output, "\"hero.lattice.debug_dump\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.run_or_get\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.matrix\""));
   REQUIRE(!contains(result.output, "\"hero.lattice.trials\""));

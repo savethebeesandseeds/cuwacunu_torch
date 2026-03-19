@@ -4,6 +4,7 @@
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "camahjucunu/dsl/network_design/network_design.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
+#include <ATen/ops/linalg_svd.h>
 #include <torch/torch.h>
 
 #include <atomic>
@@ -716,7 +717,7 @@ void accumulate_buffer_tensor_(
             auto matrix =
                 param.detach().to(torch::kCPU).to(torch::kFloat64).contiguous().view(
                     {rows, cols});
-            auto svd_result = torch::linalg::svd(
+            auto svd_result = at::linalg_svd(
                 matrix,
                 /*full_matrices=*/false,
                 c10::nullopt);

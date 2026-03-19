@@ -21,14 +21,14 @@ Identity and report_fragment dispatch layer for hashimyei-based components.
     with `wave_contract_binding_t` (`contract`, `wave`, `binding_id`,
     derived binding hash)
   - `hashimyei.component.manifest.v2` (`component.manifest.v2.kv`)
-    with founding DSL provenance metadata
-    (`founding_dsl_provenance_path`, `founding_dsl_provenance_sha256_hex`),
+    with founding DSL source metadata
+    (`founding_dsl_source_path`, `founding_dsl_source_sha256_hex`),
     explicit contract docking compatibility digest
     (`docking_signature_sha256_hex`), component `lineage_state`, and
     contract-scoped component lineage via the structured `contract_identity`
     object (`contract_hash` remains the scalar digest term)
   - immutable founding DSL bundle snapshots under
-    `.hashimyei/founding_dsl_bundles/<component_id>/...`
+    `.runtime/.hashimyei/tsi/.../<canonical-leaf>/_definition/<component_id>/...`
     with `founding_dsl_bundle.manifest.v1.kv`
 
 ## Design note
@@ -38,10 +38,13 @@ Identity and report_fragment dispatch layer for hashimyei-based components.
 - `default.hero.hashimyei.dsl` configures Hashimyei HERO runtime defaults only; it is
   distinct from a component's founding DSL bundle.
 - component revisions dump a stored founding DSL bundle snapshot under
-  `.hashimyei`; `hero.hashimyei.get_founding_dsl_bundle` reads that stored
-  bundle snapshot as the canonical founding-bundle surface.
+  the owning canonical leaf under
+  `.runtime/.hashimyei/tsi/.../_definition/<component_id>/`;
+  `hero.hashimyei.get_founding_dsl_bundle` reads that stored bundle snapshot as
+  the canonical founding-bundle surface.
 - catalog `component_lineage` edges now distinguish component founding
-  provenance from stored founding-bundle snapshots through payload kind tags.
+  source metadata from stored founding-bundle snapshots through payload kind
+  tags.
 - component hashimyei lineage is contract-scoped; reusing the same component
   hashimyei across contracts is invalid.
 - component manifests are contract-scoped revisions; run manifests keep the
@@ -57,12 +60,17 @@ Identity and report_fragment dispatch layer for hashimyei-based components.
 - Report fragment root:
   - `<hashimyei_store_root>/tsi.wikimyei/<family>/<model>/<hashimyei>/...`
   - env override: `CUWACUNU_HASHIMYEI_STORE_ROOT`
-  - config source: `GENERAL.hashimyei_store_root`
+  - config source: derived from `GENERAL.runtime_root` as
+    `<runtime_root>/.hashimyei`
 - Metadata secret:
   - env override: `CUWACUNU_HASHIMYEI_META_SECRET`
   - config fallback: `GENERAL.hashimyei_metadata_secret`
 - Catalog DB path helper:
-  - `hashimyei::catalog_db_path()` -> `<store-root>/catalog/hashimyei_catalog.idydb`
+  - `hashimyei::catalog_db_path()` -> `<store-root>/_meta/catalog/hashimyei_catalog.idydb`
+- Catalog sync contract:
+  - Hashimyei and Lattice MCP calls hash the catalog-visible store surface
+    (`*.lls`, `run.manifest.v2.kv`, `component.manifest.v2.kv`) and rebuild
+    their catalogs when that fingerprint changes.
 - Driver dispatch:
   - register a driver for the component family canonical path (`family_canonical_path`)
   - call `dispatch_report_fragment_save(...)` / `dispatch_report_fragment_load(...)`

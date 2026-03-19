@@ -30,6 +30,8 @@ namespace hashimyei {
 inline constexpr std::string_view kReportFragmentManifestFilename = "manifest.v2.kv";
 inline constexpr std::string_view kReportFragmentManifestSchema = "hashimyei.report_fragment.manifest.v2";
 inline constexpr std::string_view kCatalogFilename = "hashimyei_catalog.idydb";
+inline constexpr std::string_view kHashimyeiMetaDirname = "_meta";
+inline constexpr std::string_view kRuntimeHashimyeiDirname = ".hashimyei";
 
 struct report_fragment_metadata_t {
   bool present{false};
@@ -128,6 +130,33 @@ struct report_fragment_manifest_t {
     pos = dot + 1;
   }
   return out;
+}
+
+[[nodiscard]] inline std::filesystem::path canonical_path_directory(
+    const std::filesystem::path& root, std::string_view canonical_path) {
+  std::filesystem::path out = root;
+  const auto segments = split_dot(canonical_path);
+  for (const auto& segment : segments) {
+    const std::string token = trim_ascii(segment);
+    if (token.empty()) continue;
+    out /= token;
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::filesystem::path meta_root(
+    const std::filesystem::path& root) {
+  return root / std::string(kHashimyeiMetaDirname);
+}
+
+[[nodiscard]] inline std::filesystem::path catalog_directory(
+    const std::filesystem::path& root) {
+  return meta_root(root) / "catalog";
+}
+
+[[nodiscard]] inline std::filesystem::path runs_root(
+    const std::filesystem::path& root) {
+  return meta_root(root) / "runs";
 }
 
 [[nodiscard]] inline std::filesystem::path report_fragment_manifest_path(const std::filesystem::path& report_fragment_dir) {
@@ -329,22 +358,25 @@ struct report_fragment_manifest_t {
   return {};
 }
 
+[[nodiscard]] inline std::filesystem::path runtime_root() {
+  const std::string configured = trim_ascii(cuwacunu::iitepi::config_space_t::get<std::string>(
+      "GENERAL", "runtime_root", std::string{}));
+  if (!configured.empty()) return std::filesystem::path(configured);
+  throw std::runtime_error(
+      "missing GENERAL.runtime_root in active global config");
+}
+
 [[nodiscard]] inline std::filesystem::path store_root() {
   const char* env = std::getenv("CUWACUNU_HASHIMYEI_STORE_ROOT");
   if (env != nullptr && env[0] != '\0') {
     const std::string env_value = trim_ascii(std::string(env));
     if (!env_value.empty()) return std::filesystem::path(env_value);
   }
-
-  const std::string configured = trim_ascii(cuwacunu::iitepi::config_space_t::get<std::string>(
-      "GENERAL", "hashimyei_store_root", std::string{}));
-  if (!configured.empty()) return std::filesystem::path(configured);
-  throw std::runtime_error(
-      "missing GENERAL.hashimyei_store_root in active global config");
+  return (runtime_root() / std::string(kRuntimeHashimyeiDirname)).lexically_normal();
 }
 
 [[nodiscard]] inline std::filesystem::path catalog_db_path(const std::filesystem::path& root) {
-  return root / "catalog" / std::string(kCatalogFilename);
+  return catalog_directory(root) / std::string(kCatalogFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path catalog_db_path() {
@@ -532,7 +564,9 @@ struct report_fragment_manifest_t {
   std::vector<report_fragment_identity_t> out;
   if (!is_valid_atom(family) || !is_valid_atom(model)) return out;
 
-  const fs::path base = store_root() / "tsi.wikimyei" / std::string(family) / std::string(model);
+  const fs::path base = canonical_path_directory(
+      store_root(), "tsi.wikimyei." + std::string(family) + "." +
+                        std::string(model));
   std::error_code ec;
   if (!fs::exists(base, ec) || !fs::is_directory(base, ec)) return out;
 

@@ -379,7 +379,7 @@ void config_space_t::update_config() {
   } else {
     log_fatal("[dconfig] invalid GENERAL.exchange_type value: %s\n", t.c_str());
   }
-  log_info("[dconfig] exchange_type = %s\n", t.c_str());
+  log_dbg("[dconfig] exchange_type = %s\n", t.c_str());
 
   if (exchange_type != exchange_type_e::NONE && exchange_type_temp != exchange_type) {
     log_fatal(
@@ -581,7 +581,7 @@ bool config_space_t::validate_config() {
   validate_optional_bool("GUI", "iinuji_logs_mouse_capture");
   validate_optional_logs_metadata_filter(
       "GUI", "iinuji_logs_metadata_filter");
-  (void)require_value("GENERAL", "hashimyei_store_root", nullptr);
+  (void)require_value("GENERAL", "runtime_root", nullptr);
   (void)require_value("GENERAL", "hashimyei_metadata_secret", nullptr);
 
   constexpr const char* kBnfKeys[] = {

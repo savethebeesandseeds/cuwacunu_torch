@@ -85,6 +85,8 @@ int main() {
   assert(state.accumulate_steps == 1);
   assert(state.accum_counter == 0);
   assert(state.swa_start_iter == 1000);
+  assert(state.trained_epochs == 0);
+  assert(state.trained_samples == 0);
   assert(state.clip_norm == 1.0);
   assert(state.clip_value == 0.0);
   assert(state.last_committed_loss_mean == 0.0);

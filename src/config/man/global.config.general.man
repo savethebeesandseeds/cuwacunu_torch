@@ -31,15 +31,15 @@ range = existing regular file
 allowed = absolute_or_relative path
 nuance = resolved from config folder and used as the shared default top-level runtime campaign DSL; Runtime HERO snapshots this file into campaign-local and job-local campaign.dsl artifacts before dispatch
 
-[FIELD GENERAL.hashimyei_store_root]
-key = hashimyei_store_root
+[FIELD GENERAL.runtime_root]
+key = runtime_root
 scope = GENERAL section
 type = path
 required = true
-default = /cuwacunu/.hashimyei
+default = /cuwacunu/.runtime
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = runtime report fragment root; reset-runtime utilities treat this as a reset target
+nuance = shared runtime root; Runtime HERO derives `.campaigns` under it, Hashimyei/Lattice derive `.hashimyei` and catalog paths under it, and reset-runtime utilities treat those derived roots as reset targets
 
 [RULE GENERAL_EXCHANGE_TYPE_ALLOWED]
 id = GENERAL_EXCHANGE_TYPE_ALLOWED

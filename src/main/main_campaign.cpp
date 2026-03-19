@@ -44,6 +44,41 @@ std::string trim_ascii_copy(std::string_view text) {
   return std::string(text.substr(begin, end - begin));
 }
 
+std::string sanitize_path_token_copy(std::string_view token) {
+  std::string out;
+  out.reserve(token.size());
+  for (const unsigned char c : token) {
+    const bool ok =
+        (std::isalnum(c) != 0) || c == '_' || c == '-' || c == '.';
+    out.push_back(ok ? static_cast<char>(c) : '_');
+  }
+  if (out.empty()) return "default";
+  return out;
+}
+
+std::string compact_runtime_dependency_path(std::string_view raw_path) {
+  const std::string trimmed = trim_ascii_copy(raw_path);
+  if (trimmed.empty()) return {};
+  const std::string lowered = [&]() {
+    std::string out = trimmed;
+    for (char& ch : out) {
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return out;
+  }();
+  const std::filesystem::path path(trimmed);
+  const std::string filename = path.filename().string();
+  if (filename.empty()) return path.lexically_normal().string();
+  if (lowered.find("/.campaigns/") != std::string::npos) {
+    return filename;
+  }
+  if (lowered.find("/tmp/iitepi.internal.") != std::string::npos &&
+      filename.find(".runtime_binding.dsl") != std::string::npos) {
+    return "iitepi.runtime_binding.dsl";
+  }
+  return path.lexically_normal().string();
+}
+
 bool sha256_hex_bytes(std::string_view payload, std::string* out_hex) {
   if (!out_hex) return false;
   constexpr std::size_t kSha256DigestBytes = 32;
@@ -120,6 +155,30 @@ bool build_wave_contract_binding_identity(
   return true;
 }
 
+std::vector<cuwacunu::hero::hashimyei::component_instance_t>
+runtime_component_instances_for_contract(
+    const tsiemene::RuntimeBindingContract& contract) {
+  std::vector<cuwacunu::hero::hashimyei::component_instance_t> out{};
+  out.reserve(contract.spec.component_types.size());
+  for (const auto& raw_type : contract.spec.component_types) {
+    const std::string canonical_type = trim_ascii_copy(raw_type);
+    if (canonical_type.empty()) continue;
+    cuwacunu::hero::hashimyei::component_instance_t instance{};
+    instance.family = canonical_type;
+    if (canonical_type == contract.spec.representation_type &&
+        !contract.spec.representation_hashimyei.empty()) {
+      instance.hashimyei =
+          trim_ascii_copy(contract.spec.representation_hashimyei);
+      instance.canonical_path =
+          canonical_type + "." + instance.hashimyei;
+    } else {
+      instance.canonical_path = canonical_type;
+    }
+    out.push_back(std::move(instance));
+  }
+  return out;
+}
+
 bool persist_runtime_run_manifests(
     const std::string& campaign_hash,
     const tsiemene::runtime_binding_run_record_t& run_record,
@@ -133,6 +192,13 @@ bool persist_runtime_run_manifests(
   }
   if (run_record.run_ids.empty()) {
     if (error) *error = "runtime binding run produced no run_ids";
+    return false;
+  }
+  if (run_record.run_ids.size() != run_record.runtime_binding.contracts.size()) {
+    if (error) {
+      *error = "runtime binding run_ids/contracts size mismatch while saving "
+               "run manifests";
+    }
     return false;
   }
 
@@ -155,10 +221,12 @@ bool persist_runtime_run_manifests(
   dependency_files.reserve(runtime_binding_itself->dependency_manifest.files.size());
   for (const auto& file : runtime_binding_itself->dependency_manifest.files) {
     dependency_files.push_back(
-        {.canonical_path = file.canonical_path, .sha256_hex = file.sha256_hex});
+        {.canonical_path = compact_runtime_dependency_path(file.canonical_path),
+         .sha256_hex = file.sha256_hex});
   }
 
-  for (const auto& run_id : run_record.run_ids) {
+  for (std::size_t i = 0; i < run_record.run_ids.size(); ++i) {
+    const auto& run_id = run_record.run_ids[i];
     cuwacunu::hero::hashimyei::run_manifest_t manifest{};
     manifest.run_id = run_id;
     manifest.campaign_identity = campaign_identity;
@@ -166,6 +234,9 @@ bool persist_runtime_run_manifests(
     manifest.sampler = trim_ascii_copy(run_record.resolved_sampler);
     manifest.record_type = trim_ascii_copy(run_record.resolved_record_type);
     manifest.dependency_files = dependency_files;
+    manifest.components =
+        runtime_component_instances_for_contract(
+            run_record.runtime_binding.contracts[i]);
     if (!parse_trailing_u64_suffix(run_id, &manifest.started_at_ms)) {
       manifest.started_at_ms = 0;
     }
@@ -182,11 +253,13 @@ bool persist_runtime_run_manifests(
 }
 
 std::filesystem::path source_runtime_projection_report_path(
-    std::string_view contract_hash, std::string_view binding_id,
-    std::string_view run_id) {
-  return cuwacunu::hashimyei::store_root() / "tsi.source" /
-         "runtime_projection" / std::string(contract_hash) /
-         std::string(binding_id) / std::string(run_id) /
+    std::string_view canonical_path, std::string_view contract_hash,
+    std::string_view binding_id, std::string_view run_id) {
+  return cuwacunu::hashimyei::canonical_path_directory(
+             cuwacunu::hashimyei::store_root(), canonical_path) /
+         "contracts" / sanitize_path_token_copy(contract_hash) / "bindings" /
+         sanitize_path_token_copy(binding_id) / "runs" /
+         sanitize_path_token_copy(run_id) /
          std::string(
              cuwacunu::hero::wave::kSourceRuntimeProjectionLatestReportFilename);
 }
@@ -304,7 +377,7 @@ bool persist_source_runtime_projection_reports(
               source_decl.to);
     }
     identity.source_label =
-        symbol.empty() ? canonical_source_type : std::move(symbol);
+        cuwacunu::source::dataloader::make_source_label(symbol);
     identity.binding_id = run_record.binding_id;
     std::uint64_t run_started_at_ms = 0;
     if (parse_trailing_u64_suffix(run_record.run_ids[i], &run_started_at_ms) &&
@@ -325,7 +398,8 @@ bool persist_source_runtime_projection_reports(
     }
 
     const auto output_path = source_runtime_projection_report_path(
-        contract_hash, identity.binding_id, run_record.run_ids[i]);
+        identity.canonical_path, contract_hash, identity.binding_id,
+        run_record.run_ids[i]);
     if (!cuwacunu::hero::runtime::write_text_file_atomic(
             output_path, report_payload, &report_error)) {
       if (error) {

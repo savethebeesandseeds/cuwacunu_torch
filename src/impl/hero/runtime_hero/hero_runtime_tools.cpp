@@ -1841,7 +1841,36 @@ std::filesystem::path resolve_runtime_hero_dsl_path(
   return std::filesystem::path(resolved);
 }
 
+[[nodiscard]] std::filesystem::path resolve_runtime_root_from_global_config(
+    const std::filesystem::path& global_config_path) {
+  const std::optional<std::string> configured =
+      read_ini_value(global_config_path, "GENERAL", "runtime_root");
+  if (!configured.has_value()) return {};
+  const std::string resolved = resolve_path_from_base_folder(
+      global_config_path.parent_path().string(), *configured);
+  if (resolved.empty()) return {};
+  return std::filesystem::path(resolved);
+}
+
+[[nodiscard]] std::filesystem::path derive_campaigns_root(
+    const std::filesystem::path& runtime_root) {
+  if (runtime_root.empty()) return {};
+  return (runtime_root / ".campaigns").lexically_normal();
+}
+
+[[nodiscard]] std::filesystem::path resolve_campaign_grammar_from_global_config(
+    const std::filesystem::path& global_config_path) {
+  const std::optional<std::string> configured =
+      read_ini_value(global_config_path, "BNF", "iitepi_campaign_grammar_filename");
+  if (!configured.has_value()) return {};
+  const std::string resolved = resolve_path_from_base_folder(
+      global_config_path.parent_path().string(), *configured);
+  if (resolved.empty()) return {};
+  return std::filesystem::path(resolved);
+}
+
 bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
+                           const std::filesystem::path& global_config_path,
                            runtime_defaults_t* out, std::string* error) {
   if (error) error->clear();
   if (!out) {
@@ -1893,22 +1922,15 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
         hero_dsl_path.parent_path().string(), value));
   };
 
-  bool saw_campaigns_root = false;
-  if (const auto it = values.find("campaigns_root"); it != values.end()) {
-    saw_campaigns_root = true;
-    out->campaigns_root = resolve_local_path(it->second);
-  }
+  out->campaigns_root =
+      derive_campaigns_root(resolve_runtime_root_from_global_config(global_config_path));
   bool saw_main_campaign_binary = false;
   if (const auto it = values.find("main_campaign_binary"); it != values.end()) {
     saw_main_campaign_binary = true;
     out->main_campaign_binary = resolve_local_path(it->second);
   }
-  bool saw_campaign_grammar = false;
-  if (const auto it = values.find("campaign_grammar_filename");
-      it != values.end()) {
-    saw_campaign_grammar = true;
-    out->campaign_grammar_path = resolve_local_path(it->second);
-  }
+  out->campaign_grammar_path =
+      resolve_campaign_grammar_from_global_config(global_config_path);
   bool saw_tail_default_lines = false;
   if (const auto it = values.find("tail_default_lines"); it != values.end()) {
     saw_tail_default_lines = true;
@@ -1926,16 +1948,22 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
     }
   }
 
-  if (!saw_campaigns_root || out->campaigns_root.empty()) {
-    if (error) *error = "missing campaigns_root in " + hero_dsl_path.string();
-    return false;
-  }
   if (!saw_main_campaign_binary || out->main_campaign_binary.empty()) {
     if (error) *error = "missing main_campaign_binary in " + hero_dsl_path.string();
     return false;
   }
-  if (!saw_campaign_grammar || out->campaign_grammar_path.empty()) {
-    if (error) *error = "missing campaign_grammar_filename in " + hero_dsl_path.string();
+  if (out->campaigns_root.empty()) {
+    if (error) {
+      *error = "missing GENERAL.runtime_root in " + global_config_path.string();
+    }
+    return false;
+  }
+  if (out->campaign_grammar_path.empty()) {
+    if (error) {
+      *error =
+          "missing [BNF].iitepi_campaign_grammar_filename in " +
+          global_config_path.string();
+    }
     return false;
   }
   if (!saw_tail_default_lines || out->tail_default_lines == 0) {

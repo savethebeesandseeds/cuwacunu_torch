@@ -22,6 +22,9 @@
 #include <utility>
 #include <vector>
 
+#include <ATen/ops/linalg_pinv.h>
+#include <ATen/ops/linalg_solve.h>
+#include <ATen/ops/linalg_svd.h>
 #include <torch/torch.h>
 
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
@@ -1367,9 +1370,9 @@ class VicregTransferMatrixEvaluator final {
       auto lhs = xtx + reg;
       torch::Tensor beta;
       try {
-        beta = torch::linalg::solve(lhs, xty, /*left=*/true);
+        beta = at::linalg_solve(lhs, xty, /*left=*/true);
       } catch (...) {
-        beta = torch::linalg::pinv(lhs).mm(xty);
+        beta = at::linalg_pinv(lhs).mm(xty);
       }
 
       auto pred = x_aug.mm(beta);
@@ -2266,7 +2269,7 @@ class VicregTransferMatrixEvaluator final {
       out->cov_trace = cov.trace().item<double>();
 
       try {
-        auto svd = torch::linalg::svd(
+        auto svd = at::linalg_svd(
             centered, /*full_matrices=*/false, c10::nullopt);
         auto s = std::get<1>(svd).to(torch::kFloat64).contiguous();
         if (s.defined() && s.numel() > 0) {

@@ -48,6 +48,12 @@ int g_protocol_stdout_fd = -1;
 using app_context_t = cuwacunu::hero::lattice_mcp::app_context_t;
 using wave_runtime_defaults_t = cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t;
 
+[[nodiscard]] bool sha256_hex_bytes(std::string_view payload, std::string* out_hex,
+                                    std::string* error);
+[[nodiscard]] bool read_text_file(const std::filesystem::path& path,
+                                  std::string* out,
+                                  std::string* error);
+
 __attribute__((constructor(101))) void redirect_stdout_logs_to_stderr() {
   if (g_protocol_stdout_fd >= 0) return;
   std::fflush(stdout);
@@ -99,6 +105,11 @@ __attribute__((constructor(102))) void disable_terminal_logs_pre_main() {
       normalize_runtime_hashimyei_cursor(canonical_path);
 }
 
+[[nodiscard]] std::string effective_fragment_canonical_path(
+    const cuwacunu::hero::wave::runtime_report_fragment_t& fragment) {
+  return normalize_source_hashimyei_cursor(fragment.canonical_path);
+}
+
 [[nodiscard]] std::string strip_inline_comment(std::string_view in) {
   std::string out;
   out.reserve(in.size());
@@ -119,6 +130,347 @@ __attribute__((constructor(102))) void disable_terminal_logs_pre_main() {
     out.push_back(c);
   }
   return out;
+}
+
+[[nodiscard]] bool remove_legacy_lattice_catalog_if_needed(
+    app_context_t* app, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || app->store_root.empty() || app->lattice_catalog_path.empty()) {
+    return true;
+  }
+
+  const std::filesystem::path legacy_catalog_path =
+      (app->store_root / "catalog" / "lattice_catalog.idydb").lexically_normal();
+  const std::filesystem::path active_catalog_path =
+      app->lattice_catalog_path.lexically_normal();
+  if (legacy_catalog_path == active_catalog_path) return true;
+
+  std::error_code ec{};
+  if (!std::filesystem::exists(legacy_catalog_path, ec)) return true;
+
+  std::filesystem::remove(legacy_catalog_path, ec);
+  if (ec && std::filesystem::exists(legacy_catalog_path)) {
+    if (out_error) {
+      *out_error = "cannot remove legacy lattice catalog file: " +
+                   legacy_catalog_path.string();
+    }
+    return false;
+  }
+
+  ec.clear();
+  (void)std::filesystem::remove(legacy_catalog_path.parent_path(), ec);
+  return true;
+}
+
+[[nodiscard]] std::optional<std::filesystem::path> canonicalized(
+    const std::filesystem::path& path) {
+  std::error_code ec{};
+  const auto canonical = std::filesystem::weakly_canonical(path, ec);
+  if (ec) return std::nullopt;
+  return canonical.lexically_normal();
+}
+
+[[nodiscard]] bool path_is_within(std::filesystem::path base,
+                                  std::filesystem::path candidate) {
+  if (const auto c = canonicalized(base); c.has_value()) {
+    base = *c;
+  } else {
+    base = base.lexically_normal();
+  }
+  if (const auto c = canonicalized(candidate); c.has_value()) {
+    candidate = *c;
+  } else {
+    candidate = candidate.lexically_normal();
+  }
+  auto b = base.begin();
+  auto c = candidate.begin();
+  for (; b != base.end() && c != candidate.end(); ++b, ++c) {
+    if (*b != *c) return false;
+  }
+  return b == base.end();
+}
+
+[[nodiscard]] bool write_text_file_atomic(const std::filesystem::path& path,
+                                          std::string_view payload,
+                                          std::string* error) {
+  if (error) error->clear();
+  std::error_code ec{};
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec) {
+    if (error) *error = "cannot create parent directory: " + path.parent_path().string();
+    return false;
+  }
+  const auto tmp = path.string() + ".tmp";
+  {
+    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      if (error) *error = "cannot open temp file for write: " + tmp;
+      return false;
+    }
+    out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+    if (!out) {
+      if (error) *error = "cannot write temp file: " + tmp;
+      return false;
+    }
+  }
+  std::filesystem::rename(tmp, path, ec);
+  if (ec) {
+    std::filesystem::remove(tmp, ec);
+    if (error) *error = "cannot rename temp file into place: " + path.string();
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] std::filesystem::path catalog_sync_state_path(
+    const std::filesystem::path& catalog_path) {
+  return catalog_path.parent_path() /
+         (catalog_path.filename().string() + ".sync.sha256");
+}
+
+[[nodiscard]] bool read_catalog_sync_state(
+    const std::filesystem::path& catalog_path, std::string* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "sync state output pointer is null";
+    return false;
+  }
+  out->clear();
+  const auto path = catalog_sync_state_path(catalog_path);
+  std::error_code ec{};
+  if (!std::filesystem::exists(path, ec)) return true;
+  std::string payload{};
+  if (!read_text_file(path, &payload, error)) return false;
+  *out = trim_ascii(payload);
+  return true;
+}
+
+[[nodiscard]] bool write_catalog_sync_state(
+    const std::filesystem::path& catalog_path, std::string_view token,
+    std::string* error) {
+  return write_text_file_atomic(catalog_sync_state_path(catalog_path),
+                                std::string(token) + "\n", error);
+}
+
+[[nodiscard]] bool remove_catalog_sync_state(
+    const std::filesystem::path& catalog_path, std::string* error) {
+  if (error) error->clear();
+  std::error_code ec{};
+  const auto sync_path = catalog_sync_state_path(catalog_path);
+  std::filesystem::remove(sync_path, ec);
+  if (ec && std::filesystem::exists(sync_path)) {
+    if (error) *error = "cannot remove catalog sync state: " + sync_path.string();
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool should_include_lattice_sync_file(
+    const std::filesystem::path& path) {
+  if (path.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) return true;
+  if (path.filename() == cuwacunu::hashimyei::kComponentManifestFilenameV2) {
+    return true;
+  }
+  return path.extension() == ".lls";
+}
+
+[[nodiscard]] bool compute_lattice_store_sync_token(
+    const std::filesystem::path& store_root,
+    const std::filesystem::path& catalog_path, std::string* out_token,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out_token) {
+    if (error) *error = "sync token output pointer is null";
+    return false;
+  }
+  out_token->clear();
+
+  const std::filesystem::path normalized_store_root =
+      canonicalized(store_root).value_or(store_root.lexically_normal());
+  const std::filesystem::path normalized_catalog_root =
+      catalog_path.parent_path().empty()
+          ? std::filesystem::path{}
+          : canonicalized(catalog_path.parent_path())
+                .value_or(catalog_path.parent_path().lexically_normal());
+
+  std::vector<std::pair<std::string, std::string>> entries{};
+  std::error_code ec{};
+  if (std::filesystem::exists(store_root, ec) &&
+      std::filesystem::is_directory(store_root, ec)) {
+    for (std::filesystem::recursive_directory_iterator it(store_root, ec), end;
+         it != end; it.increment(ec)) {
+      if (ec) {
+        if (error) *error = "failed scanning store root for lattice sync";
+        return false;
+      }
+      std::error_code entry_ec{};
+      const auto symlink_state = it->symlink_status(entry_ec);
+      if (entry_ec) {
+        if (error) *error = "failed reading store entry status";
+        return false;
+      }
+      if (std::filesystem::is_symlink(symlink_state)) continue;
+      if (!it->is_regular_file(entry_ec)) {
+        if (entry_ec) {
+          if (error) *error = "failed reading store entry type";
+          return false;
+        }
+        continue;
+      }
+
+      const auto entry_path = it->path();
+      const auto canonical_entry =
+          canonicalized(entry_path).value_or(entry_path.lexically_normal());
+      if (!path_is_within(normalized_store_root, canonical_entry)) continue;
+      if (!normalized_catalog_root.empty() &&
+          path_is_within(normalized_catalog_root, canonical_entry)) {
+        continue;
+      }
+      if (!should_include_lattice_sync_file(entry_path)) continue;
+
+      const auto file_size = std::filesystem::file_size(entry_path, entry_ec);
+      if (entry_ec) {
+        if (error) *error = "failed reading store entry size";
+        return false;
+      }
+      const auto last_write_time =
+          std::filesystem::last_write_time(entry_path, entry_ec);
+      if (entry_ec) {
+        if (error) *error = "failed reading store entry mtime";
+        return false;
+      }
+      const auto mtime_ticks = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   last_write_time.time_since_epoch())
+                                   .count();
+      std::ostringstream fingerprint;
+      fingerprint << file_size << "|" << mtime_ticks;
+
+      std::error_code rel_ec{};
+      std::filesystem::path rel =
+          std::filesystem::relative(canonical_entry, normalized_store_root, rel_ec);
+      if (rel_ec) rel = entry_path.lexically_normal().filename();
+      entries.emplace_back(rel.generic_string(), fingerprint.str());
+    }
+  }
+
+  std::sort(entries.begin(), entries.end());
+  std::ostringstream seed;
+  seed << "store_root=" << normalized_store_root.generic_string() << "\n";
+  for (const auto& [rel, fingerprint] : entries) {
+    seed << rel << "|" << fingerprint << "\n";
+  }
+  return sha256_hex_bytes(seed.str(), out_token, error);
+}
+
+[[nodiscard]] bool rebuild_lattice_catalog_for_token(
+    app_context_t* app, std::string_view expected_token, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app) {
+    if (out_error) *out_error = "app context is null";
+    return false;
+  }
+  if (app->lattice_catalog_path.empty()) {
+    if (out_error) *out_error = "lattice catalog path is empty";
+    return false;
+  }
+
+  if (app->catalog.opened()) {
+    std::string close_error;
+    if (!app->catalog.close(&close_error)) {
+      if (out_error) *out_error = "catalog close failed: " + close_error;
+      return false;
+    }
+  }
+
+  std::error_code ec{};
+  std::filesystem::remove(app->lattice_catalog_path, ec);
+  if (ec && std::filesystem::exists(app->lattice_catalog_path)) {
+    if (out_error) {
+      *out_error = "cannot remove lattice catalog file: " +
+                   app->lattice_catalog_path.string();
+    }
+    return false;
+  }
+  if (!remove_catalog_sync_state(app->lattice_catalog_path, out_error)) return false;
+
+  cuwacunu::hero::wave::lattice_catalog_store_t::options_t opts{};
+  opts.catalog_path = app->lattice_catalog_path;
+  opts.encrypted = false;
+  opts.projection_version = 2;
+  if (!app->catalog.open(opts, out_error)) return false;
+  if (!app->catalog.ingest_runtime_report_fragments(app->store_root, out_error)) {
+    return false;
+  }
+  if (!write_catalog_sync_state(app->lattice_catalog_path, expected_token,
+                                out_error)) {
+    return false;
+  }
+  app->last_store_sync_token = std::string(expected_token);
+  return true;
+}
+
+[[nodiscard]] bool ensure_lattice_catalog_synced_to_store(
+    app_context_t* app, bool force_rebuild, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app) {
+    if (out_error) *out_error = "app context is null";
+    return false;
+  }
+  if (app->store_root.empty()) {
+    if (out_error) *out_error = "store_root is empty";
+    return false;
+  }
+  if (app->lattice_catalog_path.empty()) {
+    if (out_error) *out_error = "lattice catalog path is empty";
+    return false;
+  }
+  if (!remove_legacy_lattice_catalog_if_needed(app, out_error)) return false;
+
+  std::string current_token{};
+  if (!compute_lattice_store_sync_token(app->store_root, app->lattice_catalog_path,
+                                        &current_token, out_error)) {
+    return false;
+  }
+
+  std::error_code ec{};
+  const bool catalog_exists = std::filesystem::exists(app->lattice_catalog_path, ec);
+  if (!force_rebuild && catalog_exists &&
+      app->last_store_sync_token == current_token) {
+    return true;
+  }
+
+  std::string recorded_token{};
+  if (!read_catalog_sync_state(app->lattice_catalog_path, &recorded_token,
+                               out_error)) {
+    return false;
+  }
+  if (!force_rebuild && catalog_exists && recorded_token == current_token) {
+    app->last_store_sync_token = current_token;
+    return true;
+  }
+
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    if (!rebuild_lattice_catalog_for_token(app, current_token, out_error)) {
+      return false;
+    }
+    std::string observed_token{};
+    if (!compute_lattice_store_sync_token(app->store_root, app->lattice_catalog_path,
+                                          &observed_token, out_error)) {
+      return false;
+    }
+    if (observed_token == current_token) {
+      app->last_store_sync_token = observed_token;
+      return true;
+    }
+    current_token = observed_token;
+  }
+
+  if (out_error) {
+    *out_error =
+        "runtime store changed while synchronizing lattice catalog";
+  }
+  return false;
 }
 
 [[nodiscard]] std::string unquote_if_wrapped(std::string s) {
@@ -856,7 +1208,9 @@ template <typename SetLike>
 }
 
 [[nodiscard]] bool load_wave_runtime_defaults(
-    const std::filesystem::path& hero_dsl_path, wave_runtime_defaults_t* out,
+    const std::filesystem::path& hero_dsl_path,
+    const std::filesystem::path& global_config_path,
+    wave_runtime_defaults_t* out,
     std::string* error) {
   if (error) error->clear();
   if (!out) {
@@ -871,6 +1225,20 @@ template <typename SetLike>
     return false;
   }
   *out = wave_runtime_defaults_t{};
+  const std::optional<std::string> runtime_root_value =
+      read_ini_value(global_config_path, "GENERAL", "runtime_root");
+  if (runtime_root_value.has_value()) {
+    const std::string resolved_runtime_root = resolve_path_from_folder(
+        global_config_path.parent_path().string(), *runtime_root_value);
+    if (!resolved_runtime_root.empty()) {
+      out->store_root =
+          (std::filesystem::path(resolved_runtime_root) / ".hashimyei")
+              .lexically_normal();
+      out->catalog_path =
+          (out->store_root / "_meta" / "catalog" / "lattice_catalog.idydb")
+              .lexically_normal();
+    }
+  }
 
   std::ifstream in(hero_dsl_path);
   if (!in) {
@@ -911,20 +1279,6 @@ template <typename SetLike>
     values[lhs] = value;
   }
 
-  bool saw_store_root = false;
-  const auto it_store_root = values.find("store_root");
-  if (it_store_root != values.end()) {
-    saw_store_root = true;
-    out->store_root = resolve_path_from_folder(
-        hero_dsl_path.parent_path().string(), it_store_root->second);
-  }
-  bool saw_catalog_path = false;
-  const auto it_catalog_path = values.find("catalog_path");
-  if (it_catalog_path != values.end()) {
-    saw_catalog_path = true;
-    out->catalog_path = resolve_path_from_folder(
-        hero_dsl_path.parent_path().string(), it_catalog_path->second);
-  }
   bool saw_encrypted = false;
   const auto it_encrypted = values.find("encrypted");
   if (it_encrypted != values.end()) {
@@ -942,12 +1296,15 @@ template <typename SetLike>
       return false;
     }
   }
-  if (!saw_store_root || out->store_root.empty()) {
-    if (error) *error = "missing store_root in " + hero_dsl_path.string();
+  if (out->store_root.empty()) {
+    if (error) *error = "missing GENERAL.runtime_root in " + global_config_path.string();
     return false;
   }
-  if (!saw_catalog_path || out->catalog_path.empty()) {
-    if (error) *error = "missing catalog_path in " + hero_dsl_path.string();
+  if (out->catalog_path.empty()) {
+    if (error) {
+      *error = "cannot derive lattice catalog path from GENERAL.runtime_root in " +
+               global_config_path.string();
+    }
     return false;
   }
   if (!saw_encrypted) {
@@ -1028,7 +1385,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     std::string hashimyei_cursor;
     if (!extract_payload_kv(fragment.payload_json, "hashimyei_cursor",
                             &hashimyei_cursor)) {
-      hashimyei_cursor = fragment.canonical_path;
+      hashimyei_cursor = effective_fragment_canonical_path(fragment);
     }
     hashimyei_cursor = normalize_source_hashimyei_cursor(hashimyei_cursor);
     const std::string intersection_cursor =
@@ -1082,6 +1439,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     if (out_error) *out_error = "lattice catalog path is empty";
     return false;
   }
+  if (!remove_legacy_lattice_catalog_if_needed(app, out_error)) return false;
 
   if (app->catalog.opened()) {
     std::string close_error;
@@ -1100,14 +1458,16 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     }
     return false;
   }
+  if (!remove_catalog_sync_state(app->lattice_catalog_path, out_error)) return false;
 
   cuwacunu::hero::wave::lattice_catalog_store_t::options_t opts{};
   opts.catalog_path = app->lattice_catalog_path;
   opts.encrypted = false;
   opts.projection_version = 2;
   if (!app->catalog.open(opts, out_error)) return false;
+  app->last_store_sync_token.clear();
   if (!reingest_report_fragments) return true;
-  return app->catalog.ingest_runtime_report_fragments(app->store_root, out_error);
+  return ensure_lattice_catalog_synced_to_store(app, true, out_error);
 }
 
 [[nodiscard]] std::string make_tool_result_json(std::string_view text,
@@ -1271,8 +1631,7 @@ struct fact_path_summary_t {
   if (canonical_path.empty()) {
     std::map<std::string, fact_path_summary_t> by_path{};
     for (const auto& row : rows) {
-      const std::string row_path =
-          normalize_source_hashimyei_cursor(row.canonical_path);
+      const std::string row_path = effective_fragment_canonical_path(row);
       if (row_path.empty()) continue;
       std::uint64_t row_wave_cursor = 0;
       if (!fragment_wave_cursor(row, &row_wave_cursor)) {
@@ -1633,6 +1992,7 @@ struct fact_path_summary_t {
     if (out_error) *out_error = "app context is null";
     return false;
   }
+  if (!remove_legacy_lattice_catalog_if_needed(app, out_error)) return false;
   if (app->catalog.opened()) return true;
   if (app->lattice_catalog_path.empty()) {
     if (out_error) *out_error = "lattice catalog path is empty";
@@ -1665,6 +2025,13 @@ struct fact_path_summary_t {
   if (!descriptor) {
     *out_error_json = "unknown tool: " + tool_name;
     return false;
+  }
+  if (tool_name != "hero.lattice.refresh") {
+    std::string sync_error;
+    if (!ensure_lattice_catalog_synced_to_store(app, false, &sync_error)) {
+      *out_error_json = "catalog sync failed: " + sync_error;
+      return false;
+    }
   }
 
   std::string structured;
@@ -1779,9 +2146,11 @@ std::filesystem::path resolve_lattice_hero_dsl_path(
 }
 
 bool load_wave_runtime_defaults(const std::filesystem::path& hero_dsl_path,
+                                const std::filesystem::path& global_config_path,
                                 wave_runtime_defaults_t* out,
                                 std::string* error) {
-  return ::load_wave_runtime_defaults(hero_dsl_path, out, error);
+  return ::load_wave_runtime_defaults(hero_dsl_path, global_config_path, out,
+                                      error);
 }
 
 bool execute_tool_json(const std::string& tool_name, std::string arguments_json,

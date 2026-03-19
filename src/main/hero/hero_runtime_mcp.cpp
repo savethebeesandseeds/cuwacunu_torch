@@ -804,7 +804,8 @@ int main(int argc, char** argv) {
 
   std::string defaults_error;
   if (!cuwacunu::hero::runtime_mcp::load_runtime_defaults(
-          hero_config_path, &app.defaults, &defaults_error)) {
+          hero_config_path, app.global_config_path, &app.defaults,
+          &defaults_error)) {
     std::cerr << "[" << kServerName << "] " << defaults_error << "\n";
     return 2;
   }
