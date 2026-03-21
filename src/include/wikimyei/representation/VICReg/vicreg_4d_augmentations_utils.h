@@ -26,7 +26,7 @@ inline WarpBaseCurve parse_curve(const std::string& s) {
  * Convert a configuration table into a vector<WarpPreset>.
  *
  * Required columns:
- *   - "name"                      (string)
+ *   - "time_warp_curve"           (string; legacy alias: "name")
  *   - "active"                    (bool)
  *   - "curve_param"               (double)
  *   - "noise_scale"               (double)
@@ -62,6 +62,7 @@ make_warp_presets_from_table(
         "component_type",
         "profile_id",
         "profile_row_id",
+        "time_warp_curve",
         "name",
         "active",
         "curve_param",
@@ -73,8 +74,10 @@ make_warp_presets_from_table(
         "channel_dropout_prob",
         "comment"};
     std::vector<std::string> missing_columns{};
-    for (const char* key : {"name",
-                            "active",
+    if (!row.count("time_warp_curve") && !row.count("name")) {
+      missing_columns.emplace_back("time_warp_curve");
+    }
+    for (const char* key : {"active",
                             "curve_param",
                             "noise_scale",
                             "smoothing_kernel_size",
@@ -106,7 +109,16 @@ make_warp_presets_from_table(
     }
 
     try {
-      const auto curve_name = require_column(row, "name");
+      const bool has_curve_name = row.count("time_warp_curve") != 0;
+      const bool has_legacy_name = row.count("name") != 0;
+      if (has_curve_name && has_legacy_name &&
+          require_column(row, "time_warp_curve") != require_column(row, "name")) {
+        throw std::runtime_error(
+            "'time_warp_curve' and legacy alias 'name' disagree");
+      }
+      const auto curve_name = has_curve_name
+                                  ? require_column(row, "time_warp_curve")
+                                  : require_column(row, "name");
       const auto active = to_bool(require_column(row, "active"));
       if (!active) continue;
       const auto curve_param = to_double(require_column(row, "curve_param"));

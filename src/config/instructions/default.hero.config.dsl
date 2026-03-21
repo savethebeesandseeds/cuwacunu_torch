@@ -3,7 +3,6 @@
   ===============
   Purpose:
     Typed key-value deterministic config for HERO MCP workflows.
-    Current runtime is deterministic-only: ask/fix model actions are disabled.
     NOTE:
       This file configures Config HERO, one instrument inside the broader HERO
       category. Config HERO exists to inspect, validate, diff, backup, and
@@ -16,6 +15,9 @@
     - protocol_layer:str = STDIO | HTTPS/SSE
     - HTTPS/SSE is intentionally disabled in this phase.
       Selecting HTTPS/SSE must fail fast and require STDIO.
+    - allow_local_write gates filesystem-mutating tools.
+    - write_roots constrains config file writes, default.*.dsl writes, and
+      dev_nuke_reset runtime targets when allow_local_write=true.
 */
 
 protocol_layer[STDIO|HTTPS/SSE]:str = STDIO # STDIO | HTTPS/SSE (HTTPS/SSE not implemented yet)

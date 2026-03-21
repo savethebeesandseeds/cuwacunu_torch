@@ -528,20 +528,6 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
     }
   }
 
-  const std::string component_contract_hash =
-      cuwacunu::hero::hashimyei::contract_hash_from_identity(
-          component.manifest.contract_identity);
-  if (component_contract_hash != selected_contract_hash) {
-    if (error) {
-      *error =
-          "configured hashimyei belongs to a different contract: hashimyei=" +
-          selected_hashimyei + " component_contract=" +
-          component_contract_hash +
-          " requested_contract=" + selected_contract_hash;
-    }
-    return false;
-  }
-
   const std::string actual_docking_signature =
       lowercase_copy(component.manifest.docking_signature_sha256_hex);
   if (actual_docking_signature.empty()) {
@@ -553,17 +539,59 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
     return false;
   }
   if (actual_docking_signature != expected_docking_signature) {
+    const std::string component_contract_hash =
+        cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            component.manifest.contract_identity);
     if (error) {
       *error =
           "configured hashimyei docking signature mismatch: hashimyei=" +
           selected_hashimyei + " canonical_path=" +
           component.manifest.canonical_path + " component_docking=" +
           actual_docking_signature + " contract_docking=" +
-          expected_docking_signature;
+          expected_docking_signature + " component_contract=" +
+          component_contract_hash + " requested_contract=" +
+          selected_contract_hash;
     }
     return false;
   }
 
+  return true;
+}
+
+[[nodiscard]] inline bool validate_runtime_component_manifest_public_docking(
+    const cuwacunu::hero::hashimyei::component_manifest_t& manifest,
+    std::string_view requested_contract_hash,
+    std::string_view expected_docking_signature,
+    std::string* error = nullptr) {
+  if (error) error->clear();
+  const std::string expected_signature =
+      lowercase_copy(std::string(expected_docking_signature));
+  if (expected_signature.empty()) {
+    if (error) {
+      *error = "expected docking_signature_sha256_hex is empty";
+    }
+    return false;
+  }
+  const std::string actual_signature =
+      lowercase_copy(manifest.docking_signature_sha256_hex);
+  if (actual_signature.empty()) {
+    if (error) {
+      *error = "component manifest is missing docking_signature_sha256_hex";
+    }
+    return false;
+  }
+  if (actual_signature != expected_signature) {
+    if (error) {
+      *error =
+          "component manifest docking signature mismatch: canonical_path=" +
+          manifest.canonical_path + " component_docking=" + actual_signature +
+          " requested_docking=" + expected_signature + " component_contract=" +
+          cuwacunu::hero::hashimyei::contract_hash_from_identity(
+              manifest.contract_identity) +
+          " requested_contract=" + std::string(requested_contract_hash);
+    }
+    return false;
+  }
   return true;
 }
 

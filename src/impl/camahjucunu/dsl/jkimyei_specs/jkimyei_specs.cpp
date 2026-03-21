@@ -230,6 +230,51 @@ struct document_t {
   std::vector<component_t> components{};
 };
 
+constexpr const char* kAugmentationCurveKey = "time_warp_curve";
+constexpr const char* kLegacyAugmentationCurveKey = "name";
+
+[[nodiscard]] std::string canonicalize_augmentation_curve_key(std::string key) {
+  if (key == kLegacyAugmentationCurveKey) return std::string(kAugmentationCurveKey);
+  return key;
+}
+
+[[nodiscard]] kv_list_t canonicalize_augmentation_curve_kv(
+    const kv_list_t& kv,
+    const std::string& context) {
+  struct seen_key_t {
+    std::size_t index;
+    std::string raw_key;
+  };
+
+  kv_list_t out{};
+  std::unordered_map<std::string, seen_key_t> seen_keys{};
+  for (const auto& [raw_key, value] : kv.entries) {
+    const std::string key = canonicalize_augmentation_curve_key(raw_key);
+    const auto seen_it = seen_keys.find(key);
+    if (seen_it != seen_keys.end()) {
+      if (seen_it->second.raw_key == raw_key) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "%s repeats key '%s'",
+            context.c_str(),
+            raw_key.c_str()));
+      }
+      const auto& prior_value = out.entries[seen_it->second.index].second;
+      if (prior_value != value) {
+        throw std::runtime_error(cuwacunu::piaabo::string_format(
+            "%s defines conflicting values for '%s' via aliases '%s' and '%s'",
+            context.c_str(),
+            key.c_str(),
+            seen_it->second.raw_key.c_str(),
+            raw_key.c_str()));
+      }
+      continue;
+    }
+    seen_keys.emplace(key, seen_key_t{out.entries.size(), raw_key});
+    out.entries.emplace_back(key, value);
+  }
+  return out;
+}
+
 class parser_t {
  public:
   explicit parser_t(std::string input) : lex_(std::move(input)) {}
@@ -826,7 +871,7 @@ class parser_t {
   std::vector<curve_t> parse_augmentations_ascii_table(const std::string& profile_name,
                                                        bool expect_block_end) {
     static const std::vector<std::string> kExpectedHeader = {
-        "name",
+        kAugmentationCurveKey,
         "active",
         "curve_param",
         "noise_scale",
@@ -854,6 +899,11 @@ class parser_t {
     }
 
     const std::vector<std::string> first_row = parse_table_row_cells();
+    std::vector<std::string> canonical_first_row = first_row;
+    if (!canonical_first_row.empty()) {
+      canonical_first_row[0] =
+          canonicalize_augmentation_curve_key(canonical_first_row[0]);
+    }
 
     auto finish_table = [&]() {
       while (is_frame_token(peek())) (void)next();
@@ -869,7 +919,7 @@ class parser_t {
       }
     };
 
-    if (first_row == kExpectedHeader) {
+    if (canonical_first_row == kExpectedHeader) {
       std::unordered_set<std::string> curve_names;
       std::vector<curve_t> curves{};
       while (peek_is_symbol('|')) {
@@ -905,7 +955,9 @@ class parser_t {
       return curves;
     }
 
-    if (first_row.empty() || first_row[0] != "name" || first_row.size() < 2) {
+    if (canonical_first_row.empty() ||
+        canonical_first_row[0] != kAugmentationCurveKey ||
+        canonical_first_row.size() < 2) {
       std::ostringstream expected;
       std::ostringstream got;
       for (std::size_t i = 0; i < kExpectedHeader.size(); ++i) {
@@ -917,17 +969,20 @@ class parser_t {
         got << first_row[i];
       }
       throw std::runtime_error(cuwacunu::piaabo::string_format(
-          "AUGMENTATIONS table header mismatch in PROFILE '%s'. expected row-header=[%s] or transposed first-row starting with 'name', got=[%s]",
+          "AUGMENTATIONS table header mismatch in PROFILE '%s'. expected row-header=[%s] or transposed first-row starting with '%s' (legacy alias '%s' also accepted), got=[%s]",
           profile_name.c_str(),
           expected.str().c_str(),
+          kAugmentationCurveKey,
+          kLegacyAugmentationCurveKey,
           got.str().c_str()));
     }
 
-    std::vector<curve_t> curves(first_row.size() - 1);
-    std::vector<std::unordered_set<std::string>> seen_curve_keys(first_row.size() - 1);
+    std::vector<curve_t> curves(canonical_first_row.size() - 1);
+    std::vector<std::unordered_set<std::string>> seen_curve_keys(
+        canonical_first_row.size() - 1);
     std::unordered_set<std::string> curve_names;
-    for (std::size_t i = 1; i < first_row.size(); ++i) {
-      curves[i - 1].name = first_row[i];
+    for (std::size_t i = 1; i < canonical_first_row.size(); ++i) {
+      curves[i - 1].name = canonical_first_row[i];
       if (curves[i - 1].name.empty()) {
         throw std::runtime_error(cuwacunu::piaabo::string_format(
             "empty augmentation name in transposed AUGMENTATIONS table of PROFILE '%s'",
@@ -944,24 +999,26 @@ class parser_t {
     while (peek_is_symbol('|')) {
       const std::vector<std::string> row = parse_table_row_cells();
       if (row.size() == 1 && is_dash_only_token(row.front())) continue;
-      if (row.size() != first_row.size()) {
+      if (row.size() != canonical_first_row.size()) {
         throw std::runtime_error(cuwacunu::piaabo::string_format(
             "transposed AUGMENTATIONS row has %zu cells, expected %zu in PROFILE '%s'",
             row.size(),
-            first_row.size(),
+            canonical_first_row.size(),
             profile_name.c_str()));
       }
-      const std::string key = normalize_key_token(trim_ascii_copy(row[0]));
+      const std::string key = canonicalize_augmentation_curve_key(
+          normalize_key_token(trim_ascii_copy(row[0])));
       if (key.empty()) {
         throw std::runtime_error(cuwacunu::piaabo::string_format(
             "empty transposed AUGMENTATIONS field name in PROFILE '%s'",
             profile_name.c_str()));
       }
-      if (key == "name") {
+      if (key == kAugmentationCurveKey) {
         for (std::size_t i = 1; i < row.size(); ++i) {
           if (row[i] != curves[i - 1].name) {
             throw std::runtime_error(cuwacunu::piaabo::string_format(
-                "transposed AUGMENTATIONS name row mismatch for column %zu in PROFILE '%s'",
+                "transposed AUGMENTATIONS %s row mismatch for column %zu in PROFILE '%s'",
+                kAugmentationCurveKey,
                 i,
                 profile_name.c_str()));
           }
@@ -1415,22 +1472,26 @@ void validate_component(const component_t& component) {
     }
     if (profile.augmentations_present) {
       for (const auto& curve : profile.augmentations) {
-        kv_list_t curve_kv = curve.kv;
-        const std::string* explicit_name = find_kv(curve_kv, "name");
-        if (explicit_name && *explicit_name != curve.name) {
+        const std::string curve_context =
+            context + " AUGMENTATIONS CURVE '" + curve.name + "'";
+        kv_list_t curve_kv =
+            canonicalize_augmentation_curve_kv(curve.kv, curve_context);
+        const std::string* explicit_curve_name =
+            find_kv(curve_kv, kAugmentationCurveKey);
+        if (explicit_curve_name && *explicit_curve_name != curve.name) {
           throw std::runtime_error(cuwacunu::piaabo::string_format(
-              "%s CURVE '%s' defines mismatched name '%s'",
+              "%s defines mismatched %s '%s'",
               context.c_str(),
-              curve.name.c_str(),
-              explicit_name->c_str()));
+              kAugmentationCurveKey,
+              explicit_curve_name->c_str()));
         }
-        if (!explicit_name) {
-          curve_kv.entries.emplace_back("name", curve.name);
+        if (!explicit_curve_name) {
+          curve_kv.entries.emplace_back(kAugmentationCurveKey, curve.name);
         }
         validate_kv_with_owner_schema(
             curve_kv,
             "augmentation.curve",
-            context + " AUGMENTATIONS CURVE '" + curve.name + "'");
+            curve_context);
       }
     }
   }
@@ -1589,6 +1650,10 @@ void materialize_profile_augmentations(const component_t& component,
   const std::string profile_row_id = component.id + "@" + profile.name;
   std::size_t curve_index = 0;
   for (const auto& curve : profile.augmentations) {
+    const std::string curve_context =
+        profile_row_id + " AUGMENTATIONS CURVE '" + curve.name + "'";
+    const kv_list_t curve_kv =
+        canonicalize_augmentation_curve_kv(curve.kv, curve_context);
     cuwacunu::camahjucunu::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = cuwacunu::piaabo::string_format(
         "%s::augmentation::%zu",
@@ -1598,8 +1663,8 @@ void materialize_profile_augmentations(const component_t& component,
     row["component_type"] = component.canonical_type;
     row["profile_id"] = profile.name;
     row["profile_row_id"] = profile_row_id;
-    row["name"] = curve.name;
-    append_kv_to_row(curve.kv, &row);
+    append_kv_to_row(curve_kv, &row);
+    row[kAugmentationCurveKey] = curve.name;
     push_row(out, "vicreg_augmentations", std::move(row));
     ++curve_index;
   }

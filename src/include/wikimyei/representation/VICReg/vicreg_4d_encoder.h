@@ -120,9 +120,10 @@ namespace vicreg_4d {
     /* ----------------------------------------------------------------
      * Forward: see comments inline for shapes.
      * @param x_input, 
-     * @param x_mask      Optional binary mask of shape [B, C, T, D] 
-     *                      Values of 1 => valid, 0 => padding. This is multiplied with input to zero out
-     *                      padded positions if present. If not provided, a NaN sentinel is stored.
+     * @param x_mask      Optional binary mask of shape [B, C, T]
+     *                      Values of 1 => valid, 0 => padding. Invalid slots are
+     *                      explicitly zeroed before the first layer and at stage
+     *                      boundaries when present.
      * ----------------------------------------------------------------*/
      torch::Tensor forward(const torch::Tensor &x_input,
         c10::optional<torch::Tensor> x_mask = c10::nullopt)
@@ -130,45 +131,78 @@ namespace vicreg_4d {
         auto x = x_input;
 
         auto B = x_input.size(0);
-        
+        auto channel_mask_4d = torch::Tensor{};
+        auto time_mask_b1t = torch::Tensor{};
+        auto time_mask_b1t1 = torch::Tensor{};
+        auto time_mask_bt1 = torch::Tensor{};
+
+        auto remask_channel = [&](torch::Tensor t) {
+            if (!channel_mask_4d.defined()) return t;
+            return t.masked_fill(~channel_mask_4d.expand_as(t), 0.0);
+        };
+        auto remask_time_bct = [&](torch::Tensor t) {
+            if (!time_mask_b1t.defined()) return t;
+            return t.masked_fill(~time_mask_b1t.expand_as(t), 0.0);
+        };
+        auto remask_time_bcte = [&](torch::Tensor t) {
+            if (!time_mask_b1t1.defined()) return t;
+            return t.masked_fill(~time_mask_b1t1.expand_as(t), 0.0);
+        };
+        auto remask_time_bte = [&](torch::Tensor t) {
+            if (!time_mask_bt1.defined()) return t;
+            return t.masked_fill(~time_mask_bt1.expand_as(t), 0.0);
+        };
+
         /* ---- Structural mask ------------------------------------------------ */
         if (x_mask.has_value()) {
-            x = x * x_mask.value().unsqueeze(-1); // unsquese the mask to make it [B, C, T, 1]
+            auto mask_bct = x_mask.value().to(torch::kBool);
+            channel_mask_4d = mask_bct.unsqueeze(-1); // [B, C, T, 1]
+            time_mask_b1t = mask_bct.any(/*dim=*/1, /*keepdim=*/true); // [B, 1, T]
+            time_mask_b1t1 = time_mask_b1t.unsqueeze(-1); // [B, 1, T, 1]
+            time_mask_bt1 = time_mask_b1t.transpose(1, 2); // [B, T, 1]
+            x = x_input.masked_fill(~channel_mask_4d.expand_as(x_input), 0.0);
         }
         
         /* ---- Local convs : [B,C,T,D] -> [B,C,T,E] --------------------------- */
         x = torch::relu(conv_depthwise(x));
+        x = remask_channel(x);
         x = conv_proj(x)                 // [B,C*E,T,1]
                 .squeeze(-1)             // [B,C*E,T]
                 .view({B, C, channel_expansion_dim, T})
                 .permute({0,1,3,2});     // [B,C,T,E]
         x = x + id_encoding;             // inject identity
+        x = remask_channel(x);
     
         /* ---- Temporal transformer (flatten (C,E)) --------------------------- */
         auto resh = x.permute({0,1,3,2}) // [B,C,E,T]
                      .reshape({B, C*channel_expansion_dim, T}); // [B,flatC,T]
                      
-        resh = temporal_transform->forward(resh);              // warped
+        resh = temporal_transform->forward(resh, time_mask_b1t); // warped
 
         x = resh.reshape({B, C, channel_expansion_dim, T})
                  .permute({0,1,3,2});    // [B,C,T,E]
+        x = remask_channel(x);
     
         /* ---- Fuse channels but keep T --------------------------------------- */
         x = torch::relu(conv_fuse_channels(x));  // [B,F,T,E]
+        x = remask_time_bcte(x);
     
         /* ---- Linear proj on feature dim  ------------------------------------ */
         x = x.view({B, fused_feature_dim, T, channel_expansion_dim});
         x = x.view({B * fused_feature_dim * T, channel_expansion_dim});
         x = fused_start(x);
         x = x.view({B, fused_feature_dim, T, hidden_dims});
+        x = remask_time_bcte(x);
     
-        /* ---- Dilated conv stack (Corrected) --------------------------------- */
+        /* ---- Dilated conv stack with per-block remasking -------------------- */
         x = x.permute({0,1,3,2})   // [B,F,hidden,T]
               .flatten(1,2);       // merge F and hidden as channels
-        x = repr_dropout(feature_extractor->forward(x)); // [B,encoding,T]
+        x = repr_dropout(feature_extractor->forward(x, time_mask_b1t)); // [B,encoding,T]
+        x = remask_time_bct(x);
 
         /* ---- Output --------------------------------------------------------- */
         x = x.transpose(1,2);      // [B,T,encoding_dim]
+        x = remask_time_bte(x);
 
         return x;
     }

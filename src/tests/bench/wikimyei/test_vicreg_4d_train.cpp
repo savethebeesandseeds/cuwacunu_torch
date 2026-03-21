@@ -82,7 +82,7 @@ int main() {
     TICK(Initialize_Model);
     cuwacunu::wikimyei::vicreg_4d::VICReg_4D model(
         contract_hash,
-        "VICReg_representation",        /* component name */
+        "tsi.wikimyei.representation.vicreg", /* component name */
         training_data_loader.C_,        /* C */ 
         training_data_loader.T_,        /* T */ 
         training_data_loader.D_         /* D */ 

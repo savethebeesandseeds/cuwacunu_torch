@@ -82,6 +82,11 @@ Config MCP:
 - `hero.config.reload`
 - `hero.config.dev_nuke_reset`
 
+Config Hero write policy:
+- `hero.config.set` is in-memory only until `hero.config.save`.
+- `hero.config.dsl.set`, `hero.config.save`, `hero.config.rollback`, and `hero.config.dev_nuke_reset` require `allow_local_write=true`.
+- persisted config writes, `default.*.dsl` writes, and `hero.config.dev_nuke_reset` targets must stay inside `write_roots`.
+
 Hashimyei MCP:
 
 - `hero.hashimyei.list`
@@ -102,6 +107,19 @@ Component manifests are contract-scoped revisions and carry both
 Hashimyei can distinguish lineage origin from contract docking compatibility.
 They also carry a component `lineage_state` such as `active`, `deprecated`,
 `replaced`, or `tombstone`.
+For the current VICReg+dataloader contract surface, observation docking remains
+contract-owned even though loader shape is derived from the channel table:
+`C = count(active == true)` and `T = max(seq_length)` over active rows. Runtime
+validates those derived values against contract `__obs_channels`,
+`__obs_seq_length`, and VICReg `INPUT.{C,T}` when contract-owned observation
+DSL paths are present.
+In the checked-in defaults, the intended contract-owned public docking widths
+are `__obs_channels`, `__obs_seq_length`, `__obs_feature_dim`, and
+`__embedding_dims`; private VICReg encoder/projector widths live in VICReg DSLs.
+Runtime reuse now keys on public docking compatibility rather than an exact
+founding contract match. The manifest still records its founding contract for
+lineage/provenance, but private VICReg topology can vary across revisions as
+long as the public docking widths remain compatible.
 Each component revision also stores an immutable founding DSL bundle snapshot
 under its canonical artifact leaf at
 `.runtime/.hashimyei/tsi/.../_definition/<component_id>/...`; the

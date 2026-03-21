@@ -26,7 +26,8 @@ struct VicRegTerms {
   at::Tensor total;  // scalar [1]
   at::Tensor inv;    // MSE(x,y)
   at::Tensor var;    // variance hinge term
-  at::Tensor cov;    // off-diagonal covariance penalty (robust)
+  at::Tensor cov_raw;       // raw off-diagonal covariance penalty (robust)
+  at::Tensor cov_weighted;  // effective covariance contribution after safeguards
 };
 
 struct VicRegLoss {
@@ -82,8 +83,10 @@ struct VicRegLoss {
   }
 
   /** returns only the total loss */
-  at::Tensor operator()(const at::Tensor& x_raw, const at::Tensor& y_raw) const {
-    return forward_terms(x_raw, y_raw).total;
+  at::Tensor operator()(const at::Tensor& x_raw,
+                        const at::Tensor& y_raw,
+                        double cov_multiplier = 1.0) const {
+    return forward_terms(x_raw, y_raw, cov_multiplier).total;
   }
 
   /** Huber penalty on a vector of residuals r (elementwise), returns sum (not mean). */
@@ -97,8 +100,10 @@ struct VicRegLoss {
     return torch::where(abs_r <= d, quad, lin).sum();
   }
 
-  /** computes and return all terms (total, inv, var, cov). */
-  VicRegTerms forward_terms(const at::Tensor& x_raw, const at::Tensor& y_raw) const {
+  /** computes and returns all terms (total, inv, var, raw/weighted covariance). */
+  VicRegTerms forward_terms(const at::Tensor& x_raw,
+                            const at::Tensor& y_raw,
+                            double cov_multiplier = 1.0) const {
     // Accept [N,E] or [*,N,E]-like; flatten batch dimensions to N
     auto x = x_raw.flatten(0, x_raw.dim() - 2);
     auto y = y_raw.flatten(0, y_raw.dim() - 2);
@@ -165,17 +170,20 @@ struct VicRegLoss {
       else               w_cov = 1.0;
     }
 
-    auto total = sim_coeff * inv + std_coeff * var + (cov_coeff * w_cov) * cov_pen;
-    return VicRegTerms{ total, inv, var, cov_pen };
+    auto cov_weight = torch::tensor(cov_coeff_ * cov_multiplier * w_cov, opts);
+    auto cov_weighted = cov_weight * cov_pen;
+    auto total = sim_coeff * inv + std_coeff * var + cov_weighted;
+    return VicRegTerms{ total, inv, var, cov_pen, cov_weighted };
   }
 
   /** Helper: fetch doubles for logging (call-site in templates: use `.template`). */
-  static inline std::array<double,4> terms_as_scalar(const VicRegTerms& t) {
+  static inline std::array<double,5> terms_as_scalar(const VicRegTerms& t) {
     return {
       t.total.item<double>(),
       t.inv  .item<double>(),
       t.var  .item<double>(),
-      t.cov  .item<double>()
+      t.cov_raw.item<double>(),
+      t.cov_weighted.item<double>()
     };
   }
 
@@ -187,7 +195,8 @@ struct VicRegLoss {
        << "[loss] total=" << arr[0]
        << " inv="        << arr[1]
        << " var="        << arr[2]
-       << " cov="        << arr[3];
+       << " cov_raw="    << arr[3]
+       << " cov_eff="    << arr[4];
     return os.str();
   }
 };

@@ -3,6 +3,8 @@
 
 #include <torch/torch.h>
 
+#include <utility>
+
 #include "piaabo/torch_compat/torch_utils.h"
 
 namespace cuwacunu {
@@ -35,18 +37,34 @@ namespace vicreg_4d {
     /* ------------------------------------------------------------------
      * Forward
      *  x : [B, channels, T]                     (float)
+     *  time_mask : optional [B, 1, T] bool mask for fused-valid timesteps
      *  returns warped x of identical shape.
      *
      * 1) predict offset field Δ ∈ (‑1,1)^{B×1×T}
      * 2) build a sampling grid  g(t) = 2·t/(T−1) − 1 + Δ_t      (‑1…1)
      * 3) torch::grid_sampler  (N,C,H=1,W=T)
      * ----------------------------------------------------------------*/
-    torch::Tensor forward(const torch::Tensor &x) {
+    torch::Tensor forward(const torch::Tensor &x,
+                          c10::optional<torch::Tensor> time_mask = c10::nullopt) {
         const auto B = x.size(0);
         const auto T_len = x.size(2);
-    
+
+        const auto mask = time_mask.has_value()
+            ? time_mask.value().to(torch::kBool)
+            : torch::Tensor{};
+        auto remask = [&](torch::Tensor t) {
+            if (!mask.defined()) return t;
+            return t.masked_fill(~mask.expand_as(t), 0.0);
+        };
+
         // 1) Offset prediction (shared over channels)
-        auto offsets = torch::tanh(conv2(torch::relu(conv1(x)))); // [B, C, T]
+        auto hidden = torch::relu(conv1(x));   // [B, C, T]
+        hidden = remask(std::move(hidden));
+
+        auto offset_logits = conv2(hidden);    // [B, C, T]
+        offset_logits = remask(std::move(offset_logits));
+
+        auto offsets = torch::tanh(offset_logits);
         offsets = offsets.mean(1, /*keepdim=*/true);               // [B, 1, T]
     
         // 2) Build grid   shape [B, 1, T]
@@ -68,7 +86,7 @@ namespace vicreg_4d {
     
         // 5) Remove the extra spatial dim
         warped = warped.squeeze(2); // [B, C, T]
-        return warped;
+        return remask(std::move(warped));
     }
 };
 TORCH_MODULE(TemporalTransformer1D);

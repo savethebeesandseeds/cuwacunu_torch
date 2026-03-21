@@ -205,16 +205,16 @@ Useful MCP tools:
 - `hero.config.schema`
 - `hero.config.show`
 - `hero.config.get`
-- `hero.config.set`
+- `hero.config.set` (updates in-memory runtime config only; use `hero.config.save` to persist)
 - `hero.config.dsl.get` (read one key from `instructions/default.*.dsl`)
-- `hero.config.dsl.set` (set one key in `instructions/default.*.dsl`)
+- `hero.config.dsl.set` (writes one key in `instructions/default.*.dsl`; requires `allow_local_write=true` and target path within `write_roots`)
 - `hero.config.validate`
 - `hero.config.diff` / `hero.config.dry_run` (preview changes before save)
 - `hero.config.backups` (list snapshots)
-- `hero.config.rollback` (restore latest or selected snapshot)
-- `hero.config.save` (persists config, takes shared runtime lock, returns deterministic `cutover` metadata)
+- `hero.config.rollback` (restore latest or selected snapshot; requires `allow_local_write=true`)
+- `hero.config.save` (persists config, takes shared runtime lock, requires `allow_local_write=true`, returns deterministic `cutover` metadata)
 - `hero.config.reload`
-- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, Runtime HERO jobs root, and Hero catalogs resolved from the saved global config; refuses reset while active runtime jobs exist)
+- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, Runtime HERO jobs root, and Hero catalogs resolved from the saved global config; requires `allow_local_write=true`, requires all reset targets to stay within `write_roots`, and refuses reset while active runtime jobs exist)
 
 Runtime MCP tools:
 - `hero.runtime.start_campaign`
@@ -243,9 +243,11 @@ stdout/stderr logs.
 Runtime liveness is reconciled using boot id + process start ticks, not bare pid reuse.
 
 Deterministic policy:
-- `hero.config.ask` and `hero.config.fix` are disabled by design in current runtime mode.
 - Config HERO edits defaults only. Existing hashimyei instances are not mutated
   by `hero.config.dsl.set`; instance revisions are handled by Hashimyei HERO lineage.
+- `allow_local_write=false` blocks filesystem-mutating Config HERO tools.
+- `write_roots` constrains persisted config writes, `default.*.dsl` writes,
+  and `hero.config.dev_nuke_reset` target paths when local writes are enabled.
 - `hero.config.dev_nuke_reset` uses the saved global config on disk, not dirty
   unsaved in-memory edits.
 - `hero.config.dev_nuke_reset` fails fast while active Runtime HERO jobs or campaigns still exist under `<runtime_root>/.campaigns`.
@@ -445,23 +447,40 @@ Supported MCP tools:
   `default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`,
   `default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl`.
   Contract `__variables` are resolved across that contract-local DSL graph, so
-  docking-critical values such as input tensor shape and embedding dimensions
-  can be defined once by the contract. Changing those values changes contract
-  identity and therefore hashimyei compatibility lineage.
+  public docking values such as input tensor shape and embedding dimensions
+  can be defined once by the contract. In the checked-in VICReg defaults,
+  private encoder/projector widths now live in the VICReg-owned DSLs rather
+  than the contract wrapper. Changing contract-owned docking values still
+  changes contract identity and therefore hashimyei compatibility lineage.
   Runtime also derives an explicit contract docking signature from the
-  compatible circuit set, contract `__variables`, and docking-bearing contract
-  DSL surfaces (circuit, VICReg, VICReg network design, and contract-owned
+  compatible circuit set, contract public docking `__variables`, and
+  contract-owned docking surfaces (circuit and contract-owned
   observation/channel DSLs when present). Component manifests persist that
   digest as `docking_signature_sha256_hex`, alongside a contract-scoped
-  `lineage_state`.
+  `lineage_state`. Identity is keyed by stable surface ids plus resolved
+  content hashes; local checkout-root path spellings are retained for runtime
+  diagnostics, but do not change the digest by themselves.
   When wave reuses an existing component hashimyei, runtime validates that the
-  selected component manifest belongs to the same contract and that its
-  `docking_signature_sha256_hex` matches the current contract before accepting
-  the load.
+  selected component manifest has a compatible public docking signature before
+  accepting the load. The founding contract hash remains stored as provenance
+  in the manifest, but it is no longer the hard runtime acceptance gate.
   When contract-owned observation/channel DSL paths are present together with a
   VICReg network design, contract validation also checks that observation
-  active-channel count and max sequence length match `INPUT.C` and `INPUT.T`,
+  active-channel count matches contract `__obs_channels` and `INPUT.C`, that
+  max active `seq_length` matches contract `__obs_seq_length` and `INPUT.T`,
   and that contract `__obs_feature_dim` matches `INPUT.D` when declared.
+  In the current model, the observation-channel table is the source of truth
+  for loader-derived docking values:
+  `C = count(active == true)` and
+  `T = max(seq_length) over active rows`.
+  `__embedding_dims` remains a contract-owned docking width on the VICReg
+  output side for downstream component compatibility.
+  Runtime load now allows VICReg checkpoint-private topology to differ from
+  the current default constructor shape as long as the public docking widths
+  remain compatible. In practice, that means private encoder/projector widths
+  may vary across component revisions, while `__obs_channels`,
+  `__obs_seq_length`, `__obs_feature_dim`, and `__embedding_dims` remain the
+  enforced public docking boundary.
   Contract circuit payload declares one or more compatible named circuits, and
   the operational selector is wave-local `CIRCUIT: <circuit_name>;`.
   If a contract exposes multiple circuits and wave omits `CIRCUIT`, runtime
@@ -533,6 +552,7 @@ Supported MCP tools:
   `default.tsi.wikimyei.representation.vicreg.dsl`.
 - `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` (`[COMPONENT_PARAMS]`), not by `default.tsi.wikimyei.representation.vicreg.dsl`.
 - VICReg train/eval enable is owned by wave `WIKIMYEI ... JKIMYEI.HALT_TRAIN` together with root `WAVE.MODE` train bit; `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` no longer defines a `vicreg_train` key.
+- VICReg `[AUGMENTATIONS]` now uses canonical field `time_warp_curve` for the base temporal warp selector. `curve_param`, `noise_scale`, and `smoothing_kernel_size` are the knobs that shape the actual time warp; legacy field name `name` is still accepted for backward compatibility.
 - Embedding-sequence sidecars are now owned by
   `default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`, not by
   silent `piaabo` defaults. The module config controls

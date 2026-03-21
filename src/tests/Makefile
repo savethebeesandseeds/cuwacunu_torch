@@ -74,7 +74,7 @@ JKIMYEI := jk_setup
 $(foreach t,$(JKIMYEI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/jkimyei)))
 
 # ------------------------------ wikimyei/VICReg ------------------------------
-VICREG := vicreg_4d_train vicreg_4d_projector_gpu_vs_cpu vicreg_4d_save_and_load
+VICREG := vicreg_4d_train vicreg_4d_projector_gpu_vs_cpu vicreg_4d_save_and_load vicreg_4d_phase1_stabilization
 $(foreach t,$(VICREG),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
 
 # ------------------------------ wikimyei/MDN ---------------------------------

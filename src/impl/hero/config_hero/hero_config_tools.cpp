@@ -29,8 +29,6 @@
 #include "iitepi/contract_space_t.h"
 
 namespace {
-constexpr const char* kDeterministicOnlyMessage =
-    "hero.config.ask and hero.config.fix are disabled in deterministic mode";
 constexpr const char* kMcpServerName = "hero_config_mcp";
 constexpr const char* kMcpServerVersion = "0.5.0";
 constexpr const char* kDefaultMcpProtocolVersion = "2025-03-26";
@@ -38,6 +36,8 @@ constexpr const char* kMcpInitializeInstructions =
     "Use tools/list for tool schemas. Use tools/call with hero.config.*.";
 constexpr const char* kConfigDslScopeErrorTag = "E_CONFIG_DSL_SCOPE";
 constexpr int kConfigDslScopeErrorCode = -32041;
+constexpr const char* kConfigWritePolicyErrorTag = "E_CONFIG_WRITE_POLICY";
+constexpr int kConfigWritePolicyErrorCode = -32042;
 constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 constexpr const char* kCatalogFilename = "hashimyei_catalog.idydb";
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
@@ -62,6 +62,22 @@ bool g_jsonrpc_use_content_length_framing = false;
     return static_cast<char>(std::tolower(c));
   });
   return out;
+}
+
+[[nodiscard]] bool parse_bool_ascii(std::string_view raw, bool* out) {
+  if (!out) return false;
+  const std::string lowered = lowercase_copy(trim_ascii(raw));
+  if (lowered == "true" || lowered == "1" || lowered == "yes" ||
+      lowered == "on") {
+    *out = true;
+    return true;
+  }
+  if (lowered == "false" || lowered == "0" || lowered == "no" ||
+      lowered == "off") {
+    *out = false;
+    return true;
+  }
+  return false;
 }
 
 [[nodiscard]] std::filesystem::path resolve_path_near_config(
@@ -327,6 +343,169 @@ enum class dsl_path_resolution_error_t {
   }
 
   *out_path = resolved;
+  return true;
+}
+
+[[nodiscard]] std::string make_write_policy_error(std::string_view detail) {
+  return std::string(kConfigWritePolicyErrorTag) + ": " + std::string(detail);
+}
+
+[[nodiscard]] bool collect_allowed_write_roots(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    std::vector<std::filesystem::path>* out_roots, std::string* out_error) {
+  if (out_error) out_error->clear();
+  bool allow_local_write = false;
+  const std::string allow_raw = trim_ascii(store.get_or_default("allow_local_write"));
+  if (!parse_bool_ascii(allow_raw, &allow_local_write)) {
+    if (out_error) {
+      *out_error =
+          make_write_policy_error("invalid allow_local_write value: " + allow_raw);
+    }
+    return false;
+  }
+  if (!allow_local_write) {
+    if (out_error) {
+      *out_error =
+          make_write_policy_error("local filesystem mutation denied: allow_local_write=false");
+    }
+    return false;
+  }
+  if (!out_roots) return true;
+
+  out_roots->clear();
+  const std::string roots_raw = trim_ascii(store.get_or_default("write_roots"));
+  if (roots_raw.empty()) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "local filesystem mutation denied: write_roots is empty");
+    }
+    return false;
+  }
+
+  std::size_t start = 0;
+  while (start <= roots_raw.size()) {
+    const std::size_t comma = roots_raw.find(',', start);
+    const std::string token =
+        trim_ascii(roots_raw.substr(start, comma - start));
+    if (!token.empty()) {
+      const std::filesystem::path resolved =
+          resolve_path_near_config(token, store.config_path());
+      if (!resolved.empty()) {
+        out_roots->push_back(resolved.lexically_normal());
+      }
+    }
+    if (comma == std::string::npos) break;
+    start = comma + 1;
+  }
+
+  if (out_roots->empty()) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "local filesystem mutation denied: write_roots resolved to no usable paths");
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool enforce_write_target_allowed(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    const std::filesystem::path& raw_target, std::string* out_error) {
+  if (out_error) out_error->clear();
+  std::vector<std::filesystem::path> allowed_roots{};
+  std::string err{};
+  if (!collect_allowed_write_roots(store, &allowed_roots, &err)) {
+    if (out_error) *out_error = std::move(err);
+    return false;
+  }
+
+  std::filesystem::path target = raw_target;
+  if (!target.is_absolute()) {
+    target = resolve_path_near_config(target.string(), store.config_path());
+  }
+  target = target.lexically_normal();
+  for (const auto& root : allowed_roots) {
+    if (path_is_within(root, target)) return true;
+  }
+
+  if (out_error) {
+    *out_error = make_write_policy_error("write target escapes write_roots: " +
+                                         target.string());
+  }
+  return false;
+}
+
+[[nodiscard]] bool enforce_runtime_config_write_policy(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!enforce_write_target_allowed(store, store.config_path(), out_error)) {
+    return false;
+  }
+
+  bool backup_enabled = true;
+  const std::string backup_enabled_raw =
+      trim_ascii(store.get_or_default("backup_enabled"));
+  if (!backup_enabled_raw.empty() &&
+      !parse_bool_ascii(backup_enabled_raw, &backup_enabled)) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "invalid backup_enabled value: " + backup_enabled_raw);
+    }
+    return false;
+  }
+  if (!backup_enabled) return true;
+
+  const std::string backup_dir_raw = trim_ascii(store.get_or_default("backup_dir"));
+  if (backup_dir_raw.empty()) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "backup_dir must be non-empty when backup_enabled=true");
+    }
+    return false;
+  }
+  const std::filesystem::path backup_dir =
+      resolve_path_near_config(backup_dir_raw, store.config_path());
+  if (!enforce_write_target_allowed(store, backup_dir, out_error)) {
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool enforce_runtime_reset_targets_write_policy(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    const cuwacunu::hero::runtime_dev::runtime_reset_targets_t& targets,
+    std::string* out_error) {
+  if (out_error) out_error->clear();
+
+  std::string err{};
+  if (!collect_allowed_write_roots(store, nullptr, &err)) {
+    if (out_error) *out_error = std::move(err);
+    return false;
+  }
+
+  const auto check_target = [&](const std::filesystem::path& path,
+                                std::string_view label) -> bool {
+    if (path.empty()) return true;
+    std::string target_err{};
+    if (enforce_write_target_allowed(store, path, &target_err)) return true;
+    if (out_error) {
+      *out_error = make_write_policy_error(std::string(label) +
+                                           " escapes write_roots: " +
+                                           path.lexically_normal().string());
+    }
+    return false;
+  };
+
+  if (!check_target(targets.runtime_campaigns_root, "runtime campaigns root")) {
+    return false;
+  }
+  for (const auto& root : targets.store_roots) {
+    if (!check_target(root, "runtime store root")) return false;
+  }
+  for (const auto& catalog : targets.catalog_paths) {
+    if (!check_target(catalog, "runtime catalog path")) return false;
+  }
   return true;
 }
 
@@ -2138,6 +2317,11 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
     if (out_error_message) *out_error_message = err;
     return false;
   }
+  if (!enforce_write_target_allowed(*store, dsl_path, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
   std::string text{};
   if (!read_text_file(dsl_path.string(), &text, &err)) {
     if (out_error_code) *out_error_code = -32603;
@@ -2305,6 +2489,11 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
 
   std::string selected;
   std::string err;
+  if (!enforce_runtime_config_write_policy(*store, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
   if (!store->rollback_to_backup(selector, &selected, &err)) {
     if (out_error_code) *out_error_code = -32603;
     if (out_error_message) *out_error_message = err;
@@ -2329,6 +2518,11 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   std::string err;
   if (!store->preview_save(&preview, &err)) {
     if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (!enforce_runtime_config_write_policy(*store, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
     if (out_error_message) *out_error_message = err;
     return false;
   }
@@ -2375,11 +2569,21 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
     std::string* out_error_message) {
   (void)tool_name;
   (void)request_json;
-  cuwacunu::hero::runtime_dev::runtime_reset_targets_t targets{};
   std::string err;
+  if (!collect_allowed_write_roots(*store, nullptr, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  cuwacunu::hero::runtime_dev::runtime_reset_targets_t targets{};
   if (!cuwacunu::hero::runtime_dev::resolve_runtime_reset_targets_from_global_config(
           store->global_config_path(), &targets, &err)) {
     if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (!enforce_runtime_reset_targets_write_policy(*store, targets, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
     if (out_error_message) *out_error_message = err;
     return false;
   }
@@ -2446,11 +2650,6 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   if (descriptor != nullptr) {
     return descriptor->handler(tool_name, request_json, store, out_result_json,
                                out_error_code, out_error_message);
-  }
-  if (tool_name == "hero.config.ask" || tool_name == "hero.config.fix") {
-    if (out_error_code) *out_error_code = -32601;
-    if (out_error_message) *out_error_message = kDeterministicOnlyMessage;
-    return false;
   }
 
   if (out_error_code) *out_error_code = -32601;

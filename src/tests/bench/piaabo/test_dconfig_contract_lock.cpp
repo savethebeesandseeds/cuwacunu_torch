@@ -8,6 +8,7 @@
 
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "camahjucunu/dsl/runtime_binding_instruction/runtime_binding_instruction.h"
+#include "iitepi/contract_space_t.h"
 #include "iitepi/observation_contract_wave_paths.h"
 #include "piaabo/dconfig.h"
 
@@ -27,6 +28,114 @@ void write_text(const fs::path& path, const std::string& content) {
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out) throw std::runtime_error("cannot open file for write: " + path.string());
   out << content;
+}
+
+void replace_all(std::string* text, std::string_view from, std::string_view to) {
+  if (!text) throw std::runtime_error("replace_all received null text");
+  if (from.empty()) throw std::runtime_error("replace_all requires non-empty from");
+  std::size_t pos = 0;
+  while ((pos = text->find(from, pos)) != std::string::npos) {
+    text->replace(pos, from.size(), to);
+    pos += to.size();
+  }
+}
+
+fs::path write_relative_default_contract_bundle(const fs::path& root) {
+  fs::create_directories(root);
+  const fs::path instructions_root = "/cuwacunu/src/config/instructions";
+  const auto copy_instruction = [&](const char* filename) {
+    write_text(root / filename, read_text(instructions_root / filename));
+  };
+
+  std::string contract_text =
+      read_text(instructions_root / "default.iitepi.contract.dsl");
+  replace_all(
+      &contract_text,
+      "/cuwacunu/src/config/instructions/default.iitepi.contract.circuit.dsl",
+      "default.iitepi.contract.circuit.dsl");
+  replace_all(
+      &contract_text,
+      "/cuwacunu/src/config/instructions/default.tsi.source.dataloader.sources.dsl",
+      "default.tsi.source.dataloader.sources.dsl");
+  replace_all(
+      &contract_text,
+      "/cuwacunu/src/config/instructions/default.tsi.source.dataloader.channels.dsl",
+      "default.tsi.source.dataloader.channels.dsl");
+  write_text(root / "default.iitepi.contract.dsl", contract_text);
+
+  std::string vicreg_text = read_text(
+      instructions_root / "default.tsi.wikimyei.representation.vicreg.dsl");
+  replace_all(
+      &vicreg_text,
+      "/cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl",
+      "default.tsi.wikimyei.representation.vicreg.network_design.dsl");
+  replace_all(
+      &vicreg_text,
+      "/cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl",
+      "default.tsi.wikimyei.representation.vicreg.jkimyei.dsl");
+  write_text(root / "default.tsi.wikimyei.representation.vicreg.dsl",
+             vicreg_text);
+
+  for (const char* filename : {
+           "default.iitepi.contract.circuit.dsl",
+           "default.tsi.wikimyei.representation.vicreg.network_design.dsl",
+           "default.tsi.wikimyei.representation.vicreg.jkimyei.dsl",
+           "default.tsi.wikimyei.inference.mdn.value_estimation.dsl",
+           "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl",
+           "default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl",
+           "default.tsi.source.dataloader.sources.dsl",
+           "default.tsi.source.dataloader.channels.dsl",
+       }) {
+    copy_instruction(filename);
+  }
+
+  return root / "default.iitepi.contract.dsl";
+}
+
+fs::path write_relative_private_vicreg_override_bundle(const fs::path& root) {
+  const fs::path contract_path = write_relative_default_contract_bundle(root);
+
+  std::string vicreg_text =
+      read_text(root / "default.tsi.wikimyei.representation.vicreg.dsl");
+  replace_all(&vicreg_text,
+              "channel_expansion_dim(1,4096):int = 64",
+              "channel_expansion_dim(1,4096):int = 96");
+  replace_all(&vicreg_text,
+              "fused_feature_dim(1,4096):int = 32",
+              "fused_feature_dim(1,4096):int = 48");
+  replace_all(&vicreg_text,
+              "encoder_hidden_dims(1,4096):int = 24",
+              "encoder_hidden_dims(1,4096):int = 36");
+  replace_all(&vicreg_text,
+              "encoder_depth(1,512):int = 10",
+              "encoder_depth(1,512):int = 6");
+  replace_all(&vicreg_text,
+              "projector_mlp_spec:str = 128-256-128",
+              "projector_mlp_spec:str = 72-192-72");
+  write_text(root / "default.tsi.wikimyei.representation.vicreg.dsl",
+             vicreg_text);
+
+  std::string network_design_text = read_text(
+      root / "default.tsi.wikimyei.representation.vicreg.network_design.dsl");
+  replace_all(&network_design_text,
+              "channel_expansion_dim:int = 64;",
+              "channel_expansion_dim:int = 96;");
+  replace_all(&network_design_text,
+              "fused_feature_dim:int = 32;",
+              "fused_feature_dim:int = 48;");
+  replace_all(&network_design_text,
+              "hidden_dims:int = 24;",
+              "hidden_dims:int = 36;");
+  replace_all(&network_design_text,
+              "depth:int = 10;",
+              "depth:int = 6;");
+  replace_all(&network_design_text,
+              "dims:arr[int] = 72,128,256,128;",
+              "dims:arr[int] = 72,192,72;");
+  write_text(root / "default.tsi.wikimyei.representation.vicreg.network_design.dsl",
+             network_design_text);
+
+  return contract_path;
 }
 
 void set_ini_key_value(const fs::path& file_path,
@@ -240,6 +349,77 @@ int main() try {
   }
   write_text(obs_dsl_path, obs_dsl_original);
   cuwacunu::iitepi::config_space_t::update_config();
+
+  // Case 5: equivalent relative contract bundles under different roots share one identity.
+  {
+    const fs::path path_stability_root =
+        fs::temp_directory_path() / "dconfig_contract_lock_path_stability";
+    std::error_code cleanup_ec{};
+    fs::remove_all(path_stability_root, cleanup_ec);
+    const fs::path contract_a =
+        write_relative_default_contract_bundle(path_stability_root / "root_a");
+    const fs::path contract_b =
+        write_relative_default_contract_bundle(path_stability_root / "root_b");
+    if (fs::weakly_canonical(contract_a) == fs::weakly_canonical(contract_b)) {
+      std::cerr << "[dconfig_contract_lock] path-stability fixture roots collided\n";
+      return 1;
+    }
+
+    const auto hash_a =
+        cuwacunu::iitepi::contract_space_t::register_contract_file(
+            contract_a.string());
+    const auto hash_b =
+        cuwacunu::iitepi::contract_space_t::register_contract_file(
+            contract_b.string());
+    if (hash_a != hash_b) {
+      std::cerr << "[dconfig_contract_lock] equivalent contract bundles hashed differently\n";
+      return 1;
+    }
+
+    fs::remove_all(path_stability_root, cleanup_ec);
+  }
+
+  // Case 6: private VICReg topology changes preserve public docking compatibility.
+  {
+    const fs::path docking_root =
+        fs::temp_directory_path() / "dconfig_contract_lock_public_docking";
+    std::error_code cleanup_ec{};
+    fs::remove_all(docking_root, cleanup_ec);
+
+    const fs::path contract_public =
+        write_relative_default_contract_bundle(docking_root / "public");
+    const fs::path contract_private =
+        write_relative_private_vicreg_override_bundle(docking_root / "private");
+
+    const auto public_hash =
+        cuwacunu::iitepi::contract_space_t::register_contract_file(
+            contract_public.string());
+    const auto private_hash =
+        cuwacunu::iitepi::contract_space_t::register_contract_file(
+            contract_private.string());
+    if (public_hash == private_hash) {
+      std::cerr
+          << "[dconfig_contract_lock] private VICReg topology unexpectedly changed exact contract identity\n";
+      return 1;
+    }
+
+    const auto public_snapshot =
+        cuwacunu::iitepi::contract_space_t::contract_itself(public_hash);
+    const auto private_snapshot =
+        cuwacunu::iitepi::contract_space_t::contract_itself(private_hash);
+    if (!public_snapshot || !private_snapshot) {
+      std::cerr << "[dconfig_contract_lock] missing contract snapshot for public docking comparison\n";
+      return 1;
+    }
+    if (public_snapshot->signature.docking_signature_sha256_hex !=
+        private_snapshot->signature.docking_signature_sha256_hex) {
+      std::cerr
+          << "[dconfig_contract_lock] private VICReg topology changed public docking signature\n";
+      return 1;
+    }
+
+    fs::remove_all(docking_root, cleanup_ec);
+  }
 
   fs::remove(alt_campaign_cfg_path);
   global_restore.restore = false;

@@ -15,6 +15,7 @@ TEST_DEFAULT_LDLIBS :=
 # 3) Tests (build + run aliases)
 $(eval $(call TEST_ONEFILE, test_dconfig,                 test_dconfig.cpp,                 $(libcommon_a)))
 $(eval $(call TEST_ONEFILE, test_dconfig_contract_lock,   test_dconfig_contract_lock.cpp,   $(libtorch_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl)))
+$(eval $(call TEST_ONEFILE, test_hero_config_policy,      test_hero_config_policy.cpp,      $(libtorch_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_dsecurity,               test_dsecurity.cpp,               $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_dencryption,             test_dencryption.cpp,             $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)))
 $(eval $(call TEST_ONEFILE, test_djson_parsing,           test_djson_parsing.cpp,           $(libcommon_a)))
@@ -29,6 +30,8 @@ $(eval $(call TEST_ONEFILE, test_bnf_instruction_parser, test_bnf_instruction_pa
 $(TEST_OUT)/test_dsecurity:               INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_dconfig_contract_lock:   INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_dconfig_contract_lock:   INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_hero_config_policy:      INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
+$(TEST_OUT)/test_hero_config_policy:      INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 $(TEST_OUT)/test_dencryption:             INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 
 # 5) Aggregate: all
@@ -36,6 +39,7 @@ $(TEST_OUT)/test_dencryption:             INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 all: \
 	$(TEST_OUT)/test_dconfig \
 	$(TEST_OUT)/test_dconfig_contract_lock \
+	$(TEST_OUT)/test_hero_config_policy \
 	$(TEST_OUT)/test_dsecurity \
 	$(TEST_OUT)/test_dencryption \
 	$(TEST_OUT)/test_djson_parsing \
@@ -53,6 +57,7 @@ all: \
 run: \
 	run-test_dconfig \
 	run-test_dconfig_contract_lock \
+	run-test_hero_config_policy \
 	run-test_dsecurity \
 	run-test_dencryption \
 	run-test_djson_parsing \
@@ -68,6 +73,7 @@ run: \
 clean:
 	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_dconfig \
 	       $(TEST_OUT)/test_dconfig_contract_lock \
+	       $(TEST_OUT)/test_hero_config_policy \
 	       $(TEST_OUT)/test_dsecurity \
 	       $(TEST_OUT)/test_dencryption \
 	       $(TEST_OUT)/test_djson_parsing \

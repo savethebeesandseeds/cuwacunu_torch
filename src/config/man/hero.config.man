@@ -49,7 +49,7 @@ required = true
 default = false
 range = true|false
 allowed = true,false
-nuance = write permission gate for deterministic mutations
+nuance = gates filesystem-mutating tools such as hero.config.dsl.set, hero.config.save, hero.config.rollback, and hero.config.dev_nuke_reset
 
 [FIELD write_roots]
 key = write_roots
@@ -59,7 +59,7 @@ required = true
 default = /tmp
 range = csv path list
 allowed = comma-separated paths
-nuance = effective only when allow_local_write=true
+nuance = enforced for config file writes, default.*.dsl writes, and dev_nuke_reset runtime targets when allow_local_write=true
 
 [FIELD backup_enabled]
 key = backup_enabled
@@ -76,7 +76,7 @@ key = backup_dir
 scope = HERO runtime config
 type = path
 required = true
-default = /cuwacunu/src/config/.backups/hero.config
+default = /cuwacunu/.backups/hero.config
 range = directory path
 allowed = absolute_or_relative path
 nuance = backup snapshot destination directory; created on first save if missing

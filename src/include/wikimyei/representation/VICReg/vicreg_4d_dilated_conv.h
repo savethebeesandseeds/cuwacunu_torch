@@ -2,6 +2,9 @@
 #pragma once
 #include <torch/torch.h>
 
+#include <utility>
+#include <vector>
+
 namespace cuwacunu {
 namespace wikimyei {
 namespace vicreg_4d {
@@ -85,13 +88,25 @@ struct ConvBlockImpl : public torch::nn::Cloneable<ConvBlockImpl> {
         }
     }
 
-    torch::Tensor forward(torch::Tensor x) {
+    torch::Tensor forward(torch::Tensor x,
+                          c10::optional<torch::Tensor> time_mask = c10::nullopt) {
+        const auto mask = time_mask.has_value()
+            ? time_mask.value().to(torch::kBool)
+            : torch::Tensor{};
+        auto remask = [&](torch::Tensor t) {
+            if (!mask.defined()) return t;
+            return t.masked_fill(~mask.expand_as(t), 0.0);
+        };
+
         auto residual = has_projector ? projector->forward(x) : x;
         x = torch::gelu(x);
         x = conv1->forward(x);
+        x = remask(std::move(x));
         x = torch::gelu(x);
         x = conv2->forward(x);
-        return x + residual;
+        x = remask(std::move(x));
+        x = x + residual;
+        return remask(std::move(x));
     }
 };
 TORCH_MODULE(ConvBlock);
@@ -99,48 +114,48 @@ TORCH_MODULE(ConvBlock);
 // Dilated convolution encoder
 struct DilatedConvEncoderImpl : public torch::nn::Cloneable<DilatedConvEncoderImpl> {
     int in_channels;
-    // --- CHANGE THIS ---
-    // Store a copy, not a reference
     std::vector<int> channels;
-    // --- END CHANGE ---
     int kernel_size;
+    torch::nn::Sequential net{nullptr};
 
-    torch::nn::Sequential net{nullptr}; // Initialize explicitly
-
-    // Constructor takes const& but initializes the member copy
     DilatedConvEncoderImpl(int in_channels_, const std::vector<int>& channels_, int kernel_size_)
     :   in_channels(in_channels_),
-        // --- CHANGE THIS ---
-        // Initialize the member vector by copying from the input argument
         channels(channels_),
-        // --- END CHANGE ---
         kernel_size(kernel_size_)
     {
-        // According to Cloneable pattern, initialization should happen in reset()
         reset();
     }
 
     void reset() override {
-        // Now safely uses the member copy of channels
-        torch::nn::Sequential blocks;
-        int current_channels = in_channels; // Use member in_channels
-        for (size_t i = 0; i < channels.size(); ++i) { // Use member channels
+        torch::nn::Sequential seq;
+        int current_channels = in_channels;
+        for (size_t i = 0; i < channels.size(); ++i) {
             int in_ch = current_channels;
             int out_ch = channels[i];
             int dilation = 1 << i; // 2^i dilation
             bool final = (i == channels.size() - 1);
 
-            // Use member kernel_size
-            blocks->push_back(ConvBlock(in_ch, out_ch, kernel_size, dilation, final));
+            seq->push_back(ConvBlock(in_ch, out_ch, kernel_size, dilation, final));
             current_channels = out_ch;
         }
-        // Assign the newly created blocks to net and register
-        net = register_module("net", blocks);
+        net = register_module("net", seq);
     }
 
-    torch::Tensor forward(torch::Tensor x) {
-         TORCH_CHECK(net, "'net' submodule not initialized in DilatedConvEncoderImpl");
-         return net->forward(x);
+    torch::Tensor forward(torch::Tensor x,
+                          c10::optional<torch::Tensor> time_mask = c10::nullopt) {
+         auto remask = [&](torch::Tensor t) {
+             if (!time_mask.has_value()) return t;
+             auto mask = time_mask.value().to(torch::kBool);
+             return t.masked_fill(~mask.expand_as(t), 0.0);
+         };
+
+         TORCH_CHECK(net, "[DilatedConvEncoder] 'net' submodule not initialized");
+         x = remask(x);
+         for (size_t i = 0; i < net->size(); ++i) {
+             x = net->ptr<ConvBlockImpl>(i)->forward(x, time_mask);
+             x = remask(x);
+         }
+         return remask(x);
     }
 };
 TORCH_MODULE(DilatedConvEncoder);

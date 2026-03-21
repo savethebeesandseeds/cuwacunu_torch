@@ -24,6 +24,16 @@ std::string read_file(const std::filesystem::path& path) {
   return content;
 }
 
+void replace_all(std::string* text, std::string_view from, std::string_view to) {
+  assert(text != nullptr);
+  assert(!from.empty());
+  std::size_t pos = 0;
+  while ((pos = text->find(from, pos)) != std::string::npos) {
+    text->replace(pos, from.size(), to);
+    pos += to.size();
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -196,6 +206,41 @@ int main() {
   assert(fs::exists(campaign_snapshot.contract_dsl_path));
   assert(fs::exists(campaign_snapshot.wave_dsl_path));
   assert(read_file(campaign_snapshot.wave_dsl_path).find("SYMBOL: ADAUSDT;") !=
+         std::string::npos);
+
+  const fs::path default_campaign_override_path =
+      root / "default_campaign_override.dsl";
+  std::string default_campaign_override =
+      read_file("/cuwacunu/src/config/instructions/default.iitepi.campaign.dsl");
+  replace_all(&default_campaign_override,
+              "IMPORT_CONTRACT_FILE \"default.iitepi.contract.dsl\";",
+              "IMPORT_CONTRACT_FILE "
+              "\"/cuwacunu/src/config/instructions/default.iitepi.contract.dsl\";");
+  replace_all(&default_campaign_override,
+              "IMPORT_WAVE_FILE \"default.iitepi.wave.dsl\";",
+              "IMPORT_WAVE_FILE "
+              "\"/cuwacunu/src/config/instructions/default.iitepi.wave.dsl\";");
+  replace_all(&default_campaign_override, "__sampler = sequential;",
+              "__sampler = random;");
+  replace_all(&default_campaign_override, "__workers = 0;", "__workers = 2;");
+  replace_all(&default_campaign_override, "__symbol = BTCUSDT;",
+              "__symbol = ADAUSDT;");
+  write_file(default_campaign_override_path, default_campaign_override);
+
+  ok = cuwacunu::hero::wave_contract_binding_runtime::
+      prepare_campaign_binding_snapshot(default_campaign_override_path,
+                                        "bind_train_vicreg_primary",
+                                        root / "default_campaign_job",
+                                        &campaign_snapshot, &error);
+  assert(ok);
+  assert(error.empty());
+  const std::string default_wave_snapshot_text =
+      read_file(campaign_snapshot.wave_dsl_path);
+  assert(default_wave_snapshot_text.find("SAMPLER: random;") !=
+         std::string::npos);
+  assert(default_wave_snapshot_text.find("WORKERS: 2;") !=
+         std::string::npos);
+  assert(default_wave_snapshot_text.find("SYMBOL: ADAUSDT;") !=
          std::string::npos);
 
   fs::remove_all(root, ec);

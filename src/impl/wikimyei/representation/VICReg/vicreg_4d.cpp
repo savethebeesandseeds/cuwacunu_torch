@@ -528,11 +528,12 @@ VICReg_4D::VICReg_4D(
 
 VICReg_4D::VICReg_4D(
                      const cuwacunu::iitepi::contract_hash_t& contract_hash_,
+                     const std::string& component_name_,
                      const std::string& checkpoint_path,
                      torch::Device override_device)
 : VICReg_4D(
     contract_hash_,
-    read_component_name(checkpoint_path),
+    component_name_,
     read_i64_strict(checkpoint_path, "meta/C"),
     read_i64_strict(checkpoint_path, "meta/T"),
     read_i64_strict(checkpoint_path, "meta/D"),
@@ -551,6 +552,16 @@ VICReg_4D::VICReg_4D(
   this->load(checkpoint_path);
 }
 
+VICReg_4D::VICReg_4D(
+                     const cuwacunu::iitepi::contract_hash_t& contract_hash_,
+                     const std::string& checkpoint_path,
+                     torch::Device override_device)
+: VICReg_4D(
+    contract_hash_,
+    read_component_name(checkpoint_path),
+    checkpoint_path,
+    override_device) {}
+
 void VICReg_4D::reset_runtime_training_state() {
   clear_pending_runtime_state_(/*reset_optimizer_steps=*/true);
 }
@@ -567,6 +578,7 @@ void VICReg_4D::clear_pending_runtime_state_(bool reset_optimizer_steps) {
     runtime_state.optimizer_steps = 0;
     runtime_state.trained_epochs = 0;
     runtime_state.trained_samples = 0;
+    runtime_state.skipped_batches = 0;
   }
 }
 
@@ -711,6 +723,11 @@ VICReg_4D::train_step_result_t VICReg_4D::train_one_batch(
   auto k2 = k12.narrow(/*dim=*/0, /*start=*/b, /*length=*/b);
 
   auto valid_bt = (m1 & m2).all(/*dim=*/1);
+  auto union_bt = (m1 | m2).any(/*dim=*/1);
+  const int64_t shared_valid_steps =
+      valid_bt.sum().template item<int64_t>();
+  const int64_t union_valid_steps =
+      union_bt.sum().template item<int64_t>();
   auto expand_E = [&](int64_t E) {
     return valid_bt.unsqueeze(-1).expand({k1.size(0), k1.size(1), E});
   };
@@ -721,6 +738,15 @@ VICReg_4D::train_step_result_t VICReg_4D::train_one_batch(
 
   const int64_t N_eff = k1v.size(0);
   if (N_eff <= 1) {
+    ++runtime_state.skipped_batches;
+    if (verbose) {
+      log_info(
+          "[vicreg_overlap] skipped=true shared_steps=%lld union_steps=%lld N_eff=%lld skipped_batches=%llu\n",
+          static_cast<long long>(shared_valid_steps),
+          static_cast<long long>(union_valid_steps),
+          static_cast<long long>(N_eff),
+          static_cast<unsigned long long>(runtime_state.skipped_batches));
+    }
     result.skipped = true;
     return result;
   }
@@ -728,29 +754,35 @@ VICReg_4D::train_step_result_t VICReg_4D::train_one_batch(
   auto z1v = _projector_net->forward_flat(k1v);
   auto z2v = _projector_net->forward_flat(k2v);
 
-  auto terms = loss_obj->forward_terms(z1v, z2v);
   constexpr int cov_ramp_iters = 3000;
   const double cov_boost = (runtime_state.optimizer_steps < cov_ramp_iters)
       ? (3.0 - 2.0 * (static_cast<double>(runtime_state.optimizer_steps) /
                       static_cast<double>(cov_ramp_iters)))
       : 1.0;
-  auto loss = loss_obj->sim_coeff_ * terms.inv +
-              loss_obj->std_coeff_ * terms.var +
-              (loss_obj->cov_coeff_ * cov_boost) * terms.cov;
+  auto terms = loss_obj->forward_terms(z1v, z2v, cov_boost);
+  auto loss = terms.total;
 
   const double loss_scalar = loss.template item<double>();
   if (verbose && (runtime_state.optimizer_steps % 500 == 0)) {
-    log_info("[loss] optim=%.6f inv=%.6f var=%.6f cov=%.6f (cov_boost=%.2f)\n",
+    log_info("[loss] optim=%.6f inv=%.6f var=%.6f cov_raw=%.6f cov_eff=%.6f (cov_boost=%.2f)\n",
              loss_scalar,
              terms.inv.template item<double>(),
              terms.var.template item<double>(),
-             terms.cov.template item<double>(),
+             terms.cov_raw.template item<double>(),
+             terms.cov_weighted.template item<double>(),
              cov_boost);
+    log_info(
+        "[vicreg_overlap] skipped=false shared_steps=%lld union_steps=%lld N_eff=%lld skipped_batches=%llu\n",
+        static_cast<long long>(shared_valid_steps),
+        static_cast<long long>(union_valid_steps),
+        static_cast<long long>(N_eff),
+        static_cast<unsigned long long>(runtime_state.skipped_batches));
   }
 
   if (!std::isfinite(loss_scalar)) {
     if (training_policy.skip_on_nan) {
       clear_pending_runtime_state_(/*reset_optimizer_steps=*/false);
+      ++runtime_state.skipped_batches;
       result.skipped = true;
       return result;
     }

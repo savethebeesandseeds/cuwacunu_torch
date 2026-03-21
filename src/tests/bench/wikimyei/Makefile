@@ -18,6 +18,7 @@ COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_tor
 $(eval $(call TEST_ONEFILE, test_vicreg_4d_projector_gpu_vs_cpu, test_vicreg_4d_projector_gpu_vs_cpu.cpp, $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_vicreg_4d_train,         test_vicreg_4d_train.cpp,         $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_vicreg_4d_save_and_load, test_vicreg_4d_save_and_load.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_vicreg_4d_phase1_stabilization, test_vicreg_4d_phase1_stabilization.cpp, $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_mixture_density_network,         test_mixture_density_network.cpp,         $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_expected_value,                  test_expected_value.cpp,                  $(COMMON_LINK)))
 
@@ -32,6 +33,7 @@ all: \
 	$(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu \
 	$(TEST_OUT)/test_vicreg_4d_train \
 	$(TEST_OUT)/test_vicreg_4d_save_and_load \
+	$(TEST_OUT)/test_vicreg_4d_phase1_stabilization \
 	$(TEST_OUT)/test_mixture_density_network \
 	$(TEST_OUT)/test_expected_value
 	@$(LOG_SUCCESS)
@@ -42,6 +44,7 @@ run: \
 	run-test_vicreg_4d_projector_gpu_vs_cpu \
 	run-test_vicreg_4d_train \
 	run-test_vicreg_4d_save_and_load \
+	run-test_vicreg_4d_phase1_stabilization \
 	run-test_mixture_density_network \
 	run-test_expected_value
 
@@ -52,5 +55,6 @@ clean:
 	  $(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu \
 	  $(TEST_OUT)/test_vicreg_4d_train \
 	  $(TEST_OUT)/test_vicreg_4d_save_and_load \
+	  $(TEST_OUT)/test_vicreg_4d_phase1_stabilization \
 	  $(TEST_OUT)/test_mixture_density_network \
 	  $(TEST_OUT)/test_expected_value

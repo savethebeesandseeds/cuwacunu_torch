@@ -15,6 +15,7 @@ RUNTIME_RESET_LINK := $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
 $(eval $(call TEST_ONEFILE, main_campaign, main_campaign.cpp, $(MAIN_CAMPAIGN_LINK)))
 $(eval $(call TEST_ONEFILE, runtime_reset, runtime_reset.cpp, $(RUNTIME_RESET_LINK)))
 $(TEST_OUT)/main_campaign: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+SUBMAKE_NO_AUTOPREP := AUTO_PREP=0
 
 PRODUCTION_RULES := all hero campaign hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools clean
 MAIN_LOCAL_TARGETS := all clean hero campaign hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools tests test ta clean_tests \
@@ -32,11 +33,11 @@ TARGET_RULES := $(sort \
 	rules production_rules targets help)
 
 .PHONY: hero
-hero:
-	+$(MAKE) -C $(HERE_PATH)/hero all
+hero: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero all $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: build-campaign
-build-campaign: $(TEST_OUT)/main_campaign
+build-campaign: autoprep $(TEST_OUT)/main_campaign
 	@$(LOG_SUCCESS)
 
 .PHONY: run-campaign
@@ -47,7 +48,7 @@ run-campaign: $(TEST_OUT)/main_campaign
 campaign: run-campaign
 
 .PHONY: build-reset-runtime
-build-reset-runtime: $(TEST_OUT)/runtime_reset
+build-reset-runtime: autoprep $(TEST_OUT)/runtime_reset
 	@$(LOG_SUCCESS)
 
 .PHONY: run-reset-runtime
@@ -58,20 +59,20 @@ run-reset-runtime: $(TEST_OUT)/runtime_reset
 reset-runtime: run-reset-runtime
 
 .PHONY: hashimyei_hero
-hashimyei_hero:
-	+$(MAKE) -C $(HERE_PATH)/hero all
+hashimyei_hero: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero all $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: runtime_hero
-runtime_hero: build-campaign build-reset-runtime
-	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools
+runtime_hero: autoprep build-campaign build-reset-runtime
+	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: tools
-tools:
-	+$(MAKE) -C $(HERE_PATH)/tools all
+tools: autoprep
+	+$(MAKE) -C $(HERE_PATH)/tools all $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: tests
-tests:
-	+$(MAKE) -C $(TESTS_PATH) all
+tests: autoprep
+	+$(MAKE) -C $(TESTS_PATH) all $(SUBMAKE_NO_AUTOPREP)
 
 define FORWARD_MAIN_ALIAS
 .PHONY: main_$(1)
@@ -88,31 +89,37 @@ endef
 $(foreach t,$(SRC_BRIDGE_TARGETS),$(eval $(call FORWARD_SRC_ALIAS,$(t))))
 
 .PHONY: config_hero
-config_hero:
-	+$(MAKE) -C $(HERE_PATH)/hero install-hero-mcp
+config_hero: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero install-hero-mcp $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: install-hashimyei-tools
-install-hashimyei-tools:
-	+$(MAKE) -C $(HERE_PATH)/hero install-hashimyei-tools
+install-hashimyei-tools: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero install-hashimyei-tools $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: install-runtime-tools
-install-runtime-tools:
-	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools
+install-runtime-tools: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools $(SUBMAKE_NO_AUTOPREP)
 
 # Pass-through test dispatcher targets so root-level mkc usage can call tests
 # directly (for example: mkc parser, mkc test_dconfig).
 .PHONY: test ta clean_tests parser dsl types exchange piaabo data iinuji \
 	iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval
-test ta clean_tests parser dsl types exchange piaabo data iinuji \
-iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval:
+test ta parser dsl types exchange piaabo data iinuji \
+iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval: autoprep
+	+$(MAKE) -C $(TESTS_PATH) $@ $(SUBMAKE_NO_AUTOPREP)
+
+clean_tests:
 	+$(MAKE) -C $(TESTS_PATH) $@
 
 .PHONY: test_% clear_% clear-test_%
-test_% clear_% clear-test_%:
+test_%: autoprep
+	+$(MAKE) -C $(TESTS_PATH) $@ $(SUBMAKE_NO_AUTOPREP)
+
+clear_% clear-test_%:
 	+$(MAKE) -C $(TESTS_PATH) $@
 
 .PHONY: all
-all: hero tools build-campaign build-reset-runtime
+all: autoprep hero tools build-campaign build-reset-runtime
 	@$(LOG_SUCCESS)
 
 .PHONY: production_rules rules

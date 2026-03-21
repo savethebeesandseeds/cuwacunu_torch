@@ -13,8 +13,11 @@
       exports:
         embedding -> encoder node
         projected -> projector node
-    - Contract-scoped `__variables` may own docking-critical tensor sizes so
-      wave remains operational instead of structural.
+    - Contract-scoped `__variables` own the public docking widths:
+      INPUT.C/T/D and encoder `encoding_dims`.
+    - Contract registration fails fast if decoded observation_channels DSL does
+      not resolve to values compatible with these public docking widths.
+    - Internal encoder/projector widths below remain module-local defaults.
 */
 
 NETWORK "tsi.wikimyei.representation.vicreg" {
@@ -28,14 +31,14 @@ NETWORK "tsi.wikimyei.representation.vicreg" {
 
   node enc@VICREG_4D_ENCODER {
     encoding_dims:int = % __embedding_dims ? 72 %;
-    channel_expansion_dim:int = % __channel_expansion_dim ? 64 %;
-    fused_feature_dim:int = % __fused_feature_dim ? 32 %;
-    hidden_dims:int = % __encoder_hidden_dims ? 24 %;
-    depth:int = % __encoder_depth ? 10 %;
+    channel_expansion_dim:int = 64;
+    fused_feature_dim:int = 32;
+    hidden_dims:int = 24;
+    depth:int = 10;
   }
 
   node proj@MLP {
-    dims:arr[int] = % __projector_dims ? 72,128,256,128 %;
+    dims:arr[int] = 72,128,256,128;
     norm:str = LayerNorm;
     activation:str = SiLU;
     hidden_bias:bool = false;

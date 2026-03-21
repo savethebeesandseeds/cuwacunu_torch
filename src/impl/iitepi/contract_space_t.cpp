@@ -611,6 +611,63 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
   return resolved;
 }
 
+[[nodiscard]] static bool is_contract_surface_selector_variable(
+    std::string_view name) noexcept {
+  return name == "__observation_sources_dsl_file" ||
+         name == "__observation_channels_dsl_file";
+}
+
+[[nodiscard]] static bool is_public_docking_contract_variable(
+    std::string_view name) noexcept {
+  return name == "__obs_channels" || name == "__obs_seq_length" ||
+         name == "__obs_feature_dim" || name == "__embedding_dims";
+}
+
+[[nodiscard]] static std::vector<contract_variable_assignment_t>
+identity_contract_variable_assignments(
+    const std::vector<contract_variable_assignment_t>& assignments) {
+  std::vector<contract_variable_assignment_t> out{};
+  out.reserve(assignments.size());
+  for (const auto& assignment : assignments) {
+    // Surface selector paths already contribute via the staged surface hashes.
+    // Repeating the raw path text here would make identity depend on checkout root.
+    if (is_contract_surface_selector_variable(assignment.name)) continue;
+    out.push_back(assignment);
+  }
+  return out;
+}
+
+[[nodiscard]] static std::vector<contract_variable_assignment_t>
+public_docking_contract_variable_assignments(
+    const std::vector<contract_variable_assignment_t>& assignments) {
+  std::vector<contract_variable_assignment_t> out{};
+  out.reserve(assignments.size());
+  for (const auto& assignment : assignments) {
+    if (!is_public_docking_contract_variable(assignment.name)) continue;
+    out.push_back(assignment);
+  }
+  return out;
+}
+
+[[nodiscard]] static bool is_public_docking_surface_id(
+    std::string_view surface_id) noexcept {
+  return surface_id == "contract.circuit" ||
+         surface_id == "contract.observation.sources" ||
+         surface_id == "contract.observation.channels";
+}
+
+[[nodiscard]] static std::vector<contract_docking_surface_entry_t>
+public_docking_contract_surfaces(
+    const std::vector<contract_docking_surface_entry_t>& surfaces) {
+  std::vector<contract_docking_surface_entry_t> out{};
+  out.reserve(surfaces.size());
+  for (const auto& surface : surfaces) {
+    if (!is_public_docking_surface_id(surface.surface_id)) continue;
+    out.push_back(surface);
+  }
+  return out;
+}
+
 [[nodiscard]] static std::string canonical_contract_signature_json(
     const contract_signature_t& signature);
 
@@ -618,8 +675,10 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
     const contract_docking_signature_t& signature) {
   std::vector<std::string> circuits = signature.compatible_circuits;
   std::vector<contract_variable_assignment_t> variables =
-      signature.variable_assignments;
-  std::vector<contract_docking_surface_entry_t> surfaces = signature.surfaces;
+      public_docking_contract_variable_assignments(
+          signature.variable_assignments);
+  std::vector<contract_docking_surface_entry_t> surfaces =
+      public_docking_contract_surfaces(signature.surfaces);
   std::sort(circuits.begin(), circuits.end());
   std::sort(variables.begin(), variables.end(),
             [](const contract_variable_assignment_t& a,
@@ -633,10 +692,8 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
               if (a.surface_id != b.surface_id) {
                 return a.surface_id < b.surface_id;
               }
-              if (a.canonical_path != b.canonical_path) {
-                return a.canonical_path < b.canonical_path;
-              }
-              return a.sha256_hex < b.sha256_hex;
+              if (a.sha256_hex != b.sha256_hex) return a.sha256_hex < b.sha256_hex;
+              return a.canonical_path < b.canonical_path;
             });
 
   std::ostringstream out;
@@ -658,7 +715,6 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
     const auto& s = surfaces[i];
     if (i != 0) out << ",";
     out << "{\"surface_id\":\"" << json_escape(s.surface_id)
-        << "\",\"canonical_path\":\"" << json_escape(s.canonical_path)
         << "\",\"sha256_hex\":\"" << json_escape(s.sha256_hex) << "\"}";
   }
   out << "]}";
@@ -671,7 +727,7 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
   std::vector<contract_module_signature_entry_t> modules =
       signature.module_dsl_entries;
   std::vector<contract_variable_assignment_t> variables =
-      signature.variable_assignments;
+      identity_contract_variable_assignments(signature.variable_assignments);
   std::sort(bindings.begin(), bindings.end(),
             [](const contract_component_binding_t& a,
                const contract_component_binding_t& b) {
@@ -680,19 +736,19 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
               }
               if (a.tsi_type != b.tsi_type) return a.tsi_type < b.tsi_type;
               if (a.hashimyei != b.hashimyei) return a.hashimyei < b.hashimyei;
-              if (a.tsi_dsl_path != b.tsi_dsl_path) {
-                return a.tsi_dsl_path < b.tsi_dsl_path;
+              if (a.tsi_dsl_sha256_hex != b.tsi_dsl_sha256_hex) {
+                return a.tsi_dsl_sha256_hex < b.tsi_dsl_sha256_hex;
               }
-              return a.tsi_dsl_sha256_hex < b.tsi_dsl_sha256_hex;
+              return a.tsi_dsl_path < b.tsi_dsl_path;
             });
   std::sort(modules.begin(), modules.end(),
             [](const contract_module_signature_entry_t& a,
                const contract_module_signature_entry_t& b) {
               if (a.module_id != b.module_id) return a.module_id < b.module_id;
-              if (a.module_dsl_path != b.module_dsl_path) {
-                return a.module_dsl_path < b.module_dsl_path;
+              if (a.module_dsl_sha256_hex != b.module_dsl_sha256_hex) {
+                return a.module_dsl_sha256_hex < b.module_dsl_sha256_hex;
               }
-              return a.module_dsl_sha256_hex < b.module_dsl_sha256_hex;
+              return a.module_dsl_path < b.module_dsl_path;
             });
   std::sort(variables.begin(), variables.end(),
             [](const contract_variable_assignment_t& a,
@@ -713,7 +769,6 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
     out << "{\"canonical_path\":\"" << json_escape(b.canonical_path)
         << "\",\"tsi_type\":\"" << json_escape(b.tsi_type)
         << "\",\"hashimyei\":\"" << json_escape(b.hashimyei)
-        << "\",\"tsi_dsl_path\":\"" << json_escape(b.tsi_dsl_path)
         << "\",\"tsi_dsl_sha256_hex\":\"" << json_escape(b.tsi_dsl_sha256_hex)
         << "\"}";
   }
@@ -722,7 +777,6 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
     const auto& m = modules[i];
     if (i != 0) out << ",";
     out << "{\"module_id\":\"" << json_escape(m.module_id)
-        << "\",\"module_dsl_path\":\"" << json_escape(m.module_dsl_path)
         << "\",\"module_dsl_sha256_hex\":\""
         << json_escape(m.module_dsl_sha256_hex) << "\"}";
   }
@@ -2375,8 +2429,75 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                 observation.count_channels();
                             const auto observed_seq_length =
                                 observation.max_sequence_length();
+                            const std::string configured_channels_text =
+                                var_value_or_empty("__obs_channels");
+                            const std::string configured_seq_length_text =
+                                var_value_or_empty("__obs_seq_length");
+                            const std::string configured_embedding_dims_text =
+                                var_value_or_empty("__embedding_dims");
                             const std::string configured_feature_dim_text =
                                 var_value_or_empty("__obs_feature_dim");
+                            const auto parse_positive_contract_int =
+                                [&](std::string_view key,
+                                    const std::string& text,
+                                    long long* out_value) -> bool {
+                              if (out_value == nullptr) {
+                                throw std::runtime_error(
+                                    "parse_positive_contract_int received null output");
+                              }
+                              if (!has_non_ws_ascii(text)) return false;
+                              long long value = 0;
+                              const auto [ptr, ec] = std::from_chars(
+                                  text.data(), text.data() + text.size(), value);
+                              if (ec != std::errc{} ||
+                                  ptr != text.data() + text.size() ||
+                                  value <= 0) {
+                                log_warn(
+                                    "[dconfig] invalid contract %.*s while validating observation docking: %s\n",
+                                    static_cast<int>(key.size()), key.data(),
+                                    text.c_str());
+                                ok = false;
+                                return false;
+                              }
+                              *out_value = value;
+                              return true;
+                            };
+                            long long configured_channels = 0;
+                            if (parse_positive_contract_int(
+                                    "__obs_channels", configured_channels_text,
+                                    &configured_channels) &&
+                                configured_channels != observed_channels) {
+                              log_warn(
+                                  "[dconfig] contract __obs_channels=%lld does not match observation active channel count=%lld derived from __observation_channels_dsl_file\n",
+                                  configured_channels,
+                                  static_cast<long long>(observed_channels));
+                              ok = false;
+                            }
+                            long long configured_seq_length = 0;
+                            if (parse_positive_contract_int(
+                                    "__obs_seq_length",
+                                    configured_seq_length_text,
+                                    &configured_seq_length) &&
+                                configured_seq_length != observed_seq_length) {
+                              log_warn(
+                                  "[dconfig] contract __obs_seq_length=%lld does not match observation max active seq_length=%lld derived from __observation_channels_dsl_file\n",
+                                  configured_seq_length,
+                                  static_cast<long long>(observed_seq_length));
+                              ok = false;
+                            }
+                            long long configured_embedding_dims = 0;
+                            if (parse_positive_contract_int(
+                                    "__embedding_dims",
+                                    configured_embedding_dims_text,
+                                    &configured_embedding_dims) &&
+                                configured_embedding_dims !=
+                                    semantic.encoding_dims) {
+                              log_warn(
+                                  "[dconfig] contract __embedding_dims=%lld does not match VICReg network_design encoder.encoding_dims=%d\n",
+                                  configured_embedding_dims,
+                                  semantic.encoding_dims);
+                              ok = false;
+                            }
                             if (semantic.C != observed_channels) {
                               log_warn(
                                   "[dconfig] VICReg network_design INPUT.C=%d does not match contract observation active channel count=%lld\n",

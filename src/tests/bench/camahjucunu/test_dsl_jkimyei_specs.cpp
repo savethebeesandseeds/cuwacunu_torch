@@ -130,6 +130,15 @@ const std::string& require_field(const row_t& row,
   return it->second;
 }
 
+const std::string& require_curve_name(const row_t& row,
+                                      const std::string& context) {
+  const auto canonical_it = row.find("time_warp_curve");
+  if (canonical_it != row.end()) return canonical_it->second;
+  const auto legacy_it = row.find("name");
+  if (legacy_it != row.end()) return legacy_it->second;
+  fail("missing field 'time_warp_curve' (or legacy alias 'name') in " + context);
+}
+
 void expect_eq(const row_t& row,
                const std::string& field_name,
                const std::string& expected,
@@ -221,9 +230,9 @@ void validate_profile(const specs_t& decoded,
   const row_t* linear_row = nullptr;
   const row_t* chaotic_row = nullptr;
   for (const row_t* r : aug_rows) {
-    const std::string& name = require_field(*r, "name", profile_row_id + "/AUGMENTATIONS");
-    if (name == "Linear") linear_row = r;
-    if (name == "ChaoticDrift") chaotic_row = r;
+    const std::string& curve_name = require_curve_name(*r, profile_row_id + "/AUGMENTATIONS");
+    if (curve_name == "Linear") linear_row = r;
+    if (curve_name == "ChaoticDrift") chaotic_row = r;
   }
   if (!linear_row || !chaotic_row) {
     fail(profile_row_id + ": expected augmentation names [Linear, ChaoticDrift]");
@@ -263,9 +272,9 @@ void print_aug_matrix(const std::vector<const row_t*>& rows) {
   std::vector<std::string> curve_names;
   std::map<std::string, const row_t*> by_name;
   for (const row_t* r : rows) {
-    const std::string name = require_field(*r, "name", "AUGMENTATIONS");
-    if (by_name.find(name) == by_name.end()) curve_names.push_back(name);
-    by_name[name] = r;
+    const std::string curve_name = require_curve_name(*r, "AUGMENTATIONS");
+    if (by_name.find(curve_name) == by_name.end()) curve_names.push_back(curve_name);
+    by_name[curve_name] = r;
   }
 
   const std::vector<std::string> fields = {
@@ -280,7 +289,7 @@ void print_aug_matrix(const std::vector<const row_t*>& rows) {
       "comment",
   };
 
-  std::size_t field_width = std::string("name").size();
+  std::size_t field_width = std::string("time_warp_curve").size();
   for (const auto& f : fields) field_width = std::max(field_width, f.size());
 
   std::vector<std::size_t> widths;
@@ -296,7 +305,8 @@ void print_aug_matrix(const std::vector<const row_t*>& rows) {
   }
 
   std::cout << "    [AUGMENTATIONS]\n";
-  std::cout << "      " << std::left << std::setw(static_cast<int>(field_width)) << "name";
+  std::cout << "      " << std::left << std::setw(static_cast<int>(field_width))
+            << "time_warp_curve";
   for (std::size_t i = 0; i < curve_names.size(); ++i) {
     std::cout << " | " << std::left << std::setw(static_cast<int>(widths[i])) << curve_names[i];
   }
@@ -453,6 +463,38 @@ void validate_decoded(const specs_t& decoded) {
                    "false");
 }
 
+[[nodiscard]] std::string replace_all_copy(std::string text,
+                                           const std::string& from,
+                                           const std::string& to) {
+  if (from.empty()) return text;
+  std::size_t pos = 0;
+  while ((pos = text.find(from, pos)) != std::string::npos) {
+    text.replace(pos, from.size(), to);
+    pos += to.size();
+  }
+  return text;
+}
+
+void validate_legacy_curve_name_alias(const std::string& grammar_text,
+                                      const std::string& dsl_text) {
+  if (dsl_text.find("time_warp_curve") == std::string::npos) {
+    fail("expected default DSL to use canonical time_warp_curve field");
+  }
+  const std::string legacy_dsl_text =
+      replace_all_copy(dsl_text, "time_warp_curve", "name");
+  const auto decoded = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
+      grammar_text, legacy_dsl_text, "legacy_name_alias.jkimyei.dsl");
+  validate_decoded(decoded);
+
+  const auto& augmentations = require_table(decoded, "vicreg_augmentations");
+  for (const auto& row : augmentations) {
+    (void)require_curve_name(row, "legacy alias materialization");
+    if (row.find("name") != row.end()) {
+      fail("legacy alias should materialize canonical field 'time_warp_curve' only");
+    }
+  }
+}
+
 void print_readable_summary(const specs_t& decoded) {
   const vicreg_profile_rows_t rows = resolve_vicreg_profile_rows(decoded);
   std::cout << "===== decoded summary (readable) =====\n";
@@ -532,6 +574,7 @@ int main() {
         grammar_text, dsl_text, dsl_path.string());
 
     validate_decoded(decoded);
+    validate_legacy_curve_name_alias(grammar_text, dsl_text);
     std::cout << "Validation: PASS (decoded values match expected default.tsi.wikimyei.representation.vicreg.jkimyei.dsl values)\n";
     print_readable_summary(decoded);
     return 0;

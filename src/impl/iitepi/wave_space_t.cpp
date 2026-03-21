@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/wave_contract_binding/wave_contract_binding.h"
 
 namespace cuwacunu {
 namespace iitepi {
@@ -800,6 +801,19 @@ build_wave_record_from_wave_path(const std::string& wave_file_path) {
   }
   if (!has_non_ws_ascii(record->wave.dsl)) {
     log_fatal("[dconfig] missing effective wave DSL payload\n");
+  }
+
+  {
+    const std::vector<cuwacunu::camahjucunu::dsl_variable_t> no_variables{};
+    std::string resolved_wave_dsl{};
+    std::string resolve_error{};
+    if (!cuwacunu::camahjucunu::resolve_dsl_variables_in_text(
+            record->wave.dsl, no_variables, &resolved_wave_dsl, &resolve_error)) {
+      log_fatal(
+          "[dconfig] failed to resolve wave DSL placeholders while building dependency manifest: %s\n",
+          resolve_error.c_str());
+    }
+    record->wave.dsl = std::move(resolved_wave_dsl);
   }
 
   cuwacunu::camahjucunu::iitepi_wave_set_t decoded_wave{};

@@ -104,8 +104,8 @@ type = typed family
 required = VICREG only
 default = none
 range = at least one curve row if block present
-allowed = fields name,active,curve_param,noise_scale,smoothing_kernel_size,point_drop_prob,value_jitter_std,time_mask_band_frac,channel_dropout_prob,comment
-nuance = row-wise and transposed table forms are supported; duplicate curve names are rejected
+allowed = fields time_warp_curve,active,curve_param,noise_scale,smoothing_kernel_size,point_drop_prob,value_jitter_std,time_mask_band_frac,channel_dropout_prob,comment
+nuance = row-wise and transposed table forms are supported; legacy alias name is accepted for backward compatibility; time_warp_curve selects the base temporal warp and curve_param/noise_scale/smoothing_kernel_size shape the actual time dilation/compression; duplicate curve names are rejected
 
 [RULE FAMILY_REQUIREMENTS_VICREG]
 id = FAMILY_REQUIREMENTS_VICREG

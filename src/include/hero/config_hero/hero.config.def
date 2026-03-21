@@ -1,22 +1,12 @@
 /*
   hero.config.def
-  X-macro registry for HERO configuration profiles.
+  X-macro registry for Config Hero runtime keys and future capability targets.
 
   Consumers may define:
 
-    HERO_PROFILE(ID, PROFILE_NAME, MODE_TOKEN, MODEL, SUMMARY)                [required]
-    HERO_PROFILE_POLICY(PROFILE_ID, KEY, VALUE, SUMMARY)                      [optional]
     HERO_FUTURE_TARGET(ID, INCLUDE_PATH, SUMMARY)                             [optional]
     HERO_RUNTIME_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE, ALLOWED, SUMMARY) [optional]
 */
-
-#ifndef HERO_PROFILE
-#error "HERO_PROFILE(ID, PROFILE_NAME, MODE_TOKEN, MODEL, SUMMARY) must be defined before including hero.config.def"
-#endif
-
-#ifndef HERO_PROFILE_POLICY
-#define HERO_PROFILE_POLICY(PROFILE_ID, KEY, VALUE, SUMMARY)
-#endif
 
 #ifndef HERO_FUTURE_TARGET
 #define HERO_FUTURE_TARGET(ID, INCLUDE_PATH, SUMMARY)
@@ -25,33 +15,6 @@
 #ifndef HERO_RUNTIME_KEY
 #define HERO_RUNTIME_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE, ALLOWED, SUMMARY)
 #endif
-
-// Canonical profile manifest.
-HERO_PROFILE(Ask, "hero.config.ask", Ask, "deterministic",
-             "Read/analyze configuration state with deterministic constraints")
-HERO_PROFILE(Fix, "hero.config.fix", Fix, "deterministic",
-             "Apply deterministic config edits under explicit policy")
-
-// Profile policy expectations.
-HERO_PROFILE_POLICY(Ask, "allow_local_read", "true",
-                    "Config/context file reads allowed")
-HERO_PROFILE_POLICY(Ask, "allow_local_write", "false",
-                    "No local write side effects")
-HERO_PROFILE_POLICY(Ask, "deterministic_only", "true",
-                    "No language-model calls at runtime")
-HERO_PROFILE_POLICY(Ask, "require_config_only_context", "true",
-                    "Context scope limited to config root")
-
-HERO_PROFILE_POLICY(Fix, "allow_local_read", "true",
-                    "Config/context file reads allowed")
-HERO_PROFILE_POLICY(Fix, "allow_local_write", "true",
-                    "Local writes allowed under configured roots")
-HERO_PROFILE_POLICY(Fix, "deterministic_only", "true",
-                    "No language-model calls at runtime")
-HERO_PROFILE_POLICY(Fix, "require_config_only_context", "true",
-                    "Context scope limited to config root")
-HERO_PROFILE_POLICY(Fix, "require_backup", "true",
-                    "Mutations should keep rotating backups")
 
 // Future capability targets (declared now, wiring later).
 HERO_FUTURE_TARGET(TsiProbe, "tsiemene/tsi.probe",
@@ -74,12 +37,11 @@ HERO_RUNTIME_KEY("write_roots", "string", 1, "/tmp", "csv path list", "comma-sep
                  "allowed write roots when allow_local_write=true")
 HERO_RUNTIME_KEY("backup_enabled", "bool", 1, "true", "true|false", "true,false",
                  "enable rotating backups before each save")
-HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/src/config/.backups/hero.config",
+HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/.backups/hero.config",
                  "directory path", "absolute_or_relative_path",
                  "destination directory for rotating backups")
 HERO_RUNTIME_KEY("backup_max_entries", "int", 1, "20", ">=1", "integer",
                  "maximum backup snapshots to retain")
 
-#undef HERO_PROFILE_POLICY
 #undef HERO_FUTURE_TARGET
 #undef HERO_RUNTIME_KEY

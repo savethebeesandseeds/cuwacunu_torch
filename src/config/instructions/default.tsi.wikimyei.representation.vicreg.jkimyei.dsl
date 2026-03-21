@@ -32,9 +32,12 @@
     [GRADIENT]
       .accumulate_steps .clip_norm .clip_value .skip_on_nan .zero_grad_set_to_none
     [AUGMENTATIONS]
-      columns/fields: name active curve_param noise_scale smoothing_kernel_size
+      columns/fields: time_warp_curve active curve_param noise_scale smoothing_kernel_size
                       point_drop_prob value_jitter_std time_mask_band_frac
                       channel_dropout_prob comment
+      time_warp_curve selects the base temporal warp; curve_param,
+      noise_scale, and smoothing_kernel_size control how strongly time is
+      dilated/compressed before the masking/dropout steps.
 
   Out of scope (owned by wave/.config, not set here):
     wave TRAIN enable/disable + sampler mode + deterministic seed/workers and runtime budget
@@ -86,7 +89,7 @@ PROFILE "stable_pretrain" {
 
     [AUGMENTATIONS]
       /---------------------------------------------------------------------------------------------------------------------------------\
-      | name                  | Linear                                           | ChaoticDrift                                         |
+      | time_warp_curve       | Linear                                           | ChaoticDrift                                         |
       | active                | true                                             | true                                                 |
       | curve_param           | 0.0                                              | 0.0                                                  |
       | noise_scale           | 0.02                                             | 0.10                                                 |
@@ -135,7 +138,7 @@ PROFILE "eval_payload_only" {
 
     [AUGMENTATIONS]
       /------------------------------------------------------------------------------------------------------------------------------\
-      | name                  | Linear                                        | ChaoticDrift                                         |
+      | time_warp_curve       | Linear                                        | ChaoticDrift                                         |
       | active                | true                                          | false                                                |
       | curve_param           | 0.0                                           | 0.0                                                  |
       | noise_scale           | 0.01                                          | 0.10                                                 |

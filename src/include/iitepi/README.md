@@ -92,12 +92,18 @@ The public dispatcher is now campaign-oriented:
 - observation/channel DSL selection is contract-owned through contract
   `__variables`, while source symbol and date range remain wave-local runtime
   scope
+- the checked-in defaults treat only public docking widths as contract-owned
+  (`__obs_channels`, `__obs_seq_length`, `__obs_feature_dim`,
+  `__embedding_dims`); private VICReg encoder/projector widths live in the
+  VICReg DSLs
 - contract snapshots also derive an explicit docking signature from the
   compatible circuit set, contract `__variables`, and docking-bearing contract
   DSL surfaces; component lineage can use that digest to talk about docking
-  compatibility directly
+  compatibility directly, without making identity depend on local checkout-root
+  path spellings alone
 - runtime reuse/load of an existing component hashimyei validates the selected
-  component manifest against the current contract hash and docking signature
+  component manifest against the current public docking signature; founding
+  contract hash remains provenance, but it is no longer the hard runtime gate
 - component manifests describe revision lifecycle through `lineage_state`,
   rather than the older generic `status`
 

@@ -245,7 +245,7 @@ JK_DATA_PARAM("sampler_policy",  String, 1, "Data sampler policy id")
 #endif
 
 #ifdef JK_AUGMENTATION_PARAM
-JK_AUGMENTATION_PARAM("name",                  String, 1, "Augmentation curve name")
+JK_AUGMENTATION_PARAM("time_warp_curve",       String, 1, "Base time-warp curve selector")
 JK_AUGMENTATION_PARAM("active",                Bool,   1, "Enable this augmentation row")
 JK_AUGMENTATION_PARAM("curve_param",           Float,  1, "Curve shape parameter")
 JK_AUGMENTATION_PARAM("noise_scale",           Float,  1, "Time-warp noise intensity")

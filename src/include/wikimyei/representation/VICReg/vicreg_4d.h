@@ -91,6 +91,7 @@ public:
     bool has_pending_grad{false};
     std::uint64_t trained_epochs{0};
     std::uint64_t trained_samples{0};
+    std::uint64_t skipped_batches{0};
     std::uint64_t pending_sample_count{0};
     double pending_loss_sum{0.0};
     int pending_loss_count{0};
@@ -193,6 +194,12 @@ public:
   );
 
   // strict checkpoint constructor
+  VICReg_4D(const cuwacunu::iitepi::contract_hash_t& contract_hash_,
+            const std::string& component_name_,
+            const std::string& checkpoint_path,
+            torch::Device override_device = torch::kCPU);
+
+  // strict checkpoint constructor using saved component_name metadata
   VICReg_4D(const cuwacunu::iitepi::contract_hash_t& contract_hash_,
             const std::string& checkpoint_path,
             torch::Device override_device = torch::kCPU);
