@@ -3,9 +3,9 @@
 This folder is organized by role:
 
 - `./.config`: global runtime settings (exchange, seeds, UI/system knobs).
-- `./instructions/default.iitepi.contract.dsl`: campaign contract defaults file.
+- `./instructions/defaults/`: canonical example/default DSL bundle.
+- `./instructions/objectives/`: objective-scoped experiment bundles.
 - `./bnf/`: grammar files (`*.bnf`).
-- `./instructions/`: DSL payload files (`*.dsl`).
 - `./secrets/real/`: real exchange secret material.
 - `./secrets/test/`: test exchange secret material.
 
@@ -18,24 +18,38 @@ This folder is organized by role:
 - `bnf/iitepi.contract.bnf`
 - `bnf/iitepi.contract.circuit.bnf`
 - `bnf/iitepi.wave.bnf`
+- `bnf/super.objective.bnf`
 - `bnf/network_design.bnf`
 - `bnf/canonical_path.bnf`
 - `bnf/latent_lineage_state.bnf`
 - `bnf/runtime_lls.bnf`
 - `.config`
-- `instructions/default.iitepi.contract.dsl`
-- `instructions/default.tsi.source.dataloader.sources.dsl`
-- `instructions/default.tsi.source.dataloader.channels.dsl`
-- `instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl`
-- `instructions/default.iitepi.campaign.dsl`
-- `instructions/default.iitepi.contract.circuit.dsl`
-- `instructions/default.iitepi.wave.dsl` (canonical wave payload set)
-- `instructions/default.tsi.wikimyei.representation.vicreg.dsl`
-- `instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
-- `instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl`
-- `instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`
-- `instructions/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl`
-- `instructions/default.hero.runtime.dsl`
+- `instructions/defaults/default.iitepi.contract.dsl`
+- `instructions/defaults/default.tsi.source.dataloader.sources.dsl`
+- `instructions/defaults/default.tsi.source.dataloader.channels.dsl`
+- `instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl`
+- `instructions/defaults/default.iitepi.campaign.dsl`
+- `instructions/defaults/default.iitepi.contract.circuit.dsl`
+- `instructions/defaults/default.iitepi.wave.dsl` (canonical wave payload set)
+- `instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl`
+- `instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
+- `instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl`
+- `instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`
+- `instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl`
+- `instructions/defaults/default.hero.super.dsl`
+- `instructions/defaults/default.hero.runtime.dsl`
+- `instructions/defaults/default.super.objective.dsl`
+- `instructions/defaults/default.super.objective.md`
+- `instructions/objectives/vicreg.solo/iitepi.contract.dsl`
+- `instructions/objectives/vicreg.solo/iitepi.waves.dsl`
+- `instructions/objectives/vicreg.solo/iitepi.campaign.dsl`
+- `instructions/objectives/vicreg.solo/super.objective.dsl`
+- `instructions/objectives/vicreg.solo/super.objective.md`
+- `instructions/objectives/vicreg.solo/tsi.source.dataloader.channels.dsl` (objective-owned big-span observation profile)
+- `instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.dsl` (objective-local wrapper over default VICReg payloads)
+- `instructions/objectives/vicreg.solo/tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl` (objective-local eval sidecar payload kept colocated for contract auto-discovery)
+- `instructions/objectives/vicreg.solo/tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl` (objective-local eval sidecar payload kept colocated for contract auto-discovery)
+- `instructions/objectives/vicreg.solo/vicreg.solo.man`
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
 - `secrets/real/exchange.key` (expected, may be absent locally)
 - `secrets/real/openai.key` (expected for HERO/OpenAI, may be absent locally)
@@ -145,6 +159,10 @@ Direct one-shot tool call (no manual JSON-RPC framing):
 /cuwacunu/.build/hero/hero_runtime_mcp \
   --tool hero.runtime.list_jobs \
   --args-json '{}'
+
+/cuwacunu/.build/hero/hero_super_mcp \
+  --tool hero.super.list_loops \
+  --args-json '{}'
 ```
 
 Human-friendly tool discovery:
@@ -152,6 +170,7 @@ Human-friendly tool discovery:
 ```bash
 /cuwacunu/.build/hero/hero_config_mcp --list-tools
 /cuwacunu/.build/hero/hero_runtime_mcp --list-tools
+/cuwacunu/.build/hero/hero_super_mcp --list-tools
 ```
 
 MCP `initialize` responses from HERO servers include an `instructions` string
@@ -169,6 +188,9 @@ codex mcp add hero-config -- \
 
 codex mcp add hero-runtime -- \
   /cuwacunu/.build/hero/hero_runtime_mcp
+
+codex mcp add hero-super -- \
+  /cuwacunu/.build/hero/hero_super_mcp
 
 # Inspect the registered server configuration
 codex mcp get hero-config --json
@@ -191,7 +213,7 @@ codex exec -C /cuwacunu \
 ```
 
 Required runtime mode:
-- `instructions/default.hero.config.dsl` must keep
+- `instructions/defaults/default.hero.config.dsl` must keep
   `protocol_layer[STDIO|HTTPS/SSE]:str = STDIO`.
 
 Run legacy human REPL:
@@ -206,8 +228,12 @@ Useful MCP tools:
 - `hero.config.show`
 - `hero.config.get`
 - `hero.config.set` (updates in-memory runtime config only; use `hero.config.save` to persist)
-- `hero.config.dsl.get` (read one key from `instructions/default.*.dsl`)
-- `hero.config.dsl.set` (writes one key in `instructions/default.*.dsl`; requires `allow_local_write=true` and target path within `write_roots`)
+- `hero.config.default.read` (read one whole `instructions/defaults/*.dsl`, returning content plus `sha256`)
+- `hero.config.default.replace` (replace one whole supported `instructions/defaults/*.dsl` after decoder and file-specific validation; optional `expected_sha256` guards against stale overwrite; requires `allow_local_write=true` and target path within `write_roots`)
+- `hero.config.objective_dsl.read` (read one whole mutable objective-local `.dsl` under `objective_root`, excluding `campaign.dsl` and `super.objective.dsl`, returning content plus `sha256`)
+- `hero.config.objective_dsl.replace` (create or replace one whole mutable objective-local `.dsl` under `objective_root` after decoder validation; optional `expected_sha256` guards against stale overwrite; excludes `campaign.dsl` and `super.objective.dsl`; requires `allow_local_write=true` and target path within `write_roots`)
+- `hero.config.objective_campaign.read` (read one whole objective-local `campaign.dsl` under `objective_root`, returning content plus `sha256`)
+- `hero.config.objective_campaign.replace` (create or replace one whole objective-local `campaign.dsl` under `objective_root` after campaign decoder validation; optional `expected_sha256` guards against stale overwrite; requires `allow_local_write=true` and target path within `write_roots`)
 - `hero.config.validate`
 - `hero.config.diff` / `hero.config.dry_run` (preview changes before save)
 - `hero.config.backups` (list snapshots)
@@ -225,28 +251,107 @@ Runtime MCP tools:
 - `hero.runtime.get_job`
 - `hero.runtime.stop_job`
 - `hero.runtime.tail_log`
+- `hero.runtime.tail_trace`
 - `hero.runtime.reconcile`
 
+Super MCP tools:
+- `hero.super.start_loop`
+- `hero.super.list_loops`
+- `hero.super.get_loop`
+- `hero.super.resume_loop`
+- `hero.super.stop_loop`
+
+Human MCP tools:
+- `hero.human.list_requests`
+- `hero.human.get_request`
+- `hero.human.respond`
+
+`hero_human_mcp` without `--tool` on a tty now opens a simple ncurses operator UI for pending human requests; on non-tty stdin it still serves stdio MCP.
+
+`hero.runtime.start_campaign` accepts optional:
+- `binding_id` to run one declared `BIND` from the staged campaign snapshot instead of the default `RUN` plan
+- `campaign_dsl_path` to override the configured source campaign bundle for that launch
+- `super_loop_id` to link the launched campaign to an existing Super Hero loop ledger; this is the field Super Hero uses when it asks Runtime Hero to launch the next campaign
+
+`hero.super.start_loop` is the primary loop entrypoint. It accepts optional:
+- `super_objective_dsl_path` to override the configured default supervision root for that launch
+
+Super Hero now starts from `super.objective.dsl`, not from a campaign-declared `SUPER` edge. It resolves the selected `super.objective.dsl`, reads its `campaign_dsl_path` and `objective_prompt_path`, copies the whole objective instructions bundle into the loop workspace, copies `super.objective.dsl` and `super.objective.md` into `<runtime_root>/.super_hero/<loop_id>/`, writes a loop-local Config Hero policy at `super.hero.config.dsl`, builds `super.briefing.md`, runs an initial Codex review before any Runtime campaign exists, and only then decides whether to stop, request human review, or launch the first Runtime campaign. Later reviews follow the same control contract after terminal campaign states. Those Config Hero writes stay bounded to mutable objective `.dsl` files plus explicit objective-local `campaign.dsl` files under the copied loop objective root.
+
 Runtime HERO defaults:
-- loaded from `instructions/default.hero.runtime.dsl`
+- loaded from `instructions/defaults/default.hero.runtime.dsl`
 - resolved through `[REAL_HERO].runtime_hero_dsl_filename`
 - campaigns root derived from `[GENERAL].runtime_root` as
   `<runtime_root>/.campaigns`
+- super-loop root derived from `[GENERAL].runtime_root` as
+  `<runtime_root>/.super_hero`
 - campaign grammar loaded from `[BNF].iitepi_campaign_grammar_filename`
+
+Super HERO defaults:
+- loaded from `instructions/defaults/default.hero.super.dsl`
+- resolved through `[REAL_HERO].super_hero_dsl_filename`
+- super-loop root derived from `[GENERAL].runtime_root` as `<runtime_root>/.super_hero`
+- repo root taken from `[GENERAL].repo_root`
+- config scope root taken from `config_scope_root` in `default.hero.super.dsl` and baked into the loop-local Config Hero policy
+- campaign grammar loaded from `[BNF].iitepi_campaign_grammar_filename`
+- super-objective grammar loaded from `[BNF].super_objective_grammar_filename`
+- `runtime_hero_binary`, `config_hero_binary`, `hashimyei_hero_binary`, and `lattice_hero_binary` select the MCP binaries Super Hero attaches to a review session
+- `human_operator_identities` selects the operator identities file Super Hero uses to bind `operator_id` values to OpenSSH `ssh-ed25519` public keys before resuming a paused loop
+- `super_codex_binary` selects the Codex executable or command name used for review
+- `super_codex_timeout_sec` bounds one `codex exec` review call
+- `super_max_reviews` bounds the number of review turns in one loop, including the initial prelaunch review
+- `poll_interval_ms` controls detached loop-runner polling cadence while waiting for terminal campaign state
+
+Human HERO defaults:
+- loaded from `instructions/defaults/default.hero.human.dsl`
+- resolved through `[REAL_HERO].human_hero_dsl_filename`
+- `super_hero_binary` selects the MCP binary Human Hero uses to inspect and resume Super loops
+- `operator_id` is recorded into every signed human response artifact
+- `operator_signing_ssh_identity` selects the unencrypted OpenSSH `ssh-ed25519` identity Human Hero uses for response signatures
 
 Runtime Hero campaigns persist under the derived campaigns root by `campaign_cursor`, with
 `campaign.lls`, `campaign.dsl`, and campaign-level stdout/stderr logs. Child jobs
 persist under `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`, where
 `job_cursor` is derived from the parent `campaign_cursor`, with `job.lls`,
 `campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and worker
-stdout/stderr logs.
+stdout/stderr logs plus `job.trace.jsonl`.
+`job.trace.jsonl` is a structured append-only execution trace intended for
+long-running campaigns; `hero.runtime.tail_trace` exposes the latest phases
+without scraping stdout/stderr.
 Runtime liveness is reconciled using boot id + process start ticks, not bare pid reuse.
 
+Super loops persist under `<runtime_root>/.super_hero/<loop_id>/` with:
+- `loop.lls`
+- `super.objective.dsl`
+- `super.objective.md`
+- `super.hero.config.dsl`
+- `memory.md`
+- `super.briefing.md`
+- `human_request.latest.md`
+- `human_response.latest.json`
+- `human_response.latest.sig`
+- `events.jsonl`
+- `human_responses/human_response.0001.json` plus matching `.sig`
+- `reviews/review_packet.0001.json` plus `review_packet.latest.json`
+- `decisions/decision.0001.json` plus `decision.latest.json`
+- copied instructions under `instructions/`
+
+Current super-loop schemas:
+- `hero.super.loop.v1`
+- `hero.super.review_packet.v1`
+- `hero.super.decision.v1`
+
+The primary v1 super loop keeps Codex shell access read-only, but gives the review session loop-scoped `hero.config.objective_dsl.read/replace` and `hero.config.objective_campaign.read/replace` tools against the copied objective bundle plus bounded Runtime/Hashimyei/Lattice read tools for evidence lookup. `read` returns the whole file plus `sha256`, and `replace` atomically writes a whole-file replacement only after the appropriate decoder validation succeeds. Codex returns `control_kind = continue | stop | need_human` plus a bounded `next_action` object with `kind = none | default_plan | binding`, always includes `next_action.reset_runtime_state`, and uses `kind = none` for `stop` or `need_human`. It records actual loop-local `.dsl` changes in `memory_note` and leaves Super Hero as the only process allowed to request the next campaign launch or stop from Runtime Hero. Review packets now carry `lattice_recommendations`, and the intended evidence order is: review packet first, then `hero.lattice.get_view/get_fact` for semantic judgments, then Runtime tails for operational debugging, with direct file reads as fallback.
+
+When Codex returns `need_human`, Super Hero pauses the loop in `need_human` state, writes `human_request.latest.md`, and waits for Human Hero. Human Hero can be used through MCP tools or run with no arguments on a tty to answer pending requests interactively. It writes a signed `human_response*.json` artifact plus detached `.sig`, then asks `hero.super.resume_loop` to verify the signature and continue or stop the loop.
+
+The short design constitution for that loop lives in [SUPER_LOOP.md](/cuwacunu/src/main/hero/SUPER_LOOP.md).
+
 Deterministic policy:
-- Config HERO edits defaults only. Existing hashimyei instances are not mutated
-  by `hero.config.dsl.set`; instance revisions are handled by Hashimyei HERO lineage.
+- Config HERO edits defaults, bounded mutable objective-local `.dsl` files, and explicit objective-local `campaign.dsl` files only. It still excludes `super.objective.dsl`. Existing hashimyei instances are not mutated by these tools; instance revisions are handled by Hashimyei HERO lineage.
 - `allow_local_write=false` blocks filesystem-mutating Config HERO tools.
-- `write_roots` constrains persisted config writes, `default.*.dsl` writes,
+- `write_roots` constrains persisted config writes, `instructions/defaults/*.dsl` writes,
+  mutable objective-local `.dsl` writes, explicit objective-local `campaign.dsl` writes,
   and `hero.config.dev_nuke_reset` target paths when local writes are enabled.
 - `hero.config.dev_nuke_reset` uses the saved global config on disk, not dirty
   unsaved in-memory edits.
@@ -360,34 +465,45 @@ Supported MCP tools:
 ## Split Policy
 
 - Global settings live in `./.config`: `[GENERAL]`, `[GUI]`, `[BNF]`, `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`, `[REAL_HERO]`.
-  `GENERAL.default_iitepi_campaign_dsl_filename` points to the default
-  runtime campaign DSL file.
+  `GENERAL.default_iitepi_campaign_dsl_filename` points to the checked-in
+  default top-level campaign, currently
+  `./instructions/defaults/default.iitepi.campaign.dsl`.
+  `GENERAL.repo_root` pins the repository/worktree root that Runtime Hero uses
+  for `codex exec -C` during super-loop review.
   Runtime reset is intentionally explicit and can be invoked through
   `/cuwacunu/.build/hero/runtime_reset` or `make -C /cuwacunu/src/main reset-runtime`.
+- `./instructions/defaults/` holds the canonical example/default payloads,
+  including the `instructions/defaults/*.dsl` files that Config HERO is allowed to manage.
+- `./instructions/objectives/` holds coherent experiment bundles. The first
+  bundle is `vicreg.solo/`, which keeps contract, waves, campaign binds, and
+  only the objective-local wrappers that differ from `./instructions/defaults/`.
 - `[GUI]` holds iinuji defaults, currently:
   `iinuji_logs_buffer_capacity`, `iinuji_logs_show_date`,
   `iinuji_logs_show_thread`, `iinuji_logs_show_metadata`,
   `iinuji_logs_metadata_filter`, `iinuji_logs_show_color`,
   `iinuji_logs_auto_follow`, `iinuji_logs_mouse_capture`.
 - HERO runtime settings for deterministic MCP live in:
-  - `./instructions/default.hero.config.dsl` (Config HERO runtime policy)
-  - `./instructions/default.hero.hashimyei.dsl` (Hashimyei HERO catalog defaults)
-  - `./instructions/default.hero.lattice.dsl` (Lattice HERO catalog/runtime defaults)
-  - `./instructions/default.hero.runtime.dsl` (Runtime HERO campaign/job defaults)
+  - `./instructions/defaults/default.hero.config.dsl` (Config HERO runtime policy)
+  - `./instructions/defaults/default.hero.hashimyei.dsl` (Hashimyei HERO catalog defaults)
+  - `./instructions/defaults/default.hero.lattice.dsl` (Lattice HERO catalog/runtime defaults)
+  - `./instructions/defaults/default.hero.super.dsl` (Super HERO loop/orchestration defaults)
+  - `./instructions/defaults/default.hero.runtime.dsl` (Runtime HERO campaign/job defaults)
   `default.hero.hashimyei.dsl` is the Hashimyei HERO runtime defaults file. It is
   not the founding DSL bundle for component hashimyei lineage.
-- `[REAL_HERO]` owns the canonical pointer paths for those four HERO DSL files:
+- `[REAL_HERO]` owns the canonical pointer paths for those five HERO DSL files:
   - `config_hero_dsl_filename`
   - `hashimyei_hero_dsl_filename`
   - `lattice_hero_dsl_filename`
+  - `super_hero_dsl_filename`
   - `runtime_hero_dsl_filename`
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
   - `iitepi_campaign_grammar_filename`
   - `iitepi_runtime_binding_grammar_filename`
   - `iitepi_wave_grammar_filename`
+  - `super_objective_grammar_filename`
   - `network_design_grammar_filename`
   - `vicreg_grammar_filename`
-  - `value_estimation_grammar_filename`
+  - `expected_value_grammar_filename`
   - `wikimyei_evaluation_embedding_sequence_analytics_grammar_filename`
   - `wikimyei_evaluation_transfer_matrix_evaluation_grammar_filename`
   - `observation_sources_grammar_filename`
@@ -396,7 +512,7 @@ Supported MCP tools:
     shared grammar (`bnf/jkimyei.bnf`) for per-component jkimyei DSL files
   - `tsiemene_circuit_grammar_filename`
   - `canonical_path_grammar_filename`
-- Unified campaign DSL (`./instructions/default.iitepi.campaign.dsl`) declares:
+- Unified campaign DSL (`./instructions/defaults/default.iitepi.campaign.dsl`) declares:
   - `CAMPAIGN { ... }` root block
   - `IMPORT_CONTRACT_FILE "<contract_defaults_file>";`
   - `IMPORT_WAVE_FILE "<wave_dsl_file>";`
@@ -409,10 +525,29 @@ Supported MCP tools:
     contract-defined docking variables
   - bind-local variables may not reuse names already declared by contract
     `__variables`; shadowing is rejected during campaign snapshot staging
+  - Runtime Hero may also narrow launch to one declared `BIND` through
+    `hero.runtime.start_campaign(binding_id=...)`; when omitted, the declared
+    `RUN` sequence remains the default plan
+  - Super Hero is the primary persistent post-campaign review loop through
+    `hero.super.start_loop(...)`; it starts from `super.objective.dsl`, which
+    declares the campaign and the human-authored supervision prompt
+  - `super.objective.dsl` is its own DSL family, validated by
+    `./bnf/super.objective.bnf`, and currently declares
+    `campaign_dsl_path:path`, `objective_prompt_path:path`, and optional
+    `objective_name:str` and `loop_id:str`
+  The same grammar is used by objective-local files such as
+  `./instructions/objectives/vicreg.solo/iitepi.campaign.dsl`.
+  The defaults bundle also ships sample `./instructions/defaults/default.super.objective.dsl`
+  and `./instructions/defaults/default.super.objective.md`.
 - Runtime Hero owns campaign dispatch and persists immutable snapshots under
   `<runtime_root>/.campaigns/<campaign_cursor>/`. Each child job receives a staged
-  `campaign.dsl`, `binding.contract.dsl`, and `binding.wave.dsl` under
+  `campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and
+  `job.trace.jsonl` under
   `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`.
+- Super Hero owns the long-lived loop ledgers under
+  `<runtime_root>/.super_hero/<loop_id>/`. The loop ledger is adjacent to
+  campaigns rather than nested inside them because one loop may span many
+  sequential campaigns.
 - Internal runtime-binding snapshots are validated against
   `bnf/iitepi.runtime_binding.bnf` and follow this staged shape:
   - `ACTIVE_BIND <bind_id>;`
@@ -422,7 +557,9 @@ Supported MCP tools:
   - `BIND <id> { CONTRACT = <derived_contract_id>; WAVE = <wave_id>; }`
 - The public dispatcher is campaign-oriented. The top-level runtime DSL is now
   `campaign.dsl`, and `jkimyei` is not a separate Hero.
-- Contract settings live in `./instructions/default.iitepi.contract.dsl` with
+- Contract settings live in the checked-in defaults example
+  `./instructions/defaults/default.iitepi.contract.dsl` and in objective-local
+  contract bundles such as `./instructions/objectives/vicreg.solo/iitepi.contract.dsl`, with
   marker format:
   - `-----BEGIN IITEPI CONTRACT-----`
   - optional contract `__variables` for hard-static docking compatibility
@@ -443,9 +580,12 @@ Supported MCP tools:
   default order and does not alter runtime component selection in this phase.
   Runtime derives module configuration defaults from colocated files:
   `default.tsi.wikimyei.representation.vicreg.dsl`,
-  `default.tsi.wikimyei.inference.mdn.value_estimation.dsl`,
+  `default.tsi.wikimyei.inference.mdn.expected_value.dsl`,
   `default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`,
   `default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl`.
+  When the `default.`-prefixed example files are absent, runtime also accepts
+  the colocated bundle-local filenames without the prefix, such as
+  `tsi.wikimyei.representation.vicreg.dsl`.
   Contract `__variables` are resolved across that contract-local DSL graph, so
   public docking values such as input tensor shape and embedding dimensions
   can be defined once by the contract. In the checked-in VICReg defaults,
@@ -454,9 +594,13 @@ Supported MCP tools:
   changes contract identity and therefore hashimyei compatibility lineage.
   Runtime also derives an explicit contract docking signature from the
   compatible circuit set, contract public docking `__variables`, and
-  contract-owned docking surfaces (circuit and contract-owned
-  observation/channel DSLs when present). Component manifests persist that
-  digest as `docking_signature_sha256_hex`, alongside a contract-scoped
+  contract-owned docking surfaces (circuit, VICReg module/network-design,
+  and contract-owned observation-channel DSLs when present). Contract-owned
+  observation source registries still affect exact contract identity through
+  the full dependency/signature graph, but they are not part of the public
+  docking digest because unrelated source-row additions should not invalidate
+  compatible component weights. Component manifests persist that digest as
+  `docking_signature_sha256_hex`, alongside a contract-scoped
   `lineage_state`. Identity is keyed by stable surface ids plus resolved
   content hashes; local checkout-root path spellings are retained for runtime
   diagnostics, but do not change the digest by themselves.
@@ -487,7 +631,9 @@ Supported MCP tools:
   now rejects the binding instead of relying on a contract-local default.
   Circuit grammar accepts multiline hop expressions and comments:
   `/* ... */` and `# ...`.
-- Wave settings are authored directly in `./instructions/default.iitepi.wave.dsl`.
+- Wave settings are authored directly in the defaults example
+  `./instructions/defaults/default.iitepi.wave.dsl` and in objective-local
+  wave bundles such as `./instructions/objectives/vicreg.solo/iitepi.waves.dsl`.
   split train/run keys are removed and rejected by validation.
   wave owns operational circuit selection via `CIRCUIT: <circuit_name>;`.
   runtime dataloader ownership is wave-local via root `WAVE` keys:
@@ -514,7 +660,7 @@ Supported MCP tools:
     `__observation_channels_dsl_file` now own static observation/channel
     policy selection. This keeps source symbol and date range wave-local while
     moving docking-critical observation payload selection fully into contract.
-- `instructions/default.tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
+- `instructions/defaults/default.tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
   `CSV_POLICY { CSV_BOOTSTRAP_DELTAS, CSV_STEP_ABS_TOL, CSV_STEP_REL_TOL }`.
   It also owns required source analytics policy:
   `DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
@@ -530,9 +676,11 @@ Supported MCP tools:
 - Reload/refresh boundaries perform integrity checks across all registered campaign/contract/wave snapshots; if dependencies changed on disk,
   runtime fails fast to prevent mixed state.
 
-## Value Estimation Runtime Notes
+## Expected Value / Expectation Runtime Notes
 
-- `VALUE_ESTIMATION.optimizer_threshold_reset` is a step-counter clamp for Adam/AdamW (not a grad-norm reset trigger).
+- `EXPECTED_VALUE.optimizer_threshold_reset` is a step-counter clamp for Adam/AdamW (not a grad-norm reset trigger).
+- `EXPECTED_VALUE` names the MDN-backed module whose primary exposed statistic is
+  the conditional expectation `E[Y|X]`.
 - `ExpectedValue` scheduler stepping is driven by scheduler mode:
   - `PerBatch`: step each batch.
   - `PerEpoch`: step once per epoch.

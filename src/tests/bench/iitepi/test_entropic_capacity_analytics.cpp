@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -307,6 +308,93 @@ int main() try {
                     zero_report.source_nonzero_eigen_count ==
                         garbage_report.source_nonzero_eigen_count,
                     "masked garbage should not change nonzero eigen count");
+  }
+
+  {
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t opt{};
+    opt.max_samples = 16;
+    opt.max_features = 16;
+    opt.mask_epsilon = 0.25;
+
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t zero_acc(opt);
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t nonfinite_acc(
+        opt);
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    const auto features_zero = torch::tensor(
+        {{{{1.0, 10.0}, {0.0, 0.0}}},
+         {{{2.0, 20.0}, {0.0, 0.0}}},
+         {{{3.0, 30.0}, {0.0, 0.0}}},
+         {{{4.0, 40.0}, {0.0, 0.0}}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto features_nonfinite = torch::tensor(
+        {{{{1.0, 10.0}, {nan, inf}}},
+         {{{2.0, 20.0}, {nan, -inf}}},
+         {{{3.0, 30.0}, {nan, inf}}},
+         {{{4.0, 40.0}, {nan, -inf}}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto mask = torch::tensor(
+        {{{1.0, 0.0}},
+         {{1.0, 0.0}},
+         {{1.0, 0.0}},
+         {{1.0, 0.0}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+
+    ok = ok && expect(
+                    zero_acc.ingest(features_zero, mask),
+                    "mask-aware zero ingest should succeed");
+    ok = ok && expect(
+                    nonfinite_acc.ingest(features_nonfinite, mask),
+                    "masked non-finite ingest should succeed");
+
+    const auto zero_report = zero_acc.summarize();
+    const auto nonfinite_report = nonfinite_acc.summarize();
+    ok = ok && expect(
+                    nonfinite_report.valid_sample_count == 4,
+                    "masked non-finite rows should still be accepted");
+    ok = ok && expect_near(
+                    zero_report.source_entropic_load,
+                    nonfinite_report.source_entropic_load,
+                    1e-9,
+                    "masked non-finite values should not change entropic load");
+    ok = ok && expect_near(
+                    zero_report.source_cov_trace,
+                    nonfinite_report.source_cov_trace,
+                    1e-9,
+                    "masked non-finite values should not change covariance trace");
+    ok = ok && expect(
+                    zero_report.source_nonzero_eigen_count ==
+                        nonfinite_report.source_nonzero_eigen_count,
+                    "masked non-finite values should not change nonzero eigen count");
+  }
+
+  {
+    cuwacunu::piaabo::torch_compat::data_analytics_options_t opt{};
+    opt.max_samples = 16;
+    opt.max_features = 16;
+
+    cuwacunu::piaabo::torch_compat::data_source_analytics_accumulator_t acc(opt);
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const auto features = torch::tensor(
+        {{{{1.0, 10.0}, {2.0, 20.0}}},
+         {{{3.0, 30.0}, {nan, 40.0}}}},
+        torch::TensorOptions().dtype(torch::kFloat64));
+    const auto mask = torch::ones(
+        {2, 1, 2}, torch::TensorOptions().dtype(torch::kFloat64));
+
+    ok = ok && expect(
+                    acc.ingest(features, mask),
+                    "batched ingest with one invalid sample should continue");
+    const auto report = acc.summarize();
+    ok = ok && expect(report.sample_count == 2, "unmasked non-finite sample count mismatch");
+    ok = ok && expect(
+                    report.valid_sample_count == 1,
+                    "only the finite sample should contribute");
+    ok = ok && expect(
+                    report.skipped_sample_count == 1,
+                    "unmasked non-finite sample should be skipped");
   }
 
   {

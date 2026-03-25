@@ -61,6 +61,102 @@ struct RuntimeBinding {
   RuntimeBinding& operator=(const RuntimeBinding&) = delete;
 };
 
+struct runtime_binding_trace_event_t {
+  std::string phase{};
+  std::uint64_t timestamp_ms{0};
+  std::string campaign_hash{};
+  std::string binding_id{};
+  std::string contract_hash{};
+  std::string wave_hash{};
+  std::string contract_name{};
+  std::string resolved_record_type{};
+  std::string resolved_sampler{};
+  std::string run_id{};
+  std::string source_runtime_cursor{};
+  std::uint64_t contract_index{0};
+  std::uint64_t contract_count{0};
+  std::uint64_t epochs{0};
+  std::uint64_t epoch{0};
+  std::uint64_t epoch_steps{0};
+  std::uint64_t total_steps{0};
+  bool ok{false};
+  std::string error{};
+};
+
+using runtime_binding_trace_emit_fn_t =
+    void (*)(const runtime_binding_trace_event_t&, void*);
+
+struct runtime_binding_trace_sink_t {
+  runtime_binding_trace_emit_fn_t emit{nullptr};
+  void* user{nullptr};
+};
+
+struct runtime_binding_trace_context_t {
+  std::string campaign_hash{};
+  std::string binding_id{};
+  std::string contract_hash{};
+  std::string wave_hash{};
+  std::string contract_name{};
+  std::uint64_t contract_index{0};
+  std::uint64_t contract_count{0};
+  std::uint64_t epochs{0};
+};
+
+[[nodiscard]] inline runtime_binding_trace_sink_t&
+runtime_binding_trace_sink_slot() {
+  static thread_local runtime_binding_trace_sink_t sink{};
+  return sink;
+}
+
+[[nodiscard]] inline runtime_binding_trace_sink_t swap_runtime_binding_trace_sink(
+    runtime_binding_trace_sink_t next) {
+  auto& slot = runtime_binding_trace_sink_slot();
+  runtime_binding_trace_sink_t previous = slot;
+  slot = next;
+  return previous;
+}
+
+struct runtime_binding_trace_scope_t {
+  runtime_binding_trace_scope_t() = default;
+  explicit runtime_binding_trace_scope_t(runtime_binding_trace_sink_t sink)
+      : previous(swap_runtime_binding_trace_sink(sink)), active(true) {}
+  runtime_binding_trace_scope_t(const runtime_binding_trace_scope_t&) = delete;
+  runtime_binding_trace_scope_t& operator=(const runtime_binding_trace_scope_t&) =
+      delete;
+  runtime_binding_trace_scope_t(runtime_binding_trace_scope_t&& other) noexcept
+      : previous(other.previous), active(other.active) {
+    other.active = false;
+  }
+  runtime_binding_trace_scope_t& operator=(
+      runtime_binding_trace_scope_t&& other) noexcept {
+    if (this == &other) return *this;
+    if (active) (void)swap_runtime_binding_trace_sink(previous);
+    previous = other.previous;
+    active = other.active;
+    other.active = false;
+    return *this;
+  }
+  ~runtime_binding_trace_scope_t() {
+    if (active) (void)swap_runtime_binding_trace_sink(previous);
+  }
+
+  runtime_binding_trace_sink_t previous{};
+  bool active{false};
+};
+
+inline void emit_runtime_binding_trace_event(
+    runtime_binding_trace_event_t event) {
+  if (event.timestamp_ms == 0) {
+    event.timestamp_ms = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+  }
+  const auto& sink = runtime_binding_trace_sink_slot();
+  if (!sink.emit) return;
+  sink.emit(event, sink.user);
+}
+
 [[nodiscard]] inline DirectiveId pick_start_directive(const Circuit& c) noexcept {
   if (!c.hops || c.hop_count == 0 || !c.hops[0].from.tsi) {
     return directive_id::Step;
@@ -496,16 +592,19 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   std::string resolve_error{};
   if (!catalog.resolve_component("", selected_hashimyei, &component,
                                  &resolve_error)) {
-    if (!std::filesystem::exists(hashimyei_store_root)) {
-      if (require_registered_manifest) {
-        if (error) {
-          *error = "hashimyei store root does not exist for configured "
-                   "hashimyei: " +
-                   hashimyei_store_root.string();
-        }
-        return false;
-      }
+    // Bootstrap runs are allowed to target a fresh hashimyei slot that has no
+    // manifest yet. In that case we should not force a full catalog ingest
+    // just to confirm absence before training has founded the component.
+    if (!require_registered_manifest) {
       return true;
+    }
+    if (!std::filesystem::exists(hashimyei_store_root)) {
+      if (error) {
+        *error = "hashimyei store root does not exist for configured "
+                 "hashimyei: " +
+                 hashimyei_store_root.string();
+      }
+      return false;
     }
     std::string ingest_error{};
     if (!catalog.ingest_filesystem(hashimyei_store_root, &ingest_error)) {
@@ -518,13 +617,10 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
     }
     if (!catalog.resolve_component("", selected_hashimyei, &component,
                                    &resolve_error)) {
-      if (require_registered_manifest) {
-        if (error) {
-          *error = "configured hashimyei manifest lookup failed: " + resolve_error;
-        }
-        return false;
+      if (error) {
+        *error = "configured hashimyei manifest lookup failed: " + resolve_error;
       }
-      return true;
+      return false;
     }
   }
 
@@ -1054,7 +1150,6 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
     auto* wik = dynamic_cast<TsiWikimyei*>(node.get());
     if (!wik) continue;
     if (!wik->supports_init_report_fragments()) continue;
-    if (!wik->runtime_autosave_report_fragments()) continue;
 
     TsiWikimyeiRuntimeIoContext io_ctx{};
     io_ctx.enable_debug_outputs = c.execution.debug_enabled;
@@ -1063,6 +1158,10 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
     io_ctx.source_runtime_cursor = ctx.source_runtime_cursor;
     io_ctx.has_wave_cursor = ctx.has_wave_cursor;
     io_ctx.wave_cursor = ctx.wave_cursor;
+    const bool should_save_report_fragments =
+        wik->runtime_autosave_report_fragments() ||
+        io_ctx.enable_debug_outputs;
+    if (!should_save_report_fragments) continue;
     std::string local_error;
     if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
                                         &local_error,
@@ -1134,6 +1233,8 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
   // Epoch execution + callbacks.
   const std::uint64_t epochs = std::max<std::uint64_t>(1, c.execution.epochs);
   std::uint64_t total_steps = 0;
+  const auto* trace_ctx =
+      static_cast<const runtime_binding_trace_context_t*>(ctx.user);
   for (std::uint64_t epoch = 0; epoch < epochs; ++epoch) {
     if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
       if (error) *error = dsl_guard_error;
@@ -1147,6 +1248,23 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
     }
     const Wave start_wave = wave_for_epoch(c.seed_wave, epoch);
     run_end_wave = start_wave;
+    if (trace_ctx) {
+      emit_runtime_binding_trace_event(
+          {.phase = "epoch_start",
+           .campaign_hash = trace_ctx->campaign_hash,
+           .binding_id = trace_ctx->binding_id,
+           .contract_hash = trace_ctx->contract_hash,
+           .wave_hash = trace_ctx->wave_hash,
+           .contract_name = trace_ctx->contract_name,
+           .run_id = ctx.run_id,
+           .source_runtime_cursor = ctx.source_runtime_cursor,
+           .contract_index = trace_ctx->contract_index,
+           .contract_count = trace_ctx->contract_count,
+           .epochs = epochs,
+           .epoch = epoch + 1,
+           .total_steps = total_steps,
+           .ok = true});
+    }
     broadcast_contract_runtime_event(
         c, RuntimeEventKind::EpochStart, &start_wave, ctx);
     const std::uint64_t epoch_steps =
@@ -1167,6 +1285,24 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
       return 0;
     }
     total_steps += epoch_steps;
+    if (trace_ctx) {
+      emit_runtime_binding_trace_event(
+          {.phase = "epoch_end",
+           .campaign_hash = trace_ctx->campaign_hash,
+           .binding_id = trace_ctx->binding_id,
+           .contract_hash = trace_ctx->contract_hash,
+           .wave_hash = trace_ctx->wave_hash,
+           .contract_name = trace_ctx->contract_name,
+           .run_id = ctx.run_id,
+           .source_runtime_cursor = ctx.source_runtime_cursor,
+           .contract_index = trace_ctx->contract_index,
+           .contract_count = trace_ctx->contract_count,
+           .epochs = epochs,
+           .epoch = epoch + 1,
+           .epoch_steps = epoch_steps,
+           .total_steps = total_steps,
+           .ok = true});
+    }
     log_info("[runtime_binding.contract.run] epoch done contract=%s epoch=%llu/%llu steps=%llu cumulative=%llu\n",
              c.name.empty() ? "<empty>" : c.name.c_str(),
              static_cast<unsigned long long>(epoch + 1),

@@ -54,15 +54,7 @@ using wave_runtime_defaults_t = cuwacunu::hero::lattice_mcp::wave_runtime_defaul
                                   std::string* out,
                                   std::string* error);
 
-__attribute__((constructor(101))) void redirect_stdout_logs_to_stderr() {
-  if (g_protocol_stdout_fd >= 0) return;
-  std::fflush(stdout);
-  g_protocol_stdout_fd = ::dup(STDOUT_FILENO);
-  if (g_protocol_stdout_fd < 0) return;
-  (void)::dup2(STDERR_FILENO, STDOUT_FILENO);
-}
-
-__attribute__((constructor(102))) void disable_terminal_logs_pre_main() {
+__attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 }
 
@@ -2189,6 +2181,14 @@ std::string build_tools_list_result_json() {
 
 std::string build_tools_list_human_text() {
   return ::build_tools_list_human_text();
+}
+
+void prepare_jsonrpc_stdio_server_output() {
+  if (g_protocol_stdout_fd >= 0) return;
+  std::fflush(stdout);
+  g_protocol_stdout_fd = ::dup(STDOUT_FILENO);
+  if (g_protocol_stdout_fd < 0) return;
+  (void)::dup2(STDERR_FILENO, STDOUT_FILENO);
 }
 
 void write_cli_stdout(std::string_view payload) { ::write_cli_stdout(payload); }

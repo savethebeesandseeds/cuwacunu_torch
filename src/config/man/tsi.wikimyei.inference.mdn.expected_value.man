@@ -1,15 +1,15 @@
 MAN_SPEC_VERSION = 1
 
 [META]
-MAN_ID = tsi.wikimyei.inference.mdn.value_estimation
-TARGET_DSL = src/config/instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl
+MAN_ID = tsi.wikimyei.inference.mdn.expected_value
+TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl
 TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
 PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/impl/wikimyei/inference/expected_value/expected_value.cpp,src/impl/wikimyei/inference/mdn/mixture_density_network.cpp
 
 [FIELD model_path]
 key = model_path
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = string path
 required = true
 default = none
@@ -19,7 +19,7 @@ nuance = checkpoint loader/saver enforces strict v2 metadata contract
 
 [FIELD verbose_train]
 key = verbose_train
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = bool
 required = true
 default = none
@@ -29,7 +29,7 @@ nuance = runtime verbosity toggle
 
 [FIELD telemetry_every]
 key = telemetry_every
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = int
 required = true
 default = none
@@ -39,17 +39,17 @@ nuance = config key is required by validator; current ExpectedValue ctor does no
 
 [FIELD target_dims]
 key = target_dims
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = arr[int]
 required = true
 default = none
 range = non-empty; each dim in [0,D)
 allowed = comma-separated integers
-nuance = runtime selects future feature columns using these indices and throws on out-of-range
+nuance = runtime selects the target Y columns for the MDN; the exposed statistic is E[Y|X], so these indices define what Y means
 
 [FIELD target_weights]
 key = target_weights
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = arr[float]
 required = true
 default = none
@@ -59,17 +59,17 @@ nuance = runtime requires size(target_weights) == size(target_dims) when non-emp
 
 [FIELD mixture_comps]
 key = mixture_comps
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = int
 required = true
 default = none
 range = > 0
 allowed = integer
-nuance = enforced by MDN model constructor
+nuance = number of mixture components used to model the predictive distribution p(Y|X); enforced by MDN model constructor
 
 [FIELD features_hidden]
 key = features_hidden
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = int
 required = true
 default = none
@@ -79,7 +79,7 @@ nuance = enforced by MDN model constructor
 
 [FIELD residual_depth]
 key = residual_depth
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = int
 required = true
 default = none
@@ -89,7 +89,7 @@ nuance = enforced by MDN model constructor
 
 [FIELD grad_clip]
 key = grad_clip
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = float
 required = true
 default = none
@@ -99,7 +99,7 @@ nuance = clipping is applied only when grad_clip > 0
 
 [FIELD optimizer_threshold_reset]
 key = optimizer_threshold_reset
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = int
 required = true
 default = none
@@ -109,7 +109,7 @@ nuance = reset hook is applied only when value >= 0; negative means disabled
 
 [FIELD dtype]
 key = dtype
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = dtype token
 required = true
 default = none
@@ -119,7 +119,7 @@ nuance = invalid token fails contract validation
 
 [FIELD device]
 key = device
-scope = VALUE_ESTIMATION
+scope = EXPECTED_VALUE
 type = device token
 required = true
 default = none
@@ -129,7 +129,7 @@ nuance = CUDA unavailability or runtime probe failure triggers CPU fallback warn
 
 [RULE UNKNOWN_KEYS]
 id = UNKNOWN_KEYS
-applies_to = VALUE_ESTIMATION module section
+applies_to = EXPECTED_VALUE module section
 severity = error
 when = key not in allow-list
 message = unknown key in module config is rejected

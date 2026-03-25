@@ -30,6 +30,8 @@ namespace mdn {
  * ## What this file is (and isn't)
  * - **Pure architecture only**: no optimizer, scheduler, loss, or training loop here.
  * - The *ExpectedValue* wrapper owns all training wiring and target/mask shaping.
+ * - This module models the predictive distribution p(Y|X); the wrapper exposes
+ *   the conditional expectation E[Y|X] as its primary statistic.
  *
  * ## Shapes (by convention)
  * - Input encoding:
@@ -128,7 +130,8 @@ struct MdnModelImpl : torch::nn::Module {
   MdnOut forward_from_encoding(const torch::Tensor& encoding);
 
   /**
-   * Convenience: E[y|x] directly from encoding (handles temporal pooling)
+   * Convenience: conditional expectation E[Y|X] directly from encoding
+   * (handles temporal pooling).
    */
   torch::Tensor expectation_from_encoding(const torch::Tensor& encoding);
 

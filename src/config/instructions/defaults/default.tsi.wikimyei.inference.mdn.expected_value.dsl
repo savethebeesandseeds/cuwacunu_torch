@@ -1,8 +1,9 @@
 /*
-  default.tsi.wikimyei.inference.mdn.value_estimation.dsl
+  default.tsi.wikimyei.inference.mdn.expected_value.dsl
   =============================
   Purpose:
-    Typed key-value profile for expected-value / mixture-density model settings.
+    Typed key-value profile for the MDN that models p(Y|X) and exposes the
+    expected value, i.e. the conditional expectation E[Y|X].
     Values are parsed as: key(domain):type = value.
 
   Format:
@@ -19,15 +20,17 @@
 
   Semantics:
     - Defines model-local numeric and optimization policy.
+    - The MDN represents a predictive distribution over Y conditioned on X.
+    - The primary exposed statistic of this module is E[Y|X].
     - Does not define topology wiring, source range, or wave mode selection.
 */
 
-# Value estimation profile: key(domain):type = value # optional comment
-model_path:str = /tmp/value_estimation.ckpt # Path to save/load the model
+# Expected-value / expectation profile: key(domain):type = value # optional comment
+model_path:str = /tmp/expected_value.ckpt # Path to save/load the model
 verbose_train:bool = true # Print progress messages
 telemetry_every(-1,+inf):int = -1 # Print telemetry cadence (-1 disables)
-target_dims:arr[int] = 3 # Feature dims to track
-target_weights:arr[float] = 0.5 # Weights for target_dims
+target_dims:arr[int] = % __future_target_dims ? 3 % # Feature dims to track
+target_weights:arr[float] = % __future_target_weights ? 0.5 % # Weights for target_dims
 mixture_comps(1,1024):int = 10 # Mixture components K
 features_hidden(1,8192):int = 12 # Hidden width
 residual_depth(0,512):int = 3 # Residual depth

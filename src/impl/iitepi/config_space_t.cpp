@@ -589,7 +589,7 @@ bool config_space_t::validate_config() {
       "iitepi_runtime_binding_grammar_filename",
       "iitepi_wave_grammar_filename",
       "vicreg_grammar_filename",
-      "value_estimation_grammar_filename",
+      "expected_value_grammar_filename",
       "wikimyei_evaluation_embedding_sequence_analytics_grammar_filename",
       "wikimyei_evaluation_transfer_matrix_evaluation_grammar_filename",
       "observation_sources_grammar_filename",
@@ -646,6 +646,7 @@ bool config_space_t::validate_config() {
   require_existing_path("REAL_HERO", "config_hero_dsl_filename", config_base_folder);
   require_existing_path("REAL_HERO", "hashimyei_hero_dsl_filename", config_base_folder);
   require_existing_path("REAL_HERO", "lattice_hero_dsl_filename", config_base_folder);
+  require_existing_path("REAL_HERO", "super_hero_dsl_filename", config_base_folder);
   require_existing_path("REAL_HERO", "runtime_hero_dsl_filename", config_base_folder);
 
   if (!ok) log_terminate_gracefully("Invalid global configuration, aborting.\n");

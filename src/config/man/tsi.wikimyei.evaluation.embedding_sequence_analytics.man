@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = tsi.wikimyei.evaluation.embedding_sequence_analytics
-TARGET_DSL = src/config/instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl
+TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl
 TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
 PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/include/wikimyei/evaluation/embedding_sequence_analytics/embedding_sequence_analytics.h

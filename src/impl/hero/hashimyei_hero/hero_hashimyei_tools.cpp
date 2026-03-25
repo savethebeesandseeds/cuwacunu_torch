@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cctype>
 #include <charconv>
 #include <chrono>
@@ -35,6 +36,23 @@ constexpr const char* kInitializeInstructions =
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
 
 bool g_jsonrpc_use_content_length_framing = false;
+
+[[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
+  const char* data = reinterpret_cast<const char*>(bytes);
+  std::size_t remaining = size;
+  while (remaining > 0) {
+    const ssize_t wrote = ::write(fd, data, remaining);
+    if (wrote < 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    if (wrote == 0) return false;
+    const auto wrote_size = static_cast<std::size_t>(wrote);
+    data += wrote_size;
+    remaining -= wrote_size;
+  }
+  return true;
+}
 
 using app_context_t = cuwacunu::hero::hashimyei_mcp::app_context_t;
 using hashimyei_runtime_defaults_t =
@@ -450,12 +468,15 @@ using hashimyei_runtime_defaults_t =
 }
 
 void write_jsonrpc_payload(std::string_view payload) {
+  std::string framed;
   if (g_jsonrpc_use_content_length_framing) {
-    std::cout << "Content-Length: " << payload.size() << "\r\n\r\n" << payload;
+    framed = std::string("Content-Length: ") +
+             std::to_string(payload.size()) + "\r\n\r\n" +
+             std::string(payload);
   } else {
-    std::cout << payload << "\n";
+    framed = std::string(payload) + "\n";
   }
-  std::cout.flush();
+  (void)write_all_fd(STDOUT_FILENO, framed.data(), framed.size());
 }
 
 void write_jsonrpc_result(std::string_view id_json, std::string_view result_json) {

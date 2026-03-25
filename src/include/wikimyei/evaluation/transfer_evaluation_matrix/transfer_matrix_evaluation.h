@@ -32,6 +32,7 @@
 #include "iitepi/contract_space_t.h"
 #include "piaabo/dlogs.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
+#include "piaabo/torch_compat/data_analytics.h"
 #include "piaabo/torch_compat/torch_utils.h"
 #include "tsiemene/tsi.h"
 #include "tsiemene/tsi.cargo.validation.h"
@@ -2837,19 +2838,64 @@ class VicregTransferMatrixEvaluator final {
   void initialize_runtime_model_or_throw_() {
     const auto contract =
         cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash_);
+    const auto infer_target_dims_from_observation =
+        [](const cuwacunu::camahjucunu::observation_spec_t& observation)
+        -> std::vector<std::int64_t> {
+      const auto normalize_ascii = [](std::string_view text) {
+        std::string out;
+        out.reserve(text.size());
+        for (const unsigned char ch : text) {
+          if (std::isspace(ch)) continue;
+          out.push_back(static_cast<char>(std::tolower(ch)));
+        }
+        return out;
+      };
+      const auto parse_bool_ascii = [&](std::string_view text, bool* out) {
+        if (!out) return false;
+        const std::string value = normalize_ascii(text);
+        if (value == "1" || value == "true" || value == "yes" ||
+            value == "on") {
+          *out = true;
+          return true;
+        }
+        if (value == "0" || value == "false" || value == "no" ||
+            value == "off") {
+          *out = false;
+          return true;
+        }
+        return false;
+      };
+
+      std::string active_record_type{};
+      for (const auto& ch : observation.channel_forms) {
+        bool active = false;
+        if (!parse_bool_ascii(ch.active, &active) || !active) continue;
+        const std::string record_type = normalize_ascii(ch.record_type);
+        if (record_type.empty()) return {};
+        if (active_record_type.empty()) {
+          active_record_type = record_type;
+        } else if (active_record_type != record_type) {
+          return {};
+        }
+      }
+      if (active_record_type.empty()) return {};
+
+      const auto& feature_names =
+          cuwacunu::piaabo::torch_compat::data_feature_names_for_record_type(
+              active_record_type);
+      std::vector<std::int64_t> dims{};
+      dims.reserve(feature_names.size());
+      for (std::size_t i = 0; i < feature_names.size(); ++i) {
+        dims.push_back(static_cast<std::int64_t>(i));
+      }
+      return dims;
+    };
 
     model_.encoding_dims =
         contract->get<int>("VICReg", "encoding_dims");
     model_.mixture_comps = cfg_.mdn_mixture_comps;
     model_.features_hidden = cfg_.mdn_features_hidden;
     model_.residual_depth = cfg_.mdn_residual_depth;
-    model_.target_dims = cfg_.mdn_target_dims.empty()
-                             ? contract->get_arr<std::int64_t>(
-                                   "VALUE_ESTIMATION",
-                                   "target_dims",
-                                   std::optional<std::vector<std::int64_t>>{
-                                       std::vector<std::int64_t>{}})
-                             : cfg_.mdn_target_dims;
     model_.dtype = resolve_config_dtype_with_fallback_();
     model_.device = resolve_config_device_with_fallback_();
 
@@ -2857,6 +2903,9 @@ class VicregTransferMatrixEvaluator final {
         cuwacunu::camahjucunu::decode_observation_spec_from_contract(contract_hash_);
     model_.channels = observation.count_channels();
     model_.horizons = observation.max_future_sequence_length();
+    model_.target_dims = cfg_.mdn_target_dims.empty()
+                             ? infer_target_dims_from_observation(observation)
+                             : cfg_.mdn_target_dims;
 
     if (model_.encoding_dims <= 0 || model_.mixture_comps <= 0 ||
         model_.features_hidden <= 0 || model_.residual_depth < 0 ||
@@ -2970,6 +3019,17 @@ class VicregTransferMatrixEvaluator final {
         "mdn_target_dims",
         std::optional<std::vector<std::int64_t>>{
             std::vector<std::int64_t>{}});
+    if (cfg_.mdn_target_dims.empty()) {
+      cfg_.mdn_target_dims = contract->get_arr<std::int64_t>(
+          kContractSection,
+          "target_dims",
+          std::optional<std::vector<std::int64_t>>{
+              std::vector<std::int64_t>{}});
+      if (!cfg_.mdn_target_dims.empty()) {
+        log_warn(
+            "[transfer_matrix_eval] 'target_dims' is deprecated; use 'mdn_target_dims'\n");
+      }
+    }
 
     cfg_.optimizer_lr = contract->get<double>(
         kContractSection,

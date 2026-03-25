@@ -82,6 +82,7 @@ int run_job_runner(int argc, char** argv) {
   std::string global_config_path{};
   std::string campaign_dsl_path{};
   std::string binding_id{};
+  std::string job_trace_path{};
   bool reset_runtime_state = false;
 
   for (int i = 1; i < argc; ++i) {
@@ -115,6 +116,10 @@ int run_job_runner(int argc, char** argv) {
       binding_id = argv[++i];
       continue;
     }
+    if (arg == "--job-trace" && i + 1 < argc) {
+      job_trace_path = argv[++i];
+      continue;
+    }
     if (arg == "--reset-runtime-state") {
       reset_runtime_state = true;
       continue;
@@ -133,6 +138,17 @@ int run_job_runner(int argc, char** argv) {
   }
   if (global_config_path.empty()) {
     global_config_path = record.global_config_path;
+  }
+  if (job_trace_path.empty()) {
+    job_trace_path = record.trace_path;
+  }
+  if (job_trace_path.empty()) {
+    job_trace_path =
+        cuwacunu::hero::runtime::runtime_job_trace_path(campaigns_root, job_cursor)
+            .string();
+  }
+  if (record.trace_path.empty()) {
+    record.trace_path = job_trace_path;
   }
   if (global_config_path.empty()) {
     return 2;
@@ -275,6 +291,10 @@ int run_job_runner(int argc, char** argv) {
       if (!binding_id.empty()) {
         args.push_back("--binding");
         args.push_back(binding_id);
+      }
+      if (!job_trace_path.empty()) {
+        args.push_back("--job-trace");
+        args.push_back(job_trace_path);
       }
       if (reset_runtime_state) {
         args.push_back("--reset-runtime-state");
@@ -421,6 +441,10 @@ int run_job_runner(int argc, char** argv) {
     if (!record->binding_id.empty()) {
       args.push_back("--binding");
       args.push_back(record->binding_id);
+    }
+    if (!record->trace_path.empty()) {
+      args.push_back("--job-trace");
+      args.push_back(record->trace_path);
     }
     if (record->reset_runtime_state) {
       args.push_back("--reset-runtime-state");
@@ -595,6 +619,12 @@ int run_campaign_runner(int argc, char** argv) {
     job.stderr_path =
         cuwacunu::hero::runtime::runtime_job_stderr_path(campaigns_root, job_cursor)
             .string();
+    job.trace_path =
+        cuwacunu::hero::runtime::runtime_job_trace_path(campaigns_root, job_cursor)
+            .string();
+    if (!job.trace_path.empty()) {
+      job.worker_command += " --job-trace " + job.trace_path;
+    }
     job.started_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     job.updated_at_ms = job.started_at_ms;
     if (!cuwacunu::hero::runtime::write_runtime_job_record(campaigns_root, job,

@@ -42,7 +42,7 @@ void replace_all(std::string* text, std::string_view from, std::string_view to) 
 
 fs::path write_relative_default_contract_bundle(const fs::path& root) {
   fs::create_directories(root);
-  const fs::path instructions_root = "/cuwacunu/src/config/instructions";
+  const fs::path instructions_root = "/cuwacunu/src/config/instructions/defaults";
   const auto copy_instruction = [&](const char* filename) {
     write_text(root / filename, read_text(instructions_root / filename));
   };
@@ -51,15 +51,15 @@ fs::path write_relative_default_contract_bundle(const fs::path& root) {
       read_text(instructions_root / "default.iitepi.contract.dsl");
   replace_all(
       &contract_text,
-      "/cuwacunu/src/config/instructions/default.iitepi.contract.circuit.dsl",
+      "/cuwacunu/src/config/instructions/defaults/default.iitepi.contract.circuit.dsl",
       "default.iitepi.contract.circuit.dsl");
   replace_all(
       &contract_text,
-      "/cuwacunu/src/config/instructions/default.tsi.source.dataloader.sources.dsl",
+      "/cuwacunu/src/config/instructions/defaults/default.tsi.source.dataloader.sources.dsl",
       "default.tsi.source.dataloader.sources.dsl");
   replace_all(
       &contract_text,
-      "/cuwacunu/src/config/instructions/default.tsi.source.dataloader.channels.dsl",
+      "/cuwacunu/src/config/instructions/defaults/default.tsi.source.dataloader.channels.dsl",
       "default.tsi.source.dataloader.channels.dsl");
   write_text(root / "default.iitepi.contract.dsl", contract_text);
 
@@ -67,11 +67,11 @@ fs::path write_relative_default_contract_bundle(const fs::path& root) {
       instructions_root / "default.tsi.wikimyei.representation.vicreg.dsl");
   replace_all(
       &vicreg_text,
-      "/cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl",
+      "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl",
       "default.tsi.wikimyei.representation.vicreg.network_design.dsl");
   replace_all(
       &vicreg_text,
-      "/cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl",
+      "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl",
       "default.tsi.wikimyei.representation.vicreg.jkimyei.dsl");
   write_text(root / "default.tsi.wikimyei.representation.vicreg.dsl",
              vicreg_text);
@@ -80,7 +80,7 @@ fs::path write_relative_default_contract_bundle(const fs::path& root) {
            "default.iitepi.contract.circuit.dsl",
            "default.tsi.wikimyei.representation.vicreg.network_design.dsl",
            "default.tsi.wikimyei.representation.vicreg.jkimyei.dsl",
-           "default.tsi.wikimyei.inference.mdn.value_estimation.dsl",
+           "default.tsi.wikimyei.inference.mdn.expected_value.dsl",
            "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl",
            "default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl",
            "default.tsi.source.dataloader.sources.dsl",
@@ -135,6 +135,23 @@ fs::path write_relative_private_vicreg_override_bundle(const fs::path& root) {
   write_text(root / "default.tsi.wikimyei.representation.vicreg.network_design.dsl",
              network_design_text);
 
+  return contract_path;
+}
+
+fs::path write_relative_sources_expanded_bundle(const fs::path& root) {
+  const fs::path contract_path = write_relative_default_contract_bundle(root);
+  const fs::path sources_path = root / "default.tsi.source.dataloader.sources.dsl";
+  std::string sources_text = read_text(sources_path);
+  const std::string needle =
+      "|   UTILITIES  | triangular |     basic     |  /cuwacunu/.data/raw/UTILITIES/triangular/triangular_wave.csv |";
+  const std::string extra_row =
+      "|   UNUSEDALT  |    1w      |     kline     |  /cuwacunu/.data/raw/ETHUSDT/1w/ETHUSDT-1w-all-years.csv     |\n";
+  const std::size_t pos = sources_text.find(needle);
+  if (pos == std::string::npos) {
+    throw std::runtime_error("failed to locate sources table insertion point");
+  }
+  sources_text.insert(pos, extra_row);
+  write_text(sources_path, sources_text);
   return contract_path;
 }
 
@@ -212,9 +229,9 @@ struct FileRestoreGuard {
 int main() try {
   const fs::path global_cfg_path = "/cuwacunu/src/config/.config";
   const fs::path campaign_cfg_path =
-      "/cuwacunu/src/config/instructions/default.iitepi.campaign.dsl";
+      "/cuwacunu/src/config/instructions/objectives/vicreg.solo/iitepi.campaign.dsl";
   const fs::path alt_campaign_cfg_path =
-      "/cuwacunu/src/config/instructions/default.iitepi.campaign.alt.dsl";
+      "/cuwacunu/src/config/instructions/objectives/vicreg.solo/iitepi.campaign.alt.dsl";
 
   cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/.config");
   cuwacunu::iitepi::config_space_t::update_config();
@@ -419,6 +436,48 @@ int main() try {
     }
 
     fs::remove_all(docking_root, cleanup_ec);
+  }
+
+  // Case 7: source registry expansion changes exact identity but preserves public docking.
+  {
+    const fs::path sources_root =
+        fs::temp_directory_path() / "dconfig_contract_lock_sources_registry";
+    std::error_code cleanup_ec{};
+    fs::remove_all(sources_root, cleanup_ec);
+
+    const fs::path contract_base =
+        write_relative_default_contract_bundle(sources_root / "base");
+    const fs::path contract_expanded =
+        write_relative_sources_expanded_bundle(sources_root / "expanded");
+
+    const auto base_hash =
+        cuwacunu::iitepi::contract_space_t::register_contract_file(
+            contract_base.string());
+    const auto expanded_hash =
+        cuwacunu::iitepi::contract_space_t::register_contract_file(
+            contract_expanded.string());
+    if (base_hash == expanded_hash) {
+      std::cerr
+          << "[dconfig_contract_lock] source registry expansion unexpectedly preserved exact contract identity\n";
+      return 1;
+    }
+
+    const auto base_snapshot =
+        cuwacunu::iitepi::contract_space_t::contract_itself(base_hash);
+    const auto expanded_snapshot =
+        cuwacunu::iitepi::contract_space_t::contract_itself(expanded_hash);
+    if (!base_snapshot || !expanded_snapshot) {
+      std::cerr << "[dconfig_contract_lock] missing contract snapshot for source-registry docking comparison\n";
+      return 1;
+    }
+    if (base_snapshot->signature.docking_signature_sha256_hex !=
+        expanded_snapshot->signature.docking_signature_sha256_hex) {
+      std::cerr
+          << "[dconfig_contract_lock] source registry expansion changed public docking signature\n";
+      return 1;
+    }
+
+    fs::remove_all(sources_root, cleanup_ec);
   }
 
   fs::remove(alt_campaign_cfg_path);

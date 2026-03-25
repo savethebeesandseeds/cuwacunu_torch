@@ -957,7 +957,17 @@ void VICReg_4D::save(const std::string& path)
              dtype == torch::kFloat32 ? "f32" :
              dtype == torch::kFloat64 ? "f64" : "other"));
   write_str(root, "meta/device", "cpu");
-  write_str(root, "meta/jk/component_name", cuwacunu::jkimyei::jk_setup(component_name, contract_hash).name);
+  {
+    const auto& jk_component =
+        cuwacunu::jkimyei::jk_setup(component_name, contract_hash);
+    const std::string saved_jk_component_name =
+        !jk_component.resolved_profile_row_id.empty()
+            ? jk_component.resolved_profile_row_id
+            : (!jk_component.resolved_component_id.empty()
+                   ? jk_component.resolved_component_id
+                   : jk_component.name);
+    write_str(root, "meta/jk/component_name", saved_jk_component_name);
+  }
 
   root.save_to(path);
 
@@ -978,19 +988,22 @@ void VICReg_4D::load(const std::string& path)
   // when checkpoint tensors were serialized from GPU.
   root.load_from(path, torch::Device(torch::kCPU));
 
-  // (re)build jk_component / optimizer from component_name if needed
-  const auto component_name = read_str_strict(path, "meta/jk/component_name");
+  // Rebuild training plumbing from the active runtime component identity, not
+  // from the saved checkpoint metadata. Checkpoints may come from another bind
+  // whose runtime component name encodes a different profile/circuit suffix.
   if (!component_name.empty()) {
-    if (!optimizer && cuwacunu::jkimyei::jk_setup(component_name, contract_hash).opt_builder) {
+    auto& jk_component =
+        cuwacunu::jkimyei::jk_setup(component_name, contract_hash);
+    if (!optimizer && jk_component.opt_builder) {
       std::vector<at::Tensor> params;
       for (auto& p : this->parameters(/*recurse=*/true)) if (p.requires_grad()) params.push_back(p);
-      optimizer = cuwacunu::jkimyei::jk_setup(component_name, contract_hash).opt_builder->build(params);
+      optimizer = jk_component.opt_builder->build(params);
     }
-    if (cuwacunu::jkimyei::jk_setup(component_name, contract_hash).sched_builder && optimizer) {
-      lr_sched = cuwacunu::jkimyei::jk_setup(component_name, contract_hash).sched_builder->build(*optimizer);
+    if (jk_component.sched_builder && optimizer) {
+      lr_sched = jk_component.sched_builder->build(*optimizer);
     }
     if (!loss_obj) {
-      loss_obj = std::make_unique<VicRegLoss>(cuwacunu::jkimyei::jk_setup(component_name, contract_hash));
+      loss_obj = std::make_unique<VicRegLoss>(jk_component);
     }
   }
 

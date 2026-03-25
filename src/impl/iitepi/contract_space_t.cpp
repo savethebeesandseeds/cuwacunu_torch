@@ -41,7 +41,7 @@ static std::size_t g_registered_contract_count = 0;
 static contract_hash_t g_last_registered_contract_hash;
 static std::string g_last_registered_contract_path_canonical;
 static constexpr const char* kModuleSectionVicreg = "VICReg";
-static constexpr const char* kModuleSectionValueEstimation = "VALUE_ESTIMATION";
+static constexpr const char* kModuleSectionExpectedValue = "EXPECTED_VALUE";
 static constexpr const char* kModuleSectionEmbeddingSequenceAnalytics =
     "WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS";
 static constexpr const char* kModuleSectionTransferMatrixEvaluation =
@@ -652,7 +652,6 @@ public_docking_contract_variable_assignments(
 [[nodiscard]] static bool is_public_docking_surface_id(
     std::string_view surface_id) noexcept {
   return surface_id == "contract.circuit" ||
-         surface_id == "contract.observation.sources" ||
          surface_id == "contract.observation.channels";
 }
 
@@ -1338,8 +1337,8 @@ derive_contract_component_bindings_or_fail(
   maybe_set_module_path("vicreg_config_filename",
                         "default.tsi.wikimyei.representation.vicreg.dsl");
   maybe_set_module_path(
-      "value_estimation_config_filename",
-      "default.tsi.wikimyei.inference.mdn.value_estimation.dsl");
+      "expected_value_config_filename",
+      "default.tsi.wikimyei.inference.mdn.expected_value.dsl");
   maybe_set_module_path(
       kContractSpecsEmbeddingSequenceAnalyticsConfigKey,
       "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl");
@@ -1392,7 +1391,7 @@ static T parse_scalar_from_string(const std::string& s) {
 [[nodiscard]] static bool section_supports_instruction_file(
     std::string_view section) noexcept {
   return section == kModuleSectionVicreg ||
-         section == kModuleSectionValueEstimation ||
+         section == kModuleSectionExpectedValue ||
          section == kModuleSectionEmbeddingSequenceAnalytics ||
          section == kModuleSectionTransferMatrixEvaluation;
 }
@@ -1610,9 +1609,9 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
   std::string vicreg_config_path;
   std::string vicreg_grammar_path;
   std::string vicreg_grammar_text;
-  std::string value_estimation_config_path;
-  std::string value_estimation_grammar_path;
-  std::string value_estimation_grammar_text;
+  std::string expected_value_config_path;
+  std::string expected_value_grammar_path;
+  std::string expected_value_grammar_text;
   std::string embedding_sequence_eval_config_path;
   std::string embedding_sequence_eval_grammar_path;
   std::string embedding_sequence_eval_grammar_text;
@@ -1631,15 +1630,15 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
     ok = false;
   }
 
-  const bool has_value_estimation_config = resolve_existing_path_if_present(
-      "SPECS", "value_estimation_config_filename", &value_estimation_config_path);
-  if (has_value_estimation_config) {
-    (void)require_existing_global_path("BNF", "value_estimation_grammar_filename",
-                                       &value_estimation_grammar_path);
-    value_estimation_grammar_text =
-        piaabo::dfiles::readFileToString(value_estimation_grammar_path);
-    if (!has_non_ws_ascii(value_estimation_grammar_text)) {
-      log_warn("[dconfig] empty [BNF].value_estimation_grammar_filename payload\n");
+  const bool has_expected_value_config = resolve_existing_path_if_present(
+      "SPECS", "expected_value_config_filename", &expected_value_config_path);
+  if (has_expected_value_config) {
+    (void)require_existing_global_path("BNF", "expected_value_grammar_filename",
+                                       &expected_value_grammar_path);
+    expected_value_grammar_text =
+        piaabo::dfiles::readFileToString(expected_value_grammar_path);
+    if (!has_non_ws_ascii(expected_value_grammar_text)) {
+      log_warn("[dconfig] empty [BNF].expected_value_grammar_filename payload\n");
       ok = false;
     }
   }
@@ -1798,7 +1797,7 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
 
   constexpr std::array<const char*, 4> kReservedModuleSections = {
       kModuleSectionVicreg,
-      kModuleSectionValueEstimation,
+      kModuleSectionExpectedValue,
       kModuleSectionEmbeddingSequenceAnalytics,
       kModuleSectionTransferMatrixEvaluation,
   };
@@ -2097,8 +2096,8 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       {});
 
   validate_module_instruction_file(
-      kModuleSectionValueEstimation, value_estimation_config_path,
-      value_estimation_grammar_text,
+      kModuleSectionExpectedValue, expected_value_config_path,
+      expected_value_grammar_text,
       /* string_keys */
       {"model_path", "dtype", "device"},
       /* int_keys */
@@ -2200,7 +2199,7 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
        "report_shapes",
        "reset_hashimyei_on_start"},
       /* optional_arr_int_keys */
-      {"mdn_target_dims"},
+      {"mdn_target_dims", "target_dims"},
       /* optional_arr_float_keys */
       {});
 
@@ -2599,9 +2598,9 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
 
   const std::string vicreg_path = contract_required_resolved_path(
       record->config, contract_folder, "SPECS", "vicreg_config_filename");
-  const auto value_estimation_path = contract_optional_resolved_path(
+  const auto expected_value_path = contract_optional_resolved_path(
       record->config, contract_folder, "SPECS",
-      "value_estimation_config_filename");
+      "expected_value_config_filename");
   const auto embedding_sequence_eval_path = contract_optional_resolved_path(
       record->config, contract_folder, "SPECS",
       kContractSpecsEmbeddingSequenceAnalyticsConfigKey);
@@ -2612,8 +2611,8 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
       global_required_resolved_path("BNF", "vicreg_grammar_filename");
   const std::string vicreg_grammar_text =
       piaabo::dfiles::readFileToString(vicreg_grammar_path);
-  std::optional<std::string> value_estimation_grammar_path{};
-  std::optional<std::string> value_estimation_grammar_text{};
+  std::optional<std::string> expected_value_grammar_path{};
+  std::optional<std::string> expected_value_grammar_text{};
   std::optional<std::string> embedding_sequence_eval_grammar_path{};
   std::optional<std::string> embedding_sequence_eval_grammar_text{};
   std::optional<std::string> transfer_matrix_eval_grammar_path{};
@@ -2622,7 +2621,7 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   std::optional<std::string> network_design_grammar_path{};
   std::optional<std::string> network_design_grammar_text{};
   std::string vicreg_resolved_text{};
-  std::string value_estimation_resolved_text{};
+  std::string expected_value_resolved_text{};
   std::string embedding_sequence_eval_resolved_text{};
   std::string transfer_matrix_eval_resolved_text{};
   std::string network_design_resolved_text{};
@@ -2661,11 +2660,11 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
     }
   }
 
-  if (value_estimation_path.has_value()) {
-    value_estimation_grammar_path = global_required_resolved_path(
-        "BNF", "value_estimation_grammar_filename");
-    value_estimation_grammar_text =
-        piaabo::dfiles::readFileToString(*value_estimation_grammar_path);
+  if (expected_value_path.has_value()) {
+    expected_value_grammar_path = global_required_resolved_path(
+        "BNF", "expected_value_grammar_filename");
+    expected_value_grammar_text =
+        piaabo::dfiles::readFileToString(*expected_value_grammar_path);
   }
   if (embedding_sequence_eval_path.has_value()) {
     embedding_sequence_eval_grammar_path = global_required_resolved_path(
@@ -2685,13 +2684,13 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
     network_design_grammar_text =
         piaabo::dfiles::readFileToString(*network_design_grammar_path);
   }
-  if (value_estimation_path.has_value()) {
-    record->module_section_paths[kModuleSectionValueEstimation] =
-        *value_estimation_path;
-    record->module_sections[kModuleSectionValueEstimation] =
-        parse_instruction_file(*value_estimation_path, *value_estimation_grammar_text,
+  if (expected_value_path.has_value()) {
+    record->module_section_paths[kModuleSectionExpectedValue] =
+        *expected_value_path;
+    record->module_sections[kModuleSectionExpectedValue] =
+        parse_instruction_file(*expected_value_path, *expected_value_grammar_text,
                                contract_variable_section,
-                               &value_estimation_resolved_text);
+                               &expected_value_resolved_text);
   }
   if (embedding_sequence_eval_path.has_value()) {
     record->module_section_paths[kModuleSectionEmbeddingSequenceAnalytics] =
@@ -2730,10 +2729,10 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   if (network_design_grammar_path.has_value()) {
     dependency_paths.insert(canonicalize_path_best_effort(*network_design_grammar_path));
   }
-  if (value_estimation_path.has_value()) {
-    dependency_paths.insert(canonicalize_path_best_effort(*value_estimation_path));
+  if (expected_value_path.has_value()) {
+    dependency_paths.insert(canonicalize_path_best_effort(*expected_value_path));
     dependency_paths.insert(
-        canonicalize_path_best_effort(*value_estimation_grammar_path));
+        canonicalize_path_best_effort(*expected_value_grammar_path));
   }
   if (transfer_matrix_eval_path.has_value()) {
     dependency_paths.insert(canonicalize_path_best_effort(*transfer_matrix_eval_path));
@@ -2889,12 +2888,49 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
         }
         record->signature.module_dsl_entries.push_back(std::move(entry));
       };
+  const auto resolve_contract_variable_path =
+      [&](const char* var_name) -> std::optional<std::string> {
+        if (contract_variable_section == nullptr) return std::nullopt;
+        const auto it = contract_variable_section->find(var_name);
+        if (it == contract_variable_section->end()) return std::nullopt;
+        const std::string raw = trim_ascii_ws_copy(it->second);
+        if (!has_non_ws_ascii(raw)) return std::nullopt;
+        return resolve_path_from_folder(contract_folder, raw);
+      };
+  const auto resolve_contract_surface_text =
+      [&](const std::string& resolved_path) -> std::string {
+        std::string dsl_text = piaabo::dfiles::readFileToString(resolved_path);
+        if (contract_variable_section != nullptr &&
+            !contract_variable_section->empty()) {
+          dsl_text = resolve_dsl_variables_or_fail(
+              dsl_text,
+              contract_dsl_variables_from_section(*contract_variable_section),
+              resolved_path);
+        }
+        return dsl_text;
+      };
+  if (const auto observation_sources_path =
+          resolve_contract_variable_path("__observation_sources_dsl_file");
+      observation_sources_path.has_value()) {
+    append_module_signature_entry("contract.observation.sources",
+                                  *observation_sources_path,
+                                  resolve_contract_surface_text(
+                                      *observation_sources_path));
+  }
+  if (const auto observation_channels_path =
+          resolve_contract_variable_path("__observation_channels_dsl_file");
+      observation_channels_path.has_value()) {
+    append_module_signature_entry("contract.observation.channels",
+                                  *observation_channels_path,
+                                  resolve_contract_surface_text(
+                                      *observation_channels_path));
+  }
   append_module_signature_entry(kModuleSectionVicreg, vicreg_path,
                                 vicreg_resolved_text);
-  if (value_estimation_path.has_value()) {
-    append_module_signature_entry(kModuleSectionValueEstimation,
-                                  *value_estimation_path,
-                                  value_estimation_resolved_text);
+  if (expected_value_path.has_value()) {
+    append_module_signature_entry(kModuleSectionExpectedValue,
+                                  *expected_value_path,
+                                  expected_value_resolved_text);
   }
   if (embedding_sequence_eval_path.has_value()) {
     append_module_signature_entry(kModuleSectionEmbeddingSequenceAnalytics,
@@ -2955,15 +2991,6 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
                              *network_design_dsl_path, network_design_resolved_text);
     }
 
-    const auto resolve_contract_variable_path =
-        [&](const char* var_name) -> std::optional<std::string> {
-          if (contract_variable_section == nullptr) return std::nullopt;
-          const auto it = contract_variable_section->find(var_name);
-          if (it == contract_variable_section->end()) return std::nullopt;
-          const std::string raw = trim_ascii_ws_copy(it->second);
-          if (!has_non_ws_ascii(raw)) return std::nullopt;
-          return resolve_path_from_folder(contract_folder, raw);
-        };
     const auto append_contract_variable_surface =
         [&](std::string_view surface_id, const char* var_name) {
           const auto resolved_path = resolve_contract_variable_path(var_name);
@@ -2973,14 +3000,7 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
             log_fatal("[dconfig] invalid contract docking surface path for [%s]: %s\n",
                       std::string(surface_id).c_str(), resolved_path->c_str());
           }
-          std::string dsl_text = piaabo::dfiles::readFileToString(*resolved_path);
-          if (contract_variable_section != nullptr &&
-              !contract_variable_section->empty()) {
-            dsl_text = resolve_dsl_variables_or_fail(
-                dsl_text,
-                contract_dsl_variables_from_section(*contract_variable_section),
-                *resolved_path);
-          }
+          std::string dsl_text = resolve_contract_surface_text(*resolved_path);
           append_docking_surface(surface_id, *resolved_path, dsl_text);
         };
     append_contract_variable_surface("contract.observation.sources",

@@ -1284,7 +1284,7 @@ struct extracted_sequence_rows_t {
   if (!normalize_feature_and_mask_(features, mask, &f, &m)) {
     return false;
   }
-  if (!tensor_is_finite_(f) || !tensor_is_finite_(m)) {
+  if (!tensor_is_finite_(m)) {
     return false;
   }
 
@@ -1341,6 +1341,7 @@ struct extracted_sequence_rows_t {
       ++out->skipped_sample_count;
       continue;
     }
+    row = torch::where(valid_row > 0.0, row, torch::zeros_like(row));
     if (!tensor_is_finite_(row) || !tensor_is_finite_(valid_row)) {
       ++out->skipped_sample_count;
       continue;

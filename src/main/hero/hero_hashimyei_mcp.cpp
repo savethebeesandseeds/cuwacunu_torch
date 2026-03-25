@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
@@ -20,19 +21,41 @@ __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 }
 
+[[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
+  const char* data = reinterpret_cast<const char*>(bytes);
+  std::size_t remaining = size;
+  while (remaining > 0) {
+    const ssize_t wrote = ::write(fd, data, remaining);
+    if (wrote < 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    if (wrote == 0) return false;
+    const auto wrote_size = static_cast<std::size_t>(wrote);
+    data += wrote_size;
+    remaining -= wrote_size;
+  }
+  return true;
+}
+
+void write_stdout_text(std::string_view text) {
+  (void)write_all_fd(STDOUT_FILENO, text.data(), text.size());
+}
+
 void print_help(const char* argv0) {
-  std::cout << "Usage: " << argv0 << " [options]\n"
-            << "Options:\n"
-            << "  --global-config <path>   Global .config used to resolve [REAL_HERO].hashimyei_hero_dsl_filename\n"
-            << "  --tool <name>            Execute one MCP tool and exit\n"
-            << "  --args-json <json>       Tool arguments JSON object (default: {})\n"
-            << "  --list-tools             Human-readable tool list\n"
-            << "  --list-tools-json        Print MCP tools/list JSON and exit\n"
-            << "  --hero-config <path>     Explicit Hashimyei HERO defaults DSL\n"
-            << "  --store-root <path>      Override store_root from HERO defaults DSL\n"
-            << "  --catalog <path>         Override catalog_path from HERO defaults DSL\n"
-            << "  (without --tool, server mode reads JSON-RPC messages from stdin)\n"
-            << "  --help                   Show this help\n";
+  std::string help = std::string("Usage: ") + argv0 + " [options]\n" +
+                     "Options:\n"
+                     "  --global-config <path>   Global .config used to resolve [REAL_HERO].hashimyei_hero_dsl_filename\n"
+                     "  --tool <name>            Execute one MCP tool and exit\n"
+                     "  --args-json <json>       Tool arguments JSON object (default: {})\n"
+                     "  --list-tools             Human-readable tool list\n"
+                     "  --list-tools-json        Print MCP tools/list JSON and exit\n"
+                     "  --hero-config <path>     Explicit Hashimyei HERO defaults DSL\n"
+                     "  --store-root <path>      Override store_root from HERO defaults DSL\n"
+                     "  --catalog <path>         Override catalog_path from HERO defaults DSL\n"
+                     "  (without --tool, server mode reads JSON-RPC messages from stdin)\n"
+                     "  --help                   Show this help\n";
+  write_stdout_text(help);
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
@@ -142,12 +165,12 @@ int main(int argc, char** argv) {
   }
 
   if (list_tools_json) {
-    std::cout << cuwacunu::hero::hashimyei_mcp::build_tools_list_result_json()
-              << "\n";
+    write_stdout_text(
+        cuwacunu::hero::hashimyei_mcp::build_tools_list_result_json() + "\n");
     return 0;
   }
   if (list_tools) {
-    std::cout << cuwacunu::hero::hashimyei_mcp::build_tools_list_human_text();
+    write_stdout_text(cuwacunu::hero::hashimyei_mcp::build_tools_list_human_text());
     return 0;
   }
 
@@ -235,8 +258,7 @@ int main(int argc, char** argv) {
       // stalls on process teardown.
       std::_Exit(2);
     }
-    std::cout << tool_result << "\n";
-    std::cout.flush();
+    write_stdout_text(tool_result + "\n");
     const int exit_code =
         cuwacunu::hero::hashimyei_mcp::tool_result_is_error(tool_result) ? 1
                                                                          : 0;

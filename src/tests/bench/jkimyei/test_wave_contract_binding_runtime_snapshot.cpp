@@ -53,9 +53,11 @@ int main() {
   const fs::path sources_path = source_dir / "demo.sources.dsl";
   const fs::path channels_path = source_dir / "demo.channels.dsl";
   const fs::path vicreg_path =
-      source_dir / "default.tsi.wikimyei.representation.vicreg.dsl";
+      source_dir / "tsi.wikimyei.representation.vicreg.dsl";
   const fs::path embedding_eval_path =
-      source_dir / "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
+      source_dir / "tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
+  const fs::path transfer_eval_path =
+      source_dir / "tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
   const fs::path network_design_path = source_dir / "demo.network.dsl";
   const fs::path jkimyei_path = source_dir / "demo.jkimyei.dsl";
   const fs::path campaign_path = source_dir / "demo.campaign.dsl";
@@ -66,6 +68,7 @@ int main() {
   write_file(network_design_path, "NETWORK_DESIGN { }\n");
   write_file(jkimyei_path, "JKSPEC 2.0\n");
   write_file(embedding_eval_path, "max_samples:int = 1024\n");
+  write_file(transfer_eval_path, "summary_every_steps:int = 64\n");
   write_file(vicreg_path,
              "learning_rate:float = % __lr ? 0.001 %\n"
              "network_design_dsl_file:str = demo.network.dsl\n"
@@ -97,8 +100,8 @@ int main() {
       "    };\n"
       "    RUNTIME: {\n"
       "      SYMBOL: % __symbol ? BTCUSDT %;\n"
-      "      FROM: 01.01.2020;\n"
-      "      TO: 31.01.2020;\n"
+      "      FROM: % __from ? 01.01.2020 %;\n"
+      "      TO: % __to ? 31.01.2020 %;\n"
       "      SOURCES_DSL_FILE: demo.sources.dsl;\n"
       "      CHANNELS_DSL_FILE: demo.channels.dsl;\n"
       "    };\n"
@@ -124,6 +127,8 @@ int main() {
              "    __sampler = random;\n"
              "    __workers = 2;\n"
              "    __symbol = ADAUSDT;\n"
+             "    __from = 03.02.2020;\n"
+             "    __to = 29.02.2020;\n"
              "    CONTRACT = contract_demo;\n"
              "    WAVE = wave_alpha;\n"
              "  };\n"
@@ -145,7 +150,7 @@ int main() {
   assert(campaign_snapshot.binding_id == "bind_alpha");
   assert(campaign_snapshot.original_contract_ref == "contract_demo");
   assert(campaign_snapshot.wave_ref == "wave_alpha");
-  assert(campaign_snapshot.variables.size() == 3);
+  assert(campaign_snapshot.variables.size() == 5);
 
   const std::string campaign_snapshot_text =
       read_file(campaign_snapshot.campaign_dsl_path);
@@ -159,10 +164,14 @@ int main() {
       instructions_dir / "tsi.wikimyei.representation.vicreg.dsl";
   const fs::path embedding_eval_snapshot_path =
       instructions_dir / "tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
+  const fs::path transfer_eval_snapshot_path =
+      instructions_dir / "tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
   const std::string vicreg_snapshot_text =
       read_file(vicreg_snapshot_path);
   const std::string embedding_eval_snapshot_text =
       read_file(embedding_eval_snapshot_path);
+  const std::string transfer_eval_snapshot_text =
+      read_file(transfer_eval_snapshot_path);
   assert(campaign_snapshot_text.find("IMPORT_CONTRACT_FILE \"binding.contract.dsl\";") !=
          std::string::npos);
   assert(campaign_snapshot_text.find("IMPORT_WAVE_FILE \"binding.wave.dsl\";") !=
@@ -176,6 +185,8 @@ int main() {
   assert(wave_snapshot_text.find("WORKERS: 2;") != std::string::npos);
   assert(wave_snapshot_text.find("SAMPLER: random;") != std::string::npos);
   assert(wave_snapshot_text.find("SYMBOL: ADAUSDT;") != std::string::npos);
+  assert(wave_snapshot_text.find("FROM: 03.02.2020;") != std::string::npos);
+  assert(wave_snapshot_text.find("TO: 29.02.2020;") != std::string::npos);
   assert(wave_snapshot_text.find("SOURCES_DSL_FILE: demo.sources.dsl;") !=
          std::string::npos);
   assert(wave_snapshot_text.find("CHANNELS_DSL_FILE: demo.channels.dsl;") !=
@@ -185,6 +196,7 @@ int main() {
   assert(fs::exists(instructions_dir / "demo.channels.dsl"));
   assert(fs::exists(vicreg_snapshot_path));
   assert(fs::exists(embedding_eval_snapshot_path));
+  assert(fs::exists(transfer_eval_snapshot_path));
   assert(fs::exists(instructions_dir / "demo.network.dsl"));
   assert(fs::exists(instructions_dir / "demo.jkimyei.dsl"));
   assert(vicreg_snapshot_text.find("learning_rate:float = 0.123") !=
@@ -194,6 +206,8 @@ int main() {
   assert(vicreg_snapshot_text.find("jkimyei_dsl_file:str = demo.jkimyei.dsl") !=
          std::string::npos);
   assert(embedding_eval_snapshot_text.find("max_samples:int = 1024") !=
+         std::string::npos);
+  assert(transfer_eval_snapshot_text.find("summary_every_steps:int = 64") !=
          std::string::npos);
 
   ok = cuwacunu::hero::wave_contract_binding_runtime::
@@ -211,15 +225,15 @@ int main() {
   const fs::path default_campaign_override_path =
       root / "default_campaign_override.dsl";
   std::string default_campaign_override =
-      read_file("/cuwacunu/src/config/instructions/default.iitepi.campaign.dsl");
+      read_file("/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl");
   replace_all(&default_campaign_override,
               "IMPORT_CONTRACT_FILE \"default.iitepi.contract.dsl\";",
               "IMPORT_CONTRACT_FILE "
-              "\"/cuwacunu/src/config/instructions/default.iitepi.contract.dsl\";");
+              "\"/cuwacunu/src/config/instructions/defaults/default.iitepi.contract.dsl\";");
   replace_all(&default_campaign_override,
               "IMPORT_WAVE_FILE \"default.iitepi.wave.dsl\";",
               "IMPORT_WAVE_FILE "
-              "\"/cuwacunu/src/config/instructions/default.iitepi.wave.dsl\";");
+              "\"/cuwacunu/src/config/instructions/defaults/default.iitepi.wave.dsl\";");
   replace_all(&default_campaign_override, "__sampler = sequential;",
               "__sampler = random;");
   replace_all(&default_campaign_override, "__workers = 0;", "__workers = 2;");

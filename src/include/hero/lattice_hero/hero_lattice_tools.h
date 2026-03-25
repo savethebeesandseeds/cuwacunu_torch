@@ -39,6 +39,7 @@ struct app_context_t {
 
 [[nodiscard]] std::string build_tools_list_result_json();
 [[nodiscard]] std::string build_tools_list_human_text();
+void prepare_jsonrpc_stdio_server_output();
 void write_cli_stdout(std::string_view payload);
 void run_jsonrpc_stdio_loop(app_context_t* app);
 

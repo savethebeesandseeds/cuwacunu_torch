@@ -37,6 +37,7 @@ inline constexpr std::string_view kRuntimeJobWaveDslFilename = "binding.wave.dsl
 inline constexpr std::string_view kRuntimeJobInstructionsDirname = "instructions";
 inline constexpr std::string_view kRuntimeJobStdoutFilename = "stdout.log";
 inline constexpr std::string_view kRuntimeJobStderrFilename = "stderr.log";
+inline constexpr std::string_view kRuntimeJobTraceFilename = "job.trace.jsonl";
 inline constexpr std::string_view kRuntimeCampaignJobsDirname = "jobs";
 inline constexpr std::string_view kRuntimeLegacyJobsDirname = ".jobs";
 
@@ -60,6 +61,7 @@ struct runtime_job_record_t {
   bool reset_runtime_state{false};
   std::string stdout_path{};
   std::string stderr_path{};
+  std::string trace_path{};
   std::uint64_t started_at_ms{0};
   std::uint64_t updated_at_ms{0};
   std::optional<std::uint64_t> finished_at_ms{};
@@ -139,6 +141,12 @@ struct runtime_job_observation_t {
     const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobStdoutFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path runtime_job_trace_path(
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
+         std::string(kRuntimeJobTraceFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_campaign_dsl_path(
@@ -229,6 +237,33 @@ struct runtime_job_observation_t {
   out->assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
   if (!in.eof() && in.fail()) {
     if (error) *error = "cannot read file: " + path.string();
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] inline bool append_text_file(const std::filesystem::path& path,
+                                          std::string_view content,
+                                          std::string* error = nullptr) {
+  if (error) error->clear();
+  const auto parent = path.parent_path();
+  std::error_code ec{};
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      if (error) *error = "cannot create parent directory: " + parent.string();
+      return false;
+    }
+  }
+  std::ofstream out(path, std::ios::binary | std::ios::app);
+  if (!out) {
+    if (error) *error = "cannot open file for append: " + path.string();
+    return false;
+  }
+  out << content;
+  out.flush();
+  if (!out.good()) {
+    if (error) *error = "cannot append file: " + path.string();
     return false;
   }
   return true;
@@ -394,6 +429,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   document.entries.push_back(
       make_runtime_lls_string_entry("stderr_path", record.stderr_path));
   document.entries.push_back(
+      make_runtime_lls_string_entry("trace_path", record.trace_path));
+  document.entries.push_back(
       make_runtime_lls_uint_entry("started_at_ms", record.started_at_ms,
                                   "(0,+inf)"));
   document.entries.push_back(
@@ -476,6 +513,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   parsed.binding_id = kv["binding_id"];
   parsed.stdout_path = kv["stdout_path"];
   parsed.stderr_path = kv["stderr_path"];
+  parsed.trace_path = kv["trace_path"];
   if (parsed.job_cursor.empty()) {
     if (error) *error = "runtime job record missing job_cursor";
     return false;
@@ -805,7 +843,7 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     return record.state == "launching" ? std::string("running") : record.state;
   }
   if (observation.target_alive && !observation.runner_alive) return "orphaned";
-  if (!observation.target_alive && !observation.runner_alive) return "lost";
+  if (!observation.target_alive && !observation.runner_alive) return "failed";
   return record.state;
 }
 

@@ -28,6 +28,7 @@ struct iitepi_campaign_run_decl_t {
 struct iitepi_campaign_instruction_t {
   std::vector<iitepi_campaign_contract_decl_t> contracts{};
   std::vector<iitepi_campaign_wave_decl_t> waves{};
+  std::string super_objective_file{};
   std::vector<iitepi_campaign_bind_decl_t> binds{};
   std::vector<iitepi_campaign_run_decl_t> runs{};
   std::string str() const;

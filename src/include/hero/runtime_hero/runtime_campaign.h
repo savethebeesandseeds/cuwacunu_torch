@@ -35,6 +35,7 @@ struct runtime_campaign_record_t {
   std::string boot_id{};
   std::string state{"launching"};
   std::string state_detail{};
+  std::string super_loop_id{};
   std::string global_config_path{};
   std::string source_campaign_dsl_path{};
   std::string campaign_dsl_path{};
@@ -131,6 +132,8 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   document.entries.push_back(
       make_runtime_lls_string_entry("state_detail", record.state_detail));
   document.entries.push_back(
+      make_runtime_lls_string_entry("super_loop_id", record.super_loop_id));
+  document.entries.push_back(
       make_runtime_lls_string_entry("global_config_path",
                                     record.global_config_path));
   document.entries.push_back(make_runtime_lls_string_entry(
@@ -200,6 +203,7 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   parsed.boot_id = kv["boot_id"];
   parsed.state = kv["state"];
   parsed.state_detail = kv["state_detail"];
+  parsed.super_loop_id = kv["super_loop_id"];
   parsed.global_config_path = kv["global_config_path"];
   parsed.source_campaign_dsl_path = kv["source_campaign_dsl_path"];
   parsed.campaign_dsl_path = kv["campaign_dsl_path"];

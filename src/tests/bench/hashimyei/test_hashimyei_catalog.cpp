@@ -224,7 +224,7 @@ static component_manifest_t make_component_manifest() {
   m.founding_revision_id = "cfgrev.initial";
   m.contract_identity = make_binding("bind_train_vicreg").contract;
   m.founding_dsl_source_path =
-      "src/config/instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl";
+      "src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl";
   m.founding_dsl_source_sha256_hex = sixty_four_hex('c');
   m.docking_signature_sha256_hex = sixty_four_hex('d');
   m.lineage_state = "active";

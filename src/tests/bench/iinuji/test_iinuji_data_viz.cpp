@@ -1,11 +1,13 @@
 /*
   test_iinuji_data_viz.cpp
-  TUI to visualize (1) input [1,C,T,D], (2) embedding [1,De], (3) MDN E[y] ± 1σ.
+  TUI to visualize (1) input [1,C,T,D], (2) embedding [1,De], (3) the MDN
+  expectation E[Y|X] with a simple ±1sigma view.
 
   - Pulls a real observation from MemoryMappedConcatDataset<Datatype_t> at a RANDOM index.
   - Highlights masked timestamps as RED scatter markers (on top of the line plot).
   - Embedding panel renders a colored tile matrix (diverging palette).
-  - Value panel shows per-channel E[y] ± 1σ over horizons (naïve MDN from actual future).
+  - Expectation panel shows per-channel E[Y|X] ± 1σ over horizons
+    (naive MDN view from actual future).
   - No changes to iinuji sources.
 */
 
@@ -382,7 +384,7 @@ static void fill_input_plot_with_mask(const observation_sample_t& obs,
   }
 }
 
-/* MDN panel: compute E[y] and ±1σ; skip non-finite points gracefully */
+/* MDN panel: compute the expectation E[Y|X] and ±1sigma; skip non-finite points gracefully */
 static void fill_mdn_plot_from_params(const torch::Tensor& log_pi_BCHfK,
                                       const torch::Tensor& mu_BCHfKDy,
                                       const torch::Tensor& sigma_BCHfKDy,

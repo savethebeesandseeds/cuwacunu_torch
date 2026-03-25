@@ -5,6 +5,7 @@
 
 <campaign_entry>             ::= <contract_import_decl>
                                | <wave_import_decl>
+                               | <super_decl>
                                | <bind_decl>
                                | <run_decl> ;
 
@@ -13,6 +14,10 @@
                                  [<whitespace>] ";" <line_end> ;
 
 <wave_import_decl>           ::= [<whitespace>] "IMPORT_WAVE_FILE"
+                                 [<whitespace>] <path_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<super_decl>                ::= [<whitespace>] "SUPER"
                                  [<whitespace>] <path_value>
                                  [<whitespace>] ";" <line_end> ;
 

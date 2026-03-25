@@ -13,6 +13,7 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 all:
 	$(MAKE) -C $(HERE_PATH)/observation_pipeline all
 	$(MAKE) -C $(HERE_PATH)/latent_lineage_state all
+	$(MAKE) -C $(HERE_PATH)/super_objective all
 	$(MAKE) -C $(HERE_PATH)/network_design all
 	$(MAKE) -C $(HERE_PATH)/jkimyei_specs all
 	$(MAKE) -C $(HERE_PATH)/iitepi_campaign all

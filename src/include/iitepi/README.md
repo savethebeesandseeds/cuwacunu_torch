@@ -19,7 +19,7 @@ The public dispatcher is now campaign-oriented:
 3. Campaign
 - imports contract files and wave files
 - declares reusable `BIND` entries
-- executes ordered `RUN <bind_id>;` steps
+- declares the default ordered `RUN <bind_id>;` plan
 
 4. Binding
 - one selected `contract + wave + bind-local variables`
@@ -33,6 +33,7 @@ The public dispatcher is now campaign-oriented:
 - loads `.config`
 - exposes typed config access
 - resolves `GENERAL.default_iitepi_campaign_dsl_filename`
+  (checked in today as the `vicreg.solo` objective bundle)
 
 2. `contract_space_t`
 - immutable contract registry
@@ -80,7 +81,8 @@ The public dispatcher is now campaign-oriented:
 
 2. Initialize runtime selection
 - Runtime Hero or `main_campaign` resolves the configured campaign DSL
-- one selected `RUN` becomes one execution binding
+- the default `RUN` list becomes the execution plan unless an explicit
+  binding override narrows launch to one declared `BIND`
 
 3. Internal worker bridge
 - the selected campaign bind is materialized into the private internal
@@ -98,9 +100,11 @@ The public dispatcher is now campaign-oriented:
   VICReg DSLs
 - contract snapshots also derive an explicit docking signature from the
   compatible circuit set, contract `__variables`, and docking-bearing contract
-  DSL surfaces; component lineage can use that digest to talk about docking
-  compatibility directly, without making identity depend on local checkout-root
-  path spellings alone
+  DSL surfaces; the public docking digest includes the circuit, VICReg
+  module/network-design, and contract-owned observation-channel DSL, while the
+  observation source registry still affects exact contract identity but is
+  intentionally excluded from the docking digest so unrelated source-row
+  additions do not invalidate compatible component weights
 - runtime reuse/load of an existing component hashimyei validates the selected
   component manifest against the current public docking signature; founding
   contract hash remains provenance, but it is no longer the hard runtime gate

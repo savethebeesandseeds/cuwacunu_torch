@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +20,27 @@ constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 
 __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
+}
+
+[[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
+  const char* data = reinterpret_cast<const char*>(bytes);
+  std::size_t remaining = size;
+  while (remaining > 0) {
+    const ssize_t wrote = ::write(fd, data, remaining);
+    if (wrote < 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    if (wrote == 0) return false;
+    const auto wrote_size = static_cast<std::size_t>(wrote);
+    data += wrote_size;
+    remaining -= wrote_size;
+  }
+  return true;
+}
+
+void write_stdout_text(std::string_view text) {
+  (void)write_all_fd(STDOUT_FILENO, text.data(), text.size());
 }
 
 void print_cli_help(const char* argv0) {
@@ -215,11 +237,11 @@ int main(int argc, char** argv) {
   }
 
   if (list_tools_json) {
-    std::cout << cuwacunu::hero::mcp::build_tools_list_result_json() << "\n";
+    write_stdout_text(cuwacunu::hero::mcp::build_tools_list_result_json() + "\n");
     return 0;
   }
   if (list_tools) {
-    std::cout << cuwacunu::hero::mcp::build_tools_list_human_text();
+    write_stdout_text(cuwacunu::hero::mcp::build_tools_list_human_text());
     return 0;
   }
 
@@ -227,9 +249,7 @@ int main(int argc, char** argv) {
                                                  global_config_path.string());
   std::string load_error;
   if (!store.load(&load_error)) {
-    std::cout << "err\tstartup\t" << load_error << "\n";
-    std::cout << "end\n";
-    std::cout.flush();
+    write_stdout_text("err\tstartup\t" + load_error + "\nend\n");
     return 2;
   }
 
@@ -253,8 +273,7 @@ int main(int argc, char** argv) {
         direct_tool_name, direct_tool_args_json, &store, &tool_result_json,
         &tool_error);
     if (!tool_result_json.empty()) {
-      std::cout << tool_result_json << "\n";
-      std::cout.flush();
+      write_stdout_text(tool_result_json + "\n");
     }
     if (!ok && !tool_error.empty()) {
       std::cerr << "tool execution failed: " << tool_error << "\n";

@@ -49,5 +49,5 @@ projector_bn_in_fp32:bool = true # Used only with BatchNorm1d
 enable_buffer_averaging:bool = false # SWA buffer averaging policy
 dtype[kFloat16|kFloat32|kFloat64]:str = kFloat32 # torch dtype token
 device[cpu|gpu|cuda:0]:str = gpu # cpu | cuda:0 | gpu
-network_design_dsl_file:str = /cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl
-jkimyei_dsl_file:str = /cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl
+network_design_dsl_file:str = /cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl
+jkimyei_dsl_file:str = /cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl

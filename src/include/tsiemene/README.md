@@ -101,8 +101,8 @@ For exact constraints, use:
 2. `src/include/iitepi/runtime_binding/runtime_binding.contract.h`
 3. `src/include/iitepi/runtime_binding/runtime_binding.runtime.h`
 4. `src/include/iitepi/runtime_binding/runtime_binding.builder.h`
-5. `src/config/instructions/default.iitepi.contract.circuit.dsl`
-6. `src/config/instructions/default.iitepi.wave.dsl`
+5. `src/config/instructions/defaults/default.iitepi.contract.circuit.dsl`
+6. `src/config/instructions/defaults/default.iitepi.wave.dsl`
 
 ## Reference tests
 - `src/tests/bench/camahjucunu/test_dsl_tsiemene_circuit.cpp`

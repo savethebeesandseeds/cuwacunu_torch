@@ -142,9 +142,9 @@ inline torch::Tensor mdn_masked_mean_per_horizon(const torch::Tensor& nll, const
   return sumBC / den;                                     // [Hf]
 }
 
-// ---------- Expectation for generalized shapes ----------
+// ---------- Conditional expectation for generalized shapes ----------
 // out: log_pi [B,C,Hf,K], mu [B,C,Hf,K,Dy]
-// returns E[y|x] = sum_k pi * mu → [B,C,Hf,Dy]
+// returns E[Y|X] = sum_k pi * mu → [B,C,Hf,Dy]
 inline torch::Tensor mdn_expectation(const MdnOut& out) {
   auto pi = out.log_pi.exp().unsqueeze(-1); // [B,C,Hf,K,1]
   return (pi * out.mu).sum(/*dim=*/3);      // → [B,C,Hf,Dy]

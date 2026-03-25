@@ -46,8 +46,8 @@ namespace detail {
 
 inline constexpr std::string_view kDefaultVicregConfigFilename =
     "default.tsi.wikimyei.representation.vicreg.dsl";
-inline constexpr std::string_view kDefaultValueEstimationConfigFilename =
-    "default.tsi.wikimyei.inference.mdn.value_estimation.dsl";
+inline constexpr std::string_view kDefaultExpectedValueConfigFilename =
+    "default.tsi.wikimyei.inference.mdn.expected_value.dsl";
 inline constexpr std::string_view kDefaultEmbeddingSequenceAnalyticsConfigFilename =
     "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
 inline constexpr std::string_view kDefaultTransferMatrixConfigFilename =
@@ -414,12 +414,32 @@ struct staged_dsl_graph_state_t {
 [[nodiscard]] inline std::vector<std::filesystem::path>
 implicit_contract_module_sources(const std::filesystem::path& source_contract_path) {
   const std::filesystem::path folder = source_contract_path.parent_path();
-  return {
-      folder / std::string(kDefaultVicregConfigFilename),
-      folder / std::string(kDefaultValueEstimationConfigFilename),
-      folder / std::string(kDefaultEmbeddingSequenceAnalyticsConfigFilename),
-      folder / std::string(kDefaultTransferMatrixConfigFilename),
+  std::vector<std::filesystem::path> out{};
+  const auto append_preferred_source = [&](std::string_view default_filename) {
+    const std::filesystem::path default_path =
+        (folder / std::string(default_filename)).lexically_normal();
+    std::error_code exists_ec{};
+    if (std::filesystem::exists(default_path, exists_ec) &&
+        std::filesystem::is_regular_file(default_path, exists_ec)) {
+      out.push_back(default_path);
+      return;
+    }
+    if (default_filename.rfind("default.", 0) != 0 || default_filename.size() <= 8) {
+      return;
+    }
+    const std::filesystem::path stripped_path =
+        (folder / std::string(default_filename.substr(8))).lexically_normal();
+    exists_ec.clear();
+    if (std::filesystem::exists(stripped_path, exists_ec) &&
+        std::filesystem::is_regular_file(stripped_path, exists_ec)) {
+      out.push_back(stripped_path);
+    }
   };
+  append_preferred_source(kDefaultVicregConfigFilename);
+  append_preferred_source(kDefaultExpectedValueConfigFilename);
+  append_preferred_source(kDefaultEmbeddingSequenceAnalyticsConfigFilename);
+  append_preferred_source(kDefaultTransferMatrixConfigFilename);
+  return out;
 }
 
 [[nodiscard]] inline bool load_contract_dsl_variables(

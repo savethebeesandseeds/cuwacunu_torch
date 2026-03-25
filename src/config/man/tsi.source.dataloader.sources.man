@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = tsi.source.dataloader.sources
-TARGET_DSL = src/config/instructions/default.tsi.source.dataloader.sources.dsl
+TARGET_DSL = src/config/instructions/defaults/default.tsi.source.dataloader.sources.dsl
 TARGET_BNF = src/config/bnf/tsi.source.dataloader.sources.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/observation_pipeline/observation_sources_decoder.cpp
 PRIMARY_VALIDATORS = decode_observation_spec_from_split_dsl

@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = iitepi.campaign
-TARGET_DSL = src/config/instructions/default.iitepi.campaign.dsl
+TARGET_DSL = src/config/instructions/defaults/default.iitepi.campaign.dsl
 TARGET_BNF = src/config/bnf/iitepi.campaign.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/iitepi_campaign/iitepi_campaign.cpp
 PRIMARY_VALIDATORS = syntax_only_in_decoder
@@ -88,3 +88,4 @@ default = none
 range = at least one ordered RUN entry
 allowed = declared BIND id
 nuance = Runtime HERO executes RUN entries sequentially in declaration order
+note = hero.runtime.start_campaign(binding_id=...) narrows one launch to the selected BIND and ignores the campaign RUN list for that launch

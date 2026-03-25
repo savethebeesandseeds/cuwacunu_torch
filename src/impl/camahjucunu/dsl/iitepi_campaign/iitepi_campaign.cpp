@@ -282,6 +282,7 @@ class parser_t {
     std::unordered_set<std::string> bind_ids{};
     std::unordered_set<std::string> contract_files{};
     std::unordered_set<std::string> wave_files{};
+    bool saw_super_objective = false;
 
     expect_identifier("CAMPAIGN");
     expect_symbol('{');
@@ -318,6 +319,14 @@ class parser_t {
           throw std::runtime_error("duplicate IMPORT_WAVE_FILE entry: " + w.file);
         }
         out.waves.push_back(std::move(w));
+        continue;
+      }
+      if (head.text == "SUPER") {
+        if (saw_super_objective) {
+          throw std::runtime_error("duplicate SUPER entry in CAMPAIGN block");
+        }
+        out.super_objective_file = parse_super_decl();
+        saw_super_objective = true;
         continue;
       }
       if (head.text == "BIND") {
@@ -468,6 +477,16 @@ class parser_t {
     return out;
   }
 
+  std::string parse_super_decl() {
+    expect_identifier("SUPER");
+    std::string value = parse_scalar_value();
+    expect_symbol(';');
+    if (value.empty()) {
+      throw std::runtime_error("SUPER missing objective path");
+    }
+    return value;
+  }
+
   cuwacunu::camahjucunu::iitepi_campaign_bind_decl_t parse_bind_decl() {
     using cuwacunu::camahjucunu::iitepi_campaign_bind_decl_t;
     iitepi_campaign_bind_decl_t out{};
@@ -557,11 +576,13 @@ void validate_iitepi_campaign_grammar_text_or_throw_(
       "<instruction>",
       "<contract_import_decl>",
       "<wave_import_decl>",
+      "<super_decl>",
       "<bind_decl>",
       "<run_decl>",
       "CAMPAIGN",
       "IMPORT_CONTRACT_FILE",
       "IMPORT_WAVE_FILE",
+      "SUPER",
       "BIND",
       "RUN",
       "CONTRACT",
@@ -583,6 +604,9 @@ std::string iitepi_campaign_instruction_t::str() const {
   oss << "iitepi_campaign_instruction_t: contracts=" << contracts.size()
       << " waves=" << waves.size() << " binds=" << binds.size()
       << " runs=" << runs.size() << "\n";
+  if (!super_objective_file.empty()) {
+    oss << "  [super] objective_file=" << super_objective_file << "\n";
+  }
   for (std::size_t i = 0; i < runs.size(); ++i) {
     const auto& run = runs[i];
     oss << "  [run:" << i << "] bind_ref=" << run.bind_ref << "\n";

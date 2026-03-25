@@ -37,7 +37,7 @@
 /* ------------------------- Component Types ------------------------- */
 #ifdef JK_COMPONENT_TYPE
 JK_COMPONENT_TYPE(VICREG, "tsi.wikimyei.representation.vicreg", "Self-supervised representation network")
-JK_COMPONENT_TYPE(MDN,    "tsi.wikimyei.inference.mdn",          "Mixture density value-estimation network")
+JK_COMPONENT_TYPE(MDN,    "tsi.wikimyei.inference.mdn",          "Mixture-density predictive distribution with E[Y|X] output")
 #endif
 
 #ifdef JK_COMPONENT_REQUIRED_FAMILY

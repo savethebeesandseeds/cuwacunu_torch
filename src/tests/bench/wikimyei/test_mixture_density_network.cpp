@@ -54,26 +54,26 @@ int main() {
   TORCH_CHECK(torch::isfinite(out.mu).all().item<bool>(), "[test_mdn] mu contains non-finite values");
   TORCH_CHECK(torch::isfinite(out.sigma).all().item<bool>(), "[test_mdn] sigma contains non-finite values");
 
-  auto y = cuwacunu::wikimyei::mdn::mdn_expectation(out);           // [8,3,4,2]
-  auto yhat = cuwacunu::wikimyei::mdn::mdn_mode(out);               // [8,3,4,2]
-  auto s = cuwacunu::wikimyei::mdn::mdn_sample_one_step(out);       // [8,3,4,2]
-  TORCH_CHECK(torch::isfinite(y).all().item<bool>(), "[test_mdn] expectation contains non-finite values");
-  TORCH_CHECK(torch::isfinite(yhat).all().item<bool>(), "[test_mdn] mode contains non-finite values");
-  TORCH_CHECK(torch::isfinite(s).all().item<bool>(), "[test_mdn] sample contains non-finite values");
+  auto y_expectation = cuwacunu::wikimyei::mdn::mdn_expectation(out); // [8,3,4,2] = E[Y|X]
+  auto y_mode = cuwacunu::wikimyei::mdn::mdn_mode(out);               // [8,3,4,2]
+  auto y_sample = cuwacunu::wikimyei::mdn::mdn_sample_one_step(out);  // [8,3,4,2]
+  TORCH_CHECK(torch::isfinite(y_expectation).all().item<bool>(), "[test_mdn] expectation contains non-finite values");
+  TORCH_CHECK(torch::isfinite(y_mode).all().item<bool>(), "[test_mdn] mode contains non-finite values");
+  TORCH_CHECK(torch::isfinite(y_sample).all().item<bool>(), "[test_mdn] sample contains non-finite values");
 
   cuwacunu::wikimyei::mdn::MdnNLLLoss loss(
-      cuwacunu::jkimyei::jk_setup("MDN_value_estimation", contract_hash));
-  auto L = loss.compute(out, y);           // scalar
+      cuwacunu::jkimyei::jk_setup("MDN_expected_value", contract_hash));
+  auto L = loss.compute(out, y_expectation); // scalar
   TORCH_CHECK(torch::isfinite(L).all().item<bool>(), "[test_mdn] loss contains non-finite values");
 
   auto mask = torch::ones({8,3,4}, torch::kFloat32);
-  auto nll_map = cuwacunu::wikimyei::mdn::mdn_nll_map(out, y, mask);
+  auto nll_map = cuwacunu::wikimyei::mdn::mdn_nll_map(out, y_expectation, mask);
   TORCH_CHECK(nll_map.sizes() == torch::IntArrayRef({8,3,4}), "[test_mdn] nll_map shape mismatch");
   TORCH_CHECK(torch::isfinite(nll_map).all().item<bool>(), "[test_mdn] nll_map contains non-finite values");
 
   bool threw_bad_mask = false;
   try {
-    (void)loss.compute(out, y, torch::ones({8,3,4,1}, torch::kFloat32));
+    (void)loss.compute(out, y_expectation, torch::ones({8,3,4,1}, torch::kFloat32));
   } catch (const c10::Error&) {
     threw_bad_mask = true;
   }
@@ -81,7 +81,7 @@ int main() {
 
   bool threw_bad_target = false;
   try {
-    auto y_bad = y.select(-1, 0); // [8,3,4]
+    auto y_bad = y_expectation.select(-1, 0); // [8,3,4]
     (void)cuwacunu::wikimyei::mdn::mdn_nll_map(out, y_bad, mask);
   } catch (const c10::Error&) {
     threw_bad_target = true;

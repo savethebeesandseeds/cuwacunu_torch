@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = hero.runtime.config
-TARGET_DSL = src/config/instructions/default.hero.runtime.dsl
+TARGET_DSL = src/config/instructions/defaults/default.hero.runtime.dsl
 TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
 PRIMARY_VALIDATORS = src/main/hero/hero_runtime_mcp.cpp
@@ -15,7 +15,7 @@ required = true
 default = /cuwacunu/.build/hero/main_campaign
 range = executable path
 allowed = absolute_or_relative path
-nuance = worker binary launched for each sequential RUN step of hero.runtime.start_campaign
+nuance = worker binary launched for each sequential RUN step of hero.runtime.start_campaign; when start_campaign receives binding_id only that selected bind is dispatched
 
 [FIELD tail_default_lines]
 key = tail_default_lines
@@ -25,11 +25,11 @@ required = true
 default = 120
 range = [1,+inf)
 allowed = unsigned integer
-nuance = default line count used by hero.runtime.tail_log when lines is omitted
+nuance = default line count used by hero.runtime.tail_log and hero.runtime.tail_trace when lines is omitted
 
 [NOTE DERIVED_RUNTIME_PATHS]
 scope = hero runtime defaults
-text = Runtime HERO derives its campaigns root from `[GENERAL].runtime_root` as `<runtime_root>/.campaigns`, and it loads the campaign grammar from `[BNF].iitepi_campaign_grammar_filename`.
+text = Runtime HERO derives its campaigns root from `[GENERAL].runtime_root` as `<runtime_root>/.campaigns`, derives the shared super-loop root as `<runtime_root>/.super_hero` for linked campaign metadata and operator stop propagation, and loads the campaign grammar from `[BNF].iitepi_campaign_grammar_filename`.
 
 [FIELD max_active_campaigns]
 key = max_active_campaigns

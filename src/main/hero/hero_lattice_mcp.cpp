@@ -206,6 +206,7 @@ int main(int argc, char** argv) {
     return 2;
   }
 
+  cuwacunu::hero::lattice_mcp::prepare_jsonrpc_stdio_server_output();
   cuwacunu::hero::lattice_mcp::run_jsonrpc_stdio_loop(&app);
   return 0;
 }

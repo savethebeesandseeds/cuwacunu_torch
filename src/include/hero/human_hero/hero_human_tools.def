@@ -1,0 +1,19 @@
+#ifndef HERO_HUMAN_TOOL
+#error "HERO_HUMAN_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_human_tools.def"
+#endif
+
+HERO_HUMAN_TOOL(
+    "hero.human.list_requests",
+    "List Super Hero loops currently paused in need_human state",
+    "{\"type\":\"object\",\"properties\":{\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+    handle_tool_list_requests)
+HERO_HUMAN_TOOL(
+    "hero.human.get_request",
+    "Fetch one pending human request by loop_id",
+    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
+    handle_tool_get_request)
+HERO_HUMAN_TOOL(
+    "hero.human.respond",
+    "Create a signed human response artifact for one pending loop and ask Super Hero to resume it",
+    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"control_kind\":{\"type\":\"string\",\"enum\":[\"continue\",\"stop\"]},\"next_action\":{\"type\":\"object\",\"properties\":{\"kind\":{\"type\":\"string\",\"enum\":[\"default_plan\",\"binding\"]},\"target_binding_id\":{\"type\":\"string\"},\"reset_runtime_state\":{\"type\":\"boolean\"}},\"required\":[\"kind\"],\"additionalProperties\":false},\"reason\":{\"type\":\"string\"},\"memory_note\":{\"type\":\"string\"}},\"required\":[\"loop_id\",\"control_kind\",\"reason\"],\"additionalProperties\":false}",
+    handle_tool_respond)

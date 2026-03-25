@@ -1,0 +1,29 @@
+#ifndef HERO_SUPER_TOOL
+#error "HERO_SUPER_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_super_tools.def"
+#endif
+
+HERO_SUPER_TOOL(
+    "hero.super.start_loop",
+    "Start a detached Super Hero loop from the selected super.objective.dsl; Super Hero owns first-launch planning, review, and continuation while Runtime Hero remains the campaign executor",
+    "{\"type\":\"object\",\"properties\":{\"super_objective_dsl_path\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+    handle_tool_start_loop)
+HERO_SUPER_TOOL(
+    "hero.super.list_loops",
+    "List known Super Hero loops keyed by loop_id",
+    "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+    handle_tool_list_loops)
+HERO_SUPER_TOOL(
+    "hero.super.get_loop",
+    "Fetch one Super Hero loop by loop_id",
+    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
+    handle_tool_get_loop)
+HERO_SUPER_TOOL(
+    "hero.super.stop_loop",
+    "Stop one Super Hero loop and optionally force-stop its active Runtime campaign",
+    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
+    handle_tool_stop_loop)
+HERO_SUPER_TOOL(
+    "hero.super.resume_loop",
+    "Resume one Super Hero loop from a signed Human Hero response artifact",
+    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"human_response_path\":{\"type\":\"string\"},\"human_response_sig_path\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
+    handle_tool_resume_loop)

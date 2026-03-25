@@ -152,5 +152,5 @@ PROFILE "eval_payload_only" {
 }
 }
 
-/* NOTE: value-estimation/MDN policy is intentionally out of active scope.
+/* NOTE: expected-value/MDN policy is intentionally out of active scope.
    This contract file currently focuses on VICReg representation flows. */

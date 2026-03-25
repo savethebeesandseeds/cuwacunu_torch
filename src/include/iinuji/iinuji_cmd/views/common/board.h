@@ -24,10 +24,10 @@ inline std::string board_instruction_path_from_config(
   std::string path;
   if (!lookup_contract_config_value(
           "CONTRACT", "circuit_dsl_filename", contract_hash, &path)) {
-    return "src/config/instructions/default.iitepi.contract.circuit.dsl";
+    return "src/config/instructions/defaults/default.iitepi.contract.circuit.dsl";
   }
   if (path.empty()) {
-    return "src/config/instructions/default.iitepi.contract.circuit.dsl";
+    return "src/config/instructions/defaults/default.iitepi.contract.circuit.dsl";
   }
   return path;
 }

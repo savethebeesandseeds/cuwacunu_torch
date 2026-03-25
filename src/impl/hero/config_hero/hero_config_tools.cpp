@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <charconv>
 #include <cctype>
 #include <chrono>
@@ -18,13 +19,24 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <unistd.h>
 #include <vector>
 
 #include <openssl/evp.h>
 
-#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
-#include "hero/hashimyei_hero/hashimyei_catalog.h"
+#include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
+#include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state.h"
+#include "camahjucunu/dsl/network_design/network_design.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_channels_decoder.h"
+#include "camahjucunu/dsl/super_objective/super_objective.h"
 #include "hero/config_hero/hero.config.h"
+#include "hero/hashimyei_hero/hashimyei_catalog.h"
+#include "hero/hashimyei_hero/hero_hashimyei_tools.h"
+#include "hero/lattice_hero/hero_lattice_tools.h"
+#include "hero/runtime_hero/hero_runtime_tools.h"
+#include "hero/super_hero/hero_super_tools.h"
 #include "hero/runtime_dev_loop.h"
 #include "iitepi/contract_space_t.h"
 
@@ -42,6 +54,23 @@ constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 constexpr const char* kCatalogFilename = "hashimyei_catalog.idydb";
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
 bool g_jsonrpc_use_content_length_framing = false;
+
+[[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
+  const char* data = reinterpret_cast<const char*>(bytes);
+  std::size_t remaining = size;
+  while (remaining > 0) {
+    const ssize_t wrote = ::write(fd, data, remaining);
+    if (wrote < 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    if (wrote == 0) return false;
+    const auto wrote_size = static_cast<std::size_t>(wrote);
+    data += wrote_size;
+    remaining -= wrote_size;
+  }
+  return true;
+}
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t b = 0;
@@ -82,6 +111,9 @@ bool g_jsonrpc_use_content_length_framing = false;
 
 [[nodiscard]] std::filesystem::path resolve_path_near_config(
     std::string_view raw_path, std::string_view config_path);
+[[nodiscard]] bool read_ini_general_key(std::string_view ini_path,
+                                        std::string_view key,
+                                        std::string* out_value);
 
 [[nodiscard]] bool read_text_file(std::string_view path, std::string* out,
                                   std::string* err) {
@@ -173,81 +205,6 @@ bool g_jsonrpc_use_content_length_framing = false;
   return b == base.end();
 }
 
-[[nodiscard]] std::size_t find_comment_pos_unquoted(std::string_view text) {
-  bool in_single = false;
-  bool in_double = false;
-  bool escape = false;
-  for (std::size_t i = 0; i < text.size(); ++i) {
-    const char ch = text[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch == '\\') {
-      escape = true;
-      continue;
-    }
-    if (ch == '\'' && !in_double) {
-      in_single = !in_single;
-      continue;
-    }
-    if (ch == '"' && !in_single) {
-      in_double = !in_double;
-      continue;
-    }
-    if (in_single || in_double) continue;
-    if (ch == '#' || ch == ';') return i;
-  }
-  return std::string::npos;
-}
-
-struct parsed_dsl_line_t {
-  bool has_assignment{false};
-  std::string leading{};
-  std::string lhs{};
-  std::string key{};
-  std::string declared_type{};
-  std::string value{};
-  std::string comment{};
-};
-
-[[nodiscard]] parsed_dsl_line_t parse_dsl_line(std::string_view line) {
-  parsed_dsl_line_t out{};
-  const std::string original(line);
-  const std::size_t first =
-      original.find_first_not_of(" \t\r");
-  if (first == std::string::npos) return out;
-  const std::string_view trimmed = std::string_view(original).substr(first);
-  if (trimmed.rfind("#", 0) == 0 || trimmed.rfind(";", 0) == 0 ||
-      trimmed.rfind("//", 0) == 0 || trimmed.rfind("/*", 0) == 0 ||
-      trimmed == "*/") {
-    return out;
-  }
-
-  const std::size_t eq = original.find('=', first);
-  if (eq == std::string::npos) return out;
-
-  out.leading = original.substr(0, first);
-  out.lhs = trim_ascii(original.substr(first, eq - first));
-  if (out.lhs.empty()) return out;
-
-  const auto parsed_lhs = cuwacunu::camahjucunu::dsl::parse_latent_lineage_state_lhs(out.lhs);
-  out.key = parsed_lhs.key;
-  out.declared_type = parsed_lhs.declared_type;
-  if (out.key.empty()) return out;
-
-  const std::string rhs_comment = original.substr(eq + 1);
-  const std::size_t comment_pos = find_comment_pos_unquoted(rhs_comment);
-  if (comment_pos == std::string::npos) {
-    out.value = trim_ascii(rhs_comment);
-  } else {
-    out.value = trim_ascii(rhs_comment.substr(0, comment_pos));
-    out.comment = trim_ascii(rhs_comment.substr(comment_pos));
-  }
-  out.has_assignment = true;
-  return out;
-}
-
 enum class dsl_path_resolution_error_t {
   kNone = 0,
   kOutputPointerNull,
@@ -255,12 +212,22 @@ enum class dsl_path_resolution_error_t {
   kEscapesScope,
   kHashimyeiPath,
   kNotDefaultInstructionDsl,
+  kEmptyObjectiveRoot,
+  kObjectiveRootMissing,
+  kObjectiveRootEscapesAllowedScopes,
+  kNotObjectiveInstructionRoot,
+  kEscapesObjectiveRoot,
+  kNotObjectiveInstructionDsl,
 };
 
 [[nodiscard]] bool is_scope_violation(dsl_path_resolution_error_t err) {
   return err == dsl_path_resolution_error_t::kEscapesScope ||
          err == dsl_path_resolution_error_t::kHashimyeiPath ||
-         err == dsl_path_resolution_error_t::kNotDefaultInstructionDsl;
+         err == dsl_path_resolution_error_t::kNotDefaultInstructionDsl ||
+         err == dsl_path_resolution_error_t::kObjectiveRootEscapesAllowedScopes ||
+         err == dsl_path_resolution_error_t::kNotObjectiveInstructionRoot ||
+         err == dsl_path_resolution_error_t::kEscapesObjectiveRoot ||
+         err == dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
 }
 
 [[nodiscard]] bool path_has_component(const std::filesystem::path& path,
@@ -269,6 +236,22 @@ enum class dsl_path_resolution_error_t {
     if (part == component) return true;
   }
   return false;
+}
+
+[[nodiscard]] bool is_campaign_dsl_path(const std::filesystem::path& path) {
+  const std::string filename = path.filename().string();
+  return filename == "campaign.dsl" ||
+         (filename.size() >= std::string(".campaign.dsl").size() &&
+          filename.compare(filename.size() - std::string(".campaign.dsl").size(),
+                           std::string(".campaign.dsl").size(),
+                           ".campaign.dsl") == 0);
+}
+
+[[nodiscard]] bool is_super_objective_dsl_path(
+    const std::filesystem::path& path) {
+  const std::string filename = lowercase_copy(path.filename().string());
+  return filename == "super.objective.dsl" ||
+         filename == "default.super.objective.dsl";
 }
 
 [[nodiscard]] std::filesystem::path resolve_instruction_root(
@@ -282,7 +265,7 @@ enum class dsl_path_resolution_error_t {
   return cfg_path.parent_path();
 }
 
-[[nodiscard]] bool resolve_dsl_path_with_scope(
+[[nodiscard]] bool resolve_default_dsl_path_with_scope(
     const cuwacunu::hero::mcp::hero_config_store_t& store,
     std::string_view request_path, std::filesystem::path* out_path,
     std::string* out_error, dsl_path_resolution_error_t* out_reason) {
@@ -327,19 +310,321 @@ enum class dsl_path_resolution_error_t {
 
   const std::filesystem::path instruction_root =
       resolve_instruction_root(store, scope_path);
-  const std::string filename = resolved.filename().string();
-  const bool filename_is_default_dsl =
-      resolved.extension() == ".dsl" && filename.rfind("default.", 0) == 0;
-  if (!filename_is_default_dsl || !path_is_within(instruction_root, resolved)) {
+  const std::filesystem::path defaults_root = instruction_root / "defaults";
+  const bool is_defaults_bundle_dsl =
+      resolved.extension() == ".dsl" && path_is_within(defaults_root, resolved);
+  if (!is_defaults_bundle_dsl) {
     if (out_error) {
       *out_error = std::string(kConfigDslScopeErrorTag) +
-                   ": dsl path must target instructions/default.*.dsl under " +
-                   instruction_root.string() + ": " + resolved.string();
+                   ": dsl path must target instructions/defaults/*.dsl under " +
+                   defaults_root.string() + ": " + resolved.string();
     }
     if (out_reason) {
       *out_reason = dsl_path_resolution_error_t::kNotDefaultInstructionDsl;
     }
     return false;
+  }
+
+  *out_path = resolved;
+  return true;
+}
+
+[[nodiscard]] std::filesystem::path resolve_runtime_root_from_global_config(
+    std::string_view global_config_path, std::string_view config_path) {
+  const std::string cfg_path = trim_ascii(global_config_path);
+  const std::string ini_path =
+      cfg_path.empty() ? std::string(kDefaultGlobalConfigPath) : cfg_path;
+  std::string configured{};
+  if (!read_ini_general_key(ini_path, "runtime_root", &configured)) return {};
+  configured = trim_ascii(configured);
+  if (configured.empty()) return {};
+  return resolve_path_near_config(configured, ini_path).lexically_normal();
+}
+
+[[nodiscard]] bool resolve_objective_root_with_scope(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    std::string_view request_root, std::filesystem::path* out_root,
+    std::string* out_error, dsl_path_resolution_error_t* out_reason) {
+  if (out_error) out_error->clear();
+  if (out_reason) *out_reason = dsl_path_resolution_error_t::kNone;
+  if (!out_root) {
+    if (out_error) *out_error = "objective_root output pointer is null";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kOutputPointerNull;
+    return false;
+  }
+  *out_root = std::filesystem::path{};
+
+  const std::string raw_root = trim_ascii(request_root);
+  if (raw_root.empty()) {
+    if (out_error) *out_error = "objective_root is empty";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEmptyObjectiveRoot;
+    return false;
+  }
+
+  const std::filesystem::path resolved =
+      resolve_path_near_config(raw_root, store.config_path()).lexically_normal();
+  if (path_has_component(resolved, ".hashimyei")) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective_root under .hashimyei is not allowed: " +
+                   resolved.string();
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kHashimyeiPath;
+    return false;
+  }
+
+  const std::filesystem::path scope_path(
+      trim_ascii(store.get_or_default("config_scope_root")));
+  const std::filesystem::path runtime_root =
+      resolve_runtime_root_from_global_config(store.global_config_path(),
+                                             store.config_path());
+  const bool under_scope =
+      !scope_path.empty() && path_is_within(scope_path, resolved);
+  const bool under_runtime =
+      !runtime_root.empty() && path_is_within(runtime_root, resolved);
+  if (!under_scope && !under_runtime) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective_root must stay within config_scope_root or GENERAL.runtime_root: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason =
+          dsl_path_resolution_error_t::kObjectiveRootEscapesAllowedScopes;
+    }
+    return false;
+  }
+
+  if (!path_has_component(resolved, "instructions") ||
+      !path_has_component(resolved, "objectives")) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective_root must live under instructions/objectives: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionRoot;
+    }
+    return false;
+  }
+
+  std::error_code ec{};
+  if (!std::filesystem::exists(resolved, ec) ||
+      !std::filesystem::is_directory(resolved, ec)) {
+    if (out_error) {
+      *out_error = "objective_root is not an existing directory: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kObjectiveRootMissing;
+    }
+    return false;
+  }
+
+  *out_root = resolved;
+  return true;
+}
+
+[[nodiscard]] bool resolve_objective_dsl_path_with_scope(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    std::string_view request_root, std::string_view request_path,
+    bool allow_missing_target, std::filesystem::path* out_path,
+    std::string* out_error, dsl_path_resolution_error_t* out_reason) {
+  if (out_error) out_error->clear();
+  if (out_reason) *out_reason = dsl_path_resolution_error_t::kNone;
+  if (!out_path) {
+    if (out_error) *out_error = "objective dsl output pointer is null";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kOutputPointerNull;
+    return false;
+  }
+  *out_path = std::filesystem::path{};
+
+  std::filesystem::path objective_root{};
+  if (!resolve_objective_root_with_scope(store, request_root, &objective_root,
+                                         out_error, out_reason)) {
+    return false;
+  }
+
+  const std::string raw_path = trim_ascii(request_path);
+  if (raw_path.empty()) {
+    if (out_error) *out_error = "objective dsl path is empty";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEmptyPath;
+    return false;
+  }
+  const std::filesystem::path rel_path(raw_path);
+  if (rel_path.is_absolute()) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective dsl path must be relative to objective_root: " +
+                   raw_path;
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEscapesObjectiveRoot;
+    return false;
+  }
+
+  const std::filesystem::path resolved =
+      (objective_root / rel_path).lexically_normal();
+  if (path_has_component(resolved, ".hashimyei")) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective dsl path under .hashimyei is not allowed: " +
+                   resolved.string();
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kHashimyeiPath;
+    return false;
+  }
+  if (!path_is_within(objective_root, resolved)) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective dsl path escapes objective_root: " +
+                   resolved.string();
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEscapesObjectiveRoot;
+    return false;
+  }
+  if (resolved.extension() != ".dsl") {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective dsl path must target a .dsl file: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
+    }
+    return false;
+  }
+  if (is_campaign_dsl_path(resolved)) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective dsl path may not target a campaign.dsl file: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
+    }
+    return false;
+  }
+  if (is_super_objective_dsl_path(resolved)) {
+    if (out_error) {
+      *out_error =
+          std::string(kConfigDslScopeErrorTag) +
+          ": objective dsl path may not target the super.objective.dsl constitution: " +
+          resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
+    }
+    return false;
+  }
+  if (!allow_missing_target) {
+    std::error_code ec{};
+    if (!std::filesystem::exists(resolved, ec) ||
+        !std::filesystem::is_regular_file(resolved, ec)) {
+      if (out_error) {
+        *out_error = "objective dsl file does not exist: " + resolved.string();
+      }
+      if (out_reason) {
+        *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
+      }
+      return false;
+    }
+  }
+
+  *out_path = resolved;
+  return true;
+}
+
+[[nodiscard]] bool resolve_objective_campaign_path_with_scope(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    std::string_view request_root, std::string_view request_path,
+    bool allow_missing_target, std::filesystem::path* out_path,
+    std::string* out_error, dsl_path_resolution_error_t* out_reason) {
+  if (out_error) out_error->clear();
+  if (out_reason) *out_reason = dsl_path_resolution_error_t::kNone;
+  if (!out_path) {
+    if (out_error) *out_error = "objective campaign output pointer is null";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kOutputPointerNull;
+    return false;
+  }
+  *out_path = std::filesystem::path{};
+
+  std::filesystem::path objective_root{};
+  if (!resolve_objective_root_with_scope(store, request_root, &objective_root,
+                                         out_error, out_reason)) {
+    return false;
+  }
+
+  const std::string raw_path = trim_ascii(request_path);
+  if (raw_path.empty()) {
+    if (out_error) *out_error = "objective campaign path is empty";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEmptyPath;
+    return false;
+  }
+  const std::filesystem::path rel_path(raw_path);
+  if (rel_path.is_absolute()) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective campaign path must be relative to objective_root: " +
+                   raw_path;
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEscapesObjectiveRoot;
+    return false;
+  }
+
+  const std::filesystem::path resolved =
+      (objective_root / rel_path).lexically_normal();
+  if (path_has_component(resolved, ".hashimyei")) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective campaign path under .hashimyei is not allowed: " +
+                   resolved.string();
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kHashimyeiPath;
+    return false;
+  }
+  if (!path_is_within(objective_root, resolved)) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective campaign path escapes objective_root: " +
+                   resolved.string();
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEscapesObjectiveRoot;
+    return false;
+  }
+  if (resolved.extension() != ".dsl") {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective campaign path must target a .dsl file: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
+    }
+    return false;
+  }
+  if (!is_campaign_dsl_path(resolved)) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": objective campaign path must target a campaign.dsl file: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
+    }
+    return false;
+  }
+  if (!allow_missing_target) {
+    std::error_code ec{};
+    if (!std::filesystem::exists(resolved, ec) ||
+        !std::filesystem::is_regular_file(resolved, ec)) {
+      if (out_error) {
+        *out_error = "objective campaign file does not exist: " + resolved.string();
+      }
+      if (out_reason) {
+        *out_reason = dsl_path_resolution_error_t::kNotObjectiveInstructionDsl;
+      }
+      return false;
+    }
   }
 
   *out_path = resolved;
@@ -568,6 +853,363 @@ enum class dsl_path_resolution_error_t {
     std::string_view global_config_path) {
   return cuwacunu::hashimyei::catalog_db_path(
       configured_hashimyei_store_root(global_config_path));
+}
+
+enum class instruction_dsl_validation_family_e : std::uint8_t {
+  Unsupported = 0,
+  LatentLineageState,
+  SuperObjective,
+  NetworkDesign,
+  Jkimyei,
+  IitepiWave,
+  IitepiCampaign,
+  ObservationChannels,
+};
+
+[[nodiscard]] std::string instruction_dsl_validation_family_name(
+    instruction_dsl_validation_family_e family) {
+  switch (family) {
+    case instruction_dsl_validation_family_e::LatentLineageState:
+      return "latent_lineage_state";
+    case instruction_dsl_validation_family_e::SuperObjective:
+      return "super_objective";
+    case instruction_dsl_validation_family_e::NetworkDesign:
+      return "network_design";
+    case instruction_dsl_validation_family_e::Jkimyei:
+      return "jkimyei";
+    case instruction_dsl_validation_family_e::IitepiWave:
+      return "iitepi_wave";
+    case instruction_dsl_validation_family_e::IitepiCampaign:
+      return "iitepi_campaign";
+    case instruction_dsl_validation_family_e::ObservationChannels:
+      return "observation_channels";
+    case instruction_dsl_validation_family_e::Unsupported:
+    default:
+      return "unsupported";
+  }
+}
+
+[[nodiscard]] std::filesystem::path resolve_config_root_from_global_config(
+    const cuwacunu::hero::mcp::hero_config_store_t& store) {
+  std::string repo_root{};
+  if (read_ini_general_key(store.global_config_path(), "repo_root", &repo_root)) {
+    repo_root = trim_ascii(repo_root);
+    if (!repo_root.empty()) {
+      return (resolve_path_near_config(repo_root, store.global_config_path()) /
+              "src/config")
+          .lexically_normal();
+    }
+  }
+
+  const std::string scope_raw = trim_ascii(store.get_or_default("config_scope_root"));
+  if (!scope_raw.empty()) {
+    return resolve_path_near_config(scope_raw, store.config_path())
+        .lexically_normal();
+  }
+  return std::filesystem::path(store.config_path()).parent_path().lexically_normal();
+}
+
+[[nodiscard]] instruction_dsl_validation_family_e detect_instruction_dsl_validation_family(
+    const std::filesystem::path& dsl_path) {
+  const std::string file_name = lowercase_copy(dsl_path.filename().string());
+  if (file_name == "tsi.source.dataloader.channels.dsl" ||
+      file_name == "default.tsi.source.dataloader.channels.dsl") {
+    return instruction_dsl_validation_family_e::ObservationChannels;
+  }
+  if (file_name == "super.objective.dsl" ||
+      file_name == "default.super.objective.dsl") {
+    return instruction_dsl_validation_family_e::SuperObjective;
+  }
+  if (file_name.find("network_design") != std::string::npos) {
+    return instruction_dsl_validation_family_e::NetworkDesign;
+  }
+  if (file_name.find("jkimyei") != std::string::npos) {
+    return instruction_dsl_validation_family_e::Jkimyei;
+  }
+  if (file_name == "iitepi.waves.dsl" ||
+      file_name.rfind("default.iitepi.wave", 0) == 0 ||
+      file_name.rfind("iitepi.wave", 0) == 0 ||
+      file_name.rfind("iitepi.waves", 0) == 0) {
+    return instruction_dsl_validation_family_e::IitepiWave;
+  }
+  if (is_campaign_dsl_path(dsl_path)) {
+    return instruction_dsl_validation_family_e::IitepiCampaign;
+  }
+  if (file_name.rfind("iitepi.contract", 0) == 0 ||
+      file_name.find(".contract.") != std::string::npos) {
+    return instruction_dsl_validation_family_e::Unsupported;
+  }
+  return instruction_dsl_validation_family_e::LatentLineageState;
+}
+
+[[nodiscard]] std::filesystem::path grammar_path_for_instruction_dsl_family(
+    const std::filesystem::path& config_root,
+    instruction_dsl_validation_family_e family) {
+  switch (family) {
+    case instruction_dsl_validation_family_e::LatentLineageState:
+      return config_root / "bnf" / "latent_lineage_state.bnf";
+    case instruction_dsl_validation_family_e::SuperObjective:
+      return config_root / "bnf" / "super.objective.bnf";
+    case instruction_dsl_validation_family_e::NetworkDesign:
+      return config_root / "bnf" / "network_design.bnf";
+    case instruction_dsl_validation_family_e::Jkimyei:
+      return config_root / "bnf" / "jkimyei.bnf";
+    case instruction_dsl_validation_family_e::IitepiWave:
+      return config_root / "bnf" / "iitepi.wave.bnf";
+    case instruction_dsl_validation_family_e::IitepiCampaign:
+      return config_root / "bnf" / "iitepi.campaign.bnf";
+    case instruction_dsl_validation_family_e::ObservationChannels:
+      return config_root / "bnf" / "tsi.source.dataloader.channels.bnf";
+    case instruction_dsl_validation_family_e::Unsupported:
+    default:
+      return {};
+  }
+}
+
+[[nodiscard]] bool validate_instruction_dsl_replacement(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    const std::filesystem::path& dsl_path, std::string_view replacement_text,
+    std::string* out_family_name, std::filesystem::path* out_grammar_path,
+    std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_family_name) out_family_name->clear();
+  if (out_grammar_path) *out_grammar_path = std::filesystem::path{};
+
+  const instruction_dsl_validation_family_e family =
+      detect_instruction_dsl_validation_family(dsl_path);
+  const std::string family_name = instruction_dsl_validation_family_name(family);
+  if (out_family_name) *out_family_name = family_name;
+  if (family == instruction_dsl_validation_family_e::Unsupported) {
+    if (out_error) {
+      *out_error = "instruction dsl replace validation is unsupported for this "
+                   "DSL family: " +
+                   dsl_path.string();
+    }
+    return false;
+  }
+
+  const std::filesystem::path config_root =
+      resolve_config_root_from_global_config(store);
+  if (config_root.empty()) {
+    if (out_error) {
+      *out_error = "cannot resolve config root for instruction dsl validation";
+    }
+    return false;
+  }
+  const std::filesystem::path grammar_path =
+      grammar_path_for_instruction_dsl_family(config_root, family);
+  if (out_grammar_path) *out_grammar_path = grammar_path;
+  if (grammar_path.empty()) {
+    if (out_error) {
+      *out_error = "cannot resolve grammar path for instruction dsl validation";
+    }
+    return false;
+  }
+
+  std::string grammar_text{};
+  if (!read_text_file(grammar_path.string(), &grammar_text, out_error)) return false;
+
+  try {
+    const std::string text(replacement_text);
+    switch (family) {
+      case instruction_dsl_validation_family_e::LatentLineageState:
+        (void)cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
+            grammar_text, text);
+        break;
+      case instruction_dsl_validation_family_e::SuperObjective:
+        (void)cuwacunu::camahjucunu::dsl::decode_super_objective_from_dsl(
+            grammar_text, text);
+        break;
+      case instruction_dsl_validation_family_e::NetworkDesign:
+        (void)cuwacunu::camahjucunu::dsl::decode_network_design_from_dsl(
+            grammar_text, text);
+        break;
+      case instruction_dsl_validation_family_e::Jkimyei:
+        (void)cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
+            grammar_text, text, dsl_path.string());
+        break;
+      case instruction_dsl_validation_family_e::IitepiWave:
+        (void)cuwacunu::camahjucunu::dsl::decode_iitepi_wave_from_dsl(
+            grammar_text, text);
+        break;
+      case instruction_dsl_validation_family_e::IitepiCampaign:
+        (void)cuwacunu::camahjucunu::dsl::decode_iitepi_campaign_from_dsl(
+            grammar_text, text);
+        break;
+      case instruction_dsl_validation_family_e::ObservationChannels: {
+        cuwacunu::camahjucunu::dsl::observationChannelsDecoder decoder(
+            grammar_text);
+        (void)decoder.decode(text);
+        break;
+      }
+      case instruction_dsl_validation_family_e::Unsupported:
+      default:
+        if (out_error) {
+          *out_error = "instruction dsl replace validation is unsupported for "
+                       "this DSL family: " +
+                       dsl_path.string();
+        }
+        return false;
+    }
+  } catch (const std::exception& ex) {
+    if (out_error) {
+      *out_error = "instruction dsl replace validation failed (" + family_name +
+                   "): " + ex.what();
+    }
+    return false;
+  } catch (...) {
+    if (out_error) {
+      *out_error = "instruction dsl replace validation failed (" + family_name +
+                   "): unknown decoder error";
+    }
+    return false;
+  }
+  return true;
+}
+
+struct scoped_file_cleanup_t {
+  std::filesystem::path path{};
+  ~scoped_file_cleanup_t() {
+    if (path.empty()) return;
+    std::error_code ec{};
+    std::filesystem::remove(path, ec);
+  }
+};
+
+[[nodiscard]] std::string join_messages(
+    const std::vector<std::string>& messages, std::string_view delimiter) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < messages.size(); ++i) {
+    if (i != 0) out << delimiter;
+    out << messages[i];
+  }
+  return out.str();
+}
+
+[[nodiscard]] std::filesystem::path make_validation_snapshot_path(
+    const std::filesystem::path& dsl_path) {
+  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+  return dsl_path.parent_path() /
+         (dsl_path.filename().string() + ".validate." +
+          std::to_string(static_cast<long long>(stamp)));
+}
+
+[[nodiscard]] bool write_validation_snapshot(
+    const std::filesystem::path& dsl_path, std::string_view content,
+    std::filesystem::path* out_snapshot_path, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!out_snapshot_path) {
+    if (out_error) *out_error = "validation snapshot output pointer is null";
+    return false;
+  }
+  const std::filesystem::path snapshot_path =
+      make_validation_snapshot_path(dsl_path);
+  if (!write_text_file_atomic(snapshot_path.string(), content, out_error)) {
+    return false;
+  }
+  *out_snapshot_path = snapshot_path;
+  return true;
+}
+
+[[nodiscard]] bool validate_default_dsl_replacement_semantics(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    const std::filesystem::path& dsl_path, std::string_view replacement_text,
+    std::string* out_error) {
+  if (out_error) out_error->clear();
+  const std::string file_name = lowercase_copy(dsl_path.filename().string());
+  if (file_name != "default.hero.config.dsl" &&
+      file_name != "default.hero.runtime.dsl" &&
+      file_name != "default.hero.super.dsl" &&
+      file_name != "default.hero.hashimyei.dsl" &&
+      file_name != "default.hero.lattice.dsl") {
+    return true;
+  }
+
+  std::filesystem::path snapshot_path{};
+  if (!write_validation_snapshot(dsl_path, replacement_text, &snapshot_path,
+                                 out_error)) {
+    return false;
+  }
+  const scoped_file_cleanup_t cleanup{snapshot_path};
+
+  if (file_name == "default.hero.config.dsl") {
+    cuwacunu::hero::mcp::hero_config_store_t candidate(snapshot_path.string(),
+                                                       store.global_config_path());
+    std::string load_error{};
+    if (!candidate.load(&load_error)) {
+      if (out_error) {
+        *out_error = "default hero config validation failed: " + load_error;
+      }
+      return false;
+    }
+    const std::vector<std::string> validation_errors = candidate.validate();
+    if (!validation_errors.empty()) {
+      if (out_error) {
+        *out_error = "default hero config validation failed: " +
+                     join_messages(validation_errors, "; ");
+      }
+      return false;
+    }
+    return true;
+  }
+
+  if (file_name == "default.hero.runtime.dsl") {
+    cuwacunu::hero::runtime_mcp::runtime_defaults_t defaults{};
+    std::string validation_error{};
+    if (!cuwacunu::hero::runtime_mcp::load_runtime_defaults(
+            snapshot_path, store.global_config_path(), &defaults,
+            &validation_error)) {
+      if (out_error) {
+        *out_error = "default hero runtime validation failed: " +
+                     validation_error;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  if (file_name == "default.hero.super.dsl") {
+    cuwacunu::hero::super_mcp::super_defaults_t defaults{};
+    std::string validation_error{};
+    if (!cuwacunu::hero::super_mcp::load_super_defaults(
+            snapshot_path, store.global_config_path(), &defaults,
+            &validation_error)) {
+      if (out_error) {
+        *out_error = "default hero super validation failed: " +
+                     validation_error;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  if (file_name == "default.hero.hashimyei.dsl") {
+    cuwacunu::hero::hashimyei_mcp::hashimyei_runtime_defaults_t defaults{};
+    std::string validation_error{};
+    if (!cuwacunu::hero::hashimyei_mcp::load_hashimyei_runtime_defaults(
+            snapshot_path, store.global_config_path(), &defaults,
+            &validation_error)) {
+      if (out_error) {
+        *out_error = "default hero hashimyei validation failed: " +
+                     validation_error;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t defaults{};
+  std::string validation_error{};
+  if (!cuwacunu::hero::lattice_mcp::load_wave_runtime_defaults(
+          snapshot_path, store.global_config_path(), &defaults,
+          &validation_error)) {
+    if (out_error) {
+      *out_error = "default hero lattice validation failed: " +
+                   validation_error;
+    }
+    return false;
+  }
+  return true;
 }
 
 [[nodiscard]] std::string normalized_path_key(
@@ -1068,13 +1710,15 @@ enum class dsl_path_resolution_error_t {
 }
 
 void emit_jsonrpc_payload(std::string_view payload_json) {
+  std::string framed;
   if (g_jsonrpc_use_content_length_framing) {
-    std::cout << "Content-Length: " << payload_json.size() << "\r\n\r\n"
-              << payload_json;
+    framed = std::string("Content-Length: ") +
+             std::to_string(payload_json.size()) + "\r\n\r\n" +
+             std::string(payload_json);
   } else {
-    std::cout << payload_json << '\n';
+    framed = std::string(payload_json) + "\n";
   }
-  std::cout.flush();
+  (void)write_all_fd(STDOUT_FILENO, framed.data(), framed.size());
 }
 
 void emit_jsonrpc_result(std::string_view id_json,
@@ -1979,12 +2623,32 @@ struct hero_config_tool_descriptor_t {
     cuwacunu::hero::mcp::hero_config_store_t* store,
     std::string* out_result_json, int* out_error_code,
     std::string* out_error_message);
-[[nodiscard]] bool handle_tool_dsl_get(
+[[nodiscard]] bool handle_tool_default_read(
     std::string_view tool_name, const std::string& request_json,
     cuwacunu::hero::mcp::hero_config_store_t* store,
     std::string* out_result_json, int* out_error_code,
     std::string* out_error_message);
-[[nodiscard]] bool handle_tool_dsl_set(
+[[nodiscard]] bool handle_tool_default_replace(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_objective_dsl_read(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_objective_dsl_replace(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_objective_campaign_read(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message);
+[[nodiscard]] bool handle_tool_objective_campaign_replace(
     std::string_view tool_name, const std::string& request_json,
     cuwacunu::hero::mcp::hero_config_store_t* store,
     std::string* out_result_json, int* out_error_code,
@@ -2202,31 +2866,23 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_dsl_get(
+[[nodiscard]] bool handle_tool_default_read(
     std::string_view tool_name, const std::string& request_json,
     cuwacunu::hero::mcp::hero_config_store_t* store,
     std::string* out_result_json, int* out_error_code,
     std::string* out_error_message) {
   std::string dsl_path_raw;
-  std::string key;
   if (!extract_json_string_field(request_json, "path", &dsl_path_raw) ||
       dsl_path_raw.empty()) {
     (void)extract_json_string_field(request_json, "dsl_path", &dsl_path_raw);
   }
   if (dsl_path_raw.empty()) dsl_path_raw = store->config_path();
-  if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
-    if (out_error_code) *out_error_code = -32602;
-    if (out_error_message) {
-      *out_error_message = std::string(tool_name) + " requires argument key";
-    }
-    return false;
-  }
 
   std::filesystem::path dsl_path{};
   std::string err{};
   dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
-  if (!resolve_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
-                                   &dsl_err)) {
+  if (!resolve_default_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
+                                           &dsl_err)) {
     if (out_error_code) {
       *out_error_code =
           is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
@@ -2240,76 +2896,58 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
     if (out_error_message) *out_error_message = err;
     return false;
   }
-
-  std::istringstream input(text);
-  std::string line{};
-  std::string value{};
-  std::string declared_type{};
-  std::size_t line_no = 0;
-  bool found = false;
-  while (std::getline(input, line)) {
-    ++line_no;
-    const parsed_dsl_line_t parsed = parse_dsl_line(line);
-    if (!parsed.has_assignment) continue;
-    if (parsed.key != key) continue;
-    value = parsed.value;
-    declared_type = parsed.declared_type;
-    found = true;
-    break;
-  }
-  if (!found) {
-    if (out_error_code) *out_error_code = -32602;
-    if (out_error_message) {
-      *out_error_message =
-          "key not found in dsl file: " + key + " @ " + dsl_path.string();
-    }
+  std::string sha256_hex{};
+  if (!sha256_hex_file(dsl_path, &sha256_hex, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
     return false;
   }
+  const std::string validation_family =
+      instruction_dsl_validation_family_name(
+          detect_instruction_dsl_validation_family(dsl_path));
+
   if (out_result_json) {
     std::ostringstream out;
     out << "{\"dsl_path\":" << json_quote(dsl_path.string())
-        << ",\"key\":" << json_quote(key)
-        << ",\"declared_type\":" << json_quote(declared_type)
-        << ",\"value\":" << json_quote(value)
-        << ",\"line\":" << line_no << "}";
+        << ",\"bytes\":" << text.size()
+        << ",\"sha256\":" << json_quote(sha256_hex)
+        << ",\"validation_family\":" << json_quote(validation_family)
+        << ",\"replace_supported\":"
+        << bool_json(validation_family != "unsupported")
+        << ",\"content\":" << json_quote(text) << "}";
     *out_result_json = out.str();
   }
   return true;
 }
 
-[[nodiscard]] bool handle_tool_dsl_set(
+[[nodiscard]] bool handle_tool_default_replace(
     std::string_view tool_name, const std::string& request_json,
     cuwacunu::hero::mcp::hero_config_store_t* store,
     std::string* out_result_json, int* out_error_code,
     std::string* out_error_message) {
   std::string dsl_path_raw;
-  std::string key;
-  std::string value;
+  std::string content;
+  std::string expected_sha256;
   if (!extract_json_string_field(request_json, "path", &dsl_path_raw) ||
       dsl_path_raw.empty()) {
     (void)extract_json_string_field(request_json, "dsl_path", &dsl_path_raw);
   }
   if (dsl_path_raw.empty()) dsl_path_raw = store->config_path();
-  if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
+  if (!extract_json_string_field(request_json, "content", &content)) {
     if (out_error_code) *out_error_code = -32602;
     if (out_error_message) {
-      *out_error_message = std::string(tool_name) + " requires argument key";
+      *out_error_message = std::string(tool_name) + " requires argument content";
     }
     return false;
   }
-  if (!extract_json_string_field(request_json, "value", &value)) {
-    if (out_error_code) *out_error_code = -32602;
-    if (out_error_message) {
-      *out_error_message = std::string(tool_name) + " requires argument value";
-    }
-    return false;
-  }
+  (void)extract_json_string_field(request_json, "expected_sha256",
+                                  &expected_sha256);
 
   std::filesystem::path dsl_path{};
   std::string err{};
   dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
-  if (!resolve_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
-                                   &dsl_err)) {
+  if (!resolve_default_dsl_path_with_scope(*store, dsl_path_raw, &dsl_path, &err,
+                                           &dsl_err)) {
     if (out_error_code) {
       *out_error_code =
           is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
@@ -2322,63 +2960,444 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
     if (out_error_message) *out_error_message = err;
     return false;
   }
-  std::string text{};
-  if (!read_text_file(dsl_path.string(), &text, &err)) {
+  std::error_code ec{};
+  if (!std::filesystem::exists(dsl_path, ec) ||
+      !std::filesystem::is_regular_file(dsl_path, ec)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = "default dsl file does not exist: " + dsl_path.string();
+    }
+    return false;
+  }
+  std::string before_sha256{};
+  if (!sha256_hex_file(dsl_path, &before_sha256, &err)) {
     if (out_error_code) *out_error_code = -32603;
     if (out_error_message) *out_error_message = err;
     return false;
   }
-
-  std::istringstream input(text);
-  std::vector<std::string> lines{};
-  std::string line{};
-  while (std::getline(input, line)) {
-    lines.push_back(line);
-  }
-
-  bool updated = false;
-  std::size_t updated_line = 0;
-  std::string before_value{};
-  for (std::size_t i = 0; i < lines.size(); ++i) {
-    const parsed_dsl_line_t parsed = parse_dsl_line(lines[i]);
-    if (!parsed.has_assignment) continue;
-    if (parsed.key != key) continue;
-    before_value = parsed.value;
-    std::string next = parsed.leading + parsed.lhs + " = " + value;
-    if (!parsed.comment.empty()) next += " " + parsed.comment;
-    lines[i] = std::move(next);
-    updated = true;
-    updated_line = i + 1;
-    break;
-  }
-  if (!updated) {
+  expected_sha256 = lowercase_copy(trim_ascii(expected_sha256));
+  if (!expected_sha256.empty() &&
+      lowercase_copy(before_sha256) != expected_sha256) {
     if (out_error_code) *out_error_code = -32602;
     if (out_error_message) {
       *out_error_message =
-          "key not found in dsl file: " + key + " @ " + dsl_path.string();
+          "expected_sha256 does not match current default dsl content: " +
+          dsl_path.string();
     }
     return false;
   }
 
-  std::ostringstream rebuilt{};
-  for (std::size_t i = 0; i < lines.size(); ++i) {
-    rebuilt << lines[i];
-    if (i + 1 < lines.size()) rebuilt << "\n";
+  std::string validation_family{};
+  std::filesystem::path grammar_path{};
+  if (!validate_instruction_dsl_replacement(*store, dsl_path, content,
+                                            &validation_family, &grammar_path,
+                                            &err)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) *out_error_message = err;
+    return false;
   }
-  if (text.empty() || text.back() == '\n') rebuilt << "\n";
+  if (!validate_default_dsl_replacement_semantics(*store, dsl_path, content,
+                                                  &err)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
 
-  if (!write_text_file_atomic(dsl_path.string(), rebuilt.str(), &err)) {
+  if (!write_text_file_atomic(dsl_path.string(), content, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::string after_sha256{};
+  if (!sha256_hex_file(dsl_path, &after_sha256, &err)) {
     if (out_error_code) *out_error_code = -32603;
     if (out_error_message) *out_error_message = err;
     return false;
   }
   if (out_result_json) {
     std::ostringstream out;
-    out << "{\"updated\":true,\"dsl_path\":"
-        << json_quote(dsl_path.string()) << ",\"key\":" << json_quote(key)
-        << ",\"before_value\":" << json_quote(before_value)
-        << ",\"value\":" << json_quote(value)
-        << ",\"line\":" << updated_line << "}";
+    out << "{\"replaced\":true,\"dsl_path\":" << json_quote(dsl_path.string())
+        << ",\"bytes\":" << content.size()
+        << ",\"before_sha256\":" << json_quote(before_sha256)
+        << ",\"sha256\":" << json_quote(after_sha256)
+        << ",\"validation_family\":" << json_quote(validation_family)
+        << ",\"grammar_path\":" << json_quote(grammar_path.string()) << "}";
+    *out_result_json = out.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool extract_objective_dsl_request_paths(
+    std::string_view tool_name, const std::string& request_json,
+    std::string* out_objective_root, std::string* out_path, int* out_error_code,
+    std::string* out_error_message) {
+  if (out_objective_root) out_objective_root->clear();
+  if (out_path) out_path->clear();
+  std::string objective_root{};
+  std::string path{};
+  if (!extract_json_string_field(request_json, "objective_root", &objective_root) ||
+      objective_root.empty()) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message =
+          std::string(tool_name) + " requires argument objective_root";
+    }
+    return false;
+  }
+  if (!extract_json_string_field(request_json, "path", &path) || path.empty()) {
+    (void)extract_json_string_field(request_json, "relative_path", &path);
+  }
+  if (path.empty()) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument path";
+    }
+    return false;
+  }
+  if (out_objective_root) *out_objective_root = std::move(objective_root);
+  if (out_path) *out_path = std::move(path);
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_objective_dsl_read(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string objective_root_raw{};
+  std::string path_raw{};
+  if (!extract_objective_dsl_request_paths(tool_name, request_json,
+                                           &objective_root_raw, &path_raw,
+                                           out_error_code,
+                                           out_error_message)) {
+    return false;
+  }
+
+  std::filesystem::path dsl_path{};
+  std::string err{};
+  dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
+  if (!resolve_objective_dsl_path_with_scope(*store, objective_root_raw, path_raw,
+                                             /*allow_missing_target=*/false,
+                                             &dsl_path, &err, &dsl_err)) {
+    if (out_error_code) {
+      *out_error_code =
+          is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
+    }
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  std::string content{};
+  if (!read_text_file(dsl_path.string(), &content, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::string sha256_hex{};
+  if (!sha256_hex_file(dsl_path, &sha256_hex, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  const std::string validation_family =
+      instruction_dsl_validation_family_name(
+          detect_instruction_dsl_validation_family(dsl_path));
+
+  if (out_result_json) {
+    std::ostringstream out;
+    out << "{\"objective_root\":" << json_quote(objective_root_raw)
+        << ",\"dsl_path\":" << json_quote(dsl_path.string())
+        << ",\"bytes\":" << content.size()
+        << ",\"sha256\":" << json_quote(sha256_hex)
+        << ",\"validation_family\":" << json_quote(validation_family)
+        << ",\"replace_supported\":"
+        << bool_json(validation_family != "unsupported")
+        << ",\"content\":" << json_quote(content) << "}";
+    *out_result_json = out.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_objective_dsl_replace(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string objective_root_raw{};
+  std::string path_raw{};
+  std::string content{};
+  std::string expected_sha256{};
+  if (!extract_objective_dsl_request_paths(tool_name, request_json,
+                                           &objective_root_raw, &path_raw,
+                                           out_error_code,
+                                           out_error_message)) {
+    return false;
+  }
+  if (!extract_json_string_field(request_json, "content", &content)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument content";
+    }
+    return false;
+  }
+  (void)extract_json_string_field(request_json, "expected_sha256",
+                                  &expected_sha256);
+
+  std::filesystem::path dsl_path{};
+  std::string err{};
+  dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
+  if (!resolve_objective_dsl_path_with_scope(*store, objective_root_raw, path_raw,
+                                             /*allow_missing_target=*/true,
+                                             &dsl_path, &err, &dsl_err)) {
+    if (out_error_code) {
+      *out_error_code =
+          is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
+    }
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (!enforce_write_target_allowed(*store, dsl_path, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  std::error_code ec{};
+  const bool existed =
+      std::filesystem::exists(dsl_path, ec) &&
+      std::filesystem::is_regular_file(dsl_path, ec);
+  std::string before_sha256{};
+  if (existed) {
+    if (!sha256_hex_file(dsl_path, &before_sha256, &err)) {
+      if (out_error_code) *out_error_code = -32603;
+      if (out_error_message) *out_error_message = err;
+      return false;
+    }
+  }
+  expected_sha256 = lowercase_copy(trim_ascii(expected_sha256));
+  if (!expected_sha256.empty()) {
+    if (!existed) {
+      if (out_error_code) *out_error_code = -32602;
+      if (out_error_message) {
+        *out_error_message =
+            "expected_sha256 was provided but objective dsl file does not exist: " +
+            dsl_path.string();
+      }
+      return false;
+    }
+    if (lowercase_copy(before_sha256) != expected_sha256) {
+      if (out_error_code) *out_error_code = -32602;
+      if (out_error_message) {
+        *out_error_message = "expected_sha256 does not match current objective dsl "
+                             "content: " +
+                             dsl_path.string();
+      }
+      return false;
+    }
+  }
+
+  std::string validation_family{};
+  std::filesystem::path grammar_path{};
+  if (!validate_instruction_dsl_replacement(*store, dsl_path, content,
+                                            &validation_family, &grammar_path,
+                                            &err)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  if (!write_text_file_atomic(dsl_path.string(), content, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::string after_sha256{};
+  if (!sha256_hex_file(dsl_path, &after_sha256, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  if (out_result_json) {
+    std::ostringstream out;
+    out << "{\"replaced\":true,\"created\":" << bool_json(!existed)
+        << ",\"objective_root\":" << json_quote(objective_root_raw)
+        << ",\"dsl_path\":" << json_quote(dsl_path.string())
+        << ",\"bytes\":" << content.size()
+        << ",\"before_sha256\":" << json_quote(before_sha256)
+        << ",\"sha256\":" << json_quote(after_sha256)
+        << ",\"validation_family\":" << json_quote(validation_family)
+        << ",\"grammar_path\":" << json_quote(grammar_path.string()) << "}";
+    *out_result_json = out.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_objective_campaign_read(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string objective_root_raw{};
+  std::string path_raw{};
+  if (!extract_objective_dsl_request_paths(tool_name, request_json,
+                                           &objective_root_raw, &path_raw,
+                                           out_error_code,
+                                           out_error_message)) {
+    return false;
+  }
+
+  std::filesystem::path dsl_path{};
+  std::string err{};
+  dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
+  if (!resolve_objective_campaign_path_with_scope(
+          *store, objective_root_raw, path_raw,
+          /*allow_missing_target=*/false, &dsl_path, &err, &dsl_err)) {
+    if (out_error_code) {
+      *out_error_code =
+          is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
+    }
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  std::string content{};
+  if (!read_text_file(dsl_path.string(), &content, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::string sha256_hex{};
+  if (!sha256_hex_file(dsl_path, &sha256_hex, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  if (out_result_json) {
+    std::ostringstream out;
+    out << "{\"objective_root\":" << json_quote(objective_root_raw)
+        << ",\"dsl_path\":" << json_quote(dsl_path.string())
+        << ",\"bytes\":" << content.size()
+        << ",\"sha256\":" << json_quote(sha256_hex)
+        << ",\"validation_family\":\"iitepi_campaign\""
+        << ",\"replace_supported\":true"
+        << ",\"content\":" << json_quote(content) << "}";
+    *out_result_json = out.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_objective_campaign_replace(
+    std::string_view tool_name, const std::string& request_json,
+    cuwacunu::hero::mcp::hero_config_store_t* store,
+    std::string* out_result_json, int* out_error_code,
+    std::string* out_error_message) {
+  std::string objective_root_raw{};
+  std::string path_raw{};
+  std::string content{};
+  std::string expected_sha256{};
+  if (!extract_objective_dsl_request_paths(tool_name, request_json,
+                                           &objective_root_raw, &path_raw,
+                                           out_error_code,
+                                           out_error_message)) {
+    return false;
+  }
+  if (!extract_json_string_field(request_json, "content", &content)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) {
+      *out_error_message = std::string(tool_name) + " requires argument content";
+    }
+    return false;
+  }
+  (void)extract_json_string_field(request_json, "expected_sha256",
+                                  &expected_sha256);
+
+  std::filesystem::path dsl_path{};
+  std::string err{};
+  dsl_path_resolution_error_t dsl_err = dsl_path_resolution_error_t::kNone;
+  if (!resolve_objective_campaign_path_with_scope(
+          *store, objective_root_raw, path_raw,
+          /*allow_missing_target=*/true, &dsl_path, &err, &dsl_err)) {
+    if (out_error_code) {
+      *out_error_code =
+          is_scope_violation(dsl_err) ? kConfigDslScopeErrorCode : -32602;
+    }
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  if (!enforce_write_target_allowed(*store, dsl_path, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  std::error_code ec{};
+  const bool existed =
+      std::filesystem::exists(dsl_path, ec) &&
+      std::filesystem::is_regular_file(dsl_path, ec);
+  std::string before_sha256{};
+  if (existed) {
+    if (!sha256_hex_file(dsl_path, &before_sha256, &err)) {
+      if (out_error_code) *out_error_code = -32603;
+      if (out_error_message) *out_error_message = err;
+      return false;
+    }
+  }
+  expected_sha256 = lowercase_copy(trim_ascii(expected_sha256));
+  if (!expected_sha256.empty()) {
+    if (!existed) {
+      if (out_error_code) *out_error_code = -32602;
+      if (out_error_message) {
+        *out_error_message =
+            "expected_sha256 was provided but objective campaign file does not exist: " +
+            dsl_path.string();
+      }
+      return false;
+    }
+    if (lowercase_copy(before_sha256) != expected_sha256) {
+      if (out_error_code) *out_error_code = -32602;
+      if (out_error_message) {
+        *out_error_message =
+            "expected_sha256 does not match current objective campaign content: " +
+            dsl_path.string();
+      }
+      return false;
+    }
+  }
+
+  std::string validation_family{};
+  std::filesystem::path grammar_path{};
+  if (!validate_instruction_dsl_replacement(*store, dsl_path, content,
+                                            &validation_family, &grammar_path,
+                                            &err)) {
+    if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  if (!write_text_file_atomic(dsl_path.string(), content, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+  std::string after_sha256{};
+  if (!sha256_hex_file(dsl_path, &after_sha256, &err)) {
+    if (out_error_code) *out_error_code = -32603;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  if (out_result_json) {
+    std::ostringstream out;
+    out << "{\"replaced\":true,\"created\":" << bool_json(!existed)
+        << ",\"objective_root\":" << json_quote(objective_root_raw)
+        << ",\"dsl_path\":" << json_quote(dsl_path.string())
+        << ",\"bytes\":" << content.size()
+        << ",\"before_sha256\":" << json_quote(before_sha256)
+        << ",\"sha256\":" << json_quote(after_sha256)
+        << ",\"validation_family\":" << json_quote(validation_family)
+        << ",\"grammar_path\":" << json_quote(grammar_path.string()) << "}";
     *out_result_json = out.str();
   }
   return true;

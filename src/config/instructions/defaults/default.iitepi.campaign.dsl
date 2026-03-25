@@ -3,8 +3,10 @@
   ===========================
   Purpose:
     Unified top-level runtime dispatch language. A campaign imports contract
-    files and wave files, defines reusable binds, then executes an ordered RUN
-    sequence over those bind ids.
+    files and wave files, may declare an optional super-loop objective file,
+    defines reusable binds, then executes an ordered RUN sequence over those
+    bind ids. Runtime Hero may also select one declared bind explicitly, with
+    RUN remaining the default launch plan.
 
   Syntax:
     CAMPAIGN {
@@ -23,6 +25,12 @@
 
       RUN <binding_id>;
     }
+
+    Super Hero now starts from a super objective DSL, which points to both the
+    campaign and the human-authored supervision brief. The defaults bundle
+    ships `default.super.objective.dsl` and `default.super.objective.md`, but
+    the plain default campaign remains executable on its own through Runtime
+    Hero.
 */
 CAMPAIGN {
   IMPORT_CONTRACT_FILE "default.iitepi.contract.dsl";

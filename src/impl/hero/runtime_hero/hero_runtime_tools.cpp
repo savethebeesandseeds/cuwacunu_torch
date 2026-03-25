@@ -34,6 +34,7 @@
 #include "hero/wave_contract_binding_runtime.h"
 #include "hero/runtime_hero/runtime_campaign.h"
 #include "hero/runtime_hero/runtime_job.h"
+#include "hero/super_hero/super_loop.h"
 
 namespace cuwacunu {
 namespace hero {
@@ -50,6 +51,15 @@ constexpr const char* kInitializeInstructions =
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;
 
 bool g_jsonrpc_use_content_length_framing = false;
+
+[[nodiscard]] bool rewrite_campaign_imports_absolute(
+    const std::filesystem::path& original_path, std::string_view original_text,
+    std::string* out_text, std::string* error);
+
+[[nodiscard]] bool decode_campaign_snapshot(
+    const app_context_t& app, const std::string& campaign_dsl_path,
+    cuwacunu::camahjucunu::iitepi_campaign_instruction_t* out_instruction,
+    std::string* error);
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   return cuwacunu::hero::runtime::trim_ascii(in);
@@ -362,6 +372,17 @@ bool g_jsonrpc_use_content_length_framing = false;
   return true;
 }
 
+[[nodiscard]] bool extract_json_array_field(const std::string& json,
+                                            const std::string& key,
+                                            std::string* out) {
+  std::string raw;
+  if (!extract_json_raw_field(json, key, &raw)) return false;
+  raw = trim_ascii(raw);
+  if (raw.empty() || raw.front() != '[') return false;
+  if (out) *out = raw;
+  return true;
+}
+
 [[nodiscard]] bool extract_json_string_field(const std::string& json,
                                              const std::string& key,
                                              std::string* out) {
@@ -417,6 +438,44 @@ bool g_jsonrpc_use_content_length_framing = false;
     return true;
   }
   if (out_id_json) *out_id_json = raw_id;
+  return true;
+}
+
+[[nodiscard]] bool split_json_array_items(const std::string& json_array,
+                                          std::vector<std::string>* out,
+                                          std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "json array output pointer is null";
+    return false;
+  }
+  out->clear();
+  const std::string raw = trim_ascii(json_array);
+  if (raw.empty() || raw.front() != '[' || raw.back() != ']') {
+    if (error) *error = "expected JSON array";
+    return false;
+  }
+  std::size_t pos = skip_json_whitespace(raw, 1);
+  while (pos < raw.size() && raw[pos] != ']') {
+    std::size_t value_end = pos;
+    if (!find_json_value_end(raw, pos, &value_end)) {
+      if (error) *error = "cannot parse JSON array item";
+      return false;
+    }
+    out->push_back(trim_ascii(raw.substr(pos, value_end - pos)));
+    pos = skip_json_whitespace(raw, value_end);
+    if (pos >= raw.size()) {
+      if (error) *error = "unterminated JSON array";
+      return false;
+    }
+    if (raw[pos] == ',') {
+      pos = skip_json_whitespace(raw, pos + 1);
+      continue;
+    }
+    if (raw[pos] == ']') break;
+    if (error) *error = "unexpected token in JSON array";
+    return false;
+  }
   return true;
 }
 
@@ -553,6 +612,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << (record.reset_runtime_state ? "true" : "false") << ","
       << "\"stdout_path\":" << json_quote(record.stdout_path) << ","
       << "\"stderr_path\":" << json_quote(record.stderr_path) << ","
+      << "\"trace_path\":" << json_quote(record.trace_path) << ","
       << "\"started_at_ms\":" << record.started_at_ms << ","
       << "\"updated_at_ms\":" << record.updated_at_ms << ","
       << "\"finished_at_ms\":"
@@ -627,11 +687,43 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   const auto observation = cuwacunu::hero::runtime::observe_runtime_job(*record);
   const std::string stable_state =
       cuwacunu::hero::runtime::stable_state_for_observation(*record, observation);
-  if (stable_state == record->state || stable_state == "orphaned" ||
-      stable_state == "lost") {
+  if (stable_state == record->state) {
+    if (stable_state == "failed") {
+      const std::string expected_detail =
+          "worker and target processes are no longer alive";
+      const bool needs_finished_at = !record->finished_at_ms.has_value();
+      if (record->state_detail != expected_detail || needs_finished_at) {
+        record->state_detail = expected_detail;
+        if (needs_finished_at) {
+          record->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+        }
+        record->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+        if (!write_runtime_job(app, *record, error)) return false;
+        if (out_changed) *out_changed = true;
+      }
+    } else if (stable_state == "orphaned") {
+      const std::string expected_detail =
+          "target process alive but worker process is gone";
+      if (record->state_detail != expected_detail) {
+        record->state_detail = expected_detail;
+        record->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+        if (!write_runtime_job(app, *record, error)) return false;
+        if (out_changed) *out_changed = true;
+      }
+    }
     return true;
   }
 
+  if (stable_state == "orphaned") {
+    record->state = "orphaned";
+    record->state_detail = "target process alive but worker process is gone";
+  } else if (stable_state == "failed") {
+    record->state = "failed";
+    record->state_detail = "worker and target processes are no longer alive";
+    if (!record->finished_at_ms.has_value()) {
+      record->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    }
+  } else
   if (stable_state == "running") {
     record->state = "running";
     record->state_detail = "target process alive";
@@ -642,6 +734,16 @@ void write_jsonrpc_error(std::string_view id_json, int code,
   if (!write_runtime_job(app, *record, error)) return false;
   if (out_changed) *out_changed = true;
   return true;
+}
+
+[[nodiscard]] std::filesystem::path runtime_job_trace_path_for_record(
+    const app_context_t& app,
+    const cuwacunu::hero::runtime::runtime_job_record_t& record) {
+  if (!record.trace_path.empty()) {
+    return std::filesystem::path(record.trace_path);
+  }
+  return cuwacunu::hero::runtime::runtime_job_trace_path(
+      app.defaults.campaigns_root, record.job_cursor);
 }
 
 [[nodiscard]] std::string runtime_campaign_to_json(
@@ -673,6 +775,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"boot_id\":" << json_quote(record.boot_id) << ","
       << "\"state\":" << json_quote(record.state) << ","
       << "\"state_detail\":" << json_quote(record.state_detail) << ","
+      << "\"super_loop_id\":" << json_quote(record.super_loop_id) << ","
       << "\"global_config_path\":"
       << json_quote(record.global_config_path) << ","
       << "\"source_campaign_dsl_path\":"
@@ -730,6 +833,127 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       app.defaults.campaigns_root, record, error);
 }
 
+[[nodiscard]] bool read_linked_super_loop(
+    const app_context_t& app, std::string_view loop_id,
+    cuwacunu::hero::super::super_loop_record_t* out,
+    std::string* error) {
+  return cuwacunu::hero::super::read_super_loop_record(
+      app.defaults.super_root, loop_id, out, error);
+}
+
+[[nodiscard]] bool write_linked_super_loop(
+    const app_context_t& app,
+    const cuwacunu::hero::super::super_loop_record_t& record,
+    std::string* error) {
+  return cuwacunu::hero::super::write_super_loop_record(
+      app.defaults.super_root, record, error);
+}
+
+struct campaign_launch_request_t {
+  std::string binding_id{};
+  bool reset_runtime_state{false};
+  std::string campaign_dsl_path{};
+  std::string super_loop_id{};
+};
+
+[[nodiscard]] std::string json_array_from_strings(
+    const std::vector<std::string>& values) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) out << ",";
+    out << json_quote(values[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] bool append_super_loop_event(
+    const cuwacunu::hero::super::super_loop_record_t& loop,
+    std::string_view event, std::string_view detail, std::string* error) {
+  if (error) error->clear();
+  const std::string payload =
+      "{\"timestamp_ms\":" +
+      std::to_string(cuwacunu::hero::runtime::now_ms_utc()) +
+      ",\"loop_id\":" + json_quote(loop.loop_id) + ",\"event\":" +
+      json_quote(event) + ",\"detail\":" + json_quote(detail) + "}\n";
+  return cuwacunu::hero::runtime::append_text_file(loop.events_path, payload, error);
+}
+
+[[nodiscard]] std::filesystem::path resolve_default_campaign_dsl_path(
+    const std::filesystem::path& global_config_path, std::string* error) {
+  if (error) error->clear();
+  const std::optional<std::string> configured =
+      read_ini_value(global_config_path, "GENERAL", kDefaultCampaignDslKey);
+  if (!configured.has_value()) {
+    if (error) {
+      *error = "missing GENERAL." + std::string(kDefaultCampaignDslKey) + " in " +
+               global_config_path.string();
+    }
+    return {};
+  }
+  return std::filesystem::path(resolve_path_from_base_folder(
+      global_config_path.parent_path().string(), *configured));
+}
+
+[[nodiscard]] std::filesystem::path resolve_requested_campaign_source_path(
+    const app_context_t& app, const std::filesystem::path& global_config_path,
+    std::string requested_campaign_dsl_path, std::string* error) {
+  if (error) error->clear();
+  requested_campaign_dsl_path = trim_ascii(std::move(requested_campaign_dsl_path));
+  const std::filesystem::path source_campaign_path =
+      requested_campaign_dsl_path.empty()
+          ? resolve_default_campaign_dsl_path(global_config_path, error)
+          : std::filesystem::path(resolve_path_from_base_folder(
+                global_config_path.parent_path().string(),
+                requested_campaign_dsl_path));
+  if (source_campaign_path.empty()) return {};
+  std::error_code ec{};
+  if (!std::filesystem::exists(source_campaign_path, ec) ||
+      !std::filesystem::is_regular_file(source_campaign_path, ec)) {
+    if (error) {
+      *error = "campaign DSL does not exist: " + source_campaign_path.string();
+    }
+    return {};
+  }
+  return source_campaign_path;
+}
+
+[[nodiscard]] bool prepare_campaign_dsl_snapshot_from_source(
+    const app_context_t& app, const std::string& campaign_cursor,
+    const std::filesystem::path& source_campaign_path,
+    std::string* out_source_campaign_path,
+    std::string* out_campaign_snapshot_path, std::string* error) {
+  if (error) error->clear();
+  if (out_source_campaign_path) out_source_campaign_path->clear();
+  if (out_campaign_snapshot_path) out_campaign_snapshot_path->clear();
+
+  std::string campaign_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(source_campaign_path,
+                                               &campaign_text, error)) {
+    return false;
+  }
+  std::string snapshot_text{};
+  if (!rewrite_campaign_imports_absolute(source_campaign_path, campaign_text,
+                                         &snapshot_text, error)) {
+    return false;
+  }
+  const std::filesystem::path snapshot_path =
+      cuwacunu::hero::runtime::runtime_campaign_dsl_path(
+          app.defaults.campaigns_root, campaign_cursor);
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(snapshot_path,
+                                                       snapshot_text, error)) {
+    return false;
+  }
+  if (out_source_campaign_path) {
+    *out_source_campaign_path = source_campaign_path.string();
+  }
+  if (out_campaign_snapshot_path) {
+    *out_campaign_snapshot_path = snapshot_path.string();
+  }
+  return true;
+}
+
 [[nodiscard]] bool reconcile_campaign_record(
     const app_context_t& app,
     cuwacunu::hero::runtime::runtime_campaign_record_t* record,
@@ -753,6 +977,14 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       if (record->state == "launching") {
         next_state = "running";
         next_detail = "campaign runner alive";
+      }
+    } else {
+      next_state = "failed";
+      next_detail = (record->state == "stopping")
+                        ? "stale forced-stop campaign runner is no longer alive"
+                        : "campaign runner is no longer alive";
+      if (!record->finished_at_ms.has_value()) {
+        record->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       }
     }
     if (next_state != record->state || next_detail != record->state_detail) {
@@ -847,10 +1079,21 @@ struct campaign_start_lock_guard_t {
                                         const std::string& arguments_json,
                                         std::string* out_structured,
                                         std::string* out_error);
+[[nodiscard]] bool handle_tool_tail_trace(app_context_t* app,
+                                          const std::string& arguments_json,
+                                          std::string* out_structured,
+                                          std::string* out_error);
 [[nodiscard]] bool handle_tool_reconcile(app_context_t* app,
                                          const std::string& arguments_json,
                                          std::string* out_structured,
                                          std::string* out_error);
+[[nodiscard]] bool tail_file_lines(const std::filesystem::path& path,
+                                   std::size_t lines, std::string* out,
+                                   std::string* error);
+[[nodiscard]] bool launch_campaign_runner_process(
+    const app_context_t& app,
+    const cuwacunu::hero::runtime::runtime_campaign_record_t& seed_record,
+    std::string* error);
 
 constexpr runtime_tool_descriptor_t kRuntimeTools[] = {
 #define HERO_RUNTIME_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) \
@@ -980,6 +1223,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     if (!in_block_comment) {
       line = rewrite_import("IMPORT_CONTRACT_FILE", line);
       line = rewrite_import("IMPORT_WAVE_FILE", line);
+      line = rewrite_import("SUPER", line);
     }
     if (!first) out << "\n";
     first = false;
@@ -999,56 +1243,12 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     const std::filesystem::path& global_config_path,
     std::string* out_source_campaign_path,
     std::string* out_campaign_snapshot_path, std::string* error) {
-  if (error) error->clear();
-  if (out_source_campaign_path) out_source_campaign_path->clear();
-  if (out_campaign_snapshot_path) out_campaign_snapshot_path->clear();
-
-  const std::optional<std::string> configured =
-      read_ini_value(global_config_path, "GENERAL", kDefaultCampaignDslKey);
-  if (!configured.has_value()) {
-    if (error) {
-      *error = "missing GENERAL." + std::string(kDefaultCampaignDslKey) +
-               " in " + global_config_path.string();
-    }
-    return false;
-  }
-
-  const std::filesystem::path source_campaign_path(resolve_path_from_base_folder(
-      global_config_path.parent_path().string(), *configured));
-  std::error_code ec{};
-  if (!std::filesystem::exists(source_campaign_path, ec) ||
-      !std::filesystem::is_regular_file(source_campaign_path, ec)) {
-    if (error) {
-      *error = "configured default campaign DSL does not exist: " +
-               source_campaign_path.string();
-    }
-    return false;
-  }
-
-  std::string campaign_text{};
-  if (!cuwacunu::hero::runtime::read_text_file(source_campaign_path,
-                                               &campaign_text, error)) {
-    return false;
-  }
-  std::string snapshot_text{};
-  if (!rewrite_campaign_imports_absolute(source_campaign_path, campaign_text,
-                                         &snapshot_text, error)) {
-    return false;
-  }
-  const std::filesystem::path snapshot_path =
-      cuwacunu::hero::runtime::runtime_campaign_dsl_path(
-          app.defaults.campaigns_root, campaign_cursor);
-  if (!cuwacunu::hero::runtime::write_text_file_atomic(snapshot_path,
-                                                       snapshot_text, error)) {
-    return false;
-  }
-  if (out_source_campaign_path) {
-    *out_source_campaign_path = source_campaign_path.string();
-  }
-  if (out_campaign_snapshot_path) {
-    *out_campaign_snapshot_path = snapshot_path.string();
-  }
-  return true;
+  const std::filesystem::path source_campaign_path =
+      resolve_default_campaign_dsl_path(global_config_path, error);
+  if (source_campaign_path.empty()) return false;
+  return prepare_campaign_dsl_snapshot_from_source(
+      app, campaign_cursor, source_campaign_path, out_source_campaign_path,
+      out_campaign_snapshot_path, error);
 }
 
 [[nodiscard]] bool validate_main_campaign_binary_for_launch(
@@ -1113,6 +1313,250 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     return false;
   }
   return true;
+}
+
+[[nodiscard]] bool select_campaign_run_bind_ids(
+    const cuwacunu::camahjucunu::iitepi_campaign_instruction_t& instruction,
+    std::string requested_binding_id, std::vector<std::string>* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "campaign run-bind output pointer is null";
+    return false;
+  }
+  out->clear();
+
+  requested_binding_id = trim_ascii(requested_binding_id);
+  if (!requested_binding_id.empty()) {
+    const auto bind_it = std::find_if(
+        instruction.binds.begin(), instruction.binds.end(),
+        [&](const auto& bind) { return bind.id == requested_binding_id; });
+    if (bind_it == instruction.binds.end()) {
+      if (error) {
+        *error = "campaign does not declare BIND '" + requested_binding_id + "'";
+      }
+      return false;
+    }
+    out->push_back(requested_binding_id);
+    return true;
+  }
+
+  if (instruction.runs.empty()) {
+    if (error) *error = "campaign does not define any RUN entries";
+    return false;
+  }
+  for (const auto& run : instruction.runs) {
+    const std::string bind_ref = trim_ascii(run.bind_ref);
+    if (!bind_ref.empty()) out->push_back(bind_ref);
+  }
+  if (out->empty()) {
+    if (error) *error = "campaign RUN list resolved to zero bind ids";
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool launch_campaign_under_lock(
+    const app_context_t& app, const campaign_launch_request_t& request,
+    cuwacunu::hero::runtime::runtime_campaign_record_t* out_record,
+    std::string* error) {
+  if (error) error->clear();
+  if (out_record) *out_record = cuwacunu::hero::runtime::runtime_campaign_record_t{};
+
+  std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t> campaigns{};
+  if (!list_runtime_campaigns(app, &campaigns, error)) return false;
+  std::size_t active_campaigns = 0;
+  for (auto& campaign : campaigns) {
+    bool changed = false;
+    if (!reconcile_campaign_record(app, &campaign, &changed, error)) return false;
+    if (campaign.state == "launching" || campaign.state == "running" ||
+        campaign.state == "stopping") {
+      ++active_campaigns;
+    }
+  }
+  if (app.defaults.max_active_campaigns > 0 &&
+      active_campaigns >= app.defaults.max_active_campaigns) {
+    if (error) *error = "max_active_campaigns reached";
+    return false;
+  }
+  if (!validate_main_campaign_binary_for_launch(app, error)) return false;
+
+  const std::string campaign_cursor =
+      cuwacunu::hero::runtime::make_campaign_cursor(app.defaults.campaigns_root);
+  const std::filesystem::path source_campaign_path =
+      resolve_requested_campaign_source_path(app, app.global_config_path,
+                                            request.campaign_dsl_path, error);
+  if (source_campaign_path.empty()) return false;
+
+  std::string source_campaign_dsl_path{};
+  std::string campaign_dsl_path{};
+  if (!prepare_campaign_dsl_snapshot_from_source(app, campaign_cursor,
+                                                 source_campaign_path,
+                                                 &source_campaign_dsl_path,
+                                                 &campaign_dsl_path, error)) {
+    return false;
+  }
+  cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
+  if (!decode_campaign_snapshot(app, campaign_dsl_path, &instruction, error)) {
+    return false;
+  }
+  std::vector<std::string> run_bind_ids{};
+  if (!select_campaign_run_bind_ids(instruction, request.binding_id, &run_bind_ids,
+                                    error)) {
+    return false;
+  }
+
+  cuwacunu::hero::runtime::runtime_campaign_record_t record{};
+  record.campaign_cursor = campaign_cursor;
+  record.boot_id = cuwacunu::hero::runtime::current_boot_id();
+  record.state = "launching";
+  record.state_detail = "detached campaign runner requested";
+  record.super_loop_id = request.super_loop_id;
+  record.global_config_path = app.global_config_path.string();
+  record.source_campaign_dsl_path = source_campaign_dsl_path;
+  record.campaign_dsl_path = campaign_dsl_path;
+  record.reset_runtime_state = request.reset_runtime_state;
+  record.stdout_path = cuwacunu::hero::runtime::runtime_campaign_stdout_path(
+                           app.defaults.campaigns_root, campaign_cursor)
+                           .string();
+  record.stderr_path = cuwacunu::hero::runtime::runtime_campaign_stderr_path(
+                           app.defaults.campaigns_root, campaign_cursor)
+                           .string();
+  record.started_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  record.updated_at_ms = record.started_at_ms;
+  record.run_bind_ids = std::move(run_bind_ids);
+
+  if (!write_runtime_campaign(app, record, error)) return false;
+  if (!launch_campaign_runner_process(app, record, error)) {
+    record.state = "failed_to_start";
+    record.state_detail = *error;
+    record.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    record.updated_at_ms = *record.finished_at_ms;
+    std::string ignored{};
+    (void)write_runtime_campaign(app, record, &ignored);
+    return false;
+  }
+
+  for (int attempt = 0; attempt < 80; ++attempt) {
+    std::string poll_error{};
+    if (read_runtime_campaign(app, campaign_cursor, &record, &poll_error)) {
+      if (record.runner_pid.has_value() || record.state != "launching") {
+        break;
+      }
+    }
+    ::usleep(25 * 1000);
+  }
+  if (!read_runtime_campaign(app, campaign_cursor, &record, error)) return false;
+  if (out_record) *out_record = record;
+  return true;
+}
+
+[[nodiscard]] bool run_command_with_stdio_and_timeout(
+    const std::vector<std::string>& argv, const std::filesystem::path& stdin_path,
+    const std::filesystem::path& stdout_path,
+    const std::filesystem::path& stderr_path, std::size_t timeout_sec,
+    int* out_exit_code, std::string* error) {
+  if (error) error->clear();
+  if (out_exit_code) *out_exit_code = -1;
+  if (argv.empty()) {
+    if (error) *error = "command argv is empty";
+    return false;
+  }
+  std::error_code ec{};
+  if (!std::filesystem::exists(stdin_path, ec) ||
+      !std::filesystem::is_regular_file(stdin_path, ec)) {
+    if (error) *error = "command stdin path does not exist: " + stdin_path.string();
+    return false;
+  }
+  std::filesystem::create_directories(stdout_path.parent_path(), ec);
+  if (ec) {
+    if (error) *error = "cannot create command stdout parent: " + stdout_path.string();
+    return false;
+  }
+  std::filesystem::create_directories(stderr_path.parent_path(), ec);
+  if (ec) {
+    if (error) *error = "cannot create command stderr parent: " + stderr_path.string();
+    return false;
+  }
+  const int stdout_probe =
+      ::open(stdout_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (stdout_probe < 0) {
+    if (error) *error = "cannot open command stdout path: " + stdout_path.string();
+    return false;
+  }
+  (void)::close(stdout_probe);
+  const int stderr_probe =
+      ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (stderr_probe < 0) {
+    if (error) *error = "cannot open command stderr path: " + stderr_path.string();
+    return false;
+  }
+  (void)::close(stderr_probe);
+
+  const pid_t child = ::fork();
+  if (child < 0) {
+    if (error) *error = "fork failed for command execution";
+    return false;
+  }
+  if (child == 0) {
+    (void)::setpgid(0, 0);
+    const int stdin_fd = ::open(stdin_path.c_str(), O_RDONLY);
+    if (stdin_fd < 0) _exit(126);
+    (void)::dup2(stdin_fd, STDIN_FILENO);
+    if (stdin_fd > STDERR_FILENO) (void)::close(stdin_fd);
+    const int stdout_fd =
+        ::open(stdout_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (stdout_fd < 0) _exit(126);
+    (void)::dup2(stdout_fd, STDOUT_FILENO);
+    if (stdout_fd > STDERR_FILENO) (void)::close(stdout_fd);
+    const int stderr_fd =
+        ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (stderr_fd < 0) _exit(126);
+    (void)::dup2(stderr_fd, STDERR_FILENO);
+    if (stderr_fd > STDERR_FILENO) (void)::close(stderr_fd);
+    std::vector<char*> exec_argv{};
+    exec_argv.reserve(argv.size() + 1);
+    for (const std::string& arg : argv) {
+      exec_argv.push_back(const_cast<char*>(arg.c_str()));
+    }
+    exec_argv.push_back(nullptr);
+    ::execvp(exec_argv[0], exec_argv.data());
+    _exit(127);
+  }
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(timeout_sec);
+  int status = 0;
+  for (;;) {
+    const pid_t waited = ::waitpid(child, &status, WNOHANG);
+    if (waited == child) break;
+    if (waited < 0 && errno != EINTR) {
+      if (error) *error = "waitpid failed for command execution";
+      (void)::kill(-child, SIGKILL);
+      (void)::waitpid(child, nullptr, 0);
+      return false;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      (void)::kill(-child, SIGKILL);
+      (void)::kill(child, SIGKILL);
+      (void)::waitpid(child, nullptr, 0);
+      if (error) *error = "command timed out";
+      return false;
+    }
+    ::usleep(100 * 1000);
+  }
+
+  if (WIFEXITED(status)) {
+    if (out_exit_code) *out_exit_code = WEXITSTATUS(status);
+    return true;
+  }
+  if (WIFSIGNALED(status)) {
+    if (out_exit_code) *out_exit_code = 128 + WTERMSIG(status);
+    if (error) *error = "command terminated by signal";
+    return false;
+  }
+  if (error) *error = "command ended in unknown state";
+  return false;
 }
 
 [[nodiscard]] bool launch_campaign_runner_process(
@@ -1219,102 +1663,63 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
-  std::string global_config_path = app->global_config_path.string();
+  std::string binding_id{};
   bool reset_runtime_state = false;
+  std::string campaign_dsl_path{};
+  std::string super_loop_id{};
+  (void)extract_json_string_field(arguments_json, "binding_id", &binding_id);
   (void)extract_json_bool_field(arguments_json, "reset_runtime_state",
                                 &reset_runtime_state);
-  global_config_path = trim_ascii(global_config_path);
-  if (global_config_path.empty()) {
+  (void)extract_json_string_field(arguments_json, "campaign_dsl_path",
+                                  &campaign_dsl_path);
+  (void)extract_json_string_field(arguments_json, "super_loop_id",
+                                  &super_loop_id);
+  binding_id = trim_ascii(binding_id);
+  campaign_dsl_path = trim_ascii(campaign_dsl_path);
+  super_loop_id = trim_ascii(super_loop_id);
+  if (app->global_config_path.empty()) {
     *out_error = "runtime MCP app missing global_config_path";
     return false;
   }
 
+  const std::filesystem::path source_campaign_path =
+      resolve_requested_campaign_source_path(*app, app->global_config_path,
+                                            campaign_dsl_path, out_error);
+  if (source_campaign_path.empty()) return false;
+
+  cuwacunu::camahjucunu::iitepi_campaign_instruction_t source_instruction{};
+  if (!decode_campaign_snapshot(*app, source_campaign_path.string(),
+                                &source_instruction, out_error)) {
+    return false;
+  }
+
+  std::vector<std::string> warnings{};
+  if (super_loop_id.empty() &&
+      !trim_ascii(source_instruction.super_objective_file).empty()) {
+    warnings.push_back(
+        "campaign declares SUPER \"" +
+        trim_ascii(source_instruction.super_objective_file) +
+        "\" but Runtime Hero direct launch does not run supervision; use "
+        "hero.super.start_loop(...) when you want the SUPER objective honored");
+  }
+
+  campaign_launch_request_t request{};
+  request.binding_id = binding_id;
+  request.reset_runtime_state = reset_runtime_state;
+  request.campaign_dsl_path = source_campaign_path.string();
+  request.super_loop_id = super_loop_id;
+
   campaign_start_lock_guard_t start_lock{};
   if (!acquire_campaign_start_lock(*app, &start_lock, out_error)) return false;
-
-  std::vector<cuwacunu::hero::runtime::runtime_campaign_record_t> campaigns{};
-  if (!list_runtime_campaigns(*app, &campaigns, out_error)) return false;
-  std::size_t active_campaigns = 0;
-  for (auto& campaign : campaigns) {
-    bool changed = false;
-    if (!reconcile_campaign_record(*app, &campaign, &changed, out_error)) {
-      return false;
-    }
-    if (campaign.state == "launching" || campaign.state == "running" ||
-        campaign.state == "stopping") {
-      ++active_campaigns;
-    }
-  }
-  if (app->defaults.max_active_campaigns > 0 &&
-      active_campaigns >= app->defaults.max_active_campaigns) {
-    *out_error = "max_active_campaigns reached";
-    return false;
-  }
-  if (!validate_main_campaign_binary_for_launch(*app, out_error)) return false;
-
-  const std::string campaign_cursor =
-      cuwacunu::hero::runtime::make_campaign_cursor(app->defaults.campaigns_root);
-  std::string source_campaign_dsl_path{};
-  std::string campaign_dsl_path{};
-  if (!prepare_campaign_dsl_snapshot(*app, campaign_cursor,
-                                     std::filesystem::path(global_config_path),
-                                     &source_campaign_dsl_path,
-                                     &campaign_dsl_path, out_error)) {
-    return false;
-  }
-  cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
-  if (!decode_campaign_snapshot(*app, campaign_dsl_path, &instruction, out_error)) {
-    return false;
-  }
-
   cuwacunu::hero::runtime::runtime_campaign_record_t record{};
-  record.campaign_cursor = campaign_cursor;
-  record.boot_id = cuwacunu::hero::runtime::current_boot_id();
-  record.state = "launching";
-  record.state_detail = "detached campaign runner requested";
-  record.global_config_path = global_config_path;
-  record.source_campaign_dsl_path = source_campaign_dsl_path;
-  record.campaign_dsl_path = campaign_dsl_path;
-  record.reset_runtime_state = reset_runtime_state;
-  record.stdout_path = cuwacunu::hero::runtime::runtime_campaign_stdout_path(
-                           app->defaults.campaigns_root, campaign_cursor)
-                           .string();
-  record.stderr_path = cuwacunu::hero::runtime::runtime_campaign_stderr_path(
-                           app->defaults.campaigns_root, campaign_cursor)
-                           .string();
-  record.started_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  record.updated_at_ms = record.started_at_ms;
-  for (const auto& run : instruction.runs) {
-    record.run_bind_ids.push_back(run.bind_ref);
-  }
-
-  if (!write_runtime_campaign(*app, record, out_error)) return false;
-  if (!launch_campaign_runner_process(*app, record, out_error)) {
-    record.state = "failed_to_start";
-    record.state_detail = *out_error;
-    record.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    record.updated_at_ms = *record.finished_at_ms;
-    std::string ignored{};
-    (void)write_runtime_campaign(*app, record, &ignored);
+  if (!launch_campaign_under_lock(*app, request, &record, out_error)) {
     return false;
   }
 
-  for (int attempt = 0; attempt < 80; ++attempt) {
-    std::string poll_error{};
-    if (read_runtime_campaign(*app, campaign_cursor, &record, &poll_error)) {
-      if (record.runner_pid.has_value() ||
-          record.state != "launching") {
-        break;
-      }
-    }
-    ::usleep(25 * 1000);
-  }
-  if (!read_runtime_campaign(*app, campaign_cursor, &record, out_error)) {
-    return false;
-  }
-  *out_structured =
-      "{\"campaign_cursor\":" + json_quote(campaign_cursor) + ",\"campaign\":" +
-      runtime_campaign_to_json(record) + "}";
+  const std::string warnings_json = json_array_from_strings(warnings);
+  *out_structured = "{\"campaign_cursor\":" + json_quote(record.campaign_cursor) +
+                    ",\"campaign\":" + runtime_campaign_to_json(record) +
+                    ",\"warnings\":" + warnings_json + "}";
   return true;
 }
 
@@ -1377,6 +1782,39 @@ void write_child_errno_noexcept(int fd, int child_errno) {
       << ",\"total\":" << total
       << ",\"state\":" << json_quote(state_filter)
       << ",\"campaigns\":" << campaigns_json.str() << "}";
+  *out_structured = out.str();
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_tail_trace(app_context_t* app,
+                                          const std::string& arguments_json,
+                                          std::string* out_structured,
+                                          std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string job_cursor{};
+  std::size_t lines = app->defaults.tail_default_lines;
+  (void)extract_json_string_field(arguments_json, "job_cursor", &job_cursor);
+  (void)extract_json_size_field(arguments_json, "lines", &lines);
+  job_cursor = trim_ascii(job_cursor);
+  if (job_cursor.empty()) {
+    *out_error = "tail_trace requires arguments.job_cursor";
+    return false;
+  }
+
+  cuwacunu::hero::runtime::runtime_job_record_t record{};
+  if (!read_runtime_job(*app, job_cursor, &record, out_error)) return false;
+
+  const auto trace_path = runtime_job_trace_path_for_record(*app, record);
+  std::string text{};
+  if (!tail_file_lines(trace_path, lines, &text, out_error)) return false;
+
+  std::ostringstream out;
+  out << "{\"job_cursor\":" << json_quote(job_cursor)
+      << ",\"lines\":" << lines
+      << ",\"path\":" << json_quote(trace_path.string())
+      << ",\"text\":" << json_quote(text) << "}";
   *out_structured = out.str();
   return true;
 }
@@ -1615,6 +2053,21 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     return false;
   }
   if (is_runtime_campaign_terminal_state(campaign.state)) {
+    if (!campaign.super_loop_id.empty()) {
+      cuwacunu::hero::super::super_loop_record_t loop{};
+      std::string loop_error{};
+      if (read_linked_super_loop(*app, campaign.super_loop_id, &loop, &loop_error)) {
+        loop.state = "stopped";
+        loop.state_detail = "stop_campaign requested after terminal campaign";
+        loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+        loop.updated_at_ms = *loop.finished_at_ms;
+        loop.active_campaign_cursor.clear();
+        std::string ignored{};
+        (void)write_linked_super_loop(*app, loop, &ignored);
+        (void)append_super_loop_event(loop, "loop_stopped", loop.state_detail,
+                                      &ignored);
+      }
+    }
     *out_structured =
         "{\"campaign_cursor\":" + json_quote(campaign_cursor) +
         ",\"campaign\":" + runtime_campaign_to_json(campaign) + "}";
@@ -1680,6 +2133,23 @@ void write_child_errno_noexcept(int fd, int child_errno) {
                                 : "sent SIGTERM to campaign runner";
   campaign.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   if (!write_runtime_campaign(*app, campaign, out_error)) return false;
+
+  if (!campaign.super_loop_id.empty()) {
+    cuwacunu::hero::super::super_loop_record_t loop{};
+    std::string loop_error{};
+    if (read_linked_super_loop(*app, campaign.super_loop_id, &loop, &loop_error)) {
+      loop.state = "stopped";
+      loop.state_detail = "stop_campaign requested by operator";
+      loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      loop.updated_at_ms = *loop.finished_at_ms;
+      loop.active_campaign_cursor.clear();
+      std::string ignored{};
+      (void)write_linked_super_loop(*app, loop, &ignored);
+      (void)append_super_loop_event(loop, "loop_stopped",
+                                    "stop_campaign requested by operator",
+                                    &ignored);
+    }
+  }
 
   *out_structured =
       "{\"campaign_cursor\":" + json_quote(campaign_cursor) +
@@ -1858,6 +2328,11 @@ std::filesystem::path resolve_runtime_hero_dsl_path(
   return (runtime_root / ".campaigns").lexically_normal();
 }
 
+[[nodiscard]] std::filesystem::path derive_super_root(
+    const std::filesystem::path& runtime_root) {
+  return cuwacunu::hero::super::super_root(runtime_root);
+}
+
 [[nodiscard]] std::filesystem::path resolve_campaign_grammar_from_global_config(
     const std::filesystem::path& global_config_path) {
   const std::optional<std::string> configured =
@@ -1924,6 +2399,8 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
 
   out->campaigns_root =
       derive_campaigns_root(resolve_runtime_root_from_global_config(global_config_path));
+  out->super_root =
+      derive_super_root(resolve_runtime_root_from_global_config(global_config_path));
   bool saw_main_campaign_binary = false;
   if (const auto it = values.find("main_campaign_binary"); it != values.end()) {
     saw_main_campaign_binary = true;
@@ -1955,6 +2432,13 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
   if (out->campaigns_root.empty()) {
     if (error) {
       *error = "missing GENERAL.runtime_root in " + global_config_path.string();
+    }
+    return false;
+  }
+  if (out->super_root.empty()) {
+    if (error) {
+      *error = "cannot derive .super_hero root from GENERAL.runtime_root in " +
+               global_config_path.string();
     }
     return false;
   }

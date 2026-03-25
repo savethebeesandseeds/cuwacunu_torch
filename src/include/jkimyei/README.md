@@ -19,8 +19,9 @@ Runtime boundary:
 - wikimyei components may expose a small runtime `jkimyei` facet for
   inspection and safe control of pending training state, but component-specific
   train loops remain component-owned.
-- campaign orchestration is owned by Runtime Hero through the unified
-  `iitepi campaign` DSL (`src/config/instructions/default.iitepi.campaign.dsl`).
+- campaign orchestration is owned by Runtime Hero through the configured
+  `iitepi campaign` DSL. The checked-in active bundle is
+  `src/config/instructions/objectives/vicreg.solo/iitepi.campaign.dsl`.
 
 Design goals:
 - schema-first definitions (`.def` is source of truth)

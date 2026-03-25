@@ -44,6 +44,55 @@ void write_text(const fs::path& path, const std::string& text) {
   return value ? "true" : "false";
 }
 
+[[nodiscard]] std::string json_quote(const std::string& in) {
+  std::ostringstream out;
+  out << '"';
+  for (const unsigned char c : in) {
+    switch (c) {
+      case '"':
+        out << "\\\"";
+        break;
+      case '\\':
+        out << "\\\\";
+        break;
+      case '\n':
+        out << "\\n";
+        break;
+      case '\r':
+        out << "\\r";
+        break;
+      case '\t':
+        out << "\\t";
+        break;
+      default:
+        out << static_cast<char>(c);
+        break;
+    }
+  }
+  out << '"';
+  return out.str();
+}
+
+[[nodiscard]] std::string replace_once(std::string text,
+                                       std::string_view needle,
+                                       std::string_view replacement) {
+  const std::size_t pos = text.find(needle);
+  assert(pos != std::string::npos);
+  text.replace(pos, needle.size(), replacement);
+  return text;
+}
+
+[[nodiscard]] std::string json_string_field(const std::string& json,
+                                            std::string_view key) {
+  const std::string prefix = "\"" + std::string(key) + "\":\"";
+  const std::size_t begin = json.find(prefix);
+  assert(begin != std::string::npos);
+  const std::size_t value_begin = begin + prefix.size();
+  const std::size_t value_end = json.find('"', value_begin);
+  assert(value_end != std::string::npos);
+  return json.substr(value_begin, value_end - value_begin);
+}
+
 [[nodiscard]] std::string build_config_text(const fs::path& scope_root,
                                             bool allow_local_write,
                                             const fs::path& write_roots,
@@ -64,11 +113,12 @@ void write_text(const fs::path& path, const std::string& text) {
 [[nodiscard]] std::string build_global_config_text(const fs::path& runtime_root) {
   std::ostringstream out;
   out << "[GENERAL]\n";
+  out << "repo_root = /cuwacunu\n";
   out << "runtime_root = " << runtime_root.string() << "\n\n";
   out << "[REAL_HERO]\n";
-  out << "hashimyei_hero_dsl_filename = instructions/default.hero.hashimyei.dsl\n";
-  out << "lattice_hero_dsl_filename = instructions/default.hero.lattice.dsl\n";
-  out << "runtime_hero_dsl_filename = instructions/default.hero.runtime.dsl\n";
+  out << "hashimyei_hero_dsl_filename = instructions/defaults/default.hero.hashimyei.dsl\n";
+  out << "lattice_hero_dsl_filename = instructions/defaults/default.hero.lattice.dsl\n";
+  out << "runtime_hero_dsl_filename = instructions/defaults/default.hero.runtime.dsl\n";
   return out.str();
 }
 
@@ -93,7 +143,8 @@ int main() {
 
   {
     const fs::path missing_cfg =
-        temp_root / "template_scope" / "instructions" / "default.hero.config.dsl";
+        temp_root / "template_scope" / "instructions" / "defaults" /
+        "default.hero.config.dsl";
     cuwacunu::hero::mcp::hero_config_store_t store(missing_cfg.string());
     std::string err;
     assert(store.load(&err));
@@ -105,7 +156,8 @@ int main() {
 
   {
     const fs::path scope_root = temp_root / "deny_scope";
-    const fs::path cfg_path = scope_root / "instructions" / "default.hero.config.dsl";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
     write_text(cfg_path, build_config_text(scope_root,
                                            /*allow_local_write=*/false,
                                            scope_root,
@@ -119,9 +171,12 @@ int main() {
     assert(err.empty());
 
     std::string result_json;
+    const std::string denied_replace_text =
+        replace_once(original_text, "backup_max_entries(1,+inf):int = 20",
+                     "backup_max_entries(1,+inf):int = 21");
     assert(!cuwacunu::hero::mcp::execute_tool_json(
-        "hero.config.dsl.set",
-        "{\"key\":\"backup_max_entries\",\"value\":\"21\"}", &store,
+        "hero.config.default.replace",
+        "{\"content\":" + json_quote(denied_replace_text) + "}", &store,
         &result_json, &err));
     assert(err.find("allow_local_write=false") != std::string::npos);
     assert(read_text(cfg_path) == original_text);
@@ -129,10 +184,12 @@ int main() {
     result_json.clear();
     err.clear();
     assert(cuwacunu::hero::mcp::execute_tool_json(
-        "hero.config.dsl.get", "{\"key\":\"backup_max_entries\"}", &store,
-        &result_json, &err));
+        "hero.config.default.read", "{}", &store, &result_json, &err));
     assert(err.empty());
-    assert(result_json.find("\"value\":\"20\"") != std::string::npos);
+    assert(result_json.find("\"validation_family\":\"latent_lineage_state\"") !=
+           std::string::npos);
+    assert(result_json.find("backup_max_entries(1,+inf):int = 20") !=
+           std::string::npos);
 
     result_json.clear();
     err.clear();
@@ -151,7 +208,8 @@ int main() {
 
   {
     const fs::path scope_root = temp_root / "backup_escape_scope";
-    const fs::path cfg_path = scope_root / "instructions" / "default.hero.config.dsl";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
     write_text(cfg_path, build_config_text(scope_root,
                                            /*allow_local_write=*/true,
                                            scope_root,
@@ -178,7 +236,8 @@ int main() {
 
   {
     const fs::path scope_root = temp_root / "reset_escape_scope";
-    const fs::path cfg_path = scope_root / "instructions" / "default.hero.config.dsl";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
     const fs::path global_cfg = temp_root / "outside_global" / ".config";
     write_text(cfg_path, build_config_text(scope_root,
                                            /*allow_local_write=*/true,
@@ -204,7 +263,8 @@ int main() {
   {
     const fs::path scope_root = temp_root / "allow_scope";
     const fs::path backup_dir = scope_root / ".backups" / "hero.config";
-    const fs::path cfg_path = scope_root / "instructions" / "default.hero.config.dsl";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
     write_text(cfg_path, build_config_text(scope_root,
                                            /*allow_local_write=*/true,
                                            scope_root,
@@ -216,12 +276,26 @@ int main() {
     assert(err.empty());
 
     std::string result_json;
+    result_json.clear();
+    err.clear();
     assert(cuwacunu::hero::mcp::execute_tool_json(
-        "hero.config.dsl.set",
-        "{\"key\":\"backup_max_entries\",\"value\":\"23\"}", &store,
-        &result_json, &err));
+        "hero.config.default.read", "{}", &store, &result_json, &err));
     assert(err.empty());
-    assert(read_text(cfg_path).find("backup_max_entries(1,+inf):int = 23") !=
+    const std::string expected_sha = json_string_field(result_json, "sha256");
+    const std::string replace_text =
+        replace_once(read_text(cfg_path), "backup_max_entries(1,+inf):int = 20",
+                     "backup_max_entries(1,+inf):int = 23");
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.default.replace",
+        "{\"expected_sha256\":" + json_quote(expected_sha) +
+            ",\"content\":" + json_quote(replace_text) + "}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(cfg_path) == replace_text);
+    assert(result_json.find("\"validation_family\":\"latent_lineage_state\"") !=
            std::string::npos);
 
     err.clear();
@@ -244,6 +318,312 @@ int main() {
     assert(read_text(cfg_path).find("backup_max_entries(1,+inf):int = 24") !=
            std::string::npos);
     assert(has_any_regular_file(backup_dir));
+
+    const std::string invalid_config_text =
+        replace_once(read_text(cfg_path), "protocol_layer[STDIO|HTTPS/SSE]:str = STDIO",
+                     "protocol_layer[STDIO|HTTPS/SSE]:str = NOT_A_PROTOCOL");
+    result_json.clear();
+    err.clear();
+    assert(!cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.default.replace",
+        "{\"content\":" + json_quote(invalid_config_text) + "}", &store,
+        &result_json, &err));
+    assert(err.find("protocol_layer must be STDIO or HTTPS/SSE") !=
+           std::string::npos);
+    assert(read_text(cfg_path).find("protocol_layer[STDIO|HTTPS/SSE]:str = STDIO") !=
+           std::string::npos);
+  }
+
+  {
+    const fs::path scope_root = temp_root / "campaign_default_scope";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
+    const fs::path global_cfg = scope_root / ".config";
+    const fs::path campaign_default_path =
+        scope_root / "instructions" / "defaults" / "default.iitepi.campaign.dsl";
+    write_text(cfg_path, build_config_text(scope_root,
+                                           /*allow_local_write=*/true,
+                                           scope_root,
+                                           /*backup_enabled=*/false,
+                                           scope_root / ".backups" /
+                                               "hero.config"));
+    write_text(global_cfg, build_global_config_text(temp_root / "campaign_default_runtime"));
+    write_text(
+        campaign_default_path,
+        read_text("/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl"));
+
+    cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string(),
+                                                   global_cfg.string());
+    std::string err;
+    assert(store.load(&err));
+    assert(err.empty());
+
+    const std::string campaign_default_text = read_text(campaign_default_path);
+    std::string result_json;
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.default.replace",
+        "{\"dsl_path\":" + json_quote(campaign_default_path.string()) +
+            ",\"content\":" + json_quote(campaign_default_text) + "}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(campaign_default_path) == campaign_default_text);
+    assert(result_json.find("\"validation_family\":\"iitepi_campaign\"") !=
+           std::string::npos);
+  }
+
+  {
+    const fs::path scope_root = temp_root / "super_objective_default_scope";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
+    const fs::path global_cfg = scope_root / ".config";
+    const fs::path super_objective_default_path =
+        scope_root / "instructions" / "defaults" / "default.super.objective.dsl";
+    const fs::path super_objective_default_md_path =
+        scope_root / "instructions" / "defaults" / "default.super.objective.md";
+    write_text(cfg_path, build_config_text(scope_root,
+                                           /*allow_local_write=*/true,
+                                           scope_root,
+                                           /*backup_enabled=*/false,
+                                           scope_root / ".backups" /
+                                               "hero.config"));
+    write_text(global_cfg,
+               build_global_config_text(temp_root / "super_objective_default_runtime"));
+    write_text(super_objective_default_path,
+               read_text("/cuwacunu/src/config/instructions/defaults/default.super.objective.dsl"));
+    write_text(super_objective_default_md_path,
+               read_text("/cuwacunu/src/config/instructions/defaults/default.super.objective.md"));
+
+    cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string(),
+                                                   global_cfg.string());
+    std::string err;
+    assert(store.load(&err));
+    assert(err.empty());
+
+    const std::string super_objective_default_text =
+        read_text(super_objective_default_path);
+    std::string result_json;
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.default.replace",
+        "{\"dsl_path\":" + json_quote(super_objective_default_path.string()) +
+            ",\"content\":" + json_quote(super_objective_default_text) + "}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(super_objective_default_path) ==
+           super_objective_default_text);
+    assert(result_json.find("\"validation_family\":\"super_objective\"") !=
+           std::string::npos);
+  }
+
+  {
+    const fs::path scope_root = temp_root / "objective_loop_scope";
+    const fs::path runtime_root = temp_root / "objective_loop_runtime";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
+    const fs::path global_cfg = scope_root / ".config";
+    const fs::path objective_root =
+        runtime_root / ".super_hero" / "loop_a" / "instructions" / "objectives" /
+        "vicreg.solo";
+    const fs::path objective_dsl =
+        objective_root / "tsi.wikimyei.representation.vicreg.dsl";
+    const fs::path validated_network_dsl =
+        objective_root / "tsi.wikimyei.representation.vicreg.network_design.dsl";
+    const fs::path campaign_dsl = objective_root / "iitepi.campaign.dsl";
+    const fs::path created_campaign_dsl =
+        objective_root / "generated" / "probe.campaign.dsl";
+    const fs::path super_objective_dsl = objective_root / "super.objective.dsl";
+    const fs::path created_dsl = objective_root / "generated" / "probe.dsl";
+    write_text(cfg_path, build_config_text(scope_root,
+                                           /*allow_local_write=*/true,
+                                           runtime_root,
+                                           /*backup_enabled=*/false,
+                                           scope_root / ".backups" /
+                                               "hero.config"));
+    write_text(global_cfg, build_global_config_text(runtime_root));
+    write_text(objective_dsl,
+               "encoding_dims:int = 128\nencoder_depth:int = 2\n");
+    write_text(validated_network_dsl,
+               read_text("/cuwacunu/src/config/instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.network_design.dsl"));
+    write_text(
+        campaign_dsl,
+        read_text("/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl"));
+    write_text(super_objective_dsl,
+               "campaign_dsl_path:path = iitepi.campaign.dsl\n"
+               "objective_prompt_path:path = super.objective.md\n");
+
+    cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string(),
+                                                   global_cfg.string());
+    std::string err;
+    assert(store.load(&err));
+    assert(err.empty());
+
+    std::string result_json;
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.read",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"tsi.wikimyei.representation.vicreg.dsl\"}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(result_json.find("\"validation_family\":\"latent_lineage_state\"") !=
+           std::string::npos);
+    const std::size_t sha_label = result_json.find("\"sha256\":\"");
+    assert(sha_label != std::string::npos);
+    const std::size_t sha_begin = sha_label + std::string("\"sha256\":\"").size();
+    const std::size_t sha_end = result_json.find('"', sha_begin);
+    assert(sha_end != std::string::npos);
+    const std::string expected_sha = result_json.substr(sha_begin, sha_end - sha_begin);
+
+    const std::string replacement_text =
+        "encoding_dims:int = 96\nencoder_depth:int = 3\n";
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"tsi.wikimyei.representation.vicreg.dsl\",\"expected_sha256\":" +
+            json_quote(expected_sha) + ",\"content\":" +
+            json_quote(replacement_text) + "}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(objective_dsl) == replacement_text);
+    assert(result_json.find("\"validation_family\":\"latent_lineage_state\"") !=
+           std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    const std::string original_network_text = read_text(validated_network_dsl);
+    assert(!cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"tsi.wikimyei.representation.vicreg.network_design.dsl\",\"content\":\"NETWORK broken {\\n\"}",
+        &store, &result_json, &err));
+    assert(err.find("validation failed") != std::string::npos);
+    assert(read_text(objective_dsl) == replacement_text);
+    assert(read_text(validated_network_dsl) == original_network_text);
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"generated/probe.dsl\",\"content\":\"alpha:uint = 7\\n\"}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(created_dsl) == "alpha:uint = 7\n");
+    assert(result_json.find("\"created\":true") != std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_campaign.read",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"iitepi.campaign.dsl\"}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(result_json.find("\"validation_family\":\"iitepi_campaign\"") !=
+           std::string::npos);
+    const std::string campaign_expected_sha = json_string_field(result_json, "sha256");
+    const std::string campaign_text = read_text(campaign_dsl);
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_campaign.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"generated/probe.campaign.dsl\",\"content\":" +
+            json_quote(campaign_text) + "}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(created_campaign_dsl) == campaign_text);
+    assert(result_json.find("\"created\":true") != std::string::npos);
+    assert(result_json.find("\"validation_family\":\"iitepi_campaign\"") !=
+           std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_campaign.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"iitepi.campaign.dsl\",\"expected_sha256\":" +
+            json_quote(campaign_expected_sha) + ",\"content\":" +
+            json_quote(campaign_text) + "}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(campaign_dsl) == campaign_text);
+
+    result_json.clear();
+    err.clear();
+    assert(!cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"iitepi.campaign.dsl\",\"content\":\"RUN bind_demo;\\n\"}",
+        &store, &result_json, &err));
+    assert(err.find("may not target a campaign.dsl file") != std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    assert(!cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_campaign.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"tsi.wikimyei.representation.vicreg.dsl\",\"content\":\"encoding_dims:int = 32\\n\"}",
+        &store, &result_json, &err));
+    assert(err.find("must target a campaign.dsl file") != std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    assert(!cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"super.objective.dsl\",\"content\":\"campaign_dsl_path:path = iitepi.campaign.dsl\\nobjective_prompt_path:path = super.objective.md\\n\"}",
+        &store, &result_json, &err));
+    assert(err.find("may not target the super.objective.dsl constitution") !=
+           std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    assert(!cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"default.super.objective.dsl\",\"content\":\"campaign_dsl_path:path = iitepi.campaign.dsl\\nobjective_prompt_path:path = default.super.objective.md\\n\"}",
+        &store, &result_json, &err));
+    assert(err.find("may not target the super.objective.dsl constitution") !=
+           std::string::npos);
+  }
+
+  {
+    const fs::path scope_root = temp_root / "objective_loop_deny_scope";
+    const fs::path runtime_root = temp_root / "objective_loop_deny_runtime";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
+    const fs::path global_cfg = scope_root / ".config";
+    const fs::path objective_root =
+        runtime_root / ".super_hero" / "loop_b" / "instructions" / "objectives" /
+        "vicreg.solo";
+    const fs::path objective_dsl =
+        objective_root / "tsi.wikimyei.representation.vicreg.dsl";
+    write_text(cfg_path, build_config_text(scope_root,
+                                           /*allow_local_write=*/true,
+                                           scope_root,
+                                           /*backup_enabled=*/false,
+                                           scope_root / ".backups" /
+                                               "hero.config"));
+    write_text(global_cfg, build_global_config_text(runtime_root));
+    write_text(objective_dsl, "encoding_dims:int = 64\n");
+
+    cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string(),
+                                                   global_cfg.string());
+    std::string err;
+    assert(store.load(&err));
+    assert(err.empty());
+
+    std::string result_json;
+    assert(!cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.objective_dsl.replace",
+        "{\"objective_root\":\"" + objective_root.string() +
+            "\",\"path\":\"tsi.wikimyei.representation.vicreg.dsl\",\"content\":\"encoding_dims:int = 96\\n\"}",
+        &store, &result_json, &err));
+    assert(err.find("write target escapes write_roots") != std::string::npos);
+    assert(read_text(objective_dsl).find("encoding_dims:int = 64") !=
+           std::string::npos);
   }
 
   return 0;

@@ -1,7 +1,8 @@
 /* expected_value.cpp */
 /**
  * @file expected_value.cpp
- * @brief ExpectedValue: non-template implementation with safe checkpointing.
+ * @brief ExpectedValue: non-template implementation of the MDN-backed
+ *        E[Y|X] wrapper with safe checkpointing.
  */
 
 #include "wikimyei/inference/expected_value/expected_value.h"
@@ -141,10 +142,10 @@ ExpectedValue::ExpectedValue(
       cuwacunu::camahjucunu::decode_observation_spec_from_contract(
           contract_hash);
   static_channel_weights_     = observation_instruction.retrieve_channel_weights();
-  static_feature_weights_     = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get_arr<float>("VALUE_ESTIMATION", "target_weights");
-  grad_clip                   = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<double>("VALUE_ESTIMATION", "grad_clip");
-  optimizer_threshold_reset   = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "optimizer_threshold_reset");
-  target_dims_                = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get_arr<int64_t>("VALUE_ESTIMATION", "target_dims");
+  static_feature_weights_     = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get_arr<float>("EXPECTED_VALUE", "target_weights");
+  grad_clip                   = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<double>("EXPECTED_VALUE", "grad_clip");
+  optimizer_threshold_reset   = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("EXPECTED_VALUE", "optimizer_threshold_reset");
+  target_dims_                = cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get_arr<int64_t>("EXPECTED_VALUE", "target_dims");
 
   // Model
   semantic_model = cuwacunu::wikimyei::mdn::MdnModel(
@@ -152,11 +153,11 @@ ExpectedValue::ExpectedValue(
     static_cast<int64_t>(target_dims_.size()),                                                    // Dy
     observation_instruction.count_channels(),                                                      // C
     observation_instruction.max_future_sequence_length(),                                          // Hf
-    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "mixture_comps"),     // K
-    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "features_hidden"),   // H
-    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("VALUE_ESTIMATION", "residual_depth"),    // depth
-    cuwacunu::iitepi::config_dtype(contract_hash, "VALUE_ESTIMATION"),
-    cuwacunu::iitepi::config_device(contract_hash, "VALUE_ESTIMATION"),
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("EXPECTED_VALUE", "mixture_comps"),     // K
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("EXPECTED_VALUE", "features_hidden"),   // H
+    cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("EXPECTED_VALUE", "residual_depth"),    // depth
+    cuwacunu::iitepi::config_dtype(contract_hash, "EXPECTED_VALUE"),
+    cuwacunu::iitepi::config_device(contract_hash, "EXPECTED_VALUE"),
     /* display_model */ false
   );
 

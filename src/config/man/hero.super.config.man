@@ -1,0 +1,118 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = hero.super.config
+TARGET_DSL = src/config/instructions/defaults/default.hero.super.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
+PRIMARY_VALIDATORS = src/main/hero/hero_super_mcp.cpp
+
+[FIELD runtime_hero_binary]
+key = runtime_hero_binary
+scope = hero super defaults
+type = path_or_command
+required = true
+default = /cuwacunu/.build/hero/hero_runtime_mcp
+range = executable path or PATH-resolved command name
+allowed = absolute_or_relative path or bare command token
+nuance = Runtime Hero MCP binary that Super Hero uses to launch, inspect, and stop campaigns
+
+[FIELD config_hero_binary]
+key = config_hero_binary
+scope = hero super defaults
+type = path_or_command
+required = true
+default = /cuwacunu/.build/hero/hero_config_mcp
+range = executable path or PATH-resolved command name
+allowed = absolute_or_relative path or bare command token
+nuance = Config Hero MCP binary attached to Codex review sessions for bounded loop-local objective DSL mutation
+
+[FIELD hashimyei_hero_binary]
+key = hashimyei_hero_binary
+scope = hero super defaults
+type = path_or_command
+required = true
+default = /cuwacunu/.build/hero/hero_hashimyei_mcp
+range = executable path or PATH-resolved command name
+allowed = absolute_or_relative path or bare command token
+nuance = Hashimyei Hero MCP binary attached to Codex review sessions for identity and manifest inspection
+
+[FIELD lattice_hero_binary]
+key = lattice_hero_binary
+scope = hero super defaults
+type = path_or_command
+required = true
+default = /cuwacunu/.build/hero/hero_lattice_mcp
+range = executable path or PATH-resolved command name
+allowed = absolute_or_relative path or bare command token
+nuance = Lattice Hero MCP binary attached to Codex review sessions for fact/view inspection
+
+[FIELD human_operator_identities]
+key = human_operator_identities
+scope = hero super defaults
+type = path
+required = true
+default = ../../secrets/real/human_operator_identities
+range = readable operator identity map
+allowed = absolute path or path resolved relative to default.hero.super.dsl
+nuance = operator identities file Super Hero uses to bind human response operator_id values to OpenSSH ssh-ed25519 public keys before resuming a paused loop
+
+[FIELD config_scope_root]
+key = config_scope_root
+scope = hero super defaults
+type = path
+required = true
+default = ../..
+range = writable config scope root
+allowed = absolute path or path resolved relative to default.hero.super.dsl
+nuance = config root Super Hero bakes into its loop-local Config Hero policy instead of peeking into Config Hero defaults
+
+[FIELD super_codex_binary]
+key = super_codex_binary
+scope = hero super defaults
+type = path_or_command
+required = true
+default = codex
+range = executable path or PATH-resolved command name
+allowed = absolute_or_relative path or bare command token
+nuance = Codex command used by Super Hero at each review boundary
+
+[FIELD tail_default_lines]
+key = tail_default_lines
+scope = hero super defaults
+type = uint
+required = true
+default = 120
+range = [1,+inf)
+allowed = unsigned integer
+nuance = default log/trace tail size used when Super Hero assembles review packets
+
+[FIELD poll_interval_ms]
+key = poll_interval_ms
+scope = hero super defaults
+type = uint
+required = true
+default = 1000
+range = [100,+inf)
+allowed = unsigned integer
+nuance = detached loop-runner polling interval while waiting for the active Runtime campaign to reach a terminal state
+
+[FIELD super_codex_timeout_sec]
+key = super_codex_timeout_sec
+scope = hero super defaults
+type = uint
+required = true
+default = 900
+range = [1,+inf)
+allowed = unsigned integer
+nuance = wall-clock timeout for one Codex review call within a Super Hero loop
+
+[FIELD super_max_reviews]
+key = super_max_reviews
+scope = hero super defaults
+type = uint
+required = true
+default = 8
+range = [1,+inf)
+allowed = unsigned integer
+nuance = hard upper bound on Codex review turns within one Super Hero loop before the loop stops as exhausted; this budget includes the initial prelaunch review turn

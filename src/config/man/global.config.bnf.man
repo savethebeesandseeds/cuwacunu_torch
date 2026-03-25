@@ -16,3 +16,13 @@ default = /cuwacunu/src/config/bnf/iitepi.runtime_binding.bnf
 range = existing regular file
 allowed = absolute_or_relative path
 nuance = grammar contract for internal runtime-binding snapshots materialized from campaign dispatch before contract and wave resolution
+
+[FIELD BNF.super_objective_grammar_filename]
+key = super_objective_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/super.objective.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for Super Hero objective-root declarations; Super Hero refuses to decode super.objective.dsl when this path is missing

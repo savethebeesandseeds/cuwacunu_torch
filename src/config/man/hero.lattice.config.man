@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = hero.lattice.config
-TARGET_DSL = src/config/instructions/default.hero.lattice.dsl
+TARGET_DSL = src/config/instructions/defaults/default.hero.lattice.dsl
 TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
 PRIMARY_VALIDATORS = src/main/hero/hero_lattice_mcp.cpp

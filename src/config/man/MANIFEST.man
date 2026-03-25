@@ -4,15 +4,15 @@ ROOT = src/config/man
 
 [ENTRY 01]
 file = iitepi.campaign.man
-covers = instructions/default.iitepi.campaign.dsl,bnf/iitepi.campaign.bnf
+covers = instructions/defaults/default.iitepi.campaign.dsl,bnf/iitepi.campaign.bnf
 
 [ENTRY 02]
 file = iitepi.wave.man
-covers = instructions/default.iitepi.wave.dsl,bnf/iitepi.wave.bnf
+covers = instructions/defaults/default.iitepi.wave.dsl,bnf/iitepi.wave.bnf
 
 [ENTRY 03]
 file = iitepi.contract.circuit.man
-covers = instructions/default.iitepi.contract.circuit.dsl,bnf/iitepi.contract.circuit.bnf
+covers = instructions/defaults/default.iitepi.contract.circuit.dsl,bnf/iitepi.contract.circuit.bnf
 
 [ENTRY 04]
 file = canonical_path.man
@@ -28,39 +28,39 @@ covers = bnf/network_design.bnf
 
 [ENTRY 07]
 file = jkimyei.man
-covers = instructions/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl,bnf/jkimyei.bnf
+covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl,bnf/jkimyei.bnf
 
 [ENTRY 08]
 file = tsi.source.dataloader.sources.man
-covers = instructions/default.tsi.source.dataloader.sources.dsl,bnf/tsi.source.dataloader.sources.bnf
+covers = instructions/defaults/default.tsi.source.dataloader.sources.dsl,bnf/tsi.source.dataloader.sources.bnf
 
 [ENTRY 09]
 file = tsi.source.dataloader.channels.man
-covers = instructions/default.tsi.source.dataloader.channels.dsl,bnf/tsi.source.dataloader.channels.bnf
+covers = instructions/defaults/default.tsi.source.dataloader.channels.dsl,bnf/tsi.source.dataloader.channels.bnf
 
 [ENTRY 10]
 file = tsi.wikimyei.representation.vicreg.man
-covers = instructions/default.tsi.wikimyei.representation.vicreg.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 11]
 file = tsi.wikimyei.representation.vicreg.network_design.man
-covers = instructions/default.tsi.wikimyei.representation.vicreg.network_design.dsl,bnf/network_design.bnf
+covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl,bnf/network_design.bnf
 
 [ENTRY 12]
-file = tsi.wikimyei.inference.mdn.value_estimation.man
-covers = instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl,bnf/latent_lineage_state.bnf
+file = tsi.wikimyei.inference.mdn.expected_value.man
+covers = instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 13]
 file = tsi.wikimyei.evaluation.embedding_sequence_analytics.man
-covers = instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 14]
 file = tsi.wikimyei.evaluation.transfer_matrix_evaluation.man
-covers = instructions/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 15]
 file = hero.config.man
-covers = instructions/default.hero.config.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.config.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 16]
 file = global.config.real_hero.man
@@ -76,15 +76,15 @@ covers = .config
 
 [ENTRY 18]
 file = hero.hashimyei.config.man
-covers = instructions/default.hero.hashimyei.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.hashimyei.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 19]
 file = hero.lattice.config.man
-covers = instructions/default.hero.lattice.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.lattice.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 20]
 file = iitepi.contract.man
-covers = instructions/default.iitepi.contract.dsl,bnf/iitepi.contract.bnf
+covers = instructions/defaults/default.iitepi.contract.dsl,bnf/iitepi.contract.bnf
 
 [ENTRY 21]
 file = runtime_lls.man
@@ -92,7 +92,7 @@ covers = bnf/runtime_lls.bnf
 
 [ENTRY 22]
 file = hero.runtime.config.man
-covers = instructions/default.hero.runtime.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.runtime.dsl,bnf/latent_lineage_state.bnf
 
 [ENTRY 23]
 file = global.config.bnf.man
@@ -101,3 +101,15 @@ covers = .config
 [ENTRY 24]
 file = iitepi.runtime_binding.man
 covers = bnf/iitepi.runtime_binding.bnf
+
+[ENTRY 25]
+file = hero.super.config.man
+covers = instructions/defaults/default.hero.super.dsl,bnf/latent_lineage_state.bnf
+
+[ENTRY 26]
+file = super.objective.man
+covers = instructions/defaults/default.super.objective.dsl,bnf/super.objective.bnf
+
+[ENTRY 27]
+file = hero.human.config.man
+covers = instructions/defaults/default.hero.human.dsl,bnf/latent_lineage_state.bnf

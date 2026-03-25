@@ -2,10 +2,12 @@
 #pragma once
 /**
  * @file expected_value.h
- * @brief MDN-based expected value estimator (API + template methods).
+ * @brief MDN-backed expected-value wrapper exposing the conditional expectation
+ *        E[Y|X] (API + template methods).
  *
  * Responsibilities
- *  - Own an MDN (semantic_model) to model p(y|x) and produce expectations.
+ *  - Own an MDN (semantic_model) that models p(Y|X).
+ *  - Expose the expected value, i.e. the conditional expectation E[Y|X].
  *  - Train with MDN NLL + optional per-channel EMA reweighting + horizon/feature weights.
  *  - Provide telemetry (per-channel / per-horizon NLL).
  *  - Strict checkpoint format v2 (safe state-dict + required metadata).
@@ -129,9 +131,11 @@ public:
   inline cuwacunu::wikimyei::mdn::MdnOut forward_from_encoding(const torch::Tensor& encoding) {
     return semantic_model->forward_from_encoding(encoding);
   }
+  // Expected value == conditional expectation E[Y|X] from the MDN output.
   inline torch::Tensor expected_value_from_out(const cuwacunu::wikimyei::mdn::MdnOut& out) const {
     return cuwacunu::wikimyei::mdn::mdn_expectation(out);
   }
+  // Convenience: compute E[Y|X] directly from the encoded input.
   inline torch::Tensor predict_expected_value_from_encoding(const torch::Tensor& encoding) {
     return semantic_model->expectation_from_encoding(encoding);
   }

@@ -1,6 +1,6 @@
 WAVE train_vicreg_primary {
   CIRCUIT: circuit_1;
-  MODE: run | train | debug ; // modes: run(0b001), train(0b010), debug(0x0100 == 0b1_0000_0000); combinable: train|debug
+  MODE: run | train | debug ;
   SAMPLER: % __sampler ? sequential %;
   EPOCHS: 1;
   BATCH_SIZE: 64;

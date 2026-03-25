@@ -23,12 +23,20 @@ HERO_CONFIG_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(L
 $(eval $(call TEST_ONEFILE, hero_config_mcp, hero_config_mcp.cpp, $(HERO_CONFIG_LINK)))
 $(TEST_OUT)/hero_config_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
 
-HERO_RUNTIME_LINK := $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
+HERO_RUNTIME_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LDLIBS_ssl)
 $(eval $(call TEST_ONEFILE, hero_runtime_mcp, hero_runtime_mcp.cpp, $(HERO_RUNTIME_LINK)))
-$(TEST_OUT)/hero_runtime_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/hero_runtime_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
+
+HERO_SUPER_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LDLIBS_ssl)
+$(eval $(call TEST_ONEFILE, hero_super_mcp, hero_super_mcp.cpp, $(HERO_SUPER_LINK)))
+$(TEST_OUT)/hero_super_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
+
+HERO_HUMAN_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_ncurses)
+$(eval $(call TEST_ONEFILE, hero_human_mcp, hero_human_mcp.cpp, $(HERO_HUMAN_LINK)))
+$(TEST_OUT)/hero_human_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(NCURSES_INCLUDE_PATHS)
 
 .PHONY: all
-all: $(TEST_OUT)/hero_config_mcp $(TEST_OUT)/hero_hashimyei_mcp $(TEST_OUT)/hero_lattice_mcp $(TEST_OUT)/hero_runtime_mcp
+all: $(TEST_OUT)/hero_config_mcp $(TEST_OUT)/hero_hashimyei_mcp $(TEST_OUT)/hero_lattice_mcp $(TEST_OUT)/hero_runtime_mcp $(TEST_OUT)/hero_super_mcp $(TEST_OUT)/hero_human_mcp
 	@$(LOG_SUCCESS)
 
 .PHONY: run
@@ -55,9 +63,21 @@ install-runtime-tools: $(TEST_OUT)/hero_runtime_mcp
 	@chmod 700 $(TEST_OUT)/hero_runtime_mcp
 	@printf "\033[2;33m[\033[90mUTIL: \033[2;32mBUILT\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(TEST_OUT)/hero_runtime_mcp"
 
+.PHONY: install-super-tools
+install-super-tools: $(TEST_OUT)/hero_super_mcp
+	@chmod 700 $(TEST_OUT)/hero_super_mcp
+	@printf "\033[2;33m[\033[90mUTIL: \033[2;32mBUILT\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(TEST_OUT)/hero_super_mcp"
+
+.PHONY: install-human-tools
+install-human-tools: $(TEST_OUT)/hero_human_mcp
+	@chmod 700 $(TEST_OUT)/hero_human_mcp
+	@printf "\033[2;33m[\033[90mUTIL: \033[2;32mBUILT\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(TEST_OUT)/hero_human_mcp"
+
 .PHONY: clean
 clean:
 	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/hero_config_mcp \
 	  $(TEST_OUT)/hero_hashimyei_mcp \
 	  $(TEST_OUT)/hero_lattice_mcp \
-	  $(TEST_OUT)/hero_runtime_mcp
+	  $(TEST_OUT)/hero_runtime_mcp \
+	  $(TEST_OUT)/hero_super_mcp \
+	  $(TEST_OUT)/hero_human_mcp

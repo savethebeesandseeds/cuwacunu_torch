@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = tsi.wikimyei.representation.vicreg
-TARGET_DSL = src/config/instructions/default.tsi.wikimyei.representation.vicreg.dsl
+TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl
 TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
 PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/impl/wikimyei/representation/VICReg/vicreg_4d.cpp

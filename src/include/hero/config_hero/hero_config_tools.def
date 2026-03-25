@@ -20,14 +20,30 @@ HERO_CONFIG_TOOL("hero.config.get", "Get one key",
 HERO_CONFIG_TOOL("hero.config.set", "Set one key",
                  "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}},\"required\":[\"key\",\"value\"],\"additionalProperties\":false}",
                  handle_tool_set)
-HERO_CONFIG_TOOL("hero.config.dsl.get",
-                 "Read one key from src/config/instructions/default.*.dsl only",
-                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"}},\"required\":[\"key\"],\"additionalProperties\":false}",
-                 handle_tool_dsl_get)
-HERO_CONFIG_TOOL("hero.config.dsl.set",
-                 "Set one key in src/config/instructions/default.*.dsl only",
-                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}},\"required\":[\"key\",\"value\"],\"additionalProperties\":false}",
-                 handle_tool_dsl_set)
+HERO_CONFIG_TOOL("hero.config.default.read",
+                 "Read one whole src/config/instructions/defaults/*.dsl",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+                 handle_tool_default_read)
+HERO_CONFIG_TOOL("hero.config.default.replace",
+                 "Replace one whole supported src/config/instructions/defaults/*.dsl after decoder and file-specific validation",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"content\"],\"additionalProperties\":false}",
+                 handle_tool_default_replace)
+HERO_CONFIG_TOOL("hero.config.objective_dsl.read",
+                 "Read one whole mutable objective-local .dsl under objective_root (not campaign.dsl or super.objective.dsl)",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
+                 handle_tool_objective_dsl_read)
+HERO_CONFIG_TOOL("hero.config.objective_dsl.replace",
+                 "Create or replace one whole mutable objective-local .dsl under objective_root after decoder validation (not campaign.dsl or super.objective.dsl)",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\",\"content\"],\"additionalProperties\":false}",
+                 handle_tool_objective_dsl_replace)
+HERO_CONFIG_TOOL("hero.config.objective_campaign.read",
+                 "Read one whole objective-local campaign.dsl under objective_root",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
+                 handle_tool_objective_campaign_read)
+HERO_CONFIG_TOOL("hero.config.objective_campaign.replace",
+                 "Create or replace one whole objective-local campaign.dsl under objective_root after campaign decoder validation",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\",\"content\"],\"additionalProperties\":false}",
+                 handle_tool_objective_campaign_replace)
 HERO_CONFIG_TOOL("hero.config.validate", "Validate runtime config",
                  "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
                  handle_tool_validate)

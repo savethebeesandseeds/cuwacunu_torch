@@ -1,11 +1,12 @@
 # HERO MCP Runtime Guide
 
-This directory builds four stdio MCP servers:
+This directory builds five stdio MCP servers:
 
 - `/cuwacunu/.build/hero/hero_config_mcp`
 - `/cuwacunu/.build/hero/hero_hashimyei_mcp`
 - `/cuwacunu/.build/hero/hero_lattice_mcp`
 - `/cuwacunu/.build/hero/hero_runtime_mcp`
+- `/cuwacunu/.build/hero/hero_super_mcp`
 
 ## Build
 
@@ -15,7 +16,7 @@ make -C /cuwacunu/src/main/hero -j12 all
 
 ## Defaults
 
-All four HERO binaries default to:
+All five HERO binaries default to:
 
 - global config path: `/cuwacunu/src/config/.config`
 - unencrypted catalog mode for Hashimyei/Lattice
@@ -42,6 +43,10 @@ Each HERO MCP binary supports direct tool invocation:
 /cuwacunu/.build/hero/hero_runtime_mcp \
   --tool hero.runtime.list_campaigns \
   --args-json '{}'
+
+/cuwacunu/.build/hero/hero_super_mcp \
+  --tool hero.super.list_loops \
+  --args-json '{}'
 ```
 
 Human-friendly discovery:
@@ -51,6 +56,7 @@ hero_config_mcp --list-tools
 hero_hashimyei_mcp --list-tools
 hero_lattice_mcp --list-tools
 hero_runtime_mcp --list-tools
+hero_super_mcp --list-tools
 ```
 
 ## Ownership Boundaries
@@ -59,6 +65,7 @@ hero_runtime_mcp --list-tools
 - `Hashimyei Hero` owns identity/catalog lineage surfaces.
 - `Lattice Hero` owns run/report query surfaces.
 - `Runtime Hero` owns detached campaign dispatch, campaign/job tracking, log tails, and stop/reconcile controls.
+- `Super Hero` owns the Codex loop, loop ledger, review packet/decision cycle, and bounded campaign continuation decisions.
 
 `jkimyei` is not a separate Hero. It remains the training/runtime facet inside wikimyei components and their DSLs.
 
@@ -71,8 +78,12 @@ Config MCP:
 - `hero.config.show`
 - `hero.config.get`
 - `hero.config.set`
-- `hero.config.dsl.get`
-- `hero.config.dsl.set`
+- `hero.config.default.read`
+- `hero.config.default.replace`
+- `hero.config.objective_dsl.read`
+- `hero.config.objective_dsl.replace`
+- `hero.config.objective_campaign.read`
+- `hero.config.objective_campaign.replace`
 - `hero.config.validate`
 - `hero.config.diff`
 - `hero.config.dry_run`
@@ -84,8 +95,10 @@ Config MCP:
 
 Config Hero write policy:
 - `hero.config.set` is in-memory only until `hero.config.save`.
-- `hero.config.dsl.set`, `hero.config.save`, `hero.config.rollback`, and `hero.config.dev_nuke_reset` require `allow_local_write=true`.
-- persisted config writes, `default.*.dsl` writes, and `hero.config.dev_nuke_reset` targets must stay inside `write_roots`.
+- `hero.config.default.replace`, `hero.config.objective_dsl.replace`, `hero.config.objective_campaign.replace`, `hero.config.save`, `hero.config.rollback`, and `hero.config.dev_nuke_reset` require `allow_local_write=true`.
+- persisted config writes, `instructions/defaults/*.dsl` writes, mutable objective-local `.dsl` writes, objective-local `campaign.dsl` writes, and `hero.config.dev_nuke_reset` targets must stay inside `write_roots`.
+- `hero.config.objective_dsl.read/replace` exclude the copied `campaign.dsl` and copied `super.objective.dsl`.
+- `hero.config.objective_campaign.read/replace` are the dedicated path for copied objective-local `campaign.dsl` files.
 
 Hashimyei MCP:
 
@@ -151,7 +164,33 @@ Runtime MCP:
 - `hero.runtime.get_job`
 - `hero.runtime.stop_job`
 - `hero.runtime.tail_log`
+- `hero.runtime.tail_trace`
 - `hero.runtime.reconcile`
+
+`hero.runtime.start_campaign` accepts optional `binding_id`, `campaign_dsl_path`,
+and `super_loop_id`.
+
+- `binding_id` narrows execution to one declared bind instead of the default `RUN` plan
+- `campaign_dsl_path` overrides the configured source campaign for that launch
+- `super_loop_id` links the launched campaign to an existing Super Hero loop ledger; this is the linkage field Super Hero uses when it asks Runtime Hero to launch the next campaign
+
+Super MCP:
+
+- `hero.super.start_loop`
+- `hero.super.list_loops`
+- `hero.super.get_loop`
+- `hero.super.resume_loop`
+- `hero.super.stop_loop`
+
+Human MCP:
+
+- `hero.human.list_requests`
+- `hero.human.get_request`
+- `hero.human.respond`
+
+When `hero_human_mcp` is invoked with no tool/list flags on a tty, it opens a simple ncurses operator console for pending requests instead of waiting for JSON-RPC on stdin.
+
+`hero.super.start_loop` is now the primary way to run a Codex supervision loop. It starts from `super.objective.dsl`, either the selected `super_objective_dsl_path` argument or the default sample `default.super.objective.dsl` beside the configured default campaign. Super Hero owns the loop ledger under `<runtime_root>/.super_hero/<loop_id>/`, runs an initial Codex review before any Runtime campaign exists, lets that review decide the first launch, then waits for terminal campaign states, invokes Codex again with bounded Config/Runtime/Hashimyei/Lattice MCP tools attached, validates the returned control decision, and decides whether to stop or launch the next campaign. Its loop-local Config Hero policy now takes `config_scope_root` from Super Hero defaults directly instead of inferring it from Config Hero defaults.
 
 ## Runtime Model
 
@@ -160,7 +199,9 @@ Runtime Hero dispatches one immutable campaign snapshot at a time.
 - `campaign_cursor` is the public campaign identity.
 - `job_cursor` is the public child-job identity and is derived from its parent
   `campaign_cursor` (for example `<campaign_cursor>.job.0000`).
-- campaign execution is sequential only in v1: one `RUN` after another.
+- campaign execution is sequential only in v1: one `RUN` after another unless
+  `hero.runtime.start_campaign(binding_id=...)` narrows the plan to one bind.
+- super-loop review boundaries are prelaunch plus post-campaign in v1. Super Hero chooses the first launch before any campaign exists and later reviews after terminal campaign states, not between individual `RUN` steps.
 - jobs remain separate Linux worker processes supervised by detached runners.
 
 Runtime campaign state persists under:
@@ -171,6 +212,26 @@ Runtime campaign state persists under:
 - `<runtime_root>/.campaigns/<campaign_cursor>/stdout.log`
 - `<runtime_root>/.campaigns/<campaign_cursor>/stderr.log`
 
+Super-loop state persists under:
+
+- `<runtime_root>/.super_hero/<loop_id>/loop.lls`
+- `<runtime_root>/.super_hero/<loop_id>/super.objective.dsl`
+- `<runtime_root>/.super_hero/<loop_id>/super.objective.md`
+- `<runtime_root>/.super_hero/<loop_id>/super.hero.config.dsl`
+- `<runtime_root>/.super_hero/<loop_id>/memory.md`
+- `<runtime_root>/.super_hero/<loop_id>/super.briefing.md`
+- `<runtime_root>/.super_hero/<loop_id>/human_request.latest.md`
+- `<runtime_root>/.super_hero/<loop_id>/human_response.latest.json`
+- `<runtime_root>/.super_hero/<loop_id>/human_response.latest.sig`
+- `<runtime_root>/.super_hero/<loop_id>/events.jsonl`
+- `<runtime_root>/.super_hero/<loop_id>/review_packet.latest.json`
+- `<runtime_root>/.super_hero/<loop_id>/decision.latest.json`
+- `<runtime_root>/.super_hero/<loop_id>/human_responses/human_response.0001.json`
+- `<runtime_root>/.super_hero/<loop_id>/human_responses/human_response.0001.sig`
+- `<runtime_root>/.super_hero/<loop_id>/reviews/review_packet.0001.json`
+- `<runtime_root>/.super_hero/<loop_id>/decisions/decision.0001.json`
+- `<runtime_root>/.super_hero/<loop_id>/instructions/`
+
 Runtime job state persists under:
 
 - `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/job.lls`
@@ -180,13 +241,26 @@ Runtime job state persists under:
 - `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/instructions/*.dsl`
 - `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/stdout.log`
 - `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/stderr.log`
+- `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/job.trace.jsonl`
 
 The staged contract and wave snapshots resolve `% __var ? default %` placeholders before launch, rewrite known downstream DSL-file references to local staged files, and normalize copied instruction filenames by dropping a leading `default.` prefix.
+`job.trace.jsonl` is an append-only structured execution trace emitted by the
+worker and runtime-binding loop; use `hero.runtime.tail_trace` for the latest
+phases without scraping stdout/stderr.
 
 Runtime manifests:
 
 - campaign schema: `hero.runtime.campaign.v2`
 - job schema: `hero.runtime.job.v3`
+- super-loop schema: `hero.super.loop.v1`
+- super review packet schema: `hero.super.review_packet.v1`
+- super decision schema: `hero.super.decision.v1`
+
+The primary v1 super loop keeps Codex shell access read-only while attaching bounded MCP tools. Super Hero starts from `super.objective.dsl`, resolves its `campaign_dsl_path` and `objective_prompt_path`, copies both `super.objective.dsl` and `super.objective.md` into the loop ledger, writes the loop-local Config Hero policy `super.hero.config.dsl`, builds `super.briefing.md`, invokes `codex exec -C [GENERAL].repo_root`, validates `control_kind = continue | stop | need_human` plus a bounded `next_action` object with `kind = none | default_plan | binding`, and remains the only component that can launch the next campaign. `stop` and `need_human` use `next_action.kind = none`; `continue` uses `default_plan` or `binding`, and always carries `next_action.reset_runtime_state`. During that review session Codex may use loop-scoped `hero.config.objective_dsl.read/replace`, `hero.config.objective_campaign.read/replace`, `hero.runtime.get_*`/tail tools, `hero.hashimyei.*` read tools, and `hero.lattice.*` read tools directly against the copied loop objective bundle and persisted runtime evidence. Super Hero now treats Lattice as the preferred semantic evidence layer: review packets carry `lattice_recommendations`, the briefing prefers `hero.lattice.get_view/get_fact` for report-quality judgments, Runtime tools stay focused on operational debugging, and direct file reads remain fallback. The copied `super.objective.dsl` remains immutable loop constitution, while campaign edits are now explicit through the dedicated objective_campaign tools. When Codex returns `need_human`, Super Hero writes `human_request.latest.md` and pauses. Human Hero is the operator-facing responder: it can be used via `hero.human.*` MCP tools or run with no arguments on a tty, writes a signed `human_response*.json` plus detached `.sig`, and asks `hero.super.resume_loop` to verify the attestation before the loop continues.
+
+Super-loop constitution:
+
+- See [SUPER_LOOP.md](/cuwacunu/src/main/hero/SUPER_LOOP.md) for the short statement of sovereignty, mutability, decision boundaries, and prohibitions.
 
 ## Lattice Notes
 

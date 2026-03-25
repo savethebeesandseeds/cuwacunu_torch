@@ -26,11 +26,11 @@ int main() {
     const std::string source_grammar_path =
         "/cuwacunu/src/config/bnf/tsi.source.dataloader.sources.bnf";
     const std::string source_dsl_path =
-        "/cuwacunu/src/config/instructions/default.tsi.source.dataloader.sources.dsl";
+        "/cuwacunu/src/config/instructions/defaults/default.tsi.source.dataloader.sources.dsl";
     const std::string channel_grammar_path =
         "/cuwacunu/src/config/bnf/tsi.source.dataloader.channels.bnf";
     const std::string channel_dsl_path =
-        "/cuwacunu/src/config/instructions/default.tsi.source.dataloader.channels.dsl";
+        "/cuwacunu/src/config/instructions/defaults/default.tsi.source.dataloader.channels.dsl";
 
     const std::string source_grammar = read_text_file(source_grammar_path);
     const std::string source_dsl = read_text_file(source_dsl_path);

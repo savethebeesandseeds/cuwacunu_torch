@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = latent_lineage_state
-TARGET_DSL = typed latent-lineage-state files used by VICReg/VALUE_ESTIMATION/WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS/WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION
+TARGET_DSL = typed latent-lineage-state files used by VICReg/EXPECTED_VALUE/WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS/WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION
 TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
 PRIMARY_VALIDATORS = module-specific validators in src/impl/iitepi/contract_space_t.cpp

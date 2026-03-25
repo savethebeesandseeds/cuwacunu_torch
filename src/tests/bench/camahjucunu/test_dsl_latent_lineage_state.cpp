@@ -37,17 +37,17 @@ int main() {
   try {
     const std::string grammar_path = "/cuwacunu/src/config/bnf/latent_lineage_state.bnf";
     const std::string vicreg_dsl_path =
-        "/cuwacunu/src/config/instructions/default.tsi.wikimyei.representation.vicreg.dsl";
-    const std::string mdn_dsl_path =
-        "/cuwacunu/src/config/instructions/default.tsi.wikimyei.inference.mdn.value_estimation.dsl";
+        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl";
+    const std::string expected_value_dsl_path =
+        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl";
     const std::string embedding_eval_dsl_path =
-        "/cuwacunu/src/config/instructions/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
+        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
     const std::string evaluation_dsl_path =
-        "/cuwacunu/src/config/instructions/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
+        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
 
     const std::string grammar = read_text_file(grammar_path);
     const std::string vicreg_dsl = read_text_file(vicreg_dsl_path);
-    const std::string mdn_dsl = read_text_file(mdn_dsl_path);
+    const std::string mdn_dsl = read_text_file(expected_value_dsl_path);
     const std::string embedding_eval_dsl = read_text_file(embedding_eval_dsl_path);
     const std::string evaluation_dsl = read_text_file(evaluation_dsl_path);
 

@@ -12,7 +12,7 @@ int main() {
             "/cuwacunu/src/config/bnf/iitepi.campaign.bnf");
     const std::string instruction =
         cuwacunu::piaabo::dfiles::readFileToString(
-            "/cuwacunu/src/config/instructions/default.iitepi.campaign.dsl");
+            "/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl");
 
     const auto decoded =
         cuwacunu::camahjucunu::dsl::decode_iitepi_campaign_from_dsl(

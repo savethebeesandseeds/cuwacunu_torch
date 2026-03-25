@@ -43,13 +43,17 @@ config_hero:
 runtime_hero:
 	$(MAKE) -C $(HERE_PATH)/hero/runtime_hero all
 
+.PHONY: super_hero
+super_hero:
+	$(MAKE) -C $(HERE_PATH)/hero/super_hero all
+
 .PHONY: hero
-hero: hashimyei lattice_hero config_hero runtime_hero
+hero: hashimyei lattice_hero config_hero runtime_hero super_hero
 
 .PHONY: iinuji
 iinuji:
 	$(MAKE) -C $(HERE_PATH)/iinuji all
 
 .PHONY: all
-all: iitepi piaabo camahjucunu wikimyei hashimyei lattice_hero config_hero runtime_hero
+all: iitepi piaabo camahjucunu wikimyei hashimyei lattice_hero config_hero runtime_hero super_hero
 	@$(LOG_SUCCESS)

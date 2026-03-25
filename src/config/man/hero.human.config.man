@@ -1,0 +1,38 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = hero.human.config
+TARGET_DSL = src/config/instructions/defaults/default.hero.human.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+PRIMARY_DECODER = src/main/hero/hero_human_mcp.cpp
+PRIMARY_VALIDATORS = src/main/hero/hero_human_mcp.cpp,src/impl/hero/human_hero/hero_human_tools.cpp
+
+[FIELD super_hero_binary]
+key = super_hero_binary
+scope = hero human defaults
+type = path_or_command
+required = true
+default = /cuwacunu/.build/hero/hero_super_mcp
+range = executable path or PATH-resolved command name
+allowed = absolute_or_relative path or bare command token
+nuance = Super Hero MCP binary Human Hero invokes to inspect loops and resume a paused loop after a signed human response
+
+[FIELD operator_id]
+key = operator_id
+scope = hero human defaults
+type = string
+required = true
+default = CHANGE_ME_OPERATOR
+range = non-empty identifier
+allowed = ASCII operator identifier
+nuance = operator identity embedded into signed human response artifacts for audit and attribution
+
+[FIELD operator_signing_ssh_identity]
+key = operator_signing_ssh_identity
+scope = hero human defaults
+type = path
+required = true
+default = ../../secrets/real/human_operator_ed25519
+range = readable unencrypted OpenSSH ssh-ed25519 identity path
+allowed = absolute path or path resolved relative to default.hero.human.dsl
+nuance = unencrypted OpenSSH ssh-ed25519 identity Human Hero uses to sign human response artifacts before asking Super Hero to resume a paused loop

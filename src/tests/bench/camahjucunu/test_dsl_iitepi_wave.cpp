@@ -3,7 +3,9 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/wave_contract_binding/wave_contract_binding.h"
 #include "piaabo/dfiles.h"
 
 namespace {
@@ -24,11 +26,34 @@ int main() {
     const std::string grammar =
         cuwacunu::piaabo::dfiles::readFileToString(
             "/cuwacunu/src/config/bnf/iitepi.wave.bnf");
-    const std::string instruction =
+    const std::string instruction_raw =
         cuwacunu::piaabo::dfiles::readFileToString(
-            "/cuwacunu/src/config/instructions/default.iitepi.wave.dsl");
+            "/cuwacunu/src/config/instructions/defaults/default.iitepi.wave.dsl");
+    const std::string campaign_grammar =
+        cuwacunu::piaabo::dfiles::readFileToString(
+            "/cuwacunu/src/config/bnf/iitepi.campaign.bnf");
+    const std::string campaign_instruction =
+        cuwacunu::piaabo::dfiles::readFileToString(
+            "/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl");
 
     assert(!grammar.empty());
+    assert(!instruction_raw.empty());
+    assert(!campaign_grammar.empty());
+    assert(!campaign_instruction.empty());
+
+    const auto decoded_campaign =
+        cuwacunu::camahjucunu::dsl::decode_iitepi_campaign_from_dsl(
+            campaign_grammar, campaign_instruction);
+    assert(!decoded_campaign.binds.empty());
+
+    std::string instruction{};
+    std::string resolve_error{};
+    const bool resolved_ok =
+        cuwacunu::camahjucunu::resolve_wave_contract_binding_variables_in_text(
+            instruction_raw, decoded_campaign.binds.front(), &instruction,
+            &resolve_error);
+    assert(resolved_ok);
+    assert(resolve_error.empty());
     assert(!instruction.empty());
 
     const auto decoded =

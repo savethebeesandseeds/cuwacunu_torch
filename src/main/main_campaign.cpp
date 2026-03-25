@@ -79,6 +79,103 @@ std::string compact_runtime_dependency_path(std::string_view raw_path) {
   return path.lexically_normal().string();
 }
 
+std::string json_escape_copy(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 8);
+  for (const unsigned char ch : text) {
+    switch (ch) {
+      case '\\':
+        out += "\\\\";
+        break;
+      case '"':
+        out += "\\\"";
+        break;
+      case '\b':
+        out += "\\b";
+        break;
+      case '\f':
+        out += "\\f";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (ch < 0x20) {
+          std::ostringstream hex;
+          hex << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+              << static_cast<unsigned>(ch);
+          out += hex.str();
+        } else {
+          out.push_back(static_cast<char>(ch));
+        }
+        break;
+    }
+  }
+  return out;
+}
+
+bool append_job_trace_line(const std::filesystem::path& trace_path,
+                           std::string_view line) {
+  if (trace_path.empty()) return true;
+  std::string error{};
+  if (cuwacunu::hero::runtime::append_text_file(trace_path, line, &error)) {
+    return true;
+  }
+  log_warn("[main_campaign] job trace append failed path=%s error=%s\n",
+           trace_path.string().c_str(),
+           value_or_empty(error));
+  return false;
+}
+
+struct runtime_job_trace_sink_t {
+  std::filesystem::path trace_path{};
+};
+
+std::string runtime_binding_trace_event_json(
+    const tsiemene::runtime_binding_trace_event_t& event) {
+  std::ostringstream out;
+  out << "{"
+      << "\"timestamp_ms\":" << event.timestamp_ms
+      << ",\"phase\":\"" << json_escape_copy(event.phase) << "\""
+      << ",\"campaign_hash\":\"" << json_escape_copy(event.campaign_hash) << "\""
+      << ",\"binding_id\":\"" << json_escape_copy(event.binding_id) << "\""
+      << ",\"contract_hash\":\"" << json_escape_copy(event.contract_hash) << "\""
+      << ",\"wave_hash\":\"" << json_escape_copy(event.wave_hash) << "\""
+      << ",\"contract_name\":\"" << json_escape_copy(event.contract_name) << "\""
+      << ",\"resolved_record_type\":\""
+      << json_escape_copy(event.resolved_record_type) << "\""
+      << ",\"resolved_sampler\":\""
+      << json_escape_copy(event.resolved_sampler) << "\""
+      << ",\"run_id\":\"" << json_escape_copy(event.run_id) << "\""
+      << ",\"source_runtime_cursor\":\""
+      << json_escape_copy(event.source_runtime_cursor) << "\""
+      << ",\"contract_index\":" << event.contract_index
+      << ",\"contract_count\":" << event.contract_count
+      << ",\"epochs\":" << event.epochs
+      << ",\"epoch\":" << event.epoch
+      << ",\"epoch_steps\":" << event.epoch_steps
+      << ",\"total_steps\":" << event.total_steps
+      << ",\"ok\":" << (event.ok ? "true" : "false")
+      << ",\"error\":\"" << json_escape_copy(event.error) << "\""
+      << "}\n";
+  return out.str();
+}
+
+void emit_runtime_binding_trace_to_job(
+    const tsiemene::runtime_binding_trace_event_t& event,
+    void* user) {
+  const auto* sink = static_cast<const runtime_job_trace_sink_t*>(user);
+  if (!sink) return;
+  (void)append_job_trace_line(sink->trace_path,
+                              runtime_binding_trace_event_json(event));
+}
+
 bool sha256_hex_bytes(std::string_view payload, std::string* out_hex) {
   if (!out_hex) return false;
   constexpr std::size_t kSha256DigestBytes = 32;
@@ -416,7 +513,8 @@ bool persist_source_runtime_projection_reports(
 void print_help(const char* argv0) {
   std::cerr << "Usage: " << argv0
             << " [--global-config <path>] [--binding <binding_id>]"
-            << " [--campaign-dsl <path>] [--reset-runtime-state]\n"
+            << " [--campaign-dsl <path>] [--job-trace <path>]"
+            << " [--reset-runtime-state]\n"
             << "Defaults:\n"
             << "  --global-config " << DEFAULT_GLOBAL_CONFIG_PATH << "\n";
 }
@@ -427,6 +525,7 @@ int main(int argc, char** argv) {
   std::string global_config_path = DEFAULT_GLOBAL_CONFIG_PATH;
   std::string binding_override;
   std::string campaign_dsl_override;
+  std::string job_trace_path;
   bool reset_runtime_state_flag = false;
 
   for (int i = 1; i < argc; ++i) {
@@ -441,6 +540,10 @@ int main(int argc, char** argv) {
     }
     if (arg == "--campaign-dsl" && i + 1 < argc) {
       campaign_dsl_override = argv[++i];
+      continue;
+    }
+    if (arg == "--job-trace" && i + 1 < argc) {
+      job_trace_path = argv[++i];
       continue;
     }
     if (arg == "--reset-runtime-state") {
@@ -508,6 +611,23 @@ int main(int argc, char** argv) {
 
     const std::string binding_id =
         cuwacunu::iitepi::runtime_binding_space_t::locked_binding_id();
+    const std::filesystem::path trace_path =
+        std::filesystem::path(job_trace_path);
+    runtime_job_trace_sink_t trace_sink{.trace_path = trace_path};
+    std::optional<tsiemene::runtime_binding_trace_scope_t> trace_scope{};
+    if (!trace_path.empty()) {
+      trace_scope.emplace(tsiemene::runtime_binding_trace_sink_t{
+          .emit = emit_runtime_binding_trace_to_job, .user = &trace_sink});
+      std::ostringstream trace_start;
+      trace_start << "{\"timestamp_ms\":"
+                  << cuwacunu::hero::runtime::now_ms_utc()
+                  << ",\"phase\":\"worker_start\""
+                  << ",\"binding_id\":\"" << json_escape_copy(binding_id) << "\""
+                  << ",\"campaign_dsl\":\""
+                  << json_escape_copy(configured_campaign_path) << "\""
+                  << ",\"ok\":true}\n";
+      (void)append_job_trace_line(trace_path, trace_start.str());
+    }
 
     const std::string campaign_hash =
         cuwacunu::iitepi::runtime_binding_space_t::locked_runtime_binding_hash();
@@ -517,6 +637,20 @@ int main(int argc, char** argv) {
 
     const auto run = cuwacunu::iitepi::run_runtime_binding(binding_id);
     if (!run.ok) {
+      if (!trace_path.empty()) {
+        std::ostringstream trace_fail;
+        trace_fail << "{\"timestamp_ms\":"
+                   << cuwacunu::hero::runtime::now_ms_utc()
+                   << ",\"phase\":\"worker_end\""
+                   << ",\"campaign_hash\":\""
+                   << json_escape_copy(run.campaign_hash) << "\""
+                   << ",\"binding_id\":\"" << json_escape_copy(run.binding_id)
+                   << "\""
+                   << ",\"total_steps\":" << run.total_steps
+                   << ",\"ok\":false"
+                   << ",\"error\":\"" << json_escape_copy(run.error) << "\"}\n";
+        (void)append_job_trace_line(trace_path, trace_fail.str());
+      }
       log_err(
           "[main_campaign] run failed campaign_hash=%s binding=%s error=%s\n",
           value_or_empty(run.campaign_hash),
@@ -538,6 +672,20 @@ int main(int argc, char** argv) {
     std::string manifest_error;
     if (!persist_runtime_run_manifests(
             campaign_hash, run, runtime_binding_itself, &manifest_error)) {
+      if (!trace_path.empty()) {
+        std::ostringstream trace_fail;
+        trace_fail << "{\"timestamp_ms\":"
+                   << cuwacunu::hero::runtime::now_ms_utc()
+                   << ",\"phase\":\"run_manifests_persisted\""
+                   << ",\"campaign_hash\":\"" << json_escape_copy(run.campaign_hash)
+                   << "\""
+                   << ",\"binding_id\":\"" << json_escape_copy(run.binding_id)
+                   << "\""
+                   << ",\"ok\":false"
+                   << ",\"error\":\"" << json_escape_copy(manifest_error)
+                   << "\"}\n";
+        (void)append_job_trace_line(trace_path, trace_fail.str());
+      }
       log_err(
           "[main_campaign] run manifest persistence failed campaign_hash=%s binding=%s error=%s\n",
           value_or_empty(run.campaign_hash),
@@ -547,12 +695,58 @@ int main(int argc, char** argv) {
     }
     if (!persist_source_runtime_projection_reports(
             run, runtime_binding_itself, &manifest_error)) {
+      if (!trace_path.empty()) {
+        std::ostringstream trace_fail;
+        trace_fail << "{\"timestamp_ms\":"
+                   << cuwacunu::hero::runtime::now_ms_utc()
+                   << ",\"phase\":\"source_runtime_projection_persisted\""
+                   << ",\"campaign_hash\":\"" << json_escape_copy(run.campaign_hash)
+                   << "\""
+                   << ",\"binding_id\":\"" << json_escape_copy(run.binding_id)
+                   << "\""
+                   << ",\"ok\":false"
+                   << ",\"error\":\"" << json_escape_copy(manifest_error)
+                   << "\"}\n";
+        (void)append_job_trace_line(trace_path, trace_fail.str());
+      }
       log_err(
           "[main_campaign] source runtime projection persistence failed campaign_hash=%s binding=%s error=%s\n",
           value_or_empty(run.campaign_hash),
           value_or_empty(run.binding_id),
           value_or_empty(manifest_error));
       return 1;
+    }
+    if (!trace_path.empty()) {
+      std::ostringstream trace_ok;
+      trace_ok << "{\"timestamp_ms\":"
+               << cuwacunu::hero::runtime::now_ms_utc()
+               << ",\"phase\":\"run_manifests_persisted\""
+               << ",\"campaign_hash\":\"" << json_escape_copy(run.campaign_hash)
+               << "\""
+               << ",\"binding_id\":\"" << json_escape_copy(run.binding_id) << "\""
+               << ",\"ok\":true}\n";
+      (void)append_job_trace_line(trace_path, trace_ok.str());
+      trace_ok.str({});
+      trace_ok.clear();
+      trace_ok << "{\"timestamp_ms\":"
+               << cuwacunu::hero::runtime::now_ms_utc()
+               << ",\"phase\":\"source_runtime_projection_persisted\""
+               << ",\"campaign_hash\":\"" << json_escape_copy(run.campaign_hash)
+               << "\""
+               << ",\"binding_id\":\"" << json_escape_copy(run.binding_id) << "\""
+               << ",\"ok\":true}\n";
+      (void)append_job_trace_line(trace_path, trace_ok.str());
+      trace_ok.str({});
+      trace_ok.clear();
+      trace_ok << "{\"timestamp_ms\":"
+               << cuwacunu::hero::runtime::now_ms_utc()
+               << ",\"phase\":\"worker_end\""
+               << ",\"campaign_hash\":\"" << json_escape_copy(run.campaign_hash)
+               << "\""
+               << ",\"binding_id\":\"" << json_escape_copy(run.binding_id) << "\""
+               << ",\"total_steps\":" << run.total_steps
+               << ",\"ok\":true}\n";
+      (void)append_job_trace_line(trace_path, trace_ok.str());
     }
 
     log_info(
