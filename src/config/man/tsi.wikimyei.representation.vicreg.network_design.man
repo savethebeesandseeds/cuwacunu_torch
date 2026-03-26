@@ -7,15 +7,15 @@ TARGET_BNF = src/config/bnf/network_design.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/network_design/network_design.cpp
 PRIMARY_VALIDATORS = src/include/wikimyei/representation/VICReg/vicreg_4d_network_design.h,src/impl/piaabo/torch_compat/network_design_adapter.cpp
 
-[FIELD NETWORK.JOIN_POLICY]
-key = JOIN_POLICY
+[FIELD NETWORK.ASSEMBLY_TAG]
+key = ASSEMBLY_TAG
 scope = NETWORK
 type = enum
 required = false
 default = empty
-range = for VICReg must be vicreg_default when set
-allowed = vicreg_default or empty
-nuance = non-empty policy values other than vicreg_default are rejected
+range = for VICReg must be vicreg_encoder_projector when set
+allowed = vicreg_encoder_projector or empty
+nuance = non-empty assembly tags other than vicreg_encoder_projector are rejected
 
 [FIELD NODE.SET]
 key = node kind set
@@ -85,7 +85,7 @@ required = true
 default = none
 range = each > 0
 allowed = integer
-nuance = hidden/depth support alias keys for compatibility; contract-scoped __variables may resolve these values before network decode
+nuance = hidden/depth support alias keys for compatibility; contract-scoped __variables may resolve these values before network decode; resolved values are normalized into the runtime VICReg snapshot for downstream compatibility
 
 [FIELD PROJECTOR.DIMS]
 key = dims or projector_mlp_spec
@@ -95,7 +95,7 @@ required = true
 default = none
 range = at least two positive widths
 allowed = dims csv int list or projector_mlp_spec string
-nuance = dims is normalized into hyphen-spec string for torch adapter; contract-scoped __variables may resolve this topology before network decode
+nuance = dims is normalized into hyphen-spec string for torch adapter; contract-scoped __variables may resolve this topology before network decode; resolved topology is normalized into the runtime VICReg snapshot for downstream compatibility
 
 [FIELD PROJECTOR.NORM_ACT]
 key = norm/projector_norm and activation/projector_activation

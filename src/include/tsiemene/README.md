@@ -91,7 +91,7 @@ The project is moving toward:
 This README intentionally avoids over-precise constraints, to reduce doc/code drift.
 
 For exact constraints, use:
-- `src/config/bnf/iitepi.contract.circuit.bnf`
+- `src/config/bnf/iitepi.circuit.bnf`
 - `src/config/bnf/iitepi.wave.bnf`
 - validator/builder/runtime code under `src/include/tsiemene` and `src/impl`
 - bench tests under `src/tests/bench/camahjucunu` and `src/tests/bench/tsiemene`
@@ -101,7 +101,7 @@ For exact constraints, use:
 2. `src/include/iitepi/runtime_binding/runtime_binding.contract.h`
 3. `src/include/iitepi/runtime_binding/runtime_binding.runtime.h`
 4. `src/include/iitepi/runtime_binding/runtime_binding.builder.h`
-5. `src/config/instructions/defaults/default.iitepi.contract.circuit.dsl`
+5. `src/config/instructions/defaults/default.iitepi.circuit.dsl`
 6. `src/config/instructions/defaults/default.iitepi.wave.dsl`
 
 ## Reference tests

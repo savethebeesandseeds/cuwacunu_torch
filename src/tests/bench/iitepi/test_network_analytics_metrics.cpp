@@ -414,7 +414,7 @@ int main() try {
 
   cuwacunu::camahjucunu::network_design_instruction_t design{};
   design.network_id = "toy.network";
-  design.join_policy = "concat";
+  design.assembly_tag = "concat";
   design.nodes = {
       cuwacunu::camahjucunu::network_design_node_t{
           .id = "A",
@@ -555,6 +555,12 @@ int main() try {
                   has_lhs_key(design_kv, "analysis_valid"),
                   "design kv should include the validity state");
   ok = ok && expect(
+                  has_lhs_key(design_kv, "assembly_tag"),
+                  "design kv should include assembly_tag");
+  ok = ok && expect(
+                  !has_lhs_key(design_kv, "join_policy"),
+                  "design kv should not include legacy join_policy key");
+  ok = ok && expect(
                   design_schema ==
                       std::string(cuwacunu::piaabo::torch_compat::
                                       kNetworkDesignAnalyticsSchemaCurrent),
@@ -566,7 +572,7 @@ int main() try {
   ok = ok && expect(
                   !cuwacunu::piaabo::torch_compat::
                       is_supported_network_design_analytics_schema(
-                          "piaabo.torch_compat.network_design_analytics.v3"),
+                          "piaabo.torch_compat.network_design_analytics.v4"),
                   "legacy design schema should be unsupported");
   ok = ok && expect(
                   !cuwacunu::piaabo::torch_compat::
@@ -577,7 +583,7 @@ int main() try {
   {
     cuwacunu::camahjucunu::network_design_instruction_t cyclic_entry_design{};
     cyclic_entry_design.network_id = "cyclic.entry";
-    cyclic_entry_design.join_policy = "sum";
+    cyclic_entry_design.assembly_tag = "sum";
     cyclic_entry_design.nodes = {
         cuwacunu::camahjucunu::network_design_node_t{
             .id = "A",

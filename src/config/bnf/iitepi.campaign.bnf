@@ -9,12 +9,16 @@
                                | <bind_decl>
                                | <run_decl> ;
 
-<contract_import_decl>       ::= [<whitespace>] "IMPORT_CONTRACT_FILE"
+<contract_import_decl>       ::= [<whitespace>] "IMPORT_CONTRACT"
                                  [<whitespace>] <path_value>
+                                 [<whitespace>] "AS"
+                                 [<whitespace>] <import_id_value>
                                  [<whitespace>] ";" <line_end> ;
 
-<wave_import_decl>           ::= [<whitespace>] "IMPORT_WAVE_FILE"
+<wave_import_decl>           ::= [<whitespace>] "FROM"
                                  [<whitespace>] <path_value>
+                                 [<whitespace>] "IMPORT_WAVE"
+                                 [<whitespace>] <import_id_value>
                                  [<whitespace>] ";" <line_end> ;
 
 <super_decl>                ::= [<whitespace>] "SUPER"
@@ -42,6 +46,7 @@
 
 <binding_var_name>           ::= "_" "_" <id_char> {<id_char>} ;
 
+<import_id_value>            ::= <id_value> | <quoted_text> ;
 <id_value>                   ::= <id_char> {<id_char>} ;
 <path_value>                 ::= <id_value> | <quoted_text> ;
 <quoted_text>                ::= "\"" {<quoted_char>} "\"" ;

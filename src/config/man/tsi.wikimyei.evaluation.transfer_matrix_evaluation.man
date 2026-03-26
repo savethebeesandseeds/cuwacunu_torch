@@ -3,7 +3,7 @@ MAN_SPEC_VERSION = 1
 [META]
 MAN_ID = tsi.wikimyei.evaluation.transfer_matrix_evaluation
 TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl
-TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+TARGET_BNF = src/config/bnf/latent_lineage_state.authored.bnf
 PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
 PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/include/wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h
 RUNTIME_NOTE = transfer_matrix_evaluation is a vicreg-owned run-end report engine with restored matrix-evaluation core (null/linear/residual/mdn, prequential effort/skill/n90/selectivity) and no standalone probe hashimyei history state.

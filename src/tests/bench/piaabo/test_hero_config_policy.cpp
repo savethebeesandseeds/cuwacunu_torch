@@ -421,8 +421,7 @@ int main() {
         scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
     const fs::path global_cfg = scope_root / ".config";
     const fs::path objective_root =
-        runtime_root / ".super_hero" / "loop_a" / "instructions" / "objectives" /
-        "vicreg.solo";
+        scope_root / "instructions" / "objectives" / "vicreg.solo";
     const fs::path objective_dsl =
         objective_root / "tsi.wikimyei.representation.vicreg.dsl";
     const fs::path validated_network_dsl =
@@ -434,7 +433,7 @@ int main() {
     const fs::path created_dsl = objective_root / "generated" / "probe.dsl";
     write_text(cfg_path, build_config_text(scope_root,
                                            /*allow_local_write=*/true,
-                                           runtime_root,
+                                           scope_root,
                                            /*backup_enabled=*/false,
                                            scope_root / ".backups" /
                                                "hero.config"));

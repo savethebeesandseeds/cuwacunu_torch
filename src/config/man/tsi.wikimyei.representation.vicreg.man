@@ -3,119 +3,9 @@ MAN_SPEC_VERSION = 1
 [META]
 MAN_ID = tsi.wikimyei.representation.vicreg
 TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl
-TARGET_BNF = src/config/bnf/latent_lineage_state.bnf
+TARGET_BNF = src/config/bnf/latent_lineage_state.authored.bnf
 PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
 PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/impl/wikimyei/representation/VICReg/vicreg_4d.cpp
-
-[FIELD encoding_dims]
-key = encoding_dims
-scope = VICReg module
-type = int
-required = true
-default = none
-range = > 0 at runtime
-allowed = integer
-nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
-
-[FIELD channel_expansion_dim]
-key = channel_expansion_dim
-scope = VICReg module
-type = int
-required = true
-default = none
-range = > 0 at runtime
-allowed = integer
-nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
-
-[FIELD fused_feature_dim]
-key = fused_feature_dim
-scope = VICReg module
-type = int
-required = true
-default = none
-range = > 0 at runtime
-allowed = integer
-nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
-
-[FIELD encoder_hidden_dims]
-key = encoder_hidden_dims
-scope = VICReg module
-type = int
-required = true
-default = none
-range = > 0 at runtime
-allowed = integer
-nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
-
-[FIELD encoder_depth]
-key = encoder_depth
-scope = VICReg module
-type = int
-required = true
-default = none
-range = > 0 at runtime
-allowed = integer
-nuance = can be overridden by network_design payload if present; contract-scoped __variables may resolve this value before module decode
-
-[FIELD projector_mlp_spec]
-key = projector_mlp_spec
-scope = VICReg module
-type = string
-required = true
-default = none
-range = non-empty
-allowed = hyphen-separated widths string (for example 128-256-128)
-nuance = may be overridden by network_design projector dims mapping; contract-scoped __variables may resolve this value before module decode
-
-[FIELD projector_norm]
-key = projector_norm
-scope = VICReg module
-type = enum
-required = true
-default = none
-range = consumer allow-list
-allowed = BatchNorm1d,LayerNorm,None
-nuance = runtime parser is case-insensitive; invalid token throws
-
-[FIELD projector_activation]
-key = projector_activation
-scope = VICReg module
-type = enum
-required = true
-default = none
-range = consumer allow-list
-allowed = ReLU,SiLU
-nuance = runtime parser is case-insensitive; swish alias maps to SiLU in checkpoint option parse
-
-[FIELD projector_hidden_bias]
-key = projector_hidden_bias
-scope = VICReg module
-type = bool
-required = true
-default = none
-range = bool token
-allowed = bool parse tokens from contract parser
-nuance = may be ignored by architecture branch when BatchNorm1d path dominates hidden affine behavior
-
-[FIELD projector_last_bias]
-key = projector_last_bias
-scope = VICReg module
-type = bool
-required = true
-default = none
-range = bool token
-allowed = bool parse tokens from contract parser
-nuance = consumed directly by projector options
-
-[FIELD projector_bn_in_fp32]
-key = projector_bn_in_fp32
-scope = VICReg module
-type = bool
-required = true
-default = none
-range = bool token
-allowed = bool parse tokens from contract parser
-nuance = used only for BatchNorm1d projection path
 
 [FIELD enable_buffer_averaging]
 key = enable_buffer_averaging
@@ -151,11 +41,11 @@ nuance = if CUDA is unavailable or runtime probe fails, parser falls back to CPU
 key = network_design_dsl_file
 scope = VICReg module
 type = file_path
-required = false
+required = true
 default = none
-range = existing file when configured
+range = existing file
 allowed = absolute path or path relative to vicreg module file folder
-nuance = owns optional framework-agnostic network design payload binding; replaces contract SPECS.vicreg_network_design_filename
+nuance = owns required framework-agnostic network design payload binding and is the sole authored source for VICReg architecture; VICReg contract validation and runtime initialization fail fast when it is missing
 
 [FIELD jkimyei_dsl_file]
 key = jkimyei_dsl_file
@@ -180,3 +70,10 @@ applies_to = vicreg training controls
 severity = info
 when = expecting swa_start_iter or optimizer_threshold_reset or gradient controls in VICReg module file
 message = training policy controls are owned by the jkimyei file referenced by jkimyei_dsl_file (COMPONENT_PARAMS/GRADIENT families), not this module file
+
+[RULE ARCHITECTURE_SOURCE]
+id = ARCHITECTURE_SOURCE
+applies_to = vicreg encoder/projector architecture controls
+severity = info
+when = expecting encoding_dims or encoder/projector width or projector option keys in the VICReg module file
+message = VICReg architecture is authored only in network_design_dsl_file; the runtime contract snapshot is normalized with resolved compatibility keys after network_design decode

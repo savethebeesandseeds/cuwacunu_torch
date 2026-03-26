@@ -26,25 +26,31 @@ inline constexpr std::string_view kSuperLoopManifestFilename = "loop.lls";
 inline constexpr std::string_view kSuperLoopMemoryFilename = "memory.md";
 inline constexpr std::string_view kSuperLoopBriefingFilename =
     "super.briefing.md";
+inline constexpr std::string_view kSuperLoopCodexSessionLogFilename =
+    "codex.session.log";
+inline constexpr std::string_view kSuperLoopReviewPidFilename =
+    ".codex.review.pid";
 inline constexpr std::string_view kSuperLoopObjectiveDslFilename =
     "super.objective.dsl";
-inline constexpr std::string_view kSuperLoopObjectivePromptFilename =
+inline constexpr std::string_view kSuperLoopObjectiveMdFilename =
     "super.objective.md";
-inline constexpr std::string_view kSuperLoopConfigHeroFilename =
-    "super.hero.config.dsl";
+inline constexpr std::string_view kSuperLoopGuidanceMdFilename =
+    "super.guidance.md";
+inline constexpr std::string_view kSuperLoopConfigHeroPolicyFilename =
+    "config.hero.policy.dsl";
 inline constexpr std::string_view kSuperLoopHumanRequestFilename =
-    "human_request.latest.md";
+    "request.latest.md";
 inline constexpr std::string_view kSuperLoopHumanResponseLatestFilename =
-    "human_response.latest.json";
+    "response.latest.json";
 inline constexpr std::string_view kSuperLoopHumanResponseLatestSigFilename =
-    "human_response.latest.sig";
+    "response.latest.sig";
 inline constexpr std::string_view kSuperLoopEventsFilename = "events.jsonl";
+inline constexpr std::string_view kSuperLoopLatestJsonFilename = "latest.json";
+inline constexpr std::string_view kSuperLoopLogsDirname = "logs";
+inline constexpr std::string_view kSuperLoopHumanDirname = "human";
 inline constexpr std::string_view kSuperLoopReviewsDirname = "reviews";
 inline constexpr std::string_view kSuperLoopDecisionsDirname = "decisions";
-inline constexpr std::string_view kSuperLoopHumanResponsesDirname =
-    "human_responses";
-inline constexpr std::string_view kSuperLoopInstructionsDirname =
-    "instructions";
+inline constexpr std::string_view kSuperLoopHumanResponsesDirname = "responses";
 
 [[nodiscard]] inline bool is_super_loop_runtime_text_char(char ch) {
   if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
@@ -116,22 +122,24 @@ struct super_loop_record_t {
   // Source-of-truth inputs chosen at loop creation time.
   std::string source_super_objective_dsl_path{};
   std::string source_campaign_dsl_path{};
-  std::string source_super_objective_prompt_path{};
+  std::string source_super_objective_md_path{};
+  std::string source_super_guidance_md_path{};
 
-  // Copied runtime workspace owned by Super Hero.
+  // Live loop ledger plus truth-source objective references.
   std::string loop_root{};
-  std::string instructions_root{};
   std::string objective_root{};
   std::string campaign_dsl_path{};
   std::string super_objective_dsl_path{};
-  std::string super_objective_prompt_path{};
+  std::string super_objective_md_path{};
+  std::string super_guidance_md_path{};
 
   // Generated operational artifacts used during Super Hero review.
-  std::string config_hero_dsl_path{};
+  std::string config_policy_path{};
   std::string briefing_path{};
   std::string memory_path{};
   std::string human_request_path{};
   std::string events_path{};
+  std::string codex_session_id{};
 
   // Review lifecycle.
   std::uint64_t started_at_ms{0};
@@ -186,27 +194,57 @@ struct super_loop_record_t {
          std::string(kSuperLoopBriefingFilename);
 }
 
+[[nodiscard]] inline std::filesystem::path super_loop_logs_dir(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kSuperLoopLogsDirname);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_codex_session_log_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_logs_dir(super_root, loop_id) /
+         std::string(kSuperLoopCodexSessionLogFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_review_pid_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kSuperLoopReviewPidFilename);
+}
+
 [[nodiscard]] inline std::filesystem::path super_loop_objective_dsl_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
   return super_loop_dir(super_root, loop_id) /
          std::string(kSuperLoopObjectiveDslFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_objective_prompt_path(
+[[nodiscard]] inline std::filesystem::path super_loop_objective_md_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
   return super_loop_dir(super_root, loop_id) /
-         std::string(kSuperLoopObjectivePromptFilename);
+         std::string(kSuperLoopObjectiveMdFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_config_hero_path(
+[[nodiscard]] inline std::filesystem::path super_loop_guidance_md_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
   return super_loop_dir(super_root, loop_id) /
-         std::string(kSuperLoopConfigHeroFilename);
+         std::string(kSuperLoopGuidanceMdFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_config_policy_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kSuperLoopConfigHeroPolicyFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_human_dir(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kSuperLoopHumanDirname);
 }
 
 [[nodiscard]] inline std::filesystem::path super_loop_human_request_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_dir(super_root, loop_id) /
+  return super_loop_human_dir(super_root, loop_id) /
          std::string(kSuperLoopHumanRequestFilename);
 }
 
@@ -218,14 +256,14 @@ struct super_loop_record_t {
 
 [[nodiscard]] inline std::filesystem::path super_loop_human_response_latest_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_dir(super_root, loop_id) /
+  return super_loop_human_dir(super_root, loop_id) /
          std::string(kSuperLoopHumanResponseLatestFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path
 super_loop_human_response_latest_sig_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_dir(super_root, loop_id) /
+  return super_loop_human_dir(super_root, loop_id) /
          std::string(kSuperLoopHumanResponseLatestSigFilename);
 }
 
@@ -243,14 +281,20 @@ super_loop_human_response_latest_sig_path(
 
 [[nodiscard]] inline std::filesystem::path super_loop_human_responses_dir(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_dir(super_root, loop_id) /
+  return super_loop_human_dir(super_root, loop_id) /
          std::string(kSuperLoopHumanResponsesDirname);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_instructions_root(
+[[nodiscard]] inline std::filesystem::path super_loop_latest_review_packet_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_dir(super_root, loop_id) /
-         std::string(kSuperLoopInstructionsDirname);
+  return super_loop_reviews_dir(super_root, loop_id) /
+         std::string(kSuperLoopLatestJsonFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_latest_decision_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_decisions_dir(super_root, loop_id) /
+         std::string(kSuperLoopLatestJsonFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path super_loop_review_packet_path(
@@ -327,12 +371,11 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_campaign_dsl_path", record.source_campaign_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "source_super_objective_prompt_path",
-      record.source_super_objective_prompt_path));
+      "source_super_objective_md_path", record.source_super_objective_md_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "source_super_guidance_md_path", record.source_super_guidance_md_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("loop_root", record.loop_root));
-  document.entries.push_back(make_runtime_lls_string_entry(
-      "instructions_root", record.instructions_root));
   document.entries.push_back(
       make_runtime_lls_string_entry("objective_root", record.objective_root));
   document.entries.push_back(make_runtime_lls_string_entry(
@@ -340,9 +383,11 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   document.entries.push_back(make_runtime_lls_string_entry(
       "super_objective_dsl_path", record.super_objective_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "super_objective_prompt_path", record.super_objective_prompt_path));
+      "super_objective_md_path", record.super_objective_md_path));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "config_hero_dsl_path", record.config_hero_dsl_path));
+      "super_guidance_md_path", record.super_guidance_md_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "config_policy_path", record.config_policy_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("briefing_path", record.briefing_path));
   document.entries.push_back(
@@ -351,6 +396,8 @@ super_loop_record_to_document(const super_loop_record_t& record) {
       "human_request_path", record.human_request_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("events_path", record.events_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "codex_session_id", record.codex_session_id));
   document.entries.push_back(make_runtime_lls_uint_entry(
       "started_at_ms", record.started_at_ms, "(0,+inf)"));
   document.entries.push_back(make_runtime_lls_uint_entry(
@@ -409,29 +456,20 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   parsed.global_config_path = kv["global_config_path"];
   parsed.source_super_objective_dsl_path = kv["source_super_objective_dsl_path"];
   parsed.source_campaign_dsl_path = kv["source_campaign_dsl_path"];
-  parsed.source_super_objective_prompt_path =
-      kv["source_super_objective_prompt_path"];
+  parsed.source_super_objective_md_path = kv["source_super_objective_md_path"];
+  parsed.source_super_guidance_md_path = kv["source_super_guidance_md_path"];
   parsed.loop_root = kv["loop_root"];
-  parsed.instructions_root = kv["instructions_root"];
   parsed.objective_root = kv["objective_root"];
   parsed.campaign_dsl_path = kv["campaign_dsl_path"];
   parsed.super_objective_dsl_path = kv["super_objective_dsl_path"];
-  parsed.super_objective_prompt_path = kv["super_objective_prompt_path"];
-  parsed.config_hero_dsl_path = kv["config_hero_dsl_path"];
-  if (parsed.config_hero_dsl_path.empty() && !parsed.loop_root.empty()) {
-    parsed.config_hero_dsl_path = (std::filesystem::path(parsed.loop_root) /
-                                   std::string(kSuperLoopConfigHeroFilename))
-                                      .string();
-  }
+  parsed.super_objective_md_path = kv["super_objective_md_path"];
+  parsed.super_guidance_md_path = kv["super_guidance_md_path"];
+  parsed.config_policy_path = kv["config_policy_path"];
   parsed.briefing_path = kv["briefing_path"];
   parsed.memory_path = kv["memory_path"];
   parsed.human_request_path = kv["human_request_path"];
-  if (parsed.human_request_path.empty() && !parsed.loop_root.empty()) {
-    parsed.human_request_path = (std::filesystem::path(parsed.loop_root) /
-                                 std::string(kSuperLoopHumanRequestFilename))
-                                    .string();
-  }
   parsed.events_path = kv["events_path"];
+  parsed.codex_session_id = kv["codex_session_id"];
   parsed.active_campaign_cursor = kv["active_campaign_cursor"];
   parsed.last_control_kind = kv["last_control_kind"];
   parsed.last_warning = kv["last_warning"];
@@ -471,6 +509,30 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   }
   if (parsed.global_config_path.empty()) {
     if (error) *error = "super loop record missing global_config_path";
+    return false;
+  }
+  if (parsed.source_super_objective_md_path.empty()) {
+    if (error) *error = "super loop record missing source_super_objective_md_path";
+    return false;
+  }
+  if (parsed.source_super_guidance_md_path.empty()) {
+    if (error) *error = "super loop record missing source_super_guidance_md_path";
+    return false;
+  }
+  if (parsed.super_objective_md_path.empty()) {
+    if (error) *error = "super loop record missing super_objective_md_path";
+    return false;
+  }
+  if (parsed.super_guidance_md_path.empty()) {
+    if (error) *error = "super loop record missing super_guidance_md_path";
+    return false;
+  }
+  if (parsed.config_policy_path.empty()) {
+    if (error) *error = "super loop record missing config_policy_path";
+    return false;
+  }
+  if (parsed.human_request_path.empty()) {
+    if (error) *error = "super loop record missing human_request_path";
     return false;
   }
   std::map<std::string, std::string, std::less<>> ordered(kv.begin(), kv.end());
@@ -544,15 +606,21 @@ super_loop_record_to_document(const super_loop_record_t& record) {
       return false;
     }
     if (!it.is_directory(ec) || ec) continue;
+    const std::string loop_id = it.path().filename().string();
+    if (loop_id.empty() || loop_id.front() == '.') continue;
+    const std::filesystem::path manifest_path =
+        super_loop_manifest_path(super_root, loop_id);
+    if (!std::filesystem::exists(manifest_path, ec) ||
+        !std::filesystem::is_regular_file(manifest_path, ec)) {
+      ec.clear();
+      continue;
+    }
     super_loop_record_t record{};
     std::string record_error{};
-    if (!read_super_loop_record(super_root, it.path().filename().string(),
-                                        &record, &record_error)) {
+    if (!read_super_loop_record(super_root, loop_id, &record, &record_error)) {
       if (error) {
         *error = "failed reading super loop manifest " +
-                 super_loop_manifest_path(super_root,
-                                                 it.path().filename().string())
-                     .string() +
+                 manifest_path.string() +
                  ": " + record_error;
       }
       return false;

@@ -5,12 +5,12 @@
                             "}" [<ws>] [<nl>] ;
 
 <network_items>         ::= <network_item> [<network_items>] ;
-<network_item>          ::= <join_policy_stmt>
+<network_item>          ::= <assembly_tag_stmt>
                           | <node_decl>
                           | <export_stmt>
                           | <blank_line> ;
 
-<join_policy_stmt>      ::= "JOIN_POLICY" [<ws>] "=" [<ws>] <identifier> [<ws>] ";" [<ws>] <nl> ;
+<assembly_tag_stmt>     ::= "ASSEMBLY_TAG" [<ws>] "=" [<ws>] <identifier> [<ws>] ";" [<ws>] <nl> ;
 <export_stmt>           ::= "export" <ws> <identifier> [<ws>] "=" [<ws>] <identifier> [<ws>] ";" [<ws>] <nl> ;
 
 <node_decl>             ::= "node" <ws> <identifier> "@" <identifier> [<ws>] "{" <nl>

@@ -30,10 +30,10 @@ inline constexpr std::string_view kNetworkAnalyticsSchemaV5 =
     "piaabo.torch_compat.network_analytics.v5";
 inline constexpr std::string_view kNetworkAnalyticsSchemaCurrent =
     kNetworkAnalyticsSchemaV5;
-inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV4 =
-    "piaabo.torch_compat.network_design_analytics.v4";
+inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV5 =
+    "piaabo.torch_compat.network_design_analytics.v5";
 inline constexpr std::string_view kNetworkDesignAnalyticsSchemaCurrent =
-    kNetworkDesignAnalyticsSchemaV4;
+    kNetworkDesignAnalyticsSchemaV5;
 
 DEV_WARNING("network_analytics: pending improvements include node<->module crosswalk. \n");
 DEV_WARNING("explicit DSL edges, bottleneck metrics (articulation/bridge/shared-trunk). \n");
@@ -143,7 +143,7 @@ struct network_design_analytics_report_t {
   std::string duplicate_node_id_example{};
 
   std::string network_id{};
-  std::string join_policy{};
+  std::string assembly_tag{};
 
   std::uint64_t node_count{0};
   std::uint64_t export_count{0};

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -43,15 +44,6 @@ struct resolved_wave_contract_binding_snapshot_t {
 };
 
 namespace detail {
-
-inline constexpr std::string_view kDefaultVicregConfigFilename =
-    "default.tsi.wikimyei.representation.vicreg.dsl";
-inline constexpr std::string_view kDefaultExpectedValueConfigFilename =
-    "default.tsi.wikimyei.inference.mdn.expected_value.dsl";
-inline constexpr std::string_view kDefaultEmbeddingSequenceAnalyticsConfigFilename =
-    "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
-inline constexpr std::string_view kDefaultTransferMatrixConfigFilename =
-    "default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
 
 [[nodiscard]] inline std::string trim_ascii(std::string_view in) {
   return cuwacunu::hero::runtime::trim_ascii(in);
@@ -373,10 +365,6 @@ struct staged_dsl_graph_state_t {
   std::filesystem::path filename =
       preferred_filename.filename().empty() ? std::filesystem::path("unnamed.dsl")
                                             : preferred_filename.filename();
-  const std::string original_name = filename.filename().string();
-  if (original_name.rfind("default.", 0) == 0 && original_name.size() > 8) {
-    filename = std::filesystem::path(original_name.substr(8));
-  }
   std::filesystem::path candidate = (output_dir / filename).lexically_normal();
   const std::string candidate_key = candidate.string();
   if (const auto it = state->snapshot_to_source.find(candidate_key);
@@ -401,45 +389,6 @@ struct staged_dsl_graph_state_t {
     }
   }
   return (output_dir / filename).lexically_normal();
-}
-
-[[nodiscard]] inline bool is_contract_like_source(
-    const std::filesystem::path& source_path, std::string_view resolved_text) {
-  const std::string filename = source_path.filename().string();
-  if (filename.find(".contract.dsl") != std::string::npos) return true;
-  return resolved_text.find("-----BEGIN IITEPI CONTRACT-----") !=
-         std::string_view::npos;
-}
-
-[[nodiscard]] inline std::vector<std::filesystem::path>
-implicit_contract_module_sources(const std::filesystem::path& source_contract_path) {
-  const std::filesystem::path folder = source_contract_path.parent_path();
-  std::vector<std::filesystem::path> out{};
-  const auto append_preferred_source = [&](std::string_view default_filename) {
-    const std::filesystem::path default_path =
-        (folder / std::string(default_filename)).lexically_normal();
-    std::error_code exists_ec{};
-    if (std::filesystem::exists(default_path, exists_ec) &&
-        std::filesystem::is_regular_file(default_path, exists_ec)) {
-      out.push_back(default_path);
-      return;
-    }
-    if (default_filename.rfind("default.", 0) != 0 || default_filename.size() <= 8) {
-      return;
-    }
-    const std::filesystem::path stripped_path =
-        (folder / std::string(default_filename.substr(8))).lexically_normal();
-    exists_ec.clear();
-    if (std::filesystem::exists(stripped_path, exists_ec) &&
-        std::filesystem::is_regular_file(stripped_path, exists_ec)) {
-      out.push_back(stripped_path);
-    }
-  };
-  append_preferred_source(kDefaultVicregConfigFilename);
-  append_preferred_source(kDefaultExpectedValueConfigFilename);
-  append_preferred_source(kDefaultEmbeddingSequenceAnalyticsConfigFilename);
-  append_preferred_source(kDefaultTransferMatrixConfigFilename);
-  return out;
 }
 
 [[nodiscard]] inline bool load_contract_dsl_variables(
@@ -582,8 +531,10 @@ implicit_contract_module_sources(const std::filesystem::path& source_contract_pa
     std::string_view snapshot_wave_filename) {
   std::ostringstream out;
   out << "CAMPAIGN {\n";
-  out << "  IMPORT_CONTRACT_FILE \"" << snapshot_contract_filename << "\";\n\n";
-  out << "  IMPORT_WAVE_FILE \"" << snapshot_wave_filename << "\";\n\n";
+  out << "  IMPORT_CONTRACT \"" << snapshot_contract_filename << "\" AS "
+      << snapshot_contract_ref << ";\n\n";
+  out << "  FROM \"" << snapshot_wave_filename << "\" IMPORT_WAVE "
+      << bind.wave_ref << ";\n\n";
   out << "  BIND " << bind.id << " {\n";
   for (const auto& variable : bind.variables) {
     out << "    " << variable.name << " = " << variable.value << ";\n";
@@ -680,29 +631,27 @@ implicit_contract_module_sources(const std::filesystem::path& source_contract_pa
     std::string* out_path, std::string* error) {
   if (error) error->clear();
   if (out_path) out_path->clear();
-  std::optional<std::string> resolved_match{};
-  for (const auto& wave_decl : waves) {
-    const std::string candidate =
-        resolve_path_from_folder(source_scope_path.parent_path(), wave_decl.file);
-    std::string text{};
-    if (!load_text_file(candidate, &text, error)) return false;
-    if (!wave_text_contains_wave_name(text, wave_ref)) continue;
-    if (resolved_match.has_value() && *resolved_match != candidate) {
-      if (error) {
-        *error = "binding wave id is ambiguous across imported wave DSL files: " +
-                 std::string(wave_ref);
-      }
-      return false;
-    }
-    resolved_match = candidate;
-  }
-  if (!resolved_match.has_value()) {
+  const auto wave_it = std::find_if(
+      waves.begin(), waves.end(),
+      [&](const auto& wave_decl) { return wave_decl.id == wave_ref; });
+  if (wave_it == waves.end()) {
     if (error) {
       *error = "binding references unknown WAVE id: " + std::string(wave_ref);
     }
     return false;
   }
-  if (out_path) *out_path = *resolved_match;
+  const std::string candidate =
+      resolve_path_from_folder(source_scope_path.parent_path(), wave_it->file);
+  std::string text{};
+  if (!load_text_file(candidate, &text, error)) return false;
+  if (!wave_text_contains_wave_name(text, wave_it->id)) {
+    if (error) {
+      *error = "imported WAVE id not found in declared wave DSL file: " +
+               std::string(wave_it->id);
+    }
+    return false;
+  }
+  if (out_path) *out_path = candidate;
   return true;
 }
 
@@ -842,24 +791,6 @@ template <typename BindDeclT>
     in_block_comment = next_block_comment_state(line, in_block_comment);
     if (end == std::string::npos) break;
     pos = end + 1;
-  }
-
-  if (is_contract_like_source(normalized_source, resolved_text)) {
-    for (const auto& implicit_source : implicit_contract_module_sources(normalized_source)) {
-      std::error_code exists_ec{};
-      if (!std::filesystem::exists(implicit_source, exists_ec) ||
-          !std::filesystem::is_regular_file(implicit_source, exists_ec)) {
-        continue;
-      }
-      const std::filesystem::path implicit_target = make_unique_snapshot_path(
-          output_dir, implicit_source.filename(),
-          normalize_path_key(implicit_source), state);
-      if (!stage_dsl_graph_file(implicit_source, variables, implicit_target, output_dir,
-                                state, error)) {
-        cleanup_active();
-        return false;
-      }
-    }
   }
 
   std::error_code mkdir_ec{};

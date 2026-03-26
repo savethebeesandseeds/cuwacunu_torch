@@ -413,8 +413,6 @@ using hashimyei_runtime_defaults_t =
   return "\"" + json_escape(in) + "\"";
 }
 
-[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_needed(
-    app_context_t* app, std::string* out_error);
 [[nodiscard]] bool remove_catalog_sync_state(
     const std::filesystem::path& catalog_path, std::string* error);
 [[nodiscard]] bool ensure_hashimyei_catalog_synced_to_store(
@@ -434,8 +432,6 @@ using hashimyei_runtime_defaults_t =
     if (out_error) *out_error = "missing app context";
     return false;
   }
-  if (!remove_legacy_hashimyei_catalog_if_needed(app, out_error)) return false;
-
   if (app->catalog.opened()) {
     std::string close_error;
     if (!app->catalog.close(&close_error)) {
@@ -1018,36 +1014,6 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   return true;
 }
 
-[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_needed(
-    app_context_t* app, std::string* out_error) {
-  if (out_error) out_error->clear();
-  if (!app || app->store_root.empty() || app->catalog_options.catalog_path.empty()) {
-    return true;
-  }
-
-  const std::filesystem::path legacy_catalog_path =
-      (app->store_root / "catalog" / "hashimyei_catalog.idydb").lexically_normal();
-  const std::filesystem::path active_catalog_path =
-      app->catalog_options.catalog_path.lexically_normal();
-  if (legacy_catalog_path == active_catalog_path) return true;
-
-  std::error_code ec{};
-  if (!std::filesystem::exists(legacy_catalog_path, ec)) return true;
-
-  std::filesystem::remove(legacy_catalog_path, ec);
-  if (ec && std::filesystem::exists(legacy_catalog_path)) {
-    if (out_error) {
-      *out_error = "cannot remove legacy hashimyei catalog file: " +
-                   legacy_catalog_path.string();
-    }
-    return false;
-  }
-
-  ec.clear();
-  (void)std::filesystem::remove(legacy_catalog_path.parent_path(), ec);
-  return true;
-}
-
 [[nodiscard]] std::optional<std::filesystem::path> canonicalized(
     const std::filesystem::path& path) {
   std::error_code ec{};
@@ -1274,8 +1240,6 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
     if (out_error) *out_error = "catalog_path is empty";
     return false;
   }
-  if (!remove_legacy_hashimyei_catalog_if_needed(app, out_error)) return false;
-
   std::string current_token{};
   if (!compute_hashimyei_store_sync_token(app->store_root, catalog_path,
                                           &current_token, out_error)) {

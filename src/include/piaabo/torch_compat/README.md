@@ -206,7 +206,7 @@ tests or ad hoc tooling, but Hashimyei/Lattice no longer treat
 runtime fact.
 
 The network-design analytics API provides topology-level diagnostics directly
-from `network_design_instruction_t`. Current schema is v3 and emits only canonical
+from `network_design_instruction_t`. Current schema is v5 and emits only canonical
 topology metrics (no legacy aliases):
 
 - graph size/shape (`node_count`, internal/export edge counts, density)

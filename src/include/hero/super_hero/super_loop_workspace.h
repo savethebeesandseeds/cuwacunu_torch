@@ -20,22 +20,18 @@ struct super_loop_workspace_context_t {
   std::filesystem::path config_scope_root{};
 };
 
-[[nodiscard]] bool copy_super_loop_instruction_bundle(
-    const std::filesystem::path& source_super_objective_dsl_path,
-    const std::filesystem::path& target_instructions_root,
-    std::filesystem::path* out_objective_root, std::string* error);
-
 [[nodiscard]] std::string derive_super_loop_objective_name(
     const std::filesystem::path& source_super_objective_dsl_path);
 
 [[nodiscard]] bool write_super_loop_bootstrap_files(
     const super_loop_workspace_context_t& context,
     const std::filesystem::path& source_super_objective_dsl_path,
-    const std::filesystem::path& source_super_objective_prompt_path,
+    const std::filesystem::path& source_super_objective_md_path,
+    const std::filesystem::path& source_super_guidance_md_path,
     const cuwacunu::hero::super::super_loop_record_t& loop,
     std::string* error);
 
-[[nodiscard]] bool refresh_super_loop_config_hero_dsl(
+[[nodiscard]] bool refresh_super_loop_config_policy_dsl(
     const super_loop_workspace_context_t& context,
     const cuwacunu::hero::super::super_loop_record_t& loop,
     std::string* error);

@@ -149,7 +149,7 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_board_right_styled
     push("Board instruction invalid", Emph::Error);
     push("error: " + st.board.error, Emph::Error);
     push("");
-    push("Fix src/config/instructions/defaults/default.iitepi.contract.circuit.dsl then run: reload", Emph::Warning);
+    push("Fix src/config/instructions/defaults/default.iitepi.circuit.dsl then run: reload", Emph::Warning);
     return lines;
   }
   if (st.board.board.circuits.empty()) {

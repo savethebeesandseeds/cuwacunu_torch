@@ -408,17 +408,17 @@ static T parse_scalar_from_string(const std::string& s);
   out << "ACTIVE_BIND " << binding_id << ";\n\n";
   out << "RUNTIME_BINDING {\n";
   for (const auto& contract : instruction.contracts) {
-    out << "  IMPORT_CONTRACT_FILE \""
+    out << "  IMPORT_CONTRACT \""
         << resolve_path_from_folder(campaign_path.parent_path().string(),
                                     contract.file)
-        << "\";\n";
+        << "\" AS " << contract.id << ";\n";
   }
   out << "\n";
   for (const auto& wave : instruction.waves) {
-    out << "  IMPORT_WAVE_FILE \""
+    out << "  FROM \""
         << resolve_path_from_folder(campaign_path.parent_path().string(),
                                     wave.file)
-        << "\";\n";
+        << "\" IMPORT_WAVE " << wave.id << ";\n";
   }
   out << "\n";
   out << "  BIND " << bind_it->id << " {\n";
@@ -1004,6 +1004,16 @@ find_contract_by_id(
   return nullptr;
 }
 
+[[nodiscard]] static const cuwacunu::camahjucunu::runtime_binding_wave_decl_t*
+find_wave_import_by_id(
+    const cuwacunu::camahjucunu::runtime_binding_instruction_t& instruction,
+    const std::string& wave_id) {
+  for (const auto& wave_decl : instruction.waves) {
+    if (wave_decl.id == wave_id) return &wave_decl;
+  }
+  return nullptr;
+}
+
 [[nodiscard]] static std::string active_bind_id_or_fail(
     const runtime_binding_ptr_t& runtime_binding_itself) {
   if (!runtime_binding_itself) {
@@ -1433,32 +1443,30 @@ std::string runtime_binding_space_t::wave_hash_for_binding(const runtime_binding
     log_fatal("[dconfig] runtime binding id not found: %s\n", binding_id.c_str());
   }
 
-  std::optional<std::string> resolved_wave_hash;
   const std::string bind_wave_id = trim_ascii_ws_copy(bind->wave_ref);
-  for (const auto& wave_decl : instruction.waves) {
-    const std::string wave_path =
-        resolve_path_from_folder(
-            parent_folder_from_path(runtime_binding->config_file_path),
-            wave_decl.file);
-    const auto wave_hash = wave_space_t::register_wave_file(wave_path);
-    const auto wave_itself = wave_space_t::wave_itself(wave_hash);
-    const auto& wave_set = wave_itself->wave.decoded();
-    for (const auto& wave : wave_set.waves) {
-      if (trim_ascii_ws_copy(wave.name) != bind_wave_id) continue;
-      if (resolved_wave_hash.has_value() && *resolved_wave_hash != wave_hash) {
-        log_fatal(
-            "[dconfig] runtime binding wave id is ambiguous across loaded wave files: %s\n",
-            bind_wave_id.c_str());
-      }
-      resolved_wave_hash = wave_hash;
-    }
-  }
-  if (!resolved_wave_hash.has_value()) {
+  const auto* wave_decl = find_wave_import_by_id(instruction, bind_wave_id);
+  if (!wave_decl) {
     log_fatal(
-        "[dconfig] runtime binding references unknown WAVE id: %s\n",
+        "[dconfig] runtime binding references unknown imported WAVE id: %s\n",
         bind_wave_id.c_str());
   }
-  return *resolved_wave_hash;
+  const std::string wave_path =
+      resolve_path_from_folder(
+          parent_folder_from_path(runtime_binding->config_file_path),
+          wave_decl->file);
+  const auto wave_hash = wave_space_t::register_wave_file(wave_path);
+  const auto wave_itself = wave_space_t::wave_itself(wave_hash);
+  const auto& wave_set = wave_itself->wave.decoded();
+  const auto matches_wave = std::any_of(
+      wave_set.waves.begin(), wave_set.waves.end(), [&](const auto& wave) {
+        return trim_ascii_ws_copy(wave.name) == bind_wave_id;
+      });
+  if (!matches_wave) {
+    log_fatal(
+        "[dconfig] imported WAVE id not found in declared wave file: %s (%s)\n",
+        bind_wave_id.c_str(), wave_path.c_str());
+  }
+  return wave_hash;
 }
 
 void runtime_binding_space_t::network_topology_analytics(std::ostream* out,

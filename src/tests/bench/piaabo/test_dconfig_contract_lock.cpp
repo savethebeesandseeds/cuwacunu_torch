@@ -51,8 +51,8 @@ fs::path write_relative_default_contract_bundle(const fs::path& root) {
       read_text(instructions_root / "default.iitepi.contract.dsl");
   replace_all(
       &contract_text,
-      "/cuwacunu/src/config/instructions/defaults/default.iitepi.contract.circuit.dsl",
-      "default.iitepi.contract.circuit.dsl");
+      "/cuwacunu/src/config/instructions/defaults/default.iitepi.circuit.dsl",
+      "default.iitepi.circuit.dsl");
   replace_all(
       &contract_text,
       "/cuwacunu/src/config/instructions/defaults/default.tsi.source.dataloader.sources.dsl",
@@ -77,7 +77,7 @@ fs::path write_relative_default_contract_bundle(const fs::path& root) {
              vicreg_text);
 
   for (const char* filename : {
-           "default.iitepi.contract.circuit.dsl",
+           "default.iitepi.circuit.dsl",
            "default.tsi.wikimyei.representation.vicreg.network_design.dsl",
            "default.tsi.wikimyei.representation.vicreg.jkimyei.dsl",
            "default.tsi.wikimyei.inference.mdn.expected_value.dsl",

@@ -3,7 +3,7 @@ MAN_SPEC_VERSION = 1
 [META]
 MAN_ID = super.objective
 TARGET_DSL = src/config/instructions/defaults/default.super.objective.dsl
-TARGET_BNF = src/config/bnf/super.objective.bnf
+TARGET_BNF = src/config/bnf/objective.super.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/super_objective/super_objective.cpp
 PRIMARY_VALIDATORS = src/main/hero/hero_super_mcp.cpp,src/main/hero/hero_config_mcp.cpp
 
@@ -15,17 +15,27 @@ required = true
 default = none
 range = one regular file path
 allowed = absolute path or path resolved relative to the source super objective DSL
-nuance = canonical campaign bundle selected by Super Hero for loop execution; this file is copied into the loop workspace and becomes immutable loop constitution
+nuance = canonical supervision root selected by Super Hero for loop execution; this file is copied into the loop ledger as immutable loop constitution while the referenced objective bundle remains the mutable truth source
 
-[FIELD objective_prompt_path]
-key = objective_prompt_path
+[FIELD objective_md_path]
+key = objective_md_path
 scope = super objective root
 type = path
 required = true
 default = none
 range = one regular file path
 allowed = absolute path or path resolved relative to the source super objective DSL
-nuance = human-authored supervision brief that Super Hero copies into the loop ledger before assembling super.briefing.md for Codex review sessions
+nuance = human-authored mission markdown that states what the loop is trying to achieve; Super Hero copies it into the loop ledger before assembling super.briefing.md for Codex review sessions
+
+[FIELD guidance_md_path]
+key = guidance_md_path
+scope = super objective root
+type = path
+required = true
+default = none
+range = one regular file path
+allowed = absolute path or path resolved relative to the source super objective DSL
+nuance = human-authored guidance markdown that combines hard operational boundaries with advisory review heuristics separately from the mission itself
 
 [FIELD objective_name]
 key = objective_name

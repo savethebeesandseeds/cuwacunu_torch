@@ -1,7 +1,6 @@
 #include "camahjucunu/dsl/runtime_binding_instruction/runtime_binding_instruction.h"
 
 #include <cctype>
-#include <filesystem>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -18,83 +17,16 @@ struct token_t {
   std::size_t col{1};
 };
 
-[[nodiscard]] bool ends_with(std::string_view s, std::string_view suffix) {
-  if (suffix.size() > s.size()) return false;
-  return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-[[nodiscard]] std::string sanitize_identifier(std::string value) {
-  for (char& ch : value) {
-    const bool alpha_num = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                           (ch >= '0' && ch <= '9');
-    if (!alpha_num) ch = '_';
-  }
-  std::string out;
-  out.reserve(value.size());
-  bool last_underscore = false;
+[[nodiscard]] bool is_valid_import_id(std::string_view value) {
+  if (value.empty()) return false;
   for (const char ch : value) {
-    if (ch == '_') {
-      if (last_underscore) continue;
-      last_underscore = true;
-      out.push_back(ch);
-      continue;
-    }
-    last_underscore = false;
-    out.push_back(ch);
+    const bool alpha_num = (ch >= 'a' && ch <= 'z') ||
+                           (ch >= 'A' && ch <= 'Z') ||
+                           (ch >= '0' && ch <= '9');
+    const bool symbol = ch == '_' || ch == '.' || ch == '-';
+    if (!(alpha_num || symbol)) return false;
   }
-  while (!out.empty() && out.front() == '_') out.erase(out.begin());
-  while (!out.empty() && out.back() == '_') out.pop_back();
-  if (out.empty()) out = "unnamed";
-  if (!out.empty() && out.front() >= '0' && out.front() <= '9') {
-    out.insert(out.begin(), '_');
-  }
-  return out;
-}
-
-[[nodiscard]] std::string derive_contract_id_from_file(const std::string& file_path,
-                                                       std::size_t import_index) {
-  std::string file_name = std::filesystem::path(file_path).filename().string();
-  if (file_name.empty()) {
-    return "contract_" + std::to_string(import_index + 1);
-  }
-  if (ends_with(file_name, ".runtime_binding.contract.dsl")) {
-    file_name.resize(file_name.size() - std::string(".runtime_binding.contract.dsl").size());
-  } else if (ends_with(file_name, ".contract.dsl")) {
-    file_name.resize(file_name.size() - std::string(".contract.dsl").size());
-  } else if (ends_with(file_name, ".runtime_binding.contract.config.dsl")) {
-    file_name.resize(file_name.size() - std::string(".runtime_binding.contract.config.dsl").size());
-  } else if (ends_with(file_name, ".contract.config.dsl")) {
-    file_name.resize(file_name.size() - std::string(".contract.config.dsl").size());
-  } else if (ends_with(file_name, ".config.dsl")) {
-    file_name.resize(file_name.size() - std::string(".config.dsl").size());
-  } else if (ends_with(file_name, ".runtime_binding.contract.config")) {
-    file_name.resize(file_name.size() - std::string(".runtime_binding.contract.config").size());
-  } else if (ends_with(file_name, ".contract.config")) {
-    file_name.resize(file_name.size() - std::string(".contract.config").size());
-  } else if (ends_with(file_name, ".config")) {
-    file_name.resize(file_name.size() - std::string(".config").size());
-  } else if (ends_with(file_name, ".ini")) {
-    file_name.resize(file_name.size() - std::string(".ini").size());
-  } else {
-    file_name = std::filesystem::path(file_name).stem().string();
-  }
-  const std::string slug = sanitize_identifier(file_name);
-  return "contract_" + slug;
-}
-
-[[nodiscard]] std::string derive_wave_import_id_from_file(const std::string& file_path,
-                                                          std::size_t import_index) {
-  std::string file_name = std::filesystem::path(file_path).filename().string();
-  if (file_name.empty()) {
-    return "wave_import_" + std::to_string(import_index + 1);
-  }
-  if (ends_with(file_name, ".dsl")) {
-    file_name.resize(file_name.size() - std::string(".dsl").size());
-  } else {
-    file_name = std::filesystem::path(file_name).stem().string();
-  }
-  const std::string slug = sanitize_identifier(file_name);
-  return "wave_import_" + slug;
+  return true;
 }
 
 class lexer_t {
@@ -275,14 +207,11 @@ class parser_t {
     std::unordered_set<std::string> wave_import_ids{};
     std::unordered_set<std::string> bind_ids{};
     std::unordered_set<std::string> contract_files{};
-    std::unordered_set<std::string> wave_files{};
 
     out.active_bind_id = parse_active_bind_decl();
     expect_identifier("RUNTIME_BINDING");
     expect_symbol('{');
 
-    std::size_t contract_import_count = 0;
-    std::size_t wave_import_count = 0;
     while (!peek_is_symbol('}')) {
       const token_t head = peek();
       if (head.kind != token_t::kind_e::Identifier) {
@@ -290,29 +219,25 @@ class parser_t {
             "expected RUNTIME_BINDING declaration at " + std::to_string(head.line) + ":" +
             std::to_string(head.col));
       }
-      if (head.text == "IMPORT_CONTRACT_FILE") {
-        auto c = parse_import_contract_decl(contract_import_count++);
-        if (!contract_ids.insert(c.id).second) {
-          throw std::runtime_error("duplicate CONTRACT id derived from import: " +
-                                   c.id);
+      if (head.text == "IMPORT_CONTRACT") {
+        auto contract = parse_contract_import_decl();
+        if (!contract_ids.insert(contract.id).second) {
+          throw std::runtime_error("duplicate imported CONTRACT id: " +
+                                   contract.id);
         }
-        if (!contract_files.insert(c.file).second) {
-          throw std::runtime_error("duplicate IMPORT_CONTRACT_FILE entry: " +
-                                   c.file);
+        if (!contract_files.insert(contract.file).second) {
+          throw std::runtime_error("duplicate imported CONTRACT path: " +
+                                   contract.file);
         }
-        out.contracts.push_back(std::move(c));
+        out.contracts.push_back(std::move(contract));
         continue;
       }
-      if (head.text == "IMPORT_WAVE_FILE") {
-        auto w = parse_import_wave_decl(wave_import_count++);
-        if (!wave_import_ids.insert(w.id).second) {
-          throw std::runtime_error("duplicate WAVE import id derived from import: " +
-                                   w.id);
+      if (head.text == "FROM") {
+        auto wave = parse_wave_import_decl();
+        if (!wave_import_ids.insert(wave.id).second) {
+          throw std::runtime_error("duplicate imported WAVE id: " + wave.id);
         }
-        if (!wave_files.insert(w.file).second) {
-          throw std::runtime_error("duplicate IMPORT_WAVE_FILE entry: " + w.file);
-        }
-        out.waves.push_back(std::move(w));
+        out.waves.push_back(std::move(wave));
         continue;
       }
       if (head.text == "BIND") {
@@ -338,11 +263,11 @@ class parser_t {
 
     if (out.contracts.empty()) {
       throw std::runtime_error(
-          "runtime binding instruction requires at least one IMPORT_CONTRACT_FILE");
+          "runtime binding instruction requires at least one IMPORT_CONTRACT ... AS ...");
     }
     if (out.waves.empty()) {
       throw std::runtime_error(
-          "runtime binding instruction requires at least one IMPORT_WAVE_FILE");
+          "runtime binding instruction requires at least one FROM ... IMPORT_WAVE");
     }
     if (out.binds.empty()) {
       throw std::runtime_error("runtime binding instruction requires at least one BIND");
@@ -357,6 +282,11 @@ class parser_t {
         throw std::runtime_error("BIND '" + bind.id +
                                  "' references unknown CONTRACT id: " +
                                  bind.contract_ref);
+      }
+      if (wave_import_ids.find(bind.wave_ref) == wave_import_ids.end()) {
+        throw std::runtime_error("BIND '" + bind.id +
+                                 "' references unknown WAVE id: " +
+                                 bind.wave_ref);
       }
     }
 
@@ -423,6 +353,16 @@ class parser_t {
     return t.text;
   }
 
+  std::string parse_import_id_value(const char* import_kind) {
+    const std::string value = parse_scalar_value();
+    if (!is_valid_import_id(value)) {
+      throw std::runtime_error(std::string(import_kind) +
+                               " import id must use [A-Za-z0-9_.-]+: " +
+                               value);
+    }
+    return value;
+  }
+
   std::string parse_assignment_value(const char* key) {
     expect_identifier(key);
     expect_symbol('=');
@@ -431,31 +371,32 @@ class parser_t {
     return value;
   }
 
-  cuwacunu::camahjucunu::runtime_binding_contract_decl_t parse_import_contract_decl(
-      std::size_t import_index) {
+  cuwacunu::camahjucunu::runtime_binding_contract_decl_t
+  parse_contract_import_decl() {
     using cuwacunu::camahjucunu::runtime_binding_contract_decl_t;
     runtime_binding_contract_decl_t out{};
-    expect_identifier("IMPORT_CONTRACT_FILE");
+    expect_identifier("IMPORT_CONTRACT");
     out.file = parse_scalar_value();
-    expect_symbol(';');
     if (out.file.empty()) {
-      throw std::runtime_error("IMPORT_CONTRACT_FILE missing path");
+      throw std::runtime_error("IMPORT_CONTRACT missing path");
     }
-    out.id = derive_contract_id_from_file(out.file, import_index);
+    expect_identifier("AS");
+    out.id = parse_import_id_value("CONTRACT");
+    expect_symbol(';');
     return out;
   }
 
-  cuwacunu::camahjucunu::runtime_binding_wave_decl_t parse_import_wave_decl(
-      std::size_t import_index) {
+  cuwacunu::camahjucunu::runtime_binding_wave_decl_t parse_wave_import_decl() {
     using cuwacunu::camahjucunu::runtime_binding_wave_decl_t;
     runtime_binding_wave_decl_t out{};
-    expect_identifier("IMPORT_WAVE_FILE");
+    expect_identifier("FROM");
     out.file = parse_scalar_value();
-    expect_symbol(';');
     if (out.file.empty()) {
-      throw std::runtime_error("IMPORT_WAVE_FILE missing path");
+      throw std::runtime_error("FROM import missing path");
     }
-    out.id = derive_wave_import_id_from_file(out.file, import_index);
+    expect_identifier("IMPORT_WAVE");
+    out.id = parse_import_id_value("WAVE");
+    expect_symbol(';');
     return out;
   }
 
@@ -538,8 +479,10 @@ void validate_runtime_binding_grammar_text_or_throw_(const std::string& grammar_
       "<bind_decl>",
       "ACTIVE_BIND",
       "RUNTIME_BINDING",
-      "IMPORT_CONTRACT_FILE",
-      "IMPORT_WAVE_FILE",
+      "FROM",
+      "IMPORT_CONTRACT",
+      "AS",
+      "IMPORT_WAVE",
       "BIND",
       "CONTRACT",
       "WAVE",

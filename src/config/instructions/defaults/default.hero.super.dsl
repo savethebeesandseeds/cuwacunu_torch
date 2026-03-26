@@ -4,7 +4,6 @@
 */
 runtime_hero_binary:path = /cuwacunu/.build/hero/hero_runtime_mcp
 config_hero_binary:path = /cuwacunu/.build/hero/hero_config_mcp
-hashimyei_hero_binary:path = /cuwacunu/.build/hero/hero_hashimyei_mcp
 lattice_hero_binary:path = /cuwacunu/.build/hero/hero_lattice_mcp
 human_operator_identities:path = ../../secrets/real/human_operator_identities
 config_scope_root:path = ../..

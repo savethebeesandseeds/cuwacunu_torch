@@ -27,25 +27,25 @@ range = exactly one top-level block
 allowed = RUNTIME_BINDING { ... }
 nuance = internal staged dispatch snapshot derived from campaign imports and bind selection
 
-[FIELD IMPORT_CONTRACT_FILE]
-key = IMPORT_CONTRACT_FILE
+[FIELD FROM_IMPORT_CONTRACT]
+key = IMPORT_CONTRACT "<path>" AS <contract_alias>
 scope = RUNTIME_BINDING
-type = path
+type = path + alias
 required = true
 default = none
 range = at least one
-allowed = quoted_path_or_identifier
-nuance = each import derives CONTRACT id as contract_<sanitized_basename>; duplicate file paths and duplicate derived ids are rejected
+allowed = quoted_path_or_identifier for path, [A-Za-z0-9_.-]+ for contract_alias
+nuance = staged runtime-binding snapshots carry the explicit contract aliases inherited from the source campaign; duplicate file paths and duplicate imported aliases are rejected
 
-[FIELD IMPORT_WAVE_FILE]
-key = IMPORT_WAVE_FILE
+[FIELD FROM_IMPORT_WAVE]
+key = FROM "<path>" IMPORT_WAVE <wave_id>
 scope = RUNTIME_BINDING
-type = path
+type = path + identifier
 required = true
 default = none
 range = at least one
-allowed = quoted_path_or_identifier
-nuance = imported wave files provide the WAVE ids referenced by BIND entries
+allowed = quoted_path_or_identifier for path, [A-Za-z0-9_.-]+ for wave_id
+nuance = staged runtime-binding snapshots declare the exact imported wave ids they allow; the same wave file may appear more than once with different wave ids
 
 [FIELD BIND.ID]
 key = BIND.<id>
@@ -55,7 +55,7 @@ required = true
 default = none
 range = unique within runtime binding
 allowed = [A-Za-z0-9_.-]+
-nuance = reusable execution unit combining one derived CONTRACT ref, one WAVE ref, and optional wave-scoping __variables
+nuance = reusable execution unit combining one imported CONTRACT ref, one imported WAVE ref, and optional wave-scoping __variables
 
 [FIELD BIND.CONTRACT]
 key = BIND.CONTRACT
@@ -63,9 +63,9 @@ scope = BIND
 type = identifier
 required = true
 default = none
-range = must exist in derived contract ids from IMPORT_CONTRACT_FILE
-allowed = derived contract id token
-nuance = contract id is not free-form; it must match a derived import id
+range = must exist in runtime-binding contract aliases from IMPORT_CONTRACT ... AS
+allowed = imported contract alias token
+nuance = CONTRACT is not free-form; it must match an explicit runtime-binding alias
 
 [FIELD BIND.WAVE]
 key = BIND.WAVE
@@ -73,9 +73,9 @@ scope = BIND
 type = identifier
 required = true
 default = none
-range = non-empty
-allowed = wave id declared inside imported wave DSLs
-nuance = ambiguity across imported wave files is rejected at runtime-binding materialization time
+range = must exist in runtime-binding wave ids from FROM ... IMPORT_WAVE
+allowed = imported wave id token
+nuance = wave selection is explicit in the staged import list rather than inferred by scanning all imported wave files
 
 [FIELD BIND.__VAR]
 key = BIND.__<name>

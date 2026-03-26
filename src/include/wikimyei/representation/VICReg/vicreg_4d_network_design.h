@@ -17,7 +17,7 @@ namespace vicreg_4d {
 
 struct vicreg_network_design_spec_t {
   std::string network_id{};
-  std::string join_policy{};
+  std::string assembly_tag{};
 
   std::string input_node_id{};
   std::string encoder_node_id{};
@@ -148,14 +148,14 @@ namespace detail {
 
   *out = vicreg_network_design_spec_t{};
   out->network_id = trim_ascii_copy(ir.network_id);
-  out->join_policy = trim_ascii_copy(ir.join_policy);
+  out->assembly_tag = trim_ascii_copy(ir.assembly_tag);
   if (out->network_id.empty()) {
     if (error) *error = "network_design.network_id is empty";
     return false;
   }
-  if (!out->join_policy.empty() &&
-      lower_ascii_copy(out->join_policy) != "vicreg_default") {
-    if (error) *error = "unsupported JOIN_POLICY `" + out->join_policy +
+  if (!out->assembly_tag.empty() &&
+      lower_ascii_copy(out->assembly_tag) != "vicreg_encoder_projector") {
+    if (error) *error = "unsupported ASSEMBLY_TAG `" + out->assembly_tag +
                         "` for VICReg";
     return false;
   }

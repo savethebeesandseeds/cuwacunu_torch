@@ -29,11 +29,11 @@ HERO_CONFIG_TOOL("hero.config.default.replace",
                  "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"content\"],\"additionalProperties\":false}",
                  handle_tool_default_replace)
 HERO_CONFIG_TOOL("hero.config.objective_dsl.read",
-                 "Read one whole mutable objective-local .dsl under objective_root (not campaign.dsl or super.objective.dsl)",
+                 "Read one whole mutable objective-local .dsl under objective_root (not campaign.dsl or the source super-objective constitution)",
                  "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
                  handle_tool_objective_dsl_read)
 HERO_CONFIG_TOOL("hero.config.objective_dsl.replace",
-                 "Create or replace one whole mutable objective-local .dsl under objective_root after decoder validation (not campaign.dsl or super.objective.dsl)",
+                 "Create or replace one whole mutable objective-local .dsl under objective_root after decoder validation (not campaign.dsl or the source super-objective constitution)",
                  "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\",\"content\"],\"additionalProperties\":false}",
                  handle_tool_objective_dsl_replace)
 HERO_CONFIG_TOOL("hero.config.objective_campaign.read",

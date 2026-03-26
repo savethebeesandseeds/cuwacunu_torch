@@ -11,8 +11,8 @@ file = iitepi.wave.man
 covers = instructions/defaults/default.iitepi.wave.dsl,bnf/iitepi.wave.bnf
 
 [ENTRY 03]
-file = iitepi.contract.circuit.man
-covers = instructions/defaults/default.iitepi.contract.circuit.dsl,bnf/iitepi.contract.circuit.bnf
+file = iitepi.circuit.man
+covers = instructions/defaults/default.iitepi.circuit.dsl,bnf/iitepi.circuit.bnf
 
 [ENTRY 04]
 file = canonical_path.man
@@ -20,7 +20,7 @@ covers = bnf/canonical_path.bnf
 
 [ENTRY 05]
 file = latent_lineage_state.man
-covers = bnf/latent_lineage_state.bnf
+covers = bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 06]
 file = network_design.man
@@ -40,7 +40,7 @@ covers = instructions/defaults/default.tsi.source.dataloader.channels.dsl,bnf/ts
 
 [ENTRY 10]
 file = tsi.wikimyei.representation.vicreg.man
-covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 11]
 file = tsi.wikimyei.representation.vicreg.network_design.man
@@ -48,19 +48,19 @@ covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.networ
 
 [ENTRY 12]
 file = tsi.wikimyei.inference.mdn.expected_value.man
-covers = instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 13]
 file = tsi.wikimyei.evaluation.embedding_sequence_analytics.man
-covers = instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 14]
 file = tsi.wikimyei.evaluation.transfer_matrix_evaluation.man
-covers = instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 15]
 file = hero.config.man
-covers = instructions/defaults/default.hero.config.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.config.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 16]
 file = global.config.real_hero.man
@@ -76,11 +76,11 @@ covers = .config
 
 [ENTRY 18]
 file = hero.hashimyei.config.man
-covers = instructions/defaults/default.hero.hashimyei.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.hashimyei.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 19]
 file = hero.lattice.config.man
-covers = instructions/defaults/default.hero.lattice.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.lattice.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 20]
 file = iitepi.contract.man
@@ -88,11 +88,11 @@ covers = instructions/defaults/default.iitepi.contract.dsl,bnf/iitepi.contract.b
 
 [ENTRY 21]
 file = runtime_lls.man
-covers = bnf/runtime_lls.bnf
+covers = bnf/latent_lineage_state.runtime.bnf
 
 [ENTRY 22]
 file = hero.runtime.config.man
-covers = instructions/defaults/default.hero.runtime.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.runtime.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 23]
 file = global.config.bnf.man
@@ -104,12 +104,12 @@ covers = bnf/iitepi.runtime_binding.bnf
 
 [ENTRY 25]
 file = hero.super.config.man
-covers = instructions/defaults/default.hero.super.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.super.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 26]
 file = super.objective.man
-covers = instructions/defaults/default.super.objective.dsl,bnf/super.objective.bnf
+covers = instructions/defaults/default.super.objective.dsl,bnf/objective.super.bnf
 
 [ENTRY 27]
 file = hero.human.config.man
-covers = instructions/defaults/default.hero.human.dsl,bnf/latent_lineage_state.bnf
+covers = instructions/defaults/default.hero.human.dsl,bnf/latent_lineage_state.authored.bnf

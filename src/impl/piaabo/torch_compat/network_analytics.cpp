@@ -1104,7 +1104,7 @@ void append_topk_pretty_lines_(
     oss << "duplicate_node_id_example=" << report.duplicate_node_id_example << "\n";
   }
   oss << "network_id=" << report.network_id << "\n";
-  oss << "join_policy=" << report.join_policy << "\n";
+  oss << "assembly_tag=" << report.assembly_tag << "\n";
   oss << "node_count=" << report.node_count << "\n";
   oss << "export_count=" << report.export_count << "\n";
   oss << "parameter_count=" << report.parameter_count << "\n";
@@ -1231,7 +1231,7 @@ void append_topk_pretty_lines_(
          "first duplicate node id encountered");
   }
   line("network_id", report.network_id, "canonical network id (best: stable)");
-  line("join_policy", report.join_policy, "assembly policy tag (best: expected)");
+  line("assembly_tag", report.assembly_tag, "assembly tag (best: expected)");
   oss << "\n";
 
   section("Graph Size");
@@ -1616,7 +1616,7 @@ network_design_analytics_report_t summarize_network_design_analytics(
     const cuwacunu::camahjucunu::network_design_instruction_t& instruction) {
   network_design_analytics_report_t out{};
   out.network_id = instruction.network_id;
-  out.join_policy = instruction.join_policy;
+  out.assembly_tag = instruction.assembly_tag;
   out.node_count = static_cast<std::uint64_t>(instruction.nodes.size());
   out.export_count = static_cast<std::uint64_t>(instruction.exports.size());
 

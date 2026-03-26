@@ -46,6 +46,14 @@ static constexpr const char* kModuleSectionEmbeddingSequenceAnalytics =
     "WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS";
 static constexpr const char* kModuleSectionTransferMatrixEvaluation =
     "WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION";
+static constexpr const char* kContractVariableVicregConfigDslFile =
+    "__vicreg_config_dsl_file";
+static constexpr const char* kContractVariableExpectedValueConfigDslFile =
+    "__expected_value_config_dsl_file";
+static constexpr const char* kContractVariableEmbeddingSequenceAnalyticsDslFile =
+    "__embedding_sequence_analytics_config_dsl_file";
+static constexpr const char* kContractVariableTransferMatrixEvaluationDslFile =
+    "__transfer_matrix_evaluation_config_dsl_file";
 static constexpr const char* kContractSpecsEmbeddingSequenceAnalyticsConfigKey =
     "wikimyei_evaluation_embedding_sequence_analytics_config_filename";
 static constexpr const char* kGlobalBnfEmbeddingSequenceAnalyticsGrammarKey =
@@ -141,6 +149,8 @@ snapshot_ptr_or_fail(const contract_hash_t& hash);
     const char* key);
 [[nodiscard]] static std::string indent_lines(const std::string& text,
                                               std::string_view prefix);
+static void normalize_vicreg_module_architecture_from_network_design(
+    contract_record_t* record);
 static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                                   const std::string& cfg_folder);
 
@@ -150,6 +160,10 @@ static T parse_scalar_from_string(const std::string& s);
 [[nodiscard]] static const char* non_empty_or(const std::string& s,
                                               const char* fallback) {
   return has_non_ws_ascii(s) ? s.c_str() : fallback;
+}
+
+[[nodiscard]] static std::string bool_token(bool value) {
+  return value ? "true" : "false";
 }
 
 /*──────────────────────── shared helpers ─────────────────────────────*/
@@ -1317,34 +1331,32 @@ derive_contract_component_bindings_or_fail(
     fail_parse(line_no, "missing CIRCUIT_FILE statement");
   }
 
-  const auto maybe_set_module_path = [&](const char* key,
-                                         const std::string& filename) {
-    const auto try_candidate = [&](const std::string& candidate) -> bool {
-      const std::string resolved =
-          resolve_path_from_folder(contract_folder, candidate);
-      if (has_non_ws_ascii(resolved) && std::filesystem::exists(resolved) &&
-          std::filesystem::is_regular_file(resolved)) {
-        parsed["SPECS"][key] = resolved;
-        return true;
-      }
-      return false;
-    };
-    if (try_candidate(filename)) return;
-    if (filename.rfind("default.", 0) == 0 && filename.size() > 8) {
-      (void)try_candidate(filename.substr(8));
-    }
-  };
-  maybe_set_module_path("vicreg_config_filename",
-                        "default.tsi.wikimyei.representation.vicreg.dsl");
-  maybe_set_module_path(
-      "expected_value_config_filename",
-      "default.tsi.wikimyei.inference.mdn.expected_value.dsl");
-  maybe_set_module_path(
-      kContractSpecsEmbeddingSequenceAnalyticsConfigKey,
-      "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl");
-  maybe_set_module_path(
-      kContractSpecsTransferMatrixConfigKey,
-      "default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl");
+  const auto maybe_set_module_path_from_variable =
+      [&](const char* variable_key, const char* specs_key) {
+        const auto vars_it = parsed.find("VARIABLES");
+        if (vars_it == parsed.end()) return;
+        const auto value_it = vars_it->second.find(variable_key);
+        if (value_it == vars_it->second.end()) return;
+        const std::string raw_value =
+            unquote_if_wrapped(trim_ascii_ws_copy(value_it->second));
+        if (!has_non_ws_ascii(raw_value)) {
+          fail_parse(line_no, std::string("empty contract module path variable: ") +
+                                  variable_key);
+        }
+        parsed["SPECS"][specs_key] =
+            resolve_path_from_folder(contract_folder, raw_value);
+      };
+  maybe_set_module_path_from_variable(kContractVariableVicregConfigDslFile,
+                                      "vicreg_config_filename");
+  maybe_set_module_path_from_variable(
+      kContractVariableExpectedValueConfigDslFile,
+      "expected_value_config_filename");
+  maybe_set_module_path_from_variable(
+      kContractVariableEmbeddingSequenceAnalyticsDslFile,
+      kContractSpecsEmbeddingSequenceAnalyticsConfigKey);
+  maybe_set_module_path_from_variable(
+      kContractVariableTransferMatrixEvaluationDslFile,
+      kContractSpecsTransferMatrixConfigKey);
 
   return parsed;
 }
@@ -1452,6 +1464,48 @@ contract_instruction_section_value_or_empty(const contract_record_t& snapshot,
   const auto value_it = sec_it->second.find(key);
   if (value_it == sec_it->second.end()) return std::nullopt;
   return value_it->second;
+}
+
+static void normalize_vicreg_module_architecture_from_network_design(
+    contract_record_t* record) {
+  if (record == nullptr || !record->vicreg_network_design.has_payload()) return;
+  auto sec_it = record->module_sections.find(kModuleSectionVicreg);
+  if (sec_it == record->module_sections.end()) return;
+
+  try {
+    const auto& ir = record->vicreg_network_design.decoded();
+    cuwacunu::wikimyei::vicreg_4d::vicreg_network_design_spec_t semantic{};
+    std::string semantic_error{};
+    if (!cuwacunu::wikimyei::vicreg_4d::resolve_vicreg_network_design(
+            ir, &semantic, &semantic_error)) {
+      log_fatal(
+          "[dconfig] invalid VICReg network_design semantic payload while normalizing module snapshot: %s\n",
+          semantic_error.c_str());
+    }
+
+    auto& vicreg_section = sec_it->second;
+    vicreg_section["encoding_dims"] = std::to_string(semantic.encoding_dims);
+    vicreg_section["channel_expansion_dim"] =
+        std::to_string(semantic.channel_expansion_dim);
+    vicreg_section["fused_feature_dim"] =
+        std::to_string(semantic.fused_feature_dim);
+    vicreg_section["encoder_hidden_dims"] =
+        std::to_string(semantic.encoder_hidden_dims);
+    vicreg_section["encoder_depth"] = std::to_string(semantic.encoder_depth);
+    vicreg_section["projector_mlp_spec"] = semantic.projector_mlp_spec;
+    vicreg_section["projector_norm"] = semantic.projector_norm;
+    vicreg_section["projector_activation"] = semantic.projector_activation;
+    vicreg_section["projector_hidden_bias"] =
+        bool_token(semantic.projector_hidden_bias);
+    vicreg_section["projector_last_bias"] =
+        bool_token(semantic.projector_last_bias);
+    vicreg_section["projector_bn_in_fp32"] =
+        bool_token(semantic.projector_bn_in_fp32);
+  } catch (const std::exception& e) {
+    log_fatal(
+        "[dconfig] failed to normalize VICReg module architecture from network_design: %s\n",
+        e.what());
+  }
 }
 
 static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
@@ -2067,23 +2121,20 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       kModuleSectionVicreg, vicreg_config_path,
       vicreg_grammar_text,
       /* string_keys */
-      {"projector_mlp_spec", "projector_norm",
-       "projector_activation", "dtype", "device", "jkimyei_dsl_file"},
+      {"dtype", "device", "jkimyei_dsl_file",
+       "network_design_dsl_file"},
       /* int_keys */
-      {"encoding_dims",
-       "channel_expansion_dim", "fused_feature_dim", "encoder_hidden_dims",
-       "encoder_depth"},
+      {},
       /* float_keys */
       {},
       /* bool_keys */
-      {"projector_hidden_bias", "projector_last_bias",
-       "projector_bn_in_fp32", "enable_buffer_averaging"},
+      {"enable_buffer_averaging"},
       /* arr_int_keys */
       {},
       /* arr_float_keys */
       {},
       /* optional_string_keys */
-      {"network_design_dsl_file"},
+      {},
       /* optional_int_keys */
       {},
       /* optional_float_keys */
@@ -2273,7 +2324,12 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
     }
 
     const auto net_dsl_it = vicreg_values.find("network_design_dsl_file");
-    if (net_dsl_it != vicreg_values.end()) {
+    if (net_dsl_it == vicreg_values.end()) {
+      log_warn(
+          "Missing key <network_design_dsl_file> in module config [VICReg] file: %s\n",
+          vicreg_config_path.c_str());
+      ok = false;
+    } else {
       const std::string raw_network_design_path =
           unquote_if_wrapped(trim_ascii_ws_copy(net_dsl_it->second));
       if (!has_non_ws_ascii(raw_network_design_path)) {
@@ -2636,27 +2692,33 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
     if (vicreg_section_it != record->module_sections.end()) {
       const auto net_it =
           vicreg_section_it->second.find("network_design_dsl_file");
-      if (net_it != vicreg_section_it->second.end()) {
-        const std::string raw_path =
-            unquote_if_wrapped(trim_ascii_ws_copy(net_it->second));
-        if (has_non_ws_ascii(raw_path)) {
-          std::string vicreg_folder{};
-          const std::filesystem::path vicreg_path_fs(vicreg_path);
-          if (vicreg_path_fs.has_parent_path()) {
-            vicreg_folder = vicreg_path_fs.parent_path().string();
-          }
-          const std::string resolved_network_design_path =
-              resolve_path_from_folder(vicreg_folder, raw_path);
-          if (!has_non_ws_ascii(resolved_network_design_path) ||
-              !std::filesystem::exists(resolved_network_design_path) ||
-              !std::filesystem::is_regular_file(resolved_network_design_path)) {
-            log_fatal(
-                "[dconfig] invalid network_design_dsl_file in VICReg module config %s: %s\n",
-                vicreg_path.c_str(), resolved_network_design_path.c_str());
-          }
-          network_design_dsl_path = resolved_network_design_path;
-        }
+      if (net_it == vicreg_section_it->second.end()) {
+        log_fatal(
+            "[dconfig] missing required network_design_dsl_file in VICReg module config %s\n",
+            vicreg_path.c_str());
       }
+      const std::string raw_path =
+          unquote_if_wrapped(trim_ascii_ws_copy(net_it->second));
+      if (!has_non_ws_ascii(raw_path)) {
+        log_fatal(
+            "[dconfig] empty required network_design_dsl_file in VICReg module config %s\n",
+            vicreg_path.c_str());
+      }
+      std::string vicreg_folder{};
+      const std::filesystem::path vicreg_path_fs(vicreg_path);
+      if (vicreg_path_fs.has_parent_path()) {
+        vicreg_folder = vicreg_path_fs.parent_path().string();
+      }
+      const std::string resolved_network_design_path =
+          resolve_path_from_folder(vicreg_folder, raw_path);
+      if (!has_non_ws_ascii(resolved_network_design_path) ||
+          !std::filesystem::exists(resolved_network_design_path) ||
+          !std::filesystem::is_regular_file(resolved_network_design_path)) {
+        log_fatal(
+            "[dconfig] invalid network_design_dsl_file in VICReg module config %s: %s\n",
+            vicreg_path.c_str(), resolved_network_design_path.c_str());
+      }
+      network_design_dsl_path = resolved_network_design_path;
     }
   }
 
@@ -2812,6 +2874,7 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
     record->vicreg_network_design.grammar = *network_design_grammar_text;
     record->vicreg_network_design.dsl = network_design_dsl_text;
     network_design_resolved_text = network_design_dsl_text;
+    normalize_vicreg_module_architecture_from_network_design(record.get());
   }
 
   if (!has_non_ws_ascii(record->circuit.dsl)) {

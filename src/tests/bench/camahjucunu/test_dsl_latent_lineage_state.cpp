@@ -35,7 +35,8 @@ const cuwacunu::camahjucunu::latent_lineage_state_entry_t* find_entry(
 
 int main() {
   try {
-    const std::string grammar_path = "/cuwacunu/src/config/bnf/latent_lineage_state.bnf";
+    const std::string grammar_path =
+        "/cuwacunu/src/config/bnf/latent_lineage_state.authored.bnf";
     const std::string vicreg_dsl_path =
         "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl";
     const std::string expected_value_dsl_path =

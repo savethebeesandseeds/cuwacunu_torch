@@ -10,8 +10,8 @@
 
   Syntax:
     CAMPAIGN {
-      IMPORT_CONTRACT_FILE "<contract_defaults_file>";
-      IMPORT_WAVE_FILE "<wave_dsl_file>";
+      IMPORT_CONTRACT "<contract_defaults_file>" AS <contract_alias>;
+      FROM "<wave_dsl_file>" IMPORT_WAVE <wave_id>;
 
       BIND <binding_id> {
         // bind-local __variables scope only the selected wave graph
@@ -19,23 +19,23 @@
         __sampler = sequential;
         __workers = 0;
         __symbol = BTCUSDT;
-        CONTRACT = <derived_contract_id>;
-        WAVE = <wave_name_inside_imported_wave_files>;
+        CONTRACT = <contract_alias>;
+        WAVE = <imported_wave_id>;
       };
 
       RUN <binding_id>;
     }
 
-    Super Hero now starts from a super objective DSL, which points to both the
-    campaign and the human-authored supervision brief. The defaults bundle
-    ships `default.super.objective.dsl` and `default.super.objective.md`, but
-    the plain default campaign remains executable on its own through Runtime
-    Hero.
+    Super Hero now starts from a super objective DSL, which points to the
+    campaign plus separate human-authored objective and guidance files.
+    The defaults bundle ships `default.super.objective.dsl`,
+    `default.super.objective.md`, and `default.super.guidance.md`, but the
+    plain default campaign remains executable on its own through Runtime Hero.
 */
 CAMPAIGN {
-  IMPORT_CONTRACT_FILE "default.iitepi.contract.dsl";
+  IMPORT_CONTRACT "default.iitepi.contract.dsl" AS contract_default_iitepi;
 
-  IMPORT_WAVE_FILE "default.iitepi.wave.dsl";
+  FROM "default.iitepi.wave.dsl" IMPORT_WAVE train_vicreg_primary;
 
   BIND bind_train_vicreg_primary {
     // operational wave scope only; does not modify contract __variables

@@ -17,25 +17,25 @@ range = exactly one top-level block
 allowed = CAMPAIGN { ... }
 nuance = unified top-level runtime dispatch language consumed by Runtime HERO and worker campaign snapshots
 
-[FIELD IMPORT_CONTRACT_FILE]
-key = IMPORT_CONTRACT_FILE
+[FIELD FROM_IMPORT_CONTRACT]
+key = IMPORT_CONTRACT "<path>" AS <contract_alias>
 scope = CAMPAIGN
-type = path
+type = path + alias
 required = true
 default = none
 range = at least one
-allowed = quoted_path_or_identifier
-nuance = each import derives CONTRACT id as contract_<sanitized_basename>; duplicate file paths and duplicate derived ids are rejected
+allowed = quoted_path_or_identifier for path, [A-Za-z0-9_.-]+ for contract_alias
+nuance = contract aliases are campaign-local names declared explicitly at import time; duplicate file paths and duplicate imported aliases are rejected
 
-[FIELD IMPORT_WAVE_FILE]
-key = IMPORT_WAVE_FILE
+[FIELD FROM_IMPORT_WAVE]
+key = FROM "<path>" IMPORT_WAVE <wave_id>
 scope = CAMPAIGN
-type = path
+type = path + identifier
 required = true
 default = none
 range = at least one
-allowed = quoted_path_or_identifier
-nuance = imported wave files provide the WAVE ids referenced by BIND entries
+allowed = quoted_path_or_identifier for path, [A-Za-z0-9_.-]+ for wave_id
+nuance = each import declares exactly which WAVE id from that file is available to BIND entries; the same wave file may be imported multiple times for different wave ids
 
 [FIELD BIND.ID]
 key = BIND.<id>
@@ -53,9 +53,9 @@ scope = BIND
 type = identifier
 required = true
 default = none
-range = must exist in derived contract ids from IMPORT_CONTRACT_FILE
-allowed = derived contract id token
-nuance = contract id is not free-form; it must match a derived import id
+range = must exist in campaign-declared contract aliases from IMPORT_CONTRACT ... AS
+allowed = imported contract alias token
+nuance = CONTRACT is not free-form; it must match an explicit campaign-local alias
 
 [FIELD BIND.WAVE]
 key = BIND.WAVE
@@ -63,9 +63,9 @@ scope = BIND
 type = identifier
 required = true
 default = none
-range = non-empty
-allowed = wave id defined inside imported wave DSLs
-nuance = ambiguity across multiple imported wave files is rejected at binding snapshot assembly stage
+range = must exist in campaign-declared wave ids from FROM ... IMPORT_WAVE
+allowed = imported wave id token
+nuance = wave id selection is explicit in the campaign import list rather than inferred by scanning every imported wave file
 
 [FIELD BIND.__VAR]
 key = BIND.__<name>

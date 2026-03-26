@@ -39,7 +39,7 @@ inline std::string lower_ascii_copy_board_editor(std::string s) {
 
 inline bool is_board_instruction_path(const std::string& path) {
   const std::string p = lower_ascii_copy_board_editor(path);
-  return p.find("default.iitepi.contract.circuit.dsl") != std::string::npos ||
+  return p.find("default.iitepi.circuit.dsl") != std::string::npos ||
          p.find("board.dsl") != std::string::npos;
 }
 

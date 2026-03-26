@@ -290,15 +290,6 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   return parse_runtime_campaign_record_document(document, out, error);
 }
 
-[[nodiscard]] inline bool is_legacy_runtime_campaign_schema_error(
-    std::string_view error) {
-  constexpr std::string_view kPrefix = "unexpected runtime campaign schema: ";
-  if (error.rfind(kPrefix, 0) != 0) return false;
-  const std::string_view schema = error.substr(kPrefix.size());
-  return !schema.empty() && schema != kRuntimeCampaignSchemaV2 &&
-         schema.rfind("hero.runtime.campaign.v", 0) == 0;
-}
-
 [[nodiscard]] inline bool scan_runtime_campaign_records(
     const std::filesystem::path& campaigns_root,
     std::vector<runtime_campaign_record_t>* out,
@@ -328,7 +319,6 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
     if (!read_runtime_campaign_record(campaigns_root,
                                       it.path().filename().string(),
                                       &record, &record_error)) {
-      if (is_legacy_runtime_campaign_schema_error(record_error)) continue;
       if (error) {
         *error = "failed reading runtime campaign manifest " +
                  runtime_campaign_manifest_path(campaigns_root,

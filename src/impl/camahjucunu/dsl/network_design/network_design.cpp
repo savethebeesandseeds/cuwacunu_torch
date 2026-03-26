@@ -201,18 +201,18 @@ struct parser_t {
           continue;
         }
 
-        if (starts_with_kw_(line, "JOIN_POLICY")) {
+        if (starts_with_kw_(line, "ASSEMBLY_TAG")) {
           const std::size_t eq = line.find('=');
           if (eq == std::string::npos) {
-            fail_line_(line_no, "JOIN_POLICY requires `=`");
+            fail_line_(line_no, "ASSEMBLY_TAG requires `=`");
           }
           std::string value = trim_ascii_copy(line.substr(eq + 1));
           if (!value.empty() && value.back() == ';') value.pop_back();
           value = trim_ascii_copy(std::move(value));
           if (!is_valid_identifier_(value)) {
-            fail_line_(line_no, "invalid JOIN_POLICY token `" + value + "`");
+            fail_line_(line_no, "invalid ASSEMBLY_TAG token `" + value + "`");
           }
-          out.join_policy = value;
+          out.assembly_tag = value;
           continue;
         }
 
@@ -392,7 +392,7 @@ network_design_instruction_t::find_nodes_by_kind(const std::string& kind) const 
 std::string network_design_instruction_t::str() const {
   std::ostringstream oss;
   oss << "network_design: network_id=" << network_id
-      << " join_policy=" << join_policy
+      << " assembly_tag=" << assembly_tag
       << " nodes=" << nodes.size()
       << " exports=" << exports.size() << "\n";
   for (const auto& node : nodes) {

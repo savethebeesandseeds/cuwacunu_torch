@@ -8,7 +8,8 @@ namespace camahjucunu {
 
 struct super_objective_instruction_t {
   std::string campaign_dsl_path{};
-  std::string objective_prompt_path{};
+  std::string objective_md_path{};
+  std::string guidance_md_path{};
   std::string objective_name{};
   std::string loop_id{};
   std::string str() const;

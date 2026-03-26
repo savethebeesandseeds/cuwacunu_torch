@@ -21,12 +21,12 @@ Out of scope in this pass:
 
 The standardized runtime boundary now exists in code:
 
-- strict runtime grammar: `src/config/bnf/runtime_lls.bnf`
+- strict runtime grammar: `src/config/bnf/latent_lineage_state.runtime.bnf`
 - public runtime API: `src/include/piaabo/latent_lineage_state/runtime_lls.h`
 - validator and canonical emitter:
   `src/impl/piaabo/latent_lineage_state/runtime_lls.cpp`
-- shared legacy grammar basis still available in
-  `src/config/bnf/latent_lineage_state.bnf`
+- shared authored grammar basis still available in
+  `src/config/bnf/latent_lineage_state.authored.bnf`
 
 The current `piaabo` surface is intentionally small:
 
@@ -83,7 +83,8 @@ Runtime `.lls` source is normalized before grammar validation:
 
 ### 2. Strict Runtime Grammar
 
-The runtime grammar is now BNF-enforceable through `runtime_lls.bnf`.
+The runtime grammar is now BNF-enforceable through
+`latent_lineage_state.runtime.bnf`.
 
 Syntactic rules:
 
@@ -96,8 +97,8 @@ Syntactic rules:
 - values are stored as raw trimmed text and validated by declared type afterward
 
 This strict grammar is the normative syntax for runtime `.lls`. The older
-`latent_lineage_state.bnf` remains the broader shared syntax surface for other DSL
-families.
+`latent_lineage_state.authored.bnf` remains the broader shared syntax surface
+for other DSL families.
 
 ### 3. Runtime Profile
 

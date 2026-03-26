@@ -17,8 +17,8 @@ range = non-empty; parser-valid identifier chars
 allowed = [A-Za-z0-9_.:-]+
 nuance = instruction must contain exactly one NETWORK block and no trailing content
 
-[FIELD NETWORK.JOIN_POLICY]
-key = JOIN_POLICY
+[FIELD NETWORK.ASSEMBLY_TAG]
+key = ASSEMBLY_TAG
 scope = NETWORK block
 type = identifier
 required = false

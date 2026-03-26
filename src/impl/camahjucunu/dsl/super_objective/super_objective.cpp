@@ -115,12 +115,20 @@ void assign_field(cuwacunu::camahjucunu::super_objective_instruction_t* out,
     out->campaign_dsl_path = std::move(value);
     return;
   }
-  if (lhs.key == "objective_prompt_path") {
+  if (lhs.key == "objective_md_path") {
     if (lhs.declared_type != "path") {
       throw std::runtime_error("line " + std::to_string(line) +
-                               ": objective_prompt_path must declare type path");
+                               ": objective_md_path must declare type path");
     }
-    out->objective_prompt_path = std::move(value);
+    out->objective_md_path = std::move(value);
+    return;
+  }
+  if (lhs.key == "guidance_md_path") {
+    if (lhs.declared_type != "path") {
+      throw std::runtime_error("line " + std::to_string(line) +
+                               ": guidance_md_path must declare type path");
+    }
+    out->guidance_md_path = std::move(value);
     return;
   }
   if (lhs.key == "objective_name") {
@@ -151,7 +159,8 @@ namespace camahjucunu {
 std::string super_objective_instruction_t::str() const {
   std::ostringstream out;
   out << "campaign_dsl_path:path = " << campaign_dsl_path << "\n"
-      << "objective_prompt_path:path = " << objective_prompt_path << "\n";
+      << "objective_md_path:path = " << objective_md_path << "\n"
+      << "guidance_md_path:path = " << guidance_md_path << "\n";
   if (!objective_name.empty()) {
     out << "objective_name:str = " << objective_name << "\n";
   }
@@ -209,9 +218,13 @@ super_objective_instruction_t superObjectivePipeline::decode(
   if (trim_ascii(out.campaign_dsl_path).empty()) {
     throw std::runtime_error("super objective DSL missing campaign_dsl_path:path");
   }
-  if (trim_ascii(out.objective_prompt_path).empty()) {
+  if (trim_ascii(out.objective_md_path).empty()) {
     throw std::runtime_error(
-        "super objective DSL missing objective_prompt_path:path");
+        "super objective DSL missing objective_md_path:path");
+  }
+  if (trim_ascii(out.guidance_md_path).empty()) {
+    throw std::runtime_error(
+        "super objective DSL missing guidance_md_path:path");
   }
   return out;
 }

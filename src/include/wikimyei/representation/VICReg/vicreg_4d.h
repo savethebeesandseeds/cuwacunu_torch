@@ -120,8 +120,8 @@ public:
   torch::Device device;       // Target device for parameters and forward passes.
   int  optimizer_threshold_reset; // Adam/AdamW moment-exponent clamp step; -1 disables.
   bool enable_buffer_averaging;   // If true, SWA averages buffers; otherwise copies them.
-  std::string network_design_network_id{};  // Optional network_design id used to build this model.
-  std::string network_design_join_policy{}; // Optional network_design join policy.
+  std::string network_design_network_id{};   // Optional network_design id used to build this model.
+  std::string network_design_assembly_tag{}; // Optional network_design assembly tag.
   std::string network_design_grammar{};     // Optional network_design grammar text.
   std::string network_design_dsl{};         // Optional network_design DSL text.
 
@@ -153,7 +153,7 @@ public:
     bool enable_buffer_averaging{false};
     std::optional<ProjectorOptions> projector_options_override{};
     std::string network_design_network_id{};
-    std::string network_design_join_policy{};
+    std::string network_design_assembly_tag{};
     std::string network_design_grammar{};
     std::string network_design_dsl{};
   };
@@ -174,7 +174,7 @@ public:
     bool enable_buffer_averaging_ = false,
     std::optional<ProjectorOptions> projector_options_override_ = std::nullopt,
     std::string network_design_network_id_ = {},
-    std::string network_design_join_policy_ = {},
+    std::string network_design_assembly_tag_ = {},
     std::string network_design_grammar_ = {},
     std::string network_design_dsl_ = {}
   );

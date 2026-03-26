@@ -1,17 +1,15 @@
 /*
   vicreg.solo objective-local network design.
 
-  This file is the sole authored source for VICReg architecture in the
-  vicreg.solo objective.
   Public docking stays frozen to big_span_v1 through the contract-owned
-  __obs_* and __embedding_dims variables. Private encoder/projector widths and
-  projector options are intentionally contract-scoped here so imported
-  contract variants can express small/base/wide/deep architecture candidates
-  without changing the observation profile.
+  __obs_* and __embedding_dims variables. Private encoder/projector widths are
+  intentionally contract-scoped here so imported contract variants can express
+  small/base/wide/deep architecture candidates without changing the
+  observation profile.
 */
 
 NETWORK "tsi.wikimyei.representation.vicreg" {
-  ASSEMBLY_TAG = vicreg_encoder_projector;
+  JOIN_POLICY = vicreg_default;
 
   node obs@INPUT {
     C:int = % __obs_channels ? 3 %;
@@ -29,10 +27,10 @@ NETWORK "tsi.wikimyei.representation.vicreg" {
 
   node proj@MLP {
     projector_mlp_spec:str = % __vicreg_projector_mlp_spec ? 72-128-256-128 %;
-    norm:str = % __vicreg_projector_norm ? LayerNorm %;
-    activation:str = % __vicreg_projector_activation ? SiLU %;
-    hidden_bias:bool = % __vicreg_projector_hidden_bias ? false %;
-    last_bias:bool = % __vicreg_projector_last_bias ? false %;
+    norm:str = LayerNorm;
+    activation:str = SiLU;
+    hidden_bias:bool = false;
+    last_bias:bool = false;
     bn_in_fp32:bool = true;
   }
 

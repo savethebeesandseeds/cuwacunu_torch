@@ -47,10 +47,11 @@ range = zero or more contract-local variable assignments
 allowed = variable names starting with double underscore
 nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %` for the contract DSL graph; these variables are contract-scoped and cannot be overridden by campaign BIND __variables
 note = use contract __variables for hard-static docking compatibility such as input tensor shape, embedding dimensions, projector layout, and contract-owned observation/channel DSL paths; changing these values should reset hashimyei lineage
+note_5 = module DSL dependencies are contract-owned explicitly through path-bearing __variables such as __vicreg_config_dsl_file, __expected_value_config_dsl_file, __embedding_sequence_analytics_config_dsl_file, and __transfer_matrix_evaluation_config_dsl_file; runtime no longer invents those edges from colocated defaults
 note_2 = runtime derives an explicit docking signature from the compatible circuit set, contract __variables, and docking-bearing contract DSL surfaces; in the current VICReg model that public docking digest includes the circuit, VICReg module/network-design, and contract-owned observation-channel DSL, but not the observation source registry
 note_3 = contract-owned observation source registries still affect exact contract identity and dependency manifests; they are excluded from the public docking digest so unrelated source-row additions do not invalidate otherwise compatible component weights
 note_4 = when wave selects an existing component hashimyei, runtime validates that the selected component manifest belongs to the same contract and that its docking_signature_sha256_hex matches the current contract before accepting the load
-validation = when contract-owned observation/channel DSL paths and VICReg network_design are both present, contract validation checks observation active channel count and max sequence length against VICReg INPUT.C and INPUT.T, and checks contract __obs_feature_dim against INPUT.D when declared
+validation = because VICReg network_design is required, contract validation checks observation active channel count and max sequence length against VICReg INPUT.C and INPUT.T, and checks contract __obs_feature_dim against INPUT.D when declared
 
 [FIELD CONTRACT.AKNOWLEDGE]
 key = AKNOWLEDGE

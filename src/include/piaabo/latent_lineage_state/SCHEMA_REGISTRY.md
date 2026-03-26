@@ -28,7 +28,7 @@ Status values:
 | Schema | Current role | Notes | Status |
 | --- | --- | --- | --- |
 | `piaabo.torch_compat.entropic_capacity_comparison.v1` | legacy helper / reader compatibility | query-time comparison now lives in Lattice; no standard component producer or ingest path | reader-only |
-| `piaabo.torch_compat.network_design_analytics.v4` | API serializer only | emitted by helper APIs, not persisted as a standard runtime artifact | reader-only |
+| `piaabo.torch_compat.network_design_analytics.v5` | API serializer only | emitted by helper APIs, not persisted as a standard runtime artifact | reader-only |
 
 ## Canonical Required Keys by Class
 

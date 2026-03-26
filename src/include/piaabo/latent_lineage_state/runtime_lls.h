@@ -12,7 +12,7 @@ namespace piaabo {
 namespace latent_lineage_state {
 
 inline constexpr std::string_view kRuntimeLlsGrammarPath =
-    "/cuwacunu/src/config/bnf/runtime_lls.bnf";
+    "/cuwacunu/src/config/bnf/latent_lineage_state.runtime.bnf";
 
 struct runtime_lls_entry_t {
   std::string key{};

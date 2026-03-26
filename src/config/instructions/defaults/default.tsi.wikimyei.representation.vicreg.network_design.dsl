@@ -8,20 +8,27 @@
 
   Notes:
     - This file is intentionally node-oriented (no edge syntax).
-    - `JOIN_POLICY = vicreg_default` delegates join semantics to VICReg code:
+    - This file is the sole authored source for VICReg architecture.
+    - `ASSEMBLY_TAG = vicreg_encoder_projector` declares the VICReg
+      encoder-plus-projector assembly used by this implementation:
         INPUT -> VICREG_4D_ENCODER -> MLP
       exports:
         embedding -> encoder node
         projected -> projector node
+    - The thin `default.tsi.wikimyei.representation.vicreg.dsl` wrapper owns
+      runtime placement, SWA policy, and payload bindings only.
     - Contract-scoped `__variables` own the public docking widths:
       INPUT.C/T/D and encoder `encoding_dims`.
+    - The canonical default bundle also exposes projector option defaults
+      through contract-scoped `__vicreg_projector_*` variables so objective
+      bundles and defaults share the same architecture-control surface.
     - Contract registration fails fast if decoded observation_channels DSL does
       not resolve to values compatible with these public docking widths.
     - Internal encoder/projector widths below remain module-local defaults.
 */
 
 NETWORK "tsi.wikimyei.representation.vicreg" {
-  JOIN_POLICY = vicreg_default;
+  ASSEMBLY_TAG = vicreg_encoder_projector;
 
   node obs@INPUT {
     C:int = % __obs_channels ? 3 %;
@@ -39,10 +46,10 @@ NETWORK "tsi.wikimyei.representation.vicreg" {
 
   node proj@MLP {
     dims:arr[int] = 72,128,256,128;
-    norm:str = LayerNorm;
-    activation:str = SiLU;
-    hidden_bias:bool = false;
-    last_bias:bool = false;
+    norm:str = % __vicreg_projector_norm ? LayerNorm %;
+    activation:str = % __vicreg_projector_activation ? SiLU %;
+    hidden_bias:bool = % __vicreg_projector_hidden_bias ? false %;
+    last_bias:bool = % __vicreg_projector_last_bias ? false %;
     bn_in_fp32:bool = true;
   }
 

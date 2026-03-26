@@ -1221,6 +1221,8 @@ void write_child_errno_noexcept(int fd, int child_errno) {
         };
 
     if (!in_block_comment) {
+      line = rewrite_import("IMPORT_CONTRACT", line);
+      line = rewrite_import("FROM", line);
       line = rewrite_import("IMPORT_CONTRACT_FILE", line);
       line = rewrite_import("IMPORT_WAVE_FILE", line);
       line = rewrite_import("SUPER", line);

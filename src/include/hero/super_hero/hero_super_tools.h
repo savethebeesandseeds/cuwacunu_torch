@@ -15,7 +15,6 @@ struct super_defaults_t {
   std::filesystem::path super_objective_grammar_path{};
   std::filesystem::path runtime_hero_binary{};
   std::filesystem::path config_hero_binary{};
-  std::filesystem::path hashimyei_hero_binary{};
   std::filesystem::path lattice_hero_binary{};
   std::filesystem::path human_operator_identities{};
   std::filesystem::path super_codex_binary{};

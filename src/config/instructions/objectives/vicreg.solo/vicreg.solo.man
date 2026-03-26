@@ -2,8 +2,8 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = objective.vicreg.solo
-TARGET_DSL = src/config/instructions/objectives/vicreg.solo/iitepi.campaign.dsl,src/config/instructions/objectives/vicreg.solo/iitepi.waves.dsl,src/config/instructions/objectives/vicreg.solo/iitepi.contract.dsl,src/config/instructions/objectives/vicreg.solo/super.objective.dsl,src/config/instructions/objectives/vicreg.solo/tsi.source.dataloader.channels.dsl
-TARGET_BNF = src/config/bnf/iitepi.campaign.bnf,src/config/bnf/iitepi.wave.bnf,src/config/bnf/iitepi.contract.bnf,src/config/bnf/super.objective.bnf,src/config/bnf/tsi.source.dataloader.channels.bnf
+TARGET_DSL = src/config/instructions/objectives/vicreg.solo/iitepi.campaign.dsl,src/config/instructions/objectives/vicreg.solo/iitepi.waves.dsl,src/config/instructions/objectives/vicreg.solo/iitepi.contract.base.dsl,src/config/instructions/objectives/vicreg.solo/vicreg.solo.super.dsl,src/config/instructions/objectives/vicreg.solo/tsi.source.dataloader.channels.dsl
+TARGET_BNF = src/config/bnf/iitepi.campaign.bnf,src/config/bnf/iitepi.wave.bnf,src/config/bnf/iitepi.contract.bnf,src/config/bnf/objective.super.bnf,src/config/bnf/tsi.source.dataloader.channels.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/iitepi_campaign/iitepi_campaign.cpp,src/impl/camahjucunu/dsl/iitepi_wave/iitepi_wave.cpp,src/impl/iitepi/contract_space_t.cpp,src/impl/camahjucunu/dsl/super_objective/super_objective.cpp,src/impl/camahjucunu/dsl/observation_channels/observation_channels.cpp
 PRIMARY_VALIDATORS = src/main/hero/hero_runtime_mcp.cpp,src/main/main_campaign.cpp,src/include/iitepi/runtime_binding/runtime_binding.builder.h
 
@@ -15,7 +15,7 @@ required = true
 default = src/config/instructions/objectives/vicreg.solo/iitepi.campaign.dsl
 range = one active objective campaign
 allowed = objective-local campaign + wave + contract set
-nuance = objective owns the train/eval bind plan and now freezes the selected big-span observation profile locally. Unchanged sources stay in ../../defaults; evaluation sidecar DSLs remain objective-local because contract auto-discovery still expects those files next to the contract bundle
+nuance = objective owns the train/eval bind plan and now freezes the selected big-span observation profile locally. Unchanged sources stay in ../../defaults; both evaluation sidecars now resolve from the shared defaults bundle instead of carrying redundant objective-local copies
 
 [FIELD OBJECTIVE.OBS_PROFILE]
 key = big_span_v1 observation profile
@@ -42,9 +42,9 @@ key = tunable axes
 scope = vicreg.solo research loop
 type = design search surface
 required = true
-default = internal network widths + projector shape + jkimyei profile
+default = internal network widths + projector topology/options + jkimyei profile
 range = one or more candidate sweeps
-allowed = private network dimensions, network depth, projector dims, optimizer/loss/augmentation profiles
+allowed = private network dimensions, network depth, projector dims, projector norm/activation/bias policy, optimizer/loss/augmentation profiles
 nuance = compare one axis at a time. Promote only candidates that improve holdout report evidence without destabilizing training or exploding runtime cost
 
 [FIELD OBJECTIVE.ARCH_SWEEP]
@@ -54,8 +54,8 @@ type = contract-variant family
 required = true
 default = baseline + small + wide + deep
 range = imported contract variants with frozen public dock
-allowed = iitepi.contract.dsl,iitepi.contract.small.dsl,iitepi.contract.wide.dsl,iitepi.contract.deep.dsl
-nuance = network-design sweeps are contract-driven in the current runtime because bind-local __variables only resolve inside the wave graph. Each candidate keeps the same observation dock and embedding width while changing only private VICReg encoder/projector capacity
+allowed = iitepi.contract.base.dsl,iitepi.contract.small.dsl,iitepi.contract.wide.dsl,iitepi.contract.deep.dsl
+nuance = network-design sweeps are contract-driven in the current runtime because bind-local __variables only resolve inside the wave graph. Each candidate keeps the same observation dock and embedding width while changing only private VICReg encoder/projector architecture and projector option policy
 
 [FIELD OBJECTIVE.DEFAULT_RUN_PLAN]
 key = RUN default plan
@@ -74,7 +74,7 @@ type = execution binding
 required = true
 default = active and runnable
 range = one BIND entry
-allowed = CONTRACT=contract_iitepi,WAVE=train_vicreg_smoke
+allowed = CONTRACT=contract_iitepi_contract_base,WAVE=train_vicreg_smoke
 nuance = cheapest end-to-end sanity run; use after structural config edits, contract changes, or dataloader/channel changes before spending larger training budget
 
 [FIELD BIND.bind_train_vicreg_ablation_short]
@@ -84,7 +84,7 @@ type = execution binding
 required = true
 default = active and runnable
 range = one BIND entry
-allowed = CONTRACT=contract_iitepi,WAVE=train_vicreg_ablation_short
+allowed = CONTRACT=contract_iitepi_contract_base,WAVE=train_vicreg_ablation_short
 nuance = short research loop for optimizer, augmentation, and small architecture comparisons; intended to be rerun frequently during refinement
 
 [FIELD BIND.bind_train_vicreg_ablation_small]
@@ -124,7 +124,7 @@ type = execution binding
 required = true
 default = active and runnable
 range = one BIND entry
-allowed = CONTRACT=contract_iitepi,WAVE=train_vicreg_primary
+allowed = CONTRACT=contract_iitepi_contract_base,WAVE=train_vicreg_primary
 nuance = main pretrain run over the train split; this is the default first RUN in the campaign and should represent the current best believed VICReg design. The bind sets __mode_flags=3 so the heavy training wave resolves to run|train without debug sidecars for faster execution
 
 [FIELD BIND.bind_train_vicreg_primary_small]
@@ -164,7 +164,7 @@ type = execution binding
 required = true
 default = active and runnable
 range = one BIND entry
-allowed = CONTRACT=contract_iitepi,WAVE=eval_vicreg_payload
+allowed = CONTRACT=contract_iitepi_contract_base,WAVE=eval_vicreg_payload
 nuance = evaluation-only payload over the holdout window; wave disables training through MODE and JKIMYEI.HALT_TRAIN and is intended to generate comparable report evidence
 
 [FIELD BIND.bind_eval_vicreg_payload_small]
@@ -271,7 +271,7 @@ text = Recommended loop: 1) keep big_span_v1 observation channels fixed; 2) run 
 
 [NOTE SUPER_LOOP_V1]
 scope = vicreg.solo research loop
-text = Super Hero is now the bounded loop owner under `<runtime_root>/.super_hero/<loop_id>/`, launched with `hero.super.start_loop(...)`. For vicreg.solo, the loop starts from `super.objective.dsl`, which points to `iitepi.campaign.dsl` and `super.objective.md`; Super Hero copies both into the loop ledger before assembling `super.briefing.md` and the loop-local `super.hero.config.dsl`. Codex returns `control_kind = continue | stop | need_human`, any `continue` must carry a bounded validated next action, and during review Codex may use loop-scoped `hero.config.objective_dsl.read/replace` plus bounded Runtime/Hashimyei/Lattice read tools directly against the copied loop objective bundle and persisted evidence, but not against the copied `campaign.dsl` or `super.objective.dsl`. The intended first use remains architecture refinement across the existing baseline/small/wide/deep binds only.
+text = Super Hero is now the bounded loop owner under `<runtime_root>/.super_hero/<loop_id>/`, launched with `hero.super.start_loop(...)`. For vicreg.solo, the loop starts from `vicreg.solo.super.dsl`, which points to `iitepi.campaign.dsl` plus separate `vicreg.solo.objective.md` and shared `default.super.guidance.md`; Super Hero copies those into the loop ledger, points its mutable `objective_root` at the truth-source objective bundle under `src/config/instructions/objectives/vicreg.solo/`, then assembles `super.briefing.md` and the loop-local `config.hero.policy.dsl`. Codex returns `control_kind = continue | stop | need_human`, any `continue` must carry a bounded validated next action, and during review Codex may use loop-scoped `hero.config.objective_dsl.read/replace` plus bounded Runtime/Lattice read tools directly against that objective truth source and persisted evidence, but not against source `campaign.dsl` or source `vicreg.solo.super.dsl`. Runtime Hero still snapshots each launch from the truth source. The intended first use remains architecture refinement across the existing baseline/small/wide/deep binds only.
 
 [RULE OBJECTIVE_PROMOTION_GUARD]
 id = OBJECTIVE_PROMOTION_GUARD

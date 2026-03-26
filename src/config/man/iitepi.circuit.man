@@ -1,9 +1,9 @@
 MAN_SPEC_VERSION = 1
 
 [META]
-MAN_ID = iitepi.contract.circuit
-TARGET_DSL = src/config/instructions/defaults/default.iitepi.contract.circuit.dsl
-TARGET_BNF = src/config/bnf/iitepi.contract.circuit.bnf
+MAN_ID = iitepi.circuit
+TARGET_DSL = src/config/instructions/defaults/default.iitepi.circuit.dsl
+TARGET_BNF = src/config/bnf/iitepi.circuit.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_decode_text.cpp
 PRIMARY_VALIDATORS = src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_validate.cpp,src/impl/camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime_resolve.cpp
 

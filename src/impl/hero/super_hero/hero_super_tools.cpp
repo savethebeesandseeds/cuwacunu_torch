@@ -82,7 +82,8 @@ struct run_manifest_hint_t {
 
 struct super_objective_spec_t {
   std::string campaign_dsl_path{};
-  std::string objective_prompt_path{};
+  std::string objective_md_path{};
+  std::string guidance_md_path{};
   std::string objective_name{};
   std::string loop_id{};
 };
@@ -101,8 +102,17 @@ struct super_tool_descriptor_t {
 [[nodiscard]] bool run_command_with_stdio_and_timeout(
     const std::vector<std::string>& argv, const std::filesystem::path& stdin_path,
     const std::filesystem::path& stdout_path,
-    const std::filesystem::path& stderr_path, std::size_t timeout_sec,
+    const std::filesystem::path& stderr_path,
+    const std::filesystem::path* working_dir,
+    const std::vector<std::pair<std::string, std::string>>* env_overrides,
+    std::size_t timeout_sec, const std::filesystem::path* pid_path,
     int* out_exit_code, std::string* error);
+
+void append_warning_text(std::string* dst, std::string_view warning);
+
+[[nodiscard]] bool read_super_loop(
+    const app_context_t& app, std::string_view loop_id,
+    cuwacunu::hero::super::super_loop_record_t* out, std::string* error);
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   return cuwacunu::hero::runtime::trim_ascii(in);
@@ -114,6 +124,34 @@ struct super_tool_descriptor_t {
     return static_cast<char>(std::tolower(c));
   });
   return out;
+}
+
+[[nodiscard]] bool looks_like_codex_session_id(std::string_view value) {
+  if (value.size() != 36) return false;
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    const char ch = value[i];
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      if (ch != '-') return false;
+      continue;
+    }
+    if (!std::isxdigit(static_cast<unsigned char>(ch))) return false;
+  }
+  return true;
+}
+
+[[nodiscard]] std::string extract_codex_session_id_from_log(
+    std::string_view log_text) {
+  const std::size_t marker = log_text.rfind("session id:");
+  if (marker == std::string_view::npos) return {};
+  const std::size_t value_begin = marker + std::string_view("session id:").size();
+  const std::size_t line_end = log_text.find('\n', value_begin);
+  const std::string candidate =
+      lowercase_copy(trim_ascii(log_text.substr(
+          value_begin, line_end == std::string_view::npos
+                           ? std::string_view::npos
+                           : line_end - value_begin)));
+  if (!looks_like_codex_session_id(candidate)) return {};
+  return candidate;
 }
 
 [[nodiscard]] std::string strip_inline_comment(std::string_view in) {
@@ -681,39 +719,113 @@ resolve_super_objective_grammar_from_global_config(
 
 [[nodiscard]] std::filesystem::path super_loop_latest_review_packet_path(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return std::filesystem::path(loop.loop_root) / "review_packet.latest.json";
+  return cuwacunu::hero::super::super_loop_latest_review_packet_path(
+      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
 }
 
 [[nodiscard]] std::filesystem::path super_loop_latest_decision_path(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return std::filesystem::path(loop.loop_root) / "decision.latest.json";
-}
-
-[[nodiscard]] std::filesystem::path super_loop_latest_human_response_path(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return cuwacunu::hero::super::super_loop_human_response_latest_path(
+  return cuwacunu::hero::super::super_loop_latest_decision_path(
       std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
 }
 
-[[nodiscard]] std::filesystem::path super_loop_latest_human_response_sig_path(
+[[nodiscard]] std::filesystem::path super_loop_codex_session_log_path(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return cuwacunu::hero::super::super_loop_human_response_latest_sig_path(
+  return cuwacunu::hero::super::super_loop_codex_session_log_path(
       std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
 }
 
-[[nodiscard]] std::filesystem::path super_loop_decision_schema_path(
+[[nodiscard]] std::filesystem::path super_loop_review_pid_path(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return std::filesystem::path(loop.loop_root) / "decision.schema.json";
+  return cuwacunu::hero::super::super_loop_review_pid_path(
+      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
 }
 
-[[nodiscard]] std::filesystem::path super_loop_codex_stdout_path(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return std::filesystem::path(loop.loop_root) / "codex.stdout.log";
+void remove_file_noexcept(const std::filesystem::path& path) {
+  if (path.empty()) return;
+  std::error_code ec{};
+  (void)std::filesystem::remove(path, ec);
 }
 
-[[nodiscard]] std::filesystem::path super_loop_codex_stderr_path(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return std::filesystem::path(loop.loop_root) / "codex.stderr.log";
+[[nodiscard]] bool read_loop_review_pid(
+    const cuwacunu::hero::super::super_loop_record_t& loop, pid_t* out_pid) {
+  if (!out_pid) return false;
+  *out_pid = -1;
+  std::string pid_text{};
+  std::string ignored{};
+  if (!cuwacunu::hero::runtime::read_text_file(super_loop_review_pid_path(loop),
+                                               &pid_text, &ignored)) {
+    return false;
+  }
+  pid_text = trim_ascii(pid_text);
+  if (pid_text.empty()) return false;
+  char* end = nullptr;
+  const long parsed = std::strtol(pid_text.c_str(), &end, 10);
+  if (end == nullptr || *end != '\0' || parsed <= 0) return false;
+  *out_pid = static_cast<pid_t>(parsed);
+  return true;
+}
+
+void cancel_loop_review_best_effort(
+    const cuwacunu::hero::super::super_loop_record_t& loop, bool force,
+    std::string* out_warning) {
+  pid_t review_pid = -1;
+  if (!read_loop_review_pid(loop, &review_pid)) return;
+  const int sig = force ? SIGKILL : SIGTERM;
+  errno = 0;
+  const int rc_group = ::kill(-review_pid, sig);
+  const int saved_errno = errno;
+  errno = 0;
+  const int rc_proc = ::kill(review_pid, sig);
+  const int saved_errno_proc = errno;
+  if (rc_group != 0 && rc_proc != 0 && saved_errno != ESRCH &&
+      saved_errno_proc != ESRCH && out_warning) {
+    append_warning_text(out_warning,
+                        "review cancel degraded for pid=" +
+                            std::to_string(static_cast<long long>(review_pid)));
+  }
+  remove_file_noexcept(super_loop_review_pid_path(loop));
+}
+
+[[nodiscard]] bool reload_terminal_super_loop_if_any(
+    const app_context_t& app, std::string_view loop_id,
+    cuwacunu::hero::super::super_loop_record_t* out_loop) {
+  if (!out_loop) return false;
+  std::string ignored{};
+  if (!read_super_loop(app, loop_id, out_loop, &ignored)) return false;
+  return cuwacunu::hero::super::is_super_loop_terminal_state(out_loop->state);
+}
+
+struct scoped_temp_path_t {
+  std::filesystem::path path{};
+
+  ~scoped_temp_path_t() {
+    if (path.empty()) return;
+    std::error_code ec{};
+    std::filesystem::remove(path, ec);
+  }
+};
+
+[[nodiscard]] bool write_temp_super_decision_schema(
+    std::string_view schema_json, scoped_temp_path_t* out_path,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out_path) {
+    if (error) *error = "temp schema output pointer is null";
+    return false;
+  }
+  out_path->path.clear();
+  std::filesystem::path temp_path =
+      std::filesystem::temp_directory_path() /
+      ("hero_super_decision_schema." +
+       std::to_string(cuwacunu::hero::runtime::now_ms_utc()) + "." +
+       std::to_string(::getpid()) + ".json");
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(temp_path, schema_json,
+                                                       error)) {
+    return false;
+  }
+  out_path->path = std::move(temp_path);
+  return true;
 }
 
 [[nodiscard]] std::string runtime_job_to_json(
@@ -867,20 +979,25 @@ resolve_super_objective_grammar_from_global_config(
       << json_quote(record.source_super_objective_dsl_path) << ","
       << "\"source_campaign_dsl_path\":"
       << json_quote(record.source_campaign_dsl_path) << ","
-      << "\"source_super_objective_prompt_path\":"
-      << json_quote(record.source_super_objective_prompt_path) << ","
+      << "\"source_super_objective_md_path\":"
+      << json_quote(record.source_super_objective_md_path) << ","
+      << "\"source_super_guidance_md_path\":"
+      << json_quote(record.source_super_guidance_md_path) << ","
       << "\"loop_root\":" << json_quote(record.loop_root) << ","
-      << "\"instructions_root\":" << json_quote(record.instructions_root) << ","
       << "\"objective_root\":" << json_quote(record.objective_root) << ","
       << "\"campaign_dsl_path\":" << json_quote(record.campaign_dsl_path) << ","
       << "\"super_objective_dsl_path\":"
       << json_quote(record.super_objective_dsl_path) << ","
-      << "\"super_objective_prompt_path\":"
-      << json_quote(record.super_objective_prompt_path) << ","
-      << "\"config_hero_dsl_path\":"
-      << json_quote(record.config_hero_dsl_path) << ","
+      << "\"super_objective_md_path\":"
+      << json_quote(record.super_objective_md_path) << ","
+      << "\"super_guidance_md_path\":"
+      << json_quote(record.super_guidance_md_path) << ","
+      << "\"config_policy_path\":"
+      << json_quote(record.config_policy_path) << ","
       << "\"briefing_path\":" << json_quote(record.briefing_path) << ","
       << "\"memory_path\":" << json_quote(record.memory_path) << ","
+      << "\"codex_session_id\":"
+      << json_quote(record.codex_session_id) << ","
       << "\"human_request_path\":"
       << json_quote(record.human_request_path) << ","
       << "\"human_response_path\":"
@@ -1166,8 +1283,7 @@ resolve_super_objective_grammar_from_global_config(
                              "family_evaluation_report requires a family "
                              "canonical_path selector plus contract_hash. If the "
                              "family selector is unknown, discover it with "
-                             "hero.lattice.list_facts or "
-                             "hero.hashimyei.list/get_component_manifest first.")
+                             "hero.lattice.list_facts first.")
                       << "}";
   }
   view_queries_json << "]";
@@ -1220,8 +1336,8 @@ resolve_super_objective_grammar_from_global_config(
       << json_quote(
              "For family_evaluation_report, canonical_path should be the family "
              "selector without a hashimyei suffix. If you do not already know "
-             "that selector from the objective, use hero.lattice.list_facts or "
-             "hero.hashimyei.list/get_component_manifest to discover it.")
+             "that selector from the objective, use hero.lattice.list_facts to "
+             "discover it.")
       << "}";
   return out.str();
 }
@@ -1266,6 +1382,8 @@ resolve_super_objective_grammar_from_global_config(
         };
 
     if (!in_block_comment) {
+      line = rewrite_import("IMPORT_CONTRACT", line);
+      line = rewrite_import("FROM", line);
       line = rewrite_import("IMPORT_CONTRACT_FILE", line);
       line = rewrite_import("IMPORT_WAVE_FILE", line);
       line = rewrite_import("SUPER", line);
@@ -1342,7 +1460,8 @@ resolve_super_objective_grammar_from_global_config(
         cuwacunu::camahjucunu::dsl::decode_super_objective_from_dsl(
             grammar_text, objective_text);
     out_spec->campaign_dsl_path = trim_ascii(decoded.campaign_dsl_path);
-    out_spec->objective_prompt_path = trim_ascii(decoded.objective_prompt_path);
+    out_spec->objective_md_path = trim_ascii(decoded.objective_md_path);
+    out_spec->guidance_md_path = trim_ascii(decoded.guidance_md_path);
     out_spec->objective_name = trim_ascii(decoded.objective_name);
     out_spec->loop_id = trim_ascii(decoded.loop_id);
   } catch (const std::exception& e) {
@@ -1360,10 +1479,17 @@ resolve_super_objective_grammar_from_global_config(
     }
     return false;
   }
-  if (out_spec->objective_prompt_path.empty()) {
+  if (out_spec->objective_md_path.empty()) {
     if (error) {
       *error = "super objective '" + super_objective_dsl_path +
-               "' is missing required objective_prompt_path";
+               "' is missing required objective_md_path";
+    }
+    return false;
+  }
+  if (out_spec->guidance_md_path.empty()) {
+    if (error) {
+      *error = "super objective '" + super_objective_dsl_path +
+               "' is missing required guidance_md_path";
     }
     return false;
   }
@@ -1429,7 +1555,13 @@ resolve_requested_super_objective_source_path(
     resolved =
         (source_super_objective_dsl_path.parent_path() / resolved).lexically_normal();
   }
-  if (!path_is_within(source_super_objective_dsl_path.parent_path(), resolved)) {
+  const bool inside_objective_bundle =
+      path_is_within(source_super_objective_dsl_path.parent_path(), resolved);
+  const bool allow_shared_guidance =
+      field_name == "guidance_md_path" &&
+      path_is_within(source_super_objective_dsl_path.parent_path().parent_path().parent_path(),
+                     resolved);
+  if (!inside_objective_bundle && !allow_shared_guidance) {
     if (error) {
       *error = "super objective field " + std::string(field_name) +
                " escapes its objective bundle: " + resolved.string();
@@ -1524,8 +1656,8 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
   int exit_code = -1;
   std::string invoke_error{};
   const bool invoked = run_command_with_stdio_and_timeout(
-      argv, stdin_path, stdout_path, stderr_path, kRuntimeToolTimeoutSec,
-      &exit_code, &invoke_error);
+      argv, stdin_path, stdout_path, stderr_path, nullptr, nullptr,
+      kRuntimeToolTimeoutSec, nullptr, &exit_code, &invoke_error);
 
   std::string stdout_text{};
   std::string stderr_text{};
@@ -1607,17 +1739,47 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
           "campaign_dsl_path", &source_campaign_path, error)) {
     return false;
   }
-  std::filesystem::path source_super_objective_prompt_path{};
+  std::filesystem::path source_super_objective_md_path{};
   if (!resolve_super_objective_member_source_path(
-          source_super_objective_dsl_path,
-          super_objective_spec.objective_prompt_path, "objective_prompt_path",
-          &source_super_objective_prompt_path, error)) {
+          source_super_objective_dsl_path, super_objective_spec.objective_md_path,
+          "objective_md_path", &source_super_objective_md_path, error)) {
+    return false;
+  }
+  std::filesystem::path source_super_guidance_md_path{};
+  if (!resolve_super_objective_member_source_path(
+          source_super_objective_dsl_path, super_objective_spec.guidance_md_path,
+          "guidance_md_path", &source_super_guidance_md_path, error)) {
     return false;
   }
   cuwacunu::camahjucunu::iitepi_campaign_instruction_t ignored_campaign{};
   if (!decode_campaign_snapshot(app, source_campaign_path.string(),
                                 &ignored_campaign, error)) {
     return false;
+  }
+  {
+    std::vector<cuwacunu::hero::super::super_loop_record_t> existing_loops{};
+    std::string scan_error{};
+    if (!cuwacunu::hero::super::scan_super_loop_records(
+            app.defaults.super_root, &existing_loops, &scan_error)) {
+      if (error) *error = scan_error;
+      return false;
+    }
+    const std::filesystem::path normalized_source_super_objective =
+        source_super_objective_dsl_path.lexically_normal();
+    for (const auto& existing : existing_loops) {
+      if (cuwacunu::hero::super::is_super_loop_terminal_state(existing.state)) {
+        continue;
+      }
+      if (std::filesystem::path(existing.source_super_objective_dsl_path)
+              .lexically_normal() == normalized_source_super_objective) {
+        if (error) {
+          *error =
+              "another active super loop already owns this super objective: " +
+              existing.loop_id;
+        }
+        return false;
+      }
+    }
   }
   const std::filesystem::path loop_root =
       cuwacunu::hero::super::super_loop_dir(app.defaults.super_root,
@@ -1634,15 +1796,8 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
 
   const super_loop_workspace_context_t workspace_context =
       make_super_loop_workspace_context(app);
-  const std::filesystem::path loop_instructions_root =
-      cuwacunu::hero::super::super_loop_instructions_root(
-          app.defaults.super_root, loop_id);
-  std::filesystem::path target_objective_root{};
-  if (!copy_super_loop_instruction_bundle(source_super_objective_dsl_path,
-                                          loop_instructions_root,
-                                          &target_objective_root, error)) {
-    return false;
-  }
+  const std::filesystem::path objective_root =
+      source_super_objective_dsl_path.parent_path().lexically_normal();
 
   cuwacunu::hero::super::super_loop_record_t loop{};
   loop.loop_id = loop_id;
@@ -1655,23 +1810,25 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
   loop.global_config_path = app.global_config_path.string();
   loop.source_super_objective_dsl_path = source_super_objective_dsl_path.string();
   loop.source_campaign_dsl_path = source_campaign_path.string();
-  loop.source_super_objective_prompt_path =
-      source_super_objective_prompt_path.string();
+  loop.source_super_objective_md_path = source_super_objective_md_path.string();
+  loop.source_super_guidance_md_path = source_super_guidance_md_path.string();
   loop.loop_root = loop_root.string();
-  loop.instructions_root = loop_instructions_root.string();
-  loop.objective_root = target_objective_root.string();
-  loop.campaign_dsl_path =
-      (target_objective_root / source_campaign_path.filename()).string();
+  loop.objective_root = objective_root.string();
+  loop.campaign_dsl_path = source_campaign_path.lexically_normal().string();
   loop.super_objective_dsl_path =
       cuwacunu::hero::super::super_loop_objective_dsl_path(
           app.defaults.super_root, loop_id)
           .string();
-  loop.super_objective_prompt_path =
-      cuwacunu::hero::super::super_loop_objective_prompt_path(
+  loop.super_objective_md_path =
+      cuwacunu::hero::super::super_loop_objective_md_path(
           app.defaults.super_root, loop_id)
           .string();
-  loop.config_hero_dsl_path =
-      cuwacunu::hero::super::super_loop_config_hero_path(
+  loop.super_guidance_md_path =
+      cuwacunu::hero::super::super_loop_guidance_md_path(
+          app.defaults.super_root, loop_id)
+          .string();
+  loop.config_policy_path =
+      cuwacunu::hero::super::super_loop_config_policy_path(
           app.defaults.super_root, loop_id)
           .string();
   loop.briefing_path =
@@ -1694,10 +1851,10 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
   loop.updated_at_ms = loop.started_at_ms;
   loop.max_reviews = app.defaults.super_max_reviews;
 
-  if (!write_super_loop_bootstrap_files(workspace_context,
-                                        source_super_objective_dsl_path,
-                                        source_super_objective_prompt_path, loop,
-                                        error)) {
+  if (!write_super_loop_bootstrap_files(
+          workspace_context, source_super_objective_dsl_path,
+          source_super_objective_md_path, source_super_guidance_md_path, loop,
+          error)) {
     return false;
   }
   if (!write_super_loop(app, loop, error)) return false;
@@ -1778,8 +1935,9 @@ void persist_super_loop_warning_best_effort(
       << "Operator request:\n" << request << "\n\n"
       << "Key files:\n"
       << "- Loop manifest: " << loop.loop_root << "/loop.lls\n"
-      << "- Review packet: " << loop.loop_root << "/review_packet.latest.json\n"
-      << "- Decision: " << loop.loop_root << "/decision.latest.json\n"
+      << "- Review packet: " << super_loop_latest_review_packet_path(loop).string()
+      << "\n"
+      << "- Decision: " << super_loop_latest_decision_path(loop).string() << "\n"
       << "- Memory: " << loop.memory_path << "\n"
       << "- Events: " << loop.events_path << "\n";
   return cuwacunu::hero::runtime::write_text_file_atomic(loop.human_request_path,
@@ -2015,9 +2173,14 @@ void persist_super_loop_warning_best_effort(
                                                &objective_dsl_text, error)) {
     return false;
   }
-  std::string objective_prompt_text{};
-  if (!cuwacunu::hero::runtime::read_text_file(loop.super_objective_prompt_path,
-                                               &objective_prompt_text, error)) {
+  std::string objective_md_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(loop.super_objective_md_path,
+                                               &objective_md_text, error)) {
+    return false;
+  }
+  std::string guidance_md_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(loop.super_guidance_md_path,
+                                               &guidance_md_text, error)) {
     return false;
   }
   std::string memory_text{};
@@ -2043,20 +2206,23 @@ void persist_super_loop_warning_best_effort(
       << "Sovereignty:\n"
       << "- Super Hero owns the loop ledger and the continue/stop decision.\n"
       << "- Runtime Hero executes campaigns only.\n"
-      << "- Config Hero is the only writer for loop-local objective DSL changes.\n"
+      << "- Config Hero is the only writer for objective DSL changes.\n"
       << "- Hashimyei and Lattice are read-only evidence surfaces in this session.\n\n"
       << "Primary files:\n"
       << "- Super objective DSL: " << loop.super_objective_dsl_path << "\n"
-      << "- Super objective prompt: " << loop.super_objective_prompt_path << "\n"
+      << "- Super objective markdown: " << loop.super_objective_md_path << "\n"
+      << "- Super guidance markdown: " << loop.super_guidance_md_path << "\n"
       << "- Super Hero loop manifest: " << loop.loop_root << "/loop.lls\n"
-      << "- Config Hero policy: " << loop.config_hero_dsl_path << "\n"
+      << "- Config Hero policy: " << loop.config_policy_path << "\n"
       << "- Memory: " << loop.memory_path << "\n"
       << "- Review packet: "
       << super_loop_latest_review_packet_path(loop).string() << "\n"
       << "- Human request artifact: " << loop.human_request_path << "\n"
-      << "- Copied instructions root: " << loop.instructions_root << "\n"
       << "- Mutable objective root: " << loop.objective_root << "\n\n"
       << "The review packet includes phase = prelaunch or postcampaign.\n\n"
+      << "Interpret the authored markdown in this order:\n"
+      << "- objective markdown = what the loop is trying to achieve\n"
+      << "- guidance markdown = authored boundaries plus advisory heuristics; prefer stronger evidence when the guidance is not a hard rule\n\n"
       << "Available MCP tools in this review session:\n"
       << "- hero.config.objective_dsl.read\n"
       << "- hero.config.objective_dsl.replace\n"
@@ -2067,28 +2233,26 @@ void persist_super_loop_warning_best_effort(
       << "- hero.runtime.list_jobs\n"
       << "- hero.runtime.tail_log\n"
       << "- hero.runtime.tail_trace\n"
-      << "- hero.hashimyei.list\n"
-      << "- hero.hashimyei.get_component_manifest\n"
-      << "- hero.hashimyei.get_founding_dsl_bundle\n"
       << "- hero.lattice.list_facts\n"
       << "- hero.lattice.get_fact\n"
       << "- hero.lattice.list_views\n"
       << "- hero.lattice.get_view\n\n"
       << "Rules:\n"
       << "1. Work in read-only shell mode. Do not edit files directly.\n"
-      << "2. Use Config Hero objective_dsl.read/replace for loop-local objective DSL mutation.\n"
-      << "3. Use Config Hero objective_campaign.read/replace when the copied campaign plan itself must change.\n"
-      << "4. Pass objective_root=" << loop.objective_root
+      << "2. Do not use hero.hashimyei.* tools in this review session; prefer review_packet evidence plus hero.lattice.* queries.\n"
+      << "3. Use Config Hero objective_dsl.read/replace for objective DSL mutation.\n"
+      << "4. Use Config Hero objective_campaign.read/replace when the objective campaign plan itself must change.\n"
+      << "5. Pass objective_root=" << loop.objective_root
       << " to those Config Hero tools.\n"
-      << "5. Prefer whole-file replace with expected_sha256 from the prior read.\n"
-      << "6. Never mutate the copied super.objective.dsl constitution or files outside the mutable objective root.\n"
-      << "7. Prefer the review packet first, then hero.lattice.get_view/get_fact for semantic evidence.\n"
-      << "8. Use hero.lattice.list_views/list_facts to discover selectors; family_evaluation_report requires a family canonical_path plus contract_hash.\n"
-      << "9. Use Runtime get/tail tools mainly for operational debugging such as launch failures, missing logs, or abnormal traces.\n"
-      << "10. Shell exec is unavailable in this environment. Prefer the embedded review packet, memory, and copied campaign contents below; use MCP tools instead of shell reads.\n"
-      << "11. If you change any loop-local objective or campaign DSL, describe the actual changes in memory_note.\n"
-      << "12. Prefer stopping or need_human when evidence is weak or authority would need to widen.\n"
-      << "13. Return only JSON matching the provided output schema.\n\n"
+      << "6. Prefer whole-file replace with expected_sha256 from the prior read.\n"
+      << "7. Never mutate the source super.objective.dsl constitution or files outside the mutable objective root.\n"
+      << "8. Prefer the review packet first, then hero.lattice.get_view/get_fact for semantic evidence.\n"
+      << "9. Use hero.lattice.list_views/list_facts to discover selectors; family_evaluation_report requires a family canonical_path plus contract_hash.\n"
+      << "10. Use Runtime get/tail tools mainly for operational debugging such as launch failures, missing logs, or abnormal traces.\n"
+      << "11. Shell exec is unavailable in this environment. Prefer the embedded review packet, memory, and objective campaign contents below; use MCP tools instead of shell reads.\n"
+      << "12. If you change any objective or campaign DSL, describe the actual changes in memory_note.\n"
+      << "13. Prefer stopping or need_human when evidence is weak or authority would need to widen.\n"
+      << "14. Return only JSON matching the provided output schema.\n\n"
       << "Decision contract:\n"
       << "- control_kind = continue | stop | need_human\n"
       << "- Always include next_action with kind = none | default_plan | binding\n"
@@ -2103,9 +2267,13 @@ void persist_super_loop_warning_best_effort(
     out << "\nSuper objective DSL contents:\n" << objective_dsl_text;
     if (objective_dsl_text.back() != '\n') out << "\n";
   }
-  if (!trim_ascii(objective_prompt_text).empty()) {
-    out << "\nSuper objective prompt contents:\n" << objective_prompt_text;
-    if (objective_prompt_text.back() != '\n') out << "\n";
+  if (!trim_ascii(objective_md_text).empty()) {
+    out << "\nSuper objective markdown contents:\n" << objective_md_text;
+    if (objective_md_text.back() != '\n') out << "\n";
+  }
+  if (!trim_ascii(guidance_md_text).empty()) {
+    out << "\nSuper guidance markdown contents:\n" << guidance_md_text;
+    if (guidance_md_text.back() != '\n') out << "\n";
   }
   if (!trim_ascii(memory_text).empty()) {
     out << "\nMemory contents:\n" << memory_text;
@@ -2116,7 +2284,7 @@ void persist_super_loop_warning_best_effort(
     if (review_packet_text.back() != '\n') out << "\n";
   }
   if (!trim_ascii(campaign_text).empty()) {
-    out << "\nCopied campaign DSL contents:\n" << campaign_text;
+    out << "\nObjective campaign DSL contents:\n" << campaign_text;
     if (campaign_text.back() != '\n') out << "\n";
   }
   return cuwacunu::hero::runtime::write_text_file_atomic(loop.briefing_path,
@@ -2126,7 +2294,10 @@ void persist_super_loop_warning_best_effort(
 [[nodiscard]] bool run_command_with_stdio_and_timeout(
     const std::vector<std::string>& argv, const std::filesystem::path& stdin_path,
     const std::filesystem::path& stdout_path,
-    const std::filesystem::path& stderr_path, std::size_t timeout_sec,
+    const std::filesystem::path& stderr_path,
+    const std::filesystem::path* working_dir,
+    const std::vector<std::pair<std::string, std::string>>* env_overrides,
+    std::size_t timeout_sec, const std::filesystem::path* pid_path,
     int* out_exit_code, std::string* error) {
   if (error) error->clear();
   if (argv.empty()) {
@@ -2134,6 +2305,7 @@ void persist_super_loop_warning_best_effort(
     return false;
   }
   if (out_exit_code) *out_exit_code = -1;
+  if (pid_path != nullptr && !pid_path->empty()) remove_file_noexcept(*pid_path);
 
   std::error_code ec{};
   if (!std::filesystem::exists(stdin_path, ec) ||
@@ -2141,13 +2313,21 @@ void persist_super_loop_warning_best_effort(
     if (error) *error = "command stdin path does not exist: " + stdin_path.string();
     return false;
   }
-  const int stdout_probe =
-      ::open(stdout_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (stdout_probe < 0) {
-    if (error) *error = "cannot open stdout path for command: " + stdout_path.string();
+  if (!stdout_path.empty()) {
+    const int stdout_probe =
+        ::open(stdout_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (stdout_probe < 0) {
+      if (error) {
+        *error = "cannot open stdout path for command: " + stdout_path.string();
+      }
+      return false;
+    }
+    (void)::close(stdout_probe);
+  }
+  if (stderr_path.empty()) {
+    if (error) *error = "command stderr path is empty";
     return false;
   }
-  (void)::close(stdout_probe);
   const int stderr_probe =
       ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (stderr_probe < 0) {
@@ -2163,12 +2343,24 @@ void persist_super_loop_warning_best_effort(
   }
   if (child == 0) {
     (void)::setpgid(0, 0);
+    if (working_dir != nullptr && !working_dir->empty() &&
+        ::chdir(working_dir->c_str()) != 0) {
+      _exit(125);
+    }
+    if (env_overrides != nullptr) {
+      for (const auto& [key, value] : *env_overrides) {
+        if (key.empty()) continue;
+        if (::setenv(key.c_str(), value.c_str(), 1) != 0) _exit(125);
+      }
+    }
     const int stdin_fd = ::open(stdin_path.c_str(), O_RDONLY);
     if (stdin_fd < 0) _exit(126);
     (void)::dup2(stdin_fd, STDIN_FILENO);
     if (stdin_fd > STDERR_FILENO) (void)::close(stdin_fd);
+    const char* stdout_target =
+        stdout_path.empty() ? "/dev/null" : stdout_path.c_str();
     const int stdout_fd =
-        ::open(stdout_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        ::open(stdout_target, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (stdout_fd < 0) _exit(126);
     (void)::dup2(stdout_fd, STDOUT_FILENO);
     if (stdout_fd > STDERR_FILENO) (void)::close(stdout_fd);
@@ -2187,6 +2379,22 @@ void persist_super_loop_warning_best_effort(
     _exit(127);
   }
 
+  if (pid_path != nullptr && !pid_path->empty()) {
+    std::string pid_error{};
+    if (!cuwacunu::hero::runtime::write_text_file_atomic(
+            *pid_path, std::to_string(static_cast<long long>(child)),
+            &pid_error)) {
+      (void)::kill(-child, SIGKILL);
+      (void)::kill(child, SIGKILL);
+      (void)::waitpid(child, nullptr, 0);
+      if (error) {
+        *error = "cannot persist review pid path " + pid_path->string() +
+                 ": " + pid_error;
+      }
+      return false;
+    }
+  }
+
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(timeout_sec);
   int status = 0;
@@ -2197,6 +2405,7 @@ void persist_super_loop_warning_best_effort(
       if (error) *error = "waitpid failed for command execution";
       (void)::kill(-child, SIGKILL);
       (void)::waitpid(child, nullptr, 0);
+      if (pid_path != nullptr && !pid_path->empty()) remove_file_noexcept(*pid_path);
       return false;
     }
     if (std::chrono::steady_clock::now() >= deadline) {
@@ -2204,10 +2413,13 @@ void persist_super_loop_warning_best_effort(
       (void)::kill(child, SIGKILL);
       (void)::waitpid(child, nullptr, 0);
       if (error) *error = "command timed out";
+      if (pid_path != nullptr && !pid_path->empty()) remove_file_noexcept(*pid_path);
       return false;
     }
     ::usleep(100 * 1000);
   }
+
+  if (pid_path != nullptr && !pid_path->empty()) remove_file_noexcept(*pid_path);
 
   if (WIFEXITED(status)) {
     if (out_exit_code) *out_exit_code = WEXITSTATUS(status);
@@ -2344,14 +2556,16 @@ void persist_super_loop_warning_best_effort(
       << ",\"human_request_path\":" << json_quote(loop.human_request_path)
       << ",\"super_objective_dsl_path\":"
       << json_quote(loop.super_objective_dsl_path)
-      << ",\"super_objective_prompt_path\":"
-      << json_quote(loop.super_objective_prompt_path)
-      << ",\"config_hero_dsl_path\":"
-      << json_quote(loop.config_hero_dsl_path)
+      << ",\"super_objective_md_path\":"
+      << json_quote(loop.super_objective_md_path)
+      << ",\"super_guidance_md_path\":"
+      << json_quote(loop.super_guidance_md_path)
+      << ",\"config_policy_path\":"
+      << json_quote(loop.config_policy_path)
       << ",\"briefing_path\":" << json_quote(loop.briefing_path)
       << ",\"mutable_objective_root\":"
       << json_quote(loop.objective_root)
-      << ",\"copied_campaign_dsl_path\":"
+      << ",\"objective_campaign_dsl_path\":"
       << json_quote(loop.campaign_dsl_path)
       << ",\"objective_root\":" << json_quote(loop.objective_root)
       << ",\"campaigns_root\":"
@@ -2434,14 +2648,16 @@ void persist_super_loop_warning_best_effort(
       << ",\"human_request_path\":" << json_quote(loop.human_request_path)
       << ",\"super_objective_dsl_path\":"
       << json_quote(loop.super_objective_dsl_path)
-      << ",\"super_objective_prompt_path\":"
-      << json_quote(loop.super_objective_prompt_path)
-      << ",\"config_hero_dsl_path\":"
-      << json_quote(loop.config_hero_dsl_path)
+      << ",\"super_objective_md_path\":"
+      << json_quote(loop.super_objective_md_path)
+      << ",\"super_guidance_md_path\":"
+      << json_quote(loop.super_guidance_md_path)
+      << ",\"config_policy_path\":"
+      << json_quote(loop.config_policy_path)
       << ",\"briefing_path\":" << json_quote(loop.briefing_path)
       << ",\"mutable_objective_root\":"
       << json_quote(loop.objective_root)
-      << ",\"copied_campaign_dsl_path\":"
+      << ",\"objective_campaign_dsl_path\":"
       << json_quote(loop.campaign_dsl_path)
       << ",\"objective_root\":" << json_quote(loop.objective_root)
       << ",\"campaigns_root\":"
@@ -2533,36 +2749,39 @@ void persist_super_loop_warning_best_effort(
 
 [[nodiscard]] bool run_super_review_with_codex(
     const app_context_t& app,
-    const cuwacunu::hero::super::super_loop_record_t& loop,
+    cuwacunu::hero::super::super_loop_record_t* loop,
     std::uint64_t review_index, super_review_decision_t* out_decision,
-    std::string* error) {
+    std::string* out_warning, std::string* error) {
   if (error) error->clear();
+  if (out_warning) out_warning->clear();
+  if (!loop) {
+    if (error) *error = "super loop pointer is null";
+    return false;
+  }
   if (!out_decision) {
     if (error) *error = "super decision output pointer is null";
     return false;
   }
-  const std::filesystem::path decision_schema_path =
-      super_loop_decision_schema_path(loop);
-  if (!cuwacunu::hero::runtime::write_text_file_atomic(
-          decision_schema_path, super_decision_schema_json(), error)) {
+  scoped_temp_path_t decision_schema_path{};
+  if (!write_temp_super_decision_schema(super_decision_schema_json(),
+                                        &decision_schema_path, error)) {
     return false;
   }
   const super_loop_workspace_context_t workspace_context =
       make_super_loop_workspace_context(app);
-  if (!refresh_super_loop_config_hero_dsl(workspace_context, loop, error)) {
+  if (!refresh_super_loop_config_policy_dsl(workspace_context, *loop, error)) {
     return false;
   }
-  if (!rewrite_super_loop_briefing(app, loop, error)) return false;
+  if (!rewrite_super_loop_briefing(app, *loop, error)) return false;
 
   const std::filesystem::path decision_path =
       cuwacunu::hero::super::super_loop_decision_path(
-          app.defaults.super_root, loop.loop_id, review_index);
+          app.defaults.super_root, loop->loop_id, review_index);
   const std::string config_args = json_array_from_strings(
       {"--global-config", app.global_config_path.string(), "--config",
-       loop.config_hero_dsl_path});
+       loop->config_policy_path});
   const std::string runtime_args = json_array_from_strings(
       {"--global-config", app.global_config_path.string()});
-  const std::string hashimyei_args = runtime_args;
   const std::string lattice_args = runtime_args;
   const std::string enabled_config_tools = json_array_from_strings(
       {"hero.config.objective_dsl.read", "hero.config.objective_dsl.replace",
@@ -2572,94 +2791,191 @@ void persist_super_loop_warning_best_effort(
       {"hero.runtime.get_campaign", "hero.runtime.get_job",
        "hero.runtime.list_jobs", "hero.runtime.tail_log",
        "hero.runtime.tail_trace"});
-  const std::string enabled_hashimyei_tools = json_array_from_strings(
-      {"hero.hashimyei.list", "hero.hashimyei.get_component_manifest",
-       "hero.hashimyei.get_founding_dsl_bundle"});
   const std::string enabled_lattice_tools = json_array_from_strings(
       {"hero.lattice.list_facts", "hero.lattice.get_fact",
        "hero.lattice.list_views", "hero.lattice.get_view"});
 
-  std::vector<std::string> argv{
-      app.defaults.super_codex_binary.string(),
-      "exec",
-      "-C",
-      app.defaults.repo_root.string(),
-      "-s",
-      "read-only",
-      "--color",
-      "never",
-      "-c",
-      "mcp_servers.hero-config.enabled=true",
-      "-c",
-      "mcp_servers.hero-config.command=" +
-          json_quote(app.defaults.config_hero_binary.string()),
-      "-c",
-      "mcp_servers.hero-config.args=" + config_args,
-      "-c",
-      "mcp_servers.hero-config.enabled_tools=" + enabled_config_tools,
-      "-c",
-      "mcp_servers.hero-config.startup_timeout_sec=30",
-      "-c",
-      "mcp_servers.hero-runtime.enabled=true",
-      "-c",
-      "mcp_servers.hero-runtime.command=" +
-          json_quote(app.defaults.runtime_hero_binary.string()),
-      "-c",
-      "mcp_servers.hero-runtime.args=" + runtime_args,
-      "-c",
-      "mcp_servers.hero-runtime.enabled_tools=" + enabled_runtime_tools,
-      "-c",
-      "mcp_servers.hero-runtime.startup_timeout_sec=30",
-      "-c",
-      "mcp_servers.hero-hashimyei.enabled=true",
-      "-c",
-      "mcp_servers.hero-hashimyei.command=" +
-          json_quote(app.defaults.hashimyei_hero_binary.string()),
-      "-c",
-      "mcp_servers.hero-hashimyei.args=" + hashimyei_args,
-      "-c",
-      "mcp_servers.hero-hashimyei.enabled_tools=" + enabled_hashimyei_tools,
-      "-c",
-      "mcp_servers.hero-hashimyei.startup_timeout_sec=30",
-      "-c",
-      "mcp_servers.hero-lattice.enabled=true",
-      "-c",
-      "mcp_servers.hero-lattice.command=" +
-          json_quote(app.defaults.lattice_hero_binary.string()),
-      "-c",
-      "mcp_servers.hero-lattice.args=" + lattice_args,
-      "-c",
-      "mcp_servers.hero-lattice.enabled_tools=" + enabled_lattice_tools,
-      "-c",
-      "mcp_servers.hero-lattice.startup_timeout_sec=30",
-      "--output-schema",
-      decision_schema_path.string(),
-      "-o",
-      decision_path.string(),
-      "-"};
-  int exit_code = -1;
-  if (!run_command_with_stdio_and_timeout(
-          argv, loop.briefing_path, super_loop_codex_stdout_path(loop),
-          super_loop_codex_stderr_path(loop),
-          app.defaults.super_codex_timeout_sec, &exit_code, error)) {
-    return false;
-  }
-  if (exit_code != 0) {
-    if (error) {
-      *error = "codex exec failed with exit_code=" + std::to_string(exit_code);
+  auto append_common_codex_mcp_args = [&](std::vector<std::string>* argv) {
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.enabled=true");
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.command=" +
+                    json_quote(app.defaults.config_hero_binary.string()));
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.args=" + config_args);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.enabled_tools=" +
+                    enabled_config_tools);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.startup_timeout_sec=30");
+
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.enabled=true");
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.command=" +
+                    json_quote(app.defaults.runtime_hero_binary.string()));
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.args=" + runtime_args);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.enabled_tools=" +
+                    enabled_runtime_tools);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.startup_timeout_sec=30");
+
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.enabled=true");
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.command=" +
+                    json_quote(app.defaults.lattice_hero_binary.string()));
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.args=" + lattice_args);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.enabled_tools=" +
+                    enabled_lattice_tools);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.startup_timeout_sec=30");
+  };
+
+  auto load_decision_text = [&](std::string* out_text,
+                                std::string* out_err) -> bool {
+    if (!out_text) {
+      if (out_err) *out_err = "decision output pointer is null";
+      return false;
     }
-    return false;
-  }
+    out_text->clear();
+    return cuwacunu::hero::runtime::read_text_file(decision_path, out_text,
+                                                   out_err);
+  };
+
+  auto load_session_id_from_stderr = [&](std::string* out_session_id) -> bool {
+    if (!out_session_id) return false;
+    out_session_id->clear();
+    std::string stderr_text{};
+    std::string ignored{};
+    if (!cuwacunu::hero::runtime::read_text_file(
+            super_loop_codex_session_log_path(*loop), &stderr_text, &ignored)) {
+      return false;
+    }
+    *out_session_id = extract_codex_session_id_from_log(stderr_text);
+    return !out_session_id->empty();
+  };
+
+  auto run_codex_attempt = [&](bool resume_mode, std::string* out_decision_text,
+                               std::string* out_session_id,
+                               std::string* out_attempt_error) -> bool {
+    if (out_attempt_error) out_attempt_error->clear();
+    if (out_decision_text) out_decision_text->clear();
+    if (out_session_id) out_session_id->clear();
+
+    std::vector<std::string> argv{};
+    argv.reserve(64);
+    argv.push_back(app.defaults.super_codex_binary.string());
+    argv.push_back("exec");
+    if (resume_mode) {
+      argv.push_back("resume");
+    } else {
+      argv.push_back("-s");
+      argv.push_back("read-only");
+      argv.push_back("--color");
+      argv.push_back("never");
+    }
+    append_common_codex_mcp_args(&argv);
+    if (!resume_mode) {
+      argv.push_back("--output-schema");
+      argv.push_back(decision_schema_path.path.string());
+    }
+    argv.push_back("-o");
+    argv.push_back(decision_path.string());
+    if (resume_mode) {
+      argv.push_back(loop->codex_session_id);
+    }
+    argv.push_back("-");
+
+    int exit_code = -1;
+    std::string invoke_error{};
+    const std::filesystem::path review_pid_path =
+        super_loop_review_pid_path(*loop);
+    if (!run_command_with_stdio_and_timeout(
+            argv, loop->briefing_path, {},
+            super_loop_codex_session_log_path(*loop), &app.defaults.repo_root,
+            nullptr, app.defaults.super_codex_timeout_sec, &review_pid_path,
+            &exit_code,
+            &invoke_error)) {
+      if (out_attempt_error) {
+        *out_attempt_error = resume_mode
+                                 ? "codex exec resume failed: " + invoke_error
+                                 : "codex exec failed: " + invoke_error;
+      }
+      return false;
+    }
+    if (exit_code != 0) {
+      if (out_attempt_error) {
+        *out_attempt_error =
+            std::string(resume_mode ? "codex exec resume failed with exit_code="
+                                    : "codex exec failed with exit_code=") +
+            std::to_string(exit_code);
+      }
+      return false;
+    }
+    if (!load_decision_text(out_decision_text, out_attempt_error)) return false;
+    (void)load_session_id_from_stderr(out_session_id);
+    return true;
+  };
+
   std::string decision_text{};
-  if (!cuwacunu::hero::runtime::read_text_file(decision_path, &decision_text,
-                                               error)) {
-    return false;
+  std::string parsed_session_id{};
+  bool decision_ready = false;
+  const bool had_prior_session = !trim_ascii(loop->codex_session_id).empty();
+  if (had_prior_session) {
+    std::string resume_error{};
+    std::string resume_decision_text{};
+    std::string resumed_session_id{};
+    if (run_codex_attempt(true, &resume_decision_text, &resumed_session_id,
+                          &resume_error)) {
+      if (parse_super_review_decision(resume_decision_text, out_decision,
+                                      &resume_error)) {
+        decision_text = std::move(resume_decision_text);
+        if (!resumed_session_id.empty()) {
+          loop->codex_session_id = resumed_session_id;
+        }
+        decision_ready = true;
+      } else if (out_warning) {
+        append_warning_text(
+            out_warning,
+            "codex resume degraded: decision parse failed; retrying fresh review (" +
+                resume_error + ")");
+      }
+    } else if (out_warning) {
+      append_warning_text(out_warning,
+                          "codex resume degraded: " + resume_error +
+                              "; retrying fresh review");
+    }
   }
-  if (!parse_super_review_decision(decision_text, out_decision, error)) {
-    return false;
+
+  if (!decision_ready) {
+    std::string fresh_error{};
+    if (!run_codex_attempt(false, &decision_text, &parsed_session_id,
+                           &fresh_error)) {
+      if (error) *error = fresh_error;
+      return false;
+    }
+    if (!parse_super_review_decision(decision_text, out_decision, error)) {
+      return false;
+    }
+    if (!parsed_session_id.empty()) {
+      loop->codex_session_id = parsed_session_id;
+    } else {
+      loop->codex_session_id.clear();
+      if (out_warning) {
+        append_warning_text(
+            out_warning,
+            "fresh codex review completed without a persisted session id; future reviews will start fresh");
+      }
+    }
   }
+
   if (!cuwacunu::hero::runtime::write_text_file_atomic(
-          super_loop_latest_decision_path(loop), decision_text, error)) {
+          super_loop_latest_decision_path(*loop), decision_text, error)) {
     return false;
   }
   return true;
@@ -2738,7 +3054,17 @@ void persist_super_loop_warning_best_effort(
   }
 
   super_review_decision_t decision{};
-  if (!run_super_review_with_codex(*app, loop, review_index, &decision, error)) {
+  std::string review_warning{};
+  if (!run_super_review_with_codex(*app, &loop, review_index, &decision,
+                                   &review_warning, error)) {
+    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
+    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
+      if (out_warning) {
+        append_warning_text(out_warning,
+                            "review interrupted after loop became terminal");
+      }
+      return true;
+    }
     loop.state = "failed";
     loop.state_detail = *error;
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
@@ -2749,6 +3075,14 @@ void persist_super_loop_warning_best_effort(
     return false;
   }
   if (!validate_super_review_decision_action(*app, loop, decision, error)) {
+    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
+    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
+      if (out_warning) {
+        append_warning_text(out_warning,
+                            "review validation interrupted after loop became terminal");
+      }
+      return true;
+    }
     loop.state = "failed";
     loop.state_detail = *error;
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
@@ -2763,6 +3097,7 @@ void persist_super_loop_warning_best_effort(
   loop.review_count = review_index;
   loop.last_control_kind = decision.control_kind;
   loop.last_warning.clear();
+  if (!review_warning.empty()) append_warning_text(&loop.last_warning, review_warning);
   loop.last_decision_path =
       cuwacunu::hero::super::super_loop_decision_path(
           app->defaults.super_root, loop.loop_id, review_index)
@@ -2796,6 +3131,9 @@ void persist_super_loop_warning_best_effort(
       persist_super_loop_warning_best_effort(*app, &loop, warning);
       if (out_warning) *out_warning = warning;
     }
+    if (!review_warning.empty()) {
+      if (out_warning) append_warning_text(out_warning, review_warning);
+    }
     return true;
   }
 
@@ -2817,6 +3155,10 @@ void persist_super_loop_warning_best_effort(
   }
   if (!runtime_warning.empty()) {
     if (out_warning) append_warning_text(out_warning, runtime_warning);
+  }
+  if (!review_warning.empty()) {
+    persist_super_loop_warning_best_effort(*app, &loop, review_warning);
+    if (out_warning) append_warning_text(out_warning, review_warning);
   }
   return true;
 }
@@ -3056,8 +3398,20 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
   }
 
   super_review_decision_t decision{};
-  if (!run_super_review_with_codex(*app, loop, review_index, &decision,
-                                   out_error)) {
+  std::string review_warning{};
+  if (!run_super_review_with_codex(*app, &loop, review_index, &decision,
+                                   &review_warning, out_error)) {
+    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
+    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
+      loop = std::move(terminal_loop);
+      warnings.push_back("review interrupted after loop became terminal");
+      *out_structured =
+          "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"loop\":" +
+          super_loop_to_json(loop) +
+          ",\"campaign_cursor\":\"\",\"campaign\":null,\"warnings\":" +
+          json_array_from_strings(warnings) + "}";
+      return true;
+    }
     loop.state = "failed";
     loop.state_detail = *out_error;
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
@@ -3068,6 +3422,17 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
     return false;
   }
   if (!validate_super_review_decision_action(*app, loop, decision, out_error)) {
+    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
+    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
+      loop = std::move(terminal_loop);
+      warnings.push_back("review validation interrupted after loop became terminal");
+      *out_structured =
+          "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"loop\":" +
+          super_loop_to_json(loop) +
+          ",\"campaign_cursor\":\"\",\"campaign\":null,\"warnings\":" +
+          json_array_from_strings(warnings) + "}";
+      return true;
+    }
     loop.state = "failed";
     loop.state_detail = *out_error;
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
@@ -3082,6 +3447,7 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
   loop.review_count = review_index;
   loop.last_control_kind = decision.control_kind;
   loop.last_warning.clear();
+  if (!review_warning.empty()) append_warning_text(&loop.last_warning, review_warning);
   loop.last_decision_path =
       cuwacunu::hero::super::super_loop_decision_path(
           app->defaults.super_root, loop.loop_id, review_index)
@@ -3115,6 +3481,7 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
       warnings.push_back(warning);
       persist_super_loop_warning_best_effort(*app, &loop, warning);
     }
+    if (!review_warning.empty()) warnings.push_back(review_warning);
     *out_structured =
         "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"loop\":" +
         super_loop_to_json(loop) + ",\"campaign_cursor\":\"\",\"campaign\":null"
@@ -3137,6 +3504,7 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
     return false;
   }
   if (!launch_warning.empty()) warnings.push_back(launch_warning);
+  if (!review_warning.empty()) warnings.push_back(review_warning);
 
   std::string bookkeeping_error{};
   if (!launch_loop_runner_process(*app, loop.loop_id, &bookkeeping_error)) {
@@ -3289,6 +3657,7 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
   }
 
   std::string runtime_warning{};
+  cancel_loop_review_best_effort(loop, force, &runtime_warning);
   if (!active_campaign_cursor.empty()) {
     std::string ignored{};
     std::string runtime_error{};
@@ -3338,13 +3707,15 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
 
   const std::filesystem::path response_path =
       trim_ascii(response_path_arg).empty()
-          ? super_loop_latest_human_response_path(loop)
+          ? cuwacunu::hero::super::super_loop_human_response_latest_path(
+                app->defaults.super_root, loop.loop_id)
           : std::filesystem::path(resolve_path_from_base_folder(
                 app->global_config_path.parent_path().string(),
                 trim_ascii(response_path_arg)));
   const std::filesystem::path response_sig_path =
       trim_ascii(response_sig_path_arg).empty()
-          ? super_loop_latest_human_response_sig_path(loop)
+          ? cuwacunu::hero::super::super_loop_human_response_latest_sig_path(
+                app->defaults.super_root, loop.loop_id)
           : std::filesystem::path(resolve_path_from_base_folder(
                 app->global_config_path.parent_path().string(),
                 trim_ascii(response_sig_path_arg)));
@@ -3547,7 +3918,6 @@ bool load_super_defaults(const std::filesystem::path& hero_dsl_path,
   bool ok = true;
   ok = resolve_exec("runtime_hero_binary", &out->runtime_hero_binary) && ok;
   ok = resolve_exec("config_hero_binary", &out->config_hero_binary) && ok;
-  ok = resolve_exec("hashimyei_hero_binary", &out->hashimyei_hero_binary) && ok;
   ok = resolve_exec("lattice_hero_binary", &out->lattice_hero_binary) && ok;
   ok = resolve_exec("super_codex_binary", &out->super_codex_binary) && ok;
   if (!ok) {

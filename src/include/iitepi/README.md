@@ -17,7 +17,7 @@ The public dispatcher is now campaign-oriented:
 - runtime execution/training policy
 
 3. Campaign
-- imports contract files and wave files
+- imports named contract ids and named wave ids from files
 - declares reusable `BIND` entries
 - declares the default ordered `RUN <bind_id>;` plan
 
@@ -53,7 +53,7 @@ The public dispatcher is now campaign-oriented:
 - `CIRCUIT_FILE: ...;`
 - `AKNOWLEDGE: <alias> = <tsi family>;`
 
-2. `default.iitepi.contract.circuit.dsl`
+2. `default.iitepi.circuit.dsl`
 - TSI instances and hops
 - one or more named compatible circuits
 
@@ -68,8 +68,8 @@ The public dispatcher is now campaign-oriented:
 
 4. `default.iitepi.campaign.dsl`
 - `CAMPAIGN { ... }`
-- `IMPORT_CONTRACT_FILE`
-- `IMPORT_WAVE_FILE`
+- `IMPORT_CONTRACT "<contract_file>" AS <contract_alias>;`
+- `FROM "<wave_file>" IMPORT_WAVE <wave_id>;`
 - `BIND <id> { __var = value; CONTRACT = ...; WAVE = ...; }`
 - ordered `RUN <bind_id>;`
 
@@ -94,10 +94,10 @@ The public dispatcher is now campaign-oriented:
 - observation/channel DSL selection is contract-owned through contract
   `__variables`, while source symbol and date range remain wave-local runtime
   scope
-- the checked-in defaults treat only public docking widths as contract-owned
+- the checked-in defaults keep public docking widths contract-owned
   (`__obs_channels`, `__obs_seq_length`, `__obs_feature_dim`,
-  `__embedding_dims`); private VICReg encoder/projector widths live in the
-  VICReg DSLs
+  `__embedding_dims`) and may also expose selected private `__vicreg_*`
+  architecture knobs when the bundle wants explicit contract-level defaults
 - contract snapshots also derive an explicit docking signature from the
   compatible circuit set, contract `__variables`, and docking-bearing contract
   DSL surfaces; the public docking digest includes the circuit, VICReg

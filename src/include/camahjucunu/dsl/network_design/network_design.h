@@ -32,7 +32,7 @@ struct network_design_export_t {
 
 struct network_design_instruction_t {
   std::string network_id{};
-  std::string join_policy{};
+  std::string assembly_tag{};
   std::vector<network_design_node_t> nodes{};
   std::vector<network_design_export_t> exports{};
 

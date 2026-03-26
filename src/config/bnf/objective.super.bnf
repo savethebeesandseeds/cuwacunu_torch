@@ -2,7 +2,8 @@
 <line_list>                 ::= <line> [<line_list>] ;
 
 <line>                      ::= <campaign_line>
-                              | <prompt_line>
+                              | <objective_md_line>
+                              | <guidance_md_line>
                               | <name_line>
                               | <loop_id_line>
                               | <blank_line> ;
@@ -12,7 +13,12 @@
                                 [<whitespace>] "=" [<whitespace>] <value>
                                 [<whitespace>] [ ";" ] <line_end> ;
 
-<prompt_line>               ::= [<whitespace>] "objective_prompt_path"
+<objective_md_line>         ::= [<whitespace>] "objective_md_path"
+                                [<whitespace>] ":" [<whitespace>] "path"
+                                [<whitespace>] "=" [<whitespace>] <value>
+                                [<whitespace>] [ ";" ] <line_end> ;
+
+<guidance_md_line>          ::= [<whitespace>] "guidance_md_path"
                                 [<whitespace>] ":" [<whitespace>] "path"
                                 [<whitespace>] "=" [<whitespace>] <value>
                                 [<whitespace>] [ ";" ] <line_end> ;

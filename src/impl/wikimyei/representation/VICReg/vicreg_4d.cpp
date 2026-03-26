@@ -340,7 +340,10 @@ VICReg_4D::init_from_contract_t resolve_init_from_contract_or_throw(
   out.optimizer_threshold_reset = -1;
   out.enable_buffer_averaging =
       snapshot->get<bool>("VICReg", "enable_buffer_averaging");
-  if (!snapshot->vicreg_network_design.has_payload()) return out;
+  if (!snapshot->vicreg_network_design.has_payload()) {
+    throw std::runtime_error(
+        "[VICReg_4D] missing required network_design payload in contract");
+  }
 
   const auto& ir = snapshot->vicreg_network_design.decoded();
   const auto resolved_design = resolve_vicreg_network_design_or_throw(
@@ -355,14 +358,14 @@ VICReg_4D::init_from_contract_t resolve_init_from_contract_or_throw(
   out.projector_mlp_spec = resolved_design.torch_adapter.projector_mlp_spec;
   out.projector_options_override = resolved_design.torch_adapter.projector_options;
   out.network_design_network_id = semantic.network_id;
-  out.network_design_join_policy = semantic.join_policy;
+  out.network_design_assembly_tag = semantic.assembly_tag;
   out.network_design_grammar = snapshot->vicreg_network_design.grammar;
   out.network_design_dsl = snapshot->vicreg_network_design.dsl;
 
   log_dbg(
-      "[VICReg_4D] network_design loaded for `%s` (join_policy=%s)\n",
+      "[VICReg_4D] network_design loaded for `%s` (assembly_tag=%s)\n",
       semantic.network_id.c_str(),
-      semantic.join_policy.c_str());
+      semantic.assembly_tag.c_str());
   return out;
 }
 
@@ -386,7 +389,7 @@ VICReg_4D::VICReg_4D(
   bool enable_buffer_averaging_,
   std::optional<ProjectorOptions> projector_options_override_,
   std::string network_design_network_id_,
-  std::string network_design_join_policy_,
+  std::string network_design_assembly_tag_,
   std::string network_design_grammar_,
   std::string network_design_dsl_
 )
@@ -404,7 +407,7 @@ VICReg_4D::VICReg_4D(
   optimizer_threshold_reset(optimizer_threshold_reset_),
   enable_buffer_averaging(enable_buffer_averaging_),
   network_design_network_id(std::move(network_design_network_id_)),
-  network_design_join_policy(std::move(network_design_join_policy_)),
+  network_design_assembly_tag(std::move(network_design_assembly_tag_)),
   network_design_grammar(std::move(network_design_grammar_)),
   network_design_dsl(std::move(network_design_dsl_)),
 
@@ -507,7 +510,7 @@ VICReg_4D::VICReg_4D(
     resolved_.enable_buffer_averaging,
     std::move(resolved_.projector_options_override),
     std::move(resolved_.network_design_network_id),
-    std::move(resolved_.network_design_join_policy),
+    std::move(resolved_.network_design_assembly_tag),
     std::move(resolved_.network_design_grammar),
     std::move(resolved_.network_design_dsl)
 ) {}
@@ -949,7 +952,7 @@ void VICReg_4D::save(const std::string& path)
   write_str(root, "meta/projector_bn_in_fp32",
             bool_to_string(effective_projector_options.bn_in_fp32));
   write_str(root, "meta/network_design_network_id", network_design_network_id);
-  write_str(root, "meta/network_design_join_policy", network_design_join_policy);
+  write_str(root, "meta/network_design_assembly_tag", network_design_assembly_tag);
   write_str(root, "meta/network_design_grammar", network_design_grammar);
   write_str(root, "meta/network_design_dsl", network_design_dsl);
   write_str(root, "meta/dtype",
@@ -1108,32 +1111,32 @@ void VICReg_4D::load(const std::string& path)
 
     if (!checkpoint_has_analytics_policy && runtime_has_analytics_policy) {
       network_design_network_id = semantic.network_id;
-      network_design_join_policy = semantic.join_policy;
+      network_design_assembly_tag = semantic.assembly_tag;
       log_warn(
           "[VICReg_4D::load] checkpoint network_design lacks "
           "NETWORK_ANALYTICS_POLICY; preserving runtime contract "
           "network_design for analytics sidecars\n");
       log_info(
           "[VICReg_4D::load] validated checkpoint network_design `%s` "
-          "(join_policy=%s)\n",
+          "(assembly_tag=%s)\n",
           network_design_network_id.c_str(),
-          network_design_join_policy.c_str());
+          network_design_assembly_tag.c_str());
     } else {
       network_design_network_id = semantic.network_id;
-      network_design_join_policy = semantic.join_policy;
+      network_design_assembly_tag = semantic.assembly_tag;
       network_design_grammar = *checkpoint_network_design_grammar;
       network_design_dsl = *checkpoint_network_design_dsl;
       log_info(
           "[VICReg_4D::load] validated checkpoint network_design `%s` "
-          "(join_policy=%s)\n",
+          "(assembly_tag=%s)\n",
           network_design_network_id.c_str(),
-          network_design_join_policy.c_str());
+          network_design_assembly_tag.c_str());
     }
   } else {
     if (!has_non_ws_ascii(network_design_grammar) ||
         !has_non_ws_ascii(network_design_dsl)) {
       network_design_network_id.clear();
-      network_design_join_policy.clear();
+      network_design_assembly_tag.clear();
       network_design_grammar.clear();
       network_design_dsl.clear();
     } else {
@@ -1303,9 +1306,9 @@ void VICReg_4D::display_model() const {
       has_non_ws_ascii(network_design_network_id)
           ? network_design_network_id.c_str()
           : "<none>";
-  const char* network_design_join_policy_str =
-      has_non_ws_ascii(network_design_join_policy)
-          ? network_design_join_policy.c_str()
+  const char* network_design_assembly_tag_str =
+      has_non_ws_ascii(network_design_assembly_tag)
+          ? network_design_assembly_tag.c_str()
           : "<none>";
 
   const char* fmt =
@@ -1333,7 +1336,7 @@ void VICReg_4D::display_model() const {
     "\t\t%s%-25s%s %s%-8s%s\n"    // projector_bn_in_fp32
     "\t\t%s%-25s%s %s%-8s%s\n"    // network_design enabled
     "\t\t%s%-25s%s %s%-8s%s\n"    // network_design network id
-    "\t\t%s%-25s%s %s%-8s%s\n"    // network_design join policy
+    "\t\t%s%-25s%s %s%-8s%s\n"    // network_design assembly tag
     "\t\t%s%-25s%s %s%-8s%s\n"    // dtype
     "\t\t%s%-25s%s %s%-8s%s\n"    // device
     "\t\t%s%-25s%s %s%-8d%s\n"    // optimizer_threshold_reset
@@ -1364,7 +1367,7 @@ void VICReg_4D::display_model() const {
     ANSI_COLOR_Bright_Grey, "Projector BN in FP32:",      ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  bnfp32_s,                       ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "Network design:",            ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  network_design_enabled_str,     ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "Network design id:",         ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  network_design_id_str,          ANSI_COLOR_RESET,
-    ANSI_COLOR_Bright_Grey, "Join policy:",               ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  network_design_join_policy_str, ANSI_COLOR_RESET,
+    ANSI_COLOR_Bright_Grey, "Assembly tag:",              ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  network_design_assembly_tag_str, ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "Data type:",                 ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  dtype_str,                      ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "Device:",                    ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  device_str,                     ANSI_COLOR_RESET,
     ANSI_COLOR_Bright_Grey, "Optimizer threshold reset:", ANSI_COLOR_RESET,  ANSI_COLOR_Bright_Blue,  optimizer_threshold_reset,      ANSI_COLOR_RESET,

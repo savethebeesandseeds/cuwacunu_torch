@@ -29,7 +29,7 @@ profile:
 
 Current status:
 
-- strict runtime grammar is now `src/config/bnf/runtime_lls.bnf`
+- strict runtime grammar is now `src/config/bnf/latent_lineage_state.runtime.bnf`
 - shared runtime validator/emitter/parser lives in
   `src/include/piaabo/latent_lineage_state/runtime_lls.h` and
   `src/impl/piaabo/latent_lineage_state/runtime_lls.cpp`

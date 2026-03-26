@@ -124,36 +124,6 @@ __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   return out;
 }
 
-[[nodiscard]] bool remove_legacy_lattice_catalog_if_needed(
-    app_context_t* app, std::string* out_error) {
-  if (out_error) out_error->clear();
-  if (!app || app->store_root.empty() || app->lattice_catalog_path.empty()) {
-    return true;
-  }
-
-  const std::filesystem::path legacy_catalog_path =
-      (app->store_root / "catalog" / "lattice_catalog.idydb").lexically_normal();
-  const std::filesystem::path active_catalog_path =
-      app->lattice_catalog_path.lexically_normal();
-  if (legacy_catalog_path == active_catalog_path) return true;
-
-  std::error_code ec{};
-  if (!std::filesystem::exists(legacy_catalog_path, ec)) return true;
-
-  std::filesystem::remove(legacy_catalog_path, ec);
-  if (ec && std::filesystem::exists(legacy_catalog_path)) {
-    if (out_error) {
-      *out_error = "cannot remove legacy lattice catalog file: " +
-                   legacy_catalog_path.string();
-    }
-    return false;
-  }
-
-  ec.clear();
-  (void)std::filesystem::remove(legacy_catalog_path.parent_path(), ec);
-  return true;
-}
-
 [[nodiscard]] std::optional<std::filesystem::path> canonicalized(
     const std::filesystem::path& path) {
   std::error_code ec{};
@@ -417,8 +387,6 @@ __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
     if (out_error) *out_error = "lattice catalog path is empty";
     return false;
   }
-  if (!remove_legacy_lattice_catalog_if_needed(app, out_error)) return false;
-
   std::string current_token{};
   if (!compute_lattice_store_sync_token(app->store_root, app->lattice_catalog_path,
                                         &current_token, out_error)) {
@@ -1431,8 +1399,6 @@ void write_jsonrpc_error(std::string_view id_json, int code,
     if (out_error) *out_error = "lattice catalog path is empty";
     return false;
   }
-  if (!remove_legacy_lattice_catalog_if_needed(app, out_error)) return false;
-
   if (app->catalog.opened()) {
     std::string close_error;
     if (!app->catalog.close(&close_error)) {
@@ -1984,7 +1950,6 @@ struct fact_path_summary_t {
     if (out_error) *out_error = "app context is null";
     return false;
   }
-  if (!remove_legacy_lattice_catalog_if_needed(app, out_error)) return false;
   if (app->catalog.opened()) return true;
   if (app->lattice_catalog_path.empty()) {
     if (out_error) *out_error = "lattice catalog path is empty";

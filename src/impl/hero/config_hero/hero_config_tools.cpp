@@ -250,8 +250,17 @@ enum class dsl_path_resolution_error_t {
 [[nodiscard]] bool is_super_objective_dsl_path(
     const std::filesystem::path& path) {
   const std::string filename = lowercase_copy(path.filename().string());
-  return filename == "super.objective.dsl" ||
-         filename == "default.super.objective.dsl";
+  if (filename == "super.objective.dsl" ||
+      filename == "default.super.objective.dsl") {
+    return true;
+  }
+  const std::string suffix = ".super.dsl";
+  if (filename.size() >= suffix.size() &&
+      filename.compare(filename.size() - suffix.size(), suffix.size(),
+                       suffix) == 0) {
+    return filename.find(".hero.super.dsl") == std::string::npos;
+  }
+  return false;
 }
 
 [[nodiscard]] std::filesystem::path resolve_instruction_root(
@@ -395,8 +404,10 @@ enum class dsl_path_resolution_error_t {
     return false;
   }
 
-  if (!path_has_component(resolved, "instructions") ||
-      !path_has_component(resolved, "objectives")) {
+  const bool looks_like_source_objective_root =
+      path_has_component(resolved, "instructions") &&
+      path_has_component(resolved, "objectives");
+  if (!looks_like_source_objective_root) {
     if (out_error) {
       *out_error = std::string(kConfigDslScopeErrorTag) +
                    ": objective_root must live under instructions/objectives: " +
@@ -508,7 +519,7 @@ enum class dsl_path_resolution_error_t {
     if (out_error) {
       *out_error =
           std::string(kConfigDslScopeErrorTag) +
-          ": objective dsl path may not target the super.objective.dsl constitution: " +
+          ": objective dsl path may not target the source super-objective constitution: " +
           resolved.string();
     }
     if (out_reason) {
@@ -757,6 +768,174 @@ enum class dsl_path_resolution_error_t {
   return true;
 }
 
+[[nodiscard]] bool parse_int64_ascii(std::string_view raw, std::int64_t* out) {
+  if (!out) return false;
+  const std::string trimmed = trim_ascii(raw);
+  if (trimmed.empty()) return false;
+  std::int64_t value = 0;
+  const auto [ptr, ec] =
+      std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), value);
+  if (ec != std::errc{} || ptr != trimmed.data() + trimmed.size()) return false;
+  *out = value;
+  return true;
+}
+
+[[nodiscard]] bool file_name_has_prefix(std::string_view value,
+                                        std::string_view prefix) {
+  return value.size() >= prefix.size() &&
+         value.compare(0, prefix.size(), prefix) == 0;
+}
+
+[[nodiscard]] bool backup_previous_write_target_with_cap(
+    const cuwacunu::hero::mcp::hero_config_store_t& store,
+    const std::filesystem::path& source_path, std::string* out_error) {
+  if (out_error) out_error->clear();
+
+  bool backup_enabled = true;
+  const std::string backup_enabled_raw =
+      trim_ascii(store.get_or_default("backup_enabled"));
+  if (!backup_enabled_raw.empty() &&
+      !parse_bool_ascii(backup_enabled_raw, &backup_enabled)) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "invalid backup_enabled value: " + backup_enabled_raw);
+    }
+    return false;
+  }
+  if (!backup_enabled) return true;
+
+  std::int64_t backup_max_entries = 20;
+  const std::string backup_max_entries_raw =
+      trim_ascii(store.get_or_default("backup_max_entries"));
+  if (!backup_max_entries_raw.empty() &&
+      !parse_int64_ascii(backup_max_entries_raw, &backup_max_entries)) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "invalid backup_max_entries value: " + backup_max_entries_raw);
+    }
+    return false;
+  }
+  if (backup_max_entries < 1) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "backup_max_entries must be >= 1 when backup_enabled=true");
+    }
+    return false;
+  }
+
+  const std::string backup_dir_raw = trim_ascii(store.get_or_default("backup_dir"));
+  if (backup_dir_raw.empty()) {
+    if (out_error) {
+      *out_error = make_write_policy_error(
+          "backup_dir must be non-empty when backup_enabled=true");
+    }
+    return false;
+  }
+  const std::filesystem::path backup_dir =
+      resolve_path_near_config(backup_dir_raw, store.config_path());
+  if (!enforce_write_target_allowed(store, backup_dir, out_error)) return false;
+
+  std::error_code ec{};
+  if (!std::filesystem::exists(source_path, ec)) {
+    if (ec) {
+      if (out_error) {
+        *out_error = "failed to inspect source file for backup: " +
+                     source_path.string();
+      }
+      return false;
+    }
+    return true;
+  }
+  if (!std::filesystem::is_regular_file(source_path, ec)) {
+    if (ec) {
+      if (out_error) {
+        *out_error = "failed to inspect source file for backup: " +
+                     source_path.string();
+      }
+      return false;
+    }
+    return true;
+  }
+
+  std::filesystem::create_directories(backup_dir, ec);
+  if (ec) {
+    if (out_error) {
+      *out_error = "failed to create backup directory: " + backup_dir.string();
+    }
+    return false;
+  }
+
+  const std::string prefix = source_path.filename().string() + ".bak.";
+  const auto stamp = std::chrono::duration_cast<std::chrono::microseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+  std::filesystem::path backup_path =
+      backup_dir / (prefix + std::to_string(static_cast<long long>(stamp)) + ".dsl");
+  int disambiguator = 1;
+  while (std::filesystem::exists(backup_path, ec)) {
+    if (ec) {
+      if (out_error) {
+        *out_error = "failed to probe backup path: " + backup_path.string();
+      }
+      return false;
+    }
+    backup_path =
+        backup_dir / (prefix + std::to_string(static_cast<long long>(stamp)) +
+                      "." + std::to_string(disambiguator++) + ".dsl");
+  }
+
+  std::filesystem::copy_file(source_path, backup_path,
+                             std::filesystem::copy_options::none, ec);
+  if (ec) {
+    if (out_error) {
+      *out_error = "failed to write backup file: " + backup_path.string();
+    }
+    return false;
+  }
+
+  std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>>
+      backups{};
+  const std::filesystem::directory_iterator begin(backup_dir, ec);
+  if (ec) {
+    if (out_error) {
+      *out_error = "failed to enumerate backup directory: " + backup_dir.string();
+    }
+    return false;
+  }
+  for (const auto& entry : begin) {
+    if (!entry.is_regular_file(ec) || ec) continue;
+    const std::string name = entry.path().filename().string();
+    if (!file_name_has_prefix(name, prefix)) continue;
+    const auto mtime = entry.last_write_time(ec);
+    if (ec) {
+      if (out_error) {
+        *out_error = "failed to stat backup file: " + entry.path().string();
+      }
+      return false;
+    }
+    backups.push_back({mtime, entry.path()});
+  }
+
+  std::sort(backups.begin(), backups.end(), [](const auto& lhs, const auto& rhs) {
+    if (lhs.first == rhs.first) return lhs.second.string() < rhs.second.string();
+    return lhs.first < rhs.first;
+  });
+
+  const std::size_t keep = static_cast<std::size_t>(backup_max_entries);
+  while (backups.size() > keep) {
+    const std::filesystem::path doomed = backups.front().second;
+    backups.erase(backups.begin());
+    std::filesystem::remove(doomed, ec);
+    if (ec) {
+      if (out_error) {
+        *out_error = "failed to prune backup file: " + doomed.string();
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
 [[nodiscard]] bool enforce_runtime_reset_targets_write_policy(
     const cuwacunu::hero::mcp::hero_config_store_t& store,
     const cuwacunu::hero::runtime_dev::runtime_reset_targets_t& targets,
@@ -916,8 +1095,7 @@ enum class instruction_dsl_validation_family_e : std::uint8_t {
       file_name == "default.tsi.source.dataloader.channels.dsl") {
     return instruction_dsl_validation_family_e::ObservationChannels;
   }
-  if (file_name == "super.objective.dsl" ||
-      file_name == "default.super.objective.dsl") {
+  if (is_super_objective_dsl_path(dsl_path)) {
     return instruction_dsl_validation_family_e::SuperObjective;
   }
   if (file_name.find("network_design") != std::string::npos) {
@@ -947,9 +1125,9 @@ enum class instruction_dsl_validation_family_e : std::uint8_t {
     instruction_dsl_validation_family_e family) {
   switch (family) {
     case instruction_dsl_validation_family_e::LatentLineageState:
-      return config_root / "bnf" / "latent_lineage_state.bnf";
+      return config_root / "bnf" / "latent_lineage_state.authored.bnf";
     case instruction_dsl_validation_family_e::SuperObjective:
-      return config_root / "bnf" / "super.objective.bnf";
+      return config_root / "bnf" / "objective.super.bnf";
     case instruction_dsl_validation_family_e::NetworkDesign:
       return config_root / "bnf" / "network_design.bnf";
     case instruction_dsl_validation_family_e::Jkimyei:
@@ -3003,6 +3181,12 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
     return false;
   }
 
+  if (!backup_previous_write_target_with_cap(*store, dsl_path, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
   if (!write_text_file_atomic(dsl_path.string(), content, &err)) {
     if (out_error_code) *out_error_code = -32603;
     if (out_error_message) *out_error_message = err;
@@ -3206,6 +3390,12 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
     return false;
   }
 
+  if (!backup_previous_write_target_with_cap(*store, dsl_path, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
   if (!write_text_file_atomic(dsl_path.string(), content, &err)) {
     if (out_error_code) *out_error_code = -32603;
     if (out_error_message) *out_error_message = err;
@@ -3372,6 +3562,12 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
                                             &validation_family, &grammar_path,
                                             &err)) {
     if (out_error_code) *out_error_code = -32602;
+    if (out_error_message) *out_error_message = err;
+    return false;
+  }
+
+  if (!backup_previous_write_target_with_cap(*store, dsl_path, &err)) {
+    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
     if (out_error_message) *out_error_message = err;
     return false;
   }
@@ -3642,6 +3838,7 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
         << json_quote(targets.runtime_hero_dsl_path.string()) << ","
         << "\"runtime_campaigns_root\":"
         << json_quote(targets.runtime_campaigns_root.string()) << ","
+        << "\"super_root\":" << json_quote(targets.super_root.string()) << ","
         << "\"target_store_roots\":" << path_vector_json(targets.store_roots)
         << ","
         << "\"target_catalog_paths\":"

@@ -48,7 +48,7 @@ int main() {
 
   const fs::path source_dir = root / "source";
   const fs::path contract_path = source_dir / "demo.contract.dsl";
-  const fs::path circuit_path = source_dir / "demo.contract.circuit.dsl";
+  const fs::path circuit_path = source_dir / "demo.circuit.dsl";
   const fs::path wave_path = source_dir / "demo.wave.dsl";
   const fs::path sources_path = source_dir / "demo.sources.dsl";
   const fs::path channels_path = source_dir / "demo.channels.dsl";
@@ -77,7 +77,7 @@ int main() {
   write_file(contract_path,
              "-----BEGIN IITEPI CONTRACT-----\n"
              "__lr = 0.123;\n"
-             "CIRCUIT_FILE: demo.contract.circuit.dsl;\n"
+             "CIRCUIT_FILE: demo.circuit.dsl;\n"
              "AKNOWLEDGE: src = tsi.source.dataloader;\n"
              "AKNOWLEDGE: rep = tsi.wikimyei.representation.vicreg;\n"
              "AKNOWLEDGE: sink_null = tsi.sink.null;\n"
@@ -121,8 +121,8 @@ int main() {
 
   write_file(campaign_path,
              "CAMPAIGN {\n"
-             "  IMPORT_CONTRACT_FILE \"demo.contract.dsl\";\n"
-             "  IMPORT_WAVE_FILE \"demo.wave.dsl\";\n"
+             "  IMPORT_CONTRACT \"demo.contract.dsl\" AS contract_demo;\n"
+             "  FROM \"demo.wave.dsl\" IMPORT_WAVE wave_alpha;\n"
              "  BIND bind_alpha {\n"
              "    __sampler = random;\n"
              "    __workers = 2;\n"
@@ -172,15 +172,17 @@ int main() {
       read_file(embedding_eval_snapshot_path);
   const std::string transfer_eval_snapshot_text =
       read_file(transfer_eval_snapshot_path);
-  assert(campaign_snapshot_text.find("IMPORT_CONTRACT_FILE \"binding.contract.dsl\";") !=
+  assert(campaign_snapshot_text.find(
+             "IMPORT_CONTRACT \"binding.contract.dsl\" AS contract_binding;") !=
          std::string::npos);
-  assert(campaign_snapshot_text.find("IMPORT_WAVE_FILE \"binding.wave.dsl\";") !=
+  assert(campaign_snapshot_text.find(
+             "FROM \"binding.wave.dsl\" IMPORT_WAVE wave_alpha;") !=
          std::string::npos);
   assert(campaign_snapshot_text.find("CONTRACT = contract_binding;") !=
          std::string::npos);
   assert(campaign_snapshot_text.find("RUN bind_alpha;") != std::string::npos);
   assert(contract_snapshot_text.find("__lr = 0.123;") != std::string::npos);
-  assert(contract_snapshot_text.find("CIRCUIT_FILE: demo.contract.circuit.dsl;") !=
+  assert(contract_snapshot_text.find("CIRCUIT_FILE: demo.circuit.dsl;") !=
          std::string::npos);
   assert(wave_snapshot_text.find("WORKERS: 2;") != std::string::npos);
   assert(wave_snapshot_text.find("SAMPLER: random;") != std::string::npos);
@@ -191,7 +193,7 @@ int main() {
          std::string::npos);
   assert(wave_snapshot_text.find("CHANNELS_DSL_FILE: demo.channels.dsl;") !=
          std::string::npos);
-  assert(fs::exists(instructions_dir / "demo.contract.circuit.dsl"));
+  assert(fs::exists(instructions_dir / "demo.circuit.dsl"));
   assert(fs::exists(instructions_dir / "demo.sources.dsl"));
   assert(fs::exists(instructions_dir / "demo.channels.dsl"));
   assert(fs::exists(vicreg_snapshot_path));
@@ -227,13 +229,15 @@ int main() {
   std::string default_campaign_override =
       read_file("/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl");
   replace_all(&default_campaign_override,
-              "IMPORT_CONTRACT_FILE \"default.iitepi.contract.dsl\";",
-              "IMPORT_CONTRACT_FILE "
-              "\"/cuwacunu/src/config/instructions/defaults/default.iitepi.contract.dsl\";");
+              "IMPORT_CONTRACT \"default.iitepi.contract.dsl\" AS contract_default_iitepi;",
+              "IMPORT_CONTRACT "
+              "\"/cuwacunu/src/config/instructions/defaults/default.iitepi.contract.dsl\" "
+              "AS contract_default_iitepi;");
   replace_all(&default_campaign_override,
-              "IMPORT_WAVE_FILE \"default.iitepi.wave.dsl\";",
-              "IMPORT_WAVE_FILE "
-              "\"/cuwacunu/src/config/instructions/defaults/default.iitepi.wave.dsl\";");
+              "FROM \"default.iitepi.wave.dsl\" IMPORT_WAVE train_vicreg_primary;",
+              "FROM "
+              "\"/cuwacunu/src/config/instructions/defaults/default.iitepi.wave.dsl\" "
+              "IMPORT_WAVE train_vicreg_primary;");
   replace_all(&default_campaign_override, "__sampler = sequential;",
               "__sampler = random;");
   replace_all(&default_campaign_override, "__workers = 0;", "__workers = 2;");

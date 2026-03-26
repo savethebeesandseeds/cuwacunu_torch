@@ -10,7 +10,7 @@
     - no minute-resolution expansion yet
 
   Active rows define the public VICReg docking boundary used by
-  iitepi.contract.dsl:
+  iitepi.contract.base.dsl:
     C = 3
     T = 30
     D = 9

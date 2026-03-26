@@ -27,7 +27,7 @@ Grammar-backed parser:
 
 Standardized runtime validator/emitter foundation:
 
-- `src/config/bnf/runtime_lls.bnf`
+- `src/config/bnf/latent_lineage_state.runtime.bnf`
 - `src/include/piaabo/latent_lineage_state/runtime_lls.h`
 - `src/impl/piaabo/latent_lineage_state/runtime_lls.cpp`
 - shared strict reader/emitter for the persisted runtime `.lls` surfaces listed above
