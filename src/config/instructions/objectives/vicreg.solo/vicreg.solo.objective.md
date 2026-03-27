@@ -3,8 +3,9 @@ You are tasked with improving the VICReg architecture.
 Notes:
 - Observation channels are static. Better channel selection may matter a lot,
   but we keep them fixed for this objective.
-- The `iitepi.contract.*.dsl` files are candidate suggestions. Feel free to
-  use them, replace them, or add new contract variants.
+- `iitepi.contract.base.dsl` is the starting contract. If evidence justifies
+  it, introduce additional contract variants deliberately rather than relying
+  on a pre-baked architecture sweep.
 
 Primary goal:
 - Improve VICReg network design by running campaigns and analysing the results.

@@ -33,6 +33,17 @@ HERO_RUNTIME_KEY("allow_local_read", "bool", 1, "true", "true|false", "true,fals
                  "allow local filesystem reads")
 HERO_RUNTIME_KEY("allow_local_write", "bool", 1, "false", "true|false", "true,false",
                  "allow local filesystem writes")
+HERO_RUNTIME_KEY("default_roots", "string", 1,
+                 "/cuwacunu/src/config/instructions/defaults", "csv path list",
+                 "comma-separated paths",
+                 "allowed default instruction roots for hero.config.default.*")
+HERO_RUNTIME_KEY("objective_roots", "string", 1,
+                 "/cuwacunu/src/config/instructions/objectives",
+                 "csv path list", "comma-separated paths",
+                 "allowed objective instruction roots for hero.config.objective.*")
+HERO_RUNTIME_KEY("allowed_extensions", "string", 1, ".dsl",
+                 "csv extension list", "comma-separated extensions",
+                 "allowed file extensions for hero.config.default.* and hero.config.objective.*")
 HERO_RUNTIME_KEY("write_roots", "string", 1, "/tmp", "csv path list", "comma-separated paths",
                  "allowed write roots when allow_local_write=true")
 HERO_RUNTIME_KEY("backup_enabled", "bool", 1, "true", "true|false", "true,false",

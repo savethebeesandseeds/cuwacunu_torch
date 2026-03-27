@@ -21,29 +21,45 @@ HERO_CONFIG_TOOL("hero.config.set", "Set one key",
                  "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}},\"required\":[\"key\",\"value\"],\"additionalProperties\":false}",
                  handle_tool_set)
 HERO_CONFIG_TOOL("hero.config.default.read",
-                 "Read one whole src/config/instructions/defaults/*.dsl",
-                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+                 "Read one whole file under configured default_roots with an allowed extension, returning associated .man content when available",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false}",
                  handle_tool_default_read)
+HERO_CONFIG_TOOL("hero.config.default.list",
+                 "List all allowed files under configured default_roots; include_man optionally inlines associated .man content",
+                 "{\"type\":\"object\",\"properties\":{\"include_man\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+                 handle_tool_default_list)
+HERO_CONFIG_TOOL("hero.config.default.create",
+                 "Create one whole supported file under configured default_roots after decoder and file-specific validation",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"additionalProperties\":false}",
+                 handle_tool_default_create)
 HERO_CONFIG_TOOL("hero.config.default.replace",
-                 "Replace one whole supported src/config/instructions/defaults/*.dsl after decoder and file-specific validation",
-                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"dsl_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"content\"],\"additionalProperties\":false}",
+                 "Replace one whole supported file under configured default_roots after decoder and file-specific validation",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"additionalProperties\":false}",
                  handle_tool_default_replace)
-HERO_CONFIG_TOOL("hero.config.objective_dsl.read",
-                 "Read one whole mutable objective-local .dsl under objective_root (not campaign.dsl or the source super-objective constitution)",
-                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
-                 handle_tool_objective_dsl_read)
-HERO_CONFIG_TOOL("hero.config.objective_dsl.replace",
-                 "Create or replace one whole mutable objective-local .dsl under objective_root after decoder validation (not campaign.dsl or the source super-objective constitution)",
-                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\",\"content\"],\"additionalProperties\":false}",
-                 handle_tool_objective_dsl_replace)
-HERO_CONFIG_TOOL("hero.config.objective_campaign.read",
-                 "Read one whole objective-local campaign.dsl under objective_root",
-                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
-                 handle_tool_objective_campaign_read)
-HERO_CONFIG_TOOL("hero.config.objective_campaign.replace",
-                 "Create or replace one whole objective-local campaign.dsl under objective_root after campaign decoder validation",
-                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"relative_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\",\"content\"],\"additionalProperties\":false}",
-                 handle_tool_objective_campaign_replace)
+HERO_CONFIG_TOOL("hero.config.default.delete",
+                 "Delete one whole file under configured default_roots after optional sha256 check",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false}",
+                 handle_tool_default_delete)
+HERO_CONFIG_TOOL("hero.config.objective.read",
+                 "Read one whole file under objective_root with an allowed extension, returning associated .man content when available",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
+                 handle_tool_objective_read)
+HERO_CONFIG_TOOL("hero.config.objective.list",
+                 "List all allowed files under objective_root; include_man optionally inlines associated .man content",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"include_man\":{\"type\":\"boolean\"}},\"required\":[\"objective_root\"],\"additionalProperties\":false}",
+                 handle_tool_objective_list)
+HERO_CONFIG_TOOL("hero.config.objective.create",
+                 "Create one whole file under objective_root with an allowed extension after decoder validation",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\",\"content\"],\"additionalProperties\":false}",
+                 handle_tool_objective_create)
+HERO_CONFIG_TOOL("hero.config.objective.replace",
+                 "Replace one whole file under objective_root with an allowed extension after decoder validation",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\",\"content\"],\"additionalProperties\":false}",
+                 handle_tool_objective_replace)
+HERO_CONFIG_TOOL("hero.config.objective.delete",
+                 "Delete one whole file under objective_root with an allowed extension after optional sha256 check",
+                 "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
+                 handle_tool_objective_delete)
 HERO_CONFIG_TOOL("hero.config.validate", "Validate runtime config",
                  "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
                  handle_tool_validate)

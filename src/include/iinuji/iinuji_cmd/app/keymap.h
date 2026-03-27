@@ -367,7 +367,9 @@ inline AppKeyDispatchResult dispatch_app_key(
     run_command(state, cmd, nullptr);
     set_mouse_capture(state.logs.mouse_capture);
     IinujiStateFlow{state}.normalize_after_command();
-    init_data_runtime(state, data_rt, false);
+    if (data_runtime_needed(state)) {
+      init_data_runtime(state, data_rt, false);
+    }
     return consume(true);
   }
 

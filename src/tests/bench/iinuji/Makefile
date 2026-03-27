@@ -24,6 +24,7 @@ $(eval $(call TEST_ONEFILE, test_iinuji_tsi,                  test_iinuji_tsi.cp
 $(eval $(call TEST_ONEFILE, test_iinuji_data_viz,             test_iinuji_data_viz.cpp,             $(TORCH_LINK)))
 $(eval $(call TEST_ONEFILE, test_iinuji_timeseries,           test_iinuji_timeseries.cpp,           $(TORCH_LINK)))
 $(eval $(call TEST_ONEFILE, test_iinuji_cmd,                  test_iinuji_cmd.cpp,                  $(TORCH_LINK)))
+$(eval $(call TEST_ONEFILE, test_iinuji_bootstrap,            test_iinuji_bootstrap.cpp))
 $(eval $(call TEST_ONEFILE, test_iinuji_cmd_home,             test_iinuji_cmd_home.cpp,             $(TORCH_LINK)))
 $(eval $(call TEST_ONEFILE, test_iinuji_cmd_canonical_paths,  test_iinuji_cmd_canonical_paths.cpp,  $(TORCH_LINK)))
 $(eval $(call TEST_ONEFILE, test_iinuji_cmd_terminal,         test_iinuji_cmd_terminal.cpp,         $(TORCH_LINK)))
@@ -51,6 +52,7 @@ all: \
 	$(TEST_OUT)/test_iinuji_data_viz \
 	$(TEST_OUT)/test_iinuji_timeseries \
 	$(TEST_OUT)/test_iinuji_cmd \
+	$(TEST_OUT)/test_iinuji_bootstrap \
 	$(TEST_OUT)/test_iinuji_cmd_home \
 	$(TEST_OUT)/test_iinuji_cmd_canonical_paths \
 	$(TEST_OUT)/test_iinuji_cmd_terminal

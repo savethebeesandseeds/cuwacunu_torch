@@ -1,12 +1,12 @@
 Rules:
 - Work from the current objective bundle, review packet, and loop memory.
-- Treat the source `super.objective.dsl` as fixed loop constitution; do not mutate it.
-- Do not edit files directly; use `hero.config.objective_dsl.read/replace` only when an objective `.dsl` change is clearly justified.
-- Use `hero.config.objective_campaign.read/replace` when the objective campaign plan itself must change.
+- Do not edit files directly; use Config Hero tools for all mutations.
+- Use `hero.config.objective.list/read/create/replace/delete` for objective truth-source files, including `campaign.dsl` and any other allowed-extension file under the objective root, when a local objective change is clearly justified.
+- Use `hero.config.default.list/read/create/replace/delete` only when the objective truly needs a shared default change; default mutations return a warning because they affect shared truth.
 - Prefer `hero.lattice.get_view` / `hero.lattice.get_fact` for semantic evidence before scraping logs or reading files directly.
 - Use Runtime get/tail tools mainly for operational debugging such as launch failures, missing outputs, or abnormal traces.
-- Never target source `super.objective.dsl`; that constitution is fixed for the life of the loop.
-- If you change any objective `.dsl`, including campaign DSL, summarize the actual file changes in `memory_note`.
+- Never target files outside the configured objective/default roots.
+- If you change any objective or default file, summarize the actual file changes in `memory_note`.
 - Prefer conservative decisions when report quality, runtime health, or evidence completeness is unclear.
 
 Hints:
@@ -15,10 +15,14 @@ Hints:
 - Use `continue` with `next_action.kind = binding` when one declared bind is the most appropriate targeted follow-up.
 - Use `hero.lattice.list_views` / `hero.lattice.list_facts` when you need to discover valid selectors before a semantic query.
 - Prefer `hero.lattice.get_view(view_kind=family_evaluation_report, ...)` when comparing family-level evaluation evidence for one known `contract_hash`.
-- Use `hero.config.objective_dsl.read` before editing so you have the full current file and its `sha256`.
-- Use `hero.config.objective_campaign.read` before editing the campaign so you have the full current file and its `sha256`.
-- Prefer `hero.config.objective_dsl.replace` with `expected_sha256` for validated whole-file updates that keep the existing file shape coherent.
-- Prefer `hero.config.objective_campaign.replace` with `expected_sha256` for validated whole-file campaign updates.
+- Use `hero.config.objective.list` when you need to discover which objective files are available; use `include_man=true` when the associated `.man` context would help, and heed any warning if a file has no matching `.man`.
+- Use `hero.config.default.list` when you need to discover which shared defaults are available; use `include_man=true` when the associated `.man` context would help, and heed any warning if a file has no matching `.man`.
+- Use `hero.config.objective.read` before editing so you have the full current file, its `sha256`, and the associated `.man` content when available; if no `.man` exists, the response will say so.
+- Use `hero.config.default.read` before touching a shared default so you have the full current file, its `sha256`, and the associated `.man` content when available; if no `.man` exists, the response will say so.
+- Treat `campaign.dsl` as an ordinary objective truth-source file: use `hero.config.objective.*` when the launch graph itself needs to change.
+- Prefer `hero.config.objective.create` when adding a new file, `hero.config.objective.replace` when updating an existing file, and `hero.config.objective.delete` when removing a file.
+- Prefer `expected_sha256` on `replace` or `delete` after a prior `read`, especially for shared-default edits.
+- Prefer `hero.config.default.create/replace/delete` only when the change should propagate beyond the current objective; heed the warning each successful default mutation returns.
 - Keep replacements minimal and preserve surrounding comments/structure when possible.
 - Use `next_action.reset_runtime_state = true` only when a cold Runtime launch is genuinely justified by the objective or prior failures.
 - Use `stop` when the loop objective looks satisfied or further automatic iteration is weakly justified.

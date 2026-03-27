@@ -44,3 +44,41 @@ Examples:
 bash src/scripts/list_binance_spot_symbols.sh --quote USDT
 bash src/scripts/list_binance_spot_symbols.sh --base BTC --symbols-only
 ```
+
+`src/scripts/setup_human_operator.sh` bootstraps or validates the Human Hero
+operator signing surface. It works with the current runtime contract:
+- `operator_id` in `default.hero.human.dsl`
+- unencrypted OpenSSH `ssh-ed25519` private key at `operator_signing_ssh_identity`
+- matching public-key registration in `human_operator_identities`
+
+Default setup:
+```bash
+bash /cuwacunu/setup.sh
+bash src/scripts/setup_human_operator.sh
+```
+
+Explicit operator id:
+```bash
+bash src/scripts/setup_human_operator.sh --operator-id alice@workstation
+```
+
+Force replacement prompts to yes:
+```bash
+bash src/scripts/setup_human_operator.sh --yes
+```
+
+Validate only:
+```bash
+bash src/scripts/setup_human_operator.sh --validate
+```
+
+One important note: this script currently manages an unencrypted OpenSSH
+identity because that is what Human Hero signs with today. If we later move the
+operator identity into encrypted-at-rest secret storage, this script should
+evolve with that runtime contract.
+
+Dependency note:
+- `ssh-keygen` is required.
+- `/cuwacunu/setup.sh` now installs it through the `openssh-client` package.
+- If an operator identity already exists, the script asks whether to replace it
+  with a fresh keypair; use `--yes` to auto-accept that replacement prompt.

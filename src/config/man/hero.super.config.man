@@ -25,7 +25,7 @@ required = true
 default = /cuwacunu/.build/hero/hero_config_mcp
 range = executable path or PATH-resolved command name
 allowed = absolute_or_relative path or bare command token
-nuance = Config Hero MCP binary attached to Codex review sessions for bounded truth-source objective DSL mutation plus audited backups
+nuance = Config Hero MCP binary attached to Codex review sessions for bounded truth-source objective/default file mutation plus audited backups
 
 [FIELD lattice_hero_binary]
 key = lattice_hero_binary
@@ -55,7 +55,7 @@ required = true
 default = ../..
 range = writable config scope root
 allowed = absolute path or path resolved relative to default.hero.super.dsl
-nuance = config root Super Hero bakes into its loop-local Config Hero policy instead of peeking into Config Hero defaults; the generated policy writes truth-source objective backups outside runtime state
+nuance = config root Super Hero bakes into its loop-local Config Hero policy instead of peeking into Config Hero defaults; the generated policy writes truth-source objective/default backups outside runtime state
 
 [FIELD super_codex_binary]
 key = super_codex_binary

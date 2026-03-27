@@ -59,11 +59,26 @@ namespace {
       .lexically_normal();
 }
 
+[[nodiscard]] std::filesystem::path derive_super_loop_default_root(
+    const super_loop_workspace_context_t& context) {
+  if (!context.config_scope_root.empty()) {
+    return (context.config_scope_root / "instructions" / "defaults")
+        .lexically_normal();
+  }
+  if (!context.repo_root.empty()) {
+    return (context.repo_root / "src/config/instructions/defaults")
+        .lexically_normal();
+  }
+  return {};
+}
+
 [[nodiscard]] std::string build_super_loop_config_policy_dsl(
     const super_loop_workspace_context_t& context,
     const cuwacunu::hero::super::super_loop_record_t& loop) {
   const std::filesystem::path backup_dir =
       derive_super_loop_backup_dir(context, loop);
+  const std::filesystem::path default_root =
+      derive_super_loop_default_root(context);
   std::ostringstream out;
   out << "/* super-generated Config Hero policy for a SUPER loop */\n"
       << "protocol_layer[STDIO|HTTPS/SSE]:str = STDIO\n"
@@ -71,8 +86,12 @@ namespace {
       << resolve_super_loop_config_scope_root(context) << "\n"
       << "allow_local_read:bool = true\n"
       << "allow_local_write:bool = true\n"
-      << "write_roots:str = " << loop.objective_root << ","
-      << backup_dir.string() << "\n"
+      << "default_roots:str = " << default_root.string() << "\n"
+      << "objective_roots:str = " << loop.objective_root << "\n"
+      << "allowed_extensions:str = .dsl\n"
+      << "write_roots:str = " << loop.objective_root << ",";
+  if (!default_root.empty()) out << default_root.string() << ",";
+  out << backup_dir.string() << "\n"
       << "backup_enabled:bool = true\n"
       << "backup_dir:str = " << backup_dir.string() << "\n"
       << "backup_max_entries(1,+inf):int = 64\n";
@@ -103,15 +122,12 @@ namespace {
       << "Rules:\n"
       << "1. Work in read-only shell mode. Do not edit files directly.\n"
       << "2. Follow the declared super objective DSL, objective markdown, guidance markdown, and current objective bundle.\n"
-      << "3. When an objective .dsl change is justified, use the "
-         "hero.config.objective_dsl.read/replace MCP tools directly.\n"
-      << "4. When the execution plan itself must change, use the "
-         "hero.config.objective_campaign.read/replace MCP tools directly.\n"
+      << "3. Use hero.config.objective.list/read/create/replace/delete for truth-source objective files under objective_root.\n"
+      << "4. Use hero.config.default.list/read/create/replace/delete for shared defaults only when the objective truly needs a shared change.\n"
       << "5. Prefer whole-file replace with expected_sha256 from the prior read.\n"
       << "6. Pass objective_root=" << loop.objective_root
       << " to those Config Hero tools.\n"
-      << "7. Never mutate the source super.objective.dsl constitution or files "
-         "outside the mutable objective root.\n"
+      << "7. Never mutate files outside the configured objective/default roots.\n"
       << "8. Prefer the review packet first, then hero.lattice.get_view/get_fact "
          "for semantic evidence; use Runtime tails mainly for operational "
          "debugging.\n"

@@ -6,8 +6,8 @@
   Public docking stays frozen to big_span_v1 through the contract-owned
   __obs_* and __embedding_dims variables. Private encoder/projector widths and
   projector options are intentionally contract-scoped here so imported
-  contract variants can express small/base/wide/deep architecture candidates
-  without changing the observation profile.
+  contract variants can express alternative architecture candidates without
+  changing the observation profile.
 */
 
 NETWORK "tsi.wikimyei.representation.vicreg" {

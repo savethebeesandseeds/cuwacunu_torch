@@ -7,8 +7,8 @@ allowed to be.
 
 - Super Hero is the sovereign of loop state, review, and continuation.
 - Runtime Hero is the sovereign of campaign execution.
-- Config Hero is the only writer for autonomous truth-source objective `.dsl`
-  mutation.
+- Config Hero is the only writer for autonomous truth-source objective/default
+  file mutation.
 - Human Hero is the sovereign of human adjudication and response attestation.
 - Codex is the reviewer and tool-using planner inside a review boundary.
 
@@ -30,12 +30,11 @@ allowed to be.
   Super Hero.
 - Super Hero points `objective_root` at the selected source objective bundle
   under `src/config/instructions/objectives/...`.
-- Autonomous mutation is limited to mutable source objective `.dsl` files
-  inside that objective bundle.
-- The source `campaign.dsl` and source `super.objective.dsl` are loop
-  constitution and are not mutable through Config Hero.
-- Those writes happen through Config Hero whole-file read/replace policy with
-  decoder validation, not raw file edits.
+- Autonomous mutation is limited to files inside the configured
+  `objective_roots` and `default_roots`, filtered by `allowed_extensions`.
+- Those writes happen through Config Hero whole-file
+  read/create/replace/delete policy with decoder validation, not raw file
+  edits.
 
 ## Decision Contract
 
@@ -49,10 +48,8 @@ allowed to be.
 
 - Codex must not launch campaigns directly.
 - Codex must not mutate repository source files directly.
-- Codex must not mutate source `campaign.dsl`.
-- Codex must not mutate source `super.objective.dsl`.
-- Super Hero must not silently widen Config Hero write scope beyond the loop
-  objective root.
+- Super Hero must not silently widen Config Hero write scope beyond the
+  configured objective/default roots.
 
 ## Persistence
 

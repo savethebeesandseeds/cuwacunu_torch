@@ -34,6 +34,10 @@ struct contract_space_t {
   static contract_hash_t register_contract_file(const std::string& path);
   static std::shared_ptr<const contract_record_t> contract_itself(
       const contract_hash_t& hash);
+  [[nodiscard]] static bool validate_contract_file_isolated(
+      const std::string& path,
+      const std::string& global_config_path = {},
+      std::string* error = nullptr);
   static void network_topology_analytics(const contract_hash_t& hash,
                                          std::ostream* out = nullptr,
                                          bool beautify = false);

@@ -19,7 +19,7 @@ required = true
 default = openai
 range = one token
 allowed = openai,selfhosted
-nuance = selfhosted fails fast with deployment-funds guidance
+nuance = selfhosted is parsed but rejected at startup; only openai is currently supported
 
 [FIELD REAL_HERO.transport]
 key = transport
@@ -123,7 +123,7 @@ id = REAL_HERO_SELFHOSTED_FAILFAST
 applies_to = REAL_HERO.mode
 severity = error
 when = mode == selfhosted
-message = isufficient founds for self hosted model deployment, please change mode to openai.
+message = REAL_HERO.mode=selfhosted is not supported yet; use mode=openai.
 
 [RULE REAL_HERO_TRANSPORT]
 id = REAL_HERO_TRANSPORT

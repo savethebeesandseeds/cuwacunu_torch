@@ -934,6 +934,65 @@ std::vector<std::string> hero_config_store_t::validate() const {
   }
 
   {
+    const auto validate_csv_paths = [&](std::string_view key) {
+      const std::string raw = trim_ascii(get_or_default(std::string(key)));
+      if (raw.empty()) {
+        errors.emplace_back(std::string(key) + " must be non-empty");
+        return;
+      }
+      std::size_t start = 0;
+      bool any = false;
+      while (start <= raw.size()) {
+        const std::size_t comma = raw.find(',', start);
+        const std::string token = trim_ascii(raw.substr(start, comma - start));
+        if (!token.empty()) {
+          any = true;
+          const auto resolved = resolve_path_near_config(token, config_path_);
+          std::error_code ec;
+          if (resolved.empty() || !std::filesystem::exists(resolved, ec)) {
+            errors.emplace_back(std::string(key) +
+                                " contains a path that does not exist: " + token);
+          } else if (!std::filesystem::is_directory(resolved, ec)) {
+            errors.emplace_back(std::string(key) +
+                                " contains a path that is not a directory: " +
+                                resolved.string());
+          }
+        }
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+      }
+      if (!any) errors.emplace_back(std::string(key) + " must list at least one path");
+    };
+
+    validate_csv_paths("default_roots");
+    validate_csv_paths("objective_roots");
+  }
+
+  {
+    const std::string raw = trim_ascii(get_or_default("allowed_extensions"));
+    if (raw.empty()) {
+      errors.emplace_back("allowed_extensions must be non-empty");
+    } else {
+      std::size_t start = 0;
+      bool any = false;
+      while (start <= raw.size()) {
+        const std::size_t comma = raw.find(',', start);
+        const std::string token = trim_ascii(raw.substr(start, comma - start));
+        if (!token.empty()) {
+          any = true;
+          if (token.size() < 2 || token[0] != '.') {
+            errors.emplace_back("allowed_extensions entries must be dot-prefixed: " +
+                                token);
+          }
+        }
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+      }
+      if (!any) errors.emplace_back("allowed_extensions must list at least one extension");
+    }
+  }
+
+  {
     bool allow_local_write = false;
     if (parse_bool_value(get_or_default("allow_local_write"), &allow_local_write) &&
         allow_local_write) {

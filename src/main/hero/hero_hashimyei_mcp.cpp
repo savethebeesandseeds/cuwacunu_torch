@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -21,25 +22,36 @@ __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 }
 
-[[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
-  const char* data = reinterpret_cast<const char*>(bytes);
-  std::size_t remaining = size;
+void write_stdout_text(std::string_view text) {
+  const char* data = text.data();
+  std::size_t remaining = text.size();
   while (remaining > 0) {
-    const ssize_t wrote = ::write(fd, data, remaining);
+    const ssize_t wrote = ::write(STDOUT_FILENO, data, remaining);
     if (wrote < 0) {
       if (errno == EINTR) continue;
-      return false;
+      break;
     }
-    if (wrote == 0) return false;
+    if (wrote == 0) break;
     const auto wrote_size = static_cast<std::size_t>(wrote);
     data += wrote_size;
     remaining -= wrote_size;
   }
-  return true;
 }
 
-void write_stdout_text(std::string_view text) {
-  (void)write_all_fd(STDOUT_FILENO, text.data(), text.size());
+void write_stderr_text(std::string_view text) {
+  const char* data = text.data();
+  std::size_t remaining = text.size();
+  while (remaining > 0) {
+    const ssize_t wrote = ::write(STDERR_FILENO, data, remaining);
+    if (wrote < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    if (wrote == 0) break;
+    const auto wrote_size = static_cast<std::size_t>(wrote);
+    data += wrote_size;
+    remaining -= wrote_size;
+  }
 }
 
 void print_help(const char* argv0) {
@@ -132,34 +144,35 @@ int main(int argc, char** argv) {
       return 0;
     }
 
-    std::cerr << "Unknown argument: " << arg << "\n";
+    write_stderr_text("Unknown argument: " + arg + "\n");
     print_help(argv[0]);
     return 2;
   }
 
   if (direct_tool_args_overridden && !direct_tool_mode) {
-    std::cerr << "--args-json requires --tool\n";
+    write_stderr_text("--args-json requires --tool\n");
     return 2;
   }
   if (list_tools && list_tools_json) {
-    std::cerr << "--list-tools and --list-tools-json are mutually exclusive\n";
+    write_stderr_text(
+        "--list-tools and --list-tools-json are mutually exclusive\n");
     return 2;
   }
   if ((list_tools || list_tools_json) && direct_tool_mode) {
-    std::cerr << "--list-tools/--list-tools-json cannot be combined with "
-                 "--tool\n";
+    write_stderr_text("--list-tools/--list-tools-json cannot be combined with "
+                      "--tool\n");
     return 2;
   }
   if (direct_tool_mode) {
     direct_tool_name = trim_ascii(direct_tool_name);
     if (direct_tool_name.empty()) {
-      std::cerr << "--tool requires a non-empty name\n";
+      write_stderr_text("--tool requires a non-empty name\n");
       return 2;
     }
     direct_tool_args_json = trim_ascii(direct_tool_args_json);
     if (direct_tool_args_json.empty()) direct_tool_args_json = "{}";
     if (direct_tool_args_json.front() != '{') {
-      std::cerr << "--args-json must be a JSON object\n";
+      write_stderr_text("--args-json must be a JSON object\n");
       return 2;
     }
   }
@@ -182,9 +195,9 @@ int main(int argc, char** argv) {
             global_config_path);
   }
   if (hero_config_path.empty()) {
-    std::cerr << "[" << kServerName
-              << "] missing [REAL_HERO].hashimyei_hero_dsl_filename in "
-              << global_config_path.string() << "\n";
+    write_stderr_text(std::string("[") + kServerName +
+                      "] missing [REAL_HERO].hashimyei_hero_dsl_filename in " +
+                      global_config_path.string() + "\n");
     return 2;
   }
 
@@ -192,7 +205,8 @@ int main(int argc, char** argv) {
   std::string defaults_error{};
   if (!cuwacunu::hero::hashimyei_mcp::load_hashimyei_runtime_defaults(
           hero_config_path, global_config_path, &defaults, &defaults_error)) {
-    std::cerr << "[" << kServerName << "] " << defaults_error << "\n";
+    write_stderr_text(std::string("[") + kServerName + "] " + defaults_error +
+                      "\n");
     return 2;
   }
 
@@ -203,11 +217,13 @@ int main(int argc, char** argv) {
     catalog_path = defaults.catalog_path;
   }
   if (store_root.empty()) {
-    std::cerr << "[" << kServerName << "] resolved empty store_root\n";
+    write_stderr_text(std::string("[") + kServerName +
+                      "] resolved empty store_root\n");
     return 2;
   }
   if (catalog_path.empty()) {
-    std::cerr << "[" << kServerName << "] resolved empty catalog_path\n";
+    write_stderr_text(std::string("[") + kServerName +
+                      "] resolved empty catalog_path\n");
     return 2;
   }
 
@@ -221,9 +237,9 @@ int main(int argc, char** argv) {
         cuwacunu::hero::lattice_mcp::resolve_lattice_hero_dsl_path(
             global_config_path);
     if (lattice_hero_config_path.empty()) {
-      std::cerr << "[" << kServerName
-                << "] missing [REAL_HERO].lattice_hero_dsl_filename in "
-                << global_config_path.string() << "\n";
+      write_stderr_text(std::string("[") + kServerName +
+                        "] missing [REAL_HERO].lattice_hero_dsl_filename in " +
+                        global_config_path.string() + "\n");
       return 2;
     }
     cuwacunu::hero::lattice_mcp::wave_runtime_defaults_t lattice_defaults{};
@@ -231,13 +247,15 @@ int main(int argc, char** argv) {
     if (!cuwacunu::hero::lattice_mcp::load_wave_runtime_defaults(
             lattice_hero_config_path, global_config_path, &lattice_defaults,
             &lattice_defaults_error)) {
-      std::cerr << "[" << kServerName << "] " << lattice_defaults_error << "\n";
+      write_stderr_text(std::string("[") + kServerName + "] " +
+                        lattice_defaults_error + "\n");
       return 2;
     }
     lattice_catalog_path = lattice_defaults.catalog_path;
   }
   if (lattice_catalog_path.empty()) {
-    std::cerr << "[" << kServerName << "] resolved empty lattice catalog_path\n";
+    write_stderr_text(std::string("[") + kServerName +
+                      "] resolved empty lattice catalog_path\n");
     return 2;
   }
 
@@ -252,8 +270,8 @@ int main(int argc, char** argv) {
     if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
             direct_tool_name, direct_tool_args_json, &app, &tool_result,
             &tool_error)) {
-      std::cerr << "[" << kServerName << "] " << tool_error << "\n";
-      std::cerr.flush();
+      write_stderr_text(std::string("[") + kServerName + "] " + tool_error +
+                        "\n");
       // Direct CLI mode is single-shot; avoid destructor-driven catalog close
       // stalls on process teardown.
       std::_Exit(2);
@@ -268,9 +286,9 @@ int main(int argc, char** argv) {
   }
 
   if (::isatty(STDIN_FILENO) != 0) {
-    std::cerr << "[" << kServerName
-              << "] no --tool provided and stdin is a terminal; "
-                 "server mode expects JSON-RPC input on stdin.\n";
+    write_stderr_text(std::string("[") + kServerName +
+                      "] no --tool provided and stdin is a terminal; "
+                      "server mode expects JSON-RPC input on stdin.\n");
     print_help(argv[0]);
     return 2;
   }

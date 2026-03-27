@@ -66,50 +66,62 @@ covers = instructions/defaults/default.hero.config.dsl,bnf/latent_lineage_state.
 file = global.config.real_hero.man
 covers = .config
 
-[ENTRY 16]
+[ENTRY 17]
 file = global.config.general.man
 covers = .config
 
-[ENTRY 17]
+[ENTRY 18]
 file = global.config.gui.man
 covers = .config
 
-[ENTRY 18]
-file = hero.hashimyei.config.man
-covers = instructions/defaults/default.hero.hashimyei.dsl,bnf/latent_lineage_state.authored.bnf
-
 [ENTRY 19]
-file = hero.lattice.config.man
-covers = instructions/defaults/default.hero.lattice.dsl,bnf/latent_lineage_state.authored.bnf
-
-[ENTRY 20]
-file = iitepi.contract.man
-covers = instructions/defaults/default.iitepi.contract.dsl,bnf/iitepi.contract.bnf
-
-[ENTRY 21]
-file = runtime_lls.man
-covers = bnf/latent_lineage_state.runtime.bnf
-
-[ENTRY 22]
-file = hero.runtime.config.man
-covers = instructions/defaults/default.hero.runtime.dsl,bnf/latent_lineage_state.authored.bnf
-
-[ENTRY 23]
 file = global.config.bnf.man
 covers = .config
 
+[ENTRY 20]
+file = global.config.tsi_runtime.man
+covers = .config
+
+[ENTRY 21]
+file = global.config.real_exchange.man
+covers = .config
+
+[ENTRY 22]
+file = global.config.test_exchange.man
+covers = .config
+
+[ENTRY 23]
+file = hero.hashimyei.config.man
+covers = instructions/defaults/default.hero.hashimyei.dsl,bnf/latent_lineage_state.authored.bnf
+
 [ENTRY 24]
+file = hero.lattice.config.man
+covers = instructions/defaults/default.hero.lattice.dsl,bnf/latent_lineage_state.authored.bnf
+
+[ENTRY 25]
+file = iitepi.contract.man
+covers = instructions/defaults/default.iitepi.contract.dsl,bnf/iitepi.contract.bnf
+
+[ENTRY 26]
+file = runtime_lls.man
+covers = bnf/latent_lineage_state.runtime.bnf
+
+[ENTRY 27]
+file = hero.runtime.config.man
+covers = instructions/defaults/default.hero.runtime.dsl,bnf/latent_lineage_state.authored.bnf
+
+[ENTRY 28]
 file = iitepi.runtime_binding.man
 covers = bnf/iitepi.runtime_binding.bnf
 
-[ENTRY 25]
+[ENTRY 29]
 file = hero.super.config.man
 covers = instructions/defaults/default.hero.super.dsl,bnf/latent_lineage_state.authored.bnf
 
-[ENTRY 26]
+[ENTRY 30]
 file = super.objective.man
 covers = instructions/defaults/default.super.objective.dsl,bnf/objective.super.bnf
 
-[ENTRY 27]
+[ENTRY 31]
 file = hero.human.config.man
 covers = instructions/defaults/default.hero.human.dsl,bnf/latent_lineage_state.authored.bnf

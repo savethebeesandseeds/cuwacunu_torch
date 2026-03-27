@@ -1,0 +1,35 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = global.config.tsi_runtime
+TARGET_DSL = src/config/.config
+TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
+PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
+PRIMARY_VALIDATORS = src/include/iitepi/runtime_binding/runtime_binding.builder.h,src/impl/iitepi/config_space_t.cpp
+
+[FIELD TSI_RUNTIME.runtime_trace_level]
+key = runtime_trace_level
+scope = TSI_RUNTIME section
+type = int
+required = true
+default = 1
+range = integer
+allowed = 0,1,>=2
+nuance = runtime trace verbosity for bound job execution; 0 disables tracing, 1 emits step-level tracing, and values >= 2 resolve to verbose tracing
+
+[FIELD TSI_RUNTIME.runtime_max_queue_size]
+key = runtime_max_queue_size
+scope = TSI_RUNTIME section
+type = int
+required = true
+default = 10000
+range = >= 0
+allowed = integer
+nuance = runtime backpressure cap for execution queues; 0 means unbounded, values > 0 stop the runtime when the queue grows past the configured limit
+
+[RULE TSI_RUNTIME_QUEUE_SIZE_NONNEGATIVE]
+id = TSI_RUNTIME_QUEUE_SIZE_NONNEGATIVE
+applies_to = TSI_RUNTIME.runtime_max_queue_size
+severity = error
+when = runtime_max_queue_size < 0
+message = TSI_RUNTIME.runtime_max_queue_size must be >= 0

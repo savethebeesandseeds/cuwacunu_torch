@@ -14,6 +14,7 @@ namespace iitepi {
 
 std::mutex config_mutex;
 exchange_type_e config_space_t::exchange_type;
+bool config_space_t::initialized = false;
 std::string config_space_t::config_file_path;
 std::string config_space_t::runtime_campaign_dsl_override_path;
 parsed_config_t config_space_t::config;
@@ -252,6 +253,7 @@ static T parse_scalar_from_string(const std::string& s) {
 
 /*──────────────────────── global config space ───────────────────────────*/
 std::string config_space_t::raw(const std::string& section, const std::string& key) {
+  ensure_initialized();
   LOCK_GUARD(config_mutex);
   const auto s = config.find(section);
   if (s == config.end()) throw bad_config_access("Missing section [" + section + "]");
@@ -303,7 +305,11 @@ void config_space_t::change_config_file(const char* config_path) {
   std::string requested = config_path ? config_path : DEFAULT_GLOBAL_CONFIG_PATH;
   requested = trim_ascii_ws_copy(std::move(requested));
   if (!has_non_ws_ascii(requested)) requested = DEFAULT_GLOBAL_CONFIG_PATH;
-  config_file_path = canonicalize_path_best_effort(requested);
+  {
+    LOCK_GUARD(config_mutex);
+    initialized = true;
+    config_file_path = canonicalize_path_best_effort(requested);
+  }
   update_config();
 }
 
@@ -318,6 +324,7 @@ void config_space_t::clear_runtime_campaign_dsl_override() {
 }
 
 std::string config_space_t::effective_campaign_dsl_path() {
+  ensure_initialized();
   std::string config_path_copy{};
   std::string override_copy{};
   std::string configured_campaign_path{};
@@ -624,7 +631,7 @@ bool config_space_t::validate_config() {
                mode_normalized.c_str());
       ok = false;
     } else if (mode_normalized == "selfhosted") {
-      log_warn("Invalid value <mode> in section [REAL_HERO]: isufficient founds for self hosted model deployment, please change mode to openai.\n");
+      log_warn("Invalid value <mode> in section [REAL_HERO]: selfhosted mode is not supported yet; use mode=openai.\n");
       ok = false;
     }
   }
@@ -654,6 +661,7 @@ bool config_space_t::validate_config() {
 }
 
 std::string config_space_t::websocket_url() {
+  ensure_initialized();
   LOCK_GUARD(config_mutex);
   const char* section = (config_space_t::exchange_type == exchange_type_e::REAL)
                             ? "REAL_EXCHANGE"
@@ -670,6 +678,7 @@ std::string config_space_t::websocket_url() {
 }
 
 std::string config_space_t::api_key() {
+  ensure_initialized();
   LOCK_GUARD(config_mutex);
   const char* section = (config_space_t::exchange_type == exchange_type_e::REAL)
                             ? "REAL_EXCHANGE"
@@ -687,6 +696,7 @@ std::string config_space_t::api_key() {
 }
 
 std::string config_space_t::Ed25519_pkey() {
+  ensure_initialized();
   LOCK_GUARD(config_mutex);
   const char* section = (config_space_t::exchange_type == exchange_type_e::REAL)
                             ? "REAL_EXCHANGE"
@@ -703,6 +713,7 @@ std::string config_space_t::Ed25519_pkey() {
 }
 
 std::string config_space_t::hero_mode() {
+  ensure_initialized();
   LOCK_GUARD(config_mutex);
   const auto sec_it = config_space_t::config.find("REAL_HERO");
   if (sec_it == config_space_t::config.end()) {
@@ -716,6 +727,7 @@ std::string config_space_t::hero_mode() {
 }
 
 std::string config_space_t::hero_api_key_filename() {
+  ensure_initialized();
   LOCK_GUARD(config_mutex);
   const auto sec_it = config_space_t::config.find("REAL_HERO");
   if (sec_it == config_space_t::config.end()) {
@@ -734,12 +746,23 @@ std::string config_space_t::locked_runtime_binding_hash() {
 
 /*──────────────────────────── life-cycle hooks ───────────────────────────*/
 void config_space_t::finit() { log_info("[dconfig] finalizing\n"); }
+void config_space_t::ensure_initialized() {
+  bool needs_init = false;
+  {
+    LOCK_GUARD(config_mutex);
+    if (!initialized) {
+      initialized = true;
+      needs_init = true;
+    }
+  }
+  if (needs_init) init();
+}
+
 void config_space_t::init() {
   log_info("[dconfig] initializing\n");
   exchange_type = exchange_type_e::NONE;
   change_config_file();  // defaults to global .config
 }
-config_space_t::_init config_space_t::_initializer;
 
 /*──────────────── explicit template instantiations ───────────────────────*/
 template int64_t config_space_t::get<int64_t>(const std::string&, const std::string&,

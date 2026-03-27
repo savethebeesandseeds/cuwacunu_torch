@@ -51,6 +51,9 @@ inline constexpr std::string_view kSuperLoopHumanDirname = "human";
 inline constexpr std::string_view kSuperLoopReviewsDirname = "reviews";
 inline constexpr std::string_view kSuperLoopDecisionsDirname = "decisions";
 inline constexpr std::string_view kSuperLoopHumanResponsesDirname = "responses";
+inline constexpr std::string_view kHumanHeroRuntimeDirname = ".human_hero";
+inline constexpr std::string_view kHumanHeroPendingCountFilename =
+    "pending.count";
 
 [[nodiscard]] inline bool is_super_loop_runtime_text_char(char ch) {
   if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
@@ -163,6 +166,19 @@ struct super_loop_record_t {
     const std::filesystem::path& runtime_root) {
   if (runtime_root.empty()) return {};
   return (runtime_root / ".super_hero").lexically_normal();
+}
+
+[[nodiscard]] inline std::filesystem::path human_hero_runtime_dir(
+    const std::filesystem::path& super_root) {
+  if (super_root.empty()) return {};
+  return (super_root.parent_path() / std::string(kHumanHeroRuntimeDirname))
+      .lexically_normal();
+}
+
+[[nodiscard]] inline std::filesystem::path human_hero_pending_count_path(
+    const std::filesystem::path& super_root) {
+  return human_hero_runtime_dir(super_root) /
+         std::string(kHumanHeroPendingCountFilename);
 }
 
 [[nodiscard]] inline std::string format_super_index(std::size_t index) {
@@ -640,6 +656,32 @@ super_loop_record_to_document(const super_loop_record_t& record) {
     std::string_view state) {
   return state == "stopped" || state == "failed" || state == "need_human" ||
          state == "exhausted";
+}
+
+[[nodiscard]] inline bool sync_human_pending_request_count(
+    const std::filesystem::path& super_root, std::string* error = nullptr) {
+  if (error) error->clear();
+  std::vector<super_loop_record_t> loops{};
+  if (!scan_super_loop_records(super_root, &loops, error)) return false;
+
+  std::size_t pending = 0;
+  for (const auto& loop : loops) {
+    if (loop.state == "need_human") ++pending;
+  }
+
+  const std::filesystem::path marker_dir = human_hero_runtime_dir(super_root);
+  std::error_code ec{};
+  std::filesystem::create_directories(marker_dir, ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create Human Hero runtime dir: " + marker_dir.string();
+    }
+    return false;
+  }
+
+  return cuwacunu::hero::runtime::write_text_file_atomic(
+      human_hero_pending_count_path(super_root),
+      std::to_string(pending) + "\n", error);
 }
 
 }  // namespace runtime

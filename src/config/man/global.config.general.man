@@ -5,7 +5,7 @@ MAN_ID = global.config.general
 TARGET_DSL = src/config/.config
 TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
 PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
-PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/main_campaign.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/main_campaign.cpp,src/impl/hero/super_hero/hero_super_tools.cpp
 
 [ENUM GENERAL.exchange_type]
 key = GENERAL.exchange_type
@@ -51,9 +51,46 @@ range = existing directory
 allowed = absolute_or_relative path
 nuance = stable repository/worktree root used by Super HERO when launching `codex exec -C` for super-loop reviews
 
+[FIELD GENERAL.torch_seed]
+key = torch_seed
+scope = GENERAL section
+type = int
+required = true
+default = 42
+range = integer
+allowed = integer
+nuance = deterministic torch seed used by in-tree torch-based training and test entry points that read global config
+
+[FIELD GENERAL.hashimyei_metadata_secret]
+key = hashimyei_metadata_secret
+scope = GENERAL section
+type = string
+required = true
+default = CHANGE_ME_HASHIMYEI_METADATA_SECRET
+range = non-empty string
+allowed = opaque string token
+nuance = fallback metadata secret for Hashimyei when `CUWACUNU_HASHIMYEI_META_SECRET` is unset; treat as sensitive and replace the placeholder in real environments
+
+[FIELD GENERAL.absolute_base_symbol]
+key = absolute_base_symbol
+scope = GENERAL section
+type = string
+required = false
+default = USDT
+range = non-empty token
+allowed = market quote-asset symbol
+nuance = legacy quote-asset hint retained in the checked-in global config; not consumed by current in-tree HERO or runtime code paths
+
 [RULE GENERAL_EXCHANGE_TYPE_ALLOWED]
 id = GENERAL_EXCHANGE_TYPE_ALLOWED
 applies_to = GENERAL.exchange_type
 severity = error
 when = exchange_type not in {TEST,REAL}
 message = GENERAL.exchange_type must be TEST or REAL
+
+[RULE GENERAL_HASHIMYEI_METADATA_SECRET_REQUIRED]
+id = GENERAL_HASHIMYEI_METADATA_SECRET_REQUIRED
+applies_to = GENERAL.hashimyei_metadata_secret
+severity = error
+when = hashimyei_metadata_secret == empty
+message = GENERAL.hashimyei_metadata_secret must be non-empty

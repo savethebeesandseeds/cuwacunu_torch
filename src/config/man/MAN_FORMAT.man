@@ -18,6 +18,10 @@ rules = one RULE section encodes cross-field or runtime semantic constraints
 required_keys = key,values
 rules = use ENUM for closed token sets
 
+[SECTION NOTE]
+required_keys = scope,text
+rules = use NOTE for derived paths, operational caveats, or non-assignable semantics that still matter to operators and MCP tooling
+
 [SCALAR_CONVENTIONS]
 bool_tokens = true,false
 required_values = true,false

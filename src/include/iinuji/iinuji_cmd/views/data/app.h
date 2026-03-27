@@ -37,6 +37,7 @@ using Dataset_t = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatyp
 using ObsSample_t = cuwacunu::camahjucunu::data::observation_sample_t;
 
 struct DataAppRuntime {
+  bool attempted{false};
   bool ready{false};
   bool sample_ready{false};
   std::string error{};
@@ -168,6 +169,10 @@ inline std::string data_runtime_signature(const CmdState& state) {
   return state.data.focus_instrument + "|" + state.data.raw_instruction;
 }
 
+inline bool data_runtime_needed(const CmdState& state) {
+  return state.screen == ScreenMode::Data;
+}
+
 inline bool load_data_sample(CmdState& state, DataAppRuntime& rt, std::size_t idx) {
   if (!rt.ready || rt.sample_count == 0) {
     rt.sample_ready = false;
@@ -226,10 +231,14 @@ inline void init_data_runtime(CmdState& state, DataAppRuntime& rt, bool force) {
   }
 
   const std::string sig = data_runtime_signature(state);
-  if (!force && rt.ready && rt.signature == sig) {
-    clamp_data_plot_sample_index(state);
-    if (!rt.sample_ready || state.data.plot_sample_index != rt.sample_index) {
-      load_data_sample(state, rt, state.data.plot_sample_index);
+  if (!force && rt.attempted && rt.signature == sig) {
+    if (rt.ready) {
+      clamp_data_plot_sample_index(state);
+      if (!rt.sample_ready || state.data.plot_sample_index != rt.sample_index) {
+        load_data_sample(state, rt, state.data.plot_sample_index);
+      } else {
+        sync_data_tensor_state(state, rt);
+      }
     } else {
       sync_data_tensor_state(state, rt);
     }
@@ -237,6 +246,7 @@ inline void init_data_runtime(CmdState& state, DataAppRuntime& rt, bool force) {
   }
 
   rt = DataAppRuntime{};
+  rt.attempted = true;
   rt.signature = sig;
   try {
     if (state.board.contract_hash.empty()) {

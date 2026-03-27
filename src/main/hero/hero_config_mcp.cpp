@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -22,38 +23,51 @@ __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 }
 
-[[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
-  const char* data = reinterpret_cast<const char*>(bytes);
-  std::size_t remaining = size;
+void write_stdout_text(std::string_view text) {
+  const char* data = text.data();
+  std::size_t remaining = text.size();
   while (remaining > 0) {
-    const ssize_t wrote = ::write(fd, data, remaining);
+    const ssize_t wrote = ::write(STDOUT_FILENO, data, remaining);
     if (wrote < 0) {
       if (errno == EINTR) continue;
-      return false;
+      break;
     }
-    if (wrote == 0) return false;
+    if (wrote == 0) break;
     const auto wrote_size = static_cast<std::size_t>(wrote);
     data += wrote_size;
     remaining -= wrote_size;
   }
-  return true;
 }
 
-void write_stdout_text(std::string_view text) {
-  (void)write_all_fd(STDOUT_FILENO, text.data(), text.size());
+void write_stderr_text(std::string_view text) {
+  const char* data = text.data();
+  std::size_t remaining = text.size();
+  while (remaining > 0) {
+    const ssize_t wrote = ::write(STDERR_FILENO, data, remaining);
+    if (wrote < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    if (wrote == 0) break;
+    const auto wrote_size = static_cast<std::size_t>(wrote);
+    data += wrote_size;
+    remaining -= wrote_size;
+  }
 }
 
 void print_cli_help(const char* argv0) {
-  std::cerr << "Usage: " << argv0
-            << " [--global-config <path>] [--config <hero_config_dsl>]"
-               " [--tool <name>] [--args-json <json>]"
-               " [--list-tools] [--list-tools-json]\n"
-            << "  default mode: JSON-RPC over stdio\n"
-            << "  default config path: [REAL_HERO].config_hero_dsl_filename"
-               " in --global-config (default /cuwacunu/src/config/.config)\n"
-            << "  --tool/--args-json: execute one MCP tool call and exit\n"
-            << "  --list-tools: human-readable tool list\n"
-            << "  --list-tools-json: print MCP tools/list JSON and exit\n";
+  std::ostringstream out;
+  out << "Usage: " << argv0
+      << " [--global-config <path>] [--config <hero_config_dsl>]"
+         " [--tool <name>] [--args-json <json>]"
+         " [--list-tools] [--list-tools-json]\n"
+      << "  default mode: JSON-RPC over stdio\n"
+      << "  default config path: [REAL_HERO].config_hero_dsl_filename"
+         " in --global-config (default /cuwacunu/src/config/.config)\n"
+      << "  --tool/--args-json: execute one MCP tool call and exit\n"
+      << "  --list-tools: human-readable tool list\n"
+      << "  --list-tools-json: print MCP tools/list JSON and exit\n";
+  write_stderr_text(out.str());
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
@@ -195,34 +209,35 @@ int main(int argc, char** argv) {
       print_cli_help(argv[0]);
       return 0;
     }
-    std::cerr << "Unknown argument: " << arg << "\n";
+    write_stderr_text("Unknown argument: " + arg + "\n");
     print_cli_help(argv[0]);
     return 2;
   }
 
   if (direct_tool_args_overridden && !direct_tool_mode) {
-    std::cerr << "--args-json requires --tool\n";
+    write_stderr_text("--args-json requires --tool\n");
     return 2;
   }
   if (list_tools && list_tools_json) {
-    std::cerr << "--list-tools and --list-tools-json are mutually exclusive\n";
+    write_stderr_text(
+        "--list-tools and --list-tools-json are mutually exclusive\n");
     return 2;
   }
   if ((list_tools || list_tools_json) && direct_tool_mode) {
-    std::cerr << "--list-tools/--list-tools-json cannot be combined with "
-                 "--tool\n";
+    write_stderr_text("--list-tools/--list-tools-json cannot be combined with "
+                      "--tool\n");
     return 2;
   }
   if (direct_tool_mode) {
     direct_tool_name = trim_ascii(direct_tool_name);
     if (direct_tool_name.empty()) {
-      std::cerr << "--tool requires a non-empty name\n";
+      write_stderr_text("--tool requires a non-empty name\n");
       return 2;
     }
     direct_tool_args_json = trim_ascii(direct_tool_args_json);
     if (direct_tool_args_json.empty()) direct_tool_args_json = "{}";
     if (direct_tool_args_json.front() != '{') {
-      std::cerr << "--args-json must be a JSON object\n";
+      write_stderr_text("--args-json must be a JSON object\n");
       return 2;
     }
   }
@@ -231,8 +246,8 @@ int main(int argc, char** argv) {
     config_path = default_config_path_from_real_hero(global_config_path);
   }
   if (config_path.empty()) {
-    std::cerr << "missing [REAL_HERO].config_hero_dsl_filename in "
-              << global_config_path.string() << "\n";
+    write_stderr_text("missing [REAL_HERO].config_hero_dsl_filename in " +
+                      global_config_path.string() + "\n");
     return 2;
   }
 
@@ -256,13 +271,14 @@ int main(int argc, char** argv) {
   const std::string protocol_layer =
       normalize_protocol_layer(store.get_or_default("protocol_layer"));
   if (protocol_layer == "https/sse") {
-    std::cerr << cuwacunu::hero::config::kProtocolLayerHttpsSseFailFastMessage
-              << "\n";
+    write_stderr_text(
+        std::string(cuwacunu::hero::config::kProtocolLayerHttpsSseFailFastMessage) +
+        "\n");
     return 2;
   }
   if (!protocol_layer.empty() && protocol_layer != "stdio") {
-    std::cerr << "Unsupported protocol_layer: " << protocol_layer
-              << " (allowed: STDIO|HTTPS/SSE)\n";
+    write_stderr_text("Unsupported protocol_layer: " + protocol_layer +
+                      " (allowed: STDIO|HTTPS/SSE)\n");
     return 2;
   }
 
@@ -276,15 +292,16 @@ int main(int argc, char** argv) {
       write_stdout_text(tool_result_json + "\n");
     }
     if (!ok && !tool_error.empty()) {
-      std::cerr << "tool execution failed: " << tool_error << "\n";
+      write_stderr_text("tool execution failed: " + tool_error + "\n");
     }
     return ok ? 0 : 1;
   }
 
   int exit_code = 0;
   if (::isatty(STDIN_FILENO) != 0) {
-    std::cerr << "[hero_config_mcp] no --tool provided and stdin is a terminal; "
-                 "default mode expects JSON-RPC input on stdin.\n";
+    write_stderr_text(
+        "[hero_config_mcp] no --tool provided and stdin is a terminal; "
+        "default mode expects JSON-RPC input on stdin.\n");
     print_cli_help(argv[0]);
     return 2;
   }

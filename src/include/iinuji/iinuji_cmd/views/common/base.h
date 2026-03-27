@@ -159,10 +159,8 @@ inline bool lookup_config_value(const std::string& section,
 }
 
 inline std::string resolve_configured_board_contract_path() {
-  const std::string resolved_board_path =
-      cuwacunu::iitepi::config_space_t::effective_board_dsl_path();
   const auto board_hash =
-      cuwacunu::iitepi::board_space_t::register_board_file(resolved_board_path);
+      cuwacunu::iitepi::config_space_t::locked_board_hash();
   const auto board_itself =
       cuwacunu::iitepi::board_space_t::board_itself(board_hash);
   const auto& board_instruction = board_itself->board.decoded();
@@ -212,11 +210,8 @@ struct BoardWaveBatchSizeResolution {
 inline BoardWaveBatchSizeResolution resolve_configured_board_wave_batch_size() {
   BoardWaveBatchSizeResolution out{};
   try {
-    const std::string resolved_board_path =
-        cuwacunu::iitepi::config_space_t::effective_board_dsl_path();
-
     const auto board_hash =
-        cuwacunu::iitepi::board_space_t::register_board_file(resolved_board_path);
+        cuwacunu::iitepi::config_space_t::locked_board_hash();
     const auto board_itself =
         cuwacunu::iitepi::board_space_t::board_itself(board_hash);
     const auto& board_instruction = board_itself->board.decoded();

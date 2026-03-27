@@ -220,52 +220,104 @@ inline int run(const char* global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try 
   state.logs.show_metadata = false;
   state.logs.metadata_filter = LogsMetadataFilter::Any;
 #endif
-  const auto boot_contract_hash = resolve_configured_board_contract_hash();
-  state.config = load_config_view_from_config(boot_contract_hash);
-  clamp_selected_tab(state);
-  state.board = load_board_from_contract_hash(boot_contract_hash);
-  clamp_board_navigation_state(state);
-  state.data = load_data_view_from_config(&state.board);
-  clamp_selected_data_channel(state);
-  clamp_data_plot_mode(state);
-  clamp_data_plot_x_axis(state);
-  clamp_data_nav_focus(state);
-  clamp_selected_training_tab(state);
-  clamp_selected_training_hash(state);
-  clamp_selected_tsi_tab(state);
 
   auto set_mouse_capture = [&](bool enabled) {
     mousemask(enabled ? ALL_MOUSE_EVENTS : 0, nullptr);
     mouseinterval(0);
     state.logs.mouse_capture = enabled;
   };
-  set_mouse_capture(state.logs.mouse_capture);
 
-  log_info("[iinuji_cmd] cuwacunu command terminal ready\n");
-  log_info("[iinuji_cmd] F1 home | F2 board | F3 training | F4 tsi | F5 data | F8 logs | F9 config | type 'help' for commands\n");
-  log_info("[iinuji_cmd] logs setting 'mouse capture' controls terminal select/copy mode\n");
-  if (!state.config.ok) {
-    log_warn("[iinuji_cmd] config tabs invalid: %s\n", state.config.error.c_str());
-  } else {
-    log_info("[iinuji_cmd] config tabs loaded: tabs=%zu\n", state.config.tabs.size());
-  }
-  if (!state.board.ok) {
-    log_warn("[iinuji_cmd] board invalid: %s\n", state.board.error.c_str());
-  } else {
-    log_info("[iinuji_cmd] board loaded: circuits=%zu\n", state.board.board.circuits.size());
-  }
-  if (!state.data.ok) {
-    log_warn("[iinuji_cmd] data view invalid: %s\n", state.data.error.c_str());
-  } else {
-    log_info("[iinuji_cmd] data view loaded: channels=%zu\n", state.data.channels.size());
-  }
-  log_info("[iinuji_cmd] mouse wheel=vertical scroll | Shift/Ctrl/Alt+wheel=horizontal scroll (active screen panels)\n");
+  enum class BootStage : std::uint8_t {
+    ResolveContract = 0,
+    LoadConfig = 1,
+    LoadBoard = 2,
+    LoadData = 3,
+    Ready = 4,
+  };
+
+  BootStage boot_stage{BootStage::ResolveContract};
+  bool boot_stage_needs_paint = true;
+  std::string boot_contract_hash{};
+
+  auto boot_phase_label = [&]() -> std::string {
+    switch (boot_stage) {
+      case BootStage::ResolveContract:
+        return "board contract";
+      case BootStage::LoadConfig:
+        return "config tabs";
+      case BootStage::LoadBoard:
+        return "board state";
+      case BootStage::LoadData:
+        return "data view metadata";
+      case BootStage::Ready:
+        return "complete";
+    }
+    return "runtime state";
+  };
+
+  auto boot_marker = [&](BootStage step) -> const char* {
+    if (static_cast<int>(step) < static_cast<int>(boot_stage)) return "[done] ";
+    if (step == boot_stage) return "[work] ";
+    return "[todo] ";
+  };
+
+  auto render_boot_ui = [&]() {
+    set_text_box(title, "cuwacunu.cmd - boot", true);
+    set_text_box(status, "loading " + boot_phase_label(), true);
+    set_text_box(
+        left,
+        std::string("Initializing command terminal...\n\n") +
+            boot_marker(BootStage::ResolveContract) + "resolving board contract\n" +
+            boot_marker(BootStage::LoadConfig) + "loading config tabs\n" +
+            boot_marker(BootStage::LoadBoard) + "loading board state\n" +
+            boot_marker(BootStage::LoadData) + "loading data view metadata\n\n"
+            "The Home screen will appear when bootstrap completes.",
+        true);
+    set_text_box(
+        right,
+        std::string("bootstrap\n") +
+            "TERM-bound ncurses session is active.\n\n"
+            "current step: " + boot_phase_label() + "\n"
+            "using_dev_tty=" + (app.using_dev_tty() ? std::string("true")
+                                                     : std::string("false")),
+        true);
+    set_text_box(bottom, "", false);
+    set_text_box(cmdline, "boot> loading...", false);
+    cmdline->focused = false;
+    right->focused = false;
+  };
+
+  auto finish_boot = [&]() {
+    clamp_selected_training_tab(state);
+    clamp_selected_training_hash(state);
+    clamp_selected_tsi_tab(state);
+    set_mouse_capture(state.logs.mouse_capture);
+
+    log_info("[iinuji_cmd] cuwacunu command terminal ready\n");
+    log_info("[iinuji_cmd] F1 home | F2 board | F3 training | F4 tsi | F5 data | F8 logs | F9 config | type 'help' for commands\n");
+    log_info("[iinuji_cmd] logs setting 'mouse capture' controls terminal select/copy mode\n");
+    if (!state.config.ok) {
+      log_warn("[iinuji_cmd] config tabs invalid: %s\n", state.config.error.c_str());
+    } else {
+      log_info("[iinuji_cmd] config tabs loaded: tabs=%zu\n", state.config.tabs.size());
+    }
+    if (!state.board.ok) {
+      log_warn("[iinuji_cmd] board invalid: %s\n", state.board.error.c_str());
+    } else {
+      log_info("[iinuji_cmd] board loaded: circuits=%zu\n", state.board.board.circuits.size());
+    }
+    if (!state.data.ok) {
+      log_warn("[iinuji_cmd] data view invalid: %s\n", state.data.error.c_str());
+    } else {
+      log_info("[iinuji_cmd] data view loaded: channels=%zu\n", state.data.channels.size());
+    }
+    log_info("[iinuji_cmd] mouse wheel=vertical scroll | Shift/Ctrl/Alt+wheel=horizontal scroll (active screen panels)\n");
+  };
 
   constexpr int kVScrollStep = 6;
   constexpr int kHScrollStep = 16;
 
   DataAppRuntime data_rt{};
-  init_data_runtime(state, data_rt, true);
 
   auto dlog_tail_seq = []() -> std::uint64_t {
     const auto tail = cuwacunu::piaabo::dlog_snapshot(1);
@@ -279,7 +331,7 @@ inline int run(const char* global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try 
   std::uint64_t last_log_seq = dlog_tail_seq();
   int current_input_timeout = app_opts.input_timeout_ms;
   while (state.running) {
-    init_data_runtime(state, data_rt, false);
+    const bool boot_active = (boot_stage != BootStage::Ready);
 
     int H = 0;
     int W = 0;
@@ -288,6 +340,77 @@ inline int run(const char* global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try 
       last_h = H;
       last_w = W;
       dirty = true;
+    }
+
+    if (boot_active && boot_stage_needs_paint) {
+      dirty = true;
+    }
+
+    if (dirty) {
+      if (boot_active) {
+        render_boot_ui();
+      } else {
+        refresh_board_editor_diagnostic(state);
+        refresh_ui(state, title, status, left, right, bottom, cmdline);
+        if (state.screen == ScreenMode::Logs && state.logs.auto_follow) {
+          jump_logs_to_bottom(state, left);
+        }
+      }
+      layout_tree(root, Rect{0, 0, W, H});
+      ::erase();
+      render_tree(root);
+      if (!boot_active) {
+        render_data_plot_overlay(state, data_rt, left, right);
+        render_help_overlay(state, left, right);
+        render_logs_scroll_controls(state, left);
+        render_board_error_line_overlay(state, left);
+        render_board_completion_overlay(state, left);
+      }
+      ::refresh();
+      dirty = false;
+    }
+
+    if (boot_active) {
+      if (boot_stage_needs_paint) {
+        boot_stage_needs_paint = false;
+        continue;
+      }
+
+      switch (boot_stage) {
+        case BootStage::ResolveContract:
+          boot_contract_hash = resolve_configured_board_contract_hash();
+          boot_stage = BootStage::LoadConfig;
+          break;
+        case BootStage::LoadConfig:
+          state.config = load_config_view_from_config(boot_contract_hash);
+          clamp_selected_tab(state);
+          boot_stage = BootStage::LoadBoard;
+          break;
+        case BootStage::LoadBoard:
+          state.board = load_board_from_contract_hash(boot_contract_hash);
+          clamp_board_navigation_state(state);
+          boot_stage = BootStage::LoadData;
+          break;
+        case BootStage::LoadData:
+          state.data = load_data_view_from_config(&state.board);
+          clamp_selected_data_channel(state);
+          clamp_data_plot_mode(state);
+          clamp_data_plot_x_axis(state);
+          clamp_data_nav_focus(state);
+          finish_boot();
+          boot_stage = BootStage::Ready;
+          break;
+        case BootStage::Ready:
+          break;
+      }
+
+      dirty = true;
+      boot_stage_needs_paint = (boot_stage != BootStage::Ready);
+      continue;
+    }
+
+    if (data_runtime_needed(state)) {
+      init_data_runtime(state, data_rt, false);
     }
 
     if (state.screen == ScreenMode::Logs) {
@@ -299,24 +422,6 @@ inline int run(const char* global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try 
       }
     }
     if (apply_logs_pending_actions(state, left, right)) dirty = true;
-
-    if (dirty) {
-      refresh_board_editor_diagnostic(state);
-      refresh_ui(state, title, status, left, right, bottom, cmdline);
-      if (state.screen == ScreenMode::Logs && state.logs.auto_follow) {
-        jump_logs_to_bottom(state, left);
-      }
-      layout_tree(root, Rect{0, 0, W, H});
-      ::erase();
-      render_tree(root);
-      render_data_plot_overlay(state, data_rt, left, right);
-      render_help_overlay(state, left, right);
-      render_logs_scroll_controls(state, left);
-      render_board_error_line_overlay(state, left);
-      render_board_completion_overlay(state, left);
-      ::refresh();
-      dirty = false;
-    }
 
     const int desired_timeout = (state.screen == ScreenMode::Logs) ? 50 : -1;
     if (desired_timeout != current_input_timeout) {

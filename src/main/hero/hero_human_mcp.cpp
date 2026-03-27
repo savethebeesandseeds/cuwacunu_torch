@@ -22,7 +22,7 @@ void print_cli_help(const char* argv0) {
                " [--tool <name>] [--args-json <json>]"
                " [--list-tools] [--list-tools-json] [--help]\n"
             << "       With no --tool/--list flags on a tty, launch the Human Hero"
-               " ncurses operator UI.\n";
+               " operator UI (ncurses when supported, line prompt otherwise).\n";
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {

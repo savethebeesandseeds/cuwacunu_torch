@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <pwd.h>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -90,6 +91,15 @@ struct interactive_response_input_t {
     return static_cast<char>(std::tolower(c));
   });
   return out;
+}
+
+[[nodiscard]] bool terminal_supports_human_ncurses_ui() {
+  const char* term_env = std::getenv("TERM");
+  const std::string term =
+      lowercase_copy(trim_ascii(term_env == nullptr ? "" : term_env));
+  if (term.empty() || term == "dumb" || term == "unknown") return false;
+  if (::isatty(STDIN_FILENO) == 0 || ::isatty(STDOUT_FILENO) == 0) return false;
+  return true;
 }
 
 [[nodiscard]] std::string strip_inline_comment(std::string_view in) {
@@ -194,6 +204,114 @@ struct interactive_response_input_t {
   if (p.is_absolute()) return p.lexically_normal().string();
   if (base_folder.empty()) return p.lexically_normal().string();
   return (std::filesystem::path(base_folder) / p).lexically_normal().string();
+}
+
+[[nodiscard]] bool operator_id_needs_bootstrap(std::string_view value) {
+  const std::string trimmed = trim_ascii(value);
+  return trimmed.empty() || trimmed == "CHANGE_ME_OPERATOR";
+}
+
+[[nodiscard]] std::string current_user_name() {
+  const char* env_user = std::getenv("USER");
+  if (env_user != nullptr) {
+    const std::string trimmed = trim_ascii(env_user);
+    if (!trimmed.empty()) return trimmed;
+  }
+  const char* env_logname = std::getenv("LOGNAME");
+  if (env_logname != nullptr) {
+    const std::string trimmed = trim_ascii(env_logname);
+    if (!trimmed.empty()) return trimmed;
+  }
+  errno = 0;
+  if (const passwd* pw = ::getpwuid(::geteuid()); pw != nullptr &&
+                                                 pw->pw_name != nullptr) {
+    const std::string trimmed = trim_ascii(pw->pw_name);
+    if (!trimmed.empty()) return trimmed;
+  }
+  return "operator";
+}
+
+[[nodiscard]] std::string current_host_name() {
+  std::array<char, 256> host{};
+  if (::gethostname(host.data(), host.size() - 1) == 0) {
+    host.back() = '\0';
+    const std::string trimmed = trim_ascii(host.data());
+    if (!trimmed.empty()) return trimmed;
+  }
+  return "localhost";
+}
+
+[[nodiscard]] std::string derive_bootstrap_operator_id() {
+  return current_user_name() + "@" + current_host_name();
+}
+
+[[nodiscard]] bool persist_bootstrap_operator_id(
+    const std::filesystem::path& hero_dsl_path, std::string_view operator_id,
+    std::string* error) {
+  if (error) error->clear();
+  std::ifstream in(hero_dsl_path);
+  if (!in) {
+    if (error) {
+      *error = "cannot open Human HERO defaults DSL for operator bootstrap: " +
+               hero_dsl_path.string();
+    }
+    return false;
+  }
+
+  std::vector<std::string> lines{};
+  std::string line{};
+  bool replaced = false;
+  bool in_block_comment = false;
+  while (std::getline(in, line)) {
+    std::string candidate = line;
+    if (in_block_comment) {
+      const std::size_t end_block = candidate.find("*/");
+      if (end_block == std::string::npos) {
+        lines.push_back(line);
+        continue;
+      }
+      candidate = candidate.substr(end_block + 2);
+      in_block_comment = false;
+    }
+    const std::size_t start_block = candidate.find("/*");
+    if (start_block != std::string::npos) {
+      const std::size_t end_block = candidate.find("*/", start_block + 2);
+      if (end_block == std::string::npos) {
+        candidate = candidate.substr(0, start_block);
+        in_block_comment = true;
+      } else {
+        candidate.erase(start_block, end_block - start_block + 2);
+      }
+    }
+    candidate = trim_ascii(strip_inline_comment(candidate));
+    if (!candidate.empty()) {
+      const std::size_t eq = candidate.find('=');
+      if (eq != std::string::npos) {
+        std::string lhs = trim_ascii(candidate.substr(0, eq));
+        lhs = cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(lhs);
+        if (lhs == "operator_id") {
+          line = "operator_id:str = " + std::string(operator_id) +
+                 " # auto-initialized on first Human Hero use";
+          replaced = true;
+        }
+      }
+    }
+    lines.push_back(line);
+  }
+
+  if (!replaced) {
+    lines.push_back("operator_id:str = " + std::string(operator_id) +
+                    " # auto-initialized on first Human Hero use");
+  }
+
+  std::ostringstream out;
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    out << lines[i];
+    if (i + 1 != lines.size()) out << "\n";
+  }
+  out << "\n";
+  return cuwacunu::hero::runtime::write_text_file_atomic(hero_dsl_path, out.str(),
+                                                         error);
 }
 
 [[nodiscard]] std::optional<std::string> read_ini_value(
@@ -769,15 +887,22 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
 
 void init_human_ncurses_theme() {
   if (!has_colors()) return;
-  init_pair(1, COLOR_CYAN, -1);
+  init_pair(1, COLOR_CYAN, COLOR_BLACK);
   init_pair(2, COLOR_BLACK, COLOR_CYAN);
-  init_pair(3, COLOR_YELLOW, -1);
-  init_pair(4, COLOR_RED, -1);
-  init_pair(5, COLOR_GREEN, -1);
+  init_pair(3, COLOR_YELLOW, COLOR_BLACK);
+  init_pair(4, COLOR_RED, COLOR_BLACK);
+  init_pair(5, COLOR_GREEN, COLOR_BLACK);
+  init_pair(6, COLOR_WHITE, COLOR_BLACK);
+  bkgd(COLOR_PAIR(6) | ' ');
+  attrset(COLOR_PAIR(6));
 }
 
 void draw_boxed_window(WINDOW* win, std::string_view title) {
   if (!win) return;
+  if (has_colors()) {
+    wbkgdset(win, COLOR_PAIR(6) | ' ');
+    wattrset(win, COLOR_PAIR(6));
+  }
   werase(win);
   box(win, 0, 0);
   if (!title.empty()) {
@@ -785,6 +910,54 @@ void draw_boxed_window(WINDOW* win, std::string_view title) {
     mvwaddnstr(win, 0, 2, title.data(), static_cast<int>(title.size()));
     wattroff(win, COLOR_PAIR(1) | A_BOLD);
   }
+}
+
+void draw_boxed_region(int y, int x, int height, int width,
+                       std::string_view title) {
+  if (height < 2 || width < 2) return;
+  mvaddch(y, x, ACS_ULCORNER);
+  mvhline(y, x + 1, ACS_HLINE, width - 2);
+  mvaddch(y, x + width - 1, ACS_URCORNER);
+  for (int row = 1; row < height - 1; ++row) {
+    mvaddch(y + row, x, ACS_VLINE);
+    mvaddch(y + row, x + width - 1, ACS_VLINE);
+  }
+  mvaddch(y + height - 1, x, ACS_LLCORNER);
+  mvhline(y + height - 1, x + 1, ACS_HLINE, width - 2);
+  mvaddch(y + height - 1, x + width - 1, ACS_LRCORNER);
+  if (!title.empty() && width > 4) {
+    attron(COLOR_PAIR(1) | A_BOLD);
+    mvaddnstr(y, x + 2, title.data(), width - 4);
+    attroff(COLOR_PAIR(1) | A_BOLD);
+  }
+}
+
+void clear_region_line(int y, int x, int width) {
+  if (width <= 0) return;
+  mvaddnstr(y, x, std::string(static_cast<std::size_t>(width), ' ').c_str(),
+            width);
+}
+
+void draw_wrapped_region_block(int y, int x, int width, int height,
+                               std::string_view text) {
+  if (width <= 0 || height <= 0) return;
+  const auto lines = wrap_text_lines(text, width);
+  for (int i = 0; i < height; ++i) clear_region_line(y + i, x, width);
+  for (int i = 0; i < height && i < static_cast<int>(lines.size()); ++i) {
+    mvaddnstr(y + i, x, lines[static_cast<std::size_t>(i)].c_str(), width);
+  }
+}
+
+void draw_centered_region_line(int y, int x, int width, std::string_view text,
+                               int color_pair = 0, bool bold = false) {
+  if (width <= 0) return;
+  const std::string shown = ellipsize_text(text, std::max(1, width - 2));
+  const int line_x = x + std::max(1, (width - static_cast<int>(shown.size())) / 2);
+  if (color_pair > 0) attron(COLOR_PAIR(color_pair));
+  if (bold) attron(A_BOLD);
+  mvaddnstr(y, line_x, shown.c_str(), width - 2);
+  if (bold) attroff(A_BOLD);
+  if (color_pair > 0) attroff(COLOR_PAIR(color_pair));
 }
 
 void draw_wrapped_block(WINDOW* win, int y, int x, int width, int height,
@@ -797,6 +970,18 @@ void draw_wrapped_block(WINDOW* win, int y, int x, int width, int height,
   for (int i = 0; i < height && i < static_cast<int>(lines.size()); ++i) {
     mvwaddnstr(win, y + i, x, lines[static_cast<std::size_t>(i)].c_str(), width);
   }
+}
+
+void draw_centered_line(WINDOW* win, int y, int width, std::string_view text,
+                        int color_pair = 0, bool bold = false) {
+  if (!win || width <= 0 || y < 0) return;
+  const std::string shown = ellipsize_text(text, std::max(1, width - 2));
+  const int x = std::max(1, (width - static_cast<int>(shown.size())) / 2);
+  if (color_pair > 0) wattron(win, COLOR_PAIR(color_pair));
+  if (bold) wattron(win, A_BOLD);
+  mvwaddnstr(win, y, x, shown.c_str(), width - 2);
+  if (bold) wattroff(win, A_BOLD);
+  if (color_pair > 0) wattroff(win, COLOR_PAIR(color_pair));
 }
 
 [[nodiscard]] bool prompt_text_dialog(const std::string& title,
@@ -933,12 +1118,13 @@ void draw_wrapped_block(WINDOW* win, int y, int x, int width, int height,
 
 void render_human_requests_screen(
     const std::vector<cuwacunu::hero::super::super_loop_record_t>& pending,
+    std::string_view operator_id, std::string_view super_root,
     std::size_t selected, std::string_view request_text,
     std::string_view status_line, bool status_is_error) {
-  erase();
   const int W = COLS;
   const int H = LINES;
-  if (W < 24 || H < 10) {
+  if (W < 56 || H < 10) {
+    erase();
     mvaddnstr(0, 0, "Human Hero: terminal too small. Resize or use hero.human.* tools.",
               std::max(0, W - 1));
     refresh();
@@ -947,35 +1133,32 @@ void render_human_requests_screen(
   const int header_h = 3;
   const int footer_h = 3;
   const int body_h = std::max(5, H - header_h - footer_h);
-  const int left_w = std::max(28, std::min(W / 3, 42));
-  const int right_w = std::max(20, W - left_w);
+  const int left_w = std::clamp(W / 3, 28, std::max(28, W - 24));
+  const int right_w = W - left_w;
 
-  WINDOW* header = newwin(header_h, W, 0, 0);
-  WINDOW* left = newwin(body_h, left_w, header_h, 0);
-  WINDOW* right = newwin(body_h, right_w, header_h, left_w);
-  WINDOW* footer = newwin(footer_h, W, header_h + body_h, 0);
-  if (!header || !left || !right || !footer) {
-    if (header) delwin(header);
-    if (left) delwin(left);
-    if (right) delwin(right);
-    if (footer) delwin(footer);
-    mvaddnstr(0, 0, "Human Hero: unable to allocate ncurses windows.",
-              std::max(0, W - 1));
-    refresh();
-    return;
-  }
+  if (has_colors()) attrset(COLOR_PAIR(6));
+  erase();
 
-  draw_boxed_window(header, " Human Hero ");
-  wattron(header, COLOR_PAIR(1) | A_BOLD);
-  mvwaddnstr(header, 1, 2,
-             "Pending human requests for Super Hero loops",
-             W - 4);
-  wattroff(header, COLOR_PAIR(1) | A_BOLD);
+  draw_boxed_region(0, 0, header_h, W, " Human Hero ");
+  attron(COLOR_PAIR(1) | A_BOLD);
+  const std::string header_line =
+      "Operator console | pending requests: " +
+      std::to_string(pending.size()) + " | operator: " +
+      std::string(operator_id.empty() ? "<unset>" : operator_id);
+  mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
+  attroff(COLOR_PAIR(1) | A_BOLD);
 
-  draw_boxed_window(left, " Requests ");
+  draw_boxed_region(header_h, 0, body_h, left_w,
+                    pending.empty() ? " Inbox " : " Requests ");
   if (pending.empty()) {
-    mvwaddnstr(left, 2, 2, "No pending requests.", left_w - 4);
-    mvwaddnstr(left, 3, 2, "Press r to refresh or q to exit.", left_w - 4);
+    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Requests",
+                              5, true);
+    draw_centered_region_line(header_h + 4, 0, left_w,
+                              "Super Hero has not asked for human input.");
+    draw_centered_region_line(header_h + 6, 0, left_w,
+                              "Press r to refresh the queue.");
+    draw_centered_region_line(header_h + 7, 0, left_w,
+                              "Press q to leave the console.");
   } else {
     const int max_rows = body_h - 2;
     std::size_t top = 0;
@@ -987,49 +1170,107 @@ void render_human_requests_screen(
       if (idx >= pending.size()) break;
       const auto& loop = pending[idx];
       const std::string label = loop.loop_id + " | " + loop.objective_name;
-      if (idx == selected) wattron(left, COLOR_PAIR(2) | A_BOLD);
-      mvwaddnstr(left, 1 + row, 1, std::string(left_w - 2, ' ').c_str(), left_w - 2);
-      mvwaddnstr(left, 1 + row, 2, ellipsize_text(label, left_w - 4).c_str(),
-                 left_w - 4);
-      if (idx == selected) wattroff(left, COLOR_PAIR(2) | A_BOLD);
+      const int row_y = header_h + 1 + row;
+      clear_region_line(row_y, 1, left_w - 2);
+      if (idx == selected) attron(COLOR_PAIR(2) | A_BOLD);
+      mvaddnstr(row_y, 2, ellipsize_text(label, left_w - 4).c_str(),
+                left_w - 4);
+      if (idx == selected) attroff(COLOR_PAIR(2) | A_BOLD);
     }
   }
 
-  draw_boxed_window(right, " Request ");
+  draw_boxed_region(header_h, left_w, body_h, right_w,
+                    pending.empty() ? " Overview " : " Request ");
   if (!pending.empty()) {
     const auto& loop = pending[selected];
     std::string meta = "loop=" + loop.loop_id + "  review=" +
                        std::to_string(loop.review_count);
-    mvwaddnstr(right, 1, 2, ellipsize_text(meta, right_w - 4).c_str(), right_w - 4);
-    mvwaddnstr(right, 2, 2,
-               ellipsize_text(loop.state_detail.empty() ? loop.objective_name
-                                                        : loop.state_detail,
-                              right_w - 4)
-                   .c_str(),
-               right_w - 4);
-    draw_wrapped_block(right, 4, 2, right_w - 4, body_h - 6, request_text);
+    mvaddnstr(header_h + 1, left_w + 2, ellipsize_text(meta, right_w - 4).c_str(),
+              right_w - 4);
+    mvaddnstr(header_h + 2, left_w + 2,
+              ellipsize_text(loop.state_detail.empty() ? loop.objective_name
+                                                       : loop.state_detail,
+                             right_w - 4)
+                  .c_str(),
+              right_w - 4);
+    draw_wrapped_region_block(header_h + 4, left_w + 2, right_w - 4, body_h - 6,
+                              request_text);
+  } else {
+    std::ostringstream out;
+    out << "This console becomes active when a Super Hero loop enters "
+           "\"need_human\".\n\n"
+        << "Operator: "
+        << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
+        << "Super root: " << super_root << "\n\n"
+        << "What to do here:\n"
+        << "- wait for a pending loop to appear\n"
+        << "- press r to refresh\n"
+        << "- press q to exit\n\n"
+        << "Non-interactive alternative:\n"
+        << "hero.human.list_requests";
+    draw_wrapped_region_block(header_h + 2, left_w + 2, right_w - 4, body_h - 4,
+                              out.str());
   }
 
-  draw_boxed_window(footer, " Controls ");
-  mvwaddnstr(footer, 1, 2,
-             "Up/Down select  Enter/c continue  s stop  r refresh  q quit",
-             W - 4);
+  draw_boxed_region(header_h + body_h, 0, footer_h, W, " Controls ");
+  const std::string controls = pending.empty()
+                                   ? "r refresh  q quit"
+                                   : "Up/Down select  Enter/c continue  s stop  r refresh  q quit";
+  mvaddnstr(header_h + body_h + 1, 2, controls.c_str(), W - 4);
   if (!status_line.empty()) {
-    wattron(footer, COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
-    mvwaddnstr(footer, 1, std::max(2, W / 2),
-               ellipsize_text(status_line, std::max(8, W / 2 - 3)).c_str(),
-               std::max(8, W / 2 - 3));
-    wattroff(footer, COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+    attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+    mvaddnstr(header_h + body_h + 1, std::max(2, W / 2),
+              ellipsize_text(status_line, std::max(8, W / 2 - 3)).c_str(),
+              std::max(8, W / 2 - 3));
+    attroff(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
   }
 
-  wrefresh(header);
-  wrefresh(left);
-  wrefresh(right);
-  wrefresh(footer);
-  delwin(header);
-  delwin(left);
-  delwin(right);
-  delwin(footer);
+  refresh();
+}
+
+void render_human_requests_bootstrap_screen(std::string_view operator_id,
+                                            std::string_view super_root,
+                                            std::string_view status_line,
+                                            bool status_is_error) {
+  const int W = COLS;
+  const int H = LINES;
+  if (W < 56 || H < 10) {
+    erase();
+    mvaddnstr(0, 0,
+              "Human Hero: terminal too small. Resize or use hero.human.* tools.",
+              std::max(0, W - 1));
+    refresh();
+    return;
+  }
+
+  const int header_h = 3;
+  const int footer_h = 3;
+  const int body_h = std::max(5, H - header_h - footer_h);
+
+  if (has_colors()) attrset(COLOR_PAIR(6));
+  erase();
+  draw_boxed_region(0, 0, header_h, W, " Human Hero ");
+  attron(COLOR_PAIR(1) | A_BOLD);
+  mvaddnstr(1, 2, "Operator console bootstrap", W - 4);
+  attroff(COLOR_PAIR(1) | A_BOLD);
+
+  draw_boxed_region(header_h, 0, body_h, W, " Boot ");
+  draw_wrapped_region_block(
+      header_h + 2, 2, W - 4, body_h - 4,
+      std::string("Initializing operator console...\n\n"
+                  "[work] scanning Super Hero request queue\n\n") +
+          "operator: " +
+          std::string(operator_id.empty() ? "<unset>" : operator_id) + "\n" +
+          "super_root: " + std::string(super_root) + "\n\n"
+          "The request inbox will appear when the scan completes.");
+
+  draw_boxed_region(header_h + body_h, 0, footer_h, W, " Status ");
+  attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+  mvaddnstr(header_h + body_h + 1, 2, ellipsize_text(status_line, W - 4).c_str(),
+            W - 4);
+  attroff(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+
+  refresh();
 }
 
 [[nodiscard]] bool collect_interactive_response_inputs(
@@ -1099,73 +1340,107 @@ void render_human_requests_screen(
   }
 
   try {
-    const char* term = std::getenv("TERM");
-    if (term == nullptr || trim_ascii(term).empty() ||
-        trim_ascii(term) == "dumb") {
-      ::setenv("TERM", "xterm-256color", 1);
-    }
     cuwacunu::iinuji::NcursesAppOpts opts{};
     opts.input_timeout_ms = -1;
+    opts.clear_on_start = false;
     cuwacunu::iinuji::NcursesApp curses_app(opts);
     init_human_ncurses_theme();
 
     std::vector<cuwacunu::hero::super::super_loop_record_t> pending{};
-    std::string load_error{};
-    if (!collect_pending_requests(*app, &pending, &load_error)) {
-      if (error) *error = load_error;
-      return false;
-    }
-    std::sort(pending.begin(), pending.end(), [](const auto& a, const auto& b) {
-      if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
-      return a.loop_id > b.loop_id;
-    });
+    auto sort_pending = [&](std::vector<cuwacunu::hero::super::super_loop_record_t>* rows) {
+      if (!rows) return;
+      std::sort(rows->begin(), rows->end(), [](const auto& a, const auto& b) {
+        if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
+        return a.loop_id > b.loop_id;
+      });
+    };
 
     std::size_t selected = 0;
     std::string request_text{};
-    std::string status{};
+    std::string status = "Scanning pending requests...";
     bool status_is_error = false;
+    bool dirty = true;
+    bool queue_refresh_pending = true;
+    bool queue_refresh_needs_paint = true;
+    bool has_loaded_once = false;
 
     for (;;) {
-      if (!pending.empty()) selected = std::min(selected, pending.size() - 1);
-      request_text.clear();
-      if (!pending.empty()) {
-        std::string request_error{};
-        if (!read_request_text_for_loop(pending[selected], &request_text,
-                                        &request_error)) {
-          request_text = "<failed to read request: " + request_error + ">";
+      if (queue_refresh_pending && queue_refresh_needs_paint) dirty = true;
+
+      if (dirty) {
+        if (!has_loaded_once && queue_refresh_pending) {
+          render_human_requests_bootstrap_screen(
+              app->defaults.operator_id, app->defaults.super_root.string(),
+              status, status_is_error);
+        } else {
+          if (!pending.empty()) selected = std::min(selected, pending.size() - 1);
+          request_text.clear();
+          if (!pending.empty()) {
+            std::string request_error{};
+            if (!read_request_text_for_loop(pending[selected], &request_text,
+                                            &request_error)) {
+              request_text = "<failed to read request: " + request_error + ">";
+            }
+          }
+          render_human_requests_screen(pending, app->defaults.operator_id,
+                                       app->defaults.super_root.string(),
+                                       selected, request_text, status,
+                                       status_is_error);
         }
+        dirty = false;
       }
-      render_human_requests_screen(pending, selected, request_text, status,
-                                   status_is_error);
-      const int ch = getch();
-      if (ch == 'q' || ch == 'Q' || ch == 27) return true;
-      if (ch == KEY_RESIZE) continue;
-      if (ch == 'r' || ch == 'R') {
+
+      if (queue_refresh_pending) {
+        if (queue_refresh_needs_paint) {
+          queue_refresh_needs_paint = false;
+          continue;
+        }
+
         std::string refresh_error{};
-        if (!collect_pending_requests(*app, &pending, &refresh_error)) {
+        std::vector<cuwacunu::hero::super::super_loop_record_t> refreshed{};
+        if (!collect_pending_requests(*app, &refreshed, &refresh_error)) {
           status = refresh_error;
           status_is_error = true;
         } else {
-          std::sort(pending.begin(), pending.end(),
-                    [](const auto& a, const auto& b) {
-                      if (a.updated_at_ms != b.updated_at_ms) {
-                        return a.updated_at_ms > b.updated_at_ms;
-                      }
-                      return a.loop_id > b.loop_id;
-                    });
+          pending = std::move(refreshed);
+          sort_pending(&pending);
           if (!pending.empty()) selected = std::min(selected, pending.size() - 1);
-          status = pending.empty() ? "No pending requests." : "Refreshed.";
+          else selected = 0;
+          status = has_loaded_once
+                       ? (pending.empty() ? "No pending requests." : "Refreshed.")
+                       : (pending.empty() ? "No pending requests. Waiting for Super Hero."
+                                          : "Ready.");
           status_is_error = false;
         }
+        has_loaded_once = true;
+        queue_refresh_pending = false;
+        dirty = true;
+        continue;
+      }
+
+      const int ch = getch();
+      if (ch == 'q' || ch == 'Q' || ch == 27) return true;
+      if (ch == KEY_RESIZE) {
+        dirty = true;
+        continue;
+      }
+      if (ch == 'r' || ch == 'R') {
+        status = "Refreshing request queue...";
+        status_is_error = false;
+        queue_refresh_pending = true;
+        queue_refresh_needs_paint = true;
+        dirty = true;
         continue;
       }
       if (pending.empty()) continue;
       if (ch == KEY_UP || ch == 'k') {
         if (selected > 0) --selected;
+        dirty = true;
         continue;
       }
       if (ch == KEY_DOWN || ch == 'j') {
         if (selected + 1 < pending.size()) ++selected;
+        dirty = true;
         continue;
       }
       if (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' || ch == 'C' ||
@@ -1179,11 +1454,13 @@ void render_human_requests_screen(
                                                  &cancelled, &input_error)) {
           status = input_error;
           status_is_error = true;
+          dirty = true;
           continue;
         }
         if (cancelled) {
           status = "Cancelled.";
           status_is_error = false;
+          dirty = true;
           continue;
         }
         std::string structured{};
@@ -1196,21 +1473,15 @@ void render_human_requests_screen(
                                        &response_error)) {
           status = response_error;
           status_is_error = true;
+          dirty = true;
           continue;
         }
-        std::string refresh_error{};
-        if (!collect_pending_requests(*app, &pending, &refresh_error)) {
-          status = refresh_error;
-          status_is_error = true;
-          continue;
-        }
-        std::sort(pending.begin(), pending.end(), [](const auto& a, const auto& b) {
-          if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
-          return a.loop_id > b.loop_id;
-        });
-        if (!pending.empty()) selected = std::min(selected, pending.size() - 1);
-        status = "Applied signed human response.";
+        status = "Applied signed human response. Refreshing queue...";
         status_is_error = false;
+        queue_refresh_pending = true;
+        queue_refresh_needs_paint = true;
+        dirty = true;
+        continue;
       }
     }
   } catch (const std::exception& ex) {
@@ -1656,6 +1927,22 @@ bool load_human_defaults(const std::filesystem::path& hero_dsl_path,
     return false;
   }
   out->operator_id = trim_ascii(values["operator_id"]);
+  if (operator_id_needs_bootstrap(out->operator_id)) {
+    const std::string bootstrapped_operator_id = derive_bootstrap_operator_id();
+    std::string bootstrap_error{};
+    if (!persist_bootstrap_operator_id(hero_dsl_path, bootstrapped_operator_id,
+                                       &bootstrap_error)) {
+      std::cerr << "[hero_human_mcp][warning] failed to persist bootstrapped "
+                   "operator_id to "
+                << hero_dsl_path.string() << ": " << bootstrap_error
+                << std::endl;
+    } else {
+      std::cerr << "[hero_human_mcp] auto-initialized operator_id to "
+                << bootstrapped_operator_id << " in " << hero_dsl_path.string()
+                << std::endl;
+    }
+    out->operator_id = bootstrapped_operator_id;
+  }
   const auto ssh_identity_it = values.find("operator_signing_ssh_identity");
   if (ssh_identity_it != values.end() &&
       !trim_ascii(ssh_identity_it->second).empty()) {
@@ -1749,10 +2036,20 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
 
   std::vector<cuwacunu::hero::super::super_loop_record_t> pending{};
   if (!collect_pending_requests(*app, &pending, error)) return false;
+  std::cout << "== Human Hero ==\n"
+            << "operator: "
+            << (app->defaults.operator_id.empty() ? "<unset>"
+                                                  : app->defaults.operator_id)
+            << "\n"
+            << "super_root: " << app->defaults.super_root.string() << "\n"
+            << "pending_requests: " << pending.size() << "\n";
   if (pending.empty()) {
-    std::cout << "No pending human requests.\n";
+    std::cout << "status: no pending human requests\n"
+              << "hint: rerun this command after a Super Hero loop enters "
+                 "\"need_human\", or use hero.human.list_requests.\n";
     return true;
   }
+  std::cout << "status: pending human review required\n";
 
   std::sort(pending.begin(), pending.end(), [](const auto& a, const auto& b) {
     if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
@@ -1857,6 +2154,13 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
 
 bool run_interactive_request_responder(app_context_t* app, std::string* error) {
   if (error) error->clear();
+  if (!terminal_supports_human_ncurses_ui()) {
+    std::cerr << "[hero_human_mcp] terminal does not support ncurses UI"
+                 " cleanly (TERM="
+              << trim_ascii(std::getenv("TERM") == nullptr ? "" : std::getenv("TERM"))
+              << "); using line prompt responder instead.\n";
+    return run_line_prompt_request_responder(app, error);
+  }
   std::string ncurses_error{};
   if (run_ncurses_request_responder(app, &ncurses_error)) return true;
   if (!ncurses_error.empty() &&

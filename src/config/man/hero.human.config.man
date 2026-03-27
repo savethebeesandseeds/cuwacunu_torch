@@ -25,7 +25,7 @@ required = true
 default = CHANGE_ME_OPERATOR
 range = non-empty identifier
 allowed = ASCII operator identifier
-nuance = operator identity embedded into signed human response artifacts for audit and attribution
+nuance = operator identity embedded into signed human response artifacts for audit and attribution; if left as CHANGE_ME_OPERATOR or empty, Human Hero auto-initializes it to <user>@<hostname> on first use and persists that back into default.hero.human.dsl; signing still fails unless the resulting identifier has a matching public key in Super Hero human_operator_identities
 
 [FIELD operator_signing_ssh_identity]
 key = operator_signing_ssh_identity
@@ -35,4 +35,26 @@ required = true
 default = ../../secrets/real/human_operator_ed25519
 range = readable unencrypted OpenSSH ssh-ed25519 identity path
 allowed = absolute path or path resolved relative to default.hero.human.dsl
-nuance = unencrypted OpenSSH ssh-ed25519 identity Human Hero uses to sign human response artifacts before asking Super Hero to resume a paused loop
+nuance = unencrypted OpenSSH ssh-ed25519 identity Human Hero uses to sign human response artifacts before asking Super Hero to resume a paused loop; the matching public key must be registered for operator_id in Super Hero human_operator_identities
+
+[NOTE HUMAN_ATTESTATION_CHAIN]
+scope = hero human defaults
+text = Human Hero signs with operator_signing_ssh_identity, while Super Hero verifies that detached signature against the public key resolved from operator_id in human_operator_identities from default.hero.super.dsl before a paused loop may resume.
+
+[NOTE OPERATOR_ID_BOOTSTRAP]
+scope = hero human defaults
+text = On first Human Hero use, operator_id is auto-initialized to <user>@<hostname> if it is still CHANGE_ME_OPERATOR or empty. This bootstrap does not replace the need to register the matching public key in human_operator_identities.
+
+[RULE OPERATOR_ID_CONFIGURED]
+id = OPERATOR_ID_CONFIGURED
+applies_to = operator_id
+severity = error
+when = operator_id == empty or operator_id == CHANGE_ME_OPERATOR
+message = operator_id must be bootstrapped or set to a real operator identifier before hero.human.respond can sign a response.
+
+[RULE OPERATOR_IDENTITY_REGISTERED]
+id = OPERATOR_IDENTITY_REGISTERED
+applies_to = operator_id,operator_signing_ssh_identity
+severity = error
+when = operator_id has no matching public key entry in human_operator_identities or operator_signing_ssh_identity does not match that recorded public key
+message = operator_id and operator_signing_ssh_identity must match an entry in Super Hero human_operator_identities before Super Hero can resume a loop.

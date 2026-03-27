@@ -5,7 +5,17 @@ MAN_ID = global.config.bnf
 TARGET_DSL = src/config/.config
 TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
 PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
-PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/impl/iitepi/runtime_binding_space_t.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/impl/iitepi/runtime_binding_space_t.cpp,src/impl/iitepi/contract_space_t.cpp,src/impl/hero/super_hero/hero_super_tools.cpp
+
+[FIELD BNF.iitepi_campaign_grammar_filename]
+key = iitepi_campaign_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/iitepi.campaign.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for top-level campaign DSLs decoded by Runtime Hero and Super Hero launch orchestration
 
 [FIELD BNF.iitepi_runtime_binding_grammar_filename]
 key = iitepi_runtime_binding_grammar_filename
@@ -17,6 +27,16 @@ range = existing regular file
 allowed = absolute_or_relative path
 nuance = grammar contract for internal runtime-binding snapshots materialized from campaign dispatch before contract and wave resolution
 
+[FIELD BNF.iitepi_wave_grammar_filename]
+key = iitepi_wave_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/iitepi.wave.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for wave payload DSLs imported by campaign bindings
+
 [FIELD BNF.super_objective_grammar_filename]
 key = super_objective_grammar_filename
 scope = BNF section
@@ -26,3 +46,110 @@ default = /cuwacunu/src/config/bnf/objective.super.bnf
 range = existing regular file
 allowed = absolute_or_relative path
 nuance = grammar contract for Super Hero objective-root declarations; Super Hero refuses to decode super.objective.dsl when this path is missing
+
+[FIELD BNF.network_design_grammar_filename]
+key = network_design_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/network_design.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for authored network_design DSLs used by VICReg network topology payloads
+
+[FIELD BNF.vicreg_grammar_filename]
+key = vicreg_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/latent_lineage_state.authored.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = shared authored latent-lineage grammar used to decode VICReg wrapper DSLs
+
+[FIELD BNF.expected_value_grammar_filename]
+key = expected_value_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/latent_lineage_state.authored.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = shared authored latent-lineage grammar used to decode MDN expected-value inference DSLs
+
+[FIELD BNF.wikimyei_evaluation_embedding_sequence_analytics_grammar_filename]
+key = wikimyei_evaluation_embedding_sequence_analytics_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/latent_lineage_state.authored.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = shared authored latent-lineage grammar used to decode embedding-sequence analytics evaluation DSLs
+
+[FIELD BNF.wikimyei_evaluation_transfer_matrix_evaluation_grammar_filename]
+key = wikimyei_evaluation_transfer_matrix_evaluation_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/latent_lineage_state.authored.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = shared authored latent-lineage grammar used to decode transfer-matrix evaluation DSLs
+
+[FIELD BNF.observation_sources_grammar_filename]
+key = observation_sources_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/tsi.source.dataloader.sources.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for observation source table DSLs consumed by contract-owned dataloader bindings
+
+[FIELD BNF.observation_channels_grammar_filename]
+key = observation_channels_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/tsi.source.dataloader.channels.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for observation channel table DSLs consumed by contract-owned dataloader bindings
+
+[FIELD BNF.jkimyei_specs_grammar_filename]
+key = jkimyei_specs_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/jkimyei.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for per-component jkimyei training-profile DSLs
+
+[FIELD BNF.tsiemene_circuit_grammar_filename]
+key = tsiemene_circuit_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/iitepi.circuit.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for circuit routing DSLs referenced by iitepi contracts
+
+[FIELD BNF.canonical_path_grammar_filename]
+key = canonical_path_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/canonical_path.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for canonical-path locators used by runtime facts, reports, and contract docking metadata
+
+[RULE BNF_EXISTING_FILES_REQUIRED]
+id = BNF_EXISTING_FILES_REQUIRED
+applies_to = BNF.*
+severity = error
+when = any configured BNF.* path does not resolve to an existing regular file
+message = every configured BNF.* grammar filename must resolve to an existing regular file

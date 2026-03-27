@@ -23,6 +23,7 @@ namespace runtime_dev {
 
 struct runtime_reset_targets_t {
   std::filesystem::path global_config_path{};
+  std::filesystem::path runtime_root{};
   std::filesystem::path hashimyei_hero_dsl_path{};
   std::filesystem::path lattice_hero_dsl_path{};
   std::filesystem::path runtime_hero_dsl_path{};
@@ -132,6 +133,12 @@ namespace detail {
     const std::filesystem::path& runtime_root) {
   if (runtime_root.empty()) return {};
   return (runtime_root / ".super_hero").lexically_normal();
+}
+
+[[nodiscard]] inline std::filesystem::path derive_human_root(
+    const std::filesystem::path& runtime_root) {
+  if (runtime_root.empty()) return {};
+  return (runtime_root / ".human_hero").lexically_normal();
 }
 
 [[nodiscard]] inline std::filesystem::path derive_hashimyei_catalog_path(
@@ -333,9 +340,12 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     const std::filesystem::path resolved_runtime_root =
         std::filesystem::path(detail::resolve_path_from_base_folder(
             global_config_base, general_runtime_root));
+    resolved.runtime_root = resolved_runtime_root.lexically_normal();
     resolved.runtime_campaigns_root =
         detail::derive_runtime_campaigns_root(resolved_runtime_root);
     resolved.super_root = detail::derive_super_root(resolved_runtime_root);
+    const std::filesystem::path human_root =
+        detail::derive_human_root(resolved_runtime_root);
     const std::filesystem::path hashimyei_store_root =
         detail::derive_hashimyei_store_root(resolved_runtime_root);
     detail::push_unique_path(
@@ -344,6 +354,8 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
         &resolved.store_roots, &store_root_seen, resolved.runtime_campaigns_root);
     detail::push_unique_path(&resolved.store_roots, &store_root_seen,
                              resolved.super_root);
+    detail::push_unique_path(&resolved.store_roots, &store_root_seen,
+                             human_root);
     detail::push_unique_path(
         &resolved.catalog_paths, &catalog_seen,
         detail::derive_hashimyei_catalog_path(hashimyei_store_root));
@@ -434,9 +446,12 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       const std::filesystem::path resolved_runtime_root =
           std::filesystem::path(detail::resolve_path_from_base_folder(
               global_config_base, general_runtime_root));
+      resolved.runtime_root = resolved_runtime_root.lexically_normal();
       resolved.runtime_campaigns_root =
           detail::derive_runtime_campaigns_root(resolved_runtime_root);
       resolved.super_root = detail::derive_super_root(resolved_runtime_root);
+      const std::filesystem::path human_root =
+          detail::derive_human_root(resolved_runtime_root);
       const std::filesystem::path hashimyei_store_root =
           detail::derive_hashimyei_store_root(resolved_runtime_root);
       detail::push_unique_path(
@@ -445,6 +460,8 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
                                resolved.runtime_campaigns_root);
       detail::push_unique_path(&resolved.store_roots, &store_root_seen,
                                resolved.super_root);
+      detail::push_unique_path(&resolved.store_roots, &store_root_seen,
+                               human_root);
       detail::push_unique_path(
           &resolved.catalog_paths, &catalog_seen,
           detail::derive_hashimyei_catalog_path(hashimyei_store_root));

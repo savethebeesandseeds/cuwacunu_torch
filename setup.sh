@@ -5,7 +5,8 @@
 # What this script installs/configures (inside a Debian-based environment):
 # - Base toolchain and system deps via apt:
 #   ca-certificates, build-essential, libssl-dev, ncurses dev libs, gnupg,
-#   valgrind, gdb, ccache, mold, locales, curl, libcurl4-openssl-dev
+#   valgrind, gdb, ccache, mold, locales, curl, libcurl4-openssl-dev,
+#   openssh-client (provides ssh-keygen for Human Hero operator setup)
 # - curl websocket capability check (ws/wss), with optional source build fallback
 # - NVIDIA CUDA apt repository + CUDA Toolkit (default series: 12-4)
 # - cuDNN 9 runtime packages from the NVIDIA network repository
@@ -307,7 +308,8 @@ install_base_requirements() {
   run_cmd "Installing base build/debug dependencies" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
-    gnupg valgrind gdb ccache mold locales curl libcurl4-openssl-dev bash-completion
+    gnupg valgrind gdb ccache mold locales curl libcurl4-openssl-dev \
+    openssh-client bash-completion
   run_cmd "Enabling en_US.UTF-8 in /etc/locale.gen" "${SUDO[@]}" bash -lc \
     "if grep -Eq '^[[:space:]]*#?[[:space:]]*en_US\.UTF-8[[:space:]]+UTF-8[[:space:]]*$' /etc/locale.gen; then \
        sed -i 's/^[[:space:]]*#\?[[:space:]]*en_US\.UTF-8[[:space:]]\+UTF-8[[:space:]]*$/en_US.UTF-8 UTF-8/' /etc/locale.gen; \

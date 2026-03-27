@@ -21,10 +21,12 @@
 #include <initializer_list>
 #include <iostream>
 #include <memory>
+#include <sys/wait.h>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -73,6 +75,35 @@ snapshots_by_hash() {
 hash_by_contract_path() {
   static std::unordered_map<std::string, contract_hash_t> registry;
   return registry;
+}
+
+[[nodiscard]] static std::string trim_ascii_copy(std::string_view in) {
+  std::size_t b = 0;
+  while (b < in.size() &&
+         std::isspace(static_cast<unsigned char>(in[b])) != 0) {
+    ++b;
+  }
+  std::size_t e = in.size();
+  while (e > b &&
+         std::isspace(static_cast<unsigned char>(in[e - 1])) != 0) {
+    --e;
+  }
+  return std::string(in.substr(b, e - b));
+}
+
+[[nodiscard]] static bool read_all_fd(int fd, std::string* out) {
+  if (out == nullptr) return false;
+  out->clear();
+  std::array<char, 4096> buffer{};
+  for (;;) {
+    const ssize_t n = ::read(fd, buffer.data(), buffer.size());
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    if (n == 0) return true;
+    out->append(buffer.data(), static_cast<std::size_t>(n));
+  }
 }
 
 [[nodiscard]] static std::string strip_comment(std::string_view line,
@@ -3225,6 +3256,110 @@ contract_hash_t contract_space_t::register_contract_file(const std::string& path
 std::shared_ptr<const contract_record_t> contract_space_t::contract_itself(
     const contract_hash_t& hash) {
   return snapshot_ptr_or_fail(hash);
+}
+
+bool contract_space_t::validate_contract_file_isolated(
+    const std::string& path, const std::string& global_config_path,
+    std::string* error) {
+  if (error) error->clear();
+  const std::string trimmed_path = trim_ascii_copy(path);
+  const std::string trimmed_global_config_path =
+      trim_ascii_copy(global_config_path);
+  if (!has_non_ws_ascii(trimmed_path)) {
+    if (error) *error = "empty contract path";
+    return false;
+  }
+
+  int pipe_fds[2]{-1, -1};
+  if (::pipe(pipe_fds) != 0) {
+    if (error) {
+      *error = "failed to create isolated contract validation pipe";
+    }
+    return false;
+  }
+
+  const pid_t pid = ::fork();
+  if (pid < 0) {
+    ::close(pipe_fds[0]);
+    ::close(pipe_fds[1]);
+    if (error) *error = "failed to fork isolated contract validator";
+    return false;
+  }
+
+  if (pid == 0) {
+    ::close(pipe_fds[0]);
+    (void)::dup2(pipe_fds[1], STDOUT_FILENO);
+    (void)::dup2(pipe_fds[1], STDERR_FILENO);
+    ::close(pipe_fds[1]);
+    cuwacunu::piaabo::dlog_clear_buffer();
+    cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
+    cuwacunu::piaabo::dlog_buffer_capture_scope capture_logs(true);
+    auto flush_captured_logs = []() {
+      const auto lines = cuwacunu::piaabo::dlog_snapshot_lines(64);
+      for (const auto& line : lines) {
+        if (!has_non_ws_ascii(line)) continue;
+        std::cerr << line;
+        if (line.back() != '\n') std::cerr << '\n';
+      }
+      std::cerr.flush();
+    };
+    try {
+      if (has_non_ws_ascii(trimmed_global_config_path)) {
+        cuwacunu::iitepi::config_space_t::change_config_file(
+            trimmed_global_config_path.c_str());
+      }
+      (void)contract_space_t::register_contract_file(trimmed_path);
+      _exit(0);
+    } catch (const std::exception& e) {
+      flush_captured_logs();
+      if (has_non_ws_ascii(e.what())) {
+        std::cerr << e.what() << '\n';
+        std::cerr.flush();
+      }
+      _exit(1);
+    } catch (...) {
+      flush_captured_logs();
+      std::cerr << "isolated contract validator caught non-standard exception\n";
+      std::cerr.flush();
+      _exit(1);
+    }
+  }
+
+  ::close(pipe_fds[1]);
+  std::string child_output{};
+  const bool read_ok = read_all_fd(pipe_fds[0], &child_output);
+  ::close(pipe_fds[0]);
+
+  int status = 0;
+  const pid_t waited = ::waitpid(pid, &status, 0);
+  if (!read_ok) {
+    if (error) {
+      *error = "failed to read isolated contract validator output";
+    }
+    return false;
+  }
+  if (waited != pid) {
+    if (error) *error = "failed to wait for isolated contract validator";
+    return false;
+  }
+  if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+    return true;
+  }
+
+  std::string message = trim_ascii_copy(child_output);
+  if (message.empty()) {
+    if (WIFSIGNALED(status)) {
+      message = "isolated contract validator terminated by signal " +
+                std::to_string(WTERMSIG(status));
+    } else if (WIFEXITED(status)) {
+      message = "isolated contract validator exited with code " +
+                std::to_string(WEXITSTATUS(status));
+    } else {
+      message = "isolated contract validator failed";
+    }
+  }
+  if (error) *error = message;
+  return false;
 }
 
 std::string contract_space_t::sha256_hex_for_file(const std::string& path) {

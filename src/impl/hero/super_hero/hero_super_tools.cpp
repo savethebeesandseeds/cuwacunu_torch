@@ -1060,8 +1060,18 @@ struct scoped_temp_path_t {
     const app_context_t& app,
     const cuwacunu::hero::super::super_loop_record_t& record,
     std::string* error) {
-  return cuwacunu::hero::super::write_super_loop_record(
-      app.defaults.super_root, record, error);
+  if (!cuwacunu::hero::super::write_super_loop_record(app.defaults.super_root,
+                                                      record, error)) {
+    return false;
+  }
+  std::string marker_error{};
+  if (!cuwacunu::hero::super::sync_human_pending_request_count(
+          app.defaults.super_root, &marker_error)) {
+    std::cerr << "[hero_super_mcp][warning] failed to refresh Human Hero "
+                 "pending marker: "
+              << marker_error << std::endl;
+  }
+  return true;
 }
 
 [[nodiscard]] bool list_super_loops(
@@ -2206,7 +2216,7 @@ void persist_super_loop_warning_best_effort(
       << "Sovereignty:\n"
       << "- Super Hero owns the loop ledger and the continue/stop decision.\n"
       << "- Runtime Hero executes campaigns only.\n"
-      << "- Config Hero is the only writer for objective DSL changes.\n"
+      << "- Config Hero is the only writer for objective/default file changes.\n"
       << "- Hashimyei and Lattice are read-only evidence surfaces in this session.\n\n"
       << "Primary files:\n"
       << "- Super objective DSL: " << loop.super_objective_dsl_path << "\n"
@@ -2224,10 +2234,16 @@ void persist_super_loop_warning_best_effort(
       << "- objective markdown = what the loop is trying to achieve\n"
       << "- guidance markdown = authored boundaries plus advisory heuristics; prefer stronger evidence when the guidance is not a hard rule\n\n"
       << "Available MCP tools in this review session:\n"
-      << "- hero.config.objective_dsl.read\n"
-      << "- hero.config.objective_dsl.replace\n"
-      << "- hero.config.objective_campaign.read\n"
-      << "- hero.config.objective_campaign.replace\n"
+      << "- hero.config.default.list\n"
+      << "- hero.config.default.read\n"
+      << "- hero.config.default.create\n"
+      << "- hero.config.default.replace\n"
+      << "- hero.config.default.delete\n"
+      << "- hero.config.objective.list\n"
+      << "- hero.config.objective.read\n"
+      << "- hero.config.objective.create\n"
+      << "- hero.config.objective.replace\n"
+      << "- hero.config.objective.delete\n"
       << "- hero.runtime.get_campaign\n"
       << "- hero.runtime.get_job\n"
       << "- hero.runtime.list_jobs\n"
@@ -2240,12 +2256,12 @@ void persist_super_loop_warning_best_effort(
       << "Rules:\n"
       << "1. Work in read-only shell mode. Do not edit files directly.\n"
       << "2. Do not use hero.hashimyei.* tools in this review session; prefer review_packet evidence plus hero.lattice.* queries.\n"
-      << "3. Use Config Hero objective_dsl.read/replace for objective DSL mutation.\n"
-      << "4. Use Config Hero objective_campaign.read/replace when the objective campaign plan itself must change.\n"
+      << "3. Use Config Hero objective.read/create/replace/delete for truth-source objective files under objective_root.\n"
+      << "4. Use Config Hero default.read/create/replace/delete only when a shared default truly needs to change.\n"
       << "5. Pass objective_root=" << loop.objective_root
       << " to those Config Hero tools.\n"
       << "6. Prefer whole-file replace with expected_sha256 from the prior read.\n"
-      << "7. Never mutate the source super.objective.dsl constitution or files outside the mutable objective root.\n"
+      << "7. Never mutate files outside the configured objective/default roots.\n"
       << "8. Prefer the review packet first, then hero.lattice.get_view/get_fact for semantic evidence.\n"
       << "9. Use hero.lattice.list_views/list_facts to discover selectors; family_evaluation_report requires a family canonical_path plus contract_hash.\n"
       << "10. Use Runtime get/tail tools mainly for operational debugging such as launch failures, missing logs, or abnormal traces.\n"
@@ -2784,9 +2800,11 @@ void persist_super_loop_warning_best_effort(
       {"--global-config", app.global_config_path.string()});
   const std::string lattice_args = runtime_args;
   const std::string enabled_config_tools = json_array_from_strings(
-      {"hero.config.objective_dsl.read", "hero.config.objective_dsl.replace",
-       "hero.config.objective_campaign.read",
-       "hero.config.objective_campaign.replace"});
+      {"hero.config.default.list", "hero.config.default.read",
+       "hero.config.default.create", "hero.config.default.replace",
+       "hero.config.default.delete", "hero.config.objective.list",
+       "hero.config.objective.read", "hero.config.objective.create",
+       "hero.config.objective.replace", "hero.config.objective.delete"});
   const std::string enabled_runtime_tools = json_array_from_strings(
       {"hero.runtime.get_campaign", "hero.runtime.get_job",
        "hero.runtime.list_jobs", "hero.runtime.tail_log",

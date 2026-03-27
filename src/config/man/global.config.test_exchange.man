@@ -1,0 +1,38 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = global.config.test_exchange
+TARGET_DSL = src/config/.config
+TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
+PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp
+
+[FIELD TEST_EXCHANGE.Ed25519_pkey]
+key = Ed25519_pkey
+scope = TEST_EXCHANGE section
+type = path
+required = true
+default = /cuwacunu/src/config/secrets/test/ed25519key.pem
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = Ed25519 private key used for test exchange request signing
+
+[FIELD TEST_EXCHANGE.EXCHANGE_api_filename]
+key = EXCHANGE_api_filename
+scope = TEST_EXCHANGE section
+type = path
+required = true
+default = /cuwacunu/src/config/secrets/test/exchange.key
+range = non-empty path
+allowed = absolute_or_relative path
+nuance = path to test exchange API key material; store the secret in the referenced file, not inline in .config
+
+[FIELD TEST_EXCHANGE.websocket_url]
+key = websocket_url
+scope = TEST_EXCHANGE section
+type = string
+required = true
+default = wss://testnet.binance.vision/ws-api/v3
+range = non-empty URL
+allowed = wss URL
+nuance = websocket endpoint for test exchange traffic when GENERAL.exchange_type=TEST
