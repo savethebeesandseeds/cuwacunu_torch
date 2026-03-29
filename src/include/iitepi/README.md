@@ -80,7 +80,7 @@ The public dispatcher is now campaign-oriented:
 - `config_space_t::update_config()`
 
 2. Initialize runtime selection
-- Runtime Hero or `main_campaign` resolves the configured campaign DSL
+- Runtime Hero or `cuwacunu_campaign` resolves the configured campaign DSL
 - the default `RUN` list becomes the execution plan unless an explicit
   binding override narrows launch to one declared `BIND`
 
@@ -141,8 +141,8 @@ The public dispatcher is now campaign-oriented:
 - `hero.runtime.stop_campaign`
 
 4. Dev-loop reset
-- `main_campaign --reset-runtime-state`
-- `.build/hero/runtime_reset`
+- `cuwacunu_campaign --reset-runtime-state`
+- `.build/tools/runtime_reset`
 - `hero.config.dev_nuke_reset`
 
 This document reflects the public runtime model. Internal runtime-binding

@@ -1335,9 +1335,16 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
   out << "{\"tools\":[";
   for (std::size_t i = 0; i < std::size(kHashimyeiTools); ++i) {
     if (i != 0) out << ",";
+    const bool read_only =
+        kHashimyeiTools[i].name == "hero.hashimyei.list" ||
+        kHashimyeiTools[i].name == "hero.hashimyei.get_component_manifest" ||
+        kHashimyeiTools[i].name == "hero.hashimyei.get_founding_dsl_bundle";
     out << "{\"name\":" << json_quote(kHashimyeiTools[i].name)
         << ",\"description\":" << json_quote(kHashimyeiTools[i].description)
-        << ",\"inputSchema\":" << kHashimyeiTools[i].input_schema_json << "}";
+        << ",\"inputSchema\":" << kHashimyeiTools[i].input_schema_json
+        << ",\"annotations\":{\"readOnlyHint\":"
+        << (read_only ? "true" : "false")
+        << ",\"destructiveHint\":false,\"openWorldHint\":false}}";
   }
   out << "]}";
   return out.str();

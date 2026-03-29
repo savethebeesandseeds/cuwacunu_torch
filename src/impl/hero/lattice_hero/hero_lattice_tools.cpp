@@ -1927,9 +1927,14 @@ struct fact_path_summary_t {
   for (std::size_t i = 0; i < std::size(kLatticeTools); ++i) {
     if (i != 0) out << ",";
     const auto& descriptor = kLatticeTools[i];
+    const bool read_only =
+        std::string_view(descriptor.name) != "hero.lattice.refresh";
     out << "{\"name\":" << json_quote(descriptor.name)
         << ",\"description\":" << json_quote(descriptor.description)
-        << ",\"inputSchema\":" << descriptor.input_schema_json << "}";
+        << ",\"inputSchema\":" << descriptor.input_schema_json
+        << ",\"annotations\":{\"readOnlyHint\":"
+        << (read_only ? "true" : "false")
+        << ",\"destructiveHint\":false,\"openWorldHint\":false}}";
   }
   out << "]}";
   return out.str();

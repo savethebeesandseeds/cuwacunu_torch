@@ -26,6 +26,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/human_hero/human_attestation.h"
 #include "hero/super_hero/super_loop.h"
@@ -45,8 +46,9 @@ constexpr const char* kInitializeInstructions =
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;
 constexpr std::size_t kSuperToolTimeoutSec = 30;
 constexpr const char* kNcursesInitErrorPrefix = "ncurses init failed: ";
+constexpr std::string_view kHumanReportAckSchemaV2 = "hero.human.report_ack.v2";
 
-using cuwacunu::hero::human::human_response_record_t;
+using cuwacunu::hero::human::human_resolution_record_t;
 
 using human_tool_handler_t = bool (*)(
     app_context_t* app, const std::string& arguments_json,
@@ -59,13 +61,9 @@ struct human_tool_descriptor_t {
   human_tool_handler_t handler;
 };
 
-struct interactive_response_input_t {
-  std::string control_kind{};
-  std::string next_action_kind{};
-  std::string target_binding_id{};
-  bool reset_runtime_state = false;
+struct interactive_resolution_input_t {
+  std::string resolution_kind{};
   std::string reason{};
-  std::string memory_note{};
 };
 
 [[nodiscard]] bool collect_pending_requests(
@@ -73,13 +71,31 @@ struct interactive_response_input_t {
     std::vector<cuwacunu::hero::super::super_loop_record_t>* out,
     std::string* error);
 
-[[nodiscard]] bool build_response_and_resume(
+[[nodiscard]] bool collect_pending_reports(
+    const app_context_t& app,
+    std::vector<cuwacunu::hero::super::super_loop_record_t>* out,
+    std::string* error);
+
+[[nodiscard]] bool build_resolution_and_apply(
     app_context_t* app,
     const cuwacunu::hero::super::super_loop_record_t& loop,
-    std::string control_kind, std::string next_action_kind,
-    std::string target_binding_id, bool reset_runtime_state, std::string reason,
-    std::string memory_note, std::string* out_structured,
-    std::string* out_error);
+    std::string resolution_kind, std::string reason,
+    std::string* out_structured, std::string* out_error);
+
+[[nodiscard]] bool acknowledge_terminal_report(
+    app_context_t* app,
+    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    std::string* out_structured, std::string* out_error);
+
+[[nodiscard]] bool dismiss_terminal_report(
+    app_context_t* app,
+    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    std::string* out_structured, std::string* out_error);
+
+[[nodiscard]] bool list_declared_bind_ids_for_loop(
+    const app_context_t& app,
+    const cuwacunu::hero::super::super_loop_record_t& loop,
+    std::vector<std::string>* out_bind_ids, std::string* error);
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   return cuwacunu::hero::runtime::trim_ascii(in);
@@ -349,6 +365,18 @@ struct interactive_response_input_t {
   return true;
 }
 
+[[nodiscard]] bool parse_u64_token(std::string_view raw, std::uint64_t* out) {
+  if (!out) return false;
+  const std::string token = trim_ascii(raw);
+  if (token.empty()) return false;
+  std::uint64_t parsed = 0;
+  const auto [ptr, ec] =
+      std::from_chars(token.data(), token.data() + token.size(), parsed);
+  if (ec != std::errc{} || ptr != token.data() + token.size()) return false;
+  *out = parsed;
+  return true;
+}
+
 [[nodiscard]] std::size_t skip_json_whitespace(const std::string& json,
                                                std::size_t pos) {
   while (pos < json.size() &&
@@ -513,6 +541,14 @@ struct interactive_response_input_t {
   return parse_size_token(raw, out);
 }
 
+[[nodiscard]] bool extract_json_u64_field(const std::string& json,
+                                          std::string_view key,
+                                          std::uint64_t* out) {
+  std::string raw{};
+  if (!extract_json_field_raw(json, key, &raw)) return false;
+  return parse_u64_token(raw, out);
+}
+
 [[nodiscard]] bool extract_json_object_field(const std::string& json,
                                              std::string_view key,
                                              std::string* out) {
@@ -589,6 +625,67 @@ struct interactive_response_input_t {
       global_config_path.parent_path().string(), *configured);
   if (resolved.empty()) return {};
   return std::filesystem::path(resolved).lexically_normal();
+}
+
+[[nodiscard]] std::filesystem::path resolve_campaign_grammar_path(
+    const std::filesystem::path& global_config_path) {
+  const std::optional<std::string> configured =
+      read_ini_value(global_config_path, "BNF",
+                     "iitepi_campaign_grammar_filename");
+  if (!configured.has_value()) return {};
+  const std::string resolved = resolve_path_from_base_folder(
+      global_config_path.parent_path().string(), *configured);
+  if (resolved.empty()) return {};
+  return std::filesystem::path(resolved).lexically_normal();
+}
+
+[[nodiscard]] bool list_declared_bind_ids_for_loop(
+    const app_context_t& app,
+    const cuwacunu::hero::super::super_loop_record_t& loop,
+    std::vector<std::string>* out_bind_ids, std::string* error) {
+  if (error) error->clear();
+  if (!out_bind_ids) {
+    if (error) *error = "bind id output pointer is null";
+    return false;
+  }
+  out_bind_ids->clear();
+
+  const std::filesystem::path campaign_grammar_path =
+      resolve_campaign_grammar_path(app.global_config_path);
+  if (campaign_grammar_path.empty()) {
+    if (error) *error = "cannot resolve BNF.iitepi_campaign_grammar_filename";
+    return false;
+  }
+
+  std::string grammar_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(campaign_grammar_path,
+                                               &grammar_text, error)) {
+    return false;
+  }
+  std::string campaign_text{};
+  if (!cuwacunu::hero::runtime::read_text_file(loop.campaign_dsl_path,
+                                               &campaign_text, error)) {
+    return false;
+  }
+
+  cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
+  try {
+    instruction = cuwacunu::camahjucunu::dsl::decode_iitepi_campaign_from_dsl(
+        grammar_text, campaign_text);
+  } catch (const std::exception& ex) {
+    if (error) {
+      *error = "failed to decode campaign DSL snapshot '" + loop.campaign_dsl_path +
+               "': " + ex.what();
+    }
+    return false;
+  }
+
+  out_bind_ids->reserve(instruction.binds.size());
+  for (const auto& bind : instruction.binds) {
+    const std::string bind_id = trim_ascii(bind.id);
+    if (!bind_id.empty()) out_bind_ids->push_back(bind_id);
+  }
+  return true;
 }
 
 [[nodiscard]] std::filesystem::path resolve_command_path(
@@ -819,7 +916,7 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
     const cuwacunu::hero::super::super_loop_record_t& loop) {
   std::string text{};
   std::string ignored{};
-  if (!cuwacunu::hero::runtime::read_text_file(loop.human_request_path, &text,
+  if (!cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path, &text,
                                                &ignored)) {
     return {};
   }
@@ -833,6 +930,101 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
     ++count;
   }
   return out.str();
+}
+
+[[nodiscard]] std::filesystem::path report_path_for_loop(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  return cuwacunu::hero::super::super_loop_human_report_path(
+      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
+}
+
+[[nodiscard]] std::filesystem::path report_ack_path_for_loop(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  return cuwacunu::hero::super::super_loop_human_report_ack_latest_path(
+      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
+}
+
+[[nodiscard]] std::filesystem::path report_ack_sig_path_for_loop(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  return cuwacunu::hero::super::super_loop_human_report_ack_latest_sig_path(
+      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
+}
+
+[[nodiscard]] bool read_report_text_for_loop(
+    const cuwacunu::hero::super::super_loop_record_t& loop, std::string* out,
+    std::string* error) {
+  if (!out) {
+    if (error) *error = "report text output pointer is null";
+    return false;
+  }
+  return cuwacunu::hero::runtime::read_text_file(report_path_for_loop(loop), out,
+                                                 error);
+}
+
+[[nodiscard]] std::string report_excerpt(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  std::string text{};
+  std::string ignored{};
+  if (!read_report_text_for_loop(loop, &text, &ignored)) return {};
+  std::istringstream in(text);
+  std::ostringstream out;
+  std::string line{};
+  std::size_t count = 0;
+  while (count < 8 && std::getline(in, line)) {
+    if (count != 0) out << "\n";
+    out << line;
+    ++count;
+  }
+  return out.str();
+}
+
+[[nodiscard]] bool report_ack_matches_current_report(
+    const cuwacunu::hero::super::super_loop_record_t& loop, std::string* error) {
+  if (error) error->clear();
+  const std::filesystem::path report_path = report_path_for_loop(loop);
+  const std::filesystem::path ack_path = report_ack_path_for_loop(loop);
+  if (!std::filesystem::exists(report_path) ||
+      !std::filesystem::is_regular_file(report_path)) {
+    if (error) *error = "loop summary report is missing";
+    return false;
+  }
+  if (!std::filesystem::exists(ack_path) || !std::filesystem::is_regular_file(ack_path)) {
+    return false;
+  }
+  std::string report_sha256_hex{};
+  if (!cuwacunu::hero::human::sha256_hex_file(report_path, &report_sha256_hex,
+                                              error)) {
+    return false;
+  }
+  std::string ack_json{};
+  if (!cuwacunu::hero::runtime::read_text_file(ack_path, &ack_json, error)) {
+    return false;
+  }
+  std::string acknowledged_report_sha256_hex{};
+  if (!extract_json_string_field(ack_json, "report_sha256_hex",
+                                 &acknowledged_report_sha256_hex)) {
+    if (error) *error = "report ack is missing report_sha256_hex";
+    return false;
+  }
+  return trim_ascii(acknowledged_report_sha256_hex) ==
+         trim_ascii(report_sha256_hex);
+}
+
+void sync_human_pending_markers_best_effort(const app_context_t& app) {
+  std::string marker_error{};
+  if (!cuwacunu::hero::super::sync_human_pending_request_count(
+          app.defaults.super_root, &marker_error)) {
+    std::cerr << "[hero_human_mcp][warning] failed to refresh Human Hero "
+                 "request marker: "
+              << marker_error << std::endl;
+  }
+  marker_error.clear();
+  if (!cuwacunu::hero::super::sync_human_pending_report_count(
+          app.defaults.super_root, &marker_error)) {
+    std::cerr << "[hero_human_mcp][warning] failed to refresh Human Hero "
+                 "report marker: "
+              << marker_error << std::endl;
+  }
 }
 
 [[nodiscard]] std::string ellipsize_text(std::string_view in, int width) {
@@ -880,6 +1072,28 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
       }
     }
     if (!current.empty()) lines.push_back(current);
+  }
+  if (lines.empty()) lines.emplace_back();
+  return lines;
+}
+
+[[nodiscard]] std::vector<std::string> wrap_input_lines(std::string_view text,
+                                                        int width) {
+  std::vector<std::string> lines{};
+  if (width <= 0) {
+    lines.emplace_back();
+    return lines;
+  }
+  lines.emplace_back();
+  for (char ch : text) {
+    if (ch == '\n') {
+      lines.emplace_back();
+      continue;
+    }
+    if (static_cast<int>(lines.back().size()) >= width) {
+      lines.emplace_back();
+    }
+    lines.back().push_back(ch);
   }
   if (lines.empty()) lines.emplace_back();
   return lines;
@@ -991,8 +1205,14 @@ void draw_centered_line(WINDOW* win, int y, int width, std::string_view text,
   if (cancelled) *cancelled = false;
   if (!out_value) return false;
   std::string buffer = *out_value;
-  const int height = 8;
   const int width = std::max(24, std::min(std::max(24, COLS - 2), 96));
+  const int body_width = std::max(8, width - 4);
+  const auto label_lines = wrap_text_lines(label, body_width);
+  const int label_h =
+      std::min<int>(3, std::max<int>(1, static_cast<int>(label_lines.size())));
+  const int footer_h = 2;
+  const int input_h = std::max(3, std::min(8, LINES - label_h - footer_h - 4));
+  const int height = std::max(10, label_h + input_h + footer_h + 3);
   const int starty = std::max(0, (LINES - height) / 2);
   const int startx = std::max(0, (COLS - width) / 2);
   WINDOW* win = newwin(height, width, starty, startx);
@@ -1002,16 +1222,44 @@ void draw_centered_line(WINDOW* win, int y, int width, std::string_view text,
 
   for (;;) {
     draw_boxed_window(win, title);
-    mvwaddnstr(win, 2, 2, label.c_str(), width - 4);
-    mvwaddnstr(win, height - 2, 2, "Enter=accept  Esc=cancel  Backspace=edit",
+    for (int i = 0; i < label_h; ++i) {
+      mvwaddnstr(win, 2 + i, 2, std::string(body_width, ' ').c_str(), body_width);
+      if (i < static_cast<int>(label_lines.size())) {
+        mvwaddnstr(win, 2 + i, 2, label_lines[static_cast<std::size_t>(i)].c_str(),
+                   body_width);
+      }
+    }
+    mvwaddnstr(win, height - 2, 2,
+               "Enter=accept  Esc=cancel  Backspace=edit  Text wraps automatically",
                width - 4);
-    const int field_width = width - 4;
-    std::string shown = secret ? std::string(buffer.size(), '*') : buffer;
-    shown = ellipsize_text(shown, field_width - 1);
-    mvwaddnstr(win, 4, 2, std::string(field_width, ' ').c_str(), field_width);
-    mvwaddnstr(win, 4, 2, shown.c_str(), field_width - 1);
-    wmove(win, 4, 2 + std::min<int>(static_cast<int>(shown.size()),
-                                    std::max(0, field_width - 1)));
+
+    const int field_width = body_width;
+    const int field_y = 2 + label_h + 1;
+    const std::string shown = secret ? std::string(buffer.size(), '*') : buffer;
+    const auto wrapped_input = wrap_input_lines(shown, std::max(1, field_width - 1));
+    const int visible_input_h =
+        std::max(1, std::min(input_h, height - field_y - footer_h - 1));
+    const int top_line = std::max(
+        0, static_cast<int>(wrapped_input.size()) - visible_input_h);
+    for (int i = 0; i < visible_input_h; ++i) {
+      mvwaddnstr(win, field_y + i, 2, std::string(field_width, ' ').c_str(),
+                 field_width);
+      const int src = top_line + i;
+      if (src >= 0 && src < static_cast<int>(wrapped_input.size())) {
+        mvwaddnstr(win, field_y + i, 2,
+                   wrapped_input[static_cast<std::size_t>(src)].c_str(),
+                   field_width - 1);
+      }
+    }
+    const int cursor_line =
+        std::max(0, static_cast<int>(wrapped_input.size()) - 1) - top_line;
+    const int cursor_col = wrapped_input.empty()
+                               ? 0
+                               : std::min<int>(
+                                     static_cast<int>(wrapped_input.back().size()),
+                                     std::max(0, field_width - 1));
+    wmove(win, field_y + std::clamp(cursor_line, 0, visible_input_h - 1),
+          2 + cursor_col);
     wrefresh(win);
 
     const int ch = wgetch(win);
@@ -1113,7 +1361,8 @@ void draw_centered_line(WINDOW* win, int y, int width, std::string_view text,
     if (error) *error = "request text output pointer is null";
     return false;
   }
-  return cuwacunu::hero::runtime::read_text_file(loop.human_request_path, out, error);
+  return cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path, out,
+                                                 error);
 }
 
 void render_human_requests_screen(
@@ -1142,16 +1391,16 @@ void render_human_requests_screen(
   draw_boxed_region(0, 0, header_h, W, " Human Hero ");
   attron(COLOR_PAIR(1) | A_BOLD);
   const std::string header_line =
-      "Operator console | pending requests: " +
+      "Operator console | pending escalations: " +
       std::to_string(pending.size()) + " | operator: " +
       std::string(operator_id.empty() ? "<unset>" : operator_id);
   mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
   attroff(COLOR_PAIR(1) | A_BOLD);
 
   draw_boxed_region(header_h, 0, body_h, left_w,
-                    pending.empty() ? " Inbox " : " Requests ");
+                    pending.empty() ? " Inbox " : " Escalations ");
   if (pending.empty()) {
-    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Requests",
+    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Escalations",
                               5, true);
     draw_centered_region_line(header_h + 4, 0, left_w,
                               "Super Hero has not asked for human input.");
@@ -1183,8 +1432,8 @@ void render_human_requests_screen(
                     pending.empty() ? " Overview " : " Request ");
   if (!pending.empty()) {
     const auto& loop = pending[selected];
-    std::string meta = "loop=" + loop.loop_id + "  review=" +
-                       std::to_string(loop.review_count);
+    std::string meta = "loop=" + loop.loop_id + "  turn=" +
+                       std::to_string(loop.turn_count);
     mvaddnstr(header_h + 1, left_w + 2, ellipsize_text(meta, right_w - 4).c_str(),
               right_w - 4);
     mvaddnstr(header_h + 2, left_w + 2,
@@ -1198,7 +1447,7 @@ void render_human_requests_screen(
   } else {
     std::ostringstream out;
     out << "This console becomes active when a Super Hero loop enters "
-           "\"need_human\".\n\n"
+           "\"awaiting_human\".\n\n"
         << "Operator: "
         << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
         << "Super root: " << super_root << "\n\n"
@@ -1207,7 +1456,7 @@ void render_human_requests_screen(
         << "- press r to refresh\n"
         << "- press q to exit\n\n"
         << "Non-interactive alternative:\n"
-        << "hero.human.list_requests";
+        << "hero.human.list_escalations";
     draw_wrapped_region_block(header_h + 2, left_w + 2, right_w - 4, body_h - 4,
                               out.str());
   }
@@ -1215,7 +1464,121 @@ void render_human_requests_screen(
   draw_boxed_region(header_h + body_h, 0, footer_h, W, " Controls ");
   const std::string controls = pending.empty()
                                    ? "r refresh  q quit"
-                                   : "Up/Down select  Enter/c continue  s stop  r refresh  q quit";
+                                   : "Up/Down select  Enter/g resolve escalation"
+                                     "  s stop loop  r refresh  q quit";
+  mvaddnstr(header_h + body_h + 1, 2, controls.c_str(), W - 4);
+  if (!status_line.empty()) {
+    attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+    mvaddnstr(header_h + body_h + 1, std::max(2, W / 2),
+              ellipsize_text(status_line, std::max(8, W / 2 - 3)).c_str(),
+              std::max(8, W / 2 - 3));
+    attroff(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+  }
+
+  refresh();
+}
+
+void render_human_reports_screen(
+    const std::vector<cuwacunu::hero::super::super_loop_record_t>& pending,
+    std::string_view operator_id, std::string_view super_root,
+    std::size_t selected, std::string_view report_text,
+    std::string_view status_line, bool status_is_error) {
+  const int W = COLS;
+  const int H = LINES;
+  if (W < 56 || H < 10) {
+    erase();
+    mvaddnstr(0, 0,
+              "Human Hero: terminal too small. Resize or use hero.human.* tools.",
+              std::max(0, W - 1));
+    refresh();
+    return;
+  }
+  const int header_h = 3;
+  const int footer_h = 3;
+  const int body_h = std::max(5, H - header_h - footer_h);
+  const int left_w = std::clamp(W / 3, 28, std::max(28, W - 24));
+  const int right_w = W - left_w;
+
+  if (has_colors()) attrset(COLOR_PAIR(6));
+  erase();
+
+  draw_boxed_region(0, 0, header_h, W, " Human Hero ");
+  attron(COLOR_PAIR(1) | A_BOLD);
+  const std::string header_line =
+      "Operator console | informational terminal reports: " +
+      std::to_string(pending.size()) + " | operator: " +
+      std::string(operator_id.empty() ? "<unset>" : operator_id);
+  mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
+  attroff(COLOR_PAIR(1) | A_BOLD);
+
+  draw_boxed_region(header_h, 0, body_h, left_w,
+                    pending.empty() ? " Inbox " : " Reports ");
+  if (pending.empty()) {
+    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Reports", 5,
+                              true);
+    draw_centered_region_line(header_h + 4, 0, left_w,
+                              "Finished Super Hero loop summaries appear here.");
+    draw_centered_region_line(header_h + 6, 0, left_w,
+                              "Press r to refresh the queue.");
+    draw_centered_region_line(header_h + 7, 0, left_w,
+                              "Press q to leave the console.");
+  } else {
+    const int max_rows = body_h - 2;
+    std::size_t top = 0;
+    if (selected >= static_cast<std::size_t>(max_rows)) {
+      top = selected - static_cast<std::size_t>(max_rows) + 1;
+    }
+    for (int row = 0; row < max_rows; ++row) {
+      const std::size_t idx = top + static_cast<std::size_t>(row);
+      if (idx >= pending.size()) break;
+      const auto& loop = pending[idx];
+      const std::string label = "REPORT | " + loop.loop_id + " | " +
+                                loop.objective_name + " | " + loop.state;
+      const int row_y = header_h + 1 + row;
+      clear_region_line(row_y, 1, left_w - 2);
+      if (idx == selected) attron(COLOR_PAIR(2) | A_BOLD);
+      mvaddnstr(row_y, 2, ellipsize_text(label, left_w - 4).c_str(),
+                left_w - 4);
+      if (idx == selected) attroff(COLOR_PAIR(2) | A_BOLD);
+    }
+  }
+
+  draw_boxed_region(header_h, left_w, body_h, right_w,
+                    pending.empty() ? " Overview " : " Report ");
+  if (!pending.empty()) {
+    const auto& loop = pending[selected];
+    std::string meta = "terminal report | loop=" + loop.loop_id +
+                       "  state=" + loop.state;
+    mvaddnstr(header_h + 1, left_w + 2, ellipsize_text(meta, right_w - 4).c_str(),
+              right_w - 4);
+    const std::string subtitle =
+        "Informational only. Super Hero is not waiting for a response to continue.";
+    mvaddnstr(header_h + 2, left_w + 2,
+              ellipsize_text(subtitle, right_w - 4).c_str(), right_w - 4);
+    draw_wrapped_region_block(header_h + 4, left_w + 2, right_w - 4, body_h - 6,
+                              report_text);
+  } else {
+    std::ostringstream out;
+    out << "This console also tracks finished Super Hero loops.\n\n"
+        << "Operator: "
+        << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
+        << "Super root: " << super_root << "\n\n"
+        << "What to do here:\n"
+        << "- review the finished-loop summary report\n"
+        << "- acknowledge it after inspection, or dismiss it to clear the inbox\n"
+        << "- stop does not apply here because these loops are already terminal\n"
+        << "- press r to refresh\n"
+        << "- press q to exit\n\n"
+        << "Non-interactive alternative:\n"
+        << "hero.human.list_reports";
+    draw_wrapped_region_block(header_h + 2, left_w + 2, right_w - 4, body_h - 4,
+                              out.str());
+  }
+
+  draw_boxed_region(header_h + body_h, 0, footer_h, W, " Controls ");
+  const std::string controls =
+      pending.empty() ? "r refresh  q quit"
+                      : "Up/Down select  Enter inspect  a acknowledge report  d dismiss report  r refresh  q quit";
   mvaddnstr(header_h + body_h + 1, 2, controls.c_str(), W - 4);
   if (!status_line.empty()) {
     attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
@@ -1258,11 +1621,11 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   draw_wrapped_region_block(
       header_h + 2, 2, W - 4, body_h - 4,
       std::string("Initializing operator console...\n\n"
-                  "[work] scanning Super Hero request queue\n\n") +
+                  "[work] scanning Super Hero escalation queue\n\n") +
           "operator: " +
           std::string(operator_id.empty() ? "<unset>" : operator_id) + "\n" +
           "super_root: " + std::string(super_root) + "\n\n"
-          "The request inbox will appear when the scan completes.");
+          "The escalation inbox will appear when the scan completes.");
 
   draw_boxed_region(header_h + body_h, 0, footer_h, W, " Status ");
   attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
@@ -1273,56 +1636,62 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   refresh();
 }
 
-[[nodiscard]] bool collect_interactive_response_inputs(
+[[nodiscard]] bool collect_interactive_resolution_inputs(
     app_context_t* app,
     const cuwacunu::hero::super::super_loop_record_t& loop,
-    bool stop_direct, interactive_response_input_t* out, bool* cancelled,
+    bool stop_direct, interactive_resolution_input_t* out, bool* cancelled,
     std::string* error) {
   if (cancelled) *cancelled = false;
   if (error) error->clear();
   if (!app || !out) {
-    if (error) *error = "interactive response output pointer is null";
+    if (error) *error = "interactive resolution output pointer is null";
     return false;
   }
-  *out = interactive_response_input_t{};
-  out->control_kind = stop_direct ? "stop" : "continue";
+  *out = interactive_resolution_input_t{};
 
-  if (out->control_kind == "continue") {
-    std::size_t action_idx = 0;
-    if (!prompt_choice_dialog(" Continue ",
-                              "Choose the next runtime action for this loop.",
-                              {"default_plan", "binding"}, &action_idx,
-                              cancelled)) {
+  if (stop_direct) {
+    out->resolution_kind = "stop";
+  } else {
+    std::size_t resolution_idx = 0;
+    if (!prompt_choice_dialog(
+            " Resolution ",
+            "Choose how to answer this pending escalation.",
+            {"Grant requested escalation",
+             "Clarify objective or policy without widening authority",
+             "Deny requested escalation",
+             "Stop the loop"},
+            &resolution_idx, cancelled)) {
       return false;
     }
     if (cancelled && *cancelled) return true;
-    out->next_action_kind = (action_idx == 0) ? "default_plan" : "binding";
-    if (out->next_action_kind == "binding") {
-      if (!prompt_text_dialog(" Binding target ", "Target binding id",
-                              &out->target_binding_id, false, false,
-                              cancelled)) {
-        return false;
-      }
-      if (cancelled && *cancelled) return true;
+    if (resolution_idx == 0) {
+      out->resolution_kind = "grant";
+    } else if (resolution_idx == 1) {
+      out->resolution_kind = "clarify";
+    } else if (resolution_idx == 2) {
+      out->resolution_kind = "deny";
+    } else {
+      out->resolution_kind = "stop";
     }
-    if (!prompt_yes_no_dialog(" Runtime reset ",
-                              "Request a cold Runtime reset before launch?",
-                              false, &out->reset_runtime_state, cancelled)) {
-      return false;
-    }
-    if (cancelled && *cancelled) return true;
   }
 
-  if (!prompt_text_dialog(stop_direct ? " Stop reason " : " Continue reason ",
-                          "Reason",
-                          &out->reason, false, false, cancelled)) {
-    return false;
-  }
-  if (cancelled && *cancelled) return true;
-
-  if (!prompt_text_dialog(" Memory note ",
-                          "Memory note (optional)",
-                          &out->memory_note, false, true, cancelled)) {
+  const std::string prompt_title =
+      (out->resolution_kind == "grant")
+          ? " Grant rationale "
+          : (out->resolution_kind == "clarify")
+                ? " Clarification "
+                : (out->resolution_kind == "deny") ? " Denial rationale "
+                                                    : " Stop rationale ";
+  const std::string prompt_body =
+      (out->resolution_kind == "grant")
+          ? "Why grant this escalation? This reason is shown to Super Hero."
+          : (out->resolution_kind == "clarify")
+                ? "What clarification should Super Hero incorporate on the next planning turn?"
+                : (out->resolution_kind == "deny")
+                      ? "Why deny this escalation? This reason is shown to Super Hero."
+                      : "Why stop this loop? This reason is shown to Super Hero.";
+  if (!prompt_text_dialog(prompt_title, prompt_body, &out->reason, false, false,
+                          cancelled)) {
     return false;
   }
   if (cancelled && *cancelled) return true;
@@ -1346,7 +1715,8 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     cuwacunu::iinuji::NcursesApp curses_app(opts);
     init_human_ncurses_theme();
 
-    std::vector<cuwacunu::hero::super::super_loop_record_t> pending{};
+    std::vector<cuwacunu::hero::super::super_loop_record_t> pending_requests{};
+    std::vector<cuwacunu::hero::super::super_loop_record_t> pending_reports{};
     auto sort_pending = [&](std::vector<cuwacunu::hero::super::super_loop_record_t>* rows) {
       if (!rows) return;
       std::sort(rows->begin(), rows->end(), [](const auto& a, const auto& b) {
@@ -1356,8 +1726,8 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     };
 
     std::size_t selected = 0;
-    std::string request_text{};
-    std::string status = "Scanning pending requests...";
+    std::string detail_text{};
+    std::string status = "Scanning pending escalations...";
     bool status_is_error = false;
     bool dirty = true;
     bool queue_refresh_pending = true;
@@ -1373,19 +1743,36 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
               app->defaults.operator_id, app->defaults.super_root.string(),
               status, status_is_error);
         } else {
-          if (!pending.empty()) selected = std::min(selected, pending.size() - 1);
-          request_text.clear();
-          if (!pending.empty()) {
-            std::string request_error{};
-            if (!read_request_text_for_loop(pending[selected], &request_text,
-                                            &request_error)) {
-              request_text = "<failed to read request: " + request_error + ">";
+          const bool showing_requests = !pending_requests.empty();
+          auto& visible = showing_requests ? pending_requests : pending_reports;
+          if (!visible.empty()) selected = std::min(selected, visible.size() - 1);
+          else selected = 0;
+          detail_text.clear();
+          if (!visible.empty()) {
+            std::string detail_error{};
+            const bool read_ok =
+                showing_requests
+                    ? read_request_text_for_loop(visible[selected], &detail_text,
+                                                 &detail_error)
+                    : read_report_text_for_loop(visible[selected], &detail_text,
+                                                &detail_error);
+            if (!read_ok) {
+              detail_text = std::string("<failed to read ") +
+                            (showing_requests ? "escalation" : "report") + ": " +
+                            detail_error + ">";
             }
           }
-          render_human_requests_screen(pending, app->defaults.operator_id,
-                                       app->defaults.super_root.string(),
-                                       selected, request_text, status,
-                                       status_is_error);
+          if (showing_requests) {
+            render_human_requests_screen(
+                pending_requests, app->defaults.operator_id,
+                app->defaults.super_root.string(), selected, detail_text, status,
+                status_is_error);
+          } else {
+            render_human_reports_screen(
+                pending_reports, app->defaults.operator_id,
+                app->defaults.super_root.string(), selected, detail_text, status,
+                status_is_error);
+          }
         }
         dirty = false;
       }
@@ -1397,19 +1784,35 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         }
 
         std::string refresh_error{};
-        std::vector<cuwacunu::hero::super::super_loop_record_t> refreshed{};
-        if (!collect_pending_requests(*app, &refreshed, &refresh_error)) {
+        std::vector<cuwacunu::hero::super::super_loop_record_t> refreshed_requests{};
+        std::vector<cuwacunu::hero::super::super_loop_record_t> refreshed_reports{};
+        if (!collect_pending_requests(*app, &refreshed_requests, &refresh_error)) {
+          status = refresh_error;
+          status_is_error = true;
+        } else if (!collect_pending_reports(*app, &refreshed_reports,
+                                            &refresh_error)) {
           status = refresh_error;
           status_is_error = true;
         } else {
-          pending = std::move(refreshed);
-          sort_pending(&pending);
-          if (!pending.empty()) selected = std::min(selected, pending.size() - 1);
+          pending_requests = std::move(refreshed_requests);
+          pending_reports = std::move(refreshed_reports);
+          sort_pending(&pending_requests);
+          sort_pending(&pending_reports);
+          const auto& visible =
+              !pending_requests.empty() ? pending_requests : pending_reports;
+          if (!visible.empty()) selected = std::min(selected, visible.size() - 1);
           else selected = 0;
+          const bool has_requests = !pending_requests.empty();
+          const bool has_reports = !pending_reports.empty();
           status = has_loaded_once
-                       ? (pending.empty() ? "No pending requests." : "Refreshed.")
-                       : (pending.empty() ? "No pending requests. Waiting for Super Hero."
-                                          : "Ready.");
+                       ? (has_requests
+                              ? "Refreshed pending escalations."
+                              : (has_reports ? "Refreshed pending reports."
+                                             : "No pending escalations or reports."))
+                       : (has_requests
+                              ? "Ready."
+                              : (has_reports ? "Ready with finished-loop reports."
+                                             : "No pending escalations or reports. Waiting for Super Hero."));
           status_is_error = false;
         }
         has_loaded_once = true;
@@ -1425,33 +1828,36 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         continue;
       }
       if (ch == 'r' || ch == 'R') {
-        status = "Refreshing request queue...";
+        status = "Refreshing escalation queue...";
         status_is_error = false;
         queue_refresh_pending = true;
         queue_refresh_needs_paint = true;
         dirty = true;
         continue;
       }
-      if (pending.empty()) continue;
+      const bool showing_requests = !pending_requests.empty();
+      auto& visible = showing_requests ? pending_requests : pending_reports;
+      if (visible.empty()) continue;
       if (ch == KEY_UP || ch == 'k') {
         if (selected > 0) --selected;
         dirty = true;
         continue;
       }
       if (ch == KEY_DOWN || ch == 'j') {
-        if (selected + 1 < pending.size()) ++selected;
+        if (selected + 1 < visible.size()) ++selected;
         dirty = true;
         continue;
       }
-      if (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' || ch == 'C' ||
-          ch == 's' || ch == 'S') {
+      if (showing_requests &&
+          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' || ch == 'C' ||
+           ch == 's' || ch == 'S')) {
         const bool stop_direct = (ch == 's' || ch == 'S');
-        interactive_response_input_t input{};
+        interactive_resolution_input_t input{};
         bool cancelled = false;
         std::string input_error{};
-        if (!collect_interactive_response_inputs(app, pending[selected],
-                                                 stop_direct, &input,
-                                                 &cancelled, &input_error)) {
+        if (!collect_interactive_resolution_inputs(app, visible[selected],
+                                                   stop_direct, &input,
+                                                   &cancelled, &input_error)) {
           status = input_error;
           status_is_error = true;
           dirty = true;
@@ -1465,18 +1871,64 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         }
         std::string structured{};
         std::string response_error{};
-        if (!build_response_and_resume(app, pending[selected], input.control_kind,
-                                       input.next_action_kind,
-                                       input.target_binding_id,
-                                       input.reset_runtime_state, input.reason,
-                                       input.memory_note, &structured,
-                                       &response_error)) {
+        if (!build_resolution_and_apply(app, visible[selected],
+                                        input.resolution_kind, input.reason,
+                                        &structured, &response_error)) {
           status = response_error;
           status_is_error = true;
           dirty = true;
           continue;
         }
-        status = "Applied signed human response. Refreshing queue...";
+        status = "Applied signed human resolution. Refreshing queue...";
+        status_is_error = false;
+        queue_refresh_pending = true;
+        queue_refresh_needs_paint = true;
+        dirty = true;
+        continue;
+      }
+      if (!showing_requests &&
+          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'a' ||
+           ch == 'A' || ch == 'd' || ch == 'D')) {
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+          status =
+              "Informational terminal report. Super is not waiting; use 'a' to acknowledge or 'd' to dismiss.";
+          status_is_error = false;
+          dirty = true;
+          continue;
+        }
+        const bool dismiss = (ch == 'd' || ch == 'D');
+        std::string note{};
+        bool cancelled = false;
+        if (!prompt_text_dialog(
+                dismiss ? " Report dismissal " : " Report acknowledgment ",
+                dismiss ? "Optional note saved with the signed report dismissal."
+                        : "Optional note saved with the signed report acknowledgment.",
+                &note, false, true, &cancelled)) {
+          status = dismiss ? "failed to collect report dismissal note"
+                           : "failed to collect report acknowledgment note";
+          status_is_error = true;
+          dirty = true;
+          continue;
+        }
+        if (cancelled) {
+          status = "Cancelled.";
+          status_is_error = false;
+          dirty = true;
+          continue;
+        }
+        std::string structured{};
+        std::string ack_error{};
+        if (!(dismiss ? dismiss_terminal_report(app, visible[selected], note,
+                                                &structured, &ack_error)
+                      : acknowledge_terminal_report(app, visible[selected], note,
+                                                    &structured, &ack_error))) {
+          status = ack_error;
+          status_is_error = true;
+          dirty = true;
+          continue;
+        }
+        status = dismiss ? "Dismissed summary report. Refreshing queue..."
+                         : "Acknowledged summary report. Refreshing queue...";
         status_is_error = false;
         queue_refresh_pending = true;
         queue_refresh_needs_paint = true;
@@ -1498,24 +1950,45 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
       << "\"objective_name\":" << json_quote(loop.objective_name) << ","
       << "\"state\":" << json_quote(loop.state) << ","
       << "\"state_detail\":" << json_quote(loop.state_detail) << ","
-      << "\"review_count\":" << loop.review_count << ","
+      << "\"turn_count\":" << loop.turn_count << ","
       << "\"started_at_ms\":" << loop.started_at_ms << ","
       << "\"updated_at_ms\":" << loop.updated_at_ms << ","
-      << "\"human_request_path\":" << json_quote(loop.human_request_path) << ","
-      << "\"human_response_path\":"
+      << "\"human_escalation_path\":"
+      << json_quote(loop.human_escalation_path) << ","
+      << "\"human_resolution_path\":"
       << json_quote(
-             cuwacunu::hero::super::super_loop_human_response_latest_path(
+             cuwacunu::hero::super::super_loop_human_resolution_latest_path(
                  std::filesystem::path(loop.loop_root).parent_path(),
                  loop.loop_id)
                  .string())
-      << ",\"human_response_sig_path\":"
+      << ",\"human_resolution_sig_path\":"
       << json_quote(
-             cuwacunu::hero::super::super_loop_human_response_latest_sig_path(
+             cuwacunu::hero::super::super_loop_human_resolution_latest_sig_path(
                  std::filesystem::path(loop.loop_root).parent_path(),
                  loop.loop_id)
                  .string())
-      << ",\"request_excerpt\":" << json_quote(request_excerpt(loop))
+      << ",\"escalation_excerpt\":" << json_quote(request_excerpt(loop))
       << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string pending_report_row_to_json(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  std::ostringstream out;
+  out << "{"
+      << "\"loop_id\":" << json_quote(loop.loop_id) << ","
+      << "\"objective_name\":" << json_quote(loop.objective_name) << ","
+      << "\"state\":" << json_quote(loop.state) << ","
+      << "\"state_detail\":" << json_quote(loop.state_detail) << ","
+      << "\"turn_count\":" << loop.turn_count << ","
+      << "\"started_at_ms\":" << loop.started_at_ms << ","
+      << "\"updated_at_ms\":" << loop.updated_at_ms << ","
+      << "\"report_path\":" << json_quote(report_path_for_loop(loop).string()) << ","
+      << "\"report_ack_path\":"
+      << json_quote(report_ack_path_for_loop(loop).string()) << ","
+      << "\"report_ack_sig_path\":"
+      << json_quote(report_ack_sig_path_for_loop(loop).string()) << ","
+      << "\"report_excerpt\":" << json_quote(report_excerpt(loop)) << "}";
   return out.str();
 }
 
@@ -1529,50 +2002,66 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   }
   out->clear();
+  sync_human_pending_markers_best_effort(app);
   std::vector<cuwacunu::hero::super::super_loop_record_t> loops{};
   if (!cuwacunu::hero::super::scan_super_loop_records(app.defaults.super_root,
                                                       &loops, error)) {
     return false;
   }
   for (const auto& loop : loops) {
-    if (loop.state == "need_human") out->push_back(loop);
+    if (loop.state == "awaiting_human") out->push_back(loop);
   }
   return true;
 }
 
-[[nodiscard]] bool build_response_and_resume(
+[[nodiscard]] bool collect_pending_reports(
+    const app_context_t& app,
+    std::vector<cuwacunu::hero::super::super_loop_record_t>* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "pending reports output pointer is null";
+    return false;
+  }
+  out->clear();
+  sync_human_pending_markers_best_effort(app);
+  std::vector<cuwacunu::hero::super::super_loop_record_t> loops{};
+  if (!cuwacunu::hero::super::scan_super_loop_records(app.defaults.super_root,
+                                                      &loops, error)) {
+    return false;
+  }
+  for (const auto& loop : loops) {
+    if (!cuwacunu::hero::super::is_super_loop_finished_report_state(loop.state)) {
+      continue;
+    }
+    const std::filesystem::path report_path = report_path_for_loop(loop);
+    if (!std::filesystem::exists(report_path) ||
+        !std::filesystem::is_regular_file(report_path)) {
+      continue;
+    }
+    std::string ack_error{};
+    if (!report_ack_matches_current_report(loop, &ack_error)) out->push_back(loop);
+  }
+  return true;
+}
+
+[[nodiscard]] bool build_resolution_and_apply(
     app_context_t* app,
     const cuwacunu::hero::super::super_loop_record_t& loop,
-    std::string control_kind, std::string next_action_kind,
-    std::string target_binding_id, bool reset_runtime_state, std::string reason,
-    std::string memory_note, std::string* out_structured,
-    std::string* out_error) {
+    std::string resolution_kind, std::string reason,
+    std::string* out_structured, std::string* out_error) {
   if (out_error) out_error->clear();
   if (!app || !out_structured || !out_error) return false;
 
-  control_kind = trim_ascii(control_kind);
-  next_action_kind = trim_ascii(next_action_kind);
-  target_binding_id = trim_ascii(target_binding_id);
+  resolution_kind = trim_ascii(resolution_kind);
   reason = trim_ascii(reason);
-  memory_note = trim_ascii(memory_note);
-  if (control_kind != "continue" && control_kind != "stop") {
-    *out_error = "human response control_kind must be continue or stop";
-    return false;
-  }
-  if (control_kind == "continue" &&
-      next_action_kind != "default_plan" && next_action_kind != "binding") {
-    *out_error =
-        "human response continue requires next_action.kind = default_plan or binding";
-    return false;
-  }
-  if (control_kind == "continue" && next_action_kind == "binding" &&
-      target_binding_id.empty()) {
-    *out_error =
-        "human response binding requires next_action.target_binding_id";
+  if (resolution_kind != "grant" && resolution_kind != "deny" &&
+      resolution_kind != "clarify" && resolution_kind != "stop") {
+    *out_error = "human resolution_kind must be grant, deny, clarify, or stop";
     return false;
   }
   if (reason.empty()) {
-    *out_error = "human response requires a non-empty reason";
+    *out_error = "human resolution requires a non-empty reason";
     return false;
   }
   if (app->defaults.operator_id.empty() ||
@@ -1587,71 +2076,113 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   }
 
-  std::string request_sha256_hex{};
-  if (!cuwacunu::hero::human::sha256_hex_file(loop.human_request_path,
-                                              &request_sha256_hex, out_error)) {
+  std::string escalation_sha256_hex{};
+  if (!cuwacunu::hero::human::sha256_hex_file(loop.human_escalation_path,
+                                              &escalation_sha256_hex,
+                                              out_error)) {
     return false;
   }
 
-  human_response_record_t response{};
-  response.loop_id = loop.loop_id;
-  response.review_index = loop.review_count;
-  response.request_sha256_hex = request_sha256_hex;
-  response.operator_id = app->defaults.operator_id;
-  response.responded_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  response.control_kind = control_kind;
-  response.next_action_kind = (control_kind == "continue") ? next_action_kind : "";
-  response.target_binding_id =
-      (response.next_action_kind == "binding") ? target_binding_id : "";
-  response.reset_runtime_state =
-      (control_kind == "continue") ? reset_runtime_state : false;
-  response.reason = reason;
-  response.memory_note = memory_note;
-  response.signer_public_key_fingerprint_sha256_hex =
+  const std::filesystem::path latest_turn_outcome_path =
+      cuwacunu::hero::super::super_loop_latest_turn_outcome_path(
+          app->defaults.super_root, loop.loop_id);
+  std::string latest_turn_outcome_json{};
+  if (!cuwacunu::hero::runtime::read_text_file(latest_turn_outcome_path,
+                                               &latest_turn_outcome_json,
+                                               out_error)) {
+    return false;
+  }
+  std::string outcome{};
+  (void)extract_json_string_field(latest_turn_outcome_json, "outcome", &outcome);
+  outcome = trim_ascii(outcome);
+  if (outcome != "escalate") {
+    *out_error = "latest pending turn outcome is not an escalation";
+    return false;
+  }
+  std::string escalation_json{};
+  if (!extract_json_object_field(latest_turn_outcome_json, "escalation",
+                                 &escalation_json)) {
+    *out_error = "latest turn outcome is missing escalation object";
+    return false;
+  }
+  std::string escalation_kind{};
+  (void)extract_json_string_field(escalation_json, "kind", &escalation_kind);
+  escalation_kind = trim_ascii(escalation_kind);
+  if (escalation_kind.empty()) {
+    *out_error = "latest turn outcome escalation is missing kind";
+    return false;
+  }
+
+  std::string delta_json{};
+  (void)extract_json_object_field(escalation_json, "delta", &delta_json);
+  human_resolution_record_t resolution{};
+  resolution.loop_id = loop.loop_id;
+  resolution.turn_index = loop.turn_count;
+  resolution.escalation_sha256_hex = escalation_sha256_hex;
+  resolution.operator_id = app->defaults.operator_id;
+  resolution.resolved_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  resolution.resolution_kind = resolution_kind;
+  resolution.escalation_kind = escalation_kind;
+  resolution.reason = reason;
+  resolution.signer_public_key_fingerprint_sha256_hex =
       std::string(64, '0');
+  if (resolution_kind == "grant") {
+    (void)extract_json_bool_field(delta_json, "allow_default_write",
+                                  &resolution.grant_allow_default_write);
+    (void)extract_json_u64_field(delta_json, "additional_review_turns",
+                                 &resolution.grant_additional_review_turns);
+    (void)extract_json_u64_field(delta_json, "additional_campaign_launches",
+                                 &resolution.grant_additional_campaign_launches);
+  }
 
   std::string signature_hex{};
   std::string fingerprint_hex{};
-  std::string provisional_json = cuwacunu::hero::human::human_response_to_json(response);
-  if (!cuwacunu::hero::human::sign_human_response_json(
+  std::string provisional_json =
+      cuwacunu::hero::human::human_resolution_to_json(resolution);
+  if (!cuwacunu::hero::human::sign_human_attested_json(
           app->defaults.operator_signing_ssh_identity, provisional_json,
           &signature_hex, &fingerprint_hex, out_error)) {
     return false;
   }
-  response.signer_public_key_fingerprint_sha256_hex = fingerprint_hex;
-  const std::string response_json =
-      cuwacunu::hero::human::human_response_to_json(response);
-  if (!cuwacunu::hero::human::sign_human_response_json(
-          app->defaults.operator_signing_ssh_identity, response_json,
+  resolution.signer_public_key_fingerprint_sha256_hex = fingerprint_hex;
+  const std::string resolution_json =
+      cuwacunu::hero::human::human_resolution_to_json(resolution);
+  if (!cuwacunu::hero::human::sign_human_attested_json(
+          app->defaults.operator_signing_ssh_identity, resolution_json,
           &signature_hex, &fingerprint_hex, out_error)) {
     return false;
   }
-  if (fingerprint_hex != response.signer_public_key_fingerprint_sha256_hex) {
-    *out_error = "human response fingerprint changed during signing";
+  if (fingerprint_hex !=
+      resolution.signer_public_key_fingerprint_sha256_hex) {
+    *out_error = "human resolution fingerprint changed during signing";
     return false;
   }
 
   std::error_code ec{};
-  const auto response_dir = cuwacunu::hero::super::super_loop_human_responses_dir(
+  const auto response_dir =
+      cuwacunu::hero::super::super_loop_human_resolutions_dir(
       app->defaults.super_root, loop.loop_id);
   std::filesystem::create_directories(response_dir, ec);
   if (ec) {
-    *out_error = "cannot create human response directory: " + response_dir.string();
+    *out_error =
+        "cannot create human resolution directory: " + response_dir.string();
     return false;
   }
-  const auto response_path = cuwacunu::hero::super::super_loop_human_response_path(
-      app->defaults.super_root, loop.loop_id, loop.review_count);
+  const auto response_path =
+      cuwacunu::hero::super::super_loop_human_resolution_path(
+          app->defaults.super_root, loop.loop_id, loop.turn_count);
   const auto response_sig_path =
-      cuwacunu::hero::super::super_loop_human_response_sig_path(
-          app->defaults.super_root, loop.loop_id, loop.review_count);
+      cuwacunu::hero::super::super_loop_human_resolution_sig_path(
+          app->defaults.super_root, loop.loop_id, loop.turn_count);
   const auto latest_path =
-      cuwacunu::hero::super::super_loop_human_response_latest_path(
+      cuwacunu::hero::super::super_loop_human_resolution_latest_path(
           app->defaults.super_root, loop.loop_id);
   const auto latest_sig_path =
-      cuwacunu::hero::super::super_loop_human_response_latest_sig_path(
+      cuwacunu::hero::super::super_loop_human_resolution_latest_sig_path(
           app->defaults.super_root, loop.loop_id);
 
-  if (!cuwacunu::hero::runtime::write_text_file_atomic(response_path, response_json,
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(response_path,
+                                                       resolution_json,
                                                        out_error)) {
     return false;
   }
@@ -1660,7 +2191,8 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
                                                        out_error)) {
     return false;
   }
-  if (!cuwacunu::hero::runtime::write_text_file_atomic(latest_path, response_json,
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(latest_path,
+                                                       resolution_json,
                                                        out_error)) {
     return false;
   }
@@ -1672,35 +2204,166 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
 
   std::string super_structured{};
   std::string resume_args =
-      "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"human_response_path\":" +
-      json_quote(response_path.string()) + ",\"human_response_sig_path\":" +
+      "{\"loop_id\":" + json_quote(loop.loop_id) +
+      ",\"human_resolution_path\":" + json_quote(response_path.string()) +
+      ",\"human_resolution_sig_path\":" +
       json_quote(response_sig_path.string()) + "}";
-  if (!call_super_tool(*app, "hero.super.resume_loop", resume_args,
+  if (!call_super_tool(*app, "hero.super.apply_human_resolution", resume_args,
                        &super_structured, out_error)) {
     return false;
   }
 
   *out_structured = "{\"loop_id\":" + json_quote(loop.loop_id) +
-                    ",\"response_path\":" + json_quote(response_path.string()) +
-                    ",\"response_sig_path\":" +
+                    ",\"resolution_path\":" +
+                    json_quote(response_path.string()) +
+                    ",\"resolution_sig_path\":" +
                     json_quote(response_sig_path.string()) +
                     ",\"fingerprint_sha256_hex\":" + json_quote(fingerprint_hex) +
                     ",\"super\":" + super_structured + "}";
   return true;
 }
 
-[[nodiscard]] bool handle_tool_list_requests(app_context_t* app,
-                                             const std::string& arguments_json,
-                                             std::string* out_structured,
-                                             std::string* out_error);
-[[nodiscard]] bool handle_tool_get_request(app_context_t* app,
-                                           const std::string& arguments_json,
-                                           std::string* out_structured,
-                                           std::string* out_error);
-[[nodiscard]] bool handle_tool_respond(app_context_t* app,
-                                       const std::string& arguments_json,
-                                       std::string* out_structured,
-                                       std::string* out_error);
+[[nodiscard]] bool finalize_terminal_report(
+    app_context_t* app,
+    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    std::string disposition, std::string* out_structured,
+    std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !out_structured || !out_error) return false;
+  note = trim_ascii(note);
+  disposition = lowercase_copy(trim_ascii(disposition));
+  if (disposition != "acknowledged" && disposition != "dismissed") {
+    *out_error = "invalid report disposition";
+    return false;
+  }
+  if (disposition == "dismissed" && note.empty()) {
+    note = "dismissed by operator";
+  }
+
+  if (!cuwacunu::hero::super::is_super_loop_finished_report_state(loop.state)) {
+    *out_error = "loop does not currently expose a finished summary report";
+    return false;
+  }
+  if (app->defaults.operator_id.empty() ||
+      app->defaults.operator_id == "CHANGE_ME_OPERATOR") {
+    *out_error =
+        "Human Hero operator_id is not configured; update default.hero.human.dsl";
+    return false;
+  }
+  if (app->defaults.operator_signing_ssh_identity.empty()) {
+    *out_error =
+        "Human Hero operator_signing_ssh_identity is not configured";
+    return false;
+  }
+
+  const std::filesystem::path report_path = report_path_for_loop(loop);
+  std::string report_sha256_hex{};
+  if (!cuwacunu::hero::human::sha256_hex_file(report_path, &report_sha256_hex,
+                                              out_error)) {
+    return false;
+  }
+
+  const std::uint64_t acknowledged_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  std::string ack_json =
+      std::string("{\"schema\":") + json_quote(kHumanReportAckSchemaV2) +
+      ",\"loop_id\":" + json_quote(loop.loop_id) + ",\"state\":" +
+      json_quote(loop.state) + ",\"report_sha256_hex\":" +
+      json_quote(report_sha256_hex) + ",\"operator_id\":" +
+      json_quote(app->defaults.operator_id) + ",\"acknowledged_at_ms\":" +
+      std::to_string(acknowledged_at_ms) + ",\"disposition\":" +
+      json_quote(disposition) + ",\"note\":" + json_quote(note) +
+      ",\"signer_public_key_fingerprint_sha256_hex\":" +
+      json_quote(std::string(64, '0')) + "}";
+
+  std::string signature_hex{};
+  std::string fingerprint_hex{};
+  if (!cuwacunu::hero::human::sign_human_attested_json(
+          app->defaults.operator_signing_ssh_identity, ack_json, &signature_hex,
+          &fingerprint_hex, out_error)) {
+    return false;
+  }
+  if (fingerprint_hex.size() != 64) {
+    *out_error = "report ack signing returned invalid fingerprint length";
+    return false;
+  }
+  ack_json =
+      std::string("{\"schema\":") + json_quote(kHumanReportAckSchemaV2) +
+      ",\"loop_id\":" + json_quote(loop.loop_id) + ",\"state\":" +
+      json_quote(loop.state) + ",\"report_sha256_hex\":" +
+      json_quote(report_sha256_hex) + ",\"operator_id\":" +
+      json_quote(app->defaults.operator_id) + ",\"acknowledged_at_ms\":" +
+      std::to_string(acknowledged_at_ms) + ",\"disposition\":" +
+      json_quote(disposition) + ",\"note\":" + json_quote(note) +
+      ",\"signer_public_key_fingerprint_sha256_hex\":" +
+      json_quote(fingerprint_hex) + "}";
+
+  const std::filesystem::path ack_path = report_ack_path_for_loop(loop);
+  const std::filesystem::path ack_sig_path = report_ack_sig_path_for_loop(loop);
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(ack_path, ack_json + "\n",
+                                                       out_error)) {
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(ack_sig_path,
+                                                       signature_hex + "\n",
+                                                       out_error)) {
+    return false;
+  }
+  sync_human_pending_markers_best_effort(*app);
+
+  *out_structured =
+      "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"report_path\":" +
+      json_quote(report_path.string()) + ",\"report_ack_path\":" +
+      json_quote(ack_path.string()) + ",\"report_ack_sig_path\":" +
+      json_quote(ack_sig_path.string()) + ",\"disposition\":" +
+      json_quote(disposition) + ",\"note\":" + json_quote(note) +
+      ",\"fingerprint_sha256_hex\":" + json_quote(fingerprint_hex) + "}";
+  return true;
+}
+
+[[nodiscard]] bool acknowledge_terminal_report(
+    app_context_t* app,
+    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    std::string* out_structured, std::string* out_error) {
+  return finalize_terminal_report(app, loop, std::move(note), "acknowledged",
+                                  out_structured, out_error);
+}
+
+[[nodiscard]] bool dismiss_terminal_report(
+    app_context_t* app,
+    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    std::string* out_structured, std::string* out_error) {
+  return finalize_terminal_report(app, loop, std::move(note), "dismissed",
+                                  out_structured, out_error);
+}
+
+[[nodiscard]] bool handle_tool_list_escalations(app_context_t* app,
+                                                const std::string& arguments_json,
+                                                std::string* out_structured,
+                                                std::string* out_error);
+[[nodiscard]] bool handle_tool_list_reports(app_context_t* app,
+                                            const std::string& arguments_json,
+                                            std::string* out_structured,
+                                            std::string* out_error);
+[[nodiscard]] bool handle_tool_get_escalation(app_context_t* app,
+                                              const std::string& arguments_json,
+                                              std::string* out_structured,
+                                              std::string* out_error);
+[[nodiscard]] bool handle_tool_get_report(app_context_t* app,
+                                          const std::string& arguments_json,
+                                          std::string* out_structured,
+                                          std::string* out_error);
+[[nodiscard]] bool handle_tool_resolve_escalation(app_context_t* app,
+                                                  const std::string& arguments_json,
+                                                  std::string* out_structured,
+                                                  std::string* out_error);
+[[nodiscard]] bool handle_tool_ack_report(app_context_t* app,
+                                          const std::string& arguments_json,
+                                          std::string* out_structured,
+                                          std::string* out_error);
+[[nodiscard]] bool handle_tool_dismiss_report(app_context_t* app,
+                                              const std::string& arguments_json,
+                                              std::string* out_structured,
+                                              std::string* out_error);
 
 #define HERO_HUMAN_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) \
   {NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER},
@@ -1717,10 +2380,10 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
   return nullptr;
 }
 
-[[nodiscard]] bool handle_tool_list_requests(app_context_t* app,
-                                             const std::string& arguments_json,
-                                             std::string* out_structured,
-                                             std::string* out_error) {
+[[nodiscard]] bool handle_tool_list_escalations(app_context_t* app,
+                                                const std::string& arguments_json,
+                                                std::string* out_structured,
+                                                std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
@@ -1757,15 +2420,16 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
 
   *out_structured =
       "{\"loop_id\":\"\",\"count\":" + std::to_string(count) +
-      ",\"total\":" + std::to_string(total) + ",\"requests\":" + rows.str() +
+      ",\"total\":" + std::to_string(total) + ",\"escalations\":" +
+      rows.str() +
       "}";
   return true;
 }
 
-[[nodiscard]] bool handle_tool_get_request(app_context_t* app,
-                                           const std::string& arguments_json,
-                                           std::string* out_structured,
-                                           std::string* out_error) {
+[[nodiscard]] bool handle_tool_get_escalation(app_context_t* app,
+                                              const std::string& arguments_json,
+                                              std::string* out_structured,
+                                              std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
@@ -1773,7 +2437,7 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
   (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
   loop_id = trim_ascii(loop_id);
   if (loop_id.empty()) {
-    *out_error = "get_request requires arguments.loop_id";
+    *out_error = "get_escalation requires arguments.loop_id";
     return false;
   }
 
@@ -1782,46 +2446,121 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
                                                      &loop, out_error)) {
     return false;
   }
-  if (loop.state != "need_human") {
-    *out_error = "loop is not currently waiting for human input";
+  if (loop.state != "awaiting_human") {
+    *out_error = "loop is not currently waiting for a human escalation resolution";
     return false;
   }
 
   std::string request_text{};
-  if (!cuwacunu::hero::runtime::read_text_file(loop.human_request_path,
+  if (!cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path,
                                                &request_text, out_error)) {
     return false;
   }
   *out_structured = "{\"loop_id\":" + json_quote(loop_id) + ",\"loop\":" +
-                    pending_request_row_to_json(loop) + ",\"request_text\":" +
+                    pending_request_row_to_json(loop) + ",\"escalation_text\":" +
                     json_quote(request_text) + "}";
   return true;
 }
 
-[[nodiscard]] bool handle_tool_respond(app_context_t* app,
-                                       const std::string& arguments_json,
-                                       std::string* out_structured,
-                                       std::string* out_error) {
+[[nodiscard]] bool handle_tool_list_reports(app_context_t* app,
+                                            const std::string& arguments_json,
+                                            std::string* out_structured,
+                                            std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::size_t limit = 0;
+  std::size_t offset = 0;
+  bool newest_first = true;
+  (void)extract_json_size_field(arguments_json, "limit", &limit);
+  (void)extract_json_size_field(arguments_json, "offset", &offset);
+  (void)extract_json_bool_field(arguments_json, "newest_first", &newest_first);
+
+  std::vector<cuwacunu::hero::super::super_loop_record_t> loops{};
+  if (!collect_pending_reports(*app, &loops, out_error)) return false;
+  std::sort(loops.begin(), loops.end(), [newest_first](const auto& a,
+                                                       const auto& b) {
+    if (a.updated_at_ms != b.updated_at_ms) {
+      return newest_first ? (a.updated_at_ms > b.updated_at_ms)
+                          : (a.updated_at_ms < b.updated_at_ms);
+    }
+    return newest_first ? (a.loop_id > b.loop_id) : (a.loop_id < b.loop_id);
+  });
+  const std::size_t total = loops.size();
+  const std::size_t off = std::min(offset, loops.size());
+  std::size_t count = limit;
+  if (count == 0) count = loops.size() - off;
+  count = std::min(count, loops.size() - off);
+
+  std::ostringstream rows;
+  rows << "[";
+  for (std::size_t i = 0; i < count; ++i) {
+    if (i != 0) rows << ",";
+    rows << pending_report_row_to_json(loops[off + i]);
+  }
+  rows << "]";
+
+  *out_structured =
+      "{\"loop_id\":\"\",\"count\":" + std::to_string(count) +
+      ",\"total\":" + std::to_string(total) + ",\"reports\":" + rows.str() +
+      "}";
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_get_report(app_context_t* app,
+                                          const std::string& arguments_json,
+                                          std::string* out_structured,
+                                          std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
   std::string loop_id{};
-  std::string control_kind{};
-  std::string next_action_json{};
-  std::string reason{};
-  std::string memory_note{};
   (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
-  (void)extract_json_string_field(arguments_json, "control_kind", &control_kind);
-  (void)extract_json_object_field(arguments_json, "next_action", &next_action_json);
-  (void)extract_json_string_field(arguments_json, "reason", &reason);
-  (void)extract_json_string_field(arguments_json, "memory_note", &memory_note);
   loop_id = trim_ascii(loop_id);
   if (loop_id.empty()) {
-    *out_error = "respond requires arguments.loop_id";
+    *out_error = "get_report requires arguments.loop_id";
     return false;
   }
-  if (trim_ascii(control_kind).empty()) {
-    *out_error = "respond requires arguments.control_kind";
+
+  cuwacunu::hero::super::super_loop_record_t loop{};
+  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root,
+                                                     loop_id, &loop,
+                                                     out_error)) {
+    return false;
+  }
+  if (!cuwacunu::hero::super::is_super_loop_finished_report_state(loop.state)) {
+    *out_error = "loop does not currently expose a finished summary report";
+    return false;
+  }
+
+  std::string report_text{};
+  if (!read_report_text_for_loop(loop, &report_text, out_error)) return false;
+  *out_structured = "{\"loop_id\":" + json_quote(loop_id) + ",\"loop\":" +
+                    pending_report_row_to_json(loop) + ",\"report_text\":" +
+                    json_quote(report_text) + "}";
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_resolve_escalation(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string loop_id{};
+  std::string resolution_kind{};
+  std::string reason{};
+  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
+  (void)extract_json_string_field(arguments_json, "resolution_kind",
+                                  &resolution_kind);
+  (void)extract_json_string_field(arguments_json, "reason", &reason);
+  loop_id = trim_ascii(loop_id);
+  if (loop_id.empty()) {
+    *out_error = "resolve_escalation requires arguments.loop_id";
+    return false;
+  }
+  if (trim_ascii(resolution_kind).empty()) {
+    *out_error = "resolve_escalation requires arguments.resolution_kind";
     return false;
   }
 
@@ -1830,25 +2569,64 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
                                                      &loop, out_error)) {
     return false;
   }
-  if (loop.state != "need_human") {
-    *out_error = "loop is not currently waiting for human input";
+  if (loop.state != "awaiting_human") {
+    *out_error = "loop is not currently waiting for a human escalation resolution";
+    return false;
+  }
+  return build_resolution_and_apply(app, loop, resolution_kind, reason,
+                                    out_structured, out_error);
+}
+
+[[nodiscard]] bool handle_tool_ack_report(app_context_t* app,
+                                          const std::string& arguments_json,
+                                          std::string* out_structured,
+                                          std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string loop_id{};
+  std::string note{};
+  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
+  (void)extract_json_string_field(arguments_json, "note", &note);
+  loop_id = trim_ascii(loop_id);
+  if (loop_id.empty()) {
+    *out_error = "ack_report requires arguments.loop_id";
     return false;
   }
 
-  std::string next_action_kind{};
-  std::string target_binding_id{};
-  bool reset_runtime_state = false;
-  if (!trim_ascii(next_action_json).empty()) {
-    (void)extract_json_string_field(next_action_json, "kind", &next_action_kind);
-    (void)extract_json_string_field(next_action_json, "target_binding_id",
-                                    &target_binding_id);
-    (void)extract_json_bool_field(next_action_json, "reset_runtime_state",
-                                  &reset_runtime_state);
+  cuwacunu::hero::super::super_loop_record_t loop{};
+  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root,
+                                                     loop_id, &loop,
+                                                     out_error)) {
+    return false;
+  }
+  return acknowledge_terminal_report(app, loop, note, out_structured, out_error);
+}
+
+[[nodiscard]] bool handle_tool_dismiss_report(app_context_t* app,
+                                              const std::string& arguments_json,
+                                              std::string* out_structured,
+                                              std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string loop_id{};
+  std::string note{};
+  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
+  (void)extract_json_string_field(arguments_json, "note", &note);
+  loop_id = trim_ascii(loop_id);
+  if (loop_id.empty()) {
+    *out_error = "dismiss_report requires arguments.loop_id";
+    return false;
   }
 
-  return build_response_and_resume(app, loop, control_kind, next_action_kind,
-                                   target_binding_id, reset_runtime_state, reason,
-                                   memory_note, out_structured, out_error);
+  cuwacunu::hero::super::super_loop_record_t loop{};
+  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root,
+                                                     loop_id, &loop,
+                                                     out_error)) {
+    return false;
+  }
+  return dismiss_terminal_report(app, loop, note, out_structured, out_error);
 }
 
 }  // namespace
@@ -1968,6 +2746,17 @@ std::filesystem::path current_executable_path() {
   return std::filesystem::path(buf.data()).lexically_normal();
 }
 
+[[nodiscard]] bool human_tool_is_read_only(std::string_view name) {
+  return name == "hero.human.list_escalations" ||
+         name == "hero.human.list_reports" ||
+         name == "hero.human.get_escalation" ||
+         name == "hero.human.get_report";
+}
+
+[[nodiscard]] bool human_tool_is_destructive(std::string_view name) {
+  return name == "hero.human.dismiss_report";
+}
+
 std::string build_tools_list_result_json() {
   std::ostringstream out;
   out << "{\"tools\":[";
@@ -1976,7 +2765,12 @@ std::string build_tools_list_result_json() {
     if (i != 0) out << ",";
     out << "{\"name\":" << json_quote(tool.name)
         << ",\"description\":" << json_quote(tool.description)
-        << ",\"inputSchema\":" << tool.input_schema_json << "}";
+        << ",\"inputSchema\":" << tool.input_schema_json
+        << ",\"annotations\":{\"readOnlyHint\":"
+        << (human_tool_is_read_only(tool.name) ? "true" : "false")
+        << ",\"destructiveHint\":"
+        << (human_tool_is_destructive(tool.name) ? "true" : "false")
+        << ",\"openWorldHint\":false}}";
   }
   out << "]}";
   return out.str();
@@ -2035,120 +2829,164 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
   }
 
   std::vector<cuwacunu::hero::super::super_loop_record_t> pending{};
+  std::vector<cuwacunu::hero::super::super_loop_record_t> reports{};
   if (!collect_pending_requests(*app, &pending, error)) return false;
+  if (!collect_pending_reports(*app, &reports, error)) return false;
   std::cout << "== Human Hero ==\n"
             << "operator: "
             << (app->defaults.operator_id.empty() ? "<unset>"
                                                   : app->defaults.operator_id)
             << "\n"
             << "super_root: " << app->defaults.super_root.string() << "\n"
-            << "pending_requests: " << pending.size() << "\n";
-  if (pending.empty()) {
-    std::cout << "status: no pending human requests\n"
+            << "pending_escalations: " << pending.size() << "\n"
+            << "pending_terminal_reports: " << reports.size() << "\n";
+  if (pending.empty() && reports.empty()) {
+    std::cout << "status: no pending human escalations or finished reports\n"
               << "hint: rerun this command after a Super Hero loop enters "
-                 "\"need_human\", or use hero.human.list_requests.\n";
+                 "\"awaiting_human\", finishes, or use "
+                 "hero.human.list_escalations / hero.human.list_reports.\n";
     return true;
   }
-  std::cout << "status: pending human review required\n";
+  if (!pending.empty()) {
+    std::cout << "status: pending human escalation resolution required\n";
 
-  std::sort(pending.begin(), pending.end(), [](const auto& a, const auto& b) {
+    std::sort(pending.begin(), pending.end(), [](const auto& a, const auto& b) {
+      if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
+      return a.loop_id > b.loop_id;
+    });
+
+    std::size_t selected = 0;
+    if (pending.size() > 1) {
+      std::cout << "Pending escalations:\n";
+      for (std::size_t i = 0; i < pending.size(); ++i) {
+        std::cout << "  [" << i + 1 << "] " << pending[i].loop_id << "  "
+                  << pending[i].objective_name << "  "
+                  << pending[i].state_detail << "\n";
+      }
+      std::cout << "Select escalation number (blank to cancel): " << std::flush;
+      std::string line{};
+      if (!std::getline(std::cin, line)) return false;
+      line = trim_ascii(line);
+      if (line.empty()) return true;
+      std::size_t choice = 0;
+      if (!parse_size_token(line, &choice) || choice == 0 || choice > pending.size()) {
+        if (error) *error = "invalid escalation selection";
+        return false;
+      }
+      selected = choice - 1;
+    }
+    const auto& loop = pending[selected];
+    std::string escalation_text{};
+    if (!cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path,
+                                                 &escalation_text, error)) {
+      return false;
+    }
+    std::cout << "\n=== Human Escalation ===\n" << escalation_text << "\n";
+
+    std::cout << "Resolve with [g]rant, [c]larify, [d]eny, [s]top loop, or blank to cancel: "
+              << std::flush;
+    std::string resolution{};
+    if (!std::getline(std::cin, resolution)) return false;
+    resolution = lowercase_copy(trim_ascii(resolution));
+    if (resolution.empty()) return true;
+
+    std::string resolution_kind{};
+    if (resolution == "g" || resolution == "grant") {
+      resolution_kind = "grant";
+    } else if (resolution == "c" || resolution == "clarify" ||
+               resolution == "clarification") {
+      resolution_kind = "clarify";
+    } else if (resolution == "d" || resolution == "deny") {
+      resolution_kind = "deny";
+    } else if (resolution == "s" || resolution == "stop") {
+      resolution_kind = "stop";
+    } else {
+      if (error) *error = "invalid resolution selection";
+      return false;
+    }
+
+    std::cout << "Reason shown to Super Hero: " << std::flush;
+    std::string reason{};
+    if (!std::getline(std::cin, reason)) return false;
+    reason = trim_ascii(reason);
+    if (reason.empty()) {
+      if (error) *error = "reason is required";
+      return false;
+    }
+
+    std::string structured{};
+    if (!build_resolution_and_apply(app, loop, resolution_kind, reason,
+                                    &structured, error)) {
+      return false;
+    }
+    std::cout << "\nHuman escalation resolution applied.\n"
+              << structured << "\n";
+    return true;
+  }
+
+  std::cout << "status: informational terminal report only; Super is not waiting on you\n";
+  std::sort(reports.begin(), reports.end(), [](const auto& a, const auto& b) {
     if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
     return a.loop_id > b.loop_id;
   });
 
   std::size_t selected = 0;
-  if (pending.size() > 1) {
-    std::cout << "Pending human requests:\n";
-    for (std::size_t i = 0; i < pending.size(); ++i) {
-      std::cout << "  [" << i + 1 << "] " << pending[i].loop_id << "  "
-                << pending[i].objective_name << "  "
-                << pending[i].state_detail << "\n";
+  if (reports.size() > 1) {
+    std::cout << "Pending finished-loop reports:\n";
+    for (std::size_t i = 0; i < reports.size(); ++i) {
+      std::cout << "  [" << i + 1 << "] " << reports[i].loop_id << "  "
+                << reports[i].objective_name << "  " << reports[i].state
+                << "  " << reports[i].state_detail << "\n";
     }
-    std::cout << "Select request number (blank to cancel): " << std::flush;
+    std::cout << "Select report number (blank to cancel): " << std::flush;
     std::string line{};
     if (!std::getline(std::cin, line)) return false;
     line = trim_ascii(line);
     if (line.empty()) return true;
     std::size_t choice = 0;
-    if (!parse_size_token(line, &choice) || choice == 0 || choice > pending.size()) {
-      if (error) *error = "invalid request selection";
+    if (!parse_size_token(line, &choice) || choice == 0 || choice > reports.size()) {
+      if (error) *error = "invalid report selection";
       return false;
     }
     selected = choice - 1;
   }
-  const auto& loop = pending[selected];
-  std::string request_text{};
-  if (!cuwacunu::hero::runtime::read_text_file(loop.human_request_path,
-                                               &request_text, error)) {
-    return false;
-  }
-  std::cout << "\n=== Human Request ===\n" << request_text << "\n";
+  const auto& loop = reports[selected];
+  std::string report_text{};
+  if (!read_report_text_for_loop(loop, &report_text, error)) return false;
+  std::cout << "\n=== Human Summary Report ===\n"
+            << "[informational terminal report; not an awaiting_human case]\n\n"
+            << report_text << "\n";
 
-  std::cout << "Respond with [c]ontinue, [s]top, or blank to cancel: " << std::flush;
+  std::cout << "Resolve this report? [a]cknowledge, [d]ismiss, or blank to cancel: "
+            << std::flush;
   std::string control{};
   if (!std::getline(std::cin, control)) return false;
   control = lowercase_copy(trim_ascii(control));
   if (control.empty()) return true;
-  std::string control_kind{};
-  if (control == "c" || control == "continue") {
-    control_kind = "continue";
-  } else if (control == "s" || control == "stop") {
-    control_kind = "stop";
-  } else {
-    if (error) *error = "invalid control selection";
+  if (control != "a" && control != "ack" && control != "acknowledge" &&
+      control != "d" && control != "dismiss") {
+    if (error) *error = "invalid report action selection";
     return false;
   }
 
-  std::string next_action_kind{};
-  std::string target_binding_id{};
-  bool reset_runtime_state = false;
-  if (control_kind == "continue") {
-    std::cout << "Next action [d]efault_plan or [b]inding: " << std::flush;
-    std::string action{};
-    if (!std::getline(std::cin, action)) return false;
-    action = lowercase_copy(trim_ascii(action));
-    if (action == "d" || action == "default_plan") {
-      next_action_kind = "default_plan";
-    } else if (action == "b" || action == "binding") {
-      next_action_kind = "binding";
-      std::cout << "Target binding id: " << std::flush;
-      if (!std::getline(std::cin, target_binding_id)) return false;
-      target_binding_id = trim_ascii(target_binding_id);
-      if (target_binding_id.empty()) {
-        if (error) *error = "binding response requires target binding id";
-        return false;
-      }
-    } else {
-      if (error) *error = "invalid next action selection";
-      return false;
-    }
-    std::cout << "Reset Runtime state? [y/N]: " << std::flush;
-    std::string reset{};
-    if (!std::getline(std::cin, reset)) return false;
-    reset = lowercase_copy(trim_ascii(reset));
-    reset_runtime_state = (reset == "y" || reset == "yes" || reset == "true");
-  }
-
-  std::cout << "Reason: " << std::flush;
-  std::string reason{};
-  if (!std::getline(std::cin, reason)) return false;
-  reason = trim_ascii(reason);
-  if (reason.empty()) {
-    if (error) *error = "reason is required";
-    return false;
-  }
-  std::cout << "Memory note (optional, single line): " << std::flush;
-  std::string memory_note{};
-  if (!std::getline(std::cin, memory_note)) return false;
-  memory_note = trim_ascii(memory_note);
+  const bool dismiss = (control == "d" || control == "dismiss");
+  std::cout << (dismiss ? "Dismissal note (optional): "
+                        : "Validation note (optional): ")
+            << std::flush;
+  std::string note{};
+  if (!std::getline(std::cin, note)) return false;
+  note = trim_ascii(note);
 
   std::string structured{};
-  if (!build_response_and_resume(app, loop, control_kind, next_action_kind,
-                                 target_binding_id, reset_runtime_state, reason,
-                                 memory_note, &structured, error)) {
+  if (!(dismiss ? dismiss_terminal_report(app, loop, note, &structured, error)
+                : acknowledge_terminal_report(app, loop, note, &structured,
+                                              error))) {
     return false;
   }
-  std::cout << "\nHuman response applied.\n" << structured << "\n";
+  std::cout << "\nHuman report "
+            << (dismiss ? "dismissal" : "acknowledgment")
+            << " applied.\n"
+            << structured << "\n";
   return true;
 }
 

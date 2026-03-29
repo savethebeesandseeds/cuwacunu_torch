@@ -16,12 +16,14 @@ struct super_defaults_t {
   std::filesystem::path runtime_hero_binary{};
   std::filesystem::path config_hero_binary{};
   std::filesystem::path lattice_hero_binary{};
+  std::filesystem::path human_hero_binary{};
   std::filesystem::path human_operator_identities{};
   std::filesystem::path super_codex_binary{};
   std::size_t tail_default_lines{120};
   std::size_t poll_interval_ms{1000};
   std::size_t super_codex_timeout_sec{900};
-  std::size_t super_max_reviews{8};
+  std::size_t super_max_review_turns{8};
+  std::size_t super_max_campaign_launches{8};
 };
 
 struct app_context_t {

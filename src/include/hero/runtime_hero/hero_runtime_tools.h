@@ -13,7 +13,7 @@ namespace runtime_mcp {
 struct runtime_defaults_t {
   std::filesystem::path campaigns_root{};
   std::filesystem::path super_root{};
-  std::filesystem::path main_campaign_binary{};
+  std::filesystem::path cuwacunu_campaign_binary{};
   std::filesystem::path campaign_grammar_path{};
   std::size_t tail_default_lines{120};
   std::size_t max_active_campaigns{1};

@@ -69,6 +69,16 @@ typedef struct idydb_open_options {
     unsigned int pbkdf2_iter;   /* 0 => default (recommended); otherwise custom */
 } idydb_open_options;
 
+typedef struct idydb_named_lock idydb_named_lock;
+
+typedef struct idydb_named_lock_options {
+    bool shared;                     /* false => exclusive lock, true => shared lock */
+    bool create_parent_directories;  /* create the lock path parent directory when needed */
+    unsigned int retry_count;        /* number of retries after an initial busy result */
+    unsigned int retry_delay_ms;     /* sleep between retries when retry_count > 0 */
+    const char* owner_label;         /* optional metadata label written into the lock file */
+} idydb_named_lock_options;
+
 /**
  * @brief Unified runtime open entrypoint
  * @note On failure, *handler is left NULL (no close required).
@@ -89,6 +99,28 @@ idydb_extern int idydb_open_encrypted(const char *filename, idydb **handler, int
  * @brief Close the connection to the database, and delete the IdyDB handler object
  */
 idydb_extern int idydb_close(idydb **handler);
+
+/**
+ * @brief Acquire a named OS-backed lock represented by `lock_path`.
+ * @note The lock file is intentionally persistent; the kernel lock is released
+ *       when `idydb_named_lock_release()` is called or when the process exits.
+ */
+idydb_extern int idydb_named_lock_acquire(const char* lock_path,
+                                          idydb_named_lock** out_lock,
+                                          const idydb_named_lock_options* options);
+
+/**
+ * @brief Release a named lock acquired with `idydb_named_lock_acquire()`.
+ */
+idydb_extern int idydb_named_lock_release(idydb_named_lock** lock);
+
+/**
+ * @brief Read the current owner metadata stored in a named lock file.
+ * @note This is best-effort diagnostics intended for busy-lock messages.
+ */
+idydb_extern int idydb_named_lock_describe_owner(const char* lock_path,
+                                                 char* buffer,
+                                                 size_t buffer_size);
 
 /**
  * @brief Return the current version of the IdyDB API
@@ -316,6 +348,11 @@ using ::idydb_open_with_options;
 using ::idydb_open;
 using ::idydb_open_encrypted;
 using ::idydb_close;
+using ::idydb_named_lock;
+using ::idydb_named_lock_options;
+using ::idydb_named_lock_acquire;
+using ::idydb_named_lock_release;
+using ::idydb_named_lock_describe_owner;
 using ::idydb_version_check;
 using ::idydb_errmsg;
 using ::idydb_extract;

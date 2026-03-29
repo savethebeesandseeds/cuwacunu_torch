@@ -282,7 +282,7 @@ class hashimyei_catalog_store_t {
  private:
   struct ingest_lock_t {
     std::filesystem::path path{};
-    bool held{false};
+    idydb_named_lock* handle{nullptr};
   };
 
   [[nodiscard]] bool ensure_catalog_header_(std::string* error);

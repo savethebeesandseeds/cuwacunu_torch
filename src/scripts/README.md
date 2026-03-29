@@ -51,6 +51,13 @@ operator signing surface. It works with the current runtime contract:
 - unencrypted OpenSSH `ssh-ed25519` private key at `operator_signing_ssh_identity`
 - matching public-key registration in `human_operator_identities`
 
+`src/scripts/hero_human_prompt_mark.sh` is the tiny shell-prompt helper for the
+Human Hero pending marker. It reads the hard-coded runtime file
+`/cuwacunu/.runtime/.human_hero/awaiting_human.pending.count` and also checks
+`/cuwacunu/.runtime/.human_hero/finished.pending.count`. It prints `[*]` when
+at least one Super Hero loop is paused in `awaiting_human` or at least one
+finished-loop summary report still needs Human Hero acknowledgment.
+
 Default setup:
 ```bash
 bash /cuwacunu/setup.sh

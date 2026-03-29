@@ -4,6 +4,7 @@
 /.data/tests/*
 /.external/*
 /.deprecated/
+/.backups/
 /.runtime/
 .idyicyanere/
 /.build/*

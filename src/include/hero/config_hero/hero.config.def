@@ -53,6 +53,9 @@ HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/.backups/hero.config",
                  "destination directory for rotating backups")
 HERO_RUNTIME_KEY("backup_max_entries", "int", 1, "20", ">=1", "integer",
                  "maximum backup snapshots to retain")
+HERO_RUNTIME_KEY("dev_nuke_reset_backup_enabled", "bool", 1, "true",
+                 "true|false", "true,false",
+                 "archive targeted runtime state before hero.config.dev_nuke_reset clears it")
 
 #undef HERO_FUTURE_TARGET
 #undef HERO_RUNTIME_KEY

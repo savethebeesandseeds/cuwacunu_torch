@@ -29,7 +29,9 @@ namespace hero {
 namespace runtime {
 
 inline constexpr std::string_view kRuntimeJobSchemaV3 = "hero.runtime.job.v3";
-inline constexpr std::string_view kRuntimeJobManifestFilename = "job.lls";
+inline constexpr std::string_view kRuntimeJobManifestFilename =
+    "runtime.job.manifest.lls";
+inline constexpr std::string_view kLegacyRuntimeJobManifestFilename = "job.lls";
 inline constexpr std::string_view kRuntimeJobCampaignDslFilename = "campaign.dsl";
 inline constexpr std::string_view kRuntimeJobContractDslFilename =
     "binding.contract.dsl";
@@ -137,6 +139,12 @@ struct runtime_job_observation_t {
          std::string(kRuntimeJobManifestFilename);
 }
 
+[[nodiscard]] inline std::filesystem::path runtime_job_legacy_manifest_path(
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return runtime_job_dir(campaigns_root, job_cursor) /
+         std::string(kLegacyRuntimeJobManifestFilename);
+}
+
 [[nodiscard]] inline std::filesystem::path runtime_job_stdout_path(
     const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
@@ -240,6 +248,43 @@ struct runtime_job_observation_t {
     return false;
   }
   return true;
+}
+
+[[nodiscard]] inline std::filesystem::path prefer_canonical_runtime_file_path(
+    const std::filesystem::path& canonical_path,
+    const std::filesystem::path& legacy_path) {
+  std::error_code ec{};
+  if (std::filesystem::exists(canonical_path, ec) &&
+      std::filesystem::is_regular_file(canonical_path, ec)) {
+    ec.clear();
+    (void)std::filesystem::remove(legacy_path, ec);
+    return canonical_path;
+  }
+  ec.clear();
+  if (std::filesystem::exists(legacy_path, ec) &&
+      std::filesystem::is_regular_file(legacy_path, ec)) {
+    std::filesystem::rename(legacy_path, canonical_path, ec);
+    if (!ec) return canonical_path;
+    ec.clear();
+    (void)std::filesystem::copy_file(
+        legacy_path, canonical_path,
+        std::filesystem::copy_options::overwrite_existing, ec);
+    if (!ec) {
+      std::error_code remove_ec{};
+      (void)std::filesystem::remove(legacy_path, remove_ec);
+      return canonical_path;
+    }
+    return legacy_path;
+  }
+  return canonical_path;
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_existing_runtime_job_manifest_path(
+    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+  return prefer_canonical_runtime_file_path(
+      runtime_job_manifest_path(campaigns_root, job_cursor),
+      runtime_job_legacy_manifest_path(campaigns_root, job_cursor));
 }
 
 [[nodiscard]] inline bool append_text_file(const std::filesystem::path& path,
@@ -626,11 +671,19 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     if (error) *error = validate_error;
     return false;
   }
-  return write_text_file_atomic(
-      runtime_job_manifest_path(campaigns_root, record.job_cursor),
-                                cuwacunu::piaabo::latent_lineage_state::
-                                    emit_runtime_lls_canonical(document),
-                                error);
+  const std::filesystem::path manifest_path =
+      runtime_job_manifest_path(campaigns_root, record.job_cursor);
+  if (!write_text_file_atomic(manifest_path,
+                              cuwacunu::piaabo::latent_lineage_state::
+                                  emit_runtime_lls_canonical(document),
+                              error)) {
+    return false;
+  }
+  std::error_code remove_ec{};
+  (void)std::filesystem::remove(
+      runtime_job_legacy_manifest_path(campaigns_root, record.job_cursor),
+      remove_ec);
+  return true;
 }
 
 [[nodiscard]] inline bool read_runtime_job_record(
@@ -643,9 +696,9 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   }
 
   std::string text{};
-  if (!read_text_file(runtime_job_manifest_path(campaigns_root, job_cursor),
-                      &text,
-                      error)) {
+  if (!read_text_file(resolve_existing_runtime_job_manifest_path(campaigns_root,
+                                                                 job_cursor),
+                      &text, error)) {
     return false;
   }
   cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t document{};
@@ -694,8 +747,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
         }
         continue;
       }
-      const auto manifest_path =
-          job_it->path() / std::string(kRuntimeJobManifestFilename);
+      const auto manifest_path = resolve_existing_runtime_job_manifest_path(
+          campaigns_root, job_it->path().filename().string());
       if (!std::filesystem::exists(manifest_path, ec) || ec) continue;
       runtime_job_record_t record{};
       std::string record_error{};
@@ -704,8 +757,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
                                    &record, &record_error)) {
         if (error) {
           *error = "failed reading runtime job manifest " +
-                   runtime_job_manifest_path(campaigns_root,
-                                             job_it->path().filename().string())
+                   resolve_existing_runtime_job_manifest_path(
+                       campaigns_root, job_it->path().filename().string())
                        .string() +
                    ": " + record_error;
         }

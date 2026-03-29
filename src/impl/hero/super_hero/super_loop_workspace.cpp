@@ -79,6 +79,9 @@ namespace {
       derive_super_loop_backup_dir(context, loop);
   const std::filesystem::path default_root =
       derive_super_loop_default_root(context);
+  const bool allow_default_write =
+      cuwacunu::hero::runtime::trim_ascii(loop.authority_scope) ==
+      "objective_plus_defaults";
   std::ostringstream out;
   out << "/* super-generated Config Hero policy for a SUPER loop */\n"
       << "protocol_layer[STDIO|HTTPS/SSE]:str = STDIO\n"
@@ -90,7 +93,9 @@ namespace {
       << "objective_roots:str = " << loop.objective_root << "\n"
       << "allowed_extensions:str = .dsl\n"
       << "write_roots:str = " << loop.objective_root << ",";
-  if (!default_root.empty()) out << default_root.string() << ",";
+  if (allow_default_write && !default_root.empty()) {
+    out << default_root.string() << ",";
+  }
   out << backup_dir.string() << "\n"
       << "backup_enabled:bool = true\n"
       << "backup_dir:str = " << backup_dir.string() << "\n"
@@ -101,21 +106,27 @@ namespace {
 [[nodiscard]] std::string build_default_super_briefing(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
   std::ostringstream out;
-  out << "You are reviewing a SUPER loop.\n\n"
+  const std::string authority_scope =
+      cuwacunu::hero::runtime::trim_ascii(loop.authority_scope).empty()
+          ? "objective_only"
+          : cuwacunu::hero::runtime::trim_ascii(loop.authority_scope);
+  out << "You are the active planner inside a SUPER loop.\n\n"
       << "Primary files:\n"
       << "- Super objective DSL: " << loop.super_objective_dsl_path << "\n"
       << "- Super objective markdown: " << loop.super_objective_md_path << "\n"
       << "- Super guidance markdown: " << loop.super_guidance_md_path << "\n"
       << "- Config Hero policy: " << loop.config_policy_path << "\n"
       << "- Memory: " << loop.memory_path << "\n"
-      << "- Review packet: "
-      << cuwacunu::hero::super::super_loop_latest_review_packet_path(
+      << "- Latest turn context: "
+      << cuwacunu::hero::super::super_loop_latest_turn_context_path(
              std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id)
              .string()
       << "\n"
-      << "- Human request artifact: " << loop.human_request_path << "\n"
-      << "- Mutable objective root: " << loop.objective_root << "\n\n"
-      << "The review packet includes phase = prelaunch or postcampaign.\n\n"
+      << "- Human escalation artifact: " << loop.human_escalation_path << "\n"
+      << "- Mutable objective root: " << loop.objective_root << "\n"
+      << "- Current authority scope: " << authority_scope << "\n\n"
+      << "The turn context includes the current planning phase and the latest "
+         "runtime/lattice evidence.\n\n"
       << "Interpret the authored markdown in this order:\n"
       << "- objective markdown = what the loop is trying to achieve\n"
       << "- guidance markdown = authored boundaries plus advisory heuristics; prefer stronger evidence when the guidance is not a hard rule\n\n"
@@ -123,40 +134,36 @@ namespace {
       << "1. Work in read-only shell mode. Do not edit files directly.\n"
       << "2. Follow the declared super objective DSL, objective markdown, guidance markdown, and current objective bundle.\n"
       << "3. Use hero.config.objective.list/read/create/replace/delete for truth-source objective files under objective_root.\n"
-      << "4. Use hero.config.default.list/read/create/replace/delete for shared defaults only when the objective truly needs a shared change.\n"
+      << "4. Shared default writes are not ordinary autonomous authority. If the objective truly needs a shared default change and the current authority scope does not allow it, return outcome=escalate with escalation.kind=authority_expansion.\n"
       << "5. Prefer whole-file replace with expected_sha256 from the prior read.\n"
       << "6. Pass objective_root=" << loop.objective_root
       << " to those Config Hero tools.\n"
       << "7. Never mutate files outside the configured objective/default roots.\n"
-      << "8. Prefer the review packet first, then hero.lattice.get_view/get_fact "
+      << "8. Prefer the turn context first, then hero.lattice.get_view/get_fact "
          "for semantic evidence; use Runtime tails mainly for operational "
          "debugging.\n"
       << "9. Use hero.lattice.list_views/list_facts when you need to discover "
          "selectors; family_evaluation_report requires a family canonical_path "
          "plus contract_hash.\n"
       << "10. Shell exec is unavailable in this environment. Prefer the embedded "
-         "review packet and objective campaign contents when present; use MCP tools "
+         "turn context and objective campaign contents when present; use MCP tools "
          "instead of shell reads.\n"
       << "11. If you change any objective-local .dsl, describe the actual changes in "
          "memory_note.\n"
-      << "12. Prefer stopping when evidence is weak or human judgment is needed.\n"
+      << "12. You may plan autonomously inside the current authority envelope until the objective is solved, budget is exhausted, or a typed escalation is needed.\n"
       << "13. Return only JSON matching the provided output schema. Do not return "
          "edit payloads or tool transcripts.\n\n"
-      << "Allowed control_kind values:\n"
-      << "- continue\n"
-      << "- stop\n"
-      << "- need_human\n\n"
-      << "Always include next_action with kind as one of:\n"
-      << "- none\n"
-      << "- default_plan\n"
-      << "- binding\n"
-      << "Use next_action.kind = none for stop and need_human decisions.\n"
-      << "When next_action.kind is binding, include next_action.target_binding_id.\n"
-      << "Always include next_action.reset_runtime_state as true or false.\n"
-      << "Always include memory_note and human_request as strings; use empty string "
-         "when not applicable.\n"
-      << "When control_kind is need_human, include human_request with a concise "
-         "operator-facing note.\n";
+      << "Return one outcome JSON object with:\n"
+      << "- outcome = launch | escalate | success | stop | fail\n"
+      << "- launch.mode = run_plan | binding when outcome=launch\n"
+      << "- launch.binding_id only when launch.mode=binding\n"
+      << "- launch.reset_runtime_state = true | false when outcome=launch\n"
+      << "- reason = concise operator-facing explanation\n"
+      << "- memory_note = loop memory update; use empty string when none\n"
+      << "- escalation.kind = authority_expansion | budget_expansion | objective_clarification when outcome=escalate\n"
+      << "- escalation.request = concise operator-facing escalation note when outcome=escalate\n"
+      << "- escalation.delta.allow_default_write when requesting authority expansion\n"
+      << "- escalation.delta.additional_review_turns and escalation.delta.additional_campaign_launches when requesting budget expansion\n";
   return out.str();
 }
 
@@ -166,7 +173,8 @@ namespace {
          "Loop ID: " +
          loop.loop_id + "\n\nObjective: " + loop.objective_name +
          "\n\nCurrent stance:\n- Follow the declared super objective DSL plus the authored objective and guidance markdown.\n"
-         "- Prefer a clean stop or need_human when the evidence is ambiguous.\n";
+         "- Plan, mutate, launch, observe, and iterate inside the current authority envelope.\n"
+         "- Escalate only for authority expansion, budget expansion, or objective clarification.\n";
 }
 
 }  // namespace
@@ -246,19 +254,11 @@ bool write_super_loop_bootstrap_files(
 
   std::error_code ec{};
   std::filesystem::create_directories(
-      cuwacunu::hero::super::super_loop_reviews_dir(context.super_root,
-                                                    loop.loop_id),
+      cuwacunu::hero::super::super_loop_turns_dir(context.super_root,
+                                                  loop.loop_id),
       ec);
   if (ec) {
-    if (error) *error = "cannot create super loop reviews dir";
-    return false;
-  }
-  std::filesystem::create_directories(
-      cuwacunu::hero::super::super_loop_decisions_dir(context.super_root,
-                                                      loop.loop_id),
-      ec);
-  if (ec) {
-    if (error) *error = "cannot create super loop decisions dir";
+    if (error) *error = "cannot create super loop turns dir";
     return false;
   }
   std::filesystem::create_directories(
@@ -276,11 +276,11 @@ bool write_super_loop_bootstrap_files(
     return false;
   }
   std::filesystem::create_directories(
-      cuwacunu::hero::super::super_loop_human_responses_dir(
+      cuwacunu::hero::super::super_loop_human_resolutions_dir(
           context.super_root, loop.loop_id),
       ec);
   if (ec) {
-    if (error) *error = "cannot create super loop human responses dir";
+    if (error) *error = "cannot create super loop human resolutions dir";
     return false;
   }
   return true;

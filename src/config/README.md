@@ -236,17 +236,17 @@ Useful MCP tools:
 - `hero.config.default.replace` (replace one whole supported file under configured `default_roots` after decoder and file-specific validation; optional `expected_sha256` guards against stale overwrite; requires `allow_local_write=true`, target path within `write_roots`, and returns a warning because defaults are shared truth)
 - `hero.config.default.delete` (delete one whole file under configured `default_roots`; optional `expected_sha256` guards against stale delete; requires `allow_local_write=true` and target path within `write_roots`)
 - `hero.config.objective.list` (list all allowed files under `objective_root`; `include_man=true` also returns associated `.man` content when available, and files without a matching `.man` carry a warning)
-- `hero.config.objective.read` (read one whole objective file under `objective_root` with an allowed extension, including `campaign.dsl` when it lives there, returning content, `sha256`, and associated `.man` content when available; if no `.man` is found the response carries a warning)
+- `hero.config.objective.read` (read one whole objective file under `objective_root` with an allowed extension, including the objective-local campaign file named by `campaign_dsl_path` when it lives there, returning content, `sha256`, and associated `.man` content when available; if no `.man` is found the response carries a warning)
 - `hero.config.objective.create` (create one whole objective file under `objective_root` with an allowed extension after decoder validation; requires `allow_local_write=true` and target path within `write_roots`)
 - `hero.config.objective.replace` (replace one whole objective file under `objective_root` with an allowed extension after decoder validation; optional `expected_sha256` guards against stale overwrite; requires `allow_local_write=true` and target path within `write_roots`)
-- `hero.config.objective.delete` (delete one whole objective file under `objective_root` with an allowed extension, including `campaign.dsl` when appropriate; optional `expected_sha256` guards against stale delete; requires `allow_local_write=true` and target path within `write_roots`)
+- `hero.config.objective.delete` (delete one whole objective file under `objective_root` with an allowed extension, including the objective-local campaign file named by `campaign_dsl_path` when appropriate; optional `expected_sha256` guards against stale delete; requires `allow_local_write=true` and target path within `write_roots`)
 - `hero.config.validate`
 - `hero.config.diff` / `hero.config.dry_run` (preview changes before save)
 - `hero.config.backups` (list snapshots)
 - `hero.config.rollback` (restore latest or selected snapshot; requires `allow_local_write=true`)
 - `hero.config.save` (persists config, takes shared runtime lock, requires `allow_local_write=true`, returns deterministic `cutover` metadata)
 - `hero.config.reload`
-- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, including `.campaigns`, `.super_hero`, `.human_hero`, plus Hero catalogs resolved from the saved global config; uses the saved global-config runtime root instead of `write_roots`, and refuses reset while active runtime jobs exist)
+- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, including `.campaigns`, `.super_hero`, `.human_hero`, plus Hero catalogs resolved from the saved global config; when `dev_nuke_reset_backup_enabled=true` it first archives those targets under `<runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/`; it uses the saved global-config runtime root instead of `write_roots`, and refuses reset while active runtime jobs exist)
 
 Runtime MCP tools:
 - `hero.runtime.start_campaign`
@@ -264,15 +264,20 @@ Super MCP tools:
 - `hero.super.start_loop`
 - `hero.super.list_loops`
 - `hero.super.get_loop`
-- `hero.super.resume_loop`
+- `hero.super.apply_human_resolution`
 - `hero.super.stop_loop`
 
 Human MCP tools:
-- `hero.human.list_requests`
-- `hero.human.get_request`
-- `hero.human.respond`
+- `hero.human.list_escalations`
+- `hero.human.list_reports`
+- `hero.human.get_escalation`
+- `hero.human.get_report`
+- `hero.human.resolve_escalation`
+- `hero.human.ack_report`
+- `hero.human.dismiss_report`
 
-`hero_human_mcp` without `--tool` on a tty opens the Human Hero operator UI for pending human requests. On ncurses-capable terminals it uses the full-screen console; on unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
+`hero_human_mcp` without `--tool` on a tty opens the Human Hero operator UI for pending escalations and finished reports. The UI distinguishes those queues explicitly: escalations mean Super Hero is blocked in `awaiting_human`, while finished reports are informational terminal summaries and do not unblock anything. On ncurses-capable terminals it uses the full-screen console; on unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
+`hero.human.resolve_escalation` is governance-only: operators provide `loop_id`, `resolution_kind = grant | deny | clarify | stop`, and `reason`, while Super Hero retains responsibility for choosing the next Runtime action. `hero.human.ack_report` and `hero.human.dismiss_report` both clear finished-loop reports from the Human Hero inbox, but `dismiss_report` records that the operator intentionally cleared the report without treating it as a validation sign-off.
 
 `hero.runtime.start_campaign` accepts optional:
 - `binding_id` to run one declared `BIND` from the staged campaign snapshot instead of the default `RUN` plan
@@ -282,7 +287,7 @@ Human MCP tools:
 `hero.super.start_loop` is the primary loop entrypoint. It accepts optional:
 - `super_objective_dsl_path` to override the configured default supervision root for that launch
 
-Super Hero now starts from `super.objective.dsl`, not from a campaign-declared `SUPER` edge. It resolves the selected `super.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, copies those authored files into `<runtime_root>/.super_hero/<loop_id>/`, points its mutable `objective_root` at the truth-source objective bundle under `src/config/instructions/objectives/...`, writes a loop-local Config Hero policy at `config.hero.policy.dsl`, builds `super.briefing.md`, runs an initial Codex review before any Runtime campaign exists, and only then decides whether to stop, request human review, or launch the first Runtime campaign. Later reviews follow the same control contract after terminal campaign states. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Super Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are now backed by Config Hero backups under `.backups/hero.super/<objective_name>/`. Only one non-terminal Super loop may own a given `super.objective.dsl` at a time.
+Super Hero starts from `super.objective.dsl`, not from a campaign-declared `SUPER` edge. It resolves the selected `super.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, copies those authored files into `<runtime_root>/.super_hero/<loop_id>/`, points its mutable `objective_root` at the truth-source objective bundle under `src/config/instructions/objectives/...`, writes a loop-local Config Hero policy at `config.hero.policy.dsl`, builds `super.briefing.md`, stages an initial bootstrap turn context before any Runtime campaign exists, and returns once the detached Super runner is launched. That runner then continues autonomously through `planning -> running -> planning` until it reaches `success`, `stopped`, `failed`, `exhausted`, or `awaiting_human`. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Super Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are backed by Config Hero backups under `.backups/hero.super/<objective_name>/`, and per-turn mutation summaries are written when Codex changed objective files. Only one non-terminal Super loop may own a given `super.objective.dsl` at a time.
 
 Runtime HERO defaults:
 - loaded from `instructions/defaults/default.hero.runtime.dsl`
@@ -302,30 +307,32 @@ Super HERO defaults:
 - Super Hero truth-source mutations also enable Config Hero backups under `.backups/hero.super/<objective_name>/`
 - campaign grammar loaded from `[BNF].iitepi_campaign_grammar_filename`
 - super-objective grammar loaded from `[BNF].super_objective_grammar_filename`
-- `runtime_hero_binary`, `config_hero_binary`, and `lattice_hero_binary` select the MCP binaries Super Hero attaches to a review session
-- `human_operator_identities` selects the operator identities file Super Hero uses to bind `operator_id` values to OpenSSH `ssh-ed25519` public keys before resuming a paused loop
-- `super_codex_binary` selects the Codex executable or command name used for review
-- `super_codex_timeout_sec` bounds one `codex exec` review call
-- `super_max_reviews` bounds the number of review turns in one loop, including the initial prelaunch review
+- `runtime_hero_binary`, `config_hero_binary`, and `lattice_hero_binary` select the MCP binaries Super Hero attaches to a planning turn
+- `human_hero_binary` selects the MCP binary Super Hero invokes when it needs Human Hero to materialize the operator-facing escalation artifact
+- `human_operator_identities` selects the operator identities file Super Hero uses to bind `operator_id` values to OpenSSH `ssh-ed25519` public keys before applying a human resolution
+- `super_codex_binary` selects the Codex executable or command name used for planning turns
+- `super_codex_timeout_sec` bounds one `codex exec` planning call
+- `super_max_review_turns` bounds the number of planning turns in one loop, including the initial bootstrap turn
+- `super_max_campaign_launches` bounds the number of Runtime campaign launches in one loop
 - `poll_interval_ms` controls detached loop-runner polling cadence while waiting for terminal campaign state
 
 Human HERO defaults:
 - loaded from `instructions/defaults/default.hero.human.dsl`
 - resolved through `[REAL_HERO].human_hero_dsl_filename`
-- `super_hero_binary` selects the MCP binary Human Hero uses to inspect and resume Super loops
-- `operator_id` is recorded into every signed human response artifact; if it is still `CHANGE_ME_OPERATOR` or empty, the first Human Hero use auto-initializes it to `<user>@<hostname>` and persists that value back into `default.hero.human.dsl`
-- `operator_signing_ssh_identity` selects the unencrypted OpenSSH `ssh-ed25519` identity Human Hero uses for response signatures, and its public key must be the one registered for `operator_id` in Super Hero `human_operator_identities`
+- `super_hero_binary` selects the MCP binary Human Hero uses to inspect loops and apply human resolutions
+- `operator_id` is recorded into every signed human resolution/report-ack artifact; if it is still `CHANGE_ME_OPERATOR` or empty, the first Human Hero use auto-initializes it to `<user>@<hostname>` and persists that value back into `default.hero.human.dsl`
+- `operator_signing_ssh_identity` selects the unencrypted OpenSSH `ssh-ed25519` identity Human Hero uses for resolution/report-ack signatures, and its public key must be the one registered for `operator_id` in Super Hero `human_operator_identities`
 
 Human Hero operator setup:
 1. Run `bash src/scripts/setup_human_operator.sh`.
 2. That script bootstraps `operator_id` if needed, creates or validates the unencrypted OpenSSH `ssh-ed25519` identity at `operator_signing_ssh_identity`, and updates `human_operator_identities`.
 3. Use `bash src/scripts/setup_human_operator.sh --validate` to re-check the setup later.
-4. Only after that will `hero.human.respond` be able to sign responses that Super Hero can verify.
+4. Only after that will `hero.human.resolve_escalation`, `hero.human.ack_report`, and `hero.human.dismiss_report` be able to sign artifacts that Super Hero or Human Hero can verify.
 
 Runtime Hero campaigns persist under the derived campaigns root by `campaign_cursor`, with
-`campaign.lls`, `campaign.dsl`, and campaign-level stdout/stderr logs. Child jobs
+`runtime.campaign.manifest.lls`, `campaign.dsl`, and campaign-level stdout/stderr logs. Child jobs
 persist under `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`, where
-`job_cursor` is derived from the parent `campaign_cursor`, with `job.lls`,
+`job_cursor` is derived from the parent `campaign_cursor`, with `runtime.job.manifest.lls`,
 `campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and worker
 stdout/stderr logs plus `job.trace.jsonl`.
 `job.trace.jsonl` is a structured append-only execution trace intended for
@@ -334,30 +341,35 @@ without scraping stdout/stderr.
 Runtime liveness is reconciled using boot id + process start ticks, not bare pid reuse.
 
 Super loops persist under `<runtime_root>/.super_hero/<loop_id>/` with:
-- `loop.lls`
+- `super.loop.manifest.lls`
 - `super.objective.dsl`
 - `super.objective.md`
 - `super.guidance.md`
 - `config.hero.policy.dsl`
-- `memory.md`
+- `super.loop.memory.md`
 - `super.briefing.md`
 - `logs/codex.session.log`
-- `events.jsonl`
-- `human/request.latest.md` when needed
-- `human/response.latest.json` when Human Hero has answered
-- `human/response.latest.sig` when Human Hero has answered
-- `human/responses/human_response.0001.json` plus matching `.sig`
-- `reviews/review_packet.0001.json` plus `reviews/latest.json`
-- `decisions/decision.0001.json` plus `decisions/latest.json`
+- `super.loop.events.jsonl`
+- `human/escalation.latest.md` when a typed escalation is pending
+- `human/report.latest.md` when a loop reaches `success`, `stopped`, `failed`, or `exhausted`
+- `human/resolution.latest.json` when Human Hero has answered
+- `human/resolution.latest.sig` when Human Hero has answered
+- `human/report_ack.latest.json` when Human Hero has acknowledged a finished report
+- `human/report_ack.latest.sig` when Human Hero has acknowledged a finished report
+- `human/resolutions/resolution.0001.json` plus matching `.sig`
+- `turns/turn_context.0001.json` plus `turns/turn_context.latest.json`
+- `turns/turn_outcome.0001.json` plus `turns/turn_outcome.latest.json`
+- `turns/turn_mutation.0001.json` plus `turns/turn_mutation.latest.json` when a planning turn changed truth-source files
 
 Current super-loop schemas:
-- `hero.super.loop.v1`
-- `hero.super.review_packet.v1`
-- `hero.super.decision.v1`
+- `hero.super.loop.v2`
+- `hero.super.turn_context.v2`
+- `hero.super.turn_outcome.v2`
+- `hero.super.turn_mutation.v2`
+- `hero.human.resolution.v2`
+- `hero.human.report_ack.v2`
 
-The primary v1 super loop keeps Codex shell access read-only, but gives the review session loop-scoped `hero.config.objective.list/read/create/replace/delete` plus `hero.config.default.list/read/create/replace/delete` tools against the truth-source config roots, along with bounded Runtime/Lattice read tools for evidence lookup. `list` discovers allowed files without scraping the tree manually and can inline associated `.man` content with `include_man=true`; `read` returns the whole file plus `sha256` and the associated `.man` content when available; `create` fails if the file already exists; `replace` fails if it does not exist and atomically writes a whole-file replacement only after decoder validation succeeds; `delete` removes one file after optional `expected_sha256` checking. Objective files include `campaign.dsl` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. Default mutations return a warning because they change shared truth. Codex returns `control_kind = continue | stop | need_human` plus a bounded `next_action` object with `kind = none | default_plan | binding`, always includes `next_action.reset_runtime_state`, and uses `kind = none` for `stop` or `need_human`. It records actual file changes in `memory_note` and leaves Super Hero as the only process allowed to request the next campaign launch or stop from Runtime Hero. Review packets now carry `lattice_recommendations`, and the intended evidence order is: review packet first, then `hero.lattice.get_view/get_fact` for semantic judgments, then Runtime tails for operational debugging, with direct file reads as fallback.
-
-When Codex returns `need_human`, Super Hero pauses the loop in `need_human` state, writes `human/request.latest.md`, and waits for Human Hero. Human Hero can be used through MCP tools or run with no arguments on a tty to answer pending requests interactively. It writes a signed `human_response*.json` artifact plus detached `.sig`, then asks `hero.super.resume_loop` to verify the signature and continue or stop the loop.
+The primary v2 super loop keeps Codex shell access read-only, but gives each planning turn loop-scoped `hero.config.objective.*`, conditionally `hero.config.default.*`, bounded Runtime read/tail tools, and bounded Lattice read tools against truth-source config roots and persisted runtime evidence. Objective files include the objective-local campaign file named by `campaign_dsl_path` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. The generated Super briefing names that exact relative campaign file path and tells Codex to use `hero.config.objective.list` rather than assuming a literal `campaign.dsl` filename. Codex now returns `outcome = launch | escalate | success | stop | fail`. `launch` carries `mode = run_plan | binding`, optional `binding_id`, `reset_runtime_state`, and `requires_objective_mutation`; `escalate` carries a typed `kind`, operator-facing `request`, and optional typed `delta`. If `launch.requires_objective_mutation=true` but the planning turn produced no objective-local mutation summary, Super Hero rejects the launch instead of silently rerunning unchanged truth sources. Human Hero no longer routes normal Runtime actions. It only resolves escalations with `grant | deny | clarify | stop`, signs `resolution*.json` plus detached `.sig`, and asks `hero.super.apply_human_resolution` to continue the loop from `awaiting_human`. Finished-loop reports remain informational acknowledgments and do not influence ordinary Runtime routing.
 
 The short design constitution for that loop lives in [SUPER_LOOP.md](/cuwacunu/src/main/hero/SUPER_LOOP.md).
 
@@ -365,7 +377,12 @@ Deterministic policy:
 - Config HERO edits files only inside configured `default_roots` and `objective_roots`, and only for `allowed_extensions`. Existing hashimyei instances are not mutated by these tools; instance revisions are handled by Hashimyei HERO lineage.
 - `allow_local_write=false` blocks persisted config writes plus default/objective file mutations.
 - `write_roots` constrains persisted config writes, default/objective file mutations,
-  and backups when local writes are enabled.
+  and config-backup snapshots when local writes are enabled.
+- `dev_nuke_reset_backup_enabled=true` makes `hero.config.dev_nuke_reset` move
+  targeted runtime roots/catalogs into
+  `<runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/`
+  before cleanup; this archive path is derived from the saved runtime root, not
+  from `write_roots`.
 - `hero.config.dev_nuke_reset` uses the saved global config on disk, not dirty
   unsaved in-memory edits.
 - `hero.config.dev_nuke_reset` fails fast while active Runtime HERO jobs or campaigns still exist under `<runtime_root>/.campaigns` and only removes paths derived from the saved `<runtime_root>`.
@@ -484,7 +501,7 @@ Supported MCP tools:
   `GENERAL.repo_root` pins the repository/worktree root that Runtime Hero uses
   for `codex exec -C` during super-loop review.
   Runtime reset is intentionally explicit and can be invoked through
-  `/cuwacunu/.build/hero/runtime_reset` or `make -C /cuwacunu/src/main reset-runtime`.
+  `/cuwacunu/.build/tools/runtime_reset` or `make -C /cuwacunu/src/main reset-runtime`.
 - `./instructions/defaults/` holds the canonical example/default payloads,
   including the `instructions/defaults/*.dsl` files that Config HERO is allowed to manage.
 - `./instructions/objectives/` holds coherent experiment bundles. The first

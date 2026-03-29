@@ -6,15 +6,6 @@ include $(ROOT_PATH)/Makefile.config
 
 HERE_PATH := $(ROOT_PATH)/main
 TESTS_PATH := $(ROOT_PATH)/tests
-# Runtime utility binaries should live under .build/hero.
-TEST_OUT := $(HERO_OUT)
-
-TEST_DEFAULT_LDLIBS :=
-MAIN_CAMPAIGN_LINK := $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
-RUNTIME_RESET_LINK := $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
-$(eval $(call TEST_ONEFILE, main_campaign, main_campaign.cpp, $(MAIN_CAMPAIGN_LINK)))
-$(eval $(call TEST_ONEFILE, runtime_reset, runtime_reset.cpp, $(RUNTIME_RESET_LINK)))
-$(TEST_OUT)/main_campaign: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 SUBMAKE_NO_AUTOPREP := AUTO_PREP=0
 
 PRODUCTION_RULES := all hero campaign hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools clean
@@ -37,23 +28,23 @@ hero: autoprep
 	+$(MAKE) -C $(HERE_PATH)/hero all $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: build-campaign
-build-campaign: autoprep $(TEST_OUT)/main_campaign
-	@$(LOG_SUCCESS)
+build-campaign: autoprep
+	+$(MAKE) -C $(HERE_PATH)/tools build-campaign $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: run-campaign
-run-campaign: $(TEST_OUT)/main_campaign
-	$(Q)$(RUN_MODE) $(TEST_OUT)/main_campaign
+run-campaign: autoprep
+	+$(MAKE) -C $(HERE_PATH)/tools run-campaign $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: campaign
 campaign: run-campaign
 
 .PHONY: build-reset-runtime
-build-reset-runtime: autoprep $(TEST_OUT)/runtime_reset
-	@$(LOG_SUCCESS)
+build-reset-runtime: autoprep
+	+$(MAKE) -C $(HERE_PATH)/tools build-reset-runtime $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: run-reset-runtime
-run-reset-runtime: $(TEST_OUT)/runtime_reset
-	$(Q)$(RUN_MODE) $(TEST_OUT)/runtime_reset
+run-reset-runtime: autoprep
+	+$(MAKE) -C $(HERE_PATH)/tools run-reset-runtime $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: reset-runtime
 reset-runtime: run-reset-runtime
@@ -119,7 +110,7 @@ clear_% clear-test_%:
 	+$(MAKE) -C $(TESTS_PATH) $@
 
 .PHONY: all
-all: autoprep hero tools build-campaign build-reset-runtime
+all: autoprep hero tools
 	@$(LOG_SUCCESS)
 
 .PHONY: production_rules rules
@@ -140,8 +131,6 @@ help:
 
 .PHONY: clean
 clean:
-	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/main_campaign
-	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/runtime_reset
 	+$(MAKE) -C $(HERE_PATH)/hero clean
 	+$(MAKE) -C $(HERE_PATH)/tools clean
 	+$(MAKE) -C $(TESTS_PATH) clean

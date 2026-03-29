@@ -1143,7 +1143,8 @@ constexpr runtime_tool_descriptor_t kRuntimeTools[] = {
   }
 
   const std::filesystem::path lock_path =
-      app.defaults.campaigns_root / ".campaign.start.lock";
+      cuwacunu::hero::runtime::runtime_campaign_start_lock_path(
+          app.defaults.campaigns_root);
   const int fd = ::open(lock_path.c_str(), O_CREAT | O_RDWR, 0600);
   if (fd < 0) {
     if (error) {
@@ -1253,13 +1254,14 @@ void write_child_errno_noexcept(int fd, int child_errno) {
       out_campaign_snapshot_path, error);
 }
 
-[[nodiscard]] bool validate_main_campaign_binary_for_launch(
+[[nodiscard]] bool validate_cuwacunu_campaign_binary_for_launch(
     const app_context_t& app, std::string* error) {
   if (error) error->clear();
 
-  const std::filesystem::path& worker_path = app.defaults.main_campaign_binary;
+  const std::filesystem::path& worker_path =
+      app.defaults.cuwacunu_campaign_binary;
   if (worker_path.empty()) {
-    if (error) *error = "runtime defaults missing main_campaign_binary";
+    if (error) *error = "runtime defaults missing cuwacunu_campaign_binary";
     return false;
   }
 
@@ -1267,7 +1269,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   if (!std::filesystem::exists(worker_path, ec) ||
       !std::filesystem::is_regular_file(worker_path, ec)) {
     if (error) {
-      *error = "configured main_campaign_binary does not exist: " +
+      *error = "configured cuwacunu_campaign_binary does not exist: " +
                worker_path.string();
     }
     return false;
@@ -1275,7 +1277,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
 
   if (::access(worker_path.c_str(), X_OK) != 0) {
     if (error) {
-      *error = "configured main_campaign_binary is not executable: " +
+      *error = "configured cuwacunu_campaign_binary is not executable: " +
                worker_path.string();
     }
     return false;
@@ -1381,7 +1383,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     if (error) *error = "max_active_campaigns reached";
     return false;
   }
-  if (!validate_main_campaign_binary_for_launch(app, error)) return false;
+  if (!validate_cuwacunu_campaign_binary_for_launch(app, error)) return false;
 
   const std::string campaign_cursor =
       cuwacunu::hero::runtime::make_campaign_cursor(app.defaults.campaigns_root);
@@ -1624,7 +1626,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     args.push_back("--campaign-cursor");
     args.push_back(seed_record.campaign_cursor);
     args.push_back("--worker-binary");
-    args.push_back(app.defaults.main_campaign_binary.string());
+    args.push_back(app.defaults.cuwacunu_campaign_binary.string());
     args.push_back("--global-config");
     args.push_back(seed_record.global_config_path);
     if (seed_record.reset_runtime_state) {
@@ -2403,10 +2405,11 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
       derive_campaigns_root(resolve_runtime_root_from_global_config(global_config_path));
   out->super_root =
       derive_super_root(resolve_runtime_root_from_global_config(global_config_path));
-  bool saw_main_campaign_binary = false;
-  if (const auto it = values.find("main_campaign_binary"); it != values.end()) {
-    saw_main_campaign_binary = true;
-    out->main_campaign_binary = resolve_local_path(it->second);
+  bool saw_cuwacunu_campaign_binary = false;
+  if (const auto it = values.find("cuwacunu_campaign_binary");
+      it != values.end()) {
+    saw_cuwacunu_campaign_binary = true;
+    out->cuwacunu_campaign_binary = resolve_local_path(it->second);
   }
   out->campaign_grammar_path =
       resolve_campaign_grammar_from_global_config(global_config_path);
@@ -2427,8 +2430,12 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
     }
   }
 
-  if (!saw_main_campaign_binary || out->main_campaign_binary.empty()) {
-    if (error) *error = "missing main_campaign_binary in " + hero_dsl_path.string();
+  if (!saw_cuwacunu_campaign_binary ||
+      out->cuwacunu_campaign_binary.empty()) {
+    if (error) {
+      *error =
+          "missing cuwacunu_campaign_binary in " + hero_dsl_path.string();
+    }
     return false;
   }
   if (out->campaigns_root.empty()) {
@@ -2479,9 +2486,22 @@ std::string build_tools_list_result_json() {
   for (std::size_t i = 0; i < tool_count; ++i) {
     const auto& tool = kRuntimeTools[i];
     if (i != 0) out << ",";
+    const bool read_only =
+        tool.name == "hero.runtime.list_campaigns" ||
+        tool.name == "hero.runtime.get_campaign" ||
+        tool.name == "hero.runtime.list_jobs" ||
+        tool.name == "hero.runtime.get_job" ||
+        tool.name == "hero.runtime.tail_log" ||
+        tool.name == "hero.runtime.tail_trace";
+    const bool destructive = tool.name == "hero.runtime.stop_campaign" ||
+                             tool.name == "hero.runtime.stop_job";
     out << "{\"name\":" << json_quote(tool.name)
         << ",\"description\":" << json_quote(tool.description)
-        << ",\"inputSchema\":" << tool.input_schema_json << "}";
+        << ",\"inputSchema\":" << tool.input_schema_json
+        << ",\"annotations\":{\"readOnlyHint\":"
+        << (read_only ? "true" : "false") << ",\"destructiveHint\":"
+        << (destructive ? "true" : "false")
+        << ",\"openWorldHint\":false}}";
   }
   out << "]}";
   return out.str();

@@ -83,6 +83,6 @@ HERO_CONFIG_TOOL("hero.config.reload", "Reload runtime config from disk",
                  "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
                  handle_tool_reload)
 HERO_CONFIG_TOOL("hero.config.dev_nuke_reset",
-                 "Developer reset: remove runtime dump folders and Hero catalogs resolved from the saved global config, then reload Config Hero state",
+                 "Developer reset: optionally snapshot runtime dump folders and Hero catalogs resolved from the saved global config, then clear them and reload Config Hero state",
                  "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
                  handle_tool_dev_nuke_reset)

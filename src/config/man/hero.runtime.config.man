@@ -7,12 +7,12 @@ TARGET_BNF = src/config/bnf/latent_lineage_state.authored.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/latent_lineage_state/latent_lineage_state.cpp
 PRIMARY_VALIDATORS = src/main/hero/hero_runtime_mcp.cpp
 
-[FIELD main_campaign_binary]
-key = main_campaign_binary
+[FIELD cuwacunu_campaign_binary]
+key = cuwacunu_campaign_binary
 scope = hero runtime defaults
 type = path
 required = true
-default = /cuwacunu/.build/hero/main_campaign
+default = /cuwacunu/.build/tools/cuwacunu_campaign
 range = executable path
 allowed = absolute_or_relative path
 nuance = worker binary launched for each sequential RUN step of hero.runtime.start_campaign; when start_campaign receives binding_id only that selected bind is dispatched

@@ -24,10 +24,16 @@ namespace runtime {
 inline constexpr std::string_view kRuntimeCampaignSchemaV2 =
     "hero.runtime.campaign.v2";
 inline constexpr std::string_view kRuntimeCampaignManifestFilename =
+    "runtime.campaign.manifest.lls";
+inline constexpr std::string_view kLegacyRuntimeCampaignManifestFilename =
     "campaign.lls";
 inline constexpr std::string_view kRuntimeCampaignDslFilename = "campaign.dsl";
 inline constexpr std::string_view kRuntimeCampaignStdoutFilename = "stdout.log";
 inline constexpr std::string_view kRuntimeCampaignStderrFilename = "stderr.log";
+inline constexpr std::string_view kRuntimeCampaignStartLockFilename =
+    ".runtime.campaign.start.lock";
+inline constexpr std::string_view kLegacyRuntimeCampaignStartLockFilename =
+    ".campaign.start.lock";
 
 struct runtime_campaign_record_t {
   std::string schema{std::string(kRuntimeCampaignSchemaV2)};
@@ -69,6 +75,29 @@ struct runtime_campaign_record_t {
     std::string_view campaign_cursor) {
   return runtime_campaign_dir(campaigns_root, campaign_cursor) /
          std::string(kRuntimeCampaignManifestFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path runtime_campaign_legacy_manifest_path(
+    const std::filesystem::path& campaigns_root,
+    std::string_view campaign_cursor) {
+  return runtime_campaign_dir(campaigns_root, campaign_cursor) /
+         std::string(kLegacyRuntimeCampaignManifestFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_existing_runtime_campaign_manifest_path(
+    const std::filesystem::path& campaigns_root,
+    std::string_view campaign_cursor) {
+  return prefer_canonical_runtime_file_path(
+      runtime_campaign_manifest_path(campaigns_root, campaign_cursor),
+      runtime_campaign_legacy_manifest_path(campaigns_root, campaign_cursor));
+}
+
+[[nodiscard]] inline std::filesystem::path runtime_campaign_start_lock_path(
+    const std::filesystem::path& campaigns_root) {
+  return prefer_canonical_runtime_file_path(
+      campaigns_root / std::string(kRuntimeCampaignStartLockFilename),
+      campaigns_root / std::string(kLegacyRuntimeCampaignStartLockFilename));
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_campaign_dsl_path(
@@ -264,7 +293,12 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   const std::string text =
       cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
           runtime_campaign_record_to_document(record));
-  return write_text_file_atomic(manifest_path, text, error);
+  if (!write_text_file_atomic(manifest_path, text, error)) return false;
+  std::error_code ec{};
+  (void)std::filesystem::remove(
+      runtime_campaign_legacy_manifest_path(campaigns_root, record.campaign_cursor),
+      ec);
+  return true;
 }
 
 [[nodiscard]] inline bool read_runtime_campaign_record(
@@ -278,7 +312,8 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
     return false;
   }
   std::string text{};
-  if (!read_text_file(runtime_campaign_manifest_path(campaigns_root, campaign_cursor),
+  if (!read_text_file(resolve_existing_runtime_campaign_manifest_path(
+                          campaigns_root, campaign_cursor),
                       &text, error)) {
     return false;
   }
@@ -321,8 +356,8 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
                                       &record, &record_error)) {
       if (error) {
         *error = "failed reading runtime campaign manifest " +
-                 runtime_campaign_manifest_path(campaigns_root,
-                                                it.path().filename().string())
+                 resolve_existing_runtime_campaign_manifest_path(
+                     campaigns_root, it.path().filename().string())
                      .string() +
                  ": " + record_error;
       }

@@ -95,7 +95,7 @@ required = true
 default = /tmp
 range = csv path list
 allowed = comma-separated paths
-nuance = enforced for config file writes, default/objective filesystem mutations, and backups when allow_local_write=true
+nuance = enforced for config file writes, default/objective filesystem mutations, and config-backup snapshots when allow_local_write=true; dev_nuke_reset snapshots are derived from runtime_root instead
 
 [FIELD backup_enabled]
 key = backup_enabled
@@ -126,6 +126,16 @@ default = 20
 range = >= 1
 allowed = integer
 nuance = retention cap; oldest backups are pruned first
+
+[FIELD dev_nuke_reset_backup_enabled]
+key = dev_nuke_reset_backup_enabled
+scope = HERO runtime config
+type = bool
+required = true
+default = true
+range = true|false
+allowed = true,false
+nuance = when true, hero.config.dev_nuke_reset archives targeted runtime roots and catalog files under <runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/ before clearing them
 
 [RULE PROTOCOL_LAYER_ALLOWED]
 id = PROTOCOL_LAYER_ALLOWED

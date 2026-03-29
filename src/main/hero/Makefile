@@ -35,6 +35,12 @@ HERO_HUMAN_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LD
 $(eval $(call TEST_ONEFILE, hero_human_mcp, hero_human_mcp.cpp, $(HERO_HUMAN_LINK)))
 $(TEST_OUT)/hero_human_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(NCURSES_INCLUDE_PATHS)
 
+.PHONY: hero_impl
+hero_impl:
+	$(MAKE) -C $(ROOT_PATH) hero_impl
+
+lib-bundles: hero_impl
+
 .PHONY: all
 all: $(TEST_OUT)/hero_config_mcp $(TEST_OUT)/hero_hashimyei_mcp $(TEST_OUT)/hero_lattice_mcp $(TEST_OUT)/hero_runtime_mcp $(TEST_OUT)/hero_super_mcp $(TEST_OUT)/hero_human_mcp
 	@$(LOG_SUCCESS)

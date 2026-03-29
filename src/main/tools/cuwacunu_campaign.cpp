@@ -127,7 +127,7 @@ bool append_job_trace_line(const std::filesystem::path& trace_path,
   if (cuwacunu::hero::runtime::append_text_file(trace_path, line, &error)) {
     return true;
   }
-  log_warn("[main_campaign] job trace append failed path=%s error=%s\n",
+  log_warn("[cuwacunu_campaign] job trace append failed path=%s error=%s\n",
            trace_path.string().c_str(),
            value_or_empty(error));
   return false;
@@ -575,21 +575,21 @@ int main(int argc, char** argv) {
       std::string reset_error;
       if (!cuwacunu::hero::runtime_dev::reset_runtime_state_from_active_config(
               &reset, &reset_error)) {
-        std::cerr << "[main_campaign] runtime reset failed: " << reset_error
+        std::cerr << "[cuwacunu_campaign] runtime reset failed: " << reset_error
                   << "\n";
         return 1;
       }
       log_info(
-          "[main_campaign] runtime reset ok removed_store_roots=%zu removed_catalogs=%zu removed_entries=%llu\n",
+          "[cuwacunu_campaign] runtime reset ok removed_store_roots=%zu removed_catalogs=%zu removed_entries=%llu\n",
           reset.removed_store_roots.size(),
           reset.removed_catalog_paths.size(),
           static_cast<unsigned long long>(reset.removed_store_entries));
       for (const auto& path : reset.removed_store_roots) {
-        log_info("[main_campaign] runtime reset store_root=%s\n",
+        log_info("[cuwacunu_campaign] runtime reset store_root=%s\n",
                  path.string().c_str());
       }
       for (const auto& path : reset.removed_catalog_paths) {
-        log_info("[main_campaign] runtime reset catalog_path=%s\n",
+        log_info("[cuwacunu_campaign] runtime reset catalog_path=%s\n",
                  path.string().c_str());
       }
     }
@@ -597,7 +597,7 @@ int main(int argc, char** argv) {
     const std::string configured_campaign_path =
         cuwacunu::iitepi::config_space_t::effective_campaign_dsl_path();
     if (configured_campaign_path.empty()) {
-      std::cerr << "[main_campaign] empty configured campaign path\n";
+      std::cerr << "[cuwacunu_campaign] empty configured campaign path\n";
       return 1;
     }
 
@@ -631,7 +631,7 @@ int main(int argc, char** argv) {
 
     const std::string campaign_hash =
         cuwacunu::iitepi::runtime_binding_space_t::locked_runtime_binding_hash();
-    log_info("[main_campaign] campaign_hash=%s binding=%s campaign=%s\n",
+    log_info("[cuwacunu_campaign] campaign_hash=%s binding=%s campaign=%s\n",
              value_or_empty(campaign_hash), value_or_empty(binding_id),
              value_or_empty(configured_campaign_path));
 
@@ -652,12 +652,12 @@ int main(int argc, char** argv) {
         (void)append_job_trace_line(trace_path, trace_fail.str());
       }
       log_err(
-          "[main_campaign] run failed campaign_hash=%s binding=%s error=%s\n",
+          "[cuwacunu_campaign] run failed campaign_hash=%s binding=%s error=%s\n",
           value_or_empty(run.campaign_hash),
           value_or_empty(run.binding_id),
           value_or_empty(run.error));
       log_err(
-          "[main_campaign] contract_hash=%s wave_hash=%s record_type=%s sampler=%s total_steps=%llu\n",
+          "[cuwacunu_campaign] contract_hash=%s wave_hash=%s record_type=%s sampler=%s total_steps=%llu\n",
           value_or_empty(run.contract_hash),
           value_or_empty(run.wave_hash),
           value_or_empty(run.resolved_record_type),
@@ -687,7 +687,7 @@ int main(int argc, char** argv) {
         (void)append_job_trace_line(trace_path, trace_fail.str());
       }
       log_err(
-          "[main_campaign] run manifest persistence failed campaign_hash=%s binding=%s error=%s\n",
+          "[cuwacunu_campaign] run manifest persistence failed campaign_hash=%s binding=%s error=%s\n",
           value_or_empty(run.campaign_hash),
           value_or_empty(run.binding_id),
           value_or_empty(manifest_error));
@@ -710,7 +710,7 @@ int main(int argc, char** argv) {
         (void)append_job_trace_line(trace_path, trace_fail.str());
       }
       log_err(
-          "[main_campaign] source runtime projection persistence failed campaign_hash=%s binding=%s error=%s\n",
+          "[cuwacunu_campaign] source runtime projection persistence failed campaign_hash=%s binding=%s error=%s\n",
           value_or_empty(run.campaign_hash),
           value_or_empty(run.binding_id),
           value_or_empty(manifest_error));
@@ -750,7 +750,7 @@ int main(int argc, char** argv) {
     }
 
     log_info(
-        "[main_campaign] run ok campaign_hash=%s binding=%s contract_hash=%s wave_hash=%s record_type=%s sampler=%s contracts=%zu total_steps=%llu\n",
+        "[cuwacunu_campaign] run ok campaign_hash=%s binding=%s contract_hash=%s wave_hash=%s record_type=%s sampler=%s contracts=%zu total_steps=%llu\n",
         value_or_empty(run.campaign_hash),
         value_or_empty(run.binding_id),
         value_or_empty(run.contract_hash),
@@ -761,7 +761,7 @@ int main(int argc, char** argv) {
         static_cast<unsigned long long>(run.total_steps));
     return 0;
   } catch (const std::exception& e) {
-    std::cerr << "[main_campaign] exception: " << e.what() << "\n";
+    std::cerr << "[cuwacunu_campaign] exception: " << e.what() << "\n";
     return 1;
   }
 }

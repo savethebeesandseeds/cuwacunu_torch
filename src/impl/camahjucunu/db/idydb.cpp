@@ -26,10 +26,13 @@
 #include <math.h>
 #include <stdint.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <set>
 #include <sstream>
 #include <string_view>
+#include <thread>
 #include <unordered_set>
 
 #include <openssl/evp.h>
@@ -467,6 +470,237 @@ typedef struct idydb
 	const char* plain_storage_kind; /* "memfd" / "shm" / NULL */
 
 } idydb;
+
+typedef struct idydb_named_lock
+{
+	int fd;
+	bool shared;
+	char* path;
+} idydb_named_lock;
+
+static std::uint64_t idydb_now_ms_utc()
+{
+	using namespace std::chrono;
+	return static_cast<std::uint64_t>(
+		duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
+}
+
+static std::string idydb_lock_sanitize_line(std::string_view value)
+{
+	std::string out;
+	out.reserve(value.size());
+	for (char c : value)
+	{
+		if (c == '\0' || c == '\n' || c == '\r' || c == '\t')
+			out.push_back(' ');
+		else
+			out.push_back(c);
+	}
+	const auto first = out.find_first_not_of(' ');
+	if (first == std::string::npos) return std::string{};
+	const auto last = out.find_last_not_of(' ');
+	return out.substr(first, last - first + 1);
+}
+
+static std::string idydb_lock_command_line()
+{
+#ifdef __linux__
+	int fd = ::open("/proc/self/cmdline", O_RDONLY | O_CLOEXEC);
+	if (fd < 0) return std::string{};
+
+	std::vector<char> buffer(4096, '\0');
+	const ssize_t nread = ::read(fd, buffer.data(), buffer.size());
+	(void)::close(fd);
+	if (nread <= 0) return std::string{};
+
+	for (ssize_t i = 0; i < nread; ++i)
+	{
+		if (buffer[static_cast<std::size_t>(i)] == '\0')
+			buffer[static_cast<std::size_t>(i)] = ' ';
+	}
+	return idydb_lock_sanitize_line(
+		std::string_view(buffer.data(), static_cast<std::size_t>(nread)));
+#else
+	return std::string{};
+#endif
+}
+
+static bool idydb_named_lock_write_all(int fd, const char* data, std::size_t size)
+{
+	std::size_t written = 0;
+	while (written < size)
+	{
+		const ssize_t rc = ::write(fd, data + written, size - written);
+		if (rc < 0)
+		{
+			if (errno == EINTR) continue;
+			return false;
+		}
+		if (rc == 0) return false;
+		written += static_cast<std::size_t>(rc);
+	}
+	return true;
+}
+
+static bool idydb_named_lock_read_all(int fd, std::string* out)
+{
+	if (!out) return false;
+	out->clear();
+	if (::lseek(fd, 0, SEEK_SET) < 0) return false;
+
+	char chunk[512];
+	while (true)
+	{
+		const ssize_t rc = ::read(fd, chunk, sizeof(chunk));
+		if (rc < 0)
+		{
+			if (errno == EINTR) continue;
+			return false;
+		}
+		if (rc == 0) break;
+		out->append(chunk, static_cast<std::size_t>(rc));
+	}
+	return true;
+}
+
+static std::string idydb_named_lock_metadata(
+	const idydb_named_lock_options* options)
+{
+	const bool shared = options && options->shared;
+	const std::string owner_label =
+		(options && options->owner_label)
+			? idydb_lock_sanitize_line(options->owner_label)
+			: std::string{};
+	const std::string command = idydb_lock_command_line();
+
+	std::ostringstream out;
+	out << "pid=" << static_cast<long long>(::getpid()) << "\n";
+	out << "uid=" << static_cast<unsigned long long>(::getuid()) << "\n";
+	out << "mode=" << (shared ? "shared" : "exclusive") << "\n";
+	out << "acquired_at_ms=" << static_cast<unsigned long long>(idydb_now_ms_utc())
+	    << "\n";
+	if (!owner_label.empty()) out << "owner_label=" << owner_label << "\n";
+	if (!command.empty()) out << "command=" << command << "\n";
+	return out.str();
+}
+
+extern "C" int idydb_named_lock_acquire(const char* lock_path,
+                                        idydb_named_lock** out_lock,
+                                        const idydb_named_lock_options* options)
+{
+	if (!lock_path || !out_lock || *out_lock != NULL) return IDYDB_ERROR;
+
+	if (options && options->create_parent_directories)
+	{
+		std::error_code ec;
+		const std::filesystem::path path(lock_path);
+		const auto parent = path.parent_path();
+		if (!parent.empty())
+		{
+			std::filesystem::create_directories(parent, ec);
+			if (ec) return IDYDB_PERM;
+		}
+	}
+
+	int fd = ::open(lock_path, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+	if (fd < 0) return (errno == ENOENT ? IDYDB_NOT_FOUND : IDYDB_PERM);
+
+	const int lock_mode =
+		((options && options->shared) ? LOCK_SH : LOCK_EX) | LOCK_NB;
+	const unsigned int retry_count = options ? options->retry_count : 0U;
+	const unsigned int retry_delay_ms = options ? options->retry_delay_ms : 0U;
+
+	bool locked = false;
+	for (unsigned int attempt = 0; attempt <= retry_count; ++attempt)
+	{
+		if (::flock(fd, lock_mode) == 0)
+		{
+			locked = true;
+			break;
+		}
+		if (errno == EINTR) continue;
+		if ((errno != EWOULDBLOCK && errno != EAGAIN) || attempt >= retry_count)
+		{
+			(void)::close(fd);
+			return (errno == EWOULDBLOCK || errno == EAGAIN) ? IDYDB_BUSY : IDYDB_PERM;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(retry_delay_ms));
+	}
+	if (!locked)
+	{
+		(void)::close(fd);
+		return IDYDB_BUSY;
+	}
+
+	const std::string metadata = idydb_named_lock_metadata(options);
+	if (::ftruncate(fd, 0) != 0 ||
+	    ::lseek(fd, 0, SEEK_SET) < 0 ||
+	    !idydb_named_lock_write_all(fd, metadata.data(), metadata.size()) ||
+	    ::fsync(fd) != 0)
+	{
+		(void)::flock(fd, LOCK_UN);
+		(void)::close(fd);
+		return IDYDB_ERROR;
+	}
+
+	idydb_named_lock* lock =
+		static_cast<idydb_named_lock*>(::malloc(sizeof(idydb_named_lock)));
+	if (!lock)
+	{
+		(void)::flock(fd, LOCK_UN);
+		(void)::close(fd);
+		return IDYDB_ERROR;
+	}
+
+	lock->fd = fd;
+	lock->shared = (options && options->shared);
+	lock->path = static_cast<char*>(::malloc(::strlen(lock_path) + 1));
+	if (!lock->path)
+	{
+		(void)::flock(fd, LOCK_UN);
+		(void)::close(fd);
+		::free(lock);
+		return IDYDB_ERROR;
+	}
+	::strcpy(lock->path, lock_path);
+	*out_lock = lock;
+	return IDYDB_SUCCESS;
+}
+
+extern "C" int idydb_named_lock_release(idydb_named_lock** lock)
+{
+	if (!lock || !*lock) return IDYDB_DONE;
+
+	int rc = IDYDB_DONE;
+	if ((*lock)->fd >= 0)
+	{
+		if (::flock((*lock)->fd, LOCK_UN) != 0) rc = IDYDB_ERROR;
+		if (::close((*lock)->fd) != 0) rc = IDYDB_ERROR;
+	}
+	if ((*lock)->path) ::free((*lock)->path);
+	::free(*lock);
+	*lock = NULL;
+	return rc;
+}
+
+extern "C" int idydb_named_lock_describe_owner(const char* lock_path,
+                                               char* buffer,
+                                               size_t buffer_size)
+{
+	if (!lock_path || !buffer || buffer_size == 0) return IDYDB_ERROR;
+	buffer[0] = '\0';
+
+	int fd = ::open(lock_path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0) return (errno == ENOENT ? IDYDB_NOT_FOUND : IDYDB_PERM);
+
+	std::string metadata;
+	const bool ok = idydb_named_lock_read_all(fd, &metadata);
+	(void)::close(fd);
+	if (!ok) return IDYDB_ERROR;
+
+	std::snprintf(buffer, buffer_size, "%s", metadata.c_str());
+	return IDYDB_SUCCESS;
+}
 
 /* ---------------- Verbose debug (compile-time) ---------------- */
 

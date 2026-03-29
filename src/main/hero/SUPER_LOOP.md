@@ -1,79 +1,112 @@
 # Super Loop Constitution
 
 This document is the shortest stable statement of what the Super Hero loop is
-allowed to be.
+allowed to be in v2.
 
 ## Sovereignty
 
-- Super Hero is the sovereign of loop state, review, and continuation.
+- Super Hero is the sovereign of loop state, turn orchestration, budgets,
+  escalation, and Runtime launch authority.
 - Runtime Hero is the sovereign of campaign execution.
-- Config Hero is the only writer for autonomous truth-source objective/default
-  file mutation.
-- Human Hero is the sovereign of human adjudication and response attestation.
-- Codex is the reviewer and tool-using planner inside a review boundary.
+- Config Hero is the only writer for autonomous truth-source mutation.
+- Human Hero is the sovereign of operator attestation and typed governance
+  resolutions.
+- Codex is the autonomous planner acting inside the authority envelope Super
+  Hero provides.
 
-## Review Boundary
+## Core Loop
 
-- A super review starts only after Runtime Hero reaches a terminal campaign
-  state.
-- Codex reviews evidence from the persisted loop ledger, current objective
-  campaign, and latest review packet.
-- Codex returns a bounded control decision.
-- Super Hero validates that decision and is the only component allowed to
-  request the next campaign launch or stop from Runtime Hero.
-- When Codex returns `need_human`, Super Hero pauses and waits for a Human
-  Hero signed response before resuming.
+- The loop is `bootstrap -> planning -> running -> planning -> ...`.
+- A planning turn may mutate objective-local truth sources, inspect evidence,
+  and choose one outcome.
+- One planning turn may launch at most one Runtime campaign.
+- After a campaign reaches a terminal Runtime state, Super Hero stages a new
+  turn context and planning continues.
+
+## Outcome Contract
+
+- `outcome = launch | escalate | success | stop | fail`
+- `launch` carries:
+  - `mode = run_plan | binding`
+  - `binding_id` only when `mode = binding`
+  - `reset_runtime_state`
+  - `requires_objective_mutation`
+- `escalate` carries:
+  - `kind = authority_expansion | budget_expansion | objective_clarification`
+  - `request`
+  - optional typed `delta`
+- Every turn also carries `reason` and optional `memory_note`.
+
+## Human Boundary
+
+- Human Hero is not part of ordinary runtime routing.
+- Human intervention exists only for:
+  - authority expansion
+  - budget expansion
+  - objective clarification
+  - explicit operator stop
+- Human resolutions are typed:
+  - `grant`
+  - `deny`
+  - `clarify`
+  - `stop`
+- A granted resolution returns the loop to `planning`; it does not directly
+  choose the next Runtime bind.
 
 ## Mutability
 
-- Source objective bundles in the repository are the mutable truth source for
-  Super Hero.
-- Super Hero points `objective_root` at the selected source objective bundle
-  under `src/config/instructions/objectives/...`.
-- Autonomous mutation is limited to files inside the configured
-  `objective_roots` and `default_roots`, filtered by `allowed_extensions`.
-- Those writes happen through Config Hero whole-file
-  read/create/replace/delete policy with decoder validation, not raw file
-  edits.
+- Objective-local truth sources under `objective_root` are the default
+  autonomous write surface.
+- Shared defaults are outside ordinary autonomous authority.
+- Shared-default mutation requires a human-granted `authority_expansion`.
+- All truth-source writes happen through Config Hero whole-file
+  create/read/replace/delete policy with decoder validation.
+- Super Hero records per-turn objective mutation summaries with before/after
+  hashes when Codex changed truth-source files during a planning turn.
 
-## Decision Contract
+## Budgets
 
-- `control_kind = continue | stop | need_human`
-- `continue` requires a bounded `next_action`
-- `next_action.kind = default_plan | binding`
-- `binding` requires `target_binding_id`
-- `memory_note` should summarize what Codex actually learned and changed
+- `remaining_review_turns` bounds Codex planning turns.
+- `remaining_campaign_launches` bounds Runtime campaign launches.
+- Exhausting either budget ends the loop as `exhausted`.
 
 ## Prohibitions
 
 - Codex must not launch campaigns directly.
-- Codex must not mutate repository source files directly.
-- Super Hero must not silently widen Config Hero write scope beyond the
-  configured objective/default roots.
+- Codex must not mutate repository truth-source files directly.
+- Super Hero must not silently widen write authority beyond the current
+  envelope.
+- Human Hero must not be used as an ordinary “choose the next bind” router.
 
 ## Persistence
 
 - The loop persists as artifacts, not as one immortal process.
-- The minimum loop ledger is:
-  - `loop.lls`
+- The minimum v2 ledger is:
+  - `super.loop.manifest.lls`
   - `super.objective.dsl`
   - `super.objective.md`
   - `super.guidance.md`
   - `config.hero.policy.dsl`
   - `super.briefing.md`
   - `logs/codex.session.log`
-  - `memory.md`
-  - `events.jsonl`
-  - `reviews/latest.json` plus numbered `review_packet*.json`
-  - `decisions/latest.json` plus numbered `decision*.json`
-  - `human/request.latest.md` when needed
-  - `human/response*.json` plus detached `.sig` when human adjudication occurs
+  - `super.loop.memory.md`
+  - `super.loop.events.jsonl`
+  - `turns/turn_context.latest.json`
+  - `turns/turn_outcome.latest.json`
+  - numbered `turn_context.*.json` and `turn_outcome.*.json`
+  - numbered `turn_mutation.*.json` when truth-source files changed
+  - `human/escalation.latest.md` when a typed escalation is pending
+  - `human/resolution.latest.json` plus detached `.sig` when human governance
+    occurs
+  - `human/report.latest.md` when a loop reaches `success`, `stopped`,
+    `failed`, or `exhausted`
 
 ## Design Intention
 
-The super loop should feel lawful, auditable, and conservative:
+The v2 loop should feel lawful, auditable, and productively autonomous:
 
-- evidence before action
+- evidence before launch
 - bounded authority before mutation
 - persistent memory before repetition
-- human escalation before reckless autonomy
+- typed human governance before unsafe expansion
+- Codex autonomy inside the envelope, not outside it

@@ -5,7 +5,6 @@
 #include <cerrno>
 #include <cctype>
 #include <chrono>
-#include <csignal>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -18,9 +17,6 @@
 #include <string_view>
 #include <thread>
 #include <unordered_set>
-#include <fcntl.h>
-#include <unistd.h>
-
 #include <openssl/evp.h>
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
@@ -807,41 +803,6 @@ namespace {
   return b == base.end();
 }
 
-[[nodiscard]] std::optional<pid_t> parse_lock_pid(const std::filesystem::path& lock_path) {
-  std::ifstream in(lock_path, std::ios::binary);
-  if (!in) return std::nullopt;
-  std::string line;
-  if (!std::getline(in, line)) return std::nullopt;
-  line = trim_ascii(line);
-  constexpr std::string_view kPrefix = "pid=";
-  if (line.rfind(kPrefix, 0) != 0) return std::nullopt;
-  std::uint64_t parsed = 0;
-  if (!parse_u64(line.substr(kPrefix.size()), &parsed)) return std::nullopt;
-  if (parsed == 0) return std::nullopt;
-  if (parsed > static_cast<std::uint64_t>(std::numeric_limits<pid_t>::max())) {
-    return std::nullopt;
-  }
-  return static_cast<pid_t>(parsed);
-}
-
-[[nodiscard]] bool process_is_alive(pid_t pid) {
-  if (pid <= 0) return false;
-  if (::kill(pid, 0) == 0) return true;
-  return errno == EPERM;
-}
-
-[[nodiscard]] bool clear_stale_ingest_lock_if_needed(
-    const std::filesystem::path& lock_path) {
-  const auto lock_pid = parse_lock_pid(lock_path);
-  if (!lock_pid.has_value()) return false;
-  if (process_is_alive(*lock_pid)) return false;
-  std::error_code ec;
-  const bool removed = std::filesystem::remove(lock_path, ec);
-  if (ec) return false;
-  if (removed) return true;
-  return !std::filesystem::exists(lock_path, ec) && !ec;
-}
-
 [[nodiscard]] std::string canonical_path_from_report_fragment_path(
     const std::filesystem::path& p) {
   const std::string s = p.generic_string();
@@ -921,6 +882,24 @@ void clear_error(std::string* error) {
 
 void set_error(std::string* error, std::string_view msg) {
   if (error) *error = std::string(msg);
+}
+
+[[nodiscard]] std::string compact_lock_owner_description(std::string_view text) {
+  std::string out;
+  out.reserve(text.size());
+  bool pending_separator = false;
+  for (char c : text) {
+    if (c == '\n' || c == '\r') {
+      pending_separator = !out.empty();
+      continue;
+    }
+    if (pending_separator) {
+      if (!out.empty() && out.back() != ' ' && out.back() != ';') out += "; ";
+      pending_separator = false;
+    }
+    out.push_back(c);
+  }
+  return trim_ascii(out);
 }
 
 [[nodiscard]] const char* idydb_rc_label(int rc) {
@@ -1593,12 +1572,6 @@ bool hashimyei_catalog_store_t::open(const options_t& options, std::string* erro
     }
   }
 
-  const std::filesystem::path store_root =
-      store_root_from_catalog_path(options.catalog_path);
-  const std::filesystem::path ingest_lock_path =
-      cuwacunu::hashimyei::catalog_directory(store_root) / ".ingest.lock";
-  (void)clear_stale_ingest_lock_if_needed(ingest_lock_path);
-
   const auto remove_catalog_for_recovery =
       [&](std::string* out_error) -> bool {
         if (out_error) out_error->clear();
@@ -1610,7 +1583,6 @@ bool hashimyei_catalog_store_t::open(const options_t& options, std::string* erro
                         options.catalog_path.string());
           return false;
         }
-        (void)clear_stale_ingest_lock_if_needed(ingest_lock_path);
         return true;
       };
 
@@ -2287,7 +2259,7 @@ bool hashimyei_catalog_store_t::acquire_ingest_lock_(
     return false;
   }
   lock->path.clear();
-  lock->held = false;
+  lock->handle = nullptr;
   std::error_code ec;
   const auto lock_dir = cuwacunu::hashimyei::catalog_directory(store_root);
   std::filesystem::create_directories(lock_dir, ec);
@@ -2296,53 +2268,43 @@ bool hashimyei_catalog_store_t::acquire_ingest_lock_(
     return false;
   }
   const auto lock_path = lock_dir / ".ingest.lock";
-  int fd = -1;
-  for (int attempt = 0; attempt < 2; ++attempt) {
-    fd = ::open(lock_path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0600);
-    if (fd >= 0) break;
-    if (errno != EEXIST || attempt != 0 ||
-        !clear_stale_ingest_lock_if_needed(lock_path)) {
-      break;
-    }
-  }
-  if (fd < 0) {
-    if (errno == EEXIST) {
-      set_error(error, "ingest lock already held: " + lock_path.string());
+  idydb_named_lock_options options{};
+  options.shared = false;
+  options.create_parent_directories = true;
+  options.retry_count = 0;
+  options.retry_delay_ms = 0;
+  options.owner_label = "hashimyei_catalog_ingest";
+  const std::string lock_path_string = lock_path.string();
+  const int rc =
+      idydb_named_lock_acquire(lock_path_string.c_str(), &lock->handle, &options);
+  if (rc != IDYDB_SUCCESS) {
+    if (rc == IDYDB_BUSY) {
+      char owner[1024] = {0};
+      std::string owner_suffix{};
+      if (idydb_named_lock_describe_owner(lock_path_string.c_str(), owner,
+                                          sizeof(owner)) == IDYDB_SUCCESS) {
+        const std::string compact_owner = compact_lock_owner_description(owner);
+        if (!compact_owner.empty()) {
+          owner_suffix = " owner={" + compact_owner + "}";
+        }
+      }
+      set_error(error, "ingest lock already held: " + lock_path.string() +
+                           owner_suffix);
     } else {
-      set_error(error, "cannot create ingest lock file: " + lock_path.string() +
-                           " (" + std::strerror(errno) + ")");
+      set_error(error, "cannot acquire ingest lock: " + lock_path.string() +
+                           " (idydb rc=" + std::to_string(rc) + " " +
+                           idydb_rc_label(rc) + ")");
     }
-    return false;
-  }
-  const std::string payload = "pid=" + std::to_string(::getpid()) + "\n";
-  const ssize_t wrote = ::write(fd, payload.data(), payload.size());
-  if (wrote < 0 || static_cast<std::size_t>(wrote) != payload.size()) {
-    const int saved_errno = errno;
-    (void)::close(fd);
-    std::error_code rm_ec;
-    std::filesystem::remove(lock_path, rm_ec);
-    set_error(error, "cannot initialize ingest lock file: " + lock_path.string() +
-                         " (" + std::strerror(saved_errno) + ")");
-    return false;
-  }
-  if (::close(fd) != 0) {
-    const int saved_errno = errno;
-    std::error_code rm_ec;
-    std::filesystem::remove(lock_path, rm_ec);
-    set_error(error, "cannot close ingest lock file: " + lock_path.string() +
-                         " (" + std::strerror(saved_errno) + ")");
     return false;
   }
   lock->path = lock_path;
-  lock->held = true;
   return true;
 }
 
 void hashimyei_catalog_store_t::release_ingest_lock_(ingest_lock_t* lock) {
-  if (!lock || !lock->held) return;
-  std::error_code ec;
-  std::filesystem::remove(lock->path, ec);
-  lock->held = false;
+  if (!lock) return;
+  (void)idydb_named_lock_release(&lock->handle);
+  lock->path.clear();
 }
 
 bool hashimyei_catalog_store_t::ingest_filesystem(
@@ -2355,7 +2317,13 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
 
   ingest_lock_t lock{};
   if (!acquire_ingest_lock_(store_root, &lock, error)) return false;
-  const auto release_lock = [&]() { release_ingest_lock_(&lock); };
+  struct ingest_lock_guard_t {
+    hashimyei_catalog_store_t* self{nullptr};
+    ingest_lock_t* lock{nullptr};
+    ~ingest_lock_guard_t() {
+      if (self && lock) self->release_ingest_lock_(lock);
+    }
+  } lock_guard{this, &lock};
   const std::filesystem::path canonical_store_root =
       canonicalized(store_root).value_or(store_root.lexically_normal());
   const std::filesystem::path canonical_catalog_root =
@@ -2366,21 +2334,18 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
   for (std::filesystem::recursive_directory_iterator it(store_root, ec), end;
        it != end; it.increment(ec)) {
     if (ec) {
-      release_lock();
       set_error(error, "failed scanning store root");
       return false;
     }
     std::error_code entry_ec;
     const auto symlink_state = it->symlink_status(entry_ec);
     if (entry_ec) {
-      release_lock();
       set_error(error, "failed reading store entry status");
       return false;
     }
     if (std::filesystem::is_symlink(symlink_state)) continue;
     if (!it->is_regular_file(entry_ec)) {
       if (entry_ec) {
-        release_lock();
         set_error(error, "failed reading store entry type");
         return false;
       }
@@ -2397,13 +2362,11 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
 
     const auto p = it->path();
     if (p.filename() == "run.manifest.v1.kv") {
-      release_lock();
       set_error(error,
                 "unsupported v1 run manifest filename run.manifest.v1.kv");
       return false;
     }
     if (p.filename() == "component.manifest.v1.kv") {
-      release_lock();
       set_error(
           error,
           "unsupported v1 component manifest filename component.manifest.v1.kv");
@@ -2411,25 +2374,21 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
     }
     if (p.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) {
       if (!ingest_run_manifest_file_(p, error)) {
-        release_lock();
         return false;
       }
       continue;
     }
     if (p.filename() == cuwacunu::hashimyei::kComponentManifestFilenameV2) {
       if (!ingest_component_manifest_file_(p, error)) {
-        release_lock();
         return false;
       }
       continue;
     }
     if (!ingest_report_fragment_file_(p, error)) {
-      release_lock();
       return false;
     }
   }
 
-  release_lock();
   return rebuild_indexes(error);
 }
 

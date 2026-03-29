@@ -201,4 +201,4 @@ clean:
 	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then \
 		echo "Aborting clean."; exit 1; fi
 	@echo "$(COLOR_RED) Cleaning cuwacunu build $(COLOR_RESET)"
-	$(Q)$(CLEAN_TREE_CMD) "$(OUTPUT_PATH)" "$(TEST_OUT)" "$(HERO_OUT)"
+	$(Q)$(CLEAN_TREE_CMD) "$(OUTPUT_PATH)" "$(TEST_OUT)" "$(HERO_OUT)" "$(TOOLS_OUT)"

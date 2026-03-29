@@ -23,7 +23,7 @@ HERO_SUPER_TOOL(
     "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
     handle_tool_stop_loop)
 HERO_SUPER_TOOL(
-    "hero.super.resume_loop",
-    "Resume one Super Hero loop from a signed Human Hero response artifact",
-    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"human_response_path\":{\"type\":\"string\"},\"human_response_sig_path\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
-    handle_tool_resume_loop)
+    "hero.super.apply_human_resolution",
+    "Apply one signed Human Hero resolution artifact to an awaiting_human Super loop",
+    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"human_resolution_path\":{\"type\":\"string\"},\"human_resolution_sig_path\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
+    handle_tool_apply_human_resolution)

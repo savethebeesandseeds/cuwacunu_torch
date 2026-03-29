@@ -5,7 +5,7 @@ MAN_ID = global.config.general
 TARGET_DSL = src/config/.config
 TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
 PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
-PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/main_campaign.cpp,src/impl/hero/super_hero/hero_super_tools.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/tools/cuwacunu_campaign.cpp,src/impl/hero/super_hero/hero_super_tools.cpp
 
 [ENUM GENERAL.exchange_type]
 key = GENERAL.exchange_type

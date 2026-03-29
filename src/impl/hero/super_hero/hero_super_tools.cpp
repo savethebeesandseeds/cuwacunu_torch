@@ -21,6 +21,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <sys/file.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -56,20 +57,34 @@ constexpr const char* kInitializeInstructions =
     "Use tools/list for tool schemas. Use tools/call with hero.super.*.";
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;
 constexpr std::size_t kRuntimeToolTimeoutSec = 30;
-constexpr std::string_view kReviewPacketSchemaV1 = "hero.super.review_packet.v1";
-constexpr std::string_view kDecisionSchemaV1 = "hero.super.decision.v1";
+constexpr std::size_t kHumanToolTimeoutSec = 30;
+constexpr std::size_t kEmbeddedObjectiveBundleBytesCap = 64u << 10;
+constexpr std::string_view kTurnContextSchemaV2 = "hero.super.turn_context.v2";
+constexpr std::string_view kTurnOutcomeSchemaV2 = "hero.super.turn_outcome.v2";
+constexpr std::string_view kTurnMutationSchemaV2 =
+    "hero.super.turn_mutation.v2";
+constexpr std::string_view kEscalationSchemaV2 = "hero.super.escalation.v2";
 
 bool g_jsonrpc_use_content_length_framing = false;
 
-struct super_review_decision_t {
-  std::string control_kind{};
-  std::string next_action_kind{};
-  std::string target_binding_id{};
-  bool reset_runtime_state{false};
+struct super_turn_outcome_t {
+  std::string outcome{};
+  std::string launch_mode{};
+  std::string launch_binding_id{};
+  bool launch_reset_runtime_state{false};
+  bool launch_requires_objective_mutation{false};
   std::string reason{};
   std::string memory_note{};
-  std::string human_request{};
+  std::string escalation_kind{};
+  std::string escalation_request{};
+  bool escalation_allow_default_write{false};
+  std::uint64_t escalation_additional_review_turns{0};
+  std::uint64_t escalation_additional_campaign_launches{0};
 };
+
+using objective_hash_snapshot_t = std::map<std::string, std::string>;
+
+using super_review_decision_t = super_turn_outcome_t;
 
 struct run_manifest_hint_t {
   std::filesystem::path path{};
@@ -78,6 +93,18 @@ struct run_manifest_hint_t {
   std::string contract_hash{};
   std::string wave_hash{};
   std::uint64_t started_at_ms{0};
+};
+
+struct objective_bundle_entry_t {
+  std::string relative_path{};
+  std::string text{};
+};
+
+struct objective_bundle_snapshot_t {
+  std::vector<objective_bundle_entry_t> entries{};
+  std::size_t embedded_bytes{0};
+  std::size_t omitted_files{0};
+  bool truncated{false};
 };
 
 struct super_objective_spec_t {
@@ -98,6 +125,60 @@ struct super_tool_descriptor_t {
   std::string_view input_schema_json;
   super_tool_handler_t handler;
 };
+
+enum class command_child_failure_stage_t : int {
+  kNone = 0,
+  kChdir = 1,
+  kSetenv = 2,
+  kStdinOpen = 3,
+  kStdoutOpen = 4,
+  kStderrOpen = 5,
+  kExecvp = 6,
+};
+
+struct command_child_failure_t {
+  int err{0};
+  command_child_failure_stage_t stage{command_child_failure_stage_t::kNone};
+};
+
+void write_command_child_failure_noexcept(int fd,
+                                          command_child_failure_stage_t stage,
+                                          int err) {
+  if (fd < 0) return;
+  const command_child_failure_t failure{err, stage};
+  const ssize_t ignored = ::write(fd, &failure, sizeof(failure));
+  (void)ignored;
+}
+
+[[nodiscard]] std::string describe_command_child_failure(
+    const command_child_failure_t& failure, const std::vector<std::string>& argv,
+    const std::filesystem::path* working_dir) {
+  const std::string command = argv.empty()
+                                  ? std::string("<empty>")
+                                  : cuwacunu::hero::runtime::trim_ascii(argv.front());
+  const std::string reason =
+      std::error_code(failure.err, std::generic_category()).message();
+  switch (failure.stage) {
+    case command_child_failure_stage_t::kChdir:
+      return "command chdir failed for " +
+             (working_dir != nullptr ? working_dir->string() : std::string(".")) +
+             ": " + reason;
+    case command_child_failure_stage_t::kSetenv:
+      return "command environment setup failed for " + command + ": " + reason;
+    case command_child_failure_stage_t::kStdinOpen:
+      return "command stdin open failed for " + command + ": " + reason;
+    case command_child_failure_stage_t::kStdoutOpen:
+      return "command stdout open failed for " + command + ": " + reason;
+    case command_child_failure_stage_t::kStderrOpen:
+      return "command stderr open failed for " + command + ": " + reason;
+    case command_child_failure_stage_t::kExecvp:
+      return "command execvp failed for " + command + ": " + reason;
+    case command_child_failure_stage_t::kNone:
+    default:
+      break;
+  }
+  return "command failed before exec: " + reason;
+}
 
 [[nodiscard]] bool run_command_with_stdio_and_timeout(
     const std::vector<std::string>& argv, const std::filesystem::path& stdin_path,
@@ -124,6 +205,19 @@ void append_warning_text(std::string* dst, std::string_view warning);
     return static_cast<char>(std::tolower(c));
   });
   return out;
+}
+
+[[nodiscard]] bool ends_with_ascii(std::string_view value,
+                                   std::string_view suffix) {
+  return value.size() >= suffix.size() &&
+         value.substr(value.size() - suffix.size()) == suffix;
+}
+
+[[nodiscard]] bool should_embed_objective_bundle_relative_path(
+    std::string_view relative_path) {
+  return ends_with_ascii(relative_path, ".dsl") ||
+         ends_with_ascii(relative_path, ".md") ||
+         ends_with_ascii(relative_path, ".man");
 }
 
 [[nodiscard]] bool looks_like_codex_session_id(std::string_view value) {
@@ -287,6 +381,18 @@ void append_warning_text(std::string* dst, std::string_view warning);
       std::from_chars(token.data(), token.data() + token.size(), parsed);
   if (ec != std::errc{} || ptr != token.data() + token.size()) return false;
   *out = static_cast<std::size_t>(parsed);
+  return true;
+}
+
+[[nodiscard]] bool parse_u64_token(std::string_view raw, std::uint64_t* out) {
+  if (!out) return false;
+  const std::string token = trim_ascii(raw);
+  if (token.empty()) return false;
+  std::uint64_t parsed = 0;
+  const auto [ptr, ec] =
+      std::from_chars(token.data(), token.data() + token.size(), parsed);
+  if (ec != std::errc{} || ptr != token.data() + token.size()) return false;
+  *out = parsed;
   return true;
 }
 
@@ -510,6 +616,14 @@ void append_warning_text(std::string* dst, std::string_view warning);
   return parse_size_token(raw, out);
 }
 
+[[nodiscard]] bool extract_json_u64_field(const std::string& json,
+                                          std::string_view key,
+                                          std::uint64_t* out) {
+  std::string raw;
+  if (!extract_json_field_raw(json, key, &raw)) return false;
+  return parse_u64_token(raw, out);
+}
+
 [[nodiscard]] bool extract_json_object_field(const std::string& json,
                                              std::string_view key,
                                              std::string* out) {
@@ -714,18 +828,19 @@ resolve_super_objective_grammar_from_global_config(
 
 [[nodiscard]] std::filesystem::path loop_runner_lock_path(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return std::filesystem::path(loop.loop_root) / ".super.runner.lock";
-}
-
-[[nodiscard]] std::filesystem::path super_loop_latest_review_packet_path(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return cuwacunu::hero::super::super_loop_latest_review_packet_path(
+  return cuwacunu::hero::super::super_loop_runner_lock_path(
       std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
 }
 
-[[nodiscard]] std::filesystem::path super_loop_latest_decision_path(
+[[nodiscard]] std::filesystem::path super_loop_latest_turn_context_path(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return cuwacunu::hero::super::super_loop_latest_decision_path(
+  return cuwacunu::hero::super::super_loop_latest_turn_context_path(
+      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
+}
+
+[[nodiscard]] std::filesystem::path super_loop_latest_turn_outcome_path(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  return cuwacunu::hero::super::super_loop_latest_turn_outcome_path(
       std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
 }
 
@@ -998,17 +1113,17 @@ struct scoped_temp_path_t {
       << "\"memory_path\":" << json_quote(record.memory_path) << ","
       << "\"codex_session_id\":"
       << json_quote(record.codex_session_id) << ","
-      << "\"human_request_path\":"
-      << json_quote(record.human_request_path) << ","
-      << "\"human_response_path\":"
+      << "\"human_escalation_path\":"
+      << json_quote(record.human_escalation_path) << ","
+      << "\"human_resolution_path\":"
       << json_quote(
-             cuwacunu::hero::super::super_loop_human_response_latest_path(
+             cuwacunu::hero::super::super_loop_human_resolution_latest_path(
                  std::filesystem::path(record.loop_root).parent_path(),
                  record.loop_id)
                  .string())
-      << ",\"human_response_sig_path\":"
+      << ",\"human_resolution_sig_path\":"
       << json_quote(
-             cuwacunu::hero::super::super_loop_human_response_latest_sig_path(
+             cuwacunu::hero::super::super_loop_human_resolution_latest_sig_path(
                  std::filesystem::path(record.loop_root).parent_path(),
                  record.loop_id)
                  .string())
@@ -1020,17 +1135,27 @@ struct scoped_temp_path_t {
       << (record.finished_at_ms.has_value()
               ? std::to_string(*record.finished_at_ms)
               : "null")
-      << ",\"review_count\":" << record.review_count
-      << ",\"max_reviews\":" << record.max_reviews
+      << ",\"turn_count\":" << record.turn_count
+      << ",\"launch_count\":" << record.launch_count
+      << ",\"max_review_turns\":" << record.max_review_turns
+      << ",\"max_campaign_launches\":" << record.max_campaign_launches
+      << ",\"remaining_review_turns\":" << record.remaining_review_turns
+      << ",\"remaining_campaign_launches\":"
+      << record.remaining_campaign_launches
+      << ",\"authority_scope\":" << json_quote(record.authority_scope)
+      << ",\"latest_escalation_kind\":"
+      << json_quote(record.latest_escalation_kind)
       << ",\"active_campaign_cursor\":"
       << json_quote(record.active_campaign_cursor) << ","
-      << "\"last_control_kind\":"
-      << json_quote(record.last_control_kind) << ","
+      << "\"last_outcome_kind\":"
+      << json_quote(record.last_outcome_kind) << ","
       << "\"last_warning\":" << json_quote(record.last_warning) << ","
-      << "\"last_review_packet_path\":"
-      << json_quote(record.last_review_packet_path) << ","
-      << "\"last_decision_path\":"
-      << json_quote(record.last_decision_path) << ","
+      << "\"last_turn_context_path\":"
+      << json_quote(record.last_turn_context_path) << ","
+      << "\"last_turn_outcome_path\":"
+      << json_quote(record.last_turn_outcome_path) << ","
+      << "\"last_turn_mutation_path\":"
+      << json_quote(record.last_turn_mutation_path) << ","
       << "\"campaign_cursors\":" << campaign_cursors_json.str() << "}";
   return out.str();
 }
@@ -1060,15 +1185,118 @@ struct scoped_temp_path_t {
     const app_context_t& app,
     const cuwacunu::hero::super::super_loop_record_t& record,
     std::string* error) {
+  auto sync_human_summary_report =
+      [&](const cuwacunu::hero::super::super_loop_record_t& loop,
+          std::string* out_error) -> bool {
+    if (out_error) out_error->clear();
+    const std::filesystem::path report_path =
+        cuwacunu::hero::super::super_loop_human_report_path(
+            app.defaults.super_root, loop.loop_id);
+    const std::filesystem::path ack_path =
+        cuwacunu::hero::super::super_loop_human_report_ack_latest_path(
+            app.defaults.super_root, loop.loop_id);
+    const std::filesystem::path ack_sig_path =
+        cuwacunu::hero::super::super_loop_human_report_ack_latest_sig_path(
+            app.defaults.super_root, loop.loop_id);
+
+    if (!cuwacunu::hero::super::is_super_loop_finished_report_state(loop.state)) {
+      std::error_code ec{};
+      (void)std::filesystem::remove(report_path, ec);
+      (void)std::filesystem::remove(ack_path, ec);
+      (void)std::filesystem::remove(ack_sig_path, ec);
+      return true;
+    }
+
+    std::error_code ec{};
+    std::filesystem::create_directories(report_path.parent_path(), ec);
+    if (ec) {
+      if (out_error) {
+        *out_error = "cannot create human report dir: " +
+                     report_path.parent_path().string();
+      }
+      return false;
+    }
+
+    const std::string last_campaign_cursor =
+        loop.campaign_cursors.empty() ? std::string()
+                                      : loop.campaign_cursors.back();
+    std::ostringstream out;
+    out << "# Human Summary Report\n\n"
+        << "Loop ID: " << loop.loop_id << "\n"
+        << "State: " << loop.state << "\n"
+        << "Objective: " << loop.objective_name << "\n"
+        << "Finished At Ms: ";
+    if (loop.finished_at_ms.has_value()) {
+      out << *loop.finished_at_ms;
+    } else {
+      out << "<unset>";
+    }
+    out << "\n"
+        << "Last Outcome: "
+        << (trim_ascii(loop.last_outcome_kind).empty() ? "<unset>"
+                                                       : loop.last_outcome_kind)
+        << "\n";
+    if (!trim_ascii(last_campaign_cursor).empty()) {
+      out << "Last Campaign Cursor: " << last_campaign_cursor << "\n";
+    }
+    out << "\nSummary:\n"
+        << (trim_ascii(loop.state_detail).empty() ? "<no state detail>"
+                                                  : loop.state_detail)
+        << "\n\n";
+    if (!trim_ascii(loop.last_warning).empty()) {
+      out << "Warnings:\n" << loop.last_warning << "\n\n";
+    }
+    out << "This report is informational. Acknowledge it through Human Hero when"
+           " you have reviewed the outcome.\n\n"
+        << "Key files:\n"
+        << "- Loop manifest: "
+        << cuwacunu::hero::super::super_loop_manifest_path(app.defaults.super_root,
+                                                           loop.loop_id)
+               .string()
+        << "\n"
+        << "- Latest turn context: "
+        << cuwacunu::hero::super::super_loop_latest_turn_context_path(
+               app.defaults.super_root, loop.loop_id)
+               .string()
+        << "\n"
+        << "- Latest turn outcome: "
+        << cuwacunu::hero::super::super_loop_latest_turn_outcome_path(
+               app.defaults.super_root, loop.loop_id)
+               .string()
+        << "\n"
+        << "- Memory: " << loop.memory_path << "\n"
+        << "- Events: " << loop.events_path << "\n";
+    if (!trim_ascii(last_campaign_cursor).empty()) {
+      out << "- Runtime campaign: " << last_campaign_cursor << "\n";
+    }
+    out << "- Report ack target: " << ack_path.string() << "\n";
+
+    return cuwacunu::hero::runtime::write_text_file_atomic(report_path, out.str(),
+                                                           out_error);
+  };
+
   if (!cuwacunu::hero::super::write_super_loop_record(app.defaults.super_root,
                                                       record, error)) {
     return false;
+  }
+  std::string report_error{};
+  if (!sync_human_summary_report(record, &report_error)) {
+    std::cerr << "[hero_super_mcp][warning] failed to refresh Human Hero "
+                 "summary report artifact: "
+              << report_error << std::endl;
   }
   std::string marker_error{};
   if (!cuwacunu::hero::super::sync_human_pending_request_count(
           app.defaults.super_root, &marker_error)) {
     std::cerr << "[hero_super_mcp][warning] failed to refresh Human Hero "
                  "pending marker: "
+              << marker_error << std::endl;
+  }
+  marker_error.clear();
+  if (!cuwacunu::hero::super::sync_human_pending_report_count(
+          app.defaults.super_root, &marker_error)) {
+    std::cerr << "[hero_super_mcp][warning] failed to refresh Human Hero "
+                 "finished marker: "
               << marker_error << std::endl;
   }
   return true;
@@ -1606,6 +1834,10 @@ make_super_loop_workspace_context(const app_context_t& app) {
   return app.defaults.super_root / ".tool_io";
 }
 
+[[nodiscard]] std::filesystem::path human_tool_io_dir(const app_context_t& app) {
+  return app.defaults.super_root / ".tool_io";
+}
+
 [[nodiscard]] std::filesystem::path make_runtime_tool_io_path(
     const app_context_t& app, std::string_view stem) {
   const std::uint64_t salt =
@@ -1618,9 +1850,30 @@ make_super_loop_workspace_context(const app_context_t& app) {
           std::string(stem));
 }
 
+[[nodiscard]] std::filesystem::path make_human_tool_io_path(
+    const app_context_t& app, std::string_view stem) {
+  const std::uint64_t salt =
+      static_cast<std::uint64_t>(
+          std::chrono::steady_clock::now().time_since_epoch().count());
+  return human_tool_io_dir(app) /
+         ("human_tool." + std::to_string(cuwacunu::hero::runtime::now_ms_utc()) +
+          "." + std::to_string(static_cast<unsigned long long>(::getpid())) + "." +
+          cuwacunu::hero::runtime::hex_lower_u64(salt).substr(0, 8) + "." +
+          std::string(stem));
+}
+
 void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
                              const std::filesystem::path& stdout_path,
                              const std::filesystem::path& stderr_path) {
+  std::error_code ec{};
+  (void)std::filesystem::remove(stdin_path, ec);
+  (void)std::filesystem::remove(stdout_path, ec);
+  (void)std::filesystem::remove(stderr_path, ec);
+}
+
+void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
+                           const std::filesystem::path& stdout_path,
+                           const std::filesystem::path& stderr_path) {
   std::error_code ec{};
   (void)std::filesystem::remove(stdin_path, ec);
   (void)std::filesystem::remove(stdout_path, ec);
@@ -1699,6 +1952,84 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
       *error = !trim_ascii(stderr_text).empty()
                    ? trim_ascii(stderr_text)
                    : ("runtime tool exited non-zero: " + tool_name);
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool call_human_tool(const app_context_t& app,
+                                   const std::string& tool_name,
+                                   std::string arguments_json,
+                                   std::string* out_structured,
+                                   std::string* error) {
+  if (error) error->clear();
+  if (!out_structured) {
+    if (error) *error = "human structured output pointer is null";
+    return false;
+  }
+  *out_structured = "";
+
+  std::error_code ec{};
+  std::filesystem::create_directories(human_tool_io_dir(app), ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create human tool io dir: " +
+               human_tool_io_dir(app).string();
+    }
+    return false;
+  }
+
+  const std::filesystem::path stdin_path =
+      make_human_tool_io_path(app, "stdin.json");
+  const std::filesystem::path stdout_path =
+      make_human_tool_io_path(app, "stdout.json");
+  const std::filesystem::path stderr_path =
+      make_human_tool_io_path(app, "stderr.log");
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(stdin_path, "", error)) {
+    return false;
+  }
+
+  const std::vector<std::string> argv{
+      app.defaults.human_hero_binary.string(), "--global-config",
+      app.global_config_path.string(), "--tool", tool_name, "--args-json",
+      arguments_json};
+  int exit_code = -1;
+  std::string invoke_error{};
+  const bool invoked = run_command_with_stdio_and_timeout(
+      argv, stdin_path, stdout_path, stderr_path, nullptr, nullptr,
+      kHumanToolTimeoutSec, nullptr, &exit_code, &invoke_error);
+
+  std::string stdout_text{};
+  std::string stderr_text{};
+  std::string ignored{};
+  (void)cuwacunu::hero::runtime::read_text_file(stdout_path, &stdout_text, &ignored);
+  (void)cuwacunu::hero::runtime::read_text_file(stderr_path, &stderr_text, &ignored);
+  cleanup_human_tool_io(stdin_path, stdout_path, stderr_path);
+
+  if (!invoked && stdout_text.empty()) {
+    if (error) {
+      *error = !trim_ascii(stderr_text).empty() ? trim_ascii(stderr_text)
+                                                : invoke_error;
+    }
+    return false;
+  }
+  if (stdout_text.empty()) {
+    if (error) {
+      *error = !trim_ascii(stderr_text).empty()
+                   ? trim_ascii(stderr_text)
+                   : ("human tool call produced no stdout: " + tool_name);
+    }
+    return false;
+  }
+  if (!tool_result_structured_content(stdout_text, out_structured, error)) {
+    return false;
+  }
+  if (exit_code != 0) {
+    if (error) {
+      *error = !trim_ascii(stderr_text).empty()
+                   ? trim_ascii(stderr_text)
+                   : ("human tool exited non-zero: " + tool_name);
     }
     return false;
   }
@@ -1811,7 +2142,7 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
 
   cuwacunu::hero::super::super_loop_record_t loop{};
   loop.loop_id = loop_id;
-  loop.state = "launching";
+  loop.state = "bootstrap";
   loop.state_detail = "initializing super loop";
   loop.objective_name =
       trim_ascii(super_objective_spec.objective_name).empty()
@@ -1849,8 +2180,8 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
       cuwacunu::hero::super::super_loop_memory_path(app.defaults.super_root,
                                                               loop_id)
           .string();
-  loop.human_request_path =
-      cuwacunu::hero::super::super_loop_human_request_path(
+  loop.human_escalation_path =
+      cuwacunu::hero::super::super_loop_human_escalation_path(
           app.defaults.super_root, loop_id)
           .string();
   loop.events_path =
@@ -1859,7 +2190,11 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
           .string();
   loop.started_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   loop.updated_at_ms = loop.started_at_ms;
-  loop.max_reviews = app.defaults.super_max_reviews;
+  loop.max_review_turns = app.defaults.super_max_review_turns;
+  loop.max_campaign_launches = app.defaults.super_max_campaign_launches;
+  loop.remaining_review_turns = app.defaults.super_max_review_turns;
+  loop.remaining_campaign_launches = app.defaults.super_max_campaign_launches;
+  loop.authority_scope = "objective_only";
 
   if (!write_super_loop_bootstrap_files(
           workspace_context, source_super_objective_dsl_path,
@@ -1879,11 +2214,11 @@ void cleanup_runtime_tool_io(const std::filesystem::path& stdin_path,
 
 void append_memory_note(
     const cuwacunu::hero::super::super_loop_record_t& loop,
-    std::uint64_t review_index, std::string_view note) {
+    std::uint64_t turn_index, std::string_view note) {
   const std::string trimmed = trim_ascii(note);
   if (trimmed.empty()) return;
   std::ostringstream out;
-  out << "\n\n## Review " << review_index << "\n\n" << trimmed << "\n";
+  out << "\n\n## Turn " << turn_index << "\n\n" << trimmed << "\n";
   std::string ignored{};
   (void)cuwacunu::hero::runtime::append_text_file(loop.memory_path, out.str(),
                                                   &ignored);
@@ -1929,62 +2264,379 @@ void persist_super_loop_warning_best_effort(
                                                   &ignored);
 }
 
-[[nodiscard]] bool write_human_request_note(
-    const cuwacunu::hero::super::super_loop_record_t& loop,
-    std::uint64_t review_index, const super_review_decision_t& decision,
+[[nodiscard]] bool collect_objective_hash_snapshot(
+    const std::filesystem::path& objective_root, objective_hash_snapshot_t* out,
     std::string* error) {
   if (error) error->clear();
-  const std::string request = trim_ascii(
-      decision.human_request.empty() ? decision.reason : decision.human_request);
+  if (!out) {
+    if (error) *error = "objective hash snapshot output pointer is null";
+    return false;
+  }
+  out->clear();
+  if (objective_root.empty()) {
+    if (error) *error = "objective root is empty";
+    return false;
+  }
+
+  std::error_code ec{};
+  if (!std::filesystem::exists(objective_root, ec) ||
+      !std::filesystem::is_directory(objective_root, ec)) {
+    if (error) {
+      *error = "objective root does not exist or is not a directory: " +
+               objective_root.string();
+    }
+    return false;
+  }
+
+  std::vector<std::filesystem::path> files{};
+  for (std::filesystem::recursive_directory_iterator it(objective_root, ec), end;
+       it != end; it.increment(ec)) {
+    if (ec) {
+      if (error) {
+        *error = "cannot walk objective root: " + objective_root.string();
+      }
+      return false;
+    }
+    if (!it->is_regular_file(ec) || ec) {
+      ec.clear();
+      continue;
+    }
+    files.push_back(it->path().lexically_normal());
+  }
+  std::sort(files.begin(), files.end());
+
+  for (const auto& file : files) {
+    const std::filesystem::path relative =
+        file.lexically_relative(objective_root);
+    if (relative.empty()) continue;
+    std::string sha256_hex{};
+    if (!cuwacunu::hero::human::sha256_hex_file(file, &sha256_hex, error)) {
+      return false;
+    }
+    (*out)[relative.generic_string()] = std::move(sha256_hex);
+  }
+  return true;
+}
+
+[[nodiscard]] bool collect_objective_bundle_snapshot(
+    const std::filesystem::path& objective_root,
+    objective_bundle_snapshot_t* out_snapshot, std::string* error) {
+  if (error) error->clear();
+  if (!out_snapshot) {
+    if (error) *error = "objective bundle snapshot output pointer is null";
+    return false;
+  }
+  *out_snapshot = objective_bundle_snapshot_t{};
+  if (objective_root.empty()) {
+    if (error) *error = "objective root is empty";
+    return false;
+  }
+
+  std::error_code ec{};
+  if (!std::filesystem::exists(objective_root, ec) ||
+      !std::filesystem::is_directory(objective_root, ec)) {
+    if (error) {
+      *error = "objective root does not exist or is not a directory: " +
+               objective_root.string();
+    }
+    return false;
+  }
+
+  std::vector<std::filesystem::path> files{};
+  for (std::filesystem::recursive_directory_iterator it(objective_root, ec), end;
+       it != end; it.increment(ec)) {
+    if (ec) {
+      if (error) {
+        *error = "cannot walk objective root: " + objective_root.string();
+      }
+      return false;
+    }
+    if (!it->is_regular_file(ec) || ec) {
+      ec.clear();
+      continue;
+    }
+    files.push_back(it->path().lexically_normal());
+  }
+  std::sort(files.begin(), files.end());
+
+  for (const auto& file : files) {
+    const std::filesystem::path relative = file.lexically_relative(objective_root);
+    if (relative.empty()) continue;
+    const std::string relative_text = relative.generic_string();
+    if (!should_embed_objective_bundle_relative_path(relative_text)) continue;
+
+    std::string file_text{};
+    if (!cuwacunu::hero::runtime::read_text_file(file, &file_text, error)) {
+      return false;
+    }
+    const std::size_t file_bytes = file_text.size();
+    if (!out_snapshot->entries.empty() &&
+        out_snapshot->embedded_bytes + file_bytes >
+            kEmbeddedObjectiveBundleBytesCap) {
+      out_snapshot->truncated = true;
+      ++out_snapshot->omitted_files;
+      continue;
+    }
+    out_snapshot->embedded_bytes += file_bytes;
+    out_snapshot->entries.push_back(
+        objective_bundle_entry_t{relative_text, std::move(file_text)});
+  }
+  return true;
+}
+
+[[nodiscard]] bool write_turn_mutation_summary(
+    const app_context_t& app,
+    cuwacunu::hero::super::super_loop_record_t* loop, std::uint64_t turn_index,
+    const objective_hash_snapshot_t& before_snapshot,
+    const objective_hash_snapshot_t& after_snapshot, std::string* error) {
+  if (error) error->clear();
+  if (!loop) {
+    if (error) *error = "turn mutation loop pointer is null";
+    return false;
+  }
+
+  struct mutation_row_t {
+    std::string path{};
+    std::string change_kind{};
+    std::string before_sha256_hex{};
+    std::string after_sha256_hex{};
+  };
+
+  std::vector<mutation_row_t> rows{};
+  auto before_it = before_snapshot.begin();
+  auto after_it = after_snapshot.begin();
+  while (before_it != before_snapshot.end() || after_it != after_snapshot.end()) {
+    if (after_it == after_snapshot.end() ||
+        (before_it != before_snapshot.end() &&
+         before_it->first < after_it->first)) {
+      rows.push_back(mutation_row_t{before_it->first, "deleted", before_it->second,
+                                    ""});
+      ++before_it;
+      continue;
+    }
+    if (before_it == before_snapshot.end() ||
+        after_it->first < before_it->first) {
+      rows.push_back(mutation_row_t{after_it->first, "created", "",
+                                    after_it->second});
+      ++after_it;
+      continue;
+    }
+    if (before_it->second != after_it->second) {
+      rows.push_back(mutation_row_t{before_it->first, "updated", before_it->second,
+                                    after_it->second});
+    }
+    ++before_it;
+    ++after_it;
+  }
+
+  if (rows.empty()) {
+    loop->last_turn_mutation_path.clear();
+    std::error_code ec{};
+    std::filesystem::remove(
+        cuwacunu::hero::super::super_loop_latest_turn_mutation_path(
+            app.defaults.super_root, loop->loop_id),
+        ec);
+    return true;
+  }
+
   std::ostringstream out;
-  out << "# Human Review Requested\n\n"
+  out << "{"
+      << "\"schema\":" << json_quote(kTurnMutationSchemaV2) << ","
+      << "\"loop_id\":" << json_quote(loop->loop_id) << ","
+      << "\"turn_index\":" << turn_index << ","
+      << "\"objective_root\":" << json_quote(loop->objective_root) << ","
+      << "\"changed_file_count\":" << rows.size() << ","
+      << "\"files\":[";
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    if (i != 0) out << ",";
+    out << "{"
+        << "\"path\":" << json_quote(rows[i].path) << ","
+        << "\"change_kind\":" << json_quote(rows[i].change_kind) << ","
+        << "\"before_sha256_hex\":"
+        << json_quote(rows[i].before_sha256_hex) << ","
+        << "\"after_sha256_hex\":"
+        << json_quote(rows[i].after_sha256_hex) << "}";
+  }
+  out << "]}";
+
+  const std::filesystem::path mutation_path =
+      cuwacunu::hero::super::super_loop_turn_mutation_path(
+          app.defaults.super_root, loop->loop_id, turn_index);
+  const std::filesystem::path latest_mutation_path =
+      cuwacunu::hero::super::super_loop_latest_turn_mutation_path(
+          app.defaults.super_root, loop->loop_id);
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(mutation_path, out.str(),
+                                                       error)) {
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(
+          latest_mutation_path, out.str(), error)) {
+    return false;
+  }
+  loop->last_turn_mutation_path = mutation_path.string();
+  return true;
+}
+
+[[nodiscard]] bool materialize_human_escalation(
+    const app_context_t& app,
+    const cuwacunu::hero::super::super_loop_record_t& loop,
+    std::uint64_t turn_index, const super_review_decision_t& decision,
+    std::string* error) {
+  if (error) error->clear();
+  std::ostringstream out;
+  out << "# Human Escalation Required\n\n"
       << "Loop ID: " << loop.loop_id << "\n"
-      << "Review: " << review_index << "\n"
-      << "Control: " << decision.control_kind << "\n\n"
+      << "Turn: " << turn_index << "\n"
+      << "Escalation Kind: " << decision.escalation_kind << "\n"
+      << "Current Authority Scope: " << loop.authority_scope << "\n"
+      << "Remaining Review Turns: " << loop.remaining_review_turns << "\n"
+      << "Remaining Campaign Launches: " << loop.remaining_campaign_launches
+      << "\n\n"
       << "Reason:\n" << decision.reason << "\n\n"
-      << "Operator request:\n" << request << "\n\n"
-      << "Key files:\n"
-      << "- Loop manifest: " << loop.loop_root << "/loop.lls\n"
-      << "- Review packet: " << super_loop_latest_review_packet_path(loop).string()
+      << "Operator request:\n" << decision.escalation_request << "\n\n";
+  if (decision.escalation_kind == "authority_expansion") {
+    out << "Requested authority delta:\n"
+        << "- allow_default_write: "
+        << (decision.escalation_allow_default_write ? "true" : "false") << "\n\n";
+  } else if (decision.escalation_kind == "budget_expansion") {
+    out << "Requested budget delta:\n"
+        << "- additional_review_turns: "
+        << decision.escalation_additional_review_turns << "\n"
+        << "- additional_campaign_launches: "
+        << decision.escalation_additional_campaign_launches << "\n\n";
+  }
+  out << "Key files:\n"
+      << "- Loop manifest: "
+      << cuwacunu::hero::super::super_loop_manifest_path(app.defaults.super_root,
+                                                         loop.loop_id)
+             .string()
       << "\n"
-      << "- Decision: " << super_loop_latest_decision_path(loop).string() << "\n"
+      << "- Latest turn context: "
+      << cuwacunu::hero::super::super_loop_latest_turn_context_path(
+             app.defaults.super_root, loop.loop_id)
+             .string()
+      << "\n"
+      << "- Latest turn outcome: "
+      << cuwacunu::hero::super::super_loop_latest_turn_outcome_path(
+             app.defaults.super_root, loop.loop_id)
+             .string()
+      << "\n"
       << "- Memory: " << loop.memory_path << "\n"
       << "- Events: " << loop.events_path << "\n";
-  return cuwacunu::hero::runtime::write_text_file_atomic(loop.human_request_path,
-                                                         out.str(), error);
+  return cuwacunu::hero::runtime::write_text_file_atomic(
+      loop.human_escalation_path, out.str(), error);
 }
 
-[[nodiscard]] super_review_decision_t human_response_to_super_decision(
-    const cuwacunu::hero::human::human_response_record_t& response) {
-  super_review_decision_t decision{};
-  decision.control_kind = response.control_kind;
-  decision.next_action_kind = response.next_action_kind;
-  decision.target_binding_id = response.target_binding_id;
-  decision.reset_runtime_state = response.reset_runtime_state;
-  decision.reason = response.reason;
-  decision.memory_note = response.memory_note;
-  decision.human_request.clear();
-  return decision;
+void append_human_resolution_note(
+    const cuwacunu::hero::super::super_loop_record_t& loop,
+    const cuwacunu::hero::human::human_resolution_record_t& resolution,
+    const std::filesystem::path& response_path,
+    const std::filesystem::path& signature_path) {
+  std::ostringstream out;
+  out << "\n\n## Human Resolution to Turn " << resolution.turn_index << "\n\n"
+      << "- operator_id: " << resolution.operator_id << "\n"
+      << "- resolved_at_ms: " << resolution.resolved_at_ms << "\n"
+      << "- resolution_kind: " << resolution.resolution_kind << "\n"
+      << "- escalation_kind: " << resolution.escalation_kind << "\n"
+      << "- resolution_path: " << response_path.string() << "\n"
+      << "- resolution_sig_path: " << signature_path.string() << "\n";
+  if (resolution.resolution_kind == "grant") {
+    out << "- grant.allow_default_write: "
+        << (resolution.grant_allow_default_write ? "true" : "false") << "\n"
+        << "- grant.additional_review_turns: "
+        << resolution.grant_additional_review_turns << "\n"
+        << "- grant.additional_campaign_launches: "
+        << resolution.grant_additional_campaign_launches << "\n";
+  }
+  out << "\nReason:\n" << trim_ascii(resolution.reason) << "\n";
+  std::string ignored{};
+  (void)cuwacunu::hero::runtime::append_text_file(loop.memory_path, out.str(),
+                                                  &ignored);
 }
 
-[[nodiscard]] bool load_verified_human_response(
+[[nodiscard]] bool build_super_human_followup_turn_context_json(
+    const app_context_t& app,
+    const cuwacunu::hero::super::super_loop_record_t& loop,
+    std::uint64_t review_index,
+    const std::filesystem::path& prior_turn_context_path,
+    const std::filesystem::path& response_path,
+    const std::filesystem::path& response_sig_path,
+    const cuwacunu::hero::human::human_resolution_record_t& response,
+    std::string* out_json, std::string* error) {
+  if (error) error->clear();
+  if (!out_json) {
+    if (error) *error = "human followup turn context output pointer is null";
+    return false;
+  }
+  out_json->clear();
+
+  std::ostringstream out;
+  out << "{"
+      << "\"schema\":" << json_quote(kTurnContextSchemaV2) << ","
+      << "\"phase\":\"human_resolution_followup\","
+      << "\"turn_index\":" << review_index
+      << ",\"loop\":" << super_loop_to_json(loop)
+      << ",\"prior_turn_context_path\":"
+      << json_quote(prior_turn_context_path.string())
+      << ",\"human_escalation_path\":"
+      << json_quote(loop.human_escalation_path)
+      << ",\"human_resolution_path\":" << json_quote(response_path.string())
+      << ",\"human_resolution_sig_path\":"
+      << json_quote(response_sig_path.string())
+      << ",\"verified_human_resolution\":{"
+      << "\"operator_id\":" << json_quote(response.operator_id) << ","
+      << "\"resolved_at_ms\":" << response.resolved_at_ms << ","
+      << "\"resolution_kind\":" << json_quote(response.resolution_kind) << ","
+      << "\"escalation_kind\":" << json_quote(response.escalation_kind) << ","
+      << "\"reason\":" << json_quote(response.reason) << ","
+      << "\"grant_delta\":{"
+      << "\"allow_default_write\":"
+      << bool_json(response.grant_allow_default_write) << ","
+      << "\"additional_review_turns\":"
+      << response.grant_additional_review_turns << ","
+      << "\"additional_campaign_launches\":"
+      << response.grant_additional_campaign_launches << "}"
+      << "},\"memory_path\":" << json_quote(loop.memory_path)
+      << ",\"super_objective_dsl_path\":"
+      << json_quote(loop.super_objective_dsl_path)
+      << ",\"super_objective_md_path\":"
+      << json_quote(loop.super_objective_md_path)
+      << ",\"super_guidance_md_path\":"
+      << json_quote(loop.super_guidance_md_path)
+      << ",\"config_policy_path\":"
+      << json_quote(loop.config_policy_path)
+      << ",\"briefing_path\":" << json_quote(loop.briefing_path)
+      << ",\"mutable_objective_root\":"
+      << json_quote(loop.objective_root)
+      << ",\"objective_campaign_dsl_path\":"
+      << json_quote(loop.campaign_dsl_path)
+      << ",\"objective_root\":" << json_quote(loop.objective_root)
+      << ",\"campaigns_root\":"
+      << json_quote(campaigns_root_for_app(app).string())
+      << ",\"super_root\":" << json_quote(app.defaults.super_root.string())
+      << "}";
+  *out_json = out.str();
+  return true;
+}
+
+[[nodiscard]] bool load_verified_human_resolution(
     const app_context_t& app,
     const cuwacunu::hero::super::super_loop_record_t& loop,
     const std::filesystem::path& response_path,
     const std::filesystem::path& signature_path,
-    cuwacunu::hero::human::human_response_record_t* out_response,
+    cuwacunu::hero::human::human_resolution_record_t* out_response,
     std::string* out_signature_hex, std::string* error) {
   if (error) error->clear();
   if (!out_response || !out_signature_hex) {
-    if (error) *error = "human response outputs are null";
+    if (error) *error = "human resolution outputs are null";
     return false;
   }
-  *out_response = cuwacunu::hero::human::human_response_record_t{};
+  *out_response = cuwacunu::hero::human::human_resolution_record_t{};
   out_signature_hex->clear();
 
   if (app.defaults.human_operator_identities.empty()) {
     if (error) {
-      *error = "Super Hero defaults missing human_operator_identities; cannot verify human response";
+      *error = "Super Hero defaults missing human_operator_identities; cannot verify human resolution";
     }
     return false;
   }
@@ -2001,14 +2653,14 @@ void persist_super_loop_warning_best_effort(
   }
   signature_hex = trim_ascii(signature_hex);
 
-  cuwacunu::hero::human::human_response_record_t response{};
-  if (!cuwacunu::hero::human::parse_human_response_json(response_text, &response,
+  cuwacunu::hero::human::human_resolution_record_t response{};
+  if (!cuwacunu::hero::human::parse_human_resolution_json(response_text, &response,
                                                         error)) {
     return false;
   }
 
   std::string verified_fingerprint{};
-  if (!cuwacunu::hero::human::verify_human_response_json_signature(
+  if (!cuwacunu::hero::human::verify_human_attested_json_signature(
           app.defaults.human_operator_identities, response.operator_id,
           response_text, signature_hex, &verified_fingerprint, error)) {
     return false;
@@ -2021,22 +2673,21 @@ void persist_super_loop_warning_best_effort(
     return false;
   }
   if (response.loop_id != loop.loop_id) {
-    if (error) *error = "human response loop_id does not match target loop";
+    if (error) *error = "human resolution loop_id does not match target loop";
     return false;
   }
-  if (response.review_index != loop.review_count) {
-    if (error) *error = "human response review_index does not match pending review";
+  if (response.turn_index != loop.turn_count) {
+    if (error) *error = "human resolution turn_index does not match pending turn";
     return false;
   }
   std::string request_sha256_hex{};
-  if (!cuwacunu::hero::human::sha256_hex_file(loop.human_request_path,
+  if (!cuwacunu::hero::human::sha256_hex_file(loop.human_escalation_path,
                                               &request_sha256_hex, error)) {
     return false;
   }
-  if (response.request_sha256_hex != request_sha256_hex) {
+  if (response.escalation_sha256_hex != request_sha256_hex) {
     if (error) {
-      *error =
-          "human response request_sha256_hex does not match current human request artifact";
+      *error = "human resolution escalation_sha256_hex does not match current escalation artifact";
     }
     return false;
   }
@@ -2047,28 +2698,47 @@ void persist_super_loop_warning_best_effort(
 
 [[nodiscard]] std::string super_decision_schema_json() {
   return "{\"type\":\"object\",\"properties\":{"
-         "\"control_kind\":{\"type\":\"string\",\"enum\":[\"continue\",\"stop\",\"need_human\"]},"
-         "\"next_action\":{\"type\":\"object\",\"properties\":{"
-         "\"kind\":{\"type\":\"string\",\"enum\":[\"none\",\"default_plan\",\"binding\"]},"
-         "\"target_binding_id\":{\"type\":\"string\"},"
-         "\"reset_runtime_state\":{\"type\":\"boolean\"}"
-         "},\"required\":[\"kind\",\"target_binding_id\",\"reset_runtime_state\"],\"additionalProperties\":false},"
+         "\"outcome\":{\"type\":\"string\",\"enum\":[\"launch\",\"escalate\",\"success\",\"stop\",\"fail\"]},"
+         "\"launch\":{\"type\":[\"object\",\"null\"],\"properties\":{"
+         "\"mode\":{\"type\":\"string\",\"enum\":[\"run_plan\",\"binding\"]},"
+         "\"binding_id\":{\"type\":[\"string\",\"null\"]},"
+         "\"reset_runtime_state\":{\"type\":\"boolean\"},"
+         "\"requires_objective_mutation\":{\"type\":\"boolean\"}"
+         "},\"required\":[\"mode\",\"binding_id\",\"reset_runtime_state\",\"requires_objective_mutation\"],\"additionalProperties\":false},"
+         "\"escalation\":{\"type\":[\"object\",\"null\"],\"properties\":{"
+         "\"kind\":{\"type\":\"string\",\"enum\":[\"authority_expansion\",\"budget_expansion\",\"objective_clarification\"]},"
+         "\"request\":{\"type\":\"string\"},"
+         "\"delta\":{\"type\":[\"object\",\"null\"],\"properties\":{"
+         "\"allow_default_write\":{\"type\":\"boolean\"},"
+         "\"additional_review_turns\":{\"type\":\"integer\"},"
+         "\"additional_campaign_launches\":{\"type\":\"integer\"}"
+         "},\"required\":[\"allow_default_write\",\"additional_review_turns\",\"additional_campaign_launches\"],\"additionalProperties\":false}"
+         "},\"required\":[\"kind\",\"request\",\"delta\"],\"additionalProperties\":false},"
          "\"reason\":{\"type\":\"string\"},"
-         "\"memory_note\":{\"type\":\"string\"},"
-         "\"human_request\":{\"type\":\"string\"}"
-         "},\"required\":[\"control_kind\",\"next_action\",\"reason\",\"memory_note\",\"human_request\"],\"additionalProperties\":false}";
+         "\"memory_note\":{\"type\":\"string\"}"
+         "},\"required\":[\"outcome\",\"launch\",\"escalation\",\"reason\",\"memory_note\"],\"additionalProperties\":false}";
 }
 
 [[nodiscard]] bool validate_super_review_decision_action(
     const app_context_t& app,
     const cuwacunu::hero::super::super_loop_record_t& loop,
-    const super_review_decision_t& decision, std::string* error) {
+    const super_review_decision_t& decision,
+    bool objective_mutation_materialized, std::string* error) {
   if (error) error->clear();
-  if (decision.control_kind == "continue") {
-    if (decision.next_action_kind == "default_plan") {
+  if (decision.outcome == "launch") {
+    if (decision.launch_requires_objective_mutation &&
+        !objective_mutation_materialized) {
+      if (error) {
+        *error =
+            "launch.requires_objective_mutation=true but no objective-local "
+            "mutation artifact was produced in this planning turn";
+      }
+      return false;
+    }
+    if (decision.launch_mode == "run_plan") {
       return true;
     }
-    if (decision.next_action_kind == "binding") {
+    if (decision.launch_mode == "binding") {
       cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
       if (!decode_campaign_snapshot(app, loop.campaign_dsl_path,
                                     &instruction, error)) {
@@ -2076,21 +2746,50 @@ void persist_super_loop_warning_best_effort(
       }
       const auto bind_it = std::find_if(
           instruction.binds.begin(), instruction.binds.end(),
-          [&](const auto& bind) { return bind.id == decision.target_binding_id; });
+          [&](const auto& bind) { return bind.id == decision.launch_binding_id; });
       if (bind_it == instruction.binds.end()) {
         if (error) {
-          *error =
-              "continue decision target_binding_id is not declared in campaign: " +
-              decision.target_binding_id;
+          *error = "launch outcome binding_id is not declared in campaign: " +
+                   decision.launch_binding_id;
         }
         return false;
       }
       return true;
     }
     if (error) {
-      *error = "unsupported next_action.kind: " + decision.next_action_kind;
+      *error = "unsupported launch.mode: " + decision.launch_mode;
     }
     return false;
+  }
+  if (decision.outcome == "escalate") {
+    if (decision.escalation_kind != "authority_expansion" &&
+        decision.escalation_kind != "budget_expansion" &&
+        decision.escalation_kind != "objective_clarification") {
+      if (error) {
+        *error = "unsupported escalation.kind: " + decision.escalation_kind;
+      }
+      return false;
+    }
+    if (trim_ascii(decision.escalation_request).empty()) {
+      if (error) *error = "escalate outcome requires escalation.request";
+      return false;
+    }
+    if (decision.escalation_kind == "authority_expansion" &&
+        !decision.escalation_allow_default_write) {
+      if (error) {
+        *error =
+            "authority_expansion escalation must request allow_default_write";
+      }
+      return false;
+    }
+    if (decision.escalation_kind == "budget_expansion" &&
+        decision.escalation_additional_review_turns == 0 &&
+        decision.escalation_additional_campaign_launches == 0) {
+      if (error) {
+        *error = "budget_expansion escalation requires at least one positive delta";
+      }
+      return false;
+    }
   }
   return true;
 }
@@ -2105,69 +2804,94 @@ void persist_super_loop_warning_best_effort(
   }
   *out = super_review_decision_t{};
   if (!extract_json_string_field(json, "reason", &out->reason)) {
-    if (error) *error = "decision JSON missing required reason";
+    if (error) *error = "turn outcome JSON missing required reason";
     return false;
   }
-  if (!extract_json_string_field(json, "control_kind", &out->control_kind)) {
-    if (error) *error = "decision JSON missing required control_kind";
+  if (!extract_json_string_field(json, "outcome", &out->outcome)) {
+    if (error) *error = "turn outcome JSON missing required outcome";
     return false;
   }
-  std::string next_action_json{};
-  if (extract_json_object_field(json, "next_action", &next_action_json)) {
-    (void)extract_json_string_field(next_action_json, "kind",
-                                    &out->next_action_kind);
-    (void)extract_json_string_field(next_action_json, "target_binding_id",
-                                    &out->target_binding_id);
-    if (extract_json_field_raw(next_action_json, "reset_runtime_state",
-                               nullptr) &&
-        !extract_json_bool_field(next_action_json, "reset_runtime_state",
-                                 &out->reset_runtime_state)) {
+  std::string launch_json{};
+  if (extract_json_object_field(json, "launch", &launch_json)) {
+    (void)extract_json_string_field(launch_json, "mode", &out->launch_mode);
+    (void)extract_json_string_field(launch_json, "binding_id",
+                                    &out->launch_binding_id);
+    if (extract_json_field_raw(launch_json, "reset_runtime_state", nullptr) &&
+        !extract_json_bool_field(launch_json, "reset_runtime_state",
+                                 &out->launch_reset_runtime_state)) {
       if (error) {
-        *error = "next_action.reset_runtime_state must be boolean when present";
+        *error = "launch.reset_runtime_state must be boolean when present";
+      }
+      return false;
+    }
+    if (extract_json_field_raw(launch_json, "requires_objective_mutation",
+                               nullptr) &&
+        !extract_json_bool_field(launch_json, "requires_objective_mutation",
+                                 &out->launch_requires_objective_mutation)) {
+      if (error) {
+        *error =
+            "launch.requires_objective_mutation must be boolean when present";
       }
       return false;
     }
   }
   (void)extract_json_string_field(json, "memory_note", &out->memory_note);
-  (void)extract_json_string_field(json, "human_request", &out->human_request);
-  out->control_kind = trim_ascii(out->control_kind);
-  out->next_action_kind = trim_ascii(out->next_action_kind);
-  out->target_binding_id = trim_ascii(out->target_binding_id);
-  out->memory_note = trim_ascii(out->memory_note);
-  out->human_request = trim_ascii(out->human_request);
-  if (out->control_kind != "continue" && out->control_kind != "stop" &&
-      out->control_kind != "need_human") {
-    if (error) *error = "unsupported control_kind: " + out->control_kind;
-    return false;
-  }
-  if (out->next_action_kind != "none" && out->next_action_kind != "default_plan" &&
-      out->next_action_kind != "binding") {
-    if (error) *error = "unsupported next_action.kind: " + out->next_action_kind;
-    return false;
-  }
-  if (out->control_kind == "continue" && out->next_action_kind == "none") {
-    if (error) *error = "continue decision requires actionable next_action.kind";
-    return false;
-  }
-  if (out->control_kind != "continue") {
-    if (out->next_action_kind != "none") {
-      if (error) {
-        *error =
-            "stop/need_human decisions must use next_action.kind=none";
-      }
-      return false;
+  std::string escalation_json{};
+  if (extract_json_object_field(json, "escalation", &escalation_json)) {
+    (void)extract_json_string_field(escalation_json, "kind",
+                                    &out->escalation_kind);
+    (void)extract_json_string_field(escalation_json, "request",
+                                    &out->escalation_request);
+    std::string delta_json{};
+    if (extract_json_object_field(escalation_json, "delta", &delta_json)) {
+      (void)extract_json_bool_field(delta_json, "allow_default_write",
+                                    &out->escalation_allow_default_write);
+      (void)extract_json_u64_field(delta_json, "additional_review_turns",
+                                   &out->escalation_additional_review_turns);
+      (void)extract_json_u64_field(delta_json,
+                                   "additional_campaign_launches",
+                                   &out->escalation_additional_campaign_launches);
     }
-    out->next_action_kind.clear();
-    out->target_binding_id.clear();
-    out->reset_runtime_state = false;
   }
-  if (out->next_action_kind == "default_plan") out->target_binding_id.clear();
-  if (out->next_action_kind == "binding" && out->target_binding_id.empty()) {
-    if (error) *error = "next_action.kind=binding requires target_binding_id";
+  out->outcome = trim_ascii(out->outcome);
+  out->launch_mode = trim_ascii(out->launch_mode);
+  out->launch_binding_id = trim_ascii(out->launch_binding_id);
+  out->escalation_kind = trim_ascii(out->escalation_kind);
+  out->escalation_request = trim_ascii(out->escalation_request);
+  out->memory_note = trim_ascii(out->memory_note);
+  if (out->outcome != "launch" && out->outcome != "escalate" &&
+      out->outcome != "success" && out->outcome != "stop" &&
+      out->outcome != "fail") {
+    if (error) *error = "unsupported outcome: " + out->outcome;
     return false;
   }
-  if (out->control_kind == "need_human" && out->human_request.empty()) {
-    if (error) *error = "need_human decision requires human_request";
+  if (out->outcome == "launch" && out->launch_mode.empty()) {
+    if (error) *error = "launch outcome requires launch.mode";
+    return false;
+  }
+  if (!out->launch_mode.empty() && out->launch_mode != "run_plan" &&
+      out->launch_mode != "binding") {
+    if (error) *error = "unsupported launch.mode: " + out->launch_mode;
+    return false;
+  }
+  if (out->launch_mode == "binding" && out->launch_binding_id.empty()) {
+    if (error) *error = "launch.mode=binding requires launch.binding_id";
+    return false;
+  }
+  if (out->outcome != "launch") {
+    out->launch_mode.clear();
+    out->launch_binding_id.clear();
+    out->launch_reset_runtime_state = false;
+    out->launch_requires_objective_mutation = false;
+  }
+  if (out->outcome != "escalate") {
+    out->escalation_kind.clear();
+    out->escalation_request.clear();
+    out->escalation_allow_default_write = false;
+    out->escalation_additional_review_turns = 0;
+    out->escalation_additional_campaign_launches = 0;
+  } else if (out->escalation_kind.empty()) {
+    if (error) *error = "escalate outcome requires escalation.kind";
     return false;
   }
   return true;
@@ -2199,11 +2923,46 @@ void persist_super_loop_warning_best_effort(
     (void)cuwacunu::hero::runtime::read_text_file(loop.memory_path, &memory_text,
                                                   &ignored);
   }
-  std::string review_packet_text{};
+  std::string turn_context_text{};
   {
     std::string ignored{};
     (void)cuwacunu::hero::runtime::read_text_file(
-        super_loop_latest_review_packet_path(loop), &review_packet_text, &ignored);
+        cuwacunu::hero::super::super_loop_latest_turn_context_path(
+            std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id),
+        &turn_context_text, &ignored);
+  }
+  std::string turn_phase{};
+  std::string prior_turn_context_text{};
+  std::string human_escalation_text{};
+  std::string human_resolution_text{};
+  if (!trim_ascii(turn_context_text).empty()) {
+    (void)extract_json_string_field(turn_context_text, "phase", &turn_phase);
+    if (trim_ascii(turn_phase) == "human_resolution_followup") {
+      std::string prior_turn_context_path{};
+      if (extract_json_string_field(turn_context_text, "prior_turn_context_path",
+                                    &prior_turn_context_path) &&
+          !trim_ascii(prior_turn_context_path).empty()) {
+        std::string ignored{};
+        (void)cuwacunu::hero::runtime::read_text_file(prior_turn_context_path,
+                                                      &prior_turn_context_text,
+                                                      &ignored);
+      }
+      std::string human_resolution_path{};
+      if (extract_json_string_field(turn_context_text, "human_resolution_path",
+                                    &human_resolution_path) &&
+          !trim_ascii(human_resolution_path).empty()) {
+        std::string ignored{};
+        (void)cuwacunu::hero::runtime::read_text_file(human_resolution_path,
+                                                      &human_resolution_text,
+                                                      &ignored);
+      }
+    }
+  }
+  {
+    std::string ignored{};
+    (void)cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path,
+                                                  &human_escalation_text,
+                                                  &ignored);
   }
   std::string campaign_text{};
   {
@@ -2211,10 +2970,30 @@ void persist_super_loop_warning_best_effort(
     (void)cuwacunu::hero::runtime::read_text_file(loop.campaign_dsl_path,
                                                   &campaign_text, &ignored);
   }
+  objective_bundle_snapshot_t objective_bundle_snapshot{};
+  {
+    std::string ignored{};
+    (void)collect_objective_bundle_snapshot(std::filesystem::path(loop.objective_root),
+                                            &objective_bundle_snapshot,
+                                            &ignored);
+  }
+  std::string objective_campaign_relative_path =
+      std::filesystem::path(loop.campaign_dsl_path).filename().string();
+  {
+    const std::filesystem::path relative_path =
+        std::filesystem::path(loop.campaign_dsl_path)
+            .lexically_relative(std::filesystem::path(loop.objective_root));
+    if (!relative_path.empty() && !relative_path.is_absolute()) {
+      const std::string relative_text = relative_path.string();
+      if (!relative_text.empty() && relative_text.rfind("..", 0) != 0) {
+        objective_campaign_relative_path = relative_text;
+      }
+    }
+  }
   std::ostringstream out;
-  out << "You are reviewing a Super Hero loop.\n\n"
+  out << "You are planning inside a Super Hero loop.\n\n"
       << "Sovereignty:\n"
-      << "- Super Hero owns the loop ledger and the continue/stop decision.\n"
+      << "- Super Hero owns the loop ledger and autonomous turn orchestration.\n"
       << "- Runtime Hero executes campaigns only.\n"
       << "- Config Hero is the only writer for objective/default file changes.\n"
       << "- Hashimyei and Lattice are read-only evidence surfaces in this session.\n\n"
@@ -2222,14 +3001,20 @@ void persist_super_loop_warning_best_effort(
       << "- Super objective DSL: " << loop.super_objective_dsl_path << "\n"
       << "- Super objective markdown: " << loop.super_objective_md_path << "\n"
       << "- Super guidance markdown: " << loop.super_guidance_md_path << "\n"
-      << "- Super Hero loop manifest: " << loop.loop_root << "/loop.lls\n"
+      << "- Super Hero loop manifest: "
+      << cuwacunu::hero::super::super_loop_manifest_path(app.defaults.super_root,
+                                                         loop.loop_id)
+             .string()
+      << "\n"
       << "- Config Hero policy: " << loop.config_policy_path << "\n"
       << "- Memory: " << loop.memory_path << "\n"
-      << "- Review packet: "
-      << super_loop_latest_review_packet_path(loop).string() << "\n"
-      << "- Human request artifact: " << loop.human_request_path << "\n"
-      << "- Mutable objective root: " << loop.objective_root << "\n\n"
-      << "The review packet includes phase = prelaunch or postcampaign.\n\n"
+      << "- Latest turn context: "
+      << super_loop_latest_turn_context_path(loop).string() << "\n"
+      << "- Human escalation artifact: " << loop.human_escalation_path << "\n"
+      << "- Mutable objective root: " << loop.objective_root << "\n"
+      << "- Objective campaign file for hero.config.objective.*: "
+      << objective_campaign_relative_path << "\n\n"
+      << "The turn context includes phase = bootstrap, postcampaign, or human_resolution_followup.\n\n"
       << "Interpret the authored markdown in this order:\n"
       << "- objective markdown = what the loop is trying to achieve\n"
       << "- guidance markdown = authored boundaries plus advisory heuristics; prefer stronger evidence when the guidance is not a hard rule\n\n"
@@ -2255,29 +3040,35 @@ void persist_super_loop_warning_best_effort(
       << "- hero.lattice.get_view\n\n"
       << "Rules:\n"
       << "1. Work in read-only shell mode. Do not edit files directly.\n"
-      << "2. Do not use hero.hashimyei.* tools in this review session; prefer review_packet evidence plus hero.lattice.* queries.\n"
+      << "2. Do not use hero.hashimyei.* tools in this planning session; prefer turn_context evidence plus hero.lattice.* queries.\n"
       << "3. Use Config Hero objective.read/create/replace/delete for truth-source objective files under objective_root.\n"
       << "4. Use Config Hero default.read/create/replace/delete only when a shared default truly needs to change.\n"
       << "5. Pass objective_root=" << loop.objective_root
       << " to those Config Hero tools.\n"
-      << "6. Prefer whole-file replace with expected_sha256 from the prior read.\n"
-      << "7. Never mutate files outside the configured objective/default roots.\n"
-      << "8. Prefer the review packet first, then hero.lattice.get_view/get_fact for semantic evidence.\n"
-      << "9. Use hero.lattice.list_views/list_facts to discover selectors; family_evaluation_report requires a family canonical_path plus contract_hash.\n"
-      << "10. Use Runtime get/tail tools mainly for operational debugging such as launch failures, missing logs, or abnormal traces.\n"
-      << "11. Shell exec is unavailable in this environment. Prefer the embedded review packet, memory, and objective campaign contents below; use MCP tools instead of shell reads.\n"
-      << "12. If you change any objective or campaign DSL, describe the actual changes in memory_note.\n"
-      << "13. Prefer stopping or need_human when evidence is weak or authority would need to widen.\n"
-      << "14. Return only JSON matching the provided output schema.\n\n"
-      << "Decision contract:\n"
-      << "- control_kind = continue | stop | need_human\n"
-      << "- Always include next_action with kind = none | default_plan | binding\n"
-      << "- continue requires next_action.kind = default_plan | binding\n"
-      << "- stop and need_human must use next_action.kind = none\n"
-      << "- binding requires next_action.target_binding_id\n"
-      << "- Always include next_action.reset_runtime_state as true or false\n"
-      << "- Always include memory_note and human_request as strings; use empty string when not applicable\n"
-      << "- need_human requires a non-empty human_request\n\n"
+      << "6. Use hero.config.objective.list when you need the exact relative path under objective_root; do not assume generic names like campaign.dsl.\n"
+      << "7. In this loop, the objective-local campaign file path for hero.config.objective.* is "
+      << objective_campaign_relative_path << ".\n"
+      << "8. Prefer whole-file replace with expected_sha256 from the prior read.\n"
+      << "9. Never mutate files outside the configured objective/default roots.\n"
+      << "10. Prefer the turn context first, then hero.lattice.get_view/get_fact for semantic evidence.\n"
+      << "11. Use hero.lattice.list_views/list_facts to discover selectors; family_evaluation_report requires a family canonical_path plus contract_hash.\n"
+      << "12. Use Runtime get/tail tools mainly for operational debugging such as launch failures, missing logs, or abnormal traces.\n"
+      << "13. Shell exec is unavailable in this environment. Prefer the embedded turn context, memory, and objective bundle snapshot below; use MCP tools instead of shell reads.\n"
+      << "14. If you change any objective or campaign DSL, describe the actual changes in memory_note.\n"
+      << "15. Escalate only for authority_expansion, budget_expansion, or objective_clarification.\n"
+      << "16. When phase = human_resolution_followup, use the prior turn context as the operational evidence base and the verified human resolution as operator context.\n"
+      << "17. A verified human resolution with resolution_kind = grant or clarify authorizes more reasoning; it does not directly choose the next launch.\n"
+      << "18. Use the embedded objective bundle snapshot below before spending tool calls rediscovering editable files.\n"
+      << "19. Return only JSON matching the provided output schema.\n\n"
+      << "Outcome contract:\n"
+      << "- outcome = launch | escalate | success | stop | fail\n"
+      << "- launch.mode = run_plan | binding when outcome=launch\n"
+      << "- launch.binding_id required when launch.mode=binding\n"
+      << "- launch.reset_runtime_state must be boolean when outcome=launch\n"
+      << "- launch.requires_objective_mutation must be boolean when outcome=launch; set it true when the launch depends on same-turn objective-root file edits\n"
+      << "- escalation.kind = authority_expansion | budget_expansion | objective_clarification when outcome=escalate\n"
+      << "- escalation.request must be non-empty when outcome=escalate\n"
+      << "- escalation.delta carries the requested authority/budget change when applicable\n\n"
       << "Repo root: " << app.defaults.repo_root.string() << "\n";
   if (!trim_ascii(objective_dsl_text).empty()) {
     out << "\nSuper objective DSL contents:\n" << objective_dsl_text;
@@ -2295,13 +3086,45 @@ void persist_super_loop_warning_best_effort(
     out << "\nMemory contents:\n" << memory_text;
     if (memory_text.back() != '\n') out << "\n";
   }
-  if (!trim_ascii(review_packet_text).empty()) {
-    out << "\nReview packet contents:\n" << review_packet_text;
-    if (review_packet_text.back() != '\n') out << "\n";
+  if (!trim_ascii(turn_context_text).empty()) {
+    out << "\nTurn context contents:\n" << turn_context_text;
+    if (turn_context_text.back() != '\n') out << "\n";
+  }
+  if (!trim_ascii(prior_turn_context_text).empty()) {
+    out << "\nPrior turn context contents:\n" << prior_turn_context_text;
+    if (prior_turn_context_text.back() != '\n') out << "\n";
+  }
+  if (!trim_ascii(human_escalation_text).empty()) {
+    out << "\nHuman escalation contents:\n" << human_escalation_text;
+    if (human_escalation_text.back() != '\n') out << "\n";
+  }
+  if (!trim_ascii(human_resolution_text).empty()) {
+    out << "\nVerified human resolution contents:\n" << human_resolution_text;
+    if (human_resolution_text.back() != '\n') out << "\n";
   }
   if (!trim_ascii(campaign_text).empty()) {
-    out << "\nObjective campaign DSL contents:\n" << campaign_text;
+    out << "\nObjective campaign DSL contents (" << objective_campaign_relative_path
+        << "):\n"
+        << campaign_text;
     if (campaign_text.back() != '\n') out << "\n";
+  }
+  if (!objective_bundle_snapshot.entries.empty()) {
+    out << "\nObjective-local mutable bundle index:\n";
+    for (const auto& entry : objective_bundle_snapshot.entries) {
+      out << "- " << entry.relative_path << " (" << entry.text.size()
+          << " bytes)\n";
+    }
+    if (objective_bundle_snapshot.truncated) {
+      out << "- ... truncated after " << objective_bundle_snapshot.embedded_bytes
+          << " embedded bytes; omitted files: "
+          << objective_bundle_snapshot.omitted_files << "\n";
+    }
+    for (const auto& entry : objective_bundle_snapshot.entries) {
+      out << "\nObjective-local file contents (" << entry.relative_path
+          << "):\n"
+          << entry.text;
+      if (!entry.text.empty() && entry.text.back() != '\n') out << "\n";
+    }
   }
   return cuwacunu::hero::runtime::write_text_file_atomic(loop.briefing_path,
                                                          out.str(), error);
@@ -2352,37 +3175,73 @@ void persist_super_loop_warning_best_effort(
   }
   (void)::close(stderr_probe);
 
+  int pipe_fds[2]{-1, -1};
+#ifdef O_CLOEXEC
+  if (::pipe2(pipe_fds, O_CLOEXEC) != 0) {
+    if (error) *error = "pipe2 failed for command execution";
+    return false;
+  }
+#else
+  if (::pipe(pipe_fds) != 0) {
+    if (error) *error = "pipe failed for command execution";
+    return false;
+  }
+  (void)::fcntl(pipe_fds[0], F_SETFD, FD_CLOEXEC);
+  (void)::fcntl(pipe_fds[1], F_SETFD, FD_CLOEXEC);
+#endif
+
   const pid_t child = ::fork();
   if (child < 0) {
+    (void)::close(pipe_fds[0]);
+    (void)::close(pipe_fds[1]);
     if (error) *error = "fork failed for command execution";
     return false;
   }
   if (child == 0) {
+    (void)::close(pipe_fds[0]);
     (void)::setpgid(0, 0);
     if (working_dir != nullptr && !working_dir->empty() &&
         ::chdir(working_dir->c_str()) != 0) {
+      write_command_child_failure_noexcept(
+          pipe_fds[1], command_child_failure_stage_t::kChdir, errno);
       _exit(125);
     }
     if (env_overrides != nullptr) {
       for (const auto& [key, value] : *env_overrides) {
         if (key.empty()) continue;
-        if (::setenv(key.c_str(), value.c_str(), 1) != 0) _exit(125);
+        if (::setenv(key.c_str(), value.c_str(), 1) != 0) {
+          write_command_child_failure_noexcept(
+              pipe_fds[1], command_child_failure_stage_t::kSetenv, errno);
+          _exit(125);
+        }
       }
     }
     const int stdin_fd = ::open(stdin_path.c_str(), O_RDONLY);
-    if (stdin_fd < 0) _exit(126);
+    if (stdin_fd < 0) {
+      write_command_child_failure_noexcept(
+          pipe_fds[1], command_child_failure_stage_t::kStdinOpen, errno);
+      _exit(126);
+    }
     (void)::dup2(stdin_fd, STDIN_FILENO);
     if (stdin_fd > STDERR_FILENO) (void)::close(stdin_fd);
     const char* stdout_target =
         stdout_path.empty() ? "/dev/null" : stdout_path.c_str();
     const int stdout_fd =
         ::open(stdout_target, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (stdout_fd < 0) _exit(126);
+    if (stdout_fd < 0) {
+      write_command_child_failure_noexcept(
+          pipe_fds[1], command_child_failure_stage_t::kStdoutOpen, errno);
+      _exit(126);
+    }
     (void)::dup2(stdout_fd, STDOUT_FILENO);
     if (stdout_fd > STDERR_FILENO) (void)::close(stdout_fd);
     const int stderr_fd =
         ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (stderr_fd < 0) _exit(126);
+    if (stderr_fd < 0) {
+      write_command_child_failure_noexcept(
+          pipe_fds[1], command_child_failure_stage_t::kStderrOpen, errno);
+      _exit(126);
+    }
     (void)::dup2(stderr_fd, STDERR_FILENO);
     if (stderr_fd > STDERR_FILENO) (void)::close(stderr_fd);
     std::vector<char*> exec_argv{};
@@ -2392,8 +3251,11 @@ void persist_super_loop_warning_best_effort(
     }
     exec_argv.push_back(nullptr);
     ::execvp(exec_argv[0], exec_argv.data());
+    write_command_child_failure_noexcept(
+        pipe_fds[1], command_child_failure_stage_t::kExecvp, errno);
     _exit(127);
   }
+  (void)::close(pipe_fds[1]);
 
   if (pid_path != nullptr && !pid_path->empty()) {
     std::string pid_error{};
@@ -2403,6 +3265,7 @@ void persist_super_loop_warning_best_effort(
       (void)::kill(-child, SIGKILL);
       (void)::kill(child, SIGKILL);
       (void)::waitpid(child, nullptr, 0);
+      (void)::close(pipe_fds[0]);
       if (error) {
         *error = "cannot persist review pid path " + pid_path->string() +
                  ": " + pid_error;
@@ -2421,6 +3284,7 @@ void persist_super_loop_warning_best_effort(
       if (error) *error = "waitpid failed for command execution";
       (void)::kill(-child, SIGKILL);
       (void)::waitpid(child, nullptr, 0);
+      (void)::close(pipe_fds[0]);
       if (pid_path != nullptr && !pid_path->empty()) remove_file_noexcept(*pid_path);
       return false;
     }
@@ -2429,6 +3293,7 @@ void persist_super_loop_warning_best_effort(
       (void)::kill(child, SIGKILL);
       (void)::waitpid(child, nullptr, 0);
       if (error) *error = "command timed out";
+      (void)::close(pipe_fds[0]);
       if (pid_path != nullptr && !pid_path->empty()) remove_file_noexcept(*pid_path);
       return false;
     }
@@ -2436,9 +3301,21 @@ void persist_super_loop_warning_best_effort(
   }
 
   if (pid_path != nullptr && !pid_path->empty()) remove_file_noexcept(*pid_path);
+  if (WIFEXITED(status) && out_exit_code) *out_exit_code = WEXITSTATUS(status);
+
+  command_child_failure_t child_failure{};
+  const ssize_t failure_bytes = ::read(pipe_fds[0], &child_failure, sizeof(child_failure));
+  (void)::close(pipe_fds[0]);
+  if (failure_bytes == static_cast<ssize_t>(sizeof(child_failure)) &&
+      child_failure.err != 0 &&
+      child_failure.stage != command_child_failure_stage_t::kNone) {
+    if (error) {
+      *error = describe_command_child_failure(child_failure, argv, working_dir);
+    }
+    return false;
+  }
 
   if (WIFEXITED(status)) {
-    if (out_exit_code) *out_exit_code = WEXITSTATUS(status);
     return true;
   }
   if (WIFSIGNALED(status)) {
@@ -2556,9 +3433,9 @@ void persist_super_loop_warning_best_effort(
 
   std::ostringstream out;
   out << "{"
-      << "\"schema\":" << json_quote(kReviewPacketSchemaV1) << ","
+      << "\"schema\":" << json_quote(kTurnContextSchemaV2) << ","
       << "\"phase\":\"postcampaign\","
-      << "\"review_index\":" << review_index
+      << "\"turn_index\":" << review_index
       << ",\"loop\":" << super_loop_to_json(loop)
       << ",\"campaign\":" << runtime_campaign_to_json(campaign)
       << ",\"declared_bind_ids\":" << json_array_from_strings(declared_bind_ids)
@@ -2569,7 +3446,8 @@ void persist_super_loop_warning_best_effort(
       << ",\"lattice_recommendations\":"
       << build_lattice_recommendations_json(contract_hash_candidates)
       << ",\"memory_path\":" << json_quote(loop.memory_path)
-      << ",\"human_request_path\":" << json_quote(loop.human_request_path)
+      << ",\"human_escalation_path\":"
+      << json_quote(loop.human_escalation_path)
       << ",\"super_objective_dsl_path\":"
       << json_quote(loop.super_objective_dsl_path)
       << ",\"super_objective_md_path\":"
@@ -2648,9 +3526,9 @@ void persist_super_loop_warning_best_effort(
 
   std::ostringstream out;
   out << "{"
-      << "\"schema\":" << json_quote(kReviewPacketSchemaV1) << ","
-      << "\"phase\":\"prelaunch\","
-      << "\"review_index\":" << review_index
+      << "\"schema\":" << json_quote(kTurnContextSchemaV2) << ","
+      << "\"phase\":\"bootstrap\","
+      << "\"turn_index\":" << review_index
       << ",\"loop\":" << super_loop_to_json(loop)
       << ",\"campaign\":null"
       << ",\"declared_bind_ids\":" << json_array_from_strings(declared_bind_ids)
@@ -2661,7 +3539,8 @@ void persist_super_loop_warning_best_effort(
       << ",\"lattice_recommendations\":"
       << build_lattice_recommendations_json(contract_hash_candidates)
       << ",\"memory_path\":" << json_quote(loop.memory_path)
-      << ",\"human_request_path\":" << json_quote(loop.human_request_path)
+      << ",\"human_escalation_path\":"
+      << json_quote(loop.human_escalation_path)
       << ",\"super_objective_dsl_path\":"
       << json_quote(loop.super_objective_dsl_path)
       << ",\"super_objective_md_path\":"
@@ -2704,10 +3583,10 @@ void persist_super_loop_warning_best_effort(
   std::string start_args =
       "{\"campaign_dsl_path\":" + json_quote(loop->campaign_dsl_path);
   start_args += ",\"super_loop_id\":" + json_quote(loop->loop_id);
-  if (decision.next_action_kind == "binding") {
-    start_args += ",\"binding_id\":" + json_quote(decision.target_binding_id);
+  if (decision.launch_mode == "binding") {
+    start_args += ",\"binding_id\":" + json_quote(decision.launch_binding_id);
   }
-  if (decision.reset_runtime_state) {
+  if (decision.launch_reset_runtime_state) {
     start_args += ",\"reset_runtime_state\":true";
   }
   start_args += "}";
@@ -2743,6 +3622,11 @@ void persist_super_loop_warning_best_effort(
   loop->state_detail = std::string(state_detail);
   loop->active_campaign_cursor = campaign_cursor;
   loop->campaign_cursors.push_back(campaign_cursor);
+  ++loop->launch_count;
+  if (loop->remaining_campaign_launches > 0) {
+    --loop->remaining_campaign_launches;
+  }
+  loop->latest_escalation_kind.clear();
   loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   loop->last_warning.clear();
   std::string bookkeeping_error{};
@@ -2791,7 +3675,7 @@ void persist_super_loop_warning_best_effort(
   if (!rewrite_super_loop_briefing(app, *loop, error)) return false;
 
   const std::filesystem::path decision_path =
-      cuwacunu::hero::super::super_loop_decision_path(
+      cuwacunu::hero::super::super_loop_turn_outcome_path(
           app.defaults.super_root, loop->loop_id, review_index);
   const std::string config_args = json_array_from_strings(
       {"--global-config", app.global_config_path.string(), "--config",
@@ -2993,8 +3877,188 @@ void persist_super_loop_warning_best_effort(
   }
 
   if (!cuwacunu::hero::runtime::write_text_file_atomic(
-          super_loop_latest_decision_path(*loop), decision_text, error)) {
+          super_loop_latest_turn_outcome_path(*loop), decision_text, error)) {
     return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool execute_pending_review(
+    app_context_t* app, cuwacunu::hero::super::super_loop_record_t* loop,
+    std::string* out_warning, std::string* error) {
+  if (error) error->clear();
+  if (out_warning) out_warning->clear();
+  if (!app || !loop) {
+    if (error) *error = "pending review inputs are null";
+    return false;
+  }
+
+  if (loop->remaining_review_turns == 0) {
+    loop->state = "exhausted";
+    loop->state_detail = "super review-turn budget exhausted";
+    loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    loop->updated_at_ms = *loop->finished_at_ms;
+    loop->active_campaign_cursor.clear();
+    return write_super_loop(*app, *loop, error) &&
+           append_super_loop_event(*loop, "loop_exhausted", loop->state_detail,
+                                   error);
+  }
+
+  const std::uint64_t review_index = loop->turn_count + 1;
+  objective_hash_snapshot_t objective_before_snapshot{};
+  if (!collect_objective_hash_snapshot(std::filesystem::path(loop->objective_root),
+                                       &objective_before_snapshot, error)) {
+    return false;
+  }
+  super_review_decision_t decision{};
+  std::string review_warning{};
+  if (!run_super_review_with_codex(*app, loop, review_index, &decision,
+                                   &review_warning, error)) {
+    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
+    if (reload_terminal_super_loop_if_any(*app, loop->loop_id, &terminal_loop)) {
+      *loop = std::move(terminal_loop);
+      if (out_warning) {
+        append_warning_text(out_warning,
+                            "review interrupted after loop became terminal");
+      }
+      return true;
+    }
+    loop->state = "failed";
+    loop->state_detail = *error;
+    loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    loop->updated_at_ms = *loop->finished_at_ms;
+    std::string ignored{};
+    (void)write_super_loop(*app, *loop, &ignored);
+    (void)append_super_loop_event(*loop, "review_failed", *error, &ignored);
+    return false;
+  }
+  objective_hash_snapshot_t objective_after_snapshot{};
+  if (!collect_objective_hash_snapshot(std::filesystem::path(loop->objective_root),
+                                       &objective_after_snapshot, error)) {
+    return false;
+  }
+  if (!write_turn_mutation_summary(*app, loop, review_index,
+                                   objective_before_snapshot,
+                                   objective_after_snapshot, error)) {
+    return false;
+  }
+  if (!validate_super_review_decision_action(
+          *app, *loop, decision,
+          !trim_ascii(loop->last_turn_mutation_path).empty(), error)) {
+    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
+    if (reload_terminal_super_loop_if_any(*app, loop->loop_id, &terminal_loop)) {
+      *loop = std::move(terminal_loop);
+      if (out_warning) {
+        append_warning_text(out_warning,
+                            "review validation interrupted after loop became terminal");
+      }
+      return true;
+    }
+    loop->state = "failed";
+    loop->state_detail = *error;
+    loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    loop->updated_at_ms = *loop->finished_at_ms;
+    std::string ignored{};
+    (void)write_super_loop(*app, *loop, &ignored);
+    (void)append_super_loop_event(*loop, "review_failed", *error, &ignored);
+    return false;
+  }
+
+  append_memory_note(*loop, review_index, decision.memory_note);
+  loop->turn_count = review_index;
+  if (loop->remaining_review_turns > 0) --loop->remaining_review_turns;
+  loop->last_outcome_kind = decision.outcome;
+  loop->last_warning.clear();
+  if (!review_warning.empty()) {
+    append_warning_text(&loop->last_warning, review_warning);
+  }
+  loop->last_turn_outcome_path =
+      cuwacunu::hero::super::super_loop_turn_outcome_path(
+          app->defaults.super_root, loop->loop_id, review_index)
+          .string();
+  loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  loop->finished_at_ms.reset();
+  loop->latest_escalation_kind.clear();
+
+  if (decision.outcome == "success" || decision.outcome == "stop" ||
+      decision.outcome == "fail") {
+    loop->state = (decision.outcome == "success")
+                      ? "success"
+                      : (decision.outcome == "stop" ? "stopped" : "failed");
+    loop->state_detail = decision.reason;
+    loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    loop->updated_at_ms = *loop->finished_at_ms;
+    loop->active_campaign_cursor.clear();
+    if (!write_super_loop(*app, *loop, error)) return false;
+    const std::string event_name =
+        (decision.outcome == "success")
+            ? "loop_succeeded"
+            : (decision.outcome == "stop" ? "loop_stopped"
+                                           : "loop_failed");
+    if (!append_super_loop_event(*loop, event_name, decision.reason, error)) {
+      return false;
+    }
+    return true;
+  }
+
+  if (decision.outcome == "escalate") {
+    loop->state = "awaiting_human";
+    loop->state_detail = decision.reason;
+    loop->active_campaign_cursor.clear();
+    loop->latest_escalation_kind = decision.escalation_kind;
+    if (!write_super_loop(*app, *loop, error)) return false;
+    std::string escalation_error{};
+    if (!materialize_human_escalation(*app, *loop, review_index, decision,
+                                      &escalation_error)) {
+      if (error) *error = escalation_error;
+      return false;
+    }
+    if (!append_super_loop_event(*loop, "loop_escalated",
+                                 decision.escalation_kind + ": " +
+                                     decision.escalation_request,
+                                 error)) {
+      return false;
+    }
+    return true;
+  }
+
+  if (decision.outcome != "launch") {
+    if (error) *error = "unsupported planning outcome: " + decision.outcome;
+    return false;
+  }
+  if (loop->remaining_campaign_launches == 0) {
+    loop->state = "exhausted";
+    loop->state_detail = "campaign-launch budget exhausted";
+    loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    loop->updated_at_ms = *loop->finished_at_ms;
+    loop->active_campaign_cursor.clear();
+    if (!write_super_loop(*app, *loop, error)) return false;
+    return append_super_loop_event(*loop, "loop_exhausted", loop->state_detail,
+                                   error);
+  }
+
+  std::string next_campaign_cursor{};
+  std::string ignored_campaign_json{};
+  std::string runtime_warning{};
+  if (!launch_runtime_campaign_for_decision(
+          *app, loop, decision, "campaign launched from super planning turn",
+          "campaign_launched_from_turn", &next_campaign_cursor,
+          &ignored_campaign_json, &runtime_warning, error)) {
+    loop->state = "failed";
+    loop->state_detail = *error;
+    loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    loop->updated_at_ms = *loop->finished_at_ms;
+    std::string ignored{};
+    (void)write_super_loop(*app, *loop, &ignored);
+    (void)append_super_loop_event(*loop, "launch_failed", *error, &ignored);
+    return false;
+  }
+  if (!runtime_warning.empty() && out_warning) {
+    append_warning_text(out_warning, runtime_warning);
+  }
+  if (!review_warning.empty()) {
+    persist_super_loop_warning_best_effort(*app, loop, review_warning);
+    if (out_warning) append_warning_text(out_warning, review_warning);
   }
   return true;
 }
@@ -3022,9 +4086,9 @@ void persist_super_loop_warning_best_effort(
   }
   if (!read_super_loop(*app, loop_id, &loop, error)) return false;
   if (is_super_loop_terminal_state(loop.state)) return true;
-  if (loop.review_count >= loop.max_reviews) {
+  if (loop.remaining_review_turns == 0) {
     loop.state = "exhausted";
-    loop.state_detail = "super review budget exhausted";
+    loop.state_detail = "super review-turn budget exhausted";
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop.updated_at_ms = *loop.finished_at_ms;
     loop.active_campaign_cursor.clear();
@@ -3036,7 +4100,7 @@ void persist_super_loop_warning_best_effort(
     return true;
   }
 
-  const std::uint64_t review_index = loop.review_count + 1;
+  const std::uint64_t review_index = loop.turn_count + 1;
   std::string review_packet_json{};
   if (!build_super_review_packet_json(*app, loop, campaign, review_index,
                                       &review_packet_json, error)) {
@@ -3050,7 +4114,7 @@ void persist_super_loop_warning_best_effort(
     return false;
   }
   const std::filesystem::path review_packet_path =
-      cuwacunu::hero::super::super_loop_review_packet_path(
+      cuwacunu::hero::super::super_loop_turn_context_path(
           app->defaults.super_root, loop.loop_id, review_index);
   if (!cuwacunu::hero::runtime::write_text_file_atomic(review_packet_path,
                                                        review_packet_json,
@@ -3058,127 +4122,21 @@ void persist_super_loop_warning_best_effort(
     return false;
   }
   if (!cuwacunu::hero::runtime::write_text_file_atomic(
-          super_loop_latest_review_packet_path(loop), review_packet_json, error)) {
+          super_loop_latest_turn_context_path(loop), review_packet_json, error)) {
     return false;
   }
-  loop.state = "reviewing";
-  loop.state_detail = "waiting for codex review";
+  loop.state = "planning";
+  loop.state_detail = "waiting for codex planning turn";
   loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  loop.last_review_packet_path = review_packet_path.string();
+  loop.last_turn_context_path = review_packet_path.string();
   if (!write_super_loop(*app, loop, error)) return false;
-  if (!append_super_loop_event(loop, "review_started", review_packet_path.string(),
+  if (!append_super_loop_event(loop, "turn_context_staged",
+                               review_packet_path.string(),
                                error)) {
     return false;
   }
 
-  super_review_decision_t decision{};
-  std::string review_warning{};
-  if (!run_super_review_with_codex(*app, &loop, review_index, &decision,
-                                   &review_warning, error)) {
-    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
-    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
-      if (out_warning) {
-        append_warning_text(out_warning,
-                            "review interrupted after loop became terminal");
-      }
-      return true;
-    }
-    loop.state = "failed";
-    loop.state_detail = *error;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    std::string ignored{};
-    (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "review_failed", *error, &ignored);
-    return false;
-  }
-  if (!validate_super_review_decision_action(*app, loop, decision, error)) {
-    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
-    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
-      if (out_warning) {
-        append_warning_text(out_warning,
-                            "review validation interrupted after loop became terminal");
-      }
-      return true;
-    }
-    loop.state = "failed";
-    loop.state_detail = *error;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    std::string ignored{};
-    (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "review_failed", *error, &ignored);
-    return false;
-  }
-
-  append_memory_note(loop, review_index, decision.memory_note);
-  loop.review_count = review_index;
-  loop.last_control_kind = decision.control_kind;
-  loop.last_warning.clear();
-  if (!review_warning.empty()) append_warning_text(&loop.last_warning, review_warning);
-  loop.last_decision_path =
-      cuwacunu::hero::super::super_loop_decision_path(
-          app->defaults.super_root, loop.loop_id, review_index)
-          .string();
-  loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-
-  if (decision.control_kind == "stop" ||
-      decision.control_kind == "need_human") {
-    loop.state = (decision.control_kind == "stop") ? "stopped" : "need_human";
-    loop.state_detail = decision.reason;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    loop.active_campaign_cursor.clear();
-    if (!write_super_loop(*app, loop, error)) return false;
-    std::string warning{};
-    std::string human_request_error{};
-    if (decision.control_kind == "need_human" &&
-        !write_human_request_note(loop, review_index, decision,
-                                  &human_request_error)) {
-      append_warning_text(&warning,
-                          "human_request artifact write degraded: " +
-                              human_request_error);
-    }
-    std::string event_error{};
-    if (!append_super_loop_event(loop, "review_finished", decision.reason,
-                                 &event_error)) {
-      append_warning_text(&warning,
-                          "final review event append degraded: " + event_error);
-    }
-    if (!warning.empty()) {
-      persist_super_loop_warning_best_effort(*app, &loop, warning);
-      if (out_warning) *out_warning = warning;
-    }
-    if (!review_warning.empty()) {
-      if (out_warning) append_warning_text(out_warning, review_warning);
-    }
-    return true;
-  }
-
-  std::string next_campaign_cursor{};
-  std::string ignored_campaign_json{};
-  std::string runtime_warning{};
-  if (!launch_runtime_campaign_for_decision(
-          *app, &loop, decision, "campaign launched from super review",
-          "campaign_launched_from_review", &next_campaign_cursor,
-          &ignored_campaign_json, &runtime_warning, error)) {
-    loop.state = "failed";
-    loop.state_detail = *error;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    std::string ignored{};
-    (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "launch_failed", *error, &ignored);
-    return false;
-  }
-  if (!runtime_warning.empty()) {
-    if (out_warning) append_warning_text(out_warning, runtime_warning);
-  }
-  if (!review_warning.empty()) {
-    persist_super_loop_warning_best_effort(*app, &loop, review_warning);
-    if (out_warning) append_warning_text(out_warning, review_warning);
-  }
-  return true;
+  return execute_pending_review(app, &loop, out_warning, error);
 }
 
 struct loop_runner_lock_guard_t {
@@ -3331,10 +4289,9 @@ void write_child_errno_noexcept(int fd, int err) {
                                          const std::string& arguments_json,
                                          std::string* out_structured,
                                          std::string* out_error);
-[[nodiscard]] bool handle_tool_resume_loop(app_context_t* app,
-                                           const std::string& arguments_json,
-                                           std::string* out_structured,
-                                           std::string* out_error);
+[[nodiscard]] bool handle_tool_apply_human_resolution(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error);
 
 #define HERO_SUPER_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) \
   {NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER},
@@ -3375,8 +4332,6 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
   }
 
   std::vector<std::string> warnings{};
-  std::string campaign_cursor{};
-  std::string campaign_json{"null"};
   const std::uint64_t review_index = 1;
   std::string review_packet_json{};
   if (!build_super_prelaunch_review_packet_json(*app, loop, review_index,
@@ -3392,7 +4347,7 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
     return false;
   }
   const std::filesystem::path review_packet_path =
-      cuwacunu::hero::super::super_loop_review_packet_path(
+      cuwacunu::hero::super::super_loop_turn_context_path(
           app->defaults.super_root, loop.loop_id, review_index);
   if (!cuwacunu::hero::runtime::write_text_file_atomic(review_packet_path,
                                                        review_packet_json,
@@ -3400,142 +4355,29 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
     return false;
   }
   if (!cuwacunu::hero::runtime::write_text_file_atomic(
-          super_loop_latest_review_packet_path(loop), review_packet_json,
+          super_loop_latest_turn_context_path(loop), review_packet_json,
           out_error)) {
     return false;
   }
-
-  loop.state = "reviewing";
-  loop.state_detail = "waiting for codex review before first launch";
+  loop.state = "planning";
+  loop.state_detail = "waiting for first codex planning turn";
   loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  loop.last_review_packet_path = review_packet_path.string();
+  loop.last_turn_context_path = review_packet_path.string();
   if (!write_super_loop(*app, loop, out_error)) return false;
-  if (!append_super_loop_event(loop, "review_started", review_packet_path.string(),
+  if (!append_super_loop_event(loop, "turn_context_staged",
+                               review_packet_path.string(),
                                out_error)) {
     return false;
   }
 
-  super_review_decision_t decision{};
-  std::string review_warning{};
-  if (!run_super_review_with_codex(*app, &loop, review_index, &decision,
-                                   &review_warning, out_error)) {
-    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
-    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
-      loop = std::move(terminal_loop);
-      warnings.push_back("review interrupted after loop became terminal");
-      *out_structured =
-          "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"loop\":" +
-          super_loop_to_json(loop) +
-          ",\"campaign_cursor\":\"\",\"campaign\":null,\"warnings\":" +
-          json_array_from_strings(warnings) + "}";
-      return true;
-    }
-    loop.state = "failed";
-    loop.state_detail = *out_error;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    std::string ignored{};
-    (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "review_failed", *out_error, &ignored);
-    return false;
-  }
-  if (!validate_super_review_decision_action(*app, loop, decision, out_error)) {
-    cuwacunu::hero::super::super_loop_record_t terminal_loop{};
-    if (reload_terminal_super_loop_if_any(*app, loop.loop_id, &terminal_loop)) {
-      loop = std::move(terminal_loop);
-      warnings.push_back("review validation interrupted after loop became terminal");
-      *out_structured =
-          "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"loop\":" +
-          super_loop_to_json(loop) +
-          ",\"campaign_cursor\":\"\",\"campaign\":null,\"warnings\":" +
-          json_array_from_strings(warnings) + "}";
-      return true;
-    }
-    loop.state = "failed";
-    loop.state_detail = *out_error;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    std::string ignored{};
-    (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "review_failed", *out_error, &ignored);
-    return false;
-  }
-
-  append_memory_note(loop, review_index, decision.memory_note);
-  loop.review_count = review_index;
-  loop.last_control_kind = decision.control_kind;
-  loop.last_warning.clear();
-  if (!review_warning.empty()) append_warning_text(&loop.last_warning, review_warning);
-  loop.last_decision_path =
-      cuwacunu::hero::super::super_loop_decision_path(
-          app->defaults.super_root, loop.loop_id, review_index)
-          .string();
-  loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-
-  if (decision.control_kind == "stop" ||
-      decision.control_kind == "need_human") {
-    loop.state = (decision.control_kind == "stop") ? "stopped" : "need_human";
-    loop.state_detail = decision.reason;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    loop.active_campaign_cursor.clear();
-    if (!write_super_loop(*app, loop, out_error)) return false;
-    std::string warning{};
-    std::string artifact_error{};
-    if (decision.control_kind == "need_human" &&
-        !write_human_request_note(loop, review_index, decision,
-                                  &artifact_error)) {
-      append_warning_text(&warning,
-                          "human_request artifact write degraded: " +
-                              artifact_error);
-    }
-    std::string event_error{};
-    if (!append_super_loop_event(loop, "review_finished", decision.reason,
-                                 &event_error)) {
-      append_warning_text(&warning,
-                          "final review event append degraded: " + event_error);
-    }
-    if (!warning.empty()) {
-      warnings.push_back(warning);
-      persist_super_loop_warning_best_effort(*app, &loop, warning);
-    }
-    if (!review_warning.empty()) warnings.push_back(review_warning);
-    *out_structured =
-        "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"loop\":" +
-        super_loop_to_json(loop) + ",\"campaign_cursor\":\"\",\"campaign\":null"
-        + ",\"warnings\":" + json_array_from_strings(warnings) + "}";
-    return true;
-  }
-
-  std::string launch_warning{};
-  if (!launch_runtime_campaign_for_decision(
-          *app, &loop, decision, "campaign launched under Super Hero",
-          "campaign_launched", &campaign_cursor, &campaign_json, &launch_warning,
-          out_error)) {
-    loop.state = "failed";
-    loop.state_detail = *out_error;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    std::string ignored{};
-    (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "launch_failed", *out_error, &ignored);
-    return false;
-  }
-  if (!launch_warning.empty()) warnings.push_back(launch_warning);
-  if (!review_warning.empty()) warnings.push_back(review_warning);
-
   std::string bookkeeping_error{};
   if (!launch_loop_runner_process(*app, loop.loop_id, &bookkeeping_error)) {
     warnings.push_back("super loop runner launch failed: " + bookkeeping_error);
-    std::string ignored{};
-    (void)call_runtime_tool(
-        *app, "hero.runtime.stop_campaign",
-        "{\"campaign_cursor\":" + json_quote(campaign_cursor) + ",\"force\":true}",
-        &ignored, nullptr);
     loop.state = "failed";
     loop.state_detail = "loop runner launch failed: " + bookkeeping_error;
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop.updated_at_ms = *loop.finished_at_ms;
+    std::string ignored{};
     (void)write_super_loop(*app, loop, &ignored);
     (void)append_super_loop_event(loop, "loop_runner_failed", bookkeeping_error,
                                   &ignored);
@@ -3554,8 +4396,7 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
 
   *out_structured =
       "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"loop\":" +
-      super_loop_to_json(loop) + ",\"campaign_cursor\":" +
-      json_quote(campaign_cursor) + ",\"campaign\":" + campaign_json +
+      super_loop_to_json(loop) + ",\"campaign_cursor\":\"\",\"campaign\":null" +
       ",\"warnings\":" + json_array_from_strings(warnings) + "}";
   return true;
 }
@@ -3695,10 +4536,9 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_resume_loop(app_context_t* app,
-                                           const std::string& arguments_json,
-                                           std::string* out_structured,
-                                           std::string* out_error) {
+[[nodiscard]] bool handle_tool_apply_human_resolution(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
@@ -3706,57 +4546,46 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
   std::string response_path_arg{};
   std::string response_sig_path_arg{};
   (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
-  (void)extract_json_string_field(arguments_json, "human_response_path",
+  (void)extract_json_string_field(arguments_json, "human_resolution_path",
                                   &response_path_arg);
-  (void)extract_json_string_field(arguments_json, "human_response_sig_path",
+  (void)extract_json_string_field(arguments_json, "human_resolution_sig_path",
                                   &response_sig_path_arg);
   loop_id = trim_ascii(loop_id);
   if (loop_id.empty()) {
-    *out_error = "resume_loop requires arguments.loop_id";
+    *out_error = "apply_human_resolution requires arguments.loop_id";
     return false;
   }
 
   cuwacunu::hero::super::super_loop_record_t loop{};
   if (!read_super_loop(*app, loop_id, &loop, out_error)) return false;
-  if (loop.state != "need_human") {
-    *out_error = "resume_loop requires loop.state=need_human";
+  if (loop.state != "awaiting_human") {
+    *out_error = "apply_human_resolution requires loop.state=awaiting_human";
     return false;
   }
 
   const std::filesystem::path response_path =
       trim_ascii(response_path_arg).empty()
-          ? cuwacunu::hero::super::super_loop_human_response_latest_path(
+          ? cuwacunu::hero::super::super_loop_human_resolution_latest_path(
                 app->defaults.super_root, loop.loop_id)
           : std::filesystem::path(resolve_path_from_base_folder(
                 app->global_config_path.parent_path().string(),
                 trim_ascii(response_path_arg)));
   const std::filesystem::path response_sig_path =
       trim_ascii(response_sig_path_arg).empty()
-          ? cuwacunu::hero::super::super_loop_human_response_latest_sig_path(
+          ? cuwacunu::hero::super::super_loop_human_resolution_latest_sig_path(
                 app->defaults.super_root, loop.loop_id)
           : std::filesystem::path(resolve_path_from_base_folder(
                 app->global_config_path.parent_path().string(),
                 trim_ascii(response_sig_path_arg)));
 
-  cuwacunu::hero::human::human_response_record_t response{};
+  cuwacunu::hero::human::human_resolution_record_t response{};
   std::string signature_hex{};
-  if (!load_verified_human_response(*app, loop, response_path, response_sig_path,
-                                    &response, &signature_hex, out_error)) {
+  if (!load_verified_human_resolution(*app, loop, response_path,
+                                      response_sig_path, &response,
+                                      &signature_hex, out_error)) {
     return false;
   }
-
-  const super_review_decision_t decision =
-      human_response_to_super_decision(response);
-  if (!validate_super_review_decision_action(*app, loop, decision, out_error)) {
-    return false;
-  }
-
-  if (!trim_ascii(decision.memory_note).empty()) {
-    append_memory_note(loop, loop.review_count,
-                       "Human response (" + response.operator_id + "):\n" +
-                           decision.memory_note);
-  }
-  loop.last_control_kind = decision.control_kind;
+  append_human_resolution_note(loop, response, response_path, response_sig_path);
   loop.last_warning.clear();
   loop.finished_at_ms.reset();
   loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
@@ -3766,19 +4595,23 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
     event_detail.append(" by ");
     event_detail.append(response.operator_id);
   }
-  if (!append_super_loop_event(loop, "human_response_verified", event_detail,
+  if (!append_super_loop_event(loop, "human_resolution_verified", event_detail,
                                out_error)) {
     return false;
   }
 
-  if (decision.control_kind == "stop") {
+  if (response.resolution_kind == "stop" || response.resolution_kind == "deny") {
     loop.state = "stopped";
-    loop.state_detail = "stopped by human response: " + decision.reason;
+    loop.state_detail =
+        (response.resolution_kind == "deny" ? "human denied escalation: "
+                                             : "stopped by human resolution: ") +
+        response.reason;
+    loop.last_outcome_kind = "stop";
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop.updated_at_ms = *loop.finished_at_ms;
     loop.active_campaign_cursor.clear();
     if (!write_super_loop(*app, loop, out_error)) return false;
-    if (!append_super_loop_event(loop, "loop_stopped_by_human", decision.reason,
+    if (!append_super_loop_event(loop, "loop_stopped_by_human", loop.state_detail,
                                  out_error)) {
       return false;
     }
@@ -3789,48 +4622,73 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
     return true;
   }
 
-  std::string campaign_cursor{};
-  std::string campaign_json{"null"};
-  std::string launch_warning{};
-  if (!launch_runtime_campaign_for_decision(
-          *app, &loop, decision, "campaign launched from human response",
-          "campaign_launched_from_human_response", &campaign_cursor,
-          &campaign_json, &launch_warning, out_error)) {
-    loop.state = "failed";
-    loop.state_detail = *out_error;
-    loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-    loop.updated_at_ms = *loop.finished_at_ms;
-    std::string ignored{};
-    (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "human_resume_failed", *out_error,
-                                  &ignored);
-    return false;
+  if (response.resolution_kind == "grant") {
+    if (response.escalation_kind == "authority_expansion" &&
+        response.grant_allow_default_write) {
+      loop.authority_scope = "objective_plus_defaults";
+    } else if (response.escalation_kind == "budget_expansion") {
+      loop.max_review_turns += response.grant_additional_review_turns;
+      loop.remaining_review_turns += response.grant_additional_review_turns;
+      loop.max_campaign_launches += response.grant_additional_campaign_launches;
+      loop.remaining_campaign_launches +=
+          response.grant_additional_campaign_launches;
+    }
   }
 
+  const std::uint64_t review_index = loop.turn_count + 1;
+  const std::filesystem::path prior_review_packet_path =
+      cuwacunu::hero::super::super_loop_latest_turn_context_path(
+          app->defaults.super_root, loop.loop_id);
+  std::string review_packet_json{};
+  if (!build_super_human_followup_turn_context_json(
+          *app, loop, review_index, prior_review_packet_path, response_path,
+          response_sig_path, response, &review_packet_json, out_error)) {
+    return false;
+  }
+  const std::filesystem::path review_packet_path =
+      cuwacunu::hero::super::super_loop_turn_context_path(
+          app->defaults.super_root, loop.loop_id, review_index);
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(review_packet_path,
+                                                       review_packet_json,
+                                                       out_error)) {
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(
+          super_loop_latest_turn_context_path(loop), review_packet_json,
+          out_error)) {
+    return false;
+  }
+  loop.state = "planning";
+  loop.state_detail =
+      "waiting for codex planning turn after verified human resolution";
+  loop.last_turn_context_path = review_packet_path.string();
+  loop.latest_escalation_kind.clear();
+  loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  if (!write_super_loop(*app, loop, out_error)) return false;
+  if (!append_super_loop_event(loop, "turn_context_staged",
+                               review_packet_path.string(),
+                               out_error)) {
+    return false;
+  }
   std::vector<std::string> warnings{};
-  if (!launch_warning.empty()) warnings.push_back(launch_warning);
+
   std::string runner_error{};
   if (!launch_loop_runner_process(*app, loop.loop_id, &runner_error)) {
     warnings.push_back("super loop runner launch failed: " + runner_error);
-    std::string ignored{};
-    (void)call_runtime_tool(
-        *app, "hero.runtime.stop_campaign",
-        "{\"campaign_cursor\":" + json_quote(campaign_cursor) + ",\"force\":true}",
-        &ignored, nullptr);
     loop.state = "failed";
-    loop.state_detail = "loop runner launch failed after human response: " +
+    loop.state_detail = "loop runner launch failed after human response review: " +
                         runner_error;
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop.updated_at_ms = *loop.finished_at_ms;
+    std::string ignored{};
     (void)write_super_loop(*app, loop, &ignored);
-    (void)append_super_loop_event(loop, "loop_runner_failed", runner_error,
-                                  &ignored);
+    (void)append_super_loop_event(loop, "loop_runner_failed", runner_error, &ignored);
     *out_error = runner_error;
     return false;
   }
-  (void)append_super_loop_event(loop, "loop_runner_started",
-                                "detached super runner relaunched from human response",
-                                nullptr);
+  (void)append_super_loop_event(
+      loop, "loop_runner_started",
+      "detached super runner relaunched after human resolution", nullptr);
   if (!warnings.empty()) {
     std::string combined_warning{};
     for (const std::string& warning : warnings) {
@@ -3841,8 +4699,7 @@ constexpr super_tool_descriptor_t kSuperTools[] = {
 
   *out_structured =
       "{\"loop_id\":" + json_quote(loop_id) + ",\"loop\":" +
-      super_loop_to_json(loop) + ",\"campaign_cursor\":" +
-      json_quote(campaign_cursor) + ",\"campaign\":" + campaign_json +
+      super_loop_to_json(loop) + ",\"campaign_cursor\":\"\",\"campaign\":null" +
       ",\"warnings\":" + json_array_from_strings(warnings) + "}";
   return true;
 }
@@ -3937,6 +4794,7 @@ bool load_super_defaults(const std::filesystem::path& hero_dsl_path,
   ok = resolve_exec("runtime_hero_binary", &out->runtime_hero_binary) && ok;
   ok = resolve_exec("config_hero_binary", &out->config_hero_binary) && ok;
   ok = resolve_exec("lattice_hero_binary", &out->lattice_hero_binary) && ok;
+  ok = resolve_exec("human_hero_binary", &out->human_hero_binary) && ok;
   ok = resolve_exec("super_codex_binary", &out->super_codex_binary) && ok;
   if (!ok) {
     if (error) *error = "missing one or more binary fields in " + hero_dsl_path.string();
@@ -3968,9 +4826,22 @@ bool load_super_defaults(const std::filesystem::path& hero_dsl_path,
     }
     return false;
   }
-  if (!parse_size_token(values["super_max_reviews"], &out->super_max_reviews) ||
-      out->super_max_reviews == 0) {
-    if (error) *error = "missing/invalid super_max_reviews in " + hero_dsl_path.string();
+  if (!parse_size_token(values["super_max_review_turns"],
+                        &out->super_max_review_turns) ||
+      out->super_max_review_turns == 0) {
+    if (error) {
+      *error = "missing/invalid super_max_review_turns in " +
+               hero_dsl_path.string();
+    }
+    return false;
+  }
+  if (!parse_size_token(values["super_max_campaign_launches"],
+                        &out->super_max_campaign_launches) ||
+      out->super_max_campaign_launches == 0) {
+    if (error) {
+      *error = "missing/invalid super_max_campaign_launches in " +
+               hero_dsl_path.string();
+    }
     return false;
   }
   if (out->super_root.empty()) {
@@ -4025,6 +4896,14 @@ bool tool_result_is_error(std::string_view tool_result_json) {
          tool_result_json.find("\"isError\": true") != std::string_view::npos;
 }
 
+[[nodiscard]] bool super_tool_is_read_only(std::string_view name) {
+  return name == "hero.super.list_loops" || name == "hero.super.get_loop";
+}
+
+[[nodiscard]] bool super_tool_is_destructive(std::string_view name) {
+  return name == "hero.super.stop_loop";
+}
+
 std::string build_tools_list_result_json() {
   std::ostringstream out;
   out << "{\"tools\":[";
@@ -4033,7 +4912,12 @@ std::string build_tools_list_result_json() {
     if (i != 0) out << ",";
     out << "{\"name\":" << json_quote(tool.name)
         << ",\"description\":" << json_quote(tool.description)
-        << ",\"inputSchema\":" << tool.input_schema_json << "}";
+        << ",\"inputSchema\":" << tool.input_schema_json
+        << ",\"annotations\":{\"readOnlyHint\":"
+        << (super_tool_is_read_only(tool.name) ? "true" : "false")
+        << ",\"destructiveHint\":"
+        << (super_tool_is_destructive(tool.name) ? "true" : "false")
+        << ",\"openWorldHint\":false}}";
   }
   out << "]}";
   return out.str();
@@ -4100,13 +4984,24 @@ bool run_loop_runner(app_context_t* app, std::string_view loop_id,
                                 "runner lock acquired", &ignored);
   for (;;) {
     if (!read_super_loop(*app, loop_id, &loop, error)) return false;
-    if (is_super_loop_terminal_state(loop.state)) return true;
+    if (is_super_loop_terminal_state(loop.state) ||
+        loop.state == "awaiting_human") {
+      return true;
+    }
 
     const std::string active_campaign_cursor =
         trim_ascii(loop.active_campaign_cursor);
     if (active_campaign_cursor.empty()) {
+      if (loop.state == "planning" || loop.state == "bootstrap") {
+        std::string warning{};
+        if (!execute_pending_review(app, &loop, &warning, error)) return false;
+        if (!warning.empty()) {
+          persist_super_loop_warning_best_effort(*app, &loop, warning);
+        }
+        continue;
+      }
       loop.state = "failed";
-      loop.state_detail = "running loop has no active campaign cursor";
+      loop.state_detail = "loop runner found no active campaign for non-planning state";
       loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       loop.updated_at_ms = *loop.finished_at_ms;
       if (!write_super_loop(*app, loop, error)) return false;

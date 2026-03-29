@@ -577,41 +577,57 @@ struct binary_reader_t {
 
 }  // namespace
 
-bool validate_human_response_record(const human_response_record_t& record,
-                                    std::string* error) {
+bool validate_human_resolution_record(const human_resolution_record_t& record,
+                                      std::string* error) {
   if (error) error->clear();
-  if (trim_ascii(record.schema) != std::string(kHumanResponseSchemaV1)) {
-    if (error) *error = "unsupported human response schema: " + record.schema;
+  if (trim_ascii(record.schema) != std::string(kHumanResolutionSchemaV2)) {
+    if (error) *error = "unsupported human resolution schema: " + record.schema;
     return false;
   }
   if (trim_ascii(record.loop_id).empty()) {
-    if (error) *error = "human response missing loop_id";
+    if (error) *error = "human resolution missing loop_id";
     return false;
   }
-  if (record.review_index == 0) {
-    if (error) *error = "human response missing review_index";
+  if (record.turn_index == 0) {
+    if (error) *error = "human resolution missing turn_index";
     return false;
   }
-  if (trim_ascii(record.request_sha256_hex).size() != 64 ||
-      !is_hex_lower_string(trim_ascii(record.request_sha256_hex))) {
-    if (error) *error = "human response request_sha256_hex must be 64 lowercase hex chars";
+  if (trim_ascii(record.escalation_sha256_hex).size() != 64 ||
+      !is_hex_lower_string(trim_ascii(record.escalation_sha256_hex))) {
+    if (error) {
+      *error =
+          "human resolution escalation_sha256_hex must be 64 lowercase hex chars";
+    }
     return false;
   }
   if (trim_ascii(record.operator_id).empty()) {
-    if (error) *error = "human response missing operator_id";
+    if (error) *error = "human resolution missing operator_id";
     return false;
   }
-  if (record.responded_at_ms == 0) {
-    if (error) *error = "human response missing responded_at_ms";
+  if (record.resolved_at_ms == 0) {
+    if (error) *error = "human resolution missing resolved_at_ms";
     return false;
   }
-  const std::string control = trim_ascii(record.control_kind);
-  if (control != "continue" && control != "stop") {
-    if (error) *error = "human response control_kind must be continue or stop";
+  const std::string resolution = trim_ascii(record.resolution_kind);
+  if (resolution != "grant" && resolution != "deny" &&
+      resolution != "clarify" && resolution != "stop") {
+    if (error) {
+      *error =
+          "human resolution resolution_kind must be grant, deny, clarify, or stop";
+    }
+    return false;
+  }
+  const std::string escalation = trim_ascii(record.escalation_kind);
+  if (escalation != "authority_expansion" &&
+      escalation != "budget_expansion" &&
+      escalation != "objective_clarification") {
+    if (error) {
+      *error = "human resolution escalation_kind is unsupported";
+    }
     return false;
   }
   if (trim_ascii(record.reason).empty()) {
-    if (error) *error = "human response missing reason";
+    if (error) *error = "human resolution missing reason";
     return false;
   }
   if (trim_ascii(record.signer_public_key_fingerprint_sha256_hex).size() != 64 ||
@@ -619,114 +635,173 @@ bool validate_human_response_record(const human_response_record_t& record,
           trim_ascii(record.signer_public_key_fingerprint_sha256_hex))) {
     if (error) {
       *error =
-          "human response signer_public_key_fingerprint_sha256_hex must be 64 lowercase hex chars";
+          "human resolution signer_public_key_fingerprint_sha256_hex must be 64 lowercase hex chars";
     }
     return false;
   }
-  if (control == "continue") {
-    const std::string next = trim_ascii(record.next_action_kind);
-    if (next != "default_plan" && next != "binding") {
-      if (error) *error = "continue human response requires next_action_kind";
+  if (resolution == "grant") {
+    if (escalation == "authority_expansion") {
+      if (!record.grant_allow_default_write) {
+        if (error) {
+          *error =
+              "authority_expansion grant must set grant_allow_default_write";
+        }
+        return false;
+      }
+      if (record.grant_additional_review_turns != 0 ||
+          record.grant_additional_campaign_launches != 0) {
+        if (error) {
+          *error =
+              "authority_expansion grant cannot add review or campaign budgets";
+        }
+        return false;
+      }
+    } else if (escalation == "budget_expansion") {
+      if (record.grant_additional_review_turns == 0 &&
+          record.grant_additional_campaign_launches == 0) {
+        if (error) {
+          *error =
+              "budget_expansion grant must add review turns or campaign launches";
+        }
+        return false;
+      }
+      if (record.grant_allow_default_write) {
+        if (error) {
+          *error =
+              "budget_expansion grant cannot widen default-write authority";
+        }
+        return false;
+      }
+    } else {
+      if (error) {
+        *error =
+            "objective_clarification escalation cannot use resolution_kind=grant";
+      }
       return false;
     }
-    if (next == "binding" && trim_ascii(record.target_binding_id).empty()) {
-      if (error) *error = "binding human response requires target_binding_id";
-      return false;
-    }
+  } else if (record.grant_allow_default_write ||
+             record.grant_additional_review_turns != 0 ||
+             record.grant_additional_campaign_launches != 0) {
+    if (error) *error = "only grant resolutions may carry grant delta fields";
+    return false;
   }
   return true;
 }
 
-std::string human_response_to_json(const human_response_record_t& record) {
+std::string human_resolution_to_json(const human_resolution_record_t& record) {
   std::ostringstream out;
   out << "{"
       << "\"schema\":" << json_quote(record.schema) << ","
       << "\"loop_id\":" << json_quote(record.loop_id) << ","
-      << "\"review_index\":" << record.review_index << ","
-      << "\"request_sha256_hex\":" << json_quote(record.request_sha256_hex) << ","
+      << "\"turn_index\":" << record.turn_index << ","
+      << "\"escalation_sha256_hex\":"
+      << json_quote(record.escalation_sha256_hex) << ","
       << "\"operator_id\":" << json_quote(record.operator_id) << ","
-      << "\"responded_at_ms\":" << record.responded_at_ms << ","
-      << "\"control_kind\":" << json_quote(record.control_kind) << ","
-      << "\"next_action\":{"
-      << "\"kind\":" << json_quote(record.next_action_kind) << ","
-      << "\"target_binding_id\":" << json_quote(record.target_binding_id) << ","
-      << "\"reset_runtime_state\":" << bool_json(record.reset_runtime_state)
-      << "},"
+      << "\"resolved_at_ms\":" << record.resolved_at_ms << ","
+      << "\"resolution_kind\":" << json_quote(record.resolution_kind) << ","
+      << "\"escalation_kind\":" << json_quote(record.escalation_kind) << ","
+      << "\"grant_delta\":";
+  if (!record.grant_allow_default_write &&
+      record.grant_additional_review_turns == 0 &&
+      record.grant_additional_campaign_launches == 0) {
+    out << "null";
+  } else {
+    out << "{"
+        << "\"allow_default_write\":"
+        << bool_json(record.grant_allow_default_write) << ","
+        << "\"additional_review_turns\":"
+        << record.grant_additional_review_turns << ","
+        << "\"additional_campaign_launches\":"
+        << record.grant_additional_campaign_launches << "}";
+  }
+  out << ","
       << "\"reason\":" << json_quote(record.reason) << ","
-      << "\"memory_note\":" << json_quote(record.memory_note) << ","
       << "\"signer_public_key_fingerprint_sha256_hex\":"
       << json_quote(record.signer_public_key_fingerprint_sha256_hex)
       << "}";
   return out.str();
 }
 
-bool parse_human_response_json(const std::string& json,
-                               human_response_record_t* out,
-                               std::string* error) {
+bool parse_human_resolution_json(const std::string& json,
+                                 human_resolution_record_t* out,
+                                 std::string* error) {
   if (error) error->clear();
   if (!out) {
-    if (error) *error = "human response output pointer is null";
+    if (error) *error = "human resolution output pointer is null";
     return false;
   }
-  *out = human_response_record_t{};
+  *out = human_resolution_record_t{};
   if (!extract_json_string_field(json, "schema", &out->schema)) {
-    if (error) *error = "human response missing schema";
+    if (error) *error = "human resolution missing schema";
     return false;
   }
   if (!extract_json_string_field(json, "loop_id", &out->loop_id)) {
-    if (error) *error = "human response missing loop_id";
+    if (error) *error = "human resolution missing loop_id";
     return false;
   }
-  std::size_t review_index = 0;
-  if (!extract_json_size_field(json, "review_index", &review_index)) {
-    if (error) *error = "human response missing review_index";
+  std::size_t turn_index = 0;
+  if (!extract_json_size_field(json, "turn_index", &turn_index)) {
+    if (error) *error = "human resolution missing turn_index";
     return false;
   }
-  out->review_index = static_cast<std::uint64_t>(review_index);
-  if (!extract_json_string_field(json, "request_sha256_hex",
-                                 &out->request_sha256_hex)) {
-    if (error) *error = "human response missing request_sha256_hex";
+  out->turn_index = static_cast<std::uint64_t>(turn_index);
+  if (!extract_json_string_field(json, "escalation_sha256_hex",
+                                 &out->escalation_sha256_hex)) {
+    if (error) *error = "human resolution missing escalation_sha256_hex";
     return false;
   }
   if (!extract_json_string_field(json, "operator_id", &out->operator_id)) {
-    if (error) *error = "human response missing operator_id";
+    if (error) *error = "human resolution missing operator_id";
     return false;
   }
-  std::size_t responded_at_ms = 0;
-  if (!extract_json_size_field(json, "responded_at_ms", &responded_at_ms)) {
-    if (error) *error = "human response missing responded_at_ms";
+  std::size_t resolved_at_ms = 0;
+  if (!extract_json_size_field(json, "resolved_at_ms", &resolved_at_ms)) {
+    if (error) *error = "human resolution missing resolved_at_ms";
     return false;
   }
-  out->responded_at_ms = static_cast<std::uint64_t>(responded_at_ms);
-  if (!extract_json_string_field(json, "control_kind", &out->control_kind)) {
-    if (error) *error = "human response missing control_kind";
+  out->resolved_at_ms = static_cast<std::uint64_t>(resolved_at_ms);
+  if (!extract_json_string_field(json, "resolution_kind",
+                                 &out->resolution_kind)) {
+    if (error) *error = "human resolution missing resolution_kind";
     return false;
   }
-  std::string next_action_json{};
-  if (extract_json_field_raw(json, "next_action", &next_action_json) &&
-      trim_ascii(next_action_json) != "null") {
-    (void)extract_json_string_field(next_action_json, "kind",
-                                    &out->next_action_kind);
-    (void)extract_json_string_field(next_action_json, "target_binding_id",
-                                    &out->target_binding_id);
-    (void)extract_json_bool_field(next_action_json, "reset_runtime_state",
-                                  &out->reset_runtime_state);
+  if (!extract_json_string_field(json, "escalation_kind",
+                                 &out->escalation_kind)) {
+    if (error) *error = "human resolution missing escalation_kind";
+    return false;
+  }
+  std::string grant_delta_json{};
+  if (extract_json_field_raw(json, "grant_delta", &grant_delta_json) &&
+      trim_ascii(grant_delta_json) != "null") {
+    (void)extract_json_bool_field(grant_delta_json, "allow_default_write",
+                                  &out->grant_allow_default_write);
+    std::size_t additional_review_turns = 0;
+    if (extract_json_size_field(grant_delta_json, "additional_review_turns",
+                                &additional_review_turns)) {
+      out->grant_additional_review_turns =
+          static_cast<std::uint64_t>(additional_review_turns);
+    }
+    std::size_t additional_campaign_launches = 0;
+    if (extract_json_size_field(grant_delta_json,
+                                "additional_campaign_launches",
+                                &additional_campaign_launches)) {
+      out->grant_additional_campaign_launches =
+          static_cast<std::uint64_t>(additional_campaign_launches);
+    }
   }
   if (!extract_json_string_field(json, "reason", &out->reason)) {
-    if (error) *error = "human response missing reason";
+    if (error) *error = "human resolution missing reason";
     return false;
   }
-  (void)extract_json_string_field(json, "memory_note", &out->memory_note);
   if (!extract_json_string_field(json,
                                  "signer_public_key_fingerprint_sha256_hex",
                                  &out->signer_public_key_fingerprint_sha256_hex)) {
     if (error) {
-      *error =
-          "human response missing signer_public_key_fingerprint_sha256_hex";
+      *error = "human resolution missing signer_public_key_fingerprint_sha256_hex";
     }
     return false;
   }
-  return validate_human_response_record(*out, error);
+  return validate_human_resolution_record(*out, error);
 }
 
 bool sha256_hex_string(std::string_view payload, std::string* out_hex,
@@ -756,13 +831,13 @@ bool sha256_hex_file(const std::filesystem::path& path, std::string* out_hex,
   return sha256_hex_string(text, out_hex, error);
 }
 
-bool sign_human_response_json(
+bool sign_human_attested_json(
     const std::filesystem::path& ssh_identity_path,
-    std::string_view response_json, std::string* out_signature_hex,
+    std::string_view payload_json, std::string* out_signature_hex,
     std::string* out_public_key_fingerprint_sha256_hex, std::string* error) {
   if (error) error->clear();
   if (!out_signature_hex || !out_public_key_fingerprint_sha256_hex) {
-    if (error) *error = "human response signature outputs are null";
+    if (error) *error = "human attestation signature outputs are null";
     return false;
   }
   *out_signature_hex = "";
@@ -787,18 +862,18 @@ bool sign_human_response_json(
   if (!mdctx) {
     if (error) *error = "cannot allocate EVP_MD_CTX for signing";
   } else if (EVP_DigestSignInit(mdctx, nullptr, nullptr, nullptr, pkey) != 1) {
-    if (error) *error = "EVP_DigestSignInit failed for human response signing";
+    if (error) *error = "EVP_DigestSignInit failed for human attestation signing";
   } else {
     size_t sig_len = 0;
     if (EVP_DigestSign(mdctx, nullptr, &sig_len,
-                       reinterpret_cast<const unsigned char*>(response_json.data()),
-                       response_json.size()) != 1) {
+                       reinterpret_cast<const unsigned char*>(payload_json.data()),
+                       payload_json.size()) != 1) {
       if (error) *error = "EVP_DigestSign size probe failed";
     } else {
       std::vector<unsigned char> signature(sig_len);
       if (EVP_DigestSign(mdctx, signature.data(), &sig_len,
-                         reinterpret_cast<const unsigned char*>(response_json.data()),
-                         response_json.size()) != 1) {
+                         reinterpret_cast<const unsigned char*>(payload_json.data()),
+                         payload_json.size()) != 1) {
         if (error) *error = "EVP_DigestSign failed";
       } else {
         signature.resize(sig_len);
@@ -817,14 +892,14 @@ bool sign_human_response_json(
   return ok;
 }
 
-bool verify_human_response_json_signature(
+bool verify_human_attested_json_signature(
     const std::filesystem::path& operator_identities_path,
-    std::string_view operator_id, std::string_view response_json,
+    std::string_view operator_id, std::string_view payload_json,
     std::string_view signature_hex,
     std::string* out_public_key_fingerprint_sha256_hex, std::string* error) {
   if (error) error->clear();
   if (!out_public_key_fingerprint_sha256_hex) {
-    if (error) *error = "human response verify fingerprint output pointer is null";
+    if (error) *error = "human attestation verify fingerprint output pointer is null";
     return false;
   }
   *out_public_key_fingerprint_sha256_hex = "";
@@ -849,12 +924,12 @@ bool verify_human_response_json_signature(
   if (!mdctx) {
     if (error) *error = "cannot allocate EVP_MD_CTX for verification";
   } else if (EVP_DigestVerifyInit(mdctx, nullptr, nullptr, nullptr, pkey) != 1) {
-    if (error) *error = "EVP_DigestVerifyInit failed for human response verification";
+    if (error) *error = "EVP_DigestVerifyInit failed for human attestation verification";
   } else if (EVP_DigestVerify(
                  mdctx, signature.data(), signature.size(),
-                 reinterpret_cast<const unsigned char*>(response_json.data()),
-                 response_json.size()) != 1) {
-    if (error) *error = "human response signature verification failed";
+                 reinterpret_cast<const unsigned char*>(payload_json.data()),
+                 payload_json.size()) != 1) {
+    if (error) *error = "human attestation signature verification failed";
   } else if (!public_key_fingerprint_from_raw_ed25519(
                  public_key, out_public_key_fingerprint_sha256_hex, error)) {
     ok = false;

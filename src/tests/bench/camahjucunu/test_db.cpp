@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 #include <filesystem>
@@ -21,10 +22,11 @@
 #include <string>
 #include <vector>
 
+#include <sys/wait.h>
 #include <unistd.h> // getpid()
 
 namespace fs = std::filesystem;
-using namespace cuwacunu::camahjucunu::db;
+using namespace db;
 
 static void require_impl(bool ok, const char* expr, const char* file, int line) {
   if (!ok) {
@@ -332,6 +334,93 @@ static void test_vectors_knn_and_rag(const fs::path& dbfile) {
   REQUIRE(idydb_close(&db) == IDYDB_DONE);
 }
 
+static void test_named_lock_basic(const fs::path& lockfile) {
+  std::cout << "[TEST] named_lock_basic\n";
+
+  idydb_named_lock* lock_a = nullptr;
+  idydb_named_lock_options options{};
+  options.shared = false;
+  options.create_parent_directories = true;
+  options.owner_label = "test_named_lock_basic_a";
+
+  REQUIRE(idydb_named_lock_acquire(lockfile.c_str(), &lock_a, &options) ==
+          IDYDB_SUCCESS);
+  REQUIRE(lock_a != nullptr);
+
+  char owner[512]{};
+  REQUIRE(idydb_named_lock_describe_owner(lockfile.c_str(), owner,
+                                          sizeof(owner)) == IDYDB_SUCCESS);
+  REQUIRE(std::string(owner).find("owner_label=test_named_lock_basic_a") !=
+          std::string::npos);
+
+  idydb_named_lock* lock_b = nullptr;
+  REQUIRE(idydb_named_lock_acquire(lockfile.c_str(), &lock_b, &options) ==
+          IDYDB_BUSY);
+  REQUIRE(lock_b == nullptr);
+
+  REQUIRE(idydb_named_lock_release(&lock_a) == IDYDB_DONE);
+  REQUIRE(lock_a == nullptr);
+
+  options.owner_label = "test_named_lock_basic_b";
+  REQUIRE(idydb_named_lock_acquire(lockfile.c_str(), &lock_b, &options) ==
+          IDYDB_SUCCESS);
+  REQUIRE(lock_b != nullptr);
+
+  std::memset(owner, 0, sizeof(owner));
+  REQUIRE(idydb_named_lock_describe_owner(lockfile.c_str(), owner,
+                                          sizeof(owner)) == IDYDB_SUCCESS);
+  REQUIRE(std::string(owner).find("owner_label=test_named_lock_basic_b") !=
+          std::string::npos);
+
+  REQUIRE(idydb_named_lock_release(&lock_b) == IDYDB_DONE);
+  REQUIRE(lock_b == nullptr);
+}
+
+static void test_named_lock_released_on_process_exit(const fs::path& lockfile) {
+  std::cout << "[TEST] named_lock_released_on_process_exit\n";
+
+  int pipefd[2]{-1, -1};
+  REQUIRE(::pipe(pipefd) == 0);
+
+  const pid_t pid = ::fork();
+  REQUIRE(pid >= 0);
+
+  if (pid == 0) {
+    (void)::close(pipefd[0]);
+    idydb_named_lock* lock = nullptr;
+    idydb_named_lock_options options{};
+    options.shared = false;
+    options.create_parent_directories = true;
+    options.owner_label = "child_exit_holder";
+    const int rc = idydb_named_lock_acquire(lockfile.c_str(), &lock, &options);
+    const char status = (rc == IDYDB_SUCCESS && lock != nullptr) ? '1' : '0';
+    REQUIRE(::write(pipefd[1], &status, 1) == 1);
+    (void)::close(pipefd[1]);
+    std::_Exit(status == '1' ? 0 : 1);
+  }
+
+  (void)::close(pipefd[1]);
+  char status = '0';
+  REQUIRE(::read(pipefd[0], &status, 1) == 1);
+  REQUIRE(status == '1');
+  (void)::close(pipefd[0]);
+
+  int wait_status = 0;
+  REQUIRE(::waitpid(pid, &wait_status, 0) == pid);
+  REQUIRE(WIFEXITED(wait_status));
+  REQUIRE(WEXITSTATUS(wait_status) == 0);
+
+  idydb_named_lock* recovered = nullptr;
+  idydb_named_lock_options options{};
+  options.shared = false;
+  options.create_parent_directories = true;
+  options.owner_label = "parent_recovered_holder";
+  REQUIRE(idydb_named_lock_acquire(lockfile.c_str(), &recovered, &options) ==
+          IDYDB_SUCCESS);
+  REQUIRE(recovered != nullptr);
+  REQUIRE(idydb_named_lock_release(&recovered) == IDYDB_DONE);
+}
+
 int main() {
   TempDir tdir("idydb_cpp20_tests");
 
@@ -351,6 +440,11 @@ int main() {
 
   // 5) Vectors + kNN + RAG
   test_vectors_knn_and_rag(pjoin(tdir.dir, "rag.db"));
+
+  // 6) Named lock manager
+  test_named_lock_basic(pjoin(tdir.dir, "locks/basic.lock"));
+  test_named_lock_released_on_process_exit(
+      pjoin(tdir.dir, "locks/released_on_exit.lock"));
 
   std::cout << "[ALL TESTS PASSED]\n";
   return 0;

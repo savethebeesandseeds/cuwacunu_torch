@@ -20,10 +20,14 @@ namespace cuwacunu {
 namespace hero {
 namespace super {
 
-inline constexpr std::string_view kSuperLoopSchemaV1 =
-    "hero.super.loop.v1";
-inline constexpr std::string_view kSuperLoopManifestFilename = "loop.lls";
-inline constexpr std::string_view kSuperLoopMemoryFilename = "memory.md";
+inline constexpr std::string_view kSuperLoopSchemaV2 =
+    "hero.super.loop.v2";
+inline constexpr std::string_view kSuperLoopManifestFilename =
+    "super.loop.manifest.lls";
+inline constexpr std::string_view kLegacySuperLoopManifestFilename = "loop.lls";
+inline constexpr std::string_view kSuperLoopMemoryFilename =
+    "super.loop.memory.md";
+inline constexpr std::string_view kLegacySuperLoopMemoryFilename = "memory.md";
 inline constexpr std::string_view kSuperLoopBriefingFilename =
     "super.briefing.md";
 inline constexpr std::string_view kSuperLoopCodexSessionLogFilename =
@@ -38,22 +42,44 @@ inline constexpr std::string_view kSuperLoopGuidanceMdFilename =
     "super.guidance.md";
 inline constexpr std::string_view kSuperLoopConfigHeroPolicyFilename =
     "config.hero.policy.dsl";
-inline constexpr std::string_view kSuperLoopHumanRequestFilename =
-    "request.latest.md";
-inline constexpr std::string_view kSuperLoopHumanResponseLatestFilename =
-    "response.latest.json";
-inline constexpr std::string_view kSuperLoopHumanResponseLatestSigFilename =
-    "response.latest.sig";
-inline constexpr std::string_view kSuperLoopEventsFilename = "events.jsonl";
-inline constexpr std::string_view kSuperLoopLatestJsonFilename = "latest.json";
+inline constexpr std::string_view kSuperLoopHumanEscalationFilename =
+    "escalation.latest.md";
+inline constexpr std::string_view kSuperLoopHumanReportFilename =
+    "report.latest.md";
+inline constexpr std::string_view kSuperLoopHumanResolutionLatestFilename =
+    "resolution.latest.json";
+inline constexpr std::string_view kSuperLoopHumanResolutionLatestSigFilename =
+    "resolution.latest.sig";
+inline constexpr std::string_view kSuperLoopHumanReportAckLatestFilename =
+    "report_ack.latest.json";
+inline constexpr std::string_view kSuperLoopHumanReportAckLatestSigFilename =
+    "report_ack.latest.sig";
+inline constexpr std::string_view kSuperLoopEventsFilename =
+    "super.loop.events.jsonl";
+inline constexpr std::string_view kLegacySuperLoopEventsFilename =
+    "events.jsonl";
+inline constexpr std::string_view kSuperLoopTurnsDirname = "turns";
+inline constexpr std::string_view kSuperLoopHumanResolutionsDirname =
+    "resolutions";
+inline constexpr std::string_view kSuperLoopLatestTurnContextFilename =
+    "turn_context.latest.json";
+inline constexpr std::string_view kSuperLoopLatestTurnOutcomeFilename =
+    "turn_outcome.latest.json";
+inline constexpr std::string_view kSuperLoopLatestTurnMutationFilename =
+    "turn_mutation.latest.json";
 inline constexpr std::string_view kSuperLoopLogsDirname = "logs";
 inline constexpr std::string_view kSuperLoopHumanDirname = "human";
-inline constexpr std::string_view kSuperLoopReviewsDirname = "reviews";
-inline constexpr std::string_view kSuperLoopDecisionsDirname = "decisions";
-inline constexpr std::string_view kSuperLoopHumanResponsesDirname = "responses";
 inline constexpr std::string_view kHumanHeroRuntimeDirname = ".human_hero";
-inline constexpr std::string_view kHumanHeroPendingCountFilename =
-    "pending.count";
+inline constexpr std::string_view kHumanHeroPendingEscalationCountFilename =
+    "awaiting_human.pending.count";
+inline constexpr std::string_view kHumanHeroPendingReportCountFilename =
+    "finished.pending.count";
+inline constexpr std::string_view kSuperLoopRunnerLockFilename =
+    ".super.loop.runner.lock";
+
+[[nodiscard]] inline std::filesystem::path prefer_canonical_super_loop_file_path(
+    const std::filesystem::path& canonical_path,
+    const std::filesystem::path& legacy_path);
 
 [[nodiscard]] inline bool is_super_loop_runtime_text_char(char ch) {
   if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
@@ -115,9 +141,9 @@ inline constexpr std::string_view kHumanHeroPendingCountFilename =
 
 struct super_loop_record_t {
   // Identity and high-level state.
-  std::string schema{std::string(kSuperLoopSchemaV1)};
+  std::string schema{std::string(kSuperLoopSchemaV2)};
   std::string loop_id{};
-  std::string state{"launching"};
+  std::string state{"bootstrap"};
   std::string state_detail{};
   std::string objective_name{};
   std::string global_config_path{};
@@ -140,23 +166,30 @@ struct super_loop_record_t {
   std::string config_policy_path{};
   std::string briefing_path{};
   std::string memory_path{};
-  std::string human_request_path{};
+  std::string human_escalation_path{};
   std::string events_path{};
   std::string codex_session_id{};
 
-  // Review lifecycle.
+  // Turn lifecycle.
   std::uint64_t started_at_ms{0};
   std::uint64_t updated_at_ms{0};
   std::optional<std::uint64_t> finished_at_ms{};
-  std::uint64_t review_count{0};
-  std::uint64_t max_reviews{0};
+  std::uint64_t turn_count{0};
+  std::uint64_t launch_count{0};
+  std::uint64_t max_review_turns{0};
+  std::uint64_t max_campaign_launches{0};
+  std::uint64_t remaining_review_turns{0};
+  std::uint64_t remaining_campaign_launches{0};
+  std::string authority_scope{"objective_only"};
+  std::string latest_escalation_kind{};
 
   // Latest execution status and evidence pointers.
   std::string active_campaign_cursor{};
-  std::string last_control_kind{};
+  std::string last_outcome_kind{};
   std::string last_warning{};
-  std::string last_review_packet_path{};
-  std::string last_decision_path{};
+  std::string last_turn_context_path{};
+  std::string last_turn_outcome_path{};
+  std::string last_turn_mutation_path{};
 
   // Historical campaign trail for this loop.
   std::vector<std::string> campaign_cursors{};
@@ -178,7 +211,13 @@ struct super_loop_record_t {
 [[nodiscard]] inline std::filesystem::path human_hero_pending_count_path(
     const std::filesystem::path& super_root) {
   return human_hero_runtime_dir(super_root) /
-         std::string(kHumanHeroPendingCountFilename);
+         std::string(kHumanHeroPendingEscalationCountFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path human_hero_pending_report_count_path(
+    const std::filesystem::path& super_root) {
+  return human_hero_runtime_dir(super_root) /
+         std::string(kHumanHeroPendingReportCountFilename);
 }
 
 [[nodiscard]] inline std::string format_super_index(std::size_t index) {
@@ -198,10 +237,77 @@ struct super_loop_record_t {
          std::string(kSuperLoopManifestFilename);
 }
 
+[[nodiscard]] inline std::filesystem::path super_loop_legacy_manifest_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kLegacySuperLoopManifestFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_existing_super_loop_manifest_path(const std::filesystem::path& super_root,
+                                          std::string_view loop_id) {
+  const std::filesystem::path manifest_path =
+      super_loop_manifest_path(super_root, loop_id);
+  std::error_code ec{};
+  if (std::filesystem::exists(manifest_path, ec) &&
+      std::filesystem::is_regular_file(manifest_path, ec)) {
+    return manifest_path;
+  }
+  ec.clear();
+  const std::filesystem::path legacy_manifest_path =
+      super_loop_legacy_manifest_path(super_root, loop_id);
+  if (std::filesystem::exists(legacy_manifest_path, ec) &&
+      std::filesystem::is_regular_file(legacy_manifest_path, ec)) {
+    return legacy_manifest_path;
+  }
+  return manifest_path;
+}
+
+[[nodiscard]] inline std::filesystem::path prefer_canonical_super_loop_file_path(
+    const std::filesystem::path& canonical_path,
+    const std::filesystem::path& legacy_path) {
+  std::error_code ec{};
+  if (std::filesystem::exists(canonical_path, ec) &&
+      std::filesystem::is_regular_file(canonical_path, ec)) {
+    ec.clear();
+    (void)std::filesystem::remove(legacy_path, ec);
+    return canonical_path;
+  }
+  ec.clear();
+  if (std::filesystem::exists(legacy_path, ec) &&
+      std::filesystem::is_regular_file(legacy_path, ec)) {
+    std::filesystem::rename(legacy_path, canonical_path, ec);
+    if (!ec) return canonical_path;
+    ec.clear();
+    (void)std::filesystem::copy_file(
+        legacy_path, canonical_path,
+        std::filesystem::copy_options::overwrite_existing, ec);
+    if (!ec) {
+      std::error_code remove_ec{};
+      (void)std::filesystem::remove(legacy_path, remove_ec);
+      return canonical_path;
+    }
+    return legacy_path;
+  }
+  return canonical_path;
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_runner_lock_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kSuperLoopRunnerLockFilename);
+}
+
 [[nodiscard]] inline std::filesystem::path super_loop_memory_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
   return super_loop_dir(super_root, loop_id) /
          std::string(kSuperLoopMemoryFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_legacy_memory_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kLegacySuperLoopMemoryFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path super_loop_briefing_path(
@@ -258,10 +364,16 @@ struct super_loop_record_t {
          std::string(kSuperLoopHumanDirname);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_human_request_path(
+[[nodiscard]] inline std::filesystem::path super_loop_human_escalation_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
   return super_loop_human_dir(super_root, loop_id) /
-         std::string(kSuperLoopHumanRequestFilename);
+         std::string(kSuperLoopHumanEscalationFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_human_report_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_human_dir(super_root, loop_id) /
+         std::string(kSuperLoopHumanReportFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path super_loop_events_path(
@@ -270,79 +382,108 @@ struct super_loop_record_t {
          std::string(kSuperLoopEventsFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_human_response_latest_path(
+[[nodiscard]] inline std::filesystem::path super_loop_legacy_events_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_human_dir(super_root, loop_id) /
-         std::string(kSuperLoopHumanResponseLatestFilename);
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kLegacySuperLoopEventsFilename);
 }
 
 [[nodiscard]] inline std::filesystem::path
-super_loop_human_response_latest_sig_path(
+super_loop_human_resolution_latest_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
   return super_loop_human_dir(super_root, loop_id) /
-         std::string(kSuperLoopHumanResponseLatestSigFilename);
+         std::string(kSuperLoopHumanResolutionLatestFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_reviews_dir(
-    const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_dir(super_root, loop_id) /
-         std::string(kSuperLoopReviewsDirname);
-}
-
-[[nodiscard]] inline std::filesystem::path super_loop_decisions_dir(
-    const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_dir(super_root, loop_id) /
-         std::string(kSuperLoopDecisionsDirname);
-}
-
-[[nodiscard]] inline std::filesystem::path super_loop_human_responses_dir(
+[[nodiscard]] inline std::filesystem::path
+super_loop_human_resolution_latest_sig_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
   return super_loop_human_dir(super_root, loop_id) /
-         std::string(kSuperLoopHumanResponsesDirname);
+         std::string(kSuperLoopHumanResolutionLatestSigFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_latest_review_packet_path(
+[[nodiscard]] inline std::filesystem::path
+super_loop_human_report_ack_latest_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_reviews_dir(super_root, loop_id) /
-         std::string(kSuperLoopLatestJsonFilename);
+  return super_loop_human_dir(super_root, loop_id) /
+         std::string(kSuperLoopHumanReportAckLatestFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_latest_decision_path(
+[[nodiscard]] inline std::filesystem::path
+super_loop_human_report_ack_latest_sig_path(
     const std::filesystem::path& super_root, std::string_view loop_id) {
-  return super_loop_decisions_dir(super_root, loop_id) /
-         std::string(kSuperLoopLatestJsonFilename);
+  return super_loop_human_dir(super_root, loop_id) /
+         std::string(kSuperLoopHumanReportAckLatestSigFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_review_packet_path(
-    const std::filesystem::path& super_root, std::string_view loop_id,
-    std::uint64_t review_index) {
-  return super_loop_reviews_dir(super_root, loop_id) /
-         ("review_packet." +
-          format_super_index(static_cast<std::size_t>(review_index)) + ".json");
+[[nodiscard]] inline std::filesystem::path super_loop_turns_dir(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_dir(super_root, loop_id) /
+         std::string(kSuperLoopTurnsDirname);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_decision_path(
-    const std::filesystem::path& super_root, std::string_view loop_id,
-    std::uint64_t review_index) {
-  return super_loop_decisions_dir(super_root, loop_id) /
-         ("decision." + format_super_index(static_cast<std::size_t>(review_index)) +
-          ".json");
+[[nodiscard]] inline std::filesystem::path super_loop_human_resolutions_dir(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_human_dir(super_root, loop_id) /
+         std::string(kSuperLoopHumanResolutionsDirname);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_human_response_path(
-    const std::filesystem::path& super_root, std::string_view loop_id,
-    std::uint64_t review_index) {
-  return super_loop_human_responses_dir(super_root, loop_id) /
-         ("human_response." +
-          format_super_index(static_cast<std::size_t>(review_index)) + ".json");
+[[nodiscard]] inline std::filesystem::path super_loop_latest_turn_context_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_turns_dir(super_root, loop_id) /
+         std::string(kSuperLoopLatestTurnContextFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path super_loop_human_response_sig_path(
+[[nodiscard]] inline std::filesystem::path super_loop_latest_turn_outcome_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_turns_dir(super_root, loop_id) /
+         std::string(kSuperLoopLatestTurnOutcomeFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_latest_turn_mutation_path(
+    const std::filesystem::path& super_root, std::string_view loop_id) {
+  return super_loop_turns_dir(super_root, loop_id) /
+         std::string(kSuperLoopLatestTurnMutationFilename);
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_turn_context_path(
     const std::filesystem::path& super_root, std::string_view loop_id,
-    std::uint64_t review_index) {
-  return super_loop_human_responses_dir(super_root, loop_id) /
-         ("human_response." +
-          format_super_index(static_cast<std::size_t>(review_index)) + ".sig");
+    std::uint64_t turn_index) {
+  return super_loop_turns_dir(super_root, loop_id) /
+         ("turn_context." +
+          format_super_index(static_cast<std::size_t>(turn_index)) + ".json");
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_turn_outcome_path(
+    const std::filesystem::path& super_root, std::string_view loop_id,
+    std::uint64_t turn_index) {
+  return super_loop_turns_dir(super_root, loop_id) /
+         ("turn_outcome." +
+          format_super_index(static_cast<std::size_t>(turn_index)) + ".json");
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_turn_mutation_path(
+    const std::filesystem::path& super_root, std::string_view loop_id,
+    std::uint64_t turn_index) {
+  return super_loop_turns_dir(super_root, loop_id) /
+         ("turn_mutation." +
+          format_super_index(static_cast<std::size_t>(turn_index)) + ".json");
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_human_resolution_path(
+    const std::filesystem::path& super_root, std::string_view loop_id,
+    std::uint64_t turn_index) {
+  return super_loop_human_resolutions_dir(super_root, loop_id) /
+         ("resolution." +
+          format_super_index(static_cast<std::size_t>(turn_index)) + ".json");
+}
+
+[[nodiscard]] inline std::filesystem::path super_loop_human_resolution_sig_path(
+    const std::filesystem::path& super_root, std::string_view loop_id,
+    std::uint64_t turn_index) {
+  return super_loop_human_resolutions_dir(super_root, loop_id) /
+         ("resolution." +
+          format_super_index(static_cast<std::size_t>(turn_index)) + ".sig");
 }
 
 [[nodiscard]] inline std::string make_super_loop_id(
@@ -409,7 +550,7 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   document.entries.push_back(
       make_runtime_lls_string_entry("memory_path", record.memory_path));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "human_request_path", record.human_request_path));
+      "human_escalation_path", record.human_escalation_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("events_path", record.events_path));
   document.entries.push_back(make_runtime_lls_string_entry(
@@ -423,21 +564,36 @@ super_loop_record_to_document(const super_loop_record_t& record) {
         "finished_at_ms", *record.finished_at_ms, "(0,+inf)"));
   }
   document.entries.push_back(make_runtime_lls_uint_entry(
-      "review_count", record.review_count, "[0,+inf)"));
+      "turn_count", record.turn_count, "[0,+inf)"));
   document.entries.push_back(make_runtime_lls_uint_entry(
-      "max_reviews", record.max_reviews, "[0,+inf)"));
+      "launch_count", record.launch_count, "[0,+inf)"));
+  document.entries.push_back(make_runtime_lls_uint_entry(
+      "max_review_turns", record.max_review_turns, "[0,+inf)"));
+  document.entries.push_back(make_runtime_lls_uint_entry(
+      "max_campaign_launches", record.max_campaign_launches, "[0,+inf)"));
+  document.entries.push_back(make_runtime_lls_uint_entry(
+      "remaining_review_turns", record.remaining_review_turns, "[0,+inf)"));
+  document.entries.push_back(make_runtime_lls_uint_entry(
+      "remaining_campaign_launches", record.remaining_campaign_launches,
+      "[0,+inf)"));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "authority_scope", record.authority_scope));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "latest_escalation_kind", record.latest_escalation_kind));
   document.entries.push_back(make_runtime_lls_string_entry(
       "active_campaign_cursor", record.active_campaign_cursor));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "last_control_kind", record.last_control_kind));
+      "last_outcome_kind", record.last_outcome_kind));
   document.entries.push_back(
       make_runtime_lls_string_entry("last_warning",
                                     sanitize_super_loop_runtime_text(
                                         record.last_warning)));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "last_review_packet_path", record.last_review_packet_path));
+      "last_turn_context_path", record.last_turn_context_path));
   document.entries.push_back(make_runtime_lls_string_entry(
-      "last_decision_path", record.last_decision_path));
+      "last_turn_outcome_path", record.last_turn_outcome_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "last_turn_mutation_path", record.last_turn_mutation_path));
   for (std::size_t i = 0; i < record.campaign_cursors.size(); ++i) {
     document.entries.push_back(make_runtime_lls_string_entry(
         "campaign_cursor." + format_super_index(i), record.campaign_cursors[i]));
@@ -461,7 +617,7 @@ super_loop_record_to_document(const super_loop_record_t& record) {
 
   super_loop_record_t parsed{};
   parsed.schema = kv["schema"];
-  if (parsed.schema != kSuperLoopSchemaV1) {
+  if (parsed.schema != kSuperLoopSchemaV2) {
     if (error) *error = "unexpected super loop schema: " + parsed.schema;
     return false;
   }
@@ -483,14 +639,47 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   parsed.config_policy_path = kv["config_policy_path"];
   parsed.briefing_path = kv["briefing_path"];
   parsed.memory_path = kv["memory_path"];
-  parsed.human_request_path = kv["human_request_path"];
+  parsed.human_escalation_path = kv["human_escalation_path"];
   parsed.events_path = kv["events_path"];
   parsed.codex_session_id = kv["codex_session_id"];
   parsed.active_campaign_cursor = kv["active_campaign_cursor"];
-  parsed.last_control_kind = kv["last_control_kind"];
+  parsed.last_outcome_kind = kv["last_outcome_kind"];
   parsed.last_warning = kv["last_warning"];
-  parsed.last_review_packet_path = kv["last_review_packet_path"];
-  parsed.last_decision_path = kv["last_decision_path"];
+  parsed.last_turn_context_path = kv["last_turn_context_path"];
+  parsed.last_turn_outcome_path = kv["last_turn_outcome_path"];
+  parsed.last_turn_mutation_path = kv["last_turn_mutation_path"];
+  parsed.authority_scope = kv["authority_scope"];
+  parsed.latest_escalation_kind = kv["latest_escalation_kind"];
+  if (!parsed.loop_root.empty()) {
+    const std::filesystem::path loop_root_path(parsed.loop_root);
+    const std::filesystem::path canonical_memory_path =
+        loop_root_path / std::string(kSuperLoopMemoryFilename);
+    const std::filesystem::path legacy_memory_path =
+        loop_root_path / std::string(kLegacySuperLoopMemoryFilename);
+    const std::filesystem::path raw_memory_path(parsed.memory_path);
+    if (parsed.memory_path.empty() ||
+        raw_memory_path.lexically_normal() == canonical_memory_path ||
+        raw_memory_path.lexically_normal() == legacy_memory_path) {
+      parsed.memory_path =
+          prefer_canonical_super_loop_file_path(canonical_memory_path,
+                                                legacy_memory_path)
+              .string();
+    }
+
+    const std::filesystem::path canonical_events_path =
+        loop_root_path / std::string(kSuperLoopEventsFilename);
+    const std::filesystem::path legacy_events_path =
+        loop_root_path / std::string(kLegacySuperLoopEventsFilename);
+    const std::filesystem::path raw_events_path(parsed.events_path);
+    if (parsed.events_path.empty() ||
+        raw_events_path.lexically_normal() == canonical_events_path ||
+        raw_events_path.lexically_normal() == legacy_events_path) {
+      parsed.events_path =
+          prefer_canonical_super_loop_file_path(canonical_events_path,
+                                                legacy_events_path)
+              .string();
+    }
+  }
   if (!cuwacunu::hero::runtime::parse_u64(kv["started_at_ms"],
                                           &parsed.started_at_ms)) {
     if (error) *error = "super loop record missing started_at_ms";
@@ -505,14 +694,34 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   if (cuwacunu::hero::runtime::parse_u64(kv["finished_at_ms"], &value)) {
     parsed.finished_at_ms = value;
   }
-  if (!cuwacunu::hero::runtime::parse_u64(kv["review_count"],
-                                          &parsed.review_count)) {
-    if (error) *error = "super loop record missing review_count";
+  if (!cuwacunu::hero::runtime::parse_u64(kv["turn_count"],
+                                          &parsed.turn_count)) {
+    if (error) *error = "super loop record missing turn_count";
     return false;
   }
-  if (!cuwacunu::hero::runtime::parse_u64(kv["max_reviews"],
-                                          &parsed.max_reviews)) {
-    if (error) *error = "super loop record missing max_reviews";
+  if (!cuwacunu::hero::runtime::parse_u64(kv["launch_count"],
+                                          &parsed.launch_count)) {
+    if (error) *error = "super loop record missing launch_count";
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::parse_u64(kv["max_review_turns"],
+                                          &parsed.max_review_turns)) {
+    if (error) *error = "super loop record missing max_review_turns";
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::parse_u64(kv["max_campaign_launches"],
+                                          &parsed.max_campaign_launches)) {
+    if (error) *error = "super loop record missing max_campaign_launches";
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::parse_u64(kv["remaining_review_turns"],
+                                          &parsed.remaining_review_turns)) {
+    if (error) *error = "super loop record missing remaining_review_turns";
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::parse_u64(kv["remaining_campaign_launches"],
+                                          &parsed.remaining_campaign_launches)) {
+    if (error) *error = "super loop record missing remaining_campaign_launches";
     return false;
   }
   if (parsed.loop_id.empty()) {
@@ -547,8 +756,8 @@ super_loop_record_to_document(const super_loop_record_t& record) {
     if (error) *error = "super loop record missing config_policy_path";
     return false;
   }
-  if (parsed.human_request_path.empty()) {
-    if (error) *error = "super loop record missing human_request_path";
+  if (parsed.human_escalation_path.empty()) {
+    if (error) *error = "super loop record missing human_escalation_path";
     return false;
   }
   std::map<std::string, std::string, std::less<>> ordered(kv.begin(), kv.end());
@@ -574,8 +783,17 @@ super_loop_record_to_document(const super_loop_record_t& record) {
   const std::string text =
       cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
           super_loop_record_to_document(record));
-  return cuwacunu::hero::runtime::write_text_file_atomic(manifest_path, text,
-                                                         error);
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(manifest_path, text,
+                                                       error)) {
+    return false;
+  }
+  const auto legacy_manifest_path =
+      super_loop_legacy_manifest_path(super_root, record.loop_id);
+  if (legacy_manifest_path != manifest_path) {
+    std::error_code ec{};
+    (void)std::filesystem::remove(legacy_manifest_path, ec);
+  }
+  return true;
 }
 
 [[nodiscard]] inline bool read_super_loop_record(
@@ -587,8 +805,10 @@ super_loop_record_to_document(const super_loop_record_t& record) {
     return false;
   }
   std::string text{};
+  const std::filesystem::path manifest_path =
+      resolve_existing_super_loop_manifest_path(super_root, loop_id);
   if (!cuwacunu::hero::runtime::read_text_file(
-          super_loop_manifest_path(super_root, loop_id), &text, error)) {
+          manifest_path, &text, error)) {
     return false;
   }
   cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t document{};
@@ -625,7 +845,7 @@ super_loop_record_to_document(const super_loop_record_t& record) {
     const std::string loop_id = it.path().filename().string();
     if (loop_id.empty() || loop_id.front() == '.') continue;
     const std::filesystem::path manifest_path =
-        super_loop_manifest_path(super_root, loop_id);
+        resolve_existing_super_loop_manifest_path(super_root, loop_id);
     if (!std::filesystem::exists(manifest_path, ec) ||
         !std::filesystem::is_regular_file(manifest_path, ec)) {
       ec.clear();
@@ -654,7 +874,13 @@ super_loop_record_to_document(const super_loop_record_t& record) {
 
 [[nodiscard]] inline bool is_super_loop_terminal_state(
     std::string_view state) {
-  return state == "stopped" || state == "failed" || state == "need_human" ||
+  return state == "stopped" || state == "failed" || state == "success" ||
+         state == "exhausted";
+}
+
+[[nodiscard]] inline bool is_super_loop_finished_report_state(
+    std::string_view state) {
+  return state == "stopped" || state == "failed" || state == "success" ||
          state == "exhausted";
 }
 
@@ -666,7 +892,7 @@ super_loop_record_to_document(const super_loop_record_t& record) {
 
   std::size_t pending = 0;
   for (const auto& loop : loops) {
-    if (loop.state == "need_human") ++pending;
+    if (loop.state == "awaiting_human") ++pending;
   }
 
   const std::filesystem::path marker_dir = human_hero_runtime_dir(super_root);
@@ -681,6 +907,63 @@ super_loop_record_to_document(const super_loop_record_t& record) {
 
   return cuwacunu::hero::runtime::write_text_file_atomic(
       human_hero_pending_count_path(super_root),
+      std::to_string(pending) + "\n", error);
+}
+
+[[nodiscard]] inline bool sync_human_pending_report_count(
+    const std::filesystem::path& super_root, std::string* error = nullptr) {
+  if (error) error->clear();
+  std::vector<super_loop_record_t> loops{};
+  if (!scan_super_loop_records(super_root, &loops, error)) return false;
+
+  std::size_t pending = 0;
+  for (const auto& loop : loops) {
+    if (!is_super_loop_finished_report_state(loop.state)) continue;
+    const std::filesystem::path report_path =
+        super_loop_human_report_path(super_root, loop.loop_id);
+    const std::filesystem::path ack_path =
+        super_loop_human_report_ack_latest_path(super_root, loop.loop_id);
+    std::error_code ec{};
+    const bool report_exists =
+        std::filesystem::exists(report_path, ec) &&
+        std::filesystem::is_regular_file(report_path, ec);
+    ec.clear();
+    const bool ack_exists =
+        std::filesystem::exists(ack_path, ec) &&
+        std::filesystem::is_regular_file(ack_path, ec);
+    if (!report_exists) {
+      continue;
+    }
+    if (!ack_exists) {
+      ++pending;
+      continue;
+    }
+    ec.clear();
+    const auto report_time = std::filesystem::last_write_time(report_path, ec);
+    if (ec) {
+      ++pending;
+      continue;
+    }
+    ec.clear();
+    const auto ack_time = std::filesystem::last_write_time(ack_path, ec);
+    if (ec || ack_time < report_time) {
+      ++pending;
+      continue;
+    }
+  }
+
+  const std::filesystem::path marker_dir = human_hero_runtime_dir(super_root);
+  std::error_code ec{};
+  std::filesystem::create_directories(marker_dir, ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create Human Hero runtime dir: " + marker_dir.string();
+    }
+    return false;
+  }
+
+  return cuwacunu::hero::runtime::write_text_file_atomic(
+      human_hero_pending_report_count_path(super_root),
       std::to_string(pending) + "\n", error);
 }
 

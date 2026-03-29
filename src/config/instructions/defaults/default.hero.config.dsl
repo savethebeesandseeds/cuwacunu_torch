@@ -21,6 +21,9 @@
     - allowed_extensions constrains which file extensions those tools may touch.
     - write_roots constrains persisted config writes, objective/default file
       mutation targets, and backups when allow_local_write=true.
+    - dev_nuke_reset_backup_enabled snapshots targeted runtime state into
+      <runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>
+      before hero.config.dev_nuke_reset clears it.
     - dev_nuke_reset uses runtime roots resolved from the saved global config
       and is not gated by allow_local_write/write_roots.
 */
@@ -36,3 +39,4 @@ write_roots:str = /tmp
 backup_enabled:bool = true
 backup_dir:str = /cuwacunu/.backups/hero.config
 backup_max_entries(1,+inf):int = 20
+dev_nuke_reset_backup_enabled:bool = true

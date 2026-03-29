@@ -387,6 +387,19 @@ int main() {
   options.ingest_version = 2;
 
   REQUIRE(catalog.open(options, &error));
+  const fs::path ingest_lock_path =
+      store_root / "_meta" / "catalog" / ".ingest.lock";
+  idydb_named_lock* busy_lock = nullptr;
+  idydb_named_lock_options lock_options{};
+  lock_options.shared = false;
+  lock_options.create_parent_directories = true;
+  lock_options.owner_label = "test_hashimyei_catalog_busy_holder";
+  REQUIRE(idydb_named_lock_acquire(ingest_lock_path.c_str(), &busy_lock,
+                                   &lock_options) == IDYDB_SUCCESS);
+  REQUIRE(!catalog.ingest_filesystem(store_root, &error));
+  REQUIRE(error.find("ingest lock already held") != std::string::npos);
+  REQUIRE(error.find("test_hashimyei_catalog_busy_holder") != std::string::npos);
+  REQUIRE(idydb_named_lock_release(&busy_lock) == IDYDB_DONE);
   REQUIRE(catalog.ingest_filesystem(store_root, &error));
 
   component_manifest_t pre_hard_cut_component_manifest = make_component_manifest();
