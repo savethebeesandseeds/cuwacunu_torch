@@ -207,6 +207,55 @@ void append_warning_text(std::string* dst, std::string_view warning);
   return out;
 }
 
+[[nodiscard]] std::optional<std::uint64_t> super_loop_elapsed_ms(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  const std::uint64_t end_ms =
+      loop.finished_at_ms.has_value() ? *loop.finished_at_ms : loop.updated_at_ms;
+  if (loop.started_at_ms == 0 || end_ms < loop.started_at_ms) {
+    return std::nullopt;
+  }
+  return end_ms - loop.started_at_ms;
+}
+
+[[nodiscard]] std::string format_compact_duration_ms(
+    std::optional<std::uint64_t> duration_ms) {
+  if (!duration_ms.has_value()) return "<unknown>";
+  if (*duration_ms < 1000) return std::to_string(*duration_ms) + " ms";
+
+  std::uint64_t total_seconds = *duration_ms / 1000;
+  const std::uint64_t days = total_seconds / 86400;
+  total_seconds %= 86400;
+  const std::uint64_t hours = total_seconds / 3600;
+  total_seconds %= 3600;
+  const std::uint64_t minutes = total_seconds / 60;
+  total_seconds %= 60;
+  const std::uint64_t seconds = total_seconds;
+
+  std::ostringstream out;
+  bool wrote = false;
+  const auto append_unit = [&](std::uint64_t value, const char* suffix) {
+    if (value == 0) return;
+    if (wrote) out << " ";
+    out << value << suffix;
+    wrote = true;
+  };
+  append_unit(days, "d");
+  append_unit(hours, "h");
+  append_unit(minutes, "m");
+  if (!wrote || seconds != 0) append_unit(seconds, "s");
+  return out.str();
+}
+
+[[nodiscard]] std::string format_effort_budget(std::uint64_t used,
+                                               std::uint64_t limit,
+                                               std::uint64_t remaining) {
+  std::ostringstream out;
+  out << used << " used";
+  if (limit != 0) out << " / " << limit << " budgeted";
+  out << " (" << remaining << " remaining)";
+  return out.str();
+}
+
 [[nodiscard]] bool ends_with_ascii(std::string_view value,
                                    std::string_view suffix) {
   return value.size() >= suffix.size() &&
@@ -1220,11 +1269,13 @@ struct scoped_temp_path_t {
     const std::string last_campaign_cursor =
         loop.campaign_cursors.empty() ? std::string()
                                       : loop.campaign_cursors.back();
+    const std::optional<std::uint64_t> elapsed_ms = super_loop_elapsed_ms(loop);
     std::ostringstream out;
     out << "# Human Summary Report\n\n"
         << "Loop ID: " << loop.loop_id << "\n"
         << "State: " << loop.state << "\n"
         << "Objective: " << loop.objective_name << "\n"
+        << "Started At Ms: " << loop.started_at_ms << "\n"
         << "Finished At Ms: ";
     if (loop.finished_at_ms.has_value()) {
       out << *loop.finished_at_ms;
@@ -1232,6 +1283,18 @@ struct scoped_temp_path_t {
       out << "<unset>";
     }
     out << "\n"
+        << "Effort Summary:\n"
+        << "- Wall Time: " << format_compact_duration_ms(elapsed_ms);
+    if (elapsed_ms.has_value()) out << " (" << *elapsed_ms << " ms)";
+    out << "\n"
+        << "- Review Turns: "
+        << format_effort_budget(loop.turn_count, loop.max_review_turns,
+                                loop.remaining_review_turns)
+        << "\n"
+        << "- Campaign Launches: "
+        << format_effort_budget(loop.launch_count, loop.max_campaign_launches,
+                                loop.remaining_campaign_launches)
+        << "\n"
         << "Last Outcome: "
         << (trim_ascii(loop.last_outcome_kind).empty() ? "<unset>"
                                                        : loop.last_outcome_kind)

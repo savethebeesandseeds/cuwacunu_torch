@@ -29,6 +29,7 @@ struct runtime_reset_targets_t {
   std::filesystem::path runtime_hero_dsl_path{};
   std::filesystem::path runtime_campaigns_root{};
   std::filesystem::path super_root{};
+  std::filesystem::path human_root{};
   std::vector<std::filesystem::path> store_roots{};
   std::vector<std::filesystem::path> catalog_paths{};
 };
@@ -311,6 +312,29 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
 
 }  // namespace detail
 
+[[nodiscard]] inline bool strip_control_plane_store_roots(
+    runtime_reset_targets_t* targets) {
+  if (!targets) return false;
+
+  const std::filesystem::path super_root = targets->super_root.lexically_normal();
+  const std::filesystem::path human_root =
+      (targets->human_root.empty()
+           ? detail::derive_human_root(targets->runtime_root)
+           : targets->human_root)
+          .lexically_normal();
+
+  targets->store_roots.erase(
+      std::remove_if(targets->store_roots.begin(), targets->store_roots.end(),
+                     [&](const std::filesystem::path& root) {
+                       const std::filesystem::path normalized =
+                           root.lexically_normal();
+                       return (!super_root.empty() && normalized == super_root) ||
+                              (!human_root.empty() && normalized == human_root);
+                     }),
+      targets->store_roots.end());
+  return true;
+}
+
 [[nodiscard]] inline bool resolve_runtime_reset_targets_from_active_config(
     runtime_reset_targets_t* out, std::string* error = nullptr) {
   if (error) error->clear();
@@ -344,8 +368,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     resolved.runtime_campaigns_root =
         detail::derive_runtime_campaigns_root(resolved_runtime_root);
     resolved.super_root = detail::derive_super_root(resolved_runtime_root);
-    const std::filesystem::path human_root =
-        detail::derive_human_root(resolved_runtime_root);
+    resolved.human_root = detail::derive_human_root(resolved_runtime_root);
     const std::filesystem::path hashimyei_store_root =
         detail::derive_hashimyei_store_root(resolved_runtime_root);
     detail::push_unique_path(
@@ -355,7 +378,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     detail::push_unique_path(&resolved.store_roots, &store_root_seen,
                              resolved.super_root);
     detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                             human_root);
+                             resolved.human_root);
     detail::push_unique_path(
         &resolved.catalog_paths, &catalog_seen,
         detail::derive_hashimyei_catalog_path(hashimyei_store_root));
@@ -450,8 +473,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       resolved.runtime_campaigns_root =
           detail::derive_runtime_campaigns_root(resolved_runtime_root);
       resolved.super_root = detail::derive_super_root(resolved_runtime_root);
-      const std::filesystem::path human_root =
-          detail::derive_human_root(resolved_runtime_root);
+      resolved.human_root = detail::derive_human_root(resolved_runtime_root);
       const std::filesystem::path hashimyei_store_root =
           detail::derive_hashimyei_store_root(resolved_runtime_root);
       detail::push_unique_path(
@@ -461,7 +483,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       detail::push_unique_path(&resolved.store_roots, &store_root_seen,
                                resolved.super_root);
       detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                               human_root);
+                               resolved.human_root);
       detail::push_unique_path(
           &resolved.catalog_paths, &catalog_seen,
           detail::derive_hashimyei_catalog_path(hashimyei_store_root));
@@ -682,6 +704,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
   if (!resolve_runtime_reset_targets_from_active_config(&targets, error)) {
     return false;
   }
+  (void)strip_control_plane_store_roots(&targets);
   return reset_runtime_state(targets, out_result, error, ignored_campaign_cursors,
                              ignored_job_cursors);
 }

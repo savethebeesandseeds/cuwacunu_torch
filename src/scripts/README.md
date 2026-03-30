@@ -51,12 +51,22 @@ operator signing surface. It works with the current runtime contract:
 - unencrypted OpenSSH `ssh-ed25519` private key at `operator_signing_ssh_identity`
 - matching public-key registration in `human_operator_identities`
 
-`src/scripts/hero_human_prompt_mark.sh` is the tiny shell-prompt helper for the
-Human Hero pending marker. It reads the hard-coded runtime file
+`src/scripts/cuwacunu_bashrc.sh` is the repo-owned bashrc extension. It keeps
+the cuwacunu shell behavior centralized by:
+- adding `/cuwacunu/.build/hero` and `/cuwacunu/.build/tools` to `PATH`
+- rendering the shell status marks `[*]` and `[!]`
+
+`src/scripts/hero_human_prompt_mark.sh` is the tiny shell status-mark helper for
+the Human Hero pending marker. It reads the hard-coded runtime file
 `/cuwacunu/.runtime/.human_hero/awaiting_human.pending.count` and also checks
 `/cuwacunu/.runtime/.human_hero/finished.pending.count`. It prints `[*]` when
 at least one Super Hero loop is paused in `awaiting_human` or at least one
 finished-loop summary report still needs Human Hero acknowledgment.
+
+`src/scripts/tsodao_sync_mark.sh` is the matching shell status-mark helper for
+TSODAO sync attention. It asks the TSODAO binary for `prompt-mark` and prints
+`[!]` when the hidden surface needs a safe `tsodao sync` or when TSODAO refuses
+to guess direction.
 
 Default setup:
 ```bash
@@ -89,3 +99,90 @@ Dependency note:
 - `/cuwacunu/setup.sh` now installs it through the `openssh-client` package.
 - If an operator identity already exists, the script asks whether to replace it
   with a fresh keypair; use `--yes` to auto-accept that replacement prompt.
+
+`src/main/tools/tsodao.cpp` builds the canonical TSODAO surface guard. Its first
+component is the hidden/public policy declared in
+`src/config/instructions/defaults/tsodao.dsl`, which currently points at
+`src/config/instructions/optim/` as the hidden plaintext surface and
+`src/config/instructions/optim.tar.gpg` as the tracked encrypted archive. TSODAO
+also writes a local sync-state file under `.runtime/.tsodao/` so `sync` can be
+safe-by-default instead of guessing direction.
+
+Examples:
+```bash
+/cuwacunu/.build/tools/tsodao status
+/cuwacunu/.build/tools/tsodao init
+/cuwacunu/.build/tools/tsodao sync
+/cuwacunu/.build/tools/tsodao sync --to-archive
+/cuwacunu/.build/tools/tsodao sync --to-hidden
+/cuwacunu/.build/tools/tsodao prompt-mark
+bash src/scripts/setup_tsodao_key.sh
+bash src/scripts/install_git_hooks.sh
+/cuwacunu/.build/tools/tsodao seal --symmetric
+/cuwacunu/.build/tools/tsodao seal --recipient alice@example.com
+/cuwacunu/.build/tools/tsodao scrub
+/cuwacunu/.build/tools/tsodao open
+```
+
+Dependency note:
+- `gpg`, `tar`, and `sha256sum` are required.
+- `seal` defaults to symmetric AES-256 encryption and can instead target a
+  specific GPG recipient with `--recipient`.
+- `tsodao init` is the preferred workflow when you want commits to
+  auto-refresh the hidden archive through repo git hooks.
+- `sync` is the normal operator command. With no flags it chooses a direction
+  only when that direction is provably safe.
+- `sync --to-archive` means plaintext hidden root -> encrypted archive.
+- `sync --to-hidden` means encrypted archive -> plaintext hidden root.
+- `sync` is safety-first: if both plaintext and archive exist but TSODAO cannot
+  prove which one this machine last synced against, it refuses instead of
+  overwriting either side.
+- archive-to-plaintext restore over existing hidden plaintext asks for
+  confirmation unless `--yes` is passed.
+
+`src/scripts/setup_tsodao_key.sh` is a compatibility wrapper to `tsodao init`.
+The binary provisions or validates the GPG recipient used by `tsodao.dsl`,
+writes the recipient into that DSL, and installs repo git hooks unless
+`--skip-hooks` is set.
+
+Examples:
+```bash
+bash src/scripts/setup_tsodao_key.sh
+bash src/scripts/setup_tsodao_key.sh --uid "Cuwacunu TSODAO <alice@example.com>"
+bash src/scripts/setup_tsodao_key.sh --validate
+```
+
+`src/scripts/install_git_hooks.sh` enables the tracked `.githooks/` directory
+as the repository hook path so commit and push use the TSODAO guardrails.
+
+Build/install:
+
+```bash
+make -C /cuwacunu/src/main/tools -j12 build-tsodao
+/cuwacunu/.build/tools/tsodao init
+/cuwacunu/.build/tools/tsodao sync
+```
+
+Optional in-place finalize:
+```bash
+make -C /cuwacunu/src/main/tools -j12 install-tsodao
+/cuwacunu/.build/tools/tsodao sync
+```
+
+Aggregator note:
+- Daily build use should stay on `lib`, `link`, and `install`:
+  `cd /cuwacunu && make -j12 lib`, `cd /cuwacunu && make -j12 link`,
+  `cd /cuwacunu && make -j12 install`, `make -C /cuwacunu/src lib`,
+  `make -C /cuwacunu/src link`, `make -C /cuwacunu/src install`.
+- `make -C /cuwacunu/src/main all` is an advanced/internal direct-main
+  entrypoint; it also finalizes the installable HERO and tool surfaces.
+- TSODAO install is quiet when the installed binary is already identical;
+  `[TOOL: INSTALLED]` only appears when the `.build/tools` binary actually
+  changes mode into its finalized `700` state.
+- HERO `install-*-hero` targets under `src/main/hero` are specialized
+  internal surfaces, not the normal daily build entrypoints.
+
+Compatibility note:
+- `src/scripts/setup_tsodao_key.sh` remains as a thin compatibility wrapper to `tsodao init`.
+- `src/scripts/optim_bundle.sh` and `src/scripts/setup_optim_bundle_key.sh`
+  remain as thin wrappers to the TSODAO entry points.

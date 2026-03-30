@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <openssl/rand.h>
@@ -137,8 +138,9 @@ struct report_fragment_manifest_t {
   std::filesystem::path out = root;
   const auto segments = split_dot(canonical_path);
   for (const auto& segment : segments) {
-    const std::string token = trim_ascii(segment);
+    std::string token = trim_ascii(segment);
     if (token.empty()) continue;
+    normalize_hex_hash_name_inplace(&token);
     out /= token;
   }
   return out;
@@ -175,10 +177,13 @@ struct report_fragment_manifest_t {
   namespace fs = std::filesystem;
   if (error) error->clear();
 
-  if (manifest.family_canonical_path.empty() ||
-      manifest.family.empty() ||
-      manifest.model.empty() ||
-      manifest.report_fragment_id.empty()) {
+  report_fragment_manifest_t normalized = manifest;
+  normalize_hex_hash_name_inplace(&normalized.report_fragment_id);
+
+  if (normalized.family_canonical_path.empty() ||
+      normalized.family.empty() ||
+      normalized.model.empty() ||
+      normalized.report_fragment_id.empty()) {
     if (error) *error = "report_fragment manifest missing family_canonical_path/family/model/report_fragment_id";
     return false;
   }
@@ -200,10 +205,10 @@ struct report_fragment_manifest_t {
   }
 
   out << "schema=" << kReportFragmentManifestSchema << "\n";
-  out << "family_canonical_path=" << manifest.family_canonical_path << "\n";
-  out << "family=" << manifest.family << "\n";
-  out << "model=" << manifest.model << "\n";
-  out << "report_fragment_id=" << manifest.report_fragment_id << "\n";
+  out << "family_canonical_path=" << normalized.family_canonical_path << "\n";
+  out << "family=" << normalized.family << "\n";
+  out << "model=" << normalized.model << "\n";
+  out << "report_fragment_id=" << normalized.report_fragment_id << "\n";
   out << "file_count=" << files.size() << "\n";
   for (std::size_t i = 0; i < files.size(); ++i) {
     out << manifest_file_key(i, "path") << "=" << files[i].path << "\n";
@@ -264,6 +269,7 @@ struct report_fragment_manifest_t {
   read_kv("family", &out->family);
   read_kv("model", &out->model);
   read_kv("report_fragment_id", &out->report_fragment_id);
+  normalize_hex_hash_name_inplace(&out->report_fragment_id);
 
   const auto file_count_it = kv.find("file_count");
   if (file_count_it == kv.end()) {
@@ -570,11 +576,15 @@ struct report_fragment_manifest_t {
   std::error_code ec;
   if (!fs::exists(base, ec) || !fs::is_directory(base, ec)) return out;
 
+  std::unordered_set<std::string> seen_hashimyeis{};
+
   for (const auto& entry : fs::directory_iterator(base, ec)) {
     if (ec) break;
     if (!entry.is_directory()) continue;
-    const std::string hash = entry.path().filename().string();
+    std::string hash = entry.path().filename().string();
     if (!is_hex_hash_name(hash)) continue;
+    normalize_hex_hash_name_inplace(&hash);
+    if (!seen_hashimyeis.insert(hash).second) continue;
 
     report_fragment_identity_t item{};
     item.family = std::string(family);

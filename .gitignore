@@ -11,11 +11,14 @@
 /src/build/*
 /src/tests/build/*
 /src/main/build/*
+/src/main/tools/tsodao
 /src/config/.backups/*
 /src/config/backups/*
 /src/config/*.pem
 /src/config/*.key
 /src/config/*.enc
+/src/config/instructions/optim/*
+!/src/config/instructions/optim/README.md
 /src/config/secure_key_setup
 /src/config/hero_config_mcp
 /src/config/hero_hashimyei_ingest

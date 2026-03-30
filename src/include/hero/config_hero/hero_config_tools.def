@@ -60,6 +60,34 @@ HERO_CONFIG_TOOL("hero.config.objective.delete",
                  "Delete one whole file under objective_root with an allowed extension after optional sha256 check",
                  "{\"type\":\"object\",\"properties\":{\"objective_root\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"objective_root\",\"path\"],\"additionalProperties\":false}",
                  handle_tool_objective_delete)
+HERO_CONFIG_TOOL("hero.config.optim.read",
+                 "Read one whole file under the TSODAO hidden_root with an allowed extension, returning associated .man content when available",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false}",
+                 handle_tool_optim_read)
+HERO_CONFIG_TOOL("hero.config.optim.list",
+                 "List all allowed files under the TSODAO hidden_root; include_man optionally inlines associated .man content",
+                 "{\"type\":\"object\",\"properties\":{\"include_man\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+                 handle_tool_optim_list)
+HERO_CONFIG_TOOL("hero.config.optim.create",
+                 "Create one whole file under the TSODAO hidden_root with an allowed extension after decoder validation and an encrypted pre-mutation checkpoint",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"additionalProperties\":false}",
+                 handle_tool_optim_create)
+HERO_CONFIG_TOOL("hero.config.optim.replace",
+                 "Replace one whole file under the TSODAO hidden_root with an allowed extension after decoder validation and an encrypted pre-mutation checkpoint",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"additionalProperties\":false}",
+                 handle_tool_optim_replace)
+HERO_CONFIG_TOOL("hero.config.optim.delete",
+                 "Delete one whole file under the TSODAO hidden_root with an allowed extension after optional sha256 check and an encrypted pre-mutation checkpoint",
+                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"expected_sha256\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false}",
+                 handle_tool_optim_delete)
+HERO_CONFIG_TOOL("hero.config.optim.backups",
+                 "List available encrypted TSODAO archive checkpoints for the optim hidden surface",
+                 "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+                 handle_tool_optim_backups)
+HERO_CONFIG_TOOL("hero.config.optim.rollback",
+                 "Rollback the optim hidden surface to an encrypted TSODAO archive checkpoint",
+                 "{\"type\":\"object\",\"properties\":{\"backup\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+                 handle_tool_optim_rollback)
 HERO_CONFIG_TOOL("hero.config.validate", "Validate runtime config",
                  "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
                  handle_tool_validate)

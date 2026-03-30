@@ -12,14 +12,21 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${SCRIPT_PATH}")" && pwd)"
 ROOT_DIR="${MKC_ROOT:-${SCRIPT_DIR}}"
 
-if [[ -d "/cuwacunu/src/main" ]]; then
-  MAKE_DIR="/cuwacunu/src/main"
+if [[ -d "/cuwacunu/src" ]]; then
+  SRC_MAKE_DIR="/cuwacunu/src"
+  MAIN_MAKE_DIR="/cuwacunu/src/main"
 else
-  MAKE_DIR="${ROOT_DIR}/src/main"
+  SRC_MAKE_DIR="${ROOT_DIR}/src"
+  MAIN_MAKE_DIR="${ROOT_DIR}/src/main"
 fi
 
-if [[ ! -d "${MAKE_DIR}" ]]; then
-  echo "mkc: missing make directory: ${MAKE_DIR}" >&2
+if [[ ! -d "${SRC_MAKE_DIR}" ]]; then
+  echo "mkc: missing src make directory: ${SRC_MAKE_DIR}" >&2
+  exit 1
+fi
+
+if [[ ! -d "${MAIN_MAKE_DIR}" ]]; then
+  echo "mkc: missing main make directory: ${MAIN_MAKE_DIR}" >&2
   exit 1
 fi
 
@@ -35,6 +42,9 @@ if ! [[ "${MKC_JOBS}" =~ ^[0-9]+$ ]] || (( MKC_JOBS < 1 )); then
 fi
 
 PRODUCTION_TARGETS=(
+  lib
+  link
+  install
   all
   hero
   runtime_hero
@@ -43,8 +53,23 @@ PRODUCTION_TARGETS=(
   clean
 )
 
+SRC_TARGETS=(
+  lib
+  link
+  install
+  modules
+  lib-bundles
+  clean
+  clean_common
+  clean_dsl
+  clean_data
+  clean_wikimyei
+)
+
 MAIN_BASE_TARGETS=(
   all
+  link
+  install
   clean
   hero
   runtime_hero
@@ -72,45 +97,6 @@ MAIN_BASE_TARGETS=(
   expval
 )
 
-SRC_BRIDGE_TARGETS=(
-  src_all
-  src_modules
-  src_lib-bundles
-  src_build
-  src_b
-  src_mods
-  src_m
-  src_bundles
-  src_pack
-  src_test
-  src_t
-  src_tests
-  src_main
-  src_piaabo
-  src_iitepi
-  src_camahjucunu
-  src_jkimyei
-  src_wikimyei
-  src_iinuji
-  src_it
-  src_pia
-  src_cam
-  src_jk
-  src_wk
-  src_ii
-  src_clean
-  src_clean_all
-  src_c
-  src_ccommon
-  src_cdsl
-  src_cdata
-  src_cwiki
-  src_clean_common
-  src_clean_dsl
-  src_clean_data
-  src_clean_wikimyei
-)
-
 EXTRA_WORDS=(
   rules
   --rules
@@ -121,10 +107,6 @@ EXTRA_WORDS=(
   help
 )
 
-MAIN_ALIAS_TARGETS=()
-for t in "${MAIN_BASE_TARGETS[@]}"; do
-  MAIN_ALIAS_TARGETS+=("main_${t}")
-done
 
 list_test_targets() {
   local tests_bench_dir="${ROOT_DIR}/src/tests/bench"
@@ -133,7 +115,7 @@ list_test_targets() {
   local -A seen=()
 
   if [[ ! -d "${tests_bench_dir}" ]]; then
-    tests_bench_dir="${MAKE_DIR}/tests/bench"
+    tests_bench_dir="${MAIN_MAKE_DIR}/../tests/bench"
   fi
 
   [[ -d "${tests_bench_dir}" ]] || return 0
@@ -148,24 +130,18 @@ list_test_targets() {
 
 list_completion_words() {
   local include_test_targets="${1:-0}"
-  local include_main_test_targets="${2:-0}"
   local -A seen=()
   local w
 
-  for w in "${MAIN_BASE_TARGETS[@]}" "${MAIN_ALIAS_TARGETS[@]}" "${SRC_BRIDGE_TARGETS[@]}" "${EXTRA_WORDS[@]}"; do
+  for w in "${SRC_TARGETS[@]}" "${MAIN_BASE_TARGETS[@]}" "${EXTRA_WORDS[@]}"; do
     [[ -n "${seen[$w]+x}" ]] && continue
     seen[$w]=1
     printf '%s\n' "$w"
   done
 
-  if [[ "${include_test_targets}" == "1" || "${include_main_test_targets}" == "1" ]]; then
+  if [[ "${include_test_targets}" == "1" ]]; then
     while IFS= read -r w; do
-      if [[ "${include_test_targets}" == "1" ]]; then
-        [[ -n "${seen[$w]+x}" ]] || { seen["$w"]=1; printf '%s\n' "$w"; }
-      fi
-      if [[ "${include_main_test_targets}" == "1" ]]; then
-        [[ -n "${seen[main_$w]+x}" ]] || { seen["main_$w"]=1; printf 'main_%s\n' "$w"; }
-      fi
+      [[ -n "${seen[$w]+x}" ]] || { seen["$w"]=1; printf '%s\n' "$w"; }
     done < <(list_test_targets)
   fi
 }
@@ -176,7 +152,6 @@ cmd_complete() {
   local cur
   local arg_index
   local include_test_targets=0
-  local include_main_test_targets=0
   local -a words=()
   local candidate
 
@@ -207,14 +182,11 @@ cmd_complete() {
   if [[ "$cur" == test* ]]; then
     include_test_targets=1
   fi
-  if [[ "$cur" == main_test* ]]; then
-    include_main_test_targets=1
-  fi
 
   while IFS= read -r candidate; do
     [[ "$candidate" == "$cur"* ]] || continue
     printf '%s\n' "$candidate"
-  done < <(list_completion_words "$include_test_targets" "$include_main_test_targets")
+  done < <(list_completion_words "$include_test_targets")
 }
 
 usage() {
@@ -231,36 +203,42 @@ Notes:
   - mkc runs make with -j$(nproc) by default.
   - Override jobs with MKC_JOBS=<N>.
   - Set MKC_SHOW_CMD=1 to print the dispatched make command.
-  - "mkc all" maps to src_all (full src aggregate).
-  - Use "mkc main_all" for runtime-only main aggregate.
-  - Local aliases: main_<target> (same as local target in src/main/Makefile).
-  - Root bridge aliases: src_<target> (delegates to src/Makefile).
-  - Example: mkc all, mkc main_all, mkc runtime_hero, mkc src_all, mkc test_network_analytics.
+  - With no target, mkc runs lib (library/core aggregate).
+  - Use "mkc link" for the final linked binaries.
+  - Use "mkc install" for the in-place finalize step after link.
+  - Example: mkc lib, mkc link, mkc install, mkc runtime_hero, mkc test_network_analytics.
 EOF
+}
+
+contains_word() {
+  local needle="${1:-}"
+  shift || true
+  local item
+  for item in "$@"; do
+    if [[ "${item}" == "${needle}" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 run_make() {
   local target="${1:-}"
-  local cmd=(make --no-print-directory -j"${MKC_JOBS}" -C "${MAKE_DIR}")
+  local make_dir="${MAIN_MAKE_DIR}"
+  local cmd
 
-  # UX default: "all" means full src aggregate (impl/modules + bundles), not
-  # runtime-only main/all. Use main_all for runtime entrypoints.
-  if [[ "${target}" == "all" ]]; then
-    target="src_all"
+  # Default to the canonical src library/core aggregate when no explicit target
+  # is requested.
+  if [[ -z "${target}" ]]; then
+    target="lib"
   fi
 
-  # By default, keep clean behavior aligned with root src/Makefile (interactive + shred).
-  if [[ "${target}" == "clean" ]]; then
-    cmd=(
-      make
-      --no-print-directory
-      -j"${MKC_JOBS}"
-      -C "${ROOT_DIR}/src"
-      "clean"
-    )
-  elif [[ -n "${target}" ]]; then
-    cmd+=("${target}")
+  if contains_word "${target}" "${SRC_TARGETS[@]}"; then
+    make_dir="${SRC_MAKE_DIR}"
   fi
+
+  cmd=(make --no-print-directory -j"${MKC_JOBS}" -C "${make_dir}")
+  [[ -n "${target}" ]] && cmd+=("${target}")
 
   if [[ "${MKC_SHOW_CMD:-0}" == "1" ]]; then
     printf 'mkc:'
@@ -284,7 +262,6 @@ fi
 if (( $# > 1 )); then
   echo "mkc: ambiguous invocation: '$*'" >&2
   echo "mkc accepts one target only. Example: mkc tests" >&2
-  echo "Use local aliases (main_*) or src bridge aliases (src_*) when needed." >&2
   exit 2
 fi
 
@@ -293,12 +270,9 @@ case "${1:-}" in
     printf '%s\n' "${PRODUCTION_TARGETS[@]}"
     ;;
   targets|--targets)
-    make --no-print-directory -s -C "${MAKE_DIR}" targets | awk '/^[[:alnum:]_.-]+$/ {print}'
-    exit "${PIPESTATUS[0]}"
+    list_completion_words 1 | sort -u
     ;;
-  "")
-    run_make
-    ;;
+  "") run_make ;;
   *)
     run_make "$1"
     ;;

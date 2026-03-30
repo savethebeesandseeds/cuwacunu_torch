@@ -1035,6 +1035,44 @@ std::vector<std::string> hero_config_store_t::validate() const {
     }
   }
 
+  {
+    bool optim_backup_enabled = true;
+    int64_t optim_backup_max_entries = 20;
+    const std::string enabled_raw = get_or_default("optim_backup_enabled");
+    const std::string max_entries_raw =
+        get_or_default("optim_backup_max_entries");
+    const std::string backup_dir_raw =
+        trim_ascii(get_or_default("optim_backup_dir"));
+
+    if (!enabled_raw.empty() &&
+        !parse_bool_value(enabled_raw, &optim_backup_enabled)) {
+      errors.emplace_back("invalid bool for key optim_backup_enabled: " +
+                          enabled_raw);
+    }
+    if (!max_entries_raw.empty() &&
+        !parse_int64_value(max_entries_raw, &optim_backup_max_entries)) {
+      errors.emplace_back("invalid int for key optim_backup_max_entries: " +
+                          max_entries_raw);
+    }
+    if (optim_backup_enabled && optim_backup_max_entries < 1) {
+      errors.emplace_back(
+          "optim_backup_max_entries must be >= 1 when optim_backup_enabled=true");
+    }
+    if (optim_backup_enabled && backup_dir_raw.empty()) {
+      errors.emplace_back(
+          "optim_backup_dir must be non-empty when optim_backup_enabled=true");
+    }
+    if (!backup_dir_raw.empty()) {
+      const auto backup_dir = resolve_path_near_config(backup_dir_raw, config_path_);
+      std::error_code ec;
+      if (std::filesystem::exists(backup_dir, ec) &&
+          !std::filesystem::is_directory(backup_dir, ec)) {
+        errors.emplace_back("optim_backup_dir is not a directory: " +
+                            backup_dir.string());
+      }
+    }
+  }
+
   return errors;
 }
 

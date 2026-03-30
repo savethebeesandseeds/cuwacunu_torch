@@ -3,6 +3,7 @@
 # -----------------------------------------------------------------
 ROOT_PATH := .
 include $(ROOT_PATH)/Makefile.config
+.DEFAULT_GOAL := lib
 HERE_PATH := $(ROOT_PATH)
 REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))
 MODULE_NAME := $(notdir $(HERE_PATH))
@@ -37,17 +38,18 @@ iinuji:
 hero_impl:
 	$(MAKE) -C $(IMPL_PATH) hero
 
-.PHONY: main
-main:
-	$(MAKE) -C $(ROOT_PATH)/main all
+.PHONY: link
+link:
+	$(MAKE) -C $(ROOT_PATH)/main link
 
-.PHONY: cuwacunu
-cuwacunu: main
+.PHONY: install
+install:
+	$(MAKE) -C $(ROOT_PATH)/main install
 
 
 # -----------------------------------------------------------------
 # Aggregate builds
-#   - Run with: make -j all   (control parallelism at CLI)
+#   - Run with: make -j12 lib|link|install   (control parallelism at CLI)
 # -----------------------------------------------------------------
 
 # Group the library modules behind a single prerequisite
@@ -57,44 +59,28 @@ modules: iitepi piaabo camahjucunu jkimyei wikimyei hero_impl
 # Ensure packing runs *after* modules
 lib-bundles: modules
 
-.PHONY: all
-all: modules lib-bundles
+.PHONY: lib
+lib: lib-bundles
 	@$(LOG_SUCCESS)
 
-# -----------------------------------------------------------------
-# Shortcut aliases (delegate only; no build logic changes)
-# -----------------------------------------------------------------
-.PHONY: build b mods m bundles pack test t cuw
-build b: all
-mods m: modules
-bundles pack: lib-bundles
-test t: tests
-cuw: main
+.PHONY: help
+help:
+	@echo "src targets:"
+	@echo "  lib   canonical library/core aggregate"
+	@echo "  link  canonical final-linked executable aggregate"
+	@echo "  install  finalize in-place hero/tool outputs after link"
+	@echo "related:"
+	@echo "  tests modules lib-bundles clean"
+	@echo "module subtrees:"
+	@echo "  piaabo iitepi camahjucunu jkimyei wikimyei iinuji hero_impl"
+	@echo "selective cleans:"
+	@echo "  clean_common clean_dsl clean_data clean_wikimyei"
+	@echo "advanced/internal:"
+	@echo "  direct main tree: make -C $(ROOT_PATH)/main all"
 
-# Namespaced aliases (recommended)
-.PHONY: lib_all lib_modules lib_bundles lib_tests main_all main_tests
-lib_all: all
-lib_modules: modules
-lib_bundles: lib-bundles
-lib_tests: tests
-main_all: main
-main_tests:
-	$(MAKE) -C $(TESTS_PATH) all
-
-.PHONY: it pia cam jk wk ii
-it: iitepi
-pia: piaabo
-cam: camahjucunu
-jk: jkimyei
-wk: wikimyei
-ii: iinuji
-
-.PHONY: c clean_all ccommon cdsl cdata cwiki
-c clean_all: clean
-ccommon: clean_common
-cdsl: clean_dsl
-cdata: clean_data
-cwiki: clean_wikimyei
+.PHONY: targets
+targets:
+	@printf "%s\n" lib link install modules lib-bundles tests piaabo iitepi camahjucunu jkimyei wikimyei iinuji hero_impl clean clean_common clean_dsl clean_data clean_wikimyei help targets
 
 # -----------------------------------------------------------------
 # Tests

@@ -81,6 +81,16 @@ range = non-empty token
 allowed = market quote-asset symbol
 nuance = legacy quote-asset hint retained in the checked-in global config; not consumed by current in-tree HERO or runtime code paths
 
+[FIELD GENERAL.tsodao_dsl_filename]
+key = tsodao_dsl_filename
+scope = GENERAL section
+type = path
+required = false
+default = /cuwacunu/src/config/instructions/defaults/tsodao.dsl
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = points at the TSODAO hidden-surface policy DSL read by the tsodao binary, its setup wrapper, and the repo git hooks; the first TSODAO component currently hides src/config/instructions/optim from public commits
+
 [RULE GENERAL_EXCHANGE_TYPE_ALLOWED]
 id = GENERAL_EXCHANGE_TYPE_ALLOWED
 applies_to = GENERAL.exchange_type

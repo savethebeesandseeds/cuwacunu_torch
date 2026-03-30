@@ -357,6 +357,14 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
     if (error) *error = "representation_hashimyei is empty";
     return std::nullopt;
   }
+  std::string normalized_representation_hashimyei{};
+  if (!cuwacunu::hashimyei::normalize_hex_hash_name(
+          c.spec.representation_hashimyei, &normalized_representation_hashimyei)) {
+    if (error) {
+      *error = "representation_hashimyei is not a valid 0x... ordinal";
+    }
+    return std::nullopt;
+  }
 
   std::string family = c.spec.representation_type;
   if (family.empty()) {
@@ -366,7 +374,11 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
 
   const RuntimeBindingContract::ComponentDslFingerprint* selected_fp = nullptr;
   for (const auto& fp : c.spec.component_dsl_fingerprints) {
-    if (!fp.hashimyei.empty() && fp.hashimyei == c.spec.representation_hashimyei) {
+    std::string normalized_fp_hashimyei = fp.hashimyei;
+    cuwacunu::hashimyei::normalize_hex_hash_name_inplace(
+        &normalized_fp_hashimyei);
+    if (!normalized_fp_hashimyei.empty() &&
+        normalized_fp_hashimyei == normalized_representation_hashimyei) {
       selected_fp = &fp;
       break;
     }
@@ -389,9 +401,9 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
 
   std::uint64_t component_ordinal = 0;
   if (!cuwacunu::hashimyei::parse_hex_hash_name_ordinal(
-          c.spec.representation_hashimyei, &component_ordinal)) {
+          normalized_representation_hashimyei, &component_ordinal)) {
     if (error) {
-      *error = "representation_hashimyei is not a valid lowercase 0x... ordinal";
+      *error = "representation_hashimyei is not a valid 0x... ordinal";
     }
     return std::nullopt;
   }
@@ -401,7 +413,7 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
 
   cuwacunu::hero::hashimyei::component_manifest_t manifest{};
   manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
-  manifest.canonical_path = family + "." + c.spec.representation_hashimyei;
+  manifest.canonical_path = family + "." + normalized_representation_hashimyei;
   manifest.family = family;
   manifest.hashimyei_identity =
       cuwacunu::hashimyei::make_identity(
@@ -557,7 +569,8 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
     std::string* error = nullptr) {
   if (error) error->clear();
 
-  const std::string selected_hashimyei(hashimyei);
+  std::string selected_hashimyei(hashimyei);
+  cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&selected_hashimyei);
   const std::string selected_contract_hash(contract_hash);
   if (selected_hashimyei.empty() || selected_contract_hash.empty()) return true;
 

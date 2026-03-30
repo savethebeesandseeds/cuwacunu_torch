@@ -4,7 +4,10 @@ This folder is organized by role:
 
 - `./.config`: global runtime settings (exchange, seeds, UI/system knobs).
 - `./instructions/defaults/`: canonical example/default DSL bundle.
+- `./instructions/defaults/tsodao.dsl`: TSODAO hidden-surface policy; current first surface is `./instructions/optim/`.
 - `./instructions/objectives/`: objective-scoped experiment bundles.
+- `./instructions/optim/`: local plaintext workspace for sensitive optim DSL files.
+- `./instructions/optim.tar.gpg`: tracked encrypted backup for `./instructions/optim/` when sealed.
 - `./bnf/`: grammar files (`*.bnf`).
 - `./secrets/real/`: real exchange secret material.
 - `./secrets/test/`: test exchange secret material.
@@ -42,6 +45,7 @@ This folder is organized by role:
 - `instructions/defaults/default.hero.human.dsl`
 - `instructions/defaults/default.hero.super.dsl`
 - `instructions/defaults/default.hero.runtime.dsl`
+- `instructions/defaults/tsodao.dsl` (TSODAO hidden-surface policy; first surface currently maps to `instructions/optim/`)
 - `instructions/defaults/default.super.objective.dsl`
 - `instructions/defaults/default.super.objective.md`
 - `instructions/defaults/default.super.guidance.md`
@@ -52,6 +56,8 @@ This folder is organized by role:
 - `instructions/objectives/vicreg.solo/vicreg.solo.objective.md`
 - `instructions/objectives/vicreg.solo/tsi.source.dataloader.channels.dsl` (objective-owned big-span observation profile)
 - `instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.dsl` (objective-local VICReg runtime wrapper over objective-owned network design and jkimyei payload bindings)
+- `instructions/optim/README.md` (public note for the local-only plaintext optim workspace)
+- `instructions/optim.tar.gpg` (optional tracked encrypted backup for `instructions/optim/`)
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
 - `secrets/real/exchange.key` (expected, may be absent locally)
 - `secrets/real/openai.key` (expected for HERO/OpenAI, may be absent locally)
@@ -88,6 +94,88 @@ Use `ed25519pub.pem` when registering API access at the exchange.
 1. Put plaintext API key into `secrets/real/exchange.key`.
 2. Confirm secret/key paths in `./.config` under `[REAL_EXCHANGE]`, `[TEST_EXCHANGE]`, and `[REAL_HERO]`.
 
+## TSODAO Hidden Surface
+
+Recommended workflow:
+
+```bash
+make -C /cuwacunu/src/main/tools -j12 install-tsodao
+/cuwacunu/.build/tools/tsodao status
+/cuwacunu/.build/tools/tsodao init
+```
+
+Or as a built tool:
+
+```bash
+make -C /cuwacunu/src/main/tools -j12 build-tsodao
+/cuwacunu/.build/tools/tsodao init
+/cuwacunu/.build/tools/tsodao sync
+```
+
+`src/config/instructions/defaults/tsodao.dsl` is the source of truth for the
+first TSODAO component: a hidden/public surface rule. Right now it declares:
+- `instructions/optim/` as the hidden plaintext root
+- `instructions/optim.tar.gpg` as the tracked encrypted archive
+- `instructions/optim/README.md` as the public keep path
+
+After that, normal `git add`, `git commit`, and `git push` are guarded by the
+repo hooks in `.githooks/`:
+- `pre-commit` reads `tsodao.dsl`, refreshes and stages the hidden archive when
+  `visibility_mode=recipient` is configured and plaintext hidden content is newer.
+- `pre-commit` rejects staged plaintext files under the hidden root other than
+  the configured public keep path.
+- `pre-push` rejects pushes that would publish hidden plaintext from the commit
+  range being pushed.
+
+Practical day-to-day commands:
+- to bootstrap or repair the recipient key setup, run `tsodao init`
+- before a push, run `tsodao sync`; when plaintext exists and is the safe source,
+  it refreshes the encrypted archive and stages it if git is available
+- on a fresh machine where plaintext is absent but the encrypted archive is
+  present, `tsodao sync` restores plaintext automatically
+- `sync` is safe-by-default: if both plaintext and archive exist but TSODAO
+  cannot prove which side this machine last synced against, it refuses instead
+  of overwriting either side
+- explicit direction is available only when you really mean it:
+  `tsodao sync --to-archive` means plaintext -> encrypted archive, and
+  `tsodao sync --to-hidden` means encrypted archive -> plaintext hidden root
+- restoring over existing plaintext is treated as destructive and asks for
+  confirmation unless you pass `--yes`
+- TSODAO keeps that memory in the local-only `local_state_path` declared by
+  `tsodao.dsl`, currently under `.runtime/.tsodao/`
+- that local state records both the last synced archive sha and a fingerprint of
+  the last synced plaintext hidden surface, so `tsodao sync` and
+  `tsodao prompt-mark` can notice additions, deletions, and renames instead of
+  only newer surviving files
+
+If you already have a personal GPG public key and want to seal manually against
+that identity instead of using the setup script:
+
+```bash
+/cuwacunu/.build/tools/tsodao seal --recipient YOUR_GPG_KEY
+```
+
+Manual symmetric sealing still works when you want an offline passphrase flow:
+
+```bash
+/cuwacunu/.build/tools/tsodao seal --symmetric
+/cuwacunu/.build/tools/tsodao scrub
+```
+
+Restore later with:
+
+```bash
+/cuwacunu/.build/tools/tsodao open
+```
+
+Operational notes:
+- `.gitignore` keeps the plaintext `instructions/optim/*` payload local-only and leaves `instructions/optim/README.md` public.
+- `seal` excludes the configured `public_keep_path` from the encrypted tarball.
+- `GENERAL.tsodao_dsl_filename` in `src/config/.config` points at the TSODAO policy DSL that hooks and scripts read.
+- `open` refuses to overwrite an existing plaintext payload; run `scrub` first if you want to restore from the encrypted backup.
+- `src/scripts/tsodao_sync_mark.sh` can be added to your shell status marks; it prints `[!]` whenever TSODAO wants a safe `sync` or when sync direction is ambiguous.
+- If the plaintext `optim/*` files were already pushed to a public remote before this workflow, sealing protects future revisions only; it does not erase prior history.
+
 ## Secure terminal key setup utility
 
 Use the built-in C++ utility instead of a shell script for key enrollment:
@@ -96,36 +184,36 @@ Use the built-in C++ utility instead of a shell script for key enrollment:
 make -C /cuwacunu/src/main/tools -j12 install-secure-key-setup
 ```
 
-This installs a standalone executable at:
+This finalizes the standalone executable in place at:
 
 ```bash
-/cuwacunu/src/config/secure_key_setup
+/cuwacunu/.build/tools/secure_key_setup
 ```
 
 Default interactive flow (all known keys):
 
 ```bash
-/cuwacunu/src/config/secure_key_setup
+/cuwacunu/.build/tools/secure_key_setup
 ```
 
 Only OpenAI key:
 
 ```bash
-/cuwacunu/src/config/secure_key_setup --only openai_real
+/cuwacunu/.build/tools/secure_key_setup --only openai_real
 ```
 
 Exchange keys:
 
 ```bash
-/cuwacunu/src/config/secure_key_setup --only exchange_real
-/cuwacunu/src/config/secure_key_setup --only exchange_test
+/cuwacunu/.build/tools/secure_key_setup --only exchange_real
+/cuwacunu/.build/tools/secure_key_setup --only exchange_test
 ```
 
 Skip specific targets or existing files:
 
 ```bash
-/cuwacunu/src/config/secure_key_setup --skip exchange_test
-/cuwacunu/src/config/secure_key_setup --skip-existing
+/cuwacunu/.build/tools/secure_key_setup --skip exchange_test
+/cuwacunu/.build/tools/secure_key_setup --skip-existing
 ```
 
 The utility:
@@ -240,6 +328,13 @@ Useful MCP tools:
 - `hero.config.objective.create` (create one whole objective file under `objective_root` with an allowed extension after decoder validation; requires `allow_local_write=true` and target path within `write_roots`)
 - `hero.config.objective.replace` (replace one whole objective file under `objective_root` with an allowed extension after decoder validation; optional `expected_sha256` guards against stale overwrite; requires `allow_local_write=true` and target path within `write_roots`)
 - `hero.config.objective.delete` (delete one whole objective file under `objective_root` with an allowed extension, including the objective-local campaign file named by `campaign_dsl_path` when appropriate; optional `expected_sha256` guards against stale delete; requires `allow_local_write=true` and target path within `write_roots`)
+- `hero.config.optim.list` (list all allowed files under the TSODAO hidden `optim` root; `include_man=true` also returns associated `.man` content when available, and the response notes when the plaintext surface is currently scrubbed)
+- `hero.config.optim.read` (read one whole optim file under the TSODAO hidden root with an allowed extension, returning content, `sha256`, and associated `.man` content when available; if the plaintext surface is scrubbed, restore it first with `tsodao sync`)
+- `hero.config.optim.create` (create one whole optim file under the TSODAO hidden root with an allowed extension after decoder validation; requires `allow_local_write=true`, target path within `write_roots`, and creates an encrypted TSODAO archive checkpoint before mutation)
+- `hero.config.optim.replace` (replace one whole optim file under the TSODAO hidden root with an allowed extension after decoder validation; optional `expected_sha256` guards against stale overwrite; requires `allow_local_write=true`, target path within `write_roots`, and creates an encrypted TSODAO archive checkpoint before mutation)
+- `hero.config.optim.delete` (delete one whole optim file under the TSODAO hidden root with an allowed extension after optional sha256 check; requires `allow_local_write=true`, target path within `write_roots`, and creates an encrypted TSODAO archive checkpoint before mutation)
+- `hero.config.optim.backups` (list encrypted TSODAO archive checkpoints for the optim surface)
+- `hero.config.optim.rollback` (restore the optim surface from the latest or selected encrypted TSODAO archive checkpoint; requires `allow_local_write=true`)
 - `hero.config.validate`
 - `hero.config.diff` / `hero.config.dry_run` (preview changes before save)
 - `hero.config.backups` (list snapshots)
@@ -260,6 +355,8 @@ Runtime MCP tools:
 - `hero.runtime.tail_trace`
 - `hero.runtime.reconcile`
 
+Launch-time `reset_runtime_state=true` is a runtime-owned cold reset only: it clears Runtime campaign/hashimyei state and runtime catalogs, but it preserves `.super_hero` and `.human_hero`. Use `hero.config.dev_nuke_reset` for the broader developer wipe that also clears those control-plane ledgers.
+
 Super MCP tools:
 - `hero.super.start_loop`
 - `hero.super.list_loops`
@@ -276,7 +373,7 @@ Human MCP tools:
 - `hero.human.ack_report`
 - `hero.human.dismiss_report`
 
-`hero_human_mcp` without `--tool` on a tty opens the Human Hero operator UI for pending escalations and finished reports. The UI distinguishes those queues explicitly: escalations mean Super Hero is blocked in `awaiting_human`, while finished reports are informational terminal summaries and do not unblock anything. On ncurses-capable terminals it uses the full-screen console; on unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
+`hero_human_mcp` without `--tool` on a tty opens the Human Hero operator UI for pending escalations and finished reports. The UI distinguishes those queues explicitly: escalations mean Super Hero is blocked in `awaiting_human`, while finished reports are informational terminal summaries and do not unblock anything. Finished-loop reports now begin with an effort summary that foregrounds elapsed wall time plus review-turn and campaign-launch usage. On ncurses-capable terminals it uses the full-screen console; on unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
 `hero.human.resolve_escalation` is governance-only: operators provide `loop_id`, `resolution_kind = grant | deny | clarify | stop`, and `reason`, while Super Hero retains responsibility for choosing the next Runtime action. `hero.human.ack_report` and `hero.human.dismiss_report` both clear finished-loop reports from the Human Hero inbox, but `dismiss_report` records that the operator intentionally cleared the report without treating it as a validation sign-off.
 
 `hero.runtime.start_campaign` accepts optional:
@@ -369,15 +466,19 @@ Current super-loop schemas:
 - `hero.human.resolution.v2`
 - `hero.human.report_ack.v2`
 
-The primary v2 super loop keeps Codex shell access read-only, but gives each planning turn loop-scoped `hero.config.objective.*`, conditionally `hero.config.default.*`, bounded Runtime read/tail tools, and bounded Lattice read tools against truth-source config roots and persisted runtime evidence. Objective files include the objective-local campaign file named by `campaign_dsl_path` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. The generated Super briefing names that exact relative campaign file path and tells Codex to use `hero.config.objective.list` rather than assuming a literal `campaign.dsl` filename. Codex now returns `outcome = launch | escalate | success | stop | fail`. `launch` carries `mode = run_plan | binding`, optional `binding_id`, `reset_runtime_state`, and `requires_objective_mutation`; `escalate` carries a typed `kind`, operator-facing `request`, and optional typed `delta`. If `launch.requires_objective_mutation=true` but the planning turn produced no objective-local mutation summary, Super Hero rejects the launch instead of silently rerunning unchanged truth sources. Human Hero no longer routes normal Runtime actions. It only resolves escalations with `grant | deny | clarify | stop`, signs `resolution*.json` plus detached `.sig`, and asks `hero.super.apply_human_resolution` to continue the loop from `awaiting_human`. Finished-loop reports remain informational acknowledgments and do not influence ordinary Runtime routing.
+The primary v2 super loop keeps Codex shell access read-only, but gives each planning turn loop-scoped `hero.config.objective.*`, conditionally `hero.config.default.*`, bounded Runtime read/tail tools, and bounded Lattice read tools against truth-source config roots and persisted runtime evidence. Objective files include the objective-local campaign file named by `campaign_dsl_path` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. The generated Super briefing names that exact relative campaign file path and tells Codex to use `hero.config.objective.list` rather than assuming a literal `campaign.dsl` filename. Codex now returns `outcome = launch | escalate | success | stop | fail`. `launch` carries `mode = run_plan | binding`, optional `binding_id`, `reset_runtime_state`, and `requires_objective_mutation`; `escalate` carries a typed `kind`, operator-facing `request`, and optional typed `delta`. If `launch.requires_objective_mutation=true` but the planning turn produced no objective-local mutation summary, Super Hero rejects the launch instead of silently rerunning unchanged truth sources. Launch-time `reset_runtime_state=true` is scoped to runtime-owned state and must not delete the owning Super/Human ledgers. Human Hero no longer routes normal Runtime actions. It only resolves escalations with `grant | deny | clarify | stop`, signs `resolution*.json` plus detached `.sig`, and asks `hero.super.apply_human_resolution` to continue the loop from `awaiting_human`. Finished-loop reports remain informational acknowledgments and do not influence ordinary Runtime routing.
 
 The short design constitution for that loop lives in [SUPER_LOOP.md](/cuwacunu/src/main/hero/SUPER_LOOP.md).
 
 Deterministic policy:
-- Config HERO edits files only inside configured `default_roots` and `objective_roots`, and only for `allowed_extensions`. Existing hashimyei instances are not mutated by these tools; instance revisions are handled by Hashimyei HERO lineage.
-- `allow_local_write=false` blocks persisted config writes plus default/objective file mutations.
+- Config HERO edits files only inside configured `default_roots`, `objective_roots`, and the TSODAO hidden optim root, and only for `allowed_extensions`. Existing hashimyei instances are not mutated by these tools; instance revisions are handled by Hashimyei HERO lineage.
+- `allow_local_write=false` blocks persisted config writes plus default/objective/optim plaintext file mutations.
 - `write_roots` constrains persisted config writes, default/objective file mutations,
-  and config-backup snapshots when local writes are enabled.
+  and plaintext optim mutation targets when local writes are enabled.
+- `hero.config.optim.*` resolves its hidden plaintext root and encrypted archive
+  from `GENERAL.tsodao_dsl_filename`; its pre-mutation backups are encrypted
+  copies of the TSODAO archive written under `optim_backup_dir`, not plaintext
+  file snapshots.
 - `dev_nuke_reset_backup_enabled=true` makes `hero.config.dev_nuke_reset` move
   targeted runtime roots/catalogs into
   `<runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/`

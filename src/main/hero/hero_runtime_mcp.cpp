@@ -219,6 +219,8 @@ int run_job_runner(int argc, char** argv) {
                                                               record, &ignored);
       return 1;
     }
+    (void)cuwacunu::hero::runtime_dev::strip_control_plane_store_roots(
+        &reset_targets);
     reset_targets.store_roots.erase(
         std::remove(reset_targets.store_roots.begin(),
                     reset_targets.store_roots.end(),

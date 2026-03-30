@@ -207,6 +207,33 @@ append_line_once() {
   success "Added to ${file}: ${line}"
 }
 
+append_cuwacunu_bashrc_once() {
+  local file="$1"
+  local begin_mark="# >>> cuwacunu-bashrc >>>"
+  local end_mark="# <<< cuwacunu-bashrc <<<"
+  local script_path="/cuwacunu/src/scripts/cuwacunu_bashrc.sh"
+
+  if (( DRY_RUN )); then
+    info "Would ensure cuwacunu bashrc extension in ${file}"
+    return 0
+  fi
+
+  touch "${file}"
+  if grep -Fqx "${begin_mark}" "${file}"; then
+    info "Already set in ${file}: cuwacunu bashrc extension"
+    return 0
+  fi
+
+  {
+    printf '%s\n' "${begin_mark}"
+    printf 'if [ -f %s ]; then\n' "${script_path}"
+    printf '  . %s\n' "${script_path}"
+    printf '%s\n' 'fi'
+    printf '%s\n' "${end_mark}"
+  } >>"${file}"
+  success "Added cuwacunu bashrc extension to ${file}"
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -392,6 +419,7 @@ install_curl_from_source() {
 
   run_cmd "Refreshing shared library cache" "${SUDO[@]}" ldconfig
   append_line_once 'export PATH="/usr/local/bin:$PATH"' "${HOME}/.bashrc"
+  append_cuwacunu_bashrc_once "${HOME}/.bashrc"
   run_cmd "Inspecting curl version after source install" curl --version
 
   if curl_supports_websockets; then
@@ -523,6 +551,9 @@ main() {
   section "Setup Complete"
   success "Provisioning flow finished."
   info "Open a new shell or run: source ~/.bashrc"
+  info "That shell refresh also sources /cuwacunu/src/scripts/cuwacunu_bashrc.sh"
+  info "It exposes /cuwacunu/.build/hero and /cuwacunu/.build/tools on PATH"
+  info "It enables the [*] and [!] shell status marks"
   info "Useful check: nvidia-smi"
   info "Useful check: /cuwacunu/.build/tests/test_cuda_probe"
   if (( VERBOSE == 0 )); then

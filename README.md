@@ -62,10 +62,43 @@ MAKE_TARGETS="piaabo camahjucunu" ./setup.sh --verbose
 ### 6. Post-setup checks
 ```bash
 source ~/.bashrc
+command -v tsodao
+command -v hero_config_mcp
 nvcc --version
 nvidia-smi
 /cuwacunu/.build/tests/test_cuda_probe
 ```
+
+After `source ~/.bashrc`, binaries built under `/cuwacunu/.build/tools` and
+`/cuwacunu/.build/hero` are available directly on `PATH`, and the shell status
+marks `[*]` and `[!]` are enabled through the repo-owned shell extension
+[`src/scripts/cuwacunu_bashrc.sh`](/cuwacunu/src/scripts/cuwacunu_bashrc.sh).
+
+## Build Shortcuts
+From the repo root, the forwarding [`Makefile`](/cuwacunu/Makefile) now routes
+the common entrypoints into `src/`.
+
+Recommended daily build surface:
+
+```bash
+cd /cuwacunu
+make -j12 lib
+make -j12 link
+make -j12 install
+```
+
+Advanced/internal:
+
+```bash
+make -j12 tests
+make -C /cuwacunu/src/main -j12 all
+```
+
+`make -j12 lib` is the canonical library/core aggregate, `make -j12 link` is
+the canonical final-linked executable aggregate, and `make -j12 install`
+finalizes the in-place hero/tool outputs after linking. The direct `src/main`
+entrypoint is an advanced/internal path when you intentionally want the main
+tree itself.
 
 ## HERO MCP Preflight (Codex)
 

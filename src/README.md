@@ -33,9 +33,18 @@ At a high level, it combines:
 
 ## Build and Test (from `src/`)
 
+Recommended daily build surface:
+
 ```bash
-make modules   # build core modules
-make all       # build modules + bundles
+make lib       # canonical library/core aggregate
+make link      # refresh src lib-bundles, then build final linked executables
+make install   # finalize in-place hero/tool outputs after link
+```
+
+Advanced/internal:
+
+```bash
 make tests     # run test dispatcher
-make main      # build runtime entrypoint tree
+make modules   # build core modules only
+make -C main all   # build main binaries and finalize installable hero/tool outputs
 ```

@@ -50,6 +50,15 @@ struct PathCleanupGuard {
   return tsiemene::format_wikimyei_hex_hash(value);
 }
 
+[[nodiscard]] std::string ascii_upper(std::string value) {
+  std::transform(
+      value.begin(),
+      value.end(),
+      value.begin(),
+      [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+  return value;
+}
+
 [[nodiscard]] std::int64_t read_checkpoint_i64(const std::string& path,
                                                const char* key) {
   torch::serialize::InputArchive ar;
@@ -190,6 +199,8 @@ int main() {
       cuwacunu::iitepi::config_device(contract_hash, "VICReg");
   const std::string source_hashimyei = unique_hashimyei_id();
   const std::string dest_hashimyei = unique_hashimyei_id();
+  const std::string source_hashimyei_upper = ascii_upper(source_hashimyei);
+  const std::string dest_hashimyei_upper = ascii_upper(dest_hashimyei);
   const fs::path report_root = tsiemene::wikimyei_representation_vicreg_store_root();
   const fs::path source_dir = report_root / source_hashimyei;
   const fs::path dest_dir = report_root / dest_hashimyei;
@@ -214,7 +225,7 @@ int main() {
       configured_dtype,
       configured_device);
   auto persisted = tsiemene::update_wikimyei_representation_vicreg_init(
-      source_hashimyei,
+      source_hashimyei_upper,
       &private_topology_model,
       /*enable_network_analytics_sidecar=*/false,
       /*enable_embedding_sequence_analytics_sidecar=*/false,
@@ -228,9 +239,11 @@ int main() {
       nullptr,
       {});
   assert(persisted.ok);
-  assert(vicreg.runtime_load_from_hashimyei(source_hashimyei, &error));
+  assert(persisted.hashimyei == source_hashimyei);
+  assert(persisted.report_fragment_directory == source_dir);
+  assert(vicreg.runtime_load_from_hashimyei(source_hashimyei_upper, &error));
   assert(error.empty());
-  assert(vicreg.runtime_save_to_hashimyei(dest_hashimyei, &error));
+  assert(vicreg.runtime_save_to_hashimyei(dest_hashimyei_upper, &error));
   assert(error.empty());
 
   const fs::path saved_weights = dest_dir / "weights.init.pt";

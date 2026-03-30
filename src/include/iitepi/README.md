@@ -145,6 +145,9 @@ The public dispatcher is now campaign-oriented:
 - `.build/tools/runtime_reset`
 - `hero.config.dev_nuke_reset`
 
+The first two clear runtime-owned state only. `hero.config.dev_nuke_reset`
+is the broader developer wipe that also removes Super/Human loop ledgers.
+
 This document reflects the public runtime model. Internal runtime-binding
 machinery still exists as a worker implementation detail until the lower
 runtime builder is fully campaign-native.

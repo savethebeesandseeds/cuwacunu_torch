@@ -69,6 +69,9 @@ write_roots:str = /tmp
 backup_enabled:bool = true
 backup_dir:str = /cuwacunu/.backups/hero.config
 backup_max_entries(1,+inf):int = 20
+optim_backup_enabled:bool = true
+optim_backup_dir:str = /cuwacunu/.backups/hero.config.optim
+optim_backup_max_entries(1,+inf):int = 20
 dev_nuke_reset_backup_enabled:bool = true
 )";
 

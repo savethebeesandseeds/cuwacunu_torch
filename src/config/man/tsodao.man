@@ -1,0 +1,69 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = tsodao
+TARGET_DSL = src/config/instructions/defaults/tsodao.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.authored.bnf
+PRIMARY_DECODER = .build/tools/tsodao
+PRIMARY_VALIDATORS = .build/tools/tsodao
+
+[FIELD visibility_mode]
+key = visibility_mode
+scope = TSODAO hidden-surface policy
+type = enum
+required = true
+default = recipient
+range = one token
+allowed = recipient,symmetric,manual,disabled
+nuance = recipient is preferred because repo git hooks can auto-refresh the hidden archive non-interactively when a GPG public key is configured
+
+[FIELD hidden_root]
+key = hidden_root
+scope = TSODAO hidden-surface policy
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/optim
+range = directory path
+allowed = absolute_or_relative path
+nuance = plaintext authored surface that stays local-only while public git sees only the encrypted archive and public keep path
+
+[FIELD hidden_archive]
+key = hidden_archive
+scope = TSODAO hidden-surface policy
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/optim.tar.gpg
+range = file path
+allowed = absolute_or_relative path
+nuance = tracked encrypted archive for the current hidden surface
+
+[FIELD public_keep_path]
+key = public_keep_path
+scope = TSODAO hidden-surface policy
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/optim/README.md
+range = file path
+allowed = absolute_or_relative path
+nuance = file intentionally kept public inside hidden_root so the public repo documents the hidden surface instead of pretending it does not exist
+
+[FIELD local_state_path]
+key = local_state_path
+scope = TSODAO hidden-surface policy
+type = path
+required = true
+default = /cuwacunu/.runtime/.tsodao/optim.state
+range = file path
+allowed = absolute_or_relative path
+nuance = local-only sync memory written by the tsodao binary so safe sync can tell whether the current hidden archive is the one this machine last synced against
+nuance_2 = also records a fingerprint of the last synced plaintext hidden surface so additions, deletions, and renames can trigger safe sync attention
+
+[FIELD gpg_recipient]
+key = gpg_recipient
+scope = TSODAO hidden-surface policy
+type = string
+required = false
+default = empty
+range = GPG key id, email, or fingerprint
+allowed = any local gpg recipient selector
+nuance = used when visibility_mode=recipient; usually written by tsodao init

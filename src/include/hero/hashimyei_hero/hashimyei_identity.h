@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -95,25 +98,65 @@ enum class hashimyei_kind_e : std::uint8_t {
   return true;
 }
 
-[[nodiscard]] inline bool parse_hex_hash_name_ordinal(std::string_view name,
-                                                      std::uint64_t* out_ordinal) {
-  if (!out_ordinal) return false;
+[[nodiscard]] inline bool normalize_hex_hash_name(
+    std::string_view name, std::string* out_name,
+    std::uint64_t* out_ordinal = nullptr) {
+  if (!out_name && !out_ordinal) return false;
   if (name.size() < 3) return false;
-  if (name[0] != '0' || name[1] != 'x') return false;
+  if (name[0] != '0' || (name[1] != 'x' && name[1] != 'X')) return false;
+
   std::uint64_t out = 0;
   for (std::size_t i = 2; i < name.size(); ++i) {
-    out <<= 4u;
     const char c = name[i];
+    std::uint64_t nibble = 0;
     if (c >= '0' && c <= '9') {
-      out |= static_cast<std::uint64_t>(c - '0');
+      nibble = static_cast<std::uint64_t>(c - '0');
     } else if (c >= 'a' && c <= 'f') {
-      out |= static_cast<std::uint64_t>(10 + (c - 'a'));
+      nibble = static_cast<std::uint64_t>(10 + (c - 'a'));
+    } else if (c >= 'A' && c <= 'F') {
+      nibble = static_cast<std::uint64_t>(10 + (c - 'A'));
     } else {
       return false;
     }
+    if (out > (std::numeric_limits<std::uint64_t>::max() >> 4u)) return false;
+    out = (out << 4u) | nibble;
   }
-  *out_ordinal = out;
+
+  if (out_ordinal) *out_ordinal = out;
+  if (out_name) *out_name = make_hex_hash_name(out);
   return true;
+}
+
+inline void normalize_hex_hash_name_inplace(std::string* name) {
+  if (!name) return;
+  std::string normalized{};
+  if (normalize_hex_hash_name(*name, &normalized)) {
+    *name = std::move(normalized);
+  }
+}
+
+[[nodiscard]] inline std::string normalize_hashimyei_canonical_path(
+    std::string_view canonical_path) {
+  std::string normalized(canonical_path);
+  const std::size_t dot = normalized.rfind('.');
+  if (dot == std::string::npos || dot + 1 >= normalized.size()) {
+    return normalized;
+  }
+
+  std::string normalized_tail{};
+  if (!normalize_hex_hash_name(
+          std::string_view(normalized).substr(dot + 1), &normalized_tail)) {
+    return normalized;
+  }
+
+  normalized.erase(dot + 1);
+  normalized += normalized_tail;
+  return normalized;
+}
+
+[[nodiscard]] inline bool parse_hex_hash_name_ordinal(std::string_view name,
+                                                      std::uint64_t* out_ordinal) {
+  return normalize_hex_hash_name(name, nullptr, out_ordinal);
 }
 
 struct hashimyei_t {
@@ -136,8 +179,8 @@ struct hashimyei_t {
     return false;
   }
   std::uint64_t parsed = 0;
-  if (!parse_hex_hash_name_ordinal(id.name, &parsed)) {
-    if (error) *error = "identity.name is not a valid lowercase hex ordinal";
+  if (!normalize_hex_hash_name(id.name, nullptr, &parsed)) {
+    if (error) *error = "identity.name is not a valid 0x... hex ordinal";
     return false;
   }
   if (parsed != id.ordinal) {
@@ -172,17 +215,8 @@ struct hashimyei_t {
 }
 
 [[nodiscard]] inline bool is_hex_hash_name(std::string_view s) {
-  if (s.size() < 3) return false;
-  if (s[0] != '0') return false;
-  if (s[1] != 'x' && s[1] != 'X') return false;
-  for (std::size_t i = 2; i < s.size(); ++i) {
-    const char c = s[i];
-    const bool digit = (c >= '0' && c <= '9');
-    const bool lower = (c >= 'a' && c <= 'f');
-    const bool upper = (c >= 'A' && c <= 'F');
-    if (!digit && !lower && !upper) return false;
-  }
-  return true;
+  std::uint64_t ordinal = 0;
+  return normalize_hex_hash_name(s, nullptr, &ordinal);
 }
 
 [[nodiscard]] inline const std::vector<std::string>& known_hashimyeis() {
@@ -255,7 +289,9 @@ class identity_provider_t final {
   if (model.empty() || !is_hex_hash_name(hash)) return false;
 
   *out_model = std::string(model);
-  *out_hashimyei = std::string(hash);
+  std::string normalized_hash{};
+  if (!normalize_hex_hash_name(hash, &normalized_hash)) return false;
+  *out_hashimyei = std::move(normalized_hash);
   return true;
 }
 

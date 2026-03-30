@@ -8,20 +8,12 @@ HERE_PATH := $(ROOT_PATH)/main
 TESTS_PATH := $(ROOT_PATH)/tests
 SUBMAKE_NO_AUTOPREP := AUTO_PREP=0
 
-PRODUCTION_RULES := all hero campaign hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools clean
-MAIN_LOCAL_TARGETS := all clean hero campaign hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools tests test ta clean_tests \
+PRODUCTION_RULES := all link install hero campaign config_hero hashimyei_hero lattice_hero runtime_hero super_hero human_hero tools clean
+MAIN_LOCAL_TARGETS := all link install clean hero campaign config_hero hashimyei_hero lattice_hero runtime_hero super_hero human_hero tools tests test ta clean_tests \
 	build-reset-runtime run-reset-runtime reset-runtime \
 	parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi \
 	https db hashimyei jkimyei vicreg mdn expval
-SRC_BRIDGE_TARGETS := all modules lib-bundles build b mods m bundles pack test \
-	t tests main piaabo iitepi camahjucunu jkimyei wikimyei iinuji it \
-	pia cam jk wk ii clean clean_all c ccommon cdsl cdata cwiki clean_common \
-	clean_dsl clean_data clean_wikimyei
-TARGET_RULES := $(sort \
-	$(MAIN_LOCAL_TARGETS) \
-	$(addprefix main_,$(MAIN_LOCAL_TARGETS)) \
-	$(addprefix src_,$(SRC_BRIDGE_TARGETS)) \
-	rules production_rules targets help)
+TARGET_RULES := $(sort $(MAIN_LOCAL_TARGETS) rules production_rules targets help)
 
 .PHONY: hero
 hero: autoprep
@@ -51,11 +43,27 @@ reset-runtime: run-reset-runtime
 
 .PHONY: hashimyei_hero
 hashimyei_hero: autoprep
-	+$(MAKE) -C $(HERE_PATH)/hero all $(SUBMAKE_NO_AUTOPREP)
+	+$(MAKE) -C $(HERE_PATH)/hero install-hashimyei-hero $(SUBMAKE_NO_AUTOPREP)
+
+.PHONY: config_hero
+config_hero: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero install-config-hero $(SUBMAKE_NO_AUTOPREP)
+
+.PHONY: lattice_hero
+lattice_hero: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero install-lattice-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: runtime_hero
 runtime_hero: autoprep build-campaign build-reset-runtime
-	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools $(SUBMAKE_NO_AUTOPREP)
+	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-hero $(SUBMAKE_NO_AUTOPREP)
+
+.PHONY: super_hero
+super_hero: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero install-super-hero $(SUBMAKE_NO_AUTOPREP)
+
+.PHONY: human_hero
+human_hero: autoprep
+	+$(MAKE) -C $(HERE_PATH)/hero install-human-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: tools
 tools: autoprep
@@ -64,32 +72,6 @@ tools: autoprep
 .PHONY: tests
 tests: autoprep
 	+$(MAKE) -C $(TESTS_PATH) all $(SUBMAKE_NO_AUTOPREP)
-
-define FORWARD_MAIN_ALIAS
-.PHONY: main_$(1)
-main_$(1):
-	+$(MAKE) -C $(HERE_PATH) $(1)
-endef
-$(foreach t,$(MAIN_LOCAL_TARGETS),$(eval $(call FORWARD_MAIN_ALIAS,$(t))))
-
-define FORWARD_SRC_ALIAS
-.PHONY: src_$(1)
-src_$(1):
-	+$(MAKE) -C $(ROOT_PATH) $(1)
-endef
-$(foreach t,$(SRC_BRIDGE_TARGETS),$(eval $(call FORWARD_SRC_ALIAS,$(t))))
-
-.PHONY: config_hero
-config_hero: autoprep
-	+$(MAKE) -C $(HERE_PATH)/hero install-hero-mcp $(SUBMAKE_NO_AUTOPREP)
-
-.PHONY: install-hashimyei-tools
-install-hashimyei-tools: autoprep
-	+$(MAKE) -C $(HERE_PATH)/hero install-hashimyei-tools $(SUBMAKE_NO_AUTOPREP)
-
-.PHONY: install-runtime-tools
-install-runtime-tools: autoprep
-	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-tools $(SUBMAKE_NO_AUTOPREP)
 
 # Pass-through test dispatcher targets so root-level mkc usage can call tests
 # directly (for example: mkc parser, mkc test_dconfig).
@@ -109,9 +91,18 @@ test_%: autoprep
 clear_% clear-test_%:
 	+$(MAKE) -C $(TESTS_PATH) $@
 
-.PHONY: all
-all: autoprep hero tools
+.PHONY: link
+link: autoprep hero tools
 	@$(LOG_SUCCESS)
+
+.PHONY: install
+install: link
+	+$(MAKE) -C $(HERE_PATH)/hero install-config-hero install-hashimyei-hero install-lattice-hero install-runtime-hero install-super-hero install-human-hero $(SUBMAKE_NO_AUTOPREP)
+	+$(MAKE) -C $(HERE_PATH)/tools install-secure-key-setup install-campaign install-reset-runtime install-tsodao $(SUBMAKE_NO_AUTOPREP)
+	@$(LOG_SUCCESS)
+
+.PHONY: all
+all: install
 
 .PHONY: production_rules rules
 production_rules rules:
@@ -123,10 +114,13 @@ targets:
 
 .PHONY: help
 help:
-	@echo "main targets:"
-	@echo "  all hero build-campaign campaign build-reset-runtime reset-runtime hashimyei_hero runtime_hero tools config_hero install-hashimyei-tools install-runtime-tools tests clean"
+	@echo "main targets (advanced/internal):"
+	@echo "  prefer 'make -C $(ROOT_PATH) lib', 'make -C $(ROOT_PATH) link', or 'make -C $(ROOT_PATH) install' for normal builds"
+	@echo "  all link install hero build-campaign campaign build-reset-runtime reset-runtime config_hero hashimyei_hero lattice_hero runtime_hero super_hero human_hero"
+	@echo "  tools tests clean"
+	@echo "  'link' builds final linked binaries; 'install' finalizes HERO/tool surfaces in place"
+	@echo "  leaf installs live in: $(HERE_PATH)/hero (install-*-hero), $(HERE_PATH)/tools (install-secure-key-setup, install-campaign, install-reset-runtime, install-tsodao)"
 	@echo "  test groups: parser dsl types exchange piaabo data iinuji ... vicreg"
-	@echo "  aliases: main_<target> (local), src_<target> (bridge to src/Makefile)"
 	@echo "  list targets: make -C $(HERE_PATH) targets"
 
 .PHONY: clean

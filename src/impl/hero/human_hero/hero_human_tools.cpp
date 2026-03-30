@@ -109,6 +109,68 @@ struct interactive_resolution_input_t {
   return out;
 }
 
+[[nodiscard]] std::optional<std::uint64_t> super_loop_elapsed_ms(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  const std::uint64_t end_ms =
+      loop.finished_at_ms.has_value() ? *loop.finished_at_ms : loop.updated_at_ms;
+  if (loop.started_at_ms == 0 || end_ms < loop.started_at_ms) {
+    return std::nullopt;
+  }
+  return end_ms - loop.started_at_ms;
+}
+
+[[nodiscard]] std::string format_compact_duration_ms(
+    std::optional<std::uint64_t> duration_ms) {
+  if (!duration_ms.has_value()) return "<unknown>";
+  if (*duration_ms < 1000) return std::to_string(*duration_ms) + " ms";
+
+  std::uint64_t total_seconds = *duration_ms / 1000;
+  const std::uint64_t days = total_seconds / 86400;
+  total_seconds %= 86400;
+  const std::uint64_t hours = total_seconds / 3600;
+  total_seconds %= 3600;
+  const std::uint64_t minutes = total_seconds / 60;
+  total_seconds %= 60;
+  const std::uint64_t seconds = total_seconds;
+
+  std::ostringstream out;
+  bool wrote = false;
+  const auto append_unit = [&](std::uint64_t value, const char* suffix) {
+    if (value == 0) return;
+    if (wrote) out << " ";
+    out << value << suffix;
+    wrote = true;
+  };
+  append_unit(days, "d");
+  append_unit(hours, "h");
+  append_unit(minutes, "m");
+  if (!wrote || seconds != 0) append_unit(seconds, "s");
+  return out.str();
+}
+
+[[nodiscard]] std::string format_effort_usage(std::uint64_t used,
+                                              std::uint64_t limit,
+                                              std::uint64_t remaining) {
+  std::ostringstream out;
+  out << used;
+  if (limit != 0) out << "/" << limit;
+  out << " (" << remaining << " rem)";
+  return out.str();
+}
+
+[[nodiscard]] std::string build_report_effort_summary_text(
+    const cuwacunu::hero::super::super_loop_record_t& loop) {
+  std::ostringstream out;
+  out << "elapsed=" << format_compact_duration_ms(super_loop_elapsed_ms(loop))
+      << " | review_turns="
+      << format_effort_usage(loop.turn_count, loop.max_review_turns,
+                             loop.remaining_review_turns)
+      << " | launches="
+      << format_effort_usage(loop.launch_count, loop.max_campaign_launches,
+                             loop.remaining_campaign_launches);
+  return out.str();
+}
+
 [[nodiscard]] bool terminal_supports_human_ncurses_ui() {
   const char* term_env = std::getenv("TERM");
   const std::string term =
@@ -1551,8 +1613,7 @@ void render_human_reports_screen(
                        "  state=" + loop.state;
     mvaddnstr(header_h + 1, left_w + 2, ellipsize_text(meta, right_w - 4).c_str(),
               right_w - 4);
-    const std::string subtitle =
-        "Informational only. Super Hero is not waiting for a response to continue.";
+    const std::string subtitle = build_report_effort_summary_text(loop);
     mvaddnstr(header_h + 2, left_w + 2,
               ellipsize_text(subtitle, right_w - 4).c_str(), right_w - 4);
     draw_wrapped_region_block(header_h + 4, left_w + 2, right_w - 4, body_h - 6,
@@ -1974,6 +2035,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
 
 [[nodiscard]] std::string pending_report_row_to_json(
     const cuwacunu::hero::super::super_loop_record_t& loop) {
+  const std::optional<std::uint64_t> elapsed_ms = super_loop_elapsed_ms(loop);
   std::ostringstream out;
   out << "{"
       << "\"loop_id\":" << json_quote(loop.loop_id) << ","
@@ -1981,8 +2043,22 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
       << "\"state\":" << json_quote(loop.state) << ","
       << "\"state_detail\":" << json_quote(loop.state_detail) << ","
       << "\"turn_count\":" << loop.turn_count << ","
+      << "\"launch_count\":" << loop.launch_count << ","
       << "\"started_at_ms\":" << loop.started_at_ms << ","
       << "\"updated_at_ms\":" << loop.updated_at_ms << ","
+      << "\"finished_at_ms\":"
+      << (loop.finished_at_ms.has_value() ? std::to_string(*loop.finished_at_ms)
+                                          : "null")
+      << ","
+      << "\"duration_ms\":"
+      << (elapsed_ms.has_value() ? std::to_string(*elapsed_ms) : "null") << ","
+      << "\"max_review_turns\":" << loop.max_review_turns << ","
+      << "\"max_campaign_launches\":" << loop.max_campaign_launches << ","
+      << "\"remaining_review_turns\":" << loop.remaining_review_turns << ","
+      << "\"remaining_campaign_launches\":"
+      << loop.remaining_campaign_launches << ","
+      << "\"effort_summary_text\":"
+      << json_quote(build_report_effort_summary_text(loop)) << ","
       << "\"report_path\":" << json_quote(report_path_for_loop(loop).string()) << ","
       << "\"report_ack_path\":"
       << json_quote(report_ack_path_for_loop(loop).string()) << ","
@@ -2936,7 +3012,7 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
     for (std::size_t i = 0; i < reports.size(); ++i) {
       std::cout << "  [" << i + 1 << "] " << reports[i].loop_id << "  "
                 << reports[i].objective_name << "  " << reports[i].state
-                << "  " << reports[i].state_detail << "\n";
+                << "  " << build_report_effort_summary_text(reports[i]) << "\n";
     }
     std::cout << "Select report number (blank to cancel): " << std::flush;
     std::string line{};

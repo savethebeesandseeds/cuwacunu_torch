@@ -15,12 +15,17 @@
     - protocol_layer:str = STDIO | HTTPS/SSE
     - HTTPS/SSE is intentionally disabled in this phase.
       Selecting HTTPS/SSE must fail fast and require STDIO.
-    - allow_local_write gates config/default/objective filesystem mutation.
+    - allow_local_write gates config/default/objective/optim filesystem mutation.
     - default_roots lists where hero.config.default.* may operate.
     - objective_roots lists where hero.config.objective.* may operate.
+    - TSODAO hidden_root from GENERAL.tsodao_dsl_filename is where
+      hero.config.optim.* may operate.
     - allowed_extensions constrains which file extensions those tools may touch.
     - write_roots constrains persisted config writes, objective/default file
-      mutation targets, and backups when allow_local_write=true.
+      mutation targets, and plaintext optim mutation targets when
+      allow_local_write=true.
+    - optim_backup_* controls encrypted TSODAO archive checkpoints for
+      hero.config.optim.create/replace/delete/rollback.
     - dev_nuke_reset_backup_enabled snapshots targeted runtime state into
       <runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>
       before hero.config.dev_nuke_reset clears it.
@@ -39,4 +44,7 @@ write_roots:str = /tmp
 backup_enabled:bool = true
 backup_dir:str = /cuwacunu/.backups/hero.config
 backup_max_entries(1,+inf):int = 20
+optim_backup_enabled:bool = true
+optim_backup_dir:str = /cuwacunu/.backups/hero.config.optim
+optim_backup_max_entries(1,+inf):int = 20
 dev_nuke_reset_backup_enabled:bool = true

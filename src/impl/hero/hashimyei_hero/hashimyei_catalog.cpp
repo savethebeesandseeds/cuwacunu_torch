@@ -222,6 +222,60 @@ using runtime_lls_document_t =
   return true;
 }
 
+[[nodiscard]] std::string normalize_hashimyei_name_or_same(
+    std::string_view raw_name) {
+  std::string normalized{};
+  if (cuwacunu::hashimyei::normalize_hex_hash_name(raw_name, &normalized)) {
+    return normalized;
+  }
+  return trim_ascii(raw_name);
+}
+
+[[nodiscard]] std::string normalize_hashimyei_canonical_path_or_same(
+    std::string_view raw_canonical_path) {
+  return cuwacunu::hashimyei::normalize_hashimyei_canonical_path(
+      trim_ascii(raw_canonical_path));
+}
+
+inline void normalize_identity_hex_name_inplace(
+    cuwacunu::hashimyei::hashimyei_t* identity) {
+  if (!identity) return;
+  cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&identity->name);
+}
+
+inline void normalize_component_instance_inplace(
+    cuwacunu::hero::hashimyei::component_instance_t* component) {
+  if (!component) return;
+  component->canonical_path =
+      normalize_hashimyei_canonical_path_or_same(component->canonical_path);
+  component->hashimyei = normalize_hashimyei_name_or_same(component->hashimyei);
+}
+
+inline void normalize_run_manifest_inplace(
+    cuwacunu::hero::hashimyei::run_manifest_t* manifest) {
+  if (!manifest) return;
+  normalize_identity_hex_name_inplace(&manifest->campaign_identity);
+  normalize_identity_hex_name_inplace(&manifest->wave_contract_binding.identity);
+  normalize_identity_hex_name_inplace(&manifest->wave_contract_binding.contract);
+  normalize_identity_hex_name_inplace(&manifest->wave_contract_binding.wave);
+  for (auto& component : manifest->components) {
+    normalize_component_instance_inplace(&component);
+  }
+}
+
+inline void normalize_component_manifest_inplace(
+    cuwacunu::hero::hashimyei::component_manifest_t* manifest) {
+  if (!manifest) return;
+  manifest->canonical_path =
+      normalize_hashimyei_canonical_path_or_same(manifest->canonical_path);
+  normalize_identity_hex_name_inplace(&manifest->hashimyei_identity);
+  normalize_identity_hex_name_inplace(&manifest->contract_identity);
+  if (manifest->parent_identity.has_value()) {
+    normalize_identity_hex_name_inplace(&*manifest->parent_identity);
+  }
+  cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&manifest->replaced_by);
+}
+
 [[nodiscard]] bool parse_identity_kv(
     const std::unordered_map<std::string, std::string>& kv, std::string_view prefix,
     bool required, cuwacunu::hashimyei::hashimyei_t* out, std::string* error) {
@@ -248,7 +302,7 @@ using runtime_lls_document_t =
   if (it_schema != kv.end() && !trim_ascii(it_schema->second).empty()) {
     out->schema = trim_ascii(it_schema->second);
   }
-  out->name = trim_ascii(it_name->second);
+  out->name = normalize_hashimyei_name_or_same(it_name->second);
 
   const auto it_kind = kv.find(key("kind"));
   if (it_kind == kv.end()) {
@@ -400,62 +454,69 @@ using runtime_lls_document_t =
 }
 
 [[nodiscard]] std::string run_manifest_payload(const run_manifest_t& m) {
+  run_manifest_t normalized = m;
+  normalize_run_manifest_inplace(&normalized);
   std::ostringstream out;
-  out << "schema=" << m.schema << "\n";
-  out << "run_id=" << m.run_id << "\n";
-  out << "started_at_ms=" << m.started_at_ms << "\n";
-  (void)write_identity_kv(&out, "campaign_identity", m.campaign_identity);
-  (void)write_binding_kv(&out, "wave_contract_binding", m.wave_contract_binding);
-  out << "sampler=" << m.sampler << "\n";
-  out << "record_type=" << m.record_type << "\n";
-  out << "seed=" << m.seed << "\n";
-  out << "device=" << m.device << "\n";
-  out << "dtype=" << m.dtype << "\n";
-  out << "dependency_count=" << m.dependency_files.size() << "\n";
-  for (std::size_t i = 0; i < m.dependency_files.size(); ++i) {
+  out << "schema=" << normalized.schema << "\n";
+  out << "run_id=" << normalized.run_id << "\n";
+  out << "started_at_ms=" << normalized.started_at_ms << "\n";
+  (void)write_identity_kv(&out, "campaign_identity", normalized.campaign_identity);
+  (void)write_binding_kv(&out, "wave_contract_binding",
+                         normalized.wave_contract_binding);
+  out << "sampler=" << normalized.sampler << "\n";
+  out << "record_type=" << normalized.record_type << "\n";
+  out << "seed=" << normalized.seed << "\n";
+  out << "device=" << normalized.device << "\n";
+  out << "dtype=" << normalized.dtype << "\n";
+  out << "dependency_count=" << normalized.dependency_files.size() << "\n";
+  for (std::size_t i = 0; i < normalized.dependency_files.size(); ++i) {
     out << "dependency_" << std::setw(4) << std::setfill('0') << i << "_path="
-        << m.dependency_files[i].canonical_path << "\n";
+        << normalized.dependency_files[i].canonical_path << "\n";
     out << "dependency_" << std::setw(4) << std::setfill('0') << i << "_sha256="
-        << m.dependency_files[i].sha256_hex << "\n";
+        << normalized.dependency_files[i].sha256_hex << "\n";
   }
-  out << "component_count=" << m.components.size() << "\n";
-  for (std::size_t i = 0; i < m.components.size(); ++i) {
+  out << "component_count=" << normalized.components.size() << "\n";
+  for (std::size_t i = 0; i < normalized.components.size(); ++i) {
     out << "component_" << std::setw(4) << std::setfill('0') << i
-        << "_canonical_path=" << m.components[i].canonical_path << "\n";
+        << "_canonical_path=" << normalized.components[i].canonical_path << "\n";
     out << "component_" << std::setw(4) << std::setfill('0') << i
-        << "_family=" << m.components[i].family << "\n";
+        << "_family=" << normalized.components[i].family << "\n";
     out << "component_" << std::setw(4) << std::setfill('0') << i
-        << "_hashimyei=" << m.components[i].hashimyei << "\n";
+        << "_hashimyei=" << normalized.components[i].hashimyei << "\n";
   }
   return out.str();
 }
 
 [[nodiscard]] std::string component_manifest_payload(
     const component_manifest_t& manifest) {
+  component_manifest_t normalized = manifest;
+  normalize_component_manifest_inplace(&normalized);
   std::ostringstream out;
-  out << "schema=" << manifest.schema << "\n";
-  out << "canonical_path=" << manifest.canonical_path << "\n";
-  out << "family=" << manifest.family << "\n";
+  out << "schema=" << normalized.schema << "\n";
+  out << "canonical_path=" << normalized.canonical_path << "\n";
+  out << "family=" << normalized.family << "\n";
   (void)write_identity_kv(&out, "hashimyei_identity",
-                          manifest.hashimyei_identity);
-  (void)write_identity_kv(&out, "contract_identity", manifest.contract_identity);
+                          normalized.hashimyei_identity);
+  (void)write_identity_kv(&out, "contract_identity",
+                          normalized.contract_identity);
   out << "parent_identity.present="
-      << (manifest.parent_identity.has_value() ? "1" : "0") << "\n";
-  if (manifest.parent_identity.has_value()) {
-    (void)write_identity_kv(&out, "parent_identity", *manifest.parent_identity);
+      << (normalized.parent_identity.has_value() ? "1" : "0") << "\n";
+  if (normalized.parent_identity.has_value()) {
+    (void)write_identity_kv(&out, "parent_identity",
+                            *normalized.parent_identity);
   }
-  out << "revision_reason=" << manifest.revision_reason << "\n";
-  out << "founding_revision_id=" << manifest.founding_revision_id << "\n";
+  out << "revision_reason=" << normalized.revision_reason << "\n";
+  out << "founding_revision_id=" << normalized.founding_revision_id << "\n";
   out << "founding_dsl_source_path="
-      << manifest.founding_dsl_source_path << "\n";
+      << normalized.founding_dsl_source_path << "\n";
   out << "founding_dsl_source_sha256_hex="
-      << manifest.founding_dsl_source_sha256_hex << "\n";
+      << normalized.founding_dsl_source_sha256_hex << "\n";
   out << "docking_signature_sha256_hex="
-      << manifest.docking_signature_sha256_hex << "\n";
-  out << "lineage_state=" << manifest.lineage_state << "\n";
-  out << "replaced_by=" << manifest.replaced_by << "\n";
-  out << "created_at_ms=" << manifest.created_at_ms << "\n";
-  out << "updated_at_ms=" << manifest.updated_at_ms << "\n";
+      << normalized.docking_signature_sha256_hex << "\n";
+  out << "lineage_state=" << normalized.lineage_state << "\n";
+  out << "replaced_by=" << normalized.replaced_by << "\n";
+  out << "created_at_ms=" << normalized.created_at_ms << "\n";
+  out << "updated_at_ms=" << normalized.updated_at_ms << "\n";
   return out.str();
 }
 
@@ -695,24 +756,17 @@ namespace {
 [[nodiscard]] std::string maybe_hashimyei_from_canonical(std::string_view canonical) {
   const std::size_t dot = canonical.rfind('.');
   if (dot == std::string_view::npos || dot + 1 >= canonical.size()) return {};
-  const std::string_view tail = canonical.substr(dot + 1);
-  if (tail.size() < 3) return {};
-  if (tail[0] != '0' || (tail[1] != 'x' && tail[1] != 'X')) return {};
-  for (std::size_t i = 2; i < tail.size(); ++i) {
-    const char c = tail[i];
-    const bool digit = c >= '0' && c <= '9';
-    const bool lower = c >= 'a' && c <= 'f';
-    const bool upper = c >= 'A' && c <= 'F';
-    if (!digit && !lower && !upper) return {};
-  }
-  return std::string(tail);
+  return normalize_hashimyei_name_or_same(canonical.substr(dot + 1));
 }
 
 [[nodiscard]] std::string component_family_from_parts(std::string_view canonical_path,
                                                       std::string_view hashimyei) {
+  const std::string normalized_canonical =
+      normalize_hashimyei_canonical_path_or_same(canonical_path);
+  const std::string normalized_hash = normalize_hashimyei_name_or_same(hashimyei);
   if (!hashimyei.empty() && !canonical_path.empty()) {
-    std::string family = std::string(canonical_path);
-    const std::string suffix = "." + std::string(hashimyei);
+    std::string family = normalized_canonical;
+    const std::string suffix = "." + normalized_hash;
     if (family.size() > suffix.size() &&
         family.compare(family.size() - suffix.size(), suffix.size(), suffix) ==
             0) {
@@ -720,8 +774,8 @@ namespace {
     }
     if (!family.empty()) return family;
   }
-  if (!canonical_path.empty()) {
-    const std::string family = std::string(canonical_path);
+  if (!normalized_canonical.empty()) {
+    const std::string family = normalized_canonical;
     if (!family.empty()) {
       return family;
     }
@@ -733,13 +787,16 @@ namespace {
                                                        std::string_view family,
                                                        std::string_view hashimyei,
                                                        std::string_view contract_hash) {
-  std::string canonical_key_path = std::string(canonical_path);
-  if (!hashimyei.empty()) {
-    canonical_key_path = component_family_from_parts(canonical_path, hashimyei);
+  const std::string normalized_hash = normalize_hashimyei_name_or_same(hashimyei);
+  std::string canonical_key_path =
+      normalize_hashimyei_canonical_path_or_same(canonical_path);
+  if (!normalized_hash.empty()) {
+    canonical_key_path =
+        component_family_from_parts(canonical_key_path, normalized_hash);
   }
   const std::string family_key =
-      family.empty() ? component_family_from_parts(canonical_path, hashimyei)
-                     : std::string(family);
+      family.empty() ? component_family_from_parts(canonical_key_path, normalized_hash)
+                     : normalize_hashimyei_canonical_path_or_same(family);
   return canonical_key_path + "|" + family_key + "|" +
          trim_ascii(contract_hash);
 }
@@ -1058,20 +1115,26 @@ std::string compute_run_id(
     const cuwacunu::hashimyei::hashimyei_t& campaign_identity,
     const wave_contract_binding_t& wave_contract_binding,
     std::uint64_t started_at_ms) {
+  cuwacunu::hashimyei::hashimyei_t normalized_campaign = campaign_identity;
+  normalize_identity_hex_name_inplace(&normalized_campaign);
+  wave_contract_binding_t normalized_binding = wave_contract_binding;
+  normalize_identity_hex_name_inplace(&normalized_binding.identity);
+  normalize_identity_hex_name_inplace(&normalized_binding.contract);
+  normalize_identity_hex_name_inplace(&normalized_binding.wave);
   std::ostringstream seed;
-  seed << campaign_identity.schema << "|"
-       << cuwacunu::hashimyei::hashimyei_kind_to_string(campaign_identity.kind) << "|"
-       << campaign_identity.name << "|" << campaign_identity.ordinal << "|"
-       << campaign_identity.hash_sha256_hex << "|"
-       << wave_contract_binding.identity.schema << "|"
+  seed << normalized_campaign.schema << "|"
+       << cuwacunu::hashimyei::hashimyei_kind_to_string(normalized_campaign.kind) << "|"
+       << normalized_campaign.name << "|" << normalized_campaign.ordinal << "|"
+       << normalized_campaign.hash_sha256_hex << "|"
+       << normalized_binding.identity.schema << "|"
        << cuwacunu::hashimyei::hashimyei_kind_to_string(
-              wave_contract_binding.identity.kind)
-       << "|" << wave_contract_binding.identity.name << "|"
-       << wave_contract_binding.identity.ordinal << "|"
-       << wave_contract_binding.identity.hash_sha256_hex << "|"
-       << wave_contract_binding.contract.hash_sha256_hex << "|"
-       << wave_contract_binding.wave.hash_sha256_hex << "|"
-       << wave_contract_binding.binding_id << "|" << started_at_ms;
+              normalized_binding.identity.kind)
+       << "|" << normalized_binding.identity.name << "|"
+       << normalized_binding.identity.ordinal << "|"
+       << normalized_binding.identity.hash_sha256_hex << "|"
+       << normalized_binding.contract.hash_sha256_hex << "|"
+       << normalized_binding.wave.hash_sha256_hex << "|"
+       << normalized_binding.binding_id << "|" << started_at_ms;
   std::string hash_hex;
   if (!sha256_hex_bytes(seed.str(), &hash_hex) || hash_hex.empty()) {
     return "run.invalid";
@@ -1166,6 +1229,7 @@ bool load_run_manifest(const std::filesystem::path& path, run_manifest_t* out,
     set_error(error, "invalid run manifest: missing schema or run_id");
     return false;
   }
+  normalize_run_manifest_inplace(out);
   return true;
 }
 
@@ -1183,8 +1247,10 @@ bool parse_component_manifest_kv(
   out->schema = kv.count("schema") != 0
                     ? trim_ascii(kv.at("schema"))
                     : cuwacunu::hashimyei::kComponentManifestSchemaV2;
-  out->canonical_path =
-      kv.count("canonical_path") != 0 ? kv.at("canonical_path") : std::string{};
+  out->canonical_path = kv.count("canonical_path") != 0
+                            ? normalize_hashimyei_canonical_path_or_same(
+                                  kv.at("canonical_path"))
+                            : std::string{};
   out->family = kv.count("family") != 0 ? kv.at("family") : std::string{};
   if (!parse_identity_kv(kv, "hashimyei_identity", true,
                          &out->hashimyei_identity,
@@ -1239,6 +1305,7 @@ bool parse_component_manifest_kv(
         component_family_from_parts(out->canonical_path, out->hashimyei_identity.name);
   }
 
+  normalize_component_manifest_inplace(out);
   return validate_component_manifest(*out, error);
 }
 
@@ -1408,27 +1475,29 @@ bool load_component_manifest(const std::filesystem::path& path,
 }
 
 std::string compute_component_manifest_id(const component_manifest_t& manifest) {
+  component_manifest_t normalized = manifest;
+  normalize_component_manifest_inplace(&normalized);
   std::ostringstream seed;
-  seed << manifest.canonical_path << "|" << manifest.family << "|"
-       << manifest.hashimyei_identity.schema << "|"
+  seed << normalized.canonical_path << "|" << normalized.family << "|"
+       << normalized.hashimyei_identity.schema << "|"
        << cuwacunu::hashimyei::hashimyei_kind_to_string(
-              manifest.hashimyei_identity.kind)
-       << "|" << manifest.hashimyei_identity.name << "|"
-       << manifest.hashimyei_identity.ordinal << "|"
-       << manifest.hashimyei_identity.hash_sha256_hex << "|";
-  if (manifest.parent_identity.has_value()) {
-    seed << manifest.parent_identity->schema << "|"
+              normalized.hashimyei_identity.kind)
+       << "|" << normalized.hashimyei_identity.name << "|"
+       << normalized.hashimyei_identity.ordinal << "|"
+       << normalized.hashimyei_identity.hash_sha256_hex << "|";
+  if (normalized.parent_identity.has_value()) {
+    seed << normalized.parent_identity->schema << "|"
          << cuwacunu::hashimyei::hashimyei_kind_to_string(
-                manifest.parent_identity->kind)
-         << "|" << manifest.parent_identity->name << "|"
-         << manifest.parent_identity->ordinal << "|"
-         << manifest.parent_identity->hash_sha256_hex << "|";
+                normalized.parent_identity->kind)
+         << "|" << normalized.parent_identity->name << "|"
+         << normalized.parent_identity->ordinal << "|"
+         << normalized.parent_identity->hash_sha256_hex << "|";
   }
-  seed << manifest.revision_reason << "|" << manifest.founding_revision_id
+  seed << normalized.revision_reason << "|" << normalized.founding_revision_id
        << "|"
-       << manifest.contract_identity.hash_sha256_hex << "|"
-       << manifest.founding_dsl_source_sha256_hex << "|"
-       << manifest.docking_signature_sha256_hex;
+       << normalized.contract_identity.hash_sha256_hex << "|"
+       << normalized.founding_dsl_source_sha256_hex << "|"
+       << normalized.docking_signature_sha256_hex;
   std::string digest;
   if (!sha256_hex_bytes(seed.str(), &digest) || digest.empty()) {
     return "component.invalid";
@@ -1441,13 +1510,15 @@ bool save_component_manifest(const std::filesystem::path& store_root,
                              std::filesystem::path* out_path,
                              std::string* error) {
   clear_error(error);
+  component_manifest_t normalized = manifest;
+  normalize_component_manifest_inplace(&normalized);
   std::string validate_error;
-  if (!validate_component_manifest(manifest, &validate_error)) {
+  if (!validate_component_manifest(normalized, &validate_error)) {
     set_error(error, "component manifest invalid: " + validate_error);
     return false;
   }
 
-  const std::string component_id = compute_component_manifest_id(manifest);
+  const std::string component_id = compute_component_manifest_id(normalized);
   if (trim_ascii(component_id).empty() || component_id == "component.invalid") {
     set_error(error, "component manifest id is invalid");
     return false;
@@ -1455,7 +1526,8 @@ bool save_component_manifest(const std::filesystem::path& store_root,
 
   std::error_code ec;
   const auto dir =
-      component_manifest_directory(store_root, manifest.canonical_path, component_id);
+      component_manifest_directory(store_root, normalized.canonical_path,
+                                   component_id);
   std::filesystem::create_directories(dir, ec);
   if (ec) {
     set_error(error, "cannot create component manifest directory: " +
@@ -1464,7 +1536,8 @@ bool save_component_manifest(const std::filesystem::path& store_root,
   }
 
   const auto target =
-      component_manifest_path(store_root, manifest.canonical_path, component_id);
+      component_manifest_path(store_root, normalized.canonical_path,
+                              component_id);
   const auto tmp = target.string() + ".tmp";
   std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
   if (!out) {
@@ -1472,7 +1545,7 @@ bool save_component_manifest(const std::filesystem::path& store_root,
               "cannot write component manifest temporary file: " + tmp);
     return false;
   }
-  out << component_manifest_payload(manifest);
+  out << component_manifest_payload(normalized);
   out.flush();
   if (!out) {
     set_error(error,
@@ -1497,42 +1570,45 @@ bool save_run_manifest(const std::filesystem::path& store_root,
                        const run_manifest_t& manifest,
                        std::filesystem::path* out_path, std::string* error) {
   clear_error(error);
-  if (manifest.schema != cuwacunu::hashimyei::kRunManifestSchemaV2) {
+  run_manifest_t normalized = manifest;
+  normalize_run_manifest_inplace(&normalized);
+  if (normalized.schema != cuwacunu::hashimyei::kRunManifestSchemaV2) {
     set_error(error, std::string("run manifest schema must be ") +
                          cuwacunu::hashimyei::kRunManifestSchemaV2);
     return false;
   }
-  if (manifest.run_id.empty()) {
+  if (normalized.run_id.empty()) {
     set_error(error, "run manifest requires run_id");
     return false;
   }
   std::string identity_error;
-  if (!cuwacunu::hashimyei::validate_hashimyei(manifest.campaign_identity,
+  if (!cuwacunu::hashimyei::validate_hashimyei(normalized.campaign_identity,
                                                 &identity_error)) {
     set_error(error, "run manifest campaign_identity invalid: " + identity_error);
     return false;
   }
-  if (!validate_wave_contract_binding(manifest.wave_contract_binding, &identity_error)) {
+  if (!validate_wave_contract_binding(normalized.wave_contract_binding,
+                                      &identity_error)) {
     set_error(error, "run manifest wave_contract_binding invalid: " + identity_error);
     return false;
   }
 
   std::error_code ec;
-  const auto dir = run_manifest_directory(store_root, manifest.run_id);
+  const auto dir = run_manifest_directory(store_root, normalized.run_id);
   std::filesystem::create_directories(dir, ec);
   if (ec) {
     set_error(error, "cannot create run manifest directory: " + dir.string());
     return false;
   }
 
-  const auto target = run_manifest_path(store_root, manifest.run_id);
+  const auto target = run_manifest_path(store_root, normalized.run_id);
   const auto tmp = target.string() + ".tmp";
   std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
   if (!out) {
     set_error(error, "cannot write run manifest temporary file: " + tmp);
     return false;
   }
-  out << run_manifest_payload(manifest);
+  out << run_manifest_payload(normalized);
   out.flush();
   if (!out) {
     set_error(error, "cannot flush run manifest temporary file: " + tmp);
@@ -1744,11 +1820,14 @@ bool hashimyei_catalog_store_t::append_row_(
     set_error(error, "failed to resolve next row");
     return false;
   }
+  const std::string canonical_key =
+      normalize_hashimyei_canonical_path_or_same(canonical_path);
+  const std::string hash_key = normalize_hashimyei_name_or_same(hashimyei);
   if (!insert_text(&db_, kColRecordKind, row, record_kind, error)) return false;
   if (!insert_text(&db_, kColRecordId, row, record_id, error)) return false;
   if (!insert_text(&db_, kColRunId, row, run_id, error)) return false;
-  if (!insert_text(&db_, kColCanonicalPath, row, canonical_path, error)) return false;
-  if (!insert_text(&db_, kColHashimyei, row, hashimyei, error)) return false;
+  if (!insert_text(&db_, kColCanonicalPath, row, canonical_key, error)) return false;
+  if (!insert_text(&db_, kColHashimyei, row, hash_key, error)) return false;
   if (!insert_text(&db_, kColSchema, row, schema, error)) return false;
   if (!insert_text(&db_, kColMetricKey, row, metric_key, error)) return false;
   if (!insert_num(&db_, kColMetricNum, row, metric_num, error)) return false;
@@ -1873,7 +1952,7 @@ bool hashimyei_catalog_store_t::ensure_identity_allocated_(
   } else {
     std::uint64_t parsed = 0;
     if (!cuwacunu::hashimyei::parse_hex_hash_name_ordinal(identity->name, &parsed)) {
-      set_error(error, "identity.name is not a valid lowercase 0x... hex ordinal");
+      set_error(error, "identity.name is not a valid 0x... hex ordinal");
       return false;
     }
     if (identity->ordinal == 0) identity->ordinal = parsed;
@@ -2528,6 +2607,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         std::uint64_t parsed = 0;
         if (parse_u64(as_text_or_empty(&db_, kColTsMs, row), &parsed)) run.started_at_ms = parsed;
       }
+      normalize_run_manifest_inplace(&run);
       if (!run.run_id.empty()) {
         bump_counter_from_identity(run.campaign_identity);
         bump_counter_from_identity(run.wave_contract_binding.identity);
@@ -2560,8 +2640,10 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
 
       component.manifest.schema = as_text_or_empty(&db_, kColSchema, row);
       component.manifest.canonical_path =
-          as_text_or_empty(&db_, kColCanonicalPath, row);
-      const std::string hashimyei_name = as_text_or_empty(&db_, kColHashimyei, row);
+          normalize_hashimyei_canonical_path_or_same(
+              as_text_or_empty(&db_, kColCanonicalPath, row));
+      const std::string hashimyei_name = normalize_hashimyei_name_or_same(
+          as_text_or_empty(&db_, kColHashimyei, row));
       std::uint64_t parsed_ordinal = 0;
       if (cuwacunu::hashimyei::parse_hex_hash_name_ordinal(hashimyei_name,
                                                             &parsed_ordinal)) {
@@ -2596,10 +2678,12 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       }
       if (component.manifest.canonical_path.empty()) {
         component.manifest.canonical_path =
-            as_text_or_empty(&db_, kColCanonicalPath, row);
+            normalize_hashimyei_canonical_path_or_same(
+                as_text_or_empty(&db_, kColCanonicalPath, row));
       }
       if (component.manifest.hashimyei_identity.name.empty()) {
-        const std::string fallback_name = as_text_or_empty(&db_, kColHashimyei, row);
+        const std::string fallback_name = normalize_hashimyei_name_or_same(
+            as_text_or_empty(&db_, kColHashimyei, row));
         if (cuwacunu::hashimyei::parse_hex_hash_name_ordinal(fallback_name,
                                                               &parsed_ordinal)) {
           component.manifest.hashimyei_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
@@ -2623,6 +2707,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       if (component.manifest.created_at_ms == 0) {
         component.manifest.created_at_ms = component.ts_ms;
       }
+      normalize_component_manifest_inplace(&component.manifest);
 
       if (!component.component_id.empty()) {
         bump_counter_from_identity(component.manifest.hashimyei_identity);
@@ -2698,7 +2783,8 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
             placeholder.manifest.hashimyei_identity.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
             placeholder.manifest.hashimyei_identity.kind =
                 cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE;
-            placeholder.manifest.hashimyei_identity.name = hashimyei;
+            placeholder.manifest.hashimyei_identity.name =
+                normalize_hashimyei_name_or_same(hashimyei);
             placeholder.manifest.hashimyei_identity.ordinal = ord;
           }
           if (!parent_hashimyei.empty()) {
@@ -2708,7 +2794,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
               cuwacunu::hashimyei::hashimyei_t parent{};
               parent.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
               parent.kind = cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE;
-              parent.name = parent_hashimyei;
+              parent.name = normalize_hashimyei_name_or_same(parent_hashimyei);
               parent.ordinal = parent_ord;
               placeholder.manifest.parent_identity = parent;
             }
@@ -2719,6 +2805,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
                                             ? component_family_from_parts(
                                                   canonical_path, hashimyei)
                                             : family;
+          normalize_component_manifest_inplace(&placeholder.manifest);
           components_by_id_[component_id] = std::move(placeholder);
         }
       }
@@ -2727,9 +2814,12 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
 
     if (kind == cuwacunu::hero::schema::kRecordKindCOMPONENT_ACTIVE) {
       const std::string canonical_path =
-          as_text_or_empty(&db_, kColCanonicalPath, row);
-      std::string family = as_text_or_empty(&db_, kColMetricKey, row);
-      const std::string hashimyei = as_text_or_empty(&db_, kColHashimyei, row);
+          normalize_hashimyei_canonical_path_or_same(
+              as_text_or_empty(&db_, kColCanonicalPath, row));
+      std::string family = normalize_hashimyei_canonical_path_or_same(
+          as_text_or_empty(&db_, kColMetricKey, row));
+      const std::string hashimyei = normalize_hashimyei_name_or_same(
+          as_text_or_empty(&db_, kColHashimyei, row));
       if (family.empty()) {
         family = component_family_from_parts(canonical_path, hashimyei);
       }
@@ -2786,8 +2876,10 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
     if (kind == cuwacunu::hero::schema::kRecordKindREPORT_FRAGMENT) {
       report_fragment_entry_t e{};
       e.report_fragment_id = as_text_or_empty(&db_, kColRecordId, row);
-      e.canonical_path = as_text_or_empty(&db_, kColCanonicalPath, row);
-      e.hashimyei = as_text_or_empty(&db_, kColHashimyei, row);
+      e.canonical_path = normalize_hashimyei_canonical_path_or_same(
+          as_text_or_empty(&db_, kColCanonicalPath, row));
+      e.hashimyei = normalize_hashimyei_name_or_same(
+          as_text_or_empty(&db_, kColHashimyei, row));
       e.schema = as_text_or_empty(&db_, kColSchema, row);
       e.report_fragment_sha256 = as_text_or_empty(&db_, kColReportFragmentSha256, row);
       e.path = as_text_or_empty(&db_, kColPath, row);
@@ -2799,9 +2891,12 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         if (parse_runtime_lls_payload(e.payload_json, &kv, nullptr, &parse_error)) {
           populate_runtime_report_entry_header_fields_(kv, &e);
           if (e.canonical_path.empty()) {
-            e.canonical_path = kv["canonical_path"];
+            e.canonical_path =
+                normalize_hashimyei_canonical_path_or_same(kv["canonical_path"]);
           }
-          if (e.hashimyei.empty()) e.hashimyei = kv["hashimyei"];
+          if (e.hashimyei.empty()) {
+            e.hashimyei = normalize_hashimyei_name_or_same(kv["hashimyei"]);
+          }
           if (e.schema.empty()) e.schema = kv["schema"];
         }
       }
@@ -3055,8 +3150,9 @@ bool hashimyei_catalog_store_t::resolve_component(
   }
   *out = component_state_t{};
 
-  const std::string canonical(canonical_path);
-  const std::string hash(hashimyei);
+  const std::string canonical =
+      normalize_hashimyei_canonical_path_or_same(canonical_path);
+  const std::string hash = normalize_hashimyei_name_or_same(hashimyei);
 
   if (!canonical.empty() && !hash.empty()) {
     component_state_t best{};
@@ -3140,8 +3236,9 @@ bool hashimyei_catalog_store_t::list_components(
     return false;
   }
   out->clear();
-  const std::string canonical(canonical_path);
-  const std::string hash(hashimyei);
+  const std::string canonical =
+      normalize_hashimyei_canonical_path_or_same(canonical_path);
+  const std::string hash = normalize_hashimyei_name_or_same(hashimyei);
 
   for (const auto& [_, component] : components_by_id_) {
     if (!canonical.empty() && component.manifest.canonical_path != canonical) continue;
@@ -3181,8 +3278,10 @@ bool hashimyei_catalog_store_t::resolve_active_hashimyei(
   }
   out_hashimyei->clear();
 
-  const std::string canonical(canonical_path);
-  const std::string fam(family);
+  const std::string canonical =
+      normalize_hashimyei_canonical_path_or_same(canonical_path);
+  const std::string fam =
+      normalize_hashimyei_canonical_path_or_same(family);
   const std::string contract = trim_ascii(contract_hash);
   if (canonical.empty()) {
     set_error(error, "canonical_path is required");

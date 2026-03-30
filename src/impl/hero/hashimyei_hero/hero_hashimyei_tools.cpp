@@ -304,17 +304,12 @@ using hashimyei_runtime_defaults_t =
 [[nodiscard]] std::string maybe_hashimyei_from_canonical(std::string_view canonical) {
   const std::size_t dot = canonical.rfind('.');
   if (dot == std::string_view::npos || dot + 1 >= canonical.size()) return {};
-  const std::string_view tail = canonical.substr(dot + 1);
-  if (tail.size() < 3) return {};
-  if (tail[0] != '0' || (tail[1] != 'x' && tail[1] != 'X')) return {};
-  for (std::size_t i = 2; i < tail.size(); ++i) {
-    const char c = tail[i];
-    const bool digit = c >= '0' && c <= '9';
-    const bool lower = c >= 'a' && c <= 'f';
-    const bool upper = c >= 'A' && c <= 'F';
-    if (!digit && !lower && !upper) return {};
+  std::string normalized{};
+  if (!cuwacunu::hashimyei::normalize_hex_hash_name(
+          canonical.substr(dot + 1), &normalized)) {
+    return {};
   }
-  return std::string(tail);
+  return normalized;
 }
 
 [[nodiscard]] std::string hex_lower(const unsigned char* bytes, std::size_t n) {

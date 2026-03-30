@@ -289,6 +289,49 @@ static void test_founding_bundle_digest_stable_under_source_path_churn() {
           cuwacunu::hero::hashimyei::compute_founding_dsl_bundle_aggregate_sha256(b));
 }
 
+static void test_uppercase_component_manifest_normalization() {
+  temp_dir_t tmp{};
+  const fs::path store_root = tmp.dir / ".hashimyei";
+  const fs::path catalog_path =
+      store_root / "_meta" / "catalog" / "hashimyei_catalog.idydb";
+  constexpr const char* kPassphrase = "catalog-uppercase-pass";
+
+  component_manifest_t manifest = make_component_manifest();
+  manifest.hashimyei_identity =
+      make_test_identity(hashimyei_kind_e::TSIEMENE, 0xab);
+  manifest.hashimyei_identity.name = "0x00AB";
+  manifest.canonical_path = manifest.family + ".0x00AB";
+  manifest.founding_revision_id = "cfgrev.uppercase";
+  manifest.created_at_ms = 1711111122000ULL;
+  manifest.updated_at_ms = 1711111122001ULL;
+
+  fs::path manifest_path{};
+  std::string error;
+  REQUIRE(cuwacunu::hero::hashimyei::save_component_manifest(
+      store_root, manifest, &manifest_path, &error));
+  REQUIRE(manifest_path.string().find("0x00ab") != std::string::npos);
+
+  component_manifest_t loaded{};
+  REQUIRE(load_component_manifest(manifest_path, &loaded, &error));
+  REQUIRE(loaded.hashimyei_identity.name == "0x00ab");
+  REQUIRE(loaded.canonical_path == loaded.family + ".0x00ab");
+
+  hashimyei_catalog_store_t catalog{};
+  hashimyei_catalog_store_t::options_t options{};
+  options.catalog_path = catalog_path;
+  options.encrypted = true;
+  options.passphrase = kPassphrase;
+  options.ingest_version = 2;
+  REQUIRE(catalog.open(options, &error));
+  REQUIRE(catalog.ingest_filesystem(store_root, &error));
+
+  component_state_t resolved{};
+  REQUIRE(catalog.resolve_component("", "0x00AB", &resolved, &error));
+  REQUIRE(resolved.manifest.hashimyei_identity.name == "0x00ab");
+  REQUIRE(resolved.manifest.canonical_path ==
+          "tsi.wikimyei.representation.vicreg.0x00ab");
+}
+
 int main() {
   // unified catalog schema vocabulary checks
   REQUIRE(cuwacunu::hero::schema::is_known_record_kind(
@@ -330,6 +373,7 @@ int main() {
   const run_manifest_t manifest = make_run_manifest();
   test_component_manifest_id_stable_under_source_path_churn();
   test_founding_bundle_digest_stable_under_source_path_churn();
+  test_uppercase_component_manifest_normalization();
 
   fs::path run_manifest_path{};
   std::string error;
@@ -483,7 +527,7 @@ int main() {
 
   std::string active_hashimyei{};
   REQUIRE(catalog.resolve_active_hashimyei(
-      cutover_manifest.family, "",
+      cutover_manifest.canonical_path, cutover_manifest.family,
       cutover_manifest.contract_identity.hash_sha256_hex, &active_hashimyei,
       &error));
   REQUIRE(active_hashimyei == cutover_manifest.hashimyei_identity.name);

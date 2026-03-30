@@ -43,9 +43,9 @@ HERO_RUNTIME_KEY("objective_roots", "string", 1,
                  "allowed objective instruction roots for hero.config.objective.*")
 HERO_RUNTIME_KEY("allowed_extensions", "string", 1, ".dsl",
                  "csv extension list", "comma-separated extensions",
-                 "allowed file extensions for hero.config.default.* and hero.config.objective.*")
+                 "allowed file extensions for hero.config.default.*, hero.config.objective.*, and hero.config.optim.*")
 HERO_RUNTIME_KEY("write_roots", "string", 1, "/tmp", "csv path list", "comma-separated paths",
-                 "allowed write roots when allow_local_write=true")
+                 "allowed plaintext write roots when allow_local_write=true")
 HERO_RUNTIME_KEY("backup_enabled", "bool", 1, "true", "true|false", "true,false",
                  "enable rotating backups before each save")
 HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/.backups/hero.config",
@@ -53,6 +53,15 @@ HERO_RUNTIME_KEY("backup_dir", "path", 1, "/cuwacunu/.backups/hero.config",
                  "destination directory for rotating backups")
 HERO_RUNTIME_KEY("backup_max_entries", "int", 1, "20", ">=1", "integer",
                  "maximum backup snapshots to retain")
+HERO_RUNTIME_KEY("optim_backup_enabled", "bool", 1, "true", "true|false",
+                 "true,false",
+                 "enable encrypted TSODAO archive checkpoints for hero.config.optim.* mutations")
+HERO_RUNTIME_KEY("optim_backup_dir", "path", 1,
+                 "/cuwacunu/.backups/hero.config.optim", "directory path",
+                 "absolute_or_relative_path",
+                 "destination directory for encrypted TSODAO archive checkpoints")
+HERO_RUNTIME_KEY("optim_backup_max_entries", "int", 1, "20", ">=1", "integer",
+                 "maximum encrypted optim checkpoints to retain")
 HERO_RUNTIME_KEY("dev_nuke_reset_backup_enabled", "bool", 1, "true",
                  "true|false", "true,false",
                  "archive targeted runtime state before hero.config.dev_nuke_reset clears it")

@@ -15,6 +15,16 @@ This directory builds six stdio MCP servers:
 make -C /cuwacunu/src/main/hero -j12 all
 ```
 
+## Install
+
+HERO binaries live canonically under `/cuwacunu/.build/hero`, so their
+post-build permission step is now exposed as `install-*-hero` targets:
+
+```bash
+make -C /cuwacunu/src/main/hero -j12 install-config-hero
+make -C /cuwacunu/src/main/hero -j12 install-runtime-hero
+```
+
 ## Defaults
 
 All six HERO binaries default to:
@@ -94,6 +104,13 @@ Config MCP:
 - `hero.config.objective.create`
 - `hero.config.objective.replace`
 - `hero.config.objective.delete`
+- `hero.config.optim.list`
+- `hero.config.optim.read`
+- `hero.config.optim.create`
+- `hero.config.optim.replace`
+- `hero.config.optim.delete`
+- `hero.config.optim.backups`
+- `hero.config.optim.rollback`
 - `hero.config.validate`
 - `hero.config.diff`
 - `hero.config.dry_run`
@@ -105,11 +122,13 @@ Config MCP:
 
 Config Hero write policy:
 - `hero.config.set` is in-memory only until `hero.config.save`.
-- `hero.config.default.create/replace/delete`, `hero.config.objective.create/replace/delete`, `hero.config.save`, and `hero.config.rollback` require `allow_local_write=true`.
-- persisted config writes, default/objective file mutations, and config-backup snapshots must stay inside `write_roots`.
+- `hero.config.default.create/replace/delete`, `hero.config.objective.create/replace/delete`, `hero.config.optim.create/replace/delete/rollback`, `hero.config.save`, and `hero.config.rollback` require `allow_local_write=true`.
+- persisted config writes, default/objective file mutations, and plaintext optim mutation targets must stay inside `write_roots`.
+- `hero.config.optim.*` resolves its hidden plaintext root and encrypted archive from `GENERAL.tsodao_dsl_filename`; its pre-mutation backups are encrypted TSODAO archive checkpoints written under `optim_backup_dir`.
 - `hero.config.dev_nuke_reset` uses the saved global-config runtime root instead of `write_roots`; when `dev_nuke_reset_backup_enabled=true` it archives targets under `<runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/` before cleanup and is intended to work even when `allow_local_write=false`.
 - `hero.config.default.*` are constrained by `default_roots` plus `allowed_extensions`, and successful default mutations return a warning because they change shared truth.
 - `hero.config.objective.*` are constrained by `objective_roots` plus `allowed_extensions`; this same surface covers the objective-local campaign file named by `campaign_dsl_path` when it lives under the objective root.
+- `hero.config.optim.*` is constrained by the TSODAO hidden root plus `allowed_extensions`; `hero.config.optim.list/read` are read-only, while the mutating operations checkpoint the encrypted archive before they touch plaintext.
 
 Hashimyei MCP:
 
@@ -179,11 +198,14 @@ Runtime MCP:
 - `hero.runtime.reconcile`
 
 `hero.runtime.start_campaign` accepts optional `binding_id`, `campaign_dsl_path`,
-and `super_loop_id`.
+`super_loop_id`, and `reset_runtime_state`.
 
 - `binding_id` narrows execution to one declared bind instead of the default `RUN` plan
 - `campaign_dsl_path` overrides the configured source campaign for that launch
 - `super_loop_id` links the launched campaign to an existing Super Hero loop ledger; this is the linkage field Super Hero uses when it asks Runtime Hero to launch the next campaign
+- `reset_runtime_state=true` requests a cold runtime-owned reset before the first worker job begins; it clears `.campaigns` and `.hashimyei`/runtime catalogs as needed, but preserves `.super_hero` and `.human_hero` so Super/Human ledgers survive launch-time resets
+
+Use `hero.config.dev_nuke_reset` when you intentionally want the broader developer wipe that also removes `.super_hero` and `.human_hero`.
 
 Super MCP:
 
@@ -203,7 +225,7 @@ Human MCP:
 - `hero.human.ack_report`
 - `hero.human.dismiss_report`
 
-When `hero_human_mcp` is invoked with no tool/list flags on a tty, it opens the Human Hero operator console for pending escalations and finished-loop summary reports instead of waiting for JSON-RPC on stdin. The UI now distinguishes those cases explicitly: escalations mean Super Hero is waiting on governance input, while reports are informational terminal summaries only. On terminals that support ncurses cleanly it uses the full-screen console; on unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder automatically.
+When `hero_human_mcp` is invoked with no tool/list flags on a tty, it opens the Human Hero operator console for pending escalations and finished-loop summary reports instead of waiting for JSON-RPC on stdin. The UI now distinguishes those cases explicitly: escalations mean Super Hero is waiting on governance input, while reports are informational terminal summaries only. Finished-loop reports now begin with an effort summary that foregrounds elapsed wall time plus review-turn and campaign-launch usage. On terminals that support ncurses cleanly it uses the full-screen console; on unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder automatically.
 Human Hero defaults are loaded from `[REAL_HERO].human_hero_dsl_filename`. If `operator_id` is still `CHANGE_ME_OPERATOR` or empty, the first Human Hero use auto-initializes it to `<user>@<hostname>` and persists that value back into `default.hero.human.dsl`. Signed human work is now v2 governance-only: operators resolve escalations with `resolution_kind = grant | deny | clarify | stop` plus a required `reason`, while Super Hero retains responsibility for choosing the next Runtime action. Finished-loop reports can either be acknowledged or dismissed to clear them from the operator inbox; both actions produce signed report-ack artifacts for auditability.
 
 Human operator setup:

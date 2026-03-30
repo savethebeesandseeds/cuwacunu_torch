@@ -97,7 +97,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   manifest.family_canonical_path = "tsi.wikimyei.representation.vicreg";
   manifest.family = "representation";
   manifest.model = "vicreg";
-  manifest.report_fragment_id = "0x00ab";
+  manifest.report_fragment_id = "0x00AB";
   manifest.files.push_back({"weights.init.pt", 100});
   manifest.files.push_back({"metadata.enc", 7});
   manifest.files.push_back({"weights.init.pt", 88});
@@ -112,6 +112,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
 
   const std::string payload = read_text_file(manifest_path);
   REQUIRE(payload.find("schema=hashimyei.report_fragment.manifest.v2\n") != std::string::npos);
+  REQUIRE(payload.find("report_fragment_id=0x00ab\n") != std::string::npos);
   REQUIRE(payload.find("file_count=3\n") != std::string::npos);
   REQUIRE(payload.find("file_0000_path=metadata.enc\n") != std::string::npos);
   REQUIRE(payload.find("file_0001_path=weights.init.network_analytics.lls\n") != std::string::npos);
@@ -124,7 +125,7 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   REQUIRE(parsed.family_canonical_path == manifest.family_canonical_path);
   REQUIRE(parsed.family == manifest.family);
   REQUIRE(parsed.model == manifest.model);
-  REQUIRE(parsed.report_fragment_id == manifest.report_fragment_id);
+  REQUIRE(parsed.report_fragment_id == "0x00ab");
   REQUIRE(parsed.files.size() == 3);
   REQUIRE(parsed.files[0].path == "metadata.enc");
   REQUIRE(parsed.files[1].path == "weights.init.network_analytics.lls");
@@ -170,9 +171,9 @@ static void test_discovery_rules(const fs::path& store_root) {
     REQUIRE(cuwacunu::hashimyei::write_report_fragment_manifest(report_fragment_dir, manifest, &error));
   };
 
-  const fs::path manifest_only = base / "0x00aa";
+  const fs::path manifest_only = base / "0x00AA";
   fs::create_directories(manifest_only, ec);
-  create_manifest(manifest_only, "0x00aa");
+  create_manifest(manifest_only, "0x00AA");
 
   const fs::path weights_only = base / "0x00ab";
   fs::create_directories(weights_only, ec);
@@ -195,14 +196,27 @@ static void test_discovery_rules(const fs::path& store_root) {
   const auto discovered =
       cuwacunu::hashimyei::discover_created_report_fragments_for("representation", "vicreg");
   REQUIRE(discovered.size() == 3);
-  REQUIRE(discovered[0].hashimyei == "0x00aa");
-  REQUIRE(discovered[1].hashimyei == "0x00ab");
-  REQUIRE(discovered[2].hashimyei == "0x00ac");
+  const auto find_entry =
+      [&](std::string_view hash)
+      -> const cuwacunu::hashimyei::report_fragment_identity_t* {
+    const auto it = std::find_if(
+        discovered.begin(),
+        discovered.end(),
+        [&](const cuwacunu::hashimyei::report_fragment_identity_t& item) {
+          return item.hashimyei == hash;
+        });
+    REQUIRE(it != discovered.end());
+    return &(*it);
+  };
 
-  REQUIRE(discovered[0].weight_files.empty());
-  REQUIRE(discovered[1].weight_files.size() == 1);
-  REQUIRE(discovered[2].weight_files.size() == 2);
-  REQUIRE(discovered[0].canonical_path ==
+  const auto* manifest_only_entry = find_entry("0x00aa");
+  const auto* weights_only_entry = find_entry("0x00ab");
+  const auto* manifest_and_weights_entry = find_entry("0x00ac");
+
+  REQUIRE(manifest_only_entry->weight_files.empty());
+  REQUIRE(weights_only_entry->weight_files.size() == 1);
+  REQUIRE(manifest_and_weights_entry->weight_files.size() == 2);
+  REQUIRE(manifest_only_entry->canonical_path ==
           "tsi.wikimyei.representation.vicreg.0x00aa");
 }
 
@@ -238,6 +252,13 @@ static void test_identity_helper_regressions() {
   std::uint64_t ordinal = 0;
   REQUIRE(cuwacunu::hashimyei::parse_hex_hash_name_ordinal("0x000f", &ordinal));
   REQUIRE(ordinal == 15);
+  REQUIRE(cuwacunu::hashimyei::parse_hex_hash_name_ordinal("0x00Ff", &ordinal));
+  REQUIRE(ordinal == 255);
+
+  std::string normalized_hashimyei{};
+  REQUIRE(cuwacunu::hashimyei::normalize_hex_hash_name("0x00AB",
+                                                       &normalized_hashimyei));
+  REQUIRE(normalized_hashimyei == "0x00ab");
 
   hashimyei_t ok = cuwacunu::hashimyei::make_identity(
       hashimyei_kind_e::WAVE, 9, std::string(64, 'a'));

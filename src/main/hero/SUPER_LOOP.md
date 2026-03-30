@@ -76,6 +76,8 @@ allowed to be in v2.
 - Codex must not mutate repository truth-source files directly.
 - Super Hero must not silently widen write authority beyond the current
   envelope.
+- Runtime cold resets requested by Super must not remove `.super_hero` or
+  `.human_hero` ledgers.
 - Human Hero must not be used as an ordinary “choose the next bind” router.
 
 ## Persistence

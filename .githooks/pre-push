@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "${HOOK_DIR}/.." && pwd)"
+BUILD_BIN="${REPO_ROOT}/.build/tools/tsodao"
+
+if [ -x "${BUILD_BIN}" ]; then
+  exec "${BUILD_BIN}" git-pre-push
+fi
+
+printf 'pre-push: missing tsodao binary; run `make -C %s/src/main/tools -j12 install-tsodao` or `build-tsodao`\n' "${REPO_ROOT}" >&2
+exit 1

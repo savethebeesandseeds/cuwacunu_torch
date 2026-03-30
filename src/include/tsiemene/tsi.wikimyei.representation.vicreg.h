@@ -1049,27 +1049,17 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   std::unique_ptr<cuwacunu::wikimyei::vicreg_4d::VICReg_4D> model_;
 };
 
-[[nodiscard]] inline bool parse_wikimyei_hex_hash(std::string_view s, std::uint64_t* out) {
-  if (!out) return false;
-  if (s.size() < 3) return false;
-  if (s[0] != '0') return false;
-  if (s[1] != 'x' && s[1] != 'X') return false;
+[[nodiscard]] inline bool normalize_wikimyei_hex_hash(
+    std::string_view hashimyei, std::string* out_hashimyei,
+    std::uint64_t* out_ordinal = nullptr) {
+  return cuwacunu::hashimyei::normalize_hex_hash_name(hashimyei,
+                                                      out_hashimyei,
+                                                      out_ordinal);
+}
 
-  std::uint64_t value = 0;
-  for (std::size_t i = 2; i < s.size(); ++i) {
-    const char c = s[i];
-    std::uint64_t nibble = 0;
-    if (c >= '0' && c <= '9') nibble = static_cast<std::uint64_t>(c - '0');
-    else if (c >= 'a' && c <= 'f') nibble = static_cast<std::uint64_t>(10 + (c - 'a'));
-    else if (c >= 'A' && c <= 'F') nibble = static_cast<std::uint64_t>(10 + (c - 'A'));
-    else return false;
-
-    if (value > (std::numeric_limits<std::uint64_t>::max() >> 4)) return false;
-    value = (value << 4) | nibble;
-  }
-
-  *out = value;
-  return true;
+[[nodiscard]] inline bool parse_wikimyei_hex_hash(std::string_view s,
+                                                  std::uint64_t* out) {
+  return normalize_wikimyei_hex_hash(s, nullptr, out);
 }
 
 [[nodiscard]] inline std::string format_wikimyei_hex_hash(std::uint64_t value) {
@@ -1086,7 +1076,102 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
 
 [[nodiscard]] inline bool is_valid_wikimyei_representation_vicreg_hash(std::string_view hashimyei) {
   std::uint64_t parsed = 0;
-  return parse_wikimyei_hex_hash(hashimyei, &parsed);
+  return normalize_wikimyei_hex_hash(hashimyei, nullptr, &parsed);
+}
+
+[[nodiscard]] inline bool resolve_wikimyei_representation_vicreg_directory(
+    std::string_view hashimyei, bool require_existing,
+    std::filesystem::path* out_directory, std::string* error = nullptr) {
+  namespace fs = std::filesystem;
+  if (error) error->clear();
+  if (!out_directory) {
+    if (error) *error = "wikimyei report_fragment directory output pointer is null";
+    return false;
+  }
+
+  std::string normalized_hashimyei{};
+  if (!normalize_wikimyei_hex_hash(hashimyei, &normalized_hashimyei)) {
+    if (error) *error = "invalid wikimyei hashimyei id: " + std::string(hashimyei);
+    return false;
+  }
+
+  const fs::path store_root = wikimyei_representation_vicreg_store_root();
+  const fs::path canonical_directory = store_root / normalized_hashimyei;
+
+  std::error_code ec;
+  if (fs::exists(canonical_directory, ec)) {
+    if (!fs::is_directory(canonical_directory, ec)) {
+      if (error) {
+        *error = "wikimyei report_fragment path is not a directory: " +
+                 canonical_directory.string();
+      }
+      return false;
+    }
+    *out_directory = canonical_directory;
+    return true;
+  }
+  if (ec) {
+    if (error) {
+      *error = "cannot inspect wikimyei report_fragment directory: " +
+               canonical_directory.string();
+    }
+    return false;
+  }
+
+  if (fs::exists(store_root, ec) && fs::is_directory(store_root, ec)) {
+    fs::path matched_directory{};
+    bool found_match = false;
+    for (const auto& entry : fs::directory_iterator(store_root, ec)) {
+      if (ec) break;
+      if (!entry.is_directory()) continue;
+
+      std::string candidate_hashimyei{};
+      if (!normalize_wikimyei_hex_hash(entry.path().filename().string(),
+                                       &candidate_hashimyei)) {
+        continue;
+      }
+      if (candidate_hashimyei != normalized_hashimyei) continue;
+
+      if (found_match && entry.path() != matched_directory) {
+        if (error) {
+          *error =
+              "ambiguous wikimyei report_fragment directories for canonical id: " +
+              normalized_hashimyei;
+        }
+        return false;
+      }
+      matched_directory = entry.path();
+      found_match = true;
+    }
+    if (ec) {
+      if (error) {
+        *error = "cannot scan wikimyei report_fragment root: " +
+                 store_root.string();
+      }
+      return false;
+    }
+    if (found_match) {
+      *out_directory = matched_directory;
+      return true;
+    }
+  } else if (ec) {
+    if (error) {
+      *error = "cannot inspect wikimyei report_fragment root: " +
+               store_root.string();
+    }
+    return false;
+  }
+
+  if (require_existing) {
+    if (error) {
+      *error = "wikimyei report_fragment not found: " +
+               canonical_directory.string();
+    }
+    return false;
+  }
+
+  *out_directory = canonical_directory;
+  return true;
 }
 
 [[nodiscard]] inline std::vector<cuwacunu::hashimyei::report_fragment_identity_t>
@@ -1174,33 +1259,41 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   namespace fs = std::filesystem;
   if (error) error->clear();
 
-  if (!is_valid_wikimyei_representation_vicreg_hash(action.report_fragment_id)) {
+  std::string normalized_hashimyei{};
+  if (!normalize_wikimyei_hex_hash(action.report_fragment_id,
+                                   &normalized_hashimyei)) {
     if (error) *error = "invalid wikimyei hashimyei id: " + action.report_fragment_id;
     return false;
   }
 
-  std::error_code ec;
-  fs::create_directories(action.report_fragment_directory, ec);
-  if (ec) {
-    if (error) *error = "cannot create wikimyei report_fragment directory: " + action.report_fragment_directory.string();
+  fs::path report_fragment_directory{};
+  if (!resolve_wikimyei_representation_vicreg_directory(
+          normalized_hashimyei, false, &report_fragment_directory, error)) {
     return false;
   }
 
-  const fs::path weights_file = action.report_fragment_directory / "weights.init.pt";
+  std::error_code ec;
+  fs::create_directories(report_fragment_directory, ec);
+  if (ec) {
+    if (error) *error = "cannot create wikimyei report_fragment directory: " + report_fragment_directory.string();
+    return false;
+  }
+
+  const fs::path weights_file = report_fragment_directory / "weights.init.pt";
   fs::path weights_network_analytics_file = weights_file;
   weights_network_analytics_file.replace_extension(".network_analytics.lls");
   bool wrote_weights_network_analytics_file = false;
   fs::path embedding_sequence_analytics_file =
-      action.report_fragment_directory /
+      report_fragment_directory /
       std::string(cuwacunu::piaabo::torch_compat::
                       kEmbeddingSequenceAnalyticsLatestReportFilename);
   bool wrote_embedding_sequence_analytics_file = false;
   fs::path embedding_sequence_symbolic_analytics_file =
-      action.report_fragment_directory /
+      report_fragment_directory /
       std::string(cuwacunu::piaabo::torch_compat::
                       kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename);
   bool wrote_embedding_sequence_symbolic_analytics_file = false;
-  const fs::path status_lls_file = action.report_fragment_directory / "status.latest.lls";
+  const fs::path status_lls_file = report_fragment_directory / "status.latest.lls";
   bool wrote_status_lls_file = false;
   auto* out = static_cast<wikimyei_representation_vicreg_init_record_t*>(action.user_data);
   const bool enable_network_analytics_sidecar =
@@ -1213,9 +1306,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   const bool has_wave_cursor = out && out->has_wave_cursor;
   const std::uint64_t wave_cursor = out ? out->wave_cursor : 0;
   const std::string canonical_path =
-      std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
+      std::string(kWikimyeiVicregCanonicalType) + "." + normalized_hashimyei;
   const std::string effective_run_id =
-      effective_runtime_report_run_id_(run_id, action.report_fragment_id);
+      effective_runtime_report_run_id_(run_id, normalized_hashimyei);
   std::vector<fs::path> history_files{};
   const auto write_history_copy =
       [&](const fs::path& stable_file) -> bool {
@@ -1256,7 +1349,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
               weights_file,
               canonical_path,
               kWikimyeiVicregCanonicalType,
-              action.report_fragment_id,
+              normalized_hashimyei,
               contract_hash,
               binding_id,
               effective_run_id,
@@ -1369,7 +1462,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   metadata << "canonical_target=tsi.wikimyei.representation.vicreg\n";
   metadata << "family=" << kWikimyeiVicregFamily << "\n";
   metadata << "model=" << kWikimyeiVicregModel << "\n";
-  metadata << "hashimyei=" << action.report_fragment_id << "\n";
+  metadata << "hashimyei=" << normalized_hashimyei << "\n";
   metadata << "canonical_path=" << canonical_path << "\n";
   metadata << "weights_file=" << weights_file.filename().string() << "\n";
   metadata << "status_file=" << status_lls_file.filename().string() << "\n";
@@ -1392,15 +1485,15 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   std::string metadata_warning;
 
   std::string metadata_error;
-  if (cuwacunu::hashimyei::write_encrypted_metadata(action.report_fragment_directory, metadata.str(), &metadata_error)) {
+  if (cuwacunu::hashimyei::write_encrypted_metadata(report_fragment_directory, metadata.str(), &metadata_error)) {
     metadata_encrypted = true;
     std::error_code stale_ec;
-    (void)fs::remove(action.report_fragment_directory / "metadata.txt",
+    (void)fs::remove(report_fragment_directory / "metadata.txt",
                      stale_ec);
   } else {
     metadata_warning = metadata_error;
     std::string io_error;
-    if (!write_wikimyei_text_file(action.report_fragment_directory / "metadata.txt", metadata.str(), &io_error)) {
+    if (!write_wikimyei_text_file(report_fragment_directory / "metadata.txt", metadata.str(), &io_error)) {
       if (error) {
         *error =
             "cannot persist metadata (encrypted failed: " + metadata_error + "; plaintext failed: " + io_error + ")";
@@ -1409,13 +1502,13 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     }
     metadata_plaintext_fallback = true;
     std::error_code stale_ec;
-    (void)fs::remove(action.report_fragment_directory / "metadata.enc",
+    (void)fs::remove(report_fragment_directory / "metadata.enc",
                      stale_ec);
   }
-  if (!write_history_copy(action.report_fragment_directory / "metadata.enc")) {
+  if (!write_history_copy(report_fragment_directory / "metadata.enc")) {
     return false;
   }
-  if (!write_history_copy(action.report_fragment_directory / "metadata.txt")) {
+  if (!write_history_copy(report_fragment_directory / "metadata.txt")) {
     return false;
   }
 
@@ -1492,7 +1585,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       std::string(kWikimyeiVicregCanonicalType);
   manifest.family = std::string(kWikimyeiVicregFamily);
   manifest.model = std::string(kWikimyeiVicregModel);
-  manifest.report_fragment_id = action.report_fragment_id;
+  manifest.report_fragment_id = normalized_hashimyei;
   {
     std::error_code size_ec;
     const auto weights_size = fs::file_size(weights_file, size_ec);
@@ -1511,8 +1604,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
             .size = file_ec ? 0 : size,
         });
       };
-  append_manifest_file_if_present(action.report_fragment_directory / "metadata.enc");
-  append_manifest_file_if_present(action.report_fragment_directory / "metadata.txt");
+  append_manifest_file_if_present(report_fragment_directory / "metadata.enc");
+  append_manifest_file_if_present(report_fragment_directory / "metadata.txt");
   if (wrote_status_lls_file) {
     append_manifest_file_if_present(status_lls_file);
   }
@@ -1529,13 +1622,15 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     append_manifest_file_if_present(history_file);
   }
   std::string manifest_error;
-  if (!cuwacunu::hashimyei::write_report_fragment_manifest(action.report_fragment_directory, manifest, &manifest_error)) {
+  if (!cuwacunu::hashimyei::write_report_fragment_manifest(report_fragment_directory, manifest, &manifest_error)) {
     if (error) *error = "cannot persist report_fragment manifest: " + manifest_error;
     return false;
   }
 
   if (out) {
+    out->hashimyei = normalized_hashimyei;
     out->canonical_path = canonical_path;
+    out->report_fragment_directory = report_fragment_directory;
     out->weights_file = weights_file;
     out->embedding_sequence_analytics_file =
         wrote_embedding_sequence_analytics_file
@@ -1558,24 +1653,32 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   namespace fs = std::filesystem;
   if (error) error->clear();
 
-  if (!is_valid_wikimyei_representation_vicreg_hash(action.report_fragment_id)) {
+  std::string normalized_hashimyei{};
+  if (!normalize_wikimyei_hex_hash(action.report_fragment_id,
+                                   &normalized_hashimyei)) {
     if (error) *error = "invalid wikimyei hashimyei id: " + action.report_fragment_id;
     return false;
   }
 
-  const fs::path weights_file = action.report_fragment_directory / "weights.init.pt";
+  fs::path report_fragment_directory{};
+  if (!resolve_wikimyei_representation_vicreg_directory(
+          normalized_hashimyei, true, &report_fragment_directory, error)) {
+    return false;
+  }
+
+  const fs::path weights_file = report_fragment_directory / "weights.init.pt";
   const std::string canonical_path =
-      std::string(kWikimyeiVicregCanonicalType) + "." + action.report_fragment_id;
+      std::string(kWikimyeiVicregCanonicalType) + "." + normalized_hashimyei;
   std::error_code ec;
   if (!fs::exists(weights_file, ec) || !fs::is_regular_file(weights_file, ec)) {
     if (error) *error = "vicreg report_fragment weights file not found: " + weights_file.string();
     return false;
   }
 
-  if (cuwacunu::hashimyei::report_fragment_manifest_exists(action.report_fragment_directory)) {
+  if (cuwacunu::hashimyei::report_fragment_manifest_exists(report_fragment_directory)) {
     cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
     std::string manifest_error;
-    if (!cuwacunu::hashimyei::read_report_fragment_manifest(action.report_fragment_directory, &manifest, &manifest_error)) {
+    if (!cuwacunu::hashimyei::read_report_fragment_manifest(report_fragment_directory, &manifest, &manifest_error)) {
       if (error) *error = "cannot read report_fragment manifest: " + manifest_error;
       return false;
     }
@@ -1596,7 +1699,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       if (error) *error = "report_fragment manifest model mismatch: " + manifest.model;
       return false;
     }
-    if (manifest.report_fragment_id != action.report_fragment_id) {
+    if (manifest.report_fragment_id != normalized_hashimyei) {
       if (error) *error = "report_fragment manifest hashimyei mismatch: " + manifest.report_fragment_id;
       return false;
     }
@@ -1622,7 +1725,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   const bool has_wave_cursor = load_ctx && load_ctx->has_wave_cursor;
   const std::uint64_t wave_cursor = load_ctx ? load_ctx->wave_cursor : 0;
   const std::string effective_run_id =
-      effective_runtime_report_run_id_(run_id, action.report_fragment_id);
+      effective_runtime_report_run_id_(run_id, normalized_hashimyei);
 
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
@@ -1654,7 +1757,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
               weights_file,
               canonical_path,
               kWikimyeiVicregCanonicalType,
-              action.report_fragment_id,
+              normalized_hashimyei,
               model->contract_hash,
               binding_id,
               effective_run_id,
@@ -1710,6 +1813,18 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   cuwacunu::hashimyei::report_fragment_action_context_t action{};
+  std::string normalized_hashimyei{};
+  if (!normalize_wikimyei_hex_hash(out->hashimyei, &normalized_hashimyei)) {
+    out->error = "invalid wikimyei hashimyei id: " + out->hashimyei;
+    return false;
+  }
+  std::filesystem::path report_fragment_directory{};
+  if (!resolve_wikimyei_representation_vicreg_directory(
+          normalized_hashimyei, false, &report_fragment_directory, &out->error)) {
+    return false;
+  }
+  out->hashimyei = normalized_hashimyei;
+  out->report_fragment_directory = report_fragment_directory;
   action.family_canonical_path = std::string(kWikimyeiVicregCanonicalType);
   action.family = std::string(kWikimyeiVicregFamily);
   action.model = std::string(kWikimyeiVicregModel);
@@ -1801,14 +1916,17 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
         *embedding_sequence_symbolic_analytics_report;
   }
 
-  std::uint64_t parsed = 0;
-  if (!parse_wikimyei_hex_hash(hashimyei, &parsed)) {
+  std::string normalized_hashimyei{};
+  if (!normalize_wikimyei_hex_hash(hashimyei, &normalized_hashimyei)) {
     out.error = "invalid wikimyei hashimyei id: " + hashimyei;
     return out;
   }
 
-  out.hashimyei = std::move(hashimyei);
-  out.report_fragment_directory = out.store_root / out.hashimyei;
+  out.hashimyei = std::move(normalized_hashimyei);
+  if (!resolve_wikimyei_representation_vicreg_directory(
+          out.hashimyei, false, &out.report_fragment_directory, &out.error)) {
+    return out;
+  }
 
   std::error_code ec;
   if (!fs::exists(out.report_fragment_directory, ec)) {
@@ -1848,22 +1966,21 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     return false;
   }
 
-  std::uint64_t parsed = 0;
-  if (!parse_wikimyei_hex_hash(hashimyei, &parsed)) {
+  std::string normalized_hashimyei{};
+  if (!normalize_wikimyei_hex_hash(hashimyei, &normalized_hashimyei)) {
     if (error) *error = "invalid wikimyei hashimyei id: " + std::string(hashimyei);
     return false;
   }
 
-  const fs::path report_fragment_directory = wikimyei_representation_vicreg_store_root() / std::string(hashimyei);
-  std::error_code ec;
-  if (!fs::exists(report_fragment_directory, ec) || !fs::is_directory(report_fragment_directory, ec)) {
-    if (error) *error = "wikimyei report_fragment not found: " + report_fragment_directory.string();
+  fs::path report_fragment_directory{};
+  if (!resolve_wikimyei_representation_vicreg_directory(
+          normalized_hashimyei, true, &report_fragment_directory, error)) {
     return false;
   }
 
   const fs::path weights_file = report_fragment_directory / "weights.init.pt";
   const std::string canonical_path =
-      std::string(kWikimyeiVicregCanonicalType) + "." + std::string(hashimyei);
+      std::string(kWikimyeiVicregCanonicalType) + "." + normalized_hashimyei;
 
   if (cuwacunu::hashimyei::report_fragment_manifest_exists(
           report_fragment_directory)) {
@@ -1880,6 +1997,13 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
         *error =
             "report_fragment manifest family_canonical_path mismatch: " +
             manifest.family_canonical_path;
+      }
+      return false;
+    }
+    if (manifest.report_fragment_id != normalized_hashimyei) {
+      if (error) {
+        *error = "report_fragment manifest hashimyei mismatch: " +
+                 manifest.report_fragment_id;
       }
       return false;
     }
@@ -1909,7 +2033,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   const bool has_wave_cursor = load_context && load_context->has_wave_cursor;
   const std::uint64_t wave_cursor = load_context ? load_context->wave_cursor : 0;
   const std::string effective_run_id =
-      effective_runtime_report_run_id_(run_id, hashimyei);
+      effective_runtime_report_run_id_(run_id, normalized_hashimyei);
 
   auto public_docking_matches = [&](const cuwacunu::wikimyei::vicreg_4d::VICReg_4D& candidate)
       -> bool {
@@ -1966,7 +2090,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
             weights_file,
             canonical_path,
             kWikimyeiVicregCanonicalType,
-            hashimyei,
+            normalized_hashimyei,
             replacement->contract_hash,
             binding_id,
             effective_run_id,
@@ -1994,19 +2118,19 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   if (removed_count) *removed_count = 0;
   if (error) error->clear();
 
-  std::uint64_t parsed = 0;
-  if (!parse_wikimyei_hex_hash(hashimyei, &parsed)) {
+  std::string normalized_hashimyei{};
+  if (!normalize_wikimyei_hex_hash(hashimyei, &normalized_hashimyei)) {
     if (error) *error = "invalid wikimyei hashimyei id";
     return false;
   }
 
-  const fs::path target = wikimyei_representation_vicreg_store_root() / std::string(hashimyei);
-  std::error_code ec;
-  if (!fs::exists(target, ec) || !fs::is_directory(target, ec)) {
-    if (error) *error = "wikimyei report_fragment not found: " + target.string();
+  fs::path target{};
+  if (!resolve_wikimyei_representation_vicreg_directory(
+          normalized_hashimyei, true, &target, error)) {
     return false;
   }
 
+  std::error_code ec;
   const std::uintmax_t removed = fs::remove_all(target, ec);
   if (ec) {
     if (error) *error = "failed to delete wikimyei report_fragment: " + target.string();
