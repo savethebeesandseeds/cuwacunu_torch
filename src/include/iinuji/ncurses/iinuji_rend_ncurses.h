@@ -23,7 +23,8 @@ struct NcursesRend : public IRend {
     attrset(a);
 
     const char* c = s.c_str();
-    int n = (max_w >= 0 ? std::min<int>((int)s.size(), max_w) : (int)s.size());
+    const int n = static_cast<int>(
+        max_w >= 0 ? utf8_prefix_bytes_for_width(s, max_w) : s.size());
     mvaddnstr(y, x, c, n);
 
     attrset(A_NORMAL);

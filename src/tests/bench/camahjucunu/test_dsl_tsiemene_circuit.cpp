@@ -5,7 +5,7 @@
 #include "piaabo/dconfig.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 
 int main() {
   try {

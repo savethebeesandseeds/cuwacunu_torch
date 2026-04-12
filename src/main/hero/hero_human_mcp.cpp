@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
 
   if (::isatty(STDIN_FILENO) != 0) {
     std::string interactive_error{};
-    if (!cuwacunu::hero::human_mcp::run_interactive_request_responder(
+    if (!cuwacunu::hero::human_mcp::run_interactive_operator_console(
             &app, &interactive_error)) {
       if (!interactive_error.empty()) std::cerr << interactive_error << "\n";
       return 1;

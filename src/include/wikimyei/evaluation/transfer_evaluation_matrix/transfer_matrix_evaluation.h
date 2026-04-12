@@ -41,7 +41,7 @@
 #include "wikimyei/inference/mdn/mixture_density_network_utils.h"
 
 DEV_WARNING(
-    "[wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h] Transfer-matrix evaluation is vicreg-owned (no standalone probe hashimyei/history state). It restores matrix-evaluation training/evaluation core (null/linear/residual/mdn, prequential effort/skill/n90/selectivity) and emits run-end reports.\n");
+    "[wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h] Transfer-matrix evaluation is vicreg-owned (no standalone probe hashimyei/history state). It restores matrix-evaluation training/evaluation core (null/stats/raw/embedding/residual/mdn, prequential effort/skill/n90/selectivity) and emits run-end reports.\n");
 
 namespace cuwacunu::wikimyei::evaluation {
 
@@ -335,8 +335,10 @@ class VicregTransferMatrixEvaluator final {
   struct matrix_results_t {
     row_result_t forecast_null{};
     row_result_t forecast_stats_only{};
+    row_result_t forecast_raw_linear{};
     row_result_t forecast_linear{};
     row_result_t forecast_residual_linear{};
+    row_result_t forecast_raw_mdn{};
     row_result_t forecast_mdn{};
     double cold_start_loss{std::numeric_limits<double>::quiet_NaN()};
     bool has_cold_start_loss{false};
@@ -349,6 +351,7 @@ class VicregTransferMatrixEvaluator final {
   struct train_batch_t {
     torch::Tensor encoding{};
     torch::Tensor stats{};
+    torch::Tensor raw{};
     torch::Tensor target{};
     torch::Tensor future_mask{};
     std::string anchor_key{};
@@ -428,7 +431,11 @@ class VicregTransferMatrixEvaluator final {
     bool valid{false};
   };
 
-  enum class feature_mode_e : std::uint8_t { Encoding = 0, Stats = 1 };
+  enum class feature_mode_e : std::uint8_t {
+    Encoding = 0,
+    Stats = 1,
+    Raw = 2
+  };
 
   [[nodiscard]] static std::string tensor_shape_(const torch::Tensor& t) {
     if (!t.defined()) return "undefined";
@@ -685,6 +692,70 @@ class VicregTransferMatrixEvaluator final {
     return stats;
   }
 
+  [[nodiscard]] torch::Tensor build_raw_features_(const ObservationCargo& sample,
+                                                  std::int64_t expected_b) {
+    if (!sample.features.defined() || sample.features.numel() == 0) {
+      return torch::Tensor();
+    }
+    if (sample.features.dim() != 4) {
+      return torch::Tensor();
+    }
+
+    auto past = sample.features.to(
+        model_.device, model_.dtype, /*non_blocking=*/true, /*copy=*/false);
+    if (past.size(0) != expected_b || past.size(0) <= 0 || past.size(1) <= 0 ||
+        past.size(2) <= 0 || past.size(3) <= 0) {
+      return torch::Tensor();
+    }
+
+    torch::Tensor mask;
+    if (sample.mask.defined() && sample.mask.numel() > 0 && sample.mask.dim() == 3) {
+      mask = sample.mask.to(
+          model_.device, torch::kFloat32, /*non_blocking=*/true, /*copy=*/false);
+      if (mask.size(0) != past.size(0) || mask.size(1) != past.size(1) ||
+          mask.size(2) != past.size(2)) {
+        mask = torch::ones(
+            std::vector<std::int64_t>{past.size(0), past.size(1), past.size(2)},
+            torch::TensorOptions().device(model_.device).dtype(torch::kFloat32));
+      } else {
+        mask = mask.ne(0).to(torch::kFloat32);
+      }
+    } else {
+      mask = torch::ones(
+          std::vector<std::int64_t>{past.size(0), past.size(1), past.size(2)},
+          torch::TensorOptions().device(model_.device).dtype(torch::kFloat32));
+    }
+
+    auto mask_expanded = mask.unsqueeze(-1).to(past.dtype());  // [B,C,T,1]
+    auto masked_past = torch::where(
+        mask_expanded.ne(0), past, torch::zeros_like(past));
+    masked_past = torch::where(
+        torch::isfinite(masked_past), masked_past, torch::zeros_like(masked_past));
+
+    auto raw_values = masked_past.reshape({expected_b, -1});
+    auto raw_mask = mask.reshape({expected_b, -1}).to(model_.dtype);
+    raw_mask = torch::where(torch::isfinite(raw_mask), raw_mask, torch::zeros_like(raw_mask));
+
+    auto raw = torch::cat(std::vector<torch::Tensor>{raw_values, raw_mask}, /*dim=*/1);
+    raw = torch::where(torch::isfinite(raw), raw, torch::zeros_like(raw));
+    return raw;
+  }
+
+  [[nodiscard]] static const torch::Tensor* feature_tensor_ptr_(
+      const train_batch_t& batch,
+      feature_mode_e mode) {
+    switch (mode) {
+      case feature_mode_e::Encoding:
+        return &batch.encoding;
+      case feature_mode_e::Stats:
+        return &batch.stats;
+      case feature_mode_e::Raw:
+        return &batch.raw;
+      default:
+        return nullptr;
+    }
+  }
+
   [[nodiscard]] bool prepare_train_batch_(const ObservationCargo& sample,
                                           train_batch_t* out,
                                           std::string* error) {
@@ -801,6 +872,7 @@ class VicregTransferMatrixEvaluator final {
     try {
       out->encoding = std::move(encoding);
       out->stats = build_stats_features_(sample, out->encoding.size(0));
+      out->raw = build_raw_features_(sample, out->encoding.size(0));
       out->target = select_targets_(future);
       out->future_mask = std::move(mask);
     } catch (const std::exception& e) {
@@ -840,6 +912,9 @@ class VicregTransferMatrixEvaluator final {
       stored.stats =
           batch.stats.detach().to(torch::kCPU, model_.dtype);
     }
+    if (batch.raw.defined() && batch.raw.numel() > 0) {
+      stored.raw = batch.raw.detach().to(torch::kCPU, model_.dtype);
+    }
     stored.target =
         batch.target.detach().to(torch::kCPU, model_.dtype);
     stored.future_mask =
@@ -866,6 +941,12 @@ class VicregTransferMatrixEvaluator final {
             model_.device, model_.dtype, /*non_blocking=*/true, /*copy=*/false);
       } else {
         out->stats = torch::Tensor();
+      }
+      if (stored.raw.defined() && stored.raw.numel() > 0) {
+        out->raw = stored.raw.to(
+            model_.device, model_.dtype, /*non_blocking=*/true, /*copy=*/false);
+      } else {
+        out->raw = torch::Tensor();
       }
       out->target = stored.target.to(
           model_.device, model_.dtype, /*non_blocking=*/true, /*copy=*/false);
@@ -946,8 +1027,23 @@ class VicregTransferMatrixEvaluator final {
                                         const target_norm_t* target_norm,
                                         double* out_nll,
                                         std::string* error) {
+    return compute_batch_nll_for_model_(stored_batch,
+                                        feature_mode_e::Encoding,
+                                        target_norm,
+                                        semantic_model_,
+                                        out_nll,
+                                        error);
+  }
+
+  [[nodiscard]] bool compute_batch_nll_for_model_(
+      const train_batch_t& stored_batch,
+      feature_mode_e mode,
+      const target_norm_t* target_norm,
+      cuwacunu::wikimyei::mdn::MdnModel& model,
+      double* out_nll,
+      std::string* error) {
     if (error) error->clear();
-    if (!semantic_model_) {
+    if (!model) {
       if (error) *error = "evaluation model is not initialized";
       return false;
     }
@@ -957,11 +1053,16 @@ class VicregTransferMatrixEvaluator final {
     if (!batch_to_runtime_(stored_batch, &batch, error)) {
       return false;
     }
+    const auto* feature = feature_tensor_ptr_(batch, mode);
+    if (!feature || !feature->defined() || feature->numel() == 0) {
+      if (error) *error = "evaluation feature tensor is missing";
+      return false;
+    }
 
     try {
       torch::NoGradGuard no_grad;
-      semantic_model_->eval();
-      auto out = semantic_model_->forward_from_encoding(batch.encoding);
+      model->eval();
+      auto out = model->forward_from_encoding(*feature);
       const cuwacunu::wikimyei::mdn::MdnNllOptions nll_opt{
           cfg_.nll_eps,
           cfg_.nll_sigma_min,
@@ -990,20 +1091,42 @@ class VicregTransferMatrixEvaluator final {
   [[nodiscard]] bool train_one_batch_(const train_batch_t& batch,
                                       const target_norm_t* target_norm,
                                       std::string* error) {
+    return train_one_batch_for_model_(batch,
+                                      feature_mode_e::Encoding,
+                                      target_norm,
+                                      semantic_model_,
+                                      optimizer_.get(),
+                                      /*record_training_stats=*/true,
+                                      error);
+  }
+
+  [[nodiscard]] bool train_one_batch_for_model_(
+      const train_batch_t& batch,
+      feature_mode_e mode,
+      const target_norm_t* target_norm,
+      cuwacunu::wikimyei::mdn::MdnModel& model,
+      torch::optim::Optimizer* optimizer,
+      bool record_training_stats,
+      std::string* error) {
     if (error) error->clear();
-    if (!semantic_model_ || !optimizer_) {
+    if (!model || !optimizer) {
       if (error) *error = "evaluation model is not initialized";
       return false;
     }
 
     train_batch_t runtime_batch{};
     if (!batch_to_runtime_(batch, &runtime_batch, error)) return false;
+    const auto* feature = feature_tensor_ptr_(runtime_batch, mode);
+    if (!feature || !feature->defined() || feature->numel() == 0) {
+      if (error) *error = "training feature tensor is missing";
+      return false;
+    }
 
-    semantic_model_->train();
+    model->train();
 
     try {
-      optimizer_->zero_grad(/*set_to_none=*/true);
-      auto out = semantic_model_->forward_from_encoding(runtime_batch.encoding);
+      optimizer->zero_grad(/*set_to_none=*/true);
+      auto out = model->forward_from_encoding(*feature);
       const cuwacunu::wikimyei::mdn::MdnNllOptions nll_opt{
           cfg_.nll_eps,
           cfg_.nll_sigma_min,
@@ -1020,22 +1143,24 @@ class VicregTransferMatrixEvaluator final {
 
       loss.backward();
       if (cfg_.grad_clip > 0.0) {
-        torch::nn::utils::clip_grad_norm_(semantic_model_->parameters(),
+        torch::nn::utils::clip_grad_norm_(model->parameters(),
                                           cfg_.grad_clip);
       }
-      optimizer_->step();
+      optimizer->step();
 
-      ++epoch_.train_steps;
-      try {
-        const double dy = std::max<double>(
-            1.0, static_cast<double>(model_.target_dims.size()));
-        const double positions = runtime_batch.future_mask.sum().item<double>();
-        if (std::isfinite(positions) && positions > 0.0) {
-          epoch_.train_ingested_positions += positions;
-          epoch_.train_ingested_support += positions * dy;
+      if (record_training_stats) {
+        ++epoch_.train_steps;
+        try {
+          const double dy = std::max<double>(
+              1.0, static_cast<double>(model_.target_dims.size()));
+          const double positions = runtime_batch.future_mask.sum().item<double>();
+          if (std::isfinite(positions) && positions > 0.0) {
+            epoch_.train_ingested_positions += positions;
+            epoch_.train_ingested_support += positions * dy;
+          }
+        } catch (...) {
+          // Keep training behavior deterministic even if reporting accumulation fails.
         }
-      } catch (...) {
-        // Keep training behavior deterministic even if reporting accumulation fails.
       }
       return true;
     } catch (const std::exception& e) {
@@ -1171,6 +1296,23 @@ class VicregTransferMatrixEvaluator final {
                                            double* out_bits,
                                            double* out_weight,
                                            std::string* error) {
+    return evaluate_mdn_batches_for_model_(batches,
+                                           feature_mode_e::Encoding,
+                                           target_norm,
+                                           semantic_model_,
+                                           out_bits,
+                                           out_weight,
+                                           error);
+  }
+
+  [[nodiscard]] bool evaluate_mdn_batches_for_model_(
+      const std::vector<const train_batch_t*>& batches,
+      feature_mode_e mode,
+      const target_norm_t* target_norm,
+      cuwacunu::wikimyei::mdn::MdnModel& model,
+      double* out_bits,
+      double* out_weight,
+      std::string* error) {
     if (error) error->clear();
     if (out_bits) *out_bits = std::numeric_limits<double>::quiet_NaN();
     if (out_weight) *out_weight = 0.0;
@@ -1184,7 +1326,8 @@ class VicregTransferMatrixEvaluator final {
       if (!batch) continue;
       double nll_bits = std::numeric_limits<double>::quiet_NaN();
       std::string batch_error;
-      if (!compute_batch_nll_(*batch, target_norm, &nll_bits, &batch_error)) {
+      if (!compute_batch_nll_for_model_(
+              *batch, mode, target_norm, model, &nll_bits, &batch_error)) {
         if (error && error->empty()) *error = batch_error;
         continue;
       }
@@ -1206,12 +1349,28 @@ class VicregTransferMatrixEvaluator final {
 
   void train_mdn_batches_(const std::vector<const train_batch_t*>& batches,
                           const target_norm_t* target_norm) {
+    train_mdn_batches_for_model_(batches,
+                                 feature_mode_e::Encoding,
+                                 target_norm,
+                                 semantic_model_,
+                                 optimizer_.get(),
+                                 /*record_training_stats=*/true);
+  }
+
+  void train_mdn_batches_for_model_(
+      const std::vector<const train_batch_t*>& batches,
+      feature_mode_e mode,
+      const target_norm_t* target_norm,
+      cuwacunu::wikimyei::mdn::MdnModel& model,
+      torch::optim::Optimizer* optimizer,
+      bool record_training_stats) {
     for (const auto* batch : batches) {
       if (!batch) continue;
-      ++epoch_.train_batches_attempted;
+      if (record_training_stats) ++epoch_.train_batches_attempted;
       std::string train_error;
-      if (!train_one_batch_(*batch, target_norm, &train_error)) {
-        ++epoch_.optimizer_failures;
+      if (!train_one_batch_for_model_(
+              *batch, mode, target_norm, model, optimizer, record_training_stats, &train_error)) {
+        if (record_training_stats) ++epoch_.optimizer_failures;
       }
     }
   }
@@ -1233,10 +1392,9 @@ class VicregTransferMatrixEvaluator final {
           !batch->future_mask.defined()) {
         continue;
       }
-      const torch::Tensor src =
-          (mode == feature_mode_e::Encoding) ? batch->encoding : batch->stats;
-      if (!src.defined() || src.numel() == 0) continue;
-      auto enc = src.to(torch::kCPU, torch::kFloat64);
+      const auto* src = feature_tensor_ptr_(*batch, mode);
+      if (!src || !src->defined() || src->numel() == 0) continue;
+      auto enc = src->to(torch::kCPU, torch::kFloat64);
       auto tgt = batch->target.to(torch::kCPU, torch::kFloat64);
       auto m = batch->future_mask.to(torch::kCPU, torch::kFloat64);
       if (enc.dim() != 2 || tgt.dim() != 4 || m.dim() != 3) continue;
@@ -1281,6 +1439,24 @@ class VicregTransferMatrixEvaluator final {
       const std::vector<const train_batch_t*>& batches,
       flat_dataset_t* out) const {
     return flatten_batches_feature_(batches, feature_mode_e::Stats, out);
+  }
+
+  [[nodiscard]] bool flatten_batches_raw_(
+      const std::vector<const train_batch_t*>& batches,
+      flat_dataset_t* out) const {
+    return flatten_batches_feature_(batches, feature_mode_e::Raw, out);
+  }
+
+  [[nodiscard]] static std::int64_t feature_dims_from_batches_(
+      const std::vector<const train_batch_t*>& batches,
+      feature_mode_e mode) {
+    for (const auto* batch : batches) {
+      if (!batch) continue;
+      const auto* src = feature_tensor_ptr_(*batch, mode);
+      if (!src || !src->defined() || src->dim() != 2 || src->size(1) <= 0) continue;
+      return src->size(1);
+    }
+    return 0;
   }
 
   [[nodiscard]] static std::vector<const train_batch_t*> ptr_view_(
@@ -1498,6 +1674,9 @@ class VicregTransferMatrixEvaluator final {
             batch->stats.size(0) == B) {
           sample.stats = batch->stats.narrow(0, b, 1).clone();
         }
+        if (batch->raw.defined() && batch->raw.dim() == 2 && batch->raw.size(0) == B) {
+          sample.raw = batch->raw.narrow(0, b, 1).clone();
+        }
         sample.target = batch->target.narrow(0, b, 1).clone();
         sample.future_mask = batch->future_mask.narrow(0, b, 1).clone();
         sample.anchor_key = batch->anchor_key + "|s=" + std::to_string(b);
@@ -1597,20 +1776,77 @@ class VicregTransferMatrixEvaluator final {
       const std::vector<const train_batch_t*>& batches,
       linear_gaussian_t* out,
       std::string* error) const {
+    return fit_linear_gaussian_for_mode_(
+        batches, feature_mode_e::Encoding, "linear baseline", out, error);
+  }
+
+  [[nodiscard]] bool eval_linear_gaussian_bits_(
+      const linear_gaussian_t& model,
+      const std::vector<const train_batch_t*>& batches,
+      double* out_bits,
+      double* out_weight,
+      std::string* error) const {
+    return eval_linear_gaussian_bits_for_mode_(
+        model, batches, feature_mode_e::Encoding, out_bits, out_weight, error);
+  }
+
+  [[nodiscard]] bool fit_stats_linear_gaussian_(
+      const std::vector<const train_batch_t*>& batches,
+      linear_gaussian_t* out,
+      std::string* error) const {
+    return fit_linear_gaussian_for_mode_(
+        batches, feature_mode_e::Stats, "stats-only baseline", out, error);
+  }
+
+  [[nodiscard]] bool eval_stats_linear_gaussian_bits_(
+      const linear_gaussian_t& model,
+      const std::vector<const train_batch_t*>& batches,
+      double* out_bits,
+      double* out_weight,
+      std::string* error) const {
+    return eval_linear_gaussian_bits_for_mode_(
+        model, batches, feature_mode_e::Stats, out_bits, out_weight, error);
+  }
+
+  [[nodiscard]] bool fit_raw_linear_gaussian_(
+      const std::vector<const train_batch_t*>& batches,
+      linear_gaussian_t* out,
+      std::string* error) const {
+    return fit_linear_gaussian_for_mode_(
+        batches, feature_mode_e::Raw, "raw linear baseline", out, error);
+  }
+
+  [[nodiscard]] bool eval_raw_linear_gaussian_bits_(
+      const linear_gaussian_t& model,
+      const std::vector<const train_batch_t*>& batches,
+      double* out_bits,
+      double* out_weight,
+      std::string* error) const {
+    return eval_linear_gaussian_bits_for_mode_(
+        model, batches, feature_mode_e::Raw, out_bits, out_weight, error);
+  }
+
+  [[nodiscard]] bool fit_linear_gaussian_for_mode_(
+      const std::vector<const train_batch_t*>& batches,
+      feature_mode_e mode,
+      std::string_view label,
+      linear_gaussian_t* out,
+      std::string* error) const {
     if (error) error->clear();
     if (!out) return false;
     flat_dataset_t ds{};
-    if (!flatten_batches_(batches, &ds)) {
-      if (error) *error = "empty dataset for linear baseline";
+    if (!flatten_batches_feature_(batches, mode, &ds)) {
+      if (error) *error = "empty dataset for " + std::string(label);
       return false;
     }
     return fit_linear_gaussian_from_dataset_(
         ds, cfg_.linear_ridge_lambda, cfg_.gaussian_var_min, out, error);
   }
 
-  [[nodiscard]] bool eval_linear_gaussian_bits_(
+  [[nodiscard]] bool eval_linear_gaussian_bits_for_mode_(
       const linear_gaussian_t& model,
       const std::vector<const train_batch_t*>& batches,
+      feature_mode_e mode,
       double* out_bits,
       double* out_weight,
       std::string* error) const {
@@ -1623,35 +1859,7 @@ class VicregTransferMatrixEvaluator final {
     }
 
     flat_dataset_t ds{};
-    if (!flatten_batches_(batches, &ds)) return false;
-    return eval_linear_gaussian_from_dataset_(
-        model, ds, cfg_.gaussian_var_min, out_bits, out_weight, error);
-  }
-
-  [[nodiscard]] bool fit_stats_linear_gaussian_(
-      const std::vector<const train_batch_t*>& batches,
-      linear_gaussian_t* out,
-      std::string* error) const {
-    if (error) error->clear();
-    if (!out) return false;
-    flat_dataset_t ds{};
-    if (!flatten_batches_stats_(batches, &ds)) {
-      if (error) *error = "empty dataset for stats-only baseline";
-      return false;
-    }
-    return fit_linear_gaussian_from_dataset_(
-        ds, cfg_.linear_ridge_lambda, cfg_.gaussian_var_min, out, error);
-  }
-
-  [[nodiscard]] bool eval_stats_linear_gaussian_bits_(
-      const linear_gaussian_t& model,
-      const std::vector<const train_batch_t*>& batches,
-      double* out_bits,
-      double* out_weight,
-      std::string* error) const {
-    if (error) error->clear();
-    flat_dataset_t ds{};
-    if (!flatten_batches_stats_(batches, &ds)) return false;
+    if (!flatten_batches_feature_(batches, mode, &ds)) return false;
     return eval_linear_gaussian_from_dataset_(
         model, ds, cfg_.gaussian_var_min, out_bits, out_weight, error);
   }
@@ -1811,6 +2019,63 @@ class VicregTransferMatrixEvaluator final {
       }
     }
 
+    // forecast.raw_linear
+    linear_gaussian_t raw_linear_fit{};
+    std::vector<std::pair<double, double>> raw_linear_skill_curve{};
+    if (fit_raw_linear_gaussian_(train_s, &raw_linear_fit, nullptr)) {
+      const auto blocks = make_prequential_blocks_(train_s, cfg_.prequential_blocks);
+      std::vector<double> block_supports(blocks.size(), 0.0);
+      for (std::size_t i = 0; i < blocks.size(); ++i) {
+        (void)support_elements_(blocks[i], &block_supports[i]);
+      }
+      double effort_sum = 0.0;
+      double effort_w = 0.0;
+      double prefix_support = 0.0;
+      for (std::size_t i = 1; i < blocks.size(); ++i) {
+        prefix_support += block_supports[i - 1];
+        std::vector<const train_batch_t*> prefix{};
+        append_prefix_blocks_(blocks, i, &prefix);
+        linear_gaussian_t prefix_fit{};
+        if (!fit_raw_linear_gaussian_(prefix, &prefix_fit, nullptr)) continue;
+        double row_bits = std::numeric_limits<double>::quiet_NaN();
+        double w = 0.0;
+        if (!eval_raw_linear_gaussian_bits_(prefix_fit, blocks[i], &row_bits, &w, nullptr)) {
+          continue;
+        }
+        if (std::isfinite(row_bits) && w > 0.0) {
+          effort_sum += row_bits * w;
+          effort_w += w;
+        }
+        gaussian_baseline_t prefix_null{};
+        double null_bits = std::numeric_limits<double>::quiet_NaN();
+        if (fit_null_baseline_(prefix, &prefix_null, nullptr) &&
+            eval_null_baseline_bits_(prefix_null, blocks[i], &null_bits, nullptr, nullptr) &&
+            std::isfinite(null_bits) && std::isfinite(row_bits)) {
+          raw_linear_skill_curve.emplace_back(prefix_support, null_bits - row_bits);
+        }
+        record_prequential_row_(
+            "forecast_raw_linear", i, prefix_support, w, row_bits, null_bits);
+      }
+      if (effort_w > 0.0) {
+        epoch_matrix_.forecast_raw_linear.effort = effort_sum / effort_w;
+        epoch_matrix_.forecast_raw_linear.has_effort = true;
+      }
+      linear_gaussian_t final_fit{};
+      if (fit_raw_linear_gaussian_(train_val_s, &final_fit, nullptr)) {
+        double bits = std::numeric_limits<double>::quiet_NaN();
+        double w = 0.0;
+        if (eval_raw_linear_gaussian_bits_(final_fit, test_s, &bits, &w, nullptr) &&
+            std::isfinite(bits)) {
+          epoch_matrix_.forecast_raw_linear.error = bits;
+          epoch_matrix_.forecast_raw_linear.has_error = true;
+          if (w > 0.0 && std::isfinite(w)) {
+            epoch_matrix_.forecast_raw_linear.support = w;
+            epoch_matrix_.forecast_raw_linear.has_support = true;
+          }
+        }
+      }
+    }
+
     // forecast.linear
     linear_gaussian_t linear_fit{};
     std::vector<std::pair<double, double>> linear_skill_curve{};
@@ -1906,6 +2171,102 @@ class VicregTransferMatrixEvaluator final {
       }
     }
 
+    // forecast.raw_mdn prequential effort + skill curve
+    std::vector<std::pair<double, double>> raw_mdn_skill_curve{};
+    const auto raw_input_dims = feature_dims_from_batches_(train_val_s, feature_mode_e::Raw);
+    if (raw_input_dims > 0) {
+      try {
+        cuwacunu::wikimyei::mdn::MdnModel raw_semantic_model{nullptr};
+        std::unique_ptr<torch::optim::Optimizer> raw_optimizer{};
+        initialize_runtime_model_for_input_dims_or_throw_(
+            raw_input_dims, &raw_semantic_model, &raw_optimizer);
+        const auto blocks = make_prequential_blocks_(train_s, cfg_.prequential_blocks);
+        std::vector<double> block_supports(blocks.size(), 0.0);
+        for (std::size_t i = 0; i < blocks.size(); ++i) {
+          (void)support_elements_(blocks[i], &block_supports[i]);
+        }
+
+        double effort_sum = 0.0;
+        double effort_w = 0.0;
+        double prefix_support = 0.0;
+        std::vector<const train_batch_t*> prefix{};
+        for (std::size_t i = 0; i < blocks.size(); ++i) {
+          if (i > 0) {
+            double row_bits = std::numeric_limits<double>::quiet_NaN();
+            double w = 0.0;
+            if (evaluate_mdn_batches_for_model_(blocks[i],
+                                                feature_mode_e::Raw,
+                                                mdn_norm_ptr,
+                                                raw_semantic_model,
+                                                &row_bits,
+                                                &w,
+                                                nullptr) &&
+                std::isfinite(row_bits) && w > 0.0) {
+              effort_sum += row_bits * w;
+              effort_w += w;
+            }
+            gaussian_baseline_t prefix_null{};
+            double null_bits = std::numeric_limits<double>::quiet_NaN();
+            if (fit_null_baseline_(prefix, &prefix_null, nullptr) &&
+                eval_null_baseline_bits_(
+                    prefix_null, blocks[i], &null_bits, nullptr, nullptr) &&
+                std::isfinite(null_bits) && std::isfinite(row_bits)) {
+              raw_mdn_skill_curve.emplace_back(prefix_support, null_bits - row_bits);
+            }
+            record_prequential_row_(
+                "forecast_raw_mdn", i, prefix_support, w, row_bits, null_bits);
+          }
+          train_mdn_batches_for_model_(blocks[i],
+                                       feature_mode_e::Raw,
+                                       mdn_norm_ptr,
+                                       raw_semantic_model,
+                                       raw_optimizer.get(),
+                                       /*record_training_stats=*/false);
+          prefix.insert(prefix.end(), blocks[i].begin(), blocks[i].end());
+          prefix_support += block_supports[i];
+        }
+        if (effort_w > 0.0) {
+          epoch_matrix_.forecast_raw_mdn.effort = effort_sum / effort_w;
+          epoch_matrix_.forecast_raw_mdn.has_effort = true;
+        }
+      } catch (const std::exception&) {
+        // Raw-surface MDN is auxiliary; keep the main evaluator alive if it fails.
+      }
+
+      // forecast.raw_mdn held-out error
+      try {
+        cuwacunu::wikimyei::mdn::MdnModel raw_semantic_model{nullptr};
+        std::unique_ptr<torch::optim::Optimizer> raw_optimizer{};
+        initialize_runtime_model_for_input_dims_or_throw_(
+            raw_input_dims, &raw_semantic_model, &raw_optimizer);
+        train_mdn_batches_for_model_(train_val_s,
+                                     feature_mode_e::Raw,
+                                     mdn_norm_ptr,
+                                     raw_semantic_model,
+                                     raw_optimizer.get(),
+                                     /*record_training_stats=*/false);
+        double err_bits = std::numeric_limits<double>::quiet_NaN();
+        double err_w = 0.0;
+        if (evaluate_mdn_batches_for_model_(test_s,
+                                            feature_mode_e::Raw,
+                                            mdn_norm_ptr,
+                                            raw_semantic_model,
+                                            &err_bits,
+                                            &err_w,
+                                            nullptr) &&
+            std::isfinite(err_bits)) {
+          epoch_matrix_.forecast_raw_mdn.error = err_bits;
+          epoch_matrix_.forecast_raw_mdn.has_error = true;
+          if (err_w > 0.0 && std::isfinite(err_w)) {
+            epoch_matrix_.forecast_raw_mdn.support = err_w;
+            epoch_matrix_.forecast_raw_mdn.has_support = true;
+          }
+        }
+      } catch (const std::exception&) {
+        // Raw-surface MDN is auxiliary; keep the main evaluator alive if it fails.
+      }
+    }
+
     // forecast.mdn prequential effort + skill curve
     std::vector<std::pair<double, double>> mdn_skill_curve{};
     try {
@@ -1997,12 +2358,26 @@ class VicregTransferMatrixEvaluator final {
           epoch_matrix_.forecast_null.effort - epoch_matrix_.forecast_mdn.effort;
       epoch_matrix_.forecast_mdn.has_effort_skill = true;
     }
+    if (epoch_matrix_.forecast_null.has_effort && epoch_matrix_.forecast_raw_mdn.has_effort) {
+      epoch_matrix_.forecast_null.effort_skill = 0.0;
+      epoch_matrix_.forecast_null.has_effort_skill = true;
+      epoch_matrix_.forecast_raw_mdn.effort_skill =
+          epoch_matrix_.forecast_null.effort - epoch_matrix_.forecast_raw_mdn.effort;
+      epoch_matrix_.forecast_raw_mdn.has_effort_skill = true;
+    }
     if (epoch_matrix_.forecast_null.has_effort && epoch_matrix_.forecast_linear.has_effort) {
       epoch_matrix_.forecast_null.effort_skill = 0.0;
       epoch_matrix_.forecast_null.has_effort_skill = true;
       epoch_matrix_.forecast_linear.effort_skill =
           epoch_matrix_.forecast_null.effort - epoch_matrix_.forecast_linear.effort;
       epoch_matrix_.forecast_linear.has_effort_skill = true;
+    }
+    if (epoch_matrix_.forecast_null.has_effort && epoch_matrix_.forecast_raw_linear.has_effort) {
+      epoch_matrix_.forecast_null.effort_skill = 0.0;
+      epoch_matrix_.forecast_null.has_effort_skill = true;
+      epoch_matrix_.forecast_raw_linear.effort_skill =
+          epoch_matrix_.forecast_null.effort - epoch_matrix_.forecast_raw_linear.effort;
+      epoch_matrix_.forecast_raw_linear.has_effort_skill = true;
     }
     if (epoch_matrix_.forecast_null.has_error && epoch_matrix_.forecast_stats_only.has_error) {
       epoch_matrix_.forecast_null.error_skill = 0.0;
@@ -2011,12 +2386,26 @@ class VicregTransferMatrixEvaluator final {
           epoch_matrix_.forecast_null.error - epoch_matrix_.forecast_stats_only.error;
       epoch_matrix_.forecast_stats_only.has_error_skill = true;
     }
+    if (epoch_matrix_.forecast_null.has_error && epoch_matrix_.forecast_raw_mdn.has_error) {
+      epoch_matrix_.forecast_null.error_skill = 0.0;
+      epoch_matrix_.forecast_null.has_error_skill = true;
+      epoch_matrix_.forecast_raw_mdn.error_skill =
+          epoch_matrix_.forecast_null.error - epoch_matrix_.forecast_raw_mdn.error;
+      epoch_matrix_.forecast_raw_mdn.has_error_skill = true;
+    }
     if (epoch_matrix_.forecast_null.has_error && epoch_matrix_.forecast_mdn.has_error) {
       epoch_matrix_.forecast_null.error_skill = 0.0;
       epoch_matrix_.forecast_null.has_error_skill = true;
       epoch_matrix_.forecast_mdn.error_skill =
           epoch_matrix_.forecast_null.error - epoch_matrix_.forecast_mdn.error;
       epoch_matrix_.forecast_mdn.has_error_skill = true;
+    }
+    if (epoch_matrix_.forecast_null.has_error && epoch_matrix_.forecast_raw_linear.has_error) {
+      epoch_matrix_.forecast_null.error_skill = 0.0;
+      epoch_matrix_.forecast_null.has_error_skill = true;
+      epoch_matrix_.forecast_raw_linear.error_skill =
+          epoch_matrix_.forecast_null.error - epoch_matrix_.forecast_raw_linear.error;
+      epoch_matrix_.forecast_raw_linear.has_error_skill = true;
     }
     if (epoch_matrix_.forecast_null.has_error && epoch_matrix_.forecast_linear.has_error) {
       epoch_matrix_.forecast_null.error_skill = 0.0;
@@ -2040,6 +2429,18 @@ class VicregTransferMatrixEvaluator final {
       (void)apply_n90_from_curve_(linear_skill_curve,
                                   epoch_matrix_.forecast_linear.error_skill,
                                   &epoch_matrix_.forecast_linear);
+    }
+    if (epoch_matrix_.forecast_raw_linear.has_error_skill &&
+        epoch_matrix_.forecast_raw_linear.error_skill > 0.0) {
+      (void)apply_n90_from_curve_(raw_linear_skill_curve,
+                                  epoch_matrix_.forecast_raw_linear.error_skill,
+                                  &epoch_matrix_.forecast_raw_linear);
+    }
+    if (epoch_matrix_.forecast_raw_mdn.has_error_skill &&
+        epoch_matrix_.forecast_raw_mdn.error_skill > 0.0) {
+      (void)apply_n90_from_curve_(raw_mdn_skill_curve,
+                                  epoch_matrix_.forecast_raw_mdn.error_skill,
+                                  &epoch_matrix_.forecast_raw_mdn);
     }
     if (epoch_matrix_.forecast_mdn.has_error_skill &&
         epoch_matrix_.forecast_mdn.error_skill > 0.0) {
@@ -2082,6 +2483,24 @@ class VicregTransferMatrixEvaluator final {
             std::isfinite(epoch_matrix_.forecast_linear.selectivity);
       }
 
+      // raw linear selectivity
+      linear_gaussian_t ctrl_raw_linear{};
+      double ctrl_raw_linear_bits = std::numeric_limits<double>::quiet_NaN();
+      if (fit_null_baseline_(ctrl_train_val, &ctrl_null, nullptr) &&
+          eval_null_baseline_bits_(ctrl_null, ctrl_test, &ctrl_null_bits, nullptr, nullptr) &&
+          fit_raw_linear_gaussian_(ctrl_train_val, &ctrl_raw_linear, nullptr) &&
+          eval_raw_linear_gaussian_bits_(
+              ctrl_raw_linear, ctrl_test, &ctrl_raw_linear_bits, nullptr, nullptr) &&
+          std::isfinite(ctrl_null_bits) && std::isfinite(ctrl_raw_linear_bits) &&
+          epoch_matrix_.forecast_raw_linear.has_error_skill &&
+          epoch_matrix_.forecast_raw_linear.error_skill > 0.0) {
+        const double ctrl_skill = ctrl_null_bits - ctrl_raw_linear_bits;
+        epoch_matrix_.forecast_raw_linear.selectivity =
+            epoch_matrix_.forecast_raw_linear.error_skill - ctrl_skill;
+        epoch_matrix_.forecast_raw_linear.has_selectivity =
+            std::isfinite(epoch_matrix_.forecast_raw_linear.selectivity);
+      }
+
       // mdn selectivity
       double ctrl_mdn_bits = std::numeric_limits<double>::quiet_NaN();
       double ctrl_null_bits_mdn = std::numeric_limits<double>::quiet_NaN();
@@ -2115,6 +2534,48 @@ class VicregTransferMatrixEvaluator final {
         epoch_.train_batches_attempted = saved_train_attempted;
         epoch_.train_ingested_positions = saved_train_positions;
         epoch_.train_ingested_support = saved_train_support;
+      }
+
+      // raw mdn selectivity
+      double ctrl_raw_mdn_bits = std::numeric_limits<double>::quiet_NaN();
+      if (fit_null_baseline_(ctrl_train_val, &ctrl_null, nullptr) &&
+          eval_null_baseline_bits_(
+              ctrl_null, ctrl_test, &ctrl_null_bits_mdn, nullptr, nullptr) &&
+          std::isfinite(ctrl_null_bits_mdn) &&
+          epoch_matrix_.forecast_raw_mdn.has_error_skill &&
+          epoch_matrix_.forecast_raw_mdn.error_skill > 0.0) {
+        try {
+          const auto ctrl_raw_input_dims =
+              feature_dims_from_batches_(ctrl_train_val, feature_mode_e::Raw);
+          if (ctrl_raw_input_dims > 0) {
+            cuwacunu::wikimyei::mdn::MdnModel ctrl_raw_model{nullptr};
+            std::unique_ptr<torch::optim::Optimizer> ctrl_raw_optimizer{};
+            initialize_runtime_model_for_input_dims_or_throw_(
+                ctrl_raw_input_dims, &ctrl_raw_model, &ctrl_raw_optimizer);
+            train_mdn_batches_for_model_(ctrl_train_val,
+                                         feature_mode_e::Raw,
+                                         mdn_norm_ptr,
+                                         ctrl_raw_model,
+                                         ctrl_raw_optimizer.get(),
+                                         /*record_training_stats=*/false);
+            if (evaluate_mdn_batches_for_model_(ctrl_test,
+                                                feature_mode_e::Raw,
+                                                mdn_norm_ptr,
+                                                ctrl_raw_model,
+                                                &ctrl_raw_mdn_bits,
+                                                nullptr,
+                                                nullptr) &&
+                std::isfinite(ctrl_raw_mdn_bits)) {
+              const double ctrl_skill = ctrl_null_bits_mdn - ctrl_raw_mdn_bits;
+              epoch_matrix_.forecast_raw_mdn.selectivity =
+                  epoch_matrix_.forecast_raw_mdn.error_skill - ctrl_skill;
+              epoch_matrix_.forecast_raw_mdn.has_selectivity =
+                  std::isfinite(epoch_matrix_.forecast_raw_mdn.selectivity);
+            }
+          }
+        } catch (const std::exception&) {
+          // no-op
+        }
       }
     }
 
@@ -2408,8 +2869,10 @@ class VicregTransferMatrixEvaluator final {
     };
     emit_row_summary("matrix.forecast.null", mx.forecast_null);
     emit_row_summary("matrix.forecast.stats_only", mx.forecast_stats_only);
+    emit_row_summary("matrix.forecast.raw_linear", mx.forecast_raw_linear);
     emit_row_summary("matrix.forecast.linear", mx.forecast_linear);
     emit_row_summary("matrix.forecast.residual_linear", mx.forecast_residual_linear);
+    emit_row_summary("matrix.forecast.raw_mdn", mx.forecast_raw_mdn);
     emit_row_summary("matrix.forecast.mdn", mx.forecast_mdn);
     if (mx.has_cold_start_loss) {
       append_lls_double_(
@@ -2486,8 +2949,10 @@ class VicregTransferMatrixEvaluator final {
     };
     emit_row("matrix.forecast.null", mx.forecast_null);
     emit_row("matrix.forecast.stats_only", mx.forecast_stats_only);
+    emit_row("matrix.forecast.raw_linear", mx.forecast_raw_linear);
     emit_row("matrix.forecast.linear", mx.forecast_linear);
     emit_row("matrix.forecast.residual_linear", mx.forecast_residual_linear);
+    emit_row("matrix.forecast.raw_mdn", mx.forecast_raw_mdn);
     emit_row("matrix.forecast.mdn", mx.forecast_mdn);
     if (mx.has_cold_start_loss) {
       append_lls_double_(
@@ -2685,8 +3150,10 @@ class VicregTransferMatrixEvaluator final {
 
     append_matrix_row("forecast.null", mx.forecast_null);
     append_matrix_row("forecast.stats_only", mx.forecast_stats_only);
+    append_matrix_row("forecast.raw_linear", mx.forecast_raw_linear);
     append_matrix_row("forecast.linear", mx.forecast_linear);
     append_matrix_row("forecast.residual_linear", mx.forecast_residual_linear);
+    append_matrix_row("forecast.raw_mdn", mx.forecast_raw_mdn);
     append_matrix_row("forecast.mdn", mx.forecast_mdn);
 
     const auto matrix_widths = measure_widths(matrix_header, matrix_rows);
@@ -2799,9 +3266,17 @@ class VicregTransferMatrixEvaluator final {
     out << "\tforecast.null.error="
         << (mx.forecast_null.has_error ? std::to_string(mx.forecast_null.error)
                                        : std::string("n/a"))
+        << " forecast.raw_linear.error="
+        << (mx.forecast_raw_linear.has_error
+                ? std::to_string(mx.forecast_raw_linear.error)
+                : std::string("n/a"))
         << " forecast.linear.error="
         << (mx.forecast_linear.has_error
                 ? std::to_string(mx.forecast_linear.error)
+                : std::string("n/a"))
+        << " forecast.raw_mdn.error="
+        << (mx.forecast_raw_mdn.has_error
+                ? std::to_string(mx.forecast_raw_mdn.error)
                 : std::string("n/a"))
         << " forecast.mdn.error="
         << (mx.forecast_mdn.has_error ? std::to_string(mx.forecast_mdn.error)
@@ -2923,8 +3398,27 @@ class VicregTransferMatrixEvaluator final {
           torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
     }
 
-    semantic_model_ = cuwacunu::wikimyei::mdn::MdnModel(
-        model_.encoding_dims,
+    initialize_runtime_model_for_input_dims_or_throw_(
+        model_.encoding_dims, &semantic_model_, &optimizer_);
+  }
+
+  void initialize_runtime_model_for_input_dims_or_throw_(
+      std::int64_t input_dims,
+      cuwacunu::wikimyei::mdn::MdnModel* out_model,
+      std::unique_ptr<torch::optim::Optimizer>* out_optimizer) const {
+    if (!out_model || !out_optimizer) {
+      throw std::runtime_error(
+          "transfer_matrix_eval output model storage is missing");
+    }
+    if (input_dims <= 0 || model_.mixture_comps <= 0 || model_.features_hidden <= 0 ||
+        model_.residual_depth < 0 || model_.channels <= 0 || model_.horizons <= 0 ||
+        model_.target_dims.empty()) {
+      throw std::runtime_error(
+          "transfer_matrix_eval invalid model specification from contract");
+    }
+
+    *out_model = cuwacunu::wikimyei::mdn::MdnModel(
+        input_dims,
         static_cast<std::int64_t>(model_.target_dims.size()),
         model_.channels,
         model_.horizons,
@@ -2937,7 +3431,7 @@ class VicregTransferMatrixEvaluator final {
 
     std::vector<torch::Tensor> params;
     params.reserve(64);
-    for (auto& p : semantic_model_->parameters(/*recurse=*/true)) {
+    for (auto& p : (*out_model)->parameters(/*recurse=*/true)) {
       if (p.requires_grad()) params.push_back(p);
     }
 
@@ -2951,7 +3445,7 @@ class VicregTransferMatrixEvaluator final {
                     .betas(std::make_tuple(cfg_.optimizer_beta1,
                                            cfg_.optimizer_beta2))
                     .eps(cfg_.optimizer_eps);
-    optimizer_ = std::make_unique<torch::optim::AdamW>(params, opts);
+    *out_optimizer = std::make_unique<torch::optim::AdamW>(params, opts);
   }
 
   [[nodiscard]] torch::Dtype resolve_config_dtype_with_fallback_() const {

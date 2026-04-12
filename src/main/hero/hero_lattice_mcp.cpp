@@ -2,11 +2,14 @@
 #include <cctype>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unistd.h>
 
+#include "hero/hashimyei_hero/hero_hashimyei_tools.h"
 #include "hero/lattice_hero/hero_lattice_tools.h"
+#include "hero/mcp_server_observability.h"
 #include "iitepi/config_space_t.h"
 #include "piaabo/dlogs.h"
 
@@ -36,6 +39,7 @@ void write_stdout_text(std::string_view text) {
 }
 
 void write_stderr_text(std::string_view text) {
+  cuwacunu::hero::mcp_observability::mirror_stderr_text(text);
   const char* data = text.data();
   std::size_t remaining = text.size();
   while (remaining > 0) {
@@ -84,6 +88,7 @@ void print_help(const char* argv0) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  cuwacunu::hero::mcp_observability::clear_log_paths();
   cuwacunu::hero::lattice_mcp::app_context_t app{};
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 
@@ -221,18 +226,119 @@ int main(int argc, char** argv) {
                       "] resolved empty catalog_path\n");
     return 2;
   }
+
+  cuwacunu::hero::mcp_observability::configure_log_paths(
+      cuwacunu::hero::mcp_observability::make_log_paths(
+          cuwacunu::hero::mcp_observability::derive_store_backed_mcp_log_dir(
+              store_root, kServerName)));
+
+  std::filesystem::path hashimyei_catalog_path{};
+  {
+    const auto hashimyei_hero_config_path =
+        cuwacunu::hero::hashimyei_mcp::resolve_hashimyei_hero_dsl_path(
+            global_config_path);
+    if (hashimyei_hero_config_path.empty()) {
+      write_stderr_text(std::string("[") + kServerName +
+                        "] missing [REAL_HERO].hashimyei_hero_dsl_filename in " +
+                        global_config_path.string() + "\n");
+      return 2;
+    }
+    cuwacunu::hero::hashimyei_mcp::hashimyei_runtime_defaults_t
+        hashimyei_defaults{};
+    std::string hashimyei_defaults_error{};
+    if (!cuwacunu::hero::hashimyei_mcp::load_hashimyei_runtime_defaults(
+            hashimyei_hero_config_path, global_config_path, &hashimyei_defaults,
+            &hashimyei_defaults_error)) {
+      write_stderr_text(std::string("[") + kServerName + "] " +
+                        hashimyei_defaults_error + "\n");
+      return 2;
+    }
+    hashimyei_catalog_path = hashimyei_defaults.catalog_path;
+  }
+  if (hashimyei_catalog_path.empty()) {
+    write_stderr_text(std::string("[") + kServerName +
+                      "] resolved empty hashimyei catalog_path\n");
+    return 2;
+  }
   app.store_root = store_root;
   app.lattice_catalog_path = catalog_path;
+  app.hashimyei_catalog_path = hashimyei_catalog_path;
+
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "mode",
+        direct_tool_mode   ? "direct_tool"
+        : list_tools       ? "list_tools"
+        : list_tools_json  ? "list_tools_json"
+                           : "server");
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "global_config_path", global_config_path.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "hero_config_path", hero_config_path.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "store_root", store_root.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "hashimyei_catalog_path", hashimyei_catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_int_field(
+        extra, "pid", static_cast<int>(::getpid()));
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "startup", extra.str(), &ignored);
+  }
 
   if (direct_tool_mode) {
+    {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "arguments_json", direct_tool_args_json);
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_start", extra.str(), &ignored);
+    }
+    const std::uint64_t tool_started_at_ms =
+        cuwacunu::hero::runtime::now_ms_utc();
     std::string tool_result{};
     std::string tool_error{};
     if (!cuwacunu::hero::lattice_mcp::execute_tool_json(
             direct_tool_name, direct_tool_args_json, &app, &tool_result,
             &tool_error)) {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok",
+                                                                false);
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "duration_ms",
+          cuwacunu::hero::runtime::now_ms_utc() - tool_started_at_ms);
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", tool_error);
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_finish", extra.str(), &ignored);
       write_stderr_text(std::string("[") + kServerName + "] " + tool_error +
                         "\n");
       return 2;
+    }
+    {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok",
+                                                                true);
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "duration_ms",
+          cuwacunu::hero::runtime::now_ms_utc() - tool_started_at_ms);
+      cuwacunu::hero::mcp_observability::append_json_bool_field(
+          extra, "tool_result_is_error",
+          cuwacunu::hero::lattice_mcp::tool_result_is_error(tool_result));
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_finish", extra.str(), &ignored);
     }
     write_stdout_text(tool_result + "\n");
     return cuwacunu::hero::lattice_mcp::tool_result_is_error(tool_result) ? 1 : 0;
@@ -247,6 +353,11 @@ int main(int argc, char** argv) {
   }
 
   cuwacunu::hero::lattice_mcp::prepare_jsonrpc_stdio_server_output();
+  {
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "server_loop_enter", {}, &ignored);
+  }
   cuwacunu::hero::lattice_mcp::run_jsonrpc_stdio_loop(&app);
   return 0;
 }

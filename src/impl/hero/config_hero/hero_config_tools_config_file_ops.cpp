@@ -4,7 +4,9 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <mutex>
 #include <sstream>
+#include <unordered_set>
 #include <vector>
 
 #include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
@@ -13,11 +15,14 @@
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state.h"
 #include "camahjucunu/dsl/network_design/network_design.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_channels_decoder.h"
-#include "camahjucunu/dsl/super_objective/super_objective.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_sources_decoder.h"
+#include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
+#include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
+#include "camahjucunu/dsl/marshal_objective/marshal_objective.h"
 #include "hero/hashimyei_hero/hero_hashimyei_tools.h"
 #include "hero/lattice_hero/hero_lattice_tools.h"
 #include "hero/runtime_hero/hero_runtime_tools.h"
-#include "hero/super_hero/hero_super_tools.h"
+#include "hero/marshal_hero/hero_marshal_tools.h"
 #include "iitepi/contract_space_t.h"
 
 namespace cuwacunu::hero::mcp::detail {
@@ -25,13 +30,15 @@ namespace cuwacunu::hero::mcp::detail {
 enum class instruction_dsl_validation_family_e : std::uint8_t {
   Unsupported = 0,
   LatentLineageState,
-  SuperObjective,
+  MarshalObjective,
   NetworkDesign,
   Jkimyei,
+  IitepiCircuit,
   IitepiContract,
   IitepiWave,
   IitepiCampaign,
   ObservationChannels,
+  ObservationSources,
 };
 
 [[nodiscard]] std::string instruction_dsl_validation_family_name(
@@ -39,12 +46,14 @@ enum class instruction_dsl_validation_family_e : std::uint8_t {
   switch (family) {
     case instruction_dsl_validation_family_e::LatentLineageState:
       return "latent_lineage_state";
-    case instruction_dsl_validation_family_e::SuperObjective:
-      return "super_objective";
+    case instruction_dsl_validation_family_e::MarshalObjective:
+      return "marshal_objective";
     case instruction_dsl_validation_family_e::NetworkDesign:
       return "network_design";
     case instruction_dsl_validation_family_e::Jkimyei:
       return "jkimyei";
+    case instruction_dsl_validation_family_e::IitepiCircuit:
+      return "iitepi_circuit";
     case instruction_dsl_validation_family_e::IitepiContract:
       return "iitepi_contract";
     case instruction_dsl_validation_family_e::IitepiWave:
@@ -53,6 +62,8 @@ enum class instruction_dsl_validation_family_e : std::uint8_t {
       return "iitepi_campaign";
     case instruction_dsl_validation_family_e::ObservationChannels:
       return "observation_channels";
+    case instruction_dsl_validation_family_e::ObservationSources:
+      return "observation_sources";
     case instruction_dsl_validation_family_e::Unsupported:
     default:
       return "unsupported";
@@ -86,12 +97,17 @@ enum class instruction_dsl_validation_family_e : std::uint8_t {
 [[nodiscard]] instruction_dsl_validation_family_e
 detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) {
   const std::string file_name = lowercase_copy(dsl_path.filename().string());
-  if (file_name == "tsi.source.dataloader.channels.dsl" ||
-      file_name == "default.tsi.source.dataloader.channels.dsl") {
+  if (lowercase_copy(dsl_path.extension().string()) != ".dsl") {
+    return instruction_dsl_validation_family_e::Unsupported;
+  }
+  if (file_name.find("tsi.source.dataloader.channels") != std::string::npos) {
     return instruction_dsl_validation_family_e::ObservationChannels;
   }
-  if (is_super_objective_dsl_path(dsl_path)) {
-    return instruction_dsl_validation_family_e::SuperObjective;
+  if (file_name.find("tsi.source.dataloader.sources") != std::string::npos) {
+    return instruction_dsl_validation_family_e::ObservationSources;
+  }
+  if (is_marshal_objective_dsl_path(dsl_path)) {
+    return instruction_dsl_validation_family_e::MarshalObjective;
   }
   if (file_name.find("network_design") != std::string::npos) {
     return instruction_dsl_validation_family_e::NetworkDesign;
@@ -102,6 +118,9 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) 
   if (file_name.rfind("iitepi.contract", 0) == 0 ||
       file_name.find(".contract.") != std::string::npos) {
     return instruction_dsl_validation_family_e::IitepiContract;
+  }
+  if (file_name.find("iitepi.circuit") != std::string::npos) {
+    return instruction_dsl_validation_family_e::IitepiCircuit;
   }
   if (file_name == "iitepi.waves.dsl" ||
       file_name.rfind("default.iitepi.wave", 0) == 0 ||
@@ -121,12 +140,14 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) 
   switch (family) {
     case instruction_dsl_validation_family_e::LatentLineageState:
       return config_root / "bnf" / "latent_lineage_state.authored.bnf";
-    case instruction_dsl_validation_family_e::SuperObjective:
-      return config_root / "bnf" / "objective.super.bnf";
+    case instruction_dsl_validation_family_e::MarshalObjective:
+      return config_root / "bnf" / "objective.marshal.bnf";
     case instruction_dsl_validation_family_e::NetworkDesign:
       return config_root / "bnf" / "network_design.bnf";
     case instruction_dsl_validation_family_e::Jkimyei:
       return config_root / "bnf" / "jkimyei.bnf";
+    case instruction_dsl_validation_family_e::IitepiCircuit:
+      return config_root / "bnf" / "iitepi.circuit.bnf";
     case instruction_dsl_validation_family_e::IitepiContract:
       return config_root / "bnf" / "iitepi.contract.bnf";
     case instruction_dsl_validation_family_e::IitepiWave:
@@ -135,6 +156,8 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) 
       return config_root / "bnf" / "iitepi.campaign.bnf";
     case instruction_dsl_validation_family_e::ObservationChannels:
       return config_root / "bnf" / "tsi.source.dataloader.channels.bnf";
+    case instruction_dsl_validation_family_e::ObservationSources:
+      return config_root / "bnf" / "tsi.source.dataloader.sources.bnf";
     case instruction_dsl_validation_family_e::Unsupported:
     default:
       return {};
@@ -169,8 +192,8 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) 
     push_candidate("hero.config.man");
   } else if (lowered.rfind("hero.runtime", 0) == 0) {
     push_candidate("hero.runtime.config.man");
-  } else if (lowered.rfind("hero.super", 0) == 0) {
-    push_candidate("hero.super.config.man");
+  } else if (lowered.rfind("hero.marshal", 0) == 0) {
+    push_candidate("hero.marshal.config.man");
   } else if (lowered.rfind("hero.human", 0) == 0) {
     push_candidate("hero.human.config.man");
   } else if (lowered.rfind("hero.hashimyei", 0) == 0) {
@@ -179,12 +202,32 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) 
     push_candidate("hero.lattice.config.man");
   }
 
+  if (lowered.find("iitepi.circuit") != std::string::npos) {
+    push_candidate("iitepi.circuit.man");
+  }
+  if (lowered.find("tsi.source.dataloader.channels") != std::string::npos) {
+    push_candidate("tsi.source.dataloader.channels.man");
+  }
+  if (lowered.find("tsi.source.dataloader.sources") != std::string::npos) {
+    push_candidate("tsi.source.dataloader.sources.man");
+  }
+  if (lowered.find("tsi.wikimyei.representation.vicreg") !=
+      std::string::npos) {
+    push_candidate("tsi.wikimyei.representation.vicreg.man");
+  }
+  if (lowered.find("tsodao") != std::string::npos) {
+    push_candidate("tsodao.man");
+  }
+
   switch (family) {
-    case instruction_dsl_validation_family_e::SuperObjective:
-      push_candidate("super.objective.man");
+    case instruction_dsl_validation_family_e::MarshalObjective:
+      push_candidate("marshal.objective.man");
       break;
     case instruction_dsl_validation_family_e::IitepiContract:
       push_candidate("iitepi.contract.man");
+      break;
+    case instruction_dsl_validation_family_e::IitepiCircuit:
+      push_candidate("iitepi.circuit.man");
       break;
     case instruction_dsl_validation_family_e::IitepiWave:
       push_candidate("iitepi.wave.man");
@@ -197,6 +240,9 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) 
       break;
     case instruction_dsl_validation_family_e::ObservationChannels:
       push_candidate("tsi.source.dataloader.channels.man");
+      break;
+    case instruction_dsl_validation_family_e::ObservationSources:
+      push_candidate("tsi.source.dataloader.sources.man");
       break;
     case instruction_dsl_validation_family_e::NetworkDesign:
       push_candidate("network_design.man");
@@ -259,8 +305,24 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path) 
   return "no associated .man found for " + dsl_path.string();
 }
 
+[[nodiscard]] bool should_warn_missing_associated_man(
+    const std::filesystem::path& dsl_path,
+    instruction_dsl_validation_family_e family) {
+  (void)family;
+  const std::string extension = lowercase_copy(dsl_path.extension().string());
+  return extension == ".dsl";
+}
+
 void log_config_warning(std::string_view warning) {
   if (warning.empty()) return;
+  static std::mutex warning_mutex{};
+  static std::unordered_set<std::string> seen_warnings{};
+  {
+    std::lock_guard<std::mutex> lock(warning_mutex);
+    const auto [it, inserted] = seen_warnings.emplace(warning);
+    (void)it;
+    if (!inserted) return;
+  }
   const std::string line = "[" + std::string(kMcpServerName) + "][warning] " +
                            std::string(warning) + "\n";
   (void)write_all_fd(STDERR_FILENO, line.data(), line.size());
@@ -399,8 +461,8 @@ void log_config_warning(std::string_view warning) {
         (void)cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
             grammar_text, text);
         break;
-      case instruction_dsl_validation_family_e::SuperObjective:
-        (void)cuwacunu::camahjucunu::dsl::decode_super_objective_from_dsl(
+      case instruction_dsl_validation_family_e::MarshalObjective:
+        (void)cuwacunu::camahjucunu::dsl::decode_marshal_objective_from_dsl(
             grammar_text, text);
         break;
       case instruction_dsl_validation_family_e::NetworkDesign:
@@ -411,6 +473,20 @@ void log_config_warning(std::string_view warning) {
         (void)cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
             grammar_text, text, dsl_path.string());
         break;
+      case instruction_dsl_validation_family_e::IitepiCircuit: {
+        cuwacunu::camahjucunu::dsl::tsiemeneCircuits decoder(grammar_text);
+        const auto instruction = decoder.decode(text);
+        std::string semantic_error{};
+        if (!cuwacunu::camahjucunu::validate_circuit_instruction(
+                instruction, &semantic_error)) {
+          if (out_error) {
+            *out_error = "instruction dsl replace validation failed (" +
+                         family_name + "): " + semantic_error;
+          }
+          return false;
+        }
+        break;
+      }
       case instruction_dsl_validation_family_e::IitepiContract: {
         std::string basic_contract_error{};
         if (!validate_basic_iitepi_contract_wrapper(text,
@@ -512,6 +588,12 @@ void log_config_warning(std::string_view warning) {
         (void)decoder.decode(text);
         break;
       }
+      case instruction_dsl_validation_family_e::ObservationSources: {
+        cuwacunu::camahjucunu::dsl::observationSourcesDecoder decoder(
+            grammar_text);
+        (void)decoder.decode(text);
+        break;
+      }
       case instruction_dsl_validation_family_e::Unsupported:
       default:
         if (out_error) {
@@ -588,7 +670,7 @@ struct scoped_file_cleanup_t {
   const std::string file_name = lowercase_copy(dsl_path.filename().string());
   if (file_name != "default.hero.config.dsl" &&
       file_name != "default.hero.runtime.dsl" &&
-      file_name != "default.hero.super.dsl" &&
+      file_name != "default.hero.marshal.dsl" &&
       file_name != "default.hero.hashimyei.dsl" &&
       file_name != "default.hero.lattice.dsl") {
     return true;
@@ -637,14 +719,14 @@ struct scoped_file_cleanup_t {
     return true;
   }
 
-  if (file_name == "default.hero.super.dsl") {
-    cuwacunu::hero::super_mcp::super_defaults_t defaults{};
+  if (file_name == "default.hero.marshal.dsl") {
+    cuwacunu::hero::marshal_mcp::marshal_defaults_t defaults{};
     std::string validation_error{};
-    if (!cuwacunu::hero::super_mcp::load_super_defaults(
+    if (!cuwacunu::hero::marshal_mcp::load_marshal_defaults(
             snapshot_path, store.global_config_path(), &defaults,
             &validation_error)) {
       if (out_error) {
-        *out_error = "default hero super validation failed: " +
+        *out_error = "default hero marshal validation failed: " +
                      validation_error;
       }
       return false;
@@ -761,7 +843,10 @@ struct scoped_file_cleanup_t {
   const std::filesystem::path man_path = find_associated_man_path_with_fallback(
       config_root, dsl_path, validation_family_enum);
   const std::string warning =
-      man_path.empty() ? missing_associated_man_warning(dsl_path) : "";
+      man_path.empty() &&
+              should_warn_missing_associated_man(dsl_path, validation_family_enum)
+          ? missing_associated_man_warning(dsl_path)
+          : "";
   if (!warning.empty()) log_config_warning(warning);
 
   if (out_result_json) {
@@ -861,7 +946,11 @@ struct scoped_file_cleanup_t {
           find_associated_man_path_with_fallback(config_root, path,
                                                  validation_family_enum);
       const std::string warning =
-          man_path.empty() ? missing_associated_man_warning(path) : "";
+          man_path.empty() &&
+                  should_warn_missing_associated_man(path,
+                                                     validation_family_enum)
+              ? missing_associated_man_warning(path)
+              : "";
       if (!warning.empty()) log_config_warning(warning);
       std::string matched_root{};
       std::string relative_path{};
@@ -1228,7 +1317,10 @@ struct scoped_file_cleanup_t {
   const std::filesystem::path man_path = find_associated_man_path_with_fallback(
       config_root, dsl_path, validation_family_enum);
   const std::string warning =
-      man_path.empty() ? missing_associated_man_warning(dsl_path) : "";
+      man_path.empty() &&
+              should_warn_missing_associated_man(dsl_path, validation_family_enum)
+          ? missing_associated_man_warning(dsl_path)
+          : "";
   if (!warning.empty()) log_config_warning(warning);
 
   if (out_result_json) {
@@ -1333,7 +1425,11 @@ struct scoped_file_cleanup_t {
           find_associated_man_path_with_fallback(config_root, path,
                                                  validation_family_enum);
       const std::string warning =
-          man_path.empty() ? missing_associated_man_warning(path) : "";
+          man_path.empty() &&
+                  should_warn_missing_associated_man(path,
+                                                     validation_family_enum)
+              ? missing_associated_man_warning(path)
+              : "";
       if (!warning.empty()) log_config_warning(warning);
       if (i != 0) out << ",";
       out << "{\"path\":" << json_quote(path.string())

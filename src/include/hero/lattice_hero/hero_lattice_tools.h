@@ -18,8 +18,11 @@ struct wave_runtime_defaults_t {
 struct app_context_t {
   std::filesystem::path store_root{};
   std::filesystem::path lattice_catalog_path{};
+  std::filesystem::path hashimyei_catalog_path{};
   cuwacunu::hero::wave::lattice_catalog_store_t catalog{};
+  cuwacunu::hero::hashimyei::hashimyei_catalog_store_t hashimyei_catalog{};
   std::string last_store_sync_token{};
+  bool close_catalog_after_execute{true};
 };
 
 [[nodiscard]] std::filesystem::path resolve_lattice_hero_dsl_path(

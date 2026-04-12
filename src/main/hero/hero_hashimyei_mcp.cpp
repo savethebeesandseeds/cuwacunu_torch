@@ -5,12 +5,14 @@
 #include <filesystem>
 #include <iostream>
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unistd.h>
 
 #include "hero/hashimyei_hero/hero_hashimyei_tools.h"
 #include "hero/lattice_hero/hero_lattice_tools.h"
+#include "hero/mcp_server_observability.h"
 #include "piaabo/dlogs.h"
 
 namespace {
@@ -39,6 +41,7 @@ void write_stdout_text(std::string_view text) {
 }
 
 void write_stderr_text(std::string_view text) {
+  cuwacunu::hero::mcp_observability::mirror_stderr_text(text);
   const char* data = text.data();
   std::size_t remaining = text.size();
   while (remaining > 0) {
@@ -86,6 +89,7 @@ void print_help(const char* argv0) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  cuwacunu::hero::mcp_observability::clear_log_paths();
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 
   std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
@@ -227,6 +231,11 @@ int main(int argc, char** argv) {
     return 2;
   }
 
+  cuwacunu::hero::mcp_observability::configure_log_paths(
+      cuwacunu::hero::mcp_observability::make_log_paths(
+          cuwacunu::hero::mcp_observability::derive_store_backed_mcp_log_dir(
+              store_root, kServerName)));
+
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t options{};
   options.catalog_path = catalog_path;
   options.encrypted = false;
@@ -263,26 +272,85 @@ int main(int argc, char** argv) {
   app.lattice_catalog_path = lattice_catalog_path;
   app.catalog_options = options;
 
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "mode",
+        direct_tool_mode   ? "direct_tool"
+        : list_tools       ? "list_tools"
+        : list_tools_json  ? "list_tools_json"
+                           : "server");
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "global_config_path", global_config_path.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "hero_config_path", hero_config_path.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "store_root", store_root.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "lattice_catalog_path", lattice_catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_int_field(
+        extra, "pid", static_cast<int>(::getpid()));
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "startup", extra.str(), &ignored);
+  }
+
   if (direct_tool_mode) {
-    app.close_catalog_after_execute = false;
+    {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "arguments_json", direct_tool_args_json);
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_start", extra.str(), &ignored);
+    }
+    const std::uint64_t tool_started_at_ms =
+        cuwacunu::hero::runtime::now_ms_utc();
     std::string tool_result{};
     std::string tool_error{};
     if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
             direct_tool_name, direct_tool_args_json, &app, &tool_result,
             &tool_error)) {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok",
+                                                                false);
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "duration_ms",
+          cuwacunu::hero::runtime::now_ms_utc() - tool_started_at_ms);
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", tool_error);
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_finish", extra.str(), &ignored);
       write_stderr_text(std::string("[") + kServerName + "] " + tool_error +
                         "\n");
-      // Direct CLI mode is single-shot; avoid destructor-driven catalog close
-      // stalls on process teardown.
-      std::_Exit(2);
+      return 2;
+    }
+    {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok",
+                                                                true);
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "duration_ms",
+          cuwacunu::hero::runtime::now_ms_utc() - tool_started_at_ms);
+      cuwacunu::hero::mcp_observability::append_json_bool_field(
+          extra, "tool_result_is_error",
+          cuwacunu::hero::hashimyei_mcp::tool_result_is_error(tool_result));
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_finish", extra.str(), &ignored);
     }
     write_stdout_text(tool_result + "\n");
-    const int exit_code =
-        cuwacunu::hero::hashimyei_mcp::tool_result_is_error(tool_result) ? 1
-                                                                         : 0;
-    // Direct CLI mode is single-shot; avoid destructor-driven catalog close
-    // stalls on process teardown.
-    std::_Exit(exit_code);
+    return cuwacunu::hero::hashimyei_mcp::tool_result_is_error(tool_result) ? 1
+                                                                             : 0;
   }
 
   if (::isatty(STDIN_FILENO) != 0) {
@@ -293,6 +361,11 @@ int main(int argc, char** argv) {
     return 2;
   }
 
+  {
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "server_loop_enter", {}, &ignored);
+  }
   cuwacunu::hero::hashimyei_mcp::run_jsonrpc_stdio_loop(&app);
   return 0;
 }

@@ -1,6 +1,6 @@
 #include "iitepi/config_space_t.h"
 
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 
 #include <algorithm>
 #include <cctype>
@@ -653,7 +653,7 @@ bool config_space_t::validate_config() {
   require_existing_path("REAL_HERO", "config_hero_dsl_filename", config_base_folder);
   require_existing_path("REAL_HERO", "hashimyei_hero_dsl_filename", config_base_folder);
   require_existing_path("REAL_HERO", "lattice_hero_dsl_filename", config_base_folder);
-  require_existing_path("REAL_HERO", "super_hero_dsl_filename", config_base_folder);
+  require_existing_path("REAL_HERO", "marshal_hero_dsl_filename", config_base_folder);
   require_existing_path("REAL_HERO", "runtime_hero_dsl_filename", config_base_folder);
 
   if (!ok) log_terminate_gracefully("Invalid global configuration, aborting.\n");

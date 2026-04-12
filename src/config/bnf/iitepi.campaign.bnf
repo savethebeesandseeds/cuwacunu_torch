@@ -5,7 +5,7 @@
 
 <campaign_entry>             ::= <contract_import_decl>
                                | <wave_import_decl>
-                               | <super_decl>
+                               | <marshal_decl>
                                | <bind_decl>
                                | <run_decl> ;
 
@@ -21,7 +21,7 @@
                                  [<whitespace>] <import_id_value>
                                  [<whitespace>] ";" <line_end> ;
 
-<super_decl>                ::= [<whitespace>] "SUPER"
+<marshal_decl>                ::= [<whitespace>] "MARSHAL"
                                  [<whitespace>] <path_value>
                                  [<whitespace>] ";" <line_end> ;
 

@@ -1,20 +1,21 @@
 /*
   vicreg.solo.train objective-local campaign bundle.
 
-  This objective imports the frozen optimized VICReg package and stages one
-  train-plus-eval pass on BTCUSDT, materializing and then reviewing the
-  promoted slot `0x00ff`.
+  This cleaned campaign keeps execution focused:
+  - train on 2020-2023
+  - validate on 2024-01 to 2024-08
+  - confirm on the untouched 2024-09 to 2024-12 window for the final
+    promotion-biased round
 
-  Super may relaunch this same plan multiple times when post-launch evidence
-  justifies more effort. The imported optim bundle remains frozen; additional
-  training effort comes from repeated launches against the same promoted slot,
-  not from mutating ../../optim/.
+  The imported optim bundle remains frozen. Objective-local iteration happens
+  in the wave and jkimyei files, not inside ../../optim/.
 */
 CAMPAIGN {
-  IMPORT_CONTRACT "../../optim/optim.vicreg.solo.iitepi.contract.dsl" AS contract_optim_vicreg_solo;
+  IMPORT_CONTRACT "iitepi.contract.dsl" AS contract_train_vicreg_solo;
 
   FROM "iitepi.waves.dsl" IMPORT_WAVE train_vicreg_primary;
   FROM "iitepi.waves.dsl" IMPORT_WAVE eval_vicreg_payload;
+  FROM "iitepi.waves.dsl" IMPORT_WAVE eval_vicreg_payload_untouched_test;
 
   BIND bind_train_vicreg_primary_btcusdt {
     __mode_flags = 3;
@@ -24,7 +25,8 @@ CAMPAIGN {
     __symbol = BTCUSDT;
     __from = 01.01.2020;
     __to = 31.12.2023;
-    CONTRACT = contract_optim_vicreg_solo;
+    __jk_profile_id = stable_pretrain_linear_only;
+    CONTRACT = contract_train_vicreg_solo;
     WAVE = train_vicreg_primary;
   };
 
@@ -35,10 +37,27 @@ CAMPAIGN {
     __symbol = BTCUSDT;
     __from = 01.01.2024;
     __to = 31.08.2024;
-    CONTRACT = contract_optim_vicreg_solo;
+    CONTRACT = contract_train_vicreg_solo;
     WAVE = eval_vicreg_payload;
+  };
+
+  /*
+    Final confirmation bind. This last promotion-biased round spends the
+    untouched window after reusable validation so the resulting candidate has a
+    complete final evidence package.
+  */
+  BIND bind_eval_vicreg_payload_btcusdt_untouched_test {
+    __vicreg_hashimyei_slot = 0x00ff;
+    __sampler = sequential;
+    __workers = 0;
+    __symbol = BTCUSDT;
+    __from = 01.09.2024;
+    __to = 31.12.2024;
+    CONTRACT = contract_train_vicreg_solo;
+    WAVE = eval_vicreg_payload_untouched_test;
   };
 
   RUN bind_train_vicreg_primary_btcusdt;
   RUN bind_eval_vicreg_payload_btcusdt;
+  RUN bind_eval_vicreg_payload_btcusdt_untouched_test;
 }

@@ -382,7 +382,7 @@ struct dev_nuke_backup_snapshot_t {
         << ","
         << "\"runtime_campaigns_root\":"
         << json_quote(targets.runtime_campaigns_root.string()) << ","
-        << "\"super_root\":" << json_quote(targets.super_root.string()) << ","
+        << "\"marshal_root\":" << json_quote(targets.marshal_root.string()) << ","
         << "\"dev_nuke_reset_backup_enabled\":"
         << bool_json(dev_nuke_reset_backup_enabled) << ","
         << "\"dev_nuke_reset_backup_created\":"

@@ -10,7 +10,7 @@
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "iitepi/contract_space_t.h"
 #include "iitepi/runtime_binding/runtime_binding.h"
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 #include "piaabo/dconfig.h"
 #include "piaabo/torch_compat/torch_utils.h"
 #include "tsiemene/tsi.wikimyei.representation.vicreg.h"
@@ -142,9 +142,14 @@ int main() {
   assert(state.swa_start_iter == 1000);
   assert(state.trained_epochs == 0);
   assert(state.trained_samples == 0);
+  assert(state.skipped_batches == 0);
   assert(state.clip_norm == 1.0);
   assert(state.clip_value == 0.0);
   assert(state.last_committed_loss_mean == 0.0);
+  assert(state.last_committed_inv_mean == 0.0);
+  assert(state.last_committed_var_mean == 0.0);
+  assert(state.last_committed_cov_raw_mean == 0.0);
+  assert(state.last_committed_cov_weighted_mean == 0.0);
 
   assert(vicreg.jkimyei_set_train_enabled(true, &error));
   assert(error.empty());

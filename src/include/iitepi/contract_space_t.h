@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "iitepi/config_space_t.h"
-#include "iitepi/network_analytics_mode.h"
+#include "iitepi/network_analytics.h"
 
 namespace cuwacunu {
 namespace camahjucunu {

@@ -25,6 +25,96 @@ inline int logs_level_rank(const std::string& level) {
   return 20;
 }
 
+inline bool logs_message_has_nonempty_warning_payload(
+    const std::string& message) {
+  if (message.empty()) return false;
+  const std::string lower = to_lower_copy(message);
+
+  const auto is_token_char = [](char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+
+  const auto bare_match_has_boundaries = [&](std::size_t pos,
+                                             std::size_t len) {
+    const bool left_ok = pos == 0 || !is_token_char(lower[pos - 1]);
+    const std::size_t after = pos + len;
+    const bool right_ok = after >= lower.size() || !is_token_char(lower[after]);
+    return left_ok && right_ok;
+  };
+
+  const auto key_has_warning_payload = [&](const std::string& key) {
+    const std::string quoted = "\"" + key + "\"";
+    std::size_t pos = 0;
+    while (pos < lower.size()) {
+      const std::size_t quoted_pos = lower.find(quoted, pos);
+      const std::size_t bare_pos = lower.find(key, pos);
+      std::size_t match_pos = std::string::npos;
+      std::size_t key_end = std::string::npos;
+
+      if (quoted_pos != std::string::npos &&
+          (bare_pos == std::string::npos || quoted_pos <= bare_pos)) {
+        match_pos = quoted_pos;
+        key_end = quoted_pos + quoted.size();
+      } else if (bare_pos != std::string::npos &&
+                 bare_match_has_boundaries(bare_pos, key.size())) {
+        match_pos = bare_pos;
+        key_end = bare_pos + key.size();
+      } else if (bare_pos != std::string::npos) {
+        pos = bare_pos + key.size();
+        continue;
+      } else {
+        break;
+      }
+
+      std::size_t value_pos = key_end;
+      while (value_pos < lower.size() &&
+             std::isspace(static_cast<unsigned char>(lower[value_pos]))) {
+        ++value_pos;
+      }
+      if (value_pos >= lower.size() || lower[value_pos] != ':') {
+        pos = match_pos + 1;
+        continue;
+      }
+
+      ++value_pos;
+      while (value_pos < lower.size() &&
+             std::isspace(static_cast<unsigned char>(lower[value_pos]))) {
+        ++value_pos;
+      }
+      if (value_pos >= lower.size()) return false;
+
+      if (lower.compare(value_pos, 2, "[]") == 0) {
+        pos = value_pos + 2;
+        continue;
+      }
+      if (lower.compare(value_pos, 4, "null") == 0 ||
+          lower.compare(value_pos, 5, "false") == 0 ||
+          lower.compare(value_pos, 2, "\"\"") == 0) {
+        pos = value_pos + 1;
+        continue;
+      }
+      if (lower[value_pos] == '[') {
+        ++value_pos;
+        while (value_pos < lower.size() &&
+               std::isspace(static_cast<unsigned char>(lower[value_pos]))) {
+          ++value_pos;
+        }
+        if (value_pos < lower.size() && lower[value_pos] == ']') {
+          pos = value_pos + 1;
+          continue;
+        }
+      }
+      return true;
+    }
+    return false;
+  };
+
+  return key_has_warning_payload("warning") ||
+         key_has_warning_payload("warnings") ||
+         key_has_warning_payload("dev_warning") ||
+         key_has_warning_payload("dev_warnings");
+}
+
 inline int logs_filter_min_rank(LogsLevelFilter f) {
   switch (f) {
     case LogsLevelFilter::DebugOrHigher:
@@ -116,7 +206,7 @@ inline bool logs_entry_has_any_metadata(const cuwacunu::piaabo::dlog_entry_t& e)
 }
 
 inline bool logs_accept_metadata_filter(
-    const LogsState& settings,
+    const ShellLogsState& settings,
     const cuwacunu::piaabo::dlog_entry_t& e) {
   switch (settings.metadata_filter) {
     case LogsMetadataFilter::Any:
@@ -133,25 +223,27 @@ inline bool logs_accept_metadata_filter(
   return true;
 }
 
-inline bool logs_accept_entry(const LogsState& settings,
+inline bool logs_accept_entry(const ShellLogsState& settings,
                               const cuwacunu::piaabo::dlog_entry_t& e) {
   return logs_level_rank(e.level) >= logs_filter_min_rank(settings.level_filter) &&
          logs_accept_metadata_filter(settings, e);
 }
 
 inline cuwacunu::iinuji::text_line_emphasis_t logs_line_emphasis(
-    const LogsState& settings,
+    const ShellLogsState& settings,
     const cuwacunu::piaabo::dlog_entry_t& e) {
   if (!settings.show_color) return cuwacunu::iinuji::text_line_emphasis_t::None;
   const int rank = logs_level_rank(e.level);
   if (rank >= 50) return cuwacunu::iinuji::text_line_emphasis_t::Fatal;
   if (rank >= 40) return cuwacunu::iinuji::text_line_emphasis_t::Error;
-  if (rank >= 30) return cuwacunu::iinuji::text_line_emphasis_t::Warning;
+  if (rank >= 30 || logs_message_has_nonempty_warning_payload(e.message)) {
+    return cuwacunu::iinuji::text_line_emphasis_t::MutedWarning;
+  }
   if (rank >= 20) return cuwacunu::iinuji::text_line_emphasis_t::Info;
   return cuwacunu::iinuji::text_line_emphasis_t::Debug;
 }
 
-inline std::string format_logs_entry(const LogsState& settings,
+inline std::string format_logs_entry(const ShellLogsState& settings,
                                      const cuwacunu::piaabo::dlog_entry_t& e) {
   std::ostringstream oss;
   if (settings.show_date) {
@@ -196,7 +288,7 @@ inline std::string format_logs_entry(const LogsState& settings,
 }
 
 inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_logs_left_styled_lines(
-    const LogsState& settings,
+    const ShellLogsState& settings,
     const std::vector<cuwacunu::piaabo::dlog_entry_t>& snap) {
   std::vector<cuwacunu::iinuji::styled_text_line_t> out;
   std::size_t shown = 0;
@@ -211,7 +303,7 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_logs_left_styled_l
     });
   };
 
-  push("# dlogs buffer");
+  push("# shell dlogs buffer");
   push(
       "# entries=" + std::to_string(snap.size()) +
       " shown=" + std::to_string(shown) +
@@ -242,17 +334,17 @@ inline std::string styled_lines_to_text(
   std::ostringstream oss;
   for (std::size_t i = 0; i < lines.size(); ++i) {
     if (i > 0) oss << '\n';
-    oss << lines[i].text;
+    oss << cuwacunu::iinuji::styled_text_line_text(lines[i]);
   }
   return oss.str();
 }
 
-inline std::string make_logs_left(const LogsState& settings,
+inline std::string make_logs_left(const ShellLogsState& settings,
                                   const std::vector<cuwacunu::piaabo::dlog_entry_t>& snap) {
   return styled_lines_to_text(make_logs_left_styled_lines(settings, snap));
 }
 
-inline std::string make_logs_right(const LogsState& settings,
+inline std::string make_logs_right(const ShellLogsState& settings,
                                    const std::vector<cuwacunu::piaabo::dlog_entry_t>& snap) {
   std::map<std::string, std::size_t> level_counts;
   std::size_t shown = 0;
@@ -276,8 +368,8 @@ inline std::string make_logs_right(const LogsState& settings,
   };
 
   std::ostringstream oss;
-  oss << "Logs view\n";
-  oss << "  source: piaabo/dlogs.h buffer\n";
+  oss << "Shell Logs\n";
+  oss << "  source: iinuji_cmd piaabo/dlogs.h buffer\n";
   oss << "  entries: " << shown << " shown / " << snap.size() << " total"
       << " / " << cuwacunu::piaabo::dlog_buffer_capacity() << "\n";
 #if DLOGS_ENABLE_METADATA
@@ -392,7 +484,9 @@ inline std::string make_logs_right(const LogsState& settings,
   oss << "  aliases: logs, f8, logs clear\n";
   oss << "  primitive translation: disabled\n";
   oss << "\nKeys\n";
-  oss << "  F8 : open logs screen\n";
+  oss << "  F8 : open shell logs screen\n";
+  oss << "  f : toggle full/split log stream\n";
+  oss << "  Esc : restore split after going full\n";
   oss << "  [^] top-right click or Home : jump to oldest\n";
   oss << "  [v] bottom-right click or End : jump to newest\n";
   oss << "  wheel : vertical scroll both panels\n";

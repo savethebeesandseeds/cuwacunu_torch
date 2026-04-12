@@ -25,9 +25,15 @@ $(eval $(call TEST_ONEFILE, test_iinuji_data_viz,             test_iinuji_data_v
 $(eval $(call TEST_ONEFILE, test_iinuji_timeseries,           test_iinuji_timeseries.cpp,           $(TORCH_LINK)))
 $(eval $(call TEST_ONEFILE, test_iinuji_cmd,                  test_iinuji_cmd.cpp,                  $(TORCH_LINK)))
 $(eval $(call TEST_ONEFILE, test_iinuji_bootstrap,            test_iinuji_bootstrap.cpp))
-$(eval $(call TEST_ONEFILE, test_iinuji_cmd_home,             test_iinuji_cmd_home.cpp,             $(TORCH_LINK)))
-$(eval $(call TEST_ONEFILE, test_iinuji_cmd_canonical_paths,  test_iinuji_cmd_canonical_paths.cpp,  $(TORCH_LINK)))
+$(eval $(call TEST_ONEFILE, test_iinuji_cmd_landing,          test_iinuji_cmd_landing.cpp,          $(TORCH_LINK)))
 $(eval $(call TEST_ONEFILE, test_iinuji_cmd_terminal,         test_iinuji_cmd_terminal.cpp,         $(TORCH_LINK)))
+$(eval $(call TEST_ONEFILE, test_iinuji_image_primitive,      test_iinuji_image_primitive.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_image_demo,           test_iinuji_image_demo.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_animation_primitive,  test_iinuji_animation_primitive.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_animation_demo,       test_iinuji_animation_demo.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_braille_colors,       test_iinuji_braille_colors.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_art_text_primitive,   test_iinuji_art_text_primitive.cpp))
+$(eval $(call TEST_ONEFILE, test_iinuji_art_text_demo,        test_iinuji_art_text_demo.cpp))
 
 # 4) Target-specific includes/link flags
 $(TEST_OUT)/test_iinuji_%: INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
@@ -36,9 +42,11 @@ $(TEST_OUT)/test_iinuji_%: LDLIBS_EXTRA   += $(LDLIBS_ncurses)
 $(TEST_OUT)/test_iinuji_data_viz: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 $(TEST_OUT)/test_iinuji_timeseries: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 $(TEST_OUT)/test_iinuji_cmd: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
-$(TEST_OUT)/test_iinuji_cmd_home: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
-$(TEST_OUT)/test_iinuji_cmd_canonical_paths: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_iinuji_cmd_landing: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 $(TEST_OUT)/test_iinuji_cmd_terminal: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_iinuji_image_demo: LDLIBS_EXTRA += -L/lib/x86_64-linux-gnu -L/usr/lib/x86_64-linux-gnu -l:libz.so.1
+$(TEST_OUT)/test_iinuji_animation_primitive: LDLIBS_EXTRA += -L/lib/x86_64-linux-gnu -L/usr/lib/x86_64-linux-gnu -l:libz.so.1
+$(TEST_OUT)/test_iinuji_animation_demo: LDLIBS_EXTRA += -L/lib/x86_64-linux-gnu -L/usr/lib/x86_64-linux-gnu -l:libz.so.1
 
 # 5) Aggregate: all
 .PHONY: all
@@ -53,9 +61,15 @@ all: \
 	$(TEST_OUT)/test_iinuji_timeseries \
 	$(TEST_OUT)/test_iinuji_cmd \
 	$(TEST_OUT)/test_iinuji_bootstrap \
-	$(TEST_OUT)/test_iinuji_cmd_home \
-	$(TEST_OUT)/test_iinuji_cmd_canonical_paths \
-	$(TEST_OUT)/test_iinuji_cmd_terminal
+	$(TEST_OUT)/test_iinuji_cmd_landing \
+	$(TEST_OUT)/test_iinuji_cmd_terminal \
+	$(TEST_OUT)/test_iinuji_image_primitive \
+	$(TEST_OUT)/test_iinuji_image_demo \
+	$(TEST_OUT)/test_iinuji_animation_primitive \
+	$(TEST_OUT)/test_iinuji_animation_demo \
+	$(TEST_OUT)/test_iinuji_braille_colors \
+	$(TEST_OUT)/test_iinuji_art_text_primitive \
+	$(TEST_OUT)/test_iinuji_art_text_demo
 	@$(LOG_SUCCESS)
 
 # 6) Aggregate: run
@@ -70,9 +84,15 @@ run: \
 	run-test_iinuji_data_viz \
 	run-test_iinuji_timeseries \
 	run-test_iinuji_cmd \
-	run-test_iinuji_cmd_home \
-	run-test_iinuji_cmd_canonical_paths \
-	run-test_iinuji_cmd_terminal
+	run-test_iinuji_cmd_landing \
+	run-test_iinuji_cmd_terminal \
+	run-test_iinuji_image_primitive \
+	run-test_iinuji_image_demo \
+	run-test_iinuji_animation_primitive \
+	run-test_iinuji_animation_demo \
+	run-test_iinuji_braille_colors \
+	run-test_iinuji_art_text_primitive \
+	run-test_iinuji_art_text_demo
 
 # 7) Clean
 .PHONY: clean

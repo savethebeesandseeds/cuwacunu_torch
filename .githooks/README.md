@@ -5,7 +5,7 @@ This repo ships local git hooks for the first TSODAO public/private guard.
 Enable them with:
 
 ```bash
-make -C /cuwacunu/src/main/tools -j12 install-tsodao
+make -C /cuwacunu/src/main/tools -j12 build-tsodao
 bash /cuwacunu/src/scripts/install_git_hooks.sh
 ```
 
@@ -18,4 +18,6 @@ What they do:
 - `pre-push` rejects pushes that would publish hidden plaintext from the commit
   range being pushed.
 - both hooks call `/cuwacunu/.build/tools/tsodao` directly and fail fast with a
-  build/install hint if the binary is missing.
+  build hint if the binary is missing.
+- the hooks must run in the same OS environment that built `tsodao`; a Linux
+  `tsodao` binary is not runnable from Git for Windows.

@@ -1,16 +1,19 @@
 #pragma once
 
+#include <limits>
 #include <string>
 
 #include <ncursesw/ncurses.h>
 
-#include "iinuji/iinuji_cmd/commands.h"
-#include "iinuji/iinuji_cmd/commands/iinuji.state.flow.h"
 #include "iinuji/iinuji_cmd/app/input.h"
 #include "iinuji/iinuji_cmd/app/overlays.h"
-#include "iinuji/iinuji_cmd/views/board/app.h"
-#include "iinuji/iinuji_cmd/views/data/app.h"
-#include "iinuji/iinuji_cmd/views/tsiemene/app.h"
+#include "iinuji/iinuji_cmd/commands.h"
+#include "iinuji/iinuji_cmd/commands/iinuji.state.flow.h"
+#include "iinuji/iinuji_cmd/views/config/app.h"
+#include "iinuji/iinuji_cmd/views/human/app.h"
+#include "iinuji/iinuji_cmd/views/lattice/app.h"
+#include "iinuji/iinuji_cmd/views/logs/app.h"
+#include "iinuji/iinuji_cmd/views/runtime/app.h"
 #include "piaabo/dlogs.h"
 
 #ifndef BUTTON_SHIFT
@@ -70,66 +73,62 @@ struct AppKeyDispatchResult {
 
 template <class SetMouseCaptureFn>
 inline AppKeyDispatchResult dispatch_app_key(
-    CmdState& state,
-    int ch,
-    DataAppRuntime& data_rt,
-    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
-    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right,
-    int v_scroll_step,
-    int h_scroll_step,
-    SetMouseCaptureFn&& set_mouse_capture) {
+    CmdState &state, int ch,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &left,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &right,
+    int v_scroll_step, int h_scroll_step,
+    SetMouseCaptureFn &&set_mouse_capture) {
   const auto consume = [](bool dirty = true) {
     return AppKeyDispatchResult{true, dirty};
   };
 
   if (ch == KEY_MOUSE) {
-    if (!state.logs.mouse_capture) return consume(false);
+    if (!state.shell_logs.mouse_capture)
+      return consume(false);
     MEVENT me{};
-    if (getmouse(&me) != OK) return consume(false);
+    if (getmouse(&me) != OK)
+      return consume(false);
 
-    const bool left_click = (me.bstate & (BUTTON1_PRESSED | BUTTON1_CLICKED |
-                                          BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED)) != 0;
+    const bool left_click =
+        (me.bstate & (BUTTON1_PRESSED | BUTTON1_CLICKED |
+                      BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED)) != 0;
+    if (left_click && help_overlay_close_hit(state, left, right, me.x, me.y)) {
+      dispatch_canonical_internal_call(state, canonical_paths::kHelpClose);
+      return consume(true);
+    }
+
     if (left_click) {
-      if (help_overlay_close_hit(state, left, right, me.x, me.y)) {
-        dispatch_canonical_internal_call(state, canonical_paths::kHelpClose);
-        log_info("[iinuji_cmd] help overlay closed (mouse)\n");
+      if (const auto jump = editor_jump_hint_target(left, me.x, me.y);
+          jump.has_value() && apply_editor_jump_hint(state, *jump)) {
         return consume(true);
       }
-      if (data_plot_overlay_close_hit(state, left, right, me.x, me.y)) {
-        dispatch_canonical_internal_call(state, canonical_paths::kDataPlotOff);
-        log_info("[iinuji_cmd] data plot overlay closed (mouse)\n");
+      if (const auto jump = editor_jump_hint_target(right, me.x, me.y);
+          jump.has_value() && apply_editor_jump_hint(state, *jump)) {
         return consume(true);
       }
     }
-    const bool mod_shift = (me.bstate & BUTTON_SHIFT) != 0;
-    const bool mod_ctrl = (me.bstate & BUTTON_CTRL) != 0;
-    const bool mod_alt = (me.bstate & BUTTON_ALT) != 0;
-    const bool horizontal_mod = (mod_shift || mod_ctrl || mod_alt);
-
-    int dy = 0;
-    int dx = 0;
-    bool wheel = false;
 
     if (state.help_view) {
-      if (me.bstate & (BUTTON4_PRESSED | BUTTON4_CLICKED | BUTTON4_DOUBLE_CLICKED | BUTTON4_TRIPLE_CLICKED)) {
-        wheel = true;
-        if (horizontal_mod) dx -= h_scroll_step;
-        else dy -= v_scroll_step;
+      int dy = 0;
+      int dx = 0;
+      const bool horizontal_mod = ((me.bstate & BUTTON_SHIFT) != 0) ||
+                                  ((me.bstate & BUTTON_CTRL) != 0) ||
+                                  ((me.bstate & BUTTON_ALT) != 0);
+      if (me.bstate & (BUTTON4_PRESSED | BUTTON4_CLICKED |
+                       BUTTON4_DOUBLE_CLICKED | BUTTON4_TRIPLE_CLICKED)) {
+        if (horizontal_mod)
+          dx -= h_scroll_step;
+        else
+          dy -= v_scroll_step;
       }
-      if (me.bstate & (BUTTON5_PRESSED | BUTTON5_CLICKED | BUTTON5_DOUBLE_CLICKED | BUTTON5_TRIPLE_CLICKED)) {
-        wheel = true;
-        if (horizontal_mod) dx += h_scroll_step;
-        else dy += v_scroll_step;
+      if (me.bstate & (BUTTON5_PRESSED | BUTTON5_CLICKED |
+                       BUTTON5_DOUBLE_CLICKED | BUTTON5_TRIPLE_CLICKED)) {
+        if (horizontal_mod)
+          dx += h_scroll_step;
+        else
+          dy += v_scroll_step;
       }
-      if (me.bstate & BUTTON6_PRESSED) {
-        wheel = true;
-        dx -= h_scroll_step;
-      }
-      if (me.bstate & BUTTON7_PRESSED) {
-        wheel = true;
-        dx += h_scroll_step;
-      }
-      if (wheel) {
+      if (dy != 0 || dx != 0) {
         scroll_help_overlay(state, dy, dx);
         return consume(true);
       }
@@ -137,12 +136,25 @@ inline AppKeyDispatchResult dispatch_app_key(
     }
 
     if (left_click) {
+      if (workspace_zoom_button_hit(state, left, right, me.x, me.y)) {
+        if (workspace_toggle_current_screen_zoom(state) &&
+            state.screen == ScreenMode::Runtime) {
+          set_runtime_status(state,
+                             workspace_is_current_screen_zoomed(state)
+                                 ? "Expanded runtime detail panel."
+                                 : "Restored split runtime panel layout.",
+                             false);
+        }
+        return consume(true);
+      }
       if (logs_jump_top_hit(state, left, me.x, me.y)) {
-        dispatch_canonical_internal_call(state, canonical_paths::kLogsScrollHome);
+        dispatch_canonical_internal_call(state,
+                                         canonical_paths::kLogsScrollHome);
         return consume(true);
       }
       if (logs_jump_bottom_hit(state, left, me.x, me.y)) {
-        dispatch_canonical_internal_call(state, canonical_paths::kLogsScrollEnd);
+        dispatch_canonical_internal_call(state,
+                                         canonical_paths::kLogsScrollEnd);
         return consume(true);
       }
     }
@@ -151,27 +163,31 @@ inline AppKeyDispatchResult dispatch_app_key(
     const auto r_caps = panel_scroll_caps(right);
     const bool any_v = l_caps.v || r_caps.v;
     const bool any_h = l_caps.h || r_caps.h;
+    const bool horizontal_auto =
+        ((me.bstate & BUTTON_SHIFT) != 0) || ((me.bstate & BUTTON_CTRL) != 0) ||
+        ((me.bstate & BUTTON_ALT) != 0) || (!any_v && any_h);
 
-    const bool horizontal_auto = horizontal_mod || (!any_v && any_h);
-    if (me.bstate & (BUTTON4_PRESSED | BUTTON4_CLICKED | BUTTON4_DOUBLE_CLICKED | BUTTON4_TRIPLE_CLICKED)) {
-      wheel = true;
-      if (horizontal_auto) dx -= h_scroll_step;
-      else dy -= v_scroll_step;
+    int dy = 0;
+    int dx = 0;
+    if (me.bstate & (BUTTON4_PRESSED | BUTTON4_CLICKED |
+                     BUTTON4_DOUBLE_CLICKED | BUTTON4_TRIPLE_CLICKED)) {
+      if (horizontal_auto)
+        dx -= h_scroll_step;
+      else
+        dy -= v_scroll_step;
     }
-    if (me.bstate & (BUTTON5_PRESSED | BUTTON5_CLICKED | BUTTON5_DOUBLE_CLICKED | BUTTON5_TRIPLE_CLICKED)) {
-      wheel = true;
-      if (horizontal_auto) dx += h_scroll_step;
-      else dy += v_scroll_step;
+    if (me.bstate & (BUTTON5_PRESSED | BUTTON5_CLICKED |
+                     BUTTON5_DOUBLE_CLICKED | BUTTON5_TRIPLE_CLICKED)) {
+      if (horizontal_auto)
+        dx += h_scroll_step;
+      else
+        dy += v_scroll_step;
     }
-    if (me.bstate & BUTTON6_PRESSED) {
-      wheel = true;
+    if (me.bstate & BUTTON6_PRESSED)
       dx -= h_scroll_step;
-    }
-    if (me.bstate & BUTTON7_PRESSED) {
-      wheel = true;
+    if (me.bstate & BUTTON7_PRESSED)
       dx += h_scroll_step;
-    }
-    if (wheel) {
+    if (dy != 0 || dx != 0) {
       scroll_active_screen(state, left, right, dy, dx);
       return consume(true);
     }
@@ -180,196 +196,112 @@ inline AppKeyDispatchResult dispatch_app_key(
 
   if (ch == 27 && state.help_view) {
     dispatch_canonical_internal_call(state, canonical_paths::kHelpClose);
-    log_info("[iinuji_cmd] help overlay closed (esc)\n");
     return consume(true);
   }
-  if (handle_help_overlay_key(state, ch)) return consume(true);
+  if (handle_help_overlay_key(state, ch))
+    return consume(true);
 
   const bool is_cmdline_key =
-      (ch == '\n' || ch == '\r' || ch == KEY_ENTER) ||
-      (ch == 21) ||
-      (ch == KEY_BACKSPACE || ch == 127 || ch == 8) ||
-      (ch >= 32 && ch <= 126);
-  if (state.help_view && !is_cmdline_key) return consume(false);
+      (ch == '\n' || ch == '\r' || ch == KEY_ENTER) || (ch == 21) ||
+      (ch == KEY_BACKSPACE || ch == 127 || ch == 8) || (ch >= 32 && ch <= 126);
+  if (state.help_view && !is_cmdline_key)
+    return consume(false);
 
   if (ch == KEY_F(1)) {
     dispatch_canonical_internal_call(state, canonical_paths::kScreenHome);
-    log_info("[iinuji_cmd] screen=home\n");
     return consume(true);
   }
   if (ch == KEY_F(2)) {
-    dispatch_canonical_internal_call(state, canonical_paths::kScreenBoard);
-    log_info("[iinuji_cmd] screen=board\n");
+    dispatch_canonical_internal_call(state, canonical_paths::kScreenHuman);
     return consume(true);
   }
   if (ch == KEY_F(3)) {
-    dispatch_canonical_internal_call(state, canonical_paths::kScreenTraining);
-    log_info("[iinuji_cmd] screen=training\n");
+    dispatch_canonical_internal_call(state, canonical_paths::kScreenRuntime);
     return consume(true);
   }
   if (ch == KEY_F(4)) {
-    dispatch_canonical_internal_call(state, canonical_paths::kScreenTsi);
-    log_info("[iinuji_cmd] screen=tsi\n");
-    return consume(true);
-  }
-  if (ch == KEY_F(5)) {
-    dispatch_canonical_internal_call(state, canonical_paths::kScreenData);
-    log_info("[iinuji_cmd] screen=data\n");
+    dispatch_canonical_internal_call(state, canonical_paths::kScreenLattice);
     return consume(true);
   }
   if (ch == KEY_F(8)) {
     dispatch_canonical_internal_call(state, canonical_paths::kScreenLogs);
-    log_info("[iinuji_cmd] screen=logs\n");
     return consume(true);
   }
   if (ch == KEY_F(9)) {
     dispatch_canonical_internal_call(state, canonical_paths::kScreenConfig);
-    log_info("[iinuji_cmd] screen=config\n");
     return consume(true);
   }
 
-  if (!state.help_view && handle_board_navigation_key(state, ch, state.cmdline.empty())) {
-    return consume(true);
-  }
-
-  if (!state.help_view && handle_board_editor_key(state, ch)) return consume(true);
-
-  if (!state.help_view &&
-      state.screen == ScreenMode::Tsiemene &&
-      state.cmdline.empty() &&
-      (ch == KEY_ENTER || ch == '\n' || ch == '\r') &&
-      state.tsiemene.panel_focus == TsiPanelFocus::View) {
-    const auto action = handle_tsi_view_enter_action(state);
-    if (action.handled && !action.canonical_call.empty()) {
-      dispatch_canonical_internal_call(state, action.canonical_call);
-    }
-    if (action.handled) return consume(true);
-  }
-
-  if (!state.help_view && handle_tsi_key(state, ch, state.cmdline.empty())) return consume(true);
-
-  if (state.screen == ScreenMode::Training && ch == KEY_LEFT) {
-    dispatch_canonical_internal_call(state, canonical_paths::kTrainingTabPrev);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Training && ch == KEY_RIGHT) {
-    dispatch_canonical_internal_call(state, canonical_paths::kTrainingTabNext);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Training && ch == KEY_UP) {
-    dispatch_canonical_internal_call(state, canonical_paths::kTrainingHashPrev);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Training && ch == KEY_DOWN) {
-    dispatch_canonical_internal_call(state, canonical_paths::kTrainingHashNext);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Config && ch == KEY_DOWN) {
-    dispatch_canonical_internal_call(state, canonical_paths::kConfigTabNext);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Config && ch == KEY_UP) {
-    dispatch_canonical_internal_call(state, canonical_paths::kConfigTabPrev);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Logs && ch == KEY_UP) {
-    dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsSelectPrev);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Logs && ch == KEY_DOWN) {
-    dispatch_canonical_internal_call(state, canonical_paths::kLogsSettingsSelectNext);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Logs && (ch == KEY_LEFT || ch == KEY_RIGHT)) {
-    const bool forward = (ch == KEY_RIGHT);
-    if (dispatch_logs_setting_adjust(state, forward)) {
-      set_mouse_capture(state.logs.mouse_capture);
+  if (!state.help_view && state.cmdline.empty()) {
+    if (handle_human_key(state, ch))
+      return consume(true);
+    if (handle_runtime_key(state, ch))
+      return consume(true);
+    if (handle_lattice_key(state, ch))
+      return consume(true);
+    if (handle_config_key(state, ch))
+      return consume(true);
+    if (handle_logs_key(state, ch)) {
+      set_mouse_capture(state.shell_logs.mouse_capture);
       return consume(true);
     }
-  }
 
-  if (state.screen == ScreenMode::Logs && ch == KEY_HOME) {
-    dispatch_canonical_internal_call(state, canonical_paths::kLogsScrollHome);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Logs && ch == KEY_END) {
-    dispatch_canonical_internal_call(state, canonical_paths::kLogsScrollEnd);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Logs && ch == KEY_PPAGE) {
-    dispatch_canonical_internal_call(state, canonical_paths::kLogsScrollPageUp);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Logs && ch == KEY_NPAGE) {
-    dispatch_canonical_internal_call(state, canonical_paths::kLogsScrollPageDown);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Data && state.cmdline.empty() && ch == 27 && state.data.plot_view) {
-    dispatch_canonical_internal_call(state, canonical_paths::kDataPlotOff);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Data && state.cmdline.empty() && ch == KEY_UP) {
-    dispatch_canonical_internal_call(state, canonical_paths::kDataFocusPrev);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Data && state.cmdline.empty() && ch == KEY_DOWN) {
-    dispatch_canonical_internal_call(state, canonical_paths::kDataFocusNext);
-    return consume(true);
-  }
-  if (state.screen == ScreenMode::Data && state.cmdline.empty() && (ch == KEY_LEFT || ch == KEY_RIGHT)) {
-    const bool forward = (ch == KEY_RIGHT);
-    switch (state.data.nav_focus) {
-      case DataNavFocus::Channel:
-        dispatch_canonical_internal_call(state, forward ? canonical_paths::kDataChNext : canonical_paths::kDataChPrev);
-        break;
-      case DataNavFocus::Sample:
-        dispatch_canonical_internal_call(state, forward ? canonical_paths::kDataSampleNext : canonical_paths::kDataSamplePrev);
-        break;
-      case DataNavFocus::Dim:
-        dispatch_canonical_internal_call(state, forward ? canonical_paths::kDataDimNext : canonical_paths::kDataDimPrev);
-        break;
-      case DataNavFocus::PlotMode: {
-        const auto next_mode = forward
-            ? next_data_plot_mode(state.data.plot_mode)
-            : prev_data_plot_mode(state.data.plot_mode);
-        switch (next_mode) {
-          case DataPlotMode::SeqLength:
-            dispatch_canonical_internal_call(state, canonical_paths::kDataPlotModeSeq);
-            break;
-          case DataPlotMode::FutureSeqLength:
-            dispatch_canonical_internal_call(state, canonical_paths::kDataPlotModeFuture);
-            break;
-          case DataPlotMode::ChannelWeight:
-            dispatch_canonical_internal_call(state, canonical_paths::kDataPlotModeWeight);
-            break;
-          case DataPlotMode::NormalizationPolicy:
-            dispatch_canonical_internal_call(state, canonical_paths::kDataPlotModeNorm);
-            break;
-          case DataPlotMode::FileBytes:
-            dispatch_canonical_internal_call(state, canonical_paths::kDataPlotModeBytes);
-            break;
-        }
-      } break;
-      case DataNavFocus::XAxis:
-        dispatch_canonical_internal_call(state, canonical_paths::kDataAxisToggle);
-        break;
-      case DataNavFocus::Mask:
-        dispatch_canonical_internal_call(state, forward ? canonical_paths::kDataMaskOn : canonical_paths::kDataMaskOff);
-        break;
+    auto right_tb =
+        as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(right));
+    if ((state.screen == ScreenMode::Human ||
+         state.screen == ScreenMode::Runtime ||
+         state.screen == ScreenMode::Lattice) &&
+        right_tb != nullptr) {
+      if (ch == KEY_PPAGE) {
+        right_tb->scroll_by(-12, 0);
+        return consume(true);
+      }
+      if (ch == KEY_NPAGE) {
+        right_tb->scroll_by(+12, 0);
+        return consume(true);
+      }
+      if (ch == KEY_HOME) {
+        right_tb->scroll_y = 0;
+        return consume(true);
+      }
+      if (ch == KEY_END) {
+        right_tb->scroll_y = std::numeric_limits<int>::max();
+        return consume(true);
+      }
     }
-    return consume(true);
+
+    if (state.screen == ScreenMode::ShellLogs) {
+      if (ch == KEY_HOME) {
+        dispatch_canonical_internal_call(state,
+                                         canonical_paths::kLogsScrollHome);
+        return consume(true);
+      }
+      if (ch == KEY_END) {
+        dispatch_canonical_internal_call(state,
+                                         canonical_paths::kLogsScrollEnd);
+        return consume(true);
+      }
+      if (ch == KEY_PPAGE) {
+        dispatch_canonical_internal_call(state,
+                                         canonical_paths::kLogsScrollPageUp);
+        return consume(true);
+      }
+      if (ch == KEY_NPAGE) {
+        dispatch_canonical_internal_call(state,
+                                         canonical_paths::kLogsScrollPageDown);
+        return consume(true);
+      }
+    }
   }
 
   if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
     const std::string cmd = state.cmdline;
     state.cmdline.clear();
-    if (state.help_view && !cmd.empty()) state.help_view = false;
+    if (state.help_view && !cmd.empty())
+      state.help_view = false;
     run_command(state, cmd, nullptr);
-    set_mouse_capture(state.logs.mouse_capture);
+    set_mouse_capture(state.shell_logs.mouse_capture);
     IinujiStateFlow{state}.normalize_after_command();
-    if (data_runtime_needed(state)) {
-      init_data_runtime(state, data_rt, false);
-    }
     return consume(true);
   }
 
@@ -394,6 +326,6 @@ inline AppKeyDispatchResult dispatch_app_key(
   return {};
 }
 
-}  // namespace iinuji_cmd
-}  // namespace iinuji
-}  // namespace cuwacunu
+} // namespace iinuji_cmd
+} // namespace iinuji
+} // namespace cuwacunu

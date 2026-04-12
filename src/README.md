@@ -38,13 +38,18 @@ Recommended daily build surface:
 ```bash
 make lib       # canonical library/core aggregate
 make link      # refresh src lib-bundles, then build final linked executables
-make install   # finalize in-place hero/tool outputs after link
+make install   # finalize in-place hero/tool/interface outputs after link
 ```
+
+Build output layout:
+- bundled static archives: `.build/lib`
+- object files and dep metadata: `.build/obj`
+- final binaries: `.build/hero`, `.build/tools`, `.build/interface`, `.build/tests`
 
 Advanced/internal:
 
 ```bash
 make tests     # run test dispatcher
 make modules   # build core modules only
-make -C main all   # build main binaries and finalize installable hero/tool outputs
+make -C main all   # build main binaries and finalize installable hero/tool/interface outputs
 ```

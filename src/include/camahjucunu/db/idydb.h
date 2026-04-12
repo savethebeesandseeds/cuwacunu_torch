@@ -149,6 +149,29 @@ idydb_extern int idydb_insert_char(idydb **handler, idydb_column_row_sizing colu
 idydb_extern int idydb_insert_const_char(idydb **handler, idydb_column_row_sizing column_position, idydb_column_row_sizing row_position, const char* value);
 idydb_extern int idydb_insert_bool(idydb **handler, idydb_column_row_sizing column_position, idydb_column_row_sizing row_position, bool value);
 
+typedef struct idydb_bulk_cell {
+    idydb_column_row_sizing column;
+    idydb_column_row_sizing row;
+    unsigned char type; /* IDYDB_INTEGER/FLOAT/CHAR/BOOL/VECTOR */
+    union {
+        int i;
+        float f;
+        bool b;
+        const char* s;
+        const float* vec;
+    } value;
+    unsigned short vector_dims;
+} idydb_bulk_cell;
+
+/**
+ * @brief Replace the writable database contents with a fresh set of cells.
+ * @note Cells may be unsorted on input; the implementation sorts them by
+ *       column,row before writing a brand-new snapshot.
+ */
+idydb_extern int idydb_replace_with_cells(idydb **handler,
+                                          const idydb_bulk_cell* cells,
+                                          size_t cell_count);
+
 /**
  * @brief Insert a vector<float> (embedding)
  *

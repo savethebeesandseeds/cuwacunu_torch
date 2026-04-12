@@ -6,26 +6,19 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "hero/hashimyei_hero/hashimyei_identity.h"
 #include "iinuji/primitives/editor.h"
 #include "iinuji/iinuji_types.h"
-#include "iinuji/iinuji_cmd/catalog.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.paths.h"
 #include "iinuji/iinuji_cmd/state.h"
-#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
-#include "camahjucunu/dsl/tsiemene_board/tsiemene_board.h"
-#include "iitepi/board_space_t.h"
-#include "iitepi/wave_space_t.h"
 #include "piaabo/dconfig.h"
-#include "piaabo/dlogs.h"
-#include "tsiemene/tsi.directive.registry.h"
+#include "piaabo/djson_parsing.h"
 
 #ifdef timeout
 #undef timeout
@@ -158,154 +151,6 @@ inline bool lookup_config_value(const std::string& section,
          lookup_contract_config_value(section, key, contract_hash, out);
 }
 
-inline std::string resolve_configured_board_contract_path() {
-  const auto board_hash =
-      cuwacunu::iitepi::config_space_t::locked_board_hash();
-  const auto board_itself =
-      cuwacunu::iitepi::board_space_t::board_itself(board_hash);
-  const auto& board_instruction = board_itself->board.decoded();
-  const std::string binding_id = trim_copy(board_instruction.active_bind_id);
-  if (binding_id.empty()) return {};
-
-  const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
-  for (const auto& b : board_instruction.binds) {
-    if (trim_copy(b.id) == binding_id) {
-      bind = &b;
-      break;
-    }
-  }
-  if (!bind) return {};
-
-  const cuwacunu::camahjucunu::tsiemene_board_contract_decl_t* contract_decl = nullptr;
-  for (const auto& c : board_instruction.contracts) {
-    if (c.id == bind->contract_ref) {
-      contract_decl = &c;
-      break;
-    }
-  }
-  if (!contract_decl) return {};
-
-  std::filesystem::path p(contract_decl->file);
-  if (!p.is_absolute()) {
-    p = std::filesystem::path(board_itself->config_folder) / p;
-  }
-  return p.lexically_normal().string();
-}
-
-inline cuwacunu::iitepi::contract_hash_t
-resolve_configured_board_contract_hash() {
-  const auto path = resolve_configured_board_contract_path();
-  const auto hash =
-      cuwacunu::iitepi::contract_space_t::register_contract_file(path);
-  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(hash);
-  return hash;
-}
-
-struct BoardWaveBatchSizeResolution {
-  bool ok{false};
-  std::size_t batch_size{0};
-  std::string detail{};
-};
-
-inline BoardWaveBatchSizeResolution resolve_configured_board_wave_batch_size() {
-  BoardWaveBatchSizeResolution out{};
-  try {
-    const auto board_hash =
-        cuwacunu::iitepi::config_space_t::locked_board_hash();
-    const auto board_itself =
-        cuwacunu::iitepi::board_space_t::board_itself(board_hash);
-    const auto& board_instruction = board_itself->board.decoded();
-    const std::string binding_id = trim_copy(board_instruction.active_bind_id);
-
-    if (binding_id.empty()) {
-      out.detail = "missing ACTIVE_BIND in board DSL";
-      return out;
-    }
-
-    const cuwacunu::camahjucunu::tsiemene_board_bind_decl_t* bind = nullptr;
-    for (const auto& b : board_instruction.binds) {
-      if (trim_copy(b.id) == binding_id) {
-        bind = &b;
-        break;
-      }
-    }
-    if (!bind) {
-      out.detail = "board binding not found: " + binding_id;
-      return out;
-    }
-
-    const cuwacunu::camahjucunu::tsiemene_board_wave_decl_t* wave_decl = nullptr;
-    for (const auto& w : board_instruction.waves) {
-      if (trim_copy(w.id) == trim_copy(bind->wave_ref)) {
-        wave_decl = &w;
-        break;
-      }
-    }
-    if (!wave_decl) {
-      out.detail = "board binding wave_ref not found: " + bind->wave_ref;
-      return out;
-    }
-
-    std::filesystem::path wave_path(wave_decl->file);
-    if (!wave_path.is_absolute()) {
-      wave_path = std::filesystem::path(board_itself->config_folder) / wave_path;
-    }
-    const std::string resolved_wave_path = wave_path.lexically_normal().string();
-    const auto wave_hash = cuwacunu::iitepi::wave_space_t::register_wave_file(resolved_wave_path);
-    const auto wave_itself = cuwacunu::iitepi::wave_space_t::wave_itself(wave_hash);
-    const auto& wave_set = wave_itself->wave.decoded();
-
-    const cuwacunu::camahjucunu::iitepi_wave_t* selected_wave = nullptr;
-    for (const auto& wave : wave_set.waves) {
-      if (trim_copy(wave.name) == trim_copy(bind->wave_ref)) {
-        if (selected_wave) {
-          out.detail = "ambiguous wave id in wave DSL: " + bind->wave_ref;
-          return out;
-        }
-        selected_wave = &wave;
-      }
-    }
-    if (!selected_wave) {
-      out.detail = "wave not found in wave DSL: " + bind->wave_ref;
-      return out;
-    }
-    if (selected_wave->batch_size == 0) {
-      out.detail = "bound wave has BATCH_SIZE=0: " + bind->wave_ref;
-      return out;
-    }
-    if (selected_wave->batch_size >
-        static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
-      out.detail = "bound wave BATCH_SIZE exceeds runtime size_t";
-      return out;
-    }
-
-    out.ok = true;
-    out.batch_size = static_cast<std::size_t>(selected_wave->batch_size);
-    out.detail = "binding=" + binding_id + " wave=" + bind->wave_ref;
-    return out;
-  } catch (const std::exception& ex) {
-    out.detail = std::string("wave batch resolution exception: ") + ex.what();
-    return out;
-  } catch (...) {
-    out.detail = "wave batch resolution exception: unknown";
-    return out;
-  }
-}
-
-inline const std::vector<std::string>& training_hashimyei_catalog() {
-  return cuwacunu::hashimyei::known_hashimyeis();
-}
-
-inline std::size_t clamp_training_hash_index(std::size_t idx) {
-  const std::size_t n = training_hashimyei_catalog().size();
-  if (n == 0) return 0;
-  return (idx < n) ? idx : 0;
-}
-
-inline std::string dir_token(tsiemene::DirectiveDir d) {
-  return (d == tsiemene::DirectiveDir::In) ? "in" : "out";
-}
-
 inline std::string mark_selected_line(std::string line) {
   const std::size_t first_non_space = line.find_first_not_of(' ');
   if (first_non_space != std::string::npos && line[first_non_space] == '>') return line;
@@ -325,14 +170,21 @@ inline std::shared_ptr<T> as(const std::shared_ptr<cuwacunu::iinuji::iinuji_obje
   return std::dynamic_pointer_cast<T>(obj->data);
 }
 
+inline std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> panel_content_target(
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box) {
+  return cuwacunu::iinuji::panel_body_object(box);
+}
+
 inline void set_text_box(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box,
                          std::string text,
                          bool wrap) {
-  if (!box) return;
-  auto tb = as<cuwacunu::iinuji::textBox_data_t>(box);
+  auto target = panel_content_target(box);
+  if (!target) return;
+  auto tb = as<cuwacunu::iinuji::textBox_data_t>(target);
   if (!tb) {
-    box->data = std::make_shared<cuwacunu::iinuji::textBox_data_t>("", wrap, text_align_t::Left);
-    tb = as<cuwacunu::iinuji::textBox_data_t>(box);
+    target->data =
+        std::make_shared<cuwacunu::iinuji::textBox_data_t>("", wrap, text_align_t::Left);
+    tb = as<cuwacunu::iinuji::textBox_data_t>(target);
     if (!tb) return;
   }
   tb->content = std::move(text);
@@ -344,17 +196,19 @@ inline void set_text_box_styled_lines(
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box,
     const std::vector<cuwacunu::iinuji::styled_text_line_t>& lines,
     bool wrap) {
-  if (!box) return;
-  auto tb = as<cuwacunu::iinuji::textBox_data_t>(box);
+  auto target = panel_content_target(box);
+  if (!target) return;
+  auto tb = as<cuwacunu::iinuji::textBox_data_t>(target);
   if (!tb) {
-    box->data = std::make_shared<cuwacunu::iinuji::textBox_data_t>("", wrap, text_align_t::Left);
-    tb = as<cuwacunu::iinuji::textBox_data_t>(box);
+    target->data =
+        std::make_shared<cuwacunu::iinuji::textBox_data_t>("", wrap, text_align_t::Left);
+    tb = as<cuwacunu::iinuji::textBox_data_t>(target);
     if (!tb) return;
   }
   std::ostringstream oss;
   for (std::size_t i = 0; i < lines.size(); ++i) {
     if (i > 0) oss << '\n';
-    oss << lines[i].text;
+    oss << cuwacunu::iinuji::styled_text_line_text(lines[i]);
   }
   tb->content = oss.str();
   tb->styled_lines = lines;
@@ -364,8 +218,27 @@ inline void set_text_box_styled_lines(
 inline void set_editor_box(
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box,
     const std::shared_ptr<cuwacunu::iinuji::editorBox_data_t>& editor) {
-  if (!box || !editor) return;
-  box->data = editor;
+  auto target = panel_content_target(box);
+  if (!target || !editor) return;
+  target->data = editor;
+}
+
+inline void set_plot_box(
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box,
+    const std::vector<std::vector<std::pair<double, double>>>& series,
+    const std::vector<cuwacunu::iinuji::plot_series_cfg_t>& cfg,
+    const cuwacunu::iinuji::plotbox_opts_t& opts) {
+  auto target = panel_content_target(box);
+  if (!target) return;
+  auto pb = as<cuwacunu::iinuji::plotBox_data_t>(target);
+  if (!pb) {
+    target->data = std::make_shared<cuwacunu::iinuji::plotBox_data_t>();
+    pb = as<cuwacunu::iinuji::plotBox_data_t>(target);
+    if (!pb) return;
+  }
+  pb->series = series;
+  pb->series_cfg = cfg;
+  pb->opts = opts;
 }
 
 inline void append_log(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& log_box,
@@ -375,6 +248,123 @@ inline void append_log(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>&
   auto bb = as<cuwacunu::iinuji::bufferBox_data_t>(log_box);
   if (!bb) return;
   bb->push_line(std::move(text), std::move(label), std::move(color));
+}
+
+using cmd_json_value_t = cuwacunu::piaabo::JsonValue;
+using cmd_json_type_t = cuwacunu::piaabo::JsonValueType;
+
+inline const cmd_json_value_t* cmd_json_field(const cmd_json_value_t* object,
+                                              std::string_view key) {
+  if (object == nullptr || object->type != cmd_json_type_t::OBJECT ||
+      !object->objectValue) {
+    return nullptr;
+  }
+  const auto it = object->objectValue->find(std::string(key));
+  if (it == object->objectValue->end()) return nullptr;
+  return &it->second;
+}
+
+inline std::string cmd_json_string(const cmd_json_value_t* value,
+                                   std::string fallback = {}) {
+  if (value == nullptr) return fallback;
+  if (value->type == cmd_json_type_t::STRING) return value->stringValue;
+  return fallback;
+}
+
+inline bool cmd_json_bool(const cmd_json_value_t* value, bool fallback = false) {
+  if (value == nullptr) return fallback;
+  if (value->type == cmd_json_type_t::BOOLEAN) return value->boolValue;
+  return fallback;
+}
+
+inline std::uint64_t cmd_json_u64(const cmd_json_value_t* value,
+                                  std::uint64_t fallback = 0) {
+  if (value == nullptr) return fallback;
+  if (value->type == cmd_json_type_t::NUMBER && value->numberValue >= 0.0) {
+    return static_cast<std::uint64_t>(value->numberValue);
+  }
+  return fallback;
+}
+
+inline std::optional<std::uint64_t> cmd_json_optional_u64(
+    const cmd_json_value_t* value) {
+  if (value == nullptr || value->type == cmd_json_type_t::NULL_TYPE) {
+    return std::nullopt;
+  }
+  if (value->type == cmd_json_type_t::NUMBER && value->numberValue >= 0.0) {
+    return static_cast<std::uint64_t>(value->numberValue);
+  }
+  return std::nullopt;
+}
+
+inline std::optional<std::int64_t> cmd_json_optional_i64(
+    const cmd_json_value_t* value) {
+  if (value == nullptr || value->type == cmd_json_type_t::NULL_TYPE) {
+    return std::nullopt;
+  }
+  if (value->type == cmd_json_type_t::NUMBER) {
+    return static_cast<std::int64_t>(value->numberValue);
+  }
+  return std::nullopt;
+}
+
+inline std::vector<std::string> cmd_json_string_array(
+    const cmd_json_value_t* value) {
+  std::vector<std::string> out{};
+  if (value == nullptr || value->type != cmd_json_type_t::ARRAY ||
+      !value->arrayValue) {
+    return out;
+  }
+  out.reserve(value->arrayValue->size());
+  for (const auto& entry : *value->arrayValue) {
+    if (entry.type == cmd_json_type_t::STRING) out.push_back(entry.stringValue);
+  }
+  return out;
+}
+
+inline bool cmd_parse_tool_structured_content(std::string_view tool_result_json,
+                                              cmd_json_value_t* out_structured,
+                                              std::string* error) {
+  if (error) error->clear();
+  if (out_structured == nullptr) {
+    if (error) *error = "structured content output pointer is null";
+    return false;
+  }
+  *out_structured = cmd_json_value_t{};
+  try {
+    const cmd_json_value_t root =
+        cuwacunu::piaabo::JsonParser(std::string(tool_result_json)).parse();
+    if (cmd_json_bool(cmd_json_field(&root, "isError"), false)) {
+      const auto* structured = cmd_json_field(&root, "structuredContent");
+      std::string message{};
+      if (structured != nullptr) {
+        message = cmd_json_string(cmd_json_field(structured, "error"));
+        if (message.empty()) {
+          message = cmd_json_string(cmd_json_field(structured, "message"));
+        }
+      }
+      if (message.empty()) {
+        const auto* content = cmd_json_field(&root, "content");
+        if (content != nullptr && content->type == cmd_json_type_t::ARRAY &&
+            content->arrayValue && !content->arrayValue->empty()) {
+          message =
+              cmd_json_string(cmd_json_field(&content->arrayValue->front(), "text"));
+        }
+      }
+      if (error) *error = message.empty() ? "tool returned error" : message;
+      return false;
+    }
+    const auto* structured = cmd_json_field(&root, "structuredContent");
+    if (structured == nullptr) {
+      if (error) *error = "tool result missing structuredContent";
+      return false;
+    }
+    *out_structured = *structured;
+    return true;
+  } catch (const std::exception& ex) {
+    if (error) *error = ex.what();
+    return false;
+  }
 }
 
 }  // namespace iinuji_cmd

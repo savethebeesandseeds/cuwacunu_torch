@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -55,6 +56,23 @@ enum class sync_plan_t {
   ambiguous,
 };
 
+sync_plan_t infer_default_sync_plan(const tsodao_config_t& cfg);
+
+enum class output_kind_t { info, error, prompt };
+
+struct output_style_t {
+  std::string actor_tag = "[user]";
+  bool color_stdout = false;
+  bool color_stderr = false;
+};
+
+output_style_t& output_style() {
+  static output_style_t style;
+  return style;
+}
+
+std::string trim_copy(std::string value);
+
 std::filesystem::path executable_path() {
   std::array<char, 4096> buf{};
   const ssize_t n = ::readlink("/proc/self/exe", buf.data(), buf.size() - 1);
@@ -105,12 +123,190 @@ fs::path find_repo_root(const char* argv0) {
   return {};
 }
 
+std::string local_user_id() {
+  if (const char* env_user = std::getenv("USER");
+      env_user != nullptr && env_user[0] != '\0') {
+    return env_user;
+  }
+  if (passwd* pw = ::getpwuid(::geteuid()); pw != nullptr &&
+                                             pw->pw_name != nullptr &&
+                                             pw->pw_name[0] != '\0') {
+    return pw->pw_name;
+  }
+  return "user";
+}
+
+bool color_enabled_for_fd(int fd) {
+  if (const char* no_color = std::getenv("NO_COLOR");
+      no_color != nullptr && no_color[0] != '\0') {
+    return false;
+  }
+  if (const char* force_color = std::getenv("FORCE_COLOR");
+      force_color != nullptr && force_color[0] != '\0' &&
+      std::string_view(force_color) != "0") {
+    return true;
+  }
+  const char* term = std::getenv("TERM");
+  if (term == nullptr || std::string_view(term) == "dumb") return false;
+  return ::isatty(fd) != 0;
+}
+
+void initialize_output_style() {
+  auto& style = output_style();
+  style.actor_tag = "[" + local_user_id() + "]";
+  style.color_stdout = color_enabled_for_fd(STDOUT_FILENO);
+  style.color_stderr = color_enabled_for_fd(STDERR_FILENO);
+}
+
+std::string color_wrap(std::string_view code, std::string_view text, bool enabled) {
+  if (!enabled) return std::string(text);
+  return std::string(code) + std::string(text) + "\033[0m";
+}
+
+std::size_t leading_space_count(std::string_view text) {
+  std::size_t count = 0;
+  while (count < text.size() && text[count] == ' ') ++count;
+  return count;
+}
+
+bool looks_like_section_heading(const std::string& line) {
+  const std::string trimmed = trim_copy(line);
+  return !trimmed.empty() && leading_space_count(line) == 0 && trimmed.back() == ':';
+}
+
+std::string section_heading_text(const std::string& line) {
+  std::string trimmed = trim_copy(line);
+  if (!trimmed.empty() && trimmed.back() == ':') trimmed.pop_back();
+  return trimmed;
+}
+
+std::optional<std::pair<std::string, std::string>> parse_field_line(
+    const std::string& line) {
+  const std::string trimmed = trim_copy(line);
+  const auto pos = trimmed.find(" = ");
+  if (pos == std::string::npos || pos == 0) return std::nullopt;
+  return std::make_pair(trimmed.substr(0, pos), trimmed.substr(pos + 3));
+}
+
+std::string title_case_copy(std::string value) {
+  bool upper_next = true;
+  for (char& ch : value) {
+    if (ch == ' ' || ch == '-' || ch == '_' || ch == '/') {
+      upper_next = true;
+      continue;
+    }
+    if (upper_next && ch >= 'a' && ch <= 'z') {
+      ch = static_cast<char>(ch - 'a' + 'A');
+      upper_next = false;
+    } else if (upper_next) {
+      upper_next = false;
+    }
+  }
+  return value;
+}
+
+std::string render_section_header(const std::string& title, output_kind_t kind,
+                                  bool color_enabled) {
+  const std::string heading = "== " + title_case_copy(title) + " ==";
+  switch (kind) {
+    case output_kind_t::info:
+      return color_wrap("\033[1;34m", heading, color_enabled);
+    case output_kind_t::error:
+      return color_wrap("\033[1;31m", heading, color_enabled);
+    case output_kind_t::prompt:
+      return color_wrap("\033[1;33m", heading, color_enabled);
+  }
+  return heading;
+}
+
+std::string render_prefix(output_kind_t kind, bool color_enabled) {
+  const auto& style = output_style();
+  const std::string actor = color_wrap("\033[1;36m", style.actor_tag, color_enabled);
+  switch (kind) {
+    case output_kind_t::info:
+      return actor + " ";
+    case output_kind_t::error:
+      return actor + " " + color_wrap("\033[1;31m", "E:", color_enabled) + " ";
+    case output_kind_t::prompt:
+      return actor + " " + color_wrap("\033[1;33m", "?:", color_enabled) + " ";
+  }
+  return actor + " ";
+}
+
+std::string render_body_line(const std::string& line, std::size_t field_key_width,
+                             bool color_enabled) {
+  if (const auto field = parse_field_line(line)) {
+    const std::string key =
+        color_wrap("\033[0;36m", field->first, color_enabled);
+    std::ostringstream oss;
+    oss << "  " << key;
+    if (field->first.size() < field_key_width) {
+      oss << std::string(field_key_width - field->first.size(), ' ');
+    }
+    oss << " : " << field->second;
+    return oss.str();
+  }
+
+  if (line.empty()) return "";
+  if (leading_space_count(line) == 0) return "  " + line;
+  return line;
+}
+
+void emit_lines(std::ostream& out, output_kind_t kind, const std::string& message,
+                bool with_trailing_newline) {
+  const bool color_enabled =
+      (&out == &std::cout) ? output_style().color_stdout : output_style().color_stderr;
+  const std::string prefix = render_prefix(kind, color_enabled);
+  std::stringstream ss(message);
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(ss, line)) lines.push_back(line);
+  if (lines.empty()) lines.push_back("");
+
+  const bool section_heading =
+      lines.size() > 1 && looks_like_section_heading(lines.front());
+  const std::size_t body_start = section_heading ? 1 : 1;
+  std::size_t field_key_width = 0;
+  for (std::size_t i = body_start; i < lines.size(); ++i) {
+    if (const auto field = parse_field_line(lines[i])) {
+      field_key_width = std::max(field_key_width, field->first.size());
+    }
+  }
+
+  if (section_heading) {
+    out << prefix
+        << render_section_header(section_heading_text(lines.front()), kind,
+                                 color_enabled);
+    if (lines.size() > 1 || with_trailing_newline) out << '\n';
+    for (std::size_t i = 1; i < lines.size(); ++i) {
+      out << render_body_line(lines[i], field_key_width, color_enabled);
+      if (i + 1 < lines.size() || with_trailing_newline) out << '\n';
+    }
+    out.flush();
+    return;
+  }
+
+  out << prefix << lines.front();
+  if (lines.size() > 1 || with_trailing_newline) out << '\n';
+  for (std::size_t i = 1; i < lines.size(); ++i) {
+    out << render_body_line(lines[i], field_key_width, color_enabled);
+    if (i + 1 < lines.size() || with_trailing_newline) out << '\n';
+  }
+  out.flush();
+}
+
 [[noreturn]] void die(const std::string& message) {
-  std::cerr << "tsodao: " << message << "\n";
+  emit_lines(std::cerr, output_kind_t::error, message, true);
   std::exit(1);
 }
 
-void note(const std::string& message) { std::cout << "tsodao: " << message << "\n"; }
+void note(const std::string& message) {
+  emit_lines(std::cout, output_kind_t::info, message, true);
+}
+
+void prompt(const std::string& message) {
+  emit_lines(std::cerr, output_kind_t::prompt, message, false);
+}
 
 std::string trim_copy(std::string value) {
   const auto first = value.find_first_not_of(" \t\r\n");
@@ -157,6 +353,66 @@ bool path_starts_with(const fs::path& candidate, const fs::path& prefix) {
     if (it_candidate == candidate.end() || *it_candidate != *it_prefix) return false;
   }
   return true;
+}
+
+std::string display_path(const tsodao_config_t& cfg, const fs::path& path) {
+  const fs::path normalized_root = cfg.repo_root.lexically_normal();
+  const fs::path normalized_path = path.lexically_normal();
+  if (path_starts_with(normalized_path, normalized_root)) {
+    std::error_code ec;
+    const fs::path rel = fs::relative(normalized_path, normalized_root, ec);
+    if (!ec) return rel.generic_string();
+  }
+  return normalized_path.string();
+}
+
+bool is_ascii_hex(char ch) {
+  return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') ||
+         (ch >= 'A' && ch <= 'F');
+}
+
+std::string compact_hexish(std::string value) {
+  value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char ch) {
+                return std::isspace(ch) != 0;
+              }),
+              value.end());
+  return value;
+}
+
+std::string recipient_summary(const std::string& recipient) {
+  if (recipient.empty()) return "unset";
+  const std::string compact = compact_hexish(recipient);
+  if (compact.size() >= 16 &&
+      std::all_of(compact.begin(), compact.end(), is_ascii_hex)) {
+    return compact + " (key id " + compact.substr(compact.size() - 16) + ")";
+  }
+  return recipient;
+}
+
+void emit_operator_context(const tsodao_config_t& cfg) {
+  std::ostringstream oss;
+  oss << "context:\n"
+      << "  policy = " << display_path(cfg, cfg.tsodao_dsl_path) << "\n"
+      << "  surface = " << display_path(cfg, cfg.hidden_root) << "\n"
+      << "  archive = " << display_path(cfg, cfg.hidden_archive) << "\n"
+      << "  state = " << display_path(cfg, cfg.local_state_path) << "\n"
+      << "  visibility = "
+      << (cfg.visibility_mode.empty() ? std::string("unset") : cfg.visibility_mode)
+      << "\n"
+      << "  recipient = " << recipient_summary(cfg.gpg_recipient);
+  note(oss.str());
+}
+
+std::string sync_choice_guidance(bool include_yes) {
+  std::ostringstream oss;
+  oss << "choose one source explicitly:\n"
+      << "  tsodao sync --from-plaintext\n"
+      << "    reseal archive from local plaintext\n"
+      << "  tsodao sync --from-archive";
+  if (include_yes) oss << " --yes";
+  oss << "\n"
+      << "    restore hidden root from current archive";
+  return oss.str();
 }
 
 std::string repo_relative_path(const fs::path& repo_root, const fs::path& abs_path) {
@@ -473,7 +729,7 @@ void prompt_uid_if_needed(std::string& user_id, bool assume_yes) {
     return;
   }
 
-  std::cerr << "GPG user id for TSODAO [" << default_uid << "]: ";
+  prompt("GPG user id for TSODAO [" + default_uid + "]: ");
   std::string reply;
   if (!std::getline(std::cin, reply)) {
     user_id = default_uid;
@@ -821,7 +1077,11 @@ void ensure_open_target_is_clean(const tsodao_config_t& cfg) {
   fs::create_directories(cfg.hidden_root, ec);
   if (ec) die("failed to create hidden root directory: " + ec.message());
   if (has_hidden_payload(cfg)) {
-    die("hidden root already has plaintext payload; use tsodao sync --to-hidden or scrub first");
+    std::ostringstream oss;
+    oss << "hidden root already has plaintext payload\n"
+        << "  destination surface = " << display_path(cfg, cfg.hidden_root) << "\n"
+        << "  use tsodao sync --from-archive --yes to replace it safely, or run tsodao scrub first";
+    die(oss.str());
   }
 }
 
@@ -857,8 +1117,16 @@ void scrub_hidden_payload(const tsodao_config_t& cfg) {
 void confirm_restore_over_hidden_payload(const tsodao_config_t& cfg, bool assume_yes) {
   if (!has_hidden_payload(cfg)) return;
   if (!assume_yes) {
-    std::cerr << "Replace plaintext files in " << cfg.hidden_root
-              << " with the encrypted TSODAO archive? [y/N] ";
+    const auto archive_sha = archive_sha256(cfg);
+    std::ostringstream oss;
+    oss << "confirm restore:\n"
+        << "  source archive = " << display_path(cfg, cfg.hidden_archive) << "\n"
+        << "  destination surface = " << display_path(cfg, cfg.hidden_root) << "\n"
+        << "  archive sha256 = "
+        << (archive_sha ? *archive_sha : std::string("unavailable")) << "\n"
+        << "  action = replace local plaintext with decrypted archive\n"
+        << "continue? [y/N] ";
+    prompt(oss.str());
     std::string answer;
     if (!std::getline(std::cin, answer)) die("restore cancelled");
     answer = trim_copy(answer);
@@ -915,7 +1183,8 @@ void seal_hidden_surface(const tsodao_config_t& cfg,
       mode = "recipient";
       recipient = cfg.gpg_recipient;
     } else if (cfg.visibility_mode == "recipient") {
-      die("tsodao.dsl visibility_mode=recipient but gpg_recipient is empty; run tsodao init first or pass --recipient explicitly");
+      die("tsodao.dsl visibility_mode=recipient but gpg_recipient is empty\n"
+          "  run tsodao init first, or pass seal --recipient KEYID explicitly");
     } else if (cfg.visibility_mode == "symmetric") {
       mode = "symmetric";
     }
@@ -944,13 +1213,14 @@ void seal_hidden_surface(const tsodao_config_t& cfg,
       run_command_or_die({"gpg", "--yes", "--output", cfg.hidden_archive.string(),
                           "--encrypt", "--recipient", recipient, tar_path.string()},
                          "gpg encrypt");
-      note("sealed TSODAO hidden surface to recipient: " + recipient);
+      note("seal mode = recipient\n"
+           "recipient = " + recipient_summary(recipient));
     } else {
       run_command_or_die({"gpg", "--yes", "--output", cfg.hidden_archive.string(),
                           "--symmetric", "--cipher-algo", "AES256",
                           tar_path.string()},
                          "gpg symmetric encrypt");
-      note("sealed TSODAO hidden surface with symmetric encryption");
+      note("seal mode = symmetric AES256");
     }
 
     std::error_code ec;
@@ -965,17 +1235,18 @@ void seal_hidden_surface(const tsodao_config_t& cfg,
     std::stringstream ss(sha_result.output);
     std::string tar_sha;
     ss >> tar_sha;
-    note("archive written to " + cfg.hidden_archive.string());
-    note("plaintext tar sha256 " + tar_sha);
+    note("archive written = " + display_path(cfg, cfg.hidden_archive));
+    note("plaintext tar sha256 = " + tar_sha);
 
     const auto archive_sha = archive_sha256(cfg);
     if (!archive_sha) die("failed to record archive sha256");
     remember_archive_state(cfg, *archive_sha, "seal");
+    note("archive sha256 = " + *archive_sha);
 
     if (scrub_after) {
       scrub_hidden_payload(cfg);
-      note("plaintext hidden payload removed; " + cfg.public_keep_basename +
-           " was left in place");
+      note("scrubbed plaintext payload after sealing\n"
+           "  kept public marker = " + display_path(cfg, cfg.public_keep_path));
     }
   } catch (...) {
     cleanup_temp_dir(work_dir);
@@ -1036,7 +1307,8 @@ void git_pre_commit(const tsodao_config_t& cfg) {
              " from TSODAO hidden root");
         seal_hidden_surface(cfg, {"--recipient", cfg.gpg_recipient});
       } else if (cfg.visibility_mode == "symmetric") {
-        die("tsodao.dsl visibility_mode=symmetric cannot auto-refresh in pre-commit. Run tsodao sync --to-archive --symmetric before commit.");
+        die("tsodao.dsl visibility_mode=symmetric cannot auto-refresh in pre-commit\n"
+            "  run tsodao sync --from-plaintext --symmetric before commit");
       } else if (cfg.visibility_mode.empty() || cfg.visibility_mode == "disabled" ||
                  cfg.visibility_mode == "manual" || cfg.visibility_mode == "off" ||
                  cfg.visibility_mode == "none") {
@@ -1047,7 +1319,8 @@ void git_pre_commit(const tsodao_config_t& cfg) {
     } else if (needs_archive_refresh(cfg)) {
       if (!known_archive_matches_local_state(cfg)) {
         die("pre-commit refused to overwrite " + cfg.hidden_archive_rel +
-            ": the current archive does not match this machine's last synced archive. Run tsodao sync and choose a direction explicitly first.");
+            "\n  the current archive does not match this machine's last synced archive\n" +
+            sync_choice_guidance(false));
       }
       if (cfg.visibility_mode == "recipient") {
         if (cfg.gpg_recipient.empty()) {
@@ -1057,7 +1330,8 @@ void git_pre_commit(const tsodao_config_t& cfg) {
              " from TSODAO hidden root");
         seal_hidden_surface(cfg, {"--recipient", cfg.gpg_recipient});
       } else if (cfg.visibility_mode == "symmetric") {
-        die("tsodao.dsl visibility_mode=symmetric cannot auto-refresh in pre-commit. Run tsodao sync --to-archive --symmetric before commit.");
+        die("tsodao.dsl visibility_mode=symmetric cannot auto-refresh in pre-commit\n"
+            "  run tsodao sync --from-plaintext --symmetric before commit");
       } else if (cfg.visibility_mode.empty() || cfg.visibility_mode == "disabled" ||
                  cfg.visibility_mode == "manual" || cfg.visibility_mode == "off" ||
                  cfg.visibility_mode == "none") {
@@ -1066,7 +1340,8 @@ void git_pre_commit(const tsodao_config_t& cfg) {
         die("unknown tsodao.dsl visibility_mode value: " + cfg.visibility_mode);
       }
     } else if (!known_archive_matches_local_state(cfg)) {
-      die("pre-commit found both plaintext and archive, but the archive does not match this machine's last synced archive. Run tsodao sync and choose a direction explicitly first.");
+      die("pre-commit found both plaintext and archive, but the archive does not match this machine's last synced archive\n" +
+          sync_choice_guidance(false));
     }
     git_stage_hidden_surface(cfg);
   }
@@ -1142,7 +1417,10 @@ void open_hidden_surface(const tsodao_config_t& cfg) {
     const auto archive_sha = archive_sha256(cfg);
     if (!archive_sha) die("failed to record archive sha256");
     remember_archive_state(cfg, *archive_sha, "open");
-    note("restored TSODAO hidden plaintext payload into " + cfg.hidden_root.string());
+    note("restore complete:\n"
+         "  source archive = " + display_path(cfg, cfg.hidden_archive) + "\n"
+         "  archive sha256 = " + *archive_sha + "\n"
+         "  destination surface = " + display_path(cfg, cfg.hidden_root));
   } catch (...) {
     cleanup_temp_dir(work_dir);
     throw;
@@ -1167,7 +1445,14 @@ void scrub_command(const tsodao_config_t& cfg, const std::vector<std::string>& a
   }
 
   if (!assume_yes) {
-    std::cerr << "Remove plaintext files from " << cfg.hidden_root << "? [y/N] ";
+    std::ostringstream oss;
+    oss << "confirm scrub:\n"
+        << "  surface = " << display_path(cfg, cfg.hidden_root) << "\n"
+        << "  public marker kept = " << display_path(cfg, cfg.public_keep_path)
+        << "\n"
+        << "  action = remove local plaintext payload\n"
+        << "continue? [y/N] ";
+    prompt(oss.str());
     std::string answer;
     if (!std::getline(std::cin, answer)) die("scrub cancelled");
     answer = trim_copy(answer);
@@ -1175,45 +1460,111 @@ void scrub_command(const tsodao_config_t& cfg, const std::vector<std::string>& a
   }
 
   scrub_hidden_payload(cfg);
-  note("plaintext hidden payload removed; " + cfg.public_keep_basename +
-       " was left in place");
+  note("scrub complete:\n"
+       "  removed plaintext payload from " + display_path(cfg, cfg.hidden_root) +
+       "\n"
+       "  kept public marker = " + display_path(cfg, cfg.public_keep_path));
 }
 
 void status_command(const tsodao_config_t& cfg) {
-  note("tsodao.dsl: " + cfg.tsodao_dsl_path.string());
-  note("hidden root: " + cfg.hidden_root.string());
-  note("hidden archive: " + cfg.hidden_archive.string());
-  note("public keep path: " + cfg.public_keep_path.string());
-  note("local state path: " + cfg.local_state_path.string());
-
   std::error_code ec;
-  if (fs::is_directory(cfg.hidden_root, ec)) {
-    note(std::string("plaintext hidden payload: ") +
-         (has_hidden_payload(cfg) ? "present" : "absent or public-only"));
+  const bool hidden_root_is_dir = fs::is_directory(cfg.hidden_root, ec);
+  const bool plaintext_present = hidden_root_is_dir && has_hidden_payload(cfg);
+  const bool archive_present = fs::exists(cfg.hidden_archive, ec);
+  const bool state_present = fs::exists(cfg.local_state_path, ec);
+  const auto current_archive_sha = archive_sha256(cfg);
+  const auto last_archive_sha =
+      read_state_value(cfg.local_state_path, "last_archive_sha256");
+  const auto last_sync_action =
+      read_state_value(cfg.local_state_path, "last_sync_action");
+  const auto last_surface_listing_sha = read_state_value(
+      cfg.local_state_path, "last_hidden_surface_listing_sha256");
+  const std::string current_surface_listing_sha =
+      hidden_root_is_dir ? hidden_surface_listing_sha256(cfg) : std::string();
+  const sync_plan_t plan = infer_default_sync_plan(cfg);
+  std::string archive_memory_status = "unknown";
+  if (!archive_present) {
+    archive_memory_status = "archive absent";
+  } else if (!last_archive_sha || trim_copy(*last_archive_sha).empty()) {
+    archive_memory_status = "local sync memory absent";
+  } else if (current_archive_sha &&
+             trim_copy(*current_archive_sha) == trim_copy(*last_archive_sha)) {
+    archive_memory_status = "matches this machine's last synced archive";
   } else {
-    note("plaintext hidden payload: directory missing");
+    archive_memory_status = "does not match this machine's last synced archive";
   }
 
-  if (fs::exists(cfg.hidden_archive, ec)) {
-    note("hidden archive: present");
-    const run_result_t sha = run_command_capture({"sha256sum", cfg.hidden_archive.string()}, true);
-    if (sha.exit_code == 0) std::cout << trim_copy(sha.output) << "\n";
-  } else {
-    note("hidden archive: absent");
-  }
+  emit_operator_context(cfg);
 
-  if (fs::exists(cfg.local_state_path, ec)) {
-    note("local state: present");
-    note("last known archive sha256: " +
-         trim_copy(read_state_value(cfg.local_state_path, "last_archive_sha256").value_or("")));
+  std::ostringstream oss;
+  oss << "status:\n"
+      << "  plaintext payload = ";
+  if (!hidden_root_is_dir) {
+    oss << "hidden-root directory missing";
   } else {
-    note("local state: absent");
+    oss << (plaintext_present ? "present" : "absent or public-only");
   }
+  oss << "\n"
+      << "  archive file = " << (archive_present ? "present" : "absent") << "\n"
+      << "  archive sha256 = "
+      << (current_archive_sha ? *current_archive_sha : std::string("absent")) << "\n"
+      << "  local sync memory = " << (state_present ? "present" : "absent") << "\n"
+      << "  last synced archive sha256 = "
+      << (last_archive_sha ? trim_copy(*last_archive_sha) : std::string("unknown"))
+      << "\n"
+      << "  last sync action = "
+      << (last_sync_action && !trim_copy(*last_sync_action).empty()
+              ? trim_copy(*last_sync_action)
+              : std::string("unknown"))
+      << "\n"
+      << "  current surface listing sha256 = "
+      << (hidden_root_is_dir ? current_surface_listing_sha : std::string("unavailable"))
+      << "\n"
+      << "  last synced surface listing sha256 = "
+      << (last_surface_listing_sha ? trim_copy(*last_surface_listing_sha)
+                                   : std::string("unknown"))
+      << "\n"
+      << "  archive matches local sync memory = ";
+  if (archive_memory_status == "matches this machine's last synced archive") {
+    oss << "yes";
+  } else if (archive_memory_status == "does not match this machine's last synced archive") {
+    oss << "no";
+  } else {
+    oss << archive_memory_status;
+  }
+  oss << "\n"
+      << "  sync state = ";
 
-  note("visibility mode: " + (cfg.visibility_mode.empty() ? std::string("unset")
-                                                          : cfg.visibility_mode));
-  note("gpg recipient: " +
-       (cfg.gpg_recipient.empty() ? std::string("unset") : cfg.gpg_recipient));
+  switch (plan) {
+    case sync_plan_t::nothing:
+      oss << "nothing to sync";
+      break;
+    case sync_plan_t::no_action:
+      oss << "already safe and current for this machine";
+      break;
+    case sync_plan_t::plaintext_to_archive:
+      oss << "plaintext should reseal the archive";
+      break;
+    case sync_plan_t::archive_to_plaintext:
+      oss << "archive should restore the hidden root";
+      break;
+    case sync_plan_t::ambiguous:
+      oss << "ambiguous";
+      break;
+  }
+  note(oss.str());
+
+  if (plan == sync_plan_t::plaintext_to_archive) {
+    note("suggested command:\n"
+         "  tsodao sync\n"
+         "  tsodao sync --from-plaintext");
+  } else if (plan == sync_plan_t::archive_to_plaintext) {
+    note("suggested command:\n"
+         "  tsodao sync\n"
+         "  tsodao sync --from-archive");
+  } else if (plan == sync_plan_t::ambiguous) {
+    note(sync_choice_guidance(true));
+  }
 }
 
 sync_plan_t infer_default_sync_plan(const tsodao_config_t& cfg) {
@@ -1230,17 +1581,19 @@ sync_plan_t infer_default_sync_plan(const tsodao_config_t& cfg) {
 }
 
 void sync_command(const tsodao_config_t& cfg, const std::vector<std::string>& args) {
-  bool to_archive = false;
-  bool to_hidden = false;
+  bool from_plaintext = false;
+  bool from_archive = false;
   bool assume_yes = false;
   std::vector<std::string> forwarded;
 
   for (std::size_t i = 0; i < args.size(); ++i) {
     const std::string& arg = args[i];
-    if (arg == "--to-archive" || arg == "--prefer-hidden") {
-      to_archive = true;
-    } else if (arg == "--to-hidden" || arg == "--prefer-archive") {
-      to_hidden = true;
+    if (arg == "--from-plaintext" || arg == "--to-archive" ||
+        arg == "--prefer-hidden") {
+      from_plaintext = true;
+    } else if (arg == "--from-archive" || arg == "--to-hidden" ||
+               arg == "--prefer-archive") {
+      from_archive = true;
     } else if (arg == "--yes") {
       assume_yes = true;
     } else {
@@ -1248,7 +1601,11 @@ void sync_command(const tsodao_config_t& cfg, const std::vector<std::string>& ar
     }
   }
 
-  if (to_archive && to_hidden) die("choose either --to-archive or --to-hidden");
+  emit_operator_context(cfg);
+
+  if (from_plaintext && from_archive) {
+    die("choose one sync source: --from-plaintext or --from-archive");
+  }
 
   const bool plaintext_present = has_hidden_payload(cfg);
   const bool archive_present = fs::exists(cfg.hidden_archive);
@@ -1256,35 +1613,37 @@ void sync_command(const tsodao_config_t& cfg, const std::vector<std::string>& ar
     die("nothing to sync: both hidden plaintext and hidden archive are absent");
   }
   if (plaintext_present && !archive_present) {
-    if (to_hidden) die("cannot sync --to-hidden: hidden archive is absent");
-    note("sync direction: plaintext -> archive (archive missing)");
+    if (from_archive) die("cannot sync --from-archive: hidden archive is absent");
+    note("sync source = plaintext\nreason = archive missing");
     seal_hidden_surface(cfg, forwarded);
     maybe_git_stage_hidden_surface(cfg);
     return;
   }
   if (!plaintext_present && archive_present) {
-    if (to_archive) die("cannot sync --to-archive: hidden plaintext is absent");
-    note("sync direction: archive -> plaintext (plaintext absent)");
+    if (from_plaintext) {
+      die("cannot sync --from-plaintext: hidden plaintext is absent");
+    }
+    note("sync source = archive\nreason = plaintext absent");
     open_hidden_surface(cfg);
     return;
   }
 
-  if (to_archive) {
+  if (from_plaintext) {
     if (known_archive_matches_local_state(cfg) && !needs_archive_refresh(cfg)) {
       note("sync: archive already matches the hidden plaintext surface; no action taken");
     } else {
-      note("sync direction: plaintext -> archive (explicit)");
+      note("sync source = plaintext\nreason = explicit operator choice");
       seal_hidden_surface(cfg, forwarded);
       maybe_git_stage_hidden_surface(cfg);
     }
     return;
   }
 
-  if (to_hidden) {
+  if (from_archive) {
     if (known_archive_matches_local_state(cfg) && !needs_archive_refresh(cfg)) {
       note("sync: hidden plaintext already matches the encrypted archive; no action taken");
     } else {
-      note("sync direction: archive -> plaintext (explicit)");
+      note("sync source = archive\nreason = explicit operator choice");
       confirm_restore_over_hidden_payload(cfg, assume_yes);
       open_hidden_surface(cfg);
     }
@@ -1293,7 +1652,7 @@ void sync_command(const tsodao_config_t& cfg, const std::vector<std::string>& ar
 
   if (known_archive_matches_local_state(cfg)) {
     if (needs_archive_refresh(cfg)) {
-      note("sync direction: plaintext -> archive (known local archive is older than plaintext)");
+      note("sync source = plaintext\nreason = archive matches local memory but plaintext changed");
       seal_hidden_surface(cfg, forwarded);
       maybe_git_stage_hidden_surface(cfg);
     } else {
@@ -1302,7 +1661,28 @@ void sync_command(const tsodao_config_t& cfg, const std::vector<std::string>& ar
     return;
   }
 
-  die("sync is ambiguous: both plaintext and archive exist, and the archive does not match this machine's last synced archive. Refusing to overwrite either side. Use tsodao status, then rerun sync with --to-archive or --to-hidden if you want to choose a direction explicitly.");
+  const auto current_archive_sha = archive_sha256(cfg);
+  const auto last_archive_sha =
+      read_state_value(cfg.local_state_path, "last_archive_sha256");
+  const auto last_sync_action =
+      read_state_value(cfg.local_state_path, "last_sync_action");
+  std::ostringstream oss;
+  oss << "sync is ambiguous for this machine\n"
+      << "  both the plaintext surface and encrypted archive exist\n"
+      << "  current archive sha256 = "
+      << (current_archive_sha ? *current_archive_sha : std::string("unavailable"))
+      << "\n"
+      << "  last synced archive sha256 = "
+      << (last_archive_sha ? trim_copy(*last_archive_sha) : std::string("unknown"))
+      << "\n"
+      << "  last sync action = "
+      << (last_sync_action && !trim_copy(*last_sync_action).empty()
+              ? trim_copy(*last_sync_action)
+              : std::string("unknown"))
+      << "\n"
+      << "  refusing to overwrite either side without an explicit source\n"
+      << sync_choice_guidance(true);
+  die(oss.str());
 }
 
 void validate_configured_recipient(const tsodao_config_t& cfg) {
@@ -1321,7 +1701,8 @@ void validate_configured_recipient(const tsodao_config_t& cfg) {
   if (result.exit_code != 0) {
     die("configured GPG recipient not found in local keyring: " + cfg.gpg_recipient);
   }
-  note("validated TSODAO recipient " + cfg.gpg_recipient);
+  note("validated configured TSODAO recipient\n"
+       "  recipient = " + recipient_summary(cfg.gpg_recipient));
 }
 
 void init_usage() {
@@ -1363,6 +1744,7 @@ int init_command(const tsodao_config_t& cfg, const std::vector<std::string>& arg
     }
   }
 
+  emit_operator_context(cfg);
   require_command("gpg");
   setup_gpg_tty_if_needed();
 
@@ -1376,7 +1758,8 @@ int init_command(const tsodao_config_t& cfg, const std::vector<std::string>& arg
     const run_result_t existing =
         run_command_capture({"gpg", "--list-public-keys", cfg.gpg_recipient}, true);
     if (existing.exit_code == 0) {
-      note("TSODAO recipient already configured: " + cfg.gpg_recipient);
+      note("TSODAO recipient already configured\n"
+           "  recipient = " + recipient_summary(cfg.gpg_recipient));
       if (!skip_hooks) install_git_hooks(cfg.repo_root);
       return 0;
     }
@@ -1401,8 +1784,8 @@ int init_command(const tsodao_config_t& cfg, const std::vector<std::string>& arg
   write_dsl_line(cfg.tsodao_dsl_path, "gpg_recipient",
                  "gpg_recipient:str = " + fingerprint);
 
-  note("configured tsodao.dsl visibility_mode=recipient");
-  note("configured tsodao.dsl gpg_recipient=" + fingerprint);
+  note("configured tsodao.dsl for recipient mode\n"
+       "  recipient = " + recipient_summary(fingerprint));
 
   if (!skip_hooks) install_git_hooks(cfg.repo_root);
   note("TSODAO key setup complete");
@@ -1423,7 +1806,7 @@ void usage() {
       << "usage:\n"
       << "  tsodao status\n"
       << "  tsodao init [--uid TEXT] [--yes] [--validate] [--skip-hooks]\n"
-      << "  tsodao sync [--to-archive|--to-hidden] [--yes] [--symmetric|--recipient KEYID] [--scrub]\n"
+      << "  tsodao sync [--from-plaintext|--from-archive] [--yes] [--symmetric|--recipient KEYID] [--scrub]\n"
       << "  tsodao prompt-mark\n"
       << "  tsodao decode\n"
       << "  tsodao seal [--symmetric] [--recipient KEYID] [--scrub]\n"
@@ -1446,14 +1829,16 @@ void usage() {
       << "  - tsodao.dsl is the source of truth for the first TSODAO public/private policy\n"
       << "  - the common day-to-day flow is: tsodao init, tsodao sync, git commit, git push\n"
       << "  - sync alone auto-picks a direction only when that direction is provably safe\n"
-      << "  - sync --to-archive means plaintext -> encrypted archive\n"
-      << "  - sync --to-hidden means encrypted archive -> plaintext hidden root\n";
+      << "  - sync --from-plaintext means local plaintext is the source of truth and the archive should be resealed\n"
+      << "  - sync --from-archive means the encrypted archive is the source of truth and the hidden root should be restored\n"
+      << "  - compatibility aliases still work: --to-archive, --to-hidden, --prefer-hidden, --prefer-archive\n";
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
   try {
+    initialize_output_style();
     if (argc < 2) {
       usage();
       return 1;
@@ -1467,7 +1852,7 @@ int main(int argc, char** argv) {
 
     const fs::path repo_root = find_repo_root(argc > 0 ? argv[0] : nullptr);
     if (repo_root.empty()) {
-      std::cerr << "tsodao: could not locate repo root\n";
+      emit_lines(std::cerr, output_kind_t::error, "could not locate repo root", true);
       return 2;
     }
     std::optional<fs::path> global_config_override;
@@ -1501,14 +1886,17 @@ int main(int argc, char** argv) {
     }
     if (command == "decode" || command == "open") {
       if (!args.empty()) die(command + " takes no extra arguments");
+      emit_operator_context(cfg);
       open_hidden_surface(cfg);
       return 0;
     }
     if (command == "seal") {
+      emit_operator_context(cfg);
       seal_hidden_surface(cfg, args);
       return 0;
     }
     if (command == "scrub") {
+      emit_operator_context(cfg);
       scrub_command(cfg, args);
       return 0;
     }
@@ -1525,7 +1913,7 @@ int main(int argc, char** argv) {
 
     die("unknown command: " + command);
   } catch (const std::exception& ex) {
-    std::cerr << "tsodao: " << ex.what() << "\n";
+    emit_lines(std::cerr, output_kind_t::error, ex.what(), true);
     return 1;
   }
 }

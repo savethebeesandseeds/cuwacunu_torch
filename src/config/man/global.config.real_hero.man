@@ -91,15 +91,15 @@ range = non-empty path
 allowed = absolute_or_relative path
 nuance = deterministic Lattice HERO defaults DSL used by hero_lattice_mcp
 
-[FIELD REAL_HERO.super_hero_dsl_filename]
-key = super_hero_dsl_filename
+[FIELD REAL_HERO.marshal_hero_dsl_filename]
+key = marshal_hero_dsl_filename
 scope = REAL_HERO section
 type = path
 required = true
-default = /cuwacunu/src/config/instructions/defaults/default.hero.super.dsl
+default = /cuwacunu/src/config/instructions/defaults/default.hero.marshal.dsl
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = deterministic Super HERO defaults DSL used by hero_super_mcp
+nuance = deterministic Marshal HERO defaults DSL used by hero_marshal_mcp
 
 [FIELD REAL_HERO.runtime_hero_dsl_filename]
 key = runtime_hero_dsl_filename

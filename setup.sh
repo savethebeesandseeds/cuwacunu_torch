@@ -5,8 +5,9 @@
 # What this script installs/configures (inside a Debian-based environment):
 # - Base toolchain and system deps via apt:
 #   ca-certificates, build-essential, libssl-dev, ncurses dev libs, gnupg,
-#   valgrind, gdb, ccache, mold, locales, curl, libcurl4-openssl-dev,
-#   openssh-client (provides ssh-keygen for Human Hero operator setup)
+#   valgrind, gdb, ccache, mold, clang-format, locales, curl,
+#   libcurl4-openssl-dev, openssh-client (provides ssh-keygen for Human Hero
+#   operator setup)
 # - curl websocket capability check (ws/wss), with optional source build fallback
 # - NVIDIA CUDA apt repository + CUDA Toolkit (default series: 12-4)
 # - cuDNN 9 runtime packages from the NVIDIA network repository
@@ -335,7 +336,7 @@ install_base_requirements() {
   run_cmd "Installing base build/debug dependencies" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
-    gnupg valgrind gdb ccache mold locales curl libcurl4-openssl-dev \
+    gnupg valgrind gdb ccache mold clang-format locales curl libcurl4-openssl-dev \
     openssh-client bash-completion
   run_cmd "Enabling en_US.UTF-8 in /etc/locale.gen" "${SUDO[@]}" bash -lc \
     "if grep -Eq '^[[:space:]]*#?[[:space:]]*en_US\.UTF-8[[:space:]]+UTF-8[[:space:]]*$' /etc/locale.gen; then \
@@ -552,7 +553,7 @@ main() {
   success "Provisioning flow finished."
   info "Open a new shell or run: source ~/.bashrc"
   info "That shell refresh also sources /cuwacunu/src/scripts/cuwacunu_bashrc.sh"
-  info "It exposes /cuwacunu/.build/hero and /cuwacunu/.build/tools on PATH"
+  info "It exposes /cuwacunu/.build/hero, /cuwacunu/.build/tools, and /cuwacunu/.build/interface on PATH"
   info "It enables the [*] and [!] shell status marks"
   info "Useful check: nvidia-smi"
   info "Useful check: /cuwacunu/.build/tests/test_cuda_probe"

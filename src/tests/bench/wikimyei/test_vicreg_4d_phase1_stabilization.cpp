@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 #include "piaabo/dconfig.h"
 #include "wikimyei/representation/VICReg/vicreg_4d_dilated_conv.h"
 #include "wikimyei/representation/VICReg/vicreg_4d.h"

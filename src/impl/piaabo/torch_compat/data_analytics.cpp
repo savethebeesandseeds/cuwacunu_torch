@@ -61,21 +61,7 @@ using runtime_lls_document_t =
 }
 
 [[nodiscard]] std::string contract_hash_path_token_(std::string_view contract_hash) {
-  std::string_view token = trim_ascii_ws_view_(contract_hash);
-  if (token.size() >= 2 && token[0] == '0' &&
-      (token[1] == 'x' || token[1] == 'X')) {
-    token.remove_prefix(2);
-  }
-  if (token.empty()) return {};
-
-  std::string out;
-  out.reserve(token.size());
-  for (const unsigned char c : token) {
-    const bool ok =
-        (std::isalnum(c) != 0) || c == '_' || c == '-' || c == '.';
-    out.push_back(ok ? static_cast<char>(c) : '_');
-  }
-  return out;
+  return cuwacunu::hashimyei::compact_contract_hash_path_token(contract_hash);
 }
 
 [[nodiscard]] std::string analytics_path_token_(std::string_view token_text) {
@@ -2154,16 +2140,25 @@ std::string data_analytics_to_latent_lineage_state_text(
     const data_source_analytics_report_t& report,
     const data_analytics_options_t& options,
     std::string_view source_label,
-    const tsiemene::component_report_identity_t& report_identity) {
+    const tsiemene::component_report_identity_t& report_identity,
+    std::string_view contract_hash) {
   auto sequence_report = make_sequence_analytics_report(report);
   sequence_report.schema = report.schema;
+  auto document = make_sequence_runtime_lls_document_(
+      sequence_report,
+      options,
+      source_sequence_report_keys_(),
+      source_label,
+      report_identity);
+  const std::string_view normalized_contract_hash =
+      trim_ascii_ws_view_(contract_hash);
+  if (!normalized_contract_hash.empty()) {
+    document.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "contract_hash", std::string(normalized_contract_hash)));
+  }
   return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
-      make_sequence_runtime_lls_document_(
-          sequence_report,
-          options,
-          source_sequence_report_keys_(),
-          source_label,
-          report_identity));
+      document);
 }
 
 std::string sequence_symbolic_analytics_to_latent_lineage_state_text(
@@ -2184,15 +2179,24 @@ std::string sequence_symbolic_analytics_to_latent_lineage_state_text(
 std::string data_symbolic_analytics_to_latent_lineage_state_text(
     const data_symbolic_analytics_report_t& report,
     std::string_view source_label,
-    const tsiemene::component_report_identity_t& report_identity) {
+    const tsiemene::component_report_identity_t& report_identity,
+    std::string_view contract_hash) {
   auto sequence_report = make_sequence_symbolic_analytics_report(report);
   sequence_report.schema = report.schema;
+  auto document = make_symbolic_runtime_lls_document_(
+      sequence_report,
+      source_symbolic_report_keys_(),
+      source_label,
+      report_identity);
+  const std::string_view normalized_contract_hash =
+      trim_ascii_ws_view_(contract_hash);
+  if (!normalized_contract_hash.empty()) {
+    document.entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "contract_hash", std::string(normalized_contract_hash)));
+  }
   return cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
-      make_symbolic_runtime_lls_document_(
-          sequence_report,
-          source_symbolic_report_keys_(),
-          source_label,
-          report_identity));
+      document);
 }
 
 std::string sequence_symbolic_analytics_to_pretty_text(
@@ -2256,13 +2260,14 @@ bool write_data_analytics_file(
     const std::filesystem::path& output_file,
     std::string_view source_label,
     std::string* error,
-    const tsiemene::component_report_identity_t& report_identity) {
+    const tsiemene::component_report_identity_t& report_identity,
+    std::string_view contract_hash) {
   if (error) error->clear();
 
   std::string payload;
   try {
     payload = data_analytics_to_latent_lineage_state_text(
-        report, options, source_label, report_identity);
+        report, options, source_label, report_identity, contract_hash);
   } catch (const std::exception& e) {
     if (error) *error = "cannot serialize data analytics report: " + std::string(e.what());
     return false;
@@ -2300,13 +2305,14 @@ bool write_data_symbolic_analytics_file(
     const std::filesystem::path& output_file,
     std::string_view source_label,
     std::string* error,
-    const tsiemene::component_report_identity_t& report_identity) {
+    const tsiemene::component_report_identity_t& report_identity,
+    std::string_view contract_hash) {
   if (error) error->clear();
 
   std::string payload;
   try {
     payload = data_symbolic_analytics_to_latent_lineage_state_text(
-        report, source_label, report_identity);
+        report, source_label, report_identity, contract_hash);
   } catch (const std::exception& e) {
     if (error) {
       *error =

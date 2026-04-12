@@ -41,7 +41,7 @@ struct runtime_campaign_record_t {
   std::string boot_id{};
   std::string state{"launching"};
   std::string state_detail{};
-  std::string super_loop_id{};
+  std::string marshal_session_id{};
   std::string global_config_path{};
   std::string source_campaign_dsl_path{};
   std::string campaign_dsl_path{};
@@ -131,14 +131,14 @@ resolve_existing_runtime_campaign_manifest_path(
 [[nodiscard]] inline std::string make_campaign_cursor(
     const std::filesystem::path& campaigns_root) {
   const std::uint64_t started_at_ms = now_ms_utc();
-  for (std::uint64_t nonce = 1; nonce != 0; ++nonce) {
-    const std::uint64_t salt =
-        static_cast<std::uint64_t>(
-            std::chrono::steady_clock::now().time_since_epoch().count()) ^
-        (nonce * 0x9e3779b97f4a7c15ULL);
-    const std::string candidate =
-        "campaign." + std::to_string(started_at_ms) + "." +
-        hex_lower_u64(salt).substr(0, 8);
+  const std::string stem =
+      "campaign." + base36_lower_u64(started_at_ms);
+  for (std::uint64_t collision = 0; collision != 0xffffffffffffffffULL;
+       ++collision) {
+    std::string candidate = stem;
+    if (collision != 0) {
+      candidate += "." + base36_lower_u64(collision);
+    }
     std::error_code ec{};
     if (!std::filesystem::exists(runtime_campaign_dir(campaigns_root, candidate),
                                  ec) ||
@@ -146,7 +146,7 @@ resolve_existing_runtime_campaign_manifest_path(
       return candidate;
     }
   }
-  return "campaign." + std::to_string(started_at_ms) + ".overflow";
+  return stem + ".overflow";
 }
 
 [[nodiscard]] inline cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t
@@ -160,8 +160,8 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   document.entries.push_back(make_runtime_lls_string_entry("state", record.state));
   document.entries.push_back(
       make_runtime_lls_string_entry("state_detail", record.state_detail));
-  document.entries.push_back(
-      make_runtime_lls_string_entry("super_loop_id", record.super_loop_id));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "marshal_session_id", record.marshal_session_id));
   document.entries.push_back(
       make_runtime_lls_string_entry("global_config_path",
                                     record.global_config_path));
@@ -232,7 +232,7 @@ runtime_campaign_record_to_document(const runtime_campaign_record_t& record) {
   parsed.boot_id = kv["boot_id"];
   parsed.state = kv["state"];
   parsed.state_detail = kv["state_detail"];
-  parsed.super_loop_id = kv["super_loop_id"];
+  parsed.marshal_session_id = kv["marshal_session_id"];
   parsed.global_config_path = kv["global_config_path"];
   parsed.source_campaign_dsl_path = kv["source_campaign_dsl_path"];
   parsed.campaign_dsl_path = kv["campaign_dsl_path"];

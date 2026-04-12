@@ -94,8 +94,16 @@ public:
     std::uint64_t skipped_batches{0};
     std::uint64_t pending_sample_count{0};
     double pending_loss_sum{0.0};
+    double pending_inv_sum{0.0};
+    double pending_var_sum{0.0};
+    double pending_cov_raw_sum{0.0};
+    double pending_cov_weighted_sum{0.0};
     int pending_loss_count{0};
     double last_committed_loss_mean{0.0};
+    double last_committed_inv_mean{0.0};
+    double last_committed_var_mean{0.0};
+    double last_committed_cov_raw_mean{0.0};
+    double last_committed_cov_weighted_mean{0.0};
   };
 
   cuwacunu::iitepi::contract_hash_t contract_hash;

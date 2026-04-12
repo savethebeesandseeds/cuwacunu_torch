@@ -6,16 +6,17 @@ template <class PushInfo>
 bool dispatch_logs_setting_cursor_delta(int delta, PushInfo&& push_info) const {
   if (logs_settings_count() > 0) {
     if (delta < 0) {
-      state.logs.selected_setting =
-          (state.logs.selected_setting + logs_settings_count() - 1u) % logs_settings_count();
+      state.shell_logs.selected_setting =
+          (state.shell_logs.selected_setting + logs_settings_count() - 1u) %
+          logs_settings_count();
       push_info("logs.settings.cursor=prev");
     } else {
-      state.logs.selected_setting =
-          (state.logs.selected_setting + 1u) % logs_settings_count();
+      state.shell_logs.selected_setting =
+          (state.shell_logs.selected_setting + 1u) % logs_settings_count();
       push_info("logs.settings.cursor=next");
     }
   } else {
-    state.logs.selected_setting = 0;
+    state.shell_logs.selected_setting = 0;
     push_info(delta < 0 ? "logs.settings.cursor=prev" : "logs.settings.cursor=next");
   }
   screen.logs();
@@ -39,68 +40,72 @@ bool dispatch_logs_call(CallHandlerId call_id,
       return true;
     case CallHandlerId::LogsScrollUp:
       screen.logs();
-      state.logs.pending_scroll_y = saturating_add_signed(state.logs.pending_scroll_y, -6);
-      state.logs.auto_follow = false;
+      state.shell_logs.pending_scroll_y =
+          saturating_add_signed(state.shell_logs.pending_scroll_y, -6);
+      state.shell_logs.auto_follow = false;
       push_info("logs scroll=up");
       return true;
     case CallHandlerId::LogsScrollDown:
       screen.logs();
-      state.logs.pending_scroll_y = saturating_add_signed(state.logs.pending_scroll_y, +6);
-      state.logs.auto_follow = false;
+      state.shell_logs.pending_scroll_y =
+          saturating_add_signed(state.shell_logs.pending_scroll_y, +6);
+      state.shell_logs.auto_follow = false;
       push_info("logs scroll=down");
       return true;
     case CallHandlerId::LogsScrollPageUp:
       screen.logs();
-      state.logs.pending_scroll_y = saturating_add_signed(state.logs.pending_scroll_y, -20);
-      state.logs.auto_follow = false;
+      state.shell_logs.pending_scroll_y =
+          saturating_add_signed(state.shell_logs.pending_scroll_y, -20);
+      state.shell_logs.auto_follow = false;
       push_info("logs scroll=page-up");
       return true;
     case CallHandlerId::LogsScrollPageDown:
       screen.logs();
-      state.logs.pending_scroll_y = saturating_add_signed(state.logs.pending_scroll_y, +20);
-      state.logs.auto_follow = false;
+      state.shell_logs.pending_scroll_y =
+          saturating_add_signed(state.shell_logs.pending_scroll_y, +20);
+      state.shell_logs.auto_follow = false;
       push_info("logs scroll=page-down");
       return true;
     case CallHandlerId::LogsScrollHome:
       screen.logs();
-      state.logs.pending_scroll_y = 0;
-      state.logs.pending_scroll_x = 0;
-      state.logs.pending_jump_end = false;
-      state.logs.pending_jump_home = true;
-      state.logs.auto_follow = false;
+      state.shell_logs.pending_scroll_y = 0;
+      state.shell_logs.pending_scroll_x = 0;
+      state.shell_logs.pending_jump_end = false;
+      state.shell_logs.pending_jump_home = true;
+      state.shell_logs.auto_follow = false;
       push_info("logs scroll=home");
       return true;
     case CallHandlerId::LogsScrollEnd:
       screen.logs();
-      state.logs.pending_scroll_y = 0;
-      state.logs.pending_scroll_x = 0;
-      state.logs.pending_jump_home = false;
-      state.logs.pending_jump_end = true;
-      state.logs.auto_follow = true;
+      state.shell_logs.pending_scroll_y = 0;
+      state.shell_logs.pending_scroll_x = 0;
+      state.shell_logs.pending_jump_home = false;
+      state.shell_logs.pending_jump_end = true;
+      state.shell_logs.auto_follow = true;
       push_info("logs scroll=end");
       return true;
     case CallHandlerId::LogsSettingsLevelDebug:
-      state.logs.level_filter = LogsLevelFilter::DebugOrHigher;
+      state.shell_logs.level_filter = LogsLevelFilter::DebugOrHigher;
       screen.logs();
       push_info("logs.level=DEBUG+");
       return true;
     case CallHandlerId::LogsSettingsLevelInfo:
-      state.logs.level_filter = LogsLevelFilter::InfoOrHigher;
+      state.shell_logs.level_filter = LogsLevelFilter::InfoOrHigher;
       screen.logs();
       push_info("logs.level=INFO+");
       return true;
     case CallHandlerId::LogsSettingsLevelWarning:
-      state.logs.level_filter = LogsLevelFilter::WarningOrHigher;
+      state.shell_logs.level_filter = LogsLevelFilter::WarningOrHigher;
       screen.logs();
       push_info("logs.level=WARNING+");
       return true;
     case CallHandlerId::LogsSettingsLevelError:
-      state.logs.level_filter = LogsLevelFilter::ErrorOrHigher;
+      state.shell_logs.level_filter = LogsLevelFilter::ErrorOrHigher;
       screen.logs();
       push_info("logs.level=ERROR+");
       return true;
     case CallHandlerId::LogsSettingsLevelFatal:
-      state.logs.level_filter = LogsLevelFilter::FatalOnly;
+      state.shell_logs.level_filter = LogsLevelFilter::FatalOnly;
       screen.logs();
       push_info("logs.level=FATAL");
       return true;
@@ -109,59 +114,65 @@ bool dispatch_logs_call(CallHandlerId call_id,
     case CallHandlerId::LogsSettingsSelectNext:
       return dispatch_logs_setting_cursor_delta(+1, push_info);
     case CallHandlerId::LogsSettingsDateToggle:
-      state.logs.show_date = !state.logs.show_date;
+      state.shell_logs.show_date = !state.shell_logs.show_date;
       screen.logs();
-      push_info(std::string("logs.date=") + (state.logs.show_date ? "on" : "off"));
+      push_info(std::string("logs.date=") +
+                (state.shell_logs.show_date ? "on" : "off"));
       return true;
     case CallHandlerId::LogsSettingsThreadToggle:
-      state.logs.show_thread = !state.logs.show_thread;
+      state.shell_logs.show_thread = !state.shell_logs.show_thread;
       screen.logs();
-      push_info(std::string("logs.thread=") + (state.logs.show_thread ? "on" : "off"));
+      push_info(std::string("logs.thread=") +
+                (state.shell_logs.show_thread ? "on" : "off"));
       return true;
     case CallHandlerId::LogsSettingsMetadataToggle:
-      state.logs.show_metadata = !state.logs.show_metadata;
+      state.shell_logs.show_metadata = !state.shell_logs.show_metadata;
       screen.logs();
-      push_info(std::string("logs.metadata=") + (state.logs.show_metadata ? "on" : "off"));
+      push_info(std::string("logs.metadata=") +
+                (state.shell_logs.show_metadata ? "on" : "off"));
       return true;
     case CallHandlerId::LogsSettingsMetadataFilterAny:
-      state.logs.metadata_filter = LogsMetadataFilter::Any;
+      state.shell_logs.metadata_filter = LogsMetadataFilter::Any;
       screen.logs();
       push_info("logs.metadata_filter=ANY");
       return true;
     case CallHandlerId::LogsSettingsMetadataFilterAnyMeta:
-      state.logs.metadata_filter = LogsMetadataFilter::WithAnyMetadata;
+      state.shell_logs.metadata_filter = LogsMetadataFilter::WithAnyMetadata;
       screen.logs();
       push_info("logs.metadata_filter=META+");
       return true;
     case CallHandlerId::LogsSettingsMetadataFilterFunction:
-      state.logs.metadata_filter = LogsMetadataFilter::WithFunction;
+      state.shell_logs.metadata_filter = LogsMetadataFilter::WithFunction;
       screen.logs();
       push_info("logs.metadata_filter=FN+");
       return true;
     case CallHandlerId::LogsSettingsMetadataFilterPath:
-      state.logs.metadata_filter = LogsMetadataFilter::WithPath;
+      state.shell_logs.metadata_filter = LogsMetadataFilter::WithPath;
       screen.logs();
       push_info("logs.metadata_filter=PATH+");
       return true;
     case CallHandlerId::LogsSettingsMetadataFilterCallsite:
-      state.logs.metadata_filter = LogsMetadataFilter::WithCallsite;
+      state.shell_logs.metadata_filter = LogsMetadataFilter::WithCallsite;
       screen.logs();
       push_info("logs.metadata_filter=CALLSITE+");
       return true;
     case CallHandlerId::LogsSettingsColorToggle:
-      state.logs.show_color = !state.logs.show_color;
+      state.shell_logs.show_color = !state.shell_logs.show_color;
       screen.logs();
-      push_info(std::string("logs.color=") + (state.logs.show_color ? "on" : "off"));
+      push_info(std::string("logs.color=") +
+                (state.shell_logs.show_color ? "on" : "off"));
       return true;
     case CallHandlerId::LogsSettingsFollowToggle:
-      state.logs.auto_follow = !state.logs.auto_follow;
+      state.shell_logs.auto_follow = !state.shell_logs.auto_follow;
       screen.logs();
-      push_info(std::string("logs.follow=") + (state.logs.auto_follow ? "on" : "off"));
+      push_info(std::string("logs.follow=") +
+                (state.shell_logs.auto_follow ? "on" : "off"));
       return true;
     case CallHandlerId::LogsSettingsMouseCaptureToggle:
-      state.logs.mouse_capture = !state.logs.mouse_capture;
+      state.shell_logs.mouse_capture = !state.shell_logs.mouse_capture;
       screen.logs();
-      push_info(std::string("logs.mouse_capture=") + (state.logs.mouse_capture ? "on" : "off"));
+      push_info(std::string("logs.mouse_capture=") +
+                (state.shell_logs.mouse_capture ? "on" : "off"));
       return true;
     default:
       return false;

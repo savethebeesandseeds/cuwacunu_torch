@@ -64,14 +64,16 @@ MAKE_TARGETS="piaabo camahjucunu" ./setup.sh --verbose
 source ~/.bashrc
 command -v tsodao
 command -v hero_config_mcp
+command -v iinuji_cmd
 nvcc --version
 nvidia-smi
 /cuwacunu/.build/tests/test_cuda_probe
 ```
 
-After `source ~/.bashrc`, binaries built under `/cuwacunu/.build/tools` and
-`/cuwacunu/.build/hero` are available directly on `PATH`, and the shell status
-marks `[*]` and `[!]` are enabled through the repo-owned shell extension
+After `source ~/.bashrc`, binaries built under `/cuwacunu/.build/tools`,
+`/cuwacunu/.build/hero`, and `/cuwacunu/.build/interface` are available
+directly on `PATH`, and the shell status marks `[*]` and `[!]` are enabled
+through the repo-owned shell extension
 [`src/scripts/cuwacunu_bashrc.sh`](/cuwacunu/src/scripts/cuwacunu_bashrc.sh).
 
 ## Build Shortcuts

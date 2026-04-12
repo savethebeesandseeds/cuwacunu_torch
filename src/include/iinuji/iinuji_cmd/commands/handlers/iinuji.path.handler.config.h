@@ -10,37 +10,44 @@ bool dispatch_config_call(CallHandlerId call_id,
                           AppendLog&& append_log) const {
   (void)push_err;
   switch (call_id) {
-    case CallHandlerId::ConfigTabs:
-      if (!config_has_tabs(state)) {
-        push_warn("no config tabs");
+    case CallHandlerId::ConfigFiles:
+      if (!config_has_files(state)) {
+        push_warn("no config files");
         return true;
       }
-      for (std::size_t i = 0; i < state.config.tabs.size(); ++i) {
-        const auto& tab = state.config.tabs[i];
+      for (std::size_t i = 0; i < state.config.files.size(); ++i) {
+        const auto& file = state.config.files[i];
+        const std::string badge =
+            !file.ok ? "err"
+                     : (file.editable ? "rw"
+                                      : (file.replace_supported && !file.write_allowed
+                                             ? "gate"
+                                             : "ro"));
         append_log(
-            "[" + std::to_string(i + 1) + "] " + tab.id + (tab.ok ? "" : " (err)"),
-            "tabs",
+            "[" + std::to_string(i + 1) + "] " + file.family_id + " "
+                + file.relative_path + " [" + badge + "]",
+            "files",
             "#d0d0d0");
       }
       screen.config();
       return true;
-    case CallHandlerId::ConfigTabNext:
-      if (!config_has_tabs(state)) {
-        push_warn("no config tabs");
+    case CallHandlerId::ConfigFileNext:
+      if (!config_has_files(state)) {
+        push_warn("no config files");
         return true;
       }
-      select_next_tab(state);
+      select_next_config_file(state);
       screen.config();
-      push_info("selected tab=" + std::to_string(state.config.selected_tab + 1));
+      push_info("selected file=" + std::to_string(state.config.selected_file + 1));
       return true;
-    case CallHandlerId::ConfigTabPrev:
-      if (!config_has_tabs(state)) {
-        push_warn("no config tabs");
+    case CallHandlerId::ConfigFilePrev:
+      if (!config_has_files(state)) {
+        push_warn("no config files");
         return true;
       }
-      select_prev_tab(state);
+      select_prev_config_file(state);
       screen.config();
-      push_info("selected tab=" + std::to_string(state.config.selected_tab + 1));
+      push_info("selected file=" + std::to_string(state.config.selected_file + 1));
       return true;
     default:
       return false;
@@ -48,50 +55,51 @@ bool dispatch_config_call(CallHandlerId call_id,
 }
 
 template <class PushInfo, class PushWarn, class PushErr>
-bool dispatch_config_tab_index(const cuwacunu::camahjucunu::canonical_path_t& path,
-                               PushInfo&& push_info,
-                               PushWarn&& push_warn,
-                               PushErr&& push_err) const {
-  if (!config_has_tabs(state)) {
-    push_warn("no config tabs");
+bool dispatch_config_file_index(const cuwacunu::camahjucunu::canonical_path_t& path,
+                                PushInfo&& push_info,
+                                PushWarn&& push_warn,
+                                PushErr&& push_err) const {
+  if (!config_has_files(state)) {
+    push_warn("no config files");
     return true;
   }
 
   std::size_t idx1 = 0;
   if (!parse_positive_arg_or_tail(path, 4, &idx1)) {
-    push_err("usage: " + canonical_paths::build_config_tab_index(1));
+    push_err("usage: " + canonical_paths::build_config_file_index(1));
     return true;
   }
-  if (idx1 == 0 || idx1 > state.config.tabs.size()) {
-    push_err("config tab out of range");
+  if (idx1 == 0 || idx1 > state.config.files.size()) {
+    push_err("config file out of range");
     return true;
   }
-  state.config.selected_tab = idx1 - 1;
+  state.config.selected_file = idx1 - 1;
+  sync_selected_config_file(state);
   screen.config();
-  push_info("selected tab=" + std::to_string(state.config.selected_tab + 1));
+  push_info("selected file=" + std::to_string(state.config.selected_file + 1));
   return true;
 }
 
 template <class PushInfo, class PushWarn, class PushErr>
-bool dispatch_config_tab_id(const cuwacunu::camahjucunu::canonical_path_t& path,
-                            PushInfo&& push_info,
-                            PushWarn&& push_warn,
-                            PushErr&& push_err) const {
-  if (!config_has_tabs(state)) {
-    push_warn("no config tabs");
+bool dispatch_config_file_id(const cuwacunu::camahjucunu::canonical_path_t& path,
+                             PushInfo&& push_info,
+                             PushWarn&& push_warn,
+                             PushErr&& push_err) const {
+  if (!config_has_files(state)) {
+    push_warn("no config files");
     return true;
   }
 
   std::string id;
   if (!parse_string_arg_or_tail(path, 4, &id) || id.empty()) {
-    push_err("usage: " + canonical_paths::build_config_tab_id("token"));
+    push_err("usage: " + canonical_paths::build_config_file_id("token"));
     return true;
   }
-  if (!select_tab_by_token(state, id)) {
-    push_err("tab not found");
+  if (!select_config_file_by_token(state, id)) {
+    push_err("config file not found");
     return true;
   }
   screen.config();
-  push_info("selected tab=" + std::to_string(state.config.selected_tab + 1));
+  push_info("selected file=" + std::to_string(state.config.selected_file + 1));
   return true;
 }

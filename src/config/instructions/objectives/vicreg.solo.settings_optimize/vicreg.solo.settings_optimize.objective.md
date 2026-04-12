@@ -4,11 +4,33 @@ Objective identity:
 - This objective is `vicreg.solo.settings_optimize`.
 
 Notes:
-- Observation channels are static. Better channel selection may matter a lot,
-  but we keep them fixed for this objective.
-- `iitepi.contract.base.dsl` is the starting contract. If evidence justifies
-  it, introduce additional contract variants deliberately rather than relying
-  on a pre-baked architecture sweep.
+- Observation channels currently point at the objective-local medium dock
+  `1d + 4h + 1h`. We changed the dock because the old coarse profile starved
+  effective sample count while giving little horizon diversity.
+- The earlier sub-daily launch blocker has been addressed. Medium-channel
+  launches are no longer blocked by malformed raw kline close timestamps: the
+  dataloader now canonicalizes the affected bars well enough to build caches,
+  insert masked gaps, and train on this dock.
+- A direct Runtime launch already established that the hardened dataloader can
+  get through source initialization and complete training on a sub-daily dock.
+  Do not treat the old raw timestamp failure as the current limiting factor.
+- A mistaken Marshal launch used `3d + 1d + 1h` and was stopped promptly. Do not
+  treat that paused run as evidence for or against the intended `1d + 4h + 1h`
+  dock.
+- The most recent paired eval failure on this objective was operational, not
+  scientific: Hashimyei catalog refresh hit a live ingest lock before payload
+  evaluation ran. Treat a repeat of that failure as infrastructure triage, not
+  as evidence against the architecture or dock.
+- `optim/` remains the frozen best-known bundle from the previous channel
+  regime. Preserve that record. This objective is where we re-search network
+  settings against the new medium-channel dock.
+- `iitepi.contract.base.dsl` remains the calibration baseline, but the default
+  run plan is seeded from the previously winning `encoder_capacity_v1`
+  architecture so we carry forward the strongest pre-channel-change design we
+  found.
+- Read `resume.notes.md` before planning if it exists. Treat it as the
+  operator-maintained handoff summarizing the latest useful evidence and the
+  intended continuation point for fresh sessions.
 - This objective is about VICReg architecture quality, projector topology, and
   option policy. It is not a cross-symbol evaluation objective.
 

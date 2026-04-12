@@ -663,14 +663,14 @@ struct optim_backup_entry_t {
 [[nodiscard]] bool sync_optim_surface_to_archive(const hero_config_store_t& store,
                                                  std::string* out_error) {
   std::string output{};
-  return run_tsodao_command(store, {"sync", "--to-archive"}, &output,
+  return run_tsodao_command(store, {"sync", "--from-plaintext"}, &output,
                             out_error);
 }
 
 [[nodiscard]] bool restore_optim_surface_from_archive(
     const hero_config_store_t& store, std::string* out_error) {
   std::string output{};
-  return run_tsodao_command(store, {"sync", "--to-hidden", "--yes"}, &output,
+  return run_tsodao_command(store, {"sync", "--from-archive", "--yes"}, &output,
                             out_error);
 }
 
@@ -834,7 +834,10 @@ struct optim_backup_entry_t {
   const std::filesystem::path man_path = find_associated_man_path_with_fallback(
       config_root, dsl_path, validation_family_enum);
   const std::string warning =
-      man_path.empty() ? missing_associated_man_warning(dsl_path) : "";
+      man_path.empty() &&
+              should_warn_missing_associated_man(dsl_path, validation_family_enum)
+          ? missing_associated_man_warning(dsl_path)
+          : "";
   if (!warning.empty()) log_config_warning(warning);
 
   if (out_result_json) {
@@ -938,7 +941,11 @@ struct optim_backup_entry_t {
           find_associated_man_path_with_fallback(config_root, path,
                                                  validation_family_enum);
       const std::string warning =
-          man_path.empty() ? missing_associated_man_warning(path) : "";
+          man_path.empty() &&
+                  should_warn_missing_associated_man(path,
+                                                     validation_family_enum)
+              ? missing_associated_man_warning(path)
+              : "";
       if (!warning.empty()) log_config_warning(warning);
       if (i != 0) out << ",";
       out << "{\"path\":" << json_quote(path.string())

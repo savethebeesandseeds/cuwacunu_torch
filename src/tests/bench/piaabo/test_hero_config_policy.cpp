@@ -132,7 +132,7 @@ void ensure_instruction_roots(const fs::path& scope_root) {
   out << "iitepi_campaign_grammar_filename = /cuwacunu/src/config/bnf/iitepi.campaign.bnf\n";
   out << "iitepi_runtime_binding_grammar_filename = /cuwacunu/src/config/bnf/iitepi.runtime_binding.bnf\n";
   out << "iitepi_wave_grammar_filename = /cuwacunu/src/config/bnf/iitepi.wave.bnf\n";
-  out << "super_objective_grammar_filename = /cuwacunu/src/config/bnf/super.objective.bnf\n";
+  out << "marshal_objective_grammar_filename = /cuwacunu/src/config/bnf/objective.marshal.bnf\n";
   out << "network_design_grammar_filename = /cuwacunu/src/config/bnf/network_design.bnf\n";
   out << "vicreg_grammar_filename = /cuwacunu/src/config/bnf/latent_lineage_state.bnf\n";
   out << "expected_value_grammar_filename = /cuwacunu/src/config/bnf/latent_lineage_state.bnf\n";
@@ -480,14 +480,14 @@ int main() {
   }
 
   {
-    const fs::path scope_root = temp_root / "super_objective_default_scope";
+    const fs::path scope_root = temp_root / "marshal_objective_default_scope";
     const fs::path cfg_path =
         scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
     const fs::path global_cfg = scope_root / ".config";
-    const fs::path super_objective_default_path =
-        scope_root / "instructions" / "defaults" / "default.super.objective.dsl";
-    const fs::path super_objective_default_md_path =
-        scope_root / "instructions" / "defaults" / "default.super.objective.md";
+    const fs::path marshal_objective_default_path =
+        scope_root / "instructions" / "defaults" / "default.marshal.objective.dsl";
+    const fs::path marshal_objective_default_md_path =
+        scope_root / "instructions" / "defaults" / "default.marshal.objective.md";
     ensure_instruction_roots(scope_root);
     write_text(cfg_path, build_config_text(scope_root,
                                            /*allow_local_write=*/true,
@@ -496,11 +496,11 @@ int main() {
                                            scope_root / ".backups" /
                                                "hero.config"));
     write_text(global_cfg,
-               build_global_config_text(temp_root / "super_objective_default_runtime"));
-    write_text(super_objective_default_path,
-               read_text("/cuwacunu/src/config/instructions/defaults/default.super.objective.dsl"));
-    write_text(super_objective_default_md_path,
-               read_text("/cuwacunu/src/config/instructions/defaults/default.super.objective.md"));
+               build_global_config_text(temp_root / "marshal_objective_default_runtime"));
+    write_text(marshal_objective_default_path,
+               read_text("/cuwacunu/src/config/instructions/defaults/default.marshal.objective.dsl"));
+    write_text(marshal_objective_default_md_path,
+               read_text("/cuwacunu/src/config/instructions/defaults/default.marshal.objective.md"));
 
     cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string(),
                                                    global_cfg.string());
@@ -508,18 +508,18 @@ int main() {
     assert(store.load(&err));
     assert(err.empty());
 
-    const std::string super_objective_default_text =
-        read_text(super_objective_default_path);
+    const std::string marshal_objective_default_text =
+        read_text(marshal_objective_default_path);
     std::string result_json;
     assert(cuwacunu::hero::mcp::execute_tool_json(
         "hero.config.default.replace",
-        "{\"path\":" + json_quote(super_objective_default_path.string()) +
-            ",\"content\":" + json_quote(super_objective_default_text) + "}",
+        "{\"path\":" + json_quote(marshal_objective_default_path.string()) +
+            ",\"content\":" + json_quote(marshal_objective_default_text) + "}",
         &store, &result_json, &err));
     assert(err.empty());
-    assert(read_text(super_objective_default_path) ==
-           super_objective_default_text);
-    assert(result_json.find("\"validation_family\":\"super_objective\"") !=
+    assert(read_text(marshal_objective_default_path) ==
+           marshal_objective_default_text);
+    assert(result_json.find("\"validation_family\":\"marshal_objective\"") !=
            std::string::npos);
   }
 
@@ -538,7 +538,7 @@ int main() {
     const fs::path campaign_dsl = objective_root / "iitepi.campaign.dsl";
     const fs::path created_campaign_dsl =
         objective_root / "generated" / "probe.campaign.dsl";
-    const fs::path super_objective_dsl = objective_root / "super.objective.dsl";
+    const fs::path marshal_objective_dsl = objective_root / "marshal.objective.dsl";
     const fs::path created_dsl = objective_root / "generated" / "probe.dsl";
     const fs::path ignored_objective_file = objective_root / "notes.txt";
     ensure_instruction_roots(scope_root);
@@ -557,10 +557,10 @@ int main() {
         campaign_dsl,
         read_text("/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl"));
     write_text(ignored_objective_file, "not a dsl\n");
-    write_text(super_objective_dsl,
+    write_text(marshal_objective_dsl,
                "campaign_dsl_path:path = iitepi.campaign.dsl\n"
-               "objective_md_path:path = super.objective.md\n"
-               "guidance_md_path:path = ../../defaults/default.super.guidance.md\n");
+               "objective_md_path:path = marshal.objective.md\n"
+               "guidance_md_path:path = ../../defaults/default.marshal.guidance.md\n");
 
     cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string(),
                                                    global_cfg.string());
@@ -713,7 +713,7 @@ int main() {
     assert(cuwacunu::hero::mcp::execute_tool_json(
         "hero.config.objective.replace",
         "{\"objective_root\":\"" + objective_root.string() +
-            "\",\"path\":\"super.objective.dsl\",\"content\":\"campaign_dsl_path:path = iitepi.campaign.dsl\\nobjective_md_path:path = super.objective.md\\nguidance_md_path:path = ../../defaults/default.super.guidance.md\\n\"}",
+            "\",\"path\":\"marshal.objective.dsl\",\"content\":\"campaign_dsl_path:path = iitepi.campaign.dsl\\nobjective_md_path:path = marshal.objective.md\\nguidance_md_path:path = ../../defaults/default.marshal.guidance.md\\n\"}",
         &store, &result_json, &err));
     assert(err.empty());
 

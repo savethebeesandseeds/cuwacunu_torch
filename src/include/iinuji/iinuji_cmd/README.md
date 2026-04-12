@@ -1,8 +1,12 @@
 # iinuji_cmd
 
-`iinuji_cmd` is the command-first terminal shell for cuwacunu.
+`iinuji_cmd` is the Hero-first terminal shell for cuwacunu.
 
-Bench bootstrap:
+Primary interface entrypoint:
+- `src/main/interface/iinuji_cmd.cpp`
+- output binary: `.build/interface/iinuji_cmd`
+
+Focused smoke harness:
 - `src/tests/bench/iinuji/test_iinuji_cmd.cpp`
 
 ## Current layout
@@ -13,35 +17,33 @@ Core:
 - `src/include/iinuji/iinuji_cmd/app.h`
 - `src/include/iinuji/iinuji_cmd/views.h`
 
-Shared view helpers:
+Shared helpers:
 - `src/include/iinuji/iinuji_cmd/views/common.h`
 - `src/include/iinuji/iinuji_cmd/views/ui.h`
+- `src/include/hero/human_hero/hero_human_tools.h`
 
-Per-screen modules (standard):
-- `src/include/iinuji/iinuji_cmd/views/home/{state.h,view.h,app.h}`
-- `src/include/iinuji/iinuji_cmd/views/board/{state.h,commands.h,view.h,app.h}`
+First-class shell screens:
+- `src/include/iinuji/iinuji_cmd/views/human/{state.h,commands.h,view.h,app.h}`
+- `src/include/iinuji/iinuji_cmd/views/runtime/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/logs/{state.h,view.h,app.h}`
-- `src/include/iinuji/iinuji_cmd/views/tsiemene/{state.h,commands.h,view.h,app.h}`
-- `src/include/iinuji/iinuji_cmd/views/data/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/config/{state.h,commands.h,view.h,app.h}`
 
-`view.h` (singular at root) was removed; `views.h` is the single include entrypoint.
+The removed specialist-screen helpers are no longer part of the `iinuji_cmd` shell surface or its header tree.
 
 ## State model
 
 `CmdState` holds:
-- global state: active screen, running flag, command line
-- per-screen state blocks:
-  - `HomeState`
-  - `BoardState` (board decode/validation + selected circuit)
-  - `LogsState`
-  - `TsiemeneState` (selected tab)
-  - `DataState` (observation summary + runtime tensor selection)
-  - `ConfigState` (tabs + selected tab)
+- global shell state: active screen, running flag, command line, help overlay
+- `HumanState`: Human Hero operator inbox, active lane, selection, status, and a deprecated compatibility phase filter
+- `RuntimeState`: session-linked runtime inventory, detail mode, selection, status
+- `ShellLogsState`
+- `ConfigState`
+
+The default startup screen is `Home`.
 
 ## Command model
 
-`commands.h` is now canonical-first dispatcher.
+`commands.h` is canonical-first and Hero-first.
 
 Canonical path registry + dispatch lives in:
 - `src/include/iinuji/iinuji_cmd/commands/iinuji.paths.def`
@@ -49,65 +51,129 @@ Canonical path registry + dispatch lives in:
 - `src/include/iinuji/iinuji_cmd/commands/iinuji.path.handlers.h`
 - `src/include/iinuji/iinuji_cmd/commands/iinuji.command.aliases.h`
 
-Selection/utility helpers live in:
-- `views/board/commands.h`
-- `views/tsiemene/commands.h`
-- `views/data/commands.h`
-- `views/config/commands.h`
+Primary shell calls:
+- `iinuji.screen.home()`
+- `iinuji.screen.human()`
+- `iinuji.screen.runtime()`
+- `iinuji.screen.lattice()`
+- `iinuji.screen.logs()`
+- `iinuji.screen.config()`
+- `iinuji.refresh()`
+- `iinuji.show.human()`
+- `iinuji.show.runtime()`
+- `iinuji.show.logs()`
+- `iinuji.show.config()`
 
-User command model:
-- canonical path form: `iinuji.*()`
-- direct aliases are intentionally defined in `iinuji.paths.def` and resolved in `iinuji.command.aliases.h`
-- preferred path forms are static and suffix-based where practical:
-  - `...index.n1()`
-  - `...id.<token>()`
+Direct aliases accept `home` for the F1 Home screen and `marshal` for the F2
+Marshal screen.
 
-## App model
+Human-specific calls:
+- `iinuji.human.refresh()`
+- `iinuji.human.view.inbox()`
+- `iinuji.human.view.live()`
+- `iinuji.human.view.history()`
+- `iinuji.human.view.overview()` compatibility shim to Inbox
+- `iinuji.human.view.requests()` compatibility shim to Inbox
+- `iinuji.human.view.reviews()` compatibility shim to History
+- `iinuji.human.filter.next()` deprecated compatibility shim
 
-`app.h` now focuses on:
-- ncurses boot and layout tree
-- global event loop
-- global mouse scroll behavior
-- delegating key handling to screen app modules
+Runtime-specific calls:
+- `iinuji.runtime.refresh()`
+- `iinuji.runtime.detail.next()`
+- `iinuji.runtime.row.prev()`
+- `iinuji.runtime.row.next()`
+- `iinuji.runtime.item.prev()`
+- `iinuji.runtime.item.next()`
 
-Screen app logic lives in:
-- `views/board/app.h`
-- `views/tsiemene/app.h`
-- `views/config/app.h`
-- `views/data/app.h`
+Config calls are file-centered:
+- `iinuji.config.files()`
+- `iinuji.config.file.index.n1()`
+- `iinuji.config.file.id.<token>()`
 
-`views/data/app.h` owns:
-- dataset/tensor runtime cache for F5
-- sampled tensor navigation
-- full-screen plot overlay rendering
-- F5 arrow navigation model:
-  - `Up/Down` selects focused control
-  - `Left/Right` changes focused control
-  - printable keys are reserved for `cmd>`
-- F5 x-axis support (`index` vs `key_value` / `key_type_t`)
+Removed specialist-screen shell calls now fail as unknown commands by design.
+
+## Marshal cockpit
+
+The `Marshal` screen is the main operator cockpit for `.runtime/.marshal_hero`.
+
+It reuses the shared Human Hero inbox/action layer from `hero_human_tools` for:
+- session collection, request/review detection, and selection recovery
+- detail text builders
+- operator dialogs
+- action routing for clarification answers, governance resolutions, continue, pause, resume, terminate, and acknowledge
+
+This keeps `iinuji_cmd` aligned with the standalone `hero_human_mcp` tty console instead of maintaining a second independent Human workflow.
+
+## Runtime screen
+
+The `Runtime` screen is a read-only runtime ledger linked to the selected Marshal session when possible.
+
+It shows:
+- lane-based runtime browsing for sessions, campaigns, and jobs on the left
+- the currently selected runtime chain anchored to the active lane item
+- a styled operator overview, lineage, historic child lists, log-tail, or trace-summary detail on the right
+- explicit detached/orphan lineage for campaigns without sessions and jobs without campaign/session parents
+- wave-contract-binding identity for the selected job
+
+The runtime screen is intentionally observational in this refactor. Runtime mutation remains outside `iinuji_cmd`.
 
 ## Interaction model
 
-Primary interaction stays command-first (`cmd> ...`).
+Primary interaction stays command-first (`cmd> ...`) with fixed shell navigation:
+- `F1` Home
+- `F2` Marshal
+- `F3` Runtime
+- `F4` Lattice
+- `F8` Shell Logs
+- `F9` Config
 
-Shortcuts:
-- `F1` home
-- `F2` board
-- `F8` logs
-- `F4` tsiemene
-- `F5` data
-- `F9` config
+Marshal screen shortcuts:
+- `Up/Down` move the selected lane in navigation or the selected row in the worklist
+- `Left/Right` also move between `Inbox`, `Live`, and `History` while navigation is focused
+- `Enter` focuses the worklist or opens the selected row's action list
+- `Esc` returns from the worklist to navigation
+- `PgUp/PgDn/Home/End` and wheel scroll detail
+
+Marshal lanes:
+- `Inbox` merges sessions that need operator attention now: requests, operator-paused sessions, and pending reviews
+- `Live` shows active planning and running-campaign sessions
+- `History` shows idle and finished sessions for audit; pending reviews stay visibly marked there too
+
+Runtime screen shortcuts:
+- `Tab` cycle detail mode
+- `r` refresh
+- `Left/Right` move between `Sessions`, `Campaigns`, and `Jobs`
+- `Up/Down` move the selected lane while navigation is focused
+- `Enter` focuses the active runtime lane worklist
+- `Esc` returns from the worklist to lane navigation
+- `Up/Down` move through the selected lane while the worklist is focused
+- `h/l` or `[/]` browse backward/forward inside the active lane's linked runtime chain
+- `PgUp/PgDn/Home/End` and wheel scroll detail
+
+Config screen shortcuts:
+- `Enter` focuses file browser from family focus
+- `Esc` returns from file browser to family focus
+- `Up/Down` move through the selected file browser entry
+- `Home/End` jump to first or last visible file
+- `Enter` or `e` focuses the embedded file editor
+- `Ctrl+S` saves editable `.dsl` buffers through Config Hero replace
+- `Esc` or `Ctrl+Q` leaves the embedded editor; dirty buffers require a second press to discard
+- `r` reloads the family browser from the active policy
+
+The config screen catalogs files from the global Config Hero policy so every objective folder remains visible. When a Marshal session is selected, saves still use that session's narrower write scope when applicable.
 
 Mouse:
-- wheel: vertical scroll (both active workspace panels)
-- `Shift`/`Ctrl`/`Alt` + wheel: horizontal scroll
+- wheel: vertical scroll in active detail panes
+- `Shift`/`Ctrl`/`Alt` + wheel: horizontal scroll where supported
 
 ## Design direction
 
-This split keeps global concerns small and makes each screen self-contained:
-- state local to the screen
-- command parsing local to the screen
-- render logic local to the screen
-- key/app behavior local to the screen
+`iinuji_cmd` is now centered on Hero runtime operations instead of legacy specialist navigation. The shell is intentionally small:
+- Home for the loading/landing canvas
+- Marshal for operator work
+- Runtime for runtime evidence and historical lineage
+- Lattice for lineage and fact browsing
+- Shell Logs for shell diagnostics
+- Config for file-centered Hero/runtime config browsing
 
-That gives room to grow each screen without expanding monolithic `app.h` and `commands.h` again.
+That keeps the top-level shell deterministic and focused without carrying obsolete screen-specific helper stacks.

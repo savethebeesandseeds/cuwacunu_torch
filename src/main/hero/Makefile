@@ -11,29 +11,29 @@ BIN_OUT  := $(HERO_OUT)
 TEST_DEFAULT_LDLIBS :=
 HERO_DLOG_OVERRIDES := -DLOG_DBG_FILE=stderr
 
-HERO_HASHIMYEI_LINK := $(libtorch_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl)
+HERO_HASHIMYEI_LINK := $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)
 $(eval $(call BIN_ONEFILE, hero_hashimyei_mcp, hero_hashimyei_mcp.cpp, $(HERO_HASHIMYEI_LINK)))
-$(BIN_OUT)/hero_hashimyei_%: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
+$(BIN_OUT)/hero_hashimyei_%: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(SSL_INCLUDE_PATHS)
 
-HERO_LATTICE_LINK := $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
+HERO_LATTICE_LINK := $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_curl) $(LDLIBS_ssl)
 $(eval $(call BIN_ONEFILE, hero_lattice_mcp, hero_lattice_mcp.cpp, $(HERO_LATTICE_LINK)))
-$(BIN_OUT)/hero_lattice_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
+$(BIN_OUT)/hero_lattice_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(SSL_INCLUDE_PATHS)
 
-HERO_CONFIG_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LDLIBS_ssl)
+HERO_CONFIG_LINK := $(libcommon_a) $(libssl_a) $(LDLIBS_ssl)
 $(eval $(call BIN_ONEFILE, hero_config_mcp, hero_config_mcp.cpp, $(HERO_CONFIG_LINK)))
-$(BIN_OUT)/hero_config_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
+$(BIN_OUT)/hero_config_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(SSL_INCLUDE_PATHS)
 
-HERO_RUNTIME_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LDLIBS_ssl)
+HERO_RUNTIME_LINK := $(libcommon_a) $(libssl_a) $(LDLIBS_ssl)
 $(eval $(call BIN_ONEFILE, hero_runtime_mcp, hero_runtime_mcp.cpp, $(HERO_RUNTIME_LINK)))
-$(BIN_OUT)/hero_runtime_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
+$(BIN_OUT)/hero_runtime_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(SSL_INCLUDE_PATHS)
 
-HERO_SUPER_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LDLIBS_ssl)
-$(eval $(call BIN_ONEFILE, hero_super_mcp, hero_super_mcp.cpp, $(HERO_SUPER_LINK)))
-$(BIN_OUT)/hero_super_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)
+HERO_MARSHAL_LINK := $(libcommon_a) $(libssl_a) $(LDLIBS_ssl)
+$(eval $(call BIN_ONEFILE, hero_marshal_mcp, hero_marshal_mcp.cpp, $(HERO_MARSHAL_LINK)))
+$(BIN_OUT)/hero_marshal_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(SSL_INCLUDE_PATHS)
 
-HERO_HUMAN_LINK := $(libtorch_a) $(libcommon_a) $(libssl_a) $(LDLIBS_torch) $(LDLIBS_ssl) $(LDLIBS_ncurses)
+HERO_HUMAN_LINK := $(libcommon_a) $(libssl_a) $(LDLIBS_ssl) $(LDLIBS_ncurses)
 $(eval $(call BIN_ONEFILE, hero_human_mcp, hero_human_mcp.cpp, $(HERO_HUMAN_LINK)))
-$(BIN_OUT)/hero_human_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(NCURSES_INCLUDE_PATHS)
+$(BIN_OUT)/hero_human_mcp: INCLUDES_EXTRA += $(HERO_DLOG_OVERRIDES) $(SSL_INCLUDE_PATHS) $(NCURSES_INCLUDE_PATHS)
 
 define INSTALL_HERO_BIN
 .PHONY: install-$(strip $(1))
@@ -49,11 +49,11 @@ $(eval $(call INSTALL_HERO_BIN,config-hero,hero_config_mcp))
 $(eval $(call INSTALL_HERO_BIN,hashimyei-hero,hero_hashimyei_mcp))
 $(eval $(call INSTALL_HERO_BIN,lattice-hero,hero_lattice_mcp))
 $(eval $(call INSTALL_HERO_BIN,runtime-hero,hero_runtime_mcp))
-$(eval $(call INSTALL_HERO_BIN,super-hero,hero_super_mcp))
+$(eval $(call INSTALL_HERO_BIN,marshal-hero,hero_marshal_mcp))
 $(eval $(call INSTALL_HERO_BIN,human-hero,hero_human_mcp))
 
 .PHONY: all
-all: $(BIN_OUT)/hero_config_mcp $(BIN_OUT)/hero_hashimyei_mcp $(BIN_OUT)/hero_lattice_mcp $(BIN_OUT)/hero_runtime_mcp $(BIN_OUT)/hero_super_mcp $(BIN_OUT)/hero_human_mcp
+all: $(BIN_OUT)/hero_config_mcp $(BIN_OUT)/hero_hashimyei_mcp $(BIN_OUT)/hero_lattice_mcp $(BIN_OUT)/hero_runtime_mcp $(BIN_OUT)/hero_marshal_mcp $(BIN_OUT)/hero_human_mcp
 	@$(LOG_SUCCESS)
 
 .PHONY: run
@@ -66,5 +66,5 @@ clean:
 	  $(BIN_OUT)/hero_hashimyei_mcp \
 	  $(BIN_OUT)/hero_lattice_mcp \
 	  $(BIN_OUT)/hero_runtime_mcp \
-	  $(BIN_OUT)/hero_super_mcp \
+	  $(BIN_OUT)/hero_marshal_mcp \
 	  $(BIN_OUT)/hero_human_mcp

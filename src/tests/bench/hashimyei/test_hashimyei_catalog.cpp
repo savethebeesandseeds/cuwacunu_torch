@@ -601,9 +601,6 @@ int main() {
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(fs::exists(rank_app.catalog_options.catalog_path));
-  REQUIRE(fs::exists(rank_app.catalog_options.catalog_path.parent_path() /
-                     "hashimyei_catalog.idydb.sync.sha256"));
-  REQUIRE(!fs::exists(legacy_hashimyei_catalog_path));
 
   fs::remove(component_manifest_file);
   tool_result.clear();

@@ -1,38 +1,38 @@
 /*
   vicreg.solo.train objective-local wave catalog.
 
-  The optimized model-bearing bundle stays frozen in ../../optim/.
-  Training effort and evaluation cadence live here because they are objective
-  policy, not part of the optimized artifact identity.
+  This bundle intentionally exposes one long-horizon train wave, one reusable
+  validation wave, and one separate untouched-test wave. The optimized
+  model-bearing bundle stays frozen in ../../optim/.
 */
 WAVE train_vicreg_primary {
   CIRCUIT: circuit_1;
-  MODE: % __mode_flags ? run | train | debug % ;
-  SAMPLER: % __sampler ? sequential %;
-  EPOCHS: 4;
+  MODE: run | train ;
+  SAMPLER: sequential;
+  EPOCHS: 1024;
   BATCH_SIZE: 64;
   MAX_BATCHES_PER_EPOCH: 4000;
 
   SOURCE: <w_source> {
     FAMILY: tsi.source.dataloader;
     SETTINGS: {
-      WORKERS: % __workers ? 0 %;
+      WORKERS: 0;
       FORCE_REBUILD_CACHE: true;
       RANGE_WARN_BATCHES: 256;
     };
     RUNTIME: {
-      SYMBOL: % __symbol ? BTCUSDT %;
-      FROM: % __from ? 01.01.2020 %;
-      TO: % __to ? 31.12.2023 %;
+      SYMBOL: BTCUSDT;
+      FROM: 01.01.2020;
+      TO: 31.12.2023;
     };
   };
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x00FF %;
+    HASHIMYEI: 0x00FF;
     JKIMYEI: {
       HALT_TRAIN: false;
-      PROFILE_ID: % __jk_profile_id ? stable_pretrain %;
+      PROFILE_ID: stable_pretrain_linear_only;
     };
   };
 
@@ -48,7 +48,7 @@ WAVE train_vicreg_primary {
 WAVE eval_vicreg_payload {
   CIRCUIT: circuit_1;
   MODE: run | debug ;
-  SAMPLER: % __sampler ? sequential %;
+  SAMPLER: sequential;
   EPOCHS: 1;
   BATCH_SIZE: 64;
   MAX_BATCHES_PER_EPOCH: 512;
@@ -56,23 +56,68 @@ WAVE eval_vicreg_payload {
   SOURCE: <w_source> {
     FAMILY: tsi.source.dataloader;
     SETTINGS: {
-      WORKERS: % __workers ? 0 %;
+      WORKERS: 0;
       FORCE_REBUILD_CACHE: true;
       RANGE_WARN_BATCHES: 128;
     };
     RUNTIME: {
-      SYMBOL: % __symbol ? BTCUSDT %;
-      FROM: % __from ? 01.01.2024 %;
-      TO: % __to ? 31.08.2024 %;
+      SYMBOL: BTCUSDT;
+      FROM: 01.01.2024;
+      TO: 31.08.2024;
     };
   };
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x00FF %;
+    HASHIMYEI: 0x00FF;
     JKIMYEI: {
       HALT_TRAIN: true;
-      PROFILE_ID: % __jk_profile_id ? eval_payload_only %;
+      PROFILE_ID: eval_payload_only;
+    };
+  };
+
+  SINK: <sink_null> {
+    FAMILY: tsi.sink.null;
+  };
+
+  SINK: <probe_log> {
+    FAMILY: tsi.probe.log;
+  };
+}
+
+/*
+  Separate untouched final test. This final promotion-biased round spends it
+  after reusable validation so the campaign ends with confirmation on the last
+  held-out window.
+*/
+WAVE eval_vicreg_payload_untouched_test {
+  CIRCUIT: circuit_1;
+  MODE: run | debug ;
+  SAMPLER: sequential;
+  EPOCHS: 1;
+  BATCH_SIZE: 64;
+  MAX_BATCHES_PER_EPOCH: 512;
+
+  SOURCE: <w_source> {
+    FAMILY: tsi.source.dataloader;
+    SETTINGS: {
+      WORKERS: 0;
+      FORCE_REBUILD_CACHE: true;
+      RANGE_WARN_BATCHES: 128;
+    };
+    RUNTIME: {
+      SYMBOL: BTCUSDT;
+      FROM: 01.09.2024;
+      TO: 31.12.2024;
+    };
+  };
+
+  WIKIMYEI: <w_rep> {
+    FAMILY: tsi.wikimyei.representation.vicreg;
+    HASHIMYEI: 0x00FF;
+    JKIMYEI: {
+      HALT_TRAIN: true;
+      PROFILE_ID: eval_payload_only;
     };
   };
 

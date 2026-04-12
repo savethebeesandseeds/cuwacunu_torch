@@ -4,10 +4,26 @@ set -euo pipefail
 HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${HOOK_DIR}/.." && pwd)"
 BUILD_BIN="${REPO_ROOT}/.build/tools/tsodao"
+OS_NAME="$(uname -s 2>/dev/null || echo unknown)"
 
 if [ -x "${BUILD_BIN}" ]; then
   exec "${BUILD_BIN}" git-pre-commit
 fi
 
-printf 'pre-commit: missing tsodao binary; run `make -C %s/src/main/tools -j12 install-tsodao` or `build-tsodao`\n' "${REPO_ROOT}" >&2
+if [ -e "${BUILD_BIN}" ]; then
+  case "${OS_NAME}" in
+    MINGW*|MSYS*|CYGWIN*)
+      printf 'pre-commit: found tsodao at %s, but this hook is running under %s and cannot execute the Linux/WSL tsodao binary. Run `git commit` from Linux/WSL in the same checkout.\n' \
+        "${BUILD_BIN}" "${OS_NAME}" >&2
+      ;;
+    *)
+      printf 'pre-commit: found tsodao at %s, but it is not executable from this shell.\n' \
+        "${BUILD_BIN}" >&2
+      ;;
+  esac
+  exit 1
+fi
+
+printf 'pre-commit: missing tsodao binary at %s; run `make -C %s/src/main/tools -j12 build-tsodao`\n' \
+  "${BUILD_BIN}" "${REPO_ROOT}" >&2
 exit 1

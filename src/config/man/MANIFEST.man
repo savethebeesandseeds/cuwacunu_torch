@@ -115,12 +115,12 @@ file = iitepi.runtime_binding.man
 covers = bnf/iitepi.runtime_binding.bnf
 
 [ENTRY 29]
-file = hero.super.config.man
-covers = instructions/defaults/default.hero.super.dsl,bnf/latent_lineage_state.authored.bnf
+file = hero.marshal.config.man
+covers = instructions/defaults/default.hero.marshal.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 30]
-file = super.objective.man
-covers = instructions/defaults/default.super.objective.dsl,bnf/objective.super.bnf
+file = marshal.objective.man
+covers = instructions/defaults/default.marshal.objective.dsl,bnf/objective.marshal.bnf
 
 [ENTRY 31]
 file = hero.human.config.man

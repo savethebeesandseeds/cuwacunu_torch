@@ -138,7 +138,9 @@ Those runtime sidecars use distinct embedding-facing schemas:
 This module computes source entropic load from mask-aware flattened past windows
 and writes deterministic key/value reports (`data_analytics.v2.latest.lls`)
 under the hashimyei data root
-`tsi/source/dataloader/contracts/<contract>/contexts/<source_runtime_cursor>/`.
+`tsi/source/dataloader/contracts/<contract_token>/contexts/<source_runtime_cursor>/`,
+where `<contract_token>` is the compact on-disk token derived from the full
+`contract_hash`.
 `MASK_EPSILON` is a minimum accepted valid-timestep ratio per sample. Accepted
 samples exclude invalid positions from the numeric mean/variance/covariance
 statistics instead of merely down-weighting them.

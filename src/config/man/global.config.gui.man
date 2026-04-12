@@ -15,7 +15,7 @@ required = true
 default = 6000
 range = >=1
 allowed = integer
-nuance = max in-memory dlogs entries retained for iinuji F8 logs view
+nuance = max in-memory dlogs entries retained for the iinuji F8 shell logs view
 
 [FIELD GUI.iinuji_logs_show_date]
 key = iinuji_logs_show_date
@@ -25,7 +25,7 @@ required = false
 default = true
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = default F8 logs rendering includes wall-clock timestamp prefix
+nuance = default F8 shell logs rendering includes wall-clock timestamp prefix
 
 [FIELD GUI.iinuji_logs_show_thread]
 key = iinuji_logs_show_thread
@@ -35,7 +35,7 @@ required = false
 default = true
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = default F8 logs rendering includes thread id column
+nuance = default F8 shell logs rendering includes thread id column
 
 [FIELD GUI.iinuji_logs_show_metadata]
 key = iinuji_logs_show_metadata
@@ -45,7 +45,7 @@ required = false
 default = true
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = default F8 logs rendering appends metadata payload when available
+nuance = default F8 shell logs rendering appends metadata payload when available
 
 [FIELD GUI.iinuji_logs_metadata_filter]
 key = iinuji_logs_metadata_filter
@@ -55,7 +55,7 @@ required = false
 default = any
 range = one token
 allowed = any,any_meta,function,path,callsite and compatibility aliases
-nuance = default F8 logs filter for metadata-aware entries; invalid values fall back to any
+nuance = default F8 shell logs filter for metadata-aware entries; invalid values fall back to any
 
 [FIELD GUI.iinuji_logs_show_color]
 key = iinuji_logs_show_color
@@ -65,7 +65,7 @@ required = false
 default = true
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = default F8 logs rendering uses severity emphasis colors
+nuance = default F8 shell logs rendering uses severity emphasis colors
 
 [FIELD GUI.iinuji_logs_auto_follow]
 key = iinuji_logs_auto_follow
@@ -75,7 +75,7 @@ required = false
 default = true
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = default F8 logs behavior keeps selection pinned to newest entries
+nuance = default F8 shell logs behavior keeps selection pinned to newest entries
 
 [FIELD GUI.iinuji_logs_mouse_capture]
 key = iinuji_logs_mouse_capture
@@ -86,6 +86,26 @@ default = true
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
 nuance = default iinuji mouse mode captures mouse events instead of terminal copy/select
+
+[FIELD GUI.iinuji_loading_logo_path]
+key = iinuji_loading_logo_path
+scope = GUI section
+type = string
+required = false
+default = /cuwacunu/src/resources/waajacamaya.png
+range = filesystem path
+allowed = readable PNG file path; invalid or unreadable paths fall back to a text-only boot panel
+nuance = iinuji_cmd bootstrap logo asset rendered in the loading screen right-hand showcase panel
+
+[FIELD GUI.iinuji_home_animation_path]
+key = iinuji_home_animation_path
+scope = GUI section
+type = string
+required = false
+default = /cuwacunu/src/resources/waajacamaya.apng
+range = filesystem path
+allowed = readable APNG/GIF/PNG file path; invalid or unreadable paths fall back to GUI.iinuji_loading_logo_path in F1 Home
+nuance = iinuji_cmd F1 Home right-hand showcase asset rendered through the animation primitive
 
 [RULE GUI_IINUJI_LOGS_METADATA_FILTER_ALLOWED]
 id = GUI_IINUJI_LOGS_METADATA_FILTER_ALLOWED

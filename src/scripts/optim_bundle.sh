@@ -9,6 +9,6 @@ if [ -x "${BUILD_BIN}" ]; then
   exec "${BUILD_BIN}" "$@"
 fi
 
-printf 'optim_bundle.sh: missing tsodao binary; run `make -C %s/src/main/tools -j12 install-tsodao` or `make -C %s/src/main/tools -j12 build-tsodao`\n' \
-  "${REPO_ROOT}" "${REPO_ROOT}" >&2
+printf 'optim_bundle.sh: missing tsodao binary at %s; run `make -C %s/src/main/tools -j12 build-tsodao`\n' \
+  "${BUILD_BIN}" "${REPO_ROOT}" >&2
 exit 1

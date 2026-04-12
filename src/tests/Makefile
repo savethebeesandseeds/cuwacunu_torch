@@ -42,12 +42,13 @@ DATA := memory_mapped_datafile memory_mapped_dataset memory_mapped_concat_datase
 $(foreach t,$(DATA),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # ------------------------------ iinuji ---------------------------------------
-IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_tsi, iinuji_bootstrap
+IINUJI := iinuji_plots iinuji_logs iinuji_suit iinuji_mouse iinuji_tsi iinuji_bootstrap iinuji_image_primitive iinuji_image_demo iinuji_animation_primitive iinuji_animation_demo iinuji_braille_colors iinuji_art_text_primitive iinuji_art_text_demo
 $(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ iinuji + torch--------------------------------
-IINUJI := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd iinuji_cmd_home iinuji_cmd_canonical_paths iinuji_cmd_terminal
-$(foreach t,$(IINUJI),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
+IINUJI_TORCH := iinuji_toroid iinuji_data_viz iinuji_timeseries iinuji_cmd \
+	iinuji_cmd_home iinuji_cmd_terminal
+$(foreach t,$(IINUJI_TORCH),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/iinuji)))
 
 # ------------------------------ tsiemene--------------------------------
 TSIEMENE := tsi_wikimyei_jkimyei_facet
@@ -86,15 +87,24 @@ EXPVAL := expected_value
 $(foreach t,$(EXPVAL),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/wikimyei)))
 
 # 4) Shortcut groups (delegate only; no test logic changes)
-.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval
+.PHONY: parser dsl types exchange piaabo data iinuji iinuji_torch \
+	iinuji_image test_iinuji_image clear_iinuji_image clear-test_iinuji_image \
+	tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval
 parser: $(addprefix test_,$(BNF_PARSER_CORE))
 dsl: $(addprefix test_,$(DSL))
 types: $(addprefix test_,$(TYPES))
 exchange: $(addprefix test_,$(EXCHANGE))
 piaabo: $(addprefix test_,$(PIAABO))
 data: $(addprefix test_,$(DATA))
-iinuji: test_iinuji_plots test_iinuji_logs test_iinuji_suit test_iinuji_mouse test_iinuji_tsi
-iinuji_torch: test_iinuji_toroid test_iinuji_data_viz test_iinuji_timeseries test_iinuji_cmd test_iinuji_cmd_home test_iinuji_cmd_canonical_paths test_iinuji_cmd_terminal
+iinuji: test_iinuji_plots test_iinuji_logs test_iinuji_suit test_iinuji_mouse \
+	test_iinuji_tsi test_iinuji_bootstrap test_iinuji_image_primitive \
+	test_iinuji_image_demo test_iinuji_animation_primitive \
+	test_iinuji_animation_demo test_iinuji_braille_colors \
+	test_iinuji_art_text_primitive test_iinuji_art_text_demo
+iinuji_torch: $(addprefix test_,$(IINUJI_TORCH))
+iinuji_image: test_iinuji_image_demo
+test_iinuji_image: test_iinuji_image_demo
+clear_iinuji_image clear-test_iinuji_image: clear-test_iinuji_image_demo
 tsiemene: $(addprefix test_,$(TSIEMENE))
 iitepi: $(addprefix test_,$(IITEPI))
 https: $(addprefix test_,$(HTTPS))

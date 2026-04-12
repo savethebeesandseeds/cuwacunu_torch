@@ -57,18 +57,18 @@ namespace cuwacunu::hero::mcp::detail {
                            ".campaign.dsl") == 0);
 }
 
-[[nodiscard]] bool is_super_objective_dsl_path(
+[[nodiscard]] bool is_marshal_objective_dsl_path(
     const std::filesystem::path& path) {
   const std::string filename = lowercase_copy(path.filename().string());
-  if (filename == "super.objective.dsl" ||
-      filename == "default.super.objective.dsl") {
+  if (filename == "marshal.objective.dsl" ||
+      filename == "default.marshal.objective.dsl") {
     return true;
   }
-  const std::string suffix = ".super.dsl";
+  const std::string suffix = ".marshal.dsl";
   if (filename.size() >= suffix.size() &&
       filename.compare(filename.size() - suffix.size(), suffix.size(),
                        suffix) == 0) {
-    return filename.find(".hero.super.dsl") == std::string::npos;
+    return filename.find(".hero.marshal.dsl") == std::string::npos;
   }
   return false;
 }

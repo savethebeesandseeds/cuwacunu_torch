@@ -18,6 +18,7 @@
 #include "hero/runtime_hero/runtime_job.h"
 #include "hero/runtime_dev_loop.h"
 #include "hero/wave_contract_binding_runtime.h"
+#include "iitepi/runtime_binding/runtime_binding.device_metadata.h"
 #include "piaabo/dlogs.h"
 
 namespace {
@@ -50,7 +51,8 @@ void print_help(const char* argv0) {
 [[nodiscard]] std::string campaign_cursor_from_job_cursor(
     std::string_view job_cursor) {
   const std::string trimmed = trim_ascii(job_cursor);
-  const std::size_t marker = trimmed.find(".job.");
+  const std::size_t marker = trimmed.find(
+      cuwacunu::hero::runtime::kRuntimeJobCursorChildMarker);
   if (marker == std::string::npos || marker == 0) return {};
   return trimmed.substr(0, marker);
 }
@@ -286,6 +288,10 @@ int run_job_runner(int argc, char** argv) {
       args.push_back(worker_binary.string());
       args.push_back("--global-config");
       args.push_back(global_config_path);
+      args.push_back("--campaigns-root");
+      args.push_back(campaigns_root.string());
+      args.push_back("--job-cursor");
+      args.push_back(job_cursor);
       if (!campaign_dsl_path.empty()) {
         args.push_back("--campaign-dsl");
         args.push_back(campaign_dsl_path);
@@ -580,6 +586,16 @@ int run_campaign_runner(int argc, char** argv) {
     const std::string job_cursor =
         cuwacunu::hero::runtime::make_job_cursor(
             campaigns_root, campaign.campaign_cursor, i);
+    if (job_cursor.empty()) {
+      error = "failed to allocate compact job cursor for bind " + bind_id;
+      campaign.state = "failed";
+      campaign.state_detail = error;
+      campaign.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      campaign.updated_at_ms = *campaign.finished_at_ms;
+      (void)cuwacunu::hero::runtime::write_runtime_campaign_record(campaigns_root,
+                                                                   campaign, nullptr);
+      return 1;
+    }
     cuwacunu::hero::wave_contract_binding_runtime::
         resolved_wave_contract_binding_snapshot_t snapshot{};
     if (!cuwacunu::hero::wave_contract_binding_runtime::
@@ -604,6 +620,8 @@ int run_campaign_runner(int argc, char** argv) {
     job.worker_binary = worker_binary.string();
     job.worker_command =
         worker_binary.string() + " --global-config " + global_config_path +
+        " --campaigns-root " + campaigns_root.string() + " --job-cursor " +
+        job_cursor +
         " --campaign-dsl " + snapshot.campaign_dsl_path + " --binding " +
         snapshot.binding_id;
     job.global_config_path = global_config_path;
@@ -614,6 +632,15 @@ int run_campaign_runner(int argc, char** argv) {
     job.contract_dsl_path = snapshot.contract_dsl_path;
     job.wave_dsl_path = snapshot.wave_dsl_path;
     job.binding_id = snapshot.binding_id;
+    const auto device_metadata =
+        tsiemene::resolve_runtime_binding_preferred_device_metadata_for_contract_path(
+            std::filesystem::path(snapshot.contract_dsl_path));
+    job.requested_device = device_metadata.configured_device;
+    job.resolved_device = device_metadata.resolved_device;
+    job.device_source_section = device_metadata.source_section;
+    job.device_contract_hash = device_metadata.contract_hash;
+    job.device_error = device_metadata.error;
+    job.cuda_required = device_metadata.cuda_required;
     job.reset_runtime_state = campaign.reset_runtime_state && (i == 0);
     job.stdout_path =
         cuwacunu::hero::runtime::runtime_job_stdout_path(campaigns_root, job_cursor)

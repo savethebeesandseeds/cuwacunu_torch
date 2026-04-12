@@ -48,7 +48,7 @@ Research stance:
   labeled explicitly rather than hard-coded to one symbol name.
 
 Primary objective-local mutation surfaces:
-- `iitepi.campaign.dsl` so Super Hero can author the concrete eval-only symbol
+- `iitepi.campaign.dsl` so Marshal Hero can author the concrete eval-only symbol
   binds and run order for this objective
 
 Primary goals:

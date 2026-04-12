@@ -33,14 +33,14 @@ int main() {
 
   assert(has_path(targets.store_roots, hashimyei_root));
   assert(has_path(targets.store_roots, targets.runtime_campaigns_root));
-  assert(has_path(targets.store_roots, targets.super_root));
+  assert(has_path(targets.store_roots, targets.marshal_root));
   assert(has_path(targets.store_roots, targets.human_root));
 
   assert(strip_control_plane_store_roots(&targets));
 
   assert(has_path(targets.store_roots, hashimyei_root));
   assert(has_path(targets.store_roots, targets.runtime_campaigns_root));
-  assert(!has_path(targets.store_roots, targets.super_root));
+  assert(!has_path(targets.store_roots, targets.marshal_root));
   assert(!has_path(targets.store_roots, targets.human_root));
 
   return 0;

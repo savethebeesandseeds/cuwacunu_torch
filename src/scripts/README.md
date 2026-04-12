@@ -53,15 +53,15 @@ operator signing surface. It works with the current runtime contract:
 
 `src/scripts/cuwacunu_bashrc.sh` is the repo-owned bashrc extension. It keeps
 the cuwacunu shell behavior centralized by:
-- adding `/cuwacunu/.build/hero` and `/cuwacunu/.build/tools` to `PATH`
+- adding `/cuwacunu/.build/hero`, `/cuwacunu/.build/tools`, and `/cuwacunu/.build/interface` to `PATH`
 - rendering the shell status marks `[*]` and `[!]`
 
 `src/scripts/hero_human_prompt_mark.sh` is the tiny shell status-mark helper for
 the Human Hero pending marker. It reads the hard-coded runtime file
-`/cuwacunu/.runtime/.human_hero/awaiting_human.pending.count` and also checks
-`/cuwacunu/.runtime/.human_hero/finished.pending.count`. It prints `[*]` when
-at least one Super Hero loop is paused in `awaiting_human` or at least one
-finished-loop summary report still needs Human Hero acknowledgment.
+`/cuwacunu/.runtime/.human_hero/request.pending.count` and also checks
+`/cuwacunu/.runtime/.human_hero/summary.pending.count`. It prints `[*]` when
+at least one Marshal Hero session is paused for input/governance or at least one
+idle-or-finished session summary still needs Human Hero acknowledgment.
 
 `src/scripts/tsodao_sync_mark.sh` is the matching shell status-mark helper for
 TSODAO sync attention. It asks the TSODAO binary for `prompt-mark` and prints
@@ -113,8 +113,8 @@ Examples:
 /cuwacunu/.build/tools/tsodao status
 /cuwacunu/.build/tools/tsodao init
 /cuwacunu/.build/tools/tsodao sync
-/cuwacunu/.build/tools/tsodao sync --to-archive
-/cuwacunu/.build/tools/tsodao sync --to-hidden
+/cuwacunu/.build/tools/tsodao sync --from-plaintext
+/cuwacunu/.build/tools/tsodao sync --from-archive
 /cuwacunu/.build/tools/tsodao prompt-mark
 bash src/scripts/setup_tsodao_key.sh
 bash src/scripts/install_git_hooks.sh
@@ -132,8 +132,10 @@ Dependency note:
   auto-refresh the hidden archive through repo git hooks.
 - `sync` is the normal operator command. With no flags it chooses a direction
   only when that direction is provably safe.
-- `sync --to-archive` means plaintext hidden root -> encrypted archive.
-- `sync --to-hidden` means encrypted archive -> plaintext hidden root.
+- `sync --from-plaintext` means the local plaintext hidden root is the source
+  of truth and the encrypted archive should be resealed.
+- `sync --from-archive` means the encrypted archive is the source of truth and
+  the plaintext hidden root should be restored.
 - `sync` is safety-first: if both plaintext and archive exist but TSODAO cannot
   prove which one this machine last synced against, it refuses instead of
   overwriting either side.
@@ -163,7 +165,7 @@ make -C /cuwacunu/src/main/tools -j12 build-tsodao
 /cuwacunu/.build/tools/tsodao sync
 ```
 
-Optional in-place finalize:
+Optional permission finalize:
 ```bash
 make -C /cuwacunu/src/main/tools -j12 install-tsodao
 /cuwacunu/.build/tools/tsodao sync
@@ -176,7 +178,7 @@ Aggregator note:
   `make -C /cuwacunu/src link`, `make -C /cuwacunu/src install`.
 - `make -C /cuwacunu/src/main all` is an advanced/internal direct-main
   entrypoint; it also finalizes the installable HERO and tool surfaces.
-- TSODAO install is quiet when the installed binary is already identical;
+- TSODAO install is quiet when `.build/tools/tsodao` already has the desired mode;
   `[TOOL: INSTALLED]` only appears when the `.build/tools` binary actually
   changes mode into its finalized `700` state.
 - HERO `install-*-hero` targets under `src/main/hero` are specialized

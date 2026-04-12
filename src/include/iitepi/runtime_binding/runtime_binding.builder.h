@@ -29,7 +29,7 @@
 #include "jkimyei/training_setup/jk_setup.h"
 #include "piaabo/dfiles.h"
 #include "piaabo/dconfig.h"
-#include "iitepi/observation_contract_wave_paths.h"
+#include "iitepi/observation_dsl_paths.h"
 #include "iitepi/runtime_binding/runtime_binding.h"
 #include "iitepi/runtime_binding/runtime_binding.validation.h"
 #include "tsiemene/tsi.type.registry.h"

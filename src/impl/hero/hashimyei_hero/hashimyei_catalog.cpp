@@ -23,6 +23,7 @@
 #include "camahjucunu/db/idydb.h"
 #include "hero/hero_catalog_schema.h"
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
+#include "hero/mcp_server_observability.h"
 #include "iitepi/contract_space_t.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 
@@ -33,6 +34,7 @@ namespace {
 
 using runtime_lls_document_t =
     cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
+constexpr std::string_view kObservabilityScope = "hashimyei_catalog";
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t b = 0;
@@ -71,6 +73,13 @@ using runtime_lls_document_t =
   return static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
           .count());
+}
+
+void log_hashimyei_catalog_event(std::string_view event_name,
+                                 std::string_view extra_fields_json = {}) {
+  std::string ignored{};
+  (void)cuwacunu::hero::mcp_observability::append_event_json(
+      kObservabilityScope, event_name, extra_fields_json, &ignored);
 }
 
 [[nodiscard]] std::string hex_lower(const unsigned char* bytes, std::size_t n) {
@@ -842,16 +851,8 @@ namespace {
 
 [[nodiscard]] bool path_is_within(std::filesystem::path base,
                                   std::filesystem::path candidate) {
-  if (const auto c = canonicalized(base); c.has_value()) {
-    base = *c;
-  } else {
-    base = base.lexically_normal();
-  }
-  if (const auto c = canonicalized(candidate); c.has_value()) {
-    candidate = *c;
-  } else {
-    candidate = candidate.lexically_normal();
-  }
+  base = base.lexically_normal();
+  candidate = candidate.lexically_normal();
   auto b = base.begin();
   auto c = candidate.begin();
   for (; b != base.end() && c != candidate.end(); ++b, ++c) {
@@ -911,7 +912,11 @@ namespace {
     pos = slash + 1;
   }
   for (std::size_t i = 0; i + 1 < parts.size(); ++i) {
-    if (parts[i] == "contracts") return parts[i + 1];
+    if (parts[i] == "contracts") {
+      const std::string token = trim_ascii(parts[i + 1]);
+      if (token.rfind("c.", 0) == 0) return {};
+      return token;
+    }
   }
   return {};
 }
@@ -1031,6 +1036,10 @@ constexpr auto kCatalogOpenBusyRetryDelay = std::chrono::milliseconds(25);
   }
   out->clear();
   if (out_document) out_document->entries.clear();
+  if (!out_document) {
+    return cuwacunu::piaabo::latent_lineage_state::
+        parse_runtime_lls_text_fast_to_kv_map(payload, out, error);
+  }
 
   runtime_lls_document_t parsed{};
   if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
@@ -1633,8 +1642,34 @@ hashimyei_catalog_store_t::~hashimyei_catalog_store_t() {
 
 bool hashimyei_catalog_store_t::open(const options_t& options, std::string* error) {
   clear_error(error);
+  const std::uint64_t open_started_at_ms = now_ms_utc();
+  const auto log_open_finish = [&](bool ok,
+                                   std::string_view error_message = {}) {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(
+        extra, "encrypted", options.encrypted);
+    cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok", ok);
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "duration_ms", now_ms_utc() - open_started_at_ms);
+    if (!error_message.empty()) {
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", error_message);
+    }
+    log_hashimyei_catalog_event("catalog_open_finish", extra.str());
+  };
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(
+        extra, "encrypted", options.encrypted);
+    log_hashimyei_catalog_event("catalog_open_begin", extra.str());
+  }
   if (db_ != nullptr) {
     set_error(error, "catalog already open");
+    log_open_finish(false, "catalog already open");
     return false;
   }
 
@@ -1644,6 +1679,8 @@ bool hashimyei_catalog_store_t::open(const options_t& options, std::string* erro
     std::filesystem::create_directories(parent, ec);
     if (ec) {
       set_error(error, "cannot create catalog directory: " + parent.string());
+      log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                      : std::string_view{});
       return false;
     }
   }
@@ -1668,6 +1705,8 @@ bool hashimyei_catalog_store_t::open(const options_t& options, std::string* erro
       if (options.encrypted) {
         if (options.passphrase.empty()) {
           set_error(error, "encrypted catalog requires passphrase");
+          log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                          : std::string_view{});
           return false;
         }
         rc = idydb_open_encrypted(options.catalog_path.string().c_str(), &db_,
@@ -1705,11 +1744,15 @@ bool hashimyei_catalog_store_t::open(const options_t& options, std::string* erro
         continue;
       }
       set_error(error, "cannot open catalog: " + detail);
+      log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                      : std::string_view{});
       return false;
     }
 
     options_ = options;
     if (ensure_catalog_header_(error) && rebuild_indexes(error)) {
+      opened_at_ms_ = now_ms_utc();
+      log_open_finish(true);
       return true;
     }
 
@@ -1719,23 +1762,56 @@ bool hashimyei_catalog_store_t::open(const options_t& options, std::string* erro
         remove_catalog_for_recovery(nullptr)) {
       continue;
     }
+    log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                    : std::string_view{});
     return false;
   }
 
   set_error(error, "cannot open catalog after recovery attempts");
+  log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                  : std::string_view{});
   return false;
 }
 
 bool hashimyei_catalog_store_t::close(std::string* error) {
   clear_error(error);
   if (!db_) return true;
+  const std::uint64_t close_started_at_ms = now_ms_utc();
+  const std::uint64_t opened_at_ms = opened_at_ms_;
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options_.catalog_path.string());
+    log_hashimyei_catalog_event("catalog_close_begin", extra.str());
+  }
   const int rc = idydb_close(&db_);
   db_ = nullptr;
   if (rc != IDYDB_DONE) {
+    opened_at_ms_ = 0;
     set_error(error, "idydb_close failed");
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options_.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok",
+                                                              false);
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "duration_ms", now_ms_utc() - close_started_at_ms);
+    if (opened_at_ms != 0) {
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "catalog_hold_ms", now_ms_utc() - opened_at_ms);
+    }
+    if (error && !error->empty()) {
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", *error);
+    }
+    log_hashimyei_catalog_event("catalog_close_finish", extra.str());
     return false;
   }
+  opened_at_ms_ = 0;
+  next_row_hint_ = 0;
   runs_by_id_.clear();
+  run_ids_.clear();
+  ledger_report_fragment_ids_.clear();
   report_fragments_by_id_.clear();
   latest_report_fragment_by_key_.clear();
   metrics_num_by_report_fragment_.clear();
@@ -1750,6 +1826,20 @@ bool hashimyei_catalog_store_t::close(std::string* error) {
   kind_counters_.clear();
   hash_identity_by_kind_sha_.clear();
   explicit_family_rank_by_scope_.clear();
+  {
+    const std::uint64_t closed_at_ms = now_ms_utc();
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options_.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok", true);
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "duration_ms", closed_at_ms - close_started_at_ms);
+    if (opened_at_ms != 0) {
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "catalog_hold_ms", closed_at_ms - opened_at_ms);
+    }
+    log_hashimyei_catalog_event("catalog_close_finish", extra.str());
+  }
   return true;
 }
 
@@ -1815,7 +1905,18 @@ bool hashimyei_catalog_store_t::append_row_(
     set_error(error, "unknown catalog record_kind: " + std::string(record_kind));
     return false;
   }
-  const idydb_column_row_sizing row = idydb_column_next_row(&db_, kColRecordKind);
+  const idydb_column_row_sizing row =
+      buffer_rows_
+          ? (buffered_row_start_ != 0
+                 ? static_cast<idydb_column_row_sizing>(
+                       buffered_row_start_ + buffered_rows_.size())
+                 : ((buffered_row_start_ =
+                         (next_row_hint_ != 0)
+                             ? next_row_hint_
+                             : idydb_column_next_row(&db_, kColRecordKind)),
+                    buffered_row_start_))
+          : ((next_row_hint_ != 0) ? next_row_hint_
+                                   : idydb_column_next_row(&db_, kColRecordKind));
   if (row == 0) {
     set_error(error, "failed to resolve next row");
     return false;
@@ -1823,19 +1924,266 @@ bool hashimyei_catalog_store_t::append_row_(
   const std::string canonical_key =
       normalize_hashimyei_canonical_path_or_same(canonical_path);
   const std::string hash_key = normalize_hashimyei_name_or_same(hashimyei);
-  if (!insert_text(&db_, kColRecordKind, row, record_kind, error)) return false;
-  if (!insert_text(&db_, kColRecordId, row, record_id, error)) return false;
-  if (!insert_text(&db_, kColRunId, row, run_id, error)) return false;
-  if (!insert_text(&db_, kColCanonicalPath, row, canonical_key, error)) return false;
-  if (!insert_text(&db_, kColHashimyei, row, hash_key, error)) return false;
-  if (!insert_text(&db_, kColSchema, row, schema, error)) return false;
-  if (!insert_text(&db_, kColMetricKey, row, metric_key, error)) return false;
-  if (!insert_num(&db_, kColMetricNum, row, metric_num, error)) return false;
-  if (!insert_text(&db_, kColMetricTxt, row, metric_txt, error)) return false;
-  if (!insert_text(&db_, kColReportFragmentSha256, row, report_fragment_sha256, error)) return false;
-  if (!insert_text(&db_, kColPath, row, path, error)) return false;
-  if (!insert_text(&db_, kColTsMs, row, ts_ms, error)) return false;
-  if (!insert_text(&db_, kColPayload, row, payload_json, error)) return false;
+  if (buffer_rows_) {
+    buffered_row_t buffered{};
+    buffered.record_kind = std::string(record_kind);
+    buffered.record_id = std::string(record_id);
+    buffered.run_id = std::string(run_id);
+    buffered.canonical_path = canonical_key;
+    buffered.hashimyei = hash_key;
+    buffered.schema = std::string(schema);
+    buffered.metric_key = std::string(metric_key);
+    buffered.metric_num = metric_num;
+    buffered.has_metric_num = std::isfinite(metric_num);
+    buffered.metric_txt = std::string(metric_txt);
+    buffered.report_fragment_sha256 = std::string(report_fragment_sha256);
+    buffered.path = std::string(path);
+    buffered.ts_ms = std::string(ts_ms);
+    buffered.payload_json = std::string(payload_json);
+    buffered_rows_.push_back(std::move(buffered));
+    next_row_hint_ = row + 1;
+    return true;
+  }
+  const auto insert_text_if_present =
+      [&](idydb_column_row_sizing column, std::string_view value) {
+        return value.empty() || insert_text(&db_, column, row, value, error);
+      };
+  const auto insert_num_if_present =
+      [&](idydb_column_row_sizing column, double value) {
+        return std::isnan(value) || insert_num(&db_, column, row, value, error);
+      };
+  if (!insert_text_if_present(kColRecordKind, record_kind)) return false;
+  if (!insert_text_if_present(kColRecordId, record_id)) return false;
+  if (!insert_text_if_present(kColRunId, run_id)) return false;
+  if (!insert_text_if_present(kColCanonicalPath, canonical_key)) return false;
+  if (!insert_text_if_present(kColHashimyei, hash_key)) return false;
+  if (!insert_text_if_present(kColSchema, schema)) return false;
+  if (!insert_text_if_present(kColMetricKey, metric_key)) return false;
+  if (!insert_num_if_present(kColMetricNum, metric_num)) return false;
+  if (!insert_text_if_present(kColMetricTxt, metric_txt)) return false;
+  if (!insert_text_if_present(kColReportFragmentSha256, report_fragment_sha256)) return false;
+  if (!insert_text_if_present(kColPath, path)) return false;
+  if (!insert_text_if_present(kColTsMs, ts_ms)) return false;
+  if (!insert_text_if_present(kColPayload, payload_json)) return false;
+  next_row_hint_ = row + 1;
+  return true;
+}
+
+bool hashimyei_catalog_store_t::flush_buffered_rows_(std::string* error) {
+  clear_error(error);
+  if (!db_) {
+    set_error(error, "catalog is not open");
+    return false;
+  }
+  if (buffered_rows_.empty()) {
+    buffered_row_start_ = 0;
+    return true;
+  }
+  const idydb_column_row_sizing start_row =
+      (buffered_row_start_ != 0) ? buffered_row_start_
+                                 : ((next_row_hint_ != 0)
+                                        ? static_cast<idydb_column_row_sizing>(
+                                              next_row_hint_ - buffered_rows_.size())
+                                        : idydb_column_next_row(&db_, kColRecordKind));
+  if (start_row == 0) {
+    set_error(error, "failed to resolve buffered row start");
+    return false;
+  }
+  const auto row_for = [&](std::size_t index) {
+    return static_cast<idydb_column_row_sizing>(start_row + index);
+  };
+  const idydb_column_row_sizing existing_next_row =
+      idydb_column_next_row(&db_, kColRecordKind);
+  if (start_row == 2 && existing_next_row == 2) {
+    std::vector<idydb_bulk_cell> cells;
+    cells.reserve(12 + buffered_rows_.size() * 13);
+    std::vector<std::string> owned_header_text;
+    owned_header_text.reserve(12);
+    const auto append_header_text = [&](idydb_column_row_sizing column) {
+      const std::string value = as_text_or_empty(&db_, column, 1);
+      if (value.empty()) return;
+      owned_header_text.push_back(value);
+      idydb_bulk_cell cell{};
+      cell.column = column;
+      cell.row = 1;
+      cell.type = IDYDB_CHAR;
+      cell.value.s = owned_header_text.back().c_str();
+      cells.push_back(cell);
+    };
+    const auto append_text_cell = [&](idydb_column_row_sizing column,
+                                      idydb_column_row_sizing row,
+                                      const std::string& value) {
+      if (value.empty()) return;
+      idydb_bulk_cell cell{};
+      cell.column = column;
+      cell.row = row;
+      cell.type = IDYDB_CHAR;
+      cell.value.s = value.c_str();
+      cells.push_back(cell);
+    };
+    const auto append_num_cell = [&](idydb_column_row_sizing column,
+                                     idydb_column_row_sizing row,
+                                     double value, bool present) {
+      if (!present) return;
+      idydb_bulk_cell cell{};
+      cell.column = column;
+      cell.row = row;
+      cell.type = IDYDB_FLOAT;
+      cell.value.f = static_cast<float>(value);
+      cells.push_back(cell);
+    };
+
+    append_header_text(kColRecordKind);
+    append_header_text(kColRecordId);
+    append_header_text(kColRunId);
+    append_header_text(kColCanonicalPath);
+    append_header_text(kColHashimyei);
+    append_header_text(kColSchema);
+    append_header_text(kColMetricKey);
+    append_header_text(kColMetricTxt);
+    append_header_text(kColReportFragmentSha256);
+    append_header_text(kColPath);
+    append_header_text(kColTsMs);
+    append_header_text(kColPayload);
+
+    for (std::size_t i = 0; i < buffered_rows_.size(); ++i) {
+      const auto row = row_for(i);
+      const auto& buffered = buffered_rows_[i];
+      append_text_cell(kColRecordKind, row, buffered.record_kind);
+      append_text_cell(kColRecordId, row, buffered.record_id);
+      append_text_cell(kColRunId, row, buffered.run_id);
+      append_text_cell(kColCanonicalPath, row, buffered.canonical_path);
+      append_text_cell(kColHashimyei, row, buffered.hashimyei);
+      append_text_cell(kColSchema, row, buffered.schema);
+      append_text_cell(kColMetricKey, row, buffered.metric_key);
+      append_num_cell(kColMetricNum, row, buffered.metric_num,
+                      buffered.has_metric_num);
+      append_text_cell(kColMetricTxt, row, buffered.metric_txt);
+      append_text_cell(kColReportFragmentSha256, row,
+                       buffered.report_fragment_sha256);
+      append_text_cell(kColPath, row, buffered.path);
+      append_text_cell(kColTsMs, row, buffered.ts_ms);
+      append_text_cell(kColPayload, row, buffered.payload_json);
+    }
+
+    const int rc =
+        idydb_replace_with_cells(&db_, cells.data(), cells.size());
+    if (rc != IDYDB_SUCCESS) {
+      const char* msg = idydb_errmsg(&db_);
+      set_error(error, "idydb_replace_with_cells failed: " +
+                           std::string(msg ? msg : "<no error message>"));
+      return false;
+    }
+    next_row_hint_ = static_cast<idydb_column_row_sizing>(
+        start_row + buffered_rows_.size());
+    buffered_rows_.clear();
+    buffered_row_start_ = 0;
+    return true;
+  }
+  const auto flush_text_column =
+      [&](idydb_column_row_sizing column, auto accessor) -> bool {
+    for (std::size_t i = 0; i < buffered_rows_.size(); ++i) {
+      const auto& value = accessor(buffered_rows_[i]);
+      if (!value.empty() && !insert_text(&db_, column, row_for(i), value, error)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const auto flush_num_column =
+      [&](idydb_column_row_sizing column, auto accessor,
+          auto present_accessor) -> bool {
+    for (std::size_t i = 0; i < buffered_rows_.size(); ++i) {
+      if (!present_accessor(buffered_rows_[i])) continue;
+      if (!insert_num(&db_, column, row_for(i), accessor(buffered_rows_[i]), error)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  if (!flush_text_column(kColRecordKind,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.record_kind;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColRecordId,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.record_id;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColRunId,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.run_id;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColCanonicalPath,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.canonical_path;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColHashimyei,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.hashimyei;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColSchema,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.schema;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColMetricKey,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.metric_key;
+                         })) {
+    return false;
+  }
+  if (!flush_num_column(
+          kColMetricNum,
+          [](const buffered_row_t& row) { return row.metric_num; },
+          [](const buffered_row_t& row) { return row.has_metric_num; })) {
+    return false;
+  }
+  if (!flush_text_column(kColMetricTxt,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.metric_txt;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColReportFragmentSha256,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.report_fragment_sha256;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(kColPath,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.path;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColTsMs,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.ts_ms;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColPayload,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.payload_json;
+                         })) {
+    return false;
+  }
+
+  buffered_rows_.clear();
+  buffered_row_start_ = 0;
   return true;
 }
 
@@ -1853,29 +2201,23 @@ bool hashimyei_catalog_store_t::ledger_contains_(std::string_view report_fragmen
     return false;
   }
   if (report_fragment_sha256.empty()) return true;
-
-  idydb_filter_term t_kind{};
-  t_kind.column = kColRecordKind;
-  t_kind.type = IDYDB_CHAR;
-  t_kind.op = IDYDB_FILTER_OP_EQ;
-  t_kind.value.s = cuwacunu::hero::schema::kRecordKindLEDGER;
-  idydb_filter_term t_sha{};
-  t_sha.column = kColReportFragmentSha256;
-  t_sha.type = IDYDB_CHAR;
-  t_sha.op = IDYDB_FILTER_OP_EQ;
-  const std::string sha(report_fragment_sha256);
-  t_sha.value.s = sha.c_str();
-  return db::query::exists_row(&db_, {t_kind, t_sha}, out_exists, error);
+  *out_exists =
+      ledger_report_fragment_ids_.count(std::string(report_fragment_sha256)) != 0;
+  return true;
 }
 
 bool hashimyei_catalog_store_t::append_ledger_(std::string_view report_fragment_sha256,
                                                std::string_view path,
                                                std::string* error) {
-  return append_row_(cuwacunu::hero::schema::kRecordKindLEDGER,
-                     std::string(report_fragment_sha256), "", "", "", "",
-                     "ingest_version", static_cast<double>(options_.ingest_version),
-                     "", report_fragment_sha256, path, std::to_string(now_ms_utc()), "{}",
-                     error);
+  if (!append_row_(cuwacunu::hero::schema::kRecordKindLEDGER,
+                   std::string(report_fragment_sha256), "", "", "", "",
+                   "ingest_version", static_cast<double>(options_.ingest_version),
+                   "", report_fragment_sha256, path, std::to_string(now_ms_utc()), "{}",
+                   error)) {
+    return false;
+  }
+  ledger_report_fragment_ids_.insert(std::string(report_fragment_sha256));
+  return true;
 }
 
 bool hashimyei_catalog_store_t::append_kind_counter_(
@@ -1989,25 +2331,138 @@ bool hashimyei_catalog_store_t::ensure_identity_allocated_(
   return true;
 }
 
+void hashimyei_catalog_store_t::observe_identity_(
+    const cuwacunu::hashimyei::hashimyei_t& identity) {
+  if (identity.name.empty()) return;
+
+  const int key = static_cast<int>(identity.kind);
+  const std::uint64_t observed_next = identity.ordinal + 1;
+  const auto it_counter = kind_counters_.find(key);
+  if (it_counter == kind_counters_.end() || observed_next > it_counter->second) {
+    kind_counters_[key] = observed_next;
+  }
+
+  if (!cuwacunu::hashimyei::hashimyei_kind_requires_sha256(identity.kind) ||
+      identity.hash_sha256_hex.empty()) {
+    return;
+  }
+
+  const std::string identity_key =
+      kind_sha_key(identity.kind, identity.hash_sha256_hex);
+  const auto it_known = hash_identity_by_kind_sha_.find(identity_key);
+  if (it_known == hash_identity_by_kind_sha_.end() ||
+      identity.ordinal < it_known->second.ordinal) {
+    hash_identity_by_kind_sha_[identity_key] = identity;
+  }
+}
+
+void hashimyei_catalog_store_t::observe_component_(
+    const component_state_t& component) {
+  if (component.component_id.empty()) return;
+
+  observe_identity_(component.manifest.hashimyei_identity);
+  if (component.manifest.parent_identity.has_value()) {
+    observe_identity_(*component.manifest.parent_identity);
+  }
+  observe_identity_(component.manifest.contract_identity);
+
+  components_by_id_[component.component_id] = component;
+
+  const auto pick_latest =
+      [&](std::unordered_map<std::string, std::string>* map,
+          const std::string& key) {
+        if (!map || key.empty()) return;
+        auto it = map->find(key);
+        if (it == map->end()) {
+          (*map)[key] = component.component_id;
+          return;
+        }
+        const auto old_it = components_by_id_.find(it->second);
+        if (old_it == components_by_id_.end()) {
+          it->second = component.component_id;
+          return;
+        }
+        if (component.ts_ms > old_it->second.ts_ms ||
+            (component.ts_ms == old_it->second.ts_ms &&
+             component.component_id > old_it->second.component_id)) {
+          it->second = component.component_id;
+        }
+      };
+
+  pick_latest(&latest_component_by_canonical_,
+              component.manifest.canonical_path);
+  if (!component.manifest.hashimyei_identity.name.empty()) {
+    pick_latest(&latest_component_by_hashimyei_,
+                component.manifest.hashimyei_identity.name);
+  }
+}
+
+void hashimyei_catalog_store_t::refresh_active_component_views_() {
+  active_component_by_key_.clear();
+  active_component_by_canonical_.clear();
+
+  for (const auto& [pointer_key, pointer_hashimyei] : active_hashimyei_by_key_) {
+    std::string canonical_path{};
+    std::string family{};
+    std::string contract_hash{};
+    if (!parse_component_active_pointer_key(pointer_key, &canonical_path, &family,
+                                            &contract_hash)) {
+      continue;
+    }
+
+    component_state_t best{};
+    bool found = false;
+    for (const auto& [_, component] : components_by_id_) {
+      const std::string component_contract_hash =
+          cuwacunu::hero::hashimyei::contract_hash_from_identity(
+              component.manifest.contract_identity);
+      const std::string component_key = component_active_pointer_key(
+          component.manifest.canonical_path, component.manifest.family,
+          component.manifest.hashimyei_identity.name, component_contract_hash);
+      if (component_key != pointer_key) continue;
+      if (!family.empty() && component.manifest.family != family) continue;
+      if (!contract_hash.empty() && component_contract_hash != contract_hash) {
+        continue;
+      }
+      if (component.manifest.hashimyei_identity.name != pointer_hashimyei) {
+        continue;
+      }
+      if (!found || component.ts_ms > best.ts_ms ||
+          (component.ts_ms == best.ts_ms &&
+           component.component_id > best.component_id)) {
+        best = component;
+        found = true;
+      }
+    }
+    if (!found) continue;
+    active_component_by_key_[pointer_key] = best.component_id;
+    active_component_by_canonical_[canonical_path] = best.component_id;
+    active_component_by_canonical_[best.manifest.canonical_path] =
+        best.component_id;
+  }
+}
+
+void hashimyei_catalog_store_t::refresh_component_family_ranks_() {
+  for (auto& [_, component] : components_by_id_) {
+    component.family_rank.reset();
+    const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
+        component.manifest.family,
+        cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            component.manifest.contract_identity));
+    const auto it_rank = explicit_family_rank_by_scope_.find(scope_key);
+    if (it_rank == explicit_family_rank_by_scope_.end()) continue;
+    component.family_rank = cuwacunu::hero::family_rank::rank_for_hashimyei(
+        it_rank->second, component.manifest.hashimyei_identity.name);
+  }
+}
+
 bool hashimyei_catalog_store_t::ingest_run_manifest_file_(const std::filesystem::path& path,
                                                           std::string* error) {
   clear_error(error);
   run_manifest_t m{};
   if (!load_run_manifest(path, &m, error)) return false;
 
-  idydb_filter_term t_kind{};
-  t_kind.column = kColRecordKind;
-  t_kind.type = IDYDB_CHAR;
-  t_kind.op = IDYDB_FILTER_OP_EQ;
-  t_kind.value.s = cuwacunu::hero::schema::kRecordKindRUN;
-  idydb_filter_term t_id{};
-  t_id.column = kColRecordId;
-  t_id.type = IDYDB_CHAR;
-  t_id.op = IDYDB_FILTER_OP_EQ;
-  t_id.value.s = m.run_id.c_str();
-  bool exists = false;
-  if (!db::query::exists_row(&db_, {t_kind, t_id}, &exists, error)) return false;
-  if (!exists) {
+  if (run_ids_.count(m.run_id) == 0) {
     std::filesystem::path cp = path;
     if (const auto can = canonicalized(path); can.has_value()) cp = *can;
     std::string manifest_sha;
@@ -2028,7 +2483,13 @@ bool hashimyei_catalog_store_t::ingest_run_manifest_file_(const std::filesystem:
         return false;
       }
     }
+    run_ids_.insert(m.run_id);
   }
+  dependency_files_by_run_id_[m.run_id] = m.dependency_files;
+  observe_identity_(m.campaign_identity);
+  observe_identity_(m.wave_contract_binding.identity);
+  observe_identity_(m.wave_contract_binding.contract);
+  observe_identity_(m.wave_contract_binding.wave);
   runs_by_id_[m.run_id] = std::move(m);
   return true;
 }
@@ -2170,13 +2631,36 @@ bool hashimyei_catalog_store_t::ingest_component_manifest_file_(
     }
   }
 
-  return append_ledger_(report_fragment_sha, cp.string(), error);
+  if (!append_ledger_(report_fragment_sha, cp.string(), error)) return false;
+
+  component_state_t component{};
+  component.component_id = component_id;
+  component.ts_ms = ts_ms;
+  component.manifest_path = cp.string();
+  component.report_fragment_sha256 = report_fragment_sha;
+  component.manifest = manifest;
+  observe_component_(component);
+
+  if (trim_ascii(manifest.lineage_state) == "active") {
+    const std::string contract_hash =
+        cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            manifest.contract_identity);
+    const std::string pointer_key = component_active_pointer_key(
+        manifest.canonical_path, manifest.family,
+        manifest.hashimyei_identity.name, contract_hash);
+    active_hashimyei_by_key_[pointer_key] = manifest.hashimyei_identity.name;
+  }
+  return true;
 }
 
-bool hashimyei_catalog_store_t::parse_and_append_metrics_(
+void hashimyei_catalog_store_t::populate_metrics_from_kv_(
     std::string_view report_fragment_id,
-    const std::unordered_map<std::string, std::string>& kv, std::string* error) {
-  clear_error(error);
+    const std::unordered_map<std::string, std::string>& kv) {
+  if (report_fragment_id.empty()) return;
+  auto& numeric = metrics_num_by_report_fragment_[std::string(report_fragment_id)];
+  auto& text = metrics_txt_by_report_fragment_[std::string(report_fragment_id)];
+  numeric.clear();
+  text.clear();
   for (const auto& [k, v] : kv) {
     if (k == "schema" || k == "canonical_path" || k == "binding_id" ||
         k == "source_runtime_cursor" || k == "wave_cursor" ||
@@ -2188,21 +2672,11 @@ bool hashimyei_catalog_store_t::parse_and_append_metrics_(
 
     double num = 0.0;
     if (parse_double_token(v, &num)) {
-      const std::string rec_id = std::string(report_fragment_id) + "|num|" + k;
-      if (!append_row_(cuwacunu::hero::schema::kRecordKindMETRIC_NUM, rec_id, "", "", "", "", k, num, "",
-                       report_fragment_id, "", std::to_string(now_ms_utc()), "{}", error)) {
-        return false;
-      }
+      numeric.push_back({k, num});
     } else {
-      const std::string rec_id = std::string(report_fragment_id) + "|txt|" + k;
-      if (!append_row_(cuwacunu::hero::schema::kRecordKindMETRIC_TXT, rec_id, "", "", "", "", k,
-                       std::numeric_limits<double>::quiet_NaN(), v, report_fragment_id, "",
-                       std::to_string(now_ms_utc()), "{}", error)) {
-        return false;
-      }
+      text.push_back({k, v});
     }
   }
-  return true;
 }
 
 bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
@@ -2258,7 +2732,10 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
                      std::to_string(ts_ms), payload, error)) {
       return false;
     }
-    return append_ledger_(report_fragment_sha, cp.string(), error);
+    if (!append_ledger_(report_fragment_sha, cp.string(), error)) return false;
+    explicit_family_rank_by_scope_[cuwacunu::hero::family_rank::scope_key(
+        rank_state.family, rank_state.contract_hash)] = std::move(rank_state);
+    return true;
   }
 
   cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t header{};
@@ -2282,6 +2759,7 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
   if (hashimyei.empty()) hashimyei = maybe_hashimyei_from_canonical(canonical_path);
 
   std::string contract_hash = kv["contract_hash"];
+  if (contract_hash.empty()) contract_hash = kv["runtime.contract_hash"];
   if (contract_hash.empty()) contract_hash = contract_hash_from_report_fragment_path(path);
 
   std::uint64_t ts_ms = now_ms_utc();
@@ -2326,24 +2804,44 @@ bool hashimyei_catalog_store_t::ingest_report_fragment_file_(
       }
     }
   }
-  if (!parse_and_append_metrics_(report_fragment_sha, kv, error)) return false;
+  populate_metrics_from_kv_(report_fragment_sha, kv);
   return append_ledger_(report_fragment_sha, cp.string(), error);
 }
 
 bool hashimyei_catalog_store_t::acquire_ingest_lock_(
     const std::filesystem::path& store_root, ingest_lock_t* lock, std::string* error) {
   clear_error(error);
+  const std::uint64_t acquire_started_at_ms = now_ms_utc();
   if (!lock) {
     set_error(error, "lock pointer is null");
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "wait_ms", now_ms_utc() - acquire_started_at_ms);
+    if (error && !error->empty()) {
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", *error);
+    }
+    log_hashimyei_catalog_event("ingest_lock_failed", extra.str());
     return false;
   }
   lock->path.clear();
   lock->handle = nullptr;
+  lock->acquired_at_ms = 0;
   std::error_code ec;
   const auto lock_dir = cuwacunu::hashimyei::catalog_directory(store_root);
   std::filesystem::create_directories(lock_dir, ec);
   if (ec) {
     set_error(error, "cannot create lock directory: " + lock_dir.string());
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "lock_dir", lock_dir.string());
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "wait_ms", now_ms_utc() - acquire_started_at_ms);
+    if (error && !error->empty()) {
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", *error);
+    }
+    log_hashimyei_catalog_event("ingest_lock_failed", extra.str());
     return false;
   }
   const auto lock_path = lock_dir / ".ingest.lock";
@@ -2357,6 +2855,13 @@ bool hashimyei_catalog_store_t::acquire_ingest_lock_(
   const int rc =
       idydb_named_lock_acquire(lock_path_string.c_str(), &lock->handle, &options);
   if (rc != IDYDB_SUCCESS) {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "lock_path", lock_path_string);
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "wait_ms", now_ms_utc() - acquire_started_at_ms);
+    cuwacunu::hero::mcp_observability::append_json_int_field(extra, "idydb_rc",
+                                                             rc);
     if (rc == IDYDB_BUSY) {
       char owner[1024] = {0};
       std::string owner_suffix{};
@@ -2365,25 +2870,59 @@ bool hashimyei_catalog_store_t::acquire_ingest_lock_(
         const std::string compact_owner = compact_lock_owner_description(owner);
         if (!compact_owner.empty()) {
           owner_suffix = " owner={" + compact_owner + "}";
+          cuwacunu::hero::mcp_observability::append_json_string_field(
+              extra, "owner", compact_owner);
         }
       }
       set_error(error, "ingest lock already held: " + lock_path.string() +
                            owner_suffix);
+      if (error && !error->empty()) {
+        cuwacunu::hero::mcp_observability::append_json_string_field(
+            extra, "error", *error);
+      }
+      log_hashimyei_catalog_event("ingest_lock_busy", extra.str());
     } else {
       set_error(error, "cannot acquire ingest lock: " + lock_path.string() +
                            " (idydb rc=" + std::to_string(rc) + " " +
                            idydb_rc_label(rc) + ")");
+      if (error && !error->empty()) {
+        cuwacunu::hero::mcp_observability::append_json_string_field(
+            extra, "error", *error);
+      }
+      log_hashimyei_catalog_event("ingest_lock_failed", extra.str());
     }
     return false;
   }
   lock->path = lock_path;
+  lock->acquired_at_ms = now_ms_utc();
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "lock_path", lock_path.string());
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "wait_ms", lock->acquired_at_ms - acquire_started_at_ms);
+    log_hashimyei_catalog_event("ingest_lock_acquired", extra.str());
+  }
   return true;
 }
 
 void hashimyei_catalog_store_t::release_ingest_lock_(ingest_lock_t* lock) {
   if (!lock) return;
+  const std::filesystem::path lock_path = lock->path;
+  const std::uint64_t acquired_at_ms = lock->acquired_at_ms;
   (void)idydb_named_lock_release(&lock->handle);
+  if (!lock_path.empty()) {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "lock_path", lock_path.string());
+    if (acquired_at_ms != 0) {
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "hold_ms", now_ms_utc() - acquired_at_ms);
+    }
+    log_hashimyei_catalog_event("ingest_lock_released", extra.str());
+  }
   lock->path.clear();
+  lock->acquired_at_ms = 0;
 }
 
 bool hashimyei_catalog_store_t::ingest_filesystem(
@@ -2403,11 +2942,34 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
       if (self && lock) self->release_ingest_lock_(lock);
     }
   } lock_guard{this, &lock};
-  const std::filesystem::path canonical_store_root =
-      canonicalized(store_root).value_or(store_root.lexically_normal());
-  const std::filesystem::path canonical_catalog_root =
-      canonicalized(lock.path.parent_path())
-          .value_or(lock.path.parent_path().lexically_normal());
+  const std::filesystem::path normalized_store_root =
+      store_root.lexically_normal();
+  const std::filesystem::path normalized_catalog_root =
+      lock.path.parent_path().lexically_normal();
+  struct buffered_rows_guard_t {
+    hashimyei_catalog_store_t* self{nullptr};
+    ~buffered_rows_guard_t() {
+      if (!self) return;
+      self->buffer_rows_ = false;
+      self->buffered_row_start_ = 0;
+      self->buffered_rows_.clear();
+    }
+  } buffered_rows_guard{this};
+  buffer_rows_ = true;
+  buffered_row_start_ =
+      (next_row_hint_ != 0) ? next_row_hint_ : idydb_column_next_row(&db_, kColRecordKind);
+  buffered_rows_.clear();
+  const std::uint64_t ingest_started_at_ms = now_ms_utc();
+  std::uint64_t regular_files_scanned = 0;
+  std::uint64_t run_manifest_files = 0;
+  std::uint64_t component_manifest_files = 0;
+  std::uint64_t report_fragment_files = 0;
+  std::uint64_t run_manifest_ms = 0;
+  std::uint64_t component_manifest_ms = 0;
+  std::uint64_t report_fragment_ms = 0;
+  std::uint64_t flush_ms = 0;
+  std::uint64_t refresh_active_ms = 0;
+  std::uint64_t refresh_family_rank_ms = 0;
 
   std::error_code ec;
   for (std::filesystem::recursive_directory_iterator it(store_root, ec), end;
@@ -2430,12 +2992,10 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
       }
       continue;
     }
-    const auto canonical_entry = canonicalized(it->path());
-    if (!canonical_entry.has_value() ||
-        !path_is_within(canonical_store_root, *canonical_entry)) {
-      continue;
-    }
-    if (path_is_within(canonical_catalog_root, *canonical_entry)) {
+    ++regular_files_scanned;
+    const auto normalized_entry = it->path().lexically_normal();
+    if (!path_is_within(normalized_store_root, normalized_entry)) continue;
+    if (path_is_within(normalized_catalog_root, normalized_entry)) {
       continue;
     }
 
@@ -2452,23 +3012,75 @@ bool hashimyei_catalog_store_t::ingest_filesystem(
       return false;
     }
     if (p.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) {
+      const std::uint64_t phase_started_at_ms = now_ms_utc();
       if (!ingest_run_manifest_file_(p, error)) {
         return false;
       }
+      ++run_manifest_files;
+      run_manifest_ms += now_ms_utc() - phase_started_at_ms;
       continue;
     }
     if (p.filename() == cuwacunu::hashimyei::kComponentManifestFilenameV2) {
+      const std::uint64_t phase_started_at_ms = now_ms_utc();
       if (!ingest_component_manifest_file_(p, error)) {
         return false;
       }
+      ++component_manifest_files;
+      component_manifest_ms += now_ms_utc() - phase_started_at_ms;
       continue;
     }
+    if (p.extension() != ".lls") continue;
+    const std::uint64_t phase_started_at_ms = now_ms_utc();
     if (!ingest_report_fragment_file_(p, error)) {
       return false;
     }
+    ++report_fragment_files;
+    report_fragment_ms += now_ms_utc() - phase_started_at_ms;
   }
 
-  return rebuild_indexes(error);
+  buffer_rows_ = false;
+  {
+    const std::uint64_t phase_started_at_ms = now_ms_utc();
+    if (!flush_buffered_rows_(error)) return false;
+    flush_ms = now_ms_utc() - phase_started_at_ms;
+  }
+  {
+    const std::uint64_t phase_started_at_ms = now_ms_utc();
+    refresh_active_component_views_();
+    refresh_active_ms = now_ms_utc() - phase_started_at_ms;
+  }
+  {
+    const std::uint64_t phase_started_at_ms = now_ms_utc();
+    refresh_component_family_ranks_();
+    refresh_family_rank_ms = now_ms_utc() - phase_started_at_ms;
+  }
+  std::ostringstream extra;
+  cuwacunu::hero::mcp_observability::append_json_string_field(
+      extra, "store_root", store_root.string());
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "regular_files_scanned", regular_files_scanned);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "run_manifest_files", run_manifest_files);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "component_manifest_files", component_manifest_files);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "report_fragment_files", report_fragment_files);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "run_manifest_ms", run_manifest_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "component_manifest_ms", component_manifest_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "report_fragment_ms", report_fragment_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(extra, "flush_ms",
+                                                              flush_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "refresh_active_ms", refresh_active_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "refresh_family_rank_ms", refresh_family_rank_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "duration_ms", now_ms_utc() - ingest_started_at_ms);
+  log_hashimyei_catalog_event("ingest_summary", extra.str());
+  return true;
 }
 
 bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
@@ -2479,6 +3091,8 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
   }
 
   runs_by_id_.clear();
+  run_ids_.clear();
+  ledger_report_fragment_ids_.clear();
   report_fragments_by_id_.clear();
   latest_report_fragment_by_key_.clear();
   metrics_num_by_report_fragment_.clear();
@@ -2523,6 +3137,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
   std::unordered_map<std::string, std::string> family_rank_row_id_by_scope{};
 
   const idydb_column_row_sizing next = idydb_column_next_row(&db_, kColRecordKind);
+  next_row_hint_ = next;
   for (idydb_column_row_sizing row = 1; row < next; ++row) {
     const std::string kind = as_text_or_empty(&db_, kColRecordKind, row);
     if (kind.empty()) continue;
@@ -2609,6 +3224,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       }
       normalize_run_manifest_inplace(&run);
       if (!run.run_id.empty()) {
+        run_ids_.insert(run.run_id);
         bump_counter_from_identity(run.campaign_identity);
         bump_counter_from_identity(run.wave_contract_binding.identity);
         bump_counter_from_identity(run.wave_contract_binding.contract);
@@ -2617,6 +3233,17 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         index_hash_identity(run.wave_contract_binding.contract);
         index_hash_identity(run.wave_contract_binding.wave);
         runs_by_id_[run.run_id] = std::move(run);
+      }
+      continue;
+    }
+
+    if (kind == cuwacunu::hero::schema::kRecordKindLEDGER) {
+      const std::string report_fragment_id =
+          as_text_or_empty(&db_, kColReportFragmentSha256, row).empty()
+              ? as_text_or_empty(&db_, kColRecordId, row)
+              : as_text_or_empty(&db_, kColReportFragmentSha256, row);
+      if (!report_fragment_id.empty()) {
+        ledger_report_fragment_ids_.insert(report_fragment_id);
       }
       continue;
     }
@@ -2890,6 +3517,7 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
         std::string parse_error{};
         if (parse_runtime_lls_payload(e.payload_json, &kv, nullptr, &parse_error)) {
           populate_runtime_report_entry_header_fields_(kv, &e);
+          populate_metrics_from_kv_(e.report_fragment_id, kv);
           if (e.canonical_path.empty()) {
             e.canonical_path =
                 normalize_hashimyei_canonical_path_or_same(kv["canonical_path"]);
@@ -2920,25 +3548,6 @@ bool hashimyei_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
-    if (kind == cuwacunu::hero::schema::kRecordKindMETRIC_NUM) {
-      const std::string report_fragment_id = as_text_or_empty(&db_, kColReportFragmentSha256, row);
-      const std::string key = as_text_or_empty(&db_, kColMetricKey, row);
-      const auto num = as_numeric_or_null(&db_, kColMetricNum, row);
-      if (!report_fragment_id.empty() && !key.empty() && num.has_value()) {
-        metrics_num_by_report_fragment_[report_fragment_id].push_back({key, *num});
-      }
-      continue;
-    }
-
-    if (kind == cuwacunu::hero::schema::kRecordKindMETRIC_TXT) {
-      const std::string report_fragment_id = as_text_or_empty(&db_, kColReportFragmentSha256, row);
-      const std::string key = as_text_or_empty(&db_, kColMetricKey, row);
-      const std::string val = as_text_or_empty(&db_, kColMetricTxt, row);
-      if (!report_fragment_id.empty() && !key.empty()) {
-        metrics_txt_by_report_fragment_[report_fragment_id].push_back({key, val});
-      }
-      continue;
-    }
   }
 
   for (const auto& [pointer_key, pointer_hashimyei] : active_hashimyei_by_key_) {
@@ -3267,6 +3876,53 @@ bool hashimyei_catalog_store_t::list_components(
   return true;
 }
 
+bool hashimyei_catalog_store_t::list_component_heads(
+    std::size_t limit, std::size_t offset, bool newest_first,
+    std::vector<component_state_t>* out, std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "component head list output pointer is null");
+    return false;
+  }
+  out->clear();
+
+  std::unordered_map<std::string, std::string> selected_by_canonical{};
+  selected_by_canonical.reserve(latest_component_by_canonical_.size() +
+                                active_component_by_canonical_.size());
+  for (const auto& [canonical_path, component_id] : latest_component_by_canonical_) {
+    selected_by_canonical[canonical_path] = component_id;
+  }
+  for (const auto& [canonical_path, component_id] : active_component_by_canonical_) {
+    selected_by_canonical[canonical_path] = component_id;
+  }
+
+  std::unordered_set<std::string> emitted_component_ids{};
+  out->reserve(selected_by_canonical.size());
+  for (const auto& [_, component_id] : selected_by_canonical) {
+    if (!emitted_component_ids.insert(component_id).second) continue;
+    const auto it = components_by_id_.find(component_id);
+    if (it == components_by_id_.end()) continue;
+    out->push_back(it->second);
+  }
+
+  std::sort(out->begin(), out->end(),
+            [newest_first](const component_state_t& a, const component_state_t& b) {
+              if (a.ts_ms != b.ts_ms) {
+                return newest_first ? (a.ts_ms > b.ts_ms) : (a.ts_ms < b.ts_ms);
+              }
+              return newest_first ? (a.component_id > b.component_id)
+                                  : (a.component_id < b.component_id);
+            });
+
+  const std::size_t off = std::min(offset, out->size());
+  std::size_t count = limit;
+  if (count == 0) count = out->size() - off;
+  count = std::min(count, out->size() - off);
+  out->assign(out->begin() + static_cast<std::ptrdiff_t>(off),
+              out->begin() + static_cast<std::ptrdiff_t>(off + count));
+  return true;
+}
+
 bool hashimyei_catalog_store_t::resolve_active_hashimyei(
     std::string_view canonical_path, std::string_view family,
     std::string_view contract_hash,
@@ -3510,6 +4166,8 @@ bool hashimyei_catalog_store_t::register_component_manifest(
                                          : now_ms_utc());
 
   const std::string manifest_path_s = manifest_path.string();
+  const bool is_active = trim_ascii(manifest.lineage_state) == "active";
+  std::string active_pointer_key{};
 
   if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT, component_id, "", manifest.canonical_path,
                    manifest.hashimyei_identity.name, manifest.schema,
@@ -3568,11 +4226,11 @@ bool hashimyei_catalog_store_t::register_component_manifest(
     return false;
   }
 
-  if (trim_ascii(manifest.lineage_state) == "active") {
+  if (is_active) {
     const std::string contract_hash =
         cuwacunu::hero::hashimyei::contract_hash_from_identity(
             manifest.contract_identity);
-    const std::string pointer_key = component_active_pointer_key(
+    active_pointer_key = component_active_pointer_key(
         manifest.canonical_path, manifest.family,
         manifest.hashimyei_identity.name, contract_hash);
     std::ostringstream pointer_payload;
@@ -3592,7 +4250,7 @@ bool hashimyei_catalog_store_t::register_component_manifest(
     pointer_payload << "revision_reason=" << manifest.revision_reason << "\n";
     pointer_payload << "founding_revision_id=" << manifest.founding_revision_id
                     << "\n";
-    if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_ACTIVE, pointer_key, "",
+    if (!append_row_(cuwacunu::hero::schema::kRecordKindCOMPONENT_ACTIVE, active_pointer_key, "",
                      manifest.canonical_path, manifest.hashimyei_identity.name,
                      cuwacunu::hashimyei::kComponentActivePointerSchemaV2, manifest.family,
                      std::numeric_limits<double>::quiet_NaN(),
@@ -3603,7 +4261,20 @@ bool hashimyei_catalog_store_t::register_component_manifest(
   }
 
   if (!append_ledger_(report_fragment_sha, manifest_path_s, error)) return false;
-  if (!rebuild_indexes(error)) return false;
+
+  component_state_t component{};
+  component.component_id = component_id;
+  component.ts_ms = ts_ms;
+  component.manifest_path = manifest_path_s;
+  component.report_fragment_sha256 = report_fragment_sha;
+  component.manifest = manifest;
+  observe_component_(component);
+  if (is_active && !active_pointer_key.empty()) {
+    active_hashimyei_by_key_[active_pointer_key] =
+        manifest.hashimyei_identity.name;
+    refresh_active_component_views_();
+  }
+  refresh_component_family_ranks_();
 
   if (out_inserted) *out_inserted = true;
   return true;

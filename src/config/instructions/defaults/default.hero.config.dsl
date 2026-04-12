@@ -21,6 +21,8 @@
     - TSODAO hidden_root from GENERAL.tsodao_dsl_filename is where
       hero.config.optim.* may operate.
     - allowed_extensions constrains which file extensions those tools may touch.
+      Listing and reading follow the extension policy directly; create/replace
+      still depend on file-family validation support.
     - write_roots constrains persisted config writes, objective/default file
       mutation targets, and plaintext optim mutation targets when
       allow_local_write=true.
@@ -39,7 +41,7 @@ allow_local_read:bool = true
 allow_local_write:bool = false
 default_roots:str = /cuwacunu/src/config/instructions/defaults
 objective_roots:str = /cuwacunu/src/config/instructions/objectives
-allowed_extensions:str = .dsl
+allowed_extensions:str = .dsl,.md
 write_roots:str = /tmp
 backup_enabled:bool = true
 backup_dir:str = /cuwacunu/.backups/hero.config

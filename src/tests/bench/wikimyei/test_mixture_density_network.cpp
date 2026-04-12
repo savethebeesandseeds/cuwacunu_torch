@@ -13,7 +13,7 @@
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 
 #include "wikimyei/inference/mdn/mixture_density_network.h"
 #include "wikimyei/representation/VICReg/vicreg_4d.h"

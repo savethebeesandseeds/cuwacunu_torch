@@ -5,7 +5,7 @@ MAN_ID = global.config.bnf
 TARGET_DSL = src/config/.config
 TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
 PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
-PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/impl/iitepi/runtime_binding_space_t.cpp,src/impl/iitepi/contract_space_t.cpp,src/impl/hero/super_hero/hero_super_tools.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/impl/iitepi/runtime_binding_space_t.cpp,src/impl/iitepi/contract_space_t.cpp,src/impl/hero/marshal_hero/hero_marshal_tools.cpp
 
 [FIELD BNF.iitepi_campaign_grammar_filename]
 key = iitepi_campaign_grammar_filename
@@ -15,7 +15,7 @@ required = true
 default = /cuwacunu/src/config/bnf/iitepi.campaign.bnf
 range = existing regular file
 allowed = absolute_or_relative path
-nuance = grammar contract for top-level campaign DSLs decoded by Runtime Hero and Super Hero launch orchestration
+nuance = grammar contract for top-level campaign DSLs decoded by Runtime Hero and Marshal Hero launch orchestration
 
 [FIELD BNF.iitepi_runtime_binding_grammar_filename]
 key = iitepi_runtime_binding_grammar_filename
@@ -37,15 +37,15 @@ range = existing regular file
 allowed = absolute_or_relative path
 nuance = grammar contract for wave payload DSLs imported by campaign bindings
 
-[FIELD BNF.super_objective_grammar_filename]
-key = super_objective_grammar_filename
+[FIELD BNF.marshal_objective_grammar_filename]
+key = marshal_objective_grammar_filename
 scope = BNF section
 type = path
 required = true
-default = /cuwacunu/src/config/bnf/objective.super.bnf
+default = /cuwacunu/src/config/bnf/objective.marshal.bnf
 range = existing regular file
 allowed = absolute_or_relative path
-nuance = grammar contract for Super Hero objective-root declarations; Super Hero refuses to decode super.objective.dsl when this path is missing
+nuance = grammar contract for Marshal Hero objective-root declarations; Marshal Hero refuses to decode marshal.objective.dsl when this path is missing
 
 [FIELD BNF.network_design_grammar_filename]
 key = network_design_grammar_filename

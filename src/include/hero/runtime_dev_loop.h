@@ -28,7 +28,7 @@ struct runtime_reset_targets_t {
   std::filesystem::path lattice_hero_dsl_path{};
   std::filesystem::path runtime_hero_dsl_path{};
   std::filesystem::path runtime_campaigns_root{};
-  std::filesystem::path super_root{};
+  std::filesystem::path marshal_root{};
   std::filesystem::path human_root{};
   std::vector<std::filesystem::path> store_roots{};
   std::vector<std::filesystem::path> catalog_paths{};
@@ -130,10 +130,10 @@ namespace detail {
   return (runtime_root / ".hashimyei").lexically_normal();
 }
 
-[[nodiscard]] inline std::filesystem::path derive_super_root(
+[[nodiscard]] inline std::filesystem::path derive_marshal_root(
     const std::filesystem::path& runtime_root) {
   if (runtime_root.empty()) return {};
-  return (runtime_root / ".super_hero").lexically_normal();
+  return (runtime_root / ".marshal_hero").lexically_normal();
 }
 
 [[nodiscard]] inline std::filesystem::path derive_human_root(
@@ -316,7 +316,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     runtime_reset_targets_t* targets) {
   if (!targets) return false;
 
-  const std::filesystem::path super_root = targets->super_root.lexically_normal();
+  const std::filesystem::path marshal_root = targets->marshal_root.lexically_normal();
   const std::filesystem::path human_root =
       (targets->human_root.empty()
            ? detail::derive_human_root(targets->runtime_root)
@@ -328,7 +328,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
                      [&](const std::filesystem::path& root) {
                        const std::filesystem::path normalized =
                            root.lexically_normal();
-                       return (!super_root.empty() && normalized == super_root) ||
+                       return (!marshal_root.empty() && normalized == marshal_root) ||
                               (!human_root.empty() && normalized == human_root);
                      }),
       targets->store_roots.end());
@@ -367,7 +367,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     resolved.runtime_root = resolved_runtime_root.lexically_normal();
     resolved.runtime_campaigns_root =
         detail::derive_runtime_campaigns_root(resolved_runtime_root);
-    resolved.super_root = detail::derive_super_root(resolved_runtime_root);
+    resolved.marshal_root = detail::derive_marshal_root(resolved_runtime_root);
     resolved.human_root = detail::derive_human_root(resolved_runtime_root);
     const std::filesystem::path hashimyei_store_root =
         detail::derive_hashimyei_store_root(resolved_runtime_root);
@@ -376,7 +376,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
     detail::push_unique_path(
         &resolved.store_roots, &store_root_seen, resolved.runtime_campaigns_root);
     detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                             resolved.super_root);
+                             resolved.marshal_root);
     detail::push_unique_path(&resolved.store_roots, &store_root_seen,
                              resolved.human_root);
     detail::push_unique_path(
@@ -472,7 +472,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       resolved.runtime_root = resolved_runtime_root.lexically_normal();
       resolved.runtime_campaigns_root =
           detail::derive_runtime_campaigns_root(resolved_runtime_root);
-      resolved.super_root = detail::derive_super_root(resolved_runtime_root);
+      resolved.marshal_root = detail::derive_marshal_root(resolved_runtime_root);
       resolved.human_root = detail::derive_human_root(resolved_runtime_root);
       const std::filesystem::path hashimyei_store_root =
           detail::derive_hashimyei_store_root(resolved_runtime_root);
@@ -481,7 +481,7 @@ inline void push_unique_path(std::vector<std::filesystem::path>* out,
       detail::push_unique_path(&resolved.store_roots, &store_root_seen,
                                resolved.runtime_campaigns_root);
       detail::push_unique_path(&resolved.store_roots, &store_root_seen,
-                               resolved.super_root);
+                               resolved.marshal_root);
       detail::push_unique_path(&resolved.store_roots, &store_root_seen,
                                resolved.human_root);
       detail::push_unique_path(

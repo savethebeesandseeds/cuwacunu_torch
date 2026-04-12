@@ -989,7 +989,8 @@ class TsiSourceDataloader final : public TsiSource {
             output_file,
             source_label,
             &write_error,
-            report_identity_with_cursor)) {
+            report_identity_with_cursor,
+            contract_hash_)) {
       emit_meta_(
           wave,
           out,
@@ -1002,7 +1003,8 @@ class TsiSourceDataloader final : public TsiSource {
             symbolic_output_file,
             source_label,
             &write_error,
-            symbolic_report_identity_with_cursor)) {
+            symbolic_report_identity_with_cursor,
+            contract_hash_)) {
       emit_meta_(
           wave,
           out,

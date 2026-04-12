@@ -68,6 +68,8 @@ struct iinuji_style_t {
 /* -------------------- Data types -------------------- */
 struct iinuji_data_t { virtual ~iinuji_data_t() = default; };
 
+struct panel_data_t : public iinuji_data_t {};
+
 enum class text_align_t { Left, Center, Right };
 enum class text_line_emphasis_t {
   None = 0,
@@ -75,21 +77,52 @@ enum class text_line_emphasis_t {
   Success,
   Fatal,
   Error,
+  MutedError,
   Warning,
+  MutedWarning,
   Info,
   Debug,
+};
+
+struct styled_text_segment_t {
+  std::string text{};
+  text_line_emphasis_t emphasis{text_line_emphasis_t::None};
 };
 
 struct styled_text_line_t {
   std::string text{};
   text_line_emphasis_t emphasis{text_line_emphasis_t::None};
+  std::vector<styled_text_segment_t> segments{};
 };
+
+inline std::string styled_text_line_text(const styled_text_line_t& line) {
+  if (line.segments.empty()) return line.text;
+  std::size_t total = 0;
+  for (const auto& segment : line.segments) total += segment.text.size();
+  std::string out{};
+  out.reserve(total);
+  for (const auto& segment : line.segments) out += segment.text;
+  return out;
+}
+
+inline styled_text_line_t make_segmented_styled_text_line(
+    std::vector<styled_text_segment_t> segments,
+    text_line_emphasis_t fallback_emphasis = text_line_emphasis_t::None) {
+  styled_text_line_t line{};
+  line.segments = std::move(segments);
+  line.text = styled_text_line_text(line);
+  line.emphasis = fallback_emphasis;
+  return line;
+}
 
 struct textBox_data_t : public iinuji_data_t {
   std::string content;
   std::vector<styled_text_line_t> styled_lines{};
   bool wrap{true};
   text_align_t align{text_align_t::Left};
+  // Tracks the last selected row auto-revealed by the UI so manual scrolling
+  // is preserved until the selection itself changes.
+  int tracked_selected_row{-1};
   // Viewport scroll offsets used by the renderer for non-input text boxes.
   int scroll_y{0};
   int scroll_x{0};
@@ -108,6 +141,23 @@ struct textBox_data_t : public iinuji_data_t {
 
 /* -------------------- Text editor box -------------------- */
 struct editorBox_data_t : public iinuji_data_t {
+  struct history_frame_t {
+    std::vector<std::string> lines{};
+    int cursor_line{0};
+    int cursor_col{0};
+    int preferred_col{-1};
+    int top_line{0};
+    int left_col{0};
+    bool dirty{false};
+  };
+
+  enum class history_merge_kind_t {
+    None = 0,
+    InsertChar,
+    BackspaceChar,
+    DeleteChar,
+  };
+
   using line_colorizer_t = std::function<void(const editorBox_data_t& editor,
                                               int line_index,
                                               const std::string& line,
@@ -120,6 +170,7 @@ struct editorBox_data_t : public iinuji_data_t {
   bool dirty{false};
   bool read_only{false};
   bool close_armed{false};   // Ctrl+Q twice to discard if dirty
+  bool close_armed_via_escape{false};
 
   // Cursor + viewport (0-based)
   int cursor_line{0};
@@ -134,8 +185,22 @@ struct editorBox_data_t : public iinuji_data_t {
   int last_text_w{0};
 
   int tab_width{2};
+  bool show_header{true};
+  bool show_footer{true};
+  bool show_line_numbers{true};
+  bool show_tabs{true};
+  bool highlight_current_line{true};
+  bool highlight_matching_delimiter{true};
   std::string status;
   line_colorizer_t line_colorizer{};
+  bool history_enabled{true};
+  std::size_t history_limit{128};
+  std::vector<history_frame_t> undo_stack{};
+  std::vector<history_frame_t> redo_stack{};
+  history_merge_kind_t history_merge_kind{history_merge_kind_t::None};
+  int history_merge_cursor_line{-1};
+  int history_merge_cursor_col{-1};
+  int history_merge_line_count{0};
 
   explicit editorBox_data_t(std::string p = "") : path(std::move(p)) {
     lines.emplace_back(); // always at least one line
@@ -430,6 +495,32 @@ inline std::shared_ptr<iinuji_object_t> create_buffer_box(
   return o;
 }
 
+inline std::shared_ptr<iinuji_object_t> create_panel(
+  const std::string& id,
+  const iinuji_layout_t& layout = {},
+  const iinuji_style_t&  style  = {}
+) {
+  auto o = create_object(id, true, layout, style);
+  o->data = std::make_shared<panel_data_t>();
+
+  auto body = create_object(
+      id.empty() ? std::string{} : id + ".body",
+      true,
+      iinuji_layout_t{},
+      iinuji_style_t{
+          style.label_color,
+          style.background_color,
+          false,
+          style.border_color,
+          style.bold,
+          style.inverse,
+          {}});
+  body->layout.mode = layout_mode_t::Dock;
+  body->layout.dock = dock_t::Fill;
+  o->add_child(body);
+  return o;
+}
+
 inline std::shared_ptr<iinuji_object_t> create_text_box(
   const std::string& id,
   std::string content,
@@ -476,6 +567,18 @@ inline std::shared_ptr<iinuji_object_t> create_grid_container(
   o->grid->gap_row = gap_row;
   o->grid->gap_col = gap_col;
   return o;
+}
+
+inline bool is_panel_object(
+    const std::shared_ptr<iinuji_object_t>& object) {
+  return object != nullptr &&
+         std::dynamic_pointer_cast<panel_data_t>(object->data) != nullptr;
+}
+
+inline std::shared_ptr<iinuji_object_t> panel_body_object(
+    const std::shared_ptr<iinuji_object_t>& object) {
+  if (!is_panel_object(object) || object->children.empty()) return object;
+  return object->children.front();
 }
 
 /* Place child in a grid cell */

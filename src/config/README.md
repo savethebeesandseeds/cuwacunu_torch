@@ -21,7 +21,7 @@ This folder is organized by role:
 - `bnf/iitepi.contract.bnf`
 - `bnf/iitepi.circuit.bnf`
 - `bnf/iitepi.wave.bnf`
-- `bnf/objective.super.bnf`
+- `bnf/objective.marshal.bnf`
 - `bnf/network_design.bnf`
 - `bnf/canonical_path.bnf`
 - `bnf/latent_lineage_state.authored.bnf`
@@ -38,21 +38,21 @@ This folder is organized by role:
 - `instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
 - `instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl`
 - `instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`
-- `instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl`
+- `instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl` (shared transfer-matrix evaluator knobs; VICReg summaries may compare null, stats-only, raw-surface, and learned-embedding forecast probes when the active build supports them)
 - `instructions/defaults/default.hero.config.dsl`
 - `instructions/defaults/default.hero.hashimyei.dsl`
 - `instructions/defaults/default.hero.lattice.dsl`
 - `instructions/defaults/default.hero.human.dsl`
-- `instructions/defaults/default.hero.super.dsl`
+- `instructions/defaults/default.hero.marshal.dsl`
 - `instructions/defaults/default.hero.runtime.dsl`
 - `instructions/defaults/tsodao.dsl` (TSODAO hidden-surface policy; first surface currently maps to `instructions/optim/`)
-- `instructions/defaults/default.super.objective.dsl`
-- `instructions/defaults/default.super.objective.md`
-- `instructions/defaults/default.super.guidance.md`
+- `instructions/defaults/default.marshal.objective.dsl`
+- `instructions/defaults/default.marshal.objective.md`
+- `instructions/defaults/default.marshal.guidance.md` (shared Marshal Hero planning guidance; objectives may further tighten validation/test and baseline-comparison rules)
 - `instructions/objectives/vicreg.solo/iitepi.contract.base.dsl`
 - `instructions/objectives/vicreg.solo/iitepi.waves.dsl`
 - `instructions/objectives/vicreg.solo/iitepi.campaign.dsl`
-- `instructions/objectives/vicreg.solo/vicreg.solo.super.dsl`
+- `instructions/objectives/vicreg.solo/vicreg.solo.marshal.dsl`
 - `instructions/objectives/vicreg.solo/vicreg.solo.objective.md`
 - `instructions/objectives/vicreg.solo/tsi.source.dataloader.channels.dsl` (objective-owned big-span observation profile)
 - `instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.dsl` (objective-local VICReg runtime wrapper over objective-owned network design and jkimyei payload bindings)
@@ -99,7 +99,7 @@ Use `ed25519pub.pem` when registering API access at the exchange.
 Recommended workflow:
 
 ```bash
-make -C /cuwacunu/src/main/tools -j12 install-tsodao
+make -C /cuwacunu/src/main/tools -j12 build-tsodao
 /cuwacunu/.build/tools/tsodao status
 /cuwacunu/.build/tools/tsodao init
 ```
@@ -137,8 +137,10 @@ Practical day-to-day commands:
   cannot prove which side this machine last synced against, it refuses instead
   of overwriting either side
 - explicit direction is available only when you really mean it:
-  `tsodao sync --to-archive` means plaintext -> encrypted archive, and
-  `tsodao sync --to-hidden` means encrypted archive -> plaintext hidden root
+  `tsodao sync --from-plaintext` means local plaintext is the source of truth
+  and the encrypted archive should be resealed, while
+  `tsodao sync --from-archive` means the encrypted archive is the source of
+  truth and the plaintext hidden root should be restored
 - restoring over existing plaintext is treated as destructive and asks for
   confirmation unless you pass `--yes`
 - TSODAO keeps that memory in the local-only `local_state_path` declared by
@@ -250,8 +252,8 @@ Direct one-shot tool call (no manual JSON-RPC framing):
   --tool hero.runtime.list_jobs \
   --args-json '{}'
 
-/cuwacunu/.build/hero/hero_super_mcp \
-  --tool hero.super.list_loops \
+/cuwacunu/.build/hero/hero_marshal_mcp \
+  --tool hero.marshal.list_sessions \
   --args-json '{}'
 ```
 
@@ -260,7 +262,7 @@ Human-friendly tool discovery:
 ```bash
 /cuwacunu/.build/hero/hero_config_mcp --list-tools
 /cuwacunu/.build/hero/hero_runtime_mcp --list-tools
-/cuwacunu/.build/hero/hero_super_mcp --list-tools
+/cuwacunu/.build/hero/hero_marshal_mcp --list-tools
 ```
 
 MCP `initialize` responses from HERO servers include an `instructions` string
@@ -279,8 +281,8 @@ codex mcp add hero-config -- \
 codex mcp add hero-runtime -- \
   /cuwacunu/.build/hero/hero_runtime_mcp
 
-codex mcp add hero-super -- \
-  /cuwacunu/.build/hero/hero_super_mcp
+codex mcp add hero-marshal -- \
+  /cuwacunu/.build/hero/hero_marshal_mcp
 
 # Inspect the registered server configuration
 codex mcp get hero-config --json
@@ -341,7 +343,11 @@ Useful MCP tools:
 - `hero.config.rollback` (restore latest or selected snapshot; requires `allow_local_write=true`)
 - `hero.config.save` (persists config, takes shared runtime lock, requires `allow_local_write=true`, returns deterministic `cutover` metadata)
 - `hero.config.reload`
-- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, including `.campaigns`, `.super_hero`, `.human_hero`, plus Hero catalogs resolved from the saved global config; when `dev_nuke_reset_backup_enabled=true` it first archives those targets under `<runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/`; it uses the saved global-config runtime root instead of `write_roots`, and refuses reset while active runtime jobs exist)
+- `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, including `.campaigns`, `.marshal_hero`, `.human_hero`, plus Hero catalogs resolved from the saved global config; when `dev_nuke_reset_backup_enabled=true` it first archives those targets under `<runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/`; it uses the saved global-config runtime root instead of `write_roots`, and refuses reset while active runtime jobs exist)
+
+Extension nuance:
+- `allowed_extensions` now commonly includes `.dsl,.md`, so markdown files can be discovered and read through the `default/objective/optim` file surfaces.
+- Mutation support is still validation-family dependent. Today that means `.md` files may be visible/readable without automatically being replace-safe through Config Hero.
 
 Runtime MCP tools:
 - `hero.runtime.start_campaign`
@@ -355,81 +361,85 @@ Runtime MCP tools:
 - `hero.runtime.tail_trace`
 - `hero.runtime.reconcile`
 
-Launch-time `reset_runtime_state=true` is a runtime-owned cold reset only: it clears Runtime campaign/hashimyei state and runtime catalogs, but it preserves `.super_hero` and `.human_hero`. Use `hero.config.dev_nuke_reset` for the broader developer wipe that also clears those control-plane ledgers.
+Launch-time `reset_runtime_state=true` is a runtime-owned cold reset only: it clears Runtime campaign/hashimyei state and runtime catalogs, but it preserves `.marshal_hero` and `.human_hero`. Use `hero.config.dev_nuke_reset` for the broader developer wipe that also clears those control-plane ledgers.
 
-Super MCP tools:
-- `hero.super.start_loop`
-- `hero.super.list_loops`
-- `hero.super.get_loop`
-- `hero.super.apply_human_resolution`
-- `hero.super.stop_loop`
+Marshal MCP tools:
+- `hero.marshal.start_session`
+- `hero.marshal.list_sessions`
+- `hero.marshal.get_session`
+- `hero.marshal.pause_session`
+- `hero.marshal.resume_session`
+- `hero.marshal.continue_session`
+- `hero.marshal.terminate_session`
 
 Human MCP tools:
-- `hero.human.list_escalations`
-- `hero.human.list_reports`
-- `hero.human.get_escalation`
-- `hero.human.get_report`
-- `hero.human.resolve_escalation`
-- `hero.human.ack_report`
-- `hero.human.dismiss_report`
+- `hero.human.list_requests`
+- `hero.human.get_request`
+- `hero.human.answer_request`
+- `hero.human.resolve_governance`
+- `hero.human.list_summaries`
+- `hero.human.get_summary`
+- `hero.human.ack_summary`
 
-`hero_human_mcp` without `--tool` on a tty opens the Human Hero operator UI for pending escalations and finished reports. The UI distinguishes those queues explicitly: escalations mean Super Hero is blocked in `awaiting_human`, while finished reports are informational terminal summaries and do not unblock anything. Finished-loop reports now begin with an effort summary that foregrounds elapsed wall time plus review-turn and campaign-launch usage. On ncurses-capable terminals it uses the full-screen console; on unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
-`hero.human.resolve_escalation` is governance-only: operators provide `loop_id`, `resolution_kind = grant | deny | clarify | stop`, and `reason`, while Super Hero retains responsibility for choosing the next Runtime action. `hero.human.ack_report` and `hero.human.dismiss_report` both clear finished-loop reports from the Human Hero inbox, but `dismiss_report` records that the operator intentionally cleared the report without treating it as a validation sign-off.
+`hero_human_mcp` without `--tool` on a tty opens the Human Hero operator UI instead of waiting for JSON-RPC. On ncurses-capable terminals this is an all-session cockpit: the default sessions view shows active, running, paused, idle, and finished Marshal sessions with phase-aware colors, filter cycling, and scrollable detail panes, while `Tab` cycles into focused requests and summaries views. Request rows correspond to sessions paused for ordinary clarification or signed governance. Idle session summaries are resumable from that console with a fresh instruction, while finished session summaries remain informational. Session summaries begin with an effort summary that foregrounds elapsed wall time, checkpoint count, and campaign-launch usage. On unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
+`hero.human.answer_request` is the ordinary clarification path and auto-resumes the paused session. `hero.human.resolve_governance` is governance-only: operators provide `marshal_session_id` carrying the marshal cursor, `resolution_kind = grant | deny | clarify | terminate`, and `reason`, while Marshal Hero retains responsibility for choosing the next Runtime action. `hero.human.ack_summary` records a required signed acknowledgment message and clears the session summary from the Human Hero inbox after review. Session inspection and lifecycle control live under `hero.marshal.*`.
 
 `hero.runtime.start_campaign` accepts optional:
 - `binding_id` to run one declared `BIND` from the staged campaign snapshot instead of the default `RUN` plan
 - `campaign_dsl_path` to override the configured source campaign bundle for that launch
-- `super_loop_id` to link the launched campaign to an existing Super Hero loop ledger; this is the field Super Hero uses when it asks Runtime Hero to launch the next campaign
+- `marshal_session_id` to link the launched campaign to an existing Marshal Hero session ledger; this is the field Marshal Hero uses when it asks Runtime Hero to launch the next campaign
 
-`hero.super.start_loop` is the primary loop entrypoint. It accepts optional:
-- `super_objective_dsl_path` to override the configured default supervision root for that launch
+`hero.marshal.start_session` is the primary session entrypoint. It accepts optional:
+- `marshal_objective_dsl_path` to override the configured default supervision root for that launch
 
-Super Hero starts from `super.objective.dsl`, not from a campaign-declared `SUPER` edge. It resolves the selected `super.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, copies those authored files into `<runtime_root>/.super_hero/<loop_id>/`, points its mutable `objective_root` at the truth-source objective bundle under `src/config/instructions/objectives/...`, writes a loop-local Config Hero policy at `config.hero.policy.dsl`, builds `super.briefing.md`, stages an initial bootstrap turn context before any Runtime campaign exists, and returns once the detached Super runner is launched. That runner then continues autonomously through `planning -> running -> planning` until it reaches `success`, `stopped`, `failed`, `exhausted`, or `awaiting_human`. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Super Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are backed by Config Hero backups under `.backups/hero.super/<objective_name>/`, and per-turn mutation summaries are written when Codex changed objective files. Only one non-terminal Super loop may own a given `super.objective.dsl` at a time.
+Marshal Hero starts from `marshal.objective.dsl`, not from a campaign-declared `MARSHAL` edge. It resolves the selected `marshal.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, copies those authored files into `<runtime_root>/.marshal_hero/<marshal_cursor>/`, points its mutable `objective_root` at the truth-source objective bundle under `src/config/instructions/objectives/...`, writes a session-local Config Hero policy at `config.hero.policy.dsl`, builds `marshal.briefing.md`, stages an initial bootstrap input checkpoint before any Runtime campaign exists, and returns once the detached session runner is launched. That runner then continues autonomously through `active -> running_campaign -> active` until it pauses, idles, or finishes. `complete` now parks the session as `idle`, and `hero.marshal.continue_session` reopens that same session with a new operator instruction. If a planning checkpoint already produced an intent artifact and later fails during mutation bookkeeping or validation, Marshal Hero preserves the attempted checkpoint, parks the session as `idle` with `finish_reason=failed`, and lets the operator continue once the issue is fixed. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Marshal Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are backed by Config Hero backups under `.backups/hero.marshal/<objective_name>/`, and per-checkpoint mutation summaries are written when Codex changed objective files. Only one non-finished Marshal session may own a given `marshal.objective.dsl` at a time.
 
 Runtime HERO defaults:
 - loaded from `instructions/defaults/default.hero.runtime.dsl`
 - resolved through `[REAL_HERO].runtime_hero_dsl_filename`
 - campaigns root derived from `[GENERAL].runtime_root` as
   `<runtime_root>/.campaigns`
-- super-loop root derived from `[GENERAL].runtime_root` as
-  `<runtime_root>/.super_hero`
+- marshal-session root derived from `[GENERAL].runtime_root` as
+  `<runtime_root>/.marshal_hero`
 - campaign grammar loaded from `[BNF].iitepi_campaign_grammar_filename`
 
-Super HERO defaults:
-- loaded from `instructions/defaults/default.hero.super.dsl`
-- resolved through `[REAL_HERO].super_hero_dsl_filename`
-- super-loop root derived from `[GENERAL].runtime_root` as `<runtime_root>/.super_hero`
+Marshal HERO defaults:
+- loaded from `instructions/defaults/default.hero.marshal.dsl`
+- resolved through `[REAL_HERO].marshal_hero_dsl_filename`
+- marshal-session root derived from `[GENERAL].runtime_root` as `<runtime_root>/.marshal_hero`
 - repo root taken from `[GENERAL].repo_root`
-- config scope root taken from `config_scope_root` in `default.hero.super.dsl` and baked into the loop-local Config Hero policy
-- Super Hero truth-source mutations also enable Config Hero backups under `.backups/hero.super/<objective_name>/`
+- config scope root taken from `config_scope_root` in `default.hero.marshal.dsl` and baked into the session-local Config Hero policy
+- Marshal Hero truth-source mutations also enable Config Hero backups under `.backups/hero.marshal/<objective_name>/`
 - campaign grammar loaded from `[BNF].iitepi_campaign_grammar_filename`
-- super-objective grammar loaded from `[BNF].super_objective_grammar_filename`
-- `runtime_hero_binary`, `config_hero_binary`, and `lattice_hero_binary` select the MCP binaries Super Hero attaches to a planning turn
-- `human_hero_binary` selects the MCP binary Super Hero invokes when it needs Human Hero to materialize the operator-facing escalation artifact
-- `human_operator_identities` selects the operator identities file Super Hero uses to bind `operator_id` values to OpenSSH `ssh-ed25519` public keys before applying a human resolution
-- `super_codex_binary` selects the Codex executable or command name used for planning turns
-- `super_codex_timeout_sec` bounds one `codex exec` planning call
-- `super_max_review_turns` bounds the number of planning turns in one loop, including the initial bootstrap turn
-- `super_max_campaign_launches` bounds the number of Runtime campaign launches in one loop
-- `poll_interval_ms` controls detached loop-runner polling cadence while waiting for terminal campaign state
+- marshal-objective grammar loaded from `[BNF].marshal_objective_grammar_filename`
+- `runtime_hero_binary`, `config_hero_binary`, and `lattice_hero_binary` select the MCP binaries Marshal Hero attaches to each planning checkpoint
+- `human_hero_binary` selects the MCP binary Human Hero uses against the same session root
+- `human_operator_identities` selects the operator identities file Marshal Hero uses to bind `operator_id` values to OpenSSH `ssh-ed25519` public keys before applying a signed governance resolution
+- `marshal_codex_binary` selects the Codex executable or command name used for the durable planning session
+- `marshal_codex_model` selects the default Codex model slug passed to fresh and resumed planning checkpoints, defaulting to `gpt-5.3-codex-spark`
+- `marshal_codex_reasoning_effort` selects the default Codex `model_reasoning_effort` passed to fresh and resumed planning checkpoints, defaulting to `xhigh` (Extra High)
+- `marshal_codex_timeout_sec` bounds one `codex exec` or `codex exec resume` checkpoint call
+- `marshal_max_campaign_launches` bounds the number of Runtime campaign launches in one session
+- `poll_interval_ms` controls detached session-runner polling cadence while waiting for terminal campaign state
 
 Human HERO defaults:
 - loaded from `instructions/defaults/default.hero.human.dsl`
 - resolved through `[REAL_HERO].human_hero_dsl_filename`
-- `super_hero_binary` selects the MCP binary Human Hero uses to inspect loops and apply human resolutions
-- `operator_id` is recorded into every signed human resolution/report-ack artifact; if it is still `CHANGE_ME_OPERATOR` or empty, the first Human Hero use auto-initializes it to `<user>@<hostname>` and persists that value back into `default.hero.human.dsl`
-- `operator_signing_ssh_identity` selects the unencrypted OpenSSH `ssh-ed25519` identity Human Hero uses for resolution/report-ack signatures, and its public key must be the one registered for `operator_id` in Super Hero `human_operator_identities`
+- `marshal_hero_binary` selects the MCP binary Human Hero uses to inspect sessions and resume them with human input or governance
+- `operator_id` is recorded into every signed governance-resolution/summary-ack artifact; if it is still `CHANGE_ME_OPERATOR` or empty, the first Human Hero use auto-initializes it to `<user>@<hostname>` and persists that value back into `default.hero.human.dsl`
+- `operator_signing_ssh_identity` selects the unencrypted OpenSSH `ssh-ed25519` identity Human Hero uses for signed governance/summary acknowledgments, and its public key must be the one registered for `operator_id` in Marshal Hero `human_operator_identities`
 
 Human Hero operator setup:
 1. Run `bash src/scripts/setup_human_operator.sh`.
 2. That script bootstraps `operator_id` if needed, creates or validates the unencrypted OpenSSH `ssh-ed25519` identity at `operator_signing_ssh_identity`, and updates `human_operator_identities`.
 3. Use `bash src/scripts/setup_human_operator.sh --validate` to re-check the setup later.
-4. Only after that will `hero.human.resolve_escalation`, `hero.human.ack_report`, and `hero.human.dismiss_report` be able to sign artifacts that Super Hero or Human Hero can verify.
+4. Only after that will `hero.human.resolve_governance` and `hero.human.ack_summary` be able to sign artifacts that Marshal Hero or Human Hero can verify.
 
 Runtime Hero campaigns persist under the derived campaigns root by `campaign_cursor`, with
 `runtime.campaign.manifest.lls`, `campaign.dsl`, and campaign-level stdout/stderr logs. Child jobs
 persist under `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`, where
-`job_cursor` is derived from the parent `campaign_cursor`, with `runtime.job.manifest.lls`,
+`job_cursor` is derived from the parent `campaign_cursor` using the compact
+`<campaign_cursor>.j.<base36_index>` form, with `runtime.job.manifest.lls`,
 `campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and worker
 stdout/stderr logs plus `job.trace.jsonl`.
 `job.trace.jsonl` is a structured append-only execution trace intended for
@@ -437,38 +447,53 @@ long-running campaigns; `hero.runtime.tail_trace` exposes the latest phases
 without scraping stdout/stderr.
 Runtime liveness is reconciled using boot id + process start ticks, not bare pid reuse.
 
-Super loops persist under `<runtime_root>/.super_hero/<loop_id>/` with:
-- `super.loop.manifest.lls`
-- `super.objective.dsl`
-- `super.objective.md`
-- `super.guidance.md`
+Long-lived STDIO Hero servers also persist their own diagnostics without
+touching stdout transport payloads:
+- Config Hero `<runtime_root>/.config_hero/mcp/hero_config_mcp/stderr.log` plus `events.jsonl`
+- Hashimyei Hero `<runtime_root>/.hashimyei/_meta/mcp/hero_hashimyei_mcp/stderr.log` plus `events.jsonl`
+- Lattice Hero `<runtime_root>/.hashimyei/_meta/mcp/hero_lattice_mcp/stderr.log` plus `events.jsonl`
+`stderr.log` mirrors emitted diagnostics while `events.jsonl` keeps a small
+append-only startup/direct-tool audit trail.
+
+Marshal sessions persist under `<runtime_root>/.marshal_hero/<marshal_cursor>/` with:
+- `marshal.session.manifest.lls`
+- `marshal.objective.dsl`
+- `marshal.objective.md`
+- `marshal.guidance.md`
 - `config.hero.policy.dsl`
-- `super.loop.memory.md`
-- `super.briefing.md`
-- `logs/codex.session.log`
-- `super.loop.events.jsonl`
-- `human/escalation.latest.md` when a typed escalation is pending
-- `human/report.latest.md` when a loop reaches `success`, `stopped`, `failed`, or `exhausted`
-- `human/resolution.latest.json` when Human Hero has answered
-- `human/resolution.latest.sig` when Human Hero has answered
-- `human/report_ack.latest.json` when Human Hero has acknowledged a finished report
-- `human/report_ack.latest.sig` when Human Hero has acknowledged a finished report
-- `human/resolutions/resolution.0001.json` plus matching `.sig`
-- `turns/turn_context.0001.json` plus `turns/turn_context.latest.json`
-- `turns/turn_outcome.0001.json` plus `turns/turn_outcome.latest.json`
-- `turns/turn_mutation.0001.json` plus `turns/turn_mutation.latest.json` when a planning turn changed truth-source files
+- `marshal.session.memory.md`
+- `marshal.briefing.md`
+- `logs/codex.session.stdout.jsonl`
+- `logs/codex.session.stderr.jsonl`
+- `marshal.session.events.jsonl`
+- `human/request.latest.md` when a pause is pending
+- `human/summary.latest.md` when a session reaches `idle` or `finished`
+- `human/governance_resolution.latest.json` when signed governance has answered
+- `human/governance_resolution.latest.sig` when signed governance has answered
+- `human/clarification_answer.latest.json` when ordinary clarification has answered
+- `human/summary_ack.latest.json` when Human Hero has acknowledged a session summary
+- `human/summary_ack.latest.sig` when Human Hero has acknowledged a session summary
 
-Current super-loop schemas:
-- `hero.super.loop.v2`
-- `hero.super.turn_context.v2`
-- `hero.super.turn_outcome.v2`
-- `hero.super.turn_mutation.v2`
-- `hero.human.resolution.v2`
-- `hero.human.report_ack.v2`
+`logs/codex.session.stdout.jsonl` stores the raw `codex exec --json` stream for
+the latest checkpoint attempt. `logs/codex.session.stderr.jsonl` mirrors stderr
+as line-wrapped JSONL entries with `stream`, `line_index`, and `text`.
+- `human/governance_resolutions/governance_resolution.0001.json` plus matching `.sig`
+- `checkpoints/input.0001.json` plus `checkpoints/input.latest.json`
+- `checkpoints/intent.0001.json` plus `checkpoints/intent.latest.json`
+- `checkpoints/mutation.0001.json` plus `checkpoints/mutation.latest.json` when a planning checkpoint changed truth-source files
 
-The primary v2 super loop keeps Codex shell access read-only, but gives each planning turn loop-scoped `hero.config.objective.*`, conditionally `hero.config.default.*`, bounded Runtime read/tail tools, and bounded Lattice read tools against truth-source config roots and persisted runtime evidence. Objective files include the objective-local campaign file named by `campaign_dsl_path` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. The generated Super briefing names that exact relative campaign file path and tells Codex to use `hero.config.objective.list` rather than assuming a literal `campaign.dsl` filename. Codex now returns `outcome = launch | escalate | success | stop | fail`. `launch` carries `mode = run_plan | binding`, optional `binding_id`, `reset_runtime_state`, and `requires_objective_mutation`; `escalate` carries a typed `kind`, operator-facing `request`, and optional typed `delta`. If `launch.requires_objective_mutation=true` but the planning turn produced no objective-local mutation summary, Super Hero rejects the launch instead of silently rerunning unchanged truth sources. Launch-time `reset_runtime_state=true` is scoped to runtime-owned state and must not delete the owning Super/Human ledgers. Human Hero no longer routes normal Runtime actions. It only resolves escalations with `grant | deny | clarify | stop`, signs `resolution*.json` plus detached `.sig`, and asks `hero.super.apply_human_resolution` to continue the loop from `awaiting_human`. Finished-loop reports remain informational acknowledgments and do not influence ordinary Runtime routing.
+Current marshal-session schemas:
+- `hero.marshal.session.v3`
+- `hero.marshal.input_checkpoint.v3`
+- `hero.marshal.intent_checkpoint.v3`
+- `hero.marshal.mutation_checkpoint.v3`
+- `hero.human.governance_resolution.v3`
+- `hero.human.clarification_answer.v3`
+- `hero.human.summary_ack.v3`
 
-The short design constitution for that loop lives in [SUPER_LOOP.md](/cuwacunu/src/main/hero/SUPER_LOOP.md).
+The v3 Marshal session keeps Codex shell access read-only, but gives each planning checkpoint session-scoped `hero.config.objective.*`, conditionally `hero.config.default.*`, bounded Runtime read/tail tools, and bounded Lattice read tools against truth-source config roots and persisted runtime evidence. Objective files include the objective-local campaign file named by `campaign_dsl_path` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. The generated Marshal briefing names that exact relative campaign file path and tells Codex to use `hero.config.objective.list` rather than assuming a literal `campaign.dsl` filename. Codex now returns `intent = launch_campaign | pause_for_clarification | request_governance | complete | terminate`. `launch_campaign` carries `mode = run_plan | binding`, optional `binding_id`, `reset_runtime_state`, and `requires_objective_mutation`; `pause_for_clarification` carries `clarification_request.request`; `request_governance` carries a typed `kind`, operator-facing `request`, and optional typed `delta`. If `launch.requires_objective_mutation=true` but the planning checkpoint produced no objective-local mutation summary, Marshal Hero rejects the launch instead of silently rerunning unchanged truth sources. Launch-time `reset_runtime_state=true` is scoped to runtime-owned state and must not delete the owning Marshal/Human ledgers. Human Hero answers ordinary clarification with `hero.human.answer_request`, resolves signed governance with `hero.human.resolve_governance`, and leaves ordinary Runtime routing to Marshal Hero.
+
+The short design constitution for that session model lives in [MARSHAL_SESSION.md](/cuwacunu/src/main/hero/MARSHAL_SESSION.md).
 
 Deterministic policy:
 - Config HERO edits files only inside configured `default_roots`, `objective_roots`, and the TSODAO hidden optim root, and only for `allowed_extensions`. Existing hashimyei instances are not mutated by these tools; instance revisions are handled by Hashimyei HERO lineage.
@@ -523,8 +548,11 @@ Hashimyei HERO is loaded from `default.hero.hashimyei.dsl` through
 Catalog encryption mode is fixed to unencrypted in MCP runtime.
 
 MCP ingest behavior:
-- each read tool call fingerprints the catalog-visible store surface and
-  rebuilds the catalog when that fingerprint changes.
+- discovery-only `hero.hashimyei.list` reads the current catalog snapshot and
+  does not force a store-wide ingest rebuild.
+- `hero.hashimyei.get_component_manifest` and
+  `hero.hashimyei.get_founding_dsl_bundle` fingerprint the catalog-visible
+  store surface and rebuild the catalog when that fingerprint changes.
 - `hero.hashimyei.reset_catalog` remains the explicit force-rebuild tool.
 
 Register in Codex:
@@ -599,8 +627,8 @@ Supported MCP tools:
   `GENERAL.default_iitepi_campaign_dsl_filename` points to the checked-in
   default top-level campaign, currently
   `./instructions/defaults/default.iitepi.campaign.dsl`.
-  `GENERAL.repo_root` pins the repository/worktree root that Runtime Hero uses
-  for `codex exec -C` during super-loop review.
+  `GENERAL.repo_root` pins the repository/worktree root that Marshal Hero uses
+  for `codex exec -C` during session planning checkpoints.
   Runtime reset is intentionally explicit and can be invoked through
   `/cuwacunu/.build/tools/runtime_reset` or `make -C /cuwacunu/src/main reset-runtime`.
 - `./instructions/defaults/` holds the canonical example/default payloads,
@@ -612,7 +640,11 @@ Supported MCP tools:
   `iinuji_logs_buffer_capacity`, `iinuji_logs_show_date`,
   `iinuji_logs_show_thread`, `iinuji_logs_show_metadata`,
   `iinuji_logs_metadata_filter`, `iinuji_logs_show_color`,
-  `iinuji_logs_auto_follow`, `iinuji_logs_mouse_capture`.
+  `iinuji_logs_auto_follow`, `iinuji_logs_mouse_capture`,
+  `iinuji_loading_logo_path`, `iinuji_home_animation_path`.
+  `iinuji_home_animation_path` defaults to
+  `/cuwacunu/src/resources/waajacamaya.apng`; invalid paths fall back to the
+  static `iinuji_loading_logo_path` asset on F1 Home.
 - `[TSI_RUNTIME]` holds runtime execution defaults:
   `runtime_trace_level`, `runtime_max_queue_size`.
 - HERO runtime settings for deterministic MCP live in:
@@ -620,7 +652,7 @@ Supported MCP tools:
   - `./instructions/defaults/default.hero.hashimyei.dsl` (Hashimyei HERO catalog defaults)
   - `./instructions/defaults/default.hero.lattice.dsl` (Lattice HERO catalog/runtime defaults)
   - `./instructions/defaults/default.hero.human.dsl` (Human HERO operator attestation defaults)
-  - `./instructions/defaults/default.hero.super.dsl` (Super HERO loop/orchestration defaults)
+  - `./instructions/defaults/default.hero.marshal.dsl` (Marshal HERO session/orchestration defaults)
   - `./instructions/defaults/default.hero.runtime.dsl` (Runtime HERO campaign/job defaults)
   `default.hero.hashimyei.dsl` is the Hashimyei HERO runtime defaults file. It is
   not the founding DSL bundle for component hashimyei lineage.
@@ -629,13 +661,13 @@ Supported MCP tools:
   - `hashimyei_hero_dsl_filename`
   - `human_hero_dsl_filename`
   - `lattice_hero_dsl_filename`
-  - `super_hero_dsl_filename`
+  - `marshal_hero_dsl_filename`
   - `runtime_hero_dsl_filename`
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
   - `iitepi_campaign_grammar_filename`
   - `iitepi_runtime_binding_grammar_filename`
   - `iitepi_wave_grammar_filename`
-  - `super_objective_grammar_filename`
+  - `marshal_objective_grammar_filename`
   - `network_design_grammar_filename`
   - `vicreg_grammar_filename`
   - `expected_value_grammar_filename`
@@ -663,27 +695,27 @@ Supported MCP tools:
   - Runtime Hero may also narrow launch to one declared `BIND` through
     `hero.runtime.start_campaign(binding_id=...)`; when omitted, the declared
     `RUN` sequence remains the default plan
-  - Super Hero is the primary persistent post-campaign review loop through
-    `hero.super.start_loop(...)`; it starts from `super.objective.dsl`, which
+  - Marshal Hero is the primary persistent post-campaign planning session through
+    `hero.marshal.start_session(...)`; it starts from `marshal.objective.dsl`, which
     declares the campaign plus separate human-authored objective and guidance markdown
-  - `super.objective.dsl` is its own DSL family, validated by
-    `./bnf/objective.super.bnf`, and currently declares
+  - `marshal.objective.dsl` is its own DSL family, validated by
+    `./bnf/objective.marshal.bnf`, and currently declares
     `campaign_dsl_path:path`, `objective_md_path:path`, `guidance_md_path:path`,
     and optional
-    `objective_name:str` and `loop_id:str`
+    `objective_name:str` and `marshal_session_id:str`
   The same grammar is used by objective-local files such as
   `./instructions/objectives/vicreg.solo/iitepi.campaign.dsl`.
-  The defaults bundle also ships sample `./instructions/defaults/default.super.objective.dsl`
-  plus `./instructions/defaults/default.super.objective.md` and
-  `./instructions/defaults/default.super.guidance.md`.
+  The defaults bundle also ships sample `./instructions/defaults/default.marshal.objective.dsl`
+  plus `./instructions/defaults/default.marshal.objective.md` and
+  `./instructions/defaults/default.marshal.guidance.md`.
 - Runtime Hero owns campaign dispatch and persists immutable snapshots under
   `<runtime_root>/.campaigns/<campaign_cursor>/`. Each child job receives a staged
   `campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and
   `job.trace.jsonl` under
   `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`.
-- Super Hero owns the long-lived loop ledgers under
-  `<runtime_root>/.super_hero/<loop_id>/`. The loop ledger is adjacent to
-  campaigns rather than nested inside them because one loop may span many
+- Marshal Hero owns the long-lived session ledgers under
+  `<runtime_root>/.marshal_hero/<marshal_cursor>/`. The session ledger is adjacent to
+  campaigns rather than nested inside them because one session may span many
   sequential campaigns.
 - Internal runtime-binding snapshots are validated against
   `bnf/iitepi.runtime_binding.bnf` and follow this staged shape:

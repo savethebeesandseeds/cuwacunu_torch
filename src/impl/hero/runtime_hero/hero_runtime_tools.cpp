@@ -34,7 +34,7 @@
 #include "hero/wave_contract_binding_runtime.h"
 #include "hero/runtime_hero/runtime_campaign.h"
 #include "hero/runtime_hero/runtime_job.h"
-#include "hero/super_hero/super_loop.h"
+#include "hero/marshal_hero/marshal_session.h"
 
 namespace cuwacunu {
 namespace hero {
@@ -608,6 +608,18 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"contract_dsl_path\":" << json_quote(record.contract_dsl_path) << ","
       << "\"wave_dsl_path\":" << json_quote(record.wave_dsl_path) << ","
       << "\"binding_id\":" << json_quote(record.binding_id) << ","
+      << "\"requested_device\":"
+      << json_quote(record.requested_device) << ","
+      << "\"resolved_device\":"
+      << json_quote(record.resolved_device) << ","
+      << "\"device_source_section\":"
+      << json_quote(record.device_source_section) << ","
+      << "\"device_contract_hash\":"
+      << json_quote(record.device_contract_hash) << ","
+      << "\"device_error\":"
+      << json_quote(record.device_error) << ","
+      << "\"cuda_required\":"
+      << (record.cuda_required ? "true" : "false") << ","
       << "\"reset_runtime_state\":"
       << (record.reset_runtime_state ? "true" : "false") << ","
       << "\"stdout_path\":" << json_quote(record.stdout_path) << ","
@@ -775,7 +787,7 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       << "\"boot_id\":" << json_quote(record.boot_id) << ","
       << "\"state\":" << json_quote(record.state) << ","
       << "\"state_detail\":" << json_quote(record.state_detail) << ","
-      << "\"super_loop_id\":" << json_quote(record.super_loop_id) << ","
+      << "\"marshal_session_id\":" << json_quote(record.marshal_session_id) << ","
       << "\"global_config_path\":"
       << json_quote(record.global_config_path) << ","
       << "\"source_campaign_dsl_path\":"
@@ -833,27 +845,27 @@ void write_jsonrpc_error(std::string_view id_json, int code,
       app.defaults.campaigns_root, record, error);
 }
 
-[[nodiscard]] bool read_linked_super_loop(
-    const app_context_t& app, std::string_view loop_id,
-    cuwacunu::hero::super::super_loop_record_t* out,
+[[nodiscard]] bool read_linked_marshal_session(
+    const app_context_t& app, std::string_view marshal_session_id,
+    cuwacunu::hero::marshal::marshal_session_record_t* out,
     std::string* error) {
-  return cuwacunu::hero::super::read_super_loop_record(
-      app.defaults.super_root, loop_id, out, error);
+  return cuwacunu::hero::marshal::read_marshal_session_record(
+      app.defaults.marshal_root, marshal_session_id, out, error);
 }
 
-[[nodiscard]] bool write_linked_super_loop(
+[[nodiscard]] bool write_linked_marshal_session(
     const app_context_t& app,
-    const cuwacunu::hero::super::super_loop_record_t& record,
+    const cuwacunu::hero::marshal::marshal_session_record_t& record,
     std::string* error) {
-  return cuwacunu::hero::super::write_super_loop_record(
-      app.defaults.super_root, record, error);
+  return cuwacunu::hero::marshal::write_marshal_session_record(
+      app.defaults.marshal_root, record, error);
 }
 
 struct campaign_launch_request_t {
   std::string binding_id{};
   bool reset_runtime_state{false};
   std::string campaign_dsl_path{};
-  std::string super_loop_id{};
+  std::string marshal_session_id{};
 };
 
 [[nodiscard]] std::string json_array_from_strings(
@@ -868,14 +880,14 @@ struct campaign_launch_request_t {
   return out.str();
 }
 
-[[nodiscard]] bool append_super_loop_event(
-    const cuwacunu::hero::super::super_loop_record_t& loop,
+[[nodiscard]] bool append_marshal_session_event(
+    const cuwacunu::hero::marshal::marshal_session_record_t& loop,
     std::string_view event, std::string_view detail, std::string* error) {
   if (error) error->clear();
   const std::string payload =
       "{\"timestamp_ms\":" +
       std::to_string(cuwacunu::hero::runtime::now_ms_utc()) +
-      ",\"loop_id\":" + json_quote(loop.loop_id) + ",\"event\":" +
+      ",\"marshal_session_id\":" + json_quote(loop.marshal_session_id) + ",\"event\":" +
       json_quote(event) + ",\"detail\":" + json_quote(detail) + "}\n";
   return cuwacunu::hero::runtime::append_text_file(loop.events_path, payload, error);
 }
@@ -1226,7 +1238,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
       line = rewrite_import("FROM", line);
       line = rewrite_import("IMPORT_CONTRACT_FILE", line);
       line = rewrite_import("IMPORT_WAVE_FILE", line);
-      line = rewrite_import("SUPER", line);
+      line = rewrite_import("MARSHAL", line);
     }
     if (!first) out << "\n";
     first = false;
@@ -1415,7 +1427,7 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   record.boot_id = cuwacunu::hero::runtime::current_boot_id();
   record.state = "launching";
   record.state_detail = "detached campaign runner requested";
-  record.super_loop_id = request.super_loop_id;
+  record.marshal_session_id = request.marshal_session_id;
   record.global_config_path = app.global_config_path.string();
   record.source_campaign_dsl_path = source_campaign_dsl_path;
   record.campaign_dsl_path = campaign_dsl_path;
@@ -1670,17 +1682,17 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   std::string binding_id{};
   bool reset_runtime_state = false;
   std::string campaign_dsl_path{};
-  std::string super_loop_id{};
+  std::string marshal_session_id{};
   (void)extract_json_string_field(arguments_json, "binding_id", &binding_id);
   (void)extract_json_bool_field(arguments_json, "reset_runtime_state",
                                 &reset_runtime_state);
   (void)extract_json_string_field(arguments_json, "campaign_dsl_path",
                                   &campaign_dsl_path);
-  (void)extract_json_string_field(arguments_json, "super_loop_id",
-                                  &super_loop_id);
+  (void)extract_json_string_field(arguments_json, "marshal_session_id",
+                                  &marshal_session_id);
   binding_id = trim_ascii(binding_id);
   campaign_dsl_path = trim_ascii(campaign_dsl_path);
-  super_loop_id = trim_ascii(super_loop_id);
+  marshal_session_id = trim_ascii(marshal_session_id);
   if (app->global_config_path.empty()) {
     *out_error = "runtime MCP app missing global_config_path";
     return false;
@@ -1698,20 +1710,20 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   }
 
   std::vector<std::string> warnings{};
-  if (super_loop_id.empty() &&
-      !trim_ascii(source_instruction.super_objective_file).empty()) {
+  if (marshal_session_id.empty() &&
+      !trim_ascii(source_instruction.marshal_objective_file).empty()) {
     warnings.push_back(
-        "campaign declares SUPER \"" +
-        trim_ascii(source_instruction.super_objective_file) +
+        "campaign declares MARSHAL \"" +
+        trim_ascii(source_instruction.marshal_objective_file) +
         "\" but Runtime Hero direct launch does not run supervision; use "
-        "hero.super.start_loop(...) when you want the SUPER objective honored");
+        "hero.marshal.start_session(...) when you want the MARSHAL objective honored");
   }
 
   campaign_launch_request_t request{};
   request.binding_id = binding_id;
   request.reset_runtime_state = reset_runtime_state;
   request.campaign_dsl_path = source_campaign_path.string();
-  request.super_loop_id = super_loop_id;
+  request.marshal_session_id = marshal_session_id;
 
   campaign_start_lock_guard_t start_lock{};
   if (!acquire_campaign_start_lock(*app, &start_lock, out_error)) return false;
@@ -2057,18 +2069,22 @@ void write_child_errno_noexcept(int fd, int child_errno) {
     return false;
   }
   if (is_runtime_campaign_terminal_state(campaign.state)) {
-    if (!campaign.super_loop_id.empty()) {
-      cuwacunu::hero::super::super_loop_record_t loop{};
+    if (!campaign.marshal_session_id.empty()) {
+      cuwacunu::hero::marshal::marshal_session_record_t loop{};
       std::string loop_error{};
-      if (read_linked_super_loop(*app, campaign.super_loop_id, &loop, &loop_error)) {
-        loop.state = "stopped";
-        loop.state_detail = "stop_campaign requested after terminal campaign";
+      if (read_linked_marshal_session(*app, campaign.marshal_session_id, &loop,
+                                 &loop_error)) {
+        loop.phase = "finished";
+        loop.phase_detail = "stop_campaign requested after terminal campaign";
+        loop.pause_kind = "none";
+        loop.finish_reason = "terminated";
         loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
         loop.updated_at_ms = *loop.finished_at_ms;
         loop.active_campaign_cursor.clear();
         std::string ignored{};
-        (void)write_linked_super_loop(*app, loop, &ignored);
-        (void)append_super_loop_event(loop, "loop_stopped", loop.state_detail,
+        (void)write_linked_marshal_session(*app, loop, &ignored);
+        (void)append_marshal_session_event(loop, "session_terminated",
+                                      loop.phase_detail,
                                       &ignored);
       }
     }
@@ -2138,18 +2154,21 @@ void write_child_errno_noexcept(int fd, int child_errno) {
   campaign.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   if (!write_runtime_campaign(*app, campaign, out_error)) return false;
 
-  if (!campaign.super_loop_id.empty()) {
-    cuwacunu::hero::super::super_loop_record_t loop{};
+  if (!campaign.marshal_session_id.empty()) {
+    cuwacunu::hero::marshal::marshal_session_record_t loop{};
     std::string loop_error{};
-    if (read_linked_super_loop(*app, campaign.super_loop_id, &loop, &loop_error)) {
-      loop.state = "stopped";
-      loop.state_detail = "stop_campaign requested by operator";
+    if (read_linked_marshal_session(*app, campaign.marshal_session_id, &loop,
+                               &loop_error)) {
+      loop.phase = "finished";
+      loop.phase_detail = "stop_campaign requested by operator";
+      loop.pause_kind = "none";
+      loop.finish_reason = "terminated";
       loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       loop.updated_at_ms = *loop.finished_at_ms;
       loop.active_campaign_cursor.clear();
       std::string ignored{};
-      (void)write_linked_super_loop(*app, loop, &ignored);
-      (void)append_super_loop_event(loop, "loop_stopped",
+      (void)write_linked_marshal_session(*app, loop, &ignored);
+      (void)append_marshal_session_event(loop, "session_terminated",
                                     "stop_campaign requested by operator",
                                     &ignored);
     }
@@ -2332,9 +2351,9 @@ std::filesystem::path resolve_runtime_hero_dsl_path(
   return (runtime_root / ".campaigns").lexically_normal();
 }
 
-[[nodiscard]] std::filesystem::path derive_super_root(
+[[nodiscard]] std::filesystem::path derive_marshal_root(
     const std::filesystem::path& runtime_root) {
-  return cuwacunu::hero::super::super_root(runtime_root);
+  return cuwacunu::hero::marshal::marshal_root(runtime_root);
 }
 
 [[nodiscard]] std::filesystem::path resolve_campaign_grammar_from_global_config(
@@ -2403,8 +2422,8 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
 
   out->campaigns_root =
       derive_campaigns_root(resolve_runtime_root_from_global_config(global_config_path));
-  out->super_root =
-      derive_super_root(resolve_runtime_root_from_global_config(global_config_path));
+  out->marshal_root =
+      derive_marshal_root(resolve_runtime_root_from_global_config(global_config_path));
   bool saw_cuwacunu_campaign_binary = false;
   if (const auto it = values.find("cuwacunu_campaign_binary");
       it != values.end()) {
@@ -2444,9 +2463,9 @@ bool load_runtime_defaults(const std::filesystem::path& hero_dsl_path,
     }
     return false;
   }
-  if (out->super_root.empty()) {
+  if (out->marshal_root.empty()) {
     if (error) {
-      *error = "cannot derive .super_hero root from GENERAL.runtime_root in " +
+      *error = "cannot derive .marshal_hero root from GENERAL.runtime_root in " +
                global_config_path.string();
     }
     return false;

@@ -7,7 +7,7 @@ REPO_ROOT="$(cd -- "$SRC_ROOT/.." && pwd)"
 
 GLOBAL_CONFIG_PATH="$SRC_ROOT/config/.config"
 HUMAN_CONFIG_PATH=""
-SUPER_CONFIG_PATH=""
+MARSHAL_CONFIG_PATH=""
 MODE="init"
 OPERATOR_ID_OVERRIDE=""
 ASSUME_YES=0
@@ -53,7 +53,7 @@ This script manages the current Human Hero signing surface:
 options:
   --global-config PATH   Global HERO config. Default: $GLOBAL_CONFIG_PATH
   --human-config PATH    Human Hero defaults DSL override.
-  --super-config PATH    Super Hero defaults DSL override.
+  --marshal-config PATH    Marshal Hero defaults DSL override.
   --operator-id ID       Explicit operator id to persist before setup.
   --yes                  Assume yes for interactive replacement prompts.
   --validate             Validate only; do not mutate files.
@@ -407,9 +407,9 @@ while [[ $# -gt 0 ]]; do
       HUMAN_CONFIG_PATH="$2"
       shift 2
       ;;
-    --super-config)
-      [[ $# -ge 2 ]] || die "--super-config requires a value"
-      SUPER_CONFIG_PATH="$2"
+    --marshal-config)
+      [[ $# -ge 2 ]] || die "--marshal-config requires a value"
+      MARSHAL_CONFIG_PATH="$2"
       shift 2
       ;;
     --operator-id)
@@ -459,31 +459,31 @@ else
   HUMAN_CONFIG_PATH="$(realpath -m -- "$HUMAN_CONFIG_PATH")"
 fi
 
-if [[ -z "$SUPER_CONFIG_PATH" ]]; then
-  super_config_raw="$(read_ini_value "$GLOBAL_CONFIG_PATH" "REAL_HERO" "super_hero_dsl_filename")"
-  [[ -n "$super_config_raw" ]] || die "missing [REAL_HERO].super_hero_dsl_filename in $GLOBAL_CONFIG_PATH"
-  SUPER_CONFIG_PATH="$(resolve_near "$GLOBAL_CONFIG_DIR" "$super_config_raw")"
+if [[ -z "$MARSHAL_CONFIG_PATH" ]]; then
+  marshal_config_raw="$(read_ini_value "$GLOBAL_CONFIG_PATH" "REAL_HERO" "marshal_hero_dsl_filename")"
+  [[ -n "$marshal_config_raw" ]] || die "missing [REAL_HERO].marshal_hero_dsl_filename in $GLOBAL_CONFIG_PATH"
+  MARSHAL_CONFIG_PATH="$(resolve_near "$GLOBAL_CONFIG_DIR" "$marshal_config_raw")"
 else
-  SUPER_CONFIG_PATH="$(realpath -m -- "$SUPER_CONFIG_PATH")"
+  MARSHAL_CONFIG_PATH="$(realpath -m -- "$MARSHAL_CONFIG_PATH")"
 fi
 
 [[ -f "$HUMAN_CONFIG_PATH" ]] || die "missing Human Hero defaults DSL: $HUMAN_CONFIG_PATH"
-[[ -f "$SUPER_CONFIG_PATH" ]] || die "missing Super Hero defaults DSL: $SUPER_CONFIG_PATH"
+[[ -f "$MARSHAL_CONFIG_PATH" ]] || die "missing Marshal Hero defaults DSL: $MARSHAL_CONFIG_PATH"
 
 HUMAN_CONFIG_DIR="$(dirname -- "$HUMAN_CONFIG_PATH")"
-SUPER_CONFIG_DIR="$(dirname -- "$SUPER_CONFIG_PATH")"
+MARSHAL_CONFIG_DIR="$(dirname -- "$MARSHAL_CONFIG_PATH")"
 show_pair "human config" "$HUMAN_CONFIG_PATH"
-show_pair "super config" "$SUPER_CONFIG_PATH"
+show_pair "marshal config" "$MARSHAL_CONFIG_PATH"
 
 operator_id="$(trim "$(read_dsl_value "$HUMAN_CONFIG_PATH" "operator_id")")"
 identity_raw="$(trim "$(read_dsl_value "$HUMAN_CONFIG_PATH" "operator_signing_ssh_identity")")"
-identities_raw="$(trim "$(read_dsl_value "$SUPER_CONFIG_PATH" "human_operator_identities")")"
+identities_raw="$(trim "$(read_dsl_value "$MARSHAL_CONFIG_PATH" "human_operator_identities")")"
 
 [[ -n "$identity_raw" ]] || die "missing operator_signing_ssh_identity in $HUMAN_CONFIG_PATH"
-[[ -n "$identities_raw" ]] || die "missing human_operator_identities in $SUPER_CONFIG_PATH"
+[[ -n "$identities_raw" ]] || die "missing human_operator_identities in $MARSHAL_CONFIG_PATH"
 
 IDENTITY_PATH="$(resolve_near "$HUMAN_CONFIG_DIR" "$identity_raw")"
-IDENTITIES_PATH="$(resolve_near "$SUPER_CONFIG_DIR" "$identities_raw")"
+IDENTITIES_PATH="$(resolve_near "$MARSHAL_CONFIG_DIR" "$identities_raw")"
 show_pair "identity path" "$IDENTITY_PATH"
 show_pair "identities file" "$IDENTITIES_PATH"
 

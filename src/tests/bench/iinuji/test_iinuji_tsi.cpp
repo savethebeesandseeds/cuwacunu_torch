@@ -27,12 +27,12 @@ using cuwacunu::camahjucunu::tsiemene_circuit_instruction_t;
 using cuwacunu::camahjucunu::tsiemene_circuit_decl_t;
 using cuwacunu::camahjucunu::tsiemene_resolved_hop_t;
 
-struct BoardViewData {
+struct CircuitViewData {
   bool ok{false};
   std::string error{};
   std::string contract_hash{};
   std::string raw_instruction{};
-  tsiemene_circuit_instruction_t board{};
+  tsiemene_circuit_instruction_t circuit_instruction{};
   std::vector<std::vector<tsiemene_resolved_hop_t>> resolved_hops{};
 };
 
@@ -261,37 +261,39 @@ static std::string make_circuit_info(const tsiemene_circuit_decl_t& c,
   oss << "\nKeys\n";
   oss << "  q quit\n";
   oss << "  Left/Right or p/n switch circuit\n";
-  oss << "  r reload board instruction\n";
+  oss << "  r reload circuit instruction\n";
   return oss.str();
 }
 
-static BoardViewData load_board_from_config() {
-  BoardViewData out{};
+static CircuitViewData load_circuit_view_from_config() {
+  CircuitViewData out{};
   out.contract_hash =
-      cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-          cuwacunu::iitepi::config_space_t::locked_board_hash(),
-          cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+      cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+          cuwacunu::iitepi::config_space_t::locked_runtime_binding_hash(),
+          cuwacunu::iitepi::config_space_t::locked_binding_id());
   const auto contract_itself =
       cuwacunu::iitepi::contract_space_t::contract_itself(out.contract_hash);
   out.raw_instruction = contract_itself->circuit.dsl;
 
   auto parser = cuwacunu::camahjucunu::dsl::tsiemeneCircuits(
       contract_itself->circuit.grammar);
-  out.board = parser.decode(out.raw_instruction);
+  out.circuit_instruction = parser.decode(out.raw_instruction);
 
   std::string error;
-  if (!cuwacunu::camahjucunu::validate_circuit_instruction(out.board, &error)) {
+  if (!cuwacunu::camahjucunu::validate_circuit_instruction(
+          out.circuit_instruction, &error)) {
     out.ok = false;
     out.error = error;
     return out;
   }
 
   out.resolved_hops.clear();
-  out.resolved_hops.reserve(out.board.circuits.size());
-  for (std::size_t i = 0; i < out.board.circuits.size(); ++i) {
+  out.resolved_hops.reserve(out.circuit_instruction.circuits.size());
+  for (std::size_t i = 0; i < out.circuit_instruction.circuits.size(); ++i) {
     std::vector<tsiemene_resolved_hop_t> rh;
     std::string resolve_error;
-    if (!cuwacunu::camahjucunu::resolve_hops(out.board.circuits[i], &rh, &resolve_error)) {
+    if (!cuwacunu::camahjucunu::resolve_hops(
+            out.circuit_instruction.circuits[i], &rh, &resolve_error)) {
       out.ok = false;
       out.error = "circuit[" + std::to_string(i) + "] " + resolve_error;
       return out;
@@ -310,16 +312,18 @@ static void set_text_content(const std::shared_ptr<cuwacunu::iinuji::iinuji_obje
   tb->content = std::move(text);
 }
 
-static std::string make_status(const BoardViewData& b, std::size_t selected_idx) {
+static std::string make_status(const CircuitViewData& b,
+                               std::size_t selected_idx) {
   std::ostringstream oss;
   if (!b.ok) {
-    oss << "invalid board instruction: " << b.error
+    oss << "invalid circuit instruction: " << b.error
         << " | press r reload | q quit";
     return oss.str();
   }
-  oss << "board circuits=" << b.board.circuits.size();
-  if (!b.board.circuits.empty()) {
-    oss << " selected=" << (selected_idx + 1) << "/" << b.board.circuits.size();
+  oss << "contract circuits=" << b.circuit_instruction.circuits.size();
+  if (!b.circuit_instruction.circuits.empty()) {
+    oss << " selected=" << (selected_idx + 1) << "/"
+        << b.circuit_instruction.circuits.size();
   }
   oss << " | Left/Right p/n switch | r reload | q quit";
   return oss.str();
@@ -355,7 +359,7 @@ int main() try {
 
   auto title = create_text_box(
       "title",
-      "tsiemene board visualizer",
+      "tsiemene circuit visualizer",
       true,
       text_align_t::Left,
       iinuji_layout_t{},
@@ -404,38 +408,41 @@ int main() try {
   place_in_grid(info_box, 0, 1);
   body->add_child(info_box);
 
-  BoardViewData board_view = load_board_from_config();
+  CircuitViewData circuit_view = load_circuit_view_from_config();
   std::size_t selected = 0;
 
   auto refresh_content = [&]() {
-    if (!board_view.ok || board_view.board.circuits.empty()) {
+    if (!circuit_view.ok || circuit_view.circuit_instruction.circuits.empty()) {
       selected = 0;
       set_text_content(
           title,
-          "tsiemene board visualizer - invalid instruction");
+          "tsiemene circuit visualizer - invalid instruction");
 
       std::ostringstream coss;
-      coss << "Board instruction is invalid.\n\n";
-      if (!board_view.error.empty()) coss << "error: " << board_view.error << "\n\n";
-      coss << "Raw instruction:\n" << board_view.raw_instruction << "\n";
+      coss << "Circuit instruction is invalid.\n\n";
+      if (!circuit_view.error.empty()) coss << "error: " << circuit_view.error << "\n\n";
+      coss << "Raw instruction:\n" << circuit_view.raw_instruction << "\n";
       set_text_content(canvas_box, coss.str());
       set_text_content(
           info_box,
           "Fix src/config/instructions/defaults/default.iitepi.circuit.dsl and press 'r' to reload.\n");
-      set_text_content(status, make_status(board_view, selected));
+      set_text_content(status, make_status(circuit_view, selected));
       return;
     }
 
-    if (selected >= board_view.board.circuits.size()) selected = 0;
-    const auto& c = board_view.board.circuits[selected];
-    const auto& hops = board_view.resolved_hops[selected];
+    if (selected >= circuit_view.circuit_instruction.circuits.size()) selected = 0;
+    const auto& c = circuit_view.circuit_instruction.circuits[selected];
+    const auto& hops = circuit_view.resolved_hops[selected];
 
     set_text_content(
         title,
-        "tsiemene board visualizer - " + c.name);
+        "tsiemene circuit visualizer - " + c.name);
     set_text_content(canvas_box, make_circuit_canvas(c, hops));
-    set_text_content(info_box, make_circuit_info(c, hops, selected, board_view.board.circuits.size()));
-    set_text_content(status, make_status(board_view, selected));
+    set_text_content(
+        info_box,
+        make_circuit_info(
+            c, hops, selected, circuit_view.circuit_instruction.circuits.size()));
+    set_text_content(status, make_status(circuit_view, selected));
   };
 
   refresh_content();
@@ -455,18 +462,21 @@ int main() try {
     if (ch == 'q') break;
     if (ch == 'r') {
       cuwacunu::iitepi::config_space_t::update_config();
-      board_view = load_board_from_config();
+      circuit_view = load_circuit_view_from_config();
       selected = 0;
       refresh_content();
       continue;
     }
 
-    if (board_view.ok && !board_view.board.circuits.empty()) {
+    if (circuit_view.ok && !circuit_view.circuit_instruction.circuits.empty()) {
       if (ch == KEY_RIGHT || ch == 'n') {
-        selected = (selected + 1) % board_view.board.circuits.size();
+        selected =
+            (selected + 1) % circuit_view.circuit_instruction.circuits.size();
         refresh_content();
       } else if (ch == KEY_LEFT || ch == 'p') {
-        selected = (selected + board_view.board.circuits.size() - 1) % board_view.board.circuits.size();
+        selected =
+            (selected + circuit_view.circuit_instruction.circuits.size() - 1) %
+            circuit_view.circuit_instruction.circuits.size();
         refresh_content();
       }
     }

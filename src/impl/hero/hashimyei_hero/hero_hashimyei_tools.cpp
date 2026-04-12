@@ -12,6 +12,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <poll.h>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -24,6 +25,8 @@
 
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/lattice_hero/lattice_catalog.h"
+#include "hero/mcp_server_observability.h"
+#include "piaabo/latent_lineage_state/runtime_lls.h"
 
 namespace {
 
@@ -34,6 +37,8 @@ constexpr const char* kProtocolVersion = "2025-03-26";
 constexpr const char* kInitializeInstructions =
     "Use tools/list for tool schemas. Use tools/call with hero.hashimyei.*.";
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
+constexpr const char* kStdioIdleTimeoutEnv = "HERO_MCP_IDLE_TIMEOUT_SEC";
+constexpr int kDefaultStdioIdleTimeoutSec = 600;
 
 bool g_jsonrpc_use_content_length_framing = false;
 
@@ -107,6 +112,69 @@ using hashimyei_runtime_defaults_t =
           .count());
 }
 
+void append_hashimyei_tool_catalog_fields(std::ostringstream& extra,
+                                          const app_context_t* app) {
+  if (!app) return;
+  if (!app->catalog_options.catalog_path.empty()) {
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", app->catalog_options.catalog_path.string());
+  }
+}
+
+void log_hashimyei_tool_begin(const app_context_t* app, std::string_view tool_name,
+                              bool catalog_already_open) {
+  std::ostringstream extra;
+  append_hashimyei_tool_catalog_fields(extra, app);
+  cuwacunu::hero::mcp_observability::append_json_string_field(extra, "tool_name",
+                                                              tool_name);
+  cuwacunu::hero::mcp_observability::append_json_bool_field(
+      extra, "catalog_already_open", catalog_already_open);
+  cuwacunu::hero::mcp_observability::append_json_bool_field(
+      extra, "opened_here", !catalog_already_open);
+  if (app) {
+    cuwacunu::hero::mcp_observability::append_json_bool_field(
+        extra, "close_catalog_after_execute", app->close_catalog_after_execute);
+  }
+  std::string ignored{};
+  (void)cuwacunu::hero::mcp_observability::append_event_json(
+      kServerName, "tool_begin", extra.str(), &ignored);
+}
+
+void log_hashimyei_tool_end(const app_context_t* app, std::string_view tool_name,
+                            bool catalog_already_open, bool ok,
+                            bool catalog_closed, std::uint64_t elapsed_ms,
+                            std::uint64_t catalog_hold_ms = 0,
+                            std::string_view error = {}) {
+  std::ostringstream extra;
+  append_hashimyei_tool_catalog_fields(extra, app);
+  cuwacunu::hero::mcp_observability::append_json_string_field(extra, "tool_name",
+                                                              tool_name);
+  cuwacunu::hero::mcp_observability::append_json_bool_field(
+      extra, "catalog_already_open", catalog_already_open);
+  cuwacunu::hero::mcp_observability::append_json_bool_field(
+      extra, "opened_here", !catalog_already_open);
+  cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok", ok);
+  cuwacunu::hero::mcp_observability::append_json_bool_field(
+      extra, "catalog_closed", catalog_closed);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(extra, "elapsed_ms",
+                                                              elapsed_ms);
+  if (catalog_hold_ms != 0) {
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "catalog_hold_ms", catalog_hold_ms);
+  }
+  if (app) {
+    cuwacunu::hero::mcp_observability::append_json_bool_field(
+        extra, "close_catalog_after_execute", app->close_catalog_after_execute);
+  }
+  if (!error.empty()) {
+    cuwacunu::hero::mcp_observability::append_json_string_field(extra, "error",
+                                                                error);
+  }
+  std::string ignored{};
+  (void)cuwacunu::hero::mcp_observability::append_event_json(
+      kServerName, "tool_end", extra.str(), &ignored);
+}
+
 [[nodiscard]] std::string unquote_if_wrapped(std::string s) {
   s = trim_ascii(std::move(s));
   if (s.size() >= 2) {
@@ -117,6 +185,49 @@ using hashimyei_runtime_defaults_t =
     }
   }
   return s;
+}
+
+[[nodiscard]] std::optional<int> resolve_stdio_idle_timeout_ms() {
+  static const std::optional<int> cached_timeout_ms = []() -> std::optional<int> {
+    const char* raw = std::getenv(kStdioIdleTimeoutEnv);
+    if (raw == nullptr || *raw == '\0') {
+      return kDefaultStdioIdleTimeoutSec * 1000;
+    }
+
+    errno = 0;
+    char* end = nullptr;
+    const long long parsed = std::strtoll(raw, &end, 10);
+    while (end != nullptr &&
+           std::isspace(static_cast<unsigned char>(*end)) != 0) {
+      ++end;
+    }
+    if (errno != 0 || end == raw || (end != nullptr && *end != '\0')) {
+      return kDefaultStdioIdleTimeoutSec * 1000;
+    }
+    if (parsed <= 0) return std::nullopt;
+
+    constexpr long long kMaxTimeoutSec =
+        static_cast<long long>(std::numeric_limits<int>::max()) / 1000;
+    if (parsed >= kMaxTimeoutSec) return std::numeric_limits<int>::max();
+    return static_cast<int>(parsed * 1000);
+  }();
+  return cached_timeout_ms;
+}
+
+[[nodiscard]] bool wait_for_stdio_activity() {
+  const std::optional<int> timeout_ms = resolve_stdio_idle_timeout_ms();
+  if (!timeout_ms.has_value()) return true;
+
+  struct pollfd pfd {};
+  pfd.fd = STDIN_FILENO;
+  pfd.events = POLLIN | POLLHUP | POLLERR;
+  while (true) {
+    const int rc = ::poll(&pfd, 1, *timeout_ms);
+    if (rc > 0) return true;
+    if (rc == 0) return false;
+    if (errno == EINTR) continue;
+    return true;
+  }
 }
 
 [[nodiscard]] std::string resolve_path_from_base_folder(std::string base_folder,
@@ -203,6 +314,12 @@ using hashimyei_runtime_defaults_t =
   if (store_root.empty()) return {};
   return (store_root / "_meta" / "catalog" / "hashimyei_catalog.idydb")
       .lexically_normal();
+}
+
+[[nodiscard]] std::filesystem::path derive_legacy_hashimyei_catalog_path(
+    const std::filesystem::path& store_root) {
+  if (store_root.empty()) return {};
+  return (store_root / "catalog" / "hashimyei_catalog.idydb").lexically_normal();
 }
 
 [[nodiscard]] bool load_hashimyei_runtime_defaults(
@@ -410,6 +527,11 @@ using hashimyei_runtime_defaults_t =
 
 [[nodiscard]] bool remove_catalog_sync_state(
     const std::filesystem::path& catalog_path, std::string* error);
+[[nodiscard]] bool remove_catalog_file_and_sync_state(
+    const std::filesystem::path& catalog_path, std::string* error);
+[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_present(
+    const std::filesystem::path& store_root,
+    const std::filesystem::path& catalog_path, std::string* error);
 [[nodiscard]] bool ensure_hashimyei_catalog_synced_to_store(
     app_context_t* app, bool force_rebuild, std::string* out_error);
 
@@ -441,21 +563,18 @@ using hashimyei_runtime_defaults_t =
     return false;
   }
 
-  std::error_code ec{};
-  std::filesystem::remove(catalog_path, ec);
-  if (ec && std::filesystem::exists(catalog_path)) {
-    if (out_error) {
-      *out_error = "cannot remove catalog file: " + catalog_path.string();
-    }
+  if (!remove_catalog_file_and_sync_state(catalog_path, out_error)) return false;
+  if (!remove_legacy_hashimyei_catalog_if_present(app->store_root, catalog_path,
+                                                  out_error)) {
     return false;
   }
-  if (!remove_catalog_sync_state(catalog_path, out_error)) return false;
 
-  if (!app->catalog.open(app->catalog_options, out_error)) return false;
   app->last_store_sync_token.clear();
-  if (!reingest) return true;
+  if (reingest) {
+    return ensure_hashimyei_catalog_synced_to_store(app, true, out_error);
+  }
 
-  return ensure_hashimyei_catalog_synced_to_store(app, true, out_error);
+  return app->catalog.open(app->catalog_options, out_error);
 }
 
 void write_jsonrpc_payload(std::string_view payload) {
@@ -1019,16 +1138,8 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
 
 [[nodiscard]] bool path_is_within(std::filesystem::path base,
                                   std::filesystem::path candidate) {
-  if (const auto c = canonicalized(base); c.has_value()) {
-    base = *c;
-  } else {
-    base = base.lexically_normal();
-  }
-  if (const auto c = canonicalized(candidate); c.has_value()) {
-    candidate = *c;
-  } else {
-    candidate = candidate.lexically_normal();
-  }
+  base = base.lexically_normal();
+  candidate = candidate.lexically_normal();
   auto b = base.begin();
   auto c = candidate.begin();
   for (; b != base.end() && c != candidate.end(); ++b, ++c) {
@@ -1080,6 +1191,29 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   return true;
 }
 
+[[nodiscard]] bool remove_catalog_file_and_sync_state(
+    const std::filesystem::path& catalog_path, std::string* error) {
+  if (error) error->clear();
+  if (catalog_path.empty()) return true;
+
+  std::error_code ec{};
+  std::filesystem::remove(catalog_path, ec);
+  if (ec && std::filesystem::exists(catalog_path)) {
+    if (error) *error = "cannot remove catalog file: " + catalog_path.string();
+    return false;
+  }
+  return remove_catalog_sync_state(catalog_path, error);
+}
+
+[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_present(
+    const std::filesystem::path& store_root,
+    const std::filesystem::path& catalog_path, std::string* error) {
+  const std::filesystem::path legacy_path =
+      derive_legacy_hashimyei_catalog_path(store_root);
+  if (legacy_path.empty() || legacy_path == catalog_path) return true;
+  return remove_catalog_file_and_sync_state(legacy_path, error);
+}
+
 [[nodiscard]] bool should_include_hashimyei_sync_file(
     const std::filesystem::path& path) {
   if (path.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) return true;
@@ -1101,12 +1235,11 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
   out_token->clear();
 
   const std::filesystem::path normalized_store_root =
-      canonicalized(store_root).value_or(store_root.lexically_normal());
+      store_root.lexically_normal();
   const std::filesystem::path normalized_catalog_root =
       catalog_path.parent_path().empty()
           ? std::filesystem::path{}
-          : canonicalized(catalog_path.parent_path())
-                .value_or(catalog_path.parent_path().lexically_normal());
+          : catalog_path.parent_path().lexically_normal();
 
   std::vector<std::pair<std::string, std::string>> entries{};
   std::error_code ec{};
@@ -1134,22 +1267,20 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
       }
 
       const auto entry_path = it->path();
-      const auto canonical_entry =
-          canonicalized(entry_path).value_or(entry_path.lexically_normal());
-      if (!path_is_within(normalized_store_root, canonical_entry)) continue;
+      const auto normalized_entry = entry_path.lexically_normal();
+      if (!path_is_within(normalized_store_root, normalized_entry)) continue;
       if (!normalized_catalog_root.empty() &&
-          path_is_within(normalized_catalog_root, canonical_entry)) {
+          path_is_within(normalized_catalog_root, normalized_entry)) {
         continue;
       }
       if (!should_include_hashimyei_sync_file(entry_path)) continue;
 
-      const auto file_size = std::filesystem::file_size(entry_path, entry_ec);
+      const auto file_size = it->file_size(entry_ec);
       if (entry_ec) {
         if (error) *error = "failed reading store entry size";
         return false;
       }
-      const auto last_write_time =
-          std::filesystem::last_write_time(entry_path, entry_ec);
+      const auto last_write_time = it->last_write_time(entry_ec);
       if (entry_ec) {
         if (error) *error = "failed reading store entry mtime";
         return false;
@@ -1160,10 +1291,9 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
       std::ostringstream fingerprint;
       fingerprint << file_size << "|" << mtime_ticks;
 
-      std::error_code rel_ec{};
       std::filesystem::path rel =
-          std::filesystem::relative(canonical_entry, normalized_store_root, rel_ec);
-      if (rel_ec) rel = entry_path.lexically_normal().filename();
+          normalized_entry.lexically_relative(normalized_store_root);
+      if (rel.empty()) rel = normalized_entry.filename();
       entries.emplace_back(rel.generic_string(), fingerprint.str());
     }
   }
@@ -1202,13 +1332,11 @@ void write_jsonrpc_error(std::string_view id_json, int code, std::string_view me
     }
   }
 
-  std::error_code ec{};
-  std::filesystem::remove(catalog_path, ec);
-  if (ec && std::filesystem::exists(catalog_path)) {
-    if (out_error) *out_error = "cannot remove catalog file: " + catalog_path.string();
+  if (!remove_catalog_file_and_sync_state(catalog_path, out_error)) return false;
+  if (!remove_legacy_hashimyei_catalog_if_present(app->store_root, catalog_path,
+                                                  out_error)) {
     return false;
   }
-  if (!remove_catalog_sync_state(catalog_path, out_error)) return false;
 
   if (!app->catalog.open(app->catalog_options, out_error)) return false;
   if (!app->catalog.ingest_filesystem(app->store_root, out_error)) return false;
@@ -1363,6 +1491,384 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
   return out.str();
 }
 
+[[nodiscard]] bool tool_requires_catalog_sync(std::string_view tool_name) {
+  return tool_name != "hero.hashimyei.reset_catalog" &&
+         tool_name != "hero.hashimyei.list" &&
+         tool_name != "hero.hashimyei.get_component_manifest" &&
+         tool_name != "hero.hashimyei.get_founding_dsl_bundle";
+}
+
+[[nodiscard]] bool tool_requires_catalog_preopen(std::string_view tool_name) {
+  return tool_name != "hero.hashimyei.reset_catalog" &&
+         tool_name != "hero.hashimyei.list" &&
+         tool_name != "hero.hashimyei.get_component_manifest" &&
+         tool_name != "hero.hashimyei.get_founding_dsl_bundle";
+}
+
+struct store_discovery_snapshot_t {
+  std::vector<cuwacunu::hero::hashimyei::component_state_t> components{};
+  std::vector<cuwacunu::hero::hashimyei::report_fragment_entry_t>
+      report_fragments{};
+};
+
+[[nodiscard]] bool load_component_state_from_manifest_path(
+    const std::filesystem::path& path,
+    cuwacunu::hero::hashimyei::component_state_t* out,
+    std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!out) {
+    if (out_error) *out_error = "component output pointer is null";
+    return false;
+  }
+  *out = cuwacunu::hero::hashimyei::component_state_t{};
+
+  cuwacunu::hero::hashimyei::component_manifest_t manifest{};
+  if (!cuwacunu::hero::hashimyei::load_component_manifest(path, &manifest,
+                                                          out_error)) {
+    if (out_error != nullptr &&
+        *out_error ==
+            "pre-hard-cut component manifest is not supported after the hard cut") {
+      out_error->clear();
+      return true;
+    }
+    return false;
+  }
+
+  std::string payload{};
+  if (!read_text_file(path, &payload, out_error)) return false;
+
+  std::string payload_sha{};
+  if (!sha256_hex_bytes(payload, &payload_sha)) {
+    if (out_error) {
+      *out_error = "cannot compute component manifest sha256: " + path.string();
+    }
+    return false;
+  }
+
+  out->component_id =
+      cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
+  out->ts_ms = manifest.updated_at_ms != 0 ? manifest.updated_at_ms
+                                           : manifest.created_at_ms;
+  out->manifest_path =
+      canonicalized(path).value_or(path.lexically_normal()).string();
+  out->report_fragment_sha256 = std::move(payload_sha);
+  out->manifest = std::move(manifest);
+  return true;
+}
+
+[[nodiscard]] bool scan_store_discovery_snapshot(
+    app_context_t* app, bool include_report_fragments,
+    store_discovery_snapshot_t* out, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !out) {
+    if (out_error) *out_error = "missing store discovery context";
+    return false;
+  }
+  out->components.clear();
+  out->report_fragments.clear();
+
+  const std::filesystem::path store_root = app->store_root;
+  if (store_root.empty()) {
+    if (out_error) *out_error = "store_root is empty";
+    return false;
+  }
+
+  const std::filesystem::path normalized_store_root =
+      store_root.lexically_normal();
+  const std::filesystem::path normalized_catalog_root =
+      app->catalog_options.catalog_path.parent_path().empty()
+          ? std::filesystem::path{}
+          : app->catalog_options.catalog_path.parent_path().lexically_normal();
+  const std::filesystem::path family_rank_root =
+      store_root / "hero" / "family_rank";
+  const std::filesystem::path normalized_family_rank_root =
+      family_rank_root.lexically_normal();
+
+  std::unordered_map<std::string, cuwacunu::hero::family_rank::state_t>
+      family_rank_by_scope{};
+  std::unordered_map<std::string, std::uint64_t> family_rank_ts_by_scope{};
+  std::unordered_map<std::string, std::string> family_rank_path_by_scope{};
+
+  std::error_code ec{};
+  for (std::filesystem::recursive_directory_iterator it(store_root, ec), end;
+       it != end; it.increment(ec)) {
+    if (ec) {
+      if (out_error) *out_error = "failed scanning hashimyei store";
+      return false;
+    }
+
+    std::error_code entry_ec{};
+    const auto symlink_state = it->symlink_status(entry_ec);
+    if (entry_ec) {
+      if (out_error) *out_error = "failed reading hashimyei store entry status";
+      return false;
+    }
+    if (std::filesystem::is_symlink(symlink_state)) continue;
+    if (!it->is_regular_file(entry_ec)) {
+      if (entry_ec) {
+        if (out_error) *out_error = "failed reading hashimyei store entry type";
+        return false;
+      }
+      continue;
+    }
+
+    const std::filesystem::path entry_path = it->path();
+    const std::filesystem::path normalized_entry = entry_path.lexically_normal();
+    if (!path_is_within(normalized_store_root, normalized_entry)) continue;
+    if (!normalized_catalog_root.empty() &&
+        path_is_within(normalized_catalog_root, normalized_entry)) {
+      continue;
+    }
+
+    if (entry_path.filename() ==
+        cuwacunu::hashimyei::kComponentManifestFilenameV2) {
+      cuwacunu::hero::hashimyei::component_state_t component{};
+      if (!load_component_state_from_manifest_path(entry_path, &component,
+                                                   out_error)) {
+        return false;
+      }
+      if (component.component_id.empty()) continue;
+      out->components.push_back(std::move(component));
+      continue;
+    }
+
+    if (entry_path.extension() != ".lls") continue;
+
+    std::string payload{};
+    if (!read_text_file(entry_path, &payload, out_error)) return false;
+    if (payload.empty()) continue;
+
+    std::unordered_map<std::string, std::string> kv{};
+    std::string parse_error{};
+    if (!cuwacunu::hero::hashimyei::parse_latent_lineage_state_payload(
+            payload, &kv)) {
+      if (out_error) {
+        *out_error = "cannot parse runtime payload: " + entry_path.string();
+      }
+      return false;
+    }
+
+    const std::string schema = trim_ascii(kv["schema"]);
+    if (schema.empty()) continue;
+
+    if (path_is_within(normalized_family_rank_root, normalized_entry)) {
+      cuwacunu::hero::family_rank::state_t rank_state{};
+      if (!cuwacunu::hero::family_rank::parse_state_from_kv(
+              kv, &rank_state, &parse_error)) {
+        if (out_error) {
+          *out_error = "family rank parse failure for " + entry_path.string() +
+                       ": " + parse_error;
+        }
+        return false;
+      }
+
+      const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
+          rank_state.family, rank_state.contract_hash);
+      const std::uint64_t row_ts = rank_state.updated_at_ms;
+      const std::string row_path = normalized_entry.string();
+      const auto current_ts_it = family_rank_ts_by_scope.find(scope_key);
+      const bool should_replace =
+          current_ts_it == family_rank_ts_by_scope.end() ||
+          row_ts > current_ts_it->second ||
+          (row_ts == current_ts_it->second &&
+           row_path > family_rank_path_by_scope[scope_key]);
+      if (should_replace) {
+        family_rank_ts_by_scope[scope_key] = row_ts;
+        family_rank_path_by_scope[scope_key] = row_path;
+        family_rank_by_scope[scope_key] = std::move(rank_state);
+      }
+      continue;
+    }
+
+    if (!include_report_fragments) continue;
+
+    cuwacunu::hero::hashimyei::report_fragment_entry_t fragment{};
+    fragment.schema = schema;
+    fragment.path = normalized_entry.string();
+    fragment.payload_json = payload;
+
+    cuwacunu::piaabo::latent_lineage_state::runtime_report_header_t header{};
+    if (cuwacunu::piaabo::latent_lineage_state::parse_runtime_report_header_from_kv(
+            kv, &header, nullptr)) {
+      fragment.semantic_taxon = trim_ascii(header.semantic_taxon);
+      fragment.report_canonical_path = trim_ascii(header.context.canonical_path);
+      fragment.binding_id = trim_ascii(header.context.binding_id);
+      fragment.source_runtime_cursor =
+          trim_ascii(header.context.source_runtime_cursor);
+      if (header.context.has_wave_cursor) {
+        fragment.has_wave_cursor = true;
+        fragment.wave_cursor = header.context.wave_cursor;
+      }
+    }
+
+    fragment.source_label = trim_ascii(kv["source_label"]);
+    fragment.canonical_path = cuwacunu::hashimyei::normalize_hashimyei_canonical_path(
+        trim_ascii(kv["canonical_path"]));
+    if (fragment.canonical_path.empty()) {
+      fragment.canonical_path =
+          cuwacunu::hashimyei::normalize_hashimyei_canonical_path(
+              fragment.report_canonical_path);
+    }
+    fragment.hashimyei = trim_ascii(kv["hashimyei"]);
+    cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&fragment.hashimyei);
+    if (fragment.hashimyei.empty()) {
+      fragment.hashimyei = maybe_hashimyei_from_canonical(fragment.canonical_path);
+    }
+    if (fragment.canonical_path.empty() && fragment.hashimyei.empty()) continue;
+
+    std::string payload_sha{};
+    if (!sha256_hex_bytes(payload, &payload_sha)) {
+      if (out_error) {
+        *out_error = "cannot compute report fragment sha256: " +
+                     entry_path.string();
+      }
+      return false;
+    }
+    fragment.report_fragment_id = payload_sha;
+    fragment.report_fragment_sha256 = std::move(payload_sha);
+
+    std::error_code ts_ec{};
+    const auto fts = std::filesystem::last_write_time(entry_path, ts_ec);
+    if (!ts_ec) {
+      const auto ms =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              fts.time_since_epoch())
+              .count();
+      if (ms > 0) fragment.ts_ms = static_cast<std::uint64_t>(ms);
+    }
+
+    out->report_fragments.push_back(std::move(fragment));
+  }
+
+  for (auto& component : out->components) {
+    const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
+        component.manifest.family,
+        cuwacunu::hero::hashimyei::contract_hash_from_identity(
+            component.manifest.contract_identity));
+    const auto it = family_rank_by_scope.find(scope_key);
+    if (it == family_rank_by_scope.end()) continue;
+    component.family_rank = cuwacunu::hero::family_rank::rank_for_hashimyei(
+        it->second, component.manifest.hashimyei_identity.name);
+  }
+  return true;
+}
+
+[[nodiscard]] bool resolve_component_from_store_snapshot(
+    const store_discovery_snapshot_t& snapshot, std::string_view canonical_path,
+    std::string_view hashimyei,
+    cuwacunu::hero::hashimyei::component_state_t* out,
+    std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!out) {
+    if (out_error) *out_error = "component output pointer is null";
+    return false;
+  }
+  *out = cuwacunu::hero::hashimyei::component_state_t{};
+
+  const std::string canonical =
+      cuwacunu::hashimyei::normalize_hashimyei_canonical_path(
+          trim_ascii(canonical_path));
+  std::string hash = trim_ascii(hashimyei);
+  cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&hash);
+
+  const auto is_newer = [](const auto& candidate, const auto& current) {
+    return candidate.ts_ms > current.ts_ms ||
+           (candidate.ts_ms == current.ts_ms &&
+            candidate.component_id > current.component_id);
+  };
+
+  if (!canonical.empty() && !hash.empty()) {
+    bool found = false;
+    cuwacunu::hero::hashimyei::component_state_t best{};
+    for (const auto& component : snapshot.components) {
+      const bool canonical_match =
+          component.manifest.canonical_path == canonical ||
+          component.manifest.family == canonical;
+      if (!canonical_match) continue;
+      if (component.manifest.hashimyei_identity.name != hash) continue;
+      if (!found || is_newer(component, best)) {
+        best = component;
+        found = true;
+      }
+    }
+    if (!found) {
+      if (out_error) {
+        *out_error = "component not found for canonical_path/hashimyei";
+      }
+      return false;
+    }
+    *out = std::move(best);
+    return true;
+  }
+
+  if (!canonical.empty()) {
+    const std::string canonical_hash_tail =
+        maybe_hashimyei_from_canonical(canonical);
+    bool found = false;
+    cuwacunu::hero::hashimyei::component_state_t best{};
+
+    if (!canonical_hash_tail.empty()) {
+      for (const auto& component : snapshot.components) {
+        if (component.manifest.canonical_path != canonical) continue;
+        if (!found || is_newer(component, best)) {
+          best = component;
+          found = true;
+        }
+      }
+    } else {
+      for (const auto& component : snapshot.components) {
+        if (component.manifest.family != canonical) continue;
+        if (trim_ascii(component.manifest.lineage_state) != "active") continue;
+        if (!found || is_newer(component, best)) {
+          best = component;
+          found = true;
+        }
+      }
+      if (!found) {
+        for (const auto& component : snapshot.components) {
+          if (component.manifest.canonical_path != canonical) continue;
+          if (!found || is_newer(component, best)) {
+            best = component;
+            found = true;
+          }
+        }
+      }
+    }
+
+    if (!found) {
+      if (out_error) {
+        *out_error = "component not found for canonical_path: " + canonical;
+      }
+      return false;
+    }
+    *out = std::move(best);
+    return true;
+  }
+
+  if (!hash.empty()) {
+    bool found = false;
+    cuwacunu::hero::hashimyei::component_state_t best{};
+    for (const auto& component : snapshot.components) {
+      if (component.manifest.hashimyei_identity.name != hash) continue;
+      if (!found || is_newer(component, best)) {
+        best = component;
+        found = true;
+      }
+    }
+    if (!found) {
+      if (out_error) *out_error = "component not found for hashimyei: " + hash;
+      return false;
+    }
+    *out = std::move(best);
+    return true;
+  }
+
+  if (out_error) {
+    *out_error = "resolve_component requires canonical_path or hashimyei";
+  }
+  return false;
+}
+
 [[nodiscard]] bool handle_tool_list(app_context_t* app,
                                     const std::string& arguments_json,
                                     std::string* out_structured,
@@ -1434,20 +1940,16 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
     }
   };
 
-  std::vector<cuwacunu::hero::hashimyei::component_state_t> components{};
-  if (!app->catalog.list_components("", "", 0, 0, true, &components, out_error)) {
-    return false;
-  }
+  store_discovery_snapshot_t snapshot{};
+  if (!scan_store_discovery_snapshot(app, true, &snapshot, out_error)) return false;
+
+  const auto& components = snapshot.components;
   for (const auto& c : components) {
     add_entry(c.manifest.hashimyei_identity.name, c.manifest.canonical_path,
               true);
   }
 
-  std::vector<cuwacunu::hero::hashimyei::report_fragment_entry_t> report_fragments{};
-  if (!app->catalog.list_report_fragments("", "", 0, 0, true, &report_fragments,
-                                          out_error)) {
-    return false;
-  }
+  const auto& report_fragments = snapshot.report_fragments;
   for (const auto& fragment : report_fragments) {
     add_entry(fragment.hashimyei, fragment.canonical_path, false);
   }
@@ -1515,9 +2017,12 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
   bool include_content = false;
   (void)extract_json_bool_field(arguments_json, "include_content", &include_content);
 
+  store_discovery_snapshot_t snapshot{};
+  if (!scan_store_discovery_snapshot(app, false, &snapshot, out_error)) return false;
+
   cuwacunu::hero::hashimyei::component_state_t component{};
-  if (!app->catalog.resolve_component(canonical_path, hashimyei, &component,
-                                      out_error)) {
+  if (!resolve_component_from_store_snapshot(snapshot, canonical_path, hashimyei,
+                                             &component, out_error)) {
     return false;
   }
 
@@ -1668,9 +2173,12 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
     return false;
   }
 
+  store_discovery_snapshot_t snapshot{};
+  if (!scan_store_discovery_snapshot(app, false, &snapshot, out_error)) return false;
+
   cuwacunu::hero::hashimyei::component_state_t component{};
-  if (!app->catalog.resolve_component(canonical_path, hashimyei, &component,
-                                      out_error)) {
+  if (!resolve_component_from_store_snapshot(snapshot, canonical_path, hashimyei,
+                                             &component, out_error)) {
     return false;
   }
 
@@ -1906,7 +2414,7 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
 
   std::string structured;
   std::string err;
-  if (tool_name != "hero.hashimyei.reset_catalog") {
+  if (tool_requires_catalog_sync(tool_name)) {
     std::string sync_error;
     if (!ensure_hashimyei_catalog_synced_to_store(app, false, &sync_error)) {
       const std::string err_ingest = "catalog sync failed: " + sync_error;
@@ -1945,26 +2453,40 @@ constexpr hashimyei_tool_descriptor_t kHashimyeiTools[] = {
 
 void run_jsonrpc_stdio_loop(app_context_t* app) {
   std::string request;
+  bool shutdown_requested = false;
   while (true) {
+    if (!wait_for_stdio_activity()) return;
+
     bool used_content_length = false;
     if (!read_next_jsonrpc_message(&std::cin, &request, &used_content_length)) {
       return;
     }
     if (used_content_length) g_jsonrpc_use_content_length_framing = true;
 
+    std::string method;
+    if (!extract_json_string_field(request, "method", &method)) {
+      write_jsonrpc_error("null", -32600, "missing method");
+      continue;
+    }
+
+    if (method == "exit") return;
+
     std::string id_json = "null";
-    if (!extract_json_id_field(request, &id_json)) {
+    const bool has_id = extract_json_id_field(request, &id_json);
+    if (method.rfind("notifications/", 0) == 0) {
+      continue;
+    }
+    if (!has_id) {
       write_jsonrpc_error("null", -32700, "invalid request id");
       continue;
     }
-
-    std::string method;
-    if (!extract_json_string_field(request, "method", &method)) {
-      write_jsonrpc_error(id_json, -32600, "missing method");
+    if (method == "shutdown") {
+      write_jsonrpc_result(id_json, "{}");
+      shutdown_requested = true;
       continue;
     }
-
-    if (method.rfind("notifications/", 0) == 0) {
+    if (shutdown_requested) {
+      write_jsonrpc_error(id_json, -32000, "server is shutting down");
       continue;
     }
     if (method == "initialize") {
@@ -1977,6 +2499,14 @@ void run_jsonrpc_stdio_loop(app_context_t* app) {
     }
     if (method == "tools/list") {
       write_jsonrpc_result(id_json, tools_list_result_json());
+      continue;
+    }
+    if (method == "resources/list") {
+      write_jsonrpc_result(id_json, "{\"resources\":[]}");
+      continue;
+    }
+    if (method == "resources/templates/list") {
+      write_jsonrpc_result(id_json, "{\"resourceTemplates\":[]}");
       continue;
     }
     if (method != "tools/call") {
@@ -2002,15 +2532,24 @@ void run_jsonrpc_stdio_loop(app_context_t* app) {
       arguments = extracted_args;
     }
 
-    if (!app->catalog.opened()) {
+    const bool catalog_already_open = app->catalog.opened();
+    const std::uint64_t tool_started_at_ms = now_ms_utc();
+    std::uint64_t catalog_hold_started_at_ms = 0;
+    log_hashimyei_tool_begin(app, name, catalog_already_open);
+
+    const bool needs_preopen = tool_requires_catalog_preopen(name);
+    if (!catalog_already_open && needs_preopen) {
       std::string open_error;
       if (!app->catalog.open(app->catalog_options, &open_error)) {
         const std::string err = "catalog open failed: " + open_error;
+        log_hashimyei_tool_end(app, name, catalog_already_open, false, false,
+                               now_ms_utc() - tool_started_at_ms, 0, err);
         const std::string fallback =
             "{\"canonical_path\":\"\",\"error\":" + json_quote(err) + "}";
         write_jsonrpc_result(id_json, make_tool_result_json(err, fallback, true));
         continue;
       }
+      catalog_hold_started_at_ms = now_ms_utc();
     }
 
     std::string tool_result;
@@ -2022,11 +2561,27 @@ void run_jsonrpc_stdio_loop(app_context_t* app) {
     // not block other clients from opening the catalog.
     std::string close_error;
     if (!close_catalog_if_open(app, &close_error)) {
+      const std::string err = "catalog close failed: " + close_error;
+      log_hashimyei_tool_end(
+          app, name, catalog_already_open, false, false,
+          now_ms_utc() - tool_started_at_ms,
+          catalog_hold_started_at_ms == 0 ? 0
+                                          : now_ms_utc() -
+                                                catalog_hold_started_at_ms,
+          err);
       write_jsonrpc_error(id_json, -32603,
                           "catalog close failed: " + close_error);
       continue;
     }
 
+    const std::uint64_t finished_at_ms = now_ms_utc();
+    log_hashimyei_tool_end(
+        app, name, catalog_already_open, ok, true,
+        finished_at_ms - tool_started_at_ms,
+        catalog_hold_started_at_ms == 0 ? 0
+                                        : finished_at_ms -
+                                              catalog_hold_started_at_ms,
+        ok ? std::string_view{} : std::string_view(tool_error));
     if (!ok) {
       write_jsonrpc_error(id_json, -32601, tool_error);
       continue;
@@ -2061,24 +2616,51 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
                        std::string* out_error_message) {
   if (out_error_message) out_error_message->clear();
   if (!app || !out_tool_result_json || !out_error_message) return false;
-  const bool opened_here = !app->catalog.opened();
+  const bool catalog_already_open = app->catalog.opened();
+  const bool needs_preopen = tool_requires_catalog_preopen(tool_name);
+  const bool opened_here = !catalog_already_open && needs_preopen;
+  const std::uint64_t tool_started_at_ms = now_ms_utc();
+  std::uint64_t catalog_hold_started_at_ms = 0;
+  log_hashimyei_tool_begin(app, tool_name, catalog_already_open);
   if (opened_here) {
     std::string open_error;
     if (!app->catalog.open(app->catalog_options, &open_error)) {
       *out_error_message = "catalog open failed: " + open_error;
+      log_hashimyei_tool_end(app, tool_name, catalog_already_open, false, false,
+                             now_ms_utc() - tool_started_at_ms, 0,
+                             *out_error_message);
       return false;
     }
+    catalog_hold_started_at_ms = now_ms_utc();
   }
   const bool ok = ::handle_tool_call(app, tool_name, arguments_json,
                                      out_tool_result_json, out_error_message);
+  bool catalog_closed = false;
   if (opened_here && app->close_catalog_after_execute) {
     std::string close_error;
     if (!::close_catalog_if_open(app, &close_error)) {
       if (!out_error_message->empty()) out_error_message->append("; ");
       out_error_message->append("catalog close failed: " + close_error);
+      log_hashimyei_tool_end(
+          app, tool_name, catalog_already_open, false, false,
+          now_ms_utc() - tool_started_at_ms,
+          catalog_hold_started_at_ms == 0 ? 0
+                                          : now_ms_utc() -
+                                                catalog_hold_started_at_ms,
+          *out_error_message);
       return false;
     }
+    catalog_closed = true;
   }
+  const std::uint64_t finished_at_ms = now_ms_utc();
+  log_hashimyei_tool_end(
+      app, tool_name, catalog_already_open, ok, catalog_closed,
+      finished_at_ms - tool_started_at_ms,
+      catalog_hold_started_at_ms == 0 ? 0
+                                      : finished_at_ms -
+                                            catalog_hold_started_at_ms,
+      out_error_message->empty() ? std::string_view{}
+                                 : std::string_view(*out_error_message));
   return ok;
 }
 

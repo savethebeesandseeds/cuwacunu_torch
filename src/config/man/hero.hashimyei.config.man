@@ -19,4 +19,4 @@ nuance = catalog runtime is unencrypted in MCP mode; keep this value false
 
 [NOTE DERIVED_HASHIMYEI_PATHS]
 scope = hero hashimyei runtime defaults
-text = Hashimyei HERO derives its store root from `[GENERAL].runtime_root` as `<runtime_root>/.hashimyei` and derives its catalog path as `<store_root>/_meta/catalog/hashimyei_catalog.idydb`.
+text = Hashimyei HERO derives its store root from `[GENERAL].runtime_root` as `<runtime_root>/.hashimyei`, derives its catalog path as `<store_root>/_meta/catalog/hashimyei_catalog.idydb`, and persists STDIO MCP diagnostics under `<store_root>/_meta/mcp/hero_hashimyei_mcp/` as `stderr.log` plus `events.jsonl`.

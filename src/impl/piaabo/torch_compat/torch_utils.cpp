@@ -171,6 +171,14 @@ static std::string strip_torch_type_prefixes(std::string v) {
   return v;
 }
 
+static bool requests_cuda_device(const std::string& s) {
+  std::string v = trim_lower_ascii(s);
+  if (v == "gpu") return true;
+  if (v.rfind("gpu:", 0) == 0) return true;
+  v = strip_torch_type_prefixes(v);
+  return v == "cuda" || v.rfind("cuda:", 0) == 0;
+}
+
 static torch::Dtype parse_dtype(const std::string& s)
 {
   std::string v = strip_torch_type_prefixes(trim_lower_ascii(s));
@@ -199,19 +207,33 @@ static torch::Device parse_device(const std::string& s)
   v = strip_torch_type_prefixes(v);
   const auto log_cpu_fallback_loud = [&](const std::string& requested,
                                          const std::string& attempted,
-                                         const char* reason) {
+                                         const char* reason,
+                                         const std::string& detail = std::string()) {
+    if (detail.empty()) {
+      log_warn(
+          "[torch_utils][CPU_FALLBACK_ACTIVE] requested='%s' attempted='%s' reason='%s'. "
+          "Heavy compute will run on CPU for this component.\n",
+          requested.c_str(),
+          attempted.c_str(),
+          reason);
+      return;
+    }
     log_warn(
-        "[torch_utils][CPU_FALLBACK_ACTIVE] requested='%s' attempted='%s' reason='%s'. "
+        "[torch_utils][CPU_FALLBACK_ACTIVE] requested='%s' attempted='%s' reason='%s' detail='%s'. "
         "Heavy compute will run on CPU for this component.\n",
         requested.c_str(),
         attempted.c_str(),
-        reason);
+        reason,
+        detail.c_str());
   };
-  const auto fallback_cpu_with_warn = [&](const torch::Device& attempted) {
+  const auto fallback_cpu_with_warn = [&](const torch::Device& attempted,
+                                          const char* reason,
+                                          const std::string& detail = std::string()) {
     log_cpu_fallback_loud(
         s,
         attempted.str(),
-        "cuda runtime probe failed");
+        reason,
+        detail);
     return torch::Device(torch::kCPU);
   };
   const auto ensure_device_runtime_usable = [&](const torch::Device& dev) -> torch::Device {
@@ -223,10 +245,16 @@ static torch::Device parse_device(const std::string& s)
       (void)probe;
       torch::cuda::synchronize();
       return dev;
-    } catch (const c10::Error&) {
-      return fallback_cpu_with_warn(dev);
-    } catch (const std::exception&) {
-      return fallback_cpu_with_warn(dev);
+    } catch (const c10::Error& e) {
+      return fallback_cpu_with_warn(
+          dev,
+          "cuda runtime probe failed",
+          e.what_without_backtrace());
+    } catch (const std::exception& e) {
+      return fallback_cpu_with_warn(
+          dev,
+          "cuda runtime probe failed",
+          e.what());
     }
   };
 
@@ -272,13 +300,24 @@ torch::Dtype config_dtype(const contract_hash_t& contract_hash,
 
 torch::Device config_device(const contract_hash_t& contract_hash,
                             const std::string& section) {
-  if (section == "GENERAL") {
-    return parse_device(
-        cuwacunu::iitepi::config_space_t::get<std::string>("GENERAL", "device"));
+  const std::string configured_device =
+      (section == "GENERAL")
+          ? cuwacunu::iitepi::config_space_t::get<std::string>("GENERAL", "device")
+          : cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+                ->get<std::string>(section, "device");
+  const torch::Device resolved_device = parse_device(configured_device);
+  if (resolved_device.is_cpu() && requests_cuda_device(configured_device)) {
+    log_warn(
+        "[torch_utils][CUDA_REQUESTED_BUT_CPU_SELECTED] contract_hash='%s' section='%s' configured_device='%s' resolved_device='%s'.\n",
+        contract_hash.c_str(),
+        section.c_str(),
+        configured_device.c_str(),
+        resolved_device.str().c_str());
+    log_warn(
+        "[torch_utils][CUDA_REQUESTED_BUT_CPU_SELECTED] CUDA was explicitly requested for this component, but execution will proceed on CPU. "
+        "Inspect earlier [torch_utils][CPU_FALLBACK_ACTIVE] warnings for the runtime-probe failure details.\n");
   }
-  return parse_device(
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
-          ->get<std::string>(section, "device"));
+  return resolved_device;
 }
 
 } // namespace iitepi

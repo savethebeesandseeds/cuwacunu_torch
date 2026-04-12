@@ -27,7 +27,7 @@ inline constexpr std::size_t logs_settings_count() {
   return 8;
 }
 
-struct LogsState {
+struct ShellLogsState {
   bool auto_follow{true};
   bool mouse_capture{true};
   LogsLevelFilter level_filter{LogsLevelFilter::DebugOrHigher};

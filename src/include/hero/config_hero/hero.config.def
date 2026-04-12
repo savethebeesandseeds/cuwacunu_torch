@@ -41,7 +41,7 @@ HERO_RUNTIME_KEY("objective_roots", "string", 1,
                  "/cuwacunu/src/config/instructions/objectives",
                  "csv path list", "comma-separated paths",
                  "allowed objective instruction roots for hero.config.objective.*")
-HERO_RUNTIME_KEY("allowed_extensions", "string", 1, ".dsl",
+HERO_RUNTIME_KEY("allowed_extensions", "string", 1, ".dsl,.md",
                  "csv extension list", "comma-separated extensions",
                  "allowed file extensions for hero.config.default.*, hero.config.objective.*, and hero.config.optim.*")
 HERO_RUNTIME_KEY("write_roots", "string", 1, "/tmp", "csv path list", "comma-separated paths",

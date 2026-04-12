@@ -1,25 +1,30 @@
 ROOT_PATH := ./src
+# Load the shared build policy here so repo-root invocations stay the true
+# top-level make. Otherwise `make -C /cuwacunu ...` turns `src/` into
+# MAKELEVEL=1, which suppresses the build-mode banner and top-level `-j`
+# injection handled by src/Makefile.config.
+include $(ROOT_PATH)/Makefile.config
 .DEFAULT_GOAL := lib
 
 .PHONY: lib link install modules tests clean help targets
 
 lib:
-	$(MAKE) -C $(ROOT_PATH) lib
+	+$(MAKE) -C $(ROOT_PATH) lib
 
 link:
-	$(MAKE) -C $(ROOT_PATH) link
+	+$(MAKE) -C $(ROOT_PATH) link
 
 install:
-	$(MAKE) -C $(ROOT_PATH) install
+	+$(MAKE) -C $(ROOT_PATH) install
 
 modules:
-	$(MAKE) -C $(ROOT_PATH) modules
+	+$(MAKE) -C $(ROOT_PATH) modules
 
 tests:
-	$(MAKE) -C $(ROOT_PATH) tests
+	+$(MAKE) -C $(ROOT_PATH) tests
 
 clean:
-	$(MAKE) -C $(ROOT_PATH) clean
+	+$(MAKE) -C $(ROOT_PATH) clean
 
 help:
 	@echo "repo targets:"

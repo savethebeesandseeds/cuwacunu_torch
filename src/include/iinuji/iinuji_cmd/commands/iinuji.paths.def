@@ -1,5 +1,6 @@
 #ifndef IINUJI_CANONICAL_CALL
-#error "IINUJI_CANONICAL_CALL(ID, TEXT, SUMMARY) must be defined before including iinuji.paths.def"
+#error                                                                         \
+    "IINUJI_CANONICAL_CALL(ID, TEXT, SUMMARY) must be defined before including iinuji.paths.def"
 #endif
 
 #ifndef IINUJI_CANONICAL_ALIAS
@@ -10,191 +11,200 @@
 #define IINUJI_CANONICAL_PATTERN(ID, TEXT, SUMMARY, MATCH_STYLE)
 #endif
 
-// Canonical command table:
-// - SUMMARY is kept in this file so help/manifest generation can be derived from one source.
-// - Direct short aliases can be declared with IINUJI_CANONICAL_ALIAS.
-// - Pattern MATCH_STYLE drives dynamic call matching in dispatch:
-//   ExactSegments | OptionalTailAtom | RequireArgsOrTailAtom
-
 // System / shell lifecycle.
-IINUJI_CANONICAL_CALL(HelpOpen, "iinuji.help()", "Open help overlay in widescreen mode")
+IINUJI_CANONICAL_CALL(HelpOpen, "iinuji.help()",
+                      "Open help overlay in widescreen mode")
 IINUJI_CANONICAL_CALL(HelpClose, "iinuji.help.close()", "Close help overlay")
-IINUJI_CANONICAL_CALL(HelpScrollUp, "iinuji.help.scroll.up()", "Scroll help overlay up")
-IINUJI_CANONICAL_CALL(HelpScrollDown, "iinuji.help.scroll.down()", "Scroll help overlay down")
-IINUJI_CANONICAL_CALL(HelpScrollLeft, "iinuji.help.scroll.left()", "Scroll help overlay left")
-IINUJI_CANONICAL_CALL(HelpScrollRight, "iinuji.help.scroll.right()", "Scroll help overlay right")
-IINUJI_CANONICAL_CALL(HelpScrollPageUp, "iinuji.help.scroll.page.up()", "Scroll help overlay page up")
-IINUJI_CANONICAL_CALL(HelpScrollPageDown, "iinuji.help.scroll.page.down()", "Scroll help overlay page down")
-IINUJI_CANONICAL_CALL(HelpScrollHome, "iinuji.help.scroll.home()", "Move help overlay scroll to top-left")
-IINUJI_CANONICAL_CALL(HelpScrollEnd, "iinuji.help.scroll.end()", "Move help overlay scroll to end")
+IINUJI_CANONICAL_CALL(HelpScrollUp, "iinuji.help.scroll.up()",
+                      "Scroll help overlay up")
+IINUJI_CANONICAL_CALL(HelpScrollDown, "iinuji.help.scroll.down()",
+                      "Scroll help overlay down")
+IINUJI_CANONICAL_CALL(HelpScrollLeft, "iinuji.help.scroll.left()",
+                      "Scroll help overlay left")
+IINUJI_CANONICAL_CALL(HelpScrollRight, "iinuji.help.scroll.right()",
+                      "Scroll help overlay right")
+IINUJI_CANONICAL_CALL(HelpScrollPageUp, "iinuji.help.scroll.page.up()",
+                      "Scroll help overlay page up")
+IINUJI_CANONICAL_CALL(HelpScrollPageDown, "iinuji.help.scroll.page.down()",
+                      "Scroll help overlay page down")
+IINUJI_CANONICAL_CALL(HelpScrollHome, "iinuji.help.scroll.home()",
+                      "Move help overlay scroll to top-left")
+IINUJI_CANONICAL_CALL(HelpScrollEnd, "iinuji.help.scroll.end()",
+                      "Move help overlay scroll to end")
 IINUJI_CANONICAL_CALL(AppQuit, "iinuji.quit()", "Exit iinuji command terminal")
 IINUJI_CANONICAL_CALL(AppExit, "iinuji.exit()", "Exit iinuji command terminal")
 
 // Screen selection.
-IINUJI_CANONICAL_CALL(ScreenHome, "iinuji.screen.home()", "Switch to F1 home screen")
-IINUJI_CANONICAL_CALL(ScreenBoard, "iinuji.screen.board()", "Switch to F2 board screen")
-IINUJI_CANONICAL_CALL(ScreenTraining, "iinuji.screen.training()", "Switch to F3 training screen")
-IINUJI_CANONICAL_CALL(ScreenLogs, "iinuji.screen.logs()", "Switch to F8 logs screen")
-IINUJI_CANONICAL_CALL(ScreenTsi, "iinuji.screen.tsi()", "Switch to F4 tsiemene screen")
-IINUJI_CANONICAL_CALL(ScreenData, "iinuji.screen.data()", "Switch to F5 data screen")
-IINUJI_CANONICAL_CALL(ScreenConfig, "iinuji.screen.config()", "Switch to F9 config screen")
+IINUJI_CANONICAL_CALL(ScreenHome, "iinuji.screen.home()",
+                      "Switch to F1 Home screen")
+IINUJI_CANONICAL_CALL(ScreenHuman, "iinuji.screen.human()",
+                      "Switch to F2 Marshal screen")
+IINUJI_CANONICAL_CALL(ScreenRuntime, "iinuji.screen.runtime()",
+                      "Switch to F3 Runtime screen")
+IINUJI_CANONICAL_CALL(ScreenLattice, "iinuji.screen.lattice()",
+                      "Switch to F4 Lattice screen")
+IINUJI_CANONICAL_CALL(ScreenLogs, "iinuji.screen.logs()",
+                      "Switch to F8 shell logs screen")
+IINUJI_CANONICAL_CALL(ScreenConfig, "iinuji.screen.config()",
+                      "Switch to F9 config screen")
 
-// View aliases.
-IINUJI_CANONICAL_CALL(ViewData, "iinuji.view.data()", "Show data view")
-IINUJI_CANONICAL_CALL(ViewTraining, "iinuji.view.training()", "Show training view")
-IINUJI_CANONICAL_CALL(ViewTsi, "iinuji.view.tsi()", "Show tsiemene view")
+// Shell refresh.
+IINUJI_CANONICAL_CALL(RefreshAll, "iinuji.refresh()",
+                      "Reload Marshal, Runtime, and Config state")
+IINUJI_CANONICAL_CALL(HumanRefresh, "iinuji.human.refresh()",
+                      "Refresh Marshal cockpit state")
+IINUJI_CANONICAL_CALL(RuntimeRefresh, "iinuji.runtime.refresh()",
+                      "Refresh Runtime screen state")
+IINUJI_CANONICAL_CALL(LatticeRefresh, "iinuji.lattice.refresh()",
+                      "Refresh Lattice lineage browser state")
+IINUJI_CANONICAL_CALL(ConfigReload, "iinuji.config.reload()",
+                      "Reload the Config file browser from the active policy")
 
-// Reload/update state.
-IINUJI_CANONICAL_CALL(RefreshAll, "iinuji.refresh()", "Reload config, board, and data")
-IINUJI_CANONICAL_CALL(ReloadBoard, "iinuji.state.reload.board()", "Reload board from current config")
-IINUJI_CANONICAL_CALL(ReloadData, "iinuji.state.reload.data()", "Reload data view from current board/config")
-IINUJI_CANONICAL_CALL(ReloadConfig, "iinuji.state.reload.config()", "Reload config and dependent board/data state")
+// Marshal screen backed by Human Hero.
+IINUJI_CANONICAL_CALL(HumanViewInbox, "iinuji.human.view.inbox()",
+                      "Show Marshal Inbox")
+IINUJI_CANONICAL_CALL(HumanViewLive, "iinuji.human.view.live()",
+                      "Compatibility: route old Marshal Live lane to Inbox")
+IINUJI_CANONICAL_CALL(HumanViewHistory, "iinuji.human.view.history()",
+                      "Compatibility: route old Marshal History lane to Inbox")
+IINUJI_CANONICAL_CALL(HumanViewOverview, "iinuji.human.view.overview()",
+                      "Compatibility: route old Marshal overview lane to Inbox")
+IINUJI_CANONICAL_CALL(HumanViewRequests, "iinuji.human.view.requests()",
+                      "Compatibility: route old Marshal requests lane to Inbox")
+IINUJI_CANONICAL_CALL(HumanViewReviews, "iinuji.human.view.reviews()",
+                      "Compatibility: route old Marshal reviews lane to Inbox")
+IINUJI_CANONICAL_CALL(
+    HumanFilterNext, "iinuji.human.filter.next()",
+    "Deprecated compatibility shim for the old Marshal phase filter")
 
-// Data commands.
-IINUJI_CANONICAL_CALL(DataReload, "iinuji.data.reload()", "Reload data state")
-IINUJI_CANONICAL_CALL(DataChannels, "iinuji.data.channels()", "List current data channels")
-IINUJI_CANONICAL_CALL(DataPlotOn, "iinuji.data.plot.on()", "Open F5 plot overlay")
-IINUJI_CANONICAL_CALL(DataPlotOff, "iinuji.data.plot.off()", "Close F5 plot overlay")
-IINUJI_CANONICAL_CALL(DataPlotToggle, "iinuji.data.plot.toggle()", "Toggle F5 plot overlay")
-IINUJI_CANONICAL_CALL(DataPlotModeSeq, "iinuji.data.plot.mode.seq()", "Set F5 plot mode to seq")
-IINUJI_CANONICAL_CALL(DataPlotModeFuture, "iinuji.data.plot.mode.future()", "Set F5 plot mode to future")
-IINUJI_CANONICAL_CALL(DataPlotModeWeight, "iinuji.data.plot.mode.weight()", "Set F5 plot mode to weight")
-IINUJI_CANONICAL_CALL(DataPlotModeNorm, "iinuji.data.plot.mode.norm()", "Set F5 plot mode to norm")
-IINUJI_CANONICAL_CALL(DataPlotModeBytes, "iinuji.data.plot.mode.bytes()", "Set F5 plot mode to bytes")
-IINUJI_CANONICAL_CALL(DataAxisToggle, "iinuji.data.axis.toggle()", "Toggle F5 x-axis between idx/key")
-IINUJI_CANONICAL_CALL(DataAxisIdx, "iinuji.data.axis.idx()", "Set F5 x-axis to index")
-IINUJI_CANONICAL_CALL(DataAxisKey, "iinuji.data.axis.key()", "Set F5 x-axis to key value")
-IINUJI_CANONICAL_CALL(DataMaskOn, "iinuji.data.mask.on()", "Enable F5 mask overlay")
-IINUJI_CANONICAL_CALL(DataMaskOff, "iinuji.data.mask.off()", "Disable F5 mask overlay")
-IINUJI_CANONICAL_CALL(DataMaskToggle, "iinuji.data.mask.toggle()", "Toggle F5 mask overlay")
-IINUJI_CANONICAL_CALL(DataChNext, "iinuji.data.ch.next()", "Select next data channel")
-IINUJI_CANONICAL_CALL(DataChPrev, "iinuji.data.ch.prev()", "Select previous data channel")
-IINUJI_CANONICAL_CALL(DataSampleNext, "iinuji.data.sample.next()", "Select next data sample")
-IINUJI_CANONICAL_CALL(DataSamplePrev, "iinuji.data.sample.prev()", "Select previous data sample")
-IINUJI_CANONICAL_CALL(DataSampleRandom, "iinuji.data.sample.random()", "Select random data sample")
-IINUJI_CANONICAL_CALL(DataSampleRand, "iinuji.data.sample.rand()", "Select random data sample")
-IINUJI_CANONICAL_CALL(DataDimNext, "iinuji.data.dim.next()", "Select next feature dimension")
-IINUJI_CANONICAL_CALL(DataDimPrev, "iinuji.data.dim.prev()", "Select previous feature dimension")
-IINUJI_CANONICAL_CALL(DataFocusNext, "iinuji.data.focus.next()", "Move data focus to next setting")
-IINUJI_CANONICAL_CALL(DataFocusPrev, "iinuji.data.focus.prev()", "Move data focus to previous setting")
-IINUJI_CANONICAL_CALL(DataFocusChannel, "iinuji.data.focus.channel()", "Set data focus to channel")
-IINUJI_CANONICAL_CALL(DataFocusSample, "iinuji.data.focus.sample()", "Set data focus to sample")
-IINUJI_CANONICAL_CALL(DataFocusDim, "iinuji.data.focus.dim()", "Set data focus to feature dim")
-IINUJI_CANONICAL_CALL(DataFocusPlot, "iinuji.data.focus.plot()", "Set data focus to plot mode")
-IINUJI_CANONICAL_CALL(DataFocusXAxis, "iinuji.data.focus.xaxis()", "Set data focus to x-axis mode")
-IINUJI_CANONICAL_CALL(DataFocusMask, "iinuji.data.focus.mask()", "Set data focus to mask toggle")
-IINUJI_CANONICAL_PATTERN(DataPlotPattern, "iinuji.view.data.plot()", "Open F5 plot overlay (generic argument-capable form)", ExactSegments)
-IINUJI_CANONICAL_PATTERN(DataPlotArgsModePattern, "iinuji.view.data.plot(mode=seq)", "Set F5 plot mode via argument form", ExactSegments)
-IINUJI_CANONICAL_PATTERN(DataPlotArgsViewPattern, "iinuji.view.data.plot(view=toggle)", "Control F5 plot overlay via argument form", ExactSegments)
-IINUJI_CANONICAL_PATTERN(DataXPattern, "iinuji.data.x(axis=toggle)", "Set/toggle F5 x-axis via argument form", ExactSegments)
-IINUJI_CANONICAL_PATTERN(DataMaskPattern, "iinuji.data.mask(view=toggle)", "Set/toggle F5 mask overlay via argument form", ExactSegments)
-IINUJI_CANONICAL_PATTERN(DataChIndexPattern, "iinuji.data.ch.index.n1()", "Select data channel by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(DataSampleIndexPattern, "iinuji.data.sample.index.n1()", "Select data sample by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(DataDimIndexPattern, "iinuji.data.dim.index.n1()", "Select feature dimension by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(DataDimIdPattern, "iinuji.data.dim.id.d1()", "Select feature dimension by id token", OptionalTailAtom)
+// Runtime view.
+IINUJI_CANONICAL_CALL(RuntimeDetailNext, "iinuji.runtime.detail.next()",
+                      "Cycle Runtime detail mode")
+IINUJI_CANONICAL_CALL(RuntimeRowPrev, "iinuji.runtime.row.prev()",
+                      "Select previous Runtime lane")
+IINUJI_CANONICAL_CALL(RuntimeRowNext, "iinuji.runtime.row.next()",
+                      "Select next Runtime lane")
+IINUJI_CANONICAL_CALL(RuntimeItemPrev, "iinuji.runtime.item.prev()",
+                      "Select previous Runtime item inside the active lane")
+IINUJI_CANONICAL_CALL(RuntimeItemNext, "iinuji.runtime.item.next()",
+                      "Select next Runtime item inside the active lane")
 
 // Show commands.
-IINUJI_CANONICAL_CALL(ShowCurrent, "iinuji.show()", "Show summary for active screen")
-IINUJI_CANONICAL_CALL(ShowHome, "iinuji.show.home()", "Show summary for home screen")
-IINUJI_CANONICAL_CALL(ShowBoard, "iinuji.show.board()", "Show summary for board screen")
-IINUJI_CANONICAL_CALL(ShowLogs, "iinuji.show.logs()", "Show summary for logs screen")
-IINUJI_CANONICAL_CALL(ShowData, "iinuji.show.data()", "Show summary for data screen")
-IINUJI_CANONICAL_CALL(ShowTraining, "iinuji.show.training()", "Show summary for training screen")
-IINUJI_CANONICAL_CALL(ShowTsi, "iinuji.show.tsi()", "Show summary for tsiemene screen")
-IINUJI_CANONICAL_CALL(ShowConfig, "iinuji.show.config()", "Show summary for config screen")
+IINUJI_CANONICAL_CALL(ShowCurrent, "iinuji.show()",
+                      "Show summary for active screen")
+IINUJI_CANONICAL_CALL(ShowHuman, "iinuji.show.human()",
+                      "Show summary for Marshal screen")
+IINUJI_CANONICAL_CALL(ShowRuntime, "iinuji.show.runtime()",
+                      "Show summary for Runtime screen")
+IINUJI_CANONICAL_CALL(ShowLattice, "iinuji.show.lattice()",
+                      "Show summary for Lattice screen")
+IINUJI_CANONICAL_CALL(ShowLogs, "iinuji.show.logs()",
+                      "Show summary for shell logs screen")
+IINUJI_CANONICAL_CALL(ShowConfig, "iinuji.show.config()",
+                      "Show summary for config file browser")
 
 // Logs commands.
-IINUJI_CANONICAL_CALL(LogsClear, "iinuji.logs.clear()", "Clear dlogs buffer and switch to logs screen")
-IINUJI_CANONICAL_CALL(LogsScrollUp, "iinuji.logs.scroll.up()", "Scroll logs view up")
-IINUJI_CANONICAL_CALL(LogsScrollDown, "iinuji.logs.scroll.down()", "Scroll logs view down")
-IINUJI_CANONICAL_CALL(LogsScrollPageUp, "iinuji.logs.scroll.page.up()", "Scroll logs view one page up")
-IINUJI_CANONICAL_CALL(LogsScrollPageDown, "iinuji.logs.scroll.page.down()", "Scroll logs view one page down")
-IINUJI_CANONICAL_CALL(LogsScrollHome, "iinuji.logs.scroll.home()", "Jump logs view to oldest entries")
-IINUJI_CANONICAL_CALL(LogsScrollEnd, "iinuji.logs.scroll.end()", "Jump logs view to newest entries")
-IINUJI_CANONICAL_CALL(LogsSettingsLevelDebug, "iinuji.logs.settings.level.debug()", "Set logs level filter to DEBUG+")
-IINUJI_CANONICAL_CALL(LogsSettingsLevelInfo, "iinuji.logs.settings.level.info()", "Set logs level filter to INFO+")
-IINUJI_CANONICAL_CALL(LogsSettingsLevelWarning, "iinuji.logs.settings.level.warning()", "Set logs level filter to WARNING+")
-IINUJI_CANONICAL_CALL(LogsSettingsLevelError, "iinuji.logs.settings.level.error()", "Set logs level filter to ERROR+")
-IINUJI_CANONICAL_CALL(LogsSettingsLevelFatal, "iinuji.logs.settings.level.fatal()", "Set logs level filter to FATAL")
-IINUJI_CANONICAL_CALL(LogsSettingsSelectPrev, "iinuji.logs.settings.select.prev()", "Move logs settings cursor to previous row")
-IINUJI_CANONICAL_CALL(LogsSettingsSelectNext, "iinuji.logs.settings.select.next()", "Move logs settings cursor to next row")
-IINUJI_CANONICAL_CALL(LogsSettingsDateToggle, "iinuji.logs.settings.date.toggle()", "Toggle logs timestamp visibility")
-IINUJI_CANONICAL_CALL(LogsSettingsThreadToggle, "iinuji.logs.settings.thread.toggle()", "Toggle logs thread id visibility")
-IINUJI_CANONICAL_CALL(LogsSettingsMetadataToggle, "iinuji.logs.settings.metadata.toggle()", "Toggle logs metadata visibility in left panel")
-IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterAny, "iinuji.logs.settings.metadata.filter.any()", "Set logs metadata filter to ANY")
-IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterAnyMeta, "iinuji.logs.settings.metadata.filter.any_meta()", "Set logs metadata filter to META+")
-IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterFunction, "iinuji.logs.settings.metadata.filter.function()", "Set logs metadata filter to FN+")
-IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterPath, "iinuji.logs.settings.metadata.filter.path()", "Set logs metadata filter to PATH+")
-IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterCallsite, "iinuji.logs.settings.metadata.filter.callsite()", "Set logs metadata filter to CALLSITE+")
-IINUJI_CANONICAL_CALL(LogsSettingsColorToggle, "iinuji.logs.settings.color.toggle()", "Toggle logs color rendering")
-IINUJI_CANONICAL_CALL(LogsSettingsFollowToggle, "iinuji.logs.settings.follow.toggle()", "Toggle logs auto-follow")
-IINUJI_CANONICAL_CALL(LogsSettingsMouseCaptureToggle, "iinuji.logs.settings.mouse.capture.toggle()", "Toggle logs mouse capture mode")
+IINUJI_CANONICAL_CALL(
+    LogsClear, "iinuji.logs.clear()",
+    "Clear shell dlogs buffer and switch to shell logs screen")
+IINUJI_CANONICAL_CALL(LogsScrollUp, "iinuji.logs.scroll.up()",
+                      "Scroll shell logs view up")
+IINUJI_CANONICAL_CALL(LogsScrollDown, "iinuji.logs.scroll.down()",
+                      "Scroll shell logs view down")
+IINUJI_CANONICAL_CALL(LogsScrollPageUp, "iinuji.logs.scroll.page.up()",
+                      "Scroll shell logs view one page up")
+IINUJI_CANONICAL_CALL(LogsScrollPageDown, "iinuji.logs.scroll.page.down()",
+                      "Scroll shell logs view one page down")
+IINUJI_CANONICAL_CALL(LogsScrollHome, "iinuji.logs.scroll.home()",
+                      "Jump shell logs view to oldest entries")
+IINUJI_CANONICAL_CALL(LogsScrollEnd, "iinuji.logs.scroll.end()",
+                      "Jump shell logs view to newest entries")
+IINUJI_CANONICAL_CALL(LogsSettingsLevelDebug,
+                      "iinuji.logs.settings.level.debug()",
+                      "Set logs level filter to DEBUG+")
+IINUJI_CANONICAL_CALL(LogsSettingsLevelInfo,
+                      "iinuji.logs.settings.level.info()",
+                      "Set logs level filter to INFO+")
+IINUJI_CANONICAL_CALL(LogsSettingsLevelWarning,
+                      "iinuji.logs.settings.level.warning()",
+                      "Set logs level filter to WARNING+")
+IINUJI_CANONICAL_CALL(LogsSettingsLevelError,
+                      "iinuji.logs.settings.level.error()",
+                      "Set logs level filter to ERROR+")
+IINUJI_CANONICAL_CALL(LogsSettingsLevelFatal,
+                      "iinuji.logs.settings.level.fatal()",
+                      "Set logs level filter to FATAL")
+IINUJI_CANONICAL_CALL(LogsSettingsSelectPrev,
+                      "iinuji.logs.settings.select.prev()",
+                      "Move logs settings cursor to previous row")
+IINUJI_CANONICAL_CALL(LogsSettingsSelectNext,
+                      "iinuji.logs.settings.select.next()",
+                      "Move logs settings cursor to next row")
+IINUJI_CANONICAL_CALL(LogsSettingsDateToggle,
+                      "iinuji.logs.settings.date.toggle()",
+                      "Toggle logs timestamp visibility")
+IINUJI_CANONICAL_CALL(LogsSettingsThreadToggle,
+                      "iinuji.logs.settings.thread.toggle()",
+                      "Toggle logs thread id visibility")
+IINUJI_CANONICAL_CALL(LogsSettingsMetadataToggle,
+                      "iinuji.logs.settings.metadata.toggle()",
+                      "Toggle logs metadata visibility in left panel")
+IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterAny,
+                      "iinuji.logs.settings.metadata.filter.any()",
+                      "Set logs metadata filter to ANY")
+IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterAnyMeta,
+                      "iinuji.logs.settings.metadata.filter.any_meta()",
+                      "Set logs metadata filter to META+")
+IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterFunction,
+                      "iinuji.logs.settings.metadata.filter.function()",
+                      "Set logs metadata filter to FN+")
+IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterPath,
+                      "iinuji.logs.settings.metadata.filter.path()",
+                      "Set logs metadata filter to PATH+")
+IINUJI_CANONICAL_CALL(LogsSettingsMetadataFilterCallsite,
+                      "iinuji.logs.settings.metadata.filter.callsite()",
+                      "Set logs metadata filter to CALLSITE+")
+IINUJI_CANONICAL_CALL(LogsSettingsColorToggle,
+                      "iinuji.logs.settings.color.toggle()",
+                      "Toggle logs color rendering")
+IINUJI_CANONICAL_CALL(LogsSettingsFollowToggle,
+                      "iinuji.logs.settings.follow.toggle()",
+                      "Toggle logs auto-follow")
+IINUJI_CANONICAL_CALL(LogsSettingsMouseCaptureToggle,
+                      "iinuji.logs.settings.mouse.capture.toggle()",
+                      "Toggle logs mouse capture mode")
 
-// Board commands.
-IINUJI_CANONICAL_CALL(BoardList, "iinuji.board.list()", "List board circuits")
-IINUJI_CANONICAL_CALL(BoardSelectNext, "iinuji.board.select.next()", "Select next board circuit")
-IINUJI_CANONICAL_CALL(BoardSelectPrev, "iinuji.board.select.prev()", "Select previous board circuit")
-IINUJI_CANONICAL_PATTERN(BoardSelectIndexPattern, "iinuji.board.select.index.n1()", "Select board circuit by 1-based index", OptionalTailAtom)
+// Config file-browser commands.
+IINUJI_CANONICAL_CALL(ConfigFiles, "iinuji.config.files()",
+                      "List config files in the browser")
+IINUJI_CANONICAL_CALL(ConfigFileNext, "iinuji.config.file.next()",
+                      "Select next config file")
+IINUJI_CANONICAL_CALL(ConfigFilePrev, "iinuji.config.file.prev()",
+                      "Select previous config file")
+IINUJI_CANONICAL_PATTERN(ConfigFileIndexPattern,
+                         "iinuji.config.file.index.n1()",
+                         "Select config file by 1-based index",
+                         OptionalTailAtom)
+IINUJI_CANONICAL_PATTERN(ConfigFileIdPattern, "iinuji.config.file.id.default()",
+                         "Select config file by id token", OptionalTailAtom)
+IINUJI_CANONICAL_CALL(ConfigShow, "iinuji.config.show()",
+                      "Show selected config file summary")
+IINUJI_CANONICAL_CALL(ConfigFileShow, "iinuji.config.file.show()",
+                      "Show selected config file summary")
 
-// Training tab/hash commands.
-IINUJI_CANONICAL_CALL(TrainingTabs, "iinuji.training.tabs()", "List training wikimyei tabs")
-IINUJI_CANONICAL_CALL(TrainingTabNext, "iinuji.training.tab.next()", "Select next training wikimyei tab")
-IINUJI_CANONICAL_CALL(TrainingTabPrev, "iinuji.training.tab.prev()", "Select previous training wikimyei tab")
-IINUJI_CANONICAL_PATTERN(TrainingTabIndexPattern, "iinuji.training.tab.index.n1()", "Select training wikimyei tab by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(TrainingTabIdPattern, "iinuji.training.tab.id.default()", "Select training wikimyei tab by id token", OptionalTailAtom)
-IINUJI_CANONICAL_CALL(TrainingHashNext, "iinuji.training.hash.next()", "Select next training hashimyei")
-IINUJI_CANONICAL_CALL(TrainingHashPrev, "iinuji.training.hash.prev()", "Select previous training hashimyei")
-IINUJI_CANONICAL_PATTERN(TrainingHashIndexPattern, "iinuji.training.hash.index.n1()", "Select training hashimyei by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(TrainingHashIdPattern, "iinuji.training.hash.id.0x0001()", "Select training hashimyei by id token", OptionalTailAtom)
-
-// Tsiemene tab commands.
-IINUJI_CANONICAL_CALL(TsiTabs, "iinuji.tsi.tabs()", "List tsiemene tabs")
-IINUJI_CANONICAL_CALL(TsiTabNext, "iinuji.tsi.tab.next()", "Select next tsiemene tab")
-IINUJI_CANONICAL_CALL(TsiTabPrev, "iinuji.tsi.tab.prev()", "Select previous tsiemene tab")
-IINUJI_CANONICAL_PATTERN(TsiTabIndexPattern, "iinuji.tsi.tab.index.n1()", "Select tsiemene tab by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(TsiTabIdPattern, "iinuji.tsi.tab.id.source_dataloader()", "Select tsiemene tab by id token", OptionalTailAtom)
-IINUJI_CANONICAL_CALL(TsiDataloaderInit, "iinuji.tsi.dataloader.init()", "Persist a tsi.source.dataloader.init() report fragment")
-IINUJI_CANONICAL_CALL(TsiDataloaderCreate, "iinuji.tsi.dataloader.create()", "Create tsi.source.dataloader.<hashimyei> from central config")
-IINUJI_CANONICAL_CALL(TsiDataloaderEdit, "iinuji.tsi.dataloader.edit()", "Edit selected tsi.source.dataloader.<hashimyei> from central config")
-IINUJI_CANONICAL_PATTERN(TsiDataloaderEditIdPattern, "iinuji.tsi.dataloader.edit.0x0001()", "Edit tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
-IINUJI_CANONICAL_CALL(TsiDataloaderDelete, "iinuji.tsi.dataloader.delete()", "Delete selected tsi.source.dataloader.<hashimyei>")
-IINUJI_CANONICAL_PATTERN(TsiDataloaderDeleteIdPattern, "iinuji.tsi.dataloader.delete.0x0001()", "Delete tsi.source.dataloader.<hashimyei> by id token", RequireArgsOrTailAtom)
-IINUJI_CANONICAL_CALL(TsiVicregInit, "iinuji.tsi.vicreg.init()", "Invoke tsi.wikimyei.representation.vicreg.init() action")
-
-// Config tab commands.
-IINUJI_CANONICAL_CALL(ConfigTabs, "iinuji.config.tabs()", "List config tabs")
-IINUJI_CANONICAL_CALL(ConfigTabNext, "iinuji.config.tab.next()", "Select next config tab")
-IINUJI_CANONICAL_CALL(ConfigTabPrev, "iinuji.config.tab.prev()", "Select previous config tab")
-IINUJI_CANONICAL_PATTERN(ConfigTabIndexPattern, "iinuji.config.tab.index.n1()", "Select config tab by 1-based index", OptionalTailAtom)
-IINUJI_CANONICAL_PATTERN(ConfigTabIdPattern, "iinuji.config.tab.id.default()", "Select config tab by id token", OptionalTailAtom)
-IINUJI_CANONICAL_CALL(ConfigReload, "iinuji.config.reload()", "Reload config and dependent state")
-IINUJI_CANONICAL_CALL(ConfigShow, "iinuji.config.show()", "Show selected config tab summary")
-IINUJI_CANONICAL_CALL(ConfigTabShow, "iinuji.config.tab.show()", "Show selected config tab summary")
-
-// Direct aliases (intentional shorthand). Syntax:
-// IINUJI_CANONICAL_ALIAS(CallId, "alias1", "alias2", ...)
+// Direct aliases.
 IINUJI_CANONICAL_ALIAS(HelpOpen, "help", "h")
 IINUJI_CANONICAL_ALIAS(AppQuit, "quit", "q")
 IINUJI_CANONICAL_ALIAS(AppExit, "exit", "x")
 IINUJI_CANONICAL_ALIAS(ScreenHome, "home", "f1")
-IINUJI_CANONICAL_ALIAS(ScreenBoard, "board", "f2")
-IINUJI_CANONICAL_ALIAS(ScreenTraining, "training", "f3")
+IINUJI_CANONICAL_ALIAS(ScreenHuman, "marshal", "f2")
+IINUJI_CANONICAL_ALIAS(ScreenRuntime, "runtime", "f3")
+IINUJI_CANONICAL_ALIAS(ScreenLattice, "lattice", "f4")
 IINUJI_CANONICAL_ALIAS(ScreenLogs, "logs", "f8")
-IINUJI_CANONICAL_ALIAS(ScreenTsi, "tsi", "f4")
-IINUJI_CANONICAL_ALIAS(TsiDataloaderInit, "dataloader.init", "tsi.dataloader.init")
-IINUJI_CANONICAL_ALIAS(TsiDataloaderCreate, "dataloader.create", "tsi.dataloader.create")
-IINUJI_CANONICAL_ALIAS(TsiDataloaderEdit, "dataloader.edit", "tsi.dataloader.edit")
-IINUJI_CANONICAL_ALIAS(TsiDataloaderDelete, "dataloader.delete", "tsi.dataloader.delete")
-IINUJI_CANONICAL_ALIAS(TsiVicregInit, "vicreg.init", "tsi.vicreg.init")
-IINUJI_CANONICAL_ALIAS(ScreenData, "data", "f5")
-IINUJI_CANONICAL_ALIAS(DataPlotOn, "plot")
 IINUJI_CANONICAL_ALIAS(ScreenConfig, "config", "f9")
+IINUJI_CANONICAL_ALIAS(RefreshAll, "refresh")
 IINUJI_CANONICAL_ALIAS(ShowCurrent, "show")
-IINUJI_CANONICAL_ALIAS(ConfigTabs, "tabs")
-IINUJI_CANONICAL_ALIAS(BoardList, "list")
-IINUJI_CANONICAL_ALIAS(BoardSelectNext, "next")
-IINUJI_CANONICAL_ALIAS(BoardSelectPrev, "prev")
-IINUJI_CANONICAL_ALIAS(ReloadBoard, "reload")
+IINUJI_CANONICAL_ALIAS(ConfigFiles, "files")
 IINUJI_CANONICAL_ALIAS(LogsClear, "logs clear")
 
 #undef IINUJI_CANONICAL_ALIAS

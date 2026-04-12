@@ -9,7 +9,7 @@ namespace iinuji {
 namespace iinuji_cmd {
 
 inline bool handle_logs_key(CmdState& state, int ch) {
-  if (state.screen != ScreenMode::Logs) return false;
+  if (state.screen != ScreenMode::ShellLogs) return false;
 
   auto wrap_index = [](std::size_t value, int delta, std::size_t count) -> std::size_t {
     if (count == 0) return 0;
@@ -19,31 +19,39 @@ inline bool handle_logs_key(CmdState& state, int ch) {
 
   auto cycle_level = [&](bool forward) {
     constexpr std::size_t kLevels = 5;
-    std::size_t idx = static_cast<std::size_t>(state.logs.level_filter);
+    std::size_t idx = static_cast<std::size_t>(state.shell_logs.level_filter);
     idx = forward ? ((idx + 1u) % kLevels) : ((idx + kLevels - 1u) % kLevels);
-    state.logs.level_filter = static_cast<LogsLevelFilter>(idx);
+    state.shell_logs.level_filter = static_cast<LogsLevelFilter>(idx);
   };
 
   auto cycle_metadata_filter = [&](bool forward) {
     constexpr std::size_t kFilters = 5;
-    std::size_t idx = static_cast<std::size_t>(state.logs.metadata_filter);
+    std::size_t idx =
+        static_cast<std::size_t>(state.shell_logs.metadata_filter);
     idx = forward ? ((idx + 1u) % kFilters) : ((idx + kFilters - 1u) % kFilters);
-    state.logs.metadata_filter = static_cast<LogsMetadataFilter>(idx);
+    state.shell_logs.metadata_filter = static_cast<LogsMetadataFilter>(idx);
   };
+
+  if (ch == 27 && workspace_is_current_screen_zoomed(state)) {
+    return workspace_restore_current_screen_split(state);
+  }
+  if (ch == 'f' || ch == 'F') {
+    return workspace_toggle_current_screen_zoom(state);
+  }
 
   switch (ch) {
     case KEY_UP:
-      state.logs.selected_setting =
-          wrap_index(state.logs.selected_setting, -1, logs_settings_count());
+      state.shell_logs.selected_setting = wrap_index(
+          state.shell_logs.selected_setting, -1, logs_settings_count());
       return true;
     case KEY_DOWN:
-      state.logs.selected_setting =
-          wrap_index(state.logs.selected_setting, +1, logs_settings_count());
+      state.shell_logs.selected_setting = wrap_index(
+          state.shell_logs.selected_setting, +1, logs_settings_count());
       return true;
     case KEY_LEFT:
     case KEY_RIGHT: {
       const bool forward = (ch == KEY_RIGHT);
-      switch (state.logs.selected_setting) {
+      switch (state.shell_logs.selected_setting) {
         case 0:
           cycle_level(forward);
           return true;
@@ -51,22 +59,22 @@ inline bool handle_logs_key(CmdState& state, int ch) {
           cycle_metadata_filter(forward);
           return true;
         case 2:
-          state.logs.show_date = !state.logs.show_date;
+          state.shell_logs.show_date = !state.shell_logs.show_date;
           return true;
         case 3:
-          state.logs.show_thread = !state.logs.show_thread;
+          state.shell_logs.show_thread = !state.shell_logs.show_thread;
           return true;
         case 4:
-          state.logs.show_metadata = !state.logs.show_metadata;
+          state.shell_logs.show_metadata = !state.shell_logs.show_metadata;
           return true;
         case 5:
-          state.logs.show_color = !state.logs.show_color;
+          state.shell_logs.show_color = !state.shell_logs.show_color;
           return true;
         case 6:
-          state.logs.auto_follow = !state.logs.auto_follow;
+          state.shell_logs.auto_follow = !state.shell_logs.auto_follow;
           return true;
         case 7:
-          state.logs.mouse_capture = !state.logs.mouse_capture;
+          state.shell_logs.mouse_capture = !state.shell_logs.mouse_capture;
           return true;
         default:
           return false;

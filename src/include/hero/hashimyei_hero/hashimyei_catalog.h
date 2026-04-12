@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -254,6 +255,9 @@ class hashimyei_catalog_store_t {
       std::string_view canonical_path, std::string_view hashimyei,
       std::size_t limit, std::size_t offset, bool newest_first,
       std::vector<component_state_t>* out, std::string* error = nullptr) const;
+  [[nodiscard]] bool list_component_heads(
+      std::size_t limit, std::size_t offset, bool newest_first,
+      std::vector<component_state_t>* out, std::string* error = nullptr) const;
   [[nodiscard]] bool resolve_active_hashimyei(std::string_view canonical_path,
                                               std::string_view family,
                                               std::string_view contract_hash,
@@ -283,6 +287,24 @@ class hashimyei_catalog_store_t {
   struct ingest_lock_t {
     std::filesystem::path path{};
     idydb_named_lock* handle{nullptr};
+    std::uint64_t acquired_at_ms{0};
+  };
+
+  struct buffered_row_t {
+    std::string record_kind{};
+    std::string record_id{};
+    std::string run_id{};
+    std::string canonical_path{};
+    std::string hashimyei{};
+    std::string schema{};
+    std::string metric_key{};
+    double metric_num{0.0};
+    bool has_metric_num{false};
+    std::string metric_txt{};
+    std::string report_fragment_sha256{};
+    std::string path{};
+    std::string ts_ms{};
+    std::string payload_json{};
   };
 
   [[nodiscard]] bool ensure_catalog_header_(std::string* error);
@@ -298,6 +320,7 @@ class hashimyei_catalog_store_t {
                                  std::string_view path, std::string_view ts_ms,
                                  std::string_view payload_json,
                                  std::string* error);
+  [[nodiscard]] bool flush_buffered_rows_(std::string* error);
   [[nodiscard]] bool ledger_contains_(std::string_view report_fragment_sha256,
                                       bool* out_exists, std::string* error);
   [[nodiscard]] bool append_ledger_(std::string_view report_fragment_sha256,
@@ -310,6 +333,10 @@ class hashimyei_catalog_store_t {
       std::string* error);
   [[nodiscard]] bool ensure_identity_allocated_(
       cuwacunu::hashimyei::hashimyei_t* identity, std::string* error);
+  void observe_identity_(const cuwacunu::hashimyei::hashimyei_t& identity);
+  void observe_component_(const component_state_t& component);
+  void refresh_active_component_views_();
+  void refresh_component_family_ranks_();
 
   [[nodiscard]] bool ingest_run_manifest_file_(const std::filesystem::path& path,
                                                std::string* error);
@@ -318,10 +345,9 @@ class hashimyei_catalog_store_t {
       std::string* error);
   [[nodiscard]] bool ingest_report_fragment_file_(const std::filesystem::path& path,
                                                   std::string* error);
-  [[nodiscard]] bool parse_and_append_metrics_(
+  void populate_metrics_from_kv_(
       std::string_view report_fragment_id,
-      const std::unordered_map<std::string, std::string>& kv,
-      std::string* error);
+      const std::unordered_map<std::string, std::string>& kv);
   [[nodiscard]] bool acquire_ingest_lock_(const std::filesystem::path& store_root,
                                           ingest_lock_t* lock,
                                           std::string* error);
@@ -343,8 +369,15 @@ class hashimyei_catalog_store_t {
 
   options_t options_{};
   idydb* db_{nullptr};
+  std::uint64_t opened_at_ms_{0};
+  idydb_column_row_sizing next_row_hint_{0};
+  bool buffer_rows_{false};
+  idydb_column_row_sizing buffered_row_start_{0};
+  std::vector<buffered_row_t> buffered_rows_{};
 
   std::unordered_map<std::string, run_manifest_t> runs_by_id_{};
+  std::unordered_set<std::string> run_ids_{};
+  std::unordered_set<std::string> ledger_report_fragment_ids_{};
   std::unordered_map<std::string, report_fragment_entry_t> report_fragments_by_id_{};
   std::unordered_map<std::string, std::string> latest_report_fragment_by_key_{};
   std::unordered_map<std::string, std::vector<std::pair<std::string, double>>>

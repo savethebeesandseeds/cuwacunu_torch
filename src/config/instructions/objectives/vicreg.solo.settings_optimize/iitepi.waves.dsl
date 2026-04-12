@@ -30,7 +30,7 @@ WAVE train_vicreg_smoke {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0000 %;
+    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0100 %;
     JKIMYEI: {
       HALT_TRAIN: false;
       PROFILE_ID: % __jk_profile_id ? stable_pretrain %;
@@ -70,7 +70,7 @@ WAVE train_vicreg_ablation_short {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0000 %;
+    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0100 %;
     JKIMYEI: {
       HALT_TRAIN: false;
       PROFILE_ID: % __jk_profile_id ? stable_pretrain %;
@@ -110,7 +110,7 @@ WAVE train_vicreg_primary {
   
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0000 %;
+    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0100 %;
     JKIMYEI: {
       HALT_TRAIN: false;
       PROFILE_ID: % __jk_profile_id ? stable_pretrain %;
@@ -150,7 +150,7 @@ WAVE eval_vicreg_payload {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0000 %;
+    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x0100 %;
     JKIMYEI: {
       HALT_TRAIN: true;
       PROFILE_ID: % __jk_profile_id ? eval_payload_only %;

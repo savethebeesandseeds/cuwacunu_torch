@@ -12,6 +12,7 @@ cuwacunu_prepend_path_once() {
 
 cuwacunu_prepend_path_once /cuwacunu/.build/hero
 cuwacunu_prepend_path_once /cuwacunu/.build/tools
+cuwacunu_prepend_path_once /cuwacunu/.build/interface
 
 case $- in
   *i*)

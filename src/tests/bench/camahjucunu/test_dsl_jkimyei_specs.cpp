@@ -14,7 +14,7 @@
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "iitepi/config_space_t.h"
 #include "iitepi/contract_space_t.h"
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 #include "piaabo/dfiles.h"
 
 namespace {

@@ -16,6 +16,7 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <poll.h>
 #include <sstream>
 #include <string_view>
 #include <sys/wait.h>
@@ -32,6 +33,8 @@
 
 namespace cuwacunu::hero::mcp::detail {
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
+constexpr const char* kStdioIdleTimeoutEnv = "HERO_MCP_IDLE_TIMEOUT_SEC";
+constexpr int kDefaultStdioIdleTimeoutSec = 600;
 bool g_jsonrpc_use_content_length_framing = false;
 
 [[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
@@ -98,6 +101,49 @@ bool g_jsonrpc_use_content_length_framing = false;
 [[nodiscard]] std::string json_quote(std::string_view in);
 [[nodiscard]] std::string bool_json(bool v);
 [[nodiscard]] bool parse_int64_ascii(std::string_view raw, std::int64_t* out);
+
+[[nodiscard]] std::optional<int> resolve_stdio_idle_timeout_ms() {
+  static const std::optional<int> cached_timeout_ms = []() -> std::optional<int> {
+    const char* raw = std::getenv(kStdioIdleTimeoutEnv);
+    if (raw == nullptr || *raw == '\0') {
+      return kDefaultStdioIdleTimeoutSec * 1000;
+    }
+
+    errno = 0;
+    char* end = nullptr;
+    const long long parsed = std::strtoll(raw, &end, 10);
+    while (end != nullptr &&
+           std::isspace(static_cast<unsigned char>(*end)) != 0) {
+      ++end;
+    }
+    if (errno != 0 || end == raw || (end != nullptr && *end != '\0')) {
+      return kDefaultStdioIdleTimeoutSec * 1000;
+    }
+    if (parsed <= 0) return std::nullopt;
+
+    constexpr long long kMaxTimeoutSec =
+        static_cast<long long>(std::numeric_limits<int>::max()) / 1000;
+    if (parsed >= kMaxTimeoutSec) return std::numeric_limits<int>::max();
+    return static_cast<int>(parsed * 1000);
+  }();
+  return cached_timeout_ms;
+}
+
+[[nodiscard]] bool wait_for_stdio_activity() {
+  const std::optional<int> timeout_ms = resolve_stdio_idle_timeout_ms();
+  if (!timeout_ms.has_value()) return true;
+
+  struct pollfd pfd {};
+  pfd.fd = STDIN_FILENO;
+  pfd.events = POLLIN | POLLHUP | POLLERR;
+  while (true) {
+    const int rc = ::poll(&pfd, 1, *timeout_ms);
+    if (rc > 0) return true;
+    if (rc == 0) return false;
+    if (errno == EINTR) continue;
+    return true;
+  }
+}
 
 [[nodiscard]] bool read_text_file(std::string_view path, std::string* out,
                                   std::string* err) {
@@ -2082,7 +2128,10 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
 
 void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
   std::string payload;
+  bool shutdown_requested = false;
   while (true) {
+    if (!wait_for_stdio_activity()) break;
+
     bool used_content_length = false;
     if (!read_next_jsonrpc_message(&std::cin, &payload,
                                    &used_content_length)) {
@@ -2093,26 +2142,36 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
     const std::string trimmed = trim_ascii(payload);
     if (trimmed.empty()) continue;
 
-    const bool has_id = has_json_field(trimmed, "id");
-
-    std::string id_json;
-    if (!extract_json_id_field(trimmed, &id_json)) {
-      if (has_id) {
-        emit_jsonrpc_error("null", -32700, "invalid request: unable to parse id");
-      }
-      continue;
-    }
-
     std::string method;
     if (!extract_json_string_field(trimmed, "method", &method) ||
         method.empty()) {
-      if (has_id) {
-        emit_jsonrpc_error(id_json, -32600, "invalid request: missing method");
-      }
+      emit_jsonrpc_error("null", -32600, "invalid request: missing method");
       continue;
     }
 
+    if (method == "exit") break;
     if (method.rfind("notifications/", 0) == 0) {
+      continue;
+    }
+
+    const bool has_id = has_json_field(trimmed, "id");
+    std::string id_json = "null";
+    if (!has_id) {
+      emit_jsonrpc_error(id_json, -32600, "invalid request: missing id");
+      continue;
+    }
+    if (!extract_json_id_field(trimmed, &id_json)) {
+      emit_jsonrpc_error("null", -32700, "invalid request: unable to parse id");
+      continue;
+    }
+
+    if (method == "shutdown") {
+      emit_jsonrpc_result(id_json, "{}");
+      shutdown_requested = true;
+      continue;
+    }
+    if (shutdown_requested) {
+      emit_jsonrpc_error(id_json, -32000, "server is shutting down");
       continue;
     }
 
@@ -2135,29 +2194,31 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
           protocol_version = protocol_candidate;
         }
       }
-      if (has_id) {
-        emit_jsonrpc_result(
-            id_json, std::string("{\"protocolVersion\":") +
-                         json_quote(protocol_version) +
-                         ",\"capabilities\":{\"tools\":{\"listChanged\":false}},"
-                         "\"serverInfo\":{\"name\":" +
-                         json_quote(kMcpServerName) +
-                         ",\"version\":" + json_quote(kMcpServerVersion) +
-                         "},\"instructions\":" +
-                         json_quote(kMcpInitializeInstructions) + "}");
-      }
+      emit_jsonrpc_result(
+          id_json, std::string("{\"protocolVersion\":") +
+                       json_quote(protocol_version) +
+                       ",\"capabilities\":{\"tools\":{\"listChanged\":false}},"
+                       "\"serverInfo\":{\"name\":" +
+                       json_quote(kMcpServerName) +
+                       ",\"version\":" + json_quote(kMcpServerVersion) +
+                       "},\"instructions\":" +
+                       json_quote(kMcpInitializeInstructions) + "}");
       continue;
     }
     if (method == "ping") {
-      if (has_id) {
-        emit_jsonrpc_result(id_json, "{}");
-      }
+      emit_jsonrpc_result(id_json, "{}");
       continue;
     }
     if (method == "tools/list") {
-      if (has_id) {
-        emit_jsonrpc_result(id_json, build_tools_list_result_json_impl());
-      }
+      emit_jsonrpc_result(id_json, build_tools_list_result_json_impl());
+      continue;
+    }
+    if (method == "resources/list") {
+      emit_jsonrpc_result(id_json, "{\"resources\":[]}");
+      continue;
+    }
+    if (method == "resources/templates/list") {
+      emit_jsonrpc_result(id_json, "{\"resourceTemplates\":[]}");
       continue;
     }
 
@@ -2208,33 +2269,27 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
       std::string error_message;
       if (!dispatch_tool_jsonrpc(tool_name, dispatch_json, store, &result_json,
                                  &error_code, &error_message)) {
-        if (has_id) {
-          if (method == "tools/call") {
-            const std::string text = std::string("tool error: ") + error_message;
-            emit_jsonrpc_result(id_json,
-                                make_text_content_result_json(
-                                    text, true, error_code,
-                                    detect_error_tag(error_message)));
-          } else {
-            emit_jsonrpc_error(id_json, error_code, error_message);
-          }
+        if (method == "tools/call") {
+          const std::string text = std::string("tool error: ") + error_message;
+          emit_jsonrpc_result(id_json,
+                              make_text_content_result_json(
+                                  text, true, error_code,
+                                  detect_error_tag(error_message)));
+        } else {
+          emit_jsonrpc_error(id_json, error_code, error_message);
         }
         continue;
       }
-      if (has_id) {
-        if (method == "tools/call") {
-          emit_jsonrpc_result(
-              id_json, make_tool_success_result_json(tool_name, result_json));
-        } else {
-          emit_jsonrpc_result(id_json, result_json);
-        }
+      if (method == "tools/call") {
+        emit_jsonrpc_result(
+            id_json, make_tool_success_result_json(tool_name, result_json));
+      } else {
+        emit_jsonrpc_result(id_json, result_json);
       }
       continue;
     }
 
-    if (has_id) {
-      emit_jsonrpc_error(id_json, -32601, "method not found: " + method);
-    }
+    emit_jsonrpc_error(id_json, -32601, "method not found: " + method);
   }
 }
 

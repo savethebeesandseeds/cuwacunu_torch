@@ -3,37 +3,37 @@
 #endif
 
 HERO_HUMAN_TOOL(
-    "hero.human.list_escalations",
-    "List Super Hero loops currently paused in awaiting_human state",
+    "hero.human.list_requests",
+    "List Marshal Hero sessions currently paused for clarification or governance",
     "{\"type\":\"object\",\"properties\":{\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
-    handle_tool_list_escalations)
+    handle_tool_list_requests)
 HERO_HUMAN_TOOL(
-    "hero.human.list_reports",
-    "List finished Super Hero loops whose summary reports still need human acknowledgment",
+    "hero.human.list_summaries",
+    "List idle-or-finished Marshal Hero sessions whose summary artifacts still need human acknowledgment",
     "{\"type\":\"object\",\"properties\":{\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
-    handle_tool_list_reports)
+    handle_tool_list_summaries)
 HERO_HUMAN_TOOL(
-    "hero.human.get_escalation",
-    "Fetch one pending human escalation by loop_id",
-    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
-    handle_tool_get_escalation)
+    "hero.human.get_request",
+    "Fetch one pending human request by marshal cursor",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_get_request)
 HERO_HUMAN_TOOL(
-    "hero.human.get_report",
-    "Fetch one pending finished-loop summary report by loop_id",
-    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
-    handle_tool_get_report)
+    "hero.human.get_summary",
+    "Fetch one pending idle-or-finished session summary by marshal cursor",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_get_summary)
 HERO_HUMAN_TOOL(
-    "hero.human.ack_report",
-    "Create a signed human acknowledgment for one finished-loop summary report",
-    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
-    handle_tool_ack_report)
+    "hero.human.answer_request",
+    "Create an unsigned clarification answer for one paused Marshal Hero request session and resume it",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"answer\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"answer\"],\"additionalProperties\":false}",
+    handle_tool_answer_request)
 HERO_HUMAN_TOOL(
-    "hero.human.dismiss_report",
-    "Create a signed human dismissal for one finished-loop summary report and clear it from the operator inbox",
-    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}},\"required\":[\"loop_id\"],\"additionalProperties\":false}",
-    handle_tool_dismiss_report)
+    "hero.human.resolve_governance",
+    "Create a signed governance resolution for one paused Marshal Hero session and resume it",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"resolution_kind\":{\"type\":\"string\",\"enum\":[\"grant\",\"deny\",\"clarify\",\"terminate\"]},\"reason\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"resolution_kind\",\"reason\"],\"additionalProperties\":false}",
+    handle_tool_resolve_governance)
 HERO_HUMAN_TOOL(
-    "hero.human.resolve_escalation",
-    "Create a signed human resolution artifact for one pending escalation and apply it to Super Hero",
-    "{\"type\":\"object\",\"properties\":{\"loop_id\":{\"type\":\"string\"},\"resolution_kind\":{\"type\":\"string\",\"enum\":[\"grant\",\"deny\",\"clarify\",\"stop\"]},\"reason\":{\"type\":\"string\"}},\"required\":[\"loop_id\",\"resolution_kind\",\"reason\"],\"additionalProperties\":false}",
-    handle_tool_resolve_escalation)
+    "hero.human.ack_summary",
+    "Create a signed human acknowledgment with a required message for one idle-or-finished session summary, then clear it from the operator inbox without continuing the session",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"note\"],\"additionalProperties\":false}",
+    handle_tool_ack_summary)

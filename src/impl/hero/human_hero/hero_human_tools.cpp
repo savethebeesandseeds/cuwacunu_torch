@@ -29,14 +29,12 @@
 #include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/human_hero/human_attestation.h"
-#include "hero/super_hero/super_loop.h"
+#include "hero/marshal_hero/marshal_session.h"
 #include "iinuji/ncurses/iinuji_app_ncurses.h"
 
 namespace cuwacunu {
 namespace hero {
 namespace human_mcp {
-
-namespace {
 
 constexpr const char* kServerName = "hero_human_mcp";
 constexpr const char* kServerVersion = "0.1.0";
@@ -44,9 +42,12 @@ constexpr const char* kProtocolVersion = "2025-03-26";
 constexpr const char* kInitializeInstructions =
     "Use tools/list for tool schemas. Use tools/call with hero.human.*.";
 constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;
-constexpr std::size_t kSuperToolTimeoutSec = 30;
+constexpr std::size_t kMarshalToolTimeoutSec = 30;
 constexpr const char* kNcursesInitErrorPrefix = "ncurses init failed: ";
-constexpr std::string_view kHumanReportAckSchemaV2 = "hero.human.report_ack.v2";
+constexpr std::string_view kHumanClarificationAnswerSchemaV3 =
+    "hero.human.clarification_answer.v3";
+constexpr std::string_view kHumanSummaryAckSchemaV3 =
+    "hero.human.summary_ack.v3";
 
 using cuwacunu::hero::human::human_resolution_record_t;
 
@@ -61,40 +62,78 @@ struct human_tool_descriptor_t {
   human_tool_handler_t handler;
 };
 
-struct interactive_resolution_input_t {
-  std::string resolution_kind{};
-  std::string reason{};
+struct detail_viewport_t {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+  int scrollbar_x = 0;
+  std::size_t top_line = 0;
+  std::size_t page_lines = 0;
+  std::size_t total_lines = 0;
 };
 
 [[nodiscard]] bool collect_pending_requests(
     const app_context_t& app,
-    std::vector<cuwacunu::hero::super::super_loop_record_t>* out,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* out,
     std::string* error);
 
-[[nodiscard]] bool collect_pending_reports(
+[[nodiscard]] bool collect_all_sessions(
     const app_context_t& app,
-    std::vector<cuwacunu::hero::super::super_loop_record_t>* out,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* out,
+    std::string* error);
+
+[[nodiscard]] bool collect_pending_reviews(
+    const app_context_t& app,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* out,
+    std::string* error);
+
+[[nodiscard]] bool collect_human_operator_inbox(
+    const app_context_t& app, human_operator_inbox_t* out, bool sync_markers,
     std::string* error);
 
 [[nodiscard]] bool build_resolution_and_apply(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
     std::string resolution_kind, std::string reason,
     std::string* out_structured, std::string* out_error);
 
-[[nodiscard]] bool acknowledge_terminal_report(
+[[nodiscard]] bool build_request_answer_and_resume(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string answer,
     std::string* out_structured, std::string* out_error);
 
-[[nodiscard]] bool dismiss_terminal_report(
+[[nodiscard]] bool acknowledge_session_summary(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string note,
     std::string* out_structured, std::string* out_error);
 
-[[nodiscard]] bool list_declared_bind_ids_for_loop(
+[[nodiscard]] bool pause_marshal_session(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session, bool force,
+    std::string* out_structured, std::string* out_error);
+
+[[nodiscard]] bool resume_marshal_session(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string* out_structured, std::string* out_error);
+
+[[nodiscard]] bool continue_marshal_session(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string instruction,
+    std::string* out_structured, std::string* out_error);
+
+[[nodiscard]] bool terminate_marshal_session(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session, bool force,
+    std::string* out_structured, std::string* out_error);
+
+[[nodiscard]] bool list_declared_bind_ids_for_session(
     const app_context_t& app,
-    const cuwacunu::hero::super::super_loop_record_t& loop,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
     std::vector<std::string>* out_bind_ids, std::string* error);
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
@@ -109,14 +148,33 @@ struct interactive_resolution_input_t {
   return out;
 }
 
-[[nodiscard]] std::optional<std::uint64_t> super_loop_elapsed_ms(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
+[[nodiscard]] bool is_clarification_pause_kind(std::string_view pause_kind) {
+  return pause_kind == "clarification";
+}
+
+[[nodiscard]] bool is_human_request_pause_kind(std::string_view pause_kind) {
+  return is_clarification_pause_kind(pause_kind) ||
+         pause_kind == "governance";
+}
+
+[[nodiscard]] std::string_view human_request_kind_label(
+    std::string_view pause_kind) {
+  if (is_clarification_pause_kind(pause_kind)) return "clarification";
+  if (pause_kind == "governance") return "governance";
+  if (pause_kind == "operator") return "operator";
+  if (pause_kind == "none") return "none";
+  return "unknown";
+}
+
+[[nodiscard]] std::optional<std::uint64_t> marshal_session_elapsed_ms(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
   const std::uint64_t end_ms =
-      loop.finished_at_ms.has_value() ? *loop.finished_at_ms : loop.updated_at_ms;
-  if (loop.started_at_ms == 0 || end_ms < loop.started_at_ms) {
+      session.finished_at_ms.has_value() ? *session.finished_at_ms
+                                         : session.updated_at_ms;
+  if (session.started_at_ms == 0 || end_ms < session.started_at_ms) {
     return std::nullopt;
   }
-  return end_ms - loop.started_at_ms;
+  return end_ms - session.started_at_ms;
 }
 
 [[nodiscard]] std::string format_compact_duration_ms(
@@ -158,16 +216,15 @@ struct interactive_resolution_input_t {
   return out.str();
 }
 
-[[nodiscard]] std::string build_report_effort_summary_text(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
+[[nodiscard]] std::string build_summary_effort_text(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
   std::ostringstream out;
-  out << "elapsed=" << format_compact_duration_ms(super_loop_elapsed_ms(loop))
-      << " | review_turns="
-      << format_effort_usage(loop.turn_count, loop.max_review_turns,
-                             loop.remaining_review_turns)
+  out << "elapsed="
+      << format_compact_duration_ms(marshal_session_elapsed_ms(session))
+      << " | checkpoints=" << session.checkpoint_count
       << " | launches="
-      << format_effort_usage(loop.launch_count, loop.max_campaign_launches,
-                             loop.remaining_campaign_launches);
+      << format_effort_usage(session.launch_count, session.max_campaign_launches,
+                             session.remaining_campaign_launches);
   return out.str();
 }
 
@@ -178,6 +235,15 @@ struct interactive_resolution_input_t {
   if (term.empty() || term == "dumb" || term == "unknown") return false;
   if (::isatty(STDIN_FILENO) == 0 || ::isatty(STDOUT_FILENO) == 0) return false;
   return true;
+}
+
+void sort_sessions_newest_first(
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* rows) {
+  if (!rows) return;
+  std::sort(rows->begin(), rows->end(), [](const auto& a, const auto& b) {
+    if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
+    return a.marshal_session_id > b.marshal_session_id;
+  });
 }
 
 [[nodiscard]] std::string strip_inline_comment(std::string_view in) {
@@ -675,7 +741,7 @@ struct interactive_resolution_input_t {
 [[nodiscard]] std::string tool_result_json_for_error(std::string_view message) {
   return make_tool_result_json(
       message,
-      "{\"loop_id\":\"\",\"error\":" + json_quote(message) + "}", true);
+      "{\"marshal_session_id\":\"\",\"error\":" + json_quote(message) + "}", true);
 }
 
 [[nodiscard]] std::filesystem::path resolve_runtime_root_from_global_config(
@@ -701,9 +767,9 @@ struct interactive_resolution_input_t {
   return std::filesystem::path(resolved).lexically_normal();
 }
 
-[[nodiscard]] bool list_declared_bind_ids_for_loop(
+[[nodiscard]] bool list_declared_bind_ids_for_session(
     const app_context_t& app,
-    const cuwacunu::hero::super::super_loop_record_t& loop,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
     std::vector<std::string>* out_bind_ids, std::string* error) {
   if (error) error->clear();
   if (!out_bind_ids) {
@@ -725,7 +791,7 @@ struct interactive_resolution_input_t {
     return false;
   }
   std::string campaign_text{};
-  if (!cuwacunu::hero::runtime::read_text_file(loop.campaign_dsl_path,
+  if (!cuwacunu::hero::runtime::read_text_file(session.campaign_dsl_path,
                                                &campaign_text, error)) {
     return false;
   }
@@ -736,8 +802,8 @@ struct interactive_resolution_input_t {
         grammar_text, campaign_text);
   } catch (const std::exception& ex) {
     if (error) {
-      *error = "failed to decode campaign DSL snapshot '" + loop.campaign_dsl_path +
-               "': " + ex.what();
+      *error = "failed to decode campaign DSL snapshot '" +
+               session.campaign_dsl_path + "': " + ex.what();
     }
     return false;
   }
@@ -872,19 +938,26 @@ struct interactive_resolution_input_t {
 }
 
 [[nodiscard]] std::filesystem::path human_tool_io_dir(const app_context_t& app) {
-  return app.defaults.super_root / ".human_tool_io";
+  return app.defaults.marshal_root / ".human_io";
+}
+
+[[nodiscard]] std::string make_human_tool_io_basename_(
+    std::string_view stem) {
+  const std::uint64_t started_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  const std::uint64_t salt = static_cast<std::uint64_t>(
+      std::chrono::steady_clock::now().time_since_epoch().count());
+  return "h." + cuwacunu::hero::runtime::base36_lower_u64(started_at_ms) +
+         "." +
+         cuwacunu::hero::runtime::base36_lower_u64(
+             static_cast<std::uint64_t>(::getpid())) +
+         "." +
+         cuwacunu::hero::runtime::base36_lower_u64(salt).substr(0, 6) + "." +
+         std::string(stem);
 }
 
 [[nodiscard]] std::filesystem::path make_human_tool_io_path(
     const app_context_t& app, std::string_view stem) {
-  const std::uint64_t salt =
-      static_cast<std::uint64_t>(
-          std::chrono::steady_clock::now().time_since_epoch().count());
-  return human_tool_io_dir(app) /
-         ("human_tool." + std::to_string(cuwacunu::hero::runtime::now_ms_utc()) +
-          "." + std::to_string(static_cast<unsigned long long>(::getpid())) + "." +
-          cuwacunu::hero::runtime::hex_lower_u64(salt).substr(0, 8) + "." +
-          std::string(stem));
+  return human_tool_io_dir(app) / make_human_tool_io_basename_(stem);
 }
 
 void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
@@ -896,14 +969,14 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
   (void)std::filesystem::remove(stderr_path, ec);
 }
 
-[[nodiscard]] bool call_super_tool(const app_context_t& app,
+[[nodiscard]] bool call_marshal_tool(const app_context_t& app,
                                    const std::string& tool_name,
                                    std::string arguments_json,
                                    std::string* out_structured,
                                    std::string* error) {
   if (error) error->clear();
   if (!out_structured) {
-    if (error) *error = "super structured output pointer is null";
+    if (error) *error = "marshal structured output pointer is null";
     return false;
   }
   *out_structured = "";
@@ -929,13 +1002,13 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
   }
 
   const std::vector<std::string> argv{
-      app.defaults.super_hero_binary.string(), "--global-config",
+      app.defaults.marshal_hero_binary.string(), "--global-config",
       app.global_config_path.string(), "--tool", tool_name, "--args-json",
       arguments_json};
   int exit_code = -1;
   std::string invoke_error{};
   const bool invoked = run_command_with_stdio_and_timeout(
-      argv, stdin_path, stdout_path, stderr_path, kSuperToolTimeoutSec,
+      argv, stdin_path, stdout_path, stderr_path, kMarshalToolTimeoutSec,
       &exit_code, &invoke_error);
 
   std::string stdout_text{};
@@ -956,7 +1029,7 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
     if (error) {
       *error = !trim_ascii(stderr_text).empty()
                    ? trim_ascii(stderr_text)
-                   : ("super tool call produced no stdout: " + tool_name);
+                   : ("marshal tool call produced no stdout: " + tool_name);
     }
     return false;
   }
@@ -967,7 +1040,7 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
     if (error) {
       *error = !trim_ascii(stderr_text).empty()
                    ? trim_ascii(stderr_text)
-                   : ("super tool exited non-zero: " + tool_name);
+                   : ("marshal tool exited non-zero: " + tool_name);
     }
     return false;
   }
@@ -975,10 +1048,10 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
 }
 
 [[nodiscard]] std::string request_excerpt(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
   std::string text{};
   std::string ignored{};
-  if (!cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path, &text,
+  if (!cuwacunu::hero::runtime::read_text_file(session.human_request_path, &text,
                                                &ignored)) {
     return {};
   }
@@ -994,40 +1067,41 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
   return out.str();
 }
 
-[[nodiscard]] std::filesystem::path report_path_for_loop(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return cuwacunu::hero::super::super_loop_human_report_path(
-      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
+[[nodiscard]] std::filesystem::path summary_path_for_session(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  return cuwacunu::hero::marshal::marshal_session_human_summary_path(
+      std::filesystem::path(session.session_root).parent_path(), session.marshal_session_id);
 }
 
-[[nodiscard]] std::filesystem::path report_ack_path_for_loop(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return cuwacunu::hero::super::super_loop_human_report_ack_latest_path(
-      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
+[[nodiscard]] std::filesystem::path summary_ack_path_for_session(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  return cuwacunu::hero::marshal::marshal_session_human_summary_ack_latest_path(
+      std::filesystem::path(session.session_root).parent_path(), session.marshal_session_id);
 }
 
-[[nodiscard]] std::filesystem::path report_ack_sig_path_for_loop(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  return cuwacunu::hero::super::super_loop_human_report_ack_latest_sig_path(
-      std::filesystem::path(loop.loop_root).parent_path(), loop.loop_id);
+[[nodiscard]] std::filesystem::path summary_ack_sig_path_for_session(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  return cuwacunu::hero::marshal::marshal_session_human_summary_ack_latest_sig_path(
+      std::filesystem::path(session.session_root).parent_path(), session.marshal_session_id);
 }
 
-[[nodiscard]] bool read_report_text_for_loop(
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string* out,
+[[nodiscard]] bool read_summary_text_for_session(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string* out,
     std::string* error) {
   if (!out) {
-    if (error) *error = "report text output pointer is null";
+    if (error) *error = "summary text output pointer is null";
     return false;
   }
-  return cuwacunu::hero::runtime::read_text_file(report_path_for_loop(loop), out,
-                                                 error);
+  return cuwacunu::hero::runtime::read_text_file(
+      summary_path_for_session(session), out, error);
 }
 
-[[nodiscard]] std::string report_excerpt(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
+[[nodiscard]] std::string summary_excerpt(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
   std::string text{};
   std::string ignored{};
-  if (!read_report_text_for_loop(loop, &text, &ignored)) return {};
+  if (!read_summary_text_for_session(session, &text, &ignored)) return {};
   std::istringstream in(text);
   std::ostringstream out;
   std::string line{};
@@ -1040,51 +1114,46 @@ void cleanup_human_tool_io(const std::filesystem::path& stdin_path,
   return out.str();
 }
 
-[[nodiscard]] bool report_ack_matches_current_report(
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string* error) {
+[[nodiscard]] bool summary_ack_matches_current_summary(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string* error) {
+  return cuwacunu::hero::marshal::marshal_session_summary_ack_matches_current_summary(
+      session, error);
+}
+
+[[nodiscard]] bool write_human_pending_marker_counts(
+    const std::filesystem::path& marshal_root, std::size_t pending_requests,
+    std::size_t pending_reviews, std::string* error) {
   if (error) error->clear();
-  const std::filesystem::path report_path = report_path_for_loop(loop);
-  const std::filesystem::path ack_path = report_ack_path_for_loop(loop);
-  if (!std::filesystem::exists(report_path) ||
-      !std::filesystem::is_regular_file(report_path)) {
-    if (error) *error = "loop summary report is missing";
+  const std::filesystem::path marker_dir =
+      cuwacunu::hero::marshal::human_hero_runtime_dir(marshal_root);
+  std::error_code ec{};
+  std::filesystem::create_directories(marker_dir, ec);
+  if (ec) {
+    if (error) {
+      *error = "cannot create Human Hero runtime dir: " + marker_dir.string();
+    }
     return false;
   }
-  if (!std::filesystem::exists(ack_path) || !std::filesystem::is_regular_file(ack_path)) {
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(
+          cuwacunu::hero::marshal::human_hero_pending_count_path(marshal_root),
+          std::to_string(pending_requests) + "\n", error)) {
     return false;
   }
-  std::string report_sha256_hex{};
-  if (!cuwacunu::hero::human::sha256_hex_file(report_path, &report_sha256_hex,
-                                              error)) {
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(
+          cuwacunu::hero::marshal::human_hero_pending_summary_count_path(marshal_root),
+          std::to_string(pending_reviews) + "\n", error)) {
     return false;
   }
-  std::string ack_json{};
-  if (!cuwacunu::hero::runtime::read_text_file(ack_path, &ack_json, error)) {
-    return false;
-  }
-  std::string acknowledged_report_sha256_hex{};
-  if (!extract_json_string_field(ack_json, "report_sha256_hex",
-                                 &acknowledged_report_sha256_hex)) {
-    if (error) *error = "report ack is missing report_sha256_hex";
-    return false;
-  }
-  return trim_ascii(acknowledged_report_sha256_hex) ==
-         trim_ascii(report_sha256_hex);
+  return true;
 }
 
 void sync_human_pending_markers_best_effort(const app_context_t& app) {
+  human_operator_inbox_t inbox{};
   std::string marker_error{};
-  if (!cuwacunu::hero::super::sync_human_pending_request_count(
-          app.defaults.super_root, &marker_error)) {
+  if (!collect_human_operator_inbox(app, &inbox, true, &marker_error)) {
     std::cerr << "[hero_human_mcp][warning] failed to refresh Human Hero "
-                 "request marker: "
-              << marker_error << std::endl;
-  }
-  marker_error.clear();
-  if (!cuwacunu::hero::super::sync_human_pending_report_count(
-          app.defaults.super_root, &marker_error)) {
-    std::cerr << "[hero_human_mcp][warning] failed to refresh Human Hero "
-                 "report marker: "
+                 "inbox markers: "
               << marker_error << std::endl;
   }
 }
@@ -1163,12 +1232,18 @@ void sync_human_pending_markers_best_effort(const app_context_t& app) {
 
 void init_human_ncurses_theme() {
   if (!has_colors()) return;
-  init_pair(1, COLOR_CYAN, COLOR_BLACK);
+  use_default_colors();
+  init_pair(1, COLOR_CYAN, -1);
   init_pair(2, COLOR_BLACK, COLOR_CYAN);
-  init_pair(3, COLOR_YELLOW, COLOR_BLACK);
-  init_pair(4, COLOR_RED, COLOR_BLACK);
-  init_pair(5, COLOR_GREEN, COLOR_BLACK);
-  init_pair(6, COLOR_WHITE, COLOR_BLACK);
+  init_pair(3, COLOR_YELLOW, -1);
+  init_pair(4, COLOR_RED, -1);
+  init_pair(5, COLOR_GREEN, -1);
+  init_pair(6, COLOR_WHITE, -1);
+  init_pair(7, COLOR_CYAN, -1);
+  init_pair(8, COLOR_YELLOW, -1);
+  init_pair(9, COLOR_GREEN, -1);
+  init_pair(10, COLOR_MAGENTA, -1);
+  init_pair(11, COLOR_BLUE, -1);
   bkgd(COLOR_PAIR(6) | ' ');
   attrset(COLOR_PAIR(6));
 }
@@ -1224,6 +1299,28 @@ void draw_wrapped_region_block(int y, int x, int width, int height,
   }
 }
 
+[[nodiscard]] std::size_t draw_wrapped_region_block_scrolled(
+    int y, int x, int width, int height, std::string_view text,
+    std::size_t top_line, std::size_t* out_actual_top_line = nullptr) {
+  if (out_actual_top_line) *out_actual_top_line = 0;
+  if (width <= 0 || height <= 0) return 0;
+  const auto lines = wrap_text_lines(text, width);
+  const std::size_t total_lines = lines.size();
+  const std::size_t max_top_line =
+      total_lines > static_cast<std::size_t>(height)
+          ? total_lines - static_cast<std::size_t>(height)
+          : 0u;
+  const std::size_t actual_top_line = std::min(top_line, max_top_line);
+  if (out_actual_top_line) *out_actual_top_line = actual_top_line;
+  for (int i = 0; i < height; ++i) clear_region_line(y + i, x, width);
+  for (int i = 0; i < height; ++i) {
+    const std::size_t src = actual_top_line + static_cast<std::size_t>(i);
+    if (src >= total_lines) break;
+    mvaddnstr(y + i, x, lines[src].c_str(), width);
+  }
+  return total_lines;
+}
+
 void draw_centered_region_line(int y, int x, int width, std::string_view text,
                                int color_pair = 0, bool bold = false) {
   if (width <= 0) return;
@@ -1260,6 +1357,343 @@ void draw_centered_line(WINDOW* win, int y, int width, std::string_view text,
   if (color_pair > 0) wattroff(win, COLOR_PAIR(color_pair));
 }
 
+[[nodiscard]] int session_accent_color(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  if (session.phase == "paused") {
+    return session.pause_kind == "governance" ? 8 : 7;
+  }
+  if (session.phase == "idle") return 9;
+  if (session.phase == "finished") {
+    if (session.finish_reason == "failed" ||
+        session.finish_reason == "terminated") {
+      return 4;
+    }
+    if (session.finish_reason == "exhausted") return 3;
+    return 11;
+  }
+  if (session.phase == "running_campaign") return 1;
+  return 6;
+}
+
+[[nodiscard]] operator_session_state_t operator_session_state(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  if (session.phase == "paused") {
+    if (is_clarification_pause_kind(session.pause_kind)) {
+      return operator_session_state_t::waiting_clarification;
+    }
+    if (session.pause_kind == "governance") {
+      return operator_session_state_t::waiting_governance;
+    }
+    if (session.pause_kind == "operator") {
+      return operator_session_state_t::operator_paused;
+    }
+    return operator_session_state_t::unknown;
+  }
+  if (session.phase == "idle") return operator_session_state_t::review;
+  if (session.phase == "finished") return operator_session_state_t::done;
+  if (session.phase == "active" || session.phase == "running_campaign") {
+    return operator_session_state_t::running;
+  }
+  return operator_session_state_t::unknown;
+}
+
+[[nodiscard]] std::string_view operator_session_state_label(
+    operator_session_state_t state) {
+  switch (state) {
+    case operator_session_state_t::running:
+      return "Running";
+    case operator_session_state_t::waiting_clarification:
+      return "Waiting: Clarification";
+    case operator_session_state_t::waiting_governance:
+      return "Waiting: Governance";
+    case operator_session_state_t::operator_paused:
+      return "Operator Paused";
+    case operator_session_state_t::review:
+      return "Review";
+    case operator_session_state_t::done:
+      return "Done";
+    case operator_session_state_t::unknown:
+      break;
+  }
+  return "Unknown";
+}
+
+[[nodiscard]] std::string operator_session_state_detail(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  std::ostringstream out;
+  out << operator_session_state_label(operator_session_state(session));
+  if (session.phase == "active") {
+    out << " (planning)";
+  } else if (session.phase == "running_campaign") {
+    out << " (campaign active)";
+  } else if (session.phase == "idle") {
+    if (session.finish_reason == "failed") {
+      out << " (review after failure)";
+    } else {
+      out << " (review pending)";
+    }
+  } else if (session.phase == "finished" && !session.finish_reason.empty() &&
+             session.finish_reason != "none") {
+    out << " (" << session.finish_reason << ")";
+  }
+  return out.str();
+}
+
+[[nodiscard]] std::string operator_session_action_hint(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    bool has_pending_review) {
+  const auto state = operator_session_state(session);
+  if ((state == operator_session_state_t::review ||
+       state == operator_session_state_t::done) &&
+      !has_pending_review) {
+    return "<none>";
+  }
+  switch (state) {
+    case operator_session_state_t::running:
+      return "Pause | Terminate";
+    case operator_session_state_t::waiting_clarification:
+      return "Answer clarification";
+    case operator_session_state_t::waiting_governance:
+      return "Grant | Deny | Clarify | Terminate";
+    case operator_session_state_t::operator_paused:
+      return "Resume | Terminate";
+    case operator_session_state_t::review:
+      return "Continue | Acknowledge";
+    case operator_session_state_t::done:
+      return "Acknowledge";
+    case operator_session_state_t::unknown:
+      break;
+  }
+  return "<none>";
+}
+
+[[nodiscard]] std::string session_state_badge(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  switch (operator_session_state(session)) {
+    case operator_session_state_t::waiting_clarification:
+      return "[CLARIFY]";
+    case operator_session_state_t::waiting_governance:
+      return "[GOV]";
+    case operator_session_state_t::operator_paused:
+      return "[PAUSED]";
+    case operator_session_state_t::review:
+      return "[REVIEW]";
+    case operator_session_state_t::done:
+      if (session.finish_reason == "success") return "[DONE]";
+      if (session.finish_reason == "exhausted") return "[EXHAUSTED]";
+      if (session.finish_reason == "failed") return "[FAILED]";
+      if (session.finish_reason == "terminated") return "[TERMINATED]";
+      return "[DONE]";
+    case operator_session_state_t::running:
+      return "[RUNNING]";
+    case operator_session_state_t::unknown:
+      break;
+  }
+  return "[SESSION]";
+}
+
+[[nodiscard]] std::string_view operator_console_view_label(
+    operator_console_view_t view) {
+  switch (view) {
+    case operator_console_view_t::sessions:
+      return "overview";
+    case operator_console_view_t::requests:
+      return "requests";
+    case operator_console_view_t::summaries:
+      return "reviews";
+  }
+  return "overview";
+}
+
+[[nodiscard]] std::string_view operator_console_phase_filter_label(
+    operator_console_phase_filter_t filter) {
+  switch (filter) {
+    case operator_console_phase_filter_t::all:
+      return "all";
+    case operator_console_phase_filter_t::active:
+      return "planning";
+    case operator_console_phase_filter_t::running_campaign:
+      return "campaign";
+    case operator_console_phase_filter_t::paused:
+      return "waiting/paused";
+    case operator_console_phase_filter_t::idle:
+      return "review";
+    case operator_console_phase_filter_t::finished:
+      return "done";
+  }
+  return "all";
+}
+
+[[nodiscard]] bool session_matches_phase_filter(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    operator_console_phase_filter_t filter) {
+  switch (filter) {
+    case operator_console_phase_filter_t::all:
+      return true;
+    case operator_console_phase_filter_t::active:
+      return session.phase == "active";
+    case operator_console_phase_filter_t::running_campaign:
+      return session.phase == "running_campaign";
+    case operator_console_phase_filter_t::paused:
+      return session.phase == "paused";
+    case operator_console_phase_filter_t::idle:
+      return session.phase == "idle";
+    case operator_console_phase_filter_t::finished:
+      return session.phase == "finished";
+  }
+  return true;
+}
+
+void filter_sessions_for_console(
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>& all_sessions,
+    operator_console_phase_filter_t filter,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* out) {
+  if (!out) return;
+  out->clear();
+  out->reserve(all_sessions.size());
+  for (const auto& session : all_sessions) {
+    if (session_matches_phase_filter(session, filter)) out->push_back(session);
+  }
+}
+
+[[nodiscard]] std::size_t count_sessions_in_operator_state(
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>& sessions,
+    operator_session_state_t state) {
+  return static_cast<std::size_t>(std::count_if(
+      sessions.begin(), sessions.end(), [state](const auto& session) {
+        return operator_session_state(session) == state;
+      }));
+}
+
+[[nodiscard]] std::optional<std::size_t> find_session_index_by_id(
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>& sessions,
+    std::string_view marshal_session_id) {
+  for (std::size_t i = 0; i < sessions.size(); ++i) {
+    if (sessions[i].marshal_session_id == marshal_session_id) return i;
+  }
+  return std::nullopt;
+}
+
+void select_session_by_id(
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>& sessions,
+    std::string_view marshal_session_id, std::size_t* selected) {
+  if (!selected) return;
+  const auto found = find_session_index_by_id(sessions, marshal_session_id);
+  if (found.has_value()) *selected = *found;
+}
+
+void cycle_operator_console_view(operator_console_view_t* view) {
+  if (!view) return;
+  switch (*view) {
+    case operator_console_view_t::sessions:
+      *view = operator_console_view_t::requests;
+      return;
+    case operator_console_view_t::requests:
+      *view = operator_console_view_t::summaries;
+      return;
+    case operator_console_view_t::summaries:
+      *view = operator_console_view_t::sessions;
+      return;
+  }
+}
+
+void cycle_operator_console_phase_filter(operator_console_phase_filter_t* filter) {
+  if (!filter) return;
+  switch (*filter) {
+    case operator_console_phase_filter_t::all:
+      *filter = operator_console_phase_filter_t::active;
+      return;
+    case operator_console_phase_filter_t::active:
+      *filter = operator_console_phase_filter_t::running_campaign;
+      return;
+    case operator_console_phase_filter_t::running_campaign:
+      *filter = operator_console_phase_filter_t::paused;
+      return;
+    case operator_console_phase_filter_t::paused:
+      *filter = operator_console_phase_filter_t::idle;
+      return;
+    case operator_console_phase_filter_t::idle:
+      *filter = operator_console_phase_filter_t::finished;
+      return;
+    case operator_console_phase_filter_t::finished:
+      *filter = operator_console_phase_filter_t::all;
+      return;
+  }
+}
+
+void draw_detail_scroll_indicator(int y, int x, int width, std::size_t top_line,
+                                  std::size_t page_lines,
+                                  std::size_t total_lines) {
+  clear_region_line(y, x, width);
+  if (width <= 0 || page_lines == 0 || total_lines == 0) return;
+  const std::size_t shown_from = top_line + 1;
+  const std::size_t shown_to = std::min(total_lines, top_line + page_lines);
+  std::ostringstream out;
+  if (total_lines > page_lines) {
+    out << "Scroll Wheel/Bar/PgUp/PgDn/Home/End | lines " << shown_from << "-"
+        << shown_to << "/" << total_lines;
+  } else {
+    out << "Lines " << shown_from << "-" << shown_to << "/" << total_lines;
+  }
+  attron(COLOR_PAIR(3));
+  mvaddnstr(y, x, ellipsize_text(out.str(), width).c_str(), width);
+  attroff(COLOR_PAIR(3));
+}
+
+void draw_status_line(int y, int x, int width, std::string_view status_line,
+                      bool status_is_error) {
+  clear_region_line(y, x, width);
+  if (width <= 0 || status_line.empty()) return;
+  const std::string shown =
+      "status: " + ellipsize_text(status_line, std::max(1, width - 8));
+  attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+  mvaddnstr(y, x, shown.c_str(), width);
+  attroff(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+}
+
+void draw_vertical_scrollbar(int y, int x, int height, std::size_t top_line,
+                             std::size_t page_lines,
+                             std::size_t total_lines) {
+  if (height <= 0) return;
+  for (int row = 0; row < height; ++row) {
+    mvaddch(y + row, x, ' ');
+  }
+  if (page_lines == 0 || total_lines == 0) return;
+  attron(COLOR_PAIR(11));
+  for (int row = 0; row < height; ++row) {
+    mvaddch(y + row, x, ACS_VLINE);
+  }
+  attroff(COLOR_PAIR(11));
+  if (total_lines <= page_lines) return;
+  const std::size_t max_top_line = total_lines - page_lines;
+  const int thumb_h =
+      std::clamp(static_cast<int>((page_lines * static_cast<std::size_t>(height) +
+                                   total_lines - 1) /
+                                  total_lines),
+                 1, height);
+  const int travel = std::max(0, height - thumb_h);
+  const int thumb_top =
+      max_top_line == 0
+          ? 0
+          : static_cast<int>((top_line * static_cast<std::size_t>(travel) +
+                              max_top_line / 2) /
+                             max_top_line);
+  attron(COLOR_PAIR(1) | A_BOLD);
+  for (int row = 0; row < thumb_h; ++row) {
+    mvaddch(y + thumb_top + row, x, ACS_CKBOARD);
+  }
+  attroff(COLOR_PAIR(1) | A_BOLD);
+}
+
+[[nodiscard]] bool mouse_hits_detail_viewport(const detail_viewport_t& viewport,
+                                              int mouse_x, int mouse_y) {
+  if (viewport.width <= 0 || viewport.height <= 0) return false;
+  const int right_edge =
+      viewport.scrollbar_x > 0 ? viewport.scrollbar_x : viewport.x + viewport.width - 1;
+  return mouse_x >= viewport.x && mouse_x <= right_edge &&
+         mouse_y >= viewport.y && mouse_y < viewport.y + viewport.height;
+}
+
 [[nodiscard]] bool prompt_text_dialog(const std::string& title,
                                       const std::string& label,
                                       std::string* out_value, bool secret,
@@ -1292,7 +1726,7 @@ void draw_centered_line(WINDOW* win, int y, int width, std::string_view text,
       }
     }
     mvwaddnstr(win, height - 2, 2,
-               "Enter=accept  Esc=cancel  Backspace=edit  Text wraps automatically",
+               "Enter=accept  Esc=cancel  Backspace=edit",
                width - 4);
 
     const int field_width = body_width;
@@ -1416,138 +1850,105 @@ void draw_centered_line(WINDOW* win, int y, int width, std::string_view text,
   return true;
 }
 
-[[nodiscard]] bool read_request_text_for_loop(
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string* out,
+[[nodiscard]] bool read_request_text_for_session(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string* out,
     std::string* error) {
   if (!out) {
     if (error) *error = "request text output pointer is null";
     return false;
   }
-  return cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path, out,
+  return cuwacunu::hero::runtime::read_text_file(session.human_request_path, out,
                                                  error);
 }
 
-void render_human_requests_screen(
-    const std::vector<cuwacunu::hero::super::super_loop_record_t>& pending,
-    std::string_view operator_id, std::string_view super_root,
-    std::size_t selected, std::string_view request_text,
-    std::string_view status_line, bool status_is_error) {
-  const int W = COLS;
-  const int H = LINES;
-  if (W < 56 || H < 10) {
-    erase();
-    mvaddnstr(0, 0, "Human Hero: terminal too small. Resize or use hero.human.* tools.",
-              std::max(0, W - 1));
-    refresh();
-    return;
+[[nodiscard]] std::string build_session_console_detail_text(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    bool has_pending_review) {
+  std::ostringstream out;
+  out << "objective: " << session.objective_name << "\n"
+      << "marshal_session_id: " << session.marshal_session_id << "\n"
+      << "operator_state: " << operator_session_state_detail(session) << "\n"
+      << "next_action: "
+      << operator_session_action_hint(session, has_pending_review) << "\n"
+      << "phase: " << session.phase;
+  if (session.phase == "paused") {
+    out << " (" << session.pause_kind << ")";
+  } else if (session.phase == "finished") {
+    out << " (" << session.finish_reason << ")";
   }
-  const int header_h = 3;
-  const int footer_h = 3;
-  const int body_h = std::max(5, H - header_h - footer_h);
-  const int left_w = std::clamp(W / 3, 28, std::max(28, W - 24));
-  const int right_w = W - left_w;
-
-  if (has_colors()) attrset(COLOR_PAIR(6));
-  erase();
-
-  draw_boxed_region(0, 0, header_h, W, " Human Hero ");
-  attron(COLOR_PAIR(1) | A_BOLD);
-  const std::string header_line =
-      "Operator console | pending escalations: " +
-      std::to_string(pending.size()) + " | operator: " +
-      std::string(operator_id.empty() ? "<unset>" : operator_id);
-  mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
-  attroff(COLOR_PAIR(1) | A_BOLD);
-
-  draw_boxed_region(header_h, 0, body_h, left_w,
-                    pending.empty() ? " Inbox " : " Escalations ");
-  if (pending.empty()) {
-    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Escalations",
-                              5, true);
-    draw_centered_region_line(header_h + 4, 0, left_w,
-                              "Super Hero has not asked for human input.");
-    draw_centered_region_line(header_h + 6, 0, left_w,
-                              "Press r to refresh the queue.");
-    draw_centered_region_line(header_h + 7, 0, left_w,
-                              "Press q to leave the console.");
-  } else {
-    const int max_rows = body_h - 2;
-    std::size_t top = 0;
-    if (selected >= static_cast<std::size_t>(max_rows)) {
-      top = selected - static_cast<std::size_t>(max_rows) + 1;
+  out << "\n"
+      << "effort: " << build_summary_effort_text(session) << "\n"
+      << "authority_scope: " << session.authority_scope << "\n";
+  if (!session.phase_detail.empty()) {
+    out << "phase_detail: " << session.phase_detail << "\n";
+  }
+  if (!session.last_intent_kind.empty()) {
+    out << "last_intent: " << session.last_intent_kind << "\n";
+  }
+  if (!session.active_campaign_cursor.empty()) {
+    out << "active_campaign: " << session.active_campaign_cursor << "\n";
+  }
+  if (!session.last_warning.empty()) {
+    out << "last_warning: " << session.last_warning << "\n";
+  }
+  if (!session.codex_session_id.empty()) {
+    out << "codex_session_id: " << session.codex_session_id << "\n";
+  }
+  if (!session.campaign_dsl_path.empty()) {
+    out << "campaign_dsl: " << session.campaign_dsl_path << "\n";
+  }
+  if (!session.campaign_cursors.empty()) {
+    out << "campaign_history: ";
+    for (std::size_t i = 0; i < session.campaign_cursors.size(); ++i) {
+      if (i != 0) out << ", ";
+      out << session.campaign_cursors[i];
     }
-    for (int row = 0; row < max_rows; ++row) {
-      const std::size_t idx = top + static_cast<std::size_t>(row);
-      if (idx >= pending.size()) break;
-      const auto& loop = pending[idx];
-      const std::string label = loop.loop_id + " | " + loop.objective_name;
-      const int row_y = header_h + 1 + row;
-      clear_region_line(row_y, 1, left_w - 2);
-      if (idx == selected) attron(COLOR_PAIR(2) | A_BOLD);
-      mvaddnstr(row_y, 2, ellipsize_text(label, left_w - 4).c_str(),
-                left_w - 4);
-      if (idx == selected) attroff(COLOR_PAIR(2) | A_BOLD);
+    out << "\n";
+  }
+
+  if (session.phase == "paused" &&
+      is_human_request_pause_kind(session.pause_kind)) {
+    std::string request_text{};
+    std::string request_error{};
+    out << "\n--- Human Request ---\n";
+    if (read_request_text_for_session(session, &request_text, &request_error)) {
+      out << request_text;
+    } else {
+      out << "<failed to read request: " << request_error << ">";
     }
   }
 
-  draw_boxed_region(header_h, left_w, body_h, right_w,
-                    pending.empty() ? " Overview " : " Request ");
-  if (!pending.empty()) {
-    const auto& loop = pending[selected];
-    std::string meta = "loop=" + loop.loop_id + "  turn=" +
-                       std::to_string(loop.turn_count);
-    mvaddnstr(header_h + 1, left_w + 2, ellipsize_text(meta, right_w - 4).c_str(),
-              right_w - 4);
-    mvaddnstr(header_h + 2, left_w + 2,
-              ellipsize_text(loop.state_detail.empty() ? loop.objective_name
-                                                       : loop.state_detail,
-                             right_w - 4)
-                  .c_str(),
-              right_w - 4);
-    draw_wrapped_region_block(header_h + 4, left_w + 2, right_w - 4, body_h - 6,
-                              request_text);
-  } else {
-    std::ostringstream out;
-    out << "This console becomes active when a Super Hero loop enters "
-           "\"awaiting_human\".\n\n"
-        << "Operator: "
-        << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
-        << "Super root: " << super_root << "\n\n"
-        << "What to do here:\n"
-        << "- wait for a pending loop to appear\n"
-        << "- press r to refresh\n"
-        << "- press q to exit\n\n"
-        << "Non-interactive alternative:\n"
-        << "hero.human.list_escalations";
-    draw_wrapped_region_block(header_h + 2, left_w + 2, right_w - 4, body_h - 4,
-                              out.str());
+  if (cuwacunu::hero::marshal::is_marshal_session_summary_state(session.phase)) {
+    std::string summary_text{};
+    std::string summary_error{};
+    out << "\n\n--- Session Summary ---\n";
+    if (read_summary_text_for_session(session, &summary_text, &summary_error)) {
+      out << summary_text;
+    } else {
+      out << "<failed to read summary: " << summary_error << ">";
+    }
   }
-
-  draw_boxed_region(header_h + body_h, 0, footer_h, W, " Controls ");
-  const std::string controls = pending.empty()
-                                   ? "r refresh  q quit"
-                                   : "Up/Down select  Enter/g resolve escalation"
-                                     "  s stop loop  r refresh  q quit";
-  mvaddnstr(header_h + body_h + 1, 2, controls.c_str(), W - 4);
-  if (!status_line.empty()) {
-    attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
-    mvaddnstr(header_h + body_h + 1, std::max(2, W / 2),
-              ellipsize_text(status_line, std::max(8, W / 2 - 3)).c_str(),
-              std::max(8, W / 2 - 3));
-    attroff(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
-  }
-
-  refresh();
+  return out.str();
 }
 
-void render_human_reports_screen(
-    const std::vector<cuwacunu::hero::super::super_loop_record_t>& pending,
-    std::string_view operator_id, std::string_view super_root,
-    std::size_t selected, std::string_view report_text,
+void render_human_sessions_screen(
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>& all_sessions,
+    std::size_t request_count, std::size_t summary_count,
+    operator_console_phase_filter_t phase_filter, std::string_view operator_id,
+    std::string_view marshal_root, std::size_t selected,
+    std::string_view detail_text, std::size_t detail_scroll,
+    std::size_t* out_detail_total_lines, std::size_t* out_detail_page_lines,
+    std::size_t* out_actual_detail_scroll, detail_viewport_t* out_detail_viewport,
     std::string_view status_line, bool status_is_error) {
+  if (out_detail_total_lines) *out_detail_total_lines = 0;
+  if (out_detail_page_lines) *out_detail_page_lines = 0;
+  if (out_actual_detail_scroll) *out_actual_detail_scroll = 0;
+  if (out_detail_viewport) *out_detail_viewport = detail_viewport_t{};
+
   const int W = COLS;
   const int H = LINES;
-  if (W < 56 || H < 10) {
+  if (W < 56 || H < 12) {
     erase();
     mvaddnstr(0, 0,
               "Human Hero: terminal too small. Resize or use hero.human.* tools.",
@@ -1555,9 +1956,13 @@ void render_human_reports_screen(
     refresh();
     return;
   }
-  const int header_h = 3;
+
+  std::vector<cuwacunu::hero::marshal::marshal_session_record_t> sessions{};
+  filter_sessions_for_console(all_sessions, phase_filter, &sessions);
+
+  const int header_h = 4;
   const int footer_h = 3;
-  const int body_h = std::max(5, H - header_h - footer_h);
+  const int body_h = H - header_h - footer_h;
   const int left_w = std::clamp(W / 3, 28, std::max(28, W - 24));
   const int right_w = W - left_w;
 
@@ -1567,21 +1972,215 @@ void render_human_reports_screen(
   draw_boxed_region(0, 0, header_h, W, " Human Hero ");
   attron(COLOR_PAIR(1) | A_BOLD);
   const std::string header_line =
-      "Operator console | informational terminal reports: " +
-      std::to_string(pending.size()) + " | operator: " +
+      "Operator session console | tracked: " +
+      std::to_string(all_sessions.size()) + " | requests: " +
+      std::to_string(request_count) + " | reviews: " +
+      std::to_string(summary_count) + " | lane: " +
+      std::string(operator_console_view_label(operator_console_view_t::sessions)) +
+      " | overview filter: " +
+      std::string(operator_console_phase_filter_label(phase_filter)) +
+      " | operator: " +
       std::string(operator_id.empty() ? "<unset>" : operator_id);
   mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
   attroff(COLOR_PAIR(1) | A_BOLD);
+  draw_status_line(2, 2, W - 4, status_line, status_is_error);
 
   draw_boxed_region(header_h, 0, body_h, left_w,
-                    pending.empty() ? " Inbox " : " Reports ");
-  if (pending.empty()) {
-    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Reports", 5,
-                              true);
+                    sessions.empty() ? " Overview " : " Tracked Sessions ");
+  if (all_sessions.empty()) {
+    draw_centered_region_line(header_h + 2, 0, left_w, "No Sessions", 5, true);
     draw_centered_region_line(header_h + 4, 0, left_w,
-                              "Finished Super Hero loop summaries appear here.");
+                              "Start a Marshal Hero session to populate this console.");
     draw_centered_region_line(header_h + 6, 0, left_w,
-                              "Press r to refresh the queue.");
+                              "Press r to refresh.");
+    draw_centered_region_line(header_h + 7, 0, left_w,
+                              "Press q to leave the console.");
+  } else if (sessions.empty()) {
+    draw_centered_region_line(header_h + 2, 0, left_w, "No Matching Sessions", 3,
+                              true);
+    draw_centered_region_line(
+        header_h + 4, 0, left_w,
+        "The current state filter hides all known sessions.");
+    draw_centered_region_line(header_h + 6, 0, left_w,
+                              "Press f to cycle the overview filter.");
+    draw_centered_region_line(header_h + 7, 0, left_w,
+                              "Press Tab to cycle lanes.");
+  } else {
+    const int max_rows = body_h - 2;
+    std::size_t top = 0;
+    if (selected >= static_cast<std::size_t>(max_rows)) {
+      top = selected - static_cast<std::size_t>(max_rows) + 1;
+    }
+    for (int row = 0; row < max_rows; ++row) {
+      const std::size_t idx = top + static_cast<std::size_t>(row);
+      if (idx >= sessions.size()) break;
+      const auto& session = sessions[idx];
+      const std::string label = session_state_badge(session) + " " +
+                                session.objective_name + " | " + session.marshal_session_id;
+      const int row_y = header_h + 1 + row;
+      clear_region_line(row_y, 1, left_w - 2);
+      const int accent_color = session_accent_color(session);
+      if (idx == selected) {
+        attron(COLOR_PAIR(2) | A_BOLD);
+      } else if (accent_color > 0) {
+        attron(COLOR_PAIR(accent_color) | A_BOLD);
+      }
+      mvaddnstr(row_y, 2, ellipsize_text(label, left_w - 4).c_str(), left_w - 4);
+      if (idx == selected) {
+        attroff(COLOR_PAIR(2) | A_BOLD);
+      } else if (accent_color > 0) {
+        attroff(COLOR_PAIR(accent_color) | A_BOLD);
+      }
+    }
+  }
+
+  draw_boxed_region(header_h, left_w, body_h, right_w,
+                    sessions.empty() ? " Overview " : " Session Detail ");
+  if (!sessions.empty()) {
+    const auto& session = sessions[selected];
+    const int accent_color = session_accent_color(session);
+    std::ostringstream meta;
+    meta << "session=" << session.marshal_session_id
+         << "  state=" << operator_session_state_detail(session);
+    meta << "  raw_phase=" << session.phase;
+    if (session.phase == "paused") meta << "(" << session.pause_kind << ")";
+    if (session.phase == "finished") meta << "(" << session.finish_reason << ")";
+    attron(COLOR_PAIR(accent_color) | A_BOLD);
+    mvaddnstr(header_h + 1, left_w + 2,
+              ellipsize_text(meta.str(), right_w - 4).c_str(), right_w - 4);
+    attroff(COLOR_PAIR(accent_color) | A_BOLD);
+    const std::string subtitle =
+        "running=" +
+        std::to_string(count_sessions_in_operator_state(
+            all_sessions, operator_session_state_t::running)) +
+        " waiting_clarification=" +
+        std::to_string(count_sessions_in_operator_state(
+            all_sessions, operator_session_state_t::waiting_clarification)) +
+        " waiting_governance=" +
+        std::to_string(count_sessions_in_operator_state(
+            all_sessions, operator_session_state_t::waiting_governance)) +
+        " review=" +
+        std::to_string(count_sessions_in_operator_state(
+            all_sessions, operator_session_state_t::review)) +
+        " done=" + std::to_string(count_sessions_in_operator_state(
+                      all_sessions, operator_session_state_t::done));
+    mvaddnstr(header_h + 2, left_w + 2,
+              ellipsize_text(subtitle, right_w - 4).c_str(), right_w - 4);
+    const int detail_x = left_w + 2;
+    const int detail_y = header_h + 4;
+    const int detail_width = std::max(1, right_w - 5);
+    const int detail_height = std::max(1, body_h - 7);
+    const int scrollbar_x = detail_x + detail_width + 1;
+    std::size_t actual_detail_scroll = 0;
+    const std::size_t detail_total_lines = draw_wrapped_region_block_scrolled(
+        detail_y, detail_x, detail_width, detail_height, detail_text,
+        detail_scroll, &actual_detail_scroll);
+    draw_vertical_scrollbar(detail_y, scrollbar_x, detail_height,
+                            actual_detail_scroll,
+                            static_cast<std::size_t>(detail_height),
+                            detail_total_lines);
+    draw_detail_scroll_indicator(header_h + body_h - 2, left_w + 2, right_w - 4,
+                                 actual_detail_scroll,
+                                 static_cast<std::size_t>(detail_height),
+                                 detail_total_lines);
+    if (out_detail_total_lines) *out_detail_total_lines = detail_total_lines;
+    if (out_detail_page_lines) {
+      *out_detail_page_lines = static_cast<std::size_t>(detail_height);
+    }
+    if (out_actual_detail_scroll) *out_actual_detail_scroll = actual_detail_scroll;
+    if (out_detail_viewport) {
+      *out_detail_viewport = detail_viewport_t{
+          .x = detail_x,
+          .y = detail_y,
+          .width = detail_width,
+          .height = detail_height,
+          .scrollbar_x = scrollbar_x,
+          .top_line = actual_detail_scroll,
+          .page_lines = static_cast<std::size_t>(detail_height),
+          .total_lines = detail_total_lines};
+    }
+  } else {
+    std::ostringstream out;
+    out << "This is the overview lane.\n\n"
+        << "Operator: "
+        << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
+        << "Marshal root: " << marshal_root << "\n\n"
+        << "What to do here:\n"
+        << "- inspect every known session, not only pending operator work\n"
+        << "- use f to cycle overview filters\n"
+        << "- use Tab to cycle between overview, requests, and reviews\n"
+        << "- use pause/resume/continue/terminate controls from the cockpit\n\n"
+        << "Non-interactive alternative:\n"
+        << "hero.marshal.list_sessions";
+    draw_wrapped_region_block(header_h + 2, left_w + 2, right_w - 4, body_h - 4,
+                              out.str());
+  }
+
+  draw_boxed_region(header_h + body_h, 0, footer_h, W, " Controls ");
+  std::string controls =
+      sessions.empty()
+          ? "Tab cycle lanes  f cycle filter  r refresh  q quit"
+          : "Tab cycle lanes  f cycle filter  Up/Down select  Wheel/PgUp/PgDn scroll detail  Home/End jump  Enter open request/review  p pause  u resume  c continue  t terminate  r refresh  q quit";
+  mvaddnstr(header_h + body_h + 1, 2, ellipsize_text(controls, W - 4).c_str(),
+            W - 4);
+
+  refresh();
+}
+
+void render_human_requests_screen(
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>& pending,
+    std::size_t summary_count, std::string_view operator_id,
+    std::string_view marshal_root, std::size_t selected,
+    std::string_view request_text, std::size_t detail_scroll,
+    std::size_t* out_detail_total_lines, std::size_t* out_detail_page_lines,
+    std::size_t* out_actual_detail_scroll, detail_viewport_t* out_detail_viewport,
+    std::string_view status_line, bool status_is_error) {
+  if (out_detail_total_lines) *out_detail_total_lines = 0;
+  if (out_detail_page_lines) *out_detail_page_lines = 0;
+  if (out_actual_detail_scroll) *out_actual_detail_scroll = 0;
+  if (out_detail_viewport) *out_detail_viewport = detail_viewport_t{};
+  const int W = COLS;
+  const int H = LINES;
+  if (W < 56 || H < 12) {
+    erase();
+    mvaddnstr(0, 0, "Human Hero: terminal too small. Resize or use hero.human.* tools.",
+              std::max(0, W - 1));
+    refresh();
+    return;
+  }
+  const int header_h = 4;
+  const int footer_h = 3;
+  const int body_h = H - header_h - footer_h;
+  const int left_w = std::clamp(W / 3, 28, std::max(28, W - 24));
+  const int right_w = W - left_w;
+
+  if (has_colors()) attrset(COLOR_PAIR(6));
+  erase();
+
+  draw_boxed_region(0, 0, header_h, W, " Human Hero ");
+  attron(COLOR_PAIR(1) | A_BOLD);
+  const std::string header_line =
+      "Operator session console | requests: " +
+      std::to_string(pending.size()) + " | reviews: " +
+      std::to_string(summary_count) + " | lane: " +
+      std::string(operator_console_view_label(operator_console_view_t::requests)) +
+      " | operator: " +
+      std::string(operator_id.empty() ? "<unset>" : operator_id);
+  mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
+  attroff(COLOR_PAIR(1) | A_BOLD);
+  draw_status_line(2, 2, W - 4, status_line, status_is_error);
+
+  draw_boxed_region(header_h, 0, body_h, left_w,
+                    pending.empty() ? " Requests " : " Pending Requests ");
+  if (pending.empty()) {
+    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Requests",
+                              5, true);
+    draw_centered_region_line(header_h + 4, 0, left_w,
+                              "Marshal Hero has no pending clarification or governance request.");
+    draw_centered_region_line(
+        header_h + 6, 0, left_w,
+        summary_count == 0 ? "Press r to refresh the lane."
+                           : "Press Tab to cycle lanes.");
     draw_centered_region_line(header_h + 7, 0, left_w,
                               "Press q to leave the console.");
   } else {
@@ -1593,67 +2192,280 @@ void render_human_reports_screen(
     for (int row = 0; row < max_rows; ++row) {
       const std::size_t idx = top + static_cast<std::size_t>(row);
       if (idx >= pending.size()) break;
-      const auto& loop = pending[idx];
-      const std::string label = "REPORT | " + loop.loop_id + " | " +
-                                loop.objective_name + " | " + loop.state;
+      const auto& session = pending[idx];
+      const std::string label = session_state_badge(session) + " " +
+                                session.objective_name + " | " + session.marshal_session_id;
       const int row_y = header_h + 1 + row;
       clear_region_line(row_y, 1, left_w - 2);
-      if (idx == selected) attron(COLOR_PAIR(2) | A_BOLD);
+      const int accent_color = session_accent_color(session);
+      if (idx == selected) {
+        attron(COLOR_PAIR(2) | A_BOLD);
+      } else if (accent_color > 0) {
+        attron(COLOR_PAIR(accent_color) | A_BOLD);
+      }
       mvaddnstr(row_y, 2, ellipsize_text(label, left_w - 4).c_str(),
                 left_w - 4);
-      if (idx == selected) attroff(COLOR_PAIR(2) | A_BOLD);
+      if (idx == selected) {
+        attroff(COLOR_PAIR(2) | A_BOLD);
+      } else if (accent_color > 0) {
+        attroff(COLOR_PAIR(accent_color) | A_BOLD);
+      }
     }
   }
 
   draw_boxed_region(header_h, left_w, body_h, right_w,
-                    pending.empty() ? " Overview " : " Report ");
+                    pending.empty() ? " Overview " : " Session Request ");
   if (!pending.empty()) {
-    const auto& loop = pending[selected];
-    std::string meta = "terminal report | loop=" + loop.loop_id +
-                       "  state=" + loop.state;
-    mvaddnstr(header_h + 1, left_w + 2, ellipsize_text(meta, right_w - 4).c_str(),
-              right_w - 4);
-    const std::string subtitle = build_report_effort_summary_text(loop);
+    const auto& session = pending[selected];
+    const int accent_color = session_accent_color(session);
+    std::string meta = "session=" + session.marshal_session_id + "  checkpoint=" +
+                       std::to_string(session.checkpoint_count);
+    attron(COLOR_PAIR(accent_color) | A_BOLD);
+    mvaddnstr(header_h + 1, left_w + 2,
+              ellipsize_text(meta, right_w - 4).c_str(), right_w - 4);
+    attroff(COLOR_PAIR(accent_color) | A_BOLD);
     mvaddnstr(header_h + 2, left_w + 2,
-              ellipsize_text(subtitle, right_w - 4).c_str(), right_w - 4);
-    draw_wrapped_region_block(header_h + 4, left_w + 2, right_w - 4, body_h - 6,
-                              report_text);
+              ellipsize_text(operator_session_state_detail(session) + " | " +
+                                 (session.phase_detail.empty()
+                                      ? session.objective_name
+                                      : session.phase_detail),
+                             right_w - 4)
+                  .c_str(),
+              right_w - 4);
+    const int detail_x = left_w + 2;
+    const int detail_y = header_h + 4;
+    const int detail_width = std::max(1, right_w - 5);
+    const int detail_height = std::max(1, body_h - 7);
+    const int scrollbar_x = detail_x + detail_width + 1;
+    std::size_t actual_detail_scroll = 0;
+    const std::size_t detail_total_lines = draw_wrapped_region_block_scrolled(
+        detail_y, detail_x, detail_width, detail_height, request_text,
+        detail_scroll, &actual_detail_scroll);
+    draw_vertical_scrollbar(detail_y, scrollbar_x, detail_height,
+                            actual_detail_scroll,
+                            static_cast<std::size_t>(detail_height),
+                            detail_total_lines);
+    draw_detail_scroll_indicator(header_h + body_h - 2, left_w + 2, right_w - 4,
+                                 actual_detail_scroll,
+                                 static_cast<std::size_t>(detail_height),
+                                 detail_total_lines);
+    if (out_detail_total_lines) *out_detail_total_lines = detail_total_lines;
+    if (out_detail_page_lines) {
+      *out_detail_page_lines = static_cast<std::size_t>(detail_height);
+    }
+    if (out_actual_detail_scroll) *out_actual_detail_scroll = actual_detail_scroll;
+    if (out_detail_viewport) {
+      *out_detail_viewport = detail_viewport_t{
+          .x = detail_x,
+          .y = detail_y,
+          .width = detail_width,
+          .height = detail_height,
+          .scrollbar_x = scrollbar_x,
+          .top_line = actual_detail_scroll,
+          .page_lines = static_cast<std::size_t>(detail_height),
+          .total_lines = detail_total_lines};
+    }
   } else {
     std::ostringstream out;
-    out << "This console also tracks finished Super Hero loops.\n\n"
+    out << "This lane becomes active when a Marshal Hero session pauses for "
+           "clarification or governance.\n\n"
         << "Operator: "
         << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
-        << "Super root: " << super_root << "\n\n"
+        << "Marshal root: " << marshal_root << "\n\n"
         << "What to do here:\n"
-        << "- review the finished-loop summary report\n"
-        << "- acknowledge it after inspection, or dismiss it to clear the inbox\n"
-        << "- stop does not apply here because these loops are already terminal\n"
+        << "- wait for a paused session to appear\n"
+        << "- press Tab to cycle lanes when overview or reviews are relevant\n"
         << "- press r to refresh\n"
         << "- press q to exit\n\n"
         << "Non-interactive alternative:\n"
-        << "hero.human.list_reports";
+        << "hero.human.list_requests";
     draw_wrapped_region_block(header_h + 2, left_w + 2, right_w - 4, body_h - 4,
                               out.str());
   }
 
   draw_boxed_region(header_h + body_h, 0, footer_h, W, " Controls ");
-  const std::string controls =
-      pending.empty() ? "r refresh  q quit"
-                      : "Up/Down select  Enter inspect  a acknowledge report  d dismiss report  r refresh  q quit";
-  mvaddnstr(header_h + body_h + 1, 2, controls.c_str(), W - 4);
-  if (!status_line.empty()) {
-    attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
-    mvaddnstr(header_h + body_h + 1, std::max(2, W / 2),
-              ellipsize_text(status_line, std::max(8, W / 2 - 3)).c_str(),
-              std::max(8, W / 2 - 3));
-    attroff(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
+  std::string controls =
+      pending.empty()
+          ? "r refresh  q quit"
+          : "Up/Down select  Wheel/PgUp/PgDn scroll detail  Home/End jump  Enter inspect/respond  r refresh  q quit";
+  if (summary_count > 0) controls = "Tab cycle lanes  " + controls;
+  mvaddnstr(header_h + body_h + 1, 2,
+            ellipsize_text(controls, W - 4).c_str(), W - 4);
+
+  refresh();
+}
+
+void render_human_reviews_screen(
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>& pending,
+    std::size_t request_count, std::string_view operator_id,
+    std::string_view marshal_root, std::size_t selected,
+    std::string_view summary_text, std::size_t detail_scroll,
+    std::size_t* out_detail_total_lines, std::size_t* out_detail_page_lines,
+    std::size_t* out_actual_detail_scroll, detail_viewport_t* out_detail_viewport,
+    std::string_view status_line, bool status_is_error) {
+  if (out_detail_total_lines) *out_detail_total_lines = 0;
+  if (out_detail_page_lines) *out_detail_page_lines = 0;
+  if (out_actual_detail_scroll) *out_actual_detail_scroll = 0;
+  if (out_detail_viewport) *out_detail_viewport = detail_viewport_t{};
+  const int W = COLS;
+  const int H = LINES;
+  if (W < 56 || H < 12) {
+    erase();
+    mvaddnstr(0, 0,
+              "Human Hero: terminal too small. Resize or use hero.human.* tools.",
+              std::max(0, W - 1));
+    refresh();
+    return;
   }
+  const int header_h = 4;
+  const int footer_h = 3;
+  const int body_h = H - header_h - footer_h;
+  const int left_w = std::clamp(W / 3, 28, std::max(28, W - 24));
+  const int right_w = W - left_w;
+
+  if (has_colors()) attrset(COLOR_PAIR(6));
+  erase();
+
+  draw_boxed_region(0, 0, header_h, W, " Human Hero ");
+  attron(COLOR_PAIR(1) | A_BOLD);
+  const std::string header_line =
+      "Operator session console | requests: " +
+      std::to_string(request_count) + " | reviews: " +
+      std::to_string(pending.size()) + " | lane: " +
+      std::string(
+          operator_console_view_label(operator_console_view_t::summaries)) +
+      " | operator: " +
+      std::string(operator_id.empty() ? "<unset>" : operator_id);
+  mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
+  attroff(COLOR_PAIR(1) | A_BOLD);
+  draw_status_line(2, 2, W - 4, status_line, status_is_error);
+
+  draw_boxed_region(header_h, 0, body_h, left_w,
+                    pending.empty() ? " Reviews " : " Pending Reviews ");
+  if (pending.empty()) {
+    draw_centered_region_line(header_h + 2, 0, left_w, "No Pending Reviews", 5,
+                              true);
+    draw_centered_region_line(
+        header_h + 4, 0, left_w,
+        "Idle and finished Marshal Hero review reports appear here.");
+    draw_centered_region_line(
+        header_h + 6, 0, left_w,
+        request_count == 0 ? "Press r to refresh the lane."
+                           : "Press Tab to cycle lanes.");
+    draw_centered_region_line(header_h + 7, 0, left_w,
+                              "Press q to leave the console.");
+  } else {
+    const int max_rows = body_h - 2;
+    std::size_t top = 0;
+    if (selected >= static_cast<std::size_t>(max_rows)) {
+      top = selected - static_cast<std::size_t>(max_rows) + 1;
+    }
+    for (int row = 0; row < max_rows; ++row) {
+      const std::size_t idx = top + static_cast<std::size_t>(row);
+      if (idx >= pending.size()) break;
+      const auto& session = pending[idx];
+      const std::string label = session_state_badge(session) + " " +
+                                session.objective_name + " | " + session.marshal_session_id;
+      const int row_y = header_h + 1 + row;
+      clear_region_line(row_y, 1, left_w - 2);
+      const int accent_color = session_accent_color(session);
+      if (idx == selected) {
+        attron(COLOR_PAIR(2) | A_BOLD);
+      } else if (accent_color > 0) {
+        attron(COLOR_PAIR(accent_color) | A_BOLD);
+      }
+      mvaddnstr(row_y, 2, ellipsize_text(label, left_w - 4).c_str(),
+                left_w - 4);
+      if (idx == selected) {
+        attroff(COLOR_PAIR(2) | A_BOLD);
+      } else if (accent_color > 0) {
+        attroff(COLOR_PAIR(accent_color) | A_BOLD);
+      }
+    }
+  }
+
+  draw_boxed_region(header_h, left_w, body_h, right_w,
+                    pending.empty() ? " Overview " : " Review Report ");
+  if (!pending.empty()) {
+    const auto& session = pending[selected];
+    const int accent_color = session_accent_color(session);
+    std::string meta = "review report | session=" + session.marshal_session_id +
+                       "  finish_reason=" + session.finish_reason;
+    attron(COLOR_PAIR(accent_color) | A_BOLD);
+    mvaddnstr(header_h + 1, left_w + 2,
+              ellipsize_text(meta, right_w - 4).c_str(), right_w - 4);
+    attroff(COLOR_PAIR(accent_color) | A_BOLD);
+    const std::string subtitle = operator_session_state_detail(session) + " | " +
+                                 build_summary_effort_text(session);
+    mvaddnstr(header_h + 2, left_w + 2,
+              ellipsize_text(subtitle, right_w - 4).c_str(), right_w - 4);
+    const int detail_x = left_w + 2;
+    const int detail_y = header_h + 4;
+    const int detail_width = std::max(1, right_w - 5);
+    const int detail_height = std::max(1, body_h - 7);
+    const int scrollbar_x = detail_x + detail_width + 1;
+    std::size_t actual_detail_scroll = 0;
+    const std::size_t detail_total_lines = draw_wrapped_region_block_scrolled(
+        detail_y, detail_x, detail_width, detail_height, summary_text,
+        detail_scroll, &actual_detail_scroll);
+    draw_vertical_scrollbar(detail_y, scrollbar_x, detail_height,
+                            actual_detail_scroll,
+                            static_cast<std::size_t>(detail_height),
+                            detail_total_lines);
+    draw_detail_scroll_indicator(header_h + body_h - 2, left_w + 2, right_w - 4,
+                                 actual_detail_scroll,
+                                 static_cast<std::size_t>(detail_height),
+                                 detail_total_lines);
+    if (out_detail_total_lines) *out_detail_total_lines = detail_total_lines;
+    if (out_detail_page_lines) {
+      *out_detail_page_lines = static_cast<std::size_t>(detail_height);
+    }
+    if (out_actual_detail_scroll) *out_actual_detail_scroll = actual_detail_scroll;
+    if (out_detail_viewport) {
+      *out_detail_viewport = detail_viewport_t{
+          .x = detail_x,
+          .y = detail_y,
+          .width = detail_width,
+          .height = detail_height,
+          .scrollbar_x = scrollbar_x,
+          .top_line = actual_detail_scroll,
+          .page_lines = static_cast<std::size_t>(detail_height),
+          .total_lines = detail_total_lines};
+    }
+  } else {
+    std::ostringstream out;
+    out << "This lane tracks idle and finished Marshal Hero review reports.\n\n"
+        << "Operator: "
+        << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
+        << "Marshal root: " << marshal_root << "\n\n"
+        << "What to do here:\n"
+        << "- inspect the review report\n"
+        << "- continue idle sessions with a fresh operator instruction when you want more work to launch\n"
+        << "- acknowledge a report only after review; that signs it off with a required message and clears it from the queue\n"
+        << "- finished sessions are informational; idle sessions are resumable\n"
+        << "- press Tab to cycle lanes when overview or requests are relevant\n"
+        << "- press r to refresh\n"
+        << "- press q to exit\n\n"
+        << "Non-interactive alternative:\n"
+        << "hero.human.list_summaries";
+    draw_wrapped_region_block(header_h + 2, left_w + 2, right_w - 4, body_h - 4,
+                              out.str());
+  }
+
+  draw_boxed_region(header_h + body_h, 0, footer_h, W, " Controls ");
+  std::string controls =
+      pending.empty()
+          ? "r refresh  q quit"
+          : "Up/Down select  Wheel/PgUp/PgDn scroll detail  Home/End jump  Enter inspect  c continue session  a acknowledge review  r refresh  q quit";
+  if (request_count > 0) controls = "Tab cycle lanes  " + controls;
+  mvaddnstr(header_h + body_h + 1, 2,
+            ellipsize_text(controls, W - 4).c_str(), W - 4);
 
   refresh();
 }
 
 void render_human_requests_bootstrap_screen(std::string_view operator_id,
-                                            std::string_view super_root,
+                                            std::string_view marshal_root,
                                             std::string_view status_line,
                                             bool status_is_error) {
   const int W = COLS;
@@ -1682,11 +2494,11 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   draw_wrapped_region_block(
       header_h + 2, 2, W - 4, body_h - 4,
       std::string("Initializing operator console...\n\n"
-                  "[work] scanning Super Hero escalation queue\n\n") +
+                  "[work] scanning Marshal Hero session console\n\n") +
           "operator: " +
           std::string(operator_id.empty() ? "<unset>" : operator_id) + "\n" +
-          "super_root: " + std::string(super_root) + "\n\n"
-          "The escalation inbox will appear when the scan completes.");
+          "marshal_root: " + std::string(marshal_root) + "\n\n"
+          "The operator console will appear when the scan completes.");
 
   draw_boxed_region(header_h + body_h, 0, footer_h, W, " Status ");
   attron(COLOR_PAIR(status_is_error ? 4 : 5) | A_BOLD);
@@ -1699,7 +2511,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
 
 [[nodiscard]] bool collect_interactive_resolution_inputs(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
     bool stop_direct, interactive_resolution_input_t* out, bool* cancelled,
     std::string* error) {
   if (cancelled) *cancelled = false;
@@ -1711,16 +2523,16 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   *out = interactive_resolution_input_t{};
 
   if (stop_direct) {
-    out->resolution_kind = "stop";
+    out->resolution_kind = "terminate";
   } else {
     std::size_t resolution_idx = 0;
     if (!prompt_choice_dialog(
             " Resolution ",
-            "Choose how to answer this pending escalation.",
-            {"Grant requested escalation",
+            "Choose how to answer this pending governance request.",
+            {"Grant requested governance",
              "Clarify objective or policy without widening authority",
-             "Deny requested escalation",
-             "Stop the loop"},
+             "Deny requested governance",
+             "Terminate the session"},
             &resolution_idx, cancelled)) {
       return false;
     }
@@ -1732,7 +2544,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     } else if (resolution_idx == 2) {
       out->resolution_kind = "deny";
     } else {
-      out->resolution_kind = "stop";
+      out->resolution_kind = "terminate";
     }
   }
 
@@ -1742,27 +2554,27 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           : (out->resolution_kind == "clarify")
                 ? " Clarification "
                 : (out->resolution_kind == "deny") ? " Denial rationale "
-                                                    : " Stop rationale ";
+                                                    : " Termination rationale ";
   const std::string prompt_body =
       (out->resolution_kind == "grant")
-          ? "Why grant this escalation? This reason is shown to Super Hero."
+          ? "Why grant this governance request? This reason is shown to Marshal Hero."
           : (out->resolution_kind == "clarify")
-                ? "What clarification should Super Hero incorporate on the next planning turn?"
+                ? "What clarification should Marshal Hero incorporate on the next planning checkpoint?"
                 : (out->resolution_kind == "deny")
-                      ? "Why deny this escalation? This reason is shown to Super Hero."
-                      : "Why stop this loop? This reason is shown to Super Hero.";
+                      ? "Why deny this governance request? This reason is shown to Marshal Hero."
+                      : "Why terminate this session? This reason is shown to Marshal Hero.";
   if (!prompt_text_dialog(prompt_title, prompt_body, &out->reason, false, false,
                           cancelled)) {
     return false;
   }
   if (cancelled && *cancelled) return true;
 
-  (void)loop;
+  (void)session;
   return true;
 }
 
-[[nodiscard]] bool run_ncurses_request_responder(app_context_t* app,
-                                                 std::string* error) {
+[[nodiscard]] bool run_ncurses_operator_console(app_context_t* app,
+                                                std::string* error) {
   if (error) error->clear();
   if (!app) {
     if (error) *error = "human app pointer is null";
@@ -1775,109 +2587,195 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     opts.clear_on_start = false;
     cuwacunu::iinuji::NcursesApp curses_app(opts);
     init_human_ncurses_theme();
+    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, nullptr);
+    mouseinterval(0);
 
-    std::vector<cuwacunu::hero::super::super_loop_record_t> pending_requests{};
-    std::vector<cuwacunu::hero::super::super_loop_record_t> pending_reports{};
-    auto sort_pending = [&](std::vector<cuwacunu::hero::super::super_loop_record_t>* rows) {
-      if (!rows) return;
-      std::sort(rows->begin(), rows->end(), [](const auto& a, const auto& b) {
-        if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
-        return a.loop_id > b.loop_id;
-      });
-    };
-
-    std::size_t selected = 0;
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t> all_sessions{};
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t> pending_requests{};
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t> pending_reviews{};
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t> session_rows{};
+    operator_console_view_t current_view = operator_console_view_t::sessions;
+    operator_console_phase_filter_t session_phase_filter =
+        operator_console_phase_filter_t::all;
+    std::size_t selected_session = 0;
+    std::size_t selected_request = 0;
+    std::size_t selected_review = 0;
+    std::size_t detail_scroll = 0;
+    std::size_t detail_total_lines = 0;
+    std::size_t detail_page_lines = 0;
+    detail_viewport_t detail_viewport{};
+    bool detail_dirty = true;
     std::string detail_text{};
-    std::string status = "Scanning pending escalations...";
+    std::string detail_session_id{};
+    operator_console_view_t detail_view = operator_console_view_t::sessions;
+    std::string status = "Scanning operator console...";
     bool status_is_error = false;
     bool dirty = true;
-    bool queue_refresh_pending = true;
-    bool queue_refresh_needs_paint = true;
+    bool inbox_refresh_pending = true;
+    bool inbox_refresh_needs_paint = true;
     bool has_loaded_once = false;
 
     for (;;) {
-      if (queue_refresh_pending && queue_refresh_needs_paint) dirty = true;
+      if (inbox_refresh_pending && inbox_refresh_needs_paint) dirty = true;
 
       if (dirty) {
-        if (!has_loaded_once && queue_refresh_pending) {
+        if (!has_loaded_once && inbox_refresh_pending) {
           render_human_requests_bootstrap_screen(
-              app->defaults.operator_id, app->defaults.super_root.string(),
+              app->defaults.operator_id, app->defaults.marshal_root.string(),
               status, status_is_error);
         } else {
-          const bool showing_requests = !pending_requests.empty();
-          auto& visible = showing_requests ? pending_requests : pending_reports;
-          if (!visible.empty()) selected = std::min(selected, visible.size() - 1);
-          else selected = 0;
-          detail_text.clear();
+          filter_sessions_for_console(all_sessions, session_phase_filter,
+                                      &session_rows);
+
+          auto& visible =
+              current_view == operator_console_view_t::sessions
+                  ? session_rows
+                  : (current_view == operator_console_view_t::requests
+                         ? pending_requests
+                         : pending_reviews);
+          auto& selected =
+              current_view == operator_console_view_t::sessions
+                  ? selected_session
+                  : (current_view == operator_console_view_t::requests
+                         ? selected_request
+                         : selected_review);
           if (!visible.empty()) {
-            std::string detail_error{};
-            const bool read_ok =
-                showing_requests
-                    ? read_request_text_for_loop(visible[selected], &detail_text,
-                                                 &detail_error)
-                    : read_report_text_for_loop(visible[selected], &detail_text,
-                                                &detail_error);
-            if (!read_ok) {
-              detail_text = std::string("<failed to read ") +
-                            (showing_requests ? "escalation" : "report") + ": " +
-                            detail_error + ">";
-            }
+            selected = std::min(selected, visible.size() - 1);
+          } else {
+            selected = 0;
           }
-          if (showing_requests) {
+
+          if (visible.empty()) {
+            detail_text.clear();
+            detail_session_id.clear();
+            detail_scroll = 0;
+            detail_total_lines = 0;
+            detail_page_lines = 0;
+            detail_viewport = detail_viewport_t{};
+            detail_dirty = false;
+          } else if (detail_dirty || detail_session_id != visible[selected].marshal_session_id ||
+                     detail_view != current_view) {
+            if (current_view == operator_console_view_t::sessions) {
+              const bool has_pending_review =
+                  find_session_index_by_id(pending_reviews,
+                                           visible[selected].marshal_session_id)
+                      .has_value();
+              detail_text = build_session_console_detail_text(
+                  visible[selected], has_pending_review);
+            } else {
+              detail_text.clear();
+              std::string detail_error{};
+              const bool read_ok =
+                  current_view == operator_console_view_t::requests
+                      ? read_request_text_for_session(visible[selected], &detail_text,
+                                                      &detail_error)
+                      : read_summary_text_for_session(visible[selected], &detail_text,
+                                                      &detail_error);
+              if (!read_ok) {
+                detail_text = std::string("<failed to read ") +
+                              (current_view == operator_console_view_t::requests
+                                   ? "request"
+                                   : "review report") +
+                              ": " + detail_error + ">";
+              }
+            }
+            detail_session_id = visible[selected].marshal_session_id;
+            detail_view = current_view;
+            detail_dirty = false;
+          }
+
+          if (current_view == operator_console_view_t::sessions) {
+            render_human_sessions_screen(
+                all_sessions, pending_requests.size(), pending_reviews.size(),
+                session_phase_filter, app->defaults.operator_id,
+                app->defaults.marshal_root.string(), selected, detail_text,
+                detail_scroll, &detail_total_lines, &detail_page_lines,
+                &detail_scroll, &detail_viewport, status, status_is_error);
+          } else if (current_view == operator_console_view_t::requests) {
             render_human_requests_screen(
-                pending_requests, app->defaults.operator_id,
-                app->defaults.super_root.string(), selected, detail_text, status,
+                pending_requests, pending_reviews.size(),
+                app->defaults.operator_id, app->defaults.marshal_root.string(),
+                selected, detail_text, detail_scroll, &detail_total_lines,
+                &detail_page_lines, &detail_scroll, &detail_viewport, status,
                 status_is_error);
           } else {
-            render_human_reports_screen(
-                pending_reports, app->defaults.operator_id,
-                app->defaults.super_root.string(), selected, detail_text, status,
+            render_human_reviews_screen(
+                pending_reviews, pending_requests.size(),
+                app->defaults.operator_id, app->defaults.marshal_root.string(),
+                selected, detail_text, detail_scroll, &detail_total_lines,
+                &detail_page_lines, &detail_scroll, &detail_viewport, status,
                 status_is_error);
           }
         }
         dirty = false;
       }
 
-      if (queue_refresh_pending) {
-        if (queue_refresh_needs_paint) {
-          queue_refresh_needs_paint = false;
+      if (inbox_refresh_pending) {
+        if (inbox_refresh_needs_paint) {
+          inbox_refresh_needs_paint = false;
           continue;
         }
 
         std::string refresh_error{};
-        std::vector<cuwacunu::hero::super::super_loop_record_t> refreshed_requests{};
-        std::vector<cuwacunu::hero::super::super_loop_record_t> refreshed_reports{};
-        if (!collect_pending_requests(*app, &refreshed_requests, &refresh_error)) {
-          status = refresh_error;
-          status_is_error = true;
-        } else if (!collect_pending_reports(*app, &refreshed_reports,
-                                            &refresh_error)) {
+        human_operator_inbox_t inbox{};
+        if (!collect_human_operator_inbox(*app, &inbox, true, &refresh_error)) {
           status = refresh_error;
           status_is_error = true;
         } else {
-          pending_requests = std::move(refreshed_requests);
-          pending_reports = std::move(refreshed_reports);
-          sort_pending(&pending_requests);
-          sort_pending(&pending_reports);
-          const auto& visible =
-              !pending_requests.empty() ? pending_requests : pending_reports;
-          if (!visible.empty()) selected = std::min(selected, visible.size() - 1);
-          else selected = 0;
+          all_sessions = std::move(inbox.all_sessions);
+          pending_requests = std::move(inbox.actionable_requests);
+          pending_reviews = std::move(inbox.unacknowledged_summaries);
+          sort_sessions_newest_first(&all_sessions);
+          sort_sessions_newest_first(&pending_requests);
+          sort_sessions_newest_first(&pending_reviews);
+          if (!pending_requests.empty()) {
+            selected_request =
+                std::min(selected_request, pending_requests.size() - 1);
+          } else {
+            selected_request = 0;
+          }
+          if (!pending_reviews.empty()) {
+            selected_review =
+                std::min(selected_review, pending_reviews.size() - 1);
+          } else {
+            selected_review = 0;
+          }
+          filter_sessions_for_console(all_sessions, session_phase_filter,
+                                      &session_rows);
+          if (!session_rows.empty()) {
+            selected_session = std::min(selected_session, session_rows.size() - 1);
+          } else {
+            selected_session = 0;
+          }
+          const bool has_sessions = !all_sessions.empty();
           const bool has_requests = !pending_requests.empty();
-          const bool has_reports = !pending_reports.empty();
+          const bool has_reviews = !pending_reviews.empty();
           status = has_loaded_once
-                       ? (has_requests
-                              ? "Refreshed pending escalations."
-                              : (has_reports ? "Refreshed pending reports."
-                                             : "No pending escalations or reports."))
-                       : (has_requests
-                              ? "Ready."
-                              : (has_reports ? "Ready with finished-loop reports."
-                                             : "No pending escalations or reports. Waiting for Super Hero."));
+                       ? (has_sessions
+                              ? (has_requests
+                                     ? (has_reviews
+                                            ? "Refreshed sessions, requests, and reviews."
+                                            : "Refreshed sessions and pending requests.")
+                                     : (has_reviews
+                                            ? "Refreshed sessions and reviews."
+                                            : "Refreshed session inventory."))
+                              : "No sessions or pending items.")
+                       : (has_sessions
+                              ? (has_requests
+                                     ? (has_reviews
+                                            ? "Ready with sessions, requests, and reviews."
+                                            : "Ready with sessions and requests.")
+                                     : (has_reviews
+                                            ? "Ready with sessions and reviews."
+                                            : "Ready with session inventory."))
+                              : "No sessions or pending items. Waiting for Marshal Hero.");
           status_is_error = false;
         }
         has_loaded_once = true;
-        queue_refresh_pending = false;
+        inbox_refresh_pending = false;
+        detail_dirty = true;
+        detail_scroll = 0;
+        detail_viewport = detail_viewport_t{};
         dirty = true;
         continue;
       }
@@ -1888,30 +2786,350 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         dirty = true;
         continue;
       }
+      if (ch == KEY_MOUSE) {
+        MEVENT me{};
+        if (getmouse(&me) == OK && mouse_hits_detail_viewport(detail_viewport, me.x, me.y)) {
+          const std::size_t max_scroll =
+              detail_viewport.total_lines > detail_viewport.page_lines
+                  ? detail_viewport.total_lines - detail_viewport.page_lines
+                  : 0u;
+          bool handled_mouse = false;
+          if (me.bstate & BUTTON4_PRESSED) {
+            detail_scroll = detail_scroll > 3 ? detail_scroll - 3 : 0u;
+            handled_mouse = true;
+          } else if (me.bstate & BUTTON5_PRESSED) {
+            detail_scroll = std::min(detail_scroll + 3, max_scroll);
+            handled_mouse = true;
+          } else if ((me.bstate & BUTTON1_PRESSED) ||
+                     (me.bstate & BUTTON1_CLICKED)) {
+            if (detail_viewport.scrollbar_x > 0 &&
+                me.x == detail_viewport.scrollbar_x && max_scroll > 0) {
+              const int relative_y =
+                  std::clamp(me.y - detail_viewport.y, 0, detail_viewport.height - 1);
+              detail_scroll =
+                  detail_viewport.height <= 1
+                      ? max_scroll
+                      : static_cast<std::size_t>(
+                            (static_cast<unsigned long long>(relative_y) * max_scroll) /
+                            static_cast<unsigned long long>(detail_viewport.height - 1));
+              handled_mouse = true;
+            }
+          }
+          if (handled_mouse) {
+            dirty = true;
+            continue;
+          }
+        }
+        continue;
+      }
       if (ch == 'r' || ch == 'R') {
-        status = "Refreshing escalation queue...";
+        status = "Refreshing operator inbox...";
         status_is_error = false;
-        queue_refresh_pending = true;
-        queue_refresh_needs_paint = true;
+        inbox_refresh_pending = true;
+        inbox_refresh_needs_paint = true;
+        detail_dirty = true;
+        detail_scroll = 0;
+        detail_viewport = detail_viewport_t{};
         dirty = true;
         continue;
       }
-      const bool showing_requests = !pending_requests.empty();
-      auto& visible = showing_requests ? pending_requests : pending_reports;
-      if (visible.empty()) continue;
+      if (ch == '\t' || ch == KEY_BTAB) {
+        std::string active_session_id{};
+        if (current_view == operator_console_view_t::sessions) {
+          filter_sessions_for_console(all_sessions, session_phase_filter,
+                                      &session_rows);
+          if (!session_rows.empty() && selected_session < session_rows.size()) {
+            active_session_id = session_rows[selected_session].marshal_session_id;
+          }
+        } else if (current_view == operator_console_view_t::requests) {
+          if (!pending_requests.empty() && selected_request < pending_requests.size()) {
+            active_session_id = pending_requests[selected_request].marshal_session_id;
+          }
+        } else if (!pending_reviews.empty() &&
+                   selected_review < pending_reviews.size()) {
+          active_session_id = pending_reviews[selected_review].marshal_session_id;
+        }
+        cycle_operator_console_view(&current_view);
+        if (!active_session_id.empty()) {
+          filter_sessions_for_console(all_sessions, session_phase_filter,
+                                      &session_rows);
+          if (current_view == operator_console_view_t::sessions) {
+            select_session_by_id(session_rows, active_session_id, &selected_session);
+          } else if (current_view == operator_console_view_t::requests) {
+            select_session_by_id(pending_requests, active_session_id,
+                                 &selected_request);
+          } else {
+            select_session_by_id(pending_reviews, active_session_id,
+                                 &selected_review);
+          }
+        }
+        detail_dirty = true;
+        detail_scroll = 0;
+        detail_viewport = detail_viewport_t{};
+        dirty = true;
+        continue;
+      }
+      filter_sessions_for_console(all_sessions, session_phase_filter, &session_rows);
+      auto& visible =
+          current_view == operator_console_view_t::sessions
+              ? session_rows
+              : (current_view == operator_console_view_t::requests
+                     ? pending_requests
+                     : pending_reviews);
+      auto& selected =
+          current_view == operator_console_view_t::sessions
+              ? selected_session
+              : (current_view == operator_console_view_t::requests
+                     ? selected_request
+                     : selected_review);
+      if (current_view == operator_console_view_t::sessions &&
+          (ch == 'f' || ch == 'F')) {
+        cycle_operator_console_phase_filter(&session_phase_filter);
+        selected_session = 0;
+        detail_dirty = true;
+        detail_scroll = 0;
+        detail_viewport = detail_viewport_t{};
+        dirty = true;
+        continue;
+      }
+      if (!visible.empty()) {
+        selected = std::min(selected, visible.size() - 1);
+      }
+      if (visible.empty()) {
+        dirty = true;
+        continue;
+      }
       if (ch == KEY_UP || ch == 'k') {
         if (selected > 0) --selected;
+        detail_dirty = true;
+        detail_scroll = 0;
+        detail_viewport = detail_viewport_t{};
         dirty = true;
         continue;
       }
       if (ch == KEY_DOWN || ch == 'j') {
         if (selected + 1 < visible.size()) ++selected;
+        detail_dirty = true;
+        detail_scroll = 0;
+        detail_viewport = detail_viewport_t{};
         dirty = true;
         continue;
       }
-      if (showing_requests &&
-          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' || ch == 'C' ||
-           ch == 's' || ch == 'S')) {
+      if (ch == KEY_PPAGE) {
+        if (detail_page_lines != 0) {
+          detail_scroll = detail_scroll > detail_page_lines
+                              ? detail_scroll - detail_page_lines
+                              : 0u;
+          dirty = true;
+        }
+        continue;
+      }
+      if (ch == KEY_NPAGE) {
+        if (detail_page_lines != 0 && detail_total_lines > detail_page_lines) {
+          const std::size_t max_scroll = detail_total_lines - detail_page_lines;
+          detail_scroll = std::min(detail_scroll + detail_page_lines, max_scroll);
+          dirty = true;
+        }
+        continue;
+      }
+      if (ch == KEY_HOME) {
+        if (detail_scroll != 0) {
+          detail_scroll = 0;
+          dirty = true;
+        }
+        continue;
+      }
+      if (ch == KEY_END) {
+        if (detail_page_lines != 0 && detail_total_lines > detail_page_lines) {
+          detail_scroll = detail_total_lines - detail_page_lines;
+          dirty = true;
+        }
+        continue;
+      }
+      if (current_view == operator_console_view_t::sessions) {
+        const auto& session = visible[selected];
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+          if (find_session_index_by_id(pending_requests, session.marshal_session_id)
+                  .has_value()) {
+            current_view = operator_console_view_t::requests;
+            select_session_by_id(pending_requests, session.marshal_session_id,
+                                 &selected_request);
+            detail_dirty = true;
+            detail_scroll = 0;
+            dirty = true;
+            continue;
+          }
+          if (find_session_index_by_id(pending_reviews, session.marshal_session_id)
+                  .has_value()) {
+            current_view = operator_console_view_t::summaries;
+            select_session_by_id(pending_reviews, session.marshal_session_id,
+                                 &selected_review);
+            detail_dirty = true;
+            detail_scroll = 0;
+            dirty = true;
+            continue;
+          }
+          status =
+              "This session has no pending request or review lane entry.";
+          status_is_error = false;
+          dirty = true;
+          continue;
+        }
+        if ((ch == 'p' || ch == 'P') &&
+            (session.phase == "active" || session.phase == "running_campaign")) {
+          std::string structured{};
+          std::string action_error{};
+          if (!pause_marshal_session(app, session, false, &structured,
+                                   &action_error)) {
+            status = action_error;
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          status = "Paused selected session. Refreshing operator console...";
+          status_is_error = false;
+          inbox_refresh_pending = true;
+          inbox_refresh_needs_paint = true;
+          detail_dirty = true;
+          detail_scroll = 0;
+          dirty = true;
+          continue;
+        }
+        if ((ch == 'u' || ch == 'U') && session.phase == "paused" &&
+            session.pause_kind == "operator") {
+          std::string structured{};
+          std::string action_error{};
+          if (!resume_marshal_session(app, session, &structured, &action_error)) {
+            status = action_error;
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          status = "Resumed operator-paused session. Refreshing operator console...";
+          status_is_error = false;
+          inbox_refresh_pending = true;
+          inbox_refresh_needs_paint = true;
+          detail_dirty = true;
+          detail_scroll = 0;
+          dirty = true;
+          continue;
+        }
+        if ((ch == 'c' || ch == 'C') && session.phase == "idle") {
+          std::string instruction{};
+          bool cancelled = false;
+          if (!prompt_text_dialog(
+                  " Continue session ",
+                  "Provide the operator instruction that should launch more work for this idle session. This is the action that continues the session.",
+                  &instruction, false, false, &cancelled)) {
+            status = "failed to collect continuation instruction";
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          if (cancelled) {
+            status = "Cancelled.";
+            status_is_error = false;
+            dirty = true;
+            continue;
+          }
+          std::string structured{};
+          std::string action_error{};
+          if (!continue_marshal_session(app, session, instruction, &structured,
+                                      &action_error)) {
+            status = action_error;
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          status =
+              "Continued idle session from the session cockpit. Refreshing...";
+          status_is_error = false;
+          inbox_refresh_pending = true;
+          inbox_refresh_needs_paint = true;
+          detail_dirty = true;
+          detail_scroll = 0;
+          dirty = true;
+          continue;
+        }
+        if ((ch == 't' || ch == 'T') && session.phase != "finished") {
+          bool confirmed = false;
+          bool cancelled = false;
+          if (!prompt_yes_no_dialog(
+                  " Terminate session ",
+                  "Terminate the selected session? This action is final.",
+                  false, &confirmed, &cancelled)) {
+            status = "failed to collect session termination confirmation";
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          if (cancelled || !confirmed) {
+            status = "Cancelled.";
+            status_is_error = false;
+            dirty = true;
+            continue;
+          }
+          std::string structured{};
+          std::string action_error{};
+          if (!terminate_marshal_session(app, session, false, &structured,
+                                       &action_error)) {
+            status = action_error;
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          status =
+              "Terminated selected session from the session cockpit. Refreshing...";
+          status_is_error = false;
+          inbox_refresh_pending = true;
+          inbox_refresh_needs_paint = true;
+          detail_dirty = true;
+          detail_scroll = 0;
+          dirty = true;
+          continue;
+        }
+        continue;
+      }
+      if (current_view == operator_console_view_t::requests &&
+          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' ||
+           ch == 'C' || ch == 's' || ch == 'S')) {
+        if (is_clarification_pause_kind(visible[selected].pause_kind)) {
+          std::string answer{};
+          bool cancelled = false;
+          if (!prompt_text_dialog(
+                  " Answer request ",
+                  "Provide the clarification answer that Marshal Hero should continue with.",
+                  &answer, false, false, &cancelled)) {
+            status = "failed to collect request answer";
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          if (cancelled) {
+            status = "Cancelled.";
+            status_is_error = false;
+            dirty = true;
+            continue;
+          }
+          std::string structured{};
+          std::string response_error{};
+          if (!build_request_answer_and_resume(app, visible[selected], answer,
+                                               &structured, &response_error)) {
+            status = response_error;
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          status =
+              "Applied clarification answer. Refreshing operator inbox...";
+          status_is_error = false;
+          inbox_refresh_pending = true;
+          inbox_refresh_needs_paint = true;
+          detail_dirty = true;
+          detail_scroll = 0;
+          dirty = true;
+          continue;
+        }
         const bool stop_direct = (ch == 's' || ch == 'S');
         interactive_resolution_input_t input{};
         bool cancelled = false;
@@ -1940,33 +3158,71 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           dirty = true;
           continue;
         }
-        status = "Applied signed human resolution. Refreshing queue...";
+        status =
+            "Applied signed governance resolution. Refreshing operator inbox...";
         status_is_error = false;
-        queue_refresh_pending = true;
-        queue_refresh_needs_paint = true;
+        inbox_refresh_pending = true;
+        inbox_refresh_needs_paint = true;
+        detail_dirty = true;
+        detail_scroll = 0;
         dirty = true;
         continue;
       }
-      if (!showing_requests &&
-          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'a' ||
-           ch == 'A' || ch == 'd' || ch == 'D')) {
+      if (current_view == operator_console_view_t::summaries &&
+          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' ||
+           ch == 'C' || ch == 'a' || ch == 'A')) {
+        const bool can_continue = (visible[selected].phase == "idle");
         if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-          status =
-              "Informational terminal report. Super is not waiting; use 'a' to acknowledge or 'd' to dismiss.";
+          status = can_continue
+                       ? "Idle review report. Use 'c' to launch more work, or 'a' to acknowledge and clear the report."
+                       : "Finished review report. Use 'a' to acknowledge and clear the report after review.";
           status_is_error = false;
           dirty = true;
           continue;
         }
-        const bool dismiss = (ch == 'd' || ch == 'D');
+        if ((ch == 'c' || ch == 'C') && can_continue) {
+          std::string instruction{};
+          bool cancelled = false;
+          if (!prompt_text_dialog(
+                  " Continue session ",
+                  "Provide the operator instruction that should launch more work for this idle session. This is the action that continues the session.",
+                  &instruction, false, false, &cancelled)) {
+            status = "failed to collect continuation instruction";
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          if (cancelled) {
+            status = "Cancelled.";
+            status_is_error = false;
+            dirty = true;
+            continue;
+          }
+          std::string structured{};
+          std::string continue_error{};
+          if (!continue_marshal_session(app, visible[selected], instruction,
+                                      &structured, &continue_error)) {
+            status = continue_error;
+            status_is_error = true;
+            dirty = true;
+            continue;
+          }
+          status = "Continued idle session. Refreshing operator inbox...";
+          status_is_error = false;
+          inbox_refresh_pending = true;
+          inbox_refresh_needs_paint = true;
+          detail_dirty = true;
+          detail_scroll = 0;
+          dirty = true;
+          continue;
+        }
         std::string note{};
         bool cancelled = false;
         if (!prompt_text_dialog(
-                dismiss ? " Report dismissal " : " Report acknowledgment ",
-                dismiss ? "Optional note saved with the signed report dismissal."
-                        : "Optional note saved with the signed report acknowledgment.",
-                &note, false, true, &cancelled)) {
-          status = dismiss ? "failed to collect report dismissal note"
-                           : "failed to collect report acknowledgment note";
+                " Acknowledge review ",
+                "This does not continue the session. It records a signed acknowledgment and clears the review report from the queue after review. Provide a required acknowledgment message:",
+                &note, false, false, &cancelled)) {
+          status = "failed to collect review acknowledgment note";
           status_is_error = true;
           dirty = true;
           continue;
@@ -1979,20 +3235,19 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         }
         std::string structured{};
         std::string ack_error{};
-        if (!(dismiss ? dismiss_terminal_report(app, visible[selected], note,
-                                                &structured, &ack_error)
-                      : acknowledge_terminal_report(app, visible[selected], note,
-                                                    &structured, &ack_error))) {
+        if (!acknowledge_session_summary(app, visible[selected], note,
+                                         &structured, &ack_error)) {
           status = ack_error;
           status_is_error = true;
           dirty = true;
           continue;
         }
-        status = dismiss ? "Dismissed summary report. Refreshing queue..."
-                         : "Acknowledged summary report. Refreshing queue...";
+        status = "Acknowledged review report. Refreshing operator inbox...";
         status_is_error = false;
-        queue_refresh_pending = true;
-        queue_refresh_needs_paint = true;
+        inbox_refresh_pending = true;
+        inbox_refresh_needs_paint = true;
+        detail_dirty = true;
+        detail_scroll = 0;
         dirty = true;
         continue;
       }
@@ -2004,126 +3259,244 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
 }
 
 [[nodiscard]] std::string pending_request_row_to_json(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
   std::ostringstream out;
   out << "{"
-      << "\"loop_id\":" << json_quote(loop.loop_id) << ","
-      << "\"objective_name\":" << json_quote(loop.objective_name) << ","
-      << "\"state\":" << json_quote(loop.state) << ","
-      << "\"state_detail\":" << json_quote(loop.state_detail) << ","
-      << "\"turn_count\":" << loop.turn_count << ","
-      << "\"started_at_ms\":" << loop.started_at_ms << ","
-      << "\"updated_at_ms\":" << loop.updated_at_ms << ","
-      << "\"human_escalation_path\":"
-      << json_quote(loop.human_escalation_path) << ","
-      << "\"human_resolution_path\":"
+      << "\"marshal_session_id\":" << json_quote(session.marshal_session_id) << ","
+      << "\"objective_name\":" << json_quote(session.objective_name) << ","
+      << "\"operator_state\":"
       << json_quote(
-             cuwacunu::hero::super::super_loop_human_resolution_latest_path(
-                 std::filesystem::path(loop.loop_root).parent_path(),
-                 loop.loop_id)
-                 .string())
-      << ",\"human_resolution_sig_path\":"
+             std::string(operator_session_state_label(operator_session_state(session))))
+      << ","
+      << "\"operator_state_detail\":"
+      << json_quote(operator_session_state_detail(session)) << ","
+      << "\"operator_action_hint\":"
+      << json_quote(operator_session_action_hint(session)) << ","
+      << "\"phase\":" << json_quote(session.phase) << ","
+      << "\"phase_detail\":" << json_quote(session.phase_detail) << ","
+      << "\"pause_kind\":" << json_quote(session.pause_kind) << ","
+      << "\"request_kind\":"
+      << json_quote(std::string(human_request_kind_label(session.pause_kind)))
+      << ","
+      << "\"checkpoint_count\":" << session.checkpoint_count << ","
+      << "\"started_at_ms\":" << session.started_at_ms << ","
+      << "\"updated_at_ms\":" << session.updated_at_ms << ","
+      << "\"human_request_path\":"
+      << json_quote(session.human_request_path) << ","
+      << "\"governance_resolution_path\":"
       << json_quote(
-             cuwacunu::hero::super::super_loop_human_resolution_latest_sig_path(
-                 std::filesystem::path(loop.loop_root).parent_path(),
-                 loop.loop_id)
+             cuwacunu::hero::marshal::marshal_session_human_governance_resolution_latest_path(
+                 std::filesystem::path(session.session_root).parent_path(),
+                 session.marshal_session_id)
                  .string())
-      << ",\"escalation_excerpt\":" << json_quote(request_excerpt(loop))
+      << ",\"governance_resolution_sig_path\":"
+      << json_quote(
+             cuwacunu::hero::marshal::marshal_session_human_governance_resolution_latest_sig_path(
+                 std::filesystem::path(session.session_root).parent_path(),
+                 session.marshal_session_id)
+                 .string())
+      << ",\"clarification_answer_path\":"
+      << json_quote(
+             cuwacunu::hero::marshal::
+                 marshal_session_human_clarification_answer_latest_path(
+                 std::filesystem::path(session.session_root).parent_path(),
+                 session.marshal_session_id)
+                 .string())
+      << ",\"request_excerpt\":" << json_quote(request_excerpt(session))
       << "}";
   return out.str();
 }
 
-[[nodiscard]] std::string pending_report_row_to_json(
-    const cuwacunu::hero::super::super_loop_record_t& loop) {
-  const std::optional<std::uint64_t> elapsed_ms = super_loop_elapsed_ms(loop);
+[[nodiscard]] std::string pending_summary_row_to_json(
+    const cuwacunu::hero::marshal::marshal_session_record_t& session) {
+  const std::optional<std::uint64_t> elapsed_ms = marshal_session_elapsed_ms(session);
   std::ostringstream out;
   out << "{"
-      << "\"loop_id\":" << json_quote(loop.loop_id) << ","
-      << "\"objective_name\":" << json_quote(loop.objective_name) << ","
-      << "\"state\":" << json_quote(loop.state) << ","
-      << "\"state_detail\":" << json_quote(loop.state_detail) << ","
-      << "\"turn_count\":" << loop.turn_count << ","
-      << "\"launch_count\":" << loop.launch_count << ","
-      << "\"started_at_ms\":" << loop.started_at_ms << ","
-      << "\"updated_at_ms\":" << loop.updated_at_ms << ","
+      << "\"marshal_session_id\":" << json_quote(session.marshal_session_id) << ","
+      << "\"objective_name\":" << json_quote(session.objective_name) << ","
+      << "\"operator_state\":"
+      << json_quote(
+             std::string(operator_session_state_label(operator_session_state(session))))
+      << ","
+      << "\"operator_state_detail\":"
+      << json_quote(operator_session_state_detail(session)) << ","
+      << "\"operator_action_hint\":"
+      << json_quote(operator_session_action_hint(session)) << ","
+      << "\"phase\":" << json_quote(session.phase) << ","
+      << "\"phase_detail\":" << json_quote(session.phase_detail) << ","
+      << "\"finish_reason\":" << json_quote(session.finish_reason) << ","
+      << "\"checkpoint_count\":" << session.checkpoint_count << ","
+      << "\"launch_count\":" << session.launch_count << ","
+      << "\"started_at_ms\":" << session.started_at_ms << ","
+      << "\"updated_at_ms\":" << session.updated_at_ms << ","
       << "\"finished_at_ms\":"
-      << (loop.finished_at_ms.has_value() ? std::to_string(*loop.finished_at_ms)
+      << (session.finished_at_ms.has_value()
+              ? std::to_string(*session.finished_at_ms)
                                           : "null")
       << ","
       << "\"duration_ms\":"
       << (elapsed_ms.has_value() ? std::to_string(*elapsed_ms) : "null") << ","
-      << "\"max_review_turns\":" << loop.max_review_turns << ","
-      << "\"max_campaign_launches\":" << loop.max_campaign_launches << ","
-      << "\"remaining_review_turns\":" << loop.remaining_review_turns << ","
+      << "\"max_campaign_launches\":" << session.max_campaign_launches << ","
       << "\"remaining_campaign_launches\":"
-      << loop.remaining_campaign_launches << ","
+      << session.remaining_campaign_launches << ","
       << "\"effort_summary_text\":"
-      << json_quote(build_report_effort_summary_text(loop)) << ","
-      << "\"report_path\":" << json_quote(report_path_for_loop(loop).string()) << ","
-      << "\"report_ack_path\":"
-      << json_quote(report_ack_path_for_loop(loop).string()) << ","
-      << "\"report_ack_sig_path\":"
-      << json_quote(report_ack_sig_path_for_loop(loop).string()) << ","
-      << "\"report_excerpt\":" << json_quote(report_excerpt(loop)) << "}";
+      << json_quote(build_summary_effort_text(session)) << ","
+      << "\"summary_path\":"
+      << json_quote(summary_path_for_session(session).string())
+      << ","
+      << "\"summary_ack_path\":"
+      << json_quote(summary_ack_path_for_session(session).string()) << ","
+      << "\"summary_ack_sig_path\":"
+      << json_quote(summary_ack_sig_path_for_session(session).string()) << ","
+      << "\"summary_excerpt\":" << json_quote(summary_excerpt(session)) << "}";
   return out.str();
+}
+
+[[nodiscard]] bool collect_all_sessions(
+    const app_context_t& app,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* out,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "sessions output pointer is null";
+    return false;
+  }
+  out->clear();
+  return cuwacunu::hero::marshal::scan_marshal_session_records(app.defaults.marshal_root,
+                                                           out, error);
+}
+
+[[nodiscard]] bool collect_human_operator_inbox(
+    const app_context_t& app, human_operator_inbox_t* out, bool sync_markers,
+    std::string* error) {
+  if (error) error->clear();
+  if (!out) {
+    if (error) *error = "operator inbox output pointer is null";
+    return false;
+  }
+  out->actionable_requests.clear();
+  out->unacknowledged_summaries.clear();
+  out->all_sessions.clear();
+
+  std::vector<cuwacunu::hero::marshal::marshal_session_record_t> sessions{};
+  if (!cuwacunu::hero::marshal::scan_marshal_session_records(app.defaults.marshal_root,
+                                                         &sessions, error)) {
+    return false;
+  }
+  out->all_sessions = sessions;
+  for (const auto& session : sessions) {
+    if (session.phase == "paused" &&
+        is_human_request_pause_kind(session.pause_kind)) {
+      out->actionable_requests.push_back(session);
+      continue;
+    }
+    if (!cuwacunu::hero::marshal::is_marshal_session_summary_state(session.phase)) {
+      continue;
+    }
+    const std::filesystem::path summary_path = summary_path_for_session(session);
+    if (!std::filesystem::exists(summary_path) ||
+        !std::filesystem::is_regular_file(summary_path)) {
+      continue;
+    }
+    std::string ack_error{};
+    if (!summary_ack_matches_current_summary(session, &ack_error)) {
+      out->unacknowledged_summaries.push_back(session);
+    }
+  }
+
+  if (!sync_markers) return true;
+  return write_human_pending_marker_counts(
+      app.defaults.marshal_root, out->actionable_requests.size(),
+      out->unacknowledged_summaries.size(), error);
 }
 
 [[nodiscard]] bool collect_pending_requests(
     const app_context_t& app,
-    std::vector<cuwacunu::hero::super::super_loop_record_t>* out,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* out,
     std::string* error) {
   if (error) error->clear();
   if (!out) {
     if (error) *error = "pending requests output pointer is null";
     return false;
   }
-  out->clear();
-  sync_human_pending_markers_best_effort(app);
-  std::vector<cuwacunu::hero::super::super_loop_record_t> loops{};
-  if (!cuwacunu::hero::super::scan_super_loop_records(app.defaults.super_root,
-                                                      &loops, error)) {
-    return false;
-  }
-  for (const auto& loop : loops) {
-    if (loop.state == "awaiting_human") out->push_back(loop);
-  }
+  human_operator_inbox_t inbox{};
+  if (!collect_human_operator_inbox(app, &inbox, true, error)) return false;
+  *out = std::move(inbox.actionable_requests);
   return true;
 }
 
-[[nodiscard]] bool collect_pending_reports(
+[[nodiscard]] bool collect_pending_reviews(
     const app_context_t& app,
-    std::vector<cuwacunu::hero::super::super_loop_record_t>* out,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t>* out,
     std::string* error) {
   if (error) error->clear();
   if (!out) {
-    if (error) *error = "pending reports output pointer is null";
+    if (error) *error = "pending reviews output pointer is null";
     return false;
   }
-  out->clear();
-  sync_human_pending_markers_best_effort(app);
-  std::vector<cuwacunu::hero::super::super_loop_record_t> loops{};
-  if (!cuwacunu::hero::super::scan_super_loop_records(app.defaults.super_root,
-                                                      &loops, error)) {
+  human_operator_inbox_t inbox{};
+  if (!collect_human_operator_inbox(app, &inbox, true, error)) return false;
+  *out = std::move(inbox.unacknowledged_summaries);
+  return true;
+}
+
+[[nodiscard]] bool build_request_answer_and_resume(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string answer,
+    std::string* out_structured, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !out_structured || !out_error) return false;
+  answer = trim_ascii(answer);
+  if (answer.empty()) {
+    *out_error = "human clarification answer requires a non-empty answer";
     return false;
   }
-  for (const auto& loop : loops) {
-    if (!cuwacunu::hero::super::is_super_loop_finished_report_state(loop.state)) {
-      continue;
-    }
-    const std::filesystem::path report_path = report_path_for_loop(loop);
-    if (!std::filesystem::exists(report_path) ||
-        !std::filesystem::is_regular_file(report_path)) {
-      continue;
-    }
-    std::string ack_error{};
-    if (!report_ack_matches_current_report(loop, &ack_error)) out->push_back(loop);
+
+  const auto answer_path =
+      cuwacunu::hero::marshal::marshal_session_human_clarification_answer_path(
+      app->defaults.marshal_root, session.marshal_session_id, session.checkpoint_count);
+  const auto latest_answer_path =
+      cuwacunu::hero::marshal::
+          marshal_session_human_clarification_answer_latest_path(
+          app->defaults.marshal_root, session.marshal_session_id);
+  const std::string answer_json =
+      std::string("{\"schema\":") +
+      json_quote(kHumanClarificationAnswerSchemaV3) +
+      ",\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+      ",\"checkpoint_index\":" + std::to_string(session.checkpoint_count) +
+      ",\"answer\":" + json_quote(answer) + "}";
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(answer_path, answer_json,
+                                                       out_error)) {
+    return false;
   }
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(latest_answer_path,
+                                                       answer_json,
+                                                       out_error)) {
+    return false;
+  }
+
+  std::string marshal_structured{};
+  const std::string resume_args =
+      "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+      ",\"clarification_answer_path\":" + json_quote(answer_path.string()) +
+      "}";
+  if (!call_marshal_tool(*app, "hero.marshal.resume_session", resume_args,
+                       &marshal_structured, out_error)) {
+    return false;
+  }
+  sync_human_pending_markers_best_effort(*app);
+
+  *out_structured = "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+                    ",\"clarification_answer_path\":" +
+                    json_quote(answer_path.string()) + ",\"marshal\":" +
+                    marshal_structured + "}";
   return true;
 }
 
 [[nodiscard]] bool build_resolution_and_apply(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
     std::string resolution_kind, std::string reason,
     std::string* out_structured, std::string* out_error) {
   if (out_error) out_error->clear();
@@ -2132,8 +3505,9 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   resolution_kind = trim_ascii(resolution_kind);
   reason = trim_ascii(reason);
   if (resolution_kind != "grant" && resolution_kind != "deny" &&
-      resolution_kind != "clarify" && resolution_kind != "stop") {
-    *out_error = "human resolution_kind must be grant, deny, clarify, or stop";
+      resolution_kind != "clarify" && resolution_kind != "terminate") {
+    *out_error =
+        "human resolution_kind must be grant, deny, clarify, or terminate";
     return false;
   }
   if (reason.empty()) {
@@ -2152,61 +3526,59 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   }
 
-  std::string escalation_sha256_hex{};
-  if (!cuwacunu::hero::human::sha256_hex_file(loop.human_escalation_path,
-                                              &escalation_sha256_hex,
+  std::string request_sha256_hex{};
+  if (!cuwacunu::hero::human::sha256_hex_file(session.human_request_path,
+                                              &request_sha256_hex,
                                               out_error)) {
     return false;
   }
 
-  const std::filesystem::path latest_turn_outcome_path =
-      cuwacunu::hero::super::super_loop_latest_turn_outcome_path(
-          app->defaults.super_root, loop.loop_id);
-  std::string latest_turn_outcome_json{};
-  if (!cuwacunu::hero::runtime::read_text_file(latest_turn_outcome_path,
-                                               &latest_turn_outcome_json,
+  const std::filesystem::path latest_intent_path =
+      cuwacunu::hero::marshal::marshal_session_latest_intent_checkpoint_path(
+          app->defaults.marshal_root, session.marshal_session_id);
+  std::string latest_intent_json{};
+  if (!cuwacunu::hero::runtime::read_text_file(latest_intent_path,
+                                               &latest_intent_json,
                                                out_error)) {
     return false;
   }
-  std::string outcome{};
-  (void)extract_json_string_field(latest_turn_outcome_json, "outcome", &outcome);
-  outcome = trim_ascii(outcome);
-  if (outcome != "escalate") {
-    *out_error = "latest pending turn outcome is not an escalation";
+  std::string intent{};
+  (void)extract_json_string_field(latest_intent_json, "intent", &intent);
+  intent = trim_ascii(intent);
+  if (intent != "request_governance") {
+    *out_error = "latest pending intent is not a governance request";
     return false;
   }
-  std::string escalation_json{};
-  if (!extract_json_object_field(latest_turn_outcome_json, "escalation",
-                                 &escalation_json)) {
-    *out_error = "latest turn outcome is missing escalation object";
+  std::string governance_json{};
+  if (!extract_json_object_field(latest_intent_json, "governance",
+                                 &governance_json)) {
+    *out_error = "latest intent is missing governance object";
     return false;
   }
-  std::string escalation_kind{};
-  (void)extract_json_string_field(escalation_json, "kind", &escalation_kind);
-  escalation_kind = trim_ascii(escalation_kind);
-  if (escalation_kind.empty()) {
-    *out_error = "latest turn outcome escalation is missing kind";
+  std::string governance_kind{};
+  (void)extract_json_string_field(governance_json, "kind", &governance_kind);
+  governance_kind = trim_ascii(governance_kind);
+  if (governance_kind.empty()) {
+    *out_error = "latest intent governance is missing kind";
     return false;
   }
 
   std::string delta_json{};
-  (void)extract_json_object_field(escalation_json, "delta", &delta_json);
+  (void)extract_json_object_field(governance_json, "delta", &delta_json);
   human_resolution_record_t resolution{};
-  resolution.loop_id = loop.loop_id;
-  resolution.turn_index = loop.turn_count;
-  resolution.escalation_sha256_hex = escalation_sha256_hex;
+  resolution.marshal_session_id = session.marshal_session_id;
+  resolution.checkpoint_index = session.checkpoint_count;
+  resolution.request_sha256_hex = request_sha256_hex;
   resolution.operator_id = app->defaults.operator_id;
   resolution.resolved_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   resolution.resolution_kind = resolution_kind;
-  resolution.escalation_kind = escalation_kind;
+  resolution.governance_kind = governance_kind;
   resolution.reason = reason;
   resolution.signer_public_key_fingerprint_sha256_hex =
       std::string(64, '0');
   if (resolution_kind == "grant") {
     (void)extract_json_bool_field(delta_json, "allow_default_write",
                                   &resolution.grant_allow_default_write);
-    (void)extract_json_u64_field(delta_json, "additional_review_turns",
-                                 &resolution.grant_additional_review_turns);
     (void)extract_json_u64_field(delta_json, "additional_campaign_launches",
                                  &resolution.grant_additional_campaign_launches);
   }
@@ -2236,8 +3608,8 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
 
   std::error_code ec{};
   const auto response_dir =
-      cuwacunu::hero::super::super_loop_human_resolutions_dir(
-      app->defaults.super_root, loop.loop_id);
+      cuwacunu::hero::marshal::marshal_session_human_governance_resolutions_dir(
+      app->defaults.marshal_root, session.marshal_session_id);
   std::filesystem::create_directories(response_dir, ec);
   if (ec) {
     *out_error =
@@ -2245,17 +3617,17 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   }
   const auto response_path =
-      cuwacunu::hero::super::super_loop_human_resolution_path(
-          app->defaults.super_root, loop.loop_id, loop.turn_count);
+      cuwacunu::hero::marshal::marshal_session_human_governance_resolution_path(
+          app->defaults.marshal_root, session.marshal_session_id, session.checkpoint_count);
   const auto response_sig_path =
-      cuwacunu::hero::super::super_loop_human_resolution_sig_path(
-          app->defaults.super_root, loop.loop_id, loop.turn_count);
+      cuwacunu::hero::marshal::marshal_session_human_governance_resolution_sig_path(
+          app->defaults.marshal_root, session.marshal_session_id, session.checkpoint_count);
   const auto latest_path =
-      cuwacunu::hero::super::super_loop_human_resolution_latest_path(
-          app->defaults.super_root, loop.loop_id);
+      cuwacunu::hero::marshal::marshal_session_human_governance_resolution_latest_path(
+          app->defaults.marshal_root, session.marshal_session_id);
   const auto latest_sig_path =
-      cuwacunu::hero::super::super_loop_human_resolution_latest_sig_path(
-          app->defaults.super_root, loop.loop_id);
+      cuwacunu::hero::marshal::marshal_session_human_governance_resolution_latest_sig_path(
+          app->defaults.marshal_root, session.marshal_session_id);
 
   if (!cuwacunu::hero::runtime::write_text_file_atomic(response_path,
                                                        resolution_json,
@@ -2278,30 +3650,32 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   }
 
-  std::string super_structured{};
+  std::string marshal_structured{};
   std::string resume_args =
-      "{\"loop_id\":" + json_quote(loop.loop_id) +
-      ",\"human_resolution_path\":" + json_quote(response_path.string()) +
-      ",\"human_resolution_sig_path\":" +
+      "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+      ",\"governance_resolution_path\":" + json_quote(response_path.string()) +
+      ",\"governance_resolution_sig_path\":" +
       json_quote(response_sig_path.string()) + "}";
-  if (!call_super_tool(*app, "hero.super.apply_human_resolution", resume_args,
-                       &super_structured, out_error)) {
+  if (!call_marshal_tool(*app, "hero.marshal.resume_session", resume_args,
+                       &marshal_structured, out_error)) {
     return false;
   }
+  sync_human_pending_markers_best_effort(*app);
 
-  *out_structured = "{\"loop_id\":" + json_quote(loop.loop_id) +
-                    ",\"resolution_path\":" +
+  *out_structured = "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+                    ",\"governance_resolution_path\":" +
                     json_quote(response_path.string()) +
-                    ",\"resolution_sig_path\":" +
+                    ",\"governance_resolution_sig_path\":" +
                     json_quote(response_sig_path.string()) +
                     ",\"fingerprint_sha256_hex\":" + json_quote(fingerprint_hex) +
-                    ",\"super\":" + super_structured + "}";
+                    ",\"marshal\":" + marshal_structured + "}";
   return true;
 }
 
-[[nodiscard]] bool finalize_terminal_report(
+[[nodiscard]] bool finalize_session_summary(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string note,
     std::string disposition, std::string* out_structured,
     std::string* out_error) {
   if (out_error) out_error->clear();
@@ -2309,15 +3683,17 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   note = trim_ascii(note);
   disposition = lowercase_copy(trim_ascii(disposition));
   if (disposition != "acknowledged" && disposition != "dismissed") {
-    *out_error = "invalid report disposition";
+    *out_error = "invalid summary disposition";
     return false;
   }
-  if (disposition == "dismissed" && note.empty()) {
-    note = "dismissed by operator";
+  if (note.empty()) {
+    *out_error = "review acknowledgment requires a non-empty note";
+    return false;
   }
+  if (disposition == "dismissed") disposition = "acknowledged";
 
-  if (!cuwacunu::hero::super::is_super_loop_finished_report_state(loop.state)) {
-    *out_error = "loop does not currently expose a finished summary report";
+  if (!cuwacunu::hero::marshal::is_marshal_session_summary_state(session.phase)) {
+    *out_error = "session does not currently expose an informational summary";
     return false;
   }
   if (app->defaults.operator_id.empty() ||
@@ -2332,19 +3708,20 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   }
 
-  const std::filesystem::path report_path = report_path_for_loop(loop);
-  std::string report_sha256_hex{};
-  if (!cuwacunu::hero::human::sha256_hex_file(report_path, &report_sha256_hex,
+  const std::filesystem::path summary_path = summary_path_for_session(session);
+  std::string summary_sha256_hex{};
+  if (!cuwacunu::hero::human::sha256_hex_file(summary_path, &summary_sha256_hex,
                                               out_error)) {
     return false;
   }
 
   const std::uint64_t acknowledged_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   std::string ack_json =
-      std::string("{\"schema\":") + json_quote(kHumanReportAckSchemaV2) +
-      ",\"loop_id\":" + json_quote(loop.loop_id) + ",\"state\":" +
-      json_quote(loop.state) + ",\"report_sha256_hex\":" +
-      json_quote(report_sha256_hex) + ",\"operator_id\":" +
+      std::string("{\"schema\":") + json_quote(kHumanSummaryAckSchemaV3) +
+      ",\"marshal_session_id\":" + json_quote(session.marshal_session_id) + ",\"phase\":" +
+      json_quote(session.phase) + ",\"finish_reason\":" +
+      json_quote(session.finish_reason) + ",\"summary_sha256_hex\":" +
+      json_quote(summary_sha256_hex) + ",\"operator_id\":" +
       json_quote(app->defaults.operator_id) + ",\"acknowledged_at_ms\":" +
       std::to_string(acknowledged_at_ms) + ",\"disposition\":" +
       json_quote(disposition) + ",\"note\":" + json_quote(note) +
@@ -2359,22 +3736,24 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   }
   if (fingerprint_hex.size() != 64) {
-    *out_error = "report ack signing returned invalid fingerprint length";
+    *out_error = "summary ack signing returned invalid fingerprint length";
     return false;
   }
   ack_json =
-      std::string("{\"schema\":") + json_quote(kHumanReportAckSchemaV2) +
-      ",\"loop_id\":" + json_quote(loop.loop_id) + ",\"state\":" +
-      json_quote(loop.state) + ",\"report_sha256_hex\":" +
-      json_quote(report_sha256_hex) + ",\"operator_id\":" +
+      std::string("{\"schema\":") + json_quote(kHumanSummaryAckSchemaV3) +
+      ",\"marshal_session_id\":" + json_quote(session.marshal_session_id) + ",\"phase\":" +
+      json_quote(session.phase) + ",\"finish_reason\":" +
+      json_quote(session.finish_reason) + ",\"summary_sha256_hex\":" +
+      json_quote(summary_sha256_hex) + ",\"operator_id\":" +
       json_quote(app->defaults.operator_id) + ",\"acknowledged_at_ms\":" +
       std::to_string(acknowledged_at_ms) + ",\"disposition\":" +
       json_quote(disposition) + ",\"note\":" + json_quote(note) +
       ",\"signer_public_key_fingerprint_sha256_hex\":" +
       json_quote(fingerprint_hex) + "}";
 
-  const std::filesystem::path ack_path = report_ack_path_for_loop(loop);
-  const std::filesystem::path ack_sig_path = report_ack_sig_path_for_loop(loop);
+  const std::filesystem::path ack_path = summary_ack_path_for_session(session);
+  const std::filesystem::path ack_sig_path =
+      summary_ack_sig_path_for_session(session);
   if (!cuwacunu::hero::runtime::write_text_file_atomic(ack_path, ack_json + "\n",
                                                        out_error)) {
     return false;
@@ -2387,59 +3766,144 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   sync_human_pending_markers_best_effort(*app);
 
   *out_structured =
-      "{\"loop_id\":" + json_quote(loop.loop_id) + ",\"report_path\":" +
-      json_quote(report_path.string()) + ",\"report_ack_path\":" +
-      json_quote(ack_path.string()) + ",\"report_ack_sig_path\":" +
+      "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) + ",\"summary_path\":" +
+      json_quote(summary_path.string()) + ",\"summary_ack_path\":" +
+      json_quote(ack_path.string()) + ",\"summary_ack_sig_path\":" +
       json_quote(ack_sig_path.string()) + ",\"disposition\":" +
       json_quote(disposition) + ",\"note\":" + json_quote(note) +
       ",\"fingerprint_sha256_hex\":" + json_quote(fingerprint_hex) + "}";
   return true;
 }
 
-[[nodiscard]] bool acknowledge_terminal_report(
+[[nodiscard]] bool acknowledge_session_summary(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string note,
     std::string* out_structured, std::string* out_error) {
-  return finalize_terminal_report(app, loop, std::move(note), "acknowledged",
-                                  out_structured, out_error);
+  return finalize_session_summary(app, session, std::move(note),
+                                  "acknowledged", out_structured, out_error);
 }
 
-[[nodiscard]] bool dismiss_terminal_report(
+[[nodiscard]] bool pause_marshal_session(
     app_context_t* app,
-    const cuwacunu::hero::super::super_loop_record_t& loop, std::string note,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session, bool force,
     std::string* out_structured, std::string* out_error) {
-  return finalize_terminal_report(app, loop, std::move(note), "dismissed",
-                                  out_structured, out_error);
+  if (out_error) out_error->clear();
+  if (!app || !out_structured || !out_error) return false;
+
+  std::string marshal_structured{};
+  const std::string args =
+      std::string("{\"marshal_session_id\":") + json_quote(session.marshal_session_id) +
+      ",\"force\":" + bool_json(force) + "}";
+  if (!call_marshal_tool(*app, "hero.marshal.pause_session", args, &marshal_structured,
+                       out_error)) {
+    return false;
+  }
+  sync_human_pending_markers_best_effort(*app);
+  *out_structured = "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+                    ",\"force\":" + bool_json(force) + ",\"marshal\":" +
+                    marshal_structured + "}";
+  return true;
 }
 
-[[nodiscard]] bool handle_tool_list_escalations(app_context_t* app,
-                                                const std::string& arguments_json,
-                                                std::string* out_structured,
-                                                std::string* out_error);
-[[nodiscard]] bool handle_tool_list_reports(app_context_t* app,
-                                            const std::string& arguments_json,
-                                            std::string* out_structured,
-                                            std::string* out_error);
-[[nodiscard]] bool handle_tool_get_escalation(app_context_t* app,
+[[nodiscard]] bool resume_marshal_session(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string* out_structured, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !out_structured || !out_error) return false;
+
+  std::string marshal_structured{};
+  const std::string args =
+      std::string("{\"marshal_session_id\":") + json_quote(session.marshal_session_id) + "}";
+  if (!call_marshal_tool(*app, "hero.marshal.resume_session", args, &marshal_structured,
+                       out_error)) {
+    return false;
+  }
+  sync_human_pending_markers_best_effort(*app);
+  *out_structured = "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+                    ",\"marshal\":" + marshal_structured + "}";
+  return true;
+}
+
+[[nodiscard]] bool continue_marshal_session(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session,
+    std::string instruction,
+    std::string* out_structured, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !out_structured || !out_error) return false;
+  instruction = trim_ascii(instruction);
+  if (instruction.empty()) {
+    *out_error = "continue_session requires a non-empty instruction";
+    return false;
+  }
+
+  std::string marshal_structured{};
+  const std::string args =
+      std::string("{\"marshal_session_id\":") + json_quote(session.marshal_session_id) +
+      ",\"instruction\":" + json_quote(instruction) + "}";
+  if (!call_marshal_tool(*app, "hero.marshal.continue_session", args,
+                       &marshal_structured, out_error)) {
+    return false;
+  }
+  sync_human_pending_markers_best_effort(*app);
+  *out_structured = "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+                    ",\"instruction\":" + json_quote(instruction) +
+                    ",\"marshal\":" + marshal_structured + "}";
+  return true;
+}
+
+[[nodiscard]] bool terminate_marshal_session(
+    app_context_t* app,
+    const cuwacunu::hero::marshal::marshal_session_record_t& session, bool force,
+    std::string* out_structured, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!app || !out_structured || !out_error) return false;
+
+  std::string marshal_structured{};
+  const std::string args =
+      std::string("{\"marshal_session_id\":") + json_quote(session.marshal_session_id) +
+      ",\"force\":" + bool_json(force) + "}";
+  if (!call_marshal_tool(*app, "hero.marshal.terminate_session", args,
+                       &marshal_structured, out_error)) {
+    return false;
+  }
+  sync_human_pending_markers_best_effort(*app);
+  *out_structured = "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+                    ",\"force\":" + bool_json(force) + ",\"marshal\":" +
+                    marshal_structured + "}";
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_list_requests(app_context_t* app,
+                                             const std::string& arguments_json,
+                                             std::string* out_structured,
+                                             std::string* out_error);
+[[nodiscard]] bool handle_tool_list_summaries(app_context_t* app,
                                               const std::string& arguments_json,
                                               std::string* out_structured,
                                               std::string* out_error);
-[[nodiscard]] bool handle_tool_get_report(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error);
-[[nodiscard]] bool handle_tool_resolve_escalation(app_context_t* app,
+[[nodiscard]] bool handle_tool_get_request(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                           std::string* out_error);
+[[nodiscard]] bool handle_tool_get_summary(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                           std::string* out_error);
+[[nodiscard]] bool handle_tool_answer_request(app_context_t* app,
+                                              const std::string& arguments_json,
+                                              std::string* out_structured,
+                                              std::string* out_error);
+[[nodiscard]] bool handle_tool_resolve_governance(app_context_t* app,
                                                   const std::string& arguments_json,
                                                   std::string* out_structured,
                                                   std::string* out_error);
-[[nodiscard]] bool handle_tool_ack_report(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error);
-[[nodiscard]] bool handle_tool_dismiss_report(app_context_t* app,
-                                              const std::string& arguments_json,
-                                              std::string* out_structured,
-                                              std::string* out_error);
+[[nodiscard]] bool handle_tool_ack_summary(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                               std::string* out_error);
 
 #define HERO_HUMAN_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) \
   {NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER},
@@ -2456,10 +3920,10 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
   return nullptr;
 }
 
-[[nodiscard]] bool handle_tool_list_escalations(app_context_t* app,
-                                                const std::string& arguments_json,
-                                                std::string* out_structured,
-                                                std::string* out_error) {
+[[nodiscard]] bool handle_tool_list_requests(app_context_t* app,
+                                             const std::string& arguments_json,
+                                             std::string* out_structured,
+                                             std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
@@ -2470,78 +3934,79 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
   (void)extract_json_size_field(arguments_json, "offset", &offset);
   (void)extract_json_bool_field(arguments_json, "newest_first", &newest_first);
 
-  std::vector<cuwacunu::hero::super::super_loop_record_t> loops{};
-  if (!collect_pending_requests(*app, &loops, out_error)) return false;
-  std::sort(loops.begin(), loops.end(), [newest_first](const auto& a,
-                                                       const auto& b) {
+  std::vector<cuwacunu::hero::marshal::marshal_session_record_t> sessions{};
+  if (!collect_pending_requests(*app, &sessions, out_error)) return false;
+  std::sort(sessions.begin(), sessions.end(), [newest_first](const auto& a,
+                                                             const auto& b) {
     if (a.updated_at_ms != b.updated_at_ms) {
       return newest_first ? (a.updated_at_ms > b.updated_at_ms)
                           : (a.updated_at_ms < b.updated_at_ms);
     }
-    return newest_first ? (a.loop_id > b.loop_id) : (a.loop_id < b.loop_id);
+    return newest_first ? (a.marshal_session_id > b.marshal_session_id) : (a.marshal_session_id < b.marshal_session_id);
   });
-  const std::size_t total = loops.size();
-  const std::size_t off = std::min(offset, loops.size());
+  const std::size_t total = sessions.size();
+  const std::size_t off = std::min(offset, sessions.size());
   std::size_t count = limit;
-  if (count == 0) count = loops.size() - off;
-  count = std::min(count, loops.size() - off);
+  if (count == 0) count = sessions.size() - off;
+  count = std::min(count, sessions.size() - off);
 
   std::ostringstream rows;
   rows << "[";
   for (std::size_t i = 0; i < count; ++i) {
     if (i != 0) rows << ",";
-    rows << pending_request_row_to_json(loops[off + i]);
+    rows << pending_request_row_to_json(sessions[off + i]);
   }
   rows << "]";
 
   *out_structured =
-      "{\"loop_id\":\"\",\"count\":" + std::to_string(count) +
-      ",\"total\":" + std::to_string(total) + ",\"escalations\":" +
+      "{\"marshal_session_id\":\"\",\"count\":" + std::to_string(count) +
+      ",\"total\":" + std::to_string(total) + ",\"requests\":" +
       rows.str() +
       "}";
   return true;
 }
 
-[[nodiscard]] bool handle_tool_get_escalation(app_context_t* app,
-                                              const std::string& arguments_json,
-                                              std::string* out_structured,
-                                              std::string* out_error) {
+[[nodiscard]] bool handle_tool_get_request(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                           std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
-  std::string loop_id{};
-  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
-  loop_id = trim_ascii(loop_id);
-  if (loop_id.empty()) {
-    *out_error = "get_escalation requires arguments.loop_id";
+  std::string marshal_session_id{};
+  (void)extract_json_string_field(arguments_json, "marshal_session_id", &marshal_session_id);
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "get_request requires arguments.marshal_session_id";
     return false;
   }
 
-  cuwacunu::hero::super::super_loop_record_t loop{};
-  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root, loop_id,
-                                                     &loop, out_error)) {
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  if (!cuwacunu::hero::marshal::read_marshal_session_record(app->defaults.marshal_root, marshal_session_id,
+                                                        &session, out_error)) {
     return false;
   }
-  if (loop.state != "awaiting_human") {
-    *out_error = "loop is not currently waiting for a human escalation resolution";
+  if (session.phase != "paused" ||
+      !is_human_request_pause_kind(session.pause_kind)) {
+    *out_error = "session is not currently paused for a human request";
     return false;
   }
 
   std::string request_text{};
-  if (!cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path,
+  if (!cuwacunu::hero::runtime::read_text_file(session.human_request_path,
                                                &request_text, out_error)) {
     return false;
   }
-  *out_structured = "{\"loop_id\":" + json_quote(loop_id) + ",\"loop\":" +
-                    pending_request_row_to_json(loop) + ",\"escalation_text\":" +
+  *out_structured = "{\"marshal_session_id\":" + json_quote(marshal_session_id) + ",\"request\":" +
+                    pending_request_row_to_json(session) + ",\"request_text\":" +
                     json_quote(request_text) + "}";
   return true;
 }
 
-[[nodiscard]] bool handle_tool_list_reports(app_context_t* app,
-                                            const std::string& arguments_json,
-                                            std::string* out_structured,
-                                            std::string* out_error) {
+[[nodiscard]] bool handle_tool_list_summaries(app_context_t* app,
+                                              const std::string& arguments_json,
+                                              std::string* out_structured,
+                                              std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
@@ -2552,160 +4017,176 @@ constexpr human_tool_descriptor_t kHumanTools[] = {
   (void)extract_json_size_field(arguments_json, "offset", &offset);
   (void)extract_json_bool_field(arguments_json, "newest_first", &newest_first);
 
-  std::vector<cuwacunu::hero::super::super_loop_record_t> loops{};
-  if (!collect_pending_reports(*app, &loops, out_error)) return false;
-  std::sort(loops.begin(), loops.end(), [newest_first](const auto& a,
-                                                       const auto& b) {
+  std::vector<cuwacunu::hero::marshal::marshal_session_record_t> sessions{};
+  if (!collect_pending_reviews(*app, &sessions, out_error)) return false;
+  std::sort(sessions.begin(), sessions.end(), [newest_first](const auto& a,
+                                                             const auto& b) {
     if (a.updated_at_ms != b.updated_at_ms) {
       return newest_first ? (a.updated_at_ms > b.updated_at_ms)
                           : (a.updated_at_ms < b.updated_at_ms);
     }
-    return newest_first ? (a.loop_id > b.loop_id) : (a.loop_id < b.loop_id);
+    return newest_first ? (a.marshal_session_id > b.marshal_session_id) : (a.marshal_session_id < b.marshal_session_id);
   });
-  const std::size_t total = loops.size();
-  const std::size_t off = std::min(offset, loops.size());
+  const std::size_t total = sessions.size();
+  const std::size_t off = std::min(offset, sessions.size());
   std::size_t count = limit;
-  if (count == 0) count = loops.size() - off;
-  count = std::min(count, loops.size() - off);
+  if (count == 0) count = sessions.size() - off;
+  count = std::min(count, sessions.size() - off);
 
   std::ostringstream rows;
   rows << "[";
   for (std::size_t i = 0; i < count; ++i) {
     if (i != 0) rows << ",";
-    rows << pending_report_row_to_json(loops[off + i]);
+    rows << pending_summary_row_to_json(sessions[off + i]);
   }
   rows << "]";
 
   *out_structured =
-      "{\"loop_id\":\"\",\"count\":" + std::to_string(count) +
-      ",\"total\":" + std::to_string(total) + ",\"reports\":" + rows.str() +
+      "{\"marshal_session_id\":\"\",\"count\":" + std::to_string(count) +
+      ",\"total\":" + std::to_string(total) + ",\"summaries\":" + rows.str() +
       "}";
   return true;
 }
 
-[[nodiscard]] bool handle_tool_get_report(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error) {
+[[nodiscard]] bool handle_tool_get_summary(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                           std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
-  std::string loop_id{};
-  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
-  loop_id = trim_ascii(loop_id);
-  if (loop_id.empty()) {
-    *out_error = "get_report requires arguments.loop_id";
+  std::string marshal_session_id{};
+  (void)extract_json_string_field(arguments_json, "marshal_session_id", &marshal_session_id);
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "get_summary requires arguments.marshal_session_id";
     return false;
   }
 
-  cuwacunu::hero::super::super_loop_record_t loop{};
-  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root,
-                                                     loop_id, &loop,
-                                                     out_error)) {
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  if (!cuwacunu::hero::marshal::read_marshal_session_record(app->defaults.marshal_root,
+                                                        marshal_session_id, &session,
+                                                        out_error)) {
     return false;
   }
-  if (!cuwacunu::hero::super::is_super_loop_finished_report_state(loop.state)) {
-    *out_error = "loop does not currently expose a finished summary report";
+  if (!cuwacunu::hero::marshal::is_marshal_session_summary_state(
+          session.phase)) {
+    *out_error = "session does not currently expose an informational summary";
     return false;
   }
 
-  std::string report_text{};
-  if (!read_report_text_for_loop(loop, &report_text, out_error)) return false;
-  *out_structured = "{\"loop_id\":" + json_quote(loop_id) + ",\"loop\":" +
-                    pending_report_row_to_json(loop) + ",\"report_text\":" +
-                    json_quote(report_text) + "}";
+  std::string summary_text{};
+  if (!read_summary_text_for_session(session, &summary_text, out_error)) {
+    return false;
+  }
+  *out_structured = "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+                    ",\"summary\":" + pending_summary_row_to_json(session) +
+                    ",\"summary_text\":" +
+                    json_quote(summary_text) + "}";
   return true;
 }
 
-[[nodiscard]] bool handle_tool_resolve_escalation(
+[[nodiscard]] bool handle_tool_answer_request(
     app_context_t* app, const std::string& arguments_json,
     std::string* out_structured, std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
-  std::string loop_id{};
+  std::string marshal_session_id{};
+  std::string answer{};
+  (void)extract_json_string_field(arguments_json, "marshal_session_id", &marshal_session_id);
+  (void)extract_json_string_field(arguments_json, "answer", &answer);
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "answer_request requires arguments.marshal_session_id";
+    return false;
+  }
+  if (trim_ascii(answer).empty()) {
+    *out_error = "answer_request requires arguments.answer";
+    return false;
+  }
+
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  if (!cuwacunu::hero::marshal::read_marshal_session_record(app->defaults.marshal_root,
+                                                        marshal_session_id, &session,
+                                                        out_error)) {
+    return false;
+  }
+  if (session.phase != "paused" ||
+      !is_clarification_pause_kind(session.pause_kind)) {
+    *out_error = "session is not currently paused for clarification";
+    return false;
+  }
+  return build_request_answer_and_resume(app, session, answer, out_structured,
+                                         out_error);
+}
+
+[[nodiscard]] bool handle_tool_resolve_governance(
+    app_context_t* app, const std::string& arguments_json,
+    std::string* out_structured, std::string* out_error) {
+  if (!app || !out_structured || !out_error) return false;
+  out_error->clear();
+
+  std::string marshal_session_id{};
   std::string resolution_kind{};
   std::string reason{};
-  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
+  (void)extract_json_string_field(arguments_json, "marshal_session_id", &marshal_session_id);
   (void)extract_json_string_field(arguments_json, "resolution_kind",
                                   &resolution_kind);
   (void)extract_json_string_field(arguments_json, "reason", &reason);
-  loop_id = trim_ascii(loop_id);
-  if (loop_id.empty()) {
-    *out_error = "resolve_escalation requires arguments.loop_id";
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "resolve_governance requires arguments.marshal_session_id";
     return false;
   }
   if (trim_ascii(resolution_kind).empty()) {
-    *out_error = "resolve_escalation requires arguments.resolution_kind";
+    *out_error = "resolve_governance requires arguments.resolution_kind";
     return false;
   }
 
-  cuwacunu::hero::super::super_loop_record_t loop{};
-  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root, loop_id,
-                                                     &loop, out_error)) {
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  if (!cuwacunu::hero::marshal::read_marshal_session_record(app->defaults.marshal_root, marshal_session_id,
+                                                        &session, out_error)) {
     return false;
   }
-  if (loop.state != "awaiting_human") {
-    *out_error = "loop is not currently waiting for a human escalation resolution";
+  if (session.phase != "paused" || session.pause_kind != "governance") {
+    *out_error = "session is not currently paused for governance";
     return false;
   }
-  return build_resolution_and_apply(app, loop, resolution_kind, reason,
+  return build_resolution_and_apply(app, session, resolution_kind, reason,
                                     out_structured, out_error);
 }
 
-[[nodiscard]] bool handle_tool_ack_report(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error) {
+[[nodiscard]] bool handle_tool_ack_summary(app_context_t* app,
+                                           const std::string& arguments_json,
+                                           std::string* out_structured,
+                                           std::string* out_error) {
   if (!app || !out_structured || !out_error) return false;
   out_error->clear();
 
-  std::string loop_id{};
+  std::string marshal_session_id{};
   std::string note{};
-  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
+  (void)extract_json_string_field(arguments_json, "marshal_session_id", &marshal_session_id);
   (void)extract_json_string_field(arguments_json, "note", &note);
-  loop_id = trim_ascii(loop_id);
-  if (loop_id.empty()) {
-    *out_error = "ack_report requires arguments.loop_id";
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "ack_summary requires arguments.marshal_session_id";
+    return false;
+  }
+  if (trim_ascii(note).empty()) {
+    *out_error = "ack_summary requires arguments.note";
     return false;
   }
 
-  cuwacunu::hero::super::super_loop_record_t loop{};
-  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root,
-                                                     loop_id, &loop,
-                                                     out_error)) {
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  if (!cuwacunu::hero::marshal::read_marshal_session_record(app->defaults.marshal_root,
+                                                        marshal_session_id, &session,
+                                                        out_error)) {
     return false;
   }
-  return acknowledge_terminal_report(app, loop, note, out_structured, out_error);
+  return acknowledge_session_summary(app, session, note, out_structured,
+                                     out_error);
 }
-
-[[nodiscard]] bool handle_tool_dismiss_report(app_context_t* app,
-                                              const std::string& arguments_json,
-                                              std::string* out_structured,
-                                              std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
-  out_error->clear();
-
-  std::string loop_id{};
-  std::string note{};
-  (void)extract_json_string_field(arguments_json, "loop_id", &loop_id);
-  (void)extract_json_string_field(arguments_json, "note", &note);
-  loop_id = trim_ascii(loop_id);
-  if (loop_id.empty()) {
-    *out_error = "dismiss_report requires arguments.loop_id";
-    return false;
-  }
-
-  cuwacunu::hero::super::super_loop_record_t loop{};
-  if (!cuwacunu::hero::super::read_super_loop_record(app->defaults.super_root,
-                                                     loop_id, &loop,
-                                                     out_error)) {
-    return false;
-  }
-  return dismiss_terminal_report(app, loop, note, out_structured, out_error);
-}
-
-}  // namespace
 
 std::filesystem::path resolve_human_hero_dsl_path(
     const std::filesystem::path& global_config_path) {
@@ -2768,7 +4249,7 @@ bool load_human_defaults(const std::filesystem::path& hero_dsl_path,
     values[lhs] = trim_ascii(rhs);
   }
 
-  out->super_root = cuwacunu::hero::super::super_root(
+  out->marshal_root = cuwacunu::hero::marshal::marshal_root(
       resolve_runtime_root_from_global_config(global_config_path));
   const auto resolve_exec = [&](const char* key, std::filesystem::path* dst) {
     const auto it = values.find(key);
@@ -2776,8 +4257,8 @@ bool load_human_defaults(const std::filesystem::path& hero_dsl_path,
     *dst = resolve_command_path(hero_dsl_path.parent_path(), it->second);
     return !dst->empty();
   };
-  if (!resolve_exec("super_hero_binary", &out->super_hero_binary)) {
-    if (error) *error = "missing/invalid super_hero_binary in " + hero_dsl_path.string();
+  if (!resolve_exec("marshal_hero_binary", &out->marshal_hero_binary)) {
+    if (error) *error = "missing/invalid marshal_hero_binary in " + hero_dsl_path.string();
     return false;
   }
   out->operator_id = trim_ascii(values["operator_id"]);
@@ -2804,9 +4285,9 @@ bool load_human_defaults(const std::filesystem::path& hero_dsl_path,
         resolve_path_from_base_folder(hero_dsl_path.parent_path().string(),
                                       ssh_identity_it->second));
   }
-  if (out->super_root.empty()) {
+  if (out->marshal_root.empty()) {
     if (error) {
-      *error = "cannot derive .super_hero root from GENERAL.runtime_root in " +
+      *error = "cannot derive .marshal_hero root from GENERAL.runtime_root in " +
                global_config_path.string();
     }
     return false;
@@ -2823,22 +4304,24 @@ std::filesystem::path current_executable_path() {
 }
 
 [[nodiscard]] bool human_tool_is_read_only(std::string_view name) {
-  return name == "hero.human.list_escalations" ||
-         name == "hero.human.list_reports" ||
-         name == "hero.human.get_escalation" ||
-         name == "hero.human.get_report";
+  return name == "hero.human.list_requests" ||
+         name == "hero.human.list_summaries" ||
+         name == "hero.human.get_request" ||
+         name == "hero.human.get_summary";
 }
 
 [[nodiscard]] bool human_tool_is_destructive(std::string_view name) {
-  return name == "hero.human.dismiss_report";
+  (void)name;
+  return false;
 }
 
 std::string build_tools_list_result_json() {
   std::ostringstream out;
   out << "{\"tools\":[";
-  for (std::size_t i = 0; i < std::size(kHumanTools); ++i) {
-    const auto& tool = kHumanTools[i];
-    if (i != 0) out << ",";
+  bool first = true;
+  for (const auto& tool : kHumanTools) {
+    if (!first) out << ",";
+    first = false;
     out << "{\"name\":" << json_quote(tool.name)
         << ",\"description\":" << json_quote(tool.description)
         << ",\"inputSchema\":" << tool.input_schema_json
@@ -2896,70 +4379,89 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
   return true;
 }
 
-[[nodiscard]] bool run_line_prompt_request_responder(app_context_t* app,
-                                                     std::string* error) {
+[[nodiscard]] bool run_line_prompt_operator_console(app_context_t* app,
+                                                    std::string* error) {
   if (error) error->clear();
   if (!app) {
     if (error) *error = "human app pointer is null";
     return false;
   }
 
-  std::vector<cuwacunu::hero::super::super_loop_record_t> pending{};
-  std::vector<cuwacunu::hero::super::super_loop_record_t> reports{};
-  if (!collect_pending_requests(*app, &pending, error)) return false;
-  if (!collect_pending_reports(*app, &reports, error)) return false;
+  human_operator_inbox_t inbox{};
+  if (!collect_human_operator_inbox(*app, &inbox, true, error)) return false;
+  auto pending = std::move(inbox.actionable_requests);
+  auto summaries = std::move(inbox.unacknowledged_summaries);
+  sort_sessions_newest_first(&pending);
+  sort_sessions_newest_first(&summaries);
   std::cout << "== Human Hero ==\n"
             << "operator: "
             << (app->defaults.operator_id.empty() ? "<unset>"
                                                   : app->defaults.operator_id)
             << "\n"
-            << "super_root: " << app->defaults.super_root.string() << "\n"
-            << "pending_escalations: " << pending.size() << "\n"
-            << "pending_terminal_reports: " << reports.size() << "\n";
-  if (pending.empty() && reports.empty()) {
-    std::cout << "status: no pending human escalations or finished reports\n"
-              << "hint: rerun this command after a Super Hero loop enters "
-                 "\"awaiting_human\", finishes, or use "
-                 "hero.human.list_escalations / hero.human.list_reports.\n";
+            << "marshal_root: " << app->defaults.marshal_root.string() << "\n"
+            << "pending_requests: " << pending.size() << "\n"
+            << "pending_reviews: " << summaries.size() << "\n";
+  if (pending.empty() && summaries.empty()) {
+    std::cout << "status: no pending human requests or review reports\n"
+              << "hint: rerun this command after a Marshal Hero session pauses, "
+                 "idles, finishes, or use hero.marshal.list_sessions / "
+                 "hero.human.list_requests / hero.human.list_summaries.\n";
     return true;
   }
   if (!pending.empty()) {
-    std::cout << "status: pending human escalation resolution required\n";
-
-    std::sort(pending.begin(), pending.end(), [](const auto& a, const auto& b) {
-      if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
-      return a.loop_id > b.loop_id;
-    });
+    std::cout << "status: pending human request requires attention\n";
 
     std::size_t selected = 0;
     if (pending.size() > 1) {
-      std::cout << "Pending escalations:\n";
+      std::cout << "Pending requests:\n";
       for (std::size_t i = 0; i < pending.size(); ++i) {
-        std::cout << "  [" << i + 1 << "] " << pending[i].loop_id << "  "
+        std::cout << "  [" << i + 1 << "] " << pending[i].marshal_session_id << "  "
                   << pending[i].objective_name << "  "
-                  << pending[i].state_detail << "\n";
+                  << operator_session_state_detail(pending[i]);
+        if (!pending[i].phase_detail.empty()) {
+          std::cout << "  " << pending[i].phase_detail;
+        }
+        std::cout << "\n";
       }
-      std::cout << "Select escalation number (blank to cancel): " << std::flush;
+      std::cout << "Select request number (blank to cancel): " << std::flush;
       std::string line{};
       if (!std::getline(std::cin, line)) return false;
       line = trim_ascii(line);
       if (line.empty()) return true;
       std::size_t choice = 0;
-      if (!parse_size_token(line, &choice) || choice == 0 || choice > pending.size()) {
-        if (error) *error = "invalid escalation selection";
+      if (!parse_size_token(line, &choice) || choice == 0 ||
+          choice > pending.size()) {
+        if (error) *error = "invalid request selection";
         return false;
       }
       selected = choice - 1;
     }
-    const auto& loop = pending[selected];
-    std::string escalation_text{};
-    if (!cuwacunu::hero::runtime::read_text_file(loop.human_escalation_path,
-                                                 &escalation_text, error)) {
+    const auto& session = pending[selected];
+    std::string request_text{};
+    if (!cuwacunu::hero::runtime::read_text_file(session.human_request_path,
+                                                 &request_text, error)) {
       return false;
     }
-    std::cout << "\n=== Human Escalation ===\n" << escalation_text << "\n";
+    std::cout << "\n=== Human Request ===\n" << request_text << "\n";
 
-    std::cout << "Resolve with [g]rant, [c]larify, [d]eny, [s]top loop, or blank to cancel: "
+    if (is_clarification_pause_kind(session.pause_kind)) {
+      std::cout << "Provide clarification answer (blank to cancel): "
+                << std::flush;
+      std::string answer{};
+      if (!std::getline(std::cin, answer)) return false;
+      answer = trim_ascii(answer);
+      if (answer.empty()) return true;
+      std::string structured{};
+      if (!build_request_answer_and_resume(app, session, answer, &structured,
+                                           error)) {
+        return false;
+      }
+      std::cout << "\nClarification answer applied.\n" << structured << "\n";
+      return true;
+    }
+
+    std::cout
+        << "Resolve with [g]rant, [c]larify, [d]eny, [t]erminate session, or blank to cancel: "
               << std::flush;
     std::string resolution{};
     if (!std::getline(std::cin, resolution)) return false;
@@ -2974,14 +4476,14 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
       resolution_kind = "clarify";
     } else if (resolution == "d" || resolution == "deny") {
       resolution_kind = "deny";
-    } else if (resolution == "s" || resolution == "stop") {
-      resolution_kind = "stop";
+    } else if (resolution == "t" || resolution == "terminate") {
+      resolution_kind = "terminate";
     } else {
       if (error) *error = "invalid resolution selection";
       return false;
     }
 
-    std::cout << "Reason shown to Super Hero: " << std::flush;
+    std::cout << "Reason shown to Marshal Hero: " << std::flush;
     std::string reason{};
     if (!std::getline(std::cin, reason)) return false;
     reason = trim_ascii(reason);
@@ -2991,97 +4493,116 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
     }
 
     std::string structured{};
-    if (!build_resolution_and_apply(app, loop, resolution_kind, reason,
+    if (!build_resolution_and_apply(app, session, resolution_kind, reason,
                                     &structured, error)) {
       return false;
     }
-    std::cout << "\nHuman escalation resolution applied.\n"
-              << structured << "\n";
+    std::cout << "\nSigned governance resolution applied.\n" << structured
+              << "\n";
     return true;
   }
 
-  std::cout << "status: informational terminal report only; Super is not waiting on you\n";
-  std::sort(reports.begin(), reports.end(), [](const auto& a, const auto& b) {
-    if (a.updated_at_ms != b.updated_at_ms) return a.updated_at_ms > b.updated_at_ms;
-    return a.loop_id > b.loop_id;
-  });
-
+  std::cout
+      << "status: review report available; continue launches more work, acknowledge records a required review message and clears the report\n";
   std::size_t selected = 0;
-  if (reports.size() > 1) {
-    std::cout << "Pending finished-loop reports:\n";
-    for (std::size_t i = 0; i < reports.size(); ++i) {
-      std::cout << "  [" << i + 1 << "] " << reports[i].loop_id << "  "
-                << reports[i].objective_name << "  " << reports[i].state
-                << "  " << build_report_effort_summary_text(reports[i]) << "\n";
+  if (summaries.size() > 1) {
+    std::cout << "Pending reviews:\n";
+    for (std::size_t i = 0; i < summaries.size(); ++i) {
+      std::cout << "  [" << i + 1 << "] " << summaries[i].marshal_session_id << "  "
+                << summaries[i].objective_name << "  "
+                << operator_session_state_detail(summaries[i]) << "  "
+                << build_summary_effort_text(summaries[i]) << "\n";
     }
-    std::cout << "Select report number (blank to cancel): " << std::flush;
+    std::cout << "Select review number (blank to cancel): " << std::flush;
     std::string line{};
     if (!std::getline(std::cin, line)) return false;
     line = trim_ascii(line);
     if (line.empty()) return true;
     std::size_t choice = 0;
-    if (!parse_size_token(line, &choice) || choice == 0 || choice > reports.size()) {
-      if (error) *error = "invalid report selection";
+    if (!parse_size_token(line, &choice) || choice == 0 ||
+        choice > summaries.size()) {
+      if (error) *error = "invalid review selection";
       return false;
     }
     selected = choice - 1;
   }
-  const auto& loop = reports[selected];
-  std::string report_text{};
-  if (!read_report_text_for_loop(loop, &report_text, error)) return false;
-  std::cout << "\n=== Human Summary Report ===\n"
-            << "[informational terminal report; not an awaiting_human case]\n\n"
-            << report_text << "\n";
+  const auto& session = summaries[selected];
+  std::string summary_text{};
+  if (!read_summary_text_for_session(session, &summary_text, error))
+    return false;
+  std::cout << "\n=== Human Review Report ===\n"
+            << "[continue launches more work; acknowledge records a required review message and clears this report from the operator queue]\n\n"
+            << summary_text << "\n";
 
-  std::cout << "Resolve this report? [a]cknowledge, [d]ismiss, or blank to cancel: "
+  const bool can_continue = (session.phase == "idle");
+  std::cout << "Resolve this review? "
+            << (can_continue
+                    ? "[c]ontinue session or [a]cknowledge review, or blank to cancel: "
+                    : "[a]cknowledge review, or blank to cancel: ")
             << std::flush;
   std::string control{};
   if (!std::getline(std::cin, control)) return false;
   control = lowercase_copy(trim_ascii(control));
   if (control.empty()) return true;
-  if (control != "a" && control != "ack" && control != "acknowledge" &&
-      control != "d" && control != "dismiss") {
-    if (error) *error = "invalid report action selection";
+  if ((!can_continue ||
+       (control != "c" && control != "continue")) &&
+      control != "a" && control != "ack" && control != "acknowledge") {
+    if (error) *error = "invalid review action selection";
     return false;
   }
+  if (can_continue && (control == "c" || control == "continue")) {
+    std::cout << "Instruction that should launch more work: " << std::flush;
+    std::string instruction{};
+    if (!std::getline(std::cin, instruction)) return false;
+    instruction = trim_ascii(instruction);
+    if (instruction.empty()) {
+      if (error) *error = "continue instruction is required";
+      return false;
+    }
+    std::string structured{};
+    if (!continue_marshal_session(app, session, instruction, &structured, error)) {
+      return false;
+    }
+    std::cout << "\nSession continuation applied.\n" << structured << "\n";
+    return true;
+  }
 
-  const bool dismiss = (control == "d" || control == "dismiss");
-  std::cout << (dismiss ? "Dismissal note (optional): "
-                        : "Validation note (optional): ")
-            << std::flush;
+  std::cout
+      << "Acknowledgment message (required; this does not continue the session): "
+      << std::flush;
   std::string note{};
   if (!std::getline(std::cin, note)) return false;
   note = trim_ascii(note);
-
-  std::string structured{};
-  if (!(dismiss ? dismiss_terminal_report(app, loop, note, &structured, error)
-                : acknowledge_terminal_report(app, loop, note, &structured,
-                                              error))) {
+  if (note.empty()) {
+    if (error) *error = "review acknowledgment requires a non-empty note";
     return false;
   }
-  std::cout << "\nHuman report "
-            << (dismiss ? "dismissal" : "acknowledgment")
-            << " applied.\n"
+
+  std::string structured{};
+  if (!acknowledge_session_summary(app, session, note, &structured, error)) {
+    return false;
+  }
+  std::cout << "\nHuman review acknowledgment applied.\n"
             << structured << "\n";
   return true;
 }
 
-bool run_interactive_request_responder(app_context_t* app, std::string* error) {
+bool run_interactive_operator_console(app_context_t* app, std::string* error) {
   if (error) error->clear();
   if (!terminal_supports_human_ncurses_ui()) {
     std::cerr << "[hero_human_mcp] terminal does not support ncurses UI"
                  " cleanly (TERM="
               << trim_ascii(std::getenv("TERM") == nullptr ? "" : std::getenv("TERM"))
-              << "); using line prompt responder instead.\n";
-    return run_line_prompt_request_responder(app, error);
+              << "); using line prompt operator console instead.\n";
+    return run_line_prompt_operator_console(app, error);
   }
   std::string ncurses_error{};
-  if (run_ncurses_request_responder(app, &ncurses_error)) return true;
+  if (run_ncurses_operator_console(app, &ncurses_error)) return true;
   if (!ncurses_error.empty() &&
       ncurses_error.rfind(kNcursesInitErrorPrefix, 0) == 0) {
-    return run_line_prompt_request_responder(app, error);
+    return run_line_prompt_operator_console(app, error);
   }
-  if (error) *error = ncurses_error.empty() ? "interactive human responder failed"
+  if (error) *error = ncurses_error.empty() ? "interactive operator console failed"
                                             : ncurses_error;
   return false;
 }

@@ -172,6 +172,64 @@ static std::string write_kline_bootstrap_outlier_csv(const fs::path& dir) {
   return path;
 }
 
+static std::string write_kline_bootstrap_malformed_close_time_csv(const fs::path& dir) {
+  // Early malformed close_time inside the bootstrap window; open_time stays regular.
+  std::string path = (dir / "klines_bootstrap_malformed_close_time.csv").string();
+  std::ofstream os(path);
+  if (!os.is_open()) log_fatal("[test] Could not open %s\n", path.c_str());
+  auto emit = [&](int64_t ot,double o,double h,double l,double c,double v,
+                  int64_t ct,double qv,int32_t n,double tb,double tq){
+    os<<ot<<','<<o<<','<<h<<','<<l<<','<<c<<','<<v<<','<<ct<<','<<qv<<','<<n<<','<<tb<<','<<tq<<','<<0<<'\n';
+  };
+  constexpr int64_t step = 3600000;
+  emit(0 * step, 100,101, 99,100.5,1000,  3599999, 100500,10,400,40200);
+  emit(1 * step, 101,102,100,101.5,1100,  7199999, 111650,11,410,41500);
+  emit(2 * step, 102,103,101,102.5,1200,  9332286, 123000,12,420,43000); // malformed close_time
+  emit(3 * step, 103,104,102,103.5,1300, 14399999, 134550,13,430,44500);
+  return path;
+}
+
+static std::string write_kline_substep_malformed_close_time_csv(
+    const fs::path& dir) {
+  // Malformed close_time lands <0.5 step after the previous close_time, so the
+  // raw delta would round to zero without alternate kline recovery.
+  std::string path = (dir / "klines_substep_malformed_close_time.csv").string();
+  std::ofstream os(path);
+  if (!os.is_open()) log_fatal("[test] Could not open %s\n", path.c_str());
+  auto emit = [&](int64_t ot,double o,double h,double l,double c,double v,
+                  int64_t ct,double qv,int32_t n,double tb,double tq){
+    os<<ot<<','<<o<<','<<h<<','<<l<<','<<c<<','<<v<<','<<ct<<','<<qv<<','<<n<<','<<tb<<','<<tq<<','<<0<<'\n';
+  };
+  constexpr int64_t step = 3600000;
+  emit(0 * step, 100,101, 99,100.5,1000,  3599999, 100500,10,400,40200);
+  emit(1 * step, 101,102,100,101.5,1100,  7199999, 111650,11,410,41500);
+  emit(2 * step, 102,103,101,102.5,1200,  8506694, 123000,12,420,43000); // malformed close_time (<0.5 step)
+  emit(3 * step, 103,104,102,103.5,1300, 14399999, 134550,13,430,44500);
+  return path;
+}
+
+static std::string write_kline_malformed_close_time_csv(const fs::path& dir) {
+  // Regular 1h close lattice for >64 rows so bootstrap inference locks onto the
+  // intended step before it encounters the malformed close_time.
+  std::string path = (dir / "klines_malformed_close_time.csv").string();
+  std::ofstream os(path);
+  if (!os.is_open()) log_fatal("[test] Could not open %s\n", path.c_str());
+  auto emit = [&](int64_t ot,double o,double h,double l,double c,double v,
+                  int64_t ct,double qv,int32_t n,double tb,double tq){
+    os<<ot<<','<<o<<','<<h<<','<<l<<','<<c<<','<<v<<','<<ct<<','<<qv<<','<<n<<','<<tb<<','<<tq<<','<<0<<'\n';
+  };
+  constexpr int64_t step = 3600000;
+  for (int i = 0; i < 70; ++i) {
+    const int64_t open_time = static_cast<int64_t>(i) * step;
+    const int64_t close_time = open_time + step - 1;
+    emit(open_time, 100.0 + i, 101.0 + i, 99.0 + i, 100.5 + i, 1000.0 + 10.0 * i,
+         close_time, 100500.0 + 1000.0 * i, 10 + i, 400.0 + i, 40200.0 + 10.0 * i);
+  }
+  emit(70 * step, 170,171,169,170.5,1700, 253932286, 170500,80,470,40900); // malformed close_time
+  emit(72 * step, 172,173,171,172.5,1720, 262799999, 172500,82,472,41100); // gap over one missing hour
+  return path;
+}
+
 static std::string write_trade_csv(const fs::path& dir) {
   std::string path = (dir / "trades.csv").string();
   std::ofstream os(path);
@@ -365,6 +423,66 @@ int main() {
       log_info("[test][kline_t] ✔ Bootstrap min-step inferred expected lattice under first-delta outlier.\n");
     }
 
+    // --- kline_t bootstrap malformed close_time regression ---
+    {
+      auto malformed_bootstrap_csv =
+          write_kline_bootstrap_malformed_close_time_csv(tmp);
+      std::string out_bin =
+          sanitize_csv_into_binary_file<cuwacunu::camahjucunu::exchange::kline_t>(
+              malformed_bootstrap_csv, /*normalization_policy=*/"none",
+              /*force_rebuild_cache=*/true);
+      auto recs =
+          read_bin_all<cuwacunu::camahjucunu::exchange::kline_cache_t>(out_bin);
+      const std::vector<int64_t> expected = {
+          3599999, 7199999, 10799999, 14399999};
+      if (recs.size() != expected.size()) {
+        log_fatal("[test][kline_t] bootstrap malformed close_time recovery expected %zu rows, got %zu\n",
+                  expected.size(), recs.size());
+      }
+      for (std::size_t i = 0; i < expected.size(); ++i) {
+        if (recs[i].close_time != expected[i]) {
+          log_fatal("[test][kline_t] bootstrap malformed close_time key mismatch @%zu (got %lld want %lld)\n",
+                    i,
+                    static_cast<long long>(recs[i].close_time),
+                    static_cast<long long>(expected[i]));
+        }
+      }
+      if (!recs[2].is_valid()) {
+        log_fatal("[test][kline_t] bootstrap malformed close_time row lost validity after recovery\n");
+      }
+      log_info("[test][kline_t] ✔ Bootstrap malformed close_time recovery kept the intended lattice.\n");
+    }
+
+    // --- kline_t sub-step malformed close_time regression ---
+    {
+      auto malformed_substep_csv =
+          write_kline_substep_malformed_close_time_csv(tmp);
+      std::string out_bin =
+          sanitize_csv_into_binary_file<cuwacunu::camahjucunu::exchange::kline_t>(
+              malformed_substep_csv, /*normalization_policy=*/"none",
+              /*force_rebuild_cache=*/true);
+      auto recs =
+          read_bin_all<cuwacunu::camahjucunu::exchange::kline_cache_t>(out_bin);
+      const std::vector<int64_t> expected = {
+          3599999, 7199999, 10799999, 14399999};
+      if (recs.size() != expected.size()) {
+        log_fatal("[test][kline_t] sub-step malformed close_time recovery expected %zu rows, got %zu\n",
+                  expected.size(), recs.size());
+      }
+      for (std::size_t i = 0; i < expected.size(); ++i) {
+        if (recs[i].close_time != expected[i]) {
+          log_fatal("[test][kline_t] sub-step malformed close_time key mismatch @%zu (got %lld want %lld)\n",
+                    i,
+                    static_cast<long long>(recs[i].close_time),
+                    static_cast<long long>(expected[i]));
+        }
+      }
+      if (!recs[2].is_valid()) {
+        log_fatal("[test][kline_t] sub-step malformed close_time row lost validity after recovery\n");
+      }
+      log_info("[test][kline_t] ✔ Sub-step malformed close_time recovery avoided zero-step failure.\n");
+    }
+
     // --- kline_t gap continuation strict-context regression ---
     {
       auto kline_gap_csv = write_kline_bootstrap_outlier_csv(tmp);
@@ -382,6 +500,36 @@ int main() {
         log_fatal("[test][kline_t] post-gap normalization did not reuse the masked raw predecessor as context\n");
       }
       log_info("[test][kline_t] ✔ Gap masking and post-gap context recovery are correct.\n");
+    }
+
+    // --- kline_t malformed close_time recovery regression ---
+    {
+      auto malformed_csv = write_kline_malformed_close_time_csv(tmp);
+      std::string out_bin =
+          sanitize_csv_into_binary_file<cuwacunu::camahjucunu::exchange::kline_t>(
+              malformed_csv, /*normalization_policy=*/"none",
+              /*force_rebuild_cache=*/true);
+      auto recs =
+          read_bin_all<cuwacunu::camahjucunu::exchange::kline_cache_t>(out_bin);
+      if (recs.size() != 73) {
+        log_fatal("[test][kline_t] malformed close_time recovery expected 73 rows, got %zu\n",
+                  recs.size());
+      }
+      const std::vector<int64_t> tail_expected = {
+          251999999, 255599999, 259199999, 262799999};
+      for (std::size_t i = 0; i < tail_expected.size(); ++i) {
+        const std::size_t idx = recs.size() - tail_expected.size() + i;
+        if (recs[idx].close_time != tail_expected[i]) {
+          log_fatal("[test][kline_t] malformed close_time recovery tail mismatch @%zu (got %lld want %lld)\n",
+                    idx,
+                    static_cast<long long>(recs[idx].close_time),
+                    static_cast<long long>(tail_expected[i]));
+        }
+      }
+      if (!recs[70].is_valid() || recs[71].is_valid() || !recs[72].is_valid()) {
+        log_fatal("[test][kline_t] malformed close_time recovery did not preserve valid/null layout\n");
+      }
+      log_info("[test][kline_t] ✔ Malformed close_time recovery preserves lattice and gap masking.\n");
     }
 
     // --- trade_t ---

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <optional>
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -13,11 +14,13 @@
 #include "hero/config_hero/hero.config.h"
 #include "hero/config_hero/hero_config_store.h"
 #include "hero/config_hero/hero_config_tools.h"
+#include "hero/mcp_server_observability.h"
 #include "piaabo/dlogs.h"
 
 namespace {
 
 constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
+constexpr const char* kServerName = "hero_config_mcp";
 
 __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
@@ -40,6 +43,7 @@ void write_stdout_text(std::string_view text) {
 }
 
 void write_stderr_text(std::string_view text) {
+  cuwacunu::hero::mcp_observability::mirror_stderr_text(text);
   const char* data = text.data();
   std::size_t remaining = text.size();
   while (remaining > 0) {
@@ -166,6 +170,7 @@ void print_cli_help(const char* argv0) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  cuwacunu::hero::mcp_observability::clear_log_paths();
   std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
   std::string config_path;
   bool config_overridden = false;
@@ -242,6 +247,17 @@ int main(int argc, char** argv) {
     }
   }
 
+  {
+    std::string observability_error{};
+    const auto log_dir =
+        cuwacunu::hero::mcp_observability::derive_config_mcp_log_dir(
+            global_config_path, &observability_error);
+    if (!log_dir.empty()) {
+      cuwacunu::hero::mcp_observability::configure_log_paths(
+          cuwacunu::hero::mcp_observability::make_log_paths(log_dir));
+    }
+  }
+
   if (!config_overridden) {
     config_path = default_config_path_from_real_hero(global_config_path);
   }
@@ -249,6 +265,25 @@ int main(int argc, char** argv) {
     write_stderr_text("missing [REAL_HERO].config_hero_dsl_filename in " +
                       global_config_path.string() + "\n");
     return 2;
+  }
+
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "mode",
+        direct_tool_mode   ? "direct_tool"
+        : list_tools       ? "list_tools"
+        : list_tools_json  ? "list_tools_json"
+                           : "server");
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "global_config_path", global_config_path.string());
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "config_path", config_path);
+    cuwacunu::hero::mcp_observability::append_json_int_field(
+        extra, "pid", static_cast<int>(::getpid()));
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "startup", extra.str(), &ignored);
   }
 
   if (list_tools_json) {
@@ -264,6 +299,12 @@ int main(int argc, char** argv) {
                                                  global_config_path.string());
   std::string load_error;
   if (!store.load(&load_error)) {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "message", load_error);
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "startup_failed", extra.str(), &ignored);
     write_stdout_text("err\tstartup\t" + load_error + "\nend\n");
     return 2;
   }
@@ -271,23 +312,64 @@ int main(int argc, char** argv) {
   const std::string protocol_layer =
       normalize_protocol_layer(store.get_or_default("protocol_layer"));
   if (protocol_layer == "https/sse") {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "message",
+        std::string(cuwacunu::hero::config::kProtocolLayerHttpsSseFailFastMessage));
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "startup_failed", extra.str(), &ignored);
     write_stderr_text(
         std::string(cuwacunu::hero::config::kProtocolLayerHttpsSseFailFastMessage) +
         "\n");
     return 2;
   }
   if (!protocol_layer.empty() && protocol_layer != "stdio") {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "message", "Unsupported protocol_layer: " + protocol_layer);
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "startup_failed", extra.str(), &ignored);
     write_stderr_text("Unsupported protocol_layer: " + protocol_layer +
                       " (allowed: STDIO|HTTPS/SSE)\n");
     return 2;
   }
 
   if (direct_tool_mode) {
+    {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "arguments_json", direct_tool_args_json);
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_start", extra.str(), &ignored);
+    }
+    const std::uint64_t tool_started_at_ms =
+        cuwacunu::hero::runtime::now_ms_utc();
     std::string tool_result_json;
     std::string tool_error;
     const bool ok = cuwacunu::hero::mcp::execute_tool_json(
         direct_tool_name, direct_tool_args_json, &store, &tool_result_json,
         &tool_error);
+    {
+      std::ostringstream extra;
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "tool_name", direct_tool_name);
+      cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok", ok);
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "duration_ms",
+          cuwacunu::hero::runtime::now_ms_utc() - tool_started_at_ms);
+      if (!tool_error.empty()) {
+        cuwacunu::hero::mcp_observability::append_json_string_field(
+            extra, "error", tool_error);
+      }
+      std::string ignored{};
+      (void)cuwacunu::hero::mcp_observability::append_event_json(
+          kServerName, "tool_finish", extra.str(), &ignored);
+    }
     if (!tool_result_json.empty()) {
       write_stdout_text(tool_result_json + "\n");
     }
@@ -304,6 +386,11 @@ int main(int argc, char** argv) {
         "default mode expects JSON-RPC input on stdin.\n");
     print_cli_help(argv[0]);
     return 2;
+  }
+  {
+    std::string ignored{};
+    (void)cuwacunu::hero::mcp_observability::append_event_json(
+        kServerName, "server_loop_enter", {}, &ignored);
   }
   cuwacunu::hero::mcp::run_jsonrpc_stdio_loop(&store);
   return exit_code;

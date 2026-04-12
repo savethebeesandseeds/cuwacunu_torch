@@ -60,6 +60,9 @@
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "jkimyei/training_setup/jk_setup.h"
 
+DEV_WARNING("(expected_value.h)[] this distribution allows: volatily is just a function, entropy is just a function.");
+DEV_WARNING("(expected_value.h)[] this distribution allows: hamilton jacobi bellman equation optimization of porfolio.");
+
 namespace cuwacunu {
 namespace wikimyei {
 

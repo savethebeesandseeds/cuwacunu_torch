@@ -153,6 +153,61 @@ inline void move_optimizer_state_to_device(torch::optim::Optimizer* optimizer,
   }
 }
 
+inline bool tensor_matches_device_(const torch::Tensor& tensor,
+                                   const torch::Device& expected) {
+  if (!tensor.defined()) return true;
+  const auto actual = tensor.device();
+  if (actual.type() != expected.type()) return false;
+  if (!expected.has_index()) return true;
+  return actual.has_index() && actual.index() == expected.index();
+}
+
+inline void assert_module_resident_on_device_or_throw_(
+    const torch::nn::Module& module,
+    const torch::Device& expected,
+    std::string_view context) {
+  for (const auto& named_param : module.named_parameters(/*recurse=*/true)) {
+    TORCH_CHECK(
+        tensor_matches_device_(named_param.value(), expected),
+        context,
+        " parameter '",
+        named_param.key(),
+        "' is on ",
+        named_param.value().device().str(),
+        " but expected ",
+        expected.str());
+  }
+  for (const auto& named_buffer : module.named_buffers(/*recurse=*/true)) {
+    TORCH_CHECK(
+        tensor_matches_device_(named_buffer.value(), expected),
+        context,
+        " buffer '",
+        named_buffer.key(),
+        "' is on ",
+        named_buffer.value().device().str(),
+        " but expected ",
+        expected.str());
+  }
+}
+
+inline void verify_loaded_module_device_or_throw_(
+    VICReg_4D& model,
+    std::string_view context) {
+  assert_module_resident_on_device_or_throw_(model, model.device, context);
+  if (!model.device.is_cuda()) return;
+  torch::NoGradGuard guard;
+  auto data = torch::ones(
+      {1, model.C, model.T, model.D},
+      torch::TensorOptions().dtype(model.dtype).device(model.device));
+  auto mask = torch::full(
+      {1, model.C, model.T},
+      true,
+      torch::TensorOptions().dtype(torch::kBool).device(model.device));
+  (void)model.encode_projected(data, mask, /*use_swa=*/true,
+                               /*detach_to_cpu=*/false);
+  torch::cuda::synchronize();
+}
+
 inline std::string trim_ascii_copy(std::string s) {
   auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
   while (!s.empty() && is_space(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
@@ -575,8 +630,16 @@ void VICReg_4D::clear_pending_runtime_state_(bool reset_optimizer_steps) {
   runtime_state.has_pending_grad = false;
   runtime_state.pending_sample_count = 0;
   runtime_state.pending_loss_sum = 0.0;
+  runtime_state.pending_inv_sum = 0.0;
+  runtime_state.pending_var_sum = 0.0;
+  runtime_state.pending_cov_raw_sum = 0.0;
+  runtime_state.pending_cov_weighted_sum = 0.0;
   runtime_state.pending_loss_count = 0;
   runtime_state.last_committed_loss_mean = 0.0;
+  runtime_state.last_committed_inv_mean = 0.0;
+  runtime_state.last_committed_var_mean = 0.0;
+  runtime_state.last_committed_cov_raw_mean = 0.0;
+  runtime_state.last_committed_cov_weighted_mean = 0.0;
   if (reset_optimizer_steps) {
     runtime_state.optimizer_steps = 0;
     runtime_state.trained_epochs = 0;
@@ -652,9 +715,33 @@ bool VICReg_4D::commit_pending_training_step_(int swa_start_iter) {
           ? (runtime_state.pending_loss_sum /
              static_cast<double>(runtime_state.pending_loss_count))
           : 0.0;
+  runtime_state.last_committed_inv_mean =
+      (runtime_state.pending_loss_count > 0)
+          ? (runtime_state.pending_inv_sum /
+             static_cast<double>(runtime_state.pending_loss_count))
+          : 0.0;
+  runtime_state.last_committed_var_mean =
+      (runtime_state.pending_loss_count > 0)
+          ? (runtime_state.pending_var_sum /
+             static_cast<double>(runtime_state.pending_loss_count))
+          : 0.0;
+  runtime_state.last_committed_cov_raw_mean =
+      (runtime_state.pending_loss_count > 0)
+          ? (runtime_state.pending_cov_raw_sum /
+             static_cast<double>(runtime_state.pending_loss_count))
+          : 0.0;
+  runtime_state.last_committed_cov_weighted_mean =
+      (runtime_state.pending_loss_count > 0)
+          ? (runtime_state.pending_cov_weighted_sum /
+             static_cast<double>(runtime_state.pending_loss_count))
+          : 0.0;
   runtime_state.trained_samples += runtime_state.pending_sample_count;
   runtime_state.pending_sample_count = 0;
   runtime_state.pending_loss_sum = 0.0;
+  runtime_state.pending_inv_sum = 0.0;
+  runtime_state.pending_var_sum = 0.0;
+  runtime_state.pending_cov_raw_sum = 0.0;
+  runtime_state.pending_cov_weighted_sum = 0.0;
   runtime_state.pending_loss_count = 0;
   runtime_state.accum_counter = 0;
   runtime_state.has_pending_grad = false;
@@ -766,13 +853,18 @@ VICReg_4D::train_step_result_t VICReg_4D::train_one_batch(
   auto loss = terms.total;
 
   const double loss_scalar = loss.template item<double>();
+  const double inv_scalar = terms.inv.template item<double>();
+  const double var_scalar = terms.var.template item<double>();
+  const double cov_raw_scalar = terms.cov_raw.template item<double>();
+  const double cov_weighted_scalar =
+      terms.cov_weighted.template item<double>();
   if (verbose && (runtime_state.optimizer_steps % 500 == 0)) {
     log_info("[loss] optim=%.6f inv=%.6f var=%.6f cov_raw=%.6f cov_eff=%.6f (cov_boost=%.2f)\n",
              loss_scalar,
-             terms.inv.template item<double>(),
-             terms.var.template item<double>(),
-             terms.cov_raw.template item<double>(),
-             terms.cov_weighted.template item<double>(),
+             inv_scalar,
+             var_scalar,
+             cov_raw_scalar,
+             cov_weighted_scalar,
              cov_boost);
     log_info(
         "[vicreg_overlap] skipped=false shared_steps=%lld union_steps=%lld N_eff=%lld skipped_batches=%llu\n",
@@ -795,6 +887,10 @@ VICReg_4D::train_step_result_t VICReg_4D::train_one_batch(
   }
 
   runtime_state.pending_loss_sum += loss_scalar;
+  runtime_state.pending_inv_sum += inv_scalar;
+  runtime_state.pending_var_sum += var_scalar;
+  runtime_state.pending_cov_raw_sum += cov_raw_scalar;
+  runtime_state.pending_cov_weighted_sum += cov_weighted_scalar;
   ++runtime_state.pending_loss_count;
   if (data.dim() > 0 && data.size(0) > 0) {
     runtime_state.pending_sample_count +=
@@ -1031,6 +1127,7 @@ void VICReg_4D::load(const std::string& path)
 
   this->to(device, dtype, /*non_blocking=*/false);
   move_optimizer_state_to_device(optimizer.get(), device);
+  verify_loaded_module_device_or_throw_(*this, "[VICReg_4D::load]");
 
   if (const auto popts =
           read_projector_options_override_from_checkpoint(path);

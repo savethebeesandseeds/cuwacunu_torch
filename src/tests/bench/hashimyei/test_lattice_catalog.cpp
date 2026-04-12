@@ -463,6 +463,16 @@ int main() {
       "wave_cursor:uint = " + expected_wave_cursor + "\n"
       "trained_steps(0,+inf):uint = 12\n");
   write_text_file(
+      vicreg_0042_dir / "train_summary.latest.lls",
+      "schema:str = tsi.wikimyei.representation.vicreg.train_summary.v1\n"
+      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "semantic_taxon:str = embedding.network\n"
+      "binding_id:str = bind.train.vicreg\n"
+      "contract_hash:str = contract_hash_123\n"
+      "wave_cursor:uint = " + expected_wave_cursor + "\n"
+      "train.optimizer_steps(0,+inf):uint = 12\n"
+      "train.loss.epoch_mean(-inf,+inf):double = 0.250000000000\n");
+  write_text_file(
       source_context_dir / "data_analytics.v2.latest.lls",
       "schema:str = piaabo.torch_compat.data_analytics.v2\n"
       "canonical_path:str = tsi.source.dataloader\n"
@@ -517,9 +527,10 @@ int main() {
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> runtime_report_fragments{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments(canonical_runtime_path, "", 0, 0,
                                                  true, &runtime_report_fragments, &error));
-  REQUIRE(runtime_report_fragments.size() == 2);
+  REQUIRE(runtime_report_fragments.size() == 3);
   bool saw_network_runtime = false;
   bool saw_status_runtime = false;
+  bool saw_train_summary_runtime = false;
   for (const auto& row : runtime_report_fragments) {
     REQUIRE(row.path.find(".lls") != std::string::npos);
     if (row.schema == "piaabo.torch_compat.network_analytics.v5") {
@@ -532,9 +543,14 @@ int main() {
     if (row.schema == "tsi.wikimyei.representation.vicreg.status.v1") {
       saw_status_runtime = true;
     }
+    if (row.schema == "tsi.wikimyei.representation.vicreg.train_summary.v1") {
+      saw_train_summary_runtime = true;
+      REQUIRE(row.semantic_taxon == "embedding.network");
+    }
   }
   REQUIRE(saw_network_runtime);
   REQUIRE(saw_status_runtime);
+  REQUIRE(saw_train_summary_runtime);
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
       runtime_report_fragments_family{};
@@ -819,7 +835,7 @@ int main() {
   REQUIRE(runtime_catalog.list_runtime_report_fragments(
       "tsi.wikimyei.representation.vicreg", "", 0, 0, true, &ranked_family_rows,
       &error));
-  REQUIRE(ranked_family_rows.size() == 5);
+  REQUIRE(ranked_family_rows.size() == 6);
   for (const auto& row : ranked_family_rows) {
     REQUIRE(row.family == "tsi.wikimyei.representation.vicreg");
     if (row.hashimyei == "0x0043") {

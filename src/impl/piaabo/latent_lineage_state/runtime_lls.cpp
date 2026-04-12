@@ -551,10 +551,9 @@ void set_error(std::string* error, std::string message) {
   }
 
   try {
-    const auto decoded =
-        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
-            cuwacunu::piaabo::latent_lineage_state::runtime_lls_grammar_text(),
-            stripped);
+    static cuwacunu::camahjucunu::dsl::latentLineageStatePipeline pipeline(
+        cuwacunu::piaabo::latent_lineage_state::runtime_lls_grammar_text());
+    const auto decoded = pipeline.decode(stripped);
     std::vector<entry_t> parsed = to_runtime_entries(decoded);
     if (!validate_entries(parsed, true, error)) return false;
     *out = std::move(parsed);
@@ -599,8 +598,10 @@ namespace piaabo {
 namespace latent_lineage_state {
 
 std::string runtime_lls_grammar_text() {
-  return cuwacunu::piaabo::dfiles::readFileToString(
-      std::string(kRuntimeLlsGrammarPath));
+  static const std::string grammar_text =
+      cuwacunu::piaabo::dfiles::readFileToString(
+          std::string(kRuntimeLlsGrammarPath));
+  return grammar_text;
 }
 
 bool validate_runtime_lls_text(std::string_view text, std::string* error) {
@@ -654,6 +655,56 @@ bool runtime_lls_document_to_kv_map(
       return false;
     }
     (*out)[entry.key] = value;
+  }
+  return true;
+}
+
+bool parse_runtime_lls_text_fast_to_kv_map(
+    std::string_view text,
+    std::unordered_map<std::string, std::string>* out,
+    std::string* error) {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "runtime .lls kv output pointer is null");
+    return false;
+  }
+  out->clear();
+
+  bool saw_schema = false;
+  std::size_t cursor = 0;
+  while (cursor < text.size()) {
+    std::size_t line_end = text.find('\n', cursor);
+    if (line_end == std::string_view::npos) line_end = text.size();
+    std::string_view line = text.substr(cursor, line_end - cursor);
+    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    const std::string trimmed = trim_ascii_copy(line);
+    if (!trimmed.empty() && trimmed.front() != '#') {
+      const std::size_t eq = trimmed.find('=');
+      if (eq == std::string_view::npos || eq == 0) {
+        set_error(error, "runtime .lls parse failure: invalid key/value line");
+        out->clear();
+        return false;
+      }
+      const std::string key =
+          cuwacunu::camahjucunu::dsl::extract_latent_lineage_state_lhs_key(
+              trim_ascii_copy(trimmed.substr(0, eq)));
+      if (key.empty()) {
+        set_error(error, "runtime .lls parse failure: invalid lhs key");
+        out->clear();
+        return false;
+      }
+      std::string value = trim_ascii_copy(trimmed.substr(eq + 1));
+      (*out)[key] = value;
+      if (key == "schema" && !value.empty()) saw_schema = true;
+    }
+    if (line_end == text.size()) break;
+    cursor = line_end + 1;
+  }
+
+  if (!saw_schema) {
+    set_error(error, "persisted runtime .lls requires top-level schema key");
+    out->clear();
+    return false;
   }
   return true;
 }

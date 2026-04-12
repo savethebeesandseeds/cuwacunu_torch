@@ -5,7 +5,7 @@ MAN_ID = global.config.general
 TARGET_DSL = src/config/.config
 TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
 PRIMARY_DECODER = src/impl/iitepi/config_space_t.cpp
-PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/tools/cuwacunu_campaign.cpp,src/impl/hero/super_hero/hero_super_tools.cpp
+PRIMARY_VALIDATORS = src/impl/iitepi/config_space_t.cpp,src/main/tools/cuwacunu_campaign.cpp,src/impl/hero/marshal_hero/hero_marshal_tools.cpp
 
 [ENUM GENERAL.exchange_type]
 key = GENERAL.exchange_type
@@ -39,7 +39,7 @@ required = true
 default = /cuwacunu/.runtime
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = shared runtime root; Runtime HERO derives `.campaigns` under it, Hashimyei/Lattice derive `.hashimyei` and catalog paths under it, and reset-runtime utilities treat those derived roots as reset targets
+nuance = shared runtime root; Runtime HERO derives `.campaigns` under it, Config Hero derives `.config_hero/mcp/hero_config_mcp` for STDIO stderr/event diagnostics, Hashimyei/Lattice derive `.hashimyei` and catalog paths plus `.hashimyei/_meta/mcp/<server>` STDIO stderr/event diagnostics, and reset-runtime utilities treat the runtime/catalog roots as reset targets
 
 [FIELD GENERAL.repo_root]
 key = repo_root
@@ -49,7 +49,7 @@ required = true
 default = /cuwacunu
 range = existing directory
 allowed = absolute_or_relative path
-nuance = stable repository/worktree root used by Super HERO when launching `codex exec -C` for super-loop reviews
+nuance = stable repository/worktree root used by Marshal HERO when launching `codex exec -C` for Marshal session planning checkpoints
 
 [FIELD GENERAL.torch_seed]
 key = torch_seed

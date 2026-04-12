@@ -59,15 +59,9 @@ struct config_space_t {
   static void set_runtime_campaign_dsl_override(const std::string& path);
   static void clear_runtime_campaign_dsl_override();
   static std::string effective_campaign_dsl_path();
-  static std::string effective_board_dsl_path() {
-    return effective_campaign_dsl_path();
-  }
   static std::string locked_campaign_hash();
   static std::string locked_campaign_path_canonical();
   static std::string locked_binding_id();
-  static std::string locked_board_binding_id() {
-    return locked_binding_id();
-  }
 
   /*—generic accessor—*/
   template <class T = std::string>
@@ -87,9 +81,6 @@ struct config_space_t {
   static std::string hero_mode();
   static std::string hero_api_key_filename();
   static std::string locked_runtime_binding_hash();
-  static std::string locked_board_hash() {
-    return locked_runtime_binding_hash();
-  }
 
  private:
   /*—raw readers—*/

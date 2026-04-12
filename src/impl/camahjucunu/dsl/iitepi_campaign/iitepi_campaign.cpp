@@ -207,7 +207,7 @@ class parser_t {
     std::unordered_set<std::string> wave_import_ids{};
     std::unordered_set<std::string> bind_ids{};
     std::unordered_set<std::string> contract_files{};
-    bool saw_super_objective = false;
+    bool saw_marshal_objective = false;
 
     expect_identifier("CAMPAIGN");
     expect_symbol('{');
@@ -240,12 +240,12 @@ class parser_t {
         out.waves.push_back(std::move(wave));
         continue;
       }
-      if (head.text == "SUPER") {
-        if (saw_super_objective) {
-          throw std::runtime_error("duplicate SUPER entry in CAMPAIGN block");
+      if (head.text == "MARSHAL") {
+        if (saw_marshal_objective) {
+          throw std::runtime_error("duplicate MARSHAL entry in CAMPAIGN block");
         }
-        out.super_objective_file = parse_super_decl();
-        saw_super_objective = true;
+        out.marshal_objective_file = parse_marshal_decl();
+        saw_marshal_objective = true;
         continue;
       }
       if (head.text == "BIND") {
@@ -412,12 +412,12 @@ class parser_t {
     return out;
   }
 
-  std::string parse_super_decl() {
-    expect_identifier("SUPER");
+  std::string parse_marshal_decl() {
+    expect_identifier("MARSHAL");
     std::string value = parse_scalar_value();
     expect_symbol(';');
     if (value.empty()) {
-      throw std::runtime_error("SUPER missing objective path");
+      throw std::runtime_error("MARSHAL missing objective path");
     }
     return value;
   }
@@ -511,7 +511,7 @@ void validate_iitepi_campaign_grammar_text_or_throw_(
       "<instruction>",
       "<contract_import_decl>",
       "<wave_import_decl>",
-      "<super_decl>",
+      "<marshal_decl>",
       "<bind_decl>",
       "<run_decl>",
       "CAMPAIGN",
@@ -519,7 +519,7 @@ void validate_iitepi_campaign_grammar_text_or_throw_(
       "IMPORT_CONTRACT",
       "AS",
       "IMPORT_WAVE",
-      "SUPER",
+      "MARSHAL",
       "BIND",
       "RUN",
       "CONTRACT",
@@ -541,8 +541,8 @@ std::string iitepi_campaign_instruction_t::str() const {
   oss << "iitepi_campaign_instruction_t: contracts=" << contracts.size()
       << " waves=" << waves.size() << " binds=" << binds.size()
       << " runs=" << runs.size() << "\n";
-  if (!super_objective_file.empty()) {
-    oss << "  [super] objective_file=" << super_objective_file << "\n";
+  if (!marshal_objective_file.empty()) {
+    oss << "  [marshal] objective_file=" << marshal_objective_file << "\n";
   }
   for (std::size_t i = 0; i < runs.size(); ++i) {
     const auto& run = runs[i];

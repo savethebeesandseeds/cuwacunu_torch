@@ -314,11 +314,16 @@ inline void hard_wrap(const std::string& s, int width,
       run_style = st;
     }
 
-    // append visible char
-    run.push_back((char)c);
-    ++col;
-    ++row.len;
-    ++i;
+    const std::size_t bytes =
+        cuwacunu::iinuji::utf8_codepoint_bytes(std::string_view(s), i);
+    const int glyph_width = std::max(
+        0, cuwacunu::iinuji::utf8_codepoint_display_width(
+               std::string_view(s).substr(i, bytes)));
+
+    run.append(s, i, bytes);
+    col += glyph_width;
+    row.len += glyph_width;
+    i += bytes;
 
     if (col >= width) {
       flush();
@@ -346,12 +351,17 @@ inline void render_row(int y, int x, int width,
     int rem = width - col;
     if (rem <= 0) break;
 
-    int n = std::min(rem, (int)seg.text.size());
-    if (n <= 0) continue;
+    const std::size_t nbytes =
+        cuwacunu::iinuji::utf8_prefix_bytes_for_width(seg.text, rem);
+    if (nbytes == 0) continue;
+    const std::string shown = seg.text.substr(0, nbytes);
+    const int shown_width = cuwacunu::iinuji::utf8_display_width(shown);
+    if (shown_width <= 0) continue;
 
     short pair = seg.pair ? seg.pair : fallback_pair;
-    R->putText(y, x + col, seg.text, rem, pair, seg.bold || base_bold, seg.inverse || base_inverse);
-    col += n;
+    R->putText(y, x + col, shown, shown_width, pair, seg.bold || base_bold,
+               seg.inverse || base_inverse);
+    col += shown_width;
   }
 }
 
@@ -373,7 +383,7 @@ inline void append_plain(row_t& row, const std::string& s,
     }
   }
   row.segs.push_back(std::move(seg));
-  row.len += (int)s.size();
+  row.len += cuwacunu::iinuji::utf8_display_width(s);
 }
 
 } // namespace ansi

@@ -21,6 +21,10 @@ range = one token
 allowed = STDIO,HTTPS/SSE
 nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast for now
 
+[NOTE CONFIG_HERO_STDIO_DIAGNOSTICS]
+scope = HERO runtime config
+text = Config Hero keeps stdout reserved for STDIO CLI/MCP payloads and mirrors server diagnostics under `<runtime_root>/.config_hero/mcp/hero_config_mcp/` as `stderr.log` plus `events.jsonl`.
+
 [FIELD config_scope_root]
 key = config_scope_root
 scope = HERO runtime config
@@ -76,10 +80,10 @@ key = allowed_extensions
 scope = HERO runtime config
 type = string
 required = true
-default = .dsl
+default = .dsl,.md
 range = csv extension list
 allowed = comma-separated dot-prefixed extensions
-nuance = allowed file extensions for hero.config.default.*, hero.config.objective.*, and hero.config.optim.*
+nuance = allowed file extensions for hero.config.default.*, hero.config.objective.*, and hero.config.optim.*; list/read obey this directly, while create/replace still depend on the file family's validation support
 
 [TOOLS]
 hero.config.default.list = lists allowed files under default_roots; include_man=true also inlines associated .man content when available

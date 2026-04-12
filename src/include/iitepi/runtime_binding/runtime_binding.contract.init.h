@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdint>
@@ -75,6 +76,15 @@ struct runtime_binding_run_record_t {
   RuntimeBinding runtime_binding{};
 };
 
+struct runtime_binding_device_resolution_t {
+  torch::Device device{torch::kCPU};
+  std::string contract_hash{};
+  std::string source_section{};
+  std::string configured_device{};
+  std::string error{};
+  bool resolved_from_config{false};
+};
+
 [[nodiscard]] inline const char* runtime_binding_log_value_or_empty(
     const std::string& value) {
   return value.empty() ? "<empty>" : value.c_str();
@@ -85,6 +95,235 @@ struct runtime_binding_run_record_t {
     if (!std::isspace(c)) return true;
   }
   return false;
+}
+
+[[nodiscard]] inline std::string runtime_binding_init_trim_ascii_copy(
+    std::string s);
+
+[[nodiscard]] inline bool runtime_binding_requests_cuda_device_value(
+    std::string_view raw_value) {
+  std::string value(raw_value);
+  value = runtime_binding_init_trim_ascii_copy(std::move(value));
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  if (value == "gpu" || value == "cuda") return true;
+  if (value.rfind("gpu:", 0) == 0 || value.rfind("cuda:", 0) == 0) return true;
+  if (value.rfind("torch::", 0) == 0) value = value.substr(7);
+  if (value.rfind("at::", 0) == 0) value = value.substr(4);
+  if (value == "kcuda") return true;
+  return value.rfind("kcuda:", 0) == 0;
+}
+
+[[nodiscard]] inline const cuwacunu::camahjucunu::runtime_binding_bind_decl_t*
+find_bind_by_id(
+    const cuwacunu::camahjucunu::runtime_binding_instruction_t& instruction,
+    const std::string& binding_id);
+
+[[nodiscard]] inline const cuwacunu::camahjucunu::
+    runtime_binding_contract_decl_t*
+find_contract_decl_by_id(
+    const cuwacunu::camahjucunu::runtime_binding_instruction_t& instruction,
+    const std::string& contract_id);
+
+[[nodiscard]] inline std::optional<std::string>
+runtime_binding_section_device_value(
+    const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>&
+        contract_itself,
+    std::string_view section) {
+  if (!contract_itself) return std::nullopt;
+  const auto sec_it =
+      contract_itself->module_sections.find(std::string(section));
+  if (sec_it == contract_itself->module_sections.end()) return std::nullopt;
+  const auto value_it = sec_it->second.find("device");
+  if (value_it == sec_it->second.end()) return std::nullopt;
+  const std::string configured =
+      runtime_binding_init_trim_ascii_copy(value_it->second);
+  if (!has_non_ws_text(configured)) return std::nullopt;
+  return configured;
+}
+
+[[nodiscard]] inline runtime_binding_device_resolution_t
+resolve_runtime_binding_preferred_device_for_binding(
+    const std::string& binding_id,
+    const std::shared_ptr<const cuwacunu::iitepi::runtime_binding_record_t>&
+        runtime_binding_itself,
+    torch::Device fallback_device = torch::kCPU) {
+  runtime_binding_device_resolution_t out{};
+  out.device = fallback_device;
+  if (!runtime_binding_itself) {
+    out.error = "missing runtime binding record";
+    return out;
+  }
+
+  const auto& runtime_binding_instruction =
+      runtime_binding_itself->runtime_binding.decoded();
+  const auto* bind = find_bind_by_id(runtime_binding_instruction, binding_id);
+  if (!bind) {
+    out.error = "unknown runtime binding id: " + binding_id;
+    return out;
+  }
+  const auto* contract_decl =
+      find_contract_decl_by_id(runtime_binding_instruction, bind->contract_ref);
+  if (!contract_decl) {
+    out.error = "binding references unknown CONTRACT id: " + bind->contract_ref;
+    return out;
+  }
+
+  const std::string contract_path =
+      (std::filesystem::path(runtime_binding_itself->config_file_path)
+           .parent_path() /
+       contract_decl->file)
+          .string();
+  out.contract_hash =
+      cuwacunu::iitepi::contract_space_t::register_contract_file(contract_path);
+  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
+      out.contract_hash);
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(out.contract_hash);
+
+  static constexpr std::string_view kDevicePrioritySections[] = {
+      "VICReg",
+      "EXPECTED_VALUE",
+      "TRANSFER_MATRIX_EVALUATION",
+      "EMBEDDING_SEQUENCE_ANALYTICS",
+  };
+
+  bool selected = false;
+  for (const auto section : kDevicePrioritySections) {
+    const auto configured =
+        runtime_binding_section_device_value(contract_itself, section);
+    if (!configured.has_value()) continue;
+    const torch::Device resolved =
+        cuwacunu::iitepi::config_device(out.contract_hash, std::string(section));
+    if (resolved.is_cpu() &&
+        runtime_binding_requests_cuda_device_value(*configured)) {
+      out.error =
+          "CUDA explicitly requested in section '" + std::string(section) +
+          "' but runtime device resolved to CPU";
+    }
+    if (!selected) {
+      out.device = resolved;
+      out.source_section = std::string(section);
+      out.configured_device = *configured;
+      out.resolved_from_config = true;
+      selected = true;
+      continue;
+    }
+    if (resolved.str() != out.device.str()) {
+      log_warn(
+          "[runtime_binding.device] conflicting configured devices for contract_hash=%s binding=%s preferred=%s(%s->%s) ignored=%s(%s->%s)\n",
+          runtime_binding_log_value_or_empty(out.contract_hash),
+          runtime_binding_log_value_or_empty(binding_id),
+          runtime_binding_log_value_or_empty(out.source_section),
+          runtime_binding_log_value_or_empty(out.configured_device),
+          out.device.str().c_str(),
+          std::string(section).c_str(),
+          configured->c_str(),
+          resolved.str().c_str());
+    }
+  }
+
+  if (selected) return out;
+
+  const auto general_section_it =
+      cuwacunu::iitepi::config_space_t::config.find("GENERAL");
+  if (general_section_it != cuwacunu::iitepi::config_space_t::config.end()) {
+    const auto device_it = general_section_it->second.find("device");
+    if (device_it != general_section_it->second.end()) {
+      const std::string configured =
+          runtime_binding_init_trim_ascii_copy(device_it->second);
+      if (has_non_ws_text(configured)) {
+        out.device =
+            cuwacunu::iitepi::config_device(out.contract_hash, "GENERAL");
+        out.source_section = "GENERAL";
+        out.configured_device = configured;
+        out.resolved_from_config = true;
+        if (out.device.is_cpu() &&
+            runtime_binding_requests_cuda_device_value(configured)) {
+          out.error =
+              "CUDA explicitly requested in section 'GENERAL' but runtime "
+              "device resolved to CPU";
+        }
+      }
+    }
+  }
+
+  return out;
+}
+
+[[nodiscard]] inline runtime_binding_device_resolution_t
+resolve_runtime_binding_preferred_device_for_contract_path(
+    const std::filesystem::path& contract_path,
+    torch::Device fallback_device = torch::kCPU) {
+  runtime_binding_device_resolution_t out{};
+  out.device = fallback_device;
+  if (contract_path.empty()) {
+    out.error = "missing contract path";
+    return out;
+  }
+
+  out.contract_hash =
+      cuwacunu::iitepi::contract_space_t::register_contract_file(
+          contract_path.string());
+  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
+      out.contract_hash);
+  const auto contract_itself =
+      cuwacunu::iitepi::contract_space_t::contract_itself(out.contract_hash);
+  if (!contract_itself) {
+    out.error = "missing contract record";
+    return out;
+  }
+
+  static constexpr std::string_view kDevicePrioritySections[] = {
+      "VICReg",
+      "EXPECTED_VALUE",
+      "TRANSFER_MATRIX_EVALUATION",
+      "EMBEDDING_SEQUENCE_ANALYTICS",
+  };
+
+  for (const auto section : kDevicePrioritySections) {
+    const auto configured =
+        runtime_binding_section_device_value(contract_itself, section);
+    if (!configured.has_value()) continue;
+    out.device =
+        cuwacunu::iitepi::config_device(out.contract_hash, std::string(section));
+    out.source_section = std::string(section);
+    out.configured_device = *configured;
+    out.resolved_from_config = true;
+    if (out.device.is_cpu() &&
+        runtime_binding_requests_cuda_device_value(*configured)) {
+      out.error =
+          "CUDA explicitly requested in section '" + std::string(section) +
+          "' but runtime device resolved to CPU";
+    }
+    return out;
+  }
+
+  const auto general_section_it =
+      cuwacunu::iitepi::config_space_t::config.find("GENERAL");
+  if (general_section_it != cuwacunu::iitepi::config_space_t::config.end()) {
+    const auto device_it = general_section_it->second.find("device");
+    if (device_it != general_section_it->second.end()) {
+      const std::string configured =
+          runtime_binding_init_trim_ascii_copy(device_it->second);
+      if (has_non_ws_text(configured)) {
+        out.device =
+            cuwacunu::iitepi::config_device(out.contract_hash, "GENERAL");
+        out.source_section = "GENERAL";
+        out.configured_device = configured;
+        out.resolved_from_config = true;
+        if (out.device.is_cpu() &&
+            runtime_binding_requests_cuda_device_value(configured)) {
+          out.error =
+              "CUDA explicitly requested in section 'GENERAL' but runtime "
+              "device resolved to CPU";
+        }
+      }
+    }
+  }
+
+  return out;
 }
 
 [[nodiscard]] inline const cuwacunu::camahjucunu::runtime_binding_bind_decl_t*

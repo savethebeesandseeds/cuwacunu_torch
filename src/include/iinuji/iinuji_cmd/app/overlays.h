@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <sstream>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include "iinuji/iinuji_render.h"
+#include "iinuji/primitives/editor.h"
 #include "iinuji/iinuji_utils.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.paths.h"
 #include "iinuji/iinuji_cmd/views/common.h"
@@ -17,17 +19,40 @@ namespace cuwacunu {
 namespace iinuji {
 namespace iinuji_cmd {
 
+inline std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>
+find_visible_text_box(
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box) {
+  if (!box || !box->visible) return nullptr;
+  if (as<cuwacunu::iinuji::textBox_data_t>(box)) return box;
+  for (const auto& child : box->children) {
+    if (auto found = find_visible_text_box(child); found) return found;
+  }
+  return nullptr;
+}
+
 inline void scroll_text_box(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box, int dy, int dx) {
+  if (!box || !box->visible) return;
   auto tb = as<cuwacunu::iinuji::textBox_data_t>(box);
-  if (!tb) return;
-  tb->scroll_by(dy, dx);
+  if (tb) {
+    tb->scroll_by(dy, dx);
+    return;
+  }
+  for (const auto& child : box->children) {
+    scroll_text_box(child, dy, dx);
+  }
 }
 
 inline void scroll_editor_box(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box, int dy, int dx) {
+  if (!box || !box->visible) return;
   auto ed = as<cuwacunu::iinuji::editorBox_data_t>(box);
-  if (!ed) return;
-  if (dy != 0) ed->top_line = std::max(0, ed->top_line + dy);
-  if (dx != 0) ed->left_col = std::max(0, ed->left_col + dx);
+  if (ed) {
+    if (dy != 0) ed->top_line = std::max(0, ed->top_line + dy);
+    if (dx != 0) ed->left_col = std::max(0, ed->left_col + dx);
+    return;
+  }
+  for (const auto& child : box->children) {
+    scroll_editor_box(child, dy, dx);
+  }
 }
 
 inline void scroll_active_screen(CmdState& state,
@@ -36,8 +61,12 @@ inline void scroll_active_screen(CmdState& state,
                                  int dy,
                                  int dx) {
   if (dy == 0 && dx == 0) return;
-  if (state.screen == ScreenMode::Logs && dy != 0) {
-    state.logs.auto_follow = false;
+  if (state.screen == ScreenMode::ShellLogs && dy != 0) {
+    state.shell_logs.auto_follow = false;
+  }
+  if (state.screen == ScreenMode::Runtime && dy != 0 &&
+      state.runtime.log_viewer_open) {
+    state.runtime.log_viewer_live_follow = false;
   }
   scroll_text_box(left, dy, dx);
   scroll_text_box(right, dy, dx);
@@ -47,11 +76,11 @@ inline void scroll_active_screen(CmdState& state,
 
 inline void jump_logs_to_bottom(CmdState& state,
                                 const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left) {
-  if (state.screen != ScreenMode::Logs) return;
-  auto tb = as<cuwacunu::iinuji::textBox_data_t>(left);
+  if (state.screen != ScreenMode::ShellLogs) return;
+  auto tb = as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(left));
   if (!tb) return;
   tb->scroll_y = std::numeric_limits<int>::max();
-  state.logs.auto_follow = true;
+  state.shell_logs.auto_follow = true;
 }
 
 struct ScrollCaps {
@@ -69,6 +98,7 @@ inline Rect merge_overlay_rects(const Rect& a, const Rect& b) {
 
 inline ScrollCaps panel_scroll_caps(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box) {
   ScrollCaps out{};
+  if (!box || !box->visible) return out;
   const Rect r = content_rect(*box);
   const int W = std::max(0, r.w);
   const int H = std::max(0, r.h);
@@ -79,9 +109,20 @@ inline ScrollCaps panel_scroll_caps(const std::shared_ptr<cuwacunu::iinuji::iinu
     const int body_h = std::max(1, H - 1);
     const int total_lines = static_cast<int>(ed->lines.size());
     int max_line_len = 0;
-    for (const auto& ln : ed->lines) max_line_len = std::max(max_line_len, static_cast<int>(ln.size()));
+    for (const auto& ln : ed->lines) {
+      max_line_len = std::max(
+          max_line_len,
+          cuwacunu::iinuji::primitives::editor_visual_column_for_raw_column(
+              *ed,
+              ln,
+              static_cast<int>(ln.size())));
+    }
 
-    const int ln_w = std::max(3, std::min(W, digits10_i(std::max(1, total_lines)) + 2));
+    int ln_w = 0;
+    if (ed->show_line_numbers) {
+      ln_w = std::min(W, digits10_i(std::max(1, total_lines)) + 3);
+      if (ln_w < 4) ln_w = std::min(W, 4);
+    }
     const int text_w = std::max(1, W - ln_w);
     out.v = total_lines > body_h;
     out.h = max_line_len > text_w;
@@ -89,7 +130,14 @@ inline ScrollCaps panel_scroll_caps(const std::shared_ptr<cuwacunu::iinuji::iinu
   }
 
   auto tb = as<cuwacunu::iinuji::textBox_data_t>(box);
-  if (!tb) return out;
+  if (!tb) {
+    for (const auto& child : box->children) {
+      const auto child_caps = panel_scroll_caps(child);
+      out.v = out.v || child_caps.v;
+      out.h = out.h || child_caps.h;
+    }
+    return out;
+  }
 
   int reserve_v = 0;
   int reserve_h = 0;
@@ -103,11 +151,33 @@ inline ScrollCaps panel_scroll_caps(const std::shared_ptr<cuwacunu::iinuji::iinu
     text_h = std::max(0, H - reserve_h);
     if (text_w <= 0 || text_h <= 0) return out;
 
-    lines = tb->wrap
-        ? wrap_text(tb->content, std::max(1, text_w))
-        : split_lines_keep_empty(tb->content);
-    max_line_len = 0;
-    for (const auto& ln : lines) max_line_len = std::max(max_line_len, static_cast<int>(ln.size()));
+    if (cuwacunu::iinuji::ansi::has_esc(tb->content)) {
+      max_line_len = 0;
+      lines.clear();
+      const auto phys = split_lines_keep_empty(tb->content);
+      for (const auto& pl : phys) {
+        std::vector<cuwacunu::iinuji::ansi::row_t> rows;
+        const int wrap_width =
+            tb->wrap ? std::max(1, text_w)
+                     : std::max(1, static_cast<int>(pl.size()));
+        cuwacunu::iinuji::ansi::style_t base{};
+        cuwacunu::iinuji::ansi::hard_wrap(pl, wrap_width, base, 0, rows);
+        if (rows.empty()) rows.push_back(cuwacunu::iinuji::ansi::row_t{});
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+          lines.push_back(std::string((std::size_t)rows[i].len, 'x'));
+          max_line_len = std::max(max_line_len, rows[i].len);
+          if (!tb->wrap) break;
+        }
+      }
+    } else {
+      lines = tb->wrap
+          ? wrap_text(tb->content, std::max(1, text_w))
+          : split_lines_keep_empty(tb->content);
+      max_line_len = 0;
+      for (const auto& ln : lines) {
+        max_line_len = std::max(max_line_len, static_cast<int>(ln.size()));
+      }
+    }
 
     const bool need_h = (!tb->wrap && max_line_len > text_w);
     const int reserve_h_new = need_h ? 1 : 0;
@@ -124,11 +194,33 @@ inline ScrollCaps panel_scroll_caps(const std::shared_ptr<cuwacunu::iinuji::iinu
   text_h = std::max(0, H - reserve_h);
   if (text_w <= 0 || text_h <= 0) return out;
 
-  lines = tb->wrap
-      ? wrap_text(tb->content, std::max(1, text_w))
-      : split_lines_keep_empty(tb->content);
-  max_line_len = 0;
-  for (const auto& ln : lines) max_line_len = std::max(max_line_len, static_cast<int>(ln.size()));
+  if (cuwacunu::iinuji::ansi::has_esc(tb->content)) {
+    max_line_len = 0;
+    lines.clear();
+    const auto phys = split_lines_keep_empty(tb->content);
+    for (const auto& pl : phys) {
+      std::vector<cuwacunu::iinuji::ansi::row_t> rows;
+      const int wrap_width =
+          tb->wrap ? std::max(1, text_w)
+                   : std::max(1, static_cast<int>(pl.size()));
+      cuwacunu::iinuji::ansi::style_t base{};
+      cuwacunu::iinuji::ansi::hard_wrap(pl, wrap_width, base, 0, rows);
+      if (rows.empty()) rows.push_back(cuwacunu::iinuji::ansi::row_t{});
+      for (std::size_t i = 0; i < rows.size(); ++i) {
+        lines.push_back(std::string((std::size_t)rows[i].len, 'x'));
+        max_line_len = std::max(max_line_len, rows[i].len);
+        if (!tb->wrap) break;
+      }
+    }
+  } else {
+    lines = tb->wrap
+        ? wrap_text(tb->content, std::max(1, text_w))
+        : split_lines_keep_empty(tb->content);
+    max_line_len = 0;
+    for (const auto& ln : lines) {
+      max_line_len = std::max(max_line_len, static_cast<int>(ln.size()));
+    }
+  }
 
   out.v = static_cast<int>(lines.size()) > text_h;
   out.h = (!tb->wrap && max_line_len > text_w);
@@ -165,7 +257,8 @@ inline bool close_corner_hit(const Rect& area, int mx, int my) {
 inline std::optional<Rect> logs_scroll_control_area(
     const CmdState& state,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left) {
-  if (state.screen != ScreenMode::Logs || state.help_view) return std::nullopt;
+  if (state.screen != ScreenMode::ShellLogs || state.help_view)
+    return std::nullopt;
   const Rect r = content_rect(*left);
   if (r.w < 4 || r.h < 3) return std::nullopt;
   return r;
@@ -193,6 +286,135 @@ inline bool logs_jump_bottom_hit(const CmdState& state,
   const int x1 = x0 + 2;
   const int y = area->y + area->h - 1;
   return my == y && mx >= x0 && mx <= x1;
+}
+
+inline std::string workspace_zoom_button_label(const CmdState& state) {
+  return workspace_is_current_screen_zoomed(state) ? "[split]" : "[full]";
+}
+
+inline std::optional<Rect> workspace_zoom_button_area(
+    const CmdState& state,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right) {
+  if (!workspace_screen_supports_zoom(state.screen) || state.help_view) {
+    return std::nullopt;
+  }
+
+  const auto& box =
+      workspace_current_screen_uses_left_panel_zoom(state) ? left : right;
+  if (!box || !box->visible) return std::nullopt;
+
+  const Rect s = box->screen;
+  const std::string label = workspace_zoom_button_label(state);
+  if (s.w < static_cast<int>(label.size()) + 4 || s.h < 1) return std::nullopt;
+  const int x = s.x + std::max(2, s.w - static_cast<int>(label.size()) - 2);
+  return Rect{x, s.y, static_cast<int>(label.size()), 1};
+}
+
+inline bool workspace_zoom_button_hit(
+    const CmdState& state,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right, int mx,
+    int my) {
+  const auto area = workspace_zoom_button_area(state, left, right);
+  if (!area.has_value()) return false;
+  return my == area->y && mx >= area->x && mx < area->x + area->w;
+}
+
+enum class EditorJumpHintKind : std::uint8_t {
+  None = 0,
+  Top = 1,
+  Bottom = 2,
+  Left = 3,
+};
+
+struct EditorJumpHintTarget {
+  std::shared_ptr<cuwacunu::iinuji::editorBox_data_t> editor{};
+  EditorJumpHintKind kind{EditorJumpHintKind::None};
+};
+
+inline std::optional<EditorJumpHintTarget> editor_jump_hint_target(
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box, int mx,
+    int my) {
+  if (!box || !box->visible) return std::nullopt;
+
+  for (auto it = box->children.rbegin(); it != box->children.rend(); ++it) {
+    if (const auto child_target = editor_jump_hint_target(*it, mx, my);
+        child_target.has_value()) {
+      return child_target;
+    }
+  }
+
+  auto ed = as<cuwacunu::iinuji::editorBox_data_t>(box);
+  if (!ed) return std::nullopt;
+
+  const Rect r = content_rect(*box);
+  const int W = std::max(0, r.w);
+  const int H = std::max(0, r.h);
+  if (W <= 0 || H <= 0) return std::nullopt;
+
+  const int header_h = (ed->show_header && H > 0) ? 1 : 0;
+  const int footer_h = (ed->show_footer && H - header_h > 1) ? 1 : 0;
+  const int body_y = r.y + header_h;
+  const int body_h = std::max(0, H - header_h - footer_h);
+  if (body_h <= 0) return std::nullopt;
+
+  const int hint_x = r.x + (W - 1);
+  if (mx != hint_x) return std::nullopt;
+
+  const int top_hint_y = (header_h > 0) ? r.y : body_y;
+  if (ed->left_col > 0 && my == top_hint_y) {
+    return EditorJumpHintTarget{ed, EditorJumpHintKind::Left};
+  }
+  if (ed->top_line > 0 && my == body_y) {
+    return EditorJumpHintTarget{ed, EditorJumpHintKind::Top};
+  }
+  if (ed->top_line + body_h < static_cast<int>(ed->lines.size()) &&
+      my == body_y + (body_h - 1)) {
+    return EditorJumpHintTarget{ed, EditorJumpHintKind::Bottom};
+  }
+  return std::nullopt;
+}
+
+inline bool apply_editor_jump_hint(CmdState& state,
+                                   const EditorJumpHintTarget& target) {
+  if (!target.editor || target.kind == EditorJumpHintKind::None) return false;
+
+  auto& ed = *target.editor;
+  ed.ensure_nonempty();
+  const int body_h = std::max(1, ed.last_body_h > 0 ? ed.last_body_h : 24);
+
+  switch (target.kind) {
+    case EditorJumpHintKind::Top:
+      ed.top_line = 0;
+      ed.cursor_line = 0;
+      ed.cursor_col = 0;
+      ed.preferred_col = -1;
+      if (state.screen == ScreenMode::Runtime &&
+          state.runtime.log_viewer == target.editor) {
+        state.runtime.log_viewer_live_follow = false;
+      }
+      return true;
+    case EditorJumpHintKind::Bottom: {
+      const int last_line = static_cast<int>(ed.lines.size()) - 1;
+      ed.cursor_line = std::max(0, last_line);
+      ed.cursor_col = static_cast<int>(
+          ed.lines[static_cast<std::size_t>(ed.cursor_line)].size());
+      ed.top_line = std::max(0, static_cast<int>(ed.lines.size()) - body_h);
+      ed.preferred_col = -1;
+      if (state.screen == ScreenMode::Runtime &&
+          state.runtime.log_viewer == target.editor) {
+        state.runtime.log_viewer_live_follow = true;
+      }
+      return true;
+    }
+    case EditorJumpHintKind::Left:
+      ed.left_col = 0;
+      return true;
+    case EditorJumpHintKind::None:
+      break;
+  }
+  return false;
 }
 
 inline bool help_overlay_close_hit(const CmdState& state,
@@ -245,163 +467,10 @@ inline void render_help_overlay(
   auto push_row = [&](std::string cmd, std::string comment) {
     rows.emplace_back("  " + std::move(cmd), std::move(comment));
   };
-  auto lower_ascii = [](std::string s) {
-    for (char& c : s) {
-      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return s;
-  };
-  auto dir_from_macro = [&](const char* dir) {
-    return lower_ascii(std::string(dir));
-  };
-  auto policy_from_macro = [&](const char* p) {
-    return lower_ascii(std::string(p));
-  };
 
   push_header("HELP OVERLAY (auto-generated)");
   push_row("close", "Esc or click [x]");
   push_row("scroll", "Arrows, PageUp/PageDown, Home/End");
-  rows.emplace_back("", "");
-
-  push_header("BOARD paths.def");
-  push_row("scope", "Board control directives, methods, actions, contract DSL segments");
-  rows.emplace_back("", "");
-
-  push_header("BOARD directives");
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) push_row(std::string("directive ") + TOKEN, SUMMARY);
-#define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_DSL_SEGMENT
-#undef BOARD_PATH_ACTION
-#undef BOARD_PATH_METHOD
-#undef BOARD_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("BOARD methods");
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY) push_row(std::string("method ") + TOKEN, SUMMARY);
-#define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_DSL_SEGMENT
-#undef BOARD_PATH_ACTION
-#undef BOARD_PATH_METHOD
-#undef BOARD_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("BOARD actions");
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY) push_row(std::string("action ") + TOKEN, SUMMARY);
-#define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_DSL_SEGMENT
-#undef BOARD_PATH_ACTION
-#undef BOARD_PATH_METHOD
-#undef BOARD_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("BOARD contract DSL segments");
-#define BOARD_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_METHOD(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_ACTION(ID, TOKEN, SUMMARY)
-#define BOARD_PATH_DSL_SEGMENT(ID, KEY, SUMMARY) push_row(std::string("dsl ") + KEY, SUMMARY);
-#include "iitepi/board/board.paths.def"
-#undef BOARD_PATH_DSL_SEGMENT
-#undef BOARD_PATH_ACTION
-#undef BOARD_PATH_METHOD
-#undef BOARD_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("TSI PATHS.DEF");
-  push_row("scope", "TSI directives, methods, components, lanes, endpoints");
-  rows.emplace_back("", "");
-
-  push_header("TSI directives");
-#define TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) push_row(std::string("directive ") + TOKEN, SUMMARY);
-#define TSI_PATH_METHOD(ID, TOKEN, SUMMARY)
-#define TSI_PATH_COMPONENT(TYPE_ID, CANONICAL, DOMAIN, INSTANCE_POLICY, SUMMARY)
-#define TSI_PATH_LANE(TYPE_ID, DIR, DIRECTIVE_ID, KIND, SUMMARY)
-#define TSI_PATH_ENDPOINT(TYPE_ID, DIRECTIVE_ID, KIND, SUMMARY)
-#include "tsiemene/tsi.paths.def"
-#undef TSI_PATH_ENDPOINT
-#undef TSI_PATH_LANE
-#undef TSI_PATH_COMPONENT
-#undef TSI_PATH_METHOD
-#undef TSI_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("TSI methods");
-#define TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define TSI_PATH_METHOD(ID, TOKEN, SUMMARY) push_row(std::string("method ") + TOKEN, SUMMARY);
-#define TSI_PATH_COMPONENT(TYPE_ID, CANONICAL, DOMAIN, INSTANCE_POLICY, SUMMARY)
-#define TSI_PATH_LANE(TYPE_ID, DIR, DIRECTIVE_ID, KIND, SUMMARY)
-#define TSI_PATH_ENDPOINT(TYPE_ID, DIRECTIVE_ID, KIND, SUMMARY)
-#include "tsiemene/tsi.paths.def"
-#undef TSI_PATH_ENDPOINT
-#undef TSI_PATH_LANE
-#undef TSI_PATH_COMPONENT
-#undef TSI_PATH_METHOD
-#undef TSI_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("TSI components");
-#define TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define TSI_PATH_METHOD(ID, TOKEN, SUMMARY)
-#define TSI_PATH_COMPONENT(TYPE_ID, CANONICAL, DOMAIN, INSTANCE_POLICY, SUMMARY) \
-  push_row(                                                                        \
-      std::string("component ") + CANONICAL,                                      \
-      std::string("domain=") + lower_ascii(std::string(#DOMAIN)) +               \
-          " policy=" + policy_from_macro(#INSTANCE_POLICY) + " | " + SUMMARY);
-#define TSI_PATH_LANE(TYPE_ID, DIR, DIRECTIVE_ID, KIND, SUMMARY)
-#define TSI_PATH_ENDPOINT(TYPE_ID, DIRECTIVE_ID, KIND, SUMMARY)
-#include "tsiemene/tsi.paths.def"
-#undef TSI_PATH_ENDPOINT
-#undef TSI_PATH_LANE
-#undef TSI_PATH_COMPONENT
-#undef TSI_PATH_METHOD
-#undef TSI_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("TSI lanes");
-#define TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define TSI_PATH_METHOD(ID, TOKEN, SUMMARY)
-#define TSI_PATH_COMPONENT(TYPE_ID, CANONICAL, DOMAIN, INSTANCE_POLICY, SUMMARY)
-#define TSI_PATH_LANE(TYPE_ID, DIR, DIRECTIVE_ID, KIND, SUMMARY)                           \
-  push_row(                                                                                 \
-      std::string("lane ") + #TYPE_ID + " " + dir_from_macro(#DIR) + " " +                \
-          std::string(::tsiemene::directive_id::DIRECTIVE_ID) +                            \
-          std::string(::tsiemene::kind_token(::tsiemene::PayloadKind::KIND)),              \
-      SUMMARY);
-#define TSI_PATH_ENDPOINT(TYPE_ID, DIRECTIVE_ID, KIND, SUMMARY)
-#include "tsiemene/tsi.paths.def"
-#undef TSI_PATH_ENDPOINT
-#undef TSI_PATH_LANE
-#undef TSI_PATH_COMPONENT
-#undef TSI_PATH_METHOD
-#undef TSI_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-
-  push_header("TSI endpoints");
-#define TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
-#define TSI_PATH_METHOD(ID, TOKEN, SUMMARY)
-#define TSI_PATH_COMPONENT(TYPE_ID, CANONICAL, DOMAIN, INSTANCE_POLICY, SUMMARY)
-#define TSI_PATH_LANE(TYPE_ID, DIR, DIRECTIVE_ID, KIND, SUMMARY)
-#define TSI_PATH_ENDPOINT(TYPE_ID, DIRECTIVE_ID, KIND, SUMMARY)                            \
-  push_row(                                                                                 \
-      std::string("endpoint ") + #TYPE_ID + " " + std::string(::tsiemene::directive_id::DIRECTIVE_ID) + \
-          std::string(::tsiemene::kind_token(::tsiemene::PayloadKind::KIND)),              \
-      SUMMARY);
-#include "tsiemene/tsi.paths.def"
-#undef TSI_PATH_ENDPOINT
-#undef TSI_PATH_LANE
-#undef TSI_PATH_COMPONENT
-#undef TSI_PATH_METHOD
-#undef TSI_PATH_DIRECTIVE
-  rows.emplace_back("", "");
-  push_header("================================================================================");
   rows.emplace_back("", "");
 
   push_header("IINUJI PATHS.DEF");
@@ -523,44 +592,64 @@ inline void render_logs_scroll_controls(
   R->putText(area->y + area->h - 1, x, "[v]", 3, pair, true, false);
 }
 
+inline void render_workspace_zoom_controls(
+    const CmdState& state,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right) {
+  const auto area = workspace_zoom_button_area(state, left, right);
+  if (!area.has_value()) return;
+  auto* R = get_renderer();
+  if (!R) return;
+  const std::string bg = workspace_current_screen_uses_left_panel_zoom(state)
+                             ? left->style.background_color
+                             : right->style.background_color;
+  const short pair = static_cast<short>(get_color_pair("#FFD26E", bg));
+  const std::string label = workspace_zoom_button_label(state);
+  R->putText(area->y, area->x, label, area->w, pair, true, false);
+}
+
 inline bool apply_logs_pending_actions(
     CmdState& state,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right) {
-  if (state.logs.pending_scroll_y == 0 &&
-      state.logs.pending_scroll_x == 0 &&
-      !state.logs.pending_jump_home &&
-      !state.logs.pending_jump_end) {
+  if (state.shell_logs.pending_scroll_y == 0 &&
+      state.shell_logs.pending_scroll_x == 0 &&
+      !state.shell_logs.pending_jump_home &&
+      !state.shell_logs.pending_jump_end) {
     return false;
   }
-  if (state.screen != ScreenMode::Logs) {
-    state.logs.pending_scroll_y = 0;
-    state.logs.pending_scroll_x = 0;
-    state.logs.pending_jump_home = false;
-    state.logs.pending_jump_end = false;
+  if (state.screen != ScreenMode::ShellLogs) {
+    state.shell_logs.pending_scroll_y = 0;
+    state.shell_logs.pending_scroll_x = 0;
+    state.shell_logs.pending_jump_home = false;
+    state.shell_logs.pending_jump_end = false;
     return false;
   }
 
-  auto tb = as<cuwacunu::iinuji::textBox_data_t>(left);
-  if (state.logs.pending_jump_home) {
+  auto tb = as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(left));
+  if (state.shell_logs.pending_jump_home) {
     if (tb) {
       tb->scroll_y = 0;
       tb->scroll_x = 0;
     }
-    state.logs.auto_follow = false;
-  } else if (state.logs.pending_jump_end) {
+    state.shell_logs.auto_follow = false;
+  } else if (state.shell_logs.pending_jump_end) {
     if (tb) tb->scroll_y = std::numeric_limits<int>::max();
-    state.logs.auto_follow = true;
+    state.shell_logs.auto_follow = true;
   }
-  if (state.logs.pending_scroll_y != 0 || state.logs.pending_scroll_x != 0) {
-    if (state.logs.pending_scroll_y != 0) state.logs.auto_follow = false;
-    scroll_text_box(left, state.logs.pending_scroll_y, state.logs.pending_scroll_x);
-    scroll_text_box(right, state.logs.pending_scroll_y, state.logs.pending_scroll_x);
+  if (state.shell_logs.pending_scroll_y != 0 ||
+      state.shell_logs.pending_scroll_x != 0) {
+    if (state.shell_logs.pending_scroll_y != 0)
+      state.shell_logs.auto_follow = false;
+    scroll_text_box(left, state.shell_logs.pending_scroll_y,
+                    state.shell_logs.pending_scroll_x);
+    scroll_text_box(right, state.shell_logs.pending_scroll_y,
+                    state.shell_logs.pending_scroll_x);
   }
-  state.logs.pending_scroll_y = 0;
-  state.logs.pending_scroll_x = 0;
-  state.logs.pending_jump_home = false;
-  state.logs.pending_jump_end = false;
+  state.shell_logs.pending_scroll_y = 0;
+  state.shell_logs.pending_scroll_x = 0;
+  state.shell_logs.pending_jump_home = false;
+  state.shell_logs.pending_jump_end = false;
   return true;
 }
 

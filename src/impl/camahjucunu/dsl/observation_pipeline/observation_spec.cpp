@@ -5,8 +5,8 @@
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "camahjucunu/dsl/runtime_binding_instruction/runtime_binding_instruction.h"
 #include "iitepi/contract_space_t.h"
-#include "iitepi/observation_contract_wave_paths.h"
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/observation_dsl_paths.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 #include "iitepi/wave_space_t.h"
 #include "piaabo/dconfig.h"
 

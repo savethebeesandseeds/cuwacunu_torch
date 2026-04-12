@@ -5,8 +5,8 @@
   already-trained promoted slot across discovered compatible symbols.
 
   Intentionally starts as an eval-only scaffold:
-    Super Hero should author the concrete BIND and RUN entries on the first
-    planning turn.
+    Marshal Hero should author the concrete BIND and RUN entries on the first
+    planning checkpoint.
     Auto-discover candidate symbols from local data inventory.
     Keep only symbols that satisfy the active optimized channel coverage and
     declared evaluation window.

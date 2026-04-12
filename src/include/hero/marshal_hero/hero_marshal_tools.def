@@ -1,0 +1,39 @@
+#ifndef HERO_MARSHAL_TOOL
+#error "HERO_MARSHAL_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_marshal_tools.def"
+#endif
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.start_session",
+    "Start a detached Marshal Hero session from the selected marshal.objective.dsl; Marshal Hero owns session checkpoints and continuation while Runtime Hero remains the campaign executor",
+    "{\"type\":\"object\",\"properties\":{\"marshal_objective_dsl_path\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+    handle_tool_start_session)
+HERO_MARSHAL_TOOL(
+    "hero.marshal.list_sessions",
+    "List known Marshal Hero sessions keyed by marshal cursor",
+    "{\"type\":\"object\",\"properties\":{\"phase\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+    handle_tool_list_sessions)
+HERO_MARSHAL_TOOL(
+    "hero.marshal.get_session",
+    "Fetch one Marshal Hero session by marshal cursor",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_get_session)
+HERO_MARSHAL_TOOL(
+    "hero.marshal.pause_session",
+    "Pause one Marshal Hero session and optionally force-stop its active Runtime campaign",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_pause_session)
+HERO_MARSHAL_TOOL(
+    "hero.marshal.resume_session",
+    "Resume one paused Marshal Hero session through operator resume, clarification answer, or governance resolution",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"governance_resolution_path\":{\"type\":\"string\"},\"governance_resolution_sig_path\":{\"type\":\"string\"},\"clarification_answer_path\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_resume_session)
+HERO_MARSHAL_TOOL(
+    "hero.marshal.continue_session",
+    "Continue one idle Marshal Hero session with a new operator instruction",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"instruction\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"instruction\"],\"additionalProperties\":false}",
+    handle_tool_continue_session)
+HERO_MARSHAL_TOOL(
+    "hero.marshal.terminate_session",
+    "Terminate one Marshal Hero session and optionally force-stop its active Runtime campaign",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_terminate_session)

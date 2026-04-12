@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -32,6 +33,7 @@
 // Report-fragment metadata helpers:
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_driver.h"
+#include "iitepi/runtime_binding/runtime_binding.h"
 #include "piaabo/latent_lineage_state/report_taxonomy.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 #include "piaabo/torch_compat/data_analytics.h"
@@ -46,15 +48,6 @@ using VicregTransferMatrixEvaluator =
     cuwacunu::wikimyei::evaluation::VicregTransferMatrixEvaluator;
 using VicregEmbeddingSequenceEvaluator =
     cuwacunu::wikimyei::evaluation::VicregEmbeddingSequenceEvaluator;
-
-struct vicreg_runtime_load_context_t {
-  bool enable_network_analytics_sidecar{false};
-  std::string binding_id{};
-  std::string run_id{};
-  std::string source_runtime_cursor{};
-  bool has_wave_cursor{false};
-  std::uint64_t wave_cursor{0};
-};
 
 struct vicreg_public_docking_shape_t {
   int C{0};
@@ -74,6 +67,21 @@ capture_vicreg_public_docking_shape_(
   return out;
 }
 
+struct vicreg_train_summary_snapshot_t {
+  std::uint64_t epoch_index{0};
+  std::uint64_t optimizer_steps{0};
+  std::uint64_t trained_epochs{0};
+  std::uint64_t trained_samples{0};
+  std::uint64_t skipped_batches{0};
+  double epoch_loss_mean{0.0};
+  double epoch_inv_mean{0.0};
+  double epoch_var_mean{0.0};
+  double epoch_cov_raw_mean{0.0};
+  double epoch_cov_weighted_mean{0.0};
+  double last_committed_loss_mean{0.0};
+  double learning_rate{0.0};
+};
+
 struct wikimyei_representation_vicreg_init_record_t
     : TsiWikimyeiInitRecord {
   bool enable_embedding_sequence_analytics_sidecar{true};
@@ -86,6 +94,9 @@ struct wikimyei_representation_vicreg_init_record_t
       embedding_sequence_symbolic_analytics_report{};
   std::filesystem::path embedding_sequence_analytics_file{};
   std::filesystem::path embedding_sequence_symbolic_analytics_file{};
+  bool has_train_summary{false};
+  vicreg_train_summary_snapshot_t train_summary_snapshot{};
+  std::filesystem::path train_summary_file{};
 };
 
 using wikimyei_representation_vicreg_init_entry_t = TsiWikimyeiInitEntry;
@@ -170,6 +181,24 @@ inline void append_runtime_u64_entry_(runtime_lls_document_t* document,
   document->entries.push_back(
       cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_uint_entry(
           std::string(key), value, "(0,+inf)"));
+}
+
+inline void append_runtime_bool_entry_(runtime_lls_document_t* document,
+                                       std::string_view key,
+                                       bool value) {
+  if (!document) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_bool_entry(
+          std::string(key), value));
+}
+
+inline void append_runtime_double_entry_(runtime_lls_document_t* document,
+                                         std::string_view key,
+                                         double value) {
+  if (!document || !std::isfinite(value)) return;
+  document->entries.push_back(
+      cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_double_entry(
+          std::string(key), value));
 }
 
 struct vicreg_network_analytics_plan_t {
@@ -280,8 +309,7 @@ struct vicreg_network_analytics_plan_t {
     torch::Device preferred_device,
     vicreg_public_docking_shape_t expected_public_docking,
     std::unique_ptr<cuwacunu::wikimyei::vicreg_4d::VICReg_4D>* model_slot,
-    std::string* error = nullptr,
-    const vicreg_runtime_load_context_t* load_context = nullptr);
+    std::string* error = nullptr);
 
 [[nodiscard]] inline wikimyei_representation_vicreg_init_record_t
 update_wikimyei_representation_vicreg_init(
@@ -299,6 +327,7 @@ update_wikimyei_representation_vicreg_init(
         embedding_sequence_analytics_report = nullptr,
     const cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_report_t*
         embedding_sequence_symbolic_analytics_report = nullptr,
+    const vicreg_train_summary_snapshot_t* train_summary_snapshot = nullptr,
     cuwacunu::piaabo::torch_compat::data_analytics_options_t
         embedding_sequence_analytics_options = {});
 
@@ -345,18 +374,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
       std::string_view hashimyei,
       std::string* error = nullptr,
       const void* runtime_context = nullptr) override {
-    vicreg_runtime_load_context_t load_context{};
-    if (runtime_context) {
-      const auto* io_ctx =
-          static_cast<const TsiWikimyeiRuntimeIoContext*>(runtime_context);
-      load_context.enable_network_analytics_sidecar =
-          io_ctx->enable_debug_outputs;
-      load_context.binding_id = io_ctx->binding_id;
-      load_context.run_id = io_ctx->run_id;
-      load_context.source_runtime_cursor = io_ctx->source_runtime_cursor;
-      load_context.has_wave_cursor = io_ctx->has_wave_cursor;
-      load_context.wave_cursor = io_ctx->wave_cursor;
-    }
+    (void)runtime_context;
     const auto expected_public_docking =
         capture_vicreg_public_docking_shape_(model());
     const bool loaded = load_wikimyei_representation_vicreg_init_into_model(
@@ -366,10 +384,12 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         model().device,
         expected_public_docking,
         &model_,
-        error,
-        runtime_context ? &load_context : nullptr);
+        error);
     if (loaded) {
       apply_runtime_policy_from_jkimyei_(train_, use_swa_, detach_to_cpu_);
+      reset_epoch_training_accumulators_();
+      has_last_train_summary_ = false;
+      training_activity_this_run_ = false;
     }
     if (loaded && embedding_sequence_evaluator_) {
       embedding_sequence_evaluator_->reset();
@@ -408,6 +428,10 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     const auto embedding_sequence_snapshot =
         embedding_sequence_evaluator_ ? embedding_sequence_evaluator_->snapshot()
                                       : std::nullopt;
+    const vicreg_train_summary_snapshot_t* train_summary_snapshot =
+        (training_activity_this_run_ && has_last_train_summary_)
+            ? &last_train_summary_
+            : nullptr;
     auto out = update_wikimyei_representation_vicreg_init(
         std::string(hashimyei),
         model_.get(),
@@ -424,6 +448,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         embedding_sequence_snapshot
             ? &embedding_sequence_snapshot->symbolic_report
             : nullptr,
+        train_summary_snapshot,
         embedding_sequence_snapshot
             ? embedding_sequence_snapshot->options
             : cuwacunu::piaabo::torch_compat::data_analytics_options_t{});
@@ -460,10 +485,19 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
     out->swa_start_iter = model().training_policy.swa_start_iter;
     out->trained_epochs = model().runtime_state.trained_epochs;
     out->trained_samples = model().runtime_state.trained_samples;
+    out->skipped_batches = model().runtime_state.skipped_batches;
     out->clip_norm = model().training_policy.clip_norm;
     out->clip_value = model().training_policy.clip_value;
     out->last_committed_loss_mean =
         model().runtime_state.last_committed_loss_mean;
+    out->last_committed_inv_mean =
+        model().runtime_state.last_committed_inv_mean;
+    out->last_committed_var_mean =
+        model().runtime_state.last_committed_var_mean;
+    out->last_committed_cov_raw_mean =
+        model().runtime_state.last_committed_cov_raw_mean;
+    out->last_committed_cov_weighted_mean =
+        model().runtime_state.last_committed_cov_weighted_mean;
 
     try {
       const auto& jk_component =
@@ -627,8 +661,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
                        " optimizer_step=" +
                        (step_result.optimizer_step_applied ? "true" : "false"));
         if (step_result.optimizer_step_applied) {
-          epoch_loss_sum_ += model().runtime_state.last_committed_loss_mean;
-          ++epoch_optimizer_steps_;
+          note_committed_training_step_();
         }
       } else {
         emit_meta_(wave, out, "vicreg.out loss=skipped");
@@ -648,6 +681,9 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         if (embedding_sequence_evaluator_) {
           embedding_sequence_evaluator_->reset();
         }
+        reset_epoch_training_accumulators_();
+        has_last_train_summary_ = false;
+        training_activity_this_run_ = false;
         return RuntimeEventAction{};
       }
       case RuntimeEventKind::RunEnd: {
@@ -660,6 +696,7 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
         if (!train_) return RuntimeEventAction{};
         (void)flush_pending_training_step_if_any_();
         apply_epoch_training_policy_();
+        emit_epoch_training_trace_(ctx);
         if (!ctx.debug_enabled) return RuntimeEventAction{};
         vicreg_network_analytics_plan_t plan{};
         std::string plan_error;
@@ -697,19 +734,6 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   }
 
  private:
-  [[nodiscard]] static std::string sanitize_path_token_(
-      std::string_view token) {
-    std::string out;
-    out.reserve(token.size());
-    for (const unsigned char c : token) {
-      const bool ok =
-          (std::isalnum(c) != 0) || c == '_' || c == '-' || c == '.';
-      out.push_back(ok ? static_cast<char>(c) : '_');
-    }
-    if (out.empty()) return "unknown";
-    return out;
-  }
-
   [[nodiscard]] static std::string build_transfer_matrix_report_canonical_path_(
       std::string_view representation_hashimyei) {
     std::string out("tsi.wikimyei.representation.vicreg");
@@ -722,7 +746,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   [[nodiscard]] std::filesystem::path
   build_transfer_matrix_runtime_report_path_(
       std::string_view canonical_path) const {
-    const std::string contract_token = sanitize_path_token_(contract_hash_);
+    const std::string contract_token =
+        cuwacunu::hashimyei::compact_contract_hash_path_token(contract_hash_);
     return cuwacunu::hashimyei::canonical_path_directory(
                cuwacunu::hashimyei::store_root(), canonical_path) /
            "contracts" / contract_token /
@@ -732,7 +757,8 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   [[nodiscard]] std::filesystem::path
   build_transfer_matrix_runtime_matrix_report_path_(
       std::string_view canonical_path) const {
-    const std::string contract_token = sanitize_path_token_(contract_hash_);
+    const std::string contract_token =
+        cuwacunu::hashimyei::compact_contract_hash_path_token(contract_hash_);
     return cuwacunu::hashimyei::canonical_path_directory(
                cuwacunu::hashimyei::store_root(), canonical_path) /
            "contracts" / contract_token /
@@ -875,8 +901,30 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
       }
     }
 
-    epoch_loss_sum_ = 0.0;
-    epoch_optimizer_steps_ = 0;
+    last_train_summary_ = vicreg_train_summary_snapshot_t{
+        .epoch_index = model().runtime_state.trained_epochs,
+        .optimizer_steps = static_cast<std::uint64_t>(
+            std::max(0, model().runtime_state.optimizer_steps)),
+        .trained_epochs = model().runtime_state.trained_epochs,
+        .trained_samples = model().runtime_state.trained_samples,
+        .skipped_batches = model().runtime_state.skipped_batches,
+        .epoch_loss_mean = metric,
+        .epoch_inv_mean =
+            epoch_inv_sum_ / static_cast<double>(epoch_optimizer_steps_),
+        .epoch_var_mean =
+            epoch_var_sum_ / static_cast<double>(epoch_optimizer_steps_),
+        .epoch_cov_raw_mean =
+            epoch_cov_raw_sum_ / static_cast<double>(epoch_optimizer_steps_),
+        .epoch_cov_weighted_mean =
+            epoch_cov_weighted_sum_ /
+            static_cast<double>(epoch_optimizer_steps_),
+        .last_committed_loss_mean =
+            model().runtime_state.last_committed_loss_mean,
+        .learning_rate = current_optimizer_learning_rate_(),
+    };
+    has_last_train_summary_ = true;
+    training_activity_this_run_ = true;
+    reset_epoch_training_accumulators_();
   }
 
   [[nodiscard]] bool flush_pending_training_step_if_any_() {
@@ -884,9 +932,62 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
             model().training_policy.swa_start_iter)) {
       return false;
     }
-    epoch_loss_sum_ += model().runtime_state.last_committed_loss_mean;
-    ++epoch_optimizer_steps_;
+    note_committed_training_step_();
     return true;
+  }
+
+  void reset_epoch_training_accumulators_() {
+    epoch_loss_sum_ = 0.0;
+    epoch_inv_sum_ = 0.0;
+    epoch_var_sum_ = 0.0;
+    epoch_cov_raw_sum_ = 0.0;
+    epoch_cov_weighted_sum_ = 0.0;
+    epoch_optimizer_steps_ = 0;
+  }
+
+  void note_committed_training_step_() {
+    epoch_loss_sum_ += model().runtime_state.last_committed_loss_mean;
+    epoch_inv_sum_ += model().runtime_state.last_committed_inv_mean;
+    epoch_var_sum_ += model().runtime_state.last_committed_var_mean;
+    epoch_cov_raw_sum_ += model().runtime_state.last_committed_cov_raw_mean;
+    epoch_cov_weighted_sum_ +=
+        model().runtime_state.last_committed_cov_weighted_mean;
+    ++epoch_optimizer_steps_;
+    training_activity_this_run_ = true;
+  }
+
+  [[nodiscard]] double current_optimizer_learning_rate_() const {
+    if (!model().optimizer) return 0.0;
+    const auto& param_groups = model().optimizer->param_groups();
+    if (param_groups.empty()) return 0.0;
+    return param_groups.front().options().get_lr();
+  }
+
+  void emit_epoch_training_trace_(const RuntimeContext& ctx) const {
+    if (!has_last_train_summary_) return;
+    emit_runtime_binding_trace_event(
+        {.phase = "vicreg_epoch_summary",
+         .binding_id = ctx.binding_id,
+         .contract_hash = contract_hash_,
+         .component_name = component_name_,
+         .run_id = ctx.run_id,
+         .source_runtime_cursor = ctx.source_runtime_cursor,
+         .epochs = last_train_summary_.trained_epochs,
+         .epoch = last_train_summary_.epoch_index,
+         .optimizer_steps = last_train_summary_.optimizer_steps,
+         .trained_epochs = last_train_summary_.trained_epochs,
+         .trained_samples = last_train_summary_.trained_samples,
+         .skipped_batches = last_train_summary_.skipped_batches,
+         .epoch_loss_mean = last_train_summary_.epoch_loss_mean,
+         .last_committed_loss_mean =
+             last_train_summary_.last_committed_loss_mean,
+         .loss_inv_mean = last_train_summary_.epoch_inv_mean,
+         .loss_var_mean = last_train_summary_.epoch_var_mean,
+         .loss_cov_raw_mean = last_train_summary_.epoch_cov_raw_mean,
+         .loss_cov_weighted_mean =
+             last_train_summary_.epoch_cov_weighted_mean,
+         .learning_rate = last_train_summary_.learning_rate,
+         .ok = true});
   }
 
   void apply_runtime_policy_from_jkimyei_(bool requested_train,
@@ -1032,7 +1133,14 @@ class TsiWikimyeiRepresentationVicreg final : public TsiWikimyeiRepresentation {
   bool use_swa_{true};
   bool detach_to_cpu_{true};
   double epoch_loss_sum_{0.0};
+  double epoch_inv_sum_{0.0};
+  double epoch_var_sum_{0.0};
+  double epoch_cov_raw_sum_{0.0};
+  double epoch_cov_weighted_sum_{0.0};
   int epoch_optimizer_steps_{0};
+  bool has_last_train_summary_{false};
+  bool training_activity_this_run_{false};
+  vicreg_train_summary_snapshot_t last_train_summary_{};
   std::unique_ptr<VicregEmbeddingSequenceEvaluator>
       embedding_sequence_evaluator_{};
   std::unique_ptr<VicregTransferMatrixEvaluator>
@@ -1293,6 +1401,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       std::string(cuwacunu::piaabo::torch_compat::
                       kEmbeddingSequenceAnalyticsSymbolicLatestReportFilename);
   bool wrote_embedding_sequence_symbolic_analytics_file = false;
+  const fs::path train_summary_lls_file =
+      report_fragment_directory / "train_summary.latest.lls";
+  bool wrote_train_summary_lls_file = false;
   const fs::path status_lls_file = report_fragment_directory / "status.latest.lls";
   bool wrote_status_lls_file = false;
   auto* out = static_cast<wikimyei_representation_vicreg_init_record_t*>(action.user_data);
@@ -1520,6 +1631,16 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     std::uint64_t trained_steps = 0;
     std::uint64_t trained_epochs = 0;
     std::uint64_t trained_samples = 0;
+    std::uint64_t skipped_batches = 0;
+    int accumulate_steps = 1;
+    bool has_pending_grad = false;
+    double clip_norm = 0.0;
+    double clip_value = 0.0;
+    double last_committed_loss_mean = 0.0;
+    double last_committed_inv_mean = 0.0;
+    double last_committed_var_mean = 0.0;
+    double last_committed_cov_raw_mean = 0.0;
+    double last_committed_cov_weighted_mean = 0.0;
     if (action.object_handle) {
       const auto* model =
           static_cast<const cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(
@@ -1528,6 +1649,105 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
           static_cast<std::uint64_t>(std::max(0, model->runtime_state.optimizer_steps));
       trained_epochs = model->runtime_state.trained_epochs;
       trained_samples = model->runtime_state.trained_samples;
+      skipped_batches = model->runtime_state.skipped_batches;
+      accumulate_steps = std::max(1, model->training_policy.accumulate_steps);
+      has_pending_grad = model->runtime_state.has_pending_grad;
+      clip_norm = model->training_policy.clip_norm;
+      clip_value = model->training_policy.clip_value;
+      last_committed_loss_mean = model->runtime_state.last_committed_loss_mean;
+      last_committed_inv_mean = model->runtime_state.last_committed_inv_mean;
+      last_committed_var_mean = model->runtime_state.last_committed_var_mean;
+      last_committed_cov_raw_mean =
+          model->runtime_state.last_committed_cov_raw_mean;
+      last_committed_cov_weighted_mean =
+          model->runtime_state.last_committed_cov_weighted_mean;
+    }
+    if (out && out->has_train_summary) {
+      runtime_lls_document_t train_summary_lls{};
+      append_runtime_string_entry_(
+          &train_summary_lls, "schema",
+          "tsi.wikimyei.representation.vicreg.train_summary.v1");
+      {
+        auto train_summary_identity = make_component_report_identity(
+            canonical_path,
+            binding_id,
+            cuwacunu::piaabo::latent_lineage_state::report_taxonomy::
+                kEmbeddingNetwork);
+        train_summary_identity.source_runtime_cursor = out->source_runtime_cursor;
+        train_summary_identity.has_wave_cursor = has_wave_cursor;
+        train_summary_identity.wave_cursor = wave_cursor;
+        cuwacunu::piaabo::latent_lineage_state::
+            append_runtime_report_header_entries(
+                &train_summary_lls,
+                make_runtime_report_header(train_summary_identity));
+      }
+      append_runtime_string_entry_(&train_summary_lls, "report_event",
+                                   report_event_token(report_event_e::EpochEnd));
+      append_runtime_string_entry_if_nonempty_(&train_summary_lls,
+                                               "contract_hash",
+                                               contract_hash);
+      if (action.object_handle) {
+        const auto* model =
+            static_cast<const cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(
+                action.object_handle);
+        append_runtime_string_entry_if_nonempty_(
+            &train_summary_lls, "component_instance_name",
+            model->component_name);
+      }
+      append_runtime_u64_entry_(&train_summary_lls, "train.accumulate_steps",
+                                static_cast<std::uint64_t>(accumulate_steps));
+      append_runtime_u64_entry_(&train_summary_lls, "train.epoch_index",
+                                out->train_summary_snapshot.epoch_index);
+      append_runtime_u64_entry_(&train_summary_lls, "train.optimizer_steps",
+                                out->train_summary_snapshot.optimizer_steps);
+      append_runtime_u64_entry_(&train_summary_lls, "train.skipped_batches",
+                                out->train_summary_snapshot.skipped_batches);
+      append_runtime_u64_entry_(&train_summary_lls, "train.trained_epochs",
+                                out->train_summary_snapshot.trained_epochs);
+      append_runtime_u64_entry_(&train_summary_lls, "train.trained_samples",
+                                out->train_summary_snapshot.trained_samples);
+      append_runtime_double_entry_(
+          &train_summary_lls, "train.loss.epoch_mean",
+          out->train_summary_snapshot.epoch_loss_mean);
+      append_runtime_double_entry_(
+          &train_summary_lls, "train.loss.inv_mean",
+          out->train_summary_snapshot.epoch_inv_mean);
+      append_runtime_double_entry_(
+          &train_summary_lls, "train.loss.var_mean",
+          out->train_summary_snapshot.epoch_var_mean);
+      append_runtime_double_entry_(
+          &train_summary_lls, "train.loss.cov_raw_mean",
+          out->train_summary_snapshot.epoch_cov_raw_mean);
+      append_runtime_double_entry_(
+          &train_summary_lls, "train.loss.cov_weighted_mean",
+          out->train_summary_snapshot.epoch_cov_weighted_mean);
+      append_runtime_double_entry_(
+          &train_summary_lls, "train.loss.last_committed_mean",
+          out->train_summary_snapshot.last_committed_loss_mean);
+      append_runtime_double_entry_(&train_summary_lls, "train.lr.current",
+                                   out->train_summary_snapshot.learning_rate);
+      std::string train_summary_error;
+      std::string train_summary_payload;
+      try {
+        train_summary_payload =
+            cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+                train_summary_lls);
+      } catch (const std::exception& e) {
+        if (error) {
+          *error = "cannot serialize train summary report: " +
+                   std::string(e.what());
+        }
+        return false;
+      }
+      if (!write_wikimyei_text_file(train_summary_lls_file, train_summary_payload,
+                                    &train_summary_error)) {
+        if (error) {
+          *error = "cannot persist train summary report: " +
+                   train_summary_error;
+        }
+        return false;
+      }
+      wrote_train_summary_lls_file = true;
     }
     runtime_lls_document_t status_lls{};
     append_runtime_string_entry_(
@@ -1544,6 +1764,26 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     append_runtime_u64_entry_(&status_lls, "trained_epochs", trained_epochs);
     append_runtime_u64_entry_(&status_lls, "trained_steps", trained_steps);
     append_runtime_u64_entry_(&status_lls, "trained_samples", trained_samples);
+    append_runtime_string_entry_if_nonempty_(&status_lls, "contract_hash",
+                                             contract_hash);
+    append_runtime_u64_entry_(&status_lls, "skipped_batches", skipped_batches);
+    append_runtime_u64_entry_(&status_lls, "accumulate_steps",
+                              static_cast<std::uint64_t>(accumulate_steps));
+    append_runtime_bool_entry_(&status_lls, "has_pending_grad",
+                               has_pending_grad);
+    append_runtime_double_entry_(&status_lls, "clip_norm", clip_norm);
+    append_runtime_double_entry_(&status_lls, "clip_value", clip_value);
+    append_runtime_double_entry_(&status_lls, "last_committed_loss_mean",
+                                 last_committed_loss_mean);
+    append_runtime_double_entry_(&status_lls, "last_committed_inv_mean",
+                                 last_committed_inv_mean);
+    append_runtime_double_entry_(&status_lls, "last_committed_var_mean",
+                                 last_committed_var_mean);
+    append_runtime_double_entry_(&status_lls, "last_committed_cov_raw_mean",
+                                 last_committed_cov_raw_mean);
+    append_runtime_double_entry_(
+        &status_lls, "last_committed_cov_weighted_mean",
+        last_committed_cov_weighted_mean);
     append_runtime_string_entry_(&status_lls, "last_trial_id", effective_run_id);
     append_runtime_string_entry_(&status_lls, "last_wave_hash", "");
     append_runtime_string_entry_(&status_lls, "last_contract_hash", contract_hash);
@@ -1565,6 +1805,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       return false;
     }
     wrote_status_lls_file = true;
+  }
+  if (wrote_train_summary_lls_file && !write_history_copy(train_summary_lls_file)) {
+    return false;
   }
   if (!write_history_copy(status_lls_file)) return false;
   if (wrote_weights_network_analytics_file &&
@@ -1606,6 +1849,9 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       };
   append_manifest_file_if_present(report_fragment_directory / "metadata.enc");
   append_manifest_file_if_present(report_fragment_directory / "metadata.txt");
+  if (wrote_train_summary_lls_file) {
+    append_manifest_file_if_present(train_summary_lls_file);
+  }
   if (wrote_status_lls_file) {
     append_manifest_file_if_present(status_lls_file);
   }
@@ -1640,6 +1886,8 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
         wrote_embedding_sequence_symbolic_analytics_file
             ? embedding_sequence_symbolic_analytics_file
             : fs::path{};
+    out->train_summary_file =
+        wrote_train_summary_lls_file ? train_summary_lls_file : fs::path{};
     out->metadata_encrypted = metadata_encrypted;
     out->metadata_plaintext_fallback = metadata_plaintext_fallback;
     out->metadata_warning = metadata_warning;
@@ -1667,8 +1915,6 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   const fs::path weights_file = report_fragment_directory / "weights.init.pt";
-  const std::string canonical_path =
-      std::string(kWikimyeiVicregCanonicalType) + "." + normalized_hashimyei;
   std::error_code ec;
   if (!fs::exists(weights_file, ec) || !fs::is_regular_file(weights_file, ec)) {
     if (error) *error = "vicreg report_fragment weights file not found: " + weights_file.string();
@@ -1709,24 +1955,6 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     }
   }
 
-  const auto* load_ctx =
-      static_cast<const vicreg_runtime_load_context_t*>(action.user_data);
-  const bool enable_network_analytics_sidecar_on_load =
-      load_ctx && load_ctx->enable_network_analytics_sidecar;
-  const std::string binding_id =
-      (load_ctx && !load_ctx->binding_id.empty()) ? load_ctx->binding_id
-                                                  : std::string{};
-  const std::string run_id =
-      (load_ctx && !load_ctx->run_id.empty()) ? load_ctx->run_id : std::string{};
-  const std::string source_runtime_cursor =
-      (load_ctx && !load_ctx->source_runtime_cursor.empty())
-          ? load_ctx->source_runtime_cursor
-          : std::string{};
-  const bool has_wave_cursor = load_ctx && load_ctx->has_wave_cursor;
-  const std::uint64_t wave_cursor = load_ctx ? load_ctx->wave_cursor : 0;
-  const std::string effective_run_id =
-      effective_runtime_report_run_id_(run_id, normalized_hashimyei);
-
   if (action.object_handle) {
     // Contract: object_handle points to cuwacunu::wikimyei::vicreg_4d::VICReg_4D.
     auto* model = static_cast<cuwacunu::wikimyei::vicreg_4d::VICReg_4D*>(action.object_handle);
@@ -1738,7 +1966,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
           load_error.find("cudaGetDeviceCount") != std::string::npos ||
           load_error.find("cuda unavailable") != std::string::npos ||
           load_error.find("operation not supported on this OS") != std::string::npos;
-      if (cuda_runtime_only_failure) {
+      if (cuda_runtime_only_failure && !model->device.is_cuda()) {
         log_warn(
             "[tsi.vicreg] report_fragment load skipped (cuda runtime unavailable). "
             "Using fresh-initialized model for this run.\n");
@@ -1748,31 +1976,6 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
       if (error) *error = "vicreg load failed: " + load_error;
       return false;
     }
-
-    fs::path weights_network_analytics_file{};
-    if (enable_network_analytics_sidecar_on_load) {
-      std::string report_error;
-      if (!write_vicreg_network_analytics_sidecar_(
-              *model,
-              weights_file,
-              canonical_path,
-              kWikimyeiVicregCanonicalType,
-              normalized_hashimyei,
-              model->contract_hash,
-              binding_id,
-              effective_run_id,
-              source_runtime_cursor,
-              has_wave_cursor,
-              wave_cursor,
-              &weights_network_analytics_file,
-              &report_error)) {
-        log_warn(
-            "[tsi.vicreg] load report skipped for '%s': %s\n",
-            weights_file.string().c_str(),
-            report_error.c_str());
-      }
-    }
-
   }
   return true;
 }
@@ -1805,6 +2008,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   out->metadata_warning.clear();
   out->canonical_path.clear();
   out->weights_file.clear();
+  out->train_summary_file.clear();
 
   std::string registration_error;
   if (!ensure_wikimyei_representation_vicreg_driver_registered(&registration_error)) {
@@ -1891,6 +2095,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
         embedding_sequence_analytics_report,
     const cuwacunu::piaabo::torch_compat::sequence_symbolic_analytics_report_t*
         embedding_sequence_symbolic_analytics_report,
+    const vicreg_train_summary_snapshot_t* train_summary_snapshot,
     cuwacunu::piaabo::torch_compat::data_analytics_options_t
         embedding_sequence_analytics_options) {
   namespace fs = std::filesystem;
@@ -1914,6 +2119,10 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
         *embedding_sequence_analytics_report;
     out.embedding_sequence_symbolic_analytics_report =
         *embedding_sequence_symbolic_analytics_report;
+  }
+  if (train_summary_snapshot) {
+    out.has_train_summary = true;
+    out.train_summary_snapshot = *train_summary_snapshot;
   }
 
   std::string normalized_hashimyei{};
@@ -1957,8 +2166,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     torch::Device preferred_device,
     vicreg_public_docking_shape_t expected_public_docking,
     std::unique_ptr<cuwacunu::wikimyei::vicreg_4d::VICReg_4D>* model_slot,
-    std::string* error,
-    const vicreg_runtime_load_context_t* load_context) {
+    std::string* error) {
   namespace fs = std::filesystem;
   if (error) error->clear();
   if (!model_slot) {
@@ -1979,8 +2187,6 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
   }
 
   const fs::path weights_file = report_fragment_directory / "weights.init.pt";
-  const std::string canonical_path =
-      std::string(kWikimyeiVicregCanonicalType) + "." + normalized_hashimyei;
 
   if (cuwacunu::hashimyei::report_fragment_manifest_exists(
           report_fragment_directory)) {
@@ -2017,24 +2223,6 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
     }
   }
 
-  const bool enable_network_analytics_sidecar_on_load =
-      load_context && load_context->enable_network_analytics_sidecar;
-  const std::string binding_id =
-      (load_context && !load_context->binding_id.empty())
-          ? load_context->binding_id
-          : std::string{};
-  const std::string run_id =
-      (load_context && !load_context->run_id.empty()) ? load_context->run_id
-                                                      : std::string{};
-  const std::string source_runtime_cursor =
-      (load_context && !load_context->source_runtime_cursor.empty())
-          ? load_context->source_runtime_cursor
-          : std::string{};
-  const bool has_wave_cursor = load_context && load_context->has_wave_cursor;
-  const std::uint64_t wave_cursor = load_context ? load_context->wave_cursor : 0;
-  const std::string effective_run_id =
-      effective_runtime_report_run_id_(run_id, normalized_hashimyei);
-
   auto public_docking_matches = [&](const cuwacunu::wikimyei::vicreg_4d::VICReg_4D& candidate)
       -> bool {
     if (candidate.C != expected_public_docking.C ||
@@ -2067,7 +2255,7 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
         load_error.find("cuda unavailable") != std::string::npos ||
         load_error.find("operation not supported on this OS") !=
             std::string::npos;
-    if (cuda_runtime_only_failure) {
+    if (cuda_runtime_only_failure && !preferred_device.is_cuda()) {
       log_warn(
           "[tsi.vicreg] report_fragment load skipped (cuda runtime unavailable). "
           "Using fresh-initialized model for this run.\n");
@@ -2080,30 +2268,6 @@ inline constexpr std::string_view kWikimyeiVicregModel = "vicreg";
 
   if (!public_docking_matches(*replacement)) {
     return false;
-  }
-
-  fs::path weights_network_analytics_file{};
-  if (enable_network_analytics_sidecar_on_load) {
-    std::string report_error;
-    if (!write_vicreg_network_analytics_sidecar_(
-            *replacement,
-            weights_file,
-            canonical_path,
-            kWikimyeiVicregCanonicalType,
-            normalized_hashimyei,
-            replacement->contract_hash,
-            binding_id,
-            effective_run_id,
-            source_runtime_cursor,
-            has_wave_cursor,
-            wave_cursor,
-            &weights_network_analytics_file,
-            &report_error)) {
-      log_warn(
-          "[tsi.vicreg] load report skipped for '%s': %s\n",
-          weights_file.string().c_str(),
-          report_error.c_str());
-    }
   }
 
   *model_slot = std::move(replacement);

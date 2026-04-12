@@ -1660,6 +1660,223 @@ int idydb_insert_vector(idydb **handler, idydb_column_row_sizing c, idydb_column
 	return idydb_insert_at(handler, c, r);
 }
 
+static int idydb_bulk_cell_compare(const void* lhs, const void* rhs)
+{
+	const idydb_bulk_cell* a = (const idydb_bulk_cell*)lhs;
+	const idydb_bulk_cell* b = (const idydb_bulk_cell*)rhs;
+	if (a->column < b->column) return -1;
+	if (a->column > b->column) return 1;
+	if (a->row < b->row) return -1;
+	if (a->row > b->row) return 1;
+	return 0;
+}
+
+static int idydb_bulk_cell_validate(const idydb_bulk_cell* cell)
+{
+	if (!cell) return IDYDB_ERROR;
+	if (cell->column == 0 || cell->row == 0) return IDYDB_RANGE;
+	switch (cell->type)
+	{
+	case IDYDB_INTEGER:
+	case IDYDB_FLOAT:
+	case IDYDB_BOOL:
+		return IDYDB_SUCCESS;
+	case IDYDB_CHAR:
+		if (!cell->value.s) return IDYDB_ERROR;
+		if (strlen(cell->value.s) >= IDYDB_MAX_CHAR_LENGTH) return IDYDB_RANGE;
+		return IDYDB_SUCCESS;
+	case IDYDB_VECTOR:
+		if (!cell->value.vec || cell->vector_dims == 0 || cell->vector_dims > IDYDB_MAX_VECTOR_DIM) {
+			return IDYDB_ERROR;
+		}
+		return IDYDB_SUCCESS;
+	default:
+		return IDYDB_ERROR;
+	}
+}
+
+int idydb_replace_with_cells(idydb **handler,
+                             const idydb_bulk_cell* cells,
+                             size_t cell_count)
+{
+	if (!handler || !*handler) return IDYDB_ERROR;
+	if (!(*handler)->configured) { idydb_error_state(handler, 8); return IDYDB_ERROR; }
+	if ((*handler)->read_only != IDYDB_READ_AND_WRITE) {
+		idydb_error_state(handler, 9);
+		idydb_clear_values(handler);
+		return IDYDB_READONLY;
+	}
+	if (cell_count != 0 && !cells) {
+		idydb_error_state(handler, 8);
+		return IDYDB_ERROR;
+	}
+
+	idydb_bulk_cell* sorted = NULL;
+	if (cell_count != 0) {
+		sorted = (idydb_bulk_cell*)malloc(cell_count * sizeof(idydb_bulk_cell));
+		if (!sorted) {
+			idydb_error_state(handler, 24);
+			return IDYDB_ERROR;
+		}
+		memcpy(sorted, cells, cell_count * sizeof(idydb_bulk_cell));
+		qsort(sorted, cell_count, sizeof(idydb_bulk_cell), idydb_bulk_cell_compare);
+	}
+
+	FILE* file = (*handler)->file_descriptor;
+	if (!file) {
+		if (sorted) free(sorted);
+		idydb_error_state(handler, 5);
+		return IDYDB_ERROR;
+	}
+
+	const int fd = fileno(file);
+	if (fd < 0 || ftruncate(fd, 0) != 0 || fseek(file, 0L, SEEK_SET) != 0) {
+		if (sorted) free(sorted);
+		idydb_error_state(handler, 15);
+		return IDYDB_ERROR;
+	}
+
+	idydb_column_row_sizing previous_column = 0;
+	for (size_t index = 0; index < cell_count;) {
+		const idydb_bulk_cell* head = &sorted[index];
+		const int validation_rc = idydb_bulk_cell_validate(head);
+		if (validation_rc != IDYDB_SUCCESS) {
+			if (sorted) free(sorted);
+			idydb_error_state(handler, validation_rc == IDYDB_RANGE ? 22 : 20);
+			return validation_rc == IDYDB_RANGE ? IDYDB_RANGE : IDYDB_ERROR;
+		}
+		if (head->column <= previous_column) {
+			if (sorted) free(sorted);
+			idydb_error_state(handler, 22);
+			return IDYDB_RANGE;
+		}
+
+		size_t end = index;
+		while (end < cell_count && sorted[end].column == head->column) {
+			const int row_validation_rc = idydb_bulk_cell_validate(&sorted[end]);
+			if (row_validation_rc != IDYDB_SUCCESS) {
+				if (sorted) free(sorted);
+				idydb_error_state(handler, row_validation_rc == IDYDB_RANGE ? 22 : 20);
+				return row_validation_rc == IDYDB_RANGE ? IDYDB_RANGE : IDYDB_ERROR;
+			}
+			if (end > index && sorted[end - 1].row >= sorted[end].row) {
+				if (sorted) free(sorted);
+				idydb_error_state(handler, 22);
+				return IDYDB_RANGE;
+			}
+			++end;
+		}
+
+		const idydb_column_row_sizing skip_amount_raw =
+			head->column - previous_column - 1;
+		const idydb_column_row_sizing row_count_raw =
+			(idydb_column_row_sizing)(end - index - 1);
+		if (skip_amount_raw > 0xFFFFu || row_count_raw > 0xFFFFu) {
+			if (sorted) free(sorted);
+			idydb_error_state(handler, 22);
+			return IDYDB_RANGE;
+		}
+
+		const unsigned short skip_amount = (unsigned short)skip_amount_raw;
+		const unsigned short row_count = (unsigned short)row_count_raw;
+		if (fwrite(&skip_amount, sizeof(short), 1, file) != 1 ||
+		    fwrite(&row_count, sizeof(short), 1, file) != 1) {
+			if (sorted) free(sorted);
+			idydb_error_state(handler, 15);
+			return IDYDB_ERROR;
+		}
+
+		for (size_t i = index; i < end; ++i) {
+			const idydb_bulk_cell* cell = &sorted[i];
+			const idydb_column_row_sizing row_index_raw = cell->row - 1;
+			if (row_index_raw > 0xFFFFu) {
+				if (sorted) free(sorted);
+				idydb_error_state(handler, 22);
+				return IDYDB_RANGE;
+			}
+			const unsigned short row_index = (unsigned short)row_index_raw;
+			unsigned char tag = 0;
+			switch (cell->type) {
+			case IDYDB_INTEGER: tag = IDYDB_READ_INT; break;
+			case IDYDB_FLOAT: tag = IDYDB_READ_FLOAT; break;
+			case IDYDB_CHAR: tag = IDYDB_READ_CHAR; break;
+			case IDYDB_BOOL: tag = cell->value.b ? IDYDB_READ_BOOL_TRUE : IDYDB_READ_BOOL_FALSE; break;
+			case IDYDB_VECTOR: tag = IDYDB_READ_VECTOR; break;
+			default:
+				if (sorted) free(sorted);
+				idydb_error_state(handler, 20);
+				return IDYDB_ERROR;
+			}
+
+			if (fwrite(&row_index, sizeof(short), 1, file) != 1 ||
+			    fwrite(&tag, 1, 1, file) != 1) {
+				if (sorted) free(sorted);
+				idydb_error_state(handler, 15);
+				return IDYDB_ERROR;
+			}
+
+			switch (cell->type) {
+			case IDYDB_INTEGER:
+				if (fwrite(&cell->value.i, sizeof(int), 1, file) != 1) {
+					if (sorted) free(sorted);
+					idydb_error_state(handler, 15);
+					return IDYDB_ERROR;
+				}
+				break;
+			case IDYDB_FLOAT:
+				if (fwrite(&cell->value.f, sizeof(float), 1, file) != 1) {
+					if (sorted) free(sorted);
+					idydb_error_state(handler, 15);
+					return IDYDB_ERROR;
+				}
+				break;
+			case IDYDB_CHAR:
+			{
+				const unsigned short len = (unsigned short)strlen(cell->value.s);
+				if (fwrite(&len, sizeof(short), 1, file) != 1 ||
+				    fwrite(cell->value.s, 1, (size_t)len + 1u, file) != (size_t)len + 1u) {
+					if (sorted) free(sorted);
+					idydb_error_state(handler, 15);
+					return IDYDB_ERROR;
+				}
+				break;
+			}
+			case IDYDB_BOOL:
+				break;
+			case IDYDB_VECTOR:
+				if (fwrite(&cell->vector_dims, sizeof(short), 1, file) != 1 ||
+				    fwrite(cell->value.vec, sizeof(float), cell->vector_dims, file) != cell->vector_dims) {
+					if (sorted) free(sorted);
+					idydb_error_state(handler, 15);
+					return IDYDB_ERROR;
+				}
+				break;
+			}
+		}
+
+		previous_column = head->column;
+		index = end;
+	}
+
+	if (fflush(file) != 0 || fseek(file, 0L, SEEK_END) != 0) {
+		if (sorted) free(sorted);
+		idydb_error_state(handler, 15);
+		return IDYDB_ERROR;
+	}
+	const long final_size = ftell(file);
+	if (final_size < 0 || fseek(file, 0L, SEEK_SET) != 0) {
+		if (sorted) free(sorted);
+		idydb_error_state(handler, 15);
+		return IDYDB_ERROR;
+	}
+
+	(*handler)->size = (idydb_sizing_max)final_size;
+	(*handler)->dirty = true;
+	idydb_clear_values(handler);
+	if (sorted) free(sorted);
+	return IDYDB_SUCCESS;
+}
+
 int idydb_delete(idydb **handler, idydb_column_row_sizing c, idydb_column_row_sizing r)
 {
 	idydb_insert_reset(handler);

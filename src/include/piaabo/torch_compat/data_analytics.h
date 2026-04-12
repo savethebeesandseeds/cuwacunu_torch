@@ -375,7 +375,8 @@ make_data_symbolic_analytics_report(
     const data_source_analytics_report_t& report,
     const data_analytics_options_t& options,
     std::string_view source_label = {},
-    const tsiemene::component_report_identity_t& report_identity = {});
+    const tsiemene::component_report_identity_t& report_identity = {},
+    std::string_view contract_hash = {});
 
 [[nodiscard]] std::string sequence_symbolic_analytics_to_latent_lineage_state_text(
     const sequence_symbolic_analytics_report_t& report,
@@ -386,7 +387,8 @@ make_data_symbolic_analytics_report(
 [[nodiscard]] std::string data_symbolic_analytics_to_latent_lineage_state_text(
     const data_symbolic_analytics_report_t& report,
     std::string_view source_label = {},
-    const tsiemene::component_report_identity_t& report_identity = {});
+    const tsiemene::component_report_identity_t& report_identity = {},
+    std::string_view contract_hash = {});
 
 [[nodiscard]] std::string sequence_symbolic_analytics_to_pretty_text(
     const sequence_symbolic_analytics_report_t& report,
@@ -415,7 +417,8 @@ make_data_symbolic_analytics_report(
     const std::filesystem::path& output_file,
     std::string_view source_label = {},
     std::string* error = nullptr,
-    const tsiemene::component_report_identity_t& report_identity = {});
+    const tsiemene::component_report_identity_t& report_identity = {},
+    std::string_view contract_hash = {});
 
 [[nodiscard]] bool write_sequence_symbolic_analytics_file(
     const sequence_symbolic_analytics_report_t& report,
@@ -430,7 +433,8 @@ make_data_symbolic_analytics_report(
     const std::filesystem::path& output_file,
     std::string_view source_label = {},
     std::string* error = nullptr,
-    const tsiemene::component_report_identity_t& report_identity = {});
+    const tsiemene::component_report_identity_t& report_identity = {},
+    std::string_view contract_hash = {});
 
 [[nodiscard]] std::string extract_sequence_analytics_kv_schema(
     std::string_view payload);

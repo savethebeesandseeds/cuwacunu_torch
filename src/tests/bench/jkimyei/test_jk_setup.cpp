@@ -5,7 +5,7 @@
 #include <torch/torch.h>
 
 #include "jkimyei/jkimyei.h"
-#include "iitepi/runtime_binding_space_t.h"
+#include "iitepi/runtime_binding/runtime_binding_space_t.h"
 #include "piaabo/dconfig.h"
 
 namespace {

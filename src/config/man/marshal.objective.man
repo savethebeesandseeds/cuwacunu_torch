@@ -1,0 +1,58 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = marshal.objective
+TARGET_DSL = src/config/instructions/defaults/default.marshal.objective.dsl
+TARGET_BNF = src/config/bnf/objective.marshal.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/marshal_objective/marshal_objective.cpp
+PRIMARY_VALIDATORS = src/main/hero/hero_marshal_mcp.cpp,src/main/hero/hero_config_mcp.cpp
+
+[FIELD campaign_dsl_path]
+key = campaign_dsl_path
+scope = marshal objective root
+type = path
+required = true
+default = none
+range = one regular file path
+allowed = absolute path or path resolved relative to the source marshal objective DSL
+nuance = canonical supervision root selected by Marshal Hero for session execution; this file is copied into the session ledger as immutable session constitution while the referenced objective bundle remains the mutable truth source
+
+[FIELD objective_md_path]
+key = objective_md_path
+scope = marshal objective root
+type = path
+required = true
+default = none
+range = one regular file path
+allowed = absolute path or path resolved relative to the source marshal objective DSL
+nuance = human-authored mission markdown that states what the session is trying to achieve; Marshal Hero copies it into the session ledger before assembling marshal.briefing.md for Codex planning checkpoints
+
+[FIELD guidance_md_path]
+key = guidance_md_path
+scope = marshal objective root
+type = path
+required = true
+default = none
+range = one regular file path
+allowed = absolute path or path resolved relative to the source marshal objective DSL
+nuance = human-authored guidance markdown that combines hard operational boundaries with advisory planning heuristics separately from the mission itself
+
+[FIELD objective_name]
+key = objective_name
+scope = marshal objective root
+type = str
+required = false
+default = derived from enclosing objective folder
+range = non-empty free text when present
+allowed = scalar string
+nuance = stable human-facing identity for the session objective; when omitted, Marshal Hero derives the objective name from the source marshal objective bundle path
+
+[FIELD marshal_session_id]
+key = marshal_session_id
+scope = marshal objective root
+type = str
+required = false
+default = generated unique compact base36 marshal cursor
+range = non-empty free text when present
+allowed = scalar string matching [A-Za-z0-9._-]+
+nuance = optional persisted marshal cursor chosen by the marshal objective itself; when omitted, Marshal Hero generates a fresh compact base36 marshal cursor at session creation time

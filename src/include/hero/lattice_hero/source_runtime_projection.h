@@ -52,6 +52,7 @@ inline constexpr std::string_view
 
 struct source_runtime_projection_report_identity_t {
   std::string canonical_path{};
+  std::string contract_hash{};
   std::string source_runtime_cursor{};
   std::string source_label{};
   std::string binding_id{};
@@ -430,6 +431,11 @@ build_source_runtime_projection_runtime_report_document(
     entries.push_back(
         cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
             "source_label", identity.source_label));
+  }
+  if (!identity.contract_hash.empty()) {
+    entries.push_back(
+        cuwacunu::piaabo::latent_lineage_state::make_runtime_lls_string_entry(
+            "contract_hash", identity.contract_hash));
   }
   for (const auto& [k, v] : fragment.projection_num) {
     entries.push_back(

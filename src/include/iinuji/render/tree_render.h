@@ -27,6 +27,7 @@ inline void render_tree(const std::shared_ptr<iinuji_object_t>& node) {
   else if (std::dynamic_pointer_cast<bufferBox_data_t>(node->data))     render_buffer(*node);
   else if (std::dynamic_pointer_cast<editorBox_data_t>(node->data))     render_editor(*node);
   else if (std::dynamic_pointer_cast<textBox_data_t>(node->data))       render_text(*node);
+  else if (std::dynamic_pointer_cast<panel_data_t>(node->data))         render_panel(*node);
   else                                                                  render_panel(*node);
 
   for (auto& ch : node->children) render_tree(ch);

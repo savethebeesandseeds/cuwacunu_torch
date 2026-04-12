@@ -41,7 +41,8 @@ inline constexpr std::string_view kRuntimeJobStdoutFilename = "stdout.log";
 inline constexpr std::string_view kRuntimeJobStderrFilename = "stderr.log";
 inline constexpr std::string_view kRuntimeJobTraceFilename = "job.trace.jsonl";
 inline constexpr std::string_view kRuntimeCampaignJobsDirname = "jobs";
-inline constexpr std::string_view kRuntimeLegacyJobsDirname = ".jobs";
+inline constexpr std::string_view kRuntimeJobCursorChildMarker = ".j.";
+inline constexpr std::string_view kRuntimeJobCursorRetryMarker = ".r.";
 
 struct runtime_job_record_t {
   std::string schema{std::string(kRuntimeJobSchemaV3)};
@@ -60,6 +61,12 @@ struct runtime_job_record_t {
   std::string contract_dsl_path{};
   std::string wave_dsl_path{};
   std::string binding_id{};
+  std::string requested_device{};
+  std::string resolved_device{};
+  std::string device_source_section{};
+  std::string device_contract_hash{};
+  std::string device_error{};
+  bool cuda_required{false};
   bool reset_runtime_state{false};
   std::string stdout_path{};
   std::string stderr_path{};
@@ -121,16 +128,28 @@ struct runtime_job_observation_t {
   return out;
 }
 
+[[nodiscard]] inline std::string base36_lower_u64(std::uint64_t value) {
+  static constexpr char kBase36[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+  if (value == 0) return "0";
+  std::string out{};
+  while (value != 0) {
+    out.push_back(kBase36[value % 36u]);
+    value /= 36u;
+  }
+  std::reverse(out.begin(), out.end());
+  return out;
+}
+
 [[nodiscard]] inline std::filesystem::path runtime_job_dir(
     const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
   const std::string trimmed = trim_ascii(job_cursor);
-  const std::size_t marker = trimmed.find(".job.");
+  const std::size_t marker = trimmed.find(kRuntimeJobCursorChildMarker);
   if (marker != std::string::npos && marker != 0) {
     const std::string campaign_cursor = trimmed.substr(0, marker);
     return campaigns_root / campaign_cursor /
            std::string(kRuntimeCampaignJobsDirname) / trimmed;
   }
-  return campaigns_root / std::string(kRuntimeLegacyJobsDirname) / trimmed;
+  return campaigns_root / trimmed;
 }
 
 [[nodiscard]] inline std::filesystem::path runtime_job_manifest_path(
@@ -347,47 +366,25 @@ resolve_existing_runtime_job_manifest_path(
     const std::filesystem::path& campaigns_root, std::string_view campaign_cursor,
     std::size_t job_index) {
   const std::string parent = trim_ascii(campaign_cursor);
-  auto format_index = [](std::size_t value) {
-    std::ostringstream out;
-    out << std::setw(4) << std::setfill('0') << value;
-    return out.str();
-  };
-  if (!parent.empty()) {
-    const std::string base =
-        parent + ".job." + format_index(job_index);
-    std::error_code ec{};
-    if (!std::filesystem::exists(runtime_job_dir(campaigns_root, base), ec) ||
-        ec) {
-      return base;
-    }
-    for (std::size_t retry = 1; retry != 0; ++retry) {
-      const std::string candidate =
-          base + ".retry." + format_index(retry);
-      std::error_code retry_ec{};
-      if (!std::filesystem::exists(runtime_job_dir(campaigns_root, candidate),
-                                   retry_ec) ||
-          retry_ec) {
-        return candidate;
-      }
-    }
+  if (parent.empty()) return {};
+  const std::string base = parent + std::string(kRuntimeJobCursorChildMarker) +
+                           base36_lower_u64(static_cast<std::uint64_t>(job_index));
+  std::error_code ec{};
+  if (!std::filesystem::exists(runtime_job_dir(campaigns_root, base), ec) || ec) {
+    return base;
   }
-  const std::uint64_t started_at_ms = now_ms_utc();
-  for (std::uint64_t nonce = 1; nonce != 0; ++nonce) {
-    const std::uint64_t salt =
-        static_cast<std::uint64_t>(
-            std::chrono::steady_clock::now().time_since_epoch().count()) ^
-        (nonce * 0x9e3779b97f4a7c15ULL);
+  for (std::size_t retry = 1; retry != 0; ++retry) {
     const std::string candidate =
-        "job." + std::to_string(started_at_ms) + "." +
-        hex_lower_u64(salt).substr(0, 8);
-    std::error_code ec{};
+        base + std::string(kRuntimeJobCursorRetryMarker) +
+        base36_lower_u64(static_cast<std::uint64_t>(retry));
+    std::error_code retry_ec{};
     if (!std::filesystem::exists(runtime_job_dir(campaigns_root, candidate),
-                                 ec) ||
-        ec) {
+                                 retry_ec) ||
+        retry_ec) {
       return candidate;
     }
   }
-  return "job." + std::to_string(started_at_ms) + ".overflow";
+  return {};
 }
 
 [[nodiscard]] inline bool parse_u64(std::string_view text, std::uint64_t* out) {
@@ -467,6 +464,18 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
       make_runtime_lls_string_entry("wave_dsl_path", record.wave_dsl_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("binding_id", record.binding_id));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("requested_device", record.requested_device));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("resolved_device", record.resolved_device));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "device_source_section", record.device_source_section));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "device_contract_hash", record.device_contract_hash));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("device_error", record.device_error));
+  document.entries.push_back(
+      make_runtime_lls_bool_entry("cuda_required", record.cuda_required));
   document.entries.push_back(make_runtime_lls_bool_entry(
       "reset_runtime_state", record.reset_runtime_state));
   document.entries.push_back(
@@ -556,6 +565,11 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   parsed.contract_dsl_path = kv["contract_dsl_path"];
   parsed.wave_dsl_path = kv["wave_dsl_path"];
   parsed.binding_id = kv["binding_id"];
+  parsed.requested_device = kv["requested_device"];
+  parsed.resolved_device = kv["resolved_device"];
+  parsed.device_source_section = kv["device_source_section"];
+  parsed.device_contract_hash = kv["device_contract_hash"];
+  parsed.device_error = kv["device_error"];
   parsed.stdout_path = kv["stdout_path"];
   parsed.stderr_path = kv["stderr_path"];
   parsed.trace_path = kv["trace_path"];
@@ -582,6 +596,13 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     return false;
   }
   parsed.reset_runtime_state = reset;
+  bool cuda_required = false;
+  if (!kv["cuda_required"].empty() &&
+      !parse_bool(kv["cuda_required"], &cuda_required)) {
+    if (error) *error = "runtime job record has invalid cuda_required";
+    return false;
+  }
+  parsed.cuda_required = cuda_required;
 
   std::uint64_t u64 = 0;
   std::int64_t i64 = 0;
@@ -783,11 +804,6 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
         if (error) *error = "failed reading campaigns_root entry type";
         return false;
       }
-      continue;
-    }
-    const std::string entry_name = it->path().filename().string();
-    if (entry_name == kRuntimeLegacyJobsDirname) {
-      if (!scan_job_leaf_dir(it->path())) return false;
       continue;
     }
     if (!scan_job_leaf_dir(it->path() / std::string(kRuntimeCampaignJobsDirname))) {

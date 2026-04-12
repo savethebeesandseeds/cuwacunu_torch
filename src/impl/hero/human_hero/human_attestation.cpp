@@ -580,54 +580,55 @@ struct binary_reader_t {
 bool validate_human_resolution_record(const human_resolution_record_t& record,
                                       std::string* error) {
   if (error) error->clear();
-  if (trim_ascii(record.schema) != std::string(kHumanResolutionSchemaV2)) {
-    if (error) *error = "unsupported human resolution schema: " + record.schema;
+  if (trim_ascii(record.schema) !=
+      std::string(kHumanGovernanceResolutionSchemaV3)) {
+    if (error) *error = "unsupported governance resolution schema: " + record.schema;
     return false;
   }
-  if (trim_ascii(record.loop_id).empty()) {
-    if (error) *error = "human resolution missing loop_id";
+  if (trim_ascii(record.marshal_session_id).empty()) {
+    if (error) *error = "governance resolution missing marshal_session_id";
     return false;
   }
-  if (record.turn_index == 0) {
-    if (error) *error = "human resolution missing turn_index";
+  if (record.checkpoint_index == 0) {
+    if (error) *error = "governance resolution missing checkpoint_index";
     return false;
   }
-  if (trim_ascii(record.escalation_sha256_hex).size() != 64 ||
-      !is_hex_lower_string(trim_ascii(record.escalation_sha256_hex))) {
+  if (trim_ascii(record.request_sha256_hex).size() != 64 ||
+      !is_hex_lower_string(trim_ascii(record.request_sha256_hex))) {
     if (error) {
       *error =
-          "human resolution escalation_sha256_hex must be 64 lowercase hex chars";
+          "governance resolution request_sha256_hex must be 64 lowercase hex chars";
     }
     return false;
   }
   if (trim_ascii(record.operator_id).empty()) {
-    if (error) *error = "human resolution missing operator_id";
+    if (error) *error = "governance resolution missing operator_id";
     return false;
   }
   if (record.resolved_at_ms == 0) {
-    if (error) *error = "human resolution missing resolved_at_ms";
+    if (error) *error = "governance resolution missing resolved_at_ms";
     return false;
   }
   const std::string resolution = trim_ascii(record.resolution_kind);
   if (resolution != "grant" && resolution != "deny" &&
-      resolution != "clarify" && resolution != "stop") {
+      resolution != "clarify" && resolution != "terminate") {
     if (error) {
       *error =
-          "human resolution resolution_kind must be grant, deny, clarify, or stop";
+          "governance resolution resolution_kind must be grant, deny, clarify, or terminate";
     }
     return false;
   }
-  const std::string escalation = trim_ascii(record.escalation_kind);
-  if (escalation != "authority_expansion" &&
-      escalation != "budget_expansion" &&
-      escalation != "objective_clarification") {
+  const std::string governance = trim_ascii(record.governance_kind);
+  if (governance != "authority_expansion" &&
+      governance != "launch_budget_expansion" &&
+      governance != "policy_decision") {
     if (error) {
-      *error = "human resolution escalation_kind is unsupported";
+      *error = "governance resolution governance_kind is unsupported";
     }
     return false;
   }
   if (trim_ascii(record.reason).empty()) {
-    if (error) *error = "human resolution missing reason";
+    if (error) *error = "governance resolution missing reason";
     return false;
   }
   if (trim_ascii(record.signer_public_key_fingerprint_sha256_hex).size() != 64 ||
@@ -635,12 +636,12 @@ bool validate_human_resolution_record(const human_resolution_record_t& record,
           trim_ascii(record.signer_public_key_fingerprint_sha256_hex))) {
     if (error) {
       *error =
-          "human resolution signer_public_key_fingerprint_sha256_hex must be 64 lowercase hex chars";
+          "governance resolution signer_public_key_fingerprint_sha256_hex must be 64 lowercase hex chars";
     }
     return false;
   }
   if (resolution == "grant") {
-    if (escalation == "authority_expansion") {
+    if (governance == "authority_expansion") {
       if (!record.grant_allow_default_write) {
         if (error) {
           *error =
@@ -648,39 +649,36 @@ bool validate_human_resolution_record(const human_resolution_record_t& record,
         }
         return false;
       }
-      if (record.grant_additional_review_turns != 0 ||
-          record.grant_additional_campaign_launches != 0) {
+      if (record.grant_additional_campaign_launches != 0) {
         if (error) {
           *error =
-              "authority_expansion grant cannot add review or campaign budgets";
+              "authority_expansion grant cannot add campaign-launch budget";
         }
         return false;
       }
-    } else if (escalation == "budget_expansion") {
-      if (record.grant_additional_review_turns == 0 &&
-          record.grant_additional_campaign_launches == 0) {
+    } else if (governance == "launch_budget_expansion") {
+      if (record.grant_additional_campaign_launches == 0) {
         if (error) {
           *error =
-              "budget_expansion grant must add review turns or campaign launches";
+              "launch_budget_expansion grant must add campaign launches";
         }
         return false;
       }
       if (record.grant_allow_default_write) {
         if (error) {
           *error =
-              "budget_expansion grant cannot widen default-write authority";
+              "launch_budget_expansion grant cannot widen default-write authority";
         }
         return false;
       }
     } else {
       if (error) {
         *error =
-            "objective_clarification escalation cannot use resolution_kind=grant";
+            "policy_decision request cannot use resolution_kind=grant";
       }
       return false;
     }
   } else if (record.grant_allow_default_write ||
-             record.grant_additional_review_turns != 0 ||
              record.grant_additional_campaign_launches != 0) {
     if (error) *error = "only grant resolutions may carry grant delta fields";
     return false;
@@ -692,25 +690,22 @@ std::string human_resolution_to_json(const human_resolution_record_t& record) {
   std::ostringstream out;
   out << "{"
       << "\"schema\":" << json_quote(record.schema) << ","
-      << "\"loop_id\":" << json_quote(record.loop_id) << ","
-      << "\"turn_index\":" << record.turn_index << ","
-      << "\"escalation_sha256_hex\":"
-      << json_quote(record.escalation_sha256_hex) << ","
+      << "\"marshal_session_id\":" << json_quote(record.marshal_session_id) << ","
+      << "\"checkpoint_index\":" << record.checkpoint_index << ","
+      << "\"request_sha256_hex\":"
+      << json_quote(record.request_sha256_hex) << ","
       << "\"operator_id\":" << json_quote(record.operator_id) << ","
       << "\"resolved_at_ms\":" << record.resolved_at_ms << ","
       << "\"resolution_kind\":" << json_quote(record.resolution_kind) << ","
-      << "\"escalation_kind\":" << json_quote(record.escalation_kind) << ","
+      << "\"governance_kind\":" << json_quote(record.governance_kind) << ","
       << "\"grant_delta\":";
   if (!record.grant_allow_default_write &&
-      record.grant_additional_review_turns == 0 &&
       record.grant_additional_campaign_launches == 0) {
     out << "null";
   } else {
     out << "{"
         << "\"allow_default_write\":"
         << bool_json(record.grant_allow_default_write) << ","
-        << "\"additional_review_turns\":"
-        << record.grant_additional_review_turns << ","
         << "\"additional_campaign_launches\":"
         << record.grant_additional_campaign_launches << "}";
   }
@@ -732,42 +727,42 @@ bool parse_human_resolution_json(const std::string& json,
   }
   *out = human_resolution_record_t{};
   if (!extract_json_string_field(json, "schema", &out->schema)) {
-    if (error) *error = "human resolution missing schema";
+    if (error) *error = "governance resolution missing schema";
     return false;
   }
-  if (!extract_json_string_field(json, "loop_id", &out->loop_id)) {
-    if (error) *error = "human resolution missing loop_id";
+  if (!extract_json_string_field(json, "marshal_session_id", &out->marshal_session_id)) {
+    if (error) *error = "governance resolution missing marshal_session_id";
     return false;
   }
-  std::size_t turn_index = 0;
-  if (!extract_json_size_field(json, "turn_index", &turn_index)) {
-    if (error) *error = "human resolution missing turn_index";
+  std::size_t checkpoint_index = 0;
+  if (!extract_json_size_field(json, "checkpoint_index", &checkpoint_index)) {
+    if (error) *error = "governance resolution missing checkpoint_index";
     return false;
   }
-  out->turn_index = static_cast<std::uint64_t>(turn_index);
-  if (!extract_json_string_field(json, "escalation_sha256_hex",
-                                 &out->escalation_sha256_hex)) {
-    if (error) *error = "human resolution missing escalation_sha256_hex";
+  out->checkpoint_index = static_cast<std::uint64_t>(checkpoint_index);
+  if (!extract_json_string_field(json, "request_sha256_hex",
+                                 &out->request_sha256_hex)) {
+    if (error) *error = "governance resolution missing request_sha256_hex";
     return false;
   }
   if (!extract_json_string_field(json, "operator_id", &out->operator_id)) {
-    if (error) *error = "human resolution missing operator_id";
+    if (error) *error = "governance resolution missing operator_id";
     return false;
   }
   std::size_t resolved_at_ms = 0;
   if (!extract_json_size_field(json, "resolved_at_ms", &resolved_at_ms)) {
-    if (error) *error = "human resolution missing resolved_at_ms";
+    if (error) *error = "governance resolution missing resolved_at_ms";
     return false;
   }
   out->resolved_at_ms = static_cast<std::uint64_t>(resolved_at_ms);
   if (!extract_json_string_field(json, "resolution_kind",
                                  &out->resolution_kind)) {
-    if (error) *error = "human resolution missing resolution_kind";
+    if (error) *error = "governance resolution missing resolution_kind";
     return false;
   }
-  if (!extract_json_string_field(json, "escalation_kind",
-                                 &out->escalation_kind)) {
-    if (error) *error = "human resolution missing escalation_kind";
+  if (!extract_json_string_field(json, "governance_kind",
+                                 &out->governance_kind)) {
+    if (error) *error = "governance resolution missing governance_kind";
     return false;
   }
   std::string grant_delta_json{};
@@ -775,12 +770,6 @@ bool parse_human_resolution_json(const std::string& json,
       trim_ascii(grant_delta_json) != "null") {
     (void)extract_json_bool_field(grant_delta_json, "allow_default_write",
                                   &out->grant_allow_default_write);
-    std::size_t additional_review_turns = 0;
-    if (extract_json_size_field(grant_delta_json, "additional_review_turns",
-                                &additional_review_turns)) {
-      out->grant_additional_review_turns =
-          static_cast<std::uint64_t>(additional_review_turns);
-    }
     std::size_t additional_campaign_launches = 0;
     if (extract_json_size_field(grant_delta_json,
                                 "additional_campaign_launches",
@@ -790,14 +779,15 @@ bool parse_human_resolution_json(const std::string& json,
     }
   }
   if (!extract_json_string_field(json, "reason", &out->reason)) {
-    if (error) *error = "human resolution missing reason";
+    if (error) *error = "governance resolution missing reason";
     return false;
   }
   if (!extract_json_string_field(json,
                                  "signer_public_key_fingerprint_sha256_hex",
                                  &out->signer_public_key_fingerprint_sha256_hex)) {
     if (error) {
-      *error = "human resolution missing signer_public_key_fingerprint_sha256_hex";
+      *error =
+          "governance resolution missing signer_public_key_fingerprint_sha256_hex";
     }
     return false;
   }

@@ -69,6 +69,7 @@ struct runtime_binding_trace_event_t {
   std::string contract_hash{};
   std::string wave_hash{};
   std::string contract_name{};
+  std::string component_name{};
   std::string resolved_record_type{};
   std::string resolved_sampler{};
   std::string run_id{};
@@ -79,6 +80,17 @@ struct runtime_binding_trace_event_t {
   std::uint64_t epoch{0};
   std::uint64_t epoch_steps{0};
   std::uint64_t total_steps{0};
+  std::uint64_t optimizer_steps{0};
+  std::uint64_t trained_epochs{0};
+  std::uint64_t trained_samples{0};
+  std::uint64_t skipped_batches{0};
+  double epoch_loss_mean{std::numeric_limits<double>::quiet_NaN()};
+  double last_committed_loss_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_inv_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_var_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_cov_raw_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_cov_weighted_mean{std::numeric_limits<double>::quiet_NaN()};
+  double learning_rate{std::numeric_limits<double>::quiet_NaN()};
   bool ok{false};
   std::string error{};
 };
@@ -1133,7 +1145,49 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
       }
       return false;
     }
-    if (!validate_runtime_hashimyei_contract_docking(
+    bool validated_from_component_manifest = false;
+    std::string manifest_error{};
+    if (const auto manifest_opt =
+            build_runtime_component_manifest(c, *wik, &manifest_error);
+        manifest_opt.has_value()) {
+      const auto store_root = cuwacunu::hashimyei::store_root();
+      const std::string component_id =
+          cuwacunu::hero::hashimyei::compute_component_manifest_id(
+              *manifest_opt);
+      const auto manifest_path =
+          cuwacunu::hero::hashimyei::component_manifest_path(
+              store_root, manifest_opt->canonical_path, component_id);
+      cuwacunu::hero::hashimyei::component_manifest_t stored_manifest{};
+      if (cuwacunu::hero::hashimyei::load_component_manifest(
+              manifest_path, &stored_manifest, &manifest_error)) {
+        const auto contract_snapshot =
+            cuwacunu::iitepi::contract_space_t::contract_itself(
+                c.spec.contract_hash);
+        if (!contract_snapshot) {
+          if (error) {
+            *error =
+                "missing contract snapshot for docking validation on node '" +
+                std::string(wik->instance_name()) + "'";
+          }
+          return false;
+        }
+        if (!validate_runtime_component_manifest_public_docking(
+                stored_manifest,
+                c.spec.contract_hash,
+                contract_snapshot->signature.docking_signature_sha256_hex,
+                &local_error)) {
+          if (error) {
+            *error = "configured hashimyei failed contract docking validation "
+                     "for node '" +
+                     std::string(wik->instance_name()) + "': " + local_error;
+          }
+          return false;
+        }
+        validated_from_component_manifest = true;
+      }
+    }
+    if (!validated_from_component_manifest &&
+        !validate_runtime_hashimyei_contract_docking(
             c.spec.representation_hashimyei,
             c.spec.contract_hash,
             /*require_registered_manifest=*/true,

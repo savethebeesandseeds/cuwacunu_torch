@@ -68,7 +68,7 @@ struct PlotOptions {
   // Colors supplied by the backend
   short axes_color_pair = 0;
   short grid_color_pair = 0;
-  short bg_color_pair   = 0;   // used when a cell has no glyph color
+  short bg_color_pair   = 0;   // fallback color; when set, empty plot cells are filled
 };
 
 struct SeriesStyle {
@@ -107,16 +107,6 @@ static inline void cell_set_dot(std::vector<std::vector<unsigned char>>& cells,
   int sub_x = px % 2;
   int sub_y = py % 4;
   cells[cell_y][cell_x] |= (unsigned char)dot_bit_index(sub_x, sub_y);
-}
-
-// UNDERLAY color: only set if empty
-static inline void color_touch_under(std::vector<std::vector<short>>& colors,
-                                     int width_cells, int height_cells,
-                                     int px, int py, short cp) {
-  if (cp <= 0) return;
-  int cell_x = px / 2, cell_y = py / 4;
-  if (cell_x < 0 || cell_x >= width_cells || cell_y < 0 || cell_y >= height_cells) return;
-  if (colors[cell_y][cell_x] == 0) colors[cell_y][cell_x] = cp;
 }
 
 // OVERLAY color: overwrite
@@ -210,13 +200,19 @@ static void plot_braille_multi(const std::vector<Series>& series,
   auto transform_y = [&](double y)->double { return opt.y_log ? safe_log10(y, opt.y_log_eps) : y; };
 
   // Global data ranges: honor fixed values, auto-fill only NaNs
-  double x_min = opt.x_min, x_max = opt.x_max;
-  double y_min = opt.y_min, y_max = opt.y_max;
+  double x_min = is_finite(opt.x_min) ? transform_x(opt.x_min)
+                                      : std::numeric_limits<double>::quiet_NaN();
+  double x_max = is_finite(opt.x_max) ? transform_x(opt.x_max)
+                                      : std::numeric_limits<double>::quiet_NaN();
+  double y_min = is_finite(opt.y_min) ? transform_y(opt.y_min)
+                                      : std::numeric_limits<double>::quiet_NaN();
+  double y_max = is_finite(opt.y_max) ? transform_y(opt.y_max)
+                                      : std::numeric_limits<double>::quiet_NaN();
 
-  bool auto_x_min = !is_finite(x_min);
-  bool auto_x_max = !is_finite(x_max);
-  bool auto_y_min = !is_finite(y_min);
-  bool auto_y_max = !is_finite(y_max);
+  bool auto_x_min = !is_finite(opt.x_min) || !is_finite(x_min);
+  bool auto_x_max = !is_finite(opt.x_max) || !is_finite(x_max);
+  bool auto_y_min = !is_finite(opt.y_min) || !is_finite(y_min);
+  bool auto_y_max = !is_finite(opt.y_max) || !is_finite(y_max);
 
   auto acc_range = [&](double x, double y){
     x = transform_x(x);
@@ -231,76 +227,92 @@ static void plot_braille_multi(const std::vector<Series>& series,
 
   for (const auto& s : series) if (s.data) for (const auto& p : *s.data) acc_range(p.first, p.second);
 
-  if (!is_finite(x_min) || !is_finite(x_max) || x_max == x_min) { x_min = 0.0; x_max = 1.0; }
-  if (!is_finite(y_min) || !is_finite(y_max) || y_max == y_min) { y_min = 0.0; y_max = 1.0; }
+  if (!is_finite(x_min) || !is_finite(x_max) || !(x_max > x_min)) { x_min = 0.0; x_max = 1.0; }
+  if (!is_finite(y_min) || !is_finite(y_max) || !(y_max > y_min)) { y_min = 0.0; y_max = 1.0; }
 
-  // Cell + color buffers
+  // Plot geometry uses separate data/underlay buffers so grid/baseline never
+  // mutate the same braille glyph as series data.
+  std::vector<std::vector<unsigned char>> underlay_cells(plot_h, std::vector<unsigned char>(plot_w, 0));
+  std::vector<std::vector<short>> underlay_colors(plot_h, std::vector<short>(plot_w, 0));
   std::vector<std::vector<unsigned char>> cells(plot_h, std::vector<unsigned char>(plot_w, 0));
   std::vector<std::vector<short>> colors(plot_h, std::vector<short>(plot_w, 0));
 
-  auto to_px = [&](double x)->int {
-    x = transform_x(x);
-    if (!is_finite(x)) return (int)std::llround(-1e9);
-    double t = (x - x_min) / (x_max - x_min);
-    if (opt.hard_clip) t = std::min(1.0, std::max(0.0, t));
-    return (int)std::llround(t * (plot_w * 2 - 1));
+  auto map_tx_to_px = [&](double tx, int& px)->bool {
+    if (!is_finite(tx)) return false;
+    double t = (tx - x_min) / (x_max - x_min);
+    if (!is_finite(t)) return false;
+    if (opt.hard_clip) t = std::clamp(t, 0.0, 1.0);
+    px = (int)std::llround(t * (plot_w * 2 - 1));
+    return true;
   };
-  auto to_py = [&](double y)->int {
-    y = transform_y(y);
-    if (!is_finite(y)) return (int)std::llround(-1e9);
-    double t = (y - y_min) / (y_max - y_min);
-    if (opt.hard_clip) t = std::min(1.0, std::max(0.0, t));
+
+  auto map_ty_to_py = [&](double ty, int& py)->bool {
+    if (!is_finite(ty)) return false;
+    double t = (ty - y_min) / (y_max - y_min);
+    if (!is_finite(t)) return false;
+    if (opt.hard_clip) t = std::clamp(t, 0.0, 1.0);
     // invert so larger y appears *higher* on screen
-    return (int)std::llround((1.0 - t) * (plot_h * 4 - 1));
+    py = (int)std::llround((1.0 - t) * (plot_h * 4 - 1));
+    return true;
+  };
+
+  auto project_x = [&](double x, int& px)->bool {
+    return map_tx_to_px(transform_x(x), px);
+  };
+
+  auto project_y = [&](double y, int& py)->bool {
+    return map_ty_to_py(transform_y(y), py);
+  };
+
+  auto project_point = [&](double x, double y, int& px, int& py)->bool {
+    return project_x(x, px) && project_y(y, py);
   };
 
   // Optional baseline y=0
   int baseline_py = std::numeric_limits<int>::min();
-  if (opt.baseline0 && y_min < transform_y(0.0) && y_max > transform_y(0.0)) {
-    baseline_py = to_py(0.0);
-  }
+  const double zero_ty = transform_y(0.0);
+  const bool draw_baseline = opt.baseline0 && !opt.y_log && is_finite(zero_ty) &&
+                             y_min < zero_ty && zero_ty < y_max &&
+                             map_ty_to_py(zero_ty, baseline_py);
 
   // --------------------------------------------------------------------------
-  // PREPASS: draw GRID + BASELINE as UNDERLAY into braille buffers
+  // PREPASS: draw GRID + BASELINE into the dedicated underlay buffer
   // --------------------------------------------------------------------------
-  if (opt.draw_axes || opt.draw_grid) {
+  if (opt.draw_grid) {
     // Horizontal grid (Y ticks)
     double y_span = y_max - y_min;
     double y_step = nice_step(y_span, std::max(2, opt.y_ticks));
     double y0 = std::ceil(y_min / y_step) * y_step;
 
-    if (opt.draw_grid) {
-      for (double yv = y0; yv <= y_max + 1e-12; yv += y_step) {
-        int py  = to_py(yv);                      // use the same inverted mapping
-        int row = plot_y0 + (py / 4);
-        char buf[64]; std::snprintf(buf, sizeof(buf), "%.6g",
-          opt.y_log ? (std::pow(10.0, yv) - opt.y_log_eps) : yv);
-        int lab_x = start_x + std::max(0, opt.margin_left - 1 - (int)std::strlen(buf));
-        draw_text_clipped(row, lab_x, buf, opt.margin_left - 1, opt.axes_color_pair);
+    for (double yv = y0; yv <= y_max + 1e-12; yv += y_step) {
+      int py = 0;
+      if (!map_ty_to_py(yv, py)) continue;
+      for (int px = 0; px < plot_w * 2; ++px) {
+        cell_set_dot(underlay_cells, plot_w, plot_h, px, py);
+        color_touch(underlay_colors, plot_w, plot_h, px, py, opt.grid_color_pair);
       }
     }
 
     // Vertical grid (X ticks)
-    if (opt.draw_grid) {
-      double x_span = x_max - x_min;
-      double x_step = nice_step(x_span, std::max(2, opt.x_ticks));
-      double x0 = std::ceil(x_min / x_step) * x_step;
+    double x_span = x_max - x_min;
+    double x_step = nice_step(x_span, std::max(2, opt.x_ticks));
+    double x0 = std::ceil(x_min / x_step) * x_step;
 
-      for (double xv = x0; xv <= x_max + 1e-12; xv += x_step) {
-        int px = (int)std::llround((xv - x_min) / (x_max - x_min) * (plot_w * 2 - 1));
-        for (int py = 0; py < plot_h * 4; ++py) {
-          cell_set_dot(cells, plot_w, plot_h, px, py);
-          color_touch_under(colors, plot_w, plot_h, px, py, opt.grid_color_pair);
-        }
+    for (double xv = x0; xv <= x_max + 1e-12; xv += x_step) {
+      int px = 0;
+      if (!map_tx_to_px(xv, px)) continue;
+      for (int py = 0; py < plot_h * 4; ++py) {
+        cell_set_dot(underlay_cells, plot_w, plot_h, px, py);
+        color_touch(underlay_colors, plot_w, plot_h, px, py, opt.grid_color_pair);
       }
     }
+  }
 
-    // Baseline y=0
-    if (baseline_py != std::numeric_limits<int>::min()) {
-      for (int px = 0; px < plot_w * 2; ++px) {
-        cell_set_dot(cells, plot_w, plot_h, px, baseline_py);
-        color_touch_under(colors, plot_w, plot_h, px, baseline_py, opt.axes_color_pair);
-      }
+  // Baseline y=0
+  if (draw_baseline) {
+    for (int px = 0; px < plot_w * 2; ++px) {
+      cell_set_dot(underlay_cells, plot_w, plot_h, px, baseline_py);
+      color_touch(underlay_colors, plot_w, plot_h, px, baseline_py, opt.axes_color_pair);
     }
   }
 
@@ -319,8 +331,8 @@ static void plot_braille_multi(const std::vector<Series>& series,
     };
 
     auto draw_segment_line = [&](double x1, double y1, double x2, double y2){
-      int px1 = to_px(x1), py1 = to_py(y1);
-      int px2 = to_px(x2), py2 = to_py(y2);
+      int px1 = 0, py1 = 0, px2 = 0, py2 = 0;
+      if (!project_point(x1, y1, px1, py1) || !project_point(x2, y2, px2, py2)) return;
       rasterize_line_int(px1, py1, px2, py2, [&](int qx, int qy){ put_dot(qx, qy); });
       if (s.style.fill_vertical_if_same_x && px1 == px2 && std::abs(py2 - py1) > 1) {
         rasterize_vertical_span(px1, py1, py2, cells, colors, plot_w, plot_h, s.style.color_pair);
@@ -331,8 +343,9 @@ static void plot_braille_multi(const std::vector<Series>& series,
       int every = std::max(1, s.style.scatter_every);
       for (size_t i = 0; i < pts.size(); i += (size_t)every) {
         const auto& p = pts[i];
-        if (!is_finite(p.first) || !is_finite(p.second)) continue;
-        put_dot(to_px(p.first), to_py(p.second));
+        int px = 0, py = 0;
+        if (!project_point(p.first, p.second, px, py)) continue;
+        put_dot(px, py);
       }
     };
 
@@ -360,11 +373,12 @@ static void plot_braille_multi(const std::vector<Series>& series,
           by = (y_min <= zero_t && zero_t <= y_max) ? 0.0
                : (opt.y_log ? std::pow(10.0, y_min) - opt.y_log_eps : y_min);
         }
-        int bpy = to_py(by);
+        int bpy = 0;
+        if (!project_y(by, bpy)) break;
         for (const auto& p : pts) {
-          if (!is_finite(p.first)||!is_finite(p.second)) continue;
-          rasterize_vertical_span(to_px(p.first), bpy, to_py(p.second),
-                                  cells, colors, plot_w, plot_h, s.style.color_pair);
+          int px = 0, py = 0;
+          if (!project_point(p.first, p.second, px, py)) continue;
+          rasterize_vertical_span(px, bpy, py, cells, colors, plot_w, plot_h, s.style.color_pair);
         }
         if (s.style.scatter) draw_scatter();
       } break;
@@ -388,17 +402,16 @@ static void plot_braille_multi(const std::vector<Series>& series,
 
           if (s.style.envelope_source == SeriesStyle::EnvelopeSource::OriginalSamples) {
             for (const auto& p : pts) {
-              if (!is_finite(p.first) || !is_finite(p.second)) continue;
-              int px = to_px(p.first), py = to_py(p.second);
+              int px = 0, py = 0;
+              if (!project_point(p.first, p.second, px, py)) continue;
               if (px>=0 && px<XW) { bin_min[px]=std::min(bin_min[px],py); bin_max[px]=std::max(bin_max[px],py); bin_cnt[px]++; }
             }
           } else {
             for (size_t i=1;i<pts.size();++i) {
               double x1=pts[i-1].first,y1=pts[i-1].second;
               double x2=pts[i].first,  y2=pts[i].second;
-              if (!is_finite(x1)||!is_finite(y1)||!is_finite(x2)||!is_finite(y2)) continue;
-              int px1=to_px(x1), py1=to_py(y1);
-              int px2=to_px(x2), py2=to_py(y2);
+              int px1 = 0, py1 = 0, px2 = 0, py2 = 0;
+              if (!project_point(x1, y1, px1, py1) || !project_point(x2, y2, px2, py2)) continue;
               rasterize_line_int(px1, py1, px2, py2, [&](int qx,int qy){
                 if (qx>=0 && qx<XW) {
                   bin_min[qx]=std::min(bin_min[qx], qy);
@@ -429,18 +442,20 @@ static void plot_braille_multi(const std::vector<Series>& series,
   // --------------------------------------------------------------------------
   // LABELS: draw texts only (outside plot area). NO glyphs inside the plot!
   // --------------------------------------------------------------------------
-  if (opt.draw_axes || opt.draw_grid) {
+  if (opt.draw_axes) {
     // y ticks labels (left margin)
     double y_span = y_max - y_min;
     double y_step = nice_step(y_span, std::max(2, opt.y_ticks));
     double y0 = std::ceil(y_min / y_step) * y_step;
 
     for (double yv = y0; yv <= y_max + 1e-12; yv += y_step) {
-      int py = to_py(yv);                       // was: llround((yv - y_min)/(y_max - y_min) * ...)
-      for (int px = 0; px < plot_w * 2; ++px) {
-        cell_set_dot(cells, plot_w, plot_h, px, py);
-        color_touch_under(colors, plot_w, plot_h, px, py, opt.grid_color_pair);
-      }
+      int py = 0;
+      if (!map_ty_to_py(yv, py)) continue;
+      int row = plot_y0 + (py / 4);
+      char buf[64]; std::snprintf(buf, sizeof(buf), "%.6g",
+        opt.y_log ? (std::pow(10.0, yv) - opt.y_log_eps) : yv);
+      int lab_x = start_x + std::max(0, opt.margin_left - 1 - (int)std::strlen(buf));
+      draw_text_clipped(row, lab_x, buf, opt.margin_left - 1, opt.axes_color_pair);
     }
 
     // x ticks labels (below plot)
@@ -449,12 +464,14 @@ static void plot_braille_multi(const std::vector<Series>& series,
     double x0 = std::ceil(x_min / x_step) * x_step;
 
     for (double xv = x0; xv <= x_max + 1e-12; xv += x_step) {
-      int px = (int)std::llround((xv - x_min) / (x_max - x_min) * (plot_w * 2 - 1));
+      int px = 0;
+      if (!map_tx_to_px(xv, px)) continue;
       int col = plot_x0 + (px/2);
       char buf[64]; std::snprintf(buf, sizeof(buf), "%.6g",
         opt.x_log ? (std::pow(10.0, xv) - opt.x_log_eps) : xv);
       int lx = col - (int)std::strlen(buf)/2;
-      draw_text_clipped(start_y + opt.margin_top + plot_h + 0, lx, buf, (int)std::strlen(buf), opt.axes_color_pair);
+      draw_text_clipped(start_y + opt.margin_top + plot_h + 0, lx, buf,
+                        (int)std::strlen(buf), opt.axes_color_pair);
     }
 
     // axis labels
@@ -474,12 +491,18 @@ static void plot_braille_multi(const std::vector<Series>& series,
     for (int r = 0; r < plot_h; ++r) {
       for (int c = 0; c < plot_w; ++c) {
         unsigned char bits = cells[r][c];
-        if (bits == 0 && colors[r][c] == 0) continue;
+        short cp = colors[r][c];
+
+        if (bits == 0) {
+          bits = underlay_cells[r][c];
+          cp = underlay_colors[r][c];
+        }
+
+        if (bits == 0 && cp == 0 && opt.bg_color_pair <= 0) continue;
 
         // If there are no dots, draw SPACE so the background fill stays uniform
         wchar_t ch = (bits == 0) ? L' ' : (wchar_t)(0x2800 + bits);
 
-        short cp = colors[r][c];
         if (cp == 0) cp = opt.bg_color_pair;  // use plot background
 
         R->putBraille(plot_y0 + r, plot_x0 + c, ch, cp);

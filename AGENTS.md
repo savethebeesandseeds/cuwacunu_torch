@@ -13,6 +13,14 @@ training/inference pipelines, and DSL-driven system configuration.
 - Do not run/build when confidence in changes is high.
 - When building, use `make -j12` (builds are long in this environment).
 - Deleting .o objects before rebuild is allowed, don't need to ask for confirmation.
+- First building individual targets might trigget the build of all the libs, so is better to first make lib and then make the final target. 
+- iinuji_cmd fast path (for interface edits): the `make` dependency graph in `src/main` forces an `autoprep` pass before many targets, which can trigger full lib sync/revalidation.
+  - Use this for rapid edit/build cycles:
+    - `make -C src/main/interface AUTO_PREP=0 build-iinuji-cmd`
+    - `make -C src/main/interface AUTO_PREP=0 run-iinuji-cmd`
+  - For quick install of just the interface binary: `make -C src/main/interface AUTO_PREP=0 install-iinuji-cmd`
+  - Avoid `make -C src/main AUTO_PREP=0 install` when you only need `iinuji_cmd`; `install` in `src/main` still routes through `link -> autoprep`.
+  - Return to default `AUTO_PREP` before broader release/CI-facing validation.
 
 # Test Commands
 - Run only the smallest relevant tests for touched behavior.

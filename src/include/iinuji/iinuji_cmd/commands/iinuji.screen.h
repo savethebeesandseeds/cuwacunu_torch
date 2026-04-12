@@ -7,28 +7,24 @@ namespace iinuji {
 namespace iinuji_cmd {
 
 struct IinujiScreen {
-  CmdState& state;
+  CmdState &state;
 
   void home() const noexcept { state.screen = ScreenMode::Home; }
-  void board() const noexcept { state.screen = ScreenMode::Board; }
-  void training() const noexcept { state.screen = ScreenMode::Training; }
+  void human() const noexcept { state.screen = ScreenMode::Human; }
+  void runtime() const noexcept { state.screen = ScreenMode::Runtime; }
+  void lattice() const noexcept { state.screen = ScreenMode::Lattice; }
   void logs() const noexcept {
-    const bool entering = (state.screen != ScreenMode::Logs);
-    state.screen = ScreenMode::Logs;
+    const bool entering = (state.screen != ScreenMode::ShellLogs);
+    state.screen = ScreenMode::ShellLogs;
     if (entering) {
-      state.logs.pending_jump_end = true;
-      state.logs.pending_jump_home = false;
-      state.logs.auto_follow = true;
+      state.shell_logs.pending_jump_end = true;
+      state.shell_logs.pending_jump_home = false;
+      state.shell_logs.auto_follow = true;
     }
   }
-  void tsi() const noexcept {
-    state.screen = ScreenMode::Tsiemene;
-    state.tsiemene.panel_focus = TsiPanelFocus::Context;
-  }
-  void data() const noexcept { state.screen = ScreenMode::Data; }
   void config() const noexcept { state.screen = ScreenMode::Config; }
 };
 
-}  // namespace iinuji_cmd
-}  // namespace iinuji
-}  // namespace cuwacunu
+} // namespace iinuji_cmd
+} // namespace iinuji
+} // namespace cuwacunu

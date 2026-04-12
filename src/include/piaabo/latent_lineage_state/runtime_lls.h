@@ -58,6 +58,11 @@ struct runtime_report_header_t {
     std::unordered_map<std::string, std::string>* out,
     std::string* error = nullptr);
 
+[[nodiscard]] bool parse_runtime_lls_text_fast_to_kv_map(
+    std::string_view text,
+    std::unordered_map<std::string, std::string>* out,
+    std::string* error = nullptr);
+
 [[nodiscard]] std::string emit_runtime_lls_canonical(
     const runtime_lls_document_t& document);
 

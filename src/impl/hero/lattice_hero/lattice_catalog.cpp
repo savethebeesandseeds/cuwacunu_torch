@@ -21,6 +21,7 @@
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state_lhs.h"
 #include "hero/hero_catalog_schema.h"
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
+#include "hero/mcp_server_observability.h"
 #include "piaabo/latent_lineage_state/report_taxonomy.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
 
@@ -31,6 +32,7 @@ namespace {
 
 using runtime_lls_document_t =
     cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t;
+constexpr std::string_view kObservabilityScope = "lattice_catalog";
 
 constexpr std::string_view kEntropicCapacityComparisonViewKind =
     "entropic_capacity_comparison";
@@ -268,6 +270,10 @@ void upsert_runtime_u64_entry_(runtime_lls_document_t* document,
   }
   out->clear();
   if (out_document) out_document->entries.clear();
+  if (!out_document) {
+    return cuwacunu::piaabo::latent_lineage_state::
+        parse_runtime_lls_text_fast_to_kv_map(payload, out, error);
+  }
 
   runtime_lls_document_t parsed{};
   if (!cuwacunu::piaabo::latent_lineage_state::parse_runtime_lls_text(
@@ -357,16 +363,8 @@ void populate_runtime_report_fragment_header_fields_(
 
 [[nodiscard]] bool path_is_within(std::filesystem::path base,
                                   std::filesystem::path candidate) {
-  if (const auto c = canonicalized(base); c.has_value()) {
-    base = *c;
-  } else {
-    base = base.lexically_normal();
-  }
-  if (const auto c = canonicalized(candidate); c.has_value()) {
-    candidate = *c;
-  } else {
-    candidate = candidate.lexically_normal();
-  }
+  base = base.lexically_normal();
+  candidate = candidate.lexically_normal();
   auto b = base.begin();
   auto c = candidate.begin();
   for (; b != base.end() && c != candidate.end(); ++b, ++c) {
@@ -562,6 +560,9 @@ void populate_runtime_report_fragment_header_fields_(
     return true;
   }
   if (schema == "tsi.wikimyei.representation.vicreg.status.v1") return true;
+  if (schema == "tsi.wikimyei.representation.vicreg.train_summary.v1") {
+    return true;
+  }
   if (schema ==
       "tsi.wikimyei.representation.vicreg.transfer_matrix_evaluation.run.v1") {
     return true;
@@ -750,19 +751,109 @@ void update_latest_runtime_report_fragment_key_(
   }
 }
 
+void append_unique_string_(std::string_view value,
+                           std::vector<std::string>* values) {
+  if (!values) return;
+  const std::string token = trim_ascii(value);
+  if (token.empty()) return;
+  if (std::find(values->begin(), values->end(), token) != values->end()) return;
+  values->push_back(token);
+}
+
+void append_unique_wave_cursor_(std::uint64_t wave_cursor,
+                                std::vector<std::uint64_t>* values) {
+  if (!values || wave_cursor == 0) return;
+  if (std::find(values->begin(), values->end(), wave_cursor) != values->end()) {
+    return;
+  }
+  values->push_back(wave_cursor);
+}
+
+void refresh_runtime_fact_summary_(
+    const runtime_report_fragment_t& fragment,
+    std::unordered_map<std::string, runtime_fact_summary_t>* summaries_by_canonical) {
+  if (!summaries_by_canonical) return;
+  const std::string canonical_path =
+      normalize_source_hashimyei_cursor(fragment.canonical_path);
+  if (canonical_path.empty()) return;
+
+  auto& summary = (*summaries_by_canonical)[canonical_path];
+  summary.canonical_path = canonical_path;
+  ++summary.fragment_count;
+
+  const bool is_latest_or_tied = fragment.ts_ms >= summary.latest_ts_ms;
+  if (fragment.ts_ms > summary.latest_ts_ms) {
+    summary.latest_ts_ms = fragment.ts_ms;
+  }
+  if (fragment.wave_cursor != 0) {
+    append_unique_wave_cursor_(fragment.wave_cursor, &summary.wave_cursors);
+    if (is_latest_or_tied) {
+      summary.latest_wave_cursor = fragment.wave_cursor;
+    }
+  }
+  summary.available_context_count = summary.wave_cursors.size();
+  append_unique_string_(fragment.binding_id, &summary.binding_ids);
+  append_unique_string_(fragment.semantic_taxon, &summary.semantic_taxa);
+  append_unique_string_(fragment.source_runtime_cursor,
+                        &summary.source_runtime_cursors);
+  append_unique_string_(fragment.schema, &summary.report_schemas);
+
+  summary.recent_fragments.push_back(fragment);
+  std::sort(summary.recent_fragments.begin(), summary.recent_fragments.end(),
+            [](const runtime_report_fragment_t& a,
+               const runtime_report_fragment_t& b) {
+              if (a.ts_ms != b.ts_ms) return a.ts_ms > b.ts_ms;
+              return a.report_fragment_id > b.report_fragment_id;
+            });
+  if (summary.recent_fragments.size() > 6) {
+    summary.recent_fragments.resize(6);
+  }
+}
+
+void finalize_runtime_fact_summary_(runtime_fact_summary_t* summary) {
+  if (!summary) return;
+  std::sort(summary->wave_cursors.begin(), summary->wave_cursors.end());
+  std::sort(summary->binding_ids.begin(), summary->binding_ids.end());
+  std::sort(summary->semantic_taxa.begin(), summary->semantic_taxa.end());
+  std::sort(summary->source_runtime_cursors.begin(),
+            summary->source_runtime_cursors.end());
+  std::sort(summary->report_schemas.begin(), summary->report_schemas.end());
+  std::sort(summary->recent_fragments.begin(), summary->recent_fragments.end(),
+            [](const runtime_report_fragment_t& a,
+               const runtime_report_fragment_t& b) {
+              if (a.ts_ms != b.ts_ms) return a.ts_ms > b.ts_ms;
+              return a.report_fragment_id > b.report_fragment_id;
+            });
+  if (summary->recent_fragments.size() > 6) {
+    summary->recent_fragments.resize(6);
+  }
+  summary->available_context_count = summary->wave_cursors.size();
+}
+
 void index_runtime_report_fragment_(
     const runtime_report_fragment_t& fragment,
     std::unordered_map<std::string, runtime_report_fragment_t>* fragments_by_id,
     std::unordered_map<std::string, std::string>* latest_by_key,
+    std::unordered_map<std::string, std::vector<std::string>>*
+        fragments_by_canonical,
+    std::unordered_map<std::string, runtime_fact_summary_t>*
+        summaries_by_canonical,
     std::unordered_map<std::uint64_t, std::vector<std::string>>*
         fragments_by_wave_cursor) {
   if (!fragments_by_id) return;
   const bool already_known =
       fragments_by_id->find(fragment.report_fragment_id) != fragments_by_id->end();
   (*fragments_by_id)[fragment.report_fragment_id] = fragment;
-  if (!already_known && fragments_by_wave_cursor) {
-    (*fragments_by_wave_cursor)[fragment.wave_cursor].push_back(
-        fragment.report_fragment_id);
+  if (!already_known) {
+    if (fragments_by_wave_cursor) {
+      (*fragments_by_wave_cursor)[fragment.wave_cursor].push_back(
+          fragment.report_fragment_id);
+    }
+    if (fragments_by_canonical && !fragment.canonical_path.empty()) {
+      (*fragments_by_canonical)[fragment.canonical_path].push_back(
+          fragment.report_fragment_id);
+    }
+    refresh_runtime_fact_summary_(fragment, summaries_by_canonical);
   }
   update_latest_runtime_report_fragment_key_(
       fragment, *fragments_by_id, latest_by_key);
@@ -832,6 +923,13 @@ void append_view_double_line(std::ostringstream* out, std::string_view key,
   return static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
           .count());
+}
+
+void log_lattice_catalog_event(std::string_view event_name,
+                               std::string_view extra_fields_json = {}) {
+  std::string ignored{};
+  (void)cuwacunu::hero::mcp_observability::append_event_json(
+      kObservabilityScope, event_name, extra_fields_json, &ignored);
 }
 
 void clear_error(std::string* error) {
@@ -1256,14 +1354,44 @@ lattice_catalog_store_t::~lattice_catalog_store_t() {
 
 bool lattice_catalog_store_t::open(const options_t& options, std::string* error) {
   clear_error(error);
+  const std::uint64_t open_started_at_ms = now_ms_utc();
+  const auto log_open_finish = [&](bool ok,
+                                   std::string_view error_message = {}) {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(
+        extra, "read_only", options.read_only);
+    cuwacunu::hero::mcp_observability::append_json_bool_field(
+        extra, "encrypted", options.encrypted);
+    cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok", ok);
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "duration_ms", now_ms_utc() - open_started_at_ms);
+    if (!error_message.empty()) {
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", error_message);
+    }
+    log_lattice_catalog_event("catalog_open_finish", extra.str());
+  };
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(
+        extra, "read_only", options.read_only);
+    log_lattice_catalog_event("catalog_open_begin", extra.str());
+  }
   if (db_ != nullptr) {
     set_error(error, "catalog already open");
+    log_open_finish(false, "catalog already open");
     return false;
   }
 
   options_ = options;
   if (options_.catalog_path.empty()) {
     set_error(error, "catalog_path is required");
+    log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                    : std::string_view{});
     return false;
   }
 
@@ -1274,21 +1402,26 @@ bool lattice_catalog_store_t::open(const options_t& options, std::string* error)
     if (ec) {
       set_error(error,
                 "cannot create catalog directory: " + parent.string());
+      log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                      : std::string_view{});
       return false;
     }
   }
 
   int rc = IDYDB_ERROR;
+  const int open_flags = options_.read_only ? IDYDB_READONLY : IDYDB_CREATE;
   for (int attempt = 0; attempt <= kCatalogOpenBusyRetryCount; ++attempt) {
     if (options_.encrypted) {
       if (options_.passphrase.empty()) {
         set_error(error, "encrypted catalog requires passphrase");
+        log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                        : std::string_view{});
         return false;
       }
       rc = idydb_open_encrypted(options_.catalog_path.string().c_str(), &db_,
-                                IDYDB_CREATE, options_.passphrase.c_str());
+                                open_flags, options_.passphrase.c_str());
     } else {
-      rc = idydb_open(options_.catalog_path.string().c_str(), &db_, IDYDB_CREATE);
+      rc = idydb_open(options_.catalog_path.string().c_str(), &db_, open_flags);
     }
 
     if (rc == IDYDB_SUCCESS && db_ != nullptr) break;
@@ -1311,6 +1444,8 @@ bool lattice_catalog_store_t::open(const options_t& options, std::string* error)
       detail += "; catalog lock is held by another process";
     }
     set_error(error, "cannot open lattice catalog: " + detail);
+    log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                    : std::string_view{});
     if (db_) {
       (void)idydb_close(&db_);
       db_ = nullptr;
@@ -1318,24 +1453,64 @@ bool lattice_catalog_store_t::open(const options_t& options, std::string* error)
     return false;
   }
 
-  if (!ensure_catalog_header_(error) || !rebuild_indexes(error)) {
+  if (!ensure_catalog_header_(error)) {
     std::string close_error;
     (void)close(&close_error);
+    log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                    : std::string_view{});
     return false;
   }
+  const bool indexes_ok =
+      options_.runtime_only_indexes ? rebuild_runtime_indexes_(error)
+                                    : rebuild_indexes(error);
+  if (!indexes_ok) {
+    std::string close_error;
+    (void)close(&close_error);
+    log_open_finish(false, error && !error->empty() ? std::string_view(*error)
+                                                    : std::string_view{});
+    return false;
+  }
+  opened_at_ms_ = now_ms_utc();
+  log_open_finish(true);
   return true;
 }
 
 bool lattice_catalog_store_t::close(std::string* error) {
   clear_error(error);
   if (!db_) return true;
+  const std::uint64_t close_started_at_ms = now_ms_utc();
+  const std::uint64_t opened_at_ms = opened_at_ms_;
+  {
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options_.catalog_path.string());
+    log_lattice_catalog_event("catalog_close_begin", extra.str());
+  }
   if (idydb_close(&db_) != IDYDB_DONE) {
     const char* msg = idydb_errmsg(&db_);
     set_error(error, "idydb_close failed: " +
                          std::string(msg ? msg : "<no error message>"));
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options_.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok",
+                                                              false);
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "duration_ms", now_ms_utc() - close_started_at_ms);
+    if (opened_at_ms != 0) {
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "catalog_hold_ms", now_ms_utc() - opened_at_ms);
+    }
+    if (error && !error->empty()) {
+      cuwacunu::hero::mcp_observability::append_json_string_field(
+          extra, "error", *error);
+    }
+    log_lattice_catalog_event("catalog_close_finish", extra.str());
     return false;
   }
   db_ = nullptr;
+  opened_at_ms_ = 0;
+  next_row_hint_ = 0;
   cells_by_id_.clear();
   cell_id_by_coord_profile_.clear();
   trials_by_cell_.clear();
@@ -1343,14 +1518,31 @@ bool lattice_catalog_store_t::close(std::string* error) {
   projection_num_by_cell_.clear();
   projection_txt_by_cell_.clear();
   runtime_runs_by_id_.clear();
+  runtime_run_ids_.clear();
   runtime_components_by_id_.clear();
   runtime_report_fragments_by_id_.clear();
   runtime_latest_report_fragment_by_key_.clear();
+  runtime_report_fragment_ids_by_canonical_.clear();
+  runtime_fact_summaries_by_canonical_.clear();
   runtime_dependency_files_by_run_id_.clear();
   runtime_report_fragment_ids_by_wave_cursor_.clear();
   runtime_ledger_.clear();
   runtime_ledger_path_by_id_.clear();
   explicit_family_rank_by_scope_.clear();
+  {
+    const std::uint64_t closed_at_ms = now_ms_utc();
+    std::ostringstream extra;
+    cuwacunu::hero::mcp_observability::append_json_string_field(
+        extra, "catalog_path", options_.catalog_path.string());
+    cuwacunu::hero::mcp_observability::append_json_bool_field(extra, "ok", true);
+    cuwacunu::hero::mcp_observability::append_json_uint64_field(
+        extra, "duration_ms", closed_at_ms - close_started_at_ms);
+    if (opened_at_ms != 0) {
+      cuwacunu::hero::mcp_observability::append_json_uint64_field(
+          extra, "catalog_hold_ms", closed_at_ms - opened_at_ms);
+    }
+    log_lattice_catalog_event("catalog_close_finish", extra.str());
+  }
   return true;
 }
 
@@ -1359,6 +1551,23 @@ bool lattice_catalog_store_t::ensure_catalog_header_(std::string* error) {
   if (!db_) {
     set_error(error, "catalog is not open");
     return false;
+  }
+
+  const std::string fast_row_kind = as_text_or_empty(&db_, kColRecordKind, 1);
+  const std::string fast_row_id = as_text_or_empty(&db_, kColRecordId, 1);
+  if (fast_row_kind == cuwacunu::hero::schema::kRecordKindHEADER &&
+      fast_row_id == "catalog_schema_version") {
+    const std::string schema =
+        trim_ascii(as_text_or_empty(&db_, kColTextA, 1));
+    const std::string version =
+        trim_ascii(as_text_or_empty(&db_, kColProjectionVersion, 1));
+    if (schema != "lattice.catalog.v2" || version != "2") {
+      set_error(error,
+                "unsupported lattice catalog schema '" + schema +
+                    "' (version '" + version + "'); expected strict v2");
+      return false;
+    }
+    return true;
   }
 
   idydb_filter_term t_kind{};
@@ -1433,54 +1642,432 @@ bool lattice_catalog_store_t::append_row_(
     return false;
   }
 
-  const idydb_column_row_sizing row = idydb_column_next_row(&db_, kColRecordKind);
+  const idydb_column_row_sizing row =
+      buffer_rows_
+          ? (buffered_row_start_ != 0
+                 ? static_cast<idydb_column_row_sizing>(
+                       buffered_row_start_ + buffered_rows_.size())
+                 : ((buffered_row_start_ =
+                         (next_row_hint_ != 0)
+                             ? next_row_hint_
+                             : idydb_column_next_row(&db_, kColRecordKind)),
+                    buffered_row_start_))
+          : ((next_row_hint_ != 0) ? next_row_hint_
+                                   : idydb_column_next_row(&db_, kColRecordKind));
   if (row == 0) {
     set_error(error, "failed to resolve next row");
     return false;
   }
+  if (buffer_rows_) {
+    buffered_row_t buffered{};
+    buffered.record_kind = std::string(record_kind);
+    buffered.record_id = std::string(record_id);
+    buffered.cell_id = std::string(cell_id);
+    buffered.contract_hash = std::string(contract_hash);
+    buffered.wave_hash = std::string(wave_hash);
+    buffered.profile_id = std::string(profile_id);
+    buffered.execution_profile_json = std::string(execution_profile_json);
+    buffered.state_txt = std::string(state_txt);
+    buffered.metric_num = metric_num;
+    buffered.has_metric_num = std::isfinite(metric_num);
+    buffered.text_a = std::string(text_a);
+    buffered.text_b = std::string(text_b);
+    buffered.projection_version = std::string(projection_version);
+    buffered.ts_ms = std::string(ts_ms);
+    buffered.payload_json = std::string(payload_json);
+    buffered.projection_key = std::string(projection_key);
+    buffered.projection_num = projection_num;
+    buffered.has_projection_num = std::isfinite(projection_num);
+    buffered.projection_txt = std::string(projection_txt);
+    buffered.projection_key_aux = std::string(projection_key_aux);
+    buffered.projection_txt_aux = std::string(projection_txt_aux);
+    buffered.started_at_ms = std::string(started_at_ms);
+    buffered.finished_at_ms = std::string(finished_at_ms);
+    buffered.ok_txt = std::string(ok_txt);
+    buffered.total_steps = std::string(total_steps);
+    buffered.campaign_hash = std::string(campaign_hash);
+    buffered.run_id = std::string(run_id);
+    buffered_rows_.push_back(std::move(buffered));
+    next_row_hint_ = row + 1;
+    return true;
+  }
 
-  if (!insert_text(&db_, kColRecordKind, row, record_kind, error)) return false;
-  if (!insert_text(&db_, kColRecordId, row, record_id, error)) return false;
-  if (!insert_text(&db_, kColCellId, row, cell_id, error)) return false;
-  if (!insert_text(&db_, kColContractHash, row, contract_hash, error)) return false;
-  if (!insert_text(&db_, kColWaveHash, row, wave_hash, error)) return false;
-  if (!insert_text(&db_, kColProfileId, row, profile_id, error)) return false;
-  if (!insert_text(&db_, kColExecutionProfileJson, row, execution_profile_json,
-                   error)) {
+  const auto insert_text_if_present =
+      [&](idydb_column_row_sizing column, std::string_view value) {
+        return value.empty() || insert_text(&db_, column, row, value, error);
+      };
+  const auto insert_num_if_present =
+      [&](idydb_column_row_sizing column, double value) {
+        return std::isnan(value) || insert_num(&db_, column, row, value, error);
+      };
+  if (!insert_text_if_present(kColRecordKind, record_kind)) return false;
+  if (!insert_text_if_present(kColRecordId, record_id)) return false;
+  if (!insert_text_if_present(kColCellId, cell_id)) return false;
+  if (!insert_text_if_present(kColContractHash, contract_hash)) return false;
+  if (!insert_text_if_present(kColWaveHash, wave_hash)) return false;
+  if (!insert_text_if_present(kColProfileId, profile_id)) return false;
+  if (!insert_text_if_present(kColExecutionProfileJson, execution_profile_json)) {
     return false;
   }
-  if (!insert_text(&db_, kColStateTxt, row, state_txt, error)) return false;
-  if (!insert_num(&db_, kColMetricNum, row, metric_num, error)) return false;
-  if (!insert_text(&db_, kColTextA, row, text_a, error)) return false;
-  if (!insert_text(&db_, kColTextB, row, text_b, error)) return false;
-  if (!insert_text(&db_, kColProjectionVersion, row, projection_version, error)) {
+  if (!insert_text_if_present(kColStateTxt, state_txt)) return false;
+  if (!insert_num_if_present(kColMetricNum, metric_num)) return false;
+  if (!insert_text_if_present(kColTextA, text_a)) return false;
+  if (!insert_text_if_present(kColTextB, text_b)) return false;
+  if (!insert_text_if_present(kColProjectionVersion, projection_version)) {
     return false;
   }
-  if (!insert_text(&db_, kColTsMs, row, ts_ms, error)) return false;
-  if (!insert_text(&db_, kColPayload, row, payload_json, error)) return false;
-  if (!insert_text(&db_, kColProjectionKey, row, projection_key, error)) {
+  if (!insert_text_if_present(kColTsMs, ts_ms)) return false;
+  if (!insert_text_if_present(kColPayload, payload_json)) return false;
+  if (!insert_text_if_present(kColProjectionKey, projection_key)) {
     return false;
   }
-  if (!insert_num(&db_, kColProjectionNum, row, projection_num, error)) {
+  if (!insert_num_if_present(kColProjectionNum, projection_num)) {
     return false;
   }
-  if (!insert_text(&db_, kColProjectionTxt, row, projection_txt, error)) {
+  if (!insert_text_if_present(kColProjectionTxt, projection_txt)) {
     return false;
   }
-  if (!insert_text(&db_, kColProjectionKeyAux, row, projection_key_aux, error)) {
+  if (!insert_text_if_present(kColProjectionKeyAux, projection_key_aux)) {
     return false;
   }
-  if (!insert_text(&db_, kColProjectionTxtAux, row, projection_txt_aux, error)) {
+  if (!insert_text_if_present(kColProjectionTxtAux, projection_txt_aux)) {
     return false;
   }
-  if (!insert_text(&db_, kColStartedAtMs, row, started_at_ms, error)) return false;
-  if (!insert_text(&db_, kColFinishedAtMs, row, finished_at_ms, error)) {
+  if (!insert_text_if_present(kColStartedAtMs, started_at_ms)) return false;
+  if (!insert_text_if_present(kColFinishedAtMs, finished_at_ms)) {
     return false;
   }
-  if (!insert_text(&db_, kColOkTxt, row, ok_txt, error)) return false;
-  if (!insert_text(&db_, kColTotalSteps, row, total_steps, error)) return false;
-  if (!insert_text(&db_, kColCampaignHash, row, campaign_hash, error)) return false;
-  if (!insert_text(&db_, kColRunId, row, run_id, error)) return false;
+  if (!insert_text_if_present(kColOkTxt, ok_txt)) return false;
+  if (!insert_text_if_present(kColTotalSteps, total_steps)) return false;
+  if (!insert_text_if_present(kColCampaignHash, campaign_hash)) return false;
+  if (!insert_text_if_present(kColRunId, run_id)) return false;
+  next_row_hint_ = row + 1;
+  return true;
+}
+
+bool lattice_catalog_store_t::flush_buffered_rows_(std::string* error) {
+  clear_error(error);
+  if (!db_) {
+    set_error(error, "catalog is not open");
+    return false;
+  }
+  if (buffered_rows_.empty()) {
+    buffered_row_start_ = 0;
+    return true;
+  }
+  const idydb_column_row_sizing start_row =
+      (buffered_row_start_ != 0) ? buffered_row_start_
+                                 : ((next_row_hint_ != 0)
+                                        ? static_cast<idydb_column_row_sizing>(
+                                              next_row_hint_ - buffered_rows_.size())
+                                        : idydb_column_next_row(&db_, kColRecordKind));
+  if (start_row == 0) {
+    set_error(error, "failed to resolve buffered row start");
+    return false;
+  }
+  const auto row_for = [&](std::size_t index) {
+    return static_cast<idydb_column_row_sizing>(start_row + index);
+  };
+  const idydb_column_row_sizing existing_next_row =
+      idydb_column_next_row(&db_, kColRecordKind);
+  if (start_row == 2 && existing_next_row == 2) {
+    std::vector<idydb_bulk_cell> cells;
+    cells.reserve(23 + buffered_rows_.size() * 25);
+    std::vector<std::string> owned_header_text;
+    owned_header_text.reserve(23);
+    const auto append_header_text = [&](idydb_column_row_sizing column) {
+      const std::string value = as_text_or_empty(&db_, column, 1);
+      if (value.empty()) return;
+      idydb_bulk_cell cell{};
+      owned_header_text.push_back(value);
+      cell.column = column;
+      cell.row = 1;
+      cell.type = IDYDB_CHAR;
+      cell.value.s = owned_header_text.back().c_str();
+      cells.push_back(cell);
+    };
+    const auto append_text_cell = [&](idydb_column_row_sizing column,
+                                      idydb_column_row_sizing row,
+                                      const std::string& value) {
+      if (value.empty()) return;
+      idydb_bulk_cell cell{};
+      cell.column = column;
+      cell.row = row;
+      cell.type = IDYDB_CHAR;
+      cell.value.s = value.c_str();
+      cells.push_back(cell);
+    };
+    const auto append_num_cell = [&](idydb_column_row_sizing column,
+                                     idydb_column_row_sizing row,
+                                     double value, bool present) {
+      if (!present) return;
+      idydb_bulk_cell cell{};
+      cell.column = column;
+      cell.row = row;
+      cell.type = IDYDB_FLOAT;
+      cell.value.f = static_cast<float>(value);
+      cells.push_back(cell);
+    };
+
+    append_header_text(kColRecordKind);
+    append_header_text(kColRecordId);
+    append_header_text(kColCellId);
+    append_header_text(kColContractHash);
+    append_header_text(kColWaveHash);
+    append_header_text(kColProfileId);
+    append_header_text(kColExecutionProfileJson);
+    append_header_text(kColStateTxt);
+    append_header_text(kColTextA);
+    append_header_text(kColTextB);
+    append_header_text(kColProjectionVersion);
+    append_header_text(kColTsMs);
+    append_header_text(kColPayload);
+    append_header_text(kColProjectionKey);
+    append_header_text(kColProjectionTxt);
+    append_header_text(kColProjectionKeyAux);
+    append_header_text(kColProjectionTxtAux);
+    append_header_text(kColStartedAtMs);
+    append_header_text(kColFinishedAtMs);
+    append_header_text(kColOkTxt);
+    append_header_text(kColTotalSteps);
+    append_header_text(kColCampaignHash);
+    append_header_text(kColRunId);
+
+    for (std::size_t i = 0; i < buffered_rows_.size(); ++i) {
+      const auto row = row_for(i);
+      const auto& buffered = buffered_rows_[i];
+      append_text_cell(kColRecordKind, row, buffered.record_kind);
+      append_text_cell(kColRecordId, row, buffered.record_id);
+      append_text_cell(kColCellId, row, buffered.cell_id);
+      append_text_cell(kColContractHash, row, buffered.contract_hash);
+      append_text_cell(kColWaveHash, row, buffered.wave_hash);
+      append_text_cell(kColProfileId, row, buffered.profile_id);
+      append_text_cell(kColExecutionProfileJson, row,
+                       buffered.execution_profile_json);
+      append_text_cell(kColStateTxt, row, buffered.state_txt);
+      append_num_cell(kColMetricNum, row, buffered.metric_num,
+                      buffered.has_metric_num);
+      append_text_cell(kColTextA, row, buffered.text_a);
+      append_text_cell(kColTextB, row, buffered.text_b);
+      append_text_cell(kColProjectionVersion, row,
+                       buffered.projection_version);
+      append_text_cell(kColTsMs, row, buffered.ts_ms);
+      append_text_cell(kColPayload, row, buffered.payload_json);
+      append_text_cell(kColProjectionKey, row, buffered.projection_key);
+      append_num_cell(kColProjectionNum, row, buffered.projection_num,
+                      buffered.has_projection_num);
+      append_text_cell(kColProjectionTxt, row, buffered.projection_txt);
+      append_text_cell(kColProjectionKeyAux, row,
+                       buffered.projection_key_aux);
+      append_text_cell(kColProjectionTxtAux, row,
+                       buffered.projection_txt_aux);
+      append_text_cell(kColStartedAtMs, row, buffered.started_at_ms);
+      append_text_cell(kColFinishedAtMs, row, buffered.finished_at_ms);
+      append_text_cell(kColOkTxt, row, buffered.ok_txt);
+      append_text_cell(kColTotalSteps, row, buffered.total_steps);
+      append_text_cell(kColCampaignHash, row, buffered.campaign_hash);
+      append_text_cell(kColRunId, row, buffered.run_id);
+    }
+
+    const int rc =
+        idydb_replace_with_cells(&db_, cells.data(), cells.size());
+    if (rc != IDYDB_SUCCESS) {
+      const char* msg = idydb_errmsg(&db_);
+      set_error(error, "idydb_replace_with_cells failed: " +
+                           std::string(msg ? msg : "<no error message>"));
+      return false;
+    }
+    next_row_hint_ = static_cast<idydb_column_row_sizing>(
+        start_row + buffered_rows_.size());
+    buffered_rows_.clear();
+    buffered_row_start_ = 0;
+    return true;
+  }
+  const auto flush_text_column =
+      [&](idydb_column_row_sizing column, auto accessor) -> bool {
+    for (std::size_t i = 0; i < buffered_rows_.size(); ++i) {
+      const auto& value = accessor(buffered_rows_[i]);
+      if (!value.empty() && !insert_text(&db_, column, row_for(i), value, error)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const auto flush_num_column =
+      [&](idydb_column_row_sizing column, auto accessor,
+          auto present_accessor) -> bool {
+    for (std::size_t i = 0; i < buffered_rows_.size(); ++i) {
+      if (!present_accessor(buffered_rows_[i])) continue;
+      if (!insert_num(&db_, column, row_for(i), accessor(buffered_rows_[i]), error)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  if (!flush_text_column(kColRecordKind,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.record_kind;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColRecordId,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.record_id;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColCellId,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.cell_id;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColContractHash,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.contract_hash;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColWaveHash,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.wave_hash;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColProfileId,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.profile_id;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColExecutionProfileJson,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.execution_profile_json;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(kColStateTxt,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.state_txt;
+                         })) {
+    return false;
+  }
+  if (!flush_num_column(
+          kColMetricNum,
+          [](const buffered_row_t& row) { return row.metric_num; },
+          [](const buffered_row_t& row) { return row.has_metric_num; })) {
+    return false;
+  }
+  if (!flush_text_column(kColTextA,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.text_a;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColTextB,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.text_b;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColProjectionVersion,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.projection_version;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(kColTsMs,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.ts_ms;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(kColPayload,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.payload_json;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColProjectionKey,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.projection_key;
+          })) {
+    return false;
+  }
+  if (!flush_num_column(
+          kColProjectionNum,
+          [](const buffered_row_t& row) { return row.projection_num; },
+          [](const buffered_row_t& row) { return row.has_projection_num; })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColProjectionTxt,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.projection_txt;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColProjectionKeyAux,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.projection_key_aux;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColProjectionTxtAux,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.projection_txt_aux;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColStartedAtMs,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.started_at_ms;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColFinishedAtMs,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.finished_at_ms;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(kColOkTxt,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.ok_txt;
+                         })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColTotalSteps,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.total_steps;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(
+          kColCampaignHash,
+          [](const buffered_row_t& row) -> const std::string& {
+            return row.campaign_hash;
+          })) {
+    return false;
+  }
+  if (!flush_text_column(kColRunId,
+                         [](const buffered_row_t& row) -> const std::string& {
+                           return row.run_id;
+                         })) {
+    return false;
+  }
+
+  buffered_rows_.clear();
+  buffered_row_start_ = 0;
   return true;
 }
 
@@ -1660,8 +2247,12 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   report_by_trial_id_.clear();
   projection_num_by_cell_.clear();
   projection_txt_by_cell_.clear();
+  runtime_runs_by_id_.clear();
+  runtime_run_ids_.clear();
   runtime_report_fragments_by_id_.clear();
   runtime_latest_report_fragment_by_key_.clear();
+  runtime_report_fragment_ids_by_canonical_.clear();
+  runtime_fact_summaries_by_canonical_.clear();
   runtime_dependency_files_by_run_id_.clear();
   runtime_report_fragment_ids_by_wave_cursor_.clear();
   runtime_ledger_.clear();
@@ -1676,6 +2267,7 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   q.select_columns = {kColRecordKind};
   std::vector<idydb_column_row_sizing> rows{};
   if (!db::query::select_rows(&db_, q, &rows, error)) return false;
+  next_row_hint_ = rows.empty() ? 1 : (rows.back() + 1);
 
   for (const auto row : rows) {
     const std::string kind = as_text_or_empty(&db_, kColRecordKind, row);
@@ -1857,6 +2449,12 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
       continue;
     }
 
+    if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_RUN) {
+      const std::string run_id = as_text_or_empty(&db_, kColRecordId, row);
+      if (!run_id.empty()) runtime_run_ids_.insert(run_id);
+      continue;
+    }
+
     if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_COMPONENT) {
       cuwacunu::hero::hashimyei::component_state_t component{};
       component.component_id = as_text_or_empty(&db_, kColRecordId, row);
@@ -1946,6 +2544,8 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
       index_runtime_report_fragment_(
           fragment, &runtime_report_fragments_by_id_,
           &runtime_latest_report_fragment_by_key_,
+          &runtime_report_fragment_ids_by_canonical_,
+          &runtime_fact_summaries_by_canonical_,
           &runtime_report_fragment_ids_by_wave_cursor_);
       continue;
     }
@@ -1981,6 +2581,203 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   refresh_runtime_report_fragment_family_ranks_(
       &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_);
 
+  return true;
+}
+
+bool lattice_catalog_store_t::rebuild_runtime_indexes_(std::string* error) {
+  clear_error(error);
+  if (!db_) {
+    set_error(error, "catalog is not open");
+    return false;
+  }
+
+  cells_by_id_.clear();
+  cell_id_by_coord_profile_.clear();
+  trials_by_cell_.clear();
+  report_by_trial_id_.clear();
+  projection_num_by_cell_.clear();
+  projection_txt_by_cell_.clear();
+  runtime_report_fragments_by_id_.clear();
+  runtime_latest_report_fragment_by_key_.clear();
+  runtime_report_fragment_ids_by_canonical_.clear();
+  runtime_fact_summaries_by_canonical_.clear();
+  runtime_dependency_files_by_run_id_.clear();
+  runtime_report_fragment_ids_by_wave_cursor_.clear();
+  runtime_ledger_.clear();
+  runtime_ledger_path_by_id_.clear();
+  runtime_components_by_id_.clear();
+  runtime_runs_by_id_.clear();
+  explicit_family_rank_by_scope_.clear();
+
+  std::unordered_map<std::string, std::uint64_t> family_rank_row_ts_by_scope{};
+  std::unordered_map<std::string, std::string> family_rank_row_id_by_scope{};
+
+  const idydb_column_row_sizing next = idydb_column_next_row(&db_, kColRecordKind);
+  const idydb_column_row_sizing next_record_id =
+      idydb_column_next_row(&db_, kColRecordId);
+  const idydb_column_row_sizing next_contract_hash =
+      idydb_column_next_row(&db_, kColContractHash);
+  const idydb_column_row_sizing next_state_txt =
+      idydb_column_next_row(&db_, kColStateTxt);
+  const idydb_column_row_sizing next_text_a =
+      idydb_column_next_row(&db_, kColTextA);
+  const idydb_column_row_sizing next_text_b =
+      idydb_column_next_row(&db_, kColTextB);
+  const idydb_column_row_sizing next_ts_ms =
+      idydb_column_next_row(&db_, kColTsMs);
+  const idydb_column_row_sizing next_payload =
+      idydb_column_next_row(&db_, kColPayload);
+  for (idydb_column_row_sizing row = 1; row < next; ++row) {
+    const std::string kind = as_text_or_empty(&db_, kColRecordKind, row);
+    if (kind.empty()) continue;
+
+    if (kind == cuwacunu::hero::schema::kRecordKindFAMILY_RANK) {
+      const std::string payload =
+          (row < next_payload) ? as_text_or_empty(&db_, kColPayload, row)
+                               : std::string{};
+      if (payload.empty()) continue;
+      std::unordered_map<std::string, std::string> kv{};
+      runtime_lls_document_t ignored_document{};
+      std::string parse_error{};
+      if (!parse_runtime_lls_payload(payload, &kv, &ignored_document,
+                                     &parse_error)) {
+        continue;
+      }
+      cuwacunu::hero::family_rank::state_t rank_state{};
+      if (!cuwacunu::hero::family_rank::parse_state_from_kv(
+              kv, &rank_state, &parse_error)) {
+        continue;
+      }
+      std::uint64_t row_ts = rank_state.updated_at_ms;
+      if (row_ts == 0 && row < next_ts_ms) {
+        (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &row_ts);
+      }
+      const std::string scope_key =
+          cuwacunu::hero::family_rank::scope_key(rank_state.family,
+                                                 rank_state.contract_hash);
+      const std::string row_id =
+          (row < next_record_id) ? as_text_or_empty(&db_, kColRecordId, row)
+                                 : std::string{};
+      const auto current_ts_it = family_rank_row_ts_by_scope.find(scope_key);
+      const bool should_replace =
+          current_ts_it == family_rank_row_ts_by_scope.end() ||
+          row_ts > current_ts_it->second ||
+          (row_ts == current_ts_it->second &&
+           row_id > family_rank_row_id_by_scope[scope_key]);
+      if (!should_replace) continue;
+      family_rank_row_ts_by_scope[scope_key] = row_ts;
+      family_rank_row_id_by_scope[scope_key] = row_id;
+      explicit_family_rank_by_scope_[scope_key] = std::move(rank_state);
+      continue;
+    }
+
+    if (kind == cuwacunu::hero::schema::kRecordKindRUNTIME_LEDGER) {
+      if (row >= next_record_id) continue;
+      const std::string report_fragment_id =
+          as_text_or_empty(&db_, kColRecordId, row);
+      if (report_fragment_id.empty()) continue;
+      runtime_ledger_.insert(report_fragment_id);
+      if (row < next_text_a) {
+        runtime_ledger_path_by_id_[report_fragment_id] =
+            as_text_or_empty(&db_, kColTextA, row);
+      }
+      if (const auto it_fragment =
+              runtime_report_fragments_by_id_.find(report_fragment_id);
+          it_fragment != runtime_report_fragments_by_id_.end() &&
+          it_fragment->second.path.empty()) {
+        it_fragment->second.path =
+            runtime_ledger_path_by_id_[report_fragment_id];
+      }
+      continue;
+    }
+
+    if (kind != cuwacunu::hero::schema::kRecordKindRUNTIME_REPORT_FRAGMENT) {
+      continue;
+    }
+
+    runtime_report_fragment_t fragment{};
+    if (row >= next_record_id) continue;
+    fragment.report_fragment_id = as_text_or_empty(&db_, kColRecordId, row);
+    if (fragment.report_fragment_id.empty()) continue;
+    fragment.report_fragment_sha256 = fragment.report_fragment_id;
+    if (const auto it_path =
+            runtime_ledger_path_by_id_.find(fragment.report_fragment_id);
+        it_path != runtime_ledger_path_by_id_.end()) {
+      fragment.path = it_path->second;
+    }
+    if (row < next_payload) {
+      fragment.payload_json = as_text_or_empty(&db_, kColPayload, row);
+    }
+    if (row < next_ts_ms) {
+      (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &fragment.ts_ms);
+    }
+
+    std::unordered_map<std::string, std::string> kv{};
+    runtime_lls_document_t ignored_document{};
+    std::string parse_error{};
+    if (!fragment.payload_json.empty() &&
+        parse_runtime_lls_payload(fragment.payload_json, &kv, &ignored_document,
+                                  &parse_error)) {
+      if (fragment.canonical_path.empty()) {
+        if (const auto it = kv.find("canonical_path"); it != kv.end()) {
+          fragment.canonical_path = trim_ascii(it->second);
+        }
+      }
+      if (fragment.hashimyei.empty()) {
+        if (const auto it = kv.find("hashimyei"); it != kv.end()) {
+          fragment.hashimyei = it->second;
+        }
+      }
+      if (fragment.contract_hash.empty()) {
+        if (const auto it = kv.find("contract_hash"); it != kv.end()) {
+          fragment.contract_hash = it->second;
+        }
+      }
+      if (fragment.schema.empty()) {
+        if (const auto it = kv.find("schema"); it != kv.end()) {
+          fragment.schema = it->second;
+        }
+      }
+      populate_runtime_report_fragment_header_fields_(kv, &fragment);
+    }
+    if (fragment.canonical_path.empty()) {
+      if (row < next_text_a) {
+        fragment.canonical_path =
+            trim_ascii(as_text_or_empty(&db_, kColTextA, row));
+      }
+    }
+    if (fragment.hashimyei.empty()) {
+      if (row < next_text_b) {
+        fragment.hashimyei = as_text_or_empty(&db_, kColTextB, row);
+      }
+    }
+    if (fragment.contract_hash.empty()) {
+      if (row < next_contract_hash) {
+        fragment.contract_hash =
+            as_text_or_empty(&db_, kColContractHash, row);
+      }
+    }
+    if (fragment.schema.empty()) {
+      if (row < next_state_txt) {
+        fragment.schema = as_text_or_empty(&db_, kColStateTxt, row);
+      }
+    }
+    if (fragment.intersection_cursor.empty() && fragment.wave_cursor != 0 &&
+        !fragment.canonical_path.empty()) {
+      fragment.intersection_cursor =
+          build_intersection_cursor(fragment.canonical_path, fragment.wave_cursor);
+    }
+    fragment.family = runtime_family_from_canonical(fragment.canonical_path);
+    index_runtime_report_fragment_(
+        fragment, &runtime_report_fragments_by_id_,
+        &runtime_latest_report_fragment_by_key_,
+        &runtime_report_fragment_ids_by_canonical_,
+        &runtime_fact_summaries_by_canonical_,
+        &runtime_report_fragment_ids_by_wave_cursor_);
+  }
+
+  refresh_runtime_report_fragment_family_ranks_(
+      &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_);
   return true;
 }
 
@@ -2213,19 +3010,6 @@ bool lattice_catalog_store_t::runtime_ledger_contains_(
     *out_exists = true;
     return true;
   }
-
-  idydb_filter_term t_kind{};
-  t_kind.column = kColRecordKind;
-  t_kind.type = IDYDB_CHAR;
-  t_kind.op = IDYDB_FILTER_OP_EQ;
-  t_kind.value.s = cuwacunu::hero::schema::kRecordKindRUNTIME_LEDGER;
-  idydb_filter_term t_id{};
-  t_id.column = kColRecordId;
-  t_id.type = IDYDB_CHAR;
-  t_id.op = IDYDB_FILTER_OP_EQ;
-  t_id.value.s = id.c_str();
-  if (!db::query::exists_row(&db_, {t_kind, t_id}, out_exists, error)) return false;
-  if (*out_exists) runtime_ledger_.insert(id);
   return true;
 }
 
@@ -2259,20 +3043,7 @@ bool lattice_catalog_store_t::ingest_runtime_run_manifest_file_(
 
   runtime_runs_by_id_[m.run_id] = m;
   runtime_dependency_files_by_run_id_[m.run_id] = m.dependency_files;
-
-  idydb_filter_term t_kind{};
-  t_kind.column = kColRecordKind;
-  t_kind.type = IDYDB_CHAR;
-  t_kind.op = IDYDB_FILTER_OP_EQ;
-  t_kind.value.s = cuwacunu::hero::schema::kRecordKindRUNTIME_RUN;
-  idydb_filter_term t_id{};
-  t_id.column = kColRecordId;
-  t_id.type = IDYDB_CHAR;
-  t_id.op = IDYDB_FILTER_OP_EQ;
-  t_id.value.s = m.run_id.c_str();
-  bool exists = false;
-  if (!db::query::exists_row(&db_, {t_kind, t_id}, &exists, error)) return false;
-  if (exists) return true;
+  if (runtime_run_ids_.count(m.run_id) != 0) return true;
 
   std::filesystem::path cp = path;
   if (const auto can = canonicalized(path); can.has_value()) cp = *can;
@@ -2303,6 +3074,7 @@ bool lattice_catalog_store_t::ingest_runtime_run_manifest_file_(
       return false;
     }
   }
+  runtime_run_ids_.insert(m.run_id);
   return true;
 }
 
@@ -2374,8 +3146,7 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
   if (payload.empty()) return true;
 
   std::unordered_map<std::string, std::string> kv;
-  runtime_lls_document_t document{};
-  if (!parse_runtime_lls_payload(payload, &kv, &document, error)) {
+  if (!parse_runtime_lls_payload(payload, &kv, nullptr, error)) {
     set_error(error, "runtime .lls parse failure for " + path.string() + ": " +
                          (error ? *error : std::string{}));
     return false;
@@ -2496,6 +3267,8 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
   index_runtime_report_fragment_(
       fragment, &runtime_report_fragments_by_id_,
       &runtime_latest_report_fragment_by_key_,
+      &runtime_report_fragment_ids_by_canonical_,
+      &runtime_fact_summaries_by_canonical_,
       &runtime_report_fragment_ids_by_wave_cursor_);
 
   bool already = false;
@@ -2520,12 +3293,37 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragments(
     return false;
   }
 
-  const std::filesystem::path canonical_store_root =
-      canonicalized(store_root).value_or(store_root.lexically_normal());
+  const std::filesystem::path normalized_store_root =
+      store_root.lexically_normal();
+  struct buffered_rows_guard_t {
+    lattice_catalog_store_t* self{nullptr};
+    ~buffered_rows_guard_t() {
+      if (!self) return;
+      self->buffer_rows_ = false;
+      self->buffered_row_start_ = 0;
+      self->buffered_rows_.clear();
+    }
+  } buffered_rows_guard{this};
+  buffer_rows_ = true;
+  buffered_row_start_ =
+      (next_row_hint_ != 0) ? next_row_hint_ : idydb_column_next_row(&db_, kColRecordKind);
+  buffered_rows_.clear();
+  const std::uint64_t ingest_started_at_ms = now_ms_utc();
+  std::uint64_t run_manifest_files = 0;
+  std::uint64_t component_manifest_files = 0;
+  std::uint64_t report_fragment_files = 0;
+  std::uint64_t run_manifest_ms = 0;
+  std::uint64_t component_manifest_ms = 0;
+  std::uint64_t report_fragment_ms = 0;
+  std::uint64_t flush_ms = 0;
+  std::uint64_t family_rank_refresh_ms = 0;
+  std::uint64_t runs_root_scan_ms = 0;
+  std::uint64_t store_root_scan_ms = 0;
   std::error_code ec;
 
   const auto runs_root = cuwacunu::hashimyei::runs_root(store_root);
   if (std::filesystem::exists(runs_root, ec) && std::filesystem::is_directory(runs_root, ec)) {
+    const std::uint64_t phase_started_at_ms = now_ms_utc();
     for (std::filesystem::recursive_directory_iterator it(runs_root, ec), end;
          it != end; it.increment(ec)) {
       if (ec) {
@@ -2546,16 +3344,18 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragments(
         }
         continue;
       }
-      const auto canonical_entry = canonicalized(it->path());
-      if (!canonical_entry.has_value() ||
-          !path_is_within(canonical_store_root, *canonical_entry)) {
-        continue;
-      }
+      const auto normalized_entry = it->path().lexically_normal();
+      if (!path_is_within(normalized_store_root, normalized_entry)) continue;
       if (it->path().filename() != cuwacunu::hashimyei::kRunManifestFilenameV2) continue;
+      const std::uint64_t ingest_started_file_ms = now_ms_utc();
       if (!ingest_runtime_run_manifest_file_(it->path(), error)) return false;
+      ++run_manifest_files;
+      run_manifest_ms += now_ms_utc() - ingest_started_file_ms;
     }
+    runs_root_scan_ms = now_ms_utc() - phase_started_at_ms;
   }
 
+  const std::uint64_t store_scan_started_at_ms = now_ms_utc();
   for (std::filesystem::recursive_directory_iterator it(store_root, ec), end;
        it != end; it.increment(ec)) {
     if (ec) {
@@ -2576,26 +3376,71 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragments(
       }
       continue;
     }
-    const auto canonical_entry = canonicalized(it->path());
-    if (!canonical_entry.has_value() ||
-        !path_is_within(canonical_store_root, *canonical_entry)) {
-      continue;
-    }
+    const auto normalized_entry = it->path().lexically_normal();
+    if (!path_is_within(normalized_store_root, normalized_entry)) continue;
 
     const auto p = it->path();
     if (p == options_.catalog_path) continue;
     if (p.filename() == cuwacunu::hashimyei::kRunManifestFilenameV2) continue;
     if (p.filename() == cuwacunu::hashimyei::kComponentManifestFilenameV2) {
+      const std::uint64_t ingest_started_file_ms = now_ms_utc();
       if (!ingest_runtime_component_manifest_file_(p, error)) return false;
+      ++component_manifest_files;
+      component_manifest_ms += now_ms_utc() - ingest_started_file_ms;
       continue;
     }
 
     const auto ext = p.extension().string();
     if (ext != ".lls") continue;
+    const std::uint64_t ingest_started_file_ms = now_ms_utc();
     if (!ingest_runtime_report_fragment_file_(p, error)) return false;
+    ++report_fragment_files;
+    report_fragment_ms += now_ms_utc() - ingest_started_file_ms;
   }
+  store_root_scan_ms = now_ms_utc() - store_scan_started_at_ms;
 
-  return rebuild_indexes(error);
+  buffer_rows_ = false;
+  {
+    const std::uint64_t phase_started_at_ms = now_ms_utc();
+    if (!flush_buffered_rows_(error)) return false;
+    flush_ms = now_ms_utc() - phase_started_at_ms;
+  }
+  // Ingest already updates the runtime in-memory indexes incrementally as rows
+  // are discovered. The only deferred fixup we still need is rank propagation
+  // because family-rank artifacts may arrive before their matching fragments.
+  {
+    const std::uint64_t phase_started_at_ms = now_ms_utc();
+    refresh_runtime_report_fragment_family_ranks_(
+        &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_);
+    family_rank_refresh_ms = now_ms_utc() - phase_started_at_ms;
+  }
+  std::ostringstream extra;
+  cuwacunu::hero::mcp_observability::append_json_string_field(
+      extra, "store_root", store_root.string());
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "run_manifest_files", run_manifest_files);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "component_manifest_files", component_manifest_files);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "report_fragment_files", report_fragment_files);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "run_manifest_ms", run_manifest_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "component_manifest_ms", component_manifest_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "report_fragment_ms", report_fragment_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "runs_root_scan_ms", runs_root_scan_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "store_root_scan_ms", store_root_scan_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(extra, "flush_ms",
+                                                              flush_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "family_rank_refresh_ms", family_rank_refresh_ms);
+  cuwacunu::hero::mcp_observability::append_json_uint64_field(
+      extra, "duration_ms", now_ms_utc() - ingest_started_at_ms);
+  log_lattice_catalog_event("ingest_summary", extra.str());
+  return true;
 }
 
 bool lattice_catalog_store_t::list_runtime_runs_by_binding(
@@ -2694,6 +3539,70 @@ bool lattice_catalog_store_t::list_runtime_report_fragments(
   count = std::min(count, out->size() - off);
   out->assign(out->begin() + static_cast<std::ptrdiff_t>(off),
               out->begin() + static_cast<std::ptrdiff_t>(off + count));
+  return true;
+}
+
+bool lattice_catalog_store_t::list_runtime_fact_summaries(
+    std::size_t limit, std::size_t offset, bool newest_first,
+    std::vector<runtime_fact_summary_t>* out, std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "fact summary list output pointer is null");
+    return false;
+  }
+  out->clear();
+
+  out->reserve(runtime_fact_summaries_by_canonical_.size());
+  for (const auto& [_, summary] : runtime_fact_summaries_by_canonical_) {
+    runtime_fact_summary_t row = summary;
+    finalize_runtime_fact_summary_(&row);
+    out->push_back(std::move(row));
+  }
+
+  std::sort(out->begin(), out->end(),
+            [newest_first](const runtime_fact_summary_t& a,
+                           const runtime_fact_summary_t& b) {
+              if (a.latest_ts_ms != b.latest_ts_ms) {
+                return newest_first ? (a.latest_ts_ms > b.latest_ts_ms)
+                                    : (a.latest_ts_ms < b.latest_ts_ms);
+              }
+              return newest_first ? (a.canonical_path < b.canonical_path)
+                                  : (a.canonical_path > b.canonical_path);
+            });
+
+  const std::size_t off = std::min(offset, out->size());
+  std::size_t count = limit;
+  if (count == 0) count = out->size() - off;
+  count = std::min(count, out->size() - off);
+  out->assign(out->begin() + static_cast<std::ptrdiff_t>(off),
+              out->begin() + static_cast<std::ptrdiff_t>(off + count));
+  return true;
+}
+
+bool lattice_catalog_store_t::get_runtime_fact_summary(
+    std::string_view canonical_path, runtime_fact_summary_t* out,
+    std::string* error) const {
+  clear_error(error);
+  if (!out) {
+    set_error(error, "fact summary output pointer is null");
+    return false;
+  }
+  *out = runtime_fact_summary_t{};
+
+  const std::string cp = normalize_source_hashimyei_cursor(canonical_path);
+  if (cp.empty()) {
+    set_error(error, "canonical_path is required");
+    return false;
+  }
+
+  const auto it = runtime_fact_summaries_by_canonical_.find(cp);
+  if (it == runtime_fact_summaries_by_canonical_.end()) {
+    set_error(error, "fact summary not found for canonical_path");
+    return false;
+  }
+
+  *out = it->second;
+  finalize_runtime_fact_summary_(out);
   return true;
 }
 
@@ -2956,14 +3865,14 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
           selected_bundle = &bundle;
           continue;
         }
-        if (bundle.latest_ts_ms != selected_bundle->latest_ts_ms) {
-          if (bundle.latest_ts_ms > selected_bundle->latest_ts_ms) {
+        if (bundle.wave_cursor != selected_bundle->wave_cursor) {
+          if (bundle.wave_cursor > selected_bundle->wave_cursor) {
             selected_bundle = &bundle;
           }
           continue;
         }
-        if (bundle.wave_cursor != selected_bundle->wave_cursor) {
-          if (bundle.wave_cursor > selected_bundle->wave_cursor) {
+        if (bundle.latest_ts_ms != selected_bundle->latest_ts_ms) {
+          if (bundle.latest_ts_ms > selected_bundle->latest_ts_ms) {
             selected_bundle = &bundle;
           }
           continue;
@@ -3147,6 +4056,18 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
                   normalize_runtime_report_semantic_taxon(fragment.semantic_taxon,
                                                          fragment.schema);
           if (fragment_taxon != normalized_taxon) continue;
+          if (normalized_taxon ==
+                  cuwacunu::piaabo::latent_lineage_state::report_taxonomy::
+                      kSourceData &&
+              fragment.schema != "piaabo.torch_compat.data_analytics.v2") {
+            continue;
+          }
+          if (normalized_taxon ==
+                  cuwacunu::piaabo::latent_lineage_state::report_taxonomy::
+                      kEmbeddingNetwork &&
+              fragment.schema != "piaabo.torch_compat.network_analytics.v5") {
+            continue;
+          }
           if (!selector_canonical.empty()) {
             const std::string selector = trim_ascii(selector_canonical);
             if (!runtime_hashimyei_cursor_matches_fragment(selector, fragment)) {

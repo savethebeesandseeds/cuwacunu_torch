@@ -41,7 +41,7 @@ The public dispatcher is now campaign-oriented:
 3. `wave_space_t`
 - immutable wave registry
 
-4. `runtime_binding_space_t`
+4. `runtime_binding/runtime_binding_space_t.h`
 - private/internal worker join layer
 - still materializes the internal runtime join state used by `run_runtime_binding(...)`
 - no longer defines the public DSL model
@@ -146,7 +146,7 @@ The public dispatcher is now campaign-oriented:
 - `hero.config.dev_nuke_reset`
 
 The first two clear runtime-owned state only. `hero.config.dev_nuke_reset`
-is the broader developer wipe that also removes Super/Human loop ledgers.
+is the broader developer wipe that also removes Marshal/Human session ledgers.
 
 This document reflects the public runtime model. Internal runtime-binding
 machinery still exists as a worker implementation detail until the lower

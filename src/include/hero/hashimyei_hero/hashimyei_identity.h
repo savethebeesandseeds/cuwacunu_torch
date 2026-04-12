@@ -98,6 +98,44 @@ enum class hashimyei_kind_e : std::uint8_t {
   return true;
 }
 
+[[nodiscard]] inline std::string compact_contract_hash_path_token(
+    std::string_view contract_hash) {
+  std::size_t begin = 0;
+  std::size_t end = contract_hash.size();
+  while (begin < end &&
+         std::isspace(static_cast<unsigned char>(contract_hash[begin])) != 0) {
+    ++begin;
+  }
+  while (end > begin &&
+         std::isspace(static_cast<unsigned char>(contract_hash[end - 1])) != 0) {
+    --end;
+  }
+  std::string_view token = contract_hash.substr(begin, end - begin);
+  if (token.size() >= 2 && token[0] == '0' &&
+      (token[1] == 'x' || token[1] == 'X')) {
+    token.remove_prefix(2);
+  }
+  if (token.empty()) return {};
+
+  std::string normalized{};
+  normalized.reserve(token.size());
+  for (const unsigned char c : token) {
+    if (std::isalnum(c) != 0) {
+      normalized.push_back(
+          static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+      continue;
+    }
+    if (c == '_' || c == '-' || c == '.') {
+      normalized.push_back(static_cast<char>(c));
+      continue;
+    }
+    normalized.push_back('_');
+  }
+  if (normalized.empty()) return {};
+  if (normalized.size() > 16) normalized.resize(16);
+  return "c." + normalized;
+}
+
 [[nodiscard]] inline bool normalize_hex_hash_name(
     std::string_view name, std::string* out_name,
     std::uint64_t* out_ordinal = nullptr) {

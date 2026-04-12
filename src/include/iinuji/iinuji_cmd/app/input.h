@@ -75,8 +75,8 @@ inline bool handle_help_overlay_key(CmdState& state, int ch) {
 }
 
 inline bool dispatch_logs_setting_adjust(CmdState& state, bool forward) {
-  if (state.screen != ScreenMode::Logs) return false;
-  switch (state.logs.selected_setting) {
+  if (state.screen != ScreenMode::ShellLogs) return false;
+  switch (state.shell_logs.selected_setting) {
     case 0: {
       constexpr std::array<std::string_view, 5> kLevelCalls = {
           canonical_paths::kLogsSettingsLevelDebug,
@@ -85,7 +85,8 @@ inline bool dispatch_logs_setting_adjust(CmdState& state, bool forward) {
           canonical_paths::kLogsSettingsLevelError,
           canonical_paths::kLogsSettingsLevelFatal,
       };
-      std::size_t idx = static_cast<std::size_t>(state.logs.level_filter);
+      std::size_t idx =
+          static_cast<std::size_t>(state.shell_logs.level_filter);
       idx = forward ? ((idx + 1u) % kLevelCalls.size()) : ((idx + kLevelCalls.size() - 1u) % kLevelCalls.size());
       return dispatch_canonical_internal_call(state, kLevelCalls[idx]);
     }
@@ -98,7 +99,8 @@ inline bool dispatch_logs_setting_adjust(CmdState& state, bool forward) {
           canonical_paths::kLogsSettingsMetadataFilterPath,
           canonical_paths::kLogsSettingsMetadataFilterCallsite,
       };
-      std::size_t idx = static_cast<std::size_t>(state.logs.metadata_filter);
+      std::size_t idx =
+          static_cast<std::size_t>(state.shell_logs.metadata_filter);
       idx = forward ? ((idx + 1u) % kMetadataFilterCalls.size())
                     : ((idx + kMetadataFilterCalls.size() - 1u) % kMetadataFilterCalls.size());
       return dispatch_canonical_internal_call(state, kMetadataFilterCalls[idx]);

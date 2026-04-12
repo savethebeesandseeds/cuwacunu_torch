@@ -10,20 +10,19 @@ namespace cuwacunu {
 namespace hero {
 namespace human {
 
-inline constexpr std::string_view kHumanResolutionSchemaV2 =
-    "hero.human.resolution.v2";
+inline constexpr std::string_view kHumanGovernanceResolutionSchemaV3 =
+    "hero.human.governance_resolution.v3";
 
 struct human_resolution_record_t {
-  std::string schema{std::string(kHumanResolutionSchemaV2)};
-  std::string loop_id{};
-  std::uint64_t turn_index{0};
-  std::string escalation_sha256_hex{};
+  std::string schema{std::string(kHumanGovernanceResolutionSchemaV3)};
+  std::string marshal_session_id{};
+  std::uint64_t checkpoint_index{0};
+  std::string request_sha256_hex{};
   std::string operator_id{};
   std::uint64_t resolved_at_ms{0};
   std::string resolution_kind{};
-  std::string escalation_kind{};
+  std::string governance_kind{};
   bool grant_allow_default_write{false};
-  std::uint64_t grant_additional_review_turns{0};
   std::uint64_t grant_additional_campaign_launches{0};
   std::string reason{};
   std::string signer_public_key_fingerprint_sha256_hex{};

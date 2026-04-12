@@ -131,6 +131,20 @@ struct runtime_intersection_cursor_t {
   std::uint64_t wave_cursor{0};
 };
 
+struct runtime_fact_summary_t {
+  std::string canonical_path{};
+  std::uint64_t latest_wave_cursor{0};
+  std::uint64_t latest_ts_ms{0};
+  std::size_t fragment_count{0};
+  std::size_t available_context_count{0};
+  std::vector<std::uint64_t> wave_cursors{};
+  std::vector<std::string> binding_ids{};
+  std::vector<std::string> semantic_taxa{};
+  std::vector<std::string> source_runtime_cursors{};
+  std::vector<std::string> report_schemas{};
+  std::vector<runtime_report_fragment_t> recent_fragments{};
+};
+
 [[nodiscard]] std::string compute_coord_hash(std::string_view contract_hash,
                                              std::string_view wave_hash);
 [[nodiscard]] std::string canonical_execution_profile_json(
@@ -377,7 +391,9 @@ class lattice_catalog_store_t {
     std::filesystem::path catalog_path{};
     std::string passphrase{};
     bool encrypted{true};
+    bool read_only{false};
     std::uint32_t projection_version{2};
+    bool runtime_only_indexes{false};
   };
 
   lattice_catalog_store_t() = default;
@@ -426,6 +442,13 @@ class lattice_catalog_store_t {
       std::size_t offset, bool newest_first,
       std::vector<runtime_report_fragment_t>* out,
       std::string* error = nullptr) const;
+  [[nodiscard]] bool list_runtime_fact_summaries(
+      std::size_t limit, std::size_t offset, bool newest_first,
+      std::vector<runtime_fact_summary_t>* out,
+      std::string* error = nullptr) const;
+  [[nodiscard]] bool get_runtime_fact_summary(
+      std::string_view canonical_path, runtime_fact_summary_t* out,
+      std::string* error = nullptr) const;
   [[nodiscard]] bool latest_runtime_report_fragment(
       std::string_view canonical_path, std::string_view schema,
       runtime_report_fragment_t* out, std::string* error = nullptr) const;
@@ -458,6 +481,36 @@ class lattice_catalog_store_t {
                                   std::string* error = nullptr);
 
  private:
+  struct buffered_row_t {
+    std::string record_kind{};
+    std::string record_id{};
+    std::string cell_id{};
+    std::string contract_hash{};
+    std::string wave_hash{};
+    std::string profile_id{};
+    std::string execution_profile_json{};
+    std::string state_txt{};
+    double metric_num{0.0};
+    bool has_metric_num{false};
+    std::string text_a{};
+    std::string text_b{};
+    std::string projection_version{};
+    std::string ts_ms{};
+    std::string payload_json{};
+    std::string projection_key{};
+    double projection_num{0.0};
+    bool has_projection_num{false};
+    std::string projection_txt{};
+    std::string projection_key_aux{};
+    std::string projection_txt_aux{};
+    std::string started_at_ms{};
+    std::string finished_at_ms{};
+    std::string ok_txt{};
+    std::string total_steps{};
+    std::string campaign_hash{};
+    std::string run_id{};
+  };
+
   [[nodiscard]] bool ensure_catalog_header_(std::string* error);
   [[nodiscard]] bool append_row_(std::string_view record_kind,
                                  std::string_view record_id,
@@ -485,11 +538,13 @@ class lattice_catalog_store_t {
                                  std::string_view campaign_hash,
                                  std::string_view run_id,
                                  std::string* error);
+  [[nodiscard]] bool flush_buffered_rows_(std::string* error);
 
   [[nodiscard]] bool record_cell_projection_(std::string_view cell_id,
                                              const wave_projection_t& projection,
                                              std::uint64_t ts_ms,
                                              std::string* error);
+  [[nodiscard]] bool rebuild_runtime_indexes_(std::string* error);
   [[nodiscard]] bool ingest_runtime_run_manifest_file_(
       const std::filesystem::path& path, std::string* error);
   [[nodiscard]] bool ingest_runtime_component_manifest_file_(
@@ -536,6 +591,11 @@ class lattice_catalog_store_t {
 
   options_t options_{};
   idydb* db_{nullptr};
+  std::uint64_t opened_at_ms_{0};
+  idydb_column_row_sizing next_row_hint_{0};
+  bool buffer_rows_{false};
+  idydb_column_row_sizing buffered_row_start_{0};
+  std::vector<buffered_row_t> buffered_rows_{};
 
   std::unordered_map<std::string, wave_cell_t> cells_by_id_{};
   std::unordered_map<std::string, std::string> cell_id_by_coord_profile_{};
@@ -548,12 +608,17 @@ class lattice_catalog_store_t {
       projection_txt_by_cell_{};
   std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>
       runtime_runs_by_id_{};
+  std::unordered_set<std::string> runtime_run_ids_{};
   std::unordered_map<std::string, cuwacunu::hero::hashimyei::component_state_t>
       runtime_components_by_id_{};
   std::unordered_map<std::string, runtime_report_fragment_t>
       runtime_report_fragments_by_id_{};
   std::unordered_map<std::string, std::string>
       runtime_latest_report_fragment_by_key_{};
+  std::unordered_map<std::string, std::vector<std::string>>
+      runtime_report_fragment_ids_by_canonical_{};
+  std::unordered_map<std::string, runtime_fact_summary_t>
+      runtime_fact_summaries_by_canonical_{};
   std::unordered_map<std::string,
                      std::vector<cuwacunu::hero::hashimyei::dependency_file_t>>
       runtime_dependency_files_by_run_id_{};

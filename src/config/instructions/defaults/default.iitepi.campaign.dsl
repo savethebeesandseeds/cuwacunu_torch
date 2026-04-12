@@ -3,7 +3,7 @@
   ===========================
   Purpose:
     Unified top-level runtime dispatch language. A campaign imports contract
-    files and wave files, may declare an optional super-loop objective file,
+    files and wave files, may declare an optional marshal-session objective file,
     defines reusable binds, then executes an ordered RUN sequence over those
     bind ids. Runtime Hero may also select one declared bind explicitly, with
     RUN remaining the default launch plan.
@@ -26,10 +26,10 @@
       RUN <binding_id>;
     }
 
-    Super Hero now starts from a super objective DSL, which points to the
+    Marshal Hero now starts from a marshal objective DSL, which points to the
     campaign plus separate human-authored objective and guidance files.
-    The defaults bundle ships `default.super.objective.dsl`,
-    `default.super.objective.md`, and `default.super.guidance.md`, but the
+    The defaults bundle ships `default.marshal.objective.dsl`,
+    `default.marshal.objective.md`, and `default.marshal.guidance.md`, but the
     plain default campaign remains executable on its own through Runtime Hero.
 */
 CAMPAIGN {

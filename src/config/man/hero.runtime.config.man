@@ -29,7 +29,7 @@ nuance = default line count used by hero.runtime.tail_log and hero.runtime.tail_
 
 [NOTE DERIVED_RUNTIME_PATHS]
 scope = hero runtime defaults
-text = Runtime HERO derives its campaigns root from `[GENERAL].runtime_root` as `<runtime_root>/.campaigns`, derives the shared super-loop root as `<runtime_root>/.super_hero` for linked campaign metadata and operator stop propagation, and loads the campaign grammar from `[BNF].iitepi_campaign_grammar_filename`.
+text = Runtime HERO derives its campaigns root from `[GENERAL].runtime_root` as `<runtime_root>/.campaigns`, derives the shared Marshal Hero session root as `<runtime_root>/.marshal_hero` for linked campaign metadata and operator stop propagation, and loads the campaign grammar from `[BNF].iitepi_campaign_grammar_filename`.
 
 [FIELD max_active_campaigns]
 key = max_active_campaigns

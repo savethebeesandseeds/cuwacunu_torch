@@ -53,7 +53,7 @@ struct AliasLookupResult {
 [[nodiscard]] inline AliasLookupResult resolve(const std::string& raw) {
   const std::string normalized = normalize_alias_key(raw);
   if (normalized.empty()) return AliasLookupResult::no_match();
-  if (normalized.rfind("iinuji.", 0) == 0 || normalized.rfind("tsi.", 0) == 0) {
+  if (normalized.rfind("iinuji.", 0) == 0) {
     return AliasLookupResult::no_match();
   }
 

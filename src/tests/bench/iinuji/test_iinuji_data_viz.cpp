@@ -158,9 +158,9 @@ struct DatasetProvider final : public IDataProvider {
     cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
     cuwacunu::iitepi::config_space_t::update_config();
     const auto contract_hash =
-        cuwacunu::iitepi::board_space_t::contract_hash_for_binding(
-            cuwacunu::iitepi::config_space_t::locked_board_hash(),
-            cuwacunu::iitepi::config_space_t::locked_board_binding_id());
+        cuwacunu::iitepi::runtime_binding_space_t::contract_hash_for_binding(
+            cuwacunu::iitepi::config_space_t::locked_runtime_binding_hash(),
+            cuwacunu::iitepi::config_space_t::locked_binding_id());
 
     auto obs_inst = cuwacunu::camahjucunu::decode_observation_spec_from_contract(
         contract_hash);

@@ -68,7 +68,8 @@ help:
 	@echo "src targets:"
 	@echo "  lib   canonical library/core aggregate"
 	@echo "  link  canonical final-linked executable aggregate"
-	@echo "  install  finalize in-place hero/tool outputs after link"
+	@echo "  install  finalize in-place hero/tool/interface outputs after link"
+	@echo "        bundled archives now land under $(LIB_OUT)"
 	@echo "related:"
 	@echo "  tests modules lib-bundles clean"
 	@echo "module subtrees:"
@@ -187,4 +188,4 @@ clean:
 	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then \
 		echo "Aborting clean."; exit 1; fi
 	@echo "$(COLOR_RED) Cleaning cuwacunu build $(COLOR_RESET)"
-	$(Q)$(CLEAN_TREE_CMD) "$(OUTPUT_PATH)" "$(TEST_OUT)" "$(HERO_OUT)" "$(TOOLS_OUT)"
+	$(Q)$(CLEAN_TREE_CMD) "$(OUTPUT_PATH)" "$(LIB_OUT)" "$(TEST_OUT)" "$(HERO_OUT)" "$(TOOLS_OUT)" "$(INTERFACE_OUT)"

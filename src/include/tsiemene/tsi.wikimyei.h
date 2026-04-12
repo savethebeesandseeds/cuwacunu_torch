@@ -71,10 +71,15 @@ struct TsiWikimyeiJkimyeiRuntimeState {
   int swa_start_iter{0};
   std::uint64_t trained_epochs{0};
   std::uint64_t trained_samples{0};
+  std::uint64_t skipped_batches{0};
 
   double clip_norm{0.0};
   double clip_value{0.0};
   double last_committed_loss_mean{0.0};
+  double last_committed_inv_mean{0.0};
+  double last_committed_var_mean{0.0};
+  double last_committed_cov_raw_mean{0.0};
+  double last_committed_cov_weighted_mean{0.0};
 };
 
 struct TsiWikimyeiJkimyeiFlushResult {

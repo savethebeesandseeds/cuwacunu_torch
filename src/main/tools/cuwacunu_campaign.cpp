@@ -1,8 +1,10 @@
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <filesystem>
 #include <exception>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -133,6 +135,43 @@ bool append_job_trace_line(const std::filesystem::path& trace_path,
   return false;
 }
 
+void refresh_runtime_job_device_metadata(
+    const std::filesystem::path& campaigns_root,
+    std::string_view job_cursor,
+    const tsiemene::runtime_binding_device_resolution_t& runtime_device) {
+  if (campaigns_root.empty()) return;
+  const std::string trimmed_job_cursor = trim_ascii_copy(job_cursor);
+  if (trimmed_job_cursor.empty()) return;
+
+  std::string error{};
+  cuwacunu::hero::runtime::runtime_job_record_t job{};
+  if (!cuwacunu::hero::runtime::read_runtime_job_record(
+          campaigns_root, trimmed_job_cursor, &job, &error)) {
+    log_warn(
+        "[cuwacunu_campaign] cannot refresh runtime job device metadata cursor=%s error=%s\n",
+        value_or_empty(trimmed_job_cursor),
+        value_or_empty(error));
+    return;
+  }
+
+  job.requested_device = runtime_device.configured_device;
+  job.resolved_device = runtime_device.device.str();
+  job.device_source_section = runtime_device.source_section;
+  job.device_contract_hash = runtime_device.contract_hash;
+  job.device_error = runtime_device.error;
+  job.cuda_required =
+      runtime_device.resolved_from_config &&
+      tsiemene::runtime_binding_requests_cuda_device_value(
+          runtime_device.configured_device);
+  if (!cuwacunu::hero::runtime::write_runtime_job_record(campaigns_root, job,
+                                                         &error)) {
+    log_warn(
+        "[cuwacunu_campaign] cannot persist runtime job device metadata cursor=%s error=%s\n",
+        value_or_empty(trimmed_job_cursor),
+        value_or_empty(error));
+  }
+}
+
 struct runtime_job_trace_sink_t {
   std::filesystem::path trace_path{};
 };
@@ -148,6 +187,8 @@ std::string runtime_binding_trace_event_json(
       << ",\"contract_hash\":\"" << json_escape_copy(event.contract_hash) << "\""
       << ",\"wave_hash\":\"" << json_escape_copy(event.wave_hash) << "\""
       << ",\"contract_name\":\"" << json_escape_copy(event.contract_name) << "\""
+      << ",\"component_name\":\"" << json_escape_copy(event.component_name)
+      << "\""
       << ",\"resolved_record_type\":\""
       << json_escape_copy(event.resolved_record_type) << "\""
       << ",\"resolved_sampler\":\""
@@ -161,9 +202,28 @@ std::string runtime_binding_trace_event_json(
       << ",\"epoch\":" << event.epoch
       << ",\"epoch_steps\":" << event.epoch_steps
       << ",\"total_steps\":" << event.total_steps
+      << ",\"optimizer_steps\":" << event.optimizer_steps
+      << ",\"trained_epochs\":" << event.trained_epochs
+      << ",\"trained_samples\":" << event.trained_samples
+      << ",\"skipped_batches\":" << event.skipped_batches
       << ",\"ok\":" << (event.ok ? "true" : "false")
       << ",\"error\":\"" << json_escape_copy(event.error) << "\""
-      << "}\n";
+      ;
+  const auto append_finite_double =
+      [&](const char* key, double value) {
+        if (!std::isfinite(value)) return;
+        out << ",\"" << key << "\":" << std::fixed << std::setprecision(12)
+            << value;
+      };
+  append_finite_double("epoch_loss_mean", event.epoch_loss_mean);
+  append_finite_double("last_committed_loss_mean",
+                       event.last_committed_loss_mean);
+  append_finite_double("loss_inv_mean", event.loss_inv_mean);
+  append_finite_double("loss_var_mean", event.loss_var_mean);
+  append_finite_double("loss_cov_raw_mean", event.loss_cov_raw_mean);
+  append_finite_double("loss_cov_weighted_mean", event.loss_cov_weighted_mean);
+  append_finite_double("learning_rate", event.learning_rate);
+  out << "}\n";
   return out.str();
 }
 
@@ -352,9 +412,13 @@ bool persist_runtime_run_manifests(
 std::filesystem::path source_runtime_projection_report_path(
     std::string_view canonical_path, std::string_view contract_hash,
     std::string_view binding_id, std::string_view run_id) {
+  const std::string contract_token =
+      cuwacunu::hashimyei::compact_contract_hash_path_token(contract_hash);
   return cuwacunu::hashimyei::canonical_path_directory(
              cuwacunu::hashimyei::store_root(), canonical_path) /
-         "contracts" / sanitize_path_token_copy(contract_hash) / "bindings" /
+         "contracts" /
+         (contract_token.empty() ? std::string("c.default") : contract_token) /
+         "bindings" /
          sanitize_path_token_copy(binding_id) / "runs" /
          sanitize_path_token_copy(run_id) /
          std::string(
@@ -465,6 +529,7 @@ bool persist_source_runtime_projection_reports(
     if (!wave->sources.empty()) symbol = trim_ascii_copy(wave->sources.front().symbol);
     cuwacunu::hero::wave::source_runtime_projection_report_identity_t identity{};
     identity.canonical_path = canonical_source_type;
+    identity.contract_hash = contract_hash;
     if (!wave->sources.empty()) {
       const auto& source_decl = wave->sources.front();
       identity.source_runtime_cursor =
@@ -513,7 +578,8 @@ bool persist_source_runtime_projection_reports(
 void print_help(const char* argv0) {
   std::cerr << "Usage: " << argv0
             << " [--global-config <path>] [--binding <binding_id>]"
-            << " [--campaign-dsl <path>] [--job-trace <path>]"
+            << " [--campaign-dsl <path>] [--campaigns-root <path>]"
+            << " [--job-cursor <cursor>] [--job-trace <path>]"
             << " [--reset-runtime-state]\n"
             << "Defaults:\n"
             << "  --global-config " << DEFAULT_GLOBAL_CONFIG_PATH << "\n";
@@ -526,6 +592,8 @@ int main(int argc, char** argv) {
   std::string binding_override;
   std::string campaign_dsl_override;
   std::string job_trace_path;
+  std::string campaigns_root_path;
+  std::string job_cursor;
   bool reset_runtime_state_flag = false;
 
   for (int i = 1; i < argc; ++i) {
@@ -540,6 +608,14 @@ int main(int argc, char** argv) {
     }
     if (arg == "--campaign-dsl" && i + 1 < argc) {
       campaign_dsl_override = argv[++i];
+      continue;
+    }
+    if (arg == "--campaigns-root" && i + 1 < argc) {
+      campaigns_root_path = argv[++i];
+      continue;
+    }
+    if (arg == "--job-cursor" && i + 1 < argc) {
+      job_cursor = argv[++i];
       continue;
     }
     if (arg == "--job-trace" && i + 1 < argc) {
@@ -635,7 +711,52 @@ int main(int argc, char** argv) {
              value_or_empty(campaign_hash), value_or_empty(binding_id),
              value_or_empty(configured_campaign_path));
 
-    const auto run = cuwacunu::iitepi::run_runtime_binding(binding_id);
+    const auto runtime_binding_itself =
+        cuwacunu::iitepi::runtime_binding_space_t::runtime_binding_itself(
+            campaign_hash);
+    const auto runtime_device =
+        tsiemene::resolve_runtime_binding_preferred_device_for_binding(
+            binding_id, runtime_binding_itself);
+    if (!runtime_device.error.empty()) {
+      log_warn(
+          "[cuwacunu_campaign] runtime device resolution fallback binding=%s error=%s fallback_device=%s\n",
+          value_or_empty(binding_id),
+          value_or_empty(runtime_device.error),
+          runtime_device.device.str().c_str());
+    } else if (runtime_device.resolved_from_config) {
+      log_info(
+          "[cuwacunu_campaign] runtime device resolved binding=%s contract_hash=%s source=%s configured=%s resolved=%s\n",
+          value_or_empty(binding_id),
+          value_or_empty(runtime_device.contract_hash),
+          value_or_empty(runtime_device.source_section),
+          value_or_empty(runtime_device.configured_device),
+          runtime_device.device.str().c_str());
+    } else {
+      log_info(
+          "[cuwacunu_campaign] runtime device unresolved in contract config binding=%s fallback_device=%s\n",
+          value_or_empty(binding_id),
+          runtime_device.device.str().c_str());
+    }
+    refresh_runtime_job_device_metadata(
+        std::filesystem::path(campaigns_root_path), job_cursor, runtime_device);
+    const bool cuda_required_for_binding =
+        runtime_device.resolved_from_config &&
+        tsiemene::runtime_binding_requests_cuda_device_value(
+            runtime_device.configured_device);
+    if (cuda_required_for_binding && runtime_device.device.is_cpu()) {
+      const std::string detail =
+          runtime_device.error.empty() ? std::string{}
+                                       : " (" + runtime_device.error + ")";
+      log_err(
+          "[cuwacunu_campaign] refusing to run binding=%s on CPU because configured device '%s' explicitly requires CUDA%s\n",
+          value_or_empty(binding_id),
+          value_or_empty(runtime_device.configured_device),
+          detail.c_str());
+      return 1;
+    }
+
+    const auto run = cuwacunu::iitepi::run_runtime_binding(
+        binding_id, runtime_device.device);
     if (!run.ok) {
       if (!trace_path.empty()) {
         std::ostringstream trace_fail;
@@ -666,9 +787,6 @@ int main(int argc, char** argv) {
       return 1;
     }
 
-    const auto runtime_binding_itself =
-        cuwacunu::iitepi::runtime_binding_space_t::runtime_binding_itself(
-            campaign_hash);
     std::string manifest_error;
     if (!persist_runtime_run_manifests(
             campaign_hash, run, runtime_binding_itself, &manifest_error)) {

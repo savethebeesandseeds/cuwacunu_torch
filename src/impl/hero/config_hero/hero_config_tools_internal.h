@@ -91,6 +91,9 @@ detect_instruction_dsl_validation_family(const std::filesystem::path& dsl_path);
     bool include_content, std::string_view warning, std::string* out_error);
 [[nodiscard]] std::string missing_associated_man_warning(
     const std::filesystem::path& dsl_path);
+[[nodiscard]] bool should_warn_missing_associated_man(
+    const std::filesystem::path& dsl_path,
+    instruction_dsl_validation_family_e family);
 void log_config_warning(std::string_view warning);
 [[nodiscard]] bool validate_instruction_dsl_replacement(
     const hero_config_store_t& store, const std::filesystem::path& dsl_path,
@@ -119,7 +122,7 @@ void log_config_warning(std::string_view warning);
 [[nodiscard]] bool path_has_component(const std::filesystem::path& path,
                                       std::string_view component);
 [[nodiscard]] bool is_campaign_dsl_path(const std::filesystem::path& path);
-[[nodiscard]] bool is_super_objective_dsl_path(
+[[nodiscard]] bool is_marshal_objective_dsl_path(
     const std::filesystem::path& path);
 [[nodiscard]] bool split_csv_tokens(std::string_view raw,
                                     std::vector<std::string>* out_tokens);
