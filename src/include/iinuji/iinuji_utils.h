@@ -207,10 +207,26 @@ inline int get_color_pair(const std::string& fg, const std::string& bg) {
   if (fg_id == -1 && bg_id == -1) return 0;
 
   auto key = std::make_pair(fg_id, bg_id);
+  const auto original_key = key;
   if (auto it = cache.find(key); it != cache.end()) return it->second;
 
+  auto fallback_pair = [&](int preferred_fg, int preferred_bg) -> int {
+    for (const auto& entry : cache) {
+      if (entry.first.second == preferred_bg) return entry.second;
+    }
+    for (const auto& entry : cache) {
+      if (entry.first.first == preferred_fg) return entry.second;
+    }
+    if (!cache.empty()) return cache.begin()->second;
+    return 0;
+  };
+
   // If we run out of pairs, degrade safely to default instead of overwriting the last pair.
-  if (next_pair_id >= COLOR_PAIRS) return 0;
+  if (next_pair_id >= COLOR_PAIRS) {
+    const int fallback = fallback_pair(fg_id, bg_id);
+    if (fallback != 0) cache[original_key] = fallback;
+    return fallback;
+  }
 
   int pid = next_pair_id++;
 
@@ -219,10 +235,18 @@ inline int get_color_pair(const std::string& fg, const std::string& bg) {
     // Fallback: force concrete defaults instead of leaving the pair undefined.
     int fg2 = (fg_id == -1) ? COLOR_WHITE : fg_id;
     int bg2 = (bg_id == -1) ? COLOR_BLACK : bg_id;
-    (void)init_pair(pid, (short)fg2, (short)bg2);
+    if (init_pair(pid, (short)fg2, (short)bg2) == ERR) {
+      const int fallback = fallback_pair(fg2, bg2);
+      if (fallback != 0) {
+        cache[original_key] = fallback;
+        cache[std::make_pair(fg2, bg2)] = fallback;
+      }
+      return fallback;
+    }
     key = std::make_pair(fg2, bg2);
   }
 
+  cache[original_key] = pid;
   cache[key] = pid;
   return pid;
 }

@@ -10,7 +10,7 @@
 #include "iinuji/iinuji_cmd/commands.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.state.flow.h"
 #include "iinuji/iinuji_cmd/views/config/app.h"
-#include "iinuji/iinuji_cmd/views/human/app.h"
+#include "iinuji/iinuji_cmd/views/inbox/app.h"
 #include "iinuji/iinuji_cmd/views/lattice/app.h"
 #include "iinuji/iinuji_cmd/views/logs/app.h"
 #include "iinuji/iinuji_cmd/views/runtime/app.h"
@@ -212,7 +212,7 @@ inline AppKeyDispatchResult dispatch_app_key(
     return consume(true);
   }
   if (ch == KEY_F(2)) {
-    dispatch_canonical_internal_call(state, canonical_paths::kScreenHuman);
+    dispatch_canonical_internal_call(state, canonical_paths::kScreenInbox);
     return consume(true);
   }
   if (ch == KEY_F(3)) {
@@ -233,7 +233,7 @@ inline AppKeyDispatchResult dispatch_app_key(
   }
 
   if (!state.help_view && state.cmdline.empty()) {
-    if (handle_human_key(state, ch))
+    if (handle_inbox_key(state, ch))
       return consume(true);
     if (handle_runtime_key(state, ch))
       return consume(true);
@@ -248,7 +248,7 @@ inline AppKeyDispatchResult dispatch_app_key(
 
     auto right_tb =
         as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(right));
-    if ((state.screen == ScreenMode::Human ||
+    if ((state.screen == ScreenMode::Inbox ||
          state.screen == ScreenMode::Runtime ||
          state.screen == ScreenMode::Lattice) &&
         right_tb != nullptr) {

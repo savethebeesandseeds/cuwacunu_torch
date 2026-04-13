@@ -1,6 +1,6 @@
-#include <cstdio>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -16,9 +16,11 @@
 
 namespace fs = std::filesystem;
 
-static void require_impl(bool ok, const char* expr, const char* file, int line) {
+static void require_impl(bool ok, const char *expr, const char *file,
+                         int line) {
   if (!ok) {
-    std::cerr << "[TEST FAIL] " << file << ":" << line << "  (" << expr << ")\n";
+    std::cerr << "[TEST FAIL] " << file << ":" << line << "  (" << expr
+              << ")\n";
     std::exit(1);
   }
 }
@@ -66,10 +68,10 @@ static std::string shell_quote(std::string_view value) {
   return out;
 }
 
-static command_result_t run_command(const std::string& command) {
+static command_result_t run_command(const std::string &command) {
   command_result_t out{};
   const std::string full = command + " 2>&1";
-  FILE* pipe = ::popen(full.c_str(), "r");
+  FILE *pipe = ::popen(full.c_str(), "r");
   REQUIRE(pipe != nullptr);
   char buffer[4096];
   while (::fgets(buffer, static_cast<int>(sizeof(buffer)), pipe) != nullptr) {
@@ -92,23 +94,27 @@ static bool contains(std::string_view haystack, std::string_view needle) {
   return haystack.find(needle) != std::string_view::npos;
 }
 
-static constexpr const char* kHashimyeiMcpBin =
-    "/cuwacunu/.build/hero/hero_hashimyei_mcp";
-static constexpr const char* kLatticeMcpBin = "/cuwacunu/.build/hero/hero_lattice_mcp";
-static constexpr const char* kMarshalMcpBin = "/cuwacunu/.build/hero/hero_marshal_mcp";
-static constexpr const char* kHumanMcpBin = "/cuwacunu/.build/hero/hero_human_mcp";
-static constexpr const char* kGlobalConfig = "/cuwacunu/src/config/.config";
-static constexpr const char* kSmokeCodexSessionId =
+static constexpr const char *kHashimyeiMcpBin =
+    "/cuwacunu/.build/hero/hero_hashimyei.mcp";
+static constexpr const char *kLatticeMcpBin =
+    "/cuwacunu/.build/hero/hero_lattice.mcp";
+static constexpr const char *kMarshalMcpBin =
+    "/cuwacunu/.build/hero/hero_marshal.mcp";
+static constexpr const char *kHumanMcpBin =
+    "/cuwacunu/.build/hero/hero_human.mcp";
+static constexpr const char *kGlobalConfig = "/cuwacunu/src/config/.config";
+static constexpr const char *kSmokeCodexSessionId =
     "11111111-1111-1111-1111-111111111111";
 
-static std::string tools_list_command(const fs::path& binary_path,
-                                      const fs::path& store_root,
-                                      const fs::path& catalog_path) {
+static std::string tools_list_command(const fs::path &binary_path,
+                                      const fs::path &store_root,
+                                      const fs::path &catalog_path) {
   const std::string req =
       R"({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}})";
   std::ostringstream cmd;
   cmd << "req=" << shell_quote(req) << "; "
-      << "{ printf 'Content-Length: %d\\r\\n\\r\\n%s' \"${#req}\" \"$req\"; } | "
+      << "{ printf 'Content-Length: %d\\r\\n\\r\\n%s' \"${#req}\" \"$req\"; } "
+         "| "
       << shell_quote(binary_path.string()) << " --global-config "
       << shell_quote(kGlobalConfig) << " --store-root "
       << shell_quote(store_root.string()) << " --catalog "
@@ -116,9 +122,9 @@ static std::string tools_list_command(const fs::path& binary_path,
   return cmd.str();
 }
 
-static std::string list_tools_json_command(const fs::path& binary_path,
-                                           const fs::path& global_config,
-                                           const fs::path& hero_config = {}) {
+static std::string list_tools_json_command(const fs::path &binary_path,
+                                           const fs::path &global_config,
+                                           const fs::path &hero_config = {}) {
   std::ostringstream cmd;
   cmd << shell_quote(binary_path.string()) << " --global-config "
       << shell_quote(global_config.string());
@@ -129,9 +135,9 @@ static std::string list_tools_json_command(const fs::path& binary_path,
   return cmd.str();
 }
 
-static std::string direct_tool_command(const fs::path& binary_path,
-                                       const fs::path& global_config,
-                                       const fs::path& hero_config,
+static std::string direct_tool_command(const fs::path &binary_path,
+                                       const fs::path &global_config,
+                                       const fs::path &hero_config,
                                        std::string_view tool_name,
                                        std::string_view args_json) {
   std::ostringstream cmd;
@@ -145,10 +151,10 @@ static std::string direct_tool_command(const fs::path& binary_path,
   return cmd.str();
 }
 
-static std::string direct_tool_command_with_paths(const fs::path& binary_path,
-                                                  const fs::path& global_config,
-                                                  const fs::path& store_root,
-                                                  const fs::path& catalog_path,
+static std::string direct_tool_command_with_paths(const fs::path &binary_path,
+                                                  const fs::path &global_config,
+                                                  const fs::path &store_root,
+                                                  const fs::path &catalog_path,
                                                   std::string_view tool_name,
                                                   std::string_view args_json) {
   std::ostringstream cmd;
@@ -161,7 +167,7 @@ static std::string direct_tool_command_with_paths(const fs::path& binary_path,
   return cmd.str();
 }
 
-static void write_text_file(const fs::path& path, std::string_view text) {
+static void write_text_file(const fs::path &path, std::string_view text) {
   fs::create_directories(path.parent_path());
   std::ofstream out(path);
   REQUIRE(out.is_open());
@@ -170,7 +176,7 @@ static void write_text_file(const fs::path& path, std::string_view text) {
   REQUIRE(out.good());
 }
 
-static void write_executable_file(const fs::path& path, std::string_view text) {
+static void write_executable_file(const fs::path &path, std::string_view text) {
   write_text_file(path, text);
   fs::permissions(path,
                   fs::perms::owner_read | fs::perms::owner_write |
@@ -180,7 +186,7 @@ static void write_executable_file(const fs::path& path, std::string_view text) {
                   fs::perm_options::replace);
 }
 
-static std::string read_text_file(const fs::path& path) {
+static std::string read_text_file(const fs::path &path) {
   std::ifstream in(path);
   REQUIRE(in.is_open());
   std::ostringstream out;
@@ -190,12 +196,14 @@ static std::string read_text_file(const fs::path& path) {
 
 static std::size_t count_occurrences(std::string_view haystack,
                                      std::string_view needle) {
-  if (needle.empty()) return 0;
+  if (needle.empty())
+    return 0;
   std::size_t count = 0;
   std::size_t pos = 0;
   for (;;) {
     pos = haystack.find(needle, pos);
-    if (pos == std::string_view::npos) return count;
+    if (pos == std::string_view::npos)
+      return count;
     ++count;
     pos += needle.size();
   }
@@ -205,56 +213,59 @@ static std::string extract_json_string_field(std::string_view json,
                                              std::string_view key) {
   const std::string marker = "\"" + std::string(key) + "\":\"";
   const std::size_t begin = json.find(marker);
-  if (begin == std::string_view::npos) return {};
+  if (begin == std::string_view::npos)
+    return {};
   const std::size_t value_begin = begin + marker.size();
   const std::size_t value_end = json.find('"', value_begin);
-  if (value_end == std::string_view::npos) return {};
+  if (value_end == std::string_view::npos)
+    return {};
   return std::string(json.substr(value_begin, value_end - value_begin));
 }
 
 template <typename Predicate>
-static command_result_t wait_for_command(const std::string& command,
-                                         Predicate&& predicate,
-                                         int timeout_ms = 10000,
-                                         int poll_ms = 100) {
+static command_result_t
+wait_for_command(const std::string &command, Predicate &&predicate,
+                 int timeout_ms = 10000, int poll_ms = 100) {
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   command_result_t last{};
   for (;;) {
     last = run_command(command);
-    if (predicate(last)) return last;
-    if (std::chrono::steady_clock::now() >= deadline) break;
+    if (predicate(last))
+      return last;
+    if (std::chrono::steady_clock::now() >= deadline)
+      break;
     std::this_thread::sleep_for(std::chrono::milliseconds(poll_ms));
   }
   return last;
 }
 
-static std::string reset_hashimyei_command(const fs::path& store_root,
-                                           const fs::path& catalog_path) {
+static std::string reset_hashimyei_command(const fs::path &store_root,
+                                           const fs::path &catalog_path) {
   std::ostringstream cmd;
   cmd << shell_quote(kHashimyeiMcpBin) << " --global-config "
       << shell_quote(kGlobalConfig) << " --store-root "
       << shell_quote(store_root.string()) << " --catalog "
-      << shell_quote(catalog_path.string()) << " --tool hero.hashimyei.reset_catalog"
+      << shell_quote(catalog_path.string())
+      << " --tool hero.hashimyei.reset_catalog"
       << " --args-json " << shell_quote(R"({"reingest":false})");
   return cmd.str();
 }
 
-static std::string reset_lattice_command(const fs::path& store_root,
-                                         const fs::path& catalog_path) {
+static std::string reset_lattice_command(const fs::path &store_root,
+                                         const fs::path &catalog_path) {
   std::ostringstream cmd;
   cmd << shell_quote(kLatticeMcpBin) << " --global-config "
       << shell_quote(kGlobalConfig) << " --store-root "
       << shell_quote(store_root.string()) << " --catalog "
-      << shell_quote(catalog_path.string())
-      << " --tool hero.lattice.refresh"
-      << " --args-json "
-      << shell_quote(R"({"reingest":false})");
+      << shell_quote(catalog_path.string()) << " --tool hero.lattice.refresh"
+      << " --args-json " << shell_quote(R"({"reingest":false})");
   return cmd.str();
 }
 
-static std::string call_removed_lattice_tool_command(
-    const fs::path& store_root, const fs::path& catalog_path) {
+static std::string
+call_removed_lattice_tool_command(const fs::path &store_root,
+                                  const fs::path &catalog_path) {
   std::ostringstream cmd;
   cmd << shell_quote(kLatticeMcpBin) << " --global-config "
       << shell_quote(kGlobalConfig) << " --store-root "
@@ -270,14 +281,16 @@ static void test_hashimyei_tools_list_surface() {
   const fs::path catalog = store_root / "hashimyei_catalog.idydb";
   fs::create_directories(store_root);
 
-  const command_result_t result = run_command(
-      tools_list_command(kHashimyeiMcpBin, store_root, catalog));
+  const command_result_t result =
+      run_command(tools_list_command(kHashimyeiMcpBin, store_root, catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"hero.hashimyei.list\""));
-  REQUIRE(contains(result.output, "\"hero.hashimyei.get_founding_dsl_bundle\""));
+  REQUIRE(
+      contains(result.output, "\"hero.hashimyei.get_founding_dsl_bundle\""));
   REQUIRE(contains(result.output, "\"hero.hashimyei.update_rank\""));
-  REQUIRE(contains(result.output,
-                   "\"required\":[\"family\",\"contract_hash\",\"ordered_hashimyeis\"]"));
+  REQUIRE(contains(
+      result.output,
+      "\"required\":[\"family\",\"contract_hash\",\"ordered_hashimyeis\"]"));
   REQUIRE(contains(result.output, "\"hero.hashimyei.reset_catalog\""));
   REQUIRE(!contains(result.output, "\"anyOf\":"));
   REQUIRE(!contains(result.output, "\"oneOf\":"));
@@ -292,8 +305,8 @@ static void test_lattice_tools_list_surface() {
   const fs::path catalog = store_root / "lattice_catalog.idydb";
   fs::create_directories(store_root);
 
-  const command_result_t result = run_command(
-      tools_list_command(kLatticeMcpBin, store_root, catalog));
+  const command_result_t result =
+      run_command(tools_list_command(kLatticeMcpBin, store_root, catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"hero.lattice.list_facts\""));
   REQUIRE(contains(result.output, "\"hero.lattice.get_fact\""));
@@ -366,8 +379,8 @@ static void test_hashimyei_reset_catalog_smoke() {
   const fs::path catalog = store_root / "hashimyei_catalog.idydb";
   fs::create_directories(store_root);
 
-  const command_result_t result = run_command(
-      reset_hashimyei_command(store_root, catalog));
+  const command_result_t result =
+      run_command(reset_hashimyei_command(store_root, catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"isError\":false"));
   REQUIRE(contains(result.output, "\"component_count\":"));
@@ -397,8 +410,8 @@ static void test_lattice_reset_catalog_smoke() {
   const fs::path catalog = store_root / "lattice_catalog.idydb";
   fs::create_directories(store_root);
 
-  const command_result_t result = run_command(
-      reset_lattice_command(store_root, catalog));
+  const command_result_t result =
+      run_command(reset_lattice_command(store_root, catalog));
   REQUIRE(result.exit_code == 0);
   REQUIRE(contains(result.output, "\"isError\":false"));
   REQUIRE(contains(result.output, "\"runtime_report_fragment_count\":"));
@@ -411,8 +424,8 @@ static void test_lattice_removed_tool_rejected() {
   const fs::path catalog = store_root / "lattice_catalog.idydb";
   fs::create_directories(store_root);
 
-  const command_result_t result = run_command(
-      call_removed_lattice_tool_command(store_root, catalog));
+  const command_result_t result =
+      run_command(call_removed_lattice_tool_command(store_root, catalog));
   REQUIRE(result.exit_code != 0);
   REQUIRE(contains(result.output, "unknown tool: hero.lattice.matrix"));
 }
@@ -427,22 +440,28 @@ static void test_marshal_session_continue_smoke() {
   const fs::path codex_stub = cfg_dir / "codex_stub.sh";
   const fs::path human_identities = cfg_dir / "human_operator_identities";
   const fs::path source_objective_dsl =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/vicreg.solo.train.marshal.dsl";
+      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "vicreg.solo.train.marshal.dsl";
 
   write_text_file(human_identities, "# smoke-only\n");
-  const std::string codex_stub_text =
-      std::string(
-          R"CODEX(#!/usr/bin/env bash
+  const std::string codex_stub_text = std::string(
+                                          R"CODEX(#!/usr/bin/env bash
 set -euo pipefail
 state_file="$(dirname "$0")/codex_stub.state"
 decision_path=""
 schema_path=""
 resume_mode=0
-expect_model="gpt-5.3-codex-spark"
-expect_effort='model_reasoning_effort="xhigh"'
+expect_model="gpt-5.4-mini"
+expect_effort='model_reasoning_effort="high"'
+expect_runtime='mcp_servers.hero-runtime.command="/bin/true"'
+expect_config='mcp_servers.hero-config.command="/bin/echo"'
+expect_lattice='mcp_servers.hero-lattice.command="/bin/cat"'
 have_model=0
 have_effort=0
 have_json=0
+have_runtime=0
+have_config=0
+have_lattice=0
 for ((i=1;i<=$#;i++)); do
   arg="${!i}"
   if [[ "$arg" == "resume" ]]; then resume_mode=1; fi
@@ -468,14 +487,23 @@ for ((i=1;i<=$#;i++)); do
     if [[ "${!j}" == "$expect_effort" ]]; then
       have_effort=1
     fi
+    if [[ "${!j}" == "$expect_runtime" ]]; then
+      have_runtime=1
+    fi
+    if [[ "${!j}" == "$expect_config" ]]; then
+      have_config=1
+    fi
+    if [[ "${!j}" == "$expect_lattice" ]]; then
+      have_lattice=1
+    fi
   fi
 done
 if [[ -z "$decision_path" ]]; then
   echo "missing -o decision path" >&2
   exit 2
 fi
-if [[ "$have_model" != "1" || "$have_effort" != "1" ]]; then
-  echo "missing codex model/effort arguments" >&2
+if [[ "$have_model" != "1" || "$have_effort" != "1" || "$have_runtime" != "1" || "$have_config" != "1" || "$have_lattice" != "1" ]]; then
+  echo "missing pinned codex or MCP command arguments" >&2
   exit 4
 fi
 if [[ "$have_json" != "1" ]]; then
@@ -486,9 +514,8 @@ if [[ -n "$schema_path" ]] && grep -Eq ',[[:space:]]*[}\]]' "$schema_path"; then
   echo "invalid output schema json" >&2
   exit 4
 fi
-printf 'session id: %s\n' ")CODEX") +
-      kSmokeCodexSessionId +
-      R"CODEX(" >&2
+printf 'session id: %s\n' ")CODEX") + kSmokeCodexSessionId +
+                                      R"CODEX(" >&2
 step=0
 if [[ -f "$state_file" ]]; then
   step="$(cat "$state_file")"
@@ -509,6 +536,7 @@ JSON
   exit 0
 fi
 if [[ "$resume_mode" == "1" && "$step" == "2" ]]; then
+  sleep 2
   cat > "$decision_path" <<'JSON'
 {"intent":"complete","reason":"objective satisfied after continuation","memory_note":"completed after continuation"}
 JSON
@@ -523,22 +551,29 @@ exit 3
       global_config,
       std::string("[GENERAL]\n") + "runtime_root=" + runtime_root.string() +
           "\nrepo_root=/cuwacunu\n"
-          "default_iitepi_campaign_dsl_filename=/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl\n"
+          "default_iitepi_campaign_dsl_filename=/cuwacunu/src/config/"
+          "instructions/defaults/default.iitepi.campaign.dsl\n"
           "\n[BNF]\n"
-          "iitepi_campaign_grammar_filename=/cuwacunu/src/config/bnf/iitepi.campaign.bnf\n"
-          "marshal_objective_grammar_filename=/cuwacunu/src/config/bnf/objective.marshal.bnf\n"
+          "iitepi_campaign_grammar_filename=/cuwacunu/src/config/bnf/"
+          "iitepi.campaign.bnf\n"
+          "marshal_objective_grammar_filename=/cuwacunu/src/config/bnf/"
+          "objective.marshal.bnf\n"
           "\n[REAL_HERO]\n"
-          "marshal_hero_dsl_filename=" + marshal_dsl.string() + "\n" +
+          "marshal_hero_dsl_filename=" +
+          marshal_dsl.string() + "\n" +
           "human_hero_dsl_filename=" + human_dsl.string() + "\n");
   write_text_file(
       marshal_dsl,
       std::string("runtime_hero_binary:path = /bin/true\n") +
-          "config_hero_binary:path = /bin/true\n"
-          "lattice_hero_binary:path = /bin/true\n"
-          "human_hero_binary:path = /cuwacunu/.build/hero/hero_human_mcp\n"
-          "human_operator_identities:path = " + human_identities.string() + "\n" +
+          "config_hero_binary:path = /bin/echo\n"
+          "lattice_hero_binary:path = /bin/cat\n"
+          "human_hero_binary:path = /cuwacunu/.build/hero/hero_human.mcp\n"
+          "human_operator_identities:path = " +
+          human_identities.string() + "\n" +
           "config_scope_root:path = /cuwacunu/src/config\n"
-          "marshal_codex_binary:path = " + codex_stub.string() + "\n"
+          "marshal_codex_binary:path = " +
+          codex_stub.string() +
+          "\n"
           "marshal_codex_model:str = gpt-5.3-codex-spark\n"
           "marshal_codex_reasoning_effort:str = xhigh\n"
           "tail_default_lines(1,+inf):int = 20\n"
@@ -547,12 +582,14 @@ exit 3
           "marshal_max_campaign_launches(1,+inf):int = 2\n");
   write_text_file(
       human_dsl,
-      "marshal_hero_binary:path = /cuwacunu/.build/hero/hero_marshal_mcp\n"
+      "marshal_hero_binary:path = /cuwacunu/.build/hero/hero_marshal.mcp\n"
       "operator_id:str = smoke@local\n"
       "operator_signing_ssh_identity:path = /tmp/unused-human-identity\n");
   const std::string start_args =
       std::string("{\"marshal_objective_dsl_path\":\"") +
-      source_objective_dsl.string() + "\"}";
+      source_objective_dsl.string() +
+      "\",\"marshal_codex_model\":\"gpt-5.4-mini\","
+      "\"marshal_codex_reasoning_effort\":\"high\"}";
   const command_result_t start = run_command(
       direct_tool_command(kMarshalMcpBin, global_config, marshal_dsl,
                           "hero.marshal.start_session", start_args));
@@ -567,9 +604,8 @@ exit 3
   const std::string get_command =
       direct_tool_command(kMarshalMcpBin, global_config, marshal_dsl,
                           "hero.marshal.get_session", get_args);
-  const command_result_t paused = wait_for_command(
-      get_command,
-      [](const command_result_t& result) {
+  const command_result_t paused =
+      wait_for_command(get_command, [](const command_result_t &result) {
         return result.exit_code == 0 &&
                contains(result.output, "\"phase\":\"paused\"") &&
                contains(result.output, "\"pause_kind\":\"clarification\"");
@@ -578,26 +614,27 @@ exit 3
   const std::string paused_codex_session =
       extract_json_string_field(paused.output, "codex_session_id");
   REQUIRE(paused_codex_session == kSmokeCodexSessionId);
-  REQUIRE(extract_json_string_field(paused.output, "resolved_marshal_codex_model") ==
-          "gpt-5.3-codex-spark");
+  REQUIRE(extract_json_string_field(
+              paused.output, "resolved_marshal_codex_model") == "gpt-5.4-mini");
   REQUIRE(extract_json_string_field(
               paused.output, "resolved_marshal_codex_reasoning_effort") ==
-          "xhigh");
+          "high");
 
-  const command_result_t pending_requests = run_command(
-      direct_tool_command(kHumanMcpBin, global_config, human_dsl,
-                          "hero.human.list_requests", "{}"));
+  const command_result_t pending_requests =
+      run_command(direct_tool_command(kHumanMcpBin, global_config, human_dsl,
+                                      "hero.human.list_requests", "{}"));
   REQUIRE(pending_requests.exit_code == 0);
   REQUIRE(contains(pending_requests.output, "\"isError\":false"));
   REQUIRE(contains(pending_requests.output, session_id));
 
-  const command_result_t human_request = run_command(
-      direct_tool_command(kHumanMcpBin, global_config, human_dsl,
-                          "hero.human.get_request", get_args));
+  const command_result_t human_request =
+      run_command(direct_tool_command(kHumanMcpBin, global_config, human_dsl,
+                                      "hero.human.get_request", get_args));
   REQUIRE(human_request.exit_code == 0);
   REQUIRE(contains(human_request.output, "\"isError\":false"));
-  REQUIRE(contains(human_request.output,
-                   std::string("\"marshal_session_id\":\"") + session_id + "\""));
+  REQUIRE(
+      contains(human_request.output,
+               std::string("\"marshal_session_id\":\"") + session_id + "\""));
 
   const std::string answer_args =
       std::string("{\"marshal_session_id\":\"") + session_id +
@@ -608,9 +645,8 @@ exit 3
   REQUIRE(answered.exit_code == 0);
   REQUIRE(contains(answered.output, "\"isError\":false"));
 
-  const command_result_t idled = wait_for_command(
-      get_command,
-      [](const command_result_t& result) {
+  const command_result_t idled =
+      wait_for_command(get_command, [](const command_result_t &result) {
         return result.exit_code == 0 &&
                contains(result.output, "\"phase\":\"idle\"") &&
                contains(result.output, "\"finish_reason\":\"success\"");
@@ -621,32 +657,49 @@ exit 3
       extract_json_string_field(idled.output, "codex_session_id");
   REQUIRE(idled_codex_session == paused_codex_session);
 
-  const command_result_t pending_summaries = run_command(
-      direct_tool_command(kHumanMcpBin, global_config, human_dsl,
-                          "hero.human.list_summaries", "{}"));
+  const command_result_t pending_summaries =
+      run_command(direct_tool_command(kHumanMcpBin, global_config, human_dsl,
+                                      "hero.human.list_summaries", "{}"));
   REQUIRE(pending_summaries.exit_code == 0);
   REQUIRE(contains(pending_summaries.output, "\"isError\":false"));
   REQUIRE(contains(pending_summaries.output, session_id));
 
-  const command_result_t human_get = run_command(
-      direct_tool_command(kHumanMcpBin, global_config, human_dsl,
-                          "hero.human.get_summary", get_args));
+  const command_result_t human_get =
+      run_command(direct_tool_command(kHumanMcpBin, global_config, human_dsl,
+                                      "hero.human.get_summary", get_args));
   REQUIRE(human_get.exit_code == 0);
   REQUIRE(contains(human_get.output, "\"isError\":false"));
   REQUIRE(contains(human_get.output, "\"phase\":\"idle\""));
 
-  const std::string continue_args =
-      std::string("{\"marshal_session_id\":\"") + session_id +
-      "\",\"instruction\":\"Train for 10 more epochs from the latest checkpoint.\"}";
+  write_text_file(
+      marshal_dsl,
+      std::string("runtime_hero_binary:path = /bin/false\n") +
+          "config_hero_binary:path = /bin/sh\n"
+          "lattice_hero_binary:path = /usr/bin/env\n"
+          "human_hero_binary:path = /cuwacunu/.build/hero/hero_human.mcp\n"
+          "human_operator_identities:path = " +
+          human_identities.string() + "\n" +
+          "config_scope_root:path = /cuwacunu/src/config\n"
+          "marshal_codex_binary:path = /bin/false\n"
+          "marshal_codex_model:str = broken-model\n"
+          "marshal_codex_reasoning_effort:str = low\n"
+          "tail_default_lines(1,+inf):int = 3\n"
+          "poll_interval_ms(100,+inf):int = 9000\n"
+          "marshal_codex_timeout_sec(1,+inf):int = 1\n"
+          "marshal_max_campaign_launches(1,+inf):int = 9\n");
+
+  const std::string continue_args = std::string("{\"marshal_session_id\":\"") +
+                                    session_id +
+                                    "\",\"instruction\":\"Train for 10 more "
+                                    "epochs from the latest checkpoint.\"}";
   const command_result_t continued = run_command(
       direct_tool_command(kMarshalMcpBin, global_config, marshal_dsl,
                           "hero.marshal.continue_session", continue_args));
   REQUIRE(continued.exit_code == 0);
   REQUIRE(contains(continued.output, "\"isError\":false"));
 
-  const command_result_t idled_again = wait_for_command(
-      get_command,
-      [](const command_result_t& result) {
+  const command_result_t idled_again =
+      wait_for_command(get_command, [](const command_result_t &result) {
         return result.exit_code == 0 &&
                contains(result.output, "\"phase\":\"idle\"") &&
                contains(result.output, "\"finish_reason\":\"success\"") &&
@@ -658,21 +711,37 @@ exit 3
   REQUIRE(continued_codex_session == idled_codex_session);
 
   const fs::path session_root = runtime_root / ".marshal_hero" / session_id;
+  const fs::path hero_marshal_dsl = session_root / "hero.marshal.dsl";
   const fs::path codex_stdout_log =
       session_root / "logs" / "codex.session.stdout.jsonl";
   const fs::path codex_stderr_log =
       session_root / "logs" / "codex.session.stderr.jsonl";
+  REQUIRE(fs::exists(hero_marshal_dsl));
+  REQUIRE(contains(read_text_file(hero_marshal_dsl), "repo_root:path = "));
+  REQUIRE(contains(read_text_file(hero_marshal_dsl),
+                   "runtime_hero_binary:path = /bin/true"));
+  REQUIRE(contains(read_text_file(hero_marshal_dsl),
+                   "config_hero_binary:path = /bin/echo"));
+  REQUIRE(contains(read_text_file(hero_marshal_dsl),
+                   "lattice_hero_binary:path = /bin/cat"));
+  REQUIRE(contains(read_text_file(hero_marshal_dsl),
+                   "marshal_codex_model:str = gpt-5.4-mini"));
+  REQUIRE(contains(read_text_file(hero_marshal_dsl),
+                   "marshal_codex_reasoning_effort:str = high"));
+  REQUIRE(contains(read_text_file(hero_marshal_dsl),
+                   "marshal_codex_timeout_sec(1,+inf):int = 5"));
   REQUIRE(fs::exists(codex_stdout_log));
   REQUIRE(fs::exists(codex_stderr_log));
   REQUIRE(!fs::exists(session_root / "logs" / "codex.session.log"));
-  REQUIRE(contains(read_text_file(codex_stdout_log), "\"type\":\"stub_event\""));
+  REQUIRE(
+      contains(read_text_file(codex_stdout_log), "\"type\":\"stub_event\""));
   REQUIRE(contains(read_text_file(codex_stderr_log), "\"stream\":\"stderr\""));
   REQUIRE(contains(read_text_file(codex_stderr_log), kSmokeCodexSessionId));
   const std::string events_text =
       read_text_file(session_root / "marshal.session.events.jsonl");
   REQUIRE(contains(events_text, "\"event\":\"session_continued\""));
-  REQUIRE(count_occurrences(events_text, "\"event\":\"input_checkpoint_staged\"") >=
-          3);
+  REQUIRE(count_occurrences(events_text,
+                            "\"event\":\"input_checkpoint_staged\"") >= 3);
 
   const std::string memory_text =
       read_text_file(session_root / "marshal.session.memory.md");
@@ -690,12 +759,12 @@ static void test_marshal_session_failed_checkpoint_idles_and_continues() {
   const fs::path codex_stub = cfg_dir / "codex_stub.sh";
   const fs::path human_identities = cfg_dir / "human_operator_identities";
   const fs::path source_objective_dsl =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/vicreg.solo.train.marshal.dsl";
+      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "vicreg.solo.train.marshal.dsl";
 
   write_text_file(human_identities, "# smoke-only\n");
-  const std::string codex_stub_text =
-      std::string(
-          R"CODEX(#!/usr/bin/env bash
+  const std::string codex_stub_text = std::string(
+                                          R"CODEX(#!/usr/bin/env bash
 set -euo pipefail
 state_file="$(dirname "$0")/codex_stub.state"
 decision_path=""
@@ -740,9 +809,8 @@ if [[ "$have_json" != "1" ]]; then
   echo "missing codex --json argument" >&2
   exit 4
 fi
-printf 'session id: %s\n' ")CODEX") +
-      kSmokeCodexSessionId +
-      R"CODEX(" >&2
+printf 'session id: %s\n' ")CODEX") + kSmokeCodexSessionId +
+                                      R"CODEX(" >&2
 step=0
 if [[ -f "$state_file" ]]; then
   step="$(cat "$state_file")"
@@ -774,22 +842,29 @@ exit 3
       global_config,
       std::string("[GENERAL]\n") + "runtime_root=" + runtime_root.string() +
           "\nrepo_root=/cuwacunu\n"
-          "default_iitepi_campaign_dsl_filename=/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl\n"
+          "default_iitepi_campaign_dsl_filename=/cuwacunu/src/config/"
+          "instructions/defaults/default.iitepi.campaign.dsl\n"
           "\n[BNF]\n"
-          "iitepi_campaign_grammar_filename=/cuwacunu/src/config/bnf/iitepi.campaign.bnf\n"
-          "marshal_objective_grammar_filename=/cuwacunu/src/config/bnf/objective.marshal.bnf\n"
+          "iitepi_campaign_grammar_filename=/cuwacunu/src/config/bnf/"
+          "iitepi.campaign.bnf\n"
+          "marshal_objective_grammar_filename=/cuwacunu/src/config/bnf/"
+          "objective.marshal.bnf\n"
           "\n[REAL_HERO]\n"
-          "marshal_hero_dsl_filename=" + marshal_dsl.string() + "\n" +
+          "marshal_hero_dsl_filename=" +
+          marshal_dsl.string() + "\n" +
           "human_hero_dsl_filename=" + human_dsl.string() + "\n");
   write_text_file(
       marshal_dsl,
       std::string("runtime_hero_binary:path = /bin/true\n") +
           "config_hero_binary:path = /bin/true\n"
           "lattice_hero_binary:path = /bin/true\n"
-          "human_hero_binary:path = /cuwacunu/.build/hero/hero_human_mcp\n"
-          "human_operator_identities:path = " + human_identities.string() + "\n" +
+          "human_hero_binary:path = /cuwacunu/.build/hero/hero_human.mcp\n"
+          "human_operator_identities:path = " +
+          human_identities.string() + "\n" +
           "config_scope_root:path = /cuwacunu/src/config\n"
-          "marshal_codex_binary:path = " + codex_stub.string() + "\n"
+          "marshal_codex_binary:path = " +
+          codex_stub.string() +
+          "\n"
           "marshal_codex_model:str = gpt-5.3-codex-spark\n"
           "marshal_codex_reasoning_effort:str = xhigh\n"
           "tail_default_lines(1,+inf):int = 20\n"
@@ -798,7 +873,7 @@ exit 3
           "marshal_max_campaign_launches(1,+inf):int = 2\n");
   write_text_file(
       human_dsl,
-      "marshal_hero_binary:path = /cuwacunu/.build/hero/hero_marshal_mcp\n"
+      "marshal_hero_binary:path = /cuwacunu/.build/hero/hero_marshal.mcp\n"
       "operator_id:str = smoke@local\n"
       "operator_signing_ssh_identity:path = /tmp/unused-human-identity\n");
 
@@ -819,9 +894,8 @@ exit 3
   const std::string get_command =
       direct_tool_command(kMarshalMcpBin, global_config, marshal_dsl,
                           "hero.marshal.get_session", get_args);
-  const command_result_t idled_failed = wait_for_command(
-      get_command,
-      [](const command_result_t& result) {
+  const command_result_t idled_failed =
+      wait_for_command(get_command, [](const command_result_t &result) {
         return result.exit_code == 0 &&
                contains(result.output, "\"phase\":\"idle\"") &&
                contains(result.output, "\"finish_reason\":\"failed\"") &&
@@ -830,12 +904,12 @@ exit 3
   REQUIRE(idled_failed.exit_code == 0);
   REQUIRE(contains(idled_failed.output,
                    "\"last_intent_kind\":\"launch_campaign\""));
-  const std::string failed_intent_path =
-      extract_json_string_field(idled_failed.output,
-                                "last_intent_checkpoint_path");
+  const std::string failed_intent_path = extract_json_string_field(
+      idled_failed.output, "last_intent_checkpoint_path");
   REQUIRE(!failed_intent_path.empty());
   REQUIRE(contains(idled_failed.output,
-                   "launch.requires_objective_mutation=true but no objective-local mutation artifact was recorded"));
+                   "launch.requires_objective_mutation=true but no "
+                   "objective-local mutation artifact was recorded"));
   REQUIRE(contains(idled_failed.output,
                    "session parked idle so the operator can continue"));
 
@@ -847,7 +921,8 @@ exit 3
   REQUIRE(fs::exists(codex_stdout_log));
   REQUIRE(fs::exists(codex_stderr_log));
   REQUIRE(!fs::exists(session_root / "logs" / "codex.session.log"));
-  REQUIRE(contains(read_text_file(codex_stdout_log), "\"type\":\"stub_event\""));
+  REQUIRE(
+      contains(read_text_file(codex_stdout_log), "\"type\":\"stub_event\""));
   REQUIRE(contains(read_text_file(codex_stderr_log), "\"stream\":\"stderr\""));
   REQUIRE(contains(read_text_file(codex_stderr_log), kSmokeCodexSessionId));
   const std::string summary_text =
@@ -858,16 +933,16 @@ exit 3
 
   const std::string continue_args =
       std::string("{\"marshal_session_id\":\"") + session_id +
-      "\",\"instruction\":\"Continue after reviewing the failed mutation checkpoint.\"}";
+      "\",\"instruction\":\"Continue after reviewing the failed mutation "
+      "checkpoint.\"}";
   const command_result_t continued = run_command(
       direct_tool_command(kMarshalMcpBin, global_config, marshal_dsl,
                           "hero.marshal.continue_session", continue_args));
   REQUIRE(continued.exit_code == 0);
   REQUIRE(contains(continued.output, "\"isError\":false"));
 
-  const command_result_t idled_success = wait_for_command(
-      get_command,
-      [](const command_result_t& result) {
+  const command_result_t idled_success =
+      wait_for_command(get_command, [](const command_result_t &result) {
         return result.exit_code == 0 &&
                contains(result.output, "\"phase\":\"idle\"") &&
                contains(result.output, "\"finish_reason\":\"success\"") &&
@@ -875,7 +950,8 @@ exit 3
       });
   REQUIRE(idled_success.exit_code == 0);
   REQUIRE(contains(idled_success.output,
-                   "codex resume degraded: checkpoint=2 kind=resume_command_failed fallback=fresh_checkpoint"));
+                   "codex resume degraded: checkpoint=2 "
+                   "kind=resume_command_failed fallback=fresh_checkpoint"));
   REQUIRE(contains(idled_success.output, "resume_timeout=true"));
 
   const std::string events_text =

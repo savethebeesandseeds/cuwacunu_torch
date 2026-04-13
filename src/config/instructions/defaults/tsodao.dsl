@@ -2,14 +2,15 @@
   tsodao.dsl
   ==========
   First TSODAO component:
-    a public/private surface guard for authored material that should stay local
-    in plaintext while the public repo tracks only an encrypted archive.
+    Public/private surface guard for authored material that must stay local in
+    plaintext while the public repo tracks only an encrypted archive.
 
-  Current surface:
+  Current mapping:
     - hidden_root points at src/config/instructions/optim
-    - hidden_archive is the tracked encrypted backup
+    - hidden_archive is the tracked encrypted backup for that surface
     - public_keep_path stays visible in the public repo so collaborators know
       the surface exists and how to restore it
+    - local_state_path stores local TSODAO bookkeeping outside the repo
 */
 
 visibility_mode[recipient|symmetric|manual|disabled]:str = recipient

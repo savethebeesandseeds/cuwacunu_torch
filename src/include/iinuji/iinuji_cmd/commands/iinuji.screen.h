@@ -10,7 +10,7 @@ struct IinujiScreen {
   CmdState &state;
 
   void home() const noexcept { state.screen = ScreenMode::Home; }
-  void human() const noexcept { state.screen = ScreenMode::Human; }
+  void inbox() const noexcept { state.screen = ScreenMode::Inbox; }
   void runtime() const noexcept { state.screen = ScreenMode::Runtime; }
   void lattice() const noexcept { state.screen = ScreenMode::Lattice; }
   void logs() const noexcept {

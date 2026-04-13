@@ -3,62 +3,54 @@
 // Included inside struct IinujiPathHandlers.
 
 template <class PushInfo, class PushWarn, class PushErr, class AppendLog>
-bool dispatch_config_call(CallHandlerId call_id,
-                          PushInfo&& push_info,
-                          PushWarn&& push_warn,
-                          PushErr&& push_err,
-                          AppendLog&& append_log) const {
+bool dispatch_config_call(CallHandlerId call_id, PushInfo &&push_info,
+                          PushWarn &&push_warn, PushErr &&push_err,
+                          AppendLog &&append_log) const {
   (void)push_err;
   switch (call_id) {
-    case CallHandlerId::ConfigFiles:
-      if (!config_has_files(state)) {
-        push_warn("no config files");
-        return true;
-      }
-      for (std::size_t i = 0; i < state.config.files.size(); ++i) {
-        const auto& file = state.config.files[i];
-        const std::string badge =
-            !file.ok ? "err"
-                     : (file.editable ? "rw"
-                                      : (file.replace_supported && !file.write_allowed
-                                             ? "gate"
-                                             : "ro"));
-        append_log(
-            "[" + std::to_string(i + 1) + "] " + file.family_id + " "
-                + file.relative_path + " [" + badge + "]",
-            "files",
-            "#d0d0d0");
-      }
-      screen.config();
+  case CallHandlerId::ConfigFiles:
+    if (!config_has_files(state)) {
+      push_warn("no config files");
       return true;
-    case CallHandlerId::ConfigFileNext:
-      if (!config_has_files(state)) {
-        push_warn("no config files");
-        return true;
-      }
-      select_next_config_file(state);
-      screen.config();
-      push_info("selected file=" + std::to_string(state.config.selected_file + 1));
+    }
+    for (std::size_t i = 0; i < state.config.files.size(); ++i) {
+      const auto &file = state.config.files[i];
+      append_log("[" + std::to_string(i + 1) + "] " + file.family_id + " " +
+                     file.relative_path + " [" + config_access_indicator(file) +
+                     "]",
+                 "files", "#d0d0d0");
+    }
+    screen.config();
+    return true;
+  case CallHandlerId::ConfigFileNext:
+    if (!config_has_files(state)) {
+      push_warn("no config files");
       return true;
-    case CallHandlerId::ConfigFilePrev:
-      if (!config_has_files(state)) {
-        push_warn("no config files");
-        return true;
-      }
-      select_prev_config_file(state);
-      screen.config();
-      push_info("selected file=" + std::to_string(state.config.selected_file + 1));
+    }
+    select_next_config_file(state);
+    screen.config();
+    push_info("selected file=" +
+              std::to_string(state.config.selected_file + 1));
+    return true;
+  case CallHandlerId::ConfigFilePrev:
+    if (!config_has_files(state)) {
+      push_warn("no config files");
       return true;
-    default:
-      return false;
+    }
+    select_prev_config_file(state);
+    screen.config();
+    push_info("selected file=" +
+              std::to_string(state.config.selected_file + 1));
+    return true;
+  default:
+    return false;
   }
 }
 
 template <class PushInfo, class PushWarn, class PushErr>
-bool dispatch_config_file_index(const cuwacunu::camahjucunu::canonical_path_t& path,
-                                PushInfo&& push_info,
-                                PushWarn&& push_warn,
-                                PushErr&& push_err) const {
+bool dispatch_config_file_index(
+    const cuwacunu::camahjucunu::canonical_path_t &path, PushInfo &&push_info,
+    PushWarn &&push_warn, PushErr &&push_err) const {
   if (!config_has_files(state)) {
     push_warn("no config files");
     return true;
@@ -81,10 +73,9 @@ bool dispatch_config_file_index(const cuwacunu::camahjucunu::canonical_path_t& p
 }
 
 template <class PushInfo, class PushWarn, class PushErr>
-bool dispatch_config_file_id(const cuwacunu::camahjucunu::canonical_path_t& path,
-                             PushInfo&& push_info,
-                             PushWarn&& push_warn,
-                             PushErr&& push_err) const {
+bool dispatch_config_file_id(
+    const cuwacunu::camahjucunu::canonical_path_t &path, PushInfo &&push_info,
+    PushWarn &&push_warn, PushErr &&push_err) const {
   if (!config_has_files(state)) {
     push_warn("no config files");
     return true;

@@ -5,7 +5,7 @@
 #include <string>
 
 #include "iinuji/iinuji_cmd/views/config/state.h"
-#include "iinuji/iinuji_cmd/views/human/state.h"
+#include "iinuji/iinuji_cmd/views/inbox/state.h"
 #include "iinuji/iinuji_cmd/views/lattice/state.h"
 #include "iinuji/iinuji_cmd/views/logs/state.h"
 #include "iinuji/iinuji_cmd/views/runtime/state.h"
@@ -16,7 +16,7 @@ namespace iinuji_cmd {
 
 enum class ScreenMode : std::uint8_t {
   Home = 0,
-  Human = 1,
+  Inbox = 1,
   Runtime = 2,
   Lattice = 3,
   ShellLogs = 4,
@@ -46,7 +46,7 @@ inline WorkspaceZoomSlot workspace_zoom_slot_for_screen(ScreenMode screen) {
   case ScreenMode::ShellLogs:
     return WorkspaceZoomSlot::LogsStream;
   case ScreenMode::Home:
-  case ScreenMode::Human:
+  case ScreenMode::Inbox:
   case ScreenMode::Lattice:
   case ScreenMode::Config:
     break;
@@ -71,7 +71,7 @@ struct CmdState {
   int help_scroll_x{0};
   WorkspaceState workspace{};
 
-  HumanState human{};
+  InboxState inbox{};
   RuntimeState runtime{};
   LatticeState lattice{};
   ShellLogsState shell_logs{};

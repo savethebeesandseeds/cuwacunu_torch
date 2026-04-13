@@ -63,7 +63,7 @@ MAKE_TARGETS="piaabo camahjucunu" ./setup.sh --verbose
 ```bash
 source ~/.bashrc
 command -v tsodao
-command -v hero_config_mcp
+command -v hero_config.mcp
 command -v iinuji_cmd
 nvcc --version
 nvidia-smi

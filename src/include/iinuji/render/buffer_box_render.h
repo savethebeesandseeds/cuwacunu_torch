@@ -18,6 +18,8 @@ inline void render_buffer(const iinuji_object_t& obj) {
 
   // Base/background fill uses the widget default colors.
   short base_pair = (short)get_color_pair(obj.style.label_color, obj.style.background_color);
+  if (base_pair == 0)
+    base_pair = (short)get_color_pair("white", obj.style.background_color);
   R->fillRect(r.y, r.x, r.h, r.w, base_pair);
 
   auto bb = std::dynamic_pointer_cast<bufferBox_data_t>(obj.data);
@@ -49,7 +51,7 @@ inline void render_buffer(const iinuji_object_t& obj) {
   auto push_wrapped = [&](const buffer_line_t& L){
     std::string prefix;
     if (!L.label.empty()) prefix = "[" + L.label + "] ";
-    const int prefix_len = (int)prefix.size();
+    const int prefix_len = cuwacunu::iinuji::utf8_display_width(prefix);
     const int avail = std::max(1, W - prefix_len);
 
     short base_pair_line = line_pair_for(L);
@@ -79,9 +81,6 @@ inline void render_buffer(const iinuji_object_t& obj) {
 
       // append payload segments
       for (const auto& seg : payload_rows[i].segs) {
-        ansi::row_t tmp;
-        tmp.segs.push_back(seg);
-        tmp.len = (int)seg.text.size();
         // merge: render_row() is segment-based so we can just push segs
         if (!full.segs.empty()) {
           auto& last = full.segs.back();
@@ -95,9 +94,9 @@ inline void render_buffer(const iinuji_object_t& obj) {
         }
       }
 
-      // Clamp visible len (best-effort; segment lengths are ASCII)
+      // Track visible width in terminal cells, not bytes.
       int len = 0;
-      for (const auto& s : full.segs) len += (int)s.text.size();
+      for (const auto& s : full.segs) len += cuwacunu::iinuji::utf8_display_width(s.text);
       full.len = len;
 
       vis_row_t vr;

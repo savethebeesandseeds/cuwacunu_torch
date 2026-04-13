@@ -4,8 +4,8 @@
 
 HERO_MARSHAL_TOOL(
     "hero.marshal.start_session",
-    "Start a detached Marshal Hero session from the selected marshal.objective.dsl; Marshal Hero owns session checkpoints and continuation while Runtime Hero remains the campaign executor",
-    "{\"type\":\"object\",\"properties\":{\"marshal_objective_dsl_path\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+    "Start a detached Marshal Hero session from the selected marshal.objective.dsl; optional marshal_codex_model and marshal_codex_reasoning_effort override the defaults for this session only while Runtime Hero remains the campaign executor",
+    "{\"type\":\"object\",\"properties\":{\"marshal_objective_dsl_path\":{\"type\":\"string\"},\"marshal_codex_model\":{\"type\":\"string\"},\"marshal_codex_reasoning_effort\":{\"type\":\"string\"}},\"additionalProperties\":false}",
     handle_tool_start_session)
 HERO_MARSHAL_TOOL(
     "hero.marshal.list_sessions",

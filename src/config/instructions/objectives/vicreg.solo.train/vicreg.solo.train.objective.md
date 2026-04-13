@@ -1,27 +1,39 @@
-You are tasked with training the frozen optimized VICReg bundle on BTCUSDT
-only.
+You are tasked with training and selecting the best BTCUSDT-only VICReg
+jkimyei policy.
 
 Objective identity:
 - This objective is `vicreg.solo.train`.
 
 Current intent:
-- This is a BTCUSDT-only training objective, not an architecture search.
-- The frozen truth source lives under `../../optim/` and must stay frozen.
-- You can create/modify dsl files inside the objective folder you need, modify these .dsl as you need.
+- This is a BTCUSDT-only training-policy search over objective-local
+  `.jkimyei` settings, not an architecture search.
+- The frozen architecture, dock, and contract truth source live under
+  `../../optim/` and must stay frozen during the search.
 - Use the objective-local campaign, waves, wrapper, and jkimyei files as the
-  only ordinary tuning surface.
-- Treat the current `0x00FF` slot as the working continuation candidate for one
-  last promotion-biased pass rather than restarting from scratch.
-- The practical acceptance gate is downstream engine usefulness after
-  promotion; representation-side reports are supporting evidence only for this
-  final round.
+  ordinary tuning surface, with `tsi.wikimyei.representation.vicreg.jkimyei.dsl`
+  as the primary mutation surface.
+- The earlier "one last promotion-biased continuation on `0x00FF`" framing is
+  stale for this objective revision. Do not treat the current bundle as a
+  single unchanged final pass.
+- Keep `0x00FF` as the incumbent reference candidate, but prefer fresh,
+  clearly named comparison slots and profile ids for newly authored jkimyei
+  combinations so evidence stays attributable.
+- Objective satisfaction requires exploring multiple materially different
+  jkimyei combinations, selecting a winner, and ending with a promotion-ready
+  result for the optimized VICReg bundle.
 
 Canonical run package:
-- Treat this objective bundle as intentionally cleaned and reduced.
-- Keep one primary train profile (you can modify at will):
-  `stable_pretrain_linear_only`.
-- Keep one evaluation profile (you can modify at will):
-  `eval_payload_only`.
+- Keep one incumbent continuation candidate derived from the current promoted
+  VICReg policy.
+- Author additional named train/eval profiles when that is cleaner than
+  mutating the incumbent in place.
+- Prefer a small deliberate comparison set over many tiny nudges. Each added
+  candidate should correspond to a clear hypothesis about why the current
+  training policy is underperforming or too brittle.
+- Before the first fresh launch, if the objective bundle still contains only
+  one effective train candidate, mutate the objective-local campaign/waves and
+  jkimyei files so the search can compare at least the incumbent plus multiple
+  new combinations.
 
 Canonical dataset split:
 - Train window:
@@ -31,13 +43,33 @@ Canonical dataset split:
 - Untouched final test window:
   `01.09.2024` to `31.12.2024`.
 
-Canonical success-oriented training path:
-- Prefer materially long-horizon runs over short exploratory nudges.
-- Too rought asugmentations might be the reason the model is not learning. 
-- BTCUSDT is a complex series, bare this in mind don't expect good forecasting metrics. 
-- Feel free to modify the training policy.
+Search stance:
+- Search jkimyei settings, not network architecture. Keep
+  `iitepi.contract.dsl` frozen unless a hard wiring fix is required for the
+  search itself.
+- Explore materially different jkimyei combinations rather than rerunning the
+  same profile once and stopping. Useful axes include optimizer pressure,
+  scheduler shape, SWA usage/timing, gradient controls, VICReg loss weights,
+  and augmentation intensity.
+- Prefer clean, named candidates that isolate one hypothesis or one tightly
+  coupled pair of hypotheses at a time.
+- Use separate Hashimyei slots for distinct candidates whenever that keeps the
+  evidence easier to compare and discuss. Do not silently overwrite unrelated
+  candidate weights into the same slot.
+- Launch at most one candidate per checkpoint, then compare and prune before
+  expanding the search further.
+- Prefer `launch.mode = binding` while the comparison set is evolving, instead
+  of blindly rerunning an unchanged full run plan.
+- Do not stop after the first launched candidate unless a hard operational
+  blocker or overwhelmingly decisive evidence makes further automatic search
+  unjustified.
 
-Evaluation policy:
+Training and evaluation policy:
+- Prefer materially long-horizon runs over tiny exploratory nudges once a
+  candidate is worthy of a real comparison.
+- BTCUSDT is a difficult series. Do not expect strong absolute forecasting
+  numbers; judge the learned representation primarily on relative downstream
+  usefulness against the simple same-slice baselines.
 - Judge downstream value against the simple same-slice baselines when
   available:
   - `matrix.forecast.stats_only`
@@ -45,41 +77,53 @@ Evaluation policy:
   - `matrix.forecast.linear`
   - `matrix.forecast.raw_mdn`
   - `matrix.forecast.mdn`
-  - any others... feel free to make your own evaluations.
-- Prefer relative value over raw future forecastability alone.
+  - any other clearly justified objective-local evaluation additions
+- Prefer reusable validation for pruning and comparison.
+- Spend the untouched final test only on the finalist or the clearly preferred
+  winner, not on every weak early candidate.
 - If the learned embedding cannot beat simple stats or raw-surface baselines on
   reusable validation after a materially long-horizon run, count that against
-  the frozen VICReg design.
-- For this final continuation block, it is acceptable to spend the untouched
-  final test after reusable validation in the same campaign so the objective
-  ends with a promotion-ready evidence package.
+  that jkimyei combination.
 
 Operational stance:
-- Treat each launch as a train-plus-eval effort block, not as a training-only
-  block, unless an operational blocker prevents eval.
+- Treat each launch as a train-plus-eval effort block unless an operational
+  blocker prevents eval.
 - When training observability is coarse, use Runtime stdout/trace and persisted
   reports to determine whether training still appears to be progressing.
 - If debug visibility is needed, keep dedicated debug eval waves rather than
   slowing the main exhaustive train wave unnecessarily.
-- Bias toward conservative continuation edits over fresh ablations. This round
-  should try to leave behind the most stable working candidate we can promote
-  into `../../optim/` right now.
+- Bias toward conservative, attributable candidate authoring over chaotic
+  mutation. The objective should leave behind a small understandable search
+  record, not an opaque pile of near-duplicate profiles.
 
 Primary objective-local mutation surfaces:
+- `tsi.wikimyei.representation.vicreg.jkimyei.dsl`
 - `iitepi.campaign.dsl`
 - `iitepi.waves.dsl`
-- `tsi.wikimyei.representation.vicreg.jkimyei.dsl`
-- `tsi.wikimyei.representation.vicreg.dsl` only if policy wiring itself must
+- `tsi.wikimyei.representation.vicreg.dsl` only if jkimyei wiring itself must
   change
-- Do not change the iitepi.contract.dsl
+- Do not change `iitepi.contract.dsl` for ordinary tuning
+
+Promotion end-state:
+- The objective is not satisfied merely because one fresh train run completed.
+- The objective is satisfied when a best-known jkimyei candidate is selected
+  from comparative evidence, its exact profile id and Hashimyei slot are named,
+  and the session leaves behind a promotion-ready recommendation for replacing
+  the current optimized VICReg settings.
+- If current Marshal authority/tooling cannot directly mutate `../../optim/`
+  or promote the winner Hashimyei, do not treat that limitation as silent
+  success. Instead, end with the smallest justified operator-facing governance
+  or policy request that names the exact winner, the exact files/settings to
+  replace, and why no more automatic search is needed.
 
 Desired result shape:
-- State whether the latest BTCUSDT train-plus-validation effort completed
-  successfully.
-- Identify the promoted slot and the exact train/validation/test windows used.
-- State whether the reported numbers come from reusable validation or untouched
-  final test.
-- Summarize training health, downstream utility, and whether another effort
-  block is justified.
-- State explicitly whether the objective-local jkimyei policy is good enough to
-  promote into `../../optim/`.
+- List every serious candidate that was actually launched, including its
+  profile id, Hashimyei slot, and the key jkimyei differences it introduced.
+- Identify the current winner explicitly and state whether it beats the
+  incumbent `0x00FF` continuation on reusable validation.
+- State whether the reported deciding evidence comes from reusable validation
+  or untouched final test.
+- Summarize training health, downstream utility, and why the winning candidate
+  is preferred over the rejected combinations.
+- State explicitly whether the objective is now ready to replace the optimized
+  VICReg settings, and if not, what exact blocker remains.

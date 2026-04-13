@@ -234,7 +234,7 @@ make -C /cuwacunu/src/main/hero -j12 all
 Run as MCP server (Codex/stdio):
 
 ```bash
-/cuwacunu/.build/hero/hero_config_mcp
+/cuwacunu/.build/hero/hero_config.mcp
 ```
 
 Defaults:
@@ -244,15 +244,15 @@ Defaults:
 Direct one-shot tool call (no manual JSON-RPC framing):
 
 ```bash
-/cuwacunu/.build/hero/hero_config_mcp \
+/cuwacunu/.build/hero/hero_config.mcp \
   --tool hero.config.status \
   --args-json '{}'
 
-/cuwacunu/.build/hero/hero_runtime_mcp \
+/cuwacunu/.build/hero/hero_runtime.mcp \
   --tool hero.runtime.list_jobs \
   --args-json '{}'
 
-/cuwacunu/.build/hero/hero_marshal_mcp \
+/cuwacunu/.build/hero/hero_marshal.mcp \
   --tool hero.marshal.list_sessions \
   --args-json '{}'
 ```
@@ -260,9 +260,9 @@ Direct one-shot tool call (no manual JSON-RPC framing):
 Human-friendly tool discovery:
 
 ```bash
-/cuwacunu/.build/hero/hero_config_mcp --list-tools
-/cuwacunu/.build/hero/hero_runtime_mcp --list-tools
-/cuwacunu/.build/hero/hero_marshal_mcp --list-tools
+/cuwacunu/.build/hero/hero_config.mcp --list-tools
+/cuwacunu/.build/hero/hero_runtime.mcp --list-tools
+/cuwacunu/.build/hero/hero_marshal.mcp --list-tools
 ```
 
 MCP `initialize` responses from HERO servers include an `instructions` string
@@ -276,13 +276,13 @@ codex mcp list
 
 # Register HERO MCP in Codex (stdio transport)
 codex mcp add hero-config -- \
-  /cuwacunu/.build/hero/hero_config_mcp
+  /cuwacunu/.build/hero/hero_config.mcp
 
 codex mcp add hero-runtime -- \
-  /cuwacunu/.build/hero/hero_runtime_mcp
+  /cuwacunu/.build/hero/hero_runtime.mcp
 
 codex mcp add hero-marshal -- \
-  /cuwacunu/.build/hero/hero_marshal_mcp
+  /cuwacunu/.build/hero/hero_marshal.mcp
 
 # Inspect the registered server configuration
 codex mcp get hero-config --json
@@ -311,7 +311,7 @@ Required runtime mode:
 Run one-shot CLI:
 
 ```bash
-/cuwacunu/.build/hero/hero_config_mcp --tool hero.config.status
+/cuwacunu/.build/hero/hero_config.mcp --tool hero.config.status
 ```
 
 Useful MCP tools:
@@ -381,7 +381,7 @@ Human MCP tools:
 - `hero.human.get_summary`
 - `hero.human.ack_summary`
 
-`hero_human_mcp` without `--tool` on a tty opens the Human Hero operator UI instead of waiting for JSON-RPC. On ncurses-capable terminals this is an all-session cockpit: the default sessions view shows active, running, paused, idle, and finished Marshal sessions with phase-aware colors, filter cycling, and scrollable detail panes, while `Tab` cycles into focused requests and summaries views. Request rows correspond to sessions paused for ordinary clarification or signed governance. Idle session summaries are resumable from that console with a fresh instruction, while finished session summaries remain informational. Session summaries begin with an effort summary that foregrounds elapsed wall time, checkpoint count, and campaign-launch usage. On unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
+`hero_human.mcp` without `--tool` on a tty opens the Human Hero operator UI instead of waiting for JSON-RPC. On ncurses-capable terminals this is an all-session cockpit: the default sessions view shows active, running, paused, idle, and finished Marshal sessions with phase-aware colors, filter cycling, and scrollable detail panes, while `Tab` cycles into focused requests and summaries views. Request rows correspond to sessions paused for ordinary clarification or signed governance. Idle session summaries are resumable from that console with a fresh instruction, while finished session summaries remain informational. Session summaries begin with an effort summary that foregrounds elapsed wall time, checkpoint count, and campaign-launch usage. On unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
 `hero.human.answer_request` is the ordinary clarification path and auto-resumes the paused session. `hero.human.resolve_governance` is governance-only: operators provide `marshal_session_id` carrying the marshal cursor, `resolution_kind = grant | deny | clarify | terminate`, and `reason`, while Marshal Hero retains responsibility for choosing the next Runtime action. `hero.human.ack_summary` records a required signed acknowledgment message and clears the session summary from the Human Hero inbox after review. Session inspection and lifecycle control live under `hero.marshal.*`.
 
 `hero.runtime.start_campaign` accepts optional:
@@ -391,8 +391,10 @@ Human MCP tools:
 
 `hero.marshal.start_session` is the primary session entrypoint. It accepts optional:
 - `marshal_objective_dsl_path` to override the configured default supervision root for that launch
+- `marshal_codex_model` to override `default.hero.marshal.dsl` for this session's Codex model
+- `marshal_codex_reasoning_effort` to override `default.hero.marshal.dsl` for this session's Codex reasoning effort
 
-Marshal Hero starts from `marshal.objective.dsl`, not from a campaign-declared `MARSHAL` edge. It resolves the selected `marshal.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, copies those authored files into `<runtime_root>/.marshal_hero/<marshal_cursor>/`, points its mutable `objective_root` at the truth-source objective bundle under `src/config/instructions/objectives/...`, writes a session-local Config Hero policy at `config.hero.policy.dsl`, builds `marshal.briefing.md`, stages an initial bootstrap input checkpoint before any Runtime campaign exists, and returns once the detached session runner is launched. That runner then continues autonomously through `active -> running_campaign -> active` until it pauses, idles, or finishes. `complete` now parks the session as `idle`, and `hero.marshal.continue_session` reopens that same session with a new operator instruction. If a planning checkpoint already produced an intent artifact and later fails during mutation bookkeeping or validation, Marshal Hero preserves the attempted checkpoint, parks the session as `idle` with `finish_reason=failed`, and lets the operator continue once the issue is fixed. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Marshal Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are backed by Config Hero backups under `.backups/hero.marshal/<objective_name>/`, and per-checkpoint mutation summaries are written when Codex changed objective files. Only one non-finished Marshal session may own a given `marshal.objective.dsl` at a time.
+Marshal Hero starts from `marshal.objective.dsl`, not from a campaign-declared `MARSHAL` edge. It resolves the selected `marshal.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, resolves the launch-time Codex model/effort as `start_session override > default.hero.marshal.dsl`, copies the authored objective files into `<runtime_root>/.marshal_hero/<marshal_cursor>/`, writes a generated session-local `hero.marshal.dsl` plus `config.hero.policy.dsl`, builds `marshal.briefing.md`, stages an initial bootstrap input checkpoint before any Runtime campaign exists, and returns once the detached session runner is launched. That runner then continues autonomously through `active -> running_campaign -> active` until it pauses, idles, or finishes. `complete` now parks the session as `idle`, and `hero.marshal.continue_session` reopens that same session with a new operator instruction. The resolved Codex binary/model/reasoning values are pinned in the session manifest and reused for fresh and resumed checkpoints instead of rereading mutable defaults. If a planning checkpoint already produced an intent artifact and later fails during mutation bookkeeping or validation, Marshal Hero preserves the attempted checkpoint, parks the session as `idle` with `finish_reason=failed`, and lets the operator continue once the issue is fixed. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Marshal Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are backed by Config Hero backups under `.backups/hero.marshal/<objective_name>/`, and per-checkpoint mutation summaries are written when Codex changed objective files. Only one non-finished Marshal session may own a given `marshal.objective.dsl` at a time.
 
 Runtime HERO defaults:
 - loaded from `instructions/defaults/default.hero.runtime.dsl`
@@ -416,8 +418,8 @@ Marshal HERO defaults:
 - `human_hero_binary` selects the MCP binary Human Hero uses against the same session root
 - `human_operator_identities` selects the operator identities file Marshal Hero uses to bind `operator_id` values to OpenSSH `ssh-ed25519` public keys before applying a signed governance resolution
 - `marshal_codex_binary` selects the Codex executable or command name used for the durable planning session
-- `marshal_codex_model` selects the default Codex model slug passed to fresh and resumed planning checkpoints, defaulting to `gpt-5.3-codex-spark`
-- `marshal_codex_reasoning_effort` selects the default Codex `model_reasoning_effort` passed to fresh and resumed planning checkpoints, defaulting to `xhigh` (Extra High)
+- `marshal_codex_model` selects the default Codex model slug used when `hero.marshal.start_session` does not override it, defaulting to `gpt-5.3-codex-spark`
+- `marshal_codex_reasoning_effort` selects the default Codex `model_reasoning_effort` used when `hero.marshal.start_session` does not override it, defaulting to `xhigh` (Extra High)
 - `marshal_codex_timeout_sec` bounds one `codex exec` or `codex exec resume` checkpoint call
 - `marshal_max_campaign_launches` bounds the number of Runtime campaign launches in one session
 - `poll_interval_ms` controls detached session-runner polling cadence while waiting for terminal campaign state
@@ -460,6 +462,7 @@ Marshal sessions persist under `<runtime_root>/.marshal_hero/<marshal_cursor>/` 
 - `marshal.objective.dsl`
 - `marshal.objective.md`
 - `marshal.guidance.md`
+- `hero.marshal.dsl`
 - `config.hero.policy.dsl`
 - `marshal.session.memory.md`
 - `marshal.briefing.md`
@@ -483,7 +486,7 @@ as line-wrapped JSONL entries with `stream`, `line_index`, and `text`.
 - `checkpoints/mutation.0001.json` plus `checkpoints/mutation.latest.json` when a planning checkpoint changed truth-source files
 
 Current marshal-session schemas:
-- `hero.marshal.session.v3`
+- `hero.marshal.session.v4`
 - `hero.marshal.input_checkpoint.v3`
 - `hero.marshal.intent_checkpoint.v3`
 - `hero.marshal.mutation_checkpoint.v3`
@@ -491,7 +494,7 @@ Current marshal-session schemas:
 - `hero.human.clarification_answer.v3`
 - `hero.human.summary_ack.v3`
 
-The v3 Marshal session keeps Codex shell access read-only, but gives each planning checkpoint session-scoped `hero.config.objective.*`, conditionally `hero.config.default.*`, bounded Runtime read/tail tools, and bounded Lattice read tools against truth-source config roots and persisted runtime evidence. Objective files include the objective-local campaign file named by `campaign_dsl_path` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. The generated Marshal briefing names that exact relative campaign file path and tells Codex to use `hero.config.objective.list` rather than assuming a literal `campaign.dsl` filename. Codex now returns `intent = launch_campaign | pause_for_clarification | request_governance | complete | terminate`. `launch_campaign` carries `mode = run_plan | binding`, optional `binding_id`, `reset_runtime_state`, and `requires_objective_mutation`; `pause_for_clarification` carries `clarification_request.request`; `request_governance` carries a typed `kind`, operator-facing `request`, and optional typed `delta`. If `launch.requires_objective_mutation=true` but the planning checkpoint produced no objective-local mutation summary, Marshal Hero rejects the launch instead of silently rerunning unchanged truth sources. Launch-time `reset_runtime_state=true` is scoped to runtime-owned state and must not delete the owning Marshal/Human ledgers. Human Hero answers ordinary clarification with `hero.human.answer_request`, resolves signed governance with `hero.human.resolve_governance`, and leaves ordinary Runtime routing to Marshal Hero.
+The v4 Marshal session keeps Codex shell access read-only, but gives each planning checkpoint session-scoped `hero.config.objective.*`, conditionally `hero.config.default.*`, bounded Runtime read/tail tools, and bounded Lattice read tools against truth-source config roots and persisted runtime evidence. Objective files include the objective-local campaign file named by `campaign_dsl_path` when it lives under the selected objective root, so launch-graph changes go through the same `hero.config.objective.*` surface instead of a special campaign tool family. The generated Marshal briefing names that exact relative campaign file path and tells Codex to use `hero.config.objective.list` rather than assuming a literal `campaign.dsl` filename. Each session also carries a generated `hero.marshal.dsl` that records the resolved launch settings, including any `hero.marshal.start_session` model/effort overrides. Codex now returns `intent = launch_campaign | pause_for_clarification | request_governance | complete | terminate`. `launch_campaign` carries `mode = run_plan | binding`, optional `binding_id`, `reset_runtime_state`, and `requires_objective_mutation`; `pause_for_clarification` carries `clarification_request.request`; `request_governance` carries a typed `kind`, operator-facing `request`, and optional typed `delta`. If `launch.requires_objective_mutation=true` but the planning checkpoint produced no objective-local mutation summary, Marshal Hero rejects the launch instead of silently rerunning unchanged truth sources. Launch-time `reset_runtime_state=true` is scoped to runtime-owned state and must not delete the owning Marshal/Human ledgers. Human Hero answers ordinary clarification with `hero.human.answer_request`, resolves signed governance with `hero.human.resolve_governance`, and leaves ordinary Runtime routing to Marshal Hero.
 
 The short design constitution for that session model lives in [MARSHAL_SESSION.md](/cuwacunu/src/main/hero/MARSHAL_SESSION.md).
 
@@ -522,12 +525,12 @@ make -C /cuwacunu/src/main/hero -j12 all
 ```
 
 Installed binary:
-- `/cuwacunu/.build/hero/hero_hashimyei_mcp`
+- `/cuwacunu/.build/hero/hero_hashimyei.mcp`
 
 Run MCP:
 
 ```bash
-/cuwacunu/.build/hero/hero_hashimyei_mcp
+/cuwacunu/.build/hero/hero_hashimyei.mcp
 ```
 
 Defaults:
@@ -537,7 +540,7 @@ Defaults:
 Direct one-shot tool call:
 
 ```bash
-/cuwacunu/.build/hero/hero_hashimyei_mcp \
+/cuwacunu/.build/hero/hero_hashimyei.mcp \
   --tool hero.hashimyei.list \
   --args-json '{}'
 ```
@@ -559,7 +562,7 @@ Register in Codex:
 
 ```bash
 codex mcp add hero-hashimyei -- \
-  /cuwacunu/.build/hero/hero_hashimyei_mcp
+  /cuwacunu/.build/hero/hero_hashimyei.mcp
 ```
 
 Supported MCP tools:
@@ -582,7 +585,7 @@ make -C /cuwacunu/src/main/hero -j12 all
 Run MCP:
 
 ```bash
-/cuwacunu/.build/hero/hero_lattice_mcp
+/cuwacunu/.build/hero/hero_lattice.mcp
 ```
 
 Defaults:
@@ -592,7 +595,7 @@ Defaults:
 Direct one-shot tool call:
 
 ```bash
-/cuwacunu/.build/hero/hero_lattice_mcp \
+/cuwacunu/.build/hero/hero_lattice.mcp \
   --tool hero.lattice.list_views \
   --args-json '{}'
 ```
@@ -611,7 +614,7 @@ If you also use lattice MCP, register it the same way:
 
 ```bash
 codex mcp add hero-lattice -- \
-  /cuwacunu/.build/hero/hero_lattice_mcp
+  /cuwacunu/.build/hero/hero_lattice.mcp
 ```
 
 Supported MCP tools:

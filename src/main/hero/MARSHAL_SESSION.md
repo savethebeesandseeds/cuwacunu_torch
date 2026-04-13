@@ -1,7 +1,7 @@
 # Marshal Session Constitution
 
 This document is the shortest stable statement of what the Marshal Hero session
-is allowed to be in v3.
+is allowed to be in v4.
 
 ## Sovereignty
 
@@ -18,6 +18,9 @@ is allowed to be in v3.
 
 - The session is `active -> running_campaign -> active -> ...` until it pauses,
   idles, or finishes.
+- Launch-time Codex settings are resolved once when the session is created,
+  persisted in the session manifest, and mirrored into a generated
+  `hero.marshal.dsl` artifact inside the session ledger.
 - A planning checkpoint may mutate objective-local truth sources, inspect
   evidence, and choose one intent.
 - One planning checkpoint may launch at most one Runtime campaign.
@@ -100,11 +103,12 @@ is allowed to be in v3.
 ## Persistence
 
 - The session persists as artifacts, not as one immortal process.
-- The minimum v3 ledger is:
+- The minimum v4 ledger is:
   - `marshal.session.manifest.lls`
   - `marshal.objective.dsl`
   - `marshal.objective.md`
   - `marshal.guidance.md`
+  - `hero.marshal.dsl`
   - `config.hero.policy.dsl`
   - `marshal.briefing.md`
   - `logs/codex.session.stdout.jsonl`
@@ -127,7 +131,7 @@ line-wrapped JSONL entries with `stream`, `line_index`, and `text`.
 
 ## Design Intention
 
-The v3 session model should feel lawful, auditable, and productively
+The v4 session model should feel lawful, auditable, and productively
 autonomous:
 
 - evidence before launch

@@ -32,6 +32,10 @@ enum class RuntimeLogViewerKind : std::uint8_t {
   MarshalEvents = 3,
   MarshalCodexStdout = 4,
   MarshalCodexStderr = 5,
+  CampaignStdout = 6,
+  CampaignStderr = 7,
+  JobTrace = 8,
+  ArtifactFile = 9,
 };
 
 enum class RuntimeLane : std::uint8_t {
@@ -130,6 +134,21 @@ struct RuntimeDeviceGpuProcessSnapshot {
   std::uint64_t used_memory_mib{0};
 };
 
+struct RuntimeMarshalEventViewerEntry {
+  std::uint64_t timestamp_ms{0};
+  std::string event_name{};
+  std::string summary{};
+  std::vector<std::pair<std::string, std::string>> metadata{};
+  cuwacunu::iinuji::text_line_emphasis_t emphasis{
+      cuwacunu::iinuji::text_line_emphasis_t::Info};
+  std::string raw_line{};
+};
+
+struct RuntimeMarshalEventViewerState {
+  std::vector<RuntimeMarshalEventViewerEntry> entries{};
+  std::size_t selected_entry{0};
+};
+
 struct RuntimeDeviceSnapshot {
   bool ok{false};
   std::string error{};
@@ -197,6 +216,7 @@ struct RuntimeState {
   std::string log_viewer_path{};
   std::string log_viewer_title{};
   std::shared_ptr<cuwacunu::iinuji::editorBox_data_t> log_viewer{};
+  RuntimeMarshalEventViewerState marshal_event_viewer{};
   bool log_viewer_live_follow{true};
   std::uint64_t log_viewer_last_poll_ms{0};
   std::uintmax_t log_viewer_last_size{0};

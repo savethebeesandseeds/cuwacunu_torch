@@ -21,21 +21,21 @@ $(TEST_OUT)/test_hashimyei_report_fragments: INCLUDES_EXTRA += $(SSL_INCLUDE_PAT
 $(TEST_OUT)/test_lattice_catalog: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 
 .PHONY: hero-mcp-binaries
-hero-mcp-binaries: $(HERO_OUT)/hero_hashimyei_mcp $(HERO_OUT)/hero_lattice_mcp $(HERO_OUT)/hero_marshal_mcp $(HERO_OUT)/hero_human_mcp
+hero-mcp-binaries: $(HERO_OUT)/hero_hashimyei.mcp $(HERO_OUT)/hero_lattice.mcp $(HERO_OUT)/hero_marshal.mcp $(HERO_OUT)/hero_human.mcp
 
-$(HERO_OUT)/hero_hashimyei_mcp:
-	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_hashimyei_mcp
+$(HERO_OUT)/hero_hashimyei.mcp:
+	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_hashimyei.mcp
 
-$(HERO_OUT)/hero_lattice_mcp:
-	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_lattice_mcp
+$(HERO_OUT)/hero_lattice.mcp:
+	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_lattice.mcp
 
-$(HERO_OUT)/hero_marshal_mcp:
-	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_marshal_mcp
+$(HERO_OUT)/hero_marshal.mcp:
+	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_marshal.mcp
 
-$(HERO_OUT)/hero_human_mcp:
-	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_human_mcp
+$(HERO_OUT)/hero_human.mcp:
+	+$(MAKE) -C $(ROOT_PATH)/main/hero $(HERO_OUT)/hero_human.mcp
 
-$(TEST_OUT)/test_hero_mcp_surface: $(HERO_OUT)/hero_hashimyei_mcp $(HERO_OUT)/hero_lattice_mcp $(HERO_OUT)/hero_marshal_mcp $(HERO_OUT)/hero_human_mcp
+$(TEST_OUT)/test_hero_mcp_surface: $(HERO_OUT)/hero_hashimyei.mcp $(HERO_OUT)/hero_lattice.mcp $(HERO_OUT)/hero_marshal.mcp $(HERO_OUT)/hero_human.mcp
 
 .PHONY: all
 all: \

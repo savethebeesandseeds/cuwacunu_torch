@@ -12,7 +12,7 @@ key = runtime_hero_binary
 scope = hero marshal defaults
 type = path_or_command
 required = true
-default = /cuwacunu/.build/hero/hero_runtime_mcp
+default = /cuwacunu/.build/hero/hero_runtime.mcp
 range = executable path or PATH-resolved command name
 allowed = absolute_or_relative path or bare command token
 nuance = Runtime Hero MCP binary that Marshal Hero uses to launch, inspect, and stop campaigns
@@ -22,7 +22,7 @@ key = config_hero_binary
 scope = hero marshal defaults
 type = path_or_command
 required = true
-default = /cuwacunu/.build/hero/hero_config_mcp
+default = /cuwacunu/.build/hero/hero_config.mcp
 range = executable path or PATH-resolved command name
 allowed = absolute_or_relative path or bare command token
 nuance = Config Hero MCP binary attached to Codex planning checkpoints for bounded truth-source objective/default file mutation plus audited backups
@@ -32,7 +32,7 @@ key = lattice_hero_binary
 scope = hero marshal defaults
 type = path_or_command
 required = true
-default = /cuwacunu/.build/hero/hero_lattice_mcp
+default = /cuwacunu/.build/hero/hero_lattice.mcp
 range = executable path or PATH-resolved command name
 allowed = absolute_or_relative path or bare command token
 nuance = Lattice Hero MCP binary attached to Codex planning checkpoints for fact/view inspection
@@ -42,7 +42,7 @@ key = human_hero_binary
 scope = hero marshal defaults
 type = path_or_command
 required = true
-default = /cuwacunu/.build/hero/hero_human_mcp
+default = /cuwacunu/.build/hero/hero_human.mcp
 range = executable path or PATH-resolved command name
 allowed = absolute_or_relative path or bare command token
 nuance = Human Hero MCP binary Marshal Hero invokes when a planning checkpoint pauses for input or governance and must materialize or refresh the operator-facing request artifact
@@ -85,7 +85,7 @@ required = false
 default = gpt-5.3-codex-spark
 range = non-empty model slug
 allowed = scalar string accepted by `codex exec -m`
-nuance = default Codex model Marshal Hero uses for fresh and resumed planning checkpoints unless an older session record already persisted a resolved model
+nuance = default Codex model Marshal Hero uses when `hero.marshal.start_session` does not provide a session-specific `marshal_codex_model` override; the resolved session value is then pinned into the session manifest and generated `hero.marshal.dsl`
 
 [FIELD marshal_codex_reasoning_effort]
 key = marshal_codex_reasoning_effort
@@ -95,7 +95,7 @@ required = false
 default = xhigh
 range = one of `low`, `medium`, `high`, `xhigh`
 allowed = scalar string normalized to Codex `model_reasoning_effort`
-nuance = default Codex reasoning effort Marshal Hero passes through `-c model_reasoning_effort=...`; `xhigh` corresponds to Extra High reasoning
+nuance = default Codex reasoning effort Marshal Hero uses when `hero.marshal.start_session` does not provide a session-specific `marshal_codex_reasoning_effort` override; the resolved session value is then pinned into the session manifest and generated `hero.marshal.dsl`, and `xhigh` corresponds to Extra High reasoning
 
 [FIELD tail_default_lines]
 key = tail_default_lines

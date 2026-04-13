@@ -2,7 +2,7 @@
   default.hero.runtime.dsl
   ========================
   Purpose:
-    Deterministic default settings for hero_runtime_mcp.
+    Deterministic default settings for hero_runtime.mcp.
 */
 
 cuwacunu_campaign_binary:str = /cuwacunu/.build/tools/cuwacunu_campaign

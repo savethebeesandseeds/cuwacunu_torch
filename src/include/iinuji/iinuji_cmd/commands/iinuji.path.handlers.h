@@ -14,7 +14,7 @@
 #include "iinuji/iinuji_cmd/commands/iinuji.paths.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.screen.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.state.flow.h"
-#include "iinuji/iinuji_cmd/views/human/app.h"
+#include "iinuji/iinuji_cmd/views/inbox/app.h"
 #include "iinuji/iinuji_cmd/views/lattice/commands.h"
 #include "iinuji/iinuji_cmd/views/config/commands.h"
 

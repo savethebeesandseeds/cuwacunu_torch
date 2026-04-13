@@ -2,10 +2,10 @@
   default.hero.marshal.dsl
   Marshal Hero owns the Codex loop, while Runtime Hero executes campaigns.
 */
-runtime_hero_binary:path = /cuwacunu/.build/hero/hero_runtime_mcp
-config_hero_binary:path = /cuwacunu/.build/hero/hero_config_mcp
-lattice_hero_binary:path = /cuwacunu/.build/hero/hero_lattice_mcp
-human_hero_binary:path = /cuwacunu/.build/hero/hero_human_mcp
+runtime_hero_binary:path = /cuwacunu/.build/hero/hero_runtime.mcp
+config_hero_binary:path = /cuwacunu/.build/hero/hero_config.mcp
+lattice_hero_binary:path = /cuwacunu/.build/hero/hero_lattice.mcp
+human_hero_binary:path = /cuwacunu/.build/hero/hero_human.mcp
 human_operator_identities:path = ../../secrets/real/human_operator_identities
 config_scope_root:path = ../..
 marshal_codex_binary:path = codex

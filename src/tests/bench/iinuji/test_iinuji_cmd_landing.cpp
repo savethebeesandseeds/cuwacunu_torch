@@ -6,7 +6,7 @@
 #include "iinuji/iinuji_cmd/app/overlays.h"
 #include "iinuji/iinuji_cmd/views/common.h"
 #include "iinuji/iinuji_cmd/views/config/view.h"
-#include "iinuji/iinuji_cmd/views/human/commands.h"
+#include "iinuji/iinuji_cmd/views/inbox/commands.h"
 #include "iinuji/iinuji_cmd/views/runtime/commands.h"
 #include "iinuji/iinuji_cmd/views/ui.h"
 
@@ -36,17 +36,17 @@ int main() {
     using namespace cuwacunu::iinuji::iinuji_cmd;
 
     CmdState st{};
-    st.human.app.global_config_path = global_config_path;
-    st.human.app.hero_config_path =
+    st.inbox.app.global_config_path = global_config_path;
+    st.inbox.app.hero_config_path =
         cuwacunu::hero::human_mcp::resolve_human_hero_dsl_path(
             global_config_path);
-    st.human.app.self_binary_path =
+    st.inbox.app.self_binary_path =
         cuwacunu::hero::human_mcp::current_executable_path();
     std::string human_error{};
     (void)cuwacunu::hero::human_mcp::load_human_defaults(
-        st.human.app.hero_config_path, global_config_path,
-        &st.human.app.defaults, &human_error);
-    (void)refresh_human_state(st);
+        st.inbox.app.hero_config_path, global_config_path,
+        &st.inbox.app.defaults, &human_error);
+    (void)refresh_inbox_state(st);
 
     st.runtime.app.global_config_path = global_config_path;
     st.runtime.app.hero_config_path =
@@ -68,12 +68,12 @@ int main() {
     const std::string home_status = home_ui.status_line();
     const std::string home_bottom = home_ui.bottom_line();
 
-    st.screen = ScreenMode::Human;
+    st.screen = ScreenMode::Inbox;
     const IinujiUi ui{st};
     const std::string status = ui.status_line();
     const std::string bottom = ui.bottom_line();
-    const std::string left = make_human_left(st);
-    const std::string right = make_human_right(st);
+    const std::string left = make_inbox_left(st);
+    const std::string right = make_inbox_right(st);
 
     st.screen = ScreenMode::Runtime;
     const IinujiUi runtime_ui{st};
@@ -100,12 +100,12 @@ int main() {
     bool ok = true;
     ok = ok && require(home_status.find("[F1 HOME]") != std::string::npos,
                        "home status should highlight F1 HOME");
-    ok = ok && require(home_status.find("F2 MARSHAL") != std::string::npos,
+    ok = ok && require(home_status.find("F2 INBOX") != std::string::npos,
                        "home status should list F2 marshal");
     ok = ok && require(home_bottom.find("waajacu.com") != std::string::npos,
                        "home bottom should keep the waajacu.com note");
-    ok = ok && require(status.find("[F2 MARSHAL]") != std::string::npos,
-                       "status should highlight F2 MARSHAL");
+    ok = ok && require(status.find("[F2 INBOX]") != std::string::npos,
+                       "status should highlight F2 INBOX");
     ok = ok && require(status.find("F3 RUNTIME") != std::string::npos,
                        "status should list F3 runtime");
     ok = ok && require(status.find("F4 LATTICE") != std::string::npos,
@@ -115,13 +115,13 @@ int main() {
     ok = ok && require(status.find("TRAIN") == std::string::npos,
                        "status should not mention removed training screen");
     ok = ok && require(left.find("> [Inbox]") != std::string::npos,
-                       "human left should mark Inbox as the selected lane");
+                       "inbox left should mark Inbox as the selected lane");
     ok = ok && require(left.find("Inbox") != std::string::npos,
-                       "human left should include inbox heading");
+                       "inbox left should include inbox heading");
     ok = ok && require(right.find("Inbox is clear.") != std::string::npos,
-                       "human right should show the empty inbox detail");
+                       "inbox right should show the empty inbox detail");
     ok = ok && require(bottom.find("lane=Inbox") != std::string::npos,
-                       "human bottom should show the lane summary");
+                       "inbox bottom should show the lane summary");
     ok = ok &&
          require(runtime_left.find("Runtime Ledger") == std::string::npos,
                  "runtime left should not repeat the runtime panel header");

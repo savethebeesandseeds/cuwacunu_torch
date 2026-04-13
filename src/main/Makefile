@@ -7,13 +7,14 @@ include $(ROOT_PATH)/Makefile.config
 HERE_PATH := $(ROOT_PATH)/main
 TESTS_PATH := $(ROOT_PATH)/tests
 SUBMAKE_NO_AUTOPREP := AUTO_PREP=0
-INSTALL_SKIP_HERO_BINS := -o $(HERO_OUT)/hero_config_mcp -o $(HERO_OUT)/hero_hashimyei_mcp -o $(HERO_OUT)/hero_lattice_mcp -o $(HERO_OUT)/hero_runtime_mcp -o $(HERO_OUT)/hero_marshal_mcp -o $(HERO_OUT)/hero_human_mcp
+INSTALL_SKIP_HERO_BINS := -o $(HERO_OUT)/hero_config.mcp -o $(HERO_OUT)/hero_hashimyei.mcp -o $(HERO_OUT)/hero_lattice.mcp -o $(HERO_OUT)/hero_runtime.mcp -o $(HERO_OUT)/hero_marshal.mcp -o $(HERO_OUT)/hero_human.mcp
 INSTALL_SKIP_TOOL_BINS := -o $(TOOLS_OUT)/secure_key_setup -o $(TOOLS_OUT)/cuwacunu_campaign -o $(TOOLS_OUT)/runtime_reset -o $(TOOLS_OUT)/tsodao
-INSTALL_SKIP_INTERFACE_BINS := -o $(INTERFACE_OUT)/iinuji_cmd
+INSTALL_SKIP_INTERFACE_BINS := -o $(INTERFACE_OUT)/cuwacunu.cmd
 
 PRODUCTION_RULES := all link install hero campaign config_hero hashimyei_hero lattice_hero runtime_hero marshal_hero human_hero tools interface clean
 MAIN_LOCAL_TARGETS := all link install clean hero campaign config_hero hashimyei_hero lattice_hero runtime_hero marshal_hero human_hero tools interface \
-	build-iinuji-cmd run-iinuji-cmd iinuji_cmd tests test ta clean_tests \
+	build-cuwacunu-cmd run-cuwacunu-cmd cuwacunu.cmd \
+	tests test ta clean_tests \
 	build-reset-runtime run-reset-runtime reset-runtime \
 	parser dsl types exchange piaabo data iinuji iinuji_torch tsiemene iitepi \
 	https db hashimyei jkimyei vicreg mdn expval
@@ -77,16 +78,16 @@ tools: autoprep
 interface: autoprep
 	+$(MAKE) -C $(HERE_PATH)/interface all $(SUBMAKE_NO_AUTOPREP)
 
-.PHONY: build-iinuji-cmd
-build-iinuji-cmd: autoprep
-	+$(MAKE) -C $(HERE_PATH)/interface build-iinuji-cmd $(SUBMAKE_NO_AUTOPREP)
+.PHONY: build-cuwacunu-cmd
+build-cuwacunu-cmd: autoprep
+	+$(MAKE) -C $(HERE_PATH)/interface build-cuwacunu-cmd $(SUBMAKE_NO_AUTOPREP)
 
-.PHONY: run-iinuji-cmd
-run-iinuji-cmd: autoprep
-	+$(MAKE) -C $(HERE_PATH)/interface run-iinuji-cmd $(SUBMAKE_NO_AUTOPREP)
+.PHONY: run-cuwacunu-cmd
+run-cuwacunu-cmd: autoprep
+	+$(MAKE) -C $(HERE_PATH)/interface run-cuwacunu-cmd $(SUBMAKE_NO_AUTOPREP)
 
-.PHONY: iinuji_cmd
-iinuji_cmd: run-iinuji-cmd
+.PHONY: cuwacunu.cmd
+cuwacunu.cmd: run-cuwacunu-cmd
 
 .PHONY: tests
 tests: autoprep
@@ -120,7 +121,7 @@ install: link
 	# their leaf build rules and only finalize the install-facing metadata.
 	+$(MAKE) $(INSTALL_SKIP_HERO_BINS) -C $(HERE_PATH)/hero install-config-hero install-hashimyei-hero install-lattice-hero install-runtime-hero install-marshal-hero install-human-hero $(SUBMAKE_NO_AUTOPREP)
 	+$(MAKE) $(INSTALL_SKIP_TOOL_BINS) -C $(HERE_PATH)/tools install-secure-key-setup install-campaign install-reset-runtime install-tsodao $(SUBMAKE_NO_AUTOPREP)
-	+$(MAKE) $(INSTALL_SKIP_INTERFACE_BINS) -C $(HERE_PATH)/interface install-iinuji-cmd $(SUBMAKE_NO_AUTOPREP)
+	+$(MAKE) $(INSTALL_SKIP_INTERFACE_BINS) -C $(HERE_PATH)/interface install-cuwacunu-cmd $(SUBMAKE_NO_AUTOPREP)
 	@$(LOG_SUCCESS)
 
 .PHONY: all
@@ -138,10 +139,10 @@ targets:
 help:
 	@echo "main targets (advanced/internal):"
 	@echo "  prefer 'make -C $(ROOT_PATH) lib', 'make -C $(ROOT_PATH) link', or 'make -C $(ROOT_PATH) install' for normal builds"
-	@echo "  all link install hero build-campaign campaign build-reset-runtime reset-runtime config_hero hashimyei_hero lattice_hero runtime_hero marshal_hero human_hero interface build-iinuji-cmd run-iinuji-cmd iinuji_cmd"
+	@echo "  all link install hero build-campaign campaign build-reset-runtime reset-runtime config_hero hashimyei_hero lattice_hero runtime_hero marshal_hero human_hero interface build-cuwacunu-cmd run-cuwacunu-cmd cuwacunu.cmd"
 	@echo "  tools tests clean"
 	@echo "  'link' builds final linked binaries; 'install' finalizes HERO/tool/interface surfaces in place"
-	@echo "  leaf installs live in: $(HERE_PATH)/hero (install-*-hero), $(HERE_PATH)/tools (install-secure-key-setup, install-campaign, install-reset-runtime, install-tsodao), $(HERE_PATH)/interface (install-iinuji-cmd)"
+	@echo "  leaf installs live in: $(HERE_PATH)/hero (install-*-hero), $(HERE_PATH)/tools (install-secure-key-setup, install-campaign, install-reset-runtime, install-tsodao), $(HERE_PATH)/interface (install-cuwacunu-cmd)"
 	@echo "  test groups: parser dsl types exchange piaabo data iinuji ... vicreg"
 	@echo "  list targets: make -C $(HERE_PATH) targets"
 

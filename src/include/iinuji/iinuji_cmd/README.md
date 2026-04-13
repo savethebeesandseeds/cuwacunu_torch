@@ -1,10 +1,10 @@
-# iinuji_cmd
+# cuwacunu.cmd
 
-`iinuji_cmd` is the Hero-first terminal shell for cuwacunu.
+`cuwacunu.cmd` is the Hero-first terminal shell for cuwacunu.
 
 Primary interface entrypoint:
-- `src/main/interface/iinuji_cmd.cpp`
-- output binary: `.build/interface/iinuji_cmd`
+- `src/main/interface/cuwacunu_cmd.cpp`
+- output binary: `.build/interface/cuwacunu.cmd`
 
 Focused smoke harness:
 - `src/tests/bench/iinuji/test_iinuji_cmd.cpp`
@@ -23,7 +23,7 @@ Shared helpers:
 - `src/include/hero/human_hero/hero_human_tools.h`
 
 First-class shell screens:
-- `src/include/iinuji/iinuji_cmd/views/human/{state.h,commands.h,view.h,app.h}`
+- `src/include/iinuji/iinuji_cmd/views/inbox/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/runtime/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/logs/{state.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/config/{state.h,commands.h,view.h,app.h}`
@@ -34,7 +34,7 @@ The removed specialist-screen helpers are no longer part of the `iinuji_cmd` she
 
 `CmdState` holds:
 - global shell state: active screen, running flag, command line, help overlay
-- `HumanState`: Human Hero operator inbox, active lane, selection, status, and a deprecated compatibility phase filter
+- `InboxState`: Human Hero operator inbox, active lane, selection, status, and a deprecated compatibility phase filter
 - `RuntimeState`: session-linked runtime inventory, detail mode, selection, status
 - `ShellLogsState`
 - `ConfigState`
@@ -53,29 +53,29 @@ Canonical path registry + dispatch lives in:
 
 Primary shell calls:
 - `iinuji.screen.home()`
-- `iinuji.screen.human()`
+- `iinuji.screen.inbox()`
 - `iinuji.screen.runtime()`
 - `iinuji.screen.lattice()`
 - `iinuji.screen.logs()`
 - `iinuji.screen.config()`
 - `iinuji.refresh()`
-- `iinuji.show.human()`
+- `iinuji.show.inbox()`
 - `iinuji.show.runtime()`
 - `iinuji.show.logs()`
 - `iinuji.show.config()`
 
 Direct aliases accept `home` for the F1 Home screen and `marshal` for the F2
-Marshal screen.
+Inbox screen.
 
-Human-specific calls:
-- `iinuji.human.refresh()`
-- `iinuji.human.view.inbox()`
-- `iinuji.human.view.live()`
-- `iinuji.human.view.history()`
-- `iinuji.human.view.overview()` compatibility shim to Inbox
-- `iinuji.human.view.requests()` compatibility shim to Inbox
-- `iinuji.human.view.reviews()` compatibility shim to History
-- `iinuji.human.filter.next()` deprecated compatibility shim
+Inbox-specific calls:
+- `iinuji.inbox.refresh()`
+- `iinuji.inbox.view.inbox()`
+- `iinuji.inbox.view.live()`
+- `iinuji.inbox.view.history()`
+- `iinuji.inbox.view.overview()` compatibility shim to Inbox
+- `iinuji.inbox.view.requests()` compatibility shim to Inbox
+- `iinuji.inbox.view.reviews()` compatibility shim to History
+- `iinuji.inbox.filter.next()` deprecated compatibility shim
 
 Runtime-specific calls:
 - `iinuji.runtime.refresh()`
@@ -92,9 +92,9 @@ Config calls are file-centered:
 
 Removed specialist-screen shell calls now fail as unknown commands by design.
 
-## Marshal cockpit
+## Inbox screen
 
-The `Marshal` screen is the main operator cockpit for `.runtime/.marshal_hero`.
+The `Inbox` screen is the main operator cockpit for `.runtime/.marshal_hero`.
 
 It reuses the shared Human Hero inbox/action layer from `hero_human_tools` for:
 - session collection, request/review detection, and selection recovery
@@ -121,20 +121,20 @@ The runtime screen is intentionally observational in this refactor. Runtime muta
 
 Primary interaction stays command-first (`cmd> ...`) with fixed shell navigation:
 - `F1` Home
-- `F2` Marshal
+- `F2` Inbox
 - `F3` Runtime
 - `F4` Lattice
 - `F8` Shell Logs
 - `F9` Config
 
-Marshal screen shortcuts:
+Inbox screen shortcuts:
 - `Up/Down` move the selected lane in navigation or the selected row in the worklist
 - `Left/Right` also move between `Inbox`, `Live`, and `History` while navigation is focused
 - `Enter` focuses the worklist or opens the selected row's action list
 - `Esc` returns from the worklist to navigation
 - `PgUp/PgDn/Home/End` and wheel scroll detail
 
-Marshal lanes:
+Inbox lanes:
 - `Inbox` merges sessions that need operator attention now: requests, operator-paused sessions, and pending reviews
 - `Live` shows active planning and running-campaign sessions
 - `History` shows idle and finished sessions for audit; pending reviews stay visibly marked there too

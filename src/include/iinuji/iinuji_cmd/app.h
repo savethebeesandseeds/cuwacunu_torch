@@ -62,10 +62,10 @@ idle_refresh_period_ms_for_screen(ScreenMode screen,
   case ScreenMode::Home:
     return animate_home ? static_cast<std::uint64_t>(kAnimatedHomeFrameStepMs)
                         : 5000u;
-  case ScreenMode::Human:
-    return 2000;
+  case ScreenMode::Inbox:
+    return 1000;
   case ScreenMode::Runtime:
-    return 5000;
+    return 2000;
   case ScreenMode::Lattice:
     return 1200;
   case ScreenMode::ShellLogs:
@@ -81,19 +81,19 @@ inline bool refresh_visible_screen_on_idle(CmdState &state,
   switch (state.screen) {
   case ScreenMode::Home:
     return animate_home;
-  case ScreenMode::Human: {
-    const std::string previous_status = state.human.status;
-    const bool previous_status_is_error = state.human.status_is_error;
+  case ScreenMode::Inbox: {
+    const std::string previous_status = state.inbox.status;
+    const bool previous_status_is_error = state.inbox.status_is_error;
     const std::uint64_t previous_status_expires_at_ms =
-        state.human.status_expires_at_ms;
-    (void)queue_human_refresh(state);
+        state.inbox.status_expires_at_ms;
+    (void)queue_inbox_refresh(state);
     if (!previous_status.empty() && !previous_status_is_error &&
         (previous_status_expires_at_ms == 0 ||
-         human_status_now_ms() < previous_status_expires_at_ms)) {
-      state.human.status = previous_status;
-      state.human.status_is_error = false;
-      state.human.status_expires_at_ms = previous_status_expires_at_ms;
-      state.human.error.clear();
+         inbox_status_now_ms() < previous_status_expires_at_ms)) {
+      state.inbox.status = previous_status;
+      state.inbox.status_is_error = false;
+      state.inbox.status_expires_at_ms = previous_status_expires_at_ms;
+      state.inbox.error.clear();
     }
     return false;
   }
@@ -219,22 +219,23 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
 
   auto root = create_grid_container(
       "root",
-      {len_spec::px(3), len_spec::px(2), len_spec::frac(1.0), len_spec::px(2),
+      {len_spec::px(3), len_spec::px(0), len_spec::frac(1.0), len_spec::px(3),
        len_spec::px(3)},
       {len_spec::frac(1.0)}, 0, 0,
       iinuji_layout_t{layout_mode_t::Normalized, 0, 0, 1, 1, true},
       iinuji_style_t{"#D8D8D8", "#101014", false, "#5E5E68"});
 
   auto title =
-      create_text_box("title", "", true, text_align_t::Left, iinuji_layout_t{},
+      create_text_box("title", "", false, text_align_t::Left, iinuji_layout_t{},
                       iinuji_style_t{"#EDEDED", "#202028", true, "#6C6C75",
                                      true, false, " cuwacunu.cmd "});
   place_in_grid(title, 0, 0);
   root->add_child(title);
 
-  auto status =
-      create_text_box("status", "", true, text_align_t::Left, iinuji_layout_t{},
-                      iinuji_style_t{"#B8B8BF", "#101014", false, "#101014"});
+  auto status = create_text_box(
+      "status", "", false, text_align_t::Left, iinuji_layout_t{},
+      iinuji_style_t{"#B8B8BF", "#101014", false, "#101014"});
+  status->visible = false;
   place_in_grid(status, 1, 0);
   root->add_child(status);
 
@@ -259,21 +260,21 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   place_in_grid(left_main, 0, 0, 2, 1);
   left->add_child(left_main);
 
-  auto human_nav =
-      create_panel("human_nav", iinuji_layout_t{},
+  auto inbox_nav =
+      create_panel("inbox_nav", iinuji_layout_t{},
                    iinuji_style_t{"#D0D0D0", "#101014", true, "#5E5E68", false,
                                   false, " navigation "});
-  human_nav->visible = false;
-  place_in_grid(human_nav, 0, 0);
-  left->add_child(human_nav);
+  inbox_nav->visible = false;
+  place_in_grid(inbox_nav, 0, 0);
+  left->add_child(inbox_nav);
 
-  auto human_worklist =
-      create_panel("human_worklist", iinuji_layout_t{},
+  auto inbox_worklist =
+      create_panel("inbox_worklist", iinuji_layout_t{},
                    iinuji_style_t{"#D0D0D0", "#101014", true, "#5E5E68", false,
                                   false, " worklist "});
-  human_worklist->visible = false;
-  place_in_grid(human_worklist, 1, 0);
-  left->add_child(human_worklist);
+  inbox_worklist->visible = false;
+  place_in_grid(inbox_worklist, 1, 0);
+  left->add_child(inbox_worklist);
 
   auto right = create_grid_container(
       "right", {len_spec::frac(1.0), len_spec::px(0)}, {len_spec::frac(1.0)}, 1,
@@ -299,8 +300,8 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
 
   auto bottom = create_text_box(
       "bottom", "", false, text_align_t::Left, iinuji_layout_t{},
-      iinuji_style_t{"#A8A8AF", "#101014", true, "#5E5E68", false, false,
-                     " message "});
+      iinuji_style_t{"#B3A99B", "#1E1B18", true, "#4E473E", false, false,
+                     " status "});
   place_in_grid(bottom, 3, 0);
   root->add_child(bottom);
 
@@ -377,17 +378,18 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   };
 
   static constexpr std::array<BootStageDescriptor, 6> kBootStages{{
-      {BootStage::LoadHumanDefaults, "Human defaults",
-       "loading Hero operator defaults"},
-      {BootStage::LoadMarshalDefaults, "Marshal defaults",
-       "priming cockpit guidance"},
-      {BootStage::LoadRuntimeDefaults, "Runtime defaults",
-       "hydrating runtime contracts"},
-      {BootStage::LoadHumanInbox, "Marshal inbox", "refreshing operator inbox"},
-      {BootStage::LoadConfig, "Config browser",
-       "indexing editable config surfaces"},
+      {BootStage::LoadHumanDefaults, "Human Hero defaults",
+       "resolve Human Hero DSL and load operator defaults"},
+      {BootStage::LoadMarshalDefaults, "Marshal Hero defaults",
+       "resolve Marshal Hero DSL and load marshal session defaults"},
+      {BootStage::LoadRuntimeDefaults, "Runtime Hero defaults",
+       "resolve Runtime Hero DSL and load runtime defaults"},
+      {BootStage::LoadHumanInbox, "Operator inbox",
+       "collect operator sessions, requests, and review summaries"},
+      {BootStage::LoadConfig, "Config catalog",
+       "load config policy and catalog visible config files"},
       {BootStage::LoadRuntime, "Runtime inventory",
-       "linking live runtime state"},
+       "collect runtime sessions, campaigns, jobs, and device state"},
   }};
   static constexpr std::size_t kBootStageCount = kBootStages.size();
   static constexpr std::uint64_t kBootStageEstimateMinMs = 120u;
@@ -530,10 +532,41 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
         std::string(kBootStages[boot_profile_index(boot_stage)].label));
   };
 
+  auto boot_actual_phase_detail = [&]() -> std::string {
+    if (boot_stage == BootStage::Ready) {
+      return "startup complete";
+    }
+    return std::string(kBootStages[boot_profile_index(boot_stage)].detail);
+  };
+
+  auto log_boot_stage_begin = [&](BootStage stage) {
+    const auto &descriptor = kBootStages[boot_profile_index(stage)];
+    log_info("[iinuji_cmd.boot] stage=%s begin | %s\n", descriptor.label,
+             descriptor.detail);
+  };
+
+  auto log_boot_stage_finish = [&](BootStage stage, bool ok,
+                                   std::string summary = {}) {
+    const auto &descriptor = kBootStages[boot_profile_index(stage)];
+    const std::uint64_t now_ms = monotonic_now_ms();
+    const auto elapsed_ms = static_cast<unsigned long long>(
+        now_ms >= boot_stage_started_ms ? (now_ms - boot_stage_started_ms)
+                                        : 0u);
+    const std::string suffix =
+        summary.empty() ? std::string{} : " | " + std::move(summary);
+    if (ok) {
+      log_info("[iinuji_cmd.boot] stage=%s ok elapsed_ms=%llu%s\n",
+               descriptor.label, elapsed_ms, suffix.c_str());
+    } else {
+      log_warn("[iinuji_cmd.boot] stage=%s warn elapsed_ms=%llu%s\n",
+               descriptor.label, elapsed_ms, suffix.c_str());
+    }
+  };
+
   auto render_boot_ui = [&]() {
     left_main->visible = true;
-    human_nav->visible = false;
-    human_worklist->visible = false;
+    inbox_nav->visible = false;
+    inbox_worklist->visible = false;
     right_main->visible = true;
     right_aux->visible = false;
     title->style.label_color = "#F1FFF4";
@@ -549,13 +582,13 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     right_main->style.label_color = "#D6EBD9";
     right_main->style.title = " ";
     bottom->style.border_color = "#2D6A44";
-    bottom->style.label_color = "#95C9A2";
-    bottom->style.title = " note ";
+    bottom->style.label_color = "#B7D2C0";
+    bottom->style.title = " status ";
     cmdline->style.border_color = "#2D6A44";
     cmdline->style.label_color = "#E8F7EC";
 
-    set_text_box(title, "cuwacunu.cmd - loading", true);
-    set_text_box(status, "loading " + boot_actual_phase_label(), true);
+    set_text_box(title, "loading " + boot_actual_phase_label(), false);
+    set_text_box(status, "", false);
     set_text_box(left_main, "", true);
     set_text_box(right_main, "", true);
     set_text_box(bottom, "waajacu.com | bootstrap in progress", false);
@@ -596,7 +629,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     const Rect stage_area = home_showcase_stage_rect(
         left_area, 0.42, /*top_padding_rows=*/0,
         /*bottom_reserved_rows=*/
-        static_cast<int>(kBootStageCount) + wordmark_rows + 5);
+        static_cast<int>(kBootStageCount) + wordmark_rows + 6);
 
     if (boot_logo_ok) {
       render_home_showcase_static(boot_logo_image, stage_area,
@@ -656,6 +689,11 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       const std::string step_line = "loading " + boot_actual_phase_label();
       R->putText(status_y, left_area.x, step_line, left_area.w,
                  hero_green_soft_pair, true, false);
+      ++status_y;
+    }
+    if (status_y < left_area.y + left_area.h) {
+      R->putText(status_y, left_area.x, boot_actual_phase_detail(), left_area.w,
+                 hero_note_pair, false, false);
       ++status_y;
     }
 
@@ -747,7 +785,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
 
     static constexpr std::array<std::pair<const char *, const char *>, 5>
         kHomeShortcuts{{
-            {"F2", "Marshal"},
+            {"F2", "Inbox"},
             {"F3", "Runtime"},
             {"F4", "Lattice"},
             {"F8", "Shell Logs"},
@@ -773,13 +811,13 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   auto finish_boot = [&]() {
     set_mouse_capture(state.shell_logs.mouse_capture);
     log_info("[iinuji_cmd] cuwacunu Hero terminal ready\n");
-    log_info("[iinuji_cmd] F1 home | F2 marshal | F3 runtime | F4 lattice | "
+    log_info("[iinuji_cmd] F1 home | F2 inbox | F3 runtime | F4 lattice | "
              "F8 shell logs | F9 config | type 'help' for commands\n");
     log_info("[iinuji_cmd] logs setting 'mouse capture' controls terminal "
              "select/copy mode\n");
-    if (!state.human.ok) {
-      log_warn("[iinuji_cmd] human cockpit invalid: %s\n",
-               state.human.error.c_str());
+    if (!state.inbox.ok) {
+      log_warn("[iinuji_cmd] inbox screen invalid: %s\n",
+               state.inbox.error.c_str());
     }
     if (!state.runtime.ok) {
       log_warn("[iinuji_cmd] runtime view invalid: %s\n",
@@ -803,6 +841,18 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     if (tail.empty())
       return 0;
     return tail.back().seq;
+  };
+  std::string last_status_panel_log{};
+  auto mirror_status_panel_line_to_shell_logs = [&](const std::string &line) {
+    if (line.empty()) {
+      last_status_panel_log.clear();
+      return;
+    }
+    if (line == last_status_panel_log) {
+      return;
+    }
+    last_status_panel_log = line;
+    log_info("[iinuji_cmd.status] %s\n", line.c_str());
   };
 
   auto apply_workspace_split = [&](const CmdState &st) {
@@ -834,7 +884,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   auto apply_left_panel_rows = [&](ScreenMode screen) {
     if (!left || !left->grid)
       return;
-    if (screen == ScreenMode::Human) {
+    if (screen == ScreenMode::Inbox) {
       left->grid->rows = {len_spec::px(10), len_spec::frac(1.0)};
       return;
     }
@@ -858,7 +908,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       return;
     // Human mode shows two stacked bordered boxes here, so keep them flush.
     left->grid->gap_row =
-        (screen == ScreenMode::Home || screen == ScreenMode::Human ||
+        (screen == ScreenMode::Home || screen == ScreenMode::Inbox ||
          screen == ScreenMode::Runtime || screen == ScreenMode::Config ||
          screen == ScreenMode::Lattice)
             ? 0
@@ -915,6 +965,8 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
         apply_left_panel_bottom_gap(false);
         apply_right_panel_rows(state);
         render_boot_ui();
+        mirror_status_panel_line_to_shell_logs(
+            "waajacu.com | bootstrap in progress");
       } else {
         apply_workspace_split(state);
         apply_left_panel_rows(state.screen);
@@ -924,8 +976,9 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
         if (state.screen == ScreenMode::Runtime) {
           runtime_keep_log_viewer_following(state);
         }
-        refresh_ui(state, title, status, left_main, human_nav, human_worklist,
+        refresh_ui(state, title, status, left_main, inbox_nav, inbox_worklist,
                    right_main, right_aux, bottom, cmdline);
+        mirror_status_panel_line_to_shell_logs(ui_eventful_status_line(state));
         if (state.screen == ScreenMode::ShellLogs &&
             state.shell_logs.auto_follow) {
           jump_logs_to_bottom(state, left);
@@ -948,7 +1001,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       dirty = false;
     }
 
-    if (!boot_active && poll_human_async_updates(state)) {
+    if (!boot_active && poll_inbox_async_updates(state)) {
       dirty = true;
       last_idle_refresh_ms = monotonic_now_ms();
     }
@@ -985,29 +1038,41 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
 
       switch (boot_stage) {
       case BootStage::LoadHumanDefaults: {
-        state.human.app.global_config_path = global_config_path;
-        state.human.app.hero_config_path =
+        log_boot_stage_begin(BootStage::LoadHumanDefaults);
+        state.inbox.app.global_config_path = global_config_path;
+        state.inbox.app.hero_config_path =
             cuwacunu::hero::human_mcp::resolve_human_hero_dsl_path(
                 global_config_path);
-        state.human.app.self_binary_path =
+        state.inbox.app.self_binary_path =
             cuwacunu::hero::human_mcp::current_executable_path();
         std::string error{};
-        if (!state.human.app.hero_config_path.empty() &&
+        if (!state.inbox.app.hero_config_path.empty() &&
             cuwacunu::hero::human_mcp::load_human_defaults(
-                state.human.app.hero_config_path, global_config_path,
-                &state.human.app.defaults, &error)) {
-          state.human.ok = true;
-          set_human_status(state, "Human Hero defaults loaded.", false);
+                state.inbox.app.hero_config_path, global_config_path,
+                &state.inbox.app.defaults, &error)) {
+          state.inbox.ok = true;
+          set_inbox_status(state, "Human Hero defaults loaded.", false);
+          log_boot_stage_finish(
+              BootStage::LoadHumanDefaults, true,
+              "hero_config_path=" + state.inbox.app.hero_config_path.string() +
+                  " marshal_root=" +
+                  state.inbox.app.defaults.marshal_root.string() +
+                  " operator_id=" + state.inbox.app.defaults.operator_id);
         } else {
-          state.human.ok = false;
-          state.human.error =
+          state.inbox.ok = false;
+          state.inbox.error =
               error.empty() ? "missing Human Hero config" : error;
-          set_human_status(state, state.human.error, true);
+          set_inbox_status(state, state.inbox.error, true);
+          log_boot_stage_finish(
+              BootStage::LoadHumanDefaults, false,
+              "hero_config_path=" + state.inbox.app.hero_config_path.string() +
+                  " error=" + state.inbox.error);
         }
         (void)advance_boot_stage(BootStage::LoadHumanDefaults,
                                  BootStage::LoadMarshalDefaults);
       } break;
       case BootStage::LoadMarshalDefaults: {
+        log_boot_stage_begin(BootStage::LoadMarshalDefaults);
         state.runtime.marshal_app.global_config_path = global_config_path;
         state.runtime.marshal_app.hero_config_path =
             cuwacunu::hero::marshal_mcp::resolve_marshal_hero_dsl_path(
@@ -1021,15 +1086,29 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
                 &state.runtime.marshal_app.defaults, &error)) {
           state.runtime.marshal_ok = true;
           state.runtime.marshal_error.clear();
+          log_boot_stage_finish(
+              BootStage::LoadMarshalDefaults, true,
+              "hero_config_path=" +
+                  state.runtime.marshal_app.hero_config_path.string() +
+                  " marshal_root=" +
+                  state.runtime.marshal_app.defaults.marshal_root.string() +
+                  " repo_root=" +
+                  state.runtime.marshal_app.defaults.repo_root.string());
         } else {
           state.runtime.marshal_ok = false;
           state.runtime.marshal_error =
               error.empty() ? "missing Marshal Hero config" : error;
+          log_boot_stage_finish(
+              BootStage::LoadMarshalDefaults, false,
+              "hero_config_path=" +
+                  state.runtime.marshal_app.hero_config_path.string() +
+                  " error=" + state.runtime.marshal_error);
         }
         (void)advance_boot_stage(BootStage::LoadMarshalDefaults,
                                  BootStage::LoadRuntimeDefaults);
       } break;
       case BootStage::LoadRuntimeDefaults: {
+        log_boot_stage_begin(BootStage::LoadRuntimeDefaults);
         state.runtime.app.global_config_path = global_config_path;
         state.runtime.app.hero_config_path =
             cuwacunu::hero::runtime_mcp::resolve_runtime_hero_dsl_path(
@@ -1043,28 +1122,91 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
                 &state.runtime.app.defaults, &error)) {
           state.runtime.ok = true;
           state.runtime.status = "Runtime Hero defaults loaded.";
+          log_boot_stage_finish(
+              BootStage::LoadRuntimeDefaults, true,
+              "hero_config_path=" +
+                  state.runtime.app.hero_config_path.string() +
+                  " campaigns_root=" +
+                  state.runtime.app.defaults.campaigns_root.string() +
+                  " marshal_root=" +
+                  state.runtime.app.defaults.marshal_root.string());
         } else {
           state.runtime.ok = false;
           state.runtime.error =
               error.empty() ? "missing Runtime Hero config" : error;
           state.runtime.status = state.runtime.error;
           state.runtime.status_is_error = true;
+          log_boot_stage_finish(
+              BootStage::LoadRuntimeDefaults, false,
+              "hero_config_path=" +
+                  state.runtime.app.hero_config_path.string() +
+                  " error=" + state.runtime.error);
         }
         (void)advance_boot_stage(BootStage::LoadRuntimeDefaults,
                                  BootStage::LoadHumanInbox);
       } break;
       case BootStage::LoadHumanInbox:
-        (void)refresh_human_state(state);
+        log_boot_stage_begin(BootStage::LoadHumanInbox);
+        (void)refresh_inbox_state(state);
+        if (state.inbox.ok) {
+          log_boot_stage_finish(
+              BootStage::LoadHumanInbox, true,
+              "sessions=" +
+                  std::to_string(
+                      state.inbox.operator_inbox.all_sessions.size()) +
+                  " actionable_requests=" +
+                  std::to_string(
+                      state.inbox.operator_inbox.actionable_requests.size()) +
+                  " unacknowledged_summaries=" +
+                  std::to_string(state.inbox.operator_inbox
+                                     .unacknowledged_summaries.size()));
+        } else {
+          log_boot_stage_finish(BootStage::LoadHumanInbox, false,
+                                "error=" + state.inbox.error);
+        }
         (void)advance_boot_stage(BootStage::LoadHumanInbox,
                                  BootStage::LoadConfig);
         break;
       case BootStage::LoadConfig:
+        log_boot_stage_begin(BootStage::LoadConfig);
         state.config = load_config_view_from_state(state);
         clamp_selected_config_file(state);
+        if (state.config.ok) {
+          log_boot_stage_finish(
+              BootStage::LoadConfig, true,
+              "policy_path=" + state.config.policy_path +
+                  " write_policy_path=" +
+                  config_effective_write_policy_path(state.config) + " files=" +
+                  std::to_string(state.config.files.size()) + " defaults=" +
+                  std::to_string(
+                      count_config_family(state, ConfigFileFamily::Defaults)) +
+                  " objectives=" +
+                  std::to_string(count_config_family(
+                      state, ConfigFileFamily::Objectives)) +
+                  " optim=" +
+                  std::to_string(
+                      count_config_family(state, ConfigFileFamily::Optim)));
+        } else {
+          log_boot_stage_finish(BootStage::LoadConfig, false,
+                                "error=" + state.config.error);
+        }
         (void)advance_boot_stage(BootStage::LoadConfig, BootStage::LoadRuntime);
         break;
       case BootStage::LoadRuntime:
+        log_boot_stage_begin(BootStage::LoadRuntime);
         (void)refresh_runtime_state(state);
+        if (state.runtime.ok) {
+          log_boot_stage_finish(
+              BootStage::LoadRuntime, true,
+              "sessions=" + std::to_string(state.runtime.sessions.size()) +
+                  " campaigns=" +
+                  std::to_string(state.runtime.campaigns.size()) +
+                  " jobs=" + std::to_string(state.runtime.jobs.size()) +
+                  " gpus=" + std::to_string(state.runtime.device.gpus.size()));
+        } else {
+          log_boot_stage_finish(BootStage::LoadRuntime, false,
+                                "error=" + state.runtime.error);
+        }
         boot_visual_hold_until_ms = std::max<std::uint64_t>(
             advance_boot_stage(BootStage::LoadRuntime, BootStage::Ready),
             boot_visual_start_ms + boot_estimated_total_ms());

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -13,7 +14,7 @@
 
 #include "iinuji/iinuji_ansi.h"
 #include "iinuji/iinuji_cmd/views/common.h"
-#include "iinuji/iinuji_cmd/views/human/commands.h"
+#include "iinuji/iinuji_cmd/views/inbox/commands.h"
 
 namespace cuwacunu {
 namespace iinuji {
@@ -175,6 +176,21 @@ inline RuntimeLane runtime_lane_from_index(std::size_t index) {
   }
 }
 
+inline constexpr std::string_view kRuntimeNoneSessionSelection =
+    "::runtime:none:session::";
+inline constexpr std::string_view kRuntimeNoneCampaignSelection =
+    "::runtime:none:campaign::";
+
+inline bool runtime_is_none_session_selection(std::string_view value) {
+  return value == kRuntimeNoneSessionSelection;
+}
+
+inline bool runtime_is_none_campaign_selection(std::string_view value) {
+  return value == kRuntimeNoneCampaignSelection;
+}
+
+inline std::string runtime_none_branch_label() { return "<none>"; }
+
 inline std::string runtime_log_viewer_kind_label(RuntimeLogViewerKind kind) {
   switch (kind) {
   case RuntimeLogViewerKind::JobStdout:
@@ -187,15 +203,57 @@ inline std::string runtime_log_viewer_kind_label(RuntimeLogViewerKind kind) {
     return "codex stdout";
   case RuntimeLogViewerKind::MarshalCodexStderr:
     return "codex stderr";
+  case RuntimeLogViewerKind::CampaignStdout:
+    return "campaign stdout";
+  case RuntimeLogViewerKind::CampaignStderr:
+    return "campaign stderr";
+  case RuntimeLogViewerKind::JobTrace:
+    return "job trace";
+  case RuntimeLogViewerKind::ArtifactFile:
+    return "artifact";
   case RuntimeLogViewerKind::None:
     break;
   }
   return "log";
 }
 
-inline bool runtime_log_viewer_is_open(const CmdState &st) {
+inline bool runtime_log_viewer_kind_supports_follow(RuntimeLogViewerKind kind) {
+  switch (kind) {
+  case RuntimeLogViewerKind::JobStdout:
+  case RuntimeLogViewerKind::JobStderr:
+  case RuntimeLogViewerKind::MarshalEvents:
+  case RuntimeLogViewerKind::MarshalCodexStdout:
+  case RuntimeLogViewerKind::MarshalCodexStderr:
+  case RuntimeLogViewerKind::CampaignStdout:
+  case RuntimeLogViewerKind::CampaignStderr:
+  case RuntimeLogViewerKind::JobTrace:
+    return true;
+  case RuntimeLogViewerKind::ArtifactFile:
+  case RuntimeLogViewerKind::None:
+    return false;
+  }
+  return false;
+}
+
+inline bool runtime_event_viewer_is_open(const CmdState &st) {
+  return st.runtime.log_viewer_open &&
+         st.runtime.log_viewer_kind == RuntimeLogViewerKind::MarshalEvents &&
+         !st.runtime.log_viewer_path.empty();
+}
+
+inline bool runtime_text_log_viewer_is_open(const CmdState &st) {
   return st.runtime.log_viewer_open && st.runtime.log_viewer != nullptr;
 }
+
+inline bool runtime_log_viewer_is_open(const CmdState &st) {
+  return st.runtime.log_viewer_open &&
+         (st.runtime.log_viewer != nullptr || runtime_event_viewer_is_open(st));
+}
+
+inline std::size_t runtime_event_viewer_entry_count(const CmdState &st);
+inline bool runtime_event_viewer_has_entries(const CmdState &st);
+inline bool runtime_event_viewer_is_at_end(const CmdState &st);
+inline void runtime_snap_event_viewer_to_end(CmdState &st);
 
 inline std::string runtime_log_viewer_title(const CmdState &st) {
   if (!runtime_log_viewer_is_open(st))
@@ -205,12 +263,18 @@ inline std::string runtime_log_viewer_title(const CmdState &st) {
              : st.runtime.log_viewer_title;
 }
 
+inline bool runtime_log_viewer_supports_follow(const CmdState &st) {
+  return runtime_log_viewer_kind_supports_follow(st.runtime.log_viewer_kind);
+}
+
 inline void clear_runtime_log_viewer(CmdState &st) {
   st.runtime.log_viewer_open = false;
   st.runtime.log_viewer_kind = RuntimeLogViewerKind::None;
   st.runtime.log_viewer_path.clear();
   st.runtime.log_viewer_title.clear();
   st.runtime.log_viewer.reset();
+  st.runtime.marshal_event_viewer.entries.clear();
+  st.runtime.marshal_event_viewer.selected_entry = 0;
   st.runtime.log_viewer_live_follow = true;
   st.runtime.log_viewer_last_poll_ms = 0;
   st.runtime.log_viewer_last_size = 0;
@@ -322,18 +386,25 @@ runtime_log_viewer_is_at_end(const cuwacunu::iinuji::editorBox_data_t &editor) {
 }
 
 inline void runtime_refresh_log_viewer_follow_state(CmdState &st) {
-  if (!runtime_log_viewer_is_open(st) || !st.runtime.log_viewer)
+  if (!runtime_text_log_viewer_is_open(st) || !st.runtime.log_viewer)
     return;
   st.runtime.log_viewer_live_follow =
       runtime_log_viewer_is_at_end(*st.runtime.log_viewer);
 }
 
 inline void runtime_keep_log_viewer_following(CmdState &st) {
-  if (!runtime_log_viewer_is_open(st) || !st.runtime.log_viewer ||
+  if (!runtime_log_viewer_is_open(st) ||
+      !runtime_log_viewer_supports_follow(st) ||
       !st.runtime.log_viewer_live_follow) {
     return;
   }
-  runtime_snap_log_viewer_to_end(*st.runtime.log_viewer);
+  if (runtime_event_viewer_is_open(st)) {
+    runtime_snap_event_viewer_to_end(st);
+    return;
+  }
+  if (st.runtime.log_viewer) {
+    runtime_snap_log_viewer_to_end(*st.runtime.log_viewer);
+  }
 }
 
 struct RuntimeAnsiColorSegment {
@@ -509,10 +580,288 @@ runtime_tail_text_file_lines(const std::string &path, std::size_t max_lines) {
   return out;
 }
 
+inline bool
+runtime_try_parse_event_json_object_line(const std::string &raw_line,
+                                         cmd_json_value_t *out) {
+  if (out == nullptr)
+    return false;
+  *out = cmd_json_value_t{};
+  try {
+    *out = cuwacunu::piaabo::JsonParser(raw_line).parse();
+  } catch (...) {
+    return false;
+  }
+  return out->type == cmd_json_type_t::OBJECT;
+}
+
+inline std::string runtime_event_json_first_string(
+    const cmd_json_value_t *object, std::string_view key_a,
+    std::string_view key_b = {}, std::string_view key_c = {},
+    std::string_view key_d = {}, std::string_view key_e = {}) {
+  const std::string_view keys[] = {key_a, key_b, key_c, key_d, key_e};
+  for (const auto key : keys) {
+    if (key.empty())
+      continue;
+    const std::string value = cmd_json_string(cmd_json_field(object, key));
+    if (!value.empty())
+      return value;
+  }
+  return {};
+}
+
+inline std::string
+runtime_event_json_value_text(const cmd_json_value_t *value) {
+  if (value == nullptr)
+    return {};
+  switch (value->type) {
+  case cmd_json_type_t::STRING:
+    return value->stringValue;
+  case cmd_json_type_t::BOOLEAN:
+    return value->boolValue ? "true" : "false";
+  case cmd_json_type_t::NUMBER: {
+    const double number = value->numberValue;
+    const auto as_i64 = static_cast<std::int64_t>(number);
+    if (static_cast<double>(as_i64) == number) {
+      return std::to_string(as_i64);
+    }
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3) << number;
+    std::string text = oss.str();
+    while (!text.empty() && text.back() == '0')
+      text.pop_back();
+    if (!text.empty() && text.back() == '.')
+      text.pop_back();
+    return text;
+  }
+  case cmd_json_type_t::NULL_TYPE:
+    return "null";
+  case cmd_json_type_t::ARRAY:
+    if (value->arrayValue == nullptr)
+      return "[]";
+    {
+      std::vector<std::string> parts{};
+      for (const auto &entry : *value->arrayValue) {
+        const std::string item = runtime_event_json_value_text(&entry);
+        if (item.empty())
+          continue;
+        parts.push_back(item);
+        if (parts.size() >= 4)
+          break;
+      }
+      if (parts.empty())
+        return "[]";
+      return "[" + join_trimmed_values(parts, 4, 40) + "]";
+    }
+  case cmd_json_type_t::OBJECT:
+    return "{...}";
+  }
+  return {};
+}
+
+inline cuwacunu::iinuji::text_line_emphasis_t
+runtime_marshaled_event_emphasis_from_name(std::string_view event_name) {
+  const std::string key = to_lower_copy(std::string(event_name));
+  if (key.find("fail") != std::string::npos ||
+      key.find("error") != std::string::npos ||
+      key.find("terminate") != std::string::npos ||
+      key.find("abort") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::MutedError;
+  }
+  if (key.find("warn") != std::string::npos ||
+      key.find("pause") != std::string::npos ||
+      key.find("park") != std::string::npos ||
+      key.find("degrad") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Warning;
+  }
+  if (key.find("launch") != std::string::npos ||
+      key.find("resume") != std::string::npos ||
+      key.find("active") != std::string::npos ||
+      key.find("finish") != std::string::npos ||
+      key.find("complete") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Success;
+  }
+  if (key.find("start") != std::string::npos ||
+      key.find("create") != std::string::npos ||
+      key.find("checkpoint") != std::string::npos ||
+      key.find("stage") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Accent;
+  }
+  return cuwacunu::iinuji::text_line_emphasis_t::Info;
+}
+
+inline RuntimeMarshalEventViewerEntry
+runtime_build_marshaled_event_entry(const std::string &raw_line) {
+  RuntimeMarshalEventViewerEntry entry{};
+  entry.raw_line = raw_line;
+  entry.summary = trim_to_width(trim_copy(raw_line), 160);
+  entry.emphasis = cuwacunu::iinuji::text_line_emphasis_t::Debug;
+
+  cmd_json_value_t parsed{};
+  if (!runtime_try_parse_event_json_object_line(raw_line, &parsed)) {
+    entry.event_name = "raw";
+    if (entry.summary.empty())
+      entry.summary = "<empty>";
+    return entry;
+  }
+
+  entry.timestamp_ms = cmd_json_u64(cmd_json_field(&parsed, "timestamp_ms"));
+  entry.event_name =
+      runtime_event_json_first_string(&parsed, "event", "type", "kind");
+  if (entry.event_name.empty())
+    entry.event_name = "event";
+  entry.summary = runtime_event_json_first_string(&parsed, "detail", "summary",
+                                                  "text", "message", "status");
+  if (entry.summary.empty())
+    entry.summary = trim_to_width(trim_copy(raw_line), 160);
+  entry.emphasis = runtime_marshaled_event_emphasis_from_name(entry.event_name);
+
+  std::vector<std::pair<std::string, std::string>> metadata{};
+  auto append_meta = [&](std::string_view key) {
+    if (key.empty())
+      return;
+    const auto *value = cmd_json_field(&parsed, key);
+    if (value == nullptr)
+      return;
+    const std::string text = runtime_event_json_value_text(value);
+    if (text.empty() || text == "{...}")
+      return;
+    for (const auto &existing : metadata) {
+      if (existing.first == key)
+        return;
+    }
+    metadata.emplace_back(std::string(key), trim_to_width(text, 42));
+  };
+
+  const std::string_view preferred_keys[] = {
+      "checkpoint_index", "checkpoint_count",
+      "launch_count",     "phase",
+      "intent",           "intent_kind",
+      "pause_kind",       "finish_reason",
+      "campaign_cursor",  "active_campaign_cursor",
+      "tool_name",        "role",
+      "stream",           "line_index"};
+  for (const auto key : preferred_keys) {
+    append_meta(key);
+    if (metadata.size() >= 5)
+      break;
+  }
+
+  if (metadata.size() < 5 && parsed.objectValue != nullptr) {
+    static const std::vector<std::string> ignored_keys = {
+        "timestamp_ms", "event", "type",    "kind",   "detail",
+        "summary",      "text",  "message", "status", "marshal_session_id",
+        "schema"};
+    for (const auto &kv : *parsed.objectValue) {
+      if (std::find(ignored_keys.begin(), ignored_keys.end(), kv.first) !=
+          ignored_keys.end()) {
+        continue;
+      }
+      append_meta(kv.first);
+      if (metadata.size() >= 5)
+        break;
+    }
+  }
+
+  entry.metadata = std::move(metadata);
+  return entry;
+}
+
+inline bool runtime_read_marshaled_event_entries(
+    const std::string &path, std::vector<RuntimeMarshalEventViewerEntry> *out,
+    std::string *error) {
+  if (out == nullptr)
+    return false;
+  out->clear();
+  std::string raw{};
+  if (!read_text_file_safe(path, &raw, error))
+    return false;
+  const auto lines = split_lines_keep_empty(raw);
+  out->reserve(lines.size());
+  for (const auto &line : lines) {
+    if (trim_copy(line).empty())
+      continue;
+    out->push_back(runtime_build_marshaled_event_entry(line));
+  }
+  return true;
+}
+
+inline std::size_t runtime_event_viewer_entry_count(const CmdState &st) {
+  return st.runtime.marshal_event_viewer.entries.size();
+}
+
+inline bool runtime_event_viewer_has_entries(const CmdState &st) {
+  return runtime_event_viewer_entry_count(st) != 0;
+}
+
+inline bool runtime_event_viewer_is_at_end(const CmdState &st) {
+  return !runtime_event_viewer_has_entries(st) ||
+         st.runtime.marshal_event_viewer.selected_entry + 1 >=
+             runtime_event_viewer_entry_count(st);
+}
+
+inline void runtime_snap_event_viewer_to_end(CmdState &st) {
+  if (!runtime_event_viewer_has_entries(st)) {
+    st.runtime.marshal_event_viewer.selected_entry = 0;
+    return;
+  }
+  st.runtime.marshal_event_viewer.selected_entry =
+      runtime_event_viewer_entry_count(st) - 1;
+}
+
 inline bool runtime_open_log_viewer(CmdState &st, const std::string &path,
                                     RuntimeLogViewerKind kind,
                                     std::string title,
                                     bool announce_status = true) {
+  const bool supports_follow = runtime_log_viewer_kind_supports_follow(kind);
+  if (kind == RuntimeLogViewerKind::MarshalEvents) {
+    const bool preserve_selection = runtime_event_viewer_is_open(st) &&
+                                    st.runtime.log_viewer_path == path &&
+                                    st.runtime.log_viewer_kind == kind;
+    const bool previous_follow = st.runtime.log_viewer_live_follow;
+    const std::size_t previous_selected =
+        st.runtime.marshal_event_viewer.selected_entry;
+    std::string error{};
+    std::vector<RuntimeMarshalEventViewerEntry> entries{};
+    if (!runtime_read_marshaled_event_entries(path, &entries, &error)) {
+      set_runtime_status(
+          st, error.empty() ? "failed to open marshal events file" : error,
+          true);
+      return true;
+    }
+
+    st.runtime.log_viewer.reset();
+    st.runtime.log_viewer_open = true;
+    st.runtime.log_viewer_kind = kind;
+    st.runtime.log_viewer_path = path;
+    st.runtime.log_viewer_title = std::move(title);
+    st.runtime.log_viewer_last_poll_ms = 0;
+    st.runtime.marshal_event_viewer.entries = std::move(entries);
+    st.runtime.marshal_event_viewer.selected_entry = 0;
+
+    if (preserve_selection && !previous_follow) {
+      st.runtime.log_viewer_live_follow = false;
+      if (runtime_event_viewer_has_entries(st)) {
+        st.runtime.marshal_event_viewer.selected_entry = std::min(
+            previous_selected, runtime_event_viewer_entry_count(st) - 1);
+      }
+    } else {
+      st.runtime.log_viewer_live_follow = supports_follow;
+      if (supports_follow)
+        runtime_snap_event_viewer_to_end(st);
+    }
+
+    runtime_record_log_viewer_stamp(st, runtime_probe_log_viewer_file(path));
+    if (announce_status) {
+      set_runtime_status(
+          st,
+          "Opened " +
+              runtime_log_viewer_kind_label(st.runtime.log_viewer_kind) +
+              " in the right panel.",
+          false);
+    }
+    return true;
+  }
+
   const auto previous = st.runtime.log_viewer;
   const bool preserve_viewport = runtime_log_viewer_is_open(st) && previous &&
                                  st.runtime.log_viewer_path == path &&
@@ -526,13 +875,20 @@ inline bool runtime_open_log_viewer(CmdState &st, const std::string &path,
   }
   if (preserve_viewport && !st.runtime.log_viewer_live_follow) {
     runtime_restore_log_viewer_viewport(*editor, *previous);
-  } else {
+  } else if (supports_follow) {
     st.runtime.log_viewer_live_follow = true;
     if (previous)
       editor->last_body_h =
           std::max(editor->last_body_h, previous->last_body_h);
     runtime_snap_log_viewer_to_end(*editor);
+  } else {
+    st.runtime.log_viewer_live_follow = false;
+    if (previous)
+      editor->last_body_h =
+          std::max(editor->last_body_h, previous->last_body_h);
   }
+  st.runtime.marshal_event_viewer.entries.clear();
+  st.runtime.marshal_event_viewer.selected_entry = 0;
   st.runtime.log_viewer = std::move(editor);
   st.runtime.log_viewer_open = true;
   st.runtime.log_viewer_kind = kind;
@@ -570,11 +926,19 @@ inline bool runtime_reload_log_viewer(CmdState &st,
 }
 
 inline bool runtime_toggle_log_viewer_follow(CmdState &st) {
-  if (!runtime_log_viewer_is_open(st) || !st.runtime.log_viewer)
+  if (!runtime_log_viewer_is_open(st))
     return false;
+  if (!runtime_log_viewer_supports_follow(st)) {
+    set_runtime_status(st, "This viewer does not support live-follow.", false);
+    return true;
+  }
   st.runtime.log_viewer_live_follow = !st.runtime.log_viewer_live_follow;
   if (st.runtime.log_viewer_live_follow) {
-    runtime_snap_log_viewer_to_end(*st.runtime.log_viewer);
+    if (runtime_event_viewer_is_open(st)) {
+      runtime_snap_event_viewer_to_end(st);
+    } else if (st.runtime.log_viewer) {
+      runtime_snap_log_viewer_to_end(*st.runtime.log_viewer);
+    }
   }
   set_runtime_status(st,
                      st.runtime.log_viewer_live_follow
@@ -588,6 +952,8 @@ inline bool runtime_poll_live_log_viewer(CmdState &st, std::uint64_t now_ms) {
   if (!runtime_log_viewer_is_open(st) || st.runtime.log_viewer_path.empty()) {
     return false;
   }
+  if (!runtime_log_viewer_supports_follow(st))
+    return false;
   constexpr std::uint64_t kRuntimeLogViewerPollPeriodMs = 700;
   if (st.runtime.log_viewer_last_poll_ms != 0 &&
       now_ms <
@@ -599,6 +965,61 @@ inline bool runtime_poll_live_log_viewer(CmdState &st, std::uint64_t now_ms) {
   if (!stamp.ok || runtime_log_viewer_stamp_matches(st, stamp))
     return false;
   return runtime_reload_log_viewer(st, false);
+}
+
+inline bool runtime_select_prev_event_viewer_entry(CmdState &st) {
+  if (!runtime_event_viewer_has_entries(st) ||
+      st.runtime.marshal_event_viewer.selected_entry == 0) {
+    return false;
+  }
+  --st.runtime.marshal_event_viewer.selected_entry;
+  st.runtime.log_viewer_live_follow = false;
+  return true;
+}
+
+inline bool runtime_select_next_event_viewer_entry(CmdState &st) {
+  if (!runtime_event_viewer_has_entries(st) ||
+      st.runtime.marshal_event_viewer.selected_entry + 1 >=
+          runtime_event_viewer_entry_count(st)) {
+    return false;
+  }
+  ++st.runtime.marshal_event_viewer.selected_entry;
+  st.runtime.log_viewer_live_follow = false;
+  return true;
+}
+
+inline bool runtime_select_first_event_viewer_entry(CmdState &st) {
+  if (!runtime_event_viewer_has_entries(st))
+    return false;
+  st.runtime.marshal_event_viewer.selected_entry = 0;
+  st.runtime.log_viewer_live_follow = false;
+  return true;
+}
+
+inline bool runtime_select_last_event_viewer_entry(CmdState &st,
+                                                   bool enable_follow) {
+  if (!runtime_event_viewer_has_entries(st))
+    return false;
+  runtime_snap_event_viewer_to_end(st);
+  st.runtime.log_viewer_live_follow = enable_follow;
+  return true;
+}
+
+inline bool runtime_page_event_viewer_entries(CmdState &st, int delta) {
+  if (!runtime_event_viewer_has_entries(st) || delta == 0)
+    return false;
+  const auto max_index =
+      static_cast<std::ptrdiff_t>(runtime_event_viewer_entry_count(st) - 1);
+  const auto current = static_cast<std::ptrdiff_t>(
+      st.runtime.marshal_event_viewer.selected_entry);
+  const auto next = std::clamp(current + static_cast<std::ptrdiff_t>(delta),
+                               static_cast<std::ptrdiff_t>(0), max_index);
+  if (next == current)
+    return false;
+  st.runtime.marshal_event_viewer.selected_entry =
+      static_cast<std::size_t>(next);
+  st.runtime.log_viewer_live_follow = false;
+  return true;
 }
 
 inline std::uint64_t runtime_monotonic_now_ms() {
@@ -1031,9 +1452,15 @@ inline bool runtime_open_job_log_viewer(CmdState &st,
   case RuntimeLogViewerKind::JobStderr:
     path = job.stderr_path;
     break;
+  case RuntimeLogViewerKind::JobTrace:
+    path = job.trace_path;
+    break;
   case RuntimeLogViewerKind::MarshalEvents:
   case RuntimeLogViewerKind::MarshalCodexStdout:
   case RuntimeLogViewerKind::MarshalCodexStderr:
+  case RuntimeLogViewerKind::CampaignStdout:
+  case RuntimeLogViewerKind::CampaignStderr:
+  case RuntimeLogViewerKind::ArtifactFile:
   case RuntimeLogViewerKind::None:
     break;
   }
@@ -1047,6 +1474,42 @@ inline bool runtime_open_job_log_viewer(CmdState &st,
   return runtime_open_log_viewer(st, path, kind,
                                  runtime_log_viewer_kind_label(kind) + " | " +
                                      trim_to_width(job.job_cursor, 28));
+}
+
+inline bool runtime_open_campaign_log_viewer(CmdState &st,
+                                             RuntimeLogViewerKind kind) {
+  if (!st.runtime.campaign.has_value())
+    return false;
+  const auto &campaign = *st.runtime.campaign;
+  std::string path{};
+  switch (kind) {
+  case RuntimeLogViewerKind::CampaignStdout:
+    path = campaign.stdout_path;
+    break;
+  case RuntimeLogViewerKind::CampaignStderr:
+    path = campaign.stderr_path;
+    break;
+  case RuntimeLogViewerKind::JobStdout:
+  case RuntimeLogViewerKind::JobStderr:
+  case RuntimeLogViewerKind::MarshalEvents:
+  case RuntimeLogViewerKind::MarshalCodexStdout:
+  case RuntimeLogViewerKind::MarshalCodexStderr:
+  case RuntimeLogViewerKind::JobTrace:
+  case RuntimeLogViewerKind::ArtifactFile:
+  case RuntimeLogViewerKind::None:
+    break;
+  }
+  if (path.empty()) {
+    set_runtime_status(st,
+                       "Selected campaign does not have a " +
+                           runtime_log_viewer_kind_label(kind) + " path.",
+                       true);
+    return true;
+  }
+  return runtime_open_log_viewer(
+      st, path, kind,
+      runtime_log_viewer_kind_label(kind) + " | " +
+          trim_to_width(campaign.campaign_cursor, 28));
 }
 
 inline bool runtime_open_session_log_viewer(CmdState &st,
@@ -1067,6 +1530,10 @@ inline bool runtime_open_session_log_viewer(CmdState &st,
     break;
   case RuntimeLogViewerKind::JobStdout:
   case RuntimeLogViewerKind::JobStderr:
+  case RuntimeLogViewerKind::CampaignStdout:
+  case RuntimeLogViewerKind::CampaignStderr:
+  case RuntimeLogViewerKind::JobTrace:
+  case RuntimeLogViewerKind::ArtifactFile:
   case RuntimeLogViewerKind::None:
     break;
   }
@@ -1081,6 +1548,20 @@ inline bool runtime_open_session_log_viewer(CmdState &st,
       st, path, kind,
       runtime_log_viewer_kind_label(kind) + " | " +
           trim_to_width(session.marshal_session_id, 28));
+}
+
+inline bool runtime_open_artifact_viewer(CmdState &st, const std::string &path,
+                                         std::string title,
+                                         std::string missing_status) {
+  if (path.empty()) {
+    set_runtime_status(st,
+                       missing_status.empty() ? "artifact path is not recorded"
+                                              : std::move(missing_status),
+                       true);
+    return true;
+  }
+  return runtime_open_log_viewer(st, path, RuntimeLogViewerKind::ArtifactFile,
+                                 std::move(title));
 }
 
 inline bool runtime_parse_marshal_session_json(
@@ -1135,6 +1616,8 @@ inline bool runtime_parse_marshal_session_json(
       cmd_json_string(cmd_json_field(value, "marshal_objective_md_path"));
   session.marshal_guidance_md_path =
       cmd_json_string(cmd_json_field(value, "marshal_guidance_md_path"));
+  session.hero_marshal_dsl_path =
+      cmd_json_string(cmd_json_field(value, "hero_marshal_dsl_path"));
   session.config_policy_path =
       cmd_json_string(cmd_json_field(value, "config_policy_path"));
   session.briefing_path =
@@ -1151,6 +1634,10 @@ inline bool runtime_parse_marshal_session_json(
       cmd_json_string(cmd_json_field(value, "codex_session_id"));
   session.resolved_marshal_codex_binary =
       cmd_json_string(cmd_json_field(value, "resolved_marshal_codex_binary"));
+  session.resolved_marshal_codex_model =
+      cmd_json_string(cmd_json_field(value, "resolved_marshal_codex_model"));
+  session.resolved_marshal_codex_reasoning_effort = cmd_json_string(
+      cmd_json_field(value, "resolved_marshal_codex_reasoning_effort"));
   session.started_at_ms = cmd_json_u64(cmd_json_field(value, "started_at_ms"));
   session.updated_at_ms = cmd_json_u64(cmd_json_field(value, "updated_at_ms"));
   session.finished_at_ms =
@@ -1675,9 +2162,71 @@ inline std::string runtime_campaign_cursor_for_job(const RuntimeState &runtime,
                                                    std::string_view job_cursor);
 
 inline std::vector<std::size_t>
+runtime_child_campaign_indices(const CmdState &st);
+
+inline std::vector<std::size_t>
+runtime_orphan_campaign_indices(const CmdState &st) {
+  std::vector<std::size_t> indices{};
+  indices.reserve(st.runtime.campaigns.size());
+  for (std::size_t i = 0; i < st.runtime.campaigns.size(); ++i) {
+    if (runtime_session_id_for_campaign(st.runtime,
+                                        st.runtime.campaigns[i].campaign_cursor)
+            .empty()) {
+      indices.push_back(i);
+    }
+  }
+  return indices;
+}
+
+inline std::vector<std::size_t> runtime_orphan_job_indices(const CmdState &st) {
+  std::vector<std::size_t> indices{};
+  indices.reserve(st.runtime.jobs.size());
+  for (std::size_t i = 0; i < st.runtime.jobs.size(); ++i) {
+    if (runtime_campaign_cursor_for_job(st.runtime,
+                                        st.runtime.jobs[i].job_cursor)
+            .empty()) {
+      indices.push_back(i);
+    }
+  }
+  return indices;
+}
+
+inline bool runtime_has_none_session_row(const CmdState &st) {
+  return !runtime_orphan_campaign_indices(st).empty() ||
+         !runtime_orphan_job_indices(st).empty();
+}
+
+inline bool runtime_has_none_campaign_row(const CmdState &st) {
+  return !runtime_orphan_job_indices(st).empty();
+}
+
+inline bool runtime_child_has_none_campaign_row(const CmdState &st) {
+  return runtime_is_none_session_selection(st.runtime.selected_session_id) &&
+         runtime_has_none_campaign_row(st);
+}
+
+inline std::size_t runtime_session_row_count(const CmdState &st) {
+  return st.runtime.sessions.size() +
+         (runtime_has_none_session_row(st) ? 1u : 0u);
+}
+
+inline std::size_t runtime_campaign_row_count(const CmdState &st) {
+  return st.runtime.campaigns.size() +
+         (runtime_has_none_campaign_row(st) ? 1u : 0u);
+}
+
+inline std::size_t runtime_child_campaign_row_count(const CmdState &st) {
+  return runtime_child_campaign_indices(st).size() +
+         (runtime_child_has_none_campaign_row(st) ? 1u : 0u);
+}
+
+inline std::vector<std::size_t>
 runtime_child_campaign_indices(const CmdState &st) {
   if (st.runtime.selected_session_id.empty())
     return {};
+  if (runtime_is_none_session_selection(st.runtime.selected_session_id)) {
+    return runtime_orphan_campaign_indices(st);
+  }
   const auto it = st.runtime.campaign_indices_by_session.find(
       st.runtime.selected_session_id);
   if (it == st.runtime.campaign_indices_by_session.end())
@@ -1688,6 +2237,9 @@ runtime_child_campaign_indices(const CmdState &st) {
 inline std::vector<std::size_t> runtime_child_job_indices(const CmdState &st) {
   if (st.runtime.selected_campaign_cursor.empty())
     return {};
+  if (runtime_is_none_campaign_selection(st.runtime.selected_campaign_cursor)) {
+    return runtime_orphan_job_indices(st);
+  }
   const auto it = st.runtime.job_indices_by_campaign.find(
       st.runtime.selected_campaign_cursor);
   if (it == st.runtime.job_indices_by_campaign.end())
@@ -1719,9 +2271,9 @@ inline std::size_t runtime_lane_count(const CmdState &st, RuntimeLane lane) {
   if (runtime_is_device_lane(lane))
     return runtime_device_item_count(st);
   if (runtime_is_session_lane(lane))
-    return st.runtime.sessions.size();
+    return runtime_session_row_count(st);
   if (runtime_is_campaign_lane(lane))
-    return st.runtime.campaigns.size();
+    return runtime_campaign_row_count(st);
   return st.runtime.jobs.size();
 }
 
@@ -1739,7 +2291,8 @@ inline bool runtime_has_worklist_items(const CmdState &st) {
   }
   if (runtime_is_session_lane(st.runtime.lane) &&
       st.runtime.campaign_filter_active) {
-    return !runtime_child_campaign_indices(st).empty();
+    return !runtime_child_campaign_indices(st).empty() ||
+           runtime_child_has_none_campaign_row(st);
   }
   if (runtime_is_campaign_lane(st.runtime.lane) &&
       st.runtime.job_filter_active) {
@@ -1750,45 +2303,86 @@ inline bool runtime_has_worklist_items(const CmdState &st) {
 
 inline std::optional<std::size_t>
 runtime_selected_session_index(const CmdState &st) {
-  if (st.runtime.sessions.empty())
+  const bool has_none = runtime_has_none_session_row(st);
+  if (st.runtime.sessions.empty() && !has_none)
     return std::nullopt;
-  if (st.runtime.selected_session_id.empty())
+  if (runtime_is_none_session_selection(st.runtime.selected_session_id)) {
+    return has_none ? std::optional<std::size_t>{st.runtime.sessions.size()}
+                    : std::nullopt;
+  }
+  if (st.runtime.selected_session_id.empty()) {
+    if (!st.runtime.sessions.empty())
+      return std::size_t{0};
+    if (has_none)
+      return std::optional<std::size_t>{0};
+    return std::nullopt;
+  }
+  if (!st.runtime.sessions.empty()) {
+    return runtime_find_session_index(st.runtime.sessions,
+                                      st.runtime.selected_session_id)
+        .value_or(std::size_t{0});
+  }
+  if (has_none)
     return std::size_t{0};
-  return runtime_find_session_index(st.runtime.sessions,
-                                    st.runtime.selected_session_id)
-      .value_or(std::size_t{0});
+  return std::nullopt;
 }
 
 inline std::optional<std::size_t>
 runtime_selected_campaign_index(const CmdState &st) {
   const auto visible = runtime_visible_campaign_indices(st);
-  if (visible.empty())
+  const bool has_none = runtime_has_none_campaign_row(st);
+  if (visible.empty() && !has_none)
     return std::nullopt;
-  if (st.runtime.selected_campaign_cursor.empty())
-    return std::size_t{0};
+  if (runtime_is_none_campaign_selection(st.runtime.selected_campaign_cursor)) {
+    return has_none ? std::optional<std::size_t>{visible.size()} : std::nullopt;
+  }
+  if (st.runtime.selected_campaign_cursor.empty()) {
+    if (!visible.empty())
+      return std::size_t{0};
+    if (has_none)
+      return std::optional<std::size_t>{0};
+    return std::nullopt;
+  }
   for (std::size_t i = 0; i < visible.size(); ++i) {
     if (st.runtime.campaigns[visible[i]].campaign_cursor ==
         st.runtime.selected_campaign_cursor) {
       return i;
     }
   }
-  return std::size_t{0};
+  if (!visible.empty())
+    return std::size_t{0};
+  if (has_none)
+    return std::optional<std::size_t>{0};
+  return std::nullopt;
 }
 
 inline std::optional<std::size_t>
 runtime_selected_child_campaign_index(const CmdState &st) {
   const auto visible = runtime_child_campaign_indices(st);
-  if (visible.empty())
+  const bool has_none = runtime_child_has_none_campaign_row(st);
+  if (visible.empty() && !has_none)
     return std::nullopt;
-  if (st.runtime.selected_campaign_cursor.empty())
-    return std::size_t{0};
+  if (runtime_is_none_campaign_selection(st.runtime.selected_campaign_cursor)) {
+    return has_none ? std::optional<std::size_t>{visible.size()} : std::nullopt;
+  }
+  if (st.runtime.selected_campaign_cursor.empty()) {
+    if (!visible.empty())
+      return std::size_t{0};
+    if (has_none)
+      return std::optional<std::size_t>{0};
+    return std::nullopt;
+  }
   for (std::size_t i = 0; i < visible.size(); ++i) {
     if (st.runtime.campaigns[visible[i]].campaign_cursor ==
         st.runtime.selected_campaign_cursor) {
       return i;
     }
   }
-  return std::size_t{0};
+  if (!visible.empty())
+    return std::size_t{0};
+  if (has_none)
+    return std::optional<std::size_t>{0};
+  return std::nullopt;
 }
 
 inline std::optional<std::size_t>
@@ -2042,6 +2636,20 @@ latest_runtime_job_cursor_for_campaign(const RuntimeState &runtime,
   return latest_runtime_job_cursor_for_campaign(runtime, *campaign);
 }
 
+inline std::string latest_runtime_orphan_campaign_cursor(const CmdState &st) {
+  const auto orphan_campaigns = runtime_orphan_campaign_indices(st);
+  if (orphan_campaigns.empty())
+    return {};
+  return st.runtime.campaigns[orphan_campaigns.front()].campaign_cursor;
+}
+
+inline std::string latest_runtime_orphan_job_cursor(const CmdState &st) {
+  const auto orphan_jobs = runtime_orphan_job_indices(st);
+  if (orphan_jobs.empty())
+    return {};
+  return st.runtime.jobs[orphan_jobs.front()].job_cursor;
+}
+
 inline void clear_runtime_inventory_selection(CmdState &st) {
   st.runtime.anchor_session_id.clear();
   st.runtime.family_anchor_lane = st.runtime.lane;
@@ -2102,6 +2710,28 @@ inline bool select_next_runtime_lane(CmdState &st) {
 inline void
 select_runtime_session_and_related(CmdState &st,
                                    std::string_view marshal_session_id) {
+  if (runtime_is_none_session_selection(marshal_session_id)) {
+    st.runtime.family_anchor_lane = kRuntimeSessionLane;
+    st.runtime.selected_session_id = std::string(kRuntimeNoneSessionSelection);
+    st.runtime.anchor_session_id.clear();
+    st.runtime.selected_campaign_cursor =
+        latest_runtime_orphan_campaign_cursor(st);
+    if (st.runtime.selected_campaign_cursor.empty() &&
+        runtime_has_none_campaign_row(st)) {
+      st.runtime.selected_campaign_cursor =
+          std::string(kRuntimeNoneCampaignSelection);
+    }
+    if (runtime_is_none_campaign_selection(
+            st.runtime.selected_campaign_cursor)) {
+      st.runtime.selected_job_cursor = latest_runtime_orphan_job_cursor(st);
+    } else {
+      st.runtime.selected_job_cursor = latest_runtime_job_cursor_for_campaign(
+          st.runtime, st.runtime.selected_campaign_cursor);
+    }
+    update_runtime_selection_records(st);
+    (void)queue_runtime_excerpt_refresh(st);
+    return;
+  }
   const auto session_index =
       runtime_find_session_index(st.runtime.sessions, marshal_session_id);
   if (!session_index.has_value()) {
@@ -2125,6 +2755,10 @@ select_runtime_session_and_related(CmdState &st,
 inline void
 select_runtime_campaign_and_related(CmdState &st,
                                     std::string_view campaign_cursor) {
+  const bool preserve_none_session_context =
+      runtime_is_session_lane(st.runtime.lane) &&
+      (st.runtime.campaign_filter_active || st.runtime.job_filter_active) &&
+      runtime_is_none_session_selection(st.runtime.selected_session_id);
   const auto campaign_index =
       runtime_find_campaign_index(st.runtime.campaigns, campaign_cursor);
   if (!campaign_index.has_value()) {
@@ -2137,6 +2771,9 @@ select_runtime_campaign_and_related(CmdState &st,
   st.runtime.selected_campaign_cursor = campaign.campaign_cursor;
   st.runtime.selected_session_id =
       runtime_session_id_for_campaign(st.runtime, campaign.campaign_cursor);
+  if (st.runtime.selected_session_id.empty() && preserve_none_session_context) {
+    st.runtime.selected_session_id = std::string(kRuntimeNoneSessionSelection);
+  }
   st.runtime.anchor_session_id = st.runtime.selected_session_id;
   st.runtime.selected_job_cursor =
       latest_runtime_job_cursor_for_campaign(st.runtime, campaign);
@@ -2144,8 +2781,30 @@ select_runtime_campaign_and_related(CmdState &st,
   (void)queue_runtime_excerpt_refresh(st);
 }
 
+inline void select_runtime_none_campaign_and_related(
+    CmdState &st, std::string_view session_selection_for_context = {}) {
+  st.runtime.family_anchor_lane = kRuntimeCampaignLane;
+  st.runtime.selected_campaign_cursor =
+      std::string(kRuntimeNoneCampaignSelection);
+  st.runtime.selected_session_id = std::string(session_selection_for_context);
+  st.runtime.anchor_session_id.clear();
+  st.runtime.selected_job_cursor = latest_runtime_orphan_job_cursor(st);
+  update_runtime_selection_records(st);
+  (void)queue_runtime_excerpt_refresh(st);
+}
+
 inline void select_runtime_job_and_related(CmdState &st,
                                            std::string_view job_cursor) {
+  const bool preserve_none_session_context =
+      runtime_is_session_lane(st.runtime.lane) &&
+      st.runtime.job_filter_active &&
+      runtime_is_none_session_selection(st.runtime.selected_session_id);
+  const bool preserve_none_campaign_context =
+      ((runtime_is_session_lane(st.runtime.lane) &&
+        st.runtime.job_filter_active) ||
+       (runtime_is_campaign_lane(st.runtime.lane) &&
+        st.runtime.job_filter_active)) &&
+      runtime_is_none_campaign_selection(st.runtime.selected_campaign_cursor);
   const auto job_index = runtime_find_job_index(st.runtime.jobs, job_cursor);
   if (!job_index.has_value()) {
     clear_runtime_inventory_selection(st);
@@ -2157,11 +2816,64 @@ inline void select_runtime_job_and_related(CmdState &st,
   st.runtime.selected_job_cursor = job.job_cursor;
   st.runtime.selected_campaign_cursor =
       runtime_campaign_cursor_for_job(st.runtime, job.job_cursor);
+  if (st.runtime.selected_campaign_cursor.empty() &&
+      preserve_none_campaign_context) {
+    st.runtime.selected_campaign_cursor =
+        std::string(kRuntimeNoneCampaignSelection);
+  }
   st.runtime.selected_session_id =
       runtime_session_id_for_job(st.runtime, job.job_cursor);
+  if (st.runtime.selected_session_id.empty() && preserve_none_session_context) {
+    st.runtime.selected_session_id = std::string(kRuntimeNoneSessionSelection);
+  }
   st.runtime.anchor_session_id = st.runtime.selected_session_id;
   update_runtime_selection_records(st);
   (void)queue_runtime_excerpt_refresh(st);
+}
+
+inline bool runtime_select_session_row_at_index(CmdState &st,
+                                                std::size_t index) {
+  if (index < st.runtime.sessions.size()) {
+    select_runtime_session_and_related(
+        st, st.runtime.sessions[index].marshal_session_id);
+    return true;
+  }
+  if (runtime_has_none_session_row(st) && index == st.runtime.sessions.size()) {
+    select_runtime_session_and_related(st, kRuntimeNoneSessionSelection);
+    return true;
+  }
+  return false;
+}
+
+inline bool runtime_select_campaign_row_at_index(CmdState &st,
+                                                 std::size_t index) {
+  const auto visible = runtime_visible_campaign_indices(st);
+  if (index < visible.size()) {
+    select_runtime_campaign_and_related(
+        st, st.runtime.campaigns[visible[index]].campaign_cursor);
+    return true;
+  }
+  if (runtime_has_none_campaign_row(st) && index == visible.size()) {
+    select_runtime_none_campaign_and_related(st);
+    return true;
+  }
+  return false;
+}
+
+inline bool runtime_select_child_campaign_row_at_index(CmdState &st,
+                                                       std::size_t index) {
+  const auto visible = runtime_child_campaign_indices(st);
+  if (index < visible.size()) {
+    select_runtime_campaign_and_related(
+        st, st.runtime.campaigns[visible[index]].campaign_cursor);
+    return true;
+  }
+  if (runtime_child_has_none_campaign_row(st) && index == visible.size()) {
+    select_runtime_none_campaign_and_related(st,
+                                             st.runtime.selected_session_id);
+    return true;
+  }
+  return false;
 }
 
 inline bool select_prev_runtime_item(CmdState &st) {
@@ -2185,28 +2897,22 @@ inline bool select_prev_runtime_item(CmdState &st) {
       return true;
     }
     if (st.runtime.campaign_filter_active) {
-      const auto visible = runtime_child_campaign_indices(st);
-      if (visible.empty())
+      const std::size_t total = runtime_child_campaign_row_count(st);
+      if (total == 0)
         return false;
       const std::size_t idx =
           runtime_selected_child_campaign_index(st).value_or(0);
       if (idx == 0)
         return false;
-      select_runtime_campaign_and_related(
-          st, st.runtime.campaigns[visible[idx - 1]].campaign_cursor);
-      return true;
+      return runtime_select_child_campaign_row_at_index(st, idx - 1);
     }
-    if (st.runtime.sessions.empty())
+    const std::size_t total = runtime_session_row_count(st);
+    if (total == 0)
       return false;
-    const std::size_t idx =
-        runtime_find_session_index(st.runtime.sessions,
-                                   st.runtime.selected_session_id)
-            .value_or(0);
+    const std::size_t idx = runtime_selected_session_index(st).value_or(0);
     if (idx == 0)
       return false;
-    select_runtime_session_and_related(
-        st, st.runtime.sessions[idx - 1].marshal_session_id);
-    return true;
+    return runtime_select_session_row_at_index(st, idx - 1);
   }
   if (runtime_is_campaign_lane(st.runtime.lane)) {
     if (st.runtime.job_filter_active) {
@@ -2220,15 +2926,13 @@ inline bool select_prev_runtime_item(CmdState &st) {
           st, st.runtime.jobs[visible[idx - 1]].job_cursor);
       return true;
     }
-    const auto visible = runtime_visible_campaign_indices(st);
-    if (visible.empty())
+    const std::size_t total = runtime_campaign_row_count(st);
+    if (total == 0)
       return false;
     const std::size_t idx = runtime_selected_campaign_index(st).value_or(0);
     if (idx == 0)
       return false;
-    select_runtime_campaign_and_related(
-        st, st.runtime.campaigns[visible[idx - 1]].campaign_cursor);
-    return true;
+    return runtime_select_campaign_row_at_index(st, idx - 1);
   }
   const auto visible = runtime_visible_job_indices(st);
   if (visible.empty())
@@ -2263,28 +2967,22 @@ inline bool select_next_runtime_item(CmdState &st) {
       return true;
     }
     if (st.runtime.campaign_filter_active) {
-      const auto visible = runtime_child_campaign_indices(st);
-      if (visible.empty())
+      const std::size_t total = runtime_child_campaign_row_count(st);
+      if (total == 0)
         return false;
       const std::size_t idx =
           runtime_selected_child_campaign_index(st).value_or(0);
-      if (idx + 1 >= visible.size())
+      if (idx + 1 >= total)
         return false;
-      select_runtime_campaign_and_related(
-          st, st.runtime.campaigns[visible[idx + 1]].campaign_cursor);
-      return true;
+      return runtime_select_child_campaign_row_at_index(st, idx + 1);
     }
-    if (st.runtime.sessions.empty())
+    const std::size_t total = runtime_session_row_count(st);
+    if (total == 0)
       return false;
-    const std::size_t idx =
-        runtime_find_session_index(st.runtime.sessions,
-                                   st.runtime.selected_session_id)
-            .value_or(0);
-    if (idx + 1 >= st.runtime.sessions.size())
+    const std::size_t idx = runtime_selected_session_index(st).value_or(0);
+    if (idx + 1 >= total)
       return false;
-    select_runtime_session_and_related(
-        st, st.runtime.sessions[idx + 1].marshal_session_id);
-    return true;
+    return runtime_select_session_row_at_index(st, idx + 1);
   }
   if (runtime_is_campaign_lane(st.runtime.lane)) {
     if (st.runtime.job_filter_active) {
@@ -2298,15 +2996,13 @@ inline bool select_next_runtime_item(CmdState &st) {
           st, st.runtime.jobs[visible[idx + 1]].job_cursor);
       return true;
     }
-    const auto visible = runtime_visible_campaign_indices(st);
-    if (visible.empty())
+    const std::size_t total = runtime_campaign_row_count(st);
+    if (total == 0)
       return false;
     const std::size_t idx = runtime_selected_campaign_index(st).value_or(0);
-    if (idx + 1 >= visible.size())
+    if (idx + 1 >= total)
       return false;
-    select_runtime_campaign_and_related(
-        st, st.runtime.campaigns[visible[idx + 1]].campaign_cursor);
-    return true;
+    return runtime_select_campaign_row_at_index(st, idx + 1);
   }
   const auto visible = runtime_visible_job_indices(st);
   if (visible.empty())
@@ -2423,6 +3119,11 @@ inline bool runtime_apply_refresh_snapshot(CmdState &st,
   bool restored = false;
   const auto restore_previous_for_lane = [&](RuntimeLane lane) -> bool {
     if (runtime_is_session_lane(lane)) {
+      if (runtime_is_none_session_selection(previous_session_id) &&
+          runtime_has_none_session_row(st)) {
+        select_runtime_session_and_related(st, kRuntimeNoneSessionSelection);
+        return true;
+      }
       if (!previous_session_id.empty() &&
           runtime_find_session_index(st.runtime.sessions, previous_session_id)
               .has_value()) {
@@ -2432,10 +3133,32 @@ inline bool runtime_apply_refresh_snapshot(CmdState &st,
       return false;
     }
     if (runtime_is_campaign_lane(lane)) {
+      if (runtime_is_none_campaign_selection(previous_campaign_cursor)) {
+        if (runtime_is_none_session_selection(previous_session_id) &&
+            runtime_has_none_session_row(st)) {
+          select_runtime_session_and_related(st, kRuntimeNoneSessionSelection);
+          if (runtime_child_has_none_campaign_row(st)) {
+            select_runtime_none_campaign_and_related(
+                st, std::string(kRuntimeNoneSessionSelection));
+            return true;
+          }
+        }
+        if (runtime_has_none_campaign_row(st)) {
+          select_runtime_none_campaign_and_related(st);
+          return true;
+        }
+      }
       if (!previous_campaign_cursor.empty() &&
           runtime_find_campaign_index(st.runtime.campaigns,
                                       previous_campaign_cursor)
               .has_value()) {
+        if (runtime_is_none_session_selection(previous_session_id) &&
+            runtime_has_none_session_row(st) &&
+            runtime_session_id_for_campaign(st.runtime,
+                                            previous_campaign_cursor)
+                .empty()) {
+          select_runtime_session_and_related(st, kRuntimeNoneSessionSelection);
+        }
         select_runtime_campaign_and_related(st, previous_campaign_cursor);
         return true;
       }
@@ -2444,6 +3167,21 @@ inline bool runtime_apply_refresh_snapshot(CmdState &st,
     if (!previous_job_cursor.empty() &&
         runtime_find_job_index(st.runtime.jobs, previous_job_cursor)
             .has_value()) {
+      const std::string parent_campaign_cursor =
+          runtime_campaign_cursor_for_job(st.runtime, previous_job_cursor);
+      const std::string parent_session_id =
+          runtime_session_id_for_job(st.runtime, previous_job_cursor);
+      if (runtime_is_none_session_selection(previous_session_id) &&
+          runtime_has_none_session_row(st) && parent_session_id.empty()) {
+        select_runtime_session_and_related(st, kRuntimeNoneSessionSelection);
+      }
+      if (runtime_is_none_campaign_selection(previous_campaign_cursor) &&
+          runtime_has_none_campaign_row(st) && parent_campaign_cursor.empty()) {
+        select_runtime_none_campaign_and_related(
+            st, runtime_is_none_session_selection(previous_session_id)
+                    ? std::string(kRuntimeNoneSessionSelection)
+                    : std::string{});
+      }
       select_runtime_job_and_related(st, previous_job_cursor);
       return true;
     }
@@ -2459,7 +3197,7 @@ inline bool runtime_apply_refresh_snapshot(CmdState &st,
     restored = restore_previous_for_lane(kRuntimeSessionLane);
 
   if (!restored) {
-    const auto anchor_session = selected_human_anchor_session_record(st);
+    const auto anchor_session = selected_inbox_anchor_session_record(st);
     if (anchor_session.has_value() &&
         runtime_find_session_index(st.runtime.sessions,
                                    anchor_session->marshal_session_id)
@@ -2474,9 +3212,17 @@ inline bool runtime_apply_refresh_snapshot(CmdState &st,
         st, st.runtime.sessions.front().marshal_session_id);
     restored = true;
   }
+  if (!restored && runtime_has_none_session_row(st)) {
+    select_runtime_session_and_related(st, kRuntimeNoneSessionSelection);
+    restored = true;
+  }
   if (!restored && !st.runtime.campaigns.empty()) {
     select_runtime_campaign_and_related(
         st, st.runtime.campaigns.front().campaign_cursor);
+    restored = true;
+  }
+  if (!restored && runtime_has_none_campaign_row(st)) {
+    select_runtime_none_campaign_and_related(st);
     restored = true;
   }
   if (!restored && !st.runtime.jobs.empty()) {

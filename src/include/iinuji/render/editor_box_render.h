@@ -246,6 +246,8 @@ inline void render_editor(const iinuji_object_t& obj) {
   if (!R) return;
 
   short base_pair = static_cast<short>(get_color_pair(obj.style.label_color, obj.style.background_color));
+  if (base_pair == 0)
+    base_pair = static_cast<short>(get_color_pair("white", obj.style.background_color));
   R->fillRect(r.y, r.x, r.h, r.w, base_pair);
 
   auto ed = std::dynamic_pointer_cast<editorBox_data_t>(obj.data);

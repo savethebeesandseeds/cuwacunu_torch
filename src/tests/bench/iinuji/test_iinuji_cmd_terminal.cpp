@@ -10,8 +10,8 @@
 #include "iinuji/iinuji_cmd/app.h"
 #include "iinuji/iinuji_cmd/commands.h"
 #include "iinuji/iinuji_cmd/views/common.h"
-#include "iinuji/iinuji_cmd/views/human/app.h"
-#include "iinuji/iinuji_cmd/views/human/commands.h"
+#include "iinuji/iinuji_cmd/views/inbox/app.h"
+#include "iinuji/iinuji_cmd/views/inbox/commands.h"
 #include "iinuji/iinuji_cmd/views/logs/view.h"
 #include "iinuji/iinuji_cmd/views/runtime/commands.h"
 #include "piaabo/dconfig.h"
@@ -101,10 +101,10 @@ int main() {
     using namespace cuwacunu::iinuji::iinuji_cmd;
 
     ok = ok &&
-         require(desired_input_timeout_for_screen(ScreenMode::Human) == 250,
+         require(desired_input_timeout_for_screen(ScreenMode::Inbox) == 250,
                  "human screen should use a polling input timeout");
     ok = ok &&
-         require(idle_refresh_period_ms_for_screen(ScreenMode::Human) == 2000,
+         require(idle_refresh_period_ms_for_screen(ScreenMode::Inbox) == 2000,
                  "human screen should auto-refresh on a short idle cadence");
     ok = ok &&
          require(desired_input_timeout_for_screen(ScreenMode::ShellLogs) == 50,
@@ -158,17 +158,17 @@ int main() {
     }
 
     CmdState st{};
-    st.human.app.global_config_path = global_config_path;
-    st.human.app.hero_config_path =
+    st.inbox.app.global_config_path = global_config_path;
+    st.inbox.app.hero_config_path =
         cuwacunu::hero::human_mcp::resolve_human_hero_dsl_path(
             global_config_path);
-    st.human.app.self_binary_path =
+    st.inbox.app.self_binary_path =
         cuwacunu::hero::human_mcp::current_executable_path();
     std::string human_error{};
     (void)cuwacunu::hero::human_mcp::load_human_defaults(
-        st.human.app.hero_config_path, global_config_path,
-        &st.human.app.defaults, &human_error);
-    (void)refresh_human_state(st);
+        st.inbox.app.hero_config_path, global_config_path,
+        &st.inbox.app.defaults, &human_error);
+    (void)refresh_inbox_state(st);
 
     st.runtime.app.global_config_path = global_config_path;
     st.runtime.app.hero_config_path =
@@ -270,8 +270,8 @@ int main() {
     st.help_view = false;
 
     run_command(st, "marshal", nullptr);
-    ok = ok && require(st.screen == ScreenMode::Human,
-                       "marshal alias should switch to Marshal screen");
+    ok = ok && require(st.screen == ScreenMode::Inbox,
+                       "marshal alias should switch to Inbox screen");
 
     run_command(st, "runtime", nullptr);
     ok = ok && require(st.screen == ScreenMode::Runtime,
@@ -293,12 +293,12 @@ int main() {
                        "removed training alias should not switch screens");
 
     run_command(st, "refresh", nullptr);
-    ok = ok && require(!st.human.status_is_error,
+    ok = ok && require(!st.inbox.status_is_error,
                        "refresh alias should reload the Hero shell state");
     ok = ok &&
          require(
-             st.human.error.empty(),
-             "refresh alias should leave the Marshal screen without an error");
+             st.inbox.error.empty(),
+             "refresh alias should leave the Inbox screen without an error");
 
     run_command(st, "quit", nullptr);
     ok = ok && require(!st.running, "quit alias should work without log box");
@@ -312,21 +312,21 @@ int main() {
     ok = ok && require(!st.running, "exit alias should work without log box");
 
     st.running = true;
-    st.screen = ScreenMode::Human;
-    st.human.focus = kHumanMenuFocus;
-    st.human.view = kHumanInboxView;
+    st.screen = ScreenMode::Inbox;
+    st.inbox.focus = kInboxMenuFocus;
+    st.inbox.view = kInboxView;
 
-    ok = ok && require(!handle_human_key(st, '\t'),
+    ok = ok && require(!handle_inbox_key(st, '\t'),
                        "tab should no longer cycle Marshal lanes");
     ok = ok &&
-         require(!handle_human_key(st, KEY_DOWN),
+         require(!handle_inbox_key(st, KEY_DOWN),
                  "down in the human menu should no-op with inbox-only Marshal");
     ok = ok &&
-         require(!handle_human_key(st, KEY_LEFT),
+         require(!handle_inbox_key(st, KEY_LEFT),
                  "left in the human menu should no-op with inbox-only Marshal");
-    ok = ok && require(st.human.view == kHumanInboxView,
+    ok = ok && require(st.inbox.view == kInboxView,
                        "human menu should remain on Inbox");
-    ok = ok && require(st.human.focus == kHumanMenuFocus,
+    ok = ok && require(st.inbox.focus == kInboxMenuFocus,
                        "human menu navigation should keep menu focus");
 
     cuwacunu::hero::marshal::marshal_session_record_t request_a{};
@@ -339,26 +339,26 @@ int main() {
     request_b.phase = "paused";
     request_b.pause_kind = "governance";
     request_b.objective_name = "Synthetic Request B";
-    st.human.inbox.all_sessions = {request_a, request_b};
-    st.human.inbox.actionable_requests = {request_a, request_b};
-    st.human.view = kHumanInboxView;
-    st.human.selected_inbox_session = 0;
+    st.inbox.operator_inbox.all_sessions = {request_a, request_b};
+    st.inbox.operator_inbox.actionable_requests = {request_a, request_b};
+    st.inbox.view = kInboxView;
+    st.inbox.selected_inbox_session = 0;
 
-    ok = ok && require(handle_human_key(st, '\n'),
+    ok = ok && require(handle_inbox_key(st, '\n'),
                        "enter in the human menu should focus the inbox");
-    ok = ok && require(st.human.focus == kHumanInboxFocus,
+    ok = ok && require(st.inbox.focus == kInboxFocus,
                        "enter in the human menu should enter inbox focus");
-    ok = ok && require(!handle_human_key(st, 'a'),
+    ok = ok && require(!handle_inbox_key(st, 'a'),
                        "a should no longer trigger Marshal actions directly");
-    ok = ok && require(!handle_human_key(st, 'r'),
+    ok = ok && require(!handle_inbox_key(st, 'r'),
                        "r should no longer trigger a manual Marshal refresh");
-    ok = ok && require(handle_human_key(st, KEY_DOWN),
+    ok = ok && require(handle_inbox_key(st, KEY_DOWN),
                        "down in the inbox should move the selected request");
-    ok = ok && require(st.human.selected_inbox_session == 1,
+    ok = ok && require(st.inbox.selected_inbox_session == 1,
                        "inbox down should advance request selection");
-    ok = ok && require(handle_human_key(st, 27),
+    ok = ok && require(handle_inbox_key(st, 27),
                        "escape in the inbox should return to menu focus");
-    ok = ok && require(st.human.focus == kHumanMenuFocus,
+    ok = ok && require(st.inbox.focus == kInboxMenuFocus,
                        "escape in the inbox should restore menu focus");
 
     if (!ok)

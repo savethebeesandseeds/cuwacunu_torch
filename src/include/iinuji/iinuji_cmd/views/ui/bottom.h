@@ -3,7 +3,7 @@
 #include <string>
 
 #include "iinuji/iinuji_cmd/views/common.h"
-#include "iinuji/iinuji_cmd/views/human/commands.h"
+#include "iinuji/iinuji_cmd/views/inbox/commands.h"
 #include "iinuji/iinuji_cmd/views/lattice/commands.h"
 #include "iinuji/iinuji_cmd/views/logs/view.h"
 #include "iinuji/iinuji_cmd/views/runtime/commands.h"
@@ -13,17 +13,17 @@ namespace iinuji {
 namespace iinuji_cmd {
 
 inline std::string home_default_bottom_line(const CmdState &) {
-  return "home | ready | F2 marshal | F3 runtime | F4 lattice | F8 shell logs "
+  return "home | ready | F2 inbox | F3 runtime | F4 lattice | F8 shell logs "
          "| F9 config | waajacu.com";
 }
 
-inline std::string human_bottom_row_summary(const CmdState &st) {
+inline std::string inbox_bottom_row_summary(const CmdState &st) {
   std::size_t selected = 0;
   std::size_t total = 0;
-  const auto rows = human_inbox_session_rows(st);
+  const auto rows = inbox_session_rows(st);
   total = rows.size();
   selected =
-      total == 0 ? 0 : std::min(st.human.selected_inbox_session, total - 1);
+      total == 0 ? 0 : std::min(st.inbox.selected_inbox_session, total - 1);
 
   std::ostringstream oss;
   oss << "lane=Inbox";
@@ -35,15 +35,29 @@ inline std::string human_bottom_row_summary(const CmdState &st) {
   return oss.str();
 }
 
-inline std::string human_default_bottom_line(const CmdState &st) {
-  if (human_inbox_session_rows(st).empty()) {
+inline std::string inbox_default_bottom_line(const CmdState &st) {
+  if (inbox_session_rows(st).empty()) {
     return "lane=Inbox | row=0/0";
   }
-  return human_bottom_row_summary(st);
+  return inbox_bottom_row_summary(st);
 }
 
 inline std::string runtime_default_bottom_line(const CmdState &st) {
   if (runtime_log_viewer_is_open(st)) {
+    if (runtime_event_viewer_is_open(st)) {
+      return "viewer=" +
+             runtime_log_viewer_kind_label(st.runtime.log_viewer_kind) +
+             (st.runtime.log_viewer_live_follow ? " | live=follow"
+                                                : " | live=hold") +
+             " | Up/Down selects event cards. PgUp/PgDn jump. Home jumps to "
+             "the first event. End snaps back to live. t toggles follow. f "
+             "widens panel. Esc closes. r reloads file.";
+    }
+    if (!runtime_log_viewer_supports_follow(st)) {
+      return "viewer=" + runtime_log_viewer_title(st) +
+             " | Up/Down, Left/Right, Home/End, PgUp/PgDn browse. f widens "
+             "panel. Esc closes. r reloads file.";
+    }
     return "viewer=" +
            runtime_log_viewer_kind_label(st.runtime.log_viewer_kind) +
            (st.runtime.log_viewer_live_follow ? " | live=follow"
@@ -199,15 +213,46 @@ inline std::string config_default_bottom_line(const CmdState &st) {
          "to families. Enter or e opens file. r reloads active policy.";
 }
 
+inline bool ui_config_status_is_eventful(const ConfigState &st) {
+  if (st.status.empty()) {
+    return false;
+  }
+  if (st.status_is_error) {
+    return true;
+  }
+  return st.status != "files focus" && st.status != "families focus";
+}
+
+inline std::string ui_eventful_status_line(const CmdState &st) {
+  if (st.screen == ScreenMode::Inbox) {
+    return visible_inbox_status(st);
+  }
+  if (st.screen == ScreenMode::Runtime) {
+    return st.runtime.status;
+  }
+  if (st.screen == ScreenMode::Lattice) {
+    return st.lattice.status;
+  }
+  if (st.screen == ScreenMode::Config) {
+    if (ui_config_status_is_eventful(st.config)) {
+      return st.config.status;
+    }
+    if (!st.config.ok) {
+      return st.config.error;
+    }
+  }
+  return {};
+}
+
 inline std::string ui_bottom_line(const CmdState &st) {
   if (st.screen == ScreenMode::Home) {
     return home_default_bottom_line(st);
   }
-  if (st.screen == ScreenMode::Human) {
-    const std::string status = visible_human_status(st);
+  if (st.screen == ScreenMode::Inbox) {
+    const std::string status = visible_inbox_status(st);
     if (!status.empty())
       return status;
-    return human_default_bottom_line(st);
+    return inbox_default_bottom_line(st);
   }
   if (st.screen == ScreenMode::Runtime) {
     if (!st.runtime.status.empty())

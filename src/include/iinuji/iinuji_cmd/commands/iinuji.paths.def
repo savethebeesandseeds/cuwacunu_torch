@@ -37,8 +37,8 @@ IINUJI_CANONICAL_CALL(AppExit, "iinuji.exit()", "Exit iinuji command terminal")
 // Screen selection.
 IINUJI_CANONICAL_CALL(ScreenHome, "iinuji.screen.home()",
                       "Switch to F1 Home screen")
-IINUJI_CANONICAL_CALL(ScreenHuman, "iinuji.screen.human()",
-                      "Switch to F2 Marshal screen")
+IINUJI_CANONICAL_CALL(ScreenInbox, "iinuji.screen.inbox()",
+                      "Switch to F2 Inbox screen")
 IINUJI_CANONICAL_CALL(ScreenRuntime, "iinuji.screen.runtime()",
                       "Switch to F3 Runtime screen")
 IINUJI_CANONICAL_CALL(ScreenLattice, "iinuji.screen.lattice()",
@@ -51,8 +51,8 @@ IINUJI_CANONICAL_CALL(ScreenConfig, "iinuji.screen.config()",
 // Shell refresh.
 IINUJI_CANONICAL_CALL(RefreshAll, "iinuji.refresh()",
                       "Reload Marshal, Runtime, and Config state")
-IINUJI_CANONICAL_CALL(HumanRefresh, "iinuji.human.refresh()",
-                      "Refresh Marshal cockpit state")
+IINUJI_CANONICAL_CALL(InboxRefresh, "iinuji.inbox.refresh()",
+                      "Refresh Inbox state")
 IINUJI_CANONICAL_CALL(RuntimeRefresh, "iinuji.runtime.refresh()",
                       "Refresh Runtime screen state")
 IINUJI_CANONICAL_CALL(LatticeRefresh, "iinuji.lattice.refresh()",
@@ -60,21 +60,21 @@ IINUJI_CANONICAL_CALL(LatticeRefresh, "iinuji.lattice.refresh()",
 IINUJI_CANONICAL_CALL(ConfigReload, "iinuji.config.reload()",
                       "Reload the Config file browser from the active policy")
 
-// Marshal screen backed by Human Hero.
-IINUJI_CANONICAL_CALL(HumanViewInbox, "iinuji.human.view.inbox()",
-                      "Show Marshal Inbox")
-IINUJI_CANONICAL_CALL(HumanViewLive, "iinuji.human.view.live()",
+// Inbox screen backed by Human Hero.
+IINUJI_CANONICAL_CALL(InboxViewInbox, "iinuji.inbox.view.inbox()",
+                      "Show Inbox")
+IINUJI_CANONICAL_CALL(InboxViewLive, "iinuji.inbox.view.live()",
                       "Compatibility: route old Marshal Live lane to Inbox")
-IINUJI_CANONICAL_CALL(HumanViewHistory, "iinuji.human.view.history()",
+IINUJI_CANONICAL_CALL(InboxViewHistory, "iinuji.inbox.view.history()",
                       "Compatibility: route old Marshal History lane to Inbox")
-IINUJI_CANONICAL_CALL(HumanViewOverview, "iinuji.human.view.overview()",
+IINUJI_CANONICAL_CALL(InboxViewOverview, "iinuji.inbox.view.overview()",
                       "Compatibility: route old Marshal overview lane to Inbox")
-IINUJI_CANONICAL_CALL(HumanViewRequests, "iinuji.human.view.requests()",
+IINUJI_CANONICAL_CALL(InboxViewRequests, "iinuji.inbox.view.requests()",
                       "Compatibility: route old Marshal requests lane to Inbox")
-IINUJI_CANONICAL_CALL(HumanViewReviews, "iinuji.human.view.reviews()",
+IINUJI_CANONICAL_CALL(InboxViewReviews, "iinuji.inbox.view.reviews()",
                       "Compatibility: route old Marshal reviews lane to Inbox")
 IINUJI_CANONICAL_CALL(
-    HumanFilterNext, "iinuji.human.filter.next()",
+    InboxFilterNext, "iinuji.inbox.filter.next()",
     "Deprecated compatibility shim for the old Marshal phase filter")
 
 // Runtime view.
@@ -92,8 +92,8 @@ IINUJI_CANONICAL_CALL(RuntimeItemNext, "iinuji.runtime.item.next()",
 // Show commands.
 IINUJI_CANONICAL_CALL(ShowCurrent, "iinuji.show()",
                       "Show summary for active screen")
-IINUJI_CANONICAL_CALL(ShowHuman, "iinuji.show.human()",
-                      "Show summary for Marshal screen")
+IINUJI_CANONICAL_CALL(ShowInbox, "iinuji.show.inbox()",
+                      "Show summary for Inbox screen")
 IINUJI_CANONICAL_CALL(ShowRuntime, "iinuji.show.runtime()",
                       "Show summary for Runtime screen")
 IINUJI_CANONICAL_CALL(ShowLattice, "iinuji.show.lattice()",
@@ -197,7 +197,7 @@ IINUJI_CANONICAL_ALIAS(HelpOpen, "help", "h")
 IINUJI_CANONICAL_ALIAS(AppQuit, "quit", "q")
 IINUJI_CANONICAL_ALIAS(AppExit, "exit", "x")
 IINUJI_CANONICAL_ALIAS(ScreenHome, "home", "f1")
-IINUJI_CANONICAL_ALIAS(ScreenHuman, "marshal", "f2")
+IINUJI_CANONICAL_ALIAS(ScreenInbox, "marshal", "f2")
 IINUJI_CANONICAL_ALIAS(ScreenRuntime, "runtime", "f3")
 IINUJI_CANONICAL_ALIAS(ScreenLattice, "lattice", "f4")
 IINUJI_CANONICAL_ALIAS(ScreenLogs, "logs", "f8")

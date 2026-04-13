@@ -78,25 +78,32 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     screen.home();
     push_info("screen=home");
     return true;
-  case CallHandlerId::ScreenHuman:
-    screen.human();
-    focus_human_menu(state);
-    if (state.human.inbox.all_sessions.empty() &&
-        !state.human.refresh_pending) {
-      set_human_status(state, "Loading Human cockpit...", false);
-      (void)queue_human_refresh(state);
+  case CallHandlerId::ScreenInbox: {
+    const bool entering = state.screen != ScreenMode::Inbox;
+    screen.inbox();
+    focus_inbox_menu(state);
+    if (entering && !state.inbox.refresh_pending) {
+      if (state.inbox.operator_inbox.all_sessions.empty()) {
+        set_inbox_status(state, "Loading Inbox...", false);
+      }
+      (void)queue_inbox_refresh(state);
     }
-    push_info("screen=human");
+    push_info("screen=inbox");
     return true;
-  case CallHandlerId::ScreenRuntime:
+  }
+  case CallHandlerId::ScreenRuntime: {
+    const bool entering = state.screen != ScreenMode::Runtime;
     screen.runtime();
-    if (state.runtime.sessions.empty() && state.runtime.campaigns.empty() &&
-        state.runtime.jobs.empty() && !state.runtime.refresh_pending) {
-      set_runtime_status(state, "Loading runtime inventory...", false);
+    if (entering && !state.runtime.refresh_pending) {
+      if (state.runtime.sessions.empty() && state.runtime.campaigns.empty() &&
+          state.runtime.jobs.empty()) {
+        set_runtime_status(state, "Loading runtime inventory...", false);
+      }
       (void)queue_runtime_refresh(state);
     }
     push_info("screen=runtime");
     return true;
+  }
   case CallHandlerId::ScreenLattice:
     screen.lattice();
     if (state.lattice.rows.empty() && !lattice_is_refresh_pending(state)) {
@@ -128,10 +135,10 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     state_flow.reload_shell();
     push_info("hero shell refresh queued");
     return true;
-  case CallHandlerId::HumanRefresh:
-    set_human_status(state, "Loading Human cockpit...", false);
-    state_flow.reload_human();
-    push_info("human cockpit refresh queued");
+  case CallHandlerId::InboxRefresh:
+    set_inbox_status(state, "Loading Inbox...", false);
+    state_flow.reload_inbox();
+    push_info("inbox refresh queued");
     return true;
   case CallHandlerId::RuntimeRefresh:
     set_runtime_status(state, "Loading runtime inventory...", false);
@@ -148,46 +155,46 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     state_flow.reload_config();
     push_info("config reload queued");
     return true;
-  case CallHandlerId::HumanViewInbox:
-    set_human_view(state, kHumanInboxView);
-    focus_human_menu(state);
-    screen.human();
-    push_info("human view=inbox");
+  case CallHandlerId::InboxViewInbox:
+    set_inbox_view(state, kInboxView);
+    focus_inbox_menu(state);
+    screen.inbox();
+    push_info("inbox view=inbox");
     return true;
-  case CallHandlerId::HumanViewLive:
-    set_human_view(state, kHumanLiveView);
-    focus_human_menu(state);
-    screen.human();
-    push_info("human view=live redirected to inbox");
+  case CallHandlerId::InboxViewLive:
+    set_inbox_view(state, kInboxLiveView);
+    focus_inbox_menu(state);
+    screen.inbox();
+    push_info("inbox view=live redirected to inbox");
     return true;
-  case CallHandlerId::HumanViewHistory:
-    set_human_view(state, kHumanHistoryView);
-    focus_human_menu(state);
-    screen.human();
-    push_info("human view=history redirected to inbox");
+  case CallHandlerId::InboxViewHistory:
+    set_inbox_view(state, kInboxHistoryView);
+    focus_inbox_menu(state);
+    screen.inbox();
+    push_info("inbox view=history redirected to inbox");
     return true;
-  case CallHandlerId::HumanViewOverview:
-    set_human_view(state, kHumanOverviewView);
-    focus_human_menu(state);
-    screen.human();
-    push_info("human view=inbox (overview compatibility)");
+  case CallHandlerId::InboxViewOverview:
+    set_inbox_view(state, kInboxOverviewView);
+    focus_inbox_menu(state);
+    screen.inbox();
+    push_info("inbox view=inbox (overview compatibility)");
     return true;
-  case CallHandlerId::HumanViewRequests:
-    set_human_view(state, kHumanRequestsView);
-    focus_human_menu(state);
-    screen.human();
-    push_info("human view=inbox (requests compatibility)");
+  case CallHandlerId::InboxViewRequests:
+    set_inbox_view(state, kInboxRequestsView);
+    focus_inbox_menu(state);
+    screen.inbox();
+    push_info("inbox view=inbox (requests compatibility)");
     return true;
-  case CallHandlerId::HumanViewReviews:
-    set_human_view(state, kHumanReviewsView);
-    focus_human_menu(state);
-    screen.human();
-    push_info("human view=inbox (reviews compatibility)");
+  case CallHandlerId::InboxViewReviews:
+    set_inbox_view(state, kInboxReviewsView);
+    focus_inbox_menu(state);
+    screen.inbox();
+    push_info("inbox view=inbox (reviews compatibility)");
     return true;
-  case CallHandlerId::HumanFilterNext:
-    cycle_human_phase_filter(state);
-    screen.human();
-    push_warn("human phase filter is deprecated; Marshal is inbox-only and "
+  case CallHandlerId::InboxFilterNext:
+    cycle_inbox_phase_filter(state);
+    screen.inbox();
+    push_warn("inbox phase filter is deprecated; Marshal is inbox-only and "
               "Runtime owns session inventory");
     return true;
   case CallHandlerId::RuntimeDetailNext:
@@ -231,14 +238,14 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
   case CallHandlerId::ShowCurrent:
     if (state.screen == ScreenMode::Home) {
       append_log("screen=home", "show", "#d8ffd8");
-      append_log("hint=F2 Marshal | F3 Runtime | F4 Lattice | F8 Shell Logs "
+      append_log("hint=F2 Inbox | F3 Runtime | F4 Lattice | F8 Shell Logs "
                  "| F9 Config",
                  "show", "#d8ffd8");
       append_log("site=waajacu.com", "show", "#d8ffd8");
       return true;
     }
-    if (state.screen == ScreenMode::Human) {
-      append_human_show_lines(state, append_log);
+    if (state.screen == ScreenMode::Inbox) {
+      append_inbox_show_lines(state, append_log);
       return true;
     }
     if (state.screen == ScreenMode::Runtime) {
@@ -255,8 +262,8 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     }
     handle_config_show(state, push_warn, append_log);
     return true;
-  case CallHandlerId::ShowHuman:
-    append_human_show_lines(state, append_log);
+  case CallHandlerId::ShowInbox:
+    append_inbox_show_lines(state, append_log);
     return true;
   case CallHandlerId::ShowRuntime:
     append_runtime_show_lines(state, append_log);

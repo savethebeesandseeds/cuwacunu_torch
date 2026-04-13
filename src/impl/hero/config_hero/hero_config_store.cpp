@@ -1088,7 +1088,7 @@ std::vector<hero_config_store_t::view_entry_t> hero_config_store_t::entries_snap
 
 std::string hero_config_store_t::render() const {
   std::ostringstream out;
-  out << "/* defaults/default.hero.config.dsl (managed by hero_config_mcp) */\n";
+  out << "/* defaults/default.hero.config.dsl (managed by hero_config.mcp) */\n";
   for (const auto& d : cuwacunu::hero::config::kRuntimeKeyDescriptors) {
     std::string declared = descriptor_dsl_type(d);
     std::string declared_domain = descriptor_dsl_domain(d, declared);

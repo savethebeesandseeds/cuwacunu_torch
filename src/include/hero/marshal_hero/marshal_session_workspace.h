@@ -10,35 +10,49 @@ namespace cuwacunu {
 namespace hero {
 namespace marshal_mcp {
 
-// These helpers own the Marshal Hero session's private workspace concerns so the
-// main Marshal Hero tool surface can stay focused on orchestration.
+// These helpers own the Marshal Hero session's private workspace concerns so
+// the main Marshal Hero tool surface can stay focused on orchestration.
 struct marshal_session_workspace_context_t {
   std::filesystem::path global_config_path{};
   std::filesystem::path self_binary_path{};
   std::filesystem::path marshal_root{};
   std::filesystem::path repo_root{};
   std::filesystem::path config_scope_root{};
+  std::filesystem::path runtime_hero_binary{};
+  std::filesystem::path config_hero_binary{};
+  std::filesystem::path lattice_hero_binary{};
+  std::filesystem::path human_hero_binary{};
+  std::filesystem::path human_operator_identities{};
+  std::filesystem::path marshal_codex_binary{};
+  std::size_t tail_default_lines{0};
+  std::size_t poll_interval_ms{0};
+  std::size_t marshal_codex_timeout_sec{0};
 };
 
 [[nodiscard]] std::string derive_marshal_session_objective_name(
-    const std::filesystem::path& source_marshal_objective_dsl_path);
+    const std::filesystem::path &source_marshal_objective_dsl_path);
 
 [[nodiscard]] bool write_marshal_session_bootstrap_files(
-    const marshal_session_workspace_context_t& context,
-    const std::filesystem::path& source_marshal_objective_dsl_path,
-    const std::filesystem::path& source_marshal_objective_md_path,
-    const std::filesystem::path& source_marshal_guidance_md_path,
-    const cuwacunu::hero::marshal::marshal_session_record_t& session,
-    std::string* error);
+    const marshal_session_workspace_context_t &context,
+    const std::filesystem::path &source_marshal_objective_dsl_path,
+    const std::filesystem::path &source_marshal_objective_md_path,
+    const std::filesystem::path &source_marshal_guidance_md_path,
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    std::string *error);
 
 [[nodiscard]] bool refresh_marshal_session_config_policy_dsl(
-    const marshal_session_workspace_context_t& context,
-    const cuwacunu::hero::marshal::marshal_session_record_t& session,
-    std::string* error);
+    const marshal_session_workspace_context_t &context,
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    std::string *error);
+
+[[nodiscard]] bool refresh_marshal_session_hero_marshal_dsl(
+    const marshal_session_workspace_context_t &context,
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    std::string *error);
 
 [[nodiscard]] std::filesystem::path resolve_config_hero_mcp_binary(
-    const marshal_session_workspace_context_t& context);
+    const marshal_session_workspace_context_t &context);
 
-}  // namespace marshal_mcp
-}  // namespace hero
-}  // namespace cuwacunu
+} // namespace marshal_mcp
+} // namespace hero
+} // namespace cuwacunu

@@ -369,6 +369,7 @@ inline void append_plain(row_t& row, const std::string& s,
                          short pair, bool bold=false, bool inverse=false)
 {
   if (s.empty()) return;
+  const int glyph_width = cuwacunu::iinuji::utf8_display_width(s);
   seg_t seg;
   seg.text = s;
   seg.pair = pair;
@@ -379,11 +380,12 @@ inline void append_plain(row_t& row, const std::string& s,
     auto& last = row.segs.back();
     if (last.pair == seg.pair && last.bold == seg.bold && last.inverse == seg.inverse) {
       last.text += seg.text;
+      row.len += glyph_width;
       return;
     }
   }
   row.segs.push_back(std::move(seg));
-  row.len += cuwacunu::iinuji::utf8_display_width(s);
+  row.len += glyph_width;
 }
 
 } // namespace ansi

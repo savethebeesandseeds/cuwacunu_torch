@@ -16,9 +16,9 @@ training/inference pipelines, and DSL-driven system configuration.
 - First building individual targets might trigget the build of all the libs, so is better to first make lib and then make the final target. 
 - iinuji_cmd fast path (for interface edits): the `make` dependency graph in `src/main` forces an `autoprep` pass before many targets, which can trigger full lib sync/revalidation.
   - Use this for rapid edit/build cycles:
-    - `make -C src/main/interface AUTO_PREP=0 build-iinuji-cmd`
-    - `make -C src/main/interface AUTO_PREP=0 run-iinuji-cmd`
-  - For quick install of just the interface binary: `make -C src/main/interface AUTO_PREP=0 install-iinuji-cmd`
+    - `make -C src/main/interface AUTO_PREP=0 build-cuwacunu-cmd`
+    - `make -C src/main/interface AUTO_PREP=0 run-cuwacunu-cmd`
+  - For quick install of just the interface binary: `make -C src/main/interface AUTO_PREP=0 install-cuwacunu-cmd`
   - Avoid `make -C src/main AUTO_PREP=0 install` when you only need `iinuji_cmd`; `install` in `src/main` still routes through `link -> autoprep`.
   - Return to default `AUTO_PREP` before broader release/CI-facing validation.
 
@@ -33,9 +33,9 @@ training/inference pipelines, and DSL-driven system configuration.
 
 # HERO MCP Servers
 - Codex MCP registrations (stdio):
-  - `hero-config` -> `/cuwacunu/.build/hero/hero_config_mcp`
-  - `hero-hashimyei` -> `/cuwacunu/.build/hero/hero_hashimyei_mcp`
-  - `hero-lattice` -> `/cuwacunu/.build/hero/hero_lattice_mcp`
+  - `hero-config` -> `/cuwacunu/.build/hero/hero_config.mcp`
+  - `hero-hashimyei` -> `/cuwacunu/.build/hero/hero_hashimyei.mcp`
+  - `hero-lattice` -> `/cuwacunu/.build/hero/hero_lattice.mcp`
 - MCP usage preference:
   - For Hero runtime/config questions (Hashimyei, Lattice, or Config behavior), use MCP calls first before reading local source files.
   - Prefer direct tool invocations (`hero.config.*`, `hero.hashimyei.*`, `hero.lattice.*`) and return MCP output as the source of truth.

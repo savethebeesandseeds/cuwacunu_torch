@@ -3,6 +3,7 @@
 #include <ncursesw/ncurses.h>
 
 #include "iinuji/iinuji_cmd/views/runtime/commands.h"
+#include "iinuji/iinuji_cmd/views/ui/dialogs.h"
 
 namespace cuwacunu {
 namespace iinuji {
@@ -22,24 +23,68 @@ enum class RuntimePopupActionKind : std::uint8_t {
   ViewJobStderr = 10,
   StopJob = 11,
   ForceStopJob = 12,
+  ViewMarshalBriefing = 13,
+  ViewMarshalMemory = 14,
+  ViewMarshalInputCheckpoint = 15,
+  ViewMarshalIntentCheckpoint = 16,
+  ViewMarshalMutationCheckpoint = 17,
+  ViewMarshalObjective = 18,
+  ViewMarshalGuidance = 19,
+  ViewMarshalHumanRequest = 20,
+  ViewCampaignStdout = 21,
+  ViewCampaignStderr = 22,
+  ViewCampaignManifest = 23,
+  ViewCampaignDsl = 24,
+  ViewJobTrace = 25,
+  ViewJobManifest = 26,
+  ViewJobCampaignDsl = 27,
+  ViewJobContractDsl = 28,
+  ViewJobWaveDsl = 29,
 };
 
 struct RuntimePopupAction {
   RuntimePopupActionKind kind;
   std::string label;
+  bool enabled{true};
+  std::string disabled_status{};
 };
+
+inline bool runtime_popup_action_file_available(const std::string &path) {
+  return runtime_probe_log_viewer_file(path).ok;
+}
+
+inline std::string runtime_campaign_manifest_viewer_path(const CmdState &st) {
+  if (!st.runtime.campaign.has_value())
+    return {};
+  return cuwacunu::hero::runtime::runtime_campaign_manifest_path(
+             st.runtime.app.defaults.campaigns_root,
+             st.runtime.campaign->campaign_cursor)
+      .string();
+}
+
+inline std::string runtime_job_manifest_viewer_path(const CmdState &st) {
+  if (!st.runtime.job.has_value())
+    return {};
+  return cuwacunu::hero::runtime::runtime_job_manifest_path(
+             st.runtime.app.defaults.campaigns_root, st.runtime.job->job_cursor)
+      .string();
+}
 
 inline RuntimeRowKind runtime_popup_row_kind(const CmdState &st) {
   if (runtime_is_session_lane(st.runtime.lane) &&
-      st.runtime.job_filter_active && st.runtime.job.has_value()) {
+      st.runtime.job_filter_active &&
+      (!st.runtime.selected_job_cursor.empty() || st.runtime.job.has_value())) {
     return RuntimeRowKind::Job;
   }
   if (runtime_is_session_lane(st.runtime.lane) &&
-      st.runtime.campaign_filter_active && st.runtime.campaign.has_value()) {
+      st.runtime.campaign_filter_active &&
+      (!st.runtime.selected_campaign_cursor.empty() ||
+       st.runtime.campaign.has_value())) {
     return RuntimeRowKind::Campaign;
   }
   if (runtime_is_campaign_lane(st.runtime.lane) &&
-      st.runtime.job_filter_active && st.runtime.job.has_value()) {
+      st.runtime.job_filter_active &&
+      (!st.runtime.selected_job_cursor.empty() || st.runtime.job.has_value())) {
     return RuntimeRowKind::Job;
   }
   return st.runtime.lane;
@@ -47,15 +92,20 @@ inline RuntimeRowKind runtime_popup_row_kind(const CmdState &st) {
 
 inline bool drill_runtime_into_campaigns(CmdState &st) {
   const auto visible = runtime_child_campaign_indices(st);
-  if (visible.empty()) {
+  if (visible.empty() && !runtime_child_has_none_campaign_row(st)) {
     set_runtime_status(st, "Selected marshal has no campaigns.", false);
     return true;
   }
   st.runtime.campaign_filter_active = true;
   st.runtime.job_filter_active = false;
-  const std::string campaign_cursor =
-      st.runtime.campaigns[visible.front()].campaign_cursor;
-  select_runtime_campaign_and_related(st, campaign_cursor);
+  if (!visible.empty()) {
+    const std::string campaign_cursor =
+        st.runtime.campaigns[visible.front()].campaign_cursor;
+    select_runtime_campaign_and_related(st, campaign_cursor);
+  } else {
+    select_runtime_none_campaign_and_related(st,
+                                             st.runtime.selected_session_id);
+  }
   focus_runtime_worklist(st);
   return true;
 }
@@ -129,68 +179,176 @@ inline bool runtime_apply_runtime_action(CmdState &st,
 inline std::vector<RuntimePopupAction>
 runtime_popup_actions(const CmdState &st) {
   std::vector<RuntimePopupAction> actions{};
+  auto push_action = [&](RuntimePopupActionKind kind, std::string label,
+                         bool enabled, std::string disabled_status) {
+    actions.push_back(RuntimePopupAction{
+        .kind = kind,
+        .label = std::move(label),
+        .enabled = enabled,
+        .disabled_status = std::move(disabled_status),
+    });
+  };
   const RuntimeRowKind row_kind = runtime_popup_row_kind(st);
   if (row_kind == RuntimeRowKind::Session && st.runtime.session.has_value()) {
     const auto &session = *st.runtime.session;
-    if (runtime_probe_log_viewer_file(session.events_path).ok) {
-      actions.push_back(
-          {RuntimePopupActionKind::ViewMarshalEvents, "View marshal events"});
-    }
-    if (runtime_probe_log_viewer_file(session.codex_stdout_path).ok) {
-      actions.push_back({RuntimePopupActionKind::ViewMarshalCodexStdout,
-                         "View codex stdout"});
-    }
-    if (runtime_probe_log_viewer_file(session.codex_stderr_path).ok) {
-      actions.push_back({RuntimePopupActionKind::ViewMarshalCodexStderr,
-                         "View codex stderr"});
-    }
-    if (session.phase == "active" || session.phase == "running_campaign") {
-      actions.push_back(
-          {RuntimePopupActionKind::PauseSession, "Pause marshal"});
-    }
-    if (session.phase == "paused" && session.pause_kind == "operator") {
-      actions.push_back(
-          {RuntimePopupActionKind::ResumeSession, "Resume marshal"});
-    }
-    if (session.phase == "idle") {
-      actions.push_back(
-          {RuntimePopupActionKind::ContinueSession, "Continue marshal"});
-    }
-    if (session.phase != "finished") {
-      actions.push_back(
-          {RuntimePopupActionKind::TerminateSession, "Terminate marshal"});
-    }
+    push_action(RuntimePopupActionKind::ViewMarshalEvents,
+                "View marshal events",
+                runtime_popup_action_file_available(session.events_path),
+                "Marshal events are not available for this session yet.");
+    push_action(RuntimePopupActionKind::ViewMarshalCodexStdout,
+                "View codex stdout",
+                runtime_popup_action_file_available(session.codex_stdout_path),
+                "Codex stdout is not available for this session yet.");
+    push_action(RuntimePopupActionKind::ViewMarshalCodexStderr,
+                "View codex stderr",
+                runtime_popup_action_file_available(session.codex_stderr_path),
+                "Codex stderr is not available for this session yet.");
+    push_action(RuntimePopupActionKind::ViewMarshalBriefing,
+                "View marshal briefing",
+                runtime_popup_action_file_available(session.briefing_path),
+                "Marshal briefing is not available for this session.");
+    push_action(RuntimePopupActionKind::ViewMarshalMemory,
+                "View marshal memory",
+                runtime_popup_action_file_available(session.memory_path),
+                "Marshal memory is not available for this session.");
+    push_action(
+        RuntimePopupActionKind::ViewMarshalInputCheckpoint,
+        "View latest input checkpoint",
+        runtime_popup_action_file_available(session.last_input_checkpoint_path),
+        "No input checkpoint has been recorded for this session.");
+    push_action(RuntimePopupActionKind::ViewMarshalIntentCheckpoint,
+                "View latest intent checkpoint",
+                runtime_popup_action_file_available(
+                    session.last_intent_checkpoint_path),
+                "No intent checkpoint has been recorded for this session.");
+    push_action(RuntimePopupActionKind::ViewMarshalMutationCheckpoint,
+                "View latest mutation checkpoint",
+                runtime_popup_action_file_available(
+                    session.last_mutation_checkpoint_path),
+                "No mutation checkpoint has been recorded for this session.");
+    push_action(
+        RuntimePopupActionKind::ViewMarshalObjective,
+        "View marshal objective.md",
+        runtime_popup_action_file_available(session.marshal_objective_md_path),
+        "Marshal objective markdown is not available for this session.");
+    push_action(
+        RuntimePopupActionKind::ViewMarshalGuidance, "View marshal guidance.md",
+        runtime_popup_action_file_available(session.marshal_guidance_md_path),
+        "Marshal guidance markdown is not available for this session.");
+    push_action(RuntimePopupActionKind::ViewMarshalHumanRequest,
+                "View human request",
+                runtime_popup_action_file_available(session.human_request_path),
+                "There is no human request artifact for this session.");
+    push_action(RuntimePopupActionKind::PauseSession, "Pause marshal",
+                session.phase == "active" ||
+                    session.phase == "running_campaign",
+                "Pause is only available while the marshal is active.");
+    push_action(RuntimePopupActionKind::ResumeSession, "Resume marshal",
+                session.phase == "paused" && session.pause_kind == "operator",
+                "Resume is only available for operator-paused marshals.");
+    push_action(RuntimePopupActionKind::ContinueSession, "Continue marshal",
+                session.phase == "idle",
+                "Continue is only available when the marshal is idle.");
+    push_action(RuntimePopupActionKind::TerminateSession, "Terminate marshal",
+                session.phase != "finished",
+                "Finished marshals cannot be terminated again.");
     return actions;
   }
   if (row_kind == RuntimeRowKind::Campaign && st.runtime.campaign.has_value()) {
-    if (runtime_campaign_is_active(*st.runtime.campaign)) {
-      actions.push_back(
-          {RuntimePopupActionKind::StopCampaign, "Stop campaign"});
-      actions.push_back(
-          {RuntimePopupActionKind::ForceStopCampaign, "Force stop campaign"});
-    }
+    const auto &campaign = *st.runtime.campaign;
+    push_action(RuntimePopupActionKind::ViewCampaignStdout,
+                "View campaign stdout.log",
+                runtime_popup_action_file_available(campaign.stdout_path),
+                "Campaign stdout is not available yet.");
+    push_action(RuntimePopupActionKind::ViewCampaignStderr,
+                "View campaign stderr.log",
+                runtime_popup_action_file_available(campaign.stderr_path),
+                "Campaign stderr is not available yet.");
+    push_action(RuntimePopupActionKind::ViewCampaignManifest,
+                "View campaign manifest",
+                runtime_popup_action_file_available(
+                    runtime_campaign_manifest_viewer_path(st)),
+                "Campaign manifest is not available for this campaign.");
+    push_action(RuntimePopupActionKind::ViewCampaignDsl, "View campaign.dsl",
+                runtime_popup_action_file_available(campaign.campaign_dsl_path),
+                "Campaign DSL is not available for this campaign.");
+    push_action(RuntimePopupActionKind::StopCampaign, "Stop campaign",
+                runtime_campaign_is_active(campaign),
+                "Stop is only available for active campaigns.");
+    push_action(RuntimePopupActionKind::ForceStopCampaign,
+                "Force stop campaign", runtime_campaign_is_active(campaign),
+                "Force stop is only available for active campaigns.");
     return actions;
   }
   if (row_kind == RuntimeRowKind::Job && st.runtime.job.has_value()) {
-    if (!st.runtime.job->stdout_path.empty()) {
-      actions.push_back(
-          {RuntimePopupActionKind::ViewJobStdout, "View job stdout.log"});
-    }
-    if (!st.runtime.job->stderr_path.empty()) {
-      actions.push_back(
-          {RuntimePopupActionKind::ViewJobStderr, "View job stderr.log"});
-    }
-    if (runtime_job_is_active(*st.runtime.job)) {
-      actions.push_back({RuntimePopupActionKind::StopJob, "Stop job"});
-      actions.push_back(
-          {RuntimePopupActionKind::ForceStopJob, "Force stop job"});
-    }
+    const auto &job = *st.runtime.job;
+    push_action(RuntimePopupActionKind::ViewJobStdout, "View job stdout.log",
+                runtime_popup_action_file_available(job.stdout_path),
+                "Job stdout is not available yet.");
+    push_action(RuntimePopupActionKind::ViewJobStderr, "View job stderr.log",
+                runtime_popup_action_file_available(job.stderr_path),
+                "Job stderr is not available yet.");
+    push_action(RuntimePopupActionKind::ViewJobTrace, "View job trace.jsonl",
+                runtime_popup_action_file_available(job.trace_path),
+                "Job trace is not available yet.");
+    push_action(RuntimePopupActionKind::ViewJobManifest, "View job manifest",
+                runtime_popup_action_file_available(
+                    runtime_job_manifest_viewer_path(st)),
+                "Job manifest is not available for this job.");
+    push_action(RuntimePopupActionKind::ViewJobCampaignDsl,
+                "View bound campaign.dsl",
+                runtime_popup_action_file_available(job.campaign_dsl_path),
+                "Bound campaign DSL is not available for this job.");
+    push_action(RuntimePopupActionKind::ViewJobContractDsl,
+                "View bound contract.dsl",
+                runtime_popup_action_file_available(job.contract_dsl_path),
+                "Bound contract DSL is not available for this job.");
+    push_action(RuntimePopupActionKind::ViewJobWaveDsl, "View bound wave.dsl",
+                runtime_popup_action_file_available(job.wave_dsl_path),
+                "Bound wave DSL is not available for this job.");
+    push_action(RuntimePopupActionKind::StopJob, "Stop job",
+                runtime_job_is_active(job),
+                "Stop is only available for active jobs.");
+    push_action(RuntimePopupActionKind::ForceStopJob, "Force stop job",
+                runtime_job_is_active(job),
+                "Force stop is only available for active jobs.");
   }
   return actions;
 }
 
 inline bool dispatch_runtime_popup_action(CmdState &st,
                                           const RuntimePopupAction &action) {
+  auto open_session_artifact = [&](const std::string &path, std::string label,
+                                   std::string missing_status) -> bool {
+    if (!st.runtime.session.has_value())
+      return false;
+    return runtime_open_artifact_viewer(
+        st, path,
+        std::move(label) + " | " +
+            trim_to_width(st.runtime.session->marshal_session_id, 28),
+        std::move(missing_status));
+  };
+  auto open_campaign_artifact = [&](const std::string &path, std::string label,
+                                    std::string missing_status) -> bool {
+    if (!st.runtime.campaign.has_value())
+      return false;
+    return runtime_open_artifact_viewer(
+        st, path,
+        std::move(label) + " | " +
+            trim_to_width(st.runtime.campaign->campaign_cursor, 28),
+        std::move(missing_status));
+  };
+  auto open_job_artifact = [&](const std::string &path, std::string label,
+                               std::string missing_status) -> bool {
+    if (!st.runtime.job.has_value())
+      return false;
+    return runtime_open_artifact_viewer(
+        st, path,
+        std::move(label) + " | " +
+            trim_to_width(st.runtime.job->job_cursor, 28),
+        std::move(missing_status));
+  };
+
   switch (action.kind) {
   case RuntimePopupActionKind::PauseSession: {
     if (!st.runtime.session.has_value())
@@ -215,7 +373,7 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
       return false;
     std::string instruction{};
     bool cancelled = false;
-    if (!cuwacunu::hero::human_mcp::prompt_text_dialog(
+    if (!ui_prompt_text_dialog(
             " Continue marshal ",
             "Provide the operator instruction that should launch more work for "
             "this idle marshal.",
@@ -240,7 +398,7 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
       return false;
     bool confirmed = false;
     bool cancelled = false;
-    if (!cuwacunu::hero::human_mcp::prompt_yes_no_dialog(
+    if (!ui_prompt_yes_no_dialog(
             " Terminate marshal ",
             "Terminate the selected marshal? This action is final.", false,
             &confirmed, &cancelled)) {
@@ -270,6 +428,63 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
     return runtime_open_session_log_viewer(
         st, RuntimeLogViewerKind::MarshalCodexStderr);
   }
+  case RuntimePopupActionKind::ViewMarshalBriefing: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(st.runtime.session->briefing_path,
+                                 "marshal briefing",
+                                 "Marshal briefing is not available.");
+  }
+  case RuntimePopupActionKind::ViewMarshalMemory: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(st.runtime.session->memory_path,
+                                 "marshal memory",
+                                 "Marshal memory is not available.");
+  }
+  case RuntimePopupActionKind::ViewMarshalInputCheckpoint: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(
+        st.runtime.session->last_input_checkpoint_path, "input checkpoint",
+        "The latest input checkpoint is not available.");
+  }
+  case RuntimePopupActionKind::ViewMarshalIntentCheckpoint: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(
+        st.runtime.session->last_intent_checkpoint_path, "intent checkpoint",
+        "The latest intent checkpoint is not available.");
+  }
+  case RuntimePopupActionKind::ViewMarshalMutationCheckpoint: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(
+        st.runtime.session->last_mutation_checkpoint_path,
+        "mutation checkpoint",
+        "The latest mutation checkpoint is not available.");
+  }
+  case RuntimePopupActionKind::ViewMarshalObjective: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(
+        st.runtime.session->marshal_objective_md_path, "marshal objective.md",
+        "Marshal objective markdown is not available.");
+  }
+  case RuntimePopupActionKind::ViewMarshalGuidance: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(st.runtime.session->marshal_guidance_md_path,
+                                 "marshal guidance.md",
+                                 "Marshal guidance markdown is not available.");
+  }
+  case RuntimePopupActionKind::ViewMarshalHumanRequest: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(st.runtime.session->human_request_path,
+                                 "human request",
+                                 "Human request artifact is not available.");
+  }
   case RuntimePopupActionKind::StopCampaign: {
     if (!st.runtime.campaign.has_value())
       return false;
@@ -284,7 +499,7 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
       return false;
     bool confirmed = false;
     bool cancelled = false;
-    if (!cuwacunu::hero::human_mcp::prompt_yes_no_dialog(
+    if (!ui_prompt_yes_no_dialog(
             " Force stop campaign ",
             "Force-stop the selected campaign and its active child job when "
             "present?",
@@ -303,11 +518,58 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
             ",\"force\":true}",
         "Force-stopped selected campaign.");
   }
+  case RuntimePopupActionKind::ViewCampaignStdout: {
+    return runtime_open_campaign_log_viewer(
+        st, RuntimeLogViewerKind::CampaignStdout);
+  }
+  case RuntimePopupActionKind::ViewCampaignStderr: {
+    return runtime_open_campaign_log_viewer(
+        st, RuntimeLogViewerKind::CampaignStderr);
+  }
+  case RuntimePopupActionKind::ViewCampaignManifest: {
+    return open_campaign_artifact(runtime_campaign_manifest_viewer_path(st),
+                                  "campaign manifest",
+                                  "Campaign manifest is not available.");
+  }
+  case RuntimePopupActionKind::ViewCampaignDsl: {
+    if (!st.runtime.campaign.has_value())
+      return false;
+    return open_campaign_artifact(st.runtime.campaign->campaign_dsl_path,
+                                  "campaign.dsl",
+                                  "Campaign DSL is not available.");
+  }
   case RuntimePopupActionKind::ViewJobStdout: {
     return runtime_open_job_log_viewer(st, RuntimeLogViewerKind::JobStdout);
   }
   case RuntimePopupActionKind::ViewJobStderr: {
     return runtime_open_job_log_viewer(st, RuntimeLogViewerKind::JobStderr);
+  }
+  case RuntimePopupActionKind::ViewJobTrace: {
+    return runtime_open_job_log_viewer(st, RuntimeLogViewerKind::JobTrace);
+  }
+  case RuntimePopupActionKind::ViewJobManifest: {
+    return open_job_artifact(runtime_job_manifest_viewer_path(st),
+                             "job manifest", "Job manifest is not available.");
+  }
+  case RuntimePopupActionKind::ViewJobCampaignDsl: {
+    if (!st.runtime.job.has_value())
+      return false;
+    return open_job_artifact(st.runtime.job->campaign_dsl_path,
+                             "bound campaign.dsl",
+                             "Bound campaign DSL is not available.");
+  }
+  case RuntimePopupActionKind::ViewJobContractDsl: {
+    if (!st.runtime.job.has_value())
+      return false;
+    return open_job_artifact(st.runtime.job->contract_dsl_path,
+                             "bound contract.dsl",
+                             "Bound contract DSL is not available.");
+  }
+  case RuntimePopupActionKind::ViewJobWaveDsl: {
+    if (!st.runtime.job.has_value())
+      return false;
+    return open_job_artifact(st.runtime.job->wave_dsl_path, "bound wave.dsl",
+                             "Bound wave DSL is not available.");
   }
   case RuntimePopupActionKind::StopJob: {
     if (!st.runtime.job.has_value())
@@ -323,9 +585,9 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
       return false;
     bool confirmed = false;
     bool cancelled = false;
-    if (!cuwacunu::hero::human_mcp::prompt_yes_no_dialog(
-            " Force stop job ", "Force-stop the selected job?", false,
-            &confirmed, &cancelled)) {
+    if (!ui_prompt_yes_no_dialog(" Force stop job ",
+                                 "Force-stop the selected job?", false,
+                                 &confirmed, &cancelled)) {
       set_runtime_status(st, "failed to collect force-stop confirmation", true);
       return true;
     }
@@ -350,16 +612,26 @@ inline bool open_runtime_action_menu(CmdState &st) {
     return true;
   }
 
-  std::vector<std::string> options{};
+  std::vector<ui_choice_panel_option_t> options{};
   options.reserve(actions.size());
-  for (const auto &action : actions)
-    options.push_back(action.label);
+  for (const auto &action : actions) {
+    options.push_back(ui_choice_panel_option_t{
+        .label = action.label,
+        .enabled = action.enabled,
+        .disabled_status = action.disabled_status,
+    });
+  }
 
   std::size_t selected = 0;
+  for (std::size_t i = 0; i < actions.size(); ++i) {
+    if (actions[i].enabled) {
+      selected = i;
+      break;
+    }
+  }
   bool cancelled = false;
-  if (!cuwacunu::hero::human_mcp::prompt_choice_dialog(
-          " Runtime actions ", "Select action.", options, &selected,
-          &cancelled)) {
+  if (!ui_prompt_choice_panel("Runtime Actions", "Select action.", options,
+                              &selected, &cancelled)) {
     set_runtime_status(st, "failed to open action menu", true);
     return true;
   }
@@ -367,8 +639,16 @@ inline bool open_runtime_action_menu(CmdState &st) {
     set_runtime_status(st, {}, false);
     return true;
   }
-  return dispatch_runtime_popup_action(
-      st, actions[std::min(selected, actions.size() - 1)]);
+  const auto &action = actions[std::min(selected, actions.size() - 1)];
+  if (!action.enabled) {
+    set_runtime_status(st,
+                       action.disabled_status.empty()
+                           ? "Selected action is currently unavailable."
+                           : action.disabled_status,
+                       false);
+    return true;
+  }
+  return dispatch_runtime_popup_action(st, action);
 }
 
 inline bool handle_runtime_key(CmdState &st, int ch) {
@@ -392,7 +672,52 @@ inline bool handle_runtime_key(CmdState &st, int ch) {
     return true;
   };
 
-  if (runtime_log_viewer_is_open(st) && st.runtime.log_viewer) {
+  if (runtime_event_viewer_is_open(st)) {
+    if (ch == 27 && workspace_is_current_screen_zoomed(st)) {
+      return restore_zoom();
+    }
+    if (ch == 'f' || ch == 'F') {
+      return toggle_zoom();
+    }
+    if (ch == 't' || ch == 'T') {
+      return runtime_toggle_log_viewer_follow(st);
+    }
+    if (ch == 'r' || ch == 'R') {
+      return runtime_reload_log_viewer(st);
+    }
+    if (ch == 27) {
+      clear_runtime_log_viewer(st);
+      set_runtime_status(st, "Closed runtime log viewer.", false);
+      return true;
+    }
+    if (ch == KEY_UP || ch == 'k') {
+      (void)runtime_select_prev_event_viewer_entry(st);
+      return true;
+    }
+    if (ch == KEY_DOWN || ch == 'j') {
+      (void)runtime_select_next_event_viewer_entry(st);
+      return true;
+    }
+    if (ch == KEY_PPAGE) {
+      (void)runtime_page_event_viewer_entries(st, -5);
+      return true;
+    }
+    if (ch == KEY_NPAGE) {
+      (void)runtime_page_event_viewer_entries(st, +5);
+      return true;
+    }
+    if (ch == KEY_HOME) {
+      (void)runtime_select_first_event_viewer_entry(st);
+      return true;
+    }
+    if (ch == KEY_END) {
+      (void)runtime_select_last_event_viewer_entry(st, true);
+      return true;
+    }
+    return true;
+  }
+
+  if (runtime_text_log_viewer_is_open(st) && st.runtime.log_viewer) {
     if (ch == 27 && workspace_is_current_screen_zoomed(st)) {
       return restore_zoom();
     }

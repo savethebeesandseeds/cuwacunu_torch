@@ -59,7 +59,7 @@ required = true
 default = /cuwacunu/src/config/instructions/defaults/default.hero.config.dsl
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = deterministic Config HERO runtime DSL file used by hero_config_mcp
+nuance = deterministic Config HERO runtime DSL file used by hero_config.mcp
 
 [FIELD REAL_HERO.hashimyei_hero_dsl_filename]
 key = hashimyei_hero_dsl_filename
@@ -69,7 +69,7 @@ required = true
 default = /cuwacunu/src/config/instructions/defaults/default.hero.hashimyei.dsl
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = deterministic Hashimyei HERO defaults DSL used by hero_hashimyei_mcp
+nuance = deterministic Hashimyei HERO defaults DSL used by hero_hashimyei.mcp
 
 [FIELD REAL_HERO.human_hero_dsl_filename]
 key = human_hero_dsl_filename
@@ -79,7 +79,7 @@ required = true
 default = /cuwacunu/src/config/instructions/defaults/default.hero.human.dsl
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = deterministic Human HERO defaults DSL used by hero_human_mcp
+nuance = deterministic Human HERO defaults DSL used by hero_human.mcp
 
 [FIELD REAL_HERO.lattice_hero_dsl_filename]
 key = lattice_hero_dsl_filename
@@ -89,7 +89,7 @@ required = true
 default = /cuwacunu/src/config/instructions/defaults/default.hero.lattice.dsl
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = deterministic Lattice HERO defaults DSL used by hero_lattice_mcp
+nuance = deterministic Lattice HERO defaults DSL used by hero_lattice.mcp
 
 [FIELD REAL_HERO.marshal_hero_dsl_filename]
 key = marshal_hero_dsl_filename
@@ -99,7 +99,7 @@ required = true
 default = /cuwacunu/src/config/instructions/defaults/default.hero.marshal.dsl
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = deterministic Marshal HERO defaults DSL used by hero_marshal_mcp
+nuance = deterministic Marshal HERO defaults DSL used by hero_marshal.mcp
 
 [FIELD REAL_HERO.runtime_hero_dsl_filename]
 key = runtime_hero_dsl_filename
@@ -109,7 +109,7 @@ required = true
 default = /cuwacunu/src/config/instructions/defaults/default.hero.runtime.dsl
 range = non-empty path
 allowed = absolute_or_relative path
-nuance = deterministic Runtime HERO defaults DSL used by hero_runtime_mcp
+nuance = deterministic Runtime HERO defaults DSL used by hero_runtime.mcp
 
 [RULE REAL_HERO_MODE_ALLOWED]
 id = REAL_HERO_MODE_ALLOWED

@@ -27,3 +27,8 @@
 parse_temp.txt
 out.txt
 diff.patch
+*.log
+*.swp
+*~
+*.stdout.jsonl
+*.stderr.jsonl

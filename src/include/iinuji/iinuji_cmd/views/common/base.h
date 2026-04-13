@@ -172,7 +172,15 @@ inline std::shared_ptr<T> as(const std::shared_ptr<cuwacunu::iinuji::iinuji_obje
 
 inline std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> panel_content_target(
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box) {
-  return cuwacunu::iinuji::panel_body_object(box);
+  auto target = cuwacunu::iinuji::panel_body_object(box);
+  if (box && target && target != box) {
+    target->style.label_color = box->style.label_color;
+    target->style.background_color = box->style.background_color;
+    target->style.border_color = box->style.border_color;
+    target->style.bold = box->style.bold;
+    target->style.inverse = box->style.inverse;
+  }
+  return target;
 }
 
 inline void set_text_box(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box,

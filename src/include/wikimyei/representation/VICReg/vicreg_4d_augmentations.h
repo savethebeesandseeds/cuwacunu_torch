@@ -62,6 +62,7 @@ causal_time_warp(const torch::Tensor& x,
     TORCH_CHECK(m.sizes().slice(0,3) == x.sizes().slice(0,3).slice(0,3), "(vicreg_4d_Augmentations.h)[casual_time_wrap] mask must match data in B,C,T dims");
     TORCH_CHECK(warp_map.dim()==2,              "(vicreg_4d_Augmentations.h)[casual_time_wrap] warp_map must be [B,T]");
     TORCH_CHECK(x.size(0)==warp_map.size(0),    "(vicreg_4d_Augmentations.h)[casual_time_wrap] batch mismatch");
+    TORCH_CHECK(x.size(2)==warp_map.size(1),    "(vicreg_4d_Augmentations.h)[casual_time_wrap] warp_map time dimension must match data T");
     TORCH_CHECK(x.device()==warp_map.device() 
                 && m.device()==warp_map.device(),  "(vicreg_4d_Augmentations.h)[casual_time_wrap] data, mask and warp_map must be on the same device");
                 
@@ -205,11 +206,15 @@ inline torch::Tensor build_warp_map(int64_t        B,
 
     /* 4. Optional temporal smoothing -------------------------------------- */
     if (smoothing_kernel_size > 1) {
-        int64_t k = smoothing_kernel_size;
+        const int64_t k = smoothing_kernel_size;
         auto kernel = torch::ones({1, 1, k}, opts) / static_cast<float>(k);
-        int64_t pad = k / 2;
-        warp = torch::conv1d(warp.unsqueeze(1), kernel, /*bias=*/{}, 1, pad)
-                     .squeeze(1);                                             // [B,T]
+        const int64_t pad_left = (k - 1) / 2;
+        const int64_t pad_right = k - 1 - pad_left;
+
+        // Keep the temporal axis length stable for both odd and even kernels.
+        auto padded =
+            torch::constant_pad_nd(warp.unsqueeze(1), {pad_left, pad_right}, 0.0);
+        warp = torch::conv1d(padded, kernel).squeeze(1);                     // [B,T]
     }
 
     /* 5) Ensure strictly positive steps then integrate (monotonicity without sorting) */

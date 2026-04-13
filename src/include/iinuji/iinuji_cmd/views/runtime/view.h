@@ -16,6 +16,11 @@ struct RuntimeWorklistPanel {
   std::optional<std::size_t> selected_line{};
 };
 
+struct RuntimeEventViewerPanel {
+  std::vector<cuwacunu::iinuji::styled_text_line_t> lines{};
+  std::optional<std::size_t> selected_line{};
+};
+
 inline std::size_t count_runtime_active_sessions(const CmdState &st) {
   return static_cast<std::size_t>(std::count_if(
       st.runtime.sessions.begin(), st.runtime.sessions.end(),
@@ -38,12 +43,12 @@ inline std::size_t count_runtime_active_jobs(const CmdState &st) {
 
 inline std::string
 runtime_session_ref_text(std::string_view marshal_session_id) {
-  return marshal_session_id.empty() ? std::string("<no marshal_session_id>")
+  return marshal_session_id.empty() ? runtime_none_branch_label()
                                     : std::string(marshal_session_id);
 }
 
 inline std::string runtime_campaign_ref_text(std::string_view campaign_cursor) {
-  return campaign_cursor.empty() ? std::string("<no campaign>")
+  return campaign_cursor.empty() ? runtime_none_branch_label()
                                  : std::string(campaign_cursor);
 }
 
@@ -235,6 +240,31 @@ inline void push_runtime_segments(
       std::move(segments), fallback_emphasis));
 }
 
+inline void push_runtime_segments_with_background(
+    std::vector<cuwacunu::iinuji::styled_text_line_t> &out,
+    std::vector<cuwacunu::iinuji::styled_text_segment_t> segments,
+    std::string background_color,
+    cuwacunu::iinuji::text_line_emphasis_t fallback_emphasis =
+        cuwacunu::iinuji::text_line_emphasis_t::None) {
+  auto line = cuwacunu::iinuji::make_segmented_styled_text_line(
+      std::move(segments), fallback_emphasis);
+  line.background_color = std::move(background_color);
+  out.push_back(std::move(line));
+}
+
+inline void push_runtime_line_with_background(
+    std::vector<cuwacunu::iinuji::styled_text_line_t> &out, std::string text,
+    std::string background_color,
+    cuwacunu::iinuji::text_line_emphasis_t emphasis =
+        cuwacunu::iinuji::text_line_emphasis_t::None) {
+  out.push_back(cuwacunu::iinuji::styled_text_line_t{
+      .text = std::move(text),
+      .emphasis = emphasis,
+      .segments = {},
+      .background_color = std::move(background_color),
+  });
+}
+
 inline cuwacunu::iinuji::text_line_emphasis_t
 runtime_selected_emphasis(bool focused) {
   return focused ? cuwacunu::iinuji::text_line_emphasis_t::Accent
@@ -298,7 +328,11 @@ inline std::string runtime_panel_session_label(const CmdState &st) {
     return trim_to_width(label, 18);
   }
   if (!st.runtime.selected_session_id.empty()) {
-    return trim_to_width(st.runtime.selected_session_id, 18);
+    return trim_to_width(
+        runtime_is_none_session_selection(st.runtime.selected_session_id)
+            ? runtime_none_branch_label()
+            : st.runtime.selected_session_id,
+        18);
   }
   return "<marshal>";
 }
@@ -308,7 +342,11 @@ inline std::string runtime_panel_campaign_label(const CmdState &st) {
     return trim_to_width(st.runtime.campaign->campaign_cursor, 18);
   }
   if (!st.runtime.selected_campaign_cursor.empty()) {
-    return trim_to_width(st.runtime.selected_campaign_cursor, 18);
+    return trim_to_width(
+        runtime_is_none_campaign_selection(st.runtime.selected_campaign_cursor)
+            ? runtime_none_branch_label()
+            : st.runtime.selected_campaign_cursor,
+        18);
   }
   return "<campaign>";
 }
@@ -433,8 +471,7 @@ inline std::string runtime_session_worklist_row(
   (void)st;
   std::ostringstream oss;
   oss << runtime_session_worklist_title(session) << " | "
-      << trim_to_width(runtime_session_phase_text(session), 14) << " | "
-      << trim_to_width(session.marshal_session_id, 12) << " | "
+      << trim_to_width(session.marshal_session_id, 24) << " | "
       << format_age_since_ms(session.updated_at_ms);
   return trim_to_width(oss.str(), 74);
 }
@@ -474,6 +511,31 @@ inline std::string runtime_job_worklist_row(
       << format_age_since_ms(job.updated_at_ms);
   if (job.exit_code.has_value()) {
     oss << " | exit=" << *job.exit_code;
+  }
+  return trim_to_width(oss.str(), 74);
+}
+
+inline std::string runtime_none_session_worklist_row(const CmdState &st) {
+  const std::size_t orphan_campaigns =
+      runtime_orphan_campaign_indices(st).size();
+  const std::size_t orphan_jobs = runtime_orphan_job_indices(st).size();
+  std::ostringstream oss;
+  oss << "M [ORPHAN] " << runtime_none_branch_label();
+  if (orphan_campaigns != 0) {
+    oss << " | campaigns=" << orphan_campaigns;
+  }
+  if (orphan_jobs != 0) {
+    oss << " | jobs=" << orphan_jobs;
+  }
+  return trim_to_width(oss.str(), 74);
+}
+
+inline std::string runtime_none_campaign_worklist_row(const CmdState &st) {
+  const std::size_t orphan_jobs = runtime_orphan_job_indices(st).size();
+  std::ostringstream oss;
+  oss << "C [ORPHAN] " << runtime_none_branch_label();
+  if (orphan_jobs != 0) {
+    oss << " | jobs=" << orphan_jobs;
   }
   return trim_to_width(oss.str(), 74);
 }
@@ -525,15 +587,19 @@ inline RuntimeRowKind runtime_primary_kind(const CmdState &st) {
     return RuntimeRowKind::Device;
   }
   if (runtime_is_session_lane(st.runtime.lane) &&
-      st.runtime.job_filter_active && st.runtime.job.has_value()) {
+      st.runtime.job_filter_active &&
+      (!st.runtime.selected_job_cursor.empty() || st.runtime.job.has_value())) {
     return RuntimeRowKind::Job;
   }
   if (runtime_is_session_lane(st.runtime.lane) &&
-      st.runtime.campaign_filter_active && st.runtime.campaign.has_value()) {
+      st.runtime.campaign_filter_active &&
+      (!st.runtime.selected_campaign_cursor.empty() ||
+       st.runtime.campaign.has_value())) {
     return RuntimeRowKind::Campaign;
   }
   if (runtime_is_campaign_lane(st.runtime.lane) &&
-      st.runtime.job_filter_active && st.runtime.job.has_value()) {
+      st.runtime.job_filter_active &&
+      (!st.runtime.selected_job_cursor.empty() || st.runtime.job.has_value())) {
     return RuntimeRowKind::Job;
   }
   return st.runtime.lane;
@@ -742,7 +808,7 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
   }
 
   if (runtime_is_session_lane(st.runtime.lane)) {
-    if (st.runtime.sessions.empty()) {
+    if (st.runtime.sessions.empty() && !runtime_has_none_session_row(st)) {
       push_runtime_line(out, "No runtime marshals.",
                         cuwacunu::iinuji::text_line_emphasis_t::Info);
       return panel;
@@ -750,6 +816,8 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
     const std::size_t selected = runtime_selected_session_index(st).value_or(0);
     const auto child_campaigns = runtime_child_campaign_indices(st);
     const auto child_jobs = runtime_child_job_indices(st);
+    const bool show_none_campaign_child =
+        runtime_child_has_none_campaign_row(st);
     const std::size_t selected_campaign =
         runtime_selected_child_campaign_index(st).value_or(0);
     const std::size_t selected_job =
@@ -806,11 +874,104 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
         }
       }
     }
+    if (runtime_has_none_session_row(st)) {
+      const std::size_t none_index = st.runtime.sessions.size();
+      const bool active =
+          (none_index == selected) && !st.runtime.campaign_filter_active;
+      const auto emphasis = runtime_row_emphasis(
+          cuwacunu::iinuji::text_line_emphasis_t::Warning, active, focused);
+      const bool expanded =
+          none_index == selected &&
+          (!child_campaigns.empty() || show_none_campaign_child);
+      const std::string prefix = expanded ? "v " : (active ? "> " : "  ");
+      if (active)
+        panel.selected_line = out.size();
+      push_runtime_line(out,
+                        prefix + "[" + std::to_string(none_index + 1) + "] " +
+                            runtime_none_session_worklist_row(st),
+                        emphasis);
+      if (none_index == selected) {
+        for (std::size_t j = 0; j < child_campaigns.size(); ++j) {
+          const auto &campaign = st.runtime.campaigns[child_campaigns[j]];
+          const bool child_active = st.runtime.campaign_filter_active &&
+                                    !st.runtime.job_filter_active &&
+                                    (j == selected_campaign);
+          const auto child_emphasis = runtime_row_emphasis(
+              runtime_campaign_row_emphasis(campaign), child_active, focused);
+          const bool show_jobs = st.runtime.campaign_filter_active &&
+                                 (j == selected_campaign) &&
+                                 !child_jobs.empty();
+          const std::string child_prefix =
+              show_jobs ? "    v " : (child_active ? "    > " : "      ");
+          if (child_active)
+            panel.selected_line = out.size();
+          push_runtime_line(out,
+                            child_prefix + "[" + std::to_string(j + 1) + "] " +
+                                runtime_campaign_worklist_row(st, campaign),
+                            child_emphasis);
+          if (!show_jobs)
+            continue;
+          for (std::size_t k = 0; k < child_jobs.size(); ++k) {
+            const auto &job = st.runtime.jobs[child_jobs[k]];
+            const bool job_active =
+                st.runtime.job_filter_active && (k == selected_job);
+            const auto job_emphasis = runtime_row_emphasis(
+                runtime_job_row_emphasis(job), job_active, focused);
+            if (job_active)
+              panel.selected_line = out.size();
+            push_runtime_line(
+                out,
+                std::string(job_active ? "        > " : "          ") + "[" +
+                    std::to_string(k + 1) + "] " +
+                    runtime_job_worklist_row(st, job),
+                job_emphasis);
+          }
+        }
+        if (show_none_campaign_child) {
+          const std::size_t none_child_index = child_campaigns.size();
+          const bool child_active = st.runtime.campaign_filter_active &&
+                                    !st.runtime.job_filter_active &&
+                                    (none_child_index == selected_campaign);
+          const auto child_emphasis = runtime_row_emphasis(
+              cuwacunu::iinuji::text_line_emphasis_t::Warning, child_active,
+              focused);
+          const bool show_jobs = st.runtime.campaign_filter_active &&
+                                 (none_child_index == selected_campaign) &&
+                                 !child_jobs.empty();
+          const std::string child_prefix =
+              show_jobs ? "    v " : (child_active ? "    > " : "      ");
+          if (child_active)
+            panel.selected_line = out.size();
+          push_runtime_line(out,
+                            child_prefix + "[" +
+                                std::to_string(none_child_index + 1) + "] " +
+                                runtime_none_campaign_worklist_row(st),
+                            child_emphasis);
+          if (show_jobs) {
+            for (std::size_t k = 0; k < child_jobs.size(); ++k) {
+              const auto &job = st.runtime.jobs[child_jobs[k]];
+              const bool job_active =
+                  st.runtime.job_filter_active && (k == selected_job);
+              const auto job_emphasis = runtime_row_emphasis(
+                  runtime_job_row_emphasis(job), job_active, focused);
+              if (job_active)
+                panel.selected_line = out.size();
+              push_runtime_line(
+                  out,
+                  std::string(job_active ? "        > " : "          ") + "[" +
+                      std::to_string(k + 1) + "] " +
+                      runtime_job_worklist_row(st, job),
+                  job_emphasis);
+            }
+          }
+        }
+      }
+    }
     return panel;
   }
 
   if (runtime_is_campaign_lane(st.runtime.lane)) {
-    if (st.runtime.campaigns.empty()) {
+    if (st.runtime.campaigns.empty() && !runtime_has_none_campaign_row(st)) {
       push_runtime_line(out, "No runtime campaigns.",
                         cuwacunu::iinuji::text_line_emphasis_t::Info);
       return panel;
@@ -848,6 +1009,37 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
                               "[" + std::to_string(j + 1) + "] " +
                               runtime_job_worklist_row(st, job),
                           child_emphasis);
+      }
+    }
+    if (runtime_has_none_campaign_row(st)) {
+      const std::size_t none_index = st.runtime.campaigns.size();
+      const bool active =
+          (none_index == selected) && !st.runtime.job_filter_active;
+      const auto emphasis = runtime_row_emphasis(
+          cuwacunu::iinuji::text_line_emphasis_t::Warning, active, focused);
+      const bool expanded = (none_index == selected) && !child.empty();
+      const std::string prefix = expanded ? "v " : (active ? "> " : "  ");
+      if (active)
+        panel.selected_line = out.size();
+      push_runtime_line(out,
+                        prefix + "[" + std::to_string(none_index + 1) + "] " +
+                            runtime_none_campaign_worklist_row(st),
+                        emphasis);
+      if (none_index == selected) {
+        for (std::size_t j = 0; j < child.size(); ++j) {
+          const auto &job = st.runtime.jobs[child[j]];
+          const bool child_active =
+              st.runtime.job_filter_active && (j == child_selected);
+          const auto child_emphasis = runtime_row_emphasis(
+              runtime_job_row_emphasis(job), child_active, focused);
+          if (child_active)
+            panel.selected_line = out.size();
+          push_runtime_line(out,
+                            std::string(child_active ? "    > " : "      ") +
+                                "[" + std::to_string(j + 1) + "] " +
+                                runtime_job_worklist_row(st, job),
+                            child_emphasis);
+        }
       }
     }
     return panel;
@@ -1112,6 +1304,15 @@ inline std::string runtime_job_display_label(
     const cuwacunu::hero::runtime::runtime_job_record_t &job) {
   return job.binding_id.empty() ? trim_to_width(job.job_cursor, 32)
                                 : trim_to_width(job.binding_id, 32);
+}
+
+inline bool runtime_selected_none_session(const CmdState &st) {
+  return runtime_is_none_session_selection(st.runtime.selected_session_id);
+}
+
+inline bool runtime_selected_none_campaign(const CmdState &st) {
+  return runtime_is_none_campaign_selection(
+      st.runtime.selected_campaign_cursor);
 }
 
 inline std::string runtime_selected_device_label(const CmdState &st);
@@ -1442,6 +1643,51 @@ inline void append_runtime_selected_device_detail(
                                      st.runtime.device.gpus[gpu_index]);
 }
 
+inline void append_runtime_none_session_detail(
+    std::vector<cuwacunu::iinuji::styled_text_line_t> &out,
+    const CmdState &st) {
+  append_runtime_detail_meta(out, "state", "orphan branch",
+                             cuwacunu::iinuji::text_line_emphasis_t::Info,
+                             cuwacunu::iinuji::text_line_emphasis_t::Warning);
+  append_runtime_detail_meta(out, "marshal_session_id",
+                             runtime_none_branch_label(),
+                             cuwacunu::iinuji::text_line_emphasis_t::Info,
+                             cuwacunu::iinuji::text_line_emphasis_t::Warning);
+  append_runtime_detail_meta(
+      out, "campaigns",
+      std::to_string(runtime_orphan_campaign_indices(st).size()),
+      cuwacunu::iinuji::text_line_emphasis_t::Info,
+      cuwacunu::iinuji::text_line_emphasis_t::Accent);
+  append_runtime_detail_meta(
+      out, "jobs", std::to_string(runtime_orphan_job_indices(st).size()),
+      cuwacunu::iinuji::text_line_emphasis_t::Info,
+      cuwacunu::iinuji::text_line_emphasis_t::Accent);
+  if (st.runtime.campaign.has_value()) {
+    append_runtime_detail_meta(
+        out, "selected_campaign",
+        runtime_campaign_ref_text(st.runtime.campaign->campaign_cursor),
+        cuwacunu::iinuji::text_line_emphasis_t::Info,
+        runtime_campaign_row_emphasis(*st.runtime.campaign));
+  } else if (runtime_selected_none_campaign(st)) {
+    append_runtime_detail_meta(out, "selected_campaign",
+                               runtime_none_branch_label(),
+                               cuwacunu::iinuji::text_line_emphasis_t::Info,
+                               cuwacunu::iinuji::text_line_emphasis_t::Warning);
+  }
+  if (st.runtime.job.has_value()) {
+    append_runtime_detail_meta(out, "selected_job",
+                               runtime_job_display_label(*st.runtime.job),
+                               cuwacunu::iinuji::text_line_emphasis_t::Info,
+                               runtime_job_row_emphasis(*st.runtime.job));
+  }
+  append_runtime_note_block(
+      out,
+      "This synthetic marshal branch groups campaigns without a linked "
+      "marshal and jobs whose lineage does not resolve back to a marshal.",
+      "Branch Note", cuwacunu::iinuji::text_line_emphasis_t::Accent,
+      cuwacunu::iinuji::text_line_emphasis_t::Debug);
+}
+
 inline void append_runtime_session_detail(
     std::vector<cuwacunu::iinuji::styled_text_line_t> &out, const CmdState &st,
     bool primary) {
@@ -1449,6 +1695,10 @@ inline void append_runtime_session_detail(
       out, primary ? "Selected Marshal" : "Linked Marshal",
       primary ? cuwacunu::iinuji::text_line_emphasis_t::Accent
               : cuwacunu::iinuji::text_line_emphasis_t::Info);
+  if (runtime_selected_none_session(st)) {
+    append_runtime_none_session_detail(out, st);
+    return;
+  }
   if (!st.runtime.session.has_value()) {
     append_runtime_detail_text(out, "unavailable",
                                cuwacunu::iinuji::text_line_emphasis_t::Debug);
@@ -1506,6 +1756,37 @@ inline void append_runtime_session_detail(
   }
 }
 
+inline void append_runtime_none_campaign_detail(
+    std::vector<cuwacunu::iinuji::styled_text_line_t> &out,
+    const CmdState &st) {
+  append_runtime_detail_meta(out, "state", "orphan branch",
+                             cuwacunu::iinuji::text_line_emphasis_t::Info,
+                             cuwacunu::iinuji::text_line_emphasis_t::Warning);
+  append_runtime_detail_meta(out, "campaign_cursor",
+                             runtime_none_branch_label(),
+                             cuwacunu::iinuji::text_line_emphasis_t::Info,
+                             cuwacunu::iinuji::text_line_emphasis_t::Warning);
+  append_runtime_detail_meta(out, "parent_marshal", runtime_none_branch_label(),
+                             cuwacunu::iinuji::text_line_emphasis_t::Info,
+                             cuwacunu::iinuji::text_line_emphasis_t::Warning);
+  append_runtime_detail_meta(
+      out, "job_count", std::to_string(runtime_orphan_job_indices(st).size()),
+      cuwacunu::iinuji::text_line_emphasis_t::Info,
+      cuwacunu::iinuji::text_line_emphasis_t::Accent);
+  if (st.runtime.job.has_value()) {
+    append_runtime_detail_meta(out, "selected_job",
+                               runtime_job_display_label(*st.runtime.job),
+                               cuwacunu::iinuji::text_line_emphasis_t::Info,
+                               runtime_job_row_emphasis(*st.runtime.job));
+  }
+  append_runtime_note_block(
+      out,
+      "This synthetic campaign branch groups jobs that do not resolve to a "
+      "runtime campaign.",
+      "Branch Note", cuwacunu::iinuji::text_line_emphasis_t::Accent,
+      cuwacunu::iinuji::text_line_emphasis_t::Debug);
+}
+
 inline void append_runtime_campaign_detail(
     std::vector<cuwacunu::iinuji::styled_text_line_t> &out, const CmdState &st,
     bool primary) {
@@ -1513,6 +1794,10 @@ inline void append_runtime_campaign_detail(
       out, primary ? "Selected Campaign" : "Linked Campaign",
       primary ? cuwacunu::iinuji::text_line_emphasis_t::Accent
               : cuwacunu::iinuji::text_line_emphasis_t::Info);
+  if (runtime_selected_none_campaign(st)) {
+    append_runtime_none_campaign_detail(out, st);
+    return;
+  }
   if (!st.runtime.campaign.has_value()) {
     append_runtime_detail_text(out, "unavailable",
                                cuwacunu::iinuji::text_line_emphasis_t::Debug);
@@ -1744,33 +2029,163 @@ inline std::string runtime_compact_log_text(std::string text,
 
 inline cuwacunu::iinuji::text_line_emphasis_t
 runtime_marshal_event_emphasis(std::string_view event_name) {
-  const std::string key = to_lower_copy(std::string(event_name));
-  if (key.find("fail") != std::string::npos ||
-      key.find("error") != std::string::npos ||
-      key.find("terminate") != std::string::npos ||
-      key.find("abort") != std::string::npos) {
+  return runtime_marshaled_event_emphasis_from_name(event_name);
+}
+
+inline std::string runtime_event_viewer_selected_background(
+    cuwacunu::iinuji::text_line_emphasis_t emphasis, bool body_line) {
+  switch (emphasis) {
+  case cuwacunu::iinuji::text_line_emphasis_t::Fatal:
+  case cuwacunu::iinuji::text_line_emphasis_t::Error:
+  case cuwacunu::iinuji::text_line_emphasis_t::MutedError:
+    return body_line ? "#181015" : "#22131a";
+  case cuwacunu::iinuji::text_line_emphasis_t::Warning:
+  case cuwacunu::iinuji::text_line_emphasis_t::MutedWarning:
+    return body_line ? "#17140f" : "#201a12";
+  case cuwacunu::iinuji::text_line_emphasis_t::Success:
+    return body_line ? "#111712" : "#152017";
+  case cuwacunu::iinuji::text_line_emphasis_t::Accent:
+    return body_line ? "#14131a" : "#1a1722";
+  case cuwacunu::iinuji::text_line_emphasis_t::Info:
+  case cuwacunu::iinuji::text_line_emphasis_t::Debug:
+  case cuwacunu::iinuji::text_line_emphasis_t::None:
+    return body_line ? "#131722" : "#171c29";
+  }
+  return body_line ? "#131722" : "#171c29";
+}
+
+inline cuwacunu::iinuji::text_line_emphasis_t
+runtime_event_metadata_emphasis(std::string_view key, std::string_view value) {
+  const std::string merged =
+      to_lower_copy(std::string(key) + " " + std::string(value));
+  if (merged.find("fail") != std::string::npos ||
+      merged.find("error") != std::string::npos ||
+      merged.find("terminate") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::MutedError;
   }
-  if (key.find("warn") != std::string::npos ||
-      key.find("pause") != std::string::npos ||
-      key.find("park") != std::string::npos ||
-      key.find("degrad") != std::string::npos) {
+  if (merged.find("pause") != std::string::npos ||
+      merged.find("warn") != std::string::npos ||
+      merged.find("park") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::Warning;
   }
-  if (key.find("launch") != std::string::npos ||
-      key.find("resume") != std::string::npos ||
-      key.find("active") != std::string::npos ||
-      key.find("finish") != std::string::npos ||
-      key.find("complete") != std::string::npos) {
-    return cuwacunu::iinuji::text_line_emphasis_t::Success;
-  }
-  if (key.find("start") != std::string::npos ||
-      key.find("create") != std::string::npos ||
-      key.find("checkpoint") != std::string::npos ||
-      key.find("stage") != std::string::npos) {
+  if (merged.find("checkpoint") != std::string::npos ||
+      merged.find("launch") != std::string::npos ||
+      merged.find("campaign") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::Accent;
   }
-  return cuwacunu::iinuji::text_line_emphasis_t::Info;
+  return cuwacunu::iinuji::text_line_emphasis_t::Debug;
+}
+
+inline RuntimeEventViewerPanel
+make_runtime_event_viewer_panel(const CmdState &st) {
+  RuntimeEventViewerPanel panel{};
+  auto &out = panel.lines;
+  const auto &entries = st.runtime.marshal_event_viewer.entries;
+
+  push_runtime_segments(
+      out,
+      {{.text = "timeline ",
+        .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Info},
+       {.text = std::to_string(entries.size()) + " events",
+        .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Accent},
+       {.text =
+            " | live=" +
+            std::string(st.runtime.log_viewer_live_follow ? "follow" : "hold"),
+        .emphasis = st.runtime.log_viewer_live_follow
+                        ? cuwacunu::iinuji::text_line_emphasis_t::Success
+                        : cuwacunu::iinuji::text_line_emphasis_t::Warning}},
+      cuwacunu::iinuji::text_line_emphasis_t::Info);
+  push_runtime_segments(
+      out,
+      {{.text = "path ",
+        .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Info},
+       {.text = runtime_path_text(st.runtime.log_viewer_path),
+        .emphasis = runtime_path_emphasis(st.runtime.log_viewer_path)}},
+      cuwacunu::iinuji::text_line_emphasis_t::Info);
+  push_runtime_line(out, {});
+
+  if (entries.empty()) {
+    push_runtime_line(out, "No marshal events recorded yet.",
+                      cuwacunu::iinuji::text_line_emphasis_t::Debug);
+    return panel;
+  }
+
+  const std::size_t selected = std::min(
+      st.runtime.marshal_event_viewer.selected_entry, entries.size() - 1);
+
+  for (std::size_t i = 0; i < entries.size(); ++i) {
+    const auto &entry = entries[i];
+    const bool active = (i == selected);
+    const std::string header_bg =
+        active ? runtime_event_viewer_selected_background(entry.emphasis, false)
+               : std::string{};
+    const std::string body_bg =
+        active ? runtime_event_viewer_selected_background(entry.emphasis, true)
+               : std::string{};
+    if (active)
+      panel.selected_line = out.size();
+
+    std::vector<cuwacunu::iinuji::styled_text_segment_t> header{};
+    header.push_back(
+        {.text = std::string(active ? "> " : "  "),
+         .emphasis = active ? cuwacunu::iinuji::text_line_emphasis_t::Accent
+                            : cuwacunu::iinuji::text_line_emphasis_t::None});
+    header.push_back(
+        {.text = "[" + std::to_string(i + 1) + "] ",
+         .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Debug});
+    header.push_back(
+        {.text = "[" + entry.event_name + "] ", .emphasis = entry.emphasis});
+    if (entry.timestamp_ms != 0) {
+      header.push_back(
+          {.text = format_age_since_ms(entry.timestamp_ms),
+           .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Info});
+      header.push_back(
+          {.text = " | " + format_time_marker_ms(entry.timestamp_ms),
+           .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Debug});
+    }
+    push_runtime_segments_with_background(
+        out, std::move(header), header_bg,
+        cuwacunu::iinuji::text_line_emphasis_t::None);
+
+    push_runtime_line_with_background(
+        out,
+        std::string("    ") +
+            runtime_compact_log_text(
+                entry.summary.empty() ? entry.raw_line : entry.summary, 160),
+        body_bg,
+        (entry.emphasis == cuwacunu::iinuji::text_line_emphasis_t::Warning ||
+         entry.emphasis == cuwacunu::iinuji::text_line_emphasis_t::MutedError)
+            ? entry.emphasis
+            : cuwacunu::iinuji::text_line_emphasis_t::None);
+
+    if (!entry.metadata.empty()) {
+      std::vector<cuwacunu::iinuji::styled_text_segment_t> meta{};
+      meta.push_back(
+          {.text = "    ",
+           .emphasis = cuwacunu::iinuji::text_line_emphasis_t::None});
+      for (std::size_t j = 0; j < entry.metadata.size(); ++j) {
+        if (j != 0) {
+          meta.push_back(
+              {.text = " | ",
+               .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Info});
+        }
+        meta.push_back(
+            {.text = entry.metadata[j].first + "=",
+             .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Info});
+        meta.push_back(
+            {.text = entry.metadata[j].second,
+             .emphasis = runtime_event_metadata_emphasis(
+                 entry.metadata[j].first, entry.metadata[j].second)});
+      }
+      push_runtime_segments_with_background(
+          out, std::move(meta), body_bg,
+          cuwacunu::iinuji::text_line_emphasis_t::Info);
+    }
+
+    push_runtime_line_with_background(
+        out, "", body_bg, cuwacunu::iinuji::text_line_emphasis_t::None);
+  }
+  return panel;
 }
 
 inline cuwacunu::iinuji::text_line_emphasis_t
@@ -1953,6 +2368,18 @@ make_runtime_log_styled_lines(const CmdState &st, RuntimeRowKind primary_kind) {
     return out;
   }
   if (primary_kind == RuntimeRowKind::Session &&
+      runtime_selected_none_session(st)) {
+    append_runtime_detail_section(
+        out, "Orphan Marshal Branch",
+        cuwacunu::iinuji::text_line_emphasis_t::Warning);
+    append_runtime_detail_text(
+        out,
+        "This synthetic marshal row has no marshal-owned logs. Orphan "
+        "campaign and job logs are shown below when a child is selected.",
+        cuwacunu::iinuji::text_line_emphasis_t::Debug);
+    push_runtime_line(out, {});
+  }
+  if (primary_kind == RuntimeRowKind::Session &&
       st.runtime.session.has_value()) {
     append_runtime_session_log_section(
         out, *st.runtime.session, "Marshal Event Timeline",
@@ -1968,6 +2395,18 @@ make_runtime_log_styled_lines(const CmdState &st, RuntimeRowKind primary_kind) {
         out, *st.runtime.session, "Codex Stderr",
         st.runtime.session->codex_stderr_path, 5, "codex stderr", "stderr",
         cuwacunu::iinuji::text_line_emphasis_t::Warning, false);
+    push_runtime_line(out, {});
+  }
+  if (primary_kind == RuntimeRowKind::Campaign &&
+      runtime_selected_none_campaign(st)) {
+    append_runtime_detail_section(
+        out, "Orphan Campaign Branch",
+        cuwacunu::iinuji::text_line_emphasis_t::Warning);
+    append_runtime_detail_text(
+        out,
+        "This synthetic campaign row has no campaign-owned logs. Orphan job "
+        "logs are shown below when a child is selected.",
+        cuwacunu::iinuji::text_line_emphasis_t::Debug);
     push_runtime_line(out, {});
   }
   if (st.runtime.campaign.has_value()) {
@@ -1994,6 +2433,14 @@ make_runtime_log_styled_lines(const CmdState &st, RuntimeRowKind primary_kind) {
         cuwacunu::iinuji::text_line_emphasis_t::Warning);
     return out;
   }
+  if (runtime_selected_none_campaign(st) || runtime_selected_none_session(st)) {
+    append_runtime_detail_section(out, "Job Logs",
+                                  cuwacunu::iinuji::text_line_emphasis_t::Info);
+    append_runtime_detail_text(
+        out, "Select an orphan job under <none> to inspect stdout and stderr.",
+        cuwacunu::iinuji::text_line_emphasis_t::Debug);
+    return out;
+  }
   append_runtime_detail_section(
       out, "Job stderr", cuwacunu::iinuji::text_line_emphasis_t::Warning);
   append_runtime_detail_text(out, "job log unavailable",
@@ -2015,6 +2462,18 @@ make_runtime_trace_styled_lines(const CmdState &st,
         "device lane has no trace artifact; stay on manifest for live meters",
         cuwacunu::iinuji::text_line_emphasis_t::Debug);
     return out;
+  }
+  if (primary_kind == RuntimeRowKind::Session &&
+      runtime_selected_none_session(st)) {
+    append_runtime_detail_section(
+        out, "Orphan Marshal Branch",
+        cuwacunu::iinuji::text_line_emphasis_t::Warning);
+    append_runtime_detail_text(
+        out,
+        "This synthetic marshal row has no marshal checkpoint trace. Orphan "
+        "job traces are shown below when a child is selected.",
+        cuwacunu::iinuji::text_line_emphasis_t::Debug);
+    push_runtime_line(out, {});
   }
   if (primary_kind == RuntimeRowKind::Session &&
       st.runtime.session.has_value()) {
@@ -2040,11 +2499,31 @@ make_runtime_trace_styled_lines(const CmdState &st,
         cuwacunu::iinuji::text_line_emphasis_t::Debug);
     push_runtime_line(out, {});
   }
+  if (primary_kind == RuntimeRowKind::Campaign &&
+      runtime_selected_none_campaign(st)) {
+    append_runtime_detail_section(
+        out, "Orphan Campaign Branch",
+        cuwacunu::iinuji::text_line_emphasis_t::Warning);
+    append_runtime_detail_text(
+        out,
+        "This synthetic campaign row has no campaign trace. Orphan job traces "
+        "are shown below when a child is selected.",
+        cuwacunu::iinuji::text_line_emphasis_t::Debug);
+    push_runtime_line(out, {});
+  }
   if (st.runtime.job.has_value()) {
     append_runtime_excerpt_section(
         out, "Job Trace", st.runtime.job->trace_path,
         st.runtime.job_trace_excerpt,
         cuwacunu::iinuji::text_line_emphasis_t::Info);
+    return out;
+  }
+  if (runtime_selected_none_campaign(st) || runtime_selected_none_session(st)) {
+    append_runtime_detail_section(out, "Job Trace",
+                                  cuwacunu::iinuji::text_line_emphasis_t::Info);
+    append_runtime_detail_text(
+        out, "Select an orphan job under <none> to inspect trace output.",
+        cuwacunu::iinuji::text_line_emphasis_t::Debug);
     return out;
   }
   append_runtime_detail_section(out, "Job Trace",
@@ -2065,6 +2544,9 @@ inline bool runtime_show_secondary_panel(const CmdState &st) {
 
 inline std::string runtime_primary_panel_title(const CmdState &st) {
   if (runtime_log_viewer_is_open(st)) {
+    if (!runtime_log_viewer_supports_follow(st)) {
+      return " " + runtime_log_viewer_title(st) + " [viewer] ";
+    }
     return " " + runtime_log_viewer_title(st) +
            (st.runtime.log_viewer_live_follow ? " [viewer][live] "
                                               : " [viewer][hold] ");
@@ -2087,6 +2569,119 @@ inline std::string runtime_secondary_panel_title(const CmdState &st) {
     return " history ";
   }
   return {};
+}
+
+struct runtime_styled_box_metrics_t {
+  int text_h{0};
+  int total_rows{0};
+  int max_scroll_y{0};
+  int selected_row{0};
+};
+
+inline runtime_styled_box_metrics_t measure_runtime_styled_box(
+    const std::vector<cuwacunu::iinuji::styled_text_line_t> &lines, int width,
+    int height, bool wrap, std::optional<std::size_t> selected_line) {
+  runtime_styled_box_metrics_t out{};
+  if (width <= 0 || height <= 0)
+    return out;
+
+  int reserve_v = 0;
+  int reserve_h = 0;
+  int text_w = width;
+  int text_h = height;
+  int total_rows = 0;
+  int max_line_len = 0;
+
+  auto measure_lines = [&](int current_width, int *out_total_rows,
+                           int *out_max_line_len,
+                           std::vector<int> *out_line_offsets) {
+    const int safe_w = std::max(1, current_width);
+    int rows = 0;
+    int line_len = 0;
+    if (out_line_offsets)
+      out_line_offsets->assign(lines.size(), 0);
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+      if (out_line_offsets)
+        (*out_line_offsets)[i] = rows;
+      if (cuwacunu::iinuji::ansi::has_esc(lines[i].text)) {
+        cuwacunu::iinuji::ansi::style_t base{};
+        const auto physical_lines = split_lines_keep_empty(lines[i].text);
+        if (physical_lines.empty()) {
+          ++rows;
+          continue;
+        }
+        for (const auto &physical_line : physical_lines) {
+          std::vector<cuwacunu::iinuji::ansi::row_t> wrapped_rows{};
+          cuwacunu::iinuji::ansi::hard_wrap(physical_line, safe_w, base, 0,
+                                            wrapped_rows);
+          if (wrapped_rows.empty()) {
+            ++rows;
+            continue;
+          }
+          for (std::size_t j = 0; j < wrapped_rows.size(); ++j) {
+            line_len = std::max(line_len, wrapped_rows[j].len);
+            ++rows;
+            if (!wrap)
+              break;
+          }
+          if (!wrap)
+            break;
+        }
+        continue;
+      }
+      const auto chunks = wrap ? wrap_text(lines[i].text, safe_w)
+                               : split_lines_keep_empty(lines[i].text);
+      if (chunks.empty()) {
+        ++rows;
+        continue;
+      }
+      for (std::size_t j = 0; j < chunks.size(); ++j) {
+        line_len = std::max(line_len, static_cast<int>(chunks[j].size()));
+        ++rows;
+        if (!wrap)
+          break;
+      }
+    }
+    if (out_total_rows)
+      *out_total_rows = rows;
+    if (out_max_line_len)
+      *out_max_line_len = line_len;
+  };
+
+  for (int it = 0; it < 3; ++it) {
+    text_w = std::max(0, width - reserve_v);
+    text_h = std::max(0, height - reserve_h);
+    if (text_w <= 0 || text_h <= 0)
+      return out;
+
+    measure_lines(text_w, &total_rows, &max_line_len, nullptr);
+
+    const bool need_h = (!wrap && max_line_len > text_w);
+    const int reserve_h_new = need_h ? 1 : 0;
+    const int text_h_if = std::max(0, height - reserve_h_new);
+    const bool need_v = total_rows > text_h_if;
+    const int reserve_v_new = need_v ? 1 : 0;
+    if (reserve_h_new == reserve_h && reserve_v_new == reserve_v)
+      break;
+    reserve_h = reserve_h_new;
+    reserve_v = reserve_v_new;
+  }
+
+  text_w = std::max(0, width - reserve_v);
+  text_h = std::max(0, height - reserve_h);
+  if (text_w <= 0 || text_h <= 0)
+    return out;
+
+  std::vector<int> line_offsets{};
+  measure_lines(text_w, &total_rows, &max_line_len, &line_offsets);
+
+  out.text_h = text_h;
+  out.total_rows = total_rows;
+  out.max_scroll_y = std::max(0, total_rows - text_h);
+  if (selected_line.has_value() && *selected_line < line_offsets.size()) {
+    out.selected_row = line_offsets[*selected_line];
+  }
+  return out;
 }
 
 inline const RuntimeDeviceGpuSnapshot *
@@ -2198,6 +2793,9 @@ make_runtime_device_history_plot_opts() {
 
 inline std::vector<cuwacunu::iinuji::styled_text_line_t>
 make_runtime_primary_styled_lines(const CmdState &st) {
+  if (runtime_event_viewer_is_open(st)) {
+    return make_runtime_event_viewer_panel(st).lines;
+  }
   std::vector<cuwacunu::iinuji::styled_text_line_t> out{};
   const RuntimeRowKind primary_kind = runtime_primary_kind(st);
   std::vector<cuwacunu::iinuji::styled_text_line_t> body{};

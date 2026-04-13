@@ -265,6 +265,27 @@ inline std::string config_readable_mode(const ConfigFileEntry &file) {
   return "read only";
 }
 
+inline std::string config_access_indicator(const ConfigFileEntry &file) {
+  if (!file.ok)
+    return "err";
+  if (file.editable)
+    return "rw";
+  if (file.replace_supported && !file.write_allowed)
+    return "scope";
+  return "ro";
+}
+
+inline std::string config_access_description(const ConfigFileEntry &file) {
+  if (!file.ok)
+    return "file failed to load";
+  if (file.editable)
+    return "editable in the current write scope";
+  if (file.replace_supported && !file.write_allowed) {
+    return "replace supported, but outside the active write scope";
+  }
+  return "read only in this screen";
+}
+
 inline std::string config_default_status_message(const ConfigState &st) {
   if (!st.ok)
     return st.error;
@@ -362,6 +383,21 @@ config_first_file_index_for_family(const CmdState &st,
   if (indices.empty())
     return std::nullopt;
   return indices.front();
+}
+
+inline std::optional<std::size_t> config_file_index_by_path(
+    const ConfigState &st, std::string_view path,
+    std::optional<ConfigFileFamily> family = std::nullopt) {
+  if (path.empty())
+    return std::nullopt;
+  for (std::size_t i = 0; i < st.files.size(); ++i) {
+    if (st.files[i].path != path)
+      continue;
+    if (family.has_value() && st.files[i].family != *family)
+      continue;
+    return i;
+  }
+  return std::nullopt;
 }
 
 inline void sync_config_editor_from_selection(ConfigState &st) {
@@ -950,12 +986,13 @@ inline ConfigState load_config_view_from_global_config(
 inline std::string config_preferred_human_session_id(const CmdState &st) {
   const auto has_pending_request = [&](std::string_view marshal_session_id) {
     return cuwacunu::hero::human_mcp::find_session_index_by_id(
-               st.human.inbox.actionable_requests, marshal_session_id)
+               st.inbox.operator_inbox.actionable_requests, marshal_session_id)
         .has_value();
   };
   const auto has_pending_review = [&](std::string_view marshal_session_id) {
     return cuwacunu::hero::human_mcp::find_session_index_by_id(
-               st.human.inbox.unacknowledged_summaries, marshal_session_id)
+               st.inbox.operator_inbox.unacknowledged_summaries,
+               marshal_session_id)
         .has_value();
   };
   const auto is_operator_paused =
@@ -972,7 +1009,7 @@ inline std::string config_preferred_human_session_id(const CmdState &st) {
                                            auto &&predicate) -> std::string {
     std::size_t visible_index = 0;
     std::string fallback{};
-    for (const auto &session : st.human.inbox.all_sessions) {
+    for (const auto &session : st.inbox.operator_inbox.all_sessions) {
       if (!predicate(session))
         continue;
       if (fallback.empty())
@@ -984,9 +1021,9 @@ inline std::string config_preferred_human_session_id(const CmdState &st) {
     return fallback;
   };
 
-  if (human_is_inbox_view(st.human.view)) {
+  if (inbox_is_view(st.inbox.view)) {
     const std::string marshal_session_id = nth_matching_session_id(
-        st.human.selected_inbox_session,
+        st.inbox.selected_inbox_session,
         [&](const auto &session) { return is_inbox_member(session); });
     if (!marshal_session_id.empty())
       return marshal_session_id;
@@ -997,8 +1034,8 @@ inline std::string config_preferred_human_session_id(const CmdState &st) {
   if (!inbox_fallback.empty())
     return inbox_fallback;
 
-  if (!st.human.inbox.all_sessions.empty()) {
-    return st.human.inbox.all_sessions.front().marshal_session_id;
+  if (!st.inbox.operator_inbox.all_sessions.empty()) {
+    return st.inbox.operator_inbox.all_sessions.front().marshal_session_id;
   }
   return {};
 }
@@ -1008,7 +1045,7 @@ inline ConfigState load_config_view_from_state(const CmdState &st) {
       selected_session{};
   const std::string marshal_session_id = config_preferred_human_session_id(st);
   if (!marshal_session_id.empty()) {
-    for (const auto &session : st.human.inbox.all_sessions) {
+    for (const auto &session : st.inbox.operator_inbox.all_sessions) {
       if (session.marshal_session_id == marshal_session_id) {
         selected_session = session;
         break;
@@ -1057,7 +1094,7 @@ inline bool queue_config_refresh(CmdState &st) {
       selected_session{};
   const std::string marshal_session_id = config_preferred_human_session_id(st);
   if (!marshal_session_id.empty()) {
-    for (const auto &session : st.human.inbox.all_sessions) {
+    for (const auto &session : st.inbox.operator_inbox.all_sessions) {
       if (session.marshal_session_id == marshal_session_id) {
         selected_session = session;
         break;
@@ -1104,20 +1141,39 @@ inline bool poll_config_async_updates(CmdState &st) {
     const bool previous_status_is_error = st.config.status_is_error;
     const ConfigBrowseFocus previous_browse_focus = st.config.browse_focus;
     const ConfigFileFamily previous_family = st.config.selected_family;
+    const std::string previous_selected_path =
+        (config_has_files(st) &&
+         st.config.selected_file < st.config.files.size())
+            ? st.config.files[st.config.selected_file].path
+            : std::string{};
     const std::shared_ptr<ConfigAsyncState> preserved_async = st.config.async;
     st.config = *snapshot;
     st.config.async = preserved_async;
-    clamp_selected_config_file(st);
     st.config.browse_focus = previous_browse_focus;
-    st.config.selected_family = previous_family;
-    const auto *selected = selected_config_file(st);
-    if (selected == nullptr || selected->family != st.config.selected_family) {
-      if (const auto idx =
-              config_first_file_index_for_family(st, st.config.selected_family);
-          idx.has_value()) {
-        st.config.selected_file = *idx;
+    if (const auto idx = config_file_index_by_path(
+            st.config, previous_selected_path, previous_family);
+        idx.has_value()) {
+      st.config.selected_file = *idx;
+      st.config.selected_family = previous_family;
+    } else if (const auto idx =
+                   config_file_index_by_path(st.config, previous_selected_path);
+               idx.has_value()) {
+      st.config.selected_file = *idx;
+      st.config.selected_family = st.config.files[*idx].family;
+    } else {
+      clamp_selected_config_file(st);
+      st.config.selected_family = previous_family;
+      const auto *selected = selected_config_file(st);
+      if (selected == nullptr ||
+          selected->family != st.config.selected_family) {
+        if (const auto idx = config_first_file_index_for_family(
+                st, st.config.selected_family);
+            idx.has_value()) {
+          st.config.selected_file = *idx;
+        }
       }
     }
+    clamp_selected_config_file(st);
     sync_config_editor_from_selection(st.config);
     if (!previous_status.empty() && !previous_status_is_error &&
         st.config.status.empty()) {

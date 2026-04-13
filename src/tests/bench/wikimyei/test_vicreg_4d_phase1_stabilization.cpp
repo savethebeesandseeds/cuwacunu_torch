@@ -286,6 +286,44 @@ bool run_encoder_mask_test(const std::string& contract_hash) {
   return true;
 }
 
+bool run_even_kernel_warp_length_test() {
+  torch::manual_seed(2026);
+
+  constexpr int64_t B = 4;
+  constexpr int64_t C = 2;
+  constexpr int64_t T = 30;
+  constexpr int64_t E = 3;
+
+  auto opts = torch::TensorOptions().dtype(torch::kFloat32);
+  auto x = torch::randn({B, C, T, E}, opts);
+  auto m = torch::ones({B, C, T}, torch::TensorOptions().dtype(torch::kBool));
+
+  auto warp = cuwacunu::wikimyei::vicreg_4d::build_warp_map(
+      B,
+      T,
+      /*noise_scale=*/0.008,
+      /*smoothing_kernel_size=*/4,
+      torch::kFloat32,
+      torch::kCPU,
+      WarpBaseCurve::Linear,
+      /*curve_param=*/0.0);
+
+  if (warp.dim() != 2 || warp.size(0) != B || warp.size(1) != T) {
+    std::cerr << "[phase1][warp] even-kernel smoothing changed warp length to ["
+              << warp.size(0) << "," << warp.size(1) << "] instead of ["
+              << B << "," << T << "]\n";
+    return false;
+  }
+
+  auto warped = cuwacunu::wikimyei::vicreg_4d::causal_time_warp(x, m, warp);
+  if (warped.first.sizes() != x.sizes() || warped.second.sizes() != m.sizes()) {
+    std::cerr << "[phase1][warp] warped outputs changed data/mask shape unexpectedly\n";
+    return false;
+  }
+
+  return true;
+}
+
 }  // namespace
 
 int main() {
@@ -295,6 +333,7 @@ int main() {
     if (!run_conv_block_internal_mask_test()) return 1;
     if (!run_loss_wiring_test(contract_hash)) return 1;
     if (!run_encoder_mask_test(contract_hash)) return 1;
+    if (!run_even_kernel_warp_length_test()) return 1;
 
     std::cout << "[phase1] VICReg stabilization checks passed\n";
     return 0;
