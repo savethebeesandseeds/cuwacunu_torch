@@ -1,5 +1,6 @@
 #pragma once
 
+#include <initializer_list>
 #include <limits>
 #include <string>
 
@@ -10,10 +11,11 @@
 #include "iinuji/iinuji_cmd/commands.h"
 #include "iinuji/iinuji_cmd/commands/iinuji.state.flow.h"
 #include "iinuji/iinuji_cmd/views/config/app.h"
-#include "iinuji/iinuji_cmd/views/inbox/app.h"
+#include "iinuji/iinuji_cmd/views/workbench/app.h"
 #include "iinuji/iinuji_cmd/views/lattice/app.h"
 #include "iinuji/iinuji_cmd/views/logs/app.h"
 #include "iinuji/iinuji_cmd/views/runtime/app.h"
+#include "iinuji/iinuji_cmd/views/common/focused_panel.h"
 #include "piaabo/dlogs.h"
 
 #ifndef BUTTON_SHIFT
@@ -159,10 +161,24 @@ inline AppKeyDispatchResult dispatch_app_key(
       }
     }
 
-    const auto l_caps = panel_scroll_caps(left);
-    const auto r_caps = panel_scroll_caps(right);
-    const bool any_v = l_caps.v || r_caps.v;
-    const bool any_h = l_caps.h || r_caps.h;
+    const auto hovered_scroll_panel =
+        (state.screen == ScreenMode::ShellLogs)
+            ? nullptr
+            : hover_scroll_panel(left, right, me.x, me.y);
+    const auto scroll_panel = hovered_scroll_panel
+                                  ? hovered_scroll_panel
+                                  : active_scroll_panel(state, left, right);
+    ScrollCaps caps{};
+    if (state.screen == ScreenMode::ShellLogs) {
+      const auto l_caps = panel_scroll_caps(left);
+      const auto r_caps = panel_scroll_caps(right);
+      caps.v = l_caps.v || r_caps.v;
+      caps.h = l_caps.h || r_caps.h;
+    } else if (scroll_panel) {
+      caps = panel_scroll_caps(scroll_panel);
+    }
+    const bool any_v = caps.v;
+    const bool any_h = caps.h;
     const bool horizontal_auto =
         ((me.bstate & BUTTON_SHIFT) != 0) || ((me.bstate & BUTTON_CTRL) != 0) ||
         ((me.bstate & BUTTON_ALT) != 0) || (!any_v && any_h);
@@ -188,7 +204,17 @@ inline AppKeyDispatchResult dispatch_app_key(
     if (me.bstate & BUTTON7_PRESSED)
       dx += h_scroll_step;
     if (dy != 0 || dx != 0) {
-      scroll_active_screen(state, left, right, dy, dx);
+      if (state.screen == ScreenMode::ShellLogs) {
+        scroll_active_screen(state, left, right, dy, dx);
+      } else if (scroll_panel && scroll_viewport_by(scroll_panel, dy, dx)) {
+        if (state.screen == ScreenMode::Runtime && dy != 0 &&
+            scroll_panel->id == "right_main" &&
+            runtime_text_log_viewer_is_open(state)) {
+          state.runtime.log_viewer_live_follow = false;
+        }
+      } else {
+        scroll_active_screen(state, left, right, dy, dx);
+      }
       return consume(true);
     }
     return consume(false);
@@ -212,7 +238,7 @@ inline AppKeyDispatchResult dispatch_app_key(
     return consume(true);
   }
   if (ch == KEY_F(2)) {
-    dispatch_canonical_internal_call(state, canonical_paths::kScreenInbox);
+    dispatch_canonical_internal_call(state, canonical_paths::kScreenWorkbench);
     return consume(true);
   }
   if (ch == KEY_F(3)) {
@@ -233,7 +259,7 @@ inline AppKeyDispatchResult dispatch_app_key(
   }
 
   if (!state.help_view && state.cmdline.empty()) {
-    if (handle_inbox_key(state, ch))
+    if (handle_workbench_key(state, ch))
       return consume(true);
     if (handle_runtime_key(state, ch))
       return consume(true);
@@ -246,27 +272,27 @@ inline AppKeyDispatchResult dispatch_app_key(
       return consume(true);
     }
 
-    auto right_tb =
-        as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(right));
-    if ((state.screen == ScreenMode::Inbox ||
+    auto scroll_panel = active_scroll_panel(state, left, right);
+    if ((state.screen == ScreenMode::Workbench ||
          state.screen == ScreenMode::Runtime ||
-         state.screen == ScreenMode::Lattice) &&
-        right_tb != nullptr) {
+         state.screen == ScreenMode::Lattice ||
+         state.screen == ScreenMode::Config) &&
+        scroll_panel != nullptr) {
       if (ch == KEY_PPAGE) {
-        right_tb->scroll_by(-12, 0);
+        scroll_viewport_by(scroll_panel, -12, 0);
         return consume(true);
       }
       if (ch == KEY_NPAGE) {
-        right_tb->scroll_by(+12, 0);
+        scroll_viewport_by(scroll_panel, +12, 0);
         return consume(true);
       }
       if (ch == KEY_HOME) {
-        right_tb->scroll_y = 0;
-        return consume(true);
+        if (scroll_viewport_home(scroll_panel))
+          return consume(true);
       }
       if (ch == KEY_END) {
-        right_tb->scroll_y = std::numeric_limits<int>::max();
-        return consume(true);
+        if (scroll_viewport_end(scroll_panel))
+          return consume(true);
       }
     }
 

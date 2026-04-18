@@ -1,4 +1,5 @@
-You are tasked with improving the VICReg architecture.
+You are tasked with improving the VICReg contract-owned realization and
+architecture quality on the medium-channel dock.
 
 Objective identity:
 - This objective is `vicreg.solo.settings_optimize`.
@@ -28,6 +29,10 @@ Notes:
   run plan is seeded from the previously winning `encoder_capacity_v1`
   architecture so we carry forward the strongest pre-channel-change design we
   found.
+- Treat the medium-channel `DOCK` as the current experiment interface. This
+  objective mainly searches `ASSEMBLY` and related policy surfaces. If a future
+  step needs a new dock, make that a deliberate new contract lineage rather
+  than a silent baseline mutation.
 - Read `resume.notes.md` before planning if it exists. Treat it as the
   operator-maintained handoff summarizing the latest useful evidence and the
   intended continuation point for fresh sessions.
@@ -35,7 +40,7 @@ Notes:
   option policy. It is not a cross-symbol evaluation objective.
 
 Research stance:
-- The baseline contract is a starting point, not an endpoint.
+- The baseline contract lineage is a starting point, not an endpoint.
 - Use a clean baseline pass for calibration. If downstream quality remains weak
   after calibration, prefer deliberate objective-local variant authoring over
   repeating the unchanged baseline indefinitely.
@@ -48,6 +53,9 @@ Research stance:
   compare and discuss than mutating the baseline in place.
 - Keep the campaign bundle readable: each added variant should have a clear
   reason to exist and a clear comparison target.
+- Keep compatibility legible. When a variant is meant to test only
+  realization-level changes, preserve the dock. If the dock changes, say so
+  explicitly in the variant name and reasoning.
 
 Primary objective-local mutation surfaces:
 - `iitepi.contract.base.dsl`
@@ -58,9 +66,9 @@ Primary objective-local mutation surfaces:
   than mutating the baseline file in place
 
 Primary goal:
-- Improve VICReg network design by running campaigns and analysing the results.
+- Improve VICReg network design by running campaigns and analyzing the results.
 - Improve VICReg projector topology and option policy by running campaigns and
-  analysing the results.
+  analyzing the results.
 - Produce a best-known candidate or a principled stop backed by comparative
   evidence across baseline and objective-local variants.
 
@@ -76,4 +84,4 @@ Desired result shape:
 Secondary goals:
 - Diagnose and detect errors.
 - Evaluate the quality of reports.
-- Evaluate the usability of the hero's.
+- Evaluate the usability of the Hero tooling.

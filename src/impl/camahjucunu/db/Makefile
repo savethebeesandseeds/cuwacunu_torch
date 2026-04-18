@@ -13,15 +13,15 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 $(eval $(call BUILD_OBJ_INC, common, idydb, idydb))
 
-# Group the objects for a convenient target
-DATALOADER_DATASETS := \
-  $(OUTPUT_PATH)/common/idydb.o
+# Group the leaf producer for a convenient target
+DB_DATASETS := \
+  idydb
 
 # -----------------------------------------------------------------
 # Aggregate Target (module-level)
 # -----------------------------------------------------------------
 .PHONY: datasets
-datasets: $(DATALOADER_DATASETS)
+datasets: $(DB_DATASETS)
 	@$(LOG_SUCCESS)
 
 # -----------------------------------------------------------------

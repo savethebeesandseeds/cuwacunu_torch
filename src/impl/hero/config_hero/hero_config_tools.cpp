@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cerrno>
 #include <charconv>
-#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -20,9 +20,9 @@
 #include <sstream>
 #include <string_view>
 #include <sys/wait.h>
+#include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
-#include <unistd.h>
 #include <vector>
 
 #include <openssl/evp.h>
@@ -32,21 +32,23 @@
 #include "iitepi/contract_space_t.h"
 
 namespace cuwacunu::hero::mcp::detail {
-constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20;  // 8 MiB
-constexpr const char* kStdioIdleTimeoutEnv = "HERO_MCP_IDLE_TIMEOUT_SEC";
+constexpr std::size_t kMaxJsonRpcPayloadBytes = 8u << 20; // 8 MiB
+constexpr const char *kStdioIdleTimeoutEnv = "HERO_MCP_IDLE_TIMEOUT_SEC";
 constexpr int kDefaultStdioIdleTimeoutSec = 600;
 bool g_jsonrpc_use_content_length_framing = false;
 
-[[nodiscard]] bool write_all_fd(int fd, const void* bytes, std::size_t size) {
-  const char* data = reinterpret_cast<const char*>(bytes);
+[[nodiscard]] bool write_all_fd(int fd, const void *bytes, std::size_t size) {
+  const char *data = reinterpret_cast<const char *>(bytes);
   std::size_t remaining = size;
   while (remaining > 0) {
     const ssize_t wrote = ::write(fd, data, remaining);
     if (wrote < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR)
+        continue;
       return false;
     }
-    if (wrote == 0) return false;
+    if (wrote == 0)
+      return false;
     const auto wrote_size = static_cast<std::size_t>(wrote);
     data += wrote_size;
     remaining -= wrote_size;
@@ -75,8 +77,9 @@ bool g_jsonrpc_use_content_length_framing = false;
   return out;
 }
 
-[[nodiscard]] bool parse_bool_ascii(std::string_view raw, bool* out) {
-  if (!out) return false;
+[[nodiscard]] bool parse_bool_ascii(std::string_view raw, bool *out) {
+  if (!out)
+    return false;
   const std::string lowered = lowercase_copy(trim_ascii(raw));
   if (lowered == "true" || lowered == "1" || lowered == "yes" ||
       lowered == "on") {
@@ -91,26 +94,28 @@ bool g_jsonrpc_use_content_length_framing = false;
   return false;
 }
 
-[[nodiscard]] std::filesystem::path resolve_path_near_config(
-    std::string_view raw_path, std::string_view config_path);
+[[nodiscard]] std::filesystem::path
+resolve_path_near_config(std::string_view raw_path,
+                         std::string_view config_path);
 [[nodiscard]] bool read_ini_general_key(std::string_view ini_path,
                                         std::string_view key,
-                                        std::string* out_value);
-[[nodiscard]] std::string path_vector_json(
-    const std::vector<std::filesystem::path>& paths);
+                                        std::string *out_value);
+[[nodiscard]] std::string
+path_vector_json(const std::vector<std::filesystem::path> &paths);
 [[nodiscard]] std::string json_quote(std::string_view in);
 [[nodiscard]] std::string bool_json(bool v);
-[[nodiscard]] bool parse_int64_ascii(std::string_view raw, std::int64_t* out);
+[[nodiscard]] bool parse_int64_ascii(std::string_view raw, std::int64_t *out);
 
 [[nodiscard]] std::optional<int> resolve_stdio_idle_timeout_ms() {
-  static const std::optional<int> cached_timeout_ms = []() -> std::optional<int> {
-    const char* raw = std::getenv(kStdioIdleTimeoutEnv);
+  static const std::optional<int> cached_timeout_ms =
+      []() -> std::optional<int> {
+    const char *raw = std::getenv(kStdioIdleTimeoutEnv);
     if (raw == nullptr || *raw == '\0') {
       return kDefaultStdioIdleTimeoutSec * 1000;
     }
 
     errno = 0;
-    char* end = nullptr;
+    char *end = nullptr;
     const long long parsed = std::strtoll(raw, &end, 10);
     while (end != nullptr &&
            std::isspace(static_cast<unsigned char>(*end)) != 0) {
@@ -119,11 +124,13 @@ bool g_jsonrpc_use_content_length_framing = false;
     if (errno != 0 || end == raw || (end != nullptr && *end != '\0')) {
       return kDefaultStdioIdleTimeoutSec * 1000;
     }
-    if (parsed <= 0) return std::nullopt;
+    if (parsed <= 0)
+      return std::nullopt;
 
     constexpr long long kMaxTimeoutSec =
         static_cast<long long>(std::numeric_limits<int>::max()) / 1000;
-    if (parsed >= kMaxTimeoutSec) return std::numeric_limits<int>::max();
+    if (parsed >= kMaxTimeoutSec)
+      return std::numeric_limits<int>::max();
     return static_cast<int>(parsed * 1000);
   }();
   return cached_timeout_ms;
@@ -131,36 +138,44 @@ bool g_jsonrpc_use_content_length_framing = false;
 
 [[nodiscard]] bool wait_for_stdio_activity() {
   const std::optional<int> timeout_ms = resolve_stdio_idle_timeout_ms();
-  if (!timeout_ms.has_value()) return true;
+  if (!timeout_ms.has_value())
+    return true;
 
   struct pollfd pfd {};
   pfd.fd = STDIN_FILENO;
   pfd.events = POLLIN | POLLHUP | POLLERR;
   while (true) {
     const int rc = ::poll(&pfd, 1, *timeout_ms);
-    if (rc > 0) return true;
-    if (rc == 0) return false;
-    if (errno == EINTR) continue;
+    if (rc > 0)
+      return true;
+    if (rc == 0)
+      return false;
+    if (errno == EINTR)
+      continue;
     return true;
   }
 }
 
-[[nodiscard]] bool read_text_file(std::string_view path, std::string* out,
-                                  std::string* err) {
-  if (err) err->clear();
+[[nodiscard]] bool read_text_file(std::string_view path, std::string *out,
+                                  std::string *err) {
+  if (err)
+    err->clear();
   if (!out) {
-    if (err) *err = "output pointer is null";
+    if (err)
+      *err = "output pointer is null";
     return false;
   }
   std::ifstream in(std::string(path), std::ios::binary);
   if (!in) {
-    if (err) *err = "cannot open file: " + std::string(path);
+    if (err)
+      *err = "cannot open file: " + std::string(path);
     return false;
   }
   std::ostringstream ss;
   ss << in.rdbuf();
   if (!in.good() && !in.eof()) {
-    if (err) *err = "cannot read file: " + std::string(path);
+    if (err)
+      *err = "cannot read file: " + std::string(path);
     return false;
   }
   *out = ss.str();
@@ -169,37 +184,43 @@ bool g_jsonrpc_use_content_length_framing = false;
 
 [[nodiscard]] bool write_text_file_atomic(std::string_view path,
                                           std::string_view content,
-                                          std::string* err) {
+                                          std::string *err) {
   namespace fs = std::filesystem;
-  if (err) err->clear();
+  if (err)
+    err->clear();
   const fs::path target{std::string(path)};
   if (target.empty()) {
-    if (err) *err = "target path is empty";
+    if (err)
+      *err = "target path is empty";
     return false;
   }
   std::error_code ec{};
   if (target.has_parent_path()) {
     fs::create_directories(target.parent_path(), ec);
     if (ec) {
-      if (err) *err = "cannot create parent directory: " + target.parent_path().string();
+      if (err)
+        *err =
+            "cannot create parent directory: " + target.parent_path().string();
       return false;
     }
   }
-  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto stamp =
+      std::chrono::steady_clock::now().time_since_epoch().count();
   const fs::path tmp =
-      target.parent_path() /
-      (target.filename().string() + ".tmp." +
-       std::to_string(static_cast<long long>(stamp)));
+      target.parent_path() / (target.filename().string() + ".tmp." +
+                              std::to_string(static_cast<long long>(stamp)));
   {
     std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
     if (!out) {
-      if (err) *err = "cannot open temp file: " + tmp.string();
+      if (err)
+        *err = "cannot open temp file: " + tmp.string();
       return false;
     }
     out << content;
     out.flush();
     if (!out.good()) {
-      if (err) *err = "cannot write temp file: " + tmp.string();
+      if (err)
+        *err = "cannot write temp file: " + tmp.string();
       return false;
     }
   }
@@ -207,7 +228,8 @@ bool g_jsonrpc_use_content_length_framing = false;
   if (ec) {
     std::error_code rm_ec{};
     fs::remove(tmp, rm_ec);
-    if (err) *err = "cannot replace target file: " + target.string();
+    if (err)
+      *err = "cannot replace target file: " + target.string();
     return false;
   }
   return true;
@@ -215,44 +237,53 @@ bool g_jsonrpc_use_content_length_framing = false;
 
 [[nodiscard]] bool read_ini_general_key(std::string_view ini_path,
                                         std::string_view key,
-                                        std::string* out_value) {
-  if (out_value) out_value->clear();
+                                        std::string *out_value) {
+  if (out_value)
+    out_value->clear();
   std::ifstream in(std::string(ini_path), std::ios::binary);
-  if (!in) return false;
+  if (!in)
+    return false;
 
   bool in_general = false;
   std::string line;
   while (std::getline(in, line)) {
     std::string trimmed = trim_ascii(line);
-    if (trimmed.empty()) continue;
-    if (trimmed.front() == '#' || trimmed.front() == ';') continue;
+    if (trimmed.empty())
+      continue;
+    if (trimmed.front() == '#' || trimmed.front() == ';')
+      continue;
     if (trimmed.front() == '[' && trimmed.back() == ']') {
       in_general = lowercase_copy(trimmed) == "[general]";
       continue;
     }
-    if (!in_general) continue;
+    if (!in_general)
+      continue;
 
     const std::size_t eq = trimmed.find('=');
-    if (eq == std::string::npos) continue;
+    if (eq == std::string::npos)
+      continue;
     const std::string lhs = trim_ascii(trimmed.substr(0, eq));
-    if (lhs != key) continue;
+    if (lhs != key)
+      continue;
     std::string rhs = trim_ascii(trimmed.substr(eq + 1));
     const std::size_t comment = rhs.find('#');
     if (comment != std::string::npos) {
       rhs = trim_ascii(rhs.substr(0, comment));
     }
-    if (out_value) *out_value = rhs;
+    if (out_value)
+      *out_value = rhs;
     return true;
   }
   return false;
 }
 
-[[nodiscard]] std::filesystem::path configured_hashimyei_store_root(
-    std::string_view global_config_path) {
-  const char* env = std::getenv("CUWACUNU_HASHIMYEI_STORE_ROOT");
+[[nodiscard]] std::filesystem::path
+configured_hashimyei_store_root(std::string_view global_config_path) {
+  const char *env = std::getenv("CUWACUNU_HASHIMYEI_STORE_ROOT");
   if (env != nullptr && env[0] != '\0') {
     const std::string value = trim_ascii(env);
-    if (!value.empty()) return std::filesystem::path(value);
+    if (!value.empty())
+      return std::filesystem::path(value);
   }
 
   const std::string cfg_path = trim_ascii(global_config_path);
@@ -262,26 +293,26 @@ bool g_jsonrpc_use_content_length_framing = false;
   if (read_ini_general_key(ini_path, "runtime_root", &configured)) {
     configured = trim_ascii(configured);
     if (!configured.empty()) {
-      return (std::filesystem::path(configured) / ".hashimyei").lexically_normal();
+      return (std::filesystem::path(configured) / ".hashimyei")
+          .lexically_normal();
     }
   }
   return {};
 }
 
-[[nodiscard]] std::filesystem::path configured_hashimyei_catalog_path(
-    std::string_view global_config_path) {
+[[nodiscard]] std::filesystem::path
+configured_hashimyei_catalog_path(std::string_view global_config_path) {
   return cuwacunu::hashimyei::catalog_db_path(
       configured_hashimyei_store_root(global_config_path));
 }
 
-[[nodiscard]] std::string normalized_path_key(
-    const std::filesystem::path& path);
-[[nodiscard]] bool sha256_hex_file(const std::filesystem::path& path,
-                                   std::string* out_hex,
-                                   std::string* err);
+[[nodiscard]] std::string
+normalized_path_key(const std::filesystem::path &path);
+[[nodiscard]] bool sha256_hex_file(const std::filesystem::path &path,
+                                   std::string *out_hex, std::string *err);
 
-[[nodiscard]] std::string sanitize_bundle_snapshot_filename(
-    std::string_view filename) {
+[[nodiscard]] std::string
+sanitize_bundle_snapshot_filename(std::string_view filename) {
   std::string out{};
   out.reserve(filename.size());
   for (const char ch : filename) {
@@ -290,19 +321,23 @@ bool g_jsonrpc_use_content_length_framing = false;
                     ch == '-';
     out.push_back(ok ? ch : '_');
   }
-  if (out.empty()) out = "dsl";
+  if (out.empty())
+    out = "dsl";
   return out;
 }
 
 [[nodiscard]] bool write_component_founding_dsl_bundle_snapshot(
-    const std::filesystem::path& store_root,
-    const cuwacunu::hero::hashimyei::component_manifest_t& manifest,
+    const std::filesystem::path &store_root,
+    const cuwacunu::hero::hashimyei::component_manifest_t &manifest,
     std::string_view primary_source_path,
-    const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>& contract_record,
-    std::string* error) {
-  if (error) error->clear();
+    const std::shared_ptr<const cuwacunu::iitepi::contract_record_t>
+        &contract_record,
+    std::string *error) {
+  if (error)
+    error->clear();
   if (!contract_record) {
-    if (error) *error = "missing contract snapshot for founding DSL bundle";
+    if (error)
+      *error = "missing contract snapshot for founding DSL bundle";
     return false;
   }
 
@@ -310,39 +345,40 @@ bool g_jsonrpc_use_content_length_framing = false;
   std::unordered_set<std::string> seen{};
   const auto add_source_path = [&](std::string_view raw_path) {
     const std::string trimmed = trim_ascii(raw_path);
-    if (trimmed.empty()) return;
+    if (trimmed.empty())
+      return;
     const std::filesystem::path source_path(trimmed);
     const std::string key = normalized_path_key(source_path);
-    if (!seen.insert(key).second) return;
+    if (!seen.insert(key).second)
+      return;
     source_paths.push_back(source_path);
   };
 
   add_source_path(contract_record->config_file_path_canonical);
   add_source_path(primary_source_path);
-  for (const auto& surface : contract_record->docking_signature.surfaces) {
+  for (const auto &surface : contract_record->docking_signature.surfaces) {
     add_source_path(surface.canonical_path);
   }
-  for (const auto& module : contract_record->signature.module_dsl_entries) {
+  for (const auto &module : contract_record->signature.module_dsl_entries) {
     add_source_path(module.module_dsl_path);
   }
 
   std::sort(source_paths.begin(), source_paths.end(),
-            [](const std::filesystem::path& a, const std::filesystem::path& b) {
+            [](const std::filesystem::path &a, const std::filesystem::path &b) {
               return normalized_path_key(a) < normalized_path_key(b);
             });
 
   const std::string component_id =
       cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
   const auto bundle_dir =
-      cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(store_root,
-                                                               manifest.canonical_path,
-                                                               component_id);
+      cuwacunu::hero::hashimyei::founding_dsl_bundle_directory(
+          store_root, manifest.canonical_path, component_id);
   std::error_code ec{};
   std::filesystem::create_directories(bundle_dir, ec);
   if (ec) {
     if (error) {
-      *error = "cannot create founding DSL bundle directory: " +
-               bundle_dir.string();
+      *error =
+          "cannot create founding DSL bundle directory: " + bundle_dir.string();
     }
     return false;
   }
@@ -354,7 +390,7 @@ bool g_jsonrpc_use_content_length_framing = false;
   bundle_manifest.files.reserve(source_paths.size());
 
   for (std::size_t i = 0; i < source_paths.size(); ++i) {
-    const auto& source_path = source_paths[i];
+    const auto &source_path = source_paths[i];
     std::string text{};
     if (!read_text_file(source_path.string(), &text, error)) {
       if (error) {
@@ -365,12 +401,13 @@ bool g_jsonrpc_use_content_length_framing = false;
     }
     std::ostringstream filename;
     filename << std::setfill('0') << std::setw(4) << i << "_"
-             << sanitize_bundle_snapshot_filename(source_path.filename().string());
+             << sanitize_bundle_snapshot_filename(
+                    source_path.filename().string());
     const auto snapshot_path = bundle_dir / filename.str();
     if (!write_text_file_atomic(snapshot_path.string(), text, error)) {
       if (error) {
-        *error = "cannot write founding DSL snapshot '" + snapshot_path.string() +
-                 "': " + *error;
+        *error = "cannot write founding DSL snapshot '" +
+                 snapshot_path.string() + "': " + *error;
       }
       return false;
     }
@@ -410,36 +447,36 @@ bool g_jsonrpc_use_content_length_framing = false;
   std::ostringstream out;
   for (const unsigned char c : in) {
     switch (c) {
-      case '\"':
-        out << "\\\"";
-        break;
-      case '\\':
-        out << "\\\\";
-        break;
-      case '\b':
-        out << "\\b";
-        break;
-      case '\f':
-        out << "\\f";
-        break;
-      case '\n':
-        out << "\\n";
-        break;
-      case '\r':
-        out << "\\r";
-        break;
-      case '\t':
-        out << "\\t";
-        break;
-      default:
-        if (c < 0x20) {
-          out << "\\u00";
-          const char* hex = "0123456789abcdef";
-          out << hex[(c >> 4) & 0x0F] << hex[c & 0x0F];
-        } else {
-          out << static_cast<char>(c);
-        }
-        break;
+    case '\"':
+      out << "\\\"";
+      break;
+    case '\\':
+      out << "\\\\";
+      break;
+    case '\b':
+      out << "\\b";
+      break;
+    case '\f':
+      out << "\\f";
+      break;
+    case '\n':
+      out << "\\n";
+      break;
+    case '\r':
+      out << "\\r";
+      break;
+    case '\t':
+      out << "\\t";
+      break;
+    default:
+      if (c < 0x20) {
+        out << "\\u00";
+        const char *hex = "0123456789abcdef";
+        out << hex[(c >> 4) & 0x0F] << hex[c & 0x0F];
+      } else {
+        out << static_cast<char>(c);
+      }
+      break;
     }
   }
   return out.str();
@@ -449,55 +486,59 @@ bool g_jsonrpc_use_content_length_framing = false;
   return "\"" + json_escape(in) + "\"";
 }
 
-[[nodiscard]] bool parse_json_string_at(const std::string& json, std::size_t pos,
-                                        std::string* out,
-                                        std::size_t* end_pos) {
-  if (pos >= json.size() || json[pos] != '"') return false;
+[[nodiscard]] bool parse_json_string_at(const std::string &json,
+                                        std::size_t pos, std::string *out,
+                                        std::size_t *end_pos) {
+  if (pos >= json.size() || json[pos] != '"')
+    return false;
   ++pos;
   std::string value;
   while (pos < json.size()) {
     const char c = json[pos++];
     if (c == '"') {
-      if (out) *out = value;
-      if (end_pos) *end_pos = pos;
+      if (out)
+        *out = value;
+      if (end_pos)
+        *end_pos = pos;
       return true;
     }
     if (c != '\\') {
       value.push_back(c);
       continue;
     }
-    if (pos >= json.size()) return false;
+    if (pos >= json.size())
+      return false;
     const char esc = json[pos++];
     switch (esc) {
-      case '"':
-      case '\\':
-      case '/':
-        value.push_back(esc);
-        break;
-      case 'b':
-        value.push_back('\b');
-        break;
-      case 'f':
-        value.push_back('\f');
-        break;
-      case 'n':
-        value.push_back('\n');
-        break;
-      case 'r':
-        value.push_back('\r');
-        break;
-      case 't':
-        value.push_back('\t');
-        break;
-      default:
-        value.push_back(esc);
-        break;
+    case '"':
+    case '\\':
+    case '/':
+      value.push_back(esc);
+      break;
+    case 'b':
+      value.push_back('\b');
+      break;
+    case 'f':
+      value.push_back('\f');
+      break;
+    case 'n':
+      value.push_back('\n');
+      break;
+    case 'r':
+      value.push_back('\r');
+      break;
+    case 't':
+      value.push_back('\t');
+      break;
+    default:
+      value.push_back(esc);
+      break;
     }
   }
   return false;
 }
 
-[[nodiscard]] std::size_t skip_json_whitespace(const std::string& json,
+[[nodiscard]] std::size_t skip_json_whitespace(const std::string &json,
                                                std::size_t pos) {
   while (pos < json.size() &&
          std::isspace(static_cast<unsigned char>(json[pos])) != 0) {
@@ -506,15 +547,18 @@ bool g_jsonrpc_use_content_length_framing = false;
   return pos;
 }
 
-[[nodiscard]] bool find_json_value_end(const std::string& json, std::size_t pos,
-                                       std::size_t* out_end_pos) {
+[[nodiscard]] bool find_json_value_end(const std::string &json, std::size_t pos,
+                                       std::size_t *out_end_pos) {
   pos = skip_json_whitespace(json, pos);
-  if (pos >= json.size()) return false;
+  if (pos >= json.size())
+    return false;
 
   if (json[pos] == '"') {
     std::size_t end_pos = pos;
-    if (!parse_json_string_at(json, pos, nullptr, &end_pos)) return false;
-    if (out_end_pos) *out_end_pos = end_pos;
+    if (!parse_json_string_at(json, pos, nullptr, &end_pos))
+      return false;
+    if (out_end_pos)
+      *out_end_pos = end_pos;
     return true;
   }
 
@@ -554,10 +598,12 @@ bool g_jsonrpc_use_content_length_framing = false;
         continue;
       }
       if (c == '}' || c == ']') {
-        if (stack.empty() || stack.back() != c) return false;
+        if (stack.empty() || stack.back() != c)
+          return false;
         stack.pop_back();
         if (stack.empty()) {
-          if (out_end_pos) *out_end_pos = i + 1;
+          if (out_end_pos)
+            *out_end_pos = i + 1;
           return true;
         }
       }
@@ -574,160 +620,195 @@ bool g_jsonrpc_use_content_length_framing = false;
     }
     ++end;
   }
-  if (end <= pos) return false;
-  if (out_end_pos) *out_end_pos = end;
+  if (end <= pos)
+    return false;
+  if (out_end_pos)
+    *out_end_pos = end;
   return true;
 }
 
-[[nodiscard]] bool extract_json_raw_field(const std::string& json,
-                                          const std::string& key,
-                                          std::string* out) {
+[[nodiscard]] bool extract_json_raw_field(const std::string &json,
+                                          const std::string &key,
+                                          std::string *out) {
   std::size_t pos = skip_json_whitespace(json, 0);
-  if (pos >= json.size() || json[pos] != '{') return false;
+  if (pos >= json.size() || json[pos] != '{')
+    return false;
   ++pos;
 
   while (true) {
     pos = skip_json_whitespace(json, pos);
-    if (pos >= json.size()) return false;
-    if (json[pos] == '}') return false;
+    if (pos >= json.size())
+      return false;
+    if (json[pos] == '}')
+      return false;
 
     std::string current_key;
     std::size_t after_key = pos;
-    if (!parse_json_string_at(json, pos, &current_key, &after_key)) return false;
+    if (!parse_json_string_at(json, pos, &current_key, &after_key))
+      return false;
 
     pos = skip_json_whitespace(json, after_key);
-    if (pos >= json.size() || json[pos] != ':') return false;
+    if (pos >= json.size() || json[pos] != ':')
+      return false;
     ++pos;
     pos = skip_json_whitespace(json, pos);
-    if (pos >= json.size()) return false;
+    if (pos >= json.size())
+      return false;
 
     std::size_t value_end = pos;
-    if (!find_json_value_end(json, pos, &value_end)) return false;
+    if (!find_json_value_end(json, pos, &value_end))
+      return false;
 
     if (current_key == key) {
-      if (out) *out = json.substr(pos, value_end - pos);
+      if (out)
+        *out = json.substr(pos, value_end - pos);
       return true;
     }
 
     pos = skip_json_whitespace(json, value_end);
-    if (pos >= json.size()) return false;
+    if (pos >= json.size())
+      return false;
     if (json[pos] == ',') {
       ++pos;
       continue;
     }
-    if (json[pos] == '}') return false;
+    if (json[pos] == '}')
+      return false;
     return false;
   }
 }
 
-[[nodiscard]] bool extract_json_object_field(const std::string& json,
-                                             const std::string& key,
-                                             std::string* out) {
+[[nodiscard]] bool extract_json_object_field(const std::string &json,
+                                             const std::string &key,
+                                             std::string *out) {
   std::string raw;
-  if (!extract_json_raw_field(json, key, &raw)) return false;
+  if (!extract_json_raw_field(json, key, &raw))
+    return false;
   const std::string trimmed = trim_ascii(raw);
-  if (trimmed.empty() || trimmed.front() != '{') return false;
-  if (out) *out = trimmed;
+  if (trimmed.empty() || trimmed.front() != '{')
+    return false;
+  if (out)
+    *out = trimmed;
   return true;
 }
 
-[[nodiscard]] bool extract_json_string_field(const std::string& json,
-                                             const std::string& key,
-                                             std::string* out) {
+[[nodiscard]] bool extract_json_string_field(const std::string &json,
+                                             const std::string &key,
+                                             std::string *out) {
   std::string raw;
-  if (!extract_json_raw_field(json, key, &raw)) return false;
+  if (!extract_json_raw_field(json, key, &raw))
+    return false;
   std::size_t end_pos = 0;
-  if (!parse_json_string_at(raw, 0, out, &end_pos)) return false;
+  if (!parse_json_string_at(raw, 0, out, &end_pos))
+    return false;
   end_pos = skip_json_whitespace(raw, end_pos);
   return end_pos == raw.size();
 }
 
-[[nodiscard]] bool extract_json_bool_field(const std::string& json,
-                                           const std::string& key, bool* out) {
+[[nodiscard]] bool extract_json_bool_field(const std::string &json,
+                                           const std::string &key, bool *out) {
   std::string raw;
-  if (!extract_json_raw_field(json, key, &raw)) return false;
+  if (!extract_json_raw_field(json, key, &raw))
+    return false;
   const std::string lowered = lowercase_copy(trim_ascii(raw));
   if (lowered == "true") {
-    if (out) *out = true;
+    if (out)
+      *out = true;
     return true;
   }
   if (lowered == "false") {
-    if (out) *out = false;
+    if (out)
+      *out = false;
     return true;
   }
   return false;
 }
 
-[[nodiscard]] bool extract_json_id_field(const std::string& json,
-                                         std::string* out_id_json) {
+[[nodiscard]] bool extract_json_id_field(const std::string &json,
+                                         std::string *out_id_json) {
   std::string raw_id;
   if (!extract_json_raw_field(json, "id", &raw_id)) {
-    if (out_id_json) *out_id_json = "null";
+    if (out_id_json)
+      *out_id_json = "null";
     return true;
   }
   raw_id = trim_ascii(raw_id);
-  if (raw_id.empty()) return false;
+  if (raw_id.empty())
+    return false;
 
   if (raw_id.front() == '"') {
     std::string parsed;
     std::size_t end_pos = 0;
-    if (!parse_json_string_at(raw_id, 0, &parsed, &end_pos)) return false;
+    if (!parse_json_string_at(raw_id, 0, &parsed, &end_pos))
+      return false;
     end_pos = skip_json_whitespace(raw_id, end_pos);
-    if (end_pos != raw_id.size()) return false;
-    if (out_id_json) *out_id_json = json_quote(parsed);
+    if (end_pos != raw_id.size())
+      return false;
+    if (out_id_json)
+      *out_id_json = json_quote(parsed);
     return true;
   }
 
-  if (out_id_json) *out_id_json = raw_id;
+  if (out_id_json)
+    *out_id_json = raw_id;
   return true;
 }
 
-[[nodiscard]] bool has_json_field(const std::string& json,
-                                  const std::string& key) {
+[[nodiscard]] bool has_json_field(const std::string &json,
+                                  const std::string &key) {
   return extract_json_raw_field(json, key, nullptr);
 }
 
 [[nodiscard]] bool starts_with_case_insensitive(std::string_view value,
                                                 std::string_view prefix) {
-  if (value.size() < prefix.size()) return false;
+  if (value.size() < prefix.size())
+    return false;
   for (std::size_t i = 0; i < prefix.size(); ++i) {
-    const char a = static_cast<char>(
-        std::tolower(static_cast<unsigned char>(value[i])));
-    const char b = static_cast<char>(
-        std::tolower(static_cast<unsigned char>(prefix[i])));
-    if (a != b) return false;
+    const char a =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(value[i])));
+    const char b =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(prefix[i])));
+    if (a != b)
+      return false;
   }
   return true;
 }
 
 [[nodiscard]] bool parse_content_length_header(std::string_view header_line,
-                                               std::size_t* out_length) {
+                                               std::size_t *out_length) {
   constexpr std::string_view kPrefix = "content-length:";
   const std::string line = trim_ascii(header_line);
-  if (!starts_with_case_insensitive(line, kPrefix)) return false;
+  if (!starts_with_case_insensitive(line, kPrefix))
+    return false;
   const std::string number = trim_ascii(line.substr(kPrefix.size()));
-  if (number.empty()) return false;
+  if (number.empty())
+    return false;
 
   std::uint64_t parsed = 0;
   const auto [ptr, ec] =
       std::from_chars(number.data(), number.data() + number.size(), parsed);
-  if (ec != std::errc() || ptr != number.data() + number.size()) return false;
-  if (parsed > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+  if (ec != std::errc() || ptr != number.data() + number.size())
+    return false;
+  if (parsed >
+      static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
     return false;
   }
-  if (out_length) *out_length = static_cast<std::size_t>(parsed);
+  if (out_length)
+    *out_length = static_cast<std::size_t>(parsed);
   return true;
 }
 
-[[nodiscard]] bool read_next_jsonrpc_message(std::istream* in,
-                                             std::string* out_payload,
-                                             bool* out_used_content_length) {
-  if (out_used_content_length) *out_used_content_length = false;
+[[nodiscard]] bool read_next_jsonrpc_message(std::istream *in,
+                                             std::string *out_payload,
+                                             bool *out_used_content_length) {
+  if (out_used_content_length)
+    *out_used_content_length = false;
 
   std::string first_line;
   while (std::getline(*in, first_line)) {
     const std::string trimmed = trim_ascii(first_line);
-    if (trimmed.empty()) continue;
+    if (trimmed.empty())
+      continue;
 
     std::size_t content_length = 0;
     bool saw_header_block = false;
@@ -742,7 +823,8 @@ bool g_jsonrpc_use_content_length_framing = false;
       std::string header_line;
       while (std::getline(*in, header_line)) {
         const std::string header_trimmed = trim_ascii(header_line);
-        if (header_trimmed.empty()) break;
+        if (header_trimmed.empty())
+          break;
         std::size_t parsed_length = 0;
         if (parse_content_length_header(header_trimmed, &parsed_length)) {
           content_length = parsed_length;
@@ -751,19 +833,23 @@ bool g_jsonrpc_use_content_length_framing = false;
       if (content_length == 0) {
         continue;
       }
-      if (content_length > kMaxJsonRpcPayloadBytes) return false;
+      if (content_length > kMaxJsonRpcPayloadBytes)
+        return false;
       std::string payload(content_length, '\0');
       in->read(payload.data(), static_cast<std::streamsize>(content_length));
       if (in->gcount() != static_cast<std::streamsize>(content_length)) {
         return false;
       }
-      if (out_payload) *out_payload = payload;
-      if (out_used_content_length) *out_used_content_length = true;
+      if (out_payload)
+        *out_payload = payload;
+      if (out_used_content_length)
+        *out_used_content_length = true;
       return true;
     }
 
     if (trimmed.front() == '{' || trimmed.front() == '[') {
-      if (out_payload) *out_payload = trimmed;
+      if (out_payload)
+        *out_payload = trimmed;
       return true;
     }
   }
@@ -785,18 +871,18 @@ void emit_jsonrpc_payload(std::string_view payload_json) {
 
 void emit_jsonrpc_result(std::string_view id_json,
                          std::string_view result_object_json) {
-  const std::string payload = std::string("{\"jsonrpc\":\"2.0\",\"id\":") +
-                              std::string(id_json) + ",\"result\":" +
-                              std::string(result_object_json) + "}";
+  const std::string payload =
+      std::string("{\"jsonrpc\":\"2.0\",\"id\":") + std::string(id_json) +
+      ",\"result\":" + std::string(result_object_json) + "}";
   emit_jsonrpc_payload(payload);
 }
 
 void emit_jsonrpc_error(std::string_view id_json, int code,
                         std::string_view message) {
-  const std::string payload =
-      std::string("{\"jsonrpc\":\"2.0\",\"id\":") + std::string(id_json) +
-      ",\"error\":{\"code\":" + std::to_string(code) +
-      ",\"message\":" + json_quote(message) + "}}";
+  const std::string payload = std::string("{\"jsonrpc\":\"2.0\",\"id\":") +
+                              std::string(id_json) +
+                              ",\"error\":{\"code\":" + std::to_string(code) +
+                              ",\"message\":" + json_quote(message) + "}}";
   emit_jsonrpc_payload(payload);
 }
 
@@ -827,24 +913,29 @@ void emit_jsonrpc_error(std::string_view id_json, int code,
 
 [[nodiscard]] bool ends_with_ascii_case_insensitive(std::string_view text,
                                                     std::string_view suffix) {
-  if (text.size() < suffix.size()) return false;
+  if (text.size() < suffix.size())
+    return false;
   const std::size_t offset = text.size() - suffix.size();
   for (std::size_t i = 0; i < suffix.size(); ++i) {
     const char a = static_cast<char>(
         std::tolower(static_cast<unsigned char>(text[offset + i])));
-    const char b = static_cast<char>(
-        std::tolower(static_cast<unsigned char>(suffix[i])));
-    if (a != b) return false;
+    const char b =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(suffix[i])));
+    if (a != b)
+      return false;
   }
   return true;
 }
 
-[[nodiscard]] std::string normalize_component_family(std::string canonical_like) {
+[[nodiscard]] std::string
+normalize_component_family(std::string canonical_like) {
   canonical_like = trim_ascii(canonical_like);
-  if (canonical_like.empty()) return {};
+  if (canonical_like.empty())
+    return {};
 
-  for (char& ch : canonical_like) {
-    if (ch == '/') ch = '.';
+  for (char &ch : canonical_like) {
+    if (ch == '/')
+      ch = '.';
   }
   while (!canonical_like.empty() && canonical_like.front() == '.') {
     canonical_like.erase(canonical_like.begin());
@@ -874,23 +965,28 @@ void emit_jsonrpc_error(std::string_view id_json, int code,
 
 [[nodiscard]] std::string maybe_hash_tail(std::string_view canonical) {
   const std::size_t dot = canonical.rfind('.');
-  if (dot == std::string::npos || dot + 1 >= canonical.size()) return {};
+  if (dot == std::string::npos || dot + 1 >= canonical.size())
+    return {};
   const std::string_view tail = canonical.substr(dot + 1);
-  if (tail.size() < 3) return {};
-  if (tail[0] != '0' || (tail[1] != 'x' && tail[1] != 'X')) return {};
+  if (tail.size() < 3)
+    return {};
+  if (tail[0] != '0' || (tail[1] != 'x' && tail[1] != 'X'))
+    return {};
   for (std::size_t i = 2; i < tail.size(); ++i) {
     const char c = tail[i];
     const bool digit = c >= '0' && c <= '9';
     const bool lower = c >= 'a' && c <= 'f';
     const bool upper = c >= 'A' && c <= 'F';
-    if (!digit && !lower && !upper) return {};
+    if (!digit && !lower && !upper)
+      return {};
   }
   return std::string(tail);
 }
 
 [[nodiscard]] std::string strip_hash_tail(std::string canonical) {
   const std::string tail = maybe_hash_tail(canonical);
-  if (tail.empty()) return canonical;
+  if (tail.empty())
+    return canonical;
   const std::string suffix = "." + tail;
   if (canonical.size() > suffix.size() &&
       canonical.compare(canonical.size() - suffix.size(), suffix.size(),
@@ -900,13 +996,15 @@ void emit_jsonrpc_error(std::string_view id_json, int code,
   return canonical;
 }
 
-[[nodiscard]] std::filesystem::path resolve_path_near_config(
-    std::string_view raw_path, std::string_view config_path) {
+[[nodiscard]] std::filesystem::path
+resolve_path_near_config(std::string_view raw_path,
+                         std::string_view config_path) {
   namespace fs = std::filesystem;
   fs::path raw(trim_ascii(raw_path));
-  if (raw.empty()) return raw;
+  if (raw.empty())
+    return raw;
 
-  const auto canonical_or_normalized = [](const fs::path& p) {
+  const auto canonical_or_normalized = [](const fs::path &p) {
     std::error_code ec{};
     const fs::path canonical = fs::weakly_canonical(p, ec);
     return ec ? p.lexically_normal() : canonical;
@@ -920,82 +1018,107 @@ void emit_jsonrpc_error(std::string_view id_json, int code,
   candidates.push_back(raw);
 
   const fs::path config_parent = fs::path(config_path).parent_path();
-  if (!config_parent.empty()) candidates.push_back(config_parent / raw);
+  if (!config_parent.empty())
+    candidates.push_back(config_parent / raw);
 
   constexpr std::string_view kRepoRoot = "/cuwacunu";
   candidates.push_back(fs::path(kRepoRoot) / raw);
 
-  for (const auto& candidate : candidates) {
+  for (const auto &candidate : candidates) {
     std::error_code ec{};
-    if (fs::exists(candidate, ec) && !ec) return canonical_or_normalized(candidate);
+    if (fs::exists(candidate, ec) && !ec)
+      return canonical_or_normalized(candidate);
   }
   return canonical_or_normalized(candidates.front());
 }
 
-[[nodiscard]] std::string normalized_path_key(
-    const std::filesystem::path& path) {
-  if (path.empty()) return {};
+[[nodiscard]] std::string
+normalized_path_key(const std::filesystem::path &path) {
+  if (path.empty())
+    return {};
   return path.generic_string();
 }
 
-[[nodiscard]] std::uint64_t deterministic_cutover_ts_ms(
-    std::string_view seed) {
+[[nodiscard]] std::uint64_t deterministic_cutover_ts_ms(std::string_view seed) {
   constexpr std::uint64_t kBase = 1700000000000ULL;
   constexpr std::uint64_t kSpan = 1000000000000ULL;
   return kBase + (fnv1a64(seed) % kSpan);
 }
 
-[[nodiscard]] bool sha256_hex_file(const std::filesystem::path& path,
-                                   std::string* out_hex,
-                                   std::string* out_error) {
-  if (out_error) out_error->clear();
+[[nodiscard]] bool sha256_hex_file(const std::filesystem::path &path,
+                                   std::string *out_hex,
+                                   std::string *out_error) {
+  if (out_error)
+    out_error->clear();
   if (!out_hex) {
-    if (out_error) *out_error = "sha256 output pointer is null";
+    if (out_error)
+      *out_error = "sha256 output pointer is null";
     return false;
   }
   out_hex->clear();
 
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    if (out_error) *out_error = "cannot open file for sha256: " + path.string();
+    if (out_error)
+      *out_error = "cannot open file for sha256: " + path.string();
     return false;
   }
 
-  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+  std::string content((std::istreambuf_iterator<char>(in)),
+                      std::istreambuf_iterator<char>());
+  if (in.bad()) {
+    if (out_error)
+      *out_error = "cannot read file for sha256: " + path.string();
+    return false;
+  }
+  return sha256_hex_text(content, out_hex, out_error);
+}
+
+[[nodiscard]] bool sha256_hex_text(std::string_view text, std::string *out_hex,
+                                   std::string *out_error) {
+  if (out_error)
+    out_error->clear();
+  if (!out_hex) {
+    if (out_error)
+      *out_error = "sha256 output pointer is null";
+    return false;
+  }
+  out_hex->clear();
+
+  EVP_MD_CTX *ctx = EVP_MD_CTX_new();
   if (!ctx) {
-    if (out_error) *out_error = "cannot allocate EVP context";
+    if (out_error)
+      *out_error = "cannot allocate EVP context";
     return false;
   }
   if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
     EVP_MD_CTX_free(ctx);
-    if (out_error) *out_error = "EVP_DigestInit_ex failed";
+    if (out_error)
+      *out_error = "EVP_DigestInit_ex failed";
     return false;
   }
-
-  std::array<char, 1 << 14> buf{};
-  while (in.good()) {
-    in.read(buf.data(), static_cast<std::streamsize>(buf.size()));
-    const std::streamsize got = in.gcount();
-    if (got <= 0) break;
-    if (EVP_DigestUpdate(ctx, buf.data(), static_cast<std::size_t>(got)) != 1) {
-      EVP_MD_CTX_free(ctx);
-      if (out_error) *out_error = "EVP_DigestUpdate failed";
-      return false;
-    }
+  if (!text.empty() &&
+      EVP_DigestUpdate(ctx, text.data(),
+                       static_cast<std::size_t>(text.size())) != 1) {
+    EVP_MD_CTX_free(ctx);
+    if (out_error)
+      *out_error = "EVP_DigestUpdate failed";
+    return false;
   }
 
   unsigned char digest[EVP_MAX_MD_SIZE];
   unsigned int digest_len = 0;
   if (EVP_DigestFinal_ex(ctx, digest, &digest_len) != 1) {
     EVP_MD_CTX_free(ctx);
-    if (out_error) *out_error = "EVP_DigestFinal_ex failed";
+    if (out_error)
+      *out_error = "EVP_DigestFinal_ex failed";
     return false;
   }
   EVP_MD_CTX_free(ctx);
 
-  static constexpr std::array<char, 16> kHex{
-      '0', '1', '2', '3', '4', '5', '6', '7',
-      '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+  static constexpr std::array<char, 16> kHex{'0', '1', '2', '3', '4', '5',
+                                             '6', '7', '8', '9', 'a', 'b',
+                                             'c', 'd', 'e', 'f'};
   out_hex->resize(static_cast<std::size_t>(digest_len) * 2);
   for (std::size_t i = 0; i < static_cast<std::size_t>(digest_len); ++i) {
     const unsigned char b = digest[i];
@@ -1005,43 +1128,52 @@ void emit_jsonrpc_error(std::string_view id_json, int code,
   return true;
 }
 
-[[nodiscard]] std::string derive_family_from_key_or_path(
-    std::string_view key, std::string_view dsl_path) {
+[[nodiscard]] std::string
+derive_family_from_key_or_path(std::string_view key,
+                               std::string_view dsl_path) {
   const std::string trimmed_key = trim_ascii(key);
   const std::size_t tsi_pos = trimmed_key.find("tsi.");
   if (tsi_pos != std::string::npos) {
     const std::string from_key =
         normalize_component_family(trimmed_key.substr(tsi_pos));
-    if (!from_key.empty()) return strip_hash_tail(from_key);
+    if (!from_key.empty())
+      return strip_hash_tail(from_key);
   }
 
   const std::filesystem::path p(trim_ascii(dsl_path));
   const std::string stem = p.stem().string();
   if (stem.rfind("tsi.", 0) == 0) {
     const std::string from_file = normalize_component_family(stem);
-    if (!from_file.empty()) return strip_hash_tail(from_file);
+    if (!from_file.empty())
+      return strip_hash_tail(from_file);
   }
   return {};
 }
 
-[[nodiscard]] std::string synthesize_hashimyei_from_sha(std::string_view sha_hex,
-                                                        std::string_view fallback) {
+[[nodiscard]] std::string
+synthesize_hashimyei_from_sha(std::string_view sha_hex,
+                              std::string_view fallback) {
   if (sha_hex.size() >= 18) {
     return "0x" + std::string(sha_hex.substr(0, 16));
   }
   if (sha_hex.size() >= 10) {
     return "0x" + std::string(sha_hex.substr(0, 8));
   }
-  if (!fallback.empty()) return std::string(fallback);
+  if (!fallback.empty())
+    return std::string(fallback);
   return "0x00000000";
 }
 
 [[nodiscard]] bool key_looks_like_component_dsl_path(std::string_view key) {
   const std::string lowered = lowercase_copy(trim_ascii(key));
-  if (lowered.find("dsl") == std::string::npos) return false;
-  if (lowered.find("component") != std::string::npos) return true;
-  if (lowered.find("hashimyei") != std::string::npos) return true;
-  if (lowered.find("tsi.") != std::string::npos) return true;
+  if (lowered.find("dsl") == std::string::npos)
+    return false;
+  if (lowered.find("component") != std::string::npos)
+    return true;
+  if (lowered.find("hashimyei") != std::string::npos)
+    return true;
+  if (lowered.find("tsi.") != std::string::npos)
+    return true;
   if (lowered.size() >= 9 &&
       lowered.compare(lowered.size() - 9, 9, "_dsl_file") == 0) {
     return true;
@@ -1076,19 +1208,20 @@ struct cutover_receipt_entry_t {
 };
 
 [[nodiscard]] std::string build_cutover_receipt_json_impl(
-    const cuwacunu::hero::mcp::hero_config_store_t::save_preview_t& preview,
+    const cuwacunu::hero::mcp::hero_config_store_t::save_preview_t &preview,
     std::string_view config_path, std::string_view global_config_path) {
   std::vector<touched_component_dsl_diff_t> touched{};
   touched.reserve(preview.diffs.size());
-  for (const auto& diff : preview.diffs) {
-    if (!key_looks_like_component_dsl_path(diff.key)) continue;
+  for (const auto &diff : preview.diffs) {
+    if (!key_looks_like_component_dsl_path(diff.key))
+      continue;
     touched_component_dsl_diff_t t{};
     t.key = diff.key;
     t.action = diff.action;
     t.before_value = diff.before_value;
     t.after_value = diff.after_value;
     t.raw_path = trim_ascii(!diff.after_value.empty() ? diff.after_value
-                                                       : diff.before_value);
+                                                      : diff.before_value);
     if (trim_ascii(t.action) == "removed") {
       t.error =
           "component DSL key was removed; no active revision cutover applied";
@@ -1115,25 +1248,28 @@ struct cutover_receipt_entry_t {
   }
 
   std::sort(touched.begin(), touched.end(),
-            [](const touched_component_dsl_diff_t& a,
-               const touched_component_dsl_diff_t& b) {
-              if (a.key != b.key) return a.key < b.key;
+            [](const touched_component_dsl_diff_t &a,
+               const touched_component_dsl_diff_t &b) {
+              if (a.key != b.key)
+                return a.key < b.key;
               if (a.resolved_norm != b.resolved_norm) {
                 return a.resolved_norm < b.resolved_norm;
               }
               return a.raw_path < b.raw_path;
             });
-  touched.erase(
-      std::unique(touched.begin(), touched.end(),
-                  [](const touched_component_dsl_diff_t& a,
-                     const touched_component_dsl_diff_t& b) {
-                    return a.key == b.key && a.resolved_norm == b.resolved_norm &&
-                           a.action == b.action && a.raw_path == b.raw_path;
-                  }),
-      touched.end());
+  touched.erase(std::unique(touched.begin(), touched.end(),
+                            [](const touched_component_dsl_diff_t &a,
+                               const touched_component_dsl_diff_t &b) {
+                              return a.key == b.key &&
+                                     a.resolved_norm == b.resolved_norm &&
+                                     a.action == b.action &&
+                                     a.raw_path == b.raw_path;
+                            }),
+                touched.end());
 
-  const std::string base_payload =
-      preview.proposed_text.empty() ? preview.current_text : preview.proposed_text;
+  const std::string base_payload = preview.proposed_text.empty()
+                                       ? preview.current_text
+                                       : preview.proposed_text;
   const std::string founding_revision_id =
       "cfgrev." + hex_u64(fnv1a64(base_payload));
   const std::uint64_t generated_at_ms = now_ms_utc();
@@ -1144,17 +1280,19 @@ struct cutover_receipt_entry_t {
   const std::filesystem::path store_root =
       configured_hashimyei_store_root(global_config_path);
   const std::filesystem::path catalog_path =
-      store_root.empty() ? std::filesystem::path{}
-                         : configured_hashimyei_catalog_path(global_config_path);
+      store_root.empty()
+          ? std::filesystem::path{}
+          : configured_hashimyei_catalog_path(global_config_path);
   std::string catalog_error{};
   if (!touched.empty()) {
     if (store_root.empty()) {
-      catalog_error = "missing GENERAL.runtime_root in " +
-                      std::string(global_config_path.empty()
-                                      ? kDefaultGlobalConfigPath
-                                      : global_config_path);
+      catalog_error =
+          "missing GENERAL.runtime_root in " +
+          std::string(global_config_path.empty() ? kDefaultGlobalConfigPath
+                                                 : global_config_path);
     } else if (catalog_path.empty()) {
-      catalog_error = "cannot derive hashimyei catalog path from GENERAL.runtime_root";
+      catalog_error =
+          "cannot derive hashimyei catalog path from GENERAL.runtime_root";
     }
   }
   std::size_t matched_components_count = 0;
@@ -1185,15 +1323,16 @@ struct cutover_receipt_entry_t {
         catalog_error = "catalog list_components failed: " + catalog_error;
       } else {
         latest_component_id_by_pointer.reserve(components.size());
-        for (const auto& component : components) {
+        for (const auto &component : components) {
           const std::string contract_hash =
               cuwacunu::hero::hashimyei::contract_hash_from_identity(
                   component.manifest.contract_identity);
-          const std::string pointer_key =
-              component.manifest.canonical_path + "|" + component.manifest.family +
-              "|" + contract_hash;
+          const std::string pointer_key = component.manifest.canonical_path +
+                                          "|" + component.manifest.family +
+                                          "|" + contract_hash;
           if (latest_component_id_by_pointer.count(pointer_key) == 0) {
-            latest_component_id_by_pointer[pointer_key] = component.component_id;
+            latest_component_id_by_pointer[pointer_key] =
+                component.component_id;
           }
         }
       }
@@ -1202,7 +1341,7 @@ struct cutover_receipt_entry_t {
 
   std::unordered_set<std::string> emitted_revision_dedup{};
   std::unordered_set<std::string> processed_component_pointer_keys{};
-  for (const auto& t : touched) {
+  for (const auto &t : touched) {
     if (!t.error.empty()) {
       receipts.push_back(cutover_receipt_entry_t{
           .component_dsl_key = t.key,
@@ -1234,10 +1373,11 @@ struct cutover_receipt_entry_t {
         std::filesystem::path(t.resolved_norm).filename().string();
 
     auto component_dsl_source_key =
-        [&](const cuwacunu::hero::hashimyei::component_state_t& component)
-            -> const std::string& {
+        [&](const cuwacunu::hero::hashimyei::component_state_t &component)
+        -> const std::string & {
       auto it = component_dsl_norm_cache.find(component.component_id);
-      if (it != component_dsl_norm_cache.end()) return it->second;
+      if (it != component_dsl_norm_cache.end())
+        return it->second;
       const std::string raw_source =
           trim_ascii(component.manifest.founding_dsl_source_path);
       std::string normalized{};
@@ -1256,70 +1396,76 @@ struct cutover_receipt_entry_t {
     };
 
     auto component_matches_target_dsl =
-        [&](const cuwacunu::hero::hashimyei::component_state_t& component) {
-      const std::string& source_key = component_dsl_source_key(component);
-      if (source_key.empty()) return false;
-      if (source_key == t.resolved_norm) return true;
-      if (!target_filename.empty() && source_key == target_filename) {
-        return target_family.empty() ||
-               component.manifest.family == target_family;
-      }
-      return false;
-    };
+        [&](const cuwacunu::hero::hashimyei::component_state_t &component) {
+          const std::string &source_key = component_dsl_source_key(component);
+          if (source_key.empty())
+            return false;
+          if (source_key == t.resolved_norm)
+            return true;
+          if (!target_filename.empty() && source_key == target_filename) {
+            return target_family.empty() ||
+                   component.manifest.family == target_family;
+          }
+          return false;
+        };
 
-    auto is_active_component = [&](const cuwacunu::hero::hashimyei::component_state_t&
-                                       component) {
-      const std::string contract_hash =
-          cuwacunu::hero::hashimyei::contract_hash_from_identity(
-              component.manifest.contract_identity);
-      const std::string pointer_key =
-          component.manifest.canonical_path + "|" + component.manifest.family +
-          "|" + contract_hash;
-      const auto cache_it = active_hash_cache_by_pointer.find(pointer_key);
-      if (cache_it != active_hash_cache_by_pointer.end()) {
-        if (!cache_it->second.has_value()) {
-          const auto latest_it = latest_component_id_by_pointer.find(pointer_key);
+    auto is_active_component =
+        [&](const cuwacunu::hero::hashimyei::component_state_t &component) {
+          const std::string contract_hash =
+              cuwacunu::hero::hashimyei::contract_hash_from_identity(
+                  component.manifest.contract_identity);
+          const std::string pointer_key = component.manifest.canonical_path +
+                                          "|" + component.manifest.family +
+                                          "|" + contract_hash;
+          const auto cache_it = active_hash_cache_by_pointer.find(pointer_key);
+          if (cache_it != active_hash_cache_by_pointer.end()) {
+            if (!cache_it->second.has_value()) {
+              const auto latest_it =
+                  latest_component_id_by_pointer.find(pointer_key);
+              return latest_it != latest_component_id_by_pointer.end() &&
+                     latest_it->second == component.component_id;
+            }
+            return *cache_it->second ==
+                   component.manifest.hashimyei_identity.name;
+          }
+
+          std::string active_hash{};
+          std::string active_error{};
+          if (catalog.resolve_active_hashimyei(
+                  component.manifest.canonical_path, component.manifest.family,
+                  contract_hash, &active_hash, &active_error)) {
+            active_hash_cache_by_pointer.emplace(pointer_key, active_hash);
+            return active_hash == component.manifest.hashimyei_identity.name;
+          }
+
+          active_hash_cache_by_pointer.emplace(pointer_key, std::nullopt);
+          const auto latest_it =
+              latest_component_id_by_pointer.find(pointer_key);
           return latest_it != latest_component_id_by_pointer.end() &&
                  latest_it->second == component.component_id;
-        }
-        return *cache_it->second == component.manifest.hashimyei_identity.name;
-      }
-
-      std::string active_hash{};
-      std::string active_error{};
-      if (catalog.resolve_active_hashimyei(component.manifest.canonical_path,
-                                           component.manifest.family,
-                                           contract_hash,
-                                           &active_hash,
-                                           &active_error)) {
-        active_hash_cache_by_pointer.emplace(pointer_key, active_hash);
-        return active_hash == component.manifest.hashimyei_identity.name;
-      }
-
-      active_hash_cache_by_pointer.emplace(pointer_key, std::nullopt);
-      const auto latest_it = latest_component_id_by_pointer.find(pointer_key);
-      return latest_it != latest_component_id_by_pointer.end() &&
-             latest_it->second == component.component_id;
-    };
+        };
 
     std::vector<cuwacunu::hero::hashimyei::component_state_t> matched{};
     matched.reserve(8);
     std::unordered_set<std::string> seen_pointer{};
-    for (const auto& component : components) {
-      if (!component_matches_target_dsl(component)) continue;
-      if (!is_active_component(component)) continue;
+    for (const auto &component : components) {
+      if (!component_matches_target_dsl(component))
+        continue;
+      if (!is_active_component(component))
+        continue;
       const std::string contract_hash =
           cuwacunu::hero::hashimyei::contract_hash_from_identity(
               component.manifest.contract_identity);
-      const std::string pointer_key =
-          component.manifest.canonical_path + "|" + component.manifest.family +
-          "|" + contract_hash;
-      if (seen_pointer.insert(pointer_key).second) matched.push_back(component);
+      const std::string pointer_key = component.manifest.canonical_path + "|" +
+                                      component.manifest.family + "|" +
+                                      contract_hash;
+      if (seen_pointer.insert(pointer_key).second)
+        matched.push_back(component);
     }
 
     std::sort(matched.begin(), matched.end(),
-              [](const cuwacunu::hero::hashimyei::component_state_t& a,
-                 const cuwacunu::hero::hashimyei::component_state_t& b) {
+              [](const cuwacunu::hero::hashimyei::component_state_t &a,
+                 const cuwacunu::hero::hashimyei::component_state_t &b) {
                 if (a.manifest.canonical_path != b.manifest.canonical_path) {
                   return a.manifest.canonical_path < b.manifest.canonical_path;
                 }
@@ -1344,7 +1490,7 @@ struct cutover_receipt_entry_t {
     }
 
     matched_components_count += matched.size();
-    for (const auto& active_component : matched) {
+    for (const auto &active_component : matched) {
       cutover_receipt_entry_t row{};
       row.component_dsl_key = t.key;
       row.action = t.action;
@@ -1359,20 +1505,20 @@ struct cutover_receipt_entry_t {
                   !active_component.manifest.family.empty()
               ? active_component.manifest.family
               : active_component.manifest.canonical_path;
-      const std::string pointer_key = pointer_canonical + "|" +
-                                      active_component.manifest.family + "|" +
-                                      cuwacunu::hero::hashimyei::contract_hash_from_identity(
-                                          active_component.manifest.contract_identity);
+      const std::string pointer_key =
+          pointer_canonical + "|" + active_component.manifest.family + "|" +
+          cuwacunu::hero::hashimyei::contract_hash_from_identity(
+              active_component.manifest.contract_identity);
       if (!processed_component_pointer_keys.insert(pointer_key).second) {
         row.status = "noop";
-        row.message =
-            "component pointer already processed in this save; duplicate cutover suppressed";
+        row.message = "component pointer already processed in this save; "
+                      "duplicate cutover suppressed";
         receipts.push_back(std::move(row));
         ++noop_count;
         continue;
       }
 
-      const std::string& old_dsl_key =
+      const std::string &old_dsl_key =
           component_dsl_source_key(active_component);
       const bool dsl_path_changed =
           old_dsl_key != t.resolved_norm && old_dsl_key != target_filename;
@@ -1392,7 +1538,8 @@ struct cutover_receipt_entry_t {
       cuwacunu::hero::hashimyei::component_manifest_t next_manifest =
           active_component.manifest;
       next_manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
-      next_manifest.parent_identity = active_component.manifest.hashimyei_identity;
+      next_manifest.parent_identity =
+          active_component.manifest.hashimyei_identity;
       next_manifest.revision_reason = "dsl_change";
       next_manifest.founding_revision_id = founding_revision_id;
       next_manifest.founding_dsl_source_path =
@@ -1402,13 +1549,14 @@ struct cutover_receipt_entry_t {
       next_manifest.replaced_by.clear();
       next_manifest.updated_at_ms = deterministic_cutover_ts_ms(
           founding_revision_id + "|" +
-          active_component.manifest.canonical_path + "|" +
-          t.dsl_sha256_hex + "|" + t.resolved_norm);
+          active_component.manifest.canonical_path + "|" + t.dsl_sha256_hex +
+          "|" + t.resolved_norm);
       next_manifest.created_at_ms = next_manifest.updated_at_ms;
 
       if (!active_component.manifest.hashimyei_identity.name.empty()) {
         std::string next_hashimyei = synthesize_hashimyei_from_sha(
-            t.dsl_sha256_hex, active_component.manifest.hashimyei_identity.name);
+            t.dsl_sha256_hex,
+            active_component.manifest.hashimyei_identity.name);
         if (next_hashimyei ==
             active_component.manifest.hashimyei_identity.name) {
           next_hashimyei =
@@ -1418,8 +1566,8 @@ struct cutover_receipt_entry_t {
         }
         next_manifest.hashimyei_identity.name = next_hashimyei;
         std::uint64_t parsed_ordinal = 0;
-        if (!cuwacunu::hashimyei::parse_hex_hash_name_ordinal(next_hashimyei,
-                                                               &parsed_ordinal)) {
+        if (!cuwacunu::hashimyei::parse_hex_hash_name_ordinal(
+                next_hashimyei, &parsed_ordinal)) {
           row.status = "error";
           row.new_hashimyei = next_hashimyei;
           row.message = "generated hashimyei is not a valid 0x... ordinal";
@@ -1442,8 +1590,8 @@ struct cutover_receipt_entry_t {
       const std::string dedup_seed =
           next_manifest.canonical_path + "|" + next_manifest.family + "|" +
           next_manifest.founding_dsl_source_sha256_hex + "|" +
-          next_manifest.founding_dsl_source_path +
-          "|" + next_manifest.founding_revision_id;
+          next_manifest.founding_dsl_source_path + "|" +
+          next_manifest.founding_revision_id;
       if (!emitted_revision_dedup.insert(dedup_seed).second) {
         row.status = "noop";
         row.new_hashimyei = next_manifest.hashimyei_identity.name;
@@ -1473,8 +1621,8 @@ struct cutover_receipt_entry_t {
       std::string register_error;
       std::string component_id;
       bool inserted = false;
-      if (!catalog.register_component_manifest(next_manifest, &component_id, &inserted,
-                                               &register_error)) {
+      if (!catalog.register_component_manifest(next_manifest, &component_id,
+                                               &inserted, &register_error)) {
         row.status = "error";
         row.new_hashimyei = next_manifest.hashimyei_identity.name;
         row.message = register_error;
@@ -1487,8 +1635,10 @@ struct cutover_receipt_entry_t {
       row.component_id = component_id;
       row.inserted = inserted;
       row.status = inserted ? "applied" : "noop";
-      row.message = inserted ? "registered new immutable revision and switched active pointer"
-                             : "manifest already present; pointer unchanged";
+      row.message =
+          inserted
+              ? "registered new immutable revision and switched active pointer"
+              : "manifest already present; pointer unchanged";
       receipts.push_back(std::move(row));
       if (inserted) {
         ++applied_count;
@@ -1507,8 +1657,7 @@ struct cutover_receipt_entry_t {
 
   std::ostringstream out;
   out << "{"
-      << "\"founding_revision_id\":"
-      << json_quote(founding_revision_id) << ","
+      << "\"founding_revision_id\":" << json_quote(founding_revision_id) << ","
       << "\"generated_at_ms\":" << generated_at_ms << ","
       << "\"cutover_triggered\":" << bool_json(!touched.empty()) << ","
       << "\"path\":" << json_quote(config_path) << ","
@@ -1517,15 +1666,18 @@ struct cutover_receipt_entry_t {
       << "\"catalog_error\":" << json_quote(catalog_error) << ","
       << "\"touched_component_dsl_keys\":[";
   for (std::size_t i = 0; i < touched.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << json_quote(touched[i].key);
   }
   out << "],\"matched_component_count\":" << matched_components_count
-      << ",\"applied_count\":" << applied_count << ",\"noop_count\":"
-      << noop_count << ",\"skipped_count\":" << skipped_count
+      << ",\"applied_count\":" << applied_count
+      << ",\"noop_count\":" << noop_count
+      << ",\"skipped_count\":" << skipped_count
       << ",\"error_count\":" << error_count << ",\"receipts\":[";
   for (std::size_t i = 0; i < receipts.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << "{"
         << "\"component_dsl_key\":" << json_quote(receipts[i].component_dsl_key)
         << ",\"action\":" << json_quote(receipts[i].action)
@@ -1538,8 +1690,8 @@ struct cutover_receipt_entry_t {
         << ",\"status\":" << json_quote(receipts[i].status)
         << ",\"inserted\":" << bool_json(receipts[i].inserted)
         << ",\"message\":" << json_quote(receipts[i].message)
-        << ",\"founding_revision_id\":"
-        << json_quote(founding_revision_id) << "}";
+        << ",\"founding_revision_id\":" << json_quote(founding_revision_id)
+        << "}";
   }
   out << "]}";
   return out.str();
@@ -1547,7 +1699,8 @@ struct cutover_receipt_entry_t {
 
 [[nodiscard]] std::string detect_error_tag(std::string_view message) {
   const std::size_t colon = message.find(':');
-  if (colon == std::string_view::npos || colon == 0) return {};
+  if (colon == std::string_view::npos || colon == 0)
+    return {};
   const std::string_view candidate = message.substr(0, colon);
   for (const char c : candidate) {
     if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
@@ -1555,14 +1708,14 @@ struct cutover_receipt_entry_t {
     }
     return {};
   }
-  if (candidate.find("E_") != 0) return {};
+  if (candidate.find("E_") != 0)
+    return {};
   return std::string(candidate);
 }
 
-[[nodiscard]] std::string make_text_content_result_json(std::string_view text,
-                                                        bool is_error,
-                                                        int error_code,
-                                                        std::string_view error_tag) {
+[[nodiscard]] std::string
+make_text_content_result_json(std::string_view text, bool is_error,
+                              int error_code, std::string_view error_tag) {
   std::ostringstream out;
   out << "{\"content\":[{\"type\":\"text\",\"text\":" << json_quote(text)
       << "}],\"isError\":" << bool_json(is_error);
@@ -1576,19 +1729,19 @@ struct cutover_receipt_entry_t {
   return out.str();
 }
 
-[[nodiscard]] std::string make_tool_success_result_json(
-    std::string_view tool_name, std::string_view structured_content_json) {
+[[nodiscard]] std::string
+make_tool_success_result_json(std::string_view tool_name,
+                              std::string_view structured_content_json) {
   std::ostringstream out;
   out << "{\"content\":[{\"type\":\"text\",\"text\":"
-      << json_quote(std::string("tool ") + std::string(tool_name) +
-                    " executed")
+      << json_quote(std::string("tool ") + std::string(tool_name) + " executed")
       << "}],\"structuredContent\":" << structured_content_json
       << ",\"isError\":false}";
   return out.str();
 }
 
-[[nodiscard]] std::string build_status_result(
-    const cuwacunu::hero::mcp::hero_config_store_t& store) {
+[[nodiscard]] std::string
+build_status_result(const cuwacunu::hero::mcp::hero_config_store_t &store) {
   const auto errors = store.validate();
   std::ostringstream out;
   out << "{";
@@ -1612,7 +1765,8 @@ struct cutover_receipt_entry_t {
       << json_quote(store.get_or_default("optim_backup_max_entries")) << ",";
   out << "\"errors\":[";
   for (std::size_t i = 0; i < errors.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << json_quote(errors[i]);
   }
   out << "]}";
@@ -1620,7 +1774,7 @@ struct cutover_receipt_entry_t {
 }
 
 [[nodiscard]] std::string build_save_preview_result(
-    const cuwacunu::hero::mcp::hero_config_store_t::save_preview_t& preview,
+    const cuwacunu::hero::mcp::hero_config_store_t::save_preview_t &preview,
     bool include_text) {
   const bool format_only = preview.text_changed && preview.diffs.empty();
   std::ostringstream out;
@@ -1632,8 +1786,9 @@ struct cutover_receipt_entry_t {
   out << "\"diff_count\":" << preview.diff_count << ",";
   out << "\"diffs\":[";
   for (std::size_t i = 0; i < preview.diffs.size(); ++i) {
-    const auto& d = preview.diffs[i];
-    if (i != 0) out << ",";
+    const auto &d = preview.diffs[i];
+    if (i != 0)
+      out << ",";
     out << "{"
         << "\"key\":" << json_quote(d.key) << ","
         << "\"action\":" << json_quote(d.action) << ","
@@ -1654,16 +1809,17 @@ struct cutover_receipt_entry_t {
 }
 
 constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
-#define HERO_CONFIG_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) \
+#define HERO_CONFIG_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER)        \
   hero_config_tool_descriptor_t{NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER},
 #include "hero/config_hero/hero_config_tools.def"
 #undef HERO_CONFIG_TOOL
 };
 
-[[nodiscard]] const hero_config_tool_descriptor_t* find_tool_descriptor(
-    std::string_view name) {
-  for (const auto& descriptor : kHeroConfigTools) {
-    if (descriptor.name == name) return &descriptor;
+[[nodiscard]] const hero_config_tool_descriptor_t *
+find_tool_descriptor(std::string_view name) {
+  for (const auto &descriptor : kHeroConfigTools) {
+    if (descriptor.name == name)
+      return &descriptor;
   }
   return nullptr;
 }
@@ -1671,11 +1827,12 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
 [[nodiscard]] bool hero_config_tool_is_read_only(std::string_view name) {
   return name == "hero.config.status" || name == "hero.config.schema" ||
          name == "hero.config.show" || name == "hero.config.get" ||
-         name == "hero.config.default.read" || name == "hero.config.default.list" ||
+         name == "hero.config.default.read" ||
+         name == "hero.config.default.list" ||
+         name == "hero.config.temp.read" || name == "hero.config.temp.list" ||
          name == "hero.config.objective.read" ||
          name == "hero.config.objective.list" ||
-         name == "hero.config.optim.read" ||
-         name == "hero.config.optim.list" ||
+         name == "hero.config.optim.read" || name == "hero.config.optim.list" ||
          name == "hero.config.optim.backups" ||
          name == "hero.config.validate" || name == "hero.config.diff" ||
          name == "hero.config.dry_run" || name == "hero.config.backups";
@@ -1683,18 +1840,17 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
 
 [[nodiscard]] bool hero_config_tool_is_destructive(std::string_view name) {
   return name == "hero.config.default.delete" ||
+         name == "hero.config.temp.delete" ||
          name == "hero.config.objective.delete" ||
          name == "hero.config.optim.delete" ||
          name == "hero.config.optim.rollback" ||
-         name == "hero.config.rollback" ||
-         name == "hero.config.dev_nuke_reset";
+         name == "hero.config.rollback" || name == "hero.config.dev_nuke_reset";
 }
 
-[[nodiscard]] std::string hero_config_tool_annotations_json(
-    std::string_view name) {
+[[nodiscard]] std::string
+hero_config_tool_annotations_json(std::string_view name) {
   std::ostringstream out;
-  out << "{\"readOnlyHint\":"
-      << bool_json(hero_config_tool_is_read_only(name))
+  out << "{\"readOnlyHint\":" << bool_json(hero_config_tool_is_read_only(name))
       << ",\"destructiveHint\":"
       << bool_json(hero_config_tool_is_destructive(name))
       << ",\"openWorldHint\":false}";
@@ -1705,8 +1861,9 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   std::ostringstream out;
   out << "{\"tools\":[";
   for (std::size_t i = 0; i < std::size(kHeroConfigTools); ++i) {
-    const auto& tool = kHeroConfigTools[i];
-    if (i != 0) out << ",";
+    const auto &tool = kHeroConfigTools[i];
+    if (i != 0)
+      out << ",";
     out << "{"
         << "\"name\":" << json_quote(tool.name) << ","
         << "\"description\":" << json_quote(tool.description) << ","
@@ -1720,42 +1877,44 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
 
 [[nodiscard]] std::string build_tools_list_human_text_impl() {
   std::ostringstream out;
-  for (const auto& tool : kHeroConfigTools) {
+  for (const auto &tool : kHeroConfigTools) {
     out << tool.name << "\t" << tool.description << "\n";
   }
   return out.str();
 }
 
-[[nodiscard]] std::string path_vector_json(
-    const std::vector<std::filesystem::path>& paths) {
+[[nodiscard]] std::string
+path_vector_json(const std::vector<std::filesystem::path> &paths) {
   std::ostringstream out;
   out << "[";
   for (std::size_t i = 0; i < paths.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << json_quote(paths[i].string());
   }
   out << "]";
   return out.str();
 }
 
-[[nodiscard]] bool handle_tool_status(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_status(std::string_view tool_name, const std::string &request_json,
+                   cuwacunu::hero::mcp::hero_config_store_t *store,
+                   std::string *out_result_json, int *out_error_code,
+                   std::string *out_error_message) {
   (void)tool_name;
   (void)request_json;
   (void)out_error_code;
   (void)out_error_message;
-  if (out_result_json) *out_result_json = build_status_result(*store);
+  if (out_result_json)
+    *out_result_json = build_status_result(*store);
   return true;
 }
 
-[[nodiscard]] bool handle_tool_schema(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_schema(std::string_view tool_name, const std::string &request_json,
+                   cuwacunu::hero::mcp::hero_config_store_t *store,
+                   std::string *out_result_json, int *out_error_code,
+                   std::string *out_error_message) {
   (void)tool_name;
   (void)request_json;
   (void)store;
@@ -1765,8 +1924,9 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   out << "{\"keys\":[";
   for (std::size_t i = 0;
        i < cuwacunu::hero::config::kRuntimeKeyDescriptors.size(); ++i) {
-    const auto& d = cuwacunu::hero::config::kRuntimeKeyDescriptors[i];
-    if (i != 0) out << ",";
+    const auto &d = cuwacunu::hero::config::kRuntimeKeyDescriptors[i];
+    if (i != 0)
+      out << ",";
     out << "{"
         << "\"key\":" << json_quote(d.key) << ","
         << "\"type\":" << json_quote(d.type) << ","
@@ -1776,15 +1936,16 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
         << "\"allowed\":" << json_quote(d.allowed) << "}";
   }
   out << "]}";
-  if (out_result_json) *out_result_json = out.str();
+  if (out_result_json)
+    *out_result_json = out.str();
   return true;
 }
 
-[[nodiscard]] bool handle_tool_show(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_show(std::string_view tool_name, const std::string &request_json,
+                 cuwacunu::hero::mcp::hero_config_store_t *store,
+                 std::string *out_result_json, int *out_error_code,
+                 std::string *out_error_message) {
   (void)tool_name;
   (void)request_json;
   (void)out_error_code;
@@ -1793,7 +1954,8 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   std::ostringstream out;
   out << "{\"entries\":[";
   for (std::size_t i = 0; i < entries.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << "{"
         << "\"key\":" << json_quote(entries[i].key) << ","
         << "\"domain\":" << json_quote(entries[i].declared_domain) << ","
@@ -1801,18 +1963,20 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
         << "\"value\":" << json_quote(entries[i].value) << "}";
   }
   out << "]}";
-  if (out_result_json) *out_result_json = out.str();
+  if (out_result_json)
+    *out_result_json = out.str();
   return true;
 }
 
-[[nodiscard]] bool handle_tool_get(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_get(std::string_view tool_name, const std::string &request_json,
+                cuwacunu::hero::mcp::hero_config_store_t *store,
+                std::string *out_result_json, int *out_error_code,
+                std::string *out_error_message) {
   std::string key;
   if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
-    if (out_error_code) *out_error_code = -32602;
+    if (out_error_code)
+      *out_error_code = -32602;
     if (out_error_message) {
       *out_error_message = std::string(tool_name) + " requires argument key";
     }
@@ -1820,33 +1984,37 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   }
   const auto value = store->get_value(key);
   if (!value.has_value()) {
-    if (out_error_code) *out_error_code = -32602;
-    if (out_error_message) *out_error_message = "key not found: " + key;
+    if (out_error_code)
+      *out_error_code = -32602;
+    if (out_error_message)
+      *out_error_message = "key not found: " + key;
     return false;
   }
   if (out_result_json) {
-    *out_result_json = "{\"key\":" + json_quote(key) + ",\"value\":" +
-                       json_quote(*value) + "}";
+    *out_result_json = "{\"key\":" + json_quote(key) +
+                       ",\"value\":" + json_quote(*value) + "}";
   }
   return true;
 }
 
-[[nodiscard]] bool handle_tool_set(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_set(std::string_view tool_name, const std::string &request_json,
+                cuwacunu::hero::mcp::hero_config_store_t *store,
+                std::string *out_result_json, int *out_error_code,
+                std::string *out_error_message) {
   std::string key;
   std::string value;
   if (!extract_json_string_field(request_json, "key", &key) || key.empty()) {
-    if (out_error_code) *out_error_code = -32602;
+    if (out_error_code)
+      *out_error_code = -32602;
     if (out_error_message) {
       *out_error_message = std::string(tool_name) + " requires argument key";
     }
     return false;
   }
   if (!extract_json_string_field(request_json, "value", &value)) {
-    if (out_error_code) *out_error_code = -32602;
+    if (out_error_code)
+      *out_error_code = -32602;
     if (out_error_message) {
       *out_error_message = std::string(tool_name) + " requires argument value";
     }
@@ -1854,8 +2022,10 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   }
   std::string err;
   if (!store->set_value(key, value, &err)) {
-    if (out_error_code) *out_error_code = -32602;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = -32602;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (out_result_json) {
@@ -1865,11 +2035,12 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_validate(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_validate(std::string_view tool_name,
+                     const std::string &request_json,
+                     cuwacunu::hero::mcp::hero_config_store_t *store,
+                     std::string *out_result_json, int *out_error_code,
+                     std::string *out_error_message) {
   (void)tool_name;
   (void)request_json;
   (void)out_error_code;
@@ -1878,24 +2049,27 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   std::ostringstream out;
   out << "{\"valid\":" << bool_json(errors.empty()) << ",\"errors\":[";
   for (std::size_t i = 0; i < errors.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << json_quote(errors[i]);
   }
   out << "]}";
-  if (out_result_json) *out_result_json = out.str();
+  if (out_result_json)
+    *out_result_json = out.str();
   return true;
 }
 
-[[nodiscard]] bool handle_tool_diff(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_diff(std::string_view tool_name, const std::string &request_json,
+                 cuwacunu::hero::mcp::hero_config_store_t *store,
+                 std::string *out_result_json, int *out_error_code,
+                 std::string *out_error_message) {
   bool include_text = false;
   bool parsed_include_text = false;
   if (extract_json_raw_field(request_json, "include_text", nullptr)) {
     if (!extract_json_bool_field(request_json, "include_text", &include_text)) {
-      if (out_error_code) *out_error_code = -32602;
+      if (out_error_code)
+        *out_error_code = -32602;
       if (out_error_message) {
         *out_error_message =
             std::string(tool_name) + " include_text must be boolean";
@@ -1913,8 +2087,10 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   cuwacunu::hero::mcp::hero_config_store_t::save_preview_t preview;
   std::string err;
   if (!store->preview_save(&preview, &err)) {
-    if (out_error_code) *out_error_code = -32603;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = -32603;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (out_result_json) {
@@ -1923,44 +2099,49 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_backups(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_backups(std::string_view tool_name, const std::string &request_json,
+                    cuwacunu::hero::mcp::hero_config_store_t *store,
+                    std::string *out_result_json, int *out_error_code,
+                    std::string *out_error_message) {
   (void)tool_name;
   (void)request_json;
-  std::vector<cuwacunu::hero::mcp::hero_config_store_t::backup_entry_t>
-      backups;
+  std::vector<cuwacunu::hero::mcp::hero_config_store_t::backup_entry_t> backups;
   std::string err;
   if (!store->list_backups(&backups, &err)) {
-    if (out_error_code) *out_error_code = -32603;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = -32603;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   std::ostringstream out;
   out << "{\"count\":" << backups.size() << ",\"backups\":[";
   for (std::size_t i = 0; i < backups.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << "{"
         << "\"index\":" << i << ","
         << "\"filename\":" << json_quote(backups[i].filename) << ","
         << "\"path\":" << json_quote(backups[i].path) << "}";
   }
   out << "]}";
-  if (out_result_json) *out_result_json = out.str();
+  if (out_result_json)
+    *out_result_json = out.str();
   return true;
 }
 
-[[nodiscard]] bool handle_tool_rollback(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_rollback(std::string_view tool_name,
+                     const std::string &request_json,
+                     cuwacunu::hero::mcp::hero_config_store_t *store,
+                     std::string *out_result_json, int *out_error_code,
+                     std::string *out_error_message) {
   std::string selector;
   if (extract_json_raw_field(request_json, "backup", nullptr)) {
     if (!extract_json_string_field(request_json, "backup", &selector)) {
-      if (out_error_code) *out_error_code = -32602;
+      if (out_error_code)
+        *out_error_code = -32602;
       if (out_error_message) {
         *out_error_message = std::string(tool_name) + " backup must be string";
       }
@@ -1971,97 +2152,115 @@ constexpr hero_config_tool_descriptor_t kHeroConfigTools[] = {
   std::string selected;
   std::string err;
   if (!enforce_runtime_config_write_policy(*store, &err)) {
-    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (!store->rollback_to_backup(selector, &selected, &err)) {
-    if (out_error_code) *out_error_code = -32603;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = -32603;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (out_result_json) {
-    *out_result_json = "{\"rolled_back\":true,\"path\":" +
-                       json_quote(store->config_path()) +
-                       ",\"selected_backup\":" + json_quote(selected) + "}";
+    *out_result_json =
+        "{\"rolled_back\":true,\"path\":" + json_quote(store->config_path()) +
+        ",\"selected_backup\":" + json_quote(selected) + "}";
   }
   return true;
 }
 
-[[nodiscard]] bool handle_tool_save(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_save(std::string_view tool_name, const std::string &request_json,
+                 cuwacunu::hero::mcp::hero_config_store_t *store,
+                 std::string *out_result_json, int *out_error_code,
+                 std::string *out_error_message) {
   (void)tool_name;
   (void)request_json;
   cuwacunu::hero::mcp::hero_config_store_t::save_preview_t preview;
   std::string err;
   if (!store->preview_save(&preview, &err)) {
-    if (out_error_code) *out_error_code = -32603;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = -32603;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (!enforce_runtime_config_write_policy(*store, &err)) {
-    if (out_error_code) *out_error_code = kConfigWritePolicyErrorCode;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = kConfigWritePolicyErrorCode;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (!store->save(&err)) {
-    if (out_error_code) *out_error_code = -32603;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = -32603;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (out_result_json) {
-    *out_result_json = "{\"saved\":true,\"path\":" +
-                       json_quote(store->config_path()) + ",\"cutover\":" +
-                       build_cutover_receipt_json_impl(
-                           preview, store->config_path(),
-                           store->global_config_path()) +
-                       "}";
+    *out_result_json =
+        "{\"saved\":true,\"path\":" + json_quote(store->config_path()) +
+        ",\"cutover\":" +
+        build_cutover_receipt_json_impl(preview, store->config_path(),
+                                        store->global_config_path()) +
+        "}";
   }
   return true;
 }
 
-[[nodiscard]] bool handle_tool_reload(
-    std::string_view tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store,
-    std::string* out_result_json, int* out_error_code,
-    std::string* out_error_message) {
+[[nodiscard]] bool
+handle_tool_reload(std::string_view tool_name, const std::string &request_json,
+                   cuwacunu::hero::mcp::hero_config_store_t *store,
+                   std::string *out_result_json, int *out_error_code,
+                   std::string *out_error_message) {
   (void)tool_name;
   (void)request_json;
   std::string err;
   if (!store->load(&err)) {
-    if (out_error_code) *out_error_code = -32603;
-    if (out_error_message) *out_error_message = err;
+    if (out_error_code)
+      *out_error_code = -32603;
+    if (out_error_message)
+      *out_error_message = err;
     return false;
   }
   if (out_result_json) {
-    *out_result_json = "{\"reloaded\":true,\"path\":" +
-                       json_quote(store->config_path()) + "}";
+    *out_result_json =
+        "{\"reloaded\":true,\"path\":" + json_quote(store->config_path()) + "}";
   }
   return true;
 }
 
-[[nodiscard]] bool dispatch_tool_jsonrpc(
-    const std::string& tool_name, const std::string& request_json,
-    cuwacunu::hero::mcp::hero_config_store_t* store, std::string* out_result_json,
-    int* out_error_code, std::string* out_error_message) {
-  if (out_error_code) *out_error_code = -32603;
-  if (out_error_message) *out_error_message = "internal error";
+[[nodiscard]] bool
+dispatch_tool_jsonrpc(const std::string &tool_name,
+                      const std::string &request_json,
+                      cuwacunu::hero::mcp::hero_config_store_t *store,
+                      std::string *out_result_json, int *out_error_code,
+                      std::string *out_error_message) {
+  if (out_error_code)
+    *out_error_code = -32603;
+  if (out_error_message)
+    *out_error_message = "internal error";
 
-  const auto* descriptor = find_tool_descriptor(tool_name);
+  const auto *descriptor = find_tool_descriptor(tool_name);
   if (descriptor != nullptr) {
     return descriptor->handler(tool_name, request_json, store, out_result_json,
                                out_error_code, out_error_message);
   }
 
-  if (out_error_code) *out_error_code = -32601;
-  if (out_error_message) *out_error_message = "unknown tool: " + tool_name;
+  if (out_error_code)
+    *out_error_code = -32601;
+  if (out_error_message)
+    *out_error_message = "unknown tool: " + tool_name;
   return false;
 }
 
-}  // namespace cuwacunu::hero::mcp::detail
+} // namespace cuwacunu::hero::mcp::detail
 
 namespace cuwacunu {
 namespace hero {
@@ -2077,26 +2276,31 @@ using namespace detail;
   return build_tools_list_human_text_impl();
 }
 
-bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
-                       hero_config_store_t* store,
-                       std::string* out_tool_result_json,
-                       std::string* out_error_message) {
-  if (out_tool_result_json) out_tool_result_json->clear();
-  if (out_error_message) out_error_message->clear();
+bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
+                       hero_config_store_t *store,
+                       std::string *out_tool_result_json,
+                       std::string *out_error_message) {
+  if (out_tool_result_json)
+    out_tool_result_json->clear();
+  if (out_error_message)
+    out_error_message->clear();
 
   if (!store) {
-    if (out_error_message) *out_error_message = "store is null";
+    if (out_error_message)
+      *out_error_message = "store is null";
     return false;
   }
 
   const std::string trimmed_name = trim_ascii(tool_name);
   if (trimmed_name.empty()) {
-    if (out_error_message) *out_error_message = "tool name is empty";
+    if (out_error_message)
+      *out_error_message = "tool name is empty";
     return false;
   }
 
   arguments_json = trim_ascii(arguments_json);
-  if (arguments_json.empty()) arguments_json = "{}";
+  if (arguments_json.empty())
+    arguments_json = "{}";
   if (arguments_json.front() != '{') {
     if (out_error_message) {
       *out_error_message = "tool arguments must be a JSON object";
@@ -2115,7 +2319,8 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
       *out_tool_result_json = make_text_content_result_json(
           text, true, error_code, detect_error_tag(error_message));
     }
-    if (out_error_message) *out_error_message = error_message;
+    if (out_error_message)
+      *out_error_message = error_message;
     return false;
   }
 
@@ -2126,21 +2331,22 @@ bool execute_tool_json(const std::string& tool_name, std::string arguments_json,
   return true;
 }
 
-void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
+void run_jsonrpc_stdio_loop(hero_config_store_t *store) {
   std::string payload;
   bool shutdown_requested = false;
   while (true) {
-    if (!wait_for_stdio_activity()) break;
+    if (!wait_for_stdio_activity())
+      break;
 
     bool used_content_length = false;
-    if (!read_next_jsonrpc_message(&std::cin, &payload,
-                                   &used_content_length)) {
+    if (!read_next_jsonrpc_message(&std::cin, &payload, &used_content_length)) {
       break;
     }
     g_jsonrpc_use_content_length_framing = used_content_length;
 
     const std::string trimmed = trim_ascii(payload);
-    if (trimmed.empty()) continue;
+    if (trimmed.empty())
+      continue;
 
     std::string method;
     if (!extract_json_string_field(trimmed, "method", &method) ||
@@ -2149,7 +2355,8 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
       continue;
     }
 
-    if (method == "exit") break;
+    if (method == "exit")
+      break;
     if (method.rfind("notifications/", 0) == 0) {
       continue;
     }
@@ -2195,14 +2402,14 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
         }
       }
       emit_jsonrpc_result(
-          id_json, std::string("{\"protocolVersion\":") +
-                       json_quote(protocol_version) +
-                       ",\"capabilities\":{\"tools\":{\"listChanged\":false}},"
-                       "\"serverInfo\":{\"name\":" +
-                       json_quote(kMcpServerName) +
-                       ",\"version\":" + json_quote(kMcpServerVersion) +
-                       "},\"instructions\":" +
-                       json_quote(kMcpInitializeInstructions) + "}");
+          id_json,
+          std::string("{\"protocolVersion\":") + json_quote(protocol_version) +
+              ",\"capabilities\":{\"tools\":{\"listChanged\":false}},"
+              "\"serverInfo\":{\"name\":" +
+              json_quote(kMcpServerName) +
+              ",\"version\":" + json_quote(kMcpServerVersion) +
+              "},\"instructions\":" + json_quote(kMcpInitializeInstructions) +
+              "}");
       continue;
     }
     if (method == "ping") {
@@ -2271,10 +2478,9 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
                                  &error_code, &error_message)) {
         if (method == "tools/call") {
           const std::string text = std::string("tool error: ") + error_message;
-          emit_jsonrpc_result(id_json,
-                              make_text_content_result_json(
-                                  text, true, error_code,
-                                  detect_error_tag(error_message)));
+          emit_jsonrpc_result(id_json, make_text_content_result_json(
+                                           text, true, error_code,
+                                           detect_error_tag(error_message)));
         } else {
           emit_jsonrpc_error(id_json, error_code, error_message);
         }
@@ -2293,6 +2499,6 @@ void run_jsonrpc_stdio_loop(hero_config_store_t* store) {
   }
 }
 
-}  // namespace mcp
-}  // namespace hero
-}  // namespace cuwacunu
+} // namespace mcp
+} // namespace hero
+} // namespace cuwacunu

@@ -17,13 +17,13 @@ $(eval $(call BUILD_OBJ_INC, libcurl, types_data,     types_data,     $(LIBCURL_
 $(eval $(call BUILD_OBJ_INC, libcurl, types_trade,    types_trade,    $(LIBCURL_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, libcurl, types_account,  types_account,  $(LIBCURL_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)))
 
-# Grouped objects for a convenient target
+# Grouped leaf producers for a convenient target
 EXCHANGE := \
-  $(OUTPUT_PATH)/libcurl/types_utils.o \
-  $(OUTPUT_PATH)/libcurl/types_server.o \
-  $(OUTPUT_PATH)/libcurl/types_data.o \
-  $(OUTPUT_PATH)/libcurl/types_trade.o \
-  $(OUTPUT_PATH)/libcurl/types_account.o
+  types_utils \
+  types_server \
+  types_data \
+  types_trade \
+  types_account
 
 # -----------------------------------------------------------------
 # Aggregate Targets

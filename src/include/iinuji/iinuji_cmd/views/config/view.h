@@ -42,13 +42,15 @@ config_family_emphasis(ConfigFileFamily family) {
     return cuwacunu::iinuji::text_line_emphasis_t::Debug;
   case ConfigFileFamily::Optim:
     return cuwacunu::iinuji::text_line_emphasis_t::MutedWarning;
+  case ConfigFileFamily::Temp:
+    return cuwacunu::iinuji::text_line_emphasis_t::Info;
   }
   return cuwacunu::iinuji::text_line_emphasis_t::Info;
 }
 
 inline cuwacunu::iinuji::text_line_emphasis_t
 config_file_row_emphasis(const ConfigFileEntry &file, bool selected) {
-  if (!file.ok) {
+  if (config_file_load_failed(file)) {
     return selected ? cuwacunu::iinuji::text_line_emphasis_t::Fatal
                     : cuwacunu::iinuji::text_line_emphasis_t::Error;
   }
@@ -70,16 +72,18 @@ config_file_type_emphasis(const ConfigFileEntry &file) {
 
 inline cuwacunu::iinuji::text_line_emphasis_t
 config_file_path_emphasis(const ConfigFileEntry &file) {
-  return file.ok ? cuwacunu::iinuji::text_line_emphasis_t::Info
-                 : cuwacunu::iinuji::text_line_emphasis_t::MutedError;
+  return config_file_load_failed(file)
+             ? cuwacunu::iinuji::text_line_emphasis_t::MutedError
+             : cuwacunu::iinuji::text_line_emphasis_t::Info;
 }
 
 inline cuwacunu::iinuji::text_line_emphasis_t
 config_file_prefix_emphasis(const ConfigFileEntry &file, bool selected) {
   if (selected)
     return cuwacunu::iinuji::text_line_emphasis_t::Accent;
-  return file.ok ? cuwacunu::iinuji::text_line_emphasis_t::Info
-                 : cuwacunu::iinuji::text_line_emphasis_t::MutedError;
+  return config_file_load_failed(file)
+             ? cuwacunu::iinuji::text_line_emphasis_t::MutedError
+             : cuwacunu::iinuji::text_line_emphasis_t::Info;
 }
 
 inline void append_config_section_header(
@@ -372,15 +376,14 @@ append_config_legend(std::vector<cuwacunu::iinuji::styled_text_line_t> &out) {
   append_config_section_header(out, "Access Legend");
   append_config_legend_line(out, "access", "rw",
                             "editable in the current write scope",
-                            cuwacunu::iinuji::text_line_emphasis_t::Success);
+                            cuwacunu::iinuji::text_line_emphasis_t::Info);
   append_config_legend_line(
       out, {}, "scope", "replace supported, but outside the active write scope",
       cuwacunu::iinuji::text_line_emphasis_t::Info);
+  append_config_legend_line(out, {}, "err", "file failed to load",
+                            cuwacunu::iinuji::text_line_emphasis_t::Info);
   append_config_legend_line(out, {}, "ro", "read only in this screen",
                             cuwacunu::iinuji::text_line_emphasis_t::Info);
-  append_config_legend_line(out, {}, "err", "file failed to load",
-                            cuwacunu::iinuji::text_line_emphasis_t::Error,
-                            cuwacunu::iinuji::text_line_emphasis_t::Error);
 }
 
 inline void append_config_root_lines(std::ostringstream &oss,
@@ -467,6 +470,9 @@ inline void append_config_family_detail(
   if (family == ConfigFileFamily::Defaults) {
     append_config_root_lines(out, "roots", st.config.default_roots,
                              cuwacunu::iinuji::text_line_emphasis_t::Debug);
+  } else if (family == ConfigFileFamily::Temp) {
+    append_config_root_lines(out, "roots", st.config.temp_roots,
+                             cuwacunu::iinuji::text_line_emphasis_t::Debug);
   } else if (family == ConfigFileFamily::Objectives) {
     append_config_root_lines(out, "roots", st.config.objective_roots,
                              cuwacunu::iinuji::text_line_emphasis_t::Debug);
@@ -523,11 +529,17 @@ inline config_panel_t make_config_right_panel(const CmdState &st) {
         config_path_segments(file->path, config_file_path_emphasis(*file),
                              config_file_type_emphasis(*file)),
         config_file_path_emphasis(*file));
-    append_config_meta_line(out, "sha256",
-                            file->sha256.empty() ? std::string("<unknown>")
-                                                 : file->sha256,
-                            cuwacunu::iinuji::text_line_emphasis_t::Debug);
-    if (!file->ok) {
+    append_config_meta_line(
+        out, "sha256",
+        file->payload_loaded
+            ? (file->sha256.empty() ? std::string("<unknown>") : file->sha256)
+            : std::string("<load to compute>"),
+        cuwacunu::iinuji::text_line_emphasis_t::Debug);
+    if (!file->payload_loaded) {
+      append_config_meta_line(out, "hydration",
+                              "metadata only | press Enter to load",
+                              cuwacunu::iinuji::text_line_emphasis_t::Info);
+    } else if (!file->ok) {
       append_config_meta_line(out, "error", file->error,
                               cuwacunu::iinuji::text_line_emphasis_t::Error);
     }

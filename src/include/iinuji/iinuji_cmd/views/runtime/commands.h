@@ -14,7 +14,7 @@
 
 #include "iinuji/iinuji_ansi.h"
 #include "iinuji/iinuji_cmd/views/common.h"
-#include "iinuji/iinuji_cmd/views/inbox/commands.h"
+#include "iinuji/iinuji_cmd/views/workbench/commands.h"
 
 namespace cuwacunu {
 namespace iinuji {
@@ -32,16 +32,19 @@ inline std::string runtime_session_scope_label(
   return runtime_session_is_active(session) ? "active" : "historic";
 }
 
-inline std::string runtime_session_phase_text(
+inline std::string runtime_session_state_text(
     const cuwacunu::hero::marshal::marshal_session_record_t &session) {
   std::ostringstream oss;
-  oss << session.phase;
-  if (session.phase == "paused" && !session.pause_kind.empty() &&
-      session.pause_kind != "none") {
-    oss << " (" << session.pause_kind << ")";
-  } else if (session.phase == "finished" && !session.finish_reason.empty() &&
+  oss << session.lifecycle;
+  if (session.lifecycle == "live" && !session.work_gate.empty() &&
+      session.work_gate != "open") {
+    oss << " (" << session.work_gate << ")";
+  } else if (session.lifecycle == "terminal" &&
+             !session.finish_reason.empty() &&
              session.finish_reason != "none") {
     oss << " (" << session.finish_reason << ")";
+  } else if (session.lifecycle == "live" && !session.activity.empty()) {
+    oss << " (" << session.activity << ")";
   }
   return oss.str();
 }
@@ -235,9 +238,29 @@ inline bool runtime_log_viewer_kind_supports_follow(RuntimeLogViewerKind kind) {
   return false;
 }
 
+inline bool
+runtime_log_viewer_kind_uses_structured_view(RuntimeLogViewerKind kind) {
+  switch (kind) {
+  case RuntimeLogViewerKind::MarshalEvents:
+  case RuntimeLogViewerKind::MarshalCodexStdout:
+  case RuntimeLogViewerKind::MarshalCodexStderr:
+    return true;
+  case RuntimeLogViewerKind::JobStdout:
+  case RuntimeLogViewerKind::JobStderr:
+  case RuntimeLogViewerKind::CampaignStdout:
+  case RuntimeLogViewerKind::CampaignStderr:
+  case RuntimeLogViewerKind::JobTrace:
+  case RuntimeLogViewerKind::ArtifactFile:
+  case RuntimeLogViewerKind::None:
+    return false;
+  }
+  return false;
+}
+
 inline bool runtime_event_viewer_is_open(const CmdState &st) {
   return st.runtime.log_viewer_open &&
-         st.runtime.log_viewer_kind == RuntimeLogViewerKind::MarshalEvents &&
+         runtime_log_viewer_kind_uses_structured_view(
+             st.runtime.log_viewer_kind) &&
          !st.runtime.log_viewer_path.empty();
 }
 
@@ -609,6 +632,73 @@ inline std::string runtime_event_json_first_string(
   return {};
 }
 
+inline const cmd_json_value_t *
+runtime_event_json_find_value_deep(const cmd_json_value_t *value,
+                                   std::string_view key, int depth = 2) {
+  if (value == nullptr || key.empty() || depth < 0)
+    return nullptr;
+  if (value->type == cmd_json_type_t::OBJECT && value->objectValue != nullptr) {
+    if (const auto *direct = cmd_json_field(value, key); direct != nullptr)
+      return direct;
+    static const std::string_view preferred_children[] = {
+        "item",     "message", "delta", "payload", "data", "result",
+        "response", "error",   "usage", "content", "call", "tool_call"};
+    for (const auto child_key : preferred_children) {
+      if (const auto *child = cmd_json_field(value, child_key);
+          child != nullptr && (child->type == cmd_json_type_t::OBJECT ||
+                               child->type == cmd_json_type_t::ARRAY)) {
+        if (const auto *match =
+                runtime_event_json_find_value_deep(child, key, depth - 1);
+            match != nullptr) {
+          return match;
+        }
+      }
+    }
+    for (const auto &kv : *value->objectValue) {
+      if (kv.second.type != cmd_json_type_t::OBJECT &&
+          kv.second.type != cmd_json_type_t::ARRAY) {
+        continue;
+      }
+      if (const auto *match =
+              runtime_event_json_find_value_deep(&kv.second, key, depth - 1);
+          match != nullptr) {
+        return match;
+      }
+    }
+    return nullptr;
+  }
+  if (value->type == cmd_json_type_t::ARRAY && value->arrayValue != nullptr) {
+    const std::size_t limit =
+        std::min<std::size_t>(value->arrayValue->size(), 6);
+    for (std::size_t i = 0; i < limit; ++i) {
+      if (const auto *match = runtime_event_json_find_value_deep(
+              &(*value->arrayValue)[i], key, depth - 1);
+          match != nullptr) {
+        return match;
+      }
+    }
+  }
+  return nullptr;
+}
+
+inline std::string runtime_event_json_first_string_deep(
+    const cmd_json_value_t *object, std::string_view key_a,
+    std::string_view key_b = {}, std::string_view key_c = {},
+    std::string_view key_d = {}, std::string_view key_e = {}) {
+  const std::string_view keys[] = {key_a, key_b, key_c, key_d, key_e};
+  for (const auto key : keys) {
+    if (key.empty())
+      continue;
+    const auto *value = runtime_event_json_find_value_deep(object, key);
+    if (value == nullptr)
+      continue;
+    if (value->type == cmd_json_type_t::STRING && !value->stringValue.empty()) {
+      return value->stringValue;
+    }
+  }
+  return {};
+}
+
 inline std::string
 runtime_event_json_value_text(const cmd_json_value_t *value) {
   if (value == nullptr)
@@ -652,10 +742,61 @@ runtime_event_json_value_text(const cmd_json_value_t *value) {
         return "[]";
       return "[" + join_trimmed_values(parts, 4, 40) + "]";
     }
-  case cmd_json_type_t::OBJECT:
+  case cmd_json_type_t::OBJECT: {
+    const std::string nested = runtime_event_json_first_string_deep(
+        value, "text", "message", "summary", "detail", "status");
+    if (!nested.empty())
+      return "{" + trim_to_width(nested, 40) + "}";
     return "{...}";
   }
+  }
   return {};
+}
+
+inline std::optional<std::uint64_t>
+runtime_event_json_u64_deep(const cmd_json_value_t *object,
+                            std::string_view key) {
+  const auto *value = runtime_event_json_find_value_deep(object, key);
+  if (value == nullptr)
+    return std::nullopt;
+  if (value->type == cmd_json_type_t::NUMBER && value->numberValue >= 0.0) {
+    return static_cast<std::uint64_t>(value->numberValue);
+  }
+  if (value->type == cmd_json_type_t::STRING) {
+    const std::string text = trim_copy(value->stringValue);
+    if (text.empty())
+      return std::nullopt;
+    std::uint64_t parsed = 0;
+    std::istringstream iss(text);
+    iss >> parsed;
+    if (iss && iss.eof())
+      return parsed;
+  }
+  return std::nullopt;
+}
+
+inline std::uint64_t
+runtime_event_json_timestamp_ms(const cmd_json_value_t *object) {
+  const std::string_view keys[] = {"timestamp_ms",
+                                   "ts_ms",
+                                   "updated_at_ms",
+                                   "started_at_ms",
+                                   "finished_at_ms",
+                                   "timestamp",
+                                   "ts"};
+  for (const auto key : keys) {
+    const auto value = runtime_event_json_u64_deep(object, key);
+    if (!value.has_value() || *value == 0)
+      continue;
+    if (key == "timestamp" || key == "ts") {
+      if (*value >= 1000000000000ULL)
+        return *value;
+      if (*value >= 1000000000ULL)
+        return *value * 1000ULL;
+    }
+    return *value;
+  }
+  return 0;
 }
 
 inline cuwacunu::iinuji::text_line_emphasis_t
@@ -664,26 +805,42 @@ runtime_marshaled_event_emphasis_from_name(std::string_view event_name) {
   if (key.find("fail") != std::string::npos ||
       key.find("error") != std::string::npos ||
       key.find("terminate") != std::string::npos ||
-      key.find("abort") != std::string::npos) {
+      key.find("abort") != std::string::npos ||
+      key.find("denied") != std::string::npos ||
+      key.find("reject") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::MutedError;
   }
   if (key.find("warn") != std::string::npos ||
       key.find("pause") != std::string::npos ||
       key.find("park") != std::string::npos ||
-      key.find("degrad") != std::string::npos) {
+      key.find("degrad") != std::string::npos ||
+      key.find("block") != std::string::npos ||
+      key.find("review") != std::string::npos ||
+      key.find("govern") != std::string::npos ||
+      key.find("clarif") != std::string::npos ||
+      key.find("queue") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::Warning;
   }
   if (key.find("launch") != std::string::npos ||
       key.find("resume") != std::string::npos ||
       key.find("active") != std::string::npos ||
       key.find("finish") != std::string::npos ||
-      key.find("complete") != std::string::npos) {
+      key.find("complete") != std::string::npos ||
+      key.find("deliver") != std::string::npos ||
+      key.find("handle") != std::string::npos ||
+      key.find("unblock") != std::string::npos ||
+      key.find("archive") != std::string::npos ||
+      key.find("ack") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::Success;
   }
   if (key.find("start") != std::string::npos ||
       key.find("create") != std::string::npos ||
       key.find("checkpoint") != std::string::npos ||
-      key.find("stage") != std::string::npos) {
+      key.find("stage") != std::string::npos ||
+      key.find("request") != std::string::npos ||
+      key.find("message") != std::string::npos ||
+      key.find("intent") != std::string::npos ||
+      key.find("tool") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::Accent;
   }
   return cuwacunu::iinuji::text_line_emphasis_t::Info;
@@ -693,7 +850,7 @@ inline RuntimeMarshalEventViewerEntry
 runtime_build_marshaled_event_entry(const std::string &raw_line) {
   RuntimeMarshalEventViewerEntry entry{};
   entry.raw_line = raw_line;
-  entry.summary = trim_to_width(trim_copy(raw_line), 160);
+  entry.summary = trim_copy(raw_line);
   entry.emphasis = cuwacunu::iinuji::text_line_emphasis_t::Debug;
 
   cmd_json_value_t parsed{};
@@ -704,15 +861,15 @@ runtime_build_marshaled_event_entry(const std::string &raw_line) {
     return entry;
   }
 
-  entry.timestamp_ms = cmd_json_u64(cmd_json_field(&parsed, "timestamp_ms"));
+  entry.timestamp_ms = runtime_event_json_timestamp_ms(&parsed);
   entry.event_name =
-      runtime_event_json_first_string(&parsed, "event", "type", "kind");
+      runtime_event_json_first_string_deep(&parsed, "event", "type", "kind");
   if (entry.event_name.empty())
     entry.event_name = "event";
-  entry.summary = runtime_event_json_first_string(&parsed, "detail", "summary",
-                                                  "text", "message", "status");
+  entry.summary = runtime_event_json_first_string_deep(
+      &parsed, "detail", "summary", "text", "message", "status");
   if (entry.summary.empty())
-    entry.summary = trim_to_width(trim_copy(raw_line), 160);
+    entry.summary = trim_copy(raw_line);
   entry.emphasis = runtime_marshaled_event_emphasis_from_name(entry.event_name);
 
   std::vector<std::pair<std::string, std::string>> metadata{};
@@ -729,16 +886,13 @@ runtime_build_marshaled_event_entry(const std::string &raw_line) {
       if (existing.first == key)
         return;
     }
-    metadata.emplace_back(std::string(key), trim_to_width(text, 42));
+    metadata.emplace_back(std::string(key), text);
   };
 
   const std::string_view preferred_keys[] = {
-      "checkpoint_index", "checkpoint_count",
-      "launch_count",     "phase",
-      "intent",           "intent_kind",
-      "pause_kind",       "finish_reason",
-      "campaign_cursor",  "active_campaign_cursor",
-      "tool_name",        "role",
+      "checkpoint_index", "checkpoint_count", "launch_count", "lifecycle",
+      "intent",           "intent_kind",      "work_gate",    "finish_reason",
+      "campaign_status",  "campaign_cursor",  "tool_name",    "role",
       "stream",           "line_index"};
   for (const auto key : preferred_keys) {
     append_meta(key);
@@ -766,9 +920,158 @@ runtime_build_marshaled_event_entry(const std::string &raw_line) {
   return entry;
 }
 
-inline bool runtime_read_marshaled_event_entries(
+inline cuwacunu::iinuji::text_line_emphasis_t
+runtime_codex_line_emphasis(std::string_view kind) {
+  const std::string key = to_lower_copy(std::string(kind));
+  if (key.find("error") != std::string::npos ||
+      key.find("fail") != std::string::npos ||
+      key.find("fatal") != std::string::npos ||
+      key.find("abort") != std::string::npos ||
+      key.find("refus") != std::string::npos ||
+      key.find("denied") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::MutedError;
+  }
+  if (key.find("stderr") != std::string::npos ||
+      key.find("warn") != std::string::npos ||
+      key.find("retry") != std::string::npos ||
+      key.find("wait") != std::string::npos ||
+      key.find("pending") != std::string::npos ||
+      key.find("interrupt") != std::string::npos ||
+      key.find("cancel") != std::string::npos ||
+      key.find("block") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Warning;
+  }
+  if (key.find("tool") != std::string::npos ||
+      key.find("patch") != std::string::npos ||
+      key.find("exec") != std::string::npos ||
+      key.find("reason") != std::string::npos ||
+      key.find("think") != std::string::npos ||
+      key.find("plan") != std::string::npos ||
+      key.find("analysis") != std::string::npos ||
+      key.find("commentary") != std::string::npos ||
+      key.find("call") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Accent;
+  }
+  if (key.find("done") != std::string::npos ||
+      key.find("complete") != std::string::npos ||
+      key.find("success") != std::string::npos ||
+      key.find("result") != std::string::npos ||
+      key.find("finish") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Success;
+  }
+  if (key.find("message") != std::string::npos ||
+      key.find("assistant") != std::string::npos ||
+      key.find("stdout") != std::string::npos ||
+      key.find("item") != std::string::npos ||
+      key.find("thread") != std::string::npos ||
+      key.find("turn") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Info;
+  }
+  return cuwacunu::iinuji::text_line_emphasis_t::Debug;
+}
+
+inline std::string
+runtime_codex_stream_fallback_label(RuntimeLogViewerKind kind) {
+  return kind == RuntimeLogViewerKind::MarshalCodexStderr ? "stderr" : "stdout";
+}
+
+inline RuntimeMarshalEventViewerEntry
+runtime_build_codex_stream_entry(const std::string &raw_line,
+                                 std::string_view fallback_kind) {
+  RuntimeMarshalEventViewerEntry entry{};
+  entry.raw_line = raw_line;
+  entry.summary = trim_copy(raw_line);
+  entry.event_name = std::string(fallback_kind);
+  entry.emphasis = runtime_codex_line_emphasis(fallback_kind);
+
+  cmd_json_value_t parsed{};
+  if (!runtime_try_parse_event_json_object_line(raw_line, &parsed)) {
+    if (entry.summary.empty())
+      entry.summary = "<empty>";
+    return entry;
+  }
+
+  entry.timestamp_ms = runtime_event_json_timestamp_ms(&parsed);
+  std::string kind = runtime_event_json_first_string_deep(
+      &parsed, "type", "event", "kind", "stream");
+  if (kind.empty())
+    kind = std::string(fallback_kind);
+  const std::string role =
+      runtime_event_json_first_string_deep(&parsed, "role");
+  const std::string stream =
+      runtime_event_json_first_string_deep(&parsed, "stream");
+  const std::string tool_name =
+      runtime_event_json_first_string_deep(&parsed, "tool_name");
+  const std::string item_type = runtime_event_json_first_string_deep(
+      cmd_json_field(&parsed, "item"), "type", "kind");
+  std::string detail = runtime_event_json_first_string_deep(
+      &parsed, "text", "detail", "message", "summary", "status");
+  if (detail.empty()) {
+    detail = runtime_event_json_first_string_deep(
+        cmd_json_field(&parsed, "item"), "text", "message", "summary");
+  }
+  if (detail.empty() && !item_type.empty()) {
+    detail = item_type;
+  }
+  if (detail.empty()) {
+    detail = trim_copy(raw_line);
+  }
+
+  entry.event_name = kind;
+  if (!role.empty() && to_lower_copy(role) != to_lower_copy(kind)) {
+    entry.event_name += "/" + role;
+  }
+  entry.emphasis = runtime_codex_line_emphasis(entry.event_name + " " + detail);
+  entry.summary = detail;
+
+  std::vector<std::pair<std::string, std::string>> metadata{};
+  auto append_meta = [&](std::string key, std::string value) {
+    value = trim_copy(std::move(value));
+    if (key.empty() || value.empty() || value == "{...}")
+      return;
+    for (const auto &existing : metadata) {
+      if (existing.first == key)
+        return;
+    }
+    metadata.emplace_back(std::move(key), std::move(value));
+  };
+
+  append_meta("stream", stream);
+  append_meta("tool", tool_name);
+  if (const auto *line_index =
+          runtime_event_json_find_value_deep(&parsed, "line_index");
+      line_index != nullptr) {
+    append_meta("line", runtime_event_json_value_text(line_index));
+  }
+  if (const auto *item = cmd_json_field(&parsed, "item");
+      item != nullptr && item->type == cmd_json_type_t::OBJECT) {
+    append_meta("item",
+                runtime_event_json_first_string_deep(item, "type", "kind"));
+    append_meta("id", runtime_event_json_first_string_deep(item, "id"));
+  }
+  append_meta("thread",
+              runtime_event_json_first_string_deep(&parsed, "thread_id"));
+  append_meta("turn", runtime_event_json_first_string_deep(&parsed, "turn_id"));
+  if (metadata.size() < 5 && parsed.objectValue != nullptr) {
+    const std::string_view preferred_keys[] = {"id", "code", "status", "reason",
+                                               "role"};
+    for (const auto key : preferred_keys) {
+      const auto *value = runtime_event_json_find_value_deep(&parsed, key);
+      if (value == nullptr)
+        continue;
+      append_meta(std::string(key), runtime_event_json_value_text(value));
+      if (metadata.size() >= 5)
+        break;
+    }
+  }
+
+  entry.metadata = std::move(metadata);
+  return entry;
+}
+
+inline bool runtime_read_structured_log_entries(
     const std::string &path, std::vector<RuntimeMarshalEventViewerEntry> *out,
-    std::string *error) {
+    RuntimeLogViewerKind kind, std::string *error) {
   if (out == nullptr)
     return false;
   out->clear();
@@ -780,7 +1083,12 @@ inline bool runtime_read_marshaled_event_entries(
   for (const auto &line : lines) {
     if (trim_copy(line).empty())
       continue;
-    out->push_back(runtime_build_marshaled_event_entry(line));
+    if (kind == RuntimeLogViewerKind::MarshalEvents) {
+      out->push_back(runtime_build_marshaled_event_entry(line));
+    } else {
+      out->push_back(runtime_build_codex_stream_entry(
+          line, runtime_codex_stream_fallback_label(kind)));
+    }
   }
   return true;
 }
@@ -813,7 +1121,7 @@ inline bool runtime_open_log_viewer(CmdState &st, const std::string &path,
                                     std::string title,
                                     bool announce_status = true) {
   const bool supports_follow = runtime_log_viewer_kind_supports_follow(kind);
-  if (kind == RuntimeLogViewerKind::MarshalEvents) {
+  if (runtime_log_viewer_kind_uses_structured_view(kind)) {
     const bool preserve_selection = runtime_event_viewer_is_open(st) &&
                                     st.runtime.log_viewer_path == path &&
                                     st.runtime.log_viewer_kind == kind;
@@ -822,10 +1130,13 @@ inline bool runtime_open_log_viewer(CmdState &st, const std::string &path,
         st.runtime.marshal_event_viewer.selected_entry;
     std::string error{};
     std::vector<RuntimeMarshalEventViewerEntry> entries{};
-    if (!runtime_read_marshaled_event_entries(path, &entries, &error)) {
-      set_runtime_status(
-          st, error.empty() ? "failed to open marshal events file" : error,
-          true);
+    if (!runtime_read_structured_log_entries(path, &entries, kind, &error)) {
+      set_runtime_status(st,
+                         error.empty()
+                             ? "failed to open " +
+                                   runtime_log_viewer_kind_label(kind) + " file"
+                             : error,
+                         true);
       return true;
     }
 
@@ -1586,13 +1897,16 @@ inline bool runtime_parse_marshal_session_json(
       cmd_json_string(cmd_json_field(value, "schema"), session.schema);
   session.marshal_session_id =
       cmd_json_string(cmd_json_field(value, "marshal_session_id"));
-  session.phase =
-      cmd_json_string(cmd_json_field(value, "phase"), session.phase);
-  session.phase_detail = cmd_json_string(cmd_json_field(value, "phase_detail"));
-  session.pause_kind =
-      cmd_json_string(cmd_json_field(value, "pause_kind"), session.pause_kind);
+  session.lifecycle =
+      cmd_json_string(cmd_json_field(value, "lifecycle"), session.lifecycle);
+  session.status_detail =
+      cmd_json_string(cmd_json_field(value, "status_detail"));
+  session.work_gate =
+      cmd_json_string(cmd_json_field(value, "work_gate"), session.work_gate);
   session.finish_reason = cmd_json_string(
       cmd_json_field(value, "finish_reason"), session.finish_reason);
+  session.activity =
+      cmd_json_string(cmd_json_field(value, "activity"), session.activity);
   session.objective_name =
       cmd_json_string(cmd_json_field(value, "objective_name"));
   session.global_config_path =
@@ -1630,8 +1944,8 @@ inline bool runtime_parse_marshal_session_json(
       cmd_json_string(cmd_json_field(value, "codex_stdout_path"));
   session.codex_stderr_path =
       cmd_json_string(cmd_json_field(value, "codex_stderr_path"));
-  session.codex_session_id =
-      cmd_json_string(cmd_json_field(value, "codex_session_id"));
+  session.current_thread_id =
+      cmd_json_string(cmd_json_field(value, "current_thread_id"));
   session.resolved_marshal_codex_binary =
       cmd_json_string(cmd_json_field(value, "resolved_marshal_codex_binary"));
   session.resolved_marshal_codex_model =
@@ -1651,12 +1965,12 @@ inline bool runtime_parse_marshal_session_json(
       cmd_json_u64(cmd_json_field(value, "remaining_campaign_launches"));
   session.authority_scope = cmd_json_string(
       cmd_json_field(value, "authority_scope"), session.authority_scope);
-  session.latest_request_kind =
-      cmd_json_string(cmd_json_field(value, "latest_request_kind"));
-  session.active_campaign_cursor =
-      cmd_json_string(cmd_json_field(value, "active_campaign_cursor"));
-  session.last_intent_kind =
-      cmd_json_string(cmd_json_field(value, "last_intent_kind"));
+  session.campaign_status = cmd_json_string(
+      cmd_json_field(value, "campaign_status"), session.campaign_status);
+  session.campaign_cursor =
+      cmd_json_string(cmd_json_field(value, "campaign_cursor"));
+  session.last_codex_action =
+      cmd_json_string(cmd_json_field(value, "last_codex_action"));
   session.last_warning = cmd_json_string(cmd_json_field(value, "last_warning"));
   session.last_input_checkpoint_path =
       cmd_json_string(cmd_json_field(value, "last_input_checkpoint_path"));
@@ -2455,7 +2769,7 @@ inline bool runtime_session_links_campaign(
     std::string_view campaign_cursor) {
   if (campaign_cursor.empty())
     return false;
-  if (session.active_campaign_cursor == campaign_cursor)
+  if (session.campaign_cursor == campaign_cursor)
     return true;
   return std::find(
              session.campaign_cursors.begin(), session.campaign_cursors.end(),
@@ -2587,11 +2901,10 @@ inline std::string latest_runtime_campaign_cursor_for_session(
   const auto session =
       find_runtime_session_by_id(runtime.sessions, marshal_session_id);
   if (session.has_value()) {
-    if (!session->active_campaign_cursor.empty() &&
-        runtime_find_campaign_index(runtime.campaigns,
-                                    session->active_campaign_cursor)
+    if (!session->campaign_cursor.empty() &&
+        runtime_find_campaign_index(runtime.campaigns, session->campaign_cursor)
             .has_value()) {
-      return session->active_campaign_cursor;
+      return session->campaign_cursor;
     }
     for (auto it = session->campaign_cursors.rbegin();
          it != session->campaign_cursors.rend(); ++it) {
@@ -3197,7 +3510,7 @@ inline bool runtime_apply_refresh_snapshot(CmdState &st,
     restored = restore_previous_for_lane(kRuntimeSessionLane);
 
   if (!restored) {
-    const auto anchor_session = selected_inbox_anchor_session_record(st);
+    const auto anchor_session = selected_operator_session_record(st);
     if (anchor_session.has_value() &&
         runtime_find_session_index(st.runtime.sessions,
                                    anchor_session->marshal_session_id)

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -11,30 +10,19 @@ namespace cuwacunu {
 namespace iinuji {
 namespace iinuji_cmd {
 
-inline bool ui_inbox_has_items(const CmdState &st) {
-  if (!st.inbox.operator_inbox.actionable_requests.empty() ||
-      !st.inbox.operator_inbox.unacknowledged_summaries.empty()) {
-    return true;
-  }
-  return std::any_of(
-      st.inbox.operator_inbox.all_sessions.begin(),
-      st.inbox.operator_inbox.all_sessions.end(), [](const auto &session) {
-        return session.phase == "paused" && session.pause_kind == "operator";
-      });
+inline bool ui_workbench_has_items(const CmdState &st) {
+  return count_pending_operator_requests(st) > 0 ||
+         count_pending_operator_reviews(st) > 0 ||
+         count_operator_paused_sessions(st) > 0;
 }
 
-inline std::string ui_status_inbox_label(const CmdState &st) {
-  const bool has_inbox_items = ui_inbox_has_items(st);
-  if (st.screen == ScreenMode::Inbox) {
-    return has_inbox_items ? "[F2 INBOX*]" : "[F2 INBOX]";
+inline std::string ui_status_screen_badge(const CmdState &st,
+                                          ScreenMode screen) {
+  std::string badge = ui_screen_tab_text(screen);
+  if (screen == ScreenMode::Workbench && ui_workbench_has_items(st)) {
+    badge += "*";
   }
-  return has_inbox_items ? " F2 INBOX* " : " F2 INBOX ";
-}
-
-inline std::string ui_status_screen_label(const CmdState &st, ScreenMode screen,
-                                          const char *label) {
-  return st.screen == screen ? "[" + std::string(label) + "]"
-                             : " " + std::string(label) + " ";
+  return st.screen == screen ? "[" + badge + "]" : " " + badge + " ";
 }
 
 inline std::vector<cuwacunu::iinuji::styled_text_segment_t>
@@ -42,27 +30,22 @@ ui_status_segments(const CmdState &st) {
   using cuwacunu::iinuji::styled_text_segment_t;
   using cuwacunu::iinuji::text_line_emphasis_t;
 
-  const std::string prefix =
-      ui_status_screen_label(st, ScreenMode::Home, "F1 HOME") + " ";
-  const std::string suffix =
-      " " + ui_status_screen_label(st, ScreenMode::Runtime, "F3 RUNTIME") +
-      " " + ui_status_screen_label(st, ScreenMode::Lattice, "F4 LATTICE") +
-      " " + ui_status_screen_label(st, ScreenMode::ShellLogs, "F8 SHELL LOGS") +
-      " " + ui_status_screen_label(st, ScreenMode::Config, "F9 CONFIG");
   std::vector<styled_text_segment_t> segments{};
-  segments.reserve(3);
-  segments.push_back(styled_text_segment_t{
-      .text = prefix,
-      .emphasis = text_line_emphasis_t::None,
-  });
-  segments.push_back(styled_text_segment_t{
-      .text = ui_status_inbox_label(st),
-      .emphasis = text_line_emphasis_t::None,
-  });
-  segments.push_back(styled_text_segment_t{
-      .text = suffix,
-      .emphasis = text_line_emphasis_t::None,
-  });
+  segments.reserve(6);
+  for (const auto screen : {ScreenMode::Home, ScreenMode::Workbench,
+                            ScreenMode::Runtime, ScreenMode::Lattice,
+                            ScreenMode::ShellLogs, ScreenMode::Config}) {
+    if (!segments.empty()) {
+      segments.push_back(styled_text_segment_t{
+          .text = " ",
+          .emphasis = text_line_emphasis_t::None,
+      });
+    }
+    segments.push_back(styled_text_segment_t{
+        .text = ui_status_screen_badge(st, screen),
+        .emphasis = text_line_emphasis_t::None,
+    });
+  }
   return segments;
 }
 

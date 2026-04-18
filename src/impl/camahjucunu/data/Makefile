@@ -15,11 +15,11 @@ $(eval $(call BUILD_OBJ_INC, libtorch, memory_mapped_datafile,   mm_datafile,  $
 $(eval $(call BUILD_OBJ_INC, libtorch, memory_mapped_dataset,    mm_dataset,   $(TORCH_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, libtorch, memory_mapped_dataloader, mm_dataloader,$(TORCH_INCLUDE_PATHS)))
 
-# Group the objects for a convenient target
+# Group the leaf producers for a convenient target
 DATALOADER_DATASETS := \
-  $(OUTPUT_PATH)/libtorch/memory_mapped_datafile.o \
-  $(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o \
-  $(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o
+  mm_datafile \
+  mm_dataset \
+  mm_dataloader
 
 # -----------------------------------------------------------------
 # Aggregate Target (module-level)

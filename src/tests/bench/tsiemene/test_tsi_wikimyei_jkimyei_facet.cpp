@@ -20,15 +20,14 @@ namespace {
 namespace fs = std::filesystem;
 
 [[nodiscard]] bool gpu_configured_without_cuda(
-    const cuwacunu::iitepi::contract_hash_t& contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t &contract_hash) {
   std::string configured_device =
       cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
           ->get<std::string>("VICReg", "device");
-  std::transform(
-      configured_device.begin(),
-      configured_device.end(),
-      configured_device.begin(),
-      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  std::transform(configured_device.begin(), configured_device.end(),
+                 configured_device.begin(), [](unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
   return !torch::cuda::is_available() &&
          (configured_device == "gpu" || configured_device == "cuda");
 }
@@ -36,7 +35,8 @@ namespace fs = std::filesystem;
 struct PathCleanupGuard {
   fs::path path;
   ~PathCleanupGuard() {
-    if (path.empty()) return;
+    if (path.empty())
+      return;
     std::error_code ec{};
     fs::remove_all(path, ec);
   }
@@ -52,15 +52,13 @@ struct PathCleanupGuard {
 
 [[nodiscard]] std::string ascii_upper(std::string value) {
   std::transform(
-      value.begin(),
-      value.end(),
-      value.begin(),
+      value.begin(), value.end(), value.begin(),
       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
   return value;
 }
 
-[[nodiscard]] std::int64_t read_checkpoint_i64(const std::string& path,
-                                               const char* key) {
+[[nodiscard]] std::int64_t read_checkpoint_i64(const std::string &path,
+                                               const char *key) {
   torch::serialize::InputArchive ar;
   ar.load_from(path, torch::Device(torch::kCPU));
   torch::Tensor t;
@@ -71,10 +69,10 @@ struct PathCleanupGuard {
   return t.item<std::int64_t>();
 }
 
-}  // namespace
+} // namespace
 
 int main() {
-  const char* global_config_path = "/cuwacunu/src/config/.config";
+  const char *global_config_path = "/cuwacunu/src/config/.config";
   cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
   cuwacunu::iitepi::config_space_t::update_config();
 
@@ -89,32 +87,21 @@ int main() {
   }
 
   constexpr tsiemene::TsiId kTsiId = 101;
-  constexpr const char* kComponentName =
-      "tsi.wikimyei.representation.vicreg";
+  constexpr const char *kComponentName = "tsi.wikimyei.representation.vicreg";
   const auto contract_snapshot =
       cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
   assert(contract_snapshot);
-  const int kChannels =
-      contract_snapshot->get<int>("VARIABLES", "__obs_channels");
+  const int kChannels = contract_snapshot->get<int>("DOCK", "__obs_channels");
   const int kTimesteps =
-      contract_snapshot->get<int>("VARIABLES", "__obs_seq_length");
+      contract_snapshot->get<int>("DOCK", "__obs_seq_length");
   const int kFeatures =
-      contract_snapshot->get<int>("VARIABLES", "__obs_feature_dim");
+      contract_snapshot->get<int>("DOCK", "__obs_feature_dim");
   const int kEncodingDims =
-      contract_snapshot->get<int>("VARIABLES", "__embedding_dims");
+      contract_snapshot->get<int>("DOCK", "__embedding_dims");
 
   tsiemene::TsiWikimyeiRepresentationVicreg vicreg(
-      kTsiId,
-      "vicreg_facet_test",
-      contract_hash,
-      "0xtestfacet",
-      kComponentName,
-      kChannels,
-      kTimesteps,
-      kFeatures,
-      false,
-      true,
-      true);
+      kTsiId, "vicreg_facet_test", contract_hash, "0xtestfacet", kComponentName,
+      kChannels, kTimesteps, kFeatures, false, true, true);
 
   assert(vicreg.supports_jkimyei_facet());
 
@@ -180,11 +167,9 @@ int main() {
       "tsi.wikimyei.representation.vicreg.0xcompat";
   compatible_manifest.family = "representation";
   compatible_manifest.docking_signature_sha256_hex = expected_docking_signature;
-  compatible_manifest.contract_identity =
-      cuwacunu::hashimyei::make_identity(
-          cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT,
-          0x1234ull,
-          "different_founding_contract_for_public_docking");
+  compatible_manifest.contract_identity = cuwacunu::hashimyei::make_identity(
+      cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT, 0x1234ull,
+      "different_founding_contract_for_public_docking");
   assert(tsiemene::validate_runtime_component_manifest_public_docking(
       compatible_manifest, contract_hash, expected_docking_signature, &error));
   assert(error.empty());
@@ -206,7 +191,8 @@ int main() {
   const std::string dest_hashimyei = unique_hashimyei_id();
   const std::string source_hashimyei_upper = ascii_upper(source_hashimyei);
   const std::string dest_hashimyei_upper = ascii_upper(dest_hashimyei);
-  const fs::path report_root = tsiemene::wikimyei_representation_vicreg_store_root();
+  const fs::path report_root =
+      tsiemene::wikimyei_representation_vicreg_store_root();
   const fs::path source_dir = report_root / source_hashimyei;
   const fs::path dest_dir = report_root / dest_hashimyei;
   std::error_code cleanup_ec{};
@@ -216,33 +202,17 @@ int main() {
   PathCleanupGuard dest_cleanup{dest_dir};
 
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D private_topology_model(
-      contract_hash,
-      kComponentName,
-      kChannels,
-      kTimesteps,
-      kFeatures,
+      contract_hash, kComponentName, kChannels, kTimesteps, kFeatures,
       /*encoding_dims=*/kEncodingDims,
       /*channel_expansion_dim=*/96,
       /*fused_feature_dim=*/48,
       /*encoder_hidden_dims=*/36,
-      /*encoder_depth=*/6,
-      "72-192-72",
-      configured_dtype,
-      configured_device);
+      /*encoder_depth=*/6, "72-192-72", configured_dtype, configured_device);
   auto persisted = tsiemene::update_wikimyei_representation_vicreg_init(
-      source_hashimyei_upper,
-      &private_topology_model,
+      source_hashimyei_upper, &private_topology_model,
       /*enable_network_analytics_sidecar=*/false,
-      /*enable_embedding_sequence_analytics_sidecar=*/false,
-      contract_hash,
-      {},
-      {},
-      {},
-      false,
-      0,
-      nullptr,
-      nullptr,
-      {});
+      /*enable_embedding_sequence_analytics_sidecar=*/false, contract_hash, {},
+      {}, {}, false, 0, nullptr, nullptr, {});
   assert(persisted.ok);
   assert(persisted.hashimyei == source_hashimyei);
   assert(persisted.report_fragment_directory == source_dir);
@@ -253,13 +223,14 @@ int main() {
 
   const fs::path saved_weights = dest_dir / "weights.init.pt";
   assert(fs::exists(saved_weights));
-  assert(read_checkpoint_i64(saved_weights.string(), "meta/channel_expansion_dim") ==
-         96);
-  assert(read_checkpoint_i64(saved_weights.string(), "meta/fused_feature_dim") ==
-         48);
-  assert(read_checkpoint_i64(saved_weights.string(), "meta/encoder_hidden_dims") ==
-         36);
-  assert(read_checkpoint_i64(saved_weights.string(), "meta/encoder_depth") == 6);
+  assert(read_checkpoint_i64(saved_weights.string(),
+                             "meta/channel_expansion_dim") == 96);
+  assert(read_checkpoint_i64(saved_weights.string(),
+                             "meta/fused_feature_dim") == 48);
+  assert(read_checkpoint_i64(saved_weights.string(),
+                             "meta/encoder_hidden_dims") == 36);
+  assert(read_checkpoint_i64(saved_weights.string(), "meta/encoder_depth") ==
+         6);
 
   return 0;
 }

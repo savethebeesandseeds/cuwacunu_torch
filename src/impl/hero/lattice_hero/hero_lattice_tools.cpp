@@ -1794,6 +1794,11 @@ struct fact_bundle_summary_t {
       component.manifest.contract_identity);
 }
 
+[[nodiscard]] std::string browser_dock_hash_from_component(
+    const cuwacunu::hero::hashimyei::component_state_t& component) {
+  return trim_ascii(component.manifest.docking_signature_sha256_hex);
+}
+
 void append_unique_browser_string(std::string_view value,
                                   std::vector<std::string>* values) {
   if (!values) return;
@@ -1810,6 +1815,7 @@ struct browser_member_row_t {
   std::string display_name{};
   std::string hashimyei{};
   std::string contract_hash{};
+  std::string dock_hash{};
   std::string lineage_state{"unknown"};
   bool has_component{false};
   cuwacunu::hero::hashimyei::component_state_t component{};
@@ -1936,6 +1942,7 @@ void finalize_browser_member_row(browser_member_row_t* member) {
     member.project_path = browser_project_path_for_canonical(canonical_path);
     member.hashimyei = component.manifest.hashimyei_identity.name;
     member.contract_hash = browser_contract_hash_from_component(component);
+    member.dock_hash = browser_dock_hash_from_component(component);
     member.family_rank = component.family_rank;
     member.lineage_state = component.manifest.lineage_state.empty()
                                ? std::string("unknown")
@@ -2076,6 +2083,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << (member.hashimyei.empty() ? "null" : json_quote(member.hashimyei))
       << ",\"contract_hash\":"
       << (member.contract_hash.empty() ? "null" : json_quote(member.contract_hash))
+      << ",\"dock_hash\":"
+      << (member.dock_hash.empty() ? "null" : json_quote(member.dock_hash))
       << ",\"lineage_state\":" << json_quote(member.lineage_state)
       << ",\"has_component\":" << (member.has_component ? "true" : "false")
       << ",\"has_fact\":" << (member.has_fact ? "true" : "false")
@@ -2419,7 +2428,7 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << "},{"
       << "\"view_kind\":\"family_evaluation_report\""
       << ",\"preferred_selector\":\"canonical_path\""
-      << ",\"required_selectors\":[\"canonical_path\",\"contract_hash\"]"
+      << ",\"required_selectors\":[\"canonical_path\",\"dock_hash\"]"
       << ",\"optional_selectors\":[\"wave_cursor\"]"
       << ",\"ready\":" << (has_family_reports ? "true" : "false")
       << "}]}";
@@ -2437,14 +2446,17 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   std::string view_kind{};
   std::string canonical_path{};
   std::string contract_hash{};
+  std::string dock_hash{};
   (void)extract_json_string_field(arguments_json, "view_kind", &view_kind);
   (void)extract_json_string_field(arguments_json, "canonical_path",
                                   &canonical_path);
   (void)extract_json_string_field(arguments_json, "contract_hash",
                                   &contract_hash);
+  (void)extract_json_string_field(arguments_json, "dock_hash", &dock_hash);
   view_kind = trim_ascii(view_kind);
   canonical_path = normalize_source_hashimyei_cursor(canonical_path);
   contract_hash = trim_ascii(contract_hash);
+  dock_hash = trim_ascii(dock_hash);
   if (view_kind.empty()) {
     *out_error = "get_view requires arguments.view_kind";
     return false;
@@ -2468,7 +2480,7 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   cuwacunu::hero::wave::runtime_view_report_t view{};
   if (!app->catalog.get_runtime_view_lls(
           view_kind, internal_intersection_cursor, wave_cursor, use_wave_cursor,
-          contract_hash, &view, out_error)) {
+          contract_hash, dock_hash, &view, out_error)) {
     return false;
   }
 
@@ -2481,6 +2493,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
               : json_quote(view.selector_hashimyei_cursor))
       << ",\"contract_hash\":"
       << (view.contract_hash.empty() ? "null" : json_quote(view.contract_hash))
+      << ",\"dock_hash\":"
+      << (view.dock_hash.empty() ? "null" : json_quote(view.dock_hash))
       << ",\"wave_cursor\":"
       << (view.has_wave_cursor
               ? json_quote(

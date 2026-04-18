@@ -7,8 +7,9 @@ Objective identity:
 Current intent:
 - This is a BTCUSDT-only training-policy search over objective-local
   `.jkimyei` settings, not an architecture search.
-- The frozen architecture, dock, and contract truth source live under
-  `../../optim/` and must stay frozen during the search.
+- The architecture-bearing truth sourced from `../../optim/` must stay frozen
+  during the search. Treat ordinary tuning here as jkimyei and run-plan work,
+  not as a dock or assembly redesign.
 - Use the objective-local campaign, waves, wrapper, and jkimyei files as the
   ordinary tuning surface, with `tsi.wikimyei.representation.vicreg.jkimyei.dsl`
   as the primary mutation surface.
@@ -16,8 +17,8 @@ Current intent:
   stale for this objective revision. Do not treat the current bundle as a
   single unchanged final pass.
 - Keep `0x00FF` as the incumbent reference candidate, but prefer fresh,
-  clearly named comparison slots and profile ids for newly authored jkimyei
-  combinations so evidence stays attributable.
+  clearly named comparison exact revision tokens and profile ids for newly
+  authored jkimyei combinations so evidence stays attributable.
 - Objective satisfaction requires exploring multiple materially different
   jkimyei combinations, selecting a winner, and ending with a promotion-ready
   result for the optimized VICReg bundle.
@@ -30,10 +31,11 @@ Canonical run package:
 - Prefer a small deliberate comparison set over many tiny nudges. Each added
   candidate should correspond to a clear hypothesis about why the current
   training policy is underperforming or too brittle.
-- Before the first fresh launch, if the objective bundle still contains only
-  one effective train candidate, mutate the objective-local campaign/waves and
-  jkimyei files so the search can compare at least the incumbent plus multiple
-  new combinations.
+- Bootstrap exception: if the objective-local campaign already declares one
+  concrete incumbent train-plus-reusable-validation-plus-untouched-test run
+  package, the first fresh launch may use that incumbent package unchanged.
+- Expand the comparison surface only after that first incumbent evidence block
+  unless the current objective files are too incomplete to launch at all.
 
 Canonical dataset split:
 - Train window:
@@ -46,20 +48,25 @@ Canonical dataset split:
 Search stance:
 - Search jkimyei settings, not network architecture. Keep
   `iitepi.contract.dsl` frozen unless a hard wiring fix is required for the
-  search itself.
+  search itself. In normal operation, do not change the active dock here.
 - Explore materially different jkimyei combinations rather than rerunning the
   same profile once and stopping. Useful axes include optimizer pressure,
   scheduler shape, SWA usage/timing, gradient controls, VICReg loss weights,
   and augmentation intensity.
 - Prefer clean, named candidates that isolate one hypothesis or one tightly
   coupled pair of hypotheses at a time.
-- Use separate Hashimyei slots for distinct candidates whenever that keeps the
-  evidence easier to compare and discuss. Do not silently overwrite unrelated
-  candidate weights into the same slot.
+- Use separate exact revision tokens in `BIND.MOUNT` for distinct candidates
+  whenever that
+  keeps the evidence easier to compare and discuss. Do not silently overwrite
+  unrelated candidate weights into the same lineage.
 - Launch at most one candidate per checkpoint, then compare and prune before
   expanding the search further.
 - Prefer `launch.mode = binding` while the comparison set is evolving, instead
   of blindly rerunning an unchanged full run plan.
+- Do not require same-checkpoint candidate authoring merely because the
+  existing bootstrap run plan contains only the incumbent candidate. Launch the
+  incumbent first when it is already a valid concrete package, then decide what
+  new candidates to author from evidence.
 - Do not stop after the first launched candidate unless a hard operational
   blocker or overwhelmingly decisive evidence makes further automatic search
   unjustified.
@@ -90,6 +97,10 @@ Operational stance:
   blocker prevents eval.
 - When training observability is coarse, use Runtime stdout/trace and persisted
   reports to determine whether training still appears to be progressing.
+- If a launch fails before training begins, treat it as an authored campaign,
+  wave, or mount-resolution bug first. Verify `BIND.MOUNT`, inspect
+  `hero.runtime.explain_binding_selection`, and confirm the intended bind/wave
+  pair before spending another launch on the same candidate.
 - If debug visibility is needed, keep dedicated debug eval waves rather than
   slowing the main exhaustive train wave unnecessarily.
 - Bias toward conservative, attributable candidate authoring over chaotic
@@ -107,18 +118,18 @@ Primary objective-local mutation surfaces:
 Promotion end-state:
 - The objective is not satisfied merely because one fresh train run completed.
 - The objective is satisfied when a best-known jkimyei candidate is selected
-  from comparative evidence, its exact profile id and Hashimyei slot are named,
-  and the session leaves behind a promotion-ready recommendation for replacing
+  from comparative evidence, its exact profile id and exact revision token are
+  named, and the session leaves behind a promotion-ready recommendation for replacing
   the current optimized VICReg settings.
 - If current Marshal authority/tooling cannot directly mutate `../../optim/`
-  or promote the winner Hashimyei, do not treat that limitation as silent
+  or promote the winner component revision, do not treat that limitation as silent
   success. Instead, end with the smallest justified operator-facing governance
   or policy request that names the exact winner, the exact files/settings to
   replace, and why no more automatic search is needed.
 
 Desired result shape:
 - List every serious candidate that was actually launched, including its
-  profile id, Hashimyei slot, and the key jkimyei differences it introduced.
+  profile id, exact revision token, and the key jkimyei differences it introduced.
 - Identify the current winner explicitly and state whether it beats the
   incumbent `0x00FF` continuation on reusable validation.
 - State whether the reported deciding evidence comes from reusable validation

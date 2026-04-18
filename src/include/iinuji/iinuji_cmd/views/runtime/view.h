@@ -113,6 +113,8 @@ inline bool runtime_job_is_sessionless(
          runtime_job_parent_session_id(st, job).empty();
 }
 
+inline std::string format_age_since_ms_minutes(std::uint64_t timestamp_ms);
+
 inline std::size_t
 count_runtime_campaigns_for_session(const CmdState &st,
                                     std::string_view marshal_session_id) {
@@ -160,7 +162,7 @@ runtime_campaign_lines_for_session(const CmdState &st,
       continue;
     const auto &campaign = st.runtime.campaigns[idx];
     lines.push_back(campaign.campaign_cursor + " | " + campaign.state + " | " +
-                    format_age_since_ms(campaign.updated_at_ms));
+                    format_age_since_ms_minutes(campaign.updated_at_ms));
     if (lines.size() >= limit)
       break;
   }
@@ -181,7 +183,7 @@ runtime_job_lines_for_campaign(const CmdState &st,
       continue;
     const auto &job = st.runtime.jobs[idx];
     lines.push_back(job.job_cursor + " | " + job.state + " | " +
-                    format_age_since_ms(job.updated_at_ms));
+                    format_age_since_ms_minutes(job.updated_at_ms));
     if (lines.size() >= limit)
       break;
   }
@@ -205,7 +207,8 @@ runtime_job_lines_for_session(const CmdState &st,
         runtime_job_parent_campaign_cursor(st, job);
     lines.push_back(
         job.job_cursor + " | " + job.state + " | campaign=" +
-        trim_to_width(runtime_campaign_ref_text(campaign_cursor), 22));
+        trim_to_width(runtime_campaign_ref_text(campaign_cursor), 22) + " | " +
+        format_age_since_ms_minutes(job.updated_at_ms));
     if (lines.size() >= limit)
       break;
   }
@@ -303,6 +306,76 @@ inline std::string runtime_scope_badge(bool active) {
   return active ? "[LIVE]" : "[HIST]";
 }
 
+inline std::string runtime_scope_status_text(
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  switch (status_emphasis) {
+  case cuwacunu::iinuji::text_line_emphasis_t::Error:
+  case cuwacunu::iinuji::text_line_emphasis_t::MutedError:
+  case cuwacunu::iinuji::text_line_emphasis_t::Fatal:
+    return "err";
+  case cuwacunu::iinuji::text_line_emphasis_t::Warning:
+  case cuwacunu::iinuji::text_line_emphasis_t::MutedWarning:
+    return "warn";
+  default:
+    return "ok";
+  }
+}
+
+inline cuwacunu::iinuji::text_line_emphasis_t runtime_scope_status_emphasis(
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  switch (status_emphasis) {
+  case cuwacunu::iinuji::text_line_emphasis_t::Error:
+    return cuwacunu::iinuji::text_line_emphasis_t::Error;
+  case cuwacunu::iinuji::text_line_emphasis_t::Fatal:
+    return cuwacunu::iinuji::text_line_emphasis_t::Fatal;
+  case cuwacunu::iinuji::text_line_emphasis_t::MutedError:
+    return cuwacunu::iinuji::text_line_emphasis_t::MutedError;
+  case cuwacunu::iinuji::text_line_emphasis_t::Warning:
+    return cuwacunu::iinuji::text_line_emphasis_t::Warning;
+  case cuwacunu::iinuji::text_line_emphasis_t::MutedWarning:
+    return cuwacunu::iinuji::text_line_emphasis_t::MutedWarning;
+  case cuwacunu::iinuji::text_line_emphasis_t::Success:
+    return cuwacunu::iinuji::text_line_emphasis_t::Success;
+  case cuwacunu::iinuji::text_line_emphasis_t::Info:
+    return cuwacunu::iinuji::text_line_emphasis_t::Success;
+  case cuwacunu::iinuji::text_line_emphasis_t::Debug:
+    return cuwacunu::iinuji::text_line_emphasis_t::Debug;
+  case cuwacunu::iinuji::text_line_emphasis_t::Accent:
+    return cuwacunu::iinuji::text_line_emphasis_t::Accent;
+  default:
+    return cuwacunu::iinuji::text_line_emphasis_t::Success;
+  }
+}
+
+inline std::string
+runtime_scope_badge(bool active,
+                    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  return active ? "[LIVE:" + runtime_scope_status_text(status_emphasis) + "]"
+                : "[HIST:" + runtime_scope_status_text(status_emphasis) + "]";
+}
+
+inline std::string runtime_session_scope_status_text(
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  if (!runtime_session_is_active(session) && session.lifecycle == "live" &&
+      session.activity == "review" && session.finish_reason == "interrupted") {
+    return "interrupted";
+  }
+  return runtime_scope_status_text(status_emphasis);
+}
+
+inline std::string runtime_session_scope_badge(
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  return runtime_session_is_active(session)
+             ? "[LIVE:" +
+                   runtime_session_scope_status_text(session, status_emphasis) +
+                   "]"
+             : "[HIST:" +
+                   runtime_session_scope_status_text(session, status_emphasis) +
+                   "]";
+}
+
 inline std::string runtime_campaign_relation_badge(
     const CmdState &st,
     const cuwacunu::hero::runtime::runtime_campaign_record_t &campaign) {
@@ -387,12 +460,20 @@ inline std::string runtime_worklist_panel_title(const CmdState &st) {
 }
 
 inline cuwacunu::iinuji::text_line_emphasis_t runtime_session_row_emphasis(
+    const CmdState &st,
     const cuwacunu::hero::marshal::marshal_session_record_t &session) {
   if (session.finish_reason == "failed" ||
       session.finish_reason == "terminated") {
     return cuwacunu::iinuji::text_line_emphasis_t::MutedError;
   }
-  if (session.phase == "paused") {
+  if (session.finish_reason == "interrupted") {
+    if (!runtime_session_is_active(session) &&
+        !operator_session_has_pending_review(st, session.marshal_session_id)) {
+      return cuwacunu::iinuji::text_line_emphasis_t::Info;
+    }
+    return cuwacunu::iinuji::text_line_emphasis_t::Warning;
+  }
+  if (session.lifecycle == "live" && session.work_gate != "open") {
     return cuwacunu::iinuji::text_line_emphasis_t::Warning;
   }
   if (runtime_session_is_active(session)) {
@@ -421,7 +502,7 @@ inline cuwacunu::iinuji::text_line_emphasis_t runtime_job_row_emphasis(
     const cuwacunu::hero::runtime::runtime_job_record_t &job) {
   const std::string state = to_lower_copy(job.state);
   if (state == "orphaned") {
-    return cuwacunu::iinuji::text_line_emphasis_t::Warning;
+    return cuwacunu::iinuji::text_line_emphasis_t::MutedWarning;
   }
   if (state.find("fail") != std::string::npos ||
       state.find("error") != std::string::npos ||
@@ -457,8 +538,9 @@ runtime_row_emphasis(cuwacunu::iinuji::text_line_emphasis_t base, bool active,
 }
 
 inline std::string runtime_session_worklist_title(
-    const cuwacunu::hero::marshal::marshal_session_record_t &session) {
-  return "M " + runtime_scope_badge(runtime_session_is_active(session)) + " " +
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  return "M " + runtime_session_scope_badge(session, status_emphasis) + " " +
          trim_to_width(session.objective_name.empty()
                            ? std::string("<unnamed objective>")
                            : session.objective_name,
@@ -467,19 +549,28 @@ inline std::string runtime_session_worklist_title(
 
 inline std::string runtime_session_worklist_row(
     const CmdState &st,
-    const cuwacunu::hero::marshal::marshal_session_record_t &session) {
-  (void)st;
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
   std::ostringstream oss;
-  oss << runtime_session_worklist_title(session) << " | "
+  oss << runtime_session_worklist_title(session, status_emphasis) << " | "
       << trim_to_width(session.marshal_session_id, 24) << " | "
-      << format_age_since_ms(session.updated_at_ms);
+      << format_age_since_ms_minutes(session.updated_at_ms);
+  if (cuwacunu::hero::marshal::is_marshal_session_summary_state(session)) {
+    oss << " | "
+        << (operator_session_has_pending_review(st, session.marshal_session_id)
+                ? "review"
+                : "ack");
+  }
   return trim_to_width(oss.str(), 74);
 }
 
 inline std::string runtime_campaign_worklist_title(
     const CmdState &st,
-    const cuwacunu::hero::runtime::runtime_campaign_record_t &campaign) {
-  return "C " + runtime_scope_badge(runtime_campaign_is_active(campaign)) +
+    const cuwacunu::hero::runtime::runtime_campaign_record_t &campaign,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  return "C " +
+         runtime_scope_badge(runtime_campaign_is_active(campaign),
+                             status_emphasis) +
          " [" + trim_to_width(campaign.state, 8) + "]" +
          runtime_campaign_relation_badge(st, campaign) + " " +
          trim_to_width(campaign.campaign_cursor, 24);
@@ -487,32 +578,93 @@ inline std::string runtime_campaign_worklist_title(
 
 inline std::string runtime_campaign_worklist_row(
     const CmdState &st,
-    const cuwacunu::hero::runtime::runtime_campaign_record_t &campaign) {
+    const cuwacunu::hero::runtime::runtime_campaign_record_t &campaign,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
   std::ostringstream oss;
-  oss << runtime_campaign_worklist_title(st, campaign) << " | "
-      << format_age_since_ms(campaign.updated_at_ms);
+  oss << runtime_campaign_worklist_title(st, campaign, status_emphasis) << " | "
+      << format_age_since_ms_minutes(campaign.updated_at_ms);
   return trim_to_width(oss.str(), 74);
 }
 
 inline std::string runtime_job_worklist_title(
     const CmdState &st,
-    const cuwacunu::hero::runtime::runtime_job_record_t &job) {
-  return "J " + runtime_scope_badge(runtime_job_is_active(job)) + " [" +
-         trim_to_width(job.state, 8) + "]" +
+    const cuwacunu::hero::runtime::runtime_job_record_t &job,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  return "J " +
+         runtime_scope_badge(runtime_job_is_active(job), status_emphasis) +
+         " [" + trim_to_width(job.state, 8) + "]" +
          runtime_job_relation_badge(st, job) + " " +
          trim_to_width(job.job_cursor, 24);
 }
 
 inline std::string runtime_job_worklist_row(
     const CmdState &st,
-    const cuwacunu::hero::runtime::runtime_job_record_t &job) {
+    const cuwacunu::hero::runtime::runtime_job_record_t &job,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
   std::ostringstream oss;
-  oss << runtime_job_worklist_title(st, job) << " | "
-      << format_age_since_ms(job.updated_at_ms);
+  oss << runtime_job_worklist_title(st, job, status_emphasis) << " | "
+      << format_age_since_ms_minutes(job.updated_at_ms);
   if (job.exit_code.has_value()) {
     oss << " | exit=" << *job.exit_code;
   }
   return trim_to_width(oss.str(), 74);
+}
+
+inline std::string format_age_since_ms_minutes(std::uint64_t timestamp_ms) {
+  if (timestamp_ms == 0)
+    return "<unknown>";
+  const std::uint64_t now_ms = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count());
+  if (timestamp_ms >= now_ms)
+    return "0m ago";
+  const std::uint64_t total_minutes =
+      (now_ms - timestamp_ms) / static_cast<std::uint64_t>(1000 * 60);
+  if (total_minutes == 0)
+    return "0m ago";
+  const std::uint64_t minutes = total_minutes % 60;
+  const std::uint64_t hours = (total_minutes / 60) % 24;
+  const std::uint64_t days = total_minutes / (24 * 60);
+  std::ostringstream oss;
+  if (days > 0)
+    oss << days << "d";
+  if (hours > 0)
+    oss << hours << "h";
+  if (minutes > 0 || (days == 0 && hours == 0)) {
+    oss << minutes << "m";
+  }
+  return oss.str() + " ago";
+}
+
+inline void push_runtime_status_line(
+    std::vector<cuwacunu::iinuji::styled_text_line_t> &out, std::string text,
+    const std::string &status_badge,
+    cuwacunu::iinuji::text_line_emphasis_t fallback_emphasis,
+    cuwacunu::iinuji::text_line_emphasis_t status_emphasis) {
+  if (status_badge.empty()) {
+    push_runtime_line(out, std::move(text), fallback_emphasis);
+    return;
+  }
+  const auto status_pos = text.find(status_badge);
+  if (status_pos == std::string::npos) {
+    push_runtime_line(out, std::move(text), fallback_emphasis);
+    return;
+  }
+  const auto status_color = runtime_scope_status_emphasis(status_emphasis);
+  std::vector<cuwacunu::iinuji::styled_text_segment_t> segments{};
+  if (status_pos != 0) {
+    segments.push_back(cuwacunu::iinuji::styled_text_segment_t{
+        .text = text.substr(0, status_pos), .emphasis = fallback_emphasis});
+  }
+  segments.push_back(cuwacunu::iinuji::styled_text_segment_t{
+      .text = status_badge, .emphasis = status_color});
+  const std::size_t status_end = status_pos + status_badge.size();
+  if (status_end < text.size()) {
+    segments.push_back(cuwacunu::iinuji::styled_text_segment_t{
+        .text = text.substr(status_end), .emphasis = fallback_emphasis});
+  }
+  push_runtime_segments(out, std::move(segments), fallback_emphasis);
 }
 
 inline std::string runtime_none_session_worklist_row(const CmdState &st) {
@@ -825,17 +977,23 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
     for (std::size_t i = 0; i < st.runtime.sessions.size(); ++i) {
       const auto &session = st.runtime.sessions[i];
       const bool active = (i == selected) && !st.runtime.campaign_filter_active;
+      const auto session_status_emphasis =
+          runtime_session_row_emphasis(st, session);
       const auto emphasis = runtime_row_emphasis(
-          runtime_session_row_emphasis(session), active, focused);
+          cuwacunu::iinuji::text_line_emphasis_t::Info, active, focused);
       const std::string prefix = (i == selected && !child_campaigns.empty())
                                      ? "v "
                                      : (active ? "> " : "  ");
       if (active)
         panel.selected_line = out.size();
-      push_runtime_line(out,
-                        prefix + "[" + std::to_string(i + 1) + "] " +
-                            runtime_session_worklist_row(st, session),
-                        emphasis);
+      push_runtime_status_line(
+          out,
+          prefix + "[" + std::to_string(i + 1) + "] " +
+              runtime_session_worklist_row(st, session,
+                                           session_status_emphasis),
+          runtime_scope_badge(runtime_session_is_active(session),
+                              session_status_emphasis),
+          emphasis, session_status_emphasis);
       if (i != selected)
         continue;
       for (std::size_t j = 0; j < child_campaigns.size(); ++j) {
@@ -843,34 +1001,45 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
         const bool child_active = st.runtime.campaign_filter_active &&
                                   !st.runtime.job_filter_active &&
                                   (j == selected_campaign);
-        const auto child_emphasis = runtime_row_emphasis(
-            runtime_campaign_row_emphasis(campaign), child_active, focused);
+        const auto campaign_status_emphasis =
+            runtime_campaign_row_emphasis(campaign);
+        const auto child_emphasis =
+            runtime_row_emphasis(cuwacunu::iinuji::text_line_emphasis_t::Info,
+                                 child_active, focused);
         const bool show_jobs = st.runtime.campaign_filter_active &&
                                (j == selected_campaign) && !child_jobs.empty();
         const std::string child_prefix =
             show_jobs ? "    v " : (child_active ? "    > " : "      ");
         if (child_active)
           panel.selected_line = out.size();
-        push_runtime_line(out,
-                          child_prefix + "[" + std::to_string(j + 1) + "] " +
-                              runtime_campaign_worklist_row(st, campaign),
-                          child_emphasis);
+        push_runtime_status_line(
+            out,
+            child_prefix + "[" + std::to_string(j + 1) + "] " +
+                runtime_campaign_worklist_row(st, campaign,
+                                              campaign_status_emphasis),
+            runtime_scope_badge(runtime_campaign_is_active(campaign),
+                                campaign_status_emphasis),
+            child_emphasis, campaign_status_emphasis);
         if (!show_jobs)
           continue;
         for (std::size_t k = 0; k < child_jobs.size(); ++k) {
           const auto &job = st.runtime.jobs[child_jobs[k]];
           const bool job_active =
               st.runtime.job_filter_active && (k == selected_job);
-          const auto job_emphasis = runtime_row_emphasis(
-              runtime_job_row_emphasis(job), job_active, focused);
+          const auto job_status_emphasis = runtime_job_row_emphasis(job);
+          const auto job_emphasis =
+              runtime_row_emphasis(cuwacunu::iinuji::text_line_emphasis_t::Info,
+                                   job_active, focused);
           if (job_active)
             panel.selected_line = out.size();
-          push_runtime_line(
+          push_runtime_status_line(
               out,
               std::string(job_active ? "        > " : "          ") + "[" +
                   std::to_string(k + 1) + "] " +
-                  runtime_job_worklist_row(st, job),
-              job_emphasis);
+                  runtime_job_worklist_row(st, job, job_status_emphasis),
+              runtime_scope_badge(runtime_job_is_active(job),
+                                  job_status_emphasis),
+              job_emphasis, job_status_emphasis);
         }
       }
     }
@@ -879,25 +1048,30 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
       const bool active =
           (none_index == selected) && !st.runtime.campaign_filter_active;
       const auto emphasis = runtime_row_emphasis(
-          cuwacunu::iinuji::text_line_emphasis_t::Warning, active, focused);
+          cuwacunu::iinuji::text_line_emphasis_t::Info, active, focused);
       const bool expanded =
           none_index == selected &&
           (!child_campaigns.empty() || show_none_campaign_child);
       const std::string prefix = expanded ? "v " : (active ? "> " : "  ");
       if (active)
         panel.selected_line = out.size();
-      push_runtime_line(out,
-                        prefix + "[" + std::to_string(none_index + 1) + "] " +
-                            runtime_none_session_worklist_row(st),
-                        emphasis);
+      push_runtime_status_line(
+          out,
+          prefix + "[" + std::to_string(none_index + 1) + "] " +
+              runtime_none_session_worklist_row(st),
+          "[ORPHAN]", emphasis,
+          cuwacunu::iinuji::text_line_emphasis_t::MutedWarning);
       if (none_index == selected) {
         for (std::size_t j = 0; j < child_campaigns.size(); ++j) {
           const auto &campaign = st.runtime.campaigns[child_campaigns[j]];
           const bool child_active = st.runtime.campaign_filter_active &&
                                     !st.runtime.job_filter_active &&
                                     (j == selected_campaign);
-          const auto child_emphasis = runtime_row_emphasis(
-              runtime_campaign_row_emphasis(campaign), child_active, focused);
+          const auto campaign_status_emphasis =
+              runtime_campaign_row_emphasis(campaign);
+          const auto child_emphasis =
+              runtime_row_emphasis(cuwacunu::iinuji::text_line_emphasis_t::Info,
+                                   child_active, focused);
           const bool show_jobs = st.runtime.campaign_filter_active &&
                                  (j == selected_campaign) &&
                                  !child_jobs.empty();
@@ -905,26 +1079,34 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
               show_jobs ? "    v " : (child_active ? "    > " : "      ");
           if (child_active)
             panel.selected_line = out.size();
-          push_runtime_line(out,
-                            child_prefix + "[" + std::to_string(j + 1) + "] " +
-                                runtime_campaign_worklist_row(st, campaign),
-                            child_emphasis);
+          push_runtime_status_line(
+              out,
+              child_prefix + "[" + std::to_string(j + 1) + "] " +
+                  runtime_campaign_worklist_row(st, campaign,
+                                                campaign_status_emphasis),
+              runtime_scope_badge(runtime_campaign_is_active(campaign),
+                                  campaign_status_emphasis),
+              child_emphasis, campaign_status_emphasis);
           if (!show_jobs)
             continue;
           for (std::size_t k = 0; k < child_jobs.size(); ++k) {
             const auto &job = st.runtime.jobs[child_jobs[k]];
             const bool job_active =
                 st.runtime.job_filter_active && (k == selected_job);
+            const auto job_status_emphasis = runtime_job_row_emphasis(job);
             const auto job_emphasis = runtime_row_emphasis(
-                runtime_job_row_emphasis(job), job_active, focused);
+                cuwacunu::iinuji::text_line_emphasis_t::Info, job_active,
+                focused);
             if (job_active)
               panel.selected_line = out.size();
-            push_runtime_line(
+            push_runtime_status_line(
                 out,
                 std::string(job_active ? "        > " : "          ") + "[" +
                     std::to_string(k + 1) + "] " +
-                    runtime_job_worklist_row(st, job),
-                job_emphasis);
+                    runtime_job_worklist_row(st, job, job_status_emphasis),
+                runtime_scope_badge(runtime_job_is_active(job),
+                                    job_status_emphasis),
+                job_emphasis, job_status_emphasis);
           }
         }
         if (show_none_campaign_child) {
@@ -932,9 +1114,9 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
           const bool child_active = st.runtime.campaign_filter_active &&
                                     !st.runtime.job_filter_active &&
                                     (none_child_index == selected_campaign);
-          const auto child_emphasis = runtime_row_emphasis(
-              cuwacunu::iinuji::text_line_emphasis_t::Warning, child_active,
-              focused);
+          const auto child_emphasis =
+              runtime_row_emphasis(cuwacunu::iinuji::text_line_emphasis_t::Info,
+                                   child_active, focused);
           const bool show_jobs = st.runtime.campaign_filter_active &&
                                  (none_child_index == selected_campaign) &&
                                  !child_jobs.empty();
@@ -942,26 +1124,31 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
               show_jobs ? "    v " : (child_active ? "    > " : "      ");
           if (child_active)
             panel.selected_line = out.size();
-          push_runtime_line(out,
-                            child_prefix + "[" +
-                                std::to_string(none_child_index + 1) + "] " +
-                                runtime_none_campaign_worklist_row(st),
-                            child_emphasis);
+          push_runtime_status_line(
+              out,
+              child_prefix + "[" + std::to_string(none_child_index + 1) + "] " +
+                  runtime_none_campaign_worklist_row(st),
+              "[ORPHAN]", child_emphasis,
+              cuwacunu::iinuji::text_line_emphasis_t::MutedWarning);
           if (show_jobs) {
             for (std::size_t k = 0; k < child_jobs.size(); ++k) {
               const auto &job = st.runtime.jobs[child_jobs[k]];
               const bool job_active =
                   st.runtime.job_filter_active && (k == selected_job);
+              const auto job_status_emphasis = runtime_job_row_emphasis(job);
               const auto job_emphasis = runtime_row_emphasis(
-                  runtime_job_row_emphasis(job), job_active, focused);
+                  cuwacunu::iinuji::text_line_emphasis_t::Info, job_active,
+                  focused);
               if (job_active)
                 panel.selected_line = out.size();
-              push_runtime_line(
+              push_runtime_status_line(
                   out,
                   std::string(job_active ? "        > " : "          ") + "[" +
                       std::to_string(k + 1) + "] " +
-                      runtime_job_worklist_row(st, job),
-                  job_emphasis);
+                      runtime_job_worklist_row(st, job, job_status_emphasis),
+                  runtime_scope_badge(runtime_job_is_active(job),
+                                      job_status_emphasis),
+                  job_emphasis, job_status_emphasis);
             }
           }
         }
@@ -984,31 +1171,42 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
     for (std::size_t i = 0; i < st.runtime.campaigns.size(); ++i) {
       const auto &campaign = st.runtime.campaigns[i];
       const bool active = (i == selected) && !st.runtime.job_filter_active;
+      const auto campaign_status_emphasis =
+          runtime_campaign_row_emphasis(campaign);
       const auto emphasis = runtime_row_emphasis(
-          runtime_campaign_row_emphasis(campaign), active, focused);
+          cuwacunu::iinuji::text_line_emphasis_t::Info, active, focused);
       const std::string prefix =
           (i == selected && !child.empty()) ? "v " : (active ? "> " : "  ");
       if (active)
         panel.selected_line = out.size();
-      push_runtime_line(out,
-                        prefix + "[" + std::to_string(i + 1) + "] " +
-                            runtime_campaign_worklist_row(st, campaign),
-                        emphasis);
+      push_runtime_status_line(
+          out,
+          prefix + "[" + std::to_string(i + 1) + "] " +
+              runtime_campaign_worklist_row(st, campaign,
+                                            campaign_status_emphasis),
+          runtime_scope_badge(runtime_campaign_is_active(campaign),
+                              campaign_status_emphasis),
+          emphasis, campaign_status_emphasis);
       if (i != selected)
         continue;
       for (std::size_t j = 0; j < child.size(); ++j) {
         const auto &job = st.runtime.jobs[child[j]];
         const bool child_active =
             st.runtime.job_filter_active && (j == child_selected);
-        const auto child_emphasis = runtime_row_emphasis(
-            runtime_job_row_emphasis(job), child_active, focused);
+        const auto job_status_emphasis = runtime_job_row_emphasis(job);
+        const auto child_emphasis =
+            runtime_row_emphasis(cuwacunu::iinuji::text_line_emphasis_t::Info,
+                                 child_active, focused);
         if (child_active)
           panel.selected_line = out.size();
-        push_runtime_line(out,
-                          std::string(child_active ? "    > " : "      ") +
-                              "[" + std::to_string(j + 1) + "] " +
-                              runtime_job_worklist_row(st, job),
-                          child_emphasis);
+        push_runtime_status_line(
+            out,
+            std::string(child_active ? "    > " : "      ") + "[" +
+                std::to_string(j + 1) + "] " +
+                runtime_job_worklist_row(st, job, job_status_emphasis),
+            runtime_scope_badge(runtime_job_is_active(job),
+                                job_status_emphasis),
+            child_emphasis, job_status_emphasis);
       }
     }
     if (runtime_has_none_campaign_row(st)) {
@@ -1016,29 +1214,36 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
       const bool active =
           (none_index == selected) && !st.runtime.job_filter_active;
       const auto emphasis = runtime_row_emphasis(
-          cuwacunu::iinuji::text_line_emphasis_t::Warning, active, focused);
+          cuwacunu::iinuji::text_line_emphasis_t::Info, active, focused);
       const bool expanded = (none_index == selected) && !child.empty();
       const std::string prefix = expanded ? "v " : (active ? "> " : "  ");
       if (active)
         panel.selected_line = out.size();
-      push_runtime_line(out,
-                        prefix + "[" + std::to_string(none_index + 1) + "] " +
-                            runtime_none_campaign_worklist_row(st),
-                        emphasis);
+      push_runtime_status_line(
+          out,
+          prefix + "[" + std::to_string(none_index + 1) + "] " +
+              runtime_none_campaign_worklist_row(st),
+          "[ORPHAN]", emphasis,
+          cuwacunu::iinuji::text_line_emphasis_t::MutedWarning);
       if (none_index == selected) {
         for (std::size_t j = 0; j < child.size(); ++j) {
           const auto &job = st.runtime.jobs[child[j]];
           const bool child_active =
               st.runtime.job_filter_active && (j == child_selected);
-          const auto child_emphasis = runtime_row_emphasis(
-              runtime_job_row_emphasis(job), child_active, focused);
+          const auto job_status_emphasis = runtime_job_row_emphasis(job);
+          const auto child_emphasis =
+              runtime_row_emphasis(cuwacunu::iinuji::text_line_emphasis_t::Info,
+                                   child_active, focused);
           if (child_active)
             panel.selected_line = out.size();
-          push_runtime_line(out,
-                            std::string(child_active ? "    > " : "      ") +
-                                "[" + std::to_string(j + 1) + "] " +
-                                runtime_job_worklist_row(st, job),
-                            child_emphasis);
+          push_runtime_status_line(
+              out,
+              std::string(child_active ? "    > " : "      ") + "[" +
+                  std::to_string(j + 1) + "] " +
+                  runtime_job_worklist_row(st, job, job_status_emphasis),
+              runtime_scope_badge(runtime_job_is_active(job),
+                                  job_status_emphasis),
+              child_emphasis, job_status_emphasis);
         }
       }
     }
@@ -1054,15 +1259,17 @@ inline RuntimeWorklistPanel make_runtime_worklist_panel(const CmdState &st) {
   for (std::size_t i = 0; i < st.runtime.jobs.size(); ++i) {
     const auto &job = st.runtime.jobs[i];
     const bool active = (i == selected);
-    const auto emphasis =
-        runtime_row_emphasis(runtime_job_row_emphasis(job), active, focused);
+    const auto job_status_emphasis = runtime_job_row_emphasis(job);
+    const auto emphasis = runtime_row_emphasis(
+        cuwacunu::iinuji::text_line_emphasis_t::Info, active, focused);
     if (active)
       panel.selected_line = out.size();
-    push_runtime_line(out,
-                      std::string(active ? "> " : "  ") + "[" +
-                          std::to_string(i + 1) + "] " +
-                          runtime_job_worklist_row(st, job),
-                      emphasis);
+    push_runtime_status_line(
+        out,
+        std::string(active ? "> " : "  ") + "[" + std::to_string(i + 1) + "] " +
+            runtime_job_worklist_row(st, job, job_status_emphasis),
+        runtime_scope_badge(runtime_job_is_active(job), job_status_emphasis),
+        emphasis, job_status_emphasis);
   }
   return panel;
 }
@@ -1262,7 +1469,8 @@ inline void append_runtime_device_updated_detail(
               .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Debug,
           },
           cuwacunu::iinuji::styled_text_segment_t{
-              .text = "  " + format_age_since_ms(device.collected_at_ms),
+              .text =
+                  "  " + format_age_since_ms_minutes(device.collected_at_ms),
               .emphasis = age_emphasis,
           },
           cuwacunu::iinuji::styled_text_segment_t{
@@ -1705,19 +1913,30 @@ inline void append_runtime_session_detail(
     return;
   }
   const auto &session = *st.runtime.session;
-  append_runtime_detail_meta(out, "state", runtime_session_phase_text(session),
+  append_runtime_detail_meta(out, "state", runtime_session_state_text(session),
                              cuwacunu::iinuji::text_line_emphasis_t::Info,
-                             runtime_session_row_emphasis(session));
+                             runtime_session_row_emphasis(st, session));
+  if (cuwacunu::hero::marshal::is_marshal_session_summary_state(session)) {
+    const bool pending_review =
+        operator_session_has_pending_review(st, session.marshal_session_id);
+    append_runtime_detail_meta(
+        out, "summary",
+        pending_review ? std::string("review pending")
+                       : std::string("acknowledged"),
+        cuwacunu::iinuji::text_line_emphasis_t::Info,
+        pending_review ? cuwacunu::iinuji::text_line_emphasis_t::Warning
+                       : cuwacunu::iinuji::text_line_emphasis_t::Info);
+  }
   append_runtime_detail_meta(out, "objective",
                              session.objective_name.empty()
                                  ? std::string("<unnamed objective>")
                                  : session.objective_name);
   append_runtime_detail_meta(out, "marshal_session_id",
                              session.marshal_session_id);
-  if (!session.active_campaign_cursor.empty()) {
+  if (!session.campaign_cursor.empty()) {
     append_runtime_detail_meta(
         out, "active_campaign",
-        runtime_campaign_ref_text(session.active_campaign_cursor));
+        runtime_campaign_ref_text(session.campaign_cursor));
   }
   append_runtime_detail_meta(out, "campaigns",
                              std::to_string(count_runtime_campaigns_for_session(
@@ -1734,8 +1953,8 @@ inline void append_runtime_session_detail(
         out, "finished_at",
         format_optional_time_marker_ms(session.finished_at_ms));
   }
-  if (session.pause_kind == "operator") {
-    append_runtime_detail_meta(out, "pause_kind", session.pause_kind,
+  if (session.work_gate == "operator_pause") {
+    append_runtime_detail_meta(out, "work_gate", session.work_gate,
                                cuwacunu::iinuji::text_line_emphasis_t::Info,
                                cuwacunu::iinuji::text_line_emphasis_t::Warning);
   }
@@ -1749,8 +1968,8 @@ inline void append_runtime_session_detail(
                                cuwacunu::iinuji::text_line_emphasis_t::Info,
                                cuwacunu::iinuji::text_line_emphasis_t::Warning);
   }
-  if (!session.phase_detail.empty()) {
-    append_runtime_note_block(out, session.phase_detail, "Marshal Note",
+  if (!session.status_detail.empty()) {
+    append_runtime_note_block(out, session.status_detail, "Marshal Note",
                               cuwacunu::iinuji::text_line_emphasis_t::Accent,
                               cuwacunu::iinuji::text_line_emphasis_t::None);
   }
@@ -2032,26 +2251,38 @@ runtime_marshal_event_emphasis(std::string_view event_name) {
   return runtime_marshaled_event_emphasis_from_name(event_name);
 }
 
-inline std::string runtime_event_viewer_selected_background(
-    cuwacunu::iinuji::text_line_emphasis_t emphasis, bool body_line) {
+inline std::string
+runtime_event_viewer_background(cuwacunu::iinuji::text_line_emphasis_t emphasis,
+                                bool body_line, bool active) {
   switch (emphasis) {
   case cuwacunu::iinuji::text_line_emphasis_t::Fatal:
   case cuwacunu::iinuji::text_line_emphasis_t::Error:
   case cuwacunu::iinuji::text_line_emphasis_t::MutedError:
-    return body_line ? "#181015" : "#22131a";
+    if (active)
+      return body_line ? "#181015" : "#22131a";
+    return body_line ? "#120c10" : "#171015";
   case cuwacunu::iinuji::text_line_emphasis_t::Warning:
   case cuwacunu::iinuji::text_line_emphasis_t::MutedWarning:
-    return body_line ? "#17140f" : "#201a12";
+    if (active)
+      return body_line ? "#17140f" : "#201a12";
+    return body_line ? "#12100c" : "#17140e";
   case cuwacunu::iinuji::text_line_emphasis_t::Success:
-    return body_line ? "#111712" : "#152017";
+    if (active)
+      return body_line ? "#111712" : "#152017";
+    return body_line ? "#0d120e" : "#101711";
   case cuwacunu::iinuji::text_line_emphasis_t::Accent:
-    return body_line ? "#14131a" : "#1a1722";
+    if (active)
+      return body_line ? "#14131a" : "#1a1722";
+    return body_line ? "#100f16" : "#14131c";
   case cuwacunu::iinuji::text_line_emphasis_t::Info:
   case cuwacunu::iinuji::text_line_emphasis_t::Debug:
   case cuwacunu::iinuji::text_line_emphasis_t::None:
-    return body_line ? "#131722" : "#171c29";
+    if (active)
+      return body_line ? "#131722" : "#171c29";
+    return body_line ? "#10131c" : "#131722";
   }
-  return body_line ? "#131722" : "#171c29";
+  return active ? (body_line ? "#131722" : "#171c29")
+                : (body_line ? "#10131c" : "#131722");
 }
 
 inline cuwacunu::iinuji::text_line_emphasis_t
@@ -2060,20 +2291,74 @@ runtime_event_metadata_emphasis(std::string_view key, std::string_view value) {
       to_lower_copy(std::string(key) + " " + std::string(value));
   if (merged.find("fail") != std::string::npos ||
       merged.find("error") != std::string::npos ||
-      merged.find("terminate") != std::string::npos) {
+      merged.find("terminate") != std::string::npos ||
+      merged.find("deny") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::MutedError;
   }
   if (merged.find("pause") != std::string::npos ||
       merged.find("warn") != std::string::npos ||
-      merged.find("park") != std::string::npos) {
+      merged.find("park") != std::string::npos ||
+      merged.find("block") != std::string::npos ||
+      merged.find("retry") != std::string::npos ||
+      merged.find("stderr") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::Warning;
   }
   if (merged.find("checkpoint") != std::string::npos ||
       merged.find("launch") != std::string::npos ||
-      merged.find("campaign") != std::string::npos) {
+      merged.find("campaign") != std::string::npos ||
+      merged.find("tool") != std::string::npos ||
+      merged.find("stream") != std::string::npos ||
+      merged.find("line") != std::string::npos) {
     return cuwacunu::iinuji::text_line_emphasis_t::Accent;
   }
+  if (merged.find("complete") != std::string::npos ||
+      merged.find("deliver") != std::string::npos ||
+      merged.find("success") != std::string::npos) {
+    return cuwacunu::iinuji::text_line_emphasis_t::Success;
+  }
   return cuwacunu::iinuji::text_line_emphasis_t::Debug;
+}
+
+inline std::string
+runtime_structured_viewer_subject(RuntimeLogViewerKind kind) {
+  switch (kind) {
+  case RuntimeLogViewerKind::MarshalEvents:
+    return "timeline";
+  case RuntimeLogViewerKind::MarshalCodexStdout:
+    return "codex stdout";
+  case RuntimeLogViewerKind::MarshalCodexStderr:
+    return "codex stderr";
+  case RuntimeLogViewerKind::JobStdout:
+  case RuntimeLogViewerKind::JobStderr:
+  case RuntimeLogViewerKind::CampaignStdout:
+  case RuntimeLogViewerKind::CampaignStderr:
+  case RuntimeLogViewerKind::JobTrace:
+  case RuntimeLogViewerKind::ArtifactFile:
+  case RuntimeLogViewerKind::None:
+    break;
+  }
+  return runtime_log_viewer_kind_label(kind);
+}
+
+inline std::string
+runtime_structured_viewer_empty_text(RuntimeLogViewerKind kind) {
+  switch (kind) {
+  case RuntimeLogViewerKind::MarshalEvents:
+    return "No marshal events recorded yet.";
+  case RuntimeLogViewerKind::MarshalCodexStdout:
+    return "No codex stdout entries recorded yet.";
+  case RuntimeLogViewerKind::MarshalCodexStderr:
+    return "No codex stderr entries recorded yet.";
+  case RuntimeLogViewerKind::JobStdout:
+  case RuntimeLogViewerKind::JobStderr:
+  case RuntimeLogViewerKind::CampaignStdout:
+  case RuntimeLogViewerKind::CampaignStderr:
+  case RuntimeLogViewerKind::JobTrace:
+  case RuntimeLogViewerKind::ArtifactFile:
+  case RuntimeLogViewerKind::None:
+    break;
+  }
+  return "No structured log entries recorded yet.";
 }
 
 inline RuntimeEventViewerPanel
@@ -2081,12 +2366,16 @@ make_runtime_event_viewer_panel(const CmdState &st) {
   RuntimeEventViewerPanel panel{};
   auto &out = panel.lines;
   const auto &entries = st.runtime.marshal_event_viewer.entries;
+  const RuntimeLogViewerKind kind = st.runtime.log_viewer_kind;
+  const std::string count_label =
+      std::to_string(entries.size()) +
+      (kind == RuntimeLogViewerKind::MarshalEvents ? " events" : " entries");
 
   push_runtime_segments(
       out,
-      {{.text = "timeline ",
+      {{.text = runtime_structured_viewer_subject(kind) + " ",
         .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Info},
-       {.text = std::to_string(entries.size()) + " events",
+       {.text = count_label,
         .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Accent},
        {.text =
             " | live=" +
@@ -2105,7 +2394,7 @@ make_runtime_event_viewer_panel(const CmdState &st) {
   push_runtime_line(out, {});
 
   if (entries.empty()) {
-    push_runtime_line(out, "No marshal events recorded yet.",
+    push_runtime_line(out, runtime_structured_viewer_empty_text(kind),
                       cuwacunu::iinuji::text_line_emphasis_t::Debug);
     return panel;
   }
@@ -2117,11 +2406,9 @@ make_runtime_event_viewer_panel(const CmdState &st) {
     const auto &entry = entries[i];
     const bool active = (i == selected);
     const std::string header_bg =
-        active ? runtime_event_viewer_selected_background(entry.emphasis, false)
-               : std::string{};
+        runtime_event_viewer_background(entry.emphasis, false, active);
     const std::string body_bg =
-        active ? runtime_event_viewer_selected_background(entry.emphasis, true)
-               : std::string{};
+        runtime_event_viewer_background(entry.emphasis, true, active);
     if (active)
       panel.selected_line = out.size();
 
@@ -2137,7 +2424,7 @@ make_runtime_event_viewer_panel(const CmdState &st) {
         {.text = "[" + entry.event_name + "] ", .emphasis = entry.emphasis});
     if (entry.timestamp_ms != 0) {
       header.push_back(
-          {.text = format_age_since_ms(entry.timestamp_ms),
+          {.text = format_age_since_ms_minutes(entry.timestamp_ms),
            .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Info});
       header.push_back(
           {.text = " | " + format_time_marker_ms(entry.timestamp_ms),
@@ -2150,8 +2437,7 @@ make_runtime_event_viewer_panel(const CmdState &st) {
     push_runtime_line_with_background(
         out,
         std::string("    ") +
-            runtime_compact_log_text(
-                entry.summary.empty() ? entry.raw_line : entry.summary, 160),
+            (entry.summary.empty() ? std::string("<empty>") : entry.summary),
         body_bg,
         (entry.emphasis == cuwacunu::iinuji::text_line_emphasis_t::Warning ||
          entry.emphasis == cuwacunu::iinuji::text_line_emphasis_t::MutedError)
@@ -2188,76 +2474,34 @@ make_runtime_event_viewer_panel(const CmdState &st) {
   return panel;
 }
 
-inline cuwacunu::iinuji::text_line_emphasis_t
-runtime_codex_line_emphasis(std::string_view kind) {
-  const std::string key = to_lower_copy(std::string(kind));
-  if (key.find("stderr") != std::string::npos ||
-      key.find("error") != std::string::npos ||
-      key.find("fail") != std::string::npos) {
-    return cuwacunu::iinuji::text_line_emphasis_t::Warning;
-  }
-  if (key.find("tool") != std::string::npos ||
-      key.find("reason") != std::string::npos ||
-      key.find("think") != std::string::npos ||
-      key.find("plan") != std::string::npos) {
-    return cuwacunu::iinuji::text_line_emphasis_t::Accent;
-  }
-  if (key.find("done") != std::string::npos ||
-      key.find("complete") != std::string::npos ||
-      key.find("result") != std::string::npos) {
-    return cuwacunu::iinuji::text_line_emphasis_t::Success;
-  }
-  if (key.find("message") != std::string::npos ||
-      key.find("assistant") != std::string::npos ||
-      key.find("stdout") != std::string::npos) {
-    return cuwacunu::iinuji::text_line_emphasis_t::Info;
-  }
-  return cuwacunu::iinuji::text_line_emphasis_t::Debug;
-}
-
 inline void append_runtime_marshaled_event_lines(
     std::vector<cuwacunu::iinuji::styled_text_line_t> &out,
     const std::vector<std::string> &lines) {
   for (const auto &raw_line : lines) {
-    cmd_json_value_t parsed{};
-    if (!runtime_try_parse_json_object_line(raw_line, &parsed)) {
-      append_runtime_detail_text(out, runtime_compact_log_text(raw_line),
-                                 cuwacunu::iinuji::text_line_emphasis_t::Debug,
-                                 "  ");
-      continue;
-    }
-    const std::uint64_t timestamp_ms =
-        cmd_json_u64(cmd_json_field(&parsed, "timestamp_ms"));
-    const std::string event_name =
-        runtime_json_first_string(&parsed, "event", "type", "kind");
-    const std::string detail = runtime_json_first_string(
-        &parsed, "detail", "summary", "text", "message", "status");
-    const auto event_emphasis = runtime_marshal_event_emphasis(event_name);
+    const auto entry = runtime_build_marshaled_event_entry(raw_line);
     const auto detail_emphasis =
-        event_emphasis == cuwacunu::iinuji::text_line_emphasis_t::Warning ||
-                event_emphasis ==
+        entry.emphasis == cuwacunu::iinuji::text_line_emphasis_t::Warning ||
+                entry.emphasis ==
                     cuwacunu::iinuji::text_line_emphasis_t::MutedError
-            ? event_emphasis
+            ? entry.emphasis
             : cuwacunu::iinuji::text_line_emphasis_t::None;
     std::vector<cuwacunu::iinuji::styled_text_segment_t> segments{};
     segments.push_back(
         {.text = "  ",
          .emphasis = cuwacunu::iinuji::text_line_emphasis_t::None});
-    if (timestamp_ms != 0) {
+    if (entry.timestamp_ms != 0) {
       segments.push_back(
-          {.text = "[" + format_age_since_ms(timestamp_ms) + "] ",
+          {.text = "[" + format_age_since_ms_minutes(entry.timestamp_ms) + "] ",
            .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Debug});
     }
     segments.push_back(
-        {.text = "[" +
-                 (event_name.empty() ? std::string("event") : event_name) +
-                 "] ",
-         .emphasis = event_emphasis});
-    segments.push_back(
-        {.text = runtime_compact_log_text(detail.empty() ? raw_line : detail),
-         .emphasis = detail_emphasis});
-    push_runtime_segments(out, std::move(segments),
-                          cuwacunu::iinuji::text_line_emphasis_t::None);
+        {.text = "[" + entry.event_name + "] ", .emphasis = entry.emphasis});
+    segments.push_back({.text = runtime_compact_log_text(entry.summary),
+                        .emphasis = detail_emphasis});
+    push_runtime_segments_with_background(
+        out, std::move(segments),
+        runtime_event_viewer_background(entry.emphasis, true, false),
+        cuwacunu::iinuji::text_line_emphasis_t::None);
   }
 }
 
@@ -2265,53 +2509,22 @@ inline void append_runtime_codex_stream_lines(
     std::vector<cuwacunu::iinuji::styled_text_line_t> &out,
     const std::vector<std::string> &lines, std::string_view fallback_kind) {
   for (const auto &raw_line : lines) {
-    cmd_json_value_t parsed{};
-    if (!runtime_try_parse_json_object_line(raw_line, &parsed)) {
-      append_runtime_detail_text(out, runtime_compact_log_text(raw_line),
-                                 runtime_codex_line_emphasis(fallback_kind),
-                                 "  ");
-      continue;
-    }
-
-    std::string kind =
-        runtime_json_first_string(&parsed, "type", "event", "stream", "kind");
-    if (kind.empty())
-      kind = std::string(fallback_kind);
-    std::string detail = runtime_json_first_string(
-        &parsed, "text", "detail", "message", "summary", "status");
-    const std::string role = runtime_json_first_string(&parsed, "role");
-    const std::string tool_name =
-        runtime_json_first_string(&parsed, "tool_name");
-    const auto line_index =
-        cmd_json_optional_i64(cmd_json_field(&parsed, "line_index"));
-
-    if (detail.empty() && !tool_name.empty()) {
-      detail = "tool=" + tool_name;
-    } else if (!tool_name.empty()) {
-      detail = tool_name + " -> " + detail;
-    }
-    if (detail.empty())
-      detail = raw_line;
-
-    std::string label = kind;
-    if (!role.empty() && to_lower_copy(role) != to_lower_copy(kind)) {
-      label += "/" + role;
-    }
-    if (line_index.has_value()) {
-      label += "#" + std::to_string(*line_index);
-    }
+    const auto entry =
+        runtime_build_codex_stream_entry(raw_line, fallback_kind);
 
     std::vector<cuwacunu::iinuji::styled_text_segment_t> segments{};
     segments.push_back(
         {.text = "  ",
          .emphasis = cuwacunu::iinuji::text_line_emphasis_t::None});
-    segments.push_back({.text = "[" + label + "] ",
-                        .emphasis = runtime_codex_line_emphasis(kind)});
     segments.push_back(
-        {.text = runtime_compact_log_text(detail),
+        {.text = "[" + entry.event_name + "] ", .emphasis = entry.emphasis});
+    segments.push_back(
+        {.text = runtime_compact_log_text(entry.summary),
          .emphasis = cuwacunu::iinuji::text_line_emphasis_t::None});
-    push_runtime_segments(out, std::move(segments),
-                          cuwacunu::iinuji::text_line_emphasis_t::None);
+    push_runtime_segments_with_background(
+        out, std::move(segments),
+        runtime_event_viewer_background(entry.emphasis, true, false),
+        cuwacunu::iinuji::text_line_emphasis_t::None);
   }
 }
 

@@ -46,6 +46,8 @@ void ensure_instruction_roots(const fs::path& scope_root) {
   assert(!ec);
   fs::create_directories(scope_root / "instructions" / "objectives", ec);
   assert(!ec);
+  fs::create_directories(scope_root / "instructions" / "temp", ec);
+  assert(!ec);
 }
 
 [[nodiscard]] std::string bool_text(bool value) {
@@ -108,6 +110,7 @@ void ensure_instruction_roots(const fs::path& scope_root) {
                                             const fs::path& backup_dir) {
   const fs::path default_roots = scope_root / "instructions" / "defaults";
   const fs::path objective_roots = scope_root / "instructions" / "objectives";
+  const fs::path temp_roots = scope_root / "instructions" / "temp";
   std::ostringstream out;
   out << "protocol_layer[STDIO|HTTPS/SSE]:str = STDIO\n";
   out << "config_scope_root:str = " << scope_root.string() << "\n";
@@ -115,6 +118,7 @@ void ensure_instruction_roots(const fs::path& scope_root) {
   out << "allow_local_write:bool = " << bool_text(allow_local_write) << "\n";
   out << "default_roots:str = " << default_roots.string() << "\n";
   out << "objective_roots:str = " << objective_roots.string() << "\n";
+  out << "temp_roots:str = " << temp_roots.string() << "\n";
   out << "allowed_extensions:str = .dsl\n";
   out << "write_roots:str = " << write_roots.string() << "\n";
   out << "backup_enabled:bool = " << bool_text(backup_enabled) << "\n";
@@ -477,6 +481,96 @@ int main() {
     assert(read_text(campaign_default_path) == campaign_default_text);
     assert(result_json.find("\"validation_family\":\"iitepi_campaign\"") !=
            std::string::npos);
+  }
+
+  {
+    const fs::path scope_root = temp_root / "temp_surface_scope";
+    const fs::path backup_dir = scope_root / ".backups" / "hero.config";
+    const fs::path cfg_path =
+        scope_root / "instructions" / "defaults" / "default.hero.config.dsl";
+    const fs::path temp_instruction_root =
+        scope_root / "instructions" / "temp";
+    const fs::path seed_temp_dsl = temp_instruction_root / "seed.dsl";
+    const fs::path created_temp_dsl =
+        temp_instruction_root / "generated" / "scratch.dsl";
+    const fs::path ignored_temp_file = temp_instruction_root / "notes.txt";
+    ensure_instruction_roots(scope_root);
+    write_text(cfg_path, build_config_text(scope_root,
+                                           /*allow_local_write=*/true,
+                                           scope_root,
+                                           /*backup_enabled=*/true,
+                                           backup_dir));
+    write_text(seed_temp_dsl, "alpha:uint = 1\n");
+    write_text(ignored_temp_file, "ignore me\n");
+
+    cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string());
+    std::string err;
+    assert(store.load(&err));
+    assert(err.empty());
+
+    std::string result_json;
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.temp.list", "{}", &store, &result_json, &err));
+    assert(err.empty());
+    assert(result_json.find(json_quote(seed_temp_dsl.string())) !=
+           std::string::npos);
+    assert(result_json.find(json_quote(ignored_temp_file.string())) ==
+           std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.temp.read",
+        "{\"path\":" + json_quote(seed_temp_dsl.string()) + "}", &store,
+        &result_json, &err));
+    assert(err.empty());
+    assert(result_json.find("\"validation_family\":\"latent_lineage_state\"") !=
+           std::string::npos);
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.temp.create",
+        "{\"path\":" + json_quote(created_temp_dsl.string()) +
+            ",\"content\":\"alpha:uint = 9\\n\"}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(created_temp_dsl) == "alpha:uint = 9\n");
+    assert(result_json.find("\"warning\":") == std::string::npos);
+    assert(!has_any_regular_file(backup_dir));
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.temp.read",
+        "{\"path\":" + json_quote(created_temp_dsl.string()) + "}", &store,
+        &result_json, &err));
+    assert(err.empty());
+    const std::string temp_expected_sha = json_string_field(result_json, "sha256");
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.temp.replace",
+        "{\"path\":" + json_quote(created_temp_dsl.string()) +
+            ",\"expected_sha256\":" + json_quote(temp_expected_sha) +
+            ",\"content\":\"alpha:uint = 10\\n\"}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(read_text(created_temp_dsl) == "alpha:uint = 10\n");
+    assert(result_json.find("\"warning\":") == std::string::npos);
+    assert(!has_any_regular_file(backup_dir));
+
+    result_json.clear();
+    err.clear();
+    assert(cuwacunu::hero::mcp::execute_tool_json(
+        "hero.config.temp.delete",
+        "{\"path\":" + json_quote(created_temp_dsl.string()) + "}",
+        &store, &result_json, &err));
+    assert(err.empty());
+    assert(!fs::exists(created_temp_dsl));
+    assert(result_json.find("\"warning\":") == std::string::npos);
+    assert(!has_any_regular_file(backup_dir));
   }
 
   {

@@ -80,6 +80,7 @@ struct LatticeMemberEntry {
   std::string display_name{};
   std::string hashimyei{};
   std::string contract_hash{};
+  std::string dock_hash{};
   std::string lineage_state{};
   std::size_t component_count{0};
   std::size_t report_fragment_count{0};
@@ -216,6 +217,7 @@ struct LatticeViewTransportSnapshot {
   std::string view_kind{};
   std::string canonical_path{};
   std::string contract_hash{};
+  std::string dock_hash{};
   std::string wave_cursor{};
   std::size_t match_count{0};
   std::size_t ambiguity_count{0};

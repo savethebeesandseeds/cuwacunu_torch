@@ -23,6 +23,7 @@
 #include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 #include "camahjucunu/dsl/runtime_binding_instruction/runtime_binding_instruction.h"
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "hero/wave_contract_binding_runtime.h"
 #include "iitepi/contract_space_t.h"
 #include "iitepi/wave_space_t.h"
 
@@ -443,13 +444,35 @@ static T parse_scalar_from_string(const std::string& s);
           read_text_file_or_throw(default_campaign_grammar_path()), campaign_text);
   const std::string binding_id =
       select_campaign_binding_id_or_throw(instruction, binding_override);
-  const std::string runtime_binding_text = build_internal_runtime_binding_text_from_campaign(
-      campaign_file_path, instruction, binding_id);
   const std::string identity_seed =
       canonicalize_path_best_effort(campaign_path) + "|" + binding_id;
   const std::string unique =
       sha256_hex_from_bytes(identity_seed.data(), identity_seed.size()).substr(0,
                                                                               16);
+  const std::filesystem::path campaign_snapshot_root =
+      std::filesystem::temp_directory_path() /
+      ("iitepi.internal." + unique + ".campaign_snapshot");
+  cuwacunu::hero::wave_contract_binding_runtime::
+      resolved_wave_contract_binding_snapshot_t campaign_snapshot{};
+  std::string campaign_snapshot_error{};
+  if (!cuwacunu::hero::wave_contract_binding_runtime::
+          prepare_campaign_binding_snapshot(campaign_file_path, binding_id,
+                                            campaign_snapshot_root,
+                                            &campaign_snapshot,
+                                            &campaign_snapshot_error)) {
+    throw std::runtime_error("cannot materialize bind-mounted campaign snapshot: " +
+                             campaign_snapshot_error);
+  }
+  const std::string snapshot_campaign_text =
+      read_text_file_or_throw(campaign_snapshot.campaign_dsl_path);
+  const auto snapshot_instruction =
+      cuwacunu::camahjucunu::dsl::decode_iitepi_campaign_from_dsl(
+          read_text_file_or_throw(default_campaign_grammar_path()),
+          snapshot_campaign_text);
+  const std::string runtime_binding_text =
+      build_internal_runtime_binding_text_from_campaign(
+          std::filesystem::path(campaign_snapshot.campaign_dsl_path),
+          snapshot_instruction, binding_id);
   const std::filesystem::path snapshot_path =
       std::filesystem::temp_directory_path() /
       ("iitepi.internal." + unique + ".runtime_binding.dsl");

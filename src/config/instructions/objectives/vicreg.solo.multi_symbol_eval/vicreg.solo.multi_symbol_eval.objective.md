@@ -8,7 +8,7 @@ Notes:
 - The optimized VICReg truth source lives in `../../optim/` and is frozen for
   this objective.
 - This objective reuses the already-trained optimized checkpoint carried by the
-  promoted Hashimyei slot `0x00FF`.
+  promoted exact revision token `0x00FF`.
 - Do not retrain, refresh, or reinitialize model weights in this objective.
 - The architecture, projector, observation channels, and contract wiring from
   `optim.vicreg.solo.*` are frozen here.
@@ -17,9 +17,12 @@ Notes:
 - Symbol identity is the experiment variable related to the market.
 - Discover the evaluation roster automatically from locally available symbol
   data rather than hard-coding a fixed list in this objective.
-- Compatibility should mean the symbol can satisfy the frozen optimized bundle:
-  active observation intervals, kline-oriented data expectations, and the
-  declared evaluation window.
+- Compatibility should mean both:
+  - the mounted component revision is dock-compatible with the imported frozen
+    contract, and
+  - the symbol can satisfy the frozen bundle operationally: active observation
+    intervals, kline-oriented data expectations, and the declared evaluation
+    window.
 - `iitepi.campaign.dsl` intentionally starts as an eval-only scaffold and
   should be authored into a concrete run plan on the first justified planning
   turn.
@@ -37,12 +40,14 @@ Research stance:
 - If one symbol fails due to data availability or operational problems, report
   that clearly instead of changing the model settings.
 - Do not author new contract variants or mutate the imported `optim` bundle.
+- Keep the imported optimized `CONTRACT` and its mounted revision token fixed;
+  the campaign roster is the main authored surface in this objective.
 - Do not assume one privileged source symbol for the optimized candidate.
   Future optimized bundles may come from one symbol, many symbols, or a more
   mixed training provenance.
 - Build the campaign deterministically from the discovered compatible symbol
   roster. Stable ordering, stable bind names, and reuse of the same promoted
-  slot `0x00FF` make the result easier to compare and discuss.
+  exact revision token `0x00FF` make the result easier to compare and discuss.
 - Optional reference or control rows are allowed when they help interpretation,
   but they must be justified by current evidence or training provenance and
   labeled explicitly rather than hard-coded to one symbol name.
@@ -66,7 +71,7 @@ Desired result shape:
 - Include discovered symbols that were skipped or found incompatible, not only
   the successfully evaluated ones.
 - Recommended columns:
-  `symbol`, `role`, `loaded_hashimyei_slot`, `checkpoint_provenance`,
+  `symbol`, `role`, `loaded_revision`, `checkpoint_provenance`,
   `eval_window`, `eval_status`, `linear_skill_bits_b1_b2_b3`,
   `mdn_skill_bits_b1_b2_b3`, `generalization_gap`,
   `entropic_or_capacity_note`, `verdict`, `notes`
@@ -78,4 +83,4 @@ Secondary goals:
 - Classify discovered symbols that were skipped or incompatible, and explain
   why they were not run.
 - Evaluate the quality of reports.
-- Evaluate the usability of the hero's.
+- Evaluate the usability of the Hero tooling.

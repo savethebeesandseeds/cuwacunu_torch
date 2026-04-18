@@ -6,6 +6,7 @@
 #include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "camahjucunu/dsl/wave_contract_binding/wave_contract_binding.h"
+#include "hero/hashimyei_hero/hashimyei_identity.h"
 #include "piaabo/dfiles.h"
 
 namespace {
@@ -101,19 +102,6 @@ int main() {
         "  BATCH_SIZE: 4;\n"
         "  MAX_BATCHES_PER_EPOCH: 4;\n"
         "  SOURCE: { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
-        "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; HASHIMYEI: 0x0000; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
-        "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
-        "}\n");
-
-    expect_decode_fail(
-        grammar,
-        "WAVE bad_wikimyei_hash {\n"
-        "  MODE: run|train;\n"
-        "  SAMPLER: sequential;\n"
-        "  EPOCHS: 1;\n"
-        "  BATCH_SIZE: 4;\n"
-        "  MAX_BATCHES_PER_EPOCH: 4;\n"
-        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
         "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
         "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
         "}\n");
@@ -127,7 +115,7 @@ int main() {
         "  BATCH_SIZE: 4;\n"
         "  MAX_BATCHES_PER_EPOCH: 4;\n"
         "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
-        "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; HASHIMYEI: 0x0000; TRAIN: false; PROFILE_ID: stable_pretrain; };\n"
+        "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; TRAIN: false; PROFILE_ID: stable_pretrain; };\n"
         "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
         "}\n");
 
@@ -135,6 +123,19 @@ int main() {
         grammar,
         "WAVE bad_mode_run_train_flag {\n"
         "  MODE: run;\n"
+        "  SAMPLER: sequential;\n"
+        "  EPOCHS: 1;\n"
+        "  BATCH_SIZE: 4;\n"
+        "  MAX_BATCHES_PER_EPOCH: 4;\n"
+        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
+        "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
+        "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
+        "}\n");
+
+    expect_decode_fail(
+        grammar,
+        "WAVE bad_legacy_hashimyei_key {\n"
+        "  MODE: run|train;\n"
         "  SAMPLER: sequential;\n"
         "  EPOCHS: 1;\n"
         "  BATCH_SIZE: 4;\n"
@@ -155,13 +156,52 @@ int main() {
           "  MAX_BATCHES_PER_EPOCH: 4;\n"
           "  CIRCUIT: circuit_1;\n"
           "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
-          "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; HASHIMYEI: 0x0000; JKIMYEI: { HALT_TRAIN: false; }; };\n"
+          "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; JKIMYEI: { HALT_TRAIN: false; }; };\n"
           "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
           "}\n");
       assert(inferred_profile.waves.size() == 1);
       assert(inferred_profile.waves.front().wikimyeis.size() == 1);
       assert(inferred_profile.waves.front().wikimyeis.front().profile_id.empty());
     }
+
+    {
+      const auto mounted_wave =
+          cuwacunu::camahjucunu::dsl::decode_iitepi_wave_from_dsl(
+              grammar,
+              "WAVE mounted_rep {\n"
+              "  MODE: run|train;\n"
+              "  SAMPLER: sequential;\n"
+              "  EPOCHS: 1;\n"
+              "  BATCH_SIZE: 4;\n"
+              "  MAX_BATCHES_PER_EPOCH: 4;\n"
+              "  CIRCUIT: circuit_1;\n"
+              "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
+              "  WIKIMYEI: <w_rep> { PATH: tsi.wikimyei.representation.vicreg.0x00ff; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
+              "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
+              "}\n");
+      assert(mounted_wave.waves.size() == 1);
+      assert(mounted_wave.waves.front().wikimyeis.size() == 1);
+      const auto &mounted_rep = mounted_wave.waves.front().wikimyeis.front();
+      std::string normalized_hash{};
+      assert(cuwacunu::hashimyei::normalize_hex_hash_name("0x00ff",
+                                                          &normalized_hash));
+      assert(mounted_rep.family == "tsi.wikimyei.representation.vicreg");
+      assert(mounted_rep.wikimyei_path ==
+             "tsi.wikimyei.representation.vicreg." + normalized_hash);
+    }
+
+    expect_decode_fail(
+        grammar,
+        "WAVE bad_path_family_mismatch {\n"
+        "  MODE: run|train;\n"
+        "  SAMPLER: sequential;\n"
+        "  EPOCHS: 1;\n"
+        "  BATCH_SIZE: 4;\n"
+        "  MAX_BATCHES_PER_EPOCH: 4;\n"
+        "  SOURCE: <w_source> { FAMILY: tsi.source.dataloader; SETTINGS: { WORKERS: 0; FORCE_REBUILD_CACHE: true; RANGE_WARN_BATCHES: 8; }; RUNTIME: { SYMBOL: BTCUSDT; FROM: 01.01.2020; TO: 02.01.2020; }; };\n"
+        "  WIKIMYEI: <w_rep> { FAMILY: tsi.wikimyei.representation.vicreg; PATH: tsi.probe.log; JKIMYEI: { HALT_TRAIN: false; PROFILE_ID: stable_pretrain; }; };\n"
+        "  SINK: <sink_null> { FAMILY: tsi.sink.null; };\n"
+        "}\n");
 
     std::cout << "[test_dsl_iitepi_wave] ok\n";
     return 0;

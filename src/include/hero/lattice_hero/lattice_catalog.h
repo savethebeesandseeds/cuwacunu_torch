@@ -103,6 +103,7 @@ struct runtime_report_fragment_t {
   std::string binding_id{};
   std::string source_runtime_cursor{};
   std::string contract_hash{};
+  std::string dock_hash{};
   std::string schema{};
   std::string report_fragment_sha256{};
   std::string path{};
@@ -119,6 +120,7 @@ struct runtime_view_report_t {
   std::string selector_hashimyei_cursor{};
   std::string selector_intersection_cursor{};
   std::string contract_hash{};
+  std::string dock_hash{};
   std::uint64_t wave_cursor{0};
   bool has_wave_cursor{false};
   std::size_t match_count{0};
@@ -461,14 +463,15 @@ class lattice_catalog_store_t {
   [[nodiscard]] bool get_runtime_view_lls(
       std::string_view view_kind, std::string_view intersection_cursor,
       std::uint64_t wave_cursor, bool use_wave_cursor,
-      std::string_view contract_hash, runtime_view_report_t* out,
+      std::string_view contract_hash, std::string_view dock_hash,
+      runtime_view_report_t* out,
       std::string* error = nullptr) const;
   [[nodiscard]] bool get_explicit_family_rank(
-      std::string_view family, std::string_view contract_hash,
+      std::string_view family, std::string_view dock_hash,
       cuwacunu::hero::family_rank::state_t* out,
       std::string* error = nullptr) const;
   [[nodiscard]] bool get_family_rank(
-      std::string_view family, std::string_view contract_hash,
+      std::string_view family, std::string_view dock_hash,
       cuwacunu::hero::family_rank::state_t* out,
       std::string* error = nullptr) const;
 

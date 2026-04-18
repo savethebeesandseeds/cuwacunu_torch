@@ -64,6 +64,7 @@ allow_local_read:bool = true
 allow_local_write:bool = false
 default_roots:str = /cuwacunu/src/config/instructions/defaults
 objective_roots:str = /cuwacunu/src/config/instructions/objectives
+temp_roots:str = /cuwacunu/src/config/instructions/temp
 allowed_extensions:str = .dsl,.md
 write_roots:str = /tmp
 backup_enabled:bool = true

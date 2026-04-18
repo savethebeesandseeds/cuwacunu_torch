@@ -1410,6 +1410,7 @@ bool build_runtime_circuit_from_decl(
   }
 
   if (!validate_runtime_hashimyei_contract_docking(
+          out->spec.representation_type,
           out->spec.representation_hashimyei,
           contract_hash,
           /*require_registered_manifest=*/false,

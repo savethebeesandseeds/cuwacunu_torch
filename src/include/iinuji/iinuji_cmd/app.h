@@ -47,6 +47,7 @@ inline std::uint64_t monotonic_now_ms() {
 }
 
 inline constexpr int kAnimatedHomeFrameStepMs = 33;
+inline constexpr int kFarewellHoldMs = 1100;
 
 inline int desired_input_timeout_for_screen(ScreenMode screen,
                                             bool animate_home = false) {
@@ -62,7 +63,7 @@ idle_refresh_period_ms_for_screen(ScreenMode screen,
   case ScreenMode::Home:
     return animate_home ? static_cast<std::uint64_t>(kAnimatedHomeFrameStepMs)
                         : 5000u;
-  case ScreenMode::Inbox:
+  case ScreenMode::Workbench:
     return 1000;
   case ScreenMode::Runtime:
     return 2000;
@@ -81,19 +82,19 @@ inline bool refresh_visible_screen_on_idle(CmdState &state,
   switch (state.screen) {
   case ScreenMode::Home:
     return animate_home;
-  case ScreenMode::Inbox: {
-    const std::string previous_status = state.inbox.status;
-    const bool previous_status_is_error = state.inbox.status_is_error;
+  case ScreenMode::Workbench: {
+    const std::string previous_status = state.workbench.status;
+    const bool previous_status_is_error = state.workbench.status_is_error;
     const std::uint64_t previous_status_expires_at_ms =
-        state.inbox.status_expires_at_ms;
-    (void)queue_inbox_refresh(state);
+        state.workbench.status_expires_at_ms;
+    (void)queue_workbench_refresh(state);
     if (!previous_status.empty() && !previous_status_is_error &&
         (previous_status_expires_at_ms == 0 ||
-         inbox_status_now_ms() < previous_status_expires_at_ms)) {
-      state.inbox.status = previous_status;
-      state.inbox.status_is_error = false;
-      state.inbox.status_expires_at_ms = previous_status_expires_at_ms;
-      state.inbox.error.clear();
+         workbench_status_now_ms() < previous_status_expires_at_ms)) {
+      state.workbench.status = previous_status;
+      state.workbench.status_is_error = false;
+      state.workbench.status_expires_at_ms = previous_status_expires_at_ms;
+      state.workbench.error.clear();
     }
     return false;
   }
@@ -111,9 +112,6 @@ inline bool refresh_visible_screen_on_idle(CmdState &state,
   case ScreenMode::Lattice:
     return false;
   case ScreenMode::Config:
-    if (state.config.editor_focus)
-      return false;
-    (void)queue_config_refresh(state);
     return false;
   case ScreenMode::ShellLogs:
     return false;
@@ -132,7 +130,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   DlogTerminalOutputGuard dlog_guard{
       cuwacunu::piaabo::dlog_terminal_output_enabled()};
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
-  log_info("[iinuji_cmd] boot global_config_path=%s\n", global_config_path);
+  log_dbg("[iinuji_cmd] boot global_config_path=%s\n", global_config_path);
   cuwacunu::iitepi::config_space_t::change_config_file(global_config_path);
   cuwacunu::iitepi::config_space_t::update_config();
 
@@ -140,9 +138,9 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       std::max(1, cuwacunu::iitepi::config_space_t::get<int>(
                       "GUI", "iinuji_logs_buffer_capacity"));
   const bool logs_show_date_cfg = cuwacunu::iitepi::config_space_t::get<bool>(
-      "GUI", "iinuji_logs_show_date", std::optional<bool>{true});
+      "GUI", "iinuji_logs_show_date", std::optional<bool>{false});
   const bool logs_show_thread_cfg = cuwacunu::iitepi::config_space_t::get<bool>(
-      "GUI", "iinuji_logs_show_thread", std::optional<bool>{true});
+      "GUI", "iinuji_logs_show_thread", std::optional<bool>{false});
   const bool logs_show_metadata_cfg =
       cuwacunu::iitepi::config_space_t::get<bool>(
           "GUI", "iinuji_logs_show_metadata", std::optional<bool>{true});
@@ -181,6 +179,10 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
           "GUI", "iinuji_loading_logo_path",
           std::optional<std::string>{
               "/cuwacunu/src/resources/waajacamaya.png"});
+  const std::string closing_logo_path_cfg =
+      cuwacunu::iitepi::config_space_t::get<std::string>(
+          "GUI", "iinuji_closing_logo_path",
+          std::optional<std::string>{loading_logo_path_cfg});
   const std::string home_animation_path_cfg =
       cuwacunu::iitepi::config_space_t::get<std::string>(
           "GUI", "iinuji_home_animation_path",
@@ -198,6 +200,29 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
              boot_logo_error.empty() ? "decode failed"
                                      : boot_logo_error.c_str());
   }
+
+  const bool closing_logo_matches_loading =
+      closing_logo_path_cfg == loading_logo_path_cfg;
+  rgba_image_t closing_logo_image{};
+  std::string closing_logo_error{};
+  const bool closing_logo_ok =
+      closing_logo_matches_loading
+          ? boot_logo_ok
+          : decode_png_rgba_file(closing_logo_path_cfg, closing_logo_image,
+                                 closing_logo_error);
+  if (!closing_logo_ok) {
+    log_warn("[iinuji_cmd] closing logo unavailable: %s (%s)%s\n",
+             closing_logo_path_cfg.c_str(),
+             closing_logo_error.empty() ? "decode failed"
+                                        : closing_logo_error.c_str(),
+             boot_logo_ok ? " | using loading logo fallback" : "");
+  }
+  const rgba_image_t &farewell_logo_image =
+      (closing_logo_ok && !closing_logo_matches_loading) ? closing_logo_image
+                                                         : boot_logo_image;
+  const bool farewell_logo_ok = closing_logo_ok || boot_logo_ok;
+  const bool farewell_logo_uses_loading_fallback =
+      !closing_logo_ok && boot_logo_ok;
 
   const rgba_animation_t &home_animation = home_showcase_assets.home_animation;
   const std::string &home_animation_error =
@@ -260,21 +285,21 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   place_in_grid(left_main, 0, 0, 2, 1);
   left->add_child(left_main);
 
-  auto inbox_nav =
-      create_panel("inbox_nav", iinuji_layout_t{},
+  auto left_nav_panel =
+      create_panel("left_nav_panel", iinuji_layout_t{},
                    iinuji_style_t{"#D0D0D0", "#101014", true, "#5E5E68", false,
                                   false, " navigation "});
-  inbox_nav->visible = false;
-  place_in_grid(inbox_nav, 0, 0);
-  left->add_child(inbox_nav);
+  left_nav_panel->visible = false;
+  place_in_grid(left_nav_panel, 0, 0);
+  left->add_child(left_nav_panel);
 
-  auto inbox_worklist =
-      create_panel("inbox_worklist", iinuji_layout_t{},
+  auto left_worklist_panel =
+      create_panel("left_worklist_panel", iinuji_layout_t{},
                    iinuji_style_t{"#D0D0D0", "#101014", true, "#5E5E68", false,
                                   false, " worklist "});
-  inbox_worklist->visible = false;
-  place_in_grid(inbox_worklist, 1, 0);
-  left->add_child(inbox_worklist);
+  left_worklist_panel->visible = false;
+  place_in_grid(left_worklist_panel, 1, 0);
+  left->add_child(left_worklist_panel);
 
   auto right = create_grid_container(
       "right", {len_spec::frac(1.0), len_spec::px(0)}, {len_spec::frac(1.0)}, 1,
@@ -365,7 +390,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     LoadHumanDefaults = 0,
     LoadMarshalDefaults = 1,
     LoadRuntimeDefaults = 2,
-    LoadHumanInbox = 3,
+    LoadHumanWorkbench = 3,
     LoadConfig = 4,
     LoadRuntime = 5,
     Ready = 6,
@@ -384,7 +409,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
        "resolve Marshal Hero DSL and load marshal session defaults"},
       {BootStage::LoadRuntimeDefaults, "Runtime Hero defaults",
        "resolve Runtime Hero DSL and load runtime defaults"},
-      {BootStage::LoadHumanInbox, "Operator inbox",
+      {BootStage::LoadHumanWorkbench, "Operator workbench",
        "collect operator sessions, requests, and review summaries"},
       {BootStage::LoadConfig, "Config catalog",
        "load config policy and catalog visible config files"},
@@ -541,8 +566,8 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
 
   auto log_boot_stage_begin = [&](BootStage stage) {
     const auto &descriptor = kBootStages[boot_profile_index(stage)];
-    log_info("[iinuji_cmd.boot] stage=%s begin | %s\n", descriptor.label,
-             descriptor.detail);
+    log_dbg("[iinuji_cmd.boot] stage=%s begin | %s\n", descriptor.label,
+            descriptor.detail);
   };
 
   auto log_boot_stage_finish = [&](BootStage stage, bool ok,
@@ -555,18 +580,18 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     const std::string suffix =
         summary.empty() ? std::string{} : " | " + std::move(summary);
     if (ok) {
-      log_info("[iinuji_cmd.boot] stage=%s ok elapsed_ms=%llu%s\n",
-               descriptor.label, elapsed_ms, suffix.c_str());
+      log_dbg("[iinuji_cmd.boot] stage=%s ok elapsed_ms=%llu%s\n",
+              descriptor.label, elapsed_ms, suffix.c_str());
     } else {
-      log_warn("[iinuji_cmd.boot] stage=%s warn elapsed_ms=%llu%s\n",
-               descriptor.label, elapsed_ms, suffix.c_str());
+      log_err("[iinuji_cmd.boot] stage=%s failed elapsed_ms=%llu%s\n",
+              descriptor.label, elapsed_ms, suffix.c_str());
     }
   };
 
   auto render_boot_ui = [&]() {
     left_main->visible = true;
-    inbox_nav->visible = false;
-    inbox_worklist->visible = false;
+    left_nav_panel->visible = false;
+    left_worklist_panel->visible = false;
     right_main->visible = true;
     right_aux->visible = false;
     title->style.label_color = "#F1FFF4";
@@ -783,9 +808,10 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       info_y += 2;
     }
 
-    static constexpr std::array<std::pair<const char *, const char *>, 5>
+    static constexpr std::array<std::pair<const char *, const char *>, 6>
         kHomeShortcuts{{
-            {"F2", "Inbox"},
+            {"F1", "Home"},
+            {"F2", "Workbench"},
             {"F3", "Runtime"},
             {"F4", "Lattice"},
             {"F8", "Shell Logs"},
@@ -808,16 +834,153 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     }
   };
 
+  auto render_farewell_ui = [&]() {
+    left_main->visible = true;
+    left_nav_panel->visible = false;
+    left_worklist_panel->visible = false;
+    right_main->visible = true;
+    right_aux->visible = false;
+    title->style.label_color = "#FFF3D9";
+    title->style.background_color = "#2A1C11";
+    title->style.border_color = "#8D5C33";
+    status->visible = false;
+    status->style.label_color = "#E5C89A";
+    status->style.background_color = "#101014";
+    status->style.border_color = "#101014";
+    left_main->style.border_color = "#8D5C33";
+    left_main->style.label_color = "#F3DFC3";
+    left_main->style.title = " waajacamaya ";
+    right_main->style.border_color = "#8D5C33";
+    right_main->style.label_color = "#F0DEC4";
+    right_main->style.title = " farewell ";
+    bottom->style.border_color = "#8D5C33";
+    bottom->style.label_color = "#E5C89A";
+    bottom->style.title = " status ";
+    cmdline->style.border_color = "#8D5C33";
+    cmdline->style.label_color = "#FAEEDB";
+
+    set_text_box(title, "Good luck!", false);
+    set_text_box(status, "", false);
+    set_text_box(left_main, "", true);
+    set_text_box(right_main, "", true);
+    set_text_box(bottom, "waajacu.com | closing terminal", false);
+    set_text_box(cmdline, "", false);
+    cmdline->focused = false;
+    right_main->focused = false;
+    right_aux->focused = false;
+  };
+
+  auto render_farewell_overlay = [&]() {
+    auto *R = get_renderer();
+    if (R == nullptr)
+      return;
+
+    const Rect left_area = content_rect(*left_main);
+    const Rect right_area = content_rect(*right_main);
+    const short hero_warm_pair = boot_pair("#F3C77C");
+    const short hero_text_pair = boot_pair("#F7E7CE");
+    const short hero_note_pair = boot_pair("#C8BBA8");
+    const short hero_muted_pair = boot_pair("#7E7468");
+
+    if (left_area.w > 0 && left_area.h > 0) {
+      const int wordmark_rows = std::clamp(left_area.h / 10, 3, 5);
+      const Rect stage_area =
+          home_showcase_stage_rect(left_area, 0.48, /*top_padding_rows=*/0,
+                                   /*bottom_reserved_rows=*/wordmark_rows + 6);
+      if (farewell_logo_ok) {
+        render_home_showcase_static(farewell_logo_image, stage_area,
+                                    boot_logo_render_opt);
+        const int wordmark_y = stage_area.y + stage_area.h + 1;
+        if (wordmark_y < left_area.y + left_area.h) {
+          render_art_text(
+              "Cuwacunu", left_area.x, wordmark_y, left_area.w,
+              std::min(wordmark_rows, left_area.y + left_area.h - wordmark_y),
+              home_wordmark_text_opt, boot_logo_render_opt);
+        }
+      } else {
+        const int fallback_y = stage_area.y + std::max(0, stage_area.h / 2 - 1);
+        R->putText(fallback_y, stage_area.x,
+                   "waajacamaya farewell logo unavailable", stage_area.w,
+                   hero_muted_pair, true, false);
+        if (fallback_y + 1 < stage_area.y + stage_area.h) {
+          R->putText(fallback_y + 1, stage_area.x, closing_logo_path_cfg,
+                     stage_area.w, hero_note_pair, false, false);
+        }
+      }
+
+      if (left_area.h >= 2) {
+        R->putText(left_area.y + left_area.h - 1, left_area.x, "waajacu.com",
+                   left_area.w, hero_note_pair, true, false);
+      }
+    }
+
+    if (right_area.w <= 0 || right_area.h <= 0)
+      return;
+
+    int y = right_area.y;
+    R->putText(y, right_area.x, "Farewell...", right_area.w, hero_warm_pair,
+               true, false);
+    y += 2;
+    if (y < right_area.y + right_area.h) {
+      R->putText(y, right_area.x, "cuwacunu.cmd is shutting down", right_area.w,
+                 hero_text_pair, false, false);
+      ++y;
+    }
+    if (farewell_logo_uses_loading_fallback &&
+        y < right_area.y + right_area.h) {
+      R->putText(y, right_area.x,
+                 "farewell image fell back to the loading logo", right_area.w,
+                 hero_note_pair, false, false);
+      ++y;
+    }
+    if (y < right_area.y + right_area.h) {
+      R->putText(y, right_area.x, "See you soon.", right_area.w, hero_text_pair,
+                 false, false);
+    }
+    if (right_area.h >= 1) {
+      R->putText(right_area.y + right_area.h - 1, right_area.x, "waajacu.com",
+                 right_area.w, hero_note_pair, true, false);
+    }
+  };
+
+  auto render_farewell_screen = [&]() {
+    int H = 0;
+    int W = 0;
+    getmaxyx(stdscr, H, W);
+    if (H <= 0 || W <= 0)
+      return;
+
+    if (workspace && workspace->grid) {
+      workspace->grid->cols = {len_spec::frac(0.42), len_spec::frac(0.58)};
+    }
+    if (left && left->grid) {
+      left->grid->rows = {len_spec::frac(0.34), len_spec::frac(0.66)};
+      left->grid->gap_row = 0;
+      left->grid->pad_bottom = 0;
+    }
+    if (right && right->grid) {
+      right->grid->rows = {len_spec::frac(1.0)};
+      right->grid->gap_row = 0;
+    }
+    render_farewell_ui();
+    layout_tree(root, Rect{0, 0, W, H});
+    ::erase();
+    render_tree(root);
+    render_farewell_overlay();
+    ::refresh();
+    ::napms(kFarewellHoldMs);
+  };
+
   auto finish_boot = [&]() {
     set_mouse_capture(state.shell_logs.mouse_capture);
     log_info("[iinuji_cmd] cuwacunu Hero terminal ready\n");
-    log_info("[iinuji_cmd] F1 home | F2 inbox | F3 runtime | F4 lattice | "
-             "F8 shell logs | F9 config | type 'help' for commands\n");
-    log_info("[iinuji_cmd] logs setting 'mouse capture' controls terminal "
-             "select/copy mode\n");
-    if (!state.inbox.ok) {
-      log_warn("[iinuji_cmd] inbox screen invalid: %s\n",
-               state.inbox.error.c_str());
+    log_dbg("[iinuji_cmd] F1 home | F2 workbench | F3 runtime | F4 lattice | "
+            "F8 shell logs | F9 config | type 'help' for commands\n");
+    log_dbg("[iinuji_cmd] logs setting 'mouse capture' controls terminal "
+            "select/copy mode\n");
+    if (!state.workbench.ok) {
+      log_warn("[iinuji_cmd] workbench screen invalid: %s\n",
+               state.workbench.error.c_str());
     }
     if (!state.runtime.ok) {
       log_warn("[iinuji_cmd] runtime view invalid: %s\n",
@@ -843,16 +1006,41 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     return tail.back().seq;
   };
   std::string last_status_panel_log{};
-  auto mirror_status_panel_line_to_shell_logs = [&](const std::string &line) {
-    if (line.empty()) {
+  std::string last_status_panel_scope{};
+  UiEventfulStatusLogSeverity last_status_panel_log_severity =
+      UiEventfulStatusLogSeverity::None;
+  auto mirror_status_panel_line_to_shell_logs =
+      [&](std::string scope, const std::string &line,
+          UiEventfulStatusLogSeverity severity) {
+    if (line.empty() || severity == UiEventfulStatusLogSeverity::None) {
       last_status_panel_log.clear();
+      last_status_panel_scope.clear();
+      last_status_panel_log_severity = UiEventfulStatusLogSeverity::None;
       return;
     }
-    if (line == last_status_panel_log) {
+    if (line == last_status_panel_log && scope == last_status_panel_scope &&
+        severity == last_status_panel_log_severity) {
       return;
     }
     last_status_panel_log = line;
-    log_info("[iinuji_cmd.status] %s\n", line.c_str());
+    last_status_panel_scope = scope;
+    last_status_panel_log_severity = severity;
+    switch (severity) {
+    case UiEventfulStatusLogSeverity::Debug:
+      log_dbg("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+      break;
+    case UiEventfulStatusLogSeverity::Info:
+      log_info("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+      break;
+    case UiEventfulStatusLogSeverity::Warning:
+      log_warn("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+      break;
+    case UiEventfulStatusLogSeverity::Error:
+      log_err("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+      break;
+    case UiEventfulStatusLogSeverity::None:
+      break;
+    }
   };
 
   auto apply_workspace_split = [&](const CmdState &st) {
@@ -867,7 +1055,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       return;
     }
     if (screen == ScreenMode::ShellLogs) {
-      workspace->grid->cols = {len_spec::frac(0.6), len_spec::frac(0.4)};
+      workspace->grid->cols = {len_spec::frac(0.68), len_spec::frac(0.32)};
       return;
     }
     if (screen == ScreenMode::Config) {
@@ -884,7 +1072,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   auto apply_left_panel_rows = [&](ScreenMode screen) {
     if (!left || !left->grid)
       return;
-    if (screen == ScreenMode::Inbox) {
+    if (screen == ScreenMode::Workbench) {
       left->grid->rows = {len_spec::px(10), len_spec::frac(1.0)};
       return;
     }
@@ -908,7 +1096,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       return;
     // Human mode shows two stacked bordered boxes here, so keep them flush.
     left->grid->gap_row =
-        (screen == ScreenMode::Home || screen == ScreenMode::Inbox ||
+        (screen == ScreenMode::Home || screen == ScreenMode::Workbench ||
          screen == ScreenMode::Runtime || screen == ScreenMode::Config ||
          screen == ScreenMode::Lattice)
             ? 0
@@ -924,13 +1112,72 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   auto apply_right_panel_rows = [&](const CmdState &st) {
     if (!right || !right->grid)
       return;
-    if (runtime_show_device_history_panel(st)) {
+    if (st.screen == ScreenMode::Runtime &&
+        runtime_show_secondary_panel(st)) {
       right->grid->rows = {len_spec::frac(0.66), len_spec::frac(0.34)};
       right->grid->gap_row = 0;
       return;
     }
     right->grid->rows = {len_spec::frac(1.0)};
     right->grid->gap_row = 0;
+  };
+
+  auto paint_current_ui = [&](int H, int W, bool boot_active,
+                              std::uint64_t paint_now_ms) {
+    if (boot_active) {
+      apply_workspace_split(state);
+      apply_left_panel_rows(ScreenMode::Home);
+      apply_left_panel_row_gap(ScreenMode::Home);
+      apply_left_panel_bottom_gap(false);
+      apply_right_panel_rows(state);
+      render_boot_ui();
+      mirror_status_panel_line_to_shell_logs(
+          "home", "waajacu.com | bootstrap in progress",
+          UiEventfulStatusLogSeverity::Debug);
+    } else {
+      apply_workspace_split(state);
+      apply_left_panel_rows(state.screen);
+      apply_left_panel_row_gap(state.screen);
+      apply_left_panel_bottom_gap(false);
+      apply_right_panel_rows(state);
+      if (state.screen == ScreenMode::Runtime) {
+        runtime_keep_log_viewer_following(state);
+      }
+      refresh_ui(state, title, status, left, left_nav_panel,
+                 left_worklist_panel, right_main, right_aux, bottom, cmdline);
+      mirror_status_panel_line_to_shell_logs(
+          ui_eventful_status_log_scope(state), ui_eventful_status_line(state),
+          ui_eventful_status_log_severity(state));
+      if (state.screen == ScreenMode::ShellLogs &&
+          state.shell_logs.auto_follow) {
+        jump_logs_to_bottom(state, left, right);
+      }
+    }
+    layout_tree(root, Rect{0, 0, W, H});
+    ::erase();
+    render_tree(root);
+    if (boot_active) {
+      render_boot_overlay(paint_now_ms);
+    } else {
+      if (state.screen == ScreenMode::Home) {
+        render_home_overlay(paint_now_ms);
+      }
+      render_help_overlay(state, left, right);
+      render_logs_scroll_controls(state, left);
+      render_workspace_zoom_controls(state, left, right);
+    }
+    ::refresh();
+  };
+  state.repaint_now = [&]() {
+    int repaint_h = 0;
+    int repaint_w = 0;
+    getmaxyx(stdscr, repaint_h, repaint_w);
+    const std::uint64_t paint_now_ms = monotonic_now_ms();
+    const bool paint_boot_active =
+        (boot_stage != BootStage::Ready) ||
+        (boot_visual_hold_until_ms != 0u &&
+         paint_now_ms < boot_visual_hold_until_ms);
+    paint_current_ui(repaint_h, repaint_w, paint_boot_active, paint_now_ms);
   };
 
   bool dirty = true;
@@ -958,50 +1205,11 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       dirty = true;
 
     if (dirty) {
-      if (boot_active) {
-        apply_workspace_split(state);
-        apply_left_panel_rows(ScreenMode::Home);
-        apply_left_panel_row_gap(ScreenMode::Home);
-        apply_left_panel_bottom_gap(false);
-        apply_right_panel_rows(state);
-        render_boot_ui();
-        mirror_status_panel_line_to_shell_logs(
-            "waajacu.com | bootstrap in progress");
-      } else {
-        apply_workspace_split(state);
-        apply_left_panel_rows(state.screen);
-        apply_left_panel_row_gap(state.screen);
-        apply_left_panel_bottom_gap(false);
-        apply_right_panel_rows(state);
-        if (state.screen == ScreenMode::Runtime) {
-          runtime_keep_log_viewer_following(state);
-        }
-        refresh_ui(state, title, status, left_main, inbox_nav, inbox_worklist,
-                   right_main, right_aux, bottom, cmdline);
-        mirror_status_panel_line_to_shell_logs(ui_eventful_status_line(state));
-        if (state.screen == ScreenMode::ShellLogs &&
-            state.shell_logs.auto_follow) {
-          jump_logs_to_bottom(state, left);
-        }
-      }
-      layout_tree(root, Rect{0, 0, W, H});
-      ::erase();
-      render_tree(root);
-      if (boot_active) {
-        render_boot_overlay(now_ms);
-      } else {
-        if (state.screen == ScreenMode::Home) {
-          render_home_overlay(now_ms);
-        }
-        render_help_overlay(state, left, right);
-        render_logs_scroll_controls(state, left);
-        render_workspace_zoom_controls(state, left, right);
-      }
-      ::refresh();
+      paint_current_ui(H, W, boot_active, now_ms);
       dirty = false;
     }
 
-    if (!boot_active && poll_inbox_async_updates(state)) {
+    if (!boot_active && poll_workbench_async_updates(state)) {
       dirty = true;
       last_idle_refresh_ms = monotonic_now_ms();
     }
@@ -1039,34 +1247,36 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       switch (boot_stage) {
       case BootStage::LoadHumanDefaults: {
         log_boot_stage_begin(BootStage::LoadHumanDefaults);
-        state.inbox.app.global_config_path = global_config_path;
-        state.inbox.app.hero_config_path =
+        state.workbench.app.global_config_path = global_config_path;
+        state.workbench.app.hero_config_path =
             cuwacunu::hero::human_mcp::resolve_human_hero_dsl_path(
                 global_config_path);
-        state.inbox.app.self_binary_path =
+        state.workbench.app.self_binary_path =
             cuwacunu::hero::human_mcp::current_executable_path();
         std::string error{};
-        if (!state.inbox.app.hero_config_path.empty() &&
+        if (!state.workbench.app.hero_config_path.empty() &&
             cuwacunu::hero::human_mcp::load_human_defaults(
-                state.inbox.app.hero_config_path, global_config_path,
-                &state.inbox.app.defaults, &error)) {
-          state.inbox.ok = true;
-          set_inbox_status(state, "Human Hero defaults loaded.", false);
+                state.workbench.app.hero_config_path, global_config_path,
+                &state.workbench.app.defaults, &error)) {
+          state.workbench.ok = true;
+          set_workbench_status(state, "Human Hero defaults loaded.", false);
           log_boot_stage_finish(
               BootStage::LoadHumanDefaults, true,
-              "hero_config_path=" + state.inbox.app.hero_config_path.string() +
+              "hero_config_path=" +
+                  state.workbench.app.hero_config_path.string() +
                   " marshal_root=" +
-                  state.inbox.app.defaults.marshal_root.string() +
-                  " operator_id=" + state.inbox.app.defaults.operator_id);
+                  state.workbench.app.defaults.marshal_root.string() +
+                  " operator_id=" + state.workbench.app.defaults.operator_id);
         } else {
-          state.inbox.ok = false;
-          state.inbox.error =
+          state.workbench.ok = false;
+          state.workbench.error =
               error.empty() ? "missing Human Hero config" : error;
-          set_inbox_status(state, state.inbox.error, true);
+          set_workbench_status(state, state.workbench.error, true);
           log_boot_stage_finish(
               BootStage::LoadHumanDefaults, false,
-              "hero_config_path=" + state.inbox.app.hero_config_path.string() +
-                  " error=" + state.inbox.error);
+              "hero_config_path=" +
+                  state.workbench.app.hero_config_path.string() +
+                  " error=" + state.workbench.error);
         }
         (void)advance_boot_stage(BootStage::LoadHumanDefaults,
                                  BootStage::LoadMarshalDefaults);
@@ -1077,13 +1287,21 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
         state.runtime.marshal_app.hero_config_path =
             cuwacunu::hero::marshal_mcp::resolve_marshal_hero_dsl_path(
                 global_config_path);
-        state.runtime.marshal_app.self_binary_path =
-            cuwacunu::hero::marshal_mcp::current_executable_path();
+        state.runtime.marshal_app.self_binary_path.clear();
         std::string error{};
         if (!state.runtime.marshal_app.hero_config_path.empty() &&
             cuwacunu::hero::marshal_mcp::load_marshal_defaults(
                 state.runtime.marshal_app.hero_config_path, global_config_path,
                 &state.runtime.marshal_app.defaults, &error)) {
+          const std::filesystem::path repo_root =
+              state.runtime.marshal_app.defaults.repo_root;
+          if (!repo_root.empty()) {
+            state.runtime.marshal_app.self_binary_path =
+                (repo_root / ".build/hero/hero_marshal.mcp").lexically_normal();
+          } else {
+            state.runtime.marshal_app.self_binary_path =
+                "/cuwacunu/.build/hero/hero_marshal.mcp";
+          }
           state.runtime.marshal_ok = true;
           state.runtime.marshal_error.clear();
           log_boot_stage_finish(
@@ -1143,28 +1361,25 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
                   " error=" + state.runtime.error);
         }
         (void)advance_boot_stage(BootStage::LoadRuntimeDefaults,
-                                 BootStage::LoadHumanInbox);
+                                 BootStage::LoadHumanWorkbench);
       } break;
-      case BootStage::LoadHumanInbox:
-        log_boot_stage_begin(BootStage::LoadHumanInbox);
-        (void)refresh_inbox_state(state);
-        if (state.inbox.ok) {
+      case BootStage::LoadHumanWorkbench:
+        log_boot_stage_begin(BootStage::LoadHumanWorkbench);
+        (void)refresh_workbench_state(state);
+        if (state.workbench.ok) {
           log_boot_stage_finish(
-              BootStage::LoadHumanInbox, true,
+              BootStage::LoadHumanWorkbench, true,
               "sessions=" +
-                  std::to_string(
-                      state.inbox.operator_inbox.all_sessions.size()) +
-                  " actionable_requests=" +
-                  std::to_string(
-                      state.inbox.operator_inbox.actionable_requests.size()) +
-                  " unacknowledged_summaries=" +
-                  std::to_string(state.inbox.operator_inbox
-                                     .unacknowledged_summaries.size()));
+                  std::to_string(count_tracked_operator_sessions(state)) +
+                  " pending_requests=" +
+                  std::to_string(count_pending_operator_requests(state)) +
+                  " pending_reviews=" +
+                  std::to_string(count_pending_operator_reviews(state)));
         } else {
-          log_boot_stage_finish(BootStage::LoadHumanInbox, false,
-                                "error=" + state.inbox.error);
+          log_boot_stage_finish(BootStage::LoadHumanWorkbench, false,
+                                "error=" + state.workbench.error);
         }
-        (void)advance_boot_stage(BootStage::LoadHumanInbox,
+        (void)advance_boot_stage(BootStage::LoadHumanWorkbench,
                                  BootStage::LoadConfig);
         break;
       case BootStage::LoadConfig:
@@ -1185,7 +1400,10 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
                       state, ConfigFileFamily::Objectives)) +
                   " optim=" +
                   std::to_string(
-                      count_config_family(state, ConfigFileFamily::Optim)));
+                      count_config_family(state, ConfigFileFamily::Optim)) +
+                  " temp=" +
+                  std::to_string(
+                      count_config_family(state, ConfigFileFamily::Temp)));
         } else {
           log_boot_stage_finish(BootStage::LoadConfig, false,
                                 "error=" + state.config.error);
@@ -1227,7 +1445,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
       if (log_seq != last_log_seq) {
         last_log_seq = log_seq;
         if (state.shell_logs.auto_follow)
-          jump_logs_to_bottom(state, left);
+          jump_logs_to_bottom(state, left, right);
         dirty = true;
       }
     }
@@ -1271,6 +1489,8 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     }
   }
 
+  log_dbg("[iinuji_cmd] showing farewell screen\n");
+  render_farewell_screen();
   return 0;
 } catch (const std::exception &e) {
   endwin();

@@ -30,28 +30,12 @@ find_visible_text_box(
   return nullptr;
 }
 
-inline void scroll_text_box(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box, int dy, int dx) {
+inline void scroll_viewport_tree(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box,
+                                 int dy, int dx) {
   if (!box || !box->visible) return;
-  auto tb = as<cuwacunu::iinuji::textBox_data_t>(box);
-  if (tb) {
-    tb->scroll_by(dy, dx);
-    return;
-  }
+  if (scroll_viewport_by(box, dy, dx)) return;
   for (const auto& child : box->children) {
-    scroll_text_box(child, dy, dx);
-  }
-}
-
-inline void scroll_editor_box(const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& box, int dy, int dx) {
-  if (!box || !box->visible) return;
-  auto ed = as<cuwacunu::iinuji::editorBox_data_t>(box);
-  if (ed) {
-    if (dy != 0) ed->top_line = std::max(0, ed->top_line + dy);
-    if (dx != 0) ed->left_col = std::max(0, ed->left_col + dx);
-    return;
-  }
-  for (const auto& child : box->children) {
-    scroll_editor_box(child, dy, dx);
+    scroll_viewport_tree(child, dy, dx);
   }
 }
 
@@ -61,25 +45,28 @@ inline void scroll_active_screen(CmdState& state,
                                  int dy,
                                  int dx) {
   if (dy == 0 && dx == 0) return;
-  if (state.screen == ScreenMode::ShellLogs && dy != 0) {
+  if (state.screen == ScreenMode::ShellLogs && (dy != 0 || dx != 0)) {
     state.shell_logs.auto_follow = false;
   }
   if (state.screen == ScreenMode::Runtime && dy != 0 &&
       state.runtime.log_viewer_open) {
     state.runtime.log_viewer_live_follow = false;
   }
-  scroll_text_box(left, dy, dx);
-  scroll_text_box(right, dy, dx);
-  scroll_editor_box(left, dy, dx);
-  scroll_editor_box(right, dy, dx);
+  scroll_viewport_tree(left, dy, dx);
+  scroll_viewport_tree(right, dy, dx);
 }
 
 inline void jump_logs_to_bottom(CmdState& state,
-                                const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left) {
+                                const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& left,
+                                const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>& right = nullptr) {
   if (state.screen != ScreenMode::ShellLogs) return;
-  auto tb = as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(left));
-  if (!tb) return;
-  tb->scroll_y = std::numeric_limits<int>::max();
+  if (auto tb = as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(left)); tb) {
+    tb->scroll_y = std::numeric_limits<int>::max();
+    tb->scroll_x = 0;
+  }
+  if (auto tb = as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(right)); tb) {
+    tb->scroll_x = 0;
+  }
   state.shell_logs.auto_follow = true;
 }
 
@@ -627,24 +614,33 @@ inline bool apply_logs_pending_actions(
   }
 
   auto tb = as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(left));
+  auto right_tb =
+      as<cuwacunu::iinuji::textBox_data_t>(find_visible_text_box(right));
   if (state.shell_logs.pending_jump_home) {
     if (tb) {
       tb->scroll_y = 0;
       tb->scroll_x = 0;
     }
+    if (right_tb) right_tb->scroll_x = 0;
     state.shell_logs.auto_follow = false;
   } else if (state.shell_logs.pending_jump_end) {
-    if (tb) tb->scroll_y = std::numeric_limits<int>::max();
+    if (tb) {
+      tb->scroll_y = std::numeric_limits<int>::max();
+      tb->scroll_x = 0;
+    }
+    if (right_tb) right_tb->scroll_x = 0;
     state.shell_logs.auto_follow = true;
   }
   if (state.shell_logs.pending_scroll_y != 0 ||
       state.shell_logs.pending_scroll_x != 0) {
-    if (state.shell_logs.pending_scroll_y != 0)
+    if (state.shell_logs.pending_scroll_y != 0 ||
+        state.shell_logs.pending_scroll_x != 0) {
       state.shell_logs.auto_follow = false;
-    scroll_text_box(left, state.shell_logs.pending_scroll_y,
-                    state.shell_logs.pending_scroll_x);
-    scroll_text_box(right, state.shell_logs.pending_scroll_y,
-                    state.shell_logs.pending_scroll_x);
+    }
+    scroll_viewport_tree(left, state.shell_logs.pending_scroll_y,
+                         state.shell_logs.pending_scroll_x);
+    scroll_viewport_tree(right, state.shell_logs.pending_scroll_y,
+                         state.shell_logs.pending_scroll_x);
   }
   state.shell_logs.pending_scroll_y = 0;
   state.shell_logs.pending_scroll_x = 0;

@@ -17,13 +17,13 @@ $(eval $(call BUILD_OBJ_INC, libcurl, binance_mech_data,     binance_mech_data, 
 $(eval $(call BUILD_OBJ_INC, libcurl, binance_mech_trade,    binance_mech_trade,    $(LIBCURL_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, libcurl, binance_mech_account,  binance_mech_account,  $(LIBCURL_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)))
 
-# Grouped objects for convenience targets
+# Grouped leaf producers for convenience targets
 BINANCE_MECH := \
-  $(OUTPUT_PATH)/libcurl/binance_utils.o \
-  $(OUTPUT_PATH)/libcurl/binance_mech_server.o \
-  $(OUTPUT_PATH)/libcurl/binance_mech_data.o \
-  $(OUTPUT_PATH)/libcurl/binance_mech_trade.o \
-  $(OUTPUT_PATH)/libcurl/binance_mech_account.o
+  binance_utils \
+  binance_mech_server \
+  binance_mech_data \
+  binance_mech_trade \
+  binance_mech_account
 
 # -----------------------------------------------------------------
 # Aggregate Targets

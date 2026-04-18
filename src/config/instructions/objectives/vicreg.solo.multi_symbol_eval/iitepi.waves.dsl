@@ -29,7 +29,6 @@ WAVE eval_vicreg_payload {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: % __vicreg_hashimyei_slot ? 0x00FF %;
     JKIMYEI: {
       HALT_TRAIN: true;
       PROFILE_ID: % __jk_profile_id ? eval_payload_only %;

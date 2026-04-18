@@ -52,7 +52,7 @@ inline void render_text(const iinuji_object_t &obj) {
     case text_line_emphasis_t::Warning:
       return resolve_pair("#F0B43C");
     case text_line_emphasis_t::MutedWarning:
-      return resolve_pair("#A98534");
+      return resolve_pair("#8B6F24");
     case text_line_emphasis_t::Info:
       return resolve_pair("#96989a");
     case text_line_emphasis_t::Debug:
@@ -77,7 +77,7 @@ inline void render_text(const iinuji_object_t &obj) {
     case text_line_emphasis_t::Warning:
       return "#F0B43C";
     case text_line_emphasis_t::MutedWarning:
-      return "#A98534";
+      return "#8B6F24";
     case text_line_emphasis_t::Info:
       return "#96989a";
     case text_line_emphasis_t::Debug:

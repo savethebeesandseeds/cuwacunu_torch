@@ -10,13 +10,15 @@ struct IinujiScreen {
   CmdState &state;
 
   void home() const noexcept { state.screen = ScreenMode::Home; }
-  void inbox() const noexcept { state.screen = ScreenMode::Inbox; }
+  void workbench() const noexcept { state.screen = ScreenMode::Workbench; }
   void runtime() const noexcept { state.screen = ScreenMode::Runtime; }
   void lattice() const noexcept { state.screen = ScreenMode::Lattice; }
   void logs() const noexcept {
     const bool entering = (state.screen != ScreenMode::ShellLogs);
     state.screen = ScreenMode::ShellLogs;
     if (entering) {
+      state.shell_logs.pending_scroll_y = 0;
+      state.shell_logs.pending_scroll_x = 0;
       state.shell_logs.pending_jump_end = true;
       state.shell_logs.pending_jump_home = false;
       state.shell_logs.auto_follow = true;

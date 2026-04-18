@@ -29,7 +29,6 @@ WAVE train_vicreg_primary {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: 0x00FF;
     JKIMYEI: {
       HALT_TRAIN: false;
       PROFILE_ID: stable_pretrain_linear_only;
@@ -69,7 +68,6 @@ WAVE train_vicreg_primary_no_swa_v1 {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: 0x00FD;
     JKIMYEI: {
       HALT_TRAIN: false;
       PROFILE_ID: stable_pretrain_no_swa_low_lr;
@@ -109,7 +107,6 @@ WAVE eval_vicreg_payload {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: 0x00FF;
     JKIMYEI: {
       HALT_TRAIN: true;
       PROFILE_ID: eval_payload_only;
@@ -149,7 +146,6 @@ WAVE eval_vicreg_payload_no_swa_v1 {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: 0x00FD;
     JKIMYEI: {
       HALT_TRAIN: true;
       PROFILE_ID: eval_payload_no_swa_low_lr;
@@ -194,7 +190,6 @@ WAVE eval_vicreg_payload_untouched_test {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: 0x00FF;
     JKIMYEI: {
       HALT_TRAIN: true;
       PROFILE_ID: eval_payload_only;
@@ -234,7 +229,6 @@ WAVE eval_vicreg_payload_untouched_test_no_swa_v1 {
 
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: 0x00FD;
     JKIMYEI: {
       HALT_TRAIN: true;
       PROFILE_ID: eval_payload_no_swa_low_lr;

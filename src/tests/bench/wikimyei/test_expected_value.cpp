@@ -1,44 +1,51 @@
 /* test_expected_value.cpp */
-#include <iostream>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <torch/torch.h>
 
 #include "piaabo/dconfig.h"
 
-#include "camahjucunu/types/types_utils.h"
 #include "camahjucunu/types/types_data.h"
 #include "camahjucunu/types/types_enums.h"
+#include "camahjucunu/types/types_utils.h"
 
-#include "camahjucunu/data/observation_sample.h"
-#include "camahjucunu/data/memory_mapped_dataset.h"
 #include "camahjucunu/data/memory_mapped_datafile.h"
 #include "camahjucunu/data/memory_mapped_dataloader.h"
+#include "camahjucunu/data/memory_mapped_dataset.h"
+#include "camahjucunu/data/observation_sample.h"
 #include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "iitepi/runtime_binding/runtime_binding_space_t.h"
 
-#include "wikimyei/representation/VICReg/vicreg_4d.h"
 #include "wikimyei/inference/expected_value/expected_value.h"
+#include "wikimyei/representation/VICReg/vicreg_4d.h"
 
-static std::string read_text_file(const std::filesystem::path& path) {
+static std::string read_text_file(const std::filesystem::path &path) {
   std::ifstream in(path);
-  TORCH_CHECK(in.good(), "[test_expected_value] failed to open: ", path.string());
-  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  TORCH_CHECK(in.good(),
+              "[test_expected_value] failed to open: ", path.string());
+  return std::string(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
 }
 
-static void write_text_file(const std::filesystem::path& path, const std::string& text) {
+static void write_text_file(const std::filesystem::path &path,
+                            const std::string &text) {
   std::ofstream out(path);
-  TORCH_CHECK(out.good(), "[test_expected_value] failed to write: ", path.string());
+  TORCH_CHECK(out.good(),
+              "[test_expected_value] failed to write: ", path.string());
   out << text;
   out.flush();
-  TORCH_CHECK(out.good(), "[test_expected_value] failed to flush: ", path.string());
+  TORCH_CHECK(out.good(),
+              "[test_expected_value] failed to flush: ", path.string());
 }
 
-static std::string replace_once(std::string text, const std::string& from, const std::string& to) {
+static std::string replace_once(std::string text, const std::string &from,
+                                const std::string &to) {
   const std::size_t pos = text.find(from);
-  TORCH_CHECK(pos != std::string::npos, "[test_expected_value] replace token not found: ", from);
+  TORCH_CHECK(pos != std::string::npos,
+              "[test_expected_value] replace token not found: ", from);
   text.replace(pos, from.size(), to);
   return text;
 }
@@ -46,16 +53,18 @@ static std::string replace_once(std::string text, const std::string& from, const
 static std::string rewrite_device_to_cpu(std::string text) {
   const std::size_t key_pos = text.find("device:str");
   TORCH_CHECK(key_pos != std::string::npos,
-              "[test_expected_value] missing device:str row in latent_lineage_state DSL text.");
+              "[test_expected_value] missing device:str row in "
+              "latent_lineage_state DSL text.");
   const std::size_t line_start =
       (text.rfind('\n', key_pos) == std::string::npos)
           ? 0
           : (text.rfind('\n', key_pos) + 1);
   const std::size_t line_end = text.find('\n', key_pos);
-  const std::size_t replace_len =
-      (line_end == std::string::npos) ? (text.size() - line_start)
+  const std::size_t replace_len = (line_end == std::string::npos)
+                                      ? (text.size() - line_start)
                                       : (line_end - line_start);
-  text.replace(line_start, replace_len, "device:str = cpu # cpu | cuda:0 | gpu");
+  text.replace(line_start, replace_len,
+               "device:str = cpu # cpu | cuda:0 | gpu");
   return text;
 }
 
@@ -67,7 +76,7 @@ int main() {
   WARM_UP_CUDA();
 
   /* set the test variables */
-  const char* global_config_path = "/cuwacunu/src/config/.config";
+  const char *global_config_path = "/cuwacunu/src/config/.config";
 
   /* read the config */
   TICK(read_config_);
@@ -81,59 +90,74 @@ int main() {
           cuwacunu::iitepi::config_space_t::locked_binding_id());
   const auto base_contract_itself =
       cuwacunu::iitepi::contract_space_t::contract_itself(base_contract_hash);
-  const std::string resolved_contract_path = base_contract_itself->config_file_path;
+  const std::string resolved_contract_path =
+      base_contract_itself->config_file_path;
+  const std::filesystem::path contract_dir =
+      std::filesystem::path(resolved_contract_path).parent_path();
+  const std::string base_vicreg_contract_ref =
+      base_contract_itself->get<std::string>("ASSEMBLY",
+                                             "__vicreg_config_dsl_file");
+  const std::string base_expected_value_contract_ref =
+      base_contract_itself->get<std::string>(
+          "ASSEMBLY", "__expected_value_config_dsl_file");
   const std::string base_vicreg_dsl =
-      base_contract_itself->get<std::string>("SPECS", "vicreg_config_filename");
+      (contract_dir / base_vicreg_contract_ref).lexically_normal().string();
   const std::string base_expected_value_dsl =
-      base_contract_itself->get<std::string>("SPECS", "expected_value_config_filename");
+      (contract_dir / base_expected_value_contract_ref)
+          .lexically_normal()
+          .string();
 
-  const std::filesystem::path cpu_contract_dir = "/tmp/test_expected_value_contract_cpu";
+  const std::filesystem::path cpu_contract_dir =
+      "/tmp/test_expected_value_contract_cpu";
   std::filesystem::create_directories(cpu_contract_dir);
-  const std::filesystem::path cpu_vicreg_dsl = cpu_contract_dir / "wikimyei_vicreg.cpu.dsl";
+  const std::filesystem::path cpu_vicreg_dsl =
+      cpu_contract_dir / "wikimyei_vicreg.cpu.dsl";
   const std::filesystem::path cpu_expected_value_dsl =
       cpu_contract_dir / "wikimyei_expected_value.cpu.dsl";
   const std::filesystem::path cpu_contract =
       cpu_contract_dir / "default.runtime_binding.contract.cpu.config";
 
-  write_text_file(
-      cpu_vicreg_dsl,
-      rewrite_device_to_cpu(read_text_file(std::filesystem::path(base_vicreg_dsl))));
-  write_text_file(
-      cpu_expected_value_dsl,
-      rewrite_device_to_cpu(
-          read_text_file(std::filesystem::path(base_expected_value_dsl))));
+  write_text_file(cpu_vicreg_dsl, rewrite_device_to_cpu(read_text_file(
+                                      std::filesystem::path(base_vicreg_dsl))));
+  write_text_file(cpu_expected_value_dsl,
+                  rewrite_device_to_cpu(read_text_file(
+                      std::filesystem::path(base_expected_value_dsl))));
   std::string cpu_contract_text = read_text_file(resolved_contract_path);
+  cpu_contract_text = replace_once(cpu_contract_text, base_vicreg_contract_ref,
+                                   cpu_vicreg_dsl.string());
   cpu_contract_text =
-      replace_once(cpu_contract_text, base_vicreg_dsl, cpu_vicreg_dsl.string());
-  cpu_contract_text =
-      replace_once(cpu_contract_text, base_expected_value_dsl,
+      replace_once(cpu_contract_text, base_expected_value_contract_ref,
                    cpu_expected_value_dsl.string());
   write_text_file(cpu_contract, cpu_contract_text);
 
   const auto contract_hash =
       cuwacunu::iitepi::contract_space_t::register_contract_file(
           cpu_contract.string());
-  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(
-      contract_hash);
-    
+  cuwacunu::iitepi::contract_space_t::assert_intact_or_fail_fast(contract_hash);
+
   // Reproducibility
   torch::manual_seed(48);
 
   // -----------------------------------------------------
   // Create the Dataloader
   // -----------------------------------------------------
-  torch::manual_seed(cuwacunu::iitepi::config_space_t::get<int>("GENERAL", "torch_seed"));
+  torch::manual_seed(
+      cuwacunu::iitepi::config_space_t::get<int>("GENERAL", "torch_seed"));
 
   /* types definition */
-  std::string INSTRUMENT = "BTCUSDT";                     // "UTILITIES"
-  using Datatype_t = cuwacunu::camahjucunu::exchange::kline_t;    // cuwacunu::camahjucunu::exchange::basic_t;
-  using Dataset_t = cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
+  std::string INSTRUMENT = "BTCUSDT"; // "UTILITIES"
+  using Datatype_t = cuwacunu::camahjucunu::exchange::
+      kline_t; // cuwacunu::camahjucunu::exchange::basic_t;
+  using Dataset_t =
+      cuwacunu::camahjucunu::data::MemoryMappedConcatDataset<Datatype_t>;
   using Datasample_t = cuwacunu::camahjucunu::data::observation_sample_t;
-  using Sampler_t = torch::data::samplers::SequentialSampler; // using Sampler_t = torch::data::samplers::RandomSampler;
+  using Sampler_t = torch::data::samplers::
+      SequentialSampler; // using Sampler_t =
+                         // torch::data::samplers::RandomSampler;
 
   TICK(create_dataloader_);
-  auto raw_dataloader = cuwacunu::camahjucunu::data::make_obs_mm_dataloader
-    <Datatype_t, Sampler_t>(INSTRUMENT, contract_hash);
+  auto raw_dataloader = cuwacunu::camahjucunu::data::make_obs_mm_dataloader<
+      Datatype_t, Sampler_t>(INSTRUMENT, contract_hash);
   PRINT_TOCK_ms(create_dataloader_);
 
   // -----------------------------------------------------
@@ -141,11 +165,9 @@ int main() {
   // -----------------------------------------------------
   TICK(load_representation_model_);
   cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(
-    contract_hash,
-    "VICReg_representation",
-    static_cast<int>(raw_dataloader.C_),
-    static_cast<int>(raw_dataloader.T_),
-    static_cast<int>(raw_dataloader.D_));
+      contract_hash, "VICReg_representation",
+      static_cast<int>(raw_dataloader.C_), static_cast<int>(raw_dataloader.T_),
+      static_cast<int>(raw_dataloader.D_));
   PRINT_TOCK_ms(load_representation_model_);
 
   // -----------------------------------------------------
@@ -153,10 +175,11 @@ int main() {
   // -----------------------------------------------------
   TICK(extend_dataloader_with_enbedings_);
   auto representation_dataloader =
-    representation_model.make_representation_dataloader<Dataset_t, Datasample_t, Datatype_t, Sampler_t>
-      (raw_dataloader, /*use_swa=*/true, /* debug */ false);
+      representation_model.make_representation_dataloader<
+          Dataset_t, Datasample_t, Datatype_t, Sampler_t>(
+          raw_dataloader, /*use_swa=*/true, /* debug */ false);
   PRINT_TOCK_ms(extend_dataloader_with_enbedings_);
-  
+
   // -----------------------------------------------------
   // Instantiate MDN (from configuration)
   // -----------------------------------------------------
@@ -169,117 +192,126 @@ int main() {
   // Training
   // -----------------------------------------------------
   const int configured_telemetry_every =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("EXPECTED_VALUE", "telemetry_every");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<int>("EXPECTED_VALUE", "telemetry_every");
   const int configured_epochs =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("EXPECTED_VALUE", "n_epochs", -1);
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<int>("EXPECTED_VALUE", "n_epochs", -1);
   const int configured_iters =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<int>("EXPECTED_VALUE", "n_iters", -1);
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<int>("EXPECTED_VALUE", "n_iters", -1);
   const int smoke_telemetry_every = 1;
   const int smoke_epochs = 1;
   const int smoke_iters = 1;
-  std::cout << "[smoke] EXPECTED_VALUE training limited to n_epochs=" << smoke_epochs
-            << " n_iters=" << smoke_iters
-            << " (configured " << configured_epochs << "/" << configured_iters
+  std::cout << "[smoke] EXPECTED_VALUE training limited to n_epochs="
+            << smoke_epochs << " n_iters=" << smoke_iters << " (configured "
+            << configured_epochs << "/" << configured_iters
             << ", telemetry_every=" << configured_telemetry_every << ")\n";
 
-  expected_value_network.set_telemetry_every(
-    smoke_telemetry_every
-  );
+  expected_value_network.set_telemetry_every(smoke_telemetry_every);
   TICK(fit_expected_value_);
-  expected_value_network.fit(representation_dataloader, 
-    /* n_epochs */  smoke_epochs,
-    /* n_iters */   smoke_iters,
-    /* verbose */   false
-  );
-  TORCH_CHECK(expected_value_network.scheduler_batch_steps_ == 0,
-              "[test_expected_value] PerEpoch scheduler should not step per batch.");
-  TORCH_CHECK(expected_value_network.scheduler_epoch_steps_ == 1,
-              "[test_expected_value] PerEpoch scheduler should step once per epoch.");
+  expected_value_network.fit(representation_dataloader,
+                             /* n_epochs */ smoke_epochs,
+                             /* n_iters */ smoke_iters,
+                             /* verbose */ false);
+  TORCH_CHECK(
+      expected_value_network.scheduler_batch_steps_ == 0,
+      "[test_expected_value] PerEpoch scheduler should not step per batch.");
+  TORCH_CHECK(
+      expected_value_network.scheduler_epoch_steps_ == 1,
+      "[test_expected_value] PerEpoch scheduler should step once per epoch.");
   PRINT_TOCK_ms(fit_expected_value_);
 
-  const std::filesystem::path base_jk_specs = "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl";
+  const std::filesystem::path base_jk_specs =
+      "/cuwacunu/src/config/instructions/defaults/"
+      "default.tsi.wikimyei.representation.vicreg.jkimyei.dsl";
   const std::string base_specs_text = read_text_file(base_jk_specs);
 
   // Scheduler mode semantics: PerBatch
-  const std::string per_batch_component_name = "MDN_expected_value_perbatch_counter";
-  const std::string per_batch_specs = replace_once(
-      base_specs_text,
-      "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1             |  ConstantLR_1                  |",
-      "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1             |  OneCycleLR_1                  |");
+  const std::string per_batch_component_name =
+      "MDN_expected_value_perbatch_counter";
+  const std::string per_batch_specs =
+      replace_once(base_specs_text,
+                   "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1     "
+                   "        |  ConstantLR_1                  |",
+                   "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1     "
+                   "        |  OneCycleLR_1                  |");
   cuwacunu::jkimyei::jk_setup_t::registry.set_component_instruction_override(
-      contract_hash,
-      per_batch_component_name,
-      "MDN_expected_value",
+      contract_hash, per_batch_component_name, "MDN_expected_value",
       per_batch_specs);
   {
-    cuwacunu::wikimyei::ExpectedValue per_batch_ev(
-        contract_hash, per_batch_component_name);
+    cuwacunu::wikimyei::ExpectedValue per_batch_ev(contract_hash,
+                                                   per_batch_component_name);
     per_batch_ev.fit(representation_dataloader,
                      /*n_epochs=*/1,
                      /*n_iters=*/1,
                      /*verbose=*/false);
     TORCH_CHECK(per_batch_ev.scheduler_batch_steps_ == 1,
-                "[test_expected_value] PerBatch scheduler should step once for one batch.");
-    TORCH_CHECK(per_batch_ev.scheduler_epoch_steps_ == 0,
-                "[test_expected_value] PerBatch scheduler should not step per epoch.");
+                "[test_expected_value] PerBatch scheduler should step once for "
+                "one batch.");
+    TORCH_CHECK(
+        per_batch_ev.scheduler_epoch_steps_ == 0,
+        "[test_expected_value] PerBatch scheduler should not step per epoch.");
   }
   cuwacunu::jkimyei::jk_setup_t::registry.clear_component_instruction_override(
-      contract_hash,
-      per_batch_component_name);
+      contract_hash, per_batch_component_name);
 
   // Scheduler mode semantics: PerEpochWithMetric
   const std::string metric_component_name = "MDN_expected_value_metric_counter";
-  const std::string metric_specs = replace_once(
-      base_specs_text,
-      "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1             |  ConstantLR_1                  |",
-      "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1             |  ReduceLROnPlateau_1           |");
+  const std::string metric_specs =
+      replace_once(base_specs_text,
+                   "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1     "
+                   "        |  ConstantLR_1                  |",
+                   "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1     "
+                   "        |  ReduceLROnPlateau_1           |");
   cuwacunu::jkimyei::jk_setup_t::registry.set_component_instruction_override(
-      contract_hash,
-      metric_component_name,
-      "MDN_expected_value",
-      metric_specs);
+      contract_hash, metric_component_name, "MDN_expected_value", metric_specs);
   {
-    cuwacunu::wikimyei::ExpectedValue metric_ev(
-        contract_hash, metric_component_name);
+    cuwacunu::wikimyei::ExpectedValue metric_ev(contract_hash,
+                                                metric_component_name);
     metric_ev.fit(representation_dataloader,
                   /*n_epochs=*/1,
                   /*n_iters=*/1,
                   /*verbose=*/false);
     TORCH_CHECK(metric_ev.scheduler_batch_steps_ == 0,
-                "[test_expected_value] PerEpochWithMetric scheduler should not step per batch.");
+                "[test_expected_value] PerEpochWithMetric scheduler should not "
+                "step per batch.");
     TORCH_CHECK(metric_ev.scheduler_epoch_steps_ == 1,
-                "[test_expected_value] PerEpochWithMetric scheduler should step once per epoch.");
+                "[test_expected_value] PerEpochWithMetric scheduler should "
+                "step once per epoch.");
   }
   cuwacunu::jkimyei::jk_setup_t::registry.clear_component_instruction_override(
-      contract_hash,
-      metric_component_name);
+      contract_hash, metric_component_name);
 
   // Optimizer threshold clamp semantics for Adam/AdamW step counters.
   {
-    cuwacunu::wikimyei::ExpectedValue clamp_ev(
-        contract_hash, "MDN_expected_value");
+    cuwacunu::wikimyei::ExpectedValue clamp_ev(contract_hash,
+                                               "MDN_expected_value");
     clamp_ev.optimizer_threshold_reset = 0;
     clamp_ev.fit(representation_dataloader,
                  /*n_epochs=*/1,
                  /*n_iters=*/1,
                  /*verbose=*/false);
     bool saw_adamw_state = false;
-    for (auto& kv : clamp_ev.optimizer->state()) {
-      if (auto* s = dynamic_cast<torch::optim::AdamWParamState*>(kv.second.get())) {
+    for (auto &kv : clamp_ev.optimizer->state()) {
+      if (auto *s =
+              dynamic_cast<torch::optim::AdamWParamState *>(kv.second.get())) {
         saw_adamw_state = true;
-        TORCH_CHECK(s->step() <= 0,
-                    "[test_expected_value] expected AdamW step counter clamp at threshold 0.");
+        TORCH_CHECK(s->step() <= 0, "[test_expected_value] expected AdamW step "
+                                    "counter clamp at threshold 0.");
       }
     }
-    TORCH_CHECK(saw_adamw_state,
-                "[test_expected_value] expected AdamW optimizer state entries.");
+    TORCH_CHECK(
+        saw_adamw_state,
+        "[test_expected_value] expected AdamW optimizer state entries.");
   }
   // -----------------------------------------------------
   // Save
   // -----------------------------------------------------
   TICK(save_expected_value_network_);
   const std::string ckpt_path =
-      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)->get<std::string>("EXPECTED_VALUE", "model_path");
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<std::string>("EXPECTED_VALUE", "model_path");
   TORCH_CHECK(expected_value_network.save_checkpoint(ckpt_path),
               "[test_expected_value] save_checkpoint should succeed");
   PRINT_TOCK_ms(save_expected_value_network_);
@@ -300,71 +332,77 @@ int main() {
   const std::filesystem::path tmp_dir = "/tmp/test_expected_value_ckpt";
   std::filesystem::create_directories(tmp_dir);
   TORCH_CHECK(!expected_value_network.save_checkpoint(tmp_dir.string()),
-              "[test_expected_value] save should fail when destination path is a directory");
+              "[test_expected_value] save should fail when destination path is "
+              "a directory");
 
   // Reject legacy/no-version checkpoint.
-  const std::filesystem::path no_version_ckpt = tmp_dir / "expected_value_no_version.ckpt";
+  const std::filesystem::path no_version_ckpt =
+      tmp_dir / "expected_value_no_version.ckpt";
   {
     torch::serialize::OutputArchive legacy;
     legacy.write("best_metric", torch::tensor({0.0}));
     legacy.save_to(no_version_ckpt.string());
   }
   {
-    cuwacunu::wikimyei::ExpectedValue strict_loader(contract_hash, "MDN_expected_value");
+    cuwacunu::wikimyei::ExpectedValue strict_loader(contract_hash,
+                                                    "MDN_expected_value");
     TORCH_CHECK(!strict_loader.load_checkpoint(no_version_ckpt.string()),
-                "[test_expected_value] load should reject checkpoint missing format_version");
+                "[test_expected_value] load should reject checkpoint missing "
+                "format_version");
   }
 
   // Reject contract hash mismatch.
   const std::filesystem::path base_contract = cpu_contract;
   const std::filesystem::path mismatch_contract =
       tmp_dir / "default.runtime_binding.contract.contract_mismatch.config";
-  write_text_file(
-      mismatch_contract,
-      read_text_file(base_contract) + "\n# contract_mismatch_variant\n");
+  write_text_file(mismatch_contract, read_text_file(base_contract) +
+                                         "\n# contract_mismatch_variant\n");
   const std::string mismatch_contract_hash =
       cuwacunu::iitepi::contract_space_t::register_contract_file(
           mismatch_contract.string());
   {
-    cuwacunu::wikimyei::ExpectedValue mismatch_loader(
-        mismatch_contract_hash, "MDN_expected_value");
-    TORCH_CHECK(!mismatch_loader.load_checkpoint(ckpt_path),
-                "[test_expected_value] load should reject contract hash mismatch");
+    cuwacunu::wikimyei::ExpectedValue mismatch_loader(mismatch_contract_hash,
+                                                      "MDN_expected_value");
+    TORCH_CHECK(
+        !mismatch_loader.load_checkpoint(ckpt_path),
+        "[test_expected_value] load should reject contract hash mismatch");
   }
 
   // Reject scheduler mode mismatch.
-  const std::filesystem::path mismatch_ckpt = tmp_dir / "expected_value_scheduler_mismatch.ckpt";
-  const std::string per_batch_specs_for_mismatch = replace_once(
-      base_specs_text,
-      "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1             |  ConstantLR_1                  |",
-      "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1             |  OneCycleLR_1                  |");
+  const std::filesystem::path mismatch_ckpt =
+      tmp_dir / "expected_value_scheduler_mismatch.ckpt";
+  const std::string per_batch_specs_for_mismatch =
+      replace_once(base_specs_text,
+                   "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1     "
+                   "        |  ConstantLR_1                  |",
+                   "|  MDN_expected_value  |  AdamW_1         |  NLLLoss_1     "
+                   "        |  OneCycleLR_1                  |");
   cuwacunu::jkimyei::jk_setup_t::registry.set_component_instruction_override(
-      contract_hash,
-      "MDN_expected_value",
-      "MDN_expected_value",
+      contract_hash, "MDN_expected_value", "MDN_expected_value",
       per_batch_specs_for_mismatch);
   {
     cuwacunu::wikimyei::ExpectedValue per_batch_mode_model(
         contract_hash, "MDN_expected_value");
     TORCH_CHECK(per_batch_mode_model.save_checkpoint(mismatch_ckpt.string()),
-                "[test_expected_value] expected save to succeed for scheduler mismatch fixture");
+                "[test_expected_value] expected save to succeed for scheduler "
+                "mismatch fixture");
   }
   cuwacunu::jkimyei::jk_setup_t::registry.clear_component_instruction_override(
-      contract_hash,
-      "MDN_expected_value");
+      contract_hash, "MDN_expected_value");
   {
-    cuwacunu::wikimyei::ExpectedValue per_epoch_loader(
-        contract_hash, "MDN_expected_value");
-    TORCH_CHECK(!per_epoch_loader.load_checkpoint(mismatch_ckpt.string()),
-                "[test_expected_value] load should reject scheduler mode mismatch");
+    cuwacunu::wikimyei::ExpectedValue per_epoch_loader(contract_hash,
+                                                       "MDN_expected_value");
+    TORCH_CHECK(
+        !per_epoch_loader.load_checkpoint(mismatch_ckpt.string()),
+        "[test_expected_value] load should reject scheduler mode mismatch");
   }
 
   // -----------------------------------------------------
   // Dashboards: fetch latest vectors (CPU tensors)
   // -----------------------------------------------------
   TICK(estimation_network_dashboards_);
-  auto ch = expected_value_network.get_last_per_channel_nll();  // [C] on CPU
-  auto hz = expected_value_network.get_last_per_horizon_nll();  // [Hf] on CPU
+  auto ch = expected_value_network.get_last_per_channel_nll(); // [C] on CPU
+  auto hz = expected_value_network.get_last_per_horizon_nll(); // [Hf] on CPU
   PRINT_TOCK_ms(estimation_network_dashboards_);
 
   return 0;

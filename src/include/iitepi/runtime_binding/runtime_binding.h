@@ -3,9 +3,9 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <chrono>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -21,9 +21,9 @@
 
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "hero/hashimyei_hero/hashimyei_report_fragments.h"
+#include "iitepi/contract_space_t.h"
 #include "iitepi/runtime_binding/runtime_binding.contract.h"
 #include "piaabo/latent_lineage_state/runtime_lls.h"
-#include "iitepi/contract_space_t.h"
 #include "tsiemene/tsi.type.registry.h"
 #include "tsiemene/tsi.wikimyei.h"
 
@@ -38,14 +38,14 @@ struct RuntimeBinding {
   std::vector<RuntimeBindingContract> contracts{};
 
   RuntimeBinding() = default;
-  RuntimeBinding(RuntimeBinding&& other) noexcept
+  RuntimeBinding(RuntimeBinding &&other) noexcept
       : campaign_hash(std::move(other.campaign_hash)),
         runtime_binding_path(std::move(other.runtime_binding_path)),
         binding_id(std::move(other.binding_id)),
         contract_hash(std::move(other.contract_hash)),
         wave_hash(std::move(other.wave_hash)),
         contracts(std::move(other.contracts)) {}
-  RuntimeBinding& operator=(RuntimeBinding&& other) noexcept {
+  RuntimeBinding &operator=(RuntimeBinding &&other) noexcept {
     if (this != &other) {
       campaign_hash = std::move(other.campaign_hash);
       runtime_binding_path = std::move(other.runtime_binding_path);
@@ -57,8 +57,8 @@ struct RuntimeBinding {
     return *this;
   }
 
-  RuntimeBinding(const RuntimeBinding&) = delete;
-  RuntimeBinding& operator=(const RuntimeBinding&) = delete;
+  RuntimeBinding(const RuntimeBinding &) = delete;
+  RuntimeBinding &operator=(const RuntimeBinding &) = delete;
 };
 
 struct runtime_binding_trace_event_t {
@@ -96,11 +96,11 @@ struct runtime_binding_trace_event_t {
 };
 
 using runtime_binding_trace_emit_fn_t =
-    void (*)(const runtime_binding_trace_event_t&, void*);
+    void (*)(const runtime_binding_trace_event_t &, void *);
 
 struct runtime_binding_trace_sink_t {
   runtime_binding_trace_emit_fn_t emit{nullptr};
-  void* user{nullptr};
+  void *user{nullptr};
 };
 
 struct runtime_binding_trace_context_t {
@@ -114,15 +114,15 @@ struct runtime_binding_trace_context_t {
   std::uint64_t epochs{0};
 };
 
-[[nodiscard]] inline runtime_binding_trace_sink_t&
+[[nodiscard]] inline runtime_binding_trace_sink_t &
 runtime_binding_trace_sink_slot() {
   static thread_local runtime_binding_trace_sink_t sink{};
   return sink;
 }
 
-[[nodiscard]] inline runtime_binding_trace_sink_t swap_runtime_binding_trace_sink(
-    runtime_binding_trace_sink_t next) {
-  auto& slot = runtime_binding_trace_sink_slot();
+[[nodiscard]] inline runtime_binding_trace_sink_t
+swap_runtime_binding_trace_sink(runtime_binding_trace_sink_t next) {
+  auto &slot = runtime_binding_trace_sink_slot();
   runtime_binding_trace_sink_t previous = slot;
   slot = next;
   return previous;
@@ -132,69 +132,76 @@ struct runtime_binding_trace_scope_t {
   runtime_binding_trace_scope_t() = default;
   explicit runtime_binding_trace_scope_t(runtime_binding_trace_sink_t sink)
       : previous(swap_runtime_binding_trace_sink(sink)), active(true) {}
-  runtime_binding_trace_scope_t(const runtime_binding_trace_scope_t&) = delete;
-  runtime_binding_trace_scope_t& operator=(const runtime_binding_trace_scope_t&) =
-      delete;
-  runtime_binding_trace_scope_t(runtime_binding_trace_scope_t&& other) noexcept
+  runtime_binding_trace_scope_t(const runtime_binding_trace_scope_t &) = delete;
+  runtime_binding_trace_scope_t &
+  operator=(const runtime_binding_trace_scope_t &) = delete;
+  runtime_binding_trace_scope_t(runtime_binding_trace_scope_t &&other) noexcept
       : previous(other.previous), active(other.active) {
     other.active = false;
   }
-  runtime_binding_trace_scope_t& operator=(
-      runtime_binding_trace_scope_t&& other) noexcept {
-    if (this == &other) return *this;
-    if (active) (void)swap_runtime_binding_trace_sink(previous);
+  runtime_binding_trace_scope_t &
+  operator=(runtime_binding_trace_scope_t &&other) noexcept {
+    if (this == &other)
+      return *this;
+    if (active)
+      (void)swap_runtime_binding_trace_sink(previous);
     previous = other.previous;
     active = other.active;
     other.active = false;
     return *this;
   }
   ~runtime_binding_trace_scope_t() {
-    if (active) (void)swap_runtime_binding_trace_sink(previous);
+    if (active)
+      (void)swap_runtime_binding_trace_sink(previous);
   }
 
   runtime_binding_trace_sink_t previous{};
   bool active{false};
 };
 
-inline void emit_runtime_binding_trace_event(
-    runtime_binding_trace_event_t event) {
+inline void
+emit_runtime_binding_trace_event(runtime_binding_trace_event_t event) {
   if (event.timestamp_ms == 0) {
     event.timestamp_ms = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch())
             .count());
   }
-  const auto& sink = runtime_binding_trace_sink_slot();
-  if (!sink.emit) return;
+  const auto &sink = runtime_binding_trace_sink_slot();
+  if (!sink.emit)
+    return;
   sink.emit(event, sink.user);
 }
 
-[[nodiscard]] inline DirectiveId pick_start_directive(const Circuit& c) noexcept {
+[[nodiscard]] inline DirectiveId
+pick_start_directive(const Circuit &c) noexcept {
   if (!c.hops || c.hop_count == 0 || !c.hops[0].from.tsi) {
     return directive_id::Step;
   }
 
-  const Tsi& t = *c.hops[0].from.tsi;
-  for (const auto& d : t.directives()) {
-    if (d.dir == DirectiveDir::In && d.kind.kind == PayloadKind::String) return d.id;
+  const Tsi &t = *c.hops[0].from.tsi;
+  for (const auto &d : t.directives()) {
+    if (d.dir == DirectiveDir::In && d.kind.kind == PayloadKind::String)
+      return d.id;
   }
-  for (const auto& d : t.directives()) {
-    if (d.dir == DirectiveDir::In) return d.id;
+  for (const auto &d : t.directives()) {
+    if (d.dir == DirectiveDir::In)
+      return d.id;
   }
   return directive_id::Step;
 }
 
-[[nodiscard]] inline std::string make_runtime_run_id(
-    const RuntimeBindingContract& contract) {
+[[nodiscard]] inline std::string
+make_runtime_run_id(const RuntimeBindingContract &contract) {
   const std::uint64_t now_ms = static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())
           .count());
   std::ostringstream out;
   out << "run."
-      << (contract.spec.contract_hash.empty() ? "unknown" : contract.spec.contract_hash)
-      << "."
-      << now_ms;
+      << (contract.spec.contract_hash.empty() ? "unknown"
+                                              : contract.spec.contract_hash)
+      << "." << now_ms;
   return out.str();
 }
 
@@ -205,8 +212,8 @@ inline void emit_runtime_binding_trace_event(
   return s;
 }
 
-[[nodiscard]] inline std::string compact_runtime_source_path_label(
-    std::string_view raw_path) {
+[[nodiscard]] inline std::string
+compact_runtime_source_path_label(std::string_view raw_path) {
   std::string trimmed_input(raw_path);
   const auto not_space = [](unsigned char ch) { return std::isspace(ch) == 0; };
   trimmed_input.erase(
@@ -219,7 +226,8 @@ inline void emit_runtime_binding_trace_event(
   const std::string trimmed = lowercase_copy(trimmed_input);
   const std::filesystem::path path(trimmed_input);
   const std::string filename = path.filename().string();
-  if (filename.empty()) return path.lexically_normal().string();
+  if (filename.empty())
+    return path.lexically_normal().string();
   if (trimmed.find("/.campaigns/") != std::string::npos) {
     return filename;
   }
@@ -231,25 +239,30 @@ inline void emit_runtime_binding_trace_event(
 }
 
 inline void prune_legacy_component_definition_siblings(
-    const std::filesystem::path& store_root,
-    std::string_view canonical_path,
+    const std::filesystem::path &store_root, std::string_view canonical_path,
     std::string_view current_component_id) {
   namespace fs = std::filesystem;
   const fs::path definition_root =
-      cuwacunu::hashimyei::canonical_path_directory(store_root, canonical_path) /
+      cuwacunu::hashimyei::canonical_path_directory(store_root,
+                                                    canonical_path) /
       "_definition";
   std::error_code ec;
-  if (!fs::exists(definition_root, ec) || !fs::is_directory(definition_root, ec)) {
+  if (!fs::exists(definition_root, ec) ||
+      !fs::is_directory(definition_root, ec)) {
     return;
   }
-  for (const auto& entry : fs::directory_iterator(definition_root, ec)) {
-    if (ec) return;
-    if (!entry.is_directory()) continue;
-    if (entry.path().filename() == current_component_id) continue;
+  for (const auto &entry : fs::directory_iterator(definition_root, ec)) {
+    if (ec)
+      return;
+    if (!entry.is_directory())
+      continue;
+    if (entry.path().filename() == current_component_id)
+      continue;
     const fs::path manifest_path =
         entry.path() / cuwacunu::hashimyei::kComponentManifestFilenameV2;
     std::ifstream in(manifest_path, std::ios::binary);
-    if (!in) continue;
+    if (!in)
+      continue;
     std::string payload((std::istreambuf_iterator<char>(in)),
                         std::istreambuf_iterator<char>());
     const bool is_pre_hard_cut_manifest =
@@ -274,23 +287,28 @@ inline void prune_legacy_component_definition_siblings(
           .count());
 }
 
-[[nodiscard]] inline bool parse_runtime_run_started_at_ms(
-    std::string_view run_id, std::uint64_t* out) {
-  if (!out) return false;
+[[nodiscard]] inline bool
+parse_runtime_run_started_at_ms(std::string_view run_id, std::uint64_t *out) {
+  if (!out)
+    return false;
   const std::size_t dot = run_id.rfind('.');
-  if (dot == std::string_view::npos || dot + 1 >= run_id.size()) return false;
+  if (dot == std::string_view::npos || dot + 1 >= run_id.size())
+    return false;
   std::uint64_t value = 0;
-  const auto* begin = run_id.data() + dot + 1;
-  const auto* end = run_id.data() + run_id.size();
+  const auto *begin = run_id.data() + dot + 1;
+  const auto *end = run_id.data() + run_id.size();
   const auto result = std::from_chars(begin, end, value);
-  if (result.ec != std::errc{} || result.ptr != end) return false;
+  if (result.ec != std::errc{} || result.ptr != end)
+    return false;
   *out = value;
   return true;
 }
 
-inline bool ensure_runtime_context_wave_cursor(RuntimeContext* ctx) {
-  if (!ctx) return false;
-  if (ctx->has_wave_cursor) return true;
+inline bool ensure_runtime_context_wave_cursor(RuntimeContext *ctx) {
+  if (!ctx)
+    return false;
+  if (ctx->has_wave_cursor)
+    return true;
   std::uint64_t run_started_at_ms = 0;
   if (!parse_runtime_run_started_at_ms(ctx->run_id, &run_started_at_ms)) {
     return false;
@@ -305,12 +323,15 @@ inline bool ensure_runtime_context_wave_cursor(RuntimeContext* ctx) {
   return true;
 }
 
-[[nodiscard]] inline bool write_runtime_text_file_atomic(
-    const std::filesystem::path& target, std::string_view content,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool
+write_runtime_text_file_atomic(const std::filesystem::path &target,
+                               std::string_view content,
+                               std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (target.empty()) {
-    if (error) *error = "target path is empty";
+    if (error)
+      *error = "target path is empty";
     return false;
   }
   std::error_code ec{};
@@ -318,8 +339,8 @@ inline bool ensure_runtime_context_wave_cursor(RuntimeContext* ctx) {
     std::filesystem::create_directories(target.parent_path(), ec);
     if (ec) {
       if (error) {
-        *error = "cannot create parent directory: " +
-                 target.parent_path().string();
+        *error =
+            "cannot create parent directory: " + target.parent_path().string();
       }
       return false;
     }
@@ -327,27 +348,30 @@ inline bool ensure_runtime_context_wave_cursor(RuntimeContext* ctx) {
   const auto tmp = target.string() + ".tmp";
   std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
   if (!out) {
-    if (error) *error = "cannot open temporary file: " + tmp;
+    if (error)
+      *error = "cannot open temporary file: " + tmp;
     return false;
   }
   out << content;
   out.flush();
   if (!out.good()) {
-    if (error) *error = "cannot write temporary file: " + tmp;
+    if (error)
+      *error = "cannot write temporary file: " + tmp;
     return false;
   }
   out.close();
   std::filesystem::rename(tmp, target, ec);
   if (ec) {
     std::filesystem::remove(tmp, ec);
-    if (error) *error = "cannot replace target file: " + target.string();
+    if (error)
+      *error = "cannot replace target file: " + target.string();
     return false;
   }
   return true;
 }
 
-[[nodiscard]] inline std::string sanitize_bundle_snapshot_filename(
-    std::string_view filename) {
+[[nodiscard]] inline std::string
+sanitize_bundle_snapshot_filename(std::string_view filename) {
   std::string out{};
   out.reserve(filename.size());
   for (const char ch : filename) {
@@ -356,22 +380,27 @@ inline bool ensure_runtime_context_wave_cursor(RuntimeContext* ctx) {
                     ch == '-';
     out.push_back(ok ? ch : '_');
   }
-  if (out.empty()) out = "dsl";
+  if (out.empty())
+    out = "dsl";
   return out;
 }
 
-[[nodiscard]] inline std::optional<cuwacunu::hero::hashimyei::component_manifest_t>
-build_runtime_component_manifest(const RuntimeBindingContract& c,
-                                 const TsiWikimyei&,
-                                 std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline std::optional<
+    cuwacunu::hero::hashimyei::component_manifest_t>
+build_runtime_component_manifest(const RuntimeBindingContract &c,
+                                 const TsiWikimyei &,
+                                 std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (c.spec.representation_hashimyei.empty()) {
-    if (error) *error = "representation_hashimyei is empty";
+    if (error)
+      *error = "representation_hashimyei is empty";
     return std::nullopt;
   }
   std::string normalized_representation_hashimyei{};
   if (!cuwacunu::hashimyei::normalize_hex_hash_name(
-          c.spec.representation_hashimyei, &normalized_representation_hashimyei)) {
+          c.spec.representation_hashimyei,
+          &normalized_representation_hashimyei)) {
     if (error) {
       *error = "representation_hashimyei is not a valid 0x... ordinal";
     }
@@ -380,12 +409,13 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
 
   std::string family = c.spec.representation_type;
   if (family.empty()) {
-    if (error) *error = "wikimyei family is empty";
+    if (error)
+      *error = "wikimyei family is empty";
     return std::nullopt;
   }
 
-  const RuntimeBindingContract::ComponentDslFingerprint* selected_fp = nullptr;
-  for (const auto& fp : c.spec.component_dsl_fingerprints) {
+  const RuntimeBindingContract::ComponentDslFingerprint *selected_fp = nullptr;
+  for (const auto &fp : c.spec.component_dsl_fingerprints) {
     std::string normalized_fp_hashimyei = fp.hashimyei;
     cuwacunu::hashimyei::normalize_hex_hash_name_inplace(
         &normalized_fp_hashimyei);
@@ -394,12 +424,14 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
       selected_fp = &fp;
       break;
     }
-    if (!selected_fp && fp.tsi_type == family) selected_fp = &fp;
+    if (!selected_fp && fp.tsi_type == family)
+      selected_fp = &fp;
   }
   if (!selected_fp) {
     if (error) {
-      *error = "missing component DSL fingerprint for runtime bootstrap family: " +
-               family;
+      *error =
+          "missing component DSL fingerprint for runtime bootstrap family: " +
+          family;
     }
     return std::nullopt;
   }
@@ -407,7 +439,8 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   const auto contract_snapshot =
       cuwacunu::iitepi::contract_space_t::contract_itself(c.spec.contract_hash);
   if (!contract_snapshot) {
-    if (error) *error = "missing contract snapshot for runtime component manifest";
+    if (error)
+      *error = "missing contract snapshot for runtime component manifest";
     return std::nullopt;
   }
 
@@ -427,13 +460,11 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
   manifest.canonical_path = family + "." + normalized_representation_hashimyei;
   manifest.family = family;
-  manifest.hashimyei_identity =
-      cuwacunu::hashimyei::make_identity(
-          cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE, component_ordinal);
-  manifest.contract_identity =
-      cuwacunu::hashimyei::make_identity(
-          cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT, contract_ordinal,
-          contract_hash);
+  manifest.hashimyei_identity = cuwacunu::hashimyei::make_identity(
+      cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE, component_ordinal);
+  manifest.contract_identity = cuwacunu::hashimyei::make_identity(
+      cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT, contract_ordinal,
+      contract_hash);
   manifest.parent_identity = std::nullopt;
   manifest.revision_reason = "runtime_bootstrap";
   manifest.founding_revision_id = "runtime_bootstrap:" + contract_hash;
@@ -462,28 +493,32 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   return manifest;
 }
 
-[[nodiscard]] inline bool persist_runtime_component_lineage(
-    const RuntimeBindingContract& c, const TsiWikimyei& wik,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool
+persist_runtime_component_lineage(const RuntimeBindingContract &c,
+                                  const TsiWikimyei &wik,
+                                  std::string *error = nullptr) {
+  if (error)
+    error->clear();
   const auto manifest_opt = build_runtime_component_manifest(c, wik, error);
-  if (!manifest_opt.has_value()) return false;
-  const auto& manifest = *manifest_opt;
+  if (!manifest_opt.has_value())
+    return false;
+  const auto &manifest = *manifest_opt;
 
   const auto store_root = cuwacunu::hashimyei::store_root();
   const std::string component_id =
       cuwacunu::hero::hashimyei::compute_component_manifest_id(manifest);
-  if (!cuwacunu::hero::hashimyei::save_component_manifest(
-          store_root, manifest, nullptr, error)) {
+  if (!cuwacunu::hero::hashimyei::save_component_manifest(store_root, manifest,
+                                                          nullptr, error)) {
     return false;
   }
-  prune_legacy_component_definition_siblings(store_root, manifest.canonical_path,
-                                             component_id);
+  prune_legacy_component_definition_siblings(
+      store_root, manifest.canonical_path, component_id);
 
   const auto contract_snapshot =
       cuwacunu::iitepi::contract_space_t::contract_itself(c.spec.contract_hash);
   if (!contract_snapshot) {
-    if (error) *error = "missing contract snapshot for founding DSL bundle";
+    if (error)
+      *error = "missing contract snapshot for founding DSL bundle";
     return false;
   }
 
@@ -491,21 +526,23 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   std::unordered_set<std::string> seen{};
   const auto add_source_path = [&](std::string_view raw_path) {
     const std::string trimmed = std::string(raw_path);
-    if (trimmed.empty()) return;
+    if (trimmed.empty())
+      return;
     const std::filesystem::path p(trimmed);
     const std::string key = p.lexically_normal().string();
-    if (!seen.insert(key).second) return;
+    if (!seen.insert(key).second)
+      return;
     source_paths.push_back(p);
   };
 
   add_source_path(contract_snapshot->config_file_path_canonical);
-  for (const auto& fp : c.spec.component_dsl_fingerprints) {
+  for (const auto &fp : c.spec.component_dsl_fingerprints) {
     add_source_path(fp.tsi_dsl_path);
   }
-  for (const auto& surface : contract_snapshot->docking_signature.surfaces) {
+  for (const auto &surface : contract_snapshot->docking_signature.surfaces) {
     add_source_path(surface.canonical_path);
   }
-  for (const auto& entry : contract_snapshot->signature.module_dsl_entries) {
+  for (const auto &entry : contract_snapshot->signature.module_dsl_entries) {
     add_source_path(entry.module_dsl_path);
   }
 
@@ -516,8 +553,8 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   std::filesystem::create_directories(bundle_dir, ec);
   if (ec) {
     if (error) {
-      *error = "cannot create founding DSL bundle directory: " +
-               bundle_dir.string();
+      *error =
+          "cannot create founding DSL bundle directory: " + bundle_dir.string();
     }
     return false;
   }
@@ -529,7 +566,7 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   bundle_manifest.files.reserve(source_paths.size());
 
   for (std::size_t i = 0; i < source_paths.size(); ++i) {
-    const auto& source_path = source_paths[i];
+    const auto &source_path = source_paths[i];
     std::ifstream in(source_path, std::ios::binary);
     if (!in) {
       if (error) {
@@ -557,8 +594,8 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
             .source_path =
                 compact_runtime_source_path_label(source_path.string()),
             .snapshot_relpath = name.str(),
-            .sha256_hex =
-                lowercase_copy(cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(
+            .sha256_hex = lowercase_copy(
+                cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(
                     snapshot_path.string())),
         });
   }
@@ -566,7 +603,8 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
       cuwacunu::hero::hashimyei::compute_founding_dsl_bundle_aggregate_sha256(
           bundle_manifest);
   if (bundle_manifest.founding_dsl_bundle_aggregate_sha256_hex.empty()) {
-    if (error) *error = "cannot compute founding DSL bundle aggregate digest";
+    if (error)
+      *error = "cannot compute founding DSL bundle aggregate digest";
     return false;
   }
 
@@ -575,22 +613,23 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
 }
 
 [[nodiscard]] inline bool validate_runtime_hashimyei_contract_docking(
-    std::string_view hashimyei,
-    std::string_view contract_hash,
-    bool require_registered_manifest,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+    std::string_view expected_family, std::string_view hashimyei,
+    std::string_view contract_hash, bool require_registered_manifest,
+    std::string *error = nullptr) {
+  if (error)
+    error->clear();
 
   std::string selected_hashimyei(hashimyei);
   cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&selected_hashimyei);
   const std::string selected_contract_hash(contract_hash);
-  if (selected_hashimyei.empty() || selected_contract_hash.empty()) return true;
+  if (selected_hashimyei.empty() || selected_contract_hash.empty())
+    return true;
 
   const auto contract_snapshot =
       cuwacunu::iitepi::contract_space_t::contract_itself(
           selected_contract_hash);
-  const std::string expected_docking_signature = lowercase_copy(
-      contract_snapshot->signature.docking_signature_sha256_hex);
+  const std::string expected_docking_signature =
+      lowercase_copy(contract_snapshot->signature.docking_signature_sha256_hex);
   if (expected_docking_signature.empty()) {
     if (error) {
       *error = "contract snapshot is missing docking_signature_sha256_hex";
@@ -615,8 +654,12 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
 
   cuwacunu::hero::hashimyei::component_state_t component{};
   std::string resolve_error{};
-  if (!catalog.resolve_component("", selected_hashimyei, &component,
-                                 &resolve_error)) {
+  const std::string selected_canonical_path =
+      !std::string(expected_family).empty()
+          ? std::string(expected_family) + "." + selected_hashimyei
+          : std::string{};
+  if (!catalog.resolve_component(selected_canonical_path, selected_hashimyei,
+                                 &component, &resolve_error)) {
     // Bootstrap runs are allowed to target a fresh hashimyei slot that has no
     // manifest yet. In that case we should not force a full catalog ingest
     // just to confirm absence before training has founded the component.
@@ -640,10 +683,11 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
       }
       return false;
     }
-    if (!catalog.resolve_component("", selected_hashimyei, &component,
-                                   &resolve_error)) {
+    if (!catalog.resolve_component(selected_canonical_path, selected_hashimyei,
+                                   &component, &resolve_error)) {
       if (error) {
-        *error = "configured hashimyei manifest lookup failed: " + resolve_error;
+        *error =
+            "configured hashimyei manifest lookup failed: " + resolve_error;
       }
       return false;
     }
@@ -664,14 +708,13 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
         cuwacunu::hero::hashimyei::contract_hash_from_identity(
             component.manifest.contract_identity);
     if (error) {
-      *error =
-          "configured hashimyei docking signature mismatch: hashimyei=" +
-          selected_hashimyei + " canonical_path=" +
-          component.manifest.canonical_path + " component_docking=" +
-          actual_docking_signature + " contract_docking=" +
-          expected_docking_signature + " component_contract=" +
-          component_contract_hash + " requested_contract=" +
-          selected_contract_hash;
+      *error = "configured hashimyei docking signature mismatch: hashimyei=" +
+               selected_hashimyei +
+               " canonical_path=" + component.manifest.canonical_path +
+               " component_docking=" + actual_docking_signature +
+               " contract_docking=" + expected_docking_signature +
+               " component_contract=" + component_contract_hash +
+               " requested_contract=" + selected_contract_hash;
     }
     return false;
   }
@@ -680,11 +723,11 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
 }
 
 [[nodiscard]] inline bool validate_runtime_component_manifest_public_docking(
-    const cuwacunu::hero::hashimyei::component_manifest_t& manifest,
+    const cuwacunu::hero::hashimyei::component_manifest_t &manifest,
     std::string_view requested_contract_hash,
-    std::string_view expected_docking_signature,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+    std::string_view expected_docking_signature, std::string *error = nullptr) {
+  if (error)
+    error->clear();
   const std::string expected_signature =
       lowercase_copy(std::string(expected_docking_signature));
   if (expected_signature.empty()) {
@@ -716,9 +759,9 @@ build_runtime_component_manifest(const RuntimeBindingContract& c,
   return true;
 }
 
-[[nodiscard]] inline bool validate_runtime_binding_circuit(
-    const RuntimeBindingContract& c,
-    CircuitIssue* issue = nullptr) noexcept {
+[[nodiscard]] inline bool
+validate_runtime_binding_circuit(const RuntimeBindingContract &c,
+                                 CircuitIssue *issue = nullptr) noexcept {
   return validate(c.view(), issue);
 }
 
@@ -729,72 +772,86 @@ struct RuntimeBindingIssue {
   CircuitIssue circuit_issue{};
 };
 
-[[nodiscard]] inline bool is_known_canonical_component_type(
-    std::string_view canonical_type,
-    TsiTypeId* out = nullptr) noexcept {
+[[nodiscard]] inline bool
+is_known_canonical_component_type(std::string_view canonical_type,
+                                  TsiTypeId *out = nullptr) noexcept {
   const auto id = parse_tsi_type_id(canonical_type);
-  if (!id) return false;
-  const auto* desc = find_tsi_type(*id);
-  if (!desc) return false;
-  if (desc->canonical != canonical_type) return false;
-  if (out) *out = *id;
+  if (!id)
+    return false;
+  const auto *desc = find_tsi_type(*id);
+  if (!desc)
+    return false;
+  if (desc->canonical != canonical_type)
+    return false;
+  if (out)
+    *out = *id;
   return true;
 }
 
-[[nodiscard]] inline bool runtime_node_canonical_type(
-    const Tsi& node,
-    std::string* out) noexcept {
-  if (!out) return false;
+[[nodiscard]] inline bool
+runtime_node_canonical_type(const Tsi &node, std::string *out) noexcept {
+  if (!out)
+    return false;
   const std::string_view raw = node.type_name();
   const auto id = parse_tsi_type_id(raw);
-  if (!id) return false;
-  const auto* desc = find_tsi_type(*id);
-  if (!desc) return false;
+  if (!id)
+    return false;
+  const auto *desc = find_tsi_type(*id);
+  if (!desc)
+    return false;
   *out = std::string(desc->canonical);
   return true;
 }
 
-[[nodiscard]] inline bool validate_runtime_binding(
-    const RuntimeBinding& b,
-    RuntimeBindingIssue* issue = nullptr) noexcept {
+[[nodiscard]] inline bool
+validate_runtime_binding(const RuntimeBinding &b,
+                         RuntimeBindingIssue *issue = nullptr) noexcept {
   if (b.contracts.empty()) {
     if (issue) {
       issue->what = "empty runtime binding";
       issue->contract_index = 0;
       issue->circuit_index = 0;
-      issue->circuit_issue = CircuitIssue{.what = "empty runtime binding", .hop_index = 0};
+      issue->circuit_issue =
+          CircuitIssue{.what = "empty runtime binding", .hop_index = 0};
     }
     return false;
   }
 
   for (std::size_t i = 0; i < b.contracts.size(); ++i) {
-    const RuntimeBindingContract& c = b.contracts[i];
+    const RuntimeBindingContract &c = b.contracts[i];
     auto fail = [&](std::string_view what, std::size_t hop_index) noexcept {
       if (issue) {
         issue->what = what;
         issue->contract_index = i;
         issue->circuit_index = i;
-        issue->circuit_issue = CircuitIssue{.what = what, .hop_index = hop_index};
+        issue->circuit_issue =
+            CircuitIssue{.what = what, .hop_index = hop_index};
       }
       return false;
     };
 
-    if (c.name.empty()) return fail("contract circuit name is empty", 0);
-    if (c.invoke_name.empty()) return fail("contract invoke_name is empty", 0);
-    if (c.invoke_payload.empty()) return fail("contract invoke_payload is empty", 0);
-    if (c.nodes.empty()) return fail("contract has no nodes", 0);
+    if (c.name.empty())
+      return fail("contract circuit name is empty", 0);
+    if (c.invoke_name.empty())
+      return fail("contract invoke_name is empty", 0);
+    if (c.invoke_payload.empty())
+      return fail("contract invoke_payload is empty", 0);
+    if (c.nodes.empty())
+      return fail("contract has no nodes", 0);
     std::string_view missing_dsl{};
     if (!c.has_required_dsl_segments(&missing_dsl)) {
       if (missing_dsl == kRuntimeBindingContractCircuitDslKey) {
-        return fail("contract missing runtime_binding.contract.circuit@DSL:str", 0);
+        return fail("contract missing runtime_binding.contract.circuit@DSL:str",
+                    0);
       }
       if (missing_dsl == kRuntimeBindingContractWaveDslKey) {
-        return fail("contract missing runtime_binding.contract.wave@DSL:str", 0);
+        return fail("contract missing runtime_binding.contract.wave@DSL:str",
+                    0);
       }
       return fail("contract missing required DSL segment", 0);
     }
 
-    std::unordered_set<const Tsi*> owned_nodes;
+    std::unordered_set<const Tsi *> owned_nodes;
     std::unordered_set<TsiId> node_ids;
     owned_nodes.reserve(c.nodes.size());
     node_ids.reserve(c.nodes.size());
@@ -806,25 +863,32 @@ struct RuntimeBindingIssue {
     runtime_representation_types.reserve(c.nodes.size());
     std::size_t runtime_source_count = 0;
     std::size_t runtime_representation_count = 0;
-    for (const auto& n : c.nodes) {
-      if (!n) return fail("null node in contract nodes", 0);
-      if (!owned_nodes.insert(n.get()).second) return fail("duplicated node pointer in contract nodes", 0);
-      if (!node_ids.insert(n->id()).second) return fail("duplicated tsi id in contract nodes", 0);
+    for (const auto &n : c.nodes) {
+      if (!n)
+        return fail("null node in contract nodes", 0);
+      if (!owned_nodes.insert(n.get()).second)
+        return fail("duplicated node pointer in contract nodes", 0);
+      if (!node_ids.insert(n->id()).second)
+        return fail("duplicated tsi id in contract nodes", 0);
 
       std::string canonical_runtime_type;
       if (runtime_node_canonical_type(*n, &canonical_runtime_type)) {
         runtime_component_types.insert(canonical_runtime_type);
-        if (n->domain() == TsiDomain::Source) runtime_source_types.insert(canonical_runtime_type);
-        if (n->domain() == TsiDomain::Wikimyei) runtime_representation_types.insert(canonical_runtime_type);
+        if (n->domain() == TsiDomain::Source)
+          runtime_source_types.insert(canonical_runtime_type);
+        if (n->domain() == TsiDomain::Wikimyei)
+          runtime_representation_types.insert(canonical_runtime_type);
       }
-      if (n->domain() == TsiDomain::Source) ++runtime_source_count;
-      if (n->domain() == TsiDomain::Wikimyei) ++runtime_representation_count;
+      if (n->domain() == TsiDomain::Source)
+        ++runtime_source_count;
+      if (n->domain() == TsiDomain::Wikimyei)
+        ++runtime_representation_count;
     }
 
-    std::unordered_set<const Tsi*> wired_nodes;
+    std::unordered_set<const Tsi *> wired_nodes;
     wired_nodes.reserve(c.nodes.size());
     for (std::size_t hi = 0; hi < c.hops.size(); ++hi) {
-      const Hop& h = c.hops[hi];
+      const Hop &h = c.hops[hi];
       if (!owned_nodes.count(h.from.tsi) || !owned_nodes.count(h.to.tsi)) {
         return fail("hop endpoint is not owned by contract nodes", hi);
       }
@@ -851,26 +915,31 @@ struct RuntimeBindingIssue {
       return fail("contract has no start tsi", 0);
     }
 
-    if (c.seed_ingress.directive.empty()) return fail("contract seed_ingress.directive is empty", 0);
+    if (c.seed_ingress.directive.empty())
+      return fail("contract seed_ingress.directive is empty", 0);
 
-    const DirectiveSpec* start_in =
-        find_directive(*cv.hops[0].from.tsi, c.seed_ingress.directive, DirectiveDir::In);
-    if (!start_in) return fail("contract seed_ingress directive not found on root tsi", 0);
+    const DirectiveSpec *start_in = find_directive(
+        *cv.hops[0].from.tsi, c.seed_ingress.directive, DirectiveDir::In);
+    if (!start_in)
+      return fail("contract seed_ingress directive not found on root tsi", 0);
 
     if (start_in->kind.kind != c.seed_ingress.signal.kind) {
       return fail("contract seed_ingress kind mismatch with root tsi input", 0);
     }
 
-    if (!c.spec.sourced_from_config) continue;
+    if (!c.spec.sourced_from_config)
+      continue;
 
-    if (c.spec.sample_type.empty()) return fail("contract spec.sample_type is empty", 0);
+    if (c.spec.sample_type.empty())
+      return fail("contract spec.sample_type is empty", 0);
     if (runtime_source_count > 0 && c.spec.instrument.empty()) {
       return fail("contract spec.instrument is empty", 0);
     }
     if (runtime_source_count > 0 && c.spec.source_type.empty()) {
       return fail("contract spec.source_type is empty", 0);
     }
-    if (runtime_representation_count > 0 && c.spec.representation_type.empty()) {
+    if (runtime_representation_count > 0 &&
+        c.spec.representation_type.empty()) {
       return fail("contract spec.representation_type is empty", 0);
     }
     if (c.spec.component_types.empty()) {
@@ -882,13 +951,15 @@ struct RuntimeBindingIssue {
 
     std::unordered_set<std::string> spec_component_types;
     spec_component_types.reserve(c.spec.component_types.size());
-    for (const auto& type_name : c.spec.component_types) {
-      if (type_name.empty()) return fail("contract spec.component_types has empty type", 0);
+    for (const auto &type_name : c.spec.component_types) {
+      if (type_name.empty())
+        return fail("contract spec.component_types has empty type", 0);
       if (!spec_component_types.insert(type_name).second) {
         return fail("contract spec.component_types has duplicate type", 0);
       }
       if (!is_known_canonical_component_type(type_name, nullptr)) {
-        return fail("contract spec.component_types has unknown canonical type", 0);
+        return fail("contract spec.component_types has unknown canonical type",
+                    0);
       }
     }
 
@@ -901,10 +972,13 @@ struct RuntimeBindingIssue {
         return fail("contract spec.source_type domain mismatch", 0);
       }
       if (!runtime_source_types.empty() &&
-          runtime_source_types.find(c.spec.source_type) == runtime_source_types.end()) {
-        return fail("contract spec.source_type does not match runtime source nodes", 0);
+          runtime_source_types.find(c.spec.source_type) ==
+              runtime_source_types.end()) {
+        return fail(
+            "contract spec.source_type does not match runtime source nodes", 0);
       }
-      if (c.spec.source_type == std::string(tsi_type_token(TsiTypeId::SourceDataloader)) &&
+      if (c.spec.source_type ==
+              std::string(tsi_type_token(TsiTypeId::SourceDataloader)) &&
           !c.spec.has_positive_shape_hints()) {
         return fail("contract spec dataloader shape hints are incomplete", 0);
       }
@@ -912,8 +986,10 @@ struct RuntimeBindingIssue {
 
     if (!c.spec.representation_type.empty()) {
       TsiTypeId rep_id{};
-      if (!is_known_canonical_component_type(c.spec.representation_type, &rep_id)) {
-        return fail("contract spec.representation_type is not canonical/known", 0);
+      if (!is_known_canonical_component_type(c.spec.representation_type,
+                                             &rep_id)) {
+        return fail("contract spec.representation_type is not canonical/known",
+                    0);
       }
       if (tsi_type_domain(rep_id) != TsiDomain::Wikimyei) {
         return fail("contract spec.representation_type domain mismatch", 0);
@@ -921,33 +997,49 @@ struct RuntimeBindingIssue {
       if (!runtime_representation_types.empty() &&
           runtime_representation_types.find(c.spec.representation_type) ==
               runtime_representation_types.end()) {
-        return fail("contract spec.representation_type does not match runtime wikimyei nodes", 0);
+        return fail("contract spec.representation_type does not match runtime "
+                    "wikimyei nodes",
+                    0);
       }
-      if (tsi_type_instance_policy(rep_id) == TsiInstancePolicy::HashimyeiInstances &&
+      if (tsi_type_instance_policy(rep_id) ==
+              TsiInstancePolicy::HashimyeiInstances &&
           runtime_representation_count > 0 &&
           c.spec.representation_hashimyei.empty()) {
-        return fail("contract spec.representation_hashimyei is empty for hashimyei type", 0);
+        return fail("contract spec.representation_hashimyei is empty for "
+                    "hashimyei type",
+                    0);
       }
     }
 
     if (!c.spec.source_type.empty() &&
-        spec_component_types.find(c.spec.source_type) == spec_component_types.end()) {
-      return fail("contract spec.source_type missing in spec.component_types", 0);
+        spec_component_types.find(c.spec.source_type) ==
+            spec_component_types.end()) {
+      return fail("contract spec.source_type missing in spec.component_types",
+                  0);
     }
     if (!c.spec.representation_type.empty() &&
-        spec_component_types.find(c.spec.representation_type) == spec_component_types.end()) {
-      return fail("contract spec.representation_type missing in spec.component_types", 0);
+        spec_component_types.find(c.spec.representation_type) ==
+            spec_component_types.end()) {
+      return fail(
+          "contract spec.representation_type missing in spec.component_types",
+          0);
     }
 
     if (!runtime_component_types.empty()) {
-      for (const auto& runtime_type : runtime_component_types) {
-        if (spec_component_types.find(runtime_type) == spec_component_types.end()) {
-          return fail("runtime canonical component missing from spec.component_types", 0);
+      for (const auto &runtime_type : runtime_component_types) {
+        if (spec_component_types.find(runtime_type) ==
+            spec_component_types.end()) {
+          return fail(
+              "runtime canonical component missing from spec.component_types",
+              0);
         }
       }
-      for (const auto& spec_type : spec_component_types) {
-        if (runtime_component_types.find(spec_type) == runtime_component_types.end()) {
-          return fail("spec.component_types contains type absent from runtime graph", 0);
+      for (const auto &spec_type : spec_component_types) {
+        if (runtime_component_types.find(spec_type) ==
+            runtime_component_types.end()) {
+          return fail(
+              "spec.component_types contains type absent from runtime graph",
+              0);
         }
       }
     }
@@ -955,25 +1047,28 @@ struct RuntimeBindingIssue {
   return true;
 }
 
-inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
-                                             const RuntimeContext& ctx,
-                                             std::string* error = nullptr);
-inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
-                                             const RuntimeContext& ctx,
-                                             std::string* error = nullptr);
+inline bool
+load_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
+                                        const RuntimeContext &ctx,
+                                        std::string *error = nullptr);
+inline bool
+save_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
+                                        const RuntimeContext &ctx,
+                                        std::string *error = nullptr);
 
 class runtime_binding_null_emitter_t final : public Emitter {
- public:
-  void emit(const Wave&, DirectiveId, Signal) override {}
+public:
+  void emit(const Wave &, DirectiveId, Signal) override {}
 };
 
-inline void broadcast_contract_runtime_event(RuntimeBindingContract& c,
+inline void broadcast_contract_runtime_event(RuntimeBindingContract &c,
                                              RuntimeEventKind kind,
-                                             const Wave* wave,
-                                             RuntimeContext& ctx) {
+                                             const Wave *wave,
+                                             RuntimeContext &ctx) {
   runtime_binding_null_emitter_t emitter{};
-  for (auto& node : c.nodes) {
-    if (!node) continue;
+  for (auto &node : c.nodes) {
+    if (!node)
+      continue;
     RuntimeEvent event{};
     event.kind = kind;
     event.wave = wave;
@@ -983,12 +1078,14 @@ inline void broadcast_contract_runtime_event(RuntimeBindingContract& c,
   }
 }
 
-[[nodiscard]] inline bool validate_contract_component_dsl_fingerprints(
-    const RuntimeBindingContract& c,
-    std::string* error = nullptr) {
-  if (error) error->clear();
-  for (const auto& fp : c.spec.component_dsl_fingerprints) {
-    if (fp.tsi_dsl_path.empty() && fp.tsi_dsl_sha256_hex.empty()) continue;
+[[nodiscard]] inline bool
+validate_contract_component_dsl_fingerprints(const RuntimeBindingContract &c,
+                                             std::string *error = nullptr) {
+  if (error)
+    error->clear();
+  for (const auto &fp : c.spec.component_dsl_fingerprints) {
+    if (fp.tsi_dsl_path.empty() && fp.tsi_dsl_sha256_hex.empty())
+      continue;
     if (fp.tsi_dsl_path.empty()) {
       if (error) {
         *error = "component DSL fingerprint missing path for canonical_path='" +
@@ -997,7 +1094,8 @@ inline void broadcast_contract_runtime_event(RuntimeBindingContract& c,
       return false;
     }
     const std::string current_sha256 =
-        cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(fp.tsi_dsl_path);
+        cuwacunu::iitepi::contract_space_t::sha256_hex_for_file(
+            fp.tsi_dsl_path);
     if (current_sha256.empty()) {
       if (error) {
         *error = "component DSL fingerprint file is missing/unreadable path='" +
@@ -1005,11 +1103,13 @@ inline void broadcast_contract_runtime_event(RuntimeBindingContract& c,
       }
       return false;
     }
-    if (!fp.tsi_dsl_sha256_hex.empty() && current_sha256 != fp.tsi_dsl_sha256_hex) {
+    if (!fp.tsi_dsl_sha256_hex.empty() &&
+        current_sha256 != fp.tsi_dsl_sha256_hex) {
       if (error) {
-        *error = "component DSL drift detected canonical_path='" + fp.canonical_path +
-                 "' path='" + fp.tsi_dsl_path + "' expected_sha256='" +
-                 fp.tsi_dsl_sha256_hex + "' actual_sha256='" + current_sha256 + "'";
+        *error = "component DSL drift detected canonical_path='" +
+                 fp.canonical_path + "' path='" + fp.tsi_dsl_path +
+                 "' expected_sha256='" + fp.tsi_dsl_sha256_hex +
+                 "' actual_sha256='" + current_sha256 + "'";
       }
       return false;
     }
@@ -1017,13 +1117,15 @@ inline void broadcast_contract_runtime_event(RuntimeBindingContract& c,
   return true;
 }
 
-inline std::uint64_t run_runtime_binding_circuit(RuntimeBindingContract& c,
-                                 RuntimeContext& ctx,
-                                 std::string* error = nullptr) {
-  if (error) error->clear();
+inline std::uint64_t run_runtime_binding_circuit(RuntimeBindingContract &c,
+                                                 RuntimeContext &ctx,
+                                                 std::string *error = nullptr) {
+  if (error)
+    error->clear();
   ctx.wave_mode_flags = c.execution.wave_mode_flags;
   ctx.debug_enabled = c.execution.debug_enabled;
-  if (ctx.run_id.empty()) ctx.run_id = make_runtime_run_id(c);
+  if (ctx.run_id.empty())
+    ctx.run_id = make_runtime_run_id(c);
   if (ctx.source_runtime_cursor.empty()) {
     ctx.source_runtime_cursor = c.spec.source_runtime_cursor;
   }
@@ -1038,51 +1140,54 @@ inline std::uint64_t run_runtime_binding_circuit(RuntimeBindingContract& c,
   }
   std::string dsl_guard_error;
   if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
-    if (error) *error = dsl_guard_error;
+    if (error)
+      *error = dsl_guard_error;
     log_warn("[runtime_binding.contract.run] abort contract=%s reason=%s\n",
              c.name.empty() ? "<empty>" : c.name.c_str(),
              dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
     return 0;
   }
   std::string report_fragment_error;
-  if (!load_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
-    if (error) *error = report_fragment_error;
+  if (!load_contract_wikimyei_report_fragments(c, ctx,
+                                               &report_fragment_error)) {
+    if (error)
+      *error = report_fragment_error;
     return 0;
   }
-  broadcast_contract_runtime_event(
-      c, RuntimeEventKind::RunStart, &c.seed_wave, ctx);
-  broadcast_contract_runtime_event(
-      c, RuntimeEventKind::EpochStart, &c.seed_wave, ctx);
+  broadcast_contract_runtime_event(c, RuntimeEventKind::RunStart, &c.seed_wave,
+                                   ctx);
+  broadcast_contract_runtime_event(c, RuntimeEventKind::EpochStart,
+                                   &c.seed_wave, ctx);
   const std::uint64_t steps =
-      run_wave_compiled(
-          c.compiled_runtime,
-          c.seed_wave,
-          c.seed_ingress,
-          ctx,
-          c.execution.runtime);
+      run_wave_compiled(c.compiled_runtime, c.seed_wave, c.seed_ingress, ctx,
+                        c.execution.runtime);
   if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
-    if (error) *error = dsl_guard_error;
+    if (error)
+      *error = dsl_guard_error;
     log_warn("[runtime_binding.contract.run] abort contract=%s reason=%s\n",
              c.name.empty() ? "<empty>" : c.name.c_str(),
              dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
-    broadcast_contract_runtime_event(
-        c, RuntimeEventKind::RunEnd, &c.seed_wave, ctx);
+    broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd, &c.seed_wave,
+                                     ctx);
     return 0;
   }
-  broadcast_contract_runtime_event(
-      c, RuntimeEventKind::EpochEnd, &c.seed_wave, ctx);
-  if (!save_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
-    if (error) *error = report_fragment_error;
-    broadcast_contract_runtime_event(
-        c, RuntimeEventKind::RunEnd, &c.seed_wave, ctx);
+  broadcast_contract_runtime_event(c, RuntimeEventKind::EpochEnd, &c.seed_wave,
+                                   ctx);
+  if (!save_contract_wikimyei_report_fragments(c, ctx,
+                                               &report_fragment_error)) {
+    if (error)
+      *error = report_fragment_error;
+    broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd, &c.seed_wave,
+                                     ctx);
     return 0;
   }
-  broadcast_contract_runtime_event(
-      c, RuntimeEventKind::RunEnd, &c.seed_wave, ctx);
+  broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd, &c.seed_wave,
+                                   ctx);
   return steps;
 }
 
-[[nodiscard]] inline Wave wave_for_epoch(const Wave& seed, std::uint64_t epoch_index) {
+[[nodiscard]] inline Wave wave_for_epoch(const Wave &seed,
+                                         std::uint64_t epoch_index) {
   Wave out = seed;
   if (epoch_index >
       (std::numeric_limits<std::uint64_t>::max() - seed.cursor.episode)) {
@@ -1093,17 +1198,22 @@ inline std::uint64_t run_runtime_binding_circuit(RuntimeBindingContract& c,
   return out;
 }
 
-inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
-                                             const RuntimeContext& ctx,
-                                             std::string* error) {
-  if (error) error->clear();
-  if (c.spec.representation_hashimyei.empty()) return true;
+inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
+                                                    const RuntimeContext &ctx,
+                                                    std::string *error) {
+  if (error)
+    error->clear();
+  if (c.spec.representation_hashimyei.empty())
+    return true;
 
-  for (auto& node : c.nodes) {
-    auto* wik = dynamic_cast<TsiWikimyei*>(node.get());
-    if (!wik) continue;
-    if (!wik->supports_init_report_fragments()) continue;
-    if (!wik->runtime_autoload_report_fragments()) continue;
+  for (auto &node : c.nodes) {
+    auto *wik = dynamic_cast<TsiWikimyei *>(node.get());
+    if (!wik)
+      continue;
+    if (!wik->supports_init_report_fragments())
+      continue;
+    if (!wik->runtime_autoload_report_fragments())
+      continue;
 
     TsiWikimyeiRuntimeIoContext io_ctx{};
     io_ctx.enable_debug_outputs = c.execution.debug_enabled;
@@ -1114,8 +1224,7 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
     io_ctx.wave_cursor = ctx.wave_cursor;
     std::string local_error;
     if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
-                                          &local_error,
-                                          &io_ctx)) {
+                                          &local_error, &io_ctx)) {
       // Training-enabled wikimyei are allowed to bootstrap from scratch when
       // the configured hashimyei has not been founded yet. The first
       // successful run will persist the freshly constructed state as the
@@ -1134,14 +1243,6 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
       if (error) {
         *error = "failed to load wikimyei report fragments for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
-      }
-      return false;
-    }
-    if (!persist_runtime_component_lineage(c, *wik, &local_error)) {
-      if (error) {
-        *error =
-            "failed to refresh wikimyei component lineage for node '" +
-            std::string(wik->instance_name()) + "': " + local_error;
       }
       return false;
     }
@@ -1172,8 +1273,7 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
           return false;
         }
         if (!validate_runtime_component_manifest_public_docking(
-                stored_manifest,
-                c.spec.contract_hash,
+                stored_manifest, c.spec.contract_hash,
                 contract_snapshot->signature.docking_signature_sha256_hex,
                 &local_error)) {
           if (error) {
@@ -1188,10 +1288,9 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
     }
     if (!validated_from_component_manifest &&
         !validate_runtime_hashimyei_contract_docking(
-            c.spec.representation_hashimyei,
+            c.spec.representation_type, c.spec.representation_hashimyei,
             c.spec.contract_hash,
-            /*require_registered_manifest=*/true,
-            &local_error)) {
+            /*require_registered_manifest=*/true, &local_error)) {
       if (error) {
         *error = "configured hashimyei failed contract docking validation for "
                  "node '" +
@@ -1203,20 +1302,20 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
   return true;
 }
 
-inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
-                                             const RuntimeContext& ctx,
-                                             std::string* error) {
-  if (error) error->clear();
-  if (c.spec.representation_hashimyei.empty()) return true;
+inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
+                                                    const RuntimeContext &ctx,
+                                                    std::string *error) {
+  if (error)
+    error->clear();
+  if (c.spec.representation_hashimyei.empty())
+    return true;
 
-  // DEV_WARNING: concurrent campaigns targeting the same representation_hashimyei
-  // still have no per-hashimyei lease/ownership protocol here. Keep Runtime
-  // Hero campaign concurrency conservative until report-fragment writers gain a
-  // cross-process coordination mechanism with staleness recovery.
-  for (auto& node : c.nodes) {
-    auto* wik = dynamic_cast<TsiWikimyei*>(node.get());
-    if (!wik) continue;
-    if (!wik->supports_init_report_fragments()) continue;
+  for (auto &node : c.nodes) {
+    auto *wik = dynamic_cast<TsiWikimyei *>(node.get());
+    if (!wik)
+      continue;
+    if (!wik->supports_init_report_fragments())
+      continue;
 
     TsiWikimyeiRuntimeIoContext io_ctx{};
     io_ctx.enable_debug_outputs = c.execution.debug_enabled;
@@ -1226,13 +1325,12 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
     io_ctx.has_wave_cursor = ctx.has_wave_cursor;
     io_ctx.wave_cursor = ctx.wave_cursor;
     const bool should_save_report_fragments =
-        wik->runtime_autosave_report_fragments() ||
-        io_ctx.enable_debug_outputs;
-    if (!should_save_report_fragments) continue;
+        wik->runtime_autosave_report_fragments() || io_ctx.enable_debug_outputs;
+    if (!should_save_report_fragments)
+      continue;
     std::string local_error;
     if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
-                                        &local_error,
-                                        &io_ctx)) {
+                                        &local_error, &io_ctx)) {
       if (error) {
         *error = "failed to save wikimyei report fragments for node '" +
                  std::string(wik->instance_name()) + "': " + local_error;
@@ -1250,14 +1348,16 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract& c,
   return true;
 }
 
-inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
-                                  RuntimeContext& ctx,
-                                  std::string* error = nullptr) {
+inline std::uint64_t
+run_runtime_binding_contract(RuntimeBindingContract &c, RuntimeContext &ctx,
+                             std::string *error = nullptr) {
   // Contract runtime initialization: compile + report_fragment preload.
-  if (error) error->clear();
+  if (error)
+    error->clear();
   ctx.wave_mode_flags = c.execution.wave_mode_flags;
   ctx.debug_enabled = c.execution.debug_enabled;
-  if (ctx.run_id.empty()) ctx.run_id = make_runtime_run_id(c);
+  if (ctx.run_id.empty())
+    ctx.run_id = make_runtime_run_id(c);
   if (ctx.source_runtime_cursor.empty()) {
     ctx.source_runtime_cursor = c.spec.source_runtime_cursor;
   }
@@ -1272,45 +1372,53 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
       *error = std::string("compile_circuit failed: ");
       error->append(issue.what.data(), issue.what.size());
     }
-    log_err("[runtime_binding.contract.run] compile failed contract=%s error=%s\n",
-            c.name.empty() ? "<empty>" : c.name.c_str(),
-            error && !error->empty() ? error->c_str() : "<empty>");
+    log_err(
+        "[runtime_binding.contract.run] compile failed contract=%s error=%s\n",
+        c.name.empty() ? "<empty>" : c.name.c_str(),
+        error && !error->empty() ? error->c_str() : "<empty>");
     return 0;
   }
   std::string dsl_guard_error;
   if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
-    if (error) *error = dsl_guard_error;
+    if (error)
+      *error = dsl_guard_error;
     log_warn("[runtime_binding.contract.run] abort contract=%s reason=%s\n",
              c.name.empty() ? "<empty>" : c.name.c_str(),
              dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
     return 0;
   }
   std::string report_fragment_error;
-  if (!load_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
-    if (error) *error = report_fragment_error;
-    log_err("[runtime_binding.contract.run] preload failed contract=%s error=%s\n",
-            c.name.empty() ? "<empty>" : c.name.c_str(),
-            report_fragment_error.empty() ? "<empty>" : report_fragment_error.c_str());
+  if (!load_contract_wikimyei_report_fragments(c, ctx,
+                                               &report_fragment_error)) {
+    if (error)
+      *error = report_fragment_error;
+    log_err(
+        "[runtime_binding.contract.run] preload failed contract=%s error=%s\n",
+        c.name.empty() ? "<empty>" : c.name.c_str(),
+        report_fragment_error.empty() ? "<empty>"
+                                      : report_fragment_error.c_str());
     return 0;
   }
-  broadcast_contract_runtime_event(
-      c, RuntimeEventKind::RunStart, &c.seed_wave, ctx);
+  broadcast_contract_runtime_event(c, RuntimeEventKind::RunStart, &c.seed_wave,
+                                   ctx);
   Wave run_end_wave = c.seed_wave;
 
   // Epoch execution + callbacks.
   const std::uint64_t epochs = std::max<std::uint64_t>(1, c.execution.epochs);
   std::uint64_t total_steps = 0;
-  const auto* trace_ctx =
-      static_cast<const runtime_binding_trace_context_t*>(ctx.user);
+  const auto *trace_ctx =
+      static_cast<const runtime_binding_trace_context_t *>(ctx.user);
   for (std::uint64_t epoch = 0; epoch < epochs; ++epoch) {
     if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
-      if (error) *error = dsl_guard_error;
-      log_warn("[runtime_binding.contract.run] abort contract=%s epoch=%llu reason=%s\n",
+      if (error)
+        *error = dsl_guard_error;
+      log_warn("[runtime_binding.contract.run] abort contract=%s epoch=%llu "
+               "reason=%s\n",
                c.name.empty() ? "<empty>" : c.name.c_str(),
                static_cast<unsigned long long>(epoch + 1),
                dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
-      broadcast_contract_runtime_event(
-          c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+      broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd,
+                                       &run_end_wave, ctx);
       return 0;
     }
     const Wave start_wave = wave_for_epoch(c.seed_wave, epoch);
@@ -1332,23 +1440,21 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
            .total_steps = total_steps,
            .ok = true});
     }
-    broadcast_contract_runtime_event(
-        c, RuntimeEventKind::EpochStart, &start_wave, ctx);
+    broadcast_contract_runtime_event(c, RuntimeEventKind::EpochStart,
+                                     &start_wave, ctx);
     const std::uint64_t epoch_steps =
-        run_wave_compiled(
-            c.compiled_runtime,
-            start_wave,
-            c.seed_ingress,
-            ctx,
-            c.execution.runtime);
+        run_wave_compiled(c.compiled_runtime, start_wave, c.seed_ingress, ctx,
+                          c.execution.runtime);
     if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
-      if (error) *error = dsl_guard_error;
-      log_warn("[runtime_binding.contract.run] abort contract=%s epoch=%llu reason=%s\n",
+      if (error)
+        *error = dsl_guard_error;
+      log_warn("[runtime_binding.contract.run] abort contract=%s epoch=%llu "
+               "reason=%s\n",
                c.name.empty() ? "<empty>" : c.name.c_str(),
                static_cast<unsigned long long>(epoch + 1),
                dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
-      broadcast_contract_runtime_event(
-          c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+      broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd,
+                                       &run_end_wave, ctx);
       return 0;
     }
     total_steps += epoch_steps;
@@ -1370,37 +1476,43 @@ inline std::uint64_t run_runtime_binding_contract(RuntimeBindingContract& c,
            .total_steps = total_steps,
            .ok = true});
     }
-    log_info("[runtime_binding.contract.run] epoch done contract=%s epoch=%llu/%llu steps=%llu cumulative=%llu\n",
+    log_info("[runtime_binding.contract.run] epoch done contract=%s "
+             "epoch=%llu/%llu steps=%llu cumulative=%llu\n",
              c.name.empty() ? "<empty>" : c.name.c_str(),
              static_cast<unsigned long long>(epoch + 1),
              static_cast<unsigned long long>(epochs),
              static_cast<unsigned long long>(epoch_steps),
              static_cast<unsigned long long>(total_steps));
-    broadcast_contract_runtime_event(
-        c, RuntimeEventKind::EpochEnd, &start_wave, ctx);
+    broadcast_contract_runtime_event(c, RuntimeEventKind::EpochEnd, &start_wave,
+                                     ctx);
   }
 
   // Finalization: persist autosave report fragments after the execution loop.
   if (!validate_contract_component_dsl_fingerprints(c, &dsl_guard_error)) {
-    if (error) *error = dsl_guard_error;
+    if (error)
+      *error = dsl_guard_error;
     log_warn("[runtime_binding.contract.run] abort contract=%s reason=%s\n",
              c.name.empty() ? "<empty>" : c.name.c_str(),
              dsl_guard_error.empty() ? "<empty>" : dsl_guard_error.c_str());
-    broadcast_contract_runtime_event(
-        c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+    broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd, &run_end_wave,
+                                     ctx);
     return 0;
   }
-  if (!save_contract_wikimyei_report_fragments(c, ctx, &report_fragment_error)) {
-    if (error) *error = report_fragment_error;
-    log_err("[runtime_binding.contract.run] finalize failed contract=%s error=%s\n",
-            c.name.empty() ? "<empty>" : c.name.c_str(),
-            report_fragment_error.empty() ? "<empty>" : report_fragment_error.c_str());
-    broadcast_contract_runtime_event(
-        c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+  if (!save_contract_wikimyei_report_fragments(c, ctx,
+                                               &report_fragment_error)) {
+    if (error)
+      *error = report_fragment_error;
+    log_err(
+        "[runtime_binding.contract.run] finalize failed contract=%s error=%s\n",
+        c.name.empty() ? "<empty>" : c.name.c_str(),
+        report_fragment_error.empty() ? "<empty>"
+                                      : report_fragment_error.c_str());
+    broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd, &run_end_wave,
+                                     ctx);
     return 0;
   }
-  broadcast_contract_runtime_event(
-      c, RuntimeEventKind::RunEnd, &run_end_wave, ctx);
+  broadcast_contract_runtime_event(c, RuntimeEventKind::RunEnd, &run_end_wave,
+                                   ctx);
   log_info("[runtime_binding.contract.run] done contract=%s total_steps=%llu\n",
            c.name.empty() ? "<empty>" : c.name.c_str(),
            static_cast<unsigned long long>(total_steps));

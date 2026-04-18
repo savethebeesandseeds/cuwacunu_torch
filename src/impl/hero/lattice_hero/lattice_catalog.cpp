@@ -539,13 +539,13 @@ void populate_runtime_report_fragment_header_fields_(
 }
 
 [[nodiscard]] bool is_family_rank_schema(std::string_view schema) {
-  return schema == cuwacunu::hero::family_rank::kFamilyRankSchemaV1;
+  return schema == cuwacunu::hero::family_rank::kFamilyRankSchemaV2;
 }
 
 [[nodiscard]] std::string family_rank_record_id(std::string_view family,
-                                                std::string_view contract_hash,
+                                                std::string_view dock_hash,
                                                 std::string_view artifact_sha256) {
-  return cuwacunu::hero::family_rank::scope_key(family, contract_hash) + "|" +
+  return cuwacunu::hero::family_rank::scope_key(family, dock_hash) + "|" +
          std::string(artifact_sha256);
 }
 
@@ -859,34 +859,79 @@ void index_runtime_report_fragment_(
       fragment, *fragments_by_id, latest_by_key);
 }
 
+[[nodiscard]] std::string runtime_fragment_component_key_(
+    std::string_view canonical_path, std::string_view hashimyei) {
+  const std::string canonical =
+      normalize_source_hashimyei_cursor(canonical_path);
+  if (canonical.empty()) return {};
+  std::string normalized_hash = trim_ascii(hashimyei);
+  if (normalized_hash.empty()) {
+    normalized_hash = maybe_hashimyei_from_canonical(canonical);
+  }
+  if (normalized_hash.empty()) return {};
+  return canonical + "|" + normalized_hash;
+}
+
 void refresh_runtime_report_fragment_family_ranks_(
     std::unordered_map<std::string, runtime_report_fragment_t>* fragments_by_id,
+    const std::unordered_map<
+        std::string, cuwacunu::hero::hashimyei::component_state_t>&
+        runtime_components_by_id,
     const std::unordered_map<std::string, cuwacunu::hero::family_rank::state_t>&
         explicit_family_rank_by_scope,
     std::string_view family_filter = {},
-    std::string_view contract_hash_filter = {}) {
+    std::string_view dock_hash_filter = {}) {
   if (!fragments_by_id) return;
   const std::string family_token = trim_ascii(family_filter);
-  const std::string contract_token = trim_ascii(contract_hash_filter);
+  const std::string dock_token = trim_ascii(dock_hash_filter);
+
+  struct runtime_component_scope_t {
+    std::uint64_t ts_ms{0};
+    std::string component_id{};
+    std::string dock_hash{};
+  };
+  std::unordered_map<std::string, runtime_component_scope_t>
+      latest_component_scope_by_key{};
+  latest_component_scope_by_key.reserve(runtime_components_by_id.size());
+  for (const auto& [component_id, component] : runtime_components_by_id) {
+    const std::string dock_hash =
+        trim_ascii(component.manifest.docking_signature_sha256_hex);
+    if (dock_hash.empty()) continue;
+    const std::string key = runtime_fragment_component_key_(
+        component.manifest.canonical_path,
+        component.manifest.hashimyei_identity.name);
+    if (key.empty()) continue;
+    const auto it = latest_component_scope_by_key.find(key);
+    if (it == latest_component_scope_by_key.end() ||
+        component.ts_ms > it->second.ts_ms ||
+        (component.ts_ms == it->second.ts_ms &&
+         component_id > it->second.component_id)) {
+      latest_component_scope_by_key[key] = runtime_component_scope_t{
+          .ts_ms = component.ts_ms,
+          .component_id = component_id,
+          .dock_hash = dock_hash,
+      };
+    }
+  }
   for (auto& [_, fragment] : *fragments_by_id) {
     fragment.family = runtime_family_from_canonical(fragment.canonical_path);
     if (!family_token.empty() && fragment.family != family_token) continue;
-    std::string effective_contract_hash = trim_ascii(fragment.contract_hash);
-    if (effective_contract_hash.empty() && !fragment.canonical_path.empty()) {
-      for (const auto& [__, candidate] : *fragments_by_id) {
-        if (candidate.canonical_path != fragment.canonical_path) continue;
-        if (candidate.contract_hash.empty()) continue;
-        effective_contract_hash = trim_ascii(candidate.contract_hash);
-        if (!effective_contract_hash.empty()) break;
-      }
-      if (!effective_contract_hash.empty()) {
-        fragment.contract_hash = effective_contract_hash;
+    if (trim_ascii(fragment.dock_hash).empty()) {
+      const std::string key = runtime_fragment_component_key_(
+          fragment.canonical_path, fragment.hashimyei);
+      if (!key.empty()) {
+        const auto it_component = latest_component_scope_by_key.find(key);
+        if (it_component != latest_component_scope_by_key.end()) {
+          fragment.dock_hash = it_component->second.dock_hash;
+        }
       }
     }
-    if (!contract_token.empty() && effective_contract_hash != contract_token) continue;
     fragment.family_rank.reset();
+    const std::string effective_dock_hash = trim_ascii(fragment.dock_hash);
+    if (!dock_token.empty() && effective_dock_hash != dock_token) continue;
+    if (effective_dock_hash.empty()) continue;
     const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
-        fragment.family, effective_contract_hash);
+        fragment.family, effective_dock_hash);
     const auto it_rank = explicit_family_rank_by_scope.find(scope_key);
     if (it_rank == explicit_family_rank_by_scope.end()) continue;
     fragment.family_rank = cuwacunu::hero::family_rank::rank_for_hashimyei(
@@ -2413,7 +2458,7 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
               (void)parse_u64(as_text_or_empty(&db_, kColTsMs, row), &row_ts);
             }
             const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
-                rank_state.family, rank_state.contract_hash);
+                rank_state.family, rank_state.dock_hash);
             const std::string row_id = as_text_or_empty(&db_, kColRecordId, row);
             const auto current_ts_it = family_rank_row_ts_by_scope.find(scope_key);
             const bool should_replace =
@@ -2532,6 +2577,9 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
         if (fragment.contract_hash.empty()) {
           fragment.contract_hash = kv["contract_hash"];
         }
+        if (fragment.dock_hash.empty()) {
+          fragment.dock_hash = trim_ascii(kv["dock_hash"]);
+        }
         if (fragment.schema.empty()) fragment.schema = kv["schema"];
         populate_runtime_report_fragment_header_fields_(kv, &fragment);
       }
@@ -2579,7 +2627,8 @@ bool lattice_catalog_store_t::rebuild_indexes(std::string* error) {
   }
 
   refresh_runtime_report_fragment_family_ranks_(
-      &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_);
+      &runtime_report_fragments_by_id_, runtime_components_by_id_,
+      explicit_family_rank_by_scope_);
 
   return true;
 }
@@ -2654,7 +2703,7 @@ bool lattice_catalog_store_t::rebuild_runtime_indexes_(std::string* error) {
       }
       const std::string scope_key =
           cuwacunu::hero::family_rank::scope_key(rank_state.family,
-                                                 rank_state.contract_hash);
+                                                 rank_state.dock_hash);
       const std::string row_id =
           (row < next_record_id) ? as_text_or_empty(&db_, kColRecordId, row)
                                  : std::string{};
@@ -2733,6 +2782,11 @@ bool lattice_catalog_store_t::rebuild_runtime_indexes_(std::string* error) {
           fragment.contract_hash = it->second;
         }
       }
+      if (fragment.dock_hash.empty()) {
+        if (const auto it = kv.find("dock_hash"); it != kv.end()) {
+          fragment.dock_hash = trim_ascii(it->second);
+        }
+      }
       if (fragment.schema.empty()) {
         if (const auto it = kv.find("schema"); it != kv.end()) {
           fragment.schema = it->second;
@@ -2777,7 +2831,8 @@ bool lattice_catalog_store_t::rebuild_runtime_indexes_(std::string* error) {
   }
 
   refresh_runtime_report_fragment_family_ranks_(
-      &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_);
+      &runtime_report_fragments_by_id_, runtime_components_by_id_,
+      explicit_family_rank_by_scope_);
   return true;
 }
 
@@ -3168,10 +3223,11 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
     if (!runtime_ledger_contains_(artifact_sha256, &already, error)) return false;
     if (already) {
       explicit_family_rank_by_scope_[cuwacunu::hero::family_rank::scope_key(
-          rank_state.family, rank_state.contract_hash)] = rank_state;
+          rank_state.family, rank_state.dock_hash)] = rank_state;
       refresh_runtime_report_fragment_family_ranks_(
-          &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_,
-          rank_state.family, rank_state.contract_hash);
+          &runtime_report_fragments_by_id_, runtime_components_by_id_,
+          explicit_family_rank_by_scope_, rank_state.family,
+          rank_state.dock_hash);
       return true;
     }
     std::filesystem::path cp = path;
@@ -3181,9 +3237,9 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
         rank_state.updated_at_ms != 0 ? rank_state.updated_at_ms : now_ms_utc();
     if (!append_row_(cuwacunu::hero::schema::kRecordKindFAMILY_RANK,
                      family_rank_record_id(rank_state.family,
-                                           rank_state.contract_hash,
+                                           rank_state.dock_hash,
                                            artifact_sha256), "",
-                     rank_state.contract_hash, "", "", "", rank_state.family,
+                     rank_state.dock_hash, "", "", "", rank_state.family,
                      static_cast<double>(rank_state.assignments.size()),
                      rank_state.schema, "", "2",
                      std::to_string(ts_ms), payload, "",
@@ -3192,10 +3248,11 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
       return false;
     }
     explicit_family_rank_by_scope_[cuwacunu::hero::family_rank::scope_key(
-        rank_state.family, rank_state.contract_hash)] = rank_state;
+        rank_state.family, rank_state.dock_hash)] = rank_state;
     refresh_runtime_report_fragment_family_ranks_(
-        &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_,
-        rank_state.family, rank_state.contract_hash);
+        &runtime_report_fragments_by_id_, runtime_components_by_id_,
+        explicit_family_rank_by_scope_, rank_state.family,
+        rank_state.dock_hash);
     return append_runtime_ledger_(artifact_sha256, canonical_file_path, error);
   }
   if (!is_known_runtime_schema(schema)) return true;
@@ -3228,6 +3285,7 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
 
   std::string contract_hash = kv["contract_hash"];
   if (contract_hash.empty()) contract_hash = contract_hash_from_report_fragment_path(path);
+  const std::string dock_hash = trim_ascii(kv["dock_hash"]);
 
   std::uint64_t ts_ms = now_ms_utc();
   {
@@ -3256,6 +3314,7 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragment_file_(
   fragment.family = runtime_family_from_canonical(canonical_path);
   fragment.hashimyei = hashimyei;
   fragment.contract_hash = contract_hash;
+  fragment.dock_hash = dock_hash;
   fragment.schema = schema;
   fragment.report_fragment_sha256 = report_fragment_sha;
   fragment.path = canonical_file_path;
@@ -3406,12 +3465,14 @@ bool lattice_catalog_store_t::ingest_runtime_report_fragments(
     flush_ms = now_ms_utc() - phase_started_at_ms;
   }
   // Ingest already updates the runtime in-memory indexes incrementally as rows
-  // are discovered. The only deferred fixup we still need is rank propagation
-  // because family-rank artifacts may arrive before their matching fragments.
+  // are discovered. The remaining deferred fixups are dock-scope enrichment
+  // from runtime component manifests plus rank propagation, because family-rank
+  // artifacts may arrive before their matching fragments.
   {
     const std::uint64_t phase_started_at_ms = now_ms_utc();
     refresh_runtime_report_fragment_family_ranks_(
-        &runtime_report_fragments_by_id_, explicit_family_rank_by_scope_);
+        &runtime_report_fragments_by_id_, runtime_components_by_id_,
+        explicit_family_rank_by_scope_);
     family_rank_refresh_ms = now_ms_utc() - phase_started_at_ms;
   }
   std::ostringstream extra;
@@ -3676,7 +3737,7 @@ bool lattice_catalog_store_t::list_runtime_report_schemas(
 }
 
 bool lattice_catalog_store_t::get_explicit_family_rank(
-    std::string_view family, std::string_view contract_hash,
+    std::string_view family, std::string_view dock_hash,
     cuwacunu::hero::family_rank::state_t* out, std::string* error) const {
   clear_error(error);
   if (!out) {
@@ -3686,13 +3747,13 @@ bool lattice_catalog_store_t::get_explicit_family_rank(
   *out = cuwacunu::hero::family_rank::state_t{};
 
   const std::string family_key = trim_ascii(family);
-  const std::string contract_key = trim_ascii(contract_hash);
-  if (family_key.empty() || contract_key.empty()) {
-    set_error(error, "family and contract_hash are required");
+  const std::string dock_key = trim_ascii(dock_hash);
+  if (family_key.empty() || dock_key.empty()) {
+    set_error(error, "family and dock_hash are required");
     return false;
   }
   const std::string scope_key =
-      cuwacunu::hero::family_rank::scope_key(family_key, contract_key);
+      cuwacunu::hero::family_rank::scope_key(family_key, dock_key);
   const auto it = explicit_family_rank_by_scope_.find(scope_key);
   if (it == explicit_family_rank_by_scope_.end()) {
     set_error(error, "explicit family rank not found: " + scope_key);
@@ -3703,7 +3764,7 @@ bool lattice_catalog_store_t::get_explicit_family_rank(
 }
 
 bool lattice_catalog_store_t::get_family_rank(
-    std::string_view family, std::string_view contract_hash,
+    std::string_view family, std::string_view dock_hash,
     cuwacunu::hero::family_rank::state_t* out, std::string* error) const {
   clear_error(error);
   if (!out) {
@@ -3713,13 +3774,13 @@ bool lattice_catalog_store_t::get_family_rank(
   *out = cuwacunu::hero::family_rank::state_t{};
 
   const std::string family_key = trim_ascii(family);
-  const std::string contract_key = trim_ascii(contract_hash);
-  if (family_key.empty() || contract_key.empty()) {
-    set_error(error, "family and contract_hash are required");
+  const std::string dock_key = trim_ascii(dock_hash);
+  if (family_key.empty() || dock_key.empty()) {
+    set_error(error, "family and dock_hash are required");
     return false;
   }
   const std::string scope_key =
-      cuwacunu::hero::family_rank::scope_key(family_key, contract_key);
+      cuwacunu::hero::family_rank::scope_key(family_key, dock_key);
   const auto it = explicit_family_rank_by_scope_.find(scope_key);
   if (it == explicit_family_rank_by_scope_.end()) {
     set_error(error, "family rank not found: " + scope_key);
@@ -3732,7 +3793,8 @@ bool lattice_catalog_store_t::get_family_rank(
 bool lattice_catalog_store_t::get_runtime_view_lls(
     std::string_view view_kind, std::string_view intersection_cursor,
     std::uint64_t wave_cursor, bool use_wave_cursor,
-    std::string_view contract_hash, runtime_view_report_t* out,
+    std::string_view contract_hash, std::string_view dock_hash,
+    runtime_view_report_t* out,
     std::string* error) const {
   clear_error(error);
   if (!out) {
@@ -3744,6 +3806,7 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
   const std::string view_kind_token = trim_ascii(view_kind);
   const std::string intersection_cursor_token = trim_ascii(intersection_cursor);
   const std::string contract_hash_token = trim_ascii(contract_hash);
+  const std::string dock_hash_token = trim_ascii(dock_hash);
   if (view_kind_token.empty()) {
     set_error(error, "view_kind is empty");
     return false;
@@ -3783,12 +3846,13 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
 
   out->view_kind = view_kind_token;
   out->contract_hash = contract_hash_token;
+  out->dock_hash = dock_hash_token;
   out->wave_cursor = wave_cursor;
   out->has_wave_cursor = use_wave_cursor;
 
   if (view_kind_token == kFamilyEvaluationReportViewKind) {
-    if (contract_hash_token.empty()) {
-      set_error(error, "family_evaluation_report requires contract_hash");
+    if (dock_hash_token.empty()) {
+      set_error(error, "family_evaluation_report requires dock_hash");
       return false;
     }
     const std::string family_selector =
@@ -3816,7 +3880,7 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
 
     cuwacunu::hero::family_rank::state_t current_rank_state{};
     const bool has_current_rank_state =
-        get_family_rank(family_selector, contract_hash_token, &current_rank_state,
+        get_family_rank(family_selector, dock_hash_token, &current_rank_state,
                         nullptr);
 
     struct family_candidate_t {
@@ -3837,7 +3901,7 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
     std::unordered_map<std::string, std::unordered_map<std::string, bundle_t>>
         bundles_by_hash{};
     for (const auto& row : family_rows) {
-      if (row.contract_hash != contract_hash_token) continue;
+      if (trim_ascii(row.dock_hash) != dock_hash_token) continue;
       const std::string hash =
           row.hashimyei.empty() ? maybe_hashimyei_from_canonical(row.canonical_path)
                                 : row.hashimyei;
@@ -3929,7 +3993,7 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
     }
     append_view_line(&view, "selector_hashimyei_cursor",
                      out->selector_hashimyei_cursor);
-    append_view_line(&view, "contract_hash", out->contract_hash);
+    append_view_line(&view, "dock_hash", out->dock_hash);
     append_view_line(&view, "selection_mode",
                      out->has_wave_cursor ? "historical" : "latest");
     if (out->has_wave_cursor) {
@@ -3947,6 +4011,10 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
       if (!current_rank_state.source_view_transport_sha256.empty()) {
         append_view_line(&view, "current_rank.source_view_transport_sha256",
                          current_rank_state.source_view_transport_sha256);
+      }
+      if (!current_rank_state.dock_hash.empty()) {
+        append_view_line(&view, "current_rank.dock_hash",
+                         current_rank_state.dock_hash);
       }
     }
     append_view_size_line(&view, "candidate_count", candidates.size());
@@ -3981,6 +4049,10 @@ bool lattice_catalog_store_t::get_runtime_view_lls(
         }
         append_view_line(&view, fragment_prefix + ".schema", fragment.schema);
         append_view_u64_line(&view, fragment_prefix + ".ts_ms", fragment.ts_ms);
+        if (!fragment.dock_hash.empty()) {
+          append_view_line(&view, fragment_prefix + ".dock_hash",
+                           fragment.dock_hash);
+        }
         if (!fragment.contract_hash.empty()) {
           append_view_line(&view, fragment_prefix + ".contract_hash",
                            fragment.contract_hash);

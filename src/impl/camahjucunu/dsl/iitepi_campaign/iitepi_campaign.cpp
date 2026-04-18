@@ -1,5 +1,6 @@
 #include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 
+#include <charconv>
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
@@ -25,6 +26,33 @@ struct token_t {
                            (ch >= '0' && ch <= '9');
     const bool symbol = ch == '_' || ch == '.' || ch == '-';
     if (!(alpha_num || symbol)) return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool parse_u64_token(std::string_view value,
+                                   std::uint64_t* out) {
+  if (!out) return false;
+  const std::string text(value);
+  if (text.empty()) return false;
+  std::uint64_t parsed = 0;
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  const auto result = std::from_chars(begin, end, parsed, 10);
+  if (result.ec != std::errc{} || result.ptr != end) return false;
+  *out = parsed;
+  return true;
+}
+
+[[nodiscard]] bool is_hex_hash_name(std::string_view value) {
+  if (value.size() < 3) return false;
+  if (value[0] != '0' || (value[1] != 'x' && value[1] != 'X')) return false;
+  for (std::size_t i = 2; i < value.size(); ++i) {
+    const char c = value[i];
+    const bool digit = (c >= '0' && c <= '9');
+    const bool lower = (c >= 'a' && c <= 'f');
+    const bool upper = (c >= 'A' && c <= 'F');
+    if (!(digit || lower || upper)) return false;
   }
   return true;
 }
@@ -383,6 +411,60 @@ class parser_t {
     return value;
   }
 
+  cuwacunu::camahjucunu::iitepi_campaign_mount_decl_t
+  parse_mount_decl() {
+    using cuwacunu::camahjucunu::iitepi_campaign_mount_decl_t;
+    using cuwacunu::camahjucunu::iitepi_campaign_mount_selector_kind_e;
+
+    iitepi_campaign_mount_decl_t out{};
+    out.wave_binding_id = expect_identifier_any().text;
+    expect_symbol('=');
+    const token_t selector = expect_identifier_any();
+    if (selector.text == "EXACT") {
+      out.selector_kind = iitepi_campaign_mount_selector_kind_e::Exact;
+      out.exact_hashimyei = parse_scalar_value();
+      if (!is_hex_hash_name(out.exact_hashimyei)) {
+        throw std::runtime_error("MOUNT '" + out.wave_binding_id +
+                                 "' EXACT requires 0x<hex> hashimyei, got: " +
+                                 out.exact_hashimyei);
+      }
+    } else if (selector.text == "RANK") {
+      out.selector_kind = iitepi_campaign_mount_selector_kind_e::Rank;
+      const std::string rank_text = parse_scalar_value();
+      if (!parse_u64_token(rank_text, &out.rank)) {
+        throw std::runtime_error("MOUNT '" + out.wave_binding_id +
+                                 "' RANK requires unsigned integer, got: " +
+                                 rank_text);
+      }
+    } else {
+      throw std::runtime_error("MOUNT '" + out.wave_binding_id +
+                               "' unknown selector: " + selector.text);
+    }
+    expect_symbol(';');
+    return out;
+  }
+
+  void parse_mount_block(
+      cuwacunu::camahjucunu::iitepi_campaign_bind_decl_t* out_bind) {
+    if (!out_bind) {
+      throw std::runtime_error("missing BIND destination for MOUNT block");
+    }
+    expect_identifier("MOUNT");
+    expect_symbol('{');
+    std::unordered_set<std::string> mounted_aliases{};
+    while (!peek_is_symbol('}')) {
+      const auto mount = parse_mount_decl();
+      if (!mounted_aliases.insert(mount.wave_binding_id).second) {
+        throw std::runtime_error("BIND '" + out_bind->id +
+                                 "' duplicate MOUNT target: " +
+                                 mount.wave_binding_id);
+      }
+      out_bind->mounts.push_back(mount);
+    }
+    expect_symbol('}');
+    expect_symbol(';');
+  }
+
   cuwacunu::camahjucunu::iitepi_campaign_contract_decl_t
   parse_contract_import_decl() {
     using cuwacunu::camahjucunu::iitepi_campaign_contract_decl_t;
@@ -431,6 +513,7 @@ class parser_t {
 
     bool has_contract = false;
     bool has_wave = false;
+    bool has_mount = false;
     while (!peek_is_symbol('}')) {
       const token_t key = peek();
       if (key.kind != token_t::kind_e::Identifier) {
@@ -446,6 +529,15 @@ class parser_t {
       if (key.text == "WAVE") {
         out.wave_ref = parse_assignment_value("WAVE");
         has_wave = true;
+        continue;
+      }
+      if (key.text == "MOUNT") {
+        if (has_mount) {
+          throw std::runtime_error("BIND '" + out.id +
+                                   "' duplicate MOUNT block");
+        }
+        parse_mount_block(&out);
+        has_mount = true;
         continue;
       }
       if (cuwacunu::camahjucunu::is_wave_contract_binding_variable_name(
@@ -521,6 +613,9 @@ void validate_iitepi_campaign_grammar_text_or_throw_(
       "IMPORT_WAVE",
       "MARSHAL",
       "BIND",
+      "MOUNT",
+      "EXACT",
+      "RANK",
       "RUN",
       "CONTRACT",
       "WAVE",
@@ -553,10 +648,27 @@ std::string iitepi_campaign_instruction_t::str() const {
     oss << "  [bind:" << i << "] id=" << bind.id
         << " contract=" << bind.contract_ref
         << " wave=" << bind.wave_ref
-        << " variables=" << bind.variables.size() << "\n";
+        << " variables=" << bind.variables.size()
+        << " mounts=" << bind.mounts.size() << "\n";
     for (std::size_t j = 0; j < bind.variables.size(); ++j) {
       oss << "    [var:" << j << "] " << bind.variables[j].name << "="
           << bind.variables[j].value << "\n";
+    }
+    for (std::size_t j = 0; j < bind.mounts.size(); ++j) {
+      const auto& mount = bind.mounts[j];
+      oss << "    [mount:" << j << "] alias=" << mount.wave_binding_id
+          << " selector="
+          << (mount.selector_kind ==
+                      iitepi_campaign_mount_selector_kind_e::Exact
+                  ? "EXACT"
+                  : "RANK");
+      if (mount.selector_kind ==
+          iitepi_campaign_mount_selector_kind_e::Exact) {
+        oss << " value=" << mount.exact_hashimyei;
+      } else {
+        oss << " value=" << mount.rank;
+      }
+      oss << "\n";
     }
   }
   return oss.str();

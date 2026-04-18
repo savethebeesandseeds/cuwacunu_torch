@@ -36,7 +36,7 @@ all: $(BIN_OUT)/$(CUWACUNU_CMD_BIN)
 run: run-cuwacunu-cmd
 
 .PHONY: build-cuwacunu-cmd
-build-cuwacunu-cmd: autoprep $(BIN_OUT)/$(CUWACUNU_CMD_BIN)
+build-cuwacunu-cmd: $(ORDER_PREP) $(BIN_OUT)/$(CUWACUNU_CMD_BIN)
 	@$(LOG_SUCCESS)
 
 .PHONY: run-cuwacunu-cmd

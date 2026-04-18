@@ -715,6 +715,7 @@ inline void append_component_member_detail(
   append_lattice_meta(out, "component refs",
                       std::to_string(member.component_count));
   append_lattice_meta(out, "contract hash", lattice_contract_hash_for_member(member));
+  append_lattice_meta(out, "dock hash", lattice_dock_hash_for_member(member));
   append_lattice_meta(out, "parent", lattice_member_parent_hashimyei_text(member));
   append_lattice_meta(
       out, "replaced by",
@@ -881,6 +882,7 @@ inline void append_lattice_member_detail(
       out, "replaced by",
       member.has_component ? member.component.manifest.replaced_by : std::string{});
   append_lattice_meta(out, "contract hash", lattice_contract_hash_for_member(member));
+  append_lattice_meta(out, "dock hash", lattice_dock_hash_for_member(member));
   append_lattice_meta(out, "detail source", "hero.lattice + hero.hashimyei");
 
   append_lattice_section(out, "Coverage");
@@ -916,12 +918,12 @@ inline void append_lattice_member_detail(
   append_lattice_section(out, "Available Views");
   append_lattice_meta(out, "family_evaluation_report",
                       !member.canonical_path.empty() &&
-                              !lattice_contract_hash_for_member(member).empty()
+                              !lattice_dock_hash_for_member(member).empty()
                           ? std::string("ready")
-                          : std::string("needs canonical_path + contract_hash"),
+                          : std::string("needs canonical_path + dock_hash"),
                       cuwacunu::iinuji::text_line_emphasis_t::Info,
                       !member.canonical_path.empty() &&
-                              !lattice_contract_hash_for_member(member).empty()
+                              !lattice_dock_hash_for_member(member).empty()
                           ? cuwacunu::iinuji::text_line_emphasis_t::Success
                           : cuwacunu::iinuji::text_line_emphasis_t::Warning);
   append_lattice_meta(out, "entropic_capacity_comparison",
@@ -990,6 +992,7 @@ inline void append_lattice_view_detail(
     append_lattice_section(out, "Selectors");
     append_lattice_meta(out, "canonical path", member->canonical_path);
     append_lattice_meta(out, "contract hash", member->contract_hash);
+    append_lattice_meta(out, "dock hash", lattice_dock_hash_for_member(*member));
     append_lattice_meta(out, "wave cursor", member->fact.latest_wave_cursor);
     if (st.lattice.view_snapshot.ok &&
         st.lattice.view_snapshot.view_kind == view->view_kind &&

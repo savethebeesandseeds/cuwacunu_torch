@@ -1,3 +1,8 @@
+/*
+  WAVE declares runtime policy and required component slots.
+  It does not choose concrete component revisions.
+  Concrete revision selection belongs to CAMPAIGN.BIND.MOUNT.
+*/
 WAVE train_vicreg_primary {
   CIRCUIT: circuit_1;
   MODE: run | train | debug ;
@@ -22,7 +27,6 @@ WAVE train_vicreg_primary {
   
   WIKIMYEI: <w_rep> {
     FAMILY: tsi.wikimyei.representation.vicreg;
-    HASHIMYEI: 0x0000;
     JKIMYEI: {
       HALT_TRAIN: false;
       PROFILE_ID: stable_pretrain;

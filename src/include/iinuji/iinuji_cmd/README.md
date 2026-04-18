@@ -23,7 +23,7 @@ Shared helpers:
 - `src/include/hero/human_hero/hero_human_tools.h`
 
 First-class shell screens:
-- `src/include/iinuji/iinuji_cmd/views/inbox/{state.h,commands.h,view.h,app.h}`
+- `src/include/iinuji/iinuji_cmd/views/workbench/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/runtime/{state.h,commands.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/logs/{state.h,view.h,app.h}`
 - `src/include/iinuji/iinuji_cmd/views/config/{state.h,commands.h,view.h,app.h}`
@@ -34,7 +34,7 @@ The removed specialist-screen helpers are no longer part of the `iinuji_cmd` she
 
 `CmdState` holds:
 - global shell state: active screen, running flag, command line, help overlay
-- `InboxState`: Human Hero operator inbox, active lane, selection, status, and a deprecated compatibility phase filter
+- `WorkbenchState`: Human Hero operator workbench feed, focus, selection, and status
 - `RuntimeState`: session-linked runtime inventory, detail mode, selection, status
 - `ShellLogsState`
 - `ConfigState`
@@ -53,29 +53,22 @@ Canonical path registry + dispatch lives in:
 
 Primary shell calls:
 - `iinuji.screen.home()`
-- `iinuji.screen.inbox()`
+- `iinuji.screen.workbench()`
 - `iinuji.screen.runtime()`
 - `iinuji.screen.lattice()`
 - `iinuji.screen.logs()`
 - `iinuji.screen.config()`
 - `iinuji.refresh()`
-- `iinuji.show.inbox()`
+- `iinuji.show.workbench()`
 - `iinuji.show.runtime()`
 - `iinuji.show.logs()`
 - `iinuji.show.config()`
 
-Direct aliases accept `home` for the F1 Home screen and `marshal` for the F2
-Inbox screen.
+Direct aliases accept `home` for the F1 Home screen and `workbench` for the F2
+Workbench screen.
 
-Inbox-specific calls:
-- `iinuji.inbox.refresh()`
-- `iinuji.inbox.view.inbox()`
-- `iinuji.inbox.view.live()`
-- `iinuji.inbox.view.history()`
-- `iinuji.inbox.view.overview()` compatibility shim to Inbox
-- `iinuji.inbox.view.requests()` compatibility shim to Inbox
-- `iinuji.inbox.view.reviews()` compatibility shim to History
-- `iinuji.inbox.filter.next()` deprecated compatibility shim
+Workbench-specific calls:
+- `iinuji.workbench.refresh()`
 
 Runtime-specific calls:
 - `iinuji.runtime.refresh()`
@@ -92,15 +85,15 @@ Config calls are file-centered:
 
 Removed specialist-screen shell calls now fail as unknown commands by design.
 
-## Inbox screen
+## Workbench screen
 
-The `Inbox` screen is the main operator cockpit for `.runtime/.marshal_hero`.
+The `Workbench` screen is the main operator cockpit for `.runtime/.marshal_hero`.
 
-It reuses the shared Human Hero inbox/action layer from `hero_human_tools` for:
+It reuses the shared Human Hero workbench/action layer from `hero_human_tools` for:
 - session collection, request/review detection, and selection recovery
 - detail text builders
 - operator dialogs
-- action routing for clarification answers, governance resolutions, continue, pause, resume, terminate, and acknowledge
+- action routing for clarification answers, governance resolutions, message, pause, resume, terminate, acknowledge, and archive/release
 
 This keeps `iinuji_cmd` aligned with the standalone `hero_human_mcp` tty console instead of maintaining a second independent Human workflow.
 
@@ -121,23 +114,35 @@ The runtime screen is intentionally observational in this refactor. Runtime muta
 
 Primary interaction stays command-first (`cmd> ...`) with fixed shell navigation:
 - `F1` Home
-- `F2` Inbox
+- `F2` Workbench
 - `F3` Runtime
 - `F4` Lattice
 - `F8` Shell Logs
 - `F9` Config
 
-Inbox screen shortcuts:
-- `Up/Down` move the selected lane in navigation or the selected row in the worklist
-- `Left/Right` also move between `Inbox`, `Live`, and `History` while navigation is focused
-- `Enter` focuses the worklist or opens the selected row's action list
+Workbench screen shortcuts:
+- `Up/Down` choose `Inbox` or `Booster` while navigation is focused
+- `Enter` or `Right` focuses the selected section from navigation
+- `Up/Down` move the selected row in the focused worklist
+- `Enter` opens the selected inbox row's action list while `Inbox` is focused
+- `Enter` runs the selected guided utility while `Booster` is focused
 - `Esc` returns from the worklist to navigation
-- `PgUp/PgDn/Home/End` and wheel scroll detail
+- `PgUp/PgDn/Home/End` and wheel scroll the focused panel
 
-Inbox lanes:
-- `Inbox` merges sessions that need operator attention now: requests, operator-paused sessions, and pending reviews
-- `Live` shows active planning and running-campaign sessions
-- `History` shows idle and finished sessions for audit; pending reviews stay visibly marked there too
+Workbench inbox:
+- `Workbench` is a single operator inbox that merges requests, operator-paused sessions, and pending reviews
+
+Workbench Booster:
+- `Booster` is the guided operator utility section inside `Workbench`
+- initial actions:
+  - `Launch Marshal`
+  - `Launch Campaign`
+  - `Dev Nuke Reset`
+- `Launch Marshal` chooses an existing objective bundle under objective roots or scaffolds a new objective bundle from defaults and opens it in the editor
+- existing marshal objectives are shown by name; objectives already owned by an active or resumable session are disabled in the picker
+- Marshal launch offers guided Codex model and reasoning-effort choices with a custom override escape hatch
+- `Launch Campaign` can use the discovered default DSL, choose an existing DSL, or create a temp copy from the default before launch
+- newly created temp campaigns open in the editor before you return to Booster to launch them
 
 Runtime screen shortcuts:
 - `Tab` cycle detail mode
@@ -148,7 +153,7 @@ Runtime screen shortcuts:
 - `Esc` returns from the worklist to lane navigation
 - `Up/Down` move through the selected lane while the worklist is focused
 - `h/l` or `[/]` browse backward/forward inside the active lane's linked runtime chain
-- `PgUp/PgDn/Home/End` and wheel scroll detail
+- `PgUp/PgDn/Home/End` and wheel scroll the focused panel; open detail viewers keep scroll ownership while active
 
 Config screen shortcuts:
 - `Enter` focuses file browser from family focus
@@ -163,14 +168,14 @@ Config screen shortcuts:
 The config screen catalogs files from the global Config Hero policy so every objective folder remains visible. When a Marshal session is selected, saves still use that session's narrower write scope when applicable.
 
 Mouse:
-- wheel: vertical scroll in active detail panes
-- `Shift`/`Ctrl`/`Alt` + wheel: horizontal scroll where supported
+- wheel: vertical scroll in the focused panel
+- `Shift`/`Ctrl`/`Alt` + wheel: horizontal scroll in the focused panel where supported
 
 ## Design direction
 
 `iinuji_cmd` is now centered on Hero runtime operations instead of legacy specialist navigation. The shell is intentionally small:
 - Home for the loading/landing canvas
-- Marshal for operator work
+- Workbench for operator work
 - Runtime for runtime evidence and historical lineage
 - Lattice for lineage and fact browsing
 - Shell Logs for shell diagnostics

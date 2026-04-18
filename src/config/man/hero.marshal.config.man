@@ -75,7 +75,7 @@ required = true
 default = codex
 range = executable path or PATH-resolved command name
 allowed = absolute_or_relative path or bare command token
-nuance = Codex command used by Marshal Hero at each autonomous planning checkpoint
+nuance = Codex command used by Marshal Hero at each autonomous planning checkpoint; bare `codex` resolves through PATH first and then probes known VS Code Server ChatGPT extension install locations when available
 
 [FIELD marshal_codex_model]
 key = marshal_codex_model

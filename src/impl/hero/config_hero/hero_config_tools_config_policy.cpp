@@ -34,6 +34,7 @@ namespace cuwacunu::hero::mcp::detail {
   return err == dsl_path_resolution_error_t::kEscapesScope ||
          err == dsl_path_resolution_error_t::kHashimyeiPath ||
          err == dsl_path_resolution_error_t::kNotDefaultInstructionDsl ||
+         err == dsl_path_resolution_error_t::kNotTempInstructionDsl ||
          err == dsl_path_resolution_error_t::kObjectiveRootEscapesAllowedScopes ||
          err == dsl_path_resolution_error_t::kNotObjectiveInstructionRoot ||
          err == dsl_path_resolution_error_t::kEscapesObjectiveRoot ||
@@ -216,6 +217,69 @@ namespace cuwacunu::hero::mcp::detail {
     }
     if (out_reason) {
       *out_reason = dsl_path_resolution_error_t::kNotDefaultInstructionDsl;
+    }
+    return false;
+  }
+
+  *out_path = resolved;
+  return true;
+}
+
+[[nodiscard]] bool resolve_temp_dsl_path_with_scope(
+    const hero_config_store_t& store, std::string_view request_path,
+    std::filesystem::path* out_path, std::string* out_error,
+    dsl_path_resolution_error_t* out_reason) {
+  if (out_error) out_error->clear();
+  if (out_reason) *out_reason = dsl_path_resolution_error_t::kNone;
+  if (!out_path) {
+    if (out_error) *out_error = "temp path output pointer is null";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kOutputPointerNull;
+    return false;
+  }
+  *out_path = std::filesystem::path{};
+
+  const std::string raw = trim_ascii(request_path);
+  if (raw.empty()) {
+    if (out_error) *out_error = "temp path is empty";
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEmptyPath;
+    return false;
+  }
+  const std::filesystem::path resolved =
+      resolve_path_near_config(raw, store.config_path()).lexically_normal();
+  if (path_has_component(resolved, ".hashimyei")) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": temp path under .hashimyei is not allowed: " +
+                   resolved.string();
+    }
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kHashimyeiPath;
+    return false;
+  }
+  std::vector<std::filesystem::path> temp_roots{};
+  std::string roots_error{};
+  if (!collect_configured_root_paths(store, "temp_roots", &temp_roots,
+                                     &roots_error)) {
+    if (out_error) *out_error = roots_error;
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kEscapesScope;
+    return false;
+  }
+  std::vector<std::string> allowed_extensions{};
+  std::string extensions_error{};
+  if (!collect_allowed_extensions(store, &allowed_extensions,
+                                  &extensions_error)) {
+    if (out_error) *out_error = extensions_error;
+    if (out_reason) *out_reason = dsl_path_resolution_error_t::kNotTempInstructionDsl;
+    return false;
+  }
+  if (!path_is_within_any_root(temp_roots, resolved) ||
+      !path_has_allowed_extension(resolved, allowed_extensions)) {
+    if (out_error) {
+      *out_error = std::string(kConfigDslScopeErrorTag) +
+                   ": temp path must stay within configured temp_roots and use an allowed extension: " +
+                   resolved.string();
+    }
+    if (out_reason) {
+      *out_reason = dsl_path_resolution_error_t::kNotTempInstructionDsl;
     }
     return false;
   }

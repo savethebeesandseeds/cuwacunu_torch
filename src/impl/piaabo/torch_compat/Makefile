@@ -22,11 +22,14 @@ $(eval $(call BUILD_OBJ_INC, libtorch, data_analytics, data_analytics, $(TORCH_I
 $(eval $(call BUILD_OBJ_INC, libtorch, entropic_capacity_comparison, entropic_capacity_comparison, $(TORCH_INCLUDE_PATHS)))
 
 # -----------------------------------------------------------------
-# Aggregate Target
-#   - Build local object, then recurse into submodules:
-#       - distributions
+# Aggregate Targets
+#   - Expose distributions as a sibling prerequisite so GNU make can schedule
+#     it in parallel with the local torch_compat producers.
 # -----------------------------------------------------------------
-.PHONY: all
-all: torch_utils network_analytics network_design_adapter data_analytics entropic_capacity_comparison
+.PHONY: distributions
+distributions:
 	$(MAKE) -C $(HERE_PATH)/distributions all
+
+.PHONY: all
+all: torch_utils network_analytics network_design_adapter data_analytics entropic_capacity_comparison distributions
 	@$(LOG_SUCCESS)

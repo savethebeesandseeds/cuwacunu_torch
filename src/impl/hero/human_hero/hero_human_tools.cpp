@@ -120,11 +120,14 @@ struct detail_viewport_t {
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
     std::string *out_structured, std::string *out_error);
 
-[[nodiscard]] bool continue_marshal_session(
+[[nodiscard]] bool message_marshal_session(
     app_context_t *app,
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
-    std::string instruction, std::string *out_structured,
+    std::string message, std::string *out_structured,
     std::string *out_error);
+
+[[nodiscard]] std::string summarize_message_session_structured(
+    const std::string &structured, bool refreshing, bool *out_is_error);
 
 [[nodiscard]] bool terminate_marshal_session(
     app_context_t *app,
@@ -148,23 +151,23 @@ struct detail_viewport_t {
   return out;
 }
 
-[[nodiscard]] bool is_clarification_pause_kind(std::string_view pause_kind) {
-  return pause_kind == "clarification";
+[[nodiscard]] bool is_clarification_work_gate(std::string_view work_gate) {
+  return work_gate == "clarification";
 }
 
-[[nodiscard]] bool is_human_request_pause_kind(std::string_view pause_kind) {
-  return is_clarification_pause_kind(pause_kind) || pause_kind == "governance";
+[[nodiscard]] bool is_human_request_work_gate(std::string_view work_gate) {
+  return is_clarification_work_gate(work_gate) || work_gate == "governance";
 }
 
 [[nodiscard]] std::string_view
-human_request_kind_label(std::string_view pause_kind) {
-  if (is_clarification_pause_kind(pause_kind))
+human_request_kind_label(std::string_view work_gate) {
+  if (is_clarification_work_gate(work_gate))
     return "clarification";
-  if (pause_kind == "governance")
+  if (work_gate == "governance")
     return "governance";
-  if (pause_kind == "operator")
+  if (work_gate == "operator_pause")
     return "operator";
-  if (pause_kind == "none")
+  if (work_gate == "open")
     return "none";
   return "unknown";
 }
@@ -1567,12 +1570,12 @@ void draw_centered_line(WINDOW *win, int y, int width, std::string_view text,
 
 [[nodiscard]] int session_accent_color(
     const cuwacunu::hero::marshal::marshal_session_record_t &session) {
-  if (session.phase == "paused") {
-    return session.pause_kind == "governance" ? 8 : 7;
+  if (session.lifecycle == "live" && session.work_gate != "open") {
+    return session.work_gate == "governance" ? 8 : 7;
   }
-  if (session.phase == "idle")
+  if (session.lifecycle == "live" && session.activity == "review")
     return 9;
-  if (session.phase == "finished") {
+  if (session.lifecycle == "terminal") {
     if (session.finish_reason == "failed" ||
         session.finish_reason == "terminated") {
       return 4;
@@ -1581,30 +1584,32 @@ void draw_centered_line(WINDOW *win, int y, int width, std::string_view text,
       return 3;
     return 11;
   }
-  if (session.phase == "running_campaign")
+  if (session.campaign_status == "launching" ||
+      session.campaign_status == "running" ||
+      session.campaign_status == "stopping")
     return 1;
   return 6;
 }
 
 [[nodiscard]] operator_session_state_t operator_session_state(
     const cuwacunu::hero::marshal::marshal_session_record_t &session) {
-  if (session.phase == "paused") {
-    if (is_clarification_pause_kind(session.pause_kind)) {
+  if (session.lifecycle == "live" && session.work_gate != "open") {
+    if (is_clarification_work_gate(session.work_gate)) {
       return operator_session_state_t::waiting_clarification;
     }
-    if (session.pause_kind == "governance") {
+    if (session.work_gate == "governance") {
       return operator_session_state_t::waiting_governance;
     }
-    if (session.pause_kind == "operator") {
+    if (session.work_gate == "operator_pause") {
       return operator_session_state_t::operator_paused;
     }
     return operator_session_state_t::unknown;
   }
-  if (session.phase == "idle")
+  if (session.lifecycle == "live" && session.activity == "review")
     return operator_session_state_t::review;
-  if (session.phase == "finished")
+  if (session.lifecycle == "terminal")
     return operator_session_state_t::done;
-  if (session.phase == "active" || session.phase == "running_campaign") {
+  if (session.lifecycle == "live") {
     return operator_session_state_t::running;
   }
   return operator_session_state_t::unknown;
@@ -1632,20 +1637,32 @@ operator_session_state_label(operator_session_state_t state) {
 }
 
 [[nodiscard]] std::string operator_session_state_detail(
-    const cuwacunu::hero::marshal::marshal_session_record_t &session) {
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    bool has_pending_review) {
   std::ostringstream out;
+  if (session.lifecycle == "live" && session.activity == "review" &&
+      !has_pending_review) {
+    out << "Review";
+    if (!session.finish_reason.empty() && session.finish_reason != "none") {
+      out << " (" << session.finish_reason << ")";
+    }
+    return out.str();
+  }
   out << operator_session_state_label(operator_session_state(session));
-  if (session.phase == "active") {
+  if (session.activity == "planning") {
     out << " (planning)";
-  } else if (session.phase == "running_campaign") {
+  } else if (session.campaign_status == "launching" ||
+             session.campaign_status == "running" ||
+             session.campaign_status == "stopping") {
     out << " (campaign active)";
-  } else if (session.phase == "idle") {
+  } else if (session.lifecycle == "live" && session.activity == "review") {
     if (session.finish_reason == "failed") {
       out << " (review after failure)";
     } else {
       out << " (review pending)";
     }
-  } else if (session.phase == "finished" && !session.finish_reason.empty() &&
+  } else if (session.lifecycle == "terminal" &&
+             !session.finish_reason.empty() &&
              session.finish_reason != "none") {
     out << " (" << session.finish_reason << ")";
   }
@@ -1656,9 +1673,10 @@ operator_session_state_label(operator_session_state_t state) {
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
     bool has_pending_review) {
   const auto state = operator_session_state(session);
-  if ((state == operator_session_state_t::review ||
-       state == operator_session_state_t::done) &&
-      !has_pending_review) {
+  if (state == operator_session_state_t::review && !has_pending_review) {
+    return "Continue (optional)";
+  }
+  if (state == operator_session_state_t::done && !has_pending_review) {
     return "<none>";
   }
   switch (state) {
@@ -1681,7 +1699,16 @@ operator_session_state_label(operator_session_state_t state) {
 }
 
 [[nodiscard]] std::string session_state_badge(
-    const cuwacunu::hero::marshal::marshal_session_record_t &session) {
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    bool has_pending_review) {
+  if (session.lifecycle == "live" && session.activity == "review" &&
+      !has_pending_review) {
+    if (session.finish_reason == "interrupted")
+      return "[INTERRUPTED]";
+    if (session.finish_reason == "failed")
+      return "[FAILED]";
+    return "[IDLE]";
+  }
   switch (operator_session_state(session)) {
   case operator_session_state_t::waiting_clarification:
     return "[CLARIFY]";
@@ -1723,40 +1750,42 @@ operator_console_view_label(operator_console_view_t view) {
 }
 
 [[nodiscard]] std::string_view
-operator_console_phase_filter_label(operator_console_phase_filter_t filter) {
+operator_console_state_filter_label(operator_console_state_filter_t filter) {
   switch (filter) {
-  case operator_console_phase_filter_t::all:
+  case operator_console_state_filter_t::all:
     return "all";
-  case operator_console_phase_filter_t::active:
+  case operator_console_state_filter_t::working:
     return "planning";
-  case operator_console_phase_filter_t::running_campaign:
+  case operator_console_state_filter_t::campaign_active:
     return "campaign";
-  case operator_console_phase_filter_t::paused:
-    return "waiting/paused";
-  case operator_console_phase_filter_t::idle:
-    return "review";
-  case operator_console_phase_filter_t::finished:
+  case operator_console_state_filter_t::blocked:
+    return "blocked/waiting";
+  case operator_console_state_filter_t::review:
+    return "review/history";
+  case operator_console_state_filter_t::terminal:
     return "done";
   }
   return "all";
 }
 
-[[nodiscard]] bool session_matches_phase_filter(
+[[nodiscard]] bool session_matches_state_filter(
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
-    operator_console_phase_filter_t filter) {
+    operator_console_state_filter_t filter) {
   switch (filter) {
-  case operator_console_phase_filter_t::all:
+  case operator_console_state_filter_t::all:
     return true;
-  case operator_console_phase_filter_t::active:
-    return session.phase == "active";
-  case operator_console_phase_filter_t::running_campaign:
-    return session.phase == "running_campaign";
-  case operator_console_phase_filter_t::paused:
-    return session.phase == "paused";
-  case operator_console_phase_filter_t::idle:
-    return session.phase == "idle";
-  case operator_console_phase_filter_t::finished:
-    return session.phase == "finished";
+  case operator_console_state_filter_t::working:
+    return session.lifecycle == "live" && session.activity == "planning";
+  case operator_console_state_filter_t::campaign_active:
+    return session.campaign_status == "launching" ||
+           session.campaign_status == "running" ||
+           session.campaign_status == "stopping";
+  case operator_console_state_filter_t::blocked:
+    return session.lifecycle == "live" && session.work_gate != "open";
+  case operator_console_state_filter_t::review:
+    return session.lifecycle == "live" && session.activity == "review";
+  case operator_console_state_filter_t::terminal:
+    return session.lifecycle == "terminal";
   }
   return true;
 }
@@ -1764,14 +1793,14 @@ operator_console_phase_filter_label(operator_console_phase_filter_t filter) {
 void filter_sessions_for_console(
     const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>
         &all_sessions,
-    operator_console_phase_filter_t filter,
+    operator_console_state_filter_t filter,
     std::vector<cuwacunu::hero::marshal::marshal_session_record_t> *out) {
   if (!out)
     return;
   out->clear();
   out->reserve(all_sessions.size());
   for (const auto &session : all_sessions) {
-    if (session_matches_phase_filter(session, filter))
+    if (session_matches_state_filter(session, filter))
       out->push_back(session);
   }
 }
@@ -1824,28 +1853,28 @@ void cycle_operator_console_view(operator_console_view_t *view) {
   }
 }
 
-void cycle_operator_console_phase_filter(
-    operator_console_phase_filter_t *filter) {
+void cycle_operator_console_state_filter(
+    operator_console_state_filter_t *filter) {
   if (!filter)
     return;
   switch (*filter) {
-  case operator_console_phase_filter_t::all:
-    *filter = operator_console_phase_filter_t::active;
+  case operator_console_state_filter_t::all:
+    *filter = operator_console_state_filter_t::working;
     return;
-  case operator_console_phase_filter_t::active:
-    *filter = operator_console_phase_filter_t::running_campaign;
+  case operator_console_state_filter_t::working:
+    *filter = operator_console_state_filter_t::campaign_active;
     return;
-  case operator_console_phase_filter_t::running_campaign:
-    *filter = operator_console_phase_filter_t::paused;
+  case operator_console_state_filter_t::campaign_active:
+    *filter = operator_console_state_filter_t::blocked;
     return;
-  case operator_console_phase_filter_t::paused:
-    *filter = operator_console_phase_filter_t::idle;
+  case operator_console_state_filter_t::blocked:
+    *filter = operator_console_state_filter_t::review;
     return;
-  case operator_console_phase_filter_t::idle:
-    *filter = operator_console_phase_filter_t::finished;
+  case operator_console_state_filter_t::review:
+    *filter = operator_console_state_filter_t::terminal;
     return;
-  case operator_console_phase_filter_t::finished:
-    *filter = operator_console_phase_filter_t::all;
+  case operator_console_state_filter_t::terminal:
+    *filter = operator_console_state_filter_t::all;
     return;
   }
 }
@@ -2306,32 +2335,33 @@ prompt_choice_dialog(const std::string &title, const std::string &prompt,
   std::ostringstream out;
   out << "objective: " << session.objective_name << "\n"
       << "marshal_session_id: " << session.marshal_session_id << "\n"
-      << "operator_state: " << operator_session_state_detail(session) << "\n"
+      << "operator_state: "
+      << operator_session_state_detail(session, has_pending_review) << "\n"
       << "next_action: "
       << operator_session_action_hint(session, has_pending_review) << "\n"
-      << "phase: " << session.phase;
-  if (session.phase == "paused") {
-    out << " (" << session.pause_kind << ")";
-  } else if (session.phase == "finished") {
+      << "lifecycle: " << session.lifecycle;
+  if (session.lifecycle == "live" && session.work_gate != "open") {
+    out << " (" << session.work_gate << ")";
+  } else if (session.lifecycle == "terminal") {
     out << " (" << session.finish_reason << ")";
   }
   out << "\n"
       << "effort: " << build_summary_effort_text(session) << "\n"
       << "authority_scope: " << session.authority_scope << "\n";
-  if (!session.phase_detail.empty()) {
-    out << "phase_detail: " << session.phase_detail << "\n";
+  if (!session.status_detail.empty()) {
+    out << "status_detail: " << session.status_detail << "\n";
   }
-  if (!session.last_intent_kind.empty()) {
-    out << "last_intent: " << session.last_intent_kind << "\n";
+  if (!session.last_codex_action.empty()) {
+    out << "last_intent: " << session.last_codex_action << "\n";
   }
-  if (!session.active_campaign_cursor.empty()) {
-    out << "active_campaign: " << session.active_campaign_cursor << "\n";
+  if (!session.campaign_cursor.empty()) {
+    out << "active_campaign: " << session.campaign_cursor << "\n";
   }
   if (!session.last_warning.empty()) {
     out << "last_warning: " << session.last_warning << "\n";
   }
-  if (!session.codex_session_id.empty()) {
-    out << "codex_session_id: " << session.codex_session_id << "\n";
+  if (!session.current_thread_id.empty()) {
+    out << "current_thread_id: " << session.current_thread_id << "\n";
   }
   if (!session.campaign_dsl_path.empty()) {
     out << "campaign_dsl: " << session.campaign_dsl_path << "\n";
@@ -2346,8 +2376,9 @@ prompt_choice_dialog(const std::string &title, const std::string &prompt,
     out << "\n";
   }
 
-  if (session.phase == "paused" &&
-      is_human_request_pause_kind(session.pause_kind)) {
+  if (session.lifecycle == "live" &&
+      session.work_gate != "open" &&
+      is_human_request_work_gate(session.work_gate)) {
     std::string request_text{};
     std::string request_error{};
     out << "\n--- Human Request ---\n";
@@ -2359,7 +2390,7 @@ prompt_choice_dialog(const std::string &title, const std::string &prompt,
   }
 
   if (cuwacunu::hero::marshal::is_marshal_session_summary_state(
-          session.phase)) {
+          session)) {
     std::string summary_text{};
     std::string summary_error{};
     out << "\n\n--- Session Summary ---\n";
@@ -2375,8 +2406,10 @@ prompt_choice_dialog(const std::string &title, const std::string &prompt,
 void render_human_sessions_screen(
     const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>
         &all_sessions,
+    const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>
+        &pending_reviews,
     std::size_t request_count, std::size_t summary_count,
-    operator_console_phase_filter_t phase_filter, std::string_view operator_id,
+    operator_console_state_filter_t state_filter, std::string_view operator_id,
     std::string_view marshal_root, std::size_t selected,
     std::string_view detail_text, std::size_t detail_scroll,
     std::size_t *out_detail_total_lines, std::size_t *out_detail_page_lines,
@@ -2405,7 +2438,7 @@ void render_human_sessions_screen(
   }
 
   std::vector<cuwacunu::hero::marshal::marshal_session_record_t> sessions{};
-  filter_sessions_for_console(all_sessions, phase_filter, &sessions);
+  filter_sessions_for_console(all_sessions, state_filter, &sessions);
 
   const int header_h = 4;
   const int footer_h = 3;
@@ -2427,7 +2460,7 @@ void render_human_sessions_screen(
       std::string(
           operator_console_view_label(operator_console_view_t::sessions)) +
       " | overview filter: " +
-      std::string(operator_console_phase_filter_label(phase_filter)) +
+      std::string(operator_console_state_filter_label(state_filter)) +
       " | operator: " +
       std::string(operator_id.empty() ? "<unset>" : operator_id);
   mvaddnstr(1, 2, ellipsize_text(header_line, W - 4).c_str(), W - 4);
@@ -2465,7 +2498,11 @@ void render_human_sessions_screen(
       if (idx >= sessions.size())
         break;
       const auto &session = sessions[idx];
-      const std::string label = session_state_badge(session) + " " +
+      const bool has_pending_review =
+          find_session_index_by_id(pending_reviews, session.marshal_session_id)
+              .has_value();
+      const std::string label =
+          session_state_badge(session, has_pending_review) + " " +
                                 session.objective_name + " | " +
                                 session.marshal_session_id;
       const int row_y = header_h + 1 + row;
@@ -2490,14 +2527,18 @@ void render_human_sessions_screen(
                     sessions.empty() ? " Overview " : " Session Detail ");
   if (!sessions.empty()) {
     const auto &session = sessions[selected];
+    const bool has_pending_review =
+        find_session_index_by_id(pending_reviews, session.marshal_session_id)
+            .has_value();
     const int accent_color = session_accent_color(session);
     std::ostringstream meta;
     meta << "session=" << session.marshal_session_id
-         << "  state=" << operator_session_state_detail(session);
-    meta << "  raw_phase=" << session.phase;
-    if (session.phase == "paused")
-      meta << "(" << session.pause_kind << ")";
-    if (session.phase == "finished")
+         << "  state="
+         << operator_session_state_detail(session, has_pending_review);
+    meta << "  lifecycle=" << session.lifecycle;
+    if (session.lifecycle == "live" && session.work_gate != "open")
+      meta << "(" << session.work_gate << ")";
+    if (session.lifecycle == "terminal")
       meta << "(" << session.finish_reason << ")";
     attron(COLOR_PAIR(accent_color) | A_BOLD);
     mvaddnstr(header_h + 1, left_w + 2,
@@ -2661,7 +2702,7 @@ void render_human_requests_screen(
       if (idx >= pending.size())
         break;
       const auto &session = pending[idx];
-      const std::string label = session_state_badge(session) + " " +
+      const std::string label = session_state_badge(session, false) + " " +
                                 session.objective_name + " | " +
                                 session.marshal_session_id;
       const int row_y = header_h + 1 + row;
@@ -2695,10 +2736,10 @@ void render_human_requests_screen(
               ellipsize_text(meta, right_w - 4).c_str(), right_w - 4);
     attroff(COLOR_PAIR(accent_color) | A_BOLD);
     mvaddnstr(header_h + 2, left_w + 2,
-              ellipsize_text(operator_session_state_detail(session) + " | " +
-                                 (session.phase_detail.empty()
+              ellipsize_text(operator_session_state_detail(session, false) + " | " +
+                                 (session.status_detail.empty()
                                       ? session.objective_name
-                                      : session.phase_detail),
+                                      : session.status_detail),
                              right_w - 4)
                   .c_str(),
               right_w - 4);
@@ -2844,7 +2885,7 @@ void render_human_reviews_screen(
       if (idx >= pending.size())
         break;
       const auto &session = pending[idx];
-      const std::string label = session_state_badge(session) + " " +
+      const std::string label = session_state_badge(session, true) + " " +
                                 session.objective_name + " | " +
                                 session.marshal_session_id;
       const int row_y = header_h + 1 + row;
@@ -2876,7 +2917,7 @@ void render_human_reviews_screen(
     mvaddnstr(header_h + 1, left_w + 2,
               ellipsize_text(meta, right_w - 4).c_str(), right_w - 4);
     attroff(COLOR_PAIR(accent_color) | A_BOLD);
-    const std::string subtitle = operator_session_state_detail(session) +
+    const std::string subtitle = operator_session_state_detail(session, true) +
                                  " | " + build_summary_effort_text(session);
     mvaddnstr(header_h + 2, left_w + 2,
               ellipsize_text(subtitle, right_w - 4).c_str(), right_w - 4);
@@ -2915,18 +2956,19 @@ void render_human_reviews_screen(
     }
   } else {
     std::ostringstream out;
-    out << "This lane tracks idle and finished Marshal Hero review reports.\n\n"
+    out << "This lane tracks review-ready and terminal Marshal Hero review "
+           "reports.\n\n"
         << "Operator: "
         << (operator_id.empty() ? "<unset>" : std::string(operator_id)) << "\n"
         << "Marshal root: " << marshal_root << "\n\n"
         << "What to do here:\n"
         << "- inspect the review report\n"
-        << "- continue idle sessions with a fresh operator instruction when "
+        << "- message review-ready sessions with fresh operator guidance when "
            "you want more work to launch\n"
         << "- acknowledge a report only after review; that signs it off with a "
            "required message and clears it from the queue\n"
-        << "- finished sessions are informational; idle sessions are "
-           "resumable\n"
+        << "- terminal sessions are informational; review-ready sessions are "
+           "messageable\n"
         << "- press Tab to cycle lanes when overview or requests are relevant\n"
         << "- press r to refresh\n"
         << "- press q to exit\n\n"
@@ -2940,7 +2982,7 @@ void render_human_reviews_screen(
   std::string controls =
       pending.empty() ? "r refresh  q quit"
                       : "Up/Down select  Wheel/PgUp/PgDn scroll detail  "
-                        "Home/End jump  Enter inspect  c continue session  a "
+                        "Home/End jump  Enter inspect  m message session  a "
                         "acknowledge review  r refresh  q quit";
   if (request_count > 0)
     controls = "Tab cycle lanes  " + controls;
@@ -3095,8 +3137,8 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     std::vector<cuwacunu::hero::marshal::marshal_session_record_t>
         session_rows{};
     operator_console_view_t current_view = operator_console_view_t::sessions;
-    operator_console_phase_filter_t session_phase_filter =
-        operator_console_phase_filter_t::all;
+    operator_console_state_filter_t session_state_filter =
+        operator_console_state_filter_t::all;
     std::size_t selected_session = 0;
     std::size_t selected_request = 0;
     std::size_t selected_review = 0;
@@ -3125,7 +3167,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
               app->defaults.operator_id, app->defaults.marshal_root.string(),
               status, status_is_error);
         } else {
-          filter_sessions_for_console(all_sessions, session_phase_filter,
+          filter_sessions_for_console(all_sessions, session_state_filter,
                                       &session_rows);
 
           auto &visible =
@@ -3189,8 +3231,9 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
 
           if (current_view == operator_console_view_t::sessions) {
             render_human_sessions_screen(
-                all_sessions, pending_requests.size(), pending_reviews.size(),
-                session_phase_filter, app->defaults.operator_id,
+                all_sessions, pending_reviews, pending_requests.size(),
+                pending_reviews.size(),
+                session_state_filter, app->defaults.operator_id,
                 app->defaults.marshal_root.string(), selected, detail_text,
                 detail_scroll, &detail_total_lines, &detail_page_lines,
                 &detail_scroll, &detail_viewport, status, status_is_error);
@@ -3243,7 +3286,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           } else {
             selected_review = 0;
           }
-          filter_sessions_for_console(all_sessions, session_phase_filter,
+          filter_sessions_for_console(all_sessions, session_state_filter,
                                       &session_rows);
           if (!session_rows.empty()) {
             selected_session =
@@ -3348,7 +3391,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
       if (ch == '\t' || ch == KEY_BTAB) {
         std::string active_session_id{};
         if (current_view == operator_console_view_t::sessions) {
-          filter_sessions_for_console(all_sessions, session_phase_filter,
+          filter_sessions_for_console(all_sessions, session_state_filter,
                                       &session_rows);
           if (!session_rows.empty() && selected_session < session_rows.size()) {
             active_session_id =
@@ -3367,7 +3410,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         }
         cycle_operator_console_view(&current_view);
         if (!active_session_id.empty()) {
-          filter_sessions_for_console(all_sessions, session_phase_filter,
+          filter_sessions_for_console(all_sessions, session_state_filter,
                                       &session_rows);
           if (current_view == operator_console_view_t::sessions) {
             select_session_by_id(session_rows, active_session_id,
@@ -3386,7 +3429,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         dirty = true;
         continue;
       }
-      filter_sessions_for_console(all_sessions, session_phase_filter,
+      filter_sessions_for_console(all_sessions, session_state_filter,
                                   &session_rows);
       auto &visible = current_view == operator_console_view_t::sessions
                           ? session_rows
@@ -3400,7 +3443,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
                                   : selected_review);
       if (current_view == operator_console_view_t::sessions &&
           (ch == 'f' || ch == 'F')) {
-        cycle_operator_console_phase_filter(&session_phase_filter);
+        cycle_operator_console_state_filter(&session_state_filter);
         selected_session = 0;
         detail_dirty = true;
         detail_scroll = 0;
@@ -3495,8 +3538,11 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           dirty = true;
           continue;
         }
-        if ((ch == 'p' || ch == 'P') && (session.phase == "active" ||
-                                         session.phase == "running_campaign")) {
+        if ((ch == 'p' || ch == 'P') && session.lifecycle == "live" &&
+            (session.activity == "planning" ||
+             session.campaign_status == "launching" ||
+             session.campaign_status == "running" ||
+             session.campaign_status == "stopping")) {
           std::string structured{};
           std::string action_error{};
           if (!pause_marshal_session(app, session, false, &structured,
@@ -3515,8 +3561,8 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           dirty = true;
           continue;
         }
-        if ((ch == 'u' || ch == 'U') && session.phase == "paused" &&
-            session.pause_kind == "operator") {
+        if ((ch == 'u' || ch == 'U') && session.lifecycle == "live" &&
+            session.work_gate == "operator_pause") {
           std::string structured{};
           std::string action_error{};
           if (!resume_marshal_session(app, session, &structured,
@@ -3536,16 +3582,17 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           dirty = true;
           continue;
         }
-        if ((ch == 'c' || ch == 'C') && session.phase == "idle") {
-          std::string instruction{};
+        if ((ch == 'm' || ch == 'M') && session.lifecycle == "live") {
+          std::string message{};
           bool cancelled = false;
           if (!prompt_text_dialog(
-                  " Continue session ",
-                  "Provide the operator instruction that should launch more "
-                  "work for this idle session. This is the action that "
-                  "continues the session.",
-                  &instruction, false, false, &cancelled)) {
-            status = "failed to collect continuation instruction";
+                  " Message session ",
+                  "Provide the operator message Marshal Hero should receive. "
+                  "Review-ready sessions wake immediately; other live sessions "
+                  "try direct thread delivery when continuity is available, "
+                  "otherwise they queue for the next safe point.",
+                  &message, false, false, &cancelled)) {
+            status = "failed to collect operator message";
             status_is_error = true;
             dirty = true;
             continue;
@@ -3558,16 +3605,15 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           }
           std::string structured{};
           std::string action_error{};
-          if (!continue_marshal_session(app, session, instruction, &structured,
+          if (!message_marshal_session(app, session, message, &structured,
                                         &action_error)) {
             status = action_error;
             status_is_error = true;
             dirty = true;
             continue;
           }
-          status =
-              "Continued idle session from the session cockpit. Refreshing...";
-          status_is_error = false;
+          status = summarize_message_session_structured(structured, true,
+                                                       &status_is_error);
           inbox_refresh_pending = true;
           inbox_refresh_needs_paint = true;
           detail_dirty = true;
@@ -3575,7 +3621,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           dirty = true;
           continue;
         }
-        if ((ch == 't' || ch == 'T') && session.phase != "finished") {
+        if ((ch == 't' || ch == 'T') && session.lifecycle != "terminal") {
           bool confirmed = false;
           bool cancelled = false;
           if (!prompt_yes_no_dialog(
@@ -3617,7 +3663,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
       if (current_view == operator_console_view_t::requests &&
           (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' ||
            ch == 'C' || ch == 's' || ch == 'S')) {
-        if (is_clarification_pause_kind(visible[selected].pause_kind)) {
+        if (is_clarification_work_gate(visible[selected].work_gate)) {
           std::string answer{};
           bool cancelled = false;
           if (!prompt_text_dialog(" Answer request ",
@@ -3692,12 +3738,14 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
         continue;
       }
       if (current_view == operator_console_view_t::summaries &&
-          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'c' ||
-           ch == 'C' || ch == 'a' || ch == 'A')) {
-        const bool can_continue = (visible[selected].phase == "idle");
+          (ch == '\n' || ch == '\r' || ch == KEY_ENTER || ch == 'm' ||
+           ch == 'M' || ch == 'a' || ch == 'A')) {
+        const bool can_message =
+            (visible[selected].lifecycle == "live" &&
+             visible[selected].activity == "review");
         if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-          status = can_continue
-                       ? "Idle review report. Use 'c' to launch more work, or "
+          status = can_message
+                       ? "Review-ready report. Use 'm' to send a message, or "
                          "'a' to acknowledge and clear the report."
                        : "Finished review report. Use 'a' to acknowledge and "
                          "clear the report after review.";
@@ -3705,16 +3753,17 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
           dirty = true;
           continue;
         }
-        if ((ch == 'c' || ch == 'C') && can_continue) {
-          std::string instruction{};
+        if ((ch == 'm' || ch == 'M') && can_message) {
+          std::string message{};
           bool cancelled = false;
           if (!prompt_text_dialog(
-                  " Continue session ",
-                  "Provide the operator instruction that should launch more "
-                  "work for this idle session. This is the action that "
-                  "continues the session.",
-                  &instruction, false, false, &cancelled)) {
-            status = "failed to collect continuation instruction";
+                  " Message session ",
+                  "Provide the operator message Marshal Hero should receive. "
+                  "Review-ready sessions wake immediately; other live sessions "
+                  "try direct thread delivery when continuity is available, "
+                  "otherwise they queue for the next safe point.",
+                  &message, false, false, &cancelled)) {
+            status = "failed to collect operator message";
             status_is_error = true;
             dirty = true;
             continue;
@@ -3726,16 +3775,16 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
             continue;
           }
           std::string structured{};
-          std::string continue_error{};
-          if (!continue_marshal_session(app, visible[selected], instruction,
-                                        &structured, &continue_error)) {
-            status = continue_error;
+          std::string message_error{};
+          if (!message_marshal_session(app, visible[selected], message,
+                                       &structured, &message_error)) {
+            status = message_error;
             status_is_error = true;
             dirty = true;
             continue;
           }
-          status = "Continued idle session. Refreshing operator inbox...";
-          status_is_error = false;
+          status = summarize_message_session_structured(structured, true,
+                                                       &status_is_error);
           inbox_refresh_pending = true;
           inbox_refresh_needs_paint = true;
           detail_dirty = true;
@@ -3800,14 +3849,14 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
              operator_session_state_label(operator_session_state(session))))
       << ","
       << "\"operator_state_detail\":"
-      << json_quote(operator_session_state_detail(session)) << ","
+      << json_quote(operator_session_state_detail(session, false)) << ","
       << "\"operator_action_hint\":"
       << json_quote(operator_session_action_hint(session)) << ","
-      << "\"phase\":" << json_quote(session.phase) << ","
-      << "\"phase_detail\":" << json_quote(session.phase_detail) << ","
-      << "\"pause_kind\":" << json_quote(session.pause_kind) << ","
+      << "\"phase\":" << json_quote(session.lifecycle) << ","
+      << "\"status_detail\":" << json_quote(session.status_detail) << ","
+      << "\"work_gate\":" << json_quote(session.work_gate) << ","
       << "\"request_kind\":"
-      << json_quote(std::string(human_request_kind_label(session.pause_kind)))
+      << json_quote(std::string(human_request_kind_label(session.work_gate)))
       << ","
       << "\"checkpoint_count\":" << session.checkpoint_count << ","
       << "\"started_at_ms\":" << session.started_at_ms << ","
@@ -3853,11 +3902,19 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
              operator_session_state_label(operator_session_state(session))))
       << ","
       << "\"operator_state_detail\":"
-      << json_quote(operator_session_state_detail(session)) << ","
+      << json_quote(operator_session_state_detail(session, true)) << ","
       << "\"operator_action_hint\":"
       << json_quote(operator_session_action_hint(session)) << ","
-      << "\"phase\":" << json_quote(session.phase) << ","
-      << "\"phase_detail\":" << json_quote(session.phase_detail) << ","
+      << "\"lifecycle\":" << json_quote(session.lifecycle) << ","
+      << "\"work_gate\":" << json_quote(session.work_gate) << ","
+      << "\"activity\":" << json_quote(session.activity) << ","
+      << "\"campaign_status\":" << json_quote(session.campaign_status) << ","
+      << "\"campaign_cursor\":" << json_quote(session.campaign_cursor) << ","
+      << "\"current_thread_id\":" << json_quote(session.current_thread_id)
+      << ","
+      << "\"codex_continuity\":"
+      << json_quote(session.codex_continuity) << ","
+      << "\"status_detail\":" << json_quote(session.status_detail) << ","
       << "\"finish_reason\":" << json_quote(session.finish_reason) << ","
       << "\"checkpoint_count\":" << session.checkpoint_count << ","
       << "\"launch_count\":" << session.launch_count << ","
@@ -3923,13 +3980,14 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   }
   out->all_sessions = sessions;
   for (const auto &session : sessions) {
-    if (session.phase == "paused" &&
-        is_human_request_pause_kind(session.pause_kind)) {
+    if (session.lifecycle == "live" &&
+        session.work_gate != "open" &&
+        is_human_request_work_gate(session.work_gate)) {
       out->actionable_requests.push_back(session);
       continue;
     }
     if (!cuwacunu::hero::marshal::is_marshal_session_summary_state(
-            session.phase)) {
+            session.lifecycle, session.activity)) {
       continue;
     }
     const std::filesystem::path summary_path =
@@ -4226,7 +4284,8 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     return false;
   note = trim_ascii(note);
   disposition = lowercase_copy(trim_ascii(disposition));
-  if (disposition != "acknowledged" && disposition != "dismissed") {
+  if (disposition != "acknowledged" && disposition != "dismissed" &&
+      disposition != "archived") {
     *out_error = "invalid summary disposition";
     return false;
   }
@@ -4238,7 +4297,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     disposition = "acknowledged";
 
   if (!cuwacunu::hero::marshal::is_marshal_session_summary_state(
-          session.phase)) {
+          session)) {
     *out_error = "session does not currently expose an informational summary";
     return false;
   }
@@ -4265,7 +4324,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   std::string ack_json =
       std::string("{\"schema\":") + json_quote(kHumanSummaryAckSchemaV3) +
       ",\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
-      ",\"phase\":" + json_quote(session.phase) +
+      ",\"phase\":" + json_quote(session.lifecycle) +
       ",\"finish_reason\":" + json_quote(session.finish_reason) +
       ",\"summary_sha256_hex\":" + json_quote(summary_sha256_hex) +
       ",\"operator_id\":" + json_quote(app->defaults.operator_id) +
@@ -4289,7 +4348,7 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   ack_json =
       std::string("{\"schema\":") + json_quote(kHumanSummaryAckSchemaV3) +
       ",\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
-      ",\"phase\":" + json_quote(session.phase) +
+      ",\"phase\":" + json_quote(session.lifecycle) +
       ",\"finish_reason\":" + json_quote(session.finish_reason) +
       ",\"summary_sha256_hex\":" + json_quote(summary_sha256_hex) +
       ",\"operator_id\":" + json_quote(app->defaults.operator_id) +
@@ -4329,6 +4388,53 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
     std::string note, std::string *out_structured, std::string *out_error) {
   return finalize_session_summary(app, session, std::move(note), "acknowledged",
                                   out_structured, out_error);
+}
+
+[[nodiscard]] bool archive_session_summary(
+    app_context_t *app,
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    std::string note, std::string *out_structured, std::string *out_error) {
+  if (out_error)
+    out_error->clear();
+  if (!app || !out_structured || !out_error)
+    return false;
+
+  std::string marshal_structured{};
+  const std::string args = std::string("{\"marshal_session_id\":") +
+                           json_quote(session.marshal_session_id) + "}";
+  if (!call_marshal_tool(*app, "hero.marshal.archive_session", args,
+                         &marshal_structured, out_error)) {
+    return false;
+  }
+
+  cuwacunu::hero::marshal::marshal_session_record_t archived_session{};
+  std::string refresh_error{};
+  if (!cuwacunu::hero::marshal::read_marshal_session_record(
+          app->defaults.marshal_root, session.marshal_session_id,
+          &archived_session, &refresh_error)) {
+    *out_error =
+        "session archived but failed to reread it for summary finalization: " +
+        refresh_error;
+    return false;
+  }
+
+  std::string summary_structured{};
+  std::string summary_error{};
+  if (!finalize_session_summary(app, archived_session, std::move(note),
+                                "archived", &summary_structured,
+                                &summary_error)) {
+    *out_error =
+        "session archived but failed to finalize signed archive summary: " +
+        summary_error;
+    return false;
+  }
+
+  sync_human_pending_markers_best_effort(*app);
+  *out_structured =
+      "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
+      ",\"summary\":" + summary_structured +
+      ",\"marshal\":" + marshal_structured + "}";
+  return true;
 }
 
 [[nodiscard]] bool pause_marshal_session(
@@ -4379,35 +4485,98 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
   return true;
 }
 
-[[nodiscard]] bool continue_marshal_session(
+[[nodiscard]] bool message_marshal_session(
     app_context_t *app,
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
-    std::string instruction, std::string *out_structured,
+    std::string message, std::string *out_structured,
     std::string *out_error) {
   if (out_error)
     out_error->clear();
   if (!app || !out_structured || !out_error)
     return false;
-  instruction = trim_ascii(instruction);
-  if (instruction.empty()) {
-    *out_error = "continue_session requires a non-empty instruction";
+  message = trim_ascii(message);
+  if (message.empty()) {
+    *out_error = "message_session requires a non-empty message";
     return false;
   }
 
   std::string marshal_structured{};
   const std::string args = std::string("{\"marshal_session_id\":") +
                            json_quote(session.marshal_session_id) +
-                           ",\"instruction\":" + json_quote(instruction) + "}";
-  if (!call_marshal_tool(*app, "hero.marshal.continue_session", args,
+                           ",\"message\":" + json_quote(message) + "}";
+  if (!call_marshal_tool(*app, "hero.marshal.message_session", args,
                          &marshal_structured, out_error)) {
     return false;
   }
   sync_human_pending_markers_best_effort(*app);
+  std::string delivery{};
+  std::string reply_text{};
+  std::string warning{};
+  std::string marshal_session_json{};
+  std::string session_activity{};
+  (void)extract_json_string_field(marshal_structured, "delivery", &delivery);
+  (void)extract_json_string_field(marshal_structured, "reply_text",
+                                  &reply_text);
+  (void)extract_json_string_field(marshal_structured, "warning", &warning);
+  if (extract_json_object_field(marshal_structured, "session",
+                                &marshal_session_json)) {
+    (void)extract_json_string_field(marshal_session_json, "activity",
+                                    &session_activity);
+  }
   *out_structured =
       "{\"marshal_session_id\":" + json_quote(session.marshal_session_id) +
-      ",\"instruction\":" + json_quote(instruction) +
+      ",\"message\":" + json_quote(message) +
+      ",\"delivery\":" + json_quote(delivery) +
+      ",\"reply_text\":" + json_quote(reply_text) +
+      ",\"warning\":" + json_quote(warning) +
+      ",\"session_activity\":" + json_quote(session_activity) +
       ",\"marshal\":" + marshal_structured + "}";
   return true;
+}
+
+[[nodiscard]] std::string summarize_message_session_structured(
+    const std::string &structured, bool refreshing, bool *out_is_error) {
+  if (out_is_error)
+    *out_is_error = false;
+  std::string delivery{};
+  std::string reply_text{};
+  std::string warning{};
+  std::string session_activity{};
+  (void)extract_json_string_field(structured, "delivery", &delivery);
+  (void)extract_json_string_field(structured, "reply_text", &reply_text);
+  (void)extract_json_string_field(structured, "warning", &warning);
+  (void)extract_json_string_field(structured, "session_activity",
+                                  &session_activity);
+  const auto compact = [](std::string text) {
+    text = trim_ascii(text);
+    for (char &ch : text) {
+      if (ch == '\n' || ch == '\r' || ch == '\t')
+        ch = ' ';
+    }
+    constexpr std::size_t kMax = 180;
+    if (text.size() > kMax) {
+      text = text.substr(0, kMax - 3);
+      text += "...";
+    }
+    return text;
+  };
+  const std::string suffix = refreshing ? " Refreshing..." : "";
+  if (delivery == "failed") {
+    if (out_is_error)
+      *out_is_error = true;
+    return compact(warning.empty() ? "Marshal message delivery failed."
+                                   : warning);
+  }
+  if (delivery == "delivered" && !trim_ascii(reply_text).empty()) {
+    return "Marshal: " + compact(reply_text) + suffix;
+  }
+  if (delivery == "queued" && session_activity == "handling_message") {
+    return "Queued message for live thread delivery." + suffix;
+  }
+  if (delivery == "queued") {
+    return "Queued message for the next safe point." + suffix;
+  }
+  return "Delivered message to the session." + suffix;
 }
 
 [[nodiscard]] bool terminate_marshal_session(
@@ -4462,6 +4631,10 @@ void render_human_requests_bootstrap_screen(std::string_view operator_id,
                                            const std::string &arguments_json,
                                            std::string *out_structured,
                                            std::string *out_error);
+[[nodiscard]] bool handle_tool_archive_summary(app_context_t *app,
+                                               const std::string &arguments_json,
+                                               std::string *out_structured,
+                                               std::string *out_error);
 
 #define HERO_HUMAN_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER)         \
   {NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER},
@@ -4553,8 +4726,8 @@ find_human_tool_descriptor(std::string_view tool_name) {
           out_error)) {
     return false;
   }
-  if (session.phase != "paused" ||
-      !is_human_request_pause_kind(session.pause_kind)) {
+  if (session.lifecycle != "live" ||
+      !is_human_request_work_gate(session.work_gate)) {
     *out_error = "session is not currently paused for a human request";
     return false;
   }
@@ -4646,7 +4819,7 @@ find_human_tool_descriptor(std::string_view tool_name) {
     return false;
   }
   if (!cuwacunu::hero::marshal::is_marshal_session_summary_state(
-          session.phase)) {
+          session)) {
     *out_error = "session does not currently expose an informational summary";
     return false;
   }
@@ -4691,8 +4864,8 @@ find_human_tool_descriptor(std::string_view tool_name) {
           out_error)) {
     return false;
   }
-  if (session.phase != "paused" ||
-      !is_clarification_pause_kind(session.pause_kind)) {
+  if (session.lifecycle != "live" ||
+      !is_clarification_work_gate(session.work_gate)) {
     *out_error = "session is not currently paused for clarification";
     return false;
   }
@@ -4731,7 +4904,7 @@ find_human_tool_descriptor(std::string_view tool_name) {
           out_error)) {
     return false;
   }
-  if (session.phase != "paused" || session.pause_kind != "governance") {
+  if (session.lifecycle != "live" || session.work_gate != "governance") {
     *out_error = "session is not currently paused for governance";
     return false;
   }
@@ -4770,6 +4943,38 @@ find_human_tool_descriptor(std::string_view tool_name) {
   }
   return acknowledge_session_summary(app, session, note, out_structured,
                                      out_error);
+}
+
+[[nodiscard]] bool handle_tool_archive_summary(
+    app_context_t *app, const std::string &arguments_json,
+    std::string *out_structured, std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
+  out_error->clear();
+
+  std::string marshal_session_id{};
+  std::string note{};
+  (void)extract_json_string_field(arguments_json, "marshal_session_id",
+                                  &marshal_session_id);
+  (void)extract_json_string_field(arguments_json, "note", &note);
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "archive_summary requires arguments.marshal_session_id";
+    return false;
+  }
+  if (trim_ascii(note).empty()) {
+    *out_error = "archive_summary requires arguments.note";
+    return false;
+  }
+
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  if (!cuwacunu::hero::marshal::read_marshal_session_record(
+          app->defaults.marshal_root, marshal_session_id, &session,
+          out_error)) {
+    return false;
+  }
+  return archive_session_summary(app, session, note, out_structured,
+                                 out_error);
 }
 
 std::filesystem::path
@@ -5023,9 +5228,9 @@ bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
       for (std::size_t i = 0; i < pending.size(); ++i) {
         std::cout << "  [" << i + 1 << "] " << pending[i].marshal_session_id
                   << "  " << pending[i].objective_name << "  "
-                  << operator_session_state_detail(pending[i]);
-        if (!pending[i].phase_detail.empty()) {
-          std::cout << "  " << pending[i].phase_detail;
+                  << operator_session_state_detail(pending[i], false);
+        if (!pending[i].status_detail.empty()) {
+          std::cout << "  " << pending[i].status_detail;
         }
         std::cout << "\n";
       }
@@ -5053,7 +5258,7 @@ bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
     }
     std::cout << "\n=== Human Request ===\n" << request_text << "\n";
 
-    if (is_clarification_pause_kind(session.pause_kind)) {
+    if (is_clarification_work_gate(session.work_gate)) {
       std::cout << "Provide clarification answer (blank to cancel): "
                 << std::flush;
       std::string answer{};
@@ -5127,7 +5332,7 @@ bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
     for (std::size_t i = 0; i < summaries.size(); ++i) {
       std::cout << "  [" << i + 1 << "] " << summaries[i].marshal_session_id
                 << "  " << summaries[i].objective_name << "  "
-                << operator_session_state_detail(summaries[i]) << "  "
+                << operator_session_state_detail(summaries[i], true) << "  "
                 << build_summary_effort_text(summaries[i]) << "\n";
     }
     std::cout << "Select review number (blank to cancel): " << std::flush;
@@ -5152,15 +5357,17 @@ bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
     return false;
   std::cout
       << "\n=== Human Review Report ===\n"
-      << "[continue launches more work; acknowledge records a required review "
+      << "[message sends fresh operator guidance; acknowledge records a "
+         "required review "
          "message and clears this report from the operator queue]\n\n"
       << summary_text << "\n";
 
-  const bool can_continue = (session.phase == "idle");
+  const bool can_message =
+      (session.lifecycle == "live" && session.activity == "review");
   std::cout << "Resolve this review? "
-            << (can_continue ? "[c]ontinue session or [a]cknowledge review, or "
-                               "blank to cancel: "
-                             : "[a]cknowledge review, or blank to cancel: ")
+            << (can_message ? "[m]essage session or [a]cknowledge review, or "
+                              "blank to cancel: "
+                            : "[a]cknowledge review, or blank to cancel: ")
             << std::flush;
   std::string control{};
   if (!std::getline(std::cin, control))
@@ -5168,33 +5375,33 @@ bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
   control = lowercase_copy(trim_ascii(control));
   if (control.empty())
     return true;
-  if ((!can_continue || (control != "c" && control != "continue")) &&
+  if ((!can_message || (control != "m" && control != "message")) &&
       control != "a" && control != "ack" && control != "acknowledge") {
     if (error)
       *error = "invalid review action selection";
     return false;
   }
-  if (can_continue && (control == "c" || control == "continue")) {
-    std::cout << "Instruction that should launch more work: " << std::flush;
+  if (can_message && (control == "m" || control == "message")) {
+    std::cout << "Operator message for the live session: " << std::flush;
     std::string instruction{};
     if (!std::getline(std::cin, instruction))
       return false;
     instruction = trim_ascii(instruction);
     if (instruction.empty()) {
       if (error)
-        *error = "continue instruction is required";
+        *error = "operator message is required";
       return false;
     }
     std::string structured{};
-    if (!continue_marshal_session(app, session, instruction, &structured,
+    if (!message_marshal_session(app, session, instruction, &structured,
                                   error)) {
       return false;
     }
-    std::cout << "\nSession continuation applied.\n" << structured << "\n";
+    std::cout << "\nSession message applied.\n" << structured << "\n";
     return true;
   }
 
-  std::cout << "Acknowledgment message (required; this does not continue the "
+  std::cout << "Acknowledgment message (required; this does not message the "
                "session): "
             << std::flush;
   std::string note{};

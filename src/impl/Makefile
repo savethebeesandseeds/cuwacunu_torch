@@ -54,10 +54,6 @@ human_hero:
 .PHONY: hero
 hero: hashimyei lattice_hero config_hero runtime_hero marshal_hero human_hero
 
-.PHONY: iinuji
-iinuji:
-	$(MAKE) -C $(HERE_PATH)/iinuji all
-
 .PHONY: all
 all: iitepi piaabo camahjucunu wikimyei hashimyei lattice_hero config_hero runtime_hero marshal_hero human_hero
 	@$(LOG_SUCCESS)

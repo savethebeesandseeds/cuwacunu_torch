@@ -22,20 +22,20 @@ key = iinuji_logs_show_date
 scope = GUI section
 type = bool
 required = false
-default = true
+default = false
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = default F8 shell logs rendering includes wall-clock timestamp prefix
+nuance = default F8 shell logs rendering hides the wall-clock timestamp prefix
 
 [FIELD GUI.iinuji_logs_show_thread]
 key = iinuji_logs_show_thread
 scope = GUI section
 type = bool
 required = false
-default = true
+default = false
 range = true|false
 allowed = true,false,1,0,yes,no,on,off
-nuance = default F8 shell logs rendering includes thread id column
+nuance = default F8 shell logs rendering hides the thread id column
 
 [FIELD GUI.iinuji_logs_show_metadata]
 key = iinuji_logs_show_metadata
@@ -96,6 +96,16 @@ default = /cuwacunu/src/resources/waajacamaya.png
 range = filesystem path
 allowed = readable PNG file path; invalid or unreadable paths fall back to a text-only boot panel
 nuance = iinuji_cmd bootstrap logo asset rendered in the loading screen right-hand showcase panel
+
+[FIELD GUI.iinuji_closing_logo_path]
+key = iinuji_closing_logo_path
+scope = GUI section
+type = string
+required = false
+default = /cuwacunu/src/resources/waajacamaya.png
+range = filesystem path
+allowed = readable PNG file path; invalid or unreadable paths fall back to GUI.iinuji_loading_logo_path during shutdown
+nuance = iinuji_cmd farewell logo asset rendered briefly before the ncurses terminal closes
 
 [FIELD GUI.iinuji_home_animation_path]
 key = iinuji_home_animation_path

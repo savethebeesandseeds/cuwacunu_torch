@@ -47,13 +47,13 @@ struct human_operator_inbox_t {
 
 enum class operator_console_view_t { sessions, requests, summaries };
 
-enum class operator_console_phase_filter_t {
+enum class operator_console_state_filter_t {
   all,
-  active,
-  running_campaign,
-  paused,
-  idle,
-  finished
+  working,
+  campaign_active,
+  blocked,
+  review,
+  terminal
 };
 
 enum class operator_session_state_t {
@@ -93,7 +93,7 @@ void sort_sessions_newest_first(
 void filter_sessions_for_console(
     const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>
         &all_sessions,
-    operator_console_phase_filter_t filter,
+    operator_console_state_filter_t filter,
     std::vector<cuwacunu::hero::marshal::marshal_session_record_t> *out);
 [[nodiscard]] std::optional<std::size_t> find_session_index_by_id(
     const std::vector<cuwacunu::hero::marshal::marshal_session_record_t>
@@ -104,29 +104,31 @@ void select_session_by_id(
         &sessions,
     std::string_view marshal_session_id, std::size_t *selected);
 void cycle_operator_console_view(operator_console_view_t *view);
-void cycle_operator_console_phase_filter(
-    operator_console_phase_filter_t *filter);
+void cycle_operator_console_state_filter(
+    operator_console_state_filter_t *filter);
 [[nodiscard]] std::string_view
 operator_console_view_label(operator_console_view_t view);
 [[nodiscard]] std::string_view
-operator_console_phase_filter_label(operator_console_phase_filter_t filter);
-[[nodiscard]] bool is_clarification_pause_kind(std::string_view pause_kind);
-[[nodiscard]] bool is_human_request_pause_kind(std::string_view pause_kind);
+operator_console_state_filter_label(operator_console_state_filter_t filter);
+[[nodiscard]] bool is_clarification_work_gate(std::string_view work_gate);
+[[nodiscard]] bool is_human_request_work_gate(std::string_view work_gate);
 [[nodiscard]] std::string_view
-human_request_kind_label(std::string_view pause_kind);
+human_request_kind_label(std::string_view work_gate);
 [[nodiscard]] operator_session_state_t operator_session_state(
     const cuwacunu::hero::marshal::marshal_session_record_t &session);
 [[nodiscard]] std::string_view
 operator_session_state_label(operator_session_state_t state);
 [[nodiscard]] std::string operator_session_state_detail(
-    const cuwacunu::hero::marshal::marshal_session_record_t &session);
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    bool has_pending_review = true);
 [[nodiscard]] std::string operator_session_action_hint(
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
     bool has_pending_review = true);
 [[nodiscard]] std::string build_summary_effort_text(
     const cuwacunu::hero::marshal::marshal_session_record_t &session);
 [[nodiscard]] std::string session_state_badge(
-    const cuwacunu::hero::marshal::marshal_session_record_t &session);
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    bool has_pending_review = true);
 [[nodiscard]] bool prompt_text_dialog(const std::string &title,
                                       const std::string &label,
                                       std::string *out_value, bool secret,
@@ -171,6 +173,10 @@ prompt_choice_dialog(const std::string &title, const std::string &prompt,
     app_context_t *app,
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
     std::string note, std::string *out_structured, std::string *out_error);
+[[nodiscard]] bool archive_session_summary(
+    app_context_t *app,
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    std::string note, std::string *out_structured, std::string *out_error);
 [[nodiscard]] bool pause_marshal_session(
     app_context_t *app,
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
@@ -179,10 +185,10 @@ prompt_choice_dialog(const std::string &title, const std::string &prompt,
     app_context_t *app,
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
     std::string *out_structured, std::string *out_error);
-[[nodiscard]] bool continue_marshal_session(
+[[nodiscard]] bool message_marshal_session(
     app_context_t *app,
     const cuwacunu::hero::marshal::marshal_session_record_t &session,
-    std::string instruction, std::string *out_structured,
+    std::string message, std::string *out_structured,
     std::string *out_error);
 [[nodiscard]] bool terminate_marshal_session(
     app_context_t *app,

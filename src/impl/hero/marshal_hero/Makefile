@@ -13,13 +13,13 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 $(eval $(call BUILD_OBJ_INC, common, hero_marshal_tools, hero_marshal_tools))
 $(eval $(call BUILD_OBJ_INC, common, marshal_session_workspace, marshal_session_workspace))
 
-MARSHAL_HERO_OBJS := \
-  $(OUTPUT_PATH)/common/hero_marshal_tools.o \
-  $(OUTPUT_PATH)/common/marshal_session_workspace.o
+MARSHAL_HERO_TARGETS := \
+  hero_marshal_tools \
+  marshal_session_workspace
 
 # -----------------------------------------------------------------
 # Aggregate Target
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(MARSHAL_HERO_OBJS)
+all: $(MARSHAL_HERO_TARGETS)
 	@$(LOG_SUCCESS)

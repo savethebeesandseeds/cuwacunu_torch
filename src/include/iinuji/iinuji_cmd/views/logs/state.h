@@ -30,10 +30,10 @@ inline constexpr std::size_t logs_settings_count() {
 struct ShellLogsState {
   bool auto_follow{true};
   bool mouse_capture{true};
-  LogsLevelFilter level_filter{LogsLevelFilter::DebugOrHigher};
+  LogsLevelFilter level_filter{LogsLevelFilter::InfoOrHigher};
   LogsMetadataFilter metadata_filter{LogsMetadataFilter::Any};
-  bool show_date{true};
-  bool show_thread{true};
+  bool show_date{false};
+  bool show_thread{false};
   bool show_metadata{true};
   bool show_color{true};
   std::size_t selected_setting{0};

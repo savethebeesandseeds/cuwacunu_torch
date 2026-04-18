@@ -1,6 +1,6 @@
 #include <algorithm>
-#include <cerrno>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -17,23 +17,25 @@
 
 namespace {
 
-constexpr const char* kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
-constexpr const char* kServerName = "hero_hashimyei_mcp";
+constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
+constexpr const char *kServerName = "hero_hashimyei_mcp";
 
 __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 }
 
 void write_stdout_text(std::string_view text) {
-  const char* data = text.data();
+  const char *data = text.data();
   std::size_t remaining = text.size();
   while (remaining > 0) {
     const ssize_t wrote = ::write(STDOUT_FILENO, data, remaining);
     if (wrote < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR)
+        continue;
       break;
     }
-    if (wrote == 0) break;
+    if (wrote == 0)
+      break;
     const auto wrote_size = static_cast<std::size_t>(wrote);
     data += wrote_size;
     remaining -= wrote_size;
@@ -42,34 +44,39 @@ void write_stdout_text(std::string_view text) {
 
 void write_stderr_text(std::string_view text) {
   cuwacunu::hero::mcp_observability::mirror_stderr_text(text);
-  const char* data = text.data();
+  const char *data = text.data();
   std::size_t remaining = text.size();
   while (remaining > 0) {
     const ssize_t wrote = ::write(STDERR_FILENO, data, remaining);
     if (wrote < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR)
+        continue;
       break;
     }
-    if (wrote == 0) break;
+    if (wrote == 0)
+      break;
     const auto wrote_size = static_cast<std::size_t>(wrote);
     data += wrote_size;
     remaining -= wrote_size;
   }
 }
 
-void print_help(const char* argv0) {
-  std::string help = std::string("Usage: ") + argv0 + " [options]\n" +
-                     "Options:\n"
-                     "  --global-config <path>   Global .config used to resolve [REAL_HERO].hashimyei_hero_dsl_filename\n"
-                     "  --tool <name>            Execute one MCP tool and exit\n"
-                     "  --args-json <json>       Tool arguments JSON object (default: {})\n"
-                     "  --list-tools             Human-readable tool list\n"
-                     "  --list-tools-json        Print MCP tools/list JSON and exit\n"
-                     "  --hero-config <path>     Explicit Hashimyei HERO defaults DSL\n"
-                     "  --store-root <path>      Override store_root from HERO defaults DSL\n"
-                     "  --catalog <path>         Override catalog_path from HERO defaults DSL\n"
-                     "  (without --tool, server mode reads JSON-RPC messages from stdin)\n"
-                     "  --help                   Show this help\n";
+void print_help(const char *argv0) {
+  std::string help =
+      std::string("Usage: ") + argv0 + " [options]\n" +
+      "Options:\n"
+      "  --global-config <path>   Global .config used to resolve "
+      "[REAL_HERO].hashimyei_hero_dsl_filename\n"
+      "  --tool <name>            Execute one MCP tool and exit\n"
+      "  --args-json <json>       Tool arguments JSON object (default: {})\n"
+      "  --list-tools             Human-readable tool list\n"
+      "  --list-tools-json        Print MCP tools/list JSON and exit\n"
+      "  --hero-config <path>     Explicit Hashimyei HERO defaults DSL\n"
+      "  --store-root <path>      Override store_root from HERO defaults DSL\n"
+      "  --catalog <path>         Override catalog_path from HERO defaults "
+      "DSL\n"
+      "  (without --tool, server mode reads JSON-RPC messages from stdin)\n"
+      "  --help                   Show this help\n";
   write_stdout_text(help);
 }
 
@@ -86,9 +93,9 @@ void print_help(const char* argv0) {
   return std::string(in.substr(b, e - b));
 }
 
-}  // namespace
+} // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   cuwacunu::hero::mcp_observability::clear_log_paths();
   cuwacunu::piaabo::dlog_set_terminal_output_enabled(false);
 
@@ -174,7 +181,8 @@ int main(int argc, char** argv) {
       return 2;
     }
     direct_tool_args_json = trim_ascii(direct_tool_args_json);
-    if (direct_tool_args_json.empty()) direct_tool_args_json = "{}";
+    if (direct_tool_args_json.empty())
+      direct_tool_args_json = "{}";
     if (direct_tool_args_json.front() != '{') {
       write_stderr_text("--args-json must be a JSON object\n");
       return 2;
@@ -187,7 +195,8 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (list_tools) {
-    write_stdout_text(cuwacunu::hero::hashimyei_mcp::build_tools_list_human_text());
+    write_stdout_text(
+        cuwacunu::hero::hashimyei_mcp::build_tools_list_human_text());
     return 0;
   }
 
@@ -270,16 +279,17 @@ int main(int argc, char** argv) {
 
   app.store_root = store_root;
   app.lattice_catalog_path = lattice_catalog_path;
+  app.global_config_path = global_config_path;
   app.catalog_options = options;
 
   {
     std::ostringstream extra;
     cuwacunu::hero::mcp_observability::append_json_string_field(
         extra, "mode",
-        direct_tool_mode   ? "direct_tool"
-        : list_tools       ? "list_tools"
-        : list_tools_json  ? "list_tools_json"
-                           : "server");
+        direct_tool_mode  ? "direct_tool"
+        : list_tools      ? "list_tools"
+        : list_tools_json ? "list_tools_json"
+                          : "server");
     cuwacunu::hero::mcp_observability::append_json_string_field(
         extra, "global_config_path", global_config_path.string());
     cuwacunu::hero::mcp_observability::append_json_string_field(
@@ -350,7 +360,7 @@ int main(int argc, char** argv) {
     }
     write_stdout_text(tool_result + "\n");
     return cuwacunu::hero::hashimyei_mcp::tool_result_is_error(tool_result) ? 1
-                                                                             : 0;
+                                                                            : 0;
   }
 
   if (::isatty(STDIN_FILENO) != 0) {

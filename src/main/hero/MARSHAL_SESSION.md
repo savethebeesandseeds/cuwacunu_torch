@@ -1,7 +1,7 @@
 # Marshal Session Constitution
 
 This document is the shortest stable statement of what the Marshal Hero session
-is allowed to be in v4.
+is allowed to be in v6.
 
 ## Sovereignty
 
@@ -16,8 +16,23 @@ is allowed to be in v4.
 
 ## Core Session
 
-- The session is `active -> running_campaign -> active -> ...` until it pauses,
-  idles, or finishes.
+- The session remains `lifecycle=live` while `work_gate`, `activity`, and
+  `campaign_status` change around it. Campaign supervision is tracked as
+  `campaign_status = none | launching | running | stopping`; review-ready
+  pauses are tracked as `lifecycle=live, activity=review`.
+- `activity` is observational telemetry, not launch authority. Marshal gates
+  irreversible side effects on `lifecycle`, `work_gate`, `campaign_status`,
+  and explicit message/campaign facts rather than treating `activity` as a
+  second hidden phase machine.
+- A sudden interruption or reboot must not leave a stale live session behind.
+  If the detached Marshal runner disappears while the session is
+  `lifecycle=live`, reconciliation should park the session as review-ready
+  (`lifecycle=live`, `activity=review`, `finish_reason=interrupted`), preserve
+  recovery detail, and leave `message_session` as the normal operator re-entry
+  path.
+- Operator messages are durable first-class entities with stable `message_id`,
+  explicit delivery state, and exact turn recording, so live conversation can
+  survive recovery without collapsing into lossy summary-only memory.
 - Launch-time Codex settings are resolved once when the session is created,
   persisted in the session manifest, and mirrored into a generated
   `hero.marshal.dsl` artifact inside the session ledger.
@@ -29,14 +44,15 @@ is allowed to be in v4.
   possible.
 - If a planning checkpoint already produced an intent artifact and later fails
   during mutation bookkeeping or validation, Marshal Hero preserves that
-  attempted checkpoint, parks the session as `idle` with `finish_reason=failed`,
-  and allows a future `continue_session`.
+  attempted checkpoint, parks the session as review-ready with
+  `finish_reason=failed`, and allows a future `message_session`.
 
 ## Intent Contract
 
 - `intent = launch_campaign | pause_for_clarification | request_governance | complete | terminate`
 - `complete` means the current objective is satisfied for now and the session
-  should park as `idle` until a future `continue_session`.
+  should park as review-ready (`lifecycle=live`, `activity=review`) until a
+  future `message_session`.
 - `launch_campaign` carries:
   - `mode = run_plan | binding`
   - `binding_id` only when `mode = binding`
@@ -56,21 +72,21 @@ is allowed to be in v4.
 - Human interaction exists only for:
   - ordinary clarification via `pause_for_clarification`
   - governance expansion via `request_governance`
-  - idle/finished session-summary acknowledgment
+  - review-ready/terminal session-summary acknowledgment
   - explicit operator pause/resume/terminate controls
 - Human-facing operator surfaces may present a derived state vocabulary such as
   `Running`, `Waiting: Clarification`, `Waiting: Governance`, `Operator Paused`,
   `Review`, and `Done`, but those are projections of the persisted session
-  ledger rather than replacements for `phase`, `pause_kind`, or
-  `finish_reason`.
+  ledger rather than replacements for `lifecycle`, `work_gate`, `activity`,
+  or `finish_reason`.
 - Governance resolutions are typed:
   - `grant`
   - `deny`
   - `clarify`
   - `terminate`
-- A granted governance resolution returns the session to `active`; it does not
+- A granted governance resolution returns the session to `lifecycle=live`; it does not
   directly choose the next Runtime bind.
-- Clarification answers are unsigned and auto-resume the paused session.
+- Clarification answers are unsigned and auto-resume the blocked session.
 
 ## Mutability
 
@@ -103,7 +119,7 @@ is allowed to be in v4.
 ## Persistence
 
 - The session persists as artifacts, not as one immortal process.
-- The minimum v4 ledger is:
+- The minimum v6 ledger is:
   - `marshal.session.manifest.lls`
   - `marshal.objective.dsl`
   - `marshal.objective.md`
@@ -115,6 +131,7 @@ is allowed to be in v4.
   - `logs/codex.session.stderr.jsonl`
   - `marshal.session.memory.md`
   - `marshal.session.events.jsonl`
+  - `marshal.session.turns.jsonl`
   - `checkpoints/input.latest.json`
   - `checkpoints/intent.latest.json`
   - numbered `input.*.json` and `intent.*.json`
@@ -123,15 +140,18 @@ is allowed to be in v4.
   - `human/governance_resolution.latest.json` plus detached `.sig` when signed
     governance occurs
   - `human/clarification_answer.latest.json` when ordinary clarification occurs
-  - `human/summary.latest.md` when a session reaches `idle` or `finished`
+  - `human/summary.latest.md` when a session reaches review-ready or terminal
 
 `codex.session.stdout.jsonl` stores the raw `codex exec --json` stream for the
 latest checkpoint attempt. `codex.session.stderr.jsonl` mirrors stderr as
 line-wrapped JSONL entries with `stream`, `line_index`, and `text`.
+`marshal.session.turns.jsonl` stores exact operator/Marshal live-conversation
+turns keyed by stable `message_id`, while `marshal.session.memory.md` remains a
+distilled continuity layer rather than the canonical turn transcript.
 
 ## Design Intention
 
-The v4 session model should feel lawful, auditable, and productively
+The v6 session model should feel lawful, auditable, and productively
 autonomous:
 
 - evidence before launch

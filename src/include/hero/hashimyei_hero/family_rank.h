@@ -18,7 +18,7 @@ namespace cuwacunu {
 namespace hero {
 namespace family_rank {
 
-inline constexpr std::string_view kFamilyRankSchemaV1 = "hero.family.rank.v1";
+inline constexpr std::string_view kFamilyRankSchemaV2 = "hero.family.rank.v2";
 
 struct assignment_t {
   std::uint64_t rank{0};
@@ -28,9 +28,9 @@ struct assignment_t {
 };
 
 struct state_t {
-  std::string schema{std::string(kFamilyRankSchemaV1)};
+  std::string schema{std::string(kFamilyRankSchemaV2)};
   std::string family{};
-  std::string contract_hash{};
+  std::string dock_hash{};
   std::string source_view_kind{};
   std::string source_view_transport_sha256{};
   std::uint64_t updated_at_ms{0};
@@ -73,8 +73,8 @@ struct state_t {
 }
 
 [[nodiscard]] inline std::string scope_key(std::string_view family,
-                                           std::string_view contract_hash) {
-  return trim_ascii_copy(family) + "|" + trim_ascii_copy(contract_hash);
+                                           std::string_view dock_hash) {
+  return trim_ascii_copy(family) + "|" + trim_ascii_copy(dock_hash);
 }
 
 [[nodiscard]] inline std::optional<std::uint64_t> rank_for_hashimyei(
@@ -109,11 +109,11 @@ struct state_t {
 
   const auto schema_it = kv.find("schema");
   if (schema_it == kv.end() ||
-      trim_ascii_copy(schema_it->second) != std::string(kFamilyRankSchemaV1)) {
+      trim_ascii_copy(schema_it->second) != std::string(kFamilyRankSchemaV2)) {
     if (error) *error = "family rank schema mismatch";
     return false;
   }
-  out->schema = std::string(kFamilyRankSchemaV1);
+  out->schema = std::string(kFamilyRankSchemaV2);
 
   const auto family_it = kv.find("family");
   if (family_it == kv.end()) {
@@ -126,14 +126,14 @@ struct state_t {
     return false;
   }
 
-  const auto contract_it = kv.find("contract_hash");
-  if (contract_it == kv.end()) {
-    if (error) *error = "family rank payload missing contract_hash";
+  const auto dock_it = kv.find("dock_hash");
+  if (dock_it == kv.end()) {
+    if (error) *error = "family rank payload missing dock_hash";
     return false;
   }
-  out->contract_hash = trim_ascii_copy(contract_it->second);
-  if (out->contract_hash.empty()) {
-    if (error) *error = "family rank payload contract_hash is empty";
+  out->dock_hash = trim_ascii_copy(dock_it->second);
+  if (out->dock_hash.empty()) {
+    if (error) *error = "family rank payload dock_hash is empty";
     return false;
   }
   if (const auto it = kv.find("source_view_kind"); it != kv.end()) {
@@ -207,7 +207,7 @@ struct state_t {
 
   state_t normalized = state;
   if (normalized.schema.empty()) {
-    normalized.schema = std::string(kFamilyRankSchemaV1);
+    normalized.schema = std::string(kFamilyRankSchemaV2);
   }
   std::sort(normalized.assignments.begin(), normalized.assignments.end(),
             [](const assignment_t& a, const assignment_t& b) {
@@ -221,7 +221,7 @@ struct state_t {
   document.entries.push_back(
       make_runtime_lls_string_entry("family", normalized.family));
   document.entries.push_back(
-      make_runtime_lls_string_entry("contract_hash", normalized.contract_hash));
+      make_runtime_lls_string_entry("dock_hash", normalized.dock_hash));
   if (!normalized.source_view_kind.empty()) {
     document.entries.push_back(make_runtime_lls_string_entry(
         "source_view_kind", normalized.source_view_kind));
@@ -259,7 +259,7 @@ struct state_t {
 [[nodiscard]] inline bool ordering_matches(const state_t& lhs,
                                            const state_t& rhs) {
   if (trim_ascii_copy(lhs.family) != trim_ascii_copy(rhs.family) ||
-      trim_ascii_copy(lhs.contract_hash) != trim_ascii_copy(rhs.contract_hash) ||
+      trim_ascii_copy(lhs.dock_hash) != trim_ascii_copy(rhs.dock_hash) ||
       lhs.assignments.size() != rhs.assignments.size()) {
     return false;
   }

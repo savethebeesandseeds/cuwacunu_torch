@@ -21,76 +21,76 @@ MAIN_LOCAL_TARGETS := all link install clean hero campaign config_hero hashimyei
 TARGET_RULES := $(sort $(MAIN_LOCAL_TARGETS) rules production_rules targets help)
 
 .PHONY: hero
-hero: autoprep
+hero: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/hero all $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: build-campaign
-build-campaign: autoprep
+build-campaign: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/tools build-campaign $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: run-campaign
-run-campaign: autoprep
+run-campaign: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/tools run-campaign $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: campaign
 campaign: run-campaign
 
 .PHONY: build-reset-runtime
-build-reset-runtime: autoprep
+build-reset-runtime: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/tools build-reset-runtime $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: run-reset-runtime
-run-reset-runtime: autoprep
+run-reset-runtime: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/tools run-reset-runtime $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: reset-runtime
 reset-runtime: run-reset-runtime
 
 .PHONY: hashimyei_hero
-hashimyei_hero: autoprep
+hashimyei_hero: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/hero install-hashimyei-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: config_hero
-config_hero: autoprep
+config_hero: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/hero install-config-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: lattice_hero
-lattice_hero: autoprep
+lattice_hero: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/hero install-lattice-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: runtime_hero
-runtime_hero: autoprep build-campaign build-reset-runtime
+runtime_hero: $(ORDER_PREP) build-campaign build-reset-runtime
 	+$(MAKE) -C $(HERE_PATH)/hero install-runtime-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: marshal_hero
-marshal_hero: autoprep
+marshal_hero: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/hero install-marshal-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: human_hero
-human_hero: autoprep
+human_hero: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/hero install-human-hero $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: tools
-tools: autoprep
+tools: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/tools all $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: interface
-interface: autoprep
+interface: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/interface all $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: build-cuwacunu-cmd
-build-cuwacunu-cmd: autoprep
+build-cuwacunu-cmd: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/interface build-cuwacunu-cmd $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: run-cuwacunu-cmd
-run-cuwacunu-cmd: autoprep
+run-cuwacunu-cmd: $(ORDER_PREP)
 	+$(MAKE) -C $(HERE_PATH)/interface run-cuwacunu-cmd $(SUBMAKE_NO_AUTOPREP)
 
 .PHONY: cuwacunu.cmd
 cuwacunu.cmd: run-cuwacunu-cmd
 
 .PHONY: tests
-tests: autoprep
+tests: $(ORDER_PREP)
 	+$(MAKE) -C $(TESTS_PATH) all $(SUBMAKE_NO_AUTOPREP)
 
 # Pass-through test dispatcher targets so root-level mkc usage can call tests
@@ -98,21 +98,21 @@ tests: autoprep
 .PHONY: test ta clean_tests parser dsl types exchange piaabo data iinuji \
 	iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval
 test ta parser dsl types exchange piaabo data iinuji \
-iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval: autoprep
+iinuji_torch tsiemene iitepi https db hashimyei jkimyei vicreg mdn expval: $(ORDER_PREP)
 	+$(MAKE) -C $(TESTS_PATH) $@ $(SUBMAKE_NO_AUTOPREP)
 
 clean_tests:
 	+$(MAKE) -C $(TESTS_PATH) $@
 
 .PHONY: test_% clear_% clear-test_%
-test_%: autoprep
+test_%: $(ORDER_PREP)
 	+$(MAKE) -C $(TESTS_PATH) $@ $(SUBMAKE_NO_AUTOPREP)
 
 clear_% clear-test_%:
 	+$(MAKE) -C $(TESTS_PATH) $@
 
 .PHONY: link
-link: autoprep hero tools interface
+link: $(ORDER_PREP) hero tools interface
 	@$(LOG_SUCCESS)
 
 .PHONY: install

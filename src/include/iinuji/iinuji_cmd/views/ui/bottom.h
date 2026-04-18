@@ -1,9 +1,11 @@
 #pragma once
 
+#include <sstream>
 #include <string>
+#include <string_view>
 
 #include "iinuji/iinuji_cmd/views/common.h"
-#include "iinuji/iinuji_cmd/views/inbox/commands.h"
+#include "iinuji/iinuji_cmd/views/workbench/commands.h"
 #include "iinuji/iinuji_cmd/views/lattice/commands.h"
 #include "iinuji/iinuji_cmd/views/logs/view.h"
 #include "iinuji/iinuji_cmd/views/runtime/commands.h"
@@ -12,21 +14,33 @@ namespace cuwacunu {
 namespace iinuji {
 namespace iinuji_cmd {
 
+enum class UiEventfulStatusLogSeverity {
+  None = 0,
+  Debug = 1,
+  Info = 2,
+  Warning = 3,
+  Error = 4,
+};
+
 inline std::string home_default_bottom_line(const CmdState &) {
-  return "home | ready | F2 inbox | F3 runtime | F4 lattice | F8 shell logs "
-         "| F9 config | waajacu.com";
+  return "home | ready | " + ui_screen_hint(ScreenMode::Workbench) + " | " +
+         ui_screen_hint(ScreenMode::Runtime) + " | " +
+         ui_screen_hint(ScreenMode::Lattice) + " | " +
+         ui_screen_hint(ScreenMode::ShellLogs) + " | " +
+         ui_screen_hint(ScreenMode::Config) + " | waajacu.com";
 }
 
-inline std::string inbox_bottom_row_summary(const CmdState &st) {
+inline std::string workbench_bottom_row_summary(const CmdState &st) {
   std::size_t selected = 0;
   std::size_t total = 0;
-  const auto rows = inbox_session_rows(st);
+  const auto rows = operator_action_queue_rows(st);
   total = rows.size();
   selected =
-      total == 0 ? 0 : std::min(st.inbox.selected_inbox_session, total - 1);
+      total == 0 ? 0 : std::min(st.workbench.selected_session_row, total - 1);
 
   std::ostringstream oss;
-  oss << "lane=Inbox";
+  oss << "screen=" << ui_screen_name(ScreenMode::Workbench)
+      << " | section=Inbox";
   if (total > 0) {
     oss << " | row=" << (selected + 1) << "/" << total;
   } else {
@@ -35,11 +49,25 @@ inline std::string inbox_bottom_row_summary(const CmdState &st) {
   return oss.str();
 }
 
-inline std::string inbox_default_bottom_line(const CmdState &st) {
-  if (inbox_session_rows(st).empty()) {
-    return "lane=Inbox | row=0/0";
+inline std::string workbench_default_bottom_line(const CmdState &st) {
+  const std::string section = workbench_section_label(st.workbench.section);
+  if (workbench_is_navigation_focus(st.workbench.focus)) {
+    return "workbench | section=" + section +
+           " | Up/Down choose Inbox or Booster. Enter focuses the selected "
+           "section.";
   }
-  return inbox_bottom_row_summary(st);
+  if (workbench_is_booster_section(st.workbench.section)) {
+    return "workbench | section=Booster | action=" +
+           workbench_booster_action_label(selected_workbench_booster_action(st)) +
+           " | Up/Down browse actions. Enter runs the guided flow. Esc returns "
+           "to navigation.";
+  }
+  if (operator_action_queue_rows(st).empty()) {
+    return "screen=" + std::string(ui_screen_name(ScreenMode::Workbench)) +
+           " | section=Inbox | row=0/0 | no operator items are waiting.";
+  }
+  return workbench_bottom_row_summary(st) +
+         " | Enter opens row actions. Esc returns to navigation.";
 }
 
 inline std::string runtime_default_bottom_line(const CmdState &st) {
@@ -196,7 +224,7 @@ inline std::string logs_default_bottom_line(const CmdState &st) {
          logs_filter_label(st.shell_logs.level_filter) + " | metadata=" +
          logs_metadata_filter_label(st.shell_logs.metadata_filter) +
          (st.shell_logs.auto_follow ? " | follow=on" : " | follow=off") +
-         " | f toggles full stream. Esc restores split. Home/End jump "
+         " | f toggles full screen. Esc restores split. Home/End jump "
          "oldest/newest.";
 }
 
@@ -223,9 +251,29 @@ inline bool ui_config_status_is_eventful(const ConfigState &st) {
   return st.status != "files focus" && st.status != "families focus";
 }
 
+inline bool ui_eventful_status_is_error(const CmdState &st) {
+  if (st.screen == ScreenMode::Workbench) {
+    return workbench_has_visible_status(st.workbench) &&
+           st.workbench.status_is_error;
+  }
+  if (st.screen == ScreenMode::Runtime) {
+    return !st.runtime.status.empty() && st.runtime.status_is_error;
+  }
+  if (st.screen == ScreenMode::Lattice) {
+    return !st.lattice.status.empty() && st.lattice.status_is_error;
+  }
+  if (st.screen == ScreenMode::Config) {
+    if (ui_config_status_is_eventful(st.config)) {
+      return st.config.status_is_error;
+    }
+    return !st.config.ok;
+  }
+  return false;
+}
+
 inline std::string ui_eventful_status_line(const CmdState &st) {
-  if (st.screen == ScreenMode::Inbox) {
-    return visible_inbox_status(st);
+  if (st.screen == ScreenMode::Workbench) {
+    return visible_workbench_status(st);
   }
   if (st.screen == ScreenMode::Runtime) {
     return st.runtime.status;
@@ -244,15 +292,102 @@ inline std::string ui_eventful_status_line(const CmdState &st) {
   return {};
 }
 
+inline const char *ui_eventful_status_log_scope(const CmdState &st) {
+  switch (st.screen) {
+  case ScreenMode::Workbench:
+    return "workbench";
+  case ScreenMode::Runtime:
+    return "runtime";
+  case ScreenMode::Lattice:
+    return "lattice";
+  case ScreenMode::Config:
+    return "config";
+  case ScreenMode::Home:
+    return "home";
+  case ScreenMode::ShellLogs:
+    return "logs";
+  }
+  return "status";
+}
+
+inline bool ui_status_is_debug_only(std::string_view status) {
+  if (status.empty()) {
+    return false;
+  }
+  if (status == "Cancelled." || status == "Cancelled Marshal launch." ||
+      status == "Loading Workbench..." ||
+      status == "Loading runtime inventory..." ||
+      status == "Loading config view..." ||
+      status == "Refreshing runtime inventory..." ||
+      status == "files focus" || status == "families focus" ||
+      status == "viewer focus | read only" ||
+      status == "editor focus | Ctrl+S saves through Config Hero" ||
+      status == "editor modified | Ctrl+S saves through Config Hero" ||
+      status == "discarded unsaved config changes" ||
+      status == "Selected marshal has no campaigns." ||
+      status == "Selected campaign has no jobs." ||
+      status == "No actions available for the selected row." ||
+      status == "Selected action is currently unavailable." ||
+      status == "This viewer does not support live-follow." ||
+      status == "Runtime log live-follow enabled." ||
+      status == "Runtime log live-follow paused." ||
+      status == "Closed runtime log viewer." ||
+      status == "Expanded runtime detail panel." ||
+      status == "Restored split runtime panel layout.") {
+    return true;
+  }
+  if (status.starts_with("Refreshing hero.lattice and hero.hashimyei catalogs;") ||
+      status.starts_with("Syncing hero.lattice and hero.hashimyei catalogs") ||
+      status.starts_with("Loading lattice components, facts, and views...")) {
+    return true;
+  }
+  if (status.starts_with("Opened ") &&
+      status.ends_with(" in the right panel.")) {
+    return true;
+  }
+  if (status.starts_with("Reloaded ")) {
+    return true;
+  }
+  return false;
+}
+
+inline bool ui_status_is_warning(std::string_view status) {
+  if (status.empty()) {
+    return false;
+  }
+  return status.starts_with("Runtime inventory partially loaded.") ||
+         status.starts_with("Lattice refresh skipped;") ||
+         status.starts_with("Lattice member detail unavailable;") ||
+         status.starts_with("selected marshal write scope unavailable:");
+}
+
+inline UiEventfulStatusLogSeverity
+ui_eventful_status_log_severity(const CmdState &st) {
+  const std::string status = ui_eventful_status_line(st);
+  if (status.empty()) {
+    return UiEventfulStatusLogSeverity::None;
+  }
+  if (ui_status_is_debug_only(status)) {
+    return UiEventfulStatusLogSeverity::Debug;
+  }
+  if (ui_status_is_warning(status)) {
+    return UiEventfulStatusLogSeverity::Warning;
+  }
+  if (ui_eventful_status_is_error(st)) {
+    return UiEventfulStatusLogSeverity::Error;
+  }
+  return UiEventfulStatusLogSeverity::Info;
+}
+
 inline std::string ui_bottom_line(const CmdState &st) {
   if (st.screen == ScreenMode::Home) {
     return home_default_bottom_line(st);
   }
-  if (st.screen == ScreenMode::Inbox) {
-    const std::string status = visible_inbox_status(st);
+  if (st.screen == ScreenMode::Workbench) {
+    const std::string status = visible_workbench_status(st);
     if (!status.empty())
       return status;
-    return inbox_default_bottom_line(st);
+    return workbench_default_bottom_line(st);
   }
   if (st.screen == ScreenMode::Runtime) {
     if (!st.runtime.status.empty())

@@ -90,6 +90,13 @@ inline std::string lattice_contract_hash_for_member(
       member.component.manifest.contract_identity);
 }
 
+inline std::string lattice_dock_hash_for_member(
+    const LatticeMemberEntry& member) {
+  if (!member.dock_hash.empty()) return member.dock_hash;
+  if (!member.has_component) return {};
+  return trim_copy(member.component.manifest.docking_signature_sha256_hex);
+}
+
 inline std::uint64_t lattice_member_latest_ts_ms(const LatticeMemberEntry& member) {
   std::uint64_t ts_ms = 0;
   if (member.has_component) ts_ms = std::max(ts_ms, member.component.ts_ms);
@@ -1458,6 +1465,12 @@ inline void queue_lattice_selected_member_detail_if_needed(CmdState& st) {
                   snapshot.member.component.manifest.replaced_by =
                       lattice_json_string(lattice_json_field(manifest,
                                                             "replaced_by"));
+                  snapshot.member.component.manifest.docking_signature_sha256_hex =
+                      lattice_json_string(lattice_json_field(
+                          manifest, "docking_signature_sha256_hex"));
+                  snapshot.member.dock_hash = lattice_json_string(
+                      lattice_json_field(manifest, "docking_signature_sha256_hex"),
+                      snapshot.member.dock_hash);
                   if (const auto* hashimyei_identity =
                           lattice_json_field(manifest, "hashimyei_identity");
                       hashimyei_identity != nullptr) {
@@ -1672,10 +1685,14 @@ inline void queue_lattice_selected_view_if_needed(CmdState& st) {
 
   const std::string canonical_path = member->canonical_path;
   const std::string contract_hash = member->contract_hash;
+  const std::string dock_hash = lattice_dock_hash_for_member(*member);
   const std::string wave_cursor = member->fact.latest_wave_cursor;
+  const bool contract_scoped_view = view->view_kind != "family_evaluation_report";
   if (st.lattice.view_snapshot.view_kind == view->view_kind &&
       st.lattice.view_snapshot.canonical_path == canonical_path &&
-      st.lattice.view_snapshot.contract_hash == contract_hash &&
+      (!contract_scoped_view ||
+       st.lattice.view_snapshot.contract_hash == contract_hash) &&
+      st.lattice.view_snapshot.dock_hash == dock_hash &&
       st.lattice.view_snapshot.wave_cursor == wave_cursor &&
       (st.lattice.view_snapshot.ok || !st.lattice.view_snapshot.error.empty())) {
     st.lattice.view_requeue = false;
@@ -1696,12 +1713,12 @@ inline void queue_lattice_selected_view_if_needed(CmdState& st) {
         snapshot.view_kind = view_copy.view_kind;
         snapshot.canonical_path = member_copy.canonical_path;
         snapshot.contract_hash = member_copy.contract_hash;
+        snapshot.dock_hash = lattice_dock_hash_for_member(member_copy);
         snapshot.wave_cursor = member_copy.fact.latest_wave_cursor;
 
         if (view_copy.view_kind == "family_evaluation_report") {
-          if (snapshot.canonical_path.empty() || snapshot.contract_hash.empty()) {
-            snapshot.error =
-                "family_evaluation_report needs canonical_path + contract_hash";
+          if (snapshot.canonical_path.empty() || snapshot.dock_hash.empty()) {
+            snapshot.error = "family_evaluation_report needs canonical_path + dock_hash";
             return snapshot;
           }
         } else if (view_copy.view_kind == "entropic_capacity_comparison") {
@@ -1723,7 +1740,11 @@ inline void queue_lattice_selected_view_if_needed(CmdState& st) {
           args << ",\"canonical_path\":"
                << config_json_quote(snapshot.canonical_path);
         }
-        if (!snapshot.contract_hash.empty()) {
+        if (view_copy.view_kind == "family_evaluation_report" &&
+            !snapshot.dock_hash.empty()) {
+          args << ",\"dock_hash\":"
+               << config_json_quote(snapshot.dock_hash);
+        } else if (!snapshot.contract_hash.empty()) {
           args << ",\"contract_hash\":"
                << config_json_quote(snapshot.contract_hash);
         }
@@ -1746,6 +1767,8 @@ inline void queue_lattice_selected_view_if_needed(CmdState& st) {
         snapshot.contract_hash = lattice_json_string(
             lattice_json_field(&structured, "contract_hash"),
             snapshot.contract_hash);
+        snapshot.dock_hash = lattice_json_string(
+            lattice_json_field(&structured, "dock_hash"), snapshot.dock_hash);
         snapshot.wave_cursor = lattice_json_string(
             lattice_json_field(&structured, "wave_cursor"), snapshot.wave_cursor);
         snapshot.match_count =
@@ -1936,6 +1959,7 @@ inline void lattice_merge_member_entry(LatticeMemberEntry* dst,
   if (dst->display_name.empty()) dst->display_name = src.display_name;
   if (dst->hashimyei.empty()) dst->hashimyei = src.hashimyei;
   if (dst->contract_hash.empty()) dst->contract_hash = src.contract_hash;
+  if (dst->dock_hash.empty()) dst->dock_hash = src.dock_hash;
   if (dst->lineage_state.empty() ||
       dst->lineage_state == "unknown" || dst->lineage_state == "fact-only") {
     if (!src.lineage_state.empty()) dst->lineage_state = src.lineage_state;

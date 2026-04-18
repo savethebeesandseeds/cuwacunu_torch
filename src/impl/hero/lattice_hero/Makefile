@@ -13,12 +13,12 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 $(eval $(call BUILD_OBJ_INC, common, lattice_catalog, lattice_catalog))
 $(eval $(call BUILD_OBJ_INC, common, hero_lattice_tools, hero_lattice_tools, $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS)))
 
-LATTICE_OBJS := $(OUTPUT_PATH)/common/lattice_catalog.o \
-	$(OUTPUT_PATH)/common/hero_lattice_tools.o
+LATTICE_TARGETS := lattice_catalog \
+	hero_lattice_tools
 
 # -----------------------------------------------------------------
 # Aggregate Target
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(LATTICE_OBJS)
+all: $(LATTICE_TARGETS)
 	@$(LOG_SUCCESS)

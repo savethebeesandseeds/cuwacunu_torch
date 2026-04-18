@@ -828,7 +828,7 @@ editor_handle_key(editorBox_data_t& ed,
     }
     ed.close_armed = true;
     ed.close_armed_via_escape = via_escape;
-    set_status("unsaved changes, press " + std::string(prompt_key) + " again to discard");
+    set_status("unsaved changes, press " + std::string(prompt_key) + " again to exit");
   };
 
   const bool is_close_key =

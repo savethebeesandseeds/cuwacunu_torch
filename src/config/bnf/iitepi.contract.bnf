@@ -1,8 +1,21 @@
 <instruction>                ::= <contract_begin> <line_end>
-                                 {<contract_variable_decl>}
-                                 <circuit_file_decl>
-                                 {<acknowledge_decl>}
+                                 <dock_section>
+                                 <assembly_section>
                                  <contract_end> <line_end> ;
+
+<dock_section>               ::= [<whitespace>] "DOCK" [<whitespace>] "{"
+                                 <line_end>
+                                 {<contract_variable_decl>}
+                                 [<whitespace>] "}" <line_end> ;
+
+<assembly_section>           ::= [<whitespace>] "ASSEMBLY" [<whitespace>] "{"
+                                 <line_end>
+                                 {<assembly_entry>}
+                                 [<whitespace>] "}" <line_end> ;
+
+<assembly_entry>             ::= <contract_variable_decl>
+                               | <circuit_file_decl>
+                               | <acknowledge_decl> ;
 
 <contract_begin>             ::= "-----BEGIN IITEPI CONTRACT-----" ;
 <contract_end>               ::= "-----END IITEPI CONTRACT-----" ;

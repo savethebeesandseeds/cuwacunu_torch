@@ -4,12 +4,12 @@
 
 HERO_HUMAN_TOOL(
     "hero.human.list_requests",
-    "List Marshal Hero sessions currently paused for clarification or governance",
+    "List Marshal Hero sessions currently blocked for clarification or governance",
     "{\"type\":\"object\",\"properties\":{\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
     handle_tool_list_requests)
 HERO_HUMAN_TOOL(
     "hero.human.list_summaries",
-    "List idle-or-finished Marshal Hero sessions whose summary artifacts still need human acknowledgment",
+    "List review-ready-or-terminal Marshal Hero sessions whose summary artifacts still need human acknowledgment",
     "{\"type\":\"object\",\"properties\":{\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
     handle_tool_list_summaries)
 HERO_HUMAN_TOOL(
@@ -19,21 +19,26 @@ HERO_HUMAN_TOOL(
     handle_tool_get_request)
 HERO_HUMAN_TOOL(
     "hero.human.get_summary",
-    "Fetch one pending idle-or-finished session summary by marshal cursor",
+    "Fetch one pending review-ready-or-terminal session summary by marshal cursor",
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
     handle_tool_get_summary)
 HERO_HUMAN_TOOL(
     "hero.human.answer_request",
-    "Create an unsigned clarification answer for one paused Marshal Hero request session and resume it",
+    "Create an unsigned clarification answer for one blocked Marshal Hero request session and resume it",
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"answer\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"answer\"],\"additionalProperties\":false}",
     handle_tool_answer_request)
 HERO_HUMAN_TOOL(
     "hero.human.resolve_governance",
-    "Create a signed governance resolution for one paused Marshal Hero session and resume it",
+    "Create a signed governance resolution for one blocked Marshal Hero session and resume it",
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"resolution_kind\":{\"type\":\"string\",\"enum\":[\"grant\",\"deny\",\"clarify\",\"terminate\"]},\"reason\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"resolution_kind\",\"reason\"],\"additionalProperties\":false}",
     handle_tool_resolve_governance)
 HERO_HUMAN_TOOL(
     "hero.human.ack_summary",
-    "Create a signed human acknowledgment with a required message for one idle-or-finished session summary, then clear it from the operator inbox without continuing the session",
+    "Create a signed human acknowledgment with a required message for one review-ready-or-terminal session summary, then clear it from the operator inbox without continuing or releasing the session",
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"note\"],\"additionalProperties\":false}",
     handle_tool_ack_summary)
+HERO_HUMAN_TOOL(
+    "hero.human.archive_summary",
+    "Create a signed archive disposition for one review-ready-or-terminal session summary, then release objective ownership by archiving the underlying Marshal session",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"note\"],\"additionalProperties\":false}",
+    handle_tool_archive_summary)

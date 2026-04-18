@@ -8,15 +8,15 @@ Current carried-forward state:
   contracts, and observation channels used for the medium-dock re-search.
 - The active objective-local dock is `1d + 4h + 1h` in
   `tsi.source.dataloader.channels.dsl`.
-- Medium-channel experiments intentionally use fresh `0x010x` Hashimyei slots
-  so this search does not silently warm-start from old-channel artifacts that
-  happen to share the same public dock shape.
+- Medium-channel experiments intentionally use fresh `0x010x` exact hashimyei
+  values so this search does not silently warm-start from old-channel
+  artifacts that happen to share the same public dock shape.
 - The default primary bind is seeded from `encoder_capacity_v1`; baseline and
   other projector/buffer variants remain available for clean comparisons.
 - Marshal session `marshal.mnhkkyxw` completed intended-dock
   baseline calibration and currently carries forward
-  `iitepi.contract.base.dsl` in slot `0x0100` as the best-known candidate on
-  `1d + 4h + 1h`.
+  `iitepi.contract.base.dsl` with exact hashimyei `0x0100` as the best-known
+  candidate on `1d + 4h + 1h`.
 
 What direct Runtime already established:
 - The old sub-daily failures were caused by malformed raw kline `close_time`
@@ -48,7 +48,7 @@ What Marshal already established on the intended dock:
   dock, but payload quality remained below null on the semantic evaluation
   surface.
 - Baseline primary train plus held-out payload eval then completed cleanly for
-  slot `0x0100` with zero reported runtime anomalies.
+  exact hashimyei `0x0100` with zero reported runtime anomalies.
 - On the most important held-out error metrics, baseline beat
   `encoder_capacity_v1`: linear `error_skill = 0.000619988725` versus
   `-0.009266531867`, and MDN `error_skill = 0.307436274785` versus

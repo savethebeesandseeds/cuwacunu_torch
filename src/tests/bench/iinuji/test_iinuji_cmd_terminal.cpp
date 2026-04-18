@@ -199,6 +199,7 @@ int main() {
           "default_roots:str = /cuwacunu/src/config/instructions/defaults\n"
           "objective_roots:str = "
           "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train\n"
+          "temp_roots:str = /cuwacunu/src/config/instructions/temp\n"
           "allowed_extensions:str = .dsl,.md\n"
           "write_roots:str = "
           "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train\n"

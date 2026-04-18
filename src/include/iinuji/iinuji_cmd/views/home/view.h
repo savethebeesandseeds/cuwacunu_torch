@@ -34,6 +34,7 @@ inline art_text_options_t make_home_showcase_wordmark_text_options() {
   wordmark_opt.line_spacing = 1;
   wordmark_opt.padding = 0;
   wordmark_opt.gradient = false;
+  wordmark_opt.preserve_sparse_lowercase = true;
   wordmark_opt.color_start = "#4fcf6b";
   wordmark_opt.color_end = "#4fcf6b";
   return wordmark_opt;

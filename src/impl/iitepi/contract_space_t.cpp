@@ -1,10 +1,10 @@
 #include "iitepi/contract_space_t.h"
 
+#include "camahjucunu/dsl/canonical_path/canonical_path.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "camahjucunu/dsl/latent_lineage_state/latent_lineage_state.h"
-#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
-#include "camahjucunu/dsl/canonical_path/canonical_path.h"
 #include "camahjucunu/dsl/network_design/network_design.h"
+#include "camahjucunu/dsl/observation_pipeline/observation_spec.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
 #include "camahjucunu/dsl/wave_contract_binding/wave_contract_binding.h"
@@ -13,18 +13,18 @@
 
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <cctype>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <initializer_list>
 #include <iostream>
 #include <memory>
-#include <sys/wait.h>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,36 +41,38 @@ using snapshot_ptr_t = std::shared_ptr<const contract_record_t>;
 static std::size_t g_registered_contract_count = 0;
 static contract_hash_t g_last_registered_contract_hash;
 static std::string g_last_registered_contract_path_canonical;
-static constexpr const char* kModuleSectionVicreg = "VICReg";
-static constexpr const char* kModuleSectionExpectedValue = "EXPECTED_VALUE";
-static constexpr const char* kModuleSectionEmbeddingSequenceAnalytics =
+static constexpr const char *kContractSectionDock = "DOCK";
+static constexpr const char *kContractSectionAssembly = "ASSEMBLY";
+static constexpr const char *kContractSectionAknowledge = "AKNOWLEDGE";
+static constexpr const char *kAssemblyKeyCircuitDslFilename =
+    "circuit_dsl_filename";
+static constexpr const char *kModuleSectionVicreg = "VICReg";
+static constexpr const char *kModuleSectionExpectedValue = "EXPECTED_VALUE";
+static constexpr const char *kModuleSectionEmbeddingSequenceAnalytics =
     "WIKIMYEI_EVALUATION_EMBEDDING_SEQUENCE_ANALYTICS";
-static constexpr const char* kModuleSectionTransferMatrixEvaluation =
+static constexpr const char *kModuleSectionTransferMatrixEvaluation =
     "WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION";
-static constexpr const char* kContractVariableVicregConfigDslFile =
+static constexpr const char *kContractVariableVicregConfigDslFile =
     "__vicreg_config_dsl_file";
-static constexpr const char* kContractVariableExpectedValueConfigDslFile =
+static constexpr const char *kContractVariableExpectedValueConfigDslFile =
     "__expected_value_config_dsl_file";
-static constexpr const char* kContractVariableEmbeddingSequenceAnalyticsDslFile =
-    "__embedding_sequence_analytics_config_dsl_file";
-static constexpr const char* kContractVariableTransferMatrixEvaluationDslFile =
+static constexpr const char
+    *kContractVariableEmbeddingSequenceAnalyticsDslFile =
+        "__embedding_sequence_analytics_config_dsl_file";
+static constexpr const char *kContractVariableTransferMatrixEvaluationDslFile =
     "__transfer_matrix_evaluation_config_dsl_file";
-static constexpr const char* kContractSpecsEmbeddingSequenceAnalyticsConfigKey =
-    "wikimyei_evaluation_embedding_sequence_analytics_config_filename";
-static constexpr const char* kGlobalBnfEmbeddingSequenceAnalyticsGrammarKey =
+static constexpr const char *kGlobalBnfEmbeddingSequenceAnalyticsGrammarKey =
     "wikimyei_evaluation_embedding_sequence_analytics_grammar_filename";
-static constexpr const char* kContractSpecsTransferMatrixConfigKey =
-    "wikimyei_evaluation_transfer_matrix_evaluation_config_filename";
-static constexpr const char* kGlobalBnfTransferMatrixGrammarKey =
+static constexpr const char *kGlobalBnfTransferMatrixGrammarKey =
     "wikimyei_evaluation_transfer_matrix_evaluation_grammar_filename";
 
-[[nodiscard]] static std::unordered_map<contract_hash_t, snapshot_ptr_t>&
+[[nodiscard]] static std::unordered_map<contract_hash_t, snapshot_ptr_t> &
 snapshots_by_hash() {
   static std::unordered_map<contract_hash_t, snapshot_ptr_t> registry;
   return registry;
 }
 
-[[nodiscard]] static std::unordered_map<std::string, contract_hash_t>&
+[[nodiscard]] static std::unordered_map<std::string, contract_hash_t> &
 hash_by_contract_path() {
   static std::unordered_map<std::string, contract_hash_t> registry;
   return registry;
@@ -83,112 +85,127 @@ hash_by_contract_path() {
     ++b;
   }
   std::size_t e = in.size();
-  while (e > b &&
-         std::isspace(static_cast<unsigned char>(in[e - 1])) != 0) {
+  while (e > b && std::isspace(static_cast<unsigned char>(in[e - 1])) != 0) {
     --e;
   }
   return std::string(in.substr(b, e - b));
 }
 
-[[nodiscard]] static bool read_all_fd(int fd, std::string* out) {
-  if (out == nullptr) return false;
+[[nodiscard]] static bool read_all_fd(int fd, std::string *out) {
+  if (out == nullptr)
+    return false;
   out->clear();
   std::array<char, 4096> buffer{};
   for (;;) {
     const ssize_t n = ::read(fd, buffer.data(), buffer.size());
     if (n < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR)
+        continue;
       return false;
     }
-    if (n == 0) return true;
+    if (n == 0)
+      return true;
     out->append(buffer.data(), static_cast<std::size_t>(n));
   }
 }
 
 [[nodiscard]] static std::string strip_comment(std::string_view line,
-                                               bool* in_block_comment);
-[[nodiscard]] static bool has_non_ws_ascii(const std::string& s);
+                                               bool *in_block_comment);
+[[nodiscard]] static bool has_non_ws_ascii(const std::string &s);
 [[nodiscard]] static std::string trim_ascii_ws_copy(std::string s);
-[[nodiscard]] static std::string strip_comments_from_text_preserve_lines(
-    std::string_view text);
-[[nodiscard]] static parsed_config_t parse_config_file(const std::string& path);
-[[nodiscard]] static std::vector<std::string> split_string_items(
-    const std::string& s);
-[[nodiscard]] static std::string resolve_path_from_folder(
-    const std::string& folder, std::string path);
+[[nodiscard]] static std::string
+strip_comments_from_text_preserve_lines(std::string_view text);
+[[nodiscard]] static parsed_config_t parse_config_file(const std::string &path);
+[[nodiscard]] static std::vector<std::string>
+split_string_items(const std::string &s);
+[[nodiscard]] static std::string
+resolve_path_from_folder(const std::string &folder, std::string path);
 [[nodiscard]] static bool ends_with_ascii(std::string_view text,
                                           std::string_view suffix);
 [[nodiscard]] static std::string unquote_if_wrapped(std::string s);
-[[nodiscard]] static std::string canonicalize_path_best_effort(
-    const std::string& path);
-[[nodiscard]] static std::string sha256_hex_from_bytes(const void* data,
+[[nodiscard]] static std::string
+canonicalize_path_best_effort(const std::string &path);
+[[nodiscard]] static std::string sha256_hex_from_bytes(const void *data,
                                                        std::size_t size);
-[[nodiscard]] static std::string sha256_hex_from_file(const std::string& path);
-[[nodiscard]] static std::int64_t file_mtime_ticks(
-    const std::filesystem::path& path);
-[[nodiscard]] static contract_file_fingerprint_t fingerprint_file(
-    const std::string& path);
+[[nodiscard]] static std::string sha256_hex_from_file(const std::string &path);
+[[nodiscard]] static std::int64_t
+file_mtime_ticks(const std::filesystem::path &path);
+[[nodiscard]] static contract_file_fingerprint_t
+fingerprint_file(const std::string &path);
 [[nodiscard]] static std::string compute_manifest_digest_hex(
-    const std::vector<contract_file_fingerprint_t>& files);
+    const std::vector<contract_file_fingerprint_t> &files);
 [[nodiscard]] static std::string json_escape(std::string_view in);
+[[nodiscard]] static std::vector<cuwacunu::camahjucunu::dsl_variable_t>
+contract_dsl_variables_from_section(const parsed_config_section_t &section);
 [[nodiscard]] static std::string canonical_contract_docking_signature_json(
-    const contract_docking_signature_t& signature);
-[[nodiscard]] static std::string canonical_contract_signature_json(
-    const contract_signature_t& signature);
+    const contract_docking_signature_t &signature);
+[[nodiscard]] static std::string
+canonical_contract_signature_json(const contract_signature_t &signature);
 [[nodiscard]] static std::optional<contract_component_binding_t>
 derive_contract_component_binding(
-    const cuwacunu::camahjucunu::tsiemene_instance_decl_t& instance,
+    const cuwacunu::camahjucunu::tsiemene_instance_decl_t &instance,
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
-    std::string_view vicreg_module_sha256_hex,
-    std::string* error);
+    std::string_view vicreg_module_sha256_hex, std::string *error);
 [[nodiscard]] static std::vector<contract_component_binding_t>
 derive_contract_component_bindings_or_fail(
-    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& instruction,
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
     std::string_view vicreg_module_sha256_hex);
-[[nodiscard]] static std::string contract_required_resolved_path(
-    const parsed_config_t& cfg, const std::string& cfg_folder,
-    const char* section, const char* key);
-[[nodiscard]] static std::optional<std::string> contract_optional_resolved_path(
-    const parsed_config_t& cfg, const std::string& cfg_folder,
-    const char* section, const char* key);
+[[nodiscard]] static std::string
+contract_required_resolved_path(const parsed_config_t &cfg,
+                                const std::string &cfg_folder,
+                                const char *section, const char *key);
+[[nodiscard]] static std::optional<std::string>
+contract_optional_resolved_path(const parsed_config_t &cfg,
+                                const std::string &cfg_folder,
+                                const char *section, const char *key);
+[[nodiscard]] static parsed_config_section_t
+merged_contract_variable_section(const parsed_config_t &cfg);
+[[nodiscard]] static std::optional<std::string>
+contract_optional_resolved_variable_path(const parsed_config_t &cfg,
+                                         const std::string &cfg_folder,
+                                         const char *variable_name);
+[[nodiscard]] static std::string
+contract_required_resolved_variable_path(const parsed_config_t &cfg,
+                                         const std::string &cfg_folder,
+                                         const char *variable_name);
 [[nodiscard]] static parsed_config_section_t parse_instruction_file(
-    const std::string& path,
-    const std::string& latent_lineage_state_grammar_text,
-    const parsed_config_section_t* contract_variables = nullptr,
-    std::string* out_resolved_text = nullptr);
-[[nodiscard]] static bool module_section_exists(
-    const contract_record_t& snapshot, std::string_view section) noexcept;
+    const std::string &path,
+    const std::string &latent_lineage_state_grammar_text,
+    const parsed_config_section_t *contract_variables = nullptr,
+    std::string *out_resolved_text = nullptr);
+[[nodiscard]] static bool
+module_section_exists(const contract_record_t &snapshot,
+                      std::string_view section) noexcept;
 [[nodiscard]] static std::shared_ptr<contract_record_t>
-build_contract_record_from_contract_path(const std::string& contract_file_path);
-[[nodiscard]] static bool section_supports_instruction_file(
-    std::string_view section) noexcept;
+build_contract_record_from_contract_path(const std::string &contract_file_path);
+[[nodiscard]] static bool
+section_supports_instruction_file(std::string_view section) noexcept;
 [[nodiscard]] static std::optional<std::string>
-module_config_path_for_section(const contract_record_t& snapshot,
-                               const std::string& section);
+module_config_path_for_section(const contract_record_t &snapshot,
+                               const std::string &section);
 [[nodiscard]] static std::optional<std::string>
-contract_instruction_section_value_or_empty(const contract_record_t& snapshot,
-                                            const std::string& section,
-                                            const std::string& key);
+contract_instruction_section_value_or_empty(const contract_record_t &snapshot,
+                                            const std::string &section,
+                                            const std::string &key);
 [[nodiscard]] static snapshot_ptr_t
-snapshot_ptr_or_fail(const contract_hash_t& hash);
-[[nodiscard]] static std::optional<std::string> global_optional_file_text_by_key(
-    const char* section,
-    const char* key);
-[[nodiscard]] static std::string indent_lines(const std::string& text,
+snapshot_ptr_or_fail(const contract_hash_t &hash);
+[[nodiscard]] static std::optional<std::string>
+global_optional_file_text_by_key(const char *section, const char *key);
+[[nodiscard]] static std::string indent_lines(const std::string &text,
                                               std::string_view prefix);
 static void normalize_vicreg_module_architecture_from_network_design(
-    contract_record_t* record);
-static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
-                                                  const std::string& cfg_folder);
+    contract_record_t *record);
+static bool
+validate_contract_config_or_terminate(const parsed_config_t &cfg,
+                                      const std::string &cfg_folder);
 
-template <class T>
-static T parse_scalar_from_string(const std::string& s);
+template <class T> static T parse_scalar_from_string(const std::string &s);
 
-[[nodiscard]] static const char* non_empty_or(const std::string& s,
-                                              const char* fallback) {
+[[nodiscard]] static const char *non_empty_or(const std::string &s,
+                                              const char *fallback) {
   return has_non_ws_ascii(s) ? s.c_str() : fallback;
 }
 
@@ -198,8 +215,9 @@ static T parse_scalar_from_string(const std::string& s);
 
 /*──────────────────────── shared helpers ─────────────────────────────*/
 [[nodiscard]] static std::string strip_comment(std::string_view line,
-                                               bool* in_block_comment) {
-  bool block_comment = (in_block_comment != nullptr) ? *in_block_comment : false;
+                                               bool *in_block_comment) {
+  bool block_comment =
+      (in_block_comment != nullptr) ? *in_block_comment : false;
   bool in_single = false;
   bool in_double = false;
   std::string out;
@@ -240,23 +258,27 @@ static T parse_scalar_from_string(const std::string& s);
       ++i;
     }
   }
-  if (in_block_comment != nullptr) *in_block_comment = block_comment;
+  if (in_block_comment != nullptr)
+    *in_block_comment = block_comment;
   return out;
 }
 
-[[nodiscard]] static std::vector<std::string> split_string_items(
-    const std::string& s) {
+[[nodiscard]] static std::vector<std::string>
+split_string_items(const std::string &s) {
   std::vector<std::string> out;
   std::string cur;
   bool in_single = false;
   bool in_double = false;
 
-  auto push_trimmed = [&](std::string& token) {
+  auto push_trimmed = [&](std::string &token) {
     std::size_t b = 0;
     std::size_t e = token.size();
-    while (b < e && std::isspace(static_cast<unsigned char>(token[b]))) ++b;
-    while (e > b && std::isspace(static_cast<unsigned char>(token[e - 1]))) --e;
-    if (e > b) out.emplace_back(token.substr(b, e - b));
+    while (b < e && std::isspace(static_cast<unsigned char>(token[b])))
+      ++b;
+    while (e > b && std::isspace(static_cast<unsigned char>(token[e - 1])))
+      --e;
+    if (e > b)
+      out.emplace_back(token.substr(b, e - b));
     token.clear();
   };
 
@@ -280,8 +302,9 @@ static T parse_scalar_from_string(const std::string& s);
   }
   push_trimmed(cur);
 
-  for (auto& item : out) {
-    if (item.size() < 2) continue;
+  for (auto &item : out) {
+    if (item.size() < 2)
+      continue;
     const char a = item.front();
     const char b = item.back();
     if ((a == '\'' && b == '\'') || (a == '"' && b == '"')) {
@@ -291,23 +314,26 @@ static T parse_scalar_from_string(const std::string& s);
   return out;
 }
 
-[[nodiscard]] static bool has_non_ws_ascii(const std::string& s) {
+[[nodiscard]] static bool has_non_ws_ascii(const std::string &s) {
   for (const unsigned char c : s) {
-    if (!std::isspace(c)) return true;
+    if (!std::isspace(c))
+      return true;
   }
   return false;
 }
 
 [[nodiscard]] static std::string trim_ascii_ws_copy(std::string s) {
   std::size_t b = 0;
-  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+    ++b;
   std::size_t e = s.size();
-  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+    --e;
   return s.substr(b, e - b);
 }
 
-[[nodiscard]] static std::string strip_comments_from_text_preserve_lines(
-    std::string_view text) {
+[[nodiscard]] static std::string
+strip_comments_from_text_preserve_lines(std::string_view text) {
   std::istringstream input{std::string(text)};
   std::string line;
   std::string out;
@@ -319,25 +345,31 @@ static T parse_scalar_from_string(const std::string& s);
   return out;
 }
 
-[[nodiscard]] static std::string resolve_path_from_folder(const std::string& folder,
-                                                          std::string path) {
+[[nodiscard]] static std::string
+resolve_path_from_folder(const std::string &folder, std::string path) {
   path = trim_ascii_ws_copy(std::move(path));
-  if (path.empty()) return {};
+  if (path.empty())
+    return {};
   const std::filesystem::path p(path);
-  if (p.is_absolute()) return path;
-  if (folder.empty()) return path;
+  if (p.is_absolute())
+    return path;
+  if (folder.empty())
+    return path;
   return (std::filesystem::path(folder) / p).string();
 }
 
-[[nodiscard]] static std::string parent_folder_from_path(const std::string& path) {
+[[nodiscard]] static std::string
+parent_folder_from_path(const std::string &path) {
   const std::filesystem::path p(path);
-  if (!p.has_parent_path()) return {};
+  if (!p.has_parent_path())
+    return {};
   return p.parent_path().string();
 }
 
 [[nodiscard]] static bool ends_with_ascii(std::string_view text,
                                           std::string_view suffix) {
-  if (suffix.size() > text.size()) return false;
+  if (suffix.size() > text.size())
+    return false;
   return text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
@@ -353,23 +385,26 @@ static T parse_scalar_from_string(const std::string& s);
   return s;
 }
 
-[[nodiscard]] static std::string canonicalize_path_best_effort(
-    const std::string& path) {
-  if (!has_non_ws_ascii(path)) return {};
+[[nodiscard]] static std::string
+canonicalize_path_best_effort(const std::string &path) {
+  if (!has_non_ws_ascii(path))
+    return {};
   std::error_code ec;
   std::filesystem::path p(path);
   if (!p.is_absolute()) {
     p = std::filesystem::absolute(p, ec);
-    if (ec) ec.clear();
+    if (ec)
+      ec.clear();
   }
   const std::filesystem::path weak = std::filesystem::weakly_canonical(p, ec);
-  if (!ec) return weak.string();
+  if (!ec)
+    return weak.string();
   ec.clear();
   const std::filesystem::path normal = p.lexically_normal();
   return normal.string();
 }
 
-[[nodiscard]] static std::string sha256_hex_from_bytes(const void* data,
+[[nodiscard]] static std::string sha256_hex_from_bytes(const void *data,
                                                        std::size_t size) {
   struct sha256_state_t {
     std::array<std::uint32_t, 8> h{};
@@ -396,10 +431,10 @@ static T parse_scalar_from_string(const std::string& s);
   const auto rotr = [](std::uint32_t v, std::uint32_t n) noexcept {
     return (v >> n) | (v << (32U - n));
   };
-  const auto ch = [](std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept {
-    return (x & y) ^ (~x & z);
-  };
-  const auto maj = [](std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept {
+  const auto ch = [](std::uint32_t x, std::uint32_t y,
+                     std::uint32_t z) noexcept { return (x & y) ^ (~x & z); };
+  const auto maj = [](std::uint32_t x, std::uint32_t y,
+                      std::uint32_t z) noexcept {
     return (x & y) ^ (x & z) ^ (y & z);
   };
   const auto big_sigma0 = [&](std::uint32_t x) noexcept {
@@ -415,7 +450,7 @@ static T parse_scalar_from_string(const std::string& s);
     return rotr(x, 17U) ^ rotr(x, 19U) ^ (x >> 10U);
   };
 
-  const auto transform = [&](sha256_state_t* s, const std::uint8_t* block) {
+  const auto transform = [&](sha256_state_t *s, const std::uint8_t *block) {
     std::array<std::uint32_t, 64> w{};
     for (std::size_t i = 0; i < 16; ++i) {
       const std::size_t j = i * 4;
@@ -439,8 +474,7 @@ static T parse_scalar_from_string(const std::string& s);
     std::uint32_t h = s->h[7];
 
     for (std::size_t i = 0; i < 64; ++i) {
-      const std::uint32_t t1 =
-          h + big_sigma1(e) + ch(e, f, g) + k[i] + w[i];
+      const std::uint32_t t1 = h + big_sigma1(e) + ch(e, f, g) + k[i] + w[i];
       const std::uint32_t t2 = big_sigma0(a) + maj(a, b, c);
       h = g;
       g = f;
@@ -462,7 +496,7 @@ static T parse_scalar_from_string(const std::string& s);
     s->h[7] += h;
   };
 
-  const auto init = [&](sha256_state_t* s) {
+  const auto init = [&](sha256_state_t *s) {
     s->h = {0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
             0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u};
     s->block.fill(0);
@@ -470,7 +504,7 @@ static T parse_scalar_from_string(const std::string& s);
     s->total_bits = 0;
   };
 
-  const auto update = [&](sha256_state_t* s, const std::uint8_t* bytes,
+  const auto update = [&](sha256_state_t *s, const std::uint8_t *bytes,
                           std::size_t len) {
     for (std::size_t i = 0; i < len; ++i) {
       s->block[s->block_len++] = bytes[i];
@@ -482,16 +516,18 @@ static T parse_scalar_from_string(const std::string& s);
     }
   };
 
-  const auto final = [&](sha256_state_t* s, std::array<std::uint8_t, 32>* out) {
+  const auto final = [&](sha256_state_t *s, std::array<std::uint8_t, 32> *out) {
     s->total_bits += static_cast<std::uint64_t>(s->block_len) * 8ULL;
 
     s->block[s->block_len++] = 0x80u;
     if (s->block_len > 56) {
-      while (s->block_len < 64) s->block[s->block_len++] = 0x00u;
+      while (s->block_len < 64)
+        s->block[s->block_len++] = 0x00u;
       transform(s, s->block.data());
       s->block_len = 0;
     }
-    while (s->block_len < 56) s->block[s->block_len++] = 0x00u;
+    while (s->block_len < 56)
+      s->block[s->block_len++] = 0x00u;
 
     for (int i = 7; i >= 0; --i) {
       s->block[s->block_len++] =
@@ -501,8 +537,7 @@ static T parse_scalar_from_string(const std::string& s);
 
     for (std::size_t i = 0; i < 8; ++i) {
       (*out)[i * 4] = static_cast<std::uint8_t>((s->h[i] >> 24U) & 0xFFu);
-      (*out)[i * 4 + 1] =
-          static_cast<std::uint8_t>((s->h[i] >> 16U) & 0xFFu);
+      (*out)[i * 4 + 1] = static_cast<std::uint8_t>((s->h[i] >> 16U) & 0xFFu);
       (*out)[i * 4 + 2] = static_cast<std::uint8_t>((s->h[i] >> 8U) & 0xFFu);
       (*out)[i * 4 + 3] = static_cast<std::uint8_t>(s->h[i] & 0xFFu);
     }
@@ -511,7 +546,7 @@ static T parse_scalar_from_string(const std::string& s);
   sha256_state_t state{};
   init(&state);
   if (size > 0 && data) {
-    update(&state, static_cast<const std::uint8_t*>(data), size);
+    update(&state, static_cast<const std::uint8_t *>(data), size);
   }
   std::array<std::uint8_t, 32> digest{};
   final(&state, &digest);
@@ -527,7 +562,7 @@ static T parse_scalar_from_string(const std::string& s);
   return out;
 }
 
-[[nodiscard]] static std::string sha256_hex_from_file(const std::string& path) {
+[[nodiscard]] static std::string sha256_hex_from_file(const std::string &path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
     log_fatal("[dconfig] cannot open file to fingerprint: %s\n", path.c_str());
@@ -538,18 +573,19 @@ static T parse_scalar_from_string(const std::string& s);
   return sha256_hex_from_bytes(bytes.data(), bytes.size());
 }
 
-[[nodiscard]] static std::int64_t file_mtime_ticks(
-    const std::filesystem::path& path) {
+[[nodiscard]] static std::int64_t
+file_mtime_ticks(const std::filesystem::path &path) {
   std::error_code ec;
   const auto tp = std::filesystem::last_write_time(path, ec);
-  if (ec) return 0;
+  if (ec)
+    return 0;
   using ticks_t =
       std::chrono::duration<std::int64_t, std::chrono::nanoseconds::period>;
   return std::chrono::duration_cast<ticks_t>(tp.time_since_epoch()).count();
 }
 
-[[nodiscard]] static contract_file_fingerprint_t fingerprint_file(
-    const std::string& path) {
+[[nodiscard]] static contract_file_fingerprint_t
+fingerprint_file(const std::string &path) {
   const std::string canonical = canonicalize_path_best_effort(path);
   if (!has_non_ws_ascii(canonical)) {
     log_fatal("[dconfig] cannot fingerprint empty path\n");
@@ -557,7 +593,8 @@ static T parse_scalar_from_string(const std::string& s);
 
   const std::filesystem::path p(canonical);
   if (!std::filesystem::exists(p)) {
-    log_fatal("[dconfig] fingerprint path does not exist: %s\n", canonical.c_str());
+    log_fatal("[dconfig] fingerprint path does not exist: %s\n",
+              canonical.c_str());
   }
   if (!std::filesystem::is_regular_file(p)) {
     log_fatal("[dconfig] fingerprint path is not a regular file: %s\n",
@@ -573,16 +610,17 @@ static T parse_scalar_from_string(const std::string& s);
 }
 
 [[nodiscard]] static std::string compute_manifest_digest_hex(
-    const std::vector<contract_file_fingerprint_t>& files) {
+    const std::vector<contract_file_fingerprint_t> &files) {
   std::vector<std::string> rows;
   rows.reserve(files.size());
-  for (const auto& f : files) {
+  for (const auto &f : files) {
     rows.emplace_back(f.canonical_path + "|" + f.sha256_hex + "\n");
   }
   std::sort(rows.begin(), rows.end());
 
   std::string payload;
-  for (const auto& row : rows) payload += row;
+  for (const auto &row : rows)
+    payload += row;
   return sha256_hex_from_bytes(payload.data(), payload.size());
 }
 
@@ -590,51 +628,47 @@ static T parse_scalar_from_string(const std::string& s);
   std::ostringstream out;
   for (const unsigned char c : in) {
     switch (c) {
-      case '"':
-        out << "\\\"";
-        break;
-      case '\\':
-        out << "\\\\";
-        break;
-      case '\n':
-        out << "\\n";
-        break;
-      case '\r':
-        out << "\\r";
-        break;
-      case '\t':
-        out << "\\t";
-        break;
-      default:
-        if (c < 0x20) {
-          static constexpr char kHex[] = "0123456789abcdef";
-          out << "\\u00" << kHex[(c >> 4) & 0x0F] << kHex[c & 0x0F];
-        } else {
-          out << static_cast<char>(c);
-        }
-        break;
+    case '"':
+      out << "\\\"";
+      break;
+    case '\\':
+      out << "\\\\";
+      break;
+    case '\n':
+      out << "\\n";
+      break;
+    case '\r':
+      out << "\\r";
+      break;
+    case '\t':
+      out << "\\t";
+      break;
+    default:
+      if (c < 0x20) {
+        static constexpr char kHex[] = "0123456789abcdef";
+        out << "\\u00" << kHex[(c >> 4) & 0x0F] << kHex[c & 0x0F];
+      } else {
+        out << static_cast<char>(c);
+      }
+      break;
     }
   }
   return out.str();
 }
 
 [[nodiscard]] static std::vector<cuwacunu::camahjucunu::dsl_variable_t>
-contract_dsl_variables_from_config(const parsed_config_t& cfg) {
-  std::vector<cuwacunu::camahjucunu::dsl_variable_t> variables{};
-  const auto section_it = cfg.find("VARIABLES");
-  if (section_it == cfg.end()) return variables;
-  variables.reserve(section_it->second.size());
-  for (const auto& [name, value] : section_it->second) {
-    variables.push_back({name, value});
-  }
-  return variables;
+contract_dsl_variables_from_config(const parsed_config_t &cfg) {
+  return contract_dsl_variables_from_section(
+      merged_contract_variable_section(cfg));
 }
 
 [[nodiscard]] static std::vector<cuwacunu::camahjucunu::dsl_variable_t>
-contract_dsl_variables_from_section(const parsed_config_section_t& section) {
+contract_dsl_variables_from_section(const parsed_config_section_t &section) {
   std::vector<cuwacunu::camahjucunu::dsl_variable_t> variables{};
   variables.reserve(section.size());
-  for (const auto& [name, value] : section) {
+  for (const auto &[name, value] : section) {
+    if (!cuwacunu::camahjucunu::is_dsl_variable_name(name))
+      continue;
     variables.push_back({name, value});
   }
   return variables;
@@ -642,9 +676,10 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
 
 [[nodiscard]] static std::string resolve_dsl_variables_or_fail(
     std::string_view text,
-    const std::vector<cuwacunu::camahjucunu::dsl_variable_t>& variables,
+    const std::vector<cuwacunu::camahjucunu::dsl_variable_t> &variables,
     std::string_view label) {
-  if (variables.empty()) return std::string(text);
+  if (variables.empty())
+    return std::string(text);
   std::string resolved{};
   std::string error{};
   if (!cuwacunu::camahjucunu::resolve_dsl_variables_in_text(
@@ -655,87 +690,103 @@ contract_dsl_variables_from_section(const parsed_config_section_t& section) {
   return resolved;
 }
 
-[[nodiscard]] static bool is_contract_surface_selector_variable(
-    std::string_view name) noexcept {
+[[nodiscard]] static bool
+is_contract_assembly_path_variable(std::string_view name) noexcept {
   return name == "__observation_sources_dsl_file" ||
-         name == "__observation_channels_dsl_file";
+         name == "__observation_channels_dsl_file" ||
+         name == kContractVariableVicregConfigDslFile ||
+         name == kContractVariableExpectedValueConfigDslFile ||
+         name == kContractVariableEmbeddingSequenceAnalyticsDslFile ||
+         name == kContractVariableTransferMatrixEvaluationDslFile;
 }
 
-[[nodiscard]] static bool is_public_docking_contract_variable(
-    std::string_view name) noexcept {
+[[nodiscard]] static bool
+is_current_dock_contract_variable(std::string_view name) noexcept {
   return name == "__obs_channels" || name == "__obs_seq_length" ||
-         name == "__obs_feature_dim" || name == "__embedding_dims";
+         name == "__obs_feature_dim" || name == "__embedding_dims" ||
+         name == "__future_target_dims";
+}
+
+[[nodiscard]] static bool
+is_private_assembly_contract_variable(std::string_view name) noexcept {
+  return name == "__future_target_weights" || name.rfind("__vicreg_", 0) == 0 ||
+         is_contract_assembly_path_variable(name);
 }
 
 [[nodiscard]] static std::vector<contract_variable_assignment_t>
 identity_contract_variable_assignments(
-    const std::vector<contract_variable_assignment_t>& assignments) {
+    const std::vector<contract_variable_assignment_t> &assignments) {
   std::vector<contract_variable_assignment_t> out{};
   out.reserve(assignments.size());
-  for (const auto& assignment : assignments) {
-    // Surface selector paths already contribute via the staged surface hashes.
-    // Repeating the raw path text here would make identity depend on checkout root.
-    if (is_contract_surface_selector_variable(assignment.name)) continue;
+  for (const auto &assignment : assignments) {
+    // Path-bearing assembly selectors already contribute via resolved module or
+    // staged surface fingerprints. Repeating their raw path text would make
+    // identity depend on local path spelling.
+    if (is_contract_assembly_path_variable(assignment.name))
+      continue;
     out.push_back(assignment);
   }
   return out;
 }
 
 [[nodiscard]] static std::vector<contract_variable_assignment_t>
-public_docking_contract_variable_assignments(
-    const std::vector<contract_variable_assignment_t>& assignments) {
+contract_variable_assignments_from_section(
+    const parsed_config_section_t &section) {
   std::vector<contract_variable_assignment_t> out{};
-  out.reserve(assignments.size());
-  for (const auto& assignment : assignments) {
-    if (!is_public_docking_contract_variable(assignment.name)) continue;
-    out.push_back(assignment);
+  out.reserve(section.size());
+  for (const auto &[name, value] : section) {
+    if (!cuwacunu::camahjucunu::is_dsl_variable_name(name))
+      continue;
+    out.push_back({name, value});
   }
   return out;
 }
 
-[[nodiscard]] static bool is_public_docking_surface_id(
-    std::string_view surface_id) noexcept {
+[[nodiscard]] static bool
+is_public_docking_surface_id(std::string_view surface_id) noexcept {
   return surface_id == "contract.circuit" ||
          surface_id == "contract.observation.channels";
 }
 
 [[nodiscard]] static std::vector<contract_docking_surface_entry_t>
 public_docking_contract_surfaces(
-    const std::vector<contract_docking_surface_entry_t>& surfaces) {
+    const std::vector<contract_docking_surface_entry_t> &surfaces) {
   std::vector<contract_docking_surface_entry_t> out{};
   out.reserve(surfaces.size());
-  for (const auto& surface : surfaces) {
-    if (!is_public_docking_surface_id(surface.surface_id)) continue;
+  for (const auto &surface : surfaces) {
+    if (!is_public_docking_surface_id(surface.surface_id))
+      continue;
     out.push_back(surface);
   }
   return out;
 }
 
-[[nodiscard]] static std::string canonical_contract_signature_json(
-    const contract_signature_t& signature);
+[[nodiscard]] static std::string
+canonical_contract_signature_json(const contract_signature_t &signature);
 
 [[nodiscard]] static std::string canonical_contract_docking_signature_json(
-    const contract_docking_signature_t& signature) {
+    const contract_docking_signature_t &signature) {
   std::vector<std::string> circuits = signature.compatible_circuits;
   std::vector<contract_variable_assignment_t> variables =
-      public_docking_contract_variable_assignments(
-          signature.variable_assignments);
+      signature.variable_assignments;
   std::vector<contract_docking_surface_entry_t> surfaces =
       public_docking_contract_surfaces(signature.surfaces);
   std::sort(circuits.begin(), circuits.end());
   std::sort(variables.begin(), variables.end(),
-            [](const contract_variable_assignment_t& a,
-               const contract_variable_assignment_t& b) {
-              if (a.name != b.name) return a.name < b.name;
+            [](const contract_variable_assignment_t &a,
+               const contract_variable_assignment_t &b) {
+              if (a.name != b.name)
+                return a.name < b.name;
               return a.value < b.value;
             });
   std::sort(surfaces.begin(), surfaces.end(),
-            [](const contract_docking_surface_entry_t& a,
-               const contract_docking_surface_entry_t& b) {
+            [](const contract_docking_surface_entry_t &a,
+               const contract_docking_surface_entry_t &b) {
               if (a.surface_id != b.surface_id) {
                 return a.surface_id < b.surface_id;
               }
-              if (a.sha256_hex != b.sha256_hex) return a.sha256_hex < b.sha256_hex;
+              if (a.sha256_hex != b.sha256_hex)
+                return a.sha256_hex < b.sha256_hex;
               return a.canonical_path < b.canonical_path;
             });
 
@@ -743,20 +794,23 @@ public_docking_contract_surfaces(
   out << "{\"schema\":\"" << json_escape(signature.schema)
       << "\",\"compatible_circuits\":[";
   for (std::size_t i = 0; i < circuits.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << "\"" << json_escape(circuits[i]) << "\"";
   }
   out << "],\"variables\":[";
   for (std::size_t i = 0; i < variables.size(); ++i) {
-    const auto& v = variables[i];
-    if (i != 0) out << ",";
-    out << "{\"name\":\"" << json_escape(v.name)
-        << "\",\"value\":\"" << json_escape(v.value) << "\"}";
+    const auto &v = variables[i];
+    if (i != 0)
+      out << ",";
+    out << "{\"name\":\"" << json_escape(v.name) << "\",\"value\":\""
+        << json_escape(v.value) << "\"}";
   }
   out << "],\"surfaces\":[";
   for (std::size_t i = 0; i < surfaces.size(); ++i) {
-    const auto& s = surfaces[i];
-    if (i != 0) out << ",";
+    const auto &s = surfaces[i];
+    if (i != 0)
+      out << ",";
     out << "{\"surface_id\":\"" << json_escape(s.surface_id)
         << "\",\"sha256_hex\":\"" << json_escape(s.sha256_hex) << "\"}";
   }
@@ -764,39 +818,43 @@ public_docking_contract_surfaces(
   return out.str();
 }
 
-[[nodiscard]] static std::string canonical_contract_signature_json(
-    const contract_signature_t& signature) {
+[[nodiscard]] static std::string
+canonical_contract_signature_json(const contract_signature_t &signature) {
   std::vector<contract_component_binding_t> bindings = signature.bindings;
   std::vector<contract_module_signature_entry_t> modules =
       signature.module_dsl_entries;
   std::vector<contract_variable_assignment_t> variables =
       identity_contract_variable_assignments(signature.variable_assignments);
   std::sort(bindings.begin(), bindings.end(),
-            [](const contract_component_binding_t& a,
-               const contract_component_binding_t& b) {
+            [](const contract_component_binding_t &a,
+               const contract_component_binding_t &b) {
               if (a.canonical_path != b.canonical_path) {
                 return a.canonical_path < b.canonical_path;
               }
-              if (a.tsi_type != b.tsi_type) return a.tsi_type < b.tsi_type;
-              if (a.hashimyei != b.hashimyei) return a.hashimyei < b.hashimyei;
+              if (a.tsi_type != b.tsi_type)
+                return a.tsi_type < b.tsi_type;
+              if (a.hashimyei != b.hashimyei)
+                return a.hashimyei < b.hashimyei;
               if (a.tsi_dsl_sha256_hex != b.tsi_dsl_sha256_hex) {
                 return a.tsi_dsl_sha256_hex < b.tsi_dsl_sha256_hex;
               }
               return a.tsi_dsl_path < b.tsi_dsl_path;
             });
   std::sort(modules.begin(), modules.end(),
-            [](const contract_module_signature_entry_t& a,
-               const contract_module_signature_entry_t& b) {
-              if (a.module_id != b.module_id) return a.module_id < b.module_id;
+            [](const contract_module_signature_entry_t &a,
+               const contract_module_signature_entry_t &b) {
+              if (a.module_id != b.module_id)
+                return a.module_id < b.module_id;
               if (a.module_dsl_sha256_hex != b.module_dsl_sha256_hex) {
                 return a.module_dsl_sha256_hex < b.module_dsl_sha256_hex;
               }
               return a.module_dsl_path < b.module_dsl_path;
             });
   std::sort(variables.begin(), variables.end(),
-            [](const contract_variable_assignment_t& a,
-               const contract_variable_assignment_t& b) {
-              if (a.name != b.name) return a.name < b.name;
+            [](const contract_variable_assignment_t &a,
+               const contract_variable_assignment_t &b) {
+              if (a.name != b.name)
+                return a.name < b.name;
               return a.value < b.value;
             });
 
@@ -807,8 +865,9 @@ public_docking_contract_surfaces(
       << json_escape(signature.docking_signature_sha256_hex)
       << "\",\"bindings\":[";
   for (std::size_t i = 0; i < bindings.size(); ++i) {
-    const auto& b = bindings[i];
-    if (i != 0) out << ",";
+    const auto &b = bindings[i];
+    if (i != 0)
+      out << ",";
     out << "{\"canonical_path\":\"" << json_escape(b.canonical_path)
         << "\",\"tsi_type\":\"" << json_escape(b.tsi_type)
         << "\",\"hashimyei\":\"" << json_escape(b.hashimyei)
@@ -817,18 +876,20 @@ public_docking_contract_surfaces(
   }
   out << "],\"modules\":[";
   for (std::size_t i = 0; i < modules.size(); ++i) {
-    const auto& m = modules[i];
-    if (i != 0) out << ",";
+    const auto &m = modules[i];
+    if (i != 0)
+      out << ",";
     out << "{\"module_id\":\"" << json_escape(m.module_id)
         << "\",\"module_dsl_sha256_hex\":\""
         << json_escape(m.module_dsl_sha256_hex) << "\"}";
   }
   out << "],\"variables\":[";
   for (std::size_t i = 0; i < variables.size(); ++i) {
-    const auto& v = variables[i];
-    if (i != 0) out << ",";
-    out << "{\"name\":\"" << json_escape(v.name)
-        << "\",\"value\":\"" << json_escape(v.value) << "\"}";
+    const auto &v = variables[i];
+    if (i != 0)
+      out << ",";
+    out << "{\"name\":\"" << json_escape(v.name) << "\",\"value\":\""
+        << json_escape(v.value) << "\"}";
   }
   out << "]}";
   return out.str();
@@ -836,20 +897,21 @@ public_docking_contract_surfaces(
 
 [[nodiscard]] static std::optional<contract_component_binding_t>
 derive_contract_component_binding(
-    const cuwacunu::camahjucunu::tsiemene_instance_decl_t& instance,
+    const cuwacunu::camahjucunu::tsiemene_instance_decl_t &instance,
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
-    std::string_view vicreg_module_sha256_hex,
-    std::string* error) {
-  if (error) error->clear();
+    std::string_view vicreg_module_sha256_hex, std::string *error) {
+  if (error)
+    error->clear();
   const std::string raw_path = trim_ascii_ws_copy(instance.tsi_type);
   if (!has_non_ws_ascii(raw_path)) {
-    if (error) *error = "empty circuit instance path for alias '" + instance.alias + "'";
+    if (error)
+      *error = "empty circuit instance path for alias '" + instance.alias + "'";
     return std::nullopt;
   }
 
-  const auto decode_path = [&](const std::string& text)
-      -> cuwacunu::camahjucunu::canonical_path_t {
+  const auto decode_path =
+      [&](const std::string &text) -> cuwacunu::camahjucunu::canonical_path_t {
     if (has_non_ws_ascii(std::string(contract_hash_for_canonicalization))) {
       return cuwacunu::camahjucunu::decode_canonical_path(
           text, std::string(contract_hash_for_canonicalization));
@@ -863,15 +925,16 @@ derive_contract_component_binding(
   contract_component_binding_t binding{};
   bool family_without_hash = false;
   std::string canonical_identity =
-      (parsed.ok && parsed.path_kind ==
-                        cuwacunu::camahjucunu::canonical_path_kind_e::Node &&
+      (parsed.ok &&
+       parsed.path_kind == cuwacunu::camahjucunu::canonical_path_kind_e::Node &&
        has_non_ws_ascii(parsed.canonical_identity))
           ? parsed.canonical_identity
           : std::string{};
   if (!has_non_ws_ascii(canonical_identity)) {
     const auto synthetic = decode_path(raw_path + ".0x0000");
     if (synthetic.ok &&
-        synthetic.path_kind == cuwacunu::camahjucunu::canonical_path_kind_e::Node &&
+        synthetic.path_kind ==
+            cuwacunu::camahjucunu::canonical_path_kind_e::Node &&
         has_non_ws_ascii(synthetic.canonical_identity)) {
       const auto synthetic_type =
           tsiemene::parse_tsi_type_id(synthetic.canonical_identity);
@@ -893,11 +956,11 @@ derive_contract_component_binding(
     }
     return std::nullopt;
   }
-  binding.canonical_path = family_without_hash
-                               ? canonical_identity
-                               : ((parsed.ok && has_non_ws_ascii(parsed.canonical))
-                                      ? parsed.canonical
-                                      : raw_path);
+  binding.canonical_path =
+      family_without_hash ? canonical_identity
+                          : ((parsed.ok && has_non_ws_ascii(parsed.canonical))
+                                 ? parsed.canonical
+                                 : raw_path);
 
   const auto type_id = tsiemene::parse_tsi_type_id(canonical_identity);
   if (!type_id.has_value()) {
@@ -911,7 +974,8 @@ derive_contract_component_binding(
 
   const auto policy = tsiemene::tsi_type_instance_policy(*type_id);
   if (policy == tsiemene::TsiInstancePolicy::HashimyeiInstances) {
-    if (!family_without_hash && parsed.ok && has_non_ws_ascii(parsed.hashimyei)) {
+    if (!family_without_hash && parsed.ok &&
+        has_non_ws_ascii(parsed.hashimyei)) {
       binding.hashimyei = parsed.hashimyei;
     }
   }
@@ -926,8 +990,9 @@ derive_contract_component_binding(
         !std::filesystem::exists(binding.tsi_dsl_path) ||
         !std::filesystem::is_regular_file(binding.tsi_dsl_path)) {
       if (error) {
-        *error = "invalid component DSL path in contract signature for binding: " +
-                 binding.canonical_path;
+        *error =
+            "invalid component DSL path in contract signature for binding: " +
+            binding.canonical_path;
       }
       return std::nullopt;
     }
@@ -942,42 +1007,43 @@ derive_contract_component_binding(
 
 [[nodiscard]] static std::vector<contract_component_binding_t>
 derive_contract_component_bindings_or_fail(
-    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& instruction,
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
     std::string_view vicreg_module_sha256_hex) {
   std::vector<contract_component_binding_t> out{};
   std::unordered_set<std::string> seen{};
-  for (const auto& circuit : instruction.circuits) {
-    for (const auto& instance : circuit.instances) {
+  for (const auto &circuit : instruction.circuits) {
+    for (const auto &instance : circuit.instances) {
       std::string local_error{};
       const auto maybe_binding = derive_contract_component_binding(
-          instance,
-          contract_hash_for_canonicalization,
-          vicreg_module_path,
-          vicreg_module_sha256_hex,
-          &local_error);
+          instance, contract_hash_for_canonicalization, vicreg_module_path,
+          vicreg_module_sha256_hex, &local_error);
       if (!maybe_binding.has_value()) {
-        log_fatal("[dconfig] invalid contract component binding for alias '%s': %s\n",
-                  instance.alias.c_str(), local_error.c_str());
+        log_fatal(
+            "[dconfig] invalid contract component binding for alias '%s': %s\n",
+            instance.alias.c_str(), local_error.c_str());
       }
-      const auto& binding = *maybe_binding;
-      const std::string dedupe_key = binding.canonical_path + "|" + binding.tsi_type +
-                                     "|" + binding.hashimyei + "|" +
-                                     binding.tsi_dsl_path + "|" +
-                                     binding.tsi_dsl_sha256_hex;
-      if (!seen.insert(dedupe_key).second) continue;
+      const auto &binding = *maybe_binding;
+      const std::string dedupe_key =
+          binding.canonical_path + "|" + binding.tsi_type + "|" +
+          binding.hashimyei + "|" + binding.tsi_dsl_path + "|" +
+          binding.tsi_dsl_sha256_hex;
+      if (!seen.insert(dedupe_key).second)
+        continue;
       out.push_back(binding);
     }
   }
   std::sort(out.begin(), out.end(),
-            [](const contract_component_binding_t& a,
-               const contract_component_binding_t& b) {
+            [](const contract_component_binding_t &a,
+               const contract_component_binding_t &b) {
               if (a.canonical_path != b.canonical_path) {
                 return a.canonical_path < b.canonical_path;
               }
-              if (a.tsi_type != b.tsi_type) return a.tsi_type < b.tsi_type;
-              if (a.hashimyei != b.hashimyei) return a.hashimyei < b.hashimyei;
+              if (a.tsi_type != b.tsi_type)
+                return a.tsi_type < b.tsi_type;
+              if (a.hashimyei != b.hashimyei)
+                return a.hashimyei < b.hashimyei;
               if (a.tsi_dsl_path != b.tsi_dsl_path) {
                 return a.tsi_dsl_path < b.tsi_dsl_path;
               }
@@ -986,32 +1052,34 @@ derive_contract_component_bindings_or_fail(
   return out;
 }
 
-[[nodiscard]] static std::string contract_required_resolved_path(
-    const parsed_config_t& cfg, const std::string& cfg_folder, const char* section,
-    const char* key) {
+[[nodiscard]] static std::string
+contract_required_resolved_path(const parsed_config_t &cfg,
+                                const std::string &cfg_folder,
+                                const char *section, const char *key) {
   const auto sec_it = cfg.find(section);
   if (sec_it == cfg.end()) {
-    log_fatal("[dconfig] missing contract section [%s] while building snapshot\n",
-              section);
+    log_fatal(
+        "[dconfig] missing contract section [%s] while building snapshot\n",
+        section);
   }
   const auto key_it = sec_it->second.find(key);
   if (key_it == sec_it->second.end()) {
-    log_fatal(
-        "[dconfig] missing contract key <%s> in section [%s] while building snapshot\n",
-        key, section);
+    log_fatal("[dconfig] missing contract key <%s> in section [%s] while "
+              "building snapshot\n",
+              key, section);
   }
   const std::string raw = trim_ascii_ws_copy(key_it->second);
   if (!has_non_ws_ascii(raw)) {
-    log_fatal(
-        "[dconfig] empty contract key <%s> in section [%s] while building snapshot\n",
-        key, section);
+    log_fatal("[dconfig] empty contract key <%s> in section [%s] while "
+              "building snapshot\n",
+              key, section);
   }
 
   const std::string resolved = resolve_path_from_folder(cfg_folder, raw);
   if (!has_non_ws_ascii(resolved)) {
     log_fatal(
-        "[dconfig] unable to resolve contract path for <%s> in section [%s]\n", key,
-        section);
+        "[dconfig] unable to resolve contract path for <%s> in section [%s]\n",
+        key, section);
   }
   if (!std::filesystem::exists(resolved)) {
     log_fatal("[dconfig] contract dependency path does not exist: %s\n",
@@ -1024,38 +1092,90 @@ derive_contract_component_bindings_or_fail(
   return resolved;
 }
 
-[[nodiscard]] static std::optional<std::string> contract_optional_resolved_path(
-    const parsed_config_t& cfg, const std::string& cfg_folder, const char* section,
-    const char* key) {
+[[nodiscard]] static std::optional<std::string>
+contract_optional_resolved_path(const parsed_config_t &cfg,
+                                const std::string &cfg_folder,
+                                const char *section, const char *key) {
   const auto sec_it = cfg.find(section);
-  if (sec_it == cfg.end()) return std::nullopt;
+  if (sec_it == cfg.end())
+    return std::nullopt;
   const auto key_it = sec_it->second.find(key);
-  if (key_it == sec_it->second.end()) return std::nullopt;
+  if (key_it == sec_it->second.end())
+    return std::nullopt;
 
   const std::string raw = trim_ascii_ws_copy(key_it->second);
-  if (!has_non_ws_ascii(raw)) return std::nullopt;
+  if (!has_non_ws_ascii(raw))
+    return std::nullopt;
 
   const std::string resolved = resolve_path_from_folder(cfg_folder, raw);
   if (!has_non_ws_ascii(resolved)) {
-    log_fatal(
-        "[dconfig] unable to resolve optional contract path for <%s> in section [%s]\n",
-        key, section);
+    log_fatal("[dconfig] unable to resolve optional contract path for <%s> in "
+              "section [%s]\n",
+              key, section);
   }
   if (!std::filesystem::exists(resolved)) {
-    log_fatal("[dconfig] optional contract dependency path does not exist: %s\n",
-              resolved.c_str());
+    log_fatal(
+        "[dconfig] optional contract dependency path does not exist: %s\n",
+        resolved.c_str());
   }
   if (!std::filesystem::is_regular_file(resolved)) {
-    log_fatal(
-        "[dconfig] optional contract dependency path is not a regular file: %s\n",
-        resolved.c_str());
+    log_fatal("[dconfig] optional contract dependency path is not a regular "
+              "file: %s\n",
+              resolved.c_str());
   }
   return resolved;
 }
 
-[[nodiscard]] static std::string global_required_resolved_path(
-    const char* section,
-    const char* key) {
+[[nodiscard]] static std::optional<std::string>
+contract_optional_resolved_variable_path(const parsed_config_t &cfg,
+                                         const std::string &cfg_folder,
+                                         const char *variable_name) {
+  const auto assembly_it = cfg.find(kContractSectionAssembly);
+  if (assembly_it == cfg.end())
+    return std::nullopt;
+  const auto value_it = assembly_it->second.find(variable_name);
+  if (value_it == assembly_it->second.end())
+    return std::nullopt;
+
+  const std::string raw = trim_ascii_ws_copy(value_it->second);
+  if (!has_non_ws_ascii(raw))
+    return std::nullopt;
+
+  const std::string resolved =
+      resolve_path_from_folder(cfg_folder, unquote_if_wrapped(raw));
+  if (!has_non_ws_ascii(resolved)) {
+    log_fatal("[dconfig] unable to resolve contract assembly path for <%s>\n",
+              variable_name);
+  }
+  if (!std::filesystem::exists(resolved)) {
+    log_fatal(
+        "[dconfig] contract assembly dependency path does not exist: %s\n",
+        resolved.c_str());
+  }
+  if (!std::filesystem::is_regular_file(resolved)) {
+    log_fatal("[dconfig] contract assembly dependency path is not a regular "
+              "file: %s\n",
+              resolved.c_str());
+  }
+  return resolved;
+}
+
+[[nodiscard]] static std::string
+contract_required_resolved_variable_path(const parsed_config_t &cfg,
+                                         const std::string &cfg_folder,
+                                         const char *variable_name) {
+  const auto resolved =
+      contract_optional_resolved_variable_path(cfg, cfg_folder, variable_name);
+  if (!resolved.has_value()) {
+    log_fatal("[dconfig] missing required contract assembly variable <%s> "
+              "while building snapshot\n",
+              variable_name);
+  }
+  return *resolved;
+}
+
+[[nodiscard]] static std::string
+global_required_resolved_path(const char *section, const char *key) {
   std::string raw;
   std::string cfg_folder;
   {
@@ -1066,19 +1186,22 @@ derive_contract_component_bindings_or_fail(
     }
     const auto key_it = sec_it->second.find(key);
     if (key_it == sec_it->second.end()) {
-      log_fatal("[dconfig] missing global key <%s> in section [%s]\n", key, section);
+      log_fatal("[dconfig] missing global key <%s> in section [%s]\n", key,
+                section);
     }
     raw = trim_ascii_ws_copy(key_it->second);
     cfg_folder = parent_folder_from_path(config_space_t::config_file_path);
   }
   if (!has_non_ws_ascii(raw)) {
-    log_fatal("[dconfig] empty global key <%s> in section [%s]\n", key, section);
+    log_fatal("[dconfig] empty global key <%s> in section [%s]\n", key,
+              section);
   }
 
   const std::string resolved = resolve_path_from_folder(cfg_folder, raw);
   if (!has_non_ws_ascii(resolved)) {
-    log_fatal("[dconfig] unable to resolve global path for <%s> in section [%s]\n",
-              key, section);
+    log_fatal(
+        "[dconfig] unable to resolve global path for <%s> in section [%s]\n",
+        key, section);
   }
   if (!std::filesystem::exists(resolved)) {
     log_fatal("[dconfig] global dependency path does not exist: %s\n",
@@ -1091,52 +1214,82 @@ derive_contract_component_bindings_or_fail(
   return resolved;
 }
 
-[[nodiscard]] static std::optional<std::string> global_optional_file_text_by_key(
-    const char* section,
-    const char* key) {
+[[nodiscard]] static std::optional<std::string>
+global_optional_file_text_by_key(const char *section, const char *key) {
   std::string raw;
   std::string cfg_folder;
   {
     LOCK_GUARD(config_mutex);
     const auto sec_it = config_space_t::config.find(section);
-    if (sec_it == config_space_t::config.end()) return std::nullopt;
+    if (sec_it == config_space_t::config.end())
+      return std::nullopt;
     const auto key_it = sec_it->second.find(key);
-    if (key_it == sec_it->second.end()) return std::nullopt;
+    if (key_it == sec_it->second.end())
+      return std::nullopt;
     raw = trim_ascii_ws_copy(key_it->second);
     cfg_folder = parent_folder_from_path(config_space_t::config_file_path);
   }
-  if (!has_non_ws_ascii(raw)) return std::nullopt;
+  if (!has_non_ws_ascii(raw))
+    return std::nullopt;
   const std::string resolved = resolve_path_from_folder(cfg_folder, raw);
   if (!has_non_ws_ascii(resolved) || !std::filesystem::exists(resolved) ||
       !std::filesystem::is_regular_file(resolved)) {
     return std::nullopt;
   }
   const std::string text = piaabo::dfiles::readFileToString(resolved);
-  if (!has_non_ws_ascii(text)) return std::nullopt;
+  if (!has_non_ws_ascii(text))
+    return std::nullopt;
   return text;
 }
 
-[[nodiscard]] static std::string indent_lines(const std::string& text,
+[[nodiscard]] static parsed_config_section_t
+merged_contract_variable_section(const parsed_config_t &cfg) {
+  parsed_config_section_t merged{};
+  const auto append_section = [&](const char *section_name) {
+    const auto section_it = cfg.find(section_name);
+    if (section_it == cfg.end())
+      return;
+    for (const auto &[name, value] : section_it->second) {
+      if (!cuwacunu::camahjucunu::is_dsl_variable_name(name))
+        continue;
+      const auto [it, inserted] = merged.emplace(name, value);
+      if (!inserted && it->second != value) {
+        log_fatal("[dconfig] duplicate contract variable <%s> across "
+                  "DOCK/ASSEMBLY sections\n",
+                  name.c_str());
+      }
+    }
+  };
+  append_section(kContractSectionDock);
+  append_section(kContractSectionAssembly);
+  return merged;
+}
+
+[[nodiscard]] static std::string indent_lines(const std::string &text,
                                               std::string_view prefix) {
-  if (text.empty() || prefix.empty()) return text;
+  if (text.empty() || prefix.empty())
+    return text;
   std::string out;
   out.reserve(text.size() + prefix.size() * 8);
   bool at_line_start = true;
   for (const char ch : text) {
-    if (at_line_start) out.append(prefix);
+    if (at_line_start)
+      out.append(prefix);
     out.push_back(ch);
     at_line_start = (ch == '\n');
   }
   return out;
 }
 
-[[nodiscard]] static bool module_section_exists(const contract_record_t& snapshot,
-                                                std::string_view section) noexcept {
+[[nodiscard]] static bool
+module_section_exists(const contract_record_t &snapshot,
+                      std::string_view section) noexcept {
   return snapshot.module_sections.find(std::string(section)) !=
          snapshot.module_sections.end();
 }
 
-[[nodiscard]] static parsed_config_t parse_config_file(const std::string& path) {
+[[nodiscard]] static parsed_config_t
+parse_config_file(const std::string &path) {
   std::ifstream file = cuwacunu::piaabo::dfiles::readFileToStream(path);
   if (!file) {
     log_fatal("[dconfig] cannot open iitepi contract file: %s\n", path.c_str());
@@ -1191,66 +1344,136 @@ derive_contract_component_bindings_or_fail(
     }
   }
 
-  parsed_config_t parsed;
-  parsed["CONTRACT"];
-  parsed["ACKNOWLEDGE"];
-  parsed["SPECS"];
-  parsed["VARIABLES"];
+  enum class contract_body_section_e : std::uint8_t {
+    None = 0,
+    Dock,
+    Assembly,
+  };
 
-  auto fail_parse = [&](std::size_t line_no, const std::string& message) {
+  parsed_config_t parsed;
+  parsed[kContractSectionDock];
+  parsed[kContractSectionAssembly];
+  parsed[kContractSectionAknowledge];
+
+  auto fail_parse = [&](std::size_t line_no, const std::string &message) {
     log_fatal("[dconfig] invalid iitepi contract file %s:%zu: %s\n",
               path.c_str(), line_no, message.c_str());
   };
 
-  std::string contract_folder{};
   {
-    const std::filesystem::path p(path);
-    if (p.has_parent_path()) contract_folder = p.parent_path().string();
-  }
+    bool begin_seen = false;
+    bool end_seen = false;
+    bool dock_seen = false;
+    bool assembly_seen = false;
+    contract_body_section_e section = contract_body_section_e::None;
+    std::size_t line_no = 0;
+    std::istringstream input(stripped);
+    std::string raw_line{};
+    while (std::getline(input, raw_line)) {
+      ++line_no;
+      std::string line = trim_ascii_ws_copy(raw_line);
+      if (!has_non_ws_ascii(line))
+        continue;
 
-  {
-    bool begin_vars_seen = false;
-    bool end_vars_seen = false;
-    std::size_t vars_line_no = 0;
-    std::istringstream vars_input(stripped);
-    std::string vars_raw_line{};
-    while (std::getline(vars_input, vars_raw_line)) {
-      ++vars_line_no;
-      std::string vars_line = trim_ascii_ws_copy(vars_raw_line);
-      if (!has_non_ws_ascii(vars_line)) continue;
-      if (!begin_vars_seen) {
-        if (vars_line == "-----BEGIN IITEPI CONTRACT-----") {
-          begin_vars_seen = true;
+      if (!begin_seen) {
+        if (line == "-----BEGIN IITEPI CONTRACT-----") {
+          begin_seen = true;
+          continue;
+        }
+        fail_parse(line_no, "expected -----BEGIN IITEPI CONTRACT-----");
+      }
+
+      if (line == "-----END IITEPI CONTRACT-----") {
+        if (section != contract_body_section_e::None) {
+          fail_parse(
+              line_no,
+              "missing closing '}' before -----END IITEPI CONTRACT-----");
+        }
+        end_seen = true;
+        break;
+      }
+
+      if (section == contract_body_section_e::None) {
+        if (line == "DOCK {") {
+          if (dock_seen)
+            fail_parse(line_no, "duplicate DOCK section");
+          if (assembly_seen) {
+            fail_parse(line_no, "DOCK section must appear before ASSEMBLY");
+          }
+          dock_seen = true;
+          section = contract_body_section_e::Dock;
+          continue;
+        }
+        if (line == "ASSEMBLY {") {
+          if (!dock_seen) {
+            fail_parse(line_no, "ASSEMBLY section requires a preceding DOCK");
+          }
+          if (assembly_seen)
+            fail_parse(line_no, "duplicate ASSEMBLY section");
+          assembly_seen = true;
+          section = contract_body_section_e::Assembly;
+          continue;
+        }
+        fail_parse(line_no, "expected DOCK { or ASSEMBLY {");
+      }
+
+      if (line == "}" || line == "};") {
+        section = contract_body_section_e::None;
+        continue;
+      }
+
+      if (line.back() != ';') {
+        fail_parse(line_no, "expected ';' at statement end");
+      }
+      line.pop_back();
+      line = trim_ascii_ws_copy(std::move(line));
+      if (!has_non_ws_ascii(line)) {
+        fail_parse(line_no, "empty statement");
+      }
+
+      const std::size_t eq = line.find('=');
+      if (eq == std::string::npos) {
+        if (section == contract_body_section_e::Dock) {
+          fail_parse(line_no, "DOCK only accepts __variable assignments");
         }
         continue;
       }
-      if (vars_line == "-----END IITEPI CONTRACT-----") {
-        end_vars_seen = true;
-        break;
+      const std::string variable_name = trim_ascii_ws_copy(line.substr(0, eq));
+      if (!cuwacunu::camahjucunu::is_dsl_variable_name(variable_name)) {
+        if (section == contract_body_section_e::Dock) {
+          fail_parse(line_no, "DOCK only accepts __variable assignments");
+        }
+        continue;
       }
-      if (vars_line.back() != ';') {
-        fail_parse(vars_line_no, "expected ';' at statement end");
-      }
-      vars_line.pop_back();
-      vars_line = trim_ascii_ws_copy(std::move(vars_line));
-      if (!has_non_ws_ascii(vars_line)) {
-        fail_parse(vars_line_no, "empty statement");
-      }
-
-      const std::size_t eq = vars_line.find('=');
-      if (eq == std::string::npos) continue;
-      const std::string variable_name =
-          trim_ascii_ws_copy(vars_line.substr(0, eq));
-      if (!cuwacunu::camahjucunu::is_dsl_variable_name(variable_name)) continue;
       const std::string variable_value =
-          unquote_if_wrapped(trim_ascii_ws_copy(vars_line.substr(eq + 1)));
-      if (parsed["VARIABLES"].find(variable_name) != parsed["VARIABLES"].end()) {
-        fail_parse(vars_line_no, "duplicate contract variable: " + variable_name);
+          unquote_if_wrapped(trim_ascii_ws_copy(line.substr(eq + 1)));
+      const char *target_section = section == contract_body_section_e::Dock
+                                       ? kContractSectionDock
+                                       : kContractSectionAssembly;
+      if (parsed[target_section].find(variable_name) !=
+              parsed[target_section].end() ||
+          (target_section == kContractSectionDock &&
+           parsed[kContractSectionAssembly].find(variable_name) !=
+               parsed[kContractSectionAssembly].end()) ||
+          (target_section == kContractSectionAssembly &&
+           parsed[kContractSectionDock].find(variable_name) !=
+               parsed[kContractSectionDock].end())) {
+        fail_parse(line_no, "duplicate contract variable: " + variable_name);
       }
-      parsed["VARIABLES"][variable_name] = variable_value;
+      parsed[target_section][variable_name] = variable_value;
     }
-    if (begin_vars_seen && !end_vars_seen) {
-      fail_parse(vars_line_no, "missing -----END IITEPI CONTRACT-----");
+
+    if (!begin_seen) {
+      fail_parse(1, "missing -----BEGIN IITEPI CONTRACT-----");
+    }
+    if (!end_seen) {
+      fail_parse(line_no, "missing -----END IITEPI CONTRACT-----");
+    }
+    if (!dock_seen) {
+      fail_parse(line_no, "missing DOCK section");
+    }
+    if (!assembly_seen) {
+      fail_parse(line_no, "missing ASSEMBLY section");
     }
   }
 
@@ -1258,13 +1481,15 @@ derive_contract_component_bindings_or_fail(
   bool begin_seen = false;
   bool end_seen = false;
   bool circuit_seen = false;
+  contract_body_section_e section = contract_body_section_e::None;
   std::size_t line_no = 0;
   std::istringstream input(stripped);
   std::string raw_line{};
   while (std::getline(input, raw_line)) {
     ++line_no;
     std::string line = trim_ascii_ws_copy(raw_line);
-    if (!has_non_ws_ascii(line)) continue;
+    if (!has_non_ws_ascii(line))
+      continue;
 
     if (!begin_seen) {
       if (line == "-----BEGIN IITEPI CONTRACT-----") {
@@ -1275,8 +1500,29 @@ derive_contract_component_bindings_or_fail(
     }
 
     if (line == "-----END IITEPI CONTRACT-----") {
+      if (section != contract_body_section_e::None) {
+        fail_parse(line_no,
+                   "missing closing '}' before -----END IITEPI CONTRACT-----");
+      }
       end_seen = true;
       break;
+    }
+
+    if (section == contract_body_section_e::None) {
+      if (line == "DOCK {") {
+        section = contract_body_section_e::Dock;
+        continue;
+      }
+      if (line == "ASSEMBLY {") {
+        section = contract_body_section_e::Assembly;
+        continue;
+      }
+      fail_parse(line_no, "expected DOCK { or ASSEMBLY {");
+    }
+
+    if (line == "}" || line == "};") {
+      section = contract_body_section_e::None;
+      continue;
     }
 
     if (line.back() != ';') {
@@ -1292,28 +1538,34 @@ derive_contract_component_bindings_or_fail(
     if (eq != std::string::npos) {
       const std::string variable_name = trim_ascii_ws_copy(line.substr(0, eq));
       if (cuwacunu::camahjucunu::is_dsl_variable_name(variable_name)) {
-        continue;
+        if (section == contract_body_section_e::Dock ||
+            section == contract_body_section_e::Assembly) {
+          continue;
+        }
       }
+    }
+
+    if (section == contract_body_section_e::Dock) {
+      fail_parse(line_no, "DOCK only accepts __variable assignments");
     }
 
     if (!contract_variables.empty()) {
       line = resolve_dsl_variables_or_fail(
-          line, contract_variables,
-          path + ":" + std::to_string(line_no));
+          line, contract_variables, path + ":" + std::to_string(line_no));
     }
 
-    const auto split_head_value =
-        [&](const char* expected_head, std::string* out_value) {
-          const std::size_t colon = line.find(':');
-          if (colon == std::string::npos) {
-            fail_parse(line_no, "expected ':' after statement head");
-          }
-          const std::string head =
-              trim_ascii_ws_copy(line.substr(0, colon));
-          if (head != expected_head) return false;
-          *out_value = trim_ascii_ws_copy(line.substr(colon + 1));
-          return true;
-        };
+    const auto split_head_value = [&](const char *expected_head,
+                                      std::string *out_value) {
+      const std::size_t colon = line.find(':');
+      if (colon == std::string::npos) {
+        fail_parse(line_no, "expected ':' after statement head");
+      }
+      const std::string head = trim_ascii_ws_copy(line.substr(0, colon));
+      if (head != expected_head)
+        return false;
+      *out_value = trim_ascii_ws_copy(line.substr(colon + 1));
+      return true;
+    };
 
     std::string statement_value{};
     if (split_head_value("CIRCUIT_FILE", &statement_value)) {
@@ -1324,7 +1576,8 @@ derive_contract_component_bindings_or_fail(
       if (!has_non_ws_ascii(statement_value)) {
         fail_parse(line_no, "empty CIRCUIT_FILE path");
       }
-      parsed["CONTRACT"]["circuit_dsl_filename"] = statement_value;
+      parsed[kContractSectionAssembly][kAssemblyKeyCircuitDslFilename] =
+          statement_value;
       circuit_seen = true;
       continue;
     }
@@ -1334,21 +1587,21 @@ derive_contract_component_bindings_or_fail(
         fail_parse(line_no, "AKNOWLEDGE requires alias = family");
       }
       std::string alias = trim_ascii_ws_copy(statement_value.substr(0, eq));
-      std::string family =
-          unquote_if_wrapped(trim_ascii_ws_copy(statement_value.substr(eq + 1)));
+      std::string family = unquote_if_wrapped(
+          trim_ascii_ws_copy(statement_value.substr(eq + 1)));
       if (!has_non_ws_ascii(alias) || !has_non_ws_ascii(family)) {
         fail_parse(line_no, "AKNOWLEDGE alias/family must be non-empty");
       }
-      if (parsed["ACKNOWLEDGE"].find(alias) != parsed["ACKNOWLEDGE"].end()) {
+      if (parsed[kContractSectionAknowledge].find(alias) !=
+          parsed[kContractSectionAknowledge].end()) {
         fail_parse(line_no, "duplicate AKNOWLEDGE alias: " + alias);
       }
-      parsed["ACKNOWLEDGE"][alias] = family;
+      parsed[kContractSectionAknowledge][alias] = family;
       continue;
     }
 
-    fail_parse(
-        line_no,
-        "unknown statement (expected CIRCUIT_FILE, AKNOWLEDGE, or __variable assignment)");
+    fail_parse(line_no, "unknown ASSEMBLY statement (expected CIRCUIT_FILE, "
+                        "AKNOWLEDGE, or __variable assignment)");
   }
 
   if (!begin_seen) {
@@ -1358,41 +1611,13 @@ derive_contract_component_bindings_or_fail(
     fail_parse(line_no, "missing -----END IITEPI CONTRACT-----");
   }
   if (!circuit_seen) {
-    fail_parse(line_no, "missing CIRCUIT_FILE statement");
+    fail_parse(line_no, "missing CIRCUIT_FILE statement in ASSEMBLY");
   }
-
-  const auto maybe_set_module_path_from_variable =
-      [&](const char* variable_key, const char* specs_key) {
-        const auto vars_it = parsed.find("VARIABLES");
-        if (vars_it == parsed.end()) return;
-        const auto value_it = vars_it->second.find(variable_key);
-        if (value_it == vars_it->second.end()) return;
-        const std::string raw_value =
-            unquote_if_wrapped(trim_ascii_ws_copy(value_it->second));
-        if (!has_non_ws_ascii(raw_value)) {
-          fail_parse(line_no, std::string("empty contract module path variable: ") +
-                                  variable_key);
-        }
-        parsed["SPECS"][specs_key] =
-            resolve_path_from_folder(contract_folder, raw_value);
-      };
-  maybe_set_module_path_from_variable(kContractVariableVicregConfigDslFile,
-                                      "vicreg_config_filename");
-  maybe_set_module_path_from_variable(
-      kContractVariableExpectedValueConfigDslFile,
-      "expected_value_config_filename");
-  maybe_set_module_path_from_variable(
-      kContractVariableEmbeddingSequenceAnalyticsDslFile,
-      kContractSpecsEmbeddingSequenceAnalyticsConfigKey);
-  maybe_set_module_path_from_variable(
-      kContractVariableTransferMatrixEvaluationDslFile,
-      kContractSpecsTransferMatrixConfigKey);
 
   return parsed;
 }
 
-template <class T>
-static T parse_scalar_from_string(const std::string& s) {
+template <class T> static T parse_scalar_from_string(const std::string &s) {
   if constexpr (std::is_same_v<T, std::string>) {
     return s;
   } else if constexpr (std::is_same_v<T, bool>) {
@@ -1417,7 +1642,7 @@ static T parse_scalar_from_string(const std::string& s) {
     }
     return v;
   } else if constexpr (std::is_floating_point_v<T>) {
-    char* end{};
+    char *end{};
     errno = 0;
     const long double ld = std::strtold(s.c_str(), &end);
     if (errno || end != s.data() + s.size()) {
@@ -1430,8 +1655,8 @@ static T parse_scalar_from_string(const std::string& s) {
   }
 }
 
-[[nodiscard]] static bool section_supports_instruction_file(
-    std::string_view section) noexcept {
+[[nodiscard]] static bool
+section_supports_instruction_file(std::string_view section) noexcept {
   return section == kModuleSectionVicreg ||
          section == kModuleSectionExpectedValue ||
          section == kModuleSectionEmbeddingSequenceAnalytics ||
@@ -1439,20 +1664,23 @@ static T parse_scalar_from_string(const std::string& s) {
 }
 
 [[nodiscard]] static std::optional<std::string>
-module_config_path_for_section(const contract_record_t& snapshot,
-                               const std::string& section) {
-  if (!section_supports_instruction_file(section)) return std::nullopt;
+module_config_path_for_section(const contract_record_t &snapshot,
+                               const std::string &section) {
+  if (!section_supports_instruction_file(section))
+    return std::nullopt;
   const auto path_it = snapshot.module_section_paths.find(section);
-  if (path_it == snapshot.module_section_paths.end()) return std::nullopt;
-  if (!has_non_ws_ascii(path_it->second)) return std::nullopt;
+  if (path_it == snapshot.module_section_paths.end())
+    return std::nullopt;
+  if (!has_non_ws_ascii(path_it->second))
+    return std::nullopt;
   return path_it->second;
 }
 
-[[nodiscard]] static parsed_config_section_t parse_instruction_file(
-    const std::string& path,
-    const std::string& latent_lineage_state_grammar_text,
-    const parsed_config_section_t* contract_variables,
-    std::string* out_resolved_text) {
+[[nodiscard]] static parsed_config_section_t
+parse_instruction_file(const std::string &path,
+                       const std::string &latent_lineage_state_grammar_text,
+                       const parsed_config_section_t *contract_variables,
+                       std::string *out_resolved_text) {
   std::ifstream file = cuwacunu::piaabo::dfiles::readFileToStream(path);
   if (!file) {
     log_fatal("[dconfig] cannot open module config file: %s\n", path.c_str());
@@ -1463,13 +1691,15 @@ module_config_path_for_section(const contract_record_t& snapshot,
   std::string instruction_text = oss.str();
   if (contract_variables != nullptr && !contract_variables->empty()) {
     instruction_text = resolve_dsl_variables_or_fail(
-        instruction_text, contract_dsl_variables_from_section(*contract_variables),
-        path);
+        instruction_text,
+        contract_dsl_variables_from_section(*contract_variables), path);
   }
-  if (out_resolved_text) *out_resolved_text = instruction_text;
+  if (out_resolved_text)
+    *out_resolved_text = instruction_text;
 
   if (!has_non_ws_ascii(latent_lineage_state_grammar_text)) {
-    log_fatal("[dconfig] empty latent_lineage_state grammar payload while decoding module file: %s\n",
+    log_fatal("[dconfig] empty latent_lineage_state grammar payload while "
+              "decoding module file: %s\n",
               path.c_str());
   }
 
@@ -1478,7 +1708,7 @@ module_config_path_for_section(const contract_record_t& snapshot,
         cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
             latent_lineage_state_grammar_text, instruction_text);
     return decoded.to_map();
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     log_fatal("[dconfig] invalid latent_lineage_state DSL in %s: %s\n",
               path.c_str(), e.what());
   }
@@ -1486,34 +1716,38 @@ module_config_path_for_section(const contract_record_t& snapshot,
 }
 
 [[nodiscard]] static std::optional<std::string>
-contract_instruction_section_value_or_empty(const contract_record_t& snapshot,
-                                            const std::string& section,
-                                            const std::string& key) {
+contract_instruction_section_value_or_empty(const contract_record_t &snapshot,
+                                            const std::string &section,
+                                            const std::string &key) {
   const auto sec_it = snapshot.module_sections.find(section);
-  if (sec_it == snapshot.module_sections.end()) return std::nullopt;
+  if (sec_it == snapshot.module_sections.end())
+    return std::nullopt;
   const auto value_it = sec_it->second.find(key);
-  if (value_it == sec_it->second.end()) return std::nullopt;
+  if (value_it == sec_it->second.end())
+    return std::nullopt;
   return value_it->second;
 }
 
 static void normalize_vicreg_module_architecture_from_network_design(
-    contract_record_t* record) {
-  if (record == nullptr || !record->vicreg_network_design.has_payload()) return;
+    contract_record_t *record) {
+  if (record == nullptr || !record->vicreg_network_design.has_payload())
+    return;
   auto sec_it = record->module_sections.find(kModuleSectionVicreg);
-  if (sec_it == record->module_sections.end()) return;
+  if (sec_it == record->module_sections.end())
+    return;
 
   try {
-    const auto& ir = record->vicreg_network_design.decoded();
+    const auto &ir = record->vicreg_network_design.decoded();
     cuwacunu::wikimyei::vicreg_4d::vicreg_network_design_spec_t semantic{};
     std::string semantic_error{};
     if (!cuwacunu::wikimyei::vicreg_4d::resolve_vicreg_network_design(
             ir, &semantic, &semantic_error)) {
-      log_fatal(
-          "[dconfig] invalid VICReg network_design semantic payload while normalizing module snapshot: %s\n",
-          semantic_error.c_str());
+      log_fatal("[dconfig] invalid VICReg network_design semantic payload "
+                "while normalizing module snapshot: %s\n",
+                semantic_error.c_str());
     }
 
-    auto& vicreg_section = sec_it->second;
+    auto &vicreg_section = sec_it->second;
     vicreg_section["encoding_dims"] = std::to_string(semantic.encoding_dims);
     vicreg_section["channel_expansion_dim"] =
         std::to_string(semantic.channel_expansion_dim);
@@ -1531,23 +1765,34 @@ static void normalize_vicreg_module_architecture_from_network_design(
         bool_token(semantic.projector_last_bias);
     vicreg_section["projector_bn_in_fp32"] =
         bool_token(semantic.projector_bn_in_fp32);
-  } catch (const std::exception& e) {
-    log_fatal(
-        "[dconfig] failed to normalize VICReg module architecture from network_design: %s\n",
-        e.what());
+  } catch (const std::exception &e) {
+    log_fatal("[dconfig] failed to normalize VICReg module architecture from "
+              "network_design: %s\n",
+              e.what());
   }
 }
 
-static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
-                                                  const std::string& cfg_folder) {
+static bool
+validate_contract_config_or_terminate(const parsed_config_t &cfg,
+                                      const std::string &cfg_folder) {
   bool ok = true;
-  const parsed_config_section_t* contract_variable_section = nullptr;
-  if (const auto vars_it = cfg.find("VARIABLES"); vars_it != cfg.end()) {
-    contract_variable_section = &vars_it->second;
+  const parsed_config_section_t *dock_section = nullptr;
+  if (const auto dock_it = cfg.find(kContractSectionDock);
+      dock_it != cfg.end()) {
+    dock_section = &dock_it->second;
   }
+  const parsed_config_section_t *assembly_section = nullptr;
+  if (const auto assembly_it = cfg.find(kContractSectionAssembly);
+      assembly_it != cfg.end()) {
+    assembly_section = &assembly_it->second;
+  }
+  const parsed_config_section_t merged_contract_variables =
+      merged_contract_variable_section(cfg);
+  const parsed_config_section_t *contract_variable_section =
+      merged_contract_variables.empty() ? nullptr : &merged_contract_variables;
 
-  const auto require_value =
-      [&](const char* section, const char* key, std::string* out_value) -> bool {
+  const auto require_value = [&](const char *section, const char *key,
+                                 std::string *out_value) -> bool {
     const auto sec_it = cfg.find(section);
     if (sec_it == cfg.end()) {
       log_warn("Missing contract section [%s]\n", section);
@@ -1568,14 +1813,16 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       ok = false;
       return false;
     }
-    if (out_value) *out_value = value;
+    if (out_value)
+      *out_value = value;
     return true;
   };
 
-  const auto require_existing_path =
-      [&](const char* section, const char* key, std::string* out_path) -> bool {
+  const auto require_existing_path = [&](const char *section, const char *key,
+                                         std::string *out_path) -> bool {
     std::string raw_path;
-    if (!require_value(section, key, &raw_path)) return false;
+    if (!require_value(section, key, &raw_path))
+      return false;
 
     const std::string resolved = resolve_path_from_folder(cfg_folder, raw_path);
     if (!has_non_ws_ascii(resolved)) {
@@ -1585,32 +1832,36 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       return false;
     }
     if (!std::filesystem::exists(resolved)) {
-      log_warn(
-          "Configured path does not exist for <%s> in contract section [%s]: %s\n",
-          key, section, resolved.c_str());
+      log_warn("Configured path does not exist for <%s> in contract section "
+               "[%s]: %s\n",
+               key, section, resolved.c_str());
       ok = false;
       return false;
     }
     if (!std::filesystem::is_regular_file(resolved)) {
-      log_warn(
-          "Configured path is not a regular file for <%s> in contract section [%s]: %s\n",
-          key, section, resolved.c_str());
+      log_warn("Configured path is not a regular file for <%s> in contract "
+               "section [%s]: %s\n",
+               key, section, resolved.c_str());
       ok = false;
       return false;
     }
-    if (out_path) *out_path = resolved;
+    if (out_path)
+      *out_path = resolved;
     return true;
   };
 
   const auto resolve_existing_path_if_present =
-      [&](const char* section, const char* key, std::string* out_path) -> bool {
+      [&](const char *section, const char *key, std::string *out_path) -> bool {
     const auto sec_it = cfg.find(section);
-    if (sec_it == cfg.end()) return false;
+    if (sec_it == cfg.end())
+      return false;
     const auto key_it = sec_it->second.find(key);
-    if (key_it == sec_it->second.end()) return false;
+    if (key_it == sec_it->second.end())
+      return false;
 
     const std::string raw_path = trim_ascii_ws_copy(key_it->second);
-    if (!has_non_ws_ascii(raw_path)) return false;
+    if (!has_non_ws_ascii(raw_path))
+      return false;
 
     const std::string resolved = resolve_path_from_folder(cfg_folder, raw_path);
     if (!has_non_ws_ascii(resolved)) {
@@ -1621,25 +1872,113 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       return false;
     }
     if (!std::filesystem::exists(resolved)) {
-      log_warn(
-          "Configured optional path does not exist for <%s> in contract section [%s]: %s\n",
-          key, section, resolved.c_str());
+      log_warn("Configured optional path does not exist for <%s> in contract "
+               "section [%s]: %s\n",
+               key, section, resolved.c_str());
       ok = false;
       return false;
     }
     if (!std::filesystem::is_regular_file(resolved)) {
-      log_warn(
-          "Configured optional path is not a regular file for <%s> in contract section [%s]: %s\n",
-          key, section, resolved.c_str());
+      log_warn("Configured optional path is not a regular file for <%s> in "
+               "contract section [%s]: %s\n",
+               key, section, resolved.c_str());
       ok = false;
       return false;
     }
-    if (out_path) *out_path = resolved;
+    if (out_path)
+      *out_path = resolved;
+    return true;
+  };
+
+  const auto require_existing_assembly_variable_path =
+      [&](const char *variable_name, std::string *out_path) -> bool {
+    if (assembly_section == nullptr) {
+      log_warn("Missing contract section [%s]\n", kContractSectionAssembly);
+      ok = false;
+      return false;
+    }
+    const auto value_it = assembly_section->find(variable_name);
+    if (value_it == assembly_section->end()) {
+      log_warn("Missing assembly variable <%s> in contract [%s]\n",
+               variable_name, kContractSectionAssembly);
+      ok = false;
+      return false;
+    }
+
+    const std::string raw_path =
+        unquote_if_wrapped(trim_ascii_ws_copy(value_it->second));
+    if (!has_non_ws_ascii(raw_path)) {
+      log_warn("Empty assembly variable <%s> in contract [%s]\n", variable_name,
+               kContractSectionAssembly);
+      ok = false;
+      return false;
+    }
+
+    const std::string resolved = resolve_path_from_folder(cfg_folder, raw_path);
+    if (!has_non_ws_ascii(resolved)) {
+      log_warn("Unable to resolve assembly variable path for <%s>\n",
+               variable_name);
+      ok = false;
+      return false;
+    }
+    if (!std::filesystem::exists(resolved)) {
+      log_warn("Configured assembly path does not exist for <%s>: %s\n",
+               variable_name, resolved.c_str());
+      ok = false;
+      return false;
+    }
+    if (!std::filesystem::is_regular_file(resolved)) {
+      log_warn("Configured assembly path is not a regular file for <%s>: %s\n",
+               variable_name, resolved.c_str());
+      ok = false;
+      return false;
+    }
+    if (out_path)
+      *out_path = resolved;
+    return true;
+  };
+
+  const auto resolve_existing_assembly_variable_path_if_present =
+      [&](const char *variable_name, std::string *out_path) -> bool {
+    if (assembly_section == nullptr)
+      return false;
+    const auto value_it = assembly_section->find(variable_name);
+    if (value_it == assembly_section->end())
+      return false;
+
+    const std::string raw_path =
+        unquote_if_wrapped(trim_ascii_ws_copy(value_it->second));
+    if (!has_non_ws_ascii(raw_path))
+      return false;
+
+    const std::string resolved = resolve_path_from_folder(cfg_folder, raw_path);
+    if (!has_non_ws_ascii(resolved)) {
+      log_warn("Unable to resolve optional assembly variable path for <%s>\n",
+               variable_name);
+      ok = false;
+      return false;
+    }
+    if (!std::filesystem::exists(resolved)) {
+      log_warn(
+          "Configured optional assembly path does not exist for <%s>: %s\n",
+          variable_name, resolved.c_str());
+      ok = false;
+      return false;
+    }
+    if (!std::filesystem::is_regular_file(resolved)) {
+      log_warn("Configured optional assembly path is not a regular file for "
+               "<%s>: %s\n",
+               variable_name, resolved.c_str());
+      ok = false;
+      return false;
+    }
+    if (out_path)
+      *out_path = resolved;
     return true;
   };
 
   const auto require_existing_global_path =
-      [&](const char* section, const char* key, std::string* out_path) -> bool {
+      [&](const char *section, const char *key, std::string *out_path) -> bool {
     std::string raw_path;
     std::string cfg_folder;
     {
@@ -1667,28 +2006,60 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
 
     const std::string resolved = resolve_path_from_folder(cfg_folder, raw_path);
     if (!has_non_ws_ascii(resolved)) {
-      log_warn("Unable to resolve global path for <%s> in section [%s]\n",
-               key, section);
+      log_warn("Unable to resolve global path for <%s> in section [%s]\n", key,
+               section);
       ok = false;
       return false;
     }
     if (!std::filesystem::exists(resolved)) {
-      log_warn(
-          "Configured global path does not exist for <%s> in section [%s]: %s\n",
-          key, section, resolved.c_str());
+      log_warn("Configured global path does not exist for <%s> in section "
+               "[%s]: %s\n",
+               key, section, resolved.c_str());
       ok = false;
       return false;
     }
     if (!std::filesystem::is_regular_file(resolved)) {
-      log_warn(
-          "Configured global path is not a regular file for <%s> in section [%s]: %s\n",
-          key, section, resolved.c_str());
+      log_warn("Configured global path is not a regular file for <%s> in "
+               "section [%s]: %s\n",
+               key, section, resolved.c_str());
       ok = false;
       return false;
     }
-    if (out_path) *out_path = resolved;
+    if (out_path)
+      *out_path = resolved;
     return true;
   };
+
+  if (dock_section == nullptr) {
+    log_warn("Missing contract section [%s]\n", kContractSectionDock);
+    ok = false;
+  }
+  if (assembly_section == nullptr) {
+    log_warn("Missing contract section [%s]\n", kContractSectionAssembly);
+    ok = false;
+  }
+  if (dock_section != nullptr) {
+    for (const auto &[name, value] : *dock_section) {
+      (void)value;
+      if (is_private_assembly_contract_variable(name)) {
+        log_warn("[dconfig] DOCK variable <%s> is assembly-owned and must move "
+                 "to ASSEMBLY\n",
+                 name.c_str());
+        ok = false;
+      }
+    }
+  }
+  if (assembly_section != nullptr) {
+    for (const auto &[name, value] : *assembly_section) {
+      (void)value;
+      if (is_current_dock_contract_variable(name)) {
+        log_warn("[dconfig] ASSEMBLY variable <%s> is dock-owned and must move "
+                 "to DOCK\n",
+                 name.c_str());
+        ok = false;
+      }
+    }
+  }
 
   std::string vicreg_config_path;
   std::string vicreg_grammar_path;
@@ -1702,34 +2073,39 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
   std::string transfer_matrix_eval_config_path;
   std::string transfer_matrix_eval_grammar_path;
   std::string transfer_matrix_eval_grammar_text;
-  (void)require_existing_path("SPECS", "vicreg_config_filename",
-                              &vicreg_config_path);
+  (void)require_existing_assembly_variable_path(
+      kContractVariableVicregConfigDslFile, &vicreg_config_path);
   (void)require_existing_global_path("BNF", "vicreg_grammar_filename",
                                      &vicreg_grammar_path);
-  vicreg_grammar_text = has_non_ws_ascii(vicreg_grammar_path)
-                            ? piaabo::dfiles::readFileToString(vicreg_grammar_path)
-                            : std::string{};
+  vicreg_grammar_text =
+      has_non_ws_ascii(vicreg_grammar_path)
+          ? piaabo::dfiles::readFileToString(vicreg_grammar_path)
+          : std::string{};
   if (!has_non_ws_ascii(vicreg_grammar_text)) {
     log_warn("[dconfig] missing/empty [BNF].vicreg_grammar_filename payload\n");
     ok = false;
   }
 
-  const bool has_expected_value_config = resolve_existing_path_if_present(
-      "SPECS", "expected_value_config_filename", &expected_value_config_path);
+  const bool has_expected_value_config =
+      resolve_existing_assembly_variable_path_if_present(
+          kContractVariableExpectedValueConfigDslFile,
+          &expected_value_config_path);
   if (has_expected_value_config) {
     (void)require_existing_global_path("BNF", "expected_value_grammar_filename",
                                        &expected_value_grammar_path);
     expected_value_grammar_text =
         piaabo::dfiles::readFileToString(expected_value_grammar_path);
     if (!has_non_ws_ascii(expected_value_grammar_text)) {
-      log_warn("[dconfig] empty [BNF].expected_value_grammar_filename payload\n");
+      log_warn(
+          "[dconfig] empty [BNF].expected_value_grammar_filename payload\n");
       ok = false;
     }
   }
 
-  const bool has_embedding_sequence_config = resolve_existing_path_if_present(
-      "SPECS", kContractSpecsEmbeddingSequenceAnalyticsConfigKey,
-      &embedding_sequence_eval_config_path);
+  const bool has_embedding_sequence_config =
+      resolve_existing_assembly_variable_path_if_present(
+          kContractVariableEmbeddingSequenceAnalyticsDslFile,
+          &embedding_sequence_eval_config_path);
   if (has_embedding_sequence_config) {
     (void)require_existing_global_path(
         "BNF", kGlobalBnfEmbeddingSequenceAnalyticsGrammarKey,
@@ -1737,19 +2113,21 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
     embedding_sequence_eval_grammar_text =
         piaabo::dfiles::readFileToString(embedding_sequence_eval_grammar_path);
     if (!has_non_ws_ascii(embedding_sequence_eval_grammar_text)) {
-      log_warn(
-          "[dconfig] empty [BNF].wikimyei_evaluation_embedding_sequence_analytics_grammar_filename payload\n");
+      log_warn("[dconfig] empty "
+               "[BNF].wikimyei_evaluation_embedding_sequence_analytics_grammar_"
+               "filename payload\n");
       ok = false;
     }
   }
 
-  const bool has_transfer_config = resolve_existing_path_if_present(
-      "SPECS", kContractSpecsTransferMatrixConfigKey,
-      &transfer_matrix_eval_config_path);
+  const bool has_transfer_config =
+      resolve_existing_assembly_variable_path_if_present(
+          kContractVariableTransferMatrixEvaluationDslFile,
+          &transfer_matrix_eval_config_path);
   if (has_transfer_config) {
-    (void)require_existing_global_path(
-        "BNF", kGlobalBnfTransferMatrixGrammarKey,
-        &transfer_matrix_eval_grammar_path);
+    (void)require_existing_global_path("BNF",
+                                       kGlobalBnfTransferMatrixGrammarKey,
+                                       &transfer_matrix_eval_grammar_path);
     transfer_matrix_eval_grammar_text =
         piaabo::dfiles::readFileToString(transfer_matrix_eval_grammar_path);
     if (!has_non_ws_ascii(transfer_matrix_eval_grammar_text)) {
@@ -1759,40 +2137,42 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
     }
   }
 
-  constexpr const char* kRequiredContractDslPathKeys[] = {
-      "circuit_dsl_filename",
+  constexpr const char *kRequiredContractDslPathKeys[] = {
+      kAssemblyKeyCircuitDslFilename,
   };
-  for (const char* key : kRequiredContractDslPathKeys) {
-    (void)require_existing_path("CONTRACT", key, nullptr);
+  for (const char *key : kRequiredContractDslPathKeys) {
+    (void)require_existing_path(kContractSectionAssembly, key, nullptr);
   }
 
-  constexpr const char* kRequiredGlobalGrammarPathKeys[] = {
+  constexpr const char *kRequiredGlobalGrammarPathKeys[] = {
       "tsiemene_circuit_grammar_filename",
       "canonical_path_grammar_filename",
   };
-  for (const char* key : kRequiredGlobalGrammarPathKeys) {
+  for (const char *key : kRequiredGlobalGrammarPathKeys) {
     (void)require_existing_global_path("BNF", key, nullptr);
   }
 
   const bool has_train_circuit = resolve_existing_path_if_present(
-      "CONTRACT", "circuit_train_dsl_filename", nullptr);
+      kContractSectionAssembly, "circuit_train_dsl_filename", nullptr);
   const bool has_run_circuit = resolve_existing_path_if_present(
-      "CONTRACT", "circuit_run_dsl_filename", nullptr);
+      kContractSectionAssembly, "circuit_run_dsl_filename", nullptr);
   if (has_train_circuit || has_run_circuit) {
-    log_warn(
-        "[dconfig] split circuit keys "
-        "<circuit_train_dsl_filename>/<circuit_run_dsl_filename> "
-        "are removed; use CONTRACT.CIRCUIT_FILE\n");
+    log_warn("[dconfig] split circuit keys "
+             "<circuit_train_dsl_filename>/<circuit_run_dsl_filename> "
+             "are removed; use ASSEMBLY.CIRCUIT_FILE\n");
     ok = false;
   }
 
   std::string circuit_dsl_path{};
   std::string circuit_grammar_path{};
-  (void)require_existing_path("CONTRACT", "circuit_dsl_filename", &circuit_dsl_path);
+  (void)require_existing_path(kContractSectionAssembly,
+                              kAssemblyKeyCircuitDslFilename,
+                              &circuit_dsl_path);
   (void)require_existing_global_path("BNF", "tsiemene_circuit_grammar_filename",
                                      &circuit_grammar_path);
 
-  if (has_non_ws_ascii(circuit_dsl_path) && has_non_ws_ascii(circuit_grammar_path)) {
+  if (has_non_ws_ascii(circuit_dsl_path) &&
+      has_non_ws_ascii(circuit_grammar_path)) {
     std::string circuit_dsl_text =
         piaabo::dfiles::readFileToString(circuit_dsl_path);
     const std::string circuit_grammar_text =
@@ -1814,29 +2194,33 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
             cuwacunu::camahjucunu::dsl::tsiemeneCircuits(circuit_grammar_text);
         const auto instruction = circuit_parser.decode(circuit_dsl_text);
 
-        const auto ack_it = cfg.find("ACKNOWLEDGE");
+        const auto ack_it = cfg.find(kContractSectionAknowledge);
         if (ack_it == cfg.end() || ack_it->second.empty()) {
-          log_warn("[dconfig] missing AKNOWLEDGE declarations in contract wrapper\n");
+          log_warn("[dconfig] missing AKNOWLEDGE declarations in ASSEMBLY\n");
           ok = false;
         } else {
           std::unordered_set<std::string> instance_aliases{};
-          for (const auto& circuit : instruction.circuits) {
-            for (const auto& instance : circuit.instances) {
+          for (const auto &circuit : instruction.circuits) {
+            for (const auto &instance : circuit.instances) {
               const std::string alias = trim_ascii_ws_copy(instance.alias);
-              const std::string instance_type = trim_ascii_ws_copy(instance.tsi_type);
-              if (!has_non_ws_ascii(alias) || !has_non_ws_ascii(instance_type)) continue;
+              const std::string instance_type =
+                  trim_ascii_ws_copy(instance.tsi_type);
+              if (!has_non_ws_ascii(alias) || !has_non_ws_ascii(instance_type))
+                continue;
               instance_aliases.insert(alias);
 
               const auto ack_type_it = ack_it->second.find(alias);
               if (ack_type_it == ack_it->second.end()) {
-                log_warn(
-                    "[dconfig] missing AKNOWLEDGE declaration for circuit alias '%s'\n",
-                    alias.c_str());
+                log_warn("[dconfig] missing AKNOWLEDGE declaration for circuit "
+                         "alias '%s'\n",
+                         alias.c_str());
                 ok = false;
                 continue;
               }
-              const std::string ack_type = trim_ascii_ws_copy(ack_type_it->second);
-              const auto instance_type_id = tsiemene::parse_tsi_type_id(instance_type);
+              const std::string ack_type =
+                  trim_ascii_ws_copy(ack_type_it->second);
+              const auto instance_type_id =
+                  tsiemene::parse_tsi_type_id(instance_type);
               const auto ack_type_id = tsiemene::parse_tsi_type_id(ack_type);
               if (!instance_type_id.has_value() || !ack_type_id.has_value()) {
                 log_warn(
@@ -1846,313 +2230,343 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                 continue;
               }
               if (*instance_type_id != *ack_type_id) {
-                log_warn(
-                    "[dconfig] AKNOWLEDGE type mismatch for alias '%s': circuit=%s acknowledge=%s\n",
-                    alias.c_str(), instance_type.c_str(), ack_type.c_str());
+                log_warn("[dconfig] AKNOWLEDGE type mismatch for alias '%s': "
+                         "circuit=%s acknowledge=%s\n",
+                         alias.c_str(), instance_type.c_str(),
+                         ack_type.c_str());
                 ok = false;
               }
               const std::string expected_ack =
                   std::string(tsiemene::tsi_type_token(*ack_type_id));
               if (ack_type != expected_ack) {
-                log_warn(
-                    "[dconfig] AKNOWLEDGE for alias '%s' must use family token '%s' (got '%s')\n",
-                    alias.c_str(), expected_ack.c_str(), ack_type.c_str());
+                log_warn("[dconfig] AKNOWLEDGE for alias '%s' must use family "
+                         "token '%s' (got '%s')\n",
+                         alias.c_str(), expected_ack.c_str(), ack_type.c_str());
                 ok = false;
               }
             }
           }
 
-          for (const auto& [alias, family] : ack_it->second) {
+          for (const auto &[alias, family] : ack_it->second) {
             (void)family;
-            if (instance_aliases.find(alias) != instance_aliases.end()) continue;
-            log_warn(
-                "[dconfig] AKNOWLEDGE alias '%s' does not exist in circuit instances\n",
-                alias.c_str());
+            if (instance_aliases.find(alias) != instance_aliases.end())
+              continue;
+            log_warn("[dconfig] AKNOWLEDGE alias '%s' does not exist in "
+                     "circuit instances\n",
+                     alias.c_str());
             ok = false;
           }
         }
-      } catch (const std::exception& e) {
-        log_warn("[dconfig] invalid circuit DSL while validating contract wrapper: %s\n",
+      } catch (const std::exception &e) {
+        log_warn("[dconfig] invalid circuit DSL while validating contract "
+                 "wrapper: %s\n",
                  e.what());
         ok = false;
       }
     }
   }
 
-  constexpr std::array<const char*, 4> kReservedModuleSections = {
+  constexpr std::array<const char *, 4> kReservedModuleSections = {
       kModuleSectionVicreg,
       kModuleSectionExpectedValue,
       kModuleSectionEmbeddingSequenceAnalytics,
       kModuleSectionTransferMatrixEvaluation,
   };
-  for (const char* section : kReservedModuleSections) {
+  for (const char *section : kReservedModuleSections) {
     const auto sec_it = cfg.find(section);
-    if (sec_it == cfg.end()) continue;
+    if (sec_it == cfg.end())
+      continue;
     bool has_payload = false;
-    for (const auto& [key, value] : sec_it->second) {
-      if (!has_non_ws_ascii(trim_ascii_ws_copy(value))) continue;
-      log_warn(
-          "[dconfig] contract section [%s] key <%s> is not allowed; "
-          "module sections are loaded from [SPECS] instruction files\n",
-          section,
-          key.c_str());
+    for (const auto &[key, value] : sec_it->second) {
+      if (!has_non_ws_ascii(trim_ascii_ws_copy(value)))
+        continue;
+      log_warn("[dconfig] contract section [%s] key <%s> is not allowed; "
+               "module sections are loaded from ASSEMBLY-owned module config "
+               "variables\n",
+               section, key.c_str());
       has_payload = true;
     }
-    if (has_payload) ok = false;
+    if (has_payload)
+      ok = false;
   }
 
   const auto validate_module_instruction_file =
-      [&](const char* module_name, const std::string& module_path,
-          const std::string& module_grammar_text,
-          std::initializer_list<const char*> string_keys,
-          std::initializer_list<const char*> int_keys,
-          std::initializer_list<const char*> float_keys,
-          std::initializer_list<const char*> bool_keys,
-          std::initializer_list<const char*> arr_int_keys,
-          std::initializer_list<const char*> arr_float_keys,
-          std::initializer_list<const char*> optional_string_keys,
-          std::initializer_list<const char*> optional_int_keys,
-          std::initializer_list<const char*> optional_float_keys,
-          std::initializer_list<const char*> optional_bool_keys,
-          std::initializer_list<const char*> optional_arr_int_keys,
-          std::initializer_list<const char*> optional_arr_float_keys) {
-    if (!has_non_ws_ascii(module_path)) return;
-    if (!has_non_ws_ascii(module_grammar_text)) {
-      log_warn("[dconfig] missing grammar payload for module config [%s]: %s\n",
-               module_name, module_path.c_str());
-      ok = false;
-      return;
-    }
+      [&](const char *module_name, const std::string &module_path,
+          const std::string &module_grammar_text,
+          std::initializer_list<const char *> string_keys,
+          std::initializer_list<const char *> int_keys,
+          std::initializer_list<const char *> float_keys,
+          std::initializer_list<const char *> bool_keys,
+          std::initializer_list<const char *> arr_int_keys,
+          std::initializer_list<const char *> arr_float_keys,
+          std::initializer_list<const char *> optional_string_keys,
+          std::initializer_list<const char *> optional_int_keys,
+          std::initializer_list<const char *> optional_float_keys,
+          std::initializer_list<const char *> optional_bool_keys,
+          std::initializer_list<const char *> optional_arr_int_keys,
+          std::initializer_list<const char *> optional_arr_float_keys) {
+        if (!has_non_ws_ascii(module_path))
+          return;
+        if (!has_non_ws_ascii(module_grammar_text)) {
+          log_warn(
+              "[dconfig] missing grammar payload for module config [%s]: %s\n",
+              module_name, module_path.c_str());
+          ok = false;
+          return;
+        }
 
-    const parsed_config_section_t module_values = parse_instruction_file(
-        module_path, module_grammar_text, contract_variable_section);
-    const auto lower_trim_ascii = [](std::string value) -> std::string {
-      value = trim_ascii_ws_copy(std::move(value));
-      std::transform(value.begin(), value.end(), value.begin(),
-                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-      return value;
-    };
-    const auto strip_type_prefixes = [&](std::string value) -> std::string {
-      value = lower_trim_ascii(std::move(value));
-      if (value.rfind("torch::", 0) == 0) value = value.substr(7);
-      if (value.rfind("at::", 0) == 0) value = value.substr(4);
-      if (value.rfind("k", 0) == 0 && value.size() > 1 &&
-          std::isalpha(static_cast<unsigned char>(value[1]))) {
-        value = value.substr(1);
-      }
-      return value;
-    };
-    const auto is_valid_dtype_token = [&](std::string value) -> bool {
-      value = strip_type_prefixes(std::move(value));
-      return value == "bool" || value == "int8" || value == "int16" ||
-             value == "int32" || value == "int64" || value == "float16" ||
-             value == "half" || value == "f16" || value == "float32" ||
-             value == "float" || value == "f32" || value == "float64" ||
-             value == "double" || value == "f64";
-    };
-    const auto is_valid_device_token = [&](std::string value) -> bool {
-      value = lower_trim_ascii(std::move(value));
-      if (value == "cpu" || value == "cuda" || value == "gpu") return true;
-      if (value == "torch::kcpu" || value == "kcpu" || value == "torch::kcuda" ||
-          value == "kcuda") {
-        return true;
-      }
-      if (value.rfind("cuda:", 0) == 0 || value.rfind("gpu:", 0) == 0) {
-        const std::string suffix = value.substr(value.find(':') + 1);
-        return !suffix.empty() &&
-               std::all_of(suffix.begin(), suffix.end(), [](unsigned char c) {
-                 return std::isdigit(c);
-               });
-      }
-      return false;
-    };
-
-    std::unordered_set<std::string> allowed_keys;
-    const auto register_allowed_keys =
-        [&](std::initializer_list<const char*> keys) {
-          for (const char* key : keys) {
-            allowed_keys.insert(std::string(key));
-          }
+        const parsed_config_section_t module_values = parse_instruction_file(
+            module_path, module_grammar_text, contract_variable_section);
+        const auto lower_trim_ascii = [](std::string value) -> std::string {
+          value = trim_ascii_ws_copy(std::move(value));
+          std::transform(value.begin(), value.end(), value.begin(),
+                         [](unsigned char c) {
+                           return static_cast<char>(std::tolower(c));
+                         });
+          return value;
         };
-    register_allowed_keys(string_keys);
-    register_allowed_keys(int_keys);
-    register_allowed_keys(float_keys);
-    register_allowed_keys(bool_keys);
-    register_allowed_keys(arr_int_keys);
-    register_allowed_keys(arr_float_keys);
-    register_allowed_keys(optional_string_keys);
-    register_allowed_keys(optional_int_keys);
-    register_allowed_keys(optional_float_keys);
-    register_allowed_keys(optional_bool_keys);
-    register_allowed_keys(optional_arr_int_keys);
-    register_allowed_keys(optional_arr_float_keys);
+        const auto strip_type_prefixes = [&](std::string value) -> std::string {
+          value = lower_trim_ascii(std::move(value));
+          if (value.rfind("torch::", 0) == 0)
+            value = value.substr(7);
+          if (value.rfind("at::", 0) == 0)
+            value = value.substr(4);
+          if (value.rfind("k", 0) == 0 && value.size() > 1 &&
+              std::isalpha(static_cast<unsigned char>(value[1]))) {
+            value = value.substr(1);
+          }
+          return value;
+        };
+        const auto is_valid_dtype_token = [&](std::string value) -> bool {
+          value = strip_type_prefixes(std::move(value));
+          return value == "bool" || value == "int8" || value == "int16" ||
+                 value == "int32" || value == "int64" || value == "float16" ||
+                 value == "half" || value == "f16" || value == "float32" ||
+                 value == "float" || value == "f32" || value == "float64" ||
+                 value == "double" || value == "f64";
+        };
+        const auto is_valid_device_token = [&](std::string value) -> bool {
+          value = lower_trim_ascii(std::move(value));
+          if (value == "cpu" || value == "cuda" || value == "gpu")
+            return true;
+          if (value == "torch::kcpu" || value == "kcpu" ||
+              value == "torch::kcuda" || value == "kcuda") {
+            return true;
+          }
+          if (value.rfind("cuda:", 0) == 0 || value.rfind("gpu:", 0) == 0) {
+            const std::string suffix = value.substr(value.find(':') + 1);
+            return !suffix.empty() &&
+                   std::all_of(suffix.begin(), suffix.end(),
+                               [](unsigned char c) { return std::isdigit(c); });
+          }
+          return false;
+        };
 
-    for (const auto& [key, value] : module_values) {
-      (void)value;
-      if (allowed_keys.find(key) != allowed_keys.end()) continue;
-      log_warn("Unknown key <%s> in module config [%s] file: %s\n",
-               key.c_str(), module_name, module_path.c_str());
-      ok = false;
-    }
+        std::unordered_set<std::string> allowed_keys;
+        const auto register_allowed_keys =
+            [&](std::initializer_list<const char *> keys) {
+              for (const char *key : keys) {
+                allowed_keys.insert(std::string(key));
+              }
+            };
+        register_allowed_keys(string_keys);
+        register_allowed_keys(int_keys);
+        register_allowed_keys(float_keys);
+        register_allowed_keys(bool_keys);
+        register_allowed_keys(arr_int_keys);
+        register_allowed_keys(arr_float_keys);
+        register_allowed_keys(optional_string_keys);
+        register_allowed_keys(optional_int_keys);
+        register_allowed_keys(optional_float_keys);
+        register_allowed_keys(optional_bool_keys);
+        register_allowed_keys(optional_arr_int_keys);
+        register_allowed_keys(optional_arr_float_keys);
 
-    const auto read_module_value =
-        [&](const char* key, bool required, std::string* out_value) -> bool {
-      const auto it = module_values.find(key);
-      if (it == module_values.end()) {
-        if (required) {
-          log_warn("Missing key <%s> in module config [%s] file: %s\n", key,
-                   module_name, module_path.c_str());
+        for (const auto &[key, value] : module_values) {
+          (void)value;
+          if (allowed_keys.find(key) != allowed_keys.end())
+            continue;
+          log_warn("Unknown key <%s> in module config [%s] file: %s\n",
+                   key.c_str(), module_name, module_path.c_str());
           ok = false;
         }
-        return false;
-      }
 
-      const std::string value = trim_ascii_ws_copy(it->second);
-      if (!has_non_ws_ascii(value)) {
-        log_warn("Empty key <%s> in module config [%s] file: %s\n", key,
-                 module_name, module_path.c_str());
-        ok = false;
-        return false;
-      }
+        const auto read_module_value = [&](const char *key, bool required,
+                                           std::string *out_value) -> bool {
+          const auto it = module_values.find(key);
+          if (it == module_values.end()) {
+            if (required) {
+              log_warn("Missing key <%s> in module config [%s] file: %s\n", key,
+                       module_name, module_path.c_str());
+              ok = false;
+            }
+            return false;
+          }
 
-      if (out_value) *out_value = value;
-      return true;
-    };
+          const std::string value = trim_ascii_ws_copy(it->second);
+          if (!has_non_ws_ascii(value)) {
+            log_warn("Empty key <%s> in module config [%s] file: %s\n", key,
+                     module_name, module_path.c_str());
+            ok = false;
+            return false;
+          }
 
-    const auto validate_string_key =
-        [&](const char* key, bool required) {
+          if (out_value)
+            *out_value = value;
+          return true;
+        };
+
+        const auto validate_string_key = [&](const char *key, bool required) {
           std::string value;
-          if (!read_module_value(key, required, &value)) return;
-          if (std::string_view(key) == "dtype" && !is_valid_dtype_token(value)) {
+          if (!read_module_value(key, required, &value))
+            return;
+          if (std::string_view(key) == "dtype" &&
+              !is_valid_dtype_token(value)) {
             log_warn("Invalid dtype token in module config [%s] file %s: %s\n",
                      module_name, module_path.c_str(), value.c_str());
             ok = false;
           }
-          if (std::string_view(key) == "device" && !is_valid_device_token(value)) {
+          if (std::string_view(key) == "device" &&
+              !is_valid_device_token(value)) {
             log_warn("Invalid device token in module config [%s] file %s: %s\n",
                      module_name, module_path.c_str(), value.c_str());
             ok = false;
           }
         };
 
-    const auto validate_int_key = [&](const char* key, bool required) {
-      std::string value;
-      if (!read_module_value(key, required, &value)) return;
-      try {
-        (void)parse_scalar_from_string<int64_t>(value);
-      } catch (const std::exception& e) {
-        log_warn("Invalid int value for <%s> in module config [%s] file %s: %s\n",
-                 key, module_name, module_path.c_str(), e.what());
-        ok = false;
-      }
-    };
+        const auto validate_int_key = [&](const char *key, bool required) {
+          std::string value;
+          if (!read_module_value(key, required, &value))
+            return;
+          try {
+            (void)parse_scalar_from_string<int64_t>(value);
+          } catch (const std::exception &e) {
+            log_warn("Invalid int value for <%s> in module config [%s] file "
+                     "%s: %s\n",
+                     key, module_name, module_path.c_str(), e.what());
+            ok = false;
+          }
+        };
 
-    const auto validate_float_key = [&](const char* key, bool required) {
-      std::string value;
-      if (!read_module_value(key, required, &value)) return;
-      try {
-        (void)parse_scalar_from_string<double>(value);
-      } catch (const std::exception& e) {
-        log_warn(
-            "Invalid float value for <%s> in module config [%s] file %s: %s\n",
-            key, module_name, module_path.c_str(), e.what());
-        ok = false;
-      }
-    };
+        const auto validate_float_key = [&](const char *key, bool required) {
+          std::string value;
+          if (!read_module_value(key, required, &value))
+            return;
+          try {
+            (void)parse_scalar_from_string<double>(value);
+          } catch (const std::exception &e) {
+            log_warn("Invalid float value for <%s> in module config [%s] file "
+                     "%s: %s\n",
+                     key, module_name, module_path.c_str(), e.what());
+            ok = false;
+          }
+        };
 
-    const auto validate_bool_key = [&](const char* key, bool required) {
-      std::string value;
-      if (!read_module_value(key, required, &value)) return;
-      try {
-        (void)parse_scalar_from_string<bool>(value);
-      } catch (const std::exception& e) {
-        log_warn("Invalid bool value for <%s> in module config [%s] file %s: %s\n",
-                 key, module_name, module_path.c_str(), e.what());
-        ok = false;
-      }
-    };
+        const auto validate_bool_key = [&](const char *key, bool required) {
+          std::string value;
+          if (!read_module_value(key, required, &value))
+            return;
+          try {
+            (void)parse_scalar_from_string<bool>(value);
+          } catch (const std::exception &e) {
+            log_warn("Invalid bool value for <%s> in module config [%s] file "
+                     "%s: %s\n",
+                     key, module_name, module_path.c_str(), e.what());
+            ok = false;
+          }
+        };
 
-    const auto validate_int_array_key = [&](const char* key, bool required) {
-      std::string value;
-      if (!read_module_value(key, required, &value)) return;
-      const auto items = split_string_items(value);
-      if (items.empty()) {
-        log_warn("Empty integer array for <%s> in module config [%s] file: %s\n",
-                 key, module_name, module_path.c_str());
-        ok = false;
-        return;
-      }
-      for (const auto& item : items) {
-        try {
-          (void)parse_scalar_from_string<int64_t>(item);
-        } catch (const std::exception& e) {
-          log_warn(
-              "Invalid integer array item for <%s> in module config [%s] file %s: %s\n",
-              key, module_name, module_path.c_str(), e.what());
-          ok = false;
+        const auto validate_int_array_key = [&](const char *key,
+                                                bool required) {
+          std::string value;
+          if (!read_module_value(key, required, &value))
+            return;
+          const auto items = split_string_items(value);
+          if (items.empty()) {
+            log_warn(
+                "Empty integer array for <%s> in module config [%s] file: %s\n",
+                key, module_name, module_path.c_str());
+            ok = false;
+            return;
+          }
+          for (const auto &item : items) {
+            try {
+              (void)parse_scalar_from_string<int64_t>(item);
+            } catch (const std::exception &e) {
+              log_warn("Invalid integer array item for <%s> in module config "
+                       "[%s] file %s: %s\n",
+                       key, module_name, module_path.c_str(), e.what());
+              ok = false;
+            }
+          }
+        };
+
+        const auto validate_float_array_key = [&](const char *key,
+                                                  bool required) {
+          std::string value;
+          if (!read_module_value(key, required, &value))
+            return;
+          const auto items = split_string_items(value);
+          if (items.empty()) {
+            log_warn(
+                "Empty float array for <%s> in module config [%s] file: %s\n",
+                key, module_name, module_path.c_str());
+            ok = false;
+            return;
+          }
+          for (const auto &item : items) {
+            try {
+              (void)parse_scalar_from_string<double>(item);
+            } catch (const std::exception &e) {
+              log_warn("Invalid float array item for <%s> in module config "
+                       "[%s] file %s: %s\n",
+                       key, module_name, module_path.c_str(), e.what());
+              ok = false;
+            }
+          }
+        };
+
+        for (const char *key : string_keys)
+          validate_string_key(key, /*required=*/true);
+        for (const char *key : optional_string_keys) {
+          validate_string_key(key, /*required=*/false);
         }
-      }
-    };
 
-    const auto validate_float_array_key = [&](const char* key, bool required) {
-      std::string value;
-      if (!read_module_value(key, required, &value)) return;
-      const auto items = split_string_items(value);
-      if (items.empty()) {
-        log_warn("Empty float array for <%s> in module config [%s] file: %s\n",
-                 key, module_name, module_path.c_str());
-        ok = false;
-        return;
-      }
-      for (const auto& item : items) {
-        try {
-          (void)parse_scalar_from_string<double>(item);
-        } catch (const std::exception& e) {
-          log_warn(
-              "Invalid float array item for <%s> in module config [%s] file %s: %s\n",
-              key, module_name, module_path.c_str(), e.what());
-          ok = false;
+        for (const char *key : int_keys)
+          validate_int_key(key, /*required=*/true);
+        for (const char *key : optional_int_keys)
+          validate_int_key(key, /*required=*/false);
+
+        for (const char *key : float_keys)
+          validate_float_key(key, /*required=*/true);
+        for (const char *key : optional_float_keys) {
+          validate_float_key(key, /*required=*/false);
         }
-      }
-    };
 
-    for (const char* key : string_keys) validate_string_key(key, /*required=*/true);
-    for (const char* key : optional_string_keys) {
-      validate_string_key(key, /*required=*/false);
-    }
+        for (const char *key : bool_keys)
+          validate_bool_key(key, /*required=*/true);
+        for (const char *key : optional_bool_keys)
+          validate_bool_key(key, /*required=*/false);
 
-    for (const char* key : int_keys) validate_int_key(key, /*required=*/true);
-    for (const char* key : optional_int_keys) validate_int_key(key, /*required=*/false);
+        for (const char *key : arr_int_keys) {
+          validate_int_array_key(key, /*required=*/true);
+        }
+        for (const char *key : optional_arr_int_keys) {
+          validate_int_array_key(key, /*required=*/false);
+        }
 
-    for (const char* key : float_keys) validate_float_key(key, /*required=*/true);
-    for (const char* key : optional_float_keys) {
-      validate_float_key(key, /*required=*/false);
-    }
-
-    for (const char* key : bool_keys) validate_bool_key(key, /*required=*/true);
-    for (const char* key : optional_bool_keys) validate_bool_key(key, /*required=*/false);
-
-    for (const char* key : arr_int_keys) {
-      validate_int_array_key(key, /*required=*/true);
-    }
-    for (const char* key : optional_arr_int_keys) {
-      validate_int_array_key(key, /*required=*/false);
-    }
-
-    for (const char* key : arr_float_keys) {
-      validate_float_array_key(key, /*required=*/true);
-    }
-    for (const char* key : optional_arr_float_keys) {
-      validate_float_array_key(key, /*required=*/false);
-    }
-  };
+        for (const char *key : arr_float_keys) {
+          validate_float_array_key(key, /*required=*/true);
+        }
+        for (const char *key : optional_arr_float_keys) {
+          validate_float_array_key(key, /*required=*/false);
+        }
+      };
 
   validate_module_instruction_file(
-      kModuleSectionVicreg, vicreg_config_path,
-      vicreg_grammar_text,
+      kModuleSectionVicreg, vicreg_config_path, vicreg_grammar_text,
       /* string_keys */
-      {"dtype", "device", "jkimyei_dsl_file",
-       "network_design_dsl_file"},
+      {"dtype", "device", "jkimyei_dsl_file", "network_design_dsl_file"},
       /* int_keys */
       {},
       /* float_keys */
@@ -2182,8 +2596,8 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       /* string_keys */
       {"model_path", "dtype", "device"},
       /* int_keys */
-      {"telemetry_every", "mixture_comps",
-       "features_hidden", "residual_depth", "optimizer_threshold_reset"},
+      {"telemetry_every", "mixture_comps", "features_hidden", "residual_depth",
+       "optimizer_threshold_reset"},
       /* float_keys */
       {"grad_clip"},
       /* bool_keys */
@@ -2205,34 +2619,33 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       /* optional_arr_float_keys */
       {});
 
-  validate_module_instruction_file(
-      kModuleSectionEmbeddingSequenceAnalytics,
-      embedding_sequence_eval_config_path,
-      embedding_sequence_eval_grammar_text,
-      /* string_keys */
-      {},
-      /* int_keys */
-      {},
-      /* float_keys */
-      {},
-      /* bool_keys */
-      {},
-      /* arr_int_keys */
-      {},
-      /* arr_float_keys */
-      {},
-      /* optional_string_keys */
-      {},
-      /* optional_int_keys */
-      {"max_samples", "max_features"},
-      /* optional_float_keys */
-      {"mask_epsilon", "standardize_epsilon"},
-      /* optional_bool_keys */
-      {},
-      /* optional_arr_int_keys */
-      {},
-      /* optional_arr_float_keys */
-      {});
+  validate_module_instruction_file(kModuleSectionEmbeddingSequenceAnalytics,
+                                   embedding_sequence_eval_config_path,
+                                   embedding_sequence_eval_grammar_text,
+                                   /* string_keys */
+                                   {},
+                                   /* int_keys */
+                                   {},
+                                   /* float_keys */
+                                   {},
+                                   /* bool_keys */
+                                   {},
+                                   /* arr_int_keys */
+                                   {},
+                                   /* arr_float_keys */
+                                   {},
+                                   /* optional_string_keys */
+                                   {},
+                                   /* optional_int_keys */
+                                   {"max_samples", "max_features"},
+                                   /* optional_float_keys */
+                                   {"mask_epsilon", "standardize_epsilon"},
+                                   /* optional_bool_keys */
+                                   {},
+                                   /* optional_arr_int_keys */
+                                   {},
+                                   /* optional_arr_float_keys */
+                                   {});
 
   validate_module_instruction_file(
       kModuleSectionTransferMatrixEvaluation, transfer_matrix_eval_config_path,
@@ -2252,32 +2665,17 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       /* optional_string_keys */
       {"dtype", "device"},
       /* optional_int_keys */
-      {"summary_every_steps",
-       "mdn_mixture_comps",
-       "mdn_features_hidden",
-       "mdn_residual_depth",
-       "prequential_blocks",
-       "control_shuffle_block",
+      {"summary_every_steps", "mdn_mixture_comps", "mdn_features_hidden",
+       "mdn_residual_depth", "prequential_blocks", "control_shuffle_block",
        "control_shuffle_seed"},
       /* optional_float_keys */
-      {"optimizer_lr",
-       "optimizer_weight_decay",
-       "optimizer_beta1",
-       "optimizer_beta2",
-       "optimizer_eps",
-       "grad_clip",
-       "nll_eps",
-       "nll_sigma_min",
-       "nll_sigma_max",
-       "anchor_train_ratio",
-       "anchor_val_ratio",
-       "anchor_test_ratio",
-       "linear_ridge_lambda",
+      {"optimizer_lr", "optimizer_weight_decay", "optimizer_beta1",
+       "optimizer_beta2", "optimizer_eps", "grad_clip", "nll_eps",
+       "nll_sigma_min", "nll_sigma_max", "anchor_train_ratio",
+       "anchor_val_ratio", "anchor_test_ratio", "linear_ridge_lambda",
        "gaussian_var_min"},
       /* optional_bool_keys */
-      {"check_temporal_order",
-       "validate_vicreg_out",
-       "report_shapes",
+      {"check_temporal_order", "validate_vicreg_out", "report_shapes",
        "reset_hashimyei_on_start"},
       /* optional_arr_int_keys */
       {"mdn_target_dims", "target_dims"},
@@ -2285,9 +2683,8 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
       {});
 
   {
-    const parsed_config_section_t vicreg_values =
-        parse_instruction_file(vicreg_config_path, vicreg_grammar_text,
-                               contract_variable_section);
+    const parsed_config_section_t vicreg_values = parse_instruction_file(
+        vicreg_config_path, vicreg_grammar_text, contract_variable_section);
     const auto jkimyei_dsl_it = vicreg_values.find("jkimyei_dsl_file");
     if (jkimyei_dsl_it == vicreg_values.end()) {
       log_warn(
@@ -2313,38 +2710,38 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
         if (!has_non_ws_ascii(resolved_jkimyei_path) ||
             !std::filesystem::exists(resolved_jkimyei_path) ||
             !std::filesystem::is_regular_file(resolved_jkimyei_path)) {
-          log_warn(
-              "Invalid path for <jkimyei_dsl_file> in module config [VICReg] file %s: %s\n",
-              vicreg_config_path.c_str(),
-              resolved_jkimyei_path.c_str());
+          log_warn("Invalid path for <jkimyei_dsl_file> in module config "
+                   "[VICReg] file %s: %s\n",
+                   vicreg_config_path.c_str(), resolved_jkimyei_path.c_str());
           ok = false;
         } else {
           std::string jkimyei_grammar_path;
-          if (require_existing_global_path("BNF", "jkimyei_specs_grammar_filename",
+          if (require_existing_global_path("BNF",
+                                           "jkimyei_specs_grammar_filename",
                                            &jkimyei_grammar_path)) {
             const std::string jkimyei_grammar_text =
                 piaabo::dfiles::readFileToString(jkimyei_grammar_path);
             const std::string jkimyei_dsl_text =
                 piaabo::dfiles::readFileToString(resolved_jkimyei_path);
             if (!has_non_ws_ascii(jkimyei_grammar_text)) {
-              log_warn(
-                  "[dconfig] empty [BNF].jkimyei_specs_grammar_filename payload\n");
+              log_warn("[dconfig] empty [BNF].jkimyei_specs_grammar_filename "
+                       "payload\n");
               ok = false;
             } else if (!has_non_ws_ascii(jkimyei_dsl_text)) {
-              log_warn(
-                  "Empty jkimyei DSL payload in module config [VICReg] file %s: %s\n",
-                  vicreg_config_path.c_str(),
-                  resolved_jkimyei_path.c_str());
+              log_warn("Empty jkimyei DSL payload in module config [VICReg] "
+                       "file %s: %s\n",
+                       vicreg_config_path.c_str(),
+                       resolved_jkimyei_path.c_str());
               ok = false;
             } else {
               try {
                 (void)cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(
                     jkimyei_grammar_text, jkimyei_dsl_text,
                     resolved_jkimyei_path);
-              } catch (const std::exception& e) {
-                log_warn(
-                    "Invalid jkimyei DSL referenced by module config [VICReg] file %s: %s\n",
-                    vicreg_config_path.c_str(), e.what());
+              } catch (const std::exception &e) {
+                log_warn("Invalid jkimyei DSL referenced by module config "
+                         "[VICReg] file %s: %s\n",
+                         vicreg_config_path.c_str(), e.what());
                 ok = false;
               }
             }
@@ -2355,17 +2752,17 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
 
     const auto net_dsl_it = vicreg_values.find("network_design_dsl_file");
     if (net_dsl_it == vicreg_values.end()) {
-      log_warn(
-          "Missing key <network_design_dsl_file> in module config [VICReg] file: %s\n",
-          vicreg_config_path.c_str());
+      log_warn("Missing key <network_design_dsl_file> in module config "
+               "[VICReg] file: %s\n",
+               vicreg_config_path.c_str());
       ok = false;
     } else {
       const std::string raw_network_design_path =
           unquote_if_wrapped(trim_ascii_ws_copy(net_dsl_it->second));
       if (!has_non_ws_ascii(raw_network_design_path)) {
-        log_warn(
-            "Empty key <network_design_dsl_file> in module config [VICReg] file: %s\n",
-            vicreg_config_path.c_str());
+        log_warn("Empty key <network_design_dsl_file> in module config "
+                 "[VICReg] file: %s\n",
+                 vicreg_config_path.c_str());
         ok = false;
       } else {
         std::string vicreg_folder{};
@@ -2378,14 +2775,15 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
         if (!has_non_ws_ascii(resolved_network_design_path) ||
             !std::filesystem::exists(resolved_network_design_path) ||
             !std::filesystem::is_regular_file(resolved_network_design_path)) {
-          log_warn(
-              "Invalid path for <network_design_dsl_file> in module config [VICReg] file %s: %s\n",
-              vicreg_config_path.c_str(),
-              resolved_network_design_path.c_str());
+          log_warn("Invalid path for <network_design_dsl_file> in module "
+                   "config [VICReg] file %s: %s\n",
+                   vicreg_config_path.c_str(),
+                   resolved_network_design_path.c_str());
           ok = false;
         } else {
           std::string network_design_grammar_path;
-          if (require_existing_global_path("BNF", "network_design_grammar_filename",
+          if (require_existing_global_path("BNF",
+                                           "network_design_grammar_filename",
                                            &network_design_grammar_path)) {
             const std::string network_design_grammar_text =
                 piaabo::dfiles::readFileToString(network_design_grammar_path);
@@ -2395,18 +2793,19 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                 !contract_variable_section->empty()) {
               network_design_dsl_text = resolve_dsl_variables_or_fail(
                   network_design_dsl_text,
-                  contract_dsl_variables_from_section(*contract_variable_section),
+                  contract_dsl_variables_from_section(
+                      *contract_variable_section),
                   resolved_network_design_path);
             }
             if (!has_non_ws_ascii(network_design_grammar_text)) {
-              log_warn(
-                  "[dconfig] empty [BNF].network_design_grammar_filename payload\n");
+              log_warn("[dconfig] empty [BNF].network_design_grammar_filename "
+                       "payload\n");
               ok = false;
             } else if (!has_non_ws_ascii(network_design_dsl_text)) {
-              log_warn(
-                  "Empty network_design DSL payload in module config [VICReg] file %s: %s\n",
-                  vicreg_config_path.c_str(),
-                  resolved_network_design_path.c_str());
+              log_warn("Empty network_design DSL payload in module config "
+                       "[VICReg] file %s: %s\n",
+                       vicreg_config_path.c_str(),
+                       resolved_network_design_path.c_str());
               ok = false;
             } else {
               try {
@@ -2415,12 +2814,14 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                         network_design_grammar_text, network_design_dsl_text);
                 const auto var_value_or_empty =
                     [&](std::string_view key) -> std::string {
-                      if (contract_variable_section == nullptr) return {};
-                      const auto it =
-                          contract_variable_section->find(std::string(key));
-                      if (it == contract_variable_section->end()) return {};
-                      return unquote_if_wrapped(trim_ascii_ws_copy(it->second));
-                    };
+                  if (contract_variable_section == nullptr)
+                    return {};
+                  const auto it =
+                      contract_variable_section->find(std::string(key));
+                  if (it == contract_variable_section->end())
+                    return {};
+                  return unquote_if_wrapped(trim_ascii_ws_copy(it->second));
+                };
                 const std::string observation_sources_path =
                     resolve_path_from_folder(
                         cfg_folder,
@@ -2434,12 +2835,14 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                 const bool has_observation_channels =
                     has_non_ws_ascii(observation_channels_path);
                 if (has_observation_sources != has_observation_channels) {
-                  log_warn(
-                      "[dconfig] contract-owned observation docking requires both "
-                      "__observation_sources_dsl_file and "
-                      "__observation_channels_dsl_file when VICReg.network_design_dsl_file is set\n");
+                  log_warn("[dconfig] contract-owned observation docking "
+                           "requires both "
+                           "__observation_sources_dsl_file and "
+                           "__observation_channels_dsl_file when "
+                           "VICReg.network_design_dsl_file is set\n");
                   ok = false;
-                } else if (has_observation_sources && has_observation_channels) {
+                } else if (has_observation_sources &&
+                           has_observation_channels) {
                   std::string observation_sources_grammar_path{};
                   std::string observation_channels_grammar_path{};
                   if (require_existing_global_path(
@@ -2451,17 +2854,17 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                     if (!std::filesystem::exists(observation_sources_path) ||
                         !std::filesystem::is_regular_file(
                             observation_sources_path)) {
-                      log_warn(
-                          "[dconfig] invalid contract __observation_sources_dsl_file path: %s\n",
-                          observation_sources_path.c_str());
+                      log_warn("[dconfig] invalid contract "
+                               "__observation_sources_dsl_file path: %s\n",
+                               observation_sources_path.c_str());
                       ok = false;
                     } else if (!std::filesystem::exists(
                                    observation_channels_path) ||
                                !std::filesystem::is_regular_file(
                                    observation_channels_path)) {
-                      log_warn(
-                          "[dconfig] invalid contract __observation_channels_dsl_file path: %s\n",
-                          observation_channels_path.c_str());
+                      log_warn("[dconfig] invalid contract "
+                               "__observation_channels_dsl_file path: %s\n",
+                               observation_channels_path.c_str());
                       ok = false;
                     } else {
                       const std::string observation_sources_grammar_text =
@@ -2479,25 +2882,24 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                       if (!has_non_ws_ascii(observation_sources_grammar_text) ||
                           !has_non_ws_ascii(
                               observation_channels_grammar_text)) {
-                        log_warn(
-                            "[dconfig] empty observation grammar payload while validating contract docking\n");
+                        log_warn("[dconfig] empty observation grammar payload "
+                                 "while validating contract docking\n");
                         ok = false;
                       } else if (!has_non_ws_ascii(
                                      observation_sources_dsl_text) ||
                                  !has_non_ws_ascii(
                                      observation_channels_dsl_text)) {
-                        log_warn(
-                            "[dconfig] empty observation DSL payload while validating contract docking\n");
+                        log_warn("[dconfig] empty observation DSL payload "
+                                 "while validating contract docking\n");
                         ok = false;
                       } else {
                         try {
-                          auto observation =
-                              cuwacunu::camahjucunu::
-                                  decode_observation_spec_from_split_dsl(
-                                      observation_sources_grammar_text,
-                                      observation_sources_dsl_text,
-                                      observation_channels_grammar_text,
-                                      observation_channels_dsl_text);
+                          auto observation = cuwacunu::camahjucunu::
+                              decode_observation_spec_from_split_dsl(
+                                  observation_sources_grammar_text,
+                                  observation_sources_dsl_text,
+                                  observation_channels_grammar_text,
+                                  observation_channels_dsl_text);
                           cuwacunu::wikimyei::vicreg_4d::
                               vicreg_network_design_spec_t semantic{};
                           std::string semantic_error{};
@@ -2505,9 +2907,10 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                   resolve_vicreg_network_design(
                                       network_design, &semantic,
                                       &semantic_error)) {
-                            log_warn(
-                                "[dconfig] invalid VICReg network_design semantic payload while validating docking: %s\n",
-                                semantic_error.c_str());
+                            log_warn("[dconfig] invalid VICReg network_design "
+                                     "semantic payload while validating "
+                                     "docking: %s\n",
+                                     semantic_error.c_str());
                             ok = false;
                           } else {
                             const auto observed_channels =
@@ -2524,21 +2927,25 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                 var_value_or_empty("__obs_feature_dim");
                             const auto parse_positive_contract_int =
                                 [&](std::string_view key,
-                                    const std::string& text,
-                                    long long* out_value) -> bool {
+                                    const std::string &text,
+                                    long long *out_value) -> bool {
                               if (out_value == nullptr) {
                                 throw std::runtime_error(
-                                    "parse_positive_contract_int received null output");
+                                    "parse_positive_contract_int received null "
+                                    "output");
                               }
-                              if (!has_non_ws_ascii(text)) return false;
+                              if (!has_non_ws_ascii(text))
+                                return false;
                               long long value = 0;
                               const auto [ptr, ec] = std::from_chars(
-                                  text.data(), text.data() + text.size(), value);
+                                  text.data(), text.data() + text.size(),
+                                  value);
                               if (ec != std::errc{} ||
                                   ptr != text.data() + text.size() ||
                                   value <= 0) {
                                 log_warn(
-                                    "[dconfig] invalid contract %.*s while validating observation docking: %s\n",
+                                    "[dconfig] invalid contract %.*s while "
+                                    "validating observation docking: %s\n",
                                     static_cast<int>(key.size()), key.data(),
                                     text.c_str());
                                 ok = false;
@@ -2553,7 +2960,10 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                     &configured_channels) &&
                                 configured_channels != observed_channels) {
                               log_warn(
-                                  "[dconfig] contract __obs_channels=%lld does not match observation active channel count=%lld derived from __observation_channels_dsl_file\n",
+                                  "[dconfig] contract __obs_channels=%lld does "
+                                  "not match observation active channel "
+                                  "count=%lld derived from "
+                                  "__observation_channels_dsl_file\n",
                                   configured_channels,
                                   static_cast<long long>(observed_channels));
                               ok = false;
@@ -2565,7 +2975,10 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                     &configured_seq_length) &&
                                 configured_seq_length != observed_seq_length) {
                               log_warn(
-                                  "[dconfig] contract __obs_seq_length=%lld does not match observation max active seq_length=%lld derived from __observation_channels_dsl_file\n",
+                                  "[dconfig] contract __obs_seq_length=%lld "
+                                  "does not match observation max active "
+                                  "seq_length=%lld derived from "
+                                  "__observation_channels_dsl_file\n",
                                   configured_seq_length,
                                   static_cast<long long>(observed_seq_length));
                               ok = false;
@@ -2578,21 +2991,27 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                 configured_embedding_dims !=
                                     semantic.encoding_dims) {
                               log_warn(
-                                  "[dconfig] contract __embedding_dims=%lld does not match VICReg network_design encoder.encoding_dims=%d\n",
+                                  "[dconfig] contract __embedding_dims=%lld "
+                                  "does not match VICReg network_design "
+                                  "encoder.encoding_dims=%d\n",
                                   configured_embedding_dims,
                                   semantic.encoding_dims);
                               ok = false;
                             }
                             if (semantic.C != observed_channels) {
                               log_warn(
-                                  "[dconfig] VICReg network_design INPUT.C=%d does not match contract observation active channel count=%lld\n",
+                                  "[dconfig] VICReg network_design INPUT.C=%d "
+                                  "does not match contract observation active "
+                                  "channel count=%lld\n",
                                   semantic.C,
                                   static_cast<long long>(observed_channels));
                               ok = false;
                             }
                             if (semantic.T != observed_seq_length) {
                               log_warn(
-                                  "[dconfig] VICReg network_design INPUT.T=%d does not match contract observation max seq_length=%lld\n",
+                                  "[dconfig] VICReg network_design INPUT.T=%d "
+                                  "does not match contract observation max "
+                                  "seq_length=%lld\n",
                                   semantic.T,
                                   static_cast<long long>(observed_seq_length));
                               ok = false;
@@ -2605,35 +3024,38 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
                                       configured_feature_dim_text.size(),
                                   configured_feature_dim);
                               if (ec != std::errc{} ||
-                                  ptr != configured_feature_dim_text.data() +
-                                             configured_feature_dim_text.size() ||
+                                  ptr !=
+                                      configured_feature_dim_text.data() +
+                                          configured_feature_dim_text.size() ||
                                   configured_feature_dim <= 0) {
-                                log_warn(
-                                    "[dconfig] invalid contract __obs_feature_dim while validating VICReg docking: %s\n",
-                                    configured_feature_dim_text.c_str());
+                                log_warn("[dconfig] invalid contract "
+                                         "__obs_feature_dim while validating "
+                                         "VICReg docking: %s\n",
+                                         configured_feature_dim_text.c_str());
                                 ok = false;
                               } else if (semantic.D != configured_feature_dim) {
-                                log_warn(
-                                    "[dconfig] VICReg network_design INPUT.D=%d does not match contract __obs_feature_dim=%d\n",
-                                    semantic.D, configured_feature_dim);
+                                log_warn("[dconfig] VICReg network_design "
+                                         "INPUT.D=%d does not match contract "
+                                         "__obs_feature_dim=%d\n",
+                                         semantic.D, configured_feature_dim);
                                 ok = false;
                               }
                             }
                           }
-                        } catch (const std::exception& e) {
-                          log_warn(
-                              "[dconfig] invalid contract observation DSL while validating VICReg docking: %s\n",
-                              e.what());
+                        } catch (const std::exception &e) {
+                          log_warn("[dconfig] invalid contract observation DSL "
+                                   "while validating VICReg docking: %s\n",
+                                   e.what());
                           ok = false;
                         }
                       }
                     }
                   }
                 }
-              } catch (const std::exception& e) {
-                log_warn(
-                    "Invalid network_design DSL referenced by module config [VICReg] file %s: %s\n",
-                    vicreg_config_path.c_str(), e.what());
+              } catch (const std::exception &e) {
+                log_warn("Invalid network_design DSL referenced by module "
+                         "config [VICReg] file %s: %s\n",
+                         vicreg_config_path.c_str(), e.what());
                 ok = false;
               }
             }
@@ -2644,17 +3066,20 @@ static bool validate_contract_config_or_terminate(const parsed_config_t& cfg,
   }
 
   if (!ok) {
-    log_terminate_gracefully("Invalid runtime-binding contract configuration, aborting.\n");
+    log_terminate_gracefully(
+        "Invalid runtime-binding contract configuration, aborting.\n");
   }
   return ok;
 }
 
 [[nodiscard]] static std::shared_ptr<contract_record_t>
-build_contract_record_from_contract_path(const std::string& contract_file_path) {
+build_contract_record_from_contract_path(
+    const std::string &contract_file_path) {
   const std::string resolved_contract_path =
       canonicalize_path_best_effort(contract_file_path);
   if (!has_non_ws_ascii(resolved_contract_path)) {
-    log_fatal("[dconfig] cannot resolve runtime-binding contract file path from: %s\n",
+    log_fatal("[dconfig] cannot resolve runtime-binding contract file path "
+              "from: %s\n",
               contract_file_path.c_str());
   }
   if (!std::filesystem::exists(resolved_contract_path)) {
@@ -2676,23 +3101,24 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   record->config_file_path_canonical =
       canonicalize_path_best_effort(resolved_contract_path);
   record->config = parsed;
-  const parsed_config_section_t* contract_variable_section = nullptr;
-  if (const auto vars_it = record->config.find("VARIABLES");
-      vars_it != record->config.end()) {
-    contract_variable_section = &vars_it->second;
-  }
+  const parsed_config_section_t merged_contract_variables =
+      merged_contract_variable_section(record->config);
+  const parsed_config_section_t *contract_variable_section =
+      merged_contract_variables.empty() ? nullptr : &merged_contract_variables;
 
-  const std::string vicreg_path = contract_required_resolved_path(
-      record->config, contract_folder, "SPECS", "vicreg_config_filename");
-  const auto expected_value_path = contract_optional_resolved_path(
-      record->config, contract_folder, "SPECS",
-      "expected_value_config_filename");
-  const auto embedding_sequence_eval_path = contract_optional_resolved_path(
-      record->config, contract_folder, "SPECS",
-      kContractSpecsEmbeddingSequenceAnalyticsConfigKey);
-  const auto transfer_matrix_eval_path = contract_optional_resolved_path(
-      record->config, contract_folder, "SPECS",
-      kContractSpecsTransferMatrixConfigKey);
+  const std::string vicreg_path = contract_required_resolved_variable_path(
+      record->config, contract_folder, kContractVariableVicregConfigDslFile);
+  const auto expected_value_path = contract_optional_resolved_variable_path(
+      record->config, contract_folder,
+      kContractVariableExpectedValueConfigDslFile);
+  const auto embedding_sequence_eval_path =
+      contract_optional_resolved_variable_path(
+          record->config, contract_folder,
+          kContractVariableEmbeddingSequenceAnalyticsDslFile);
+  const auto transfer_matrix_eval_path =
+      contract_optional_resolved_variable_path(
+          record->config, contract_folder,
+          kContractVariableTransferMatrixEvaluationDslFile);
   const std::string vicreg_grammar_path =
       global_required_resolved_path("BNF", "vicreg_grammar_filename");
   const std::string vicreg_grammar_text =
@@ -2723,16 +3149,16 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
       const auto net_it =
           vicreg_section_it->second.find("network_design_dsl_file");
       if (net_it == vicreg_section_it->second.end()) {
-        log_fatal(
-            "[dconfig] missing required network_design_dsl_file in VICReg module config %s\n",
-            vicreg_path.c_str());
+        log_fatal("[dconfig] missing required network_design_dsl_file in "
+                  "VICReg module config %s\n",
+                  vicreg_path.c_str());
       }
       const std::string raw_path =
           unquote_if_wrapped(trim_ascii_ws_copy(net_it->second));
       if (!has_non_ws_ascii(raw_path)) {
-        log_fatal(
-            "[dconfig] empty required network_design_dsl_file in VICReg module config %s\n",
-            vicreg_path.c_str());
+        log_fatal("[dconfig] empty required network_design_dsl_file in VICReg "
+                  "module config %s\n",
+                  vicreg_path.c_str());
       }
       std::string vicreg_folder{};
       const std::filesystem::path vicreg_path_fs(vicreg_path);
@@ -2744,17 +3170,17 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
       if (!has_non_ws_ascii(resolved_network_design_path) ||
           !std::filesystem::exists(resolved_network_design_path) ||
           !std::filesystem::is_regular_file(resolved_network_design_path)) {
-        log_fatal(
-            "[dconfig] invalid network_design_dsl_file in VICReg module config %s: %s\n",
-            vicreg_path.c_str(), resolved_network_design_path.c_str());
+        log_fatal("[dconfig] invalid network_design_dsl_file in VICReg module "
+                  "config %s: %s\n",
+                  vicreg_path.c_str(), resolved_network_design_path.c_str());
       }
       network_design_dsl_path = resolved_network_design_path;
     }
   }
 
   if (expected_value_path.has_value()) {
-    expected_value_grammar_path = global_required_resolved_path(
-        "BNF", "expected_value_grammar_filename");
+    expected_value_grammar_path =
+        global_required_resolved_path("BNF", "expected_value_grammar_filename");
     expected_value_grammar_text =
         piaabo::dfiles::readFileToString(*expected_value_grammar_path);
   }
@@ -2780,9 +3206,9 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
     record->module_section_paths[kModuleSectionExpectedValue] =
         *expected_value_path;
     record->module_sections[kModuleSectionExpectedValue] =
-        parse_instruction_file(*expected_value_path, *expected_value_grammar_text,
-                               contract_variable_section,
-                               &expected_value_resolved_text);
+        parse_instruction_file(
+            *expected_value_path, *expected_value_grammar_text,
+            contract_variable_section, &expected_value_resolved_text);
   }
   if (embedding_sequence_eval_path.has_value()) {
     record->module_section_paths[kModuleSectionEmbeddingSequenceAnalytics] =
@@ -2797,16 +3223,15 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
     record->module_section_paths[kModuleSectionTransferMatrixEvaluation] =
         *transfer_matrix_eval_path;
     record->module_sections[kModuleSectionTransferMatrixEvaluation] =
-        parse_instruction_file(*transfer_matrix_eval_path,
-                               *transfer_matrix_eval_grammar_text,
-                               contract_variable_section,
-                               &transfer_matrix_eval_resolved_text);
+        parse_instruction_file(
+            *transfer_matrix_eval_path, *transfer_matrix_eval_grammar_text,
+            contract_variable_section, &transfer_matrix_eval_resolved_text);
   }
 
-  constexpr const char* kRequiredContractDslPathKeys[] = {
-      "circuit_dsl_filename",
+  constexpr const char *kRequiredContractDslPathKeys[] = {
+      kAssemblyKeyCircuitDslFilename,
   };
-  constexpr const char* kRequiredGlobalGrammarPathKeys[] = {
+  constexpr const char *kRequiredGlobalGrammarPathKeys[] = {
       "tsiemene_circuit_grammar_filename",
       "canonical_path_grammar_filename",
   };
@@ -2816,59 +3241,65 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   dependency_paths.insert(canonicalize_path_best_effort(vicreg_path));
   dependency_paths.insert(canonicalize_path_best_effort(vicreg_grammar_path));
   if (network_design_dsl_path.has_value()) {
-    dependency_paths.insert(canonicalize_path_best_effort(*network_design_dsl_path));
+    dependency_paths.insert(
+        canonicalize_path_best_effort(*network_design_dsl_path));
   }
   if (network_design_grammar_path.has_value()) {
-    dependency_paths.insert(canonicalize_path_best_effort(*network_design_grammar_path));
+    dependency_paths.insert(
+        canonicalize_path_best_effort(*network_design_grammar_path));
   }
   if (expected_value_path.has_value()) {
-    dependency_paths.insert(canonicalize_path_best_effort(*expected_value_path));
+    dependency_paths.insert(
+        canonicalize_path_best_effort(*expected_value_path));
     dependency_paths.insert(
         canonicalize_path_best_effort(*expected_value_grammar_path));
   }
   if (transfer_matrix_eval_path.has_value()) {
-    dependency_paths.insert(canonicalize_path_best_effort(*transfer_matrix_eval_path));
+    dependency_paths.insert(
+        canonicalize_path_best_effort(*transfer_matrix_eval_path));
     dependency_paths.insert(
         canonicalize_path_best_effort(*transfer_matrix_eval_grammar_path));
   }
 
   std::unordered_map<std::string, std::string> asset_text_by_key{};
-  for (const char* key : kRequiredContractDslPathKeys) {
+  for (const char *key : kRequiredContractDslPathKeys) {
     const std::string path = contract_required_resolved_path(
-        record->config, contract_folder, "CONTRACT", key);
+        record->config, contract_folder, kContractSectionAssembly, key);
     std::string text = piaabo::dfiles::readFileToString(path);
     if (contract_variable_section != nullptr &&
         !contract_variable_section->empty()) {
       text = resolve_dsl_variables_or_fail(
-          text,
-          contract_dsl_variables_from_section(*contract_variable_section),
+          text, contract_dsl_variables_from_section(*contract_variable_section),
           path);
     }
     asset_text_by_key[key] = std::move(text);
     dependency_paths.insert(canonicalize_path_best_effort(path));
   }
-  for (const char* key : kRequiredGlobalGrammarPathKeys) {
+  for (const char *key : kRequiredGlobalGrammarPathKeys) {
     const std::string path = global_required_resolved_path("BNF", key);
     asset_text_by_key[key] = piaabo::dfiles::readFileToString(path);
     dependency_paths.insert(canonicalize_path_best_effort(path));
   }
   if (contract_variable_section != nullptr) {
-    for (const char* var_name :
-         {"__observation_sources_dsl_file", "__observation_channels_dsl_file"}) {
+    for (const char *var_name : {"__observation_sources_dsl_file",
+                                 "__observation_channels_dsl_file"}) {
       const auto it = contract_variable_section->find(var_name);
-      if (it == contract_variable_section->end()) continue;
+      if (it == contract_variable_section->end())
+        continue;
       const std::string raw_path =
           unquote_if_wrapped(trim_ascii_ws_copy(it->second));
-      if (!has_non_ws_ascii(raw_path)) continue;
+      if (!has_non_ws_ascii(raw_path))
+        continue;
       dependency_paths.insert(canonicalize_path_best_effort(
           resolve_path_from_folder(contract_folder, raw_path)));
     }
   }
 
-  const auto asset_text_or_fail = [&](const char* key) -> const std::string& {
+  const auto asset_text_or_fail = [&](const char *key) -> const std::string & {
     const auto it = asset_text_by_key.find(key);
     if (it == asset_text_by_key.end()) {
-      log_fatal("[dconfig] missing required DSL/grammar asset <%s> while building contract record\n",
+      log_fatal("[dconfig] missing required DSL/grammar asset <%s> while "
+                "building contract record\n",
                 key);
     }
     return it->second;
@@ -2876,7 +3307,7 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
 
   record->circuit.grammar =
       asset_text_or_fail("tsiemene_circuit_grammar_filename");
-  record->circuit.dsl = asset_text_or_fail("circuit_dsl_filename");
+  record->circuit.dsl = asset_text_or_fail(kAssemblyKeyCircuitDslFilename);
 
   record->canonical_path.grammar =
       asset_text_or_fail("canonical_path_grammar_filename");
@@ -2884,8 +3315,8 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   if (network_design_dsl_path.has_value()) {
     if (!network_design_grammar_text.has_value() ||
         !has_non_ws_ascii(*network_design_grammar_text)) {
-      log_fatal(
-          "[dconfig] missing/empty network design grammar while VICReg.network_design_dsl_file is configured\n");
+      log_fatal("[dconfig] missing/empty network design grammar while "
+                "VICReg.network_design_dsl_file is configured\n");
     }
     std::string network_design_dsl_text =
         piaabo::dfiles::readFileToString(*network_design_dsl_path);
@@ -2897,9 +3328,8 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
           *network_design_dsl_path);
     }
     if (!has_non_ws_ascii(network_design_dsl_text)) {
-      log_fatal(
-          "[dconfig] empty network design DSL payload: %s\n",
-          network_design_dsl_path->c_str());
+      log_fatal("[dconfig] empty network design DSL payload: %s\n",
+                network_design_dsl_path->c_str());
     }
     record->vicreg_network_design.grammar = *network_design_grammar_text;
     record->vicreg_network_design.dsl = network_design_dsl_text;
@@ -2908,40 +3338,40 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   }
 
   if (!has_non_ws_ascii(record->circuit.dsl)) {
-    log_fatal(
-        "[dconfig] missing effective circuit DSL payload\n");
+    log_fatal("[dconfig] missing effective circuit DSL payload\n");
   }
 
-  const auto& decoded_circuit = record->circuit.decoded();
-  record->signature.circuit_dsl_sha256_hex =
-      sha256_hex_from_bytes(record->circuit.dsl.data(), record->circuit.dsl.size());
+  const auto &decoded_circuit = record->circuit.decoded();
+  record->signature.circuit_dsl_sha256_hex = sha256_hex_from_bytes(
+      record->circuit.dsl.data(), record->circuit.dsl.size());
   if (!has_non_ws_ascii(record->signature.circuit_dsl_sha256_hex)) {
     log_fatal("[dconfig] failed to compute circuit DSL sha256\n");
   }
   if (contract_variable_section != nullptr) {
-    for (const auto& [name, value] : *contract_variable_section) {
-      record->signature.variable_assignments.push_back({name, value});
-    }
+    record->signature.variable_assignments =
+        contract_variable_assignments_from_section(*contract_variable_section);
   }
-  record->docking_signature.variable_assignments =
-      record->signature.variable_assignments;
+  if (const auto dock_it = record->config.find(kContractSectionDock);
+      dock_it != record->config.end()) {
+    record->docking_signature.variable_assignments =
+        contract_variable_assignments_from_section(dock_it->second);
+  }
   {
     std::unordered_set<std::string> seen_circuits{};
-    for (const auto& circuit : decoded_circuit.circuits) {
+    for (const auto &circuit : decoded_circuit.circuits) {
       const std::string circuit_name = trim_ascii_ws_copy(circuit.name);
-      if (!has_non_ws_ascii(circuit_name)) continue;
-      if (!seen_circuits.insert(circuit_name).second) continue;
+      if (!has_non_ws_ascii(circuit_name))
+        continue;
+      if (!seen_circuits.insert(circuit_name).second)
+        continue;
       record->docking_signature.compatible_circuits.push_back(circuit_name);
     }
   }
   const std::string vicreg_module_sha256_hex =
       contract_space_t::sha256_hex_for_file(vicreg_path);
   record->signature.bindings = derive_contract_component_bindings_or_fail(
-      decoded_circuit,
-      "",
-      vicreg_path,
-      vicreg_module_sha256_hex);
-  for (const auto& b : record->signature.bindings) {
+      decoded_circuit, "", vicreg_path, vicreg_module_sha256_hex);
+  for (const auto &b : record->signature.bindings) {
     if (has_non_ws_ascii(b.tsi_dsl_path)) {
       dependency_paths.insert(canonicalize_path_best_effort(b.tsi_dsl_path));
     }
@@ -2949,14 +3379,17 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
 
   std::unordered_set<std::string> seen_signature_modules{};
   const auto append_module_signature_entry =
-      [&](std::string_view module_id, const std::string& raw_module_path,
+      [&](std::string_view module_id, const std::string &raw_module_path,
           std::string_view resolved_module_text = std::string_view{}) {
-        std::string module_path = canonicalize_path_best_effort(raw_module_path);
+        std::string module_path =
+            canonicalize_path_best_effort(raw_module_path);
         if (!has_non_ws_ascii(module_path)) {
           module_path = trim_ascii_ws_copy(raw_module_path);
         }
-        if (!has_non_ws_ascii(module_path)) return;
-        if (!seen_signature_modules.insert(std::string(module_id) + "|" + module_path)
+        if (!has_non_ws_ascii(module_path))
+          return;
+        if (!seen_signature_modules
+                 .insert(std::string(module_id) + "|" + module_path)
                  .second) {
           return;
         }
@@ -2969,54 +3402,48 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
         entry.module_id = std::string(module_id);
         entry.module_dsl_path = module_path;
         if (!resolved_module_text.empty()) {
-          entry.module_dsl_sha256_hex =
-              sha256_hex_from_bytes(resolved_module_text.data(),
-                                    resolved_module_text.size());
+          entry.module_dsl_sha256_hex = sha256_hex_from_bytes(
+              resolved_module_text.data(), resolved_module_text.size());
         } else {
           entry.module_dsl_sha256_hex = sha256_hex_from_file(module_path);
         }
         if (!has_non_ws_ascii(entry.module_dsl_sha256_hex)) {
-          log_fatal("[dconfig] failed to fingerprint module signature path for [%s]: %s\n",
+          log_fatal("[dconfig] failed to fingerprint module signature path for "
+                    "[%s]: %s\n",
                     entry.module_id.c_str(), entry.module_dsl_path.c_str());
         }
         record->signature.module_dsl_entries.push_back(std::move(entry));
       };
   const auto resolve_contract_variable_path =
-      [&](const char* var_name) -> std::optional<std::string> {
-        if (contract_variable_section == nullptr) return std::nullopt;
-        const auto it = contract_variable_section->find(var_name);
-        if (it == contract_variable_section->end()) return std::nullopt;
-        const std::string raw = trim_ascii_ws_copy(it->second);
-        if (!has_non_ws_ascii(raw)) return std::nullopt;
-        return resolve_path_from_folder(contract_folder, raw);
-      };
+      [&](const char *var_name) -> std::optional<std::string> {
+    return contract_optional_resolved_variable_path(record->config,
+                                                    contract_folder, var_name);
+  };
   const auto resolve_contract_surface_text =
-      [&](const std::string& resolved_path) -> std::string {
-        std::string dsl_text = piaabo::dfiles::readFileToString(resolved_path);
-        if (contract_variable_section != nullptr &&
-            !contract_variable_section->empty()) {
-          dsl_text = resolve_dsl_variables_or_fail(
-              dsl_text,
-              contract_dsl_variables_from_section(*contract_variable_section),
-              resolved_path);
-        }
-        return dsl_text;
-      };
+      [&](const std::string &resolved_path) -> std::string {
+    std::string dsl_text = piaabo::dfiles::readFileToString(resolved_path);
+    if (contract_variable_section != nullptr &&
+        !contract_variable_section->empty()) {
+      dsl_text = resolve_dsl_variables_or_fail(
+          dsl_text,
+          contract_dsl_variables_from_section(*contract_variable_section),
+          resolved_path);
+    }
+    return dsl_text;
+  };
   if (const auto observation_sources_path =
           resolve_contract_variable_path("__observation_sources_dsl_file");
       observation_sources_path.has_value()) {
-    append_module_signature_entry("contract.observation.sources",
-                                  *observation_sources_path,
-                                  resolve_contract_surface_text(
-                                      *observation_sources_path));
+    append_module_signature_entry(
+        "contract.observation.sources", *observation_sources_path,
+        resolve_contract_surface_text(*observation_sources_path));
   }
   if (const auto observation_channels_path =
           resolve_contract_variable_path("__observation_channels_dsl_file");
       observation_channels_path.has_value()) {
-    append_module_signature_entry("contract.observation.channels",
-                                  *observation_channels_path,
-                                  resolve_contract_surface_text(
-                                      *observation_channels_path));
+    append_module_signature_entry(
+        "contract.observation.channels", *observation_channels_path,
+        resolve_contract_surface_text(*observation_channels_path));
   }
   append_module_signature_entry(kModuleSectionVicreg, vicreg_path,
                                 vicreg_resolved_text);
@@ -3043,59 +3470,67 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
 
   {
     std::unordered_set<std::string> seen_docking_surfaces{};
-    const auto append_docking_surface =
-        [&](std::string_view surface_id, const std::string& raw_path,
-            std::string_view resolved_text = std::string_view{}) {
-          std::string canonical_path =
-              canonicalize_path_best_effort(trim_ascii_ws_copy(raw_path));
-          if (!has_non_ws_ascii(canonical_path)) {
-            canonical_path = trim_ascii_ws_copy(raw_path);
-          }
-          if (!has_non_ws_ascii(canonical_path)) return;
-          const std::string dedup_key =
-              std::string(surface_id) + "|" + canonical_path;
-          if (!seen_docking_surfaces.insert(dedup_key).second) return;
+    const auto append_docking_surface = [&](std::string_view surface_id,
+                                            const std::string &raw_path,
+                                            std::string_view resolved_text =
+                                                std::string_view{}) {
+      std::string canonical_path =
+          canonicalize_path_best_effort(trim_ascii_ws_copy(raw_path));
+      if (!has_non_ws_ascii(canonical_path)) {
+        canonical_path = trim_ascii_ws_copy(raw_path);
+      }
+      if (!has_non_ws_ascii(canonical_path))
+        return;
+      const std::string dedup_key =
+          std::string(surface_id) + "|" + canonical_path;
+      if (!seen_docking_surfaces.insert(dedup_key).second)
+        return;
 
-          contract_docking_surface_entry_t entry{};
-          entry.surface_id = std::string(surface_id);
-          entry.canonical_path = canonical_path;
-          if (!resolved_text.empty()) {
-            entry.sha256_hex =
-                sha256_hex_from_bytes(resolved_text.data(), resolved_text.size());
-          } else {
-            entry.sha256_hex = sha256_hex_from_file(canonical_path);
-          }
-          if (!has_non_ws_ascii(entry.sha256_hex)) {
-            log_fatal("[dconfig] failed to fingerprint docking surface [%s]: %s\n",
-                      entry.surface_id.c_str(), entry.canonical_path.c_str());
-          }
-          record->docking_signature.surfaces.push_back(std::move(entry));
-        };
+      contract_docking_surface_entry_t entry{};
+      entry.surface_id = std::string(surface_id);
+      entry.canonical_path = canonical_path;
+      if (!resolved_text.empty()) {
+        entry.sha256_hex =
+            sha256_hex_from_bytes(resolved_text.data(), resolved_text.size());
+      } else {
+        entry.sha256_hex = sha256_hex_from_file(canonical_path);
+      }
+      if (!has_non_ws_ascii(entry.sha256_hex)) {
+        log_fatal("[dconfig] failed to fingerprint docking surface [%s]: %s\n",
+                  entry.surface_id.c_str(), entry.canonical_path.c_str());
+      }
+      record->docking_signature.surfaces.push_back(std::move(entry));
+    };
 
     append_docking_surface(
         "contract.circuit",
         contract_required_resolved_path(record->config, contract_folder,
-                                        "CONTRACT", "circuit_dsl_filename"),
+                                        kContractSectionAssembly,
+                                        kAssemblyKeyCircuitDslFilename),
         record->circuit.dsl);
     append_docking_surface("contract.module.VICReg", vicreg_path,
                            vicreg_resolved_text);
     if (network_design_dsl_path.has_value()) {
       append_docking_surface("contract.module.VICReg.network_design",
-                             *network_design_dsl_path, network_design_resolved_text);
+                             *network_design_dsl_path,
+                             network_design_resolved_text);
     }
 
-    const auto append_contract_variable_surface =
-        [&](std::string_view surface_id, const char* var_name) {
-          const auto resolved_path = resolve_contract_variable_path(var_name);
-          if (!resolved_path.has_value()) return;
-          if (!std::filesystem::exists(*resolved_path) ||
-              !std::filesystem::is_regular_file(*resolved_path)) {
-            log_fatal("[dconfig] invalid contract docking surface path for [%s]: %s\n",
-                      std::string(surface_id).c_str(), resolved_path->c_str());
-          }
-          std::string dsl_text = resolve_contract_surface_text(*resolved_path);
-          append_docking_surface(surface_id, *resolved_path, dsl_text);
-        };
+    const auto append_contract_variable_surface = [&](std::string_view
+                                                          surface_id,
+                                                      const char *var_name) {
+      const auto resolved_path = resolve_contract_variable_path(var_name);
+      if (!resolved_path.has_value())
+        return;
+      if (!std::filesystem::exists(*resolved_path) ||
+          !std::filesystem::is_regular_file(*resolved_path)) {
+        log_fatal(
+            "[dconfig] invalid contract docking surface path for [%s]: %s\n",
+            std::string(surface_id).c_str(), resolved_path->c_str());
+      }
+      std::string dsl_text = resolve_contract_surface_text(*resolved_path);
+      append_docking_surface(surface_id, *resolved_path, dsl_text);
+    };
     append_contract_variable_surface("contract.observation.sources",
                                      "__observation_sources_dsl_file");
     append_contract_variable_surface("contract.observation.channels",
@@ -3106,13 +3541,15 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
   record->docking_signature.sha256_hex = sha256_hex_from_bytes(
       docking_signature_json.data(), docking_signature_json.size());
   if (!has_non_ws_ascii(record->docking_signature.sha256_hex)) {
-    log_fatal("[dconfig] failed to compute contract docking signature sha256\n");
+    log_fatal(
+        "[dconfig] failed to compute contract docking signature sha256\n");
   }
   record->signature.docking_signature_sha256_hex =
       record->docking_signature.sha256_hex;
 
-  for (const auto& dep_path : dependency_paths) {
-    if (!has_non_ws_ascii(dep_path)) continue;
+  for (const auto &dep_path : dependency_paths) {
+    if (!has_non_ws_ascii(dep_path))
+      continue;
     record->dependency_manifest.files.push_back(fingerprint_file(dep_path));
   }
   record->dependency_manifest.dependency_manifest_aggregate_sha256_hex =
@@ -3121,19 +3558,19 @@ build_contract_record_from_contract_path(const std::string& contract_file_path) 
 }
 
 [[nodiscard]] static snapshot_ptr_t
-snapshot_ptr_or_fail(const contract_hash_t& hash) {
+snapshot_ptr_or_fail(const contract_hash_t &hash) {
   LOCK_GUARD(contract_config_mutex);
-  auto& snapshots = snapshots_by_hash();
+  auto &snapshots = snapshots_by_hash();
   const auto it = snapshots.find(hash);
   if (it == snapshots.end() || !it->second) {
-    log_fatal(
-        "[dconfig] contract hash lookup failed: hash=%s is not registered in runtime registry\n",
-        hash.c_str());
+    log_fatal("[dconfig] contract hash lookup failed: hash=%s is not "
+              "registered in runtime registry\n",
+              hash.c_str());
   }
   return it->second;
 }
 
-}  // namespace
+} // namespace
 
 contract_space_t::_init contract_space_t::_initializer{};
 
@@ -3154,35 +3591,35 @@ void contract_space_t::lifecycle_finit() {
     last_registered_path = g_last_registered_contract_path_canonical;
   }
 
-  log_info(
-      "[contract_space_t] finalizing static-global contract registry "
-      "(registered_contracts=%zu, last_registered_hash=%s, "
-      "last_registered_path=%s)\n",
-      registered_count,
-      non_empty_or(last_registered_hash, "<none>"),
-      non_empty_or(last_registered_path, "<none>"));
+  log_info("[contract_space_t] finalizing static-global contract registry "
+           "(registered_contracts=%zu, last_registered_hash=%s, "
+           "last_registered_path=%s)\n",
+           registered_count, non_empty_or(last_registered_hash, "<none>"),
+           non_empty_or(last_registered_path, "<none>"));
 }
 
 /*──────────────────────── contract registry space ─────────────────────────*/
-contract_hash_t contract_space_t::register_contract_file(const std::string& path) {
+contract_hash_t
+contract_space_t::register_contract_file(const std::string &path) {
   const std::string canonical_path = canonicalize_path_best_effort(path);
   if (!has_non_ws_ascii(canonical_path)) {
-    log_fatal("[dconfig] register_contract_file received empty/invalid path: %s\n",
-              path.c_str());
+    log_fatal(
+        "[dconfig] register_contract_file received empty/invalid path: %s\n",
+        path.c_str());
   }
 
   std::optional<contract_hash_t> existing_hash;
   {
     LOCK_GUARD(contract_config_mutex);
-    auto& path_to_hash = hash_by_contract_path();
-    auto& snapshots = snapshots_by_hash();
+    auto &path_to_hash = hash_by_contract_path();
+    auto &snapshots = snapshots_by_hash();
     const auto existing = path_to_hash.find(canonical_path);
     if (existing != path_to_hash.end()) {
       const auto snap_it = snapshots.find(existing->second);
       if (snap_it == snapshots.end() || !snap_it->second) {
-        log_fatal(
-            "[dconfig] contract registry corruption: path is mapped but snapshot is missing (%s)\n",
-            canonical_path.c_str());
+        log_fatal("[dconfig] contract registry corruption: path is mapped but "
+                  "snapshot is missing (%s)\n",
+                  canonical_path.c_str());
       }
       existing_hash = existing->second;
       g_registered_contract_count = snapshots.size();
@@ -3206,28 +3643,28 @@ contract_hash_t contract_space_t::register_contract_file(const std::string& path
   const contract_hash_t built_hash =
       sha256_hex_from_bytes(signature_json.data(), signature_json.size());
   if (!has_non_ws_ascii(built_hash)) {
-    log_fatal("[dconfig] built contract snapshot has empty signature hash for: %s\n",
-              canonical_path.c_str());
+    log_fatal(
+        "[dconfig] built contract snapshot has empty signature hash for: %s\n",
+        canonical_path.c_str());
   }
 
   {
     LOCK_GUARD(contract_config_mutex);
-    auto& path_to_hash = hash_by_contract_path();
-    auto& snapshots = snapshots_by_hash();
+    auto &path_to_hash = hash_by_contract_path();
+    auto &snapshots = snapshots_by_hash();
     const auto existing = path_to_hash.find(canonical_path);
     if (existing != path_to_hash.end()) {
       if (existing->second != built_hash) {
-        log_fatal(
-            "[dconfig] immutable contract lock violation: attempted to rebind contract path %s from hash %s to %s\n",
-            canonical_path.c_str(),
-            existing->second.c_str(),
-            built_hash.c_str());
+        log_fatal("[dconfig] immutable contract lock violation: attempted to "
+                  "rebind contract path %s from hash %s to %s\n",
+                  canonical_path.c_str(), existing->second.c_str(),
+                  built_hash.c_str());
       }
       const auto snap_it = snapshots.find(existing->second);
       if (snap_it == snapshots.end() || !snap_it->second) {
-        log_fatal(
-            "[dconfig] contract registry corruption: path is mapped but snapshot is missing (%s)\n",
-            canonical_path.c_str());
+        log_fatal("[dconfig] contract registry corruption: path is mapped but "
+                  "snapshot is missing (%s)\n",
+                  canonical_path.c_str());
       }
       existing_hash = existing->second;
     } else {
@@ -3240,8 +3677,8 @@ contract_hash_t contract_space_t::register_contract_file(const std::string& path
       path_to_hash[canonical_path] = built_hash;
     }
     g_registered_contract_count = snapshots.size();
-    g_last_registered_contract_hash = existing_hash.has_value() ? *existing_hash
-                                                                 : built_hash;
+    g_last_registered_contract_hash =
+        existing_hash.has_value() ? *existing_hash : built_hash;
     g_last_registered_contract_path_canonical = canonical_path;
   }
 
@@ -3252,20 +3689,22 @@ contract_hash_t contract_space_t::register_contract_file(const std::string& path
   return built_hash;
 }
 
-std::shared_ptr<const contract_record_t> contract_space_t::contract_itself(
-    const contract_hash_t& hash) {
+std::shared_ptr<const contract_record_t>
+contract_space_t::contract_itself(const contract_hash_t &hash) {
   return snapshot_ptr_or_fail(hash);
 }
 
 bool contract_space_t::validate_contract_file_isolated(
-    const std::string& path, const std::string& global_config_path,
-    std::string* error) {
-  if (error) error->clear();
+    const std::string &path, const std::string &global_config_path,
+    std::string *error) {
+  if (error)
+    error->clear();
   const std::string trimmed_path = trim_ascii_copy(path);
   const std::string trimmed_global_config_path =
       trim_ascii_copy(global_config_path);
   if (!has_non_ws_ascii(trimmed_path)) {
-    if (error) *error = "empty contract path";
+    if (error)
+      *error = "empty contract path";
     return false;
   }
 
@@ -3281,7 +3720,8 @@ bool contract_space_t::validate_contract_file_isolated(
   if (pid < 0) {
     ::close(pipe_fds[0]);
     ::close(pipe_fds[1]);
-    if (error) *error = "failed to fork isolated contract validator";
+    if (error)
+      *error = "failed to fork isolated contract validator";
     return false;
   }
 
@@ -3295,10 +3735,12 @@ bool contract_space_t::validate_contract_file_isolated(
     cuwacunu::piaabo::dlog_buffer_capture_scope capture_logs(true);
     auto flush_captured_logs = []() {
       const auto lines = cuwacunu::piaabo::dlog_snapshot_lines(64);
-      for (const auto& line : lines) {
-        if (!has_non_ws_ascii(line)) continue;
+      for (const auto &line : lines) {
+        if (!has_non_ws_ascii(line))
+          continue;
         std::cerr << line;
-        if (line.back() != '\n') std::cerr << '\n';
+        if (line.back() != '\n')
+          std::cerr << '\n';
       }
       std::cerr.flush();
     };
@@ -3309,7 +3751,7 @@ bool contract_space_t::validate_contract_file_isolated(
       }
       (void)contract_space_t::register_contract_file(trimmed_path);
       _exit(0);
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
       flush_captured_logs();
       if (has_non_ws_ascii(e.what())) {
         std::cerr << e.what() << '\n';
@@ -3318,7 +3760,8 @@ bool contract_space_t::validate_contract_file_isolated(
       _exit(1);
     } catch (...) {
       flush_captured_logs();
-      std::cerr << "isolated contract validator caught non-standard exception\n";
+      std::cerr
+          << "isolated contract validator caught non-standard exception\n";
       std::cerr.flush();
       _exit(1);
     }
@@ -3338,7 +3781,8 @@ bool contract_space_t::validate_contract_file_isolated(
     return false;
   }
   if (waited != pid) {
-    if (error) *error = "failed to wait for isolated contract validator";
+    if (error)
+      *error = "failed to wait for isolated contract validator";
     return false;
   }
   if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
@@ -3357,15 +3801,17 @@ bool contract_space_t::validate_contract_file_isolated(
       message = "isolated contract validator failed";
     }
   }
-  if (error) *error = message;
+  if (error)
+    *error = message;
   return false;
 }
 
-std::string contract_space_t::sha256_hex_for_file(const std::string& path) {
+std::string contract_space_t::sha256_hex_for_file(const std::string &path) {
   const std::string canonical_path = canonicalize_path_best_effort(path);
   const std::string target_path =
       has_non_ws_ascii(canonical_path) ? canonical_path : path;
-  if (!has_non_ws_ascii(target_path)) return {};
+  if (!has_non_ws_ascii(target_path))
+    return {};
 
   std::error_code ec{};
   if (!std::filesystem::exists(target_path, ec) ||
@@ -3381,18 +3827,18 @@ std::string contract_space_t::sha256_hex_for_file(const std::string& path) {
   }
 }
 
-void contract_space_t::assert_intact_or_fail_fast(const contract_hash_t& hash) {
+void contract_space_t::assert_intact_or_fail_fast(const contract_hash_t &hash) {
   const auto snap = snapshot_ptr_or_fail(hash);
 
   std::vector<contract_file_fingerprint_t> refreshed;
   refreshed.reserve(snap->dependency_manifest.files.size());
 
-  for (const auto& expected : snap->dependency_manifest.files) {
+  for (const auto &expected : snap->dependency_manifest.files) {
     const std::filesystem::path p(expected.canonical_path);
     if (!std::filesystem::exists(p) || !std::filesystem::is_regular_file(p)) {
-      log_fatal(
-          "[dconfig] immutable contract lock violation: dependency missing or invalid: %s\n",
-          expected.canonical_path.c_str());
+      log_fatal("[dconfig] immutable contract lock violation: dependency "
+                "missing or invalid: %s\n",
+                expected.canonical_path.c_str());
     }
 
     contract_file_fingerprint_t current = expected;
@@ -3400,19 +3846,20 @@ void contract_space_t::assert_intact_or_fail_fast(const contract_hash_t& hash) {
     current.mtime_ticks = file_mtime_ticks(p);
     current.sha256_hex = sha256_hex_from_file(expected.canonical_path);
     if (current.sha256_hex != expected.sha256_hex) {
-      log_fatal(
-          "[dconfig] immutable contract lock violation: contract dependency changed "
-          "mid-run: %s\n",
-          expected.canonical_path.c_str());
+      log_fatal("[dconfig] immutable contract lock violation: contract "
+                "dependency changed "
+                "mid-run: %s\n",
+                expected.canonical_path.c_str());
     }
     refreshed.push_back(std::move(current));
   }
 
   const std::string digest = compute_manifest_digest_hex(refreshed);
-  if (digest != snap->dependency_manifest.dependency_manifest_aggregate_sha256_hex) {
-    log_fatal(
-        "[dconfig] immutable contract lock violation: dependency manifest digest "
-        "mismatch mid-run\n");
+  if (digest !=
+      snap->dependency_manifest.dependency_manifest_aggregate_sha256_hex) {
+    log_fatal("[dconfig] immutable contract lock violation: dependency "
+              "manifest digest "
+              "mismatch mid-run\n");
   }
 }
 
@@ -3420,40 +3867,43 @@ void contract_space_t::assert_registry_intact_or_fail_fast() {
   std::vector<std::pair<contract_hash_t, snapshot_ptr_t>> snapshots;
   {
     LOCK_GUARD(contract_config_mutex);
-    const auto& by_hash = snapshots_by_hash();
+    const auto &by_hash = snapshots_by_hash();
     snapshots.reserve(by_hash.size());
-    for (const auto& [hash, ptr] : by_hash) {
-      if (!ptr) continue;
+    for (const auto &[hash, ptr] : by_hash) {
+      if (!ptr)
+        continue;
       snapshots.emplace_back(hash, ptr);
     }
   }
-  for (const auto& [hash, ptr] : snapshots) {
-    if (!ptr) continue;
+  for (const auto &[hash, ptr] : snapshots) {
+    if (!ptr)
+      continue;
     assert_intact_or_fail_fast(hash);
   }
 }
 
-bool contract_space_t::has_contract(const contract_hash_t& hash) noexcept {
+bool contract_space_t::has_contract(const contract_hash_t &hash) noexcept {
   LOCK_GUARD(contract_config_mutex);
-  const auto& snapshots = snapshots_by_hash();
+  const auto &snapshots = snapshots_by_hash();
   const auto it = snapshots.find(hash);
   return it != snapshots.end() && static_cast<bool>(it->second);
 }
 
 std::vector<contract_hash_t> contract_space_t::registered_hashes() {
   LOCK_GUARD(contract_config_mutex);
-  const auto& snapshots = snapshots_by_hash();
+  const auto &snapshots = snapshots_by_hash();
   std::vector<contract_hash_t> out{};
   out.reserve(snapshots.size());
-  for (const auto& [hash, ptr] : snapshots) {
-    if (ptr) out.push_back(hash);
+  for (const auto &[hash, ptr] : snapshots) {
+    if (ptr)
+      out.push_back(hash);
   }
   std::sort(out.begin(), out.end());
   return out;
 }
 
-std::string contract_record_t::raw(const std::string& section,
-                                   const std::string& key) const {
+std::string contract_record_t::raw(const std::string &section,
+                                   const std::string &key) const {
   if (section_supports_instruction_file(section)) {
     if (const auto instruction_value =
             contract_instruction_section_value_or_empty(*this, section, key);
@@ -3465,7 +3915,8 @@ std::string contract_record_t::raw(const std::string& section,
   const auto s = config.find(section);
   if (s != config.end()) {
     const auto k = s->second.find(key);
-    if (k != s->second.end()) return k->second;
+    if (k != s->second.end())
+      return k->second;
   }
   if (const auto instruction_value =
           contract_instruction_section_value_or_empty(*this, section, key);
@@ -3482,42 +3933,42 @@ std::string contract_record_t::raw(const std::string& section,
   throw bad_config_access("Missing key <" + key + "> in [" + section + "]");
 }
 
-template <class T>
-T contract_record_t::from_string(const std::string& s) {
+template <class T> T contract_record_t::from_string(const std::string &s) {
   return parse_scalar_from_string<T>(s);
 }
 
 template <class T>
-T contract_record_t::get(const std::string& section,
-                         const std::string& key,
+T contract_record_t::get(const std::string &section, const std::string &key,
                          std::optional<T> fallback) const {
   try {
     return from_string<T>(raw(section, key));
-  } catch (const bad_config_access&) {
-    if (fallback) return *fallback;
+  } catch (const bad_config_access &) {
+    if (fallback)
+      return *fallback;
     throw;
   }
 }
 
 template <class T>
-std::vector<T> contract_record_t::get_arr(
-    const std::string& section,
-    const std::string& key,
-    std::optional<std::vector<T>> fallback) const {
+std::vector<T>
+contract_record_t::get_arr(const std::string &section, const std::string &key,
+                           std::optional<std::vector<T>> fallback) const {
   try {
     const std::string s = raw(section, key);
     const std::vector<std::string> items = split_string_items(s);
     std::vector<T> result;
     result.reserve(items.size());
-    for (const auto& it : items) result.emplace_back(from_string<T>(it));
+    for (const auto &it : items)
+      result.emplace_back(from_string<T>(it));
     return result;
-  } catch (const bad_config_access&) {
-    if (fallback) return *fallback;
+  } catch (const bad_config_access &) {
+    if (fallback)
+      return *fallback;
     throw;
   }
 }
 
-const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t&
+const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &
 contract_record::circuit_blob_t::decoded() const {
   std::call_once(decode_once_, [&]() {
     try {
@@ -3526,30 +3977,34 @@ contract_record::circuit_blob_t::decoded() const {
       const std::size_t first_non_ws =
           effective_dsl.find_first_not_of(" \t\r\n");
       if (first_non_ws == std::string::npos) {
-        throw std::runtime_error("circuit DSL is empty after comment stripping");
+        throw std::runtime_error(
+            "circuit DSL is empty after comment stripping");
       }
-      if (first_non_ws > 0) effective_dsl.erase(0, first_non_ws);
+      if (first_non_ws > 0)
+        effective_dsl.erase(0, first_non_ws);
       auto inst = parser.decode(effective_dsl);
       std::string semantic_error;
       if (!cuwacunu::camahjucunu::validate_circuit_instruction(
               inst, &semantic_error)) {
-        throw std::runtime_error(
-            "circuit semantic validation failed: " + semantic_error);
+        throw std::runtime_error("circuit semantic validation failed: " +
+                                 semantic_error);
       }
-      decoded_cache_ = std::make_shared<cuwacunu::camahjucunu::tsiemene_circuit_instruction_t>(
+      decoded_cache_ = std::make_shared<
+          cuwacunu::camahjucunu::tsiemene_circuit_instruction_t>(
           std::move(inst));
-    } catch (const std::exception& e) {
-      throw std::runtime_error(
-          std::string("failed to decode circuit DSL: ") + e.what());
+    } catch (const std::exception &e) {
+      throw std::runtime_error(std::string("failed to decode circuit DSL: ") +
+                               e.what());
     }
   });
   if (!decoded_cache_) {
-    throw std::runtime_error("failed to decode circuit DSL: empty decoded cache");
+    throw std::runtime_error(
+        "failed to decode circuit DSL: empty decoded cache");
   }
   return *decoded_cache_;
 }
 
-const cuwacunu::camahjucunu::network_design_instruction_t&
+const cuwacunu::camahjucunu::network_design_instruction_t &
 contract_record::network_design_blob_t::decoded() const {
   std::call_once(decode_once_, [&]() {
     try {
@@ -3558,10 +4013,10 @@ contract_record::network_design_blob_t::decoded() const {
       }
       auto inst = cuwacunu::camahjucunu::dsl::decode_network_design_from_dsl(
           grammar, dsl);
-      decoded_cache_ = std::make_shared<
-          cuwacunu::camahjucunu::network_design_instruction_t>(
-          std::move(inst));
-    } catch (const std::exception& e) {
+      decoded_cache_ =
+          std::make_shared<cuwacunu::camahjucunu::network_design_instruction_t>(
+              std::move(inst));
+    } catch (const std::exception &e) {
       throw std::runtime_error(
           std::string("failed to decode network design DSL: ") + e.what());
     }
@@ -3573,37 +4028,43 @@ contract_record::network_design_blob_t::decoded() const {
   return *decoded_cache_;
 }
 
-template int64_t contract_record_t::get<int64_t>(
-    const std::string&, const std::string&, std::optional<int64_t>) const;
-template int contract_record_t::get<int>(
-    const std::string&, const std::string&, std::optional<int>) const;
-template double contract_record_t::get<double>(
-    const std::string&, const std::string&, std::optional<double>) const;
-template float contract_record_t::get<float>(
-    const std::string&, const std::string&, std::optional<float>) const;
-template bool contract_record_t::get<bool>(
-    const std::string&, const std::string&, std::optional<bool>) const;
-template std::string contract_record_t::get<std::string>(
-    const std::string&, const std::string&, std::optional<std::string>) const;
+template int64_t contract_record_t::get<int64_t>(const std::string &,
+                                                 const std::string &,
+                                                 std::optional<int64_t>) const;
+template int contract_record_t::get<int>(const std::string &,
+                                         const std::string &,
+                                         std::optional<int>) const;
+template double contract_record_t::get<double>(const std::string &,
+                                               const std::string &,
+                                               std::optional<double>) const;
+template float contract_record_t::get<float>(const std::string &,
+                                             const std::string &,
+                                             std::optional<float>) const;
+template bool contract_record_t::get<bool>(const std::string &,
+                                           const std::string &,
+                                           std::optional<bool>) const;
+template std::string
+contract_record_t::get<std::string>(const std::string &, const std::string &,
+                                    std::optional<std::string>) const;
 
-template std::vector<int64_t> contract_record_t::get_arr<int64_t>(
-    const std::string&, const std::string&,
-    std::optional<std::vector<int64_t>>) const;
-template std::vector<int> contract_record_t::get_arr<int>(
-    const std::string&, const std::string&,
-    std::optional<std::vector<int>>) const;
-template std::vector<double> contract_record_t::get_arr<double>(
-    const std::string&, const std::string&,
-    std::optional<std::vector<double>>) const;
-template std::vector<float> contract_record_t::get_arr<float>(
-    const std::string&, const std::string&,
-    std::optional<std::vector<float>>) const;
-template std::vector<bool> contract_record_t::get_arr<bool>(
-    const std::string&, const std::string&,
-    std::optional<std::vector<bool>>) const;
+template std::vector<int64_t>
+contract_record_t::get_arr<int64_t>(const std::string &, const std::string &,
+                                    std::optional<std::vector<int64_t>>) const;
+template std::vector<int>
+contract_record_t::get_arr<int>(const std::string &, const std::string &,
+                                std::optional<std::vector<int>>) const;
+template std::vector<double>
+contract_record_t::get_arr<double>(const std::string &, const std::string &,
+                                   std::optional<std::vector<double>>) const;
+template std::vector<float>
+contract_record_t::get_arr<float>(const std::string &, const std::string &,
+                                  std::optional<std::vector<float>>) const;
+template std::vector<bool>
+contract_record_t::get_arr<bool>(const std::string &, const std::string &,
+                                 std::optional<std::vector<bool>>) const;
 template std::vector<std::string> contract_record_t::get_arr<std::string>(
-    const std::string&, const std::string&,
+    const std::string &, const std::string &,
     std::optional<std::vector<std::string>>) const;
 
-}  // namespace iitepi
-}  // namespace cuwacunu
+} // namespace iitepi
+} // namespace cuwacunu

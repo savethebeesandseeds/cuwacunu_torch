@@ -72,6 +72,19 @@ constexpr std::string_view kHumanClarificationAnswerSchemaV3 =
 
 bool g_jsonrpc_use_content_length_framing = false;
 
+[[nodiscard]] bool load_marshal_session_workspace_context(
+    const app_context_t &app,
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    marshal_session_workspace_context_t *out, std::string *error);
+[[nodiscard]] bool
+call_runtime_tool(const app_context_t &app,
+                  const std::filesystem::path &runtime_binary,
+                  const std::string &tool_name, std::string arguments_json,
+                  std::string *out_structured, std::string *error);
+void append_structured_warnings(const std::string &structured_json,
+                                std::string_view prefix,
+                                std::vector<std::string> *out);
+
 struct marshal_session_intent_t {
   std::string intent{};
   std::string launch_mode{};
@@ -118,6 +131,16 @@ struct marshal_objective_spec_t {
   std::string guidance_md_path{};
   std::string objective_name{};
   std::string marshal_session_id{};
+};
+
+struct marshal_run_plan_progress_t {
+  std::vector<std::string> declared_bind_ids{};
+  std::vector<std::string> default_run_bind_ids{};
+  std::vector<std::string> completed_run_bind_ids{};
+  std::vector<std::string> attempted_run_bind_ids{};
+  std::vector<std::string> pending_run_bind_ids{};
+  bool ordered_prefix_valid{true};
+  std::string next_pending_bind_id{};
 };
 
 struct marshal_start_session_overrides_t {
@@ -209,6 +232,11 @@ void append_warning_text(std::string *dst, std::string_view warning);
     const app_context_t &app, std::string_view marshal_session_id,
     cuwacunu::hero::marshal::marshal_session_record_t *out, std::string *error);
 
+[[nodiscard]] bool read_runtime_campaign_direct(
+    const app_context_t &app, std::string_view campaign_cursor,
+    cuwacunu::hero::runtime::runtime_campaign_record_t *out,
+    std::string *error);
+
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   return cuwacunu::hero::runtime::trim_ascii(in);
 }
@@ -290,7 +318,7 @@ should_embed_objective_bundle_relative_path(std::string_view relative_path) {
          ends_with_ascii(relative_path, ".man");
 }
 
-[[nodiscard]] bool looks_like_codex_session_id(std::string_view value) {
+[[nodiscard]] bool looks_like_current_thread_id(std::string_view value) {
   if (value.size() != 36)
     return false;
   for (std::size_t i = 0; i < value.size(); ++i) {
@@ -307,7 +335,7 @@ should_embed_objective_bundle_relative_path(std::string_view relative_path) {
 }
 
 [[nodiscard]] std::string
-extract_codex_session_id_from_log(std::string_view log_text) {
+extract_current_thread_id_from_log(std::string_view log_text) {
   const std::size_t marker = log_text.rfind("session id:");
   if (marker == std::string_view::npos)
     return {};
@@ -318,7 +346,7 @@ extract_codex_session_id_from_log(std::string_view log_text) {
       trim_ascii(log_text.substr(value_begin, line_end == std::string_view::npos
                                                   ? std::string_view::npos
                                                   : line_end - value_begin)));
-  if (!looks_like_codex_session_id(candidate))
+  if (!looks_like_current_thread_id(candidate))
     return {};
   return candidate;
 }
@@ -1069,6 +1097,76 @@ resolve_command_path(const std::filesystem::path &base_dir,
   return std::filesystem::path(configured);
 }
 
+[[nodiscard]] bool path_is_executable(const std::filesystem::path &path) {
+  return !path.empty() && ::access(path.c_str(), X_OK) == 0;
+}
+
+[[nodiscard]] std::filesystem::path resolve_vscode_server_codex_binary() {
+  std::vector<std::filesystem::path> extension_roots{};
+  if (const char *home = std::getenv("HOME");
+      home != nullptr && *home != '\0') {
+    extension_roots.emplace_back(std::filesystem::path(home) /
+                                 ".vscode-server/extensions");
+  }
+  extension_roots.emplace_back("/root/.vscode-server/extensions");
+
+  std::vector<std::filesystem::path> candidates{};
+  for (const auto &root : extension_roots) {
+    std::error_code ec{};
+    if (!std::filesystem::exists(root, ec) ||
+        !std::filesystem::is_directory(root, ec)) {
+      continue;
+    }
+    for (const auto &entry : std::filesystem::directory_iterator(root, ec)) {
+      if (ec)
+        break;
+      if (!entry.is_directory())
+        continue;
+      const std::string dirname = entry.path().filename().string();
+      if (dirname.rfind("openai.chatgpt-", 0u) != 0u)
+        continue;
+      const std::filesystem::path candidate =
+          entry.path() / "bin/linux-x86_64/codex";
+      if (path_is_executable(candidate)) {
+        candidates.push_back(candidate.lexically_normal());
+      }
+    }
+  }
+  std::sort(candidates.begin(), candidates.end());
+  if (!candidates.empty()) {
+    return candidates.back();
+  }
+  return {};
+}
+
+[[nodiscard]] std::filesystem::path
+resolve_marshal_codex_binary_path(const std::filesystem::path &base_dir,
+                                  std::string configured) {
+  const std::string trimmed = trim_ascii(configured);
+  if (trimmed.empty())
+    return {};
+
+  std::filesystem::path resolved = resolve_command_path(base_dir, trimmed);
+  if (path_is_executable(resolved))
+    return resolved;
+
+  if (trimmed != "codex")
+    return resolved;
+
+  const std::filesystem::path vscode_codex =
+      resolve_vscode_server_codex_binary();
+  if (path_is_executable(vscode_codex))
+    return vscode_codex;
+
+  for (const std::filesystem::path &candidate :
+       {std::filesystem::path("/usr/local/bin/codex"),
+        std::filesystem::path("/usr/bin/codex")}) {
+    if (path_is_executable(candidate))
+      return candidate;
+  }
+  return resolved;
+}
+
 [[nodiscard]] std::filesystem::path
 campaigns_root_for_app(const app_context_t &app) {
   return app.defaults.marshal_root.parent_path() / ".campaigns";
@@ -1112,9 +1210,48 @@ marshal_session_latest_intent_checkpoint_path(
 }
 
 [[nodiscard]] std::filesystem::path
-marshal_session_legacy_codex_session_log_path(
+marshal_session_runner_stdout_path(const app_context_t &app,
+                                   std::string_view marshal_session_id) {
+  return cuwacunu::hero::marshal::marshal_session_runner_stdout_path(
+      app.defaults.marshal_root, marshal_session_id);
+}
+
+[[nodiscard]] std::filesystem::path
+marshal_session_runner_stderr_path(const app_context_t &app,
+                                   std::string_view marshal_session_id) {
+  return cuwacunu::hero::marshal::marshal_session_runner_stderr_path(
+      app.defaults.marshal_root, marshal_session_id);
+}
+
+[[nodiscard]] std::filesystem::path
+resolve_marshal_session_runner_binary(const app_context_t &app) {
+  const std::filesystem::path configured =
+      app.self_binary_path.lexically_normal();
+  if (!configured.empty()) {
+    const std::string filename = configured.filename().string();
+    if (filename == "hero_marshal.mcp" || filename == "hero_marshal_mcp") {
+      return configured;
+    }
+  }
+
+  if (!app.defaults.repo_root.empty()) {
+    const std::filesystem::path fallback =
+        (app.defaults.repo_root / ".build/hero/hero_marshal.mcp")
+            .lexically_normal();
+    std::error_code ec{};
+    if (std::filesystem::exists(fallback, ec) &&
+        std::filesystem::is_regular_file(fallback, ec)) {
+      return fallback;
+    }
+  }
+
+  return configured;
+}
+
+[[nodiscard]] std::filesystem::path
+marshal_session_compat_codex_session_log_path(
     const cuwacunu::hero::marshal::marshal_session_record_t &loop) {
-  return cuwacunu::hero::marshal::marshal_session_legacy_codex_session_log_path(
+  return cuwacunu::hero::marshal::marshal_session_compat_codex_session_log_path(
       std::filesystem::path(loop.session_root).parent_path(),
       loop.marshal_session_id);
 }
@@ -1187,7 +1324,7 @@ void cancel_session_checkpoint_best_effort(
   if (!read_marshal_session(app, marshal_session_id, out_loop, &ignored))
     return false;
   return cuwacunu::hero::marshal::is_marshal_session_terminal_state(
-      out_loop->phase);
+      out_loop->lifecycle);
 }
 
 struct scoped_temp_path_t {
@@ -1219,6 +1356,32 @@ write_temp_marshal_decision_schema(std::string_view schema_json,
        std::to_string(cuwacunu::hero::runtime::now_ms_utc()) + "." +
        std::to_string(::getpid()) + ".json");
   if (!cuwacunu::hero::runtime::write_text_file_atomic(temp_path, schema_json,
+                                                       error)) {
+    return false;
+  }
+  out_path->path = std::move(temp_path);
+  return true;
+}
+
+[[nodiscard]] bool write_temp_text_artifact(std::string_view prefix,
+                                            std::string_view suffix,
+                                            std::string_view text,
+                                            scoped_temp_path_t *out_path,
+                                            std::string *error) {
+  if (error)
+    error->clear();
+  if (!out_path) {
+    if (error)
+      *error = "temp artifact output pointer is null";
+    return false;
+  }
+  out_path->path.clear();
+  std::filesystem::path temp_path =
+      std::filesystem::temp_directory_path() /
+      (std::string(prefix) + "." +
+       std::to_string(cuwacunu::hero::runtime::now_ms_utc()) + "." +
+       std::to_string(::getpid()) + "." + std::string(suffix));
+  if (!cuwacunu::hero::runtime::write_text_file_atomic(temp_path, text,
                                                        error)) {
     return false;
   }
@@ -1367,8 +1530,86 @@ write_temp_marshal_decision_schema(std::string_view schema_json,
   return out.str();
 }
 
+[[nodiscard]] bool marshal_session_runner_process_alive(
+    const cuwacunu::hero::marshal::marshal_session_record_t &record) {
+  return record.runner_pid.has_value() &&
+         cuwacunu::hero::runtime::process_identity_alive(
+             *record.runner_pid, record.runner_start_ticks, record.boot_id);
+}
+
+[[nodiscard]] bool marshal_operator_message_has_text(
+    const cuwacunu::hero::marshal::marshal_session_record_t::operator_message_t
+        &message) {
+  return !trim_ascii(message.text).empty();
+}
+
+[[nodiscard]] bool marshal_session_has_pending_operator_message(
+    const cuwacunu::hero::marshal::marshal_session_record_t &record) {
+  return std::any_of(record.pending_operator_messages.begin(),
+                     record.pending_operator_messages.end(),
+                     [&](const auto &message) {
+                       return marshal_operator_message_has_text(message);
+                     });
+}
+
+[[nodiscard]] bool marshal_session_runner_should_be_attached(
+    const cuwacunu::hero::marshal::marshal_session_record_t &record) {
+  if (record.lifecycle == "bootstrapping")
+    return true;
+  if (record.lifecycle != "live")
+    return false;
+  if (cuwacunu::hero::marshal::marshal_session_has_active_campaign(record))
+    return true;
+  if (cuwacunu::hero::marshal::marshal_session_work_blocked(record))
+    return false;
+  if (cuwacunu::hero::marshal::marshal_session_is_review_ready(record))
+    return false;
+  if (marshal_session_has_pending_operator_message(record))
+    return true;
+  return trim_ascii(record.finish_reason) == "none";
+}
+
 [[nodiscard]] std::string marshal_session_to_json(
     const cuwacunu::hero::marshal::marshal_session_record_t &record) {
+  const bool runner_alive = marshal_session_runner_process_alive(record);
+  std::ostringstream pending_messages_json;
+  pending_messages_json << "[";
+  for (std::size_t i = 0; i < record.pending_operator_messages.size(); ++i) {
+    if (i != 0)
+      pending_messages_json << ",";
+    const auto &message = record.pending_operator_messages[i];
+    pending_messages_json
+        << "{"
+        << "\"message_id\":" << json_quote(message.message_id) << ","
+        << "\"text\":" << json_quote(message.text) << ","
+        << "\"delivery_mode\":" << json_quote(message.delivery_mode) << ","
+        << "\"delivery_status\":" << json_quote(message.delivery_status)
+        << ",\"thread_id_at_delivery\":"
+        << json_quote(message.thread_id_at_delivery) << ","
+        << "\"received_at_ms\":"
+        << (message.received_at_ms.has_value()
+                ? std::to_string(*message.received_at_ms)
+                : "null")
+        << ",\"delivered_at_ms\":"
+        << (message.delivered_at_ms.has_value()
+                ? std::to_string(*message.delivered_at_ms)
+                : "null")
+        << ",\"handled_at_ms\":"
+        << (message.handled_at_ms.has_value()
+                ? std::to_string(*message.handled_at_ms)
+                : "null")
+        << ",\"delivery_attempts\":" << message.delivery_attempts << ","
+        << "\"last_error\":" << json_quote(message.last_error) << "}";
+  }
+  pending_messages_json << "]";
+  std::ostringstream thread_lineage_json;
+  thread_lineage_json << "[";
+  for (std::size_t i = 0; i < record.thread_lineage.size(); ++i) {
+    if (i != 0)
+      thread_lineage_json << ",";
+    thread_lineage_json << json_quote(record.thread_lineage[i]);
+  }
+  thread_lineage_json << "]";
   std::ostringstream campaign_cursors_json;
   campaign_cursors_json << "[";
   for (std::size_t i = 0; i < record.campaign_cursors.size(); ++i) {
@@ -1383,13 +1624,23 @@ write_temp_marshal_decision_schema(std::string_view schema_json,
       << "\"schema\":" << json_quote(record.schema) << ","
       << "\"marshal_session_id\":" << json_quote(record.marshal_session_id)
       << ","
-      << "\"phase\":" << json_quote(record.phase) << ","
-      << "\"phase_detail\":" << json_quote(record.phase_detail) << ","
-      << "\"pause_kind\":" << json_quote(record.pause_kind) << ","
+      << "\"lifecycle\":" << json_quote(record.lifecycle) << ","
+      << "\"status_detail\":" << json_quote(record.status_detail) << ","
+      << "\"work_gate\":" << json_quote(record.work_gate) << ","
       << "\"finish_reason\":" << json_quote(record.finish_reason) << ","
+      << "\"activity\":" << json_quote(record.activity) << ","
       << "\"objective_name\":" << json_quote(record.objective_name) << ","
       << "\"global_config_path\":" << json_quote(record.global_config_path)
       << ","
+      << "\"boot_id\":" << json_quote(record.boot_id) << ","
+      << "\"runner_pid\":"
+      << (record.runner_pid.has_value() ? std::to_string(*record.runner_pid)
+                                        : "null")
+      << ",\"runner_start_ticks\":"
+      << (record.runner_start_ticks.has_value()
+              ? std::to_string(*record.runner_start_ticks)
+              : "null")
+      << ",\"runner_alive\":" << bool_json(runner_alive) << ","
       << "\"source_marshal_objective_dsl_path\":"
       << json_quote(record.source_marshal_objective_dsl_path) << ","
       << "\"source_campaign_dsl_path\":"
@@ -1413,7 +1664,10 @@ write_temp_marshal_decision_schema(std::string_view schema_json,
       << ","
       << "\"briefing_path\":" << json_quote(record.briefing_path) << ","
       << "\"memory_path\":" << json_quote(record.memory_path) << ","
-      << "\"codex_session_id\":" << json_quote(record.codex_session_id) << ","
+      << "\"current_thread_id\":" << json_quote(record.current_thread_id) << ","
+      << "\"codex_continuity\":" << json_quote(record.codex_continuity) << ","
+      << "\"last_resume_error\":" << json_quote(record.last_resume_error) << ","
+      << "\"thread_lineage\":" << thread_lineage_json.str() << ","
       << "\"resolved_marshal_codex_binary\":"
       << json_quote(record.resolved_marshal_codex_binary) << ","
       << "\"resolved_marshal_codex_model\":"
@@ -1447,6 +1701,7 @@ write_temp_marshal_decision_schema(std::string_view schema_json,
                      .string())
       << ","
       << "\"events_path\":" << json_quote(record.events_path) << ","
+      << "\"turns_path\":" << json_quote(record.turns_path) << ","
       << "\"started_at_ms\":" << record.started_at_ms << ","
       << "\"updated_at_ms\":" << record.updated_at_ms << ","
       << "\"finished_at_ms\":"
@@ -1459,11 +1714,14 @@ write_temp_marshal_decision_schema(std::string_view schema_json,
       << ",\"remaining_campaign_launches\":"
       << record.remaining_campaign_launches
       << ",\"authority_scope\":" << json_quote(record.authority_scope)
-      << ",\"latest_request_kind\":" << json_quote(record.latest_request_kind)
-      << ",\"active_campaign_cursor\":"
-      << json_quote(record.active_campaign_cursor) << ","
-      << "\"last_intent_kind\":" << json_quote(record.last_intent_kind) << ","
+      << ",\"campaign_status\":" << json_quote(record.campaign_status) << ","
+      << "\"campaign_cursor\":" << json_quote(record.campaign_cursor) << ","
+      << "\"next_message_seq\":" << record.next_message_seq << ","
+      << "\"pending_operator_messages\":" << pending_messages_json.str() << ","
+      << "\"last_event_seq\":" << record.last_event_seq << ","
+      << "\"last_codex_action\":" << json_quote(record.last_codex_action) << ","
       << "\"last_warning\":" << json_quote(record.last_warning) << ","
+      << "\"last_warning_code\":" << json_quote(record.last_warning_code) << ","
       << "\"last_input_checkpoint_path\":"
       << json_quote(record.last_input_checkpoint_path) << ","
       << "\"last_intent_checkpoint_path\":"
@@ -1475,18 +1733,246 @@ write_temp_marshal_decision_schema(std::string_view schema_json,
 }
 
 [[nodiscard]] bool append_marshal_session_event(
-    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
-    std::string_view event, std::string_view detail, std::string *error) {
+    cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string_view producer, std::string_view event,
+    const std::string &payload_json, std::string *error, int /*payload_tag*/) {
   if (error)
     error->clear();
+  if (!loop) {
+    if (error)
+      *error = "missing marshal session for event append";
+    return false;
+  }
+  const std::uint64_t event_seq = ++loop->last_event_seq;
   const std::string payload =
-      "{\"timestamp_ms\":" +
-      std::to_string(cuwacunu::hero::runtime::now_ms_utc()) +
-      ",\"marshal_session_id\":" + json_quote(loop.marshal_session_id) +
-      ",\"event\":" + json_quote(event) + ",\"detail\":" + json_quote(detail) +
-      "}\n";
-  return cuwacunu::hero::runtime::append_text_file(loop.events_path, payload,
+      "{\"event_id\":" +
+      json_quote(loop->marshal_session_id + ":" + std::to_string(event_seq)) +
+      ",\"session_id\":" + json_quote(loop->marshal_session_id) +
+      ",\"seq\":" + std::to_string(event_seq) +
+      ",\"at_ms\":" + std::to_string(cuwacunu::hero::runtime::now_ms_utc()) +
+      ",\"producer\":" + json_quote(std::string(producer)) +
+      ",\"type\":" + json_quote(event) + ",\"payload\":" + payload_json + "}\n";
+  return cuwacunu::hero::runtime::append_text_file(loop->events_path, payload,
                                                    error);
+}
+
+[[nodiscard]] bool append_marshal_session_event(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string_view producer, std::string_view event, std::string_view detail,
+    std::string *error) {
+  return append_marshal_session_event(
+      loop, producer, event,
+      "{\"detail\":" + json_quote(std::string(detail)) + "}", error, 0);
+}
+
+[[nodiscard]] bool append_marshal_session_event(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string_view event, std::string_view detail, std::string *error) {
+  return append_marshal_session_event(loop, "marshal", event, detail, error);
+}
+
+[[nodiscard]] bool append_marshal_session_event(
+    cuwacunu::hero::marshal::marshal_session_record_t **loop,
+    std::string_view producer, std::string_view event, std::string_view detail,
+    std::string *error) {
+  if (!loop)
+    return append_marshal_session_event(
+        static_cast<cuwacunu::hero::marshal::marshal_session_record_t *>(
+            nullptr),
+        producer, event, detail, error);
+  return append_marshal_session_event(*loop, producer, event, detail, error);
+}
+
+[[nodiscard]] bool append_marshal_session_event(
+    cuwacunu::hero::marshal::marshal_session_record_t **loop,
+    std::string_view event, std::string_view detail, std::string *error) {
+  if (!loop)
+    return append_marshal_session_event(
+        static_cast<cuwacunu::hero::marshal::marshal_session_record_t *>(
+            nullptr),
+        event, detail, error);
+  return append_marshal_session_event(*loop, event, detail, error);
+}
+
+[[nodiscard]] std::string make_operator_message_id(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop) {
+  if (!loop)
+    return "marshal.message.0";
+  const std::uint64_t seq = ++loop->next_message_seq;
+  return loop->marshal_session_id + ".msg." +
+         cuwacunu::hero::runtime::base36_lower_u64(seq);
+}
+
+[[nodiscard]] std::string marshal_operator_message_to_payload_json(
+    const cuwacunu::hero::marshal::marshal_session_record_t::operator_message_t
+        &message,
+    std::string_view note = {}, std::string_view reply_text = {},
+    std::string_view warning = {}) {
+  std::ostringstream out;
+  std::string detail = trim_ascii(std::string(note));
+  if (!trim_ascii(reply_text).empty()) {
+    if (!detail.empty())
+      detail += " | ";
+    detail += "reply=" + trim_ascii(reply_text);
+  }
+  if (!trim_ascii(warning).empty()) {
+    if (!detail.empty())
+      detail += " | ";
+    detail += "warning=" + trim_ascii(warning);
+  }
+  out << "{"
+      << "\"message_id\":" << json_quote(message.message_id) << ","
+      << "\"text\":" << json_quote(message.text) << ","
+      << "\"delivery_mode\":" << json_quote(message.delivery_mode) << ","
+      << "\"delivery_status\":" << json_quote(message.delivery_status) << ","
+      << "\"thread_id_at_delivery\":"
+      << json_quote(message.thread_id_at_delivery) << ","
+      << "\"received_at_ms\":"
+      << (message.received_at_ms.has_value()
+              ? std::to_string(*message.received_at_ms)
+              : "null")
+      << ",\"delivered_at_ms\":"
+      << (message.delivered_at_ms.has_value()
+              ? std::to_string(*message.delivered_at_ms)
+              : "null")
+      << ",\"handled_at_ms\":"
+      << (message.handled_at_ms.has_value()
+              ? std::to_string(*message.handled_at_ms)
+              : "null")
+      << ",\"delivery_attempts\":" << message.delivery_attempts << ","
+      << "\"last_error\":" << json_quote(message.last_error) << ","
+      << "\"detail\":" << json_quote(detail) << ","
+      << "\"reply_text\":" << json_quote(std::string(reply_text)) << ","
+      << "\"warning\":" << json_quote(std::string(warning)) << ","
+      << "\"note\":" << json_quote(std::string(note)) << "}";
+  return out.str();
+}
+
+[[nodiscard]] bool append_operator_message_event(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string_view producer, std::string_view event,
+    const cuwacunu::hero::marshal::marshal_session_record_t::operator_message_t
+        &message,
+    std::string_view note, std::string_view reply_text,
+    std::string_view warning, std::string *error) {
+  return append_marshal_session_event(loop, producer, event,
+                                      marshal_operator_message_to_payload_json(
+                                          message, note, reply_text, warning),
+                                      error, 0);
+}
+
+[[nodiscard]] bool append_operator_message_turn(
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    const cuwacunu::hero::marshal::marshal_session_record_t::operator_message_t
+        &message,
+    std::string_view reply_text, std::string *error) {
+  if (error)
+    error->clear();
+  if (trim_ascii(loop.turns_path).empty())
+    return true;
+  const std::uint64_t at_ms =
+      message.handled_at_ms.value_or(cuwacunu::hero::runtime::now_ms_utc());
+  const std::string turn_id = loop.marshal_session_id + ".turn." +
+                              std::to_string(loop.last_event_seq + 1);
+  const std::string payload =
+      "{\"turn_id\":" + json_quote(turn_id) +
+      ",\"session_id\":" + json_quote(loop.marshal_session_id) +
+      ",\"message_id\":" + json_quote(message.message_id) +
+      ",\"at_ms\":" + std::to_string(at_ms) +
+      ",\"thread_id\":" + json_quote(message.thread_id_at_delivery) +
+      ",\"operator_text\":" + json_quote(message.text) +
+      ",\"marshal_reply\":" + json_quote(std::string(reply_text)) + "}\n";
+  return cuwacunu::hero::runtime::append_text_file(loop.turns_path, payload,
+                                                   error);
+}
+
+[[nodiscard]] std::string read_recent_turn_log_excerpt(
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    std::size_t max_turns) {
+  if (trim_ascii(loop.turns_path).empty() || max_turns == 0)
+    return {};
+  std::string turns_text{};
+  std::string ignored{};
+  if (!cuwacunu::hero::runtime::read_text_file(loop.turns_path, &turns_text,
+                                               &ignored)) {
+    return {};
+  }
+  std::vector<std::string> excerpts{};
+  std::istringstream in{turns_text};
+  std::string line{};
+  while (std::getline(in, line)) {
+    const std::string trimmed = trim_ascii(line);
+    if (trimmed.empty())
+      continue;
+    std::string operator_text{};
+    std::string marshal_reply{};
+    if (!extract_json_string_field(trimmed, "operator_text", &operator_text))
+      continue;
+    (void)extract_json_string_field(trimmed, "marshal_reply", &marshal_reply);
+    excerpts.push_back("Operator: " + trim_ascii(operator_text) +
+                       "\nMarshal: " + trim_ascii(marshal_reply));
+  }
+  if (excerpts.empty())
+    return {};
+  if (excerpts.size() > max_turns) {
+    excerpts.erase(excerpts.begin(),
+                   excerpts.begin() +
+                       static_cast<std::vector<std::string>::difference_type>(
+                           excerpts.size() - max_turns));
+  }
+  std::ostringstream out;
+  for (std::size_t i = 0; i < excerpts.size(); ++i) {
+    if (i != 0)
+      out << "\n\n";
+    out << excerpts[i];
+  }
+  return out.str();
+}
+
+[[nodiscard]] std::string build_replacement_thread_rebrief_packet(
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    std::string_view rollover_reason, std::string_view briefing_text) {
+  std::ostringstream out;
+  out << "Replacement Codex thread rebrief packet\n"
+      << "- marshal_session_id: " << loop.marshal_session_id << "\n"
+      << "- objective_name: " << loop.objective_name << "\n"
+      << "- lifecycle: " << loop.lifecycle << "\n"
+      << "- work_gate: " << loop.work_gate << "\n"
+      << "- campaign_status: " << loop.campaign_status << "\n";
+  if (!trim_ascii(loop.campaign_cursor).empty()) {
+    out << "- campaign_cursor: " << loop.campaign_cursor << "\n";
+  }
+  if (!trim_ascii(loop.last_warning).empty()) {
+    out << "- last_warning: " << loop.last_warning << "\n";
+  }
+  if (!trim_ascii(loop.last_resume_error).empty()) {
+    out << "- last_resume_error: " << loop.last_resume_error << "\n";
+  }
+  out << "- rollover_reason: " << trim_ascii(rollover_reason) << "\n";
+  if (!trim_ascii(loop.current_thread_id).empty()) {
+    out << "- previous_thread_id: " << loop.current_thread_id << "\n";
+  }
+  const std::string recent_turns = read_recent_turn_log_excerpt(loop, 6);
+  if (!recent_turns.empty()) {
+    out << "\nRecent exact turns:\n" << recent_turns << "\n";
+  }
+  std::size_t pending_count = 0;
+  for (const auto &pending_message : loop.pending_operator_messages) {
+    if (!marshal_operator_message_has_text(pending_message))
+      continue;
+    if (pending_count == 0)
+      out << "\nPending operator messages:\n";
+    out << "- [" << pending_message.message_id << "] "
+        << trim_ascii(pending_message.text) << "\n";
+    if (++pending_count >= 6)
+      break;
+  }
+  if (!trim_ascii(briefing_text).empty()) {
+    out << "\nCurrent durable briefing:\n" << briefing_text;
+    if (briefing_text.back() != '\n')
+      out << "\n";
+  }
+  return out.str();
 }
 
 [[nodiscard]] bool
@@ -1498,6 +1984,10 @@ read_marshal_session(const app_context_t &app,
           app.defaults.marshal_root, marshal_session_id, out, error)) {
     return false;
   }
+  if (out != nullptr) {
+    out->schema = std::string(cuwacunu::hero::marshal::kMarshalSessionSchemaV6);
+    cuwacunu::hero::marshal::canonicalize_marshal_session_record(out);
+  }
   if (out != nullptr && trim_ascii(out->codex_stdout_path).empty()) {
     out->codex_stdout_path =
         cuwacunu::hero::marshal::marshal_session_codex_stdout_path(
@@ -1508,16 +1998,16 @@ read_marshal_session(const app_context_t &app,
     const std::filesystem::path stderr_path =
         cuwacunu::hero::marshal::marshal_session_codex_stderr_path(
             app.defaults.marshal_root, out->marshal_session_id);
-    const std::filesystem::path legacy_path =
-        cuwacunu::hero::marshal::marshal_session_legacy_codex_session_log_path(
+    const std::filesystem::path compat_path =
+        cuwacunu::hero::marshal::marshal_session_compat_codex_session_log_path(
             app.defaults.marshal_root, out->marshal_session_id);
     std::error_code ec{};
     if (std::filesystem::exists(stderr_path, ec) && !ec) {
       out->codex_stderr_path = stderr_path.string();
     } else {
       ec.clear();
-      if (std::filesystem::exists(legacy_path, ec) && !ec) {
-        out->codex_stderr_path = legacy_path.string();
+      if (std::filesystem::exists(compat_path, ec) && !ec) {
+        out->codex_stderr_path = compat_path.string();
       } else {
         out->codex_stderr_path = stderr_path.string();
       }
@@ -1526,10 +2016,22 @@ read_marshal_session(const app_context_t &app,
   return true;
 }
 
+void clear_marshal_session_runner_identity(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop);
+void clear_marshal_session_campaign_linkage(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop);
+
 [[nodiscard]] bool write_marshal_session(
     const app_context_t &app,
     const cuwacunu::hero::marshal::marshal_session_record_t &record,
     std::string *error) {
+  cuwacunu::hero::marshal::marshal_session_record_t persisted = record;
+  persisted.schema =
+      std::string(cuwacunu::hero::marshal::kMarshalSessionSchemaV6);
+  cuwacunu::hero::marshal::canonicalize_marshal_session_record(&persisted);
+  if (!marshal_session_runner_should_be_attached(persisted)) {
+    clear_marshal_session_runner_identity(&persisted);
+  }
   auto sync_human_summary_report =
       [&](const cuwacunu::hero::marshal::marshal_session_record_t &loop,
           std::string *out_error) -> bool {
@@ -1571,8 +2073,10 @@ read_marshal_session(const app_context_t &app,
     std::ostringstream out;
     out << "# Human Summary Report\n\n"
         << "Marshal ID: " << loop.marshal_session_id << "\n"
-        << "Phase: " << loop.phase << "\n"
-        << "Pause Kind: " << loop.pause_kind << "\n"
+        << "Lifecycle: " << loop.lifecycle << "\n"
+        << "Work Gate: " << loop.work_gate << "\n"
+        << "Activity: " << loop.activity << "\n"
+        << "Campaign Status: " << loop.campaign_status << "\n"
         << "Finish Reason: " << loop.finish_reason << "\n"
         << "Objective: " << loop.objective_name << "\n"
         << "Started At Ms: " << loop.started_at_ms << "\n"
@@ -1593,26 +2097,29 @@ read_marshal_session(const app_context_t &app,
         << format_effort_budget(loop.launch_count, loop.max_campaign_launches,
                                 loop.remaining_campaign_launches)
         << "\n"
-        << "Last Intent: "
-        << (trim_ascii(loop.last_intent_kind).empty() ? "<unset>"
-                                                      : loop.last_intent_kind)
+        << "Last Codex Action: "
+        << (trim_ascii(loop.last_codex_action).empty() ? "<unset>"
+                                                       : loop.last_codex_action)
         << "\n";
     if (!trim_ascii(last_campaign_cursor).empty()) {
       out << "Last Campaign Cursor: " << last_campaign_cursor << "\n";
     }
     out << "\nSummary:\n"
-        << (trim_ascii(loop.phase_detail).empty() ? "<no state detail>"
-                                                  : loop.phase_detail)
+        << (trim_ascii(loop.status_detail).empty() ? "<no state detail>"
+                                                   : loop.status_detail)
         << "\n\n";
     if (!trim_ascii(loop.last_warning).empty()) {
       out << "Warnings:\n" << loop.last_warning << "\n\n";
     }
-    if (loop.phase == "idle") {
-      out << "This report is actionable. Use Continue in Human Hero, or "
-             "hero.marshal.continue_session, when you want to launch more work "
-             "after reviewing the outcome. Acknowledge with a review message "
+    if (cuwacunu::hero::marshal::marshal_session_is_review_ready(loop)) {
+      out << "This report is actionable. Use Message in Human Hero, or "
+             "hero.marshal.message_session, when you want to send more "
+             "operator guidance after reviewing the outcome. Acknowledge with "
+             "a review message "
              "only signs off this report and clears it from the Human "
-             "inbox.\n\n";
+             "inbox. Archive through Human Hero when you want to release "
+             "objective ownership and stop this session from blocking a fresh "
+             "launch.\n\n";
     } else {
       out << "This report is informational. Acknowledge it through Human Hero "
              "with a review message when you have reviewed the session "
@@ -1651,11 +2158,11 @@ read_marshal_session(const app_context_t &app,
   };
 
   if (!cuwacunu::hero::marshal::write_marshal_session_record(
-          app.defaults.marshal_root, record, error)) {
+          app.defaults.marshal_root, persisted, error)) {
     return false;
   }
   std::string summary_error{};
-  if (!sync_human_summary_report(record, &summary_error)) {
+  if (!sync_human_summary_report(persisted, &summary_error)) {
     std::cerr << "[hero_marshal_mcp][warning] failed to refresh Human Hero "
                  "summary artifact: "
               << summary_error << std::endl;
@@ -1691,6 +2198,94 @@ read_marshal_session(const app_context_t &app,
     std::string *error) {
   return cuwacunu::hero::runtime::read_runtime_campaign_record(
       campaigns_root_for_app(app), campaign_cursor, out, error);
+}
+
+[[nodiscard]] bool extract_runtime_campaign_from_tool_structured(
+    const std::string &structured_json,
+    cuwacunu::hero::runtime::runtime_campaign_record_t *out,
+    std::string *error) {
+  if (error)
+    error->clear();
+  if (!out) {
+    if (error)
+      *error = "runtime campaign output pointer is null";
+    return false;
+  }
+  *out = cuwacunu::hero::runtime::runtime_campaign_record_t{};
+
+  std::string campaign_json{};
+  if (!extract_json_object_field(structured_json, "campaign", &campaign_json)) {
+    if (error)
+      *error = "runtime tool structured output is missing campaign object";
+    return false;
+  }
+  std::string schema{};
+  if (!extract_json_string_field(campaign_json, "schema", &schema) ||
+      trim_ascii(schema) !=
+          std::string(cuwacunu::hero::runtime::kRuntimeCampaignSchemaV2)) {
+    if (error)
+      *error = "runtime tool campaign object has unexpected schema";
+    return false;
+  }
+  if (!extract_json_string_field(campaign_json, "campaign_cursor",
+                                 &out->campaign_cursor)) {
+    if (error)
+      *error = "runtime tool campaign object is missing campaign_cursor";
+    return false;
+  }
+  (void)extract_json_string_field(campaign_json, "state", &out->state);
+  (void)extract_json_string_field(campaign_json, "state_detail",
+                                  &out->state_detail);
+  (void)extract_json_string_field(campaign_json, "marshal_session_id",
+                                  &out->marshal_session_id);
+  std::uint64_t current_run_index = 0;
+  if (extract_json_u64_field(campaign_json, "current_run_index",
+                             &current_run_index)) {
+    out->current_run_index = current_run_index;
+  }
+  return true;
+}
+
+[[nodiscard]] bool request_runtime_campaign_stop_for_marshal_action(
+    const app_context_t &app,
+    const cuwacunu::hero::marshal::marshal_session_record_t &session,
+    std::string_view campaign_cursor, bool force,
+    cuwacunu::hero::runtime::runtime_campaign_record_t *out_campaign,
+    std::string *out_warning, std::string *error) {
+  if (error)
+    error->clear();
+  if (out_warning)
+    out_warning->clear();
+  if (!out_campaign) {
+    if (error)
+      *error = "runtime campaign stop output pointer is null";
+    return false;
+  }
+  *out_campaign = cuwacunu::hero::runtime::runtime_campaign_record_t{};
+
+  marshal_session_workspace_context_t workspace_context{};
+  if (!load_marshal_session_workspace_context(app, session, &workspace_context,
+                                              error)) {
+    return false;
+  }
+  std::string stop_structured{};
+  const std::string stop_args =
+      "{\"campaign_cursor\":" + json_quote(trim_ascii(campaign_cursor)) +
+      ",\"force\":" + bool_json(force) +
+      ",\"suppress_marshal_session_update\":true}";
+  if (!call_runtime_tool(app, workspace_context.runtime_hero_binary,
+                         "hero.runtime.stop_campaign", stop_args,
+                         &stop_structured, error)) {
+    return false;
+  }
+  std::vector<std::string> warnings{};
+  append_structured_warnings(stop_structured,
+                             "runtime stop warning: ", &warnings);
+  for (const std::string &warning : warnings) {
+    append_warning_text(out_warning, warning);
+  }
+  return extract_runtime_campaign_from_tool_structured(stop_structured,
+                                                       out_campaign, error);
 }
 
 [[nodiscard]] bool
@@ -1732,6 +2327,318 @@ read_runtime_job_direct(const app_context_t &app, std::string_view job_cursor,
     return "failed";
   }
   return record.state;
+}
+
+void clear_marshal_session_runner_identity(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop) {
+  if (!loop)
+    return;
+  loop->boot_id.clear();
+  loop->runner_pid.reset();
+  loop->runner_start_ticks.reset();
+}
+
+void clear_marshal_session_campaign_linkage(
+    cuwacunu::hero::marshal::marshal_session_record_t *loop) {
+  if (!loop)
+    return;
+  loop->campaign_status = "none";
+  loop->campaign_cursor.clear();
+}
+
+[[nodiscard]] bool session_runner_lock_is_held(
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    bool *out_held, std::string *error) {
+  if (error)
+    error->clear();
+  if (!out_held) {
+    if (error)
+      *error = "session runner lock held output pointer is null";
+    return false;
+  }
+  *out_held = false;
+  const std::filesystem::path lock_path = session_runner_lock_path(loop);
+  const int fd = ::open(lock_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  if (fd < 0) {
+    if (error)
+      *error = "cannot open session runner lock: " + lock_path.string();
+    return false;
+  }
+  if (::flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    const int err = errno;
+    (void)::close(fd);
+    if (err == EWOULDBLOCK || err == EAGAIN) {
+      *out_held = true;
+      return true;
+    }
+    if (error)
+      *error = "cannot probe session runner lock: " + loop.marshal_session_id;
+    return false;
+  }
+  (void)::flock(fd, LOCK_UN);
+  (void)::close(fd);
+  return true;
+}
+
+[[nodiscard]] bool marshal_session_runner_alive(
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    bool *out_alive, std::string *error) {
+  if (error)
+    error->clear();
+  if (!out_alive) {
+    if (error)
+      *error = "session runner alive output pointer is null";
+    return false;
+  }
+  *out_alive = false;
+  if (marshal_session_runner_process_alive(loop)) {
+    *out_alive = true;
+    return true;
+  }
+  return session_runner_lock_is_held(loop, out_alive, error);
+}
+
+[[nodiscard]] bool capture_process_identity_for_session(
+    std::uint64_t pid_value,
+    cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string *error) {
+  if (error)
+    error->clear();
+  if (!loop) {
+    if (error)
+      *error = "marshal session pointer is null";
+    return false;
+  }
+  if (pid_value == 0) {
+    if (error)
+      *error = "marshal session runner pid is zero";
+    return false;
+  }
+  loop->boot_id = cuwacunu::hero::runtime::current_boot_id();
+  loop->runner_pid = pid_value;
+  std::uint64_t start_ticks = 0;
+  if (cuwacunu::hero::runtime::read_process_start_ticks(pid_value,
+                                                        &start_ticks)) {
+    loop->runner_start_ticks = start_ticks;
+  } else {
+    loop->runner_start_ticks.reset();
+  }
+  return true;
+}
+
+[[nodiscard]] bool park_session_idle_after_interruption(
+    const app_context_t &app,
+    cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string_view detail, bool *out_changed, std::string *error) {
+  if (error)
+    error->clear();
+  if (out_changed)
+    *out_changed = false;
+  if (!loop) {
+    if (error)
+      *error = "interrupt park session pointer is null";
+    return false;
+  }
+  const std::string normalized_detail = trim_ascii(detail);
+  const std::optional<std::uint64_t> finished_at =
+      loop->finished_at_ms.has_value()
+          ? loop->finished_at_ms
+          : std::optional<std::uint64_t>(cuwacunu::hero::runtime::now_ms_utc());
+  const bool needs_change =
+      !cuwacunu::hero::marshal::marshal_session_is_review_ready(*loop) ||
+      loop->status_detail != normalized_detail || loop->work_gate != "open" ||
+      loop->finish_reason != "interrupted" ||
+      !loop->finished_at_ms.has_value() ||
+      trim_ascii(loop->campaign_cursor).size() != 0 ||
+      !trim_ascii(loop->boot_id).empty() || loop->runner_pid.has_value() ||
+      loop->runner_start_ticks.has_value();
+  if (!needs_change)
+    return true;
+
+  loop->lifecycle = "live";
+  loop->activity = "review";
+  loop->status_detail = normalized_detail;
+  loop->work_gate = "open";
+  loop->finish_reason = "interrupted";
+  loop->finished_at_ms = finished_at;
+  loop->updated_at_ms = *loop->finished_at_ms;
+  clear_marshal_session_campaign_linkage(loop);
+  clear_marshal_session_runner_identity(loop);
+  if (!write_marshal_session(app, *loop, error))
+    return false;
+  std::string ignored{};
+  (void)append_marshal_session_event(&loop, "session.reconciled",
+                                     loop->status_detail, &ignored);
+  if (out_changed)
+    *out_changed = true;
+  return true;
+}
+
+[[nodiscard]] bool reconcile_marshal_session(
+    const app_context_t &app,
+    cuwacunu::hero::marshal::marshal_session_record_t *loop, bool *out_changed,
+    std::string *error) {
+  if (error)
+    error->clear();
+  if (out_changed)
+    *out_changed = false;
+  if (!loop) {
+    if (error)
+      *error = "marshal session pointer is null";
+    return false;
+  }
+
+  bool runner_alive = false;
+  if (!marshal_session_runner_alive(*loop, &runner_alive, error))
+    return false;
+  if (runner_alive)
+    return true;
+
+  {
+    const std::string retained_campaign_cursor =
+        trim_ascii(loop->campaign_cursor);
+    const bool retained_work_blocked =
+        loop->lifecycle == "live" && loop->work_gate != "open";
+    const bool retained_review_ready =
+        cuwacunu::hero::marshal::marshal_session_is_review_ready(*loop);
+    if (!retained_campaign_cursor.empty() &&
+        (retained_work_blocked || retained_review_ready ||
+         is_marshal_session_terminal_state(loop->lifecycle))) {
+      cuwacunu::hero::runtime::runtime_campaign_record_t campaign{};
+      if (!read_runtime_campaign_direct(app, retained_campaign_cursor,
+                                        &campaign, error)) {
+        return false;
+      }
+      const std::string observed_state = observed_campaign_state(campaign);
+      if (is_runtime_campaign_terminal_state(observed_state)) {
+        clear_marshal_session_campaign_linkage(loop);
+        const std::string detail_lower = lowercase_copy(loop->status_detail);
+        if (retained_work_blocked &&
+            detail_lower.find("pause_session requested by operator") == 0) {
+          loop->status_detail = "pause_session requested by operator";
+        } else if (is_marshal_session_terminal_state(loop->lifecycle) &&
+                   detail_lower.find(
+                       "terminate_session requested by operator") == 0) {
+          loop->status_detail = "terminate_session requested by operator";
+        }
+        loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+        if (!write_marshal_session(app, *loop, error))
+          return false;
+        if (out_changed)
+          *out_changed = true;
+      }
+    }
+  }
+
+  const bool review_ready =
+      cuwacunu::hero::marshal::marshal_session_is_review_ready(*loop);
+  const bool campaign_active =
+      cuwacunu::hero::marshal::marshal_session_has_active_campaign(*loop);
+  if (campaign_active) {
+    const std::string campaign_cursor = trim_ascii(loop->campaign_cursor);
+    if (campaign_cursor.empty()) {
+      return park_session_idle_after_interruption(
+          app, loop,
+          "sudden interruption detected after the marshal runner disappeared "
+          "while no active runtime campaign was recorded; session parked for "
+          "review "
+          "with recovery context so the operator can review runtime evidence "
+          "and use message_session to resume",
+          out_changed, error);
+    }
+    cuwacunu::hero::runtime::runtime_campaign_record_t campaign{};
+    std::string campaign_error{};
+    if (!read_runtime_campaign_direct(app, campaign_cursor, &campaign,
+                                      &campaign_error)) {
+      return park_session_idle_after_interruption(
+          app, loop,
+          "sudden interruption detected after the marshal runner disappeared "
+          "while tracking runtime campaign " +
+              campaign_cursor +
+              "; runtime campaign manifest could not "
+              "be read: " +
+              campaign_error +
+              "; session parked for review with recovery context so the "
+              "operator can inspect runtime evidence and use message_session "
+              "to resume",
+          out_changed, error);
+    }
+    const std::string observed_state = observed_campaign_state(campaign);
+    std::string observed_detail = trim_ascii(campaign.state_detail);
+    if (observed_state != campaign.state && observed_state == "failed") {
+      observed_detail = "campaign runner is no longer alive";
+    }
+    if (observed_detail.empty()) {
+      if (observed_state == "failed") {
+        observed_detail = "campaign runner is no longer alive";
+      } else if (observed_state == "running") {
+        observed_detail = "campaign runner alive";
+      }
+    }
+    std::ostringstream detail;
+    detail << "sudden interruption detected after runtime campaign "
+           << campaign_cursor << " was left in observed state "
+           << observed_state;
+    if (!observed_detail.empty())
+      detail << ": " << observed_detail;
+    detail << "; session parked for review with recovery context so the "
+              "operator can inspect runtime evidence and use message_session "
+              "to resume";
+    return park_session_idle_after_interruption(app, loop, detail.str(),
+                                                out_changed, error);
+  }
+
+  if (loop->lifecycle == "live" && loop->work_gate == "open" && !review_ready) {
+    std::ostringstream detail;
+    detail << "sudden interruption detected while the marshal planning runner "
+              "was active";
+    const std::string checkpoint_path =
+        trim_ascii(loop->last_input_checkpoint_path);
+    if (!checkpoint_path.empty()) {
+      detail << " near input checkpoint " << checkpoint_path;
+    }
+    detail << "; session parked for review with recovery context so the "
+              "operator can review the interrupted checkpoint and use "
+              "message_session to resume";
+    return park_session_idle_after_interruption(app, loop, detail.str(),
+                                                out_changed, error);
+  }
+
+  return true;
+}
+
+[[nodiscard]] bool read_marshal_session_reconciled(
+    const app_context_t &app, std::string_view marshal_session_id,
+    cuwacunu::hero::marshal::marshal_session_record_t *out, bool *out_changed,
+    std::string *error) {
+  if (error)
+    error->clear();
+  if (out_changed)
+    *out_changed = false;
+  if (!read_marshal_session(app, marshal_session_id, out, error))
+    return false;
+  return reconcile_marshal_session(app, out, out_changed, error);
+}
+
+[[nodiscard]] bool list_marshal_sessions_reconciled(
+    const app_context_t &app,
+    std::vector<cuwacunu::hero::marshal::marshal_session_record_t> *out,
+    std::string *error) {
+  if (error)
+    error->clear();
+  if (!out) {
+    if (error)
+      *error = "missing destination for marshal session list";
+    return false;
+  }
+  if (!list_marshal_sessions(app, out, error))
+    return false;
+  for (auto &session : *out) {
+    bool ignored_changed = false;
+    if (!reconcile_marshal_session(app, &session, &ignored_changed, error))
+      return false;
+  }
+  return true;
 }
 
 [[nodiscard]] bool tail_file_lines(const std::filesystem::path &path,
@@ -2074,6 +2981,142 @@ collect_run_manifest_hints(const app_context_t &app,
     return false;
   }
   return true;
+}
+
+[[nodiscard]] std::size_t completed_run_count_for_campaign(
+    const cuwacunu::hero::runtime::runtime_campaign_record_t &campaign) {
+  if (trim_ascii(campaign.state) == "exited")
+    return campaign.run_bind_ids.size();
+  if (!campaign.current_run_index.has_value())
+    return 0;
+  return std::min<std::size_t>(
+      static_cast<std::size_t>(*campaign.current_run_index),
+      campaign.run_bind_ids.size());
+}
+
+[[nodiscard]] std::size_t attempted_run_count_for_campaign(
+    const cuwacunu::hero::runtime::runtime_campaign_record_t &campaign) {
+  if (trim_ascii(campaign.state) == "exited")
+    return campaign.run_bind_ids.size();
+  if (!campaign.current_run_index.has_value())
+    return 0;
+  return std::min<std::size_t>(
+      static_cast<std::size_t>(*campaign.current_run_index) + 1,
+      campaign.run_bind_ids.size());
+}
+
+[[nodiscard]] bool collect_marshal_run_plan_progress(
+    const app_context_t &app,
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    const cuwacunu::camahjucunu::iitepi_campaign_instruction_t &instruction,
+    const cuwacunu::hero::runtime::runtime_campaign_record_t *campaign_hint,
+    marshal_run_plan_progress_t *out, std::string *error) {
+  if (error)
+    error->clear();
+  if (!out) {
+    if (error)
+      *error = "run-plan progress output pointer is null";
+    return false;
+  }
+  *out = marshal_run_plan_progress_t{};
+
+  out->declared_bind_ids.reserve(instruction.binds.size());
+  for (const auto &bind : instruction.binds) {
+    const std::string bind_id = trim_ascii(bind.id);
+    if (!bind_id.empty())
+      out->declared_bind_ids.push_back(bind_id);
+  }
+  out->default_run_bind_ids.reserve(instruction.runs.size());
+  for (const auto &run : instruction.runs) {
+    const std::string bind_id = trim_ascii(run.bind_ref);
+    if (!bind_id.empty())
+      out->default_run_bind_ids.push_back(bind_id);
+  }
+
+  const std::filesystem::path normalized_campaign_source =
+      std::filesystem::path(loop.campaign_dsl_path).lexically_normal();
+  for (const std::string &campaign_cursor : loop.campaign_cursors) {
+    cuwacunu::hero::runtime::runtime_campaign_record_t campaign{};
+    if (campaign_hint != nullptr &&
+        trim_ascii(campaign_hint->campaign_cursor) ==
+            trim_ascii(campaign_cursor)) {
+      campaign = *campaign_hint;
+    } else if (!read_runtime_campaign_direct(app, campaign_cursor, &campaign,
+                                             error)) {
+      return false;
+    }
+    if (std::filesystem::path(campaign.source_campaign_dsl_path)
+            .lexically_normal() != normalized_campaign_source) {
+      continue;
+    }
+
+    const std::size_t attempted_count =
+        attempted_run_count_for_campaign(campaign);
+    const std::size_t completed_count =
+        completed_run_count_for_campaign(campaign);
+    for (std::size_t i = 0; i < attempted_count; ++i) {
+      const std::string bind_id = trim_ascii(campaign.run_bind_ids[i]);
+      if (!bind_id.empty())
+        out->attempted_run_bind_ids.push_back(bind_id);
+    }
+    if (!out->ordered_prefix_valid)
+      continue;
+    for (std::size_t i = 0; i < completed_count; ++i) {
+      const std::string bind_id = trim_ascii(campaign.run_bind_ids[i]);
+      if (bind_id.empty())
+        continue;
+      if (out->completed_run_bind_ids.size() >=
+          out->default_run_bind_ids.size()) {
+        out->ordered_prefix_valid = false;
+        break;
+      }
+      if (bind_id !=
+          out->default_run_bind_ids[out->completed_run_bind_ids.size()]) {
+        out->ordered_prefix_valid = false;
+        break;
+      }
+      out->completed_run_bind_ids.push_back(bind_id);
+    }
+  }
+
+  if (out->ordered_prefix_valid) {
+    for (std::size_t i = out->completed_run_bind_ids.size();
+         i < out->default_run_bind_ids.size(); ++i) {
+      out->pending_run_bind_ids.push_back(out->default_run_bind_ids[i]);
+    }
+    if (!out->pending_run_bind_ids.empty()) {
+      out->next_pending_bind_id = out->pending_run_bind_ids.front();
+    }
+  } else {
+    out->pending_run_bind_ids = out->default_run_bind_ids;
+  }
+  return true;
+}
+
+[[nodiscard]] std::string
+marshal_run_plan_progress_to_json(const marshal_run_plan_progress_t &progress) {
+  std::ostringstream out;
+  out << "{"
+      << "\"declared_bind_ids\":"
+      << json_array_from_strings(progress.declared_bind_ids)
+      << ",\"default_run_bind_ids\":"
+      << json_array_from_strings(progress.default_run_bind_ids)
+      << ",\"completed_run_bind_ids\":"
+      << json_array_from_strings(progress.completed_run_bind_ids)
+      << ",\"attempted_run_bind_ids\":"
+      << json_array_from_strings(progress.attempted_run_bind_ids)
+      << ",\"pending_run_bind_ids\":"
+      << json_array_from_strings(progress.pending_run_bind_ids)
+      << ",\"ordered_prefix_valid\":"
+      << bool_json(progress.ordered_prefix_valid)
+      << ",\"next_pending_bind_id\":";
+  if (trim_ascii(progress.next_pending_bind_id).empty()) {
+    out << "null";
+  } else {
+    out << json_quote(progress.next_pending_bind_id);
+  }
+  out << "}";
+  return out.str();
 }
 
 [[nodiscard]] bool decode_marshal_objective_snapshot(
@@ -2606,8 +3649,7 @@ call_runtime_tool(const app_context_t &app,
     std::vector<cuwacunu::hero::marshal::marshal_session_record_t>
         existing_loops{};
     std::string scan_error{};
-    if (!cuwacunu::hero::marshal::scan_marshal_session_records(
-            app.defaults.marshal_root, &existing_loops, &scan_error)) {
+    if (!list_marshal_sessions_reconciled(app, &existing_loops, &scan_error)) {
       if (error)
         *error = scan_error;
       return false;
@@ -2616,14 +3658,21 @@ call_runtime_tool(const app_context_t &app,
         source_marshal_objective_dsl_path.lexically_normal();
     for (const auto &existing : existing_loops) {
       if (cuwacunu::hero::marshal::is_marshal_session_terminal_state(
-              existing.phase)) {
+              existing.lifecycle)) {
         continue;
       }
       if (std::filesystem::path(existing.source_marshal_objective_dsl_path)
               .lexically_normal() == normalized_source_marshal_objective) {
         if (error) {
-          *error = "another active marshal session already owns this marshal "
-                   "objective: " +
+          const bool resumable_idle =
+              cuwacunu::hero::marshal::marshal_session_is_review_ready(
+                  existing) &&
+              existing.finish_reason == "interrupted";
+          *error = (resumable_idle
+                        ? "another resumable marshal session already owns this "
+                          "marshal objective: "
+                        : "another active marshal session already owns this "
+                          "marshal objective: ") +
                    existing.marshal_session_id;
         }
         return false;
@@ -2652,9 +3701,10 @@ call_runtime_tool(const app_context_t &app,
 
   cuwacunu::hero::marshal::marshal_session_record_t loop{};
   loop.marshal_session_id = marshal_session_id;
-  loop.phase = "active";
-  loop.phase_detail = "initializing marshal session";
-  loop.pause_kind = "none";
+  loop.lifecycle = "bootstrapping";
+  loop.activity = "bootstrapping";
+  loop.status_detail = "initializing marshal session";
+  loop.work_gate = "open";
   loop.finish_reason = "none";
   loop.objective_name =
       trim_ascii(marshal_objective_spec.objective_name).empty()
@@ -2705,6 +3755,9 @@ call_runtime_tool(const app_context_t &app,
   loop.events_path = cuwacunu::hero::marshal::marshal_session_events_path(
                          app.defaults.marshal_root, marshal_session_id)
                          .string();
+  loop.turns_path = cuwacunu::hero::marshal::marshal_session_turns_path(
+                        app.defaults.marshal_root, marshal_session_id)
+                        .string();
   loop.codex_stdout_path =
       cuwacunu::hero::marshal::marshal_session_codex_stdout_path(
           app.defaults.marshal_root, marshal_session_id)
@@ -2713,8 +3766,15 @@ call_runtime_tool(const app_context_t &app,
       cuwacunu::hero::marshal::marshal_session_codex_stderr_path(
           app.defaults.marshal_root, marshal_session_id)
           .string();
-  loop.resolved_marshal_codex_binary =
-      app.defaults.marshal_codex_binary.string();
+  {
+    const std::filesystem::path resolved_codex_binary =
+        resolve_marshal_codex_binary_path(
+            app.defaults.repo_root, app.defaults.marshal_codex_binary.string());
+    loop.resolved_marshal_codex_binary =
+        resolved_codex_binary.empty()
+            ? app.defaults.marshal_codex_binary.string()
+            : resolved_codex_binary.string();
+  }
   loop.resolved_marshal_codex_model =
       trim_ascii(start_overrides.marshal_codex_model).empty()
           ? app.defaults.marshal_codex_model
@@ -2738,7 +3798,7 @@ call_runtime_tool(const app_context_t &app,
   if (!write_marshal_session(app, loop, error))
     return false;
   if (!append_marshal_session_event(
-          loop, "session_created",
+          &loop, "marshal", "session.started",
           "marshal session initialized from marshal objective source", error)) {
     return false;
   }
@@ -2818,7 +3878,7 @@ void persist_marshal_session_warning_best_effort(
   std::ostringstream out;
   out << "codex resume degraded: checkpoint=" << checkpoint_index
       << " kind=" << trim_ascii(failure_kind) << " fallback=fresh_checkpoint";
-  const std::string prior_session_id = trim_ascii(loop.codex_session_id);
+  const std::string prior_session_id = trim_ascii(loop.current_thread_id);
   if (!prior_session_id.empty()) {
     out << " prior_session_id=" << prior_session_id;
   }
@@ -2849,7 +3909,7 @@ void persist_marshal_session_warning_best_effort(
   }
 
   loop->checkpoint_count = std::max(loop->checkpoint_count, checkpoint_index);
-  loop->last_intent_kind = decision.intent;
+  loop->last_codex_action = decision.intent;
   loop->last_intent_checkpoint_path =
       cuwacunu::hero::marshal::marshal_session_intent_checkpoint_path(
           app.defaults.marshal_root, loop->marshal_session_id, checkpoint_index)
@@ -2884,25 +3944,25 @@ void persist_marshal_session_warning_best_effort(
   if (!trimmed_detail.empty()) {
     detail << ": " << trimmed_detail;
   }
-  detail << "; session parked idle so the operator can continue after "
+  detail << "; session parked for review so the operator can message it after "
             "adjusting objective files or tooling";
 
-  loop->phase = "idle";
-  loop->phase_detail = detail.str();
-  loop->pause_kind = "none";
+  loop->lifecycle = "live";
+  loop->activity = "review";
+  loop->status_detail = detail.str();
+  loop->work_gate = "open";
   loop->finish_reason = "failed";
   loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   loop->updated_at_ms = *loop->finished_at_ms;
-  loop->active_campaign_cursor.clear();
-  append_warning_text(
-      &loop->last_warning,
-      "checkpoint parked idle after intent capture; use continue_session once "
-      "the underlying issue is addressed");
+  clear_marshal_session_campaign_linkage(loop);
+  append_warning_text(&loop->last_warning,
+                      "checkpoint parked for review after intent capture; use "
+                      "message_session once the underlying issue is addressed");
   if (!write_marshal_session(app, *loop, error))
     return false;
   std::string ignored{};
-  (void)append_marshal_session_event(*loop, "checkpoint_failed_resumable",
-                                     loop->phase_detail, &ignored);
+  (void)append_marshal_session_event(&loop, "checkpoint.failed",
+                                     loop->status_detail, &ignored);
   return true;
 }
 
@@ -3040,6 +4100,26 @@ collect_objective_bundle_snapshot(const std::filesystem::path &objective_root,
   return true;
 }
 
+[[nodiscard]] std::filesystem::path mutation_checkpoint_path_for(
+    const app_context_t &app,
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    std::uint64_t checkpoint_index) {
+  return cuwacunu::hero::marshal::marshal_session_mutation_checkpoint_path(
+      app.defaults.marshal_root, loop.marshal_session_id, checkpoint_index);
+}
+
+[[nodiscard]] bool has_recorded_mutation_checkpoint(
+    const app_context_t &app,
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    std::uint64_t checkpoint_index, std::filesystem::path *out_path = nullptr) {
+  const std::filesystem::path mutation_path =
+      mutation_checkpoint_path_for(app, loop, checkpoint_index);
+  if (out_path)
+    *out_path = mutation_path;
+  std::error_code ec{};
+  return std::filesystem::exists(mutation_path, ec) && !ec;
+}
+
 [[nodiscard]] bool write_mutation_checkpoint_summary(
     const app_context_t &app,
     cuwacunu::hero::marshal::marshal_session_record_t *loop,
@@ -3092,14 +4172,24 @@ collect_objective_bundle_snapshot(const std::filesystem::path &objective_root,
     ++after_it;
   }
 
+  const std::filesystem::path mutation_path =
+      mutation_checkpoint_path_for(app, *loop, checkpoint_index);
+  const std::filesystem::path latest_mutation_path =
+      cuwacunu::hero::marshal::marshal_session_latest_mutation_checkpoint_path(
+          app.defaults.marshal_root, loop->marshal_session_id);
+
   if (rows.empty()) {
-    loop->last_mutation_checkpoint_path.clear();
-    std::error_code ec{};
-    std::filesystem::remove(
-        cuwacunu::hero::marshal::
-            marshal_session_latest_mutation_checkpoint_path(
-                app.defaults.marshal_root, loop->marshal_session_id),
-        ec);
+    if (has_recorded_mutation_checkpoint(app, *loop, checkpoint_index)) {
+      loop->last_mutation_checkpoint_path = mutation_path.string();
+      std::string mutation_text{};
+      std::string ignored{};
+      if (cuwacunu::hero::runtime::read_text_file(mutation_path, &mutation_text,
+                                                  &ignored) &&
+          !mutation_text.empty()) {
+        (void)cuwacunu::hero::runtime::write_text_file_atomic(
+            latest_mutation_path, mutation_text, &ignored);
+      }
+    }
     return true;
   }
 
@@ -3125,13 +4215,6 @@ collect_objective_bundle_snapshot(const std::filesystem::path &objective_root,
   }
   out << "]}";
 
-  const std::filesystem::path mutation_path =
-      cuwacunu::hero::marshal::marshal_session_mutation_checkpoint_path(
-          app.defaults.marshal_root, loop->marshal_session_id,
-          checkpoint_index);
-  const std::filesystem::path latest_mutation_path =
-      cuwacunu::hero::marshal::marshal_session_latest_mutation_checkpoint_path(
-          app.defaults.marshal_root, loop->marshal_session_id);
   if (!cuwacunu::hero::runtime::write_text_file_atomic(mutation_path, out.str(),
                                                        error)) {
     return false;
@@ -3175,7 +4258,7 @@ collect_objective_bundle_snapshot(const std::filesystem::path &objective_root,
       << "\n\n"
       << "Reason:\n"
       << decision.reason << "\n\n"
-      << "Last Intent: " << loop.last_intent_kind << "\n\n";
+      << "Last Intent: " << loop.last_codex_action << "\n\n";
   if (decision.intent == "request_governance" &&
       decision.governance_kind == "authority_expansion") {
     out << "Requested authority delta:\n"
@@ -3256,12 +4339,25 @@ void append_human_resolution_note(
   }
   out_json->clear();
 
+  cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
+  if (!decode_campaign_snapshot(app, loop.campaign_dsl_path, &instruction,
+                                error)) {
+    return false;
+  }
+  marshal_run_plan_progress_t run_plan_progress{};
+  if (!collect_marshal_run_plan_progress(app, loop, instruction, nullptr,
+                                         &run_plan_progress, error)) {
+    return false;
+  }
+
   std::ostringstream out;
   out << "{"
       << "\"schema\":" << json_quote(kInputCheckpointSchemaV3) << ","
       << "\"checkpoint_kind\":\"governance_followup\","
       << "\"checkpoint_index\":" << checkpoint_index
       << ",\"session\":" << marshal_session_to_json(loop)
+      << ",\"run_plan_progress\":"
+      << marshal_run_plan_progress_to_json(run_plan_progress)
       << ",\"prior_input_checkpoint_path\":"
       << json_quote(prior_input_checkpoint_path.string())
       << ",\"human_request_path\":" << json_quote(loop.human_request_path)
@@ -3303,7 +4399,9 @@ void append_human_resolution_note(
 }
 
 [[nodiscard]] bool parse_human_clarification_answer_json(
-    const std::string &json, std::string *out_answer, std::string *error) {
+    const std::string &json, std::string_view expected_marshal_session_id,
+    std::uint64_t expected_checkpoint_index, std::string *out_answer,
+    std::string *error) {
   if (error)
     error->clear();
   if (!out_answer) {
@@ -3318,6 +4416,38 @@ void append_human_resolution_note(
       trim_ascii(schema) != std::string(kHumanClarificationAnswerSchemaV3)) {
     if (error) {
       *error = "unsupported clarification answer schema: " + trim_ascii(schema);
+    }
+    return false;
+  }
+  std::string marshal_session_id{};
+  if (!extract_json_string_field(json, "marshal_session_id",
+                                 &marshal_session_id) ||
+      trim_ascii(marshal_session_id).empty()) {
+    if (error)
+      *error = "clarification answer is missing marshal_session_id";
+    return false;
+  }
+  const std::string expected_session_id =
+      trim_ascii(expected_marshal_session_id);
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id != expected_session_id) {
+    if (error) {
+      *error = "clarification answer marshal_session_id does not match paused "
+               "session";
+    }
+    return false;
+  }
+  std::uint64_t checkpoint_index = 0;
+  if (!extract_json_u64_field(json, "checkpoint_index", &checkpoint_index) ||
+      checkpoint_index == 0) {
+    if (error)
+      *error = "clarification answer is missing checkpoint_index";
+    return false;
+  }
+  if (checkpoint_index != expected_checkpoint_index) {
+    if (error) {
+      *error = "clarification answer checkpoint_index does not match paused "
+               "checkpoint";
     }
     return false;
   }
@@ -3348,12 +4478,25 @@ void append_human_resolution_note(
   }
   out_json->clear();
 
+  cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
+  if (!decode_campaign_snapshot(app, loop.campaign_dsl_path, &instruction,
+                                error)) {
+    return false;
+  }
+  marshal_run_plan_progress_t run_plan_progress{};
+  if (!collect_marshal_run_plan_progress(app, loop, instruction, nullptr,
+                                         &run_plan_progress, error)) {
+    return false;
+  }
+
   std::ostringstream out;
   out << "{"
       << "\"schema\":" << json_quote(kInputCheckpointSchemaV3) << ","
       << "\"checkpoint_kind\":\"clarification_followup\","
       << "\"checkpoint_index\":" << checkpoint_index
       << ",\"session\":" << marshal_session_to_json(loop)
+      << ",\"run_plan_progress\":"
+      << marshal_run_plan_progress_to_json(run_plan_progress)
       << ",\"prior_input_checkpoint_path\":"
       << json_quote(prior_input_checkpoint_path.string())
       << ",\"human_request_path\":" << json_quote(loop.human_request_path)
@@ -3381,38 +4524,55 @@ void append_human_resolution_note(
   return true;
 }
 
-[[nodiscard]] bool build_marshal_continue_input_checkpoint_json(
+[[nodiscard]] bool build_marshal_message_input_checkpoint_json(
     const app_context_t &app,
     const cuwacunu::hero::marshal::marshal_session_record_t &loop,
     std::uint64_t checkpoint_index,
     const std::filesystem::path &prior_input_checkpoint_path,
-    std::string_view instruction, std::string *out_json, std::string *error) {
+    const cuwacunu::hero::marshal::marshal_session_record_t::operator_message_t
+        &message,
+    std::string *out_json, std::string *error) {
   if (error)
     error->clear();
   if (!out_json) {
     if (error)
-      *error = "continue checkpoint output pointer is null";
+      *error = "message checkpoint output pointer is null";
     return false;
   }
   out_json->clear();
 
-  const std::string trimmed_instruction = trim_ascii(instruction);
-  if (trimmed_instruction.empty()) {
+  const std::string trimmed_message = trim_ascii(message.text);
+  if (trimmed_message.empty()) {
     if (error)
-      *error = "continue checkpoint requires non-empty instruction";
+      *error = "message checkpoint requires non-empty message";
+    return false;
+  }
+
+  cuwacunu::camahjucunu::iitepi_campaign_instruction_t campaign_instruction{};
+  if (!decode_campaign_snapshot(app, loop.campaign_dsl_path,
+                                &campaign_instruction, error)) {
+    return false;
+  }
+  marshal_run_plan_progress_t run_plan_progress{};
+  if (!collect_marshal_run_plan_progress(app, loop, campaign_instruction,
+                                         nullptr, &run_plan_progress, error)) {
     return false;
   }
 
   std::ostringstream out;
   out << "{"
       << "\"schema\":" << json_quote(kInputCheckpointSchemaV3) << ","
-      << "\"checkpoint_kind\":\"operator_continue\","
+      << "\"checkpoint_kind\":\"operator_message\","
       << "\"checkpoint_index\":" << checkpoint_index
       << ",\"session\":" << marshal_session_to_json(loop)
+      << ",\"run_plan_progress\":"
+      << marshal_run_plan_progress_to_json(run_plan_progress)
       << ",\"prior_input_checkpoint_path\":"
       << json_quote(prior_input_checkpoint_path.string())
-      << ",\"continue_request\":{\"instruction\":"
-      << json_quote(trimmed_instruction) << "}"
+      << ",\"operator_message\":{\"message_id\":"
+      << json_quote(message.message_id)
+      << ",\"text\":" << json_quote(trimmed_message)
+      << ",\"delivery_mode\":" << json_quote(message.delivery_mode) << "}"
       << ",\"memory_path\":" << json_quote(loop.memory_path)
       << ",\"marshal_objective_dsl_path\":"
       << json_quote(loop.marshal_objective_dsl_path)
@@ -3607,17 +4767,14 @@ describe_marshal_binary_state(const std::filesystem::path &binary_path,
     const cuwacunu::hero::marshal::marshal_session_record_t &loop,
     std::uint64_t checkpoint_index) {
   std::ostringstream out;
-  const std::filesystem::path mutation_path =
-      cuwacunu::hero::marshal::marshal_session_mutation_checkpoint_path(
-          app.defaults.marshal_root, loop.marshal_session_id, checkpoint_index);
-  std::error_code mutation_ec{};
-  const bool mutation_exists =
-      std::filesystem::exists(mutation_path, mutation_ec);
-  out << "launch.requires_objective_mutation=true but no objective-local "
-         "mutation artifact was recorded for this planning checkpoint; "
+  std::filesystem::path mutation_path{};
+  const bool mutation_exists = has_recorded_mutation_checkpoint(
+      app, loop, checkpoint_index, &mutation_path);
+  out << "launch.requires_objective_mutation=true but no same-checkpoint "
+         "objective mutation was materialized and no recorded mutation "
+         "checkpoint is available; "
          "mutation_checkpoint_path="
-      << mutation_path.string()
-      << " exists=" << bool_text(mutation_exists && !mutation_ec)
+      << mutation_path.string() << " exists=" << bool_text(mutation_exists)
       << "; config_hero_binary("
       << describe_marshal_binary_state(app.defaults.config_hero_binary,
                                        loop.started_at_ms)
@@ -3641,8 +4798,10 @@ describe_marshal_binary_state(const std::filesystem::path &binary_path,
   if (error)
     error->clear();
   if (decision.intent == "launch_campaign") {
+    const bool mutation_checkpoint_exists =
+        has_recorded_mutation_checkpoint(app, loop, checkpoint_index);
     if (decision.launch_requires_objective_mutation &&
-        !objective_mutation_materialized) {
+        !objective_mutation_materialized && !mutation_checkpoint_exists) {
       if (error) {
         *error = build_missing_mutation_diagnostic(app, loop, checkpoint_index);
       }
@@ -3974,13 +5133,15 @@ parse_marshal_checkpoint_decision(const std::string &json,
       << objective_campaign_relative_path << "\n\n"
       << "The input checkpoint includes checkpoint_kind = bootstrap, "
          "postcampaign, governance_followup, clarification_followup, or "
-         "operator_continue.\n"
+         "operator_message.\n"
       << "Bootstrap launch guidance:\n"
       << "- If checkpoint_kind = bootstrap and the input checkpoint already "
          "provides concrete default_run_bind_ids plus a concrete "
          "objective-local campaign, prefer intent=launch_campaign with "
          "launch.mode=run_plan unless a real blocker or required "
-         "same-checkpoint mutation is evident.\n"
+         "same-checkpoint mutation is evident. Marshal now advances only the "
+         "next pending RUN bind for launch.mode=run_plan and then replans "
+         "before later RUN steps.\n"
       << "- Do not spend bootstrap tool calls on broad Lattice discovery when "
          "no new campaign evidence exists yet.\n\n"
       << "Interpret the authored markdown in this order:\n"
@@ -3993,6 +5154,11 @@ parse_marshal_checkpoint_decision(const std::string &json,
       << "- hero.config.default.create\n"
       << "- hero.config.default.replace\n"
       << "- hero.config.default.delete\n"
+      << "- hero.config.temp.list\n"
+      << "- hero.config.temp.read\n"
+      << "- hero.config.temp.create\n"
+      << "- hero.config.temp.replace\n"
+      << "- hero.config.temp.delete\n"
       << "- hero.config.objective.list\n"
       << "- hero.config.objective.read\n"
       << "- hero.config.objective.create\n"
@@ -4013,54 +5179,64 @@ parse_marshal_checkpoint_decision(const std::string &json,
          "prefer input-checkpoint evidence plus hero.lattice.* queries.\n"
       << "3. Use Config Hero objective.read/create/replace/delete for "
          "truth-source objective files under objective_root.\n"
-      << "4. Use Config Hero default.read/create/replace/delete only when a "
+      << "4. Use Config Hero temp.read/create/replace/delete for temporary "
+         "instruction files under temp_roots when scratch authored artifacts "
+         "help planning.\n"
+      << "5. Use Config Hero default.read/create/replace/delete only when a "
          "shared default truly needs to change.\n"
-      << "5. Pass objective_root=" << loop.objective_root
+      << "6. Pass objective_root=" << loop.objective_root
       << " to those Config Hero tools.\n"
-      << "6. Use hero.config.objective.list when you need the exact relative "
+      << "7. Use hero.config.objective.list when you need the exact relative "
          "path under objective_root; do not assume generic names like "
          "campaign.dsl.\n"
-      << "7. In this session, the objective-local campaign file path for "
+      << "8. In this session, the objective-local campaign file path for "
          "hero.config.objective.* is "
       << objective_campaign_relative_path << ".\n"
-      << "8. Prefer whole-file replace with expected_sha256 from the prior "
+      << "9. Prefer whole-file replace with expected_sha256 from the prior "
          "read.\n"
-      << "9. Never mutate files outside the configured objective/default "
+      << "10. Never mutate files outside the configured objective/default/temp "
          "roots.\n"
-      << "10. Prefer the input checkpoint first. On bootstrap checkpoints with "
+      << "11. Prefer the input checkpoint first. On bootstrap checkpoints with "
          "concrete default_run_bind_ids and no fresh campaign evidence, prefer "
          "immediate launch over exploratory evidence gathering.\n"
-      << "11. Use hero.lattice.list_views/list_facts/get_view/get_fact mainly "
+      << "11b. Read run_plan_progress first when present. For "
+         "launch.mode=run_plan, Marshal will launch only "
+         "run_plan_progress.next_pending_bind_id and then return for another "
+         "planning checkpoint after that bind's campaign terminates.\n"
+      << "12. Use hero.lattice.list_views/list_facts/get_view/get_fact mainly "
          "after at least one campaign has produced evidence, or when debugging "
          "a specific preexisting report; family_evaluation_report requires a "
          "family canonical_path plus contract_hash.\n"
-      << "12. Use Runtime get/tail tools mainly for operational debugging such "
+      << "13. Use Runtime get/tail tools mainly for operational debugging such "
          "as launch failures, missing logs, or abnormal traces.\n"
-      << "13. Shell exec is unavailable in this environment. Prefer the "
+      << "14. Shell exec is unavailable in this environment. Prefer the "
          "embedded input checkpoint, memory, and objective bundle snapshot "
          "below; use MCP tools instead of shell reads.\n"
-      << "14. If you change any objective or campaign DSL, describe the actual "
+      << "15. If you change any objective, temp, or campaign DSL, describe the "
+         "actual "
          "changes in memory_note.\n"
-      << "15. Request governance only for authority_expansion, "
+      << "16. Request governance only for authority_expansion, "
          "launch_budget_expansion, or policy_decision.\n"
-      << "16. When checkpoint_kind = governance_followup, use the prior input "
+      << "17. When checkpoint_kind = governance_followup, use the prior input "
          "checkpoint as the operational evidence base and the verified "
          "governance resolution as operator context.\n"
-      << "17. A verified governance resolution with resolution_kind = grant or "
+      << "18. A verified governance resolution with resolution_kind = grant or "
          "clarify authorizes more reasoning; it does not directly choose the "
          "next launch.\n"
-      << "18. Use the embedded objective bundle snapshot below before spending "
+      << "19. Use the embedded objective bundle snapshot below before spending "
          "tool calls rediscovering editable files.\n"
-      << "19. Return only JSON matching the provided output schema.\n"
-      << "20. intent=complete means the objective is satisfied for now and the "
-         "session should park idle until a future operator continue "
-         "request.\n\n"
+      << "20. Return only JSON matching the provided output schema.\n"
+      << "21. intent=complete means the objective is satisfied for now and the "
+         "session should park review-ready until a future operator message "
+         "arrives.\n\n"
       << "Intent contract:\n"
       << "- intent = launch_campaign | pause_for_clarification | "
          "request_governance | complete | terminate\n"
       << "- intent=complete parks the session as idle rather than hard-closing "
          "it\n"
-      << "- launch.mode = run_plan | binding when intent=launch_campaign\n"
+      << "- launch.mode = run_plan | binding when intent=launch_campaign; "
+         "run_plan advances only the next pending RUN bind from the current "
+         "objective-local campaign sequence\n"
       << "- launch.binding_id required when launch.mode=binding\n"
       << "- launch.reset_runtime_state must be boolean when "
          "intent=launch_campaign\n"
@@ -4411,6 +5587,11 @@ parse_marshal_checkpoint_decision(const std::string &json,
   for (const auto &run : instruction.runs) {
     default_run_bind_ids.push_back(run.bind_ref);
   }
+  marshal_run_plan_progress_t run_plan_progress{};
+  if (!collect_marshal_run_plan_progress(app, loop, instruction, &campaign,
+                                         &run_plan_progress, error)) {
+    return false;
+  }
 
   struct job_checkpoint_row_t {
     cuwacunu::hero::runtime::runtime_job_record_t record{};
@@ -4502,6 +5683,8 @@ parse_marshal_checkpoint_decision(const std::string &json,
       << ",\"declared_bind_ids\":" << json_array_from_strings(declared_bind_ids)
       << ",\"default_run_bind_ids\":"
       << json_array_from_strings(default_run_bind_ids)
+      << ",\"run_plan_progress\":"
+      << marshal_run_plan_progress_to_json(run_plan_progress)
       << ",\"jobs\":" << jobs_json.str()
       << ",\"run_manifest_hints\":" << manifests_json.str()
       << ",\"lattice_recommendations\":"
@@ -4557,6 +5740,11 @@ parse_marshal_checkpoint_decision(const std::string &json,
   for (const auto &run : instruction.runs) {
     default_run_bind_ids.push_back(run.bind_ref);
   }
+  marshal_run_plan_progress_t run_plan_progress{};
+  if (!collect_marshal_run_plan_progress(app, loop, instruction, nullptr,
+                                         &run_plan_progress, error)) {
+    return false;
+  }
 
   const auto run_manifest_hints =
       collect_run_manifest_hints(app, declared_bind_ids, 2);
@@ -4593,7 +5781,9 @@ parse_marshal_checkpoint_decision(const std::string &json,
       << ",\"campaign\":null"
       << ",\"declared_bind_ids\":" << json_array_from_strings(declared_bind_ids)
       << ",\"default_run_bind_ids\":"
-      << json_array_from_strings(default_run_bind_ids) << ",\"jobs\":[]"
+      << json_array_from_strings(default_run_bind_ids)
+      << ",\"run_plan_progress\":"
+      << marshal_run_plan_progress_to_json(run_plan_progress) << ",\"jobs\":[]"
       << ",\"run_manifest_hints\":" << manifests_json.str()
       << ",\"lattice_recommendations\":"
       << build_lattice_recommendations_json(contract_hash_candidates)
@@ -4641,12 +5831,48 @@ parse_marshal_checkpoint_decision(const std::string &json,
     return false;
   }
 
+  std::string resolved_binding_id{};
+  std::string launch_mode_warning{};
+  if (decision.launch_mode == "binding") {
+    resolved_binding_id = trim_ascii(decision.launch_binding_id);
+  } else if (decision.launch_mode == "run_plan") {
+    cuwacunu::camahjucunu::iitepi_campaign_instruction_t instruction{};
+    if (!decode_campaign_snapshot(app, loop->campaign_dsl_path, &instruction,
+                                  error)) {
+      return false;
+    }
+    marshal_run_plan_progress_t run_plan_progress{};
+    if (!collect_marshal_run_plan_progress(app, *loop, instruction, nullptr,
+                                           &run_plan_progress, error)) {
+      return false;
+    }
+    if (!run_plan_progress.ordered_prefix_valid) {
+      if (error) {
+        *error =
+            "launch.mode=run_plan cannot determine the next pending RUN step "
+            "because prior successful launches no longer match the current "
+            "default RUN sequence";
+      }
+      return false;
+    }
+    resolved_binding_id = trim_ascii(run_plan_progress.next_pending_bind_id);
+    if (resolved_binding_id.empty()) {
+      if (error) {
+        *error = "launch.mode=run_plan found no pending RUN steps in the "
+                 "current objective-local campaign";
+      }
+      return false;
+    }
+    launch_mode_warning = "run_plan launch decomposed to next pending bind: " +
+                          resolved_binding_id;
+  }
+
   std::string start_args =
       "{\"campaign_dsl_path\":" + json_quote(loop->campaign_dsl_path);
   start_args +=
       ",\"marshal_session_id\":" + json_quote(loop->marshal_session_id);
-  if (decision.launch_mode == "binding") {
-    start_args += ",\"binding_id\":" + json_quote(decision.launch_binding_id);
+  if (!resolved_binding_id.empty()) {
+    start_args += ",\"binding_id\":" + json_quote(resolved_binding_id);
   }
   if (decision.launch_reset_runtime_state) {
     start_args += ",\"reset_runtime_state\":true";
@@ -4669,6 +5895,9 @@ parse_marshal_checkpoint_decision(const std::string &json,
   append_structured_warnings(start_structured,
                              "runtime launch warning: ", &launch_warnings);
   std::string runtime_warning{};
+  if (!launch_mode_warning.empty()) {
+    append_warning_text(&runtime_warning, launch_mode_warning);
+  }
   for (const std::string &item : launch_warnings) {
     append_warning_text(&runtime_warning, item);
   }
@@ -4689,17 +5918,37 @@ parse_marshal_checkpoint_decision(const std::string &json,
     return false;
   }
 
-  loop->phase = "running_campaign";
-  loop->phase_detail = std::string(state_detail);
-  loop->pause_kind = "none";
+  loop->lifecycle = "live";
+  loop->activity = "awaiting_campaign_fact";
+  loop->campaign_status = "running";
+  loop->status_detail = std::string(state_detail);
+  if (!resolved_binding_id.empty()) {
+    append_warning_text(&loop->status_detail,
+                        "active bind=" + resolved_binding_id);
+  }
+  loop->work_gate = "open";
   loop->finish_reason = "none";
-  loop->active_campaign_cursor = campaign_cursor;
+  loop->campaign_cursor = campaign_cursor;
   loop->campaign_cursors.push_back(campaign_cursor);
   ++loop->launch_count;
   if (loop->remaining_campaign_launches > 0) {
     --loop->remaining_campaign_launches;
   }
-  loop->latest_request_kind.clear();
+  for (auto &pending_message : loop->pending_operator_messages) {
+    if (!marshal_operator_message_has_text(pending_message))
+      continue;
+    pending_message.delivered_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    pending_message.delivery_status = "handled";
+    pending_message.handled_at_ms = pending_message.delivered_at_ms;
+    std::string ignored{};
+    (void)append_operator_message_event(
+        loop, "marshal", "operator.message_delivered", pending_message,
+        "consumed before campaign launch", "", "", &ignored);
+    (void)append_operator_message_event(
+        loop, "marshal", "operator.message_handled", pending_message,
+        "consumed before campaign launch", "", "", &ignored);
+  }
+  loop->pending_operator_messages.clear();
   loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   loop->last_warning.clear();
   std::string bookkeeping_error{};
@@ -4707,9 +5956,9 @@ parse_marshal_checkpoint_decision(const std::string &json,
     append_warning_text(&runtime_warning,
                         "post-launch session manifest degraded: " +
                             bookkeeping_error);
-  } else if (!append_marshal_session_event(*loop, std::string(event_name),
-                                           campaign_cursor,
-                                           &bookkeeping_error)) {
+  } else if (!append_marshal_session_event(
+                 &loop, "runtime", std::string(event_name), campaign_cursor,
+                 &bookkeeping_error)) {
     append_warning_text(&runtime_warning,
                         "post-launch marshal event degraded: " +
                             bookkeeping_error);
@@ -4779,9 +6028,12 @@ parse_marshal_checkpoint_decision(const std::string &json,
   const std::string enabled_config_tools = json_array_from_strings(
       {"hero.config.default.list", "hero.config.default.read",
        "hero.config.default.create", "hero.config.default.replace",
-       "hero.config.default.delete", "hero.config.objective.list",
-       "hero.config.objective.read", "hero.config.objective.create",
-       "hero.config.objective.replace", "hero.config.objective.delete"});
+       "hero.config.default.delete", "hero.config.temp.list",
+       "hero.config.temp.read", "hero.config.temp.create",
+       "hero.config.temp.replace", "hero.config.temp.delete",
+       "hero.config.objective.list", "hero.config.objective.read",
+       "hero.config.objective.create", "hero.config.objective.replace",
+       "hero.config.objective.delete"});
   const std::string enabled_runtime_tools = json_array_from_strings(
       {"hero.runtime.get_campaign", "hero.runtime.get_job",
        "hero.runtime.list_jobs", "hero.runtime.tail_log",
@@ -4855,8 +6107,11 @@ parse_marshal_checkpoint_decision(const std::string &json,
 
     std::vector<std::string> argv{};
     argv.reserve(64);
+    const std::filesystem::path persisted_codex_binary_path =
+        resolve_marshal_codex_binary_path(workspace_context.repo_root,
+                                          loop->resolved_marshal_codex_binary);
     const std::string persisted_codex_binary =
-        trim_ascii(loop->resolved_marshal_codex_binary);
+        trim_ascii(persisted_codex_binary_path.string());
     const std::string persisted_codex_model =
         trim_ascii(loop->resolved_marshal_codex_model);
     const std::string persisted_codex_reasoning_effort =
@@ -4868,6 +6123,15 @@ parse_marshal_checkpoint_decision(const std::string &json,
       }
       return false;
     }
+    if (!path_is_executable(persisted_codex_binary_path)) {
+      if (out_attempt_error) {
+        *out_attempt_error =
+            "resolved_marshal_codex_binary is not executable: " +
+            persisted_codex_binary;
+      }
+      return false;
+    }
+    loop->resolved_marshal_codex_binary = persisted_codex_binary;
     if (persisted_codex_model.empty()) {
       if (out_attempt_error) {
         *out_attempt_error =
@@ -4906,7 +6170,7 @@ parse_marshal_checkpoint_decision(const std::string &json,
     argv.push_back("-o");
     argv.push_back(decision_path.string());
     if (resume_mode) {
-      argv.push_back(loop->codex_session_id);
+      argv.push_back(loop->current_thread_id);
     }
     argv.push_back("-");
 
@@ -4928,7 +6192,7 @@ parse_marshal_checkpoint_decision(const std::string &json,
     const std::filesystem::path checkpoint_pid_path =
         marshal_session_checkpoint_pid_path(*loop);
     remove_file_noexcept(stderr_capture_path);
-    remove_file_noexcept(marshal_session_legacy_codex_session_log_path(*loop));
+    remove_file_noexcept(marshal_session_compat_codex_session_log_path(*loop));
 
     const bool invoked = run_command_with_stdio_and_timeout(
         argv, loop->briefing_path, stdout_path, stderr_capture_path,
@@ -4964,7 +6228,7 @@ parse_marshal_checkpoint_decision(const std::string &json,
     }
     remove_file_noexcept(stderr_capture_path);
     if (!stderr_text.empty() && out_session_id) {
-      *out_session_id = extract_codex_session_id_from_log(stderr_text);
+      *out_session_id = extract_current_thread_id_from_log(stderr_text);
     }
     if (!invoked) {
       if (out_attempt_error) {
@@ -4991,8 +6255,10 @@ parse_marshal_checkpoint_decision(const std::string &json,
   std::string decision_text{};
   std::string parsed_session_id{};
   bool decision_ready = false;
-  const bool had_prior_session = !trim_ascii(loop->codex_session_id).empty();
+  const std::string prior_thread_id = trim_ascii(loop->current_thread_id);
+  const bool had_prior_session = !trim_ascii(loop->current_thread_id).empty();
   if (had_prior_session) {
+    loop->codex_continuity = "resuming";
     std::string resume_error{};
     std::string resume_decision_text{};
     std::string resumed_session_id{};
@@ -5001,17 +6267,33 @@ parse_marshal_checkpoint_decision(const std::string &json,
       if (parse_marshal_checkpoint_decision(resume_decision_text, out_decision,
                                             &resume_error)) {
         decision_text = std::move(resume_decision_text);
+        loop->codex_continuity = "attached";
+        loop->last_resume_error.clear();
         if (!resumed_session_id.empty()) {
-          loop->codex_session_id = resumed_session_id;
+          loop->current_thread_id = resumed_session_id;
+          if (loop->thread_lineage.empty() ||
+              loop->thread_lineage.back() != resumed_session_id) {
+            loop->thread_lineage.push_back(resumed_session_id);
+          }
         }
         decision_ready = true;
       } else if (out_warning) {
+        loop->codex_continuity = "resume_failed";
+        loop->last_resume_error = resume_error;
+        (void)append_marshal_session_event(
+            loop, "codex", "codex.resume_failed",
+            "decision_parse_failed: " + resume_error, nullptr);
         append_warning_text(
             out_warning, build_resume_degraded_warning(*loop, checkpoint_index,
                                                        "decision_parse_failed",
                                                        resume_error));
       }
     } else if (out_warning) {
+      loop->codex_continuity = "resume_failed";
+      loop->last_resume_error = resume_error;
+      (void)append_marshal_session_event(
+          loop, "codex", "codex.resume_failed",
+          "resume_command_failed: " + resume_error, nullptr);
       append_warning_text(out_warning,
                           build_resume_degraded_warning(*loop, checkpoint_index,
                                                         "resume_command_failed",
@@ -5031,15 +6313,25 @@ parse_marshal_checkpoint_decision(const std::string &json,
                                            error)) {
       return false;
     }
+    loop->codex_continuity = had_prior_session ? "restarted" : "attached";
+    loop->last_resume_error.clear();
     if (!parsed_session_id.empty()) {
-      loop->codex_session_id = parsed_session_id;
+      loop->current_thread_id = parsed_session_id;
+      if (loop->thread_lineage.empty() ||
+          loop->thread_lineage.back() != parsed_session_id) {
+        loop->thread_lineage.push_back(parsed_session_id);
+      }
     } else {
-      loop->codex_session_id.clear();
+      loop->current_thread_id.clear();
       if (out_warning) {
         append_warning_text(
             out_warning, "fresh codex checkpoint completed without a persisted "
                          "session id; future checkpoints will start fresh");
       }
+    }
+    if (had_prior_session && !parsed_session_id.empty() &&
+        parsed_session_id != prior_thread_id) {
+      loop->codex_continuity = "restarted";
     }
   }
 
@@ -5087,16 +6379,18 @@ parse_marshal_checkpoint_decision(const std::string &json,
       }
       return true;
     }
-    loop->phase = "finished";
-    loop->phase_detail = *error;
-    loop->pause_kind = "none";
+    loop->lifecycle = "terminal";
+    loop->activity = "quiet";
+    loop->campaign_status = "none";
+    loop->status_detail = *error;
+    loop->work_gate = "open";
     loop->finish_reason = "failed";
     loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop->updated_at_ms = *loop->finished_at_ms;
     std::string ignored{};
     (void)write_marshal_session(*app, *loop, &ignored);
-    (void)append_marshal_session_event(*loop, "checkpoint_failed", *error,
-                                       &ignored);
+    (void)append_marshal_session_event(&loop, "marshal", "checkpoint.failed",
+                                       *error, &ignored);
     return false;
   }
   if (!persist_attempted_checkpoint_state(
@@ -5136,7 +6430,7 @@ parse_marshal_checkpoint_decision(const std::string &json,
   }
 
   loop->checkpoint_count = checkpoint_index;
-  loop->last_intent_kind = decision.intent;
+  loop->last_codex_action = decision.intent;
   loop->last_warning.clear();
   if (!checkpoint_warning.empty()) {
     append_warning_text(&loop->last_warning, checkpoint_warning);
@@ -5148,26 +6442,62 @@ parse_marshal_checkpoint_decision(const std::string &json,
           .string();
   loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   loop->finished_at_ms.reset();
-  loop->latest_request_kind.clear();
-  loop->pause_kind = "none";
+  std::vector<
+      cuwacunu::hero::marshal::marshal_session_record_t::operator_message_t>
+      delivered_operator_messages{};
+  for (auto &pending_message : loop->pending_operator_messages) {
+    if (!marshal_operator_message_has_text(pending_message))
+      continue;
+    pending_message.delivery_status = "delivered";
+    pending_message.delivered_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    delivered_operator_messages.push_back(pending_message);
+    std::string ignored{};
+    (void)append_operator_message_event(
+        loop, "marshal", "operator.message_delivered", pending_message,
+        "staged into checkpoint input", "", "", &ignored);
+  }
+  loop->pending_operator_messages.clear();
+  loop->work_gate = "open";
   loop->finish_reason = "none";
 
   if (decision.intent == "complete" || decision.intent == "terminate") {
-    loop->phase = (decision.intent == "complete") ? "idle" : "finished";
-    loop->phase_detail = decision.reason;
-    loop->pause_kind = "none";
+    const std::string action_detail =
+        decision.intent + ": " + trim_ascii(decision.reason);
+    if (!append_marshal_session_event(loop, "codex", "codex.action_requested",
+                                      action_detail, error)) {
+      return false;
+    }
+    loop->lifecycle = (decision.intent == "complete") ? "live" : "terminal";
+    loop->activity = (decision.intent == "complete") ? "review" : "quiet";
+    loop->status_detail = decision.reason;
+    loop->work_gate = "open";
     loop->finish_reason =
         (decision.intent == "complete") ? "success" : "terminated";
     loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop->updated_at_ms = *loop->finished_at_ms;
-    loop->active_campaign_cursor.clear();
+    clear_marshal_session_campaign_linkage(loop);
+    for (auto pending_message : delivered_operator_messages) {
+      pending_message.delivery_status = "handled";
+      pending_message.handled_at_ms =
+          pending_message.delivered_at_ms.has_value()
+              ? pending_message.delivered_at_ms
+              : std::optional<std::uint64_t>(
+                    cuwacunu::hero::runtime::now_ms_utc());
+      std::string ignored{};
+      (void)append_operator_message_event(
+          loop, "marshal", "operator.message_handled", pending_message,
+          (decision.intent == "complete")
+              ? "consumed before review-ready parking"
+              : "consumed before terminal finish",
+          "", "", &ignored);
+    }
     if (!write_marshal_session(*app, *loop, error))
       return false;
     const std::string event_name = (decision.intent == "complete")
-                                       ? "session_idled"
-                                       : "session_terminated";
-    if (!append_marshal_session_event(*loop, event_name, decision.reason,
-                                      error)) {
+                                       ? "session.review_ready"
+                                       : "session.finished";
+    if (!append_marshal_session_event(&loop, "marshal", event_name,
+                                      decision.reason, error)) {
       return false;
     }
     return true;
@@ -5175,16 +6505,37 @@ parse_marshal_checkpoint_decision(const std::string &json,
 
   if (decision.intent == "pause_for_clarification" ||
       decision.intent == "request_governance") {
-    loop->phase = "paused";
-    loop->phase_detail = decision.reason;
-    loop->pause_kind = (decision.intent == "pause_for_clarification")
-                           ? "clarification"
-                           : "governance";
+    const std::string block_detail =
+        (decision.intent == "pause_for_clarification")
+            ? decision.clarification_request
+            : (decision.governance_kind + ": " + decision.governance_request);
+    if (!append_marshal_session_event(loop, "codex", "codex.action_requested",
+                                      "block_work: " + block_detail, error)) {
+      return false;
+    }
+    loop->lifecycle = "live";
+    loop->activity = "quiet";
+    loop->status_detail = decision.reason;
+    loop->work_gate = (decision.intent == "pause_for_clarification")
+                          ? "clarification"
+                          : "governance";
     loop->finish_reason = "none";
-    loop->active_campaign_cursor.clear();
-    loop->latest_request_kind = (decision.intent == "pause_for_clarification")
-                                    ? "clarification"
-                                    : decision.governance_kind;
+    clear_marshal_session_campaign_linkage(loop);
+    for (auto pending_message : delivered_operator_messages) {
+      pending_message.delivery_status = "handled";
+      pending_message.handled_at_ms =
+          pending_message.delivered_at_ms.has_value()
+              ? pending_message.delivered_at_ms
+              : std::optional<std::uint64_t>(
+                    cuwacunu::hero::runtime::now_ms_utc());
+      std::string ignored{};
+      (void)append_operator_message_event(
+          loop, "marshal", "operator.message_handled", pending_message,
+          (decision.intent == "pause_for_clarification")
+              ? "consumed before clarification block"
+              : "consumed before governance block",
+          "", "", &ignored);
+    }
     if (!write_marshal_session(*app, *loop, error))
       return false;
     std::string request_error{};
@@ -5194,16 +6545,8 @@ parse_marshal_checkpoint_decision(const std::string &json,
         *error = request_error;
       return false;
     }
-    if (!append_marshal_session_event(
-            *loop,
-            (decision.intent == "pause_for_clarification")
-                ? "session_paused_for_clarification"
-                : "session_paused_for_governance",
-            (decision.intent == "pause_for_clarification")
-                ? decision.clarification_request
-                : (decision.governance_kind + ": " +
-                   decision.governance_request),
-            error)) {
+    if (!append_marshal_session_event(loop, "codex", "work.blocked",
+                                      block_detail, error)) {
       return false;
     }
     return true;
@@ -5215,17 +6558,27 @@ parse_marshal_checkpoint_decision(const std::string &json,
     return false;
   }
   if (loop->remaining_campaign_launches == 0) {
-    loop->phase = "finished";
-    loop->phase_detail = "campaign-launch budget exhausted";
-    loop->pause_kind = "none";
+    if (!append_marshal_session_event(loop, "codex", "codex.action_requested",
+                                      "launch_campaign", error)) {
+      return false;
+    }
+    loop->lifecycle = "terminal";
+    loop->activity = "quiet";
+    loop->status_detail = "campaign-launch budget exhausted";
+    loop->work_gate = "open";
     loop->finish_reason = "exhausted";
     loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop->updated_at_ms = *loop->finished_at_ms;
-    loop->active_campaign_cursor.clear();
+    clear_marshal_session_campaign_linkage(loop);
     if (!write_marshal_session(*app, *loop, error))
       return false;
-    return append_marshal_session_event(*loop, "session_exhausted",
-                                        loop->phase_detail, error);
+    return append_marshal_session_event(&loop, "marshal", "session.finished",
+                                        loop->status_detail, error);
+  }
+
+  if (!append_marshal_session_event(loop, "codex", "codex.action_requested",
+                                    "launch_campaign", error)) {
+    return false;
   }
 
   std::string next_campaign_cursor{};
@@ -5234,18 +6587,19 @@ parse_marshal_checkpoint_decision(const std::string &json,
   if (!launch_runtime_campaign_for_decision(
           *app, loop, decision,
           "campaign launched from marshal planning checkpoint",
-          "campaign_launched_from_checkpoint", &next_campaign_cursor,
-          &ignored_campaign_json, &runtime_warning, error)) {
-    loop->phase = "finished";
-    loop->phase_detail = *error;
-    loop->pause_kind = "none";
+          "campaign.started", &next_campaign_cursor, &ignored_campaign_json,
+          &runtime_warning, error)) {
+    loop->lifecycle = "terminal";
+    loop->activity = "quiet";
+    loop->status_detail = *error;
+    loop->work_gate = "open";
     loop->finish_reason = "failed";
     loop->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop->updated_at_ms = *loop->finished_at_ms;
     std::string ignored{};
     (void)write_marshal_session(*app, *loop, &ignored);
-    (void)append_marshal_session_event(*loop, "launch_failed", *error,
-                                       &ignored);
+    (void)append_marshal_session_event(
+        &loop, "runtime", "campaign.start_failed", *error, &ignored);
     return false;
   }
   if (!runtime_warning.empty() && out_warning) {
@@ -5259,7 +6613,7 @@ parse_marshal_checkpoint_decision(const std::string &json,
   return true;
 }
 
-[[nodiscard]] bool continue_session_after_terminal_campaign(
+[[nodiscard]] bool reopen_session_after_terminal_campaign(
     app_context_t *app, std::string_view campaign_cursor,
     std::string *out_warning, std::string *error) {
   if (error)
@@ -5287,7 +6641,7 @@ parse_marshal_checkpoint_decision(const std::string &json,
   }
   if (!read_marshal_session(*app, marshal_session_id, &loop, error))
     return false;
-  if (is_marshal_session_terminal_state(loop.phase))
+  if (is_marshal_session_terminal_state(loop.lifecycle))
     return true;
 
   const std::uint64_t checkpoint_index = loop.checkpoint_count + 1;
@@ -5295,16 +6649,17 @@ parse_marshal_checkpoint_decision(const std::string &json,
   if (!build_marshal_postcampaign_input_checkpoint_json(
           *app, loop, campaign, checkpoint_index, &input_checkpoint_json,
           error)) {
-    loop.phase = "finished";
-    loop.phase_detail = *error;
-    loop.pause_kind = "none";
+    loop.lifecycle = "terminal";
+    loop.activity = "quiet";
+    loop.status_detail = *error;
+    loop.work_gate = "open";
     loop.finish_reason = "failed";
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop.updated_at_ms = *loop.finished_at_ms;
     std::string ignored{};
     (void)write_marshal_session(*app, loop, &ignored);
-    (void)append_marshal_session_event(loop, "checkpoint_failed", *error,
-                                       &ignored);
+    (void)append_marshal_session_event(&loop, "marshal", "checkpoint.failed",
+                                       *error, &ignored);
     return false;
   }
   const std::filesystem::path input_checkpoint_path =
@@ -5320,16 +6675,17 @@ parse_marshal_checkpoint_decision(const std::string &json,
           input_checkpoint_json, error)) {
     return false;
   }
-  loop.phase = "active";
-  loop.phase_detail = "waiting for codex planning checkpoint";
-  loop.pause_kind = "none";
+  loop.lifecycle = "live";
+  loop.activity = "planning";
+  loop.status_detail = "waiting for codex planning checkpoint";
+  loop.work_gate = "open";
   loop.finish_reason = "none";
   loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  loop.active_campaign_cursor.clear();
+  clear_marshal_session_campaign_linkage(&loop);
   loop.last_input_checkpoint_path = input_checkpoint_path.string();
   if (!write_marshal_session(*app, loop, error))
     return false;
-  if (!append_marshal_session_event(loop, "input_checkpoint_staged",
+  if (!append_marshal_session_event(&loop, "marshal", "checkpoint.staged",
                                     input_checkpoint_path.string(), error)) {
     return false;
   }
@@ -5385,19 +6741,832 @@ struct session_runner_lock_guard_t {
   return true;
 }
 
-void write_child_errno_noexcept(int fd, int err) {
+struct session_runner_launch_message_t {
+  std::uint64_t runner_pid{0};
+  int exec_errno{0};
+};
+
+void write_session_runner_launch_message_noexcept(
+    int fd, const session_runner_launch_message_t &message) {
   if (fd < 0)
     return;
-  const ssize_t ignored = ::write(fd, &err, sizeof(err));
+  const ssize_t ignored = ::write(fd, &message, sizeof(message));
   (void)ignored;
 }
 
 [[nodiscard]] bool
-launch_session_runner_process(const app_context_t &app,
-                              std::string_view marshal_session_id,
-                              std::string *error) {
+marshal_session_events_contain_event(const app_context_t &app,
+                                     std::string_view marshal_session_id,
+                                     std::string_view event_name) {
+  std::string events_text{};
+  std::string ignored{};
+  if (!cuwacunu::hero::runtime::read_text_file(
+          cuwacunu::hero::marshal::marshal_session_events_path(
+              app.defaults.marshal_root, marshal_session_id),
+          &events_text, &ignored)) {
+    return false;
+  }
+  const std::string needle = "\"type\":" + json_quote(std::string(event_name));
+  return events_text.find(needle) != std::string::npos;
+}
+
+enum class operator_message_wait_outcome_t : std::uint8_t {
+  Pending = 0,
+  Delivered = 1,
+  Failed = 2,
+};
+
+[[nodiscard]] operator_message_wait_outcome_t
+find_operator_message_wait_outcome(std::string_view events_text,
+                                   std::uint64_t after_seq,
+                                   std::string_view message_id,
+                                   std::string *out_reply,
+                                   std::string *out_failure) {
+  if (out_reply)
+    out_reply->clear();
+  if (out_failure)
+    out_failure->clear();
+  operator_message_wait_outcome_t best_outcome =
+      operator_message_wait_outcome_t::Pending;
+  std::uint64_t best_seq = 0;
+  std::istringstream in{std::string(events_text)};
+  std::string line{};
+  while (std::getline(in, line)) {
+    const std::string trimmed = trim_ascii(line);
+    if (trimmed.empty())
+      continue;
+    std::uint64_t seq = 0;
+    std::string type{};
+    std::string payload{};
+    std::string detail{};
+    std::string payload_message_id{};
+    std::string delivery_status{};
+    std::string reply_text{};
+    std::string warning{};
+    std::string last_error{};
+    if (!extract_json_u64_field(trimmed, "seq", &seq) || seq <= after_seq)
+      continue;
+    if (!extract_json_string_field(trimmed, "type", &type) ||
+        type != "operator.message_handled") {
+      continue;
+    }
+    if (!extract_json_object_field(trimmed, "payload", &payload)) {
+      continue;
+    }
+    (void)extract_json_string_field(payload, "message_id", &payload_message_id);
+    if (trim_ascii(payload_message_id) != trim_ascii(message_id)) {
+      continue;
+    }
+    (void)extract_json_string_field(payload, "delivery_status",
+                                    &delivery_status);
+    (void)extract_json_string_field(payload, "reply_text", &reply_text);
+    (void)extract_json_string_field(payload, "warning", &warning);
+    (void)extract_json_string_field(payload, "last_error", &last_error);
+    (void)extract_json_string_field(payload, "detail", &detail);
+    if ((delivery_status == "handled" || delivery_status == "delivered") &&
+        seq >= best_seq) {
+      best_outcome = operator_message_wait_outcome_t::Delivered;
+      best_seq = seq;
+      if (out_reply) {
+        *out_reply = trim_ascii(reply_text);
+      }
+      if (out_failure)
+        out_failure->clear();
+      continue;
+    }
+    if (delivery_status == "failed" && seq >= best_seq) {
+      best_outcome = operator_message_wait_outcome_t::Failed;
+      best_seq = seq;
+      if (out_failure) {
+        *out_failure = trim_ascii(!last_error.empty() ? last_error
+                                  : !warning.empty()  ? warning
+                                                      : detail);
+      }
+      if (out_reply)
+        out_reply->clear();
+    }
+  }
+  return best_outcome;
+}
+
+[[nodiscard]] operator_message_wait_outcome_t wait_for_operator_message_outcome(
+    const app_context_t &app, std::string_view marshal_session_id,
+    std::uint64_t after_seq, std::string_view message_id,
+    std::string *out_reply, std::string *out_failure) {
+  if (out_reply)
+    out_reply->clear();
+  if (out_failure)
+    out_failure->clear();
+  constexpr auto kWait = std::chrono::milliseconds(2500);
+  constexpr useconds_t kPollUs = 50 * 1000;
+  const auto deadline = std::chrono::steady_clock::now() + kWait;
+  while (std::chrono::steady_clock::now() < deadline) {
+    std::string events_text{};
+    std::string ignored{};
+    (void)cuwacunu::hero::runtime::read_text_file(
+        cuwacunu::hero::marshal::marshal_session_events_path(
+            app.defaults.marshal_root, marshal_session_id),
+        &events_text, &ignored);
+    const operator_message_wait_outcome_t outcome =
+        find_operator_message_wait_outcome(events_text, after_seq, message_id,
+                                           out_reply, out_failure);
+    if (outcome != operator_message_wait_outcome_t::Pending)
+      return outcome;
+    ::usleep(kPollUs);
+  }
+  return operator_message_wait_outcome_t::Pending;
+}
+
+[[nodiscard]] std::string extract_last_nonempty_line(std::string_view text) {
+  std::istringstream in{std::string(text)};
+  std::string line{};
+  std::string last{};
+  while (std::getline(in, line)) {
+    const std::string trimmed = trim_ascii(line);
+    if (!trimmed.empty()) {
+      last = trimmed;
+    }
+  }
+  return last;
+}
+
+[[nodiscard]] std::string normalize_codex_reply_text(std::string_view raw) {
+  const std::string trimmed = trim_ascii(raw);
+  if (trimmed.empty())
+    return {};
+  if (trimmed.front() == '"') {
+    std::string parsed{};
+    std::size_t end = 0;
+    if (parse_json_string_at(trimmed, 0, &parsed, &end) &&
+        trim_ascii(trimmed.substr(end)).empty()) {
+      return trim_ascii(parsed);
+    }
+  }
+  return trimmed;
+}
+
+[[nodiscard]] std::string build_live_operator_prompt(
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    std::string_view message, bool include_briefing_context,
+    std::string_view briefing_text) {
+  std::ostringstream out;
+  out << "You are inside an active Marshal Hero session conversation.\n"
+      << "An operator has sent a new live message.\n\n"
+      << "Respond directly to the operator in plain text.\n"
+      << "Do not emit JSON.\n"
+      << "Do not launch or stop campaigns yourself in this turn.\n"
+      << "Do not mutate files in this turn.\n"
+      << "If the operator suggests a future change, acknowledge how it will "
+         "affect later work.\n\n"
+      << "Current session state:\n"
+      << "- lifecycle: " << loop.lifecycle << "\n"
+      << "- work_gate: " << loop.work_gate << "\n"
+      << "- activity: " << loop.activity << "\n"
+      << "- campaign_status: " << loop.campaign_status << "\n";
+  if (!trim_ascii(loop.campaign_cursor).empty()) {
+    out << "- campaign_cursor: " << loop.campaign_cursor << "\n";
+  }
+  if (!trim_ascii(loop.status_detail).empty()) {
+    out << "- status_detail: " << loop.status_detail << "\n";
+  }
+  out << "\nOperator message:\n" << trim_ascii(message) << "\n";
+  if (include_briefing_context && !trim_ascii(briefing_text).empty()) {
+    out << "\nSession briefing context:\n" << briefing_text;
+    if (briefing_text.back() != '\n')
+      out << "\n";
+  }
+  return out.str();
+}
+
+void append_live_operator_conversation_to_memory(
+    const cuwacunu::hero::marshal::marshal_session_record_t &loop,
+    std::string_view message, std::string_view reply) {
+  const std::string trimmed_message = trim_ascii(message);
+  const std::string trimmed_reply = trim_ascii(reply);
+  if (trimmed_message.empty() && trimmed_reply.empty())
+    return;
+  std::ostringstream note;
+  note << "\n\n## Live Operator Conversation\n\n";
+  if (!trimmed_message.empty()) {
+    note << "Operator: " << trimmed_message << "\n";
+  }
+  if (!trimmed_reply.empty()) {
+    note << "Marshal: " << trimmed_reply << "\n";
+  }
+  std::string ignored{};
+  (void)cuwacunu::hero::runtime::append_text_file(loop.memory_path, note.str(),
+                                                  &ignored);
+}
+
+[[nodiscard]] bool run_live_operator_message_with_codex(
+    const app_context_t &app,
+    cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string_view message, std::string *out_reply, std::string *out_warning,
+    std::string *error) {
   if (error)
     error->clear();
+  if (out_reply)
+    out_reply->clear();
+  if (out_warning)
+    out_warning->clear();
+  if (!loop) {
+    if (error)
+      *error = "live operator message session pointer is null";
+    return false;
+  }
+  const std::string trimmed_message = trim_ascii(message);
+  if (trimmed_message.empty()) {
+    if (error)
+      *error = "live operator message requires non-empty text";
+    return false;
+  }
+  if (!rewrite_marshal_session_briefing(app, *loop, error))
+    return false;
+
+  marshal_session_workspace_context_t workspace_context{};
+  if (!load_marshal_session_workspace_context(app, *loop, &workspace_context,
+                                              error)) {
+    return false;
+  }
+
+  const std::filesystem::path persisted_codex_binary_path =
+      resolve_marshal_codex_binary_path(workspace_context.repo_root,
+                                        loop->resolved_marshal_codex_binary);
+  const std::string persisted_codex_binary =
+      trim_ascii(persisted_codex_binary_path.string());
+  const std::string persisted_codex_model =
+      trim_ascii(loop->resolved_marshal_codex_model);
+  const std::string persisted_codex_reasoning_effort =
+      trim_ascii(loop->resolved_marshal_codex_reasoning_effort);
+  if (persisted_codex_binary.empty()) {
+    if (error)
+      *error = "marshal session is missing resolved_marshal_codex_binary";
+    return false;
+  }
+  if (!path_is_executable(persisted_codex_binary_path)) {
+    if (error) {
+      *error = "resolved_marshal_codex_binary is not executable: " +
+               persisted_codex_binary;
+    }
+    return false;
+  }
+  if (persisted_codex_model.empty()) {
+    if (error)
+      *error = "marshal session is missing resolved_marshal_codex_model";
+    return false;
+  }
+  if (persisted_codex_reasoning_effort.empty()) {
+    if (error) {
+      *error =
+          "marshal session is missing resolved_marshal_codex_reasoning_effort";
+    }
+    return false;
+  }
+  loop->resolved_marshal_codex_binary = persisted_codex_binary;
+
+  const std::string config_args = json_array_from_strings(
+      {"--global-config", app.global_config_path.string(), "--config",
+       loop->config_policy_path});
+  const std::string runtime_args = json_array_from_strings(
+      {"--global-config", app.global_config_path.string()});
+  const std::string lattice_args = runtime_args;
+  const std::string enabled_config_tools = json_array_from_strings(
+      {"hero.config.default.list", "hero.config.default.read",
+       "hero.config.objective.list", "hero.config.objective.read",
+       "hero.config.temp.list", "hero.config.temp.read"});
+  const std::string enabled_runtime_tools = json_array_from_strings(
+      {"hero.runtime.get_campaign", "hero.runtime.get_job",
+       "hero.runtime.list_jobs", "hero.runtime.tail_log",
+       "hero.runtime.tail_trace"});
+  const std::string enabled_lattice_tools = json_array_from_strings(
+      {"hero.lattice.list_facts", "hero.lattice.get_fact",
+       "hero.lattice.list_views", "hero.lattice.get_view"});
+
+  auto append_common_codex_mcp_args = [&](std::vector<std::string> *argv) {
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.enabled=true");
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.command=" +
+                    json_quote(workspace_context.config_hero_binary.string()));
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.args=" + config_args);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.enabled_tools=" +
+                    enabled_config_tools);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-config.startup_timeout_sec=30");
+
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.enabled=true");
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.command=" +
+                    json_quote(workspace_context.runtime_hero_binary.string()));
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.args=" + runtime_args);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.enabled_tools=" +
+                    enabled_runtime_tools);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-runtime.startup_timeout_sec=30");
+
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.enabled=true");
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.command=" +
+                    json_quote(workspace_context.lattice_hero_binary.string()));
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.args=" + lattice_args);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.enabled_tools=" +
+                    enabled_lattice_tools);
+    argv->push_back("-c");
+    argv->push_back("mcp_servers.hero-lattice.startup_timeout_sec=30");
+  };
+
+  std::string briefing_text{};
+  {
+    std::string ignored{};
+    (void)cuwacunu::hero::runtime::read_text_file(loop->briefing_path,
+                                                  &briefing_text, &ignored);
+  }
+  const std::string resume_prompt =
+      build_live_operator_prompt(*loop, trimmed_message, false, "");
+  auto build_fresh_prompt = [&]() {
+    const std::string replacement_rebrief =
+        build_replacement_thread_rebrief_packet(
+            *loop,
+            trim_ascii(loop->last_resume_error).empty()
+                ? "fresh live operator thread bootstrap"
+                : "codex resume failed: " + loop->last_resume_error,
+            briefing_text);
+    return build_live_operator_prompt(*loop, trimmed_message, true,
+                                      replacement_rebrief);
+  };
+
+  auto run_codex_attempt = [&](bool resume_mode, std::string_view prompt_text,
+                               std::string *out_attempt_reply,
+                               std::string *out_session_id,
+                               std::string *out_attempt_error) -> bool {
+    if (out_attempt_error)
+      out_attempt_error->clear();
+    if (out_attempt_reply)
+      out_attempt_reply->clear();
+    if (out_session_id)
+      out_session_id->clear();
+
+    scoped_temp_path_t prompt_path{};
+    if (!write_temp_text_artifact("hero_marshal_operator_prompt", "txt",
+                                  prompt_text, &prompt_path,
+                                  out_attempt_error)) {
+      return false;
+    }
+    scoped_temp_path_t reply_path{};
+    if (!write_temp_text_artifact("hero_marshal_operator_reply", "txt", "",
+                                  &reply_path, out_attempt_error)) {
+      return false;
+    }
+
+    std::vector<std::string> argv{};
+    argv.reserve(48);
+    argv.push_back(persisted_codex_binary);
+    argv.push_back("exec");
+    argv.push_back("--json");
+    if (resume_mode) {
+      argv.push_back("resume");
+    } else {
+      argv.push_back("-s");
+      argv.push_back("read-only");
+      argv.push_back("--color");
+      argv.push_back("never");
+    }
+    argv.push_back("-m");
+    argv.push_back(persisted_codex_model);
+    argv.push_back("-c");
+    argv.push_back("model_reasoning_effort=" +
+                   json_quote(persisted_codex_reasoning_effort));
+    append_common_codex_mcp_args(&argv);
+    argv.push_back("-o");
+    argv.push_back(reply_path.path.string());
+    if (resume_mode) {
+      const std::string thread_id = trim_ascii(loop->current_thread_id);
+      if (thread_id.empty()) {
+        if (out_attempt_error)
+          *out_attempt_error =
+              "live operator message resume requires current_thread_id";
+        return false;
+      }
+      argv.push_back(thread_id);
+    }
+    argv.push_back("-");
+
+    int exit_code = -1;
+    std::string invoke_error{};
+    loop->codex_stdout_path =
+        cuwacunu::hero::marshal::marshal_session_codex_stdout_path(
+            app.defaults.marshal_root, loop->marshal_session_id)
+            .string();
+    loop->codex_stderr_path =
+        cuwacunu::hero::marshal::marshal_session_codex_stderr_path(
+            app.defaults.marshal_root, loop->marshal_session_id)
+            .string();
+    const std::filesystem::path stdout_path(loop->codex_stdout_path);
+    const std::filesystem::path stderr_jsonl_path(loop->codex_stderr_path);
+    const std::filesystem::path stderr_capture_path =
+        stderr_jsonl_path.parent_path() /
+        (stderr_jsonl_path.filename().string() + ".tmp");
+    const std::filesystem::path checkpoint_pid_path =
+        marshal_session_checkpoint_pid_path(*loop);
+    remove_file_noexcept(stderr_capture_path);
+    remove_file_noexcept(marshal_session_compat_codex_session_log_path(*loop));
+
+    const bool invoked = run_command_with_stdio_and_timeout(
+        argv, prompt_path.path, stdout_path, stderr_capture_path,
+        &workspace_context.repo_root, nullptr,
+        workspace_context.marshal_codex_timeout_sec, &checkpoint_pid_path,
+        &exit_code, &invoke_error);
+
+    std::string stderr_text{};
+    std::string stderr_finalize_error{};
+    if (!cuwacunu::hero::runtime::read_text_file(
+            stderr_capture_path, &stderr_text, &stderr_finalize_error)) {
+      std::error_code ec{};
+      if (std::filesystem::exists(stderr_capture_path, ec) && !ec) {
+        remove_file_noexcept(stderr_capture_path);
+        if (out_attempt_error) {
+          *out_attempt_error =
+              "codex stderr capture read failed: " + stderr_finalize_error;
+        }
+        return false;
+      }
+      stderr_text.clear();
+    }
+    if (!cuwacunu::hero::runtime::write_text_file_atomic(
+            stderr_jsonl_path,
+            encode_text_lines_as_jsonl("stderr", stderr_text),
+            &stderr_finalize_error)) {
+      remove_file_noexcept(stderr_capture_path);
+      if (out_attempt_error) {
+        *out_attempt_error = "codex stderr capture finalization failed: " +
+                             stderr_finalize_error;
+      }
+      return false;
+    }
+    remove_file_noexcept(stderr_capture_path);
+    if (!stderr_text.empty() && out_session_id) {
+      *out_session_id = extract_current_thread_id_from_log(stderr_text);
+    }
+    if (!invoked) {
+      if (out_attempt_error) {
+        *out_attempt_error = resume_mode
+                                 ? "codex exec resume failed: " + invoke_error
+                                 : "codex exec failed: " + invoke_error;
+      }
+      return false;
+    }
+    if (exit_code != 0) {
+      if (out_attempt_error) {
+        *out_attempt_error =
+            std::string(resume_mode ? "codex exec resume failed with exit_code="
+                                    : "codex exec failed with exit_code=") +
+            std::to_string(exit_code);
+      }
+      return false;
+    }
+
+    std::string reply_text{};
+    std::string reply_error{};
+    (void)cuwacunu::hero::runtime::read_text_file(reply_path.path, &reply_text,
+                                                  &reply_error);
+    reply_text = normalize_codex_reply_text(reply_text);
+    if (reply_text.empty()) {
+      std::string stdout_text{};
+      std::string ignored{};
+      (void)cuwacunu::hero::runtime::read_text_file(stdout_path, &stdout_text,
+                                                    &ignored);
+      reply_text =
+          normalize_codex_reply_text(extract_last_nonempty_line(stdout_text));
+      if (reply_text.empty()) {
+        reply_text = normalize_codex_reply_text(stdout_text);
+      }
+    }
+    reply_text = trim_ascii(reply_text);
+    if (reply_text.empty()) {
+      if (out_attempt_error) {
+        *out_attempt_error =
+            "codex operator reply was empty after successful execution";
+      }
+      return false;
+    }
+    if (out_attempt_reply)
+      *out_attempt_reply = std::move(reply_text);
+    return true;
+  };
+
+  const std::string prior_thread_id = trim_ascii(loop->current_thread_id);
+  const bool had_prior_thread = !prior_thread_id.empty();
+  if (had_prior_thread) {
+    loop->codex_continuity = "resuming";
+    std::string resume_reply{};
+    std::string resumed_thread_id{};
+    std::string resume_error{};
+    if (run_codex_attempt(true, resume_prompt, &resume_reply,
+                          &resumed_thread_id, &resume_error)) {
+      loop->codex_continuity = "attached";
+      loop->last_resume_error.clear();
+      if (!trim_ascii(resumed_thread_id).empty()) {
+        loop->current_thread_id = trim_ascii(resumed_thread_id);
+        if (loop->thread_lineage.empty() ||
+            loop->thread_lineage.back() != loop->current_thread_id) {
+          loop->thread_lineage.push_back(loop->current_thread_id);
+        }
+      }
+      if (out_reply)
+        *out_reply = std::move(resume_reply);
+      return true;
+    }
+    loop->codex_continuity = "resume_failed";
+    loop->last_resume_error = resume_error;
+    (void)append_marshal_session_event(
+        loop, "codex", "codex.resume_failed",
+        "{\"previous_thread_id\":" + json_quote(prior_thread_id) +
+            ",\"failure_kind\":" +
+            json_quote("operator_message_resume_failed") + ",\"stderr_path\":" +
+            json_quote(loop->codex_stderr_path) + ",\"fallback_started\":true}",
+        nullptr, 0);
+    append_warning_text(out_warning,
+                        build_resume_degraded_warning(
+                            *loop, loop->checkpoint_count,
+                            "operator_message_resume_failed", resume_error));
+  }
+
+  std::string fresh_reply{};
+  std::string fresh_thread_id{};
+  std::string fresh_error{};
+  const std::string fresh_prompt = build_fresh_prompt();
+  if (!run_codex_attempt(false, fresh_prompt, &fresh_reply, &fresh_thread_id,
+                         &fresh_error)) {
+    if (error)
+      *error = fresh_error;
+    return false;
+  }
+  loop->codex_continuity = had_prior_thread ? "restarted" : "attached";
+  loop->last_resume_error.clear();
+  if (!trim_ascii(fresh_thread_id).empty()) {
+    loop->current_thread_id = trim_ascii(fresh_thread_id);
+    if (loop->thread_lineage.empty() ||
+        loop->thread_lineage.back() != loop->current_thread_id) {
+      loop->thread_lineage.push_back(loop->current_thread_id);
+    }
+  } else {
+    loop->current_thread_id.clear();
+    append_warning_text(
+        out_warning,
+        "fresh live operator reply completed without a persisted session id; "
+        "future live replies may need another fresh restart");
+  }
+  if (out_reply)
+    *out_reply = std::move(fresh_reply);
+  return true;
+}
+
+[[nodiscard]] bool process_pending_live_operator_message(
+    app_context_t *app, cuwacunu::hero::marshal::marshal_session_record_t *loop,
+    std::string *out_warning, std::string *error) {
+  if (error)
+    error->clear();
+  if (out_warning)
+    out_warning->clear();
+  if (!app || !loop) {
+    if (error)
+      *error = "live operator message inputs are null";
+    return false;
+  }
+
+  auto it = std::find_if(loop->pending_operator_messages.begin(),
+                         loop->pending_operator_messages.end(),
+                         [&](const auto &message) {
+                           return marshal_operator_message_has_text(message) &&
+                                  message.delivery_status == "received";
+                         });
+  if (it == loop->pending_operator_messages.end())
+    return true;
+
+  auto &pending_message = *it;
+  pending_message.delivery_attempts += 1;
+  pending_message.delivery_mode = "live";
+  const std::string message = trim_ascii(pending_message.text);
+  const std::string prior_activity = trim_ascii(loop->activity);
+  const std::string prior_status_detail = loop->status_detail;
+  loop->activity = "handling_message";
+  loop->status_detail = "delivering operator message into live codex thread";
+  loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  if (!write_marshal_session(*app, *loop, error))
+    return false;
+
+  std::string reply_text{};
+  std::string live_warning{};
+  std::string live_error{};
+  if (!run_live_operator_message_with_codex(*app, loop, message, &reply_text,
+                                            &live_warning, &live_error)) {
+    append_warning_text(&live_warning,
+                        "live operator message delivery failed: " + live_error);
+    pending_message.handled_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    pending_message.delivery_status = "failed";
+    pending_message.last_error = live_error;
+    pending_message.thread_id_at_delivery = trim_ascii(loop->current_thread_id);
+    std::string ignored{};
+    (void)append_marshal_session_event(loop, "marshal", "warning.emitted",
+                                       live_warning, &ignored);
+    (void)append_operator_message_event(
+        loop, "marshal", "operator.message_handled", pending_message,
+        "live delivery failed", "", live_error, &ignored);
+    it = loop->pending_operator_messages.erase(it);
+    (void)it;
+    if (cuwacunu::hero::marshal::marshal_session_has_active_campaign(*loop)) {
+      loop->activity = "awaiting_campaign_fact";
+    } else if (!prior_activity.empty() &&
+               prior_activity != "handling_message") {
+      loop->activity = prior_activity;
+    } else {
+      loop->activity = "quiet";
+    }
+    loop->status_detail = prior_status_detail;
+    loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    if (!write_marshal_session(*app, *loop, error))
+      return false;
+    persist_marshal_session_warning_best_effort(*app, loop, live_warning);
+    if (out_warning)
+      *out_warning = live_warning;
+    return true;
+  }
+
+  pending_message.thread_id_at_delivery = trim_ascii(loop->current_thread_id);
+  pending_message.delivered_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  pending_message.delivery_status = "delivered";
+  pending_message.last_error.clear();
+  append_live_operator_conversation_to_memory(*loop, message, reply_text);
+  if (!append_operator_message_event(
+          loop, "marshal", "operator.message_delivered", pending_message,
+          "live thread delivery completed", reply_text, "", error)) {
+    return false;
+  }
+  pending_message.handled_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  pending_message.delivery_status = "handled";
+  if (!append_operator_message_turn(*loop, pending_message, reply_text,
+                                    error)) {
+    return false;
+  }
+  if (!append_operator_message_event(
+          loop, "marshal", "operator.message_handled", pending_message,
+          "live reply handled", reply_text, "", error)) {
+    return false;
+  }
+  loop->pending_operator_messages.erase(it);
+  if (cuwacunu::hero::marshal::marshal_session_has_active_campaign(*loop)) {
+    loop->activity = "awaiting_campaign_fact";
+  } else if (!prior_activity.empty() && prior_activity != "handling_message") {
+    loop->activity = prior_activity;
+  } else {
+    loop->activity = "quiet";
+  }
+  loop->status_detail = prior_status_detail;
+  loop->updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  if (!live_warning.empty()) {
+    append_warning_text(&loop->last_warning, live_warning);
+  }
+  if (!write_marshal_session(*app, *loop, error))
+    return false;
+  if (!live_warning.empty()) {
+    persist_marshal_session_warning_best_effort(*app, loop, live_warning);
+    if (out_warning)
+      *out_warning = live_warning;
+  }
+  return true;
+}
+
+[[nodiscard]] std::string
+marshal_session_runner_startup_detail(const app_context_t &app,
+                                      std::string_view marshal_session_id) {
+  const std::filesystem::path stderr_path =
+      marshal_session_runner_stderr_path(app, marshal_session_id);
+  const std::filesystem::path stdout_path =
+      marshal_session_runner_stdout_path(app, marshal_session_id);
+  std::string stderr_text{};
+  std::string stdout_text{};
+  std::string ignored{};
+  (void)cuwacunu::hero::runtime::read_text_file(stderr_path, &stderr_text,
+                                                &ignored);
+  (void)cuwacunu::hero::runtime::read_text_file(stdout_path, &stdout_text,
+                                                &ignored);
+
+  std::string detail = "session runner exited before becoming active";
+  std::string excerpt = extract_last_nonempty_line(stderr_text);
+  if (excerpt.empty()) {
+    excerpt = extract_last_nonempty_line(stdout_text);
+  }
+  if (!excerpt.empty()) {
+    detail.append(": ");
+    detail.append(excerpt);
+  }
+  detail.append("; runner_stderr=");
+  detail.append(stderr_path.string());
+  return detail;
+}
+
+[[nodiscard]] bool wait_for_session_runner_startup(
+    const app_context_t &app,
+    cuwacunu::hero::marshal::marshal_session_record_t *session,
+    bool have_runner_identity, std::string *error) {
+  if (error)
+    error->clear();
+  if (!session) {
+    if (error)
+      *error = "marshal session runner startup session pointer is null";
+    return false;
+  }
+
+  constexpr auto kStartupWait = std::chrono::milliseconds(2000);
+  constexpr useconds_t kStartupPollUs = 50 * 1000;
+  const auto deadline = std::chrono::steady_clock::now() + kStartupWait;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (marshal_session_events_contain_event(app, session->marshal_session_id,
+                                             "session.runner_active")) {
+      return true;
+    }
+    if (have_runner_identity) {
+      bool runner_alive = true;
+      std::string runner_alive_error{};
+      if (marshal_session_runner_alive(*session, &runner_alive,
+                                       &runner_alive_error) &&
+          !runner_alive) {
+        std::string detail = marshal_session_runner_startup_detail(
+            app, session->marshal_session_id);
+        if (!runner_alive_error.empty()) {
+          detail.append("; runner_probe=");
+          detail.append(runner_alive_error);
+        }
+        session->lifecycle = "terminal";
+        session->activity = "quiet";
+        session->status_detail = detail;
+        session->work_gate = "open";
+        session->finish_reason = "failed";
+        session->finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+        session->updated_at_ms = *session->finished_at_ms;
+        clear_marshal_session_campaign_linkage(session);
+        clear_marshal_session_runner_identity(session);
+
+        std::string persist_error{};
+        if (!write_marshal_session(app, *session, &persist_error)) {
+          if (error) {
+            *error =
+                detail +
+                "; additionally failed to persist runner startup failure: " +
+                persist_error;
+          }
+          return false;
+        }
+        std::string ignored{};
+        (void)append_marshal_session_event(
+            &session, "marshal", "session.runner_failed", detail, &ignored);
+        if (error)
+          *error = detail;
+        return false;
+      }
+    }
+    ::usleep(kStartupPollUs);
+  }
+  return true;
+}
+
+[[nodiscard]] bool launch_session_runner_process(
+    const app_context_t &app, std::string_view marshal_session_id,
+    std::uint64_t *out_runner_pid, std::string *error) {
+  if (error)
+    error->clear();
+  if (out_runner_pid)
+    *out_runner_pid = 0;
+
+  const std::filesystem::path runner_stdout_path =
+      marshal_session_runner_stdout_path(app, marshal_session_id);
+  const std::filesystem::path runner_stderr_path =
+      marshal_session_runner_stderr_path(app, marshal_session_id);
+  const std::filesystem::path runner_binary =
+      resolve_marshal_session_runner_binary(app);
+  if (runner_binary.empty()) {
+    if (error) {
+      *error = "cannot resolve marshal session runner binary";
+    }
+    return false;
+  }
+  std::error_code dir_ec{};
+  std::filesystem::create_directories(runner_stdout_path.parent_path(), dir_ec);
+  if (dir_ec) {
+    if (error) {
+      *error = "cannot create marshal session runner logs dir: " +
+               runner_stdout_path.parent_path().string();
+    }
+    return false;
+  }
 
   int pipe_fds[2]{-1, -1};
 #ifdef O_CLOEXEC
@@ -5428,29 +7597,55 @@ launch_session_runner_process(const app_context_t &app,
   if (child == 0) {
     (void)::close(pipe_fds[0]);
     if (::setsid() < 0) {
-      write_child_errno_noexcept(pipe_fds[1], errno);
+      session_runner_launch_message_t message{};
+      message.exec_errno = errno;
+      write_session_runner_launch_message_noexcept(pipe_fds[1], message);
       _exit(127);
     }
 
     const pid_t grandchild = ::fork();
     if (grandchild < 0) {
-      write_child_errno_noexcept(pipe_fds[1], errno);
+      session_runner_launch_message_t message{};
+      message.exec_errno = errno;
+      write_session_runner_launch_message_noexcept(pipe_fds[1], message);
       _exit(127);
     }
     if (grandchild > 0)
       _exit(0);
 
-    const int devnull = ::open("/dev/null", O_RDWR);
+    const int devnull = ::open("/dev/null", O_RDONLY);
     if (devnull >= 0) {
       (void)::dup2(devnull, STDIN_FILENO);
-      (void)::dup2(devnull, STDOUT_FILENO);
-      (void)::dup2(devnull, STDERR_FILENO);
       if (devnull > STDERR_FILENO)
         (void)::close(devnull);
     }
 
+    const int stdout_fd =
+        ::open(runner_stdout_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (stdout_fd < 0) {
+      session_runner_launch_message_t message{};
+      message.exec_errno = errno;
+      write_session_runner_launch_message_noexcept(pipe_fds[1], message);
+      _exit(127);
+    }
+    (void)::dup2(stdout_fd, STDOUT_FILENO);
+    if (stdout_fd > STDERR_FILENO)
+      (void)::close(stdout_fd);
+
+    const int stderr_fd =
+        ::open(runner_stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (stderr_fd < 0) {
+      session_runner_launch_message_t message{};
+      message.exec_errno = errno;
+      write_session_runner_launch_message_noexcept(pipe_fds[1], message);
+      _exit(127);
+    }
+    (void)::dup2(stderr_fd, STDERR_FILENO);
+    if (stderr_fd > STDERR_FILENO)
+      (void)::close(stderr_fd);
+
     std::vector<std::string> args{};
-    args.push_back(app.self_binary_path.string());
+    args.push_back(runner_binary.string());
     args.push_back("--session-runner");
     args.push_back("--marshal-session-id");
     args.push_back(std::string(marshal_session_id));
@@ -5464,24 +7659,53 @@ launch_session_runner_process(const app_context_t &app,
     for (auto &arg : args)
       argv.push_back(arg.data());
     argv.push_back(nullptr);
+    session_runner_launch_message_t message{};
+    message.runner_pid = static_cast<std::uint64_t>(::getpid());
+    write_session_runner_launch_message_noexcept(pipe_fds[1], message);
     ::execv(argv[0], argv.data());
 
-    write_child_errno_noexcept(pipe_fds[1], errno);
+    message.exec_errno = errno;
+    write_session_runner_launch_message_noexcept(pipe_fds[1], message);
     _exit(127);
   }
 
   (void)::close(pipe_fds[1]);
   int exec_errno = 0;
-  const ssize_t n = ::read(pipe_fds[0], &exec_errno, sizeof(exec_errno));
+  std::uint64_t launched_runner_pid = 0;
+  session_runner_launch_message_t message{};
+  for (;;) {
+    const ssize_t n = ::read(pipe_fds[0], &message, sizeof(message));
+    if (n == 0)
+      break;
+    if (n < 0) {
+      if (errno == EINTR)
+        continue;
+      exec_errno = errno;
+      break;
+    }
+    if (n != static_cast<ssize_t>(sizeof(message)))
+      continue;
+    if (message.runner_pid != 0)
+      launched_runner_pid = message.runner_pid;
+    if (message.exec_errno != 0)
+      exec_errno = message.exec_errno;
+  }
   (void)::close(pipe_fds[0]);
   int ignored_status = 0;
   while (::waitpid(child, &ignored_status, 0) < 0 && errno == EINTR) {
   }
-  if (n > 0) {
+  if (exec_errno != 0) {
     if (error) {
       *error = "cannot exec detached marshal session runner: errno=" +
                std::to_string(exec_errno);
     }
+    return false;
+  }
+  if (out_runner_pid)
+    *out_runner_pid = launched_runner_pid;
+  if (launched_runner_pid == 0) {
+    if (error)
+      *error = "detached marshal session runner launch did not report a pid";
     return false;
   }
   return true;
@@ -5499,6 +7723,9 @@ launch_session_runner_process(const app_context_t &app,
                                            const std::string &arguments_json,
                                            std::string *out_structured,
                                            std::string *out_error);
+[[nodiscard]] bool handle_tool_reconcile_session(
+    app_context_t *app, const std::string &arguments_json,
+    std::string *out_structured, std::string *out_error);
 [[nodiscard]] bool handle_tool_pause_session(app_context_t *app,
                                              const std::string &arguments_json,
                                              std::string *out_structured,
@@ -5507,7 +7734,10 @@ launch_session_runner_process(const app_context_t &app,
                                               const std::string &arguments_json,
                                               std::string *out_structured,
                                               std::string *out_error);
-[[nodiscard]] bool handle_tool_continue_session(
+[[nodiscard]] bool handle_tool_message_session(
+    app_context_t *app, const std::string &arguments_json,
+    std::string *out_structured, std::string *out_error);
+[[nodiscard]] bool handle_tool_archive_session(
     app_context_t *app, const std::string &arguments_json,
     std::string *out_structured, std::string *out_error);
 [[nodiscard]] bool handle_tool_terminate_session(
@@ -5566,16 +7796,17 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   std::string input_checkpoint_json{};
   if (!build_marshal_bootstrap_input_checkpoint_json(
           *app, loop, checkpoint_index, &input_checkpoint_json, out_error)) {
-    loop.phase = "finished";
-    loop.phase_detail = *out_error;
-    loop.pause_kind = "none";
+    loop.lifecycle = "terminal";
+    loop.activity = "quiet";
+    loop.status_detail = *out_error;
+    loop.work_gate = "open";
     loop.finish_reason = "failed";
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop.updated_at_ms = *loop.finished_at_ms;
     std::string ignored{};
     (void)write_marshal_session(*app, loop, &ignored);
-    (void)append_marshal_session_event(loop, "checkpoint_failed", *out_error,
-                                       &ignored);
+    (void)append_marshal_session_event(&loop, "marshal", "checkpoint.failed",
+                                       *out_error, &ignored);
     return false;
   }
   const std::filesystem::path input_checkpoint_path =
@@ -5591,41 +7822,61 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
           input_checkpoint_json, out_error)) {
     return false;
   }
-  loop.phase = "active";
-  loop.phase_detail = "waiting for first codex planning checkpoint";
-  loop.pause_kind = "none";
+  loop.lifecycle = "live";
+  loop.activity = "planning";
+  loop.status_detail = "waiting for first codex planning checkpoint";
+  loop.work_gate = "open";
   loop.finish_reason = "none";
   loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   loop.last_input_checkpoint_path = input_checkpoint_path.string();
+  clear_marshal_session_runner_identity(&loop);
   if (!write_marshal_session(*app, loop, out_error))
     return false;
-  if (!append_marshal_session_event(loop, "input_checkpoint_staged",
+  if (!append_marshal_session_event(&loop, "marshal", "checkpoint.staged",
                                     input_checkpoint_path.string(),
                                     out_error)) {
     return false;
   }
 
   std::string bookkeeping_error{};
-  if (!launch_session_runner_process(*app, loop.marshal_session_id,
+  std::uint64_t runner_pid = 0;
+  if (!launch_session_runner_process(*app, loop.marshal_session_id, &runner_pid,
                                      &bookkeeping_error)) {
     warnings.push_back("marshal session runner launch failed: " +
                        bookkeeping_error);
-    loop.phase = "finished";
-    loop.phase_detail = "session runner launch failed: " + bookkeeping_error;
-    loop.pause_kind = "none";
+    loop.lifecycle = "terminal";
+    loop.activity = "quiet";
+    loop.status_detail = "session runner launch failed: " + bookkeeping_error;
+    loop.work_gate = "open";
     loop.finish_reason = "failed";
     loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     loop.updated_at_ms = *loop.finished_at_ms;
     std::string ignored{};
     (void)write_marshal_session(*app, loop, &ignored);
-    (void)append_marshal_session_event(loop, "session_runner_failed",
-                                       bookkeeping_error, &ignored);
+    (void)append_marshal_session_event(
+        &loop, "marshal", "session.runner_failed", bookkeeping_error, &ignored);
     *out_error = bookkeeping_error;
     return false;
   }
-  (void)append_marshal_session_event(loop, "session_runner_started",
+  bool runner_identity_captured = false;
+  std::string identity_error{};
+  if (!capture_process_identity_for_session(runner_pid, &loop,
+                                            &identity_error)) {
+    warnings.push_back("marshal session runner identity degraded: " +
+                       identity_error);
+  } else {
+    runner_identity_captured = true;
+    loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    std::string ignored{};
+    (void)write_marshal_session(*app, loop, &ignored);
+  }
+  (void)append_marshal_session_event(&loop, "marshal", "session.runner_started",
                                      "detached marshal runner launched",
                                      nullptr);
+  if (!wait_for_session_runner_startup(*app, &loop, runner_identity_captured,
+                                       out_error)) {
+    return false;
+  }
   if (!warnings.empty()) {
     std::string combined_warning{};
     for (const std::string &warning : warnings) {
@@ -5650,23 +7901,25 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
     return false;
   out_error->clear();
 
-  std::string phase_filter{};
+  std::string lifecycle_filter{};
   std::size_t limit = 0;
   std::size_t offset = 0;
   bool newest_first = true;
-  (void)extract_json_string_field(arguments_json, "phase", &phase_filter);
+  (void)extract_json_string_field(arguments_json, "lifecycle",
+                                  &lifecycle_filter);
   (void)extract_json_size_field(arguments_json, "limit", &limit);
   (void)extract_json_size_field(arguments_json, "offset", &offset);
   (void)extract_json_bool_field(arguments_json, "newest_first", &newest_first);
-  phase_filter = trim_ascii(phase_filter);
+  lifecycle_filter = trim_ascii(lifecycle_filter);
 
   std::vector<cuwacunu::hero::marshal::marshal_session_record_t> sessions{};
-  if (!list_marshal_sessions(*app, &sessions, out_error))
+  if (!list_marshal_sessions_reconciled(*app, &sessions, out_error))
     return false;
-  if (!phase_filter.empty()) {
+  if (!lifecycle_filter.empty()) {
     sessions.erase(std::remove_if(sessions.begin(), sessions.end(),
                                   [&](const auto &session) {
-                                    return session.phase != phase_filter;
+                                    return session.lifecycle !=
+                                           lifecycle_filter;
                                   }),
                    sessions.end());
   }
@@ -5700,7 +7953,7 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   *out_structured =
       "{\"marshal_session_id\":\"\",\"count\":" + std::to_string(count) +
       ",\"total\":" + std::to_string(total) +
-      ",\"phase\":" + json_quote(phase_filter) +
+      ",\"lifecycle\":" + json_quote(lifecycle_filter) +
       ",\"sessions\":" + sessions_json.str() + "}";
   return true;
 }
@@ -5722,10 +7975,41 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
     return false;
   }
   cuwacunu::hero::marshal::marshal_session_record_t session{};
-  if (!read_marshal_session(*app, marshal_session_id, &session, out_error))
+  bool reconciled = false;
+  if (!read_marshal_session_reconciled(*app, marshal_session_id, &session,
+                                       &reconciled, out_error))
     return false;
   *out_structured =
       "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+      ",\"reconciled\":" + bool_json(reconciled) +
+      ",\"session\":" + marshal_session_to_json(session) + "}";
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_reconcile_session(
+    app_context_t *app, const std::string &arguments_json,
+    std::string *out_structured, std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
+  out_error->clear();
+
+  std::string marshal_session_id{};
+  (void)extract_json_string_field(arguments_json, "marshal_session_id",
+                                  &marshal_session_id);
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "reconcile_session requires arguments.marshal_session_id";
+    return false;
+  }
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  bool reconciled = false;
+  if (!read_marshal_session_reconciled(*app, marshal_session_id, &session,
+                                       &reconciled, out_error)) {
+    return false;
+  }
+  *out_structured =
+      "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+      ",\"reconciled\":" + bool_json(reconciled) +
       ",\"session\":" + marshal_session_to_json(session) + "}";
   return true;
 }
@@ -5750,18 +8034,31 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   }
 
   cuwacunu::hero::marshal::marshal_session_record_t session{};
-  if (!read_marshal_session(*app, marshal_session_id, &session, out_error))
+  bool reconciled = false;
+  if (!read_marshal_session_reconciled(*app, marshal_session_id, &session,
+                                       &reconciled, out_error))
     return false;
-  if (is_marshal_session_terminal_state(session.phase)) {
+  (void)reconciled;
+  if (is_marshal_session_terminal_state(session.lifecycle)) {
     *out_structured =
         "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
         ",\"session\":" + marshal_session_to_json(session) +
         ",\"warning\":\"\"}";
     return true;
   }
-  if (session.phase == "paused") {
+  if (session.lifecycle == "live" && session.work_gate != "open") {
     const std::string warning =
-        "session is already paused with pause_kind=" + session.pause_kind;
+        "session is already paused with work_gate=" + session.work_gate;
+    *out_structured =
+        "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+        ",\"session\":" + marshal_session_to_json(session) +
+        ",\"warning\":" + json_quote(warning) + "}";
+    return true;
+  }
+  if (cuwacunu::hero::marshal::marshal_session_is_review_ready(session)) {
+    const std::string warning =
+        "session is already review-ready; use message_session to resume or "
+        "terminate_session to close it";
     *out_structured =
         "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
         ",\"session\":" + marshal_session_to_json(session) +
@@ -5769,42 +8066,46 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
     return true;
   }
 
-  const std::string active_campaign_cursor =
-      trim_ascii(session.active_campaign_cursor);
-  session.phase = "paused";
-  session.phase_detail = "pause_session requested by operator";
-  session.pause_kind = "operator";
-  session.finish_reason = "none";
-  session.finished_at_ms.reset();
-  session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
-  session.active_campaign_cursor.clear();
-  if (!write_marshal_session(*app, session, out_error))
-    return false;
-  if (!append_marshal_session_event(session, "session_paused",
-                                    session.phase_detail, out_error)) {
-    return false;
-  }
-
+  const std::string campaign_cursor = trim_ascii(session.campaign_cursor);
   std::string runtime_warning{};
+  bool active_campaign_stop_pending = false;
   cancel_session_checkpoint_best_effort(session, force, &runtime_warning);
-  if (!active_campaign_cursor.empty()) {
-    marshal_session_workspace_context_t workspace_context{};
-    if (!load_marshal_session_workspace_context(
-            *app, session, &workspace_context, out_error)) {
+  if (!campaign_cursor.empty()) {
+    cuwacunu::hero::runtime::runtime_campaign_record_t stopped_campaign{};
+    if (!request_runtime_campaign_stop_for_marshal_action(
+            *app, session, campaign_cursor, force, &stopped_campaign,
+            &runtime_warning, out_error)) {
       return false;
     }
-    std::string ignored{};
-    std::string runtime_error{};
-    if (!call_runtime_tool(
-            *app, workspace_context.runtime_hero_binary,
-            "hero.runtime.stop_campaign",
-            "{\"campaign_cursor\":" + json_quote(active_campaign_cursor) +
-                ",\"force\":" + bool_json(force) + "}",
-            &ignored, &runtime_error)) {
-      runtime_warning = "active campaign stop degraded: " + runtime_error;
-      persist_marshal_session_warning_best_effort(*app, &session,
-                                                  runtime_warning);
-    }
+    active_campaign_stop_pending =
+        !is_runtime_campaign_terminal_state(trim_ascii(stopped_campaign.state));
+  }
+
+  session.lifecycle = "live";
+  session.activity = "quiet";
+  session.status_detail =
+      active_campaign_stop_pending
+          ? "pause_session requested by operator; active runtime campaign stop "
+            "in progress"
+          : "pause_session requested by operator";
+  session.work_gate = "operator_pause";
+  session.finish_reason = "none";
+  session.campaign_status = active_campaign_stop_pending ? "stopping" : "none";
+  session.finished_at_ms.reset();
+  session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  if (!active_campaign_stop_pending) {
+    clear_marshal_session_campaign_linkage(&session);
+  }
+  clear_marshal_session_runner_identity(&session);
+  if (!write_marshal_session(*app, session, out_error))
+    return false;
+  if (!append_marshal_session_event(&session, "operator", "work.blocked",
+                                    session.status_detail, out_error)) {
+    return false;
+  }
+  if (!runtime_warning.empty()) {
+    persist_marshal_session_warning_best_effort(*app, &session,
+                                                runtime_warning);
   }
 
   *out_structured =
@@ -5841,9 +8142,12 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   }
 
   cuwacunu::hero::marshal::marshal_session_record_t session{};
-  if (!read_marshal_session(*app, marshal_session_id, &session, out_error))
+  bool reconciled = false;
+  if (!read_marshal_session_reconciled(*app, marshal_session_id, &session,
+                                       &reconciled, out_error))
     return false;
-  if (is_marshal_session_terminal_state(session.phase)) {
+  (void)reconciled;
+  if (is_marshal_session_terminal_state(session.lifecycle)) {
     *out_structured =
         "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
         ",\"session\":" + marshal_session_to_json(session) +
@@ -5863,7 +8167,7 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   }
 
   auto stage_followup_and_launch =
-      [&](std::string input_checkpoint_json, std::string_view phase_detail,
+      [&](std::string input_checkpoint_json, std::string_view status_detail,
           std::string_view event_detail,
           std::vector<std::string> *warnings) -> bool {
     const std::uint64_t checkpoint_index = session.checkpoint_count + 1;
@@ -5880,51 +8184,87 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
             input_checkpoint_json, out_error)) {
       return false;
     }
-    session.phase = "active";
-    session.phase_detail = std::string(phase_detail);
-    session.pause_kind = "none";
+    session.lifecycle = "live";
+    session.activity = "planning";
+    session.status_detail = std::string(status_detail);
+    session.work_gate = "open";
     session.finish_reason = "none";
     session.finished_at_ms.reset();
     session.last_input_checkpoint_path = input_checkpoint_path.string();
-    session.latest_request_kind.clear();
+    for (auto &pending_message : session.pending_operator_messages) {
+      if (!marshal_operator_message_has_text(pending_message))
+        continue;
+      pending_message.delivered_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      pending_message.delivery_status = "handled";
+      pending_message.handled_at_ms = pending_message.delivered_at_ms;
+      std::string ignored{};
+      (void)append_operator_message_event(
+          &session, "marshal", "operator.message_delivered", pending_message,
+          "staged into resumed checkpoint", "", "", &ignored);
+      (void)append_operator_message_event(
+          &session, "marshal", "operator.message_handled", pending_message,
+          "staged into resumed checkpoint", "", "", &ignored);
+    }
+    session.pending_operator_messages.clear();
     session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    clear_marshal_session_runner_identity(&session);
     if (!write_marshal_session(*app, session, out_error))
       return false;
-    if (!append_marshal_session_event(session, "input_checkpoint_staged",
+    if (!append_marshal_session_event(&session, "marshal", "checkpoint.staged",
                                       std::string(event_detail), out_error)) {
       return false;
     }
     std::string runner_error{};
+    std::uint64_t runner_pid = 0;
     if (!launch_session_runner_process(*app, session.marshal_session_id,
-                                       &runner_error)) {
+                                       &runner_pid, &runner_error)) {
       if (warnings) {
         warnings->push_back("marshal session runner launch failed: " +
                             runner_error);
       }
-      session.phase = "finished";
-      session.phase_detail = "session runner launch failed: " + runner_error;
-      session.pause_kind = "none";
+      session.lifecycle = "terminal";
+      session.activity = "quiet";
+      session.status_detail = "session runner launch failed: " + runner_error;
+      session.work_gate = "open";
       session.finish_reason = "failed";
       session.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       session.updated_at_ms = *session.finished_at_ms;
       std::string ignored{};
       (void)write_marshal_session(*app, session, &ignored);
-      (void)append_marshal_session_event(session, "session_runner_failed",
-                                         runner_error, &ignored);
+      (void)append_marshal_session_event(
+          &session, "marshal", "session.runner_failed", runner_error, &ignored);
       *out_error = runner_error;
       return false;
     }
-    (void)append_marshal_session_event(session, "session_runner_started",
-                                       "detached marshal runner launched",
-                                       nullptr);
+    bool runner_identity_captured = false;
+    std::string identity_error{};
+    if (!capture_process_identity_for_session(runner_pid, &session,
+                                              &identity_error)) {
+      if (warnings) {
+        warnings->push_back("marshal session runner identity degraded: " +
+                            identity_error);
+      }
+    } else {
+      runner_identity_captured = true;
+      session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      std::string ignored{};
+      (void)write_marshal_session(*app, session, &ignored);
+    }
+    (void)append_marshal_session_event(
+        &session, "marshal", "session.runner_started",
+        "detached marshal runner launched", nullptr);
+    if (!wait_for_session_runner_startup(*app, &session,
+                                         runner_identity_captured, out_error)) {
+      return false;
+    }
     return true;
   };
 
   std::vector<std::string> warnings{};
   if (has_governance_resolution) {
-    if (session.phase != "paused" || session.pause_kind != "governance") {
+    if (session.lifecycle != "live" || session.work_gate != "governance") {
       *out_error = "resume_session governance path requires "
-                   "session.phase=paused and pause_kind=governance";
+                   "session.lifecycle=live and work_gate=governance";
       return false;
     }
     const std::filesystem::path response_path =
@@ -5961,7 +8301,7 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
       event_detail.append(" by ");
       event_detail.append(response.operator_id);
     }
-    if (!append_marshal_session_event(session, "governance_resolution_verified",
+    if (!append_marshal_session_event(&session, "governance", "work.unblocked",
                                       event_detail, out_error)) {
       return false;
     }
@@ -5977,20 +8317,22 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
             response.grant_additional_campaign_launches;
       }
     } else if (response.resolution_kind == "terminate") {
-      session.phase = "finished";
-      session.phase_detail =
+      session.lifecycle = "terminal";
+      session.activity = "quiet";
+      session.status_detail =
           "session terminated by governance resolution: " + response.reason;
-      session.pause_kind = "none";
+      session.work_gate = "open";
       session.finish_reason = "terminated";
-      session.last_intent_kind = "terminate";
+      session.last_codex_action = "terminate";
       session.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       session.updated_at_ms = *session.finished_at_ms;
-      session.active_campaign_cursor.clear();
+      clear_marshal_session_campaign_linkage(&session);
+      clear_marshal_session_runner_identity(&session);
       if (!write_marshal_session(*app, session, out_error))
         return false;
-      if (!append_marshal_session_event(session,
-                                        "session_terminated_by_governance",
-                                        session.phase_detail, out_error)) {
+      if (!append_marshal_session_event(&session, "governance",
+                                        "session.finished",
+                                        session.status_detail, out_error)) {
         return false;
       }
       *out_structured =
@@ -6018,9 +8360,9 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
       return false;
     }
   } else if (has_clarification_answer) {
-    if (session.phase != "paused" || session.pause_kind != "clarification") {
+    if (session.lifecycle != "live" || session.work_gate != "clarification") {
       *out_error = "resume_session clarification path requires "
-                   "session.phase=paused and pause_kind=clarification";
+                   "session.lifecycle=live and work_gate=clarification";
       return false;
     }
     const std::filesystem::path answer_path =
@@ -6033,8 +8375,9 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
       return false;
     }
     std::string answer{};
-    if (!parse_human_clarification_answer_json(answer_json, &answer,
-                                               out_error)) {
+    if (!parse_human_clarification_answer_json(
+            answer_json, session.marshal_session_id, session.checkpoint_count,
+            &answer, out_error)) {
       return false;
     }
     const std::uint64_t checkpoint_index = session.checkpoint_count + 1;
@@ -6049,6 +8392,10 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
     }
     append_memory_note(session, checkpoint_index,
                        "Human clarification answer: " + answer);
+    if (!append_marshal_session_event(&session, "operator", "work.unblocked",
+                                      answer, out_error)) {
+      return false;
+    }
     if (!stage_followup_and_launch(
             std::move(input_checkpoint_json),
             "waiting for codex planning checkpoint after human clarification",
@@ -6056,43 +8403,79 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
       return false;
     }
   } else {
-    if (session.phase != "paused" || session.pause_kind != "operator") {
+    if (session.lifecycle != "live" || session.work_gate != "operator_pause") {
       *out_error = "resume_session requires an operator-paused session when no "
                    "human artifacts are provided";
       return false;
     }
-    session.phase = "active";
-    session.phase_detail = "resume_session requested by operator";
-    session.pause_kind = "none";
+    const std::string campaign_cursor = trim_ascii(session.campaign_cursor);
+    if (!campaign_cursor.empty()) {
+      cuwacunu::hero::runtime::runtime_campaign_record_t campaign{};
+      if (!read_runtime_campaign_direct(*app, campaign_cursor, &campaign,
+                                        out_error)) {
+        return false;
+      }
+      const std::string observed_state = observed_campaign_state(campaign);
+      if (!is_runtime_campaign_terminal_state(observed_state)) {
+        *out_error =
+            "resume_session cannot reopen an operator-paused session while "
+            "the retained active runtime campaign stop is still in progress";
+        return false;
+      }
+      clear_marshal_session_campaign_linkage(&session);
+    }
+    session.lifecycle = "live";
+    session.activity = "planning";
+    session.status_detail = "resume_session requested by operator";
+    session.work_gate = "open";
     session.finish_reason = "none";
     session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    clear_marshal_session_runner_identity(&session);
     if (!write_marshal_session(*app, session, out_error))
       return false;
-    if (!append_marshal_session_event(session, "session_resumed",
-                                      session.phase_detail, out_error)) {
+    if (!append_marshal_session_event(&session, "operator", "work.unblocked",
+                                      session.status_detail, out_error)) {
       return false;
     }
     std::string runner_error{};
+    std::uint64_t runner_pid = 0;
     if (!launch_session_runner_process(*app, session.marshal_session_id,
-                                       &runner_error)) {
+                                       &runner_pid, &runner_error)) {
       warnings.push_back("marshal session runner launch failed: " +
                          runner_error);
-      session.phase = "finished";
-      session.phase_detail = "session runner launch failed: " + runner_error;
-      session.pause_kind = "none";
+      session.lifecycle = "terminal";
+      session.activity = "quiet";
+      session.status_detail = "session runner launch failed: " + runner_error;
+      session.work_gate = "open";
       session.finish_reason = "failed";
       session.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       session.updated_at_ms = *session.finished_at_ms;
       std::string ignored{};
       (void)write_marshal_session(*app, session, &ignored);
-      (void)append_marshal_session_event(session, "session_runner_failed",
-                                         runner_error, &ignored);
+      (void)append_marshal_session_event(
+          &session, "marshal", "session.runner_failed", runner_error, &ignored);
       *out_error = runner_error;
       return false;
     }
-    (void)append_marshal_session_event(session, "session_runner_started",
-                                       "detached marshal runner launched",
-                                       nullptr);
+    bool runner_identity_captured = false;
+    std::string identity_error{};
+    if (!capture_process_identity_for_session(runner_pid, &session,
+                                              &identity_error)) {
+      warnings.push_back("marshal session runner identity degraded: " +
+                         identity_error);
+    } else {
+      runner_identity_captured = true;
+      session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+      std::string ignored{};
+      (void)write_marshal_session(*app, session, &ignored);
+    }
+    (void)append_marshal_session_event(
+        &session, "marshal", "session.runner_started",
+        "detached marshal runner launched", nullptr);
+    if (!wait_for_session_runner_startup(*app, &session,
+                                         runner_identity_captured, out_error)) {
+      return false;
+    }
   }
 
   if (!warnings.empty()) {
@@ -6111,7 +8494,7 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_continue_session(
+[[nodiscard]] bool handle_tool_message_session(
     app_context_t *app, const std::string &arguments_json,
     std::string *out_structured, std::string *out_error) {
   if (!app || !out_structured || !out_error)
@@ -6119,32 +8502,169 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   out_error->clear();
 
   std::string marshal_session_id{};
-  std::string instruction{};
+  std::string message{};
   (void)extract_json_string_field(arguments_json, "marshal_session_id",
                                   &marshal_session_id);
-  (void)extract_json_string_field(arguments_json, "instruction", &instruction);
+  (void)extract_json_string_field(arguments_json, "message", &message);
   marshal_session_id = trim_ascii(marshal_session_id);
-  instruction = trim_ascii(instruction);
+  message = trim_ascii(message);
   if (marshal_session_id.empty()) {
-    *out_error = "continue_session requires arguments.marshal_session_id";
+    *out_error = "message_session requires arguments.marshal_session_id";
     return false;
   }
-  if (instruction.empty()) {
-    *out_error = "continue_session requires arguments.instruction";
+  if (message.empty()) {
+    *out_error = "message_session requires arguments.message";
     return false;
   }
 
   cuwacunu::hero::marshal::marshal_session_record_t session{};
-  if (!read_marshal_session(*app, marshal_session_id, &session, out_error))
+  bool reconciled = false;
+  if (!read_marshal_session_reconciled(*app, marshal_session_id, &session,
+                                       &reconciled, out_error))
     return false;
-  if (is_marshal_session_terminal_state(session.phase)) {
-    *out_error = "continue_session requires an idle session; finished sessions "
+  (void)reconciled;
+  if (is_marshal_session_terminal_state(session.lifecycle)) {
+    *out_error = "message_session requires a live session; terminal sessions "
                  "are not reopenable";
     return false;
   }
-  if (session.phase != "idle") {
-    *out_error = "continue_session requires session.phase=idle";
+  if (session.lifecycle != "live") {
+    *out_error = "message_session requires a live session";
     return false;
+  }
+
+  cuwacunu::hero::marshal::marshal_session_record_t::operator_message_t
+      operator_message{};
+  operator_message.message_id = make_operator_message_id(&session);
+  operator_message.text = message;
+  operator_message.received_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  operator_message.delivery_mode =
+      cuwacunu::hero::marshal::marshal_session_is_review_ready(session)
+          ? "checkpoint"
+          : (!trim_ascii(session.current_thread_id).empty() ? "live"
+                                                            : "queued");
+  if (!append_operator_message_event(
+          &session, "operator", "operator.message_received", operator_message,
+          "operator message intake", "", "", out_error)) {
+    return false;
+  }
+
+  if (!cuwacunu::hero::marshal::marshal_session_is_review_ready(session)) {
+    std::vector<std::string> warnings{};
+    const std::string prior_activity = session.activity;
+    const std::string prior_status_detail = session.status_detail;
+    session.pending_operator_messages.push_back(operator_message);
+    session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    if (trim_ascii(session.status_detail).empty()) {
+      session.status_detail = "operator message queued for the next safe point";
+    }
+    const bool can_wake_live_thread =
+        !trim_ascii(session.current_thread_id).empty();
+    const bool runner_alive = marshal_session_runner_process_alive(session);
+    if (can_wake_live_thread && !runner_alive) {
+      session.activity = "handling_message";
+      session.status_detail =
+          "delivering operator message into live codex thread";
+      clear_marshal_session_runner_identity(&session);
+    }
+    if (!write_marshal_session(*app, session, out_error))
+      return false;
+    auto queued_notice = operator_message;
+    queued_notice.handled_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    if (!append_operator_message_event(
+            &session, "marshal", "operator.message_handled", queued_notice,
+            can_wake_live_thread ? "queued for live thread delivery"
+                                 : "queued for next safe point",
+            "", "", out_error)) {
+      return false;
+    }
+    const std::uint64_t delivery_wait_seq = session.last_event_seq;
+    if (can_wake_live_thread && !runner_alive) {
+      std::string runner_error{};
+      std::uint64_t runner_pid = 0;
+      if (!launch_session_runner_process(*app, session.marshal_session_id,
+                                         &runner_pid, &runner_error)) {
+        warnings.push_back("marshal session runner launch failed: " +
+                           runner_error);
+        session.activity = prior_activity;
+        session.status_detail = prior_status_detail;
+        session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+        std::string ignored{};
+        (void)write_marshal_session(*app, session, &ignored);
+        persist_marshal_session_warning_best_effort(
+            *app, &session,
+            "marshal session runner launch failed while queuing operator "
+            "message: " +
+                runner_error);
+      } else {
+        bool runner_identity_captured = false;
+        std::string identity_error{};
+        if (!capture_process_identity_for_session(runner_pid, &session,
+                                                  &identity_error)) {
+          warnings.push_back("marshal session runner identity degraded: " +
+                             identity_error);
+        } else {
+          runner_identity_captured = true;
+          session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+          std::string ignored{};
+          (void)write_marshal_session(*app, session, &ignored);
+        }
+        (void)append_marshal_session_event(
+            &session, "marshal", "session.runner_started",
+            "detached marshal runner launched", nullptr);
+        if (!wait_for_session_runner_startup(
+                *app, &session, runner_identity_captured, out_error)) {
+          return false;
+        }
+      }
+    }
+    if (can_wake_live_thread) {
+      std::string reply_text{};
+      std::string failure_text{};
+      const operator_message_wait_outcome_t wait_outcome =
+          wait_for_operator_message_outcome(
+              *app, session.marshal_session_id, delivery_wait_seq,
+              operator_message.message_id, &reply_text, &failure_text);
+      if (wait_outcome != operator_message_wait_outcome_t::Pending) {
+        cuwacunu::hero::marshal::marshal_session_record_t refreshed{};
+        std::string refresh_error{};
+        if (read_marshal_session_reconciled(*app, marshal_session_id,
+                                            &refreshed, nullptr,
+                                            &refresh_error)) {
+          session = std::move(refreshed);
+        } else {
+          warnings.push_back("post-message session refresh degraded: " +
+                             refresh_error);
+        }
+        if (wait_outcome == operator_message_wait_outcome_t::Delivered) {
+          *out_structured =
+              "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+              ",\"message_id\":" + json_quote(operator_message.message_id) +
+              ",\"delivery\":\"delivered\"" +
+              ",\"reply_text\":" + json_quote(reply_text) +
+              ",\"session\":" + marshal_session_to_json(session) +
+              ",\"warnings\":" + json_array_from_strings(warnings) + "}";
+          return true;
+        }
+        warnings.push_back("live operator message delivery failed: " +
+                           failure_text);
+        *out_structured =
+            "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+            ",\"message_id\":" + json_quote(operator_message.message_id) +
+            ",\"delivery\":\"failed\"" +
+            ",\"warning\":" + json_quote(failure_text) +
+            ",\"session\":" + marshal_session_to_json(session) +
+            ",\"warnings\":" + json_array_from_strings(warnings) + "}";
+        return true;
+      }
+    }
+    *out_structured =
+        "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+        ",\"message_id\":" + json_quote(operator_message.message_id) +
+        ",\"delivery\":\"queued\"" + ",\"reply_text\":\"\"" +
+        ",\"session\":" + marshal_session_to_json(session) +
+        ",\"warnings\":" + json_array_from_strings(warnings) + "}";
+    return true;
   }
 
   const std::uint64_t checkpoint_index = session.checkpoint_count + 1;
@@ -6152,13 +8672,12 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
       cuwacunu::hero::marshal::marshal_session_latest_input_checkpoint_path(
           app->defaults.marshal_root, session.marshal_session_id);
   std::string input_checkpoint_json{};
-  if (!build_marshal_continue_input_checkpoint_json(
+  if (!build_marshal_message_input_checkpoint_json(
           *app, session, checkpoint_index, prior_input_checkpoint_path,
-          instruction, &input_checkpoint_json, out_error)) {
+          operator_message, &input_checkpoint_json, out_error)) {
     return false;
   }
-  append_memory_note(session, checkpoint_index,
-                     "Continuation request: " + instruction);
+  append_memory_note(session, checkpoint_index, "Operator message: " + message);
 
   const std::filesystem::path input_checkpoint_path =
       cuwacunu::hero::marshal::marshal_session_input_checkpoint_path(
@@ -6174,53 +8693,164 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
     return false;
   }
 
-  session.phase = "active";
-  session.phase_detail =
-      "waiting for codex planning checkpoint after continue_session";
-  session.pause_kind = "none";
+  session.lifecycle = "live";
+  session.activity = "planning";
+  session.status_detail =
+      "waiting for codex planning checkpoint after operator message";
+  session.work_gate = "open";
   session.finish_reason = "none";
   session.finished_at_ms.reset();
   session.last_input_checkpoint_path = input_checkpoint_path.string();
-  session.latest_request_kind.clear();
+  session.pending_operator_messages.clear();
   session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  clear_marshal_session_runner_identity(&session);
   if (!write_marshal_session(*app, session, out_error))
     return false;
-  if (!append_marshal_session_event(session, "input_checkpoint_staged",
+  if (!append_marshal_session_event(&session, "marshal", "checkpoint.staged",
                                     input_checkpoint_path.string(),
                                     out_error)) {
     return false;
   }
-  if (!append_marshal_session_event(session, "session_continued", instruction,
-                                    out_error)) {
+  auto delivered_message = operator_message;
+  delivered_message.delivered_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  delivered_message.delivery_status = "delivered";
+  if (!append_operator_message_event(
+          &session, "marshal", "operator.message_delivered", delivered_message,
+          "staged into immediate checkpoint", "", "", out_error)) {
     return false;
   }
 
   std::vector<std::string> warnings{};
   std::string runner_error{};
+  std::uint64_t runner_pid = 0;
   if (!launch_session_runner_process(*app, session.marshal_session_id,
-                                     &runner_error)) {
+                                     &runner_pid, &runner_error)) {
     warnings.push_back("marshal session runner launch failed: " + runner_error);
-    session.phase = "finished";
-    session.phase_detail = "session runner launch failed: " + runner_error;
-    session.pause_kind = "none";
+    session.lifecycle = "terminal";
+    session.activity = "quiet";
+    session.status_detail = "session runner launch failed: " + runner_error;
+    session.work_gate = "open";
     session.finish_reason = "failed";
     session.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
     session.updated_at_ms = *session.finished_at_ms;
     std::string ignored{};
     (void)write_marshal_session(*app, session, &ignored);
-    (void)append_marshal_session_event(session, "session_runner_failed",
-                                       runner_error, &ignored);
+    (void)append_marshal_session_event(
+        &session, "marshal", "session.runner_failed", runner_error, &ignored);
     *out_error = runner_error;
     return false;
   }
-  (void)append_marshal_session_event(session, "session_runner_started",
-                                     "detached marshal runner launched",
-                                     nullptr);
+  bool runner_identity_captured = false;
+  std::string identity_error{};
+  if (!capture_process_identity_for_session(runner_pid, &session,
+                                            &identity_error)) {
+    warnings.push_back("marshal session runner identity degraded: " +
+                       identity_error);
+  } else {
+    runner_identity_captured = true;
+    session.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    std::string ignored{};
+    (void)write_marshal_session(*app, session, &ignored);
+  }
+  (void)append_marshal_session_event(
+      &session, "marshal", "session.runner_started",
+      "detached marshal runner launched", nullptr);
+  if (!wait_for_session_runner_startup(*app, &session, runner_identity_captured,
+                                       out_error)) {
+    return false;
+  }
+  auto handled_message = delivered_message;
+  handled_message.handled_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  handled_message.delivery_status = "handled";
+  if (!append_operator_message_event(
+          &session, "marshal", "operator.message_handled", handled_message,
+          "review-ready session awoke immediately", "", "", out_error)) {
+    return false;
+  }
 
   *out_structured =
       "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+      ",\"message_id\":" + json_quote(operator_message.message_id) +
+      ",\"delivery\":\"delivered\"" + ",\"reply_text\":\"\"" +
       ",\"session\":" + marshal_session_to_json(session) +
       ",\"warnings\":" + json_array_from_strings(warnings) + "}";
+  return true;
+}
+
+[[nodiscard]] bool handle_tool_archive_session(
+    app_context_t *app, const std::string &arguments_json,
+    std::string *out_structured, std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
+  out_error->clear();
+
+  std::string marshal_session_id{};
+  (void)extract_json_string_field(arguments_json, "marshal_session_id",
+                                  &marshal_session_id);
+  marshal_session_id = trim_ascii(marshal_session_id);
+  if (marshal_session_id.empty()) {
+    *out_error = "archive_session requires arguments.marshal_session_id";
+    return false;
+  }
+
+  cuwacunu::hero::marshal::marshal_session_record_t session{};
+  bool reconciled = false;
+  if (!read_marshal_session_reconciled(*app, marshal_session_id, &session,
+                                       &reconciled, out_error)) {
+    return false;
+  }
+  (void)reconciled;
+
+  if (is_marshal_session_terminal_state(session.lifecycle)) {
+    const std::string warning =
+        "session is already terminal; objective ownership is already released";
+    *out_structured =
+        "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+        ",\"session\":" + marshal_session_to_json(session) +
+        ",\"warning\":" + json_quote(warning) + "}";
+    return true;
+  }
+  if (!cuwacunu::hero::marshal::marshal_session_is_review_ready(session)) {
+    *out_error =
+        "archive_session requires a review-ready live session or a terminal "
+        "session";
+    return false;
+  }
+  if (!trim_ascii(session.campaign_cursor).empty() ||
+      (session.campaign_status != "none" &&
+       session.campaign_status != "stopped")) {
+    *out_error =
+        "archive_session requires the session to have no active runtime "
+        "campaign";
+    return false;
+  }
+
+  session.lifecycle = "terminal";
+  session.activity = "quiet";
+  session.work_gate = "open";
+  session.status_detail =
+      "archive_session requested by operator; objective ownership released";
+  if (trim_ascii(session.finish_reason).empty() ||
+      session.finish_reason == "none") {
+    session.finish_reason = "success";
+  }
+  session.last_codex_action = "archive";
+  clear_marshal_session_campaign_linkage(&session);
+  session.pending_operator_messages.clear();
+  session.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+  session.updated_at_ms = *session.finished_at_ms;
+  clear_marshal_session_runner_identity(&session);
+  if (!write_marshal_session(*app, session, out_error)) {
+    return false;
+  }
+  if (!append_marshal_session_event(&session, "operator", "session.archived",
+                                    session.status_detail, out_error)) {
+    return false;
+  }
+
+  *out_structured =
+      "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
+      ",\"session\":" + marshal_session_to_json(session) + ",\"warning\":\"\"}";
   return true;
 }
 
@@ -6243,9 +8873,12 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
   }
 
   cuwacunu::hero::marshal::marshal_session_record_t session{};
-  if (!read_marshal_session(*app, marshal_session_id, &session, out_error))
+  bool reconciled = false;
+  if (!read_marshal_session_reconciled(*app, marshal_session_id, &session,
+                                       &reconciled, out_error))
     return false;
-  if (is_marshal_session_terminal_state(session.phase)) {
+  (void)reconciled;
+  if (is_marshal_session_terminal_state(session.lifecycle)) {
     *out_structured =
         "{\"marshal_session_id\":" + json_quote(marshal_session_id) +
         ",\"session\":" + marshal_session_to_json(session) +
@@ -6253,40 +8886,42 @@ find_marshal_tool_descriptor(std::string_view tool_name) {
     return true;
   }
 
-  const std::string active_campaign_cursor =
-      trim_ascii(session.active_campaign_cursor);
-  cancel_session_checkpoint_best_effort(session, force, nullptr);
+  const std::string campaign_cursor = trim_ascii(session.campaign_cursor);
   std::string runtime_warning{};
-  if (!active_campaign_cursor.empty()) {
-    marshal_session_workspace_context_t workspace_context{};
-    if (!load_marshal_session_workspace_context(
-            *app, session, &workspace_context, out_error)) {
+  bool active_campaign_stop_pending = false;
+  if (!campaign_cursor.empty()) {
+    cuwacunu::hero::runtime::runtime_campaign_record_t stopped_campaign{};
+    if (!request_runtime_campaign_stop_for_marshal_action(
+            *app, session, campaign_cursor, force, &stopped_campaign,
+            &runtime_warning, out_error)) {
       return false;
     }
-    std::string ignored{};
-    std::string runtime_error{};
-    if (!call_runtime_tool(
-            *app, workspace_context.runtime_hero_binary,
-            "hero.runtime.stop_campaign",
-            "{\"campaign_cursor\":" + json_quote(active_campaign_cursor) +
-                ",\"force\":" + bool_json(force) + "}",
-            &ignored, &runtime_error)) {
-      runtime_warning = "active campaign stop degraded: " + runtime_error;
-    }
+    active_campaign_stop_pending =
+        !is_runtime_campaign_terminal_state(trim_ascii(stopped_campaign.state));
   }
+  cancel_session_checkpoint_best_effort(session, force, &runtime_warning);
 
-  session.phase = "finished";
-  session.phase_detail = "terminate_session requested by operator";
-  session.pause_kind = "none";
+  session.lifecycle = "terminal";
+  session.activity = "quiet";
+  session.status_detail =
+      active_campaign_stop_pending
+          ? "terminate_session requested by operator; active runtime campaign "
+            "stop in progress"
+          : "terminate_session requested by operator";
+  session.work_gate = "open";
   session.finish_reason = "terminated";
-  session.last_intent_kind = "terminate";
+  session.last_codex_action = "terminate";
+  session.campaign_status = active_campaign_stop_pending ? "stopping" : "none";
   session.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
   session.updated_at_ms = *session.finished_at_ms;
-  session.active_campaign_cursor.clear();
+  if (!active_campaign_stop_pending) {
+    clear_marshal_session_campaign_linkage(&session);
+  }
+  clear_marshal_session_runner_identity(&session);
   if (!write_marshal_session(*app, session, out_error))
     return false;
-  if (!append_marshal_session_event(session, "session_terminated",
-                                    session.phase_detail, out_error)) {
+  if (!append_marshal_session_event(&session, "operator", "session.finished",
+                                    session.status_detail, out_error)) {
     return false;
   }
   if (!runtime_warning.empty()) {
@@ -6400,7 +9035,12 @@ bool load_marshal_defaults(const std::filesystem::path &hero_dsl_path,
     const auto it = values.find(key);
     if (it == values.end())
       return false;
-    *dst = resolve_command_path(hero_dsl_path.parent_path(), it->second);
+    if (std::string_view(key) == "marshal_codex_binary") {
+      *dst = resolve_marshal_codex_binary_path(hero_dsl_path.parent_path(),
+                                               it->second);
+    } else {
+      *dst = resolve_command_path(hero_dsl_path.parent_path(), it->second);
+    }
     return !dst->empty();
   };
 
@@ -6530,8 +9170,8 @@ bool tool_result_is_error(std::string_view tool_result_json) {
 }
 
 [[nodiscard]] bool marshal_tool_is_read_only(std::string_view name) {
-  return name == "hero.marshal.list_sessions" ||
-         name == "hero.marshal.get_session";
+  (void)name;
+  return false;
 }
 
 [[nodiscard]] bool marshal_tool_is_destructive(std::string_view name) {
@@ -6625,20 +9265,46 @@ bool run_session_runner(app_context_t *app, std::string_view marshal_session_id,
     return true;
 
   std::string ignored{};
-  (void)append_marshal_session_event(loop, "session_runner_active",
+  (void)append_marshal_session_event(&loop, "marshal", "session.runner_active",
                                      "runner lock acquired", &ignored);
+  std::string identity_error{};
+  if (capture_process_identity_for_session(
+          static_cast<std::uint64_t>(::getpid()), &loop, &identity_error)) {
+    loop.updated_at_ms = cuwacunu::hero::runtime::now_ms_utc();
+    (void)write_marshal_session(*app, loop, &ignored);
+  } else {
+    persist_marshal_session_warning_best_effort(
+        *app, &loop,
+        "marshal session runner identity degraded after lock acquisition: " +
+            identity_error);
+  }
   for (;;) {
     if (!read_marshal_session(*app, marshal_session_id, &loop, error))
       return false;
-    if (is_marshal_session_terminal_state(loop.phase) ||
-        loop.phase == "paused" || loop.phase == "idle") {
+    const bool has_pending_operator_message =
+        marshal_session_has_pending_operator_message(loop);
+    if (loop.lifecycle == "live" && has_pending_operator_message &&
+        !trim_ascii(loop.current_thread_id).empty()) {
+      std::string warning{};
+      if (!process_pending_live_operator_message(app, &loop, &warning, error))
+        return false;
+      if (!warning.empty()) {
+        persist_marshal_session_warning_best_effort(*app, &loop, warning);
+      }
+      continue;
+    }
+    const bool review_ready =
+        cuwacunu::hero::marshal::marshal_session_is_review_ready(loop);
+    const bool work_blocked =
+        loop.lifecycle == "live" && loop.work_gate != "open";
+    if (is_marshal_session_terminal_state(loop.lifecycle) || work_blocked ||
+        review_ready) {
       return true;
     }
 
-    const std::string active_campaign_cursor =
-        trim_ascii(loop.active_campaign_cursor);
-    if (active_campaign_cursor.empty()) {
-      if (loop.phase == "active") {
+    const std::string campaign_cursor = trim_ascii(loop.campaign_cursor);
+    if (campaign_cursor.empty()) {
+      if (loop.lifecycle == "live" && loop.work_gate == "open") {
         std::string warning{};
         if (!execute_pending_checkpoint(app, &loop, &warning, error))
           return false;
@@ -6647,33 +9313,35 @@ bool run_session_runner(app_context_t *app, std::string_view marshal_session_id,
         }
         continue;
       }
-      loop.phase = "finished";
-      loop.phase_detail =
-          "session runner found no active campaign for non-active phase";
-      loop.pause_kind = "none";
+      loop.lifecycle = "terminal";
+      loop.activity = "quiet";
+      loop.status_detail =
+          "session runner found no active campaign for non-live work state";
+      loop.work_gate = "open";
       loop.finish_reason = "failed";
       loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       loop.updated_at_ms = *loop.finished_at_ms;
       if (!write_marshal_session(*app, loop, error))
         return false;
-      (void)append_marshal_session_event(loop, "session_failed",
-                                         loop.phase_detail, &ignored);
+      (void)append_marshal_session_event(&loop, "marshal", "session.finished",
+                                         loop.status_detail, &ignored);
       return false;
     }
 
     cuwacunu::hero::runtime::runtime_campaign_record_t campaign{};
-    if (!read_runtime_campaign_direct(*app, active_campaign_cursor, &campaign,
+    if (!read_runtime_campaign_direct(*app, campaign_cursor, &campaign,
                                       error)) {
-      loop.phase = "finished";
-      loop.phase_detail = *error;
-      loop.pause_kind = "none";
+      loop.lifecycle = "terminal";
+      loop.activity = "quiet";
+      loop.status_detail = *error;
+      loop.work_gate = "open";
       loop.finish_reason = "failed";
       loop.finished_at_ms = cuwacunu::hero::runtime::now_ms_utc();
       loop.updated_at_ms = *loop.finished_at_ms;
       std::string ignored_local{};
       (void)write_marshal_session(*app, loop, &ignored_local);
-      (void)append_marshal_session_event(loop, "session_failed",
-                                         loop.phase_detail, &ignored_local);
+      (void)append_marshal_session_event(&loop, "marshal", "session.finished",
+                                         loop.status_detail, &ignored_local);
       return false;
     }
     const std::string state = observed_campaign_state(campaign);
@@ -6689,12 +9357,20 @@ bool run_session_runner(app_context_t *app, std::string_view marshal_session_id,
     }
 
     std::string warning{};
-    if (!continue_session_after_terminal_campaign(app, active_campaign_cursor,
-                                                  &warning, error)) {
+    if (!reopen_session_after_terminal_campaign(app, campaign_cursor, &warning,
+                                                error)) {
       return false;
     }
     if (!warning.empty()) {
-      persist_marshal_session_warning_best_effort(*app, &loop, warning);
+      cuwacunu::hero::marshal::marshal_session_record_t latest_loop{};
+      std::string warning_reload_error{};
+      if (read_marshal_session(*app, marshal_session_id, &latest_loop,
+                               &warning_reload_error)) {
+        persist_marshal_session_warning_best_effort(*app, &latest_loop,
+                                                    warning);
+      } else {
+        persist_marshal_session_warning_best_effort(*app, &loop, warning);
+      }
     }
   }
 }

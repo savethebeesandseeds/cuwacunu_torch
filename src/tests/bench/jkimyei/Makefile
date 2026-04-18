@@ -12,17 +12,19 @@ COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_tor
 
 $(eval $(call TEST_ONEFILE, test_jk_setup, test_jk_setup.cpp, $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_wave_contract_binding_runtime_snapshot, test_wave_contract_binding_runtime_snapshot.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_runtime_binding_selection_explain, test_runtime_binding_selection_explain.cpp, $(COMMON_LINK)))
 
 $(TEST_OUT)/test_jk_setup: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+$(TEST_OUT)/test_runtime_binding_selection_explain: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 
 .PHONY: all
-all: $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot
+all: $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot $(TEST_OUT)/test_runtime_binding_selection_explain
 	@$(LOG_SUCCESS)
 
 .PHONY: run
-run: run-test_jk_setup run-test_wave_contract_binding_runtime_snapshot
+run: run-test_jk_setup run-test_wave_contract_binding_runtime_snapshot run-test_runtime_binding_selection_explain
 
 .PHONY: clean
 clean:
-	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot
+	$(Q)$(CLEAN_RM_CMD) $(TEST_OUT)/test_jk_setup $(TEST_OUT)/test_wave_contract_binding_runtime_snapshot $(TEST_OUT)/test_runtime_binding_selection_explain

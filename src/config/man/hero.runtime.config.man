@@ -15,7 +15,7 @@ required = true
 default = /cuwacunu/.build/tools/cuwacunu_campaign
 range = executable path
 allowed = absolute_or_relative path
-nuance = worker binary launched for each sequential RUN step of hero.runtime.start_campaign; when start_campaign receives binding_id only that selected bind is dispatched
+nuance = worker binary launched for each RUN step inside one campaign; campaigns may overlap, but jobs that overlap on the same mutable runtime resources stay serialized by Runtime Hero (for example in-place wikimyei targets or shared source-cache rebuild paths)
 
 [FIELD tail_default_lines]
 key = tail_default_lines
@@ -30,13 +30,3 @@ nuance = default line count used by hero.runtime.tail_log and hero.runtime.tail_
 [NOTE DERIVED_RUNTIME_PATHS]
 scope = hero runtime defaults
 text = Runtime HERO derives its campaigns root from `[GENERAL].runtime_root` as `<runtime_root>/.campaigns`, derives the shared Marshal Hero session root as `<runtime_root>/.marshal_hero` for linked campaign metadata and operator stop propagation, and loads the campaign grammar from `[BNF].iitepi_campaign_grammar_filename`.
-
-[FIELD max_active_campaigns]
-key = max_active_campaigns
-scope = hero runtime defaults
-type = uint
-required = true
-default = 1
-range = [0,+inf)
-allowed = unsigned integer
-nuance = launch guard for concurrently active campaigns; 0 disables the limit

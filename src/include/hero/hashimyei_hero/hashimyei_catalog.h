@@ -264,15 +264,15 @@ class hashimyei_catalog_store_t {
                                               std::string* out_hashimyei,
                                               std::string* error = nullptr) const;
   [[nodiscard]] bool get_explicit_family_rank(
-      std::string_view family, std::string_view contract_hash,
+      std::string_view family, std::string_view dock_hash,
       cuwacunu::hero::family_rank::state_t* out,
       std::string* error = nullptr) const;
   [[nodiscard]] bool get_family_rank(
-      std::string_view family, std::string_view contract_hash,
+      std::string_view family, std::string_view dock_hash,
       cuwacunu::hero::family_rank::state_t* out,
       std::string* error = nullptr) const;
   [[nodiscard]] bool resolve_ranked_hashimyei(std::string_view family,
-                                              std::string_view contract_hash,
+                                              std::string_view dock_hash,
                                               std::uint64_t rank,
                                               std::string* out_hashimyei,
                                               std::string* error = nullptr) const;

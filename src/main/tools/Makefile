@@ -10,7 +10,7 @@ BIN_OUT  := $(TOOLS_OUT)
 
 TEST_DEFAULT_LDLIBS :=
 CUWACUNU_CAMPAIGN_LINK := $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
-RUNTIME_RESET_LINK := $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
+RUNTIME_RESET_LINK := $(libtorch_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_ssl)
 TSODAO_RELEASE_CXXFLAGS := $(filter-out $(DEBUG_FLAGS),$(CXXFLAGS)) -O2 -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS -fstack-clash-protection -fno-plt
 TSODAO_RELEASE_LDFLAGS := $(filter-out -rdynamic,$(LDFLAGS_E)) -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed
 $(eval $(call BIN_ONEFILE, secure_key_setup, secure_key_setup.cpp, $(libssl_a) $(libcommon_a) $(libtorch_a) $(LDLIBS_ssl) $(LDLIBS_torch)))
@@ -20,6 +20,7 @@ $(eval $(call BIN_ONEFILE, tsodao, tsodao.cpp, ))
 
 $(BIN_OUT)/secure_key_setup: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(BIN_OUT)/cuwacunu_campaign: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
+$(BIN_OUT)/runtime_reset: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(BIN_OUT)/tsodao: CXXFLAGS := $(TSODAO_RELEASE_CXXFLAGS)
 $(BIN_OUT)/tsodao: LDFLAGS_E := $(TSODAO_RELEASE_LDFLAGS)
 $(BIN_OUT)/tsodao: POST_LINK_HOOK := strip --strip-unneeded $(BIN_OUT)/tsodao
@@ -47,7 +48,7 @@ all: $(BIN_OUT)/secure_key_setup $(BIN_OUT)/cuwacunu_campaign $(BIN_OUT)/runtime
 run: run-secure_key_setup
 
 .PHONY: build-campaign
-build-campaign: autoprep $(BIN_OUT)/cuwacunu_campaign
+build-campaign: $(ORDER_PREP) $(BIN_OUT)/cuwacunu_campaign
 	@$(LOG_SUCCESS)
 
 .PHONY: run-campaign
@@ -58,7 +59,7 @@ run-campaign: $(BIN_OUT)/cuwacunu_campaign
 campaign: run-campaign
 
 .PHONY: build-reset-runtime
-build-reset-runtime: autoprep $(BIN_OUT)/runtime_reset
+build-reset-runtime: $(ORDER_PREP) $(BIN_OUT)/runtime_reset
 	@$(LOG_SUCCESS)
 
 .PHONY: run-reset-runtime

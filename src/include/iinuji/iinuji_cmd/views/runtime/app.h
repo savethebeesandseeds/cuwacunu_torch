@@ -3,6 +3,7 @@
 #include <ncursesw/ncurses.h>
 
 #include "iinuji/iinuji_cmd/views/runtime/commands.h"
+#include "iinuji/iinuji_cmd/views/common/action_menu.h"
 #include "iinuji/iinuji_cmd/views/ui/dialogs.h"
 
 namespace cuwacunu {
@@ -12,7 +13,7 @@ namespace iinuji_cmd {
 enum class RuntimePopupActionKind : std::uint8_t {
   PauseSession = 0,
   ResumeSession = 1,
-  ContinueSession = 2,
+  MessageSession = 2,
   TerminateSession = 3,
   ViewMarshalEvents = 4,
   ViewMarshalCodexStdout = 5,
@@ -145,11 +146,19 @@ inline bool exit_runtime_nested_rows(CmdState &st) {
 inline bool runtime_apply_marshal_action(CmdState &st,
                                          const std::string &tool_name,
                                          const std::string &arguments_json,
+                                         std::string busy_title,
+                                         std::string busy_prompt,
                                          std::string success_status) {
   cmd_json_value_t structured{};
   std::string error{};
-  if (!runtime_invoke_marshal_tool(st, tool_name, arguments_json, &structured,
-                                   &error)) {
+  bool ok = false;
+  ui_run_blocking_dialog(
+      std::move(busy_title), std::move(busy_prompt),
+      [&]() {
+        ok = runtime_invoke_marshal_tool(st, tool_name, arguments_json,
+                                         &structured, &error);
+      });
+  if (!ok) {
     set_runtime_status(st, error.empty() ? "marshal action failed" : error,
                        true);
     return true;
@@ -162,11 +171,19 @@ inline bool runtime_apply_marshal_action(CmdState &st,
 inline bool runtime_apply_runtime_action(CmdState &st,
                                          const std::string &tool_name,
                                          const std::string &arguments_json,
+                                         std::string busy_title,
+                                         std::string busy_prompt,
                                          std::string success_status) {
   cmd_json_value_t structured{};
   std::string error{};
-  if (!runtime_invoke_runtime_tool(st, tool_name, arguments_json, &structured,
-                                   &error)) {
+  bool ok = false;
+  ui_run_blocking_dialog(
+      std::move(busy_title), std::move(busy_prompt),
+      [&]() {
+        ok = runtime_invoke_runtime_tool(st, tool_name, arguments_json,
+                                         &structured, &error);
+      });
+  if (!ok) {
     set_runtime_status(st, error.empty() ? "runtime action failed" : error,
                        true);
     return true;
@@ -240,18 +257,19 @@ runtime_popup_actions(const CmdState &st) {
                 runtime_popup_action_file_available(session.human_request_path),
                 "There is no human request artifact for this session.");
     push_action(RuntimePopupActionKind::PauseSession, "Pause marshal",
-                session.phase == "active" ||
-                    session.phase == "running_campaign",
+                operator_session_is_working(session),
                 "Pause is only available while the marshal is active.");
     push_action(RuntimePopupActionKind::ResumeSession, "Resume marshal",
-                session.phase == "paused" && session.pause_kind == "operator",
+                operator_session_is_operator_paused(session),
                 "Resume is only available for operator-paused marshals.");
-    push_action(RuntimePopupActionKind::ContinueSession, "Continue marshal",
-                session.phase == "idle",
-                "Continue is only available when the marshal is idle.");
+    push_action(RuntimePopupActionKind::MessageSession, "Message marshal",
+                session.lifecycle == "live",
+                "Messaging is only available while the marshal session is live.");
     push_action(RuntimePopupActionKind::TerminateSession, "Terminate marshal",
-                session.phase != "finished",
-                "Finished marshals cannot be terminated again.");
+                operator_session_is_working(session) ||
+                    operator_session_is_operator_paused(session),
+                "Terminate is only available while the marshal is active or "
+                "operator-paused.");
     return actions;
   }
   if (row_kind == RuntimeRowKind::Campaign && st.runtime.campaign.has_value()) {
@@ -357,6 +375,8 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         st, "hero.marshal.pause_session",
         std::string("{\"marshal_session_id\":") +
             config_json_quote(st.runtime.session->marshal_session_id) + "}",
+        " Pausing marshal ",
+        "Sending pause request to Marshal Hero.",
         "Paused selected marshal.");
   }
   case RuntimePopupActionKind::ResumeSession: {
@@ -366,32 +386,84 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         st, "hero.marshal.resume_session",
         std::string("{\"marshal_session_id\":") +
             config_json_quote(st.runtime.session->marshal_session_id) + "}",
+        " Resuming marshal ",
+        "Sending resume request to Marshal Hero.",
         "Resumed selected marshal.");
   }
-  case RuntimePopupActionKind::ContinueSession: {
+  case RuntimePopupActionKind::MessageSession: {
     if (!st.runtime.session.has_value())
       return false;
-    std::string instruction{};
+    std::string message{};
     bool cancelled = false;
     if (!ui_prompt_text_dialog(
-            " Continue marshal ",
-            "Provide the operator instruction that should launch more work for "
-            "this idle marshal.",
-            &instruction, false, false, &cancelled)) {
-      set_runtime_status(st, "failed to collect continuation instruction",
-                         true);
+            " Message marshal ",
+            "Provide the operator message Marshal Hero should receive. "
+            "Review-ready sessions wake immediately; other live sessions try "
+            "direct thread delivery when continuity is available, otherwise "
+            "they queue for the next safe point.",
+            &message, false, false, &cancelled)) {
+      set_runtime_status(st, "failed to collect operator message", true);
       return true;
     }
     if (cancelled) {
       set_runtime_status(st, "Cancelled.", false);
       return true;
     }
-    return runtime_apply_marshal_action(
-        st, "hero.marshal.continue_session",
-        std::string("{\"marshal_session_id\":") +
-            config_json_quote(st.runtime.session->marshal_session_id) +
-            ",\"instruction\":" + config_json_quote(instruction) + "}",
-        "Continued selected marshal.");
+    cmd_json_value_t structured{};
+    std::string error{};
+    bool ok = false;
+    ui_run_blocking_dialog(
+        " Sending message ",
+        "Dispatching operator message to Marshal Hero.",
+        [&]() {
+          ok = runtime_invoke_marshal_tool(
+              st, "hero.marshal.message_session",
+              std::string("{\"marshal_session_id\":") +
+                  config_json_quote(st.runtime.session->marshal_session_id) +
+                  ",\"message\":" + config_json_quote(message) + "}",
+              &structured, &error);
+        });
+    if (!ok) {
+      set_runtime_status(
+          st, error.empty() ? "marshal action failed" : error, true);
+      return true;
+    }
+    (void)queue_runtime_refresh(st);
+    const std::string delivery =
+        cmd_json_string(cmd_json_field(&structured, "delivery"));
+    const std::string reply_text =
+        cmd_json_string(cmd_json_field(&structured, "reply_text"));
+    const std::string warning =
+        cmd_json_string(cmd_json_field(&structured, "warning"));
+    const std::string session_activity = cmd_json_string(
+        cmd_json_field(cmd_json_field(&structured, "session"), "activity"));
+    const auto compact = [](std::string text) {
+      text = trim_copy(text);
+      for (char &ch : text) {
+        if (ch == '\n' || ch == '\r' || ch == '\t')
+          ch = ' ';
+      }
+      constexpr std::size_t kMax = 180;
+      if (text.size() > kMax) {
+        text = text.substr(0, kMax - 3);
+        text += "...";
+      }
+      return text;
+    };
+    set_runtime_status(
+        st,
+        delivery == "failed"
+            ? compact(warning.empty() ? "Marshal message delivery failed."
+                                      : warning)
+        : (delivery == "delivered" && !trim_copy(reply_text).empty())
+            ? "Marshal: " + compact(reply_text)
+        : (delivery == "queued" && session_activity == "handling_message")
+            ? "Queued message for live thread delivery."
+        : delivery == "queued"
+            ? "Queued message for the next safe point."
+            : "Delivered message to selected marshal.",
+        delivery == "failed");
+    return true;
   }
   case RuntimePopupActionKind::TerminateSession: {
     if (!st.runtime.session.has_value())
@@ -414,6 +486,8 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         st, "hero.marshal.terminate_session",
         std::string("{\"marshal_session_id\":") +
             config_json_quote(st.runtime.session->marshal_session_id) + "}",
+        " Terminating marshal ",
+        "Sending terminate request to Marshal Hero.",
         "Terminated selected marshal.");
   }
   case RuntimePopupActionKind::ViewMarshalEvents: {
@@ -492,6 +566,8 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         st, "hero.runtime.stop_campaign",
         std::string("{\"campaign_cursor\":") +
             config_json_quote(st.runtime.campaign->campaign_cursor) + "}",
+        " Stopping campaign ",
+        "Sending stop signal to Runtime Hero.",
         "Stopped selected campaign.");
   }
   case RuntimePopupActionKind::ForceStopCampaign: {
@@ -516,6 +592,8 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         std::string("{\"campaign_cursor\":") +
             config_json_quote(st.runtime.campaign->campaign_cursor) +
             ",\"force\":true}",
+        " Force-stopping campaign ",
+        "Sending force-stop signal to Runtime Hero.",
         "Force-stopped selected campaign.");
   }
   case RuntimePopupActionKind::ViewCampaignStdout: {
@@ -578,6 +656,8 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         st, "hero.runtime.stop_job",
         std::string("{\"job_cursor\":") +
             config_json_quote(st.runtime.job->job_cursor) + "}",
+        " Stopping job ",
+        "Sending stop signal to Runtime Hero.",
         "Stopped selected job.");
   }
   case RuntimePopupActionKind::ForceStopJob: {
@@ -599,6 +679,8 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         st, "hero.runtime.stop_job",
         std::string("{\"job_cursor\":") +
             config_json_quote(st.runtime.job->job_cursor) + ",\"force\":true}",
+        " Force-stopping job ",
+        "Sending force-stop signal to Runtime Hero.",
         "Force-stopped selected job.");
   }
   }
@@ -612,26 +694,10 @@ inline bool open_runtime_action_menu(CmdState &st) {
     return true;
   }
 
-  std::vector<ui_choice_panel_option_t> options{};
-  options.reserve(actions.size());
-  for (const auto &action : actions) {
-    options.push_back(ui_choice_panel_option_t{
-        .label = action.label,
-        .enabled = action.enabled,
-        .disabled_status = action.disabled_status,
-    });
-  }
-
-  std::size_t selected = 0;
-  for (std::size_t i = 0; i < actions.size(); ++i) {
-    if (actions[i].enabled) {
-      selected = i;
-      break;
-    }
-  }
+  std::size_t selected = 0u;
   bool cancelled = false;
-  if (!ui_prompt_choice_panel("Runtime Actions", "Select action.", options,
-                              &selected, &cancelled)) {
+  if (!prompt_action_choice_panel("Runtime Actions", "Select action.", actions,
+                                  &selected, &cancelled)) {
     set_runtime_status(st, "failed to open action menu", true);
     return true;
   }
@@ -639,7 +705,7 @@ inline bool open_runtime_action_menu(CmdState &st) {
     set_runtime_status(st, {}, false);
     return true;
   }
-  const auto &action = actions[std::min(selected, actions.size() - 1)];
+  const auto &action = selected_action_or_last(actions, selected);
   if (!action.enabled) {
     set_runtime_status(st,
                        action.disabled_status.empty()

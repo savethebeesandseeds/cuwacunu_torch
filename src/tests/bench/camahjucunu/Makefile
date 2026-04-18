@@ -18,7 +18,7 @@ EXCHANGE_LINK  = $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_
 TYPES_LINK     = $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)
 DB_LINK        = $(libssl_a) $(libcommon_a) $(LDLIBS_ssl)
 WEBSOCKET_LINK = $(libssl_a) $(libcurl_a) $(libcommon_a) $(LDLIBS_ssl) $(LDLIBS_curl)
-DSL_RUNTIME_LINK = $(libtorch_a) $(libcommon_a) $(LDLIBS_torch)
+DSL_RUNTIME_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
 
 $(eval $(call TEST_ONEFILE, test_dsl_observation, test_dsl_observation.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_latent_lineage_state,            test_dsl_latent_lineage_state.cpp))

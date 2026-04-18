@@ -46,6 +46,7 @@ default = none
 range = unique within campaign
 allowed = [A-Za-z0-9_.-]+
 nuance = reusable execution unit combining one CONTRACT ref, one WAVE ref, and optional wave-scoping __variables
+note = hashimyei-backed slot selection is authored inside BIND.MOUNT, not inside the WAVE file
 
 [FIELD BIND.CONTRACT]
 key = BIND.CONTRACT
@@ -67,6 +68,18 @@ range = must exist in campaign-declared wave ids from FROM ... IMPORT_WAVE
 allowed = imported wave id token
 nuance = wave id selection is explicit in the campaign import list rather than inferred by scanning every imported wave file
 
+[FIELD BIND.MOUNT]
+key = BIND.MOUNT
+scope = BIND
+type = block
+required = conditional
+default = none
+range = zero or one per bind
+allowed = MOUNT { <wave_binding_id> = EXACT <hashimyei>; | <wave_binding_id> = RANK <n>; }
+nuance = MOUNT resolves hashimyei-backed WAVE component slots for this bind only; authored WAVE files stay compatibility-oriented and do not carry concrete hashimyei selection anymore
+note = EXACT picks one explicit 0x... revision, while RANK picks the nth dock-compatible family member from the shared family-rank overlay
+note_2 = missing required MOUNT entries for hashimyei-backed slots are rejected during campaign snapshot staging
+
 [FIELD BIND.__VAR]
 key = BIND.__<name>
 scope = BIND
@@ -75,9 +88,9 @@ required = false
 default = none
 range = zero or more bind-local variable assignments
 allowed = variable names starting with double underscore
-nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %` only for the selected WAVE graph; they do not override contract-defined __variables
+nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %` only for the selected WAVE graph; they do not override contract-defined DOCK or ASSEMBLY __variables
 note = use bind __variables for operational wave scope such as sampler choice, workers, symbol, or runtime date range, not for docking-critical compatibility
-note_2 = bind __variables may not reuse names already declared by contract __variables; overlapping names are rejected during campaign snapshot staging
+note_2 = bind __variables may not reuse names already declared by contract DOCK or ASSEMBLY __variables; overlapping names are rejected during campaign snapshot staging
 
 [FIELD RUN]
 key = RUN <bind_id>

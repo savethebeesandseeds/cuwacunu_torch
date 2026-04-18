@@ -508,7 +508,7 @@ inline void render_editor(const iinuji_object_t& obj) {
     }
   }
 
-  if (obj.focused && obj.focusable && body_h > 0 && text_w > 0) {
+  if (body_h > 0 && text_w > 0) {
     const int crow = ed->cursor_line - ed->top_line;
     if (crow >= 0 && crow < body_h) {
       const std::string& line = ed->lines[static_cast<std::size_t>(ed->cursor_line)];
@@ -519,7 +519,21 @@ inline void render_editor(const iinuji_object_t& obj) {
       const int cx = r.x + ln_w + std::clamp(ccol, 0, std::max(0, text_w - 1));
       const int cy = body_y + crow;
       if (cx >= r.x + ln_w && cx < r.x + W) {
-        R->putText(cy, cx, "|", 1, base_pair, true, true);
+        const std::string cursor_bg = "#E8C46A";
+        const std::string cursor_fg = "#101014";
+        const short cursor_pair =
+            static_cast<short>(get_color_pair(cursor_fg, cursor_bg));
+        std::string cursor_text = " ";
+        if (ed->cursor_col < static_cast<int>(line.size())) {
+          const char ch = line[static_cast<std::size_t>(ed->cursor_col)];
+          if (ch == '\t') {
+            cursor_text = ed->show_tabs ? ">" : " ";
+          } else if (static_cast<unsigned char>(ch) >= 32u && ch != 127) {
+            cursor_text.assign(1, ch);
+          }
+        }
+        R->putText(cy, cx, cursor_text, 1,
+                   cursor_pair == 0 ? base_pair : cursor_pair, true, false);
       }
     }
   }

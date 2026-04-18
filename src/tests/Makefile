@@ -34,7 +34,7 @@ EXCHANGE := binance_testnet binance_mech_server binance_mech_data binance_mech_a
 $(foreach t,$(EXCHANGE),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/camahjucunu)))
 
 # ------------------------------- piaabo --------------------------------------
-PIAABO := dconfig dconfig_contract_lock dsecurity dencryption djson_parsing dfiles_binary_to_vector runtime_lls
+PIAABO := dconfig dconfig_contract_lock dsecurity dencryption djson_parsing dfiles_binary_to_vector runtime_lls runtime_process_liveness
 $(foreach t,$(PIAABO),$(eval $(call FORWARD_ONE,$(t),$(HERE_PATH)/bench/piaabo)))
 
 # --------------------------- camahjucunu/data --------------------------------

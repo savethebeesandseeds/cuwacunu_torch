@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <iomanip>
@@ -163,6 +164,57 @@ inline std::string logs_metadata_filter_label(LogsMetadataFilter f) {
   return "ANY";
 }
 
+inline std::string logs_pad_right(std::string value, std::size_t width) {
+  if (value.size() >= width) {
+    return value;
+  }
+  value.append(width - value.size(), ' ');
+  return value;
+}
+
+inline std::string logs_bool_badge(bool enabled) {
+  return enabled ? "[on]" : "[off]";
+}
+
+inline std::string logs_setting_value_badge(const std::string& value) {
+  return "[" + value + "]";
+}
+
+inline std::string logs_selected_setting_hint(std::size_t idx) {
+  switch (idx) {
+    case 0:
+      return "Level sets the minimum severity that remains visible.";
+    case 1:
+      return "Meta filter narrows the stream to entries with matching metadata.";
+    case 2:
+      return "Date toggles the wall-clock prefix for each visible log line.";
+    case 3:
+      return "Thread toggles the worker id column.";
+    case 4:
+      return "Metadata appends fn/file/path/callsite fields when available.";
+    case 5:
+      return "Color keeps severity emphasis in the left log stream.";
+    case 6:
+      return "Follow pins the stream to the newest entry as new logs arrive.";
+    case 7:
+      return "Mouse capture keeps ncurses interaction instead of terminal select/copy.";
+    default:
+      return "Use Up/Down to select a setting and Left/Right to change it.";
+  }
+}
+
+inline std::string logs_setting_line(std::size_t selected_setting,
+                                     std::size_t idx,
+                                     std::string label,
+                                     std::string value) {
+  std::string line = "  " + logs_pad_right(std::move(label), 12) + " " +
+                     std::move(value);
+  if (idx == selected_setting) {
+    return mark_selected_line(std::move(line));
+  }
+  return line;
+}
+
 inline bool logs_entry_has_function(const cuwacunu::piaabo::dlog_entry_t& e) {
 #if DLOGS_ENABLE_METADATA
   return !e.source_function.empty();
@@ -319,7 +371,12 @@ inline std::vector<cuwacunu::iinuji::styled_text_line_t> make_logs_left_styled_l
   push("# newest entries at bottom");
   push("");
   if (shown == 0) {
-    push("(no logs)");
+    if (snap.empty()) {
+      push("(no logs captured yet)");
+    } else {
+      push("(no logs match the current filters)");
+      push("# tip: set level=DEBUG+ and meta_filter=ANY to see everything");
+    }
     return out;
   }
   for (const auto& e : snap) {
@@ -346,46 +403,36 @@ inline std::string make_logs_left(const ShellLogsState& settings,
 
 inline std::string make_logs_right(const ShellLogsState& settings,
                                    const std::vector<cuwacunu::piaabo::dlog_entry_t>& snap) {
-  std::map<std::string, std::size_t> level_counts;
   std::size_t shown = 0;
-  std::size_t metadata_any = 0;
-  std::size_t metadata_fn = 0;
-  std::size_t metadata_path = 0;
-  std::size_t metadata_callsite = 0;
+  std::size_t fatal_count = 0;
+  std::size_t error_count = 0;
+  std::size_t warning_count = 0;
+  std::size_t info_count = 0;
+  std::size_t debug_count = 0;
   for (const auto& e : snap) {
-    ++level_counts[e.level];
-    if (logs_entry_has_any_metadata(e)) ++metadata_any;
-    if (logs_entry_has_function(e)) ++metadata_fn;
-    if (logs_entry_has_path(e)) ++metadata_path;
-    if (logs_entry_has_callsite(e)) ++metadata_callsite;
+    const int rank = logs_level_rank(e.level);
+    if (rank >= 50) {
+      ++fatal_count;
+    } else if (rank >= 40) {
+      ++error_count;
+    } else if (rank >= 30) {
+      ++warning_count;
+    } else if (rank >= 20) {
+      ++info_count;
+    } else {
+      ++debug_count;
+    }
     if (logs_accept_entry(settings, e)) ++shown;
   }
-
-  auto setting_line = [&](std::size_t idx, const std::string& text) {
-    const std::string line = "  " + text;
-    if (idx == settings.selected_setting) return mark_selected_line(line);
-    return line;
-  };
+  const std::size_t hidden = snap.size() >= shown ? (snap.size() - shown) : 0;
 
   std::ostringstream oss;
-  oss << "Shell Logs\n";
-  oss << "  source: iinuji_cmd piaabo/dlogs.h buffer\n";
-  oss << "  entries: " << shown << " shown / " << snap.size() << " total"
-      << " / " << cuwacunu::piaabo::dlog_buffer_capacity() << "\n";
-#if DLOGS_ENABLE_METADATA
-  oss << "  metadata: on\n";
-#else
-  oss << "  metadata: off\n";
-  if (settings.metadata_filter != LogsMetadataFilter::Any ||
-      settings.show_metadata) {
-    oss << "  metadata capture is disabled at build-time (DLOGS_ENABLE_METADATA=0)\n";
-  }
-#endif
-  oss << "  metadata coverage: any=" << metadata_any
-      << " fn=" << metadata_fn
-      << " path=" << metadata_path
-      << " callsite=" << metadata_callsite
-      << "\n";
+  oss << "Shell Logs Control Deck\n";
+  oss << "  tuned for live operator triage\n";
+  oss << "\nCapture\n";
+  oss << "  visible     " << shown << " / " << snap.size() << "\n";
+  oss << "  hidden      " << hidden << "\n";
+  oss << "  capacity    " << cuwacunu::piaabo::dlog_buffer_capacity() << "\n";
   if (shown > 0) {
     std::uint64_t first_seq = 0;
     std::uint64_t last_seq = 0;
@@ -403,94 +450,70 @@ inline std::string make_logs_right(const ShellLogsState& settings,
       last_ts = e.timestamp;
     }
     if (have) {
-      oss << "  seq: " << first_seq << " .. " << last_seq << "\n";
-      oss << "  first: " << first_ts << "\n";
-      oss << "  last : " << last_ts << "\n";
-#if DLOGS_ENABLE_METADATA
-      for (auto it = snap.rbegin(); it != snap.rend(); ++it) {
-        if (!logs_accept_entry(settings, *it)) continue;
-        if (!logs_entry_has_any_metadata(*it)) continue;
-        if (!it->source_function.empty()) {
-          oss << "  last function: " << it->source_function << "\n";
-        }
-        if (!it->source_file.empty()) {
-          oss << "  last file: " << it->source_file;
-          if (it->line > 0) oss << ":" << it->line;
-          oss << "\n";
-        }
-        if (!it->source_path.empty()) {
-          oss << "  last path: " << it->source_path << "\n";
-        }
-        if (it->callsite_id != 0) {
-          oss << "  last callsite_id: 0x"
-              << std::hex << it->callsite_id << std::dec << "\n";
-        }
-        if (it->pid != 0) {
-          oss << "  last pid: " << it->pid << "\n";
-        }
-        if (it->monotonic_ns != 0) {
-          oss << "  last mono_ns: " << it->monotonic_ns << "\n";
-        }
-        if (it->source_function.empty() &&
-            it->source_file.empty() &&
-            it->source_path.empty() &&
-            it->callsite_id == 0 &&
-            it->pid == 0 &&
-            it->monotonic_ns == 0) {
-          oss << "  last metadata: none\n";
-        }
-        break;
-      }
-#else
-      if (settings.metadata_filter != LogsMetadataFilter::Any ||
-          settings.show_metadata) {
-        oss << "  metadata detail unavailable (build with DLOGS_ENABLE_METADATA=1)\n";
-      }
-#endif
+      oss << "  seq         " << first_seq << " .. " << last_seq << "\n";
+      oss << "  first seen  " << first_ts << "\n";
+      oss << "  latest      " << last_ts << "\n";
     }
   }
-  oss << "\nSettings (Up/Down select, Left/Right change)\n";
-  oss << setting_line(0, "log level : " + logs_filter_label(settings.level_filter)) << "\n";
-  oss << setting_line(1, "metadata filter : " + logs_metadata_filter_label(settings.metadata_filter))
+  oss << "\nLens\n";
+  oss << "  level       " << logs_filter_label(settings.level_filter) << "\n";
+  oss << "  meta        " << logs_metadata_filter_label(settings.metadata_filter)
       << "\n";
-  oss << setting_line(2, std::string("show date : ") + (settings.show_date ? "on" : "off")) << "\n";
-  oss << setting_line(3, std::string("show thread id : ") + (settings.show_thread ? "on" : "off"))
+  oss << "  fields      date " << (settings.show_date ? "on" : "off")
+      << " | thread " << (settings.show_thread ? "on" : "off") << "\n";
+  oss << "              meta " << (settings.show_metadata ? "on" : "off")
+      << " | color " << (settings.show_color ? "on" : "off") << "\n";
+  oss << "  behavior    follow " << (settings.auto_follow ? "on" : "off")
+      << " | mouse "
+      << (settings.mouse_capture ? "capture" : "select/copy") << "\n";
+
+  oss << "\nSettings\n";
+  oss << "  Up/Down select | Left/Right change\n";
+  oss << logs_setting_line(settings.selected_setting, 0, "level",
+                           logs_setting_value_badge(
+                               logs_filter_label(settings.level_filter)))
       << "\n";
-  oss << setting_line(4, std::string("show metadata : ") + (settings.show_metadata ? "on" : "off"))
+  oss << logs_setting_line(
+             settings.selected_setting, 1, "meta filter",
+             logs_setting_value_badge(
+                 logs_metadata_filter_label(settings.metadata_filter)))
       << "\n";
-  oss << setting_line(5, std::string("show color : ") + (settings.show_color ? "on" : "off")) << "\n";
-  oss << setting_line(6, std::string("auto follow : ") + (settings.auto_follow ? "on" : "off"))
+  oss << logs_setting_line(settings.selected_setting, 2, "date",
+                           logs_bool_badge(settings.show_date))
       << "\n";
-  oss << setting_line(7, std::string("mouse capture : ") + (settings.mouse_capture ? "on" : "off (select/copy)"))
+  oss << logs_setting_line(settings.selected_setting, 3, "thread",
+                           logs_bool_badge(settings.show_thread))
       << "\n";
-  oss << "\nLevels\n";
-  if (level_counts.empty()) {
-    oss << "  (none)\n";
-  } else {
-    for (const auto& kv : level_counts) {
-      oss << "  " << kv.first << " : " << kv.second << "\n";
-    }
-  }
-  oss << "\nCommands\n";
-  static const auto kLogsCallCommands = [] {
-    auto out = canonical_paths::call_texts_by_prefix({"iinuji.logs."});
-    const auto screen = canonical_paths::call_texts_by_prefix({"iinuji.screen.logs("});
-    const auto show = canonical_paths::call_texts_by_prefix({"iinuji.show.logs("});
-    out.insert(out.end(), screen.begin(), screen.end());
-    out.insert(out.end(), show.begin(), show.end());
-    return out;
-  }();
-  for (const auto cmd : kLogsCallCommands) oss << "  " << cmd << "\n";
-  oss << "  aliases: logs, f8, logs clear\n";
-  oss << "  primitive translation: disabled\n";
-  oss << "\nKeys\n";
-  oss << "  F8 : open shell logs screen\n";
-  oss << "  f : toggle full/split log stream\n";
-  oss << "  Esc : restore split after going full\n";
-  oss << "  [^] top-right click or Home : jump to oldest\n";
-  oss << "  [v] bottom-right click or End : jump to newest\n";
-  oss << "  wheel : vertical scroll both panels\n";
-  oss << "  Shift/Ctrl/Alt+wheel : horizontal scroll both panels\n";
+  oss << logs_setting_line(settings.selected_setting, 4, "metadata",
+                           logs_bool_badge(settings.show_metadata))
+      << "\n";
+  oss << logs_setting_line(settings.selected_setting, 5, "color",
+                           logs_bool_badge(settings.show_color))
+      << "\n";
+  oss << logs_setting_line(settings.selected_setting, 6, "follow",
+                           logs_bool_badge(settings.auto_follow))
+      << "\n";
+  oss << logs_setting_line(
+             settings.selected_setting, 7, "mouse",
+             logs_setting_value_badge(settings.mouse_capture ? "capture"
+                                                             : "select/copy"))
+      << "\n";
+
+  oss << "\nSelected\n";
+  oss << "  " << logs_selected_setting_hint(settings.selected_setting) << "\n";
+
+  oss << "\nSignal Mix\n";
+  oss << "  fatal       " << fatal_count << "\n";
+  oss << "  error       " << error_count << "\n";
+  oss << "  warning     " << warning_count << "\n";
+  oss << "  info        " << info_count << "\n";
+  oss << "  debug       " << debug_count << "\n";
+
+  oss << "\nQuick Keys\n";
+  oss << "  Home/End    jump oldest/newest\n";
+  oss << "  f / Esc     full screen / split\n";
+  oss << "  wheel       scroll panels\n";
+  oss << "  help        command guide\n";
   return oss.str();
 }
 

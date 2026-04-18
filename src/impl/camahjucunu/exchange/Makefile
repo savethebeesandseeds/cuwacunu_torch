@@ -8,9 +8,12 @@ REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))
 MODULE_NAME := $(notdir $(HERE_PATH))
 
 # -----------------------------------------------------------------
-# All
+# Aggregate Targets
 # -----------------------------------------------------------------
-.PHONY: all
-all: 
+.PHONY: binance
+binance:
 	$(MAKE) -C $(HERE_PATH)/binance all
+
+.PHONY: all
+all: binance
 	@$(LOG_SUCCESS)

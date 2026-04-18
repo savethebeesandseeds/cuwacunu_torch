@@ -13,13 +13,13 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 $(eval $(call BUILD_OBJ_INC, common, human_attestation, human_attestation, $(SSL_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, common, hero_human_tools, hero_human_tools, $(NCURSES_INCLUDE_PATHS)))
 
-HUMAN_HERO_OBJS := \
-  $(OUTPUT_PATH)/common/human_attestation.o \
-  $(OUTPUT_PATH)/common/hero_human_tools.o
+HUMAN_HERO_TARGETS := \
+  human_attestation \
+  hero_human_tools
 
 # -----------------------------------------------------------------
 # Aggregate Target
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(HUMAN_HERO_OBJS)
+all: $(HUMAN_HERO_TARGETS)
 	@$(LOG_SUCCESS)

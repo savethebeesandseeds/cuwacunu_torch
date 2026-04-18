@@ -29,6 +29,11 @@ int main() {
     assert(decoded.binds[0].id == "bind_train_vicreg_primary");
     assert(decoded.binds[0].contract_ref == "contract_default_iitepi");
     assert(decoded.binds[0].wave_ref == "train_vicreg_primary");
+    assert(decoded.binds[0].mounts.size() == 1);
+    assert(decoded.binds[0].mounts[0].wave_binding_id == "w_rep");
+    assert(decoded.binds[0].mounts[0].selector_kind ==
+           cuwacunu::camahjucunu::iitepi_campaign_mount_selector_kind_e::Exact);
+    assert(decoded.binds[0].mounts[0].exact_hashimyei == "0x0000");
     assert(decoded.binds[0].variables.size() == 3);
     assert(decoded.binds[0].variables[0].name == "__sampler");
     assert(decoded.binds[0].variables[0].value == "sequential");

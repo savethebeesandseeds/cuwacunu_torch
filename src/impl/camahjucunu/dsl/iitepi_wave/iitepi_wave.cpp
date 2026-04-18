@@ -365,7 +365,11 @@ class parser_t {
       return false;
     }
     if (out_family && out_family->empty()) {
-      *out_family = parsed.canonical_identity;
+      const auto type_id =
+          tsiemene::parse_tsi_type_id(parsed.canonical_identity);
+      *out_family = type_id.has_value()
+                        ? std::string(tsiemene::tsi_type_token(*type_id))
+                        : parsed.canonical_identity;
     }
     if (out_hash && out_hash->empty()) {
       *out_hash = parsed.hashimyei;
@@ -402,16 +406,21 @@ class parser_t {
 
   static bool finalize_component_identity(const char* component_kind,
                                           std::string* family,
-                                          std::string* hashimyei,
                                           std::string* runtime_path) {
-    if (!family || !hashimyei || !runtime_path) return false;
+    if (!family || !runtime_path) return false;
 
     *family = trim_ascii_copy(*family);
-    *hashimyei = trim_ascii_copy(*hashimyei);
     *runtime_path = trim_ascii_copy(*runtime_path);
 
+    std::string path_family{};
+    std::string path_hash{};
     if (!runtime_path->empty()) {
-      (void)derive_family_and_hash_from_path(*runtime_path, family, hashimyei);
+      if (!derive_family_and_hash_from_path(*runtime_path, &path_family,
+                                            &path_hash)) {
+        throw std::runtime_error(
+            std::string(component_kind) + " invalid PATH/FAMILY payload: " +
+            *runtime_path);
+      }
     }
 
     if (!family->empty()) {
@@ -422,6 +431,10 @@ class parser_t {
             std::string(component_kind) + " invalid FAMILY: " + family_error);
       }
       *family = canonical_family;
+    }
+
+    if (family->empty() && !path_family.empty()) {
+      *family = path_family;
     }
 
     if (family->empty() && runtime_path->empty()) {
@@ -436,57 +449,21 @@ class parser_t {
             std::string(component_kind) + " has unsupported FAMILY: " + *family);
       }
 
+      if (!path_family.empty() && path_family != *family) {
+        throw std::runtime_error(std::string(component_kind) +
+                                 " PATH/FAMILY mismatch: FAMILY=" + *family +
+                                 " PATH=" + *runtime_path);
+      }
+
       const auto policy = tsiemene::tsi_type_instance_policy(*type_id);
       if (policy == tsiemene::TsiInstancePolicy::HashimyeiInstances) {
-        if (hashimyei->empty()) {
-          throw std::runtime_error(
-              std::string(component_kind) + " FAMILY '" + *family +
-              "' requires HASHIMYEI");
-        }
-      } else if (!hashimyei->empty()) {
-        throw std::runtime_error(
-            std::string(component_kind) + " FAMILY '" + *family +
-            "' does not accept HASHIMYEI");
+        *runtime_path = compose_node_path(*family, path_hash);
+        return true;
       }
-
-      if (!hashimyei->empty() &&
-          !cuwacunu::hashimyei::is_hex_hash_name(*hashimyei)) {
-        throw std::runtime_error(
-            std::string(component_kind) + " invalid HASHIMYEI value: " +
-            *hashimyei + " (expected 0x<hex>)");
-      }
-
-      *runtime_path = compose_node_path(*family, *hashimyei);
+      *runtime_path = compose_node_path(*family, {});
       return true;
     }
-
-    std::string parsed_family;
-    std::string parsed_hash;
-    if (!derive_family_and_hash_from_path(*runtime_path, &parsed_family, &parsed_hash)) {
-      throw std::runtime_error(
-          std::string(component_kind) + " invalid PATH/FAMILY payload: " +
-          *runtime_path);
-    }
-
-    std::string canonical_family;
-    std::string family_error;
-    if (!canonicalize_family_token(parsed_family, &canonical_family, &family_error)) {
-      throw std::runtime_error(
-          std::string(component_kind) + " invalid PATH/FAMILY payload: " +
-          family_error);
-    }
-
-    *family = canonical_family;
-    *hashimyei = parsed_hash;
-    if (!hashimyei->empty() &&
-        !cuwacunu::hashimyei::is_hex_hash_name(*hashimyei)) {
-      throw std::runtime_error(
-          std::string(component_kind) + " invalid HASHIMYEI value: " +
-          *hashimyei + " (expected 0x<hex>)");
-    }
-
-    *runtime_path = compose_node_path(*family, *hashimyei);
-    return true;
+    return false;
   }
 
   token_t peek() { return lex_.peek(); }
@@ -842,7 +819,10 @@ class parser_t {
       if (key.text == "FAMILY") {
         out.family = parse_assignment_value("FAMILY");
       } else if (key.text == "HASHIMYEI") {
-        out.hashimyei = parse_assignment_value("HASHIMYEI");
+        throw std::runtime_error(
+            "WIKIMYEI '" +
+            (has_non_ws_ascii(out.binding_id) ? out.binding_id : out.wikimyei_path) +
+            "' uses legacy HASHIMYEI; select concrete hashimyeis from CAMPAIGN.BIND.MOUNT");
       } else if (key.text == "PATH") {
         out.wikimyei_path = parse_assignment_value("PATH");
       } else if (key.text == "JKIMYEI") {
@@ -858,7 +838,7 @@ class parser_t {
     expect_symbol('}');
     expect_symbol(';');
 
-    (void)finalize_component_identity("WIKIMYEI", &out.family, &out.hashimyei,
+    (void)finalize_component_identity("WIKIMYEI", &out.family,
                                       &out.wikimyei_path);
 
     if (!has_non_ws_ascii(out.binding_id)) {
@@ -910,9 +890,7 @@ class parser_t {
     expect_symbol('}');
     expect_symbol(';');
 
-    std::string empty_hash{};
-    (void)finalize_component_identity("SOURCE", &out.family, &empty_hash,
-                                      &out.source_path);
+    (void)finalize_component_identity("SOURCE", &out.family, &out.source_path);
 
     if (!has_non_ws_ascii(out.binding_id)) {
       throw std::runtime_error("SOURCE '" + out.source_path +
@@ -958,7 +936,10 @@ class parser_t {
       if (key.text == "FAMILY") {
         out.family = parse_assignment_value("FAMILY");
       } else if (key.text == "HASHIMYEI") {
-        out.hashimyei = parse_assignment_value("HASHIMYEI");
+        throw std::runtime_error(
+            "PROBE '" +
+            (has_non_ws_ascii(out.binding_id) ? out.binding_id : out.probe_path) +
+            "' uses legacy HASHIMYEI; select concrete hashimyeis from CAMPAIGN.BIND.MOUNT");
       } else if (key.text == "PATH") {
         out.probe_path = parse_assignment_value("PATH");
       } else if (key.text == "RUNTIME") {
@@ -978,8 +959,7 @@ class parser_t {
     expect_symbol('}');
     expect_symbol(';');
 
-    (void)finalize_component_identity("PROBE", &out.family, &out.hashimyei,
-                                      &out.probe_path);
+    (void)finalize_component_identity("PROBE", &out.family, &out.probe_path);
 
     if (!has_non_ws_ascii(out.binding_id)) {
       throw std::runtime_error("PROBE '" + out.probe_path +
@@ -1016,9 +996,7 @@ class parser_t {
     expect_symbol('}');
     expect_symbol(';');
 
-    std::string empty_hash{};
-    (void)finalize_component_identity("SINK", &out.family, &empty_hash,
-                                      &out.sink_path);
+    (void)finalize_component_identity("SINK", &out.family, &out.sink_path);
 
     if (!has_non_ws_ascii(out.binding_id)) {
       throw std::runtime_error("SINK '" + out.sink_path +
@@ -1301,7 +1279,6 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
       "PROBE",
       "SINK",
       "FAMILY",
-      "HASHIMYEI",
       "RUNTIME",
       "SETTINGS",
       "JKIMYEI",

@@ -85,4 +85,4 @@ required = false
 default = none
 range = zero or more bind-local variable assignments
 allowed = variable names starting with double underscore
-nuance = values are raw DSL fragments consumed by the placeholder resolver `% __name ? default %` only for the selected WAVE graph; they do not override contract-defined __variables
+nuance = values are raw DSL fragments consumed by the placeholder resolver `% __name ? default %` only for the selected WAVE graph; they do not override contract-defined DOCK or ASSEMBLY __variables

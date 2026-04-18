@@ -17,9 +17,9 @@ $(eval $(call BUILD_OBJ_INC, libtorch, beta,        beta,        $(TORCH_INCLUDE
 $(eval $(call BUILD_OBJ_INC, libtorch, categorical, categorical, $(TORCH_INCLUDE_PATHS)))
 
 DISTRIBUTIONS := \
-  $(OUTPUT_PATH)/libtorch/gamma.o \
-  $(OUTPUT_PATH)/libtorch/beta.o \
-  $(OUTPUT_PATH)/libtorch/categorical.o
+  gamma \
+  beta \
+  categorical
 
 # -----------------------------------------------------------------
 # Aggregate Target

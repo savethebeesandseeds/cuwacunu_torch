@@ -30,10 +30,6 @@ jkimyei:
 wikimyei:
 	$(MAKE) -C $(IMPL_PATH)/wikimyei all
 
-.PHONY: iinuji
-iinuji:
-	$(MAKE) -C $(IMPL_PATH)/iinuji all
-
 .PHONY: hero_impl
 hero_impl:
 	$(MAKE) -C $(IMPL_PATH) hero
@@ -56,7 +52,11 @@ install:
 .PHONY: modules
 modules: iitepi piaabo camahjucunu jkimyei wikimyei hero_impl
 
-# Ensure packing runs *after* modules
+# Ensure each bundle pack step runs *after* modules completes, while still
+# allowing the bundle pack steps to run in parallel with each other.
+lib-bundle-common lib-bundle-curl lib-bundle-ssl lib-bundle-torch: | modules
+
+# Ensure packing runs after modules.
 lib-bundles: modules
 
 .PHONY: lib
@@ -73,7 +73,7 @@ help:
 	@echo "related:"
 	@echo "  tests modules lib-bundles clean"
 	@echo "module subtrees:"
-	@echo "  piaabo iitepi camahjucunu jkimyei wikimyei iinuji hero_impl"
+	@echo "  piaabo iitepi camahjucunu jkimyei wikimyei hero_impl"
 	@echo "selective cleans:"
 	@echo "  clean_common clean_dsl clean_data clean_wikimyei"
 	@echo "advanced/internal:"
@@ -81,7 +81,7 @@ help:
 
 .PHONY: targets
 targets:
-	@printf "%s\n" lib link install modules lib-bundles tests piaabo iitepi camahjucunu jkimyei wikimyei iinuji hero_impl clean clean_common clean_dsl clean_data clean_wikimyei help targets
+	@printf "%s\n" lib link install modules lib-bundles tests piaabo iitepi camahjucunu jkimyei wikimyei hero_impl clean clean_common clean_dsl clean_data clean_wikimyei help targets
 
 # -----------------------------------------------------------------
 # Tests

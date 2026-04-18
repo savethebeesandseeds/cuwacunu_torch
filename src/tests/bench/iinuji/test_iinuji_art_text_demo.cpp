@@ -24,7 +24,11 @@ void draw_status_line(int y, int width, const std::string &text) {
 } // namespace
 
 int main(int argc, char **argv) {
-  const std::string text = (argc > 1) ? std::string(argv[1]) : "Cuwacunu";
+  const std::string all_chars =
+      std::string("ABCDEFGHIJKLMNOPQRSTUVWXYZ\n") +
+      std::string("abcdefghijklmnopqrstuvwxyz\n") +
+      std::string("0123456789");
+  const std::string text = (argc > 1) ? std::string(argv[1]) : all_chars;
 
   setlocale(LC_ALL, "");
   initscr();
@@ -48,16 +52,19 @@ int main(int argc, char **argv) {
   text_opts.padding = 1;
   text_opts.color_start = "#ffaa00";
   text_opts.color_end = "#00aaaa";
+  text_opts.preserve_sparse_lowercase = true;
 
   image_grayscale_options_t braille_opts{};
   braille_opts.mode = image_grayscale_mode_t::Braille;
   braille_opts.background_color = "#101014";
   braille_opts.color_levels = 4;
+  braille_opts.sample_nearest = true;
 
   image_grayscale_options_t half_block_opts{};
   half_block_opts.mode = image_grayscale_mode_t::HalfBlocks;
   half_block_opts.background_color = "#101014";
   half_block_opts.color_levels = 4;
+  half_block_opts.sample_nearest = true;
 
   bool running = true;
   bool color_enabled = true;

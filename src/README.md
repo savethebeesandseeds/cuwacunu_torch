@@ -28,7 +28,8 @@ At a high level, it combines:
 - `camahjucunu`: data/exchange connectivity and typed trading/domain models.
 - `jkimyei`: training setup/orchestration (optimizers, schedulers, losses, schema).
 - `wikimyei`: model inference and representation-learning components (e.g. VICReg/MDN).
-- `iinuji`: terminal/UI rendering and command views for interactive inspection.
+- `hero_impl`: HERO runtime/config/catalog implementation used by the MCP/runtime binaries.
+- `iinuji`: terminal/UI rendering and command views for interactive inspection; this surface lives primarily under `include/` and `main/`, not as a standalone `src/impl` root module target.
 - `tsiemene`: DSL and runtime directive infrastructure used across campaign/contract flows.
 
 ## Build and Test (from `src/`)
@@ -50,6 +51,14 @@ Advanced/internal:
 
 ```bash
 make tests     # run test dispatcher
-make modules   # build core modules only
+make modules   # build canonical impl module subtrees only
 make -C main all   # build main binaries and finalize installable hero/tool/interface outputs
 ```
+
+Current root module build surface behind `make modules`:
+- `iitepi`
+- `piaabo`
+- `camahjucunu`
+- `jkimyei`
+- `wikimyei`
+- `hero_impl`

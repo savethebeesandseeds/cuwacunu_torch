@@ -11,10 +11,11 @@ Primary include: `#include "iitepi/iitepi.h"`
 The public dispatcher is now campaign-oriented:
 
 1. Contract
-- static machine topology and acknowledgements
+- authored compatibility plus realization package
+- contains `DOCK` and `ASSEMBLY`
 
 2. Wave
-- runtime execution/training policy
+- logical runtime policy plus required component slots
 
 3. Campaign
 - imports named contract ids and named wave ids from files
@@ -23,7 +24,39 @@ The public dispatcher is now campaign-oriented:
 
 4. Binding
 - one selected `contract + wave + bind-local variables`
+- owns the `MOUNT` selectors used for this run
 - this is the execution unit launched by Runtime Hero
+
+## Vocabulary
+
+Human-facing docs use these terms deliberately:
+
+1. Component revision
+- one stored loadable family member
+- this is the normal human-facing term for what gets reused or compared
+
+2. Hashimyei
+- the exact revision token and the name of the identity/catalog subsystem
+- examples: `0x0000`, `0x00FF`
+- use this word when you mean the stored token or the subsystem itself, not as
+  a catch-all for contracts, waves, and selection policy
+
+3. DOCK
+- the public compatibility interface declared by a contract
+- compatible component revisions share the same dock
+
+4. ASSEMBLY
+- the concrete realization owned by the contract
+- includes path-bearing DSL ownership and private realization knobs
+
+5. WAVE
+- the logical run shape and policy
+- declares which component slots are needed, but not which exact revision token
+  should fill them
+
+6. MOUNT
+- the run-local selector inside a campaign bind
+- chooses one concrete component revision for each mountable wave slot
 
 ## Core Spaces
 
@@ -50,8 +83,8 @@ The public dispatcher is now campaign-oriented:
 
 1. `default.iitepi.contract.dsl`
 - static contract wrapper
-- `CIRCUIT_FILE: ...;`
-- `AKNOWLEDGE: <alias> = <tsi family>;`
+- `DOCK { ... }`
+- `ASSEMBLY { CIRCUIT_FILE: ...; AKNOWLEDGE: <alias> = <tsi family>; ... }`
 
 2. `default.iitepi.circuit.dsl`
 - TSI instances and hops
@@ -65,12 +98,13 @@ The public dispatcher is now campaign-oriented:
 - wave-local `JKIMYEI { HALT_TRAIN, PROFILE_ID }`
   where `PROFILE_ID` is only needed when the contract exposes multiple
   compatible profiles
+- authored wave files do not select concrete component revisions
 
 4. `default.iitepi.campaign.dsl`
 - `CAMPAIGN { ... }`
 - `IMPORT_CONTRACT "<contract_file>" AS <contract_alias>;`
 - `FROM "<wave_file>" IMPORT_WAVE <wave_id>;`
-- `BIND <id> { __var = value; CONTRACT = ...; WAVE = ...; }`
+- `BIND <id> { __var = value; MOUNT { <wave_binding_id> = EXACT 0x...; | <wave_binding_id> = RANK <n>; } CONTRACT = ...; WAVE = ...; }`
 - ordered `RUN <bind_id>;`
 
 ## Runtime Flow
@@ -87,27 +121,36 @@ The public dispatcher is now campaign-oriented:
 3. Internal worker bridge
 - the selected campaign bind is materialized into the private internal
   runtime-binding snapshot consumed by existing builder/runtime code
-- contract-local `__variables` are resolved into the staged contract DSL graph
-  while bind-local `__variables` remain wave-scoped operational overrides
+- bind-local `MOUNT` selectors resolve concrete dock-compatible component
+  revisions for the selected wave before the internal runtime-binding snapshot
+  is materialized
+- the staged per-job `campaign.dsl` preserves that bind-local `MOUNT` block,
+  while the staged `binding.wave.dsl` records the resolved exact component
+  revision paths selected for the run
+- contract DOCK/ASSEMBLY `__variables` are resolved into the staged contract
+  DSL graph while bind-local `__variables` remain wave-scoped operational
+  overrides
 - bind-local `__variables` may not shadow names already declared by the
   contract; overlapping names are rejected during campaign snapshot staging
-- observation/channel DSL selection is contract-owned through contract
-  `__variables`, while source symbol and date range remain wave-local runtime
+- observation/channel DSL selection is assembly-owned through contract
+  `ASSEMBLY` variables, while source symbol and date range remain wave-local runtime
   scope
-- the checked-in defaults keep public docking widths contract-owned
+- the checked-in defaults keep public docking widths in `DOCK`
   (`__obs_channels`, `__obs_seq_length`, `__obs_feature_dim`,
-  `__embedding_dims`) and may also expose selected private `__vicreg_*`
-  architecture knobs when the bundle wants explicit contract-level defaults
-- contract snapshots also derive an explicit docking signature from the
-  compatible circuit set, contract `__variables`, and docking-bearing contract
-  DSL surfaces; the public docking digest includes the circuit, VICReg
-  module/network-design, and contract-owned observation-channel DSL, while the
-  observation source registry still affects exact contract identity but is
-  intentionally excluded from the docking digest so unrelated source-row
-  additions do not invalidate compatible component weights
-- runtime reuse/load of an existing component hashimyei validates the selected
+  `__embedding_dims`, `__future_target_dims`) and keep selected private
+  `__vicreg_*` realization knobs in `ASSEMBLY`
+- contract snapshots derive an explicit docking signature from the compatible
+  circuit set, all `DOCK` assignments, and dock-bearing assembly surfaces; the
+  public docking digest includes the circuit and contract-owned
+  observation-channel DSL, while the observation source registry still affects
+  exact contract identity but is intentionally excluded from the docking
+  digest so unrelated source-row additions do not invalidate compatible
+  component weights
+- runtime reuse/load of an existing component revision validates the selected
   component manifest against the current public docking signature; founding
   contract hash remains provenance, but it is no longer the hard runtime gate
+- the same dock-only acceptance rule is available to operators through
+  `hero.hashimyei.evaluate_contract_compatibility`
 - component manifests describe revision lifecycle through `lineage_state`,
   rather than the older generic `status`
 
@@ -136,9 +179,17 @@ The public dispatcher is now campaign-oriented:
 
 3. Runtime dispatch
 - `hero.runtime.start_campaign`
+- `hero.runtime.explain_binding_selection`
 - `hero.runtime.get_campaign`
 - `hero.runtime.list_campaigns`
 - `hero.runtime.stop_campaign`
+
+`hero.runtime.explain_binding_selection` is the read-only inspection surface for
+campaign-local `MOUNT` resolution. It uses the same dock-based selector path as
+launch-time snapshot staging and reports the exact component revision selected
+for each mount, including its exact hashimyei token, plus the `contract_hash`
+and `dock_hash` that governed compatibility. Use it first when a launch fails
+before meaningful train/eval work starts.
 
 4. Dev-loop reset
 - `cuwacunu_campaign --reset-runtime-state`

@@ -18,23 +18,36 @@ $(eval $(call BUILD_OBJ,      common,  latent_lineage_state/runtime_lls,    runt
 $(eval $(call BUILD_OBJ_INC,  openssl, dencryption,    dencryption, $(SSL_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC,  openssl, dsecurity,      dsecurity,   $(SSL_INCLUDE_PATHS)))
 
-PIAABO := \
-  $(OUTPUT_PATH)/common/dutils.o \
-  $(OUTPUT_PATH)/common/djson_parsing.o \
-  $(OUTPUT_PATH)/common/dfiles.o \
-  $(OUTPUT_PATH)/common/latent_lineage_state/runtime_lls.o \
-  $(OUTPUT_PATH)/openssl/dencryption.o \
-  $(OUTPUT_PATH)/openssl/dsecurity.o
+PIAABO_CORE := \
+  dutils \
+  djson_parsing \
+  dfiles \
+  runtime_lls \
+  dencryption \
+  dsecurity
 
 # -----------------------------------------------------------------
 # Aggregate Target
-#   - Build local piaabo objects
-#   - Then recurse into https_compat, bnf_compat, math_compat and torch_compat
+#   - Build local piaabo leaf producers.
+#   - Fan out into https_compat, bnf_compat, math_compat and torch_compat so
+#     GNU make can schedule them in parallel.
 # -----------------------------------------------------------------
-.PHONY: all
-all: $(PIAABO)
+.PHONY: https_compat
+https_compat:
 	$(MAKE) -C $(HERE_PATH)/https_compat all
+
+.PHONY: bnf_compat
+bnf_compat:
 	$(MAKE) -C $(HERE_PATH)/bnf_compat all
+
+.PHONY: math_compat
+math_compat:
 	$(MAKE) -C $(HERE_PATH)/math_compat all
+
+.PHONY: torch_compat
+torch_compat:
 	$(MAKE) -C $(HERE_PATH)/torch_compat all
+
+.PHONY: all
+all: $(PIAABO_CORE) https_compat bnf_compat math_compat torch_compat
 	@$(LOG_SUCCESS)

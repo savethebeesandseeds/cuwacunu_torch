@@ -22,7 +22,7 @@ inline void run_command(CmdState& st,
   if (cmd.empty()) return;
 
   append_log(log_box, "$ " + cmd, "cmd", "#9ecfff");
-  log_info("[iinuji_cmd.cmd] %s\n", cmd.c_str());
+  log_dbg("[iinuji_cmd.cmd] %s\n", cmd.c_str());
 
   std::istringstream iss(cmd);
   std::string a0;
@@ -31,7 +31,7 @@ inline void run_command(CmdState& st,
 
   auto push_info = [&](const std::string& m) {
     append_log(log_box, m, "info", "#b8d8b8");
-    log_info("[iinuji_cmd] %s\n", m.c_str());
+    log_dbg("[iinuji_cmd] %s\n", m.c_str());
   };
   auto push_warn = [&](const std::string& m) {
     append_log(log_box, m, "warn", "#ffd27f");
@@ -44,7 +44,8 @@ inline void run_command(CmdState& st,
   auto append = [&](const std::string& text, const std::string& label, const std::string& color) {
     (void)color;
     append_log(log_box, text, label, color);
-    log_info("[iinuji_cmd.%s] %s\n", label.empty() ? "log" : label.c_str(), text.c_str());
+    log_dbg("[iinuji_cmd.%s] %s\n", label.empty() ? "log" : label.c_str(),
+            text.c_str());
   };
   IinujiPathHandlers path_handlers{st};
 

@@ -15,7 +15,7 @@ required = true
 default = none
 range = exact token
 allowed = literal marker
-nuance = parser requires this marker before any declarations
+nuance = parser requires this marker before any contract sections
 
 [FIELD CONTRACT_END]
 key = -----END IITEPI CONTRACT-----
@@ -25,54 +25,91 @@ required = true
 default = none
 range = exact token
 allowed = literal marker
-nuance = parser requires this marker after declarations
+nuance = parser requires this marker after the DOCK and ASSEMBLY sections
 
-[FIELD CONTRACT.CIRCUIT_FILE]
-key = CIRCUIT_FILE
+[FIELD CONTRACT.DOCK]
+key = DOCK
 scope = CONTRACT
+type = section
+required = true
+default = none
+range = exactly one section
+allowed = DOCK { ... }
+nuance = declares the public semantic compatibility surface for component reuse and docking_signature hashing
+
+[FIELD CONTRACT.ASSEMBLY]
+key = ASSEMBLY
+scope = CONTRACT
+type = section
+required = true
+default = none
+range = exactly one section
+allowed = ASSEMBLY { ... }
+nuance = declares the concrete realization, owned DSL files, and circuit bindings that must satisfy the dock
+
+[FIELD DOCK.__VAR]
+key = __<name>
+scope = DOCK
+type = scalar
+required = false
+default = none
+range = zero or more dock assignments
+allowed = variable names starting with double underscore
+nuance = DOCK variables are the public compatibility surface resolved through the contract-local DSL graph
+note = current VICReg contracts keep public boundary values such as __obs_channels, __obs_seq_length, __obs_feature_dim, __embedding_dims, and __future_target_dims in DOCK
+validation = DOCK values participate directly in docking_signature_sha256_hex; moving them changes compatibility lineage
+note_2 = runtime component reuse keys on the resolved docking signature, so revisions stay compatible when DOCK stays the same even if ASSEMBLY provenance changes
+
+[FIELD ASSEMBLY.__VAR]
+key = __<name>
+scope = ASSEMBLY
+type = scalar
+required = false
+default = none
+range = zero or more assembly assignments
+allowed = variable names starting with double underscore
+nuance = ASSEMBLY variables are contract-owned realization inputs resolved through the local DSL graph
+note = use ASSEMBLY for path-bearing module ownership such as __vicreg_config_dsl_file, observation selector files, __future_target_weights, and private __vicreg_* realization knobs
+validation = path-bearing assembly variables are resolved relative to the contract file and validated as existing readable files when required
+note_2 = ASSEMBLY may differ across compatible component revisions as long as the resolved public DOCK surface remains unchanged
+
+[FIELD ASSEMBLY.CIRCUIT_FILE]
+key = CIRCUIT_FILE
+scope = ASSEMBLY
 type = path
 required = true
 default = none
 range = existing readable file
 allowed = quoted_path_or_identifier_path
-nuance = points to static circuit topology DSL payload
+nuance = points to the static circuit topology DSL payload owned by this assembly
 
-[FIELD CONTRACT.__VAR]
-key = __<name>
-scope = CONTRACT
-type = scalar
-required = false
-default = none
-range = zero or more contract-local variable assignments
-allowed = variable names starting with double underscore
-nuance = values are raw DSL fragments consumed by the pre-decode placeholder resolver `% __name ? default %` for the contract DSL graph; these variables are contract-scoped and cannot be overridden by campaign BIND __variables
-note = use contract __variables for hard-static docking compatibility such as input tensor shape, embedding dimensions, projector layout, and contract-owned observation/channel DSL paths; changing these values should reset hashimyei lineage
-note_5 = module DSL dependencies are contract-owned explicitly through path-bearing __variables such as __vicreg_config_dsl_file, __expected_value_config_dsl_file, __embedding_sequence_analytics_config_dsl_file, and __transfer_matrix_evaluation_config_dsl_file; runtime no longer invents those edges from colocated defaults
-note_2 = runtime derives an explicit docking signature from the compatible circuit set, contract __variables, and docking-bearing contract DSL surfaces; in the current VICReg model that public docking digest includes the circuit, VICReg module/network-design, and contract-owned observation-channel DSL, but not the observation source registry
-note_3 = contract-owned observation source registries still affect exact contract identity and dependency manifests; they are excluded from the public docking digest so unrelated source-row additions do not invalidate otherwise compatible component weights
-note_4 = when wave selects an existing component hashimyei, runtime validates that the selected component manifest belongs to the same contract and that its docking_signature_sha256_hex matches the current contract before accepting the load
-validation = because VICReg network_design is required, contract validation checks observation active channel count and max sequence length against VICReg INPUT.C and INPUT.T, and checks contract __obs_feature_dim against INPUT.D when declared
-
-[FIELD CONTRACT.AKNOWLEDGE]
+[FIELD ASSEMBLY.AKNOWLEDGE]
 key = AKNOWLEDGE
-scope = CONTRACT
+scope = ASSEMBLY
 type = alias_to_family
 required = true
 default = none
 range = one line per circuit alias
 allowed = <alias> = <tsi canonical family token>
-nuance = family token must omit hashimyei suffix; wave owns runtime hashimyei selection
+nuance = family token must omit hashimyei suffix; campaign `BIND.MOUNT` owns runtime hashimyei selection
+
+[RULE DOCK_OWNERSHIP]
+id = DOCK_OWNERSHIP
+applies_to = CONTRACT.DOCK,CONTRACT.ASSEMBLY
+severity = error
+when = dock-owned variables are declared in ASSEMBLY or private/path-bearing realization variables are declared in DOCK
+message = DOCK must contain public compatibility variables only, while ASSEMBLY owns realization variables and file selectors
 
 [RULE ACKNOWLEDGE_ALIAS_COVERAGE]
 id = ACKNOWLEDGE_ALIAS_COVERAGE
-applies_to = CONTRACT.AKNOWLEDGE
+applies_to = ASSEMBLY.AKNOWLEDGE
 severity = error
 when = any circuit alias missing or extra in acknowledge map
 message = AKNOWLEDGE entries must match circuit instance aliases one-to-one
 
 [RULE ACKNOWLEDGE_FAMILY_ONLY]
 id = ACKNOWLEDGE_FAMILY_ONLY
-applies_to = CONTRACT.AKNOWLEDGE
+applies_to = ASSEMBLY.AKNOWLEDGE
 severity = error
 when = family token is not exact canonical tsi family (contains hashimyei or invalid path)
 message = AKNOWLEDGE values must be canonical family tokens without hashimyei suffix

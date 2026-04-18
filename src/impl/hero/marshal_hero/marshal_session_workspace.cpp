@@ -74,6 +74,19 @@ sanitize_marshal_backup_component(std::string_view raw) {
   return {};
 }
 
+[[nodiscard]] std::filesystem::path derive_marshal_session_temp_root(
+    const marshal_session_workspace_context_t &context) {
+  if (!context.config_scope_root.empty()) {
+    return (context.config_scope_root / "instructions" / "temp")
+        .lexically_normal();
+  }
+  if (!context.repo_root.empty()) {
+    return (context.repo_root / "src/config/instructions/temp")
+        .lexically_normal();
+  }
+  return {};
+}
+
 [[nodiscard]] std::string build_marshal_session_config_policy_dsl(
     const marshal_session_workspace_context_t &context,
     const cuwacunu::hero::marshal::marshal_session_record_t &session) {
@@ -81,6 +94,8 @@ sanitize_marshal_backup_component(std::string_view raw) {
       derive_marshal_session_backup_dir(context, session);
   const std::filesystem::path default_root =
       derive_marshal_session_default_root(context);
+  const std::filesystem::path temp_root =
+      derive_marshal_session_temp_root(context);
   const bool allow_default_write =
       cuwacunu::hero::runtime::trim_ascii(session.authority_scope) ==
       "objective_plus_defaults";
@@ -93,8 +108,12 @@ sanitize_marshal_backup_component(std::string_view raw) {
       << "allow_local_write:bool = true\n"
       << "default_roots:str = " << default_root.string() << "\n"
       << "objective_roots:str = " << session.objective_root << "\n"
+      << "temp_roots:str = " << temp_root.string() << "\n"
       << "allowed_extensions:str = .dsl,.md\n"
       << "write_roots:str = " << session.objective_root << ",";
+  if (!temp_root.empty()) {
+    out << temp_root.string() << ",";
+  }
   if (allow_default_write && !default_root.empty()) {
     out << default_root.string() << ",";
   }
@@ -183,24 +202,27 @@ sanitize_marshal_backup_component(std::string_view raw) {
          "guidance markdown, and current objective bundle.\n"
       << "3. Use hero.config.objective.list/read/create/replace/delete for "
          "truth-source objective files under objective_root.\n"
-      << "4. Shared default writes are not ordinary autonomous authority. If "
+      << "4. Use hero.config.temp.list/read/create/replace/delete for "
+         "temporary instruction files under temp_roots when scratch authored "
+         "artifacts help planning.\n"
+      << "5. Shared default writes are not ordinary autonomous authority. If "
          "the objective truly needs a shared default change and the current "
          "authority scope does not allow it, return intent=request_governance "
          "with governance.kind=authority_expansion.\n"
-      << "5. Prefer whole-file replace with expected_sha256 from the prior "
+      << "6. Prefer whole-file replace with expected_sha256 from the prior "
          "read.\n"
-      << "6. Pass objective_root=" << session.objective_root
+      << "7. Pass objective_root=" << session.objective_root
       << " to those Config Hero tools.\n"
-      << "7. Never mutate files outside the configured objective/default "
+      << "8. Never mutate files outside the configured objective/default/temp "
          "roots.\n"
-      << "8. Prefer the latest checkpoint first, then "
+      << "9. Prefer the latest checkpoint first, then "
          "hero.lattice.get_view/get_fact "
          "for semantic evidence; use Runtime tails mainly for operational "
          "debugging.\n"
-      << "9. Use hero.lattice.list_views/list_facts when you need to discover "
+      << "10. Use hero.lattice.list_views/list_facts when you need to discover "
          "selectors; family_evaluation_report requires a family canonical_path "
          "plus contract_hash.\n"
-      << "10. Shell exec is unavailable in this environment. Prefer the "
+      << "11. Shell exec is unavailable in this environment. Prefer the "
          "embedded "
          "checkpoint context and objective campaign contents when present; use "
          "MCP tools "

@@ -17,6 +17,18 @@ template <class PushInfo, class PushWarn, class PushErr, class AppendLog>
 bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
                         PushWarn &&push_warn, PushErr &&push_err,
                         AppendLog &&append_log) const {
+  const auto open_workbench_screen = [&]() {
+    const bool entering = state.screen != ScreenMode::Workbench;
+    screen.workbench();
+    focus_workbench_navigation(state);
+    if (entering && !state.workbench.refresh_pending) {
+      if (count_tracked_operator_sessions(state) == 0) {
+        set_workbench_status(state, "Loading Workbench...", false);
+      }
+      (void)queue_workbench_refresh(state);
+    }
+  };
+
   switch (call_id) {
   case CallHandlerId::HelpOpen:
     state.help_view = true;
@@ -78,17 +90,9 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     screen.home();
     push_info("screen=home");
     return true;
-  case CallHandlerId::ScreenInbox: {
-    const bool entering = state.screen != ScreenMode::Inbox;
-    screen.inbox();
-    focus_inbox_menu(state);
-    if (entering && !state.inbox.refresh_pending) {
-      if (state.inbox.operator_inbox.all_sessions.empty()) {
-        set_inbox_status(state, "Loading Inbox...", false);
-      }
-      (void)queue_inbox_refresh(state);
-    }
-    push_info("screen=inbox");
+  case CallHandlerId::ScreenWorkbench: {
+    open_workbench_screen();
+    push_info("screen=workbench");
     return true;
   }
   case CallHandlerId::ScreenRuntime: {
@@ -123,8 +127,7 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     return true;
   case CallHandlerId::ScreenConfig:
     screen.config();
-    if (state.config.files.empty() &&
-        !config_is_refresh_pending(state.config) &&
+    if (!config_is_refresh_pending(state.config) &&
         !state.config.editor_focus) {
       config_set_status(state.config, "Loading config view...", false);
       (void)queue_config_refresh(state);
@@ -135,10 +138,10 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     state_flow.reload_shell();
     push_info("hero shell refresh queued");
     return true;
-  case CallHandlerId::InboxRefresh:
-    set_inbox_status(state, "Loading Inbox...", false);
-    state_flow.reload_inbox();
-    push_info("inbox refresh queued");
+  case CallHandlerId::WorkbenchRefresh:
+    set_workbench_status(state, "Loading Workbench...", false);
+    state_flow.reload_workbench();
+    push_info("workbench refresh queued");
     return true;
   case CallHandlerId::RuntimeRefresh:
     set_runtime_status(state, "Loading runtime inventory...", false);
@@ -154,48 +157,6 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     config_set_status(state.config, "Loading config view...", false);
     state_flow.reload_config();
     push_info("config reload queued");
-    return true;
-  case CallHandlerId::InboxViewInbox:
-    set_inbox_view(state, kInboxView);
-    focus_inbox_menu(state);
-    screen.inbox();
-    push_info("inbox view=inbox");
-    return true;
-  case CallHandlerId::InboxViewLive:
-    set_inbox_view(state, kInboxLiveView);
-    focus_inbox_menu(state);
-    screen.inbox();
-    push_info("inbox view=live redirected to inbox");
-    return true;
-  case CallHandlerId::InboxViewHistory:
-    set_inbox_view(state, kInboxHistoryView);
-    focus_inbox_menu(state);
-    screen.inbox();
-    push_info("inbox view=history redirected to inbox");
-    return true;
-  case CallHandlerId::InboxViewOverview:
-    set_inbox_view(state, kInboxOverviewView);
-    focus_inbox_menu(state);
-    screen.inbox();
-    push_info("inbox view=inbox (overview compatibility)");
-    return true;
-  case CallHandlerId::InboxViewRequests:
-    set_inbox_view(state, kInboxRequestsView);
-    focus_inbox_menu(state);
-    screen.inbox();
-    push_info("inbox view=inbox (requests compatibility)");
-    return true;
-  case CallHandlerId::InboxViewReviews:
-    set_inbox_view(state, kInboxReviewsView);
-    focus_inbox_menu(state);
-    screen.inbox();
-    push_info("inbox view=inbox (reviews compatibility)");
-    return true;
-  case CallHandlerId::InboxFilterNext:
-    cycle_inbox_phase_filter(state);
-    screen.inbox();
-    push_warn("inbox phase filter is deprecated; Marshal is inbox-only and "
-              "Runtime owns session inventory");
     return true;
   case CallHandlerId::RuntimeDetailNext:
     cycle_runtime_detail_mode(state);
@@ -238,14 +199,17 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
   case CallHandlerId::ShowCurrent:
     if (state.screen == ScreenMode::Home) {
       append_log("screen=home", "show", "#d8ffd8");
-      append_log("hint=F2 Inbox | F3 Runtime | F4 Lattice | F8 Shell Logs "
-                 "| F9 Config",
+      append_log(("hint=" + ui_screen_hint(ScreenMode::Workbench) + " | " +
+                  ui_screen_hint(ScreenMode::Runtime) + " | " +
+                  ui_screen_hint(ScreenMode::Lattice) + " | " +
+                  ui_screen_hint(ScreenMode::ShellLogs) + " | " +
+                  ui_screen_hint(ScreenMode::Config)),
                  "show", "#d8ffd8");
       append_log("site=waajacu.com", "show", "#d8ffd8");
       return true;
     }
-    if (state.screen == ScreenMode::Inbox) {
-      append_inbox_show_lines(state, append_log);
+    if (state.screen == ScreenMode::Workbench) {
+      append_workbench_show_lines(state, append_log);
       return true;
     }
     if (state.screen == ScreenMode::Runtime) {
@@ -262,8 +226,8 @@ bool dispatch_core_call(CallHandlerId call_id, PushInfo &&push_info,
     }
     handle_config_show(state, push_warn, append_log);
     return true;
-  case CallHandlerId::ShowInbox:
-    append_inbox_show_lines(state, append_log);
+  case CallHandlerId::ShowWorkbench:
+    append_workbench_show_lines(state, append_log);
     return true;
   case CallHandlerId::ShowRuntime:
     append_runtime_show_lines(state, append_log);

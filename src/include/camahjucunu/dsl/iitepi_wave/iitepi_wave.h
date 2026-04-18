@@ -17,7 +17,6 @@ namespace camahjucunu {
 struct iitepi_wave_wikimyei_decl_t {
   std::string binding_id{};
   std::string family{};
-  std::string hashimyei{};
   std::string wikimyei_path{};
   bool train{false};
   bool has_train{false};
@@ -68,7 +67,6 @@ using iitepi_wave_probe_policy_t = iitepi_wave_evaluation_policy_t;
 struct iitepi_wave_probe_decl_t {
   std::string binding_id{};
   std::string family{};
-  std::string hashimyei{};
   std::string probe_path{};
   bool has_runtime{false};
   iitepi_wave_evaluation_policy_t policy{};

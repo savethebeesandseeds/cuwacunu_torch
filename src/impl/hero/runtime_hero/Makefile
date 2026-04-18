@@ -12,12 +12,12 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 $(eval $(call BUILD_OBJ_INC, common, hero_runtime_tools, hero_runtime_tools))
 
-RUNTIME_HERO_OBJS := \
-  $(OUTPUT_PATH)/common/hero_runtime_tools.o
+RUNTIME_HERO_TARGETS := \
+  hero_runtime_tools
 
 # -----------------------------------------------------------------
 # Aggregate Target
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(RUNTIME_HERO_OBJS)
+all: $(RUNTIME_HERO_TARGETS)
 	@$(LOG_SUCCESS)

@@ -10,7 +10,7 @@ HERO_MARSHAL_TOOL(
 HERO_MARSHAL_TOOL(
     "hero.marshal.list_sessions",
     "List known Marshal Hero sessions keyed by marshal cursor",
-    "{\"type\":\"object\",\"properties\":{\"phase\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+    "{\"type\":\"object\",\"properties\":{\"lifecycle\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
     handle_tool_list_sessions)
 HERO_MARSHAL_TOOL(
     "hero.marshal.get_session",
@@ -18,20 +18,30 @@ HERO_MARSHAL_TOOL(
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
     handle_tool_get_session)
 HERO_MARSHAL_TOOL(
+    "hero.marshal.reconcile_session",
+    "Reconcile one Marshal Hero session after sudden interruption or stale runtime state, parking it review-ready with recovery context when needed",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_reconcile_session)
+HERO_MARSHAL_TOOL(
     "hero.marshal.pause_session",
     "Pause one Marshal Hero session and optionally force-stop its active Runtime campaign",
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
     handle_tool_pause_session)
 HERO_MARSHAL_TOOL(
     "hero.marshal.resume_session",
-    "Resume one paused Marshal Hero session through operator resume, clarification answer, or governance resolution",
+    "Resume one live Marshal Hero session through operator pause release, clarification answer, or governance resolution",
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"governance_resolution_path\":{\"type\":\"string\"},\"governance_resolution_sig_path\":{\"type\":\"string\"},\"clarification_answer_path\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
     handle_tool_resume_session)
 HERO_MARSHAL_TOOL(
-    "hero.marshal.continue_session",
-    "Continue one idle Marshal Hero session with a new operator instruction",
-    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"instruction\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"instruction\"],\"additionalProperties\":false}",
-    handle_tool_continue_session)
+    "hero.marshal.message_session",
+    "Deliver one operator message into a live Marshal Hero session; the response returns a stable message_id plus queued|delivered|failed delivery state, review-ready sessions wake immediately, and other live sessions now wake the runner for direct thread delivery when continuity is available, falling back to queued safe-point delivery otherwise",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"message\"],\"additionalProperties\":false}",
+    handle_tool_message_session)
+HERO_MARSHAL_TOOL(
+    "hero.marshal.archive_session",
+    "Archive one review-ready Marshal Hero session, marking it terminal so its objective can be launched again without overloading summary acknowledgment",
+    "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\"],\"additionalProperties\":false}",
+    handle_tool_archive_session)
 HERO_MARSHAL_TOOL(
     "hero.marshal.terminate_session",
     "Terminate one Marshal Hero session and optionally force-stop its active Runtime campaign",

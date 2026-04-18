@@ -19,6 +19,7 @@ enum class ConfigFileFamily : std::uint8_t {
   Defaults = 0,
   Objectives = 1,
   Optim = 2,
+  Temp = 3,
 };
 
 enum class ConfigBrowseFocus : std::uint8_t {
@@ -39,6 +40,7 @@ struct ConfigFileEntry {
   std::string extension{};
   std::string sha256{};
   bool ok{false};
+  bool payload_loaded{false};
   std::string error{};
   std::string saved_content{};
   std::string content{};
@@ -66,10 +68,13 @@ struct ConfigState {
   bool policy_write_allowed{false};
   std::vector<std::string> default_roots{};
   std::vector<std::string> objective_roots{};
+  std::vector<std::string> temp_roots{};
   std::vector<std::string> write_roots{};
   std::string optim_root{};
   std::string optim_archive_path{};
   std::string optim_public_keep_path{};
+  bool transient_single_file_view{false};
+  std::shared_ptr<ConfigState> catalog_snapshot{};
   std::shared_ptr<ConfigAsyncState> async{};
 };
 
@@ -79,6 +84,6 @@ struct ConfigAsyncState {
   std::future<std::shared_ptr<ConfigState>> refresh_future{};
 };
 
-}  // namespace iinuji_cmd
-}  // namespace iinuji
-}  // namespace cuwacunu
+} // namespace iinuji_cmd
+} // namespace iinuji
+} // namespace cuwacunu

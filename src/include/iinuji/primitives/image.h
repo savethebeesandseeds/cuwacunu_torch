@@ -57,6 +57,7 @@ struct image_grayscale_options_t {
   bool use_color{false};
   bool preserve_aspect{true};
   bool center{true};
+  bool sample_nearest{false};
   double alpha_cutoff{1.0 / 255.0};
   double blank_threshold{0.02};
   double ink_gamma{1.0};
@@ -71,33 +72,12 @@ struct image_grayscale_options_t {
       fg_bg_color_pair_resolver{};
 };
 
-namespace detail {
-
-inline constexpr unsigned char kBrailleBit[4][2] = {
-    {0x01, 0x08},
-    {0x02, 0x10},
-    {0x04, 0x20},
-    {0x40, 0x80},
-};
-
-struct sampled_rgba_t {
-  double r{0.0};
-  double g{0.0};
-  double b{0.0};
-  double a{0.0};
-};
+namespace image_color {
 
 struct rgb8_triplet_t {
   std::uint8_t r{0};
   std::uint8_t g{0};
   std::uint8_t b{0};
-};
-
-struct image_fit_t {
-  double x0{0.0};
-  double y0{0.0};
-  double w{0.0};
-  double h{0.0};
 };
 
 inline double srgb_to_linear(double c) {
@@ -113,6 +93,35 @@ inline double linear_to_srgb(double c) {
     return 12.92 * c;
   return 1.055 * std::pow(c, 1.0 / 2.4) - 0.055;
 }
+
+} // namespace image_color
+
+namespace detail {
+
+using image_color::linear_to_srgb;
+using image_color::rgb8_triplet_t;
+using image_color::srgb_to_linear;
+
+inline constexpr unsigned char kBrailleBit[4][2] = {
+    {0x01, 0x08},
+    {0x02, 0x10},
+    {0x04, 0x20},
+    {0x40, 0x80},
+};
+
+struct sampled_rgba_t {
+  double r{0.0};
+  double g{0.0};
+  double b{0.0};
+  double a{0.0};
+};
+
+struct image_fit_t {
+  double x0{0.0};
+  double y0{0.0};
+  double w{0.0};
+  double h{0.0};
+};
 
 inline image_fit_t fit_image_to_terminal_viewport(const rgba_image_t &image,
                                                   int width_cells,
@@ -223,6 +232,34 @@ inline sampled_rgba_t bilinear_sample_rgba(const rgba_image_t &image, double x,
   return out;
 }
 
+inline sampled_rgba_t nearest_sample_rgba(const rgba_image_t &image, double x,
+                                          double y) {
+  sampled_rgba_t out{};
+  if (!image.valid())
+    return out;
+
+  x = std::clamp(x, 0.0, static_cast<double>(image.width - 1));
+  y = std::clamp(y, 0.0, static_cast<double>(image.height - 1));
+
+  const int xi = std::clamp(static_cast<int>(std::lround(x)), 0,
+                           std::max(0, image.width - 1));
+  const int yi = std::clamp(static_cast<int>(std::lround(y)), 0,
+                           std::max(0, image.height - 1));
+  const std::size_t idx =
+      (static_cast<std::size_t>(yi) * static_cast<std::size_t>(image.width) +
+       static_cast<std::size_t>(xi)) *
+      4u;
+  return sampled_rgba_t{
+      image.pixels[idx + 0] / 255.0, image.pixels[idx + 1] / 255.0,
+      image.pixels[idx + 2] / 255.0, image.pixels[idx + 3] / 255.0};
+}
+
+inline sampled_rgba_t sample_rgba(const rgba_image_t &image, double x, double y,
+                                 const image_grayscale_options_t &opt) {
+  return opt.sample_nearest ? nearest_sample_rgba(image, x, y)
+                           : bilinear_sample_rgba(image, x, y);
+}
+
 inline double ink_for_rgba(const sampled_rgba_t &rgba,
                            const image_grayscale_options_t &opt,
                            bool color_mode) {
@@ -246,7 +283,7 @@ inline double sampled_ink(const rgba_image_t &image, const image_fit_t &fit,
   if (!map_phys_to_image_coords(image, fit, phys_x, phys_y, src_x, src_y)) {
     return 0.0;
   }
-  return ink_for_rgba(bilinear_sample_rgba(image, src_x, src_y), opt, false);
+  return ink_for_rgba(sample_rgba(image, src_x, src_y, opt), opt, false);
 }
 
 inline double sampled_color_ink(const rgba_image_t &image,
@@ -258,7 +295,7 @@ inline double sampled_color_ink(const rgba_image_t &image,
   if (!map_phys_to_image_coords(image, fit, phys_x, phys_y, src_x, src_y)) {
     return 0.0;
   }
-  return ink_for_rgba(bilinear_sample_rgba(image, src_x, src_y), opt, true);
+  return ink_for_rgba(sample_rgba(image, src_x, src_y, opt), opt, true);
 }
 
 inline wchar_t shade_glyph_for_ink(double ink, double blank_threshold) {
@@ -310,7 +347,7 @@ sample_braille_cell(const rgba_image_t &image, const image_fit_t &fit,
       if (!map_phys_to_image_coords(image, fit, phys_x, phys_y, src_x, src_y)) {
         continue;
       }
-      const sampled_rgba_t rgba = bilinear_sample_rgba(image, src_x, src_y);
+      const sampled_rgba_t rgba = sample_rgba(image, src_x, src_y, opt);
       out.valid[sy][sx] = true;
       out.rgba[sy][sx] = rgba;
       out.ink[sy][sx] = braille_ink_for_rgba(rgba, opt);
@@ -389,7 +426,8 @@ inline sampled_rgba_t
 average_rgba_for_region_samples(const rgba_image_t &image,
                                 const image_fit_t &fit, double phys_x0,
                                 double phys_y0, double phys_w, double phys_h,
-                                int sample_cols, int sample_rows) {
+                                int sample_cols, int sample_rows,
+                                const image_grayscale_options_t &opt) {
   sampled_rgba_t out{};
   double linear_r_sum = 0.0;
   double linear_g_sum = 0.0;
@@ -411,7 +449,7 @@ average_rgba_for_region_samples(const rgba_image_t &image,
       if (!map_phys_to_image_coords(image, fit, phys_x, phys_y, src_x, src_y)) {
         continue;
       }
-      const sampled_rgba_t rgba = bilinear_sample_rgba(image, src_x, src_y);
+      const sampled_rgba_t rgba = sample_rgba(image, src_x, src_y, opt);
       const double rgb_w = std::max(0.0, rgba.a);
       linear_r_sum += srgb_to_linear(rgba.r) * rgb_w;
       linear_g_sum += srgb_to_linear(rgba.g) * rgb_w;
@@ -566,11 +604,12 @@ inline double average_ink_for_half_block_half(
 inline sampled_rgba_t
 average_rgba_for_half_block_half(const rgba_image_t &image,
                                  const image_fit_t &fit, int cell_x, int cell_y,
-                                 int half_index) {
+                                 int half_index,
+                                 const image_grayscale_options_t &opt) {
   return average_rgba_for_region_samples(
       image, fit, static_cast<double>(cell_x),
       static_cast<double>(cell_y) * 2.0 + static_cast<double>(half_index), 1.0,
-      1.0, 4, 4);
+      1.0, 4, 4, opt);
 }
 
 inline std::uint8_t quantize_rgb8_channel(std::uint8_t value, int levels) {
@@ -729,7 +768,7 @@ mode_rgba_for_region_samples(const rgba_image_t &image, const image_fit_t &fit,
       if (!map_phys_to_image_coords(image, fit, phys_x, phys_y, src_x, src_y))
         continue;
 
-      const sampled_rgba_t rgba = bilinear_sample_rgba(image, src_x, src_y);
+      const sampled_rgba_t rgba = sample_rgba(image, src_x, src_y, opt);
       alpha_sum += rgba.a;
       accumulate_mode_bucket(buckets, rgba, std::max(0.0, rgba.a), opt);
     }
@@ -777,8 +816,8 @@ inline sampled_rgba_t select_rgba_for_half_block_half(
     const rgba_image_t &image, const image_fit_t &fit, int cell_x, int cell_y,
     int half_index, const image_grayscale_options_t &opt) {
   if (opt.color_kernel == image_color_kernel_t::Average) {
-    return average_rgba_for_half_block_half(image, fit, cell_x, cell_y,
-                                            half_index);
+    return average_rgba_for_half_block_half(image, fit, cell_x, cell_y, half_index,
+                                            opt);
   }
   return mode_rgba_for_region_samples(image, fit, static_cast<double>(cell_x),
                                       static_cast<double>(cell_y) * 2.0 +

@@ -6,8 +6,8 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
-#include <cstdint>
 #include <csignal>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -32,11 +32,14 @@ inline constexpr std::string_view kRuntimeJobSchemaV3 = "hero.runtime.job.v3";
 inline constexpr std::string_view kRuntimeJobManifestFilename =
     "runtime.job.manifest.lls";
 inline constexpr std::string_view kLegacyRuntimeJobManifestFilename = "job.lls";
-inline constexpr std::string_view kRuntimeJobCampaignDslFilename = "campaign.dsl";
+inline constexpr std::string_view kRuntimeJobCampaignDslFilename =
+    "campaign.dsl";
 inline constexpr std::string_view kRuntimeJobContractDslFilename =
     "binding.contract.dsl";
-inline constexpr std::string_view kRuntimeJobWaveDslFilename = "binding.wave.dsl";
-inline constexpr std::string_view kRuntimeJobInstructionsDirname = "instructions";
+inline constexpr std::string_view kRuntimeJobWaveDslFilename =
+    "binding.wave.dsl";
+inline constexpr std::string_view kRuntimeJobInstructionsDirname =
+    "instructions";
 inline constexpr std::string_view kRuntimeJobStdoutFilename = "stdout.log";
 inline constexpr std::string_view kRuntimeJobStderrFilename = "stderr.log";
 inline constexpr std::string_view kRuntimeJobTraceFilename = "job.trace.jsonl";
@@ -111,7 +114,8 @@ struct runtime_job_observation_t {
 
 [[nodiscard]] inline std::string current_boot_id() {
   std::ifstream in("/proc/sys/kernel/random/boot_id");
-  if (!in) return {};
+  if (!in)
+    return {};
   std::string boot_id;
   std::getline(in, boot_id);
   return trim_ascii(boot_id);
@@ -121,8 +125,7 @@ struct runtime_job_observation_t {
   static constexpr char kHex[] = "0123456789abcdef";
   std::string out(16, '0');
   for (std::size_t i = 0; i < out.size(); ++i) {
-    const unsigned shift =
-        static_cast<unsigned>((out.size() - 1 - i) * 4u);
+    const unsigned shift = static_cast<unsigned>((out.size() - 1 - i) * 4u);
     out[i] = kHex[(value >> shift) & 0x0Fu];
   }
   return out;
@@ -130,7 +133,8 @@ struct runtime_job_observation_t {
 
 [[nodiscard]] inline std::string base36_lower_u64(std::uint64_t value) {
   static constexpr char kBase36[] = "0123456789abcdefghijklmnopqrstuvwxyz";
-  if (value == 0) return "0";
+  if (value == 0)
+    return "0";
   std::string out{};
   while (value != 0) {
     out.push_back(kBase36[value % 36u]);
@@ -140,8 +144,9 @@ struct runtime_job_observation_t {
   return out;
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_dir(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_dir(const std::filesystem::path &campaigns_root,
+                std::string_view job_cursor) {
   const std::string trimmed = trim_ascii(job_cursor);
   const std::size_t marker = trimmed.find(kRuntimeJobCursorChildMarker);
   if (marker != std::string::npos && marker != 0) {
@@ -152,86 +157,97 @@ struct runtime_job_observation_t {
   return campaigns_root / trimmed;
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_manifest_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_manifest_path(const std::filesystem::path &campaigns_root,
+                          std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobManifestFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_legacy_manifest_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_legacy_manifest_path(const std::filesystem::path &campaigns_root,
+                                 std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kLegacyRuntimeJobManifestFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_stdout_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_stdout_path(const std::filesystem::path &campaigns_root,
+                        std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobStdoutFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_trace_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_trace_path(const std::filesystem::path &campaigns_root,
+                       std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobTraceFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_campaign_dsl_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_campaign_dsl_path(const std::filesystem::path &campaigns_root,
+                              std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobInstructionsDirname) /
          std::string(kRuntimeJobCampaignDslFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_contract_dsl_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_contract_dsl_path(const std::filesystem::path &campaigns_root,
+                              std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobInstructionsDirname) /
          std::string(kRuntimeJobContractDslFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_wave_dsl_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_wave_dsl_path(const std::filesystem::path &campaigns_root,
+                          std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobInstructionsDirname) /
          std::string(kRuntimeJobWaveDslFilename);
 }
 
-[[nodiscard]] inline std::filesystem::path runtime_job_stderr_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+[[nodiscard]] inline std::filesystem::path
+runtime_job_stderr_path(const std::filesystem::path &campaigns_root,
+                        std::string_view job_cursor) {
   return runtime_job_dir(campaigns_root, job_cursor) /
          std::string(kRuntimeJobStderrFilename);
 }
 
-[[nodiscard]] inline bool write_text_file_atomic(
-    const std::filesystem::path& path, std::string_view content,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool
+write_text_file_atomic(const std::filesystem::path &path,
+                       std::string_view content, std::string *error = nullptr) {
+  if (error)
+    error->clear();
   std::error_code ec{};
   const auto parent = path.parent_path();
   if (!parent.empty()) {
     std::filesystem::create_directories(parent, ec);
     if (ec) {
-      if (error) *error = "cannot create parent directory: " + parent.string();
+      if (error)
+        *error = "cannot create parent directory: " + parent.string();
       return false;
     }
   }
 
   const auto stamp =
       std::chrono::steady_clock::now().time_since_epoch().count();
-  const auto tmp =
-      parent / (path.filename().string() + ".tmp." +
-                std::to_string(static_cast<long long>(stamp)));
+  const auto tmp = parent / (path.filename().string() + ".tmp." +
+                             std::to_string(static_cast<long long>(stamp)));
   {
     std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
     if (!out) {
-      if (error) *error = "cannot open temp file: " + tmp.string();
+      if (error)
+        *error = "cannot open temp file: " + tmp.string();
       return false;
     }
     out << content;
     out.flush();
     if (!out.good()) {
-      if (error) *error = "cannot write temp file: " + tmp.string();
+      if (error)
+        *error = "cannot write temp file: " + tmp.string();
       return false;
     }
   }
@@ -240,38 +256,44 @@ struct runtime_job_observation_t {
   if (ec) {
     std::error_code rm_ec{};
     std::filesystem::remove(tmp, rm_ec);
-    if (error) *error = "cannot replace target file: " + path.string();
+    if (error)
+      *error = "cannot replace target file: " + path.string();
     return false;
   }
   return true;
 }
 
-[[nodiscard]] inline bool read_text_file(const std::filesystem::path& path,
-                                         std::string* out,
-                                         std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool read_text_file(const std::filesystem::path &path,
+                                         std::string *out,
+                                         std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "output pointer is null";
+    if (error)
+      *error = "output pointer is null";
     return false;
   }
   out->clear();
 
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    if (error) *error = "cannot open file: " + path.string();
+    if (error)
+      *error = "cannot open file: " + path.string();
     return false;
   }
-  out->assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  out->assign(std::istreambuf_iterator<char>(in),
+              std::istreambuf_iterator<char>());
   if (!in.eof() && in.fail()) {
-    if (error) *error = "cannot read file: " + path.string();
+    if (error)
+      *error = "cannot read file: " + path.string();
     return false;
   }
   return true;
 }
 
-[[nodiscard]] inline std::filesystem::path prefer_canonical_runtime_file_path(
-    const std::filesystem::path& canonical_path,
-    const std::filesystem::path& legacy_path) {
+[[nodiscard]] inline std::filesystem::path
+prefer_canonical_runtime_file_path(const std::filesystem::path &canonical_path,
+                                   const std::filesystem::path &legacy_path) {
   std::error_code ec{};
   if (std::filesystem::exists(canonical_path, ec) &&
       std::filesystem::is_regular_file(canonical_path, ec)) {
@@ -283,7 +305,8 @@ struct runtime_job_observation_t {
   if (std::filesystem::exists(legacy_path, ec) &&
       std::filesystem::is_regular_file(legacy_path, ec)) {
     std::filesystem::rename(legacy_path, canonical_path, ec);
-    if (!ec) return canonical_path;
+    if (!ec)
+      return canonical_path;
     ec.clear();
     (void)std::filesystem::copy_file(
         legacy_path, canonical_path,
@@ -300,51 +323,54 @@ struct runtime_job_observation_t {
 
 [[nodiscard]] inline std::filesystem::path
 resolve_existing_runtime_job_manifest_path(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor) {
+    const std::filesystem::path &campaigns_root, std::string_view job_cursor) {
   return prefer_canonical_runtime_file_path(
       runtime_job_manifest_path(campaigns_root, job_cursor),
       runtime_job_legacy_manifest_path(campaigns_root, job_cursor));
 }
 
-[[nodiscard]] inline bool append_text_file(const std::filesystem::path& path,
-                                          std::string_view content,
-                                          std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool append_text_file(const std::filesystem::path &path,
+                                           std::string_view content,
+                                           std::string *error = nullptr) {
+  if (error)
+    error->clear();
   const auto parent = path.parent_path();
   std::error_code ec{};
   if (!parent.empty()) {
     std::filesystem::create_directories(parent, ec);
     if (ec) {
-      if (error) *error = "cannot create parent directory: " + parent.string();
+      if (error)
+        *error = "cannot create parent directory: " + parent.string();
       return false;
     }
   }
   std::ofstream out(path, std::ios::binary | std::ios::app);
   if (!out) {
-    if (error) *error = "cannot open file for append: " + path.string();
+    if (error)
+      *error = "cannot open file for append: " + path.string();
     return false;
   }
   out << content;
   out.flush();
   if (!out.good()) {
-    if (error) *error = "cannot append file: " + path.string();
+    if (error)
+      *error = "cannot append file: " + path.string();
     return false;
   }
   return true;
 }
 
-[[nodiscard]] inline std::string shell_join_command(
-    const std::vector<std::string>& argv) {
+[[nodiscard]] inline std::string
+shell_join_command(const std::vector<std::string> &argv) {
   std::ostringstream out;
   for (std::size_t i = 0; i < argv.size(); ++i) {
-    if (i != 0) out << " ";
-    const std::string& arg = argv[i];
-    const bool safe =
-        !arg.empty() &&
-        arg.find_first_not_of(
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            "0123456789._/:=-")
-            == std::string::npos;
+    if (i != 0)
+      out << " ";
+    const std::string &arg = argv[i];
+    const bool safe = !arg.empty() &&
+                      arg.find_first_not_of(
+                          "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                          "0123456789._/:=-") == std::string::npos;
     if (safe) {
       out << arg;
       continue;
@@ -362,15 +388,18 @@ resolve_existing_runtime_job_manifest_path(
   return out.str();
 }
 
-[[nodiscard]] inline std::string make_job_cursor(
-    const std::filesystem::path& campaigns_root, std::string_view campaign_cursor,
-    std::size_t job_index) {
+[[nodiscard]] inline std::string
+make_job_cursor(const std::filesystem::path &campaigns_root,
+                std::string_view campaign_cursor, std::size_t job_index) {
   const std::string parent = trim_ascii(campaign_cursor);
-  if (parent.empty()) return {};
-  const std::string base = parent + std::string(kRuntimeJobCursorChildMarker) +
-                           base36_lower_u64(static_cast<std::uint64_t>(job_index));
+  if (parent.empty())
+    return {};
+  const std::string base =
+      parent + std::string(kRuntimeJobCursorChildMarker) +
+      base36_lower_u64(static_cast<std::uint64_t>(job_index));
   std::error_code ec{};
-  if (!std::filesystem::exists(runtime_job_dir(campaigns_root, base), ec) || ec) {
+  if (!std::filesystem::exists(runtime_job_dir(campaigns_root, base), ec) ||
+      ec) {
     return base;
   }
   for (std::size_t retry = 1; retry != 0; ++retry) {
@@ -387,36 +416,43 @@ resolve_existing_runtime_job_manifest_path(
   return {};
 }
 
-[[nodiscard]] inline bool parse_u64(std::string_view text, std::uint64_t* out) {
-  if (!out) return false;
+[[nodiscard]] inline bool parse_u64(std::string_view text, std::uint64_t *out) {
+  if (!out)
+    return false;
   const std::string token = trim_ascii(text);
-  if (token.empty()) return false;
+  if (token.empty())
+    return false;
   std::uint64_t value = 0;
   const auto [ptr, ec] =
       std::from_chars(token.data(), token.data() + token.size(), value, 10);
-  if (ec != std::errc{} || ptr != token.data() + token.size()) return false;
+  if (ec != std::errc{} || ptr != token.data() + token.size())
+    return false;
   *out = value;
   return true;
 }
 
-[[nodiscard]] inline bool parse_i64(std::string_view text, std::int64_t* out) {
-  if (!out) return false;
+[[nodiscard]] inline bool parse_i64(std::string_view text, std::int64_t *out) {
+  if (!out)
+    return false;
   const std::string token = trim_ascii(text);
-  if (token.empty()) return false;
+  if (token.empty())
+    return false;
   std::int64_t value = 0;
   const auto [ptr, ec] =
       std::from_chars(token.data(), token.data() + token.size(), value, 10);
-  if (ec != std::errc{} || ptr != token.data() + token.size()) return false;
+  if (ec != std::errc{} || ptr != token.data() + token.size())
+    return false;
   *out = value;
   return true;
 }
 
-[[nodiscard]] inline bool parse_bool(std::string_view text, bool* out) {
-  if (!out) return false;
+[[nodiscard]] inline bool parse_bool(std::string_view text, bool *out) {
+  if (!out)
+    return false;
   std::string token = trim_ascii(text);
-  std::transform(token.begin(), token.end(), token.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::transform(
+      token.begin(), token.end(), token.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   if (token == "true" || token == "1" || token == "yes" || token == "on") {
     *out = true;
     return true;
@@ -428,8 +464,9 @@ resolve_existing_runtime_job_manifest_path(
   return false;
 }
 
-[[nodiscard]] inline cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t
-runtime_job_record_to_document(const runtime_job_record_t& record) {
+[[nodiscard]] inline cuwacunu::piaabo::latent_lineage_state::
+    runtime_lls_document_t
+    runtime_job_record_to_document(const runtime_job_record_t &record) {
   using namespace cuwacunu::piaabo::latent_lineage_state;
   runtime_lls_document_t document{};
   document.entries.push_back(
@@ -440,32 +477,32 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
       make_runtime_lls_string_entry("job_kind", record.job_kind));
   document.entries.push_back(
       make_runtime_lls_string_entry("boot_id", record.boot_id));
-  document.entries.push_back(make_runtime_lls_string_entry("state", record.state));
+  document.entries.push_back(
+      make_runtime_lls_string_entry("state", record.state));
   document.entries.push_back(
       make_runtime_lls_string_entry("state_detail", record.state_detail));
   document.entries.push_back(
       make_runtime_lls_string_entry("worker_binary", record.worker_binary));
   document.entries.push_back(
       make_runtime_lls_string_entry("worker_command", record.worker_command));
-  document.entries.push_back(
-      make_runtime_lls_string_entry("global_config_path",
-                                    record.global_config_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "global_config_path", record.global_config_path));
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_campaign_dsl_path", record.source_campaign_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_contract_dsl_path", record.source_contract_dsl_path));
   document.entries.push_back(make_runtime_lls_string_entry(
       "source_wave_dsl_path", record.source_wave_dsl_path));
-  document.entries.push_back(
-      make_runtime_lls_string_entry("campaign_dsl_path", record.campaign_dsl_path));
-  document.entries.push_back(
-      make_runtime_lls_string_entry("contract_dsl_path", record.contract_dsl_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "campaign_dsl_path", record.campaign_dsl_path));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "contract_dsl_path", record.contract_dsl_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("wave_dsl_path", record.wave_dsl_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("binding_id", record.binding_id));
-  document.entries.push_back(
-      make_runtime_lls_string_entry("requested_device", record.requested_device));
+  document.entries.push_back(make_runtime_lls_string_entry(
+      "requested_device", record.requested_device));
   document.entries.push_back(
       make_runtime_lls_string_entry("resolved_device", record.resolved_device));
   document.entries.push_back(make_runtime_lls_string_entry(
@@ -484,58 +521,54 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
       make_runtime_lls_string_entry("stderr_path", record.stderr_path));
   document.entries.push_back(
       make_runtime_lls_string_entry("trace_path", record.trace_path));
-  document.entries.push_back(
-      make_runtime_lls_uint_entry("started_at_ms", record.started_at_ms,
-                                  "(0,+inf)"));
-  document.entries.push_back(
-      make_runtime_lls_uint_entry("updated_at_ms", record.updated_at_ms,
-                                  "(0,+inf)"));
+  document.entries.push_back(make_runtime_lls_uint_entry(
+      "started_at_ms", record.started_at_ms, "(0,+inf)"));
+  document.entries.push_back(make_runtime_lls_uint_entry(
+      "updated_at_ms", record.updated_at_ms, "(0,+inf)"));
   if (record.finished_at_ms.has_value()) {
     document.entries.push_back(make_runtime_lls_uint_entry(
         "finished_at_ms", *record.finished_at_ms, "(0,+inf)"));
   }
   if (record.runner_pid.has_value()) {
-    document.entries.push_back(
-        make_runtime_lls_uint_entry("runner_pid", *record.runner_pid,
-                                    "(0,+inf)"));
+    document.entries.push_back(make_runtime_lls_uint_entry(
+        "runner_pid", *record.runner_pid, "(0,+inf)"));
   }
   if (record.runner_start_ticks.has_value()) {
     document.entries.push_back(make_runtime_lls_uint_entry(
         "runner_start_ticks", *record.runner_start_ticks, "(0,+inf)"));
   }
   if (record.target_pid.has_value()) {
-    document.entries.push_back(
-        make_runtime_lls_uint_entry("target_pid", *record.target_pid,
-                                    "(0,+inf)"));
+    document.entries.push_back(make_runtime_lls_uint_entry(
+        "target_pid", *record.target_pid, "(0,+inf)"));
   }
   if (record.target_pgid.has_value()) {
-    document.entries.push_back(
-        make_runtime_lls_uint_entry("target_pgid", *record.target_pgid,
-                                    "(0,+inf)"));
+    document.entries.push_back(make_runtime_lls_uint_entry(
+        "target_pgid", *record.target_pgid, "(0,+inf)"));
   }
   if (record.target_start_ticks.has_value()) {
     document.entries.push_back(make_runtime_lls_uint_entry(
         "target_start_ticks", *record.target_start_ticks, "(0,+inf)"));
   }
   if (record.exit_code.has_value()) {
-    document.entries.push_back(
-        make_runtime_lls_int_entry("exit_code", *record.exit_code,
-                                   "(-inf,+inf)"));
+    document.entries.push_back(make_runtime_lls_int_entry(
+        "exit_code", *record.exit_code, "(-inf,+inf)"));
   }
   if (record.term_signal.has_value()) {
-    document.entries.push_back(
-        make_runtime_lls_int_entry("term_signal", *record.term_signal,
-                                   "(0,+inf)"));
+    document.entries.push_back(make_runtime_lls_int_entry(
+        "term_signal", *record.term_signal, "(0,+inf)"));
   }
   return document;
 }
 
 [[nodiscard]] inline bool parse_runtime_job_record(
-    const cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t& document,
-    runtime_job_record_t* out, std::string* error = nullptr) {
-  if (error) error->clear();
+    const cuwacunu::piaabo::latent_lineage_state::runtime_lls_document_t
+        &document,
+    runtime_job_record_t *out, std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "job record output pointer is null";
+    if (error)
+      *error = "job record output pointer is null";
     return false;
   }
   std::unordered_map<std::string, std::string> kv{};
@@ -547,7 +580,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   runtime_job_record_t parsed{};
   parsed.schema = kv["schema"];
   if (parsed.schema != kRuntimeJobSchemaV3) {
-    if (error) *error = "unexpected runtime job schema: " + parsed.schema;
+    if (error)
+      *error = "unexpected runtime job schema: " + parsed.schema;
     return false;
   }
   parsed.job_cursor = kv["job_cursor"];
@@ -574,32 +608,38 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   parsed.stderr_path = kv["stderr_path"];
   parsed.trace_path = kv["trace_path"];
   if (parsed.job_cursor.empty()) {
-    if (error) *error = "runtime job record missing job_cursor";
+    if (error)
+      *error = "runtime job record missing job_cursor";
     return false;
   }
   if (parsed.global_config_path.empty()) {
-    if (error) *error = "runtime job record missing global_config_path";
+    if (error)
+      *error = "runtime job record missing global_config_path";
     return false;
   }
   if (!parse_u64(kv["started_at_ms"], &parsed.started_at_ms)) {
-    if (error) *error = "runtime job record missing/invalid started_at_ms";
+    if (error)
+      *error = "runtime job record missing/invalid started_at_ms";
     return false;
   }
   if (!parse_u64(kv["updated_at_ms"], &parsed.updated_at_ms)) {
-    if (error) *error = "runtime job record missing/invalid updated_at_ms";
+    if (error)
+      *error = "runtime job record missing/invalid updated_at_ms";
     return false;
   }
   bool reset = false;
   if (!kv["reset_runtime_state"].empty() &&
       !parse_bool(kv["reset_runtime_state"], &reset)) {
-    if (error) *error = "runtime job record has invalid reset_runtime_state";
+    if (error)
+      *error = "runtime job record has invalid reset_runtime_state";
     return false;
   }
   parsed.reset_runtime_state = reset;
   bool cuda_required = false;
   if (!kv["cuda_required"].empty() &&
       !parse_bool(kv["cuda_required"], &cuda_required)) {
-    if (error) *error = "runtime job record has invalid cuda_required";
+    if (error)
+      *error = "runtime job record has invalid cuda_required";
     return false;
   }
   parsed.cuda_required = cuda_required;
@@ -608,56 +648,64 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   std::int64_t i64 = 0;
   if (!kv["finished_at_ms"].empty()) {
     if (!parse_u64(kv["finished_at_ms"], &u64)) {
-      if (error) *error = "runtime job record has invalid finished_at_ms";
+      if (error)
+        *error = "runtime job record has invalid finished_at_ms";
       return false;
     }
     parsed.finished_at_ms = u64;
   }
   if (!kv["runner_pid"].empty()) {
     if (!parse_u64(kv["runner_pid"], &u64)) {
-      if (error) *error = "runtime job record has invalid runner_pid";
+      if (error)
+        *error = "runtime job record has invalid runner_pid";
       return false;
     }
     parsed.runner_pid = u64;
   }
   if (!kv["runner_start_ticks"].empty()) {
     if (!parse_u64(kv["runner_start_ticks"], &u64)) {
-      if (error) *error = "runtime job record has invalid runner_start_ticks";
+      if (error)
+        *error = "runtime job record has invalid runner_start_ticks";
       return false;
     }
     parsed.runner_start_ticks = u64;
   }
   if (!kv["target_pid"].empty()) {
     if (!parse_u64(kv["target_pid"], &u64)) {
-      if (error) *error = "runtime job record has invalid target_pid";
+      if (error)
+        *error = "runtime job record has invalid target_pid";
       return false;
     }
     parsed.target_pid = u64;
   }
   if (!kv["target_pgid"].empty()) {
     if (!parse_u64(kv["target_pgid"], &u64)) {
-      if (error) *error = "runtime job record has invalid target_pgid";
+      if (error)
+        *error = "runtime job record has invalid target_pgid";
       return false;
     }
     parsed.target_pgid = u64;
   }
   if (!kv["target_start_ticks"].empty()) {
     if (!parse_u64(kv["target_start_ticks"], &u64)) {
-      if (error) *error = "runtime job record has invalid target_start_ticks";
+      if (error)
+        *error = "runtime job record has invalid target_start_ticks";
       return false;
     }
     parsed.target_start_ticks = u64;
   }
   if (!kv["exit_code"].empty()) {
     if (!parse_i64(kv["exit_code"], &i64)) {
-      if (error) *error = "runtime job record has invalid exit_code";
+      if (error)
+        *error = "runtime job record has invalid exit_code";
       return false;
     }
     parsed.exit_code = i64;
   }
   if (!kv["term_signal"].empty()) {
     if (!parse_i64(kv["term_signal"], &i64)) {
-      if (error) *error = "runtime job record has invalid term_signal";
+      if (error)
+        *error = "runtime job record has invalid term_signal";
       return false;
     }
     parsed.term_signal = i64;
@@ -667,13 +715,15 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   return true;
 }
 
-[[nodiscard]] inline bool write_runtime_job_record(
-    const std::filesystem::path& campaigns_root,
-    const runtime_job_record_t& record,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool
+write_runtime_job_record(const std::filesystem::path &campaigns_root,
+                         const runtime_job_record_t &record,
+                         std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (record.job_cursor.empty()) {
-    if (error) *error = "runtime job record missing job_cursor";
+    if (error)
+      *error = "runtime job record missing job_cursor";
     return false;
   }
 
@@ -681,7 +731,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   std::error_code ec{};
   std::filesystem::create_directories(job_dir, ec);
   if (ec) {
-    if (error) *error = "cannot create runtime job directory: " + job_dir.string();
+    if (error)
+      *error = "cannot create runtime job directory: " + job_dir.string();
     return false;
   }
 
@@ -689,15 +740,17 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   std::string validate_error{};
   if (!cuwacunu::piaabo::latent_lineage_state::validate_runtime_lls_document(
           document, &validate_error)) {
-    if (error) *error = validate_error;
+    if (error)
+      *error = validate_error;
     return false;
   }
   const std::filesystem::path manifest_path =
       runtime_job_manifest_path(campaigns_root, record.job_cursor);
-  if (!write_text_file_atomic(manifest_path,
-                              cuwacunu::piaabo::latent_lineage_state::
-                                  emit_runtime_lls_canonical(document),
-                              error)) {
+  if (!write_text_file_atomic(
+          manifest_path,
+          cuwacunu::piaabo::latent_lineage_state::emit_runtime_lls_canonical(
+              document),
+          error)) {
     return false;
   }
   std::error_code remove_ec{};
@@ -707,12 +760,15 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   return true;
 }
 
-[[nodiscard]] inline bool read_runtime_job_record(
-    const std::filesystem::path& campaigns_root, std::string_view job_cursor,
-    runtime_job_record_t* out, std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool
+read_runtime_job_record(const std::filesystem::path &campaigns_root,
+                        std::string_view job_cursor, runtime_job_record_t *out,
+                        std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "job record output pointer is null";
+    if (error)
+      *error = "job record output pointer is null";
     return false;
   }
 
@@ -730,52 +786,62 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   return parse_runtime_job_record(document, out, error);
 }
 
-[[nodiscard]] inline bool scan_runtime_job_records(
-    const std::filesystem::path& campaigns_root,
-    std::vector<runtime_job_record_t>* out,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool
+scan_runtime_job_records(const std::filesystem::path &campaigns_root,
+                         std::vector<runtime_job_record_t> *out,
+                         std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "runtime job list output pointer is null";
+    if (error)
+      *error = "runtime job list output pointer is null";
     return false;
   }
   out->clear();
 
   std::error_code ec{};
-  if (!std::filesystem::exists(campaigns_root, ec)) return true;
+  if (!std::filesystem::exists(campaigns_root, ec))
+    return true;
   if (ec) {
-    if (error) *error = "cannot access campaigns_root: " + campaigns_root.string();
+    if (error)
+      *error = "cannot access campaigns_root: " + campaigns_root.string();
     return false;
   }
 
   const auto scan_job_leaf_dir =
-      [&](const std::filesystem::path& jobs_dir) -> bool {
-    if (!std::filesystem::exists(jobs_dir, ec)) return true;
+      [&](const std::filesystem::path &jobs_dir) -> bool {
+    if (!std::filesystem::exists(jobs_dir, ec))
+      return true;
     if (ec) {
-      if (error) *error = "cannot access runtime jobs directory: " + jobs_dir.string();
+      if (error)
+        *error = "cannot access runtime jobs directory: " + jobs_dir.string();
       return false;
     }
     for (std::filesystem::directory_iterator job_it(jobs_dir, ec), job_end;
          job_it != job_end; job_it.increment(ec)) {
       if (ec) {
-        if (error) *error = "failed scanning runtime jobs directory: " + jobs_dir.string();
+        if (error)
+          *error =
+              "failed scanning runtime jobs directory: " + jobs_dir.string();
         return false;
       }
       if (!job_it->is_directory(ec)) {
         if (ec) {
-          if (error) *error = "failed reading runtime job entry type";
+          if (error)
+            *error = "failed reading runtime job entry type";
           return false;
         }
         continue;
       }
       const auto manifest_path = resolve_existing_runtime_job_manifest_path(
           campaigns_root, job_it->path().filename().string());
-      if (!std::filesystem::exists(manifest_path, ec) || ec) continue;
+      if (!std::filesystem::exists(manifest_path, ec) || ec)
+        continue;
       runtime_job_record_t record{};
       std::string record_error{};
       if (!read_runtime_job_record(campaigns_root,
-                                   job_it->path().filename().string(),
-                                   &record, &record_error)) {
+                                   job_it->path().filename().string(), &record,
+                                   &record_error)) {
         if (error) {
           *error = "failed reading runtime job manifest " +
                    resolve_existing_runtime_job_manifest_path(
@@ -790,8 +856,8 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     return true;
   };
 
-  for (std::filesystem::directory_iterator it(campaigns_root, ec), end; it != end;
-       it.increment(ec)) {
+  for (std::filesystem::directory_iterator it(campaigns_root, ec), end;
+       it != end; it.increment(ec)) {
     if (ec) {
       if (error) {
         *error = "failed scanning campaigns_root for runtime jobs: " +
@@ -801,12 +867,14 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
     }
     if (!it->is_directory(ec)) {
       if (ec) {
-        if (error) *error = "failed reading campaigns_root entry type";
+        if (error)
+          *error = "failed reading campaigns_root entry type";
         return false;
       }
       continue;
     }
-    if (!scan_job_leaf_dir(it->path() / std::string(kRuntimeCampaignJobsDirname))) {
+    if (!scan_job_leaf_dir(it->path() /
+                           std::string(kRuntimeCampaignJobsDirname))) {
       return false;
     }
   }
@@ -814,26 +882,37 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
 }
 
 [[nodiscard]] inline bool pid_alive(std::uint64_t pid_value) {
-  if (pid_value == 0) return false;
+  if (pid_value == 0)
+    return false;
   const pid_t pid = static_cast<pid_t>(pid_value);
-  if (pid <= 0) return false;
-  if (::kill(pid, 0) == 0) return true;
+  if (pid <= 0)
+    return false;
+  if (::kill(pid, 0) == 0)
+    return true;
   return errno == EPERM;
 }
 
-[[nodiscard]] inline bool read_process_start_ticks(std::uint64_t pid_value,
-                                                   std::uint64_t* out) {
-  if (!out) return false;
-  *out = 0;
-  if (pid_value == 0) return false;
+[[nodiscard]] inline bool
+read_process_state_and_start_ticks(std::uint64_t pid_value, char *out_state,
+                                   std::uint64_t *out_start_ticks) {
+  if (out_state)
+    *out_state = '\0';
+  if (!out_start_ticks)
+    return false;
+  *out_start_ticks = 0;
+  if (pid_value == 0)
+    return false;
   const pid_t pid = static_cast<pid_t>(pid_value);
-  if (pid <= 0) return false;
+  if (pid <= 0)
+    return false;
 
   std::ifstream in("/proc/" + std::to_string(pid) + "/stat");
-  if (!in) return false;
+  if (!in)
+    return false;
   std::string stat_line;
   std::getline(in, stat_line);
-  if (stat_line.empty()) return false;
+  if (stat_line.empty())
+    return false;
 
   const std::size_t close_paren = stat_line.rfind(')');
   if (close_paren == std::string::npos || close_paren + 2 >= stat_line.size()) {
@@ -841,16 +920,32 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   }
   std::istringstream rest(stat_line.substr(close_paren + 2));
   std::string token;
-  for (int index = 0; index <= 19; ++index) {
-    if (!(rest >> token)) return false;
+  if (!(rest >> token) || token.size() != 1)
+    return false;
+  if (out_state)
+    *out_state = token[0];
+  for (int index = 0; index < 19; ++index) {
+    if (!(rest >> token))
+      return false;
   }
-  return parse_u64(token, out);
+  return parse_u64(token, out_start_ticks);
 }
 
-[[nodiscard]] inline bool process_identity_alive(
-    std::uint64_t pid_value, const std::optional<std::uint64_t>& start_ticks,
-    std::string_view boot_id) {
-  if (pid_value == 0) return false;
+[[nodiscard]] inline bool read_process_start_ticks(std::uint64_t pid_value,
+                                                   std::uint64_t *out) {
+  if (!out)
+    return false;
+  *out = 0;
+  char ignored_state = '\0';
+  return read_process_state_and_start_ticks(pid_value, &ignored_state, out);
+}
+
+[[nodiscard]] inline bool
+process_identity_alive(std::uint64_t pid_value,
+                       const std::optional<std::uint64_t> &start_ticks,
+                       std::string_view boot_id) {
+  if (pid_value == 0)
+    return false;
   if (::kill(static_cast<pid_t>(pid_value), 0) != 0 && errno != EPERM) {
     return false;
   }
@@ -858,24 +953,38 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   if (!boot_id.empty() && !current_boot.empty() && current_boot != boot_id) {
     return false;
   }
-  if (!start_ticks.has_value()) return false;
+  if (!start_ticks.has_value())
+    return false;
+  char process_state = '\0';
   std::uint64_t current_start_ticks = 0;
-  if (!read_process_start_ticks(pid_value, &current_start_ticks)) return false;
+  if (!read_process_state_and_start_ticks(pid_value, &process_state,
+                                          &current_start_ticks)) {
+    return false;
+  }
+  // kill(pid, 0) still succeeds for zombies, so we must reject terminal
+  // proc states here or stale runners can keep counting as active.
+  if (process_state == 'Z' || process_state == 'X' || process_state == 'x') {
+    return false;
+  }
   return current_start_ticks == *start_ticks;
 }
 
-[[nodiscard]] inline bool process_group_alive(
-    std::uint64_t pgid_value, const std::optional<std::uint64_t>& leader_start_ticks,
-    std::string_view boot_id) {
-  if (pgid_value == 0) return false;
+[[nodiscard]] inline bool
+process_group_alive(std::uint64_t pgid_value,
+                    const std::optional<std::uint64_t> &leader_start_ticks,
+                    std::string_view boot_id) {
+  if (pgid_value == 0)
+    return false;
   const pid_t pgid = static_cast<pid_t>(pgid_value);
-  if (pgid <= 0) return false;
-  if (::kill(-pgid, 0) != 0 && errno != EPERM) return false;
+  if (pgid <= 0)
+    return false;
+  if (::kill(-pgid, 0) != 0 && errno != EPERM)
+    return false;
   return process_identity_alive(pgid_value, leader_start_ticks, boot_id);
 }
 
-[[nodiscard]] inline runtime_job_observation_t observe_runtime_job(
-    const runtime_job_record_t& record) {
+[[nodiscard]] inline runtime_job_observation_t
+observe_runtime_job(const runtime_job_record_t &record) {
   runtime_job_observation_t observation{};
   if (record.runner_pid.has_value()) {
     observation.runner_alive = process_identity_alive(
@@ -891,34 +1000,41 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   return observation;
 }
 
-[[nodiscard]] inline std::string stable_state_for_observation(
-    const runtime_job_record_t& record,
-    const runtime_job_observation_t& observation) {
-  const bool active_state =
-      record.state == "launching" || record.state == "running" ||
-      record.state == "stopping";
-  if (!active_state) return record.state;
+[[nodiscard]] inline std::string
+stable_state_for_observation(const runtime_job_record_t &record,
+                             const runtime_job_observation_t &observation) {
+  const bool active_state = record.state == "launching" ||
+                            record.state == "running" ||
+                            record.state == "stopping";
+  if (!active_state)
+    return record.state;
   if (observation.target_alive && observation.runner_alive) {
     return record.state == "launching" ? std::string("running") : record.state;
   }
-  if (observation.target_alive && !observation.runner_alive) return "orphaned";
-  if (!observation.target_alive && !observation.runner_alive) return "failed";
+  if (observation.target_alive && !observation.runner_alive)
+    return "orphaned";
+  if (!observation.target_alive && !observation.runner_alive)
+    return "failed";
   return record.state;
 }
 
-[[nodiscard]] inline bool list_active_runtime_job_cursors(
-    const std::filesystem::path& campaigns_root, std::vector<std::string>* out,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+[[nodiscard]] inline bool
+list_active_runtime_job_cursors(const std::filesystem::path &campaigns_root,
+                                std::vector<std::string> *out,
+                                std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "missing destination for active runtime jobs";
+    if (error)
+      *error = "missing destination for active runtime jobs";
     return false;
   }
   out->clear();
 
   std::vector<runtime_job_record_t> records{};
-  if (!scan_runtime_job_records(campaigns_root, &records, error)) return false;
-  for (const auto& record : records) {
+  if (!scan_runtime_job_records(campaigns_root, &records, error))
+    return false;
+  for (const auto &record : records) {
     const runtime_job_observation_t observation = observe_runtime_job(record);
     const std::string stable_state =
         stable_state_for_observation(record, observation);
@@ -930,6 +1046,6 @@ runtime_job_record_to_document(const runtime_job_record_t& record) {
   return true;
 }
 
-}  // namespace runtime
-}  // namespace hero
-}  // namespace cuwacunu
+} // namespace runtime
+} // namespace hero
+} // namespace cuwacunu

@@ -7,13 +7,14 @@ HERE_PATH := $(IMPL_PATH)/wikimyei/representation
 REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))
 MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
-# Aggregate Target
+# Aggregate Targets
 #   - This directory doesn’t build objects itself.
-#   - It recurses into submodules:
-#       - VICReg
-#       - (add more here, e.g., ts2vec)
+#   - It exposes each submodule as a prerequisite so GNU make can schedule it.
 # -----------------------------------------------------------------
-.PHONY: all
-all:
+.PHONY: VICReg
+VICReg:
 	$(MAKE) -C $(HERE_PATH)/VICReg all
+
+.PHONY: all
+all: VICReg
 	@$(LOG_SUCCESS)

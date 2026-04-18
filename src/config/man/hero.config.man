@@ -53,7 +53,7 @@ required = true
 default = false
 range = true|false
 allowed = true,false
-nuance = gates filesystem-mutating tools such as hero.config.default.create/replace/delete, hero.config.objective.create/replace/delete, hero.config.optim.create/replace/delete/rollback, hero.config.save, and hero.config.rollback
+nuance = gates filesystem-mutating tools such as hero.config.default.create/replace/delete, hero.config.temp.create/replace/delete, hero.config.objective.create/replace/delete, hero.config.optim.create/replace/delete/rollback, hero.config.save, and hero.config.rollback
 
 [FIELD default_roots]
 key = default_roots
@@ -75,6 +75,16 @@ range = csv path list
 allowed = comma-separated paths
 nuance = allowed roots for hero.config.objective.list/read/create/replace/delete; this same surface includes campaign.dsl when it lives under an allowed objective root
 
+[FIELD temp_roots]
+key = temp_roots
+scope = HERO runtime config
+type = string
+required = true
+default = /cuwacunu/src/config/instructions/temp
+range = csv path list
+allowed = comma-separated paths
+nuance = allowed roots for hero.config.temp.list/read/create/replace/delete; temp mutations intentionally skip backup_dir snapshots even when backup_enabled=true
+
 [FIELD allowed_extensions]
 key = allowed_extensions
 scope = HERO runtime config
@@ -83,11 +93,16 @@ required = true
 default = .dsl,.md
 range = csv extension list
 allowed = comma-separated dot-prefixed extensions
-nuance = allowed file extensions for hero.config.default.*, hero.config.objective.*, and hero.config.optim.*; list/read obey this directly, while create/replace still depend on the file family's validation support
+nuance = allowed file extensions for hero.config.default.*, hero.config.temp.*, hero.config.objective.*, and hero.config.optim.*; list/read obey this directly, temp.create/replace accepts .md scratch files directly and decoder-validates supported .dsl families, while the other mutating surfaces still depend on the file family's validation support
 
 [TOOLS]
 hero.config.default.list = lists allowed files under default_roots; include_man=true also inlines associated .man content when available
 hero.config.default.read = reads one allowed default file and returns content, sha256, plus associated .man content when available; if no matching .man exists, the response carries a warning and Config Hero logs it
+hero.config.temp.list = lists allowed files under temp_roots; include_man=true also inlines associated .man content when available
+hero.config.temp.read = reads one allowed temp file and returns content, sha256, plus associated .man content when available; if no matching .man exists, the response carries a warning and Config Hero logs it
+hero.config.temp.create = creates one whole allowed temp file; .md scratch files are accepted directly, supported .dsl families are decoder-validated, and the temp surface never writes backup_dir snapshots
+hero.config.temp.replace = replaces one whole allowed temp file; .md scratch files are accepted directly, supported .dsl families are decoder-validated, and the temp surface never writes backup_dir snapshots
+hero.config.temp.delete = deletes one whole allowed temp file after optional sha256 check and never writes backup_dir snapshots
 hero.config.objective.list = lists allowed files under objective_root; include_man=true also inlines associated .man content when available
 hero.config.objective.read = reads one allowed objective file and returns content, sha256, plus associated .man content when available; if no matching .man exists, the response carries a warning and Config Hero logs it
 hero.config.optim.list = lists allowed files under the TSODAO hidden_root; include_man=true also inlines associated .man content when available, and the response notes when the plaintext surface is currently scrubbed
@@ -106,7 +121,7 @@ required = true
 default = /tmp
 range = csv path list
 allowed = comma-separated paths
-nuance = enforced for config file writes, default/objective filesystem mutations, and plaintext optim mutation targets when allow_local_write=true; encrypted optim checkpoints use optim_backup_dir instead, and dev_nuke_reset snapshots are derived from runtime_root instead
+nuance = enforced for config file writes, default/temp/objective filesystem mutations, and plaintext optim mutation targets when allow_local_write=true; encrypted optim checkpoints use optim_backup_dir instead, and dev_nuke_reset snapshots are derived from runtime_root instead
 
 [FIELD backup_enabled]
 key = backup_enabled
@@ -212,6 +227,13 @@ applies_to = objective_roots
 severity = error
 when = objective_roots == empty
 message = objective_roots must be non-empty
+
+[RULE TEMP_ROOTS_REQUIRED]
+id = TEMP_ROOTS_REQUIRED
+applies_to = temp_roots
+severity = error
+when = temp_roots == empty
+message = temp_roots must be non-empty
 
 [RULE ALLOWED_EXTENSIONS_REQUIRED]
 id = ALLOWED_EXTENSIONS_REQUIRED

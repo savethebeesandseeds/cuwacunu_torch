@@ -1,6 +1,11 @@
 # hashimyei
 
-Identity and report_fragment dispatch layer for hashimyei-based components.
+Identity, catalog, and report-fragment dispatch layer for stored component
+revisions.
+
+In user-facing language, prefer "component revision" when you mean one concrete
+loadable family member. Use "hashimyei" when you mean the exact stored token
+such as `0x00FF`, or the subsystem itself.
 
 ## Headers
 - `hero/hashimyei_hero/hashimyei_identity.h`
@@ -34,7 +39,8 @@ Identity and report_fragment dispatch layer for hashimyei-based components.
 ## Design note
 - `hashimyei` should not own network/model structures.
 - Components own serialization logic.
-- `hashimyei` routes save/load calls to registered component drivers and keeps identity/store concerns centralized.
+- `hashimyei` routes save/load calls to registered component drivers and keeps
+  revision identity/store concerns centralized.
 - `default.hero.hashimyei.dsl` configures Hashimyei HERO runtime defaults only; it is
   distinct from a component's founding DSL bundle.
 - component revisions dump a stored founding DSL bundle snapshot under
@@ -42,11 +48,19 @@ Identity and report_fragment dispatch layer for hashimyei-based components.
   `.runtime/.hashimyei/tsi/.../_definition/<component_id>/`;
   `hero.hashimyei.get_founding_dsl_bundle` reads that stored bundle snapshot as
   the canonical founding-bundle surface.
+- `hero.hashimyei.evaluate_contract_compatibility` compares a component
+  manifest against a requested contract using public
+  `docking_signature_sha256_hex`; matching dock means compatible, while
+  assembly and founding contract differences stay in provenance.
+- `hero.hashimyei.update_rank` and `hero.family.rank.v2` are dock-scoped:
+  overlays are keyed by `(family, dock_hash)`, so revisions from different
+  founding contracts can still share one compatibility rank when their public
+  dock matches.
 - catalog `component_lineage` edges now distinguish component founding
   source metadata from stored founding-bundle snapshots through payload kind
   tags.
-- component hashimyei lineage is contract-scoped; reusing the same component
-  hashimyei across contracts is invalid.
+- component revision lineage is contract-scoped; reusing the same exact
+  revision token across contracts is invalid.
 - component manifests are contract-scoped revisions; run manifests keep the
   operational `wave_contract_binding_t` linkage.
 - active component pointers are also contract-scoped; "active" means active for

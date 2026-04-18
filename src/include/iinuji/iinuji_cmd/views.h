@@ -3,7 +3,7 @@
 #include "iinuji/iinuji_cmd/views/common.h"
 #include "iinuji/iinuji_cmd/views/config/view.h"
 #include "iinuji/iinuji_cmd/views/home/view.h"
-#include "iinuji/iinuji_cmd/views/inbox/view.h"
+#include "iinuji/iinuji_cmd/views/workbench/view.h"
 #include "iinuji/iinuji_cmd/views/lattice/view.h"
 #include "iinuji/iinuji_cmd/views/logs/view.h"
 #include "iinuji/iinuji_cmd/views/runtime/view.h"

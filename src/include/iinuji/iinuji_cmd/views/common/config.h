@@ -49,6 +49,8 @@ inline std::string config_family_id(ConfigFileFamily family) {
     return "objectives";
   case ConfigFileFamily::Optim:
     return "optim";
+  case ConfigFileFamily::Temp:
+    return "temp";
   }
   return "config";
 }
@@ -61,11 +63,13 @@ inline std::string config_family_title(ConfigFileFamily family) {
     return "Objectives";
   case ConfigFileFamily::Optim:
     return "Optim";
+  case ConfigFileFamily::Temp:
+    return "Temp";
   }
   return "Config";
 }
 
-inline constexpr std::size_t config_family_count() { return 3u; }
+inline constexpr std::size_t config_family_count() { return 4u; }
 
 inline std::size_t config_family_index(ConfigFileFamily family) {
   switch (family) {
@@ -75,6 +79,8 @@ inline std::size_t config_family_index(ConfigFileFamily family) {
     return 1u;
   case ConfigFileFamily::Optim:
     return 2u;
+  case ConfigFileFamily::Temp:
+    return 3u;
   }
   return 0u;
 }
@@ -87,6 +93,8 @@ inline ConfigFileFamily config_family_from_index(std::size_t index) {
     return ConfigFileFamily::Objectives;
   case 2u:
     return ConfigFileFamily::Optim;
+  case 3u:
+    return ConfigFileFamily::Temp;
   }
   return ConfigFileFamily::Defaults;
 }
@@ -253,7 +261,7 @@ inline std::string config_json_quote(std::string_view raw) {
 }
 
 inline std::string config_readable_mode(const ConfigFileEntry &file) {
-  if (!file.ok)
+  if (file.payload_loaded && !file.ok)
     return "load error";
   if (file.editable)
     return "editable via Config Hero replace";
@@ -266,7 +274,7 @@ inline std::string config_readable_mode(const ConfigFileEntry &file) {
 }
 
 inline std::string config_access_indicator(const ConfigFileEntry &file) {
-  if (!file.ok)
+  if (file.payload_loaded && !file.ok)
     return "err";
   if (file.editable)
     return "rw";
@@ -276,7 +284,7 @@ inline std::string config_access_indicator(const ConfigFileEntry &file) {
 }
 
 inline std::string config_access_description(const ConfigFileEntry &file) {
-  if (!file.ok)
+  if (file.payload_loaded && !file.ok)
     return "file failed to load";
   if (file.editable)
     return "editable in the current write scope";
@@ -295,7 +303,7 @@ inline std::string config_default_status_message(const ConfigState &st) {
                : st.status;
   }
   const auto &file = st.files[st.selected_file];
-  if (!file.ok)
+  if (file.payload_loaded && !file.ok)
     return file.error.empty() ? "selected config file failed to load"
                               : file.error;
   return {};
@@ -400,6 +408,10 @@ inline std::optional<std::size_t> config_file_index_by_path(
   return std::nullopt;
 }
 
+inline bool config_file_load_failed(const ConfigFileEntry &file) {
+  return file.payload_loaded && !file.ok;
+}
+
 inline void sync_config_editor_from_selection(ConfigState &st) {
   if (!st.editor)
     st.editor = std::make_shared<cuwacunu::iinuji::editorBox_data_t>();
@@ -441,7 +453,18 @@ inline void sync_config_editor_from_selection(ConfigState &st) {
     const auto &file = st.files[st.selected_file];
     path = file.path;
     read_only = !file.editable;
-    if (file.ok) {
+    if (!file.payload_loaded) {
+      std::ostringstream oss;
+      oss << "File metadata is loaded, but content is not hydrated yet.\n\n";
+      oss << "Path: " << file.path << "\n";
+      if (!file.relative_path.empty()) {
+        oss << "Relative path: " << file.relative_path << "\n";
+      }
+      oss << "Mode: " << config_readable_mode(file) << "\n";
+      oss << "\nPress Enter or e to load this file.\n";
+      text = oss.str();
+      ed.status = "metadata only";
+    } else if (file.ok) {
       text = file.content;
       ed.status = config_readable_mode(file);
     } else {
@@ -482,6 +505,8 @@ inline std::string config_replace_tool_name(const ConfigFileEntry &file) {
     return "hero.config.objective.replace";
   case ConfigFileFamily::Optim:
     return "hero.config.optim.replace";
+  case ConfigFileFamily::Temp:
+    return "hero.config.temp.replace";
   }
   return {};
 }
@@ -494,6 +519,8 @@ inline std::string config_read_tool_name(const ConfigFileEntry &file) {
     return "hero.config.objective.read";
   case ConfigFileFamily::Optim:
     return "hero.config.optim.read";
+  case ConfigFileFamily::Temp:
+    return "hero.config.temp.read";
   }
   return {};
 }
@@ -509,7 +536,8 @@ inline void config_refresh_entry_identity(ConfigFileEntry *file) {
                     ? std::filesystem::path(file->path).filename().string()
                     : file->relative_path;
   if (file->request_path.empty()) {
-    file->request_path = file->family == ConfigFileFamily::Defaults
+    file->request_path = file->family == ConfigFileFamily::Defaults ||
+                                 file->family == ConfigFileFamily::Temp
                              ? file->path
                              : file->relative_path;
   }
@@ -532,6 +560,8 @@ make_config_file_entry(ConfigFileFamily family, std::string root_path,
   entry.relative_path = std::move(relative_path);
   entry.replace_supported = replace_supported;
   entry.write_allowed = policy_write_allowed;
+  entry.ok = true;
+  entry.payload_loaded = false;
   config_refresh_entry_identity(&entry);
   return entry;
 }
@@ -586,9 +616,13 @@ inline std::string config_build_read_request_json(const ConfigFileEntry &file) {
                                                        : file.request_path);
     break;
   case ConfigFileFamily::Optim:
+  case ConfigFileFamily::Temp:
     oss << "\"path\":"
-        << config_json_quote(file.request_path.empty() ? file.relative_path
-                                                       : file.request_path);
+        << config_json_quote(file.request_path.empty()
+                                 ? (file.family == ConfigFileFamily::Temp
+                                        ? file.path
+                                        : file.relative_path)
+                                 : file.request_path);
     break;
   }
   oss << "}";
@@ -619,9 +653,13 @@ config_build_replace_request_json(const ConfigFileEntry &file,
         << ",";
     break;
   case ConfigFileFamily::Optim:
+  case ConfigFileFamily::Temp:
     oss << "\"path\":"
-        << config_json_quote(file.request_path.empty() ? file.relative_path
-                                                       : file.request_path)
+        << config_json_quote(file.request_path.empty()
+                                 ? (file.family == ConfigFileFamily::Temp
+                                        ? file.path
+                                        : file.relative_path)
+                                 : file.request_path)
         << ",";
     break;
   }
@@ -642,17 +680,20 @@ config_fill_file_payload(cuwacunu::hero::mcp::hero_config_store_t *store,
   file->content.clear();
   file->sha256.clear();
   file->error.clear();
+  file->payload_loaded = false;
   file->ok = false;
 
   const std::string tool_name = config_read_tool_name(*file);
   if (tool_name.empty()) {
     file->error = "no Config Hero read tool for selected file";
+    file->payload_loaded = true;
     return false;
   }
 
   cmd_json_value_t structured{};
   if (!config_invoke_tool(tool_name, config_build_read_request_json(*file),
                           store, &structured, &file->error)) {
+    file->payload_loaded = true;
     return false;
   }
 
@@ -666,7 +707,44 @@ config_fill_file_payload(cuwacunu::hero::mcp::hero_config_store_t *store,
   file->saved_content = cmd_json_string(cmd_json_field(&structured, "content"));
   file->content = file->saved_content;
   file->ok = true;
+  file->payload_loaded = true;
   config_refresh_entry_identity(file);
+  return true;
+}
+
+inline std::string config_effective_write_policy_path(const ConfigState &st);
+
+inline bool config_load_file_payload(ConfigState &st, ConfigFileEntry *file,
+                                     bool force, std::string *error) {
+  if (error)
+    error->clear();
+  if (file == nullptr) {
+    if (error)
+      *error = "no config file selected";
+    return false;
+  }
+  if (file->payload_loaded && file->ok && !force)
+    return true;
+
+  const std::string store_policy_path =
+      trim_copy(st.policy_path).empty() ? config_effective_write_policy_path(st)
+                                        : st.policy_path;
+  cuwacunu::hero::mcp::hero_config_store_t store(
+      store_policy_path, cuwacunu::iitepi::config_space_t::config_file_path);
+  std::string load_error{};
+  if (!store.load(&load_error)) {
+    if (error) {
+      *error = "failed to load config policy: " + load_error;
+    }
+    return false;
+  }
+  if (!config_fill_file_payload(&store, file)) {
+    if (error) {
+      *error = file->error.empty() ? "failed to load selected config file"
+                                   : file->error;
+    }
+    return false;
+  }
   return true;
 }
 
@@ -809,6 +887,53 @@ inline bool config_append_optim_files_from_tool(
   return true;
 }
 
+inline bool config_append_temp_files_from_tool(
+    const cmd_json_value_t *structured, bool policy_write_allowed,
+    std::vector<ConfigFileEntry> *out_files, std::set<std::string> *seen_paths,
+    std::vector<std::string> *out_roots, std::string *error) {
+  if (error)
+    error->clear();
+  if (structured == nullptr || out_files == nullptr || seen_paths == nullptr ||
+      out_roots == nullptr) {
+    if (error)
+      *error = "invalid temp list output target";
+    return false;
+  }
+
+  out_roots->clear();
+  for (const auto &root :
+       cmd_json_string_array(cmd_json_field(structured, "roots"))) {
+    if (!root.empty())
+      out_roots->push_back(root);
+  }
+
+  const auto *files = cmd_json_field(structured, "files");
+  if (files == nullptr || files->type != cmd_json_type_t::ARRAY ||
+      !files->arrayValue) {
+    if (error)
+      *error = "hero.config.temp.list missing files array";
+    return false;
+  }
+
+  for (const auto &file_value : *files->arrayValue) {
+    if (file_value.type != cmd_json_type_t::OBJECT)
+      continue;
+    ConfigFileEntry entry = make_config_file_entry(
+        ConfigFileFamily::Temp,
+        cmd_json_string(cmd_json_field(&file_value, "root")),
+        cmd_json_string(cmd_json_field(&file_value, "path")),
+        cmd_json_string(cmd_json_field(&file_value, "relative_path")),
+        cmd_json_bool(cmd_json_field(&file_value, "replace_supported"), false),
+        policy_write_allowed);
+    if (entry.path.empty())
+      continue;
+    if (!seen_paths->insert(entry.path).second)
+      continue;
+    out_files->push_back(std::move(entry));
+  }
+  return true;
+}
+
 inline std::string config_effective_write_policy_path(const ConfigState &st) {
   return trim_copy(st.write_policy_path).empty() ? st.policy_path
                                                  : st.write_policy_path;
@@ -913,6 +1038,19 @@ inline ConfigState load_config_view_from_global_config(
     return out;
   }
 
+  cmd_json_value_t temp_list{};
+  if (!config_invoke_tool("hero.config.temp.list", "{}", &store, &temp_list,
+                          &load_error) ||
+      !config_append_temp_files_from_tool(&temp_list, false, &out.files,
+                                          &seen_paths, &out.temp_roots,
+                                          &load_error)) {
+    out.ok = false;
+    out.error =
+        load_error.empty() ? "failed to load temp config files" : load_error;
+    sync_config_editor_from_selection(out);
+    return out;
+  }
+
   out.objective_roots = config_resolve_csv_paths(
       out.policy_path, config_show_value(&show, "objective_roots"));
   for (const auto &objective_root : out.objective_roots) {
@@ -951,9 +1089,6 @@ inline ConfigState load_config_view_from_global_config(
     warnings.push_back(load_error);
   }
 
-  for (auto &file : out.files) {
-    (void)config_fill_file_payload(&store, &file);
-  }
   config_apply_write_scope(&out);
 
   if (!preferred_selected_path.empty()) {
@@ -983,75 +1118,8 @@ inline ConfigState load_config_view_from_global_config(
   return out;
 }
 
-inline std::string config_preferred_human_session_id(const CmdState &st) {
-  const auto has_pending_request = [&](std::string_view marshal_session_id) {
-    return cuwacunu::hero::human_mcp::find_session_index_by_id(
-               st.inbox.operator_inbox.actionable_requests, marshal_session_id)
-        .has_value();
-  };
-  const auto has_pending_review = [&](std::string_view marshal_session_id) {
-    return cuwacunu::hero::human_mcp::find_session_index_by_id(
-               st.inbox.operator_inbox.unacknowledged_summaries,
-               marshal_session_id)
-        .has_value();
-  };
-  const auto is_operator_paused =
-      [](const cuwacunu::hero::marshal::marshal_session_record_t &session) {
-        return session.phase == "paused" && session.pause_kind == "operator";
-      };
-  const auto is_inbox_member =
-      [&](const cuwacunu::hero::marshal::marshal_session_record_t &session) {
-        return has_pending_request(session.marshal_session_id) ||
-               has_pending_review(session.marshal_session_id) ||
-               is_operator_paused(session);
-      };
-  const auto nth_matching_session_id = [&](std::size_t selected_index,
-                                           auto &&predicate) -> std::string {
-    std::size_t visible_index = 0;
-    std::string fallback{};
-    for (const auto &session : st.inbox.operator_inbox.all_sessions) {
-      if (!predicate(session))
-        continue;
-      if (fallback.empty())
-        fallback = session.marshal_session_id;
-      if (visible_index == selected_index)
-        return session.marshal_session_id;
-      ++visible_index;
-    }
-    return fallback;
-  };
-
-  if (inbox_is_view(st.inbox.view)) {
-    const std::string marshal_session_id = nth_matching_session_id(
-        st.inbox.selected_inbox_session,
-        [&](const auto &session) { return is_inbox_member(session); });
-    if (!marshal_session_id.empty())
-      return marshal_session_id;
-  }
-
-  const std::string inbox_fallback = nth_matching_session_id(
-      0, [&](const auto &session) { return is_inbox_member(session); });
-  if (!inbox_fallback.empty())
-    return inbox_fallback;
-
-  if (!st.inbox.operator_inbox.all_sessions.empty()) {
-    return st.inbox.operator_inbox.all_sessions.front().marshal_session_id;
-  }
-  return {};
-}
-
 inline ConfigState load_config_view_from_state(const CmdState &st) {
-  std::optional<cuwacunu::hero::marshal::marshal_session_record_t>
-      selected_session{};
-  const std::string marshal_session_id = config_preferred_human_session_id(st);
-  if (!marshal_session_id.empty()) {
-    for (const auto &session : st.inbox.operator_inbox.all_sessions) {
-      if (session.marshal_session_id == marshal_session_id) {
-        selected_session = session;
-        break;
-      }
-    }
-  }
+  const auto selected_session = selected_operator_session_record(st);
 
   std::string preferred_selected_path{};
   if (config_has_files(st)) {
@@ -1092,15 +1160,7 @@ inline bool queue_config_refresh(CmdState &st) {
 
   std::optional<cuwacunu::hero::marshal::marshal_session_record_t>
       selected_session{};
-  const std::string marshal_session_id = config_preferred_human_session_id(st);
-  if (!marshal_session_id.empty()) {
-    for (const auto &session : st.inbox.operator_inbox.all_sessions) {
-      if (session.marshal_session_id == marshal_session_id) {
-        selected_session = session;
-        break;
-      }
-    }
-  }
+  selected_session = selected_operator_session_record(st);
 
   std::string preferred_selected_path{};
   if (config_has_files(st)) {
@@ -1175,8 +1235,10 @@ inline bool poll_config_async_updates(CmdState &st) {
     }
     clamp_selected_config_file(st);
     sync_config_editor_from_selection(st.config);
-    if (!previous_status.empty() && !previous_status_is_error &&
-        st.config.status.empty()) {
+    const bool preserve_previous_status =
+        !previous_status.empty() && !previous_status_is_error &&
+        previous_status != "Loading config view...";
+    if (preserve_previous_status && st.config.status.empty()) {
       config_set_status(st.config, previous_status, false);
     }
   }

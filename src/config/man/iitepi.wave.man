@@ -100,7 +100,7 @@ required = true
 default = none
 range = unique within wave
 allowed = tsi.wikimyei.* canonical node path
-nuance = must resolve to a contract wikimyei node path during compatibility validation
+nuance = must resolve to a contract wikimyei node path during compatibility validation; authored wave files do not carry concrete `HASHIMYEI` selection, which is campaign-owned through `BIND.MOUNT`
 
 [FIELD WIKIMYEI.JKIMYEI.HALT_TRAIN]
 key = WIKIMYEI.JKIMYEI.HALT_TRAIN

@@ -229,6 +229,8 @@ inline void set_editor_box(
   auto target = panel_content_target(box);
   if (!target || !editor) return;
   target->data = editor;
+  target->focusable = box->focusable;
+  target->focused = box->focused;
 }
 
 inline void set_plot_box(

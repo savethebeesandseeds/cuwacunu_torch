@@ -331,10 +331,10 @@ validate_libtorch_bundle() {
 
 install_base_requirements() {
   section "Base Apt Requirements"
-  run_cmd "Updating apt metadata" "${SUDO[@]}" apt-get update
-  run_cmd "Upgrading installed packages" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+  run_cmd "Updating apt metadata" "${SUDO[@]}" apt update
+  run_cmd "Upgrading installed packages" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt upgrade -y
   run_cmd "Installing base build/debug dependencies" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
-    apt-get install -y --no-install-recommends \
+    apt install -y --no-install-recommends \
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
     gnupg valgrind gdb ccache mold clang-format locales curl libcurl4-openssl-dev \
     openssh-client bash-completion
@@ -384,7 +384,7 @@ install_curl_from_source() {
 
   if (( DRY_RUN )); then
     run_cmd "Removing distro curl packages before source install" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
-      apt-get remove -y curl libcurl4-openssl-dev libcurl4 libcurl3-gnutls
+      apt remove -y curl libcurl4-openssl-dev libcurl4 libcurl3-gnutls
     run_cmd "Downloading ${CURL_SOURCE_ARCHIVE}" curl -fsSL -o "${archive_path}" \
       "https://curl.se/download/${CURL_SOURCE_ARCHIVE}"
     run_cmd "Extracting ${CURL_SOURCE_ARCHIVE}" tar -xzf "${archive_path}" -C "${EXTERNAL_DIR}"
@@ -397,7 +397,7 @@ install_curl_from_source() {
   fi
 
   run_cmd "Removing distro curl packages before source install" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
-    apt-get remove -y curl libcurl4-openssl-dev libcurl4 libcurl3-gnutls
+    apt remove -y curl libcurl4-openssl-dev libcurl4 libcurl3-gnutls
 
   if [[ ! -f "${archive_path}" ]]; then
     run_cmd "Downloading ${CURL_SOURCE_ARCHIVE}" curl -fsSL -o "${archive_path}" \
@@ -439,7 +439,7 @@ configure_nvidia_repo() {
 
   run_cmd "Downloading NVIDIA cuda-keyring package" curl -fsSL -o "${keyring_deb}" "${CUDA_KEYRING_URL}"
   run_cmd "Installing NVIDIA cuda-keyring package" "${SUDO[@]}" dpkg -i "${keyring_deb}"
-  run_cmd "Refreshing apt metadata after adding NVIDIA repo" "${SUDO[@]}" apt-get update
+  run_cmd "Refreshing apt metadata after adding NVIDIA repo" "${SUDO[@]}" apt update
 
   rm -f "${keyring_deb}"
 }
@@ -447,7 +447,7 @@ configure_nvidia_repo() {
 install_cuda() {
   section "CUDA Toolkit Installation"
   run_cmd "Installing cuda-toolkit-${CUDA_APT_SERIES}" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
-    apt-get install -y --no-install-recommends "cuda-toolkit-${CUDA_APT_SERIES}"
+    apt install -y --no-install-recommends "cuda-toolkit-${CUDA_APT_SERIES}"
 
   append_line_once "export CUDA_VERSION=${CUDA_VERSION}" "${HOME}/.bashrc"
   append_line_once 'export PATH=/usr/local/cuda-$CUDA_VERSION/bin:$PATH' "${HOME}/.bashrc"
@@ -473,7 +473,7 @@ install_cudnn() {
 
   if (( DRY_RUN )); then
     run_cmd "Installing ${CUDNN_APT_PACKAGE}" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
-      apt-get install -y --no-install-recommends "${CUDNN_APT_PACKAGE}"
+      apt install -y --no-install-recommends "${CUDNN_APT_PACKAGE}"
     append_line_once 'export CUDNN_VERSION=9' "${HOME}/.bashrc"
     append_line_once 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' "${HOME}/.bashrc"
     info "Dry run: skipping cuDNN package validation."
@@ -481,7 +481,7 @@ install_cudnn() {
   fi
 
   run_cmd "Installing ${CUDNN_APT_PACKAGE}" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
-    apt-get install -y --no-install-recommends "${CUDNN_APT_PACKAGE}"
+    apt install -y --no-install-recommends "${CUDNN_APT_PACKAGE}"
 
   append_line_once 'export CUDNN_VERSION=9' "${HOME}/.bashrc"
   append_line_once 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' "${HOME}/.bashrc"

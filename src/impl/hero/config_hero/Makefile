@@ -17,17 +17,17 @@ $(eval $(call BUILD_OBJ_INC, common, hero_config_tools_config_file_ops, hero_con
 $(eval $(call BUILD_OBJ_INC, common, hero_config_tools_optim_ops, hero_config_tools_optim_ops))
 $(eval $(call BUILD_OBJ_INC, common, hero_config_tools_dev_reset_ops, hero_config_tools_dev_reset_ops))
 
-CONFIG_HERO_OBJS := \
-  $(OUTPUT_PATH)/common/hero_config_store.o \
-  $(OUTPUT_PATH)/common/hero_config_tools.o \
-  $(OUTPUT_PATH)/common/hero_config_tools_config_policy.o \
-  $(OUTPUT_PATH)/common/hero_config_tools_config_file_ops.o \
-  $(OUTPUT_PATH)/common/hero_config_tools_optim_ops.o \
-  $(OUTPUT_PATH)/common/hero_config_tools_dev_reset_ops.o
+CONFIG_HERO_TARGETS := \
+  hero_config_store \
+  hero_config_tools \
+  hero_config_tools_config_policy \
+  hero_config_tools_config_file_ops \
+  hero_config_tools_optim_ops \
+  hero_config_tools_dev_reset_ops
 
 # -----------------------------------------------------------------
 # Aggregate Target
 # -----------------------------------------------------------------
 .PHONY: all
-all: $(CONFIG_HERO_OBJS)
+all: $(CONFIG_HERO_TARGETS)
 	@$(LOG_SUCCESS)

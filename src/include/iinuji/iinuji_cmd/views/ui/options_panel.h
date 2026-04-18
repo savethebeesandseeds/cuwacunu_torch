@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <future>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -238,6 +240,155 @@ ui_choice_panel_prompt_lines(std::string prompt, int width) {
     });
   }
   return lines;
+}
+
+template <typename Fn>
+inline void ui_run_blocking_dialog(const std::string &title,
+                                   const std::string &prompt, Fn &&fn) {
+  auto *renderer = get_renderer();
+  ui_dialog_window_guard_t background_snapshot{dupwin(stdscr)};
+  if (!renderer || background_snapshot.win == nullptr) {
+    fn();
+    return;
+  }
+
+  int snapshot_h = 0;
+  int snapshot_w = 0;
+  getmaxyx(background_snapshot.win, snapshot_h, snapshot_w);
+
+  int H = 0;
+  int W = 0;
+  getmaxyx(stdscr, H, W);
+  if (H < 8 || W < 36) {
+    fn();
+    return;
+  }
+
+  const short shadow_pair =
+      static_cast<short>(get_color_pair("#0B0D11", "#0B0D11"));
+  constexpr auto kFrameDelay = std::chrono::milliseconds(140);
+
+  auto render_frame = [&](std::size_t tick) {
+    int frame_h = 0;
+    int frame_w = 0;
+    getmaxyx(stdscr, frame_h, frame_w);
+    if (frame_h < 8 || frame_w < 36) {
+      return;
+    }
+
+    int prompt_width = 0;
+    for (const auto &line : split_lines_keep_empty(prompt)) {
+      prompt_width = std::max(
+          prompt_width, static_cast<int>(ui_dialog_trim_ascii(line).size()));
+    }
+
+    const int max_width = std::max(36, frame_w - 4);
+    const int width = std::min(
+        max_width, std::max(38, std::min(72, prompt_width + 10)));
+    const int text_width = std::max(1, width - 6);
+
+    auto prompt_lines = ui_choice_panel_prompt_lines(
+        prompt.empty() ? std::string("Working...") : prompt, text_width);
+    std::string pulse_frame = "○●○";
+    switch (tick % 4u) {
+    case 0u:
+      pulse_frame = "●○○";
+      break;
+    case 1u:
+      pulse_frame = "○●○";
+      break;
+    case 2u:
+      pulse_frame = "○○●";
+      break;
+    case 3u:
+      pulse_frame = "○●○";
+      break;
+    }
+    std::vector<cuwacunu::iinuji::styled_text_line_t> footer_lines{
+        cuwacunu::iinuji::styled_text_line_t{
+            .text = "working",
+            .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Debug,
+        },
+        cuwacunu::iinuji::styled_text_line_t{
+            .text = pulse_frame,
+            .emphasis = cuwacunu::iinuji::text_line_emphasis_t::Accent,
+        },
+    };
+
+    const int prompt_rows = std::max(1, static_cast<int>(prompt_lines.size()));
+    const int footer_rows = std::max(1, static_cast<int>(footer_lines.size()));
+    const int height =
+        std::clamp(2 + prompt_rows + 1 + footer_rows, 7,
+                   std::max(7, frame_h - 2));
+    const int starty = std::max(0, (frame_h - height) / 2);
+    const int startx = std::max(0, (frame_w - width) / 2);
+
+    ui_dialog_restore_background(background_snapshot.win, snapshot_h,
+                                 snapshot_w);
+    if (height > 0 && width > 0) {
+      const int shadow_y = std::min(frame_h, starty + 1);
+      const int shadow_x = std::min(frame_w, startx + 2);
+      if (shadow_y < frame_h && shadow_x < frame_w) {
+        renderer->fillRect(shadow_y, shadow_x,
+                           std::min(height, frame_h - shadow_y),
+                           std::min(width, frame_w - shadow_x), shadow_pair);
+      }
+    }
+
+    iinuji_layout_t panel_layout{};
+    auto panel = create_panel(
+        "__ui_blocking_dialog__", panel_layout,
+        iinuji_style_t{
+            "#E2E6EE", "#151A22", true, "#5C6678", false, false,
+            " " + (title.empty() ? std::string("Working") : title) + " "});
+    auto body = panel_body_object(panel);
+    auto prompt_box = create_text_box(
+        "__ui_blocking_dialog_prompt__", "", false, text_align_t::Left,
+        iinuji_layout_t{},
+        iinuji_style_t{"#D6DDEA", "#151A22", false, "#151A22"});
+    auto footer_box = create_text_box(
+        "__ui_blocking_dialog_footer__", "", false, text_align_t::Center,
+        iinuji_layout_t{},
+        iinuji_style_t{"#8B94A6", "#151A22", false, "#151A22"});
+    if (body) {
+      body->grid = std::make_shared<cuwacunu::iinuji::grid_spec_t>();
+      body->grid->rows = {len_spec::px(prompt_rows), len_spec::px(footer_rows)};
+      body->grid->cols = {len_spec::frac(1.0)};
+      body->grid->gap_row = 1;
+      place_in_grid(prompt_box, 0, 0);
+      place_in_grid(footer_box, 1, 0);
+      body->add_children({prompt_box, footer_box});
+    }
+
+    ui_choice_panel_configure_box(prompt_box, prompt_lines, false);
+    ui_choice_panel_configure_box(footer_box, footer_lines, false);
+
+    layout_tree(panel, Rect{startx, starty, width, height});
+    ::curs_set(0);
+    render_tree(panel);
+    ::refresh();
+  };
+
+  auto future = std::async(std::launch::async, [&]() { fn(); });
+  std::size_t tick = 0u;
+  try {
+    while (true) {
+      render_frame(tick);
+      if (future.wait_for(kFrameDelay) == std::future_status::ready) {
+        break;
+      }
+      ++tick;
+    }
+    future.get();
+  } catch (...) {
+    ui_dialog_restore_background(background_snapshot.win, snapshot_h,
+                                 snapshot_w);
+    ::refresh();
+    throw;
+  }
+
+  ui_dialog_restore_background(background_snapshot.win, snapshot_h, snapshot_w);
+  ::refresh();
 }
 
 inline std::vector<cuwacunu::iinuji::styled_text_line_t>

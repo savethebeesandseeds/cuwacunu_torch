@@ -17,6 +17,7 @@ struct hashimyei_runtime_defaults_t {
 struct app_context_t {
   std::filesystem::path store_root{};
   std::filesystem::path lattice_catalog_path{};
+  std::filesystem::path global_config_path{};
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t
       catalog_options{};
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t catalog{};
@@ -25,25 +26,25 @@ struct app_context_t {
 };
 
 [[nodiscard]] std::filesystem::path resolve_hashimyei_hero_dsl_path(
-    const std::filesystem::path& global_config_path);
-[[nodiscard]] bool load_hashimyei_runtime_defaults(
-    const std::filesystem::path& hero_dsl_path,
-    const std::filesystem::path& global_config_path,
-    hashimyei_runtime_defaults_t* out,
-    std::string* error);
+    const std::filesystem::path &global_config_path);
+[[nodiscard]] bool
+load_hashimyei_runtime_defaults(const std::filesystem::path &hero_dsl_path,
+                                const std::filesystem::path &global_config_path,
+                                hashimyei_runtime_defaults_t *out,
+                                std::string *error);
 
-[[nodiscard]] bool execute_tool_json(const std::string& tool_name,
+[[nodiscard]] bool execute_tool_json(const std::string &tool_name,
                                      std::string arguments_json,
-                                     app_context_t* app,
-                                     std::string* out_tool_result_json,
-                                     std::string* out_error_message);
+                                     app_context_t *app,
+                                     std::string *out_tool_result_json,
+                                     std::string *out_error_message);
 [[nodiscard]] bool tool_result_is_error(std::string_view tool_result_json);
 
 [[nodiscard]] std::string build_tools_list_result_json();
 [[nodiscard]] std::string build_tools_list_human_text();
 
-void run_jsonrpc_stdio_loop(app_context_t* app);
+void run_jsonrpc_stdio_loop(app_context_t *app);
 
-}  // namespace hashimyei_mcp
-}  // namespace hero
-}  // namespace cuwacunu
+} // namespace hashimyei_mcp
+} // namespace hero
+} // namespace cuwacunu

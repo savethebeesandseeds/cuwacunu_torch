@@ -22,24 +22,28 @@ CAMPAIGN {
 
   BIND bind_train_vicreg_primary_btcusdt {
     __mode_flags = 3;
-    __vicreg_hashimyei_slot = 0x00ff;
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;
     __from = 01.01.2020;
     __to = 31.12.2023;
     __jk_profile_id = stable_pretrain_linear_only;
+    MOUNT {
+      w_rep = EXACT 0x00ff;
+    };
     CONTRACT = contract_train_vicreg_solo;
     WAVE = train_vicreg_primary;
   };
 
   BIND bind_eval_vicreg_payload_btcusdt {
-    __vicreg_hashimyei_slot = 0x00ff;
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;
     __from = 01.01.2024;
     __to = 31.08.2024;
+    MOUNT {
+      w_rep = EXACT 0x00ff;
+    };
     CONTRACT = contract_train_vicreg_solo;
     WAVE = eval_vicreg_payload;
   };
@@ -50,54 +54,62 @@ CAMPAIGN {
     complete final evidence package.
   */
   BIND bind_eval_vicreg_payload_btcusdt_untouched_test {
-    __vicreg_hashimyei_slot = 0x00ff;
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;
     __from = 01.09.2024;
     __to = 31.12.2024;
+    MOUNT {
+      w_rep = EXACT 0x00ff;
+    };
     CONTRACT = contract_train_vicreg_solo;
     WAVE = eval_vicreg_payload_untouched_test;
   };
 
   BIND bind_train_vicreg_primary_btcusdt_no_swa_v1 {
     __mode_flags = 3;
-    __vicreg_hashimyei_slot = 0x00FD;
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;
     __from = 01.01.2020;
     __to = 31.12.2023;
     __jk_profile_id = stable_pretrain_no_swa_low_lr;
+    MOUNT {
+      w_rep = EXACT 0x00ff;
+    };
     CONTRACT = contract_train_vicreg_solo;
     WAVE = train_vicreg_primary_no_swa_v1;
   };
 
   BIND bind_eval_vicreg_payload_btcusdt_no_swa_v1 {
-    __vicreg_hashimyei_slot = 0x00FD;
     __jk_profile_id = eval_payload_no_swa_low_lr;
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;
     __from = 01.01.2024;
     __to = 31.08.2024;
+    MOUNT {
+      w_rep = EXACT 0x00ff;
+    };
     CONTRACT = contract_train_vicreg_solo;
     WAVE = eval_vicreg_payload_no_swa_v1;
   };
 
   BIND bind_eval_vicreg_payload_btcusdt_untouched_test_no_swa_v1 {
-    __vicreg_hashimyei_slot = 0x00FD;
     __jk_profile_id = eval_payload_no_swa_low_lr;
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;
     __from = 01.09.2024;
     __to = 31.12.2024;
+    MOUNT {
+      w_rep = EXACT 0x00ff;
+    };
     CONTRACT = contract_train_vicreg_solo;
     WAVE = eval_vicreg_payload_untouched_test_no_swa_v1;
   };
 
-  RUN bind_train_vicreg_primary_btcusdt_no_swa_v1;
-  RUN bind_eval_vicreg_payload_btcusdt_no_swa_v1;
-  RUN bind_eval_vicreg_payload_btcusdt_untouched_test_no_swa_v1;
+  RUN bind_train_vicreg_primary_btcusdt;
+  RUN bind_eval_vicreg_payload_btcusdt;
+  RUN bind_eval_vicreg_payload_btcusdt_untouched_test;
 }
