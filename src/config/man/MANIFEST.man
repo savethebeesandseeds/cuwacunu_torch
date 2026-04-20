@@ -48,7 +48,7 @@ covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.networ
 
 [ENTRY 12]
 file = tsi.wikimyei.inference.mdn.expected_value.man
-covers = instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl,bnf/latent_lineage_state.authored.bnf
+covers = instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl,instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl,bnf/latent_lineage_state.authored.bnf,bnf/network_design.bnf
 
 [ENTRY 13]
 file = tsi.wikimyei.evaluation.embedding_sequence_analytics.man

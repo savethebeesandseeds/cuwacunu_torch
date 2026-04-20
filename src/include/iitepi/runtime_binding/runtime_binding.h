@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -385,53 +386,155 @@ sanitize_bundle_snapshot_filename(std::string_view filename) {
   return out;
 }
 
+[[nodiscard]] inline bool
+runtime_node_canonical_type(const Tsi &node, std::string *out) noexcept;
+
+[[nodiscard]] inline bool resolve_runtime_wikimyei_binding(
+    const RuntimeBindingContract &c, const TsiWikimyei &wik,
+    RuntimeBindingContract::WikimyeiBindingIdentity *out,
+    std::string *error = nullptr) {
+  if (error)
+    error->clear();
+  if (!out) {
+    if (error)
+      *error = "missing wikimyei binding output";
+    return false;
+  }
+
+  const std::string binding_id = std::string(wik.instance_name());
+  std::string canonical_type{};
+  if (!runtime_node_canonical_type(wik, &canonical_type) ||
+      canonical_type.empty()) {
+    if (error) {
+      *error = "cannot resolve canonical runtime type for wikimyei node '" +
+               binding_id + "'";
+    }
+    return false;
+  }
+
+  if (const auto *binding = c.spec.find_wikimyei_binding(binding_id)) {
+    *out = *binding;
+  } else {
+    const RuntimeBindingContract::WikimyeiBindingIdentity *fallback = nullptr;
+    for (const auto &candidate : c.spec.wikimyei_bindings) {
+      if (!candidate.canonical_type.empty() &&
+          candidate.canonical_type != canonical_type) {
+        continue;
+      }
+      if (fallback != nullptr) {
+        if (error) {
+          *error = "ambiguous wikimyei binding resolution for node '" +
+                   binding_id + "' type '" + canonical_type + "'";
+        }
+        return false;
+      }
+      fallback = &candidate;
+    }
+    if (fallback != nullptr) {
+      *out = *fallback;
+    } else if (!c.spec.representation_type.empty() &&
+               c.spec.representation_type == canonical_type) {
+      *out = RuntimeBindingContract::WikimyeiBindingIdentity{
+          .binding_id = binding_id,
+          .canonical_type = c.spec.representation_type,
+          .hashimyei = c.spec.representation_hashimyei,
+          .runtime_component_name = c.spec.representation_component_name,
+      };
+    } else {
+      if (error) {
+        *error = "missing wikimyei binding entry for node '" + binding_id +
+                 "' type '" + canonical_type + "'";
+      }
+      return false;
+    }
+  }
+
+  if (out->binding_id.empty())
+    out->binding_id = binding_id;
+  if (out->canonical_type.empty())
+    out->canonical_type = canonical_type;
+  if (out->canonical_type != canonical_type) {
+    if (error) {
+      *error = "wikimyei binding type mismatch for node '" + binding_id +
+               "': spec=" + out->canonical_type + " runtime=" +
+               canonical_type;
+    }
+    return false;
+  }
+
+  const auto type_id = parse_tsi_type_id(out->canonical_type);
+  if (type_id.has_value() &&
+      tsi_type_instance_policy(*type_id) ==
+          TsiInstancePolicy::HashimyeiInstances &&
+      out->hashimyei.empty()) {
+    if (error) {
+      *error = "wikimyei binding for node '" + binding_id +
+               "' is missing required hashimyei";
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] inline const RuntimeBindingContract::ComponentDslFingerprint *
+find_runtime_component_dsl_fingerprint(
+    const RuntimeBindingContract &c,
+    const RuntimeBindingContract::WikimyeiBindingIdentity &binding) noexcept {
+  const RuntimeBindingContract::ComponentDslFingerprint *selected = nullptr;
+  std::string normalized_binding_hash = binding.hashimyei;
+  cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&normalized_binding_hash);
+
+  for (const auto &fp : c.spec.component_dsl_fingerprints) {
+    if (!binding.canonical_type.empty() && fp.tsi_type != binding.canonical_type)
+      continue;
+    std::string normalized_fp_hash = fp.hashimyei;
+    cuwacunu::hashimyei::normalize_hex_hash_name_inplace(&normalized_fp_hash);
+    if (!normalized_binding_hash.empty() && !normalized_fp_hash.empty() &&
+        normalized_binding_hash == normalized_fp_hash) {
+      return &fp;
+    }
+    if (!selected)
+      selected = &fp;
+  }
+  return selected;
+}
+
 [[nodiscard]] inline std::optional<
     cuwacunu::hero::hashimyei::component_manifest_t>
 build_runtime_component_manifest(const RuntimeBindingContract &c,
-                                 const TsiWikimyei &,
+                                 const TsiWikimyei &wik,
                                  std::string *error = nullptr) {
   if (error)
     error->clear();
-  if (c.spec.representation_hashimyei.empty()) {
-    if (error)
-      *error = "representation_hashimyei is empty";
+  RuntimeBindingContract::WikimyeiBindingIdentity binding{};
+  if (!resolve_runtime_wikimyei_binding(c, wik, &binding, error)) {
     return std::nullopt;
   }
-  std::string normalized_representation_hashimyei{};
-  if (!cuwacunu::hashimyei::normalize_hex_hash_name(
-          c.spec.representation_hashimyei,
-          &normalized_representation_hashimyei)) {
+
+  std::string normalized_hashimyei{};
+  if (!cuwacunu::hashimyei::normalize_hex_hash_name(binding.hashimyei,
+                                                    &normalized_hashimyei)) {
     if (error) {
-      *error = "representation_hashimyei is not a valid 0x... ordinal";
+      *error = "wikimyei hashimyei is not a valid 0x... ordinal for node '" +
+               binding.binding_id + "'";
     }
     return std::nullopt;
   }
 
-  std::string family = c.spec.representation_type;
+  const std::string family = binding.canonical_type;
   if (family.empty()) {
     if (error)
       *error = "wikimyei family is empty";
     return std::nullopt;
   }
 
-  const RuntimeBindingContract::ComponentDslFingerprint *selected_fp = nullptr;
-  for (const auto &fp : c.spec.component_dsl_fingerprints) {
-    std::string normalized_fp_hashimyei = fp.hashimyei;
-    cuwacunu::hashimyei::normalize_hex_hash_name_inplace(
-        &normalized_fp_hashimyei);
-    if (!normalized_fp_hashimyei.empty() &&
-        normalized_fp_hashimyei == normalized_representation_hashimyei) {
-      selected_fp = &fp;
-      break;
-    }
-    if (!selected_fp && fp.tsi_type == family)
-      selected_fp = &fp;
-  }
+  const RuntimeBindingContract::ComponentDslFingerprint *selected_fp =
+      find_runtime_component_dsl_fingerprint(c, binding);
   if (!selected_fp) {
     if (error) {
-      *error =
-          "missing component DSL fingerprint for runtime bootstrap family: " +
-          family;
+      *error = "missing component DSL fingerprint for runtime bootstrap "
+               "family: " +
+               family;
     }
     return std::nullopt;
   }
@@ -446,9 +549,9 @@ build_runtime_component_manifest(const RuntimeBindingContract &c,
 
   std::uint64_t component_ordinal = 0;
   if (!cuwacunu::hashimyei::parse_hex_hash_name_ordinal(
-          normalized_representation_hashimyei, &component_ordinal)) {
+          normalized_hashimyei, &component_ordinal)) {
     if (error) {
-      *error = "representation_hashimyei is not a valid 0x... ordinal";
+      *error = "wikimyei hashimyei is not a valid 0x... ordinal";
     }
     return std::nullopt;
   }
@@ -458,7 +561,7 @@ build_runtime_component_manifest(const RuntimeBindingContract &c,
 
   cuwacunu::hero::hashimyei::component_manifest_t manifest{};
   manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
-  manifest.canonical_path = family + "." + normalized_representation_hashimyei;
+  manifest.canonical_path = family + "." + normalized_hashimyei;
   manifest.family = family;
   manifest.hashimyei_identity = cuwacunu::hashimyei::make_identity(
       cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE, component_ordinal);
@@ -1011,6 +1114,79 @@ validate_runtime_binding(const RuntimeBinding &b,
       }
     }
 
+    if (runtime_representation_count > 0) {
+      if (c.spec.wikimyei_bindings.empty()) {
+        return fail("contract spec.wikimyei_bindings is empty", 0);
+      }
+
+      std::unordered_map<std::string,
+                         const RuntimeBindingContract::WikimyeiBindingIdentity *>
+          bindings_by_id;
+      bindings_by_id.reserve(c.spec.wikimyei_bindings.size());
+      for (const auto &binding : c.spec.wikimyei_bindings) {
+        if (binding.binding_id.empty()) {
+          return fail("contract spec.wikimyei_bindings has empty binding_id",
+                      0);
+        }
+        if (binding.canonical_type.empty()) {
+          return fail(
+              "contract spec.wikimyei_bindings has empty canonical_type", 0);
+        }
+        TsiTypeId binding_type_id{};
+        if (!is_known_canonical_component_type(binding.canonical_type,
+                                               &binding_type_id)) {
+          return fail("contract spec.wikimyei_bindings has unknown canonical "
+                      "type",
+                      0);
+        }
+        if (tsi_type_domain(binding_type_id) != TsiDomain::Wikimyei) {
+          return fail("contract spec.wikimyei_bindings type domain mismatch",
+                      0);
+        }
+        if (tsi_type_instance_policy(binding_type_id) ==
+                TsiInstancePolicy::HashimyeiInstances &&
+            binding.hashimyei.empty()) {
+          return fail("contract spec.wikimyei_bindings is missing hashimyei "
+                      "for hashimyei type",
+                      0);
+        }
+        if (!bindings_by_id.emplace(binding.binding_id, &binding).second) {
+          return fail("contract spec.wikimyei_bindings has duplicate "
+                      "binding_id",
+                      0);
+        }
+      }
+
+      std::size_t matched_runtime_wikimyei = 0;
+      for (const auto &n : c.nodes) {
+        if (!n || n->domain() != TsiDomain::Wikimyei)
+          continue;
+        const std::string binding_id = std::string(n->instance_name());
+        const auto binding_it = bindings_by_id.find(binding_id);
+        if (binding_it == bindings_by_id.end()) {
+          return fail("runtime wikimyei node is missing from "
+                      "spec.wikimyei_bindings",
+                      0);
+        }
+        std::string runtime_type{};
+        if (!runtime_node_canonical_type(*n, &runtime_type) ||
+            runtime_type.empty()) {
+          return fail("runtime wikimyei node has unknown canonical type", 0);
+        }
+        if (binding_it->second->canonical_type != runtime_type) {
+          return fail("spec.wikimyei_bindings canonical_type does not match "
+                      "runtime wikimyei node",
+                      0);
+        }
+        ++matched_runtime_wikimyei;
+      }
+      if (matched_runtime_wikimyei != c.spec.wikimyei_bindings.size()) {
+        return fail("spec.wikimyei_bindings contains entry absent from "
+                    "runtime graph",
+                    0);
+      }
+    }
+
     if (!c.spec.source_type.empty() &&
         spec_component_types.find(c.spec.source_type) ==
             spec_component_types.end()) {
@@ -1203,7 +1379,7 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
                                                     std::string *error) {
   if (error)
     error->clear();
-  if (c.spec.representation_hashimyei.empty())
+  if (c.spec.wikimyei_bindings.empty() && c.spec.representation_hashimyei.empty())
     return true;
 
   for (auto &node : c.nodes) {
@@ -1222,8 +1398,16 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
     io_ctx.source_runtime_cursor = ctx.source_runtime_cursor;
     io_ctx.has_wave_cursor = ctx.has_wave_cursor;
     io_ctx.wave_cursor = ctx.wave_cursor;
+    RuntimeBindingContract::WikimyeiBindingIdentity binding{};
     std::string local_error;
-    if (!wik->runtime_load_from_hashimyei(c.spec.representation_hashimyei,
+    if (!resolve_runtime_wikimyei_binding(c, *wik, &binding, &local_error)) {
+      if (error) {
+        *error = "failed to resolve wikimyei binding for node '" +
+                 std::string(wik->instance_name()) + "': " + local_error;
+      }
+      return false;
+    }
+    if (!wik->runtime_load_from_hashimyei(binding.hashimyei,
                                           &local_error, &io_ctx)) {
       // Training-enabled wikimyei are allowed to bootstrap from scratch when
       // the configured hashimyei has not been founded yet. The first
@@ -1237,7 +1421,7 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
             "[runtime_binding.contract.run] configured hashimyei missing for "
             "node=%s hashimyei=%s; bootstrapping a new hashimyei from the "
             "active founding_dsl_bundle/runtime state\n",
-            instance_name.c_str(), c.spec.representation_hashimyei.c_str());
+            instance_name.c_str(), binding.hashimyei.c_str());
         continue;
       }
       if (error) {
@@ -1288,8 +1472,7 @@ inline bool load_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
     }
     if (!validated_from_component_manifest &&
         !validate_runtime_hashimyei_contract_docking(
-            c.spec.representation_type, c.spec.representation_hashimyei,
-            c.spec.contract_hash,
+            binding.canonical_type, binding.hashimyei, c.spec.contract_hash,
             /*require_registered_manifest=*/true, &local_error)) {
       if (error) {
         *error = "configured hashimyei failed contract docking validation for "
@@ -1307,7 +1490,7 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
                                                     std::string *error) {
   if (error)
     error->clear();
-  if (c.spec.representation_hashimyei.empty())
+  if (c.spec.wikimyei_bindings.empty() && c.spec.representation_hashimyei.empty())
     return true;
 
   for (auto &node : c.nodes) {
@@ -1328,8 +1511,16 @@ inline bool save_contract_wikimyei_report_fragments(RuntimeBindingContract &c,
         wik->runtime_autosave_report_fragments() || io_ctx.enable_debug_outputs;
     if (!should_save_report_fragments)
       continue;
+    RuntimeBindingContract::WikimyeiBindingIdentity binding{};
     std::string local_error;
-    if (!wik->runtime_save_to_hashimyei(c.spec.representation_hashimyei,
+    if (!resolve_runtime_wikimyei_binding(c, *wik, &binding, &local_error)) {
+      if (error) {
+        *error = "failed to resolve wikimyei binding for node '" +
+                 std::string(wik->instance_name()) + "': " + local_error;
+      }
+      return false;
+    }
+    if (!wik->runtime_save_to_hashimyei(binding.hashimyei,
                                         &local_error, &io_ctx)) {
       if (error) {
         *error = "failed to save wikimyei report fragments for node '" +

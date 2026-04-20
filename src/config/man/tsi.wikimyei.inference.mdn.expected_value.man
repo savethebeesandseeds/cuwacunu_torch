@@ -15,7 +15,7 @@ required = true
 default = none
 range = non-empty path string
 allowed = path text
-nuance = checkpoint loader/saver enforces strict v2 metadata contract
+nuance = checkpoint loader/saver enforces strict v4 metadata contract
 
 [FIELD verbose_train]
 key = verbose_train
@@ -35,17 +35,37 @@ required = true
 default = none
 range = integer (recommended >= -1)
 allowed = integer
-nuance = config key is required by validator; current ExpectedValue ctor does not auto-wire this key into telemetry cadence without explicit setter usage
+nuance = config key is required by validator and auto-wired into ExpectedValue telemetry cadence
+
+[FIELD encoding_dims]
+key = encoding_dims
+scope = EXPECTED_VALUE
+type = int
+required = derived
+default = default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl
+range = > 0
+allowed = integer
+nuance = normalized into EXPECTED_VALUE from network_design_dsl_file and checked against contract __embedding_dims
+
+[FIELD encoding_temporal_reducer]
+key = encoding_temporal_reducer
+scope = EXPECTED_VALUE
+type = enum string
+required = derived
+default = last_valid
+range = last_valid|masked_mean|mean
+allowed = last_valid, masked_mean, mean
+nuance = authored as ENCODING.temporal_reducer in network_design_dsl_file; rank-3 [B,T,De] encodings are reduced inside ExpectedValue before entering the pure MDN
 
 [FIELD target_dims]
 key = target_dims
 scope = EXPECTED_VALUE
 type = arr[int]
-required = true
-default = none
-range = non-empty; each dim in [0,D)
+required = derived
+default = default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl
+range = non-empty; unique; each dim in [0,D)
 allowed = comma-separated integers
-nuance = runtime selects the target Y columns for the MDN; the exposed statistic is E[Y|X], so these indices define what Y means
+nuance = normalized into EXPECTED_VALUE from network_design_dsl_file; checked against contract __future_target_dims and __obs_feature_dim; do not author this in the thin runtime wrapper
 
 [FIELD target_weights]
 key = target_weights
@@ -55,37 +75,37 @@ required = true
 default = none
 range = non-empty
 allowed = comma-separated floats
-nuance = runtime requires size(target_weights) == size(target_dims) when non-empty
+nuance = runtime requires size(target_weights) == size(target_dims) when non-empty; weights are applied inside per-dimension component log-probability before mixture aggregation, so current behavior is pseudo-likelihood/tempered-score weighting rather than ordinary post-NLL per-target weighting
 
 [FIELD mixture_comps]
 key = mixture_comps
 scope = EXPECTED_VALUE
 type = int
-required = true
-default = none
+required = derived
+default = default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl
 range = > 0
 allowed = integer
-nuance = number of mixture components used to model the predictive distribution p(Y|X); enforced by MDN model constructor
+nuance = normalized into EXPECTED_VALUE from network_design_dsl_file; number of mixture components used to model p(target|X)
 
 [FIELD features_hidden]
 key = features_hidden
 scope = EXPECTED_VALUE
 type = int
-required = true
-default = none
+required = derived
+default = default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl
 range = > 0
 allowed = integer
-nuance = enforced by MDN model constructor
+nuance = normalized into EXPECTED_VALUE from network_design_dsl_file and enforced by MDN model constructor
 
 [FIELD residual_depth]
 key = residual_depth
 scope = EXPECTED_VALUE
 type = int
-required = true
-default = none
+required = derived
+default = default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl
 range = >= 0
 allowed = integer
-nuance = enforced by MDN model constructor
+nuance = normalized into EXPECTED_VALUE from network_design_dsl_file and enforced by MDN model constructor
 
 [FIELD grad_clip]
 key = grad_clip
@@ -127,9 +147,42 @@ range = cpu or cuda-class token
 allowed = cpu,cuda,gpu,cuda:<n>,gpu:<n>,torch::kcpu,torch::kcuda,kcpu,kcuda
 nuance = CUDA unavailability or runtime probe failure triggers CPU fallback warning
 
+[FIELD network_design_dsl_file]
+key = network_design_dsl_file
+scope = EXPECTED_VALUE
+type = string path
+required = true
+default = src/config/instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl
+range = existing file path
+allowed = absolute or module-relative path
+nuance = sole authored architecture payload for the MDN expected-value Wikimyei
+
+[FIELD jkimyei_dsl_file]
+key = jkimyei_dsl_file
+scope = EXPECTED_VALUE
+type = string path
+required = true
+default = src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl
+range = existing file path
+allowed = absolute or module-relative path
+nuance = declarative optimizer/scheduler/loss/profile policy payload; default points at the shared Wikimyei policy bundle
+note = default filename is VICReg-flavored for historical reasons; policy identity is resolved from explicit COMPONENT blocks, not the filename
+
 [RULE UNKNOWN_KEYS]
 id = UNKNOWN_KEYS
 applies_to = EXPECTED_VALUE module section
 severity = error
 when = key not in allow-list
 message = unknown key in module config is rejected
+
+[NOTE TARGET_SPACE_EXPECTATION]
+scope = EXPECTED_VALUE runtime export
+text = ExpectedValue exports E[target|X] in configured target space. Identity preprocessing yields expected raw future features. Source-side log_returns on price fields yields expected log-return, not arithmetic expected return or expected future price. Native/raw-space expectations are separate derived statistics from the full MDN distribution because nonlinear transforms do not commute with expectation.
+
+[NOTE TRAINING_BOUNDARY]
+scope = EXPECTED_VALUE training
+text = ExpectedValue trains on future_features[..., target_dims] with future_mask and updates only the MDN/value-head parameters. VICReg encodings are consumed as inputs through the runtime cargo path; current train-both waves perform simultaneous component-local training, not end-to-end ExpectedValue loss backpropagation into VICReg.
+
+[NOTE TARGET_SELECTION_DEFAULT]
+scope = EXPECTED_VALUE network_design
+text = Authored target selection should remain explicit unless an opt-in named target group is introduced. Forecasting all feature dimensions changes the module from a targeted value head into a broader future-state model and should not become the implicit default.

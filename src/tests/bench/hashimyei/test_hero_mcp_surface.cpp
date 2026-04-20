@@ -295,6 +295,26 @@ wait_for_command(const std::string &command, Predicate &&predicate,
   return last;
 }
 
+static std::string wait_for_file_containing(const fs::path &path,
+                                            std::string_view needle,
+                                            int timeout_ms = 10000,
+                                            int poll_ms = 100) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  std::string last{};
+  for (;;) {
+    if (fs::exists(path)) {
+      last = read_text_file(path);
+      if (contains(last, needle))
+        return last;
+    }
+    if (std::chrono::steady_clock::now() >= deadline)
+      break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(poll_ms));
+  }
+  return last;
+}
+
 static void write_manual_running_campaign_fixture(
     const fs::path &runtime_root, const fs::path &global_config,
     const fs::path &session_hero_marshal_dsl, std::string_view session_id,
@@ -321,22 +341,22 @@ static void write_manual_running_campaign_fixture(
   session.work_gate = "open";
   session.activity = "awaiting_campaign_fact";
   session.finish_reason = "none";
-  session.objective_name = "vicreg.solo.train";
+  session.objective_name = "runtime.operative.vicreg.solo.train";
   session.global_config_path = global_config.string();
   session.source_marshal_objective_dsl_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.marshal.dsl";
   session.source_campaign_dsl_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "iitepi.campaign.dsl";
   session.source_marshal_objective_md_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.objective.md";
   session.source_marshal_guidance_md_path =
-      "/cuwacunu/src/config/instructions/defaults/default.marshal.guidance.md";
+      "/cuwacunu/src/config/instructions/defaults/default.runtime.operative.guidance.md";
   session.session_root = session_root.string();
   session.objective_root =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train";
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train";
   session.campaign_dsl_path = session.source_campaign_dsl_path;
   session.marshal_objective_dsl_path =
       (session_root / "marshal.objective.dsl").string();
@@ -408,7 +428,7 @@ static void mark_runtime_campaign_terminal(const fs::path &runtime_root,
   campaign.marshal_session_id = std::string(session_id);
   campaign.global_config_path = global_config.string();
   campaign.source_campaign_dsl_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "iitepi.campaign.dsl";
   campaign.campaign_dsl_path =
       (campaigns_root / std::string(campaign_cursor) / "campaign.dsl").string();
@@ -625,7 +645,7 @@ static void test_marshal_session_continue_smoke() {
   const fs::path codex_stub = cfg_dir / "codex_stub.sh";
   const fs::path human_identities = cfg_dir / "human_operator_identities";
   const fs::path source_objective_dsl =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.marshal.dsl";
 
   write_text_file(human_identities, "# smoke-only\n");
@@ -708,14 +728,14 @@ fi
 printf '{"type":"stub_event","step":"%s","resume_mode":%s}\n' "$step" "$resume_mode"
 if [[ "$resume_mode" == "0" && "$step" == "0" ]]; then
   cat > "$decision_path" <<'JSON'
-{"intent":"pause_for_clarification","reason":"need clarification","memory_note":"asked for clarification","clarification_request":{"request":"Provide the missing clarification."}}
+{"intent":"pause_for_clarification","reply_text":"","launch":null,"clarification_request":{"request":"Provide the missing clarification."},"governance":null,"reason":"need clarification","memory_note":"asked for clarification"}
 JSON
   echo 1 > "$state_file"
   exit 0
 fi
 if [[ "$resume_mode" == "1" && "$step" == "1" ]]; then
   cat > "$decision_path" <<'JSON'
-{"intent":"complete","reason":"objective satisfied after clarification","memory_note":"completed after clarification"}
+{"intent":"complete","reply_text":"","launch":null,"clarification_request":null,"governance":null,"reason":"objective satisfied after clarification","memory_note":"completed after clarification"}
 JSON
   echo 2 > "$state_file"
   exit 0
@@ -723,7 +743,7 @@ fi
 if [[ "$resume_mode" == "1" && "$step" == "2" ]]; then
   sleep 2
   cat > "$decision_path" <<'JSON'
-{"intent":"complete","reason":"objective satisfied after continuation","memory_note":"completed after continuation"}
+{"intent":"complete","reply_text":"","launch":null,"clarification_request":null,"governance":null,"reason":"objective satisfied after continuation","memory_note":"completed after continuation"}
 JSON
   echo 3 > "$state_file"
   exit 0
@@ -925,8 +945,9 @@ exit 3
       contains(read_text_file(codex_stdout_log), "\"type\":\"stub_event\""));
   REQUIRE(contains(read_text_file(codex_stderr_log), "\"stream\":\"stderr\""));
   REQUIRE(contains(read_text_file(codex_stderr_log), kSmokeCodexSessionId));
-  const std::string events_text =
-      read_text_file(session_root / "marshal.session.events.jsonl");
+  const std::string events_text = wait_for_file_containing(
+      session_root / "marshal.session.events.jsonl",
+      "\"type\":\"operator.message_handled\"");
   REQUIRE(contains(events_text, "\"type\":\"operator.message_received\""));
   REQUIRE(contains(events_text, "\"type\":\"operator.message_delivered\""));
   REQUIRE(contains(events_text, "\"type\":\"operator.message_handled\""));
@@ -950,7 +971,7 @@ static void test_marshal_run_plan_replans_between_bind_steps() {
   const fs::path runtime_stub = cfg_dir / "runtime_stub.sh";
   const fs::path human_identities = cfg_dir / "human_operator_identities";
   const fs::path source_objective_dsl =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.marshal.dsl";
 
   write_text_file(human_identities, "# smoke-only\n");
@@ -1060,7 +1081,7 @@ case "$step" in
     grep -F '"run_plan_progress":{' <<<"$briefing" >/dev/null || { echo "missing run plan progress" >&2; exit 4; }
     grep -F '"next_pending_bind_id":"bind_train_vicreg_primary_btcusdt"' <<<"$briefing" >/dev/null || { echo "missing first pending bind" >&2; exit 4; }
     cat > "$decision_path" <<'JSON'
-{"intent":"launch_campaign","reason":"launch the first pending RUN step","memory_note":"launch first pending bind","launch":{"mode":"run_plan","binding_id":null,"reset_runtime_state":false,"requires_objective_mutation":false}}
+{"intent":"launch_campaign","reply_text":"","launch":{"mode":"run_plan","binding_id":null,"reset_runtime_state":false,"requires_objective_mutation":false},"clarification_request":null,"governance":null,"reason":"launch the first pending RUN step","memory_note":"launch first pending bind"}
 JSON
     echo 1 > "$state_file"
     exit 0
@@ -1070,7 +1091,7 @@ JSON
     grep -F '"completed_run_bind_ids":["bind_train_vicreg_primary_btcusdt"]' <<<"$briefing" >/dev/null || { echo "missing completed bind 1" >&2; exit 4; }
     grep -F '"next_pending_bind_id":"bind_eval_vicreg_payload_btcusdt"' <<<"$briefing" >/dev/null || { echo "missing second pending bind" >&2; exit 4; }
     cat > "$decision_path" <<'JSON'
-{"intent":"launch_campaign","reason":"launch the second pending RUN step","memory_note":"launch second pending bind","launch":{"mode":"run_plan","binding_id":null,"reset_runtime_state":false,"requires_objective_mutation":false}}
+{"intent":"launch_campaign","reply_text":"","launch":{"mode":"run_plan","binding_id":null,"reset_runtime_state":false,"requires_objective_mutation":false},"clarification_request":null,"governance":null,"reason":"launch the second pending RUN step","memory_note":"launch second pending bind"}
 JSON
     echo 2 > "$state_file"
     exit 0
@@ -1079,7 +1100,7 @@ JSON
     grep -F '"completed_run_bind_ids":["bind_train_vicreg_primary_btcusdt","bind_eval_vicreg_payload_btcusdt"]' <<<"$briefing" >/dev/null || { echo "missing completed binds 1-2" >&2; exit 4; }
     grep -F '"next_pending_bind_id":"bind_eval_vicreg_payload_btcusdt_untouched_test"' <<<"$briefing" >/dev/null || { echo "missing third pending bind" >&2; exit 4; }
     cat > "$decision_path" <<'JSON'
-{"intent":"launch_campaign","reason":"launch the final pending RUN step","memory_note":"launch third pending bind","launch":{"mode":"run_plan","binding_id":null,"reset_runtime_state":false,"requires_objective_mutation":false}}
+{"intent":"launch_campaign","reply_text":"","launch":{"mode":"run_plan","binding_id":null,"reset_runtime_state":false,"requires_objective_mutation":false},"clarification_request":null,"governance":null,"reason":"launch the final pending RUN step","memory_note":"launch third pending bind"}
 JSON
     echo 3 > "$state_file"
     exit 0
@@ -1088,7 +1109,7 @@ JSON
     grep -F '"completed_run_bind_ids":["bind_train_vicreg_primary_btcusdt","bind_eval_vicreg_payload_btcusdt","bind_eval_vicreg_payload_btcusdt_untouched_test"]' <<<"$briefing" >/dev/null || { echo "missing completed binds 1-3" >&2; exit 4; }
     grep -F '"next_pending_bind_id":null' <<<"$briefing" >/dev/null || { echo "missing null next pending bind" >&2; exit 4; }
     cat > "$decision_path" <<'JSON'
-{"intent":"complete","reason":"all pending RUN steps completed with replanning between binds","memory_note":"completed after per-run replanning"}
+{"intent":"complete","reply_text":"","launch":null,"clarification_request":null,"governance":null,"reason":"all pending RUN steps completed with replanning between binds","memory_note":"completed after per-run replanning"}
 JSON
     echo 4 > "$state_file"
     exit 0
@@ -1212,7 +1233,7 @@ static void test_marshal_resume_rejects_mismatched_clarification_artifact() {
   const fs::path human_identities = cfg_dir / "human_operator_identities";
   const fs::path bad_answer = cfg_dir / "bad_answer.json";
   const fs::path source_objective_dsl =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.marshal.dsl";
 
   write_text_file(human_identities, "# smoke-only\n");
@@ -1242,14 +1263,14 @@ if [[ -f "$state_file" ]]; then
 fi
 if [[ "$resume_mode" == "0" && "$step" == "0" ]]; then
   cat > "$decision_path" <<'JSON'
-{"intent":"pause_for_clarification","reason":"need clarification","memory_note":"asked for clarification","clarification_request":{"request":"Provide the missing clarification."}}
+{"intent":"pause_for_clarification","reply_text":"","launch":null,"clarification_request":{"request":"Provide the missing clarification."},"governance":null,"reason":"need clarification","memory_note":"asked for clarification"}
 JSON
   echo 1 > "$state_file"
   exit 0
 fi
 if [[ "$resume_mode" == "1" && "$step" == "1" ]]; then
   cat > "$decision_path" <<'JSON'
-{"intent":"complete","reason":"clarification accepted","memory_note":"completed after valid clarification"}
+{"intent":"complete","reply_text":"","launch":null,"clarification_request":null,"governance":null,"reason":"clarification accepted","memory_note":"completed after valid clarification"}
 JSON
   echo 2 > "$state_file"
   exit 0
@@ -1368,7 +1389,7 @@ static void test_marshal_session_failed_checkpoint_idles_and_continues() {
   const fs::path codex_stub = cfg_dir / "codex_stub.sh";
   const fs::path human_identities = cfg_dir / "human_operator_identities";
   const fs::path source_objective_dsl =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.marshal.dsl";
 
   write_text_file(human_identities, "# smoke-only\n");
@@ -1427,7 +1448,7 @@ fi
 printf '{"type":"stub_event","step":"%s","resume_mode":%s}\n' "$step" "$resume_mode"
 if [[ "$resume_mode" == "0" && "$step" == "0" ]]; then
   cat > "$decision_path" <<'JSON'
-{"intent":"launch_campaign","reason":"launch after same-checkpoint objective edit","memory_note":"need softer augmentation before the next launch","launch":{"mode":"run_plan","reset_runtime_state":false,"requires_objective_mutation":true}}
+{"intent":"launch_campaign","reply_text":"","launch":{"mode":"run_plan","binding_id":null,"reset_runtime_state":false,"requires_objective_mutation":true},"clarification_request":null,"governance":null,"reason":"launch after same-checkpoint objective edit","memory_note":"need softer augmentation before the next launch"}
 JSON
   echo 1 > "$state_file"
   exit 0
@@ -1438,7 +1459,7 @@ if [[ "$resume_mode" == "1" && "$step" == "1" ]]; then
 fi
 if [[ "$resume_mode" == "0" && "$step" == "1" ]]; then
   cat > "$decision_path" <<'JSON'
-{"intent":"complete","reason":"operator continuation succeeded after reviewing the failed checkpoint","memory_note":"recovered after failed checkpoint continuation"}
+{"intent":"complete","reply_text":"","launch":null,"clarification_request":null,"governance":null,"reason":"operator continuation succeeded after reviewing the failed checkpoint","memory_note":"recovered after failed checkpoint continuation"}
 JSON
   echo 2 > "$state_file"
   exit 0
@@ -1566,8 +1587,9 @@ exit 3
                    "kind=resume_command_failed fallback=fresh_checkpoint"));
   REQUIRE(contains(idled_success.output, "resume_timeout=true"));
 
-  const std::string events_text =
-      read_text_file(session_root / "marshal.session.events.jsonl");
+  const std::string events_text = wait_for_file_containing(
+      session_root / "marshal.session.events.jsonl",
+      "\"type\":\"operator.message_handled\"");
   REQUIRE(contains(events_text, "\"type\":\"checkpoint.failed\""));
   REQUIRE(contains(events_text, "\"type\":\"codex.resume_failed\""));
   REQUIRE(contains(events_text, "\"type\":\"operator.message_received\""));
@@ -1911,25 +1933,25 @@ static void test_marshal_session_reconcile_rebooted_running_campaign() {
   session.work_gate = "open";
   session.activity = "awaiting_campaign_fact";
   session.finish_reason = "none";
-  session.objective_name = "vicreg.solo.train";
+  session.objective_name = "runtime.operative.vicreg.solo.train";
   session.global_config_path = global_config.string();
   session.boot_id = "stale-boot-id";
   session.runner_pid = 999999;
   session.runner_start_ticks = 1;
   session.source_marshal_objective_dsl_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.marshal.dsl";
   session.source_campaign_dsl_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "iitepi.campaign.dsl";
   session.source_marshal_objective_md_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train/"
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train/"
       "vicreg.solo.train.objective.md";
   session.source_marshal_guidance_md_path =
-      "/cuwacunu/src/config/instructions/defaults/default.marshal.guidance.md";
+      "/cuwacunu/src/config/instructions/defaults/default.runtime.operative.guidance.md";
   session.session_root = (marshal_root / session_id).string();
   session.objective_root =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train";
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train";
   session.campaign_dsl_path = session.source_campaign_dsl_path;
   session.marshal_objective_dsl_path =
       (marshal_root / session_id / "marshal.objective.dsl").string();

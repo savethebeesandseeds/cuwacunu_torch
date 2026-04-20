@@ -279,9 +279,23 @@ void contract_space_t::network_topology_analytics(const contract_hash_t &hash,
     }
   }
 
+  if (snapshot->expected_value_network_design.has_payload()) {
+    try {
+      const auto &design = snapshot->expected_value_network_design.decoded();
+      std::string source_label = hash;
+      source_label += ":EXPECTED_VALUE.network_design_dsl_file:<embedded>";
+      append_decoded(source_label, design);
+    } catch (const std::exception &e) {
+      os << "[iitepi::contract_space_t::network_topology_analytics] error="
+         << e.what() << "\n";
+    }
+  }
+
   const std::string discovery_grammar =
       has_non_ws_ascii(snapshot->vicreg_network_design.grammar)
           ? snapshot->vicreg_network_design.grammar
+      : has_non_ws_ascii(snapshot->expected_value_network_design.grammar)
+          ? snapshot->expected_value_network_design.grammar
           : (fallback_network_design_grammar.has_value()
                  ? *fallback_network_design_grammar
                  : std::string{});

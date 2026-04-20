@@ -33,6 +33,14 @@ WAVE train_vicreg_primary {
     };
   };
 
+  WIKIMYEI: <w_ev> {
+    FAMILY: tsi.wikimyei.inference.mdn;
+    JKIMYEI: {
+      HALT_TRAIN: false;
+      PROFILE_ID: stable_expectation;
+    };
+  };
+
   SINK: <sink_null> {
     FAMILY: tsi.sink.null;
   };

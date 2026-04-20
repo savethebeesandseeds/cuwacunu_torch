@@ -87,6 +87,10 @@ range = schema-defined key set
 allowed = schema_defined_per_component_type
 nuance = VICREG requires vicreg_use_swa,vicreg_detach_to_cpu,swa_start_iter,optimizer_threshold_reset; MDN requires target_dims,target_weights,grad_clip,optimizer_threshold_reset
 
+[NOTE MDN_TARGET_WEIGHTS]
+scope = PROFILE.COMPONENT_PARAMS for tsi.wikimyei.inference.mdn
+text = MDN target_weights currently use pseudo-likelihood/tempered-score semantics: they are applied inside per-dimension component log-probabilities before mixture aggregation, not as ordinary post-NLL per-target objective weights.
+
 [FIELD PROFILE.GRADIENT]
 key = GRADIENT keys
 scope = PROFILE

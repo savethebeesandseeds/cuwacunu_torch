@@ -374,7 +374,7 @@ workbench_preferred_default_guidance_md_path(const CmdState &st) {
       workbench_find_paths_with_suffix(st, ".guidance.md",
                                        /*include_objectives=*/false);
   for (const auto &path : paths) {
-    if (path.find("default.marshal.guidance.md") != std::string::npos)
+    if (path.find("default.runtime.operative.guidance.md") != std::string::npos)
       return path;
   }
   return paths.empty() ? std::string{} : paths.front();

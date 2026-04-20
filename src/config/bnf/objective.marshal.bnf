@@ -5,6 +5,8 @@
                               | <objective_md_line>
                               | <guidance_md_line>
                               | <name_line>
+                              | <codex_model_line>
+                              | <codex_reasoning_line>
                               | <marshal_session_id_line>
                               | <blank_line> ;
 
@@ -24,6 +26,16 @@
                                 [<whitespace>] [ ";" ] <line_end> ;
 
 <name_line>                 ::= [<whitespace>] "objective_name"
+                                [<whitespace>] ":" [<whitespace>] "str"
+                                [<whitespace>] "=" [<whitespace>] <value>
+                                [<whitespace>] [ ";" ] <line_end> ;
+
+<codex_model_line>          ::= [<whitespace>] "marshal_codex_model"
+                                [<whitespace>] ":" [<whitespace>] "str"
+                                [<whitespace>] "=" [<whitespace>] <value>
+                                [<whitespace>] [ ";" ] <line_end> ;
+
+<codex_reasoning_line>      ::= [<whitespace>] "marshal_codex_reasoning_effort"
                                 [<whitespace>] ":" [<whitespace>] "str"
                                 [<whitespace>] "=" [<whitespace>] <value>
                                 [<whitespace>] [ ";" ] <line_end> ;

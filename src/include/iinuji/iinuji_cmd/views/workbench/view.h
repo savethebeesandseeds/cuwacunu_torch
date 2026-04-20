@@ -678,9 +678,19 @@ inline void append_workbench_booster_detail(
           workbench_marshal_model_label(
               st, st.workbench.marshal_launch.marshal_model));
       append_workbench_detail_meta(
+          out, "model_source",
+          st.workbench.marshal_launch.marshal_model.empty()
+              ? "objective/default"
+              : "launch override");
+      append_workbench_detail_meta(
           out, "reasoning",
           workbench_marshal_reasoning_label(
               st, st.workbench.marshal_launch.marshal_reasoning_effort));
+      append_workbench_detail_meta(
+          out, "reasoning_source",
+          st.workbench.marshal_launch.marshal_reasoning_effort.empty()
+              ? "objective/default"
+              : "launch override");
       append_workbench_detail_meta(
           out, "objective_dsl",
           trim_to_width(st.workbench.marshal_launch.objective_dsl_path, 60));
@@ -713,8 +723,9 @@ inline void append_workbench_booster_detail(
         "create a new objective bundle from defaults under an objective root "
         "and open it in the editor. Existing objectives are listed by name, "
         "and Booster disables any objective that is already owned by another "
-        "active or resumable session. Launch prompts then offer guided model "
-        "and reasoning choices.",
+        "active or resumable session. Launch prompts then offer optional model "
+        "and reasoning overrides; without overrides, the Marshal objective DSL "
+        "or default Marshal DSL decides.",
         cuwacunu::iinuji::text_line_emphasis_t::Debug);
     return;
   }

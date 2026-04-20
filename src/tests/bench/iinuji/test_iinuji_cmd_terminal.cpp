@@ -150,6 +150,13 @@ int main() {
                        cuwacunu::iinuji::text_line_emphasis_t::MutedError,
                    "failed runtime campaigns should use muted error emphasis");
 
+      cuwacunu::hero::runtime::runtime_campaign_record_t stopped_campaign{};
+      stopped_campaign.state = "stopped";
+      ok = ok &&
+           require(runtime_campaign_row_emphasis(stopped_campaign) ==
+                       cuwacunu::iinuji::text_line_emphasis_t::Info,
+                   "stopped runtime campaigns should use non-error emphasis");
+
       cuwacunu::hero::runtime::runtime_job_record_t failed_job{};
       failed_job.state = "failed";
       ok = ok && require(runtime_job_row_emphasis(failed_job) ==
@@ -198,11 +205,11 @@ int main() {
           "allow_local_write:bool = true\n"
           "default_roots:str = /cuwacunu/src/config/instructions/defaults\n"
           "objective_roots:str = "
-          "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train\n"
+          "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train\n"
           "temp_roots:str = /cuwacunu/src/config/instructions/temp\n"
           "allowed_extensions:str = .dsl,.md\n"
           "write_roots:str = "
-          "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train\n"
+          "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train\n"
           "backup_enabled:bool = true\n"
           "backup_dir:str = "
           "/tmp/test_iinuji_cmd_terminal_config_scope/backups\n"
@@ -215,7 +222,7 @@ int main() {
       selected_session.session_id = "session.synthetic.config.scope";
       selected_session.config_policy_path = session_policy_path.string();
       selected_session.objective_root =
-          "/cuwacunu/src/config/instructions/objectives/vicreg.solo.train";
+          "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.train";
 
       const ConfigState scoped = load_config_view_from_global_config(
           global_config_path, &selected_session);
@@ -296,10 +303,10 @@ int main() {
     run_command(st, "refresh", nullptr);
     ok = ok && require(!st.inbox.status_is_error,
                        "refresh alias should reload the Hero shell state");
-    ok = ok &&
-         require(
-             st.inbox.error.empty(),
-             "refresh alias should leave the Inbox screen without an error");
+    ok =
+        ok &&
+        require(st.inbox.error.empty(),
+                "refresh alias should leave the Inbox screen without an error");
 
     run_command(st, "quit", nullptr);
     ok = ok && require(!st.running, "quit alias should work without log box");

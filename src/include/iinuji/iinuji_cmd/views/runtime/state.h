@@ -139,6 +139,7 @@ struct RuntimeMarshalEventViewerEntry {
   std::string event_name{};
   std::string summary{};
   std::vector<std::pair<std::string, std::string>> metadata{};
+  std::vector<std::pair<std::string, std::string>> payload{};
   cuwacunu::iinuji::text_line_emphasis_t emphasis{
       cuwacunu::iinuji::text_line_emphasis_t::Info};
   std::string raw_line{};

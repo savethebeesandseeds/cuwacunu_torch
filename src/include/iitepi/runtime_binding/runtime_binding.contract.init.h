@@ -611,7 +611,12 @@ resolve_runtime_binding_snapshot_context_from_snapshot(
       const auto contract_path =
           runtime_binding_builder::resolve_runtime_node_path(
               decl.tsi_type, context.contract_hash,
-              /*allow_family_without_hash=*/false, &path_error);
+              /*
+                Contract circuits may acknowledge hashimyei-backed wikimyei
+                slots by family only; the selected wave mount contributes the
+                exact hashimyei path later in this lock-plan build.
+              */
+              /*allow_family_without_hash=*/true, &path_error);
       if (!contract_path.has_value()) {
         if (error) {
           *error = "invalid runtime node path for alias '" + decl.alias +

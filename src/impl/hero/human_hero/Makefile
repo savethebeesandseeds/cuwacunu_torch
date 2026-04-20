@@ -13,6 +13,15 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 $(eval $(call BUILD_OBJ_INC, common, human_attestation, human_attestation, $(SSL_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, common, hero_human_tools, hero_human_tools, $(NCURSES_INCLUDE_PATHS)))
 
+HERO_HUMAN_TOOLS_PARTS := \
+  $(HERE_PATH)/hero_human_tools_private_core.cpp \
+  $(HERE_PATH)/hero_human_tools_private_ncurses.cpp \
+  $(HERE_PATH)/hero_human_tools_private_ops.cpp \
+  $(HERE_PATH)/hero_human_tools_private_handlers.cpp \
+  $(HERE_PATH)/hero_human_tools_public.cpp
+
+$(OUTPUT_PATH)/common/hero_human_tools.o: $(HERO_HUMAN_TOOLS_PARTS)
+
 HUMAN_HERO_TARGETS := \
   human_attestation \
   hero_human_tools

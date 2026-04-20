@@ -4,7 +4,7 @@
 
 HERO_MARSHAL_TOOL(
     "hero.marshal.start_session",
-    "Start a detached Marshal Hero session from the selected marshal.objective.dsl; optional marshal_codex_model and marshal_codex_reasoning_effort override the defaults for this session only while Runtime Hero remains the campaign executor",
+    "Start a detached Marshal Hero session from the selected marshal.objective.dsl; optional marshal_codex_model and marshal_codex_reasoning_effort override objective-local/default settings for this session only while Runtime Hero remains the campaign executor",
     "{\"type\":\"object\",\"properties\":{\"marshal_objective_dsl_path\":{\"type\":\"string\"},\"marshal_codex_model\":{\"type\":\"string\"},\"marshal_codex_reasoning_effort\":{\"type\":\"string\"}},\"additionalProperties\":false}",
     handle_tool_start_session)
 HERO_MARSHAL_TOOL(
@@ -34,7 +34,7 @@ HERO_MARSHAL_TOOL(
     handle_tool_resume_session)
 HERO_MARSHAL_TOOL(
     "hero.marshal.message_session",
-    "Deliver one operator message into a live Marshal Hero session; the response returns a stable message_id plus queued|delivered|failed delivery state, review-ready sessions wake immediately, and other live sessions now wake the runner for direct thread delivery when continuity is available, falling back to queued safe-point delivery otherwise",
+    "Deliver one plain operator message into a live Marshal Hero session; the response returns a stable message_id plus queued|delivered|failed delivery state while Marshal interprets the message immediately through the same Codex mind, including questions, future-strategy updates, and interrupt/replan requests",
     "{\"type\":\"object\",\"properties\":{\"marshal_session_id\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"marshal_session_id\",\"message\"],\"additionalProperties\":false}",
     handle_tool_message_session)
 HERO_MARSHAL_TOOL(

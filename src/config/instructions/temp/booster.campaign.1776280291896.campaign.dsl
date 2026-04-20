@@ -39,7 +39,7 @@
     Marshal Hero now starts from a marshal objective DSL, which points to the
     campaign plus separate human-authored objective and guidance files.
     The defaults bundle ships `default.marshal.objective.dsl`,
-    `default.marshal.objective.md`, and `default.marshal.guidance.md`, but the
+    `default.marshal.objective.md`, and `default.runtime.operative.guidance.md`, but the
     plain default campaign remains executable on its own through Runtime Hero.
 */
 CAMPAIGN {

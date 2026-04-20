@@ -438,7 +438,7 @@ canonicalize_marshal_session_record(marshal_session_record_t *record) {
 normalize_marshal_codex_continuity(std::string_view continuity) {
   const std::string value = std::string(continuity);
   if (value == "attached" || value == "resuming" || value == "resume_failed" ||
-      value == "restarted") {
+      value == "restarted" || value == "unavailable") {
     return value;
   }
   return "attached";

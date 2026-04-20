@@ -18,29 +18,30 @@ enum class RuntimePopupActionKind : std::uint8_t {
   ViewMarshalEvents = 4,
   ViewMarshalCodexStdout = 5,
   ViewMarshalCodexStderr = 6,
-  StopCampaign = 7,
-  ForceStopCampaign = 8,
-  ViewJobStdout = 9,
-  ViewJobStderr = 10,
-  StopJob = 11,
-  ForceStopJob = 12,
-  ViewMarshalBriefing = 13,
-  ViewMarshalMemory = 14,
-  ViewMarshalInputCheckpoint = 15,
-  ViewMarshalIntentCheckpoint = 16,
-  ViewMarshalMutationCheckpoint = 17,
-  ViewMarshalObjective = 18,
-  ViewMarshalGuidance = 19,
-  ViewMarshalHumanRequest = 20,
-  ViewCampaignStdout = 21,
-  ViewCampaignStderr = 22,
-  ViewCampaignManifest = 23,
-  ViewCampaignDsl = 24,
-  ViewJobTrace = 25,
-  ViewJobManifest = 26,
-  ViewJobCampaignDsl = 27,
-  ViewJobContractDsl = 28,
-  ViewJobWaveDsl = 29,
+  ViewMarshalSummary = 7,
+  StopCampaign = 8,
+  ForceStopCampaign = 9,
+  ViewJobStdout = 10,
+  ViewJobStderr = 11,
+  StopJob = 12,
+  ForceStopJob = 13,
+  ViewMarshalBriefing = 14,
+  ViewMarshalMemory = 15,
+  ViewMarshalInputCheckpoint = 16,
+  ViewMarshalIntentCheckpoint = 17,
+  ViewMarshalMutationCheckpoint = 18,
+  ViewMarshalObjective = 19,
+  ViewMarshalGuidance = 20,
+  ViewMarshalHumanRequest = 21,
+  ViewCampaignStdout = 22,
+  ViewCampaignStderr = 23,
+  ViewCampaignManifest = 24,
+  ViewCampaignDsl = 25,
+  ViewJobTrace = 26,
+  ViewJobManifest = 27,
+  ViewJobCampaignDsl = 28,
+  ViewJobContractDsl = 29,
+  ViewJobWaveDsl = 30,
 };
 
 struct RuntimePopupAction {
@@ -220,6 +221,18 @@ runtime_popup_actions(const CmdState &st) {
                 "View codex stderr",
                 runtime_popup_action_file_available(session.codex_stderr_path),
                 "Codex stderr is not available for this session yet.");
+    const std::string summary_path =
+        runtime_session_summary_path(st, session);
+    const bool summary_state =
+        cuwacunu::hero::marshal::is_marshal_session_summary_state(session);
+    push_action(RuntimePopupActionKind::ViewMarshalSummary,
+                "View report of affairs",
+                summary_state &&
+                    runtime_popup_action_file_available(summary_path),
+                summary_state
+                    ? "Report of affairs is not available for this session."
+                    : "Report of affairs is available when the marshal is "
+                      "review-ready or terminal.");
     push_action(RuntimePopupActionKind::ViewMarshalBriefing,
                 "View marshal briefing",
                 runtime_popup_action_file_available(session.briefing_path),
@@ -397,10 +410,9 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
     bool cancelled = false;
     if (!ui_prompt_text_dialog(
             " Message marshal ",
-            "Provide the operator message Marshal Hero should receive. "
-            "Review-ready sessions wake immediately; other live sessions try "
-            "direct thread delivery when continuity is available, otherwise "
-            "they queue for the next safe point.",
+            "Provide the operator message Marshal Hero should receive. Plain "
+            "messages can ask questions, update future strategy, or request "
+            "that the active campaign be interrupted and replanned.",
             &message, false, false, &cancelled)) {
       set_runtime_status(st, "failed to collect operator message", true);
       return true;
@@ -435,8 +447,6 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
         cmd_json_string(cmd_json_field(&structured, "reply_text"));
     const std::string warning =
         cmd_json_string(cmd_json_field(&structured, "warning"));
-    const std::string session_activity = cmd_json_string(
-        cmd_json_field(cmd_json_field(&structured, "session"), "activity"));
     const auto compact = [](std::string text) {
       text = trim_copy(text);
       for (char &ch : text) {
@@ -457,10 +467,8 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
                                       : warning)
         : (delivery == "delivered" && !trim_copy(reply_text).empty())
             ? "Marshal: " + compact(reply_text)
-        : (delivery == "queued" && session_activity == "handling_message")
-            ? "Queued message for live thread delivery."
         : delivery == "queued"
-            ? "Queued message for the next safe point."
+            ? "Marshal is processing the message."
             : "Delivered message to selected marshal.",
         delivery == "failed");
     return true;
@@ -501,6 +509,15 @@ inline bool dispatch_runtime_popup_action(CmdState &st,
   case RuntimePopupActionKind::ViewMarshalCodexStderr: {
     return runtime_open_session_log_viewer(
         st, RuntimeLogViewerKind::MarshalCodexStderr);
+  }
+  case RuntimePopupActionKind::ViewMarshalSummary: {
+    if (!st.runtime.session.has_value())
+      return false;
+    return open_session_artifact(
+        runtime_session_summary_path(st, *st.runtime.session),
+        "report of affairs",
+        "Report of affairs is available when the marshal is review-ready or "
+        "terminal.");
   }
   case RuntimePopupActionKind::ViewMarshalBriefing: {
     if (!st.runtime.session.has_value())

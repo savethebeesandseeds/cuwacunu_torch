@@ -1012,36 +1012,36 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   auto mirror_status_panel_line_to_shell_logs =
       [&](std::string scope, const std::string &line,
           UiEventfulStatusLogSeverity severity) {
-    if (line.empty() || severity == UiEventfulStatusLogSeverity::None) {
-      last_status_panel_log.clear();
-      last_status_panel_scope.clear();
-      last_status_panel_log_severity = UiEventfulStatusLogSeverity::None;
-      return;
-    }
-    if (line == last_status_panel_log && scope == last_status_panel_scope &&
-        severity == last_status_panel_log_severity) {
-      return;
-    }
-    last_status_panel_log = line;
-    last_status_panel_scope = scope;
-    last_status_panel_log_severity = severity;
-    switch (severity) {
-    case UiEventfulStatusLogSeverity::Debug:
-      log_dbg("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
-      break;
-    case UiEventfulStatusLogSeverity::Info:
-      log_info("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
-      break;
-    case UiEventfulStatusLogSeverity::Warning:
-      log_warn("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
-      break;
-    case UiEventfulStatusLogSeverity::Error:
-      log_err("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
-      break;
-    case UiEventfulStatusLogSeverity::None:
-      break;
-    }
-  };
+        if (line.empty() || severity == UiEventfulStatusLogSeverity::None) {
+          last_status_panel_log.clear();
+          last_status_panel_scope.clear();
+          last_status_panel_log_severity = UiEventfulStatusLogSeverity::None;
+          return;
+        }
+        if (line == last_status_panel_log && scope == last_status_panel_scope &&
+            severity == last_status_panel_log_severity) {
+          return;
+        }
+        last_status_panel_log = line;
+        last_status_panel_scope = scope;
+        last_status_panel_log_severity = severity;
+        switch (severity) {
+        case UiEventfulStatusLogSeverity::Debug:
+          log_dbg("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+          break;
+        case UiEventfulStatusLogSeverity::Info:
+          log_info("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+          break;
+        case UiEventfulStatusLogSeverity::Warning:
+          log_warn("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+          break;
+        case UiEventfulStatusLogSeverity::Error:
+          log_err("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+          break;
+        case UiEventfulStatusLogSeverity::None:
+          break;
+        }
+      };
 
   auto apply_workspace_split = [&](const CmdState &st) {
     if (!workspace || !workspace->grid || workspace->grid->cols.size() < 2)
@@ -1112,9 +1112,13 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
   auto apply_right_panel_rows = [&](const CmdState &st) {
     if (!right || !right->grid)
       return;
-    if (st.screen == ScreenMode::Runtime &&
-        runtime_show_secondary_panel(st)) {
+    if (st.screen == ScreenMode::Runtime && runtime_show_secondary_panel(st)) {
       right->grid->rows = {len_spec::frac(0.66), len_spec::frac(0.34)};
+      right->grid->gap_row = 0;
+      return;
+    }
+    if (st.screen == ScreenMode::Lattice && lattice_show_secondary_panel(st)) {
+      right->grid->rows = {len_spec::frac(0.62), len_spec::frac(0.38)};
       right->grid->gap_row = 0;
       return;
     }
@@ -1173,10 +1177,9 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
     int repaint_w = 0;
     getmaxyx(stdscr, repaint_h, repaint_w);
     const std::uint64_t paint_now_ms = monotonic_now_ms();
-    const bool paint_boot_active =
-        (boot_stage != BootStage::Ready) ||
-        (boot_visual_hold_until_ms != 0u &&
-         paint_now_ms < boot_visual_hold_until_ms);
+    const bool paint_boot_active = (boot_stage != BootStage::Ready) ||
+                                   (boot_visual_hold_until_ms != 0u &&
+                                    paint_now_ms < boot_visual_hold_until_ms);
     paint_current_ui(repaint_h, repaint_w, paint_boot_active, paint_now_ms);
   };
 

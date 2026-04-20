@@ -139,6 +139,23 @@ void assign_field(cuwacunu::camahjucunu::marshal_objective_instruction_t* out,
     out->objective_name = std::move(value);
     return;
   }
+  if (lhs.key == "marshal_codex_model") {
+    if (lhs.declared_type != "str") {
+      throw std::runtime_error("line " + std::to_string(line) +
+                               ": marshal_codex_model must declare type str");
+    }
+    out->marshal_codex_model = std::move(value);
+    return;
+  }
+  if (lhs.key == "marshal_codex_reasoning_effort") {
+    if (lhs.declared_type != "str") {
+      throw std::runtime_error(
+          "line " + std::to_string(line) +
+          ": marshal_codex_reasoning_effort must declare type str");
+    }
+    out->marshal_codex_reasoning_effort = std::move(value);
+    return;
+  }
   if (lhs.key == "marshal_session_id") {
     if (lhs.declared_type != "str") {
       throw std::runtime_error("line " + std::to_string(line) +
@@ -163,6 +180,13 @@ std::string marshal_objective_instruction_t::str() const {
       << "guidance_md_path:path = " << guidance_md_path << "\n";
   if (!objective_name.empty()) {
     out << "objective_name:str = " << objective_name << "\n";
+  }
+  if (!marshal_codex_model.empty()) {
+    out << "marshal_codex_model:str = " << marshal_codex_model << "\n";
+  }
+  if (!marshal_codex_reasoning_effort.empty()) {
+    out << "marshal_codex_reasoning_effort:str = "
+        << marshal_codex_reasoning_effort << "\n";
   }
   if (!marshal_session_id.empty()) {
     out << "marshal_session_id:str = " << marshal_session_id << "\n";

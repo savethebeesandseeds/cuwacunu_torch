@@ -5,10 +5,10 @@
 #include <string_view>
 
 #include "iinuji/iinuji_cmd/views/common.h"
-#include "iinuji/iinuji_cmd/views/workbench/commands.h"
 #include "iinuji/iinuji_cmd/views/lattice/commands.h"
 #include "iinuji/iinuji_cmd/views/logs/view.h"
 #include "iinuji/iinuji_cmd/views/runtime/commands.h"
+#include "iinuji/iinuji_cmd/views/workbench/commands.h"
 
 namespace cuwacunu {
 namespace iinuji {
@@ -58,7 +58,8 @@ inline std::string workbench_default_bottom_line(const CmdState &st) {
   }
   if (workbench_is_booster_section(st.workbench.section)) {
     return "workbench | section=Booster | action=" +
-           workbench_booster_action_label(selected_workbench_booster_action(st)) +
+           workbench_booster_action_label(
+               selected_workbench_booster_action(st)) +
            " | Up/Down browse actions. Enter runs the guided flow. Esc returns "
            "to navigation.";
   }
@@ -166,8 +167,8 @@ inline std::string lattice_default_bottom_line(const CmdState &st) {
                                    st.lattice.component_rows.size() - 1) +
                           1) +
            "/" + std::to_string(st.lattice.component_rows.size()) +
-           " | Up/Down browse the visible layer. Right drills in. Left climbs "
-           "out. Esc returns to sections. r refreshes.";
+           " | badges=cf/c/f | Up/Down browse the visible layer. Right drills "
+           "in. Left climbs out. Esc returns to sections. r refreshes.";
   }
   if (st.lattice.mode == LatticeMode::Roots) {
     return "section=" + section +
@@ -213,9 +214,9 @@ inline std::string lattice_default_bottom_line(const CmdState &st) {
   if (member)
     oss << " | member=" << member->display_name;
   oss << " | mode=" << lattice_source_mode_text(st);
-  oss << " | Up/Down browse facts in the expanded worklist. Right drills in. "
-         "Left climbs out or returns to facts/views. Esc returns to sections. "
-         "r refreshes.";
+  oss << " | badges=cf/c/f | Up/Down browse facts in the expanded worklist. "
+         "Right drills in. Left climbs out or returns to facts/views. Esc "
+         "returns to sections. r refreshes.";
   return oss.str();
 }
 
@@ -318,9 +319,8 @@ inline bool ui_status_is_debug_only(std::string_view status) {
       status == "Loading Workbench..." ||
       status == "Loading runtime inventory..." ||
       status == "Loading config view..." ||
-      status == "Refreshing runtime inventory..." ||
-      status == "files focus" || status == "families focus" ||
-      status == "viewer focus | read only" ||
+      status == "Refreshing runtime inventory..." || status == "files focus" ||
+      status == "families focus" || status == "viewer focus | read only" ||
       status == "editor focus | Ctrl+S saves through Config Hero" ||
       status == "editor modified | Ctrl+S saves through Config Hero" ||
       status == "discarded unsaved config changes" ||
@@ -336,7 +336,8 @@ inline bool ui_status_is_debug_only(std::string_view status) {
       status == "Restored split runtime panel layout.") {
     return true;
   }
-  if (status.starts_with("Refreshing hero.lattice and hero.hashimyei catalogs;") ||
+  if (status.starts_with(
+          "Refreshing hero.lattice and hero.hashimyei catalogs;") ||
       status.starts_with("Syncing hero.lattice and hero.hashimyei catalogs") ||
       status.starts_with("Loading lattice components, facts, and views...")) {
     return true;

@@ -6,12 +6,12 @@
 
 #include "iinuji/iinuji_cmd/views/common/viewport.h"
 #include "iinuji/iinuji_cmd/views/config/view.h"
-#include "iinuji/iinuji_cmd/views/workbench/view.h"
 #include "iinuji/iinuji_cmd/views/lattice/view.h"
 #include "iinuji/iinuji_cmd/views/logs/view.h"
 #include "iinuji/iinuji_cmd/views/runtime/view.h"
 #include "iinuji/iinuji_cmd/views/ui/bottom.h"
 #include "iinuji/iinuji_cmd/views/ui/status.h"
+#include "iinuji/iinuji_cmd/views/workbench/view.h"
 #include "iinuji/render/layout_core.h"
 
 namespace cuwacunu {
@@ -113,13 +113,12 @@ inline void ui_refresh_runtime_screen(
   right_main->visible = true;
   right_aux->visible = runtime_show_secondary_panel(st);
   const auto runtime_worklist = make_runtime_worklist_panel(st);
-  apply_text_panel_model(
-      left_nav_panel,
-      ui_text_panel_model_t{
-          .lines = make_runtime_navigation_styled_lines(st),
-          .title = "navigator",
-          .focused = runtime_is_menu_focus(st.runtime.focus),
-      });
+  apply_text_panel_model(left_nav_panel,
+                         ui_text_panel_model_t{
+                             .lines = make_runtime_navigation_styled_lines(st),
+                             .title = "navigator",
+                             .focused = runtime_is_menu_focus(st.runtime.focus),
+                         });
   apply_text_panel_model(
       left_worklist_panel,
       ui_text_panel_model_t{
@@ -142,11 +141,12 @@ inline void ui_refresh_runtime_screen(
         const Rect r = content_rect(*right_main);
         const auto metrics =
             measure_runtime_styled_box(event_panel.lines, r.w, r.h,
-                                       /*wrap=*/true, event_panel.selected_line);
+                                       /*wrap=*/true, event_panel.selected_line,
+                                       event_panel.selected_line_end);
         if (metrics.text_h > 0) {
-          reveal_selected_text_row_if_changed(
-              right_main, metrics.selected_row, metrics.text_h,
-              metrics.max_scroll_y);
+          reveal_selected_text_row_range_if_changed(
+              right_main, metrics.selected_row, metrics.selected_row_end,
+              metrics.text_h, metrics.max_scroll_y);
         }
       } else {
         clear_selected_text_row_tracking(right_main);
@@ -161,7 +161,8 @@ inline void ui_refresh_runtime_screen(
       if (series.empty()) {
         set_text_box(right_aux, "collecting device history...", true);
       } else {
-        set_plot_box(right_aux, series, make_runtime_device_history_plot_cfg(st),
+        set_plot_box(right_aux, series,
+                     make_runtime_device_history_plot_cfg(st),
                      make_runtime_device_history_plot_opts());
       }
     }
@@ -184,28 +185,32 @@ inline void ui_refresh_lattice_screen(
   clear_panel_selection_tracking({left, left_nav_panel, right_main, right_aux});
   show_split_left_panels(left, left_nav_panel, left_worklist_panel);
   right_main->visible = true;
-  right_aux->visible = false;
+  const bool show_secondary = lattice_show_secondary_panel(st);
+  right_aux->visible = show_secondary;
   const auto navigation_lines = make_lattice_navigation_styled_lines(st);
   const auto worklist_panel = make_lattice_worklist_panel(st);
-  apply_text_panel_model(
-      left_nav_panel,
-      ui_text_panel_model_t{
-          .lines = navigation_lines,
-          .reset_horizontal_scroll = true,
-          .title = "sections",
-          .focused = lattice_is_navigator_focus(st),
-      });
-  apply_text_panel_model(
-      left_worklist_panel,
-      ui_text_panel_model_t{
-          .lines = worklist_panel.lines,
-          .selected_line = worklist_panel.selected_line,
-          .reset_horizontal_scroll = true,
-          .title = lattice_worklist_panel_title(st),
-          .focused = lattice_is_worklist_focus(st),
-      });
+  apply_text_panel_model(left_nav_panel,
+                         ui_text_panel_model_t{
+                             .lines = navigation_lines,
+                             .reset_horizontal_scroll = true,
+                             .title = "sections",
+                             .focused = lattice_is_navigator_focus(st),
+                         });
+  apply_text_panel_model(left_worklist_panel,
+                         ui_text_panel_model_t{
+                             .lines = worklist_panel.lines,
+                             .selected_line = worklist_panel.selected_line,
+                             .reset_horizontal_scroll = true,
+                             .title = lattice_worklist_panel_title(st),
+                             .focused = lattice_is_worklist_focus(st),
+                         });
   set_text_box_styled_lines(right_main, make_lattice_right_styled_lines(st),
                             true);
+  if (show_secondary) {
+    const auto secondary_panel = make_lattice_secondary_panel(st);
+    set_text_box_styled_lines(right_aux, secondary_panel.lines, true);
+    right_aux->style.title = " " + secondary_panel.title + " ";
+  }
   right_main->style.title = " " + lattice_primary_panel_title(st) + " ";
 }
 
@@ -222,8 +227,8 @@ inline void ui_refresh_logs_screen(
   right_main->visible = true;
   right_aux->visible = false;
   const auto snap = cuwacunu::piaabo::dlog_snapshot();
-  set_text_box_styled_lines(left, make_logs_left_styled_lines(st.shell_logs, snap),
-                            false);
+  set_text_box_styled_lines(
+      left, make_logs_left_styled_lines(st.shell_logs, snap), false);
   set_text_box(right_main, make_logs_right(st.shell_logs, snap), true);
   left->style.title = workspace_is_current_screen_zoomed(st)
                           ? " shell log stream [full] "
@@ -267,21 +272,20 @@ inline void ui_refresh_config_screen(
   const auto families_panel = make_config_families_panel(st);
   const auto files_panel = make_config_files_panel(st);
   const auto detail_panel = make_config_right_panel(st);
-  apply_text_panel_model(
-      left_nav_panel,
-      ui_text_panel_model_t{
-          .lines = families_panel.lines,
-          .selected_line = families_panel.selected_line,
-          .title = "families",
-          .focused = config_is_family_focus(st.config),
-      });
+  apply_text_panel_model(left_nav_panel,
+                         ui_text_panel_model_t{
+                             .lines = families_panel.lines,
+                             .selected_line = families_panel.selected_line,
+                             .title = "families",
+                             .focused = config_is_family_focus(st.config),
+                         });
   apply_text_panel_model(
       left_worklist_panel,
       ui_text_panel_model_t{
           .lines = files_panel.lines,
           .selected_line = files_panel.selected_line,
-          .title = "files [" + config_family_title(st.config.selected_family) +
-                   "]",
+          .title =
+              "files [" + config_family_title(st.config.selected_family) + "]",
           .focused = config_is_file_focus(st.config),
       });
   if (st.config.editor_focus && st.config.editor) {
@@ -299,8 +303,7 @@ inline void ui_refresh_config_screen(
     const auto *file =
         selected_config_file_for_family(st, st.config.selected_family);
     const bool editable = file != nullptr && file->editable;
-    right_main->style.title =
-        editable ? " file [edit] " : " file [read only] ";
+    right_main->style.title = editable ? " file [edit] " : " file [read only] ";
   } else {
     right_main->style.title = " details ";
   }
@@ -448,7 +451,8 @@ inline void refresh_ui(
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &status,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &left,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &left_nav_panel,
-    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &left_worklist_panel,
+    const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t>
+        &left_worklist_panel,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &right_main,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &right_aux,
     const std::shared_ptr<cuwacunu::iinuji::iinuji_object_t> &bottom,

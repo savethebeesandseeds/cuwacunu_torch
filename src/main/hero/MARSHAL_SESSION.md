@@ -33,6 +33,9 @@ is allowed to be in v6.
 - Operator messages are durable first-class entities with stable `message_id`,
   explicit delivery state, and exact turn recording, so live conversation can
   survive recovery without collapsing into lossy summary-only memory.
+- A plain operator message is always valid while the session is live, even if
+  a Runtime campaign is currently running. Safe points gate irreversible
+  effects, not communication.
 - Launch-time Codex settings are resolved once when the session is created,
   persisted in the session manifest, and mirrored into a generated
   `hero.marshal.dsl` artifact inside the session ledger.
@@ -49,7 +52,14 @@ is allowed to be in v6.
 
 ## Intent Contract
 
-- `intent = launch_campaign | pause_for_clarification | request_governance | complete | terminate`
+- `intent = reply_only | interrupt_campaign | launch_campaign | pause_for_clarification | request_governance | complete | terminate`
+- `reply_text` carries the direct operator-facing answer for operator-message
+  checkpoints and is empty on autonomous planning checkpoints.
+- `reply_only` means answer now and keep the current session/campaign state
+  unchanged aside from any same-turn objective edits.
+- `interrupt_campaign` means request a stop for the active Runtime campaign and
+  let Marshal resume ordinary post-campaign replanning when that run becomes
+  terminal.
 - `complete` means the current objective is satisfied for now and the session
   should park as review-ready (`lifecycle=live`, `activity=review`) until a
   future `message_session`.

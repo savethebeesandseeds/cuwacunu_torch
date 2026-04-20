@@ -229,9 +229,9 @@ struct FileRestoreGuard {
 int main() try {
   const fs::path global_cfg_path = "/cuwacunu/src/config/.config";
   const fs::path campaign_cfg_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo/iitepi.campaign.dsl";
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.dsl";
   const fs::path alt_campaign_cfg_path =
-      "/cuwacunu/src/config/instructions/objectives/vicreg.solo/iitepi.campaign.alt.dsl";
+      "/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.alt.dsl";
 
   cuwacunu::iitepi::config_space_t::change_config_file("/cuwacunu/src/config/.config");
   cuwacunu::iitepi::config_space_t::update_config();

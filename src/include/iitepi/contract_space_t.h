@@ -3,10 +3,10 @@
   Immutable hash-keyed runtime contract record registry
 \*───────────────────────────────────────────────────────────────────────────*/
 
+#include <iosfwd>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -17,8 +17,8 @@ namespace cuwacunu {
 namespace camahjucunu {
 struct tsiemene_circuit_instruction_t;
 struct network_design_instruction_t;
-}  // namespace camahjucunu
-}  // namespace cuwacunu
+} // namespace camahjucunu
+} // namespace cuwacunu
 
 namespace cuwacunu {
 namespace iitepi {
@@ -31,36 +31,34 @@ struct contract_record_t;
 /*───────────────────────────────────────────────────────────────────────────*/
 struct contract_space_t {
   /*—registry lifecycle—*/
-  static contract_hash_t register_contract_file(const std::string& path);
-  static std::shared_ptr<const contract_record_t> contract_itself(
-      const contract_hash_t& hash);
-  [[nodiscard]] static bool validate_contract_file_isolated(
-      const std::string& path,
-      const std::string& global_config_path = {},
-      std::string* error = nullptr);
-  static void network_topology_analytics(const contract_hash_t& hash,
-                                         std::ostream* out = nullptr,
+  static contract_hash_t register_contract_file(const std::string &path);
+  static std::shared_ptr<const contract_record_t>
+  contract_itself(const contract_hash_t &hash);
+  [[nodiscard]] static bool
+  validate_contract_file_isolated(const std::string &path,
+                                  const std::string &global_config_path = {},
+                                  std::string *error = nullptr);
+  static void network_topology_analytics(const contract_hash_t &hash,
+                                         std::ostream *out = nullptr,
                                          bool beautify = false);
-  static void network_parameter_analytics(const contract_hash_t& hash,
-                                          std::ostream* out = nullptr,
+  static void network_parameter_analytics(const contract_hash_t &hash,
+                                          std::ostream *out = nullptr,
                                           bool beautify = false);
-  static void network_analytics(const contract_hash_t& hash,
-                                std::ostream* out = nullptr,
-                                bool beautify = false,
-                                network_analytics_mode_e mode =
-                                    network_analytics_mode_e::Topology);
-  static void assert_intact_or_fail_fast(const contract_hash_t& hash);
+  static void network_analytics(
+      const contract_hash_t &hash, std::ostream *out = nullptr,
+      bool beautify = false,
+      network_analytics_mode_e mode = network_analytics_mode_e::Topology);
+  static void assert_intact_or_fail_fast(const contract_hash_t &hash);
   static void assert_registry_intact_or_fail_fast();
-  [[nodiscard]] static std::string sha256_hex_for_file(
-      const std::string& path);
-  [[nodiscard]] static bool has_contract(const contract_hash_t& hash) noexcept;
+  [[nodiscard]] static std::string sha256_hex_for_file(const std::string &path);
+  [[nodiscard]] static bool has_contract(const contract_hash_t &hash) noexcept;
   [[nodiscard]] static std::vector<contract_hash_t> registered_hashes();
 
- private:
+private:
   static void lifecycle_init();
   static void lifecycle_finit();
   struct _init {
-    _init()  { contract_space_t::lifecycle_init(); }
+    _init() { contract_space_t::lifecycle_init(); }
     ~_init() { contract_space_t::lifecycle_finit(); }
   };
   static _init _initializer;
@@ -128,9 +126,9 @@ struct dsl_blob_t {
 };
 
 struct circuit_blob_t : dsl_blob_t {
-  const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& decoded() const;
+  const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &decoded() const;
 
- private:
+private:
   mutable std::once_flag decode_once_{};
   mutable std::shared_ptr<cuwacunu::camahjucunu::tsiemene_circuit_instruction_t>
       decoded_cache_{};
@@ -141,18 +139,16 @@ struct canonical_path_blob_t {
 };
 
 struct network_design_blob_t : dsl_blob_t {
-  [[nodiscard]] bool has_payload() const noexcept {
-    return !dsl.empty();
-  }
-  const cuwacunu::camahjucunu::network_design_instruction_t& decoded() const;
+  [[nodiscard]] bool has_payload() const noexcept { return !dsl.empty(); }
+  const cuwacunu::camahjucunu::network_design_instruction_t &decoded() const;
 
- private:
+private:
   mutable std::once_flag decode_once_{};
   mutable std::shared_ptr<cuwacunu::camahjucunu::network_design_instruction_t>
       decoded_cache_{};
 };
 
-}  // namespace contract_record
+} // namespace contract_record
 
 struct contract_record_t {
   std::string config_file_path{};
@@ -164,30 +160,27 @@ struct contract_record_t {
   contract_record::circuit_blob_t circuit{};
   contract_record::canonical_path_blob_t canonical_path{};
   contract_record::network_design_blob_t vicreg_network_design{};
+  contract_record::network_design_blob_t expected_value_network_design{};
   contract_docking_signature_t docking_signature{};
   contract_signature_t signature{};
 
   contract_dependency_manifest_t dependency_manifest{};
 
   template <class T = std::string>
-  T get(const std::string& section,
-        const std::string& key,
+  T get(const std::string &section, const std::string &key,
         std::optional<T> fallback = std::nullopt) const;
 
   template <class T = std::string>
-  std::vector<T> get_arr(
-      const std::string& section,
-      const std::string& key,
-      std::optional<std::vector<T>> fallback = std::nullopt) const;
+  std::vector<T>
+  get_arr(const std::string &section, const std::string &key,
+          std::optional<std::vector<T>> fallback = std::nullopt) const;
 
- private:
-  std::string raw(const std::string& section,
-                  const std::string& key) const;
+private:
+  std::string raw(const std::string &section, const std::string &key) const;
 
-  template <class T>
-  static T from_string(const std::string& s);
+  template <class T> static T from_string(const std::string &s);
 };
 
 /*───────────────────────────────────────────────────────────────────────────*/
-}  // namespace iitepi
-}  // namespace cuwacunu
+} // namespace iitepi
+} // namespace cuwacunu

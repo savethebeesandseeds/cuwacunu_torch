@@ -31,6 +31,7 @@ ASSEMBLY {
   CIRCUIT_FILE: /cuwacunu/src/config/instructions/defaults/default.iitepi.circuit.dsl;
   AKNOWLEDGE: w_source = tsi.source.dataloader;
   AKNOWLEDGE: w_rep = tsi.wikimyei.representation.vicreg;
+  AKNOWLEDGE: w_ev = tsi.wikimyei.inference.mdn;
   AKNOWLEDGE: sink_null = tsi.sink.null;
   AKNOWLEDGE: probe_log = tsi.probe.log;
 }

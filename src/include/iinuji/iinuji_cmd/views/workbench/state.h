@@ -97,6 +97,8 @@ struct WorkbenchMarshalLaunchDraft {
   std::string objective_md_path{};
   std::string guidance_md_path{};
   std::string campaign_path{};
+  std::string objective_marshal_model{};
+  std::string objective_marshal_reasoning_effort{};
   std::string marshal_model{};
   std::string marshal_reasoning_effort{};
   std::string launch_status{};

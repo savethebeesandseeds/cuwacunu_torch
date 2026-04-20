@@ -11,6 +11,8 @@ struct marshal_objective_instruction_t {
   std::string objective_md_path{};
   std::string guidance_md_path{};
   std::string objective_name{};
+  std::string marshal_codex_model{};
+  std::string marshal_codex_reasoning_effort{};
   std::string marshal_session_id{};
   std::string str() const;
 };

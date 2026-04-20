@@ -632,6 +632,7 @@ workbench_known_marshal_models(const CmdState &st) {
     models.push_back(value);
   };
   push_unique(st.runtime.marshal_app.defaults.marshal_codex_model);
+  push_unique(st.workbench.marshal_launch.objective_marshal_model);
   for (const auto &value : std::vector<std::string>{
            "gpt-5.4",
            "gpt-5.4-mini",
@@ -650,12 +651,14 @@ workbench_known_marshal_models(const CmdState &st) {
 inline std::optional<std::string>
 prompt_workbench_marshal_model_override(CmdState &st) {
   const std::string configured_default =
-      st.runtime.marshal_app.defaults.marshal_codex_model.empty()
-          ? std::string("gpt-5.3-codex-spark")
-          : st.runtime.marshal_app.defaults.marshal_codex_model;
+      !st.workbench.marshal_launch.objective_marshal_model.empty()
+          ? st.workbench.marshal_launch.objective_marshal_model
+          : (st.runtime.marshal_app.defaults.marshal_codex_model.empty()
+                 ? std::string("gpt-5.3-codex-spark")
+                 : st.runtime.marshal_app.defaults.marshal_codex_model);
   std::vector<workbench_choice_value_t> choices{};
   choices.push_back(workbench_choice_value_t{
-      .label = "Use configured default (" + configured_default + ")",
+      .label = "Use objective/default (" + configured_default + ")",
       .value = "",
   });
   for (const auto &model : workbench_known_marshal_models(st)) {
@@ -671,8 +674,9 @@ prompt_workbench_marshal_model_override(CmdState &st) {
 
   const auto selected = prompt_workbench_choice_value(
       st, " Marshal model ",
-      "Choose the Codex model for this Marshal session. The configured default "
-      "stays future-friendly, while Custom lets you type a newer slug.",
+      "Choose an optional Codex model override for this Marshal session. "
+      "Use objective/default clears the override and lets the marshal "
+      "objective DSL or default Marshal DSL decide.",
       choices);
   if (!selected.has_value()) {
     return std::nullopt;
@@ -693,12 +697,16 @@ prompt_workbench_marshal_model_override(CmdState &st) {
 inline std::optional<std::string>
 prompt_workbench_marshal_reasoning_override(CmdState &st) {
   const std::string configured_default =
-      st.runtime.marshal_app.defaults.marshal_codex_reasoning_effort.empty()
-          ? std::string("xhigh")
-          : st.runtime.marshal_app.defaults.marshal_codex_reasoning_effort;
+      !st.workbench.marshal_launch.objective_marshal_reasoning_effort.empty()
+          ? st.workbench.marshal_launch.objective_marshal_reasoning_effort
+          : (st.runtime.marshal_app.defaults.marshal_codex_reasoning_effort
+                     .empty()
+                 ? std::string("xhigh")
+                 : st.runtime.marshal_app.defaults
+                       .marshal_codex_reasoning_effort);
   std::vector<workbench_choice_value_t> choices{
       workbench_choice_value_t{
-          .label = "Use configured default (" + configured_default + ")",
+          .label = "Use objective/default (" + configured_default + ")",
           .value = "",
       },
       workbench_choice_value_t{.label = "low", .value = "low"},
@@ -710,7 +718,9 @@ prompt_workbench_marshal_reasoning_override(CmdState &st) {
   };
   const auto selected = prompt_workbench_choice_value(
       st, " Marshal reasoning ",
-      "Choose the Codex reasoning effort for this Marshal session.",
+      "Choose an optional Codex reasoning override for this Marshal session. "
+      "Use objective/default clears the override and lets the marshal "
+      "objective DSL or default Marshal DSL decide.",
       choices);
   if (!selected.has_value()) {
     return std::nullopt;
@@ -853,6 +863,8 @@ inline std::string workbench_build_marshal_objective_dsl(
   oss << "  local guidance from here rather than relying on older session-local\n";
   oss << "  snapshots.\n";
   oss << "  Optional:\n";
+  oss << "    marshal_codex_model:str = gpt-5.4\n";
+  oss << "    marshal_codex_reasoning_effort:str = xhigh\n";
   oss << "    marshal_session_id:str = some.stable.marshal.id\n";
   oss << "*/\n";
   oss << "campaign_dsl_path:path = " << campaign_rel_path << "\n";
@@ -1254,6 +1266,8 @@ struct workbench_marshal_bundle_t {
   std::string objective_md_path{};
   std::string guidance_md_path{};
   std::string campaign_path{};
+  std::string marshal_codex_model{};
+  std::string marshal_codex_reasoning_effort{};
 };
 
 inline std::string workbench_extract_marshal_dsl_value(std::string_view text,
@@ -1311,6 +1325,10 @@ workbench_resolve_marshal_bundle(const std::string &objective_dsl_path) {
   bundle.objective_md_path = resolve_field("objective_md_path");
   bundle.guidance_md_path = resolve_field("guidance_md_path");
   bundle.campaign_path = resolve_field("campaign_dsl_path");
+  bundle.marshal_codex_model =
+      workbench_extract_marshal_dsl_value(content, "marshal_codex_model");
+  bundle.marshal_codex_reasoning_effort = workbench_extract_marshal_dsl_value(
+      content, "marshal_codex_reasoning_effort");
   if (bundle.objective_md_path.empty() || bundle.guidance_md_path.empty() ||
       bundle.campaign_path.empty()) {
     return std::nullopt;
@@ -1327,6 +1345,10 @@ inline void workbench_stage_marshal_launch_draft(
   st.workbench.marshal_launch.objective_md_path = bundle.objective_md_path;
   st.workbench.marshal_launch.guidance_md_path = bundle.guidance_md_path;
   st.workbench.marshal_launch.campaign_path = bundle.campaign_path;
+  st.workbench.marshal_launch.objective_marshal_model =
+      bundle.marshal_codex_model;
+  st.workbench.marshal_launch.objective_marshal_reasoning_effort =
+      bundle.marshal_codex_reasoning_effort;
   st.workbench.marshal_launch.marshal_model.clear();
   st.workbench.marshal_launch.marshal_reasoning_effort.clear();
   st.workbench.marshal_launch.created_new_bundle = created_new_bundle;
@@ -1348,6 +1370,9 @@ inline std::string workbench_marshal_model_label(const CmdState &st,
   if (!value.empty()) {
     return value;
   }
+  if (!st.workbench.marshal_launch.objective_marshal_model.empty()) {
+    return st.workbench.marshal_launch.objective_marshal_model;
+  }
   return st.runtime.marshal_app.defaults.marshal_codex_model.empty()
              ? std::string("gpt-5.3-codex-spark")
              : st.runtime.marshal_app.defaults.marshal_codex_model;
@@ -1357,6 +1382,9 @@ inline std::string workbench_marshal_reasoning_label(const CmdState &st,
                                                      const std::string &value) {
   if (!value.empty()) {
     return value;
+  }
+  if (!st.workbench.marshal_launch.objective_marshal_reasoning_effort.empty()) {
+    return st.workbench.marshal_launch.objective_marshal_reasoning_effort;
   }
   return st.runtime.marshal_app.defaults.marshal_codex_reasoning_effort.empty()
              ? std::string("xhigh")
@@ -1394,13 +1422,19 @@ enum class workbench_campaign_prepare_action_t : std::uint8_t {
 inline std::optional<workbench_marshal_prepare_action_t>
 prompt_workbench_marshal_prepare_action(CmdState &st) {
   const auto &draft = st.workbench.marshal_launch;
+  const bool has_model_override = !draft.marshal_model.empty();
+  const bool has_reasoning_override = !draft.marshal_reasoning_effort.empty();
   std::ostringstream body;
   body << "Objective: " << draft.objective_name << "\n";
   body << "Marshal model: "
-       << workbench_marshal_model_label(st, draft.marshal_model) << "\n";
+       << workbench_marshal_model_label(st, draft.marshal_model) << " ("
+       << (has_model_override ? "launch override" : "objective/default")
+       << ")\n";
   body << "Reasoning: "
        << workbench_marshal_reasoning_label(st, draft.marshal_reasoning_effort)
-       << "\n";
+       << " ("
+       << (has_reasoning_override ? "launch override" : "objective/default")
+       << ")\n";
   body << "Objective DSL: " << draft.objective_dsl_path << "\n";
   body << "Objective MD: " << draft.objective_md_path << "\n";
   body << "Guidance MD: " << draft.guidance_md_path << "\n";
@@ -1423,8 +1457,10 @@ prompt_workbench_marshal_prepare_action(CmdState &st) {
       ui_choice_panel_option_t{.label = "Edit campaign.dsl",
                                .enabled = !draft.campaign_path.empty(),
                                .disabled_status = "campaign.dsl is unavailable"},
-      ui_choice_panel_option_t{.label = "Choose model", .enabled = true},
-      ui_choice_panel_option_t{.label = "Choose reasoning", .enabled = true},
+      ui_choice_panel_option_t{.label = "Choose model override",
+                               .enabled = true},
+      ui_choice_panel_option_t{.label = "Choose reasoning override",
+                               .enabled = true},
       ui_choice_panel_option_t{.label = "Cancel launch", .enabled = true},
   };
 
@@ -1765,10 +1801,20 @@ inline bool launch_workbench_marshal(CmdState &st) {
     confirm << "Model: "
             << workbench_marshal_model_label(
                    st, st.workbench.marshal_launch.marshal_model)
+            << " ("
+            << (st.workbench.marshal_launch.marshal_model.empty()
+                    ? "objective/default"
+                    : "launch override")
+            << ")"
             << "\n";
     confirm << "Reasoning: "
             << workbench_marshal_reasoning_label(
                    st, st.workbench.marshal_launch.marshal_reasoning_effort)
+            << " ("
+            << (st.workbench.marshal_launch.marshal_reasoning_effort.empty()
+                    ? "objective/default"
+                    : "launch override")
+            << ")"
             << "\n";
     confirm << "Objective DSL: "
             << st.workbench.marshal_launch.objective_dsl_path;
@@ -2059,10 +2105,9 @@ inline bool message_workbench_session(
   bool cancelled = false;
   if (!ui_prompt_text_dialog(
           " Message session ",
-          "Provide the operator message Marshal Hero should receive. "
-          "Review-ready sessions wake immediately; other live sessions try "
-          "direct thread delivery when continuity is available, otherwise "
-          "they queue for the next safe point.",
+          "Provide the operator message Marshal Hero should receive. Plain "
+          "messages can ask questions, update future strategy, or request "
+          "that the active campaign be interrupted and replanned.",
           &message, false, false, &cancelled)) {
     set_workbench_status(st, "failed to collect operator message", true);
     return true;
@@ -2097,8 +2142,6 @@ inline bool message_workbench_session(
         cmd_json_string(cmd_json_field(&parsed, "reply_text"));
     const std::string warning =
         cmd_json_string(cmd_json_field(&parsed, "warning"));
-    const std::string session_activity =
-        cmd_json_string(cmd_json_field(&parsed, "session_activity"));
     const auto compact = [](std::string text) {
       text = trim_copy(text);
       for (char &ch : text) {
@@ -2118,11 +2161,8 @@ inline bool message_workbench_session(
                                        : warning);
     } else if (delivery == "delivered" && !trim_copy(reply_text).empty()) {
       status = "Marshal: " + compact(reply_text);
-    } else if (delivery == "queued" &&
-               session_activity == "handling_message") {
-      status = "Queued message for live thread delivery.";
     } else if (delivery == "queued") {
-      status = "Queued message for the next safe point.";
+      status = "Marshal is processing the message.";
     }
   } catch (...) {
   }

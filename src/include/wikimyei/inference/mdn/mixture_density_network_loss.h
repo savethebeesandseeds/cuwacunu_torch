@@ -52,7 +52,11 @@ struct MdnNLLLoss {
   // mask         (optional): [B,C,Hf] — 1 valid, 0 invalid
   // weights_ch   (optional): [C]     /* loss weights across the channel rank */
   // weights_tau  (optional): [Hf]    /* loss weights across the temporal rank */
-  // weights_dim  (optional): [Dy]    /* loss weights across the feature rank */
+  // weights_dim  (optional): [Dy]    /* pseudo-likelihood feature weights */
+  //
+  // NOTE: weights_dim is multiplied into per-dimension log-probabilities before
+  // mixture aggregation. That changes component responsibilities and is not the
+  // same as ordinary per-target weighting after the joint NLL is computed.
   torch::Tensor compute(const MdnOut& out,
                         const torch::Tensor& y,
                         const torch::Tensor& mask = torch::Tensor(),

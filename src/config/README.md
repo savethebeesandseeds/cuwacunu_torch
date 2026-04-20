@@ -37,6 +37,7 @@ This folder is organized by role:
 - `instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl`
 - `instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
 - `instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl`
+- `instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl`
 - `instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`
 - `instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl` (shared transfer-matrix evaluator knobs; VICReg summaries may compare null, stats-only, raw-surface, and learned-embedding forecast probes when the active build supports them)
 - `instructions/defaults/default.hero.config.dsl`
@@ -48,14 +49,19 @@ This folder is organized by role:
 - `instructions/defaults/tsodao.dsl` (TSODAO hidden-surface policy; first surface currently maps to `instructions/optim/`)
 - `instructions/defaults/default.marshal.objective.dsl`
 - `instructions/defaults/default.marshal.objective.md`
-- `instructions/defaults/default.marshal.guidance.md` (shared Marshal Hero planning guidance; objectives may further tighten validation/test and baseline-comparison rules)
-- `instructions/objectives/vicreg.solo/iitepi.contract.base.dsl`
-- `instructions/objectives/vicreg.solo/iitepi.waves.dsl`
-- `instructions/objectives/vicreg.solo/iitepi.campaign.dsl`
-- `instructions/objectives/vicreg.solo/vicreg.solo.marshal.dsl`
-- `instructions/objectives/vicreg.solo/vicreg.solo.objective.md`
-- `instructions/objectives/vicreg.solo/tsi.source.dataloader.channels.dsl` (objective-owned big-span observation profile)
-- `instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.dsl` (objective-local VICReg runtime wrapper over objective-owned network design and jkimyei payload bindings)
+- `instructions/defaults/default.runtime.operative.guidance.md` (shared Marshal Hero guidance for runtime-operative objectives such as VICReg training/evaluation loops)
+- `instructions/defaults/default.runtime.diagnostics.guidance.md` (shared Marshal Hero guidance for runtime diagnostics and Marshal/Human/Runtime lifecycle smoke objectives)
+- `instructions/defaults/default.source.lint.guidance.md` (shared Marshal Hero guidance for `source.lint` objectives; current sessions plan or request authority rather than editing source directly)
+- `instructions/objectives/source.lint.refactoring/iitepi.campaign.dsl` (dormant scaffold; not intended for Runtime launch)
+- `instructions/objectives/source.lint.refactoring/source.lint.refactoring.marshal.dsl`
+- `instructions/objectives/source.lint.refactoring/source.lint.refactoring.objective.md`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.contract.base.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.waves.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/vicreg.solo.settings_optimize.marshal.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/vicreg.solo.settings_optimize.objective.md`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.source.dataloader.channels.dsl` (objective-owned medium-span observation profile)
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.wikimyei.representation.vicreg.dsl` (objective-local VICReg runtime wrapper over objective-owned network design and payload bindings)
 - `instructions/optim/README.md` (public note for the local-only plaintext optim workspace)
 - `instructions/optim.tar.gpg` (optional tracked encrypted backup for `instructions/optim/`)
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
@@ -390,7 +396,7 @@ Human MCP tools:
 - `hero.human.ack_summary`
 - `hero.human.archive_summary`
 
-`hero_human.mcp` without `--tool` on a tty opens the Human Hero operator UI instead of waiting for JSON-RPC. On ncurses-capable terminals this is an all-session cockpit: the default sessions view shows working, campaign-active, blocked, review-ready, and terminal Marshal sessions with state-aware colors, filter cycling, and scrollable detail panes, while `Tab` cycles into focused requests and summaries views. Request rows correspond to sessions blocked for ordinary clarification or signed governance. Review-ready session summaries are messageable from that console with fresh operator guidance, while terminal session summaries remain informational. Session summaries begin with an effort summary that foregrounds elapsed wall time, checkpoint count, and campaign-launch usage. On unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
+`hero_human.mcp` without `--tool` on a tty opens the Human Hero operator UI instead of waiting for JSON-RPC. On ncurses-capable terminals this is an all-session cockpit: the default sessions view shows working, campaign-active, blocked, review-ready, and terminal Marshal sessions with state-aware colors, filter cycling, and scrollable detail panes, while `Tab` cycles into focused requests and summaries views. Request rows correspond to sessions blocked for ordinary clarification or signed governance. Review-ready session summaries are messageable from that console with fresh operator guidance, while terminal session summaries remain informational. Session summaries are short reports of affairs: they foreground the objective outcome, effort, final state, warnings, and supporting artifacts without requiring the operator to read debug logs for the core conclusion. On unsupported terminals such as `TERM=dumb` it falls back to the line-prompt responder. On non-tty stdin it still serves stdio MCP.
 `hero.human.answer_request` is the ordinary clarification path and auto-resumes the blocked session. `hero.human.resolve_governance` is governance-only: operators provide `marshal_session_id` carrying the marshal cursor, `resolution_kind = grant | deny | clarify | terminate`, and `reason`, while Marshal Hero retains responsibility for choosing the next Runtime action. `hero.human.ack_summary` is intentionally non-final: it records a required signed acknowledgment message and clears the session summary from the Human Hero inbox after review without releasing the session. `hero.human.archive_summary` is the final review disposition: it records a required signed archive note and asks Marshal Hero to archive the underlying review-ready session so the objective can be launched again. Session inspection and lifecycle control live under `hero.marshal.*`.
 
 `hero.runtime.start_campaign` accepts optional:
@@ -411,10 +417,10 @@ mismatch, or dock-selection failure.
 
 `hero.marshal.start_session` is the primary session entrypoint. It accepts optional:
 - `marshal_objective_dsl_path` to override the configured default supervision root for that launch
-- `marshal_codex_model` to override `default.hero.marshal.dsl` for this session's Codex model
-- `marshal_codex_reasoning_effort` to override `default.hero.marshal.dsl` for this session's Codex reasoning effort
+- `marshal_codex_model` to override objective-local/default settings for this session's Codex model
+- `marshal_codex_reasoning_effort` to override objective-local/default settings for this session's Codex reasoning effort
 
-Marshal Hero starts from `marshal.objective.dsl`, not from a campaign-declared `MARSHAL` edge. It resolves the selected `marshal.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, resolves the launch-time Codex model/effort as `start_session override > default.hero.marshal.dsl`, copies the authored objective files into `<runtime_root>/.marshal_hero/<marshal_cursor>/`, writes a generated session-local `hero.marshal.dsl` plus `config.hero.policy.dsl`, builds `marshal.briefing.md`, stages an initial bootstrap input checkpoint before any Runtime campaign exists, and returns once the detached session runner is launched. The persisted session snapshot is now centered on `lifecycle`, `work_gate`, observational `activity`, `campaign_status`, `campaign_cursor`, `current_thread_id`, `codex_continuity`, stable pending operator-message entities, and an exact turns ledger under `marshal.session.turns.jsonl`, while checkpoints remain durability artifacts rather than the top-level session identity. `complete` now parks the session as review-ready (`lifecycle=live`, `activity=review`), and `hero.marshal.message_session` re-enters that same live session with a fresh operator message. Review-ready sessions still wake through a planning checkpoint, while other live sessions now prefer direct runner-owned delivery into the current Codex thread, record the exact turn in the turns ledger, and use `memory.md` only as a distilled continuity layer, falling back to queued safe-point handling only when live thread continuity is unavailable. When that direct path finishes during the tool call, `hero.marshal.message_session` now returns `delivery=\"delivered\"` plus `reply_text`; degraded in-band delivery returns `delivery=\"failed\"` with a warning so operator UIs can surface it immediately. `hero.marshal.archive_session` is the final ownership-release path for review-ready sessions: it marks the session `terminal` without overloading summary acknowledgment so a fresh Marshal can be launched for the same objective. The resolved Codex binary/model/reasoning values are pinned in the session manifest and reused for fresh and resumed checkpoints instead of rereading mutable defaults, and replacement-thread recovery now rebuilds context from the durable session snapshot plus recent exact turns and warnings. If a planning checkpoint already produced an intent artifact and later fails during mutation bookkeeping or validation, Marshal Hero preserves the attempted checkpoint, parks the session as review-ready with `finish_reason=failed`, and lets the operator message it again once the issue is fixed. If a sudden interruption or reboot leaves Runtime and Marshal out of sync, `hero.marshal.get_session`, `hero.marshal.list_sessions`, and `hero.marshal.reconcile_session` best-effort repair the session by parking it as review-ready with `finish_reason=interrupted` plus recovery detail so the operator can inspect runtime evidence and message the same session. Later no-op retries of that same checkpoint preserve any existing `mutation.<checkpoint>.json` record instead of erasing mutation history. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Marshal Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are backed by Config Hero backups under `.backups/hero.marshal/<objective_name>/`, and per-checkpoint mutation summaries are written when Codex changed objective files. Only one nonterminal Marshal session may own a given `marshal.objective.dsl` at a time, so review-ready sessions keep ownership until the operator messages them forward, terminates them, or archives them explicitly.
+Marshal Hero starts from `marshal.objective.dsl`, not from a campaign-declared `MARSHAL` edge. It resolves the selected `marshal.objective.dsl`, reads its `campaign_dsl_path`, `objective_md_path`, and `guidance_md_path`, resolves the launch-time Codex model/effort as `start_session override > marshal.objective.dsl > default.hero.marshal.dsl`, copies the authored objective files into `<runtime_root>/.marshal_hero/<marshal_cursor>/`, writes a generated session-local `hero.marshal.dsl` plus `config.hero.policy.dsl`, builds `marshal.briefing.md`, stages an initial bootstrap input checkpoint before any Runtime campaign exists, and returns once the detached session runner is launched. The persisted session snapshot is now centered on `lifecycle`, `work_gate`, observational `activity`, `campaign_status`, `campaign_cursor`, `current_thread_id`, `codex_continuity`, stable pending operator-message entities, and an exact turns ledger under `marshal.session.turns.jsonl`, while checkpoints remain durability artifacts rather than the top-level session identity. `complete` now parks the session as review-ready (`lifecycle=live`, `activity=review`), and `hero.marshal.message_session` is one plain-message ingress back into that same live Marshal mind. Operator messages now flow through operator-message checkpoints even while a Runtime campaign is running, so Marshal can answer questions immediately, persist future-strategy edits against objective truth sources, or request an `interrupt_campaign` that stops the active run before later replanning. Runtime stop/launch side effects still stay behind the Marshal kernel, so campaign execution remains an immutable snapshot until Codex explicitly requests the interrupt or a later launch. When in-band handling finishes during the tool call, `hero.marshal.message_session` returns `delivery=\"delivered\"` plus `reply_text`; degraded in-band delivery returns `delivery=\"failed\"` with a warning so operator UIs can surface it immediately, and slower turns report `delivery=\"queued\"` while Marshal keeps processing. `hero.marshal.archive_session` is the final ownership-release path for review-ready sessions: it marks the session `terminal` without overloading summary acknowledgment so a fresh Marshal can be launched for the same objective. The resolved Codex binary/model/reasoning values are pinned in the session manifest and reused for fresh and resumed checkpoints instead of rereading mutable defaults. If a planning checkpoint already produced an intent artifact and later fails during mutation bookkeeping or validation, Marshal Hero preserves the attempted checkpoint, parks the session as review-ready with `finish_reason=failed`, and lets the operator message it again once the issue is fixed. If a sudden interruption or reboot leaves Runtime and Marshal out of sync, `hero.marshal.get_session`, `hero.marshal.list_sessions`, and `hero.marshal.reconcile_session` best-effort repair the session by parking it as review-ready with `finish_reason=interrupted` plus recovery detail so the operator can inspect runtime evidence and message the same session. Later no-op retries of that same checkpoint preserve any existing `mutation.<checkpoint>.json` record instead of erasing mutation history. Runtime Hero still snapshots from that truth source on every launch, so campaign execution stays immutable while Marshal Hero mutations survive `dev_nuke_reset`. Those truth-source mutations are backed by Config Hero backups under `.backups/hero.marshal/<objective_name>/`, and per-checkpoint mutation summaries are written when Codex changed objective files. Only one nonterminal Marshal session may own a given `marshal.objective.dsl` at a time, so review-ready sessions keep ownership until the operator messages them forward, terminates them, or archives them explicitly.
 
 Runtime HERO defaults:
 - loaded from `instructions/defaults/default.hero.runtime.dsl`
@@ -438,8 +444,8 @@ Marshal HERO defaults:
 - `human_hero_binary` selects the MCP binary Human Hero uses against the same session root
 - `human_operator_identities` selects the operator identities file Marshal Hero uses to bind `operator_id` values to OpenSSH `ssh-ed25519` public keys before applying a signed governance resolution
 - `marshal_codex_binary` selects the Codex executable or command name used for the durable planning session; bare `codex` first resolves through `PATH`, then falls back to known VS Code Server ChatGPT extension install locations when available
-- `marshal_codex_model` selects the default Codex model slug used when `hero.marshal.start_session` does not override it, defaulting to `gpt-5.3-codex-spark`
-- `marshal_codex_reasoning_effort` selects the default Codex `model_reasoning_effort` used when `hero.marshal.start_session` does not override it, defaulting to `xhigh` (Extra High)
+- `marshal_codex_model` selects the default Codex model slug used when neither `hero.marshal.start_session` nor the selected `marshal.objective.dsl` override it, defaulting to `gpt-5.3-codex-spark`
+- `marshal_codex_reasoning_effort` selects the default Codex `model_reasoning_effort` used when neither `hero.marshal.start_session` nor the selected `marshal.objective.dsl` override it, defaulting to `xhigh` (Extra High)
 - `marshal_codex_timeout_sec` bounds one `codex exec` or `codex exec resume` checkpoint call
 - `marshal_max_campaign_launches` bounds the number of Runtime campaign launches in one session
 - `poll_interval_ms` controls detached session-runner polling cadence while waiting for terminal campaign state
@@ -491,7 +497,7 @@ Marshal sessions persist under `<runtime_root>/.marshal_hero/<marshal_cursor>/` 
 - `logs/codex.session.stderr.jsonl`
 - `marshal.session.events.jsonl`
 - `human/request.latest.md` when a pause is pending
-- `human/summary.latest.md` when a session reaches `review-ready` or `terminal`
+- `human/summary.latest.md` as the short operator report of affairs when a session reaches `review-ready` or `terminal`
 - `human/governance_resolution.latest.json` when signed governance has answered
 - `human/governance_resolution.latest.sig` when signed governance has answered
 - `human/clarification_answer.latest.json` when ordinary clarification has answered
@@ -663,7 +669,8 @@ Supported MCP tools:
 - `./instructions/defaults/` holds the canonical example/default payloads,
   including the `instructions/defaults/*.dsl` files that Config HERO is allowed to manage.
 - `./instructions/objectives/` holds coherent experiment bundles. The first
-  bundle is `vicreg.solo/`, which keeps contract, waves, campaign binds, and
+  representative bundle is `runtime.operative.vicreg.solo.settings_optimize/`,
+  which keeps contract, waves, campaign binds, and
   only the objective-local wrappers that differ from `./instructions/defaults/`.
 - `[GUI]` holds iinuji defaults, currently:
   `iinuji_logs_buffer_capacity`, `iinuji_logs_show_date`,
@@ -735,12 +742,16 @@ Supported MCP tools:
     `./bnf/objective.marshal.bnf`, and currently declares
     `campaign_dsl_path:path`, `objective_md_path:path`, `guidance_md_path:path`,
     and optional
-    `objective_name:str` and `marshal_session_id:str`
+    `objective_name:str`, `marshal_codex_model:str`,
+    `marshal_codex_reasoning_effort:str`, and `marshal_session_id:str`
   The same grammar is used by objective-local files such as
-  `./instructions/objectives/vicreg.solo/iitepi.campaign.dsl`.
+  `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.dsl`.
   The defaults bundle also ships sample `./instructions/defaults/default.marshal.objective.dsl`
-  plus `./instructions/defaults/default.marshal.objective.md` and
-  `./instructions/defaults/default.marshal.guidance.md`.
+  plus `./instructions/defaults/default.marshal.objective.md`. Shared guidance
+  is split by objective family:
+  `./instructions/defaults/default.runtime.operative.guidance.md`,
+  `./instructions/defaults/default.runtime.diagnostics.guidance.md`, and
+  `./instructions/defaults/default.source.lint.guidance.md`.
 - Vocabulary used below:
   - `component revision`: one stored loadable family member
   - `hashimyei`: the exact revision token, such as `0x00FF`, and the name of
@@ -777,7 +788,7 @@ Supported MCP tools:
   `campaign.dsl`, and `jkimyei` is not a separate Hero.
 - Contract settings live in the checked-in defaults example
   `./instructions/defaults/default.iitepi.contract.dsl` and in objective-local
-  contract bundles such as `./instructions/objectives/vicreg.solo/iitepi.contract.base.dsl`, with
+  contract bundles such as `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.contract.base.dsl`, with
   marker format:
   - `-----BEGIN IITEPI CONTRACT-----`
   - `DOCK { ... }`
@@ -857,7 +868,7 @@ Supported MCP tools:
   `/* ... */` and `# ...`.
 - Wave settings are authored directly in the defaults example
   `./instructions/defaults/default.iitepi.wave.dsl` and in objective-local
-  wave bundles such as `./instructions/objectives/vicreg.solo/iitepi.waves.dsl`.
+  wave bundles such as `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.waves.dsl`.
   split train/run keys are removed and rejected by validation.
   wave owns operational circuit selection via `CIRCUIT: <circuit_name>;`.
   runtime dataloader ownership is wave-local via root `WAVE` keys:
@@ -907,25 +918,64 @@ Supported MCP tools:
 ## Expected Value / Expectation Runtime Notes
 
 - `EXPECTED_VALUE.optimizer_threshold_reset` is a step-counter clamp for Adam/AdamW (not a grad-norm reset trigger).
-- `EXPECTED_VALUE` names the MDN-backed module whose primary exposed statistic is
-  the conditional expectation `E[Y|X]`.
+- `EXPECTED_VALUE` names the MDN-backed module whose primary runtime export is
+  the conditional expectation of the configured targets in target space:
+  `E[target|X]`.
+- Target space is the tensor space produced by source-side preprocessing. With
+  identity preprocessing, the export is an expected raw future feature. With
+  `normalization_policy = log_returns` on price fields, the export is an
+  expected log-return, not an arithmetic expected return and not an expected
+  future price. Native/raw-space expectations must be derived separately from
+  the full MDN distribution because, for nonlinear transforms,
+  `E[f(Y)|X] != f(E[Y|X])`.
+- ExpectedValue/MDN is a first-class `tsi.wikimyei.inference.mdn` circuit
+  component. Its thin module DSL owns runtime placement and payload bindings;
+  `network_design_dsl_file` owns `encoding_dims`,
+  `encoding_temporal_reducer`, `target_dims`, `mixture_comps`,
+  `features_hidden`, and `residual_depth`, which are normalized into the
+  `EXPECTED_VALUE` module snapshot for runtime constructors.
+- `encoding_temporal_reducer` defaults to `last_valid`; rank-3 VICReg
+  sequences are reduced inside `ExpectedValue` while the source observation mask
+  is still available. The pure MDN accepts only reduced `[B,De]` encodings.
+- ExpectedValue `target_dims` are validated as non-empty, unique, non-negative,
+  aligned with `__future_target_dims`, and in range for `__obs_feature_dim`.
+- Current `target_weights` are applied inside each component's per-dimension
+  log-probability before mixture aggregation. Treat this as pseudo-likelihood /
+  tempered-score behavior, not ordinary post-NLL per-target weighting. Future
+  loss modes should make `joint_nll`, `pseudo_likelihood`, `marginal_nll`, and
+  `hybrid` semantics explicit before changing this behavior.
+- ExpectedValue trains on `future_features[..., target_dims]` with
+  `future_mask`; time keys are separate tensors and are not part of
+  `future_features`.
+- ExpectedValue training currently updates only the MDN/value-head parameters.
+  VICReg representations are consumed as inputs, and the representation encode
+  path is no-grad. A wave can train VICReg only, ExpectedValue only, or both in
+  the same run via `WIKIMYEI ... JKIMYEI.HALT_TRAIN`, but "both" means
+  simultaneous component-local training, not end-to-end ExpectedValue loss
+  backpropagation into VICReg.
 - `ExpectedValue` scheduler stepping is driven by scheduler mode:
   - `PerBatch`: step each batch.
   - `PerEpoch`: step once per epoch.
   - `PerEpochWithMetric`: step once per epoch with epoch loss metric.
-- `ExpectedValue` checkpoints are strict format v2 only and require:
-  - `format_version = 2`
+- `ExpectedValue` checkpoints are strict format v4 only and require:
+  - `format_version = 4`
   - `meta/contract_hash`
   - `meta/component_name`
+  - `meta/encoding_temporal_reducer`
   - `meta/scheduler_mode`
   - `meta/scheduler_batch_steps`
   - `meta/scheduler_epoch_steps`
+  - `meta/model_parameter_count`
+  - `meta/model_buffer_count`
 
 ## VICReg Runtime Notes
 
 - `jkimyei.*.dsl` files use explicit `COMPONENT "<canonical_type>" { ... }` blocks; implicit component identity is removed and `component_id` is derived from canonical type.
 - Contract-owned VICReg jkimyei payload is bound via `jkimyei_dsl_file` inside
   `default.tsi.wikimyei.representation.vicreg.dsl`.
+- The default ExpectedValue `jkimyei_dsl_file` also points at this shared
+  Wikimyei training-policy bundle; the filename is historical, not an assertion
+  that ExpectedValue is a VICReg model.
 - `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` (`[COMPONENT_PARAMS]`), not by `default.tsi.wikimyei.representation.vicreg.dsl`.
 - VICReg train/eval enable is owned by wave `WIKIMYEI ... JKIMYEI.HALT_TRAIN` together with root `WAVE.MODE` train bit; `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` no longer defines a `vicreg_train` key.
 - VICReg `[AUGMENTATIONS]` now uses canonical field `time_warp_curve` for the base temporal warp selector. `curve_param`, `noise_scale`, and `smoothing_kernel_size` are the knobs that shape the actual time warp; legacy field name `name` is still accepted for backward compatibility.
@@ -936,13 +986,15 @@ Supported MCP tools:
   while runtime `debug_enabled` still gates whether the sidecars are emitted.
 - `network_design` is the naming for graph/node architecture payloads.
   Required path binding is configured by `network_design_dsl_file` inside
-  `default.tsi.wikimyei.representation.vicreg.dsl`.
+  the thin Wikimyei module wrappers.
   VICReg encoder/projector architecture is authored only in
-  `*.representation.vicreg.network_design.dsl`; the thin
-  `*.representation.vicreg.dsl` wrapper owns runtime placement,
-  `enable_buffer_averaging`, and payload bindings.
+  `*.representation.vicreg.network_design.dsl`; ExpectedValue/MDN
+  architecture is authored only in
+  `*.inference.mdn.expected_value.network_design.dsl`. The thin wrappers own
+  runtime placement, checkpoint/report bindings, and payload paths.
   Resolved network-design architecture is normalized back into the runtime
-  contract snapshot for downstream compatibility readers of `VICReg.*`.
+  contract snapshot for downstream compatibility readers of `VICReg.*` and
+  `EXPECTED_VALUE.*`.
   Decoder layer is framework-agnostic; semantic validation is Wikimyei-owned;
   LibTorch-facing mapping is performed in `piaabo/torch_compat`.
   For checkpoint-side network analytics sidecars, declare exactly one

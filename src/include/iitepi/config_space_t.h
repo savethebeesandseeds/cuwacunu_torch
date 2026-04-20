@@ -21,7 +21,7 @@
 
 #define DEFAULT_GLOBAL_CONFIG_PATH "/cuwacunu/src/config/.config"
 #define DEFAULT_IITEPI_CAMPAIGN_DSL_FILE \
-  "instructions/objectives/vicreg.solo/iitepi.campaign.dsl"
+  "instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.dsl"
 #define GENERAL_DEFAULT_IITEPI_CAMPAIGN_DSL_KEY "default_iitepi_campaign_dsl_filename"
 
 #include "piaabo/dfiles.h"

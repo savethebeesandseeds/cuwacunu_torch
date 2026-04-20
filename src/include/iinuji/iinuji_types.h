@@ -132,6 +132,7 @@ struct textBox_data_t : public iinuji_data_t {
   // Tracks the last selected row auto-revealed by the UI so manual scrolling
   // is preserved until the selection itself changes.
   int tracked_selected_row{-1};
+  int tracked_selected_row_end{-1};
   // Viewport scroll offsets used by the renderer for non-input text boxes.
   int scroll_y{0};
   int scroll_x{0};

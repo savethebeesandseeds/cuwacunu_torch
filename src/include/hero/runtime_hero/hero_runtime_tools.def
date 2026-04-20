@@ -1,17 +1,106 @@
 #ifndef HERO_RUNTIME_TOOL
-#error "HERO_RUNTIME_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_runtime_tools.def"
+#error                                                                         \
+    "HERO_RUNTIME_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_runtime_tools.def"
 #endif
 
 // Runtime Hero tool registry. Keep the metadata and handler binding together so
 // tools/list, one-shot CLI, and MCP dispatch share one source of truth.
-HERO_RUNTIME_TOOL("hero.runtime.start_campaign", "Start the default iitepi campaign as a detached runtime campaign keyed by campaign_cursor; optional binding_id narrows execution to one declared BIND instead of the default RUN plan, campaign_dsl_path overrides the configured source campaign, and marshal_session_id links the campaign to an existing Marshal Hero session ledger without making Runtime Hero the session owner", "{\"type\":\"object\",\"properties\":{\"binding_id\":{\"type\":\"string\"},\"reset_runtime_state\":{\"type\":\"boolean\"},\"campaign_dsl_path\":{\"type\":\"string\"},\"marshal_session_id\":{\"type\":\"string\"}},\"additionalProperties\":false}", handle_tool_start_campaign)
-HERO_RUNTIME_TOOL("hero.runtime.explain_binding_selection", "Explain how one declared BIND would resolve its MOUNT selectors against the selected contract DOCK, returning the exact hashimyei chosen for each mount or the reason resolution failed; optional campaign_dsl_path overrides the configured source campaign", "{\"type\":\"object\",\"properties\":{\"binding_id\":{\"type\":\"string\"},\"campaign_dsl_path\":{\"type\":\"string\"}},\"required\":[\"binding_id\"],\"additionalProperties\":false}", handle_tool_explain_binding_selection)
-HERO_RUNTIME_TOOL("hero.runtime.list_campaigns", "List known runtime campaigns keyed by campaign_cursor", "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_list_campaigns)
-HERO_RUNTIME_TOOL("hero.runtime.get_campaign", "Fetch one runtime campaign by campaign_cursor", "{\"type\":\"object\",\"properties\":{\"campaign_cursor\":{\"type\":\"string\"}},\"required\":[\"campaign_cursor\"],\"additionalProperties\":false}", handle_tool_get_campaign)
-HERO_RUNTIME_TOOL("hero.runtime.stop_campaign", "Signal one runtime campaign by campaign_cursor and stop its active child job when present", "{\"type\":\"object\",\"properties\":{\"campaign_cursor\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"},\"suppress_marshal_session_update\":{\"type\":\"boolean\"}},\"required\":[\"campaign_cursor\"],\"additionalProperties\":false}", handle_tool_stop_campaign)
-HERO_RUNTIME_TOOL("hero.runtime.list_jobs", "List known runtime jobs keyed by job_cursor; child job_cursor values are derived from their parent campaign_cursor", "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_list_jobs)
-HERO_RUNTIME_TOOL("hero.runtime.get_job", "Fetch one runtime job by job_cursor; job_cursor values are derived from their parent campaign_cursor", "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"}},\"required\":[\"job_cursor\"],\"additionalProperties\":false}", handle_tool_get_job)
-HERO_RUNTIME_TOOL("hero.runtime.stop_job", "Signal one runtime job by job_cursor; job_cursor values are derived from their parent campaign_cursor", "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"},\"force\":{\"type\":\"boolean\"}},\"required\":[\"job_cursor\"],\"additionalProperties\":false}", handle_tool_stop_job)
-HERO_RUNTIME_TOOL("hero.runtime.tail_log", "Read the tail of one runtime job log by job_cursor; job_cursor values are derived from their parent campaign_cursor", "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"},\"stream\":{\"type\":\"string\"},\"lines\":{\"type\":\"integer\"}},\"required\":[\"job_cursor\"],\"additionalProperties\":false}", handle_tool_tail_log)
-HERO_RUNTIME_TOOL("hero.runtime.tail_trace", "Read the tail of one runtime job execution trace by job_cursor; job_cursor values are derived from their parent campaign_cursor", "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"},\"lines\":{\"type\":\"integer\"}},\"required\":[\"job_cursor\"],\"additionalProperties\":false}", handle_tool_tail_trace)
-HERO_RUNTIME_TOOL("hero.runtime.reconcile", "Refresh runtime campaign and job manifests from current process liveness and mark stale active entries", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}", handle_tool_reconcile)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.start_campaign",
+    "Start the default iitepi campaign as a detached runtime campaign keyed by "
+    "campaign_cursor; optional binding_id narrows execution to one declared "
+    "BIND instead of the default RUN plan, campaign_dsl_path overrides the "
+    "configured source campaign, and marshal_session_id links the campaign to "
+    "an existing Marshal Hero session ledger without making Runtime Hero the "
+    "session owner",
+    "{\"type\":\"object\",\"properties\":{\"binding_id\":{\"type\":\"string\"},"
+    "\"reset_runtime_state\":{\"type\":\"boolean\"},\"campaign_dsl_path\":{"
+    "\"type\":\"string\"},\"marshal_session_id\":{\"type\":\"string\"}},"
+    "\"additionalProperties\":false}",
+    handle_tool_start_campaign)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.explain_binding_selection",
+    "Explain how one declared BIND would resolve its MOUNT selectors against "
+    "the selected contract DOCK, returning the exact hashimyei chosen for each "
+    "mount or the reason resolution failed; optional campaign_dsl_path "
+    "overrides the configured source campaign",
+    "{\"type\":\"object\",\"properties\":{\"binding_id\":{\"type\":\"string\"},"
+    "\"campaign_dsl_path\":{\"type\":\"string\"}},\"required\":[\"binding_id\"]"
+    ",\"additionalProperties\":false}",
+    handle_tool_explain_binding_selection)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.list_campaigns",
+    "List known runtime campaigns keyed by campaign_cursor",
+    "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\"},"
+    "\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},"
+    "\"newest_first\":{\"type\":\"boolean\"}},\"additionalProperties\":false}",
+    handle_tool_list_campaigns)
+HERO_RUNTIME_TOOL("hero.runtime.get_campaign",
+                  "Fetch one runtime campaign by campaign_cursor",
+                  "{\"type\":\"object\",\"properties\":{\"campaign_cursor\":{"
+                  "\"type\":\"string\"}},\"required\":[\"campaign_cursor\"],"
+                  "\"additionalProperties\":false}",
+                  handle_tool_get_campaign)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.stop_campaign",
+    "Signal one runtime campaign by campaign_cursor and stop its active child "
+    "job when present",
+    "{\"type\":\"object\",\"properties\":{\"campaign_cursor\":{\"type\":"
+    "\"string\"},\"force\":{\"type\":\"boolean\"},\"suppress_marshal_session_"
+    "update\":{\"type\":\"boolean\"}},\"required\":[\"campaign_cursor\"],"
+    "\"additionalProperties\":false}",
+    handle_tool_stop_campaign)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.list_jobs",
+    "List known runtime jobs keyed by job_cursor; child job_cursor values are "
+    "derived from their parent campaign_cursor; compact summaries are returned "
+    "by default, and include_full=true restores the full manifest-shaped "
+    "payload",
+    "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\"},"
+    "\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"},"
+    "\"newest_first\":{\"type\":\"boolean\"},\"include_full\":{\"type\":"
+    "\"boolean\"}},\"additionalProperties\":false}",
+    handle_tool_list_jobs)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.get_job",
+    "Fetch one runtime job by job_cursor; job_cursor values are derived from "
+    "their parent campaign_cursor",
+    "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"}}"
+    ",\"required\":[\"job_cursor\"],\"additionalProperties\":false}",
+    handle_tool_get_job)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.stop_job",
+    "Signal one runtime job by job_cursor; job_cursor values are derived from "
+    "their parent campaign_cursor",
+    "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"},"
+    "\"force\":{\"type\":\"boolean\"}},\"required\":[\"job_cursor\"],"
+    "\"additionalProperties\":false}",
+    handle_tool_stop_job)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.tail_log",
+    "Read a bounded, sanitized tail of one runtime job log by job_cursor; full "
+    "logs remain available by returned path, while inline text is capped by "
+    "inline_line_limit and max_bytes",
+    "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"},"
+    "\"stream\":{\"type\":\"string\"},\"lines\":{\"type\":\"integer\"},"
+    "\"include_text\":{\"type\":\"boolean\"},\"inline_line_limit\":{\"type\":"
+    "\"integer\"},\"max_bytes\":{\"type\":\"integer\"}},\"required\":[\"job_"
+    "cursor\"],\"additionalProperties\":false}",
+    handle_tool_tail_log)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.tail_trace",
+    "Read a bounded, sanitized tail of one runtime job execution trace by "
+    "job_cursor; full traces remain available by returned path, while inline "
+    "text is capped by inline_line_limit and max_bytes",
+    "{\"type\":\"object\",\"properties\":{\"job_cursor\":{\"type\":\"string\"},"
+    "\"lines\":{\"type\":\"integer\"},\"include_text\":{\"type\":\"boolean\"},"
+    "\"inline_line_limit\":{\"type\":\"integer\"},\"max_bytes\":{\"type\":"
+    "\"integer\"}},\"required\":[\"job_cursor\"],\"additionalProperties\":"
+    "false}",
+    handle_tool_tail_trace)
+HERO_RUNTIME_TOOL(
+    "hero.runtime.reconcile",
+    "Refresh runtime campaign and job manifests from current process liveness "
+    "and mark stale active entries",
+    "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+    handle_tool_reconcile)

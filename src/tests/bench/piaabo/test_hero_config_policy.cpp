@@ -646,7 +646,7 @@ int main() {
     write_text(objective_dsl,
                "encoding_dims:int = 128\nencoder_depth:int = 2\n");
     write_text(validated_network_dsl,
-               read_text("/cuwacunu/src/config/instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.network_design.dsl"));
+               read_text("/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.wikimyei.representation.vicreg.network_design.dsl"));
     write_text(
         campaign_dsl,
         read_text("/cuwacunu/src/config/instructions/defaults/default.iitepi.campaign.dsl"));
@@ -654,7 +654,7 @@ int main() {
     write_text(marshal_objective_dsl,
                "campaign_dsl_path:path = iitepi.campaign.dsl\n"
                "objective_md_path:path = marshal.objective.md\n"
-               "guidance_md_path:path = ../../defaults/default.marshal.guidance.md\n");
+               "guidance_md_path:path = ../../defaults/default.runtime.operative.guidance.md\n");
 
     cuwacunu::hero::mcp::hero_config_store_t store(cfg_path.string(),
                                                    global_cfg.string());
@@ -807,7 +807,7 @@ int main() {
     assert(cuwacunu::hero::mcp::execute_tool_json(
         "hero.config.objective.replace",
         "{\"objective_root\":\"" + objective_root.string() +
-            "\",\"path\":\"marshal.objective.dsl\",\"content\":\"campaign_dsl_path:path = iitepi.campaign.dsl\\nobjective_md_path:path = marshal.objective.md\\nguidance_md_path:path = ../../defaults/default.marshal.guidance.md\\n\"}",
+            "\",\"path\":\"marshal.objective.dsl\",\"content\":\"campaign_dsl_path:path = iitepi.campaign.dsl\\nobjective_md_path:path = marshal.objective.md\\nguidance_md_path:path = ../../defaults/default.runtime.operative.guidance.md\\n\"}",
         &store, &result_json, &err));
     assert(err.empty());
 
@@ -889,16 +889,16 @@ int main() {
                                                "hero.config"));
     write_text(global_cfg, build_global_config_text(runtime_root));
     write_text(contract_dsl,
-               read_text("/cuwacunu/src/config/instructions/objectives/vicreg.solo/iitepi.contract.base.dsl"));
+               read_text("/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.contract.base.dsl"));
     write_text(objective_root / "iitepi.circuit.dsl",
-               read_text("/cuwacunu/src/config/instructions/objectives/vicreg.solo/iitepi.circuit.dsl"));
+               read_text("/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.circuit.dsl"));
     write_text(objective_root / "tsi.wikimyei.representation.vicreg.dsl",
-               read_text("/cuwacunu/src/config/instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.dsl"));
+               read_text("/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.wikimyei.representation.vicreg.dsl"));
     write_text(
         objective_root / "tsi.wikimyei.representation.vicreg.network_design.dsl",
-        read_text("/cuwacunu/src/config/instructions/objectives/vicreg.solo/tsi.wikimyei.representation.vicreg.network_design.dsl"));
+        read_text("/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.wikimyei.representation.vicreg.network_design.dsl"));
     write_text(objective_root / "tsi.source.dataloader.channels.dsl",
-               read_text("/cuwacunu/src/config/instructions/objectives/vicreg.solo/tsi.source.dataloader.channels.dsl"));
+               read_text("/cuwacunu/src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.source.dataloader.channels.dsl"));
     write_text(defaults_root / "default.tsi.source.dataloader.sources.dsl",
                read_text("/cuwacunu/src/config/instructions/defaults/default.tsi.source.dataloader.sources.dsl"));
     write_text(defaults_root /

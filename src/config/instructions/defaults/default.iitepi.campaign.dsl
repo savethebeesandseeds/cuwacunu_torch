@@ -28,6 +28,7 @@
         MOUNT {
           // choose the concrete component revision for the wave slot
           w_rep = EXACT 0x0000;
+          w_ev = EXACT 0x0000;
         };
         CONTRACT = <contract_alias>;
         WAVE = <imported_wave_id>;
@@ -39,8 +40,11 @@
     Marshal Hero now starts from a marshal objective DSL, which points to the
     campaign plus separate human-authored objective and guidance files.
     The defaults bundle ships `default.marshal.objective.dsl`,
-    `default.marshal.objective.md`, and `default.marshal.guidance.md`, but the
-    plain default campaign remains executable on its own through Runtime Hero.
+    `default.marshal.objective.md`, and category guidance files such as
+    `default.runtime.operative.guidance.md`,
+    `default.runtime.diagnostics.guidance.md`, and
+    `default.source.lint.guidance.md`, but the plain default campaign remains
+    executable on its own through Runtime Hero.
 */
 CAMPAIGN {
   IMPORT_CONTRACT "default.iitepi.contract.dsl" AS contract_default_iitepi;
@@ -55,6 +59,7 @@ CAMPAIGN {
     MOUNT {
       // exact hashimyei token for the selected VICReg component revision
       w_rep = EXACT 0x0000;
+      w_ev = EXACT 0x0000;
     };
     CONTRACT = contract_default_iitepi;
     WAVE = train_vicreg_primary;

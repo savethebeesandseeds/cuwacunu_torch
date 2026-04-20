@@ -119,6 +119,18 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     std::string tsi_dsl_sha256_hex{};
   };
 
+  struct WikimyeiBindingIdentity {
+    std::string binding_id{};
+    std::string canonical_type{};
+    std::string hashimyei{};
+    std::string runtime_component_name{};
+
+    [[nodiscard]] std::string runtime_path() const {
+      if (hashimyei.empty()) return canonical_type;
+      return canonical_type + "." + hashimyei;
+    }
+  };
+
   struct Execution {
     // Wave execution controls selected for this contract.
     std::uint64_t wave_mode_flags{0};
@@ -146,6 +158,10 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     std::string representation_hashimyei{};
     // Selected runtime training component key resolved for wikimyei representation.
     std::string representation_component_name{};
+    // Per-node wikimyei identity map used by runtime load/save/lineage flows.
+    // The legacy representation_* fields above mirror the first active entry
+    // for compatibility with older single-wikimyei callers.
+    std::vector<WikimyeiBindingIdentity> wikimyei_bindings{};
     // Canonical component type set present in this contract circuit.
     std::vector<std::string> component_types{};
     // Immutable DSL fingerprints captured from the contract signature.
@@ -168,6 +184,14 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
 
     [[nodiscard]] bool has_positive_shape_hints() const noexcept {
       return batch_size_hint > 0 && channels > 0 && timesteps > 0 && features > 0;
+    }
+
+    [[nodiscard]] const WikimyeiBindingIdentity* find_wikimyei_binding(
+        std::string_view binding_id) const noexcept {
+      for (const auto& binding : wikimyei_bindings) {
+        if (binding.binding_id == binding_id) return &binding;
+      }
+      return nullptr;
     }
   } spec{};
   Execution execution{};

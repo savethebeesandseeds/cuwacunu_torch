@@ -21,7 +21,7 @@ Runtime boundary:
   train loops remain component-owned.
 - campaign orchestration is owned by Runtime Hero through the configured
   `iitepi campaign` DSL. The checked-in active bundle is
-  `src/config/instructions/objectives/vicreg.solo/iitepi.campaign.dsl`.
+  `src/config/instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.dsl`.
 
 Design goals:
 - schema-first definitions (`.def` is source of truth)

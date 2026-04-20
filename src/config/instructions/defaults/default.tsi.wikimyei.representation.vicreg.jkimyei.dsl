@@ -2,9 +2,11 @@
   default.tsi.wikimyei.representation.vicreg.jkimyei.dsl
   =================================
   Purpose:
-    Declarative training policy for VICReg representation profiles.
+    Declarative training policy for Wikimyei profiles used by the default
+    Tsiemene circuit.
     Component identity is explicit:
       canonical_type = "tsi.wikimyei.representation.vicreg"
+      canonical_type = "tsi.wikimyei.inference.mdn"
       component_id    = canonical_type (derived by decoder)
 
   Syntax:
@@ -19,7 +21,7 @@
     - AUGMENTATIONS supports row-wise or transposed ascii tables.
     - No implicit defaults in profiles: keys should be explicit.
 
-  Settable keys by section (VICReg):
+  Settable keys by section:
     [OPTIMIZER]
       .type + optimizer-specific keys from jkimyei_schema.def
       (for AdamW: .initial_learning_rate .weight_decay .epsilon .beta1 .beta2 .amsgrad)
@@ -152,5 +154,74 @@ PROFILE "eval_payload_only" {
 }
 }
 
-/* NOTE: expected-value/MDN policy is intentionally out of active scope.
-   This contract file currently focuses on VICReg representation flows. */
+/* ========================================================================== */
+/* ExpectedValue / MDN inference family                                       */
+/* ========================================================================== */
+COMPONENT "tsi.wikimyei.inference.mdn" {
+ACTIVE_PROFILE: "stable_expectation"
+
+PROFILE "stable_expectation" {
+    [OPTIMIZER]
+      .type: "AdamW"
+      .initial_learning_rate: 0.0005
+      .weight_decay: 0.01
+      .epsilon: 1e-8
+      .beta1: 0.9
+      .beta2: 0.999
+      .amsgrad: false
+
+    [LR_SCHEDULER]
+      .type: "ConstantLR"
+      .lr: 0.0005
+
+    [LOSS]
+      .type: "NLLLoss"
+      .eps: 1e-8
+      .sigma_min: 1e-4
+      .sigma_max: 10.0
+      .reduction: "mean"
+
+    [COMPONENT_PARAMS]
+      .target_dims: [3]
+      /* target_weights are pseudo-likelihood / tempered-score weights inside
+         mixture aggregation, not ordinary post-NLL per-target weights. */
+      .target_weights: [0.5]
+      .grad_clip: 1.0
+      .optimizer_threshold_reset: 500
+
+    [NUMERICS]
+      .dtype: "kFloat32"
+      .device: "gpu"
+      .amp: false
+      .grad_scaler: false
+      .detect_anomaly: false
+      .eps: 1e-8
+
+    [GRADIENT]
+      .accumulate_steps: 1
+      .clip_norm: 1.0
+      .clip_value: 0.0
+      .skip_on_nan: true
+      .zero_grad_set_to_none: true
+
+    [CHECKPOINT]
+      .save_model: true
+      .save_optimizer: true
+      .save_scheduler: true
+      .save_rng: false
+      .strict_load: true
+      .keep_last: 2
+      .keep_best: 1
+
+    [METRICS]
+      .objective: "future_target_dims_nll"
+      .early_stop: "none"
+      .log_terms: [nll, expectation]
+
+    [DATA_REF]
+      .dataset_id: "runtime_source"
+      .split: "train"
+      .target_mapping: "future_target_dims"
+      .sampler_policy: "wave"
+}
+}

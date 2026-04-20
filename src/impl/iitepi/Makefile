@@ -14,6 +14,15 @@ $(eval $(call BUILD_OBJ, common/iitepi, config_space_t,   iitepi_config_space_t)
 $(eval $(call BUILD_OBJ, common/iitepi, contract_space_t, iitepi_contract_space_t))
 $(eval $(call BUILD_OBJ, common/iitepi, contract_space_t_network_analytics, iitepi_contract_space_t_network_analytics))
 $(eval $(call BUILD_OBJ, common/iitepi, wave_space_t,     iitepi_wave_space_t))
+
+CONTRACT_SPACE_T_PARTS := \
+  $(HERE_PATH)/contract_space_t_private_core.cpp \
+  $(HERE_PATH)/contract_space_t_private_parse.cpp \
+  $(HERE_PATH)/contract_space_t_private_build.cpp \
+  $(HERE_PATH)/contract_space_t_private_public.cpp
+
+$(OUTPUT_PATH)/common/iitepi/contract_space_t.o: $(CONTRACT_SPACE_T_PARTS)
+
 IITEPI_HERE_PATH := $(HERE_PATH)
 IITEPI_REL_MODULE := $(REL_MODULE)
 HERE_PATH := $(IMPL_PATH)/iitepi/runtime_binding
