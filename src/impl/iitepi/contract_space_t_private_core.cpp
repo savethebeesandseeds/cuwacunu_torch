@@ -8,9 +8,10 @@
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
 #include "camahjucunu/dsl/wave_contract_binding/wave_contract_binding.h"
+#include "iitepi/runtime_binding/runtime_binding.validation.h"
 #include "tsiemene/tsi.type.registry.h"
 #include "wikimyei/inference/expected_value/expected_value_network_design.h"
-#include "wikimyei/representation/VICReg/vicreg_4d_network_design.h"
+#include "wikimyei/representation/VICReg/vicreg_rank4_network_design.h"
 
 #include <algorithm>
 #include <array>
@@ -45,6 +46,8 @@ static std::string g_last_registered_contract_path_canonical;
 static constexpr const char *kContractSectionDock = "DOCK";
 static constexpr const char *kContractSectionAssembly = "ASSEMBLY";
 static constexpr const char *kContractSectionAknowledge = "AKNOWLEDGE";
+static constexpr const char *kContractSectionInstrumentSignaturePrefix =
+    "INSTRUMENT_SIGNATURE:";
 static constexpr const char *kAssemblyKeyCircuitDslFilename =
     "circuit_dsl_filename";
 static constexpr const char *kModuleSectionVicreg = "VICReg";
@@ -142,22 +145,40 @@ contract_dsl_variables_from_section(const parsed_config_section_t &section);
     const contract_docking_signature_t &signature);
 [[nodiscard]] static std::string
 canonical_contract_signature_json(const contract_signature_t &signature);
+[[nodiscard]] static std::vector<contract_docking_surface_entry_t>
+public_docking_contract_surfaces(
+    const std::vector<contract_docking_surface_entry_t> &surfaces);
+[[nodiscard]] static std::vector<contract_instrument_signature_assignment_t>
+derive_contract_instrument_signatures_or_fail(
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
+    const parsed_config_t &cfg);
 [[nodiscard]] static std::optional<contract_component_binding_t>
 derive_contract_component_binding(
     const cuwacunu::camahjucunu::tsiemene_instance_decl_t &instance,
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
     std::string_view vicreg_module_sha256_hex,
+    std::string_view vicreg_component_tag,
     std::string_view expected_value_module_path,
-    std::string_view expected_value_module_sha256_hex, std::string *error);
+    std::string_view expected_value_module_sha256_hex,
+    std::string_view expected_value_component_tag, std::string *error);
 [[nodiscard]] static std::vector<contract_component_binding_t>
 derive_contract_component_bindings_or_fail(
     const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
     std::string_view vicreg_module_sha256_hex,
+    std::string_view vicreg_component_tag,
     std::string_view expected_value_module_path,
-    std::string_view expected_value_module_sha256_hex);
+    std::string_view expected_value_module_sha256_hex,
+    std::string_view expected_value_component_tag);
+[[nodiscard]] static std::vector<contract_component_compatibility_signature_t>
+derive_contract_component_compatibility_signatures_or_fail(
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
+    const std::vector<contract_component_binding_t> &component_bindings,
+    const contract_docking_signature_t &docking_signature,
+    const std::vector<contract_instrument_signature_assignment_t>
+        &instrument_signatures);
 [[nodiscard]] static std::string
 contract_required_resolved_path(const parsed_config_t &cfg,
                                 const std::string &cfg_folder,
@@ -220,6 +241,25 @@ template <class T> static T parse_scalar_from_string(const std::string &s);
   return value ? "true" : "false";
 }
 
+[[nodiscard]] bool is_valid_component_tag_token(std::string_view tag) noexcept {
+  if (tag.empty() || tag.size() > 128U)
+    return false;
+  if (tag.front() == '.' || tag.front() == '-' || tag.back() == '.' ||
+      tag.back() == '-')
+    return false;
+
+  bool previous_dot = false;
+  for (const unsigned char c : tag) {
+    const bool ok = std::isalnum(c) != 0 || c == '_' || c == '-' || c == '.';
+    if (!ok)
+      return false;
+    if (c == '.' && previous_dot)
+      return false;
+    previous_dot = (c == '.');
+  }
+  return true;
+}
+
 /*──────────────────────── shared helpers ─────────────────────────────*/
 [[nodiscard]] static std::string strip_comment(std::string_view line,
                                                bool *in_block_comment) {
@@ -273,24 +313,34 @@ template <class T> static T parse_scalar_from_string(const std::string &s);
 [[nodiscard]] static std::vector<std::string>
 split_string_items(const std::string &s) {
   std::vector<std::string> out;
-  std::string cur;
-  bool in_single = false;
-  bool in_double = false;
-
-  auto push_trimmed = [&](std::string &token) {
+  auto trim_copy = [](std::string_view token) {
     std::size_t b = 0;
     std::size_t e = token.size();
     while (b < e && std::isspace(static_cast<unsigned char>(token[b])))
       ++b;
     while (e > b && std::isspace(static_cast<unsigned char>(token[e - 1])))
       --e;
-    if (e > b)
-      out.emplace_back(token.substr(b, e - b));
+    return std::string(token.substr(b, e - b));
+  };
+
+  std::string input = trim_copy(s);
+  if (input.size() >= 2 && input.front() == '[' && input.back() == ']') {
+    input = trim_copy(std::string_view(input).substr(1, input.size() - 2));
+  }
+
+  std::string cur;
+  bool in_single = false;
+  bool in_double = false;
+
+  auto push_trimmed = [&](std::string &token) {
+    std::string trimmed = trim_copy(token);
+    if (!trimmed.empty())
+      out.emplace_back(std::move(trimmed));
     token.clear();
   };
 
-  for (std::size_t i = 0; i < s.size(); ++i) {
-    const char c = s[i];
+  for (std::size_t i = 0; i < input.size(); ++i) {
+    const char c = input[i];
     if (c == '\'' && !in_double) {
       in_single = !in_single;
       cur.push_back(c);
@@ -708,10 +758,286 @@ is_contract_assembly_path_variable(std::string_view name) noexcept {
 }
 
 [[nodiscard]] static bool
+is_instrument_signature_section(std::string_view section) noexcept {
+  return section.rfind(kContractSectionInstrumentSignaturePrefix, 0) == 0;
+}
+
+[[nodiscard]] static std::string
+instrument_signature_alias_from_section(std::string_view section) {
+  if (!is_instrument_signature_section(section))
+    return {};
+  return trim_ascii_ws_copy(std::string(section.substr(
+      std::string_view(kContractSectionInstrumentSignaturePrefix).size())));
+}
+
+[[nodiscard]] static std::map<std::string,
+                              cuwacunu::camahjucunu::instrument_signature_t>
+explicit_contract_instrument_signatures_from_config(
+    const parsed_config_t &cfg) {
+  std::map<std::string, cuwacunu::camahjucunu::instrument_signature_t> out{};
+  for (const auto &[section, values] : cfg) {
+    if (!is_instrument_signature_section(section))
+      continue;
+    const std::string alias = instrument_signature_alias_from_section(section);
+    if (!has_non_ws_ascii(alias)) {
+      log_fatal("[dconfig] INSTRUMENT_SIGNATURE section has empty alias\n");
+    }
+    if (out.find(alias) != out.end()) {
+      log_fatal("[dconfig] duplicate INSTRUMENT_SIGNATURE alias: %s\n",
+                alias.c_str());
+    }
+    cuwacunu::camahjucunu::instrument_signature_t signature{};
+    for (const auto &[field, value] : values) {
+      std::string field_error{};
+      if (!cuwacunu::camahjucunu::instrument_signature_set_field(
+              &signature, field, value, &field_error)) {
+        log_fatal("[dconfig] invalid INSTRUMENT_SIGNATURE <%s>: %s\n",
+                  alias.c_str(), field_error.c_str());
+      }
+    }
+    std::string validation_error{};
+    if (!cuwacunu::camahjucunu::instrument_signature_validate(
+            signature, /*allow_any=*/true,
+            "INSTRUMENT_SIGNATURE <" + alias + ">", &validation_error)) {
+      log_fatal("[dconfig] invalid INSTRUMENT_SIGNATURE <%s>: %s\n",
+                alias.c_str(), validation_error.c_str());
+    }
+    out.emplace(alias, std::move(signature));
+  }
+  return out;
+}
+
+[[nodiscard]] static std::vector<contract_instrument_signature_assignment_t>
+derive_contract_instrument_signatures_or_fail(
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
+    const parsed_config_t &cfg) {
+  const auto explicit_signatures =
+      explicit_contract_instrument_signatures_from_config(cfg);
+  std::unordered_set<std::string> referenced_aliases{};
+  std::map<std::string, contract_instrument_signature_assignment_t> effective{};
+
+  const auto register_effective =
+      [&](std::string alias,
+          cuwacunu::camahjucunu::instrument_signature_t signature,
+          bool explicit_declared,
+          const cuwacunu::camahjucunu::tsiemene_instance_decl_t &instance,
+          const tsiemene::TsiTypeDescriptor &type_desc) {
+        std::string validation_error{};
+        if (!cuwacunu::camahjucunu::instrument_signature_validate(
+                signature, /*allow_any=*/true,
+                "INSTRUMENT_SIGNATURE <" + alias + ">", &validation_error)) {
+          log_fatal("[dconfig] invalid INSTRUMENT_SIGNATURE <%s>: %s\n",
+                    alias.c_str(), validation_error.c_str());
+        }
+
+        if (type_desc.domain == tsiemene::TsiDomain::Source) {
+          if (!explicit_declared) {
+            log_fatal("[dconfig] SOURCE alias '%s' requires explicit "
+                      "DOCK.INSTRUMENT_SIGNATURE\n",
+                      alias.c_str());
+          }
+          if (cuwacunu::camahjucunu::instrument_signature_is_any(
+                  signature.record_type) ||
+              cuwacunu::camahjucunu::instrument_signature_is_any(
+                  signature.market_type) ||
+              cuwacunu::camahjucunu::instrument_signature_is_any(
+                  signature.venue)) {
+            log_fatal("[dconfig] SOURCE alias '%s' INSTRUMENT_SIGNATURE must "
+                      "use exact RECORD_TYPE, MARKET_TYPE, and VENUE\n",
+                      alias.c_str());
+          }
+        }
+
+        auto existing = effective.find(alias);
+        if (existing == effective.end()) {
+          contract_instrument_signature_assignment_t assignment{};
+          assignment.binding_id = alias;
+          assignment.signature = std::move(signature);
+          effective.emplace(alias, std::move(assignment));
+          return;
+        }
+        std::string overlap_error{};
+        if (!cuwacunu::camahjucunu::instrument_signatures_overlap(
+                existing->second.signature, signature,
+                "INSTRUMENT_SIGNATURE <" + existing->first + ">",
+                "INSTRUMENT_SIGNATURE <" + instance.alias + ">",
+                &overlap_error)) {
+          log_fatal("[dconfig] conflicting INSTRUMENT_SIGNATURE for reused "
+                    "alias '%s': %s\n",
+                    existing->first.c_str(), overlap_error.c_str());
+        }
+        if (cuwacunu::camahjucunu::instrument_signature_compact_string(
+                existing->second.signature) !=
+            cuwacunu::camahjucunu::instrument_signature_compact_string(
+                signature)) {
+          log_fatal("[dconfig] alias '%s' has multiple non-identical "
+                    "INSTRUMENT_SIGNATURE declarations across circuits\n",
+                    existing->first.c_str());
+        }
+      };
+
+  for (const auto &circuit : instruction.circuits) {
+    std::vector<contract_instrument_signature_assignment_t>
+        circuit_signatures{};
+    for (const auto &instance : circuit.instances) {
+      const std::string alias = trim_ascii_ws_copy(instance.alias);
+      if (!has_non_ws_ascii(alias)) {
+        log_fatal("[dconfig] circuit has empty alias while deriving "
+                  "instrument signatures\n");
+      }
+      std::string path_error{};
+      const auto node_path = tsiemene::resolve_node_path_or_nullopt(
+          instance.tsi_type, /*contract_hash=*/{},
+          /*allow_family_without_hash=*/true, &path_error);
+      if (!node_path.has_value()) {
+        log_fatal("[dconfig] invalid circuit path for alias '%s' while "
+                  "deriving instrument signatures: %s\n",
+                  alias.c_str(), path_error.c_str());
+      }
+      const auto *type_desc = tsiemene::find_tsi_type(node_path->type_id);
+      if (!type_desc) {
+        log_fatal("[dconfig] missing tsi type descriptor for alias '%s'\n",
+                  alias.c_str());
+      }
+
+      const auto explicit_it = explicit_signatures.find(alias);
+      const bool explicit_declared = explicit_it != explicit_signatures.end();
+      if (!explicit_declared) {
+        log_fatal("[dconfig] circuit alias '%s' requires explicit "
+                  "DOCK.INSTRUMENT_SIGNATURE\n",
+                  alias.c_str());
+      }
+      cuwacunu::camahjucunu::instrument_signature_t signature =
+          explicit_it->second;
+      referenced_aliases.insert(alias);
+      register_effective(alias, signature, explicit_declared, instance,
+                         *type_desc);
+      circuit_signatures.push_back(
+          contract_instrument_signature_assignment_t{alias, signature});
+    }
+
+    for (std::size_t i = 0; i < circuit_signatures.size(); ++i) {
+      for (std::size_t j = i + 1; j < circuit_signatures.size(); ++j) {
+        std::string overlap_error{};
+        if (!cuwacunu::camahjucunu::instrument_signatures_overlap(
+                circuit_signatures[i].signature,
+                circuit_signatures[j].signature,
+                "INSTRUMENT_SIGNATURE <" + circuit_signatures[i].binding_id +
+                    ">",
+                "INSTRUMENT_SIGNATURE <" + circuit_signatures[j].binding_id +
+                    ">",
+                &overlap_error)) {
+          log_fatal("[dconfig] instrument signatures in circuit '%s' are "
+                    "mutually incompatible: %s\n",
+                    circuit.name.c_str(), overlap_error.c_str());
+        }
+      }
+    }
+  }
+
+  for (const auto &[alias, _] : explicit_signatures) {
+    if (referenced_aliases.find(alias) != referenced_aliases.end())
+      continue;
+    log_fatal("[dconfig] DOCK.INSTRUMENT_SIGNATURE <%s> does not match any "
+              "circuit alias\n",
+              alias.c_str());
+  }
+
+  std::vector<contract_instrument_signature_assignment_t> out{};
+  out.reserve(effective.size());
+  for (auto &[_, assignment] : effective) {
+    out.push_back(std::move(assignment));
+  }
+  return out;
+}
+
+[[nodiscard]] static bool
 is_current_dock_contract_variable(std::string_view name) noexcept {
   return name == "__obs_channels" || name == "__obs_seq_length" ||
          name == "__obs_feature_dim" || name == "__embedding_dims" ||
-         name == "__future_target_dims";
+         name == "__future_target_feature_indices";
+}
+
+[[nodiscard]] static bool
+is_observation_shape_contract_variable(std::string_view name) noexcept {
+  return name == "__obs_channels" || name == "__obs_seq_length" ||
+         name == "__obs_feature_dim";
+}
+
+[[nodiscard]] static bool
+component_uses_contract_variable(std::string_view family,
+                                 std::string_view name) noexcept {
+  if (!is_current_dock_contract_variable(name))
+    return false;
+
+  const std::string_view source =
+      tsiemene::tsi_type_token(tsiemene::TsiTypeId::SourceDataloader);
+  const std::string_view representation = tsiemene::tsi_type_token(
+      tsiemene::TsiTypeId::WikimyeiRepresentationEncodingVicreg);
+  const std::string_view expected_value = tsiemene::tsi_type_token(
+      tsiemene::TsiTypeId::WikimyeiInferenceExpectedValueMdn);
+
+  if (family == source)
+    return is_observation_shape_contract_variable(name);
+  if (family == representation)
+    return is_observation_shape_contract_variable(name) ||
+           name == "__embedding_dims";
+  if (family == expected_value)
+    return is_observation_shape_contract_variable(name) ||
+           name == "__embedding_dims" ||
+           name == "__future_target_feature_indices";
+  return false;
+}
+
+[[nodiscard]] static bool
+component_uses_docking_surface(std::string_view family,
+                               std::string_view surface_id) noexcept {
+  const std::string_view source =
+      tsiemene::tsi_type_token(tsiemene::TsiTypeId::SourceDataloader);
+  const std::string_view representation = tsiemene::tsi_type_token(
+      tsiemene::TsiTypeId::WikimyeiRepresentationEncodingVicreg);
+  const std::string_view expected_value = tsiemene::tsi_type_token(
+      tsiemene::TsiTypeId::WikimyeiInferenceExpectedValueMdn);
+
+  if (surface_id == "contract.observation.channels") {
+    return family == source || family == representation ||
+           family == expected_value;
+  }
+  if (family == representation) {
+    return surface_id == "contract.module.VICReg" ||
+           surface_id == "contract.module.VICReg.network_design";
+  }
+  if (family == expected_value) {
+    return surface_id == "contract.module.EXPECTED_VALUE" ||
+           surface_id == "contract.module.EXPECTED_VALUE.network_design";
+  }
+  return false;
+}
+
+[[nodiscard]] static std::vector<contract_variable_assignment_t>
+component_compatibility_variable_assignments(
+    std::string_view family,
+    const std::vector<contract_variable_assignment_t> &assignments) {
+  std::vector<contract_variable_assignment_t> out{};
+  out.reserve(assignments.size());
+  for (const auto &assignment : assignments) {
+    if (component_uses_contract_variable(family, assignment.name))
+      out.push_back(assignment);
+  }
+  return out;
+}
+
+[[nodiscard]] static std::vector<contract_docking_surface_entry_t>
+component_compatibility_surfaces(
+    std::string_view family,
+    const std::vector<contract_docking_surface_entry_t> &surfaces) {
+  std::vector<contract_docking_surface_entry_t> out{};
+  out.reserve(surfaces.size());
+  for (const auto &surface : surfaces) {
+    if (component_uses_docking_surface(family, surface.surface_id))
+      out.push_back(surface);
+  }
+  return out;
 }
 
 [[nodiscard]] static bool
@@ -771,11 +1097,90 @@ public_docking_contract_surfaces(
 [[nodiscard]] static std::string
 canonical_contract_signature_json(const contract_signature_t &signature);
 
+[[nodiscard]] static std::vector<std::pair<std::string, std::string>>
+identity_instrument_signature_fields(
+    const cuwacunu::camahjucunu::instrument_signature_t &signature) {
+  std::vector<std::pair<std::string, std::string>> out{};
+  const auto fields =
+      cuwacunu::camahjucunu::instrument_signature_fields(signature);
+  out.reserve(fields.size());
+  for (const auto &[field, value] : fields) {
+    const std::string trimmed =
+        cuwacunu::camahjucunu::instrument_signature_trim_ascii(value);
+    if (cuwacunu::camahjucunu::instrument_signature_is_any(trimmed))
+      continue;
+    out.emplace_back(field, trimmed);
+  }
+  return out;
+}
+
+[[nodiscard]] static std::string
+canonical_contract_component_compatibility_signature_json(
+    std::string_view family, std::string_view component_tag,
+    const cuwacunu::camahjucunu::instrument_signature_t &instrument_signature,
+    const contract_docking_signature_t &docking_signature) {
+  std::vector<contract_variable_assignment_t> variables =
+      component_compatibility_variable_assignments(
+          family, docking_signature.variable_assignments);
+  std::vector<contract_docking_surface_entry_t> surfaces =
+      component_compatibility_surfaces(family, docking_signature.surfaces);
+  std::sort(variables.begin(), variables.end(),
+            [](const contract_variable_assignment_t &a,
+               const contract_variable_assignment_t &b) {
+              if (a.name != b.name)
+                return a.name < b.name;
+              return a.value < b.value;
+            });
+  std::sort(surfaces.begin(), surfaces.end(),
+            [](const contract_docking_surface_entry_t &a,
+               const contract_docking_surface_entry_t &b) {
+              if (a.surface_id != b.surface_id)
+                return a.surface_id < b.surface_id;
+              if (a.sha256_hex != b.sha256_hex)
+                return a.sha256_hex < b.sha256_hex;
+              return a.canonical_path < b.canonical_path;
+            });
+
+  const auto identity_fields =
+      identity_instrument_signature_fields(instrument_signature);
+  std::ostringstream out;
+  out << "{\"schema\":\"iitepi.contract.component_compatibility_signature.v2\""
+      << ",\"family\":\"" << json_escape(family) << "\""
+      << ",\"component_tag\":\"" << json_escape(component_tag) << "\""
+      << ",\"instrument_signature\":{";
+  for (std::size_t i = 0; i < identity_fields.size(); ++i) {
+    const auto &[field, value] = identity_fields[i];
+    if (i != 0)
+      out << ",";
+    out << "\"" << json_escape(field) << "\":\"" << json_escape(value) << "\"";
+  }
+  out << "},\"variables\":[";
+  for (std::size_t i = 0; i < variables.size(); ++i) {
+    const auto &v = variables[i];
+    if (i != 0)
+      out << ",";
+    out << "{\"name\":\"" << json_escape(v.name) << "\",\"value\":\""
+        << json_escape(v.value) << "\"}";
+  }
+  out << "],\"surfaces\":[";
+  for (std::size_t i = 0; i < surfaces.size(); ++i) {
+    const auto &surface = surfaces[i];
+    if (i != 0)
+      out << ",";
+    out << "{\"surface_id\":\"" << json_escape(surface.surface_id)
+        << "\",\"sha256_hex\":\"" << json_escape(surface.sha256_hex) << "\"}";
+  }
+  out << "]}";
+  return out.str();
+}
+
 [[nodiscard]] static std::string canonical_contract_docking_signature_json(
     const contract_docking_signature_t &signature) {
   std::vector<std::string> circuits = signature.compatible_circuits;
   std::vector<contract_variable_assignment_t> variables =
       signature.variable_assignments;
+  std::vector<contract_instrument_signature_assignment_t>
+      instrument_signatures = signature.instrument_signatures;
   std::vector<contract_docking_surface_entry_t> surfaces =
       public_docking_contract_surfaces(signature.surfaces);
   std::sort(circuits.begin(), circuits.end());
@@ -796,6 +1201,11 @@ canonical_contract_signature_json(const contract_signature_t &signature);
                 return a.sha256_hex < b.sha256_hex;
               return a.canonical_path < b.canonical_path;
             });
+  std::sort(instrument_signatures.begin(), instrument_signatures.end(),
+            [](const contract_instrument_signature_assignment_t &a,
+               const contract_instrument_signature_assignment_t &b) {
+              return a.binding_id < b.binding_id;
+            });
 
   std::ostringstream out;
   out << "{\"schema\":\"" << json_escape(signature.schema)
@@ -812,6 +1222,20 @@ canonical_contract_signature_json(const contract_signature_t &signature);
       out << ",";
     out << "{\"name\":\"" << json_escape(v.name) << "\",\"value\":\""
         << json_escape(v.value) << "\"}";
+  }
+  out << "],\"instrument_signatures\":[";
+  for (std::size_t i = 0; i < instrument_signatures.size(); ++i) {
+    const auto &assignment = instrument_signatures[i];
+    const auto &s = assignment.signature;
+    if (i != 0)
+      out << ",";
+    out << "{\"binding_id\":\"" << json_escape(assignment.binding_id)
+        << "\",\"SYMBOL\":\"" << json_escape(s.symbol)
+        << "\",\"RECORD_TYPE\":\"" << json_escape(s.record_type)
+        << "\",\"MARKET_TYPE\":\"" << json_escape(s.market_type)
+        << "\",\"VENUE\":\"" << json_escape(s.venue) << "\",\"BASE_ASSET\":\""
+        << json_escape(s.base_asset) << "\",\"QUOTE_ASSET\":\""
+        << json_escape(s.quote_asset) << "\"}";
   }
   out << "],\"surfaces\":[";
   for (std::size_t i = 0; i < surfaces.size(); ++i) {
@@ -835,6 +1259,8 @@ canonical_contract_signature_json(const contract_signature_t &signature) {
   std::sort(bindings.begin(), bindings.end(),
             [](const contract_component_binding_t &a,
                const contract_component_binding_t &b) {
+              if (a.binding_id != b.binding_id)
+                return a.binding_id < b.binding_id;
               if (a.canonical_path != b.canonical_path) {
                 return a.canonical_path < b.canonical_path;
               }
@@ -842,6 +1268,13 @@ canonical_contract_signature_json(const contract_signature_t &signature) {
                 return a.tsi_type < b.tsi_type;
               if (a.hashimyei != b.hashimyei)
                 return a.hashimyei < b.hashimyei;
+              if (a.component_tag != b.component_tag)
+                return a.component_tag < b.component_tag;
+              if (a.component_compatibility_sha256_hex !=
+                  b.component_compatibility_sha256_hex) {
+                return a.component_compatibility_sha256_hex <
+                       b.component_compatibility_sha256_hex;
+              }
               if (a.tsi_dsl_sha256_hex != b.tsi_dsl_sha256_hex) {
                 return a.tsi_dsl_sha256_hex < b.tsi_dsl_sha256_hex;
               }
@@ -852,6 +1285,8 @@ canonical_contract_signature_json(const contract_signature_t &signature) {
                const contract_module_signature_entry_t &b) {
               if (a.module_id != b.module_id)
                 return a.module_id < b.module_id;
+              if (a.component_tag != b.component_tag)
+                return a.component_tag < b.component_tag;
               if (a.module_dsl_sha256_hex != b.module_dsl_sha256_hex) {
                 return a.module_dsl_sha256_hex < b.module_dsl_sha256_hex;
               }
@@ -875,9 +1310,13 @@ canonical_contract_signature_json(const contract_signature_t &signature) {
     const auto &b = bindings[i];
     if (i != 0)
       out << ",";
-    out << "{\"canonical_path\":\"" << json_escape(b.canonical_path)
+    out << "{\"binding_id\":\"" << json_escape(b.binding_id)
+        << "\",\"canonical_path\":\"" << json_escape(b.canonical_path)
         << "\",\"tsi_type\":\"" << json_escape(b.tsi_type)
         << "\",\"hashimyei\":\"" << json_escape(b.hashimyei)
+        << "\",\"component_tag\":\"" << json_escape(b.component_tag)
+        << "\",\"component_compatibility_sha256_hex\":\""
+        << json_escape(b.component_compatibility_sha256_hex)
         << "\",\"tsi_dsl_sha256_hex\":\"" << json_escape(b.tsi_dsl_sha256_hex)
         << "\"}";
   }
@@ -887,6 +1326,7 @@ canonical_contract_signature_json(const contract_signature_t &signature) {
     if (i != 0)
       out << ",";
     out << "{\"module_id\":\"" << json_escape(m.module_id)
+        << "\",\"component_tag\":\"" << json_escape(m.component_tag)
         << "\",\"module_dsl_sha256_hex\":\""
         << json_escape(m.module_dsl_sha256_hex) << "\"}";
   }
@@ -908,8 +1348,10 @@ derive_contract_component_binding(
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
     std::string_view vicreg_module_sha256_hex,
+    std::string_view vicreg_component_tag,
     std::string_view expected_value_module_path,
-    std::string_view expected_value_module_sha256_hex, std::string *error) {
+    std::string_view expected_value_module_sha256_hex,
+    std::string_view expected_value_component_tag, std::string *error) {
   if (error)
     error->clear();
   const std::string raw_path = trim_ascii_ws_copy(instance.tsi_type);
@@ -932,6 +1374,12 @@ derive_contract_component_binding(
   parsed = decode_path(raw_path);
 
   contract_component_binding_t binding{};
+  binding.binding_id = trim_ascii_ws_copy(instance.alias);
+  if (!has_non_ws_ascii(binding.binding_id)) {
+    if (error)
+      *error = "empty circuit instance alias while deriving component binding";
+    return std::nullopt;
+  }
   bool family_without_hash = false;
   std::string canonical_identity =
       (parsed.ok &&
@@ -985,15 +1433,25 @@ derive_contract_component_binding(
   if (policy == tsiemene::TsiInstancePolicy::HashimyeiInstances) {
     if (!family_without_hash && parsed.ok &&
         has_non_ws_ascii(parsed.hashimyei)) {
-      binding.hashimyei = parsed.hashimyei;
+      if (error) {
+        *error = "contract binding path for alias '" + instance.alias +
+                 "' must omit explicit hashimyei; component hashimyei is "
+                 "derived from contract content";
+      }
+      return std::nullopt;
     }
   }
 
-  if (*type_id == tsiemene::TsiTypeId::WikimyeiRepresentationVicreg) {
+  if (*type_id == tsiemene::TsiTypeId::WikimyeiRepresentationEncodingVicreg) {
     binding.tsi_dsl_path = trim_ascii_ws_copy(std::string(vicreg_module_path));
-  } else if (*type_id == tsiemene::TsiTypeId::WikimyeiInferenceMdn) {
+    binding.component_tag =
+        trim_ascii_ws_copy(std::string(vicreg_component_tag));
+  } else if (*type_id ==
+             tsiemene::TsiTypeId::WikimyeiInferenceExpectedValueMdn) {
     binding.tsi_dsl_path =
         trim_ascii_ws_copy(std::string(expected_value_module_path));
+    binding.component_tag =
+        trim_ascii_ws_copy(std::string(expected_value_component_tag));
   }
 
   if (has_non_ws_ascii(binding.tsi_dsl_path)) {
@@ -1008,15 +1466,26 @@ derive_contract_component_binding(
       }
       return std::nullopt;
     }
-    if (*type_id == tsiemene::TsiTypeId::WikimyeiInferenceMdn &&
+    if (*type_id == tsiemene::TsiTypeId::WikimyeiInferenceExpectedValueMdn &&
         has_non_ws_ascii(std::string(expected_value_module_sha256_hex))) {
       binding.tsi_dsl_sha256_hex =
           std::string(expected_value_module_sha256_hex);
-    } else if (*type_id == tsiemene::TsiTypeId::WikimyeiRepresentationVicreg &&
+    } else if (*type_id ==
+                   tsiemene::TsiTypeId::WikimyeiRepresentationEncodingVicreg &&
                has_non_ws_ascii(std::string(vicreg_module_sha256_hex))) {
       binding.tsi_dsl_sha256_hex = std::string(vicreg_module_sha256_hex);
     } else {
       binding.tsi_dsl_sha256_hex = sha256_hex_from_file(binding.tsi_dsl_path);
+    }
+  }
+  if (has_non_ws_ascii(binding.tsi_dsl_path)) {
+    if (!is_valid_component_tag_token(binding.component_tag)) {
+      if (error) {
+        *error = "invalid or missing component TAG in contract signature for "
+                 "binding: " +
+                 binding.canonical_path;
+      }
+      return std::nullopt;
     }
   }
 
@@ -1029,8 +1498,10 @@ derive_contract_component_bindings_or_fail(
     std::string_view contract_hash_for_canonicalization,
     std::string_view vicreg_module_path,
     std::string_view vicreg_module_sha256_hex,
+    std::string_view vicreg_component_tag,
     std::string_view expected_value_module_path,
-    std::string_view expected_value_module_sha256_hex) {
+    std::string_view expected_value_module_sha256_hex,
+    std::string_view expected_value_component_tag) {
   std::vector<contract_component_binding_t> out{};
   std::unordered_set<std::string> seen{};
   for (const auto &circuit : instruction.circuits) {
@@ -1038,8 +1509,9 @@ derive_contract_component_bindings_or_fail(
       std::string local_error{};
       const auto maybe_binding = derive_contract_component_binding(
           instance, contract_hash_for_canonicalization, vicreg_module_path,
-          vicreg_module_sha256_hex, expected_value_module_path,
-          expected_value_module_sha256_hex, &local_error);
+          vicreg_module_sha256_hex, vicreg_component_tag,
+          expected_value_module_path, expected_value_module_sha256_hex,
+          expected_value_component_tag, &local_error);
       if (!maybe_binding.has_value()) {
         log_fatal(
             "[dconfig] invalid contract component binding for alias '%s': %s\n",
@@ -1047,8 +1519,9 @@ derive_contract_component_bindings_or_fail(
       }
       const auto &binding = *maybe_binding;
       const std::string dedupe_key =
-          binding.canonical_path + "|" + binding.tsi_type + "|" +
-          binding.hashimyei + "|" + binding.tsi_dsl_path + "|" +
+          binding.binding_id + "|" + binding.canonical_path + "|" +
+          binding.tsi_type + "|" + binding.hashimyei + "|" +
+          binding.component_tag + "|" + binding.tsi_dsl_path + "|" +
           binding.tsi_dsl_sha256_hex;
       if (!seen.insert(dedupe_key).second)
         continue;
@@ -1058,6 +1531,8 @@ derive_contract_component_bindings_or_fail(
   std::sort(out.begin(), out.end(),
             [](const contract_component_binding_t &a,
                const contract_component_binding_t &b) {
+              if (a.binding_id != b.binding_id)
+                return a.binding_id < b.binding_id;
               if (a.canonical_path != b.canonical_path) {
                 return a.canonical_path < b.canonical_path;
               }
@@ -1065,12 +1540,279 @@ derive_contract_component_bindings_or_fail(
                 return a.tsi_type < b.tsi_type;
               if (a.hashimyei != b.hashimyei)
                 return a.hashimyei < b.hashimyei;
+              if (a.component_tag != b.component_tag)
+                return a.component_tag < b.component_tag;
               if (a.tsi_dsl_path != b.tsi_dsl_path) {
                 return a.tsi_dsl_path < b.tsi_dsl_path;
               }
               return a.tsi_dsl_sha256_hex < b.tsi_dsl_sha256_hex;
             });
   return out;
+}
+
+[[nodiscard]] static const contract_instrument_signature_assignment_t *
+find_instrument_signature_assignment(
+    const std::vector<contract_instrument_signature_assignment_t> &signatures,
+    std::string_view binding_id) noexcept {
+  for (const auto &signature : signatures) {
+    if (signature.binding_id == binding_id)
+      return &signature;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] static std::vector<contract_component_compatibility_signature_t>
+derive_contract_component_compatibility_signatures_or_fail(
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
+    const std::vector<contract_component_binding_t> &component_bindings,
+    const contract_docking_signature_t &docking_signature,
+    const std::vector<contract_instrument_signature_assignment_t>
+        &instrument_signatures) {
+  std::map<std::string, contract_component_compatibility_signature_t>
+      by_alias{};
+  std::map<std::string, contract_component_binding_t> binding_by_alias{};
+  for (const auto &binding : component_bindings) {
+    const std::string alias = trim_ascii_ws_copy(binding.binding_id);
+    if (!has_non_ws_ascii(alias))
+      continue;
+    binding_by_alias.emplace(alias, binding);
+  }
+
+  for (const auto &circuit : instruction.circuits) {
+    for (const auto &instance : circuit.instances) {
+      const std::string alias = trim_ascii_ws_copy(instance.alias);
+      if (!has_non_ws_ascii(alias)) {
+        log_fatal("[dconfig] circuit has empty alias while deriving component "
+                  "compatibility signatures\n");
+      }
+
+      const auto binding_it = binding_by_alias.find(alias);
+      if (binding_it == binding_by_alias.end()) {
+        log_fatal("[dconfig] missing component binding for alias '%s' while "
+                  "deriving component compatibility signature\n",
+                  alias.c_str());
+      }
+      const auto &binding = binding_it->second;
+      const std::string family = trim_ascii_ws_copy(binding.tsi_type);
+      if (!has_non_ws_ascii(family)) {
+        log_fatal("[dconfig] empty component family for alias '%s' while "
+                  "deriving compatibility signature\n",
+                  alias.c_str());
+      }
+      const auto maybe_type = tsiemene::parse_tsi_type_id(family);
+      if (!maybe_type.has_value()) {
+        log_fatal("[dconfig] unknown component family for alias '%s' while "
+                  "deriving compatibility signature: %s\n",
+                  alias.c_str(), family.c_str());
+      }
+      if (tsiemene::tsi_type_instance_policy(*maybe_type) !=
+          tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+        continue;
+      }
+      if (!is_valid_component_tag_token(binding.component_tag)) {
+        log_fatal("[dconfig] invalid component TAG for alias '%s' while "
+                  "deriving component compatibility signature\n",
+                  alias.c_str());
+      }
+
+      const auto *instrument_signature =
+          find_instrument_signature_assignment(instrument_signatures, alias);
+      if (!instrument_signature) {
+        log_fatal("[dconfig] missing effective INSTRUMENT_SIGNATURE for alias "
+                  "'%s' while deriving component compatibility signature\n",
+                  alias.c_str());
+      }
+
+      const std::string signature_json =
+          canonical_contract_component_compatibility_signature_json(
+              family, binding.component_tag, instrument_signature->signature,
+              docking_signature);
+      const std::string component_hash =
+          sha256_hex_from_bytes(signature_json.data(), signature_json.size());
+      if (!has_non_ws_ascii(component_hash)) {
+        log_fatal(
+            "[dconfig] failed to compute component compatibility hash for "
+            "alias '%s'\n",
+            alias.c_str());
+      }
+
+      contract_component_compatibility_signature_t signature{};
+      signature.binding_id = alias;
+      signature.family = family;
+      signature.component_tag = binding.component_tag;
+      signature.instrument_signature = instrument_signature->signature;
+      signature.sha256_hex = component_hash;
+
+      const auto inserted = by_alias.emplace(alias, signature);
+      if (!inserted.second) {
+        const auto &existing = inserted.first->second;
+        if (existing.family != signature.family ||
+            existing.component_tag != signature.component_tag ||
+            existing.sha256_hex != signature.sha256_hex) {
+          log_fatal("[dconfig] alias '%s' has conflicting component "
+                    "compatibility signatures across circuits\n",
+                    alias.c_str());
+        }
+      }
+    }
+  }
+
+  std::vector<contract_component_compatibility_signature_t> out{};
+  out.reserve(by_alias.size());
+  for (auto &[_, signature] : by_alias) {
+    out.push_back(std::move(signature));
+  }
+  return out;
+}
+
+[[nodiscard]] static bool is_lower_hex_64(std::string_view text) noexcept {
+  if (text.size() != 64U)
+    return false;
+  for (const char ch : text) {
+    const bool digit = ch >= '0' && ch <= '9';
+    const bool lower = ch >= 'a' && ch <= 'f';
+    if (!digit && !lower)
+      return false;
+  }
+  return true;
+}
+
+[[nodiscard]] std::string derive_hashimyei_from_component_compatibility_sha256(
+    std::string_view component_compatibility_sha256_hex) {
+  const std::string hash =
+      trim_ascii_ws_copy(std::string(component_compatibility_sha256_hex));
+  if (!is_lower_hex_64(hash)) {
+    log_fatal("[dconfig] component compatibility hash is not canonical "
+              "lowercase sha256: %s\n",
+              hash.c_str());
+  }
+  return "0x" + hash.substr(0, 16);
+}
+
+[[nodiscard]] static const contract_component_binding_t *
+find_contract_component_binding_by_id(const contract_record_t &record,
+                                      std::string_view binding_id) noexcept {
+  const std::string id = trim_ascii_ws_copy(std::string(binding_id));
+  for (const auto &binding : record.signature.bindings) {
+    if (trim_ascii_ws_copy(binding.binding_id) == id)
+      return &binding;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] static std::optional<contract_component_binding_t>
+realize_contract_component_binding_for_runtime_impl(
+    const contract_record_t &record, std::string_view binding_id,
+    const cuwacunu::camahjucunu::instrument_signature_t &runtime_signature,
+    std::string *error) {
+  if (error)
+    error->clear();
+  const auto *binding =
+      find_contract_component_binding_by_id(record, binding_id);
+  if (!binding) {
+    if (error)
+      *error = "contract has no component binding for id: " +
+               trim_ascii_ws_copy(std::string(binding_id));
+    return std::nullopt;
+  }
+  const auto *declared_compatibility =
+      find_component_compatibility_signature(record, binding->binding_id);
+  if (!declared_compatibility) {
+    if (error) {
+      *error = "contract has no component compatibility signature for id: " +
+               binding->binding_id;
+    }
+    return std::nullopt;
+  }
+
+  std::string signature_error{};
+  if (!cuwacunu::camahjucunu::instrument_signature_accepts_runtime(
+          declared_compatibility->instrument_signature, runtime_signature,
+          "INSTRUMENT_SIGNATURE <" + binding->binding_id + ">",
+          &signature_error)) {
+    if (error)
+      *error = signature_error;
+    return std::nullopt;
+  }
+
+  cuwacunu::camahjucunu::instrument_signature_t effective_signature =
+      declared_compatibility->instrument_signature;
+
+  const std::string signature_json =
+      canonical_contract_component_compatibility_signature_json(
+          binding->tsi_type, binding->component_tag, effective_signature,
+          record.docking_signature);
+  const std::string component_hash =
+      sha256_hex_from_bytes(signature_json.data(), signature_json.size());
+  if (!has_non_ws_ascii(component_hash)) {
+    if (error) {
+      *error = "failed to compute realized component compatibility hash for "
+               "binding: " +
+               binding->binding_id;
+    }
+    return std::nullopt;
+  }
+
+  contract_component_binding_t realized = *binding;
+  realized.component_compatibility_sha256_hex = component_hash;
+  realized.instrument_signature = effective_signature;
+  realized.hashimyei =
+      derive_hashimyei_from_component_compatibility_sha256(component_hash);
+  realized.canonical_path = realized.tsi_type + "." + realized.hashimyei;
+  return realized;
+}
+
+} // namespace
+
+[[nodiscard]] std::optional<contract_component_binding_t>
+realize_contract_component_binding_for_runtime(
+    const contract_record_t &record, std::string_view binding_id,
+    const cuwacunu::camahjucunu::instrument_signature_t &runtime_signature,
+    std::string *error) {
+  return realize_contract_component_binding_for_runtime_impl(
+      record, binding_id, runtime_signature, error);
+}
+
+namespace {
+
+static void
+finalize_contract_component_hashimyeis_or_fail(contract_record_t *record) {
+  if (!record) {
+    log_fatal("[dconfig] missing contract record while deriving component "
+              "hashimyeis\n");
+  }
+
+  for (auto &binding : record->signature.bindings) {
+    const auto maybe_type = tsiemene::parse_tsi_type_id(binding.tsi_type);
+    if (!maybe_type.has_value())
+      continue;
+    if (tsiemene::tsi_type_instance_policy(*maybe_type) !=
+        tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+      continue;
+    }
+
+    const auto *component_compatibility =
+        find_component_compatibility_signature(*record, binding.binding_id);
+    if (!component_compatibility) {
+      log_fatal("[dconfig] missing component compatibility signature for "
+                "component binding '%s'\n",
+                binding.binding_id.c_str());
+    }
+    if (trim_ascii_ws_copy(component_compatibility->family) !=
+        trim_ascii_ws_copy(binding.tsi_type)) {
+      log_fatal("[dconfig] component compatibility family mismatch for "
+                "binding '%s': compatibility=%s binding=%s\n",
+                binding.binding_id.c_str(),
+                component_compatibility->family.c_str(),
+                binding.tsi_type.c_str());
+    }
+
+    binding.component_compatibility_sha256_hex =
+        trim_ascii_ws_copy(component_compatibility->sha256_hex);
+    binding.hashimyei = derive_hashimyei_from_component_compatibility_sha256(
+        binding.component_compatibility_sha256_hex);
+    binding.canonical_path = binding.tsi_type + "." + binding.hashimyei;
+  }
 }
 
 [[nodiscard]] static std::string
@@ -1308,4 +2050,3 @@ module_section_exists(const contract_record_t &snapshot,
   return snapshot.module_sections.find(std::string(section)) !=
          snapshot.module_sections.end();
 }
-

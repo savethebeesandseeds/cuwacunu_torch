@@ -18,8 +18,18 @@ $(eval $(call BUILD_OBJ, common/iitepi, wave_space_t,     iitepi_wave_space_t))
 CONTRACT_SPACE_T_PARTS := \
   $(HERE_PATH)/contract_space_t_private_core.cpp \
   $(HERE_PATH)/contract_space_t_private_parse.cpp \
+  $(HERE_PATH)/contract_space_t_private_parse_core.cpp \
+  $(HERE_PATH)/contract_space_t_private_parse_validation_preflight.cpp \
+  $(HERE_PATH)/contract_space_t_private_parse_validation_modules.cpp \
   $(HERE_PATH)/contract_space_t_private_build.cpp \
   $(HERE_PATH)/contract_space_t_private_public.cpp
+
+RUNTIME_BINDING_BUILDER_PARTS := \
+  $(ROOT_PATH)/include/iitepi/runtime_binding/runtime_binding.builder.h \
+  $(ROOT_PATH)/include/iitepi/runtime_binding/runtime_binding.builder_private_helpers.h \
+  $(ROOT_PATH)/include/iitepi/runtime_binding/runtime_binding.builder_private_tsi_factory.h \
+  $(ROOT_PATH)/include/iitepi/runtime_binding/runtime_binding.builder_private_circuit.h \
+  $(ROOT_PATH)/include/iitepi/runtime_binding/runtime_binding.builder_private_binding.h
 
 $(OUTPUT_PATH)/common/iitepi/contract_space_t.o: $(CONTRACT_SPACE_T_PARTS)
 
@@ -31,6 +41,7 @@ $(eval $(call BUILD_OBJ, common/iitepi/runtime_binding, runtime_binding_space_t,
   iitepi_runtime_binding_space_t))
 $(eval $(call BUILD_OBJ, common/iitepi/runtime_binding, runtime_binding_space_t_network_analytics, \
   iitepi_runtime_binding_space_t_network_analytics))
+$(OUTPUT_PATH)/common/iitepi/runtime_binding/runtime_binding_space_t.o: $(RUNTIME_BINDING_BUILDER_PARTS)
 HERE_PATH := $(IITEPI_HERE_PATH)
 REL_MODULE := $(IITEPI_REL_MODULE)
 

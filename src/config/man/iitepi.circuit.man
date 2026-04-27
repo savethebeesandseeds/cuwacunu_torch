@@ -34,8 +34,8 @@ type = canonical_node_path
 required = true
 default = none
 range = supported tsi type id
-allowed = tsi.source.dataloader,tsi.wikimyei.representation.vicreg[.0x<hex>],tsi.probe.log,tsi.sink.null
-nuance = family-only paths are accepted for hashimyei-instance types so wave can own runtime hash selection
+allowed = tsi.source.dataloader,tsi.wikimyei.representation.encoding.vicreg[.0x<hex>],tsi.probe.log,tsi.sink.null
+nuance = contract-authored paths omit hashimyei suffixes; staged runtime paths may carry the contract-derived hashimyei suffix
 
 [FIELD INSTANCE.ARGS]
 key = <instance_args>

@@ -97,27 +97,6 @@ static std::string sha256_hex(std::string_view payload) {
 
 static std::string sixty_four_hex(char c) { return std::string(64, c); }
 
-static std::string erase_line_with_prefix(std::string input,
-                                          std::string_view prefix) {
-  std::size_t cursor = 0;
-  while (cursor < input.size()) {
-    const std::size_t line_end = input.find('\n', cursor);
-    const std::size_t line_size = (line_end == std::string::npos)
-                                      ? input.size() - cursor
-                                      : line_end - cursor;
-    if (std::string_view(input).substr(cursor, prefix.size()) == prefix) {
-      const std::size_t erase_size =
-          (line_end == std::string::npos) ? line_size : line_size + 1;
-      input.erase(cursor, erase_size);
-      continue;
-    }
-    if (line_end == std::string::npos)
-      break;
-    cursor = line_end + 1;
-  }
-  return input;
-}
-
 static hashimyei_t make_test_identity(hashimyei_kind_e kind,
                                       std::uint64_t ordinal,
                                       std::string hash = {}) {
@@ -158,6 +137,7 @@ static std::string component_payload(const component_manifest_t &m) {
   out << "schema=" << m.schema << "\n";
   out << "canonical_path=" << m.canonical_path << "\n";
   out << "family=" << m.family << "\n";
+  out << "component_tag=" << m.component_tag << "\n";
   out << "hashimyei_identity.schema=" << m.hashimyei_identity.schema << "\n";
   out << "hashimyei_identity.kind="
       << cuwacunu::hashimyei::hashimyei_kind_to_string(
@@ -195,6 +175,13 @@ static std::string component_payload(const component_manifest_t &m) {
       << "\n";
   out << "docking_signature_sha256_hex=" << m.docking_signature_sha256_hex
       << "\n";
+  out << "component_compatibility_sha256_hex="
+      << m.component_compatibility_sha256_hex << "\n";
+  for (const auto &[field, value] :
+       cuwacunu::camahjucunu::instrument_signature_fields(
+           m.instrument_signature)) {
+    out << "instrument_signature." << field << "=" << value << "\n";
+  }
   out << "lineage_state=" << m.lineage_state << "\n";
   out << "replaced_by=" << m.replaced_by << "\n";
   out << "created_at_ms=" << m.created_at_ms << "\n";
@@ -221,25 +208,30 @@ static run_manifest_t make_run_manifest() {
       {"iitepi.contract.bind_train_vicreg", "sha.contract"});
   m.components.push_back(
       {"tsi.source.dataloader", "tsi.source.dataloader", ""});
-  m.components.push_back({"tsi.wikimyei.representation.vicreg.0x0010",
-                          "tsi.wikimyei.representation.vicreg", "0x0010"});
+  m.components.push_back({"tsi.wikimyei.representation.encoding.vicreg.0x0010",
+                          "tsi.wikimyei.representation.encoding.vicreg",
+                          "0x0010"});
   return m;
 }
 
 static component_manifest_t make_component_manifest() {
   component_manifest_t m{};
   m.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
-  m.canonical_path = "tsi.wikimyei.representation.vicreg.0x0010";
-  m.family = "tsi.wikimyei.representation.vicreg";
+  m.instrument_signature =
+      cuwacunu::camahjucunu::instrument_signature_all_any();
+  m.canonical_path = "tsi.wikimyei.representation.encoding.vicreg.0x0010";
+  m.family = "tsi.wikimyei.representation.encoding.vicreg";
+  m.component_tag = "vicreg.test.default";
   m.hashimyei_identity = make_test_identity(hashimyei_kind_e::TSIEMENE, 0x10);
   m.revision_reason = "initial";
   m.founding_revision_id = "cfgrev.initial";
   m.contract_identity = make_binding("bind_train_vicreg").contract;
   m.founding_dsl_source_path =
       "src/config/instructions/defaults/"
-      "default.tsi.wikimyei.representation.vicreg.network_design.dsl";
+      "default.tsi.wikimyei.representation.encoding.vicreg.network_design.dsl";
   m.founding_dsl_source_sha256_hex = sixty_four_hex('c');
   m.docking_signature_sha256_hex = sixty_four_hex('d');
+  m.component_compatibility_sha256_hex = sixty_four_hex('d');
   m.lineage_state = "active";
   m.created_at_ms = 1711111111000ULL;
   m.updated_at_ms = 1711111111001ULL;
@@ -261,6 +253,7 @@ make_auto_contract_component_manifest(std::uint64_t component_ordinal,
   m.contract_identity.ordinal = 0;
   m.founding_dsl_source_sha256_hex = sixty_four_hex(dsl_fill);
   m.docking_signature_sha256_hex = sixty_four_hex('1');
+  m.component_compatibility_sha256_hex = sixty_four_hex('1');
   m.created_at_ms = ts_ms;
   m.updated_at_ms = ts_ms;
   return m;
@@ -270,9 +263,11 @@ static void test_component_manifest_id_stable_under_source_path_churn() {
   component_manifest_t a = make_component_manifest();
   component_manifest_t b = a;
   a.founding_dsl_source_path =
-      "/tmp/runtime_a/instructions/tsi.wikimyei.representation.vicreg.dsl";
+      "/tmp/runtime_a/instructions/"
+      "tsi.wikimyei.representation.encoding.vicreg.dsl";
   b.founding_dsl_source_path =
-      "/tmp/runtime_b/instructions/tsi.wikimyei.representation.vicreg.dsl";
+      "/tmp/runtime_b/instructions/"
+      "tsi.wikimyei.representation.encoding.vicreg.dsl";
 
   REQUIRE(cuwacunu::hero::hashimyei::compute_component_manifest_id(a) ==
           cuwacunu::hero::hashimyei::compute_component_manifest_id(b));
@@ -285,7 +280,7 @@ static void test_component_manifest_id_stable_under_source_path_churn() {
 static void test_founding_bundle_digest_stable_under_source_path_churn() {
   cuwacunu::hero::hashimyei::founding_dsl_bundle_manifest_t a{};
   a.component_id = "component.1234";
-  a.canonical_path = "tsi.wikimyei.representation.vicreg.0x0010";
+  a.canonical_path = "tsi.wikimyei.representation.encoding.vicreg.0x0010";
   a.hashimyei_name = "0x0010";
   a.files.push_back(
       {"/tmp/runtime_a/instructions/a.dsl", "0000_a.dsl", sixty_four_hex('a')});
@@ -350,7 +345,7 @@ static void test_uppercase_component_manifest_normalization() {
   REQUIRE(catalog.resolve_component("", "0x00AB", &resolved, &error));
   REQUIRE(resolved.manifest.hashimyei_identity.name == "0x00ab");
   REQUIRE(resolved.manifest.canonical_path ==
-          "tsi.wikimyei.representation.vicreg.0x00ab");
+          "tsi.wikimyei.representation.encoding.vicreg.0x00ab");
 }
 
 int main() {
@@ -474,39 +469,6 @@ int main() {
   REQUIRE(idydb_named_lock_release(&busy_lock) == IDYDB_DONE);
   REQUIRE(catalog.ingest_filesystem(store_root, &error));
 
-  component_manifest_t pre_hard_cut_component_manifest =
-      make_component_manifest();
-  pre_hard_cut_component_manifest.hashimyei_identity =
-      make_test_identity(hashimyei_kind_e::TSIEMENE, 0x99);
-  pre_hard_cut_component_manifest.canonical_path =
-      pre_hard_cut_component_manifest.family + "." +
-      pre_hard_cut_component_manifest.hashimyei_identity.name;
-  pre_hard_cut_component_manifest.founding_revision_id = "cfgrev.pre_hard_cut";
-  const fs::path pre_hard_cut_component_manifest_path =
-      cuwacunu::hero::hashimyei::component_manifest_path(
-          store_root, pre_hard_cut_component_manifest.canonical_path,
-          cuwacunu::hero::hashimyei::compute_component_manifest_id(
-              pre_hard_cut_component_manifest));
-  std::string pre_hard_cut_component_payload =
-      component_payload(pre_hard_cut_component_manifest);
-  pre_hard_cut_component_payload = erase_line_with_prefix(
-      std::move(pre_hard_cut_component_payload), "founding_dsl_source_path=");
-  pre_hard_cut_component_payload =
-      erase_line_with_prefix(std::move(pre_hard_cut_component_payload),
-                             "founding_dsl_source_sha256_hex=");
-  write_text_file(pre_hard_cut_component_manifest_path,
-                  pre_hard_cut_component_payload);
-  if (!catalog.ingest_filesystem(store_root, &error)) {
-    std::cerr << "[test_hashimyei_catalog] pre-hard-cut manifest ingest error: "
-              << error << "\n";
-    return 1;
-  }
-  component_state_t skipped_legacy_component{};
-  REQUIRE(!catalog.resolve_component(
-      "", pre_hard_cut_component_manifest.hashimyei_identity.name,
-      &skipped_legacy_component, &error));
-  REQUIRE(error.find("component not found") != std::string::npos);
-
   std::vector<run_manifest_t> runs{};
   REQUIRE(catalog.list_runs_by_binding(
       manifest.wave_contract_binding.contract.name,
@@ -537,35 +499,37 @@ int main() {
                                                nullptr, nullptr, &error));
   REQUIRE(!error.empty());
 
-  component_manifest_t cutover_manifest = component_manifest;
-  cutover_manifest.parent_identity = component_manifest.hashimyei_identity;
-  cutover_manifest.hashimyei_identity =
+  component_manifest_t replacement_manifest = component_manifest;
+  replacement_manifest.parent_identity = component_manifest.hashimyei_identity;
+  replacement_manifest.hashimyei_identity =
       make_test_identity(hashimyei_kind_e::TSIEMENE, 0x21);
-  cutover_manifest.canonical_path =
-      cutover_manifest.family + "." + cutover_manifest.hashimyei_identity.name;
-  cutover_manifest.revision_reason = "dsl_change";
-  cutover_manifest.founding_revision_id = "cfgrev.cutover";
-  cutover_manifest.founding_dsl_source_sha256_hex = sixty_four_hex('d');
-  cutover_manifest.created_at_ms = 1711111113000ULL;
-  cutover_manifest.updated_at_ms = 1711111113000ULL;
+  replacement_manifest.canonical_path =
+      replacement_manifest.family + "." +
+      replacement_manifest.hashimyei_identity.name;
+  replacement_manifest.revision_reason = "dsl_change";
+  replacement_manifest.founding_revision_id = "cfgrev.replacement";
+  replacement_manifest.founding_dsl_source_sha256_hex = sixty_four_hex('d');
+  replacement_manifest.created_at_ms = 1711111113000ULL;
+  replacement_manifest.updated_at_ms = 1711111113000ULL;
 
-  std::string cutover_component_id{};
-  bool cutover_inserted = false;
-  REQUIRE(catalog.register_component_manifest(
-      cutover_manifest, &cutover_component_id, &cutover_inserted, &error));
-  REQUIRE(cutover_inserted);
+  std::string replacement_component_id{};
+  bool replacement_inserted = false;
+  REQUIRE(catalog.register_component_manifest(replacement_manifest,
+                                              &replacement_component_id,
+                                              &replacement_inserted, &error));
+  REQUIRE(replacement_inserted);
 
   std::string active_hashimyei{};
   REQUIRE(catalog.resolve_active_hashimyei(
-      cutover_manifest.canonical_path, cutover_manifest.family,
-      cutover_manifest.contract_identity.hash_sha256_hex, &active_hashimyei,
+      replacement_manifest.canonical_path, replacement_manifest.family,
+      replacement_manifest.contract_identity.hash_sha256_hex, &active_hashimyei,
       &error));
-  REQUIRE(active_hashimyei == cutover_manifest.hashimyei_identity.name);
+  REQUIRE(active_hashimyei == replacement_manifest.hashimyei_identity.name);
 
-  bool cutover_inserted_again = true;
-  REQUIRE(catalog.register_component_manifest(cutover_manifest, nullptr,
-                                              &cutover_inserted_again, &error));
-  REQUIRE(!cutover_inserted_again);
+  bool replacement_inserted_again = true;
+  REQUIRE(catalog.register_component_manifest(
+      replacement_manifest, nullptr, &replacement_inserted_again, &error));
+  REQUIRE(!replacement_inserted_again);
 
   component_manifest_t auto_component_a = make_auto_contract_component_manifest(
       0x31, sixty_four_hex('1'), 'e', 1711111114000ULL);
@@ -596,26 +560,41 @@ int main() {
 
   const std::string auto_contract_hash =
       resolved_auto_a.manifest.contract_identity.hash_sha256_hex;
-  const std::string auto_dock_hash =
-      resolved_auto_a.manifest.docking_signature_sha256_hex;
-  REQUIRE(!auto_dock_hash.empty());
+  const std::string auto_component_compatibility_sha256_hex =
+      resolved_auto_a.manifest.component_compatibility_sha256_hex;
+  REQUIRE(!auto_component_compatibility_sha256_hex.empty());
   cuwacunu::iitepi::config_space_t::change_config_file(kGlobalConfigPath);
   cuwacunu::iitepi::config_space_t::update_config();
-  const std::string dock_contract_hash =
+  const std::string requested_contract_hash =
       cuwacunu::iitepi::contract_space_t::register_contract_file(
           kDefaultContractPath);
-  const auto dock_contract_snapshot =
-      cuwacunu::iitepi::contract_space_t::contract_itself(dock_contract_hash);
-  REQUIRE(static_cast<bool>(dock_contract_snapshot));
-  const std::string dock_contract_docking =
-      dock_contract_snapshot->signature.docking_signature_sha256_hex;
-  REQUIRE(!dock_contract_docking.empty());
+  const auto requested_contract_snapshot =
+      cuwacunu::iitepi::contract_space_t::contract_itself(
+          requested_contract_hash);
+  REQUIRE(static_cast<bool>(requested_contract_snapshot));
+  const std::string requested_contract_docking =
+      requested_contract_snapshot->signature.docking_signature_sha256_hex;
+  REQUIRE(!requested_contract_docking.empty());
+  std::string requested_contract_component_compatibility{};
+  std::string requested_contract_component_tag{};
+  for (const auto &component_signature :
+       requested_contract_snapshot->component_compatibility_signatures) {
+    if (component_signature.family ==
+        "tsi.wikimyei.representation.encoding.vicreg") {
+      requested_contract_component_compatibility =
+          component_signature.sha256_hex;
+      requested_contract_component_tag = component_signature.component_tag;
+      break;
+    }
+  }
+  REQUIRE(!requested_contract_component_compatibility.empty());
+  REQUIRE(!requested_contract_component_tag.empty());
 
   cuwacunu::hero::family_rank::state_t bootstrap_rank{};
-  REQUIRE(!catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
-                                   component_manifest.docking_signature_sha256_hex,
-                                   &bootstrap_rank,
-                                   &error));
+  REQUIRE(!catalog.get_family_rank(
+      "tsi.wikimyei.representation.encoding.vicreg",
+      component_manifest.component_compatibility_sha256_hex, &bootstrap_rank,
+      &error));
   REQUIRE(error.find("family rank not found") != std::string::npos);
 
   cuwacunu::hero::hashimyei_mcp::app_context_t rank_app{};
@@ -624,12 +603,6 @@ int main() {
       store_root / "_meta" / "catalog" / "lattice_catalog.idydb";
   rank_app.global_config_path = kGlobalConfigPath;
   rank_app.catalog_options = options;
-  const fs::path legacy_hashimyei_catalog_path =
-      store_root / "catalog" / "hashimyei_catalog.idydb";
-  write_text_file(legacy_hashimyei_catalog_path,
-                  "legacy hashimyei catalog placeholder\n");
-  REQUIRE(fs::exists(legacy_hashimyei_catalog_path));
-
   std::string tool_result{};
   std::string tool_error{};
   REQUIRE(catalog.close(&error));
@@ -659,51 +632,63 @@ int main() {
 
   REQUIRE(
       save_component_manifest(store_root, component_manifest, nullptr, &error));
-  component_manifest_t dock_compatible_manifest = make_component_manifest();
-  dock_compatible_manifest.hashimyei_identity =
+  component_manifest_t component_compatible_manifest =
+      make_component_manifest();
+  component_compatible_manifest.hashimyei_identity =
       make_test_identity(hashimyei_kind_e::TSIEMENE, 0x41);
-  dock_compatible_manifest.canonical_path =
-      dock_compatible_manifest.family + "." +
-      dock_compatible_manifest.hashimyei_identity.name;
-  dock_compatible_manifest.founding_revision_id = "cfgrev.dock.compatible";
-  dock_compatible_manifest.docking_signature_sha256_hex = dock_contract_docking;
-  dock_compatible_manifest.created_at_ms = 1711111116100ULL;
-  dock_compatible_manifest.updated_at_ms = 1711111116100ULL;
-  REQUIRE(save_component_manifest(store_root, dock_compatible_manifest, nullptr,
-                                  &error));
+  component_compatible_manifest.canonical_path =
+      component_compatible_manifest.family + "." +
+      component_compatible_manifest.hashimyei_identity.name;
+  component_compatible_manifest.founding_revision_id =
+      "cfgrev.component.compatible";
+  component_compatible_manifest.component_tag =
+      requested_contract_component_tag;
+  component_compatible_manifest.docking_signature_sha256_hex =
+      requested_contract_docking;
+  component_compatible_manifest.component_compatibility_sha256_hex =
+      requested_contract_component_compatibility;
+  component_compatible_manifest.created_at_ms = 1711111116100ULL;
+  component_compatible_manifest.updated_at_ms = 1711111116100ULL;
+  REQUIRE(save_component_manifest(store_root, component_compatible_manifest,
+                                  nullptr, &error));
 
-  component_manifest_t dock_incompatible_manifest = dock_compatible_manifest;
-  dock_incompatible_manifest.hashimyei_identity =
+  component_manifest_t component_incompatible_manifest =
+      component_compatible_manifest;
+  component_incompatible_manifest.hashimyei_identity =
       make_test_identity(hashimyei_kind_e::TSIEMENE, 0x42);
-  dock_incompatible_manifest.canonical_path =
-      dock_incompatible_manifest.family + "." +
-      dock_incompatible_manifest.hashimyei_identity.name;
-  dock_incompatible_manifest.founding_revision_id = "cfgrev.dock.incompatible";
-  dock_incompatible_manifest.docking_signature_sha256_hex = sixty_four_hex('f');
-  if (dock_incompatible_manifest.docking_signature_sha256_hex ==
-      dock_contract_docking) {
-    dock_incompatible_manifest.docking_signature_sha256_hex =
+  component_incompatible_manifest.canonical_path =
+      component_incompatible_manifest.family + "." +
+      component_incompatible_manifest.hashimyei_identity.name;
+  component_incompatible_manifest.founding_revision_id =
+      "cfgrev.component.incompatible";
+  component_incompatible_manifest.component_compatibility_sha256_hex =
+      sixty_four_hex('f');
+  if (component_incompatible_manifest.component_compatibility_sha256_hex ==
+      requested_contract_component_compatibility) {
+    component_incompatible_manifest.component_compatibility_sha256_hex =
         sixty_four_hex('e');
   }
-  dock_incompatible_manifest.created_at_ms = 1711111116200ULL;
-  dock_incompatible_manifest.updated_at_ms = 1711111116200ULL;
-  REQUIRE(save_component_manifest(store_root, dock_incompatible_manifest,
+  component_incompatible_manifest.created_at_ms = 1711111116200ULL;
+  component_incompatible_manifest.updated_at_ms = 1711111116200ULL;
+  REQUIRE(save_component_manifest(store_root, component_incompatible_manifest,
                                   nullptr, &error));
 
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
       "hero.hashimyei.evaluate_contract_compatibility",
-      "{\"hashimyei\":\"" + dock_compatible_manifest.hashimyei_identity.name +
+      "{\"hashimyei\":\"" +
+          component_compatible_manifest.hashimyei_identity.name +
           "\",\"contract_dsl_path\":\"" + std::string(kDefaultContractPath) +
           "\"}",
       &rank_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"compatible\":true") != std::string::npos);
-  REQUIRE(tool_result.find("\"compatibility_basis\":\"dock_only\"") !=
-          std::string::npos);
-  REQUIRE(tool_result.find("dock-compatible") != std::string::npos);
+  REQUIRE(
+      tool_result.find("\"compatibility_basis\":\"component_compatibility\"") !=
+      std::string::npos);
+  REQUIRE(tool_result.find("component-compatible") != std::string::npos);
   REQUIRE(tool_result.find("\"founding_contract_match\":false") !=
           std::string::npos);
 
@@ -711,20 +696,23 @@ int main() {
   tool_error.clear();
   REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
       "hero.hashimyei.evaluate_contract_compatibility",
-      "{\"hashimyei\":\"" + dock_incompatible_manifest.hashimyei_identity.name +
-          "\",\"contract_hash\":\"" + dock_contract_hash + "\"}",
+      "{\"hashimyei\":\"" +
+          component_incompatible_manifest.hashimyei_identity.name +
+          "\",\"contract_hash\":\"" + requested_contract_hash + "\"}",
       &rank_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"compatible\":false") != std::string::npos);
-  REQUIRE(tool_result.find("not dock-compatible") != std::string::npos);
-  REQUIRE(tool_result.find("docking signature mismatch") != std::string::npos);
+  REQUIRE(tool_result.find("not component-compatible") != std::string::npos);
+  REQUIRE(tool_result.find("compatibility signature mismatch") !=
+          std::string::npos);
 
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
       "hero.hashimyei.evaluate_contract_compatibility",
-      "{\"hashimyei\":\"" + dock_compatible_manifest.hashimyei_identity.name +
+      "{\"hashimyei\":\"" +
+          component_compatible_manifest.hashimyei_identity.name +
           "\",\"contract_hash\":\"" + sixty_four_hex('9') + "\"}",
       &rank_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
@@ -734,9 +722,9 @@ int main() {
 
   if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
           "hero.hashimyei.update_rank",
-          "{\"family\":\"tsi.wikimyei.representation.vicreg\","
-          "\"dock_hash\":\"" +
-              auto_dock_hash +
+          "{\"family\":\"tsi.wikimyei.representation.encoding.vicreg\","
+          "\"component_compatibility_sha256_hex\":\"" +
+              auto_component_compatibility_sha256_hex +
               "\","
               "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"],"
               "\"source_view_kind\":\"family_evaluation_report\","
@@ -762,17 +750,20 @@ int main() {
   REQUIRE(catalog.ingest_filesystem(store_root, &error));
 
   cuwacunu::hero::family_rank::state_t family_rank{};
-  REQUIRE(catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
-                                  auto_dock_hash, &family_rank, &error));
+  REQUIRE(catalog.get_family_rank("tsi.wikimyei.representation.encoding.vicreg",
+                                  auto_component_compatibility_sha256_hex,
+                                  &family_rank, &error));
   REQUIRE(family_rank.assignments.size() == 2);
   REQUIRE(family_rank.assignments[0].hashimyei == "0x0032");
   REQUIRE(family_rank.assignments[1].hashimyei == "0x0031");
-  REQUIRE(family_rank.dock_hash == auto_dock_hash);
+  REQUIRE(family_rank.component_compatibility_sha256_hex ==
+          auto_component_compatibility_sha256_hex);
 
   std::string ranked_zero_hashimyei{};
-  REQUIRE(catalog.resolve_ranked_hashimyei("tsi.wikimyei.representation.vicreg",
-                                           auto_dock_hash, 0,
-                                           &ranked_zero_hashimyei, &error));
+  REQUIRE(catalog.resolve_ranked_hashimyei(
+      "tsi.wikimyei.representation.encoding.vicreg",
+      auto_component_compatibility_sha256_hex, 0, &ranked_zero_hashimyei,
+      &error));
   REQUIRE(ranked_zero_hashimyei == "0x0032");
 
   std::vector<component_state_t> ranked_components{};
@@ -781,7 +772,8 @@ int main() {
   std::unordered_map<std::string, std::optional<std::uint64_t>>
       observed_ranks{};
   for (const auto &component : ranked_components) {
-    if (component.manifest.family != "tsi.wikimyei.representation.vicreg")
+    if (component.manifest.family !=
+        "tsi.wikimyei.representation.encoding.vicreg")
       continue;
     if (component.manifest.contract_identity.hash_sha256_hex !=
         auto_contract_hash) {
@@ -800,9 +792,9 @@ int main() {
   REQUIRE(catalog.close(&error));
   if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
           "hero.hashimyei.update_rank",
-          "{\"family\":\"tsi.wikimyei.representation.vicreg\","
-          "\"dock_hash\":\"" +
-              auto_dock_hash +
+          "{\"family\":\"tsi.wikimyei.representation.encoding.vicreg\","
+          "\"component_compatibility_sha256_hex\":\"" +
+              auto_component_compatibility_sha256_hex +
               "\","
               "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
           &rank_app, &tool_result, &tool_error)) {
@@ -829,9 +821,9 @@ int main() {
   REQUIRE(auto_inserted_c);
 
   cuwacunu::hero::family_rank::state_t normalized_rank{};
-  REQUIRE(catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
-                                  auto_dock_hash, &normalized_rank,
-                                  &error));
+  REQUIRE(catalog.get_family_rank("tsi.wikimyei.representation.encoding.vicreg",
+                                  auto_component_compatibility_sha256_hex,
+                                  &normalized_rank, &error));
   REQUIRE(normalized_rank.assignments.size() == 2);
   REQUIRE(normalized_rank.assignments[0].hashimyei == "0x0032");
   REQUIRE(normalized_rank.assignments[1].hashimyei == "0x0031");
@@ -841,7 +833,8 @@ int main() {
       catalog.list_components("", "", 0, 0, true, &ranked_components, &error));
   observed_ranks.clear();
   for (const auto &component : ranked_components) {
-    if (component.manifest.family != "tsi.wikimyei.representation.vicreg")
+    if (component.manifest.family !=
+        "tsi.wikimyei.representation.encoding.vicreg")
       continue;
     if (component.manifest.contract_identity.hash_sha256_hex !=
         auto_contract_hash) {
@@ -857,9 +850,9 @@ int main() {
   REQUIRE(catalog.close(&error));
   if (!cuwacunu::hero::hashimyei_mcp::execute_tool_json(
           "hero.hashimyei.update_rank",
-          "{\"family\":\"tsi.wikimyei.representation.vicreg\","
-          "\"dock_hash\":\"" +
-              auto_dock_hash +
+          "{\"family\":\"tsi.wikimyei.representation.encoding.vicreg\","
+          "\"component_compatibility_sha256_hex\":\"" +
+              auto_component_compatibility_sha256_hex +
               "\","
               "\"ordered_hashimyeis\":[\"0x0032\",\"0x0031\"]}",
           &rank_app, &tool_result, &tool_error)) {
@@ -877,9 +870,9 @@ int main() {
   tool_error.clear();
   REQUIRE(cuwacunu::hero::hashimyei_mcp::execute_tool_json(
       "hero.hashimyei.update_rank",
-      "{\"family\":\"tsi.wikimyei.representation.vicreg\","
-      "\"dock_hash\":\"" +
-          auto_dock_hash +
+      "{\"family\":\"tsi.wikimyei.representation.encoding.vicreg\","
+      "\"component_compatibility_sha256_hex\":\"" +
+          auto_component_compatibility_sha256_hex +
           "\","
           "\"ordered_hashimyeis\":[\"0x0032\",\"0x0032\"]}",
       &rank_app, &tool_result, &tool_error));
@@ -894,9 +887,9 @@ int main() {
   lattice_options.projection_version = 2;
   REQUIRE(lattice_catalog.open(lattice_options, &error));
   cuwacunu::hero::family_rank::state_t lattice_family_rank{};
-  REQUIRE(lattice_catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
-                                          auto_dock_hash,
-                                          &lattice_family_rank, &error));
+  REQUIRE(lattice_catalog.get_family_rank(
+      "tsi.wikimyei.representation.encoding.vicreg",
+      auto_component_compatibility_sha256_hex, &lattice_family_rank, &error));
   REQUIRE(lattice_family_rank.assignments.size() ==
           family_rank.assignments.size());
   for (std::size_t i = 0; i < family_rank.assignments.size(); ++i) {

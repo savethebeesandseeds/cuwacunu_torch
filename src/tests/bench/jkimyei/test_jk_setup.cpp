@@ -36,7 +36,7 @@ int main() {
           cuwacunu::iitepi::config_space_t::locked_binding_id());
 
   const auto &vicreg_setup = cuwacunu::jkimyei::jk_setup(
-      "tsi.wikimyei.representation.vicreg", contract_hash);
+      "tsi.wikimyei.representation.encoding.vicreg", contract_hash);
 
   assert(!vicreg_setup.opt_conf.id.empty());
   assert(!vicreg_setup.sch_conf.id.empty());

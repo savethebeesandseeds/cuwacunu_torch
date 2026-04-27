@@ -1,7 +1,8 @@
 #include <hero/hashimyei_hero/family_rank.h>
 #include <hero/hashimyei_hero/hashimyei_catalog.h>
-#include <hero/lattice_hero/lattice_catalog.h>
 #include <hero/lattice_hero/hero_lattice_tools.h>
+#include <hero/lattice_hero/lattice_catalog.h>
+#include <iitepi/contract_space_t.h>
 
 #include <cctype>
 #include <cmath>
@@ -18,35 +19,39 @@
 #include <unistd.h>
 
 namespace fs = std::filesystem;
+using cuwacunu::hashimyei::hashimyei_kind_e;
+using cuwacunu::hashimyei::hashimyei_t;
+using cuwacunu::hero::hashimyei::component_manifest_t;
+using cuwacunu::hero::hashimyei::save_component_manifest;
 using cuwacunu::hero::wave::compute_cell_id;
 using cuwacunu::hero::wave::compute_profile_id;
 using cuwacunu::hero::wave::decode_cell_report_payload;
 using cuwacunu::hero::wave::encode_cell_report_payload;
-using cuwacunu::hero::wave::matrix_query_t;
-using cuwacunu::hero::wave::lattice_cell_report_t;
 using cuwacunu::hero::wave::lattice_catalog_store_t;
+using cuwacunu::hero::wave::lattice_cell_report_t;
+using cuwacunu::hero::wave::matrix_query_t;
 using cuwacunu::hero::wave::wave_cell_coord_t;
 using cuwacunu::hero::wave::wave_cell_t;
 using cuwacunu::hero::wave::wave_execution_profile_t;
 using cuwacunu::hero::wave::wave_projection_t;
 using cuwacunu::hero::wave::wave_trial_t;
-using cuwacunu::hashimyei::hashimyei_kind_e;
-using cuwacunu::hashimyei::hashimyei_t;
-using cuwacunu::hero::hashimyei::component_manifest_t;
-using cuwacunu::hero::hashimyei::save_component_manifest;
 
-static void require_impl(bool ok, const char* expr, const char* file, int line) {
+static void require_impl(bool ok, const char *expr, const char *file,
+                         int line) {
   if (!ok) {
-    std::cerr << "[TEST FAIL] " << file << ":" << line << "  (" << expr << ")\n";
+    std::cerr << "[TEST FAIL] " << file << ":" << line << "  (" << expr
+              << ")\n";
     std::exit(1);
   }
 }
 #define REQUIRE(x) require_impl((x), #x, __FILE__, __LINE__)
 
-[[nodiscard]] static bool find_projection_num(
-    const wave_projection_t& projection, std::string_view key, double* out) {
-  if (!out) return false;
-  for (const auto& [k, v] : projection.projection_num) {
+[[nodiscard]] static bool
+find_projection_num(const wave_projection_t &projection, std::string_view key,
+                    double *out) {
+  if (!out)
+    return false;
+  for (const auto &[k, v] : projection.projection_num) {
     if (k == key) {
       *out = v;
       return true;
@@ -55,21 +60,22 @@ static void require_impl(bool ok, const char* expr, const char* file, int line) 
   return false;
 }
 
-[[nodiscard]] static double projection_num_must(const wave_projection_t& projection,
-                                                std::string_view key) {
+[[nodiscard]] static double
+projection_num_must(const wave_projection_t &projection, std::string_view key) {
   double out = 0.0;
   REQUIRE(find_projection_num(projection, key, &out));
   return out;
 }
 
-[[nodiscard]] static std::uint64_t packed_runtime_wave_cursor(
-    std::uint64_t run_id, std::uint64_t episode_k = 0,
-    std::uint64_t batch_j = 0) {
+[[nodiscard]] static std::uint64_t
+packed_runtime_wave_cursor(std::uint64_t run_id, std::uint64_t episode_k = 0,
+                           std::uint64_t batch_j = 0) {
   std::uint64_t out = 0;
   const std::string token = std::to_string(run_id) + "." +
                             std::to_string(episode_k) + "," +
                             std::to_string(batch_j);
-  REQUIRE(lattice_catalog_store_t::parse_runtime_wave_cursor_token(token, &out));
+  REQUIRE(
+      lattice_catalog_store_t::parse_runtime_wave_cursor_token(token, &out));
   return out;
 }
 
@@ -85,7 +91,8 @@ static std::string random_suffix() {
 struct temp_dir_t {
   fs::path dir{};
   temp_dir_t() {
-    dir = fs::temp_directory_path() / ("test_lattice_catalog_" + random_suffix());
+    dir =
+        fs::temp_directory_path() / ("test_lattice_catalog_" + random_suffix());
     fs::create_directories(dir);
   }
   ~temp_dir_t() {
@@ -94,7 +101,7 @@ struct temp_dir_t {
   }
 };
 
-static void write_text_file(const fs::path& path, std::string_view payload) {
+static void write_text_file(const fs::path &path, std::string_view payload) {
   std::error_code ec;
   fs::create_directories(path.parent_path(), ec);
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -116,12 +123,15 @@ static hashimyei_t make_test_identity(hashimyei_kind_e kind,
 
 static component_manifest_t make_runtime_component_manifest(
     std::string_view family, std::string_view hashimyei_name,
-    std::string_view contract_hash, std::string_view dock_hash,
-    std::uint64_t ts_ms) {
+    std::string_view contract_hash,
+    std::string_view component_compatibility_sha256_hex, std::uint64_t ts_ms) {
   component_manifest_t manifest{};
   manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
+  manifest.instrument_signature =
+      cuwacunu::camahjucunu::instrument_signature_all_any();
   manifest.family = std::string(family);
   manifest.canonical_path = manifest.family + "." + std::string(hashimyei_name);
+  manifest.component_tag = "runtime." + std::string(hashimyei_name).substr(2);
   std::uint64_t ordinal = 0;
   if (hashimyei_name.size() > 2 && hashimyei_name[0] == '0' &&
       (hashimyei_name[1] == 'x' || hashimyei_name[1] == 'X')) {
@@ -131,13 +141,17 @@ static component_manifest_t make_runtime_component_manifest(
   manifest.hashimyei_identity =
       make_test_identity(hashimyei_kind_e::TSIEMENE, ordinal);
   manifest.revision_reason = "runtime.test";
-  manifest.founding_revision_id = "cfgrev.runtime." + std::string(hashimyei_name);
+  manifest.founding_revision_id =
+      "cfgrev.runtime." + std::string(hashimyei_name);
   manifest.contract_identity = make_test_identity(hashimyei_kind_e::CONTRACT, 0,
                                                   std::string(contract_hash));
   manifest.founding_dsl_source_path =
       "tests/runtime/" + manifest.canonical_path + ".dsl";
   manifest.founding_dsl_source_sha256_hex = sixty_four_hex('c');
-  manifest.docking_signature_sha256_hex = std::string(dock_hash);
+  manifest.docking_signature_sha256_hex =
+      std::string(component_compatibility_sha256_hex);
+  manifest.component_compatibility_sha256_hex =
+      std::string(component_compatibility_sha256_hex);
   manifest.lineage_state = "active";
   manifest.created_at_ms = ts_ms;
   manifest.updated_at_ms = ts_ms;
@@ -149,9 +163,11 @@ static component_manifest_t make_runtime_component_manifest(
   std::size_t cursor = 0;
   while (cursor < payload.size()) {
     std::size_t line_end = payload.find('\n', cursor);
-    if (line_end == std::string_view::npos) line_end = payload.size();
+    if (line_end == std::string_view::npos)
+      line_end = payload.size();
     std::string_view line = payload.substr(cursor, line_end - cursor);
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    if (!line.empty() && line.back() == '\r')
+      line.remove_suffix(1);
     const std::size_t eq = line.find('=');
     if (eq != std::string_view::npos) {
       std::string_view lhs = line.substr(0, eq);
@@ -168,7 +184,8 @@ static component_manifest_t make_runtime_component_manifest(
         return std::string(rhs);
       }
     }
-    if (line_end == payload.size()) break;
+    if (line_end == payload.size())
+      break;
     cursor = line_end + 1;
   }
   return {};
@@ -178,7 +195,7 @@ int main() {
   temp_dir_t tmp{};
   const fs::path catalog_path =
       tmp.dir / "_meta" / "catalog" / "lattice_catalog.idydb";
-  constexpr const char* kPass = "wave-catalog-test-pass";
+  constexpr const char *kPass = "wave-catalog-test-pass";
 
   wave_cell_coord_t coord{};
   coord.contract_hash = "contract_hash_123";
@@ -199,10 +216,10 @@ int main() {
   REQUIRE(!profile_id_1.empty());
   REQUIRE(profile_id_1 == profile_id_2);
 
-  const std::string cell_id_1 = compute_cell_id(coord.contract_hash, coord.wave_hash,
-                                                profile);
-  const std::string cell_id_2 = compute_cell_id(coord.contract_hash, coord.wave_hash,
-                                                profile);
+  const std::string cell_id_1 =
+      compute_cell_id(coord.contract_hash, coord.wave_hash, profile);
+  const std::string cell_id_2 =
+      compute_cell_id(coord.contract_hash, coord.wave_hash, profile);
   REQUIRE(!cell_id_1.empty());
   REQUIRE(cell_id_1 == cell_id_2);
 
@@ -217,7 +234,8 @@ int main() {
       "run_id=run_runtime_001\n"
       "/* embedded source.runtime.projection.v2 */\n"
       "source.runtime.projection.run_id=run_runtime_001\n"
-      "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
+      "source.runtime.projection.schema:str = "
+      "wave.source.runtime.projection.v2\n"
       "source.runtime.symbol:str = BTCUSDT\n"
       "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n";
   report.report_sha256 = "deadbeef";
@@ -230,7 +248,8 @@ int main() {
   lattice_cell_report_t decoded{};
   REQUIRE(decode_cell_report_payload(encoded, &decoded, &error));
   REQUIRE(decoded.report_schema == report.report_schema);
-  REQUIRE(decoded.source_report_fragment_ids.size() == report.source_report_fragment_ids.size());
+  REQUIRE(decoded.source_report_fragment_ids.size() ==
+          report.source_report_fragment_ids.size());
   REQUIRE(decoded.report_lls == report.report_lls);
 
   lattice_catalog_store_t catalog{};
@@ -287,7 +306,7 @@ int main() {
       "source.runtime.effective.coverage_ratio",
       "source.channels.active_ratio",
   };
-  for (const auto& key : ratio_keys) {
+  for (const auto &key : ratio_keys) {
     const double v = projection_num_must(projection, key);
     REQUIRE(v >= 0.0);
     REQUIRE(v <= 1.0);
@@ -298,7 +317,7 @@ int main() {
       projection_num_must(projection, "source.runtime.flags.clipped_right");
   REQUIRE(clipped_left == 0.0 || clipped_left == 1.0);
   REQUIRE(clipped_right == 0.0 || clipped_right == 1.0);
-  for (const auto& [k, _] : projection.projection_num) {
+  for (const auto &[k, _] : projection.projection_num) {
     REQUIRE(k.find("_ms") == std::string::npos);
   }
 
@@ -349,7 +368,8 @@ int main() {
       {"source.channel.1m.active", 1.0},
       {"source.channel.5m.active", 0.0},
   };
-  runtime_query.projection_txt_eq = {{"source.runtime.symbol", "BTCUSDT"},
+  runtime_query.projection_txt_eq = {
+      {"source.runtime.symbol", "BTCUSDT"},
       {"source.runtime.range_basis", "effective_intersection"},
       {"source.runtime.interval_semantics", "half_open_utc_day"},
   };
@@ -362,7 +382,8 @@ int main() {
   matrix_query_t raw_ms_query{};
   raw_ms_query.contract_hash = coord.contract_hash;
   raw_ms_query.wave_hash = coord.wave_hash;
-  raw_ms_query.projection_num_eq = {{"source.runtime.debug.domain_from_ms", 1.0}};
+  raw_ms_query.projection_num_eq = {
+      {"source.runtime.debug.domain_from_ms", 1.0}};
   raw_ms_query.limit = 10;
   std::vector<wave_cell_t> raw_ms_matches{};
   REQUIRE(catalog.query_matrix(raw_ms_query, &raw_ms_matches, &error));
@@ -390,13 +411,14 @@ int main() {
       "run_id=run_runtime_001\n"
       "/* embedded source.runtime.projection.v2 */\n"
       "source.runtime.projection.run_id=run_runtime_001\n"
-      "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
+      "source.runtime.projection.schema:str = "
+      "wave.source.runtime.projection.v2\n"
       "source.runtime.symbol:str = BTCUSDT\n"
       "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n";
   failed_report.report_sha256 = "feedface";
 
-  REQUIRE(catalog.record_trial(coord, profile, failed_trial, failed_report, projection,
-                               &cell, &error));
+  REQUIRE(catalog.record_trial(coord, profile, failed_trial, failed_report,
+                               projection, &cell, &error));
   REQUIRE(cell.trial_count == 2);
   REQUIRE(cell.state == "error");
 
@@ -404,12 +426,12 @@ int main() {
   latest_success_query.latest_success_only = true;
   latest_success_query.state_snapshot_id = "snapshot_state_001";
   std::vector<wave_cell_t> latest_success_cells{};
-  REQUIRE(catalog.query_matrix(latest_success_query, &latest_success_cells, &error));
+  REQUIRE(catalog.query_matrix(latest_success_query, &latest_success_cells,
+                               &error));
   REQUIRE(latest_success_cells.size() == 1);
   REQUIRE(latest_success_cells.front().state == "ready");
   REQUIRE(latest_success_cells.front().last_trial_id == trial.trial_id);
-  REQUIRE(latest_success_cells.front().report.report_lls ==
-          report.report_lls);
+  REQUIRE(latest_success_cells.front().report.report_lls == report.report_lls);
 
   matrix_query_t latest_any_query = query;
   latest_any_query.latest_success_only = false;
@@ -435,10 +457,11 @@ int main() {
   REQUIRE(reopened_cell.cell_id == cell.cell_id);
   REQUIRE(reopened_cell.trial_count == 2);
   std::vector<wave_trial_t> reopened_trials{};
-  REQUIRE(
-      reopened.list_trials(reopened_cell.cell_id, 10, 0, true, &reopened_trials, &error));
+  REQUIRE(reopened.list_trials(reopened_cell.cell_id, 10, 0, true,
+                               &reopened_trials, &error));
   REQUIRE(reopened_trials.size() == 2);
-  REQUIRE(reopened_trials[0].state_snapshot_id == failed_trial.state_snapshot_id);
+  REQUIRE(reopened_trials[0].state_snapshot_id ==
+          failed_trial.state_snapshot_id);
   REQUIRE(reopened_trials[1].state_snapshot_id == trial.state_snapshot_id);
   REQUIRE(reopened.close(&error));
 
@@ -448,162 +471,184 @@ int main() {
 
   const fs::path runtime_store = tmp.dir / "runtime_store";
   const std::string canonical_runtime_path =
-      "tsi.wikimyei.representation.vicreg.0x0042";
-  const std::string family_dock_hash = sixty_four_hex('d');
+      "tsi.wikimyei.representation.encoding.vicreg.0x0042";
+  const std::string family_component_compatibility_sha256_hex =
+      sixty_four_hex('d');
   const std::uint64_t expected_wave_cursor_u64 = packed_runtime_wave_cursor(1);
   const std::string expected_wave_cursor =
       std::to_string(expected_wave_cursor_u64);
-  const std::string source_runtime_cursor =
-      "BTCUSDT|03.01.2024|05.01.2024";
-  const fs::path vicreg_0042_dir =
-      runtime_store / "tsi" / "wikimyei" / "representation" / "vicreg" /
-      "0x0042";
-  const fs::path vicreg_0043_dir =
-      runtime_store / "tsi" / "wikimyei" / "representation" / "vicreg" /
-      "0x0043";
-  const fs::path source_contract_dir =
-      runtime_store / "tsi" / "source" / "dataloader" / "contracts" /
-      "contract_hash_123";
+  const std::string source_runtime_cursor = "BTCUSDT|03.01.2024|05.01.2024";
+  const fs::path vicreg_0042_dir = runtime_store / "tsi" / "wikimyei" /
+                                   "representation" / "vicreg" / "0x0042";
+  const fs::path vicreg_0043_dir = runtime_store / "tsi" / "wikimyei" /
+                                   "representation" / "vicreg" / "0x0043";
+  const fs::path source_contract_dir = runtime_store / "tsi" / "source" /
+                                       "dataloader" / "contracts" /
+                                       "contract_hash_123";
   const fs::path source_context_dir =
       source_contract_dir / "contexts" / "BTCUSDT_03.01.2024_05.01.2024";
   const fs::path source_context_eth_dir =
       source_contract_dir / "contexts" / "ETHUSDT_03.01.2024_05.01.2024";
-  const fs::path source_projection_dir =
-      source_contract_dir / "bindings" / "bind.train.vicreg" / "runs" /
-      "run.source.001";
+  const fs::path source_projection_dir = source_contract_dir / "bindings" /
+                                         "bind.train.vicreg" / "runs" /
+                                         "run.source.001";
 
   REQUIRE(save_component_manifest(
       runtime_store,
-      make_runtime_component_manifest("tsi.wikimyei.representation.vicreg",
-                                      "0x0042", sixty_four_hex('a'),
-                                      family_dock_hash, 1711111000400ULL),
+      make_runtime_component_manifest(
+          "tsi.wikimyei.representation.encoding.vicreg", "0x0042",
+          sixty_four_hex('a'), family_component_compatibility_sha256_hex,
+          1711111000400ULL),
       nullptr, &error));
   REQUIRE(save_component_manifest(
       runtime_store,
-      make_runtime_component_manifest("tsi.wikimyei.representation.vicreg",
-                                      "0x0043", sixty_four_hex('b'),
-                                      family_dock_hash, 1711111000410ULL),
+      make_runtime_component_manifest(
+          "tsi.wikimyei.representation.encoding.vicreg", "0x0043",
+          sixty_four_hex('b'), family_component_compatibility_sha256_hex,
+          1711111000410ULL),
       nullptr, &error));
 
-  write_text_file(
-      vicreg_0042_dir / "runtime_missing_canonical_path.lls",
-      "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "metric.loss(-inf,+inf):double = 0.770000000000\n");
+  write_text_file(vicreg_0042_dir / "runtime_missing_canonical_path.lls",
+                  "schema:str = piaabo.torch_compat.network_analytics.v5\n"
+                  "metric.loss(-inf,+inf):double = 0.770000000000\n");
 
-  REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+  REQUIRE(
+      !runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
   REQUIRE(error.find("missing canonical_path") != std::string::npos);
   fs::remove(vicreg_0042_dir / "runtime_missing_canonical_path.lls");
 
-  write_text_file(
-      source_projection_dir / "runtime_namespaced_schema.lls",
-      "source.runtime.projection.schema:str = wave.source.runtime.projection.v2\n"
-      "canonical_path:str = tsi.source.dataloader\n");
+  write_text_file(source_projection_dir / "runtime_namespaced_schema.lls",
+                  "source.runtime.projection.schema:str = "
+                  "wave.source.runtime.projection.v2\n"
+                  "canonical_path:str = tsi.source.dataloader\n");
 
-  REQUIRE(!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+  REQUIRE(
+      !runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
   REQUIRE(error.find("top-level schema key") != std::string::npos);
   fs::remove(source_projection_dir / "runtime_namespaced_schema.lls");
 
   write_text_file(
       vicreg_0042_dir / "runtime_new.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "canonical_path:str = "
+      "tsi.wikimyei.representation.encoding.vicreg.0x0042\n"
       "semantic_taxon:str = embedding.network\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "network_global_entropic_capacity(0,+inf):double = 9.250000000000\n"
-      "metric.loss(-inf,+inf):double = 0.25\n"
-      "metric.phase:str = eval\n");
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "network_global_entropic_capacity(0,+inf):double = 9.250000000000\n"
+          "metric.loss(-inf,+inf):double = 0.25\n"
+          "metric.phase:str = eval\n");
   write_text_file(
       vicreg_0042_dir / "status.latest.lls",
-      "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "schema:str = tsi.wikimyei.representation.encoding.vicreg.status.v1\n"
+      "canonical_path:str = "
+      "tsi.wikimyei.representation.encoding.vicreg.0x0042\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "trained_steps(0,+inf):uint = 12\n");
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "trained_steps(0,+inf):uint = 12\n");
   write_text_file(
       vicreg_0042_dir / "train_summary.latest.lls",
-      "schema:str = tsi.wikimyei.representation.vicreg.train_summary.v1\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "schema:str = "
+      "tsi.wikimyei.representation.encoding.vicreg.train_summary.v1\n"
+      "canonical_path:str = "
+      "tsi.wikimyei.representation.encoding.vicreg.0x0042\n"
       "semantic_taxon:str = embedding.network\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "train.optimizer_steps(0,+inf):uint = 12\n"
-      "train.loss.epoch_mean(-inf,+inf):double = 0.250000000000\n");
-  write_text_file(
-      source_context_dir / "data_analytics.v2.latest.lls",
-      "schema:str = piaabo.torch_compat.data_analytics.v2\n"
-      "canonical_path:str = tsi.source.dataloader\n"
-      "semantic_taxon:str = source.data\n"
-      "binding_id:str = bind.train.vicreg\n"
-      "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
-      "source_label:str = BTCUSDT\n"
-      "sample_count(0,+inf):uint = 256\n"
-      "source_entropic_load(0,+inf):double = 7.500000000000\n");
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "train.optimizer_steps(0,+inf):uint = 12\n"
+          "train.loss.epoch_mean(-inf,+inf):double = 0.250000000000\n");
+  write_text_file(source_context_dir / "data_analytics.v2.latest.lls",
+                  "schema:str = piaabo.torch_compat.data_analytics.v2\n"
+                  "canonical_path:str = tsi.source.dataloader\n"
+                  "semantic_taxon:str = source.data\n"
+                  "binding_id:str = bind.train.vicreg\n"
+                  "contract_hash:str = contract_hash_123\n"
+                  "wave_cursor:uint = " +
+                      expected_wave_cursor +
+                      "\n"
+                      "source_runtime_cursor:str = " +
+                      source_runtime_cursor +
+                      "\n"
+                      "source_label:str = BTCUSDT\n"
+                      "sample_count(0,+inf):uint = 256\n"
+                      "source_entropic_load(0,+inf):double = 7.500000000000\n");
   write_text_file(
       source_projection_dir / "source_runtime_projection.latest.lls",
       "schema:str = wave.source.runtime.projection.v2\n"
       "canonical_path:str = tsi.source.dataloader\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
-      "source_label:str = BTCUSDT\n"
-      "source.runtime.symbol:str = BTCUSDT\n"
-      "source.runtime.range_basis:str = effective_intersection\n"
-      "source.runtime.interval_semantics:str = half_open_utc_day\n"
-      "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n"
-      "source.runtime.request.to_ratio(0,1):double = 0.500000000000\n"
-      "source.runtime.request.span_ratio(0,1):double = 0.375000000000\n"
-      "source.runtime.effective.coverage_ratio(0,1):double = 0.375000000000\n"
-      "source.runtime.flags.clipped_left(0,1):double = 0.000000000000\n"
-      "source.runtime.flags.clipped_right(0,1):double = 0.000000000000\n"
-      "source.channels.active_count(0,+inf):double = 2.000000000000\n"
-      "source.channels.total_count(0,+inf):double = 3.000000000000\n"
-      "source.channels.active_ratio(0,1):double = 0.666666666667\n"
-      "source.channel.1m.active(0,1):double = 1.000000000000\n"
-      "source.channel.5m.active(0,1):double = 0.000000000000\n"
-      "source.channel.1h.active(0,1):double = 1.000000000000\n");
-  write_text_file(
-      vicreg_0042_dir / "runtime_unsupported_schema.lls",
-      "schema:str = piaabo.torch_compat.network_analytics.v4\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
-      "metric.loss(-inf,+inf):double = 0.990000000000\n");
-  write_text_file(
-      vicreg_0042_dir / "runtime_wrong_ext.kv",
-      "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
-      "metric.loss(-inf,+inf):double = 0.500000000000\n");
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "source_runtime_cursor:str = " +
+          source_runtime_cursor +
+          "\n"
+          "source_label:str = BTCUSDT\n"
+          "source.runtime.symbol:str = BTCUSDT\n"
+          "source.runtime.range_basis:str = effective_intersection\n"
+          "source.runtime.interval_semantics:str = half_open_utc_day\n"
+          "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n"
+          "source.runtime.request.to_ratio(0,1):double = 0.500000000000\n"
+          "source.runtime.request.span_ratio(0,1):double = 0.375000000000\n"
+          "source.runtime.effective.coverage_ratio(0,1):double = "
+          "0.375000000000\n"
+          "source.runtime.flags.clipped_left(0,1):double = 0.000000000000\n"
+          "source.runtime.flags.clipped_right(0,1):double = 0.000000000000\n"
+          "source.channels.active_count(0,+inf):double = 2.000000000000\n"
+          "source.channels.total_count(0,+inf):double = 3.000000000000\n"
+          "source.channels.active_ratio(0,1):double = 0.666666666667\n"
+          "source.channel.1m.active(0,1):double = 1.000000000000\n"
+          "source.channel.5m.active(0,1):double = 0.000000000000\n"
+          "source.channel.1h.active(0,1):double = 1.000000000000\n");
+  write_text_file(vicreg_0042_dir / "runtime_unsupported_schema.lls",
+                  "schema:str = piaabo.torch_compat.network_analytics.v4\n"
+                  "canonical_path:str = "
+                  "tsi.wikimyei.representation.encoding.vicreg.0x0042\n"
+                  "metric.loss(-inf,+inf):double = 0.990000000000\n");
+  write_text_file(vicreg_0042_dir / "runtime_wrong_ext.kv",
+                  "schema:str = piaabo.torch_compat.network_analytics.v5\n"
+                  "canonical_path:str = "
+                  "tsi.wikimyei.representation.encoding.vicreg.0x0042\n"
+                  "metric.loss(-inf,+inf):double = 0.500000000000\n");
 
   if (!runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error)) {
     std::cerr << "[TEST CONTEXT] ingest error: " << error << "\n";
     REQUIRE(false);
   }
 
-  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> runtime_report_fragments{};
-  REQUIRE(runtime_catalog.list_runtime_report_fragments(canonical_runtime_path, "", 0, 0,
-                                                 true, &runtime_report_fragments, &error));
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+      runtime_report_fragments{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments(
+      canonical_runtime_path, "", 0, 0, true, &runtime_report_fragments,
+      &error));
   REQUIRE(runtime_report_fragments.size() == 3);
   bool saw_network_runtime = false;
   bool saw_status_runtime = false;
   bool saw_train_summary_runtime = false;
-  for (const auto& row : runtime_report_fragments) {
+  for (const auto &row : runtime_report_fragments) {
     REQUIRE(row.path.find(".lls") != std::string::npos);
     if (row.schema == "piaabo.torch_compat.network_analytics.v5") {
       saw_network_runtime = true;
       REQUIRE(row.semantic_taxon == "embedding.network");
       REQUIRE(row.report_canonical_path ==
-              "tsi.wikimyei.representation.vicreg.0x0042");
+              "tsi.wikimyei.representation.encoding.vicreg.0x0042");
       REQUIRE(row.binding_id == "bind.train.vicreg");
     }
-    if (row.schema == "tsi.wikimyei.representation.vicreg.status.v1") {
+    if (row.schema == "tsi.wikimyei.representation.encoding.vicreg.status.v1") {
       saw_status_runtime = true;
     }
-    if (row.schema == "tsi.wikimyei.representation.vicreg.train_summary.v1") {
+    if (row.schema ==
+        "tsi.wikimyei.representation.encoding.vicreg.train_summary.v1") {
       saw_train_summary_runtime = true;
       REQUIRE(row.semantic_taxon == "embedding.network");
     }
@@ -615,11 +660,12 @@ int main() {
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
       runtime_report_fragments_family{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments(
-      "tsi.wikimyei.representation.vicreg", "", 0, 0, true,
+      "tsi.wikimyei.representation.encoding.vicreg", "", 0, 0, true,
       &runtime_report_fragments_family, &error));
-  REQUIRE(runtime_report_fragments_family.size() == runtime_report_fragments.size());
+  REQUIRE(runtime_report_fragments_family.size() ==
+          runtime_report_fragments.size());
   bool saw_family_exact_hash = false;
-  for (const auto& row : runtime_report_fragments_family) {
+  for (const auto &row : runtime_report_fragments_family) {
     if (row.canonical_path == canonical_runtime_path) {
       saw_family_exact_hash = true;
       break;
@@ -627,14 +673,15 @@ int main() {
   }
   REQUIRE(saw_family_exact_hash);
 
-  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> source_report_fragments{};
-  REQUIRE(runtime_catalog.list_runtime_report_fragments("tsi.source.dataloader",
-                                                 "", 0, 0, true,
-                                                 &source_report_fragments, &error));
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+      source_report_fragments{};
+  REQUIRE(runtime_catalog.list_runtime_report_fragments(
+      "tsi.source.dataloader", "", 0, 0, true, &source_report_fragments,
+      &error));
   REQUIRE(source_report_fragments.size() == 2);
   bool saw_data_analytics = false;
   bool saw_source_runtime = false;
-  for (const auto& row : source_report_fragments) {
+  for (const auto &row : source_report_fragments) {
     REQUIRE(row.canonical_path == "tsi.source.dataloader");
     REQUIRE(row.source_label == "BTCUSDT");
     if (row.schema == "piaabo.torch_compat.data_analytics.v2") {
@@ -666,8 +713,9 @@ int main() {
 
   cuwacunu::hero::wave::runtime_report_fragment_t source_projection_fragment{};
   bool found_source_projection_fragment = false;
-  for (const auto& row : source_report_fragments) {
-    if (row.schema != "wave.source.runtime.projection.v2") continue;
+  for (const auto &row : source_report_fragments) {
+    if (row.schema != "wave.source.runtime.projection.v2")
+      continue;
     source_projection_fragment = row;
     found_source_projection_fragment = true;
     break;
@@ -675,11 +723,12 @@ int main() {
   REQUIRE(found_source_projection_fragment);
   cuwacunu::hero::wave::runtime_report_fragment_t restored_source_projection{};
   REQUIRE(runtime_catalog.get_runtime_report_fragment(
-      source_projection_fragment.report_fragment_id, &restored_source_projection,
-      &error));
-  REQUIRE(restored_source_projection.schema == "wave.source.runtime.projection.v2");
-  REQUIRE(restored_source_projection.path.find("source_runtime_projection.latest.lls") !=
-          std::string::npos);
+      source_projection_fragment.report_fragment_id,
+      &restored_source_projection, &error));
+  REQUIRE(restored_source_projection.schema ==
+          "wave.source.runtime.projection.v2");
+  REQUIRE(restored_source_projection.path.find(
+              "source_runtime_projection.latest.lls") != std::string::npos);
   REQUIRE(restored_source_projection.path.find(
               "/tsi/source/dataloader/contracts/contract_hash_123/bindings/"
               "bind.train.vicreg/runs/run.source.001/") != std::string::npos);
@@ -692,7 +741,7 @@ int main() {
   REQUIRE(source_report_fragments_invalid_selector.empty());
 
   std::string matched_wave_cursor{};
-  for (const auto& row : runtime_report_fragments) {
+  for (const auto &row : runtime_report_fragments) {
     if (row.schema == "piaabo.torch_compat.network_analytics.v5") {
       matched_wave_cursor = extract_line_value(row.payload_json, "wave_cursor");
       break;
@@ -711,12 +760,12 @@ int main() {
   REQUIRE(comparison_view.match_count == 1);
   REQUIRE(comparison_view.ambiguity_count == 0);
   REQUIRE(comparison_view.view_lls.find("match_count=1") != std::string::npos);
-  REQUIRE(comparison_view.view_lls.find("capacity_ratio=") != std::string::npos);
-  REQUIRE(comparison_view.view_lls.find("source_entropic_load=7.500000000000") !=
+  REQUIRE(comparison_view.view_lls.find("capacity_ratio=") !=
           std::string::npos);
   REQUIRE(comparison_view.view_lls.find(
-              "network_entropic_capacity=9.250000000000") !=
-          std::string::npos);
+              "source_entropic_load=7.500000000000") != std::string::npos);
+  REQUIRE(comparison_view.view_lls.find(
+              "network_entropic_capacity=9.250000000000") != std::string::npos);
 
   cuwacunu::hero::wave::runtime_view_report_t filtered_view{};
   REQUIRE(runtime_catalog.get_runtime_view_lls(
@@ -727,8 +776,8 @@ int main() {
 
   cuwacunu::hero::wave::runtime_view_report_t empty_wave_view{};
   REQUIRE(runtime_catalog.get_runtime_view_lls(
-      "entropic_capacity_comparison", "", matched_wave_cursor_u64 + 1, true,
-      "", "", &empty_wave_view, &error));
+      "entropic_capacity_comparison", "", matched_wave_cursor_u64 + 1, true, "",
+      "", &empty_wave_view, &error));
   REQUIRE(empty_wave_view.match_count == 0);
   REQUIRE(empty_wave_view.ambiguity_count == 0);
   REQUIRE(empty_wave_view.view_lls.find("match_count=0") != std::string::npos);
@@ -754,12 +803,15 @@ int main() {
       "semantic_taxon:str = source.data\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "source_runtime_cursor:str = ETHUSDT|03.01.2024|05.01.2024\n"
-      "source_label:str = ETHUSDT\n"
-      "sample_count(0,+inf):uint = 256\n"
-      "source_entropic_load(0,+inf):double = 6.250000000000\n");
-  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "source_runtime_cursor:str = ETHUSDT|03.01.2024|05.01.2024\n"
+          "source_label:str = ETHUSDT\n"
+          "sample_count(0,+inf):uint = 256\n"
+          "source_entropic_load(0,+inf):double = 6.250000000000\n");
+  REQUIRE(
+      runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
 
   cuwacunu::hero::wave::runtime_view_report_t ambiguous_source_view{};
   REQUIRE(runtime_catalog.get_runtime_view_lls(
@@ -783,14 +835,18 @@ int main() {
   write_text_file(
       vicreg_0043_dir / "runtime_new_ambiguous.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0043\n"
+      "canonical_path:str = "
+      "tsi.wikimyei.representation.encoding.vicreg.0x0043\n"
       "semantic_taxon:str = embedding.network\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "network_global_entropic_capacity(0,+inf):double = 8.500000000000\n"
-      "metric.loss(-inf,+inf):double = 0.31\n");
-  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "network_global_entropic_capacity(0,+inf):double = 8.500000000000\n"
+          "metric.loss(-inf,+inf):double = 0.31\n");
+  REQUIRE(
+      runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
 
   cuwacunu::hero::wave::runtime_view_report_t ambiguous_view{};
   REQUIRE(runtime_catalog.get_runtime_view_lls(
@@ -811,52 +867,63 @@ int main() {
   REQUIRE(error.find("intersection_cursor canonical_path is not supported") !=
           std::string::npos);
 
-  const std::uint64_t latest_family_wave_cursor_u64 = packed_runtime_wave_cursor(9);
+  const std::uint64_t latest_family_wave_cursor_u64 =
+      packed_runtime_wave_cursor(9);
   const std::string latest_family_wave_cursor =
       std::to_string(latest_family_wave_cursor_u64);
   write_text_file(
       runtime_store / "reports" / "runtime_new_latest.lls",
       "schema:str = piaabo.torch_compat.network_analytics.v5\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "canonical_path:str = "
+      "tsi.wikimyei.representation.encoding.vicreg.0x0042\n"
       "semantic_taxon:str = embedding.network\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + latest_family_wave_cursor + "\n"
-      "network_global_entropic_capacity(0,+inf):double = 9.750000000000\n"
-      "metric.loss(-inf,+inf):double = 0.20\n");
+      "wave_cursor:uint = " +
+          latest_family_wave_cursor +
+          "\n"
+          "network_global_entropic_capacity(0,+inf):double = 9.750000000000\n"
+          "metric.loss(-inf,+inf):double = 0.20\n");
   write_text_file(
       runtime_store / "reports" / "status.latest.newer.lls",
-      "schema:str = tsi.wikimyei.representation.vicreg.status.v1\n"
-      "canonical_path:str = tsi.wikimyei.representation.vicreg.0x0042\n"
+      "schema:str = tsi.wikimyei.representation.encoding.vicreg.status.v1\n"
+      "canonical_path:str = "
+      "tsi.wikimyei.representation.encoding.vicreg.0x0042\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + latest_family_wave_cursor + "\n"
-      "trained_steps(0,+inf):uint = 24\n");
+      "wave_cursor:uint = " +
+          latest_family_wave_cursor +
+          "\n"
+          "trained_steps(0,+inf):uint = 24\n");
 
-  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+  REQUIRE(
+      runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
 
   cuwacunu::hero::family_rank::state_t missing_family_rank{};
-  REQUIRE(!runtime_catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
-                                           family_dock_hash,
-                                           &missing_family_rank, &error));
+  REQUIRE(!runtime_catalog.get_family_rank(
+      "tsi.wikimyei.representation.encoding.vicreg",
+      family_component_compatibility_sha256_hex, &missing_family_rank, &error));
   REQUIRE(error.find("family rank not found") != std::string::npos);
 
-  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> unranked_family_rows{};
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+      unranked_family_rows{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments(
-      "tsi.wikimyei.representation.vicreg", "", 0, 0, true, &unranked_family_rows,
-      &error));
-  for (const auto& row : unranked_family_rows) {
-    if (row.contract_hash != "contract_hash_123") continue;
+      "tsi.wikimyei.representation.encoding.vicreg", "", 0, 0, true,
+      &unranked_family_rows, &error));
+  for (const auto &row : unranked_family_rows) {
+    if (row.contract_hash != "contract_hash_123")
+      continue;
     REQUIRE(!row.family_rank.has_value());
   }
 
   const fs::path family_rank_path =
       runtime_store / "hero" / "family_rank" /
-      "tsi_wikimyei_representation_vicreg" / family_dock_hash /
-      "family.rank.latest.lls";
+      "tsi_wikimyei_representation_encoding_vicreg" /
+      family_component_compatibility_sha256_hex / "family.rank.latest.lls";
   cuwacunu::hero::family_rank::state_t family_rank_state{};
-  family_rank_state.family = "tsi.wikimyei.representation.vicreg";
-  family_rank_state.dock_hash = family_dock_hash;
+  family_rank_state.family = "tsi.wikimyei.representation.encoding.vicreg";
+  family_rank_state.component_compatibility_sha256_hex =
+      family_component_compatibility_sha256_hex;
   family_rank_state.source_view_kind = "family_evaluation_report";
   family_rank_state.source_view_transport_sha256 = "rank_view_sha256_001";
   family_rank_state.updated_at_ms = 1711111000444ULL;
@@ -864,27 +931,32 @@ int main() {
       cuwacunu::hero::family_rank::assignment_t{
           .rank = 0,
           .hashimyei = "0x0043",
-          .canonical_path = "tsi.wikimyei.representation.vicreg.0x0043",
+          .canonical_path =
+              "tsi.wikimyei.representation.encoding.vicreg.0x0043",
           .component_id = "vicreg_component_0043",
       },
       cuwacunu::hero::family_rank::assignment_t{
           .rank = 1,
           .hashimyei = "0x0042",
-          .canonical_path = "tsi.wikimyei.representation.vicreg.0x0042",
+          .canonical_path =
+              "tsi.wikimyei.representation.encoding.vicreg.0x0042",
           .component_id = "vicreg_component_0042",
       },
   };
   write_text_file(
       family_rank_path,
       cuwacunu::hero::family_rank::emit_state_payload(family_rank_state));
-  REQUIRE(runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
+  REQUIRE(
+      runtime_catalog.ingest_runtime_report_fragments(runtime_store, &error));
 
   cuwacunu::hero::family_rank::state_t restored_family_rank{};
-  REQUIRE(runtime_catalog.get_family_rank("tsi.wikimyei.representation.vicreg",
-                                          family_dock_hash,
-                                          &restored_family_rank, &error));
+  REQUIRE(runtime_catalog.get_family_rank(
+      "tsi.wikimyei.representation.encoding.vicreg",
+      family_component_compatibility_sha256_hex, &restored_family_rank,
+      &error));
   REQUIRE(restored_family_rank.family == family_rank_state.family);
-  REQUIRE(restored_family_rank.dock_hash == family_rank_state.dock_hash);
+  REQUIRE(restored_family_rank.component_compatibility_sha256_hex ==
+          family_rank_state.component_compatibility_sha256_hex);
   REQUIRE(restored_family_rank.source_view_kind ==
           family_rank_state.source_view_kind);
   REQUIRE(restored_family_rank.source_view_transport_sha256 ==
@@ -893,14 +965,16 @@ int main() {
   REQUIRE(restored_family_rank.assignments[0].hashimyei == "0x0043");
   REQUIRE(restored_family_rank.assignments[1].hashimyei == "0x0042");
 
-  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> ranked_family_rows{};
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+      ranked_family_rows{};
   REQUIRE(runtime_catalog.list_runtime_report_fragments(
-      "tsi.wikimyei.representation.vicreg", "", 0, 0, true, &ranked_family_rows,
-      &error));
+      "tsi.wikimyei.representation.encoding.vicreg", "", 0, 0, true,
+      &ranked_family_rows, &error));
   REQUIRE(ranked_family_rows.size() == 6);
-  for (const auto& row : ranked_family_rows) {
-    REQUIRE(row.family == "tsi.wikimyei.representation.vicreg");
-    REQUIRE(row.dock_hash == family_dock_hash);
+  for (const auto &row : ranked_family_rows) {
+    REQUIRE(row.family == "tsi.wikimyei.representation.encoding.vicreg");
+    REQUIRE(row.component_compatibility_sha256_hex ==
+            family_component_compatibility_sha256_hex);
     if (row.hashimyei == "0x0043") {
       REQUIRE(row.family_rank.has_value());
       REQUIRE(*row.family_rank == 0);
@@ -912,29 +986,33 @@ int main() {
 
   cuwacunu::hero::wave::runtime_view_report_t family_view{};
   REQUIRE(runtime_catalog.get_runtime_view_lls(
-      "family_evaluation_report",
-      "tsi.wikimyei.representation.vicreg", 0, false, "", family_dock_hash,
-      &family_view, &error));
+      "family_evaluation_report", "tsi.wikimyei.representation.encoding.vicreg",
+      0, false, "", family_component_compatibility_sha256_hex, &family_view,
+      &error));
   REQUIRE(family_view.view_kind == "family_evaluation_report");
   REQUIRE(family_view.canonical_path ==
           "tsi.analysis.family_evaluation_report");
   REQUIRE(family_view.selector_hashimyei_cursor ==
-          "tsi.wikimyei.representation.vicreg");
-  REQUIRE(family_view.dock_hash == family_dock_hash);
+          "tsi.wikimyei.representation.encoding.vicreg");
+  REQUIRE(family_view.component_compatibility_sha256_hex ==
+          family_component_compatibility_sha256_hex);
   REQUIRE(family_view.match_count == 2);
   REQUIRE(family_view.ambiguity_count == 0);
-  REQUIRE(family_view.view_lls.find("family=tsi.wikimyei.representation.vicreg") !=
+  REQUIRE(family_view.view_lls.find(
+              "family=tsi.wikimyei.representation.encoding.vicreg") !=
           std::string::npos);
-  REQUIRE(family_view.view_lls.find("dock_hash=" + family_dock_hash) !=
-          std::string::npos);
+  REQUIRE(family_view.view_lls.find(
+              "component_compatibility_sha256_hex=" +
+              family_component_compatibility_sha256_hex) != std::string::npos);
   REQUIRE(family_view.view_lls.find("current_rank.assignment_count=2") !=
           std::string::npos);
   REQUIRE(family_view.view_lls.find(
               "current_rank.source_view_kind=family_evaluation_report") !=
           std::string::npos);
-  REQUIRE(family_view.view_lls.find(
-              "current_rank.source_view_transport_sha256=rank_view_sha256_001") !=
-          std::string::npos);
+  REQUIRE(
+      family_view.view_lls.find(
+          "current_rank.source_view_transport_sha256=rank_view_sha256_001") !=
+      std::string::npos);
   REQUIRE(family_view.view_lls.find("selection_mode=latest") !=
           std::string::npos);
   REQUIRE(family_view.view_lls.find("candidate_count=2") != std::string::npos);
@@ -951,23 +1029,22 @@ int main() {
               std::to_string(latest_family_wave_cursor_u64)) !=
           std::string::npos);
   REQUIRE(family_view.view_lls.find(
-              "candidate.2.fragment.2.kv.schema=tsi.wikimyei.representation.vicreg.status.v1") !=
-          std::string::npos);
+              "candidate.2.fragment.2.kv.schema=tsi.wikimyei.representation."
+              "encoding.vicreg.status.v1") != std::string::npos);
   REQUIRE(family_view.view_lls.find("match_count=2") != std::string::npos);
-  REQUIRE(family_view.view_lls.find("ambiguity_count=0") !=
-          std::string::npos);
+  REQUIRE(family_view.view_lls.find("ambiguity_count=0") != std::string::npos);
 
   cuwacunu::hero::wave::runtime_view_report_t historical_family_view{};
   REQUIRE(runtime_catalog.get_runtime_view_lls(
       "family_evaluation_report",
-      "tsi.wikimyei.representation.vicreg|" + matched_wave_cursor, 0, false,
-      "", family_dock_hash, &historical_family_view, &error));
+      "tsi.wikimyei.representation.encoding.vicreg|" + matched_wave_cursor, 0,
+      false, "", family_component_compatibility_sha256_hex,
+      &historical_family_view, &error));
   REQUIRE(historical_family_view.view_lls.find("selection_mode=historical") !=
           std::string::npos);
   REQUIRE(historical_family_view.view_lls.find(
               "candidate.2.bundle_wave_cursor=" +
-              std::to_string(matched_wave_cursor_u64)) !=
-          std::string::npos);
+              std::to_string(matched_wave_cursor_u64)) != std::string::npos);
 
   REQUIRE(runtime_catalog.close(&error));
 
@@ -977,7 +1054,8 @@ int main() {
       tmp.dir / "_meta" / "catalog" / "runtime_tool_catalog.idydb";
   const fs::path legacy_tool_catalog_path =
       runtime_store / "catalog" / "lattice_catalog.idydb";
-  write_text_file(legacy_tool_catalog_path, "legacy lattice catalog placeholder\n");
+  write_text_file(legacy_tool_catalog_path,
+                  "legacy lattice catalog placeholder\n");
   REQUIRE(fs::exists(legacy_tool_catalog_path));
   const std::string matched_wave_cursor_view =
       lattice_catalog_store_t::format_runtime_wave_cursor(
@@ -986,17 +1064,15 @@ int main() {
   std::string tool_result{};
   std::string tool_error{};
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
-      "hero.lattice.list_facts",
-      "{}",
-      &lattice_app, &tool_result, &tool_error));
+      "hero.lattice.list_facts", "{}", &lattice_app, &tool_result,
+      &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"canonical_path\":\"tsi.source.dataloader\"") !=
           std::string::npos);
   REQUIRE(fs::exists(lattice_app.lattice_catalog_path));
-  REQUIRE(fs::exists(
-      lattice_app.lattice_catalog_path.parent_path() /
-      "runtime_tool_catalog.idydb.sync.sha256"));
+  REQUIRE(fs::exists(lattice_app.lattice_catalog_path.parent_path() /
+                     "runtime_tool_catalog.idydb.sync.sha256"));
   REQUIRE(!fs::exists(legacy_tool_catalog_path));
 
   fs::remove(source_context_dir / "data_analytics.v2.latest.lls");
@@ -1006,50 +1082,57 @@ int main() {
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
-      "hero.lattice.list_facts",
-      "{}",
-      &lattice_app, &tool_result, &tool_error));
+      "hero.lattice.list_facts", "{}", &lattice_app, &tool_result,
+      &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"canonical_path\":\"tsi.source.dataloader\"") ==
           std::string::npos);
 
-  write_text_file(
-      source_context_dir / "data_analytics.v2.latest.lls",
-      "schema:str = piaabo.torch_compat.data_analytics.v2\n"
-      "canonical_path:str = tsi.source.dataloader\n"
-      "semantic_taxon:str = source.data\n"
-      "binding_id:str = bind.train.vicreg\n"
-      "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
-      "source_label:str = BTCUSDT\n"
-      "sample_count(0,+inf):uint = 256\n"
-      "source_entropic_load(0,+inf):double = 7.500000000000\n");
+  write_text_file(source_context_dir / "data_analytics.v2.latest.lls",
+                  "schema:str = piaabo.torch_compat.data_analytics.v2\n"
+                  "canonical_path:str = tsi.source.dataloader\n"
+                  "semantic_taxon:str = source.data\n"
+                  "binding_id:str = bind.train.vicreg\n"
+                  "contract_hash:str = contract_hash_123\n"
+                  "wave_cursor:uint = " +
+                      expected_wave_cursor +
+                      "\n"
+                      "source_runtime_cursor:str = " +
+                      source_runtime_cursor +
+                      "\n"
+                      "source_label:str = BTCUSDT\n"
+                      "sample_count(0,+inf):uint = 256\n"
+                      "source_entropic_load(0,+inf):double = 7.500000000000\n");
   write_text_file(
       source_projection_dir / "source_runtime_projection.latest.lls",
       "schema:str = wave.source.runtime.projection.v2\n"
       "canonical_path:str = tsi.source.dataloader\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "source_runtime_cursor:str = " + source_runtime_cursor + "\n"
-      "source_label:str = BTCUSDT\n"
-      "source.runtime.symbol:str = BTCUSDT\n"
-      "source.runtime.range_basis:str = effective_intersection\n"
-      "source.runtime.interval_semantics:str = half_open_utc_day\n"
-      "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n"
-      "source.runtime.request.to_ratio(0,1):double = 0.500000000000\n"
-      "source.runtime.request.span_ratio(0,1):double = 0.375000000000\n"
-      "source.runtime.effective.coverage_ratio(0,1):double = 0.375000000000\n"
-      "source.runtime.flags.clipped_left(0,1):double = 0.000000000000\n"
-      "source.runtime.flags.clipped_right(0,1):double = 0.000000000000\n"
-      "source.channels.active_count(0,+inf):double = 2.000000000000\n"
-      "source.channels.total_count(0,+inf):double = 3.000000000000\n"
-      "source.channels.active_ratio(0,1):double = 0.666666666667\n"
-      "source.channel.1m.active(0,1):double = 1.000000000000\n"
-      "source.channel.5m.active(0,1):double = 0.000000000000\n"
-      "source.channel.1h.active(0,1):double = 1.000000000000\n");
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "source_runtime_cursor:str = " +
+          source_runtime_cursor +
+          "\n"
+          "source_label:str = BTCUSDT\n"
+          "source.runtime.symbol:str = BTCUSDT\n"
+          "source.runtime.range_basis:str = effective_intersection\n"
+          "source.runtime.interval_semantics:str = half_open_utc_day\n"
+          "source.runtime.request.from_ratio(0,1):double = 0.125000000000\n"
+          "source.runtime.request.to_ratio(0,1):double = 0.500000000000\n"
+          "source.runtime.request.span_ratio(0,1):double = 0.375000000000\n"
+          "source.runtime.effective.coverage_ratio(0,1):double = "
+          "0.375000000000\n"
+          "source.runtime.flags.clipped_left(0,1):double = 0.000000000000\n"
+          "source.runtime.flags.clipped_right(0,1):double = 0.000000000000\n"
+          "source.channels.active_count(0,+inf):double = 2.000000000000\n"
+          "source.channels.total_count(0,+inf):double = 3.000000000000\n"
+          "source.channels.active_ratio(0,1):double = 0.666666666667\n"
+          "source.channel.1m.active(0,1):double = 1.000000000000\n"
+          "source.channel.5m.active(0,1):double = 0.000000000000\n"
+          "source.channel.1h.active(0,1):double = 1.000000000000\n");
   write_text_file(
       source_context_eth_dir / "data_analytics.v2.latest.lls",
       "schema:str = piaabo.torch_compat.data_analytics.v2\n"
@@ -1057,18 +1140,19 @@ int main() {
       "semantic_taxon:str = source.data\n"
       "binding_id:str = bind.train.vicreg\n"
       "contract_hash:str = contract_hash_123\n"
-      "wave_cursor:uint = " + expected_wave_cursor + "\n"
-      "source_runtime_cursor:str = ETHUSDT|03.01.2024|05.01.2024\n"
-      "source_label:str = ETHUSDT\n"
-      "sample_count(0,+inf):uint = 256\n"
-      "source_entropic_load(0,+inf):double = 6.250000000000\n");
+      "wave_cursor:uint = " +
+          expected_wave_cursor +
+          "\n"
+          "source_runtime_cursor:str = ETHUSDT|03.01.2024|05.01.2024\n"
+          "source_label:str = ETHUSDT\n"
+          "sample_count(0,+inf):uint = 256\n"
+          "source_entropic_load(0,+inf):double = 6.250000000000\n");
 
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
-      "hero.lattice.refresh",
-      "{\"reingest\":true}",
-      &lattice_app, &tool_result, &tool_error));
+      "hero.lattice.refresh", "{\"reingest\":true}", &lattice_app, &tool_result,
+      &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"runtime_report_fragment_count\":") !=
@@ -1077,9 +1161,8 @@ int main() {
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
-      "hero.lattice.list_views",
-      "{}",
-      &lattice_app, &tool_result, &tool_error));
+      "hero.lattice.list_views", "{}", &lattice_app, &tool_result,
+      &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"count\":2") != std::string::npos);
@@ -1087,8 +1170,8 @@ int main() {
           std::string::npos);
   REQUIRE(tool_result.find("\"view_kind\":\"family_evaluation_report\"") !=
           std::string::npos);
-  REQUIRE(tool_result.find(
-              "\"required_selectors\":[\"canonical_path\",\"dock_hash\"]") !=
+  REQUIRE(tool_result.find("\"required_selectors\":[\"canonical_path\","
+                           "\"component_compatibility_sha256_hex\"]") !=
           std::string::npos);
   REQUIRE(tool_result.find("\"optional_selectors\":[\"wave_cursor\"]") !=
           std::string::npos);
@@ -1096,20 +1179,19 @@ int main() {
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
-      "hero.lattice.list_facts",
-      "{}",
-      &lattice_app, &tool_result, &tool_error));
+      "hero.lattice.list_facts", "{}", &lattice_app, &tool_result,
+      &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
-  REQUIRE(tool_result.find("\"canonical_path\":\"" + canonical_runtime_path + "\"") !=
-          std::string::npos);
+  REQUIRE(tool_result.find("\"canonical_path\":\"" + canonical_runtime_path +
+                           "\"") != std::string::npos);
 
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
       "hero.lattice.get_view",
-      std::string(
-          "{\"view_kind\":\"entropic_capacity_comparison\",\"wave_cursor\":\"") +
+      std::string("{\"view_kind\":\"entropic_capacity_comparison\",\"wave_"
+                  "cursor\":\"") +
           matched_wave_cursor_view + "\"}",
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
@@ -1123,9 +1205,10 @@ int main() {
   tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
       "hero.lattice.get_view",
-      std::string(
-          "{\"view_kind\":\"entropic_capacity_comparison\",\"wave_cursor\":\"") +
-          matched_wave_cursor_view + "\",\"contract_hash\":\"contract_hash_missing\"}",
+      std::string("{\"view_kind\":\"entropic_capacity_comparison\",\"wave_"
+                  "cursor\":\"") +
+          matched_wave_cursor_view +
+          "\",\"contract_hash\":\"contract_hash_missing\"}",
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
@@ -1136,31 +1219,35 @@ int main() {
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
       "hero.lattice.get_view",
       std::string(
-          "{\"view_kind\":\"entropic_capacity_comparison\",\"canonical_path\":\"tsi.source.dataloader.BTCUSDT\",\"wave_cursor\":\"") +
-          matched_wave_cursor_view + "\",\"contract_hash\":\"contract_hash_123\"}",
+          "{\"view_kind\":\"entropic_capacity_comparison\",\"canonical_path\":"
+          "\"tsi.source.dataloader.BTCUSDT\",\"wave_cursor\":\"") +
+          matched_wave_cursor_view +
+          "\",\"contract_hash\":\"contract_hash_123\"}",
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":true") != std::string::npos);
   REQUIRE(tool_result.find(
-              "intersection_cursor canonical_path is not supported for view_kind=entropic_capacity_comparison") !=
-          std::string::npos);
+              "intersection_cursor canonical_path is not supported for "
+              "view_kind=entropic_capacity_comparison") != std::string::npos);
 
   tool_result.clear();
   tool_error.clear();
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
       "hero.lattice.get_view",
       "{\"view_kind\":\"family_evaluation_report\","
-      "\"canonical_path\":\"tsi.wikimyei.representation.vicreg\","
-      "\"dock_hash\":\"" + family_dock_hash + "\"}",
+      "\"canonical_path\":\"tsi.wikimyei.representation.encoding.vicreg\","
+      "\"component_compatibility_sha256_hex\":\"" +
+          family_component_compatibility_sha256_hex + "\"}",
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"view_kind\":\"family_evaluation_report\"") !=
           std::string::npos);
-  REQUIRE(tool_result.find(
-              "\"selector_canonical_path\":\"tsi.wikimyei.representation.vicreg\"") !=
+  REQUIRE(tool_result.find("\"selector_canonical_path\":\"tsi.wikimyei."
+                           "representation.encoding.vicreg\"") !=
           std::string::npos);
-  REQUIRE(tool_result.find("\"dock_hash\":\"" + family_dock_hash + "\"") !=
+  REQUIRE(tool_result.find("\"component_compatibility_sha256_hex\":\"" +
+                           family_component_compatibility_sha256_hex + "\"") !=
           std::string::npos);
   REQUIRE(tool_result.find("\"match_count\":2") != std::string::npos);
   REQUIRE(tool_result.find("candidate.1.hashimyei=0x0043") !=
@@ -1173,14 +1260,16 @@ int main() {
   REQUIRE(cuwacunu::hero::lattice_mcp::execute_tool_json(
       "hero.lattice.get_view",
       std::string(
-          "{\"view_kind\":\"family_evaluation_report\",\"canonical_path\":\"tsi.wikimyei.representation.vicreg\",\"dock_hash\":\"") +
-          family_dock_hash + "\",\"wave_cursor\":\"" +
+          "{\"view_kind\":\"family_evaluation_report\",\"canonical_path\":"
+          "\"tsi.wikimyei.representation.encoding.vicreg\",\"component_"
+          "compatibility_sha256_hex\":\"") +
+          family_component_compatibility_sha256_hex + "\",\"wave_cursor\":\"" +
           matched_wave_cursor_view + "\"}",
       &lattice_app, &tool_result, &tool_error));
   REQUIRE(tool_error.empty());
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
-  REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view + "\"") !=
-          std::string::npos);
+  REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view +
+                           "\"") != std::string::npos);
   REQUIRE(tool_result.find("selection_mode=historical") != std::string::npos);
 
   tool_result.clear();
@@ -1195,8 +1284,8 @@ int main() {
   REQUIRE(tool_result.find("\"isError\":false") != std::string::npos);
   REQUIRE(tool_result.find("\"canonical_path\":\"tsi.source.dataloader\"") !=
           std::string::npos);
-  REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view + "\"") !=
-          std::string::npos);
+  REQUIRE(tool_result.find("\"wave_cursor\":\"" + matched_wave_cursor_view +
+                           "\"") != std::string::npos);
   REQUIRE(tool_result.find("\"fact_lls\":\"") != std::string::npos);
   REQUIRE(tool_result.find("hashimyei.joined_report.v1") != std::string::npos);
   REQUIRE(tool_result.find("source_runtime_projection.latest.lls") !=

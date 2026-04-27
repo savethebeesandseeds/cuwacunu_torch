@@ -1,0 +1,84 @@
+\section{Normalization Procedure}
+\label{app:normalization}
+
+This appendix records the current normalization pass used by the dataloader
+when the cache is built with the \field{log\_returns} policy.  The pass is
+causal and channel-local: each valid candle is normalized using only the
+previous valid candle on the same channel.
+
+\subsection{Causal Scan on One Channel}
+\label{appsub:causal-scan-on-one-channel}
+
+Normalization is applied after the CSV has already been sanitized onto a
+regular key lattice.  The raw cache and the normalized cache therefore have the
+same record count and the same key values.  The pass scans the channel from
+left to right while maintaining one state variable: the previous valid candle
+on that same channel.
+
+For each record, the implementation does the following:
+\begin{enumerate}
+\item If the current record is invalid, it is written through unchanged and the
+previous-valid state is cleared.
+\item If the current record is valid but there is no previous valid candle, the
+current record is replaced by a null instance at the same key value.
+\item If both the current record and the previous valid candle are available,
+the current record is normalized in place.
+\end{enumerate}
+
+As a consequence, the first valid candle of every contiguous valid segment is
+masked out, because there is no causal reference close available for it.
+
+\subsection{Per-Field Transform}
+\label{appsub:per-field-transform}
+
+For one valid candle, write the price tuple as
+\[
+  (p^{\mathrm{open}}, p^{\mathrm{high}}, p^{\mathrm{low}}, p^{\mathrm{close}})
+  \in \Rpos^{4},
+\]
+and the activity tuple as
+\[
+  (a^{\mathrm{volume}}, a^{\mathrm{quote}}, a^{\mathrm{trades}},
+   a^{\mathrm{buybase}}, a^{\mathrm{buyquote}})
+  \in \Rnonneg^{5}.
+\]
+Let $\mathrm{cp}(t-1) \in \Rpos$ be the \field{close\_price} of the previous
+valid candle on the same channel.  The four price coordinates are then mapped
+as
+\[
+  \log\!\bigl(p^{\mathrm{open}}/\mathrm{cp}(t-1)\bigr), \qquad
+  \log\!\bigl(p^{\mathrm{high}}/\mathrm{cp}(t-1)\bigr), \qquad
+  \log\!\bigl(p^{\mathrm{low}}/\mathrm{cp}(t-1)\bigr), \qquad
+  \log\!\bigl(p^{\mathrm{close}}/\mathrm{cp}(t-1)\bigr).
+\]
+The five non-price coordinates are mapped coordinatewise by
+\[
+  \begin{aligned}
+    &\log(1+a^{\mathrm{volume}}), \qquad
+    \log(1+a^{\mathrm{quote}}), \qquad
+    \log(1+a^{\mathrm{trades}}), \\
+    &\log(1+a^{\mathrm{buybase}}), \qquad
+    \log(1+a^{\mathrm{buyquote}}).
+  \end{aligned}
+\]
+
+For kline records, this produces the 9-dimensional normalized feature vector
+used in the main text:
+\[
+  \tensor{x}_{u\,v}^{b\,c\,i}(t) \in \R^{D_x},
+  \qquad D_x = 9.
+\]
+
+\subsection{Domain Protection}
+\label{appsub:domain-protection}
+
+The implementation keeps the normalization numerically finite even when the raw
+record is malformed.  For price-return coordinates, any nonpositive or
+non-finite price input is clamped to the positive floor $10^{-12}$ before the
+logarithm is applied; the same floor is used if the reference
+\field{close\_price} is nonpositive or non-finite.
+
+For the activity coordinates, any value less than or equal to $-1$, or any
+non-finite value, is clamped to $-1 + 10^{-12}$ before applying
+$\log(1+\cdot)$.  The normalizer emits warning summaries for these events, but
+the resulting cache remains finite and keeps the same lattice structure.

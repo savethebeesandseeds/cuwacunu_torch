@@ -2,33 +2,34 @@
 #pragma once
 /**
  * @file expected_value.h
- * @brief MDN-backed expected-value wrapper exposing E[target|X] in configured
- *        target space (API + template methods).
+ * @brief MDN-backed expected-value wrapper exposing E[F|X] in configured
+ *        selected-future-feature space (API + template methods).
  *
  * Responsibilities
- *  - Own an MDN (semantic_model) that models p(target|X).
- *  - Expose the conditional expectation E[target|X] in target space. For
- *    source-side log-return price targets, this is expected log-return, not
+ *  - Own an MDN (semantic_model) that models p(F|X).
+ *  - Expose the conditional expectation E[F|X] in selected future space. For
+ *    source-side log-return future features, this is expected log-return, not
  *    native-price expectation.
  *  - Train with MDN NLL + optional per-channel EMA reweighting +
  * horizon/feature weights.
  *  - Provide telemetry (per-channel / per-horizon NLL).
- *  - Strict checkpoint format v4 (safe state-dict + required metadata).
+ *  - Strict checkpoint format v6 (safe state-dict + required metadata +
+ *    head compatibility manifest).
  *
  * Loader concept (for the template methods):
- *   sample_batch.encoding         : Tensor [B,De] or [B,T',De]
- *   sample_batch.mask             : Tensor [B,C,T] or [B,T] when encoding is a
+ *   sample_batch.encoding         : Tensor [B,De] or [B,Hx',De]
+ *   sample_batch.mask             : Tensor [B,C,Hx] or [B,Hx] when encoding is a
  *                                   temporal sequence and the reducer requires
  *                                   valid-step semantics
- *   sample_batch.future_features  : Tensor [B,C,Hf,D]
+ *   sample_batch.future_features  : Tensor [B,C,Hf,Dx]
  *   sample_batch.future_mask      : Tensor [B,C,Hf] (0=ignore, 1=valid)
  * The template methods only rely on these members and .to(...) being available.
  *
  * Shapes
- *  - future_features: [B, C, Hf, D]
- *  - selected targets: [B, C, Hf, Dy]  (from target_dims_)
- *  - encoding:         [B, De] or [B, T', De] (reduced by temporal_reducer_)
- *  - MDN outputs:      log_pi [B,C,Hf,K], mu/sigma [B,C,Hf,K,Dy]
+ *  - future_features: [B, C, Hf, Dx]
+ *  - selected future:  [B, C, Hf, Df]  (from target_feature_indices_)
+ *  - encoding:         [B, De] or [B, Hx', De] (reduced by temporal_reducer_)
+ *  - MDN outputs:      log_pi [B,C,Hf,K], mu/sigma [B,C,Hf,K,Df]
  */
 
 #include <torch/serialize.h>
@@ -82,11 +83,13 @@ public:
   std::string component_name;
 
   // -------- target selection --------
-  std::vector<int64_t> target_dims_;
+  std::vector<int64_t> target_feature_indices_;
+  int64_t future_feature_width_{0};
+  std::string future_feature_schema_hash_{};
 
   // -------- optional static weights --------
   std::vector<float> static_channel_weights_; // size C
-  std::vector<float> static_feature_weights_; // size Dy
+  std::vector<float> static_feature_weights_; // size Df
 
   // -------- model (architecture) --------
   cuwacunu::wikimyei::mdn::MdnModel semantic_model{
@@ -177,7 +180,7 @@ public:
   [[nodiscard]] inline torch::Dtype dtype() const {
     return semantic_model->dtype;
   }
-  [[nodiscard]] inline int64_t Dy() const { return semantic_model->Dy; }
+  [[nodiscard]] inline int64_t Df() const { return semantic_model->Df; }
   [[nodiscard]] inline int64_t K() const { return semantic_model->K; }
 
   inline cuwacunu::wikimyei::mdn::MdnOut forward(const torch::Tensor &x) {
@@ -188,12 +191,12 @@ public:
   cuwacunu::wikimyei::mdn::MdnOut
   forward_from_encoding(const torch::Tensor &encoding,
                         const torch::Tensor &source_mask);
-  // Expected value == E[target|X] in target space from the MDN output.
+  // Expected value == E[F|X] in selected-future-feature space from the MDN output.
   inline torch::Tensor
   expected_value_from_out(const cuwacunu::wikimyei::mdn::MdnOut &out) const {
     return cuwacunu::wikimyei::mdn::mdn_expectation(out);
   }
-  // Convenience: compute E[target|X] directly from the encoded input.
+  // Convenience: compute E[F|X] directly from the encoded input.
   torch::Tensor
   predict_expected_value_from_encoding(const torch::Tensor &encoding);
   torch::Tensor
@@ -233,14 +236,15 @@ public:
   }
 
   // ---------- helpers: targets & weights ----------
-  static torch::Tensor select_targets(const torch::Tensor &future_features,
-                                      const std::vector<int64_t> &target_dims);
+  static torch::Tensor
+  select_targets(const torch::Tensor &future_features,
+                 const std::vector<int64_t> &target_feature_indices);
 
   torch::Tensor build_horizon_weights(int64_t Hf, torch::Device dev,
                                       torch::Dtype dt) const;
   torch::Tensor build_channel_weights(int64_t C, torch::Device dev,
                                       torch::Dtype dt);
-  torch::Tensor build_feature_weights(int64_t Dy, torch::Device dev,
+  torch::Tensor build_feature_weights(int64_t Df, torch::Device dev,
                                       torch::Dtype dt) const;
 
   torch::Tensor channel_weights_from_ema(int64_t C);
@@ -264,7 +268,7 @@ public:
   template <typename Loader>
   double evaluate_nll(Loader &dataloader, bool verbose = false);
 
-  // ---------- checkpointing (strict format v4, no backward compatibility)
+  // ---------- checkpointing (strict format v6, no backward compatibility)
   // ----------
   bool save_checkpoint(const std::string &path,
                        bool write_network_analytics_sidecar = false) const;
@@ -414,7 +418,7 @@ ExpectedValue::fit(Loader &dataloader, int n_epochs, int n_iters,
       const auto analytics =
           cuwacunu::piaabo::torch_compat::summarize_module_network_analytics(
               *semantic_model);
-      log_info(
+      log_dbg(
           "[ExpectedValue::network_analytics] epoch=%d finite=%.6f std=%.6f "
           "near_zero=%.6f entropy=%.6f tensor_cv=%.6f max_abs=%.6f\n",
           epoch_count, analytics.finite_ratio, analytics.stddev,
@@ -424,21 +428,21 @@ ExpectedValue::fit(Loader &dataloader, int n_epochs, int n_iters,
 
     if (verbose && (epoch_count % 50 == 0 || epoch_count == 1 ||
                     epoch_count >= n_epochs)) {
-      log_info("[ExpectedValue::fit] "
-               "epoch=%d\titers=%d\tavg_loss=%.6f\tbest=%.6f.at:%d\tlr=%.3g\n",
-               epoch_count, epoch_iters, epoch_loss, best_metric_, best_epoch_,
-               lr);
+      log_dbg("[ExpectedValue::fit] "
+              "epoch=%d\titers=%d\tavg_loss=%.6f\tbest=%.6f.at:%d\tlr=%.3g\n",
+              epoch_count, epoch_iters, epoch_loss, best_metric_, best_epoch_,
+              lr);
     }
   } // while
 
   const auto t1 = Clock::now();
   const auto ms =
       std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-  log_info("%s[ExpectedValue::fit]%s done, iters=%lld, best=%.6f.at:%d, "
-           "wall_ms=%lld\n",
-           ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
-           static_cast<long long>(total_iters_trained_), best_metric_,
-           best_epoch_, static_cast<long long>(ms));
+  log_dbg("%s[ExpectedValue::fit]%s done, iters=%lld, best=%.6f.at:%d, "
+          "wall_ms=%lld\n",
+          ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET,
+          static_cast<long long>(total_iters_trained_), best_metric_,
+          best_epoch_, static_cast<long long>(ms));
   return loss_log;
 }
 
@@ -467,26 +471,26 @@ double ExpectedValue::evaluate_nll(Loader &dataloader, bool verbose) {
 
     auto fut = sample_batch.future_features.to(semantic_model->device,
                                                semantic_model->dtype, true,
-                                               false); // [B,C,Hf,D]
+                                               false); // [B,C,Hf,Dx]
     auto fmask = sample_batch.future_mask.to(
         semantic_model->device, torch::kFloat32, true, false); // [B,C,Hf]
 
     validate_future_feature_width_(fut, "[ExpectedValue::evaluate_nll]");
-    auto y = select_targets(fut, target_dims_);
+    auto f = select_targets(fut, target_feature_indices_);
     auto o = forward_from_encoding(enc, smask);
 
     const int64_t C = fmask.size(1);
     const int64_t Hf = fmask.size(2);
-    const int64_t Dy = y.size(3);
+    const int64_t Df = f.size(3);
 
     auto w_ch =
         build_channel_weights(C, semantic_model->device, semantic_model->dtype);
     auto w_tau = build_horizon_weights(Hf, semantic_model->device,
                                        semantic_model->dtype);
-    auto w_dim = build_feature_weights(Dy, semantic_model->device,
+    auto w_dim = build_feature_weights(Df, semantic_model->device,
                                        semantic_model->dtype);
 
-    auto ls = loss_obj->compute(o, y, fmask, w_ch, w_tau, w_dim); // scalar
+    auto ls = loss_obj->compute(o, f, fmask, w_ch, w_tau, w_dim); // scalar
 
     const double lval = ls.item().toDouble();
     cum += lval;
@@ -496,8 +500,8 @@ double ExpectedValue::evaluate_nll(Loader &dataloader, bool verbose) {
   const double avg =
       (n > 0) ? (cum / n) : std::numeric_limits<double>::quiet_NaN();
   if (verbose) {
-    log_info("%s[ExpectedValue::eval]%s N=%d avg_nll=%.6f\n",
-             ANSI_COLOR_Magenta, ANSI_COLOR_RESET, n, avg);
+    log_dbg("%s[ExpectedValue::eval]%s N=%d avg_nll=%.6f\n", ANSI_COLOR_Magenta,
+            ANSI_COLOR_RESET, n, avg);
   }
   return avg;
 }

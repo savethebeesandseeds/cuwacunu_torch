@@ -26,14 +26,14 @@ tsiemeneCircuits::tsiemeneCircuits(std::string grammar_text)
   , iParser(iLexer, grammar)
 {
 #ifdef TSIEMENE_CIRCUIT_DEBUG
-  log_info("%s\n", TSIEMENE_CIRCUIT_GRAMMAR_TEXT);
+  log_dbg("%s\n", TSIEMENE_CIRCUIT_GRAMMAR_TEXT);
 #endif
 }
 
 cuwacunu::camahjucunu::tsiemene_circuit_instruction_t
 tsiemeneCircuits::decode(std::string instruction) {
 #ifdef TSIEMENE_CIRCUIT_DEBUG
-  log_info("Request to decode tsiemeneCircuits\n");
+  log_dbg("Request to decode tsiemeneCircuits\n");
 #endif
   LOCK_GUARD(current_mutex);
 
@@ -44,7 +44,7 @@ tsiemeneCircuits::decode(std::string instruction) {
 #ifdef TSIEMENE_CIRCUIT_DEBUG
   std::ostringstream oss;
   printAST(actualAST.get(), true, 2, oss);
-  log_info("Parsed AST:\n%s\n", oss.str().c_str());
+  log_dbg("Parsed AST:\n%s\n", oss.str().c_str());
 #endif
 
   cuwacunu::camahjucunu::tsiemene_circuit_instruction_t current;

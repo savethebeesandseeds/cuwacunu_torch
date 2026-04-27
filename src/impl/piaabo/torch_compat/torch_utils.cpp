@@ -89,20 +89,20 @@ void print_tensor_info(const torch::Tensor& tensor, const char *label) {
   torch::NoGradGuard guard;          // never track this in autograd
   auto dtmp = tensor.detach().cpu();       // break the graph, move to CPU
 
-  log_info("Tensor info - %s:\n", label);
+  log_dbg("Tensor info - %s:\n", label);
   validate_tensor(dtmp, "print_tensor_info");
 
   // Print basic metadata
-  log_info("\tTensor sizes: (");
+  log_dbg("\tTensor sizes: (");
   for (auto s : dtmp.sizes()) fprintf(LOG_FILE, "%ld, ", s);
   fprintf(LOG_FILE, ")\n");
-  log_info("\tData type: %s\n", dtmp.dtype().name().data());
-  log_info("\tDevice: %s\n", dtmp.device().str().c_str());
-  log_info("\tRequires gradient: %s\n", dtmp.requires_grad() ? "Yes" : "No");
+  log_dbg("\tData type: %s\n", dtmp.dtype().name().data());
+  log_dbg("\tDevice: %s\n", dtmp.device().str().c_str());
+  log_dbg("\tRequires gradient: %s\n", dtmp.requires_grad() ? "Yes" : "No");
 
   // only print values if small _and_ float
   if (dtmp.numel() <= 25 && dtmp.scalar_type() == torch::kFloat32) {
-    log_info("\tValues: ");
+    log_dbg("\tValues: ");
 
     // 1) Copy out to CPU and ensure contiguous layout
     auto tmp = dtmp;

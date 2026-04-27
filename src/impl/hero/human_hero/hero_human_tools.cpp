@@ -31,6 +31,7 @@
 #include "hero/human_hero/human_attestation.h"
 #include "hero/marshal_hero/marshal_session.h"
 #include "iinuji/ncurses/iinuji_app_ncurses.h"
+#include "piaabo/dlogs.h"
 
 namespace cuwacunu {
 namespace hero {

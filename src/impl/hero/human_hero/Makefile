@@ -16,6 +16,10 @@ $(eval $(call BUILD_OBJ_INC, common, hero_human_tools, hero_human_tools, $(NCURS
 HERO_HUMAN_TOOLS_PARTS := \
   $(HERE_PATH)/hero_human_tools_private_core.cpp \
   $(HERE_PATH)/hero_human_tools_private_ncurses.cpp \
+  $(HERE_PATH)/hero_human_tools_private_ncurses_draw.cpp \
+  $(HERE_PATH)/hero_human_tools_private_ncurses_dialogs.cpp \
+  $(HERE_PATH)/hero_human_tools_private_ncurses_render.cpp \
+  $(HERE_PATH)/hero_human_tools_private_ncurses_console.cpp \
   $(HERE_PATH)/hero_human_tools_private_ops.cpp \
   $(HERE_PATH)/hero_human_tools_private_handlers.cpp \
   $(HERE_PATH)/hero_human_tools_public.cpp

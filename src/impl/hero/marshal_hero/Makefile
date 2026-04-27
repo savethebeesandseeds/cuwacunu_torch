@@ -18,6 +18,10 @@ HERO_MARSHAL_TOOLS_PARTS := \
   $(HERE_PATH)/hero_marshal_tools_private_session.cpp \
   $(HERE_PATH)/hero_marshal_tools_private_objective.cpp \
   $(HERE_PATH)/hero_marshal_tools_private_checkpoints.cpp \
+  $(HERE_PATH)/hero_marshal_tools_private_checkpoints_session.cpp \
+  $(HERE_PATH)/hero_marshal_tools_private_checkpoints_human.cpp \
+  $(HERE_PATH)/hero_marshal_tools_private_checkpoints_decision.cpp \
+  $(HERE_PATH)/hero_marshal_tools_private_checkpoints_inputs.cpp \
   $(HERE_PATH)/hero_marshal_tools_private_runner.cpp \
   $(HERE_PATH)/hero_marshal_tools_private_handlers.cpp \
   $(HERE_PATH)/hero_marshal_tools_public.cpp

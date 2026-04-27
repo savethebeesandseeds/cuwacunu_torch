@@ -16,7 +16,7 @@
 #include "iitepi/runtime_binding/runtime_binding_space_t.h"
 
 #include "wikimyei/inference/mdn/mixture_density_network.h"
-#include "wikimyei/representation/VICReg/vicreg_4d.h"
+#include "wikimyei/representation/VICReg/vicreg_rank4.h"
 
 int main() {
   // torch::autograd::AnomalyMode::set_enabled(true);
@@ -44,8 +44,9 @@ int main() {
   // -----------------------------------------------------
   // Test the module
   // -----------------------------------------------------
-  cuwacunu::wikimyei::mdn::MdnModel m(/*De=*/32, /*Dy=*/2, /*C=*/3, /*Hf=*/4,
+  cuwacunu::wikimyei::mdn::MdnModel m(/*De=*/32, /*Df=*/2, /*C=*/3, /*Hf=*/4,
                                       /*K=*/5, /*H=*/64, /*depth=*/2);
+  m->assert_resident_on_device_or_throw("[test_mdn] cpu ctor residency");
   auto enc = torch::randn({8, 32});
   auto out = m->forward_from_encoding(enc);
   TORCH_CHECK(out.log_pi.sizes() == torch::IntArrayRef({8, 3, 4, 5}));
@@ -68,7 +69,7 @@ int main() {
               "[test_mdn] rank-3 encodings must be reduced before MDN");
 
   auto y_expectation =
-      cuwacunu::wikimyei::mdn::mdn_expectation(out);    // [8,3,4,2] = E[Y|X]
+      cuwacunu::wikimyei::mdn::mdn_expectation(out);    // [8,3,4,2] = E[F|X]
   auto y_mode = cuwacunu::wikimyei::mdn::mdn_mode(out); // [8,3,4,2]
   auto y_sample =
       cuwacunu::wikimyei::mdn::mdn_sample_one_step(out); // [8,3,4,2]
@@ -79,8 +80,8 @@ int main() {
   TORCH_CHECK(torch::isfinite(y_sample).all().item<bool>(),
               "[test_mdn] sample contains non-finite values");
 
-  cuwacunu::wikimyei::mdn::MdnNLLLoss loss(
-      cuwacunu::jkimyei::jk_setup("tsi.wikimyei.inference.mdn", contract_hash));
+  cuwacunu::wikimyei::mdn::MdnNLLLoss loss(cuwacunu::jkimyei::jk_setup(
+      "tsi.wikimyei.inference.expected_value.mdn", contract_hash));
   auto L = loss.compute(out, y_expectation); // scalar
   TORCH_CHECK(torch::isfinite(L).all().item<bool>(),
               "[test_mdn] loss contains non-finite values");
@@ -110,6 +111,24 @@ int main() {
   }
   TORCH_CHECK(threw_bad_target,
               "[test_mdn] expected bad target shape to throw");
+
+  if (torch::cuda::is_available()) {
+    const torch::Device cuda_device(torch::kCUDA);
+    cuwacunu::wikimyei::mdn::MdnModel m_cuda(
+        /*De=*/32, /*Df=*/2, /*C=*/3, /*Hf=*/4, /*K=*/5, /*H=*/64,
+        /*depth=*/2, torch::kFloat32, cuda_device, /*display_model=*/false);
+    m_cuda->verify_ready_on_device_or_throw("[test_mdn] cuda ctor probe");
+    auto enc_cuda = torch::randn(
+        {2, 32},
+        torch::TensorOptions().dtype(torch::kFloat32).device(cuda_device));
+    auto out_cuda = m_cuda->forward_from_encoding(enc_cuda);
+    TORCH_CHECK(out_cuda.log_pi.is_cuda() && out_cuda.mu.is_cuda() &&
+                    out_cuda.sigma.is_cuda(),
+                "[test_mdn] CUDA MDN outputs must stay on CUDA");
+    auto expectation_cuda = cuwacunu::wikimyei::mdn::mdn_expectation(out_cuda);
+    TORCH_CHECK(expectation_cuda.is_cuda(),
+                "[test_mdn] CUDA MDN expectation must stay on CUDA");
+  }
 
   return 0;
 }

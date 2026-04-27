@@ -24,7 +24,7 @@ struct expected_value_network_design_spec_t {
 
   int encoding_dims{0};
   std::string encoding_temporal_reducer{"last_valid"};
-  std::vector<int> target_dims{};
+  std::vector<int> target_feature_indices{};
   int mixture_comps{0};
   int features_hidden{0};
   int residual_depth{0};
@@ -82,8 +82,12 @@ split_csv_like(const std::string &s) {
                                                 std::vector<int> *out) {
   if (out == nullptr)
     return false;
+  std::string list = trim_ascii_copy(s);
+  if (list.size() >= 2 && list.front() == '[' && list.back() == ']') {
+    list = trim_ascii_copy(list.substr(1, list.size() - 2));
+  }
   std::vector<int> parsed{};
-  for (const auto &tok : split_csv_like(s)) {
+  for (const auto &tok : split_csv_like(list)) {
     int v = 0;
     if (!parse_int_strict(tok, &v))
       return false;
@@ -226,26 +230,27 @@ get_required_param(const cuwacunu::camahjucunu::network_design_node_t &node,
     out->encoding_temporal_reducer = raw;
   }
 
-  if (!get_required_param(target, "target_dims", &raw) ||
-      !parse_int_list_strict(raw, &out->target_dims)) {
+  if (!get_required_param(target, "target_feature_indices", &raw) ||
+      !parse_int_list_strict(raw, &out->target_feature_indices)) {
     if (error)
-      *error = "FUTURE_TARGET.target_dims must be a non-empty int list";
+      *error =
+          "FUTURE_TARGET.target_feature_indices must be a non-empty int list";
     return false;
   }
-  for (const int dim : out->target_dims) {
-    if (dim < 0) {
+  for (const int index : out->target_feature_indices) {
+    if (index < 0) {
       if (error)
-        *error = "FUTURE_TARGET.target_dims must be non-negative";
+        *error = "FUTURE_TARGET.target_feature_indices must be non-negative";
       return false;
     }
   }
   {
-    auto sorted_dims = out->target_dims;
-    std::sort(sorted_dims.begin(), sorted_dims.end());
-    if (std::adjacent_find(sorted_dims.begin(), sorted_dims.end()) !=
-        sorted_dims.end()) {
+    auto sorted_indices = out->target_feature_indices;
+    std::sort(sorted_indices.begin(), sorted_indices.end());
+    if (std::adjacent_find(sorted_indices.begin(), sorted_indices.end()) !=
+        sorted_indices.end()) {
       if (error)
-        *error = "FUTURE_TARGET.target_dims must be unique";
+        *error = "FUTURE_TARGET.target_feature_indices must be unique";
       return false;
     }
   }

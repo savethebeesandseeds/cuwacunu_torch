@@ -1,6 +1,6 @@
-#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 #include "hero/hashimyei_hero/hashimyei_driver.h"
 #include "hero/hashimyei_hero/hashimyei_identity.h"
+#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -17,9 +17,11 @@
 
 namespace fs = std::filesystem;
 
-static void require_impl(bool ok, const char* expr, const char* file, int line) {
+static void require_impl(bool ok, const char *expr, const char *file,
+                         int line) {
   if (!ok) {
-    std::cerr << "[TEST FAIL] " << file << ":" << line << "  (" << expr << ")\n";
+    std::cerr << "[TEST FAIL] " << file << ":" << line << "  (" << expr
+              << ")\n";
     std::exit(1);
   }
 }
@@ -37,7 +39,8 @@ static std::string random_suffix() {
 struct temp_dir_t {
   fs::path dir{};
   temp_dir_t() {
-    dir = fs::temp_directory_path() / ("test_hashimyei_report_fragments_" + random_suffix());
+    dir = fs::temp_directory_path() /
+          ("test_hashimyei_report_fragments_" + random_suffix());
     fs::create_directories(dir);
   }
   ~temp_dir_t() {
@@ -51,8 +54,9 @@ struct env_guard_t {
   std::optional<std::string> previous{};
 
   explicit env_guard_t(std::string key_in) : key(std::move(key_in)) {
-    const char* current = std::getenv(key.c_str());
-    if (current != nullptr) previous = std::string(current);
+    const char *current = std::getenv(key.c_str());
+    if (current != nullptr)
+      previous = std::string(current);
   }
 
   ~env_guard_t() {
@@ -67,12 +71,10 @@ struct env_guard_t {
     REQUIRE(setenv(key.c_str(), std::string(value).c_str(), 1) == 0);
   }
 
-  void unset() {
-    REQUIRE(unsetenv(key.c_str()) == 0);
-  }
+  void unset() { REQUIRE(unsetenv(key.c_str()) == 0); }
 };
 
-static void write_text_file(const fs::path& path, const std::string& payload) {
+static void write_text_file(const fs::path &path, const std::string &payload) {
   std::error_code ec;
   fs::create_directories(path.parent_path(), ec);
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -81,20 +83,21 @@ static void write_text_file(const fs::path& path, const std::string& payload) {
   REQUIRE(static_cast<bool>(out));
 }
 
-static std::string read_text_file(const fs::path& path) {
+static std::string read_text_file(const fs::path &path) {
   std::ifstream in(path, std::ios::binary);
   REQUIRE(static_cast<bool>(in));
-  std::string out((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  std::string out((std::istreambuf_iterator<char>(in)),
+                  std::istreambuf_iterator<char>());
   return out;
 }
 
-static void test_manifest_roundtrip(const fs::path& store_root) {
+static void test_manifest_roundtrip(const fs::path &store_root) {
   const fs::path report_fragment_dir =
-      store_root / "tsi" / "wikimyei" / "representation" / "vicreg" /
-      "0x00ab";
+      store_root / "tsi" / "wikimyei" / "representation" / "vicreg" / "0x00ab";
 
   cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
-  manifest.family_canonical_path = "tsi.wikimyei.representation.vicreg";
+  manifest.family_canonical_path =
+      "tsi.wikimyei.representation.encoding.vicreg";
   manifest.family = "representation";
   manifest.model = "vicreg";
   manifest.report_fragment_id = "0x00AB";
@@ -104,23 +107,30 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   manifest.files.push_back({"weights.init.network_analytics.lls", 25});
 
   std::string error;
-  REQUIRE(cuwacunu::hashimyei::write_report_fragment_manifest(report_fragment_dir, manifest, &error));
-  REQUIRE(cuwacunu::hashimyei::report_fragment_manifest_exists(report_fragment_dir));
+  REQUIRE(cuwacunu::hashimyei::write_report_fragment_manifest(
+      report_fragment_dir, manifest, &error));
+  REQUIRE(cuwacunu::hashimyei::report_fragment_manifest_exists(
+      report_fragment_dir));
 
-  const fs::path manifest_path = cuwacunu::hashimyei::report_fragment_manifest_path(report_fragment_dir);
+  const fs::path manifest_path =
+      cuwacunu::hashimyei::report_fragment_manifest_path(report_fragment_dir);
   REQUIRE(manifest_path.filename() == "manifest.v2.kv");
 
   const std::string payload = read_text_file(manifest_path);
-  REQUIRE(payload.find("schema=hashimyei.report_fragment.manifest.v2\n") != std::string::npos);
+  REQUIRE(payload.find("schema=hashimyei.report_fragment.manifest.v2\n") !=
+          std::string::npos);
   REQUIRE(payload.find("report_fragment_id=0x00ab\n") != std::string::npos);
   REQUIRE(payload.find("file_count=3\n") != std::string::npos);
   REQUIRE(payload.find("file_0000_path=metadata.enc\n") != std::string::npos);
-  REQUIRE(payload.find("file_0001_path=weights.init.network_analytics.lls\n") != std::string::npos);
-  REQUIRE(payload.find("file_0002_path=weights.init.pt\n") != std::string::npos);
+  REQUIRE(payload.find("file_0001_path=weights.init.network_analytics.lls\n") !=
+          std::string::npos);
+  REQUIRE(payload.find("file_0002_path=weights.init.pt\n") !=
+          std::string::npos);
   REQUIRE(payload.find("file_0002_size=100\n") != std::string::npos);
 
   cuwacunu::hashimyei::report_fragment_manifest_t parsed{};
-  REQUIRE(cuwacunu::hashimyei::read_report_fragment_manifest(report_fragment_dir, &parsed, &error));
+  REQUIRE(cuwacunu::hashimyei::read_report_fragment_manifest(
+      report_fragment_dir, &parsed, &error));
   REQUIRE(parsed.schema == "hashimyei.report_fragment.manifest.v2");
   REQUIRE(parsed.family_canonical_path == manifest.family_canonical_path);
   REQUIRE(parsed.family == manifest.family);
@@ -131,10 +141,11 @@ static void test_manifest_roundtrip(const fs::path& store_root) {
   REQUIRE(parsed.files[1].path == "weights.init.network_analytics.lls");
   REQUIRE(parsed.files[2].path == "weights.init.pt");
   REQUIRE(parsed.files[2].size == 100);
-  REQUIRE(cuwacunu::hashimyei::report_fragment_manifest_has_file(parsed, "weights.init.pt"));
+  REQUIRE(cuwacunu::hashimyei::report_fragment_manifest_has_file(
+      parsed, "weights.init.pt"));
 }
 
-static void test_store_root_and_catalog_defaults(const fs::path& store_root) {
+static void test_store_root_and_catalog_defaults(const fs::path &store_root) {
   env_guard_t root_env("CUWACUNU_HASHIMYEI_STORE_ROOT");
   env_guard_t secret_env("CUWACUNU_HASHIMYEI_META_SECRET");
 
@@ -152,7 +163,7 @@ static void test_store_root_and_catalog_defaults(const fs::path& store_root) {
   (void)cuwacunu::hashimyei::metadata_secret();
 }
 
-static void test_discovery_rules(const fs::path& store_root) {
+static void test_discovery_rules(const fs::path &store_root) {
   env_guard_t root_env("CUWACUNU_HASHIMYEI_STORE_ROOT");
   root_env.set(store_root.string());
 
@@ -161,14 +172,17 @@ static void test_discovery_rules(const fs::path& store_root) {
   std::error_code ec;
   fs::create_directories(base, ec);
 
-  const auto create_manifest = [&](const fs::path& report_fragment_dir, std::string_view hash) {
+  const auto create_manifest = [&](const fs::path &report_fragment_dir,
+                                   std::string_view hash) {
     cuwacunu::hashimyei::report_fragment_manifest_t manifest{};
-    manifest.family_canonical_path = "tsi.wikimyei.representation.vicreg";
+    manifest.family_canonical_path =
+        "tsi.wikimyei.representation.encoding.vicreg";
     manifest.family = "representation";
     manifest.model = "vicreg";
     manifest.report_fragment_id = std::string(hash);
     std::string error;
-    REQUIRE(cuwacunu::hashimyei::write_report_fragment_manifest(report_fragment_dir, manifest, &error));
+    REQUIRE(cuwacunu::hashimyei::write_report_fragment_manifest(
+        report_fragment_dir, manifest, &error));
   };
 
   const fs::path manifest_only = base / "0x00AA";
@@ -194,30 +208,29 @@ static void test_discovery_rules(const fs::path& store_root) {
   write_text_file(invalid_hex / "weights.init.pt", "ignored");
 
   const auto discovered =
-      cuwacunu::hashimyei::discover_created_report_fragments_for("representation", "vicreg");
+      cuwacunu::hashimyei::discover_created_report_fragments_for(
+          "representation", "vicreg");
   REQUIRE(discovered.size() == 3);
-  const auto find_entry =
-      [&](std::string_view hash)
-      -> const cuwacunu::hashimyei::report_fragment_identity_t* {
+  const auto find_entry = [&](std::string_view hash)
+      -> const cuwacunu::hashimyei::report_fragment_identity_t * {
     const auto it = std::find_if(
-        discovered.begin(),
-        discovered.end(),
-        [&](const cuwacunu::hashimyei::report_fragment_identity_t& item) {
+        discovered.begin(), discovered.end(),
+        [&](const cuwacunu::hashimyei::report_fragment_identity_t &item) {
           return item.hashimyei == hash;
         });
     REQUIRE(it != discovered.end());
     return &(*it);
   };
 
-  const auto* manifest_only_entry = find_entry("0x00aa");
-  const auto* weights_only_entry = find_entry("0x00ab");
-  const auto* manifest_and_weights_entry = find_entry("0x00ac");
+  const auto *manifest_only_entry = find_entry("0x00aa");
+  const auto *weights_only_entry = find_entry("0x00ab");
+  const auto *manifest_and_weights_entry = find_entry("0x00ac");
 
   REQUIRE(manifest_only_entry->weight_files.empty());
   REQUIRE(weights_only_entry->weight_files.size() == 1);
   REQUIRE(manifest_and_weights_entry->weight_files.size() == 2);
   REQUIRE(manifest_only_entry->canonical_path ==
-          "tsi.wikimyei.representation.vicreg.0x00aa");
+          "tsi.wikimyei.representation.encoding.vicreg.0x00aa");
 }
 
 static void test_driver_registry_ordering() {
@@ -226,8 +239,9 @@ static void test_driver_registry_ordering() {
   const std::string b = "tsi.test.driver.b." + suffix;
   const std::string c = "tsi.test.driver.c." + suffix;
 
-  const auto cb = [](const cuwacunu::hashimyei::report_fragment_action_context_t&,
-                     std::string*) { return true; };
+  const auto cb =
+      [](const cuwacunu::hashimyei::report_fragment_action_context_t &,
+         std::string *) { return true; };
   std::string error;
 
   REQUIRE(cuwacunu::hashimyei::register_report_fragment_driver(
@@ -260,8 +274,8 @@ static void test_identity_helper_regressions() {
                                                        &normalized_hashimyei));
   REQUIRE(normalized_hashimyei == "0x00ab");
 
-  hashimyei_t ok = cuwacunu::hashimyei::make_identity(
-      hashimyei_kind_e::WAVE, 9, std::string(64, 'a'));
+  hashimyei_t ok = cuwacunu::hashimyei::make_identity(hashimyei_kind_e::WAVE, 9,
+                                                      std::string(64, 'a'));
   std::string error;
   REQUIRE(cuwacunu::hashimyei::validate_hashimyei(ok, &error));
 

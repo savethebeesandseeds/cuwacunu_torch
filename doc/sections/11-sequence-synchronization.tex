@@ -1,0 +1,77 @@
+\section{Sequence Synchronization Procedure}
+\label{app:sequence-synchronization}
+
+This appendix describes how raw per-channel CSV data become the synchronized
+multi-channel tensors $\tensor{x}_{u\,v}(t)$ and $\tensor{f}(t)$ for an edge
+$(u,v)$.  The important point is
+that synchronization happens in two stages: first each channel is regularized
+onto its own key lattice, and only then are channels assembled together around
+a common anchor key.
+
+\subsection{Per-Channel Lattice Regularization}
+\label{appsub:per-channel-lattice-regularization}
+
+Each source channel is processed independently before batching.  The CSV reader
+first infers a regular key increment from the source file, then scans the file
+in nondecreasing key order.  During that pass:
+\begin{enumerate}
+\item Duplicate or near-duplicate keys are collapsed by keeping the latest
+record.
+\item If the gap to the next valid record spans several regular increments, the
+current anchor record is emitted and the missing intermediate key values are
+filled with null records.
+\item For kline data, malformed key values may be rewritten through the
+channel-specific lattice-recovery logic if they can be brought back onto the
+regular grid; otherwise the file is rejected.
+\end{enumerate}
+
+The result is one regularized sequence per channel.  This step does
+\emph{not} force different channels to share the same timestamps internally;
+it only ensures that each channel is self-consistent on its own lattice.
+
+\subsection{Anchor-Based Multi-Channel Sampling}
+\label{appsub:anchor-based-multi-channel-sampling}
+
+After regularization, a sample is built around a common anchor key $t$.  For
+each channel separately, the dataloader selects the last record whose key is
+less than or equal to $t$.  That selected record is the terminal record of the
+input window on that channel.  The future window on the same channel begins at
+the first record whose key is strictly greater than $t$.
+
+Therefore the synchronization variable shared across channels is the anchor key
+$t$ itself, not a row-by-row timestamp identity.  Two channels may have
+different actual \field{close\_time} values at the same tensor position, as
+long as those positions play the same role relative to the anchor key.
+
+\subsection{Input and Future Windows}
+\label{appsub:input-and-future-windows}
+
+For each edge and channel, the input tensor $\tensor{x}_{u\,v}(t)$ is
+back-aligned to the anchor:
+it contains the past sequence ending at the last available record not after
+$t$.  The future tensor $\tensor{f}(t)$ is forward-aligned from the same anchor:
+it contains the sequence starting at the first available record after $t$.
+
+At the concatenated-dataset level, anchor keys are restricted to the
+intersection of the valid per-channel sampling domains.  This guarantees that
+every retained anchor admits both an input window and a future window for every
+active channel.
+
+\subsection{Padding and Masks}
+\label{appsub:padding-and-masks}
+
+Different channels may contribute different native input and future lengths.
+When channels are stacked into one sample:
+\begin{enumerate}
+\item Past windows are padded at the front, so the last valid input position
+stays attached to the channel-specific anchor record.
+\item Future windows are padded at the end, so the first valid future position
+stays attached to the first channel record after the anchor.
+\item The masks $\tensor{m}_x(t)$ and $\tensor{m}_f(t)$ mark which tensor positions
+carry real records and which positions are only structural padding or invalid
+nulls inherited from the lattice regularization step.
+\end{enumerate}
+
+This is why equal tensor indices across channels should be read as equal
+relative positions with respect to the shared anchor key, not as equal raw
+timestamps.

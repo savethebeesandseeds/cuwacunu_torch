@@ -26,8 +26,10 @@ such as `0x00FF`, or the subsystem itself.
     with `wave_contract_binding_t` (`contract`, `wave`, `binding_id`,
     derived binding hash)
   - `hashimyei.component.manifest.v2` (`component.manifest.v2.kv`)
-    with founding DSL source metadata
-    (`founding_dsl_source_path`, `founding_dsl_source_sha256_hex`),
+    with authored component `component_tag` from DSL `TAG`,
+    `instrument_signature`, founding DSL source metadata
+    (`founding_dsl_source_path`,
+    `founding_dsl_source_sha256_hex`),
     explicit contract docking compatibility digest
     (`docking_signature_sha256_hex`), component `lineage_state`, and
     contract-scoped component lineage via the structured `contract_identity`
@@ -49,13 +51,12 @@ such as `0x00FF`, or the subsystem itself.
   `hero.hashimyei.get_founding_dsl_bundle` reads that stored bundle snapshot as
   the canonical founding-bundle surface.
 - `hero.hashimyei.evaluate_contract_compatibility` compares a component
-  manifest against a requested contract using public
-  `docking_signature_sha256_hex`; matching dock means compatible, while
-  assembly and founding contract differences stay in provenance.
-- `hero.hashimyei.update_rank` and `hero.family.rank.v2` are dock-scoped:
-  overlays are keyed by `(family, dock_hash)`, so revisions from different
-  founding contracts can still share one compatibility rank when their public
-  dock matches.
+  manifest against a requested contract using
+  `component_compatibility_sha256_hex`; the full
+  `docking_signature_sha256_hex` remains provenance.
+- `hero.hashimyei.update_rank` and `hero.family.rank.v3` are component
+  compatibility scoped: overlays are keyed by
+  `(family, component_compatibility_sha256_hex)`.
 - catalog `component_lineage` edges now distinguish component founding
   source metadata from stored founding-bundle snapshots through payload kind
   tags.
@@ -70,7 +71,7 @@ such as `0x00FF`, or the subsystem itself.
 
 ## Typical usage
 - Canonical identity:
-  - `tsi.wikimyei.representation.vicreg.0x0003`
+  - `tsi.wikimyei.representation.encoding.vicreg.0x0003`
 - Report fragment root:
   - `<hashimyei_store_root>/tsi.wikimyei/<family>/<model>/<hashimyei>/...`
   - env override: `CUWACUNU_HASHIMYEI_STORE_ROOT`

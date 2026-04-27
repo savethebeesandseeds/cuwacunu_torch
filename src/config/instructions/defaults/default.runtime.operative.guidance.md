@@ -7,7 +7,7 @@ Rules:
   - `DOCK` is the public compatibility interface
   - `ASSEMBLY` is the concrete contract-owned realization
   - `WAVE` defines runtime policy and required slots
-  - `BIND.MOUNT` chooses the concrete component revision for a run
+  - component revisions are derived from the selected contract and wave slots
   - prefer `component revision` in human-facing language; use `hashimyei`
     mainly for the exact token such as `0x00FF` or for the subsystem name
 - If an objective defines separate reusable validation and untouched test slices, preserve that split in both authored campaigns and your human-facing reasoning. Do not spend untouched test evidence on routine policy iteration when validation evidence is the intended tuning surface.
@@ -21,6 +21,16 @@ Rules:
   only an `ASSEMBLY` or policy hypothesis.
 - Use `hero.config.objective.list/read/create/replace/delete` for objective-local truth-source files under `objective_root`.
 - Use `hero.config.temp.list/read/create/replace/delete` for temporary instruction files under `temp_roots` when you need scratch authored surfaces or staging artifacts that should not create shared config backups.
+- Keep objective roots clean. Do not create ad hoc notes, discovery dumps,
+  candidate rosters, log excerpts, scratch tables, temporary reports, or
+  staging copies in the objective bundle just to preserve working context.
+- Use the temp surface for exploratory artifacts, intermediate analysis,
+  proposed-but-not-adopted variants, broad discovery output, and any file that
+  is useful to the current session but not part of the durable objective truth
+  source.
+- Promote a temp artifact into `objective_root` only when it becomes an
+  intentional launch input, objective policy, reusable authored surface, or
+  operator-maintained handoff that future sessions must treat as truth.
 - Use `hero.config.default.list/read/create/replace/delete` only after a governance grant widens shared-default write authority.
 - Prefer `hero.lattice.get_view` / `hero.lattice.get_fact` for semantic evidence before scraping logs or reading files directly.
 - Use Runtime get/tail tools mainly for operational debugging such as launch failures, missing outputs, or abnormal traces.
@@ -85,9 +95,9 @@ Launch guidance:
   an already materialized checkpoint-local edit.
 - Prefer deterministic bind naming, stable ordering, and minimal campaign edits when authoring or revising objective-local run plans.
 - Do not assume bind-level helper variables override fixed wave values. When
-  authoring a new candidate, ensure the selected bind `MOUNT` block and the
-  referenced wave agree on `WIKIMYEI.JKIMYEI.PROFILE_ID` and any other
-  candidate-specific evaluation fields before launch.
+  authoring a new candidate, ensure the selected contract and referenced wave
+  agree on `WIKIMYEI.JKIMYEI.PROFILE_ID` and any other candidate-specific
+  evaluation fields before launch.
 - When a fresh candidate lineage is required, choose an explicitly fresh slot
   range declared by the objective or supported by current evidence; avoid
   incumbent slots and previously occupied historical slots for unrelated
@@ -97,7 +107,7 @@ Launch guidance:
   or move the candidate to a truly fresh slot before concluding that the
   candidate policy itself failed.
 - If a launch fails before meaningful train/eval work starts, such as bind
-  snapshot materialization, missing `MOUNT`, or selector-resolution failure,
+  snapshot materialization or derived component-resolution failure,
   treat it as a launch-graph or authored-surface bug first. Inspect
   `hero.runtime.explain_binding_selection`, the failed runtime stderr, and the
   staged campaign/wave snapshots before guessing that token formatting or model
@@ -134,5 +144,9 @@ Operational hints:
 - Use `hero.config.objective.list` when you need exact relative paths under `objective_root`; do not assume generic names like `campaign.dsl`.
 - Use `hero.config.objective.read` before editing so you have the full current file, its `sha256`, and associated `.man` content when available.
 - Prefer `hero.config.objective.create` when adding a new file, `hero.config.objective.replace` when updating an existing file, and `hero.config.objective.delete` when removing a file.
+- Prefer `hero.config.temp.create/replace/delete` for transient work products
+  even when they mention objective-local names or candidate plans. Temp files
+  can be cited in `memory_note` or final summaries without becoming objective
+  bundle clutter.
 - Prefer `expected_sha256` on `replace` or `delete` after a prior `read`, especially for shared-default edits.
 - Keep replacements minimal and preserve surrounding comments and structure when possible.

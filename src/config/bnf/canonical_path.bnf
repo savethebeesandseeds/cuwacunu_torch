@@ -8,7 +8,7 @@
 <arg_value>              ::= {<arg_char>} ;
 <endpoint_suffix>        ::= "@" <directive_ref> ":" <kind_ref> ;
 
-<directive_ref>          ::= "impulse" | "response" | "loss" | "meta" | "info" | "warn" | "debug" | "error" | "init" | "jkimyei" | "@impulse" | "@response" | "@loss" | "@meta" | "@info" | "@warn" | "@debug" | "@error" | "@init" | "@jkimyei" ;
+<directive_ref>          ::= "impulse" | "response" | "future" | "loss" | "meta" | "info" | "warn" | "debug" | "error" | "init" | "jkimyei" | "@impulse" | "@response" | "@future" | "@loss" | "@meta" | "@info" | "@warn" | "@debug" | "@error" | "@init" | "@jkimyei" ;
 <kind_ref>               ::= "str" | "tensor" | "cargo" | ":str" | ":tensor" | ":cargo" ;
 
 <atom>                   ::= <atom_start> {<atom_char>} ;

@@ -25,14 +25,17 @@ namespace {
 
 [[nodiscard]] std::string trim_ascii_ws_copy(std::string s) {
   std::size_t b = 0;
-  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+    ++b;
   std::size_t e = s.size();
-  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+    --e;
   return s.substr(b, e - b);
 }
 
 [[nodiscard]] std::string lower_copy(std::string s) {
-  for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  for (char &c : s)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   return s;
 }
 
@@ -45,10 +48,13 @@ namespace {
 }
 
 [[nodiscard]] bool is_valid_atom(std::string_view s) {
-  if (s.empty()) return false;
-  if (!std::isalnum(static_cast<unsigned char>(s.front())) && s.front() != '_') return false;
+  if (s.empty())
+    return false;
+  if (!std::isalnum(static_cast<unsigned char>(s.front())) && s.front() != '_')
+    return false;
   for (char c : s) {
-    if (!is_atom_char(c)) return false;
+    if (!is_atom_char(c))
+      return false;
   }
   return true;
 }
@@ -59,7 +65,8 @@ namespace {
   for (char c : s) {
     out.push_back(is_atom_char(c) ? c : '_');
   }
-  if (out.empty()) out = "unknown";
+  if (out.empty())
+    out = "unknown";
   return out;
 }
 
@@ -67,8 +74,8 @@ namespace {
   std::string out;
   out.reserve(s.size());
   for (char c : s) {
-    const bool keep = std::isalnum(static_cast<unsigned char>(c))
-                      || c == '_' || c == '.' || c == '-' || c == ':' || c == '/' || c == '@';
+    const bool keep = std::isalnum(static_cast<unsigned char>(c)) || c == '_' ||
+                      c == '.' || c == '-' || c == ':' || c == '/' || c == '@';
     out.push_back(keep ? c : '_');
   }
   return out.empty() ? std::string("empty") : out;
@@ -89,10 +96,11 @@ namespace {
   return out;
 }
 
-[[nodiscard]] std::string join_dot(const std::vector<std::string>& parts) {
+[[nodiscard]] std::string join_dot(const std::vector<std::string> &parts) {
   std::ostringstream oss;
   for (std::size_t i = 0; i < parts.size(); ++i) {
-    if (i > 0) oss << '.';
+    if (i > 0)
+      oss << '.';
     oss << parts[i];
   }
   return oss.str();
@@ -104,22 +112,30 @@ namespace {
 
 [[nodiscard]] std::string canonical_kind_token(std::string s) {
   s = lower_copy(trim_ascii_ws_copy(std::move(s)));
-  if (s == "str" || s == ":str") return ":str";
-  if (s == "tensor" || s == ":tensor") return ":tensor";
-  if (s == "cargo" || s == ":cargo") return ":cargo";
+  if (s == "str" || s == ":str")
+    return ":str";
+  if (s == "tensor" || s == ":tensor")
+    return ":tensor";
+  if (s == "cargo" || s == ":cargo")
+    return ":cargo";
   return {};
 }
 
 [[nodiscard]] std::string canonical_directive_token(std::string s) {
   const auto id = tsiemene::parse_directive_id(std::move(s));
-  if (id.has_value()) return std::string(*id);
+  if (id.has_value())
+    return std::string(*id);
   return {};
 }
 
-[[nodiscard]] std::optional<tsiemene::PayloadKind> payload_kind_from_token(std::string_view token) {
-  if (token == ":str") return tsiemene::PayloadKind::String;
-  if (token == ":tensor") return tsiemene::PayloadKind::Tensor;
-  if (token == ":cargo") return tsiemene::PayloadKind::Cargo;
+[[nodiscard]] std::optional<tsiemene::PayloadKind>
+payload_kind_from_token(std::string_view token) {
+  if (token == ":str")
+    return tsiemene::PayloadKind::String;
+  if (token == ":tensor")
+    return tsiemene::PayloadKind::Tensor;
+  if (token == ":cargo")
+    return tsiemene::PayloadKind::Cargo;
   return std::nullopt;
 }
 
@@ -129,13 +145,16 @@ struct parsed_endpoint_t {
   std::string kind{};
 };
 
-[[nodiscard]] std::optional<parsed_endpoint_t> parse_endpoint_suffix(std::string text, std::string* error) {
+[[nodiscard]] std::optional<parsed_endpoint_t>
+parse_endpoint_suffix(std::string text, std::string *error) {
   text = trim_ascii_ws_copy(std::move(text));
-  if (text.empty()) return parsed_endpoint_t{};
+  if (text.empty())
+    return parsed_endpoint_t{};
 
   const std::size_t colon = text.rfind(':');
   if (colon == std::string::npos || colon == 0 || colon + 1 >= text.size()) {
-    if (error) *error = "endpoint requires @directive:kind";
+    if (error)
+      *error = "endpoint requires @directive:kind";
     return std::nullopt;
   }
 
@@ -144,11 +163,13 @@ struct parsed_endpoint_t {
   out.directive = canonical_directive_token(text.substr(0, colon));
   out.kind = canonical_kind_token(text.substr(colon + 1));
   if (out.directive.empty()) {
-    if (error) *error = "invalid directive in endpoint suffix";
+    if (error)
+      *error = "invalid directive in endpoint suffix";
     return std::nullopt;
   }
   if (out.kind.empty()) {
-    if (error) *error = "invalid kind in endpoint suffix";
+    if (error)
+      *error = "invalid kind in endpoint suffix";
     return std::nullopt;
   }
   return out;
@@ -161,10 +182,12 @@ struct parsed_core_t {
   bool has_call{false};
 };
 
-[[nodiscard]] std::optional<parsed_core_t> split_core(std::string input, std::string* error) {
+[[nodiscard]] std::optional<parsed_core_t> split_core(std::string input,
+                                                      std::string *error) {
   input = trim_ascii_ws_copy(std::move(input));
   if (input.empty()) {
-    if (error) *error = "empty path expression";
+    if (error)
+      *error = "empty path expression";
     return std::nullopt;
   }
 
@@ -172,11 +195,13 @@ struct parsed_core_t {
   int depth = 0;
   for (std::size_t i = 0; i < input.size(); ++i) {
     const char c = input[i];
-    if (c == '(') ++depth;
+    if (c == '(')
+      ++depth;
     else if (c == ')') {
       --depth;
       if (depth < 0) {
-        if (error) *error = "unbalanced ')'";
+        if (error)
+          *error = "unbalanced ')'";
         return std::nullopt;
       }
     } else if (c == '@' && depth == 0) {
@@ -184,7 +209,8 @@ struct parsed_core_t {
     }
   }
   if (depth != 0) {
-    if (error) *error = "unbalanced parentheses";
+    if (error)
+      *error = "unbalanced parentheses";
     return std::nullopt;
   }
 
@@ -199,7 +225,8 @@ struct parsed_core_t {
   if (lp == std::string::npos) {
     out.path_text = trim_ascii_ws_copy(std::move(core));
     if (out.path_text.empty()) {
-      if (error) *error = "missing base path";
+      if (error)
+        *error = "missing base path";
       return std::nullopt;
     }
     return out;
@@ -208,7 +235,8 @@ struct parsed_core_t {
   int call_depth = 0;
   std::size_t rp = std::string::npos;
   for (std::size_t i = lp; i < core.size(); ++i) {
-    if (core[i] == '(') ++call_depth;
+    if (core[i] == '(')
+      ++call_depth;
     else if (core[i] == ')') {
       --call_depth;
       if (call_depth == 0) {
@@ -218,13 +246,15 @@ struct parsed_core_t {
     }
   }
   if (rp == std::string::npos) {
-    if (error) *error = "missing ')' for call suffix";
+    if (error)
+      *error = "missing ')' for call suffix";
     return std::nullopt;
   }
 
   const std::string trailing = trim_ascii_ws_copy(core.substr(rp + 1));
   if (!trailing.empty()) {
-    if (error) *error = "unexpected trailing text after call";
+    if (error)
+      *error = "unexpected trailing text after call";
     return std::nullopt;
   }
 
@@ -232,23 +262,29 @@ struct parsed_core_t {
   out.path_text = trim_ascii_ws_copy(core.substr(0, lp));
   out.args_text = trim_ascii_ws_copy(core.substr(lp + 1, rp - lp - 1));
   if (out.path_text.empty()) {
-    if (error) *error = "missing callable path";
+    if (error)
+      *error = "missing callable path";
     return std::nullopt;
   }
   return out;
 }
 
-[[nodiscard]] bool parse_args(std::string text, std::vector<canonical_path_arg_t>* out, std::string* error) {
-  if (!out) return false;
+[[nodiscard]] bool parse_args(std::string text,
+                              std::vector<canonical_path_arg_t> *out,
+                              std::string *error) {
+  if (!out)
+    return false;
   out->clear();
   text = trim_ascii_ws_copy(std::move(text));
-  if (text.empty()) return true;
+  if (text.empty())
+    return true;
 
   std::size_t pos = 0;
   while (pos <= text.size()) {
     const std::size_t comma = text.find(',', pos);
     const std::string token = trim_ascii_ws_copy(
-        comma == std::string::npos ? text.substr(pos) : text.substr(pos, comma - pos));
+        comma == std::string::npos ? text.substr(pos)
+                                   : text.substr(pos, comma - pos));
     if (!token.empty()) {
       const std::size_t eq = token.find('=');
       canonical_path_arg_t arg{};
@@ -259,21 +295,25 @@ struct parsed_core_t {
         arg.value = trim_ascii_ws_copy(token.substr(eq + 1));
       }
       if (!is_valid_atom(arg.key)) {
-        if (error) *error = "invalid argument key: " + arg.key;
+        if (error)
+          *error = "invalid argument key: " + arg.key;
         return false;
       }
       out->push_back(std::move(arg));
     }
-    if (comma == std::string::npos) break;
+    if (comma == std::string::npos)
+      break;
     pos = comma + 1;
   }
   return true;
 }
 
-[[nodiscard]] std::string canonical_args(const std::vector<canonical_path_arg_t>& args) {
+[[nodiscard]] std::string
+canonical_args(const std::vector<canonical_path_arg_t> &args) {
   std::ostringstream oss;
   for (std::size_t i = 0; i < args.size(); ++i) {
-    if (i > 0) oss << ',';
+    if (i > 0)
+      oss << ',';
     oss << args[i].key;
     if (!args[i].value.empty()) {
       oss << '=' << args[i].value;
@@ -282,35 +322,40 @@ struct parsed_core_t {
   return oss.str();
 }
 
-[[nodiscard]] bool unpack_fused_wikimyei_model_hash(std::vector<std::string>* segs) {
-  if (!segs || segs->size() != 4) return false;
+[[nodiscard]] bool
+unpack_fused_wikimyei_model_hash(std::vector<std::string> *segs) {
+  if (!segs || segs->size() < 4)
+    return false;
   std::string model;
   std::string hash;
-  if (!cuwacunu::hashimyei::split_model_hash_suffix((*segs)[3], &model, &hash)) return false;
-  (*segs)[3] = std::move(model);
+  if (!cuwacunu::hashimyei::split_model_hash_suffix(segs->back(), &model,
+                                                    &hash))
+    return false;
+  segs->back() = std::move(model);
   segs->push_back(std::move(hash));
   return true;
 }
 
-[[nodiscard]] bool canonicalize_segments(std::vector<std::string>* segs,
-                                         std::string* hashimyei,
-                                         std::string* error) {
-  if (!segs || !hashimyei) return false;
+[[nodiscard]] bool canonicalize_segments(std::vector<std::string> *segs,
+                                         std::string *hashimyei,
+                                         std::string *error) {
+  if (!segs || !hashimyei)
+    return false;
   if (segs->empty()) {
-    if (error) *error = "missing path segments";
+    if (error)
+      *error = "missing path segments";
     return false;
   }
 
-  for (const auto& s : *segs) {
+  for (const auto &s : *segs) {
     if (!is_valid_atom(s)) {
-      if (error) *error = "invalid path segment: " + s;
+      if (error)
+        *error = "invalid path segment: " + s;
       return false;
     }
   }
 
-  if (segs->size() >= 3 &&
-      (*segs)[0] == "tsi" &&
-      (*segs)[1] == "wave" &&
+  if (segs->size() >= 3 && (*segs)[0] == "tsi" && (*segs)[1] == "wave" &&
       (*segs)[2] == "generator") {
     if (error) {
       *error =
@@ -318,32 +363,29 @@ struct parsed_core_t {
     }
     return false;
   }
-  if (segs->size() >= 4 &&
-      (*segs)[0] == "tsi" &&
-      (*segs)[1] == "wikimyei" &&
-      (*segs)[2] == "wave" &&
-      (*segs)[3] == "generator") {
+  if (segs->size() >= 4 && (*segs)[0] == "tsi" && (*segs)[1] == "wikimyei" &&
+      (*segs)[2] == "wave" && (*segs)[3] == "generator") {
     if (error) {
       *error = "legacy alias 'tsi.wikimyei.wave.generator' is removed; use "
                "'campaign.wave'";
     }
     return false;
   }
-  if (segs->size() >= 3 &&
-      (*segs)[0] == "tsi" &&
-      (*segs)[1] == "wikimyei" &&
+  if (segs->size() >= 3 && (*segs)[0] == "tsi" && (*segs)[1] == "wikimyei" &&
       (*segs)[2] == "source") {
-    if (error) *error = "legacy namespace 'tsi.wikimyei.source.*' is removed; use 'tsi.source.*'";
+    if (error)
+      *error = "legacy namespace 'tsi.wikimyei.source.*' is removed; use "
+               "'tsi.source.*'";
     return false;
   }
-  if (segs->size() >= 4 &&
-      (*segs)[0] == "tsi" &&
-      (*segs)[1] == "probe" &&
+  if (segs->size() >= 4 && (*segs)[0] == "tsi" && (*segs)[1] == "probe" &&
       (*segs)[2] == "representation" &&
       (*segs)[3] == "transfer_matrix_evaluation") {
     if (error) {
-      *error = "legacy family 'tsi.probe.representation.transfer_matrix_evaluation' is removed; "
-               "transfer-matrix evaluation is vicreg-owned runtime reporting";
+      *error =
+          "legacy family 'tsi.probe.representation.transfer_matrix_evaluation' "
+          "is removed; "
+          "transfer-matrix evaluation is vicreg-owned runtime reporting";
     }
     return false;
   }
@@ -352,11 +394,13 @@ struct parsed_core_t {
   const bool root_is_iinuji = (*segs)[0] == "iinuji";
   const bool root_is_campaign = (*segs)[0] == "campaign";
   if (!root_is_tsi && !root_is_iinuji && !root_is_campaign) {
-    if (error) *error = "path root must be 'tsi', 'campaign', or 'iinuji'";
+    if (error)
+      *error = "path root must be 'tsi', 'campaign', or 'iinuji'";
     return false;
   }
   if (segs->size() >= 2 && root_is_tsi && (*segs)[1] == "iinuji") {
-    if (error) *error = "tsi.iinuji.* is not supported; use iinuji.*";
+    if (error)
+      *error = "tsi.iinuji.* is not supported; use iinuji.*";
     return false;
   }
   if (segs->size() >= 2 && root_is_tsi && (*segs)[1] == "wave") {
@@ -380,62 +424,34 @@ struct parsed_core_t {
 
   if ((*segs)[1] == "wikimyei") {
     if (!root_is_tsi) {
-      if (error) *error = "wikimyei paths must be rooted at tsi.wikimyei";
+      if (error)
+        *error = "wikimyei paths must be rooted at tsi.wikimyei";
       return false;
     }
     if (segs->size() == 2 || segs->size() == 3) {
       return true;
     }
-    if (segs->size() < 4) {
-      if (error) *error = "tsi.wikimyei path requires family and model";
-      return false;
-    }
-    if (segs->size() == 4) {
-      if (!unpack_fused_wikimyei_model_hash(segs)) {
-        if (error) {
-          *error =
-              "tsi.wikimyei path requires explicit hashimyei suffix "
-              "(expected tsi.wikimyei.<family>.<model>.<hashimyei>)";
-        }
-        return false;
-      }
-    } else if (segs->size() != 5) {
-      if (error) *error = "tsi.wikimyei path accepts family.model.hashimyei";
-      return false;
+
+    if (unpack_fused_wikimyei_model_hash(segs)) {
+      // Compact syntax: <registered-component>_0xNNNN normalizes to
+      // <registered-component>.0xNNNN, including deeper wikimyei paths such as
+      // representation.encoding.vicreg.
+      // Registered TSI type validation below still decides whether the
+      // resulting family is legal.
     }
 
-    *hashimyei = (*segs)[4];
-    if (*hashimyei == "default") {
-      if (error) {
-        *error =
-            "legacy hashimyei alias 'default' is removed; "
-            "use explicit hex hashimyei id (for example 0x0000)";
-      }
-      return false;
-    }
-    if (!cuwacunu::hashimyei::is_hex_hash_name(*hashimyei)) {
-      if (error) {
-        *error =
-            "invalid hashimyei id; expected explicit hex form 0x<hex>";
-      }
-      return false;
-    }
-  }
-
-  if (root_is_tsi && segs->size() >= 2) {
     const std::string maybe_hash = segs->back();
     if (maybe_hash == "default") {
       std::vector<std::string> base = *segs;
       base.pop_back();
       const auto maybe_type = tsiemene::parse_tsi_type_id(join_dot(base));
       if (maybe_type.has_value()) {
-        const auto* type_desc = tsiemene::find_tsi_type(*maybe_type);
-        if (type_desc &&
-            type_desc->instance_policy ==
-                tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+        const auto *type_desc = tsiemene::find_tsi_type(*maybe_type);
+        if (type_desc && type_desc->instance_policy ==
+                             tsiemene::TsiInstancePolicy::HashimyeiInstances) {
           if (error) {
-            *error =
-                "legacy hashimyei alias 'default' is removed; use explicit hex hashimyei id";
+            *error = "legacy hashimyei alias 'default' is removed; "
+                     "use explicit hex hashimyei id (for example 0x0000)";
           }
           return false;
         }
@@ -447,10 +463,9 @@ struct parsed_core_t {
       base.pop_back();
       const auto maybe_type = tsiemene::parse_tsi_type_id(join_dot(base));
       if (maybe_type.has_value()) {
-        const auto* type_desc = tsiemene::find_tsi_type(*maybe_type);
-        if (type_desc &&
-            type_desc->instance_policy ==
-                tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+        const auto *type_desc = tsiemene::find_tsi_type(*maybe_type);
+        if (type_desc && type_desc->instance_policy ==
+                             tsiemene::TsiInstancePolicy::HashimyeiInstances) {
           *hashimyei = maybe_hash;
           return true;
         }
@@ -459,13 +474,67 @@ struct parsed_core_t {
 
     const auto maybe_exact_type = tsiemene::parse_tsi_type_id(join_dot(*segs));
     if (maybe_exact_type.has_value()) {
-      const auto* type_desc = tsiemene::find_tsi_type(*maybe_exact_type);
-      if (type_desc &&
-          type_desc->instance_policy ==
-              tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+      const auto *type_desc = tsiemene::find_tsi_type(*maybe_exact_type);
+      if (type_desc && type_desc->instance_policy ==
+                           tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+        if (error) {
+          *error = "tsi.wikimyei path requires explicit hashimyei suffix "
+                   "(expected " +
+                   join_dot(*segs) + ".0x<hex>)";
+        }
+        return false;
+      }
+      return true;
+    }
+
+    if (error) {
+      *error = "unsupported tsi.wikimyei component path: " + join_dot(*segs);
+    }
+    return false;
+  }
+
+  if (root_is_tsi && segs->size() >= 2) {
+    const std::string maybe_hash = segs->back();
+    if (maybe_hash == "default") {
+      std::vector<std::string> base = *segs;
+      base.pop_back();
+      const auto maybe_type = tsiemene::parse_tsi_type_id(join_dot(base));
+      if (maybe_type.has_value()) {
+        const auto *type_desc = tsiemene::find_tsi_type(*maybe_type);
+        if (type_desc && type_desc->instance_policy ==
+                             tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+          if (error) {
+            *error = "legacy hashimyei alias 'default' is removed; use "
+                     "explicit hex hashimyei id";
+          }
+          return false;
+        }
+      }
+    }
+
+    if (cuwacunu::hashimyei::is_hex_hash_name(maybe_hash)) {
+      std::vector<std::string> base = *segs;
+      base.pop_back();
+      const auto maybe_type = tsiemene::parse_tsi_type_id(join_dot(base));
+      if (maybe_type.has_value()) {
+        const auto *type_desc = tsiemene::find_tsi_type(*maybe_type);
+        if (type_desc && type_desc->instance_policy ==
+                             tsiemene::TsiInstancePolicy::HashimyeiInstances) {
+          *hashimyei = maybe_hash;
+          return true;
+        }
+      }
+    }
+
+    const auto maybe_exact_type = tsiemene::parse_tsi_type_id(join_dot(*segs));
+    if (maybe_exact_type.has_value()) {
+      const auto *type_desc = tsiemene::find_tsi_type(*maybe_exact_type);
+      if (type_desc && type_desc->instance_policy ==
+                           tsiemene::TsiInstancePolicy::HashimyeiInstances) {
         if (error) {
           *error = "tsi path requires explicit hashimyei suffix "
-                   "(expected " + join_dot(*segs) + ".0x<hex>)";
+                   "(expected " +
+                   join_dot(*segs) + ".0x<hex>)";
         }
         return false;
       }
@@ -553,13 +622,11 @@ struct parsed_core_t {
   return out;
 }
 
-}  // namespace
+} // namespace
 
 namespace dsl {
 
-canonicalPath::canonicalPath() {
-  CANONICAL_PATH_GRAMMAR_TEXT.clear();
-}
+canonicalPath::canonicalPath() { CANONICAL_PATH_GRAMMAR_TEXT.clear(); }
 
 canonicalPath::canonicalPath(std::string grammar_text)
     : CANONICAL_PATH_GRAMMAR_TEXT(std::move(grammar_text)) {}
@@ -568,47 +635,53 @@ canonical_path_t canonicalPath::decode(std::string instruction) const {
   return decode_internal(std::move(instruction));
 }
 
-}  // namespace dsl
+} // namespace dsl
 
-canonical_path_t decode_canonical_path(const std::string& text) {
+canonical_path_t decode_canonical_path(const std::string &text) {
   return dsl::canonicalPath().decode(text);
 }
 
-canonical_path_t decode_canonical_path(const std::string& text,
-                                       const std::string& contract_hash) {
+canonical_path_t decode_canonical_path(const std::string &text,
+                                       const std::string &contract_hash) {
   if (contract_hash.empty()) {
-    log_fatal("[canonical_path] missing contract hash for decode_canonical_path\n");
+    log_fatal(
+        "[canonical_path] missing contract hash for decode_canonical_path\n");
   }
   (void)cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
   return dsl::canonicalPath().decode(text);
 }
 
-bool validate_canonical_path(const canonical_path_t& path, std::string* error) {
+bool validate_canonical_path(const canonical_path_t &path, std::string *error) {
   if (!path.ok) {
-    if (error) *error = path.error.empty() ? "invalid path" : path.error;
+    if (error)
+      *error = path.error.empty() ? "invalid path" : path.error;
     return false;
   }
   if (path.canonical_identity.empty()) {
-    if (error) *error = "missing canonical identity";
+    if (error)
+      *error = "missing canonical identity";
     return false;
   }
   if (path.identity_hash_name.empty()) {
-    if (error) *error = "missing identity hash";
+    if (error)
+      *error = "missing identity hash";
     return false;
   }
   if (!path.canonical_endpoint.empty() && path.endpoint_hash_name.empty()) {
-    if (error) *error = "missing endpoint hash";
+    if (error)
+      *error = "missing endpoint hash";
     return false;
   }
   return true;
 }
 
-std::string canonicalize_canonical_path(const canonical_path_t& path) {
-  if (!path.ok) return {};
+std::string canonicalize_canonical_path(const canonical_path_t &path) {
+  if (!path.ok)
+    return {};
   return path.canonical;
 }
 
-canonical_path_t decode_primitive_endpoint_text(const std::string& text) {
+canonical_path_t decode_primitive_endpoint_text(const std::string &text) {
   const std::string t = trim_ascii_ws_copy(text);
   if (starts_with(t, "iinuji.") || starts_with(t, "tsi.")) {
     return decode_canonical_path(t);
@@ -622,10 +695,11 @@ canonical_path_t decode_primitive_endpoint_text(const std::string& text) {
 
   const std::string alias = sanitize_atom(trim_ascii_ws_copy(t.substr(0, at)));
   const std::string endpoint = trim_ascii_ws_copy(t.substr(at + 1));
-  return decode_canonical_path("iinuji.primitive.endpoint." + alias + "@" + endpoint);
+  return decode_canonical_path("iinuji.primitive.endpoint." + alias + "@" +
+                               endpoint);
 }
 
-canonical_path_t decode_primitive_command_text(const std::string& text) {
+canonical_path_t decode_primitive_command_text(const std::string &text) {
   const std::string t = trim_ascii_ws_copy(text);
   if (starts_with(t, "iinuji.") || starts_with(t, "tsi.")) {
     return decode_canonical_path(t);
@@ -638,8 +712,10 @@ canonical_path_t decode_primitive_command_text(const std::string& text) {
   a1 = lower_copy(a1);
   a2 = lower_copy(a2);
 
-  if (a0.empty()) return decode_canonical_path(t);
-  if (a0 == "reload") return decode_canonical_path("iinuji.refresh()");
+  if (a0.empty())
+    return decode_canonical_path(t);
+  if (a0 == "reload")
+    return decode_canonical_path("iinuji.refresh()");
 
   if (a0 == "data" && a1 == "plot") {
     const std::string mode = sanitize_value(a2.empty() ? "seq" : a2);
@@ -649,8 +725,10 @@ canonical_path_t decode_primitive_command_text(const std::string& text) {
     const std::string view = sanitize_value(a1.empty() ? "toggle" : a1);
     return decode_canonical_path("iinuji.view.data.plot(view=" + view + ")");
   }
-  if (a0 == "data") return decode_canonical_path("iinuji.view.data()");
-  if (a0 == "tsi") return decode_canonical_path("iinuji.view.tsi()");
+  if (a0 == "data")
+    return decode_canonical_path("iinuji.view.data()");
+  if (a0 == "tsi")
+    return decode_canonical_path("iinuji.view.tsi()");
 
   return decode_canonical_path(
       "iinuji.primitive.command(raw=" + sanitize_value(t) + ")");
@@ -660,5 +738,5 @@ std::string hashimyei_round_note() {
   return "NOTE(hashimyei): hex identity catalog active (0x0000..0x000f).";
 }
 
-}  // namespace camahjucunu
-}  // namespace cuwacunu
+} // namespace camahjucunu
+} // namespace cuwacunu

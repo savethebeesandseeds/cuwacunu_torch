@@ -204,11 +204,11 @@ catalog state without forcing a store-wide ingest rebuild, so discovery probes
 do not take the exclusive ingest lock. The manifest, founding-bundle, and
 contract-compatibility inspection tools also read the current store snapshot
 directly so docking checks stay lightweight.
-`hero.hashimyei.update_rank` persists a shared `hero.family.rank.v2` runtime
-artifact scoped by `(family, dock_hash)`, returns before/after family
-ordering, and synchronizes the lattice catalog so report views see the same
-dock-compatible rank overlay. Rank exists only after an explicit overlay is
-written;
+`hero.hashimyei.update_rank` persists a shared `hero.family.rank.v3` runtime
+artifact scoped by `(family, component_compatibility_sha256_hex)`, returns
+before/after family ordering, and synchronizes the lattice catalog so report
+views see the same component-compatible rank overlay. Rank exists only after an
+explicit overlay is written;
 it does not bootstrap automatically and does not affect runtime
 component selection or active lineage pointers.
 Component manifests are contract-scoped revisions and carry both
@@ -216,6 +216,12 @@ Component manifests are contract-scoped revisions and carry both
 Hashimyei can distinguish lineage origin from contract docking compatibility.
 They also carry a component `lineage_state` such as `active`, `deprecated`,
 `replaced`, or `tombstone`.
+Runtime status fragments emitted by Hashimyei-backed wikimyei components now
+repeat the target-verification evidence keys directly: `component_tag`,
+`component_compatibility_sha256_hex`, `docking_signature_sha256_hex`,
+`instrument_signature.*`, and `runtime_instrument_signature.*`. This keeps
+Lattice target checks from depending on a fragile manifest join for the common
+audit path.
 For the current VICReg+dataloader contract surface, observation docking remains
 contract-owned even though loader shape is derived from the channel table:
 `C = count(active == true)` and `T = max(seq_length)` over active rows. Runtime
@@ -257,6 +263,10 @@ Use `hero.lattice.get_view` for derived comparisons.
 Normal read tools synchronize the catalog to the current runtime store before
 querying. Use `hero.lattice.refresh(reingest=true)` when you want to force a
 rebuild explicitly.
+The checked-in `default.lattice.target.dsl` is the first target-evidence plan:
+it declares desired contract/source/component TAG obligations, but target
+verification is still a later Lattice capability rather than a Runtime campaign
+scheduler.
 
 Runtime MCP:
 
@@ -302,9 +312,10 @@ Marshal remains the single owner of session lifecycle transitions
 `hero.runtime.start_campaign`.It resolves one declared `BIND` against the
         selected `CONTRACT` and `WAVE`,
     explains which concrete component revision each
-`BIND.MOUNT` would choose,
+contract/wave component binding derives,
     reports the exact selected hashimyei token together
-        with `contract_hash` plus `dock_hash`,
+        with `contract_hash`, `docking_signature_sha256_hex`, and
+        `component_compatibility_sha256_hex`,
     and returns structured failure details when selection cannot be resolved
                 .Use it first when a launch fails before meaningful train /
             eval work starts
@@ -462,8 +473,8 @@ Runtime Hero dispatches immutable campaign snapshots.
   between ordered `RUN` steps instead of waiting for the entire default run list
   to finish.
 - `hero.runtime.explain_binding_selection(binding_id=...)` exposes the same
-  `BIND.MOUNT` resolution path without launching the campaign, so operators can
-  inspect dock-based selection before starting work or debug prelaunch
+  derived component selection path without launching the campaign, so operators can
+  inspect component-compatible selection before starting work or debug prelaunch
   materialization failures.
 - session planning checkpoints are prelaunch plus post-campaign in v1. When
   Marshal launches `launch.mode=run_plan`, those post-campaign checkpoints now
@@ -609,7 +620,11 @@ For runtime report query surfaces:
 Current derived view kinds:
 
 - `entropic_capacity_comparison`: compares `source.data` facts against `embedding.network` facts for one `wave_cursor`, with optional `canonical_path` narrowing and optional `contract_hash` filtering
-- `family_evaluation_report`: serializes runtime reports for one tsiemene family and one `dock_hash`, defaulting to the latest coherent bundle per family member. Optional `wave_cursor` requests a historical context instead. Ranking decisions stay client-owned; this view only exposes the dock-compatible evidence transport.
+- `family_evaluation_report`: serializes runtime reports for one tsiemene
+  family and one `component_compatibility_sha256_hex`, defaulting to the latest
+  coherent bundle per family member. Optional `wave_cursor` requests a
+  historical context instead. Ranking decisions stay client-owned; this view
+  only exposes the component-compatible evidence transport.
 
 ## Dev Reset
 

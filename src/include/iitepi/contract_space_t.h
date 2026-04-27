@@ -3,13 +3,17 @@
   Immutable hash-keyed runtime contract record registry
 \*───────────────────────────────────────────────────────────────────────────*/
 
+#include <cstdint>
 #include <iosfwd>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "camahjucunu/dsl/instrument_signature.h"
 #include "iitepi/config_space_t.h"
 #include "iitepi/network_analytics.h"
 
@@ -78,15 +82,20 @@ struct contract_dependency_manifest_t {
 };
 
 struct contract_component_binding_t {
+  std::string binding_id{};
   std::string canonical_path{};
   std::string tsi_type{};
   std::string hashimyei{};
+  std::string component_tag{};
+  std::string component_compatibility_sha256_hex{};
+  cuwacunu::camahjucunu::instrument_signature_t instrument_signature{};
   std::string tsi_dsl_path{};
   std::string tsi_dsl_sha256_hex{};
 };
 
 struct contract_module_signature_entry_t {
   std::string module_id{};
+  std::string component_tag{};
   std::string module_dsl_path{};
   std::string module_dsl_sha256_hex{};
 };
@@ -96,6 +105,19 @@ struct contract_variable_assignment_t {
   std::string value{};
 };
 
+struct contract_instrument_signature_assignment_t {
+  std::string binding_id{};
+  cuwacunu::camahjucunu::instrument_signature_t signature{};
+};
+
+struct contract_component_compatibility_signature_t {
+  std::string binding_id{};
+  std::string family{};
+  std::string component_tag{};
+  cuwacunu::camahjucunu::instrument_signature_t instrument_signature{};
+  std::string sha256_hex{};
+};
+
 struct contract_docking_surface_entry_t {
   std::string surface_id{};
   std::string canonical_path{};
@@ -103,9 +125,11 @@ struct contract_docking_surface_entry_t {
 };
 
 struct contract_docking_signature_t {
-  std::string schema{"iitepi.contract.docking_signature.v1"};
+  std::string schema{"iitepi.contract.docking_signature.v2"};
   std::vector<std::string> compatible_circuits{};
   std::vector<contract_variable_assignment_t> variable_assignments{};
+  std::vector<contract_instrument_signature_assignment_t>
+      instrument_signatures{};
   std::vector<contract_docking_surface_entry_t> surfaces{};
   std::string sha256_hex{};
 };
@@ -161,6 +185,10 @@ struct contract_record_t {
   contract_record::canonical_path_blob_t canonical_path{};
   contract_record::network_design_blob_t vicreg_network_design{};
   contract_record::network_design_blob_t expected_value_network_design{};
+  std::vector<contract_instrument_signature_assignment_t>
+      instrument_signatures{};
+  std::vector<contract_component_compatibility_signature_t>
+      component_compatibility_signatures{};
   contract_docking_signature_t docking_signature{};
   contract_signature_t signature{};
 
@@ -180,6 +208,25 @@ private:
 
   template <class T> static T from_string(const std::string &s);
 };
+
+[[nodiscard]] inline const contract_component_compatibility_signature_t *
+find_component_compatibility_signature(const contract_record_t &record,
+                                       std::string_view binding_id) noexcept {
+  for (const auto &signature : record.component_compatibility_signatures) {
+    if (signature.binding_id == binding_id)
+      return &signature;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool is_valid_component_tag_token(std::string_view tag) noexcept;
+[[nodiscard]] std::string derive_hashimyei_from_component_compatibility_sha256(
+    std::string_view component_compatibility_sha256_hex);
+[[nodiscard]] std::optional<contract_component_binding_t>
+realize_contract_component_binding_for_runtime(
+    const contract_record_t &record, std::string_view binding_id,
+    const cuwacunu::camahjucunu::instrument_signature_t &runtime_signature,
+    std::string *error = nullptr);
 
 /*───────────────────────────────────────────────────────────────────────────*/
 } // namespace iitepi

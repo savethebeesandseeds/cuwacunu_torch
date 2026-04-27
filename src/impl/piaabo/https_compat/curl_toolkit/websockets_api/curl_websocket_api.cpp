@@ -48,7 +48,7 @@ WebsocketAPI::~WebsocketAPI() = default;
 /* Access point Constructor */
 WebsocketAPI::_init::_init() { WebsocketAPI::init(); }
 void WebsocketAPI::init() {
-  log_info("Initializing WebsocketAPI \n");
+  log_dbg("Initializing WebsocketAPI \n");
 
   /* Trigger a cleanup process at the end */
   std::atexit(WebsocketAPI::finit);
@@ -60,7 +60,7 @@ void WebsocketAPI::init() {
   }
 }
 void WebsocketAPI::finit() {
-  log_info("Finalizing WebsocketAPI \n");
+  log_dbg("Finalizing WebsocketAPI \n");
 
   /* Gracefully finalize active sessions before global cleanup. */
   std::vector<ws_session_id_t> active_sessions;
@@ -296,7 +296,7 @@ ws_session_id_t WebsocketAPI::initialize_curl_ws_session() {
   }
 
   /* Log */
-  log_info("[success] New Websocket session created with session_id[ %d ].\n", new_session_id);
+  log_dbg("[success] New Websocket session created with session_id[ %d ].\n", new_session_id);
 
   return new_session_id;
 }
@@ -366,7 +366,7 @@ bool WebsocketAPI::ws_wait_server_response(const ws_session_id_t session_id, con
     - finalize connection
 */
 void WebsocketAPI::ws_finalize(const ws_session_id_t session_id) {
-  log_info("%s with session_id[ %d ]...\n", "Finalizing WebSocket connection", session_id);
+  log_dbg("%s with session_id[ %d ]...\n", "Finalizing WebSocket connection", session_id);
   /* Validate */
   if (session_id == NULL_CURL_SESSION) {
     log_warn("Unable to finalize NULL session_id[ %d ]; continuing as expected...\n", session_id);
@@ -429,7 +429,7 @@ void WebsocketAPI::ws_finalize(const ws_session_id_t session_id) {
   /* Finalize session maps */
   WebsocketAPI::remove_session(session_id);
 
-  log_info("Finalized WebSocket connection with session_id[ %d ] frame_id[ %s ].\n", 
+  log_dbg("Finalized WebSocket connection with session_id[ %d ] frame_id[ %s ].\n", 
     session_id, close_frame_id.c_str());
 }
 
@@ -529,7 +529,7 @@ ws_session_id_t WebsocketAPI::ws_init(const std::string& url) {
     return NULL_CURL_SESSION;
   }
 
-  log_info("[success] WebSocket connection established, session_id[ %d ]\n", session_id);
+  log_dbg("[success] WebSocket connection established, session_id[ %d ]\n", session_id);
   
   return session_id;
 }
@@ -854,7 +854,7 @@ void WebsocketAPI::curl_loop(const ws_session_id_t session_id) {
 
   /* Curl ran out of jobs */
   CLEAR_SYS_ERR(); /* Curl triggers some errors that are not critical */
-  log_info("[success] curl-thread session_id[ %d ] finished operating.\n", session_id);
+  log_dbg("[success] curl-thread session_id[ %d ] finished operating.\n", session_id);
 
   {
     LOCK_GUARD(*session_mtx);

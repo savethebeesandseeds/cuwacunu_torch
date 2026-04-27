@@ -217,12 +217,12 @@ int main() {
 
     // 5) collate/decollate keeps key tensors and normalization metadata aligned
     {
-      constexpr int64_t C = 2, T = 3, Tf = 2, D = 4;
+      constexpr int64_t C = 2, Hx = 3, Hf = 2, Dx = 4;
       Obs s0{
-        torch::zeros({C, T, D}, torch::kFloat32),
-        torch::ones({C, T}, torch::kBool),
-        torch::ones({C, Tf, D}, torch::kFloat32),
-        torch::ones({C, Tf}, torch::kBool),
+        torch::zeros({C, Hx, Dx}, torch::kFloat32),
+        torch::ones({C, Hx}, torch::kBool),
+        torch::ones({C, Hf, Dx}, torch::kFloat32),
+        torch::ones({C, Hf}, torch::kBool),
         torch::Tensor(),
         /*normalized=*/true,
         torch::tensor({10.0f, 11.0f, 12.0f, 13.0f}, torch::kFloat32),
@@ -231,10 +231,10 @@ int main() {
         torch::tensor({{103, 104}, {103, 104}}, torch::kInt64)
       };
       Obs s1{
-        torch::full({C, T, D}, 2.0f, torch::kFloat32),
-        torch::ones({C, T}, torch::kBool),
-        torch::full({C, Tf, D}, 3.0f, torch::kFloat32),
-        torch::ones({C, Tf}, torch::kBool),
+        torch::full({C, Hx, Dx}, 2.0f, torch::kFloat32),
+        torch::ones({C, Hx}, torch::kBool),
+        torch::full({C, Hf, Dx}, 3.0f, torch::kFloat32),
+        torch::ones({C, Hf}, torch::kBool),
         torch::Tensor(),
         /*normalized=*/true,
         torch::tensor({20.0f, 21.0f, 22.0f, 23.0f}, torch::kFloat32),
@@ -244,23 +244,23 @@ int main() {
       };
 
       auto coll = Obs::collate_fn({s0, s1});
-      assert(coll.features.sizes() == torch::IntArrayRef({2, C, T, D}));
-      assert(coll.past_keys.sizes() == torch::IntArrayRef({2, C, T}));
-      assert(coll.future_keys.sizes() == torch::IntArrayRef({2, C, Tf}));
-      assert(coll.feature_mean.sizes() == torch::IntArrayRef({2, D}));
-      assert(coll.feature_std.sizes() == torch::IntArrayRef({2, D}));
+      assert(coll.features.sizes() == torch::IntArrayRef({2, C, Hx, Dx}));
+      assert(coll.past_keys.sizes() == torch::IntArrayRef({2, C, Hx}));
+      assert(coll.future_keys.sizes() == torch::IntArrayRef({2, C, Hf}));
+      assert(coll.feature_mean.sizes() == torch::IntArrayRef({2, Dx}));
+      assert(coll.feature_std.sizes() == torch::IntArrayRef({2, Dx}));
       assert(coll.normalized);
 
       auto back = Obs::decollate_fn(coll, /*clone_tensors=*/true);
       assert(back.size() == 2);
-      assert(back[0].past_keys.sizes() == torch::IntArrayRef({C, T}));
-      assert(back[1].past_keys.sizes() == torch::IntArrayRef({C, T}));
-      assert(back[0].future_keys.sizes() == torch::IntArrayRef({C, Tf}));
-      assert(back[1].future_keys.sizes() == torch::IntArrayRef({C, Tf}));
-      assert(back[0].feature_mean.sizes() == torch::IntArrayRef({D}));
-      assert(back[1].feature_mean.sizes() == torch::IntArrayRef({D}));
-      assert(back[0].feature_std.sizes() == torch::IntArrayRef({D}));
-      assert(back[1].feature_std.sizes() == torch::IntArrayRef({D}));
+      assert(back[0].past_keys.sizes() == torch::IntArrayRef({C, Hx}));
+      assert(back[1].past_keys.sizes() == torch::IntArrayRef({C, Hx}));
+      assert(back[0].future_keys.sizes() == torch::IntArrayRef({C, Hf}));
+      assert(back[1].future_keys.sizes() == torch::IntArrayRef({C, Hf}));
+      assert(back[0].feature_mean.sizes() == torch::IntArrayRef({Dx}));
+      assert(back[1].feature_mean.sizes() == torch::IntArrayRef({Dx}));
+      assert(back[0].feature_std.sizes() == torch::IntArrayRef({Dx}));
+      assert(back[1].feature_std.sizes() == torch::IntArrayRef({Dx}));
       assert(back[0].normalized && back[1].normalized);
 
       assert(torch::equal(back[0].past_keys, s0.past_keys));

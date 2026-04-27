@@ -1,0 +1,128 @@
+\documentclass[10pt,letterpaper]{article}
+
+\IfFileExists{lmodern.sty}{%
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}
+}{}
+\usepackage[margin=1.15in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage[font=small,labelfont=bf,labelsep=period,justification=raggedright,singlelinecheck=false]{caption}
+\usepackage[hidelinks,hyperfootnotes=false]{hyperref}
+\usepackage{microtype}
+
+\DeclareMathSizes{10}{11}{8}{6}
+\DeclareMathSizes{9}{10}{7}{5}
+\DeclareMathSizes{8}{9}{6}{5}
+
+\definecolor{Accent}{HTML}{234E70}
+\definecolor{SymbolRow}{HTML}{F6F8FA}
+\definecolor{FootnoteText}{HTML}{6B7280}
+\definecolor{FootnoteField}{HTML}{1F6F8B}
+\hypersetup{colorlinks=true, linkcolor=Accent, urlcolor=Accent, citecolor=Accent}
+
+\newcommand{\Cuwacunu}{Cuwacunu}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Rpos}{\mathbb{R}_{>0}}
+\newcommand{\Rnonneg}{\mathbb{R}_{\ge 0}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Risk}{\operatorname{Risk}}
+\newcommand{\vect}[1]{\bm{#1}}
+\newcommand{\mat}[1]{\bm{#1}}
+\newcommand{\tensor}[1]{\pmb{\mathbf{#1}}}
+\newcommand{\given}{\,\vert\,}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\field}[1]{{\ttfamily\textcolor{FootnoteField}{#1}}}
+\newcommand{\keywords}[1]{%
+  \vspace{0.35em}
+  \noindent\textbf{Keywords:} #1}
+\newcommand{\note}[1]{\footnote{#1}}
+\newcommand{\calloutbox}[2]{%
+  \begin{center}
+  \begingroup
+  \setlength{\fboxsep}{0.85em}%
+  \setlength{\fboxrule}{0.6pt}%
+  \fcolorbox{Accent}{SymbolRow}{%
+  \begin{minipage}{0.91\textwidth}
+  \textbf{\textcolor{Accent}{#1}} #2%
+  \end{minipage}}%
+  \endgroup
+  \end{center}
+}
+\makeatletter
+\renewcommand{\@makefnmark}{%
+  \hbox{\@textsuperscript{\normalfont\textcolor{FootnoteField}{\@thefnmark}}}}
+\renewcommand{\@makefntext}[1]{%
+  \parindent 1em%
+  \noindent
+  \color{FootnoteText}%
+  \hb@xt@1.8em{\hss\@makefnmark}#1}
+\makeatother
+\DeclareMathOperator{\softmax}{softmax}
+\DeclareMathOperator{\softplus}{softplus}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\ES}{ES}
+\DeclareMathOperator{\Quant}{Quant}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.38em}
+\setlength{\textfloatsep}{1.0em plus 0.2em minus 0.2em}
+\setlength{\floatsep}{0.9em plus 0.2em minus 0.2em}
+\setlength{\intextsep}{0.9em plus 0.2em minus 0.2em}
+\renewcommand{\arraystretch}{1.15}
+
+\title{\Cuwacunu{}: Portfolio Positioning Under Abstract Values\\
+\large A Semantic Transformer over Edge-Carried Market Fields}
+\author{www.waajacu.com$^{TM}$}
+\date{Preprint Draft 0.3\\April 22, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This manuscript lays the mathematical foundation for \Cuwacunu{}, an artificial
+intelligence agent for portfolio management.  The system reads
+multi-resolution market data as edge-carried signals on an active market graph,
+learns representations of traded relations, emits predictive distribution
+fields, and lifts selected edge forecasts back into node-level portfolio
+states.  The current draft fixes the tensor, graph, distribution, and observer
+objects needed to connect implementation, experiments, and analysis.  Its
+purpose is to make the forecasting interface precise while preserving the larger
+direction: portfolio positioning under abstract values.
+\end{abstract}
+
+\keywords{portfolio positioning; abstract values; semantic transformers;
+multi-resolution market fields; mixture-density networks; predictive
+distributions; node recovery}
+
+\tableofcontents
+
+\input{sections/01-boundary}
+\input{sections/02-symbols}
+\input{sections/03-edges-and-nodes}
+\input{sections/04-data}
+\input{sections/05-representation}
+\input{sections/06-edge-mdn}
+\input{sections/07-field-observers}
+\input{sections/08-edges-to-nodes}
+\input{sections/09-open-items}
+
+\appendix
+\input{sections/10-normalization-procedure}
+\input{sections/11-sequence-synchronization}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

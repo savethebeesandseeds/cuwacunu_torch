@@ -350,14 +350,6 @@ derive_hashimyei_catalog_path(const std::filesystem::path &store_root) {
       .lexically_normal();
 }
 
-[[nodiscard]] std::filesystem::path
-derive_legacy_hashimyei_catalog_path(const std::filesystem::path &store_root) {
-  if (store_root.empty())
-    return {};
-  return (store_root / "catalog" / "hashimyei_catalog.idydb")
-      .lexically_normal();
-}
-
 [[nodiscard]] bool
 load_hashimyei_runtime_defaults(const std::filesystem::path &hero_dsl_path,
                                 const std::filesystem::path &global_config_path,
@@ -589,9 +581,6 @@ remove_catalog_sync_state(const std::filesystem::path &catalog_path,
 [[nodiscard]] bool
 remove_catalog_file_and_sync_state(const std::filesystem::path &catalog_path,
                                    std::string *error);
-[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_present(
-    const std::filesystem::path &store_root,
-    const std::filesystem::path &catalog_path, std::string *error);
 [[nodiscard]] bool
 ensure_hashimyei_catalog_synced_to_store(app_context_t *app, bool force_rebuild,
                                          std::string *out_error);
@@ -632,10 +621,6 @@ ensure_hashimyei_catalog_synced_to_store(app_context_t *app, bool force_rebuild,
 
   if (!remove_catalog_file_and_sync_state(catalog_path, out_error))
     return false;
-  if (!remove_legacy_hashimyei_catalog_if_present(app->store_root, catalog_path,
-                                                  out_error)) {
-    return false;
-  }
 
   app->last_store_sync_token.clear();
   if (reingest) {
@@ -1131,6 +1116,7 @@ hashimyei_identity_to_json(const cuwacunu::hashimyei::hashimyei_t &id) {
       << "\"schema\":" << json_quote(m.schema) << ","
       << "\"canonical_path\":" << json_quote(m.canonical_path) << ","
       << "\"family\":" << json_quote(m.family) << ","
+      << "\"component_tag\":" << json_quote(m.component_tag) << ","
       << "\"hashimyei_identity\":"
       << hashimyei_identity_to_json(m.hashimyei_identity) << ","
       << "\"contract_identity\":"
@@ -1149,6 +1135,19 @@ hashimyei_identity_to_json(const cuwacunu::hashimyei::hashimyei_t &id) {
       << json_quote(m.founding_dsl_source_sha256_hex) << ","
       << "\"docking_signature_sha256_hex\":"
       << json_quote(m.docking_signature_sha256_hex) << ","
+      << "\"component_compatibility_sha256_hex\":"
+      << json_quote(m.component_compatibility_sha256_hex) << ","
+      << "\"instrument_signature\":{"
+      << "\"SYMBOL\":" << json_quote(m.instrument_signature.symbol) << ","
+      << "\"RECORD_TYPE\":" << json_quote(m.instrument_signature.record_type)
+      << ","
+      << "\"MARKET_TYPE\":" << json_quote(m.instrument_signature.market_type)
+      << ","
+      << "\"VENUE\":" << json_quote(m.instrument_signature.venue) << ","
+      << "\"BASE_ASSET\":" << json_quote(m.instrument_signature.base_asset)
+      << ","
+      << "\"QUOTE_ASSET\":" << json_quote(m.instrument_signature.quote_asset)
+      << "},"
       << "\"lineage_state\":" << json_quote(m.lineage_state) << ","
       << "\"replaced_by\":" << json_quote(m.replaced_by) << ","
       << "\"created_at_ms\":" << m.created_at_ms << ","
@@ -1163,8 +1162,10 @@ family_rank_state_to_json(const cuwacunu::hero::family_rank::state_t &state) {
   out << "{"
       << "\"schema\":" << json_quote(state.schema) << ","
       << "\"family\":" << json_quote(state.family) << ","
-      << "\"dock_hash\":"
-      << (state.dock_hash.empty() ? "null" : json_quote(state.dock_hash))
+      << "\"component_compatibility_sha256_hex\":"
+      << (state.component_compatibility_sha256_hex.empty()
+              ? "null"
+              : json_quote(state.component_compatibility_sha256_hex))
       << ",\"source_view_kind\":"
       << (state.source_view_kind.empty() ? "null"
                                          : json_quote(state.source_view_kind))
@@ -1207,22 +1208,26 @@ sanitize_family_rank_path_token(std::string_view family) {
 
 [[nodiscard]] std::filesystem::path
 family_rank_file_path(const std::filesystem::path &store_root,
-                      std::string_view family, std::string_view dock_hash) {
+                      std::string_view family,
+                      std::string_view component_compatibility_sha256_hex) {
   std::string family_sha{};
   if (!sha256_hex_bytes(std::string(family), &family_sha))
     family_sha.clear();
-  std::string dock_sha{};
-  if (!sha256_hex_bytes(std::string(dock_hash), &dock_sha)) {
-    dock_sha.clear();
+  std::string component_compatibility_sha{};
+  if (!sha256_hex_bytes(std::string(component_compatibility_sha256_hex),
+                        &component_compatibility_sha)) {
+    component_compatibility_sha.clear();
   }
   const std::string folder =
       sanitize_family_rank_path_token(family) +
       (family_sha.empty() ? std::string{} : ("_" + family_sha.substr(0, 12)));
-  const std::string dock_folder =
-      sanitize_family_rank_path_token(dock_hash) +
-      (dock_sha.empty() ? std::string{} : ("_" + dock_sha.substr(0, 12)));
-  return store_root / "hero" / "family_rank" / folder / dock_folder /
-         "family.rank.latest.lls";
+  const std::string component_compatibility_folder =
+      sanitize_family_rank_path_token(component_compatibility_sha256_hex) +
+      (component_compatibility_sha.empty()
+           ? std::string{}
+           : ("_" + component_compatibility_sha.substr(0, 12)));
+  return store_root / "hero" / "family_rank" / folder /
+         component_compatibility_folder / "family.rank.latest.lls";
 }
 
 [[nodiscard]] bool write_text_file_atomic(const std::filesystem::path &path,
@@ -1354,16 +1359,6 @@ remove_catalog_file_and_sync_state(const std::filesystem::path &catalog_path,
     return false;
   }
   return remove_catalog_sync_state(catalog_path, error);
-}
-
-[[nodiscard]] bool remove_legacy_hashimyei_catalog_if_present(
-    const std::filesystem::path &store_root,
-    const std::filesystem::path &catalog_path, std::string *error) {
-  const std::filesystem::path legacy_path =
-      derive_legacy_hashimyei_catalog_path(store_root);
-  if (legacy_path.empty() || legacy_path == catalog_path)
-    return true;
-  return remove_catalog_file_and_sync_state(legacy_path, error);
 }
 
 [[nodiscard]] bool
@@ -1506,10 +1501,6 @@ rebuild_hashimyei_catalog_for_token(app_context_t *app,
 
   if (!remove_catalog_file_and_sync_state(catalog_path, out_error))
     return false;
-  if (!remove_legacy_hashimyei_catalog_if_present(app->store_root, catalog_path,
-                                                  out_error)) {
-    return false;
-  }
 
   if (!app->catalog.open(app->catalog_options, out_error))
     return false;
@@ -1586,4 +1577,3 @@ ensure_hashimyei_catalog_synced_to_store(app_context_t *app, bool force_rebuild,
   }
   return false;
 }
-

@@ -13,7 +13,7 @@
 #include "iitepi/runtime_binding/runtime_binding_space_t.h"
 #include "piaabo/dconfig.h"
 #include "piaabo/torch_compat/torch_utils.h"
-#include "tsiemene/tsi.wikimyei.representation.vicreg.h"
+#include "tsiemene/tsi.wikimyei.representation.encoding.vicreg.h"
 
 namespace {
 
@@ -87,7 +87,8 @@ int main() {
   }
 
   constexpr tsiemene::TsiId kTsiId = 101;
-  constexpr const char *kComponentName = "tsi.wikimyei.representation.vicreg";
+  constexpr const char *kComponentName =
+      "tsi.wikimyei.representation.encoding.vicreg";
   const auto contract_snapshot =
       cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
   assert(contract_snapshot);
@@ -99,7 +100,7 @@ int main() {
   const int kEncodingDims =
       contract_snapshot->get<int>("DOCK", "__embedding_dims");
 
-  tsiemene::TsiWikimyeiRepresentationVicreg vicreg(
+  tsiemene::TsiWikimyeiRepresentationEncodingVicreg vicreg(
       kTsiId, "vicreg_facet_test", contract_hash, "0xtestfacet", kComponentName,
       kChannels, kTimesteps, kFeatures, false, true, true);
 
@@ -111,7 +112,8 @@ int main() {
   assert(error.empty());
 
   assert(state.runtime_component_name == kComponentName);
-  assert(state.resolved_component_id == "tsi.wikimyei.representation.vicreg");
+  assert(state.resolved_component_id ==
+         "tsi.wikimyei.representation.encoding.vicreg");
   assert(state.profile_id == "stable_pretrain");
   assert(!state.profile_row_id.empty());
   assert(state.run_id.empty());
@@ -164,7 +166,7 @@ int main() {
 
   cuwacunu::hero::hashimyei::component_manifest_t compatible_manifest{};
   compatible_manifest.canonical_path =
-      "tsi.wikimyei.representation.vicreg.0xcompat";
+      "tsi.wikimyei.representation.encoding.vicreg.0xcompat";
   compatible_manifest.family = "representation";
   compatible_manifest.docking_signature_sha256_hex = expected_docking_signature;
   compatible_manifest.contract_identity = cuwacunu::hashimyei::make_identity(
@@ -192,7 +194,7 @@ int main() {
   const std::string source_hashimyei_upper = ascii_upper(source_hashimyei);
   const std::string dest_hashimyei_upper = ascii_upper(dest_hashimyei);
   const fs::path report_root =
-      tsiemene::wikimyei_representation_vicreg_store_root();
+      tsiemene::wikimyei_representation_encoding_vicreg_store_root();
   const fs::path source_dir = report_root / source_hashimyei;
   const fs::path dest_dir = report_root / dest_hashimyei;
   std::error_code cleanup_ec{};
@@ -201,18 +203,19 @@ int main() {
   PathCleanupGuard source_cleanup{source_dir};
   PathCleanupGuard dest_cleanup{dest_dir};
 
-  cuwacunu::wikimyei::vicreg_4d::VICReg_4D private_topology_model(
+  cuwacunu::wikimyei::vicreg_rank4::VICReg_Rank4 private_topology_model(
       contract_hash, kComponentName, kChannels, kTimesteps, kFeatures,
       /*encoding_dims=*/kEncodingDims,
       /*channel_expansion_dim=*/96,
       /*fused_feature_dim=*/48,
       /*encoder_hidden_dims=*/36,
       /*encoder_depth=*/6, "72-192-72", configured_dtype, configured_device);
-  auto persisted = tsiemene::update_wikimyei_representation_vicreg_init(
-      source_hashimyei_upper, &private_topology_model,
-      /*enable_network_analytics_sidecar=*/false,
-      /*enable_embedding_sequence_analytics_sidecar=*/false, contract_hash, {},
-      {}, {}, false, 0, nullptr, nullptr, {});
+  auto persisted =
+      tsiemene::update_wikimyei_representation_encoding_vicreg_init(
+          source_hashimyei_upper, &private_topology_model,
+          /*enable_network_analytics_sidecar=*/false,
+          /*enable_embedding_sequence_analytics_sidecar=*/false, contract_hash,
+          {}, {}, {}, false, 0, nullptr, nullptr, {});
   assert(persisted.ok);
   assert(persisted.hashimyei == source_hashimyei);
   assert(persisted.report_fragment_directory == source_dir);

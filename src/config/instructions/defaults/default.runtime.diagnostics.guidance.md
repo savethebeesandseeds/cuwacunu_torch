@@ -21,6 +21,12 @@ Rules:
   diagnostic-local truth-source files under `objective_root`.
 - Use `hero.config.temp.list/read/create/replace/delete` for scratch diagnostic
   notes that should not become objective truth sources.
+- Keep diagnostics objective roots clean. Put transient reproducer notes,
+  copied status snapshots, log excerpts, checklist drafts, and temporary
+  diagnostic reports in temp instead of adding them to the objective bundle.
+- Promote temp diagnostic material into `objective_root` only when it becomes a
+  deliberate reusable smoke scaffold, policy note, or operator-maintained
+  diagnostic handoff for future sessions.
 - Request governance only for the smallest authority, launch budget, or policy
   decision needed to answer the diagnostic question.
 

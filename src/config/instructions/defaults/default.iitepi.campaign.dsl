@@ -12,7 +12,6 @@
       CONTRACT = compatibility + realization package
       WAVE     = runtime policy + required slots
       BIND     = one runnable contract/wave pairing
-      MOUNT    = which concrete component revision fills each slot for this run
 
   Syntax:
     CAMPAIGN {
@@ -25,11 +24,8 @@
         __sampler = sequential;
         __workers = 0;
         __symbol = BTCUSDT;
-        MOUNT {
-          // choose the concrete component revision for the wave slot
-          w_rep = EXACT 0x0000;
-          w_ev = EXACT 0x0000;
-        };
+        __base_asset = BTC;
+        __quote_asset = USDT;
         CONTRACT = <contract_alias>;
         WAVE = <imported_wave_id>;
       };
@@ -56,11 +52,8 @@ CAMPAIGN {
     __sampler = sequential;
     __workers = 0;
     __symbol = BTCUSDT;
-    MOUNT {
-      // exact hashimyei token for the selected VICReg component revision
-      w_rep = EXACT 0x0000;
-      w_ev = EXACT 0x0000;
-    };
+    __base_asset = BTC;
+    __quote_asset = USDT;
     CONTRACT = contract_default_iitepi;
     WAVE = train_vicreg_primary;
   };

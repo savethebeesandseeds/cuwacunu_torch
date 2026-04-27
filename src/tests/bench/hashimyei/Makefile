@@ -20,6 +20,14 @@ $(TEST_OUT)/test_hashimyei_catalog: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_hashimyei_report_fragments: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(TEST_OUT)/test_lattice_catalog: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 
+HERO_MCP_SURFACE_PARTS := \
+  $(HERE_PATH)/test_hero_mcp_surface_private_harness.cpp \
+  $(HERE_PATH)/test_hero_mcp_surface_private_catalog.cpp \
+  $(HERE_PATH)/test_hero_mcp_surface_private_marshal_flow.cpp \
+  $(HERE_PATH)/test_hero_mcp_surface_private_marshal_edges.cpp
+
+$(TEST_OUT)/test_hero_mcp_surface: $(HERO_MCP_SURFACE_PARTS)
+
 .PHONY: hero-mcp-binaries
 hero-mcp-binaries: $(HERO_OUT)/hero_hashimyei.mcp $(HERO_OUT)/hero_lattice.mcp $(HERO_OUT)/hero_marshal.mcp $(HERO_OUT)/hero_human.mcp
 

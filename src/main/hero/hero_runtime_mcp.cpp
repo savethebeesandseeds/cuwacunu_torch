@@ -317,8 +317,10 @@ int run_job_runner(int argc, char** argv) {
     exec_argv.push_back(nullptr);
     ::execv(exec_argv[0], exec_argv.data());
 
-    std::cerr << "[runtime_job_runner] exec failed for " << worker_binary.string()
-              << " errno=" << errno << "\n";
+    const std::string log_line = "[runtime_job_runner] exec failed for " +
+                                 worker_binary.string() +
+                                 " errno=" + std::to_string(errno) + "\n";
+    (void)write_all_fd(STDERR_FILENO, log_line.data(), log_line.size());
     _exit(127);
   }
 
@@ -850,9 +852,9 @@ int main(int argc, char** argv) {
             app.global_config_path);
   }
   if (hero_config_path.empty()) {
-    std::cerr << "[" << kServerName
-              << "] missing [REAL_HERO].runtime_hero_dsl_filename in "
-              << app.global_config_path.string() << "\n";
+    log_err(
+        "[%s] missing [REAL_HERO].runtime_hero_dsl_filename in %s\n",
+        kServerName, app.global_config_path.string().c_str());
     return 2;
   }
   app.hero_config_path = hero_config_path;
@@ -865,7 +867,7 @@ int main(int argc, char** argv) {
   if (!cuwacunu::hero::runtime_mcp::load_runtime_defaults(
           hero_config_path, app.global_config_path, &app.defaults,
           &defaults_error)) {
-    std::cerr << "[" << kServerName << "] " << defaults_error << "\n";
+    log_err("[%s] %s\n", kServerName, defaults_error.c_str());
     return 2;
   }
   if (campaigns_root_overridden) {
@@ -875,8 +877,8 @@ int main(int argc, char** argv) {
   std::error_code ec{};
   std::filesystem::create_directories(app.defaults.campaigns_root, ec);
   if (ec) {
-    std::cerr << "[" << kServerName << "] cannot create campaigns_root: "
-              << app.defaults.campaigns_root.string() << "\n";
+    log_err("[%s] cannot create campaigns_root: %s\n", kServerName,
+            app.defaults.campaigns_root.string().c_str());
     return 2;
   }
 
@@ -891,7 +893,7 @@ int main(int argc, char** argv) {
       std::cout.flush();
     }
     if (!ok && !tool_error.empty()) {
-      std::cerr << "[" << kServerName << "] " << tool_error << "\n";
+      log_err("[%s] %s\n", kServerName, tool_error.c_str());
     }
     if (!ok) return 2;
     return cuwacunu::hero::runtime_mcp::tool_result_is_error(tool_result_json)

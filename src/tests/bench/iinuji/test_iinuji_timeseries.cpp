@@ -15,7 +15,7 @@
 //   n   : z‑score normalize the *raw feature* series
 //   m   : embedding value = L2 norm (on/off → component)
 //   e/E : next/prev embedding component (when in component mode)
-//   t   : for [B,T',De] embeddings, toggle mean over time vs last step
+//   t   : for [B,Hx',De] embeddings, toggle mean over time vs last step
 //   1..5: quick window sizes
 //   q   : quit
 
@@ -59,7 +59,7 @@
 #include "iinuji/render/renderer.h"
 
 // VICReg embedding model (required)
-#include "wikimyei/representation/VICReg/vicreg_4d.h"
+#include "wikimyei/representation/VICReg/vicreg_rank4.h"
 
 using torch::indexing::Slice;
 
@@ -79,13 +79,42 @@ template <typename T> static inline T clampv(T v, T lo, T hi) {
   return std::min(std::max(v, lo), hi);
 }
 
+static cuwacunu::camahjucunu::instrument_signature_t
+runtime_signature_for_known_kline_symbol(const std::string &symbol) {
+  if (symbol == "BTCUSDT") {
+    return cuwacunu::camahjucunu::instrument_signature_t{
+        .symbol = "BTCUSDT",
+        .record_type = "kline",
+        .market_type = "spot",
+        .venue = "binance",
+        .base_asset = "BTC",
+        .quote_asset = "USDT",
+    };
+  }
+  if (symbol == "ETHUSDT") {
+    return cuwacunu::camahjucunu::instrument_signature_t{
+        .symbol = "ETHUSDT",
+        .record_type = "kline",
+        .market_type = "spot",
+        .venue = "binance",
+        .base_asset = "ETH",
+        .quote_asset = "USDT",
+    };
+  }
+  std::fprintf(stderr,
+               "test_iinuji_timeseries requires an exact known kline "
+               "signature; unsupported symbol: %s\n",
+               symbol.c_str());
+  std::exit(2);
+}
+
 static std::string fmt_double(double v) {
   char buf[64];
   std::snprintf(buf, sizeof(buf), "%.6g", v);
   return buf;
 }
 
-// Get anchor key (time t) for channel 'ch' from a sample's past_keys [C,T]
+// Get anchor key (time t) for channel 'ch' from a sample's past_keys [C,Hx]
 // (last)
 static inline double anchor_key_from_sample(const Datasample_t &s, int64_t ch,
                                             int64_t max_N_past) {
@@ -102,7 +131,7 @@ static inline double anchor_key_from_sample(const Datasample_t &s, int64_t ch,
 // Extract y = features[ch, t=max_N_past-1, d]
 static inline double feature_value_t_at_dim(const Datasample_t &s, int64_t ch,
                                             int64_t max_N_past, int64_t d) {
-  auto fx = s.features; // [C, T, D]
+  auto fx = s.features; // [C,Hx,Dx]
   if (!fx.defined() || fx.dim() != 3)
     return std::numeric_limits<double>::quiet_NaN();
   return static_cast<double>(fx.index({ch, max_N_past - 1, d}).item<float>());
@@ -137,9 +166,9 @@ struct AppState {
   // Data / geometry
   Dataset_t dataset;
   int64_t K{0};            // number of channels (concat sources)
-  int64_t D{0};            // feature dimension
+  int64_t D{0};            // feature dimension Dx
   int64_t max_N_past{1};   // length of past window
-  int64_t max_N_future{1}; // future window (not used for y here)
+  int64_t max_N_future{1}; // future window Hf
 
   kvalue_t leftmost{};
   kvalue_t rightmost{};
@@ -158,12 +187,12 @@ struct AppState {
   bool enc_use_norm{
       true}; // if true: L2 norm across De (after optional time reduce)
   bool enc_reduce_time_mean{
-      true};               // for [B,T',De]: mean across time vs. last step
+      true};               // for [B,Hx',De]: mean across time vs. last step
   int64_t enc_comp_idx{0}; // component when enc_use_norm == false
   int64_t De{0};           // embedding dimensionality (discovered at runtime)
 
   // VICReg model + device + SWA toggle
-  cuwacunu::wikimyei::vicreg_4d::VICReg_4D *rep{nullptr};
+  cuwacunu::wikimyei::vicreg_rank4::VICReg_Rank4 *rep{nullptr};
   torch::Device rep_device{torch::kCPU};
   bool use_swa{true};
 
@@ -316,7 +345,7 @@ static void update_plots(AppState &S) {
   // --------- Embedding via VICReg encode(past_features, mask) ----------
   // Batch-collate only the PAST (like your RepresentationDataloaderView)
   Datasample_t batch_past =
-      Datasample_t::collate_fn_past(samples); // [B,C,T,D], [B,C,T]
+      Datasample_t::collate_fn_past(samples); // [B,C,Hx,Dx], [B,C,Hx]
   auto feats = batch_past.features;           // CPU
   auto mask = batch_past.mask;                // CPU
   TORCH_CHECK(feats.defined() && mask.defined(),
@@ -332,7 +361,7 @@ static void update_plots(AppState &S) {
   torch::Tensor enc = S.rep->encode(feats_dev, mask_dev, /*use_swa=*/S.use_swa,
                                     /*detach_to_cpu=*/false);
 
-  // enc is either [B,De] or [B,T',De]
+  // enc is either [B,De] or [B,Hx',De]
   torch::Tensor E = enc;
   if (E.dim() == 3) {
     if (S.enc_reduce_time_mean) {
@@ -402,9 +431,9 @@ static void update_plots(AppState &S) {
   {
     std::ostringstream os;
     os << "Channels (K): " << S.K << "   Selected: " << ch << "\n";
-    os << "Feature dims (D): " << S.D << "   Dim: " << dd << "\n";
-    os << "Past window (T): " << S.max_N_past
-       << "   Future (Tf): " << S.max_N_future << "\n";
+    os << "Feature dims (Dx): " << S.D << "   Dim: " << dd << "\n";
+    os << "Past window (Hx): " << S.max_N_past
+       << "   Future (Hf): " << S.max_N_future << "\n";
     os << "Grid step: " << fmt_double((double)S.step) << "\n";
     os << "Anchors: " << S.num_records << "\n";
     os << "Window size: " << win << "   Center idx: " << S.center_idx << "\n";
@@ -415,9 +444,9 @@ static void update_plots(AppState &S) {
     if (enc.dim() == 2)
       os << "[B,De]=" << E.size(0) << "," << E.size(1) << "\n";
     else if (enc.dim() == 3)
-      os << "[B,T',De]=" << enc.size(0) << "," << enc.size(1) << ","
+      os << "[B,Hx',De]=" << enc.size(0) << "," << enc.size(1) << ","
          << enc.size(2)
-         << (S.enc_reduce_time_mean ? " (mean over T')" : " (last step)")
+         << (S.enc_reduce_time_mean ? " (mean over Hx')" : " (last step)")
          << "\n";
     else
       os << "dim=" << enc.dim() << " (flattened)\n";
@@ -477,11 +506,13 @@ int main(int argc, char **argv) {
   const bool force_bin = cuwacunu::iitepi::config_space_t::get<bool>(
       "DATA_LOADER", "dataloader_force_rebuild_cache", true);
 
+  const auto runtime_signature =
+      runtime_signature_for_known_kline_symbol(INSTRUMENT);
+
   // Dataset_t (for time slicing / channels)
-  auto inst_copy = INSTRUMENT; // API expects non-const lvalue
   Dataset_t dataset =
       cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<
-          Datatype_t>(inst_copy, obs_inst, force_bin);
+          Datatype_t>(runtime_signature, obs_inst, force_bin);
 
   // VICReg model (device from config)
   auto model_dev = cuwacunu::iitepi::config_device(contract_hash, "VICReg");
@@ -496,32 +527,32 @@ int main(int argc, char **argv) {
   S.max_N_future = (int64_t)S.dataset.max_N_future_;
   S.center_idx = S.num_records / 2;
 
-  // Datasample_t once to recover C, T and D
-  int64_t T_input = 0;
+  // Datasample_t once to recover C, Hx and Dx
+  int64_t Hx_input = 0;
   try {
     kvalue_t mid_key =
         S.leftmost + static_cast<kvalue_t>(S.center_idx) * S.step;
     Datasample_t s = S.dataset.get_by_key_value(mid_key);
     if (!s.features.defined() || s.features.dim() != 3) {
-      std::fprintf(stderr, "Unexpected sample feature shape; need [C,T,D]\n");
+      std::fprintf(stderr, "Unexpected sample feature shape; need [C,Hx,Dx]\n");
       return 2;
     }
     S.K = s.features.size(0);
-    T_input = s.features.size(1);
+    Hx_input = s.features.size(1);
     S.D = s.features.size(2);
   } catch (const std::exception &e) {
     std::fprintf(stderr, "Failed to probe dataset: %s\n", e.what());
     return 2;
   }
-  if (T_input <= 0) {
+  if (Hx_input <= 0) {
     std::fprintf(stderr, "Unexpected sample time dimension: %lld\n",
-                 static_cast<long long>(T_input));
+                 static_cast<long long>(Hx_input));
     return 2;
   }
 
-  cuwacunu::wikimyei::vicreg_4d::VICReg_4D representation_model(
-      contract_hash, "tsi.wikimyei.representation.vicreg",
-      static_cast<int>(S.K), static_cast<int>(T_input), static_cast<int>(S.D));
+  cuwacunu::wikimyei::vicreg_rank4::VICReg_Rank4 representation_model(
+      contract_hash, "tsi.wikimyei.representation.encoding.vicreg",
+      static_cast<int>(S.K), static_cast<int>(Hx_input), static_cast<int>(S.D));
 
   // Wire model into state
   S.rep = &representation_model;

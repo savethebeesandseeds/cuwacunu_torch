@@ -15,8 +15,8 @@ Current carried-forward state:
   other projector/buffer variants remain available for clean comparisons.
 - Marshal session `marshal.mnhkkyxw` completed intended-dock
   baseline calibration and currently carries forward
-  `iitepi.contract.base.dsl` with exact hashimyei `0x0100` as the best-known
-  candidate on `1d + 4h + 1h`.
+  `.contract.base.dsl` with
+  exact hashimyei `0x0100` as the best-known candidate on `1d + 4h + 1h`.
 
 What direct Runtime already established:
 - The old sub-daily failures were caused by malformed raw kline `close_time`

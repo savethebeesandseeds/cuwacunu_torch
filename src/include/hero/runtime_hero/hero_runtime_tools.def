@@ -20,9 +20,9 @@ HERO_RUNTIME_TOOL(
     handle_tool_start_campaign)
 HERO_RUNTIME_TOOL(
     "hero.runtime.explain_binding_selection",
-    "Explain how one declared BIND would resolve its MOUNT selectors against "
-    "the selected contract DOCK, returning the exact hashimyei chosen for each "
-    "mount or the reason resolution failed; optional campaign_dsl_path "
+    "Explain how one declared BIND derives component hashimyeis from the "
+    "selected contract and wave, returning each derived component or the "
+    "reason resolution failed; optional campaign_dsl_path "
     "overrides the configured source campaign",
     "{\"type\":\"object\",\"properties\":{\"binding_id\":{\"type\":\"string\"},"
     "\"campaign_dsl_path\":{\"type\":\"string\"}},\"required\":[\"binding_id\"]"

@@ -175,9 +175,9 @@ clean_data:
 .PHONY: clean_wikimyei
 clean_wikimyei:
 	$(Q)$(CLEAN_SHRED_CMD) \
-	  $(OUTPUT_PATH)/libtorch/vicreg_4d.d \
-	  $(OUTPUT_PATH)/libtorch/vicreg_4d.o \
-	  $(OUTPUT_PATH)/libtorch/vicreg_4d.a
+	  $(OUTPUT_PATH)/libtorch/vicreg_rank4.d \
+	  $(OUTPUT_PATH)/libtorch/vicreg_rank4.o \
+	  $(OUTPUT_PATH)/libtorch/vicreg_rank4.a
 
 # -----------------------------------------------------------------
 # Full clean (interactive) — wipes all object, dep, and archive files

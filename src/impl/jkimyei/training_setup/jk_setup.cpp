@@ -56,6 +56,23 @@ namespace {
   return (std::filesystem::path(folder) / p).string();
 }
 
+[[nodiscard]] std::string
+module_section_for_component(std::string_view component_name) {
+  constexpr std::string_view kExpectedValuePrefix =
+      "tsi.wikimyei.inference.expected_value.mdn";
+  constexpr std::string_view kVicregPrefix =
+      "tsi.wikimyei.representation.encoding.vicreg";
+  if (component_name.substr(0, kExpectedValuePrefix.size()) ==
+      kExpectedValuePrefix) {
+    return "EXPECTED_VALUE";
+  }
+  if (component_name.substr(0, kVicregPrefix.size()) == kVicregPrefix) {
+    return "VICReg";
+  }
+  throw std::runtime_error("unsupported component-local jkimyei owner for '" +
+                           std::string(component_name) + "'");
+}
+
 [[nodiscard]] std::string load_jkimyei_grammar_or_throw() {
   const std::string grammar_path = resolve_path_from_folder(
       std::filesystem::path(cuwacunu::iitepi::config_space_t::config_file_path)
@@ -79,7 +96,8 @@ namespace {
 
 [[nodiscard]] cuwacunu::camahjucunu::jkimyei_specs_t
 decode_contract_selected_jkimyei_or_throw(
-    const cuwacunu::iitepi::contract_hash_t &contract_hash) {
+    const cuwacunu::iitepi::contract_hash_t &contract_hash,
+    std::string_view component_name) {
   if (!has_non_ws_ascii(contract_hash)) {
     throw std::runtime_error("missing contract hash");
   }
@@ -89,18 +107,22 @@ decode_contract_selected_jkimyei_or_throw(
   if (!contract_itself) {
     throw std::runtime_error("failed to resolve contract snapshot");
   }
-  const auto sec_it = contract_itself->module_sections.find("VICReg");
+  const std::string module_section =
+      module_section_for_component(component_name);
+  const auto sec_it = contract_itself->module_sections.find(module_section);
   if (sec_it == contract_itself->module_sections.end()) {
-    throw std::runtime_error("missing contract VICReg module section");
+    throw std::runtime_error("missing contract " + module_section +
+                             " module section");
   }
   const auto key_it = sec_it->second.find("jkimyei_dsl_file");
   if (key_it == sec_it->second.end()) {
-    throw std::runtime_error("missing component-local jkimyei payload in "
-                             "VICReg module (expected key jkimyei_dsl_file)");
+    throw std::runtime_error("missing component-local jkimyei payload in " +
+                             module_section +
+                             " module (expected key jkimyei_dsl_file)");
   }
   std::string module_path;
   const auto module_path_it =
-      contract_itself->module_section_paths.find("VICReg");
+      contract_itself->module_section_paths.find(module_section);
   if (module_path_it != contract_itself->module_section_paths.end()) {
     module_path = module_path_it->second;
   }
@@ -116,8 +138,8 @@ decode_contract_selected_jkimyei_or_throw(
   if (!has_non_ws_ascii(jkimyei_path) ||
       !std::filesystem::exists(jkimyei_path) ||
       !std::filesystem::is_regular_file(jkimyei_path)) {
-    throw std::runtime_error("invalid VICReg.jkimyei_dsl_file path: " +
-                             jkimyei_path);
+    throw std::runtime_error("invalid " + module_section +
+                             ".jkimyei_dsl_file path: " + jkimyei_path);
   }
   const std::string dsl_text =
       cuwacunu::piaabo::dfiles::readFileToString(jkimyei_path);
@@ -139,8 +161,8 @@ jk_setup_t jk_setup_t::registry{};
 jk_setup_t::_init jk_setup_t::_initializer{};
 
 /* ----------------- lifecycle (optional) ----------------- */
-void jk_setup_t::init() { log_info("[jk_setup] initialising\n"); }
-void jk_setup_t::finit() { log_info("[jk_setup] finalising\n"); }
+void jk_setup_t::init() { log_dbg("[jk_setup] initialising\n"); }
+void jk_setup_t::finit() { log_dbg("[jk_setup] finalising\n"); }
 
 std::string jk_setup_t::make_component_key(
     const cuwacunu::iitepi::contract_hash_t &contract_hash,
@@ -181,7 +203,8 @@ jk_setup_t::operator()(const std::string &component_name,
   // Cache miss: decode instruction from override text or contract payload.
   cuwacunu::camahjucunu::jkimyei_specs_t inst{};
   if (instr_text.empty()) {
-    inst = decode_contract_selected_jkimyei_or_throw(contract_hash);
+    inst = decode_contract_selected_jkimyei_or_throw(contract_hash,
+                                                     component_name);
   } else {
     const std::string grammar = load_jkimyei_grammar_or_throw();
     inst = cuwacunu::camahjucunu::dsl::decode_jkimyei_specs_from_dsl(

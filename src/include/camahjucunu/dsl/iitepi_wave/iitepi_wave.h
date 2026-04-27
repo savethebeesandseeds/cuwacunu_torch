@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "camahjucunu/dsl/instrument_signature.h"
+
 namespace cuwacunu {
 namespace camahjucunu {
 
@@ -28,7 +30,7 @@ struct iitepi_wave_source_decl_t {
   std::string binding_id{};
   std::string family{};
   std::string source_path{};
-  std::string symbol{};
+  instrument_signature_t runtime_instrument_signature{};
   std::string from{};
   std::string to{};
   std::uint64_t workers{0};
@@ -45,7 +47,7 @@ enum class iitepi_wave_evaluation_report_policy_e : std::uint8_t {
 };
 
 enum class iitepi_wave_evaluation_objective_e : std::uint8_t {
-  FutureTargetDimsNll = 0,
+  FutureTargetFeatureIndicesNll = 0,
 };
 
 struct iitepi_wave_evaluation_policy_t {
@@ -54,13 +56,16 @@ struct iitepi_wave_evaluation_policy_t {
   iitepi_wave_evaluation_report_policy_e report_policy{
       iitepi_wave_evaluation_report_policy_e::EpochEndLog};
   iitepi_wave_evaluation_objective_e objective{
-      iitepi_wave_evaluation_objective_e::FutureTargetDimsNll};
+      iitepi_wave_evaluation_objective_e::FutureTargetFeatureIndicesNll};
 };
 
 // Legacy probe aliases remain because the wave DSL still reserves PROBE blocks,
-// even though transfer-matrix evaluation is now modeled as a VICReg-owned evaluator.
-using iitepi_wave_probe_training_window_e = iitepi_wave_evaluation_training_window_e;
-using iitepi_wave_probe_report_policy_e = iitepi_wave_evaluation_report_policy_e;
+// even though transfer-matrix evaluation is now modeled as a VICReg-owned
+// evaluator.
+using iitepi_wave_probe_training_window_e =
+    iitepi_wave_evaluation_training_window_e;
+using iitepi_wave_probe_report_policy_e =
+    iitepi_wave_evaluation_report_policy_e;
 using iitepi_wave_probe_objective_e = iitepi_wave_evaluation_objective_e;
 using iitepi_wave_probe_policy_t = iitepi_wave_evaluation_policy_t;
 
@@ -85,14 +90,14 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
   Debug = (1ull << 8),
 };
 
-[[nodiscard]] constexpr std::uint64_t iitepi_wave_mode_value(
-    iitepi_wave_mode_flag_e flag) noexcept {
+[[nodiscard]] constexpr std::uint64_t
+iitepi_wave_mode_value(iitepi_wave_mode_flag_e flag) noexcept {
   return static_cast<std::uint64_t>(flag);
 }
 
-[[nodiscard]] constexpr bool iitepi_wave_mode_has(
-    std::uint64_t mode_flags,
-    iitepi_wave_mode_flag_e flag) noexcept {
+[[nodiscard]] constexpr bool
+iitepi_wave_mode_has(std::uint64_t mode_flags,
+                     iitepi_wave_mode_flag_e flag) noexcept {
   return (mode_flags & iitepi_wave_mode_value(flag)) != 0;
 }
 
@@ -102,9 +107,10 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
          iitepi_wave_mode_value(iitepi_wave_mode_flag_e::Debug);
 }
 
-[[nodiscard]] inline std::string canonical_iitepi_wave_mode(
-    std::uint64_t mode_flags) {
-  if (mode_flags == 0) return "none";
+[[nodiscard]] inline std::string
+canonical_iitepi_wave_mode(std::uint64_t mode_flags) {
+  if (mode_flags == 0)
+    return "none";
   std::vector<std::string> tokens{};
   tokens.reserve(4);
   if (iitepi_wave_mode_has(mode_flags, iitepi_wave_mode_flag_e::Run)) {
@@ -124,51 +130,57 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
   }
   std::ostringstream oss;
   for (std::size_t i = 0; i < tokens.size(); ++i) {
-    if (i > 0) oss << "|";
+    if (i > 0)
+      oss << "|";
     oss << tokens[i];
   }
   return oss.str();
 }
 
 [[nodiscard]] inline bool parse_iitepi_wave_mode_flags(
-    std::string mode_expression,
-    std::uint64_t* out_mode_flags,
-    bool* out_legacy_single_token = nullptr,
-    std::string* error = nullptr) {
-  if (error) error->clear();
-  if (out_legacy_single_token) *out_legacy_single_token = false;
+    std::string mode_expression, std::uint64_t *out_mode_flags,
+    bool *out_legacy_single_token = nullptr, std::string *error = nullptr) {
+  if (error)
+    error->clear();
+  if (out_legacy_single_token)
+    *out_legacy_single_token = false;
   if (!out_mode_flags) {
-    if (error) *error = "output mode flags pointer is null";
+    if (error)
+      *error = "output mode flags pointer is null";
     return false;
   }
 
   auto trim_ascii_copy = [](std::string s) {
     std::size_t b = 0;
-    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+      ++b;
     std::size_t e = s.size();
-    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+      --e;
     return s.substr(b, e - b);
   };
   auto lower_ascii_copy = [](std::string s) {
-    for (char& c : s) {
+    for (char &c : s) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return s;
   };
-  auto parse_numeric_token = [](std::string token, std::uint64_t* out) {
-    if (!out) return false;
-    token.erase(
-        std::remove(token.begin(), token.end(), '_'),
-        token.end());
-    if (token.empty()) return false;
+  auto parse_numeric_token = [](std::string token, std::uint64_t *out) {
+    if (!out)
+      return false;
+    token.erase(std::remove(token.begin(), token.end(), '_'), token.end());
+    if (token.empty())
+      return false;
     if (token.size() > 2 && token[0] == '0' &&
         (token[1] == 'x' || token[1] == 'X')) {
       std::uint64_t value = 0;
-      const char* b = token.data() + 2;
-      const char* e = token.data() + token.size();
-      if (b == e) return false;
+      const char *b = token.data() + 2;
+      const char *e = token.data() + token.size();
+      if (b == e)
+        return false;
       const auto r = std::from_chars(b, e, value, 16);
-      if (r.ec != std::errc{} || r.ptr != e) return false;
+      if (r.ec != std::errc{} || r.ptr != e)
+        return false;
       *out = value;
       return true;
     }
@@ -177,7 +189,8 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
       std::uint64_t value = 0;
       for (std::size_t i = 2; i < token.size(); ++i) {
         const char c = token[i];
-        if (c != '0' && c != '1') return false;
+        if (c != '0' && c != '1')
+          return false;
         if (value > (std::numeric_limits<std::uint64_t>::max() >> 1)) {
           return false;
         }
@@ -187,17 +200,19 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
       return true;
     }
     std::uint64_t value = 0;
-    const char* b = token.data();
-    const char* e = token.data() + token.size();
+    const char *b = token.data();
+    const char *e = token.data() + token.size();
     const auto r = std::from_chars(b, e, value, 10);
-    if (r.ec != std::errc{} || r.ptr != e) return false;
+    if (r.ec != std::errc{} || r.ptr != e)
+      return false;
     *out = value;
     return true;
   };
 
   mode_expression = trim_ascii_copy(std::move(mode_expression));
   if (mode_expression.empty()) {
-    if (error) *error = "mode expression is empty";
+    if (error)
+      *error = "mode expression is empty";
     return false;
   }
 
@@ -205,7 +220,8 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
   std::string current{};
   auto flush = [&]() {
     const std::string token = trim_ascii_copy(current);
-    if (!token.empty()) tokens.push_back(token);
+    if (!token.empty())
+      tokens.push_back(token);
     current.clear();
   };
   for (const char c : mode_expression) {
@@ -219,13 +235,14 @@ enum class iitepi_wave_mode_flag_e : std::uint64_t {
   flush();
 
   if (tokens.empty()) {
-    if (error) *error = "mode expression does not contain mode tokens";
+    if (error)
+      *error = "mode expression does not contain mode tokens";
     return false;
   }
 
   std::uint64_t mode_flags = 0;
   bool saw_numeric = false;
-  for (const auto& raw : tokens) {
+  for (const auto &raw : tokens) {
     const std::string token = lower_ascii_copy(trim_ascii_copy(raw));
     if (token == "run") {
       mode_flags |= iitepi_wave_mode_value(iitepi_wave_mode_flag_e::Run);
@@ -283,18 +300,17 @@ struct iitepi_wave_set_t {
 namespace dsl {
 
 class iitepiWavePipeline {
- public:
+public:
   explicit iitepiWavePipeline(std::string grammar_text);
   iitepi_wave_set_t decode(std::string instruction);
 
- private:
+private:
   std::mutex current_mutex_;
   std::string grammar_text_;
 };
 
-iitepi_wave_set_t decode_iitepi_wave_from_dsl(
-    std::string grammar_text,
-    std::string instruction_text);
+iitepi_wave_set_t decode_iitepi_wave_from_dsl(std::string grammar_text,
+                                              std::string instruction_text);
 
 } /* namespace dsl */
 

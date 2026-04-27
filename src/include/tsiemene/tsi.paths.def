@@ -1,5 +1,6 @@
 #ifndef TSI_PATH_DIRECTIVE
-#error "TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) must be defined before including tsi.paths.def"
+#error                                                                         \
+    "TSI_PATH_DIRECTIVE(ID, TOKEN, SUMMARY) must be defined before including tsi.paths.def"
 #endif
 
 #ifndef TSI_PATH_METHOD
@@ -39,11 +40,13 @@ TSI_PATH_DIRECTIVE(Error, "@error", "Error lane (log sinks)")
 // - `UniquePerCircuit`: only one instance of this tsi type in a circuit.
 // - `ManyInstances`: any number of instances.
 // - `HashimyeiInstances`: many instances keyed by <hashimyei>.
-TSI_PATH_COMPONENT(SourceDataloader, "tsi.source.dataloader", Source, ManyInstances,
-                   "Source dataloader component")
-TSI_PATH_COMPONENT(WikimyeiRepresentationVicreg, "tsi.wikimyei.representation.vicreg", Wikimyei,
+TSI_PATH_COMPONENT(SourceDataloader, "tsi.source.dataloader", Source,
+                   ManyInstances, "Source dataloader component")
+TSI_PATH_COMPONENT(WikimyeiRepresentationEncodingVicreg,
+                   "tsi.wikimyei.representation.encoding.vicreg", Wikimyei,
                    HashimyeiInstances, "VICReg representation wikimyei")
-TSI_PATH_COMPONENT(WikimyeiInferenceMdn, "tsi.wikimyei.inference.mdn", Wikimyei,
+TSI_PATH_COMPONENT(WikimyeiInferenceExpectedValueMdn,
+                   "tsi.wikimyei.inference.expected_value.mdn", Wikimyei,
                    HashimyeiInstances, "MDN expected-value inference wikimyei")
 TSI_PATH_COMPONENT(SinkNull, "tsi.sink.null", Sink, ManyInstances,
                    "Null sink terminal")
@@ -51,105 +54,81 @@ TSI_PATH_COMPONENT(SinkLogSys, "tsi.probe.log", Sink, UniquePerCircuit,
                    "Probe log sink")
 
 // Per-component directive lanes (direction + cast kind).
-TSI_PATH_LANE(SourceDataloader, In, Step, String,
-              "source command ingress")
+TSI_PATH_LANE(SourceDataloader, In, Step, String, "source command ingress")
 TSI_PATH_LANE(SourceDataloader, Out, Payload, Cargo,
               "source observation cargo payload")
-TSI_PATH_LANE(SourceDataloader, Out, Meta, String,
-              "runtime trace/meta stream")
+TSI_PATH_LANE(SourceDataloader, Out, Meta, String, "runtime trace/meta stream")
 
-TSI_PATH_LANE(WikimyeiRepresentationVicreg, In, Step, Cargo,
+TSI_PATH_LANE(WikimyeiRepresentationEncodingVicreg, In, Step, Cargo,
               "representation observation cargo ingress")
-TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Payload, Cargo,
+TSI_PATH_LANE(WikimyeiRepresentationEncodingVicreg, Out, Payload, Cargo,
               "representation observation cargo with encoding")
-TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Loss, Tensor,
+TSI_PATH_LANE(WikimyeiRepresentationEncodingVicreg, Out, Loss, Tensor,
               "training loss")
-TSI_PATH_LANE(WikimyeiRepresentationVicreg, Out, Meta, String,
+TSI_PATH_LANE(WikimyeiRepresentationEncodingVicreg, Out, Meta, String,
               "runtime trace/meta stream")
 
-TSI_PATH_LANE(WikimyeiInferenceMdn, In, Step, Cargo,
+TSI_PATH_LANE(WikimyeiInferenceExpectedValueMdn, In, Step, Cargo,
               "expected-value inference cargo ingress")
-TSI_PATH_LANE(WikimyeiInferenceMdn, Out, Payload, Cargo,
+TSI_PATH_LANE(WikimyeiInferenceExpectedValueMdn, Out, Payload, Cargo,
               "expected-value inference cargo passthrough")
-TSI_PATH_LANE(WikimyeiInferenceMdn, Out, Future, Tensor,
-              "conditional expectation E[Y|X]")
-TSI_PATH_LANE(WikimyeiInferenceMdn, Out, Loss, Tensor,
+TSI_PATH_LANE(WikimyeiInferenceExpectedValueMdn, Out, Future, Tensor,
+              "conditional expectation E[F|X]")
+TSI_PATH_LANE(WikimyeiInferenceExpectedValueMdn, Out, Loss, Tensor,
               "MDN training loss")
-TSI_PATH_LANE(WikimyeiInferenceMdn, Out, Meta, String,
+TSI_PATH_LANE(WikimyeiInferenceExpectedValueMdn, Out, Meta, String,
               "runtime trace/meta stream")
 
-TSI_PATH_LANE(SinkNull, In, Step, Cargo,
-              "sink consume step cargo")
-TSI_PATH_LANE(SinkNull, Out, Meta, String,
-              "runtime trace/meta stream")
+TSI_PATH_LANE(SinkNull, In, Step, Cargo, "sink consume step cargo")
+TSI_PATH_LANE(SinkNull, Out, Meta, String, "runtime trace/meta stream")
 
-TSI_PATH_LANE(SinkLogSys, In, Info, Tensor,
-              "log info tensor payloads")
-TSI_PATH_LANE(SinkLogSys, In, Info, Cargo,
-              "log info cargo payloads")
-TSI_PATH_LANE(SinkLogSys, In, Warn, String,
-              "log warning messages")
-TSI_PATH_LANE(SinkLogSys, In, Warn, Cargo,
-              "log warning cargo payloads")
-TSI_PATH_LANE(SinkLogSys, In, Debug, String,
-              "log debug/meta messages")
-TSI_PATH_LANE(SinkLogSys, In, Debug, Cargo,
-              "log debug cargo payloads")
-TSI_PATH_LANE(SinkLogSys, In, Error, String,
-              "log error messages")
-TSI_PATH_LANE(SinkLogSys, In, Error, Cargo,
-              "log error cargo payloads")
+TSI_PATH_LANE(SinkLogSys, In, Info, Tensor, "log info tensor payloads")
+TSI_PATH_LANE(SinkLogSys, In, Info, Cargo, "log info cargo payloads")
+TSI_PATH_LANE(SinkLogSys, In, Warn, String, "log warning messages")
+TSI_PATH_LANE(SinkLogSys, In, Warn, Cargo, "log warning cargo payloads")
+TSI_PATH_LANE(SinkLogSys, In, Debug, String, "log debug/meta messages")
+TSI_PATH_LANE(SinkLogSys, In, Debug, Cargo, "log debug cargo payloads")
+TSI_PATH_LANE(SinkLogSys, In, Error, String, "log error messages")
+TSI_PATH_LANE(SinkLogSys, In, Error, Cargo, "log error cargo payloads")
 
 // Canonical endpoint compatibility manifest.
 // This list is used for endpoint-level path validation (known tsi types).
-TSI_PATH_ENDPOINT(SourceDataloader, Step, String,
-                  "source command ingress")
+TSI_PATH_ENDPOINT(SourceDataloader, Step, String, "source command ingress")
 TSI_PATH_ENDPOINT(SourceDataloader, Payload, Cargo,
                   "source observation cargo payload")
-TSI_PATH_ENDPOINT(SourceDataloader, Meta, String,
-                  "runtime trace/meta stream")
+TSI_PATH_ENDPOINT(SourceDataloader, Meta, String, "runtime trace/meta stream")
 
-TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Step, Cargo,
+TSI_PATH_ENDPOINT(WikimyeiRepresentationEncodingVicreg, Step, Cargo,
                   "representation observation cargo ingress")
-TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Payload, Cargo,
+TSI_PATH_ENDPOINT(WikimyeiRepresentationEncodingVicreg, Payload, Cargo,
                   "representation observation cargo with encoding")
-TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Loss, Tensor,
+TSI_PATH_ENDPOINT(WikimyeiRepresentationEncodingVicreg, Loss, Tensor,
                   "training loss")
-TSI_PATH_ENDPOINT(WikimyeiRepresentationVicreg, Meta, String,
+TSI_PATH_ENDPOINT(WikimyeiRepresentationEncodingVicreg, Meta, String,
                   "runtime trace/meta stream")
 
-TSI_PATH_ENDPOINT(WikimyeiInferenceMdn, Step, Cargo,
+TSI_PATH_ENDPOINT(WikimyeiInferenceExpectedValueMdn, Step, Cargo,
                   "expected-value inference cargo ingress")
-TSI_PATH_ENDPOINT(WikimyeiInferenceMdn, Payload, Cargo,
+TSI_PATH_ENDPOINT(WikimyeiInferenceExpectedValueMdn, Payload, Cargo,
                   "expected-value inference cargo passthrough")
-TSI_PATH_ENDPOINT(WikimyeiInferenceMdn, Future, Tensor,
-                  "conditional expectation E[Y|X]")
-TSI_PATH_ENDPOINT(WikimyeiInferenceMdn, Loss, Tensor,
+TSI_PATH_ENDPOINT(WikimyeiInferenceExpectedValueMdn, Future, Tensor,
+                  "conditional expectation E[F|X]")
+TSI_PATH_ENDPOINT(WikimyeiInferenceExpectedValueMdn, Loss, Tensor,
                   "MDN training loss")
-TSI_PATH_ENDPOINT(WikimyeiInferenceMdn, Meta, String,
+TSI_PATH_ENDPOINT(WikimyeiInferenceExpectedValueMdn, Meta, String,
                   "runtime trace/meta stream")
 
-TSI_PATH_ENDPOINT(SinkNull, Step, Cargo,
-                  "sink consume step cargo")
-TSI_PATH_ENDPOINT(SinkNull, Meta, String,
-                  "runtime trace/meta stream")
+TSI_PATH_ENDPOINT(SinkNull, Step, Cargo, "sink consume step cargo")
+TSI_PATH_ENDPOINT(SinkNull, Meta, String, "runtime trace/meta stream")
 
-TSI_PATH_ENDPOINT(SinkLogSys, Info, Tensor,
-                  "log info tensor payloads")
-TSI_PATH_ENDPOINT(SinkLogSys, Info, Cargo,
-                  "log info cargo payloads")
-TSI_PATH_ENDPOINT(SinkLogSys, Warn, String,
-                  "log warning messages")
-TSI_PATH_ENDPOINT(SinkLogSys, Warn, Cargo,
-                  "log warning cargo payloads")
-TSI_PATH_ENDPOINT(SinkLogSys, Debug, String,
-                  "log debug/meta messages")
-TSI_PATH_ENDPOINT(SinkLogSys, Debug, Cargo,
-                  "log debug cargo payloads")
-TSI_PATH_ENDPOINT(SinkLogSys, Error, String,
-                  "log error messages")
-TSI_PATH_ENDPOINT(SinkLogSys, Error, Cargo,
-                  "log error cargo payloads")
+TSI_PATH_ENDPOINT(SinkLogSys, Info, Tensor, "log info tensor payloads")
+TSI_PATH_ENDPOINT(SinkLogSys, Info, Cargo, "log info cargo payloads")
+TSI_PATH_ENDPOINT(SinkLogSys, Warn, String, "log warning messages")
+TSI_PATH_ENDPOINT(SinkLogSys, Warn, Cargo, "log warning cargo payloads")
+TSI_PATH_ENDPOINT(SinkLogSys, Debug, String, "log debug/meta messages")
+TSI_PATH_ENDPOINT(SinkLogSys, Debug, Cargo, "log debug cargo payloads")
+TSI_PATH_ENDPOINT(SinkLogSys, Error, String, "log error messages")
+TSI_PATH_ENDPOINT(SinkLogSys, Error, Cargo, "log error cargo payloads")
 
 #undef TSI_PATH_LANE
 #undef TSI_PATH_ENDPOINT

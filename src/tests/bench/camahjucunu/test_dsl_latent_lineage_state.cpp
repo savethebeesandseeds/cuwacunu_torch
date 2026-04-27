@@ -13,7 +13,7 @@
 
 namespace {
 
-std::string read_text_file(const std::string& path) {
+std::string read_text_file(const std::string &path) {
   std::ifstream in(path);
   if (!in.is_open()) {
     throw std::runtime_error("failed to open file: " + path);
@@ -22,37 +22,45 @@ std::string read_text_file(const std::string& path) {
                      std::istreambuf_iterator<char>());
 }
 
-const cuwacunu::camahjucunu::latent_lineage_state_entry_t* find_entry(
-    const cuwacunu::camahjucunu::latent_lineage_state_instruction_t& decoded,
-    const std::string& key) {
-  for (const auto& e : decoded.entries) {
-    if (e.key == key) return &e;
+const cuwacunu::camahjucunu::latent_lineage_state_entry_t *find_entry(
+    const cuwacunu::camahjucunu::latent_lineage_state_instruction_t &decoded,
+    const std::string &key) {
+  for (const auto &e : decoded.entries) {
+    if (e.key == key)
+      return &e;
   }
   return nullptr;
 }
 
-}  // namespace
+} // namespace
 
 int main() {
   try {
     const std::string grammar_path =
         "/cuwacunu/src/config/bnf/latent_lineage_state.authored.bnf";
     const std::string vicreg_dsl_path =
-        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl";
+        "/cuwacunu/src/config/instructions/defaults/"
+        "default.tsi.wikimyei.representation.encoding.vicreg.dsl";
     const std::string expected_value_dsl_path =
-        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl";
+        "/cuwacunu/src/config/instructions/defaults/"
+        "default.tsi.wikimyei.inference.expected_value.mdn.dsl";
     const std::string embedding_eval_dsl_path =
-        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
+        "/cuwacunu/src/config/instructions/defaults/"
+        "default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
     const std::string evaluation_dsl_path =
-        "/cuwacunu/src/config/instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
+        "/cuwacunu/src/config/instructions/defaults/"
+        "default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl";
 
     const std::string grammar = read_text_file(grammar_path);
     const std::string vicreg_dsl = read_text_file(vicreg_dsl_path);
     const std::string mdn_dsl = read_text_file(expected_value_dsl_path);
-    const std::string embedding_eval_dsl = read_text_file(embedding_eval_dsl_path);
+    const std::string embedding_eval_dsl =
+        read_text_file(embedding_eval_dsl_path);
     const std::string evaluation_dsl = read_text_file(evaluation_dsl_path);
 
     std::string resolved_vicreg_dsl;
+    std::string resolved_mdn_dsl;
+    std::string resolved_evaluation_dsl;
     std::string resolve_error;
     const std::vector<cuwacunu::camahjucunu::dsl_variable_t> no_variables;
     if (!cuwacunu::camahjucunu::resolve_dsl_variables_in_text(
@@ -60,27 +68,54 @@ int main() {
       throw std::runtime_error("failed to resolve vicreg dsl defaults: " +
                                resolve_error);
     }
+    if (!cuwacunu::camahjucunu::resolve_dsl_variables_in_text(
+            mdn_dsl, no_variables, &resolved_mdn_dsl, &resolve_error)) {
+      throw std::runtime_error(
+          "failed to resolve expected-value dsl defaults: " + resolve_error);
+    }
+    if (!cuwacunu::camahjucunu::resolve_dsl_variables_in_text(
+            evaluation_dsl, no_variables, &resolved_evaluation_dsl,
+            &resolve_error)) {
+      throw std::runtime_error("failed to resolve evaluation dsl defaults: " +
+                               resolve_error);
+    }
 
     const auto vicreg_decoded =
         cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
             grammar, resolved_vicreg_dsl);
     const auto vicreg_map = vicreg_decoded.to_map();
-    assert(vicreg_decoded.entries.size() >= 10);
-    assert(vicreg_map.at("encoding_dims") == "72");
-    assert(vicreg_map.at("projector_mlp_spec") == "128-256-128");
+    assert(vicreg_decoded.entries.size() == 6);
+    assert(vicreg_map.at("TAG") == "vicreg.default");
+    assert(vicreg_map.at("enable_buffer_averaging") == "false");
     assert(vicreg_map.at("device") == "gpu");
-    const auto* e_proj = find_entry(vicreg_decoded, "projector_mlp_spec");
-    assert(e_proj != nullptr);
-    assert(e_proj->declared_type == "str");
+    assert(vicreg_map.at("network_design_dsl_file") ==
+           "/cuwacunu/src/config/instructions/defaults/"
+           "default.tsi.wikimyei.representation.encoding.vicreg.network_design."
+           "dsl");
+    assert(vicreg_map.at("jkimyei_dsl_file") ==
+           "/cuwacunu/src/config/instructions/defaults/"
+           "default.tsi.wikimyei.representation.encoding.vicreg.jkimyei.dsl");
+    const auto *e_device = find_entry(vicreg_decoded, "device");
+    assert(e_device != nullptr);
+    assert(e_device->declared_type == "str");
 
     const auto mdn_decoded =
-        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(grammar, mdn_dsl);
+        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
+            grammar, resolved_mdn_dsl);
     const auto mdn_map = mdn_decoded.to_map();
-    assert(mdn_map.at("target_dims") == "3");
+    assert(mdn_decoded.entries.size() == 11);
+    assert(mdn_map.at("TAG") == "expected_value.mdn.default");
     assert(mdn_map.at("target_weights") == "0.5");
-    const auto* e_target_dims = find_entry(mdn_decoded, "target_dims");
-    assert(e_target_dims != nullptr);
-    assert(e_target_dims->declared_type == "arr[int]");
+    assert(mdn_map.at("network_design_dsl_file") ==
+           "/cuwacunu/src/config/instructions/defaults/"
+           "default.tsi.wikimyei.inference.expected_value.mdn.network_design."
+           "dsl");
+    assert(mdn_map.at("jkimyei_dsl_file") ==
+           "/cuwacunu/src/config/instructions/defaults/"
+           "default.tsi.wikimyei.inference.expected_value.mdn.jkimyei.dsl");
+    const auto *e_target_weights = find_entry(mdn_decoded, "target_weights");
+    assert(e_target_weights != nullptr);
+    assert(e_target_weights->declared_type == "arr[float]");
 
     const auto embedding_eval_decoded =
         cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
@@ -93,39 +128,39 @@ int main() {
     assert(embedding_eval_map.at("standardize_epsilon") == "1e-8");
 
     const auto evaluation_decoded =
-        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(grammar, evaluation_dsl);
+        cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
+            grammar, resolved_evaluation_dsl);
     const auto evaluation_map = evaluation_decoded.to_map();
-    assert(evaluation_map.size() == 4);
+    assert(evaluation_map.size() == 5);
     assert(evaluation_map.at("check_temporal_order") == "true");
     assert(evaluation_map.at("validate_vicreg_out") == "true");
     assert(evaluation_map.at("report_shapes") == "false");
     assert(evaluation_map.at("summary_every_steps") == "256");
+    assert(evaluation_map.at("mdn_target_feature_indices") == "3");
 
-    const std::string duplicate_keys =
-        "alpha:int = 1\n"
-        "alpha = 2\n";
+    const std::string duplicate_keys = "alpha:int = 1\n"
+                                       "alpha = 2\n";
     const auto duplicate_decoded =
         cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
             grammar, duplicate_keys);
     const auto duplicate_map = duplicate_decoded.to_map();
     assert(duplicate_map.at("alpha") == "2");
 
-    const std::string with_domain =
-        "alpha(0,1):double = 0.5\n"
-        "mode[a|b|c]:str = a\n"
-        "legacy_key = keep\n";
+    const std::string with_domain = "alpha(0,1):double = 0.5\n"
+                                    "mode[a|b|c]:str = a\n"
+                                    "legacy_key = keep\n";
     const auto with_domain_decoded =
         cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
             grammar, with_domain);
-    const auto* e_alpha = find_entry(with_domain_decoded, "alpha");
+    const auto *e_alpha = find_entry(with_domain_decoded, "alpha");
     assert(e_alpha != nullptr);
     assert(e_alpha->declared_domain == "(0,1)");
     assert(e_alpha->declared_type == "double");
-    const auto* e_mode = find_entry(with_domain_decoded, "mode");
+    const auto *e_mode = find_entry(with_domain_decoded, "mode");
     assert(e_mode != nullptr);
     assert(e_mode->declared_domain == "[a|b|c]");
     assert(e_mode->declared_type == "str");
-    const auto* e_legacy = find_entry(with_domain_decoded, "legacy_key");
+    const auto *e_legacy = find_entry(with_domain_decoded, "legacy_key");
     assert(e_legacy != nullptr);
     assert(e_legacy->declared_domain.empty());
     assert(e_legacy->declared_type.empty());
@@ -136,36 +171,37 @@ int main() {
     assert(mixed_interval_lhs.key == "sample_count");
     assert(mixed_interval_lhs.declared_domain == "[0,+inf)");
     assert(mixed_interval_lhs.declared_type == "uint");
-    const std::string mixed_interval_domain =
-        "sample_count[0,+inf):uint = 0\n";
+    const std::string mixed_interval_domain = "sample_count[0,+inf):uint = 0\n";
     const auto mixed_interval_decoded =
         cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
             grammar, mixed_interval_domain);
-    const auto* e_sample_count = find_entry(mixed_interval_decoded, "sample_count");
+    const auto *e_sample_count =
+        find_entry(mixed_interval_decoded, "sample_count");
     assert(e_sample_count != nullptr);
     assert(e_sample_count->declared_domain == "[0,+inf)");
     assert(e_sample_count->declared_type == "uint");
 
-    const std::string malformed =
-        "alpha:int = 1\n"
-        "this line is malformed\n";
+    const std::string malformed = "alpha:int = 1\n"
+                                  "this line is malformed\n";
     bool malformed_rejected = false;
     try {
       (void)cuwacunu::camahjucunu::dsl::decode_latent_lineage_state_from_dsl(
           grammar, malformed);
-    } catch (const std::exception&) {
+    } catch (const std::exception &) {
       malformed_rejected = true;
     }
     assert(malformed_rejected);
 
-    std::cout << "[test_dsl_latent_lineage_state] entries(vicreg/mdn/embedding/evaluation)="
+    std::cout << "[test_dsl_latent_lineage_state] "
+                 "entries(vicreg/mdn/embedding/evaluation)="
               << vicreg_decoded.entries.size() << "/"
               << mdn_decoded.entries.size() << "/"
               << embedding_eval_decoded.entries.size() << "/"
               << evaluation_decoded.entries.size() << "\n";
     return 0;
-  } catch (const std::exception& e) {
-    std::cerr << "[test_dsl_latent_lineage_state] exception: " << e.what() << "\n";
+  } catch (const std::exception &e) {
+    std::cerr << "[test_dsl_latent_lineage_state] exception: " << e.what()
+              << "\n";
     return 1;
   }
 }

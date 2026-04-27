@@ -5,8 +5,11 @@
 
 <dock_section>               ::= [<whitespace>] "DOCK" [<whitespace>] "{"
                                  <line_end>
-                                 {<contract_variable_decl>}
+                                 {<dock_entry>}
                                  [<whitespace>] "}" <line_end> ;
+
+<dock_entry>                 ::= <contract_variable_decl>
+                               | <instrument_signature_decl> ;
 
 <assembly_section>           ::= [<whitespace>] "ASSEMBLY" [<whitespace>] "{"
                                  <line_end>
@@ -37,10 +40,40 @@
                                  [<whitespace>] <family_value>
                                  [<whitespace>] ";" <line_end> ;
 
+<instrument_signature_decl>  ::= [<whitespace>] "INSTRUMENT_SIGNATURE"
+                                 [<whitespace>] "<"
+                                 [<whitespace>] <alias_value>
+                                 [<whitespace>] ">"
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 [<whitespace>] "SYMBOL" [<whitespace>] ":"
+                                 [<whitespace>] <instrument_signature_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "RECORD_TYPE" [<whitespace>] ":"
+                                 [<whitespace>] <instrument_signature_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "MARKET_TYPE" [<whitespace>] ":"
+                                 [<whitespace>] <instrument_signature_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "VENUE" [<whitespace>] ":"
+                                 [<whitespace>] <instrument_signature_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "BASE_ASSET" [<whitespace>] ":"
+                                 [<whitespace>] <instrument_signature_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "QUOTE_ASSET" [<whitespace>] ":"
+                                 [<whitespace>] <instrument_signature_value>
+                                 [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "}" [<whitespace>] ";"
+                                 <line_end> ;
+
 <alias_value>                ::= <id_char> {<id_char>} ;
 <contract_variable_name>     ::= "_" "_" <id_char> {<id_char>} ;
 <family_value>               ::= <id_char> {<id_char>} ;
-<path_value>                 ::= <family_value> | <quoted_text> ;
+<instrument_signature_value> ::= "ANY" | <family_value> ;
+<path_value>                 ::= <family_value> | <quoted_text> | <list_value> ;
+<list_value>                 ::= "[" [<list_items>] "]" ;
+<list_items>                 ::= <family_value> { [<whitespace>] "," [<whitespace>] <family_value> } ;
 <quoted_text>                ::= "\"" {<quoted_char>} "\"" ;
 <quoted_char>                ::= <id_char> | "/" | ":" | "\\" | "." | "-" | "_" | " " ;
 

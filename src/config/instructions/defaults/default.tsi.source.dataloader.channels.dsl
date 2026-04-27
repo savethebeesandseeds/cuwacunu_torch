@@ -10,27 +10,27 @@
     active              : enable/disable this channel in the assembled payload
     record_type         : source decoder family expected for this interval
     seq_length          : history window size (past context length)
-    future_seq_length   : forecast window size for aligned targets
+    future_seq_length   : forecast window size for aligned future features
     channel_weight      : scalar weight for channel contribution
     normalization_policy: binary preprocessing preset applied during CSV -> BIN
 
   Semantics:
     - Active rows contribute features to model payload construction.
     - Tensor rank convention:
-      past features are [B,C,T,D] when batched and [C,T,D] when unbatched.
-      future features are [B,C,Hf,D] when batched and [C,Hf,D] when unbatched.
-      C is active channel count, T comes from seq_length, Hf comes from
-      future_seq_length, and D is the per-timestep feature width emitted by the
+      past features are [B,C,Hx,Dx] when batched and [C,Hx,Dx] when unbatched.
+      future features are [B,C,Hf,Dx] when batched and [C,Hf,Dx] when unbatched.
+      C is active channel count, Hx comes from seq_length, Hf comes from
+      future_seq_length, and Dx is the per-timestep feature width emitted by the
       record_type decoder.
     - Active rows also define the contract-facing observation docking shape.
       C equals the number of active rows.
-      T equals the maximum seq_length across active rows.
+      Hx equals the maximum seq_length across active rows.
       future_seq_length does not participate in current VICReg docking.
-    - Contract registration fails fast if decoded active-row C/T disagree with
+    - Contract registration fails fast if decoded active-row C/Hx disagree with
       the contract docking __variables consumed by VICReg network_design.
-    - future_seq_length is still decoded and available for future target-side
+    - future_seq_length is still decoded and available for future feature-side
       docking, but it is not enforced as part of the current VICReg input dock.
-    - seq_length/future_seq_length control temporal slicing and label alignment.
+    - seq_length/future_seq_length control temporal slicing and future alignment.
     - normalization_policy controls per-channel binary preprocessing.
     - none keeps raw values in the cached .bin.
     - log_returns is the strict policy for cached normalization.

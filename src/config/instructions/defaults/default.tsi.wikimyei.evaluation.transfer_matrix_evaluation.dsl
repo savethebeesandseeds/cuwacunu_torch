@@ -3,7 +3,7 @@
   ============================================================
   Purpose:
     Ephemeral transfer-matrix evaluation runtime knobs owned by
-    tsi.wikimyei.representation.vicreg.
+    tsi.wikimyei.representation.encoding.vicreg.
 
   Notes:
     - This is no longer a standalone tsi.probe component.
@@ -19,6 +19,8 @@ validate_vicreg_out:bool = true
 report_shapes:bool = false
 summary_every_steps(0,+inf):int = 256
 
-# Optional probe override. When omitted, transfer-matrix evaluation uses all
-# active observation feature dims for the current record_type.
-mdn_target_dims:arr[int] = % __future_target_dims ? 3 %
+# Optional probe override. The default instruction binds the contract-owned
+# target selection; if the key is omitted entirely, transfer-matrix evaluation
+# falls back to all active observation feature indices for the current
+# record_type.
+mdn_target_feature_indices:arr[int] = % __future_target_feature_indices ? 3 %

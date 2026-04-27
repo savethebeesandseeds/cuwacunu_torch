@@ -77,8 +77,8 @@ int main() try {
   assert(cds.size().has_value());
   const std::size_t N = cds.size().value();         // number of anchors in intersection
   const int64_t     C = 2;
-  const int64_t     Tp = (int64_t)cds.max_N_past_;
-  const int64_t     Tf = (int64_t)cds.max_N_future_;
+  const int64_t     Hx = (int64_t)cds.max_N_past_;
+  const int64_t     Hf = (int64_t)cds.max_N_future_;
   const int64_t     key_left  = (int64_t)cds.leftmost_key_value_;
   const int64_t     key_step  = (int64_t)cds.key_value_step_;
 
@@ -102,7 +102,7 @@ int main() try {
           cds, cds.SequentialSampler(), cds.SequentialSampler_options(batch_size, workers));
       for (auto& sample_batch : dl) {
         for (auto& s : sample_batch) {
-          anchors.push_back(s.past_keys.index({0, Tp - 1}).item<int64_t>());
+          anchors.push_back(s.past_keys.index({0, Hx - 1}).item<int64_t>());
         }
       }
     } else {
@@ -111,7 +111,7 @@ int main() try {
           cds, cds.RandomSampler(), cds.RandomSampler_options(batch_size, workers));
       for (auto& sample_batch : dl) {
         for (auto& s : sample_batch) {
-          anchors.push_back(s.past_keys.index({0, Tp - 1}).item<int64_t>());
+          anchors.push_back(s.past_keys.index({0, Hx - 1}).item<int64_t>());
         }
       }
     }
@@ -126,8 +126,8 @@ int main() try {
 
     // Introspection from the dataloader must match dataset
     assert(dl.C_ == C);
-    assert(dl.T_ == Tp);
-    // D_ checked once we see a sample below.
+    assert(dl.T_ == Hx);
+    // Dx checked once we see a sample below.
 
     std::vector<char> visited(N, 0);
     std::size_t total_seen = 0;
@@ -139,13 +139,13 @@ int main() try {
 
       // Check per-sample anchors are strictly increasing across the whole epoch.
       for (auto& s : sample_batch) {
-        // Each sample is unbatched: past_keys shape is [C, Tp]
+        // Each sample is unbatched: past_keys shape is [C, Hx]
         assert(s.past_keys.defined());
         assert(s.past_keys.dim() == 2);
         assert(s.past_keys.size(0) == C);
-        assert(s.past_keys.size(1) == Tp);
+        assert(s.past_keys.size(1) == Hx);
 
-        const int64_t anchor_key = s.past_keys.index({0, Tp - 1}).item<int64_t>(); // channel 0, time t
+        const int64_t anchor_key = s.past_keys.index({0, Hx - 1}).item<int64_t>(); // channel 0, time t
         if (have_prev) { assert(anchor_key == prev_anchor + key_step); }
         prev_anchor = anchor_key; have_prev = true;
 
@@ -156,23 +156,23 @@ int main() try {
 
         // Sanity on features/masks shapes for each sample
         assert(s.features.size(0)        == C);
-        assert(s.features.size(1)        == Tp);
+        assert(s.features.size(1)        == Hx);
         assert(s.future_features.size(0) == C);
-        assert(s.future_features.size(1) == Tf);
+        assert(s.future_features.size(1) == Hf);
       }
 
       // Collate and check batch shapes
       auto coll = Datasample_t::collate_fn(sample_batch);
       const int64_t B = coll.features.size(0);
-      const int64_t D = coll.features.size(3);  // infer D from collated tensor
+      const int64_t Dx = coll.features.size(3); // infer Dx from collated tensor
       assert(B > 0 && B <= (int64_t)batch_size);
-      assert(coll.features.sizes()        == torch::IntArrayRef({B, C, Tp, D}));
-      assert(coll.mask.sizes()            == torch::IntArrayRef({B, C, Tp}));
-      assert(coll.future_features.sizes() == torch::IntArrayRef({B, C, Tf, D}));
-      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, C, Tf}));
+      assert(coll.features.sizes()        == torch::IntArrayRef({B, C, Hx, Dx}));
+      assert(coll.mask.sizes()            == torch::IntArrayRef({B, C, Hx}));
+      assert(coll.future_features.sizes() == torch::IntArrayRef({B, C, Hf, Dx}));
+      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, C, Hf}));
 
-      // Cross-check dataloader’s D_ discovery
-      assert(dl.D_ == D);
+      // Cross-check dataloader's Dx discovery
+      assert(dl.D_ == Dx);
     }
 
     // Coverage: we must have visited all anchors exactly once
@@ -194,25 +194,25 @@ int main() try {
 
       // Anchors come in random order; just validate coverage & shapes
       for (auto& s : sample_batch) {
-        const int64_t anchor_key = s.past_keys.index({0, Tp - 1}).item<int64_t>();
+        const int64_t anchor_key = s.past_keys.index({0, Hx - 1}).item<int64_t>();
         const std::size_t j = (std::size_t)((anchor_key - key_left) / key_step);
         assert(j < N);
         visited[j] = 1;
 
         assert(s.features.size(0)        == C);
-        assert(s.features.size(1)        == Tp);
+        assert(s.features.size(1)        == Hx);
         assert(s.future_features.size(0) == C);
-        assert(s.future_features.size(1) == Tf);
+        assert(s.future_features.size(1) == Hf);
       }
 
       auto coll = Datasample_t::collate_fn(sample_batch);
       const int64_t B = coll.features.size(0);
-      const int64_t D = coll.features.size(3);
+      const int64_t Dx = coll.features.size(3);
       assert(B > 0 && B <= (int64_t)batch_size);
-      assert(coll.features.sizes()        == torch::IntArrayRef({B, C, Tp, D}));
-      assert(coll.mask.sizes()            == torch::IntArrayRef({B, C, Tp}));
-      assert(coll.future_features.sizes() == torch::IntArrayRef({B, C, Tf, D}));
-      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, C, Tf}));
+      assert(coll.features.sizes()        == torch::IntArrayRef({B, C, Hx, Dx}));
+      assert(coll.mask.sizes()            == torch::IntArrayRef({B, C, Hx}));
+      assert(coll.future_features.sizes() == torch::IntArrayRef({B, C, Hf, Dx}));
+      assert(coll.future_mask.sizes()     == torch::IntArrayRef({B, C, Hf}));
     }
 
     assert(total_seen == N);

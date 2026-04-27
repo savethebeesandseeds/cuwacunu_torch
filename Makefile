@@ -6,7 +6,7 @@ ROOT_PATH := ./src
 include $(ROOT_PATH)/Makefile.config
 .DEFAULT_GOAL := lib
 
-.PHONY: lib link install modules tests clean help targets
+.PHONY: lib link install modules tests doc doc_fast clean clean-doc help targets
 
 lib:
 	+$(MAKE) -C $(ROOT_PATH) lib
@@ -23,18 +23,31 @@ modules:
 tests:
 	+$(MAKE) -C $(ROOT_PATH) tests
 
+doc:
+	@printf "[DOC] entering doc build surface\n"
+	+$(MAKE) -C doc publish
+
+doc_fast:
+	@printf "[DOC] entering fast doc build surface\n"
+	+$(MAKE) -C doc fast
+
 clean:
 	+$(MAKE) -C $(ROOT_PATH) clean
+
+clean-doc:
+	+$(MAKE) -C doc clean
 
 help:
 	@echo "repo targets:"
 	@echo "  lib   canonical library/core aggregate"
 	@echo "  link  canonical final-linked executable aggregate"
 	@echo "  install  finalize in-place hero/tool outputs after link"
+	@echo "  doc   build the formal algorithm PDF"
+	@echo "  doc_fast  build a one-pass draft algorithm PDF"
 	@echo "related:"
-	@echo "  tests modules clean"
+	@echo "  tests modules clean clean-doc"
 	@echo "advanced/internal:"
 	@echo "  use 'make -C src/main all' only when you intentionally want the direct main tree"
 
 targets:
-	@printf "%s\n" lib link install modules tests clean help targets
+	@printf "%s\n" lib link install modules tests doc doc_fast clean clean-doc help targets

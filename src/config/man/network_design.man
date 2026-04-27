@@ -5,7 +5,7 @@ MAN_ID = network_design
 TARGET_DSL = framework-agnostic NETWORK payloads
 TARGET_BNF = src/config/bnf/network_design.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/network_design/network_design.cpp
-PRIMARY_VALIDATORS = semantic validators per consumer (for VICReg: src/include/wikimyei/representation/VICReg/vicreg_4d_network_design.h)
+PRIMARY_VALIDATORS = semantic validators per consumer (for VICReg: src/include/wikimyei/representation/VICReg/vicreg_rank4_network_design.h)
 
 [FIELD NETWORK.ID]
 key = NETWORK "<id>"

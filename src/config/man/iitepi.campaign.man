@@ -46,7 +46,7 @@ default = none
 range = unique within campaign
 allowed = [A-Za-z0-9_.-]+
 nuance = reusable execution unit combining one CONTRACT ref, one WAVE ref, and optional wave-scoping __variables
-note = hashimyei-backed slot selection is authored inside BIND.MOUNT, not inside the WAVE file
+note = hashimyei-backed component ids are derived from the selected contract content during campaign staging
 
 [FIELD BIND.CONTRACT]
 key = BIND.CONTRACT
@@ -67,18 +67,6 @@ default = none
 range = must exist in campaign-declared wave ids from FROM ... IMPORT_WAVE
 allowed = imported wave id token
 nuance = wave id selection is explicit in the campaign import list rather than inferred by scanning every imported wave file
-
-[FIELD BIND.MOUNT]
-key = BIND.MOUNT
-scope = BIND
-type = block
-required = conditional
-default = none
-range = zero or one per bind
-allowed = MOUNT { <wave_binding_id> = EXACT <hashimyei>; | <wave_binding_id> = RANK <n>; }
-nuance = MOUNT resolves hashimyei-backed WAVE component slots for this bind only; authored WAVE files stay compatibility-oriented and do not carry concrete hashimyei selection anymore
-note = EXACT picks one explicit 0x... revision, while RANK picks the nth dock-compatible family member from the shared family-rank overlay
-note_2 = missing required MOUNT entries for hashimyei-backed slots are rejected during campaign snapshot staging
 
 [FIELD BIND.__VAR]
 key = BIND.__<name>

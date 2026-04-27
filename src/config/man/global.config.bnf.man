@@ -17,6 +17,16 @@ range = existing regular file
 allowed = absolute_or_relative path
 nuance = grammar contract for top-level campaign DSLs decoded by Runtime Hero and Marshal Hero launch orchestration
 
+[FIELD BNF.lattice_target_grammar_filename]
+key = lattice_target_grammar_filename
+scope = BNF section
+type = path
+required = true
+default = /cuwacunu/src/config/bnf/lattice.target.bnf
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = grammar contract for lattice target evidence DSLs decoded before later target-verification flows
+
 [FIELD BNF.iitepi_runtime_binding_grammar_filename]
 key = iitepi_runtime_binding_grammar_filename
 scope = BNF section

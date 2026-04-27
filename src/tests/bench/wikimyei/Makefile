@@ -15,10 +15,10 @@ TEST_DEFAULT_LDLIBS :=
 # 3) Tests (build + run aliases)
 COMMON_LINK = $(libtorch_a) $(libcurl_a) $(libssl_a) $(libcommon_a) $(LDLIBS_torch) $(LDLIBS_curl) $(LDLIBS_ssl)
 
-$(eval $(call TEST_ONEFILE, test_vicreg_4d_projector_gpu_vs_cpu, test_vicreg_4d_projector_gpu_vs_cpu.cpp, $(COMMON_LINK)))
-$(eval $(call TEST_ONEFILE, test_vicreg_4d_train,         test_vicreg_4d_train.cpp,         $(COMMON_LINK)))
-$(eval $(call TEST_ONEFILE, test_vicreg_4d_save_and_load, test_vicreg_4d_save_and_load.cpp, $(COMMON_LINK)))
-$(eval $(call TEST_ONEFILE, test_vicreg_4d_phase1_stabilization, test_vicreg_4d_phase1_stabilization.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_vicreg_rank4_projector_gpu_vs_cpu, test_vicreg_rank4_projector_gpu_vs_cpu.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_vicreg_rank4_train,         test_vicreg_rank4_train.cpp,         $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_vicreg_rank4_save_and_load, test_vicreg_rank4_save_and_load.cpp, $(COMMON_LINK)))
+$(eval $(call TEST_ONEFILE, test_vicreg_rank4_phase1_stabilization, test_vicreg_rank4_phase1_stabilization.cpp, $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_mixture_density_network,         test_mixture_density_network.cpp,         $(COMMON_LINK)))
 $(eval $(call TEST_ONEFILE, test_expected_value,                  test_expected_value.cpp,                  $(COMMON_LINK)))
 
@@ -30,10 +30,10 @@ $(TEST_OUT)/test_expected_value: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 # 5) Aggregate: all
 .PHONY: all
 all: \
-	$(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu \
-	$(TEST_OUT)/test_vicreg_4d_train \
-	$(TEST_OUT)/test_vicreg_4d_save_and_load \
-	$(TEST_OUT)/test_vicreg_4d_phase1_stabilization \
+	$(TEST_OUT)/test_vicreg_rank4_projector_gpu_vs_cpu \
+	$(TEST_OUT)/test_vicreg_rank4_train \
+	$(TEST_OUT)/test_vicreg_rank4_save_and_load \
+	$(TEST_OUT)/test_vicreg_rank4_phase1_stabilization \
 	$(TEST_OUT)/test_mixture_density_network \
 	$(TEST_OUT)/test_expected_value
 	@$(LOG_SUCCESS)
@@ -41,10 +41,10 @@ all: \
 # 6) Aggregate: run
 .PHONY: run
 run: \
-	run-test_vicreg_4d_projector_gpu_vs_cpu \
-	run-test_vicreg_4d_train \
-	run-test_vicreg_4d_save_and_load \
-	run-test_vicreg_4d_phase1_stabilization \
+	run-test_vicreg_rank4_projector_gpu_vs_cpu \
+	run-test_vicreg_rank4_train \
+	run-test_vicreg_rank4_save_and_load \
+	run-test_vicreg_rank4_phase1_stabilization \
 	run-test_mixture_density_network \
 	run-test_expected_value
 
@@ -52,9 +52,9 @@ run: \
 .PHONY: clean
 clean:
 	$(Q)$(CLEAN_RM_CMD) \
-	  $(TEST_OUT)/test_vicreg_4d_projector_gpu_vs_cpu \
-	  $(TEST_OUT)/test_vicreg_4d_train \
-	  $(TEST_OUT)/test_vicreg_4d_save_and_load \
-	  $(TEST_OUT)/test_vicreg_4d_phase1_stabilization \
+	  $(TEST_OUT)/test_vicreg_rank4_projector_gpu_vs_cpu \
+	  $(TEST_OUT)/test_vicreg_rank4_train \
+	  $(TEST_OUT)/test_vicreg_rank4_save_and_load \
+	  $(TEST_OUT)/test_vicreg_rank4_phase1_stabilization \
 	  $(TEST_OUT)/test_mixture_density_network \
 	  $(TEST_OUT)/test_expected_value

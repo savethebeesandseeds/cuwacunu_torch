@@ -1,10 +1,60 @@
 #ifndef HERO_HASHIMYEI_TOOL
-#error "HERO_HASHIMYEI_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_hashimyei_tools.def"
+#error                                                                         \
+    "HERO_HASHIMYEI_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) must be defined before including hero_hashimyei_tools.def"
 #endif
 
-HERO_HASHIMYEI_TOOL("hero.hashimyei.list", "List component identities in the Hashimyei catalog; this is the component-discovery layer that complements Lattice fact queries", "{\"type\":\"object\",\"properties\":{\"include_non_hashimyei\":{\"type\":\"boolean\"},\"canonical_path_prefix\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"}},\"additionalProperties\":false}", handle_tool_list)
-HERO_HASHIMYEI_TOOL("hero.hashimyei.get_component_manifest", "Fetch the current manifest/state for a component identity; provide canonical_path or hashimyei", "{\"type\":\"object\",\"properties\":{\"canonical_path\":{\"type\":\"string\"},\"hashimyei\":{\"type\":\"string\"}},\"additionalProperties\":false}", handle_tool_get_component_manifest)
-HERO_HASHIMYEI_TOOL("hero.hashimyei.evaluate_contract_compatibility", "Evaluate whether a component hashimyei is dock-compatible with a contract; provide canonical_path or hashimyei, plus contract_dsl_path or contract_hash", "{\"type\":\"object\",\"properties\":{\"canonical_path\":{\"type\":\"string\"},\"hashimyei\":{\"type\":\"string\"},\"contract_dsl_path\":{\"type\":\"string\"},\"contract_hash\":{\"type\":\"string\"}},\"additionalProperties\":false}", handle_tool_evaluate_contract_compatibility)
-HERO_HASHIMYEI_TOOL("hero.hashimyei.get_founding_dsl_bundle", "Fetch the stored founding DSL bundle snapshot for a component identity; provide canonical_path or hashimyei", "{\"type\":\"object\",\"properties\":{\"canonical_path\":{\"type\":\"string\"},\"hashimyei\":{\"type\":\"string\"},\"include_content\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_get_founding_dsl_bundle)
-HERO_HASHIMYEI_TOOL("hero.hashimyei.update_rank", "Persist a deterministic dock-scoped family rank ordering and mirror it into the lattice ranking overlay; rank zero is the best member", "{\"type\":\"object\",\"properties\":{\"family\":{\"type\":\"string\"},\"dock_hash\":{\"type\":\"string\"},\"ordered_hashimyeis\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"source_view_kind\":{\"type\":\"string\"},\"source_view_transport_sha256\":{\"type\":\"string\"}},\"required\":[\"family\",\"dock_hash\",\"ordered_hashimyeis\"],\"additionalProperties\":false}", handle_tool_update_rank)
-HERO_HASHIMYEI_TOOL("hero.hashimyei.reset_catalog", "Rebuild the Hashimyei component catalog; set reingest=true to rescan component manifests from store_root", "{\"type\":\"object\",\"properties\":{\"reingest\":{\"type\":\"boolean\"}},\"additionalProperties\":false}", handle_tool_reset_catalog)
+HERO_HASHIMYEI_TOOL(
+    "hero.hashimyei.list",
+    "List component identities in the Hashimyei catalog; this is the "
+    "component-discovery layer that complements Lattice fact queries",
+    "{\"type\":\"object\",\"properties\":{\"include_non_hashimyei\":{\"type\":"
+    "\"boolean\"},\"canonical_path_prefix\":{\"type\":\"string\"},\"limit\":{"
+    "\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"}},"
+    "\"additionalProperties\":false}",
+    handle_tool_list)
+HERO_HASHIMYEI_TOOL("hero.hashimyei.get_component_manifest",
+                    "Fetch the current manifest/state for a component "
+                    "identity; provide canonical_path or hashimyei",
+                    "{\"type\":\"object\",\"properties\":{\"canonical_path\":{"
+                    "\"type\":\"string\"},\"hashimyei\":{\"type\":\"string\"}},"
+                    "\"additionalProperties\":false}",
+                    handle_tool_get_component_manifest)
+HERO_HASHIMYEI_TOOL(
+    "hero.hashimyei.evaluate_contract_compatibility",
+    "Evaluate whether a component hashimyei is component-compatible with any "
+    "matching slot in a contract; provide canonical_path or hashimyei, plus "
+    "contract_dsl_path or contract_hash",
+    "{\"type\":\"object\",\"properties\":{\"canonical_path\":{\"type\":"
+    "\"string\"},\"hashimyei\":{\"type\":\"string\"},\"contract_dsl_path\":{"
+    "\"type\":\"string\"},\"contract_hash\":{\"type\":\"string\"}},"
+    "\"additionalProperties\":false}",
+    handle_tool_evaluate_contract_compatibility)
+HERO_HASHIMYEI_TOOL(
+    "hero.hashimyei.get_founding_dsl_bundle",
+    "Fetch the stored founding DSL bundle snapshot for a component identity; "
+    "provide canonical_path or hashimyei",
+    "{\"type\":\"object\",\"properties\":{\"canonical_path\":{\"type\":"
+    "\"string\"},\"hashimyei\":{\"type\":\"string\"},\"include_content\":{"
+    "\"type\":\"boolean\"}},\"additionalProperties\":false}",
+    handle_tool_get_founding_dsl_bundle)
+HERO_HASHIMYEI_TOOL(
+    "hero.hashimyei.update_rank",
+    "Persist a deterministic component-compatibility-scoped family rank "
+    "ordering and mirror it into the lattice ranking overlay; rank zero is "
+    "the best member",
+    "{\"type\":\"object\",\"properties\":{\"family\":{\"type\":\"string\"},"
+    "\"component_compatibility_sha256_hex\":{\"type\":\"string\"},\"ordered_"
+    "hashimyeis\":{\"type\":"
+    "\"array\",\"items\":{\"type\":\"string\"}},\"source_view_kind\":{\"type\":"
+    "\"string\"},\"source_view_transport_sha256\":{\"type\":\"string\"}},"
+    "\"required\":[\"family\",\"component_compatibility_sha256_hex\",\"ordered_"
+    "hashimyeis\"],"
+    "\"additionalProperties\":false}",
+    handle_tool_update_rank)
+HERO_HASHIMYEI_TOOL(
+    "hero.hashimyei.reset_catalog",
+    "Rebuild the Hashimyei component catalog; set reingest=true to rescan "
+    "component manifests from store_root",
+    "{\"type\":\"object\",\"properties\":{\"reingest\":{\"type\":\"boolean\"}},"
+    "\"additionalProperties\":false}",
+    handle_tool_reset_catalog)

@@ -339,6 +339,10 @@ build_contract_record_from_contract_path(
   if (!has_non_ws_ascii(record->signature.circuit_dsl_sha256_hex)) {
     log_fatal("[dconfig] failed to compute circuit DSL sha256\n");
   }
+  record->instrument_signatures = derive_contract_instrument_signatures_or_fail(
+      decoded_circuit, record->config);
+  record->docking_signature.instrument_signatures =
+      record->instrument_signatures;
   if (contract_variable_section != nullptr) {
     record->signature.variable_assignments =
         contract_variable_assignments_from_section(*contract_variable_section);
@@ -359,6 +363,39 @@ build_contract_record_from_contract_path(
       record->docking_signature.compatible_circuits.push_back(circuit_name);
     }
   }
+  struct component_identity_config_t {
+    std::string tag{};
+  };
+  const auto component_identity_from_module_or_fail =
+      [&](const char *module_name,
+          const std::string &module_path) -> component_identity_config_t {
+    const auto section_it = record->module_sections.find(module_name);
+    if (section_it == record->module_sections.end()) {
+      log_fatal("[dconfig] missing module section [%s] while resolving "
+                "component TAG\n",
+                module_name);
+    }
+    const auto tag_it = section_it->second.find("TAG");
+    if (tag_it == section_it->second.end()) {
+      log_fatal("[dconfig] missing required TAG in module config [%s] file "
+                "%s\n",
+                module_name, module_path.c_str());
+    }
+    component_identity_config_t out{};
+    out.tag = unquote_if_wrapped(trim_ascii_ws_copy(tag_it->second));
+    if (!is_valid_component_tag_token(out.tag)) {
+      log_fatal("[dconfig] invalid TAG in module config [%s] file %s: %s\n",
+                module_name, module_path.c_str(), out.tag.c_str());
+    }
+    return out;
+  };
+  const component_identity_config_t vicreg_component_identity =
+      component_identity_from_module_or_fail(kModuleSectionVicreg, vicreg_path);
+  const component_identity_config_t expected_value_component_identity =
+      expected_value_path.has_value()
+          ? component_identity_from_module_or_fail(kModuleSectionExpectedValue,
+                                                   *expected_value_path)
+          : component_identity_config_t{};
   const std::string vicreg_module_sha256_hex =
       contract_space_t::sha256_hex_for_file(vicreg_path);
   const std::string expected_value_module_sha256_hex =
@@ -367,8 +404,9 @@ build_contract_record_from_contract_path(
           : std::string{};
   record->signature.bindings = derive_contract_component_bindings_or_fail(
       decoded_circuit, "", vicreg_path, vicreg_module_sha256_hex,
+      vicreg_component_identity.tag,
       expected_value_path.has_value() ? *expected_value_path : std::string{},
-      expected_value_module_sha256_hex);
+      expected_value_module_sha256_hex, expected_value_component_identity.tag);
   for (const auto &b : record->signature.bindings) {
     if (has_non_ws_ascii(b.tsi_dsl_path)) {
       dependency_paths.insert(canonicalize_path_best_effort(b.tsi_dsl_path));
@@ -378,6 +416,7 @@ build_contract_record_from_contract_path(
   std::unordered_set<std::string> seen_signature_modules{};
   const auto append_module_signature_entry =
       [&](std::string_view module_id, const std::string &raw_module_path,
+          std::string_view component_tag = std::string_view{},
           std::string_view resolved_module_text = std::string_view{}) {
         std::string module_path =
             canonicalize_path_best_effort(raw_module_path);
@@ -398,6 +437,7 @@ build_contract_record_from_contract_path(
         }
         contract_module_signature_entry_t entry{};
         entry.module_id = std::string(module_id);
+        entry.component_tag = std::string(component_tag);
         entry.module_dsl_path = module_path;
         if (!resolved_module_text.empty()) {
           entry.module_dsl_sha256_hex = sha256_hex_from_bytes(
@@ -434,6 +474,7 @@ build_contract_record_from_contract_path(
       observation_sources_path.has_value()) {
     append_module_signature_entry(
         "contract.observation.sources", *observation_sources_path,
+        /*component_tag=*/{},
         resolve_contract_surface_text(*observation_sources_path));
   }
   if (const auto observation_channels_path =
@@ -441,33 +482,36 @@ build_contract_record_from_contract_path(
       observation_channels_path.has_value()) {
     append_module_signature_entry(
         "contract.observation.channels", *observation_channels_path,
+        /*component_tag=*/{},
         resolve_contract_surface_text(*observation_channels_path));
   }
   append_module_signature_entry(kModuleSectionVicreg, vicreg_path,
+                                vicreg_component_identity.tag,
                                 vicreg_resolved_text);
   if (expected_value_path.has_value()) {
-    append_module_signature_entry(kModuleSectionExpectedValue,
-                                  *expected_value_path,
-                                  expected_value_resolved_text);
+    append_module_signature_entry(
+        kModuleSectionExpectedValue, *expected_value_path,
+        expected_value_component_identity.tag, expected_value_resolved_text);
   }
   if (embedding_sequence_eval_path.has_value()) {
-    append_module_signature_entry(kModuleSectionEmbeddingSequenceAnalytics,
-                                  *embedding_sequence_eval_path,
-                                  embedding_sequence_eval_resolved_text);
+    append_module_signature_entry(
+        kModuleSectionEmbeddingSequenceAnalytics, *embedding_sequence_eval_path,
+        /*component_tag=*/{}, embedding_sequence_eval_resolved_text);
   }
   if (transfer_matrix_eval_path.has_value()) {
-    append_module_signature_entry(kModuleSectionTransferMatrixEvaluation,
-                                  *transfer_matrix_eval_path,
-                                  transfer_matrix_eval_resolved_text);
+    append_module_signature_entry(
+        kModuleSectionTransferMatrixEvaluation, *transfer_matrix_eval_path,
+        /*component_tag=*/{}, transfer_matrix_eval_resolved_text);
   }
   if (network_design_dsl_path.has_value()) {
-    append_module_signature_entry("VICReg.network_design_dsl_file",
-                                  *network_design_dsl_path,
-                                  network_design_resolved_text);
+    append_module_signature_entry(
+        "VICReg.network_design_dsl_file", *network_design_dsl_path,
+        vicreg_component_identity.tag, network_design_resolved_text);
   }
   if (expected_value_network_design_dsl_path.has_value()) {
     append_module_signature_entry("EXPECTED_VALUE.network_design_dsl_file",
                                   *expected_value_network_design_dsl_path,
+                                  expected_value_component_identity.tag,
                                   expected_value_network_design_resolved_text);
   }
 
@@ -549,6 +593,11 @@ build_contract_record_from_contract_path(
     append_contract_variable_surface("contract.observation.channels",
                                      "__observation_channels_dsl_file");
   }
+  record->component_compatibility_signatures =
+      derive_contract_component_compatibility_signatures_or_fail(
+          decoded_circuit, record->signature.bindings,
+          record->docking_signature, record->instrument_signatures);
+  finalize_contract_component_hashimyeis_or_fail(record.get());
   const std::string docking_signature_json =
       canonical_contract_docking_signature_json(record->docking_signature);
   record->docking_signature.sha256_hex = sha256_hex_from_bytes(
@@ -569,4 +618,3 @@ build_contract_record_from_contract_path(
       compute_manifest_digest_hex(record->dependency_manifest.files);
   return record;
 }
-

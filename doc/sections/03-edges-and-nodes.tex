@@ -1,0 +1,99 @@
+\newpage{}
+\section[Market Graph Model]{Market Graph Model $(\mathcal{V},\mathcal{E})$}
+\label{sec:edges-and-nodes}
+
+In \Cuwacunu{}%
+\note{
+  www.waajacu.com/
+}, we model%
+\note{
+  The market graph is the mathematical object shared by the representation,
+  edge forecasting, risk \& value at node observers after the node-recovery section.  It
+  treats assets as nodes, traded instruments prices as directed edge relations.
+}
+the active market universe%
+\note{
+  The active universe is a subset of all the assets in the market,
+  traded instrument, and the historic source records attached to the 
+  edge.  It may be smaller than the exchange's full listed universe.
+} 
+as a directed graph%
+\note{
+  The direction follows the base-to-quote convention for traded symbols.
+  Reversing the order is assumed to be the inverse quotation price, and changes the
+  economic meaning of the edge.
+}. 
+\[
+  \mathcal{G}=(\mathcal{V},\mathcal{E}).
+\]
+Nodes $\mathcal{V}$ are market assets, and the directed edges $\mathcal{E}$
+are traded instrument symbols%
+\note{
+  An edge $e=(u,v)\in\mathcal{E}$ is read from base node $u$ to quote node $v$.
+  For example, \field{BTCUSDT} determines
+  $e=(\texttt{BTC},\texttt{USDT})$, with \texttt{BTC} as base node and
+  \texttt{USDT} as quote node.
+  The asset at the nodes could be:
+  $
+    \{\text{\field{ADA}}, \text{\field{BNB}}, \text{\field{BTC}},
+    \text{\field{DOGE}}, \text{\field{ETH}}, \text{\field{FDUSD}},
+    \text{\field{LTC}}, \text{\field{SOL}}, \text{\field{USDT}},
+    \text{\field{XRP}},\ldots\}
+    \subseteq \mathcal{V}
+  $
+  and the staged traded instrument symbols at the edges are like
+  $
+    \{\text{\field{ADAUSDT}}, \text{\field{BNBBTC}},
+    \text{\field{BTCETH}}, \text{\field{DOGEUSDT}},
+    \text{\field{XRPADA}},\ldots\}
+    \subseteq \mathcal{E}
+  $
+}
+. So that at time $t$%
+\note{
+  The index $t$ is the sampling anchor used by the model.  It is
+  related to kline keys such as \field{close\_time}, but it should not be read as
+  the raw \field{close\_time} of every channel position.  Multi-channel alignment
+  is described in Appendix~\ref{app:sequence-synchronization}.
+}
+, the normalized data tensor%
+\note{
+  See section~\ref{subsec:input-data} for more details on the data.
+}
+held by the edge in between nodes $u,v\in\mathcal{V}$, is denoted as: 
+\[
+  e=(u,v)\in\mathcal{E}
+  \quad
+  \longmapsto
+  \quad
+  \tensor{x}_{u\,v}(t),
+\]
+
+The holdings of the portfolio are recorded on nodes%
+\note{
+  We use index $u$ in the holding's $h_u(t)$ because on edge $e=(u,v)$, 
+  it is the base endpoint of that edge that we are referencing.
+}:
+\[
+  u \in \mathcal{V}
+  \quad
+  \longmapsto
+  \quad
+  h_u(t).
+\]
+  
+\calloutbox{Edge-Data \& Node-State Disambiguation.}{\\%
+  Asset holdings at the base node $\tensor{h}_{u}$, 
+  has a price readout $\tensor{x}_{u\,v}(t)$ of $u$ in terms of $v$,
+  thus prices are quotation, not states stored inside either node.  Section~\ref{sec:edges-to-nodes}
+  describes how node values are recovered from edge readouts.
+}
+
+There are $N$ nodes and $N(N-1)$ edges%
+\note{
+  The active edge universe is taken to be the full directed graph without self-edges: 
+  $\mathcal{E} = \{(u,v)\in\mathcal{V}\times\mathcal{V}:u\ne v\}, |\mathcal{E}|=N(N-1).$
+  Both directions are counted separately.  Thus $(u,v)$ and $(v,u)$ are
+  distinct directed quotations, corresponding for example to \field{BTCUSDT}
+  and \field{USDTBTC}.
+}.

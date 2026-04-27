@@ -15,6 +15,12 @@ $(eval $(call BUILD_OBJ_INC, common, hero_hashimyei_tools, hero_hashimyei_tools)
 
 HASHIMYEI_CATALOG_PARTS := \
   $(HERE_PATH)/hashimyei_catalog_private_core.cpp \
+  $(HERE_PATH)/hashimyei_catalog_private_core_utils.cpp \
+  $(HERE_PATH)/hashimyei_catalog_private_core_founding_bundle.cpp \
+  $(HERE_PATH)/hashimyei_catalog_private_core_catalog_helpers.cpp \
+  $(HERE_PATH)/hashimyei_catalog_private_core_run_manifest.cpp \
+  $(HERE_PATH)/hashimyei_catalog_private_core_component_manifest.cpp \
+  $(HERE_PATH)/hashimyei_catalog_private_core_save.cpp \
   $(HERE_PATH)/hashimyei_catalog_private_manifests.cpp \
   $(HERE_PATH)/hashimyei_catalog_private_ingest.cpp \
   $(HERE_PATH)/hashimyei_catalog_private_queries.cpp

@@ -84,8 +84,8 @@ type = string
 required = true
 default = none
 range = non-empty
-allowed = free token
-nuance = parsed as string; semantic symbol catalog is external
+allowed = letters,digits,underscore,dot,dash
+nuance = runtime wave RUNTIME_INSTRUMENT_SIGNATURE.SYMBOL is validated against this field plus the other table signature fields
 
 [FIELD TABLE.interval]
 key = interval
@@ -106,6 +106,46 @@ default = none
 range = closed set
 allowed = kline,trade,basic
 nuance = record decoder family compatibility is checked by downstream loaders
+
+[FIELD TABLE.market_type]
+key = market_type
+scope = instrument table
+type = string
+required = true
+default = none
+range = non-empty exact token
+allowed = letters,digits,underscore,dot,dash
+nuance = participates in exact source signature validation
+
+[FIELD TABLE.venue]
+key = venue
+scope = instrument table
+type = string
+required = true
+default = none
+range = non-empty exact token
+allowed = letters,digits,underscore,dot,dash
+nuance = participates in exact source signature validation
+
+[FIELD TABLE.base_asset]
+key = base_asset
+scope = instrument table
+type = string
+required = true
+default = none
+range = non-empty exact token
+allowed = letters,digits,underscore,dot,dash
+nuance = instrument must equal base_asset + quote_asset unless quote_asset is NONE
+
+[FIELD TABLE.quote_asset]
+key = quote_asset
+scope = instrument table
+type = string
+required = true
+default = none
+range = non-empty exact token
+allowed = letters,digits,underscore,dot,dash
+nuance = instrument must equal base_asset + quote_asset unless quote_asset is NONE
 
 [FIELD TABLE.source]
 key = source

@@ -1,7 +1,7 @@
 circuit_1 = {
   w_source = tsi.source.dataloader
-  w_rep = tsi.wikimyei.representation.vicreg
-  w_ev = tsi.wikimyei.inference.mdn
+  w_rep = tsi.wikimyei.representation.encoding.vicreg
+  w_ev = tsi.wikimyei.inference.expected_value.mdn
   sink_null = tsi.sink.null
   probe_log = tsi.probe.log(mode=batch)
   w_source@response:cargo -> w_rep@impulse

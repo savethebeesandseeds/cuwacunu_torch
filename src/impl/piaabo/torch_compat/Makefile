@@ -21,6 +21,21 @@ $(eval $(call BUILD_OBJ_INC, libtorch, network_design_adapter, network_design_ad
 $(eval $(call BUILD_OBJ_INC, libtorch, data_analytics, data_analytics, $(TORCH_INCLUDE_PATHS)))
 $(eval $(call BUILD_OBJ_INC, libtorch, entropic_capacity_comparison, entropic_capacity_comparison, $(TORCH_INCLUDE_PATHS)))
 
+NETWORK_ANALYTICS_PARTS := \
+  $(HERE_PATH)/network_analytics_private_accumulators.cpp \
+  $(HERE_PATH)/network_analytics_private_module.cpp \
+  $(HERE_PATH)/network_analytics_private_design.cpp \
+  $(HERE_PATH)/network_analytics_public.cpp
+
+DATA_ANALYTICS_PARTS := \
+  $(HERE_PATH)/data_analytics_private_helpers.cpp \
+  $(HERE_PATH)/data_analytics_private_accumulators.cpp \
+  $(HERE_PATH)/data_analytics_private_reports.cpp \
+  $(HERE_PATH)/data_analytics_public.cpp
+
+$(OUTPUT_PATH)/libtorch/network_analytics.o: $(NETWORK_ANALYTICS_PARTS)
+$(OUTPUT_PATH)/libtorch/data_analytics.o: $(DATA_ANALYTICS_PARTS)
+
 # -----------------------------------------------------------------
 # Aggregate Targets
 #   - Expose distributions as a sibling prerequisite so GNU make can schedule

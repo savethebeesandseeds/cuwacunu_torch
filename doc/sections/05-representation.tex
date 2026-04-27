@@ -1,0 +1,389 @@
+\newpage{}
+\section{Representation}
+\label{sec:representation}
+
+The representation module maps a normalized edge window to a latent state used
+by the forecast head.  The current implementation is a self-supervised
+\texttt{VICReg\_Rank4}%
+\note{
+  Here \texttt{Rank4} means that the implementation
+  extends the original VICReg architecture by one additional tensor rank, so the
+  encoder operates on rank-4 input tensors: batch, channels, sequence, features.
+}
+encoder trained with the VICReg objective of
+Bardes, Ponce, and LeCun~\cite{bardes2022vicreg}.  VICReg trains two augmented
+views of the same sample to agree while preventing collapse through variance
+and covariance regularization.\\
+
+
+For one sample, the representation module maps the input slice and its mask%
+\note{
+  Invalid entries are not treated
+  as market observations; they are zeroed or excluded whenever the network forms
+  time-level statistics.
+}
+as follows:
+\[
+  (\tensor{x}_{u\,v}, \quad {}_{x}\tensor{m}_{u\,v})
+  \longmapsto
+  \left\{
+  \begin{aligned}
+    \tensor{s} &= h_{\theta}(\tensor{x}_{u\,v}, \quad {}_{x}\tensor{m}_{u\,v})
+    \in \R^{H_x \times D_e},\\
+    \tensor{z} &= \Phi_{\theta}(\tensor{x}_{u\,v}, \quad {}_{x}\tensor{m}_{u\,v})
+    \in \R^{D_e}.
+  \end{aligned}
+  \right.
+\]
+
+$\tensor{s}$ is the time-indexed representation sequence, while $\tensor{z}$ is its temporal reduction embedding. 
+
+\subsection{Representation output}
+\label{subsec:encoder-output}
+
+Internally, this sample-level output is produced in two stages.  The encoder
+first produces a time-indexed latent sequence
+\[
+  h_{\theta} :
+  \R^{C \times H_x \times D_x}
+  \times
+  \{0,1\}^{C \times H_x}
+  \longrightarrow
+  \R^{H_x' \times D_e}.
+\]
+In the current architecture the temporal length is preserved, so
+\[
+  H_x' = H_x,
+  \qquad
+  \tensor{s}^{b}
+  =
+  h_{\theta}(\tensor{x}_{u\,v}^{b}, \quad {}_{x}\tensor{m}_{u\,v}^{b})
+  \in
+  \R^{H_x \times D_e}.
+\]
+The slice $\tensor{s}^{b\,i} \in \R^{D_e}$ is the latent state for sample $b$ at
+input position $i$.
+
+The exported representation slice is then obtained by a temporal reducer:
+\[
+  r_{\theta}:
+  \R^{H_x \times D_e}
+  \times
+  \{0,1\}^{C \times H_x}
+  \longrightarrow
+  \R^{D_e}.
+\]
+The exported representation is
+\[
+  \tensor{z}^{b}
+  =
+  \Phi_{\theta}(\tensor{x}_{u\,v}^{b}, \quad {}_{x}\tensor{m}_{u\,v}^{b})
+  =
+  r_{\theta}
+  \left(
+    h_{\theta}(\tensor{x}_{u\,v}^{b}, \quad {}_{x}\tensor{m}_{u\,v}^{b}),
+    {}_{x}\tensor{m}_{u\,v}^{b}
+  \right)
+  \in
+  \R^{D_e}.
+\]
+A simple masked mean reducer is
+\[
+  \omega_{b\,i}
+  =
+  \mathbf{1}
+  \left\{
+    \sum_{c=1}^{C} {}_{x}m_{u\,v}^{b\,c\,i} > 0
+  \right\},
+  \qquad
+  \tensor{z}^{b}
+  =
+  \frac{
+    \sum_{i=1}^{H_x} \omega_{b\,i}\cdot\tensor{s}^{b\,i}
+  }{
+    \sum_{i=1}^{H_x} \omega_{b\,i}
+  },
+\]
+whenever the denominator is positive.  Other reducers, such as a last-valid
+state, attention pooling, or a learned readout, are also valid choices as long
+as the output remains in $\R^{D_e}$.
+
+For a batch, $\tensor{x}$ abbreviates the stack
+$(\tensor{x}_{u\,v}^{b})_{b=1}^{B}$, so
+\[
+  \tensor{s}
+  =
+  h_{\theta}(\tensor{x},\tensor{m}_x)
+  \in
+  \R^{B \times H_x \times D_e},
+\]
+and
+\[
+  \tensor{z}
+  =
+  \begin{bmatrix}
+    (\tensor{z}^{1})^{\top}\\
+    \vdots\\
+    (\tensor{z}^{B})^{\top}
+  \end{bmatrix}
+  \in
+  \R^{B \times D_e}.
+\]
+
+\subsection{Network structure}
+\label{subsec:network-structure}
+
+The encoder is designed for rank-four market tensors
+\[
+  \tensor{x}
+  =
+  \left(\tensor{x}_{u\,v}^{b}\right)_{b=1}^{B}
+  \in
+  \R^{B \times C \times H_x \times D_x}.
+\]
+Let $E_c$ denote the internal channel-expansion dimension, $F$ the fused channel
+dimension, and $H$ the hidden width of the temporal convolution stack.  The
+network has the following shape flow.
+
+First, invalid channel-time entries are masked:
+\[
+  \widetilde{x}_{u\,v}^{b\,c\,i\,j}
+  =
+  {}_{x}m_{u\,v}^{b\,c\,i}x_{u\,v}^{b\,c\,i\,j}.
+\]
+A depthwise convolution over the time axis extracts local channel-wise
+patterns:
+\[
+  \mat{U}^{(1)}
+  =
+  \sigma
+  \left(
+    \operatorname{DWConv}_{3\times 1}(\widetilde{\tensor{x}})
+  \right)
+  \in
+  \R^{B \times C \times H_x \times D_x},
+\]
+where $\sigma$ is the pointwise nonlinearity.
+
+Next, a grouped $1\times D_x$ convolution projects each channel's feature vector
+into an $E_c$-dimensional latent channel space:
+\[
+  \mat{U}^{(2)}
+  \in
+  \R^{B \times C \times H_x \times E_c}.
+\]
+A learned channel identity vector $\vect{\chi}_c \in \R^{E_c}$ is added:
+\[
+  \mat{U}^{(3)}_{b\,c\,i:}
+  =
+  \mat{U}^{(2)}_{b\,c\,i:}
+  +
+  \vect{\chi}_c.
+\]
+This gives the network an explicit way to distinguish, for example, the
+\field{1m}, \field{1h}, and \field{1d} channels even when their normalized
+feature values are similar.
+
+The tensor is then flattened over channel and expanded-feature coordinates and
+passed through a learned temporal reparameterization block:
+\[
+  \mat{U}^{(4)}
+  =
+  T_{\theta}(\mat{U}^{(3)},\tensor{m}_x)
+  \in
+  \R^{B \times C \times H_x \times E_c}.
+\]
+This block preserves the temporal length $H_x$ but allows the representation to
+adjust to local changes in temporal pace.
+
+The channel dimension is fused with a $1\times 1$ convolution:
+\[
+  \mat{U}^{(5)}
+  =
+  \sigma
+  \left(
+    \operatorname{Conv}_{1\times 1}^{C\rightarrow F}
+    (\mat{U}^{(4)})
+  \right)
+  \in
+  \R^{B \times F \times H_x \times E_c}.
+\]
+Then a linear projection maps the last coordinate from $E_c$ to $H$:
+\[
+  \mat{U}^{(6)}
+  \in
+  \R^{B \times F \times H_x \times H}.
+\]
+The $F$ and $H$ coordinates are flattened into convolution channels, giving
+\[
+  \mat{U}^{(7)}
+  \in
+  \R^{B \times (FH) \times H_x}.
+\]
+Finally, a residual dilated one-dimensional convolution stack maps this sequence
+to the representation width:
+\[
+  \tensor{s}
+  =
+  \operatorname{DilatedConv}_{\theta}
+  (\mat{U}^{(7)},\tensor{m}_x)^{\top}
+  \in
+  \R^{B \times H_x \times D_e}.
+\]
+The transpose notation only indicates that the final tensor is stored with time
+as the middle axis and representation width as the last axis.
+
+\subsection{VICReg training objective}
+\label{subsec:vicreg-training-objective}
+
+During self-supervised representation training, two stochastic augmented views
+are generated from the same edge-labeled input batch:
+\[
+  \tensor{x}_{(1)}
+  =
+  \left(\tensor{x}_{u\,v\,(1)}^{b}\right)_{b=1}^{B},
+  \quad
+  \tensor{x}_{(2)}
+  =
+  \left(\tensor{x}_{u\,v\,(2)}^{b}\right)_{b=1}^{B},
+  \quad
+  (\tensor{m}_{x\,(1)},\tensor{m}_{x\,(2)})
+  \sim
+  \mathcal{A}(\tensor{x},\tensor{m}_x).
+\]
+The augmentation family $\mathcal{A}$ may include causal time warping, value
+jitter, time masking, point dropping, and channel dropping.  Both views are
+encoded by the same encoder:
+\[
+  \tensor{s}_{(1)}
+  =
+  h_{\theta}(\tensor{x}_{(1)},\tensor{m}_{x\,(1)}),
+  \qquad
+  \tensor{s}_{(2)}
+  =
+  h_{\theta}(\tensor{x}_{(2)},\tensor{m}_{x\,(2)}).
+\]
+
+VICReg is applied after a projector MLP with projector width $D_p\in\N$:
+\[
+  P_{\eta}:\R^{D_e}\rightarrow\R^{D_p},
+\]
+which acts independently on each valid time state:
+\[
+  \mat{Y}_{(1)}^{b\,i}
+  =
+  P_{\eta}(\tensor{s}_{(1)}^{b\,i}),
+  \qquad
+  \mat{Y}_{(2)}^{b\,i}
+  =
+  P_{\eta}(\tensor{s}_{(2)}^{b\,i}).
+\]
+The projector is used for representation learning only.  It is not the object
+consumed by the forecast head.
+
+The VICReg loss is computed on time positions that are valid in both augmented
+views.  Let
+\[
+  \Omega
+  =
+  \left\{
+    (b,i)
+    :
+    m_{x\,(1)}^{b\,c\,i}m_{x\,(2)}^{b\,c\,i}=1
+    \text{ for all } c=1,\ldots,C
+  \right\},
+  \qquad
+  N_{\Omega}=|\Omega|.
+\]
+Collect the projected vectors at these positions into
+\[
+  \mat{Y},\mat{Y}'
+  \in
+  \R^{N_{\Omega}\times D_p}.
+\]
+For $\mat{Y}\in\R^{N_{\Omega}\times D_p}$, define the centered matrix
+\[
+  \widetilde{\mat{Y}}
+  =
+  \mat{Y}
+  -
+  \mathbf{1}\bar{\vect{y}}^{\top},
+  \qquad
+  \bar{\vect{y}}
+  =
+  \frac{1}{N_{\Omega}}
+  \sum_{n=1}^{N_{\Omega}}
+  \mat{Y}_{n:}.
+\]
+The sample covariance of projected coordinates is
+\[
+  \mat{C}(\mat{Y})
+  =
+  \frac{1}{N_{\Omega}-1}
+  \widetilde{\mat{Y}}^{\top}
+  \widetilde{\mat{Y}}
+  \in
+  \R^{D_p \times D_p}.
+\]
+Let $\gamma\in\Rpos$ be the variance floor, and let
+$\lambda_{\mathrm{inv}},\lambda_{\mathrm{var}},\lambda_{\mathrm{cov}}\in
+\Rnonneg$ be the term weights.  With $[a]_+=\max(a,0)$, the standard VICReg
+terms are
+\[
+  \mathcal{L}_{\mathrm{inv}}
+  =
+  \frac{1}{N_{\Omega}}
+  \sum_{n=1}^{N_{\Omega}}
+  \left\|
+    \mat{Y}_{n:}-\mat{Y}'_{n:}
+  \right\|_2^2,
+\]
+\[
+  \mathcal{L}_{\mathrm{var}}(\mat{Y})
+  =
+  \frac{1}{D_p}
+  \sum_{j=1}^{D_p}
+  \left[
+    \gamma
+    -
+    \sqrt{
+      \operatorname{Var}(\mat{Y}_{:j})+\eps
+    }
+  \right]_+,
+\]
+and
+\[
+  \mathcal{L}_{\mathrm{cov}}(\mat{Y})
+  =
+  \frac{1}{D_p}
+  \sum_{\substack{j,k=1\\j\ne k}}^{D_p}
+  \mat{C}(\mat{Y})_{j\,k}^{2}.
+\]
+The full self-supervised loss is
+\[
+  \mathcal{L}_{\mathrm{VICReg}}
+  =
+  \lambda_{\mathrm{inv}}\mathcal{L}_{\mathrm{inv}}
+  +
+  \lambda_{\mathrm{var}}
+  \left(
+    \mathcal{L}_{\mathrm{var}}(\mat{Y})
+    +
+    \mathcal{L}_{\mathrm{var}}(\mat{Y}')
+  \right)
+  +
+  \lambda_{\mathrm{cov}}
+  \left(
+    \mathcal{L}_{\mathrm{cov}}(\mat{Y})
+    +
+    \mathcal{L}_{\mathrm{cov}}(\mat{Y}')
+  \right).
+\]
+The invariance term makes the two views agree.  The variance term prevents
+collapse to a constant representation.  The covariance term discourages
+redundant projected coordinates.
+
+After training, the forecast system uses the encoder representation
+$\tensor{s}^{b}$ or its reduced slice $\tensor{z}^{b}$.  The projector output
+$P_{\eta}(\cdot)$ is a training device and is not part of the edge forecast
+distribution in Section~\ref{sec:edge-forecast-head}.

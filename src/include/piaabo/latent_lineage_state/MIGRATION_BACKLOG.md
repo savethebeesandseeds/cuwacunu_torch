@@ -21,7 +21,7 @@ migration landed.
 
 ## Vicreg / Transfer Matrix
 
-`src/include/tsiemene/tsi.wikimyei.representation.vicreg.h`
+`src/include/tsiemene/tsi.wikimyei.representation.encoding.vicreg.h`
 
 - Preserve the current matrix artifact as artifact-only unless a later change
   explicitly promotes it to an ingestable runtime schema.

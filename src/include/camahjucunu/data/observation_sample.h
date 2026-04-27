@@ -14,29 +14,29 @@ namespace data {
 
 struct observation_sample_t {
   // past (ends at t)
-  torch::Tensor features;        // [B,C,T,D] or [C,T,D] or [T,D] if unbatched/single
-  torch::Tensor mask;            // [B,C,T]   or [C,T]   or [T]
+  torch::Tensor features;        // [B,C,Hx,Dx] or [C,Hx,Dx] or [Hx,Dx] if unbatched/single
+  torch::Tensor mask;            // [B,C,Hx]   or [C,Hx]   or [Hx]
 
-  // future (starts at t+1) — same channeling as past, different time length Tf
-  torch::Tensor future_features; // [B,C,Tf,D] or [C,Tf,D] or [Tf,D]
-  torch::Tensor future_mask;     // [B,C,Tf]   or [C,Tf]   or [Tf]
+  // future (starts at t+1) — same channeling as past, different horizon length Hf
+  torch::Tensor future_features; // [B,C,Hf,Dx] or [C,Hf,Dx] or [Hf,Dx]
+  torch::Tensor future_mask;     // [B,C,Hf]   or [C,Hf]   or [Hf]
 
   // encoder output
-  torch::Tensor encoding;        // [B,De] or [B,T',De] (or undefined)
+  torch::Tensor encoding;        // [B,De] or [B,Hx',De] (or undefined)
 
   // ---------- normalization toggle ----------
   // Whether 'features' / 'future_features' are currently in normalized space.
   bool normalized = false;
 
   // Per-feature stats used for (de)normalization. Keep broadcastable shapes.
-  // Typical usage: shape [D]. Will broadcast over [*,*,T,D].
+  // Typical usage: shape [Dx]. Will broadcast over [*,*,Hx,Dx].
   torch::Tensor feature_mean;    // same dtype/device as features
   torch::Tensor feature_std;     // same dtype/device as features
 
   // ---------- time keys ----------
   // Keys/timestamps aligned with past/future sequences.
-  // Single dataset: [T] / [Tf]
-  // Concat (C channels): [C,T] / [C,Tf]
+  // Single dataset: [Hx] / [Hf]
+  // Concat (C channels): [C,Hx] / [C,Hf]
   // Batched variants broadcast a leading [B] if collated externally.
   torch::Tensor past_keys;
   torch::Tensor future_keys;
@@ -45,18 +45,18 @@ private:
   /* ---- helpers ----------------------------------------------------------- */
 
   static inline bool is_batched_past(const observation_sample_t& s) {
-    if (s.features.defined()) return s.features.dim() >= 4; // [B,C,T,D]
-    if (s.mask.defined())     return s.mask.dim()     >= 3; // [B,C,T]
+    if (s.features.defined()) return s.features.dim() >= 4; // [B,C,Hx,Dx]
+    if (s.mask.defined())     return s.mask.dim()     >= 3; // [B,C,Hx]
     return false;
   }
 
   // Future is considered "batched" iff past is batched AND future has a leading B
   // that matches the past's B. Otherwise (including unbatched past), treat future
-  // as UNBATCHED ([C,Tf,D]/[C,Tf] or [Tf,D]/[Tf]).
+  // as UNBATCHED ([C,Hf,Dx]/[C,Hf] or [Hf,Dx]/[Hf]).
   static inline bool is_batched_future(const observation_sample_t& s) {
     const bool past_batched = is_batched_past(s);
     if (!past_batched) {
-      return false; // unbatched futures are [C,Tf,D]/[C,Tf] or [Tf,D]/[Tf]
+      return false; // unbatched futures are [C,Hf,Dx]/[C,Hf] or [Hf,Dx]/[Hf]
     }
 
     int64_t B = 0;
@@ -76,7 +76,7 @@ private:
   }
 
   static inline bool is_batched_encoding(const observation_sample_t& s) {
-    return s.encoding.defined() && s.encoding.dim() >= 2; // [B,De] or [B,T',De]
+    return s.encoding.defined() && s.encoding.dim() >= 2; // [B,De] or [B,Hx',De]
   }
 
   // Keys should mirror the non-feature dims of their aligned tensor:
@@ -256,7 +256,7 @@ public:
       TORCH_CHECK(s.encoding.sizes() == esz, "[collate_fn_encoding] encoding shape mismatch");
       encs.emplace_back(s.encoding);
     }
-    return smart_stack_or_cat(encs, already_batched);  // [B,De] or [B,T',De]
+    return smart_stack_or_cat(encs, already_batched);  // [B,De] or [B,Hx',De]
   }
 
   /* -------- all fields collator -------- */

@@ -959,23 +959,23 @@ void clear_marshal_session_campaign_linkage(
   }
   std::string summary_error{};
   if (!sync_human_summary_report(persisted, &summary_error)) {
-    std::cerr << "[hero_marshal_mcp][warning] failed to refresh Human Hero "
-                 "summary artifact: "
-              << summary_error << std::endl;
+    log_warn("[hero_marshal_mcp] failed to refresh Human Hero "
+             "summary artifact: %s",
+             summary_error.c_str());
   }
   std::string marker_error{};
   if (!cuwacunu::hero::marshal::sync_human_pending_request_count(
           app.defaults.marshal_root, &marker_error)) {
-    std::cerr << "[hero_marshal_mcp][warning] failed to refresh Human Hero "
-                 "pending marker: "
-              << marker_error << std::endl;
+    log_warn("[hero_marshal_mcp] failed to refresh Human Hero "
+             "pending marker: %s",
+             marker_error.c_str());
   }
   marker_error.clear();
   if (!cuwacunu::hero::marshal::sync_human_pending_summary_count(
           app.defaults.marshal_root, &marker_error)) {
-    std::cerr << "[hero_marshal_mcp][warning] failed to refresh Human Hero "
-                 "finished marker: "
-              << marker_error << std::endl;
+    log_warn("[hero_marshal_mcp] failed to refresh Human Hero "
+             "finished marker: %s",
+             marker_error.c_str());
   }
   return true;
 }
@@ -1498,4 +1498,3 @@ void clear_marshal_session_campaign_linkage(
   }
   return true;
 }
-

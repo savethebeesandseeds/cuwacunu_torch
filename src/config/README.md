@@ -18,6 +18,7 @@ This folder is organized by role:
 - `bnf/tsi.source.dataloader.channels.bnf`
 - `bnf/jkimyei.bnf`
 - `bnf/iitepi.campaign.bnf`
+- `bnf/lattice.target.bnf`
 - `bnf/iitepi.contract.bnf`
 - `bnf/iitepi.circuit.bnf`
 - `bnf/iitepi.wave.bnf`
@@ -30,14 +31,16 @@ This folder is organized by role:
 - `instructions/defaults/default.iitepi.contract.dsl`
 - `instructions/defaults/default.tsi.source.dataloader.sources.dsl`
 - `instructions/defaults/default.tsi.source.dataloader.channels.dsl`
-- `instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl`
+- `instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.jkimyei.dsl`
 - `instructions/defaults/default.iitepi.campaign.dsl`
+- `instructions/defaults/default.lattice.target.dsl`
 - `instructions/defaults/default.iitepi.circuit.dsl`
 - `instructions/defaults/default.iitepi.wave.dsl` (canonical wave payload set)
-- `instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl`
-- `instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl`
-- `instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl`
-- `instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl`
+- `instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.dsl`
+- `instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.network_design.dsl`
+- `instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.dsl`
+- `instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.jkimyei.dsl`
+- `instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.network_design.dsl`
 - `instructions/defaults/default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`
 - `instructions/defaults/default.tsi.wikimyei.evaluation.transfer_matrix_evaluation.dsl` (shared transfer-matrix evaluator knobs; VICReg summaries may compare null, stats-only, raw-surface, and learned-embedding forecast probes when the active build supports them)
 - `instructions/defaults/default.hero.config.dsl`
@@ -52,16 +55,19 @@ This folder is organized by role:
 - `instructions/defaults/default.runtime.operative.guidance.md` (shared Marshal Hero guidance for runtime-operative objectives such as VICReg training/evaluation loops)
 - `instructions/defaults/default.runtime.diagnostics.guidance.md` (shared Marshal Hero guidance for runtime diagnostics and Marshal/Human/Runtime lifecycle smoke objectives)
 - `instructions/defaults/default.source.lint.guidance.md` (shared Marshal Hero guidance for `source.lint` objectives; current sessions plan or request authority rather than editing source directly)
-- `instructions/objectives/source.lint.refactoring/iitepi.campaign.dsl` (dormant scaffold; not intended for Runtime launch)
-- `instructions/objectives/source.lint.refactoring/source.lint.refactoring.marshal.dsl`
-- `instructions/objectives/source.lint.refactoring/source.lint.refactoring.objective.md`
-- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.contract.base.dsl`
-- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.waves.dsl`
-- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.dsl`
-- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/vicreg.solo.settings_optimize.marshal.dsl`
-- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/vicreg.solo.settings_optimize.objective.md`
+- `instructions/objectives/source.lint.refactoring/.campaign.dsl` (dormant scaffold; not intended for Runtime launch)
+- `instructions/objectives/source.lint.refactoring/.marshal.dsl`
+- `instructions/objectives/source.lint.refactoring/.objective.md`
+- `instructions/objectives/source.lint.semantics/.campaign.dsl` (dormant scaffold; not intended for Runtime launch)
+- `instructions/objectives/source.lint.semantics/.marshal.dsl`
+- `instructions/objectives/source.lint.semantics/.objective.md`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.contract.base.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.waves.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.campaign.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.marshal.dsl`
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.objective.md`
 - `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.source.dataloader.channels.dsl` (objective-owned medium-span observation profile)
-- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.wikimyei.representation.vicreg.dsl` (objective-local VICReg runtime wrapper over objective-owned network design and payload bindings)
+- `instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/tsi.wikimyei.representation.encoding.vicreg.dsl` (objective-local VICReg runtime wrapper over objective-owned network design and payload bindings)
 - `instructions/optim/README.md` (public note for the local-only plaintext optim workspace)
 - `instructions/optim.tar.gpg` (optional tracked encrypted backup for `instructions/optim/`)
 - `secrets/real/ed25519key.pem` (expected, may be absent locally)
@@ -78,6 +84,19 @@ This folder is organized by role:
   `/cuwacunu/.runtime/.hashimyei`.
 - Hashimyei and Lattice MCP tools automatically rebuild their catalogs when the
   catalog-visible store surface changes.
+
+## Component identity notes
+
+- Wikimyei component DSLs require `TAG` as the unique authored template
+  identity. Component storage identity is then derived from the contract
+  compatibility surface.
+- Contract-declared instrument signature fields participate in component
+  identity only when they are concrete. Fields declared as `ANY` are
+  compatibility wildcards and are omitted from the component hash.
+- Contracts require an explicit `DOCK.INSTRUMENT_SIGNATURE` for every circuit
+  alias. Missing signatures fail fast; there is no implicit all-`ANY` default.
+- Campaigns bind contracts and waves only. Hashimyei component storage identity
+  is derived from the contract/wave binding, not mounted in the campaign.
 
 ## Generate Ed25519 keys
 
@@ -352,7 +371,7 @@ Useful MCP tools:
 - `hero.config.diff` / `hero.config.dry_run` (preview changes before save)
 - `hero.config.backups` (list snapshots)
 - `hero.config.rollback` (restore latest or selected snapshot; requires `allow_local_write=true`)
-- `hero.config.save` (persists config with deterministic atomic cutover metadata, requires `allow_local_write=true`)
+- `hero.config.save` (persists config with component identity receipt metadata, requires `allow_local_write=true`)
 - `hero.config.reload`
 - `hero.config.dev_nuke_reset` (developer reset of runtime dump roots, including `.campaigns`, `.marshal_hero`, `.human_hero`, plus Hero catalogs resolved from the saved global config; when `dev_nuke_reset_backup_enabled=true` it first archives those targets under `<runtime_root>/../.backups/hero.runtime_reset/<runtime_root-name>/<stamp>/`; it uses the saved global-config runtime root instead of `write_roots`, and refuses reset while active runtime jobs exist)
 
@@ -405,15 +424,14 @@ Human MCP tools:
 - `marshal_session_id` to link the launched campaign to an existing Marshal Hero session ledger; this is the field Marshal Hero uses when it asks Runtime Hero to launch the next campaign
 
 `hero.runtime.explain_binding_selection` accepts:
-- required `binding_id` to name the declared `BIND` whose `MOUNT` selectors should be resolved
+- required `binding_id` to name the declared `BIND` whose component ids should be derived
 - optional `campaign_dsl_path` to inspect a non-default source campaign without launching it
 
 It is the read-only explanation companion to `hero.runtime.start_campaign`: it
-resolves `BIND.MOUNT` against the selected contract `DOCK`, reports the exact
-hashimyei chosen for each selector, and returns structured failure details when
-selection cannot be resolved. Use it first when a launch fails before
-meaningful train/eval work starts, such as missing staged `MOUNT`, family
-mismatch, or dock-selection failure.
+derives component hashimyeis from the selected contract and wave slots, then
+returns structured failure details when selection cannot be resolved. Use it
+first when a launch fails before meaningful train/eval work starts, such as
+family mismatch or component compatibility derivation failure.
 
 `hero.marshal.start_session` is the primary session entrypoint. It accepts optional:
 - `marshal_objective_dsl_path` to override the configured default supervision root for that launch
@@ -584,7 +602,8 @@ MCP ingest behavior:
 - `hero.hashimyei.get_component_manifest`,
   `hero.hashimyei.evaluate_contract_compatibility`, and
   `hero.hashimyei.get_founding_dsl_bundle` read the current store snapshot
-  directly so lineage and docking checks do not need the ingest rebuild path.
+  directly so lineage and component compatibility checks do not need the ingest
+  rebuild path.
 - `hero.hashimyei.reset_catalog` remains the explicit force-rebuild tool.
 
 Register in Codex:
@@ -599,7 +618,7 @@ Supported MCP tools:
 - `hero.hashimyei.get_component_manifest`
 - `hero.hashimyei.evaluate_contract_compatibility`
   - compares a component revision against a requested contract using the same
-    dock-only rule runtime uses for hashimyei reuse
+    component compatibility rule runtime uses for hashimyei reuse
 - `hero.hashimyei.get_founding_dsl_bundle`
   - returns the stored `.runtime/.hashimyei` founding DSL bundle snapshot for a
     component revision
@@ -662,6 +681,9 @@ Supported MCP tools:
   `GENERAL.default_iitepi_campaign_dsl_filename` points to the checked-in
   default top-level campaign, currently
   `./instructions/defaults/default.iitepi.campaign.dsl`.
+  `GENERAL.default_lattice_target_dsl_filename` points to the checked-in
+  target evidence plan, currently
+  `./instructions/defaults/default.lattice.target.dsl`.
   `GENERAL.repo_root` pins the repository/worktree root that Marshal Hero uses
   for `codex exec -C` during session planning checkpoints.
   Runtime reset is intentionally explicit and can be invoked through
@@ -672,6 +694,10 @@ Supported MCP tools:
   representative bundle is `runtime.operative.vicreg.solo.settings_optimize/`,
   which keeps contract, waves, campaign binds, and
   only the objective-local wrappers that differ from `./instructions/defaults/`.
+  Objective bundle file names use dot-prefixed role names such as
+  `.marshal.dsl`, `.objective.md`, `.campaign.dsl`, `.contract*.dsl`,
+  `.waves.dsl`, and `.circuit.dsl`; the enclosing directory carries the
+  objective identity.
 - `[GUI]` holds iinuji defaults, currently:
   `iinuji_logs_buffer_capacity`, `iinuji_logs_show_date`,
   `iinuji_logs_show_thread`, `iinuji_logs_show_metadata`,
@@ -705,6 +731,7 @@ Supported MCP tools:
   - `runtime_hero_dsl_filename`
 - All grammar (`*.bnf`) paths are centralized in `[BNF]`:
   - `iitepi_campaign_grammar_filename`
+  - `lattice_target_grammar_filename`
   - `iitepi_runtime_binding_grammar_filename`
   - `iitepi_wave_grammar_filename`
   - `marshal_objective_grammar_filename`
@@ -723,7 +750,7 @@ Supported MCP tools:
   - `CAMPAIGN { ... }` root block
   - `IMPORT_CONTRACT "<contract_defaults_file>" AS <contract_alias>;`
   - `FROM "<wave_dsl_file>" IMPORT_WAVE <wave_id>;`
-  - `BIND <id> { MOUNT { <wave_binding_id> = EXACT 0x...; | <wave_binding_id> = RANK <n>; } CONTRACT = <imported_contract_alias>; WAVE = <imported_wave_id>; }`
+  - `BIND <id> { CONTRACT = <imported_contract_alias>; WAVE = <imported_wave_id>; }`
   - ordered `RUN <bind_id>;`
   - optional bind-local variables inside `BIND`, where names must start with `__`
     and are intended for wave-local pre-decode placeholder resolution such as
@@ -745,7 +772,7 @@ Supported MCP tools:
     `objective_name:str`, `marshal_codex_model:str`,
     `marshal_codex_reasoning_effort:str`, and `marshal_session_id:str`
   The same grammar is used by objective-local files such as
-  `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.campaign.dsl`.
+  `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.campaign.dsl`.
   The defaults bundle also ships sample `./instructions/defaults/default.marshal.objective.dsl`
   plus `./instructions/defaults/default.marshal.objective.md`. Shared guidance
   is split by objective family:
@@ -759,20 +786,19 @@ Supported MCP tools:
   - `DOCK`: the public compatibility interface declared by a contract
   - `ASSEMBLY`: the contract-owned realization and DSL graph
   - `WAVE`: the logical runtime policy and required component slots
-  - `BIND.MOUNT`: the run-local selector that chooses which compatible
-    component revision fills a wave slot
+  - component revision: the contract-derived component identity that fills a
+    wave slot
 - Runtime Hero owns campaign dispatch and persists immutable snapshots under
   `<runtime_root>/.campaigns/<campaign_cursor>/`. Each child job receives a staged
   `campaign.dsl`, `binding.contract.dsl`, `binding.wave.dsl`, and
   `job.trace.jsonl` under
   `<runtime_root>/.campaigns/<campaign_cursor>/jobs/<job_cursor>/`.
-- The staged per-job `campaign.dsl` keeps the selected bind's `MOUNT` block,
-  while the staged `binding.wave.dsl` records the resolved exact component
-  revision paths produced by that mount selection.
-- `hero.runtime.explain_binding_selection` exposes that same dock-based
-  `BIND.MOUNT` resolution path before launch, so operators can inspect which
-  concrete component revision would be mounted, including the exact selected
-  hashimyei token, without creating a campaign snapshot.
+- The staged per-job `campaign.dsl` keeps the selected bind, while the staged
+  `binding.wave.dsl` records the derived exact component revision paths.
+- `hero.runtime.explain_binding_selection` exposes that same component-compatible
+  derivation path before launch, so operators can inspect which concrete
+  component revision would be selected, including the exact derived hashimyei
+  token, without creating a campaign snapshot.
 - Marshal Hero owns the long-lived session ledgers under
   `<runtime_root>/.marshal_hero/<marshal_cursor>/`. The session ledger is adjacent to
   campaigns rather than nested inside them because one session may span many
@@ -783,12 +809,12 @@ Supported MCP tools:
   - `RUNTIME_BINDING { ... }`
   - `IMPORT_CONTRACT "<contract_defaults_file>" AS <contract_alias>;`
   - `FROM "<wave_dsl_file>" IMPORT_WAVE <wave_id>;`
-  - `BIND <id> { MOUNT { <wave_binding_id> = EXACT 0x...; | <wave_binding_id> = RANK <n>; } CONTRACT = <imported_contract_alias>; WAVE = <imported_wave_id>; }`
+  - `BIND <id> { CONTRACT = <imported_contract_alias>; WAVE = <imported_wave_id>; }`
 - The public dispatcher is campaign-oriented. The top-level runtime DSL is now
   `campaign.dsl`, and `jkimyei` is not a separate Hero.
 - Contract settings live in the checked-in defaults example
   `./instructions/defaults/default.iitepi.contract.dsl` and in objective-local
-  contract bundles such as `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.contract.base.dsl`, with
+  contract bundles such as `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.contract.base.dsl`, with
   marker format:
   - `-----BEGIN IITEPI CONTRACT-----`
   - `DOCK { ... }`
@@ -797,16 +823,17 @@ Supported MCP tools:
   `DOCK` is the public semantic compatibility surface.
   `ASSEMBLY` is the concrete realization and contract-owned DSL graph.
   `AKNOWLEDGE` values live inside `ASSEMBLY` and must be family tokens (no
-  hashimyei suffix). This keeps contract static while campaign `BIND.MOUNT`
-  owns runtime component-revision selection. Component revision lineage is
+  hashimyei suffix). Component hashimyeis are derived from contract-owned
+  component content during campaign staging. Component revision lineage is
   contract-scoped; reusing the same exact revision token across contracts is
   invalid. Active component selection is also contract-scoped, so "active" is
   never a global family-wide pointer.
   Family reranking is a runtime artifact concern, not a contract parameter:
-  `hero.hashimyei.update_rank` persists dock-scoped
-  `hero.family.rank.v2` overlays keyed by `(family, dock_hash)`, and
+  `hero.hashimyei.update_rank` persists component compatibility scoped
+  `hero.family.rank.v3` overlays keyed by
+  `(family, component_compatibility_sha256_hex)`, and
   `hero.lattice.get_view(view_kind=family_evaluation_report, ...)`
-  serializes dock-compatible family evidence used by client-owned ranking
+  serializes component-compatible family evidence used by client-owned ranking
   logic. Ranking stays inert until an explicit overlay is written; it does not
   bootstrap a default order and does not alter runtime component selection in
   this phase.
@@ -822,7 +849,7 @@ Supported MCP tools:
   shared `../../defaults` payloads.
   Contract `DOCK` and `ASSEMBLY` variables are both resolved across the
   contract-local DSL graph. `DOCK` holds public values such as input tensor
-  shape, embedding dimensions, and future-target dimensionality, while
+  shape, embedding dimensions, and future target feature indices, while
   `ASSEMBLY` holds private encoder/projector widths, weights, and file
   ownership. Changing dock values changes compatibility lineage.
   Runtime derives an explicit docking signature from the compatible circuit
@@ -859,7 +886,8 @@ Supported MCP tools:
   remain compatible. In practice, that means private encoder/projector widths
   may vary across component revisions, while `__obs_channels`,
   `__obs_seq_length`, `__obs_feature_dim`, `__embedding_dims`, and
-  `__future_target_dims` remain the enforced public docking boundary.
+  `__future_target_feature_indices` remain the enforced public docking
+  boundary.
   Assembly `CIRCUIT_FILE` declares one or more compatible named circuits, and
   the operational selector is wave-local `CIRCUIT: <circuit_name>;`.
   If a contract exposes multiple circuits and wave omits `CIRCUIT`, runtime
@@ -868,14 +896,14 @@ Supported MCP tools:
   `/* ... */` and `# ...`.
 - Wave settings are authored directly in the defaults example
   `./instructions/defaults/default.iitepi.wave.dsl` and in objective-local
-  wave bundles such as `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/iitepi.waves.dsl`.
+  wave bundles such as `./instructions/objectives/runtime.operative.vicreg.solo.settings_optimize/.waves.dsl`.
   split train/run keys are removed and rejected by validation.
   wave owns operational circuit selection via `CIRCUIT: <circuit_name>;`.
   runtime dataloader ownership is wave-local via root `WAVE` keys:
     `SAMPLER`, `BATCH_SIZE`, `MAX_BATCHES_PER_EPOCH`,
     with source-owned fields split inside each `SOURCE { ... }` block:
     `SETTINGS { WORKERS, FORCE_REBUILD_CACHE, RANGE_WARN_BATCHES }`,
-    `RUNTIME { SYMBOL, FROM, TO }`.
+    `RUNTIME { RUNTIME_INSTRUMENT_SIGNATURE, FROM, TO }`.
   - observation/channel DSL selection is contract-owned through
     `__observation_sources_dsl_file` and
     `__observation_channels_dsl_file`.
@@ -884,7 +912,7 @@ Supported MCP tools:
   - runtime probe policy is wave-local via `PROBE { ... }` blocks:
     `TRAINING_WINDOW=incoming_batch`,
     `REPORT_POLICY=epoch_end_log`,
-    `OBJECTIVE=future_target_dims_nll`.
+    `OBJECTIVE=future_target_feature_indices_nll`.
     Probe path parity with circuit probe nodes is strict.
   - runtime sink ownership is wave-local via `SINK { ... }` blocks:
     `PATH=<canonical_sink_node_path>`.
@@ -893,18 +921,30 @@ Supported MCP tools:
     (keyed `mode/log_mode/cadence` or positional token); `event` mode is removed.
   - contract `__observation_sources_dsl_file` and
     `__observation_channels_dsl_file` now own static observation/channel
-    policy selection. This keeps source symbol and date range wave-local while
-    moving docking-critical observation payload selection fully into contract.
-  - concrete component revision selection is campaign-local through
-  `BIND.MOUNT { <wave_binding_id> = EXACT 0x...; | ... = RANK <n>; }`.
-    Authored wave files no longer carry `WIKIMYEI.HASHIMYEI`; wave `WIKIMYEI`
-    blocks stay focused on family/path identity and `JKIMYEI` profile policy.
+    policy selection. This keeps the source runtime signature and date range
+    wave-local while moving docking-critical observation payload selection fully
+    into contract.
+  - concrete component revision ids are contract-derived during campaign
+    staging. Authored wave files no longer carry component revision keys; wave
+    `WIKIMYEI` blocks stay focused on family identity and `JKIMYEI` profile
+    policy. Staged snapshots carry the derived hash-suffixed path.
 - `instructions/defaults/default.tsi.source.dataloader.sources.dsl` owns CSV lattice policy via required:
   `CSV_POLICY { CSV_BOOTSTRAP_DELTAS, CSV_STEP_ABS_TOL, CSV_STEP_REL_TOL }`.
   It also owns required source analytics policy:
   `DATA_ANALYTICS_POLICY { MAX_SAMPLES, MAX_FEATURES, MASK_EPSILON, STANDARDIZE_EPSILON }`.
+  Its source table rows also carry exact instrument metadata:
+  `instrument, interval, record_type, market_type, venue, base_asset, quote_asset, source`.
+  Runtime validates a wave `RUNTIME_INSTRUMENT_SIGNATURE` against these exact
+  source facts for every active channel interval. Training/evaluation intent is
+  intentionally left for the later lattice target surface.
   `MASK_EPSILON` is the minimum accepted valid-timestep ratio for a sample;
   accepted samples exclude invalid positions from the numeric analytics.
+- `instructions/defaults/default.lattice.target.dsl` is the first target
+  evidence surface. It names imported contracts, exact source instruments,
+  component TAG obligations, effort budgets, and required trained/validated/tested
+  facts. It does not schedule runtime execution; Runtime campaigns still create
+  evidence, while Lattice target verification will read Hashimyei/Lattice
+  evidence against these obligations.
 
 ## Runtime Contract Lock
 
@@ -919,32 +959,40 @@ Supported MCP tools:
 
 - `EXPECTED_VALUE.optimizer_threshold_reset` is a step-counter clamp for Adam/AdamW (not a grad-norm reset trigger).
 - `EXPECTED_VALUE` names the MDN-backed module whose primary runtime export is
-  the conditional expectation of the configured targets in target space:
-  `E[target|X]`.
-- Target space is the tensor space produced by source-side preprocessing. With
+  the conditional expectation of the selected future features:
+  `E[F|X]`.
+- Selected future space is the tensor space produced by source-side preprocessing. With
   identity preprocessing, the export is an expected raw future feature. With
   `normalization_policy = log_returns` on price fields, the export is an
   expected log-return, not an arithmetic expected return and not an expected
   future price. Native/raw-space expectations must be derived separately from
   the full MDN distribution because, for nonlinear transforms,
-  `E[f(Y)|X] != f(E[Y|X])`.
-- ExpectedValue/MDN is a first-class `tsi.wikimyei.inference.mdn` circuit
+  `E[g(F)|X] != g(E[F|X])`.
+- ExpectedValue/MDN is a first-class `tsi.wikimyei.inference.expected_value.mdn` circuit
   component. Its thin module DSL owns runtime placement and payload bindings;
+  `jkimyei_dsl_file` owns optimizer, scheduler, loss, numerics, checkpoint,
+  metrics, and data-reference policy;
   `network_design_dsl_file` owns `encoding_dims`,
-  `encoding_temporal_reducer`, `target_dims`, `mixture_comps`,
+  `encoding_temporal_reducer`, `target_feature_indices`, `mixture_comps`,
   `features_hidden`, and `residual_depth`, which are normalized into the
   `EXPECTED_VALUE` module snapshot for runtime constructors.
+- `EXPECTED_VALUE.device = cpu` is an explicit CPU run. `gpu` / `cuda` are
+  strict: if CUDA resolution falls back to CPU, ExpectedValue refuses
+  construction; MDN construction and checkpoint load also assert parameter and
+  buffer residency and run a CUDA forward/expectation probe when CUDA is active.
 - `encoding_temporal_reducer` defaults to `last_valid`; rank-3 VICReg
   sequences are reduced inside `ExpectedValue` while the source observation mask
   is still available. The pure MDN accepts only reduced `[B,De]` encodings.
-- ExpectedValue `target_dims` are validated as non-empty, unique, non-negative,
-  aligned with `__future_target_dims`, and in range for `__obs_feature_dim`.
-- Current `target_weights` are applied inside each component's per-dimension
+- ExpectedValue `target_feature_indices` are positional indices into
+  `future_features` and are validated as non-empty, unique, non-negative,
+  aligned with contract-owned `__future_target_feature_indices`, and in range
+  for `__obs_feature_dim`.
+- Current `target_weights` are applied inside each component's per-feature
   log-probability before mixture aggregation. Treat this as pseudo-likelihood /
   tempered-score behavior, not ordinary post-NLL per-target weighting. Future
   loss modes should make `joint_nll`, `pseudo_likelihood`, `marginal_nll`, and
   `hybrid` semantics explicit before changing this behavior.
-- ExpectedValue trains on `future_features[..., target_dims]` with
+- ExpectedValue trains on `future_features[..., target_feature_indices]` with
   `future_mask`; time keys are separate tensors and are not part of
   `future_features`.
 - ExpectedValue training currently updates only the MDN/value-head parameters.
@@ -957,27 +1005,49 @@ Supported MCP tools:
   - `PerBatch`: step each batch.
   - `PerEpoch`: step once per epoch.
   - `PerEpochWithMetric`: step once per epoch with epoch loss metric.
-- `ExpectedValue` checkpoints are strict format v4 only and require:
-  - `format_version = 4`
+- `ExpectedValue` checkpoints are strict format v6 only and require:
+  - `format_version = 6`
   - `meta/contract_hash`
   - `meta/component_name`
   - `meta/encoding_temporal_reducer`
+  - `meta/head_manifest_schema = expected_value.head_manifest.v1`
+  - `meta/export_semantics = target_space_expectation`
+  - `meta/loss_mode`
+  - `meta/training_recipe`
+  - `meta/future_feature_width`
+  - `meta/future_feature_schema_hash`
+  - `meta/target_width`
+  - `meta/target_feature_indices`
+  - `meta/encoding_dims`
+  - `meta/channel_count`
+  - `meta/horizon_count`
+  - `meta/mixture_comps`
+  - `meta/features_hidden`
+  - `meta/residual_depth`
   - `meta/scheduler_mode`
   - `meta/scheduler_batch_steps`
   - `meta/scheduler_epoch_steps`
   - `meta/model_parameter_count`
   - `meta/model_buffer_count`
+- The v6 head manifest is the first compatibility layer for future global /
+  family / per-symbol head routing. It hard-fails on target layout, target-space
+  export semantics, positional target feature indices, ordered future-feature
+  schema hash, MDN architecture, reducer policy, loss semantics, and the
+  current representation-frozen value-head training recipe. Exact
+  representation checkpoint binding is intentionally still a future field,
+  because `ExpectedValue` does not yet receive the upstream representation
+  checkpoint identity.
 
 ## VICReg Runtime Notes
 
 - `jkimyei.*.dsl` files use explicit `COMPONENT "<canonical_type>" { ... }` blocks; implicit component identity is removed and `component_id` is derived from canonical type.
 - Contract-owned VICReg jkimyei payload is bound via `jkimyei_dsl_file` inside
-  `default.tsi.wikimyei.representation.vicreg.dsl`.
-- The default ExpectedValue `jkimyei_dsl_file` also points at this shared
-  Wikimyei training-policy bundle; the filename is historical, not an assertion
-  that ExpectedValue is a VICReg model.
-- `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` (`[COMPONENT_PARAMS]`), not by `default.tsi.wikimyei.representation.vicreg.dsl`.
-- VICReg train/eval enable is owned by wave `WIKIMYEI ... JKIMYEI.HALT_TRAIN` together with root `WAVE.MODE` train bit; `default.tsi.wikimyei.representation.vicreg.jkimyei.dsl` no longer defines a `vicreg_train` key.
+  `default.tsi.wikimyei.representation.encoding.vicreg.dsl`.
+- Contract-owned ExpectedValue jkimyei payload is bound via `jkimyei_dsl_file`
+  inside `default.tsi.wikimyei.inference.expected_value.mdn.dsl`; it is a
+  separate file from the VICReg policy bundle.
+- `VICReg.swa_start_iter` and `VICReg.optimizer_threshold_reset` are profile policy keys owned by `default.tsi.wikimyei.representation.encoding.vicreg.jkimyei.dsl` (`[COMPONENT_PARAMS]`), not by `default.tsi.wikimyei.representation.encoding.vicreg.dsl`.
+- VICReg train/eval enable is owned by wave `WIKIMYEI ... JKIMYEI.HALT_TRAIN` together with root `WAVE.MODE` train bit; `default.tsi.wikimyei.representation.encoding.vicreg.jkimyei.dsl` no longer defines a `vicreg_train` key.
 - VICReg `[AUGMENTATIONS]` now uses canonical field `time_warp_curve` for the base temporal warp selector. `curve_param`, `noise_scale`, and `smoothing_kernel_size` are the knobs that shape the actual time warp; legacy field name `name` is still accepted for backward compatibility.
 - Embedding-sequence sidecars are now owned by
   `default.tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl`, not by
@@ -988,9 +1058,9 @@ Supported MCP tools:
   Required path binding is configured by `network_design_dsl_file` inside
   the thin Wikimyei module wrappers.
   VICReg encoder/projector architecture is authored only in
-  `*.representation.vicreg.network_design.dsl`; ExpectedValue/MDN
+  `*.representation.encoding.vicreg.network_design.dsl`; ExpectedValue/MDN
   architecture is authored only in
-  `*.inference.mdn.expected_value.network_design.dsl`. The thin wrappers own
+  `*.inference.expected_value.mdn.network_design.dsl`. The thin wrappers own
   runtime placement, checkpoint/report bindings, and payload paths.
   Resolved network-design architecture is normalized back into the runtime
   contract snapshot for downstream compatibility readers of `VICReg.*` and

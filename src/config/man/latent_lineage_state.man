@@ -37,7 +37,7 @@ type = identifier
 required = true for persisted runtime reports
 default = none
 range = stable semantic canonical path
-allowed = tsi.source.dataloader,tsi.wikimyei.representation.vicreg.0x<hex>
+allowed = tsi.source.dataloader,tsi.wikimyei.representation.encoding.vicreg.0x<hex>
 nuance = canonical_path names the stable semantic report subject and must not absorb wave-selected runtime configuration such as symbol or date range
 
 [FIELD RUNTIME_REPORT.BINDING_ID]
@@ -58,7 +58,7 @@ required = false
 default = omitted
 range = compact source runtime selector
 allowed = <symbol>|<FROM>|<TO>
-nuance = optional semantic source selector derived from SOURCE.RUNTIME.{SYMBOL,FROM,TO}; useful for source-selected reports without promoting source projection metrics into the shared header
+nuance = optional semantic source selector derived from SOURCE.RUNTIME.{RUNTIME_INSTRUMENT_SIGNATURE,FROM,TO}; useful for source-selected reports without promoting source projection metrics into the shared header
 
 [FIELD RUNTIME_REPORT.WAVE_CURSOR]
 key = wave_cursor

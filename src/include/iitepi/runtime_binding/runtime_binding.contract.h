@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "camahjucunu/dsl/instrument_signature.h"
 #include "iitepi/runtime_binding/runtime_binding.runtime.h"
 
 namespace tsiemene {
@@ -21,7 +22,8 @@ namespace runtime_binding_contract_dsl_key {
 #define RUNTIME_BINDING_PATH_DIRECTIVE(ID, TOKEN, SUMMARY)
 #define RUNTIME_BINDING_PATH_METHOD(ID, TOKEN, SUMMARY)
 #define RUNTIME_BINDING_PATH_ACTION(ID, TOKEN, SUMMARY)
-#define RUNTIME_BINDING_PATH_DSL_SEGMENT(ID, KEY, SUMMARY) inline constexpr const char ID[] = KEY;
+#define RUNTIME_BINDING_PATH_DSL_SEGMENT(ID, KEY, SUMMARY)                     \
+  inline constexpr const char ID[] = KEY;
 #include "iitepi/runtime_binding/runtime_binding.paths.def"
 #undef RUNTIME_BINDING_PATH_DSL_SEGMENT
 #undef RUNTIME_BINDING_PATH_ACTION
@@ -29,14 +31,15 @@ namespace runtime_binding_contract_dsl_key {
 #undef RUNTIME_BINDING_PATH_DIRECTIVE
 } // namespace runtime_binding_contract_dsl_key
 
-inline constexpr const char* kRuntimeBindingContractCircuitDslKey =
+inline constexpr const char *kRuntimeBindingContractCircuitDslKey =
     runtime_binding_contract_dsl_key::ContractCircuit;
-inline constexpr const char* kRuntimeBindingContractWaveDslKey =
+inline constexpr const char *kRuntimeBindingContractWaveDslKey =
     runtime_binding_contract_dsl_key::ContractWave;
 
-inline constexpr std::array<std::string_view, 2> kRuntimeBindingContractRequiredDslKeys = {
-    kRuntimeBindingContractCircuitDslKey,
-    kRuntimeBindingContractWaveDslKey,
+inline constexpr std::array<std::string_view, 2>
+    kRuntimeBindingContractRequiredDslKeys = {
+        kRuntimeBindingContractCircuitDslKey,
+        kRuntimeBindingContractWaveDslKey,
 };
 
 // Runtime circuit payload owned by a runtime-binding contract.
@@ -65,31 +68,27 @@ struct RuntimeBindingContractCircuit {
     compiled_ready = false;
   }
 
-  template <class NodeT, class... Args>
-  NodeT& emplace_node(Args&&... args) {
+  template <class NodeT, class... Args> NodeT &emplace_node(Args &&...args) {
     auto p = std::make_unique<NodeT>(std::forward<Args>(args)...);
-    NodeT& ref = *p;
+    NodeT &ref = *p;
     nodes.push_back(std::move(p));
     invalidate_compiled_runtime();
     return ref;
   }
 
   [[nodiscard]] Circuit view() const noexcept {
-    return Circuit{
-      .hops = hops.data(),
-      .hop_count = hops.size(),
-      .doc = name
-    };
+    return Circuit{.hops = hops.data(), .hop_count = hops.size(), .doc = name};
   }
 
   [[nodiscard]] std::size_t topology_signature() const noexcept {
     return circuit_topology_signature(view());
   }
 
-  [[nodiscard]] bool ensure_compiled(CircuitIssue* issue = nullptr) {
+  [[nodiscard]] bool ensure_compiled(CircuitIssue *issue = nullptr) {
     const Circuit cv = view();
     const std::size_t sig = circuit_topology_signature(cv);
-    if (compiled_ready && sig == compiled_signature) return true;
+    if (compiled_ready && sig == compiled_signature)
+      return true;
 
     CompiledCircuit fresh{};
     if (!compile_circuit(cv, &fresh, issue)) {
@@ -112,9 +111,13 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
   using DslSegments = std::map<std::string, std::string>;
 
   struct ComponentDslFingerprint {
+    std::string binding_id{};
     std::string canonical_path{};
     std::string tsi_type{};
     std::string hashimyei{};
+    std::string component_tag{};
+    std::string component_compatibility_sha256_hex{};
+    cuwacunu::camahjucunu::instrument_signature_t instrument_signature{};
     std::string tsi_dsl_path{};
     std::string tsi_dsl_sha256_hex{};
   };
@@ -126,7 +129,8 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     std::string runtime_component_name{};
 
     [[nodiscard]] std::string runtime_path() const {
-      if (hashimyei.empty()) return canonical_type;
+      if (hashimyei.empty())
+        return canonical_type;
       return canonical_type + "." + hashimyei;
     }
   };
@@ -137,16 +141,22 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     bool debug_enabled{false};
     std::uint64_t epochs{1};
     std::uint64_t batch_size{0};
-    // Runtime flow controls for queue backpressure and runtime-generated traces.
+    // Runtime flow controls for queue backpressure and runtime-generated
+    // traces.
     RuntimeFlowControl runtime{};
   };
 
   struct Spec {
     // Contract hash backing this runtime contract instance.
     std::string contract_hash{};
-    // Source identity for this contract's data stream (e.g., BTCUSDT).
+    // Source symbol for display and command parsing (e.g., BTCUSDT).
     std::string instrument{};
-    // Compact semantic selector derived from SOURCE.RUNTIME.{SYMBOL,FROM,TO}.
+    // Exact source identity selected by
+    // SOURCE.RUNTIME.RUNTIME_INSTRUMENT_SIGNATURE.
+    cuwacunu::camahjucunu::instrument_signature_t
+        runtime_instrument_signature{};
+    // Compact semantic selector derived from
+    // SOURCE.RUNTIME.{RUNTIME_INSTRUMENT_SIGNATURE,FROM,TO}.
     std::string source_runtime_cursor{};
     // Concrete sample record type used by source dataloader.
     std::string sample_type{};
@@ -156,7 +166,8 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     std::string representation_type{};
     // Optional hashimyei identifier for hashimyei-based representation types.
     std::string representation_hashimyei{};
-    // Selected runtime training component key resolved for wikimyei representation.
+    // Selected runtime training component key resolved for wikimyei
+    // representation.
     std::string representation_component_name{};
     // Per-node wikimyei identity map used by runtime load/save/lineage flows.
     // The legacy representation_* fields above mirror the first active entry
@@ -183,13 +194,15 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     bool sourced_from_config{true};
 
     [[nodiscard]] bool has_positive_shape_hints() const noexcept {
-      return batch_size_hint > 0 && channels > 0 && timesteps > 0 && features > 0;
+      return batch_size_hint > 0 && channels > 0 && timesteps > 0 &&
+             features > 0;
     }
 
-    [[nodiscard]] const WikimyeiBindingIdentity* find_wikimyei_binding(
-        std::string_view binding_id) const noexcept {
-      for (const auto& binding : wikimyei_bindings) {
-        if (binding.binding_id == binding_id) return &binding;
+    [[nodiscard]] const WikimyeiBindingIdentity *
+    find_wikimyei_binding(std::string_view binding_id) const noexcept {
+      for (const auto &binding : wikimyei_bindings) {
+        if (binding.binding_id == binding_id)
+          return &binding;
       }
       return nullptr;
     }
@@ -197,7 +210,8 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
   Execution execution{};
   DslSegments dsl_segments{};
 
-  [[nodiscard]] static constexpr const std::array<std::string_view, 2>& required_dsl_keys() noexcept {
+  [[nodiscard]] static constexpr const std::array<std::string_view, 2> &
+  required_dsl_keys() noexcept {
     return kRuntimeBindingContractRequiredDslKeys;
   }
 
@@ -205,26 +219,31 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
     dsl_segments[std::move(key)] = std::move(dsl_text);
   }
 
-  [[nodiscard]] const std::string* find_dsl_segment(std::string_view key) const noexcept {
+  [[nodiscard]] const std::string *
+  find_dsl_segment(std::string_view key) const noexcept {
     const auto it = dsl_segments.find(std::string(key));
     return (it == dsl_segments.end()) ? nullptr : &it->second;
   }
 
   [[nodiscard]] std::string dsl_segment_or(std::string_view key,
                                            std::string fallback = {}) const {
-    if (const auto* value = find_dsl_segment(key)) return *value;
+    if (const auto *value = find_dsl_segment(key))
+      return *value;
     return fallback;
   }
 
-  [[nodiscard]] bool has_non_empty_dsl_segment(std::string_view key) const noexcept {
-    const auto* value = find_dsl_segment(key);
+  [[nodiscard]] bool
+  has_non_empty_dsl_segment(std::string_view key) const noexcept {
+    const auto *value = find_dsl_segment(key);
     return value && !value->empty();
   }
 
-  [[nodiscard]] bool has_required_dsl_segments(std::string_view* missing_key = nullptr) const noexcept {
+  [[nodiscard]] bool has_required_dsl_segments(
+      std::string_view *missing_key = nullptr) const noexcept {
     for (const std::string_view key : required_dsl_keys()) {
       if (!has_non_empty_dsl_segment(key)) {
-        if (missing_key) *missing_key = key;
+        if (missing_key)
+          *missing_key = key;
         return false;
       }
     }
@@ -232,13 +251,15 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
   }
 
   [[nodiscard]] std::string render_dsl_segment(std::string_view key) const {
-    const auto* value = find_dsl_segment(key);
-    if (!value) return {};
+    const auto *value = find_dsl_segment(key);
+    if (!value)
+      return {};
 
     std::ostringstream oss;
     oss << "BEGIN " << key << "\n";
     oss << *value;
-    if (value->empty() || value->back() != '\n') oss << "\n";
+    if (value->empty() || value->back() != '\n')
+      oss << "\n";
     oss << "END " << key << "\n";
     return oss.str();
   }
@@ -246,22 +267,24 @@ struct RuntimeBindingContract : public RuntimeBindingContractCircuit {
   [[nodiscard]] std::string render_dsl_segments() const {
     std::ostringstream oss;
     bool first = true;
-    for (const auto& [key, value] : dsl_segments) {
-      if (!first) oss << "\n";
+    for (const auto &[key, value] : dsl_segments) {
+      if (!first)
+        oss << "\n";
       first = false;
       oss << "BEGIN " << key << "\n";
       oss << value;
-      if (value.empty() || value.back() != '\n') oss << "\n";
+      if (value.empty() || value.back() != '\n')
+        oss << "\n";
       oss << "END " << key << "\n";
     }
     return oss.str();
   }
 
-  [[nodiscard]] RuntimeBindingContractCircuit& circuit() noexcept {
-    return static_cast<RuntimeBindingContractCircuit&>(*this);
+  [[nodiscard]] RuntimeBindingContractCircuit &circuit() noexcept {
+    return static_cast<RuntimeBindingContractCircuit &>(*this);
   }
-  [[nodiscard]] const RuntimeBindingContractCircuit& circuit() const noexcept {
-    return static_cast<const RuntimeBindingContractCircuit&>(*this);
+  [[nodiscard]] const RuntimeBindingContractCircuit &circuit() const noexcept {
+    return static_cast<const RuntimeBindingContractCircuit &>(*this);
   }
 };
 

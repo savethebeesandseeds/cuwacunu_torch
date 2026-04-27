@@ -33,6 +33,10 @@ jkimyei_specs:
 iitepi_campaign:
 	$(MAKE) -C $(HERE_PATH)/iitepi_campaign all
 
+.PHONY: lattice_target
+lattice_target:
+	$(MAKE) -C $(HERE_PATH)/lattice_target all
+
 .PHONY: tsiemene_circuit
 tsiemene_circuit:
 	$(MAKE) -C $(HERE_PATH)/tsiemene_circuit all
@@ -50,5 +54,5 @@ canonical_path:
 	$(MAKE) -C $(HERE_PATH)/canonical_path all
 
 .PHONY: all
-all: observation_pipeline latent_lineage_state marshal_objective network_design jkimyei_specs iitepi_campaign tsiemene_circuit iitepi_wave runtime_binding_instruction canonical_path
+all: observation_pipeline latent_lineage_state marshal_objective network_design jkimyei_specs iitepi_campaign lattice_target tsiemene_circuit iitepi_wave runtime_binding_instruction canonical_path
 	@$(LOG_SUCCESS)

@@ -973,7 +973,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
 
   auto finish_boot = [&]() {
     set_mouse_capture(state.shell_logs.mouse_capture);
-    log_info("[iinuji_cmd] cuwacunu Hero terminal ready\n");
+    log_dbg("[iinuji_cmd] cuwacunu Hero terminal ready\n");
     log_dbg("[iinuji_cmd] F1 home | F2 workbench | F3 runtime | F4 lattice | "
             "F8 shell logs | F9 config | type 'help' for commands\n");
     log_dbg("[iinuji_cmd] logs setting 'mouse capture' controls terminal "
@@ -1030,7 +1030,7 @@ run(const char *global_config_path = DEFAULT_GLOBAL_CONFIG_PATH) try {
           log_dbg("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
           break;
         case UiEventfulStatusLogSeverity::Info:
-          log_info("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
+          log_dbg("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());
           break;
         case UiEventfulStatusLogSeverity::Warning:
           log_warn("[iinuji_cmd.%s.status] %s\n", scope.c_str(), line.c_str());

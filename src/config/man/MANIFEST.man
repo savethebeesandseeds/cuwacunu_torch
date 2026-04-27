@@ -28,7 +28,7 @@ covers = bnf/network_design.bnf
 
 [ENTRY 07]
 file = jkimyei.man
-covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl,bnf/jkimyei.bnf
+covers = instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.jkimyei.dsl,instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.jkimyei.dsl,bnf/jkimyei.bnf
 
 [ENTRY 08]
 file = tsi.source.dataloader.sources.man
@@ -39,16 +39,16 @@ file = tsi.source.dataloader.channels.man
 covers = instructions/defaults/default.tsi.source.dataloader.channels.dsl,bnf/tsi.source.dataloader.channels.bnf
 
 [ENTRY 10]
-file = tsi.wikimyei.representation.vicreg.man
-covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.dsl,bnf/latent_lineage_state.authored.bnf
+file = tsi.wikimyei.representation.encoding.vicreg.man
+covers = instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.dsl,bnf/latent_lineage_state.authored.bnf
 
 [ENTRY 11]
-file = tsi.wikimyei.representation.vicreg.network_design.man
-covers = instructions/defaults/default.tsi.wikimyei.representation.vicreg.network_design.dsl,bnf/network_design.bnf
+file = tsi.wikimyei.representation.encoding.vicreg.network_design.man
+covers = instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.network_design.dsl,bnf/network_design.bnf
 
 [ENTRY 12]
-file = tsi.wikimyei.inference.mdn.expected_value.man
-covers = instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.dsl,instructions/defaults/default.tsi.wikimyei.inference.mdn.expected_value.network_design.dsl,bnf/latent_lineage_state.authored.bnf,bnf/network_design.bnf
+file = tsi.wikimyei.inference.expected_value.mdn.man
+covers = instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.dsl,instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.jkimyei.dsl,instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.network_design.dsl,bnf/latent_lineage_state.authored.bnf,bnf/network_design.bnf
 
 [ENTRY 13]
 file = tsi.wikimyei.evaluation.embedding_sequence_analytics.man
@@ -125,3 +125,7 @@ covers = instructions/defaults/default.marshal.objective.dsl,bnf/objective.marsh
 [ENTRY 31]
 file = hero.human.config.man
 covers = instructions/defaults/default.hero.human.dsl,bnf/latent_lineage_state.authored.bnf
+
+[ENTRY 32]
+file = lattice.target.man
+covers = instructions/defaults/default.lattice.target.dsl,bnf/lattice.target.bnf

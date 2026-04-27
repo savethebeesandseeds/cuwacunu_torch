@@ -20,7 +20,7 @@ binance_mech_server_t::binance_mech_server_t(
 }
 
 binance_mech_server_t::~binance_mech_server_t() {
-  log_info("Finalizing cuwacunu::camahjucunu::mech::binance::binance_mech_server_t \n");
+  log_dbg("Finalizing cuwacunu::camahjucunu::mech::binance::binance_mech_server_t \n");
   if(owns_session) { cuwacunu::piaabo::curl::WebsocketAPI::ws_finalize(session_id); }
 }
 

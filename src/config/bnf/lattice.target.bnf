@@ -1,0 +1,86 @@
+<instruction>                ::= "LATTICE_TARGET" [<whitespace>] <id_value>
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 {<lattice_target_entry>}
+                                 [<whitespace>] "}" [<whitespace>] [ ";" ] <line_end> ;
+
+<lattice_target_entry>       ::= <contract_import_decl>
+                               | <target_decl> ;
+
+<contract_import_decl>       ::= [<whitespace>] "IMPORT_CONTRACT"
+                                 [<whitespace>] <path_value>
+                                 [<whitespace>] "AS"
+                                 [<whitespace>] <id_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<target_decl>                ::= [<whitespace>] "TARGET" [<whitespace>] <id_value>
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 "CONTRACT" [<whitespace>] "=" [<whitespace>] <id_value> [<whitespace>] ";" <line_end>
+                                 <component_target_block>
+                                 <source_block>
+                                 <effort_block>
+                                 <require_block>
+                                 [<whitespace>] "}" [<whitespace>] [ ";" ] <line_end> ;
+
+<component_target_block>     ::= [<whitespace>] "COMPONENT_TARGET"
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 {<component_target_entry>}
+                                 [<whitespace>] "}" [<whitespace>] [ ";" ] <line_end> ;
+
+<component_target_entry>     ::= [<whitespace>] <id_value> [<whitespace>] "="
+                                 [<whitespace>] "TAG" [<whitespace>] <id_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<source_block>               ::= [<whitespace>] "SOURCE"
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 {<source_entry>}
+                                 [<whitespace>] "}" [<whitespace>] [ ";" ] <line_end> ;
+
+<source_entry>               ::= [<whitespace>] <instrument_signature_key>
+                                 [<whitespace>] "=" [<whitespace>] <id_value>
+                                 [<whitespace>] ";" <line_end>
+                               | [<whitespace>] <source_window_key>
+                                 [<whitespace>] "=" [<whitespace>] <window_value>
+                                 [<whitespace>] ";" <line_end> ;
+
+<instrument_signature_key>   ::= "SYMBOL" | "RECORD_TYPE" | "MARKET_TYPE"
+                               | "VENUE" | "BASE_ASSET" | "QUOTE_ASSET" ;
+
+<source_window_key>          ::= "TRAIN" | "VALIDATE" | "TEST" ;
+<window_value>               ::= <id_value> | <quoted_text> ;
+
+<effort_block>               ::= [<whitespace>] "EFFORT"
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 "EPOCHS" [<whitespace>] "=" [<whitespace>] <positive_int> [<whitespace>] ";" <line_end>
+                                 "BATCH_SIZE" [<whitespace>] "=" [<whitespace>] <positive_int> [<whitespace>] ";" <line_end>
+                                 "MAX_BATCHES_PER_EPOCH" [<whitespace>] "=" [<whitespace>] <positive_int> [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "}" [<whitespace>] [ ";" ] <line_end> ;
+
+<require_block>              ::= [<whitespace>] "REQUIRE"
+                                 [<whitespace>] "{"
+                                 <line_end>
+                                 "TRAINED" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end>
+                                 "VALIDATED" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end>
+                                 "TESTED" [<whitespace>] "=" [<whitespace>] <bool_value> [<whitespace>] ";" <line_end>
+                                 [<whitespace>] "}" [<whitespace>] [ ";" ] <line_end> ;
+
+<bool_value>                 ::= "true" | "false" ;
+<positive_int>               ::= <digit_nonzero> {<digit>} ;
+<id_value>                   ::= <id_char> {<id_char>} ;
+<path_value>                 ::= <id_value> | <quoted_text> ;
+<quoted_text>                ::= "\"" {<quoted_char>} "\"" ;
+<quoted_char>                ::= <id_char> | "/" | ":" | "\\" | "." | "-" | "_" | " " ;
+
+<id_char>                    ::= <letter> | <digit> | "_" | "." | "-" ;
+<line_end>                   ::= [<whitespace>] <break_block> ;
+<break_block>                ::= {<newline>} ;
+<whitespace>                 ::= {<empty>} ;
+<letter>                     ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+<digit>                      ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+<digit_nonzero>              ::= "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+<newline>                    ::= "\n" | "\r\n" ;
+<empty>                      ::= " " | "\t" ;

@@ -13,9 +13,9 @@
 #include <vector>
 
 #include "camahjucunu/dsl/canonical_path/canonical_path.h"
+#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "camahjucunu/dsl/jkimyei_specs/jkimyei_specs.h"
 #include "camahjucunu/dsl/tsiemene_circuit/tsiemene_circuit_runtime.h"
-#include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
 #include "tsiemene/tsi.type.registry.h"
 
 namespace tsiemene {
@@ -66,14 +66,16 @@ struct CompatibilityReport {
 
 [[nodiscard]] inline std::string trim_ascii_copy(std::string s) {
   std::size_t b = 0;
-  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+    ++b;
   std::size_t e = s.size();
-  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+    --e;
   return s.substr(b, e - b);
 }
 
 [[nodiscard]] inline std::string canonicalize_runtime_node_path(
-    const cuwacunu::camahjucunu::canonical_path_t& path) {
+    const cuwacunu::camahjucunu::canonical_path_t &path) {
   std::string out = path.canonical_identity;
   if (!path.hashimyei.empty()) {
     const std::string suffix = "." + path.hashimyei;
@@ -92,21 +94,27 @@ struct node_path_ref_t {
   TsiTypeId type_id{TsiTypeId::SourceDataloader};
 };
 
-[[nodiscard]] inline std::optional<node_path_ref_t> resolve_node_path_or_nullopt(
-    const std::string& raw_path,
-    const std::string& contract_hash,
-    bool allow_family_without_hash,
-    std::string* error) {
-  const auto parsed = cuwacunu::camahjucunu::decode_canonical_path(
-      raw_path, contract_hash);
+[[nodiscard]] inline std::optional<node_path_ref_t>
+resolve_node_path_or_nullopt(const std::string &raw_path,
+                             const std::string &contract_hash,
+                             bool allow_family_without_hash,
+                             std::string *error) {
+  const auto parsed =
+      contract_hash.empty()
+          ? cuwacunu::camahjucunu::decode_canonical_path(raw_path)
+          : cuwacunu::camahjucunu::decode_canonical_path(raw_path,
+                                                         contract_hash);
   if (parsed.ok) {
-    if (parsed.path_kind != cuwacunu::camahjucunu::canonical_path_kind_e::Node) {
-      if (error) *error = "path must be canonical node";
+    if (parsed.path_kind !=
+        cuwacunu::camahjucunu::canonical_path_kind_e::Node) {
+      if (error)
+        *error = "path must be canonical node";
       return std::nullopt;
     }
     const auto type_id = parse_tsi_type_id(parsed.canonical_identity);
     if (!type_id.has_value()) {
-      if (error) *error = "unsupported tsi type: " + parsed.canonical_identity;
+      if (error)
+        *error = "unsupported tsi type: " + parsed.canonical_identity;
       return std::nullopt;
     }
     return node_path_ref_t{
@@ -118,14 +126,16 @@ struct node_path_ref_t {
   }
 
   if (!allow_family_without_hash) {
-    if (error) *error = parsed.error;
+    if (error)
+      *error = parsed.error;
     return std::nullopt;
   }
 
   const std::string trimmed = trim_ascii_copy(raw_path);
   const auto type_id = parse_tsi_type_id(trimmed);
   if (!type_id.has_value()) {
-    if (error) *error = parsed.error;
+    if (error)
+      *error = parsed.error;
     return std::nullopt;
   }
 
@@ -140,7 +150,8 @@ struct node_path_ref_t {
 
   if (tsi_type_instance_policy(*type_id) !=
       TsiInstancePolicy::HashimyeiInstances) {
-    if (error) *error = parsed.error;
+    if (error)
+      *error = parsed.error;
     return std::nullopt;
   }
 
@@ -152,10 +163,10 @@ struct node_path_ref_t {
   };
 }
 
-[[nodiscard]] inline bool contract_wave_path_match(
-    const node_path_ref_t& contract_path,
-    const node_path_ref_t& wave_path) {
-  const auto canonical_family_path = [](const node_path_ref_t& path) {
+[[nodiscard]] inline bool
+contract_wave_path_match(const node_path_ref_t &contract_path,
+                         const node_path_ref_t &wave_path) {
+  const auto canonical_family_path = [](const node_path_ref_t &path) {
     const auto type_id = parse_tsi_type_id(path.canonical_identity);
     if (type_id.has_value()) {
       return std::string(tsi_type_token(*type_id));
@@ -173,25 +184,28 @@ struct node_path_ref_t {
   return true;
 }
 
-[[nodiscard]] inline std::optional<std::string> canonical_node_path_or_nullopt(
-    const std::string& raw_path,
-    const std::string& contract_hash,
-    std::string* error) {
+[[nodiscard]] inline std::optional<std::string>
+canonical_node_path_or_nullopt(const std::string &raw_path,
+                               const std::string &contract_hash,
+                               std::string *error) {
   const auto resolved =
       resolve_node_path_or_nullopt(raw_path, contract_hash,
                                    /*allow_family_without_hash=*/false, error);
-  if (!resolved.has_value()) return std::nullopt;
+  if (!resolved.has_value())
+    return std::nullopt;
   return resolved->runtime_path;
 }
 
 [[nodiscard]] inline bool select_effective_contract_circuit_instruction(
-    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& instruction,
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t &instruction,
     std::string_view wave_circuit_name,
-    cuwacunu::camahjucunu::tsiemene_circuit_instruction_t* out,
-    std::string* error = nullptr) {
-  if (error) error->clear();
+    cuwacunu::camahjucunu::tsiemene_circuit_instruction_t *out,
+    std::string *error = nullptr) {
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "missing effective circuit output";
+    if (error)
+      *error = "missing effective circuit output";
     return false;
   }
   *out = instruction;
@@ -199,7 +213,8 @@ struct node_path_ref_t {
   std::string selected_name = trim_ascii_copy(std::string(wave_circuit_name));
   if (selected_name.empty()) {
     if (instruction.circuits.empty()) {
-      if (error) *error = "contract has no circuit declarations";
+      if (error)
+        *error = "contract has no circuit declarations";
       return false;
     }
     if (instruction.circuits.size() == 1) {
@@ -207,14 +222,15 @@ struct node_path_ref_t {
       return true;
     }
     if (error) {
-      *error =
-          "contract declares multiple circuits; wave must set CIRCUIT to select one";
+      *error = "contract declares multiple circuits; wave must set CIRCUIT to "
+               "select one";
     }
     return false;
   }
 
-  for (const auto& circuit : instruction.circuits) {
-    if (trim_ascii_copy(circuit.name) != selected_name) continue;
+  for (const auto &circuit : instruction.circuits) {
+    if (trim_ascii_copy(circuit.name) != selected_name)
+      continue;
     out->circuits = {circuit};
     return true;
   }
@@ -227,14 +243,15 @@ struct node_path_ref_t {
 }
 
 [[nodiscard]] inline ContractValidationReport validate_contract_definition(
-    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& circuit_instruction,
-    const std::string& contract_hash = {}) {
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t
+        &circuit_instruction,
+    const std::string &contract_hash = {}) {
   ContractValidationReport report{};
   report.ok = true;
 
   std::string semantic_error;
-  if (!cuwacunu::camahjucunu::validate_circuit_instruction(
-          circuit_instruction, &semantic_error)) {
+  if (!cuwacunu::camahjucunu::validate_circuit_instruction(circuit_instruction,
+                                                           &semantic_error)) {
     report.ok = false;
     report.indicators.push_back(CompatibilityIndicator{
         .code = CompatibilityCode::InvalidReference,
@@ -246,8 +263,8 @@ struct node_path_ref_t {
     return report;
   }
 
-  for (const auto& circuit : circuit_instruction.circuits) {
-    for (const auto& instance : circuit.instances) {
+  for (const auto &circuit : circuit_instruction.circuits) {
+    for (const auto &instance : circuit.instances) {
       std::string path_error;
       const auto node_path = resolve_node_path_or_nullopt(
           instance.tsi_type, contract_hash,
@@ -259,8 +276,8 @@ struct node_path_ref_t {
             .severity = CompatibilitySeverity::Error,
             .contract_path = instance.tsi_type,
             .wave_path = {},
-            .message = "invalid contract tsi_type path for alias '" + instance.alias +
-                       "': " + path_error,
+            .message = "invalid contract tsi_type path for alias '" +
+                       instance.alias + "': " + path_error,
         });
       }
     }
@@ -269,9 +286,9 @@ struct node_path_ref_t {
   return report;
 }
 
-[[nodiscard]] inline WaveValidationReport validate_wave_definition(
-    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
-    const std::string& contract_hash = {}) {
+[[nodiscard]] inline WaveValidationReport
+validate_wave_definition(const cuwacunu::camahjucunu::iitepi_wave_t &wave,
+                         const std::string &contract_hash = {}) {
   WaveValidationReport report{};
   report.ok = true;
 
@@ -282,40 +299,39 @@ struct node_path_ref_t {
   std::unordered_set<std::string> binding_ids;
   bool has_train_true = false;
 
-  const auto register_binding_id =
-      [&](const char* component_kind,
-          const std::string& binding_id,
-          const std::string& runtime_path) {
-        const std::string id = trim_ascii_copy(binding_id);
-        if (id.empty()) {
-          report.ok = false;
-          report.indicators.push_back(CompatibilityIndicator{
-              .code = CompatibilityCode::InvalidReference,
-              .severity = CompatibilitySeverity::Error,
-              .contract_path = {},
-              .wave_path = runtime_path,
-              .message = std::string("missing binding id for ") +
-                         component_kind + " component (expected <id>)",
-          });
-          return;
-        }
-        if (!binding_ids.insert(id).second) {
-          report.ok = false;
-          report.indicators.push_back(CompatibilityIndicator{
-              .code = CompatibilityCode::InvalidReference,
-              .severity = CompatibilitySeverity::Error,
-              .contract_path = {},
-              .wave_path = runtime_path,
-              .message = "duplicate component binding id in wave: " + id,
-          });
-        }
-      };
+  const auto register_binding_id = [&](const char *component_kind,
+                                       const std::string &binding_id,
+                                       const std::string &runtime_path) {
+    const std::string id = trim_ascii_copy(binding_id);
+    if (id.empty()) {
+      report.ok = false;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::InvalidReference,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = {},
+          .wave_path = runtime_path,
+          .message = std::string("missing binding id for ") + component_kind +
+                     " component (expected <id>)",
+      });
+      return;
+    }
+    if (!binding_ids.insert(id).second) {
+      report.ok = false;
+      report.indicators.push_back(CompatibilityIndicator{
+          .code = CompatibilityCode::InvalidReference,
+          .severity = CompatibilitySeverity::Error,
+          .contract_path = {},
+          .wave_path = runtime_path,
+          .message = "duplicate component binding id in wave: " + id,
+      });
+    }
+  };
 
-  for (const auto& w : wave.wikimyeis) {
+  for (const auto &w : wave.wikimyeis) {
     register_binding_id("WIKIMYEI", w.binding_id, w.wikimyei_path);
     std::string path_error;
-    const auto node_path =
-        canonical_node_path_or_nullopt(w.wikimyei_path, contract_hash, &path_error);
+    const auto node_path = canonical_node_path_or_nullopt(
+        w.wikimyei_path, contract_hash, &path_error);
     if (!node_path.has_value()) {
       report.ok = false;
       report.indicators.push_back(CompatibilityIndicator{
@@ -337,14 +353,15 @@ struct node_path_ref_t {
           .message = "duplicate WIKIMYEI PATH in wave",
       });
     }
-    if (w.train) has_train_true = true;
+    if (w.train)
+      has_train_true = true;
   }
 
-  for (const auto& s : wave.sources) {
+  for (const auto &s : wave.sources) {
     register_binding_id("SOURCE", s.binding_id, s.source_path);
     std::string path_error;
-    const auto node_path =
-        canonical_node_path_or_nullopt(s.source_path, contract_hash, &path_error);
+    const auto node_path = canonical_node_path_or_nullopt(
+        s.source_path, contract_hash, &path_error);
     if (!node_path.has_value()) {
       report.ok = false;
       report.indicators.push_back(CompatibilityIndicator{
@@ -368,11 +385,11 @@ struct node_path_ref_t {
     }
   }
 
-  for (const auto& p : wave.probes) {
+  for (const auto &p : wave.probes) {
     register_binding_id("PROBE", p.binding_id, p.probe_path);
     std::string path_error;
-    const auto node_path =
-        canonical_node_path_or_nullopt(p.probe_path, contract_hash, &path_error);
+    const auto node_path = canonical_node_path_or_nullopt(
+        p.probe_path, contract_hash, &path_error);
     if (!node_path.has_value()) {
       report.ok = false;
       report.indicators.push_back(CompatibilityIndicator{
@@ -396,7 +413,7 @@ struct node_path_ref_t {
     }
   }
 
-  for (const auto& s : wave.sinks) {
+  for (const auto &s : wave.sinks) {
     register_binding_id("SINK", s.binding_id, s.sink_path);
     std::string path_error;
     const auto node_path =
@@ -425,7 +442,7 @@ struct node_path_ref_t {
   }
 
   auto lower_ascii_copy = [](std::string s) {
-    for (char& ch : s) {
+    for (char &ch : s) {
       ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     }
     return s;
@@ -460,11 +477,9 @@ struct node_path_ref_t {
   }
 
   const bool run_enabled = cuwacunu::camahjucunu::iitepi_wave_mode_has(
-      mode_flags,
-      cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Run);
+      mode_flags, cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Run);
   const bool train_enabled = cuwacunu::camahjucunu::iitepi_wave_mode_has(
-      mode_flags,
-      cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Train);
+      mode_flags, cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Train);
   if (!run_enabled && !train_enabled) {
     report.ok = false;
     report.indicators.push_back(CompatibilityIndicator{
@@ -492,32 +507,35 @@ struct node_path_ref_t {
         .severity = CompatibilitySeverity::Error,
         .contract_path = {},
         .wave_path = wave.name,
-        .message =
-            "MODE with train bit requires at least one WIKIMYEI with JKIMYEI.HALT_TRAIN=false",
+        .message = "MODE with train bit requires at least one WIKIMYEI with "
+                   "JKIMYEI.HALT_TRAIN=false",
     });
   }
   return report;
 }
 
-[[nodiscard]] inline const cuwacunu::camahjucunu::jkimyei_specs_t::row_t*
-find_component_profile_row(
-    const cuwacunu::camahjucunu::jkimyei_specs_t& specs,
-    const std::string& component_id,
-    const std::string& profile_id) {
+[[nodiscard]] inline const cuwacunu::camahjucunu::jkimyei_specs_t::row_t *
+find_component_profile_row(const cuwacunu::camahjucunu::jkimyei_specs_t &specs,
+                           const std::string &component_id,
+                           const std::string &profile_id) {
   const auto table_it = specs.tables.find("component_profiles_table");
-  if (table_it == specs.tables.end()) return nullptr;
+  if (table_it == specs.tables.end())
+    return nullptr;
   const std::string target_component = trim_ascii_copy(component_id);
   const std::string target_profile = trim_ascii_copy(profile_id);
-  for (const auto& row : table_it->second) {
+  for (const auto &row : table_it->second) {
     const auto cid_it = row.find("component_id");
     const auto ctype_it = row.find("component_type");
     const auto pid_it = row.find("profile_id");
-    if (pid_it == row.end()) continue;
-    if (trim_ascii_copy(pid_it->second) != target_profile) continue;
+    if (pid_it == row.end())
+      continue;
+    if (trim_ascii_copy(pid_it->second) != target_profile)
+      continue;
     const std::string row_component_id =
         (cid_it == row.end()) ? std::string{} : trim_ascii_copy(cid_it->second);
     const std::string row_component_type =
-        (ctype_it == row.end()) ? std::string{} : trim_ascii_copy(ctype_it->second);
+        (ctype_it == row.end()) ? std::string{}
+                                : trim_ascii_copy(ctype_it->second);
     if (row_component_id != target_component &&
         row_component_type != target_component) {
       continue;
@@ -528,37 +546,44 @@ find_component_profile_row(
 }
 
 [[nodiscard]] inline std::vector<std::string> collect_component_profile_ids(
-    const cuwacunu::camahjucunu::jkimyei_specs_t& specs,
-    const std::vector<std::string>& component_ids) {
+    const cuwacunu::camahjucunu::jkimyei_specs_t &specs,
+    const std::vector<std::string> &component_ids) {
   std::vector<std::string> out{};
   const auto table_it = specs.tables.find("component_profiles_table");
-  if (table_it == specs.tables.end()) return out;
+  if (table_it == specs.tables.end())
+    return out;
 
   std::unordered_set<std::string> wanted_components{};
   wanted_components.reserve(component_ids.size());
-  for (const auto& component_id : component_ids) {
+  for (const auto &component_id : component_ids) {
     const std::string normalized = trim_ascii_copy(component_id);
-    if (!normalized.empty()) wanted_components.insert(normalized);
+    if (!normalized.empty())
+      wanted_components.insert(normalized);
   }
-  if (wanted_components.empty()) return out;
+  if (wanted_components.empty())
+    return out;
 
   std::unordered_set<std::string> seen_profiles{};
-  for (const auto& row : table_it->second) {
+  for (const auto &row : table_it->second) {
     const auto pid_it = row.find("profile_id");
-    if (pid_it == row.end()) continue;
+    if (pid_it == row.end())
+      continue;
     const auto cid_it = row.find("component_id");
     const auto ctype_it = row.find("component_type");
     const std::string row_component_id =
         (cid_it == row.end()) ? std::string{} : trim_ascii_copy(cid_it->second);
     const std::string row_component_type =
-        (ctype_it == row.end()) ? std::string{} : trim_ascii_copy(ctype_it->second);
+        (ctype_it == row.end()) ? std::string{}
+                                : trim_ascii_copy(ctype_it->second);
     if (wanted_components.find(row_component_id) == wanted_components.end() &&
         wanted_components.find(row_component_type) == wanted_components.end()) {
       continue;
     }
     const std::string profile_id = trim_ascii_copy(pid_it->second);
-    if (profile_id.empty()) continue;
-    if (!seen_profiles.insert(profile_id).second) continue;
+    if (profile_id.empty())
+      continue;
+    if (!seen_profiles.insert(profile_id).second)
+      continue;
     out.push_back(profile_id);
   }
   std::sort(out.begin(), out.end());
@@ -566,12 +591,12 @@ find_component_profile_row(
 }
 
 [[nodiscard]] inline CompatibilityReport validate_wave_contract_compatibility(
-    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t& circuit_instruction,
-    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
-    const std::string& contract_hash,
-    const cuwacunu::camahjucunu::jkimyei_specs_t* jkimyei_specs = nullptr,
-    std::string contract_id = {},
-    std::string wave_id = {}) {
+    const cuwacunu::camahjucunu::tsiemene_circuit_instruction_t
+        &circuit_instruction,
+    const cuwacunu::camahjucunu::iitepi_wave_t &wave,
+    const std::string &contract_hash,
+    const cuwacunu::camahjucunu::jkimyei_specs_t *jkimyei_specs = nullptr,
+    std::string contract_id = {}, std::string wave_id = {}) {
   CompatibilityReport report{};
   report.ok = true;
   report.contract_id = std::move(contract_id);
@@ -605,17 +630,18 @@ find_component_profile_row(
   std::unordered_map<std::string, node_path_ref_t> contract_binding_paths{};
   std::size_t contract_source_component_count{0};
 
-  const auto push_unique = [&](std::vector<node_path_ref_t>* out,
-                               std::unordered_set<std::string>* seen,
-                               const node_path_ref_t& value) {
-    if (!out || !seen) return;
+  const auto push_unique = [&](std::vector<node_path_ref_t> *out,
+                               std::unordered_set<std::string> *seen,
+                               const node_path_ref_t &value) {
+    if (!out || !seen)
+      return;
     if (seen->insert(value.runtime_path).second) {
       out->push_back(value);
     }
   };
 
-  for (const auto& circuit : effective_instruction.circuits) {
-    for (const auto& instance : circuit.instances) {
+  for (const auto &circuit : effective_instruction.circuits) {
+    for (const auto &instance : circuit.instances) {
       std::string path_error;
       const auto parsed_path = resolve_node_path_or_nullopt(
           instance.tsi_type, contract_hash,
@@ -628,8 +654,8 @@ find_component_profile_row(
             .severity = CompatibilitySeverity::Error,
             .contract_path = instance.tsi_type,
             .wave_path = {},
-            .message = "invalid contract path for alias '" + instance.alias + "': " +
-                       path_error,
+            .message = "invalid contract path for alias '" + instance.alias +
+                       "': " + path_error,
         });
         continue;
       }
@@ -644,7 +670,8 @@ find_component_profile_row(
             .wave_path = {},
             .message = "empty circuit binding id is not allowed",
         });
-      } else if (!contract_binding_paths.emplace(binding_id, *parsed_path).second) {
+      } else if (!contract_binding_paths.emplace(binding_id, *parsed_path)
+                      .second) {
         report.ok = false;
         ++report.invalid_ref;
         report.indicators.push_back(CompatibilityIndicator{
@@ -652,15 +679,17 @@ find_component_profile_row(
             .severity = CompatibilitySeverity::Error,
             .contract_path = parsed_path->runtime_path,
             .wave_path = {},
-            .message = "duplicated circuit binding id in contract: " +
-                       binding_id,
+            .message =
+                "duplicated circuit binding id in contract: " + binding_id,
         });
       }
       if (tsi_type_domain(parsed_path->type_id) == TsiDomain::Wikimyei) {
-        push_unique(&contract_wikimyei_paths, &contract_wikimyei_seen, *parsed_path);
+        push_unique(&contract_wikimyei_paths, &contract_wikimyei_seen,
+                    *parsed_path);
       } else if (tsi_type_domain(parsed_path->type_id) == TsiDomain::Source) {
         ++contract_source_component_count;
-        push_unique(&contract_source_paths, &contract_source_seen, *parsed_path);
+        push_unique(&contract_source_paths, &contract_source_seen,
+                    *parsed_path);
       } else if (tsi_type_domain(parsed_path->type_id) == TsiDomain::Probe) {
         push_unique(&contract_probe_paths, &contract_probe_seen, *parsed_path);
       } else if (tsi_type_domain(parsed_path->type_id) == TsiDomain::Sink) {
@@ -680,7 +709,7 @@ find_component_profile_row(
   std::unordered_map<std::string, node_path_ref_t> wave_binding_paths{};
   std::size_t wave_source_component_count{0};
 
-  for (const auto& w : wave.wikimyeis) {
+  for (const auto &w : wave.wikimyeis) {
     const std::string binding_id = trim_ascii_copy(w.binding_id);
     if (binding_id.empty()) {
       report.ok = false;
@@ -723,8 +752,9 @@ find_component_profile_row(
     }
     push_unique(&wave_wikimyei_paths, &wave_wikimyei_seen, *parsed_path);
     if (jkimyei_specs) {
-      const auto parsed_canonical = cuwacunu::camahjucunu::decode_canonical_path(
-          parsed_path->runtime_path, contract_hash);
+      const auto parsed_canonical =
+          cuwacunu::camahjucunu::decode_canonical_path(
+              parsed_path->runtime_path, contract_hash);
       std::vector<std::string> component_id_candidates{};
       if (parsed_canonical.ok) {
         component_id_candidates.push_back(parsed_canonical.canonical_identity);
@@ -743,18 +773,21 @@ find_component_profile_row(
       const std::string requested_profile_id = trim_ascii_copy(w.profile_id);
       if (requested_profile_id.empty()) {
         const std::vector<std::string> profile_ids =
-            collect_component_profile_ids(*jkimyei_specs, component_id_candidates);
+            collect_component_profile_ids(*jkimyei_specs,
+                                          component_id_candidates);
         if (profile_ids.size() == 1) {
           continue;
         }
         std::string candidates{};
         for (std::size_t ci = 0; ci < component_id_candidates.size(); ++ci) {
-          if (ci != 0) candidates.append(", ");
+          if (ci != 0)
+            candidates.append(", ");
           candidates.append(component_id_candidates[ci]);
         }
         std::string profile_list{};
         for (std::size_t pi = 0; pi < profile_ids.size(); ++pi) {
-          if (pi != 0) profile_list.append(", ");
+          if (pi != 0)
+            profile_list.append(", ");
           profile_list.append(profile_ids[pi]);
         }
         report.ok = false;
@@ -764,19 +797,22 @@ find_component_profile_row(
             .severity = CompatibilitySeverity::Error,
             .contract_path = parsed_path->runtime_path,
             .wave_path = parsed_path->runtime_path,
-            .message =
-                profile_ids.empty()
-                    ? "JKIMYEI.PROFILE_ID omitted for wikimyei path and no compatible contract profile was found (component candidates: [" +
-                          candidates + "])"
-                    : "JKIMYEI.PROFILE_ID omitted for wikimyei path and multiple compatible contract profiles exist: [" +
-                          profile_list + "] (component candidates: [" +
-                          candidates + "])",
+            .message = profile_ids.empty()
+                           ? "JKIMYEI.PROFILE_ID omitted for wikimyei path and "
+                             "no compatible contract profile was found "
+                             "(component candidates: [" +
+                                 candidates + "])"
+                           : "JKIMYEI.PROFILE_ID omitted for wikimyei path and "
+                             "multiple compatible contract profiles exist: [" +
+                                 profile_list + "] (component candidates: [" +
+                                 candidates + "])",
         });
         continue;
       }
       bool profile_found = false;
-      for (const auto& cid : component_id_candidates) {
-        if (find_component_profile_row(*jkimyei_specs, cid, requested_profile_id)) {
+      for (const auto &cid : component_id_candidates) {
+        if (find_component_profile_row(*jkimyei_specs, cid,
+                                       requested_profile_id)) {
           profile_found = true;
           break;
         }
@@ -784,7 +820,8 @@ find_component_profile_row(
       if (!profile_found) {
         std::string candidates{};
         for (std::size_t ci = 0; ci < component_id_candidates.size(); ++ci) {
-          if (ci != 0) candidates.append(", ");
+          if (ci != 0)
+            candidates.append(", ");
           candidates.append(component_id_candidates[ci]);
         }
         report.ok = false;
@@ -801,7 +838,7 @@ find_component_profile_row(
       }
     }
   }
-  for (const auto& s : wave.sources) {
+  for (const auto &s : wave.sources) {
     ++wave_source_component_count;
     const std::string binding_id = trim_ascii_copy(s.binding_id);
     if (binding_id.empty()) {
@@ -845,7 +882,7 @@ find_component_profile_row(
     }
     push_unique(&wave_source_paths, &wave_source_seen, *parsed_path);
   }
-  for (const auto& p : wave.probes) {
+  for (const auto &p : wave.probes) {
     const std::string binding_id = trim_ascii_copy(p.binding_id);
     if (binding_id.empty()) {
       report.ok = false;
@@ -888,7 +925,7 @@ find_component_profile_row(
     }
     push_unique(&wave_probe_paths, &wave_probe_seen, *parsed_path);
   }
-  for (const auto& s : wave.sinks) {
+  for (const auto &s : wave.sinks) {
     const std::string binding_id = trim_ascii_copy(s.binding_id);
     if (binding_id.empty()) {
       report.ok = false;
@@ -940,8 +977,8 @@ find_component_profile_row(
         .severity = CompatibilitySeverity::Error,
         .contract_path = {},
         .wave_path = {},
-        .message =
-            "runtime requires exactly one SOURCE component in contract circuit for wave binding",
+        .message = "runtime requires exactly one SOURCE component in contract "
+                   "circuit for wave binding",
     });
   }
   if (wave_source_component_count != 1U) {
@@ -952,31 +989,31 @@ find_component_profile_row(
         .severity = CompatibilitySeverity::Error,
         .contract_path = {},
         .wave_path = {},
-        .message =
-            "runtime requires exactly one SOURCE block in selected wave for contract binding",
+        .message = "runtime requires exactly one SOURCE block in selected wave "
+                   "for contract binding",
     });
   }
 
   const auto has_contract_match =
-      [&](const std::vector<node_path_ref_t>& contract_paths,
-          const node_path_ref_t& wave_path) {
-        return std::any_of(
-            contract_paths.begin(), contract_paths.end(),
-            [&](const node_path_ref_t& contract_path) {
-              return contract_wave_path_match(contract_path, wave_path);
-            });
+      [&](const std::vector<node_path_ref_t> &contract_paths,
+          const node_path_ref_t &wave_path) {
+        return std::any_of(contract_paths.begin(), contract_paths.end(),
+                           [&](const node_path_ref_t &contract_path) {
+                             return contract_wave_path_match(contract_path,
+                                                             wave_path);
+                           });
       };
   const auto has_wave_match =
-      [&](const std::vector<node_path_ref_t>& wave_paths,
-          const node_path_ref_t& contract_path) {
-        return std::any_of(
-            wave_paths.begin(), wave_paths.end(),
-            [&](const node_path_ref_t& wave_path) {
-              return contract_wave_path_match(contract_path, wave_path);
-            });
+      [&](const std::vector<node_path_ref_t> &wave_paths,
+          const node_path_ref_t &contract_path) {
+        return std::any_of(wave_paths.begin(), wave_paths.end(),
+                           [&](const node_path_ref_t &wave_path) {
+                             return contract_wave_path_match(contract_path,
+                                                             wave_path);
+                           });
       };
 
-  for (const auto& [wave_binding_id, wave_path] : wave_binding_paths) {
+  for (const auto &[wave_binding_id, wave_path] : wave_binding_paths) {
     const auto contract_it = contract_binding_paths.find(wave_binding_id);
     if (contract_it == contract_binding_paths.end()) {
       report.ok = false;
@@ -1005,8 +1042,10 @@ find_component_profile_row(
     }
   }
 
-  for (const auto& [contract_binding_id, contract_path] : contract_binding_paths) {
-    if (wave_binding_paths.find(contract_binding_id) != wave_binding_paths.end()) {
+  for (const auto &[contract_binding_id, contract_path] :
+       contract_binding_paths) {
+    if (wave_binding_paths.find(contract_binding_id) !=
+        wave_binding_paths.end()) {
       continue;
     }
     report.ok = false;
@@ -1016,14 +1055,13 @@ find_component_profile_row(
         .severity = CompatibilitySeverity::Error,
         .contract_path = contract_path.runtime_path,
         .wave_path = {},
-        .message =
-            "contract binding id '" + contract_binding_id +
-            "' missing runtime in wave",
+        .message = "contract binding id '" + contract_binding_id +
+                   "' missing runtime in wave",
     });
   }
 
   if (wave_binding_paths.empty() || contract_binding_paths.empty()) {
-    for (const auto& wave_path : wave_wikimyei_paths) {
+    for (const auto &wave_path : wave_wikimyei_paths) {
       if (!has_contract_match(contract_wikimyei_paths, wave_path)) {
         report.ok = false;
         ++report.missing;
@@ -1036,7 +1074,7 @@ find_component_profile_row(
         });
       }
     }
-    for (const auto& wave_path : wave_source_paths) {
+    for (const auto &wave_path : wave_source_paths) {
       if (!has_contract_match(contract_source_paths, wave_path)) {
         report.ok = false;
         ++report.missing;
@@ -1049,7 +1087,7 @@ find_component_profile_row(
         });
       }
     }
-    for (const auto& wave_path : wave_probe_paths) {
+    for (const auto &wave_path : wave_probe_paths) {
       if (!has_contract_match(contract_probe_paths, wave_path)) {
         report.ok = false;
         ++report.missing;
@@ -1062,7 +1100,7 @@ find_component_profile_row(
         });
       }
     }
-    for (const auto& wave_path : wave_sink_paths) {
+    for (const auto &wave_path : wave_sink_paths) {
       if (!has_contract_match(contract_sink_paths, wave_path)) {
         report.ok = false;
         ++report.missing;
@@ -1076,7 +1114,7 @@ find_component_profile_row(
       }
     }
 
-    for (const auto& contract_path : contract_wikimyei_paths) {
+    for (const auto &contract_path : contract_wikimyei_paths) {
       if (!has_wave_match(wave_wikimyei_paths, contract_path)) {
         report.ok = false;
         ++report.extra;
@@ -1089,7 +1127,7 @@ find_component_profile_row(
         });
       }
     }
-    for (const auto& contract_path : contract_source_paths) {
+    for (const auto &contract_path : contract_source_paths) {
       if (!has_wave_match(wave_source_paths, contract_path)) {
         report.ok = false;
         ++report.extra;
@@ -1102,7 +1140,7 @@ find_component_profile_row(
         });
       }
     }
-    for (const auto& contract_path : contract_probe_paths) {
+    for (const auto &contract_path : contract_probe_paths) {
       if (!has_wave_match(wave_probe_paths, contract_path)) {
         report.ok = false;
         ++report.extra;
@@ -1115,7 +1153,7 @@ find_component_profile_row(
         });
       }
     }
-    for (const auto& contract_path : contract_sink_paths) {
+    for (const auto &contract_path : contract_sink_paths) {
       if (!has_wave_match(wave_sink_paths, contract_path)) {
         report.ok = false;
         ++report.extra;
@@ -1133,4 +1171,4 @@ find_component_profile_row(
   return report;
 }
 
-}  // namespace tsiemene
+} // namespace tsiemene

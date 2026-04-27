@@ -28,7 +28,7 @@ struct token_t {
 };
 
 class lexer_t {
- public:
+public:
   explicit lexer_t(std::string src) : src_(std::move(src)) {}
 
   token_t peek() {
@@ -47,11 +47,10 @@ class lexer_t {
     return next_impl();
   }
 
- private:
+private:
   static bool is_symbol_char(char c) {
     return c == '{' || c == '}' || c == '=' || c == ':' || c == ';' ||
-           c == '<' || c == '>' || c == '|' || c == '+' || c == '^' ||
-           c == ',';
+           c == '<' || c == '>' || c == '|' || c == '+' || c == '^' || c == ',';
   }
 
   bool eof() const { return pos_ >= src_.size(); }
@@ -61,7 +60,8 @@ class lexer_t {
   }
 
   void advance() {
-    if (eof()) return;
+    if (eof())
+      return;
     if (src_[pos_] == '\n') {
       ++line_;
       col_ = 1;
@@ -72,7 +72,8 @@ class lexer_t {
   }
 
   void skip_line_comment() {
-    while (!eof() && curr() != '\n') advance();
+    while (!eof() && curr() != '\n')
+      advance();
   }
 
   void skip_block_comment() {
@@ -90,7 +91,8 @@ class lexer_t {
 
   void skip_ignorable() {
     for (;;) {
-      if (eof()) return;
+      if (eof())
+        return;
       if (std::isspace(static_cast<unsigned char>(curr()))) {
         advance();
         continue;
@@ -124,27 +126,28 @@ class lexer_t {
       }
       if (c == '\\') {
         advance();
-        if (eof()) break;
+        if (eof())
+          break;
         const char esc = curr();
         switch (esc) {
-          case 'n':
-            out.push_back('\n');
-            break;
-          case 't':
-            out.push_back('\t');
-            break;
-          case 'r':
-            out.push_back('\r');
-            break;
-          case '\\':
-            out.push_back('\\');
-            break;
-          case '"':
-            out.push_back('"');
-            break;
-          default:
-            out.push_back(esc);
-            break;
+        case 'n':
+          out.push_back('\n');
+          break;
+        case 't':
+          out.push_back('\t');
+          break;
+        case 'r':
+          out.push_back('\r');
+          break;
+        case '\\':
+          out.push_back('\\');
+          break;
+        case '"':
+          out.push_back('"');
+          break;
+        default:
+          out.push_back(esc);
+          break;
         }
         advance();
         continue;
@@ -161,10 +164,14 @@ class lexer_t {
     std::string out;
     while (!eof()) {
       const char c = curr();
-      if (std::isspace(static_cast<unsigned char>(c)) || is_symbol_char(c)) break;
-      if (c == '/' && next_char() == '*') break;
-      if (c == '/' && next_char() == '/') break;
-      if (c == '#') break;
+      if (std::isspace(static_cast<unsigned char>(c)) || is_symbol_char(c))
+        break;
+      if (c == '/' && next_char() == '*')
+        break;
+      if (c == '/' && next_char() == '/')
+        break;
+      if (c == '#')
+        break;
       out.push_back(c);
       advance();
     }
@@ -173,7 +180,8 @@ class lexer_t {
 
   token_t next_impl() {
     skip_ignorable();
-    if (eof()) return token_t{token_t::kind_e::End, "", line_, col_};
+    if (eof())
+      return token_t{token_t::kind_e::End, "", line_, col_};
 
     const std::size_t line = line_;
     const std::size_t col = col_;
@@ -184,7 +192,8 @@ class lexer_t {
       advance();
       return token_t{token_t::kind_e::Symbol, std::move(s), line, col};
     }
-    if (c == '"') return parse_string_token();
+    if (c == '"')
+      return parse_string_token();
     return parse_identifier_token();
   }
 
@@ -197,7 +206,7 @@ class lexer_t {
 };
 
 class parser_t {
- public:
+public:
   explicit parser_t(std::string input) : lex_(std::move(input)) {}
 
   cuwacunu::camahjucunu::iitepi_wave_set_t parse() {
@@ -217,14 +226,14 @@ class parser_t {
     return out;
   }
 
- private:
+private:
   struct block_header_t {
     std::string binding_id{};
     std::string legacy_path{};
   };
 
   struct source_runtime_presence_t {
-    bool has_symbol{false};
+    bool has_runtime_instrument_signature{false};
     bool has_from{false};
     bool has_to{false};
     bool has_workers{false};
@@ -239,7 +248,7 @@ class parser_t {
   };
 
   static std::string lower_ascii_copy(std::string s) {
-    for (char& c : s) {
+    for (char &c : s) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return s;
@@ -247,21 +256,25 @@ class parser_t {
 
   static std::string trim_ascii_copy(std::string s) {
     std::size_t b = 0;
-    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+      ++b;
     std::size_t e = s.size();
-    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+      --e;
     return s.substr(b, e - b);
   }
 
-  static bool has_non_ws_ascii(const std::string& s) {
+  static bool has_non_ws_ascii(const std::string &s) {
     for (char ch : s) {
-      if (!std::isspace(static_cast<unsigned char>(ch))) return true;
+      if (!std::isspace(static_cast<unsigned char>(ch)))
+        return true;
     }
     return false;
   }
 
-  static bool parse_bool_token(const std::string& value, bool* out) {
-    if (!out) return false;
+  static bool parse_bool_token(const std::string &value, bool *out) {
+    if (!out)
+      return false;
     const std::string v = lower_ascii_copy(value);
     if (v == "true" || v == "1" || v == "yes" || v == "on") {
       *out = true;
@@ -274,8 +287,9 @@ class parser_t {
     return false;
   }
 
-  static bool parse_sampler_token(const std::string& value, std::string* out) {
-    if (!out) return false;
+  static bool parse_sampler_token(const std::string &value, std::string *out) {
+    if (!out)
+      return false;
     const std::string v = lower_ascii_copy(value);
     if (v == "sequential" || v == "sequentialsampler") {
       *out = "sequential";
@@ -288,9 +302,10 @@ class parser_t {
     return false;
   }
 
-  static bool parse_determinism_policy_token(const std::string& value,
-                                             std::string* out) {
-    if (!out) return false;
+  static bool parse_determinism_policy_token(const std::string &value,
+                                             std::string *out) {
+    if (!out)
+      return false;
     const std::string v = lower_ascii_copy(trim_ascii_copy(value));
     if (v == "deterministic" || v == "det") {
       *out = "deterministic";
@@ -304,21 +319,24 @@ class parser_t {
     return false;
   }
 
-  static bool parse_u64_token(const std::string& value, std::uint64_t* out) {
-    if (!out) return false;
+  static bool parse_u64_token(const std::string &value, std::uint64_t *out) {
+    if (!out)
+      return false;
     std::uint64_t x = 0;
-    const char* b = value.data();
-    const char* e = value.data() + value.size();
+    const char *b = value.data();
+    const char *e = value.data() + value.size();
     const auto r = std::from_chars(b, e, x);
-    if (r.ec != std::errc{} || r.ptr != e) return false;
+    if (r.ec != std::errc{} || r.ptr != e)
+      return false;
     *out = x;
     return true;
   }
 
   static bool parse_probe_training_window_token(
-      const std::string& value,
-      cuwacunu::camahjucunu::iitepi_wave_evaluation_training_window_e* out) {
-    if (!out) return false;
+      const std::string &value,
+      cuwacunu::camahjucunu::iitepi_wave_evaluation_training_window_e *out) {
+    if (!out)
+      return false;
     const std::string v = lower_ascii_copy(value);
     if (v == "incoming_batch") {
       *out = cuwacunu::camahjucunu::iitepi_wave_evaluation_training_window_e::
@@ -329,39 +347,40 @@ class parser_t {
   }
 
   static bool parse_probe_report_policy_token(
-      const std::string& value,
-      cuwacunu::camahjucunu::iitepi_wave_evaluation_report_policy_e* out) {
-    if (!out) return false;
+      const std::string &value,
+      cuwacunu::camahjucunu::iitepi_wave_evaluation_report_policy_e *out) {
+    if (!out)
+      return false;
     const std::string v = lower_ascii_copy(value);
     if (v == "epoch_end_log") {
-      *out =
-          cuwacunu::camahjucunu::iitepi_wave_evaluation_report_policy_e::EpochEndLog;
+      *out = cuwacunu::camahjucunu::iitepi_wave_evaluation_report_policy_e::
+          EpochEndLog;
       return true;
     }
     return false;
   }
 
   static bool parse_probe_objective_token(
-      const std::string& value,
-      cuwacunu::camahjucunu::iitepi_wave_evaluation_objective_e* out) {
-    if (!out) return false;
+      const std::string &value,
+      cuwacunu::camahjucunu::iitepi_wave_evaluation_objective_e *out) {
+    if (!out)
+      return false;
     const std::string v = lower_ascii_copy(value);
-    if (v == "future_target_dims_nll") {
+    if (v == "future_target_feature_indices_nll") {
       *out = cuwacunu::camahjucunu::iitepi_wave_evaluation_objective_e::
-          FutureTargetDimsNll;
+          FutureTargetFeatureIndicesNll;
       return true;
     }
     return false;
   }
 
-  static bool derive_family_and_hash_from_path(const std::string& path,
-                                               std::string* out_family,
-                                               std::string* out_hash) {
+  static bool derive_family_and_hash_from_path(const std::string &path,
+                                               std::string *out_family,
+                                               std::string *out_hash) {
     const auto parsed =
         cuwacunu::camahjucunu::decode_canonical_path(trim_ascii_copy(path));
-    if (!parsed.ok ||
-        parsed.path_kind !=
-            cuwacunu::camahjucunu::canonical_path_kind_e::Node) {
+    if (!parsed.ok || parsed.path_kind !=
+                          cuwacunu::camahjucunu::canonical_path_kind_e::Node) {
       return false;
     }
     if (out_family && out_family->empty()) {
@@ -377,26 +396,31 @@ class parser_t {
     return true;
   }
 
-  static std::string compose_node_path(const std::string& family,
-                                       const std::string& hashimyei) {
-    if (family.empty()) return {};
-    if (hashimyei.empty()) return family;
+  static std::string compose_node_path(const std::string &family,
+                                       const std::string &hashimyei) {
+    if (family.empty())
+      return {};
+    if (hashimyei.empty())
+      return family;
     return family + "." + hashimyei;
   }
 
   static bool canonicalize_family_token(std::string family,
-                                        std::string* out_family,
-                                        std::string* error) {
-    if (!out_family) return false;
+                                        std::string *out_family,
+                                        std::string *error) {
+    if (!out_family)
+      return false;
     family = trim_ascii_copy(std::move(family));
     if (!has_non_ws_ascii(family)) {
-      if (error) *error = "family token is empty";
+      if (error)
+        *error = "family token is empty";
       return false;
     }
 
     const auto type_id = tsiemene::parse_tsi_type_id(family);
     if (!type_id.has_value()) {
-      if (error) *error = "unsupported component family token: " + family;
+      if (error)
+        *error = "unsupported component family token: " + family;
       return false;
     }
 
@@ -404,10 +428,11 @@ class parser_t {
     return true;
   }
 
-  static bool finalize_component_identity(const char* component_kind,
-                                          std::string* family,
-                                          std::string* runtime_path) {
-    if (!family || !runtime_path) return false;
+  static bool finalize_component_identity(const char *component_kind,
+                                          std::string *family,
+                                          std::string *runtime_path) {
+    if (!family || !runtime_path)
+      return false;
 
     *family = trim_ascii_copy(*family);
     *runtime_path = trim_ascii_copy(*runtime_path);
@@ -418,17 +443,18 @@ class parser_t {
       if (!derive_family_and_hash_from_path(*runtime_path, &path_family,
                                             &path_hash)) {
         throw std::runtime_error(
-            std::string(component_kind) + " invalid PATH/FAMILY payload: " +
-            *runtime_path);
+            std::string(component_kind) +
+            " invalid PATH/FAMILY payload: " + *runtime_path);
       }
     }
 
     if (!family->empty()) {
       std::string family_error;
       std::string canonical_family;
-      if (!canonicalize_family_token(*family, &canonical_family, &family_error)) {
-        throw std::runtime_error(
-            std::string(component_kind) + " invalid FAMILY: " + family_error);
+      if (!canonicalize_family_token(*family, &canonical_family,
+                                     &family_error)) {
+        throw std::runtime_error(std::string(component_kind) +
+                                 " invalid FAMILY: " + family_error);
       }
       *family = canonical_family;
     }
@@ -438,15 +464,15 @@ class parser_t {
     }
 
     if (family->empty() && runtime_path->empty()) {
-      throw std::runtime_error(
-          std::string(component_kind) + " missing required FAMILY assignment");
+      throw std::runtime_error(std::string(component_kind) +
+                               " missing required FAMILY assignment");
     }
 
     if (!family->empty()) {
       const auto type_id = tsiemene::parse_tsi_type_id(*family);
       if (!type_id.has_value()) {
-        throw std::runtime_error(
-            std::string(component_kind) + " has unsupported FAMILY: " + *family);
+        throw std::runtime_error(std::string(component_kind) +
+                                 " has unsupported FAMILY: " + *family);
       }
 
       if (!path_family.empty() && path_family != *family) {
@@ -478,7 +504,8 @@ class parser_t {
   }
 
   bool try_consume_symbol(char c) {
-    if (!peek_is_symbol(c)) return false;
+    if (!peek_is_symbol(c))
+      return false;
     (void)next();
     return true;
   }
@@ -503,7 +530,7 @@ class parser_t {
     return t;
   }
 
-  void expect_identifier(const char* expected) {
+  void expect_identifier(const char *expected) {
     const token_t t = expect_identifier_any();
     if (t.text != expected) {
       throw std::runtime_error("expected '" + std::string(expected) + "' at " +
@@ -534,7 +561,7 @@ class parser_t {
     return t.text;
   }
 
-  std::string parse_assignment_value(const char* key) {
+  std::string parse_assignment_value(const char *key) {
     if (!(peek_is_symbol(':') || peek_is_symbol('='))) {
       expect_identifier(key);
     }
@@ -544,23 +571,24 @@ class parser_t {
     return value;
   }
 
-  std::string parse_assignment_expression(const char* key) {
+  std::string parse_assignment_expression(const char *key) {
     expect_identifier(key);
     expect_assignment_delim();
     std::ostringstream oss;
     bool seen_value = false;
     for (;;) {
       const token_t t = next();
-      if (t.kind == token_t::kind_e::Symbol && t.text == ";") break;
+      if (t.kind == token_t::kind_e::Symbol && t.text == ";")
+        break;
       if (t.kind != token_t::kind_e::Identifier &&
           t.kind != token_t::kind_e::String &&
           t.kind != token_t::kind_e::Symbol) {
-        throw std::runtime_error("expected scalar expression token for '" +
-                                 std::string(key) + "' at " +
-                                 std::to_string(t.line) + ":" +
-                                 std::to_string(t.col));
+        throw std::runtime_error(
+            "expected scalar expression token for '" + std::string(key) +
+            "' at " + std::to_string(t.line) + ":" + std::to_string(t.col));
       }
-      if (seen_value) oss << ' ';
+      if (seen_value)
+        oss << ' ';
       oss << t.text;
       seen_value = true;
     }
@@ -571,7 +599,47 @@ class parser_t {
     return trim_ascii_copy(oss.str());
   }
 
-  block_header_t parse_component_header(const char* keyword) {
+  cuwacunu::camahjucunu::instrument_signature_t
+  parse_runtime_instrument_signature_block(const std::string &scope_label) {
+    cuwacunu::camahjucunu::instrument_signature_t out{};
+    std::unordered_set<std::string> seen_fields{};
+    expect_assignment_delim();
+    expect_symbol('{');
+    while (!peek_is_symbol('}')) {
+      const token_t key = expect_identifier_any();
+      std::string field_error{};
+      const std::string value = parse_assignment_value(key.text.c_str());
+      if (!cuwacunu::camahjucunu::instrument_signature_set_field(
+              &out, key.text, value, &field_error)) {
+        throw std::runtime_error(
+            scope_label +
+            " invalid RUNTIME_INSTRUMENT_SIGNATURE: " + field_error);
+      }
+      if (!seen_fields.insert(key.text).second) {
+        throw std::runtime_error(
+            scope_label +
+            " duplicate RUNTIME_INSTRUMENT_SIGNATURE field: " + key.text);
+      }
+    }
+    expect_symbol('}');
+    expect_symbol(';');
+
+    if (seen_fields.size() != 6U) {
+      throw std::runtime_error(
+          scope_label +
+          " RUNTIME_INSTRUMENT_SIGNATURE must declare SYMBOL, RECORD_TYPE, "
+          "MARKET_TYPE, VENUE, BASE_ASSET, and QUOTE_ASSET");
+    }
+    std::string validation_error{};
+    if (!cuwacunu::camahjucunu::instrument_signature_validate(
+            out, /*allow_any=*/false,
+            scope_label + " RUNTIME_INSTRUMENT_SIGNATURE", &validation_error)) {
+      throw std::runtime_error(validation_error);
+    }
+    return out;
+  }
+
+  block_header_t parse_component_header(const char *keyword) {
     expect_identifier(keyword);
     (void)try_consume_symbol(':');
 
@@ -592,16 +660,15 @@ class parser_t {
   }
 
   bool parse_source_settings_statement(
-      const token_t& key,
-      cuwacunu::camahjucunu::iitepi_wave_source_decl_t* out,
-      source_runtime_presence_t* presence,
-      std::string_view scope_label) {
-    if (!out || !presence) return false;
+      const token_t &key, cuwacunu::camahjucunu::iitepi_wave_source_decl_t *out,
+      source_runtime_presence_t *presence, std::string_view scope_label) {
+    if (!out || !presence)
+      return false;
     if (key.text == "WORKERS") {
       const std::string value = parse_assignment_value("WORKERS");
       if (!parse_u64_token(value, &out->workers)) {
-        throw std::runtime_error(std::string(scope_label) + " invalid WORKERS: " +
-                                 value);
+        throw std::runtime_error(std::string(scope_label) +
+                                 " invalid WORKERS: " + value);
       }
       presence->has_workers = true;
       return true;
@@ -631,10 +698,10 @@ class parser_t {
   }
 
   void parse_source_settings_block(
-      cuwacunu::camahjucunu::iitepi_wave_source_decl_t* out,
-      source_runtime_presence_t* presence,
-      const std::string& source_identity) {
-    if (!out || !presence) return;
+      cuwacunu::camahjucunu::iitepi_wave_source_decl_t *out,
+      source_runtime_presence_t *presence, const std::string &source_identity) {
+    if (!out || !presence)
+      return;
     expect_assignment_delim();
     expect_symbol('{');
     while (!peek_is_symbol('}')) {
@@ -642,9 +709,8 @@ class parser_t {
       if (!parse_source_settings_statement(
               key, out, presence,
               ("SOURCE '" + source_identity + "' SETTINGS").c_str())) {
-        throw std::runtime_error(
-            "unknown SOURCE SETTINGS key for '" + source_identity + "': " +
-            key.text);
+        throw std::runtime_error("unknown SOURCE SETTINGS key for '" +
+                                 source_identity + "': " + key.text);
       }
     }
     expect_symbol('}');
@@ -652,15 +718,22 @@ class parser_t {
   }
 
   bool parse_source_runtime_statement(
-      const token_t& key,
-      cuwacunu::camahjucunu::iitepi_wave_source_decl_t* out,
-      source_runtime_presence_t* presence,
-      std::string_view scope_label) {
-    if (!out || !presence) return false;
+      const token_t &key, cuwacunu::camahjucunu::iitepi_wave_source_decl_t *out,
+      source_runtime_presence_t *presence, std::string_view scope_label) {
+    if (!out || !presence)
+      return false;
 
     if (key.text == "SYMBOL") {
-      out->symbol = parse_assignment_value("SYMBOL");
-      presence->has_symbol = true;
+      throw std::runtime_error(
+          std::string(scope_label) +
+          " uses removed SYMBOL field; use RUNTIME_INSTRUMENT_SIGNATURE "
+          "with explicit SYMBOL, RECORD_TYPE, MARKET_TYPE, VENUE, BASE_ASSET, "
+          "and QUOTE_ASSET");
+    }
+    if (key.text == "RUNTIME_INSTRUMENT_SIGNATURE") {
+      out->runtime_instrument_signature =
+          parse_runtime_instrument_signature_block(std::string(scope_label));
+      presence->has_runtime_instrument_signature = true;
       return true;
     }
     if (key.text == "FROM") {
@@ -677,10 +750,10 @@ class parser_t {
   }
 
   void parse_source_runtime_block(
-      cuwacunu::camahjucunu::iitepi_wave_source_decl_t* out,
-      source_runtime_presence_t* presence,
-      const std::string& source_identity) {
-    if (!out || !presence) return;
+      cuwacunu::camahjucunu::iitepi_wave_source_decl_t *out,
+      source_runtime_presence_t *presence, const std::string &source_identity) {
+    if (!out || !presence)
+      return;
     expect_assignment_delim();
     expect_symbol('{');
     while (!peek_is_symbol('}')) {
@@ -688,9 +761,8 @@ class parser_t {
       if (!parse_source_runtime_statement(
               key, out, presence,
               ("SOURCE '" + source_identity + "' RUNTIME").c_str())) {
-        throw std::runtime_error(
-            "unknown SOURCE RUNTIME key for '" + source_identity + "': " +
-            key.text);
+        throw std::runtime_error("unknown SOURCE RUNTIME key for '" +
+                                 source_identity + "': " + key.text);
       }
     }
     expect_symbol('}');
@@ -698,15 +770,14 @@ class parser_t {
   }
 
   bool parse_probe_runtime_statement(
-      const token_t& key,
-      cuwacunu::camahjucunu::iitepi_wave_probe_decl_t* out,
-      probe_runtime_presence_t* presence,
-      std::string_view scope_label) {
+      const token_t &key, cuwacunu::camahjucunu::iitepi_wave_probe_decl_t *out,
+      probe_runtime_presence_t *presence, std::string_view scope_label) {
     using cuwacunu::camahjucunu::iitepi_wave_evaluation_objective_e;
     using cuwacunu::camahjucunu::iitepi_wave_evaluation_report_policy_e;
     using cuwacunu::camahjucunu::iitepi_wave_evaluation_training_window_e;
 
-    if (!out || !presence) return false;
+    if (!out || !presence)
+      return false;
 
     if (key.text == "TRAINING_WINDOW") {
       const std::string value = parse_assignment_value("TRAINING_WINDOW");
@@ -745,10 +816,10 @@ class parser_t {
   }
 
   void parse_probe_runtime_block(
-      cuwacunu::camahjucunu::iitepi_wave_probe_decl_t* out,
-      probe_runtime_presence_t* presence,
-      const std::string& probe_identity) {
-    if (!out || !presence) return;
+      cuwacunu::camahjucunu::iitepi_wave_probe_decl_t *out,
+      probe_runtime_presence_t *presence, const std::string &probe_identity) {
+    if (!out || !presence)
+      return;
     expect_assignment_delim();
     expect_symbol('{');
     while (!peek_is_symbol('}')) {
@@ -756,9 +827,8 @@ class parser_t {
       if (!parse_probe_runtime_statement(
               key, out, presence,
               ("PROBE '" + probe_identity + "' RUNTIME").c_str())) {
-        throw std::runtime_error(
-            "unknown PROBE RUNTIME key for '" + probe_identity + "': " +
-            key.text);
+        throw std::runtime_error("unknown PROBE RUNTIME key for '" +
+                                 probe_identity + "': " + key.text);
       }
     }
     expect_symbol('}');
@@ -766,9 +836,10 @@ class parser_t {
   }
 
   void parse_wikimyei_jkimyei_block(
-      cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t* out,
-      const std::string& wikimyei_identity) {
-    if (!out) return;
+      cuwacunu::camahjucunu::iitepi_wave_wikimyei_decl_t *out,
+      const std::string &wikimyei_identity) {
+    if (!out)
+      return;
     expect_assignment_delim();
     expect_symbol('{');
 
@@ -819,15 +890,19 @@ class parser_t {
       if (key.text == "FAMILY") {
         out.family = parse_assignment_value("FAMILY");
       } else if (key.text == "HASHIMYEI") {
-        throw std::runtime_error(
-            "WIKIMYEI '" +
-            (has_non_ws_ascii(out.binding_id) ? out.binding_id : out.wikimyei_path) +
-            "' uses legacy HASHIMYEI; select concrete hashimyeis from CAMPAIGN.BIND.MOUNT");
+        throw std::runtime_error("WIKIMYEI '" +
+                                 (has_non_ws_ascii(out.binding_id)
+                                      ? out.binding_id
+                                      : out.wikimyei_path) +
+                                 "' uses legacy HASHIMYEI; concrete "
+                                 "hashimyeis are derived from contract "
+                                 "component content");
       } else if (key.text == "PATH") {
         out.wikimyei_path = parse_assignment_value("PATH");
       } else if (key.text == "JKIMYEI") {
-        const std::string identity =
-            has_non_ws_ascii(out.binding_id) ? out.binding_id : out.wikimyei_path;
+        const std::string identity = has_non_ws_ascii(out.binding_id)
+                                         ? out.binding_id
+                                         : out.wikimyei_path;
         parse_wikimyei_jkimyei_block(&out, identity);
         has_jkimyei = true;
       } else {
@@ -896,9 +971,11 @@ class parser_t {
       throw std::runtime_error("SOURCE '" + out.source_path +
                                "' missing required binding id (<...>)");
     }
-    if (!presence.has_symbol || !has_non_ws_ascii(out.symbol)) {
+    if (!presence.has_runtime_instrument_signature ||
+        !has_non_ws_ascii(out.runtime_instrument_signature.symbol)) {
       throw std::runtime_error("SOURCE '" + out.source_path +
-                               "' missing required RUNTIME.SYMBOL");
+                               "' missing required "
+                               "RUNTIME.RUNTIME_INSTRUMENT_SIGNATURE");
     }
     if (!presence.has_from || !presence.has_to || !has_non_ws_ascii(out.from) ||
         !has_non_ws_ascii(out.to)) {
@@ -910,12 +987,14 @@ class parser_t {
                                "' missing required SETTINGS.WORKERS");
     }
     if (!presence.has_force_rebuild_cache) {
-      throw std::runtime_error("SOURCE '" + out.source_path +
-                               "' missing required SETTINGS.FORCE_REBUILD_CACHE");
+      throw std::runtime_error(
+          "SOURCE '" + out.source_path +
+          "' missing required SETTINGS.FORCE_REBUILD_CACHE");
     }
     if (!presence.has_range_warn_batches || out.range_warn_batches == 0) {
-      throw std::runtime_error("SOURCE '" + out.source_path +
-                               "' missing required SETTINGS.RANGE_WARN_BATCHES");
+      throw std::runtime_error(
+          "SOURCE '" + out.source_path +
+          "' missing required SETTINGS.RANGE_WARN_BATCHES");
     }
     return out;
   }
@@ -936,19 +1015,20 @@ class parser_t {
       if (key.text == "FAMILY") {
         out.family = parse_assignment_value("FAMILY");
       } else if (key.text == "HASHIMYEI") {
-        throw std::runtime_error(
-            "PROBE '" +
-            (has_non_ws_ascii(out.binding_id) ? out.binding_id : out.probe_path) +
-            "' uses legacy HASHIMYEI; select concrete hashimyeis from CAMPAIGN.BIND.MOUNT");
+        throw std::runtime_error("PROBE '" +
+                                 (has_non_ws_ascii(out.binding_id)
+                                      ? out.binding_id
+                                      : out.probe_path) +
+                                 "' uses legacy HASHIMYEI; concrete "
+                                 "hashimyeis are derived from contract "
+                                 "component content");
       } else if (key.text == "PATH") {
         out.probe_path = parse_assignment_value("PATH");
       } else if (key.text == "RUNTIME") {
         const std::string identity =
             has_non_ws_ascii(out.binding_id) ? out.binding_id : out.probe_path;
         parse_probe_runtime_block(&out, &runtime_presence, identity);
-      } else if (parse_probe_runtime_statement(key,
-                                               &out,
-                                               &runtime_presence,
+      } else if (parse_probe_runtime_statement(key, &out, &runtime_presence,
                                                "PROBE")) {
         continue;
       } else {
@@ -1102,12 +1182,12 @@ class parser_t {
       }
 
       if (head.text == "MAX_BATCHES_PER_EPOCH") {
-        const std::string value = parse_assignment_value("MAX_BATCHES_PER_EPOCH");
+        const std::string value =
+            parse_assignment_value("MAX_BATCHES_PER_EPOCH");
         if (!parse_u64_token(value, &out.max_batches_per_epoch) ||
             out.max_batches_per_epoch == 0) {
           throw std::runtime_error("WAVE '" + out.name +
-                                   "' invalid MAX_BATCHES_PER_EPOCH: " +
-                                   value);
+                                   "' invalid MAX_BATCHES_PER_EPOCH: " + value);
         }
         has_max_batches_per_epoch = true;
         continue;
@@ -1116,14 +1196,14 @@ class parser_t {
       if (head.text == "WIKIMYEI") {
         auto w = parse_wikimyei_block();
         if (!seen_binding_ids.insert(w.binding_id).second) {
-          throw std::runtime_error("WAVE '" + out.name +
-                                   "' duplicate component binding id: " +
-                                   w.binding_id);
+          throw std::runtime_error(
+              "WAVE '" + out.name +
+              "' duplicate component binding id: " + w.binding_id);
         }
         if (!seen_wikimyei_paths.insert(w.wikimyei_path).second) {
-          throw std::runtime_error("WAVE '" + out.name +
-                                   "' duplicate WIKIMYEI PATH: " +
-                                   w.wikimyei_path);
+          throw std::runtime_error(
+              "WAVE '" + out.name +
+              "' duplicate WIKIMYEI PATH: " + w.wikimyei_path);
         }
         out.wikimyeis.push_back(std::move(w));
         continue;
@@ -1132,9 +1212,9 @@ class parser_t {
       if (head.text == "SOURCE") {
         auto s = parse_source_block();
         if (!seen_binding_ids.insert(s.binding_id).second) {
-          throw std::runtime_error("WAVE '" + out.name +
-                                   "' duplicate component binding id: " +
-                                   s.binding_id);
+          throw std::runtime_error(
+              "WAVE '" + out.name +
+              "' duplicate component binding id: " + s.binding_id);
         }
         if (!seen_source_paths.insert(s.source_path).second) {
           throw std::runtime_error("WAVE '" + out.name +
@@ -1147,9 +1227,9 @@ class parser_t {
       if (head.text == "PROBE") {
         auto p = parse_probe_block();
         if (!seen_binding_ids.insert(p.binding_id).second) {
-          throw std::runtime_error("WAVE '" + out.name +
-                                   "' duplicate component binding id: " +
-                                   p.binding_id);
+          throw std::runtime_error(
+              "WAVE '" + out.name +
+              "' duplicate component binding id: " + p.binding_id);
         }
         if (!seen_probe_paths.insert(p.probe_path).second) {
           throw std::runtime_error("WAVE '" + out.name +
@@ -1162,9 +1242,9 @@ class parser_t {
       if (head.text == "SINK") {
         auto s = parse_sink_block();
         if (!seen_binding_ids.insert(s.binding_id).second) {
-          throw std::runtime_error("WAVE '" + out.name +
-                                   "' duplicate component binding id: " +
-                                   s.binding_id);
+          throw std::runtime_error(
+              "WAVE '" + out.name +
+              "' duplicate component binding id: " + s.binding_id);
         }
         if (!seen_sink_paths.insert(s.sink_path).second) {
           throw std::runtime_error("WAVE '" + out.name +
@@ -1181,10 +1261,12 @@ class parser_t {
     expect_symbol('}');
 
     if (!has_mode) {
-      throw std::runtime_error("WAVE '" + out.name + "' missing MODE assignment");
+      throw std::runtime_error("WAVE '" + out.name +
+                               "' missing MODE assignment");
     }
     if (!has_epochs) {
-      throw std::runtime_error("WAVE '" + out.name + "' missing EPOCHS assignment");
+      throw std::runtime_error("WAVE '" + out.name +
+                               "' missing EPOCHS assignment");
     }
     if (!has_batch_size) {
       throw std::runtime_error("WAVE '" + out.name +
@@ -1208,10 +1290,12 @@ class parser_t {
                                "' missing SAMPLER assignment");
     }
 
-    const std::uint64_t run_flag = cuwacunu::camahjucunu::iitepi_wave_mode_value(
-        cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Run);
-    const std::uint64_t train_flag = cuwacunu::camahjucunu::iitepi_wave_mode_value(
-        cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Train);
+    const std::uint64_t run_flag =
+        cuwacunu::camahjucunu::iitepi_wave_mode_value(
+            cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Run);
+    const std::uint64_t train_flag =
+        cuwacunu::camahjucunu::iitepi_wave_mode_value(
+            cuwacunu::camahjucunu::iitepi_wave_mode_flag_e::Train);
 
     const bool run_enabled = (out.mode_flags & run_flag) != 0;
     const bool train_enabled = (out.mode_flags & train_flag) != 0;
@@ -1222,27 +1306,28 @@ class parser_t {
     }
 
     if (run_enabled && !train_enabled) {
-      for (const auto& w : out.wikimyeis) {
+      for (const auto &w : out.wikimyeis) {
         if (w.train) {
-          throw std::runtime_error("WAVE '" + out.name +
-                                   "' MODE without train bit forbids JKIMYEI.HALT_TRAIN=false ('" +
-                                   w.binding_id + "')");
+          throw std::runtime_error(
+              "WAVE '" + out.name +
+              "' MODE without train bit forbids JKIMYEI.HALT_TRAIN=false ('" +
+              w.binding_id + "')");
         }
       }
     }
 
     if (train_enabled) {
       bool has_train_true = false;
-      for (const auto& w : out.wikimyeis) {
+      for (const auto &w : out.wikimyeis) {
         if (w.train) {
           has_train_true = true;
           break;
         }
       }
       if (!has_train_true) {
-        throw std::runtime_error(
-            "WAVE '" + out.name +
-            "' MODE with train bit requires at least one WIKIMYEI with JKIMYEI.HALT_TRAIN=false");
+        throw std::runtime_error("WAVE '" + out.name +
+                                 "' MODE with train bit requires at least one "
+                                 "WIKIMYEI with JKIMYEI.HALT_TRAIN=false");
       }
     }
 
@@ -1261,12 +1346,13 @@ namespace {
 
 [[nodiscard]] bool has_non_ws_ascii_(std::string_view text) {
   for (const char ch : text) {
-    if (!std::isspace(static_cast<unsigned char>(ch))) return true;
+    if (!std::isspace(static_cast<unsigned char>(ch)))
+      return true;
   }
   return false;
 }
 
-void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
+void validate_wave_grammar_text_or_throw_(const std::string &grammar_text) {
   if (!has_non_ws_ascii_(grammar_text)) {
     throw std::runtime_error("iitepi wave grammar text is empty");
   }
@@ -1280,6 +1366,13 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
       "SINK",
       "FAMILY",
       "RUNTIME",
+      "RUNTIME_INSTRUMENT_SIGNATURE",
+      "SYMBOL",
+      "RECORD_TYPE",
+      "MARKET_TYPE",
+      "VENUE",
+      "BASE_ASSET",
+      "QUOTE_ASSET",
       "SETTINGS",
       "JKIMYEI",
       "HALT_TRAIN",
@@ -1301,8 +1394,8 @@ void validate_wave_grammar_text_or_throw_(const std::string& grammar_text) {
 
   for (const auto token : kRequiredGrammarTokens) {
     if (grammar_text.find(token) == std::string::npos) {
-      throw std::runtime_error(
-          "iitepi wave grammar missing required token: " + std::string(token));
+      throw std::runtime_error("iitepi wave grammar missing required token: " +
+                               std::string(token));
     }
   }
 }
@@ -1313,29 +1406,24 @@ std::string iitepi_wave_set_t::str() const {
   std::ostringstream oss;
   oss << "iitepi_wave_set_t: waves=" << waves.size() << "\n";
   for (std::size_t i = 0; i < waves.size(); ++i) {
-    const auto& p = waves[i];
+    const auto &p = waves[i];
     const bool has_source = !p.sources.empty();
-    const auto& src0 = has_source
+    const auto &src0 = has_source
                            ? p.sources.front()
                            : cuwacunu::camahjucunu::iitepi_wave_source_decl_t{};
-    oss << "  [" << i << "] name=" << p.name
-        << " circuit=" << p.circuit_name
-        << " mode=" << p.mode
-        << " mode_flags=0x" << std::hex << p.mode_flags << std::dec
-        << " determinism=" << p.determinism_policy
-        << " sampler=" << p.sampler
-        << " epochs=" << p.epochs
+    oss << "  [" << i << "] name=" << p.name << " circuit=" << p.circuit_name
+        << " mode=" << p.mode << " mode_flags=0x" << std::hex << p.mode_flags
+        << std::dec << " determinism=" << p.determinism_policy
+        << " sampler=" << p.sampler << " epochs=" << p.epochs
         << " batch_size=" << p.batch_size
         << " max_batches_per_epoch=" << p.max_batches_per_epoch
         << " source0(binding_id=" << src0.binding_id
-        << ",path=" << src0.source_path
-        << ",workers=" << src0.workers
-        << ",force_rebuild_cache=" << (src0.force_rebuild_cache ? "true" : "false")
-        << ",range_warn_batches=" << src0.range_warn_batches
-        << ")"
+        << ",path=" << src0.source_path << ",workers=" << src0.workers
+        << ",force_rebuild_cache="
+        << (src0.force_rebuild_cache ? "true" : "false")
+        << ",range_warn_batches=" << src0.range_warn_batches << ")"
         << " wikimyeis=" << p.wikimyeis.size()
-        << " sources=" << p.sources.size()
-        << " probes=" << p.probes.size()
+        << " sources=" << p.sources.size() << " probes=" << p.probes.size()
         << " sinks=" << p.sinks.size() << "\n";
   }
   return oss.str();
@@ -1354,9 +1442,8 @@ iitepi_wave_set_t iitepiWavePipeline::decode(std::string instruction) {
   return parser.parse();
 }
 
-iitepi_wave_set_t decode_iitepi_wave_from_dsl(
-    std::string grammar_text,
-    std::string instruction_text) {
+iitepi_wave_set_t decode_iitepi_wave_from_dsl(std::string grammar_text,
+                                              std::string instruction_text) {
   iitepiWavePipeline pipeline(std::move(grammar_text));
   return pipeline.decode(std::move(instruction_text));
 }

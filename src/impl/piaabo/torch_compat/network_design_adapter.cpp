@@ -27,19 +27,19 @@ namespace {
 
 [[nodiscard]] bool parse_norm_kind(
     const std::string& value,
-    cuwacunu::wikimyei::vicreg_4d::NormKind* out) {
+    cuwacunu::wikimyei::vicreg_rank4::NormKind* out) {
   if (out == nullptr) return false;
   const std::string v = lower_ascii_copy(trim_ascii_copy(value));
   if (v == "batchnorm1d") {
-    *out = cuwacunu::wikimyei::vicreg_4d::NormKind::BatchNorm1d;
+    *out = cuwacunu::wikimyei::vicreg_rank4::NormKind::BatchNorm1d;
     return true;
   }
   if (v == "layernorm") {
-    *out = cuwacunu::wikimyei::vicreg_4d::NormKind::LayerNorm;
+    *out = cuwacunu::wikimyei::vicreg_rank4::NormKind::LayerNorm;
     return true;
   }
   if (v == "none") {
-    *out = cuwacunu::wikimyei::vicreg_4d::NormKind::None;
+    *out = cuwacunu::wikimyei::vicreg_rank4::NormKind::None;
     return true;
   }
   return false;
@@ -47,15 +47,15 @@ namespace {
 
 [[nodiscard]] bool parse_act_kind(
     const std::string& value,
-    cuwacunu::wikimyei::vicreg_4d::ActKind* out) {
+    cuwacunu::wikimyei::vicreg_rank4::ActKind* out) {
   if (out == nullptr) return false;
   const std::string v = lower_ascii_copy(trim_ascii_copy(value));
   if (v == "relu") {
-    *out = cuwacunu::wikimyei::vicreg_4d::ActKind::ReLU;
+    *out = cuwacunu::wikimyei::vicreg_rank4::ActKind::ReLU;
     return true;
   }
   if (v == "silu") {
-    *out = cuwacunu::wikimyei::vicreg_4d::ActKind::SiLU;
+    *out = cuwacunu::wikimyei::vicreg_rank4::ActKind::SiLU;
     return true;
   }
   return false;
@@ -64,7 +64,7 @@ namespace {
 }  // namespace
 
 bool build_vicreg_torch_adapter_spec(
-    const cuwacunu::wikimyei::vicreg_4d::vicreg_network_design_spec_t& semantic_spec,
+    const cuwacunu::wikimyei::vicreg_rank4::vicreg_network_design_spec_t& semantic_spec,
     vicreg_torch_adapter_spec_t* out,
     std::string* error) {
   if (error) error->clear();
@@ -73,7 +73,7 @@ bool build_vicreg_torch_adapter_spec(
     return false;
   }
 
-  cuwacunu::wikimyei::vicreg_4d::NormKind norm_kind{};
+  cuwacunu::wikimyei::vicreg_rank4::NormKind norm_kind{};
   if (!parse_norm_kind(semantic_spec.projector_norm, &norm_kind)) {
     if (error) {
       *error = "unsupported projector norm token: `" +
@@ -82,7 +82,7 @@ bool build_vicreg_torch_adapter_spec(
     return false;
   }
 
-  cuwacunu::wikimyei::vicreg_4d::ActKind act_kind{};
+  cuwacunu::wikimyei::vicreg_rank4::ActKind act_kind{};
   if (!parse_act_kind(semantic_spec.projector_activation, &act_kind)) {
     if (error) {
       *error = "unsupported projector activation token: `" +
@@ -92,7 +92,7 @@ bool build_vicreg_torch_adapter_spec(
   }
 
   out->projector_mlp_spec = semantic_spec.projector_mlp_spec;
-  out->projector_options = cuwacunu::wikimyei::vicreg_4d::ProjectorOptions{
+  out->projector_options = cuwacunu::wikimyei::vicreg_rank4::ProjectorOptions{
       .norm_kind = norm_kind,
       .act_kind = act_kind,
       .use_hidden_bias = semantic_spec.projector_hidden_bias,

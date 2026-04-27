@@ -76,7 +76,7 @@ The practical idea is:
 
 ## Current component family in active use
 - `tsi.source.dataloader`
-- `tsi.wikimyei.representation.vicreg`
+- `tsi.wikimyei.representation.encoding.vicreg`
 - `tsi.sink.null`
 - `tsi.probe.log`
 

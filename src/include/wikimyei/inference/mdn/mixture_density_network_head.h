@@ -17,15 +17,15 @@ namespace mdn {
 // =============================
 
 struct MdnHeadImpl : torch::nn::Module {
-  int64_t Dy{0}, K{0}, Hf{1};
+  int64_t Df{0}, K{0}, Hf{1};
   torch::nn::Linear lin_pi{nullptr}, lin_mu{nullptr}, lin_s{nullptr};
 
   explicit MdnHeadImpl(const MdnHeadOptions& opt)
-  : Dy(opt.Dy), K(opt.K), Hf(opt.Hf) {
+  : Df(opt.Df), K(opt.K), Hf(opt.Hf) {
     // per-head (per-channel) layers output Hf horizons
     lin_pi = register_module("lin_pi", torch::nn::Linear(opt.feature_dim, Hf * K));
-    lin_mu = register_module("lin_mu", torch::nn::Linear(opt.feature_dim, Hf * K * Dy));
-    lin_s  = register_module("lin_s",  torch::nn::Linear(opt.feature_dim, Hf * K * Dy));
+    lin_mu = register_module("lin_mu", torch::nn::Linear(opt.feature_dim, Hf * K * Df));
+    lin_s  = register_module("lin_s",  torch::nn::Linear(opt.feature_dim, Hf * K * Df));
     // --- sensible init: sigma ~ 0.1, mu ~ 0, pi ~ uniform via zero logits
     {
       torch::NoGradGuard ng;
@@ -40,22 +40,22 @@ struct MdnHeadImpl : torch::nn::Module {
 
   }
 
-  // Input: h [B,H]; Output (per-channel head): log_pi [B,1,Hf,K], mu/sigma [B,1,Hf,K,Dy]
+  // Input: h [B,H]; Output (per-channel head): log_pi [B,1,Hf,K], mu/sigma [B,1,Hf,K,Df]
   MdnOut forward(const torch::Tensor& h) {
     const auto B = h.size(0);
 
     auto raw_pi = lin_pi->forward(h);                   // [B,Hf*K]
-    auto raw_mu = lin_mu->forward(h);                   // [B,Hf*K*Dy]
-    auto raw_s  = lin_s ->forward(h);                   // [B,Hf*K*Dy]
+    auto raw_mu = lin_mu->forward(h);                   // [B,Hf*K*Df]
+    auto raw_s  = lin_s ->forward(h);                   // [B,Hf*K*Df]
 
     auto log_pi = torch::log_softmax(raw_pi.view({B, Hf, K}), /*dim=*/-1)
                     .unsqueeze(1);                      // [B,1,Hf,K]
 
-    auto mu     = raw_mu.view({B, Hf, K, Dy})
-                    .unsqueeze(1);                      // [B,1,Hf,K,Dy]
+    auto mu     = raw_mu.view({B, Hf, K, Df})
+                    .unsqueeze(1);                      // [B,1,Hf,K,Df]
 
-    auto sigma  = safe_softplus(raw_s).view({B, Hf, K, Dy})
-                    .unsqueeze(1);                      // [B,1,Hf,K,Dy]
+    auto sigma  = safe_softplus(raw_s).view({B, Hf, K, Df})
+                    .unsqueeze(1);                      // [B,1,Hf,K,Df]
 
     return {log_pi, mu, sigma};
   }
@@ -65,13 +65,13 @@ TORCH_MODULE(MdnHead);
 // Container of per-channel heads: concatenates along C
 struct ChannelHeadsImpl : torch::nn::Module {
   std::vector<MdnHead> heads;
-  int64_t C{1}, Hf{1}, Dy{0}, K{0}, H{0};
+  int64_t C{1}, Hf{1}, Df{0}, K{0}, H{0};
 
-  ChannelHeadsImpl(int64_t C_, int64_t Hf_, int64_t Dy_, int64_t K_, int64_t H_)
-  : C(C_), Hf(Hf_), Dy(Dy_), K(K_), H(H_) {
+  ChannelHeadsImpl(int64_t C_, int64_t Hf_, int64_t Df_, int64_t K_, int64_t H_)
+  : C(C_), Hf(Hf_), Df(Df_), K(K_), H(H_) {
     heads.reserve(C);
     for (int64_t c = 0; c < C; ++c) {
-      MdnHeadOptions ho{H, Dy, K, Hf};
+      MdnHeadOptions ho{H, Df, K, Hf};
       auto hd = MdnHead(ho);
       heads.push_back(register_module("head_" + std::to_string(c), hd));
     }
@@ -82,14 +82,14 @@ struct ChannelHeadsImpl : torch::nn::Module {
     std::vector<torch::Tensor> pis, mus, sigmas;
     pis.reserve(C); mus.reserve(C); sigmas.reserve(C);
     for (int64_t c = 0; c < C; ++c) {
-      auto o = heads[c]->forward(h); // [B,1,Hf,K], [B,1,Hf,K,Dy]
+      auto o = heads[c]->forward(h); // [B,1,Hf,K], [B,1,Hf,K,Df]
       pis.push_back(o.log_pi);
       mus.push_back(o.mu);
       sigmas.push_back(o.sigma);
     }
     auto log_pi = torch::cat(pis, /*dim=*/1);    // [B,C,Hf,K]
-    auto mu     = torch::cat(mus, /*dim=*/1);    // [B,C,Hf,K,Dy]
-    auto sigma  = torch::cat(sigmas, /*dim=*/1); // [B,C,Hf,K,Dy]
+    auto mu     = torch::cat(mus, /*dim=*/1);    // [B,C,Hf,K,Df]
+    auto sigma  = torch::cat(sigmas, /*dim=*/1); // [B,C,Hf,K,Df]
     return {log_pi, mu, sigma};
   }
 };

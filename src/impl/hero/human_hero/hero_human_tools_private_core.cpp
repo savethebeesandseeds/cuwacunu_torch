@@ -1239,9 +1239,8 @@ void sync_human_pending_markers_best_effort(const app_context_t &app) {
   human_operator_inbox_t inbox{};
   std::string marker_error{};
   if (!collect_human_operator_inbox(app, &inbox, true, &marker_error)) {
-    std::cerr << "[hero_human_mcp][warning] failed to refresh Human Hero "
-                 "inbox markers: "
-              << marker_error << std::endl;
+    log_warn("[hero_human_mcp] failed to refresh Human Hero "
+             "inbox markers: %s",
+             marker_error.c_str());
   }
 }
-

@@ -31,6 +31,16 @@ range = existing regular file
 allowed = absolute_or_relative path
 nuance = resolved from config folder and used as the shared default top-level runtime campaign DSL; Runtime HERO snapshots this file into campaign-local and job-local campaign.dsl artifacts before dispatch
 
+[FIELD GENERAL.default_lattice_target_dsl_filename]
+key = default_lattice_target_dsl_filename
+scope = GENERAL section
+type = path
+required = true
+default = /cuwacunu/src/config/instructions/defaults/default.lattice.target.dsl
+range = existing regular file
+allowed = absolute_or_relative path
+nuance = shared default lattice target evidence DSL; it declares desired component/source/evidence obligations but does not schedule runtime execution
+
 [FIELD GENERAL.runtime_root]
 key = runtime_root
 scope = GENERAL section

@@ -6,9 +6,11 @@
 #include <string_view>
 
 #include "camahjucunu/dsl/iitepi_wave/iitepi_wave.h"
+#include "camahjucunu/dsl/instrument_signature.h"
 #include "hero/hashimyei_hero/hashimyei_catalog.h"
 #include "hero/runtime_hero/runtime_job.h"
 #include "hero/wave_contract_binding_runtime.h"
+#include "iitepi/contract_space_t.h"
 #include "iitepi/runtime_binding/runtime_binding.h"
 #include "iitepi/runtime_binding/runtime_binding.validation.h"
 
@@ -57,9 +59,9 @@ struct env_guard_t {
   }
 };
 
-[[nodiscard]] cuwacunu::hashimyei::hashimyei_t make_test_identity(
-    cuwacunu::hashimyei::hashimyei_kind_e kind, std::uint64_t ordinal,
-    std::string hash = {}) {
+[[nodiscard]] cuwacunu::hashimyei::hashimyei_t
+make_test_identity(cuwacunu::hashimyei::hashimyei_kind_e kind,
+                   std::uint64_t ordinal, std::string hash = {}) {
   auto id = cuwacunu::hashimyei::make_identity(kind, ordinal, std::move(hash));
   id.schema = cuwacunu::hashimyei::kIdentitySchemaV2;
   return id;
@@ -71,19 +73,25 @@ make_component_manifest(std::string family, std::uint64_t ordinal,
                         std::string docking_signature) {
   cuwacunu::hero::hashimyei::component_manifest_t manifest{};
   manifest.schema = cuwacunu::hashimyei::kComponentManifestSchemaV2;
+  manifest.instrument_signature =
+      cuwacunu::camahjucunu::instrument_signature_all_any();
   manifest.family = std::move(family);
   manifest.hashimyei_identity = make_test_identity(
       cuwacunu::hashimyei::hashimyei_kind_e::TSIEMENE, ordinal);
+  manifest.component_tag =
+      "runtime.snapshot." + manifest.hashimyei_identity.name.substr(2);
   manifest.canonical_path =
       manifest.family + "." + manifest.hashimyei_identity.name;
-  manifest.contract_identity = make_test_identity(
-      cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT, 1,
-      std::move(contract_hash));
+  manifest.contract_identity =
+      make_test_identity(cuwacunu::hashimyei::hashimyei_kind_e::CONTRACT, 1,
+                         std::move(contract_hash));
   manifest.revision_reason = "initial";
   manifest.founding_revision_id = "cfgrev." + manifest.hashimyei_identity.name;
   manifest.founding_dsl_source_path = "demo.founding.dsl";
   manifest.founding_dsl_source_sha256_hex = sixty_four_hex('a');
   manifest.docking_signature_sha256_hex = std::move(docking_signature);
+  manifest.component_compatibility_sha256_hex =
+      manifest.docking_signature_sha256_hex;
   manifest.lineage_state = "active";
   manifest.created_at_ms = 1711111111000ULL;
   manifest.updated_at_ms = 1711111111000ULL;
@@ -120,7 +128,7 @@ int main() {
   const fs::path sources_path = source_dir / "demo.sources.dsl";
   const fs::path channels_path = source_dir / "demo.channels.dsl";
   const fs::path vicreg_path =
-      source_dir / "tsi.wikimyei.representation.vicreg.dsl";
+      source_dir / "tsi.wikimyei.representation.encoding.vicreg.dsl";
   const fs::path embedding_eval_path =
       source_dir / "tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
   const fs::path transfer_eval_path =
@@ -136,7 +144,8 @@ int main() {
   write_file(jkimyei_path, "JKSPEC 2.0\n");
   write_file(embedding_eval_path, "max_samples:int = 1024\n");
   write_file(transfer_eval_path, "summary_every_steps:int = 64\n");
-  write_file(vicreg_path, "learning_rate:float = % __lr ? 0.001 %\n"
+  write_file(vicreg_path, "TAG:str = runtime.snapshot.vicreg\n"
+                          "learning_rate:float = % __lr ? 0.001 %\n"
                           "network_design_dsl_file:str = demo.network.dsl\n"
                           "jkimyei_dsl_file:str = demo.jkimyei.dsl\n");
 
@@ -148,11 +157,36 @@ int main() {
       "  __obs_seq_length = 1;\n"
       "  __obs_feature_dim = 1;\n"
       "  __embedding_dims = 8;\n"
-      "  __future_target_dims = 1;\n"
+      "  __future_target_feature_indices = 0;\n"
+      "  INSTRUMENT_SIGNATURE <src> {\n"
+      "    SYMBOL: ANY;\n"
+      "    RECORD_TYPE: kline;\n"
+      "    MARKET_TYPE: spot;\n"
+      "    VENUE: binance;\n"
+      "    BASE_ASSET: ANY;\n"
+      "    QUOTE_ASSET: ANY;\n"
+      "  };\n"
+      "  INSTRUMENT_SIGNATURE <rep> {\n"
+      "    SYMBOL: ANY;\n"
+      "    RECORD_TYPE: kline;\n"
+      "    MARKET_TYPE: spot;\n"
+      "    VENUE: binance;\n"
+      "    BASE_ASSET: ANY;\n"
+      "    QUOTE_ASSET: ANY;\n"
+      "  };\n"
+      "  INSTRUMENT_SIGNATURE <sink_null> {\n"
+      "    SYMBOL: ANY;\n"
+      "    RECORD_TYPE: ANY;\n"
+      "    MARKET_TYPE: ANY;\n"
+      "    VENUE: ANY;\n"
+      "    BASE_ASSET: ANY;\n"
+      "    QUOTE_ASSET: ANY;\n"
+      "  };\n"
       "}\n"
       "ASSEMBLY {\n"
       "  __lr = 0.123;\n"
-      "  __vicreg_config_dsl_file = tsi.wikimyei.representation.vicreg.dsl;\n"
+      "  __vicreg_config_dsl_file = "
+      "tsi.wikimyei.representation.encoding.vicreg.dsl;\n"
       "  __embedding_sequence_analytics_config_dsl_file = "
       "tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl;\n"
       "  __transfer_matrix_evaluation_config_dsl_file = "
@@ -161,41 +195,49 @@ int main() {
       "  __observation_channels_dsl_file = demo.channels.dsl;\n"
       "  CIRCUIT_FILE: demo.circuit.dsl;\n"
       "  AKNOWLEDGE: src = tsi.source.dataloader;\n"
-      "  AKNOWLEDGE: rep = tsi.wikimyei.representation.vicreg;\n"
+      "  AKNOWLEDGE: rep = tsi.wikimyei.representation.encoding.vicreg;\n"
       "  AKNOWLEDGE: sink_null = tsi.sink.null;\n"
       "}\n"
       "-----END IITEPI CONTRACT-----\n");
 
-  write_file(wave_path, "WAVE wave_alpha {\n"
-                        "  MODE: run | train;\n"
-                        "  SAMPLER: % __sampler ? sequential %;\n"
-                        "  EPOCHS: 1;\n"
-                        "  BATCH_SIZE: 4;\n"
-                        "  MAX_BATCHES_PER_EPOCH: 8;\n"
-                        "  SOURCE: <src> {\n"
-                        "    FAMILY: tsi.source.dataloader;\n"
-                        "    SETTINGS: {\n"
-                        "      WORKERS: % __workers ? 0 %;\n"
-                        "      FORCE_REBUILD_CACHE: false;\n"
-                        "      RANGE_WARN_BATCHES: 1;\n"
-                        "    };\n"
-                        "    RUNTIME: {\n"
-                        "      SYMBOL: % __symbol ? BTCUSDT %;\n"
-                        "      FROM: % __from ? 01.01.2020 %;\n"
-                        "      TO: % __to ? 31.01.2020 %;\n"
-                        "    };\n"
-                        "  };\n"
-                        "  WIKIMYEI: <rep> {\n"
-                        "    FAMILY: tsi.wikimyei.representation.vicreg;\n"
-                        "    JKIMYEI: {\n"
-                        "      HALT_TRAIN: false;\n"
-                        "      PROFILE_ID: stable_pretrain;\n"
-                        "    };\n"
-                        "  };\n"
-                        "  SINK: <sink_null> {\n"
-                        "    FAMILY: tsi.sink.null;\n"
-                        "  };\n"
-                        "}\n");
+  write_file(wave_path,
+             "WAVE wave_alpha {\n"
+             "  MODE: run | train;\n"
+             "  SAMPLER: % __sampler ? sequential %;\n"
+             "  EPOCHS: 1;\n"
+             "  BATCH_SIZE: 4;\n"
+             "  MAX_BATCHES_PER_EPOCH: 8;\n"
+             "  SOURCE: <src> {\n"
+             "    FAMILY: tsi.source.dataloader;\n"
+             "    SETTINGS: {\n"
+             "      WORKERS: % __workers ? 0 %;\n"
+             "      FORCE_REBUILD_CACHE: false;\n"
+             "      RANGE_WARN_BATCHES: 1;\n"
+             "    };\n"
+             "    RUNTIME: {\n"
+             "      RUNTIME_INSTRUMENT_SIGNATURE: {\n"
+             "        SYMBOL: % __symbol %;\n"
+             "        RECORD_TYPE: kline;\n"
+             "        MARKET_TYPE: spot;\n"
+             "        VENUE: binance;\n"
+             "        BASE_ASSET: % __base_asset %;\n"
+             "        QUOTE_ASSET: % __quote_asset %;\n"
+             "      };\n"
+             "      FROM: % __from ? 01.01.2020 %;\n"
+             "      TO: % __to ? 31.01.2020 %;\n"
+             "    };\n"
+             "  };\n"
+             "  WIKIMYEI: <rep> {\n"
+             "    FAMILY: tsi.wikimyei.representation.encoding.vicreg;\n"
+             "    JKIMYEI: {\n"
+             "      HALT_TRAIN: false;\n"
+             "      PROFILE_ID: stable_pretrain;\n"
+             "    };\n"
+             "  };\n"
+             "  SINK: <sink_null> {\n"
+             "    FAMILY: tsi.sink.null;\n"
+             "  };\n"
+             "}\n");
 
   write_file(campaign_path,
              "CAMPAIGN {\n"
@@ -205,11 +247,10 @@ int main() {
              "    __sampler = random;\n"
              "    __workers = 2;\n"
              "    __symbol = ADAUSDT;\n"
+             "    __base_asset = ADA;\n"
+             "    __quote_asset = USDT;\n"
              "    __from = 03.02.2020;\n"
              "    __to = 29.02.2020;\n"
-             "    MOUNT {\n"
-             "      rep = EXACT 0x0000;\n"
-             "    };\n"
              "    CONTRACT = contract_demo;\n"
              "    WAVE = wave_alpha;\n"
              "  };\n"
@@ -242,7 +283,7 @@ int main() {
   const fs::path instructions_dir =
       fs::path(campaign_snapshot.campaign_dsl_path).parent_path();
   const fs::path vicreg_snapshot_path =
-      instructions_dir / "tsi.wikimyei.representation.vicreg.dsl";
+      instructions_dir / "tsi.wikimyei.representation.encoding.vicreg.dsl";
   const fs::path embedding_eval_snapshot_path =
       instructions_dir /
       "tsi.wikimyei.evaluation.embedding_sequence_analytics.dsl";
@@ -260,9 +301,6 @@ int main() {
   assert(campaign_snapshot_text.find(
              "FROM \"binding.wave.dsl\" IMPORT_WAVE wave_alpha;") !=
          std::string::npos);
-  assert(campaign_snapshot_text.find("MOUNT {") != std::string::npos);
-  assert(campaign_snapshot_text.find("rep = EXACT 0x0000;") !=
-         std::string::npos);
   assert(campaign_snapshot_text.find("CONTRACT = contract_binding;") !=
          std::string::npos);
   assert(campaign_snapshot_text.find("RUN bind_alpha;") != std::string::npos);
@@ -274,21 +312,25 @@ int main() {
   assert(wave_snapshot_text.find("WORKERS: 2;") != std::string::npos);
   assert(wave_snapshot_text.find("SAMPLER: random;") != std::string::npos);
   assert(wave_snapshot_text.find("SYMBOL: ADAUSDT;") != std::string::npos);
+  assert(wave_snapshot_text.find("BASE_ASSET: ADA;") != std::string::npos);
+  assert(wave_snapshot_text.find("QUOTE_ASSET: USDT;") != std::string::npos);
   assert(wave_snapshot_text.find("FROM: 03.02.2020;") != std::string::npos);
   assert(wave_snapshot_text.find("TO: 29.02.2020;") != std::string::npos);
   assert(wave_snapshot_text.find(
-             "PATH: tsi.wikimyei.representation.vicreg.0x0000;") !=
+             "PATH: tsi.wikimyei.representation.encoding.vicreg.0x") !=
          std::string::npos);
   {
-    const std::string wave_grammar = read_file(
-        "/cuwacunu/src/config/bnf/iitepi.wave.bnf");
+    const std::string wave_grammar =
+        read_file("/cuwacunu/src/config/bnf/iitepi.wave.bnf");
     const auto decoded_wave_set =
         cuwacunu::camahjucunu::dsl::decode_iitepi_wave_from_dsl(
             wave_grammar, wave_snapshot_text);
     assert(decoded_wave_set.waves.size() == 1);
     assert(decoded_wave_set.waves.front().wikimyeis.size() == 1);
-    assert(decoded_wave_set.waves.front().wikimyeis.front().wikimyei_path ==
-           "tsi.wikimyei.representation.vicreg.0x0000");
+    const std::string staged_path =
+        decoded_wave_set.waves.front().wikimyeis.front().wikimyei_path;
+    assert(staged_path.rfind("tsi.wikimyei.representation.encoding.vicreg.0x",
+                             0) == 0);
     const auto staged_contract_hash =
         cuwacunu::iitepi::contract_space_t::register_contract_file(
             campaign_snapshot.contract_dsl_path);
@@ -346,11 +388,10 @@ int main() {
       "    __sampler = random;\n"
       "    __workers = 2;\n"
       "    __symbol = ADAUSDT;\n"
+      "    __base_asset = ADA;\n"
+      "    __quote_asset = USDT;\n"
       "    __from = 03.02.2020;\n"
       "    __to = 29.02.2020;\n"
-      "    MOUNT {\n"
-      "      rep = EXACT 0x0000;\n"
-      "    };\n"
       "    CONTRACT = contract_invalid;\n"
       "    WAVE = wave_alpha;\n"
       "  };\n"
@@ -387,6 +428,8 @@ int main() {
   replace_all(&default_campaign_override, "__workers = 0;", "__workers = 2;");
   replace_all(&default_campaign_override, "__symbol = BTCUSDT;",
               "__symbol = ADAUSDT;");
+  replace_all(&default_campaign_override, "__base_asset = BTC;",
+              "__base_asset = ADA;");
   write_file(default_campaign_override_path, default_campaign_override);
 
   ok = cuwacunu::hero::wave_contract_binding_runtime::
@@ -402,6 +445,71 @@ int main() {
   assert(default_wave_snapshot_text.find("WORKERS: 2;") != std::string::npos);
   assert(default_wave_snapshot_text.find("SYMBOL: ADAUSDT;") !=
          std::string::npos);
+  assert(default_wave_snapshot_text.find("BASE_ASSET: ADA;") !=
+         std::string::npos);
+
+  {
+    const auto default_contract_hash =
+        cuwacunu::iitepi::contract_space_t::register_contract_file(
+            "/cuwacunu/src/config/instructions/defaults/"
+            "default.iitepi.contract.dsl");
+    const auto default_contract =
+        cuwacunu::iitepi::contract_space_t::contract_itself(
+            default_contract_hash);
+    assert(default_contract != nullptr);
+
+    const cuwacunu::camahjucunu::instrument_signature_t btc{
+        .symbol = "BTCUSDT",
+        .record_type = "kline",
+        .market_type = "spot",
+        .venue = "binance",
+        .base_asset = "BTC",
+        .quote_asset = "USDT",
+    };
+    const cuwacunu::camahjucunu::instrument_signature_t eth{
+        .symbol = "ETHUSDT",
+        .record_type = "kline",
+        .market_type = "spot",
+        .venue = "binance",
+        .base_asset = "ETH",
+        .quote_asset = "USDT",
+    };
+
+    std::string realize_error{};
+    const auto rep_btc =
+        cuwacunu::iitepi::realize_contract_component_binding_for_runtime(
+            *default_contract, "w_rep", btc, &realize_error);
+    assert(rep_btc.has_value());
+    assert(realize_error.empty());
+    const auto rep_eth =
+        cuwacunu::iitepi::realize_contract_component_binding_for_runtime(
+            *default_contract, "w_rep", eth, &realize_error);
+    assert(rep_eth.has_value());
+    assert(realize_error.empty());
+    const auto ev_btc =
+        cuwacunu::iitepi::realize_contract_component_binding_for_runtime(
+            *default_contract, "w_ev", btc, &realize_error);
+    assert(ev_btc.has_value());
+    assert(realize_error.empty());
+    const auto ev_eth =
+        cuwacunu::iitepi::realize_contract_component_binding_for_runtime(
+            *default_contract, "w_ev", eth, &realize_error);
+    assert(ev_eth.has_value());
+    assert(realize_error.empty());
+
+    assert(rep_btc->component_tag == "vicreg.default");
+    assert(ev_btc->component_tag == "expected_value.mdn.default");
+    assert(rep_btc->hashimyei == rep_eth->hashimyei);
+    assert(ev_btc->hashimyei == ev_eth->hashimyei);
+    assert(rep_btc->instrument_signature.symbol ==
+           cuwacunu::camahjucunu::kInstrumentSignatureAny);
+    assert(ev_btc->instrument_signature.symbol ==
+           cuwacunu::camahjucunu::kInstrumentSignatureAny);
+    assert(cuwacunu::camahjucunu::instrument_signature_compact_string(
+               ev_btc->instrument_signature) ==
+           cuwacunu::camahjucunu::instrument_signature_compact_string(
+               ev_eth->instrument_signature));
+  }
 
   const auto contract_hash =
       cuwacunu::iitepi::contract_space_t::register_contract_file(
@@ -409,17 +517,23 @@ int main() {
   const auto contract_snapshot =
       cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
   assert(contract_snapshot != nullptr);
+  const auto *rep_component_compatibility =
+      cuwacunu::iitepi::find_component_compatibility_signature(
+          *contract_snapshot, "rep");
+  assert(rep_component_compatibility != nullptr);
+  assert(!rep_component_compatibility->sha256_hex.empty());
 
   {
     env_guard_t store_root_env("CUWACUNU_HASHIMYEI_STORE_ROOT");
     store_root_env.set((root / "hashimyei_store_incompatible").string());
 
-    auto incompatible_manifest = make_component_manifest(
-        "tsi.wikimyei.representation.vicreg", 0x0, contract_hash,
-        sixty_four_hex('f'));
-    if (incompatible_manifest.docking_signature_sha256_hex ==
-        contract_snapshot->signature.docking_signature_sha256_hex) {
-      incompatible_manifest.docking_signature_sha256_hex = sixty_four_hex('e');
+    auto incompatible_manifest =
+        make_component_manifest("tsi.wikimyei.representation.encoding.vicreg",
+                                0x0, contract_hash, sixty_four_hex('f'));
+    if (incompatible_manifest.component_compatibility_sha256_hex ==
+        rep_component_compatibility->sha256_hex) {
+      incompatible_manifest.component_compatibility_sha256_hex =
+          sixty_four_hex('e');
     }
     std::string save_error{};
     ok = cuwacunu::hero::hashimyei::save_component_manifest(
@@ -434,7 +548,7 @@ int main() {
                                           root / "campaign_job_incompatible",
                                           &campaign_snapshot, &error);
     assert(!ok);
-    assert(error.find("not dock-compatible") != std::string::npos);
+    assert(error.find("not component-compatible") != std::string::npos);
   }
 
   {
@@ -443,8 +557,7 @@ int main() {
 
     auto wrong_family_manifest =
         make_component_manifest("tsi.probe.log", 0x0, contract_hash,
-                                contract_snapshot->signature
-                                    .docking_signature_sha256_hex);
+                                rep_component_compatibility->sha256_hex);
     std::string save_error{};
     ok = cuwacunu::hero::hashimyei::save_component_manifest(
         cuwacunu::hashimyei::store_root(), wrong_family_manifest, nullptr,
@@ -452,12 +565,14 @@ int main() {
     assert(ok);
     assert(save_error.empty());
 
-    std::string docking_error{};
-    ok = tsiemene::validate_runtime_hashimyei_contract_docking(
-        "tsi.wikimyei.representation.vicreg", "0x0000", contract_hash,
-        /*require_registered_manifest=*/true, &docking_error);
+    std::string component_compatibility_error{};
+    ok = tsiemene::validate_runtime_hashimyei_component_compatibility(
+        "tsi.wikimyei.representation.encoding.vicreg", "0x0000", contract_hash,
+        "rep", /*require_registered_manifest=*/true,
+        &component_compatibility_error);
     assert(!ok);
-    assert(docking_error.find("configured hashimyei manifest lookup failed") !=
+    assert(component_compatibility_error.find(
+               "configured hashimyei manifest lookup failed") !=
            std::string::npos);
   }
 

@@ -31,14 +31,14 @@ namespace source_runtime_projection_runtime_detail {
 
 template <typename Datatype_t>
 [[nodiscard]] inline bool resolve_effective_domain_bounds_for_datatype(
-    std::string_view symbol,
-    const cuwacunu::camahjucunu::observation_spec_t& observation,
-    double* out_domain_from_ms,
-    double* out_domain_to_ms,
-    std::string* error) {
-  if (error) error->clear();
+    const cuwacunu::camahjucunu::instrument_signature_t &runtime_signature,
+    const cuwacunu::camahjucunu::observation_spec_t &observation,
+    double *out_domain_from_ms, double *out_domain_to_ms, std::string *error) {
+  if (error)
+    error->clear();
   if (!out_domain_from_ms || !out_domain_to_ms) {
-    if (error) *error = "domain output pointers are null";
+    if (error)
+      *error = "domain output pointers are null";
     return false;
   }
   *out_domain_from_ms = 0.0;
@@ -47,61 +47,65 @@ template <typename Datatype_t>
   try {
     auto dataset =
         cuwacunu::camahjucunu::data::create_memory_mapped_concat_dataset<
-            Datatype_t>(std::string(symbol), observation,
+            Datatype_t>(runtime_signature, observation,
                         /*force_rebuild_cache=*/false);
-    const double domain_left =
-        static_cast<double>(dataset.leftmost_key_value_);
+    const double domain_left = static_cast<double>(dataset.leftmost_key_value_);
     const double domain_right =
         static_cast<double>(dataset.rightmost_key_value_);
     const double step = static_cast<double>(dataset.key_value_step_);
     if (!std::isfinite(domain_left) || !std::isfinite(domain_right) ||
         !std::isfinite(step)) {
-      if (error) *error = "effective source bounds are non-finite";
+      if (error)
+        *error = "effective source bounds are non-finite";
       return false;
     }
     if (!(step > 0.0)) {
-      if (error) *error = "effective source key step must be > 0";
+      if (error)
+        *error = "effective source key step must be > 0";
       return false;
     }
     *out_domain_from_ms = domain_left;
     *out_domain_to_ms = domain_right + step;
     return true;
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     if (error) {
       *error =
           std::string("failed to resolve effective source bounds: ") + e.what();
     }
     return false;
   } catch (...) {
-    if (error) *error = "failed to resolve effective source bounds";
+    if (error)
+      *error = "failed to resolve effective source bounds";
     return false;
   }
 }
 
 [[nodiscard]] inline bool resolve_effective_domain_bounds_for_record_type(
     std::string_view record_type,
-    std::string_view symbol,
-    const cuwacunu::camahjucunu::observation_spec_t& observation,
-    double* out_domain_from_ms,
-    double* out_domain_to_ms,
-    std::string* error) {
-  if (error) error->clear();
+    const cuwacunu::camahjucunu::instrument_signature_t &runtime_signature,
+    const cuwacunu::camahjucunu::observation_spec_t &observation,
+    double *out_domain_from_ms, double *out_domain_to_ms, std::string *error) {
+  if (error)
+    error->clear();
   const std::string rt =
       lowercase_copy(source_runtime_projection_detail::trim_ascii(record_type));
   if (rt == "kline") {
     return resolve_effective_domain_bounds_for_datatype<
         cuwacunu::camahjucunu::exchange::kline_t>(
-        symbol, observation, out_domain_from_ms, out_domain_to_ms, error);
+        runtime_signature, observation, out_domain_from_ms, out_domain_to_ms,
+        error);
   }
   if (rt == "trade") {
     return resolve_effective_domain_bounds_for_datatype<
         cuwacunu::camahjucunu::exchange::trade_t>(
-        symbol, observation, out_domain_from_ms, out_domain_to_ms, error);
+        runtime_signature, observation, out_domain_from_ms, out_domain_to_ms,
+        error);
   }
   if (rt == "basic") {
     return resolve_effective_domain_bounds_for_datatype<
         cuwacunu::camahjucunu::exchange::basic_t>(
-        symbol, observation, out_domain_from_ms, out_domain_to_ms, error);
+        runtime_signature, observation, out_domain_from_ms, out_domain_to_ms,
+        error);
   }
   if (error) {
     *error = "unsupported record_type for source-runtime projection: " + rt;
@@ -110,8 +114,9 @@ template <typename Datatype_t>
 }
 
 [[nodiscard]] inline bool parse_bool_ascii_token(std::string_view token,
-                                                 bool* out) {
-  if (!out) return false;
+                                                 bool *out) {
+  if (!out)
+    return false;
   const std::string lowered =
       lowercase_copy(source_runtime_projection_detail::trim_ascii(token));
   if (lowered == "true" || lowered == "1" || lowered == "yes" ||
@@ -128,24 +133,26 @@ template <typename Datatype_t>
 }
 
 [[nodiscard]] inline bool collect_channel_states_for_record_type(
-    const cuwacunu::camahjucunu::observation_spec_t& observation,
+    const cuwacunu::camahjucunu::observation_spec_t &observation,
     std::string_view record_type,
-    std::vector<cuwacunu::hero::wave::source_runtime_channel_state_t>* out,
-    std::string* error) {
-  if (error) error->clear();
+    std::vector<cuwacunu::hero::wave::source_runtime_channel_state_t> *out,
+    std::string *error) {
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "channel state output pointer is null";
+    if (error)
+      *error = "channel state output pointer is null";
     return false;
   }
   out->clear();
 
   const std::string target_record_type =
       lowercase_copy(source_runtime_projection_detail::trim_ascii(record_type));
-  for (const auto& ch : observation.channel_forms) {
-    const std::string row_record_type =
-        lowercase_copy(source_runtime_projection_detail::trim_ascii(
-            ch.record_type));
-    if (row_record_type != target_record_type) continue;
+  for (const auto &ch : observation.channel_forms) {
+    const std::string row_record_type = lowercase_copy(
+        source_runtime_projection_detail::trim_ascii(ch.record_type));
+    if (row_record_type != target_record_type)
+      continue;
 
     bool active = false;
     if (!parse_bool_ascii_token(ch.active, &active)) {
@@ -174,19 +181,21 @@ template <typename Datatype_t>
   return true;
 }
 
-}  // namespace source_runtime_projection_runtime_detail
+} // namespace source_runtime_projection_runtime_detail
 
 [[nodiscard]] inline bool build_source_runtime_projection_fragment_for_wave(
     std::string_view record_type,
-    const cuwacunu::camahjucunu::iitepi_wave_t& wave,
-    const cuwacunu::camahjucunu::observation_spec_t& observation,
-    cuwacunu::hero::wave::source_runtime_projection_fragment_t* out,
-    std::string* error) {
+    const cuwacunu::camahjucunu::iitepi_wave_t &wave,
+    const cuwacunu::camahjucunu::observation_spec_t &observation,
+    cuwacunu::hero::wave::source_runtime_projection_fragment_t *out,
+    std::string *error) {
   using namespace source_runtime_projection_runtime_detail;
 
-  if (error) error->clear();
+  if (error)
+    error->clear();
   if (!out) {
-    if (error) *error = "source projection fragment output pointer is null";
+    if (error)
+      *error = "source projection fragment output pointer is null";
     return false;
   }
   *out = cuwacunu::hero::wave::source_runtime_projection_fragment_t{};
@@ -197,26 +206,27 @@ template <typename Datatype_t>
     }
     return false;
   }
-  const auto& source_decl = wave.sources.front();
-  const std::string symbol =
-      source_runtime_projection_detail::trim_ascii(source_decl.symbol);
+  const auto &source_decl = wave.sources.front();
+  const std::string symbol = source_runtime_projection_detail::trim_ascii(
+      source_decl.runtime_instrument_signature.symbol);
   if (symbol.empty()) {
-    if (error) *error = "SOURCE.RUNTIME.SYMBOL is empty";
+    if (error)
+      *error = "SOURCE.RUNTIME.RUNTIME_INSTRUMENT_SIGNATURE.SYMBOL is empty";
     return false;
   }
 
   double domain_from_ms = 0.0;
   double domain_to_ms = 0.0;
   if (!resolve_effective_domain_bounds_for_record_type(
-          record_type, symbol, observation, &domain_from_ms, &domain_to_ms,
-          error)) {
+          record_type, source_decl.runtime_instrument_signature, observation,
+          &domain_from_ms, &domain_to_ms, error)) {
     return false;
   }
 
   std::vector<cuwacunu::hero::wave::source_runtime_channel_state_t>
       channel_states{};
-  if (!collect_channel_states_for_record_type(
-          observation, record_type, &channel_states, error)) {
+  if (!collect_channel_states_for_record_type(observation, record_type,
+                                              &channel_states, error)) {
     return false;
   }
 
@@ -231,6 +241,6 @@ template <typename Datatype_t>
       input, out, error);
 }
 
-}  // namespace wave
-}  // namespace hero
-}  // namespace cuwacunu
+} // namespace wave
+} // namespace hero
+} // namespace cuwacunu

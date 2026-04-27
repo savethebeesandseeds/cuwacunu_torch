@@ -1012,7 +1012,9 @@ inline void append_component_member_detail(
                       lattice_component_updated_text(member));
   append_lattice_meta(out, "contract hash",
                       lattice_contract_hash_for_member(member));
-  append_lattice_meta(out, "dock hash", lattice_dock_hash_for_member(member));
+  append_lattice_meta(
+      out, "component compatibility",
+      lattice_component_compatibility_sha256_hex_for_member(member));
   append_lattice_meta(out, "parent",
                       lattice_member_parent_hashimyei_text(member));
   append_lattice_meta(out, "replaced by",
@@ -1220,7 +1222,9 @@ inline void append_lattice_member_detail(
                           : std::string{});
   append_lattice_meta(out, "contract hash",
                       lattice_contract_hash_for_member(member));
-  append_lattice_meta(out, "dock hash", lattice_dock_hash_for_member(member));
+  append_lattice_meta(
+      out, "component compatibility",
+      lattice_component_compatibility_sha256_hex_for_member(member));
   append_lattice_meta(out, "component updated",
                       lattice_component_updated_text(member));
   append_lattice_meta(out, "manifest path",
@@ -1264,16 +1268,20 @@ inline void append_lattice_member_detail(
   }
 
   append_lattice_section(out, "Available Views");
-  append_lattice_meta(out, "family_evaluation_report",
-                      !member.canonical_path.empty() &&
-                              !lattice_dock_hash_for_member(member).empty()
-                          ? std::string("ready")
-                          : std::string("needs canonical_path + dock_hash"),
-                      cuwacunu::iinuji::text_line_emphasis_t::Info,
-                      !member.canonical_path.empty() &&
-                              !lattice_dock_hash_for_member(member).empty()
-                          ? cuwacunu::iinuji::text_line_emphasis_t::Success
-                          : cuwacunu::iinuji::text_line_emphasis_t::Warning);
+  append_lattice_meta(
+      out, "family_evaluation_report",
+      !member.canonical_path.empty() &&
+              !lattice_component_compatibility_sha256_hex_for_member(member)
+                   .empty()
+          ? std::string("ready")
+          : std::string(
+                "needs canonical_path + component_compatibility_sha256_hex"),
+      cuwacunu::iinuji::text_line_emphasis_t::Info,
+      !member.canonical_path.empty() &&
+              !lattice_component_compatibility_sha256_hex_for_member(member)
+                   .empty()
+          ? cuwacunu::iinuji::text_line_emphasis_t::Success
+          : cuwacunu::iinuji::text_line_emphasis_t::Warning);
   append_lattice_meta(
       out, "entropic_capacity_comparison",
       !member.fact.latest_wave_cursor.empty()
@@ -1351,16 +1359,20 @@ inline void append_lattice_view_detail(
             (!member->canonical_path.empty() ? "yes" : "no") + " | contract=" +
             (!lattice_contract_hash_for_member(*member).empty() ? "yes"
                                                                 : "no") +
-            " | dock=" +
-            (!lattice_dock_hash_for_member(*member).empty() ? "yes" : "no") +
+            " | component=" +
+            (!lattice_component_compatibility_sha256_hex_for_member(*member)
+                     .empty()
+                 ? "yes"
+                 : "no") +
             " | wave=" +
             (!member->fact.latest_wave_cursor.empty() ? "yes" : "no"));
     append_lattice_section(out, "Selectors");
     append_lattice_meta(out, "canonical path", member->canonical_path);
     append_lattice_meta(out, "contract hash",
                         lattice_contract_hash_for_member(*member));
-    append_lattice_meta(out, "dock hash",
-                        lattice_dock_hash_for_member(*member));
+    append_lattice_meta(
+        out, "component compatibility",
+        lattice_component_compatibility_sha256_hex_for_member(*member));
     append_lattice_meta(out, "wave cursor", member->fact.latest_wave_cursor);
     if (st.lattice.view_snapshot.ok &&
         st.lattice.view_snapshot.view_kind == view->view_kind &&

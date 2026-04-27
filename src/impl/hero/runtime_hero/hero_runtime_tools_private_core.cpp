@@ -1046,26 +1046,23 @@ json_array_from_strings(const std::vector<std::string> &values) {
   return out.str();
 }
 
-[[nodiscard]] std::string mount_selection_explanation_to_json(
+[[nodiscard]] std::string component_selection_explanation_to_json(
     const cuwacunu::hero::wave_contract_binding_runtime::
-        resolved_mount_selection_explanation_t &explanation) {
+        resolved_component_selection_explanation_t &explanation) {
   std::ostringstream out;
   out << "{"
       << "\"wave_binding_id\":" << json_quote(explanation.wave_binding_id)
       << ","
       << "\"component_kind\":" << json_quote(explanation.component_kind) << ","
       << "\"family\":" << json_quote(explanation.family) << ","
-      << "\"selector_kind\":" << json_quote(explanation.selector_kind) << ","
-      << "\"selector_value\":" << json_quote(explanation.selector_value) << ","
+      << "\"component_compatibility_sha256_hex\":"
+      << json_quote(explanation.component_compatibility_sha256_hex) << ","
+      << "\"component_tag\":" << json_quote(explanation.component_tag) << ","
       << "\"resolved\":" << (explanation.resolved ? "true" : "false") << ","
-      << "\"catalog_manifest_checked\":"
-      << (explanation.catalog_checked ? "true" : "false") << ","
-      << "\"catalog_manifest_found\":"
-      << (explanation.catalog_manifest_found ? "true" : "false") << ","
-      << "\"resolved_hashimyei\":" << json_quote(explanation.resolved_hashimyei)
+      << "\"derived_hashimyei\":" << json_quote(explanation.derived_hashimyei)
       << ","
-      << "\"resolved_canonical_path\":"
-      << json_quote(explanation.resolved_canonical_path) << ","
+      << "\"derived_canonical_path\":"
+      << json_quote(explanation.derived_canonical_path) << ","
       << "\"summary\":" << json_quote(explanation.summary) << ","
       << "\"details\":" << json_quote(explanation.details) << "}";
   return out.str();
@@ -1074,14 +1071,15 @@ json_array_from_strings(const std::vector<std::string> &values) {
 [[nodiscard]] std::string binding_selection_explanation_to_json(
     const cuwacunu::hero::wave_contract_binding_runtime::
         resolved_binding_selection_explanation_t &explanation) {
-  std::ostringstream mounts_json;
-  mounts_json << "[";
-  for (std::size_t i = 0; i < explanation.mounts.size(); ++i) {
+  std::ostringstream components_json;
+  components_json << "[";
+  for (std::size_t i = 0; i < explanation.components.size(); ++i) {
     if (i != 0)
-      mounts_json << ",";
-    mounts_json << mount_selection_explanation_to_json(explanation.mounts[i]);
+      components_json << ",";
+    components_json << component_selection_explanation_to_json(
+        explanation.components[i]);
   }
-  mounts_json << "]";
+  components_json << "]";
 
   std::ostringstream out;
   out << "{"
@@ -1089,7 +1087,7 @@ json_array_from_strings(const std::vector<std::string> &values) {
       << "\"resolved\":" << (explanation.resolved ? "true" : "false") << ","
       << "\"summary\":" << json_quote(explanation.summary) << ","
       << "\"details\":" << json_quote(explanation.details) << ","
-      << "\"compatibility_basis\":\"dock_only\","
+      << "\"compatibility_basis\":\"component_compatibility\","
       << "\"campaign_dsl_path\":"
       << json_quote(explanation.source_campaign_dsl_path) << ","
       << "\"source_contract_dsl_path\":"
@@ -1099,9 +1097,10 @@ json_array_from_strings(const std::vector<std::string> &values) {
       << "\"contract_ref\":" << json_quote(explanation.contract_ref) << ","
       << "\"wave_ref\":" << json_quote(explanation.wave_ref) << ","
       << "\"contract_hash\":" << json_quote(explanation.contract_hash) << ","
-      << "\"dock_hash\":" << json_quote(explanation.dock_hash) << ","
-      << "\"mount_count\":" << explanation.mounts.size() << ","
-      << "\"mounts\":" << mounts_json.str() << "}";
+      << "\"docking_signature_sha256_hex\":"
+      << json_quote(explanation.docking_signature_sha256_hex) << ","
+      << "\"component_count\":" << explanation.components.size() << ","
+      << "\"components\":" << components_json.str() << "}";
   return out.str();
 }
 
@@ -1311,4 +1310,3 @@ struct campaign_start_lock_guard_t {
   return state != "launching" && state != "running" && state != "stopping" &&
          state != "orphaned";
 }
-

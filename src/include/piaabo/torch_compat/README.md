@@ -102,7 +102,7 @@ The module is now split into:
   report contracts
 
 Generic sequence entry points operate on canonical sequence layouts already
-accepted by the core normalizer (`[T,D]`, `[C,T,D]`, `[B,C,T,D]`) and emit:
+accepted by the core normalizer (`[Hx,Dx]`, `[C,Hx,Dx]`, `[B,C,Hx,Dx]`) and emit:
 
 - `piaabo.torch_compat.sequence_analytics.v2`
 - `piaabo.torch_compat.sequence_analytics_symbolic.v2`

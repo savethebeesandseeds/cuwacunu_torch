@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 
+#include "camahjucunu/dsl/instrument_signature.h"
 #include "tsiemene/tsi.h"
 
 namespace tsiemene {
@@ -19,8 +20,13 @@ struct TsiWikimyeiInitRecord {
   std::string hashimyei{};
   std::string contract_hash{};
   std::string binding_id{};
+  std::string component_tag{};
+  std::string component_compatibility_sha256_hex{};
+  std::string docking_signature_sha256_hex{};
   std::string run_id{};
   std::string source_runtime_cursor{};
+  cuwacunu::camahjucunu::instrument_signature_t instrument_signature{};
+  cuwacunu::camahjucunu::instrument_signature_t runtime_instrument_signature{};
   bool has_wave_cursor{false};
   std::uint64_t wave_cursor{0};
   std::string canonical_path{};
@@ -37,8 +43,13 @@ struct TsiWikimyeiInitRecord {
 struct TsiWikimyeiRuntimeIoContext {
   bool enable_debug_outputs{false};
   std::string binding_id{};
+  std::string component_tag{};
+  std::string component_compatibility_sha256_hex{};
+  std::string docking_signature_sha256_hex{};
   std::string run_id{};
   std::string source_runtime_cursor{};
+  cuwacunu::camahjucunu::instrument_signature_t instrument_signature{};
+  cuwacunu::camahjucunu::instrument_signature_t runtime_instrument_signature{};
   bool has_wave_cursor{false};
   std::uint64_t wave_cursor{0};
 };
@@ -90,79 +101,99 @@ struct TsiWikimyeiJkimyeiFlushResult {
 };
 
 class TsiWikimyei : public Tsi {
- public:
-  [[nodiscard]] TsiDomain domain() const noexcept final { return TsiDomain::Wikimyei; }
-  [[nodiscard]] bool can_be_circuit_root() const noexcept override { return false; }
-  [[nodiscard]] bool can_be_circuit_terminal() const noexcept override { return false; }
+public:
+  [[nodiscard]] TsiDomain domain() const noexcept final {
+    return TsiDomain::Wikimyei;
+  }
+  [[nodiscard]] bool can_be_circuit_root() const noexcept override {
+    return false;
+  }
+  [[nodiscard]] bool can_be_circuit_terminal() const noexcept override {
+    return false;
+  }
   [[nodiscard]] virtual bool supports_init_report_fragments() const noexcept {
     return false;
   }
-  [[nodiscard]] virtual std::string_view init_report_fragment_schema() const noexcept {
+  [[nodiscard]] virtual std::string_view
+  init_report_fragment_schema() const noexcept {
     return {};
   }
-  [[nodiscard]] virtual std::string_view report_fragment_family() const noexcept {
+  [[nodiscard]] virtual std::string_view
+  report_fragment_family() const noexcept {
     return {};
   }
-  [[nodiscard]] virtual std::string_view report_fragment_model() const noexcept {
+  [[nodiscard]] virtual std::string_view
+  report_fragment_model() const noexcept {
     return {};
   }
-  [[nodiscard]] virtual bool runtime_autoload_report_fragments() const noexcept {
+  [[nodiscard]] virtual bool
+  runtime_autoload_report_fragments() const noexcept {
     return supports_init_report_fragments();
   }
-  [[nodiscard]] virtual bool runtime_autosave_report_fragments() const noexcept {
+  [[nodiscard]] virtual bool
+  runtime_autosave_report_fragments() const noexcept {
     return false;
   }
-  [[nodiscard]] virtual bool supports_jkimyei_facet() const noexcept { return false; }
-  [[nodiscard]] virtual bool jkimyei_get_runtime_state(
-      TsiWikimyeiJkimyeiRuntimeState* out,
-      std::string* error = nullptr) const {
-    if (out) *out = TsiWikimyeiJkimyeiRuntimeState{};
-    if (error) *error = "jkimyei facet unsupported";
+  [[nodiscard]] virtual bool supports_jkimyei_facet() const noexcept {
     return false;
   }
-  [[nodiscard]] virtual bool jkimyei_set_train_enabled(
-      bool enabled,
-      std::string* error = nullptr) {
+  [[nodiscard]] virtual bool
+  jkimyei_get_runtime_state(TsiWikimyeiJkimyeiRuntimeState *out,
+                            std::string *error = nullptr) const {
+    if (out)
+      *out = TsiWikimyeiJkimyeiRuntimeState{};
+    if (error)
+      *error = "jkimyei facet unsupported";
+    return false;
+  }
+  [[nodiscard]] virtual bool
+  jkimyei_set_train_enabled(bool enabled, std::string *error = nullptr) {
     (void)enabled;
-    if (error) *error = "jkimyei facet unsupported";
+    if (error)
+      *error = "jkimyei facet unsupported";
     return false;
   }
   [[nodiscard]] virtual bool jkimyei_flush_pending_training_step(
-      TsiWikimyeiJkimyeiFlushResult* out = nullptr,
-      std::string* error = nullptr) {
-    if (out) *out = TsiWikimyeiJkimyeiFlushResult{};
-    if (error) *error = "jkimyei facet unsupported";
+      TsiWikimyeiJkimyeiFlushResult *out = nullptr,
+      std::string *error = nullptr) {
+    if (out)
+      *out = TsiWikimyeiJkimyeiFlushResult{};
+    if (error)
+      *error = "jkimyei facet unsupported";
     return false;
   }
-  [[nodiscard]] virtual bool runtime_load_from_hashimyei(
-      std::string_view hashimyei,
-      std::string* error = nullptr,
-      const void* runtime_context = nullptr) {
+  [[nodiscard]] virtual bool
+  runtime_load_from_hashimyei(std::string_view hashimyei,
+                              std::string *error = nullptr,
+                              const void *runtime_context = nullptr) {
     (void)hashimyei;
     (void)runtime_context;
-    if (error) error->clear();
+    if (error)
+      error->clear();
     return false;
   }
-  [[nodiscard]] virtual bool runtime_save_to_hashimyei(
-      std::string_view hashimyei,
-      std::string* error = nullptr,
-      const void* runtime_context = nullptr) {
+  [[nodiscard]] virtual bool
+  runtime_save_to_hashimyei(std::string_view hashimyei,
+                            std::string *error = nullptr,
+                            const void *runtime_context = nullptr) {
     (void)hashimyei;
     (void)runtime_context;
-    if (error) error->clear();
+    if (error)
+      error->clear();
     return false;
   }
-  [[nodiscard]] bool allows_hop_to(const Tsi& downstream,
-                                   DirectiveId out_directive,
-                                   DirectiveId in_directive) const noexcept override {
+  [[nodiscard]] bool
+  allows_hop_to(const Tsi &downstream, DirectiveId out_directive,
+                DirectiveId in_directive) const noexcept override {
     (void)out_directive;
     (void)in_directive;
     const TsiDomain d = downstream.domain();
-    return d == TsiDomain::Wikimyei || d == TsiDomain::Sink || d == TsiDomain::Probe;
+    return d == TsiDomain::Wikimyei || d == TsiDomain::Sink ||
+           d == TsiDomain::Probe;
   }
-  [[nodiscard]] bool allows_hop_from(const Tsi& upstream,
-                                     DirectiveId out_directive,
-                                     DirectiveId in_directive) const noexcept override {
+  [[nodiscard]] bool
+  allows_hop_from(const Tsi &upstream, DirectiveId out_directive,
+                  DirectiveId in_directive) const noexcept override {
     (void)out_directive;
     (void)in_directive;
     const TsiDomain u = upstream.domain();

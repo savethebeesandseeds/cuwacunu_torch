@@ -102,6 +102,17 @@ finalizes the in-place hero/tool outputs after linking. The direct `src/main`
 entrypoint is an advanced/internal path when you intentionally want the main
 tree itself.
 
+## Formal Algorithm Document
+The formal LaTeX manuscript lives under [`doc/`](/cuwacunu/doc).  Build the
+publishable PDF with:
+
+```bash
+make doc
+```
+
+The secure build wrapper uses `pdflatex` with shell escape disabled and writes
+the artifact to `doc/publish/cuwacunu-algorithm.pdf`.
+
 ## HERO MCP Preflight (Codex)
 
 Build MCP binaries:

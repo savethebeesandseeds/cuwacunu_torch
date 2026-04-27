@@ -88,14 +88,14 @@ bool load_human_defaults(const std::filesystem::path &hero_dsl_path,
     std::string bootstrap_error{};
     if (!persist_bootstrap_operator_id(hero_dsl_path, bootstrapped_operator_id,
                                        &bootstrap_error)) {
-      std::cerr << "[hero_human_mcp][warning] failed to persist bootstrapped "
-                   "operator_id to "
-                << hero_dsl_path.string() << ": " << bootstrap_error
-                << std::endl;
+      log_warn("[hero_human_mcp] failed to persist bootstrapped "
+               "operator_id to %s: %s",
+               hero_dsl_path.string().c_str(), bootstrap_error.c_str());
     } else {
-      std::cerr << "[hero_human_mcp] auto-initialized operator_id to "
-                << bootstrapped_operator_id << " in " << hero_dsl_path.string()
-                << std::endl;
+      log_warn("[hero_human_mcp] auto-initialized missing operator_id to %s "
+               "in %s",
+               bootstrapped_operator_id.c_str(),
+               hero_dsl_path.string().c_str());
     }
     out->operator_id = bootstrapped_operator_id;
   }
@@ -447,11 +447,10 @@ bool run_interactive_operator_console(app_context_t *app, std::string *error) {
   if (error)
     error->clear();
   if (!terminal_supports_human_ncurses_ui()) {
-    std::cerr << "[hero_human_mcp] terminal does not support ncurses UI"
-                 " cleanly (TERM="
-              << trim_ascii(
-                     std::getenv("TERM") == nullptr ? "" : std::getenv("TERM"))
-              << "); using line prompt operator console instead.\n";
+    log_warn("[hero_human_mcp] ncurses UI unavailable for TERM=%s; falling "
+             "back to line prompt operator console.",
+             trim_ascii(std::getenv("TERM") == nullptr ? "" : std::getenv("TERM"))
+                 .c_str());
     return run_line_prompt_operator_console(app, error);
   }
   std::string ncurses_error{};

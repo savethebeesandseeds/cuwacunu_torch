@@ -18,8 +18,8 @@
 <data_analytics_mask_epsilon_assignment> ::= [<whitespace>] "MASK_EPSILON" [<whitespace>] "=" [<whitespace>] <policy_float> [<whitespace>] ";" <line_end> ;
 <data_analytics_standardize_epsilon_assignment> ::= [<whitespace>] "STANDARDIZE_EPSILON" [<whitespace>] "=" [<whitespace>] <policy_float> [<whitespace>] ";" <line_end> ;
 <instrument_table>       ::= <table_top_line> <instrument_header_line> <table_divider_line> {<instrument_form>} <table_bottom_line> ;
-<instrument_header_line> ::= "|" <whitespace> "instrument" <whitespace> "|" <whitespace> "interval" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "source" <whitespace> "|" <break_block> ;
-<instrument_form>        ::= "|" <whitespace> <instrument> <whitespace> "|" <whitespace> <interval> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <source> "|" <break_block> ;
+<instrument_header_line> ::= "|" <whitespace> "instrument" <whitespace> "|" <whitespace> "interval" <whitespace> "|" <whitespace> "record_type" <whitespace> "|" <whitespace> "market_type" <whitespace> "|" <whitespace> "venue" <whitespace> "|" <whitespace> "base_asset" <whitespace> "|" <whitespace> "quote_asset" <whitespace> "|" <whitespace> "source" <whitespace> "|" <break_block> ;
+<instrument_form>        ::= "|" <whitespace> <instrument> <whitespace> "|" <whitespace> <interval> <whitespace> "|" <whitespace> <record_type> <whitespace> "|" <whitespace> <market_type> <whitespace> "|" <whitespace> <venue> <whitespace> "|" <whitespace> <base_asset> <whitespace> "|" <whitespace> <quote_asset> <whitespace> "|" <whitespace> <source> "|" <break_block> ;
 <table_top_line>         ::= "/" {<frame_char>} "\\" <line_end> ;
 <table_divider_line>     ::= "|" {<frame_char>} "|" <line_end> ;
 <table_bottom_line>      ::= "\\" {<frame_char>} "/" [<line_end>] ;
@@ -34,8 +34,14 @@
 <character>              ::= <whitespace> | <letter> | <newline> | <number> | <special> | <super_special> ;
 <literal>                ::= <whitespace> | <letter> | <number> | <special> ;
 <whitespace>             ::= {<empty>} ;
-<instrument>             ::= {<letter>} ;
+<instrument>             ::= <family_value> ;
 <record_type>            ::= "kline" | "trade" | "basic" ;
+<market_type>            ::= <family_value> ;
+<venue>                  ::= <family_value> ;
+<base_asset>             ::= <family_value> ;
+<quote_asset>            ::= <family_value> ;
+<family_value>           ::= <id_char> {<id_char>} ;
+<id_char>                ::= <letter> | <digit> | "_" | "." | "-" ;
 <interval>               ::= "constant" | "sine" | "triangular" | "1s" | "1m" | "3m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "6h" | "8h" | "12h" | "1d" | "3d" | "1w" | "1M" ;
 <special>                ::= "." | "," | ":" | ";" | "-" | "_" | "\\" | "/" | "(" | ")" | "[" | "]" | "=" | ">" | "<" | "!" | "?" | "+" ;
 <super_special>          ::= "|" ;

@@ -1,6 +1,5 @@
 #include "camahjucunu/dsl/iitepi_campaign/iitepi_campaign.h"
 
-#include <charconv>
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
@@ -19,46 +18,20 @@ struct token_t {
 };
 
 [[nodiscard]] bool is_valid_import_id(std::string_view value) {
-  if (value.empty()) return false;
+  if (value.empty())
+    return false;
   for (const char ch : value) {
     const bool alpha_num = (ch >= 'a' && ch <= 'z') ||
-                           (ch >= 'A' && ch <= 'Z') ||
-                           (ch >= '0' && ch <= '9');
+                           (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
     const bool symbol = ch == '_' || ch == '.' || ch == '-';
-    if (!(alpha_num || symbol)) return false;
-  }
-  return true;
-}
-
-[[nodiscard]] bool parse_u64_token(std::string_view value,
-                                   std::uint64_t* out) {
-  if (!out) return false;
-  const std::string text(value);
-  if (text.empty()) return false;
-  std::uint64_t parsed = 0;
-  const char* begin = text.data();
-  const char* end = begin + text.size();
-  const auto result = std::from_chars(begin, end, parsed, 10);
-  if (result.ec != std::errc{} || result.ptr != end) return false;
-  *out = parsed;
-  return true;
-}
-
-[[nodiscard]] bool is_hex_hash_name(std::string_view value) {
-  if (value.size() < 3) return false;
-  if (value[0] != '0' || (value[1] != 'x' && value[1] != 'X')) return false;
-  for (std::size_t i = 2; i < value.size(); ++i) {
-    const char c = value[i];
-    const bool digit = (c >= '0' && c <= '9');
-    const bool lower = (c >= 'a' && c <= 'f');
-    const bool upper = (c >= 'A' && c <= 'F');
-    if (!(digit || lower || upper)) return false;
+    if (!(alpha_num || symbol))
+      return false;
   }
   return true;
 }
 
 class lexer_t {
- public:
+public:
   explicit lexer_t(std::string src) : src_(std::move(src)) {}
 
   token_t peek() {
@@ -77,7 +50,7 @@ class lexer_t {
     return next_impl();
   }
 
- private:
+private:
   static bool is_symbol_char(char c) {
     return c == '{' || c == '}' || c == '=' || c == ';' || c == ',';
   }
@@ -89,7 +62,8 @@ class lexer_t {
   }
 
   void advance() {
-    if (eof()) return;
+    if (eof())
+      return;
     if (src_[pos_] == '\n') {
       ++line_;
       col_ = 1;
@@ -100,7 +74,8 @@ class lexer_t {
   }
 
   void skip_line_comment() {
-    while (!eof() && curr() != '\n') advance();
+    while (!eof() && curr() != '\n')
+      advance();
   }
 
   void skip_block_comment() {
@@ -118,7 +93,8 @@ class lexer_t {
 
   void skip_ignorable() {
     for (;;) {
-      if (eof()) return;
+      if (eof())
+        return;
       if (std::isspace(static_cast<unsigned char>(curr()))) {
         advance();
         continue;
@@ -152,27 +128,28 @@ class lexer_t {
       }
       if (c == '\\') {
         advance();
-        if (eof()) break;
+        if (eof())
+          break;
         const char esc = curr();
         switch (esc) {
-          case 'n':
-            out.push_back('\n');
-            break;
-          case 't':
-            out.push_back('\t');
-            break;
-          case 'r':
-            out.push_back('\r');
-            break;
-          case '\\':
-            out.push_back('\\');
-            break;
-          case '"':
-            out.push_back('"');
-            break;
-          default:
-            out.push_back(esc);
-            break;
+        case 'n':
+          out.push_back('\n');
+          break;
+        case 't':
+          out.push_back('\t');
+          break;
+        case 'r':
+          out.push_back('\r');
+          break;
+        case '\\':
+          out.push_back('\\');
+          break;
+        case '"':
+          out.push_back('"');
+          break;
+        default:
+          out.push_back(esc);
+          break;
         }
         advance();
         continue;
@@ -189,10 +166,14 @@ class lexer_t {
     std::string out;
     while (!eof()) {
       const char c = curr();
-      if (std::isspace(static_cast<unsigned char>(c)) || is_symbol_char(c)) break;
-      if (c == '/' && next_char() == '*') break;
-      if (c == '/' && next_char() == '/') break;
-      if (c == '#') break;
+      if (std::isspace(static_cast<unsigned char>(c)) || is_symbol_char(c))
+        break;
+      if (c == '/' && next_char() == '*')
+        break;
+      if (c == '/' && next_char() == '/')
+        break;
+      if (c == '#')
+        break;
       out.push_back(c);
       advance();
     }
@@ -201,7 +182,8 @@ class lexer_t {
 
   token_t next_impl() {
     skip_ignorable();
-    if (eof()) return token_t{token_t::kind_e::End, "", line_, col_};
+    if (eof())
+      return token_t{token_t::kind_e::End, "", line_, col_};
 
     const std::size_t line = line_;
     const std::size_t col = col_;
@@ -212,7 +194,8 @@ class lexer_t {
       advance();
       return token_t{token_t::kind_e::Symbol, std::move(s), line, col};
     }
-    if (c == '"') return parse_string_token();
+    if (c == '"')
+      return parse_string_token();
     return parse_identifier_token();
   }
 
@@ -225,7 +208,7 @@ class lexer_t {
 };
 
 class parser_t {
- public:
+public:
   explicit parser_t(std::string input) : lex_(std::move(input)) {}
 
   cuwacunu::camahjucunu::iitepi_campaign_instruction_t parse() {
@@ -243,9 +226,9 @@ class parser_t {
     while (!peek_is_symbol('}')) {
       const token_t head = peek();
       if (head.kind != token_t::kind_e::Identifier) {
-        throw std::runtime_error(
-            "expected CAMPAIGN declaration at " +
-            std::to_string(head.line) + ":" + std::to_string(head.col));
+        throw std::runtime_error("expected CAMPAIGN declaration at " +
+                                 std::to_string(head.line) + ":" +
+                                 std::to_string(head.col));
       }
       if (head.text == "IMPORT_CONTRACT") {
         auto contract = parse_contract_import_decl();
@@ -303,12 +286,12 @@ class parser_t {
     }
 
     if (out.contracts.empty()) {
-      throw std::runtime_error(
-          "iitepi campaign instruction requires at least one IMPORT_CONTRACT ... AS ...");
+      throw std::runtime_error("iitepi campaign instruction requires at least "
+                               "one IMPORT_CONTRACT ... AS ...");
     }
     if (out.waves.empty()) {
-      throw std::runtime_error(
-          "iitepi campaign instruction requires at least one FROM ... IMPORT_WAVE");
+      throw std::runtime_error("iitepi campaign instruction requires at least "
+                               "one FROM ... IMPORT_WAVE");
     }
     if (out.binds.empty()) {
       throw std::runtime_error(
@@ -319,19 +302,19 @@ class parser_t {
           "iitepi campaign instruction requires at least one RUN");
     }
 
-    for (const auto& bind : out.binds) {
+    for (const auto &bind : out.binds) {
       if (contract_ids.find(bind.contract_ref) == contract_ids.end()) {
-        throw std::runtime_error("BIND '" + bind.id +
-                                 "' references unknown CONTRACT id: " +
-                                 bind.contract_ref);
+        throw std::runtime_error(
+            "BIND '" + bind.id +
+            "' references unknown CONTRACT id: " + bind.contract_ref);
       }
       if (wave_import_ids.find(bind.wave_ref) == wave_import_ids.end()) {
-        throw std::runtime_error("BIND '" + bind.id +
-                                 "' references unknown WAVE id: " +
-                                 bind.wave_ref);
+        throw std::runtime_error(
+            "BIND '" + bind.id +
+            "' references unknown WAVE id: " + bind.wave_ref);
       }
     }
-    for (const auto& run : out.runs) {
+    for (const auto &run : out.runs) {
       if (bind_ids.find(run.bind_ref) == bind_ids.end()) {
         throw std::runtime_error("RUN references unknown BIND id: " +
                                  run.bind_ref);
@@ -341,7 +324,7 @@ class parser_t {
     return out;
   }
 
- private:
+private:
   token_t peek() { return lex_.peek(); }
   token_t next() { return lex_.next(); }
 
@@ -357,8 +340,8 @@ class parser_t {
     const token_t t = next();
     if (!(t.kind == token_t::kind_e::Symbol && t.text.size() == 1 &&
           t.text[0] == c)) {
-      throw std::runtime_error("expected symbol '" + std::string(1, c) + "' at " +
-                               std::to_string(t.line) + ":" +
+      throw std::runtime_error("expected symbol '" + std::string(1, c) +
+                               "' at " + std::to_string(t.line) + ":" +
                                std::to_string(t.col));
     }
   }
@@ -373,12 +356,13 @@ class parser_t {
     return t;
   }
 
-  void expect_identifier(const char* expected) {
+  void expect_identifier(const char *expected) {
     const token_t t = expect_identifier_any();
     if (t.text != expected) {
       throw std::runtime_error("expected '" + std::string(expected) + "' at " +
                                std::to_string(t.line) + ":" +
-                               std::to_string(t.col) + ", got '" + t.text + "'");
+                               std::to_string(t.col) + ", got '" + t.text +
+                               "'");
     }
   }
 
@@ -393,76 +377,21 @@ class parser_t {
     return t.text;
   }
 
-  std::string parse_import_id_value(const char* import_kind) {
+  std::string parse_import_id_value(const char *import_kind) {
     const std::string value = parse_scalar_value();
     if (!is_valid_import_id(value)) {
       throw std::runtime_error(std::string(import_kind) +
-                               " import id must use [A-Za-z0-9_.-]+: " +
-                               value);
+                               " import id must use [A-Za-z0-9_.-]+: " + value);
     }
     return value;
   }
 
-  std::string parse_assignment_value(const char* key) {
+  std::string parse_assignment_value(const char *key) {
     expect_identifier(key);
     expect_symbol('=');
     std::string value = parse_scalar_value();
     expect_symbol(';');
     return value;
-  }
-
-  cuwacunu::camahjucunu::iitepi_campaign_mount_decl_t
-  parse_mount_decl() {
-    using cuwacunu::camahjucunu::iitepi_campaign_mount_decl_t;
-    using cuwacunu::camahjucunu::iitepi_campaign_mount_selector_kind_e;
-
-    iitepi_campaign_mount_decl_t out{};
-    out.wave_binding_id = expect_identifier_any().text;
-    expect_symbol('=');
-    const token_t selector = expect_identifier_any();
-    if (selector.text == "EXACT") {
-      out.selector_kind = iitepi_campaign_mount_selector_kind_e::Exact;
-      out.exact_hashimyei = parse_scalar_value();
-      if (!is_hex_hash_name(out.exact_hashimyei)) {
-        throw std::runtime_error("MOUNT '" + out.wave_binding_id +
-                                 "' EXACT requires 0x<hex> hashimyei, got: " +
-                                 out.exact_hashimyei);
-      }
-    } else if (selector.text == "RANK") {
-      out.selector_kind = iitepi_campaign_mount_selector_kind_e::Rank;
-      const std::string rank_text = parse_scalar_value();
-      if (!parse_u64_token(rank_text, &out.rank)) {
-        throw std::runtime_error("MOUNT '" + out.wave_binding_id +
-                                 "' RANK requires unsigned integer, got: " +
-                                 rank_text);
-      }
-    } else {
-      throw std::runtime_error("MOUNT '" + out.wave_binding_id +
-                               "' unknown selector: " + selector.text);
-    }
-    expect_symbol(';');
-    return out;
-  }
-
-  void parse_mount_block(
-      cuwacunu::camahjucunu::iitepi_campaign_bind_decl_t* out_bind) {
-    if (!out_bind) {
-      throw std::runtime_error("missing BIND destination for MOUNT block");
-    }
-    expect_identifier("MOUNT");
-    expect_symbol('{');
-    std::unordered_set<std::string> mounted_aliases{};
-    while (!peek_is_symbol('}')) {
-      const auto mount = parse_mount_decl();
-      if (!mounted_aliases.insert(mount.wave_binding_id).second) {
-        throw std::runtime_error("BIND '" + out_bind->id +
-                                 "' duplicate MOUNT target: " +
-                                 mount.wave_binding_id);
-      }
-      out_bind->mounts.push_back(mount);
-    }
-    expect_symbol('}');
-    expect_symbol(';');
   }
 
   cuwacunu::camahjucunu::iitepi_campaign_contract_decl_t
@@ -513,7 +442,6 @@ class parser_t {
 
     bool has_contract = false;
     bool has_wave = false;
-    bool has_mount = false;
     while (!peek_is_symbol('}')) {
       const token_t key = peek();
       if (key.kind != token_t::kind_e::Identifier) {
@@ -531,15 +459,6 @@ class parser_t {
         has_wave = true;
         continue;
       }
-      if (key.text == "MOUNT") {
-        if (has_mount) {
-          throw std::runtime_error("BIND '" + out.id +
-                                   "' duplicate MOUNT block");
-        }
-        parse_mount_block(&out);
-        has_mount = true;
-        continue;
-      }
       if (cuwacunu::camahjucunu::is_wave_contract_binding_variable_name(
               key.text)) {
         std::string variable_error{};
@@ -550,8 +469,8 @@ class parser_t {
         }
         continue;
       }
-      throw std::runtime_error("unknown BIND key for '" + out.id + "': " +
-                               key.text);
+      throw std::runtime_error("unknown BIND key for '" + out.id +
+                               "': " + key.text);
     }
     expect_symbol('}');
     expect_symbol(';');
@@ -580,7 +499,7 @@ class parser_t {
   lexer_t lex_;
 };
 
-}  // namespace
+} // namespace
 
 namespace cuwacunu {
 namespace camahjucunu {
@@ -589,13 +508,14 @@ namespace {
 
 [[nodiscard]] bool has_non_ws_ascii_(std::string_view text) {
   for (const char ch : text) {
-    if (!std::isspace(static_cast<unsigned char>(ch))) return true;
+    if (!std::isspace(static_cast<unsigned char>(ch)))
+      return true;
   }
   return false;
 }
 
 void validate_iitepi_campaign_grammar_text_or_throw_(
-    const std::string& grammar_text) {
+    const std::string &grammar_text) {
   if (!has_non_ws_ascii_(grammar_text)) {
     throw std::runtime_error("iitepi campaign grammar text is empty");
   }
@@ -613,9 +533,6 @@ void validate_iitepi_campaign_grammar_text_or_throw_(
       "IMPORT_WAVE",
       "MARSHAL",
       "BIND",
-      "MOUNT",
-      "EXACT",
-      "RANK",
       "RUN",
       "CONTRACT",
       "WAVE",
@@ -629,7 +546,7 @@ void validate_iitepi_campaign_grammar_text_or_throw_(
   }
 }
 
-}  // namespace
+} // namespace
 
 std::string iitepi_campaign_instruction_t::str() const {
   std::ostringstream oss;
@@ -640,35 +557,17 @@ std::string iitepi_campaign_instruction_t::str() const {
     oss << "  [marshal] objective_file=" << marshal_objective_file << "\n";
   }
   for (std::size_t i = 0; i < runs.size(); ++i) {
-    const auto& run = runs[i];
+    const auto &run = runs[i];
     oss << "  [run:" << i << "] bind_ref=" << run.bind_ref << "\n";
   }
   for (std::size_t i = 0; i < binds.size(); ++i) {
-    const auto& bind = binds[i];
+    const auto &bind = binds[i];
     oss << "  [bind:" << i << "] id=" << bind.id
-        << " contract=" << bind.contract_ref
-        << " wave=" << bind.wave_ref
-        << " variables=" << bind.variables.size()
-        << " mounts=" << bind.mounts.size() << "\n";
+        << " contract=" << bind.contract_ref << " wave=" << bind.wave_ref
+        << " variables=" << bind.variables.size() << "\n";
     for (std::size_t j = 0; j < bind.variables.size(); ++j) {
       oss << "    [var:" << j << "] " << bind.variables[j].name << "="
           << bind.variables[j].value << "\n";
-    }
-    for (std::size_t j = 0; j < bind.mounts.size(); ++j) {
-      const auto& mount = bind.mounts[j];
-      oss << "    [mount:" << j << "] alias=" << mount.wave_binding_id
-          << " selector="
-          << (mount.selector_kind ==
-                      iitepi_campaign_mount_selector_kind_e::Exact
-                  ? "EXACT"
-                  : "RANK");
-      if (mount.selector_kind ==
-          iitepi_campaign_mount_selector_kind_e::Exact) {
-        oss << " value=" << mount.exact_hashimyei;
-      } else {
-        oss << " value=" << mount.rank;
-      }
-      oss << "\n";
     }
   }
   return oss.str();
@@ -681,21 +580,21 @@ iitepiCampaignPipeline::iitepiCampaignPipeline(std::string grammar_text)
   validate_iitepi_campaign_grammar_text_or_throw_(grammar_text_);
 }
 
-iitepi_campaign_instruction_t iitepiCampaignPipeline::decode(
-    std::string instruction) {
+iitepi_campaign_instruction_t
+iitepiCampaignPipeline::decode(std::string instruction) {
   std::lock_guard<std::mutex> lk(current_mutex_);
   parser_t parser(std::move(instruction));
   return parser.parse();
 }
 
-iitepi_campaign_instruction_t decode_iitepi_campaign_from_dsl(
-    std::string grammar_text,
-    std::string instruction_text) {
+iitepi_campaign_instruction_t
+decode_iitepi_campaign_from_dsl(std::string grammar_text,
+                                std::string instruction_text) {
   iitepiCampaignPipeline pipeline(std::move(grammar_text));
   return pipeline.decode(std::move(instruction_text));
 }
 
-}  // namespace dsl
+} // namespace dsl
 
-}  // namespace camahjucunu
-}  // namespace cuwacunu
+} // namespace camahjucunu
+} // namespace cuwacunu

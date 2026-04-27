@@ -3,7 +3,7 @@
   =================================================================
   Purpose:
     Ephemeral embedding-sequence analytics runtime knobs owned by
-    tsi.wikimyei.representation.vicreg.
+    tsi.wikimyei.representation.encoding.vicreg.
 
   Notes:
     - This config controls run-end embedding analytics sidecars emitted

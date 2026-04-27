@@ -2,7 +2,7 @@ MAN_SPEC_VERSION = 1
 
 [META]
 MAN_ID = jkimyei
-TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.representation.vicreg.jkimyei.dsl
+TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.jkimyei.dsl,src/config/instructions/defaults/default.tsi.wikimyei.inference.expected_value.mdn.jkimyei.dsl
 TARGET_BNF = src/config/bnf/jkimyei.bnf
 PRIMARY_DECODER = src/impl/camahjucunu/dsl/jkimyei_specs/jkimyei_specs.cpp
 PRIMARY_VALIDATORS = schema in src/include/jkimyei/specs/jkimyei_schema.def and builders in src/include/jkimyei/training_setup/*
@@ -24,7 +24,7 @@ type = enum
 required = true
 default = none
 range = unique across file
-allowed = tsi.wikimyei.representation.vicreg,tsi.wikimyei.inference.mdn
+allowed = tsi.wikimyei.representation.encoding.vicreg,tsi.wikimyei.inference.expected_value.mdn
 nuance = canonical type is explicit; duplicate canonical component declarations are rejected
 
 [FIELD COMPONENT.ACTIVE_PROFILE]
@@ -85,11 +85,11 @@ required = component-dependent
 default = none
 range = schema-defined key set
 allowed = schema_defined_per_component_type
-nuance = VICREG requires vicreg_use_swa,vicreg_detach_to_cpu,swa_start_iter,optimizer_threshold_reset; MDN requires target_dims,target_weights,grad_clip,optimizer_threshold_reset
+nuance = ENCODING_VICREG requires vicreg_use_swa,vicreg_detach_to_cpu,swa_start_iter,optimizer_threshold_reset; EXPECTED_VALUE_MDN requires target_weights,grad_clip,optimizer_threshold_reset and may carry optional report-only target_feature_indices
 
 [NOTE MDN_TARGET_WEIGHTS]
-scope = PROFILE.COMPONENT_PARAMS for tsi.wikimyei.inference.mdn
-text = MDN target_weights currently use pseudo-likelihood/tempered-score semantics: they are applied inside per-dimension component log-probabilities before mixture aggregation, not as ordinary post-NLL per-target objective weights.
+scope = PROFILE.COMPONENT_PARAMS for tsi.wikimyei.inference.expected_value.mdn
+text = MDN target_weights currently use pseudo-likelihood/tempered-score semantics: they are applied inside per-feature component log-probabilities before mixture aggregation, not as ordinary post-NLL per-target objective weights.
 
 [FIELD PROFILE.GRADIENT]
 key = GRADIENT keys
@@ -105,22 +105,22 @@ nuance = VICReg runtime enforces accumulate_steps>=1 and clip_norm>=0 and clip_v
 key = AUGMENTATIONS table/curve blocks
 scope = PROFILE
 type = typed family
-required = VICREG only
+required = ENCODING_VICREG only
 default = none
 range = at least one curve row if block present
 allowed = fields time_warp_curve,active,curve_param,noise_scale,smoothing_kernel_size,point_drop_prob,value_jitter_std,time_mask_band_frac,channel_dropout_prob,comment
 nuance = row-wise and transposed table forms are supported; legacy alias name is accepted for backward compatibility; time_warp_curve selects the base temporal warp and curve_param/noise_scale/smoothing_kernel_size shape the actual time dilation/compression; duplicate curve names are rejected
 
-[RULE FAMILY_REQUIREMENTS_VICREG]
-id = FAMILY_REQUIREMENTS_VICREG
-applies_to = COMPONENT type VICREG
+[RULE FAMILY_REQUIREMENTS_ENCODING_VICREG]
+id = FAMILY_REQUIREMENTS_ENCODING_VICREG
+applies_to = COMPONENT type ENCODING_VICREG
 severity = error
 when = missing required families or present forbidden families
 message = required: Optimizer,Scheduler,Loss,ComponentParams,Gradient,Augmentations; forbidden: Reproducibility,Numerics,Checkpoint,Metrics,DataRef
 
-[RULE FAMILY_REQUIREMENTS_MDN]
-id = FAMILY_REQUIREMENTS_MDN
-applies_to = COMPONENT type MDN
+[RULE FAMILY_REQUIREMENTS_EXPECTED_VALUE_MDN]
+id = FAMILY_REQUIREMENTS_EXPECTED_VALUE_MDN
+applies_to = COMPONENT type EXPECTED_VALUE_MDN
 severity = error
 when = missing required families or present forbidden families
 message = required: Optimizer,Scheduler,Loss,ComponentParams,Numerics,Gradient,Checkpoint,Metrics,DataRef; forbidden: Reproducibility,Augmentations

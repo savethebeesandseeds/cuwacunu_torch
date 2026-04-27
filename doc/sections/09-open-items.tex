@@ -1,0 +1,28 @@
+\section{Current Simplifications and Open Items}
+\label{sec:current-simplifications-and-open-items}
+
+This draft is intentionally modest.  The current active simplifications are:
+\begin{enumerate}
+  \item The input space is normalized kline data with the fixed feature recipe
+  in Section~\ref{sec:data} and Appendix~\ref{app:normalization}.
+  \item The MDN head uses diagonal component covariances on the selected future
+  coordinates.
+  \item The edge-to-node lift acts on one signed scalar future coordinate at a
+  time.
+  \item A full joint distribution over all active edges or nodes is not yet
+  standardized here.
+\end{enumerate}
+
+The main open items are:
+\begin{enumerate}
+  \item whether the active system should remain edge-local or learn a joint
+  second-order observer across many edges,
+  \item how risk observers are calibrated and selected for downstream action,
+  \item whether node recovery should be solved independently per horizon or
+  jointly across time,
+  \item when the diagonal MDN approximation should be upgraded to richer
+  covariance or copula structure.
+\end{enumerate}
+
+That is enough for a working notation draft.  It states the active path without
+pretending that the design questions have already been settled.

@@ -18,6 +18,15 @@ $(eval $(call BIN_ONEFILE, cuwacunu_campaign, cuwacunu_campaign.cpp, $(CUWACUNU_
 $(eval $(call BIN_ONEFILE, runtime_reset, runtime_reset.cpp, $(RUNTIME_RESET_LINK)))
 $(eval $(call BIN_ONEFILE, tsodao, tsodao.cpp, ))
 
+TSODAO_PARTS := \
+  $(HERE_PATH)/tsodao_private_output_config.cpp \
+  $(HERE_PATH)/tsodao_private_archive.cpp \
+  $(HERE_PATH)/tsodao_private_sync.cpp \
+  $(HERE_PATH)/tsodao_private_dispatch.cpp \
+  $(HERE_PATH)/tsodao_main.cpp
+
+$(BIN_OUT)/tsodao: $(TSODAO_PARTS)
+
 $(BIN_OUT)/secure_key_setup: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)
 $(BIN_OUT)/cuwacunu_campaign: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)
 $(BIN_OUT)/runtime_reset: INCLUDES_EXTRA += $(SSL_INCLUDE_PATHS)

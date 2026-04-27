@@ -42,8 +42,7 @@ void write_stdout_text(std::string_view text) {
   }
 }
 
-void write_stderr_text(std::string_view text) {
-  cuwacunu::hero::mcp_observability::mirror_stderr_text(text);
+void write_cli_error_text(std::string_view text) {
   const char *data = text.data();
   std::size_t remaining = text.size();
   while (remaining > 0) {
@@ -59,6 +58,13 @@ void write_stderr_text(std::string_view text) {
     data += wrote_size;
     remaining -= wrote_size;
   }
+}
+
+void write_stderr_text(std::string_view text) {
+  if (text.empty())
+    return;
+  cuwacunu::hero::mcp_observability::mirror_stderr_text(text);
+  log_err("%.*s", static_cast<int>(text.size()), text.data());
 }
 
 void print_help(const char *argv0) {
@@ -155,36 +161,36 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    write_stderr_text("Unknown argument: " + arg + "\n");
+    write_cli_error_text("Unknown argument: " + arg + "\n");
     print_help(argv[0]);
     return 2;
   }
 
   if (direct_tool_args_overridden && !direct_tool_mode) {
-    write_stderr_text("--args-json requires --tool\n");
+    write_cli_error_text("--args-json requires --tool\n");
     return 2;
   }
   if (list_tools && list_tools_json) {
-    write_stderr_text(
+    write_cli_error_text(
         "--list-tools and --list-tools-json are mutually exclusive\n");
     return 2;
   }
   if ((list_tools || list_tools_json) && direct_tool_mode) {
-    write_stderr_text("--list-tools/--list-tools-json cannot be combined with "
-                      "--tool\n");
+    write_cli_error_text("--list-tools/--list-tools-json cannot be combined "
+                         "with --tool\n");
     return 2;
   }
   if (direct_tool_mode) {
     direct_tool_name = trim_ascii(direct_tool_name);
     if (direct_tool_name.empty()) {
-      write_stderr_text("--tool requires a non-empty name\n");
+      write_cli_error_text("--tool requires a non-empty name\n");
       return 2;
     }
     direct_tool_args_json = trim_ascii(direct_tool_args_json);
     if (direct_tool_args_json.empty())
       direct_tool_args_json = "{}";
     if (direct_tool_args_json.front() != '{') {
-      write_stderr_text("--args-json must be a JSON object\n");
+      write_cli_error_text("--args-json must be a JSON object\n");
       return 2;
     }
   }
@@ -364,9 +370,9 @@ int main(int argc, char **argv) {
   }
 
   if (::isatty(STDIN_FILENO) != 0) {
-    write_stderr_text(std::string("[") + kServerName +
-                      "] no --tool provided and stdin is a terminal; "
-                      "server mode expects JSON-RPC input on stdin.\n");
+    write_cli_error_text(std::string("[") + kServerName +
+                         "] no --tool provided and stdin is a terminal; "
+                         "server mode expects JSON-RPC input on stdin.\n");
     print_help(argv[0]);
     return 2;
   }

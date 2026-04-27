@@ -8,8 +8,8 @@ PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
 PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/include/wikimyei/evaluation/transfer_evaluation_matrix/transfer_matrix_evaluation.h
 RUNTIME_NOTE = transfer_matrix_evaluation is a vicreg-owned run-end report engine with restored matrix-evaluation core (null/stats/raw/embedding/residual/mdn, prequential effort/skill/n90/selectivity) and no standalone probe hashimyei history state.
 RUNTIME_SECTION = WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION
-RUNTIME_ACTIVE_KEYS = check_temporal_order,validate_vicreg_out,report_shapes,summary_every_steps,mdn_target_dims,mdn_mixture_comps,mdn_features_hidden,mdn_residual_depth,optimizer_lr,optimizer_weight_decay,optimizer_beta1,optimizer_beta2,optimizer_eps,grad_clip,nll_eps,nll_sigma_min,nll_sigma_max,anchor_train_ratio,anchor_val_ratio,anchor_test_ratio,prequential_blocks,linear_ridge_lambda,gaussian_var_min,control_shuffle_block,control_shuffle_seed
-RUNTIME_DEPRECATED_KEYS = reset_hashimyei_on_start,target_dims
+RUNTIME_ACTIVE_KEYS = check_temporal_order,validate_vicreg_out,report_shapes,summary_every_steps,mdn_target_feature_indices,mdn_mixture_comps,mdn_features_hidden,mdn_residual_depth,optimizer_lr,optimizer_weight_decay,optimizer_beta1,optimizer_beta2,optimizer_eps,grad_clip,nll_eps,nll_sigma_min,nll_sigma_max,anchor_train_ratio,anchor_val_ratio,anchor_test_ratio,prequential_blocks,linear_ridge_lambda,gaussian_var_min,control_shuffle_block,control_shuffle_seed
+RUNTIME_DEPRECATED_KEYS = reset_hashimyei_on_start
 
 [FIELD check_temporal_order]
 key = check_temporal_order
@@ -51,12 +51,12 @@ range = >= 0 (clamped)
 allowed = integer
 nuance = controls cadence for step-time meta summaries while full transfer-matrix reports are emitted at run_end.
 
-[FIELD mdn_target_dims]
-key = mdn_target_dims
+[FIELD mdn_target_feature_indices]
+key = mdn_target_feature_indices
 scope = WIKIMYEI_EVALUATION_TRANSFER_MATRIX_EVALUATION
 type = arr[int]
 required = false
-default = all active observation feature dims
-range = each entry must satisfy 0 <= dim < D
+default = shipped default binds contract-owned __future_target_feature_indices; if omitted entirely, all active observation feature indices
+range = non-empty when resolved; each entry must be unique and satisfy 0 <= index < future feature width
 allowed = integer list
-nuance = optional probe-local override for the future feature indices evaluated by the transfer-matrix probe. When omitted, the evaluator derives the full active feature set from the observation profile. Contract-scoped __future_target_dims can coordinate this with EXPECTED_VALUE.target_dims without creating any runtime dependency. Deprecated alias: target_dims.
+nuance = optional probe-local override for the future feature indices evaluated by the transfer-matrix probe. The default instruction resolves from contract-scoped __future_target_feature_indices so the probe aligns with EXPECTED_VALUE.target_feature_indices. When omitted entirely, the evaluator derives the full active feature set from the observation profile.

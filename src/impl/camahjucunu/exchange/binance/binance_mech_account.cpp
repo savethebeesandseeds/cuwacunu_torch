@@ -17,7 +17,7 @@ binance_mech_account_t::binance_mech_account_t(
 }
 
 binance_mech_account_t::~binance_mech_account_t() {
-  log_info("Finalizing cuwacunu::camahjucunu::mech::binance::binance_mech_account_t \n");
+  log_dbg("Finalizing cuwacunu::camahjucunu::mech::binance::binance_mech_account_t \n");
   if(owns_session) { cuwacunu::piaabo::curl::WebsocketAPI::ws_finalize(session_id); }
 }
 

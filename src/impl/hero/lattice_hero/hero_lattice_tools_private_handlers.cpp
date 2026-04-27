@@ -1,53 +1,54 @@
-using lattice_tool_handler_t = bool (*)(app_context_t*, const std::string&,
-                                        std::string*, std::string*);
+using lattice_tool_handler_t = bool (*)(app_context_t *, const std::string &,
+                                        std::string *, std::string *);
 
 struct lattice_tool_descriptor_t {
-  const char* name;
-  const char* description;
-  const char* input_schema_json;
+  const char *name;
+  const char *description;
+  const char *input_schema_json;
   lattice_tool_handler_t handler;
 };
 
-[[nodiscard]] bool handle_tool_list_facts(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error);
-[[nodiscard]] bool handle_tool_get_fact(app_context_t* app,
-                                        const std::string& arguments_json,
-                                        std::string* out_structured,
-                                        std::string* out_error);
-[[nodiscard]] bool handle_tool_list_views(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error);
-[[nodiscard]] bool handle_tool_get_view(app_context_t* app,
-                                        const std::string& arguments_json,
-                                        std::string* out_structured,
-                                        std::string* out_error);
-[[nodiscard]] bool handle_tool_browser_tree(app_context_t* app,
-                                            const std::string& arguments_json,
-                                            std::string* out_structured,
-                                            std::string* out_error);
-[[nodiscard]] bool handle_tool_browser_detail(app_context_t* app,
-                                              const std::string& arguments_json,
-                                              std::string* out_structured,
-                                              std::string* out_error);
-[[nodiscard]] bool handle_tool_refresh(app_context_t* app,
-                                       const std::string& arguments_json,
-                                       std::string* out_structured,
-                                       std::string* out_error);
+[[nodiscard]] bool handle_tool_list_facts(app_context_t *app,
+                                          const std::string &arguments_json,
+                                          std::string *out_structured,
+                                          std::string *out_error);
+[[nodiscard]] bool handle_tool_get_fact(app_context_t *app,
+                                        const std::string &arguments_json,
+                                        std::string *out_structured,
+                                        std::string *out_error);
+[[nodiscard]] bool handle_tool_list_views(app_context_t *app,
+                                          const std::string &arguments_json,
+                                          std::string *out_structured,
+                                          std::string *out_error);
+[[nodiscard]] bool handle_tool_get_view(app_context_t *app,
+                                        const std::string &arguments_json,
+                                        std::string *out_structured,
+                                        std::string *out_error);
+[[nodiscard]] bool handle_tool_browser_tree(app_context_t *app,
+                                            const std::string &arguments_json,
+                                            std::string *out_structured,
+                                            std::string *out_error);
+[[nodiscard]] bool handle_tool_browser_detail(app_context_t *app,
+                                              const std::string &arguments_json,
+                                              std::string *out_structured,
+                                              std::string *out_error);
+[[nodiscard]] bool handle_tool_refresh(app_context_t *app,
+                                       const std::string &arguments_json,
+                                       std::string *out_structured,
+                                       std::string *out_error);
 
 constexpr lattice_tool_descriptor_t kLatticeTools[] = {
-#define HERO_LATTICE_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER) \
+#define HERO_LATTICE_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER)       \
   lattice_tool_descriptor_t{NAME, DESCRIPTION, INPUT_SCHEMA_JSON, HANDLER},
 #include "hero/lattice_hero/hero_lattice_tools.def"
 #undef HERO_LATTICE_TOOL
 };
 
-[[nodiscard]] const lattice_tool_descriptor_t* find_lattice_tool_descriptor(
-    std::string_view tool_name) {
-  for (const auto& descriptor : kLatticeTools) {
-    if (tool_name == descriptor.name) return &descriptor;
+[[nodiscard]] const lattice_tool_descriptor_t *
+find_lattice_tool_descriptor(std::string_view tool_name) {
+  for (const auto &descriptor : kLatticeTools) {
+    if (tool_name == descriptor.name)
+      return &descriptor;
   }
   return nullptr;
 }
@@ -58,11 +59,9 @@ constexpr lattice_tool_descriptor_t kLatticeTools[] = {
       << "\"protocolVersion\":" << json_quote(kProtocolVersion) << ","
       << "\"serverInfo\":{"
       << "\"name\":" << json_quote(kServerName) << ","
-      << "\"version\":" << json_quote(kServerVersion)
-      << "},"
+      << "\"version\":" << json_quote(kServerVersion) << "},"
       << "\"capabilities\":{\"tools\":{\"listChanged\":false}},"
-      << "\"instructions\":" << json_quote(kInitializeInstructions)
-      << "}";
+      << "\"instructions\":" << json_quote(kInitializeInstructions) << "}";
   return out.str();
 }
 
@@ -78,17 +77,18 @@ struct fact_bundle_summary_t {
 
 [[nodiscard]] bool build_fact_bundle_summaries(
     std::string_view canonical_path,
-    const std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>& rows,
-    std::vector<fact_bundle_summary_t>* out) {
-  if (!out) return false;
+    const std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> &rows,
+    std::vector<fact_bundle_summary_t> *out) {
+  if (!out)
+    return false;
   out->clear();
   std::map<std::uint64_t, fact_bundle_summary_t> by_wave{};
-  for (const auto& row : rows) {
+  for (const auto &row : rows) {
     std::uint64_t row_wave_cursor = 0;
     if (!fragment_wave_cursor(row, &row_wave_cursor)) {
       continue;
     }
-    auto& summary = by_wave[row_wave_cursor];
+    auto &summary = by_wave[row_wave_cursor];
     summary.canonical_path = normalize_source_hashimyei_cursor(canonical_path);
     summary.wave_cursor = row_wave_cursor;
     ++summary.fragment_count;
@@ -99,18 +99,20 @@ struct fact_bundle_summary_t {
       summary.semantic_taxa.insert(trim_ascii(row.semantic_taxon));
     }
     if (!row.source_runtime_cursor.empty()) {
-      summary.source_runtime_cursors.insert(trim_ascii(row.source_runtime_cursor));
+      summary.source_runtime_cursors.insert(
+          trim_ascii(row.source_runtime_cursor));
     }
     if (row.ts_ms > summary.latest_ts_ms) {
       summary.latest_ts_ms = row.ts_ms;
     }
   }
   out->reserve(by_wave.size());
-  for (const auto& [_, summary] : by_wave) {
+  for (const auto &[_, summary] : by_wave) {
     out->push_back(summary);
   }
-  std::sort(out->begin(), out->end(), [](const auto& a, const auto& b) {
-    if (a.latest_ts_ms != b.latest_ts_ms) return a.latest_ts_ms > b.latest_ts_ms;
+  std::sort(out->begin(), out->end(), [](const auto &a, const auto &b) {
+    if (a.latest_ts_ms != b.latest_ts_ms)
+      return a.latest_ts_ms > b.latest_ts_ms;
     return a.wave_cursor > b.wave_cursor;
   });
   return true;
@@ -126,25 +128,27 @@ struct fact_bundle_summary_t {
   return tool_name != "hero.lattice.refresh";
 }
 
-[[nodiscard]] std::vector<std::string> split_browser_segments(
-    std::string_view text) {
+[[nodiscard]] std::vector<std::string>
+split_browser_segments(std::string_view text) {
   std::vector<std::string> out{};
   std::size_t start = 0;
   while (start <= text.size()) {
     const std::size_t dot = text.find('.', start);
-    const std::string_view segment =
-        dot == std::string_view::npos ? text.substr(start)
-                                      : text.substr(start, dot - start);
-    if (!segment.empty()) out.emplace_back(segment);
-    if (dot == std::string_view::npos) break;
+    const std::string_view segment = dot == std::string_view::npos
+                                         ? text.substr(start)
+                                         : text.substr(start, dot - start);
+    if (!segment.empty())
+      out.emplace_back(segment);
+    if (dot == std::string_view::npos)
+      break;
     start = dot + 1;
   }
   return out;
 }
 
-[[nodiscard]] bool browser_has_hashimyei_suffix(std::string_view canonical_path,
-                                                std::string* out_hashimyei =
-                                                    nullptr) {
+[[nodiscard]] bool
+browser_has_hashimyei_suffix(std::string_view canonical_path,
+                             std::string *out_hashimyei = nullptr) {
   const std::size_t dot = canonical_path.rfind('.');
   if (dot == std::string_view::npos || dot + 1 >= canonical_path.size()) {
     return false;
@@ -154,65 +158,80 @@ struct fact_bundle_summary_t {
           std::string_view(canonical_path).substr(dot + 1), &normalized)) {
     return false;
   }
-  if (out_hashimyei) *out_hashimyei = std::move(normalized);
+  if (out_hashimyei)
+    *out_hashimyei = std::move(normalized);
   return true;
 }
 
-[[nodiscard]] std::string browser_project_path_for_canonical(
-    std::string_view canonical_path) {
-  const std::string normalized = normalize_source_hashimyei_cursor(canonical_path);
-  if (!browser_has_hashimyei_suffix(normalized)) return normalized;
+[[nodiscard]] std::string
+browser_project_path_for_canonical(std::string_view canonical_path) {
+  const std::string normalized =
+      normalize_source_hashimyei_cursor(canonical_path);
+  if (!browser_has_hashimyei_suffix(normalized))
+    return normalized;
   const std::size_t dot = normalized.rfind('.');
   return dot == std::string::npos ? normalized : normalized.substr(0, dot);
 }
 
-[[nodiscard]] std::string browser_family_from_canonical(
-    std::string_view canonical_path) {
+[[nodiscard]] std::string
+browser_family_from_canonical(std::string_view canonical_path) {
   const auto segments = split_browser_segments(canonical_path);
-  if (segments.size() >= 3 && segments[0] == "tsi" && segments[1] == "wikimyei") {
+  if (segments.size() >= 3 && segments[0] == "tsi" &&
+      segments[1] == "wikimyei") {
     return segments[2];
   }
-  if (segments.size() >= 2 && segments[0] == "tsi") return segments[1];
-  if (!segments.empty()) return segments.front();
+  if (segments.size() >= 2 && segments[0] == "tsi")
+    return segments[1];
+  if (!segments.empty())
+    return segments.front();
   return "unknown";
 }
 
-[[nodiscard]] std::string browser_display_name_for_member(
-    std::string_view canonical_path, std::string_view hashimyei) {
+[[nodiscard]] std::string
+browser_display_name_for_member(std::string_view canonical_path,
+                                std::string_view hashimyei) {
   const std::string normalized_hash = trim_ascii(hashimyei);
-  if (!normalized_hash.empty()) return normalized_hash;
-  const auto segments =
-      split_browser_segments(browser_project_path_for_canonical(canonical_path));
-  if (!segments.empty()) return segments.back();
+  if (!normalized_hash.empty())
+    return normalized_hash;
+  const auto segments = split_browser_segments(
+      browser_project_path_for_canonical(canonical_path));
+  if (!segments.empty())
+    return segments.back();
   return std::string(canonical_path);
 }
 
 [[nodiscard]] std::uint64_t browser_member_latest_ts_ms(
-    const cuwacunu::hero::hashimyei::component_state_t* component,
-    const cuwacunu::hero::wave::runtime_fact_summary_t* fact) {
+    const cuwacunu::hero::hashimyei::component_state_t *component,
+    const cuwacunu::hero::wave::runtime_fact_summary_t *fact) {
   std::uint64_t ts_ms = 0;
-  if (component) ts_ms = std::max(ts_ms, component->ts_ms);
-  if (fact) ts_ms = std::max(ts_ms, fact->latest_ts_ms);
+  if (component)
+    ts_ms = std::max(ts_ms, component->ts_ms);
+  if (fact)
+    ts_ms = std::max(ts_ms, fact->latest_ts_ms);
   return ts_ms;
 }
 
 [[nodiscard]] std::string browser_contract_hash_from_component(
-    const cuwacunu::hero::hashimyei::component_state_t& component) {
+    const cuwacunu::hero::hashimyei::component_state_t &component) {
   return cuwacunu::hero::hashimyei::contract_hash_from_identity(
       component.manifest.contract_identity);
 }
 
-[[nodiscard]] std::string browser_dock_hash_from_component(
-    const cuwacunu::hero::hashimyei::component_state_t& component) {
-  return trim_ascii(component.manifest.docking_signature_sha256_hex);
+[[nodiscard]] std::string
+browser_component_compatibility_sha256_hex_from_component(
+    const cuwacunu::hero::hashimyei::component_state_t &component) {
+  return trim_ascii(component.manifest.component_compatibility_sha256_hex);
 }
 
 void append_unique_browser_string(std::string_view value,
-                                  std::vector<std::string>* values) {
-  if (!values) return;
+                                  std::vector<std::string> *values) {
+  if (!values)
+    return;
   const std::string token = trim_ascii(value);
-  if (token.empty()) return;
-  if (std::find(values->begin(), values->end(), token) != values->end()) return;
+  if (token.empty())
+    return;
+  if (std::find(values->begin(), values->end(), token) != values->end())
+    return;
   values->push_back(token);
 }
 
@@ -223,7 +242,7 @@ struct browser_member_row_t {
   std::string display_name{};
   std::string hashimyei{};
   std::string contract_hash{};
-  std::string dock_hash{};
+  std::string component_compatibility_sha256_hex{};
   std::string lineage_state{"unknown"};
   bool has_component{false};
   cuwacunu::hero::hashimyei::component_state_t component{};
@@ -261,16 +280,20 @@ struct browser_family_row_t {
   std::vector<std::string> contract_hashes{};
 };
 
-[[nodiscard]] bool open_hashimyei_catalog_if_needed(app_context_t* app,
-                                                    std::string* out_error) {
-  if (out_error) out_error->clear();
+[[nodiscard]] bool open_hashimyei_catalog_if_needed(app_context_t *app,
+                                                    std::string *out_error) {
+  if (out_error)
+    out_error->clear();
   if (!app) {
-    if (out_error) *out_error = "app context is null";
+    if (out_error)
+      *out_error = "app context is null";
     return false;
   }
-  if (app->hashimyei_catalog.opened()) return true;
+  if (app->hashimyei_catalog.opened())
+    return true;
   if (app->hashimyei_catalog_path.empty()) {
-    if (out_error) *out_error = "hashimyei catalog path is empty";
+    if (out_error)
+      *out_error = "hashimyei catalog path is empty";
     return false;
   }
   cuwacunu::hero::hashimyei::hashimyei_catalog_store_t::options_t opts{};
@@ -279,17 +302,21 @@ struct browser_family_row_t {
   return app->hashimyei_catalog.open(opts, out_error);
 }
 
-[[nodiscard]] bool close_hashimyei_catalog_if_open(app_context_t* app,
-                                                   std::string* out_error) {
-  if (out_error) out_error->clear();
-  if (!app || !app->hashimyei_catalog.opened()) return true;
+[[nodiscard]] bool close_hashimyei_catalog_if_open(app_context_t *app,
+                                                   std::string *out_error) {
+  if (out_error)
+    out_error->clear();
+  if (!app || !app->hashimyei_catalog.opened())
+    return true;
   return app->hashimyei_catalog.close(out_error);
 }
 
-void finalize_browser_member_row(browser_member_row_t* member) {
-  if (!member) return;
+void finalize_browser_member_row(browser_member_row_t *member) {
+  if (!member)
+    return;
   if (member->project_path.empty()) {
-    member->project_path = browser_project_path_for_canonical(member->canonical_path);
+    member->project_path =
+        browser_project_path_for_canonical(member->canonical_path);
   }
   if (member->family.empty()) {
     member->family = browser_family_from_canonical(member->canonical_path);
@@ -301,8 +328,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
     }
   }
   if (member->display_name.empty()) {
-    member->display_name =
-        browser_display_name_for_member(member->canonical_path, member->hashimyei);
+    member->display_name = browser_display_name_for_member(
+        member->canonical_path, member->hashimyei);
   }
   if (member->has_component && member->lineage_state == "unknown" &&
       !member->component.manifest.lineage_state.empty()) {
@@ -313,14 +340,18 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 }
 
-[[nodiscard]] bool build_browser_tree_rows(
-    app_context_t* app, std::vector<browser_family_row_t>* out,
-    std::string* out_error) {
-  if (out_error) out_error->clear();
-  if (!app || !out) return false;
+[[nodiscard]] bool
+build_browser_tree_rows(app_context_t *app,
+                        std::vector<browser_family_row_t> *out,
+                        std::string *out_error) {
+  if (out_error)
+    out_error->clear();
+  if (!app || !out)
+    return false;
   out->clear();
 
-  if (!open_hashimyei_catalog_if_needed(app, out_error)) return false;
+  if (!open_hashimyei_catalog_if_needed(app, out_error))
+    return false;
 
   std::vector<cuwacunu::hero::hashimyei::component_state_t> components{};
   if (!app->hashimyei_catalog.list_component_heads(0, 0, true, &components,
@@ -329,18 +360,20 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 
   std::vector<cuwacunu::hero::wave::runtime_fact_summary_t> facts{};
-  if (!app->catalog.list_runtime_fact_summaries(0, 0, true, &facts, out_error)) {
+  if (!app->catalog.list_runtime_fact_summaries(0, 0, true, &facts,
+                                                out_error)) {
     return false;
   }
 
   std::unordered_map<std::string, browser_member_row_t> members_by_canonical{};
   members_by_canonical.reserve(components.size() + facts.size());
 
-  for (const auto& component : components) {
+  for (const auto &component : components) {
     const std::string canonical_path =
         normalize_source_hashimyei_cursor(component.manifest.canonical_path);
-    if (canonical_path.empty()) continue;
-    auto& member = members_by_canonical[canonical_path];
+    if (canonical_path.empty())
+      continue;
+    auto &member = members_by_canonical[canonical_path];
     member.canonical_path = canonical_path;
     member.has_component = true;
     member.component = component;
@@ -350,7 +383,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
     member.project_path = browser_project_path_for_canonical(canonical_path);
     member.hashimyei = component.manifest.hashimyei_identity.name;
     member.contract_hash = browser_contract_hash_from_component(component);
-    member.dock_hash = browser_dock_hash_from_component(component);
+    member.component_compatibility_sha256_hex =
+        browser_component_compatibility_sha256_hex_from_component(component);
     member.family_rank = component.family_rank;
     member.lineage_state = component.manifest.lineage_state.empty()
                                ? std::string("unknown")
@@ -358,59 +392,64 @@ void finalize_browser_member_row(browser_member_row_t* member) {
     finalize_browser_member_row(&member);
   }
 
-  for (const auto& fact : facts) {
-    if (fact.canonical_path.empty()) continue;
-    auto& member = members_by_canonical[fact.canonical_path];
+  for (const auto &fact : facts) {
+    if (fact.canonical_path.empty())
+      continue;
+    auto &member = members_by_canonical[fact.canonical_path];
     member.canonical_path = fact.canonical_path;
     member.has_fact = true;
     member.fact = fact;
     finalize_browser_member_row(&member);
   }
 
-  std::map<std::string, std::map<std::string, std::vector<browser_member_row_t>>>
+  std::map<std::string,
+           std::map<std::string, std::vector<browser_member_row_t>>>
       grouped{};
-  for (auto& [canonical_path, member] : members_by_canonical) {
+  for (auto &[canonical_path, member] : members_by_canonical) {
     (void)canonical_path;
     finalize_browser_member_row(&member);
     grouped[member.family][member.project_path].push_back(std::move(member));
   }
 
   out->reserve(grouped.size());
-  for (auto& [family_name, projects_map] : grouped) {
+  for (auto &[family_name, projects_map] : grouped) {
     browser_family_row_t family{};
     family.family = family_name;
-    for (auto& [project_path, members] : projects_map) {
-      std::sort(members.begin(), members.end(),
-                [](const browser_member_row_t& a, const browser_member_row_t& b) {
-                  if (a.family_rank.has_value() && b.family_rank.has_value() &&
-                      a.family_rank != b.family_rank) {
-                    return *a.family_rank < *b.family_rank;
-                  }
-                  if (a.family_rank.has_value() != b.family_rank.has_value()) {
-                    return a.family_rank.has_value();
-                  }
-                  const std::uint64_t a_ts = browser_member_latest_ts_ms(
-                      a.has_component ? &a.component : nullptr,
-                      a.has_fact ? &a.fact : nullptr);
-                  const std::uint64_t b_ts = browser_member_latest_ts_ms(
-                      b.has_component ? &b.component : nullptr,
-                      b.has_fact ? &b.fact : nullptr);
-                  if (a_ts != b_ts) return a_ts > b_ts;
-                  return a.display_name < b.display_name;
-                });
+    for (auto &[project_path, members] : projects_map) {
+      std::sort(
+          members.begin(), members.end(),
+          [](const browser_member_row_t &a, const browser_member_row_t &b) {
+            if (a.family_rank.has_value() && b.family_rank.has_value() &&
+                a.family_rank != b.family_rank) {
+              return *a.family_rank < *b.family_rank;
+            }
+            if (a.family_rank.has_value() != b.family_rank.has_value()) {
+              return a.family_rank.has_value();
+            }
+            const std::uint64_t a_ts = browser_member_latest_ts_ms(
+                a.has_component ? &a.component : nullptr,
+                a.has_fact ? &a.fact : nullptr);
+            const std::uint64_t b_ts = browser_member_latest_ts_ms(
+                b.has_component ? &b.component : nullptr,
+                b.has_fact ? &b.fact : nullptr);
+            if (a_ts != b_ts)
+              return a_ts > b_ts;
+            return a.display_name < b.display_name;
+          });
 
       browser_project_row_t project{};
       project.project_path = project_path;
       project.family = family_name;
       project.members = std::move(members);
-      for (const auto& member : project.members) {
+      for (const auto &member : project.members) {
         const std::uint64_t member_ts = browser_member_latest_ts_ms(
             member.has_component ? &member.component : nullptr,
             member.has_fact ? &member.fact : nullptr);
         project.latest_ts_ms = std::max(project.latest_ts_ms, member_ts);
         family.latest_ts_ms = std::max(family.latest_ts_ms, member_ts);
         ++family.member_count;
-        if (member.lineage_state == "active") ++family.active_member_count;
+        if (member.lineage_state == "active")
+          ++family.active_member_count;
         if (member.has_fact) {
           project.fragment_count += member.fact.fragment_count;
           family.fragment_count += member.fact.fragment_count;
@@ -424,24 +463,27 @@ void finalize_browser_member_row(browser_member_row_t* member) {
                     format_runtime_wave_cursor(wave_cursor),
                 &family.wave_cursors);
           }
-          for (const auto& value : member.fact.binding_ids) {
+          for (const auto &value : member.fact.binding_ids) {
             append_unique_browser_string(value, &project.binding_ids);
             append_unique_browser_string(value, &family.binding_ids);
           }
-          for (const auto& value : member.fact.semantic_taxa) {
+          for (const auto &value : member.fact.semantic_taxa) {
             append_unique_browser_string(value, &project.semantic_taxa);
             append_unique_browser_string(value, &family.semantic_taxa);
           }
-          for (const auto& value : member.fact.source_runtime_cursors) {
-            append_unique_browser_string(value, &project.source_runtime_cursors);
+          for (const auto &value : member.fact.source_runtime_cursors) {
+            append_unique_browser_string(value,
+                                         &project.source_runtime_cursors);
           }
-          for (const auto& value : member.fact.report_schemas) {
+          for (const auto &value : member.fact.report_schemas) {
             append_unique_browser_string(value, &project.report_schemas);
           }
         }
         if (!member.contract_hash.empty()) {
-          append_unique_browser_string(member.contract_hash, &project.contract_hashes);
-          append_unique_browser_string(member.contract_hash, &family.contract_hashes);
+          append_unique_browser_string(member.contract_hash,
+                                       &project.contract_hashes);
+          append_unique_browser_string(member.contract_hash,
+                                       &family.contract_hashes);
         }
       }
       project.available_context_count = project.wave_cursors.size();
@@ -456,13 +498,14 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       family.projects.push_back(std::move(project));
     }
 
-    std::sort(family.projects.begin(), family.projects.end(),
-              [](const browser_project_row_t& a, const browser_project_row_t& b) {
-                if (a.latest_ts_ms != b.latest_ts_ms) {
-                  return a.latest_ts_ms > b.latest_ts_ms;
-                }
-                return a.project_path < b.project_path;
-              });
+    std::sort(
+        family.projects.begin(), family.projects.end(),
+        [](const browser_project_row_t &a, const browser_project_row_t &b) {
+          if (a.latest_ts_ms != b.latest_ts_ms) {
+            return a.latest_ts_ms > b.latest_ts_ms;
+          }
+          return a.project_path < b.project_path;
+        });
     std::sort(family.wave_cursors.begin(), family.wave_cursors.end());
     std::sort(family.binding_ids.begin(), family.binding_ids.end());
     std::sort(family.semantic_taxa.begin(), family.semantic_taxa.end());
@@ -472,15 +515,16 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 
   std::sort(out->begin(), out->end(),
-            [](const browser_family_row_t& a, const browser_family_row_t& b) {
-              if (a.latest_ts_ms != b.latest_ts_ms) return a.latest_ts_ms > b.latest_ts_ms;
+            [](const browser_family_row_t &a, const browser_family_row_t &b) {
+              if (a.latest_ts_ms != b.latest_ts_ms)
+                return a.latest_ts_ms > b.latest_ts_ms;
               return a.family < b.family;
             });
   return true;
 }
 
-[[nodiscard]] std::string browser_member_summary_json(
-    const browser_member_row_t& member) {
+[[nodiscard]] std::string
+browser_member_summary_json(const browser_member_row_t &member) {
   std::ostringstream out;
   out << "{"
       << "\"canonical_path\":" << json_quote(member.canonical_path)
@@ -490,9 +534,12 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << ",\"hashimyei\":"
       << (member.hashimyei.empty() ? "null" : json_quote(member.hashimyei))
       << ",\"contract_hash\":"
-      << (member.contract_hash.empty() ? "null" : json_quote(member.contract_hash))
-      << ",\"dock_hash\":"
-      << (member.dock_hash.empty() ? "null" : json_quote(member.dock_hash))
+      << (member.contract_hash.empty() ? "null"
+                                       : json_quote(member.contract_hash))
+      << ",\"component_compatibility_sha256_hex\":"
+      << (member.component_compatibility_sha256_hex.empty()
+              ? "null"
+              : json_quote(member.component_compatibility_sha256_hex))
       << ",\"lineage_state\":" << json_quote(member.lineage_state)
       << ",\"has_component\":" << (member.has_component ? "true" : "false")
       << ",\"has_fact\":" << (member.has_fact ? "true" : "false")
@@ -510,8 +557,9 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << (member.has_fact ? member.fact.available_context_count : 0)
       << ",\"latest_wave_cursor\":";
   if (member.has_fact && member.fact.latest_wave_cursor != 0) {
-    out << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
-                          format_runtime_wave_cursor(member.fact.latest_wave_cursor));
+    out << json_quote(
+        cuwacunu::hero::wave::lattice_catalog_store_t::
+            format_runtime_wave_cursor(member.fact.latest_wave_cursor));
   } else {
     out << "null";
   }
@@ -519,8 +567,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   return out.str();
 }
 
-[[nodiscard]] std::string browser_project_tree_json(
-    const browser_project_row_t& project) {
+[[nodiscard]] std::string
+browser_project_tree_json(const browser_project_row_t &project) {
   std::ostringstream out;
   out << "{"
       << "\"project_path\":" << json_quote(project.project_path)
@@ -528,13 +576,12 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << ",\"member_count\":" << project.members.size()
       << ",\"active_member_count\":"
       << std::count_if(project.members.begin(), project.members.end(),
-                       [](const browser_member_row_t& member) {
+                       [](const browser_member_row_t &member) {
                          return member.lineage_state == "active";
                        })
       << ",\"fragment_count\":" << project.fragment_count
       << ",\"available_context_count\":" << project.available_context_count
-      << ",\"latest_ts_ms\":" << project.latest_ts_ms
-      << ",\"wave_cursors\":"
+      << ",\"latest_ts_ms\":" << project.latest_ts_ms << ",\"wave_cursors\":"
       << json_string_array_from_vector(project.wave_cursors)
       << ",\"binding_ids\":"
       << json_string_array_from_vector(project.binding_ids)
@@ -548,15 +595,16 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << json_string_array_from_vector(project.contract_hashes)
       << ",\"members\":[";
   for (std::size_t i = 0; i < project.members.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << browser_member_summary_json(project.members[i]);
   }
   out << "]}";
   return out.str();
 }
 
-[[nodiscard]] std::string browser_family_tree_json(
-    const browser_family_row_t& family) {
+[[nodiscard]] std::string
+browser_family_tree_json(const browser_family_row_t &family) {
   std::ostringstream out;
   out << "{"
       << "\"family\":" << json_quote(family.family)
@@ -564,8 +612,7 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << ",\"active_member_count\":" << family.active_member_count
       << ",\"fragment_count\":" << family.fragment_count
       << ",\"available_context_count\":" << family.available_context_count
-      << ",\"latest_ts_ms\":" << family.latest_ts_ms
-      << ",\"wave_cursors\":"
+      << ",\"latest_ts_ms\":" << family.latest_ts_ms << ",\"wave_cursors\":"
       << json_string_array_from_vector(family.wave_cursors)
       << ",\"binding_ids\":"
       << json_string_array_from_vector(family.binding_ids)
@@ -575,7 +622,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << json_string_array_from_vector(family.contract_hashes)
       << ",\"projects\":[";
   for (std::size_t i = 0; i < family.projects.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << browser_project_tree_json(family.projects[i]);
   }
   out << "]}";
@@ -583,18 +631,21 @@ void finalize_browser_member_row(browser_member_row_t* member) {
 }
 
 [[nodiscard]] std::string browser_recent_fragments_json(
-    const std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>& fragments) {
+    const std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+        &fragments) {
   std::ostringstream out;
   out << "[";
   for (std::size_t i = 0; i < fragments.size(); ++i) {
-    if (i != 0) out << ",";
-    const auto& fragment = fragments[i];
+    if (i != 0)
+      out << ",";
+    const auto &fragment = fragments[i];
     out << "{"
         << "\"report_fragment_id\":" << json_quote(fragment.report_fragment_id)
         << ",\"schema\":" << json_quote(fragment.schema)
         << ",\"semantic_taxon\":"
-        << (fragment.semantic_taxon.empty() ? "null"
-                                            : json_quote(fragment.semantic_taxon))
+        << (fragment.semantic_taxon.empty()
+                ? "null"
+                : json_quote(fragment.semantic_taxon))
         << ",\"wave_cursor\":";
     if (fragment.wave_cursor != 0) {
       out << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
@@ -608,15 +659,17 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   return out.str();
 }
 
-[[nodiscard]] bool handle_tool_list_facts(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
+[[nodiscard]] bool handle_tool_list_facts(app_context_t *app,
+                                          const std::string &arguments_json,
+                                          std::string *out_structured,
+                                          std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
   out_error->clear();
 
   std::string canonical_path{};
-  (void)extract_json_string_field(arguments_json, "canonical_path", &canonical_path);
+  (void)extract_json_string_field(arguments_json, "canonical_path",
+                                  &canonical_path);
   canonical_path = normalize_source_hashimyei_cursor(canonical_path);
 
   std::size_t limit = 20;
@@ -631,24 +684,27 @@ void finalize_browser_member_row(browser_member_row_t* member) {
 
   if (canonical_path.empty()) {
     std::vector<cuwacunu::hero::wave::runtime_fact_summary_t> facts{};
-    if (!app->catalog.list_runtime_fact_summaries(0, 0, true, &facts, out_error)) {
+    if (!app->catalog.list_runtime_fact_summaries(0, 0, true, &facts,
+                                                  out_error)) {
       return false;
     }
     total = facts.size();
     const std::size_t off = std::min(offset, facts.size());
     std::size_t count = limit;
-    if (count == 0) count = facts.size() - off;
+    if (count == 0)
+      count = facts.size() - off;
     count = std::min(count, facts.size() - off);
     for (std::size_t i = 0; i < count; ++i) {
-      const auto& fact = facts[off + i];
-      if (emitted != 0) facts_json << ",";
+      const auto &fact = facts[off + i];
+      if (emitted != 0)
+        facts_json << ",";
       ++emitted;
       facts_json << "{"
                  << "\"canonical_path\":" << json_quote(fact.canonical_path)
                  << ",\"latest_wave_cursor\":"
-                 << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
-                                   format_runtime_wave_cursor(
-                                       fact.latest_wave_cursor))
+                 << json_quote(
+                        cuwacunu::hero::wave::lattice_catalog_store_t::
+                            format_runtime_wave_cursor(fact.latest_wave_cursor))
                  << ",\"latest_ts_ms\":" << fact.latest_ts_ms
                  << ",\"binding_ids\":"
                  << json_string_array_from_vector(fact.binding_ids)
@@ -656,7 +712,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
                  << json_string_array_from_vector(fact.semantic_taxa)
                  << ",\"source_runtime_cursors\":"
                  << json_string_array_from_vector(fact.source_runtime_cursors)
-                 << ",\"available_context_count\":" << fact.available_context_count
+                 << ",\"available_context_count\":"
+                 << fact.available_context_count
                  << ",\"fragment_count\":" << fact.fragment_count << "}";
     }
   } else {
@@ -673,11 +730,13 @@ void finalize_browser_member_row(browser_member_row_t* member) {
     total = facts.size();
     const std::size_t off = std::min(offset, facts.size());
     std::size_t count = limit;
-    if (count == 0) count = facts.size() - off;
+    if (count == 0)
+      count = facts.size() - off;
     count = std::min(count, facts.size() - off);
     for (std::size_t i = 0; i < count; ++i) {
-      const auto& fact = facts[off + i];
-      if (emitted != 0) facts_json << ",";
+      const auto &fact = facts[off + i];
+      if (emitted != 0)
+        facts_json << ",";
       ++emitted;
       facts_json << "{"
                  << "\"canonical_path\":" << json_quote(fact.canonical_path)
@@ -699,18 +758,18 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   std::ostringstream out;
   out << "{\"canonical_path\":"
       << (canonical_path.empty() ? "null" : json_quote(canonical_path))
-      << ",\"count\":" << emitted
-      << ",\"total\":" << total
+      << ",\"count\":" << emitted << ",\"total\":" << total
       << ",\"facts\":" << facts_json.str() << "}";
   *out_structured = out.str();
   return true;
 }
 
-[[nodiscard]] bool handle_tool_get_fact(app_context_t* app,
-                                        const std::string& arguments_json,
-                                        std::string* out_structured,
-                                        std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
+[[nodiscard]] bool handle_tool_get_fact(app_context_t *app,
+                                        const std::string &arguments_json,
+                                        std::string *out_structured,
+                                        std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
   out_error->clear();
 
   std::string canonical_path{};
@@ -723,13 +782,12 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 
   std::uint64_t selected_wave_cursor = 0;
-  const bool use_wave_cursor =
-      extract_json_wave_cursor_field(arguments_json, "wave_cursor",
-                                    &selected_wave_cursor);
+  const bool use_wave_cursor = extract_json_wave_cursor_field(
+      arguments_json, "wave_cursor", &selected_wave_cursor);
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> rows{};
-  if (!app->catalog.list_runtime_report_fragments(canonical_path, "", 0, 0, true,
-                                                  &rows, out_error)) {
+  if (!app->catalog.list_runtime_report_fragments(canonical_path, "", 0, 0,
+                                                  true, &rows, out_error)) {
     return false;
   }
   if (rows.empty()) {
@@ -739,7 +797,7 @@ void finalize_browser_member_row(browser_member_row_t* member) {
 
   if (!use_wave_cursor) {
     bool found_latest = false;
-    for (const auto& row : rows) {
+    for (const auto &row : rows) {
       if (fragment_wave_cursor(row, &selected_wave_cursor)) {
         found_latest = true;
         break;
@@ -752,12 +810,13 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 
   std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> selected{};
-  for (const auto& row : rows) {
+  for (const auto &row : rows) {
     std::uint64_t row_wave_cursor = 0;
     if (!fragment_wave_cursor(row, &row_wave_cursor)) {
       continue;
     }
-    if (row_wave_cursor != selected_wave_cursor) continue;
+    if (row_wave_cursor != selected_wave_cursor)
+      continue;
     selected.push_back(row);
   }
   if (selected.empty()) {
@@ -765,12 +824,13 @@ void finalize_browser_member_row(browser_member_row_t* member) {
     return false;
   }
 
-  const std::string fact_text = build_joined_report_lls(canonical_path, selected);
+  const std::string fact_text =
+      build_joined_report_lls(canonical_path, selected);
   std::uint64_t latest_ts_ms = selected.front().ts_ms;
   std::set<std::string> binding_ids{};
   std::set<std::string> semantic_taxa{};
   std::set<std::string> source_runtime_cursors{};
-  for (const auto& row : selected) {
+  for (const auto &row : selected) {
     if (row.ts_ms > latest_ts_ms) {
       latest_ts_ms = row.ts_ms;
     }
@@ -787,7 +847,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
 
   std::ostringstream out;
   out << "{\"canonical_path\":" << json_quote(canonical_path)
-      << ",\"selection_mode\":" << json_quote(use_wave_cursor ? "historical" : "latest")
+      << ",\"selection_mode\":"
+      << json_quote(use_wave_cursor ? "historical" : "latest")
       << ",\"wave_cursor\":"
       << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
                         format_runtime_wave_cursor(selected_wave_cursor))
@@ -802,11 +863,12 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_list_views(app_context_t* app,
-                                          const std::string& arguments_json,
-                                          std::string* out_structured,
-                                          std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
+[[nodiscard]] bool handle_tool_list_views(app_context_t *app,
+                                          const std::string &arguments_json,
+                                          std::string *out_structured,
+                                          std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
   out_error->clear();
   (void)arguments_json;
 
@@ -818,7 +880,7 @@ void finalize_browser_member_row(browser_member_row_t* member) {
     return false;
   }
   if (!app->catalog.list_runtime_report_fragments(
-          "tsi.wikimyei.representation.vicreg",
+          "tsi.wikimyei.representation.encoding.vicreg",
           "piaabo.torch_compat.network_analytics.v5", 1, 0, true, &network_rows,
           out_error)) {
     return false;
@@ -836,50 +898,53 @@ void finalize_browser_member_row(browser_member_row_t* member) {
       << "},{"
       << "\"view_kind\":\"family_evaluation_report\""
       << ",\"preferred_selector\":\"canonical_path\""
-      << ",\"required_selectors\":[\"canonical_path\",\"dock_hash\"]"
+      << ",\"required_selectors\":[\"canonical_path\",\"component_"
+         "compatibility_sha256_hex\"]"
       << ",\"optional_selectors\":[\"wave_cursor\"]"
-      << ",\"ready\":" << (has_family_reports ? "true" : "false")
-      << "}]}";
+      << ",\"ready\":" << (has_family_reports ? "true" : "false") << "}]}";
   *out_structured = out.str();
   return true;
 }
 
-[[nodiscard]] bool handle_tool_get_view(app_context_t* app,
-                                        const std::string& arguments_json,
-                                        std::string* out_structured,
-                                        std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
+[[nodiscard]] bool handle_tool_get_view(app_context_t *app,
+                                        const std::string &arguments_json,
+                                        std::string *out_structured,
+                                        std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
   out_error->clear();
 
   std::string view_kind{};
   std::string canonical_path{};
   std::string contract_hash{};
-  std::string dock_hash{};
+  std::string component_compatibility_sha256_hex{};
   (void)extract_json_string_field(arguments_json, "view_kind", &view_kind);
   (void)extract_json_string_field(arguments_json, "canonical_path",
                                   &canonical_path);
   (void)extract_json_string_field(arguments_json, "contract_hash",
                                   &contract_hash);
-  (void)extract_json_string_field(arguments_json, "dock_hash", &dock_hash);
+  (void)extract_json_string_field(arguments_json,
+                                  "component_compatibility_sha256_hex",
+                                  &component_compatibility_sha256_hex);
   view_kind = trim_ascii(view_kind);
   canonical_path = normalize_source_hashimyei_cursor(canonical_path);
   contract_hash = trim_ascii(contract_hash);
-  dock_hash = trim_ascii(dock_hash);
+  component_compatibility_sha256_hex =
+      trim_ascii(component_compatibility_sha256_hex);
   if (view_kind.empty()) {
     *out_error = "get_view requires arguments.view_kind";
     return false;
   }
 
   std::uint64_t wave_cursor = 0;
-  const bool use_wave_cursor =
-      extract_json_wave_cursor_field(arguments_json, "wave_cursor",
-                                    &wave_cursor);
+  const bool use_wave_cursor = extract_json_wave_cursor_field(
+      arguments_json, "wave_cursor", &wave_cursor);
   std::string internal_intersection_cursor{};
   if (!canonical_path.empty() && use_wave_cursor) {
     internal_intersection_cursor =
         canonical_path + "|" +
-        cuwacunu::hero::wave::lattice_catalog_store_t::format_runtime_wave_cursor(
-            wave_cursor);
+        cuwacunu::hero::wave::lattice_catalog_store_t::
+            format_runtime_wave_cursor(wave_cursor);
   } else if (!canonical_path.empty() &&
              view_kind == "family_evaluation_report") {
     internal_intersection_cursor = canonical_path;
@@ -888,7 +953,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   cuwacunu::hero::wave::runtime_view_report_t view{};
   if (!app->catalog.get_runtime_view_lls(
           view_kind, internal_intersection_cursor, wave_cursor, use_wave_cursor,
-          contract_hash, dock_hash, &view, out_error)) {
+          contract_hash, component_compatibility_sha256_hex, &view,
+          out_error)) {
     return false;
   }
 
@@ -901,13 +967,14 @@ void finalize_browser_member_row(browser_member_row_t* member) {
               : json_quote(view.selector_hashimyei_cursor))
       << ",\"contract_hash\":"
       << (view.contract_hash.empty() ? "null" : json_quote(view.contract_hash))
-      << ",\"dock_hash\":"
-      << (view.dock_hash.empty() ? "null" : json_quote(view.dock_hash))
+      << ",\"component_compatibility_sha256_hex\":"
+      << (view.component_compatibility_sha256_hex.empty()
+              ? "null"
+              : json_quote(view.component_compatibility_sha256_hex))
       << ",\"wave_cursor\":"
       << (view.has_wave_cursor
-              ? json_quote(
-                    cuwacunu::hero::wave::lattice_catalog_store_t::
-                        format_runtime_wave_cursor(view.wave_cursor))
+              ? json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
+                               format_runtime_wave_cursor(view.wave_cursor))
               : "null")
       << ",\"match_count\":" << view.match_count
       << ",\"ambiguity_count\":" << view.ambiguity_count
@@ -916,20 +983,22 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_browser_tree(app_context_t* app,
-                                            const std::string& arguments_json,
-                                            std::string* out_structured,
-                                            std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
+[[nodiscard]] bool handle_tool_browser_tree(app_context_t *app,
+                                            const std::string &arguments_json,
+                                            std::string *out_structured,
+                                            std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
   out_error->clear();
   (void)arguments_json;
 
   std::vector<browser_family_row_t> families{};
-  if (!build_browser_tree_rows(app, &families, out_error)) return false;
+  if (!build_browser_tree_rows(app, &families, out_error))
+    return false;
 
   std::size_t project_count = 0;
   std::size_t member_count = 0;
-  for (const auto& family : families) {
+  for (const auto &family : families) {
     project_count += family.projects.size();
     member_count += family.member_count;
   }
@@ -937,10 +1006,10 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   std::ostringstream out;
   out << "{\"family_count\":" << families.size()
       << ",\"project_count\":" << project_count
-      << ",\"member_count\":" << member_count
-      << ",\"families\":[";
+      << ",\"member_count\":" << member_count << ",\"families\":[";
   for (std::size_t i = 0; i < families.size(); ++i) {
-    if (i != 0) out << ",";
+    if (i != 0)
+      out << ",";
     out << browser_family_tree_json(families[i]);
   }
   out << "]}";
@@ -948,11 +1017,12 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   return true;
 }
 
-[[nodiscard]] bool handle_tool_browser_detail(app_context_t* app,
-                                              const std::string& arguments_json,
-                                              std::string* out_structured,
-                                              std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
+[[nodiscard]] bool handle_tool_browser_detail(app_context_t *app,
+                                              const std::string &arguments_json,
+                                              std::string *out_structured,
+                                              std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
   out_error->clear();
 
   std::string kind{};
@@ -961,7 +1031,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   std::string canonical_path{};
   (void)extract_json_string_field(arguments_json, "kind", &kind);
   (void)extract_json_string_field(arguments_json, "family", &family_name);
-  (void)extract_json_string_field(arguments_json, "project_path", &project_path);
+  (void)extract_json_string_field(arguments_json, "project_path",
+                                  &project_path);
   (void)extract_json_string_field(arguments_json, "canonical_path",
                                   &canonical_path);
   kind = trim_ascii(kind);
@@ -974,14 +1045,16 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 
   std::vector<browser_family_row_t> families{};
-  if (!build_browser_tree_rows(app, &families, out_error)) return false;
+  if (!build_browser_tree_rows(app, &families, out_error))
+    return false;
 
   if (kind == "family") {
-    for (const auto& family : families) {
-      if (family.family != family_name) continue;
+    for (const auto &family : families) {
+      if (family.family != family_name)
+        continue;
       std::vector<std::string> project_paths{};
       project_paths.reserve(family.projects.size());
-      for (const auto& project : family.projects) {
+      for (const auto &project : family.projects) {
         project_paths.push_back(project.project_path);
       }
       std::ostringstream out;
@@ -992,8 +1065,7 @@ void finalize_browser_member_row(browser_member_row_t* member) {
           << ",\"active_member_count\":" << family.active_member_count
           << ",\"fragment_count\":" << family.fragment_count
           << ",\"available_context_count\":" << family.available_context_count
-          << ",\"latest_ts_ms\":" << family.latest_ts_ms
-          << ",\"wave_cursors\":"
+          << ",\"latest_ts_ms\":" << family.latest_ts_ms << ",\"wave_cursors\":"
           << json_string_array_from_vector(family.wave_cursors)
           << ",\"binding_ids\":"
           << json_string_array_from_vector(family.binding_ids)
@@ -1011,12 +1083,13 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 
   if (kind == "project") {
-    for (const auto& family : families) {
-      for (const auto& project : family.projects) {
-        if (project.project_path != project_path) continue;
+    for (const auto &family : families) {
+      for (const auto &project : family.projects) {
+        if (project.project_path != project_path)
+          continue;
         std::vector<std::string> member_paths{};
         member_paths.reserve(project.members.size());
-        for (const auto& member : project.members) {
+        for (const auto &member : project.members) {
           member_paths.push_back(member.canonical_path);
         }
         std::ostringstream out;
@@ -1026,11 +1099,12 @@ void finalize_browser_member_row(browser_member_row_t* member) {
             << ",\"member_count\":" << project.members.size()
             << ",\"active_member_count\":"
             << std::count_if(project.members.begin(), project.members.end(),
-                             [](const browser_member_row_t& member) {
+                             [](const browser_member_row_t &member) {
                                return member.lineage_state == "active";
                              })
             << ",\"fragment_count\":" << project.fragment_count
-            << ",\"available_context_count\":" << project.available_context_count
+            << ",\"available_context_count\":"
+            << project.available_context_count
             << ",\"latest_ts_ms\":" << project.latest_ts_ms
             << ",\"wave_cursors\":"
             << json_string_array_from_vector(project.wave_cursors)
@@ -1055,10 +1129,11 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   }
 
   if (kind == "member") {
-    for (const auto& family : families) {
-      for (const auto& project : family.projects) {
-        for (const auto& member : project.members) {
-          if (member.canonical_path != canonical_path) continue;
+    for (const auto &family : families) {
+      for (const auto &project : family.projects) {
+        for (const auto &member : project.members) {
+          if (member.canonical_path != canonical_path)
+            continue;
           std::ostringstream out;
           out << "{"
               << "\"kind\":\"member\""
@@ -1067,10 +1142,12 @@ void finalize_browser_member_row(browser_member_row_t* member) {
               << ",\"canonical_path\":" << json_quote(member.canonical_path)
               << ",\"display_name\":" << json_quote(member.display_name)
               << ",\"hashimyei\":"
-              << (member.hashimyei.empty() ? "null" : json_quote(member.hashimyei))
+              << (member.hashimyei.empty() ? "null"
+                                           : json_quote(member.hashimyei))
               << ",\"contract_hash\":"
-              << (member.contract_hash.empty() ? "null"
-                                              : json_quote(member.contract_hash))
+              << (member.contract_hash.empty()
+                      ? "null"
+                      : json_quote(member.contract_hash))
               << ",\"lineage_state\":" << json_quote(member.lineage_state)
               << ",\"family_rank\":";
           if (member.family_rank.has_value()) {
@@ -1078,7 +1155,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
           } else {
             out << "null";
           }
-          out << ",\"has_component\":" << (member.has_component ? "true" : "false")
+          out << ",\"has_component\":"
+              << (member.has_component ? "true" : "false")
               << ",\"has_fact\":" << (member.has_fact ? "true" : "false")
               << ",\"parent_hashimyei\":";
           if (member.has_component &&
@@ -1103,9 +1181,9 @@ void finalize_browser_member_row(browser_member_row_t* member) {
               << (member.has_fact ? member.fact.latest_ts_ms : 0)
               << ",\"latest_wave_cursor\":";
           if (member.has_fact && member.fact.latest_wave_cursor != 0) {
-            out << json_quote(cuwacunu::hero::wave::lattice_catalog_store_t::
-                                  format_runtime_wave_cursor(
-                                      member.fact.latest_wave_cursor));
+            out << json_quote(
+                cuwacunu::hero::wave::lattice_catalog_store_t::
+                    format_runtime_wave_cursor(member.fact.latest_wave_cursor));
           } else {
             out << "null";
           }
@@ -1129,7 +1207,8 @@ void finalize_browser_member_row(browser_member_row_t* member) {
           }
           out << ",\"source_runtime_cursors\":";
           if (member.has_fact) {
-            out << json_string_array_from_vector(member.fact.source_runtime_cursors);
+            out << json_string_array_from_vector(
+                member.fact.source_runtime_cursors);
           } else {
             out << "[]";
           }
@@ -1159,18 +1238,21 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   return false;
 }
 
-[[nodiscard]] bool handle_tool_refresh(app_context_t* app,
-                                       const std::string& arguments_json,
-                                       std::string* out_structured,
-                                       std::string* out_error) {
-  if (!app || !out_structured || !out_error) return false;
+[[nodiscard]] bool handle_tool_refresh(app_context_t *app,
+                                       const std::string &arguments_json,
+                                       std::string *out_structured,
+                                       std::string *out_error) {
+  if (!app || !out_structured || !out_error)
+    return false;
   out_error->clear();
 
   bool reingest = true;
   (void)extract_json_bool_field(arguments_json, "reingest", &reingest);
-  if (!reset_lattice_catalog(app, reingest, out_error)) return false;
+  if (!reset_lattice_catalog(app, reingest, out_error))
+    return false;
 
-  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t> report_fragments{};
+  std::vector<cuwacunu::hero::wave::runtime_report_fragment_t>
+      report_fragments{};
   if (!app->catalog.list_runtime_report_fragments(
           "", "", 0, 0, true, &report_fragments, out_error)) {
     return false;
@@ -1189,8 +1271,9 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   std::ostringstream out;
   out << "{\"tools\":[";
   for (std::size_t i = 0; i < std::size(kLatticeTools); ++i) {
-    if (i != 0) out << ",";
-    const auto& descriptor = kLatticeTools[i];
+    if (i != 0)
+      out << ",";
+    const auto &descriptor = kLatticeTools[i];
     const bool read_only =
         std::string_view(descriptor.name) != "hero.lattice.refresh";
     out << "{\"name\":" << json_quote(descriptor.name)
@@ -1206,59 +1289,69 @@ void finalize_browser_member_row(browser_member_row_t* member) {
 
 [[nodiscard]] std::string build_tools_list_human_text() {
   std::ostringstream out;
-  for (const auto& descriptor : kLatticeTools) {
+  for (const auto &descriptor : kLatticeTools) {
     out << descriptor.name << "\t" << descriptor.description << "\n";
   }
   return out.str();
 }
 
-[[nodiscard]] bool open_lattice_catalog_if_needed(app_context_t* app,
-                                                  std::string* out_error) {
-  if (out_error) out_error->clear();
+[[nodiscard]] bool open_lattice_catalog_if_needed(app_context_t *app,
+                                                  std::string *out_error) {
+  if (out_error)
+    out_error->clear();
   if (!app) {
-    if (out_error) *out_error = "app context is null";
+    if (out_error)
+      *out_error = "app context is null";
     return false;
   }
-  if (app->catalog.opened()) return true;
+  if (app->catalog.opened())
+    return true;
   if (app->lattice_catalog_path.empty()) {
-    if (out_error) *out_error = "lattice catalog path is empty";
+    if (out_error)
+      *out_error = "lattice catalog path is empty";
     return false;
   }
   cuwacunu::hero::wave::lattice_catalog_store_t::options_t opts{};
   opts.catalog_path = app->lattice_catalog_path;
   opts.encrypted = false;
   std::error_code ec{};
-  opts.read_only = std::filesystem::exists(app->lattice_catalog_path, ec) && !ec;
+  opts.read_only =
+      std::filesystem::exists(app->lattice_catalog_path, ec) && !ec;
   opts.projection_version = 2;
   opts.runtime_only_indexes = true;
   return app->catalog.open(opts, out_error);
 }
 
-[[nodiscard]] bool close_lattice_catalog_if_open(app_context_t* app,
-                                                 std::string* out_error) {
-  if (out_error) out_error->clear();
-  if (!app) return true;
+[[nodiscard]] bool close_lattice_catalog_if_open(app_context_t *app,
+                                                 std::string *out_error) {
+  if (out_error)
+    out_error->clear();
+  if (!app)
+    return true;
   if (app->hashimyei_catalog.opened()) {
     std::string hashimyei_error{};
     if (!close_hashimyei_catalog_if_open(app, &hashimyei_error)) {
-      if (out_error) *out_error = "hashimyei catalog close failed: " + hashimyei_error;
+      if (out_error)
+        *out_error = "hashimyei catalog close failed: " + hashimyei_error;
       return false;
     }
   }
-  if (!app->catalog.opened()) return true;
+  if (!app->catalog.opened())
+    return true;
   return app->catalog.close(out_error);
 }
 
-[[nodiscard]] bool handle_tool_call(app_context_t* app,
-                                    const std::string& tool_name,
-                                    const std::string& arguments_json,
-                                    std::string* out_result_json,
-                                    std::string* out_error_json) {
-  if (!app || !out_result_json || !out_error_json) return false;
+[[nodiscard]] bool handle_tool_call(app_context_t *app,
+                                    const std::string &tool_name,
+                                    const std::string &arguments_json,
+                                    std::string *out_result_json,
+                                    std::string *out_error_json) {
+  if (!app || !out_result_json || !out_error_json)
+    return false;
   out_result_json->clear();
   out_error_json->clear();
 
-  const auto* descriptor = find_lattice_tool_descriptor(tool_name);
+  const auto *descriptor = find_lattice_tool_descriptor(tool_name);
   if (!descriptor) {
     *out_error_json = "unknown tool: " + tool_name;
     return false;
@@ -1285,20 +1378,24 @@ void finalize_browser_member_row(browser_member_row_t* member) {
   return true;
 }
 
-void run_jsonrpc_stdio_loop_impl(app_context_t* app) {
-  if (!app) return;
+void run_jsonrpc_stdio_loop_impl(app_context_t *app) {
+  if (!app)
+    return;
 
   bool shutdown_requested = false;
   for (;;) {
-    if (!wait_for_stdio_activity()) return;
+    if (!wait_for_stdio_activity())
+      return;
 
     std::string message;
     bool used_content_length = false;
     if (!read_next_jsonrpc_message(&std::cin, &message, &used_content_length)) {
       return;
     }
-    if (message.empty()) continue;
-    if (used_content_length) g_jsonrpc_use_content_length_framing = true;
+    if (message.empty())
+      continue;
+    if (used_content_length)
+      g_jsonrpc_use_content_length_framing = true;
 
     std::string method;
     if (!extract_json_string_field(message, "method", &method)) {
@@ -1306,7 +1403,8 @@ void run_jsonrpc_stdio_loop_impl(app_context_t* app) {
       continue;
     }
 
-    if (method == "exit") return;
+    if (method == "exit")
+      return;
 
     std::string id_json = "null";
     const bool has_id = extract_json_id_field(message, &id_json);
@@ -1393,25 +1491,24 @@ void run_jsonrpc_stdio_loop_impl(app_context_t* app) {
     std::string close_error;
     if (!close_lattice_catalog_if_open(app, &close_error)) {
       const std::string err = "catalog close failed: " + close_error;
-      log_lattice_tool_end(
-          app, name, catalog_already_open, false, false,
-          now_ms_utc() - tool_started_at_ms,
-          catalog_hold_started_at_ms == 0 ? 0
-                                          : now_ms_utc() -
-                                                catalog_hold_started_at_ms,
-          err);
+      log_lattice_tool_end(app, name, catalog_already_open, false, false,
+                           now_ms_utc() - tool_started_at_ms,
+                           catalog_hold_started_at_ms == 0
+                               ? 0
+                               : now_ms_utc() - catalog_hold_started_at_ms,
+                           err);
       write_jsonrpc_error(id_json, -32603,
                           "catalog close failed: " + close_error);
       continue;
     }
     const std::uint64_t finished_at_ms = now_ms_utc();
-    log_lattice_tool_end(
-        app, name, catalog_already_open, ok, true,
-        finished_at_ms - tool_started_at_ms,
-        catalog_hold_started_at_ms == 0 ? 0
-                                        : finished_at_ms -
-                                              catalog_hold_started_at_ms,
-        ok ? std::string_view{} : std::string_view(tool_error));
+    log_lattice_tool_end(app, name, catalog_already_open, ok, true,
+                         finished_at_ms - tool_started_at_ms,
+                         catalog_hold_started_at_ms == 0
+                             ? 0
+                             : finished_at_ms - catalog_hold_started_at_ms,
+                         ok ? std::string_view{}
+                            : std::string_view(tool_error));
     if (!ok) {
       write_jsonrpc_error(id_json, -32601, tool_error);
       continue;
@@ -1420,4 +1517,4 @@ void run_jsonrpc_stdio_loop_impl(app_context_t* app) {
   }
 }
 
-}  // namespace
+} // namespace

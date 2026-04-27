@@ -56,8 +56,9 @@ default = none
 range = zero or more dock assignments
 allowed = variable names starting with double underscore
 nuance = DOCK variables are the public compatibility surface resolved through the contract-local DSL graph
-note = current VICReg contracts keep public boundary values such as __obs_channels, __obs_seq_length, __obs_feature_dim, __embedding_dims, and __future_target_dims in DOCK
+note = current VICReg/ExpectedValue contracts keep public boundary values such as __obs_channels, __obs_seq_length, __obs_feature_dim, __embedding_dims, and __future_target_feature_indices in DOCK
 validation = DOCK values participate directly in docking_signature_sha256_hex; moving them changes compatibility lineage
+validation_2 = __future_target_feature_indices must be a non-empty unique non-negative integer list; when __obs_feature_dim is valid, max(index) must be less than __obs_feature_dim
 note_2 = runtime component reuse keys on the resolved docking signature, so revisions stay compatible when DOCK stays the same even if ASSEMBLY provenance changes
 
 [FIELD ASSEMBLY.__VAR]
@@ -91,7 +92,7 @@ required = true
 default = none
 range = one line per circuit alias
 allowed = <alias> = <tsi canonical family token>
-nuance = family token must omit hashimyei suffix; campaign `BIND.MOUNT` owns runtime hashimyei selection
+nuance = family token must omit hashimyei suffix; runtime hashimyei is derived from contract component content
 
 [RULE DOCK_OWNERSHIP]
 id = DOCK_OWNERSHIP

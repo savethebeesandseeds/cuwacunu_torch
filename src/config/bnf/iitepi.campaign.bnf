@@ -37,22 +37,9 @@
                                | [<whitespace>] "WAVE" [<whitespace>] "="
                                  [<whitespace>] <id_value>
                                  [<whitespace>] ";" <line_end>
-                               | <mount_decl>
                                | [<whitespace>] <binding_var_name> [<whitespace>] "="
                                  [<whitespace>] <path_value>
                                  [<whitespace>] ";" <line_end> ;
-
-<mount_decl>                 ::= [<whitespace>] "MOUNT" [<whitespace>] "{"
-                                 <line_end>
-                                 {<mount_body_entry>}
-                                 [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
-
-<mount_body_entry>           ::= [<whitespace>] <id_value> [<whitespace>] "="
-                                 [<whitespace>] <mount_selector>
-                                 [<whitespace>] ";" <line_end> ;
-
-<mount_selector>             ::= "EXACT" [<whitespace>] <hashimyei_id>
-                               | "RANK" [<whitespace>] <unsigned_int> ;
 
 <run_decl>                   ::= [<whitespace>] "RUN" [<whitespace>] <id_value>
                                  [<whitespace>] ";" <line_end> ;
@@ -61,10 +48,7 @@
 
 <import_id_value>            ::= <id_value> | <quoted_text> ;
 <id_value>                   ::= <id_char> {<id_char>} ;
-<unsigned_int>              ::= <digit> {<digit>} ;
 <path_value>                 ::= <id_value> | <quoted_text> ;
-<hashimyei_id>              ::= "0x" <hex_digit> {<hex_digit>}
-                              | "0X" <hex_digit> {<hex_digit>} ;
 <quoted_text>                ::= "\"" {<quoted_char>} "\"" ;
 <quoted_char>                ::= <id_char> | "/" | ":" | "\\" | "." | "-" | "_" | " " ;
 
@@ -73,7 +57,6 @@
 <break_block>                ::= {<newline>} ;
 <whitespace>                 ::= {<empty>} ;
 <letter>                     ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
-<hex_digit>                 ::= <digit> | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" ;
 <digit>                      ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 <newline>                    ::= "\n" | "\r\n" ;
 <empty>                      ::= " " | "\t" ;

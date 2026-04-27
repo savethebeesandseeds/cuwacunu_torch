@@ -25,12 +25,12 @@ enum class LatticeRowKind : std::uint8_t {
 
 inline std::string lattice_row_kind_label(LatticeRowKind kind) {
   switch (kind) {
-    case LatticeRowKind::Family:
-      return "family";
-    case LatticeRowKind::Project:
-      return "project";
-    case LatticeRowKind::Member:
-      return "member";
+  case LatticeRowKind::Family:
+    return "family";
+  case LatticeRowKind::Project:
+    return "project";
+  case LatticeRowKind::Member:
+    return "member";
   }
   return "family";
 }
@@ -43,12 +43,12 @@ enum class LatticeSection : std::uint8_t {
 
 inline std::string lattice_section_label(LatticeSection section) {
   switch (section) {
-    case LatticeSection::Overview:
-      return "overview";
-    case LatticeSection::Components:
-      return "components";
-    case LatticeSection::Lattice:
-      return "lattice";
+  case LatticeSection::Overview:
+    return "overview";
+  case LatticeSection::Components:
+    return "components";
+  case LatticeSection::Lattice:
+    return "lattice";
   }
   return "overview";
 }
@@ -80,7 +80,7 @@ struct LatticeMemberEntry {
   std::string display_name{};
   std::string hashimyei{};
   std::string contract_hash{};
-  std::string dock_hash{};
+  std::string component_compatibility_sha256_hex{};
   std::string lineage_state{};
   std::size_t component_count{0};
   std::size_t report_fragment_count{0};
@@ -174,12 +174,12 @@ enum class LatticeMode : std::uint8_t {
 
 inline std::string lattice_mode_label(LatticeMode mode) {
   switch (mode) {
-    case LatticeMode::Roots:
-      return "lattice";
-    case LatticeMode::Facts:
-      return "facts";
-    case LatticeMode::Views:
-      return "views";
+  case LatticeMode::Roots:
+    return "lattice";
+  case LatticeMode::Facts:
+    return "facts";
+  case LatticeMode::Views:
+    return "views";
   }
   return "lattice";
 }
@@ -217,7 +217,7 @@ struct LatticeViewTransportSnapshot {
   std::string view_kind{};
   std::string canonical_path{};
   std::string contract_hash{};
-  std::string dock_hash{};
+  std::string component_compatibility_sha256_hex{};
   std::string wave_cursor{};
   std::size_t match_count{0};
   std::size_t ambiguity_count{0};
@@ -269,6 +269,6 @@ struct LatticeState {
   LatticeRefreshMode refresh_mode{LatticeRefreshMode::Snapshot};
 };
 
-}  // namespace iinuji_cmd
-}  // namespace iinuji
-}  // namespace cuwacunu
+} // namespace iinuji_cmd
+} // namespace iinuji
+} // namespace cuwacunu

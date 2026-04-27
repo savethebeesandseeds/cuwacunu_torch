@@ -20,13 +20,26 @@ int main() {
     assert(append_wave_contract_binding_variable(&binding, "__workers", "2",
                                                  &error));
     assert(error.empty());
+    assert(append_wave_contract_binding_variable(&binding, "__symbol",
+                                                 "BTCUSDT", &error));
+    assert(error.empty());
+    assert(append_wave_contract_binding_variable(&binding, "__base_asset",
+                                                 "BTC", &error));
+    assert(error.empty());
+    assert(append_wave_contract_binding_variable(&binding, "__quote_asset",
+                                                 "USDT", &error));
+    assert(error.empty());
 
     std::string resolved{};
     const bool ok = resolve_wave_contract_binding_variables_in_text(
         "/* keep % __ignored ? nope % in comments */\n"
         "SAMPLER: % __sampler ? random %;\n"
         "WORKERS: %__workers?0%;\n"
-        "SYMBOL: % __symbol ? BTCUSDT %;\n",
+        "RUNTIME_INSTRUMENT_SIGNATURE: {\n"
+        "  SYMBOL: % __symbol %;\n"
+        "  BASE_ASSET: % __base_asset %;\n"
+        "  QUOTE_ASSET: % __quote_asset %;\n"
+        "};\n",
         binding, &resolved, &error);
     assert(ok);
     assert(error.empty());
@@ -34,6 +47,8 @@ int main() {
     assert(resolved.find("SAMPLER: sequential;") != std::string::npos);
     assert(resolved.find("WORKERS: 2;") != std::string::npos);
     assert(resolved.find("SYMBOL: BTCUSDT;") != std::string::npos);
+    assert(resolved.find("BASE_ASSET: BTC;") != std::string::npos);
+    assert(resolved.find("QUOTE_ASSET: USDT;") != std::string::npos);
 
     error.clear();
     assert(!append_wave_contract_binding_variable(&binding, "__workers", "4",
@@ -48,7 +63,7 @@ int main() {
 
     std::cout << "[test_wave_contract_binding_variables] pass\n";
     return 0;
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     std::cerr << "[test_wave_contract_binding_variables] exception: "
               << e.what() << "\n";
     return 1;

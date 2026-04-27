@@ -40,6 +40,7 @@
 #include "hero/runtime_hero/runtime_campaign.h"
 #include "hero/runtime_hero/runtime_job.h"
 #include "hero/wave_contract_binding_runtime.h"
+#include "piaabo/dlogs.h"
 
 namespace cuwacunu {
 namespace hero {

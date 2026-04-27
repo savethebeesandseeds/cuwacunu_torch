@@ -1,0 +1,89 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = tsi.wikimyei.representation.encoding.vicreg
+TARGET_DSL = src/config/instructions/defaults/default.tsi.wikimyei.representation.encoding.vicreg.dsl
+TARGET_BNF = src/config/bnf/latent_lineage_state.authored.bnf
+PRIMARY_DECODER = latent_lineage_state decoder + contract module validator
+PRIMARY_VALIDATORS = src/impl/iitepi/contract_space_t.cpp,src/impl/wikimyei/representation/VICReg/vicreg_rank4.cpp
+
+[FIELD TAG]
+key = TAG
+scope = VICReg module
+type = component tag token
+required = true
+default = none
+range = unique component tag; contract validator rejects duplicates within a loaded contract
+allowed = ASCII letters, digits, underscore, dash, and dot; no leading/trailing dot or dash
+nuance = authored component template identity used for lattice tracking; storage hashimyei remains derived from contract-wave compatibility
+
+[FIELD enable_buffer_averaging]
+key = enable_buffer_averaging
+scope = VICReg module
+type = bool
+required = true
+default = none
+range = bool token
+allowed = bool parse tokens from contract parser
+nuance = controls SWA buffer averaging policy
+
+[FIELD dtype]
+key = dtype
+scope = VICReg module
+type = dtype token
+required = true
+default = none
+range = known dtype tokens
+allowed = bool,int8,int16,int32,int64,float16,half,f16,float32,float,f32,float64,double,f64 and torch::/at::/k-prefixed variants
+nuance = invalid tokens fail contract validation
+
+[FIELD device]
+key = device
+scope = VICReg module
+type = device token
+required = true
+default = none
+range = cpu or cuda-class token
+allowed = cpu,cuda,gpu,cuda:<n>,gpu:<n>,torch::kcpu,torch::kcuda,kcpu,kcuda
+nuance = if CUDA is unavailable or runtime probe fails, parser falls back to CPU with warning
+
+[FIELD network_design_dsl_file]
+key = network_design_dsl_file
+scope = VICReg module
+type = file_path
+required = true
+default = none
+range = existing file
+allowed = absolute path or path relative to vicreg module file folder
+nuance = owns required framework-agnostic network design payload binding and is the sole authored source for VICReg architecture; VICReg contract validation and runtime initialization fail fast when it is missing
+
+[FIELD jkimyei_dsl_file]
+key = jkimyei_dsl_file
+scope = VICReg module
+type = file_path
+required = true
+default = none
+range = existing file
+allowed = absolute path or path relative to vicreg module file folder
+nuance = contract-owned jkimyei specs payload binding; wave selects TRAIN policy and only needs PROFILE_ID when the contract exposes multiple compatible profiles
+
+[RULE UNKNOWN_KEYS]
+id = UNKNOWN_KEYS
+applies_to = VICReg module section
+severity = error
+when = key not in allow-list
+message = unknown key in module config is rejected
+
+[RULE TRAINING_POLICY_SOURCE]
+id = TRAINING_POLICY_SOURCE
+applies_to = vicreg training controls
+severity = info
+when = expecting swa_start_iter or optimizer_threshold_reset or gradient controls in VICReg module file
+message = training policy controls are owned by the jkimyei file referenced by jkimyei_dsl_file (COMPONENT_PARAMS/GRADIENT families), not this module file
+
+[RULE ARCHITECTURE_SOURCE]
+id = ARCHITECTURE_SOURCE
+applies_to = vicreg encoder/projector architecture controls
+severity = info
+when = expecting encoding_dims or encoder/projector width or projector option keys in the VICReg module file
+message = VICReg architecture is authored only in network_design_dsl_file; the runtime contract snapshot is normalized with resolved compatibility keys after network_design decode

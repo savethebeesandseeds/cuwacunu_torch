@@ -103,7 +103,7 @@ struct runtime_report_fragment_t {
   std::string binding_id{};
   std::string source_runtime_cursor{};
   std::string contract_hash{};
-  std::string dock_hash{};
+  std::string component_compatibility_sha256_hex{};
   std::string schema{};
   std::string report_fragment_sha256{};
   std::string path{};
@@ -120,7 +120,7 @@ struct runtime_view_report_t {
   std::string selector_hashimyei_cursor{};
   std::string selector_intersection_cursor{};
   std::string contract_hash{};
-  std::string dock_hash{};
+  std::string component_compatibility_sha256_hex{};
   std::uint64_t wave_cursor{0};
   bool has_wave_cursor{false};
   std::size_t match_count{0};
@@ -149,26 +149,26 @@ struct runtime_fact_summary_t {
 
 [[nodiscard]] std::string compute_coord_hash(std::string_view contract_hash,
                                              std::string_view wave_hash);
-[[nodiscard]] std::string canonical_execution_profile_json(
-    const wave_execution_profile_t& profile);
-[[nodiscard]] std::string compute_profile_id(
-    const wave_execution_profile_t& profile);
-[[nodiscard]] std::string compute_cell_id(std::string_view contract_hash,
-                                          std::string_view wave_hash,
-                                          const wave_execution_profile_t& profile);
+[[nodiscard]] std::string
+canonical_execution_profile_json(const wave_execution_profile_t &profile);
+[[nodiscard]] std::string
+compute_profile_id(const wave_execution_profile_t &profile);
+[[nodiscard]] std::string
+compute_cell_id(std::string_view contract_hash, std::string_view wave_hash,
+                const wave_execution_profile_t &profile);
 
-[[nodiscard]] bool encode_cell_report_payload(
-    const lattice_cell_report_t& report,
-    std::string* out_payload,
-    std::string* error = nullptr);
+[[nodiscard]] bool
+encode_cell_report_payload(const lattice_cell_report_t &report,
+                           std::string *out_payload,
+                           std::string *error = nullptr);
 [[nodiscard]] bool decode_cell_report_payload(std::string_view payload,
-                                              lattice_cell_report_t* out,
-                                              std::string* error = nullptr);
+                                              lattice_cell_report_t *out,
+                                              std::string *error = nullptr);
 
 class lattice_catalog_store_t {
- public:
-  [[nodiscard]] static std::string trim_runtime_wave_cursor_token(
-      std::string_view text) {
+public:
+  [[nodiscard]] static std::string
+  trim_runtime_wave_cursor_token(std::string_view text) {
     std::size_t begin = 0;
     std::size_t end = text.size();
     while (begin < end &&
@@ -182,25 +182,30 @@ class lattice_catalog_store_t {
     return std::string(text.substr(begin, end - begin));
   }
 
-  [[nodiscard]] static bool parse_runtime_wave_cursor_scalar(
-      std::string_view text, std::uint64_t* out) noexcept {
-    if (!out) return false;
+  [[nodiscard]] static bool
+  parse_runtime_wave_cursor_scalar(std::string_view text,
+                                   std::uint64_t *out) noexcept {
+    if (!out)
+      return false;
     const std::string token = trim_runtime_wave_cursor_token(text);
-    if (token.empty()) return false;
+    if (token.empty())
+      return false;
 
     int base = 10;
-    const char* begin = token.data();
-    const char* end = token.data() + token.size();
+    const char *begin = token.data();
+    const char *end = token.data() + token.size();
     if (token.size() > 2 && token[0] == '0' &&
         (token[1] == 'x' || token[1] == 'X')) {
       base = 16;
       begin += 2;
-      if (begin == end) return false;
+      if (begin == end)
+        return false;
     }
 
     std::uint64_t parsed = 0;
     const auto [ptr, ec] = std::from_chars(begin, end, parsed, base);
-    if (ec != std::errc{} || ptr != end) return false;
+    if (ec != std::errc{} || ptr != end)
+      return false;
     *out = parsed;
     return true;
   }
@@ -220,32 +225,37 @@ class lattice_catalog_store_t {
     const db::wave_cursor::parts_t zero{};
     const auto layout = runtime_wave_cursor_layout();
     (void)db::wave_cursor::build_masked_query(
-        layout,
-        zero,
-        static_cast<std::uint8_t>(
-            db::wave_cursor::field_run | db::wave_cursor::field_episode |
-            db::wave_cursor::field_batch),
+        layout, zero,
+        static_cast<std::uint8_t>(db::wave_cursor::field_run |
+                                  db::wave_cursor::field_episode |
+                                  db::wave_cursor::field_batch),
         &q);
     return q.mask;
   }
 
-  [[nodiscard]] static bool unpack_runtime_wave_cursor(
-      std::uint64_t packed, db::wave_cursor::parts_t* out_parts) noexcept {
-    return db::wave_cursor::unpack(runtime_wave_cursor_layout(), packed, out_parts);
+  [[nodiscard]] static bool
+  unpack_runtime_wave_cursor(std::uint64_t packed,
+                             db::wave_cursor::parts_t *out_parts) noexcept {
+    return db::wave_cursor::unpack(runtime_wave_cursor_layout(), packed,
+                                   out_parts);
   }
 
-  [[nodiscard]] static bool parse_runtime_wave_cursor_token(
-      std::string_view text, std::uint64_t* out) noexcept {
-    if (!out) return false;
+  [[nodiscard]] static bool
+  parse_runtime_wave_cursor_token(std::string_view text,
+                                  std::uint64_t *out) noexcept {
+    if (!out)
+      return false;
     const std::string token = trim_runtime_wave_cursor_token(text);
-    if (token.empty()) return false;
+    if (token.empty())
+      return false;
     if (token.find('.') == std::string::npos &&
         token.find(',') == std::string::npos) {
       return parse_runtime_wave_cursor_scalar(token, out);
     }
 
     const std::size_t first_dot = token.find('.');
-    if (first_dot == std::string::npos) return false;
+    if (first_dot == std::string::npos)
+      return false;
 
     std::size_t second_sep = std::string::npos;
     if (const std::size_t second_dot = token.find('.', first_dot + 1);
@@ -257,13 +267,16 @@ class lattice_catalog_store_t {
     } else {
       return false;
     }
-    if (token.find('.', second_sep + 1) != std::string::npos) return false;
-    if (token.find(',', second_sep + 1) != std::string::npos) return false;
+    if (token.find('.', second_sep + 1) != std::string::npos)
+      return false;
+    if (token.find(',', second_sep + 1) != std::string::npos)
+      return false;
 
     std::uint64_t run_id = 0;
     std::uint64_t episode_k = 0;
     std::uint64_t batch_j = 0;
-    if (!parse_runtime_wave_cursor_scalar(token.substr(0, first_dot), &run_id)) {
+    if (!parse_runtime_wave_cursor_scalar(token.substr(0, first_dot),
+                                          &run_id)) {
       return false;
     }
     if (!parse_runtime_wave_cursor_scalar(
@@ -284,8 +297,8 @@ class lattice_catalog_store_t {
     return db::wave_cursor::pack(runtime_wave_cursor_layout(), parts, out);
   }
 
-  [[nodiscard]] static std::string format_runtime_wave_cursor(
-      std::uint64_t packed) {
+  [[nodiscard]] static std::string
+  format_runtime_wave_cursor(std::uint64_t packed) {
     db::wave_cursor::parts_t parts{};
     if (!unpack_runtime_wave_cursor(packed, &parts)) {
       return std::to_string(packed);
@@ -295,8 +308,8 @@ class lattice_catalog_store_t {
            std::to_string(parts.batch_j);
   }
 
-  [[nodiscard]] static std::string normalize_runtime_hashimyei_cursor(
-      std::string_view canonical_path) {
+  [[nodiscard]] static std::string
+  normalize_runtime_hashimyei_cursor(std::string_view canonical_path) {
     const auto trim_ascii_local = [](std::string_view in) {
       std::size_t begin = 0;
       std::size_t end = in.size();
@@ -312,44 +325,50 @@ class lattice_catalog_store_t {
     };
     return trim_ascii_local(canonical_path);
   }
-  [[nodiscard]] static bool parse_runtime_intersection_cursor(
-      std::string_view intersection_cursor,
-      runtime_intersection_cursor_t* out,
-      std::string* error = nullptr) {
-    if (error) error->clear();
+  [[nodiscard]] static bool
+  parse_runtime_intersection_cursor(std::string_view intersection_cursor,
+                                    runtime_intersection_cursor_t *out,
+                                    std::string *error = nullptr) {
+    if (error)
+      error->clear();
     if (!out) {
-      if (error) *error = "intersection cursor output pointer is null";
+      if (error)
+        *error = "intersection cursor output pointer is null";
       return false;
     }
     *out = runtime_intersection_cursor_t{};
-    const std::string token = trim_runtime_wave_cursor_token(intersection_cursor);
+    const std::string token =
+        trim_runtime_wave_cursor_token(intersection_cursor);
     if (token.empty()) {
-      if (error) *error = "intersection_cursor is empty";
+      if (error)
+        *error = "intersection_cursor is empty";
       return false;
     }
     const std::size_t sep = token.rfind('|');
     if (sep == std::string::npos || sep == 0 || sep + 1 >= token.size()) {
       if (error) {
-        *error =
-            "intersection_cursor must be formatted as <canonical_path>|<wave_cursor>";
+        *error = "intersection_cursor must be formatted as "
+                 "<canonical_path>|<wave_cursor>";
       }
       return false;
     }
     if (token.find('|', sep + 1) != std::string::npos) {
-      if (error) *error = "intersection_cursor has too many separators";
+      if (error)
+        *error = "intersection_cursor has too many separators";
       return false;
     }
     const std::string hashimyei_cursor =
         normalize_runtime_hashimyei_cursor(token.substr(0, sep));
     if (hashimyei_cursor.empty()) {
-      if (error) *error = "intersection_cursor is missing canonical_path";
+      if (error)
+        *error = "intersection_cursor is missing canonical_path";
       return false;
     }
     std::uint64_t wave_cursor = 0;
     if (!parse_runtime_wave_cursor_token(token.substr(sep + 1), &wave_cursor)) {
       if (error) {
-        *error =
-            "intersection_cursor wave_cursor is not valid; expected integer or <run>.<epoch>.<batch>";
+        *error = "intersection_cursor wave_cursor is not valid; expected "
+                 "integer or <run>.<epoch>.<batch>";
       }
       return false;
     }
@@ -357,24 +376,30 @@ class lattice_catalog_store_t {
     out->wave_cursor = wave_cursor;
     return true;
   }
-  [[nodiscard]] static bool runtime_hashimyei_cursor_matches(
-      std::string_view query_canonical_path,
-      std::string_view fragment_canonical_path) {
+  [[nodiscard]] static bool
+  runtime_hashimyei_cursor_matches(std::string_view query_canonical_path,
+                                   std::string_view fragment_canonical_path) {
     const auto is_hashimyei_hex_token_local = [](std::string_view token) {
-      if (token.size() < 3) return false;
-      if (token[0] != '0' || token[1] != 'x') return false;
+      if (token.size() < 3)
+        return false;
+      if (token[0] != '0' || token[1] != 'x')
+        return false;
       for (std::size_t i = 2; i < token.size(); ++i) {
         const unsigned char c = static_cast<unsigned char>(token[i]);
         const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-        if (!hex) return false;
+        if (!hex)
+          return false;
       }
       return true;
     };
-    const std::string query = normalize_runtime_hashimyei_cursor(query_canonical_path);
-    if (query.empty()) return true;
+    const std::string query =
+        normalize_runtime_hashimyei_cursor(query_canonical_path);
+    if (query.empty())
+      return true;
     const std::string fragment =
         normalize_runtime_hashimyei_cursor(fragment_canonical_path);
-    if (fragment == query) return true;
+    if (fragment == query)
+      return true;
     if (fragment.size() <= query.size() ||
         fragment.compare(0, query.size(), query) != 0 ||
         fragment[query.size()] != '.') {
@@ -385,7 +410,8 @@ class lattice_catalog_store_t {
     if (suffix.empty() || suffix.find('.') != std::string_view::npos) {
       return false;
     }
-    if (is_hashimyei_hex_token_local(suffix)) return true;
+    if (is_hashimyei_hex_token_local(suffix))
+      return true;
     return false;
   }
 
@@ -401,89 +427,95 @@ class lattice_catalog_store_t {
   lattice_catalog_store_t() = default;
   ~lattice_catalog_store_t();
 
-  lattice_catalog_store_t(const lattice_catalog_store_t&) = delete;
-  lattice_catalog_store_t& operator=(const lattice_catalog_store_t&) = delete;
+  lattice_catalog_store_t(const lattice_catalog_store_t &) = delete;
+  lattice_catalog_store_t &operator=(const lattice_catalog_store_t &) = delete;
 
-  [[nodiscard]] bool open(const options_t& options, std::string* error = nullptr);
-  [[nodiscard]] bool close(std::string* error = nullptr);
+  [[nodiscard]] bool open(const options_t &options,
+                          std::string *error = nullptr);
+  [[nodiscard]] bool close(std::string *error = nullptr);
   [[nodiscard]] bool opened() const noexcept { return db_ != nullptr; }
-  [[nodiscard]] const options_t& options() const noexcept { return options_; }
+  [[nodiscard]] const options_t &options() const noexcept { return options_; }
 
-  [[nodiscard]] bool rebuild_indexes(std::string* error = nullptr);
-  [[nodiscard]] bool ingest_runtime_report_fragments(
-      const std::filesystem::path& store_root, std::string* error = nullptr);
-  [[nodiscard]] bool ingest_runtime_artifact(
-      const std::filesystem::path& path, std::string* error = nullptr);
+  [[nodiscard]] bool rebuild_indexes(std::string *error = nullptr);
+  [[nodiscard]] bool
+  ingest_runtime_report_fragments(const std::filesystem::path &store_root,
+                                  std::string *error = nullptr);
+  [[nodiscard]] bool ingest_runtime_artifact(const std::filesystem::path &path,
+                                             std::string *error = nullptr);
 
-  [[nodiscard]] bool resolve_cell(const wave_cell_coord_t& coord,
-                                  const wave_execution_profile_t& profile,
-                                  wave_cell_t* out,
-                                  std::string* error = nullptr) const;
-  [[nodiscard]] bool get_cell(std::string_view cell_id,
-                              wave_cell_t* out,
-                              std::string* error = nullptr) const;
-  [[nodiscard]] bool list_trials(std::string_view cell_id,
-                                 std::size_t limit,
-                                 std::size_t offset,
-                                 bool newest_first,
-                                 std::vector<wave_trial_t>* out,
-                                 std::string* error = nullptr) const;
-  [[nodiscard]] bool query_matrix(const matrix_query_t& query,
-                                  std::vector<wave_cell_t>* out,
-                                  std::string* error = nullptr) const;
-  [[nodiscard]] bool get_cell_report(
-      std::string_view cell_id, lattice_cell_report_t* out,
-      std::string* error = nullptr) const;
+  [[nodiscard]] bool resolve_cell(const wave_cell_coord_t &coord,
+                                  const wave_execution_profile_t &profile,
+                                  wave_cell_t *out,
+                                  std::string *error = nullptr) const;
+  [[nodiscard]] bool get_cell(std::string_view cell_id, wave_cell_t *out,
+                              std::string *error = nullptr) const;
+  [[nodiscard]] bool list_trials(std::string_view cell_id, std::size_t limit,
+                                 std::size_t offset, bool newest_first,
+                                 std::vector<wave_trial_t> *out,
+                                 std::string *error = nullptr) const;
+  [[nodiscard]] bool query_matrix(const matrix_query_t &query,
+                                  std::vector<wave_cell_t> *out,
+                                  std::string *error = nullptr) const;
+  [[nodiscard]] bool get_cell_report(std::string_view cell_id,
+                                     lattice_cell_report_t *out,
+                                     std::string *error = nullptr) const;
   [[nodiscard]] bool list_runtime_runs_by_binding(
       std::string_view contract_hashimyei, std::string_view wave_hashimyei,
       std::string_view binding_hashimyei,
-      std::vector<cuwacunu::hero::hashimyei::run_manifest_t>* out,
-      std::string* error = nullptr) const;
-  [[nodiscard]] bool list_runtime_report_fragments(
-      std::string_view canonical_path, std::string_view schema, std::size_t limit,
-      std::size_t offset, bool newest_first,
-      std::vector<runtime_report_fragment_t>* out,
-      std::string* error = nullptr) const;
-  [[nodiscard]] bool list_runtime_fact_summaries(
-      std::size_t limit, std::size_t offset, bool newest_first,
-      std::vector<runtime_fact_summary_t>* out,
-      std::string* error = nullptr) const;
-  [[nodiscard]] bool get_runtime_fact_summary(
-      std::string_view canonical_path, runtime_fact_summary_t* out,
-      std::string* error = nullptr) const;
+      std::vector<cuwacunu::hero::hashimyei::run_manifest_t> *out,
+      std::string *error = nullptr) const;
+  [[nodiscard]] bool
+  list_runtime_report_fragments(std::string_view canonical_path,
+                                std::string_view schema, std::size_t limit,
+                                std::size_t offset, bool newest_first,
+                                std::vector<runtime_report_fragment_t> *out,
+                                std::string *error = nullptr) const;
+  [[nodiscard]] bool
+  list_runtime_fact_summaries(std::size_t limit, std::size_t offset,
+                              bool newest_first,
+                              std::vector<runtime_fact_summary_t> *out,
+                              std::string *error = nullptr) const;
+  [[nodiscard]] bool
+  get_runtime_fact_summary(std::string_view canonical_path,
+                           runtime_fact_summary_t *out,
+                           std::string *error = nullptr) const;
   [[nodiscard]] bool latest_runtime_report_fragment(
       std::string_view canonical_path, std::string_view schema,
-      runtime_report_fragment_t* out, std::string* error = nullptr) const;
-  [[nodiscard]] bool get_runtime_report_fragment(
-      std::string_view report_fragment_id, runtime_report_fragment_t* out,
-      std::string* error = nullptr) const;
-  [[nodiscard]] bool list_runtime_report_schemas(
-      std::string_view canonical_path, std::vector<std::string>* out,
-      std::string* error = nullptr) const;
+      runtime_report_fragment_t *out, std::string *error = nullptr) const;
+  [[nodiscard]] bool
+  get_runtime_report_fragment(std::string_view report_fragment_id,
+                              runtime_report_fragment_t *out,
+                              std::string *error = nullptr) const;
+  [[nodiscard]] bool
+  list_runtime_report_schemas(std::string_view canonical_path,
+                              std::vector<std::string> *out,
+                              std::string *error = nullptr) const;
   [[nodiscard]] bool get_runtime_view_lls(
       std::string_view view_kind, std::string_view intersection_cursor,
       std::uint64_t wave_cursor, bool use_wave_cursor,
-      std::string_view contract_hash, std::string_view dock_hash,
-      runtime_view_report_t* out,
-      std::string* error = nullptr) const;
-  [[nodiscard]] bool get_explicit_family_rank(
-      std::string_view family, std::string_view dock_hash,
-      cuwacunu::hero::family_rank::state_t* out,
-      std::string* error = nullptr) const;
-  [[nodiscard]] bool get_family_rank(
-      std::string_view family, std::string_view dock_hash,
-      cuwacunu::hero::family_rank::state_t* out,
-      std::string* error = nullptr) const;
+      std::string_view contract_hash,
+      std::string_view component_compatibility_sha256_hex,
+      runtime_view_report_t *out, std::string *error = nullptr) const;
+  [[nodiscard]] bool
+  get_explicit_family_rank(std::string_view family,
+                           std::string_view component_compatibility_sha256_hex,
+                           cuwacunu::hero::family_rank::state_t *out,
+                           std::string *error = nullptr) const;
+  [[nodiscard]] bool
+  get_family_rank(std::string_view family,
+                  std::string_view component_compatibility_sha256_hex,
+                  cuwacunu::hero::family_rank::state_t *out,
+                  std::string *error = nullptr) const;
 
-  [[nodiscard]] bool record_trial(const wave_cell_coord_t& coord,
-                                  const wave_execution_profile_t& profile,
-                                  const wave_trial_t& trial,
-                                  const lattice_cell_report_t& report,
-                                  const wave_projection_t& projection,
-                                  wave_cell_t* out_cell,
-                                  std::string* error = nullptr);
+  [[nodiscard]] bool record_trial(const wave_cell_coord_t &coord,
+                                  const wave_execution_profile_t &profile,
+                                  const wave_trial_t &trial,
+                                  const lattice_cell_report_t &report,
+                                  const wave_projection_t &projection,
+                                  wave_cell_t *out_cell,
+                                  std::string *error = nullptr);
 
- private:
+private:
   struct buffered_row_t {
     std::string record_kind{};
     std::string record_id{};
@@ -514,57 +546,47 @@ class lattice_catalog_store_t {
     std::string run_id{};
   };
 
-  [[nodiscard]] bool ensure_catalog_header_(std::string* error);
-  [[nodiscard]] bool append_row_(std::string_view record_kind,
-                                 std::string_view record_id,
-                                 std::string_view cell_id,
-                                 std::string_view contract_hash,
-                                 std::string_view wave_hash,
-                                 std::string_view profile_id,
-                                 std::string_view execution_profile_json,
-                                 std::string_view state_txt,
-                                 double metric_num,
-                                 std::string_view text_a,
-                                 std::string_view text_b,
-                                 std::string_view projection_version,
-                                 std::string_view ts_ms,
-                                 std::string_view payload_json,
-                                 std::string_view projection_key,
-                                 double projection_num,
-                                 std::string_view projection_txt,
-                                 std::string_view projection_key_aux,
-                                 std::string_view projection_txt_aux,
-                                 std::string_view started_at_ms,
-                                 std::string_view finished_at_ms,
-                                 std::string_view ok_txt,
-                                 std::string_view total_steps,
-                                 std::string_view campaign_hash,
-                                 std::string_view run_id,
-                                 std::string* error);
-  [[nodiscard]] bool flush_buffered_rows_(std::string* error);
+  [[nodiscard]] bool ensure_catalog_header_(std::string *error);
+  [[nodiscard]] bool append_row_(
+      std::string_view record_kind, std::string_view record_id,
+      std::string_view cell_id, std::string_view contract_hash,
+      std::string_view wave_hash, std::string_view profile_id,
+      std::string_view execution_profile_json, std::string_view state_txt,
+      double metric_num, std::string_view text_a, std::string_view text_b,
+      std::string_view projection_version, std::string_view ts_ms,
+      std::string_view payload_json, std::string_view projection_key,
+      double projection_num, std::string_view projection_txt,
+      std::string_view projection_key_aux, std::string_view projection_txt_aux,
+      std::string_view started_at_ms, std::string_view finished_at_ms,
+      std::string_view ok_txt, std::string_view total_steps,
+      std::string_view campaign_hash, std::string_view run_id,
+      std::string *error);
+  [[nodiscard]] bool flush_buffered_rows_(std::string *error);
 
-  [[nodiscard]] bool record_cell_projection_(std::string_view cell_id,
-                                             const wave_projection_t& projection,
-                                             std::uint64_t ts_ms,
-                                             std::string* error);
-  [[nodiscard]] bool rebuild_runtime_indexes_(std::string* error);
-  [[nodiscard]] bool ingest_runtime_run_manifest_file_(
-      const std::filesystem::path& path, std::string* error);
-  [[nodiscard]] bool ingest_runtime_component_manifest_file_(
-      const std::filesystem::path& path, std::string* error);
-  [[nodiscard]] bool ingest_runtime_report_fragment_file_(
-      const std::filesystem::path& path, std::string* error);
-  [[nodiscard]] bool runtime_ledger_contains_(
-      std::string_view report_fragment_id, bool* out_exists,
-      std::string* error);
-  [[nodiscard]] bool append_runtime_ledger_(
-      std::string_view report_fragment_id, std::string_view path,
-      std::string* error);
+  [[nodiscard]] bool
+  record_cell_projection_(std::string_view cell_id,
+                          const wave_projection_t &projection,
+                          std::uint64_t ts_ms, std::string *error);
+  [[nodiscard]] bool rebuild_runtime_indexes_(std::string *error);
+  [[nodiscard]] bool
+  ingest_runtime_run_manifest_file_(const std::filesystem::path &path,
+                                    std::string *error);
+  [[nodiscard]] bool
+  ingest_runtime_component_manifest_file_(const std::filesystem::path &path,
+                                          std::string *error);
+  [[nodiscard]] bool
+  ingest_runtime_report_fragment_file_(const std::filesystem::path &path,
+                                       std::string *error);
+  [[nodiscard]] bool
+  runtime_ledger_contains_(std::string_view report_fragment_id,
+                           bool *out_exists, std::string *error);
+  [[nodiscard]] bool append_runtime_ledger_(std::string_view report_fragment_id,
+                                            std::string_view path,
+                                            std::string *error);
 
-  [[nodiscard]] static std::string coord_profile_key_(
-      std::string_view contract_hash,
-      std::string_view wave_hash,
-      std::string_view profile_id);
+  [[nodiscard]] static std::string
+  coord_profile_key_(std::string_view contract_hash, std::string_view wave_hash,
+                     std::string_view profile_id);
 
   static constexpr idydb_column_row_sizing kColRecordKind = 1;
   static constexpr idydb_column_row_sizing kColRecordId = 2;
@@ -593,7 +615,7 @@ class lattice_catalog_store_t {
   static constexpr idydb_column_row_sizing kColRunId = 25;
 
   options_t options_{};
-  idydb* db_{nullptr};
+  idydb *db_{nullptr};
   std::uint64_t opened_at_ms_{0};
   idydb_column_row_sizing next_row_hint_{0};
   bool buffer_rows_{false};
@@ -606,8 +628,7 @@ class lattice_catalog_store_t {
   std::unordered_map<std::string, lattice_cell_report_t> report_by_trial_id_{};
   std::unordered_map<std::string, std::unordered_map<std::string, double>>
       projection_num_by_cell_{};
-  std::unordered_map<std::string,
-                     std::unordered_map<std::string, std::string>>
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
       projection_txt_by_cell_{};
   std::unordered_map<std::string, cuwacunu::hero::hashimyei::run_manifest_t>
       runtime_runs_by_id_{};
@@ -633,6 +654,6 @@ class lattice_catalog_store_t {
       explicit_family_rank_by_scope_{};
 };
 
-}  // namespace wave
-}  // namespace hero
-}  // namespace cuwacunu
+} // namespace wave
+} // namespace hero
+} // namespace cuwacunu

@@ -24,6 +24,7 @@ $(eval $(call TEST_ONEFILE, test_dsl_observation, test_dsl_observation.cpp, $(DS
 $(eval $(call TEST_ONEFILE, test_dsl_latent_lineage_state,            test_dsl_latent_lineage_state.cpp))
 $(eval $(call TEST_ONEFILE, test_dsl_jkimyei_specs,        test_dsl_jkimyei_specs.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_iitepi_campaign,      test_dsl_iitepi_campaign.cpp, $(DSL_RUNTIME_LINK)))
+$(eval $(call TEST_ONEFILE, test_dsl_lattice_target,       test_dsl_lattice_target.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_wave_contract_binding_variables, test_wave_contract_binding_variables.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_tsiemene_circuit,     test_dsl_tsiemene_circuit.cpp, $(DSL_RUNTIME_LINK)))
 $(eval $(call TEST_ONEFILE, test_dsl_iitepi_wave,        test_dsl_iitepi_wave.cpp, $(DSL_RUNTIME_LINK)))
@@ -64,6 +65,7 @@ all: \
 	$(TEST_OUT)/test_dsl_latent_lineage_state \
 	$(TEST_OUT)/test_dsl_jkimyei_specs \
 	$(TEST_OUT)/test_dsl_iitepi_campaign \
+	$(TEST_OUT)/test_dsl_lattice_target \
 	$(TEST_OUT)/test_wave_contract_binding_variables \
 	$(TEST_OUT)/test_dsl_tsiemene_circuit \
 	$(TEST_OUT)/test_dsl_iitepi_wave \
@@ -93,6 +95,7 @@ run: \
 	run-test_dsl_latent_lineage_state \
 	run-test_dsl_jkimyei_specs \
 	run-test_dsl_iitepi_campaign \
+	run-test_dsl_lattice_target \
 	run-test_wave_contract_binding_variables \
 	run-test_dsl_tsiemene_circuit \
 	run-test_dsl_iitepi_wave \

@@ -745,7 +745,7 @@ std::string config_space_t::locked_runtime_binding_hash() {
 }
 
 /*──────────────────────────── life-cycle hooks ───────────────────────────*/
-void config_space_t::finit() { log_info("[dconfig] finalizing\n"); }
+void config_space_t::finit() { log_dbg("[dconfig] finalizing\n"); }
 void config_space_t::ensure_initialized() {
   bool needs_init = false;
   {
@@ -759,7 +759,7 @@ void config_space_t::ensure_initialized() {
 }
 
 void config_space_t::init() {
-  log_info("[dconfig] initializing\n");
+  log_dbg("[dconfig] initializing\n");
   exchange_type = exchange_type_e::NONE;
   change_config_file();  // defaults to global .config
 }

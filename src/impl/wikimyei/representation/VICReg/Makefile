@@ -9,15 +9,15 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 # Build Rules (producer; no lib*.a prerequisites)
 #   - Use BUILD_OBJ_INC to add Torch (+SSL/CURL) headers
-#   - Produces: build/libtorch/vicreg_4d.o
-#   - Exposes:  vicreg_4d as a named goal
+#   - Produces: build/libtorch/vicreg_rank4.o
+#   - Exposes:  vicreg_rank4 as a named goal
 # -----------------------------------------------------------------
-$(eval $(call BUILD_OBJ_INC, libtorch, vicreg_4d, vicreg_4d, \
+$(eval $(call BUILD_OBJ_INC, libtorch, vicreg_rank4, vicreg_rank4, \
   $(TORCH_INCLUDE_PATHS) $(SSL_INCLUDE_PATHS) $(LIBCURL_INCLUDE_PATHS)))
 
 # -----------------------------------------------------------------
 # Aggregate Target
 # -----------------------------------------------------------------
 .PHONY: all
-all: vicreg_4d
+all: vicreg_rank4
 	@$(LOG_SUCCESS)

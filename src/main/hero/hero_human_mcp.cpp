@@ -17,7 +17,7 @@ __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
 }
 
 void print_cli_help(const char* argv0) {
-  std::cerr << "Usage: " << argv0
+  std::cout << "Usage: " << argv0
             << " [--global-config <path>] [--hero-config <path>]"
                " [--tool <name>] [--args-json <json>]"
                " [--list-tools] [--list-tools-json] [--help]\n"
@@ -120,8 +120,9 @@ int main(int argc, char** argv) {
         cuwacunu::hero::human_mcp::resolve_human_hero_dsl_path(global_config_path);
   }
   if (hero_config_path.empty()) {
-    std::cerr << "missing [REAL_HERO].human_hero_dsl_filename in "
-              << global_config_path.string() << "\n";
+    log_err(
+        "missing [REAL_HERO].human_hero_dsl_filename in %s\n",
+        global_config_path.string().c_str());
     return 2;
   }
 
@@ -132,7 +133,7 @@ int main(int argc, char** argv) {
   std::string load_error{};
   if (!cuwacunu::hero::human_mcp::load_human_defaults(
           hero_config_path, global_config_path, &app.defaults, &load_error)) {
-    std::cerr << load_error << "\n";
+    log_err("%s\n", load_error.c_str());
     return 2;
   }
 
@@ -151,7 +152,9 @@ int main(int argc, char** argv) {
     if (!cuwacunu::hero::human_mcp::execute_tool_json(
             direct_tool_name, direct_tool_args_json, &app, &tool_result_json,
             &tool_error)) {
-      if (!tool_error.empty()) std::cerr << "tool execution failed: " << tool_error << "\n";
+      if (!tool_error.empty()) {
+        log_err("tool execution failed: %s\n", tool_error.c_str());
+      }
       return 1;
     }
     if (!tool_result_json.empty()) {
@@ -166,7 +169,9 @@ int main(int argc, char** argv) {
     std::string interactive_error{};
     if (!cuwacunu::hero::human_mcp::run_interactive_operator_console(
             &app, &interactive_error)) {
-      if (!interactive_error.empty()) std::cerr << interactive_error << "\n";
+      if (!interactive_error.empty()) {
+        log_err("%s\n", interactive_error.c_str());
+      }
       return 1;
     }
     return 0;

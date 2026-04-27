@@ -1,0 +1,24 @@
+\section{Scope and Contributions}
+\label{sec:scope-and-contributions}
+
+This document fixes the shared notation for the active \Cuwacunu{} forecasting
+pipeline.  Its role is not to prove statistical optimality or to prescribe a
+single implementation, but to define the mathematical objects that the code,
+experiments, and analysis are expected to name consistently.
+
+The scope is intentionally narrow.  The notation standardizes the objects that
+are active in the present line of work:
+\begin{enumerate}
+  \item normalized edge-level market windows,
+  \item a learned representation for one sample,
+  \item an edge-level mixture-density forecast,
+  \item observer operators such as expectation, variance, and downside risk,
+  \item an optional lift from edge observations to latent node values.
+\end{enumerate}
+
+The document deliberately excludes runtime wiring, source registries, training
+schedules, execution policy, and trading logic.  Those concerns can change
+without changing the notation defined here.  The contribution is therefore a
+precise interface: tensors, indices, predictive laws, observer maps, and graph
+objects all receive explicit domains, shapes, and meanings before they are used
+in later sections.

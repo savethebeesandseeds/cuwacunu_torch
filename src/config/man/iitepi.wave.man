@@ -100,7 +100,7 @@ required = true
 default = none
 range = unique within wave
 allowed = tsi.wikimyei.* canonical node path
-nuance = must resolve to a contract wikimyei node path during compatibility validation; authored wave files do not carry concrete `HASHIMYEI` selection, which is campaign-owned through `BIND.MOUNT`
+nuance = must resolve to a contract wikimyei node path during compatibility validation; authored wave files do not carry concrete `HASHIMYEI` selection, and staged snapshots carry the contract-derived hash-suffixed path
 
 [FIELD WIKIMYEI.JKIMYEI.HALT_TRAIN]
 key = WIKIMYEI.JKIMYEI.HALT_TRAIN
@@ -132,15 +132,15 @@ range = unique within wave
 allowed = tsi.source.* canonical node path
 nuance = runtime currently requires exactly one SOURCE path in selected wave
 
-[FIELD SOURCE.SYMBOL]
-key = SOURCE.RUNTIME.SYMBOL
+[FIELD SOURCE.RUNTIME_INSTRUMENT_SIGNATURE]
+key = SOURCE.RUNTIME.RUNTIME_INSTRUMENT_SIGNATURE
 scope = SOURCE.RUNTIME block
-type = identifier
+type = instrument_signature_block
 required = true
 default = none
-range = non-empty
-allowed = market symbol token
-nuance = no canonical symbol catalog is enforced by parser
+range = exact non-ANY values for SYMBOL, RECORD_TYPE, MARKET_TYPE, VENUE, BASE_ASSET, QUOTE_ASSET
+allowed = identifier values; SYMBOL must equal BASE_ASSET+QUOTE_ASSET when BASE_ASSET and QUOTE_ASSET are exact, with QUOTE_ASSET=NONE meaning SYMBOL equals BASE_ASSET
+nuance = replaces the removed source runtime symbol shortcut; runtime validates this exact source signature against every selected contract DOCK.INSTRUMENT_SIGNATURE
 
 [FIELD SOURCE.FROM]
 key = SOURCE.RUNTIME.FROM
@@ -200,7 +200,7 @@ required = false
 default = none
 range = reserved for future probe families
 allowed = no active probe runtime families
-nuance = removed `tsi.probe.representation.transfer_matrix_evaluation` runtime binding; transfer-matrix reporting is owned by `tsi.wikimyei.representation.vicreg`
+nuance = removed `tsi.probe.representation.transfer_matrix_evaluation` runtime binding; transfer-matrix reporting is owned by `tsi.wikimyei.representation.encoding.vicreg`
 
 [FIELD PROBE.TRAINING_WINDOW]
 key = PROBE.TRAINING_WINDOW

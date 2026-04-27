@@ -1,0 +1,88 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = lattice.target
+TARGET_DSL = src/config/instructions/defaults/default.lattice.target.dsl
+TARGET_BNF = src/config/bnf/lattice.target.bnf
+PRIMARY_DECODER = src/impl/camahjucunu/dsl/lattice_target/lattice_target.cpp
+PRIMARY_VALIDATORS = syntax_and_semantic_shape_in_decoder
+
+[FIELD LATTICE_TARGET]
+key = LATTICE_TARGET <id>
+scope = root
+type = block
+required = true
+default = none
+range = exactly one top-level block
+allowed = id token plus block body
+nuance = declares desired lattice evidence; it does not execute a campaign or mutate hashimyei state
+
+[FIELD IMPORT_CONTRACT]
+key = IMPORT_CONTRACT "<path>" AS <contract_alias>
+scope = LATTICE_TARGET
+type = path + alias
+required = true
+default = none
+range = one or more
+allowed = quoted_path_or_identifier for path, [A-Za-z0-9_.-]+ for alias
+nuance = target CONTRACT refs must point to one of these aliases; duplicate aliases and duplicate paths are rejected
+
+[FIELD TARGET]
+key = TARGET <id>
+scope = LATTICE_TARGET
+type = block
+required = true
+default = none
+range = one or more, unique ids
+allowed = CONTRACT, COMPONENT_TARGET, SOURCE, EFFORT, REQUIRE
+nuance = one target binds a contract, exact source instrument, component tag expectations, training effort, and evidence requirements
+
+[FIELD TARGET.CONTRACT]
+key = CONTRACT
+scope = TARGET
+type = alias reference
+required = true
+default = none
+range = one
+allowed = imported contract alias
+nuance = free-form contract refs are rejected; this keeps target intent anchored to an explicit contract import
+
+[FIELD COMPONENT_TARGET]
+key = COMPONENT_TARGET
+scope = TARGET
+type = block
+required = true
+default = none
+range = one or more slot assignments
+allowed = <slot> = TAG <component_tag>;
+nuance = component tags name the desired component profile; concrete hashimyei ids remain derived from contract/runtime evidence
+
+[FIELD SOURCE]
+key = SOURCE
+scope = TARGET
+type = block
+required = true
+default = none
+range = exactly one exact instrument signature plus TRAIN, VALIDATE, TEST windows
+allowed = SYMBOL, RECORD_TYPE, MARKET_TYPE, VENUE, BASE_ASSET, QUOTE_ASSET, TRAIN, VALIDATE, TEST
+nuance = SOURCE requires an exact instrument signature; ANY is rejected here because targets describe concrete evidence obligations
+
+[FIELD EFFORT]
+key = EFFORT
+scope = TARGET
+type = block
+required = true
+default = none
+range = positive integer fields
+allowed = EPOCHS, BATCH_SIZE, MAX_BATCHES_PER_EPOCH
+nuance = effort is an evidence expectation for later lattice verification, not a campaign scheduler
+
+[FIELD REQUIRE]
+key = REQUIRE
+scope = TARGET
+type = block
+required = true
+default = none
+range = boolean fields
+allowed = TRAINED, VALIDATED, TESTED
+nuance = requirements declare which lifecycle facts must be proven from Hashimyei/Lattice evidence

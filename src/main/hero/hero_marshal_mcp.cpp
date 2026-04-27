@@ -15,7 +15,7 @@ __attribute__((constructor(101))) void disable_terminal_logs_pre_main() {
 }
 
 void print_cli_help(const char* argv0) {
-  std::cerr << "Usage: " << argv0
+  std::cout << "Usage: " << argv0
             << " [--global-config <path>] [--hero-config <path>]"
                " [--tool <name>] [--args-json <json>]"
                " [--list-tools] [--list-tools-json]"
@@ -139,8 +139,9 @@ int main(int argc, char** argv) {
         cuwacunu::hero::marshal_mcp::resolve_marshal_hero_dsl_path(global_config_path);
   }
   if (hero_config_path.empty()) {
-    std::cerr << "missing [REAL_HERO].marshal_hero_dsl_filename in "
-              << global_config_path.string() << "\n";
+    log_err(
+        "missing [REAL_HERO].marshal_hero_dsl_filename in %s\n",
+        global_config_path.string().c_str());
     return 2;
   }
 
@@ -151,7 +152,7 @@ int main(int argc, char** argv) {
   std::string load_error{};
   if (!cuwacunu::hero::marshal_mcp::load_marshal_defaults(
           hero_config_path, global_config_path, &app.defaults, &load_error)) {
-    std::cerr << load_error << "\n";
+    log_err("%s\n", load_error.c_str());
     return 2;
   }
 
@@ -159,7 +160,9 @@ int main(int argc, char** argv) {
     std::string runner_error{};
     if (!cuwacunu::hero::marshal_mcp::run_session_runner(&app, marshal_session_id,
                                                     &runner_error)) {
-      if (!runner_error.empty()) std::cerr << runner_error << "\n";
+      if (!runner_error.empty()) {
+        log_err("%s\n", runner_error.c_str());
+      }
       return 1;
     }
     return 0;
@@ -180,7 +183,9 @@ int main(int argc, char** argv) {
     if (!cuwacunu::hero::marshal_mcp::execute_tool_json(
             direct_tool_name, direct_tool_args_json, &app, &tool_result_json,
             &tool_error)) {
-      if (!tool_error.empty()) std::cerr << "tool execution failed: " << tool_error << "\n";
+      if (!tool_error.empty()) {
+        log_err("tool execution failed: %s\n", tool_error.c_str());
+      }
       return 1;
     }
     if (!tool_result_json.empty()) {

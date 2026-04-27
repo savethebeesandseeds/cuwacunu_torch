@@ -66,10 +66,32 @@
                              {<source_runtime_assignment>}
                              [<whitespace>] "}" [<whitespace>] ";" <line_end> ;
 <source_runtime_assignment> ::= [<whitespace>] <source_runtime_assignment_core> ;
-<source_runtime_assignment_core> ::= <source_symbol_assignment>
+<source_runtime_assignment_core> ::= <runtime_instrument_signature_block>
                                    | <source_from_assignment>
                                    | <source_to_assignment> ;
-<source_symbol_assignment> ::= "SYMBOL" <assign> <symbol_value> [<whitespace>] ";" <line_end> ;
+<runtime_instrument_signature_block> ::= "RUNTIME_INSTRUMENT_SIGNATURE"
+                                   <assign> "{"
+                                   <line_end>
+                                   [<whitespace>] "SYMBOL" <assign>
+                                   <symbol_value> [<whitespace>] ";"
+                                   <line_end>
+                                   [<whitespace>] "RECORD_TYPE" <assign>
+                                   <id_value> [<whitespace>] ";"
+                                   <line_end>
+                                   [<whitespace>] "MARKET_TYPE" <assign>
+                                   <id_value> [<whitespace>] ";"
+                                   <line_end>
+                                   [<whitespace>] "VENUE" <assign>
+                                   <id_value> [<whitespace>] ";"
+                                   <line_end>
+                                   [<whitespace>] "BASE_ASSET" <assign>
+                                   <id_value> [<whitespace>] ";"
+                                   <line_end>
+                                   [<whitespace>] "QUOTE_ASSET" <assign>
+                                   <id_value> [<whitespace>] ";"
+                                   <line_end>
+                                   [<whitespace>] "}" [<whitespace>] ";"
+                                   <line_end> ;
 <source_from_assignment>   ::= "FROM" <assign> <date_value> [<whitespace>] ";" <line_end> ;
 <source_to_assignment>     ::= "TO" <assign> <date_value> [<whitespace>] ";" <line_end> ;
 <source_workers_assignment> ::= "WORKERS" <assign> <unsigned_int> [<whitespace>] ";" <line_end> ;
@@ -116,7 +138,7 @@
 <sampler_value>          ::= "sequential" | "random" | "SequentialSampler" | "RandomSampler" ;
 <probe_training_window_value> ::= "incoming_batch" ;
 <probe_report_policy_value> ::= "epoch_end_log" ;
-<probe_objective_value>  ::= "future_target_dims_nll" ;
+<probe_objective_value>  ::= "future_target_feature_indices_nll" ;
 <bool_value>             ::= "true" | "false" | "1" | "0" ;
 <symbol_value>           ::= <symbol_char> {<symbol_char>} ;
 <date_value>             ::= <digit><digit> "." <digit><digit> "." <digit><digit><digit><digit> ;

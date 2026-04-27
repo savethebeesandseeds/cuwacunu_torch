@@ -2,17 +2,23 @@
 /**
  * @file expected_value.cpp
  * @brief ExpectedValue: non-template implementation of the MDN-backed
- *        E[Y|X] wrapper with safe checkpointing.
+ *        E[F|X] wrapper with safe checkpointing.
  */
 
 #include "wikimyei/inference/expected_value/expected_value.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio> // std::remove, std::rename
 #include <cstring>
 #include <filesystem>
+#include <iomanip>
+#include <sstream>
+#include <string_view>
 #include <utility>
+
+#include "piaabo/torch_compat/data_analytics.h"
 
 // ------------------------------------------------------------
 // RUNTIME WARNINGS (non-blocking / informational) .cpp
@@ -33,12 +39,131 @@ namespace wikimyei {
 
 // -------------------- safe state-dict helpers ----------------
 namespace {
-constexpr int64_t kExpectedValueCheckpointFormatVersion = 4;
+constexpr int64_t kExpectedValueCheckpointFormatVersion = 6;
+constexpr const char *kExpectedValueHeadManifestSchema =
+    "expected_value.head_manifest.v1";
+constexpr const char *kExpectedValueExportSemantics =
+    "target_space_expectation";
+constexpr const char *kExpectedValueLossMode = "pseudo_likelihood";
+constexpr const char *kExpectedValueTrainingRecipe =
+    "representation_frozen_value_head";
+constexpr const char *kExpectedValueCovarianceFamily =
+    "diagonal_gaussian_components";
+constexpr const char *kExpectedValueSigmaParameterization =
+    "safe_softplus_output_loss_clamp";
+constexpr const char *kExpectedValueOutputLayout =
+    "log_pi[B,C,Hf,K];mu_sigma[B,C,Hf,K,Df]";
+constexpr const char *kExpectedValueFutureMaskSemantics = "1_valid_0_ignore";
+constexpr double kExpectedValueManifestFloatTolerance = 1e-9;
 
 struct ev_module_state_counts_t {
   int64_t parameters{0};
   int64_t buffers{0};
 };
+
+inline std::string ev_trim_lower_ascii(std::string s) {
+  std::size_t b = 0;
+  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+    ++b;
+  std::size_t e = s.size();
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+    --e;
+  s = s.substr(b, e - b);
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return s;
+}
+
+inline std::string ev_strip_torch_type_prefixes(std::string v) {
+  if (v.rfind("torch::", 0) == 0)
+    v = v.substr(7);
+  if (v.rfind("at::", 0) == 0)
+    v = v.substr(4);
+  if (v.rfind("k", 0) == 0 && v.size() > 1 &&
+      std::isalpha(static_cast<unsigned char>(v[1]))) {
+    v = v.substr(1);
+  }
+  return v;
+}
+
+inline bool ev_requests_cuda_device(std::string configured_device) {
+  std::string v = ev_trim_lower_ascii(std::move(configured_device));
+  if (v == "gpu" || v.rfind("gpu:", 0) == 0)
+    return true;
+  v = ev_strip_torch_type_prefixes(std::move(v));
+  return v == "cuda" || v.rfind("cuda:", 0) == 0;
+}
+
+inline torch::Device ev_resolve_expected_value_device_or_throw(
+    const cuwacunu::iitepi::contract_hash_t &contract_hash) {
+  const std::string configured_device =
+      cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash)
+          ->get<std::string>("EXPECTED_VALUE", "device");
+  const torch::Device resolved_device =
+      cuwacunu::iitepi::config_device(contract_hash, "EXPECTED_VALUE");
+  TORCH_CHECK(
+      !(resolved_device.is_cpu() && ev_requests_cuda_device(configured_device)),
+      "[ExpectedValue](ctor) configured device '", configured_device,
+      "' explicitly requires CUDA, but resolved device is CPU. Refusing to "
+      "create the MDN expected-value head on CPU; inspect earlier "
+      "[torch_utils][CPU_FALLBACK_ACTIVE] warnings for the CUDA probe failure "
+      "details.");
+  return resolved_device;
+}
+
+inline torch::Tensor ev_move_state_tensor_to_device(torch::Tensor t,
+                                                    const torch::Device &dev) {
+  if (!t.defined())
+    return t;
+  if (t.device() == dev)
+    return t;
+  return t.to(dev, /*non_blocking=*/false);
+}
+
+inline void
+ev_move_optimizer_state_to_device(torch::optim::Optimizer *optimizer,
+                                  const torch::Device &dev) {
+  if (!optimizer)
+    return;
+  for (auto &kv : optimizer->state()) {
+    if (auto *st =
+            dynamic_cast<torch::optim::AdamWParamState *>(kv.second.get())) {
+      st->exp_avg(ev_move_state_tensor_to_device(st->exp_avg(), dev));
+      st->exp_avg_sq(ev_move_state_tensor_to_device(st->exp_avg_sq(), dev));
+      st->max_exp_avg_sq(
+          ev_move_state_tensor_to_device(st->max_exp_avg_sq(), dev));
+      continue;
+    }
+    if (auto *st =
+            dynamic_cast<torch::optim::AdamParamState *>(kv.second.get())) {
+      st->exp_avg(ev_move_state_tensor_to_device(st->exp_avg(), dev));
+      st->exp_avg_sq(ev_move_state_tensor_to_device(st->exp_avg_sq(), dev));
+      st->max_exp_avg_sq(
+          ev_move_state_tensor_to_device(st->max_exp_avg_sq(), dev));
+      continue;
+    }
+    if (auto *st =
+            dynamic_cast<torch::optim::RMSpropParamState *>(kv.second.get())) {
+      st->square_avg(ev_move_state_tensor_to_device(st->square_avg(), dev));
+      st->momentum_buffer(
+          ev_move_state_tensor_to_device(st->momentum_buffer(), dev));
+      st->grad_avg(ev_move_state_tensor_to_device(st->grad_avg(), dev));
+      continue;
+    }
+    if (auto *st =
+            dynamic_cast<torch::optim::SGDParamState *>(kv.second.get())) {
+      st->momentum_buffer(
+          ev_move_state_tensor_to_device(st->momentum_buffer(), dev));
+      continue;
+    }
+    if (auto *st =
+            dynamic_cast<torch::optim::AdagradParamState *>(kv.second.get())) {
+      st->sum(ev_move_state_tensor_to_device(st->sum(), dev));
+      continue;
+    }
+  }
+}
 
 // write CPU clone of a tensor under key
 inline void ev_write_tensor(torch::serialize::OutputArchive &ar,
@@ -110,6 +235,142 @@ inline std::string ev_require_string(torch::serialize::InputArchive &ar,
   TORCH_CHECK(ev_try_read_string(ar, key, value),
               "[ExpectedValue::ckpt] missing required key '", key, "'.");
   return value;
+}
+
+inline void ev_write_i64_vector(torch::serialize::OutputArchive &ar,
+                                const std::string &key,
+                                const std::vector<int64_t> &values) {
+  auto t = torch::empty({static_cast<int64_t>(values.size())},
+                        torch::TensorOptions().dtype(torch::kInt64));
+  auto *data = t.data_ptr<int64_t>();
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    data[i] = values[i];
+  }
+  ar.write(key, t);
+}
+
+inline std::vector<int64_t>
+ev_require_i64_vector(torch::serialize::InputArchive &ar,
+                      const std::string &key) {
+  torch::Tensor t;
+  TORCH_CHECK(ev_try_read_tensor(ar, key, t),
+              "[ExpectedValue::ckpt] missing required key '", key, "'.");
+  t = t.to(torch::kCPU).to(torch::kInt64);
+  TORCH_CHECK(t.dim() == 1, "[ExpectedValue::ckpt] key '", key,
+              "' must be a 1-D int64 tensor.");
+  std::vector<int64_t> out(static_cast<std::size_t>(t.numel()));
+  const auto *data = t.data_ptr<int64_t>();
+  for (std::size_t i = 0; i < out.size(); ++i) {
+    out[i] = data[i];
+  }
+  return out;
+}
+
+inline std::string ev_i64_vector_string(const std::vector<int64_t> &values) {
+  std::ostringstream oss;
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i)
+      oss << ",";
+    oss << values[i];
+  }
+  oss << "]";
+  return oss.str();
+}
+
+inline bool ev_ends_with(std::string_view value, std::string_view suffix) {
+  return value.size() >= suffix.size() &&
+         value.substr(value.size() - suffix.size()) == suffix;
+}
+
+inline std::string ev_feature_alias_for_normalization(std::string alias,
+                                                      std::string norm) {
+  norm = ev_trim_lower_ascii(std::move(norm));
+  if (norm != "log_returns")
+    return alias;
+  if (ev_ends_with(alias, "_price")) {
+    alias.resize(alias.size() - std::string_view("_price").size());
+    return alias + ".log_return";
+  }
+  if (alias == "price")
+    return "price.log_return";
+  return alias + ".log1p";
+}
+
+inline std::string ev_target_feature_aliases_string(
+    const cuwacunu::iitepi::contract_hash_t &contract_hash,
+    const std::vector<int64_t> &target_feature_indices) {
+  try {
+    const auto observation =
+        cuwacunu::camahjucunu::decode_observation_spec_from_contract(
+            contract_hash);
+
+    bool have_active = false;
+    bool mixed_record_type = false;
+    bool mixed_normalization = false;
+    std::string record_type{};
+    std::string normalization_policy{};
+    for (const auto &channel : observation.channel_forms) {
+      const std::string active = ev_trim_lower_ascii(channel.active);
+      if (active != "true" && active != "1" && active != "yes" &&
+          active != "on") {
+        continue;
+      }
+      have_active = true;
+      const std::string channel_record_type =
+          ev_trim_lower_ascii(channel.record_type);
+      const std::string channel_normalization =
+          ev_trim_lower_ascii(channel.normalization_policy);
+      if (record_type.empty()) {
+        record_type = channel_record_type;
+      } else if (record_type != channel_record_type) {
+        mixed_record_type = true;
+      }
+      if (normalization_policy.empty()) {
+        normalization_policy = channel_normalization;
+      } else if (normalization_policy != channel_normalization) {
+        mixed_normalization = true;
+      }
+    }
+
+    if (!have_active || mixed_record_type || mixed_normalization ||
+        record_type.empty()) {
+      return "unavailable";
+    }
+
+    const auto &feature_names =
+        cuwacunu::piaabo::torch_compat::data_feature_names_for_record_type(
+            record_type);
+    if (feature_names.empty())
+      return "unavailable";
+
+    std::ostringstream oss;
+    oss << "[";
+    for (std::size_t i = 0; i < target_feature_indices.size(); ++i) {
+      if (i != 0)
+        oss << ", ";
+      const int64_t index = target_feature_indices[i];
+      if (index >= 0 &&
+          static_cast<std::size_t>(index) < feature_names.size()) {
+        oss << ev_feature_alias_for_normalization(
+            feature_names[static_cast<std::size_t>(index)],
+            normalization_policy);
+      } else {
+        oss << "#" << index;
+      }
+    }
+    oss << "]";
+    return oss.str();
+  } catch (...) {
+    return "unavailable";
+  }
+}
+
+inline bool ev_manifest_double_equal(double saved, double runtime) {
+  const double scale =
+      std::max(1.0, std::max(std::abs(saved), std::abs(runtime)));
+  return std::abs(saved - runtime) <=
+         kExpectedValueManifestFloatTolerance * scale;
 }
 
 // Save only defined params/buffers (CPU clones), no JIT/module pickling.
@@ -185,7 +446,13 @@ ExpectedValue::ExpectedValue(
   const auto contract =
       cuwacunu::iitepi::contract_space_t::contract_itself(contract_hash);
 
-  // Static weights and target dims from the bound contract snapshot.
+  // Static weights and target feature indices from the bound contract snapshot.
+  future_feature_width_ = contract->get<int64_t>("DOCK", "__obs_feature_dim");
+  TORCH_CHECK(future_feature_width_ > 0,
+              "[ExpectedValue](ctor) __obs_feature_dim must be positive");
+  future_feature_schema_hash_ = contract->docking_signature.sha256_hex;
+  TORCH_CHECK(!future_feature_schema_hash_.empty(),
+              "[ExpectedValue](ctor) future feature schema hash is empty");
   auto observation_instruction =
       cuwacunu::camahjucunu::decode_observation_spec_from_contract(
           contract_hash);
@@ -195,17 +462,24 @@ ExpectedValue::ExpectedValue(
   grad_clip = contract->get<double>("EXPECTED_VALUE", "grad_clip");
   optimizer_threshold_reset =
       contract->get<int>("EXPECTED_VALUE", "optimizer_threshold_reset");
-  target_dims_ = contract->get_arr<int64_t>("EXPECTED_VALUE", "target_dims");
+  target_feature_indices_ =
+      contract->get_arr<int64_t>("EXPECTED_VALUE", "target_feature_indices");
   {
-    auto sorted_dims = target_dims_;
-    std::sort(sorted_dims.begin(), sorted_dims.end());
-    TORCH_CHECK(!sorted_dims.empty(),
-                "[ExpectedValue](ctor) target_dims must be non-empty");
-    TORCH_CHECK(sorted_dims.front() >= 0,
-                "[ExpectedValue](ctor) target_dims must be non-negative");
-    TORCH_CHECK(std::adjacent_find(sorted_dims.begin(), sorted_dims.end()) ==
-                    sorted_dims.end(),
-                "[ExpectedValue](ctor) target_dims must be unique");
+    auto sorted_indices = target_feature_indices_;
+    std::sort(sorted_indices.begin(), sorted_indices.end());
+    TORCH_CHECK(!sorted_indices.empty(),
+                "[ExpectedValue](ctor) target_feature_indices must be "
+                "non-empty");
+    TORCH_CHECK(sorted_indices.front() >= 0,
+                "[ExpectedValue](ctor) target_feature_indices must be "
+                "non-negative");
+    TORCH_CHECK(
+        std::adjacent_find(sorted_indices.begin(), sorted_indices.end()) ==
+            sorted_indices.end(),
+        "[ExpectedValue](ctor) target_feature_indices must be unique");
+    TORCH_CHECK(sorted_indices.back() < future_feature_width_,
+                "[ExpectedValue](ctor) target_feature_indices must fit future "
+                "feature width");
   }
   temporal_reducer_ = parse_temporal_reducer_(contract->get<std::string>(
       "EXPECTED_VALUE", "encoding_temporal_reducer", "last_valid"));
@@ -213,17 +487,21 @@ ExpectedValue::ExpectedValue(
       std::max(0, contract->get<int>("EXPECTED_VALUE", "telemetry_every", 0));
 
   // Model
+  const torch::Dtype configured_dtype =
+      cuwacunu::iitepi::config_dtype(contract_hash, "EXPECTED_VALUE");
+  const torch::Device configured_device =
+      ev_resolve_expected_value_device_or_throw(contract_hash);
   semantic_model = cuwacunu::wikimyei::mdn::MdnModel(
       contract->get<int>("EXPECTED_VALUE", "encoding_dims"),   // De
-      static_cast<int64_t>(target_dims_.size()),               // Dy
+      static_cast<int64_t>(target_feature_indices_.size()),    // Df
       observation_instruction.count_channels(),                // C
       observation_instruction.max_future_sequence_length(),    // Hf
       contract->get<int>("EXPECTED_VALUE", "mixture_comps"),   // K
       contract->get<int>("EXPECTED_VALUE", "features_hidden"), // H
       contract->get<int>("EXPECTED_VALUE", "residual_depth"),  // depth
-      cuwacunu::iitepi::config_dtype(contract_hash, "EXPECTED_VALUE"),
-      cuwacunu::iitepi::config_device(contract_hash, "EXPECTED_VALUE"),
+      configured_dtype, configured_device,
       /* display_model */ false);
+  semantic_model->assert_resident_on_device_or_throw("[ExpectedValue](ctor)");
 
   // Params
   trainable_params_.reserve(64);
@@ -348,7 +626,7 @@ torch::Tensor ExpectedValue::encoding_sequence_mask_from_source_mask_(
                 "[ExpectedValue::reduce_encoding] source mask batch mismatch");
     TORCH_CHECK(mask.size(2) == sequence_length,
                 "[ExpectedValue::reduce_encoding] source mask time mismatch");
-    mask = mask.gt(0).any(/*dim=*/1); // [B,C,T] -> [B,T]
+    mask = mask.gt(0).any(/*dim=*/1); // [B,C,Hx] -> [B,Hx]
   } else if (mask.dim() == 2) {
     TORCH_CHECK(mask.size(0) == batch_size,
                 "[ExpectedValue::reduce_encoding] source mask batch mismatch");
@@ -357,7 +635,7 @@ torch::Tensor ExpectedValue::encoding_sequence_mask_from_source_mask_(
     mask = mask.gt(0);
   } else {
     TORCH_CHECK(false, "[ExpectedValue::reduce_encoding] source mask must be "
-                       "[B,C,T] or [B,T] for rank-3 encodings.");
+                       "[B,C,Hx] or [B,Hx] for rank-3 encodings.");
   }
   return mask.to(torch::kFloat32);
 }
@@ -369,7 +647,7 @@ ExpectedValue::reduce_encoding_(const torch::Tensor &encoding,
               "[ExpectedValue::reduce_encoding] encoding is undefined");
   TORCH_CHECK(encoding.dim() == 2 || encoding.dim() == 3,
               "[ExpectedValue::reduce_encoding] encoding must be [B,De] or "
-              "[B,T,De]");
+              "[B,Hx,De]");
 
   auto enc = encoding.to(semantic_model->device, semantic_model->dtype,
                          /*non_blocking=*/true, /*copy=*/false);
@@ -426,12 +704,12 @@ void ExpectedValue::validate_future_feature_width_(
   TORCH_CHECK(future_features.defined(), caller,
               " future_features is undefined");
   TORCH_CHECK(future_features.dim() == 4, caller,
-              " future_features must be [B,C,Hf,D]");
+              " future_features must be [B,C,Hf,Dx]");
   const int64_t D = future_features.size(3);
   TORCH_CHECK(D > 0, caller, " future feature width must be positive");
-  for (const auto dim : target_dims_) {
-    TORCH_CHECK(dim >= 0 && dim < D, caller, " target dim ", dim,
-                " out of range for future feature width D=", D);
+  for (const auto index : target_feature_indices_) {
+    TORCH_CHECK(index >= 0 && index < D, caller, " target feature index ",
+                index, " out of range for future feature width Dx=", D);
   }
 }
 
@@ -593,31 +871,31 @@ ExpectedValue::train_step_result_t ExpectedValue::train_one_batch(
 
   TORCH_CHECK(
       fut.dim() == 4,
-      "[ExpectedValue::train_one_batch] future_features must be [B,C,Hf,D]");
+      "[ExpectedValue::train_one_batch] future_features must be [B,C,Hf,Dx]");
   TORCH_CHECK(fmask.dim() == 3,
               "[ExpectedValue::train_one_batch] future_mask must be [B,C,Hf]");
   TORCH_CHECK(enc.dim() == 2 || enc.dim() == 3,
               "[ExpectedValue::train_one_batch] encoding must be [B,De] or "
-              "[B,T,De]");
+              "[B,Hx,De]");
   TORCH_CHECK(
       fut.size(0) == enc.size(0),
       "[ExpectedValue::train_one_batch] batch size mismatch encoding/future");
 
   validate_future_feature_width_(fut, "[ExpectedValue::train_one_batch]");
-  auto y = select_targets(fut, target_dims_);
+  auto f = select_targets(fut, target_feature_indices_);
   auto out = forward_from_encoding(enc, smask);
 
   const int64_t C = fmask.size(1);
   const int64_t Hf = fmask.size(2);
-  const int64_t Dy = y.size(3);
+  const int64_t Df = f.size(3);
   auto w_ch =
       build_channel_weights(C, semantic_model->device, semantic_model->dtype);
   auto w_tau =
       build_horizon_weights(Hf, semantic_model->device, semantic_model->dtype);
   auto w_dim =
-      build_feature_weights(Dy, semantic_model->device, semantic_model->dtype);
+      build_feature_weights(Df, semantic_model->device, semantic_model->dtype);
 
-  auto loss = loss_obj->compute(out, y, fmask, w_ch, w_tau, w_dim);
+  auto loss = loss_obj->compute(out, f, fmask, w_ch, w_tau, w_dim);
   const double loss_scalar = loss.item().toDouble();
   if (!std::isfinite(loss_scalar)) {
     if (training_policy.skip_on_nan) {
@@ -637,7 +915,7 @@ ExpectedValue::train_step_result_t ExpectedValue::train_one_batch(
     torch::NoGradGuard telemetry_ng;
     cuwacunu::wikimyei::mdn::MdnNllOptions o{
         loss_obj->eps_, loss_obj->sigma_min_, loss_obj->sigma_max_};
-    auto nll_map = cuwacunu::wikimyei::mdn::mdn_nll_map(out, y, fmask, o);
+    auto nll_map = cuwacunu::wikimyei::mdn::mdn_nll_map(out, f, fmask, o);
     auto ch_mean =
         cuwacunu::wikimyei::mdn::mdn_masked_mean_per_channel(nll_map, fmask);
     if (use_channel_ema_weights_)
@@ -650,11 +928,11 @@ ExpectedValue::train_step_result_t ExpectedValue::train_one_batch(
     if (log_now) {
       auto ch_cpu = ch_mean.detach().to(torch::kCPU);
       auto hz_cpu = hz_mean.detach().to(torch::kCPU);
-      log_info("[ExpectedValue::telemetry] it=%lld chNLL[min=%.5f max=%.5f] "
-               "hzNLL[min=%.5f max=%.5f]\n",
-               static_cast<long long>(next_iter),
-               ch_cpu.min().item().toDouble(), ch_cpu.max().item().toDouble(),
-               hz_cpu.min().item().toDouble(), hz_cpu.max().item().toDouble());
+      log_dbg("[ExpectedValue::telemetry it=%lld chNLL[min=%.5f max=%.5f] "
+              "hzNLL[min=%.5f max=%.5f]\n",
+              static_cast<long long>(next_iter), ch_cpu.min().item().toDouble(),
+              ch_cpu.max().item().toDouble(), hz_cpu.min().item().toDouble(),
+              hz_cpu.max().item().toDouble());
     }
   }
 
@@ -687,33 +965,34 @@ ExpectedValue::train_step_result_t ExpectedValue::train_one_batch(
 }
 
 // ---------- helpers: targets & weights ----------
-torch::Tensor
-ExpectedValue::select_targets(const torch::Tensor &future_features,
-                              const std::vector<int64_t> &target_dims) {
+torch::Tensor ExpectedValue::select_targets(
+    const torch::Tensor &future_features,
+    const std::vector<int64_t> &target_feature_indices) {
   TORCH_CHECK(future_features.defined(),
               "[ExpectedValue::select_targets] future_features undefined");
   TORCH_CHECK(future_features.dim() == 4,
-              "[ExpectedValue::select_targets] expecting [B,C,Hf,D]");
+              "[ExpectedValue::select_targets] expecting [B,C,Hf,Dx]");
   const auto B = future_features.size(0);
   const auto C = future_features.size(1);
   const auto Hf = future_features.size(2);
   const auto D = future_features.size(3);
-  TORCH_CHECK(!target_dims.empty(),
-              "[ExpectedValue::select_targets] empty target_dims");
-  for (auto d : target_dims) {
-    TORCH_CHECK(d >= 0 && d < D,
-                "[ExpectedValue::select_targets] target dim out of range");
+  TORCH_CHECK(!target_feature_indices.empty(),
+              "[ExpectedValue::select_targets] empty target_feature_indices");
+  for (auto index : target_feature_indices) {
+    TORCH_CHECK(index >= 0 && index < D,
+                "[ExpectedValue::select_targets] target feature index out of "
+                "range");
   }
-  const auto Dy = static_cast<int64_t>(target_dims.size());
+  const auto Df = static_cast<int64_t>(target_feature_indices.size());
   auto idx = torch::tensor(
-                 target_dims,
+                 target_feature_indices,
                  torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU))
                  .to(future_features.device());
 
   auto flat = future_features.reshape({B * C * Hf, D});
-  auto idx2 = idx.unsqueeze(0).expand({B * C * Hf, Dy});
-  auto y_sel = flat.gather(/*dim=*/1, idx2);
-  return y_sel.view({B, C, Hf, Dy});
+  auto idx2 = idx.unsqueeze(0).expand({B * C * Hf, Df});
+  auto f_sel = flat.gather(/*dim=*/1, idx2);
+  return f_sel.view({B, C, Hf, Df});
 }
 
 torch::Tensor ExpectedValue::build_horizon_weights(int64_t Hf,
@@ -768,21 +1047,21 @@ torch::Tensor ExpectedValue::build_channel_weights(int64_t C, torch::Device dev,
   return w;
 }
 
-torch::Tensor ExpectedValue::build_feature_weights(int64_t Dy,
+torch::Tensor ExpectedValue::build_feature_weights(int64_t Df,
                                                    torch::Device dev,
                                                    torch::Dtype dt) const {
-  if (Dy <= 0)
+  if (Df <= 0)
     return torch::Tensor();
   if (!static_feature_weights_.empty()) {
-    TORCH_CHECK(static_cast<int64_t>(static_feature_weights_.size()) == Dy,
-                "[ExpectedValue] static_feature_weights size must equal Dy");
+    TORCH_CHECK(static_cast<int64_t>(static_feature_weights_.size()) == Df,
+                "[ExpectedValue] static_feature_weights size must equal Df");
     auto wd = torch::tensor(static_feature_weights_,
                             torch::TensorOptions().dtype(torch::kFloat32));
     if (wd.dtype() != dt)
       wd = wd.to(dt);
     return wd.to(dev);
   }
-  return torch::ones({Dy}, torch::TensorOptions().dtype(dt).device(dev));
+  return torch::ones({Df}, torch::TensorOptions().dtype(dt).device(dev));
 }
 
 torch::Tensor ExpectedValue::channel_weights_from_ema(int64_t C) {
@@ -824,13 +1103,15 @@ const char *ExpectedValue::scheduler_mode_name(
 }
 
 // ==========================
-// Checkpointing (SAFE, strict v4)
+// Checkpointing (SAFE, strict v6)
 // ==========================
 bool ExpectedValue::save_checkpoint(
     const std::string &path, bool write_network_analytics_sidecar) const {
   const std::string tmp = path + ".tmp";
   try {
     torch::serialize::OutputArchive ar;
+    semantic_model->assert_resident_on_device_or_throw(
+        "[ExpectedValue::ckpt save]");
 
     // --- model state (safe, tensor-by-tensor) ---
     const auto model_counts =
@@ -844,6 +1125,18 @@ bool ExpectedValue::save_checkpoint(
     ev_write_string(ar, "meta/component_name", component_name);
     ev_write_string(ar, "meta/encoding_temporal_reducer",
                     temporal_reducer_name_(temporal_reducer_));
+    ev_write_string(ar, "meta/head_manifest_schema",
+                    kExpectedValueHeadManifestSchema);
+    ev_write_string(ar, "meta/export_semantics", kExpectedValueExportSemantics);
+    ev_write_string(ar, "meta/loss_mode", kExpectedValueLossMode);
+    ev_write_string(ar, "meta/training_recipe", kExpectedValueTrainingRecipe);
+    ev_write_string(ar, "meta/covariance_family",
+                    kExpectedValueCovarianceFamily);
+    ev_write_string(ar, "meta/sigma_parameterization",
+                    kExpectedValueSigmaParameterization);
+    ev_write_string(ar, "meta/output_layout", kExpectedValueOutputLayout);
+    ev_write_string(ar, "meta/future_mask_semantics",
+                    kExpectedValueFutureMaskSemantics);
     ev_write_string(ar, "meta/scheduler_mode",
                     lr_sched ? scheduler_mode_name(lr_sched->mode)
                              : std::string("None"));
@@ -859,6 +1152,48 @@ bool ExpectedValue::save_checkpoint(
     ar.write("meta/model_buffer_count",
              torch::tensor({model_counts.buffers},
                            torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/future_feature_width",
+             torch::tensor({future_feature_width_},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+    ev_write_string(ar, "meta/future_feature_schema_hash",
+                    future_feature_schema_hash_);
+    ar.write(
+        "meta/target_width",
+        torch::tensor({static_cast<int64_t>(target_feature_indices_.size())},
+                      torch::TensorOptions().dtype(torch::kInt64)));
+    ev_write_i64_vector(ar, "meta/target_feature_indices",
+                        target_feature_indices_);
+    ar.write("meta/encoding_dims",
+             torch::tensor({semantic_model->De},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/channel_count",
+             torch::tensor({semantic_model->C_axes},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/horizon_count",
+             torch::tensor({semantic_model->Hf_axes},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/mixture_comps",
+             torch::tensor({semantic_model->K},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/features_hidden",
+             torch::tensor({semantic_model->H},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/residual_depth",
+             torch::tensor({semantic_model->depth},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+    ar.write("meta/loss_eps",
+             torch::tensor({loss_obj ? loss_obj->eps_ : 0.0},
+                           torch::TensorOptions().dtype(torch::kFloat64)));
+    ar.write("meta/loss_sigma_min",
+             torch::tensor({loss_obj ? loss_obj->sigma_min_ : 0.0},
+                           torch::TensorOptions().dtype(torch::kFloat64)));
+    ar.write("meta/loss_sigma_max",
+             torch::tensor({loss_obj ? loss_obj->sigma_max_ : 0.0},
+                           torch::TensorOptions().dtype(torch::kFloat64)));
+    ar.write(
+        "meta/target_weight_count",
+        torch::tensor({static_cast<int64_t>(static_feature_weights_.size())},
+                      torch::TensorOptions().dtype(torch::kInt64)));
 
     // --- optimizer (skip on CUDA, keep flag) ---
     int64_t wrote_opt = 0;
@@ -961,8 +1296,8 @@ bool ExpectedValue::save_checkpoint(
               write_network_analytics_sidecar_for_checkpoint(
                   *semantic_model, path, &network_analytics_path, {},
                   &network_analytics_error)) {
-        log_info("[ExpectedValue::network_analytics] saved → %s\n",
-                 network_analytics_path.string().c_str());
+        log_dbg("[ExpectedValue::network_analytics saved → %s\n",
+                network_analytics_path.string().c_str());
       } else {
         log_warn(
             "[ExpectedValue::network_analytics] report skipped for '%s': %s\n",
@@ -992,7 +1327,9 @@ bool ExpectedValue::save_checkpoint(
 bool ExpectedValue::load_checkpoint(const std::string &path) {
   try {
     torch::serialize::InputArchive ar;
-    ar.load_from(path.c_str());
+    // Checkpoints store CPU tensor clones; keep archive hydration CPU-bound,
+    // then copy into the already constructed runtime device explicitly.
+    ar.load_from(path, torch::Device(torch::kCPU));
 
     const int64_t format_version = ev_require_scalar_i64(ar, "format_version");
     TORCH_CHECK(format_version == kExpectedValueCheckpointFormatVersion,
@@ -1056,6 +1393,146 @@ bool ExpectedValue::load_checkpoint(const std::string &path) {
                 saved_scheduler_mode, "', runtime='", runtime_scheduler_mode,
                 "').");
 
+    const std::string saved_manifest_schema =
+        ev_require_string(ar, "meta/head_manifest_schema");
+    const std::string saved_export_semantics =
+        ev_require_string(ar, "meta/export_semantics");
+    const std::string saved_loss_mode = ev_require_string(ar, "meta/loss_mode");
+    const std::string saved_training_recipe =
+        ev_require_string(ar, "meta/training_recipe");
+    const std::string saved_covariance_family =
+        ev_require_string(ar, "meta/covariance_family");
+    const std::string saved_sigma_parameterization =
+        ev_require_string(ar, "meta/sigma_parameterization");
+    const std::string saved_output_layout =
+        ev_require_string(ar, "meta/output_layout");
+    const std::string saved_future_mask_semantics =
+        ev_require_string(ar, "meta/future_mask_semantics");
+    const int64_t saved_future_feature_width =
+        ev_require_scalar_i64(ar, "meta/future_feature_width");
+    const std::string saved_future_feature_schema_hash =
+        ev_require_string(ar, "meta/future_feature_schema_hash");
+    const int64_t saved_target_width =
+        ev_require_scalar_i64(ar, "meta/target_width");
+    const std::vector<int64_t> saved_target_feature_indices =
+        ev_require_i64_vector(ar, "meta/target_feature_indices");
+    const int64_t saved_encoding_dims =
+        ev_require_scalar_i64(ar, "meta/encoding_dims");
+    const int64_t saved_channel_count =
+        ev_require_scalar_i64(ar, "meta/channel_count");
+    const int64_t saved_horizon_count =
+        ev_require_scalar_i64(ar, "meta/horizon_count");
+    const int64_t saved_mixture_comps =
+        ev_require_scalar_i64(ar, "meta/mixture_comps");
+    const int64_t saved_features_hidden =
+        ev_require_scalar_i64(ar, "meta/features_hidden");
+    const int64_t saved_residual_depth =
+        ev_require_scalar_i64(ar, "meta/residual_depth");
+    const double saved_loss_eps = ev_require_scalar_double(ar, "meta/loss_eps");
+    const double saved_loss_sigma_min =
+        ev_require_scalar_double(ar, "meta/loss_sigma_min");
+    const double saved_loss_sigma_max =
+        ev_require_scalar_double(ar, "meta/loss_sigma_max");
+    const int64_t saved_target_weight_count =
+        ev_require_scalar_i64(ar, "meta/target_weight_count");
+
+    TORCH_CHECK(saved_manifest_schema == kExpectedValueHeadManifestSchema,
+                "[ExpectedValue::ckpt] head manifest schema mismatch (ckpt='",
+                saved_manifest_schema, "', runtime='",
+                kExpectedValueHeadManifestSchema, "').");
+    TORCH_CHECK(saved_export_semantics == kExpectedValueExportSemantics,
+                "[ExpectedValue::ckpt] export semantics mismatch (ckpt='",
+                saved_export_semantics, "', runtime='",
+                kExpectedValueExportSemantics, "').");
+    TORCH_CHECK(saved_loss_mode == kExpectedValueLossMode,
+                "[ExpectedValue::ckpt] loss mode mismatch (ckpt='",
+                saved_loss_mode, "', runtime='", kExpectedValueLossMode, "').");
+    TORCH_CHECK(saved_training_recipe == kExpectedValueTrainingRecipe,
+                "[ExpectedValue::ckpt] training recipe mismatch (ckpt='",
+                saved_training_recipe, "', runtime='",
+                kExpectedValueTrainingRecipe, "').");
+    TORCH_CHECK(saved_covariance_family == kExpectedValueCovarianceFamily,
+                "[ExpectedValue::ckpt] covariance family mismatch (ckpt='",
+                saved_covariance_family, "', runtime='",
+                kExpectedValueCovarianceFamily, "').");
+    TORCH_CHECK(saved_sigma_parameterization ==
+                    kExpectedValueSigmaParameterization,
+                "[ExpectedValue::ckpt] sigma parameterization mismatch "
+                "(ckpt='",
+                saved_sigma_parameterization, "', runtime='",
+                kExpectedValueSigmaParameterization, "').");
+    TORCH_CHECK(saved_output_layout == kExpectedValueOutputLayout,
+                "[ExpectedValue::ckpt] output layout mismatch (ckpt='",
+                saved_output_layout, "', runtime='", kExpectedValueOutputLayout,
+                "').");
+    TORCH_CHECK(saved_future_mask_semantics ==
+                    kExpectedValueFutureMaskSemantics,
+                "[ExpectedValue::ckpt] future mask semantics mismatch "
+                "(ckpt='",
+                saved_future_mask_semantics, "', runtime='",
+                kExpectedValueFutureMaskSemantics, "').");
+    TORCH_CHECK(saved_future_feature_width == future_feature_width_,
+                "[ExpectedValue::ckpt] future feature width mismatch (ckpt=",
+                saved_future_feature_width, ", runtime=", future_feature_width_,
+                ").");
+    TORCH_CHECK(saved_future_feature_schema_hash == future_feature_schema_hash_,
+                "[ExpectedValue::ckpt] future feature schema hash mismatch "
+                "(ckpt='",
+                saved_future_feature_schema_hash, "', runtime='",
+                future_feature_schema_hash_, "').");
+    TORCH_CHECK(saved_target_width ==
+                    static_cast<int64_t>(target_feature_indices_.size()),
+                "[ExpectedValue::ckpt] target width mismatch (ckpt=",
+                saved_target_width,
+                ", runtime=", target_feature_indices_.size(), ").");
+    TORCH_CHECK(saved_target_feature_indices == target_feature_indices_,
+                "[ExpectedValue::ckpt] target feature indices mismatch (ckpt=",
+                ev_i64_vector_string(saved_target_feature_indices),
+                ", runtime=", ev_i64_vector_string(target_feature_indices_),
+                ").");
+    TORCH_CHECK(saved_encoding_dims == semantic_model->De,
+                "[ExpectedValue::ckpt] encoding dims mismatch (ckpt=",
+                saved_encoding_dims, ", runtime=", semantic_model->De, ").");
+    TORCH_CHECK(saved_channel_count == semantic_model->C_axes,
+                "[ExpectedValue::ckpt] channel layout mismatch (ckpt=",
+                saved_channel_count, ", runtime=", semantic_model->C_axes,
+                ").");
+    TORCH_CHECK(saved_horizon_count == semantic_model->Hf_axes,
+                "[ExpectedValue::ckpt] horizon layout mismatch (ckpt=",
+                saved_horizon_count, ", runtime=", semantic_model->Hf_axes,
+                ").");
+    TORCH_CHECK(saved_mixture_comps == semantic_model->K,
+                "[ExpectedValue::ckpt] mixture count mismatch (ckpt=",
+                saved_mixture_comps, ", runtime=", semantic_model->K, ").");
+    TORCH_CHECK(saved_features_hidden == semantic_model->H,
+                "[ExpectedValue::ckpt] hidden width mismatch (ckpt=",
+                saved_features_hidden, ", runtime=", semantic_model->H, ").");
+    TORCH_CHECK(saved_residual_depth == semantic_model->depth,
+                "[ExpectedValue::ckpt] residual depth mismatch (ckpt=",
+                saved_residual_depth, ", runtime=", semantic_model->depth,
+                ").");
+    const double runtime_loss_eps = (loss_obj ? loss_obj->eps_ : 0.0);
+    const double runtime_loss_sigma_min =
+        (loss_obj ? loss_obj->sigma_min_ : 0.0);
+    const double runtime_loss_sigma_max =
+        (loss_obj ? loss_obj->sigma_max_ : 0.0);
+    TORCH_CHECK(ev_manifest_double_equal(saved_loss_eps, runtime_loss_eps),
+                "[ExpectedValue::ckpt] loss eps mismatch (ckpt=",
+                saved_loss_eps, ", runtime=", runtime_loss_eps, ").");
+    TORCH_CHECK(
+        ev_manifest_double_equal(saved_loss_sigma_min, runtime_loss_sigma_min),
+        "[ExpectedValue::ckpt] loss sigma_min mismatch (ckpt=",
+        saved_loss_sigma_min, ", runtime=", runtime_loss_sigma_min, ").");
+    TORCH_CHECK(
+        ev_manifest_double_equal(saved_loss_sigma_max, runtime_loss_sigma_max),
+        "[ExpectedValue::ckpt] loss sigma_max mismatch (ckpt=",
+        saved_loss_sigma_max, ", runtime=", runtime_loss_sigma_max, ").");
+    TORCH_CHECK(saved_target_weight_count ==
+                    static_cast<int64_t>(static_feature_weights_.size()),
+                "[ExpectedValue::ckpt] target weight count mismatch (ckpt=",
+                saved_target_weight_count,
+                ", runtime=", static_feature_weights_.size(), ").");
+
     // --- model state (safe, tensor-by-tensor) ---
     const auto loaded_model_counts =
         ev_load_module_state(ar, *semantic_model, "model");
@@ -1084,6 +1561,7 @@ bool ExpectedValue::load_checkpoint(const std::string &path) {
                                        "declared in checkpoint but missing.");
       optimizer->load(oa);
     }
+    ev_move_optimizer_state_to_device(optimizer.get(), semantic_model->device);
 
     // --- scalars ---
     best_metric_ = ev_require_scalar_double(ar, "best_metric");
@@ -1163,6 +1641,9 @@ bool ExpectedValue::load_checkpoint(const std::string &path) {
       }
     }
 
+    semantic_model->verify_ready_on_device_or_throw(
+        "[ExpectedValue::ckpt load]");
+
     log_info("%s[ExpectedValue::ckpt]%s loaded ← %s (best=%.6f:at.%d, "
              "iters=%lld epochs=%lld, sch[b=%lld,e=%lld])\n",
              ANSI_COLOR_Bright_Blue, ANSI_COLOR_RESET, path.c_str(),
@@ -1231,7 +1712,7 @@ void ExpectedValue::display_model(bool display_semantic = false) const {
 
   // 4) Static weights preview
   const auto C = semantic_model ? semantic_model->C_axes : 0;
-  const auto Dy = semantic_model ? semantic_model->Dy : 0;
+  const auto Df = semantic_model ? semantic_model->Df : 0;
 
   auto preview_vec = [](const std::vector<float> &v, size_t n = 4) {
     if (v.empty())
@@ -1303,6 +1784,8 @@ void ExpectedValue::display_model(bool display_semantic = false) const {
   auto vI = [&](long long i) {
     return colorize(ANSI_COLOR_Bright_Blue, std::to_string(i));
   };
+  const std::string target_feature_aliases =
+      ev_target_feature_aliases_string(contract_hash, target_feature_indices_);
 
   // 8) Compose a single, safe string
   std::ostringstream out;
@@ -1324,18 +1807,25 @@ void ExpectedValue::display_model(bool display_semantic = false) const {
       << k("Encoding reducer:") << "         " << vS(temporal_reducer_name)
       << "\n\t\t    " << k("- Static ch weights:") << "  "
       << vS(preview_vec(static_channel_weights_)) << "\n\t\t"
-      << k("Target dims (Dy):") << "         " << vI(static_cast<long long>(Dy))
-      << "\n\t\t" << k("Target dims list:") << "         "
-      << vS(preview_targets(target_dims_)) << "\n\t\t    "
-      << k("- Static feat weights:") << " "
+      << k("Future feature width:") << "     "
+      << vI(static_cast<long long>(future_feature_width_)) << "\n\t\t"
+      << k("Future width (Df):") << "        " << vI(static_cast<long long>(Df))
+      << "\n\t\t" << k("Target feature indices:") << " "
+      << vS(preview_targets(target_feature_indices_)) << "\n\t\t"
+      << k("Target feature aliases:") << " " << vS(target_feature_aliases)
+      << "\n\t\t    " << k("- Static feat weights:") << " "
       << vS(preview_vec(static_feature_weights_)) << "\n\t\t"
-      << k("Channel EMA:") << "              " << vS(ema_on ? "ON" : "OFF")
-      << "\n\t\t    " << k("- α:") << "                  "
-      << vD(ema_alpha_show, 3) << "\n\t\t    " << k("- min:")
-      << "                " << vD(ema_has_values ? ema_min : 0.0, 4)
-      << "\n\t\t    " << k("- max:") << "                "
-      << vD(ema_has_values ? ema_max : 0.0, 4) << "\n\t\t" << k("Grad clip:")
-      << "                " << vD(grad_clip, 3) << "\n\t\t"
+      << k("Head manifest:") << "           "
+      << vS(kExpectedValueHeadManifestSchema) << "\n\t\t    "
+      << k("- loss mode:") << "          " << vS(kExpectedValueLossMode)
+      << "\n\t\t    " << k("- training:") << "           "
+      << vS(kExpectedValueTrainingRecipe) << "\n\t\t" << k("Channel EMA:")
+      << "              " << vS(ema_on ? "ON" : "OFF") << "\n\t\t    "
+      << k("- α:") << "                  " << vD(ema_alpha_show, 3)
+      << "\n\t\t    " << k("- min:") << "                "
+      << vD(ema_has_values ? ema_min : 0.0, 4) << "\n\t\t    " << k("- max:")
+      << "                " << vD(ema_has_values ? ema_max : 0.0, 4) << "\n\t\t"
+      << k("Grad clip:") << "                " << vD(grad_clip, 3) << "\n\t\t"
       << k("opt_threshold_reset:") << "      "
       << vI(static_cast<long long>(optimizer_threshold_reset)) << "\n\t\t"
       << k("Telemetry every:") << "          " << vI(telemetry_every_)
@@ -1347,7 +1837,7 @@ void ExpectedValue::display_model(bool display_semantic = false) const {
       << vI(best_epoch_) << "\n";
 
   // 9) Print once, safely.
-  log_info("%s", out.str().c_str());
+  log_dbg("%s", out.str().c_str());
 
   // 10) First, show the underlying MDN model spec.
   if (semantic_model && display_semantic) {

@@ -16,7 +16,7 @@ snapshot_ptr_or_fail(const contract_hash_t &hash) {
 contract_space_t::_init contract_space_t::_initializer{};
 
 void contract_space_t::lifecycle_init() {
-  log_info(
+  log_dbg(
       "[contract_space_t] initializing static-global contract registry "
       "(hash-keyed snapshots loaded lazily; no single locked runtime hash)\n");
 }
@@ -32,7 +32,7 @@ void contract_space_t::lifecycle_finit() {
     last_registered_path = g_last_registered_contract_path_canonical;
   }
 
-  log_info("[contract_space_t] finalizing static-global contract registry "
+  log_dbg("[contract_space_t] finalizing static-global contract registry "
            "(registered_contracts=%zu, last_registered_hash=%s, "
            "last_registered_path=%s)\n",
            registered_count, non_empty_or(last_registered_hash, "<none>"),

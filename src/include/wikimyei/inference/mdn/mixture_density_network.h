@@ -31,26 +31,26 @@ namespace mdn {
  * ## What this file is (and isn't)
  * - **Pure architecture only**: no optimizer, scheduler, loss, or training loop
  * here.
- * - The *ExpectedValue* wrapper owns all training wiring and target/mask
+ * - The *ExpectedValue* wrapper owns all training wiring and future/mask
  * shaping.
- * - This module models the predictive distribution p(target|X); the wrapper
- *   exposes E[target|X] in target space as its primary statistic.
+ * - This module models the predictive distribution p(F|X); the wrapper
+ *   exposes E[F|X] in selected-future-feature space as its primary statistic.
  *
  * ## Shapes (by convention)
  * - Input encoding:
  *     - `[B, De]`                — single embedding per sample.
  *       Temporal sequence reduction belongs to the ExpectedValue wrapper, where
  *       the observation mask and reducer policy are available.
- * - Outputs (per batch, channel, horizon, mixture component, target-dim):
+ * - Outputs (per batch, channel, horizon, mixture component, future feature):
  *     - `log_pi : [B, C, Hf, K]`
- *     - `mu     : [B, C, Hf, K, Dy]`
- *     - `sigma  : [B, C, Hf, K, Dy]` (positive; diagonal covariance)
+ *     - `mu     : [B, C, Hf, K, Df]`
+ *     - `sigma  : [B, C, Hf, K, Df]` (positive; diagonal covariance)
  *
  * ## Key symbols
  * - `B`  : batch size
  * - `De` : input embedding dimension
- * - `Dy` : target feature dimension (e.g., if predicting `{close}` then Dy=1;
- * `{high,close}` then Dy=2)
+ * - `Df` : selected future feature dimension (e.g., if predicting `{close}` then Df=1;
+ * `{high,close}` then Df=2)
  * - `C`  : number of channels
  * - `Hf` : number of forecast horizons (time steps ahead)
  * - `K`  : number of mixture components
@@ -65,18 +65,18 @@ namespace mdn {
  * ```
  *
  * ## Gotchas / tips
- * - **Dy must match your target selection**: If predict `{1,3}` from
- * `future_features[..., D]`, then construct the model with `Dy=2` and make sure
+ * - **Df must match your future feature selection**: If predict `{1,3}` from
+ * `future_features[..., Dx]`, then construct the model with `Df=2` and make sure
  * the loss selects those same two dims.
  * - **C and Hf are architectural**: the head is built to output for *all*
  * channels and horizons. Pass the values intended to train/evaluate with.
- * - **Temporal reduction**: this class intentionally rejects `[B,T',De]`.
+ * - **Temporal reduction**: this class intentionally rejects `[B,Hx',De]`.
  *   Use ExpectedValue's explicit reducer policy before calling the MDN.
  */
 struct MdnModelImpl : torch::nn::Module {
   // --- Architecture hyperparameters (immutable after construction)
   int64_t De{0};      ///< Input embedding dimension
-  int64_t Dy{0};      ///< Target dimension per (channel,horizon)
+  int64_t Df{0};      ///< Selected future width per (channel,horizon)
   int64_t C_axes{1};  ///< Number of channels (heads are replicated C times)
   int64_t Hf_axes{1}; ///< Forecast horizons per channel
   int64_t K{0};       ///< Mixture components
@@ -96,7 +96,7 @@ struct MdnModelImpl : torch::nn::Module {
    * Build the architecture with explicit sizes (no config reads here).
    *
    * @param De_    Input embedding dim
-   * @param Dy_    Target dim per (channel,horizon)
+   * @param Df_    Selected future dim per (channel,horizon)
    * @param C_     Number of channels (>=1)
    * @param Hf_    Number of forecast horizons per channel (>=1)
    * @param K_     Mixture components
@@ -105,7 +105,7 @@ struct MdnModelImpl : torch::nn::Module {
    * @param dtype_ Torch dtype for params and compute
    * @param device_ Torch device for the module
    */
-  MdnModelImpl(int64_t De_, int64_t Dy_, int64_t C_, int64_t Hf_, int64_t K_,
+  MdnModelImpl(int64_t De_, int64_t Df_, int64_t C_, int64_t Hf_, int64_t K_,
                int64_t H_, int64_t depth_,
                torch::Dtype dtype_ = torch::kFloat32,
                torch::Device device_ = torch::kCPU, bool display_model_ = true);
@@ -128,7 +128,7 @@ struct MdnModelImpl : torch::nn::Module {
   MdnOut forward_from_encoding(const torch::Tensor &encoding);
 
   /**
-   * Convenience: conditional expectation E[target|X] directly from encoding
+   * Convenience: conditional expectation E[F|X] directly from encoding
    * (expects an already-reduced `[B,De]` tensor).
    */
   torch::Tensor expectation_from_encoding(const torch::Tensor &encoding);
@@ -139,6 +139,12 @@ struct MdnModelImpl : torch::nn::Module {
    * latency.
    */
   void warm_up();
+
+  /// Hard assertion that all MDN tensors reside on the configured device.
+  void assert_resident_on_device_or_throw(const char *context) const;
+
+  /// Hard assertion plus a CUDA forward/expectation probe when device is CUDA.
+  void verify_ready_on_device_or_throw(const char *context);
 
   /// Placeholder for any future inference utilities (sampling, etc.).
   std::vector<torch::Tensor> inference(const torch::Tensor & /*enc*/,

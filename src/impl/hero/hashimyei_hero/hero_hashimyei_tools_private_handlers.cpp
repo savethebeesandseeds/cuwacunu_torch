@@ -135,15 +135,8 @@ struct store_discovery_snapshot_t {
 
   cuwacunu::hero::hashimyei::component_manifest_t manifest{};
   if (!cuwacunu::hero::hashimyei::load_component_manifest(path, &manifest,
-                                                          out_error)) {
-    if (out_error != nullptr &&
-        *out_error == "pre-hard-cut component manifest is not supported after "
-                      "the hard cut") {
-      out_error->clear();
-      return true;
-    }
+                                                          out_error))
     return false;
-  }
 
   std::string payload{};
   if (!read_text_file(path, &payload, out_error))
@@ -290,7 +283,7 @@ scan_store_discovery_snapshot(app_context_t *app, bool include_report_fragments,
       }
 
       const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
-          rank_state.family, rank_state.dock_hash);
+          rank_state.family, rank_state.component_compatibility_sha256_hex);
       const std::uint64_t row_ts = rank_state.updated_at_ms;
       const std::string row_path = normalized_entry.string();
       const auto current_ts_it = family_rank_ts_by_scope.find(scope_key);
@@ -373,11 +366,12 @@ scan_store_discovery_snapshot(app_context_t *app, bool include_report_fragments,
   }
 
   for (auto &component : out->components) {
-    const std::string dock_hash =
-        trim_ascii(component.manifest.docking_signature_sha256_hex);
-    if (dock_hash.empty()) continue;
+    const std::string component_compatibility_sha256_hex =
+        trim_ascii(component.manifest.component_compatibility_sha256_hex);
+    if (component_compatibility_sha256_hex.empty())
+      continue;
     const std::string scope_key = cuwacunu::hero::family_rank::scope_key(
-        component.manifest.family, dock_hash);
+        component.manifest.family, component_compatibility_sha256_hex);
     const auto it = family_rank_by_scope.find(scope_key);
     if (it == family_rank_by_scope.end())
       continue;
@@ -705,58 +699,61 @@ resolve_contract_dsl_input_path(const app_context_t *app,
   return true;
 }
 
-[[nodiscard]] bool validate_component_manifest_public_docking(
+[[nodiscard]] bool validate_component_manifest_component_compatibility(
     const cuwacunu::hero::hashimyei::component_manifest_t &manifest,
-    std::string_view requested_contract_hash,
-    std::string_view expected_docking_signature, std::string *out_error) {
+    const resolved_contract_snapshot_t &requested_contract,
+    std::string *out_error) {
   if (out_error)
     out_error->clear();
 
-  const std::string expected_signature =
-      lowercase_copy(std::string(expected_docking_signature));
-  if (expected_signature.empty()) {
-    if (out_error) {
-      *out_error = "expected docking_signature_sha256_hex is empty";
-    }
-    return false;
-  }
-
   const std::string actual_signature =
-      lowercase_copy(manifest.docking_signature_sha256_hex);
+      lowercase_copy(manifest.component_compatibility_sha256_hex);
   if (actual_signature.empty()) {
     if (out_error) {
-      *out_error = "component manifest is missing "
-                   "docking_signature_sha256_hex";
-    }
-    return false;
-  }
-
-  if (actual_signature != expected_signature) {
-    if (out_error) {
       *out_error =
-          "component manifest docking signature mismatch: canonical_path=" +
-          manifest.canonical_path + " component_docking=" + actual_signature +
-          " requested_docking=" + expected_signature + " component_contract=" +
-          cuwacunu::hero::hashimyei::contract_hash_from_identity(
-              manifest.contract_identity) +
-          " requested_contract=" + std::string(requested_contract_hash);
+          "component manifest is missing component_compatibility_sha256_hex";
     }
     return false;
   }
 
-  return true;
+  if (!requested_contract.snapshot) {
+    if (out_error) {
+      *out_error = "requested contract snapshot is missing";
+    }
+    return false;
+  }
+
+  for (const auto &binding : requested_contract.snapshot->signature.bindings) {
+    if (trim_ascii(binding.tsi_type) != trim_ascii(manifest.family))
+      continue;
+    if (trim_ascii(binding.component_tag) != trim_ascii(manifest.component_tag))
+      continue;
+    if (lowercase_copy(binding.component_compatibility_sha256_hex) ==
+        actual_signature) {
+      return true;
+    }
+  }
+
+  if (out_error) {
+    *out_error =
+        "component manifest compatibility signature mismatch: canonical_path=" +
+        manifest.canonical_path + " component_tag=" + manifest.component_tag +
+        " component_compatibility=" + actual_signature +
+        " requested_contract=" + requested_contract.contract_hash;
+  }
+  return false;
 }
 
 [[nodiscard]] std::string
 contract_compatibility_summary(bool compatible, bool founding_contract_match) {
   if (compatible) {
     if (founding_contract_match) {
-      return "Component is dock-compatible with the requested contract";
+      return "Component is component-compatible with the requested contract";
     }
-    return "Component is dock-compatible with the requested contract even "
+    return "Component is component-compatible with the requested contract even "
            "though the founding contract differs";
   }
-  return "Component is not dock-compatible with the requested contract";
+  return "Component is not component-compatible with the requested contract";
 }
 
 [[nodiscard]] std::string contract_compatibility_details(
@@ -768,9 +765,8 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
           component.manifest.contract_identity);
   std::ostringstream out;
   if (compatible) {
-    out << "requested docking_signature_sha256_hex matches the component "
-           "manifest. Compatibility keys on DOCK/docking_signature, so "
-           "ASSEMBLY and founding contract provenance may differ.";
+    out << "requested component compatibility signature matches one compatible "
+           "component slot in the requested contract.";
     if (founding_contract_match) {
       out << " founding_contract_match=true";
     } else {
@@ -781,9 +777,9 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
   }
 
   out << compatibility_reason;
-  out << " Compatibility is evaluated by DOCK/docking_signature only; the "
-         "founding contract remains provenance and does not override a dock "
-         "mismatch.";
+  out << " Compatibility is evaluated by component_compatibility_sha256_hex; "
+         "the founding contract remains provenance and does not override a "
+         "component compatibility mismatch.";
   return out.str();
 }
 
@@ -1160,14 +1156,15 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
   }
 
   std::string compatibility_reason{};
-  const bool compatible = validate_component_manifest_public_docking(
-      component.manifest, requested_contract.contract_hash,
-      requested_contract.docking_signature_sha256_hex, &compatibility_reason);
+  const bool compatible = validate_component_manifest_component_compatibility(
+      component.manifest, requested_contract, &compatibility_reason);
   const std::string component_contract_hash =
       cuwacunu::hero::hashimyei::contract_hash_from_identity(
           component.manifest.contract_identity);
   const std::string component_docking_signature =
       lowercase_copy(component.manifest.docking_signature_sha256_hex);
+  const std::string component_compatibility_signature =
+      lowercase_copy(component.manifest.component_compatibility_sha256_hex);
   const bool founding_contract_match =
       lowercase_copy(component_contract_hash) ==
       requested_contract.contract_hash;
@@ -1182,7 +1179,7 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
       << "\"summary\":" << json_quote(summary) << ","
       << "\"details\":" << json_quote(details) << ","
       << "\"compatible\":" << (compatible ? "true" : "false") << ","
-      << "\"compatibility_basis\":\"dock_only\","
+      << "\"compatibility_basis\":\"component_compatibility\","
       << "\"canonical_path\":" << json_quote(component.manifest.canonical_path)
       << ","
       << "\"family\":" << json_quote(component.manifest.family) << ","
@@ -1204,9 +1201,11 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
       << ","
       << "\"component_docking_signature_sha256_hex\":"
       << json_quote(component_docking_signature) << ","
+      << "\"component_compatibility_sha256_hex\":"
+      << json_quote(component_compatibility_signature) << ","
       << "\"founding_contract_match\":"
       << (founding_contract_match ? "true" : "false") << ","
-      << "\"docking_signature_match\":" << (compatible ? "true" : "false")
+      << "\"component_compatibility_match\":" << (compatible ? "true" : "false")
       << ","
       << "\"comparison_reason\":" << json_quote(compatibility_reason) << ","
       << "\"component\":" << component_state_to_json(component) << "}";
@@ -1223,12 +1222,14 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
   out_error->clear();
 
   std::string family{};
-  std::string dock_hash{};
+  std::string component_compatibility_sha256_hex{};
   std::string source_view_kind{};
   std::string source_view_transport_sha256{};
   std::vector<std::string> ordered_hashimyeis{};
   (void)extract_json_string_field(arguments_json, "family", &family);
-  (void)extract_json_string_field(arguments_json, "dock_hash", &dock_hash);
+  (void)extract_json_string_field(arguments_json,
+                                  "component_compatibility_sha256_hex",
+                                  &component_compatibility_sha256_hex);
   (void)extract_json_string_field(arguments_json, "source_view_kind",
                                   &source_view_kind);
   (void)extract_json_string_field(arguments_json,
@@ -1237,15 +1238,17 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
   (void)extract_json_string_array_field(arguments_json, "ordered_hashimyeis",
                                         &ordered_hashimyeis);
   family = trim_ascii(family);
-  dock_hash = trim_ascii(dock_hash);
+  component_compatibility_sha256_hex =
+      trim_ascii(component_compatibility_sha256_hex);
   source_view_kind = trim_ascii(source_view_kind);
   source_view_transport_sha256 = trim_ascii(source_view_transport_sha256);
   if (family.empty()) {
     *out_error = "update_rank requires arguments.family";
     return false;
   }
-  if (dock_hash.empty()) {
-    *out_error = "update_rank requires arguments.dock_hash";
+  if (component_compatibility_sha256_hex.empty()) {
+    *out_error =
+        "update_rank requires arguments.component_compatibility_sha256_hex";
     return false;
   }
   if (ordered_hashimyeis.empty()) {
@@ -1279,8 +1282,8 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
   for (const auto &component : components) {
     if (component.manifest.family != family)
       continue;
-    if (trim_ascii(component.manifest.docking_signature_sha256_hex) !=
-        dock_hash) {
+    if (trim_ascii(component.manifest.component_compatibility_sha256_hex) !=
+        component_compatibility_sha256_hex) {
       continue;
     }
     const std::string hashimyei = component.manifest.hashimyei_identity.name;
@@ -1294,8 +1297,9 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
     }
   }
   if (latest_by_hashimyei.empty()) {
-    *out_error = "family has no components in the catalog for dock_hash=" +
-                 dock_hash + ": " + family;
+    *out_error = "family has no components in the catalog for "
+                 "component_compatibility_sha256_hex=" +
+                 component_compatibility_sha256_hex + ": " + family;
     return false;
   }
   if (ordered_hashimyeis.size() != latest_by_hashimyei.size()) {
@@ -1312,11 +1316,12 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
 
   cuwacunu::hero::family_rank::state_t before_state{};
   const bool has_before_rank = app->catalog.get_explicit_family_rank(
-      family, dock_hash, &before_state, nullptr);
+      family, component_compatibility_sha256_hex, &before_state, nullptr);
 
   cuwacunu::hero::family_rank::state_t desired_state{};
   desired_state.family = family;
-  desired_state.dock_hash = dock_hash;
+  desired_state.component_compatibility_sha256_hex =
+      component_compatibility_sha256_hex;
   desired_state.source_view_kind = source_view_kind;
   desired_state.source_view_transport_sha256 = source_view_transport_sha256;
   desired_state.updated_at_ms = now_ms_utc();
@@ -1342,8 +1347,8 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
         return cuwacunu::hero::family_rank::ordering_matches(lhs, rhs);
       };
 
-  const std::filesystem::path rank_file =
-      family_rank_file_path(app->store_root, family, dock_hash);
+  const std::filesystem::path rank_file = family_rank_file_path(
+      app->store_root, family, component_compatibility_sha256_hex);
   const bool changed =
       !has_before_rank || !state_matches(before_state, desired_state);
   if (changed) {
@@ -1380,14 +1385,15 @@ contract_compatibility_summary(bool compatible, bool founding_contract_match) {
   (void)lattice_catalog.close(nullptr);
 
   cuwacunu::hero::family_rank::state_t after_state{};
-  if (!app->catalog.get_family_rank(family, dock_hash, &after_state,
-                                    out_error)) {
+  if (!app->catalog.get_family_rank(family, component_compatibility_sha256_hex,
+                                    &after_state, out_error)) {
     return false;
   }
 
   std::ostringstream out;
   out << "{\"family\":" << json_quote(family)
-      << ",\"dock_hash\":" << json_quote(dock_hash)
+      << ",\"component_compatibility_sha256_hex\":"
+      << json_quote(component_compatibility_sha256_hex)
       << ",\"changed\":" << (changed ? "true" : "false")
       << ",\"rank_file\":" << json_quote(rank_file.string())
       << ",\"lattice_catalog_path\":"
