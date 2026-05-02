@@ -2,201 +2,188 @@
 \section{Representation}
 \label{sec:representation}
 
-The representation module maps a normalized edge window to a latent state used
-by the forecast head.  The current implementation is a self-supervised
+The self-supervised representation module maps a normalized edge window 
+($\tensor{x}_{u\,v}$) to a latent state ($\tensor{z}_{u\,v}$). 
 \texttt{VICReg\_Rank4}%
 \note{
   Here \texttt{Rank4} means that the implementation
   extends the original VICReg architecture by one additional tensor rank, so the
-  encoder operates on rank-4 input tensors: batch, channels, sequence, features.
+  encoder operates on rank-4 input tensors: $\{batch, channels, sequence, features\}$.
 }
-encoder trained with the VICReg objective of
-Bardes, Ponce, and LeCun~\cite{bardes2022vicreg}.  VICReg trains two augmented
-views of the same sample to agree while preventing collapse through variance
-and covariance regularization.\\
+is an encoder trained with the Variance Invariance Covariance Regulation objective of
+Bardes, Ponce, and LeCun~\cite{bardes2022vicreg}.\\
 
 
-For one sample, the representation module maps the input slice and its mask%
-\note{
-  Invalid entries are not treated
-  as market observations; they are zeroed or excluded whenever the network forms
-  time-level statistics.
-}
-as follows:
+Internally, output is produced in two stages. 
 \[
-  (\tensor{x}_{u\,v}, \quad {}_{x}\tensor{m}_{u\,v})
-  \longmapsto
-  \left\{
-  \begin{aligned}
-    \tensor{s} &= h_{\theta}(\tensor{x}_{u\,v}, \quad {}_{x}\tensor{m}_{u\,v})
-    \in \R^{H_x \times D_e},\\
-    \tensor{z} &= \Phi_{\theta}(\tensor{x}_{u\,v}, \quad {}_{x}\tensor{m}_{u\,v})
-    \in \R^{D_e}.
-  \end{aligned}
-  \right.
+\begin{aligned}
+  \tensor{x}_{u\,v}
+  &\in \R^{C \times H_x \times D_x} \\
+  &\downarrow \\
+  \Phi_{\theta} &\in \R^{H_x' \times D_e} \\
+  &\downarrow \\
+  \tensor{z}_{u\,v} &\in \R^{D_e}.
+\end{aligned}
 \]
 
-$\tensor{s}$ is the time-indexed representation sequence, while $\tensor{z}$ is its temporal reduction embedding. 
 
-\subsection{Representation output}
-\label{subsec:encoder-output}
-
-Internally, this sample-level output is produced in two stages.  The encoder
-first produces a time-indexed latent sequence
+First encodes the input ($\tensor{x}$) into a time-indexed latent sequence of embeddings 
+$\Phi_{\theta} \in \R^{H_x' \times D_e}$ 
+and then it colapses into $\tensor{z}_{u\,v} \in \R^{D_e}$ with a temporal reduction. 
+In more detail, the encoding considers the input and the mask%
+\note{
+  Invalid entries are not treated as market observations; they are zeroed or 
+  excluded whenever the network forms time-level statistics. 
+  In the current architecture the temporal length is preserved, 
+  so we can make use of the mask again for the temporal reduction. 
+}: 
 \[
-  h_{\theta} :
+  \Phi_{\theta}(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v}) :
   \R^{C \times H_x \times D_x}
   \times
   \{0,1\}^{C \times H_x}
   \longrightarrow
-  \R^{H_x' \times D_e}.
+  \R^{H_x' \times D_e}.\\
 \]
-In the current architecture the temporal length is preserved, so
-\[
-  H_x' = H_x,
-  \qquad
-  \tensor{s}^{b}
-  =
-  h_{\theta}(\tensor{x}_{u\,v}^{b}, \quad {}_{x}\tensor{m}_{u\,v}^{b})
-  \in
-  \R^{H_x \times D_e}.
-\]
-The slice $\tensor{s}^{b\,i} \in \R^{D_e}$ is the latent state for sample $b$ at
-input position $i$.
+Where the slice $\Phi_{\theta}^{i} \in \R^{D_e}$ would be the latent state at sequence position $i$. \\
 
-The exported representation slice is then obtained by a temporal reducer:
+In our case $H_x' = H_x$ and we decided to apply a masked temporal reducer ($r_{\theta}$) so that:
 \[
-  r_{\theta}:
+  r_{\theta}(\Phi_{\theta};\,{}_{x}\tensor{m}_{u\,v}) :
   \R^{H_x \times D_e}
   \times
   \{0,1\}^{C \times H_x}
   \longrightarrow
   \R^{D_e}.
 \]
-The exported representation is
-\[
-  \tensor{z}^{b}
+A simple masked mean reducer is
+\begin{equation}
+\label{eq:masked-mean-reducer}
+  \omega^i
   =
-  \Phi_{\theta}(\tensor{x}_{u\,v}^{b}, \quad {}_{x}\tensor{m}_{u\,v}^{b})
+  \mathbf{1}
+  \left\{
+    \sum_{c=1}^{C} {}_{x}m_{u\,v}^{c\,i} > 0
+  \right\},
+  \qquad
+  \tensor{z}_{u\,v}
+  =
+  \frac{
+    \sum_{i=1}^{H_x}
+    \omega^i\cdot
+    \Phi_{\theta}(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v})^{i}
+  }{
+    \sum_{i=1}^{H_x} \omega^i
+  },
+\end{equation}
+Here $(\omega^i)$ marks whether input position $(i)$ is usable: it equals $1$
+if any channel is valid there, and $(0)$ otherwise. Other reducers, such as a last-valid
+state, attention pooling, or a learned readout, are also valid choices as long
+as the output remains in $\R^{D_e}$. In our case if $(\Omega_{u\,v})$ is empty, 
+the reducer is undefined and the sample is not exported as a valid representation.\\
+
+The final exported representation could be described as%
+\note{
+  For all the expressions batch notation is obtained by stacking these 
+  sample-level objects along a leading sample axis.
+}: 
+\[
+  \tensor{z}_{u\,v}
   =
   r_{\theta}
   \left(
-    h_{\theta}(\tensor{x}_{u\,v}^{b}, \quad {}_{x}\tensor{m}_{u\,v}^{b}),
-    {}_{x}\tensor{m}_{u\,v}^{b}
+    \Phi_{\theta}(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v});\,
+    {}_{x}\tensor{m}_{u\,v}
   \right)
   \in
   \R^{D_e}.
 \]
-A simple masked mean reducer is
-\[
-  \omega_{b\,i}
-  =
-  \mathbf{1}
-  \left\{
-    \sum_{c=1}^{C} {}_{x}m_{u\,v}^{b\,c\,i} > 0
-  \right\},
-  \qquad
-  \tensor{z}^{b}
-  =
-  \frac{
-    \sum_{i=1}^{H_x} \omega_{b\,i}\cdot\tensor{s}^{b\,i}
-  }{
-    \sum_{i=1}^{H_x} \omega_{b\,i}
-  },
-\]
-whenever the denominator is positive.  Other reducers, such as a last-valid
-state, attention pooling, or a learned readout, are also valid choices as long
-as the output remains in $\R^{D_e}$.
 
-For a batch, $\tensor{x}$ abbreviates the stack
-$(\tensor{x}_{u\,v}^{b})_{b=1}^{B}$, so
-\[
-  \tensor{s}
-  =
-  h_{\theta}(\tensor{x},\tensor{m}_x)
-  \in
-  \R^{B \times H_x \times D_e},
-\]
-and
-\[
-  \tensor{z}
-  =
-  \begin{bmatrix}
-    (\tensor{z}^{1})^{\top}\\
-    \vdots\\
-    (\tensor{z}^{B})^{\top}
-  \end{bmatrix}
-  \in
-  \R^{B \times D_e}.
-\]
+The training data ranges
+over the full family $\{\tensor{x}_{u\,v} : (u,v)\in\mathcal{E}\}$, so the
+encoder learns and can be used across all instruments. 
+\textit{All directed edges share the same representation map.}
 
-\subsection{Network structure}
+
+
+
+
+
+
+
+
+
+
+
+\subsection{Representation Network}
 \label{subsec:network-structure}
 
-The encoder is designed for rank-four market tensors
+The sample-level shape flow starts from
 \[
-  \tensor{x}
-  =
-  \left(\tensor{x}_{u\,v}^{b}\right)_{b=1}^{B}
+  \tensor{x}_{u\,v}
   \in
-  \R^{B \times C \times H_x \times D_x}.
+  \R^{C \times H_x \times D_x}.
 \]
 Let $E_c$ denote the internal channel-expansion dimension, $F$ the fused channel
-dimension, and $H$ the hidden width of the temporal convolution stack.  The
+dimension, and $H_{\theta}$ the hidden width of the temporal convolution stack.  The
 network has the following shape flow.
 
 First, invalid channel-time entries are masked:
 \[
-  \widetilde{x}_{u\,v}^{b\,c\,i\,j}
+  \widetilde{x}_{u\,v}^{c\,i\,j}
   =
-  {}_{x}m_{u\,v}^{b\,c\,i}x_{u\,v}^{b\,c\,i\,j}.
+  {}_{x}m_{u\,v}^{c\,i}\cdot x_{u\,v}^{c\,i\,j}.
 \]
 A depthwise convolution over the time axis extracts local channel-wise
 patterns:
 \[
-  \mat{U}^{(1)}
+  \mat{U}^{1}
   =
   \sigma
   \left(
     \operatorname{DWConv}_{3\times 1}(\widetilde{\tensor{x}})
   \right)
   \in
-  \R^{B \times C \times H_x \times D_x},
+  \R^{C \times H_x \times D_x},
 \]
 where $\sigma$ is the pointwise nonlinearity.
 
 Next, a grouped $1\times D_x$ convolution projects each channel's feature vector
 into an $E_c$-dimensional latent channel space:
 \[
-  \mat{U}^{(2)}
+  \mat{U}^{2}
   \in
-  \R^{B \times C \times H_x \times E_c}.
+  \R^{C \times H_x \times E_c}.
 \]
-A learned channel identity vector $\vect{\chi}_c \in \R^{E_c}$ is added:
+A learned channel identity vector $\vect{\kappa}_c \in \R^{E_c}$%
+\note{
+  The channel identity vector identifies the channel, not the edge or
+  instrument.  The same $\vect{\kappa}_c$ is shared across all directed edges
+  for channel $c$.
+}
+is added:
 \[
-  \mat{U}^{(3)}_{b\,c\,i:}
+  \mat{U}^{(3),c\,i}
   =
-  \mat{U}^{(2)}_{b\,c\,i:}
+  \mat{U}^{(2),c\,i}
   +
-  \vect{\chi}_c.
+  \vect{\kappa}_c.
 \]
 This gives the network an explicit way to distinguish, for example, the
 \field{1m}, \field{1h}, and \field{1d} channels even when their normalized
-feature values are similar.
-
+feature values are similar. 
 The tensor is then flattened over channel and expanded-feature coordinates and
 passed through a learned temporal reparameterization block:
 \[
   \mat{U}^{(4)}
   =
-  T_{\theta}(\mat{U}^{(3)},\tensor{m}_x)
+  T_{\theta}(\mat{U}^{(3)};\,{}_{x}\tensor{m}_{u\,v})
   \in
-  \R^{B \times C \times H_x \times E_c}.
+  \R^{C \times H_x \times E_c}.
 \]
 This block preserves the temporal length $H_x$ but allows the representation to
 adjust to local changes in temporal pace.
-
-The channel dimension is fused with a $1\times 1$ convolution:
+And then the channel dimension is fused with a $1\times 1$ convolution:
 \[
   \mat{U}^{(5)}
   =
@@ -206,184 +193,294 @@ The channel dimension is fused with a $1\times 1$ convolution:
     (\mat{U}^{(4)})
   \right)
   \in
-  \R^{B \times F \times H_x \times E_c}.
+  \R^{F \times H_x \times E_c}.
 \]
-Then a linear projection maps the last coordinate from $E_c$ to $H$:
+Then a linear projection maps the last coordinate from $E_c$ to $H_{\theta}$:
 \[
   \mat{U}^{(6)}
   \in
-  \R^{B \times F \times H_x \times H}.
+  \R^{F \times H_x \times H_{\theta}}.
 \]
-The $F$ and $H$ coordinates are flattened into convolution channels, giving
+The $F$ and $H_{\theta}$ coordinates are flattened into convolution channels,
+giving
 \[
   \mat{U}^{(7)}
   \in
-  \R^{B \times (FH) \times H_x}.
+  \R^{(F H_{\theta}) \times H_x}.
 \]
 Finally, a residual dilated one-dimensional convolution stack maps this sequence
 to the representation width:
 \[
-  \tensor{s}
+  \Phi_{\theta}(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v})
   =
   \operatorname{DilatedConv}_{\theta}
-  (\mat{U}^{(7)},\tensor{m}_x)^{\top}
+  (\mat{U}^{(7)};\,{}_{x}\tensor{m}_{u\,v})^{\top}
   \in
-  \R^{B \times H_x \times D_e}.
+  \R^{H_x \times D_e}.
 \]
 The transpose notation only indicates that the final tensor is stored with time
-as the middle axis and representation width as the last axis.
+as the middle axis and representation width as the last axis. At the end we can 
+apply the teporal reduction in~\eqref{eq:masked-mean-reducer}.
+
+
+
+
+
+
+
+
+
+
+
 
 \subsection{VICReg training objective}
 \label{subsec:vicreg-training-objective}
 
-During self-supervised representation training, two stochastic augmented views
-are generated from the same edge-labeled input batch:
+During self-supervised representation training, two \textbf{batched} stochastic augmented views%
+\note{
+  For VICReg, the effective sample count is not only the batch size $B$.
+  Because the loss is applied to valid time states after projection, the
+  relevant count is $N_{\Omega}$, the number of valid $(b,i)$ pairs shared by
+  the two augmented views.  Thus a moderate batch size, such as $B=64$, can
+  still provide many training samples when each sequence contributes several
+  valid time positions.  If $N_{\Omega}$ becomes too small relative to the
+  projector width $D_p$, the variance and covariance estimates become unstable.
+}
+are generated from the same edge-labeled input: 
 \[
-  \tensor{x}_{(1)}
-  =
-  \left(\tensor{x}_{u\,v\,(1)}^{b}\right)_{b=1}^{B},
-  \quad
-  \tensor{x}_{(2)}
-  =
-  \left(\tensor{x}_{u\,v\,(2)}^{b}\right)_{b=1}^{B},
-  \quad
-  (\tensor{m}_{x\,(1)},\tensor{m}_{x\,(2)})
-  \sim
-  \mathcal{A}(\tensor{x},\tensor{m}_x).
-\]
-The augmentation family $\mathcal{A}$ may include causal time warping, value
-jitter, time masking, point dropping, and channel dropping.  Both views are
-encoded by the same encoder:
-\[
-  \tensor{s}_{(1)}
-  =
-  h_{\theta}(\tensor{x}_{(1)},\tensor{m}_{x\,(1)}),
-  \qquad
-  \tensor{s}_{(2)}
-  =
-  h_{\theta}(\tensor{x}_{(2)},\tensor{m}_{x\,(2)}).
+  aug_{(1,2)} \sim \mathcal{A}
+  \left\{
+  \begin{aligned}
+    \tensor{x}_{(1)},\,\tensor{m}_{(1)} &= \operatorname{aug}_{(1)}
+    \left(
+      (\tensor{x}_{u\,v}^{b},\, {}_{x}\tensor{m}_{u\,v}^{b})^{B}_{b=1}
+    \right) \\
+    \tensor{x}_{(2)},\,\tensor{m}_{(2)} &= \operatorname{aug}_{(2)}
+    \left(
+      (\tensor{x}_{u\,v}^{b},\, {}_{x}\tensor{m}_{u\,v}^{b})^{B}_{b=1}
+    \right)
+  \end{aligned}
+  \right\}
 \]
 
-VICReg is applied after a projector MLP with projector width $D_p\in\N$:
+
+
+The augmentation family $\mathcal{A} $ 
+produces two alternative versions of the same input ($\tensor{x}$) and mask ($\tensor{m}$), %
+\note{
+  The augmentation map changes both the feature tensor and its validity mask.
+  Dropped or masked positions are removed from the valid set rather than treated
+  as observed zero-valued market data.
+}
+it may perform distortions like, causal time warping, value jitter, 
+time masking, and point dropping%
+\note{
+  Be aware that the VICReg loss is computed on time 
+  positions that are valid in both augmented views.
+  This validity rule is stricter than the masked-mean reducer: a time position
+  is used by VICReg only when all channels are valid in both augmented views.
+  This keeps the paired projected states comparable under the same channel
+  support.
+}.
+
+VICReg loss requires and is applied after a projector MLP%
+\note{
+  This distinction matters because the VICReg loss is applied to the projection
+  head output, while the forecast system later consumes the encoder
+  representation.
+}
+with projector width $D_p$:
 \[
-  P_{\eta}:\R^{D_e}\rightarrow\R^{D_p},
+  P_{\zeta}:\R^{D_e}\rightarrow\R^{D_p},
 \]
-which acts independently on each valid time state:
+which acts independently on each valid time state%
+\note{
+  The VICReg objective is applied to the time-indexed encoder states before the
+  temporal reducer.  The reducer $r_{\theta}$ defines the exported embedding
+  used downstream, while VICReg learns from valid projected sequence states.
+  The projector sees one $D_e$-dimensional state at a time; it does not mix
+  different time positions.  Coupling across valid $(b,i)$ states happens later
+  through the mean, variance, and covariance terms of the VICReg loss.
+}
+:
 \[
   \mat{Y}_{(1)}^{b\,i}
   =
-  P_{\eta}(\tensor{s}_{(1)}^{b\,i}),
+  P_{\zeta}
+  \left(
+    \Phi_{\theta}(\tensor{x}_{(1)};\,\tensor{m}_{(1)})^{b\,i}
+  \right),
   \qquad
   \mat{Y}_{(2)}^{b\,i}
   =
-  P_{\eta}(\tensor{s}_{(2)}^{b\,i}).
+  P_{\zeta}
+  \left(
+    \Phi_{\theta}(\tensor{x}_{(2)};\,\tensor{m}_{(2)})^{b\,i}
+  \right).
 \]
 The projector is used for representation learning only.  It is not the object
 consumed by the forecast head.
 
-The VICReg loss is computed on time positions that are valid in both augmented
-views.  Let
+The valid training positions are the batch-time pairs that survive both
+augmentations%
+\note{
+  If $N_{\Omega}\le 1$, the covariance estimate is not meaningful.  The
+  implementation skips such batches rather than forcing the loss to be defined.
+}:
 \[
   \Omega
   =
   \left\{
     (b,i)
     :
-    m_{x\,(1)}^{b\,c\,i}m_{x\,(2)}^{b\,c\,i}=1
+    {}_{x}m_{(1)}^{b\,c\,i}\cdot{}_{x}m_{(2)}^{b\,c\,i}=1
     \text{ for all } c=1,\ldots,C
   \right\},
   \qquad
   N_{\Omega}=|\Omega|.
 \]
-Collect the projected vectors at these positions into
+
+For each valid pair $(b,i)\in\Omega$, the projector gives one vector from each
+view.  Stack these vectors as rows:
 \[
-  \mat{Y},\mat{Y}'
-  \in
-  \R^{N_{\Omega}\times D_p}.
-\]
-For $\mat{Y}\in\R^{N_{\Omega}\times D_p}$, define the centered matrix
-\[
-  \widetilde{\mat{Y}}
+  \mat{P}_{\zeta}^{(r)}
   =
-  \mat{Y}
-  -
-  \mathbf{1}\bar{\vect{y}}^{\top},
+  \left[
+    \mat{Y}_{(r)}^{b\,i}
+  \right]_{(b,i)\in\Omega}
+  \in
+  \R^{N_{\Omega}\times D_p},
+  \qquad r\in\{1,2\}.
+\]
+The two matrices have matching rows: row $n$ in $\mat{P}_{\zeta}^{(1)}$ and row $n$ in
+$\mat{P}_{\zeta}^{(2)}$ come from the same valid batch-time pair%
+\note{
+  The row index of $\mat{P}_{\zeta}^{(r)}$ is no longer a native tensor axis.  It is an
+  enumeration of valid $(b,i)$ pairs in $\Omega$.
+}.
+
+For each view $r\in\{1,2\}$, define the row mean and centered projection matrix
+\[
+  \vect{p}_{\zeta,n}^{(r)}
+  :=
+  \begin{bmatrix}
+    \left(\mat{P}_{\zeta}^{(r)}\right)_{n\,1}\\
+    \vdots\\
+    \left(\mat{P}_{\zeta}^{(r)}\right)_{n\,D_p}
+  \end{bmatrix}
+  \in
+  \R^{D_p},
   \qquad
-  \bar{\vect{y}}
+  \bar{\vect{p}}_{\zeta}^{(r)}
   =
   \frac{1}{N_{\Omega}}
   \sum_{n=1}^{N_{\Omega}}
-  \mat{Y}_{n:}.
+  \vect{p}_{\zeta,n}^{(r)},
+  \qquad
+  \widetilde{\mat{P}}_{\zeta}^{(r)}
+  =
+  \mat{P}_{\zeta}^{(r)}
+  -
+  \mathbf{1}\left(\bar{\vect{p}}_{\zeta}^{(r)}\right)^{\top}.
 \]
 The sample covariance of projected coordinates is
 \[
-  \mat{C}(\mat{Y})
+  \mat{C}_{\zeta}^{(r)}
   =
   \frac{1}{N_{\Omega}-1}
-  \widetilde{\mat{Y}}^{\top}
-  \widetilde{\mat{Y}}
+  \left(\widetilde{\mat{P}}_{\zeta}^{(r)}\right)^{\top}
+  \widetilde{\mat{P}}_{\zeta}^{(r)}
   \in
   \R^{D_p \times D_p}.
 \]
+
+For each view $r\in\{1,2\}$ and projector coordinate
+$\ell=1,\ldots,D_p$, let $\vect{p}_{\zeta}^{(r)\,\ell}$ be the $\ell$-th
+column of $\mat{P}_{\zeta}^{(r)}$:
+\[
+  \vect{p}_{\zeta}^{(r)\,\ell}
+  =
+  \begin{bmatrix}
+    \left(\mat{P}_{\zeta}^{(r)}\right)_{1\,\ell}\\
+    \vdots\\
+    \left(\mat{P}_{\zeta}^{(r)}\right)_{N_{\Omega}\,\ell}
+  \end{bmatrix}
+  \in
+  \R^{N_{\Omega}}.
+\]
+
+
 Let $\gamma\in\Rpos$ be the variance floor, and let
 $\lambda_{\mathrm{inv}},\lambda_{\mathrm{var}},\lambda_{\mathrm{cov}}\in
 \Rnonneg$ be the term weights.  With $[a]_+=\max(a,0)$, the standard VICReg
-terms are
+terms%
+\note{
+  The displayed equations state the clean VICReg objective.  The implementation
+  uses numerically robust variants, including finite variance floors and
+  covariance safeguards when the effective count $N_{\Omega}$ is small.
+}
+are
 \[
   \mathcal{L}_{\mathrm{inv}}
   =
   \frac{1}{N_{\Omega}}
   \sum_{n=1}^{N_{\Omega}}
   \left\|
-    \mat{Y}_{n:}-\mat{Y}'_{n:}
+    \vect{p}_{\zeta,n}^{(1)}
+    -
+    \vect{p}_{\zeta,n}^{(2)}
   \right\|_2^2,
 \]
 \[
-  \mathcal{L}_{\mathrm{var}}(\mat{Y})
+  \mathcal{L}_{\mathrm{var}}(\mat{P}_{\zeta}^{(r)})
   =
   \frac{1}{D_p}
-  \sum_{j=1}^{D_p}
+  \sum_{\ell=1}^{D_p}
   \left[
     \gamma
     -
     \sqrt{
-      \operatorname{Var}(\mat{Y}_{:j})+\eps
+      \operatorname{Var}(\vect{p}_{\zeta}^{(r)\,\ell})+\eps
     }
   \right]_+,
 \]
+
 and
 \[
-  \mathcal{L}_{\mathrm{cov}}(\mat{Y})
+  \mathcal{L}_{\mathrm{cov}}(\mat{P}_{\zeta}^{(r)})
   =
   \frac{1}{D_p}
-  \sum_{\substack{j,k=1\\j\ne k}}^{D_p}
-  \mat{C}(\mat{Y})_{j\,k}^{2}.
+  \sum_{\ell=1}^{D_p}
+  \sum_{\substack{m=1\\m\ne \ell}}^{D_p}
+  \left[
+    \left(\mat{C}_{\zeta}^{(r)}\right)_{\ell\,m}
+  \right]^2.
 \]
 The full self-supervised loss is
 \[
   \mathcal{L}_{\mathrm{VICReg}}
   =
-  \lambda_{\mathrm{inv}}\mathcal{L}_{\mathrm{inv}}
+  \lambda_{\mathrm{inv}}\cdot\mathcal{L}_{\mathrm{inv}}
   +
-  \lambda_{\mathrm{var}}
+  \lambda_{\mathrm{var}}\cdot
   \left(
-    \mathcal{L}_{\mathrm{var}}(\mat{Y})
+    \mathcal{L}_{\mathrm{var}}(\mat{P}_{\zeta}^{(1)})
     +
-    \mathcal{L}_{\mathrm{var}}(\mat{Y}')
+    \mathcal{L}_{\mathrm{var}}(\mat{P}_{\zeta}^{(2)})
   \right)
   +
-  \lambda_{\mathrm{cov}}
+  \lambda_{\mathrm{cov}}\cdot
   \left(
-    \mathcal{L}_{\mathrm{cov}}(\mat{Y})
+    \mathcal{L}_{\mathrm{cov}}(\mat{P}_{\zeta}^{(1)})
     +
-    \mathcal{L}_{\mathrm{cov}}(\mat{Y}')
+    \mathcal{L}_{\mathrm{cov}}(\mat{P}_{\zeta}^{(2)})
   \right).
 \]
 The invariance term makes the two views agree.  The variance term prevents
 collapse to a constant representation.  The covariance term discourages
 redundant projected coordinates.
 
-After training, the forecast system uses the encoder representation
-$\tensor{s}^{b}$ or its reduced slice $\tensor{z}^{b}$.  The projector output
-$P_{\eta}(\cdot)$ is a training device and is not part of the edge forecast
+After training, the forecast system uses the reduced embedding
+$\tensor{z}_{u\,v}$.  The projector output
+$P_{\zeta}(\cdot)$ is a training device and is not part of the edge forecast
 distribution in Section~\ref{sec:edge-forecast-head}.

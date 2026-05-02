@@ -38,6 +38,9 @@
       time_warp_curve selects the base temporal warp; curve_param,
       noise_scale, and smoothing_kernel_size control how strongly time is
       dilated/compressed before the masking/dropout steps.
+      Keep channel_dropout_prob at 0.00 unless there is explicit evidence to
+      revisit it. Dropping a whole channel can invalidate every time position
+      for a sample under the all-channel VICReg overlap rule.
 
   Out of scope (owned by wave/.config, not set here):
     wave TRAIN enable/disable + sampler mode + deterministic seed/workers and runtime budget
@@ -97,8 +100,8 @@ PROFILE "stable_pretrain" {
       | point_drop_prob       | 0.06                                             | 0.08                                                 |
       | value_jitter_std      | 0.015                                            | 0.020                                                |
       | time_mask_band_frac   | 0.00                                             | 0.03                                                 |
-      | channel_dropout_prob  | 0.00                                             | 0.05                                                 |
-      | comment               | Identity plus light warp jitter and point drop   | Noisier structure with smoothing and channel dropout |
+      | channel_dropout_prob  | 0.00                                             | 0.00                                                 |
+      | comment               | Identity plus light warp jitter and point drop   | Noisier structure with smoothing and time mask       |
       \---------------------------------------------------------------------------------------------------------------------------------/
 }
 
@@ -146,7 +149,7 @@ PROFILE "eval_payload_only" {
       | point_drop_prob       | 0.00                                          | 0.08                                                 |
       | value_jitter_std      | 0.005                                         | 0.020                                                |
       | time_mask_band_frac   | 0.00                                          | 0.03                                                 |
-      | channel_dropout_prob  | 0.00                                          | 0.05                                                 |
+      | channel_dropout_prob  | 0.00                                          | 0.00                                                 |
       | comment               | Evaluation-safe near-identity perturbation    | Disabled by default for eval payload profile         |
       \------------------------------------------------------------------------------------------------------------------------------/
 }

@@ -6,7 +6,12 @@ as an implementation compass.
 
 ## Current Position
 
-We are preparing the runtime for a larger representation/inference model:
+We have paused source architecture work until the node/edge document is stable.
+The current source state is prepared for the larger representation/inference
+model, but the iitepi remake should not start until the doc gives us the target
+shape.
+
+The intended direction remains:
 
 - Train one shared representation wikimyei over a compatible source domain.
 - Train inference wikimyei, such as MDN expected-value heads, per active
@@ -34,9 +39,23 @@ We are preparing the runtime for a larger representation/inference model:
 - A first strict `default.lattice.target.dsl` exists and decodes into target
   obligations.
 
-## Immediate Next
+## Parked Until The Doc Settles
 
-### 1. Lattice Target Verification
+Do not start the large iitepi/circuit/tsiemene refactor yet.
+
+When the node/edge doc is finished, resume here:
+
+### 1. Decide The New Runtime Shape
+
+Use the doc to decide how source code should represent:
+
+- asset nodes,
+- traded instrument edges,
+- representation wikimyei domains,
+- inference wikimyei per edge/base-quote pair,
+- wave or target attachment in the new model.
+
+### 2. Lattice Target Verification
 
 Teach Lattice to evaluate `.lattice.target.dsl` obligations against persisted
 Hashimyei/Lattice evidence:
@@ -46,7 +65,10 @@ Hashimyei/Lattice evidence:
 - surface the exact report fragments used as evidence,
 - keep active instruments authored in target files, not inferred from `.data`.
 
-### 2. Finish Evidence Semantics
+Only implement this before the iitepi remake if it still matches the doc's
+node/edge target language.
+
+### 3. Finish Evidence Semantics
 
 Review whether target compliance needs more persisted evidence:
 
@@ -74,8 +96,9 @@ component identity, source facts, and lattice evidence.
 
 ## Suggested Order
 
-1. Add Lattice target verification/reporting over `.lattice.target.dsl`.
-2. Fill any remaining evidence semantics needed by that verifier.
-3. Use lattice target to express active instrument training targets.
-4. Revisit iitepi once the node/edge document is stable.
+1. Finish and review the node/edge document.
+2. Translate the doc into a source-level iitepi remake plan.
+3. Decide whether Lattice target verification should use current wikimyei
+   evidence language or the new node/edge language.
+4. Fill any remaining evidence semantics needed by that verifier.
 5. Replace circuit/tsiemene semantics with the new node/edge runtime model.

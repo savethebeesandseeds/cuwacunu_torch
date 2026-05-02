@@ -5,12 +5,12 @@
 \label{subsec:balance-equation}
 
 With the graph convention from Section~\ref{sec:edges-and-nodes}, a node view
-becomes available when an edge price is interpreted as a ratio of latent node
-values.  Let $\nu_u \in \Rpos$ denote the latent value of node
+becomes available when an edge price is interpreted as a ratio of node
+valuations.  Let $\eta_u \in \Rpos$ denote the node valuation of node
 $u \in \mathcal{V}$.  For edge $e=(u,v) \in \mathcal{E}$, the idealized edge
 price is
 \[
-  q_e = \frac{\nu_u}{\nu_v}
+  q_e = \frac{\eta_u}{\eta_v}
   \in \Rpos.
 \]
 In log coordinates,
@@ -19,7 +19,7 @@ In log coordinates,
   \qquad
   \ell_e \in \R,
   \qquad
-  \xi_u := \log \nu_u \in \R.
+  \xi_u := \log \eta_u \in \R.
 \]
 Therefore the signed edge return satisfies
 \[
@@ -36,7 +36,7 @@ state is a potential whose differences explain that relation.
 \label{subsec:best-fit-node-recovery}
 
 In practice the active edge set may be incomplete, noisy, or internally
-inconsistent.  The node values are then recovered as the best global fit to the
+inconsistent.  The node valuations are then recovered as the best global fit to the
 observed or predicted edge returns.
 
 For one forecast step and one active scalar observer, let
@@ -46,7 +46,7 @@ $\vect{y} \in \R^N$ by
 \[
   \min_{\vect{y} \in \R^N}
   \sum_{e=(u,v) \in \mathcal{E}}
-  \gamma_e\left(\widehat{r}_e - (y_u - y_v)\right)^2
+  \gamma_e\cdot\left(\widehat{r}_e - (y_u - y_v)\right)^2
   \qquad\text{subject to}\qquad
   y_g = 0.
 \]

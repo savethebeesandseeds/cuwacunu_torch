@@ -4,9 +4,9 @@
 \subsection[Input Data]{Input Data $(\tensor{x}, {}_{x}\tensor{m})$}
 \label{subsec:input-data}
 
-A market sample is not a single scalar price. It is a structured window of
-normalized observations: several sequences, several channels, and several
-features per position. As introduced in Section~\ref{sec:edges-and-nodes}, 
+The raw market observation are a large and structured window of
+normalized \texttt{kline} sequences: several channels several points and several
+features per edge. As introduced in Section~\ref{sec:edges-and-nodes}, 
 $\tensor{x}_{u\,v}(t)$ is the normalized%
 \textsuperscript{\textcolor{FootnoteField}{\ref{fn:data-normalized}}}
 edge-payload tensor attached to the directed edge
@@ -22,17 +22,18 @@ Where $C$ indexes the channels%
   intervals. The whole list of time scales is:
   \field{1w}, \field{3d}, \field{1d}, \field{12h}, \field{8h},
   \field{6h}, \field{4h}, \field{2h}, \field{1h}, \field{30m},
-  \field{15m}, \field{5m}, \field{3m} and \field{1m}
+  \field{15m}, \field{5m}, \field{3m} and \field{1m}. We don't try to model high frequency. 
 }, 
 $H_x$ is the input sequence length%
 \note{
-  Each channel may contribute a different native input length, so the
-  dataloader pads them into a common tensor and records validity in the mask.
-  The shared anchor is the last available record on each channel not after the
-  common anchor key.  Positions across channels therefore have the same role
+  Each channel may contribute a different native input length, 
+  so the dataloader pads them to a common length to preserve a rectangular tensor shape 
+  and records the pad into the mask so the efective sequence length is not altered.
+  The shared time anchor is the last available record on each channel not after the
+  common anchor time.  Positions across channels therefore have the same role
   relative to the anchor, but they are not required to have identical raw
-  \texttt{close\_time} values.  See
-  Appendix~\ref{app:sequence-synchronization}.
+  \texttt{close\_time} feature on the last element of the sequence.  See
+  Appendix~\ref{app:sequence-synchronization} for more details.
 }, 
 and $D_x$ is the model-feature width%
 \note{
@@ -54,7 +55,6 @@ $\log\!\bigl(p(t)/\mathrm{close\_price}(t-1)\bigr)$, where
 Non-price activity fields are mapped coordinatewise by
 $\operatorname{log1p}(u)=\log(1+u)$.  For more details see
 Appendix~\ref{app:normalization}.} 
-
 The sample validity mask%
 \note{
   Market data are not a complete mathematical grid.  Source records may be
@@ -101,77 +101,15 @@ For batched notation%
   \in \{0,1\}^{B \times C \times H_x}.
 \]
 
-\newpage{}
-\subsection[Portfolio Holding State]{Portfolio Holding State $(\tensor{h}, \tensor{\eta})$}
-\label{subsec:exposure}
 
-Market observations ($\tensor{x}$) and portfolio holdings ($\tensor{h}$) live on different objects of the
-graph.  Observations are on the edges and holdings are on the nodes. 
 
-At anchor time $t$, we've find%
-\note{
-  When the nodes are concrete assets, $\tensor{h}_u(t)$ may be read as signed inventory
-  in the native unit of asset $u$.  More generally, it is the quanities of the portfolio records, 
-  we do this for all nodes (assets) even if we have zero of such asset: 
-  $\tensor{h}(t) = \bigl(\tensor{h}_u(t)\bigr)_{u\in\mathcal{V}} \in \R^N$
-}: 
-\[
-  u\in\mathcal{V}
-  \quad
-  \longmapsto
-  \quad
-  \tensor{h}_u(t)\in\R.
-\]
-In general we could say: 
-\[
-  u\in\mathcal{V}
-  \quad
-  \longmapsto
-  \quad
-  \tensor{h}(t)\in\R^{N}.
-\]
 
-The sign of $\tensor{h}_u(t)$ carries the direction of the holding%
-\note{
-  A positive value denotes a long holding, claim, or positive exposure to node
-  $u$.  A negative value denotes a short position, borrowed inventory,
-  liability, or any construction whose economic direction is opposite to holding
-  the node.  The value $\tensor{h}_u(t)=0$ means that the portfolio has no active holding
-  at node $u$ at time $t$.
-}.
-No normalization is imposed at this stage%
-\note{
-  In particular, $\tensor{h}(t)$ is not a probability vector, not a vector of
-  portfolio weights, and not required to have nonnegative entries or to sum to
-  one.  Its coordinates also need not share a common external denomination
-  before an accounting map is chosen.
-}.
 
-The latent node value $\tensor{\eta}_u(t)$ is a separate object%
-\note{
-  It represents a node-level value coordinate, recovered or compared through
-  edge relations, and is gauge-relative unless a numeraire or gauge convention
-  has been fixed.
-}.
-This section does not identify $\tensor{h}_u(t)$, $\tensor{\eta}_u(t)$, or $\tensor{h}_u(t)\tensor{\eta}_u(t)$ with a
-normalized portfolio weight.  Such conversions belong to later accounting or
-observer maps%
-\note{
-  For example, a later portfolio observer may choose to mark holdings, normalize
-  them by equity, compute portfolio response, impose leverage constraints, or
-  attribute risk contribution.  Those constructions are deliberately not part of
-  the core data state defined here.  They are readouts of the pair consisting of
-  a holding state and a node-value convention.
-}.
 
-A traded edge may be the mechanism by which holdings change%
-\note{
-  An execution on edge $(u,v)$ alters the ledger coordinates associated with the
-  involved nodes; after the ledger is updated, the resulting portfolio state is
-  again represented as a node vector $\tensor{h}(t)$.
-}.
-Thus edge observations remain edge-valued, while both latent node values and
-portfolio holdings remain node-valued.
+
+
+
+
 
 \newpage{}
 
@@ -242,7 +180,7 @@ constitute investment advice, a trading recommendation, or an offer to buy or
 sell any financial instrument.  Model outputs are uncertain, may be wrong, and
 do not guarantee future results; any operational, financial, or regulatory use
 remains the sole responsibility of the user.
-}.}{%
+}.}{\\%
 We do not claim deterministic knowledge of future market values.  Rather, the
 future window is used as supervised data for estimating conditional
 probability, from which quantities such as expected return and risk may be
@@ -250,3 +188,78 @@ read.  The model represents uncertainty about future outcomes; it does not
 remove that uncertainty.  See Section~\ref{sec:edge-forecast-head} for the
 density-mixture formulation.
 }
+
+See section~\ref{sec:representation} for how we use the same embedding network to 
+encode the data on any edge to a unified representation.
+
+
+
+
+
+
+
+
+
+
+
+\newpage{}
+\subsection[Portfolio Holding State]{Portfolio Holding States $(\tensor{h}, \tensor{\eta})$}
+\label{subsec:exposure}
+
+Market observations ($\tensor{x}$) and portfolio holdings ($\tensor{h}$) live on different objects of the
+graph.  Observations are on the edges, holdings%
+\note{
+  Holdings $\tensor{h}(t)$ represent the investment positions at any anchor-time $t$.
+} 
+are on the nodes. Nodes also have valuation $\tensor{\eta}$%
+\note{
+  We use machine learning to derive $\tensor{\eta}(t)$ 
+  and estimate the valuation of one asset relative to another.
+}.
+
+At anchor time $t$, we've find the amount of units we hold for asset $u$ are%
+\note{
+  When the nodes are concrete assets, ${h}_u(t)$ may be read as signed inventory
+  in the native unit of asset $u$.  More generally, it is the quanities of the portfolio records, 
+  we do this for all nodes (assets) even if we have zero of such asset: 
+  $\tensor{h}(t) = \bigl({h}_u(t)\bigr)_{u\in\mathcal{V}} \in \R^N$
+}: 
+\[
+  u\in\mathcal{V}
+  \quad
+  \longmapsto
+  \quad
+  {h}_u(t)\in\R,
+\]
+In general, to reference all assets at once we say: 
+\[
+  \tensor{h}(t)\in\R^{N}.
+\]
+
+The sign%
+\note{
+  A positive value denotes a long holding, claim, or positive exposure to node
+  $u$.  A negative value denotes a short position, borrowed inventory,
+  liability, or any construction whose economic direction is opposite to holding
+  the node.  The value ${h}_u(t)=0$ means that the portfolio has no active holding
+  at node $u$ at time $t$.
+} 
+of $h_u(t)$ records whether the holding is long or short%
+\note{
+  No normalization is imposed for this variable. In particular, 
+  $\tensor{h}(t)$ is not a probability vector, not a vector of
+  portfolio weights, and not required to have nonnegative entries 
+  or to sum to one.
+  Its coordinates also need not share a common external denomination
+  before an accounting map is chosen.
+}.
+
+At the nodes we attach a separate object, the node valuation $\tensor{\eta}_u(t)$.%
+\note{
+  $\tensor{\eta}$ represents a node-level valuation coordinate, recovered through edge relations.
+}
+Used to asign relative value and compare the assets with and against eachother.
+\[
+  \tensor{\eta}(t)\in\R^{N}.
+\]
+

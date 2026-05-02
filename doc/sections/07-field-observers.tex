@@ -1,3 +1,4 @@
+\newpage{}
 \section{Distribution Field and Observer Operators}
 \label{sec:distribution-field-and-observer-operators}
 
@@ -11,14 +12,14 @@ collection of these predictive laws over the active edge universe is the
 
 For a fixed forecast step and active edge universe, write
 \[
-  \mathfrak{D}_{c\,i}
+  \mathfrak{D}^{c\,i}
   =
-  \{\mathcal{D}_{e\,c\,i} \in \mathcal{P}(\R^{D_f}) : e \in \mathcal{E}\}
+  \{\mathcal{D}_{e}^{c\,i} \in \mathcal{P}(\R^{D_f}) : e \in \mathcal{E}\}
   \in
   \left(\mathcal{P}(\R^{D_f})\right)^L.
 \]
 If the model is evaluated repeatedly over time, then for $t \in \mathcal{T}$,
-$t \mapsto \mathfrak{D}_{c\,i}(t)$ is a time-indexed field of predictive
+$t \mapsto \mathfrak{D}^{c\,i}(t)$ is a time-indexed field of predictive
 distributions.  The field itself stores uncertainty.  It is not yet a single
 action, score, or node state.
 
@@ -58,16 +59,16 @@ several, not the whole predictive object.
 Applying an observer pointwise over the edge distribution field gives a derived
 field.  For example, the mean field is
 \[
-  \widehat{r}_{e\,c\,i}
+  \widehat{r}_{e}^{c\,i}
   :=
-  \mathcal{O}_{\E}[\mathcal{D}^{(r)}_{e\,c\,i}]
+  \mathcal{O}_{\E}[\mathcal{D}_{e}^{(r)\,c\,i}]
   \in \R,
 \]
 and a simple variance-based confidence rule is
 \[
-  \gamma_{e\,c\,i}
+  \gamma_{e}^{c\,i}
   :=
-  \frac{1}{\mathcal{O}_{\Var}[\mathcal{D}^{(r)}_{e\,c\,i}] + \delta}
+  \frac{1}{\mathcal{O}_{\Var}[\mathcal{D}_{e}^{(r)\,c\,i}] + \delta}
   \in \Rpos,
   \qquad
   \delta \in \Rpos.

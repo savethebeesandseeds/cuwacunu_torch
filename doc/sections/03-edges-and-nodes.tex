@@ -86,7 +86,7 @@ The holdings of the portfolio are recorded on nodes%
   Asset holdings at the base node $\tensor{h}_{u}$, 
   has a price readout $\tensor{x}_{u\,v}(t)$ of $u$ in terms of $v$,
   thus prices are quotation, not states stored inside either node.  Section~\ref{sec:edges-to-nodes}
-  describes how node values are recovered from edge readouts.
+  describes how node valuations are recovered from edge readouts.
 }
 
 There are $N$ nodes and $N(N-1)$ edges%
@@ -95,5 +95,8 @@ There are $N$ nodes and $N(N-1)$ edges%
   $\mathcal{E} = \{(u,v)\in\mathcal{V}\times\mathcal{V}:u\ne v\}, |\mathcal{E}|=N(N-1).$
   Both directions are counted separately.  Thus $(u,v)$ and $(v,u)$ are
   distinct directed quotations, corresponding for example to \field{BTCUSDT}
-  and \field{USDTBTC}.
+  and \field{USDTBTC}. And something like \field{BTCBTC} is not consider valid.
 }.
+
+We will later present observer operators to measure all the standard quantities. 
+Risk, exposure, entropy and others. 

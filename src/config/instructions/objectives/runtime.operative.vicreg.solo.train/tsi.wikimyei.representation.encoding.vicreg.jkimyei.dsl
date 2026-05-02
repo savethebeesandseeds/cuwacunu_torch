@@ -4,6 +4,10 @@
   This file is intentionally small. Legacy ablation profiles were removed so a
   fresh session starts from one canonical long-horizon train policy plus one
   eval-only policy.
+
+  Keep channel_dropout_prob at 0.00 unless there is explicit evidence to
+  revisit it. Dropping a whole channel can invalidate every time position for a
+  sample under the all-channel VICReg overlap rule.
 */
 
 JKSPEC 2.0
@@ -106,7 +110,7 @@ PROFILE "stable_pretrain_no_swa_low_lr" {
       | point_drop_prob       | 0.01                                                          | 0.01                                                             |
       | value_jitter_std      | 0.007                                                         | 0.006                                                            |
       | time_mask_band_frac   | 0.01                                                          | 0.00                                                             |
-      | channel_dropout_prob  | 0.01                                                          | 0.00                                                             |
+      | channel_dropout_prob  | 0.00                                                          | 0.00                                                             |
       | comment               | Low-LR/no-SWA continuation hypothesis on 0x0100 for optimizer-pressure and regularization tuning | Retired baseline candidate variant kept disabled |
       \\------------------------------------------------------------------------------------------------------------------------------------------------------/
 }
@@ -155,7 +159,7 @@ PROFILE "eval_payload_only" {
       | point_drop_prob       | 0.00                                          | 0.08                                                 |
       | value_jitter_std      | 0.005                                         | 0.020                                                |
       | time_mask_band_frac   | 0.00                                          | 0.03                                                 |
-      | channel_dropout_prob  | 0.00                                          | 0.05                                                 |
+      | channel_dropout_prob  | 0.00                                          | 0.00                                                 |
       | comment               | Evaluation-safe near-identity perturbation    | Disabled by default for eval payload profile         |
       \\------------------------------------------------------------------------------------------------------------------------------/
 }
@@ -204,7 +208,7 @@ PROFILE "eval_payload_no_swa_low_lr" {
       | point_drop_prob       | 0.01                                          | 0.08                                                 |
       | value_jitter_std      | 0.006                                         | 0.020                                                |
       | time_mask_band_frac   | 0.01                                          | 0.03                                                 |
-      | channel_dropout_prob  | 0.01                                          | 0.05                                                 |
+      | channel_dropout_prob  | 0.00                                          | 0.00                                                 |
       | comment               | Evaluation profile aligned to no-SWA candidate train regime | Disabled by default for eval payload profile         |
       \\------------------------------------------------------------------------------------------------------------------------------/
 }
